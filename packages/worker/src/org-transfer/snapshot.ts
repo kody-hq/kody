@@ -20,6 +20,7 @@ export const orgTransferOwnerTables = {
 	saved_packages: 'user_id',
 	package_capability_approvals: 'owner_user_id',
 	package_security_audits: 'owner_user_id',
+	package_app_cookie_warnings: 'owner_user_id',
 	package_approval_requests: 'owner_user_id',
 	user_repos: 'user_id',
 	entity_sources: 'user_id',

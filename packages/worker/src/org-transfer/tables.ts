@@ -34,6 +34,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	package_security_audits: keep(
 		'Informational package security audits. Rows for moved packages are deleted so the destination owner can re-audit.',
 	),
+	package_app_cookie_warnings: keep(
+		'Cookie warnings are informational source-owner observations. Rows for moved packages are deleted so the destination owner can collect new findings.',
+	),
 	package_app_custom_hostnames: keep(
 		'App-level rows bind by package_id (unchanged on transfer), so the hostname follows the moved package. Org-level rows bind by org_id and stay with the source org. created_by_user_id is attribution only.',
 	),

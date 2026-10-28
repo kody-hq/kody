@@ -229,9 +229,9 @@ credentials; opt-in types (`url`, `login`, `signing`) are in
   detail page. Without a declaration, new package-scope secrets default to
   headers-only. See
   [Credentials](../guides/credentials.md#keys-and-placeholders). The fetch
-  gateway fills placeholders regardless of placement and logs would-block when a
-  fill is outside the declared parts. Placeholders work over HTTPS to a host the
-  secret or integration allows. See
+  gateway refuses a fill outside the credential's placement; query, path, and
+  body also need the owner's opt-in on the credential page. Placeholders work
+  over HTTPS to a host the secret or integration allows. See
   [Placeholders in `fetch`](./secrets-and-values.md#placeholders-in-fetch).
 
 #### Declare what a stamped package may use

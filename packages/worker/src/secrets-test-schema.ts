@@ -66,6 +66,18 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 		.run()
 	await db
 		.prepare(
+			`CREATE TABLE IF NOT EXISTS credential_fill_placement_opt_ins (
+				credential_id TEXT PRIMARY KEY NOT NULL,
+				query INTEGER NOT NULL DEFAULT 0,
+				path INTEGER NOT NULL DEFAULT 0,
+				body INTEGER NOT NULL DEFAULT 0,
+				source TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			)`,
+		)
+		.run()
+	await db
+		.prepare(
 			`CREATE TABLE IF NOT EXISTS credential_allowed_packages_would_block (
 				day TEXT NOT NULL,
 				owner_id TEXT NOT NULL,

@@ -141,13 +141,20 @@ that build headers in a variable and header spreads — the scanner cannot see
 are still skipped. The warning does not fail the check or block publish.
 
 Each credential also stores an allowed **fill placement** (headers, optionally
-named; query; path; and/or body). Null means anywhere. New credentials default
-to headers-only. The per-request header **intersects** with that placement (it
-never widens it). Distinct from **inject**, which only steers a scoped
-`credential()` client. Edit fill placement on the credential detail page, via
-`secretSet` / `credentialUpdate`, or the account secret editor. The gateway
-fills placeholders regardless of placement and logs would-block when a fill is
-outside the declared parts.
+named; query; path; and/or body). New credentials default to headers-only. The
+per-request header **intersects** with that placement (it never widens it).
+Distinct from **inject**, which only steers a scoped `credential()` client. Edit
+fill placement on the credential detail page, via `secretSet` /
+`credentialUpdate`, or the account secret editor.
+
+The fetch gateway enforces placement: a fill into a part the credential does not
+allow is refused with a message naming the credential, the refused part, and the
+allowed parts. Query, URL path, and body also need the owner's opt-in, given by
+saving them on the credential page, which warns that the host may store a value
+sent there. A credential already seen filling a query, path, or body before
+enforcement keeps those parts without a new save: migration 0195 records them as
+opted in, so nobody has to migrate anything by hand. Older credentials with no
+placement set fill headers plus those parts.
 
 Full placeholder rules (encodings, multipart, the inert `{{secret:<name>}}`
 mention form):

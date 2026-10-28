@@ -5,6 +5,11 @@ import {
 	type ExchangeOAuthTokenInput,
 } from '#universal/secret-mutations.ts'
 import {
+	fillPlacementOptInFromPlacement,
+	readFillPlacementOptIn,
+	type FillPlacementOptIn,
+} from '#worker/credentials/fill-placement-opt-ins.ts'
+import {
 	getSecretContextForAccountSecret,
 	listAccountSecrets,
 	type loadAccountSecretsSelection,
@@ -1609,6 +1614,12 @@ export async function saveAccountSecret(input: {
 	// package declaration (and marks unread when the manifest cannot be read).
 	let placementOnInsert: CredentialFillPlacement | null | undefined
 	let placementOriginOnInsert: CredentialPlacementOrigin | null | undefined
+	let fillPlacementOptInOnInsert: FillPlacementOptIn | undefined
+	// A website placement save is the owner's opt-in, whichever path writes it.
+	if (requestedPlacement !== undefined) {
+		fillPlacementOptInOnInsert =
+			fillPlacementOptInFromPlacement(requestedPlacement)
+	}
 	if (requestedPlacement !== undefined && credential == null) {
 		placementOnInsert = requestedPlacement
 		placementOriginOnInsert = 'owner'
@@ -1628,6 +1639,13 @@ export async function saveAccountSecret(input: {
 		if (source.found) {
 			placementOnInsert = source.placement
 			placementOriginOnInsert = source.placementOrigin
+			// A move keeps the source's opt-in; it never grants a new one.
+			if (source.credentialId) {
+				fillPlacementOptInOnInsert = await readFillPlacementOptIn(
+					input.env.APP_DB,
+					source.credentialId,
+				)
+			}
 		}
 	}
 
@@ -1658,6 +1676,7 @@ export async function saveAccountSecret(input: {
 						placementOriginOnInsert: placementOriginOnInsert ?? null,
 					}
 				: {}),
+			...(fillPlacementOptInOnInsert ? { fillPlacementOptInOnInsert } : {}),
 		})
 		if (
 			requestedPlacement !== undefined &&
@@ -1688,6 +1707,7 @@ export async function saveAccountSecret(input: {
 					credentialId: found.credentialId,
 					update: { placement: requestedPlacement },
 					audit: orgAuditWriterFromRequest(input.env, input.user.request),
+					ownerOptIn: true,
 				})
 			}
 		}

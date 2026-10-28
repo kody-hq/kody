@@ -10,7 +10,12 @@ import {
 	fieldLabelCss,
 	inputCss,
 } from '#universal/styles/style-primitives.ts'
-import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import {
+	colors,
+	radius,
+	spacing,
+	typography,
+} from '#universal/styles/tokens.ts'
 
 const partsLabel: Record<FillPlacementPartId, string> = {
 	headers: 'Headers',
@@ -38,6 +43,16 @@ const rowCss = css({
 const hintCss = css({
 	margin: 0,
 	color: colors.textMuted,
+	fontSize: typography.fontSize.sm,
+})
+
+const warningCss = css({
+	margin: 0,
+	padding: spacing.sm,
+	borderRadius: radius.md,
+	border: `1px solid ${colors.warning}`,
+	background: `color-mix(in srgb, ${colors.warning} 10%, transparent)`,
+	color: colors.warningText,
 	fontSize: typography.fontSize.sm,
 })
 
@@ -69,8 +84,8 @@ export function CredentialFillPlacementFields(
 			<p css={hintCss}>
 				Where Kody may fill this credential&apos;s placeholders on an outbound
 				request. New credentials default to headers only. Distinct from inject,
-				which only steers a scoped <code>credential()</code> client. Enforcement
-				is not on yet; this stores the allowed parts.
+				which only steers a scoped <code>credential()</code> client. Kody
+				refuses a fill anywhere else.
 			</p>
 			<ul css={listCss}>
 				{fillPlacementPartIds.map((part) => (
@@ -89,6 +104,13 @@ export function CredentialFillPlacementFields(
 					</li>
 				))}
 			</ul>
+			{draft.query || draft.path || draft.body ? (
+				<p css={warningCss} role="note">
+					The host may store a value sent in the query, URL path, or body (for
+					example in access logs or a saved record). Allow these only when the
+					host needs the credential there. Saving here is your opt-in.
+				</p>
+			) : null}
 			{draft.headers ? (
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Named headers (optional)</span>

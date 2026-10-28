@@ -2204,6 +2204,12 @@ export type AccountPackageDetail = AccountPackageListItem & {
 	 * or empty when the package has none.
 	 */
 	customDomains?: Array<PackageAppCustomDomainView>
+	/** Recent package-app cookie HttpOnly warnings (owner view only). */
+	cookieWarnings?: Array<{
+		cookieName: string
+		reason: 'added_httponly' | 'missing_httponly'
+		lastSeenAt: string
+	}>
 }
 
 type AccountPackagePublishDiffFile = {

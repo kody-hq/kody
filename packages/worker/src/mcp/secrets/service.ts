@@ -13,6 +13,10 @@ import {
 	defaultNewCredentialFillPlacement,
 	readCredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
+import {
+	ownerFillPlacementOptInStatement,
+	type FillPlacementOptIn,
+} from '#worker/credentials/fill-placement-opt-ins.ts'
 import { assertOptInCredentialValue } from '#worker/credentials/opt-in-credential-value.ts'
 import {
 	normalizeAllowedPackages,
@@ -127,6 +131,11 @@ type SaveSecretInput = SecretOwnerContext &
 		placementOnInsert?: CredentialFillPlacement | null
 		/** How the insert placement was chosen; stored on the row for repair/UI. */
 		placementOriginOnInsert?: CredentialPlacementOrigin | null
+		/**
+		 * Query, path, and body opt-in saved with a new row. Website handlers
+		 * set it (the owner's form, or the source of a move); code never does.
+		 */
+		fillPlacementOptInOnInsert?: FillPlacementOptIn
 		/**
 		 * When set with a package-scope value write, may re-apply the package's
 		 * declared placement onto an untouched headers-only default.
@@ -441,6 +450,15 @@ export async function saveSecret(
 						placement_json: credential.placementJson,
 					},
 				}),
+				...(optInNeedsRow(input.fillPlacementOptInOnInsert)
+					? [
+							ownerFillPlacementOptInStatement({
+								db: input.env.APP_DB,
+								credentialId,
+								optIn: input.fillPlacementOptInOnInsert,
+							}),
+						]
+					: []),
 			],
 			event: credential.audit.event(credentialId),
 		})
@@ -500,6 +518,23 @@ export async function saveSecret(
 					}
 				: {}),
 		})
+		// Also for an existing row: a website save of an unchanged code-set
+		// placement is still the owner's opt-in.
+		const optInOnInsert = input.fillPlacementOptInOnInsert
+		if (optInNeedsRow(optInOnInsert)) {
+			const insertedId = await readUserSecretEntryId({
+				db: input.env.APP_DB,
+				bucketId: bucket.id,
+				name,
+			})
+			if (insertedId) {
+				await ownerFillPlacementOptInStatement({
+					db: input.env.APP_DB,
+					credentialId: insertedId,
+					optIn: optInOnInsert,
+				}).run()
+			}
+		}
 		if (auditsOrgCredential) {
 			const credentialId =
 				existingEntry?.id ??
@@ -2520,4 +2555,10 @@ export async function lockSecretToPackage(input: {
 		allowedPackages: [...state.secret.allowedPackages, state.savedPackage.id],
 		audit: input.audit,
 	})
+}
+
+function optInNeedsRow(
+	optIn: FillPlacementOptIn | undefined,
+): optIn is FillPlacementOptIn {
+	return Boolean(optIn && (optIn.query || optIn.path || optIn.body))
 }
