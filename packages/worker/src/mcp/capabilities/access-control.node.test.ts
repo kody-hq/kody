@@ -433,6 +433,7 @@ test('one MCP request records flag exposures once and reuses the request evaluat
 	expect(flagMocks.getFeatureFlagEvaluationsForUser).toHaveBeenCalledWith(
 		expect.anything(),
 		42,
+		{ orgId: requestContext.request?.org.id },
 	)
 	expect(flagMocks.recordFeatureFlagExposures).toHaveBeenCalledTimes(1)
 

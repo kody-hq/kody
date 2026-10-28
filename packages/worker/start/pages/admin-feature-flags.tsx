@@ -571,10 +571,10 @@ export function AdminFeatureFlagsPage({
 								/>
 							) : (
 								<p css={{ margin: 0, color: colors.textMuted }}>
-									No global row yet — saving creates one. Empty rollout means
-									all users when enabled. Audience starts from the flag's
-									registry default; choose Experiments opt-in to limit the flag
-									to `/account/experiments` members.
+									No global row yet. Saving creates one. Empty rollout means all
+									users when enabled. Audience starts from the flag's registry
+									default; choose Experiments opt-in to limit the flag to
+									`/account/experiments` members.
 								</p>
 							)}
 						</form>

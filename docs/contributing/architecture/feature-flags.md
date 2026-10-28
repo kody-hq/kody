@@ -82,14 +82,15 @@ orgs is evaluated only against that org, never against all memberships. Passing
 | Surface                                       | Org context                                                      |
 | --------------------------------------------- | ---------------------------------------------------------------- |
 | MCP, `execute`, Open API (caller resolver)    | `callerContext.request.org` (org binding, else the personal org) |
-| Website session flags (`/session`, SSR shell) | the `/@slug` org of the page; none elsewhere                     |
+| Website session flags (`/session`, SSR shell) | the matched route's org scope (`/@slug/-/...`); none elsewhere   |
 | Execution contexts                            | the request org, or the `/@slug` org of the page                 |
 | Credential suppliers, custom domains          | the org that owns the credential or package app                  |
 | Repo-scoped flags                             | the org that owns the repo (personal org for personal repos)     |
 | Connection profiles, MCP event fan-out        | none (user only)                                                 |
 
 Evaluated-flag caches key on user and org (`stableUserId` plus org id in the MCP
-resolver; page org slug in the per-request app cache).
+resolver; page org slug in the per-request app cache and in the website shell
+query key).
 
 Evaluation failures for authenticated users **fail closed** (all flags off) so a
 default-on flag can never bypass an operator kill switch when D1 is unavailable.
