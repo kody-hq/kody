@@ -289,18 +289,21 @@ rate-limited and recorded in the org activity log with who used it. See
 
 Any saved Key can be used through a client. Set its provider so needs match it,
 and its inject if the service does not take `Authorization: Bearer`. This is
-one-time setup from ad hoc `execute` or the API, not package code (package
-runtimes cannot change a credential's provider or inject). `credentialList`
-returns each credential's `id`:
+one-time setup on the credential's page on the website, or with the MCP `api`
+tool (`credentialUpdate`). Changing inject or widening placement is refused from
+`execute` (hosted or `--local`), package, and app code, with a link to the
+credential's page; narrowing placement and setting the provider still work
+there. `credentialList` returns each credential's `id`:
 
-```ts
-import { kody } from 'kody:runtime'
-
-await kody.credentialUpdate({
-	credential_id: 'cred_…',
-	provider: 'anthropic',
-	inject: { kind: 'header', name: 'x-api-key', format: '{value}' },
-})
+```json
+{
+	"operationId": "credentialUpdate",
+	"params": {
+		"credential_id": "cred_…",
+		"provider": "anthropic",
+		"inject": { "kind": "header", "name": "x-api-key", "format": "{value}" }
+	}
+}
 ```
 
 ```ts
