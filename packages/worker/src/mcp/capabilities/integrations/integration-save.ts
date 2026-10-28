@@ -34,6 +34,7 @@ export const integrationSaveCapability = defineDomainCapability(
 	capabilityDomainNames.integrations,
 	{
 		name: 'integrationSave',
+		contextRuns: 'deny',
 		orgPermission: 'integration:write',
 		description:
 			'Create or update an OAuth integration connection for the signed-in user. Names are normalized to a canonical lowercase-kebab provider key. Partial updates merge into the existing connection; matching client credentials reuse a shared OAuth app across connections. Do not persist access or refresh tokens here or with secretSet — `/connect/oauth` and `integrationTokenRefresh` write those on the connection. authorization.scopes is reconnect metadata: the list the next /connect/oauth visit requests, not the current access token. After widening scopes, tell the user the token is unchanged until they reconnect, then ask whether to reconnect each affected account at /connect/oauth?provider=<connection-name>. Scopes are per connection; sibling accounts that share an OAuth app keep their own lists. This capability cannot change usageMode or add requiredHosts / retarget tokenUrl to an unapproved host. Platform (built-in) connections cannot be updated here — reconnect at /connect/oauth?provider=<name> to change scopes, or integrationDelete first to replace with a bring-your-own app.',

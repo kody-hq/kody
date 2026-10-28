@@ -13,6 +13,7 @@ export const secretProviderBindCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'secretProviderBind',
+		contextRuns: 'deny',
 		orgPermission: 'secret:write',
 		description:
 			'Pin which saved package serves an external secret provider id for this account, plus which user secret holds the door key. Declaring kody.secretProvider on a package does not bind it. Owner-controlled; does not return secret values.',

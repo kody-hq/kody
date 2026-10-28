@@ -13,5 +13,6 @@ export default defineConfig({
 		'!packages/worker/.env.example',
 		// TanStack Router regenerates this file with its own formatter.
 		'packages/worker/start/routeTree.gen.ts',
+		'packages/worker/start/routeTree.gen.check.ts',
 	],
 })

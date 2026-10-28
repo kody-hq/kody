@@ -9,6 +9,7 @@ import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
 import {
 	authoredPackageJsonSchema,
 	packageCredentialsSchema,
+	packageAppVisitorNeedKeyPattern,
 	webhookDefaultRateLimitPerMinute,
 	type AuthoredPackageJson,
 	type PackageExportTarget,
@@ -155,6 +156,22 @@ export function parseAuthoredPackageJson(input: {
 		throw new Error(
 			`Invalid ${input.manifestPath ?? packageManifestPath}:\n${packageAppHostReservedPackageLeafMessage(expectedKodyId)}`,
 		)
+	}
+	// Authoring/publish only: an older snapshot with such a key still loads,
+	// and consent rejects its need:<key> scope when a visitor is asked for it.
+	if ((input.mode ?? 'authoring') === 'authoring') {
+		for (const [name, slot] of Object.entries(
+			manifest.kody.credentials ?? {},
+		)) {
+			if (
+				slot.supplier === 'executor' &&
+				!packageAppVisitorNeedKeyPattern.test(name)
+			) {
+				throw new Error(
+					`Invalid ${input.manifestPath ?? packageManifestPath}:\nkody.credentials.${name} uses supplier: "executor", so its key becomes the consent scope need:${name} and must be lowercase letters, numbers, or hyphens (max 40), e.g. "github".`,
+				)
+			}
+		}
 	}
 	manifest.kody.id = expectedKodyId
 	const authored = manifest as AuthoredPackageJson

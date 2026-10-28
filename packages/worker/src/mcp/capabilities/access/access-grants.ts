@@ -80,6 +80,7 @@ export const accessGrantCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'accessGrant',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: async (args, ctx) => {
 			if (args.resource_type !== 'org') return false
@@ -206,6 +207,7 @@ export const accessRevokeCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'accessRevoke',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: async (args, ctx) => {
 			const request = ctx.callerContext.request
@@ -264,6 +266,7 @@ export const accessListCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'accessList',
+		contextRuns: 'allow',
 		orgPermission: 'member:read',
 		description:
 			'List live grants in the organization this request is bound to. Filter by resource or subject when you already know which one you want.',

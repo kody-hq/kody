@@ -20,6 +20,7 @@ export const packageAppCustomHostnameSyncCapability = defineDomainCapability(
 	capabilityDomainNames.orgs,
 	{
 		name: 'packageAppCustomHostnameSync',
+		contextRuns: 'deny',
 		orgPermission: 'org:write',
 		featureFlag: packageAppCustomDomainsFlagKey,
 		description:

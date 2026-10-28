@@ -21,6 +21,7 @@ export const integrationDeleteCapability = defineDomainCapability(
 	capabilityDomainNames.integrations,
 	{
 		name: 'integrationDelete',
+		contextRuns: 'deny',
 		orgPermission: 'integration:delete',
 		description:
 			'Delete a saved OAuth integration connection by name. When it is the last connection on its OAuth app, the unused app is removed too.',

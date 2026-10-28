@@ -98,6 +98,7 @@ export const runUpdateBulkCapability = defineDomainCapability(
 	capabilityDomainNames.runs,
 	{
 		name: 'runUpdateBulk',
+		contextRuns: 'allow',
 		orgPermission: 'job:write',
 		description:
 			'Non-destructively triage up to 100 retained error runs by explicit ids or safe exact-match filters. Use dry_run first for operational cleanup, then repeat filtered updates while has_more is true. Original error status, message, logs, and history remain inspectable.',

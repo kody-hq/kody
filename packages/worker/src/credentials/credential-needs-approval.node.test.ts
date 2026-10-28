@@ -62,6 +62,7 @@ vi.mock('#worker/package-capabilities/capability-approval-service.ts', () => ({
 }))
 
 const {
+	describeCredentialNeedChange,
 	diffCredentialNeeds,
 	pausedSessionMovedMessage,
 	requireCredentialNeedsApproval,
@@ -226,6 +227,37 @@ test('turning on owner credentials for visitors reshapes a need; turning it off 
 	])
 	expect(diffCredentialNeeds([shared], [need('DB')])).toEqual([])
 	expect(diffCredentialNeeds([shared], [shared])).toEqual([])
+})
+
+test('switching who supplies a need reshapes it; dropping publisher sharing does not', () => {
+	const publisher = need('GITHUB', { supplier: 'publisher' })
+	const executor = need('GITHUB', { supplier: 'executor', required: false })
+	expect(diffCredentialNeeds([publisher], [executor])).toEqual([
+		{
+			key: 'GITHUB',
+			change: 'changed',
+			before: {
+				kind: 'secret',
+				provider: 'resend',
+				multiple: false,
+				supplier: 'publisher',
+			},
+			after: {
+				kind: 'secret',
+				provider: 'resend',
+				multiple: false,
+				supplier: 'executor',
+				required: false,
+			},
+		},
+	])
+	expect(diffCredentialNeeds([executor], [need('GITHUB')])).toHaveLength(1)
+	expect(diffCredentialNeeds([publisher], [need('GITHUB')])).toEqual([])
+	expect(
+		describeCredentialNeedChange(
+			diffCredentialNeeds([publisher], [executor])[0]!,
+		),
+	).toContain('each person who uses it supplies their own, optional')
 })
 
 test('a private package publishes credential-need changes without approval; internet-visible still pauses', async () => {
@@ -690,4 +722,14 @@ test('approving a paused session publish re-runs that session at the paused comm
 	mocks.publishSession.mockRejectedValueOnce(new Error('Network blip'))
 	await expect(approve(blip)).rejects.toThrow('Network blip')
 	expect(await status(blip)).toBe('pending')
+})
+
+test('flipping an executor need between optional and required reshapes it', () => {
+	const optional = need('GITHUB', { supplier: 'executor', required: false })
+	const required = need('GITHUB', { supplier: 'executor', required: true })
+	expect(diffCredentialNeeds([optional], [required])).toHaveLength(1)
+	expect(diffCredentialNeeds([required], [optional])).toHaveLength(1)
+	expect(
+		diffCredentialNeeds([required], [need('GITHUB', { supplier: 'executor' })]),
+	).toEqual([])
 })

@@ -70,6 +70,7 @@ export const adminHandleGetCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminHandleGet',
+		contextRuns: 'deny',
 		description:
 			'Resolve one handle across handles, org slugs, and usernames, including soft-deleted rows. Match is case-insensitive and strips hyphens and underscores the same way reserved-name checks do. Returns owner kind, id, and created_at only. Admin-only; never a public search or profile lookup.',
 		keywords: [

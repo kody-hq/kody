@@ -14,6 +14,7 @@ export const packageAppCustomHostnameDeleteCapability = defineDomainCapability(
 	capabilityDomainNames.orgs,
 	{
 		name: 'packageAppCustomHostnameDelete',
+		contextRuns: 'deny',
 		orgPermission: 'org:write',
 		featureFlag: packageAppCustomDomainsFlagKey,
 		description:

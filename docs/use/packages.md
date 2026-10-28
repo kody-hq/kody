@@ -135,8 +135,8 @@ the block. A slot does not pick the credential: `{{secret:NAME}}` reads the
 secret stored as `NAME` and `{{integration-token:NAME}}` the integration named
 `NAME`, with the same package access rules as a package without slots. Name each
 slot after the secret or integration the code references. Placeholders fill Key
-credentials; opt-in types that a package can declare are described in
-[ADR 0068](../contributing/decisions/0068-credentials-own-placement-scoped-clients.md).
+credentials; opt-in types (`url`, `login`, `signing`) are in
+[Credentials](../guides/credentials.md#the-kinds).
 
 ```json
 {
@@ -166,7 +166,7 @@ credentials; opt-in types that a package can declare are described in
   adds an informational note for a key that is not a provider slug
   (`^[a-z0-9-]+$`) and never fails for it.
 - `kind` is optional
-  ([ADR 0068 amendment 2026-10-12](../contributing/decisions/0068-credentials-own-placement-scoped-clients.md#amendment-2026-10-12)):
+  ([Credentials](../guides/credentials.md#declare-needs-in-kodycredentials)):
   omit it for any fetch-capable credential for that provider (Key/secret such as
   a PAT, oauth, login); declare it only when a specific shape is needed
   (`secret`, `oauth`, `mcp`, or the opt-in types `url`, `login`, and `signing`).
@@ -226,13 +226,12 @@ credentials; opt-in types that a package can declare are described in
   the same record so preserved placement wins over the manifest default. Delete
   removes the credential; a later Connect is a new insert. Package runtimes
   cannot set placement themselves; the owner can edit it on the credential
-  detail page. Without a declaration, new package-scope secrets still default to
+  detail page. Without a declaration, new package-scope secrets default to
   headers-only. See
-  [Credentials](../guides/credentials.md#keys-and-placeholders) and
-  [ADR 0068 amendment 2026-10-20](../contributing/decisions/0068-credentials-own-placement-scoped-clients.md#amendment-2026-10-20-package-manifest-fill-placement).
-  The fetch gateway fills placeholders regardless of placement and logs
-  would-block when a fill is outside the declared parts. Placeholders work over
-  HTTPS to a host the secret or integration allows. See
+  [Credentials](../guides/credentials.md#keys-and-placeholders). The fetch
+  gateway fills placeholders regardless of placement and logs would-block when a
+  fill is outside the declared parts. Placeholders work over HTTPS to a host the
+  secret or integration allows. See
   [Placeholders in `fetch`](./secrets-and-values.md#placeholders-in-fetch).
 
 #### Declare what a stamped package may use
@@ -253,8 +252,8 @@ A package with no stamp uses the unstamped path. Your own unstamped package
 needs no declarations: a package in your personal org that is not an unadopted
 Community fork and is not internet-visible. When the
 `credential-need-enforcement` flag is on, a package anyone else runs may use
-only the credentials it declares. The flag is off by default. See
-[ADR 0068](../contributing/decisions/0068-credentials-own-placement-scoped-clients.md#amendment-2026-10-16-stamped-packages-fail-closed).
+only the credentials it declares. The flag is off by default. Design record:
+[ADR 0068](../contributing/decisions/0068-credentials-own-placement-scoped-clients.md).
 
 #### Opt-in: credential clients
 
@@ -326,8 +325,11 @@ and `ownerCredentialForVisitors` are documented below and in
 An internet-visible app acts as its visitor for visitor-owned data: the
 signed-in person, or no one for a signed-out visitor or someone outside the org.
 A signed-in member with Use can still open org credentials they hold; a
-signed-out visitor and anyone without Use cannot. A need the app fills for every
-visitor (a shared database, an email sender) opts in per slot with
+signed-out visitor and anyone without Use cannot. While the
+`package-credential-suppliers` flag is on, a signed-in visitor (inside or
+outside the org) fills an executor need with a credential they pick on consent
+and the app reads it with `credential.visitor(key)`. A need the app fills for
+every visitor (a shared database, an email sender) opts in per slot with
 `ownerCredentialForVisitors: true`:
 
 ```json
@@ -612,9 +614,9 @@ app route.
 
 Production-hosted package apps run on per-user subdomains of Kody's separate
 `kody.run` domain (`https://{username}.kody.run/<package-name>/...`), or on a
-verified custom domain, not on the signed-in app origin. Legacy
-`/packages/<package-name>/...` on the subdomain still resolves to the same app.
-The package page links there. People who may run the app still open it through a
+verified custom domain, not on the signed-in app origin.
+`/packages/<package-name>/...` on the subdomain resolves to the same app. The
+package page links there. People who may run the app still open it through a
 short-lived session handoff from kody.codes, because the hosted origin cannot
 see the kody.codes session cookie. Package author JavaScript cannot use the
 first-party `kody_session` cookie or call authenticated Kody pages as the

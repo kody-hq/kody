@@ -32,7 +32,13 @@ export function PackageAppOauthConsentPage({
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const [selectedScopes, setSelectedScopes] = useState(
-		() => new Set(data.optionalScopes.map(({ scope }) => scope)),
+		// Optional credential needs start unchecked; the visitor opts in.
+		() =>
+			new Set(
+				data.optionalScopes
+					.map(({ scope }) => scope)
+					.filter((scope) => !scope.startsWith('need:')),
+			),
 	)
 	const [selectedCredentialIds, setSelectedCredentialIds] = useState(
 		() =>
@@ -55,7 +61,7 @@ export function PackageAppOauthConsentPage({
 			),
 	)
 	const missingSelectedCredential = data.executorNeeds.some((need) => {
-		const isSelected = need.required || selectedScopes.has(need.scope)
+		const isSelected = needIsAsked(need)
 		return (
 			isSelected &&
 			!need.credentials.some(
@@ -63,6 +69,18 @@ export function PackageAppOauthConsentPage({
 			)
 		)
 	})
+	function needIsAsked(need: (typeof data.executorNeeds)[number]) {
+		return (
+			need.required ||
+			selectedScopes.has(need.scope) ||
+			data.alreadyAllowedScopes.includes(need.scope)
+		)
+	}
+	const needIsMissing = (need: (typeof data.executorNeeds)[number]) =>
+		needIsAsked(need) &&
+		!need.credentials.some(
+			(credential) => credential.id === selectedCredentialIds[need.key],
+		)
 	async function submit(decision: 'approve' | 'deny') {
 		if (busy) return
 		setBusy(true)
@@ -214,6 +232,8 @@ export function PackageAppOauthConsentPage({
 						(credential) => credential.id !== need.recommendedCredentialId,
 					)
 					const showAlternates = choosingAnother.has(need.key)
+					const missing = needIsMissing(need)
+					const wanted = describeWantedCredential(need)
 					return (
 						<section
 							key={need.key}
@@ -226,6 +246,18 @@ export function PackageAppOauthConsentPage({
 									: 'Optional credentials'}
 							</h2>
 							<p css={mutedCss}>{need.description}</p>
+							<p css={mutedCss}>Needs {wanted}.</p>
+							{missing ? (
+								<p
+									role="status"
+									data-testid={`package-app-oauth-need-missing-${need.key}`}
+									css={needMissingCss}
+								>
+									{need.required
+										? `Required: create ${wanted} to allow this app. Allow stays off until you choose one.`
+										: `Choose ${wanted} or turn off this optional permission to continue.`}
+								</p>
+							) : null}
 							{recommended ? (
 								<label css={credentialChoiceCss}>
 									<input
@@ -250,7 +282,10 @@ export function PackageAppOauthConsentPage({
 									</span>
 								</label>
 							) : (
-								<p css={mutedCss}>No matching credentials are available yet.</p>
+								<p css={mutedCss}>
+									No {need.provider} credential yet. Credentials without this
+									provider are not listed.
+								</p>
 							)}
 							{otherCandidates.length > 0 ? (
 								<button
@@ -296,14 +331,21 @@ export function PackageAppOauthConsentPage({
 										</label>
 									))
 								: null}
-							<a
-								href={need.createUrl}
-								target="_blank"
-								rel="noreferrer"
-								css={mutedCss}
-							>
-								Create new credentials
-							</a>
+							<p css={mutedCss}>
+								<a
+									href={need.createUrl}
+									target="_blank"
+									rel="noreferrer"
+									data-testid={`package-app-oauth-need-create-${need.key}`}
+								>
+									Create {wanted}
+								</a>
+								{need.createDestination
+									? ` in @${need.createDestination}`
+									: null}{' '}
+								(opens in a new tab; come back and reload this page to choose
+								it).
+							</p>
 						</section>
 					)
 				})}
@@ -349,7 +391,12 @@ export function PackageAppOauthConsentPage({
 						name="decision"
 						value="approve"
 						data-testid="package-app-oauth-approve"
-						css={getPillButtonCss({ size: 'sm' })}
+						aria-describedby={
+							missingSelectedCredential
+								? 'package-app-oauth-allow-blocked'
+								: undefined
+						}
+						css={[getPillButtonCss({ size: 'sm' }), allowBlockedCss]}
 					>
 						Allow
 					</button>
@@ -365,10 +412,10 @@ export function PackageAppOauthConsentPage({
 					</button>
 				</form>
 				{missingSelectedCredential ? (
-					<p role="status" css={mutedCss}>
+					<p id="package-app-oauth-allow-blocked" css={mutedCss}>
 						{missingRequiredCredential
-							? 'Create a matching credential before allowing this app.'
-							: 'Choose a credential or turn off the optional scope to continue.'}
+							? 'Allow is off until every required credential is chosen.'
+							: 'Allow is off until each selected optional permission has a credential.'}
 					</p>
 				) : null}
 				{error ? (
@@ -424,6 +471,33 @@ const sectionHeadingCss = {
 	fontSize: typography.fontSize.base,
 	fontWeight: typography.fontWeight.semibold,
 	color: colors.text,
+}
+
+function describeWantedCredential(need: {
+	provider: string
+	kindLabel: string | null
+}) {
+	return need.kindLabel
+		? `a ${need.provider} ${need.kindLabel} credential`
+		: `a ${need.provider} credential`
+}
+
+const needMissingCss = {
+	margin: 0,
+	padding: `${spacing.xs} ${spacing.sm}`,
+	borderRadius: radius.md,
+	borderLeft: `3px solid ${colors.warning}`,
+	backgroundColor: colors.surface,
+	color: colors.warningText,
+	fontSize: typography.fontSize.sm,
+}
+
+const allowBlockedCss = {
+	'&:disabled': {
+		opacity: 0.4,
+		filter: 'grayscale(1)',
+		boxShadow: 'none',
+	},
 }
 
 const credentialChoiceCss = {

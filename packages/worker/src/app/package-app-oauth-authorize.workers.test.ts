@@ -34,6 +34,10 @@ vi.mock(
 	},
 )
 
+const usableCredentials = vi.hoisted(() =>
+	vi.fn(async (): Promise<Array<unknown>> => []),
+)
+
 vi.mock(
 	'#worker/credentials/credential-needs-closure.ts',
 	async (importOriginal) => {
@@ -67,7 +71,7 @@ vi.mock(
 			>()
 		return {
 			...actual,
-			listUsableCredentials: async () => [],
+			listUsableCredentials: usableCredentials,
 		}
 	},
 )
@@ -682,5 +686,75 @@ test('local inline package-app OAuth keeps its request origin through consent', 
 		expect(callback.searchParams.get('error')).toBe('access_denied')
 	} finally {
 		mutableEnv.WRANGLER_IS_LOCAL_DEV = previousLocalDev
+	}
+})
+
+test('renewed consent recommends the credential the grant already maps', async () => {
+	const calendarCredential = (id: string) => ({
+		id,
+		name: id,
+		kind: 'secret',
+		provider: 'calendar',
+		hosts: [],
+		scope: 'personal',
+		packageId: null,
+		expired: false,
+	})
+	usableCredentials.mockResolvedValue([
+		calendarCredential('cred-a'),
+		calendarCredential('cred-b'),
+	])
+	try {
+		const first = await loadRequiredExecutorConsent('renewed-credential')
+		const form = new URLSearchParams()
+		for (const [name, value] of Object.entries(first.consent.hiddenFields))
+			form.append(name, value)
+		form.append('selected_scopes', 'profile')
+		form.append('selected_scopes', 'need:calendar')
+		form.set('credential_need:calendar', 'cred-b')
+		form.set('decision', 'approve')
+		const approved = await workerFetch(first.url, {
+			method: 'POST',
+			headers: {
+				Cookie: first.cookie,
+				Origin: appOrigin,
+				'Content-Type': 'application/x-www-form-urlencoded',
+			},
+			body: form,
+		})
+		if (!(approved instanceof Response)) throw new Error('Expected redirect')
+		expect(approved.status).toBe(302)
+
+		// cred-a is used by more apps, so it would rank first without the mapping.
+		const grant = await env.APP_DB.prepare(
+			`SELECT person_id FROM package_app_oauth_grants WHERE kody_id = ?`,
+		)
+			.bind('renewed-credential')
+			.first<{ person_id: string }>()
+		for (const other of ['other-app-1', 'other-app-2']) {
+			await env.APP_DB.prepare(
+				`INSERT OR REPLACE INTO package_app_oauth_grants
+				 (id, person_id, org_username, kody_id, scopes, created_at)
+				 VALUES (?, ?, ?, ?, 'profile need:calendar', '2026-10-16T00:00:00.000Z')`,
+			)
+				.bind(`grant-${other}`, grant!.person_id, ownerUsername, other)
+				.run()
+			await env.APP_DB.prepare(
+				`INSERT OR REPLACE INTO package_app_grant_credential_mappings
+				 (grant_id, need_key, credential_ids_json, created_at, updated_at)
+				 VALUES (?, 'calendar', '["cred-a"]', '2026-10-16T00:00:00.000Z', '2026-10-16T00:00:00.000Z')`,
+			)
+				.bind(`grant-${other}`)
+				.run()
+		}
+
+		const renewed = await loadRequiredExecutorConsent('renewed-credential')
+		const need = renewed.consent.executorNeeds.find(
+			(item) => item.key === 'calendar',
+		)
+		expect(need?.credentials.map(({ id }) => id)).toEqual(['cred-a', 'cred-b'])
+		expect(need?.recommendedCredentialId).toBe('cred-b')
+	} finally {
+		usableCredentials.mockResolvedValue([])
 	}
 })

@@ -89,6 +89,7 @@ export const adminWebhookVerificationScanCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminWebhookVerificationScan',
+		contextRuns: 'deny',
 		description:
 			'List every live minted webhook URL across owners that authenticates by URL secret only, split into `implicit_url_secret` (manifest declares no `verification`) and `url_secret` (declares `verification: { type: "url-secret" }`), with successful deliveries since a time. Also counts webhooks that declare an HMAC scheme, are no longer declared, or whose manifest could not be read. Reporting only: undeclared webhooks stay supported. Reads manifests and each owner RunLog, so it is slow. Returns ids, slugs, names, header names, secret names, and counts only; never secrets or payloads. Admin-only.',
 		keywords: [

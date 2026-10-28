@@ -26,6 +26,7 @@ export const adminReservedUsernameAddCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminReservedUsernameAdd',
+		contextRuns: 'deny',
 		description:
 			'Add DNS-safe usernames to the runtime reserved list stored in platform KV, or restore previously unreserved built-in names. Admin-only; never returns user content beyond the reserved-username snapshot.',
 		keywords: ['admin', 'reserved username', 'username', 'denylist', 'add'],

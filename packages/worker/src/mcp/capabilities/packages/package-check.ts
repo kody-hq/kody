@@ -57,6 +57,7 @@ export const packageCheckCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageCheck',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'Dry-run the publish checks on a package tree without saving, pushing, or publishing anything. Pass `files` (paths relative to the package root, where package.json lives, mapped to UTF-8 contents). Runs the same checks, with the same options, that `kody package publish`, git-push publish, and Promote run before they publish or hand out an approval link: manifest, credential stamp gate, docs, skills, dependencies, bundle, typecheck, and lint. `ok: false` means publish would refuse this tree with the same messages in `checks`. `kody dev check` calls this. Binary files can be left out; they only count toward size limits.',

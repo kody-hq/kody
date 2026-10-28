@@ -87,6 +87,7 @@ export const adminFeatureFlagRepoOverrideCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminFeatureFlagRepoOverride',
+		contextRuns: 'deny',
 		description:
 			'Set or clear a per-repo feature flag allowlist row (repo-scoped flags such as repo-push-queue) by repo source id. The repo row wins over owner overrides, rollout, and audience. Returns the repo evaluation and the flag repo allowlist. Admin-only; never returns user content.',
 		keywords: [
@@ -160,6 +161,7 @@ export const adminFeatureFlagRepoCheckCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminFeatureFlagRepoCheck',
+		contextRuns: 'deny',
 		description:
 			'Evaluate a repo-scoped feature flag (such as repo-push-queue) for one repo source id and list the flag repo allowlist. Shows whether the repo is on and which rule decided it (override, global, rollout, default). Admin-only; never returns user content.',
 		keywords: [

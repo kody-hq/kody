@@ -13,6 +13,7 @@ export const adminAccountWriteLeaseRepairCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminAccountWriteLeaseRepair',
+		contextRuns: 'deny',
 		description:
 			'Manually release one inspected crashed-writer lease with an audit reason. Admin-only and destructive.',
 		keywords: ['admin', 'account', 'deletion', 'lease', 'repair'],

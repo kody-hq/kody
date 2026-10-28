@@ -53,7 +53,11 @@ the merge being live.
 holds verification notes (how to seed, reach, and assert). The route inventory
 is generated from
 [`packages/worker/start/routeTree.gen.ts`](../../packages/worker/start/routeTree.gen.ts)
-(`FileRoutesByFullPath`). Feature prefixes in
+(`FileRoutesByFullPath`). After adding a route file under
+`packages/worker/start/routes`, run `npm run routes:generate` so that file
+includes the TanStack Start `Register` block (the same output as the Vite
+plugin). `npm run routes:generate:check` (in `validate` and CI) fails when the
+committed tree drifts. Feature prefixes in
 [`tools/control-kody/feature-catalog.ts`](../../tools/control-kody/feature-catalog.ts)
 only group that inventory — do not hand-maintain path lists.
 

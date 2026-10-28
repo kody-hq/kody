@@ -20,6 +20,7 @@ export type CapabilityOpenApiPrincipal =
 	| { kind: 'token'; token: ApiTokenRecord }
 	| { kind: 'mcp' }
 	| { kind: 'mcp-oauth' }
+	| { kind: 'execution-context-run'; ecid: string; runId: string }
 
 export type CapabilityContext = {
 	env: Env
@@ -46,6 +47,14 @@ export type CapabilityContext = {
 }
 
 export type CapabilityResult = unknown
+
+/**
+ * Whether a run on a registered execution context may call this capability
+ * (ECP 8.2). `deny` covers execute and anything that dispatches or schedules
+ * runs, token, credential and access management, member and team
+ * management, package publish and delete, and execution context management.
+ */
+export type CapabilityContextRunsPolicy = 'allow' | 'deny'
 
 export type CapabilityJsonSchema = JsonSchemaToolDescriptor['inputSchema']
 
@@ -86,6 +95,8 @@ export type CapabilityDefinition<
 	 * concrete resource they touch.
 	 */
 	orgPermission: SurfacePermission
+	/** Required: whether execution context runs may call it. */
+	contextRuns: CapabilityContextRunsPolicy
 	/**
 	 * The capability needs a live person: role, membership, and invite
 	 * changes. It never runs from a triggered run (cron
@@ -130,6 +141,7 @@ export type Capability<TResult = CapabilityResult> = {
 	idempotent: boolean
 	destructive: boolean
 	orgPermission: SurfacePermission
+	contextRuns: CapabilityContextRunsPolicy
 	/** `by-input`: the definition decides per call from the parsed input. */
 	requiresLivePerson: 'always' | 'by-input' | 'never'
 	requiredRole?: RoleName

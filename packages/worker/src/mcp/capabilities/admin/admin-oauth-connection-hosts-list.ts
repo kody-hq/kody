@@ -73,6 +73,7 @@ export const adminOauthConnectionHostsListCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminOauthConnectionHostsList',
+		contextRuns: 'deny',
 		description:
 			'List one org’s live OAuth connections with the hosts each may be sent to (stored hosts, API base host, built-in app hosts), token host, lane, and connection status. For support checks such as a connection missing an upload host. Never returns a token, client id, or any credential value. Admin-only; audited.',
 		keywords: [

@@ -49,6 +49,7 @@ export const adminOrgRestoreCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminOrgRestore',
+		contextRuns: 'deny',
 		description:
 			'Restore a soft-deleted organization within the 30-day retention window as a site admin. Prefer the owner-facing Organizations restore UI when the former Owner can act. Admin-only and destructive.',
 		keywords: [

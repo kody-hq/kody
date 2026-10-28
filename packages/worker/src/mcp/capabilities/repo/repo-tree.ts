@@ -43,6 +43,7 @@ export const repoTreeCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoTree',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'Summarize a repo session subtree so the model can understand file layout before reading or editing specific files.',

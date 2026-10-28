@@ -223,9 +223,9 @@ npm run control-kody -- browse --origin <preview> --path /@user-me/-/agents
 ```
 
 Without the label, the next preview seed deletes that allowlisted override, and
-the connection profile controls should no longer appear. An unknown
-`preview-flag:` label fails the seed step. Adding or removing the label on a
-closed pull request does not deploy.
+the connection profile controls do not appear. An unknown `preview-flag:` label
+fails the seed step. Adding or removing the label on a closed pull request does
+not deploy.
 
 ## Logged-in data and UI pass
 

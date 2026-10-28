@@ -34,6 +34,7 @@ export const approvalBundleCreateCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'approvalBundleCreate',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		description: `Make one approval page for the signed-in person from approvals waiting on them (see approvalPendingList): pass item keys, or omit them to include everything pending (narrowed by types and packages). Returns a URL to send to the person. The page groups items by package, shows what each grants, and lets them approve all at once or approve or deny each one. Approving runs each item's own approval, exactly as on its package page. This never approves anything; only the person can, in the browser. Items not waiting on the person are skipped and listed. At most ${approvalBundleMaxItems} items; the link works for 30 days.`,
 		keywords: [

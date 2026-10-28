@@ -5,10 +5,12 @@ summary:
   What a Kody credential is and every kind it comes in (Key, OAuth, MCP server,
   URL, login, signing), how `{{secret:name}}` placeholders and scoped
   `credential(key)` clients place a value at the network boundary, how packages
-  declare needs in `kody.credentials`, how callers pick between credentials with
-  names and call maps, the `credential_ambiguous` / `credential_unbound` errors,
-  and webhook verification. Load this when someone asks how credentials work,
-  which kind to use, or why a credential did not resolve.
+  declare needs in `kody.credentials` (including publisher and executor
+  credential needs that app visitors fill with `credential.visitor(key)`), how
+  callers pick between credentials with names and call maps, the
+  `credential_ambiguous` / `credential_unbound` errors, and webhook
+  verification. Load this when someone asks how credentials work, which kind to
+  use, or why a credential did not resolve.
 category: platform
 ---
 
@@ -230,8 +232,8 @@ Declare `kind` only when the package needs a specific shape:
   exists yet), instead of headers-only. Disconnect clears the value but keeps
   the row and placement; reconnect fills the same record so placement wins over
   the manifest default. Delete removes the credential entirely; a later Connect
-  is a new insert. Package runtimes still cannot set placement themselves; the
-  owner can edit it on the credential detail page.
+  is a new insert. Package runtimes cannot set placement themselves; the owner
+  can edit it on the credential detail page.
 
 ### Choose who supplies a package credential
 
@@ -246,6 +248,23 @@ An executor need is chosen by each person who uses the app. Its consent scope is
 that person's live Sign in with Kody grant. It does not fall back to the
 publisher's credentials, the visitor's personal defaults, or automatic matching.
 A mapped credential is rechecked for live Use access on every call.
+
+`kody.credentials` is where a credential need and its supplier are declared. An
+executor need gets its own `need:<key>` consent scope from that declaration and
+needs no `kody.app.visitorNeeds` entry. A `kody.app.visitorNeeds` entry whose
+`credential` names an executor need is accepted as an alias for it; it cannot
+name a publisher need. Use `kody.app.visitorNeeds` for capability needs.
+
+In app code, open an executor need with `credential.visitor("key")`. Plain
+`credential("key")` never reads the visitor's pick. Inside an app it is refused
+with `credential_denied`, naming `credential.visitor`. In a direct run (execute,
+a job, or another package calling it) the person running it is the executor, so
+`credential("key")` resolves their own credentials.
+
+To check whether the flag is on for an org, call `packageGet` on one of its
+packages: `credentials.suppliersEnabled` is `true` when it is. While it is
+`false`, `supplier` and `required` are ignored and needs resolve as they did
+before.
 
 Executor needs default to required. Set `required: false` to make a need
 optional. Required needs cannot be skipped in consent, and the app does not
@@ -262,7 +281,11 @@ behavior.
 
 People who open an internet-visible app run it as themselves, or as no one when
 they are signed out or outside your org. A signed-in member with Use can still
-open org credentials they hold; everyone else cannot. To let the app use one for
+open org credentials they hold; everyone else cannot. Executor needs are the
+exception while the `package-credential-suppliers` flag is on: any signed-in
+visitor, inside or outside your org, can pick one of their own credentials for
+an executor need on the consent screen
+([above](#choose-who-supplies-a-package-credential)). To let the app use one for
 every visitor, add `"ownerCredentialForVisitors": true` to that need:
 
 ```json
@@ -441,8 +464,19 @@ https://kody.codes/@acme/-/credentials/new?kind=url&name=alerts-bot&provider=tel
 `kind` preselects a kind; add `kindMode=required` to lock it. `name`,
 `provider`, `description`, and `allowedHosts` prefill the form. The page saves
 Key, URL, login, and signing credentials in place, and hands OAuth and MCP
-servers to their own connect flows. The **Add credential** button on the
-Credentials page opens the same form.
+servers to their own connect flows.
+
+The **Add credential** button on the Credentials page opens the page without a
+link. It leads with **Copy prompt**, a short prompt you paste into your agent so
+it works out the kind, name, and hosts and hands back a prefilled link. **Create
+one manually** opens the same form in place. A link with any prefill skips
+straight to the form.
+
+On that form, **Which packages can read it** is **Any package in this org** (the
+default) or **Only these packages**, which locks the credential to the packages
+you pick (`allowedPackages`). A key that belongs to one package is made from
+that package's own **Credentials** tab (**Add a key only this package can
+read**), or from a link that names the package (`scope=package&packageId=...`).
 
 Code that already holds a value (a key the package just minted) can store it
 with `secretSet`, which also takes `kind`, `hosts`, `login_exchange`,
@@ -583,7 +617,7 @@ that org only in your own runs, through `credential(key)`; nobody else there can
 use it, Owners included, and `{{secret:name}}` placeholders never resolve it.
 `credentialOrgRevoke` removes the grant.
 
-## Not available yet
+## Limits
 
 - Using a personal MCP server through `credential()`. Add the MCP server to the
   org instead.

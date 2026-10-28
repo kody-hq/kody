@@ -26,6 +26,7 @@ export const adminPlatformOauthAppDeleteCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminPlatformOauthAppDelete',
+		contextRuns: 'deny',
 		description:
 			'Delete a platform (built-in) OAuth app. Fails while user connections still reference it — disable the app instead when users are connected. Admin-only.',
 		keywords: [

@@ -17,6 +17,7 @@ test('capability domain registration rejects mismatched and duplicate invariants
 		{
 			name: 'orphan',
 			orgPermission: 'none',
+			contextRuns: 'deny',
 			description: 'test',
 			inputSchema: z.object({}),
 			handler: noopHandler,
@@ -35,6 +36,7 @@ test('capability domain registration rejects mismatched and duplicate invariants
 		{
 			name: 'collision',
 			orgPermission: 'none',
+			contextRuns: 'deny',
 			description: 'a',
 			inputSchema: z.object({}),
 			handler: noopHandler,
@@ -43,6 +45,7 @@ test('capability domain registration rejects mismatched and duplicate invariants
 	const codingCollision = defineDomainCapability(capabilityDomainNames.coding, {
 		name: 'collision',
 		orgPermission: 'none',
+		contextRuns: 'deny',
 		description: 'b',
 		inputSchema: z.object({}),
 		handler: noopHandler,
@@ -69,6 +72,7 @@ test('capability domain registration rejects mismatched and duplicate invariants
 			defineDomainCapability(capabilityDomainNames.packages, {
 				name: 'only',
 				orgPermission: 'none',
+				contextRuns: 'deny',
 				description: 'o',
 				inputSchema: z.object({}),
 				handler: noopHandler,
@@ -83,6 +87,7 @@ test('capability domain registration rejects mismatched and duplicate invariants
 		{
 			name: 'dup',
 			orgPermission: 'none',
+			contextRuns: 'deny',
 			description: '1',
 			inputSchema: z.object({}),
 			handler: noopHandler,
@@ -93,6 +98,7 @@ test('capability domain registration rejects mismatched and duplicate invariants
 		{
 			name: 'dup',
 			orgPermission: 'none',
+			contextRuns: 'deny',
 			description: '2',
 			inputSchema: z.object({}),
 			handler: noopHandler,
@@ -111,6 +117,7 @@ test('capability specs expose union input fields and shared required fields', ()
 	const resourceLock = defineDomainCapability(capabilityDomainNames.secrets, {
 		name: 'resourceLock',
 		orgPermission: 'none',
+		contextRuns: 'deny',
 		description: 'Narrow a resource to a saved package.',
 		inputSchema: z.discriminatedUnion('kind', [
 			z.object({

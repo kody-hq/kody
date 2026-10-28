@@ -22,6 +22,7 @@ export const listPackagesCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageList',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'List saved packages for the signed-in user, including community-fork source listing provenance, so agents can discover the scoped package.json name (or package_id when the name is not known) for later execution, editing, or UI opening.',

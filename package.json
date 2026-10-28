@@ -86,6 +86,8 @@
     "site-perf": "node tools/site-perf/collect.ts",
     "generate-types": "node tools/generate-worker-configuration-types.ts",
     "generate-types:check": "node tools/check-worker-configuration-types.ts",
+    "routes:generate": "node tools/generate-start-route-tree.ts",
+    "routes:generate:check": "node tools/check-start-route-tree.ts",
     "typecheck": "node tools/run-nx.ts run-many -t typecheck && npm run typecheck:start",
     "test": "node tools/run-nx.ts run worker:test",
     "test:node": "node tools/run-nx.ts run worker:test-node",

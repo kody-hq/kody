@@ -30,6 +30,7 @@ export const orgRestoreCapability = defineDomainCapability(
 			'Restore a soft-deleted organization within the 30-day retention window. Authorization uses the actor’s Owner membership from the deletion generation (the org cannot be bound while tombstoned) and still requires `org:delete` on scoped credentials.',
 		keywords: ['org', 'restore', 'undelete', 'team'],
 		// Soft-deleted orgs are not bindable; authorize in the handler.
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		inputSchema,
 		outputSchema,
