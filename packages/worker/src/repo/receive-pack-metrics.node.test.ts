@@ -103,4 +103,13 @@ test('direct metrics measure wait until the first Artifacts send', () => {
 			direct: { attempts: 0, firstSendAt: null },
 		}),
 	).toMatchObject({ waitMs: 45_000, outcome: { kind: 'busy' } })
+	expect(
+		measureReceivePack({
+			path: 'direct',
+			response: response(413),
+			startedAt: 1_000,
+			endedAt: 1_300,
+			direct: { attempts: 0, firstSendAt: null },
+		}),
+	).toMatchObject({ durationMs: 300, waitMs: 0, attempts: 0 })
 })

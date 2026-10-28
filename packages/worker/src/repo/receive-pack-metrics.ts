@@ -121,9 +121,13 @@ export function measureReceivePack(input: {
 		path: input.path,
 		outcome,
 		durationMs: elapsedMs,
+		// With no send, only a busy gate timeout spent the time waiting; a
+		// rejected body (408/413) or proxy error never queued.
 		waitMs:
 			input.direct.firstSendAt === null
-				? elapsedMs
+				? outcome.kind === 'busy'
+					? elapsedMs
+					: 0
 				: Math.max(0, input.direct.firstSendAt - input.startedAt),
 		queueDepth: 0,
 		attempts: input.direct.attempts,
