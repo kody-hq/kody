@@ -1,11 +1,13 @@
 import { expect, test } from 'vitest'
 import {
 	connectOauthInput,
-	connectOauthSchema,
 	connectSecretsInput,
 	connectWebhookInput,
-	connectSecretsSchema,
 } from './connect-input.ts'
+import {
+	connectOauthSchema,
+	connectSecretsSchema,
+} from './connect-input-schema.ts'
 
 test('connect reads preserve first-value and repeated approval query semantics', () => {
 	const search =

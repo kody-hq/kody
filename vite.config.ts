@@ -4,6 +4,7 @@ import { cloudflare } from '@cloudflare/vite-plugin'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import { redact } from '@tanstack/redact/vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 import {
 	collectLocalOriginDevVars,
@@ -18,6 +19,7 @@ import { ensureWorkerBundlerModules } from './tools/build-worker-bundler-modules
 import { inlineCssText } from './tools/vite-inline-css-text.ts'
 import { markdownAsText } from './tools/vite-markdown-as-text.ts'
 import { harfbuzzWorker } from './tools/vite-harfbuzz-worker.ts'
+import { startChunkFileNames } from './tools/vite-start-asset-names.ts'
 import { workerWholeGraphReload } from './tools/vite-worker-whole-graph-reload.ts'
 
 import {
@@ -181,8 +183,10 @@ export default defineConfig(async ({ command }) => {
 		build: {
 			sourcemap: true,
 			outDir: process.env.KODY_VITE_OUTDIR ?? 'dist',
+			rolldownOptions: { output: { chunkFileNames: startChunkFileNames } },
 		},
 		plugins: [
+			tailwindcss(),
 			harfbuzzWorker(),
 			markdownAsText(),
 			inlineCssText(),

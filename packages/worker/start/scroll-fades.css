@@ -1,0 +1,4 @@
+/* Compile the scroll fades we use, without Tailwind Preflight or a site scan. */
+@import 'tw-fade';
+@tailwind utilities source(none);
+@source inline('fade-x fade-y fade-size-xs');

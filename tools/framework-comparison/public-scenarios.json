@@ -1,0 +1,19 @@
+{
+	"rounds": 5,
+	"lighthouseRuns": 5,
+	"latencyMs": [0, 100],
+	"steps": [
+		{
+			"path": "/pricing",
+			"marker": { "selector": "h1", "text": "Start free." }
+		},
+		{
+			"path": "/docs",
+			"marker": { "selector": "h1", "text": "What is Kody?" }
+		},
+		{
+			"path": "/pricing",
+			"marker": { "selector": "h1", "text": "Start free." }
+		}
+	]
+}

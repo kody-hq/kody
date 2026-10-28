@@ -70,7 +70,7 @@ import {
 	mainGutterPaddingCss,
 } from '../components/app-layout.ts'
 import { AppBrowserEffects } from '../components/app-browser-effects.tsx'
-import 'tw-fade/dist/tw-fade.css'
+import '../scroll-fades.css'
 import '../../public/styles.css'
 
 export const Route = createRootRouteWithContext<{
@@ -453,6 +453,11 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					name="theme-color"
 					{...documentThemeColors.dark}
 					suppressHydrationWarning
+				/>
+				<link
+					rel="preload"
+					as="script"
+					href={publicAsset('/emotion-style-hoist.js')}
 				/>
 				<script src={publicAsset('/page-init.js')} />
 				<link

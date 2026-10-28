@@ -124,6 +124,12 @@ reads start only after their parent resource authorizes.
 Passing that gate does not replace authenticated preview testing or matched
 production performance measurements.
 
+The [performance comparison tools](../../tools/framework-comparison/README.md)
+pin the Remix baseline, shipped migration and a main revision, build each with
+its own lockfile, and record page loads, navigation, profile-write correctness
+and asset attribution. Keep raw runs and source fingerprints with any published
+comparison. Build inventory is separate from what a particular page downloads.
+
 Production origin deployments retain hashed public client assets for seven days,
 so an open tab can still import a lazy chunk after the next deploy. The deploy
 workflow restores the latest production asset archive, merges it after Vite

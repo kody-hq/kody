@@ -1,0 +1,224 @@
+# Kody: TanStack Start with Redact
+
+The entire web app has a native TanStack Start candidate, including public
+pages, docs, blog, community, onboarding, authentication, account, packages and
+admin. Backend services and protocol endpoints remain shared. Both variants are
+deployed to separate private Cloudflare fleets. Production Kody is unchanged.
+
+- [Start with Redact](https://kody-branch-compare-start.thetanstack.workers.dev)
+- [Immutable Remix baseline](https://kody-branch-compare-remix.thetanstack.workers.dev)
+
+Access is restricted to Tanner's identity at `tanner@tanstack.com`. The current
+candidate is deployment `2bd157d6-1c0e-4f44-823b-828949881c66`. Baseline source is
+commit `8b2528460eb9be9d08d50b7a1d2ee8f491503d83`, with 3,957 tracked files
+verified unchanged. This compares Kody's Remix 3 implementation with this Start
+migration, not Remix 2 or frameworks in general.
+
+## Current result
+
+The original localhost home LCP regression, 5.566 to 8.944 seconds on mobile,
+did not reproduce at that magnitude on Cloudflare. A first corrected edge
+series still found a repeatable 676 ms mobile home regression. After removing
+unnecessary initial imports, five new paired runs measured 2.795 seconds on
+Remix and 2.868 seconds on Start, a 73 ms median difference with wide overlapping
+ranges. Both scored 94 for performance.
+
+This is enough to reject the claim that this deployment consistently takes
+three extra seconds to cold-load. It is not proof that Start is always faster,
+that every visitor will see these timings, or that the optimization alone caused
+the smaller gap. Response latency varied substantially on both targets.
+
+The candidate passes 45 native browser tests without retries and 16/16
+signed-in browser checks on the current deployment. The baseline passed 15/16
+of those signed-in checks, failing second-tab focus freshness. Full parity and
+production readiness are not established.
+
+## Final mobile home comparison
+
+Five alternating pairs, fresh Chrome per audit, same Access policy and applied
+DevTools network/CPU throttling. Values are medians, with ranges where shown.
+
+| Metric | Remix | Start with Redact |
+| --- | ---: | ---: |
+| Largest contentful paint | 2.795 s (2.095–3.618) | 2.868 s (1.816–3.853) |
+| First contentful paint | 1.513 s | 1.454 s |
+| Total blocking time | 106 ms | 24 ms |
+| Performance score | 94 (85–98) | 94 (86–99) |
+| Layout shift | 0.002 | 0.002 |
+| Transfer | 1,072,192 B | 1,113,796 B |
+| Requests | 57 | 68 |
+| LCP minus TTFB, per-sample median | 1.985 s | 2.084 s |
+
+Both measure the same lead paragraph for mobile LCP. Font completion closely
+precedes that paint. Every audit requests each of the two fonts once. The
+candidate still transfers about 42 KB more and makes 11 more requests in this
+series, despite its lower blocking time.
+
+The initial JavaScript build graph fell from 45 files to 36. Separating the
+canonical-origin marker from the full metadata resolver removed unrelated
+resolver initialization; Router's supported loader splitting stopped the root
+from eagerly importing account/admin/package server-function modules. The root
+loader remains eager. Deferring leaf loaders can add a module fetch before
+navigation data, so navigation must be checked separately.
+
+[Full measurements](measurements/edge-optimized-home/SUMMARY.md),
+[attribution and limits](measurements/edge-optimized-home/ANALYSIS.md).
+
+## Broader edge measurements
+
+Before the last loading optimization, the corrected candidate completed 60
+matched audits, five per page/device/framework, without errors or retries.
+These figures describe deployment `d481792b-4664-4ead-9861-0541edf7cb1c`, not
+additional samples of the latest deployment.
+
+| Page / device | Remix LCP | Start LCP | Remix / Start performance |
+| --- | ---: | ---: | ---: |
+| Home, mobile | 2.694 s | 3.369 s | 95 / 92 |
+| Home, desktop | 1.360 s | 0.168 s | 96 / 100 |
+| Pricing, mobile | 2.185 s | 2.292 s | 98 / 97 |
+| Pricing, desktop | 1.336 s | 0.236 s | 97 / 100 |
+| Docs, mobile | 1.449 s | 1.425 s | 98 / 99 |
+| Docs, desktop | 0.372 s | 0.232 s | 100 / 100 |
+
+The home mobile ranges did not overlap in that series. Pricing mobile did,
+2.135–2.535 seconds versus 1.658–3.209 seconds, including response-wait outliers.
+Docs mobile was effectively tied. Its single 0.02898 font-swap layout shift was
+equal on both, with the candidate's previous doubled shift fixed.
+
+Desktop home and pricing select different LCP elements. Do not interpret their
+large score difference as an equally large visible speedup. A separate home
+diagnostic confirms both preserve the headline node and run the same 700 ms
+entrance. Both first report a lower heading as LCP; Remix later reports its hero
+immediately after another font-loading cycle, while Start retains the earlier
+LCP entry. The exact repaint cause is an inference, but the animation and node
+identity observations are direct. [Hero diagnostic](measurements/cloudflare/final-hero-visibility/README.md).
+
+All audits score 100 for accessibility and best practices on the three sampled
+pages. SEO is 92 because the separate robots.txt check receives Cloudflare
+Access sign-in HTML. This is a private-preview limitation, not a public SEO
+finding. A separate one-pair smoke on the latest deployment is being completed;
+it must not be pooled with these five-sample cells.
+
+[Full metrics and ranges](measurements/edge-final-applied/SUMMARY.md),
+[font/LCP attribution](measurements/edge-final-applied/ATTRIBUTION.md).
+
+## Navigation and freshness
+
+The corrected candidate before loader splitting completed five alternating
+navigation pairs without errors or document reloads:
+
+| Transition | Remix median (range) | Start median (range) |
+| --- | ---: | ---: |
+| Home to pricing | 95.1 ms (94.4–144.5) | 97.3 ms (80.5–281.0) |
+| Pricing to docs | 208.5 ms (163.9–1163.8) | 199.1 ms (115.9–1216.2) |
+
+Those results are effectively tied. Timing ends when the destination URL and
+heading are present at an animation frame, not when painting or animation ends.
+The transfer window excludes prefetch completed before the click. The latest
+loader-split deployment is being measured separately.
+[Recorded flows](measurements/edge-final-flows/SUMMARY.md).
+
+Native loaders use search parameters as dependencies, zero normal stale time,
+and a 30-second intent-preload freshness window. The root refreshes session and
+banner data on navigation without preloading. Mutations and focus/visibility
+invalidate eligible routes; token-consuming and billing completion pages do not
+prefetch or rerun on focus.
+
+The deployed browser checks used real tab activation. Start refreshed a profile
+change made in another tab, where Remix retained the old value. Both persisted
+edits, preserved unsaved drafts, navigated account screens without a reload,
+restored the fixture name and blocked access after logout. These checks use one
+disposable identity, not every deployed tenant/isolation case.
+[Private checks](../PRIVATE-SMOKE.md).
+
+Local owner/guest/stranger/anonymous package tests also reproduce an original
+stale invitation/README bug that the candidate fixes through invalidation. That
+could be fixed in Remix too; it is not an exclusive framework advantage.
+
+## Bugs and parity fixes
+
+The migration and deployed follow-up found and addressed:
+
+- Redact SVG attribute casing, error-boundary escalation, document replacement
+  ordering, hydration probes downloading images, and matching head HTML being
+  rewritten during hydration. The last caused fonts to reload and content to
+  shift twice.
+- Router recovery when the browser view-transition API throws or skips its
+  update callback. Original motion policy, shell behavior and document metadata
+  were restored and checked in the browser.
+- Cached HTML truncation from styles inside a customizable select.
+- Old cached HTML referencing removed JavaScript after deployment. HTML cache
+  keys now include the running Worker version, with real warmed-old/new-release
+  MISS/HIT and asset checks, without purging caches.
+- A stale two-factor response overwriting successful confirmation, and a
+  separate development reload caused by late `buffer` dependency discovery.
+- Expired-session server-function redirects creating a router outside Start's
+  request context. The supported optional-context API handles redirect-only
+  factories, while real document rendering still requires its matching nonce.
+
+Unsupported document POSTs intentionally return 405 instead of HTML 200.
+Token HEAD requests cannot consume tokens, and trailing-slash documents redirect
+instead of returning the original strict matcher's 404. These are deliberate
+behavior changes, not identical parity. [Route audit](ROUTE-COVERAGE.md),
+[acceptance contract](../parity-contract.md).
+
+## Build time and complexity
+
+Earlier five-pair local warm builds took a median 2.063 seconds on Remix and
+3.928 seconds on Start, an additional 1.865 seconds. That is a small absolute
+cost and not a reason by itself to reject this migration. It is not a fresh
+measurement of the latest optimized source.
+
+Those earlier artifacts totaled 528,168 versus 652,008 bytes of per-file gzipped
+client JS/CSS across all routes. Slim Worker uploads were 38,165 versus 41,358
+KiB uncompressed, and three local startup CPU samples had medians 43.8 versus
+55.3 ms. Startup CPU is not deployed response latency. Total assets are not
+initial-page transfer. [Build evidence](measurements/redact/builds/SUMMARY.md),
+[startup evidence](measurements/redact/startup/slim/startup.json).
+
+Native state/loaders replace 467 explicit `handle.update()` calls and 46
+`createRouteData()` constructions. Framework routing replaces the custom
+1,298-line router. Responsibilities move into framework contracts; they do not
+disappear. The experiment retains the original frontend for comparison and
+shares backend helpers. [Source comparison](SOURCE-COMPARISON.md).
+
+The candidate uses Start 1.168.60, React Router package 1.170.41, router-core
+1.171.34 and Redact 0.1.4. Redact follows tanstack.com's alias pattern and full
+feature preset. Maintained local Redact and Router patches are additional
+upgrade work, not upstream releases. Build guards verify actual emitted Redact
+usage with no upstream React/ReactDOM/scheduler runtime. [Redact fixes](REDACT.md),
+[Router fix](../ROUTER-MOTION-PATCH.md).
+
+Developer task-completion speed, HMR latency, cold installation and memory under
+load were not measured. Warm build time is not developer productivity.
+
+## Confidence and release decision
+
+The current candidate passes 45 native browser tests without retries, including
+expired-session redirects and concurrent matching SSR nonces, plus 16/16 private
+authenticated browser checks. Repository types and Knip pass. The completed full
+gate earlier passed 3,473 Node tests, 374 Worker tests and eight MCP tests;
+subsequent changes have targeted checks and later browser/type reruns.
+
+The authoritative `npm run validate` is still not green: the original frontend
+has two recorded comparison failures and the dependency audit has five baseline
+vulnerabilities. One earlier cold development start had an unexplained router
+context error that did not recur in two forced cold starts or the final suite.
+Two caught fetch errors reproduce during a hard package-page navigation, without
+an observed failed network request or visible test failure; their exact cause
+is unresolved. Do not describe these as fixed or the full suite as console-clean.
+[Verification](VERIFICATION.md), [fetch diagnostic](PACKAGE-FETCH-DIAGNOSTIC.md).
+
+No finite suite establishes 100% parity. Real external OAuth grants/revocation,
+billing returns, email delivery, hosted package custom domains, deployed
+cross-user storage isolation, Safari/Firefox, broad responsive comparisons and
+all populated admin states remain unverified. No real payment or production
+cutover was performed.
+
+This is a working private migration experiment with useful freshness and
+correctness improvements and roughly comparable final home loading. It does not
+yet justify a blanket claim that Start is faster or ready to replace production.
+Close the remaining acceptance gaps and resolve the open diagnostics before a
+cutover. Run locally with `npm run dev:start`; the [run guide](../README.md)
+covers builds and fixtures. Historical localhost metrics remain in
+[REDACT-RESULTS.md](REDACT-RESULTS.md), separate from deployed results.

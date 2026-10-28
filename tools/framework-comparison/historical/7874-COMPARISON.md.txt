@@ -1,0 +1,169 @@
+# Kody: TanStack Start with Redact
+
+The entire web app has a native TanStack Start candidate, including the public
+site, docs, blog, community, onboarding, authentication, account, packages and
+admin. Backend services and protocol endpoints remain shared. The original
+frontend remains available for comparison. Nothing has been deployed.
+
+The migration is feasible, but these results do not justify switching production
+yet. The candidate passes 35 browser tests and fixes a reproduced stale-share
+bug. Redact reduces the earlier React candidate's client bundle, and sampled
+pages transfer fewer bytes than Remix. Builds, total client assets, Worker cost
+and most cold-load performance scores are worse than Remix. Full parity is not
+established.
+
+The baseline is immutable commit `8b2528460`, using Remix 3.0.0 and its component
+runtime. The candidate uses TanStack Start 1.168.60, Router 1.170.41 and
+`@tanstack/redact` 0.1.4. This is a comparison of these Kody implementations,
+not a general benchmark of Remix 2, React Router or the frameworks elsewhere.
+
+## Build and Worker cost
+
+Five alternating pairs of warm optimized builds used the same machine and Node
+version. The candidate build includes a source-map check confirming that browser
+and server bundles use Redact without upstream React/ReactDOM/scheduler runtime.
+
+| Metric | Remix | Start with Redact |
+| --- | ---: | ---: |
+| Warm build median | 2.063 s | 3.928 s |
+| Warm build range | 1.806–2.443 s | 3.523–4.260 s |
+| All client JS/CSS, per-file gzip sum | 528,168 B | 652,008 B |
+| Slim production Worker upload, raw | 38,165.29 KiB | 41,358.27 KiB |
+| Slim production startup CPU median | 43.8 ms | 55.3 ms |
+| Startup CPU range, three samples | 42.6–48.6 ms | 50.0–59.7 ms |
+| Slim production entry file | 3,480,803 B | 1,756,325 B |
+
+Start builds about 90% more slowly and has 23.4% more total compressed client
+assets. Redact reduces the earlier React candidate's 691,897-byte asset total by
+5.8%, but does not bring it below Remix. The earlier runtime's timing samples
+were collected separately and are not a controlled React-versus-Redact speed
+comparison.
+
+The smaller entry file excludes deferred modules; total Worker upload is still
+larger. Both candidates pass local dry-run and repository startup budgets of
+280 ms and 7,750,000 entry bytes. Both fit Cloudflare's
+[64 MiB uncompressed Worker limit](https://developers.cloudflare.com/changelog/post/2026-09-04-increased-worker-size-limit/).
+Startup samples were grouped by framework, so ordering and thermal drift were
+not controlled. They are local active CPU profiles, not deployed request latency.
+
+Evidence: [paired builds](measurements/redact/builds/SUMMARY.md),
+[production startup](measurements/redact/startup/slim/startup.json).
+
+## Cold-page performance
+
+Lighthouse 13.5.0 and Chrome 154.0.8037.98 ran five samples per page, device and
+framework, 60 audits total. Each audit used a fresh browser and default simulated
+mobile or desktop settings. Framework order alternated. Values are median
+(minimum–maximum).
+
+| Page / device | Remix performance | Start with Redact performance | Remix LCP | Start LCP |
+| --- | ---: | ---: | ---: | ---: |
+| Home, mobile | 68 (64–69) | 61 (61–61) | 5.566 s | 8.944 s |
+| Home, desktop | 96 (96–97) | 90 (90–90) | 1.097 s | 1.755 s |
+| Pricing, mobile | 73 (71–75) | 66 (65–66) | 4.668 s | 5.791 s |
+| Pricing, desktop | 97 (96–98) | 95 (95–95) | 1.018 s | 1.219 s |
+| Docs, mobile | 70 (66–71) | 65 (65–65) | 5.125 s | 6.174 s |
+| Docs, desktop | 83 (83–84) | 84 (84–89) | 2.838 s | 2.454 s |
+
+First contentful paint is slower in all six groups. Desktop docs is the only
+performance-score improvement, with overlapping ranges. All 60 audits score
+100 for accessibility, best practices and SEO, and all measure zero layout
+shift. These automated scores cover three public pages, not every app state.
+
+Desktop transfer, including images and other resources:
+
+| Page | Remix bytes / requests | Start with Redact bytes / requests |
+| --- | ---: | ---: |
+| Home | 1,637,271 / 58 | 1,535,308 / 74 |
+| Pricing | 853,763 / 36 | 822,898 / 47 |
+| Docs | 2,237,237 / 104 | 2,212,011 / 110 |
+
+Redact transfers fewer bytes but makes more requests on every sampled page and
+device. Total all-route assets and initial page transfer measure different
+things. The byte reduction does not establish a paint-speed improvement.
+These are local optimized previews, not global edge or real-user measurements.
+Full metrics, ranges, settings and raw reports:
+[Lighthouse evidence](measurements/redact/lighthouse/SUMMARY.md).
+
+## Multi-page navigation
+
+Final navigation measurements are being collected separately from cold loads.
+
+## Freshness and behavior
+
+Native loaders use search parameters as dependencies, zero normal stale time
+and a 30-second intent-preload freshness window. The root shell refreshes
+session/banner data on actual navigation without preloading. Mutations and
+focus/visibility events invalidate eligible data. Token-consuming and billing
+completion pages do not prefetch or rerun on focus.
+
+Browser tests cover real profile changes, cross-tab refresh, back/forward,
+unsaved drafts and user isolation. Focus is explicitly dispatched because the
+test browser did not emit operating-system activation events. This verifies the
+handler, not a universal freshness latency or OS behavior guarantee.
+
+Accepting a private package share in the original app updates the grant label
+but leaves the invitation and missing README stale. This was reproduced twice.
+The candidate invalidates its loader and displays the shared README, with
+owner/guest/stranger/anonymous and revocation checks. That bug could also be
+fixed in Remix, so it is not an exclusive framework benefit.
+
+A separate migration defect allowed an older disabled-state response to overwrite
+successful two-factor confirmation. Confirm and disable now retire older loader
+generations before publishing success. Tests force that response order and
+check slow refreshes, draft preservation and no blank page.
+
+Unsupported document POSTs now return 405 instead of HTML 200. Token-action HEAD
+requests cannot consume tokens. Trailing-slash documents canonicalize rather
+than returning the original strict matcher's 404. These are intentional
+behavior changes, not identical parity. See the
+[route audit](ROUTE-COVERAGE.md) and [acceptance contract](../parity-contract.md).
+
+## Redact integration and maintenance
+
+The candidate follows tanstack.com's Redact version and Vite alias pattern,
+using the full default feature preset. Testing found four runtime defects:
+SVG attribute casing, error fallbacks catching themselves, document insertion
+before deletion, and hydration probes triggering image downloads. Each has a
+maintained dependency patch and browser regression. No errors are suppressed.
+The patch is local and has not been published upstream.
+
+The first image-probe benchmark attempt is retained separately and excluded
+from final results. The final patch fingerprint and reproductions are in
+[Redact verification](REDACT.md). This is additional dependency maintenance,
+not just a configuration change.
+
+Native state and loaders replace 467 explicit `handle.update()` calls and 46
+`createRouteData()` constructions. The custom 1,298-line client router is replaced
+by framework routing and explicit route modules. Responsibilities move into
+framework contracts rather than disappearing. The experiment retains original
+source and imports shared helpers from it. Separate browser/server type programs,
+generated declarations, route/server boundaries and the Redact patch add costs.
+See [source comparison](SOURCE-COMPARISON.md).
+
+Developer task-completion speed, HMR latency, cold installation/builds and memory
+under load were not measured. Warm build time is not developer productivity.
+
+## Confidence and release decision
+
+All 35 final native browser tests pass without retries or uncaught runtime errors.
+Twelve cover the Redact regressions. Repository types, lint, formatting and Knip
+pass. The completed full gate before the last hydration-only fix also passed
+3,459 Node tests, 374 Worker tests and eight MCP tests. The final browser suite
+and source checks were rerun after that fix, not the unrelated backend suites.
+
+The authoritative `npm run validate` still exits 1 because the original frontend
+has the two recorded comparison failures and five dependency vulnerabilities
+also present in the baseline. An early pre-click 2FA form disappearance was not
+conclusively explained, although later full and repeated focused runs pass.
+Exact sequence and logs: [verification](VERIFICATION.md).
+
+No finite suite establishes 100% parity. Real provider grants/revocation,
+billing returns, email delivery, deployed bindings/storage, Safari/Firefox,
+broad responsive comparisons, populated admin states and deployment races remain
+unverified. No real payment or production deployment was performed.
+
+Keep this as an experiment until those acceptance gaps close and measured
+benefits justify the cold-load, build and maintenance costs. Run it with
+`npm run dev:start`; the [run guide](../README.md) covers builds and fixtures.
+The [earlier React comparison](COMPARISON-REACT.md) remains available separately.

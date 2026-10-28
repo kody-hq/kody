@@ -1,0 +1,124 @@
+# Query refactor based on TkDodo's blog
+
+The earlier Query migration kept too much of the old page lifecycle. This pass
+changes data ownership, refresh rules, query configuration and request auth
+reuse. It adds no dependency and keeps Redact.
+
+## Reading coverage
+
+We read all 91 published posts from the blog repository at revision
+`446a099aacd4b88519530f06c4e117c556cd2b9d`, including the full embedded transcripts
+for Thinking in React Query, React Query API Design Lessons Learned and React
+Query The Bad Parts. Videos were not watched, and external links were not
+recursively read. The per-post reading record, original notes and source hashes
+are in [TKDODO-READING.json](./TKDODO-READING.json).
+
+Older examples were checked against installed Query and Router APIs. In
+particular, the newer Router `context` option is available in this installation.
+The installed Intent composition skill referenced by Router guidance was missing;
+we used its available data-loading and search-parameter skills and library source.
+
+## Changes
+
+| Problem | Refactor | Guidance |
+| --- | --- | --- |
+| Loader and component separately built query options | 71 route definitions now put one options object in route context, consumed by both | [Reliable Query Prefetching](https://tkdodo.eu/blog/reliable-query-prefetching-with-tanstack-router) |
+| Full URL search created separate caches for presentation state | Narrowed another 14 route inputs after tracing server readers, preserving selection, email filtering, billing notices, checkout and integration approval inputs | [The Beauty of TanStack Router](https://tkdodo.eu/blog/the-beauty-of-tan-stack-router) |
+| Focus invalidated fresh and inactive pages | Verify identity, then refresh active stale data; preserve explicit permission-sensitive exceptions | [Practical React Query](https://tkdodo.eu/blog/practical-react-query) |
+| Jobs and profile copied cached responses into component state | Query owns saved data; local state holds field edits, with untouched fields derived from the latest response | [Deriving Client State](https://tkdodo.eu/blog/deriving-client-state-from-server-state), [React Query and Forms](https://tkdodo.eu/blog/react-query-and-forms) |
+| Mutation completion depended on the submitting component staying mounted | Cache work stays in mutation lifecycle callbacks; component callbacks handle messages and local navigation | [Mastering Mutations](https://tkdodo.eu/blog/mastering-mutations-in-react-query) |
+| Successful jobs actions reread an already complete response | Publish accepted list/detail data, invalidate only other incomplete detail variants | [Mastering Mutations](https://tkdodo.eu/blog/mastering-mutations-in-react-query) |
+| Wizard steps maintained separate progress snapshots and a manual timer | One actor-scoped query across steps; Query owns polling, cancellation and deduplication | [TanStack Router and Query](https://tkdodo.eu/blog/tan-stack-router-and-query) |
+| Every query factory overrode the client retry policy | Keep retry configuration at the QueryClient, allowing deliberate per-client policy | [Testing React Query](https://tkdodo.eu/blog/testing-react-query) |
+| Rebuilt page Requests missed middleware auth deduplication | Authenticate the original request and pass the page return URL separately in six Start server modules | Application-specific waterfall finding, not a claim from the blog |
+
+## Actual route pattern
+
+The route creates the configuration once. Its loader makes data ready before
+committing the page; the component subscribes to that exact query.
+
+```tsx
+context: ({ context, params }) => ({
+  pageQueryOptions: pageQuery(context.actorKey, { slug: params.slug }),
+}),
+loader: ({ context, preload }) =>
+  loadPageQuery(context.queryClient, context.pageQueryOptions, preload),
+```
+
+```tsx
+const { pageQueryOptions } = Route.useRouteContext()
+const { data } = usePageQuery(pageQueryOptions)
+```
+
+The wrapper still has two application-specific responsibilities: revoked access
+must replace a cached page, and a read must not overwrite a pending optimistic
+write. Router keeps the head fallback and query key, not a second page payload.
+We still await absent data to preserve the existing no-flash navigation contract.
+Using fire-and-forget prefetch everywhere would change that contract without
+proving a benefit.
+
+## Request ordering
+
+A fresh public revisit uses cached shell and page data. A fresh private revisit
+still verifies document identity before displaying private cached data. This is
+an explicit security contract, not a requirement imposed by TanStack Query.
+
+A stale private activation now follows:
+
+```text
+focus / reconnect
+  -> verify current document actor
+  -> active stale shell and page reads in parallel
+  -> Query observers update the visible fields
+```
+
+Previously activation invalidated every page for the actor, including inactive
+pages. Those inactive invalidations could force blocking reads on subsequent
+navigation. They now keep their existing freshness state.
+
+A jobs write follows:
+
+```text
+cancel conflicting reads -> snapshot -> optimistic Query update
+  -> POST
+  -> accepted response replaces list and matching detail
+  -> only incomplete detail variants become stale
+```
+
+Rejected writes restore the snapshot. The existing mutation barrier still stops
+background reads from replacing optimistic data while the write is pending.
+This is more machinery than the blog's minimal example because the app supports
+navigation away from a pending mutation and back into cached or uncached pages.
+
+Onboarding now starts its shared query in the child loader, before rendering the
+parent's observer. Moving between steps reuses that cache. Polling is active only
+while progress is incomplete and the document is visible. Location-specific
+redirects and metadata remain route responsibilities.
+
+The request-auth fix removes a duplicate lookup within an HTTP request. It does
+not remove the separate browser identity round trip or cache authorization across
+requests. Unit tests count the actual auth D1 batch and verify that a later
+request observes account changes.
+
+## Limits that remain
+
+- Query remains a document cache. This pass does not introduce a normalized
+  entity cache or TanStack DB.
+- Several other pages still use direct mutation requests and local state.
+  Profile avatar transport and account connection/email-claim subhooks are
+  examples. This is not a claim that every mutation now uses `useMutation`.
+- The retained Remix API router, Emotion, old handler adapters, metadata
+  resolver and Redact/Router patches remain. The dependency audit in
+  [START-QUERY-PATTERN-AUDIT.md](./START-QUERY-PATTERN-AUDIT.md) still applies.
+- The separate OAuth loader still authenticates a synthetic request internally.
+- Default automatic retries remain disabled in the browser QueryClient. Removing
+  per-query overrides makes policy configurable; it does not quietly change
+  retry behavior.
+- Local timings do not establish Cloudflare production performance. The private
+  deployment Access credential is still needed for fresh production comparisons.
+
+## Verification
+
+Implementation verification and performance measurements are in progress. Earlier
+v3 measurements remain historical evidence and must not be presented as results
+of this refactor.

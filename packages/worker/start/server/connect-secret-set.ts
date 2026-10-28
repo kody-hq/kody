@@ -1,5 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
-import { connectSecretsSchema } from '../connect-input.ts'
+import { connectSecretsSchema } from '../connect-input-schema.ts'
 export const loadConnectSecretSet = createServerFn({ method: 'GET' })
 	.validator(connectSecretsSchema)
 	.handler(async ({ data }) => {

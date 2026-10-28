@@ -1,0 +1,18 @@
+{
+	"authenticated": true,
+	"entry": "/account",
+	"steps": [
+		{
+			"path": "/@jane",
+			"marker": {
+				"selector": "[data-testid=\"profile-username\"]",
+				"text": "@jane"
+			}
+		},
+		{
+			"path": "/account",
+			"history": "back",
+			"marker": { "selector": "input[name=\"displayName\"]", "text": "" }
+		}
+	]
+}

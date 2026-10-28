@@ -1,0 +1,342 @@
+# What this migration actually implements
+
+Audited October 11, 2026 against the restored v3 implementation. This is a code
+and existing-trace audit, not a new benchmark. No application code changed.
+
+The implementation is a Start/Router frontend with Query caching around many
+existing page-shaped data contracts, a retained Remix backend router and APIs,
+and partially converted mutation ownership. It is not a complete redesign
+around shared Query resources. The previous comparison measures this particular
+migration, not TanStack's performance ceiling.
+
+The earlier wording about migrating everything to Query was too broad. Reads
+use Query widely; mutations and component state are still a hybrid.
+
+## The useful TanStack patterns already present
+
+`packages/worker/start/router.tsx` creates a QueryClient per server request and
+one per browser router, injects it into Router context, and installs
+`setupRouterSsrQueryIntegration`. Query owns payloads; route loaders return head
+metadata and a Query key rather than a second complete payload. Intent preloads
+and components share query options. `defaultPreloadStaleTime: 0` delegates
+preload freshness to Query. Ordinary age-stale data uses
+`ensureQueryData({ revalidateIfStale: true })`.
+
+This matches the coordination pattern in the
+[official external-data guide](https://tanstack.com/router/latest/docs/framework/react/guide/external-data-loading).
+Using loaders to prepare Query data is not itself the problem. The application
+contracts, barriers and duplicated ownership around it are the main concerns.
+Installed Intent's `@tanstack/router-core#router-core/data-loading` guidance was
+also checked. It explicitly distinguishes serial beforeLoad execution from
+parallel route loading and warns against whole-search loader dependencies.
+
+Actual account pattern, abbreviated from `routes/account.tsx`:
+
+```tsx
+const pageQuery = createPageQuery('loadAccountPage', loadAccountPage, {
+  staleTime: 60_000,
+})
+
+// Loader:
+loadPageQuery(queryClient, pageQuery(actorKey, ''), preload)
+
+// Component:
+const { data } = usePageQuery(pageQuery(actorKey, ''))
+```
+
+The resulting key is `['page', actorKey, 'loadAccountPage', '']`. The value is
+`{ payloads: { accountProfile, accountConnections, onboarding }, head }`.
+It is a page aggregate, not a shared profile/connections/onboarding resource
+model. Visiting a public profile uses a different page query and stores another
+representation of some of the same profile fields.
+
+## The actual waterfalls
+
+These diagrams describe required data ordering from source. Route chunk loading,
+assets, scheduling and animation can add work around them. They are not new
+millisecond traces. Existing controlled timings are linked in the comparison.
+
+### Public warm navigation
+
+```text
+click
+  -> root beforeLoad reads the document actor locally
+  -> root shell lookup and leaf Query lookup
+       retained fresh data: no data RPC
+  -> Router commit -> renderer / head / motion
+```
+
+This is the successful path: measured warm blog/docs visits made zero identity,
+shell or leaf RPCs. Public is an explicit allowlist in `shell-query.ts`, not all
+publicly addressable URLs. Profiles and community pages can still enter the
+identity-check path.
+
+### Private navigation with no cached data
+
+```text
+click
+  -> root beforeLoad awaits verifySession RPC
+  -> route loading can proceed
+       shell cache miss -> loadShell RPC      [can run in parallel]
+       leaf cache miss  -> loadAccountPage RPC [can run in parallel]
+  -> required data ready -> Router commit -> render
+```
+
+This is a genuine client network dependency: the leaf data request is behind
+the separate root identity request. It is not correct to draw shell and leaf as
+necessarily serial with each other. Route component/loader chunks can add their
+own availability dependencies.
+
+### Private navigation with cached data
+
+```text
+click -> verifySession RPC -> cached shell/page -> commit -> render
+```
+
+The measured warm private route therefore still pays one fresh identity request.
+At 100 ms added latency, account medians were 116.1 ms Remix and 118.2 ms Start.
+A local cache cannot remove a round trip that this implementation deliberately
+puts before committing it.
+
+The reason is a strict application contract: a tab must not present cached actor
+A's private page after its cookie is silently replaced with actor B's cookie,
+even before any ordinary resource request discovers the change. That is stronger
+than simply authorizing every server request. I treated that contract as fixed.
+It is not a Start or Query requirement.
+
+A coherent session-lifecycle design could support a different freshness policy,
+using explicit session changes, cross-tab signaling and server rejection, while
+still authorizing every read/write. But signaling alone does not detect arbitrary
+cookie replacement or remote revocation instantly. Removing the check without
+stating that change would silently weaken the tested display contract. Moving
+it into a shared loader previously failed an account-switch race test; that
+failed placement does not prove every possible parallel design is impossible.
+
+### Focus and reconnect
+
+```text
+focus / visible / online
+  -> custom 50 ms event coalescing
+  -> verifySession RPC
+  -> invalidate shell and every ['page', actorKey] query
+       active queries refetch
+       inactive queries remain invalidated
+```
+
+Query's own focus/reconnect refresh is disabled globally. This custom path
+invalidates even otherwise-fresh published data. On a later navigation,
+`ensurePageQuery` treats explicit invalidation as a blocking fetch, unlike
+ordinary age-stale SWR. Consequently a focus event can undo the intended
+five-minute reuse policy and turn a subsequent revisit into a foreground wait.
+
+The earlier statement that blanket mutation invalidation was removed did not
+mean all blanket invalidation was removed. This lifecycle path is still broad.
+
+### Account server work
+
+```text
+server-function identity middleware authenticates original Request
+  -> handler constructs a different Request for /account
+  -> requireAuthenticatedPageUser on that Request
+  -> profile + connections + onboarding data in parallel
+  -> checklist (uses onboarding result)
+  -> serialize whole account payload and head
+```
+
+`request-auth-cache.ts` deduplicates through `WeakMap<Request, Promise<...>>`.
+The cloned Request in `server/account-page.ts` is a different key from the
+middleware's original Request. This is a verified cache-identity mismatch and a
+potential duplicate auth lookup, not a measured D1-query count. The same
+adaptation appears in other server functions. It should be replaced with explicit
+authorized request context and a separately represented page URL.
+
+The account loader also waits for every member of the page aggregate and then
+its checklist. Whether all of that must block the first useful account view has
+not been established. A query migration alone does not shorten that server path.
+
+### Mutation paths
+
+Profile uses Query's mutation cache, optimistic snapshots, rollback and accepted
+response updates. After settling it invalidates dependent page resources,
+refreshes shell data and asks Router to refresh non-root active matches. Query
+and Router work is sequenced to avoid duplicate read races, but metadata and page
+ownership still create extra coordination.
+
+Jobs also uses `useMutation`, updates cached data and component-local copies,
+then intentionally invalidates the jobs resource for a confirming GET.
+
+Values exemplifies the remaining pattern:
+
+```text
+POST /account/values.json
+  -> parse accepted payload
+  -> copy payload into component state
+  -> invalidate page queries
+  -> navigate back to list
+  -> confirming page read as needed
+```
+
+That is largely the old mutation workflow with Query invalidation attached.
+Using an existing HTTP endpoint is fine. The problem is incomplete integration
+of its accepted response, mutation state and shared resources with Query.
+
+## How much of the mutation migration is complete?
+
+A lexical scan of non-test, non-generated Start TS/TSX source found:
+
+| Pattern | Occurrences | Files |
+| --- | ---: | ---: |
+| `useMutation(...)` | 2 | 2 |
+| direct `fetch(...)` | 84 | 56 |
+| `createPageQuery(...)` | 78 | 78 |
+| `usePageInvalidation(...)` | 44 | 42 |
+
+The mutation call sites are profile and jobs. Counts are syntax inventory, not
+counts of user actions: fetch calls include reads and protocol work, and one
+mutation hook can cover several actions. Still, they establish that the whole
+mutation layer has not been converted to Query.
+
+`pages/account-values.tsx` copies query-fed values and selection into local
+state, then calls `applyPayload` during a render when the incoming payload
+reference changes. Jobs similarly maintains a second copy of server data.
+Draft form state belongs locally; confirmed lists/entities generally should not
+have two independent owners. This increases synchronization code and render
+work, although the milliseconds attributable to it have not been isolated.
+
+Onboarding still polls `/onboarding.json` every four seconds and updates local
+state outside Query. There is no general Query-based live-session sync layer,
+TanStack DB integration or virtualization added by this migration.
+
+## Query keys still carry page URLs
+
+There are 109 route TSX files, including the root. Of those, 69 contain the exact
+`loaderDeps: ({ search }) => search` form, 43 contain
+`location.pathname + location.searchStr`, and 77 call `loadPageQuery`.
+These are inventory counts, not 69 proven bugs; some routes genuinely consume
+multiple search values.
+
+One concrete unnecessary dependency is Values. Its component says `q` is a
+client-only filter. The data reader uses selected-value inputs, not `q`, yet
+`routes/account_.values.tsx` sends the full search string into its query key.
+Different `q` values therefore create separate cache entries for equivalent
+server data. Jobs already narrows its input to `selected`, showing this cleanup
+was applied unevenly. My prior description of normalized URL inputs was too
+broad.
+
+List/detail payloads also contain both the entire list and a selected record.
+A new selection can refetch/re-cache the list instead of reusing a shared list
+query and requesting only the missing detail. Useful independent resources
+should be launched together in the loader, not fetched one after another from
+nested components. Splitting every field into a request would be another mistake.
+
+## Added libraries and what they do
+
+Compared directly with the immutable Remix baseline package manifests:
+
+| Added dependency | Purpose | Necessary for Start itself? |
+| --- | --- | --- |
+| `@tanstack/react-start` | Server functions, SSR, build integration | Core chosen framework |
+| `@tanstack/react-router` | Routing and navigation | Core chosen router |
+| `@tanstack/react-query` | Server-state cache and mutations | Chosen data architecture |
+| `@tanstack/react-router-ssr-query` | Query SSR/hydration integration | Integration for this combination |
+| `@tanstack/redact` | React-compatible renderer requested for the experiment | User-selected renderer |
+| `react`, `react-dom` | Declared ecosystem dependencies, redirected to Redact by build aliases | Not a second shipped renderer here |
+| `@emotion/react` | Preserve the ported JSX `css` objects and runtime styling | No, a migration choice |
+| `@tanstack/start-storage-context` | Detect active Start server context before reading the CSP nonce | Specific adapter choice |
+
+Added development dependencies are `@tanstack/intent`, `@types/react`,
+`@types/react-dom` and `@vitejs/plugin-react`. No direct baseline dependency was
+removed. Existing Buffer prebundling is a dev-server configuration choice, not a
+new direct runtime library introduced by this migration.
+
+The production build verification finds Redact and no upstream React runtime
+modules. It would be misleading to say the browser ships both full React and
+Redact. It would also be misleading to call Emotion a Start requirement.
+
+Existing cold-script source maps attribute 14,632 raw generated bytes to Emotion
+modules. The Remix package group is 25,444 mapped raw bytes, mostly route-pattern
+matching and href helpers, with small fetch-router route-map helpers. This is
+not evidence that the complete Remix DOM renderer is also shipped on that page.
+The group's marginal gzip-removal estimate is 9,064 bytes. That is an estimate,
+not independently measured compressed network bytes for that library.
+
+## Compatibility code we retained or built
+
+- `start/backend-router.ts` uses `createRouter` from `remix/router` to preserve
+  existing API registrations and middleware. Start documents sit behind it.
+  Keeping a proven backend is reasonable, but this is not a complete removal of
+  Remix and its server maintenance surface.
+- `vite.start.config.ts` inherits the old Vite config, removes its Remix plugins,
+  compiles remaining legacy TSX with `remix/component`, and aliases OAuth/page
+  entries into the Start implementation. This retains two compilation worlds.
+- Some server functions call extracted data services directly. Others, such as
+  docs, construct a Remix `RequestContext`, call an old handler, receive a JSON
+  `Response`, parse it and return it through Start serialization. That is an
+  in-process adapter, not a second browser HTTP request, but it retains redundant
+  serialization and framework-shaped server contracts.
+- `SiteLink` adapts existing string hrefs into Router links and retains document
+  navigation for protocol endpoints. This preserves behavior but uses less
+  route-specific typing than explicit typed link options.
+- `PageHead` reconciles reactive Query metadata with Router's initial head and
+  asset tags. It fixes a real stale-metadata bug, but exists partly because head
+  ownership remains split among the old global registry, route loaders and Query.
+- Document-actor middleware, foreground verification, activation refresh and
+  mutation barriers are custom policy/coordination code. They are not libraries
+  required to use Query.
+- A Router patch ensures a failed/skipped view transition still commits once.
+  The Redact patch changes attributes, hydration, suspense, class boundaries and
+  reconciliation, including the measured denied-content recovery fix. These are
+  dependency maintenance costs, not standard application configuration.
+
+## Rendering and splitting choices that affect the comparison
+
+The migration preserves view transitions, navigation animation policy and a
+custom progress indicator. Visible-content timing includes those behaviors.
+The previous near-one-second blog figure is not one second of Router or Query
+computation. The original comparison already notes eager docs work, assets,
+animation and scheduling as contributors. The audit does not isolate their CPU
+costs.
+
+The build globally separates loaders and components into chunks. The old head
+registry is statically referenced by the root. Merely making that registry a
+dynamic import saved roughly 3.9 KB of cold script traffic but added 229 ms to
+first blog entry at 100 ms added latency. Rejecting that experiment was justified,
+but it did not exhaust the design space: moving head ownership to routes and
+removing the global resolver from the root is a different architectural change.
+It must preserve the headless/static/action routes currently relying on root
+metadata, not just remove an import.
+
+`defaultStaleReloadMode: 'blocking'` protects missing Query payload readiness.
+It does not mean every aged query blocks: retained age-stale Query data returns
+immediately. Explicitly invalidated data and fresh-authorization resources do
+block. That distinction matters when evaluating focus and mutation behavior.
+
+## What I would change before another broad comparison
+
+1. Define the session display contract explicitly. Keep server authorization on
+   every read/write. Decide which cached navigation requires fresh verification,
+   then consolidate identity and missing-data work where the chosen contract
+   permits. Stop presenting the current serial barrier as inherent to TanStack.
+2. Replace blanket activation invalidation with stale-aware, resource-aware
+   refresh after identity handling. Fresh public content should remain fresh
+   across an ordinary focus event unless an actual invalidation says otherwise.
+3. Convert one complete private workflow to shared resource queries and Query
+   mutations, including accepted-response updates, rollback, errors and cross-page
+   reuse. Keep only editable drafts and ephemeral UI state in components.
+4. Normalize remaining meaningful query inputs, beginning with Values, and
+   separate shared lists from selected details where it removes duplicated reads.
+5. Preserve the original Request for request-scoped authentication and pass page
+   location separately. Extract data functions from legacy handlers rather than
+   making Start call response-producing adapters.
+6. Give each route clear metadata ownership, then remove the global registry
+   from the root client path. Compare static styling with the Emotion port only
+   after profiling shows its practical cost.
+7. Measure a complete workflow with identity, chunk, API, database, cache hit,
+   commit and visible-marker spans. Keep animation-on UX measurements and a
+   separate animation-neutral diagnostic. Do not label either as pure framework
+   speed or infer speed from a dependency's reputation.
+
+These are recommendations supported by the code audit, not newly benchmarked
+improvements. The current migration proves substantial compatibility and some
+cache gains. It does not yet demonstrate an idiomatic, complete Query-based
+application architecture.

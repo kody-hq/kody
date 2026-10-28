@@ -1,6 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
-import { credentialFillPlacementViewSchema } from '#universal/credential-fill-placement.ts'
+import { credentialFillPlacementViewSchema } from '#universal/credential-fill-placement-input.ts'
 import { placementApprovalParts } from '#universal/credential-placement-approval.ts'
 
 export const saveCredentialPlacement = createServerFn({ method: 'POST' })

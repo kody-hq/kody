@@ -5,7 +5,7 @@ import {
 	connectSecretsSchema,
 	connectOauthSchema,
 	connectWebhookSchema,
-} from '../connect-input.ts'
+} from '../connect-input-schema.ts'
 async function context(
 	path:
 		| '/connect/secrets'

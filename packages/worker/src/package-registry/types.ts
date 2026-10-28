@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { automationExecutionSchema } from '#worker/execution-contexts/automation-execution-schema.ts'
 import { communityPackageCategories } from '#universal/community-categories.ts'
 import { type ForkListingRelation } from '#universal/community-listing-ahead.ts'
-import { credentialFillPlacementViewSchema } from '#universal/credential-fill-placement.ts'
+import { credentialFillPlacementViewSchema } from '#universal/credential-fill-placement-input.ts'
 
 export const kodyPackageIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
