@@ -118,6 +118,9 @@ const mockModule = vi.hoisted(() => ({
 			>[0],
 		) => false,
 	),
+	findLivePackageAppOauthGrant: vi.fn(
+		async (..._args: Array<unknown>): Promise<unknown> => null,
+	),
 	openCredentialClient: vi.fn(async (..._args: Array<unknown>) => ({
 		token: 'credential-handle',
 	})),
@@ -160,6 +163,14 @@ vi.mock('#worker/credentials/credential-suppliers-flag.ts', () => ({
 			typeof CredentialSuppliersFlag.isPackageCredentialSuppliersEnabled
 		>
 	) => mockModule.isPackageCredentialSuppliersEnabled(...args),
+}))
+
+vi.mock('#app/package-app-oauth-grants.ts', async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import('#app/package-app-oauth-grants.ts')
+	>()),
+	findLivePackageAppOauthGrant: (...args: Array<unknown>) =>
+		mockModule.findLivePackageAppOauthGrant(...args),
 }))
 
 vi.mock('#worker/credentials/credential-client.ts', async (importOriginal) => {
@@ -292,6 +303,7 @@ function seedFixture(options?: FixtureOptions) {
 	const fixture = createFixture(options)
 	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(false)
 	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([])
+	mockModule.findLivePackageAppOauthGrant.mockResolvedValue(null)
 	mockModule.openCredentialClient.mockResolvedValue({
 		token: 'credential-handle',
 	})
@@ -440,6 +452,35 @@ test('required executor consent redirect identifies the app on a user-subdomain 
 	const loginUrl = new URL(location!)
 	expect(loginUrl.hostname).toBe('demo-user.kody.run')
 	expect(loginUrl.searchParams.get('app')).toBe('perf-app')
+})
+
+test('optional-only executor needs send a visitor without a grant to consent once', async () => {
+	seedFixture()
+	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(true)
+	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: false,
+			multiple: false,
+		},
+	])
+
+	const first = await serveHelloWorld()
+	expect(first.status).toBe(302)
+	const loginUrl = new URL(first.headers.get('location')!)
+	expect(loginUrl.searchParams.get('scope')).toBe('profile need:calendar')
+	expect(mockModule.openCredentialClient).not.toHaveBeenCalled()
+
+	mockModule.findLivePackageAppOauthGrant.mockResolvedValue({
+		id: 'grant-1',
+		scopes: ['profile'],
+	})
+	const afterDecline = await serveHelloWorld()
+	expect(afterDecline.status).toBe(200)
 })
 
 test('required executor credential failures do not redirect non-GET requests', async () => {
