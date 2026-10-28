@@ -106,6 +106,21 @@ export function ExecutionChainPanel(props: {
 	const [dragId, setDragId] = useState<string | null>(null)
 	const [confirmStrict, setConfirmStrict] = useState(false)
 	const [addId, setAddId] = useState('')
+	const listRef = useRef<HTMLOListElement | null>(null)
+	const focusAfterMove = useRef<string | null>(null)
+
+	useEffect(() => {
+		const target = focusAfterMove.current
+		if (!target || !listRef.current) return
+		focusAfterMove.current = null
+		const [id, control] = target.split('|')
+		const find = (name: string) =>
+			listRef.current?.querySelector<HTMLButtonElement>(
+				`[data-chain-focus="${CSS.escape(`${id}|${name}`)}"]:not(:disabled)`,
+			)
+		const other = control === 'up' ? 'down' : 'up'
+		;(find(control ?? 'handle') ?? find(other) ?? find('handle'))?.focus()
+	})
 
 	useEffect(() => {
 		if (timer.current) return
@@ -198,6 +213,7 @@ export function ExecutionChainPanel(props: {
 				(entry) => entry.kind === 'context' && entry.id === id,
 			) + 1
 		const message = `${nameFor(id)} moved to position ${position} of ${contextEntries.length}.`
+		focusAfterMove.current = `${id}|${commit ? (delta < 0 ? 'up' : 'down') : 'handle'}`
 		if (commit) persist(next, message)
 		else {
 			setChain(next)
@@ -242,6 +258,7 @@ export function ExecutionChainPanel(props: {
 			move(id, event.key === 'ArrowUp' ? -1 : 1, false)
 		} else if (grabbed?.id === id && event.key === 'Escape') {
 			event.preventDefault()
+			focusAfterMove.current = `${id}|handle`
 			setChain(grabbed.snapshot)
 			setGrabbed(null)
 			setAnnouncement(`Move cancelled. ${nameFor(id)} is back where it was.`)
@@ -317,7 +334,7 @@ export function ExecutionChainPanel(props: {
 					) : null}
 				</div>
 			) : null}
-			<ol css={listCss} aria-label="Fallback chain">
+			<ol ref={listRef} css={listCss} aria-label="Fallback chain">
 				{contextEntries.map((entry, index) => {
 					const context = byId.get(entry.id)
 					const status = context ? contextDisplayStatus(context) : 'offline'
@@ -340,6 +357,7 @@ export function ExecutionChainPanel(props: {
 								type="button"
 								css={handleCss}
 								draggable
+								data-chain-focus={`${entry.id}|handle`}
 								aria-pressed={grabbed?.id === entry.id}
 								aria-label={`Reorder ${nameFor(entry.id)}, position ${index + 1} of ${contextEntries.length}`}
 								onDragStart={(event) => {
@@ -380,6 +398,7 @@ export function ExecutionChainPanel(props: {
 									type="button"
 									css={[getSecondaryButtonCss(), targetCss]}
 									disabled={index === 0}
+									data-chain-focus={`${entry.id}|up`}
 									aria-label={`Move ${nameFor(entry.id)} up`}
 									onClick={() => move(entry.id, -1)}
 								>
@@ -389,6 +408,7 @@ export function ExecutionChainPanel(props: {
 									type="button"
 									css={[getSecondaryButtonCss(), targetCss]}
 									disabled={index === contextEntries.length - 1}
+									data-chain-focus={`${entry.id}|down`}
 									aria-label={`Move ${nameFor(entry.id)} down`}
 									onClick={() => move(entry.id, 1)}
 								>
@@ -438,7 +458,14 @@ export function ExecutionChainPanel(props: {
 								Always last. Used when nothing above can take the run.
 							</span>
 						</div>
-						<div css={actionsCss}>
+						<div
+							css={[
+								actionsCss,
+								confirmStrict
+									? { gridColumn: '1 / -1', justifyContent: 'start' }
+									: null,
+							]}
+						>
 							{confirmStrict ? (
 								<>
 									<span css={mutedCss}>
