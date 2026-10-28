@@ -18,6 +18,7 @@ import {
 	type ExecutionChainEntryInput,
 	type ExecutionContextAuditPage,
 	type ExecutionContextListItem,
+	type ExecutionContextRun,
 	type ExecutionContextRunPage,
 	type ExecutionContextShareGrant,
 	type ExecutionContextSharing,
@@ -230,16 +231,119 @@ function parseUnutilized(value: unknown): ExecutionContextUnutilized | null {
 	return unutilized as ExecutionContextUnutilized
 }
 
+function text(value: unknown, fallback: string) {
+	return typeof value === 'string' && value.length > 0 ? value : fallback
+}
+
+function cursorText(value: unknown) {
+	if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+	return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+/** PR 2 returns `null` for deleted handles and org slugs; the page needs text. */
+export function normalizeContext(
+	value: unknown,
+): ExecutionContextListItem | null {
+	const item = record(value)
+	if (!item || typeof item.id !== 'string') return null
+	const ownerOrg = record(item.ownerOrg) ?? {}
+	const operator = record(item.operator) ?? {}
+	const registeredBy = record(item.registeredBy)
+	const client = record(item.client)
+	const sharing = record(item.sharing)
+	const context = {
+		...item,
+		name: text(item.name, item.id),
+		ownerOrg: { id: text(ownerOrg.id, ''), slug: text(ownerOrg.slug, '') },
+		operator: { handle: text(operator.handle, 'deleted user') },
+		...(registeredBy
+			? { registeredBy: { handle: text(registeredBy.handle, 'deleted user') } }
+			: {}),
+		client:
+			client && (client.name || client.version)
+				? {
+						name: text(client.name, 'unknown'),
+						version: text(client.version, ''),
+					}
+				: null,
+	} as ExecutionContextListItem
+	if (sharing) context.sharing = readSharing(sharing)
+	else delete context.sharing
+	return context
+}
+
 function readContexts(result: Record<string, unknown>) {
 	const list = result.contexts ?? result.items ?? result.executionContexts
-	return Array.isArray(list) ? (list as Array<ExecutionContextListItem>) : []
+	return Array.isArray(list)
+		? list.flatMap((item) => normalizeContext(item) ?? [])
+		: []
 }
 
 function readContext(result: Record<string, unknown>) {
-	return (record(result.context) ??
-		(typeof result.id === 'string'
-			? result
-			: null)) as ExecutionContextListItem | null
+	return normalizeContext(
+		record(result.context) ?? (typeof result.id === 'string' ? result : null),
+	)
+}
+
+export function normalizeRun(value: unknown): ExecutionContextRun | null {
+	const row = record(value)
+	if (!row || typeof row.runId !== 'string') return null
+	const requester = record(row.requester) ?? {}
+	const fallback = record(row.fallback)
+	return {
+		runId: row.runId,
+		requester: {
+			...(typeof requester.userId === 'string'
+				? { userId: requester.userId }
+				: {}),
+			handle: text(requester.handle, 'deleted user'),
+		},
+		...(typeof row.runOrgId === 'string' ? { runOrgId: row.runOrgId } : {}),
+		dispatchedAt: text(row.dispatchedAt, ''),
+		startedAt: typeof row.startedAt === 'string' ? row.startedAt : null,
+		endedAt: typeof row.endedAt === 'string' ? row.endedAt : null,
+		durationMs: typeof row.durationMs === 'number' ? row.durationMs : null,
+		outcome: (typeof row.outcome === 'string'
+			? row.outcome
+			: 'lost') as ExecutionContextRun['outcome'],
+		cancelReason:
+			typeof row.cancelReason === 'string' ? row.cancelReason : null,
+		fallback: fallback
+			? {
+					position:
+						typeof fallback.position === 'number' ? fallback.position : 0,
+					...(typeof fallback.ranOn === 'string'
+						? { ranOn: fallback.ranOn }
+						: {}),
+				}
+			: null,
+	}
+}
+
+/** PR 2 audit rows: `{ id, at, event, actor: { userId, handle } | null, detail }`. */
+export function normalizeAuditEvent(
+	value: unknown,
+): ExecutionContextAuditPage['events'][number] | null {
+	const row = record(value)
+	if (!row) return null
+	const action = text(row.event ?? row.action, '')
+	if (!action) return null
+	const actor = record(row.actor)
+	const detail = row.detail
+	return {
+		id: String(row.id ?? `${action}:${String(row.at)}`),
+		action,
+		actor: actor
+			? { label: text(actor.handle ?? actor.label, 'deleted user') }
+			: null,
+		at: text(row.at, ''),
+		detail:
+			typeof detail === 'string'
+				? detail
+				: record(detail)
+					? JSON.stringify(detail)
+					: null,
+	}
 }
 
 export async function loadExecutionContextsPageData(input: {
@@ -422,10 +526,9 @@ export async function listExecutionContextRunsForUser(
 		)
 		const page: ExecutionContextRunPage = {
 			runs: Array.isArray(result.runs)
-				? (result.runs as ExecutionContextRunPage['runs'])
+				? result.runs.flatMap((run) => normalizeRun(run) ?? [])
 				: [],
-			nextCursor:
-				typeof result.nextCursor === 'string' ? result.nextCursor : null,
+			nextCursor: cursorText(result.nextCursor),
 			scope: result.scope === 'all' ? 'all' : 'own',
 		}
 		return { ok: true as const, page }
@@ -447,13 +550,41 @@ export async function listExecutionContextAuditForUser(
 		)
 		const page: ExecutionContextAuditPage = {
 			events: Array.isArray(result.events)
-				? (result.events as ExecutionContextAuditPage['events'])
+				? result.events.flatMap((event) => normalizeAuditEvent(event) ?? [])
 				: [],
-			nextCursor:
-				typeof result.nextCursor === 'string' ? result.nextCursor : null,
+			nextCursor: cursorText(result.nextCursor),
 		}
 		return { ok: true as const, page }
 	})
+}
+
+function normalizeShareGrant(
+	value: unknown,
+): ExecutionContextShareGrant | null {
+	const grant = record(value)
+	const subject = record(grant?.subject)
+	if (!grant || !subject || typeof grant.grantId !== 'string') return null
+	const preset =
+		grant.preset === 'contribute' || grant.preset === 'manage'
+			? grant.preset
+			: 'use'
+	return {
+		grantId: grant.grantId,
+		...(typeof grant.orgSlug === 'string' ? { orgSlug: grant.orgSlug } : {}),
+		subject:
+			subject.kind === 'team'
+				? {
+						kind: 'team',
+						slug: text(subject.slug, 'deleted team'),
+						...(typeof subject.name === 'string' ? { name: subject.name } : {}),
+					}
+				: {
+						kind: 'user',
+						handle: text(subject.handle, 'deleted user'),
+						...(subject.outside === true ? { outside: true } : {}),
+					},
+		preset,
+	}
 }
 
 function readSharing(result: Record<string, unknown>): ExecutionContextSharing {
@@ -466,7 +597,7 @@ function readSharing(result: Record<string, unknown>): ExecutionContextSharing {
 				? sharing.level
 				: 'only_me',
 		grants: Array.isArray(sharing.grants)
-			? (sharing.grants as Array<ExecutionContextShareGrant>)
+			? sharing.grants.flatMap((grant) => normalizeShareGrant(grant) ?? [])
 			: [],
 		attachedOrgs: Array.isArray(sharing.attachedOrgs)
 			? (sharing.attachedOrgs as ExecutionContextSharing['attachedOrgs'])
@@ -492,10 +623,10 @@ export async function setExecutionContextShareForUser(
 			{
 				id: input.contextId,
 				...(input.subject.kind === 'user'
-					? { user: input.subject.usernameOrEmail }
+					? { username: input.subject.usernameOrEmail.replace(/^@/, '') }
 					: input.subject.kind === 'team'
-						? { team: input.subject.slug }
-						: { orgWide: true }),
+						? { team_slug: input.subject.slug }
+						: { all_members: true }),
 				preset: input.preset,
 			},
 		)
@@ -514,7 +645,7 @@ export async function removeExecutionContextShareForUser(
 		const result = await callCapability(
 			scope,
 			executionContextCapabilityNames.shareRemove,
-			{ id: input.contextId, grantId: input.grantId },
+			{ id: input.contextId, grant_id: input.grantId },
 		)
 		return { ok: true as const, sharing: readSharing(result) }
 	})

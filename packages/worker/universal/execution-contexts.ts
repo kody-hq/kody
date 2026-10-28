@@ -650,7 +650,7 @@ export function runFallbackLabel(input: {
 }
 
 export function durationLabel(durationMs: number | null | undefined) {
-	if (durationMs === null || durationMs === undefined) return '—'
+	if (durationMs === null || durationMs === undefined) return '-'
 	if (durationMs < 1000) return `${durationMs} ms`
 	const seconds = durationMs / 1000
 	if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)} s`
@@ -669,6 +669,19 @@ const executionContextAuditLabels: Record<string, string> = {
 	'execution_context.chain_removed': 'Removed from a chain',
 	'execution_context.run_dispatched': 'Run dispatched',
 	'execution_context.run_finished': 'Run finished',
+	registered: 'Registered',
+	updated: 'Access changed',
+	grant_updated: 'Access changed',
+	key_rotated: 'Key rotated',
+	revoked: 'Revoked',
+	opt_in: 'Opted in',
+	opt_out: 'Opted out',
+	share_added: 'Shared',
+	share_removed: 'Stopped sharing',
+	attached: 'Attached to an org',
+	detached: 'Detached from an org',
+	chain_added: 'Added to a chain',
+	chain_removed: 'Removed from a chain',
 }
 
 export function auditEventLabel(action: string) {

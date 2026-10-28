@@ -1,6 +1,9 @@
 import { expect, test } from 'vitest'
 import {
 	ExecutionContextsUnavailableError,
+	normalizeAuditEvent,
+	normalizeContext,
+	normalizeRun,
 	parseChain,
 	readExecutionContextFailure,
 } from './execution-contexts.ts'
@@ -74,4 +77,83 @@ test('an unavailable registry reads as feature_disabled, not denied', () => {
 		readExecutionContextFailure(new ExecutionContextsUnavailableError()),
 	).toMatchObject({ ok: false, error: 'feature_disabled' })
 	expect(readExecutionContextFailure(new Error('plain'))).toBeNull()
+})
+
+test('normalizeContext fills deleted handles and slugs and parses sharing', () => {
+	const context = normalizeContext({
+		id: 'ec_a',
+		name: 'buildbox',
+		ownerOrg: { id: 'org_1', slug: null },
+		operator: { handle: null },
+		client: { name: null, version: null },
+		sharing: {
+			level: 'team',
+			allMembers: false,
+			grants: [
+				{
+					grantId: 'g_1',
+					subject: { kind: 'team', slug: 'build', name: 'Build' },
+					preset: null,
+				},
+				{
+					grantId: 'g_2',
+					subject: { kind: 'user', handle: null, outside: true },
+					preset: 'manage',
+				},
+			],
+			attachedOrgs: [],
+		},
+	})
+	expect(context?.ownerOrg).toEqual({ id: 'org_1', slug: '' })
+	expect(context?.operator.handle).toBe('deleted user')
+	expect(context?.client).toBeNull()
+	expect(context?.sharing?.grants).toEqual([
+		{
+			grantId: 'g_1',
+			subject: { kind: 'team', slug: 'build', name: 'Build' },
+			preset: 'use',
+		},
+		{
+			grantId: 'g_2',
+			subject: { kind: 'user', handle: 'deleted user', outside: true },
+			preset: 'manage',
+		},
+	])
+})
+
+test('normalizeRun and normalizeAuditEvent read the session DO row shapes', () => {
+	expect(
+		normalizeRun({
+			runId: 'run_1',
+			requester: { userId: 'u_1', handle: null },
+			runOrgId: 'org_1',
+			dispatchedAt: '2026-01-02T03:04:05.000Z',
+			startedAt: null,
+			endedAt: null,
+			durationMs: null,
+			outcome: null,
+			cancelReason: null,
+			fallback: { position: 1, ranOn: 'cloud' },
+		}),
+	).toMatchObject({
+		requester: { userId: 'u_1', handle: 'deleted user' },
+		outcome: 'lost',
+		fallback: { position: 1, ranOn: 'cloud' },
+	})
+	expect(
+		normalizeAuditEvent({
+			id: 7,
+			at: '2026-01-02T03:04:05.000Z',
+			event: 'share_added',
+			actor: { userId: 'u_1', handle: 'jane' },
+			orgId: 'org_1',
+			detail: { grantId: 'g_1' },
+		}),
+	).toEqual({
+		id: '7',
+		action: 'share_added',
+		actor: { label: 'jane' },
+		at: '2026-01-02T03:04:05.000Z',
+		detail: '{"grantId":"g_1"}',
+	})
 })
