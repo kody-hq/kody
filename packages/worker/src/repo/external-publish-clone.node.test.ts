@@ -221,6 +221,28 @@ test('collectFiles keeps PNG magic byte-identical (no UTF-8 replacement)', async
 	]).toEqual([...pngMagic])
 })
 
+test('publish workspace lists binary-only asset files and sizes them by their real bytes', async () => {
+	const png = Uint8Array.from([
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xfe, 0x80, 0x00,
+	])
+	gitMocks.listFiles.mockResolvedValueOnce(['package.json', 'icons/mark.png'])
+	const cloned = await cloneExternalPublishWorkspace({
+		remote: 'https://acct.artifacts.cloudflare.net/git/default/source-repo.git',
+		token: 'art_token',
+		branch: 'main',
+		checkoutCommit: 'commit-head',
+	})
+	await cloned.filesystem.writeFileBytes('/repo/icons/mark.png', png)
+	gitMocks.listFiles.mockResolvedValueOnce(['package.json', 'icons/mark.png'])
+	const listed = await cloned.workspace.glob('repo/**/*')
+	expect(listed.map((file) => file.path)).toContain('/repo/icons/mark.png')
+	// The lossy UTF-8 read is 3 bytes per replaced byte; stat is the truth.
+	await expect(
+		cloned.workspace.stat?.('/repo/icons/mark.png'),
+	).resolves.toEqual({ size: png.byteLength })
+	await expect(cloned.workspace.stat?.('/repo/missing.png')).resolves.toBeNull()
+})
+
 test('checkout of an unknown full SHA is not a clone or backup failure', async () => {
 	const commit = 'fedcba9876543210fedcba9876543210fedcba98'
 	gitMocks.checkout.mockRejectedValueOnce(

@@ -227,6 +227,7 @@ export async function runAuthoringChecksInIsolate(input: {
 	userId: OwnerId
 	baseUrl: string
 	files: Record<string, string>
+	binaryFileSizes?: Record<string, number>
 	sourceId?: string
 	expectedPackageScope?: string
 }): Promise<IsolatedAuthoringChecksOutcome | null> {
@@ -240,7 +241,12 @@ export async function runAuthoringChecksInIsolate(input: {
 	const stagingKey = isolatedCheckStagingKeyForUser(input.userId)
 	await stagingKv.put(
 		stagingKey,
-		JSON.stringify({ sourceFiles: input.files }),
+		JSON.stringify({
+			sourceFiles: input.files,
+			...(input.binaryFileSizes
+				? { binaryFileSizes: input.binaryFileSizes }
+				: {}),
+		}),
 		{ expirationTtl: stagingTtlSeconds },
 	)
 	try {
