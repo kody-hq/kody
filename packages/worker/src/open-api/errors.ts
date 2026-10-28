@@ -55,6 +55,8 @@ export const apiErrorCodes = [
 	'context_not_usable',
 	'no_execution_context_available',
 	'execution_context_unavailable',
+	'execution_context_lease_invalid',
+	'execution_context_access_lost',
 	'not_found',
 	'method_not_allowed',
 	'account_deleting',

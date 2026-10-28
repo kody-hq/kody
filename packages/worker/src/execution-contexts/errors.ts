@@ -12,6 +12,8 @@ export const executionContextErrorCodes = [
 	'no_execution_context_available',
 	'execution_context_unavailable',
 	'insufficient_scope',
+	'execution_context_lease_invalid',
+	'execution_context_access_lost',
 ] as const
 
 export type ExecutionContextErrorCode =

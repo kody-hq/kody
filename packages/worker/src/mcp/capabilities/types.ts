@@ -19,6 +19,7 @@ export type CapabilityOpenApiPrincipal =
 	| { kind: 'token'; token: ApiTokenRecord }
 	| { kind: 'mcp' }
 	| { kind: 'mcp-oauth' }
+	| { kind: 'execution-context-run'; ecid: string; runId: string }
 
 export type CapabilityContext = {
 	env: Env

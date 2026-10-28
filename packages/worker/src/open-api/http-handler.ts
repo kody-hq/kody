@@ -295,6 +295,7 @@ async function handleOperation(input: {
 			// CLIs) and on POST /v1/tokens/device (mint a device kody_at_).
 			// Other Open API ops stay `kody_at_`-only (ADR 0053/0055).
 			allowMcpOauth: operationAllowsCliOauth(matchedOperation),
+			allowExecutionContextLease: isCapabilityProxyOperation(matchedOperation),
 		})
 	} catch (error) {
 		const apiError = toApiError(error)
