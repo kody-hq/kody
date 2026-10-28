@@ -17,6 +17,7 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { setCredentialPlacement } from '#app/credential-placement-mutation.ts'
+import { readFillPlacementOptIn } from '#worker/credentials/fill-placement-opt-ins.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { credentialUpdateCapability } from '#mcp/capabilities/secrets/credential-update.ts'
 import { secretListCapability } from '#mcp/capabilities/secrets/secret-list.ts'
@@ -155,6 +156,23 @@ test('the MCP api tool and the website keep full placement and inject edits', as
 		inject: { kind: 'query', param: 'api_key' },
 		placement: { headers: true, query: true },
 	})
+	// Code-set placement is not an owner opt-in.
+	await expect(
+		readFillPlacementOptIn(t.owner.env.APP_DB, credentialId),
+	).resolves.toEqual({ query: false, path: false, body: false })
+	const unchanged = await setCredentialPlacement({
+		env: t.owner.env,
+		user: {
+			request: t.owner.callerContext.request,
+			mcpUser: t.owner.callerContext.user,
+		} as never,
+		body: { credentialId, placement: { headers: true, query: true } },
+	})
+	expect(unchanged).toMatchObject({ data: { ok: true, changed: false } })
+	// Saving the same placement on the website is the opt-in.
+	await expect(
+		readFillPlacementOptIn(t.owner.env.APP_DB, credentialId),
+	).resolves.toEqual({ query: true, path: false, body: false })
 	const website = await setCredentialPlacement({
 		env: t.owner.env,
 		user: {
@@ -174,4 +192,7 @@ test('the MCP api tool and the website keep full placement and inject edits', as
 		query: true,
 		body: true,
 	})
+	await expect(
+		readFillPlacementOptIn(t.owner.env.APP_DB, credentialId),
+	).resolves.toEqual({ query: true, path: false, body: true })
 })

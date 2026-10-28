@@ -14,8 +14,8 @@ import {
 	readCredentialFillPlacement,
 } from '#worker/credentials/fill-placement.ts'
 import {
-	placementNeedsOptIn,
-	recordOwnerFillPlacementOptIn,
+	ownerFillPlacementOptInStatement,
+	type FillPlacementOptIn,
 } from '#worker/credentials/fill-placement-opt-ins.ts'
 import { assertOptInCredentialValue } from '#worker/credentials/opt-in-credential-value.ts'
 import {
@@ -131,6 +131,11 @@ type SaveSecretInput = SecretOwnerContext &
 		placementOnInsert?: CredentialFillPlacement | null
 		/** How the insert placement was chosen; stored on the row for repair/UI. */
 		placementOriginOnInsert?: CredentialPlacementOrigin | null
+		/**
+		 * Query, path, and body opt-in saved with a new row. Website handlers
+		 * set it (the owner's form, or the source of a move); code never does.
+		 */
+		fillPlacementOptInOnInsert?: FillPlacementOptIn
 		/**
 		 * When set with a package-scope value write, may re-apply the package's
 		 * declared placement onto an untouched headers-only default.
@@ -504,11 +509,11 @@ export async function saveSecret(
 					}
 				: {}),
 		})
+		const optInOnInsert = input.fillPlacementOptInOnInsert
 		if (
 			existingEntry == null &&
-			placementOriginOnInsert === 'owner' &&
-			placementOnInsert !== undefined &&
-			placementNeedsOptIn(placementOnInsert)
+			optInOnInsert &&
+			(optInOnInsert.query || optInOnInsert.path || optInOnInsert.body)
 		) {
 			const insertedId = await readUserSecretEntryId({
 				db: input.env.APP_DB,
@@ -516,11 +521,11 @@ export async function saveSecret(
 				name,
 			})
 			if (insertedId) {
-				await recordOwnerFillPlacementOptIn({
+				await ownerFillPlacementOptInStatement({
 					db: input.env.APP_DB,
 					credentialId: insertedId,
-					placement: placementOnInsert,
-				})
+					optIn: optInOnInsert,
+				}).run()
 			}
 		}
 		if (auditsOrgCredential) {

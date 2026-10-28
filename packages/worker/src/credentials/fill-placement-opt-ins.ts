@@ -40,32 +40,33 @@ export async function readFillPlacementOptIn(
 	return { query: row.query === 1, path: row.path === 1, body: row.body === 1 }
 }
 
-/**
- * Records the owner's opt-in from the website: exactly the query, path, and
- * body parts `placement` lists. Null placement (anywhere) opts in to all three.
- */
-export async function recordOwnerFillPlacementOptIn(input: {
+/** The query, path, and body parts `placement` lists. Null (anywhere) lists all three. */
+export function fillPlacementOptInFromPlacement(
+	placement: CredentialFillPlacement | null,
+): FillPlacementOptIn {
+	return {
+		query: placement === null || placement.query === true,
+		path: placement === null || placement.path === true,
+		body: placement === null || placement.body === true,
+	}
+}
+
+/** One statement that saves `optIn` as the owner's (deleting the row when empty). */
+export function ownerFillPlacementOptInStatement(input: {
 	db: D1Database
 	credentialId: string
-	placement: CredentialFillPlacement | null
+	optIn: FillPlacementOptIn
 	at?: string
 }) {
-	const parts = Object.fromEntries(
-		optInFillPlacementParts.map((part) => [
-			part,
-			input.placement === null || input.placement[part] === true ? 1 : 0,
-		]),
-	) as Record<OptInFillPlacementPart, number>
-	if (!parts.query && !parts.path && !parts.body) {
-		await input.db
+	const { optIn } = input
+	if (!optIn.query && !optIn.path && !optIn.body) {
+		return input.db
 			.prepare(
 				`DELETE FROM credential_fill_placement_opt_ins WHERE credential_id = ?`,
 			)
 			.bind(input.credentialId)
-			.run()
-		return
 	}
-	await input.db
+	return input.db
 		.prepare(
 			`INSERT INTO credential_fill_placement_opt_ins (
 				credential_id, query, path, body, source, updated_at
@@ -79,10 +80,27 @@ export async function recordOwnerFillPlacementOptIn(input: {
 		)
 		.bind(
 			input.credentialId,
-			parts.query,
-			parts.path,
-			parts.body,
+			optIn.query ? 1 : 0,
+			optIn.path ? 1 : 0,
+			optIn.body ? 1 : 0,
 			input.at ?? new Date().toISOString(),
 		)
-		.run()
+}
+
+/**
+ * Records the owner's opt-in from the website: exactly the query, path, and
+ * body parts `placement` lists.
+ */
+export async function recordOwnerFillPlacementOptIn(input: {
+	db: D1Database
+	credentialId: string
+	placement: CredentialFillPlacement | null
+	at?: string
+}) {
+	await ownerFillPlacementOptInStatement({
+		db: input.db,
+		credentialId: input.credentialId,
+		optIn: fillPlacementOptInFromPlacement(input.placement),
+		...(input.at ? { at: input.at } : {}),
+	}).run()
 }

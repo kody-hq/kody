@@ -964,7 +964,7 @@ test('setSecretsAllowedPackages and setSecretsAllowedHosts batch upserts and ski
 	})
 })
 
-test('an owner-saved new credential records its body opt-in; other inserts do not', async () => {
+test('a new credential records the opt-in its website form passes; a copied origin alone grants none', async () => {
 	const { env } = await createSecretEnv()
 	await saveSecret({
 		env,
@@ -974,6 +974,7 @@ test('an owner-saved new credential records its body opt-in; other inserts do no
 		value: 'secret-value',
 		placementOnInsert: { headers: true, body: true },
 		placementOriginOnInsert: 'owner',
+		fillPlacementOptInOnInsert: { query: false, path: false, body: true },
 		audit: null,
 	})
 	await saveSecret({
@@ -983,6 +984,7 @@ test('an owner-saved new credential records its body opt-in; other inserts do no
 		name: 'codeBody',
 		value: 'secret-value',
 		placementOnInsert: { headers: true, body: true },
+		placementOriginOnInsert: 'owner',
 		audit: null,
 	})
 	const owner = await resolveSecret({
