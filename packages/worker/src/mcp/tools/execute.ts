@@ -1,3 +1,9 @@
+import { executionContextsFlagKey } from '#worker/execution-contexts/flag.ts'
+import {
+	type ExecuteRoutingArgs,
+	executeRoutingInputFields,
+	routeExecuteForCaller,
+} from '#worker/execution-contexts/execute-routing.ts'
 import * as Sentry from '@sentry/cloudflare'
 import {
 	type ContentBlock,
@@ -252,6 +258,8 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 		agent.getCallerContext(),
 	)
 	const invokeEnabled = featureFlags[executeInvokeFlagKey] === true
+	const executionContextsEnabled =
+		featureFlags[executionContextsFlagKey] === true
 	agent.server.registerTool(
 		executeTool.name,
 		{
@@ -299,6 +307,7 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 						'Optional idempotency key. Omit it for ordinary calls. If the call is still running at the transport budget, Kody assigns one and returns it with runId. Reuse that key to read the in-progress or retained run instead of starting the mutation again.',
 					),
 				credentials: credentialCallMapSchema.optional(),
+				...(executionContextsEnabled ? executeRoutingInputFields : {}),
 			},
 			annotations: executeTool.annotations,
 		},
@@ -324,7 +333,7 @@ export type ExecuteToolCallArgs = {
 	memoryContext?: z.infer<typeof memoryContextInputField>
 	idempotencyKey?: string
 	credentials?: CredentialCallMapInput
-}
+} & ExecuteRoutingArgs
 
 export async function runExecuteToolCall(input: {
 	env: Env
@@ -727,6 +736,63 @@ export async function runExecuteToolCall(input: {
 				transportFollow: 'running' as const,
 				runId: handle.id,
 				idempotencyKey,
+			}
+		}
+		const routed = await routeExecuteForCaller({
+			env,
+			callerContext,
+			args: input.args,
+			enabled: liveFlags[executionContextsFlagKey] === true,
+			runRecord: claimedRunHandle,
+			code: resolvedModule.entry === 'invoke' ? null : resolvedModule.code,
+			params,
+			conversationId: resolvedConversationId,
+			credentials: normalizedCallMap,
+			waitMs: remainingTransportBudgetMs({
+				startedAtMs: timingStart.startedAtMs,
+			}),
+			signal: activeTransportSignal.signal,
+		})
+		if (routed?.kind === 'cloud' && routed.metadata) {
+			Object.assign(executeRunMetadata, {
+				executionContext: routed.metadata,
+			})
+			if (claimedRunHandle) {
+				claimedRunHandle.context.metadata = {
+					...claimedRunHandle.context.metadata,
+					executionContext: routed.metadata,
+				}
+			}
+		}
+		if (routed?.kind === 'pending') {
+			transportDetached = true
+			const timing = finishToolTiming(timingStart)
+			return buildTransportBudgetFollowResponse({
+				conversationId: resolvedConversationId,
+				timing,
+				runId: routed.runId,
+				idempotencyKey: runRowOwned
+					? (claimedRunHandle?.context.idempotencyKey?.trim() ?? '')
+					: '',
+				memories: null,
+			})
+		}
+		if (routed?.kind === 'ran') {
+			transportDetached = true
+			const timing = finishToolTiming(timingStart)
+			return {
+				content: prependToolMetadataContent(
+					resolvedConversationId,
+					routed.result.content as Array<ContentBlock>,
+				),
+				structuredContent: {
+					...routed.result.structuredContent,
+					conversationId: resolvedConversationId,
+					timing,
+					...(claimedRunHandle ? { runId: claimedRunHandle.id } : {}),
+					executionContext: routed.metadata,
+				},
+				isError: routed.result.isError,
 			}
 		}
 		const admittedWork = (async () => {
