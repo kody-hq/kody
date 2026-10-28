@@ -26,13 +26,13 @@ and package-graph routes.
 
 **Agents already on MCP (do this yourself; never ask a human for a token):**
 call `cliCredentialBootstrap` with a required lifetime (single-task agents use
-`short`). Prefer MCP `execute` with
-`kody.cliCredentialBootstrap({ lifetime: "short" })`, or MCP `api` with
-`operationId: "cliCredentialBootstrap"`. It returns a one-shot `kody_bc_…` code
-and a `cli_command` that already includes lifetime flags (**not** a
-`kody_at_…`). Bootstrap tokens are person-owned (`org_binding: user`); pass
-`?org=<slug>` on API calls to act in a team org (default: personal). Run the
-returned `cli_command` (no second OAuth, no `tokenCreate`):
+`short`). Prefer MCP `api` with `operationId: "cliCredentialBootstrap"` (or the
+capability via search when you need the schema). It returns a one-shot
+`kody_bc_…` code and a `cli_command` that already includes lifetime flags
+(**not** a `kody_at_…`). Bootstrap tokens are person-owned
+(`org_binding: user`); pass `?org=<slug>` on API calls to act in a team org
+(default: personal). Run the returned `cli_command` (no second OAuth, no
+`tokenCreate`):
 
 ```json
 {
@@ -52,13 +52,13 @@ required; missing it fails with the exact flag syntax.
 
 **Default scopes:** bootstrap tokens include local-execute use scopes
 (`org:execute`, `org:read`, and package/integration/secret/email/job/app/memory
-use scopes), plus `package:write` (plain-repo / package pushes) and
-`token:delete` (self-revoke). They do not include `search:read`. When a task
-needs a different set, pass `scopes` when minting. The list replaces the
-defaults, so include every scope you need:
+use scopes), plus `package:write` (plain-repo / package pushes),
+`package:create`, and `token:delete` (self-revoke). They do not include
+`search:read`. When a task needs a different set, pass `scopes` when minting.
+The list replaces the defaults, so include every scope you need:
 
 ```bash
-# Agents on MCP: cliCredentialBootstrap({ lifetime: "short", scopes: ["org:execute", "org:read", "package:execute", "package:read", "package:write"] })
+# Agents on MCP, with the api tool (execute is refused): cliCredentialBootstrap({ lifetime: "short", scopes: ["org:execute", "org:read", "package:execute", "package:read", "package:write"] })
 npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
 
 # After `kody login`, the CLI mints the code itself and stores the token:
@@ -78,6 +78,10 @@ code's scopes are fixed when it is minted.
 ```bash
 npx @kodycodes/cli login   # once
 ```
+
+On a remote VM, NAS, or SSH session, use `npx @kodycodes/cli login --device` and
+approve the printed code from any browser. See
+[Remote or headless machines](../../packages/cli/README.md#remote-or-headless-machines).
 
 **CI / headless only:** scoped `KODY_API_TOKEN` (`kody_at_…` with `org:execute`,
 plus `package:execute` for saved-package imports), usually from MCP `api`
@@ -151,14 +155,13 @@ the Cloudflare Worker upload limit (~100 MiB on Free/Pro). A `Content-Length`
 over that limit returns JSON `413 payload_too_large`. See the
 [CLI streaming gateway-fetch contract](../contributing/contracts/cli-streaming-gateway-fetch.md).
 
-From `@kodycodes/cli` 1.13.1, the CLI's CapabilityProxy client waits up to 7
-minutes for origin's reply, so the gateway's 5-minute deadline is what ends a
-slow fetch, with its own error. Older CLIs stop waiting after Node's default 300
-seconds (`UND_ERR_HEADERS_TIMEOUT`) and need a few seconds of margin. With
-`NODE_USE_ENV_PROXY=1` or `--use-env-proxy`, these requests still go through
-`HTTP_PROXY` / `HTTPS_PROXY`. A `fetch` without placeholders, and a multipart
-upload that does not need fill, goes straight from local workerd and is not
-subject to this deadline.
+The CLI CapabilityProxy client waits up to 7 minutes for origin's reply, so the
+gateway's 5-minute deadline ends a slow fetch, with its own error.
+`@kodycodes/cli` below 1.13.1 hits Node's default 300-second wait
+(`UND_ERR_HEADERS_TIMEOUT`) instead. With `NODE_USE_ENV_PROXY=1` or
+`--use-env-proxy`, these requests still go through `HTTP_PROXY` / `HTTPS_PROXY`.
+A `fetch` without placeholders, and a multipart upload that does not need fill,
+goes straight from local workerd and is not subject to this deadline.
 
 ## Running from a package checkout
 

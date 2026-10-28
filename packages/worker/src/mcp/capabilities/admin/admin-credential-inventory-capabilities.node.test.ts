@@ -76,6 +76,7 @@ const fullReport = {
 			'template-computed': 0,
 			'url-host': 0,
 			unparsed: 0,
+			display: 0,
 			other: 0,
 		},
 		bodyByEndpoint: { login: 0, other: 0, unknown: 0 },

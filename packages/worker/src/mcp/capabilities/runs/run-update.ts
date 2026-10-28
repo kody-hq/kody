@@ -37,6 +37,7 @@ export const runUpdateCapability = defineDomainCapability(
 	capabilityDomainNames.runs,
 	{
 		name: 'runUpdate',
+		contextRuns: 'allow',
 		orgPermission: 'job:write',
 		description:
 			'Mark a retained error run as ignored or resolved (or clear triage back to open) so Activity / runList / runSummary can hide already-handled noise without deleting history. Only error runs accept ignored/resolved; original error details stay intact. Optional note records why. Default runList and runSummary hide ignored/resolved errors — pass error_triage "all", "ignored", or "resolved" on runList to inspect them.',

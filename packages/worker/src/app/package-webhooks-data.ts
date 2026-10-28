@@ -5,6 +5,7 @@ import {
 	listWebhooksForUser,
 	type ListedWebhook,
 } from '#worker/webhooks/service.ts'
+import { boundOrgSlugForUrls } from '#universal/community-links.ts'
 import {
 	type AccountWebhooksLoaderData,
 	type PackageWebhookListItem,
@@ -49,7 +50,6 @@ function toPackageWebhookListItem(
 		instanceLabel: webhook.instanceLabel,
 		handle: webhook.handle,
 		urlHost: webhook.urlHost,
-		enabled: webhook.enabled,
 		approved: webhook.approved,
 		approvalUrl: webhook.approvalUrl,
 		urlRecoverable: webhook.urlRecoverable,
@@ -95,7 +95,7 @@ export async function loadAccountWebhooksData(input: {
 }): Promise<AccountWebhooksLoaderData> {
 	return {
 		ok: true,
-		username: input.user.username,
+		username: boundOrgSlugForUrls(input.user),
 		webhooks: await listWebhookItems(input),
 	}
 }
@@ -109,7 +109,7 @@ export async function loadPackageWebhooksData(input: {
 }): Promise<PackageWebhooksLoaderData> {
 	return {
 		ok: true,
-		username: input.user.username,
+		username: boundOrgSlugForUrls(input.user),
 		kodyId: input.kodyId,
 		webhooks: await listWebhookItems(input),
 	}

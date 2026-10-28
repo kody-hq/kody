@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { assertPackageCanAccessResolvedSecret } from '#mcp/secrets/package-access.ts'
@@ -24,6 +25,7 @@ import {
 	planOptInCredentialFields,
 	toSaveSecretCredential,
 } from './secret-set-opt-in.ts'
+import { saveSealedTokenSecret } from './secret-set-sealed.ts'
 import { secretMetadataSchema, toSecretCapabilityOutput } from './shared.ts'
 
 const secretSetInputSchema = z
@@ -34,7 +36,14 @@ const secretSetInputSchema = z
 			.min(1)
 			.optional()
 			.describe(
-				'Secret value to persist. Required when creating a secret. Optional on updates that only change description or expires_at. Write-only and must never be returned to the caller.',
+				'Secret value to persist. Required when creating a secret. Optional on updates that only change description or expires_at. Write-only and must never be returned to the caller. A sealed token (kody-sealed.…) is refused here; pass it as sealed_token.',
+			),
+		sealed_token: z
+			.string()
+			.min(1)
+			.optional()
+			.describe(
+				'A sealed token this run received, e.g. the {{integration-token:kody-sealed.…}} access_token a token exchange returned. Kody opens it and saves the real token as this user-scope Key, which code never sees. The Key goes only to the hosts the token was minted for (the token endpoint host plus the filling credentials\' exact approved hosts), in a header or the body. Use instead of value; scope must be "user". Refuses a token from another run, an expired one, and a signed JWT.',
 			),
 		description: z
 			.string()
@@ -53,6 +62,34 @@ const secretSetInputSchema = z
 		...optInCredentialInputFields,
 	})
 	.superRefine((value, ctx) => {
+		if (value.sealed_token !== undefined) {
+			const conflicting = (
+				[
+					'value',
+					'provider',
+					'inject',
+					'placement',
+					'kind',
+					'hosts',
+					'login_exchange',
+				] as const
+			).filter((field) => value[field] !== undefined)
+			if (conflicting.length > 0) {
+				ctx.addIssue({
+					code: 'custom',
+					message: `sealed_token sets the value, hosts, and placement from the sealed token; drop ${conflicting.join(', ')}.`,
+					path: ['sealed_token'],
+				})
+			}
+			if (value.scope !== 'user') {
+				ctx.addIssue({
+					code: 'custom',
+					message: 'sealed_token saves a user-scope Key; set scope to "user".',
+					path: ['scope'],
+				})
+			}
+			return
+		}
 		if (
 			(typeof value.value !== 'string' || value.value.length === 0) &&
 			value.description === undefined &&
@@ -77,9 +114,10 @@ export const secretSetCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'secretSet',
+		contextRuns: 'deny',
 		orgPermission: 'secret:write',
 		description:
-			'Create or update a stored secret reference for the signed-in user. Use this for API keys, PATs, webhook HMAC secrets, and other static credentials already available inside trusted execution. Do not persist OAuth access or refresh tokens here — `/connect/oauth` and `createAuthenticatedFetch` / `integrationTokenRefresh` write those on the connection. Optional expires_at is a UTC ISO timestamp or YYYY-MM-DD; null clears expiry. Updates that only change description or expiry may omit value. Optional `placement` sets which request parts placeholders may fill (headers, query, path, body; null = anywhere); new credentials default to headers-only. Distinct from `inject` (scoped credential() client). The gateway does not enforce placement yet. Use `/connect/secret-set` for user-provided API key, PAT, and credential entry or rotation. Host use is authorized through secret policy approvals. Saved secrets are consumed in outbound `fetch` calls by placeholder, e.g. `{{secret:name}}`, resolved only for approved hosts.',
+			'Create or update a stored secret reference for the signed-in user. Use this for API keys, PATs, webhook HMAC secrets, and other static credentials already available inside trusted execution. Do not persist OAuth access or refresh tokens of a connection here — `/connect/oauth` and `createAuthenticatedFetch` / `integrationTokenRefresh` write those on the connection. To keep a long-lived token a token exchange returned sealed (e.g. the Plaid access_token from /item/public_token/exchange), pass it as `sealed_token` instead of `value`: Kody saves the real token, bound to the hosts it was minted for, and code never sees it. Optional expires_at is a UTC ISO timestamp or YYYY-MM-DD; null clears expiry. Updates that only change description or expiry may omit value. Optional `placement` sets which request parts placeholders may fill (headers, query, path, body; null = anywhere); new credentials default to headers-only. Distinct from `inject` (scoped credential() client). The gateway enforces placement; query, path, and body fill only after the owner opts in on the credential page, because the host may store the value. Changing inject or widening placement is website-only from execute (hosted or --local), package, and app code. Use `/connect/secret-set` for user-provided API key, PAT, and credential entry or rotation. Host use is authorized through secret policy approvals. Saved secrets are consumed in outbound `fetch` calls by placeholder, e.g. `{{secret:name}}`, resolved only for approved hosts.',
 		keywords: [
 			'secret',
 			'persist',
@@ -90,6 +128,8 @@ export const secretSetCapability = defineDomainCapability(
 			'expires',
 			'expiry',
 			'placement',
+			'sealed token',
+			'token exchange',
 		],
 		readOnly: false,
 		idempotent: false,
@@ -112,6 +152,22 @@ export const secretSetCapability = defineDomainCapability(
 				scope: parsed.scope,
 				storageContext,
 			})
+			if (parsed.sealed_token !== undefined) {
+				if (authorityPackageId) {
+					throw new McpCallerError(
+						'Package runtimes cannot save a sealed token as a user secret. Save it from execute, where the token exchange ran.',
+					)
+				}
+				const { saved, report } = await saveSealedTokenSecret(ctx, {
+					name: parsed.name,
+					sealedToken: parsed.sealed_token,
+					description: parsed.description,
+					expiresAt: parsed.expires_at,
+					userEmail: user.email,
+					storageContext,
+				})
+				return { ...toSecretCapabilityOutput(saved), ...report }
+			}
 			const optIn = await planOptInCredentialFields(ctx, {
 				input: parsed,
 				authorityPackageId,
@@ -164,6 +220,7 @@ export const secretSetCapability = defineDomainCapability(
 				})
 				saved = await updateUserSecretForPackage({
 					env: ctx.env,
+					audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 					userId: ownerIdFromCaller(ctx.callerContext),
 					userEmail: user.email,
 					packageId: authorityPackageId,
@@ -174,6 +231,10 @@ export const secretSetCapability = defineDomainCapability(
 			} else if (typeof parsed.value === 'string' && parsed.value.length > 0) {
 				saved = await saveSecret({
 					env: ctx.env,
+					audit:
+						parsed.scope === 'user'
+							? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
+							: null,
 					userId: ownerIdFromCaller(ctx.callerContext),
 					userEmail: user.email,
 					scope: parsed.scope,
@@ -190,6 +251,10 @@ export const secretSetCapability = defineDomainCapability(
 			} else {
 				saved = await updateSecret({
 					env: ctx.env,
+					audit:
+						parsed.scope === 'user'
+							? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
+							: null,
 					userId: ownerIdFromCaller(ctx.callerContext),
 					scope: parsed.scope,
 					name: parsed.name,

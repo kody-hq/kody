@@ -1,7 +1,6 @@
 import { type IntegrationConfig } from '#mcp/capabilities/integrations/integration-shared.ts'
 import { type CapabilitySpec } from '#mcp/capabilities/types.ts'
 import { type SecretSearchRow } from '#mcp/secrets/types.ts'
-import { type PackageRetrieverSurfaceResult } from '#worker/package-retrievers/types.ts'
 import {
 	type AuthoredPackageJson,
 	type SavedPackageRecord,
@@ -24,7 +23,6 @@ export const jevSearchRerankOutcomes = [
 	'fallback-empty-after-drop',
 	'skipped-offline',
 	'skipped-no-ai',
-	'skipped-flag-off',
 	'skipped-plan',
 	'skipped-small-pool',
 	'skipped-clear-winner',
@@ -41,7 +39,6 @@ type SearchMatchType =
 	| 'package'
 	| 'integration'
 	| 'secret'
-	| 'retriever_result'
 	| 'domain'
 	| 'mcp-server'
 
@@ -133,7 +130,6 @@ export type SearchResultStructuredContent = {
 		jevRerankMs?: number
 		formattingMs?: number
 		rowAndRegistryLoadMs?: number
-		retrieversMs?: number
 		queryEmbeddingMs?: number
 		capabilityCandidatesMs?: number
 		packageCandidatesMs?: number
@@ -165,8 +161,6 @@ export type SearchResultStructuredContent = {
 		}>
 		suppressedCount: number
 		retrievalQuery: string
-		retrieverResults?: Array<PackageRetrieverSurfaceResult>
-		retrieverWarnings?: Array<string>
 	}
 }
 
@@ -334,20 +328,6 @@ export type SlimSearchMatch =
 			authorization: IntegrationConfig['authorization'] | null
 			nextStep?: string
 	  }
-	| {
-			type: 'retriever_result'
-			id: string
-			title: string
-			summary: string
-			details: string | null
-			source: string
-			url: string | null
-			score: number | null
-			packageId: string
-			kodyId: string
-			retrieverKey: string
-			retrieverName: string
-	  }
 
 export type SearchEntityDetailStructured =
 	| {
@@ -431,10 +411,6 @@ export type SearchEntityDetailStructured =
 				description: string | null
 			}>
 			jobs: Array<{
-				name: string
-			}>
-			retrievers: Array<{
-				key: string
 				name: string
 			}>
 			webhooks: Array<{
@@ -612,6 +588,7 @@ export type SearchEntityDetail =
 			description: string
 			record: SavedPackageRecord
 			manifest: AuthoredPackageJson
+			publishedCommit?: string | null
 			files: Record<string, string>
 			baseUrl: string
 			hostedUrl: string | null
@@ -769,6 +746,3 @@ export type SearchMatch =
 			name: string
 			description: string
 	  }
-	| (PackageRetrieverSurfaceResult & {
-			type: 'retriever_result'
-	  })

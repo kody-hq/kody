@@ -9,6 +9,9 @@
  *   comparison (hand-picked users are selection-biased). Their usage is
  *   aggregated into the separate `override` cohort so dogfood volume stays
  *   visible.
+ * - Users with any `org`-sourced exposure (and no user override) got the
+ *   value from a per-org row: a hand-picked team, so they are also excluded
+ *   from on/off and aggregated into the `orgOverride` cohort.
  * - Users who saw both fair (non-override) values inside the window are
  *   counted as `mixedUsers` and excluded from on/off (month-level usage
  *   cannot be split at the switch without contaminating the later cohort).
@@ -63,6 +66,7 @@ type UserExposureState = {
 	sawOn: boolean
 	sawOff: boolean
 	sawOverride: boolean
+	sawOrg: boolean
 	/** Latest non-override on/off; null when the user only has override rows. */
 	latestFairEnabled: boolean | null
 	latestFairAt: string | null
@@ -138,18 +142,26 @@ function buildReadout(input: {
 	const on = emptyCohort()
 	const off = emptyCohort()
 	const override = emptyCohort()
+	const orgOverride = emptyCohort()
 	let overrideUsers = 0
+	let orgOverrideUsers = 0
 	let mixedUsers = 0
 	const totals = {
 		on: { durationMs: 0 },
 		off: { durationMs: 0 },
 		override: { durationMs: 0 },
+		orgOverride: { durationMs: 0 },
 	}
 	for (const [userId, state] of input.exposuresByUser) {
 		const usage = input.usageByUser.get(userId)
 		if (state.sawOverride) {
 			overrideUsers += 1
 			applyUsageToCohort(override, totals.override, usage)
+			continue
+		}
+		if (state.sawOrg) {
+			orgOverrideUsers += 1
+			applyUsageToCohort(orgOverride, totals.orgOverride, usage)
 			continue
 		}
 		if (state.sawOn && state.sawOff) {
@@ -167,6 +179,7 @@ function buildReadout(input: {
 	finalizeCohort(on, totals.on.durationMs)
 	finalizeCohort(off, totals.off.durationMs)
 	finalizeCohort(override, totals.override.durationMs)
+	finalizeCohort(orgOverride, totals.orgOverride.durationMs)
 	return {
 		status: 'ok',
 		windowStart: input.windowStart,
@@ -175,6 +188,8 @@ function buildReadout(input: {
 		off,
 		override,
 		overrideUsers,
+		orgOverride,
+		orgOverrideUsers,
 		mixedUsers,
 	}
 }
@@ -286,11 +301,14 @@ FORMAT JSON
 			sawOn: false,
 			sawOff: false,
 			sawOverride: false,
+			sawOrg: false,
 			latestFairEnabled: null,
 			latestFairAt: null,
 		}
 		if (row.source === 'override') {
 			state.sawOverride = true
+		} else if (row.source === 'org') {
+			state.sawOrg = true
 		} else {
 			considerFairExposure(state, row.state === 'on', row.last_ts || '')
 		}
@@ -355,11 +373,14 @@ async function loadReadoutFromD1(input: {
 			sawOn: false,
 			sawOff: false,
 			sawOverride: false,
+			sawOrg: false,
 			latestFairEnabled: null,
 			latestFairAt: null,
 		}
 		if (row.source === 'override') {
 			state.sawOverride = true
+		} else if (row.source === 'org') {
+			state.sawOrg = true
 		} else {
 			const at = row.last_updated || row.last_day || ''
 			considerFairExposure(state, row.enabled === 1, at)

@@ -100,8 +100,10 @@ heading that page names. When you write the checklist, open
 `search({ entity: "guide:provider_github#pull-request-readiness" })` — check
 runs, commit statuses, reviews, and `mergeable` are separate reads. Then
 `search({ entity: "guide:package_lifecycle" })` and
-`search({ entity: "guide:package_authoring" })`. Smoke-test from execute, then
-save the package they own.
+`search({ entity: "guide:package_authoring" })`. Smoke-test the module with
+local CLI execute when Node ≥22 and the CLI are available
+(`search({ entity: "guide:local_execute" })`) — that runs the module in a local
+workerd, not hosted `Execute` in Kody's cloud — then save the package they own.
 
 ### Ping me when something needs me
 
@@ -128,7 +130,8 @@ Forwarding mail into Kody is easy (`email.message.received` on
 wake path (cloud agent API, webhook, or wake URL). If the host is local-only
 with no wake API, say so in one sentence and help them pick another option — or
 build the email→event half now and defer the wake. Do not pretend a laptop agent
-will answer mail while it is closed.
+will answer mail while it is closed. `guide:wake_your_agent` picks the wake path
+(MCP Events, a webhook POST, or email) from what this client supports.
 
 ### Trigger Kody from Slack or Raycast
 
@@ -213,8 +216,8 @@ registration. Otherwise the user brings their own app.
 
 Packages use credentials. Credentials stay on the setup page; send the URL and
 wait until they confirm save. List, set, delete, and sign with the secret’s
-name. `secretLock` returns a website Allow link for package access. The grant is
-written when they confirm that page.
+name. `resourceLock({ kind: 'secret', name, package_id })` returns a website
+Allow link for package access. The grant is written when they confirm that page.
 
 Small win: name a credential they already have and store it as a secret, or skip
 if they have none.

@@ -389,7 +389,8 @@ class MailboxBase extends DurableObject<Env> implements MailboxRpc {
 	}
 
 	/**
-	 * Partial authoritative classification update. Equal/newer `updatedAt` only.
+	 * Partial authoritative classification and/or archive update. Equal/newer
+	 * `updatedAt` only.
 	 */
 	async setMessageClassification(
 		input: MailboxSetMessageClassificationInput,

@@ -55,6 +55,8 @@ export type CommunityListingsContentProps = {
 	query: string | null
 	sort?: CommunityListingSort
 	category?: CommunityListingCategory | null
+	/** Org whose installs the badges show; links keep it as `?org=`. */
+	installOrg?: string | null
 }
 
 function formatCount(count: number, noun: string) {
@@ -81,6 +83,7 @@ function renderCommunityBrowseToolbar(input: {
 	visibleCategories: Array<CommunityListingCategory>
 	showCategoryNav: boolean
 	showSort: boolean
+	installOrg: string | null
 }) {
 	if (!input.showCategoryNav && !input.showSort) return null
 	return (
@@ -93,6 +96,7 @@ function renderCommunityBrowseToolbar(input: {
 				>
 					<SiteLink
 						href={buildCommunityIndexHref({
+							installOrg: input.installOrg,
 							query: input.query,
 							sort: input.sort,
 						})}
@@ -105,6 +109,7 @@ function renderCommunityBrowseToolbar(input: {
 						<SiteLink
 							key={category}
 							href={buildCommunityIndexHref({
+								installOrg: input.installOrg,
 								query: input.query,
 								sort: input.sort,
 								category,
@@ -128,6 +133,7 @@ function renderCommunityBrowseToolbar(input: {
 					<div role="group" aria-label="Sort order" css={sortGroupCss}>
 						<SiteLink
 							href={buildCommunityIndexHref({
+								installOrg: input.installOrg,
 								query: input.query,
 								sort: 'best',
 								category: input.category,
@@ -139,6 +145,7 @@ function renderCommunityBrowseToolbar(input: {
 						</SiteLink>
 						<SiteLink
 							href={buildCommunityIndexHref({
+								installOrg: input.installOrg,
 								query: input.query,
 								sort: 'newest',
 								category: input.category,
@@ -159,8 +166,13 @@ function renderCommunityBrowseToolbar(input: {
 function renderCommunityListingCard(
 	listing: PublicCommunityListing,
 	index: number,
-	options?: { showCategory?: boolean },
+	options?: { showCategory?: boolean; installOrg?: string | null },
 ) {
+	const href = getCommunityListingHref({
+		listingId: listing.id,
+		listingName: listing.name,
+		kodyId: listing.kodyId,
+	})
 	return (
 		<li
 			key={listing.id}
@@ -174,11 +186,11 @@ function renderCommunityListingCard(
 				<div css={listingTitleBlockCss}>
 					<h2 css={listingNameCss}>
 						<SiteLink
-							href={getCommunityListingHref({
-								listingId: listing.id,
-								listingName: listing.name,
-								kodyId: listing.kodyId,
-							})}
+							href={
+								options?.installOrg
+									? `${href}?${new URLSearchParams({ org: options.installOrg })}`
+									: href
+							}
 							css={listingLinkCss}
 						>
 							{renderCommunityListingName(listing.name)}
@@ -281,7 +293,7 @@ function renderCommunityListingCard(
 
 function renderCommunityListingGrid(
 	listings: Array<PublicCommunityListing>,
-	options?: { showCategory?: boolean },
+	options?: { showCategory?: boolean; installOrg?: string | null },
 ) {
 	return (
 		<ul css={listingGridCss}>
@@ -338,6 +350,7 @@ export function CommunityListingsContent(props: CommunityListingsContentProps) {
 	const sort = props.sort ?? defaultCommunityListingSort
 	const category = props.category ?? null
 	const groups = props.groups ?? null
+	const installOrg = props.installOrg ?? null
 	const categoryCounts =
 		props.categoryCounts ?? countCommunityListingsByCategory(listings)
 	const visibleCategories = visibleCommunityBrowseCategories({
@@ -358,9 +371,10 @@ export function CommunityListingsContent(props: CommunityListingsContentProps) {
 				visibleCategories,
 				showCategoryNav,
 				showSort,
+				installOrg,
 			})}
 			{listings.length === 0 ? (
-				renderCommunityEmptyState(query, sort, category)
+				renderCommunityEmptyState(query, sort, category, installOrg)
 			) : groups != null && groups.length > 0 ? (
 				<div data-testid="community-listings-overview" css={overviewCss}>
 					{groups.map((group) => {
@@ -390,6 +404,7 @@ export function CommunityListingsContent(props: CommunityListingsContentProps) {
 												query,
 												sort,
 												category: group.category,
+												installOrg,
 											})}
 											css={overviewSeeAllCss}
 										>
@@ -397,13 +412,16 @@ export function CommunityListingsContent(props: CommunityListingsContentProps) {
 										</SiteLink>
 									) : null}
 								</header>
-								{renderCommunityListingGrid(group.listings)}
+								{renderCommunityListingGrid(group.listings, { installOrg })}
 							</section>
 						)
 					})}
 				</div>
 			) : (
-				renderCommunityListingGrid(listings, { showCategory: query != null })
+				renderCommunityListingGrid(listings, {
+					showCategory: query != null,
+					installOrg,
+				})
 			)}
 		</div>
 	)

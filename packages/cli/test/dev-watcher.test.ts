@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
+import chokidar, { type FSWatcher } from 'chokidar'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,7 +9,16 @@ import { createDevWatcher } from '../src/dev/dev-watcher.js'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-test('track detaches the poll map so a concurrent poll cannot echo a rebuild', async () => {
+test('track detaches the poll map so a concurrent poll cannot echo a rebuild', async (t) => {
+	// This contract is about stat polling. Native watch events may arrive after
+	// track finishes, so drive watcher readiness separately from that channel.
+	const nativeWatcher = Object.assign(new EventEmitter(), {
+		close: async () => {},
+	})
+	t.mock.method(chokidar, 'watch', () => {
+		queueMicrotask(() => nativeWatcher.emit('ready'))
+		return nativeWatcher as FSWatcher
+	})
 	const root = await mkdtemp(join(tmpdir(), 'kody-watcher-'))
 	const changes: Array<string> = []
 	try {

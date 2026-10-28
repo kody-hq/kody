@@ -2,7 +2,9 @@ import { expect, test } from 'vitest'
 import {
 	findStartupBudgetViolations,
 	formatStartupTimeResult,
+	isStartupProfilerTimeout,
 	parseStartupProfileSummary,
+	profileStartupWithRetry,
 	resolveStartupTimeCwd,
 	resolveStartupTimeTarget,
 	startupTimeTargets,
@@ -29,6 +31,51 @@ test('parses the wrangler check startup summary block', () => {
 
 test('returns null when the summary block is missing', () => {
 	expect(parseStartupProfileSummary('wrangler exploded')).toBeNull()
+})
+
+test('startup profiling retries timeout measurements but not other errors', async () => {
+	expect(
+		isStartupProfilerTimeout(new Error('Startup profiling timed out')),
+	).toBe(true)
+	expect(
+		isStartupProfilerTimeout(
+			Object.assign(new Error('Command failed'), {
+				stdout: '',
+				stderr: 'wrangler: startup profiling timed out',
+			}),
+		),
+	).toBe(true)
+	expect(isStartupProfilerTimeout(new Error('invalid wrangler config'))).toBe(
+		false,
+	)
+
+	let attempts = 0
+	await expect(
+		profileStartupWithRetry(async () => {
+			attempts += 1
+			if (attempts === 1) throw new Error('Startup profiling timed out')
+			return 'profile'
+		}),
+	).resolves.toBe('profile')
+	expect(attempts).toBe(2)
+
+	attempts = 0
+	await expect(
+		profileStartupWithRetry(async () => {
+			attempts += 1
+			throw new Error('startup profiling timed out')
+		}),
+	).rejects.toThrow('startup profiling timed out')
+	expect(attempts).toBe(3)
+
+	attempts = 0
+	await expect(
+		profileStartupWithRetry(async () => {
+			attempts += 1
+			throw new Error('invalid wrangler config')
+		}),
+	).rejects.toThrow('invalid wrangler config')
+	expect(attempts).toBe(1)
 })
 
 test('origin startup profile runs from the Vite snapshot, not the workspace root', () => {

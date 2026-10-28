@@ -18,6 +18,8 @@ import {
 	copyPromptTooltipCss,
 } from './fork-outdated-copy-button.tsx'
 import { renderIcon, type IconName } from './icon.tsx'
+import { CommunityInstallOrgSelect } from './community-install-org-select.tsx'
+import { type CommunityInstallOrgPicker } from '../use-community-install-org.ts'
 import {
 	getGhostButtonCss,
 	getPillButtonCss,
@@ -32,6 +34,9 @@ const OTHER_ACCOUNT_FORK_TOOLTIP =
 const FORK_LABEL = 'Fork'
 const OPEN_FORK_LABEL = 'Open fork'
 const COPY_SETUP_PROMPT_LABEL = 'Copy setup prompt'
+const FORK_IN_PROGRESS_LABEL = 'Fork in progress'
+const FORK_IN_PROGRESS_TOOLTIP =
+	'Your fork of this package is still being created. This button turns into a link to it when it is ready, so there is no need to fork again.'
 
 const actionIconSize = '1.1em'
 const statusTooltipId = 'package-title-status-tooltip'
@@ -116,6 +121,7 @@ export function renderPackageRepoActions(
 					</span>
 				</SiteLink>
 			) : null}
+			{actions.fork?.loggedIn ? <InstallOrgControl /> : null}
 			{actions.fork ? renderStatusControl(actions.fork) : null}
 			{actions.packageAppHref ? (
 				<a
@@ -243,12 +249,38 @@ function renderSetupPromptControl(
 	})
 }
 
-export const PackageInstallContext = createContext({
+export const PackageInstallContext = createContext<{
+	busy: boolean
+	confirmed: boolean
+	/** A fork the live read found that the page data does not show yet. */
+	existingFork: { targetName: string; href: string } | null
+	/** A fork of this listing for this account is still being created. */
+	inProgress: { startedAt: string } | null
+	onInstall: () => void
+	onDisarm: () => void
+	/** Org picker for the fork target; null when only one org can fork. */
+	orgPicker?: CommunityInstallOrgPicker | null
+}>({
 	busy: false,
 	confirmed: false,
+	existingFork: null,
+	inProgress: null,
 	onInstall: () => {},
 	onDisarm: () => {},
+	orgPicker: null,
 })
+
+function InstallOrgControl() {
+	const install = useContext(PackageInstallContext)
+	if (!install.orgPicker) return null
+	return (
+		<CommunityInstallOrgSelect
+			picker={install.orgPicker}
+			disabled={install.busy}
+			compact
+		/>
+	)
+}
 function renderInstallControl(input: {
 	icon: IconName
 	label: string
@@ -274,11 +306,27 @@ function InstallControl({
 	}
 }) {
 	const install = useContext(PackageInstallContext)
+	if (install.existingFork && !install.busy) {
+		return renderLabeledControl({
+			href: install.existingFork.href,
+			status: 'open',
+			icon: 'arrow-up-right',
+			label: OPEN_FORK_LABEL,
+			tooltip: `Open your fork, ${install.existingFork.targetName}.`,
+			testId: 'package-title-status',
+			primary: true,
+		})
+	}
+	const inProgress = Boolean(install.inProgress) && !install.busy
+	const spinning = install.busy || inProgress
 	const label = install.busy
 		? 'Installing'
-		: install.confirmed
-			? 'Confirm fork'
-			: input.label
+		: inProgress
+			? FORK_IN_PROGRESS_LABEL
+			: install.confirmed
+				? 'Confirm fork'
+				: input.label
+	const tooltip = inProgress ? FORK_IN_PROGRESS_TOOLTIP : input.tooltip
 
 	const shared = {
 		'data-testid': 'community-detail-install',
@@ -289,15 +337,17 @@ function InstallControl({
 		'data-title-idle-tooltip': input.tooltip,
 		'data-community-install': '',
 		'data-trusted': input.trusted ? 'true' : 'false',
+		...(inProgress ? { 'data-fork-in-progress': '' } : {}),
 		'aria-label': label,
 		'aria-describedby': statusTooltipId,
+		'aria-busy': spinning ? true : undefined,
 	}
 	const children = (
 		<>
-			<span data-title-status-icon hidden={install.busy}>
+			<span data-title-status-icon hidden={spinning}>
 				{renderIcon(input.icon, { size: actionIconSize })}
 			</span>
-			<span data-title-status-spinner hidden={!install.busy} css={spinnerCss} />
+			<span data-title-status-spinner hidden={!spinning} css={spinnerCss} />
 			<span data-title-status-label>{label}</span>
 			<span
 				id={statusTooltipId}
@@ -305,9 +355,11 @@ function InstallControl({
 				data-title-status-tooltip
 				aria-hidden="true"
 			>
-				{input.tooltip}
+				{tooltip}
 			</span>
-			<span data-title-status-live aria-live="polite" css={visuallyHiddenCss} />
+			<span data-title-status-live aria-live="polite" css={visuallyHiddenCss}>
+				{inProgress ? FORK_IN_PROGRESS_TOOLTIP : ''}
+			</span>
 		</>
 	)
 	if (!input.loggedIn) {
@@ -326,7 +378,7 @@ function InstallControl({
 			type="button"
 			{...shared}
 			css={packageActionPrimaryCss}
-			disabled={install.busy}
+			disabled={spinning}
 			onClick={install.onInstall}
 			onBlur={install.onDisarm}
 		>

@@ -34,7 +34,6 @@ const originOnlyPathPrefixes = [
 	'packages/worker/src/app/client-entry-assets',
 	'packages/worker/src/blog/posts/',
 	'packages/worker/src/app/handlers/',
-	'packages/worker/src/app/ssr-stubs/',
 	'packages/worker/src/origin-handler',
 	'packages/worker/universal/styles/',
 	'packages/shared/src/backup-',

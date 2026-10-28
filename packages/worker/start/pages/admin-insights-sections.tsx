@@ -1,14 +1,12 @@
 /** @jsxImportSource @emotion/react */
+import { FunnelChart } from '../charts/funnel-chart.tsx'
+import { surfaceCardCss } from '#universal/styles/surface.ts'
 import { type CSSObject } from '@emotion/react'
 import { type ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { cardCss } from '#universal/styles/style-primitives.ts'
-import {
-	chartColor,
-	formatIntegerNumber,
-	formatPercentShare,
-} from '#client/charts/chart-theme.ts'
+import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
 import { formatDynamicWorkerUsd } from '#universal/dynamic-worker-cost.ts'
 import { formatFleetPackageErrorRateConcentration } from '#universal/fleet-package-error-rate-concentration.ts'
 import {
@@ -236,8 +234,8 @@ export function renderEntitlementPressure(
 						display: 'grid',
 						gap: spacing.xs,
 						padding: spacing.sm,
-						borderRadius: '8px',
-						border: `1px solid ${colors.border}`,
+
+						...surfaceCardCss,
 					}}
 				>
 					<div
@@ -314,8 +312,8 @@ function renderPackageErrorRateSummary(input: {
 				display: 'grid',
 				gap: spacing.xs,
 				padding: spacing.sm,
-				borderRadius: '8px',
-				border: `1px solid ${colors.border}`,
+
+				...surfaceCardCss,
 			}}
 		>
 			<span
@@ -522,58 +520,19 @@ export function activationSubtitle(activation: AdminInsightsActivation) {
  * signups, which is the number worth tracking over time.
  */
 export function renderActivationFunnel(activation: AdminInsightsActivation) {
-	const total = activation.steps[0]?.users ?? 0
 	return (
-		<div css={{ display: 'grid', gap: spacing.sm }}>
-			{activation.steps.map((entry) => {
-				const share = total > 0 ? entry.users / total : 0
-				return (
-					<div key={entry.step} css={{ display: 'grid', gap: spacing.xs }}>
-						<div
-							css={{
-								display: 'flex',
-								justifyContent: 'space-between',
-								gap: spacing.sm,
-								fontSize: typography.fontSize.sm,
-								color: colors.text,
-							}}
-						>
-							<span>{activationStepLabels[entry.step]}</span>
-							<span
-								css={{
-									color: colors.textMuted,
-									whiteSpace: 'nowrap',
-									fontVariantNumeric: 'tabular-nums',
-								}}
-							>
-								{formatIntegerNumber(entry.users)} · {formatPercentShare(share)}
-							</span>
-						</div>
-						<div
-							role="img"
-							aria-label={`${activationStepLabels[entry.step]}: ${entry.users} users, ${formatPercentShare(share)} of signups`}
-							css={{
-								height: '10px',
-								borderRadius: '999px',
-								background: colors.border,
-								overflow: 'hidden',
-							}}
-						>
-							<div
-								css={{
-									height: '100%',
-									width: `${Math.round(share * 100)}%`,
-									background:
-										entry.step === 'package_activated'
-											? chartColor.emerald
-											: chartColor.blue,
-								}}
-							/>
-						</div>
-					</div>
-				)
-			})}
-		</div>
+		<FunnelChart
+			ariaLabel="Account activation funnel"
+			steps={activation.steps.map((entry) => ({
+				key: entry.step,
+				label: activationStepLabels[entry.step],
+				users: entry.users,
+				color:
+					entry.step === 'package_activated'
+						? chartColor.emerald
+						: chartColor.blue,
+			}))}
+		/>
 	)
 }
 

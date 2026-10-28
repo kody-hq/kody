@@ -32,6 +32,21 @@ const handlePayloadSchema = z.object({
 	 */
 	ownerCredentialForVisitors: z.literal(true).optional(),
 	needKey: z.string().min(1).max(100).optional(),
+	/**
+	 * Opened as a package app's runs-as person: `actor` is that person, and
+	 * each use re-checks they still run the app.
+	 */
+	runsAs: z.literal(true).optional(),
+	/**
+	 * Opened for a legacy visitor need: each use re-checks the visitor's live
+	 * consent for it.
+	 */
+	visitorNeed: z.string().min(1).max(100).optional(),
+	/**
+	 * Opened on an executor credential: each use re-checks consent and the
+	 * credential mapping on the visitor's live grant.
+	 */
+	executorNeed: z.string().min(1).max(100).optional(),
 	exp: z.number(),
 })
 
@@ -125,6 +140,14 @@ export async function verifyCredentialClientHandle(input: {
 	binding: string | null | undefined
 	/** The run's credential authority, when it has one. */
 	ownerCredentialRequest?: () => Promise<RequestContext | null>
+	/** Package apps: the live runs-as person, for a `runsAs` handle. */
+	runsAsRequest?: () => Promise<RequestContext | null>
+	/** Package apps: the visitor, while their consent covers this need. */
+	visitorNeedRequest?: (needKey: string) => Promise<RequestContext | null>
+	/** Package apps: the visitor grant authorizing this need. */
+	visitorNeedGrant?: (
+		needKey: string,
+	) => Promise<{ request: RequestContext; grantId: string } | null>
 	now?: number
 }): Promise<CredentialClientHandle> {
 	const fail = () => new CredentialClientHandleError()
@@ -162,7 +185,17 @@ export async function verifyCredentialClientHandle(input: {
 	}
 	const request = handle.data.ownerCredentialForVisitors
 		? ((await input.ownerCredentialRequest?.()) ?? null)
-		: input.request
+		: handle.data.runsAs
+			? ((await input.runsAsRequest?.()) ?? null)
+			: handle.data.executorNeed
+				? ((await input.visitorNeedGrant?.(handle.data.executorNeed))
+						?.request ?? null)
+				: handle.data.visitorNeed
+					? ((await input.visitorNeedGrant?.(handle.data.visitorNeed))
+							?.request ??
+						(await input.visitorNeedRequest?.(handle.data.visitorNeed)) ??
+						null)
+					: input.request
 	if (
 		!request?.actor ||
 		handle.data.org !== request.org.id ||

@@ -15,7 +15,10 @@
     "jobs": {
       "heartbeat": {
         "entry": "./src/heartbeat-job.ts",
-        "schedule": "0 * * * *",
+        "schedule": {
+          "type": "interval",
+          "every": "15m"
+        },
         "enabled": false
       }
     },

@@ -56,6 +56,19 @@ import {
 } from '#worker/oauth-grants.ts'
 import { pruneUserClientOAuthGrants } from '#worker/oauth-grant-prune.ts'
 import {
+	cimdFetchFailureLabel,
+	classifyCimdFetchError,
+	rememberCimdLastKnownGood,
+} from '#worker/oauth-cimd-last-known-good.ts'
+import {
+	knownCimdClientKind,
+	normalizeCimdClientId,
+} from '#worker/oauth-known-cimd-clients.ts'
+import {
+	oauthAuthorizeClientFailureMessage,
+	type OAuthAuthorizeClientFailure,
+} from '#universal/oauth-authorize-client-failure.ts'
+import {
 	countConnectedAgentEcosystems,
 	hasSecondConnectedMcpClient,
 } from '#universal/onboarding-agent-ecosystems.ts'
@@ -379,12 +392,104 @@ function isCimdMetadataResolutionError(error: unknown) {
 	)
 }
 
+export type AuthorizeSurface = 'page_load' | 'decision'
+
+/**
+ * `parseAuthRequest` throws this when `lookupClient` returns null: a DCR
+ * client_id with no stored registration (expired, deleted, or never existed).
+ */
+function isMissingClientRegistrationError(error: unknown) {
+	return (
+		error instanceof Error &&
+		error.name === 'AuthorizationError' &&
+		(error as { description?: unknown }).description === 'Invalid client_id'
+	)
+}
+
+/** Requests whose unknown-client outcome was already logged (dedupe). */
+const loggedAuthorizeClientFailures = new WeakSet<Request>()
+
+function cimdFetchClientFailure(error: {
+	metadataUrl: string
+	detail?: unknown
+}): OAuthAuthorizeClientFailure {
+	const failure = classifyCimdFetchError(
+		new Error(typeof error.detail === 'string' ? error.detail : ''),
+	)
+	return {
+		kind: 'metadata_fetch',
+		host: normalizeCimdClientId(error.metadataUrl).host,
+		status: failure.type === 'http' ? failure.status : null,
+		errorType: cimdFetchFailureLabel(failure),
+		client: knownCimdClientKind(error.metadataUrl),
+	}
+}
+
+function authorizeFailureContext(request: Request, env: Env) {
+	return {
+		kodyOrigin: getAppBaseUrl({ env, requestUrl: request.url }),
+		at: new Date().toISOString(),
+	}
+}
+
+/**
+ * One structured log line and one audit row per request for an authorize
+ * request whose client did not resolve. No email or IP; the client_id goes to
+ * the audit row only (like authorize successes), the log carries host and a
+ * normalized path.
+ */
+function logAuthorizeClientFailure(input: {
+	request: Request
+	env: Env
+	clientId: string
+	failure: OAuthAuthorizeClientFailure
+	surface: AuthorizeSurface
+}) {
+	if (loggedAuthorizeClientFailures.has(input.request)) return
+	loggedAuthorizeClientFailures.add(input.request)
+	const cimd =
+		input.failure.kind === 'metadata_fetch'
+			? normalizeCimdClientId(input.clientId)
+			: null
+	const kind = cimd ? 'cimd' : 'dcr'
+	const cimdError =
+		input.failure.kind === 'metadata_fetch' ? input.failure.errorType : null
+	console.info(
+		'oauth-authorize-unknown-client',
+		JSON.stringify({
+			kind,
+			surface: input.surface,
+			...(cimd ? { cimdHost: cimd.host, cimdPath: cimd.path, cimdError } : {}),
+			...(input.request.headers.get('cf-ray')
+				? { requestId: input.request.headers.get('cf-ray') }
+				: {}),
+		}),
+	)
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(input.env),
+		category: 'oauth',
+		action: 'authorize',
+		result: 'failure',
+		// Anonymous page loads reach this, so bound the caller-supplied id.
+		clientId: input.clientId.slice(0, 2048),
+		path: oauthPaths.authorize,
+		reason: cimd
+			? `unknown_client:cimd:${cimdError}:${input.surface}`
+			: `unknown_client:dcr:${input.surface}`,
+	})
+}
+
 async function resolveAuthRequest(
 	helpers: OAuthHelpers,
 	request: Request,
 	env: Env,
-	authorizeUrl?: URL,
-) {
+	authorizeUrl: URL | undefined,
+	surface: AuthorizeSurface,
+): Promise<
+	| { authRequest: AuthRequest; client: ClientInfo }
+	| { error: string; clientFailure?: OAuthAuthorizeClientFailure }
+> {
+	let clientId: string | undefined
 	try {
 		// The provider parser consumes an HTTP authorize request. Keep this adapter
 		// local: sessions, cookies, OIDC and organization checks retain the real request.
@@ -399,9 +504,24 @@ async function resolveAuthRequest(
 					'Invalid OAuth request. Client ID and redirect URI are required.',
 			}
 		}
+		clientId = authRequest.clientId
 		const client = await helpers.lookupClient(authRequest.clientId)
 		if (!client) {
-			return { error: 'Unknown OAuth client.' }
+			const clientFailure: OAuthAuthorizeClientFailure = {
+				kind: 'missing_registration',
+				...authorizeFailureContext(request, env),
+			}
+			logAuthorizeClientFailure({
+				request,
+				env,
+				clientId: authRequest.clientId,
+				failure: clientFailure,
+				surface,
+			})
+			return {
+				error: oauthAuthorizeClientFailureMessage(clientFailure),
+				clientFailure,
+			}
 		}
 		defaultMcpResourceForAuthRequest(authRequest, request, env)
 		// RFC 9207: completeAuthorization only adds `iss` when this field is
@@ -413,8 +533,44 @@ async function resolveAuthRequest(
 		})
 		return { authRequest, client }
 	} catch (error) {
+		if (isMissingClientRegistrationError(error)) {
+			const missingClientId =
+				clientId ??
+				readClientIdFromAuthorizeRequest(request, authorizeUrl) ??
+				'unknown'
+			const clientFailure: OAuthAuthorizeClientFailure = {
+				kind: 'missing_registration',
+				...authorizeFailureContext(request, env),
+			}
+			logAuthorizeClientFailure({
+				request,
+				env,
+				clientId: missingClientId,
+				failure: clientFailure,
+				surface,
+			})
+			return {
+				error: oauthAuthorizeClientFailureMessage(clientFailure),
+				clientFailure,
+			}
+		}
 		if (isCimdMetadataResolutionError(error)) {
-			return { error: 'Unknown OAuth client.' }
+			const cimdError = error as { metadataUrl: string; detail?: unknown }
+			const clientFailure = {
+				...cimdFetchClientFailure(cimdError),
+				...authorizeFailureContext(request, env),
+			}
+			logAuthorizeClientFailure({
+				request,
+				env,
+				clientId: clientId ?? cimdError.metadataUrl,
+				failure: clientFailure,
+				surface,
+			})
+			return {
+				error: oauthAuthorizeClientFailureMessage(clientFailure),
+				clientFailure,
+			}
 		}
 		const message =
 			error instanceof TypeError
@@ -565,6 +721,7 @@ export type OAuthDecisionData = {
 	message?: string
 	requiresOrgChoice?: boolean
 	requiresTwoFactor?: boolean
+	clientFailure?: OAuthAuthorizeClientFailure
 }
 type OAuthDecisionResult = {
 	data: OAuthDecisionData
@@ -937,6 +1094,7 @@ export async function loadOAuthAuthorizeData(
 		request,
 		env,
 		authorizeUrl,
+		'page_load',
 	)
 	if ('error' in resolution) {
 		const { allowClientReset, setCookies } =
@@ -952,6 +1110,9 @@ export async function loadOAuthAuthorizeData(
 				ok: false,
 				error: resolution.error ?? 'Unable to parse OAuth request.',
 				allowClientReset,
+				...(resolution.clientFailure
+					? { clientFailure: resolution.clientFailure }
+					: {}),
 			},
 			setCookies,
 		}
@@ -1080,7 +1241,12 @@ export async function handleAuthorizeInfo(
 	const { data, setCookies } = await loadOAuthAuthorizeData(request, env)
 	if (!data.ok) {
 		return jsonResponse(
-			{ ok: false, error: data.error, allowClientReset: data.allowClientReset },
+			{
+				ok: false,
+				error: data.error,
+				allowClientReset: data.allowClientReset,
+				...(data.clientFailure ? { clientFailure: data.clientFailure } : {}),
+			},
 			{
 				status: 400,
 				headers: createSetCookieHeaders(setCookies),
@@ -1163,7 +1329,13 @@ export async function tryHandleSilentOidcAuthorize(
 	const oidcParamsOrError = parseOidcAuthorizeParams(request)
 	if (isOidcAuthorizeParamsParseError(oidcParamsOrError)) {
 		const helpers = getOAuthHelpers(env)
-		const resolution = await resolveAuthRequest(helpers, request, env)
+		const resolution = await resolveAuthRequest(
+			helpers,
+			request,
+			env,
+			undefined,
+			'page_load',
+		)
 		if (!('error' in resolution)) {
 			const redirectTo = oidcClientErrorRedirect(
 				resolution.authRequest,
@@ -1182,7 +1354,13 @@ export async function tryHandleSilentOidcAuthorize(
 	const oidcParams = oidcParamsOrError
 
 	const helpers = getOAuthHelpers(env)
-	const resolution = await resolveAuthRequest(helpers, request, env)
+	const resolution = await resolveAuthRequest(
+		helpers,
+		request,
+		env,
+		undefined,
+		'page_load',
+	)
 	if ('error' in resolution) {
 		return respondAuthorizeError(
 			request,
@@ -1419,6 +1597,8 @@ export async function tryHandleSilentOidcAuthorize(
 		email: approvedEmail,
 		ip: requestIp,
 	})
+	// An approved CIMD client's live document becomes its last known good copy.
+	await rememberCimdLastKnownGood({ env, clientId: authRequest.clientId })
 	void logAuditEvent({
 		db: auditDatabaseFromEnv(env),
 		category: 'oauth',
@@ -1546,9 +1726,16 @@ export async function decideOAuthAuthorization({
 		request,
 		env,
 		authorizeUrl,
+		'decision',
 	)
 	if ('error' in resolution) {
-		return decisionError(resolution.error ?? 'Unable to process OAuth request.')
+		const result = decisionError(
+			resolution.error ?? 'Unable to process OAuth request.',
+		)
+		if (resolution.clientFailure) {
+			result.data.clientFailure = resolution.clientFailure
+		}
+		return result
 	}
 
 	const { authRequest } = resolution
@@ -1943,6 +2130,7 @@ export async function decideOAuthAuthorization({
 			email: approvedEmail,
 			ip: requestIp,
 		})
+		await rememberCimdLastKnownGood({ env, clientId: authRequest.clientId })
 		void logAuditEvent({
 			db: auditDatabaseFromEnv(env),
 			category: 'oauth',

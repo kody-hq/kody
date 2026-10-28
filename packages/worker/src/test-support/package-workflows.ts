@@ -75,6 +75,13 @@ export const packageWorkflowsRunRecordMocks = (() => {
 				input.lastError === undefined
 					? (existing?.lastError ?? null)
 					: input.lastError,
+			// Insert-only, like the RunLog DO.
+			enqueuedCommit: existing
+				? existing.enqueuedCommit
+				: (input.enqueuedCommit ?? null),
+			sourceRevision: existing
+				? existing.sourceRevision
+				: (input.sourceRevision ?? null),
 		}
 	}
 
@@ -200,16 +207,31 @@ export const packageWorkflowsRunRecordMocks = (() => {
 				limit?: number | null
 				cursor?: string | null
 				status?: string | null
+				statuses?: ReadonlyArray<string> | null
 				bindingName?: string | null
+				id?: string | null
+				packageId?: string | null
+				since?: string | null
 			}) => {
 				const limit = Math.min(Math.max(input.limit ?? 25, 1), 100)
+				const statusSet =
+					!input.status && input.statuses && input.statuses.length > 0
+						? new Set(input.statuses)
+						: null
 				const rows = [...userStore(input.userId).values()]
 					.filter(
 						(row) =>
-							(input.status ? row.status === input.status : true) &&
+							(input.id ? row.id === input.id : true) &&
+							(input.status
+								? row.status === input.status
+								: statusSet
+									? row.status != null && statusSet.has(row.status)
+									: true) &&
 							(input.bindingName
 								? row.bindingName === input.bindingName
-								: true),
+								: true) &&
+							(input.packageId ? row.packageId === input.packageId : true) &&
+							(input.since ? row.createdAt >= input.since : true),
 					)
 					.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
 				return {
@@ -391,6 +413,8 @@ export function createStatefulWorkflowBinding() {
  */
 export function createWorkflowRunsDatabase(options?: {
 	savedPackage?: Record<string, unknown> | null
+	/** Seeds the package's entity source with this published commit. */
+	publishedCommit?: string
 	users?: Array<{
 		email: string
 		plan: string | null
@@ -470,6 +494,24 @@ export function createWorkflowRunsDatabase(options?: {
 				Number(savedPackage['is_private'] ?? 1),
 				String(savedPackage['created_at'] ?? now),
 				String(savedPackage['updated_at'] ?? now),
+			)
+	}
+	if (savedPackage && options?.publishedCommit) {
+		sqlite
+			.prepare(
+				`INSERT INTO entity_sources (
+					id, user_id, entity_kind, entity_id, repo_id, published_commit,
+					indexed_commit, manifest_path, source_root, created_at, updated_at
+				) VALUES (?, ?, 'package', ?, ?, ?, NULL, 'package.json', '/', ?, ?)`,
+			)
+			.run(
+				String(savedPackage['source_id']),
+				String(savedPackage['user_id']),
+				String(savedPackage['id']),
+				`repo-${String(savedPackage['id'])}`,
+				options.publishedCommit,
+				now,
+				now,
 			)
 	}
 	return createD1FromSqlite(sqlite)

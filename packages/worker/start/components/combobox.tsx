@@ -90,7 +90,7 @@ export function Combobox(props: ComboboxProps) {
 		setDraft(option.label)
 		setQuery('')
 		setOpen(false)
-		props.onChange(option.id)
+		if (option.id !== props.value) props.onChange(option.id)
 	}
 	return (
 		<div css={{ display: 'grid', gap: spacing.xs, minWidth: 0 }}>
@@ -116,6 +116,12 @@ export function Combobox(props: ComboboxProps) {
 				placeholder={props.placeholder}
 				autoComplete="off"
 				css={{ ...getSelectCss(), cursor: 'text' }}
+				onClick={() => {
+					if (!open) {
+						setOpen(true)
+						setQuery('')
+					}
+				}}
 				onFocus={() => {
 					setOpen(true)
 					setQuery('')
@@ -176,7 +182,7 @@ export function Combobox(props: ComboboxProps) {
 					margin: 0,
 					boxSizing: 'border-box',
 					padding: spacing.xs,
-					border: `1px solid ${colors.border}`,
+					border: `1px solid ${colors.borderSubtle}`,
 					borderRadius: radius.md,
 					boxShadow: shadows.md,
 					background: colors.surface,

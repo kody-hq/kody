@@ -7,7 +7,7 @@ export type ClaIdentity = {
 	email: string | null
 }
 
-export type ClaSigner = {
+type ClaSigner = {
 	github: string
 	signedAt: string
 	cla: 'individual' | 'entity'
@@ -23,7 +23,7 @@ export type ClaSignersFile = {
 	signers: Array<ClaSigner>
 }
 
-export type ClaMissingIdentity = {
+type ClaMissingIdentity = {
 	identity: ClaIdentity
 	reason: string
 }
@@ -41,6 +41,12 @@ export type ClaRecordResult =
 	| { status: 'recorded'; github: string }
 	| { status: 'already_signed'; github: string }
 	| { status: 'ignored'; reason: 'not_signing_comment' | 'missing_login' }
+
+export type ClaSigningComment = {
+	login: string
+	createdAt: string
+	body: string
+}
 
 function normalize(value: string) {
 	return value.trim().toLowerCase()
@@ -85,29 +91,57 @@ export function parseClaSignersFile(raw: string): ClaSignersFile {
 	return file
 }
 
+// Match the repo formatter (oxfmt: printWidth 80, tabWidth 2): an allowlist
+// array stays on one line only while that line fits; otherwise it expands one
+// value per line, which is what JSON.stringify with tab indent produces.
+const formatterPrintWidth = 80
+const allowlistEntryIndentWidth = 4
+
 function compactStringArray(values: ReadonlyArray<string>) {
 	return `[${values.map((value) => JSON.stringify(value)).join(', ')}]`
+}
+
+function compactAllowlistEntryFits(input: {
+	key: string
+	compact: string
+	trailingComma: boolean
+}) {
+	const width =
+		allowlistEntryIndentWidth +
+		`${JSON.stringify(input.key)}: `.length +
+		input.compact.length +
+		(input.trailingComma ? 1 : 0)
+	return width <= formatterPrintWidth
 }
 
 export function serializeClaSignersFile(file: ClaSignersFile) {
 	const placeholderGithub = '__CLA_ALLOWLIST_GITHUB__'
 	const placeholderEmail = '__CLA_ALLOWLIST_EMAIL__'
+	const compactGithub = compactStringArray(file.allowlist.github)
+	const compactEmail = compactStringArray(file.allowlist.email)
+	const githubFits = compactAllowlistEntryFits({
+		key: 'github',
+		compact: compactGithub,
+		trailingComma: true,
+	})
+	const emailFits = compactAllowlistEntryFits({
+		key: 'email',
+		compact: compactEmail,
+		trailingComma: false,
+	})
 	const indented = JSON.stringify(
 		{
 			...file,
-			allowlist: { github: placeholderGithub, email: placeholderEmail },
+			allowlist: {
+				github: githubFits ? placeholderGithub : file.allowlist.github,
+				email: emailFits ? placeholderEmail : file.allowlist.email,
+			},
 		},
 		null,
 		'\t',
 	)
-		.replace(
-			JSON.stringify(placeholderGithub),
-			compactStringArray(file.allowlist.github),
-		)
-		.replace(
-			JSON.stringify(placeholderEmail),
-			compactStringArray(file.allowlist.email),
-		)
+		.replace(JSON.stringify(placeholderGithub), compactGithub)
+		.replace(JSON.stringify(placeholderEmail), compactEmail)
 	return `${indented}\n`
 }
 
@@ -159,7 +193,38 @@ export function applyIndividualClaSigningComment(input: {
 	}
 }
 
-export function isAllowlistedIdentity(
+export function applyIndividualClaSigningComments(
+	file: ClaSignersFile,
+	comments: ReadonlyArray<ClaSigningComment>,
+): { file: ClaSignersFile; recorded: Array<string> } {
+	let updated = file
+	const recorded: Array<string> = []
+	const recordedLogins = new Set<string>()
+
+	for (const comment of comments) {
+		const result = applyIndividualClaSigningComment({
+			file: updated,
+			github: comment.login,
+			signedAt: comment.createdAt.slice(0, 10),
+			comment: comment.body,
+		})
+		updated = result.file
+		if (result.status !== 'recorded') {
+			continue
+		}
+
+		const login = normalize(result.github)
+		if (recordedLogins.has(login)) {
+			continue
+		}
+		recordedLogins.add(login)
+		recorded.push(result.github)
+	}
+
+	return { file: updated, recorded }
+}
+
+function isAllowlistedIdentity(
 	identity: ClaIdentity,
 	signersFile: ClaSignersFile,
 ) {
@@ -184,10 +249,7 @@ export function isAllowlistedIdentity(
 	)
 }
 
-export function hasSignedCla(
-	identity: ClaIdentity,
-	signersFile: ClaSignersFile,
-) {
+function hasSignedCla(identity: ClaIdentity, signersFile: ClaSignersFile) {
 	const login = identity.githubLogin ? normalize(identity.githubLogin) : null
 	if (!login) {
 		return false
@@ -237,7 +299,8 @@ export function formatClaFailure(
 		'Unsigned contributions cannot merge.',
 		'Read docs/legal/individual-cla.md (or the Entity CLA if an organization owns the work).',
 		'Comment on the pull request: I have read the CLA and I hereby sign the CLA',
-		'The CLA workflow records that GitHub username on main. See docs/contributing/inbound-contributions.md.',
+		'That signing comment on the pull request satisfies this check.',
+		'The signer is recorded on the cla-signatures branch after the pull request merges. See docs/contributing/inbound-contributions.md.',
 		'',
 		'Missing signatures:',
 		...result.missing.map((entry) => `- ${entry.reason}`),
@@ -306,17 +369,63 @@ async function runRecordCli(args: Array<string>) {
 	}
 }
 
-async function runCheckCli(args: Array<string>) {
+async function runRecordCommentsCli(args: Array<string>) {
 	const signersPath = readFlag(args, '--signers')
-	const identitiesPath = readFlag(args, '--identities-json')
+	const commentsPath = readFlag(args, '--record-comments-json')
 
-	if (!signersPath || !identitiesPath) {
+	if (!signersPath || !commentsPath) {
 		throw new Error(
-			'Usage: node tools/ci/check-cla.ts --signers <file> --identities-json <file>',
+			'Usage: node tools/ci/check-cla.ts --signers <file> --record-comments-json <file>',
 		)
 	}
 
-	const signersFile = parseClaSignersFile(await readFile(signersPath, 'utf8'))
+	const current = parseClaSignersFile(await readFile(signersPath, 'utf8'))
+	const commentsRaw: unknown = JSON.parse(await readFile(commentsPath, 'utf8'))
+	if (!Array.isArray(commentsRaw)) {
+		throw new Error('CLA signing comments JSON must be an array')
+	}
+
+	const result = applyIndividualClaSigningComments(
+		current,
+		commentsRaw as Array<ClaSigningComment>,
+	)
+	if (result.recorded.length > 0) {
+		await writeFile(signersPath, serializeClaSignersFile(result.file), 'utf8')
+	}
+
+	console.log(`added=${result.recorded.length > 0}`)
+	console.log(`github=${result.recorded.join(',')}`)
+}
+
+async function runCheckCli(args: Array<string>) {
+	const signersPath = readFlag(args, '--signers')
+	const identitiesPath = readFlag(args, '--identities-json')
+	const signingCommentsPath = readFlag(args, '--signing-comments-json')
+
+	if (
+		!signersPath ||
+		!identitiesPath ||
+		(args.includes('--signing-comments-json') && !signingCommentsPath)
+	) {
+		throw new Error(
+			'Usage: node tools/ci/check-cla.ts --signers <file> --identities-json <file> [--signing-comments-json <file>]',
+		)
+	}
+
+	let signersFile = parseClaSignersFile(await readFile(signersPath, 'utf8'))
+	if (signingCommentsPath) {
+		const commentsRaw: unknown = JSON.parse(
+			await readFile(signingCommentsPath, 'utf8'),
+		)
+		if (!Array.isArray(commentsRaw)) {
+			throw new Error('CLA signing comments JSON must be an array')
+		}
+		signersFile = applyIndividualClaSigningComments(
+			signersFile,
+			commentsRaw as Array<ClaSigningComment>,
+		).file
+	}
+
 	const identitiesRaw: unknown = JSON.parse(
 		await readFile(identitiesPath, 'utf8'),
 	)
@@ -335,6 +444,11 @@ async function runCheckCli(args: Array<string>) {
 }
 
 async function runCli(args: Array<string>) {
+	if (args.includes('--record-comments-json')) {
+		await runRecordCommentsCli(args)
+		return
+	}
+
 	if (args.includes('--record-signer')) {
 		await runRecordCli(args)
 		return

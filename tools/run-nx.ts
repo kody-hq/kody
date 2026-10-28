@@ -1,9 +1,7 @@
 import { spawn } from 'node:child_process'
-import {
-	envWithNodeHeapFloor,
-	isExecutedDirectly,
-	resolveLocalBinary,
-} from './node-runtime.ts'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
+import { envWithNodeHeapFloor, isExecutedDirectly } from './node-runtime.ts'
 import {
 	envWithoutUnusableNxRemoteCache,
 	formatNxRemoteCacheProbe,
@@ -54,19 +52,61 @@ export function isNxRemoteCacheRejected(output: string) {
 }
 
 /**
- * Nx prints `Failed tasks:` only when a task itself failed. That exit stays
- * failed and is not retried. `Tasks stopped before they finished:` means Nx
- * killed work mid-flight (often because the cache aborted the run) and still
- * gets the local retry.
+ * Nx prints `Failed tasks:` when a task itself failed, or when a
+ * post-success remote-cache 404/401 is attributed to that task. The
+ * cache-only case still has a `✔ nx run <task>` line. `Tasks stopped
+ * before they finished:` means Nx killed work mid-flight (often because
+ * the cache aborted the run) and still gets the local retry.
  */
 export function nxRunReportedFailedTasks(output: string) {
 	return stripNxAnsi(output).includes('Failed tasks:')
 }
 
+export function nxFailedTaskNames(output: string) {
+	const plain = stripNxAnsi(output)
+	const marker = 'Failed tasks:'
+	const start = plain.indexOf(marker)
+	if (start === -1) return []
+	const names: Array<string> = []
+	for (const line of plain.slice(start + marker.length).split('\n')) {
+		const trimmed = line.trim()
+		if (trimmed === '') continue
+		const match = /^-\s+(\S+)/.exec(trimmed)
+		const name = match?.[1]
+		if (!name) break
+		names.push(name)
+	}
+	return names
+}
+
+export function nxTaskPrintedSuccess(output: string, task: string) {
+	const escaped = task.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+	return new RegExp(`✔\\s+nx run\\s+${escaped}\\b`).test(stripNxAnsi(output))
+}
+
+/**
+ * Nx can print `Failed tasks:` after a task already succeeded, when the
+ * remote cache then 404s or 401s. That is not a compiler or assertion
+ * failure. A listed task without a success mark stays a real failure.
+ */
+export function nxFailedTasksAreRemoteCacheOnly(output: string) {
+	if (!isNxRemoteCacheDegradableFailure(output)) return false
+	if (!nxRunReportedFailedTasks(output)) return false
+	const plain = stripNxAnsi(output)
+	if (/\berror TS\d+/.test(plain) || plain.includes('AssertionError')) {
+		return false
+	}
+	const names = nxFailedTaskNames(plain)
+	return (
+		names.length > 0 && names.every((name) => nxTaskPrintedSuccess(plain, name))
+	)
+}
+
 export function nxRunReportedTaskFailure(output: string) {
 	const plain = stripNxAnsi(output)
 	return (
-		nxRunReportedFailedTasks(plain) ||
+		(nxRunReportedFailedTasks(plain) &&
+			!nxFailedTasksAreRemoteCacheOnly(plain)) ||
 		plain.includes('Tasks stopped before they finished:')
 	)
 }
@@ -78,8 +118,9 @@ export function isNxRemoteCacheDegradableFailure(output: string) {
 }
 
 export function nxTasksSucceededDespiteRemoteCacheFailure(output: string) {
+	if (!isNxRemoteCacheDegradableFailure(output)) return false
+	if (nxFailedTasksAreRemoteCacheOnly(output)) return true
 	return (
-		isNxRemoteCacheDegradableFailure(output) &&
 		output.includes('Successfully ran target') &&
 		!nxRunReportedTaskFailure(output)
 	)
@@ -115,6 +156,15 @@ function remoteCacheDegradeMessage(
 	}
 }
 
+// Running nx's JS entry with node avoids the Windows `nx.cmd` shim, which
+// needs a shell and breaks on checkout paths with spaces.
+function resolveNxEntry() {
+	const require = createRequire(import.meta.url)
+	const packageJsonPath = require.resolve('nx/package.json')
+	const { bin } = require(packageJsonPath) as { bin: { nx: string } }
+	return join(dirname(packageJsonPath), bin.nx)
+}
+
 /**
  * Stream stdout/stderr to the parent and wait for `close` so the last pipe
  * chunks are captured before cache-failure classification.
@@ -131,7 +181,7 @@ export function spawnNx(
 	const stderr = forwardTo.stderr ?? process.stderr
 	return new Promise((resolve) => {
 		const chunks: Array<string> = []
-		const child = spawn(resolveLocalBinary('nx'), [...args], {
+		const child = spawn(process.execPath, [resolveNxEntry(), ...args], {
 			env: envWithNodeHeapFloor(env ?? process.env),
 			stdio: ['inherit', 'pipe', 'pipe'],
 		})
@@ -320,7 +370,7 @@ async function runNxOnce(input: {
 
 	const combined = `${first.output} ${first.errorMessage}`
 	const kind = nxRemoteCacheFailureKind(combined)
-	if (!kind || nxRunReportedFailedTasks(combined)) {
+	if (!kind) {
 		return { result: first, remote: 'used' }
 	}
 
@@ -330,6 +380,10 @@ async function runNxOnce(input: {
 			result: { ...first, status: 0 },
 			remote: kind === 'rejected' ? 'tolerated-rejection' : 'used',
 		}
+	}
+
+	if (nxRunReportedFailedTasks(combined)) {
+		return { result: first, remote: 'used' }
 	}
 
 	if (!env[nxRemoteCacheServerEnv]) return { result: first, remote: 'used' }

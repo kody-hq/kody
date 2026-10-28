@@ -647,6 +647,78 @@
 		{
 			"filename": "0175-package-app-custom-hostname-auto-check.sql",
 			"sha256": "ed67d65abaabb9a59eb55cf8dc30cd1ff9ef479b7ad1b5eca235f5244f5da684"
+		},
+		{
+			"filename": "0176-credential-allowed-packages-would-block.sql",
+			"sha256": "a28587dad7ad2e43254029a5e6aed50554b273efd37fd72409cea3c7e125075b"
+		},
+		{
+			"filename": "0177-community-fork-claims.sql",
+			"sha256": "89914e509f92644b3be836258334af9bb6db9e4649cdb38127c3dd672024a1b2"
+		},
+		{
+			"filename": "0178-package-app-publisher-authority.sql",
+			"sha256": "9c068be2ab8baaf73d36f92cde603fed959f63fd2068b3c3a19b61ee3ee08585"
+		},
+		{
+			"filename": "0180-webhook-disabled-to-enablement-off.sql",
+			"sha256": "1d99d037083ddbe3b83e5d37d3f73a3d446c6f6c25cdd58163b2608a69af9fa9"
+		},
+		{
+			"filename": "0181-email-spam-archive.sql",
+			"sha256": "bc29602a884b87d31884621109b6815f34d5f2678578a58652bd84b4fb6ed561"
+		},
+		{
+			"filename": "0182-follow-recent-updates.sql",
+			"sha256": "b10290377c7c50356c0555050ff3ed253991c8098f2991c6812cd787512232e9"
+		},
+		{
+			"filename": "0183-package-app-rate-limits.sql",
+			"sha256": "a422b61e272cb5852e5e5bb2a41aa68cf5ff4800f26a705ce5b93ab5bd199a3b"
+		},
+		{
+			"filename": "0184-package-app-visitor-attribution.sql",
+			"sha256": "1dc06bbd7ea0c17e490f3b7c4830d2ceef00276a48ff48efa2693a84fb0e8e77"
+		},
+		{
+			"filename": "0185-package-app-grant-credential-mappings.sql",
+			"sha256": "329a5f8c01ad0aff394ebd9089e3a08d7ef424d14802a8e9074262bf79775788"
+		},
+		{
+			"filename": "0186-platform-feedback-acknowledgement-message-id.sql",
+			"sha256": "3d5df4e50dc8f43c9f54fcaaacfc7bd956a8e879f5e8180b3685db8e9b831a4a"
+		},
+		{
+			"filename": "0187-invite-link-label-last-used-teams.sql",
+			"sha256": "76e1d1039763217904b695d146e39b677d426185a5a990da535bed5b13090d89"
+		},
+		{
+			"filename": "0189-execution-contexts.sql",
+			"sha256": "d520e690a22e4e982270652a3567f78ec1dfaca1b4082a28d0de17843e712fce"
+		},
+		{
+			"filename": "0190-grants-execution-context-resource-type.sql",
+			"sha256": "2ee08874e6fa1e1d7256eb642325d36de682ab1fd71ee910903ff4b47f97028d"
+		},
+		{
+			"filename": "0193-oauth-device-authorizations.sql",
+			"sha256": "f1c7bbbf9a2d164b4601e675547f600ac4d0be26cbda0bc985174f127ebffd78"
+		},
+		{
+			"filename": "0194-package-app-cookie-warnings.sql",
+			"sha256": "a5470e3405f1f379c82d37285e1f6731e8b070e272066166a056039916511f8d"
+		},
+		{
+			"filename": "0195-credential-fill-placement-opt-ins.sql",
+			"sha256": "9c4ae5ee34158ebde5106433f0d5a9a0caf5dfb1b41ae8080c64034cdcb734cd"
+		},
+		{
+			"filename": "0197-feature-flag-org-overrides.sql",
+			"sha256": "01798745f6d47a56ca2c5a3ca9799879afe8d49018288b4f3a3ab03be4790c4c"
+		},
+		{
+			"filename": "0199-sealed-token-fill-placement-opt-in-source.sql",
+			"sha256": "74d251b6ff979b4c4bd444a1ef6609987356df3f9e7ac7ca69362fa931f97830"
 		}
 	]
 }

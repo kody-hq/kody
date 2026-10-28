@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { renderIcon } from './icon.tsx'
 import { type CSSObject } from '@emotion/react'
 import { useEffect, useId, useState, useRef, type ReactNode } from 'react'
 import { writeClipboardText } from '#client/clipboard.ts'
@@ -16,6 +17,7 @@ export const onboardingCopiedConnectActionEvent =
 
 type CopyTextButtonProps = {
 	value: string
+	iconOnly?: boolean
 	idleLabel?: ReactNode
 	copiedLabel?: string
 	class?: string
@@ -158,15 +160,34 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 			// button's own name: `aria-label` overrides the label text, so a named
 			// button would keep reading "Copy package id" after it had copied.
 			aria-describedby={`${id}-copy-status`}
-			css={getCopyButtonCss(props.variant ?? 'primary', props.size)}
+			title={props.ariaLabel ?? 'Copy'}
+			css={
+				props.iconOnly
+					? {
+							...getChipButtonCss(),
+							width: '1.75rem',
+							height: '1.75rem',
+							minHeight: 0,
+							padding: '0.35rem',
+							display: 'grid',
+							placeItems: 'center',
+						}
+					: getCopyButtonCss(props.variant ?? 'primary', props.size)
+			}
 			onClick={(event) => {
 				const source = event.currentTarget
 				void copyValue(source instanceof EventTarget ? source : null)
 			}}
 		>
-			{renderLabel('idle', props.idleLabel ?? 'Copy')}
-			{renderLabel('copied', props.copiedLabel ?? 'Copied')}
-			{renderLabel('error', 'Copy failed')}
+			{props.iconOnly ? (
+				renderIcon(copyState === 'copied' ? 'check' : 'copy', { size: '14' })
+			) : (
+				<>
+					{renderLabel('idle', props.idleLabel ?? 'Copy')}
+					{renderLabel('copied', props.copiedLabel ?? 'Copied')}
+					{renderLabel('error', 'Copy failed')}
+				</>
+			)}
 			<span id={`${id}-copy-status`} role="status" css={visuallyHiddenCss}>
 				{copyState === 'copied'
 					? (props.copiedLabel ?? 'Copied')

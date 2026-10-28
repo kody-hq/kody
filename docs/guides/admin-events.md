@@ -632,8 +632,9 @@ packages, secrets, or Activity.
 
 Password signup, social-login signup, and admin-created person accounts dispatch
 `user.created` after the account row and default `user` role exist. Self-service
-account deletion at `/account` dispatches `user.deleted` after the per-user
-cascade finishes. Creating an org (`orgCreate`) does not emit `user.created`.
+account deletion at `/account` and admin hard-delete dispatch `user.deleted`
+after the per-user cascade finishes. Creating an org (`orgCreate`) does not emit
+`user.created`.
 
 Production fan-out selects only packages whose owners hold the admin role at
 dispatch time. A non-admin package may declare the topic, but it never receives
@@ -673,17 +674,23 @@ type UserDeletedEvent = {
 		username: string
 		email: string
 	}
+	created_at: string
 	deleted_at: string
 }
 ```
 
 `user.id` is the stable account user id. `source` is the create path that
-committed. `attribution` is first-touch marketing UTMs and landing path/referrer
-persisted on the account at signup (all null when absent). Timestamps are
-ISO-8601 UTC. The event omits passwords, roles, plan, secrets, packages, and
-unrelated account content. Notification copies already delivered outside Kody
-cannot be recalled after account deletion. Idempotency keys include the topic,
-user id, timestamp, and package id.
+committed. On `user.deleted`, `created_at` is the account's signup time (read
+from the account row before admin hard-delete removes it), so handlers can
+compare it with `deleted_at` to spot quick deletes. `attribution` is first-touch
+marketing UTMs and landing path/referrer persisted on the account at signup (all
+null when absent). Timestamps are ISO-8601 UTC. `user.deleted` `created_at` is
+normalized from the stored signup value on a best-effort basis: if that value
+cannot be parsed, it is sent unchanged, so handlers should not assume it always
+parses. The event omits passwords, roles, plan, secrets, packages, and unrelated
+account content. Notification copies already delivered outside Kody cannot be
+recalled after account deletion. Idempotency keys include the topic, user id,
+timestamp, and package id.
 
 ## `user.email_verification.failed` (admins)
 

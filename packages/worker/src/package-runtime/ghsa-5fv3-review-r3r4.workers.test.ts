@@ -12,6 +12,7 @@ import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
+import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
 import {
 	buildKodyImportableModuleBundle,
 	buildKodyModuleBundle,
@@ -20,6 +21,7 @@ import {
 	buildPackageAppWorker,
 	createPackageAppCallerContext,
 } from './package-app.ts'
+import { withPackageAppVisitTicket } from './package-app-visit-ticket.ts'
 import { persistPublishedBundleArtifact } from './published-bundle-artifacts.ts'
 import { persistPublishedSourceSnapshot } from './published-runtime-artifacts.ts'
 import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
@@ -41,6 +43,7 @@ async function runSql(sql: string, ...values: Array<unknown>) {
 async function ensureSecretAuthorityTestSchema() {
 	await ensureEntitlementTestSchema(env.APP_DB)
 	await ensureOrgsTestSchema(env.APP_DB)
+	await ensureUsageRollupsTestSchema(env.APP_DB)
 	await runSql(`CREATE TABLE IF NOT EXISTS entity_sources (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
@@ -71,6 +74,17 @@ async function ensureSecretAuthorityTestSchema() {
 		locked_at TEXT,
 		created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 		updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+	)`)
+	await runSql(`CREATE TABLE IF NOT EXISTS package_app_oauth_grants (
+		id TEXT PRIMARY KEY,
+		person_id TEXT NOT NULL,
+		org_username TEXT NOT NULL,
+		kody_id TEXT NOT NULL,
+		scopes TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		revoked_at TEXT,
+		last_used_at TEXT,
+		UNIQUE (person_id, org_username, kody_id)
 	)`)
 	try {
 		await runSql(
@@ -410,6 +424,7 @@ async function setupA(wakeSource: string) {
 		name: 'wakeToken',
 		value: DUMMY_SECRET,
 		storageContext,
+		audit: null,
 	})
 	await setSecretAllowedHosts({
 		env,
@@ -418,6 +433,7 @@ async function setupA(wakeSource: string) {
 		name: 'wakeToken',
 		allowedHosts: ['upstream.example.com'],
 		storageContext,
+		audit: null,
 	})
 	return { userId, wake }
 }
@@ -688,7 +704,10 @@ async function serveApp(userId: string, appSource: string) {
 	})
 	const entrypoint = appWorker.stub.getEntrypoint(appWorker.entrypointName)
 	const response = await entrypoint.fetch(
-		new Request(`https://${username}.packages.isolated.test/`),
+		withPackageAppVisitTicket(
+			new Request(`https://${username}.packages.isolated.test/`),
+			appWorker.visit.ticket,
+		),
 	)
 	const text = await response.text()
 	return { seen, status: response.status, text }

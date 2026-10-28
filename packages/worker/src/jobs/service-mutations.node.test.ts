@@ -127,7 +127,7 @@ test('updateJob syncs the job manager alarm without republishing the package sou
 	})
 	for (const schedule of [
 		every15m,
-		{ type: 'once', runAt: '2026-04-17T15:00:00Z' } as const,
+		{ type: 'interval', every: '1h' } as const,
 	]) {
 		const job = await insertJob(env, callerContext, 'Fixture', schedule)
 		expect(job.schedule).toEqual(schedule)
@@ -230,6 +230,50 @@ test('updateJob clears params, updates timezone, and disables a job', async () =
 	expect(updated.params).toBeUndefined()
 	expect(updated.timezone).toBe('America/Denver')
 	expect(updated.enabled).toBe(false)
+})
+
+test('updateJob saves why a job was turned off and clears it when the job turns back on', async () => {
+	const { env, callerContext, userId } = setup()
+	const created = await insertJob(env, callerContext, 'reasoned-job')
+	const job = { env, callerContext }
+
+	const off = await updateJob({
+		...job,
+		body: {
+			id: created.id,
+			enabled: false,
+			reason: 'Paused for the migration.',
+		},
+	})
+	expect(off.disabledReason).toBe('Paused for the migration.')
+	const stored = await getJob({
+		env,
+		userId: personalOrgId(userId),
+		jobId: created.id,
+	})
+	expect(stored.disabledReason).toBe('Paused for the migration.')
+
+	// An edit that leaves the job off keeps the saved reason.
+	const stillOff = await updateJob({
+		...job,
+		body: { id: created.id, timezone: 'America/Denver' },
+	})
+	expect(stillOff.disabledReason).toBe('Paused for the migration.')
+
+	const on = await updateJob({
+		...job,
+		body: { id: created.id, enabled: true },
+	})
+	expect(on.disabledReason).toBeNull()
+
+	// Turning it off without a reason still says how it happened.
+	const offAgain = await updateJob({
+		...job,
+		body: { id: created.id, enabled: false },
+	})
+	expect(offAgain.disabledReason).toMatch(
+		/^Turned off .+\. No reason was given\.$/,
+	)
 })
 
 test('insertJob refuses a job id that is not a package job', async () => {
@@ -400,10 +444,7 @@ test('getJobInspection reports alarm state, source code, and artifact gaps', asy
 	const { env, callerContext, userId } = setup({
 		BUNDLE_ARTIFACTS_KV: createBundleArtifactsKv(),
 	})
-	const created = await insertJob(env, callerContext, 'Inspect one job', {
-		type: 'once',
-		runAt: '2026-04-20T18:30:00Z',
-	})
+	const created = await insertJob(env, callerContext, 'Inspect one job')
 	const alarm = {
 		bindingAvailable: true,
 		status: 'out_of_sync',

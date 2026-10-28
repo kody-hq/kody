@@ -97,6 +97,7 @@ function makeArtifactHit(artifact: {
 	mainModule: string
 	modules: Record<string, unknown>
 	dependencies?: Array<Record<string, string>>
+	packageBindingRewrite?: number
 }) {
 	return {
 		row: { id: `artifact-${artifact.artifactName}` },
@@ -112,6 +113,9 @@ function makeArtifactHit(artifact: {
 				sourceId: 'source-1',
 			},
 			createdAt: '2026-05-01T00:00:00.000Z',
+			// Current-builder fixtures carry the marker so unmarked multi-package
+			// leftovers are not mistaken for pre-binding bundles under test.
+			packageBindingRewrite: 1,
 			...artifact,
 		},
 	}
@@ -860,6 +864,8 @@ test('a pre-fix multi-package npm artifact that cannot rebuild is still composed
 								packageId: 'pkg-other',
 							},
 						],
+						// Explicitly unmarked: a pre-fix multi-package leftover.
+						packageBindingRewrite: undefined,
 					})
 				: null,
 	)

@@ -36,6 +36,7 @@ import openapiIntegrations from '../../../../docs/guides/openapi-integrations.md
 import packageAuthoring from '../../../../docs/guides/package-authoring.md'
 import organizations from '../../../../docs/guides/organizations.md'
 import packageSharing from '../../../../docs/guides/package-sharing.md'
+import sharedPackages from '../../../../docs/guides/shared-packages.md'
 import packageSkills from '../../../../docs/guides/package-skills.md'
 import packageApps from '../../../../docs/guides/package-apps.md'
 import packageAppCustomDomains from '../../../../docs/guides/package-app-custom-domains.md'
@@ -48,6 +49,7 @@ import apiVersioning from '../../../../docs/guides/api-versioning.md'
 import packagesIntegrationsMcp from '../../../../docs/guides/packages-integrations-mcp.md'
 import packageSubscriptions from '../../../../docs/guides/package-subscriptions.md'
 import mcpEvents from '../../../../docs/guides/mcp-events.md'
+import wakeYourAgent from '../../../../docs/guides/wake-your-agent.md'
 import textYourAgent from '../../../../docs/guides/text-your-agent.md'
 import openmuse from '../../../../docs/guides/openmuse.md'
 import cantOpenOrGetMail from '../../../../docs/guides/cant-open-or-get-mail.md'
@@ -113,11 +115,13 @@ const guideSources: Array<{ slug: string; raw: string }> = [
 	{ slug: 'package-lifecycle', raw: packageLifecycle },
 	{ slug: 'package-authoring', raw: packageAuthoring },
 	{ slug: 'package-sharing', raw: packageSharing },
+	{ slug: 'shared-packages', raw: sharedPackages },
 	{ slug: 'package-skills', raw: packageSkills },
 	{ slug: 'package-apps', raw: packageApps },
 	{ slug: 'package-app-custom-domains', raw: packageAppCustomDomains },
 	{ slug: 'package-subscriptions', raw: packageSubscriptions },
 	{ slug: 'mcp-events', raw: mcpEvents },
+	{ slug: 'wake-your-agent', raw: wakeYourAgent },
 	{ slug: 'heavy-work-offload', raw: heavyWorkOffload },
 	{ slug: 'integration-bootstrap', raw: integrationBootstrap },
 	{ slug: 'oauth', raw: oauth },

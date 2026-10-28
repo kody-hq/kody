@@ -11,14 +11,16 @@ import { type McpReportProgress } from '#mcp/progress.ts'
 export const emptyCapabilityInputSchema = z.object({})
 
 /**
- * When a capability is invoked via the Open API (HTTP or MCP `api`), the
- * authenticated principal. Absent for hosted MCP `execute` / CapabilityProxy.
- * Token principals must not escalate scopes when minting credentials.
+ * When a capability is invoked via the Open API (HTTP, MCP `api`, or the
+ * CapabilityProxy hop behind `execute --local`), the authenticated principal.
+ * Absent for hosted MCP `execute`. Token principals must not escalate scopes
+ * when minting credentials.
  */
 export type CapabilityOpenApiPrincipal =
 	| { kind: 'token'; token: ApiTokenRecord }
 	| { kind: 'mcp' }
 	| { kind: 'mcp-oauth' }
+	| { kind: 'execution-context-run'; ecid: string; runId: string }
 
 export type CapabilityContext = {
 	env: Env
@@ -36,9 +38,25 @@ export type CapabilityContext = {
 	waitUntil?: (promise: Promise<unknown>) => void
 	/** Set only when this capability runs as an Open API operation. */
 	openApiPrincipal?: CapabilityOpenApiPrincipal
+	/**
+	 * Set by the CapabilityProxy when the call is a `kody:runtime` hop from
+	 * `execute --local` code. Host-set, never read from module args, so local
+	 * code cannot clear it. Hosted execute has no `openApiPrincipal`.
+	 */
+	localExecuteHop?: true
+	/** Host-set run binding the fetch gateway checks before filling a sealed token. */
+	credentialClientBinding?: string
 }
 
 export type CapabilityResult = unknown
+
+/**
+ * Whether a run on a registered execution context may call this capability
+ * (ECP 8.2). `deny` covers execute and anything that dispatches or schedules
+ * runs, token, credential and access management, member and team
+ * management, package publish and delete, and execution context management.
+ */
+export type CapabilityContextRunsPolicy = 'allow' | 'deny'
 
 export type CapabilityJsonSchema = JsonSchemaToolDescriptor['inputSchema']
 
@@ -79,6 +97,8 @@ export type CapabilityDefinition<
 	 * concrete resource they touch.
 	 */
 	orgPermission: SurfacePermission
+	/** Required: whether execution context runs may call it. */
+	contextRuns: CapabilityContextRunsPolicy
 	/**
 	 * The capability needs a live person: role, membership, and invite
 	 * changes. It never runs from a triggered run (cron
@@ -123,6 +143,7 @@ export type Capability<TResult = CapabilityResult> = {
 	idempotent: boolean
 	destructive: boolean
 	orgPermission: SurfacePermission
+	contextRuns: CapabilityContextRunsPolicy
 	/** `by-input`: the definition decides per call from the parsed input. */
 	requiresLivePerson: 'always' | 'by-input' | 'never'
 	requiredRole?: RoleName

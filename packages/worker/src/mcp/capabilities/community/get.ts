@@ -25,6 +25,7 @@ export const communityGetCapability = defineDomainCapability(
 	capabilityDomainNames.community,
 	{
 		name: 'communityGet',
+		contextRuns: 'allow',
 		orgPermission: 'search:read',
 		description:
 			'Load full detail for one public package, including untrusted README content and aggregate ratings.',

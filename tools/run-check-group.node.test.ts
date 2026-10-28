@@ -16,6 +16,7 @@ test('runCheckGroup continues after a failure and names every failed member', as
 		'lockfile:check',
 		'overrides:check',
 		'skills-lock:check',
+		'npm-floor:check',
 	])
 	expect(lines.at(-1)).toBe('deps: failed checks: overrides:check')
 })
@@ -38,6 +39,7 @@ test('runCheckGroup treats a thrown spawn error as a failed member and continues
 		'lockfile:check',
 		'overrides:check',
 		'skills-lock:check',
+		'npm-floor:check',
 	])
 	expect(lines).toContain('deps: lockfile:check failed (spawn npm ENOENT)')
 	expect(lines.at(-1)).toBe('deps: failed checks: lockfile:check')

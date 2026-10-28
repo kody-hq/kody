@@ -18,6 +18,7 @@ import { expandSecretPlaceholders } from '#mcp/fetch-gateway.ts'
 import * as secretService from '#mcp/secrets/service.ts'
 import * as integrationCredentials from '#worker/integrations/credentials.ts'
 import * as integrationPackageAccess from '#worker/integrations/package-access.ts'
+import * as integrationsRepo from '#worker/integrations/repo.ts'
 import * as integrationService from '#worker/integrations/service.ts'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import { insertSavedPackage } from '#worker/package-registry/repo.ts'
@@ -28,6 +29,22 @@ import { createTestOrgAuditWriter } from '#worker/test-support/create-audit-db.t
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
+
+// These cases cover fills the owner has opted in to; enforcement of the
+// opt-in itself is covered in fill-placement-enforcement.node.test.ts.
+vi.mock(
+	'#worker/credentials/fill-placement-opt-ins.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<
+			typeof import('#worker/credentials/fill-placement-opt-ins.ts')
+		>()),
+		readFillPlacementOptIn: async () => ({
+			query: true,
+			path: true,
+			body: true,
+		}),
+	}),
+)
 
 const migrationsDirectory = new URL('../../migrations/', import.meta.url)
 
@@ -510,6 +527,14 @@ test('leak: a declared package fills its credentials anywhere on an allowed host
 		app: { apiBaseUrl: 'https://api.resend.com' },
 		connection: { requiredHosts: ['api.resend.com'] },
 	} as never)
+	// A legacy connection (no placement) whose owner opted in to every part.
+	vi.spyOn(
+		integrationCredentials,
+		'findIntegrationCredentialId',
+	).mockResolvedValue(integrationCredentialId)
+	vi.spyOn(integrationsRepo, 'getIntegrationFillPlacement').mockResolvedValue(
+		null,
+	)
 	const { expandAsPackage } = await setupDeclaredPackage({
 		username: 'ownerp',
 		packageName: '@ownerp/mailer',

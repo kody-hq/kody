@@ -30,7 +30,7 @@ test('lockfile peer drift flags a direct dependency npm install would bump', asy
 				},
 			},
 			'node_modules/vite': { version: '8.2.2' },
-			'node_modules/@pitlane/dev/node_modules/plugin': {
+			'node_modules/some-tool/node_modules/plugin': {
 				peerDependencies: { vite: '^7.0.0' },
 			},
 		},

@@ -40,7 +40,6 @@ const { assertKodyDescriptionLength, KODY_DESCRIPTION_MAX_LENGTH } =
 const { McpCallerError } = await import('./caller-error.ts')
 const { requireMcpRequest, requireMcpUser } =
 	await import('./capabilities/meta/require-user.ts')
-const { executeInvokeMissingInputMessage } = await import('./execute-invoke.ts')
 const { PackageSecretAccessDeniedError } =
 	await import('./secrets/package-access.ts')
 const { CommunityActionError } = await import('#worker/community/errors.ts')
@@ -129,6 +128,8 @@ function thrownBy(run: () => unknown) {
 
 const repoSearchMessage =
 	'repoSearch received an invalid regex: Invalid regular expression: /(?s).|^$/gi: Invalid group. mode=regex uses JavaScript RegExp syntax (no inline flags like (?s) or (?i); for dotall matching use [\\s\\S] instead of `.` with (?s)).'
+const repoSearchEmptyPatternMessage =
+	'repoSearch requires a non-empty pattern. Pass literal text or a JavaScript RegExp pattern; whitespace-only patterns are rejected.'
 const packageSaveOverwriteMessage =
 	'packageSave would overwrite existing package source "aa2d1349-5ac2-4b32-8c53-df1ce0a60b37". Set confirm_destructive_overwrite: true only after the user explicitly approves destructive overwrite; Kody will also verify a restorable backup snapshot first.'
 
@@ -266,6 +267,20 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 		),
 		// Invalid repoSearch regex (KODY-CLOUDFLARE-49). Plain Error from DO RPC.
 		handlerFailure('repoSearch', 'repo', 'Error', new Error(repoSearchMessage)),
+		// Blank / whitespace-only repoSearch pattern (KODY-BA). Plain Error
+		// from DO RPC, including the pre-guidance exact phrase.
+		handlerFailure(
+			'repoSearch',
+			'repo',
+			'Error',
+			new Error(repoSearchEmptyPatternMessage),
+		),
+		handlerFailure(
+			'repoSearch',
+			'repo',
+			'Error',
+			new Error('repoSearch requires a non-empty pattern.'),
+		),
 		// Non-fast-forward publish push (KODY-CLOUDFLARE-5M). Plain Error from DO.
 		handlerFailure(
 			'repoPublishSession',
@@ -620,7 +635,9 @@ test('package name, missing-import, execute-input, and description caller errors
 	)
 	expect(descriptionError).toBeInstanceOf(Error)
 	const missingPackage = new SavedPackageNotFoundError('@distilledtom/google')
-	const executeInputError = new McpCallerError(executeInvokeMissingInputMessage)
+	const executeInputError = new McpCallerError(
+		'execute requires `code`: a single ESM module string with a default export.',
+	)
 
 	const callerErrors: Array<McpEvent> = [
 		handlerFailure(

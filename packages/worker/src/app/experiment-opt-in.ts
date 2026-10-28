@@ -8,19 +8,22 @@ import { setFeatureFlagUserOverride } from '#worker/feature-flags/service.ts'
 import {
 	mcpSkillsExtensionFlagKey,
 	mcpEventsExtensionFlagKey,
+	executionContextsFlagKey,
 } from '#universal/feature-flags/registry.ts'
 
 export async function optIntoWebsiteExperiment(input: {
 	env: Env
 	request: Request
 	user: Pick<AuthenticatedAppUser, 'userId' | 'email'>
-	experiment: 'package-skills' | 'mcp-events'
+	experiment: 'package-skills' | 'mcp-events' | 'execution-contexts'
 }) {
 	const { env, request, user, experiment } = input
 	const key =
 		experiment === 'package-skills'
 			? mcpSkillsExtensionFlagKey
-			: mcpEventsExtensionFlagKey
+			: experiment === 'execution-contexts'
+				? executionContextsFlagKey
+				: mcpEventsExtensionFlagKey
 	await setFeatureFlagUserOverride(env.APP_DB, {
 		key,
 		userId: user.userId,

@@ -7,6 +7,7 @@ import {
 	assertMailboxNonEmptyString,
 	assertMailboxProcessingStatus,
 	assertMailboxStorageKind,
+	assertMailboxView,
 	assertOptionalMailboxCanonicalIsoTimestamp,
 	decodeMailboxListCursor,
 	encodeMailboxListCursor,
@@ -31,10 +32,12 @@ import {
 	type MailboxThreadRecord,
 } from './mailbox-types.ts'
 import {
+	emailMessageViewSqlClauses,
 	type EmailClassification,
 	type EmailDeliveryEventType,
 	type EmailDeliveryStatus,
 	type EmailDirection,
+	type EmailMessageView,
 	type EmailProcessingStatus,
 } from './types.ts'
 import { emailAttachmentBlobKey, emailRawMimeKey } from './blob-keys.ts'
@@ -102,6 +105,7 @@ export const mailboxMessageMetadataColumnList = [
 	'sent_at',
 	'created_at',
 	'updated_at',
+	'archived_at',
 ] as const
 
 const mailboxMessageMetadataColumns =
@@ -122,6 +126,7 @@ function buildMailboxMessageFilterClauses(input: {
 	processingStatus?: EmailProcessingStatus | null
 	deliveryStatus?: EmailDeliveryStatus | null
 	classification?: EmailClassification | null
+	view?: EmailMessageView | null
 	query?: string | null
 }): { clauses: Array<string>; params: Array<SqlStorageValue> } {
 	const clauses: Array<string> = ['1 = 1']
@@ -156,6 +161,9 @@ function buildMailboxMessageFilterClauses(input: {
 	if (input.classification) {
 		clauses.push('classification = ?')
 		params.push(assertMailboxClassification(input.classification))
+	}
+	if (input.view) {
+		clauses.push(...emailMessageViewSqlClauses(assertMailboxView(input.view)))
 	}
 	return { clauses, params }
 }
@@ -464,6 +472,10 @@ export class MailboxStore {
 			message.sentAt,
 			'message.sentAt',
 		)
+		const archivedAt = assertOptionalMailboxCanonicalIsoTimestamp(
+			message.archivedAt,
+			'message.archivedAt',
+		)
 		const existing = this.sql
 			.exec<{ updated_at: string }>(
 				`SELECT updated_at FROM email_messages WHERE id = ? LIMIT 1`,
@@ -482,10 +494,10 @@ export class MailboxStore {
 				auth_results, text_body, html_body, raw_mime_key, raw_size,
 				processing_status, classification, classification_reason,
 				provider_message_id, delivery_status, delivery_status_at, error,
-				received_at, sent_at, created_at, updated_at
+				received_at, sent_at, created_at, updated_at, archived_at
 			) VALUES (
 				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+				?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 			)
 			ON CONFLICT(id) DO UPDATE SET
 				direction = excluded.direction,
@@ -511,6 +523,7 @@ export class MailboxStore {
 				processing_status = excluded.processing_status,
 				classification = excluded.classification,
 				classification_reason = excluded.classification_reason,
+				archived_at = excluded.archived_at,
 				provider_message_id = excluded.provider_message_id,
 				delivery_status = CASE
 					WHEN excluded.delivery_status_at IS NULL
@@ -567,6 +580,7 @@ export class MailboxStore {
 			sentAt,
 			createdAt,
 			updatedAt,
+			archivedAt,
 		)
 		return { created: existing == null, accepted: true }
 	}

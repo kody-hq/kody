@@ -9,10 +9,10 @@ import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
 import {
 	authoredPackageJsonSchema,
 	packageCredentialsSchema,
+	packageAppVisitorNeedKeyPattern,
 	webhookDefaultRateLimitPerMinute,
 	type AuthoredPackageJson,
 	type PackageExportTarget,
-	type PackageRetrieverScope,
 	type PackageWebhookChallenge,
 } from './types.ts'
 
@@ -122,6 +122,9 @@ export function parseAuthoredPackageJson(input: {
 		manifestPath: input.manifestPath ?? packageManifestPath,
 		mode: input.mode ?? 'authoring',
 	})
+	if (input.mode === 'published') {
+		parsed = dropRetiredOnceJobs(parsed)
+	}
 	const invalidCredentialSlots =
 		input.mode === 'published' ? splitPublishedCredentials(parsed) : null
 	const result = authoredPackageJsonSchema.safeParse(parsed)
@@ -154,6 +157,22 @@ export function parseAuthoredPackageJson(input: {
 			`Invalid ${input.manifestPath ?? packageManifestPath}:\n${packageAppHostReservedPackageLeafMessage(expectedKodyId)}`,
 		)
 	}
+	// Authoring/publish only: an older snapshot with such a key still loads,
+	// and consent rejects its need:<key> scope when a visitor is asked for it.
+	if ((input.mode ?? 'authoring') === 'authoring') {
+		for (const [name, slot] of Object.entries(
+			manifest.kody.credentials ?? {},
+		)) {
+			if (
+				slot.supplier === 'executor' &&
+				!packageAppVisitorNeedKeyPattern.test(name)
+			) {
+				throw new Error(
+					`Invalid ${input.manifestPath ?? packageManifestPath}:\nkody.credentials.${name} uses supplier: "executor", so its key becomes the consent scope need:${name} and must be lowercase letters, numbers, or hyphens (max 40), e.g. "github".`,
+				)
+			}
+		}
+	}
 	manifest.kody.id = expectedKodyId
 	const authored = manifest as AuthoredPackageJson
 	if (invalidCredentialSlots) {
@@ -183,6 +202,8 @@ const retiredKodyFieldMessages = {
 		'kody.workflows is not a supported field; use workflows.create({ packageId, exportName }) from any runtime context.',
 	services:
 		'kody.services is not a supported field; long-running daemons run on an external process. Use jobs or workflows for exclusive or cancellable background work.',
+	retrievers:
+		'kody.retrievers was removed; package retrievers no longer run during search or context enrichment. Delete the kody.retrievers block (keep the export if other code still calls it).',
 } as const
 
 const retiredPackageAppRuntimeMessage =
@@ -206,6 +227,7 @@ function assertNoRetiredKodyFields(input: {
 	}
 	const record = kody as Record<string, unknown>
 	for (const [field, message] of Object.entries(retiredKodyFieldMessages)) {
+		if (field === 'retrievers' && input.mode === 'published') continue
 		if (field in record) {
 			throw new Error(`Invalid ${input.manifestPath}:\n${message}`)
 		}
@@ -281,6 +303,34 @@ function splitPublishedCredentials(
 	}
 	kody.credentials = Object.fromEntries(valid)
 	return invalid.length > 0 ? Object.fromEntries(invalid) : null
+}
+
+// Retired once schedules are inert at snapshot load; authoring still rejects them via packageJobScheduleSchema.
+function dropRetiredOnceJobs(parsed: unknown): unknown {
+	if (!isPlainRecord(parsed) || !isPlainRecord(parsed.kody)) return parsed
+	const jobs = parsed.kody.jobs
+	if (!isPlainRecord(jobs)) return parsed
+
+	const retainedJobs = Object.fromEntries(
+		Object.entries(jobs).filter(([, job]) => {
+			return !(
+				isPlainRecord(job) &&
+				isPlainRecord(job.schedule) &&
+				job.schedule.type === 'once'
+			)
+		}),
+	)
+	if (Object.keys(retainedJobs).length === Object.keys(jobs).length) {
+		return parsed
+	}
+
+	return {
+		...parsed,
+		kody: {
+			...parsed.kody,
+			jobs: retainedJobs,
+		},
+	}
 }
 
 function assertPackageWebhooks(input: {
@@ -396,6 +446,12 @@ export function getPackageAppAssetsDirectory(manifest: AuthoredPackageJson) {
 		'',
 	)
 	return normalized.length > 0 ? normalized : null
+}
+
+export function getPackageAppClientReadableCookieNames(
+	manifest: AuthoredPackageJson,
+): ReadonlyArray<string> {
+	return manifest.kody.app?.cookies?.clientReadable ?? []
 }
 
 export function listPackageSubscriptions(manifest: AuthoredPackageJson) {
@@ -514,32 +570,6 @@ export function listPackageEmittedEvents(manifest: AuthoredPackageJson) {
 		.sort((left, right) => left.topic.localeCompare(right.topic))
 }
 
-export type PackageRetrieverManifestEntry = {
-	key: string
-	exportName: string
-	name: string
-	description: string
-	scopes: Array<PackageRetrieverScope>
-	timeoutMs: number | null
-	maxResults: number | null
-}
-
-export function listPackageRetrievers(
-	manifest: AuthoredPackageJson,
-): Array<PackageRetrieverManifestEntry> {
-	return Object.entries(manifest.kody.retrievers ?? {})
-		.map(([key, retriever]) => ({
-			key,
-			exportName: normalizePackageExportKey(retriever.export),
-			name: retriever.name,
-			description: retriever.description,
-			scopes: Array.from(new Set(retriever.scopes)).sort(),
-			timeoutMs: retriever.timeoutMs ?? null,
-			maxResults: retriever.maxResults ?? null,
-		}))
-		.sort((left, right) => left.key.localeCompare(right.key))
-}
-
 export function getPackageTags(manifest: AuthoredPackageJson) {
 	return [...(manifest.kody.tags ?? [])]
 }
@@ -595,7 +625,6 @@ export type PackageSearchProjection = {
 		payloadSchema?: Record<string, unknown> | null
 		mcp?: true
 	}>
-	retrievers: Array<PackageRetrieverManifestEntry>
 	webhooks: Array<PackageWebhookManifestEntry>
 }
 
@@ -1576,15 +1605,12 @@ export function buildPackageSearchProjection(
 				schedule:
 					job.schedule.type === 'cron'
 						? `cron:${job.schedule.expression}`
-						: job.schedule.type === 'interval'
-							? `interval:${job.schedule.every}`
-							: `once:${job.schedule.runAt}`,
+						: `interval:${job.schedule.every}`,
 				enabled: job.enabled ?? true,
 			}))
 			.sort((left, right) => left.name.localeCompare(right.name)),
 		subscriptions: listPackageSubscriptions(manifest),
 		emits: listPackageEmittedEvents(manifest),
-		retrievers: listPackageRetrievers(manifest),
 		webhooks: listPackageWebhooks(manifest),
 	}
 }
@@ -1612,17 +1638,6 @@ export function buildPackageSearchDocument(
 	)
 	const emitsLines = (projection.emits ?? []).map((event) =>
 		[`emits:${event.topic}`, event.description]
-			.filter((value) => value.length > 0)
-			.join(' '),
-	)
-	const retrieverLines = projection.retrievers.map((retriever) =>
-		[
-			`retriever:${retriever.key}`,
-			retriever.name,
-			retriever.description,
-			retriever.exportName,
-			...retriever.scopes.map((scope) => `scope:${scope}`),
-		]
 			.filter((value) => value.length > 0)
 			.join(' '),
 	)
@@ -1693,7 +1708,6 @@ export function buildPackageSearchDocument(
 		jobLines.join('\n'),
 		subscriptionLines.join('\n'),
 		emitsLines.join('\n'),
-		retrieverLines.join('\n'),
 		webhookLines.join('\n'),
 		projection.appEntry
 			? `app ${projection.appEntry}`

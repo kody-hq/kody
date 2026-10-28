@@ -1,4 +1,6 @@
+import { executeRoutingInputFields } from '#worker/execution-contexts/execute-routing.ts'
 import { z } from 'zod'
+import { hasRemovedExecuteInvoke } from '#mcp/execute-invoke-removed.ts'
 import { runExecuteToolCall } from '#mcp/tools/execute.ts'
 import {
 	conversationIdInputField,
@@ -16,13 +18,6 @@ const executeCodeFieldDescription =
 
 export const executeHttpInputSchema = z.object({
 	code: z.string().optional().describe(executeCodeFieldDescription),
-	invoke: z
-		.string()
-		.min(1)
-		.optional()
-		.describe(
-			'Published package export to run (`kody:@owner/name/export`). Omit code when this is set.',
-		),
 	params: z
 		.record(z.string(), z.unknown())
 		.optional()
@@ -36,6 +31,7 @@ export const executeHttpInputSchema = z.object({
 		.max(runRecordMaxIdempotencyKeyLength)
 		.optional(),
 	credentials: credentialCallMapSchema.optional(),
+	...executeRoutingInputFields,
 })
 
 export const executeHttpOutputSchema = z.object({
@@ -58,12 +54,20 @@ export const executeOperationDefinition: NativeApiOperationDefinition = {
 	readOnly: false,
 	async handler(params, ctx) {
 		const args = parseNativeInput(executeHttpInputSchema, params)
+		// The removed `invoke` field is not in the schema; forward it so the
+		// runner answers with the equivalent `code` instead of ignoring it.
+		const removedInvoke = hasRemovedExecuteInvoke(params)
+			? { invoke: params.invoke }
+			: {}
+		const startedByLabel =
+			ctx.principal.kind === 'token' ? ctx.principal.token.name : null
 		return runExecuteToolCall({
 			env: ctx.env,
 			callerContext: ctx.callerContext,
 			loopbackExports: ctx.loopbackExports ?? ({} as Cloudflare.Exports),
 			waitUntil: ctx.waitUntil,
-			args,
+			args: { ...args, ...removedInvoke },
+			startedByLabel,
 		})
 	},
 }

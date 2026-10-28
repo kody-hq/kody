@@ -9,6 +9,7 @@ fixtures after `node tools/seed-test-data.ts --local`.
 npm run control-kody -- login
 npm run control-kody -- package-create --origin <preview> --package-name demo-pkg
 npm run control-kody -- request GET /@jane --contains 'Repositories'
+npm run control-kody -- request GET /@jane/-/repositories --contains 'Packages live here too'
 npm run control-kody -- request GET /account/packages.json --contains 'packages'
 ```
 
@@ -20,12 +21,34 @@ limitations.
 
 - Profile / detail: `/@{$username}`, `/@{$username}/$kodyId`,
   `/@{$username}/$kodyId/settings`, `/@{$username}/$kodyId/approve-publish`
+- Forks: `/@{$username}/$kodyId/forks` (public forks plus private ones the
+  viewer can read; the detail Forks count links here and uses the same rule)
 - Raw bytes: `/@{$username}/$kodyId/raw/$ref/$`
 - Org list: `/@{$orgSlug}/-/repositories` (legacy `/@{$orgSlug}/-/packages`
-  301s)
+  301s). Header `New repository` (`data-testid="repositories-new"`) opens
+  `/@{$orgSlug}/-/repositories/new`: owner (personal plus orgs that allow
+  `package:create`) and name, created through `repoCreate`; success shows the
+  agent start prompt (`data-testid="repository-start-prompt"`), `Copy prompt`,
+  and `Open repository`.
 - JSON list: `/account/packages.json`
 - Package header: one primary `Open app` (`data-testid="open-package-app"`).
   Viewers who may run the app get the handoff Open app href under
-  packages/`…`/`open` (self-describing; not a Start route). There is no
-  host-labeled secondary open button (`package-app-origin-link` is not in the
-  title action group).
+  packages/`…`/`open` (self-describing; not a Start route); that handoff prefers
+  a verified app custom hostname over `{username}.kody.run/{name}`. Public
+  readers of an internet-visible app get that same hosted URL directly (custom
+  hostname when verified, else the kody.run subdomain). There is no host-labeled
+  secondary open button (`package-app-origin-link` is not in the title action
+  group).
+
+## Skills viewer
+
+- Reach `/@{$orgSlug}/-/skills` from the Skills sidebar item.
+- Publish two local fixture packages with `skills/<name>/SKILL.md` and at least
+  one supporting Markdown and source file. Use `control-kody execute` against
+  the local mock Artifacts origin to create the fixtures.
+- Check All skills, By package, name/description/package search, and no matches.
+- Open instructions, raw Markdown, and supporting files inside the viewer.
+- Back to skills preserves the search and grouping; direct skill/file URLs load
+  the same selection. Repeat at a narrow viewport.
+- Verify with the MCP skills flag off. A caller without package read access must
+  not see the skill or read its files through a direct selection URL.

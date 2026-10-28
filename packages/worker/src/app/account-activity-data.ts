@@ -1,12 +1,14 @@
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
-	executeEntryMetadataKey,
 	executeWorkerIdMetadataKey,
+	readExecuteEntry,
 	type ExecuteEntry,
-} from '#mcp/execute-invoke.ts'
+} from '#worker/run-records/execute-attribution.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { highlightJsonValue } from '#app/highlight-code.ts'
 import { type ServerTimingEntry } from '#worker/server-timing.ts'
+import { listToggleAudit } from '#worker/jobs/toggle-audit.ts'
+import { type AccountToggleChange } from '#universal/loader-data.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
 import {
 	getRunRecord,
@@ -18,6 +20,7 @@ import {
 	type RunLogLevel,
 	type RunRecord,
 	type RunRecordLog,
+	type RunStartedBy,
 	type RunStatus,
 	type RunSurface,
 	runRecordRetentionDays,
@@ -67,6 +70,7 @@ export type AccountActivityRunListItem = {
 	idempotencyKey: string | null
 	entry: ExecuteEntry | null
 	workerId: string | null
+	startedBy: RunStartedBy | null
 }
 
 export type AccountActivityRunLog = {
@@ -114,6 +118,43 @@ export type AccountActivityLoaderData = {
 	selectedRun: AccountActivityRunDetail | null
 	selectedRunId: string | null
 	retentionDays: number
+	/**
+	 * Recent job and enablement on/off changes (newest first). Owners only:
+	 * null for everyone else, on later pages, and when the read fails.
+	 */
+	toggleChanges: Array<AccountToggleChange> | null
+}
+
+export type { AccountToggleChange }
+
+const toggleChangesLimit = 20
+
+async function loadToggleChanges(input: {
+	env: Env
+	user: AuthenticatedUser
+	orgId: string
+	since: string
+	cursor: string | null
+}): Promise<Array<AccountToggleChange> | null> {
+	if (input.cursor) return null
+	if (input.user.request.membership?.role !== 'owner') return null
+	try {
+		const entries = await listToggleAudit({
+			env: input.env,
+			orgId: input.orgId,
+			since: input.since,
+			limit: toggleChangesLimit,
+		})
+		return entries.map(
+			({ actorUserId: _actorUserId, credentialKind: _kind, ...entry }) => entry,
+		)
+	} catch (error) {
+		console.warn('activity-toggle-changes-failed', {
+			error: error instanceof Error ? error.message : String(error),
+		})
+		// Hide the panel: an empty list would read as "nothing changed".
+		return null
+	}
 }
 
 const accountActivityBasePath = '/account/activity'
@@ -149,14 +190,6 @@ function readMetadataString(
 	return typeof value === 'string' && value.trim() ? value : null
 }
 
-function readExecuteEntry(
-	metadata: Record<string, unknown>,
-): ExecuteEntry | null {
-	const entry = readMetadataString(metadata, executeEntryMetadataKey)
-	if (entry === 'invoke' || entry === 'code') return entry
-	return null
-}
-
 function toListItem(run: RunRecord): AccountActivityRunListItem {
 	return {
 		id: run.id,
@@ -175,6 +208,7 @@ function toListItem(run: RunRecord): AccountActivityRunListItem {
 		idempotencyKey: run.idempotencyKey,
 		entry: readExecuteEntry(run.metadata),
 		workerId: readMetadataString(run.metadata, executeWorkerIdMetadataKey),
+		startedBy: run.startedBy,
 	}
 }
 
@@ -244,7 +278,7 @@ export async function loadAccountActivityData(input: {
 	} = input
 	const since = summarySince(now)
 
-	const [summary, page, selectedRecord] = await Promise.all([
+	const [summary, page, selectedRecord, toggleChanges] = await Promise.all([
 		summarizeRunRecords({
 			env: input.env,
 			userId,
@@ -269,6 +303,13 @@ export async function loadAccountActivityData(input: {
 					runId: selectedRunId,
 				})
 			: Promise.resolve(null),
+		loadToggleChanges({
+			env: input.env,
+			user: input.user,
+			orgId: userId,
+			since,
+			cursor,
+		}),
 	])
 
 	return {
@@ -297,5 +338,6 @@ export async function loadAccountActivityData(input: {
 			: null,
 		selectedRunId,
 		retentionDays: runRecordRetentionDays,
+		toggleChanges,
 	}
 }

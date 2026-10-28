@@ -20,6 +20,7 @@ import {
 	loadLockedSavedPackage,
 	PackagePublishLockedError,
 } from '#worker/package-registry/package-publish-lock.ts'
+import { recordPackageAppPublish } from '#worker/package-runtime/package-app-authority.ts'
 import { repoSessionRpc } from './repo-session-rpc.ts'
 import {
 	buildPublishedSourceSnapshotKvKey,
@@ -213,6 +214,16 @@ export async function syncArtifactSourceSnapshot(
 				source,
 				allowLockedPublish: input.allowLockedPublish,
 			})
+			if (
+				source.entity_kind === 'package' &&
+				input.requestedByUserId !== undefined
+			) {
+				await recordPackageAppPublish({
+					db: input.env.APP_DB,
+					scope: { orgId: source.user_id, packageId: source.entity_id },
+					personId: input.requestedByUserId,
+				})
+			}
 			if (
 				input.bootstrapAccess?.remote &&
 				isLoopbackArtifactsRemote(input.bootstrapAccess.remote) &&
@@ -458,7 +469,7 @@ export async function syncArtifactSourceSnapshot(
 			...(input.credentialNeedsApproved === true
 				? { credentialNeedsApproved: true }
 				: {}),
-			...(input.requestedByUserId
+			...(input.requestedByUserId !== undefined
 				? { requestedByUserId: input.requestedByUserId }
 				: {}),
 			...(input.promotePublished === false ? { promotePublished: false } : {}),

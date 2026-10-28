@@ -11,8 +11,8 @@ import {
 	assertConfiguredIdentity,
 	backupPayload,
 	bindSourceDatabase,
-	configuredSourceDatabases,
 	isBookmarkObjectKey,
+	restExportSourceDatabases,
 	safeLog,
 } from './backup-policy.ts'
 import { type BackupEnvironment } from './backup-types.ts'
@@ -164,7 +164,7 @@ export async function checkFreshness(
 	scheduledAt: Date,
 	apiOptions: ApiOptions = {},
 ): Promise<boolean> {
-	const sources = configuredSourceDatabases(env)
+	const sources = restExportSourceDatabases(env)
 	const results: Array<boolean> = []
 	const errors: Array<unknown> = []
 	for (const source of sources) {

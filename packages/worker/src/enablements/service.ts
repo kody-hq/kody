@@ -1,3 +1,4 @@
+import { type OrgAuditCause } from '#worker/orgs/org-audit.ts'
 /**
  * Enablement writes from people (credentials plan v4, section 3.3). Each
  * person turns triggers on for themselves; nobody enables a trigger for
@@ -18,6 +19,13 @@ import {
 	type ArmJobForEnablementResult,
 } from '#worker/jobs/arm-job-for-enablement.ts'
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
+import { jobsData } from '#worker/jobs/jobs-data.ts'
+import {
+	deliverPlannedEnablementToggle,
+	planEnablementToggle,
+	plannedEnablementToggleStatements,
+	toggleActorFromRequest,
+} from '#worker/jobs/toggle-audit.ts'
 import { resolveSavedPackage } from '#worker/package-invocations/module-artifacts.ts'
 import {
 	listPackageSubscriptions,
@@ -43,7 +51,7 @@ import {
 	buildEnablementInsertedGuardStatement,
 	buildInsertEnablementStatement,
 	buildInsertWebhookEnablementStatement,
-	disableEnablement,
+	buildDisableEnablementStatement,
 	emailSenderEnablementConflictMessage,
 	findLiveEmailSenderEnablement,
 	getEnablementById,
@@ -686,6 +694,69 @@ export async function enableTriggerForCaller(input: {
 	kind: EnablementTriggerKind
 	name: string
 }): Promise<EnablementRecord> {
+	return (await enableTriggerWithJobForCaller(input)).enablement
+}
+
+/**
+ * What turning a cron enablement on did to its job. `left_off` means the job
+ * row is still off because the caller lacks `job:write`; `message` says why
+ * and how to get it.
+ */
+export type EnablementJobOutcome = {
+	jobId: string
+	state: 'armed' | 'already_on' | 'left_off' | 'expired' | 'missing'
+	missingPermission: 'job:write' | null
+	message: string | null
+}
+
+export function jobLeftOffMessage(jobName: string | null) {
+	const job = jobName ? `job "${jobName}"` : 'job'
+	return `The enablement is on, but its ${job} is still off, so it will not run yet. Turning a job on needs job:write (what jobUpdate needs), and you do not hold it in this org. Ask an Owner to grant you job:write (accessGrant on the org), or to turn the job on with jobUpdate.`
+}
+
+function toEnablementJobOutcome(input: {
+	jobId: string
+	jobName: string | null
+	result: ArmJobForEnablementResult | 'left_off'
+}): EnablementJobOutcome {
+	if (input.result === 'left_off') {
+		return {
+			jobId: input.jobId,
+			state: 'left_off',
+			missingPermission: 'job:write',
+			message: jobLeftOffMessage(input.jobName),
+		}
+	}
+	return {
+		jobId: input.jobId,
+		state: input.result,
+		missingPermission: null,
+		message:
+			input.result === 'expired'
+				? 'The enablement is on, but its job passed its expiry time and stays off. Change or clear expiresAt with jobUpdate to run it again.'
+				: input.result === 'missing'
+					? 'The enablement is on, but its job was not found.'
+					: null,
+	}
+}
+
+/**
+ * {@link enableTriggerForCaller} plus what happened to a cron enablement's job,
+ * so a caller without `job:write` learns the job stayed off and why.
+ */
+export async function enableTriggerWithJobForCaller(input: {
+	env: Env
+	baseUrl: string
+	request: RequestContext
+	packageIdOrKodyId: string
+	kind: EnablementTriggerKind
+	name: string
+	/** Set when a package run turns the trigger on. */
+	cause?: OrgAuditCause | null
+}): Promise<{
+	enablement: EnablementRecord
+	job: EnablementJobOutcome | null
+}> {
 	requireActor(input.request)
 	const savedPackage = await resolveOrgPackage({
 		db: input.env.APP_DB,
@@ -722,12 +793,13 @@ export async function enableTriggerForCaller(input: {
 		name: input.name,
 	})
 	if (plan.enablement) {
-		await armCronJobForCallerEnablement({
+		const job = await armCronJobWithOutcome({
 			env: input.env,
 			request: input.request,
 			enablement: plan.enablement,
+			cause: input.cause ?? null,
 		})
-		return plan.enablement
+		return { enablement: plan.enablement, job }
 	}
 	if (input.kind === 'webhook') {
 		const approvalUrl = buildWebhookApprovalUrl({
@@ -745,19 +817,69 @@ export async function enableTriggerForCaller(input: {
 			}; enablementEnable cannot do it.`,
 		)
 	}
-	await runNewEnablementPlans({ db: input.env.APP_DB, plans: [plan] })
+	const toggle = planEnablementToggle({
+		env: input.env,
+		request: input.request,
+		enablement: {
+			id: plan.enablementId,
+			orgId: plan.orgId,
+			triggerKind: plan.kind,
+			triggerName: plan.triggerName,
+			instanceId: plan.instanceId,
+		},
+		from: 'off',
+		to: 'on',
+		cause: input.cause ?? null,
+	})
+	await runNewEnablementPlans({
+		db: input.env.APP_DB,
+		plans: [plan],
+		after: plannedEnablementToggleStatements(toggle),
+	})
+	await deliverPlannedEnablementToggle(toggle)
 	const created = await getEnablementById({
 		db: input.env.APP_DB,
 		orgId: savedPackage.userId,
 		id: plan.enablementId,
 	})
 	if (!created) throw new Error('Unable to read the new enablement.')
-	await armCronJobForCallerEnablement({
+	const job = await armCronJobWithOutcome({
 		env: input.env,
 		request: input.request,
 		enablement: created,
+		cause: input.cause ?? null,
 	})
-	return created
+	return { enablement: created, job }
+}
+
+async function armCronJobWithOutcome(input: {
+	env: Env
+	request: RequestContext
+	enablement: EnablementRecord
+	cause?: OrgAuditCause | null
+}): Promise<EnablementJobOutcome | null> {
+	const result = await armCronJobForCallerEnablement(input)
+	if (result === 'not_applicable') return null
+	const jobId = input.enablement.instanceId
+	const row = await jobsData(input.env).getJobById({
+		userId: input.enablement.orgId,
+		jobId,
+	})
+	if (result === 'not_permitted') {
+		// The job:write gate stays. Only explain it when the job is actually off.
+		if (!row)
+			return toEnablementJobOutcome({ jobId, jobName: null, result: 'missing' })
+		return toEnablementJobOutcome({
+			jobId,
+			jobName: row.record.name,
+			result: row.record.enabled ? 'already_on' : 'left_off',
+		})
+	}
+	return toEnablementJobOutcome({
+		jobId,
+		jobName: row?.record.name ?? null,
+		result,
+	})
 }
 
 /**
@@ -771,6 +893,8 @@ export async function armCronJobForCallerEnablement(input: {
 	env: Env
 	request: RequestContext
 	enablement: EnablementRecord
+	/** Set when a package run turned the enablement on. */
+	cause?: OrgAuditCause | null
 }): Promise<ArmJobForEnablementResult | 'not_permitted' | 'not_applicable'> {
 	const { enablement } = input
 	if (enablement.triggerKind !== 'cron' || enablement.state !== 'on') {
@@ -785,6 +909,9 @@ export async function armCronJobForCallerEnablement(input: {
 		env: input.env,
 		orgId: enablement.orgId,
 		jobId: enablement.instanceId,
+		actor: toggleActorFromRequest(input.request),
+		enablementId: enablement.id,
+		cause: input.cause ?? null,
 	})
 }
 
@@ -822,6 +949,10 @@ export async function disableEnablementForCaller(input: {
 	env: Env
 	request: RequestContext
 	enablementId: string
+	/** Why it was turned off, recorded in the org audit log. */
+	reason?: string | null
+	/** Set when a package run turns the trigger off. */
+	cause?: OrgAuditCause | null
 }): Promise<EnablementRecord> {
 	const actor = requireActor(input.request)
 	const db = input.env.APP_DB
@@ -843,7 +974,21 @@ export async function disableEnablementForCaller(input: {
 		// Someone else's enablement is invisible to non-Owners.
 		if (!access.isOwner) throw notFound
 	}
-	await disableEnablement({ db, orgId, id: enablement.id })
+	const toggle = planEnablementToggle({
+		env: input.env,
+		request: input.request,
+		enablement,
+		from: enablement.state,
+		to: 'off',
+		reason: input.reason,
+		cause: input.cause ?? null,
+	})
+	// The audit row commits with the turn-off and only when it changed a row.
+	await db.batch([
+		buildDisableEnablementStatement({ db, orgId, id: enablement.id }),
+		...plannedEnablementToggleStatements(toggle, { onlyIfChanged: true }),
+	])
+	await deliverPlannedEnablementToggle(toggle)
 	const updated = await getEnablementById({ db, orgId, id: enablement.id })
 	if (!updated) throw notFound
 	return updated

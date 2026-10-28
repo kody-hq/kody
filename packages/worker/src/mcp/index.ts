@@ -34,6 +34,7 @@ export type State = {
 	onboardingNoticeConversationIds?: Array<string>
 	onboardingNoticeLastShownAtMs?: number
 	rawFetchHostNudges?: RawFetchHostNudgeState
+	preferLocalExecuteNudgeConversationIds?: Array<string>
 }
 export type Props = McpServerProps
 

@@ -5,6 +5,11 @@ import { requestHasSessionCookie } from '#app/anonymous-html-cache.ts'
 import { redirectToLoginWhenUnauthenticated } from '#app/auth-redirect.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
+import { readPackageAppSession } from '#app/package-app-session.ts'
+import {
+	authorizePackageAppVisitorForOrg,
+	resolvePackageAppIdentityOnlyVisitor,
+} from '#app/package-app-origin.ts'
 import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
@@ -98,9 +103,15 @@ async function handleTaggedPackageAppRequest(
 		lookup: slugLookup,
 		requestUrl: request.url,
 	})
+	// Mirrors the app origin: a signed-in person who cannot run the app is
+	// served anonymously plus identity while they hold a live grant for it.
 	const serveAnonymously =
 		org && approvedPublishedCommit
-			? async () =>
+			? async (
+					identity: Awaited<
+						ReturnType<typeof resolvePackageAppIdentityOnlyVisitor>
+					> = null,
+				) =>
 					applyPackageAppCacheHeaders(
 						await servePackageAppRequest({
 							request,
@@ -113,11 +124,62 @@ async function handleTaggedPackageAppRequest(
 								displayName: org.displayName,
 							},
 							visitor: null,
+							identity,
 							approvedPublishedCommit,
 						}),
-						'anonymous',
+						identity ? 'signed-in' : 'anonymous',
 					)
 			: null
+	const packageAppSession = await readPackageAppSession({
+		request,
+		env,
+		slug: packagePath.kodyId,
+	})
+	if (packageAppSession) {
+		const authorized = await authorizePackageAppVisitorForOrg({
+			env,
+			stableUserId: packageAppSession.session.stableUserId,
+			issuedAt: packageAppSession.issuedAt,
+			handle: packagePath.username,
+			kodyId: packagePath.kodyId,
+		})
+		if (authorized.kind === 'ok') {
+			const response = await servePackageAppRequest({
+				request,
+				env,
+				packagePath,
+				owner: authorized.owner,
+				visitor: authorized.visitor,
+			})
+			return applyPackageAppCacheHeaders(response, 'signed-in')
+		}
+		if (serveAnonymously) {
+			const identity = await resolvePackageAppIdentityOnlyVisitor({
+				env,
+				authorized,
+				handle: packagePath.username,
+				packagePath,
+				kodyId: slugLookup?.savedPackage.kodyId,
+			}).catch((error: unknown) => {
+				console.warn('package-app-identity-lookup-failed', error)
+				return null
+			})
+			return await serveAnonymously(identity)
+		}
+		if (authorized.kind === 'forbidden') {
+			return new Response(null, {
+				status: 302,
+				headers: {
+					Location: buildPackagePagePath({
+						username: packagePath.username,
+						kodyId: packagePath.kodyId,
+					}),
+					'Cache-Control': 'no-store',
+				},
+			})
+		}
+		return redirectToLoginWhenUnauthenticated(request, env)
+	}
 	const user = await readAuthenticatedAppUser(request, env)
 	if (!user) {
 		if (serveAnonymously) return await serveAnonymously()
@@ -140,7 +202,26 @@ async function handleTaggedPackageAppRequest(
 		appId: slugLookup?.savedPackage.id ?? null,
 	})
 	if (!canExecute) {
-		if (serveAnonymously) return await serveAnonymously()
+		if (serveAnonymously) {
+			const username = user.mcpUser.username
+			const identity = username
+				? await resolvePackageAppIdentityOnlyVisitor({
+						env,
+						authorized: {
+							kind: 'forbidden',
+							visitorEmail: '',
+							person: { userId: user.mcpUser.userId, username },
+						},
+						handle: packagePath.username,
+						packagePath,
+						kodyId: slugLookup?.savedPackage.kodyId,
+					}).catch((error: unknown) => {
+						console.warn('package-app-identity-lookup-failed', error)
+						return null
+					})
+				: null
+			return await serveAnonymously(identity)
+		}
 		return new Response(null, {
 			status: 302,
 			headers: {

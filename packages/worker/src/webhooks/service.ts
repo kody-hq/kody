@@ -54,7 +54,6 @@ import {
 	getWebhookEndpointByIdForUser,
 	getWebhookEndpointByKey,
 	listWebhookEndpointsForUser,
-	setWebhookEndpointEnabled,
 	setWebhookEndpointHmacVerificationState,
 	upsertWebhookEndpointSecret,
 } from './repo.ts'
@@ -109,10 +108,9 @@ export type ListedWebhook = {
 	instanceLabel: string | null
 	handle: string | null
 	urlHost: string | null
-	enabled: boolean | null
 	/**
 	 * True once a person has approved the webhook: it has a live enablement.
-	 * Minting alone leaves this false, and deliveries answer 409 until then.
+	 * Minting alone leaves this false; an off webhook answers 404.
 	 */
 	approved: boolean
 	/** Where to approve it; null when not minted or already approved. */
@@ -136,7 +134,6 @@ export type MintedWebhookHandle = {
 	instanceLabel: string | null
 	handle: string
 	urlHost: string
-	enabled: boolean
 	createdAt: string
 	rotatedAt: string
 	previousUrlActiveUntil: string | null
@@ -341,7 +338,6 @@ export async function listWebhooksForUser(input: {
 					instanceLabel: null,
 					handle: null,
 					urlHost: null,
-					enabled: null,
 					approved: false,
 					approvalUrl: null,
 					urlRecoverable: false,
@@ -360,7 +356,6 @@ export async function listWebhooksForUser(input: {
 					instanceLabel: mint.instanceLabel,
 					handle: formatWebhookUrlHandle(mint.id),
 					urlHost,
-					enabled: mint.enabled,
 					approved,
 					approvalUrl: !approved
 						? buildWebhookApprovalUrl({
@@ -401,8 +396,6 @@ export async function mintWebhookUrlForUser(input: {
 	kodyId?: string
 	webhookName: string
 	requestUrl?: string | null
-	/** When false, rotate secret without forcing enabled=true on conflict. */
-	activate?: boolean
 	/**
 	 * Mint another URL under the same declared name. Requires a short
 	 * `instanceLabel` so Settings and Triggers can tell the URLs apart.
@@ -417,7 +410,6 @@ export async function mintWebhookUrlForUser(input: {
 }): Promise<MintedWebhookHandle> {
 	const webhookName = input.webhookName.trim()
 	if (!webhookName) throw new McpCallerError('webhookName is required.')
-	const activate = input.activate !== false
 	const createInstance = input.createInstance === true
 	const instanceLabel = input.instanceLabel?.trim() || null
 	if (createInstance && !instanceLabel) {
@@ -500,8 +492,6 @@ export async function mintWebhookUrlForUser(input: {
 				urlSecretHash,
 				urlSecretEncrypted: encrypted,
 				...(hmacSecretEncrypted !== undefined ? { hmacSecretEncrypted } : {}),
-				enabled: true,
-				updateEnabledOnConflict: activate,
 				createInstance,
 				instanceLabel,
 			})
@@ -590,7 +580,6 @@ export async function mintWebhookUrlForUser(input: {
 		instanceLabel: stored.instanceLabel,
 		handle: formatWebhookUrlHandle(stored.id),
 		urlHost: webhookUrlHostFromOrigin(baseUrl),
-		enabled: stored.enabled,
 		createdAt: stored.createdAt,
 		rotatedAt: stored.rotatedAt,
 		previousUrlActiveUntil: isWebhookPreviousUrlLive(stored)
@@ -672,65 +661,7 @@ export async function rotateWebhookUrlForUser(input: {
 	return mintWebhookUrlForUser({
 		...input,
 		endpointId: existing.id,
-		activate: false,
 	})
-}
-
-export async function setWebhookEnabledForUser(input: {
-	env: Env
-	request: RequestContext
-	userId: OwnerId
-	packageId?: string
-	kodyId?: string
-	webhookName: string
-	enabled: boolean
-	/** Required when several URLs share the name; otherwise targets the oldest. */
-	endpointId?: string | null
-}): Promise<WebhookEndpointRecord> {
-	const webhookName = input.webhookName.trim()
-	if (!webhookName) throw new McpCallerError('webhookName is required.')
-	const savedPackage = await resolveOwnedPackage({
-		db: input.env.APP_DB,
-		userId: input.userId,
-		packageId: input.packageId,
-		kodyId: input.kodyId,
-	})
-	await authorizeWebhookPackageWrite({
-		env: input.env,
-		request: input.request,
-		savedPackage,
-	})
-	const existing = input.endpointId
-		? await requireOwnedWebhookEndpoint({
-				db: input.env.APP_DB,
-				userId: input.userId,
-				packageId: savedPackage.id,
-				webhookName,
-				endpointId: input.endpointId,
-			})
-		: await getWebhookEndpointByKey({
-				db: input.env.APP_DB,
-				userId: input.userId,
-				packageId: savedPackage.id,
-				webhookName,
-			})
-	if (!existing) {
-		throw new McpCallerError(
-			'Webhook URL has not been minted. Call webhookUrlMint first.',
-		)
-	}
-	const updated = await setWebhookEndpointEnabled({
-		db: input.env.APP_DB,
-		userId: input.userId,
-		endpointId: existing.id,
-		enabled: input.enabled,
-	})
-	if (!updated) {
-		throw new McpCallerError(
-			'Webhook URL has not been minted. Call webhookUrlMint first.',
-		)
-	}
-	return updated
 }
 
 async function resolveMintedWebhookUrl(input: {
@@ -1132,8 +1063,12 @@ export async function dispatchSyntheticWebhookForUser(input: {
 		error?: string | null
 		result?: unknown
 		errorBody?: { code: string; message: string }
+		request?: Awaited<ReturnType<typeof dispatchWebhookInvocation>>['request']
 	}): Promise<SyntheticWebhookDispatchResult> => {
 		const record = await recordWebhookDelivery({
+			...(inputFinish.errorBody
+				? { invocationBody: { error: inputFinish.errorBody } }
+				: {}),
 			env: input.env,
 			endpoint,
 			kodyId: savedPackage.kodyId,
@@ -1147,6 +1082,7 @@ export async function dispatchSyntheticWebhookForUser(input: {
 			startedAt,
 			requirePersistence: true,
 			synthetic: true,
+			request: inputFinish.request,
 		})
 		if (!record) {
 			throw new Error('Webhook synthetic delivery record was not persisted.')
@@ -1212,6 +1148,7 @@ export async function dispatchSyntheticWebhookForUser(input: {
 			status: response.status,
 			outcome: 'delivered',
 			result,
+			request: response.request,
 		})
 	}
 	const errorRecord =
@@ -1229,6 +1166,7 @@ export async function dispatchSyntheticWebhookForUser(input: {
 		error: placementRefused
 			? credentialPlacementRefusedCode
 			: `invocation_status_${response.status}`,
+		request: response.request,
 		result,
 		errorBody: {
 			code: placementRefused

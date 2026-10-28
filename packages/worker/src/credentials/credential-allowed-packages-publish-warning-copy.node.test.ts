@@ -17,6 +17,7 @@ test('warning copy describes enforced behavior without a rollout date', () => {
 	expect(message).toContain(
 		'so Kody denies @owner/demo when it uses this credential, whether it runs on its own',
 	)
+	expect(message).not.toContain('for now')
 	expect(message).toContain(
 		'approve: https://kody.codes/@owner/-/secrets/user/RESEND_API_KEY?package_id=pkg-demo&package=demo.',
 	)

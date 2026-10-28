@@ -6,6 +6,7 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 
 vi.unmock('#worker/audit-log.ts')
 import { adminFeatureFlagListCapability } from './admin-feature-flag-list.ts'
+import { adminFeatureFlagOrgOverrideCapability } from './admin-feature-flag-org-override.ts'
 import { adminFeatureFlagOverrideCapability } from './admin-feature-flag-override.ts'
 import { adminFeatureFlagSetCapability } from './admin-feature-flag-set.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
@@ -157,4 +158,79 @@ test('admin feature flag MCP capabilities: list, set, override, and audit wiring
 			.all()
 			.map((event) => event.result),
 	).toEqual(['success', 'success', 'failure', 'success', 'success'])
+})
+
+test('adminFeatureFlagOrgOverride sets and clears org rows by id or slug', async () => {
+	const { sqlite, ctx } = createFeatureFlagCapabilityTest()
+	sqlite.exec(
+		`INSERT INTO orgs (id, slug, display_name, plan, created_at, updated_at)
+		 VALUES ('org-team', 'team', 'Team', 'free', '2026-10-20', '2026-10-20')`,
+	)
+	const orgRow = () =>
+		sqlite
+			.prepare(
+				`SELECT enabled, note, updated_by FROM feature_flag_org_overrides
+				 WHERE flag_key = 'demo-indicator' AND org_id = 'org-team'`,
+			)
+			.get()
+
+	const setBySlug = await adminFeatureFlagOrgOverrideCapability.handler(
+		{ key: 'demo-indicator', orgSlug: '@Team', enabled: true, note: 'pilot' },
+		ctx,
+	)
+	expect(setBySlug).toMatchObject({
+		cleared: false,
+		flag: {
+			key: 'demo-indicator',
+			orgOverrides: [
+				expect.objectContaining({
+					orgId: 'org-team',
+					slug: 'team',
+					personal: false,
+					enabled: true,
+					note: 'pilot',
+					updatedByStableUserId: testStableUserIdFromEmail('admin@example.com'),
+				}),
+			],
+		},
+	})
+	expect(orgRow()).toEqual({
+		enabled: 1,
+		note: 'pilot',
+		updated_by: testStableUserIdFromEmail('admin@example.com'),
+	})
+
+	await adminFeatureFlagOrgOverrideCapability.handler(
+		{ key: 'demo-indicator', orgId: 'org-team', enabled: false },
+		ctx,
+	)
+	expect(orgRow()).toMatchObject({ enabled: 0, note: 'pilot' })
+
+	await expect(
+		adminFeatureFlagOrgOverrideCapability.handler(
+			{ key: 'demo-indicator', orgSlug: 'missing-org', enabled: true },
+			ctx,
+		),
+	).rejects.toThrow()
+
+	const cleared = await adminFeatureFlagOrgOverrideCapability.handler(
+		{ key: 'demo-indicator', orgSlug: 'team', clear: true },
+		ctx,
+	)
+	expect(cleared.cleared).toBe(true)
+	expect(cleared.flag.orgOverrides).toEqual([])
+	expect(orgRow()).toBeUndefined()
+	await expect(
+		adminFeatureFlagOrgOverrideCapability.handler(
+			{ key: 'demo-indicator', orgId: 'org-team', clear: true },
+			ctx,
+		),
+	).rejects.toThrow(/No org row/)
+
+	expect(
+		sqlite
+			.prepare('SELECT result FROM audit_events ORDER BY id')
+			.all()
+			.map((event) => event.result),
+	).toEqual(['success', 'success', 'failure', 'success', 'failure'])
 })

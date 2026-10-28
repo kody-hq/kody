@@ -29,6 +29,8 @@ const runListInputKeys = [
 	'workflow_id',
 	'since',
 	'error_triage',
+	'started_by',
+	'execution_context_id',
 	'limit',
 	'cursor',
 ] as const
@@ -88,6 +90,20 @@ export const runListInputSchema = z
 				.describe(
 					'Soft error-triage filter. Defaults to open (hides ignored/resolved noise). Use ignored, resolved, or all to inspect triaged runs.',
 				),
+			started_by: z
+				.string()
+				.min(1)
+				.optional()
+				.describe(
+					'Optional exact match on the started-by person id (the actor who started the run or owns the enablement).',
+				),
+			execution_context_id: z
+				.string()
+				.min(1)
+				.optional()
+				.describe(
+					'Optional exact match on the execution context (ec_...) a run ran on or tried before falling back.',
+				),
 			limit: runListLimitSchema,
 			cursor: z
 				.string()
@@ -124,6 +140,7 @@ export const runListCapability = defineDomainCapability(
 	capabilityDomainNames.runs,
 	{
 		name: 'runList',
+		contextRuns: 'allow',
 		orgPermission: 'job:read',
 		description:
 			'List recent execution history across jobs, webhooks, package apps, workflows, ad-hoc execute, and other runtimes so you can debug failures or inspect what ran. Ad-hoc execute runs are included for both success and error. Terminal rows may include a bounded metadata.result snapshot. By default, ignored/resolved error runs are hidden (error_triage defaults to open); use runUpdate or runUpdateBulk to triage noise, or pass error_triage all/ignored/resolved to inspect those rows. Pass status success (or omit status with error_triage all) for a recent "what ran" list. Records are retained about 30 days, capped per user, and cap-pruned in this order: handled errors, successes, then open errors.',
@@ -177,6 +194,8 @@ export const runListCapability = defineDomainCapability(
 					workflowId: args.workflow_id ?? null,
 					since: args.since ?? null,
 					errorTriage: args.error_triage ?? 'open',
+					startedByUserId: args.started_by ?? null,
+					executionContextId: args.execution_context_id ?? null,
 				},
 				limit: args.limit ?? null,
 				cursor: args.cursor ?? null,

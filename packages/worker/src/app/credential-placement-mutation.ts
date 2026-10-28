@@ -17,6 +17,7 @@ import {
 	getOrgCredential,
 	missingCredentialResource,
 } from '#worker/credentials/credential-ids.ts'
+import { recordOwnerFillPlacementOptIn } from '#worker/credentials/fill-placement-opt-ins.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { type CredentialFillPlacementView } from '#universal/credential-fill-placement.ts'
@@ -95,6 +96,13 @@ export async function setCredentialPlacement(input: {
 		const unchanged =
 			JSON.stringify(before.placement) === JSON.stringify(parsed.data)
 		if (unchanged) {
+			// Saving on the website is the owner's opt-in, even when a package
+			// or code already set the same placement.
+			await recordOwnerFillPlacementOptIn({
+				db: input.env.APP_DB,
+				credentialId: credential.id,
+				placement: before.placement,
+			})
 			return operationResult({
 				ok: true,
 				placement: before.placement,
@@ -107,6 +115,7 @@ export async function setCredentialPlacement(input: {
 			credentialId: credential.id,
 			update: { placement: parsed.data },
 			audit: orgAuditWriterFromRequest(input.env, request),
+			ownerOptIn: true,
 		})
 		return operationResult({
 			ok: true,

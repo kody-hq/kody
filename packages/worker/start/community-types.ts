@@ -15,6 +15,8 @@ export type CommunityDetailApiPayload = {
 	viewerIsOwner: boolean
 	viewerCanManage: boolean
 	viewerCanManageAccess?: boolean
+	/** Manage on a package with an app: shows the Connected people tab. */
+	viewerCanSeeConnectedPeople?: boolean
 	viewerCanPublish?: boolean
 	viewerCanDelete?: boolean
 	viewerCanAdoptCommunityFork?: boolean
@@ -41,6 +43,9 @@ export type CommunityInstallApiPayload = {
 	targetName?: string
 	agentPrompt?: string
 	failedChecks?: Array<{ kind: string; message: string }>
+	/** The account already had this fork; nothing new was created. */
+	alreadyInstalled?: boolean
+	message?: string | null
 	error?: string
 }
 
@@ -50,4 +55,5 @@ export type CommunityInstallOutcome = {
 	agentPrompt: string
 	packageId: string | null
 	failedChecks: Array<{ kind: string; message: string }>
+	alreadyInstalled: boolean
 }

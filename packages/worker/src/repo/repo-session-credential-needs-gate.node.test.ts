@@ -15,6 +15,7 @@ import type * as StorageBuckets from '#worker/storage-buckets/service.ts'
 import type * as CredentialNeedsApproval from '#worker/credentials/credential-needs-approval.ts'
 import {
 	repoSessionMockModule as mockModule,
+	publishedBundleArtifactsRepoSessionMocks,
 	checkedPublishState,
 	createDurableObjectState,
 	createEnv,
@@ -22,6 +23,7 @@ import {
 	setCommonSessionFixtures,
 } from '#worker/test-support/repo-session-do.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import { recordPackageAppPublisherUnknown } from '#worker/package-runtime/package-app-authority.ts'
 
 vi.mock('cloudflare:workers', async (importOriginal) => {
 	const actual = await importOriginal<typeof CloudflareWorkers>()
@@ -251,21 +253,7 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', async () => {
 	)
 	return {
 		...actual,
-		isPublishedPackageArtifactBuiltForCommit: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.isPublishedPackageArtifactBuiltForCommit
-			>
-		) => mockModule.isPublishedPackageArtifactBuiltForCommit(...args),
-		persistPublishedPackageArtifactTarget: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.persistPublishedPackageArtifactTarget
-			>
-		) => mockModule.persistPublishedPackageArtifactTarget(...args),
-		deletePublishedArtifactsForSource: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.deletePublishedArtifactsForSource
-			>
-		) => mockModule.deletePublishedArtifactsForSource(...args),
+		...publishedBundleArtifactsRepoSessionMocks(mockModule),
 	}
 })
 
@@ -274,6 +262,8 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 		...args: Parameters<typeof SavedPackageRepo.getSavedPackageById>
 	) => mockModule.getSavedPackageById(...args),
 }))
+
+vi.mock('#worker/package-runtime/package-app-authority.ts')
 
 vi.mock('#worker/package-registry/service.ts', () => ({
 	refreshSavedPackageProjection: vi.fn(async () => undefined),
@@ -454,6 +444,29 @@ test('publishSession releases storage inventory after a successful publish', asy
 	expect(mockModule.maybeRefreshStorageBucketEstimate).not.toHaveBeenCalled()
 })
 
+test('a session publish with no known person clears the publisher; a platform rewrite leaves it alone', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const packageFile = { 'package.json': userPackageJson }
+	for (const [requestedByUserId, clears] of [
+		[undefined, false],
+		[null, true],
+	] as const) {
+		vi.mocked(recordPackageAppPublisherUnknown).mockClear()
+		setCommonSessionFixtures()
+		seedWorkspace(packageFile)
+		const state = await checkedPublishState(packageFile)
+		await expect(
+			repoSession(createEnv(), state).publishSession({
+				...session,
+				...(requestedByUserId === undefined ? {} : { requestedByUserId }),
+			}),
+		).resolves.toMatchObject({ status: 'ok' })
+		expect(vi.mocked(recordPackageAppPublisherUnknown).mock.calls.length).toBe(
+			clears ? 1 : 0,
+		)
+	}
+})
+
 test('publishSession stays ok when scratch inventory delete throws', async () => {
 	consoleWarn.mockImplementation(() => {})
 	setCommonSessionFixtures()
@@ -490,14 +503,25 @@ test('publishSession does not report success or move published pointers when the
 
 	vi.useFakeTimers()
 	try {
+		let settled = false
 		const publishSession = repoSession(createEnv(), state)
 			.publishSession(session)
 			.then(
-				() => null,
-				(caught: unknown) => caught,
+				() => {
+					settled = true
+					return null
+				},
+				(caught: unknown) => {
+					settled = true
+					return caught
+				},
 			)
-		await vi.advanceTimersByTimeAsync(0)
-		await vi.advanceTimersByTimeAsync(1_250)
+		await vi.waitFor(
+			() => {
+				if (!settled) throw new Error('publishSession still pending')
+			},
+			{ timeout: 15_000, interval: 250 },
+		)
 		const error = await publishSession
 
 		expect(error).toBeInstanceOf(Error)

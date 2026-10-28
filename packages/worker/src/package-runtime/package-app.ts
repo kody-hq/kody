@@ -22,12 +22,14 @@ import {
 	getPackageAppEntryPath,
 	parseAuthoredPackageJson,
 } from '#worker/package-registry/manifest.ts'
-import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import {
+	type AuthoredPackageJson,
+	type PackageAppVisitorNeed,
+} from '#worker/package-registry/types.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	buildKodyFns,
 	collectPackageStorageGrantIds,
-	type PackageEventTools,
 } from '#mcp/run-kody-registry.ts'
 import { getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
 import { listVisibleEnabledMcpServerRefsCached } from '#worker/mcp-client/settings-service.ts'
@@ -82,9 +84,12 @@ import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
 import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
-import { loadRunCredentialNeeds } from '#worker/credentials/credential-client.ts'
+import {
+	CredentialClientError,
+	loadRunCredentialNeedEntries,
+} from '#worker/credentials/credential-client.ts'
+import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { type OwnerCredentialScope } from '#worker/credentials/owner-credential-for-visitors.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import {
 	createCredentialClientRuntimeSource,
 	credentialClientToolNames,
@@ -118,13 +123,58 @@ import {
 	resolveHostedPackageAppUrl,
 	type PackageAppMount,
 } from '@kody-internal/shared/public-urls.ts'
-import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
+import {
+	getPackageAppBaseUrl,
+	listPackageAppOrigins,
+} from '#worker/app-base-url.ts'
+import { createPackageAppSetCookieScrubHostSource } from '#worker/package-runtime/package-app-set-cookie.ts'
+import { packageAppCookiePrefix } from '#worker/package-runtime/package-app-cookie-prefix.ts'
+import { checkPackageAppRateLimit } from '#worker/package-runtime/package-app-rate-limit.ts'
+import { packageAppSpendGet } from '#worker/package-runtime/package-app-spend.ts'
 import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import {
 	packageAppSyntheticHeaderName,
 	packageAppSyntheticHeaderValue,
 } from './package-app-synthetic.ts'
+import { packageAppVisitorHeaderName } from './package-app-visitor-header.ts'
+import {
+	createPackageAppRequestVisit,
+	packageAppVisitTicketHeaderName,
+	type PackageAppRequestVisit,
+	type PackageAppVisitAudience,
+	type PackageAppVisitClaims,
+	verifyPackageAppVisitTicket,
+	withPackageAppVisitTicket,
+} from './package-app-visit-ticket.ts'
+import {
+	createPackageAppCredentialAuthority,
+	createPackageAppVisitorCredentialRequest,
+	loadPackageAppRunsAs,
+	packageAppRunsAsUnavailableMessages,
+	packageAppIdentityCapabilityName,
+	packageAppVisitorConsents,
+	packageAppVisitorNeedCallName,
+	PackageAppRunsAsUnavailableError,
+	PackageAppVisitorConsentError,
+	type PackageAppAuthorityMode,
+	type PackageAppAuthorityScope,
+	type PackageAppRunsAs,
+	type PackageAppVisitorGrantScope,
+} from './package-app-authority.ts'
+import {
+	PackageAppCapabilityNotDeclaredError,
+	PackageAppCapabilityUnavailableError,
+	packageAppAuthorityFallbackKindOf,
+	packageAppAuthorityFallbackKindOfResult,
+	schedulePackageAppAuthorityFallback,
+	type PackageAppAuthorityDifferenceKind,
+} from './package-app-authority-fallback.ts'
+import {
+	findLivePackageAppOauthGrant,
+	notePackageAppOauthGrantUse,
+} from '#app/package-app-oauth-grants.ts'
+import { scopesIncludeEmail } from '#app/package-app-oauth-scopes.ts'
 import {
 	buildPackageAppAssetBasePath,
 	buildPackageAppClientModuleUrl,
@@ -137,17 +187,13 @@ import {
 	modulesContainUnboundPackagesInvokeAccess,
 } from './unbound-runtime-helpers.ts'
 import { modulesReferenceKodyMcp } from './package-app-mcp-preload.ts'
+import {
+	createRandomPackageBindingToken,
+	packageAppBindingTokenFor,
+} from './package-app-binding-token.ts'
 
 const packageAppEntrypointName = 'PackageAppWorker'
 const packageAppRuntimeBindingName = 'KODY_RUNTIME'
-
-function createPackageBindingToken() {
-	const bytes = new Uint8Array(32)
-	crypto.getRandomValues(bytes)
-	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(
-		'',
-	)
-}
 
 function createPackageAppWorkerSource(input: {
 	mainModule: string
@@ -157,6 +203,18 @@ function createPackageAppWorkerSource(input: {
 	packageBindingIds: Array<string>
 	/** Per-build bridge capability; lives only in this module's private scope. */
 	packageBindingToken: string
+	/**
+	 * Owning org slug. The shared worker reads `X-Kody-Visitor` per request
+	 * for identity-only `metaGetCurrentUser` when there is no visit ticket.
+	 * A ticket means the visitor acts as themselves and the bridge answers.
+	 */
+	identityOnlyOrgSlug: string | null
+	/**
+	 * Package-app apex hostnames (canonical + legacy). Used to strip Set-Cookie
+	 * Domain attributes that would cover the shared apex or another tenant.
+	 */
+	packageAppApexHostnames: Array<string>
+	packageAppCookiePrefix: string
 }) {
 	const mcpServerNamesExpr = input.preloadMcpServerNames
 		? 'await runtimeBridge.listMcpServerNames().catch(() => [])'
@@ -209,6 +267,95 @@ const __kodyRequestCaptured = Request;
 const __kodyStringTrimCaptured = String.prototype.trim;
 const __kodyPackageBindingToken = ${JSON.stringify(input.packageBindingToken)};
 const __kodyPackageBindingIds = __kodyObjectFreezeCaptured(${JSON.stringify(input.packageBindingIds)});
+const __kodyIdentityOnlyOrgSlug = ${JSON.stringify(input.identityOnlyOrgSlug)};
+const __kodyJsonParseCaptured = JSON.parse;
+const __kodyVisitTicketHeaderName = ${JSON.stringify(packageAppVisitTicketHeaderName)};
+const __kodyVisitStorage = new AsyncLocalStorage();
+
+function __kodyCurrentVisitTicket() {
+	try {
+		return __kodyVisitStorage.getStore()?.ticket ?? null;
+	} catch {
+		return null;
+	}
+}
+function __kodyReadVisitTicket(request) {
+	try {
+		const ticket = request?.headers?.get(__kodyVisitTicketHeaderName);
+		return typeof ticket === 'string' && ticket ? ticket : null;
+	} catch {
+		return null;
+	}
+}
+
+// An anonymous build serves signed-in people who cannot run the app as
+// anonymous visitors. The platform names them in ${packageAppVisitorHeaderName}
+// (inbound X-Kody-* headers are stripped before it is set), so
+// metaGetCurrentUser can say who is visiting. That answer is the only thing
+// the header changes: it grants no storage, credentials, or capability.
+// A visit ticket means the visitor acts as themselves; skip this shortcut.
+function __kodyReadIdentityOnlyVisitor(request) {
+	if (__kodyIdentityOnlyOrgSlug === null) return null;
+	let raw = null;
+	try {
+		raw = request?.headers?.get(${JSON.stringify(packageAppVisitorHeaderName)}) ?? null;
+	} catch {
+		return null;
+	}
+	if (!raw) return null;
+	try {
+		const parsed = __kodyJsonParseCaptured(raw);
+		if (
+			!parsed ||
+			typeof parsed.userId !== 'string' ||
+			!parsed.userId ||
+			typeof parsed.username !== 'string'
+		) {
+			return null;
+		}
+		return __kodyObjectFreezeCaptured({
+			user_id: parsed.userId,
+			username: parsed.username,
+			email: '',
+			display_name: parsed.username,
+			org: __kodyObjectFreezeCaptured({ slug: __kodyIdentityOnlyOrgSlug }),
+			scopes: Array.isArray(parsed.scopes)
+				? parsed.scopes.filter((scope) => typeof scope === 'string')
+				: [],
+		});
+	} catch {
+		return null;
+	}
+}
+function hasScope(request, scope) {
+	if (typeof scope !== 'string') return false;
+	try {
+		const raw = request?.headers?.get(
+			${JSON.stringify(packageAppVisitorHeaderName)},
+		);
+		if (!raw) return false;
+		const visitor = __kodyJsonParseCaptured(raw);
+		return (
+			typeof visitor?.userId === 'string' &&
+			visitor.userId.length > 0 &&
+			Array.isArray(visitor.scopes) &&
+			visitor.scopes.includes(scope)
+		);
+	} catch {
+		return false;
+	}
+}
+function __kodyIdentityOnlyAnswer(identity, name) {
+	if (!identity || name !== 'metaGetCurrentUser') return null;
+	return {
+		user_id: identity.user_id,
+		username: identity.username,
+		email: identity.email,
+		display_name: identity.display_name,
+		org: { slug: identity.org.slug },
+		scopes: identity.scopes,
+	};
+}
 let __kodyCapturedRuntimeBridge = null;
 function __kodyCaptureRuntimeBridge(env) {
 	// First capture happens on the first request, before the user module is
@@ -218,19 +365,26 @@ function __kodyCaptureRuntimeBridge(env) {
 	}
 	return __kodyCapturedRuntimeBridge;
 }
-function __kodyCreateAppPackageBindings(bridge) {
+function __kodyCreateAppPackageBindings(bridge, identity) {
 	const map = new __kodyMapCaptured();
 	for (let index = 0; index < __kodyPackageBindingIds.length; index += 1) {
 		const packageId = __kodyPackageBindingIds[index];
 		const token = __kodyPackageBindingToken;
-		const boundCapability = async (callInput) =>
-			await bridge.packageBoundCall({
+		const boundCapability = async (callInput) => {
+			const visitTicket = __kodyCurrentVisitTicket();
+			const identityAnswer = visitTicket
+				? null
+				: __kodyIdentityOnlyAnswer(identity, callInput?.name);
+			if (identityAnswer) return identityAnswer;
+			return await bridge.packageBoundCall({
 				token,
 				packageId,
 				op: 'capability',
 				name: callInput?.name,
 				args: callInput?.args ?? {},
+				visitTicket,
 			});
+		};
 		let mcp = null;
 		const binding = __kodyObjectFreezeCaptured({
 			// Package-locked MCP servers check the caller's package, so this
@@ -249,6 +403,7 @@ function __kodyCreateAppPackageBindings(bridge) {
 					token,
 					packageId,
 					new __kodyRequestCaptured(requestInput, init),
+					__kodyCurrentVisitTicket(),
 				),
 			kodyCall: async (name, args) => await boundCapability({ name, args }),
 			// credential() for this package only (GHSA-5fv3).
@@ -259,6 +414,7 @@ function __kodyCreateAppPackageBindings(bridge) {
 					op: 'credentialClient',
 					name,
 					args: args ?? {},
+					visitTicket: __kodyCurrentVisitTicket(),
 				}),
 			// packageStorage() for this package only (GHSA-5fv3).
 			packageStorageCall: async (method, args) =>
@@ -268,6 +424,7 @@ function __kodyCreateAppPackageBindings(bridge) {
 					op: 'packageStorage',
 					name: method,
 					args: args ?? {},
+					visitTicket: __kodyCurrentVisitTicket(),
 				}),
 			packageSecretGet: async (alias) => {
 				const result = await bridge.packageBoundCall({
@@ -275,6 +432,7 @@ function __kodyCreateAppPackageBindings(bridge) {
 					packageId,
 					op: 'packageSecretGet',
 					alias,
+					visitTicket: __kodyCurrentVisitTicket(),
 				});
 				return typeof result?.value === 'string' ? result.value : '';
 			},
@@ -284,6 +442,7 @@ function __kodyCreateAppPackageBindings(bridge) {
 					packageId,
 					op: 'packageSecretHas',
 					alias,
+					visitTicket: __kodyCurrentVisitTicket(),
 				});
 				return result?.has === true;
 			},
@@ -292,9 +451,9 @@ function __kodyCreateAppPackageBindings(bridge) {
 	}
 	return map;
 }
-async function __kodyRunUserCode(env, callback) {
+async function __kodyRunUserCode(env, callback, identity = null) {
 	await __kodyEnsureRuntimeLoaded();
-	const bindings = __kodyCreateAppPackageBindings(__kodyCaptureRuntimeBridge(env));
+	const bindings = __kodyCreateAppPackageBindings(__kodyCaptureRuntimeBridge(env), identity);
 	if (typeof __kodyRunWithPackageBindingsFn !== 'function') {
 		return await callback();
 	}
@@ -313,6 +472,9 @@ if (!globalThis[__kodyEvaluateFetchPatchedSymbol]) {
 		);
 		// Identity never rides on a header (GHSA-5fv3); strip any forgery.
 		headers.delete(${JSON.stringify(secretAuthorityHeaderName)});
+		headers.delete(__kodyVisitTicketHeaderName);
+		const visitTicket = __kodyCurrentVisitTicket();
+		if (visitTicket) headers.set(__kodyVisitTicketHeaderName, visitTicket);
 		// Leave x-kody-credential-client alone: globalOutbound KodyFetchGateway
 		// matches it against the run binding on its props and places the
 		// credential. Stripping it would send an unauthenticated upstream
@@ -352,7 +514,7 @@ function buildFacetClassExportName(rawFacetName) {
 		: \`App_\${sanitizedFacetName}_\${hashSuffix}\`;
 }
 
-function createKodyProxy(runtimeBridge, mcpServerNamesOrLoader) {
+function createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity = null) {
 	const isProxyLookupKey = (name) =>
 		typeof name !== 'string' || name === 'then';
 	const createOpenNamespaceProxy = (getValue) =>
@@ -449,6 +611,7 @@ function createKodyProxy(runtimeBridge, mcpServerNamesOrLoader) {
 			await runtimeBridge.callCapability({
 				name: \`mcp:\${serverName}:\${toolName}\`,
 				args,
+				visitTicket: __kodyCurrentVisitTicket(),
 			}),
 		),
 	);
@@ -465,11 +628,24 @@ function createKodyProxy(runtimeBridge, mcpServerNamesOrLoader) {
 					\`MCP server tool "\${property}" is not available as a flat kody function. Use kody.mcp[serverName].toolName(input) instead.\`,
 				);
 			}
-			return async (args = {}) =>
-				await runtimeBridge.callCapability({
+			if (property === 'appRateLimit') {
+				return async (args = {}) => await runtimeBridge.appRateLimit(args);
+			}
+			if (property === 'appSpendGet') {
+				return async () => await runtimeBridge.appSpendGet();
+			}
+			return async (args = {}) => {
+				const visitTicket = __kodyCurrentVisitTicket();
+				const identityAnswer = visitTicket
+					? null
+					: __kodyIdentityOnlyAnswer(identity, property);
+				if (identityAnswer) return identityAnswer;
+				return await runtimeBridge.callCapability({
 					name: property,
 					args,
+					visitTicket,
 				});
+			};
 		},
 		has(_target, property) {
 			return property === 'mcp';
@@ -519,7 +695,10 @@ function createRealtimeProxy(runtimeBridge) {
 function createPackageSecretsProxy(runtimeBridge) {
 	// Run-identity secrets only; package-bound secrets go through the
 	// trusted per-package binding. Alias trimmed with a captured intrinsic.
-	const secretArgs = (alias) => ({ alias });
+	const secretArgs = (alias) => ({
+		alias,
+		visitTicket: __kodyCurrentVisitTicket(),
+	});
 	return {
 		get: async (alias) => {
 			const normalizedAlias =
@@ -610,7 +789,10 @@ function createWorkflowsProxy(runtimeBridge) {
 				...(exportName ? { exportName } : {}),
 				...(code ? { code } : {}),
 			};
-			return await runtimeBridge.workflowCreate(payload);
+			return await runtimeBridge.workflowCreate(
+				payload,
+				__kodyCurrentVisitTicket(),
+			);
 		},
 	};
 }
@@ -618,7 +800,10 @@ function createWorkflowsProxy(runtimeBridge) {
 function createEventsProxy(runtimeBridge) {
 	return {
 		dispatch: async (input) =>
-			await runtimeBridge.packageEventDispatch(input ?? {}),
+			await runtimeBridge.packageEventDispatch(
+				input ?? {},
+				__kodyCurrentVisitTicket(),
+			),
 	};
 }
 
@@ -627,6 +812,7 @@ function createAuthenticatedFetchHelper(runtimeBridge) {
 		return async (input, init) =>
 			await runtimeBridge.authenticatedFetch({
 				providerName,
+				visitTicket: __kodyCurrentVisitTicket(),
 				request: {
 					url:
 						typeof input === 'string'
@@ -752,11 +938,15 @@ function createCredentialRuntime(runtimeBridge, call) {
 	return __kodyCreateCredentialRuntime((name, args) =>
 		typeof call === 'function'
 			? call(name, args ?? {})
-			: runtimeBridge.credentialClientCall({ name, args: args ?? {} }),
+			: runtimeBridge.credentialClientCall({
+				name,
+				args: args ?? {},
+				visitTicket: __kodyCurrentVisitTicket(),
+			}),
 	);
 }
 
-function createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader) {
+function createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader, identity = null) {
 	const packageId = packageContext?.packageId ?? '';
 	const packageSecrets =
 		packageId.length > 0
@@ -775,7 +965,10 @@ function createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader) {
 				}
 	const credentialRuntime = createCredentialRuntime(runtimeBridge);
 	return {
-		kody: createKodyProxy(runtimeBridge, mcpServerNamesOrLoader),
+		kody: createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity),
+		hasScope,
+		hasVisitorCredential: (request, key) =>
+			typeof key === 'string' && hasScope(request, \`need:\${key}\`),
 		storage: undefined,
 		__kodyPackageSecrets: (secretsPackageId) =>
 			createPackageSecretsProxy(runtimeBridge, secretsPackageId),
@@ -847,6 +1040,10 @@ function serializeRuntimeError(error) {
 
 ${createNullPackagesInvokeRewriteHostSource({
 	enabled: input.rewriteNullPackagesInvoke,
+})}
+${createPackageAppSetCookieScrubHostSource({
+	packageAppApexHostnames: input.packageAppApexHostnames,
+	cookiePrefix: input.packageAppCookiePrefix,
 })}
 
 function createConsoleLogCapture() {
@@ -1016,6 +1213,12 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 	async fetch(request) {
 		const runtimeBridge = this.env.${packageAppRuntimeBindingName};
 		const requestUrl = new URL(request.url);
+		// Read before any package code runs. Ticket and visitor stay in ALS
+		// for this request only; they never enter module scope.
+		const visitTicket = __kodyReadVisitTicket(request);
+		const identityOnlyVisitor = visitTicket
+			? null
+			: __kodyReadIdentityOnlyVisitor(request);
 		const runtimeRun = startRuntimeRun(runtimeBridge, {
 			surface: 'app_fetch',
 			name: requestUrl.pathname,
@@ -1030,10 +1233,11 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 			runtimeBridge,
 			this.env.__kodyPackageContext ?? null,
 			${mcpServerNamesExpr},
+			identityOnlyVisitor,
 		);
 		try {
 			consoleCapture.install();
-			const response = await __kodyRuntimeStorage.run(runtime, async () => await __kodyRunUserCode(this.env, async () => {
+			const response = await __kodyVisitStorage.run({ ticket: visitTicket }, async () => await __kodyRuntimeStorage.run(runtime, async () => await __kodyRunUserCode(this.env, async () => {
 				const userModule = await import(${JSON.stringify(`./${input.mainModule}`)});
 				const runtimeEnv = createPackageAppEnv(this.env, userModule);
 				const candidate = userModule.default ?? userModule;
@@ -1047,10 +1251,38 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 					throw new Error('Package apps must default export a fetch handler or an object with fetch().');
 				}
 				return await fetchHandler(request, runtimeEnv, this.ctx);
-			}));
+			}, identityOnlyVisitor)));
 			// Authors (or proxied upstreams) must not set the internal throw
 			// marker; only the catch path below may attach it.
 			let outgoing = withoutAuthorRuntimeErrorHeader(response);
+			// Strip Set-Cookie Domain that would cover the package-app apex or
+			// another tenant. Warn into consoleCapture so Activity shows it.
+			const scrubbedCookies = __kodyScrubPackageAppSetCookieDomains(
+				outgoing,
+				requestUrl.hostname,
+			);
+			outgoing = scrubbedCookies.response;
+			if (scrubbedCookies.stripped.length > 0) {
+				// Activity capture stringifies args; keep details as one JSON string.
+				console.warn(
+					'package-app-set-cookie-domain-stripped ' +
+						JSON.stringify({
+							hostname: requestUrl.hostname,
+							pathname: requestUrl.pathname,
+							stripped: scrubbedCookies.stripped,
+					}),
+				);
+			}
+			if (scrubbedCookies.dropped.length > 0) {
+				console.warn(
+					'package-app-set-cookie-name-dropped ' +
+						JSON.stringify({
+							hostname: requestUrl.hostname,
+							pathname: requestUrl.pathname,
+							dropped: scrubbedCookies.dropped,
+						}),
+				);
+			}
 			if (outgoing && outgoing.status >= 500) {
 				const runtimeRunId = await readRuntimeRunId(runtimeRun);
 				console.error('package-app-runtime-http-error', {
@@ -1095,6 +1327,11 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 
 	async handleRealtimeEvent(payload) {
 		const runtimeBridge = this.env.${packageAppRuntimeBindingName};
+		const visitTicket =
+			payload && typeof payload.__kodyVisitTicket === 'string'
+				? payload.__kodyVisitTicket
+				: null;
+		const { __kodyVisitTicket: _visitTicket, ...userPayload } = payload ?? {};
 		const runtimeRun = startRuntimeRun(runtimeBridge, {
 			surface: 'app_realtime',
 			name: buildFacetName(payload?.facet),
@@ -1112,31 +1349,31 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 		);
 		try {
 			consoleCapture.install();
-			const result = await __kodyRuntimeStorage.run(runtime, async () => await __kodyRunUserCode(this.env, async () => {
+			const result = await __kodyVisitStorage.run({ ticket: visitTicket }, async () => await __kodyRuntimeStorage.run(runtime, async () => await __kodyRunUserCode(this.env, async () => {
 				const userModule = await import(${JSON.stringify(`./${input.mainModule}`)});
 				const runtimeEnv = createPackageAppEnv(this.env, userModule);
-				const resolved = resolveRealtimeHandler(userModule, payload?.facet);
+				const resolved = resolveRealtimeHandler(userModule, userPayload?.facet);
 				if (!resolved) {
 					return { actions: [] };
 				}
 				if (resolved.kind === 'function') {
-					return await resolved.exported(payload, runtimeEnv, this.ctx);
+					return await resolved.exported(userPayload, runtimeEnv, this.ctx);
 				}
 				if (resolved.kind === 'bound-method') {
-					return await resolved.exported.onRealtimeEvent(payload, runtimeEnv, this.ctx);
+					return await resolved.exported.onRealtimeEvent(userPayload, runtimeEnv, this.ctx);
 				}
 				const state = createInternalDurableObjectState(
 					runtimeBridge,
-					createFacetStorageId(this.env.__kodyPackageContext ?? null, payload?.facet),
+					createFacetStorageId(this.env.__kodyPackageContext ?? null, userPayload?.facet),
 				);
 				const instance = Object.create(resolved.exported.prototype);
 				instance.ctx = state;
 				instance.env = runtimeEnv;
 				if (typeof instance.onRealtimeEvent !== 'function') {
-					throw new Error(\`Package app facet "\${buildFacetName(payload?.facet)}" must implement onRealtimeEvent().\`);
+					throw new Error(\`Package app facet "\${buildFacetName(userPayload?.facet)}" must implement onRealtimeEvent().\`);
 				}
-				return await instance.onRealtimeEvent(payload, runtimeEnv, this.ctx);
-			}));
+				return await instance.onRealtimeEvent(userPayload, runtimeEnv, this.ctx);
+			})));
 			finishRuntimeRun(runtimeBridge, this.ctx, {
 				run: runtimeRun,
 				status: 'success',
@@ -1165,7 +1402,10 @@ type PackageAppRuntimeBridgeProps = {
 	/** The org that owns the app. */
 	userId: OwnerId
 	orgSlug: string | null
-	/** Who every bridge call acts as; null for an anonymous visitor. */
+	/**
+	 * Rematerialized per request, never cached on the template. A call that
+	 * passes a visit ticket uses the ticket instead of this field.
+	 */
 	visitor: RuntimePackageAppVisitor | null
 	email: string
 	displayName: string
@@ -1175,9 +1415,8 @@ type PackageAppRuntimeBridgeProps = {
 	publishedCommit: string | null
 	packageStorageGrantIds: Array<string>
 	/**
-	 * Run-scoped credential-client binding shared with KodyFetchGateway.
-	 * Lives on props (not the entrypoint instance) so open → sign survives
-	 * across WorkerEntrypoint RPC invocations.
+	 * Request-scoped credential-client binding shared with KodyFetchGateway.
+	 * Minted per request, never stored on the cached template.
 	 */
 	credentialClientBinding: string
 	/** Per-run HMAC key for package-scoped secret placeholders (GHSA-5fv3). */
@@ -1190,6 +1429,21 @@ type PackageAppRuntimeBridgeProps = {
 	packageBindingToken: string
 	/** Gateway props for per-package bound fetches (`boundPackageId` added per call). */
 	gatewayProps: FetchGatewayProps | null
+	/**
+	 * This request's visit ticket, when rematerialized. The wrapper still
+	 * passes the ticket on every bound call so a warm isolate cannot reuse
+	 * another visitor's ticket.
+	 */
+	visitTicket?: string | null
+	/** Audience used to verify a visit ticket on this app and commit. */
+	visitAudience?: PackageAppVisitAudience | null
+	/**
+	 * `kody.app.capabilities`: the only Kody capabilities that run as the
+	 * app's runs-as person.
+	 */
+	declaredCapabilities: Array<string>
+	/** `kody.app.visitorNeeds`, by key: each is its own consent scope. */
+	visitorNeeds: Record<string, PackageAppVisitorNeed>
 }
 
 function redactRunRecordLogs(
@@ -1220,7 +1474,6 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	Env,
 	PackageAppRuntimeBridgeProps
 > {
-	private packageEventTools: Promise<PackageEventTools> | null = null
 	private readonly credentialClientTools = new Map<
 		string,
 		Promise<AdditionalKodyTools>
@@ -1228,22 +1481,216 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	private readonly secretRedactor: ExecutionSecretRedactor =
 		createExecutionSecretRedactor()
 
-	private async createCallerContext(storageId: string | null) {
-		const { visitor } = this.ctx.props
+	private authorityScope(): PackageAppAuthorityScope {
+		return { orgId: this.ctx.props.userId, packageId: this.ctx.props.packageId }
+	}
+
+	/** The app's runs-as person in the owning org, with their live role. */
+	private createRunsAsCallerContext(
+		runsAs: Extract<PackageAppRunsAs, { status: 'ready' }>,
+		storageId: string | null,
+	) {
+		return createMcpCallerContext({
+			baseUrl: this.ctx.props.baseUrl,
+			executionOrigin: 'background',
+			user: {
+				userId: runsAs.personId,
+				email: runsAs.email,
+				username: runsAs.username,
+				displayName: runsAs.displayName,
+			},
+			orgBinding: {
+				org: { id: this.ctx.props.userId, slug: runsAs.request.org.slug },
+				role: runsAs.role,
+			},
+			storageContext: {
+				sessionId: null,
+				appId: this.ctx.props.packageId,
+				packageId: this.ctx.props.packageId,
+				storageId,
+			},
+			source: { kind: 'package-app' },
+		})
+	}
+
+	private noteAuthorityFallback(
+		callName: string,
+		kind: PackageAppAuthorityDifferenceKind,
+		visitor: RuntimePackageAppVisitor | null,
+	) {
+		schedulePackageAppAuthorityFallback({
+			env: this.env,
+			event: {
+				ownerId: this.ctx.props.userId,
+				packageId: this.ctx.props.packageId,
+				callName,
+				kind,
+				visitorId: visitor?.userId ?? null,
+			},
+			waitUntil: (promise) => this.ctx.waitUntil(promise),
+		})
+	}
+
+	/** A lookup failure runs the call the legacy way, never fails it. */
+	private async loadRunsAs(): Promise<PackageAppRunsAs> {
+		try {
+			return await loadPackageAppRunsAs({
+				env: this.env,
+				scope: this.authorityScope(),
+			})
+		} catch (error) {
+			console.error(
+				JSON.stringify({
+					event: 'package_app_runs_as_lookup_failed',
+					packageId: this.ctx.props.packageId,
+					error: error instanceof Error ? error.name : 'unknown',
+				}),
+			)
+			return {
+				status: 'unavailable',
+				reason: 'not-set',
+				message: packageAppRunsAsUnavailableMessages['not-set'],
+			}
+		}
+	}
+
+	/**
+	 * Run one bridge call as the app's runs-as person (ADR 0068 amendment
+	 * 2026-10-24). When that fails for an authority reason, the call runs the
+	 * legacy way (as the visitor, or anonymously) and, when that works,
+	 * leaves a would-break row. A call that fails both ways throws the
+	 * runs-as error. Never retries a failure that is not about authority.
+	 */
+	private async runWithAuthority<T>(input: {
+		callName: string
+		storageId: string | null
+		/** This request's visit ticket, as the wrapper passed it. */
+		visitTicket: string | null | undefined
+		run: (
+			callerContext: McpCallerContext,
+			mode: PackageAppAuthorityMode,
+		) => Promise<T>
+		/** A returned (not thrown) refusal that is about authority. */
+		refusedResultKind?: (result: T) => PackageAppAuthorityDifferenceKind | null
+	}): Promise<T> {
+		const runsAs = await this.loadRunsAs()
+		const runLegacy = async () =>
+			await input.run(
+				await this.createCallerContext(input.storageId, input.visitTicket),
+				'legacy',
+			)
+		const noteFallback = async (kind: PackageAppAuthorityDifferenceKind) =>
+			this.noteAuthorityFallback(
+				input.callName,
+				kind,
+				await this.visitorFor(input.visitTicket),
+			)
+		if (runsAs.status !== 'ready') {
+			let result: T
+			try {
+				result = await runLegacy()
+			} catch (error) {
+				if (
+					runsAs.reason === 'person-unavailable' &&
+					packageAppAuthorityFallbackKindOf(error)
+				) {
+					throw new PackageAppRunsAsUnavailableError(runsAs.reason, {
+						cause: error,
+					})
+				}
+				throw error
+			}
+			if (!input.refusedResultKind?.(result)) {
+				await noteFallback('runs_as_unavailable')
+			}
+			return result
+		}
+		let refusedKind: PackageAppAuthorityDifferenceKind
+		let refused: { result: T } | { error: unknown }
+		try {
+			const result = await input.run(
+				this.createRunsAsCallerContext(runsAs, input.storageId),
+				'runs-as',
+			)
+			const kind = input.refusedResultKind?.(result) ?? null
+			if (!kind) return result
+			refusedKind = kind
+			refused = { result }
+		} catch (error) {
+			const kind = packageAppAuthorityFallbackKindOf(error)
+			if (!kind) throw error
+			refusedKind = kind
+			refused = { error }
+		}
+		const giveUp = () => {
+			if ('error' in refused) throw refused.error
+			return refused.result
+		}
+		let legacyResult: T
+		try {
+			legacyResult = await runLegacy()
+		} catch {
+			return giveUp()
+		}
+		if (input.refusedResultKind?.(legacyResult)) return giveUp()
+		await noteFallback(refusedKind)
+		return legacyResult
+	}
+
+	private async requireVisit(ticket: string | null | undefined) {
+		if (typeof ticket !== 'string' || ticket === '') return null
+		const audience = this.ctx.props.visitAudience
+		if (!audience) {
+			throw new Error('Package app visit ticket is not valid.')
+		}
+		return await verifyPackageAppVisitTicket({
+			env: this.env,
+			ticket,
+			audience,
+		})
+	}
+
+	/**
+	 * The visit every path except executor credentials acts on. An
+	 * executor-only ticket (an outside-org visitor) counts as no visit, so
+	 * storage, capabilities and identity stay anonymous plus identity.
+	 */
+	private async requireActingVisit(ticket: string | null | undefined) {
+		const visit = await this.requireVisit(ticket)
+		return visit?.executorOnly ? null : visit
+	}
+
+	/** Who this call acts for the legacy way: the ticket's visitor, if any. */
+	private async visitorFor(
+		ticket: string | null | undefined,
+	): Promise<RuntimePackageAppVisitor | null> {
+		const visit = await this.requireActingVisit(ticket)
+		return visit?.visitor ?? null
+	}
+
+	private async createCallerContext(
+		storageId: string | null,
+		ticket?: string | null,
+	) {
+		const visit = await this.requireActingVisit(ticket)
+		const visitor = visit?.visitor ?? null
+		const email = visit?.owner.email ?? this.ctx.props.email
+		const displayName = visit?.owner.displayName ?? this.ctx.props.displayName
+		const orgSlug = visit?.owner.orgSlug ?? this.ctx.props.orgSlug
 		return createMcpCallerContext({
 			baseUrl: this.ctx.props.baseUrl,
 			executionOrigin: 'background',
 			user: visitor
 				? {
 						userId: visitor.userId,
-						email: this.ctx.props.email,
+						email,
 						username: visitor.username,
-						displayName: this.ctx.props.displayName,
+						displayName,
 					}
 				: null,
 			orgBinding: visitor
 				? {
-						org: { id: this.ctx.props.userId, slug: this.ctx.props.orgSlug },
+						org: { id: this.ctx.props.userId, slug: orgSlug },
 						role: visitor.role,
 					}
 				: undefined,
@@ -1257,11 +1704,21 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
-	private getStorageRunner(storageId: string) {
+	private credentialBindingFor(visit: PackageAppVisitClaims | null) {
+		return visit?.credentialClientBinding ?? ''
+	}
+
+	private getStorageRunner(
+		storageId: string,
+		packageAppVisitorUserId?: string,
+	) {
 		return storageRunnerRpc({
 			env: this.env,
 			userId: this.ctx.props.userId,
 			storageId,
+			...(packageAppVisitorUserId !== undefined
+				? { packageAppVisitorUserId }
+				: {}),
 		})
 	}
 
@@ -1382,9 +1839,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		sessionId?: string | null
 		metadata?: Record<string, unknown> | null
 	}): Promise<RunRecordHandle | null> {
+		const callerContext = await this.createCallerContext(null)
 		return beginRunRecord({
 			env: this.env,
 			userId: this.ctx.props.userId,
+			request: callerContext.request,
+			startedByLabel: callerContext.request?.credential.profileName ?? null,
 			context: {
 				packageId: this.ctx.props.packageId,
 				kodyId: this.ctx.props.kodyId,
@@ -1449,8 +1909,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		}
 	}
 
-	async callCapability(input: { name: string; args?: unknown }) {
-		return await this.callCapabilityAs(null, input)
+	async callCapability(input: {
+		name: string
+		args?: unknown
+		visitTicket?: string | null
+	}) {
+		return await this.callCapabilityAs(null, input, input.visitTicket)
 	}
 
 	/**
@@ -1471,44 +1935,62 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		name?: string
 		args?: unknown
 		alias?: string
+		visitTicket?: string | null
 	}) {
 		const packageId = await this.assertPackageBindingCapability(
 			input?.token,
 			input?.packageId,
 		)
+		const visitTicket = input.visitTicket
 		switch (input.op) {
 			case 'capability':
-				return await this.callCapabilityAs(packageId, {
-					name: String(input.name ?? ''),
-					args: input.args,
-				})
+				return await this.callCapabilityAs(
+					packageId,
+					{
+						name: String(input.name ?? ''),
+						args: input.args,
+					},
+					visitTicket,
+				)
 			case 'packageSecretGet':
 				return await this.packageSecretGetAs(
 					packageId,
 					String(input.alias ?? ''),
+					visitTicket,
 				)
 			case 'packageSecretHas':
 				return await this.packageSecretHasAs(
 					packageId,
 					String(input.alias ?? ''),
+					visitTicket,
 				)
 			case 'packageStorage':
 				return await this.packageStorageCallAs(
 					packageId,
 					String(input.name ?? ''),
 					input.args,
+					visitTicket,
 				)
 			case 'credentialClient':
-				return await this.credentialClientCallAs(packageId, {
-					name: String(input.name ?? ''),
-					args: input.args,
-				})
+				return await this.credentialClientCallAs(
+					packageId,
+					{
+						name: String(input.name ?? ''),
+						args: input.args,
+					},
+					visitTicket,
+				)
 			default:
 				throw new Error('Unknown package binding operation.')
 		}
 	}
 
-	async packageBoundFetch(token: string, packageId: string, request: Request) {
+	async packageBoundFetch(
+		token: string,
+		packageId: string,
+		request: Request,
+		visitTicket?: string | null,
+	) {
 		const boundPackageId = await this.assertPackageBindingCapability(
 			token,
 			packageId,
@@ -1517,9 +1999,24 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		if (!gatewayProps || !workerExports?.KodyFetchGateway) {
 			return await fetch(request)
 		}
+		const visit = await this.requireVisit(visitTicket)
+		const forwarded =
+			typeof visitTicket === 'string'
+				? withPackageAppVisitTicket(request, visitTicket)
+				: request
 		return await workerExports
-			.KodyFetchGateway({ props: { ...gatewayProps, boundPackageId } })
-			.fetch(request)
+			.KodyFetchGateway({
+				props: {
+					...gatewayProps,
+					boundPackageId,
+					request: visit
+						? ((await this.createCallerContext(null, visitTicket)).request ??
+							null)
+						: null,
+					credentialClientBinding: this.credentialBindingFor(visit),
+				},
+			})
+			.fetch(forwarded)
 	}
 
 	private async assertPackageBindingCapability(
@@ -1544,29 +2041,209 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	private async callCapabilityAs(
 		boundPackageId: string | null,
 		input: { name: string; args?: unknown },
+		visitTicket?: string | null,
 	) {
 		const name = input.name.trim()
 		// Discard any caller-supplied authority field (GHSA-5fv3).
 		const { args } = takeSecretAuthorityFromCapabilityArgs([input.args ?? {}])
-		const requestedPackageId = boundPackageId
-		const callerContext = await this.createCallerContext(null)
+		const capabilityArgs = (args[0] ?? {}) as Record<string, unknown>
+		if (name === packageAppIdentityCapabilityName) {
+			return await this.visitorIdentityAnswer(
+				boundPackageId,
+				capabilityArgs,
+				visitTicket,
+			)
+		}
+		if (name === packageAppVisitorNeedCallName) {
+			return await this.callVisitorNeed(
+				boundPackageId,
+				capabilityArgs,
+				visitTicket,
+			)
+		}
+		const declared = new Set(this.ctx.props.declaredCapabilities)
+		return await this.runWithAuthority({
+			callName: name,
+			storageId: null,
+			visitTicket,
+			run: async (callerContext, mode) => {
+				if (mode === 'runs-as' && !declared.has(name)) {
+					throw new PackageAppCapabilityNotDeclaredError(name)
+				}
+				return await this.invokeCapability(boundPackageId, callerContext, {
+					name,
+					args: capabilityArgs,
+					unavailable: (missing) =>
+						mode === 'runs-as'
+							? new PackageAppCapabilityUnavailableError(missing)
+							: new Error(
+									`Package app capability "${missing}" is not available.`,
+								),
+				})
+			},
+		})
+	}
+
+	private async invokeCapability(
+		boundPackageId: string | null,
+		callerContext: McpCallerContext,
+		input: {
+			name: string
+			args: Record<string, unknown>
+			unavailable?: (name: string) => Error
+		},
+	) {
 		const { capabilityMap } = await getCapabilityRegistryForContext({
 			env: this.env,
 			callerContext,
 		})
-		const capability = capabilityMap[name]
+		const capability = capabilityMap[input.name]
 		if (!capability) {
-			throw new Error(`Package app capability "${name}" is not available.`)
+			throw (
+				input.unavailable?.(input.name) ??
+				new Error(`Package app capability "${input.name}" is not available.`)
+			)
 		}
 		const invoke = () =>
-			capability.handler((args[0] ?? {}) as Record<string, unknown>, {
-				env: this.env,
-				callerContext,
-			})
+			capability.handler(input.args, { env: this.env, callerContext })
 		const grantedPackageIds = new Set(this.ctx.props.packageStorageGrantIds)
 		return await runWithSecretAuthorityScope(grantedPackageIds, () =>
-			runWithCurrentSecretAuthority(requestedPackageId, invoke),
+			runWithCurrentSecretAuthority(boundPackageId, invoke),
 		)
+	}
+
+	/**
+	 * `metaGetCurrentUser` names the visitor, never the runs-as person:
+	 * identity is information, not authority. Members of the owning org also
+	 * get their role. Email needs the visitor's `email` consent; an answer
+	 * that carried it without consent keeps it for now and is logged.
+	 */
+	private async visitorIdentityAnswer(
+		boundPackageId: string | null,
+		args: Record<string, unknown>,
+		visitTicket: string | null | undefined,
+	) {
+		const visit = await this.requireVisit(visitTicket)
+		if (visit?.executorOnly) {
+			// An outside-org visitor gets the identity-only answer, never more.
+			return {
+				user_id: visit.visitor.userId,
+				username: visit.visitor.username,
+				email: '',
+				display_name: visit.visitor.username,
+				org: { slug: this.ctx.props.orgSlug ?? '' },
+				scopes: [...visit.scopes],
+			}
+		}
+		const visitor = visit?.visitor ?? null
+		const legacy = (await this.invokeCapability(
+			boundPackageId,
+			await this.createCallerContext(null, visitTicket),
+			{ name: packageAppIdentityCapabilityName, args },
+		)) as Record<string, unknown>
+		if (!visitor) return legacy
+		const answer = { ...legacy, role: visitor.role }
+		const email = typeof legacy.email === 'string' ? legacy.email : ''
+		if (!email) return answer
+		// Only decides whether to log; a failed grant read never changes the answer.
+		const grant = await this.findVisitorGrant(visitor).catch(() => null)
+		if (grant && scopesIncludeEmail(grant.scopes)) return answer
+		this.noteAuthorityFallback(
+			packageAppIdentityCapabilityName,
+			'identity_email',
+			visitor,
+		)
+		return answer
+	}
+
+	private async findVisitorGrant(visitor: RuntimePackageAppVisitor) {
+		const { orgSlug, kodyId } = this.ctx.props
+		if (!orgSlug) return null
+		return await findLivePackageAppOauthGrant({
+			db: this.env.APP_DB,
+			personId: visitor.userId,
+			orgUsername: orgSlug.toLowerCase(),
+			kodyId,
+		})
+	}
+
+	/**
+	 * `kody.visitorNeed({ need, args })`: run a declared visitor need as the
+	 * signed-in visitor, on their own data. Needs a live Sign in with Kody
+	 * grant that covers the need's scope, checked on every call. Any failure
+	 * is an error; it never falls back to the runs-as person.
+	 */
+	private async callVisitorNeed(
+		boundPackageId: string | null,
+		args: Record<string, unknown>,
+		visitTicket: string | null | undefined,
+	) {
+		const key = typeof args.need === 'string' ? args.need.trim() : ''
+		const need = Object.hasOwn(this.ctx.props.visitorNeeds, key)
+			? this.ctx.props.visitorNeeds[key]
+			: undefined
+		if (!need) {
+			throw new PackageAppVisitorConsentError(
+				`"${key}" is not a visitor need this app declares in kody.app.visitorNeeds.`,
+			)
+		}
+		if (need.credential) {
+			await this.assertVisitorCredentialIsExecutorSupplied(
+				need.credential,
+				visitTicket,
+			)
+		}
+		if (!need.capability) {
+			throw new PackageAppVisitorConsentError(
+				`Visitor need "${key}" is a credential need. Open it with credential.visitor("${key}").`,
+			)
+		}
+		const visitorContext = await this.visitorConsentCallerContext(
+			key,
+			visitTicket,
+		)
+		const needArgs =
+			args.args !== null &&
+			typeof args.args === 'object' &&
+			!Array.isArray(args.args)
+				? (args.args as Record<string, unknown>)
+				: {}
+		return await this.invokeCapability(boundPackageId, visitorContext, {
+			name: need.capability,
+			args: needArgs,
+		})
+	}
+
+	/**
+	 * The visitor, acting on their own data for one consented need. The grant
+	 * is read live on every call so a revoke takes effect on the next one.
+	 */
+	private async visitorConsentCallerContext(
+		needKey: string,
+		visitTicket: string | null | undefined,
+		options: { executorNeed?: boolean } = {},
+	) {
+		const visitor = options.executorNeed
+			? ((await this.requireVisit(visitTicket))?.visitor ?? null)
+			: await this.visitorFor(visitTicket)
+		if (!visitor) {
+			throw new PackageAppVisitorConsentError(
+				'This needs a visitor signed in with Kody. Anonymous visitors cannot share their own data.',
+			)
+		}
+		const consents = await packageAppVisitorConsents({
+			db: this.env.APP_DB,
+			visitorPersonId: visitor.userId,
+			grantScope: this.grantScope(),
+			needKey,
+			waitUntil: (promise) => this.ctx.waitUntil(promise),
+		})
+		if (!consents) {
+			throw new PackageAppVisitorConsentError(
+				`The visitor has not allowed this app to use "${needKey}". Ask them to sign in with Kody and allow it.`,
+			)
+		}
+		return await this.createCallerContext(null, visitTicket)
 	}
 
 	async storageGet(input: { storageId: string; key: string }) {
@@ -1595,6 +2272,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		query: string
 		params?: Array<unknown>
 		writable: boolean
+		packageAppVisitorUserId?: string
 	}) {
 		// package app bridges always mark packageStorage SQL writable, so skip
 		// the all-bucket fan-out for pure SELECT/EXPLAIN/PRAGMA statements.
@@ -1607,7 +2285,10 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				}),
 			})
 		}
-		return await this.getStorageRunner(input.storageId).sqlQuery({
+		return await this.getStorageRunner(
+			input.storageId,
+			input.packageAppVisitorUserId,
+		).sqlQuery({
 			query: input.query,
 			params: input.params,
 			writable: input.writable,
@@ -1618,10 +2299,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		storageId: string
 		key: string
 		value: unknown
+		packageAppVisitorUserId?: string
 	}) {
-		const existing = await this.getStorageRunner(input.storageId).getValue({
-			key: input.key,
-		})
+		const existing = await this.getStorageRunner(
+			input.storageId,
+			input.packageAppVisitorUserId,
+		).getValue({ key: input.key })
 		await this.assertStorageWriteAllowed({
 			storageId: input.storageId,
 			requested: estimateEntitlementStorageEntryByteDelta({
@@ -1680,6 +2363,28 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return await this.getStorageRunner(storageId).clearStorage()
 	}
 
+	async appRateLimit(input: {
+		key?: unknown
+		limit?: unknown
+		windowSeconds?: unknown
+	}) {
+		return await checkPackageAppRateLimit({
+			db: this.env.APP_DB,
+			packageId: this.ctx.props.packageId,
+			key: input?.key,
+			limit: input?.limit,
+			windowSeconds: input?.windowSeconds,
+		})
+	}
+
+	async appSpendGet() {
+		return await packageAppSpendGet({
+			db: this.env.APP_DB,
+			orgId: this.ctx.props.userId,
+			packageId: this.ctx.props.packageId,
+		})
+	}
+
 	async packageStorageGet(input: { packageId: string; key: string }) {
 		return await this.packageStorageGetAs(null, input)
 	}
@@ -1727,7 +2432,10 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		boundPackageId: string,
 		method: string,
 		args: unknown,
+		visitTicket?: string | null,
 	) {
+		const packageAppVisitorUserId =
+			(await this.visitorFor(visitTicket))?.userId ?? ''
 		const payload = (
 			args !== null && typeof args === 'object' && !Array.isArray(args)
 				? args
@@ -1747,7 +2455,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			prefix?: string | null
 			pageSize?: number
 			startAfter?: string | null
+			packageAppVisitorUserId?: string
 		}
+		input.packageAppVisitorUserId = packageAppVisitorUserId
 		switch (method) {
 			case 'packageStorageGet':
 				return await this.packageStorageGetAs(boundPackageId, input)
@@ -1768,7 +2478,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 
 	private async packageStorageGetAs(
 		boundPackageId: string | null,
-		input: { packageId: string; key: string },
+		input: {
+			packageId: string
+			key: string
+			packageAppVisitorUserId?: string
+		},
 	) {
 		const packageId = this.resolvePackageStorageOwner(
 			input.packageId,
@@ -1778,6 +2492,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		// namespace lock on raw storage* (assertAppOwnedStorageId).
 		return await this.getStorageRunner(
 			buildPackageStorageId(packageId),
+			input.packageAppVisitorUserId,
 		).getValue({
 			key: input.key,
 		})
@@ -1790,6 +2505,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			prefix?: string | null
 			pageSize?: number
 			startAfter?: string | null
+			packageAppVisitorUserId?: string
 		},
 	) {
 		const packageId = this.resolvePackageStorageOwner(
@@ -1798,6 +2514,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		)
 		return await this.getStorageRunner(
 			buildPackageStorageId(packageId),
+			input.packageAppVisitorUserId,
 		).listValues({
 			prefix: input.prefix,
 			pageSize: input.pageSize,
@@ -1812,6 +2529,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			query: string
 			params?: Array<unknown>
 			writable?: boolean
+			packageAppVisitorUserId?: string
 		},
 	) {
 		const packageId = this.resolvePackageStorageOwner(
@@ -1823,6 +2541,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			query: input.query,
 			params: input.params,
 			writable: input.writable ?? false,
+			packageAppVisitorUserId: input.packageAppVisitorUserId,
 		})
 	}
 
@@ -1832,6 +2551,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			packageId: string
 			key: string
 			value: unknown
+			packageAppVisitorUserId?: string
 		},
 	) {
 		const packageId = this.resolvePackageStorageOwner(
@@ -1842,6 +2562,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			storageId: buildPackageStorageId(packageId),
 			key: input.key,
 			value: input.value,
+			packageAppVisitorUserId: input.packageAppVisitorUserId,
 		})
 	}
 
@@ -1875,6 +2596,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 
 	async authenticatedFetch(input: {
 		providerName: string
+		visitTicket?: string | null
 		request: {
 			url: string
 			method?: string
@@ -1882,61 +2604,78 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			body?: string
 		}
 	}) {
-		const kody = await buildKodyFns(
-			this.env,
-			await this.createCallerContext(this.ctx.props.packageId),
-		)
-		const authenticatedFetch = await createAuthenticatedFetch(
-			kody,
-			input.providerName,
-		)
-		return await authenticatedFetch(input.request.url, {
-			method: input.request.method,
-			headers: input.request.headers,
-			body: input.request.body,
+		return await this.runWithAuthority({
+			callName: 'authenticatedFetch',
+			storageId: this.ctx.props.packageId,
+			visitTicket: input.visitTicket,
+			run: async (callerContext) => {
+				const kody = await buildKodyFns(this.env, callerContext)
+				const authenticatedFetch = await createAuthenticatedFetch(
+					kody,
+					input.providerName,
+				)
+				return await authenticatedFetch(input.request.url, {
+					method: input.request.method,
+					headers: input.request.headers,
+					body: input.request.body,
+				})
+			},
 		})
 	}
 
 	private async resolvePackageSecretMount(input: {
 		alias: string
 		boundPackageId: string | null
+		visitTicket: string | null | undefined
 		access?: 'presence' | 'value'
 	}) {
 		const packageId = this.resolvePackageSecretAuthorityPackageId(
 			input.boundPackageId,
 		)
-		const callerContext = await this.createCallerContext(
-			this.ctx.props.packageId,
-		)
-		return await resolveCredential({
-			env: this.env,
-			orgId: ownerIdFromCaller(callerContext),
-			actor: callerContext.request,
-			packageStamp: attestedPackageStamp(packageId),
-			baseUrl: callerContext.baseUrl,
-			runContextPackageId: this.ctx.props.packageId,
-			credential: {
-				use: 'package-secret-mount',
-				alias: input.alias,
-				callerContext,
-				...(input.access ? { access: input.access } : {}),
-			},
+		return await this.runWithAuthority({
+			callName: 'packageSecret',
+			storageId: this.ctx.props.packageId,
+			visitTicket: input.visitTicket,
+			run: async (callerContext) =>
+				await resolveCredential({
+					env: this.env,
+					orgId: ownerIdFromCaller(callerContext),
+					actor: callerContext.request,
+					packageStamp: attestedPackageStamp(packageId),
+					baseUrl: callerContext.baseUrl,
+					runContextPackageId: this.ctx.props.packageId,
+					credential: {
+						use: 'package-secret-mount',
+						alias: input.alias,
+						callerContext,
+						...(input.access ? { access: input.access } : {}),
+					},
+				}),
 		})
 	}
 
 	/** Run-package secrets only; caller-supplied ids are ignored (GHSA-5fv3). */
-	async packageSecretGet(input: { alias: string }) {
-		return await this.packageSecretGetAs(null, String(input?.alias ?? ''))
+	async packageSecretGet(input: {
+		alias: string
+		visitTicket?: string | null
+	}) {
+		return await this.packageSecretGetAs(
+			null,
+			String(input?.alias ?? ''),
+			input?.visitTicket,
+		)
 	}
 
 	private async packageSecretGetAs(
 		boundPackageId: string | null,
 		alias: string,
+		visitTicket: string | null | undefined,
 	) {
 		const input = { alias }
 		const resolved = await this.resolvePackageSecretMount({
 			alias,
 			boundPackageId,
+			visitTicket,
 		})
 		// Opaque placeholder string only — never track or return plaintext.
 		let value = resolved.ref
@@ -1960,18 +2699,27 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	}
 
 	/** Run-package secrets only; caller-supplied ids are ignored (GHSA-5fv3). */
-	async packageSecretHas(input: { alias: string }) {
-		return await this.packageSecretHasAs(null, String(input?.alias ?? ''))
+	async packageSecretHas(input: {
+		alias: string
+		visitTicket?: string | null
+	}) {
+		return await this.packageSecretHasAs(
+			null,
+			String(input?.alias ?? ''),
+			input?.visitTicket,
+		)
 	}
 
 	private async packageSecretHasAs(
 		boundPackageId: string | null,
 		alias: string,
+		visitTicket: string | null | undefined,
 	) {
 		try {
 			await this.resolvePackageSecretMount({
 				alias,
 				boundPackageId,
+				visitTicket,
 				access: 'presence',
 			})
 			return {
@@ -2017,71 +2765,141 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
-	async workflowCreate(input: unknown) {
-		const { request } = await this.createCallerContext(null)
-		if (!request)
-			throw new Error('workflows.create requires a package app user.')
-		return await createDynamicCallableWorkflow({
+	async workflowCreate(input: unknown, visitTicket?: string | null) {
+		return await this.runWithAuthority({
+			callName: 'workflowCreate',
+			storageId: null,
+			visitTicket,
+			run: async (callerContext) => {
+				const { request } = callerContext
+				if (!request) {
+					throw new Error('workflows.create requires a package app user.')
+				}
+				return await createDynamicCallableWorkflow({
+					env: this.env,
+					userId: this.ctx.props.userId,
+					userEmail: callerContext.user?.email ?? this.ctx.props.email,
+					packageContext: {
+						packageId: this.ctx.props.packageId,
+						kodyId: this.ctx.props.kodyId,
+						sourceId: this.ctx.props.sourceId,
+					},
+					body: input as PackageWorkflowCreateInput,
+					lineage: requestLineage(request),
+				})
+			},
+		})
+	}
+
+	async createPackageEventTools(visitTicket?: string | null) {
+		return await this.packageEventToolsFor(
+			await this.createCallerContext(this.ctx.props.packageId, visitTicket),
+		)
+	}
+
+	/** Never public: a sandbox-supplied caller context would pick authority. */
+	private async packageEventToolsFor(callerContext: McpCallerContext) {
+		// Avoid a top-level package-app -> package-invocations cycle during worker
+		// startup; apps only need this helper when package code calls it.
+		// Do not cache: a warm isolate would reuse the first visitor's caller.
+		const { createPackageEventTools } =
+			await import('#worker/package-invocations/service.ts')
+		return createPackageEventTools({
 			env: this.env,
-			userId: this.ctx.props.userId,
-			userEmail: this.ctx.props.email,
+			baseUrl: this.ctx.props.baseUrl,
+			callerContext,
 			packageContext: {
 				packageId: this.ctx.props.packageId,
 				kodyId: this.ctx.props.kodyId,
 				sourceId: this.ctx.props.sourceId,
 			},
-			body: input as PackageWorkflowCreateInput,
-			lineage: requestLineage(request),
+			parentRunRecord: null,
+			packageInvokeDepth: 0,
 		})
 	}
 
-	async createPackageEventTools() {
-		if (this.packageEventTools) return await this.packageEventTools
-
-		// Avoid a top-level package-app -> package-invocations cycle during worker
-		// startup; apps only need this helper when package code calls it.
-		this.packageEventTools =
-			import('#worker/package-invocations/service.ts').then(
-				async ({ createPackageEventTools }) => {
-					const packageContext = {
-						packageId: this.ctx.props.packageId,
-						kodyId: this.ctx.props.kodyId,
-						sourceId: this.ctx.props.sourceId,
-					}
-					return createPackageEventTools({
-						env: this.env,
-						baseUrl: this.ctx.props.baseUrl,
-						callerContext: await this.createCallerContext(
-							this.ctx.props.packageId,
-						),
-						packageContext,
-						parentRunRecord: null,
-						packageInvokeDepth: 0,
-					})
-				},
-			)
-		return await this.packageEventTools
+	async packageEventDispatch(
+		input: Record<string, unknown>,
+		visitTicket?: string | null,
+	) {
+		return await this.runWithAuthority({
+			callName: 'packageEventDispatch',
+			storageId: this.ctx.props.packageId,
+			visitTicket,
+			run: async (callerContext) => {
+				const tools = await this.packageEventToolsFor(callerContext)
+				return await tools.dispatch(input)
+			},
+		})
 	}
 
-	async packageEventDispatch(input: Record<string, unknown>) {
-		const tools = await this.createPackageEventTools()
-		return await tools.dispatch(input)
+	private grantScope(): PackageAppVisitorGrantScope | null {
+		const { orgSlug, kodyId } = this.ctx.props
+		return orgSlug ? { orgSlug, kodyId } : null
 	}
 
 	/**
 	 * Credential client tools acting as one package (GHSA-5fv3): the package
 	 * `packageBoundCall` bound after its capability check, or the app package
 	 * for the public bridge. A sandbox-named package id never selects another
-	 * package's needs or bound Keys.
+	 * package's needs or bound Keys. `opener` says who new handles act as;
+	 * handles already open carry their own authority.
 	 */
-	private async getCredentialClientTools(boundPackageId: string | null = null) {
+	private async getCredentialClientTools(
+		boundPackageId: string | null,
+		opener:
+			| { mode: 'legacy' }
+			| { mode: 'runs-as'; callerContext: McpCallerContext }
+			| {
+					mode: 'visitor-need'
+					needKey: string
+					executorNeed: boolean
+			  },
+		visitTicket: string | null | undefined,
+	) {
+		// The full ticket: its binding scopes handles to this request, and only
+		// an executor need below reads an outside-org visitor from it.
+		const visit = await this.requireVisit(visitTicket)
 		const owner = boundPackageId ?? this.ctx.props.packageId
-		const cached = this.credentialClientTools.get(owner)
+		const binding = this.credentialBindingFor(visit)
+		const cacheKey = JSON.stringify([
+			owner,
+			binding,
+			opener.mode,
+			opener.mode === 'visitor-need'
+				? [opener.needKey, opener.executorNeed]
+				: opener.mode === 'runs-as'
+					? (opener.callerContext.user?.userId ?? null)
+					: null,
+		])
+		const cached = this.credentialClientTools.get(cacheKey)
 		if (cached) return await cached
-		const binding = this.ctx.props.credentialClientBinding
 		const tools = (async () => {
-			const callerContext = await this.createCallerContext(null)
-			let runNeeds: Promise<ReadonlyMap<string, CredentialNeed>> | null = null
+			const visitorContext = await this.createCallerContext(null, visitTicket)
+			const callerContext =
+				opener.mode === 'runs-as' ? opener.callerContext : visitorContext
+			// An outside-org visitor's handles resolve only through their own
+			// grant, so every opener names them for executor-need handles.
+			const visitorCredentialRequest =
+				(opener.mode === 'visitor-need' && opener.executorNeed) ||
+				visit?.executorOnly
+					? await createPackageAppVisitorCredentialRequest({
+							db: this.env.APP_DB,
+							orgId: this.ctx.props.userId,
+							callerRequest: callerContext.request,
+							visitor: visit?.visitor ?? null,
+						})
+					: visitorContext.request
+			let runNeedEntries: ReturnType<
+				typeof loadRunCredentialNeedEntries
+			> | null = null
+			const loadRunNeedEntries = () =>
+				(runNeedEntries ??= loadRunCredentialNeedEntries({
+					env: this.env,
+					orgId: this.ctx.props.userId,
+					packageIds: [this.ctx.props.packageId],
+					request: callerContext.request,
+				}))
 			return createCredentialClientKodyTools({
 				env: this.env,
 				callerContext,
@@ -2094,44 +2912,235 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 						}),
 					// Needs load for anonymous visitors too: an opted-in need is the
 					// only way they reach a credential.
-					runNeeds: () => {
-						runNeeds ??= loadRunCredentialNeeds({
-							env: this.env,
-							orgId: this.ctx.props.userId,
-							packageIds: [this.ctx.props.packageId],
-						})
-						return runNeeds
-					},
-					ownerCredentialScope: packageAppOwnerCredentialScope(this.ctx.props),
+					runNeeds: async () => (await loadRunNeedEntries()).needs,
+					// The app package is the entry: a bound dependency's need reads
+					// the app's mappings.
+					runEntries: async () => (await loadRunNeedEntries()).entries,
+					// Under the runs-as person every declared need is theirs, so the
+					// `ownerCredentialForVisitors` opt-in only applies the legacy way.
+					ownerCredentialScope:
+						opener.mode === 'legacy'
+							? packageAppOwnerCredentialScope(this.ctx.props)
+							: null,
+					packageAppAuthority: createPackageAppCredentialAuthority({
+						env: this.env,
+						scope: this.authorityScope(),
+						grantScope: this.grantScope(),
+						visitorRequest: visitorCredentialRequest ?? null,
+						issue:
+							opener.mode === 'runs-as'
+								? { runsAs: true }
+								: opener.mode === 'visitor-need'
+									? { visitorNeed: opener.needKey }
+									: null,
+						waitUntil: (promise) => this.ctx.waitUntil(promise),
+					}),
 					waitUntil: (promise) => {
 						this.ctx.waitUntil(promise)
 					},
 				},
 			})
 		})()
-		this.credentialClientTools.set(owner, tools)
+		this.credentialClientTools.set(cacheKey, tools)
 		return await tools
 	}
 
-	async credentialClientCall(input: { name: string; args?: unknown }) {
-		return await this.credentialClientCallAs(null, input)
+	async credentialClientCall(input: {
+		name: string
+		args?: unknown
+		visitTicket?: string | null
+	}) {
+		return await this.credentialClientCallAs(null, input, input.visitTicket)
 	}
 
 	private async credentialClientCallAs(
 		boundPackageId: string | null,
 		input: { name: string; args?: unknown },
+		visitTicket?: string | null,
 	) {
 		const name = String(input.name ?? '').trim()
 		const allowed = new Set<string>(Object.values(credentialClientToolNames))
 		if (!allowed.has(name)) {
 			throw new Error(`Unknown credential client tool "${name}".`)
 		}
-		const tools = await this.getCredentialClientTools(boundPackageId)
-		const tool = tools[name]
-		if (typeof tool !== 'function') {
-			throw new Error(`Credential client tool "${name}" is not available.`)
+		const args =
+			input.args !== null &&
+			typeof input.args === 'object' &&
+			!Array.isArray(input.args)
+				? (input.args as Record<string, unknown>)
+				: {}
+		const callTool = async (tools: AdditionalKodyTools, toolArgs: unknown) => {
+			const tool = tools[name]
+			if (typeof tool !== 'function') {
+				throw new Error(`Credential client tool "${name}" is not available.`)
+			}
+			return await tool(toolArgs)
 		}
-		return await tool(input.args ?? {})
+		if (name === credentialClientToolNames.open && 'visitorNeed' in args) {
+			return await this.openVisitorCredential(
+				boundPackageId,
+				args,
+				callTool,
+				visitTicket,
+			)
+		}
+		const opens =
+			name === credentialClientToolNames.open ||
+			name === credentialClientToolNames.openAll ||
+			name === credentialClientToolNames.check
+		// Executor needs never resolve from the runs-as or legacy path. Refuse
+		// before runWithAuthority, whose legacy fallback would otherwise hand
+		// back the owner's credential.
+		if (
+			opens &&
+			typeof args.key === 'string' &&
+			(await this.publishedCredentialSupplier(args.key.trim(), visitTicket)) ===
+				'executor'
+		) {
+			const key = args.key.trim()
+			throw new CredentialClientError({
+				code: 'credential_denied',
+				message: `Credential need "${key}" is supplied by each app visitor; use credential.visitor("${key}")`,
+				retryWith: [],
+			})
+		}
+		if (!opens) {
+			// Sign, call, and refresh use an open handle, which carries who it
+			// acts as.
+			return await callTool(
+				await this.getCredentialClientTools(
+					boundPackageId,
+					{ mode: 'legacy' },
+					visitTicket,
+				),
+				args,
+			)
+		}
+		return await this.runWithAuthority({
+			callName: `credential:${name}`,
+			storageId: null,
+			visitTicket,
+			refusedResultKind: packageAppAuthorityFallbackKindOfResult,
+			run: async (callerContext, mode) => {
+				if (mode === 'legacy') {
+					return await callTool(
+						await this.getCredentialClientTools(
+							boundPackageId,
+							{ mode: 'legacy' },
+							visitTicket,
+						),
+						args,
+					)
+				}
+				if (args.name !== undefined && args.name !== null) {
+					// The runs-as person's credentials are capped to declared needs.
+					throw new PackageAppCapabilityNotDeclaredError('credential.named')
+				}
+				return await callTool(
+					await this.getCredentialClientTools(
+						boundPackageId,
+						{ mode: 'runs-as', callerContext },
+						visitTicket,
+					),
+					args,
+				)
+			},
+		})
+	}
+
+	/**
+	 * `credential.visitor(need)`: the visitor's own credential for a declared
+	 * `kody.app.visitorNeeds` credential need, while their consent covers it.
+	 * Never falls back to the runs-as person.
+	 */
+	private async openVisitorCredential(
+		boundPackageId: string | null,
+		args: Record<string, unknown>,
+		callTool: (
+			tools: AdditionalKodyTools,
+			toolArgs: unknown,
+		) => Promise<unknown>,
+		visitTicket: string | null | undefined,
+	) {
+		const key =
+			typeof args.visitorNeed === 'string' ? args.visitorNeed.trim() : ''
+		const directSupplier = await this.assertVisitorCredentialIsExecutorSupplied(
+			key,
+			visitTicket,
+		)
+		if (directSupplier === 'executor') {
+			await this.visitorConsentCallerContext(key, visitTicket, {
+				executorNeed: true,
+			})
+			return await callTool(
+				await this.getCredentialClientTools(
+					boundPackageId,
+					{
+						mode: 'visitor-need',
+						needKey: key,
+						executorNeed: true,
+					},
+					visitTicket,
+				),
+				{ key },
+			)
+		}
+		const need = Object.hasOwn(this.ctx.props.visitorNeeds, key)
+			? this.ctx.props.visitorNeeds[key]
+			: undefined
+		if (!need?.credential) {
+			throw new PackageAppVisitorConsentError(
+				`"${key}" is not a credential need this app declares in kody.app.visitorNeeds.`,
+			)
+		}
+		const supplier = await this.assertVisitorCredentialIsExecutorSupplied(
+			need.credential,
+			visitTicket,
+		)
+		const scopeNeed = supplier === 'executor' ? need.credential : key
+		await this.visitorConsentCallerContext(scopeNeed, visitTicket, {
+			executorNeed: supplier === 'executor',
+		})
+		return await callTool(
+			await this.getCredentialClientTools(
+				boundPackageId,
+				{
+					mode: 'visitor-need',
+					needKey: scopeNeed,
+					executorNeed: supplier === 'executor',
+				},
+				visitTicket,
+			),
+			{ key: need.credential },
+		)
+	}
+
+	private async publishedCredentialSupplier(
+		credentialKey: string,
+		visitTicket: string | null | undefined,
+	): Promise<'publisher' | 'executor' | null> {
+		const callerContext = await this.createCallerContext(null, visitTicket)
+		const needs = await loadPublishedCredentialNeeds({
+			env: this.env,
+			userId: this.ctx.props.userId,
+			sourceId: this.ctx.props.sourceId,
+			request: callerContext.request,
+		})
+		return needs.find((need) => need.key === credentialKey)?.supplier ?? null
+	}
+
+	private async assertVisitorCredentialIsExecutorSupplied(
+		credentialKey: string,
+		visitTicket: string | null | undefined,
+	): Promise<'publisher' | 'executor' | null> {
+		const supplier = await this.publishedCredentialSupplier(
+			credentialKey,
+			visitTicket,
+		)
+		if (supplier !== 'publisher') return supplier
+		throw new PackageAppVisitorConsentError(
+			`Credential need "${credentialKey}" is supplied by the publisher; use credential("${credentialKey}")`,
+		)
 	}
 }
 
@@ -2169,21 +3178,47 @@ const packageAppWorkerOptionsCache =
 /**
  * Mint the request-bound loopback bindings for one loader call. Call it inside
  * the `APP_LOADER.get` callback (or right before `APP_LOADER.load`) so the
- * bindings belong to the request that loads the isolate.
+ * bindings belong to the request that loads the isolate. Visitor identity,
+ * request context, and the credential binding come from `requestVisit`, never
+ * from the cached template. A warm isolate may skip this factory; ticketless
+ * bridge and gateway paths stay anonymous and do not inherit frozen props.
  */
 export function materializePackageAppWorkerOptions(
 	template: PackageAppWorkerTemplate,
+	requestVisit?: PackageAppRequestVisit | null,
 ): PackageAppWorkerOptions {
+	const credentialClientBinding =
+		requestVisit?.credentialClientBinding ?? newRunCredentialClientBinding()
+	const visitor = requestVisit?.visitor ?? null
+	const request = requestVisit?.request ?? null
+	const email = requestVisit?.email ?? template.bridgeProps.email
+	const displayName =
+		requestVisit?.displayName ?? template.bridgeProps.displayName
+	const gatewayProps: FetchGatewayProps = {
+		...template.gatewayProps,
+		email,
+		request,
+		credentialClientBinding,
+	}
+	const bridgeProps: PackageAppRuntimeBridgeProps = {
+		...template.bridgeProps,
+		visitor,
+		email,
+		displayName,
+		credentialClientBinding,
+		gatewayProps,
+		visitTicket: requestVisit?.ticket ?? null,
+	}
 	return {
 		...template.options,
 		env: {
 			...template.options.env,
 			[packageAppRuntimeBindingName]: requireLocalPackageAppRuntimeBridge()({
-				props: template.bridgeProps,
+				props: bridgeProps,
 			}),
 		},
 		globalOutbound: workerExports?.KodyFetchGateway
-			? workerExports.KodyFetchGateway({ props: template.gatewayProps })
+			? workerExports.KodyFetchGateway({ props: gatewayProps })
 			: null,
 	} as PackageAppWorkerOptions
 }
@@ -2227,15 +3262,14 @@ export async function createPackageAppWorkerId(input: {
 }
 
 /**
- * Keys the cached build, which carries the bridge and gateway props (visitor,
- * org binding, request context, credential client binding). Every identity
- * input those props derive from is part of the key, so a request only ever
- * reuses a build made for the same visitor, role, and org.
+ * Keys the cached build: owner, package, commit, and mount. Visitor identity
+ * is per-request (header + visit ticket), so it is not part of the key.
+ * Separate mounts (app origin, subdomain, custom domain) still get separate
+ * workers because base URL, app base path, and hosted URL stay in the key.
  */
-function createPackageAppWorkerCacheKey(input: {
+export function createPackageAppWorkerCacheKey(input: {
 	userId: OwnerId
 	orgSlug: string | null
-	visitor: RuntimePackageAppVisitor | null
 	packageId: string
 	kodyId: string
 	sourceId: string
@@ -2243,8 +3277,6 @@ function createPackageAppWorkerCacheKey(input: {
 	baseUrl: string
 	appBasePath: string
 	hostedUrl: string
-	callerEmail: string
-	callerDisplayName: string
 }) {
 	if (!input.publishedCommit) {
 		return null
@@ -2252,9 +3284,6 @@ function createPackageAppWorkerCacheKey(input: {
 	return JSON.stringify([
 		input.userId,
 		input.orgSlug,
-		input.visitor?.userId ?? null,
-		input.visitor?.username ?? null,
-		input.visitor?.role ?? null,
 		input.packageId,
 		input.kodyId,
 		input.sourceId,
@@ -2262,8 +3291,6 @@ function createPackageAppWorkerCacheKey(input: {
 		input.baseUrl,
 		input.appBasePath,
 		input.hostedUrl,
-		input.callerEmail,
-		input.callerDisplayName,
 	])
 }
 
@@ -2290,6 +3317,15 @@ function packageAppVisitorOf(
 			role: request.membership?.role ?? null,
 		},
 	}
+}
+
+/**
+ * The owning org's slug on the shared worker, so the wrapper may answer
+ * `metaGetCurrentUser` from the platform visitor header when there is no
+ * visit ticket (identity-only or anonymous). A ticket skips that shortcut.
+ */
+function identityOnlyOrgSlugOf(runtime: { servingUsername?: string }): string {
+	return runtime.servingUsername ?? ''
 }
 
 function getUsernameFromPackageName(packageName: string) {
@@ -2329,7 +3365,7 @@ function packageAppPublicBasePath(input: {
 async function buildPackageAppPublicContext(input: {
 	env: Env
 	baseUrl: string
-	savedPackage: { kodyId: string; name: string }
+	savedPackage: { id: string; kodyId: string; name: string }
 	runtime: {
 		servingUsername?: string
 		hostedOrigin?: string
@@ -2339,6 +3375,7 @@ async function buildPackageAppPublicContext(input: {
 	const username =
 		input.runtime.servingUsername ??
 		getUsernameFromPackageName(input.savedPackage.name)
+	const cookiePrefix = await packageAppCookiePrefix(input.savedPackage.id)
 	// Public URLs use the name leaf (Kent: slug = leaf). Keep kodyId on the
 	// package context as identity; only the path segment switches to the leaf.
 	const urlSlug = getPackageNameLeaf(input.savedPackage.name)
@@ -2355,6 +3392,7 @@ async function buildPackageAppPublicContext(input: {
 		return {
 			appBasePath,
 			hostedUrl: `${input.runtime.hostedOrigin.replace(/\/+$/, '')}${appBasePath}`,
+			cookiePrefix,
 		}
 	}
 	// Background/synthetic callers get the canonical hosted URL: a verified
@@ -2365,7 +3403,7 @@ async function buildPackageAppPublicContext(input: {
 		username,
 		kodyId: urlSlug,
 	})
-	if (canonical) return canonical
+	if (canonical) return { ...canonical, cookiePrefix }
 	const hostedUrl = resolveHostedPackageAppUrl({
 		packageAppBaseUrl: getPackageAppBaseUrl({ env: input.env }),
 		appBaseUrl: input.baseUrl,
@@ -2375,6 +3413,7 @@ async function buildPackageAppPublicContext(input: {
 	return {
 		appBasePath: new URL(hostedUrl).pathname,
 		hostedUrl,
+		cookiePrefix,
 	}
 }
 
@@ -2598,30 +3637,37 @@ async function resolvePackageAppSourceFiles(input: {
 	return await input.loadSourceFiles()
 }
 
-async function buildPackageAppWorkerOptionsUncached(input: {
-	env: Env
-	baseUrl: string
-	userId: OwnerId
-	savedPackage: {
-		id: string
-		kodyId: string
-		name: string
-		sourceId: string
-		publishedCommit: string | null
-		manifestPath: string
-		sourceRoot: string
-	}
-	source?: EntitySourceRow
-	manifest?: AuthoredPackageJson
-	loadSourceFiles?: () => Promise<Record<string, string>>
-	sourceFiles?: Record<string, string>
-	runtime: {
-		callerContext: ReturnType<typeof createMcpCallerContext>
-		servingUsername?: string
-		hostedOrigin?: string
-		mount?: PackageAppMount
-	}
-}): Promise<PackageAppWorkerTemplate> {
+async function buildPackageAppWorkerOptionsUncached(
+	input: {
+		env: Env
+		baseUrl: string
+		userId: OwnerId
+		savedPackage: {
+			id: string
+			kodyId: string
+			name: string
+			sourceId: string
+			publishedCommit: string | null
+			manifestPath: string
+			sourceRoot: string
+		}
+		source?: EntitySourceRow
+		manifest?: AuthoredPackageJson
+		loadSourceFiles?: () => Promise<Record<string, string>>
+		sourceFiles?: Record<string, string>
+		runtime: {
+			callerContext: ReturnType<typeof createMcpCallerContext>
+			servingUsername?: string
+			hostedOrigin?: string
+			mount?: PackageAppMount
+		}
+	},
+	/**
+	 * The build cache key when this build is cached under a stable worker id;
+	 * null for a one-off load.
+	 */
+	bindingCacheKey: string | null,
+): Promise<PackageAppWorkerTemplate> {
 	const publicContext = await buildPackageAppPublicContext(input)
 	const manifest = resolvePackageAppManifest({
 		manifest: input.manifest,
@@ -2681,8 +3727,16 @@ async function buildPackageAppWorkerOptionsUncached(input: {
 		}),
 	]
 	// Per-build capability for the trusted per-package bindings (GHSA-5fv3).
-	// Embedded only in the wrapper's module scope and the bridge props.
-	const packageBindingToken = createPackageBindingToken()
+	// Embedded only in the wrapper's module scope and the bridge props. A
+	// cached build derives it from its cache key so a rebuild after cache
+	// expiry produces the same module text and worker id; a one-off build
+	// gets a random one.
+	const packageBindingToken = bindingCacheKey
+		? await packageAppBindingTokenFor({
+				secretStoreKey: input.env.SECRET_STORE_KEY,
+				cacheKey: bindingCacheKey,
+			})
+		: createRandomPackageBindingToken()
 	const modules = {
 		...hydratedModules,
 		[mainModule]: createPackageAppWorkerSource({
@@ -2692,19 +3746,36 @@ async function buildPackageAppWorkerOptionsUncached(input: {
 			rewriteNullPackagesInvoke:
 				modulesContainUnboundPackagesInvokeAccess(hydratedModules),
 			preloadMcpServerNames: modulesReferenceKodyMcp(bundled.modules),
+			identityOnlyOrgSlug: identityOnlyOrgSlugOf(input.runtime),
+			packageAppApexHostnames: listPackageAppOrigins({
+				env: input.env,
+			}).map((origin) => origin.hostname),
+			packageAppCookiePrefix: publicContext.cookiePrefix,
 		}),
 	}
-	// One binding for this worker-options build (visitor-scoped via the cache
-	// key). Props — not WorkerEntrypoint instance fields — carry it so open
-	// and sign share the same run binding across RPC invocations, and the
-	// fetch gateway can place credential().fetch handles.
-	const credentialClientBinding = newRunCredentialClientBinding()
+	// The cached template is identity-free: no visitor, request context, or
+	// credential binding. Those are minted per request and ride the visit
+	// ticket so a shared isolate cannot reuse the first request's authority.
 	const packageSecretRefKey = createPackageSecretRefKey()
+	const visitAudience: PackageAppVisitAudience = {
+		host: visitHostOf(publicContext.hostedUrl, input.baseUrl),
+		packageId: input.savedPackage.id,
+		kodyId: input.savedPackage.kodyId,
+		sourceId: input.savedPackage.sourceId,
+		publishedCommit: input.savedPackage.publishedCommit,
+	}
+	const { orgSlug: visitorGrantOrgSlug } = packageAppVisitorOf(
+		input.runtime.callerContext,
+		input.runtime.servingUsername,
+	)
+	const visitorGrantScope = visitorGrantOrgSlug
+		? { orgSlug: visitorGrantOrgSlug, kodyId: input.savedPackage.kodyId }
+		: null
 	const gatewayProps: FetchGatewayProps = {
 		baseUrl: input.baseUrl,
 		userId: input.userId,
-		email: input.runtime.callerContext.user?.email ?? null,
-		request: input.runtime.callerContext.request,
+		email: null,
+		request: null,
 		storageContext: {
 			sessionId: null,
 			appId: input.savedPackage.id,
@@ -2712,13 +3783,17 @@ async function buildPackageAppWorkerOptionsUncached(input: {
 			storageId: null,
 		},
 		grantedSecretAuthorityPackageIds: packageStorageGrantIds,
-		credentialClientBinding,
 		packageSecretRefKey,
 		ownerCredentialScope: packageAppOwnerCredentialScope({
 			userId: input.userId,
 			packageId: input.savedPackage.id,
 			publishedCommit: input.savedPackage.publishedCommit,
 		}),
+		visitAudience,
+		packageAppAuthority: {
+			scope: { orgId: input.userId, packageId: input.savedPackage.id },
+			grantScope: visitorGrantScope,
+		},
 	}
 	// Fail the build (host-setup) when this script cannot mint the bridge,
 	// instead of failing later inside the loader callback.
@@ -2742,25 +3817,40 @@ async function buildPackageAppWorkerOptionsUncached(input: {
 		bridgeProps: {
 			baseUrl: input.baseUrl,
 			userId: input.userId,
-			...packageAppVisitorOf(
+			orgSlug: packageAppVisitorOf(
 				input.runtime.callerContext,
 				input.runtime.servingUsername,
-			),
-			email: input.runtime.callerContext.user?.email ?? '',
-			displayName:
-				input.runtime.callerContext.user?.displayName ??
-				`package:${input.savedPackage.id}`,
+			).orgSlug,
+			visitor: null,
+			email: '',
+			displayName: `package:${input.savedPackage.id}`,
 			packageId: input.savedPackage.id,
 			kodyId: input.savedPackage.kodyId,
 			sourceId: input.savedPackage.sourceId,
 			publishedCommit: input.savedPackage.publishedCommit,
 			packageStorageGrantIds,
-			credentialClientBinding,
+			credentialClientBinding: '',
 			packageSecretRefKey,
 			packageBindingToken,
 			gatewayProps,
+			visitTicket: null,
+			visitAudience,
+			declaredCapabilities: [...(manifest.kody.app?.capabilities ?? [])],
+			visitorNeeds: { ...manifest.kody.app?.visitorNeeds },
 		},
 		gatewayProps,
+	}
+}
+
+function visitHostOf(hostedUrl: string, baseUrl: string) {
+	try {
+		return new URL(hostedUrl).origin
+	} catch {
+		try {
+			return new URL(baseUrl).origin
+		} catch {
+			return baseUrl
+		}
 	}
 }
 
@@ -2803,6 +3893,16 @@ export async function buildPackageAppWorker(input: {
 		servingUsername?: string
 		hostedOrigin?: string
 		mount?: PackageAppMount
+		/**
+		 * An outside-org visitor whose live grant covers this app's executor
+		 * needs. Gets an executor-only visit ticket; see
+		 * `createPackageAppRequestVisit`.
+		 */
+		executorVisit?: {
+			visitor: RuntimePackageAppVisitor
+			grantId: string
+			scopes: ReadonlyArray<string>
+		} | null
 	}
 	/** LOADER mint surface. HTTP serve is `app_fetch`; realtime passes `app_realtime`. */
 	surface?: 'app_fetch' | 'app_realtime'
@@ -2849,36 +3949,78 @@ export async function buildPackageAppWorker(input: {
 			input.runtime.callerContext,
 			input.runtime.servingUsername,
 		)
+		const visitorGrant =
+			visitor && orgSlug
+				? await findLivePackageAppOauthGrant({
+						db: input.env.APP_DB,
+						personId: visitor.userId,
+						orgUsername: orgSlug.toLowerCase(),
+						kodyId: input.savedPackage.kodyId,
+					}).catch((error: unknown) => {
+						console.warn('package-app-visitor-grant-lookup-failed', error)
+						return null
+					})
+				: null
+		if (visitorGrant) {
+			await notePackageAppOauthGrantUse({
+				db: input.env.APP_DB,
+				grant: visitorGrant,
+			})
+		}
+		const requestVisit = await createPackageAppRequestVisit({
+			env: input.env,
+			visitor,
+			owner: {
+				userId: input.userId,
+				orgSlug,
+				email: input.runtime.callerContext.user?.email ?? '',
+				displayName:
+					input.runtime.callerContext.user?.displayName ??
+					`package:${input.savedPackage.id}`,
+			},
+			audience: {
+				host: visitHostOf(publicContext.hostedUrl, input.baseUrl),
+				packageId: input.savedPackage.id,
+				kodyId: input.savedPackage.kodyId,
+				sourceId: input.savedPackage.sourceId,
+				publishedCommit: input.savedPackage.publishedCommit,
+			},
+			request: input.runtime.callerContext.request ?? null,
+			grantId: visitorGrant?.id ?? input.runtime.executorVisit?.grantId ?? null,
+			scopes: visitorGrant?.scopes ??
+				input.runtime.executorVisit?.scopes ?? ['profile'],
+			executorVisitor: input.runtime.executorVisit?.visitor ?? null,
+		})
 		const cacheKey = createPackageAppWorkerCacheKey({
 			userId: input.userId,
-			orgSlug,
-			visitor,
+			orgSlug: input.runtime.servingUsername ?? null,
 			packageId: input.savedPackage.id,
 			kodyId: input.savedPackage.kodyId,
 			sourceId: input.savedPackage.sourceId,
 			publishedCommit: input.savedPackage.publishedCommit,
 			baseUrl: input.baseUrl,
 			...publicContext,
-			callerEmail: input.runtime.callerContext.user?.email ?? '',
-			callerDisplayName:
-				input.runtime.callerContext.user?.displayName ??
-				`package:${input.savedPackage.id}`,
 		})
 		const surface = input.surface ?? 'app_fetch'
 		if (!cacheKey) {
 			return {
 				stub: input.env.APP_LOADER.load(
 					materializePackageAppWorkerOptions(
-						await buildPackageAppWorkerOptionsUncached(input),
+						await buildPackageAppWorkerOptionsUncached(input, null),
+						requestVisit,
 					),
 				),
 				entrypointName: packageAppEntrypointName,
+				visit: requestVisit,
 			}
 		}
 		const build = await packageAppWorkerOptionsCache.getOrCreate({
 			cacheKey,
 			create: async () => {
-				const template = await buildPackageAppWorkerOptionsUncached(input)
+				const template = await buildPackageAppWorkerOptionsUncached(
+					input,
+					cacheKey,
+				)
 				return {
 					workerId: await createPackageAppWorkerId({
 						cacheKey,
@@ -2895,10 +4037,10 @@ export async function buildPackageAppWorker(input: {
 		// isolate from any request that reuses the cached build.
 		const stub = build.workerId
 			? input.env.APP_LOADER.get(build.workerId, () =>
-					materializePackageAppWorkerOptions(build.template),
+					materializePackageAppWorkerOptions(build.template, requestVisit),
 				)
 			: input.env.APP_LOADER.load(
-					materializePackageAppWorkerOptions(build.template),
+					materializePackageAppWorkerOptions(build.template, requestVisit),
 				)
 		if (build.workerId) {
 			schedulePackageAppUniqueWorkerDay({
@@ -2907,16 +4049,19 @@ export async function buildPackageAppWorker(input: {
 				workerId: build.workerId,
 				surface,
 				packageId: input.savedPackage.id,
+				packageAppVisitorUserId:
+					visitor?.userId ?? input.runtime.callerContext.user?.userId ?? '',
 				connectionKey: usageConnectionKey(input.runtime.callerContext.request),
 				waitUntil: input.waitUntil,
 			})
 		}
 		return {
-			// Stubs are request-bound, so acquire a fresh one per request. The stable
-			// worker id (derived from user + package + commit + caller identity) lets
-			// the loader reuse a warm isolate instead of compiling a new worker.
+			// Stubs are request-bound, so acquire a fresh one per request. The
+			// stable worker id (owner + package + commit + mount) lets the
+			// loader reuse a warm isolate. Visitor authority rides the ticket.
 			stub,
 			entrypointName: packageAppEntrypointName,
+			visit: requestVisit,
 		}
 	})
 }
@@ -2927,6 +4072,7 @@ function schedulePackageAppUniqueWorkerDay(input: {
 	workerId: string
 	surface: 'app_fetch' | 'app_realtime'
 	packageId: string
+	packageAppVisitorUserId: string
 	connectionKey: string
 	waitUntil?: (promise: Promise<unknown>) => void
 }) {
@@ -2936,6 +4082,7 @@ function schedulePackageAppUniqueWorkerDay(input: {
 		workerId: input.workerId,
 		surface: input.surface,
 		packageId: input.packageId,
+		packageAppVisitorUserId: input.packageAppVisitorUserId,
 		connectionKey: input.connectionKey,
 	}).catch((error: unknown) => {
 		console.warn('package-app-dynamic-worker-day-record-failed', error)

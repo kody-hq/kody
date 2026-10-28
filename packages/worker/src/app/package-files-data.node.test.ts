@@ -368,6 +368,7 @@ function plainRepoPage(
 		viewerIsOwner: false,
 		viewerCanManage: false,
 		viewerCanManageAccess: false,
+		viewerCanSeeConnectedPeople: false,
 		viewerCanPublish: false,
 		viewerCanDelete: false,
 		viewerCanAdoptCommunityFork: false,

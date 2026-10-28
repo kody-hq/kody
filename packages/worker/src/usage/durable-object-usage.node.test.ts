@@ -19,6 +19,7 @@ import {
 	createMeteredDurableObjectStub,
 	durableObjectUsageMaxBurstMs,
 	flushDurableObjectUsageWrites,
+	queueDurableObjectRowsRead,
 } from './durable-object-usage.ts'
 
 const analyticsEnv = { USAGE_EVENTS: { writeDataPoint() {} } }
@@ -82,6 +83,39 @@ test('createMeteredDurableObjectStub coalesces same-outcome RPC wall-clock', asy
 		)![1] as { durationMs: number }
 	).durationMs
 	expect(successDuration).toBeGreaterThanOrEqual(0)
+})
+
+test('durable object usage keeps non-package and anonymous visitor buckets distinct', async () => {
+	recordUsage.mockClear()
+	const input = {
+		env: analyticsEnv,
+		eventType: 'durable_object_rows_read' as const,
+		userId: ownerIdFromStored('user-1'),
+		doClass: 'StorageRunner',
+		rowsRead: 1,
+		packageId: 'pkg-1',
+	}
+	queueDurableObjectRowsRead(input)
+	queueDurableObjectRowsRead({
+		...input,
+		packageAppVisitorUserId: '',
+	})
+
+	await flushDurableObjectUsageWrites()
+
+	expect(recordUsage).toHaveBeenCalledTimes(2)
+	expect(
+		recordUsage.mock.calls.some(
+			([, event]) =>
+				(event as { packageAppVisitorUserId?: string })
+					.packageAppVisitorUserId === '',
+		),
+	).toBe(true)
+	expect(
+		recordUsage.mock.calls.some(
+			([, event]) => !Object.hasOwn(event as object, 'packageAppVisitorUserId'),
+		),
+	).toBe(true)
 })
 
 test('createMeteredDurableObjectStub never fails the RPC when waitUntil throws', async () => {

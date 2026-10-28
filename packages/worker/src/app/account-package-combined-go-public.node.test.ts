@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
@@ -16,9 +17,9 @@ vi.mock('#app/authenticated-user.ts', () => ({
 	readAuthenticatedAppUser: mocks.readAuthenticatedAppUser,
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 vi.mock('#app/account-packages-data.ts', () => ({
 	reloadAccountPackagesAfterWrite: mocks.reloadAccountPackagesAfterWrite,
@@ -215,6 +216,17 @@ test('asking to go public, then one Approve, records both decisions and serves t
 				fingerprint: page.fingerprint,
 				publishedCommit: 'commit-1',
 			}),
+		},
+		{
+			...shared,
+			actorUsername: null,
+			credentialKind: null,
+			action: 'package.updated',
+			details: {
+				name: '@acme/digest',
+				internetVisible: { before: false, after: true },
+				fields: ['internet_visible'],
+			},
 		},
 		{
 			...shared,

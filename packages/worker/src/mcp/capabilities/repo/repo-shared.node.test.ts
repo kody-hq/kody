@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { repoSessionIdSchema } from './repo-shared.ts'
+import { repoSearchInputSchema, repoSessionIdSchema } from './repo-shared.ts'
 
 test('repoSessionIdSchema accepts real session ids and rejects placeholders', () => {
 	expect(
@@ -14,5 +14,25 @@ test('repoSessionIdSchema accepts real session ids and rejects placeholders', ()
 	})
 	for (const session_id of ['none', 'None', 'null', 'undefined', 'n/a']) {
 		expect(repoSessionIdSchema.safeParse({ session_id }).success).toBe(false)
+	}
+})
+
+test('repoSearchInputSchema trims pattern and rejects blank or whitespace-only', () => {
+	expect(
+		repoSearchInputSchema.parse({
+			session_id: 'session-1',
+			pattern: '  hello  ',
+		}),
+	).toEqual({
+		session_id: 'session-1',
+		pattern: 'hello',
+	})
+	for (const pattern of ['', ' ', '\t', '  \n']) {
+		expect(
+			repoSearchInputSchema.safeParse({
+				session_id: 'session-1',
+				pattern,
+			}).success,
+		).toBe(false)
 	}
 })

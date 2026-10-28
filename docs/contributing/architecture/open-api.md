@@ -85,7 +85,14 @@ routes may declare `aliasPaths`: extra HTTP paths for the same capability. They
 are listed in `/openapi.json` with a distinct operationId (`${id}ByPath`) so the
 document stays unique; HTTP still dispatches both paths to the capability. Put
 the preferred client path on `path` (for example `repoGetGitRemote`'s body-only
-`/v1/repos/git-remote`, with `/v1/repos/{repo_id}/git-remote` as an alias).
+`/v1/repos/git-remote`, with `/v1/repos/{repo_id}/git-remote` as an alias; same
+for `packageGetGitRemote` at `/v1/packages/git-remote` so CLI/OpenAPI can pass
+`name` / `package_id` / `create: true` without a path `package_id`).
+
+`deprecatedForward` keeps a time-bounded legacy route dispatching to a
+replacement capability with fixed inputs, while hiding those inputs from the
+legacy schemas and adding deprecation headers. Mark its sunset in OpenAPI and
+track it in the formal deprecation list with a cleanup issue.
 
 `POST /v1/execute` runs a module in Kody's cloud sandbox and returns the MCP
 execute envelope (`content`, `structuredContent`, `isError`) with HTTP 200 when
@@ -150,10 +157,10 @@ using MCP and the local-execute OAuth routes.
   rejected for MCP `api`) and mints a normal `kody_at_` with default scopes:
   `org:execute` + `org:read` + package/integration/secret/email/job/app/memory
   use scopes (migration 0092), plus `package:write` (plain-repo / package
-  pushes) and `token:delete` (self-revoke), and `created_via: cli-bootstrap` for
-  the CLI to store. Lifetime is required on both bootstrap mint and redeem. CLI
-  `whoami` / `GET /v1/tokens/current` surface sliding `expires_at` (the idle
-  window).
+  pushes), `package:create` (`packageGetGitRemote` create stubs), and
+  `token:delete` (self-revoke), and `created_via: cli-bootstrap` for the CLI to
+  store. Lifetime is required on both bootstrap mint and redeem. CLI `whoami` /
+  `GET /v1/tokens/current` surface sliding `expires_at` (the idle window).
 - Mint and rotate return `token`, `token_type: "Bearer"`, `id`, `name`,
   `scopes`, `status`, `idle_ttl_seconds`, `expires_at`, `max_expires_at`, and
   timestamps. List and get never return the value.
@@ -254,7 +261,8 @@ module and does not silently hop to `kody.execute`. See
   multipart parts are filled, matching hosted.
 - OAuth client-credentials: `path: ['kody','oauthClientCredentials']` with the
   same argument shape as cloud `oauthClientCredentials(...)`. Origin expands
-  secret placeholders through the fetch gateway.
+  secret placeholders through the fetch gateway, which seals the response's
+  token fields bound to the CapabilityProxy credential (ADR 0068).
 - Credential clients (`credential()` / `credentials()`, ADR 0068): both the CLI
   host `kody:runtime` (ad hoc / unpublished `--code` / `--file`) and the
   package-graph shim open, sign, call MCP tools, and refresh OAuth through

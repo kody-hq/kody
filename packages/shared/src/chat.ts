@@ -2,6 +2,7 @@ import {
 	array,
 	literal,
 	nullable,
+	number,
 	object,
 	optional,
 	string,
@@ -80,6 +81,12 @@ export const mcpCallerContextSchema = object({
 	 * person's personal org from `user`.
 	 */
 	orgBinding: optional(nullable(mcpOrgBindingSchema)),
+	/**
+	 * How many resource change events led to this package run (1 for a run
+	 * started by a change a person made). Changes the run makes carry it on,
+	 * so event chains stop at the cap. Absent outside resource event runs.
+	 */
+	resourceEventDepth: optional(nullable(number())),
 })
 
 type McpUserContextInferred = InferOutput<typeof mcpUserContextSchema>
@@ -114,12 +121,17 @@ type McpCallerContextInferred = InferOutput<typeof mcpCallerContextSchema>
  */
 export type McpCallerContextWire = Omit<
 	McpCallerContextInferred,
-	'user' | 'connectionProfileName' | 'oauthClientId' | 'orgBinding'
+	| 'user'
+	| 'connectionProfileName'
+	| 'oauthClientId'
+	| 'orgBinding'
+	| 'resourceEventDepth'
 > & {
 	user?: McpUserContext | null
 	connectionProfileName?: string | null
 	oauthClientId?: string | null
 	orgBinding?: McpOrgBinding | null
+	resourceEventDepth?: number | null
 }
 
 /**

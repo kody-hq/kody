@@ -279,3 +279,27 @@ test('toApiError maps missing published-snapshot McpCallerError to a clear clien
 		'Internal error. Retry later or report it if it persists.',
 	)
 })
+
+test('toApiError maps McpCallerError wrapping retryable D1 to a retryable 503', () => {
+	const d1 = new Error('D1_ERROR: Currently processing a long-running export')
+	const apiError = toApiError(
+		new McpCallerError('Package preparation failed.', { cause: d1 }),
+	)
+
+	expect(apiError).toMatchObject({
+		status: 503,
+		code: 'internal_error',
+		message: transientDatabaseUnavailableMessage,
+		headers: { 'Retry-After': '5' },
+	})
+	expect(apiError.message).not.toContain('Package preparation')
+})
+
+test('toApiError does not treat caller text that echoes D1 markers as retryable', () => {
+	const apiError = toApiError(
+		new McpCallerError('Job "SQLITE_BUSY" was not found.'),
+	)
+
+	expect(apiError).toMatchObject({ status: 404, code: 'not_found' })
+	expect(apiError.headers).not.toHaveProperty('Retry-After')
+})

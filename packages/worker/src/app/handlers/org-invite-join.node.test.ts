@@ -181,7 +181,7 @@ test('join post adds the member and returns the org redirect', async () => {
 		ok: true,
 		alreadyMember: false,
 		orgSlug: 'join-co',
-		redirectTo: '/@join-co',
+		redirectTo: '/@join-co/-/overview',
 	})
 	expect(mocks.syncSeatsAfterMembershipChange).toHaveBeenCalled()
 })

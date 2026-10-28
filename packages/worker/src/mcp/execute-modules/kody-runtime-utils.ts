@@ -285,6 +285,7 @@ export async function oauthClientCredentials(
 	if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
 		throw new Error('OAuth client_credentials response was not a JSON object.')
 	}
+	// The fetch gateway sealed access_token and refresh_token (ADR 0068).
 	return payload as Record<string, unknown>
 }
 
@@ -756,6 +757,7 @@ const __kodyOauthClientCredentials = async (input) => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     throw new Error('OAuth client_credentials response was not a JSON object.');
   }
+  // The fetch gateway sealed access_token and refresh_token (ADR 0068).
   return payload;
 };
 const createAuthenticatedFetch = async (providerName) =>

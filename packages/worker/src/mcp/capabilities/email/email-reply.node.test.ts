@@ -76,6 +76,7 @@ function outboundMessage(overrides: Record<string, unknown>) {
 		messageIdHeader: '<outbound@heykody.dev>',
 		classification: 'accepted',
 		classificationReason: null,
+		archivedAt: null,
 		providerMessageId: null,
 		error: null,
 		receivedAt: null,

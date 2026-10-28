@@ -98,6 +98,7 @@ type PackageCredentialsPageShell = {
 	ownerProfilePublic: boolean
 	viewerCanManage: boolean
 	viewerCanManageAccess: boolean
+	viewerCanSeeConnectedPeople: boolean
 }
 
 type PackageCredentialsPageData = {

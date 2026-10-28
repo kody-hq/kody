@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 export const optIntoExperiment = createServerFn({ method: 'POST' })
-	.validator(z.enum(['package-skills', 'mcp-events']))
+	.validator(z.enum(['package-skills', 'mcp-events', 'execution-contexts']))
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
 		const { optIntoWebsiteExperiment } =

@@ -12,6 +12,8 @@ export const inviteOrganizationMemberSchema = z.object({
 })
 export const createOrganizationInviteLinkSchema = z.object({
 	role: z.enum(['member', 'billing']).optional(),
+	label: z.string().optional(),
+	teamIds: z.array(z.string()).optional(),
 	allowedEmailDomains: z.union([z.string(), z.array(z.string())]).optional(),
 	domains: z.union([z.string(), z.array(z.string())]).optional(),
 	allowedDomains: z.union([z.string(), z.array(z.string())]).optional(),
@@ -36,6 +38,10 @@ export const removeOrganizationTeamMemberSchema = z.object({
 	userId: z.string(),
 })
 export const revokeOrganizationGrantSchema = z.object({ grantId: z.string() })
+export const grantOrganizationReadAccessSchema = z.object({
+	subject: z.string(),
+	permissions: z.array(z.string()).max(20),
+})
 
 export const revokeOrganizationMemberInviteSchema = z.object({
 	inviteId: z.string().trim().min(1),

@@ -34,7 +34,13 @@
   [Amendment 2026-10-17](#amendment-2026-10-17-per-credential-fill-placement));
   2026-10-20 (Cole: package needs may declare fill placement applied on
   package-scope insert; runtimes still cannot widen placement — see
-  [Amendment 2026-10-20](#amendment-2026-10-20-package-manifest-fill-placement))
+  [Amendment 2026-10-20](#amendment-2026-10-20-package-manifest-fill-placement));
+  2026-10-24 (Kent: package apps run as their publisher; visitors bring only
+  identity; see
+  [Amendment 2026-10-24](#amendment-2026-10-24-package-apps-run-as-their-publisher));
+  2026-10-27 (Kent: saved packages declare the secret provider package they use
+  with a `kind: "secret-provider"` slot; see
+  [Amendment 2026-10-27](#amendment-2026-10-27-secret-provider-slots))
 - **Supersedes in part:** [0021](./0021-publish-gated-package-composition.md)
   (credential authority for the opt-in types used through scoped clients), and
   credentials plan v4 section 3.3 (assignments) and section 3.4 (placeholder
@@ -591,10 +597,11 @@ Kent decided four call-map questions (#3599).
    included, pauses a publish for approval; other changes publish freely. A
    dependency change never rebuilds or republishes a public app on its own.
 3. **Where the map goes.** The `credentials` map is accepted on MCP `execute`
-   (for `code` and `invoke`) and on the CapabilityProxy (CLI `--credential`). It
-   is not accepted on the package-callable `execute` capability: package code
-   would pick credentials by name there, which would bypass `credential.named`'s
-   sharing rules.
+   (for `code`; the `invoke` field is gone per
+   [0085](./0085-execute-takes-code-only.md)) and on the CapabilityProxy (CLI
+   `--credential`). It is not accepted on the package-callable `execute`
+   capability: package code would pick credentials by name there, which would
+   bypass `credential.named`'s sharing rules.
 4. **Several picks for one `credential(key)`.** It is an error whose message
    lists every option by name and scope, with matching `options` and
    `retryWith`, so an agent can pick one or show them to the user. The same
@@ -830,8 +837,8 @@ switch" rule for Key placeholders (lines 115–117 and 408–410 above, and the
   (including package-scope rows that still have the headers-only default from an
   earlier insert, not only rows that still have null placement). (5) Enforcement
   with a clear refusal that names the credential, the refused part, and the
-  allowed parts. Enforcement ships last. Steps 4 and 5 are not approved to ship
-  yet.
+  allowed parts. Enforcement ships last. Steps 4 and 5 shipped in
+  [Amendment 2026-10-27: placement enforcement](#amendment-2026-10-27-placement-enforcement).
 - **Unchanged.** Host allowlists, HTTPS-only fill, scoped-client `inject` shapes
   (header / basic / query), and the rest of this record. Package need
   declarations may optionally carry fill placement (see
@@ -863,3 +870,239 @@ auto-narrowing or enforcement.
 - **Step 4 note.** When auto-narrowing ships, it must also consider
   package-scope rows that received headers-only before a body (or other)
   declaration existed, not only null (anywhere) rows.
+
+## Amendment 2026-10-24: package apps run as their publisher
+
+Kent approved this on 2026-10-24. It replaces the viewer rule of the
+[2026-10-16 amendment](#amendment-2026-10-16-owner-credentials-for-app-visitors)
+for package apps. An app runs as one person, who pays for it and whose
+credentials fill its needs. Visitors bring only verified identity.
+
+- **Who.** An explicit runs-as person an Owner picks, else the person who last
+  published the app, else the owner of a personal org. A publish with no known
+  person clears the recorded publisher. The person is checked live (member of
+  the owning org, account usable) on every call and fails clearly when not.
+- **Cap.** Only Kody capabilities the app lists in `kody.app.capabilities` run
+  as that person, within the role they hold now. Credential needs stay capped by
+  credential-need enforcement.
+- **Visitors.** Identity is id, username, and role for members; email only under
+  the `email` scope. `kody.app.visitorNeeds` gives one Sign in with Kody consent
+  scope per need (`need:<key>`) for work on the visitor's own data, checked live
+  on every call and never falling back to the runs-as person. Usage stays
+  attributed to the visitor.
+- **Fallback.** A call that would fail as the runs-as person but worked as the
+  visitor still runs as the visitor and records a would-break row (app, call
+  name, kind, hashed visitor), counted with
+  `adminPackageAppAuthorityFallbackReport`. The visitor path and
+  `ownerCredentialForVisitors` are removed only after those stay at zero.
+
+## Amendment 2026-10-27: dependency needs use the entry package's mappings
+
+Kent decided this on 2026-10-27 after a user report: a dependency's
+`credential(key)` ignored the mapping its entry package showed as ready.
+
+- **Rule.** When dependency D calls `credential(key)` or `credentials(key)` in a
+  run whose entry package E pins the need, stored mappings (the run's trigger
+  mapping, then `mine`, then `org`) and the creation link's `forPackage` come
+  from E. E is where `packageGet`, the capability set approval, and the
+  Credentials tab already show and set the mapping, and the only package a
+  caller in another org can map.
+- **Which entry.** The first entry whose pinned closure has the key, the same
+  first-entry-wins rule `loadRunCredentialNeeds` uses for the need definition. A
+  caller that is itself an entry reads its own mappings. Ad hoc code with no
+  package reads none.
+- **Identity split.** GHSA-5fv3 bound identity still decides authorization:
+  declared use is checked against D's own closure (the
+  [2026-10-15 amendment](#amendment-2026-10-15-credential-need-enforcement)),
+  and a Key bound to a package fills only that package's own calls. The entry is
+  used only to select mappings, and comes from the host: the run's package
+  context or, for CLI `--local`, the entries the package graph signs into each
+  package binding. Sandbox code cannot name it. E's code can already open any
+  key in its closure, and a mapping never grants Use, so reading E's mappings
+  for D's need grants nothing new.
+
+## Amendment 2026-10-27: secret-provider slots
+
+Kent decided on 2026-10-27 that saved packages must be able to use custom secret
+provider placeholders, and that the slot names the provider package. Before
+this, the publish stamp failed every vault placeholder in a request site, and no
+manifest declaration could satisfy it.
+
+- **Shape.** A `kody.credentials` slot with `kind: "secret-provider"`, a
+  required `package` (the saved provider package's package.json name), and a
+  description. The key follows the normal key grammar. `provider` and the
+  saved-credential fields (`multiple`, `supplier`, `required`,
+  `ownerCredentialForVisitors`, `placement`) are rejected.
+- **Publish.** The gate looks up `package` in the publishing org and reads its
+  `kody.secretProvider.id`. A vault placeholder in a request or
+  credential-mapped site stamps only when its literal provider id equals that
+  id; the slot key is sealed. A missing, unreadable, or id-less package fails
+  publish, as do computed provider ids and ids no declared package serves.
+  Display-only placeholders stay exempt.
+- **Runtime.** A provider use is declared only when the org's binding for the
+  placeholder's provider id is the declared package; otherwise it fails with
+  `credential_need_undeclared` naming the bound and declared packages. An older
+  slot keyed by the provider id still counts. Saved-credential uses
+  (`credential(key)`, `{{secret:NAME}}`) never resolve through a secret-provider
+  need.
+- **Unchanged.** The stamp seals the provider, not refs. The binding check,
+  per-package per-ref grants, item websites as hosts, `https:` only, and
+  redaction all still apply. Mappings, call maps, candidates, and creation links
+  skip secret-provider needs.
+
+## Amendment 2026-10-27: widening placement and changing inject are website-only
+
+Kent decided on 2026-10-27 that code running with a credential's authority must
+not be able to move its value somewhere new. Before this, `credentialUpdate` and
+`secretSet` let ad hoc `execute` widen placement (for example add `body`) or
+point inject at a different header or query parameter.
+
+- **Refused.** Widening fill placement (null, or any request part or header name
+  the stored placement lacks) and any inject change, from hosted `execute`,
+  `execute --local`, package code, and app code. The refusal names the
+  credential and links to its page on the website.
+- **Signal.** The same host-set caller signals as the CLI bootstrap refusal:
+  hosted execute has no `openApiPrincipal`, the local CapabilityProxy sets
+  `localExecuteHop`, and package or app runtimes carry their storage context.
+  None of them comes from module arguments.
+- **Allowed.** Narrowing placement and provider changes, from every caller. The
+  website (credential page and account secret editor) and the MCP `api` tool
+  keep full edits. New credentials created from code may keep the defaults
+  (headers-only, `Authorization: Bearer`) or narrow them.
+
+## Amendment 2026-10-27: placement enforcement
+
+- **Context.** Fill placement shipped observe-only (steps 1 to 3 of
+  [Amendment 2026-10-17](#amendment-2026-10-17-per-credential-fill-placement)).
+  A credential with no placement filled anywhere, including the query, URL path,
+  and body, where a host may store what it receives.
+- **Decision.** The fetch gateway enforces each credential's placement on every
+  fill path (placeholders, secret providers, managed integration tokens, and the
+  scoped `credential()` client). The refusal names the credential, the refused
+  part, and the allowed parts, and never the value.
+- **Owner opt-in.** Headers follow the stored placement. Query, URL path, and
+  body also need a per-credential owner opt-in
+  (`credential_fill_placement_opt_ins`), recorded when the owner saves those
+  parts on the website, which shows a warning that the host may store the value.
+  Placement set from code or a package manifest stores the parts but does not
+  opt in. This covers a declared host that legitimately needs the secret in a
+  stored body field, the one case handles cannot.
+- **Legacy credentials.** A credential with no placement (null) fills headers
+  plus each query, path, or body part it was seen filled into before enforcement
+  (`credential_fill_placement_observations`). Migration 0195 copies those parts
+  into `observed` opt-ins, so nobody migrates anything by hand.
+- **Grandfathered fills.** Migration 0195 grants the `observed` opt-in to every
+  credential seen filling a query, path, or body part before enforcement,
+  including placements set from code or a package manifest, so every fill that
+  works today keeps working. It never widens a credential past its stored
+  placement. Placements set from code after 0195 still need the owner opt-in.
+- **Not built.** A per-host path allowlist; it comes later only if abuse shows
+  up.
+
+## Amendment 2026-10-27: derived tokens come back sealed
+
+Kent decided on 2026-10-27 that a token Kody derives with a credential is a
+value code must not hold, the same as the credential. Before this,
+`oauthClientCredentials` returned the provider's raw token payload (with a
+best-effort redactor on hosted runs only), `secretJwtSign` returned the signed
+JWT, and a manual token request returned whatever the token endpoint sent.
+
+- **Sealed tokens.** `access_token`, `refresh_token`, and `id_token` in a JSON
+  response to a request the fetch gateway filled a credential into, and the
+  `secretJwtSign` JWT, come back as an integration-token placeholder whose name
+  is the token encrypted by the host (AES-GCM, key derived from
+  `SECRET_STORE_KEY`). Code passes it into a fetch header or body
+  (`Authorization: Bearer ...` keeps working) and the gateway opens it on
+  egress.
+- **Bound.** A sealed token fills only for its org, in the run that received it
+  (the run's credential-client binding, or the CapabilityProxy credential for
+  `--local`), on the registrable domain of the token URL or of any approved host
+  of the credentials filled into the token request (so a token minted on a
+  separate auth domain still reaches the API the credential is approved for,
+  with no new `oauthClientCredentials` option), or of the JWT's https `aud` or
+  `send_to_host`, never in a URL query or path, and for at most one hour. A JWT
+  with neither an https `aud` nor `send_to_host` stays sealed and org-bound but
+  may fill on any host, so existing callers keep working; the result carries a
+  deprecation `warning`, and requiring `send_to_host` is tracked in
+  kody-hq/kody#4456.
+- **Refresh tokens.** A sealed `refresh_token` shares the one-run, one-hour cap.
+  Kody holding refresh tokens server side is tracked in kody-hq/kody#4457.
+- **Server-side.** `oauthClientCredentials` runs its token request through the
+  gateway, hosted and `--local`. The `__kodyTrackRunSecret` redactor hop is
+  gone; nothing derived reaches code to redact.
+- **Unchanged.** Kody-managed integration refresh (`integrations/token-refresh`)
+  already runs on the host and does not go through the gateway.
+
+### 2026-10-28: an access token also fills on its audience
+
+The first cut broke every identity provider whose token host is not the API host
+(Azure Entra at `login.microsoftonline.com` for `management.azure.com`; Google,
+Okta, and Auth0 custom APIs) unless the client secret was approved for the API
+too, which widens where the secret itself may go. Kent kept
+`oauthClientCredentials` free of a `send_to_host` option, so a sealed
+`access_token` that is a JWT also fills on the host its https `aud` names:
+
+- **Why it is safe.** The identity provider chose `aud`; code only asked for a
+  scope or resource. A token is only good at its audience, so sending it there
+  is the use it was minted for. A token for an attacker's audience gives the
+  attacker a token only that attacker accepts, never the secret or another API's
+  access.
+- **Exact host.** `aud` adds its exact host, not its registrable domain or
+  subdomains, so an `https://management.azure.com` token does not fill on
+  `<label>.<region>.cloudapp.azure.com` or `evil.management.azure.com`.
+- **One outside audience.** A JWT naming more than one https audience outside
+  the token and approved domains gets none (an `aud` like Auth0's `userinfo` on
+  the token domain does not count), so a multi-audience token cannot carry one
+  API's access to a second host.
+- **Not an echo.** A token whose text contains a value Kody filled into the
+  request, or the decoded password of a filled Basic credential (an endpoint
+  that echoed the secret), gets no audience host. Decoded JWT claims are not
+  searched: real tokens carry the client id (Entra `appid`), and an approved
+  host that re-encodes the secret already holds it.
+- **Opaque tokens.** A token that is not a JWT with an https `aud` keeps the
+  token and approved domains. Kody does not read the requested `scope` or
+  `resource`: code wrote those, so they cannot vouch for where the token goes.
+  The refusal says so and names the fix (a JWT access token whose `aud` is the
+  API, or approving the API on the credential).
+- **Documented aliases.** Entra resource identifiers Microsoft serves at another
+  host also fill there: `api.loganalytics.io` on `api.loganalytics.azure.com`,
+  and `management.core.windows.net` on `management.azure.com`. Add a pair only
+  when Microsoft documents it.
+
+### 2026-10-28: a sealed token can be saved as a Key
+
+Sealing broke every flow that keeps a long-lived token a token exchange returns.
+Plaid's `/item/public_token/exchange` `access_token` came back sealed, so
+`secretSet` stored the `kody-sealed.…` text, which only works in the run that
+received it, and Plaid later answered `INVALID_ACCESS_TOKEN`. Kent asked for a
+sanctioned path:
+
+- **`secretSet({ name, scope: 'user', sealed_token })`.** The host opens a
+  sealed token from the current run (same org, run-binding, and expiry checks as
+  a fill) and saves the real token as a user-scope Key through `saveSecret`, so
+  the value is encrypted and audited like any Key and never returned. It works
+  hosted, `--local` (the CapabilityProxy binding matches the gateway's), and
+  through the Open API route, where an Open API caller has no run and is refused
+  as another run.
+- **Hosts.** A sealed token now records exact save hosts: the token URL host and
+  the filled credentials' exact (non-wildcard) approved hosts. The Key gets
+  those plus the token's `aud` hosts. Keys match hosts exactly, so the Key is
+  never wider than the sealed token's registrable domains.
+- **Placement.** The Key's placement is headers and body, with the body opt-in
+  recorded as source `sealed_token` (migration 0199), not `owner`. A sealed
+  token already filled the body. The URL query and path stay refused because
+  hosts log URLs.
+- **No new approval.** The owner approved the hosts on the credentials that
+  minted the token, and saving does not widen where it goes. The write is
+  audited as `credential.kind_set` with `savedFrom: 'sealed_token'`, plus the
+  usual created/value-replaced row. An existing name that is not a Key is
+  refused. Replacing an existing Key (re-linking a Plaid Item) never widens it:
+  its hosts and placement become the overlap of the Key's and the sealed
+  token's, its opt-ins stay as the owner left them, and no overlap is refused.
+- **Refused.** A token from another run, another org, or past its expiry; a
+  `secretJwtSign` JWT (sign a new one when needed); a token whose text repeats a
+  credential filled into its request (an echo, the same check that drops
+  audience hosts); a token sealed before save hosts existed; and package
+  runtimes, which cannot create user secrets. A `value` (or `secretSetMany`
+  value) that contains `kody-sealed.` is refused with a pointer to
+  `sealed_token`.

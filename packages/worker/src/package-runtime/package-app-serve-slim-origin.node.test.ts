@@ -96,6 +96,7 @@ test('servePackageAppRequest forwards to RUNTIME_WORKER when PackageAppRuntimeBr
 		visitor: input.visitor,
 		packagePath: input.packagePath,
 		dispatch: input.dispatch,
+		identity: null,
 	})
 	expect(runtimeForwardMock.buildPackageAppWorker).not.toHaveBeenCalled()
 	expect(

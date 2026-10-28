@@ -31,12 +31,79 @@ export function PackageAppOauthConsentPage({
 	const send = useServerFn(decidePackageAppOauthConsent)
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState<string | null>(null)
+	const [selectedScopes, setSelectedScopes] = useState(
+		// Optional credential needs start unchecked; the visitor opts in.
+		() =>
+			new Set(
+				data.optionalScopes
+					.map(({ scope }) => scope)
+					.filter((scope) => !scope.startsWith('need:')),
+			),
+	)
+	const [selectedCredentialIds, setSelectedCredentialIds] = useState(
+		() =>
+			Object.fromEntries(
+				data.executorNeeds.flatMap((need) =>
+					need.recommendedCredentialId
+						? [[need.key, need.recommendedCredentialId]]
+						: [],
+				),
+			) as Record<string, string>,
+	)
+	const [choosingAnother, setChoosingAnother] = useState<Set<string>>(
+		() => new Set(),
+	)
+	const missingRequiredCredential = data.executorNeeds.some(
+		(need) =>
+			need.required &&
+			!need.credentials.some(
+				(credential) => credential.id === selectedCredentialIds[need.key],
+			),
+	)
+	const missingSelectedCredential = data.executorNeeds.some((need) => {
+		const isSelected = needIsAsked(need)
+		return (
+			isSelected &&
+			!need.credentials.some(
+				(credential) => credential.id === selectedCredentialIds[need.key],
+			)
+		)
+	})
+	function needIsAsked(need: (typeof data.executorNeeds)[number]) {
+		return (
+			need.required ||
+			selectedScopes.has(need.scope) ||
+			data.alreadyAllowedScopes.includes(need.scope)
+		)
+	}
+	const needIsMissing = (need: (typeof data.executorNeeds)[number]) =>
+		needIsAsked(need) &&
+		!need.credentials.some(
+			(credential) => credential.id === selectedCredentialIds[need.key],
+		)
 	async function submit(decision: 'approve' | 'deny') {
 		if (busy) return
 		setBusy(true)
 		setError(null)
 		try {
-			await send({ data: { fields: data.hiddenFields, decision } })
+			const credentialFields = Object.fromEntries(
+				data.executorNeeds.flatMap((need) => {
+					const selected = selectedCredentialIds[need.key]
+					return selected
+						? [[`credential_need:${encodeURIComponent(need.key)}`, selected]]
+						: []
+				}),
+			)
+			const fields = {
+				...data.hiddenFields,
+				...credentialFields,
+				selected_scopes: [
+					...data.requiredScopes,
+					...data.alreadyAllowedScopes,
+					...selectedScopes,
+				].join(' '),
+			}
+			await send({ data: { fields, decision } })
 		} catch (failure) {
 			setError(
 				failure instanceof Error
@@ -121,12 +188,167 @@ export function PackageAppOauthConsentPage({
 
 				<section css={{ display: 'grid', gap: spacing.sm }}>
 					<h2 css={sectionHeadingCss}>This app will be able to</h2>
-					<ul css={claimListCss}>
-						{data.claimLabels.map((claim) => (
-							<li key={claim}>{claim}</li>
+					<p css={mutedCss}>Required: {data.requiredLabels.join('; ')}</p>
+					{data.alreadyAllowedLabels.length > 0 ? (
+						<p css={mutedCss}>
+							Already allowed: {data.alreadyAllowedLabels.join('; ')}
+						</p>
+					) : null}
+					<div css={{ display: 'grid', gap: spacing.sm }}>
+						{data.optionalScopes.map(({ scope, label }) => (
+							<label key={scope} css={{ display: 'flex', gap: spacing.sm }}>
+								<input
+									type="checkbox"
+									name="selected_scopes"
+									value={scope}
+									form="package-app-oauth-consent-form"
+									checked={selectedScopes.has(scope)}
+									onChange={(event) =>
+										setSelectedScopes((current) => {
+											const next = new Set(current)
+											if (event.currentTarget.checked) next.add(scope)
+											else next.delete(scope)
+											return next
+										})
+									}
+								/>
+								<span>{label}</span>
+							</label>
 						))}
-					</ul>
+					</div>
+					{data.optionalScopes.some(({ scope }) => scope === 'email') ? (
+						<p css={mutedCss}>
+							Email visibility does not grant permission to send email. If you
+							revoke email access later, this app must stop using your address.
+						</p>
+					) : null}
 				</section>
+				{data.executorNeeds.map((need) => {
+					const selected = selectedCredentialIds[need.key]
+					const recommended = need.credentials.find(
+						(credential) => credential.id === need.recommendedCredentialId,
+					)
+					const otherCandidates = need.credentials.filter(
+						(credential) => credential.id !== need.recommendedCredentialId,
+					)
+					const showAlternates = choosingAnother.has(need.key)
+					const missing = needIsMissing(need)
+					const wanted = describeWantedCredential(need)
+					return (
+						<section
+							key={need.key}
+							aria-label={`Credentials for ${need.description}`}
+							css={{ display: 'grid', gap: spacing.sm }}
+						>
+							<h2 css={sectionHeadingCss}>
+								{need.required
+									? 'Required credentials'
+									: 'Optional credentials'}
+							</h2>
+							<p css={mutedCss}>{need.description}</p>
+							<p css={mutedCss}>Needs {wanted}.</p>
+							{missing ? (
+								<p
+									role="status"
+									data-testid={`package-app-oauth-need-missing-${need.key}`}
+									css={needMissingCss}
+								>
+									{need.required
+										? `Required: create ${wanted} to allow this app. Allow stays off until you choose one.`
+										: `Choose ${wanted} or turn off this optional permission to continue.`}
+								</p>
+							) : null}
+							{recommended ? (
+								<label css={credentialChoiceCss}>
+									<input
+										type="radio"
+										name={`credential_need:${encodeURIComponent(need.key)}`}
+										value={recommended.id}
+										form="package-app-oauth-consent-form"
+										checked={selected === recommended.id}
+										onChange={() =>
+											setSelectedCredentialIds((current) => ({
+												...current,
+												[need.key]: recommended.id,
+											}))
+										}
+									/>
+									<span>
+										<strong>{recommended.name}</strong>
+										<span css={mutedCss}>
+											{' '}
+											Used by {recommended.usedByApps} apps
+										</span>
+									</span>
+								</label>
+							) : (
+								<p css={mutedCss}>
+									No {need.provider} credential yet. Credentials without this
+									provider are not listed.
+								</p>
+							)}
+							{otherCandidates.length > 0 ? (
+								<button
+									type="button"
+									css={getGhostButtonCss({ size: 'sm' })}
+									onClick={() =>
+										setChoosingAnother((current) => {
+											const next = new Set(current)
+											if (next.has(need.key)) next.delete(need.key)
+											else next.add(need.key)
+											return next
+										})
+									}
+								>
+									{showAlternates
+										? 'Hide other credentials'
+										: 'Choose another credential'}
+								</button>
+							) : null}
+							{showAlternates
+								? otherCandidates.map((credential) => (
+										<label key={credential.id} css={credentialChoiceCss}>
+											<input
+												type="radio"
+												name={`credential_need:${encodeURIComponent(need.key)}`}
+												value={credential.id}
+												form="package-app-oauth-consent-form"
+												checked={selected === credential.id}
+												onChange={() =>
+													setSelectedCredentialIds((current) => ({
+														...current,
+														[need.key]: credential.id,
+													}))
+												}
+											/>
+											<span>
+												<strong>{credential.name}</strong>
+												<span css={mutedCss}>
+													{' '}
+													Used by {credential.usedByApps} apps
+												</span>
+											</span>
+										</label>
+									))
+								: null}
+							<p css={mutedCss}>
+								<a
+									href={need.createUrl}
+									target="_blank"
+									rel="noreferrer"
+									data-testid={`package-app-oauth-need-create-${need.key}`}
+								>
+									Create {wanted}
+								</a>
+								{need.createDestination
+									? ` in @${need.createDestination}`
+									: null}{' '}
+								(opens in a new tab; come back and reload this page to choose
+								it).
+							</p>
+						</section>
+					)
+				})}
 
 				<details
 					data-testid="package-app-oauth-consent-details"
@@ -137,6 +359,7 @@ export function PackageAppOauthConsentPage({
 				</details>
 
 				<form
+					id="package-app-oauth-consent-form"
 					method="post"
 					action={packageAppOauthPaths.authorize}
 					onSubmit={(event) => {
@@ -152,13 +375,28 @@ export function PackageAppOauthConsentPage({
 					{Object.entries(data.hiddenFields).map(([name, value]) => (
 						<input key={name} type="hidden" name={name} value={value} />
 					))}
+					{[
+						...new Set([...data.requiredScopes, ...data.alreadyAllowedScopes]),
+					].map((scope) => (
+						<input
+							key={`selected:${scope}`}
+							type="hidden"
+							name="selected_scopes"
+							value={scope}
+						/>
+					))}
 					<button
-						disabled={busy}
+						disabled={busy || missingSelectedCredential}
 						type="submit"
 						name="decision"
 						value="approve"
 						data-testid="package-app-oauth-approve"
-						css={getPillButtonCss({ size: 'sm' })}
+						aria-describedby={
+							missingSelectedCredential
+								? 'package-app-oauth-allow-blocked'
+								: undefined
+						}
+						css={[getPillButtonCss({ size: 'sm' }), allowBlockedCss]}
 					>
 						Allow
 					</button>
@@ -173,6 +411,18 @@ export function PackageAppOauthConsentPage({
 						Cancel
 					</button>
 				</form>
+				<p css={mutedCss} data-testid="package-app-oauth-owner-visibility">
+					The app's owner can see that you connected, when you last used it, and
+					what you allowed. They never see your credentials. You can revoke
+					access anytime in Account &gt; Connected apps.
+				</p>
+				{missingSelectedCredential ? (
+					<p id="package-app-oauth-allow-blocked" css={mutedCss}>
+						{missingRequiredCredential
+							? 'Allow is off until every required credential is chosen.'
+							: 'Allow is off until each selected optional permission has a credential.'}
+					</p>
+				) : null}
 				{error ? (
 					<p role="alert" css={mutedCss}>
 						{error}
@@ -228,10 +478,35 @@ const sectionHeadingCss = {
 	color: colors.text,
 }
 
-const claimListCss = {
+function describeWantedCredential(need: {
+	provider: string
+	kindLabel: string | null
+}) {
+	return need.kindLabel
+		? `a ${need.provider} ${need.kindLabel} credential`
+		: `a ${need.provider} credential`
+}
+
+const needMissingCss = {
 	margin: 0,
-	paddingLeft: '1.15rem',
-	display: 'grid',
-	gap: spacing.xs,
-	color: colors.text,
+	padding: `${spacing.xs} ${spacing.sm}`,
+	borderRadius: radius.md,
+	borderLeft: `3px solid ${colors.warning}`,
+	backgroundColor: colors.surface,
+	color: colors.warningText,
+	fontSize: typography.fontSize.sm,
+}
+
+const allowBlockedCss = {
+	'&:disabled': {
+		opacity: 0.4,
+		filter: 'grayscale(1)',
+		boxShadow: 'none',
+	},
+}
+
+const credentialChoiceCss = {
+	display: 'flex',
+	alignItems: 'flex-start',
+	gap: spacing.sm,
 }

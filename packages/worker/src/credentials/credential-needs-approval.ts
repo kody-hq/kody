@@ -27,7 +27,13 @@ import { type CredentialNeed } from './credential-needs.ts'
 
 type NeedShape = Pick<
 	CredentialNeed,
-	'kind' | 'provider' | 'multiple' | 'ownerCredentialForVisitors'
+	| 'kind'
+	| 'provider'
+	| 'package'
+	| 'multiple'
+	| 'ownerCredentialForVisitors'
+	| 'supplier'
+	| 'required'
 >
 
 export type CredentialNeedChange =
@@ -75,11 +81,36 @@ function shape(need: CredentialNeed): NeedShape {
 	return {
 		...(need.kind ? { kind: need.kind } : {}),
 		provider: need.provider,
+		...(need.package ? { package: need.package } : {}),
 		multiple: need.multiple,
 		...(need.ownerCredentialForVisitors
 			? { ownerCredentialForVisitors: true as const }
 			: {}),
+		...(need.supplier ? { supplier: need.supplier } : {}),
+		...(need.supplier === 'executor'
+			? { required: need.required ?? true }
+			: {}),
 	}
+}
+
+/**
+ * Who supplies a need changed. Dropping publisher sharing back to the plain
+ * org mapping only narrows, like turning visitor use off.
+ */
+function supplierChanged(prior: CredentialNeed, next: CredentialNeed) {
+	const before = needSupplier(prior)
+	const after = needSupplier(next)
+	if (before === 'executor' && after === 'executor') {
+		return (prior.required ?? true) !== (next.required ?? true)
+	}
+	return before !== after && !(before === 'publisher' && after === null)
+}
+
+/** Who fills the need: publisher (or its older alias), executor, or legacy. */
+function needSupplier(
+	need: Pick<CredentialNeed, 'supplier' | 'ownerCredentialForVisitors'>,
+) {
+	return need.ownerCredentialForVisitors ? 'publisher' : (need.supplier ?? null)
 }
 
 /** Needs `after` adds or reshapes relative to `before`, by key. */
@@ -108,8 +139,10 @@ export function diffCredentialNeeds(
 		if (
 			prior.kind !== need.kind ||
 			prior.provider !== need.provider ||
+			prior.package !== need.package ||
 			prior.multiple !== need.multiple ||
-			sharesWithVisitors
+			sharesWithVisitors ||
+			supplierChanged(prior, need)
 		) {
 			changes.push({
 				key: need.key,
@@ -125,6 +158,7 @@ export function diffCredentialNeeds(
 
 function describeNeedKind(kind: NeedShape['kind']) {
 	if (kind === undefined) return 'any fetch-capable kind'
+	if (kind === 'secret-provider') return 'secret provider'
 	return isCredentialKind(kind) ? credentialKindLabel(kind) : kind
 }
 
@@ -132,7 +166,14 @@ function describeNeedTail(need: NeedShape) {
 	const viaMultiple = need.multiple ? ' (several allowed)' : ''
 	const forVisitors = need.ownerCredentialForVisitors
 		? ' (app visitors may use your credential)'
-		: ''
+		: need.supplier === 'publisher'
+			? ' (supplied by the publisher)'
+			: need.supplier === 'executor'
+				? need.required === false
+					? ' (each person who uses it supplies their own, optional)'
+					: ' (each person who uses it supplies their own, required)'
+				: ''
+	if (need.package) return `secret provider package ${need.package}`
 	return `${describeNeedKind(need.kind)} from ${need.provider}${viaMultiple}${forVisitors}`
 }
 

@@ -30,6 +30,7 @@ export const repoDeleteCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoDelete',
+		contextRuns: 'deny',
 		orgPermission: 'package:delete',
 		description:
 			'Delete a plain repo in the org this connection is bound to. Removes the user_repos row, entity_sources mapping, and Artifacts repo (best-effort).',

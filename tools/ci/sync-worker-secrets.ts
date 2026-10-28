@@ -29,6 +29,33 @@ function sleep(ms: number) {
 }
 
 /**
+ * Cloudflare error 10215: classic `secret bulk` refuses to edit secrets when
+ * the Worker's latest uploaded version is not the live deployment. The
+ * versions secret API updates secrets without requiring that deploy.
+ */
+export function isSecretBulkUndeployedVersionError(output: string) {
+	return (
+		/\[code:\s*10215\]/i.test(output) ||
+		/latest version of your Worker isn't currently deployed/i.test(output)
+	)
+}
+
+/**
+ * When classic bulk hits 10215 and the caller did not already request
+ * `--versioned`, fall back once to `wrangler versions secret bulk`.
+ */
+export function shouldFallbackToVersionedSecretBulk(
+	options: { versioned?: boolean },
+	result: SecretBulkAttemptResult,
+) {
+	return (
+		result.exitCode !== 0 &&
+		options.versioned !== true &&
+		isSecretBulkUndeployedVersionError(result.output)
+	)
+}
+
+/**
  * Bounded retry for wrangler secret bulk. Matches production deploy's
  * 3-attempt, 10s-then-double budget so an edge 503 does not fail the job.
  */
@@ -362,23 +389,16 @@ export function buildSpawnEnv(
 	return spawnEnv
 }
 
-function escapeDotenvValue(value: string) {
-	if (!/[\n\r\t"\\]/.test(value) && value === value.trim()) {
-		return value
-	}
-	return `"${value
-		.replace(/\\/g, '\\\\')
-		.replace(/\n/g, '\\n')
-		.replace(/\r/g, '\\r')
-		.replace(/\t/g, '\\t')
-		.replace(/"/g, '\\"')}"`
-}
-
-export function toDotenv(secrets: ReadonlyMap<string, string>) {
-	const lines = Array.from(secrets.entries())
-		.sort(([left], [right]) => left.localeCompare(right))
-		.map(([key, value]) => `${key}=${escapeDotenvValue(value)}`)
-	return `${lines.join('\n')}\n`
+/**
+ * `wrangler secret bulk` reads a JSON object file verbatim. Its dotenv
+ * fallback only unescapes `\n`/`\r`, so a dotenv-staged JSON secret would
+ * land on the Worker with literal `\"` and fail to parse.
+ */
+export function toSecretBulkJson(secrets: ReadonlyMap<string, string>) {
+	const sorted = Array.from(secrets.entries()).sort(([left], [right]) =>
+		left.localeCompare(right),
+	)
+	return `${JSON.stringify(Object.fromEntries(sorted), null, 2)}\n`
 }
 
 /**
@@ -415,24 +435,27 @@ export function buildWranglerSecretBulkFlags(
 	return args
 }
 
-async function runWranglerSecretBulk(options: CliOptions, dotenvText: string) {
+async function runWranglerSecretBulk(
+	options: CliOptions,
+	secretsFileText: string,
+) {
 	const wranglerBin = resolveLocalBinary('wrangler')
 	const spawnEnv = buildSpawnEnv(options)
 	const secretsFilePath = join(
 		tmpdir(),
-		`wrangler-secrets-${Date.now()}-${randomBytes(6).toString('hex')}.env`,
+		`wrangler-secrets-${Date.now()}-${randomBytes(6).toString('hex')}.json`,
 	)
-	const args = [
+	const classicArgs = [
 		wranglerBin,
 		...buildWranglerSecretBulkFlags(options, secretsFilePath),
 	]
-	await writeFile(secretsFilePath, dotenvText, {
+	await writeFile(secretsFilePath, secretsFileText, {
 		encoding: 'utf8',
 		mode: 0o600,
 	})
 
 	try {
-		const [command, ...commandArgs] = args
+		const [command, ...commandArgs] = classicArgs
 		if (!command) {
 			fail('Could not resolve wrangler command for secret sync.')
 		}
@@ -440,8 +463,34 @@ async function runWranglerSecretBulk(options: CliOptions, dotenvText: string) {
 		const result = await retrySecretBulkUpload(() =>
 			runWranglerSecretBulkOnce(command, commandArgs, spawnEnv),
 		)
-		if (result.exitCode !== 0) {
+		if (result.exitCode === 0) {
+			return
+		}
+		if (!shouldFallbackToVersionedSecretBulk(options, result)) {
 			process.exit(result.exitCode)
+		}
+
+		console.log(
+			'Classic secret bulk refused because the latest Worker version is not deployed (Cloudflare 10215); falling back to wrangler versions secret bulk.',
+		)
+		const versionsArgs = [
+			wranglerBin,
+			...buildWranglerSecretBulkFlags(
+				{ ...options, versioned: true },
+				secretsFilePath,
+			),
+		]
+		const [versionsCommand, ...versionsCommandArgs] = versionsArgs
+		if (!versionsCommand) {
+			fail('Could not resolve wrangler command for versions secret sync.')
+		}
+		// Same bounded retry budget as classic bulk: versions secret bulk still
+		// hits transient Cloudflare 503/gateway flakes independent of 10215.
+		const versionsResult = await retrySecretBulkUpload(() =>
+			runWranglerSecretBulkOnce(versionsCommand, versionsCommandArgs, spawnEnv),
+		)
+		if (versionsResult.exitCode !== 0) {
+			process.exit(versionsResult.exitCode)
 		}
 	} finally {
 		await unlink(secretsFilePath).catch(() => {})
@@ -506,8 +555,7 @@ async function main() {
 	if (secrets.size === 0) {
 		fail('No secrets to sync (empty input).')
 	}
-	const dotenvText = toDotenv(secrets)
-	await runWranglerSecretBulk(options, dotenvText)
+	await runWranglerSecretBulk(options, toSecretBulkJson(secrets))
 	const envLabel =
 		options.env && options.env.length > 0 ? options.env : 'default'
 	console.log(

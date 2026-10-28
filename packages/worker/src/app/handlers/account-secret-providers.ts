@@ -6,6 +6,7 @@ import {
 	revokeSecretProviderGrant,
 	unbindSecretProvider,
 } from '#mcp/secrets/secret-providers/service.ts'
+import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 
 type AuthenticatedUser = NonNullable<
@@ -32,6 +33,7 @@ export async function bindAccountSecretProvider(input: {
 		packageId: input.packageId.trim(),
 		doorSecretName: input.doorSecretName.trim(),
 		config: input.config,
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	return operationResult({ ok: true, bound })
 }
@@ -48,6 +50,7 @@ export async function unbindAccountSecretProvider(input: {
 			user: input.user.mcpUser,
 		}),
 		providerId: input.provider.trim(),
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	return operationResult({ ok: true })
 }
@@ -68,6 +71,7 @@ export async function grantAccountSecretProvider(input: {
 		providerId: input.provider.trim(),
 		ref: input.ref.trim(),
 		packageId: input.packageId.trim(),
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	return operationResult({ ok: true, granted })
 }
@@ -88,6 +92,7 @@ export async function revokeAccountSecretProvider(input: {
 		providerId: input.provider.trim(),
 		ref: input.ref.trim(),
 		packageId: input.packageId.trim(),
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	return operationResult({ ok: true })
 }

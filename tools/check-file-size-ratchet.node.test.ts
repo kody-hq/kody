@@ -217,7 +217,7 @@ test('checkFileSizeRatchet measures budget after formatting, not the raw working
 test('checkFileSizeRatchet rejects oversized AGENTS.md even when snapshot-listed', async () => {
 	const cwd = await mkdtemp(path.join(os.tmpdir(), 'agents-md-ratchet-'))
 	try {
-		await writeFile(path.join(cwd, 'AGENTS.md'), `${lines(22)}\n`)
+		await writeFile(path.join(cwd, 'AGENTS.md'), `${lines(25)}\n`)
 		const snapshot: FileSizeRatchetSnapshot = {
 			'agents-md': ['AGENTS.md'],
 			'client-routes': [],
@@ -230,8 +230,8 @@ test('checkFileSizeRatchet rejects oversized AGENTS.md even when snapshot-listed
 				file: 'AGENTS.md',
 				groupId: 'agents-md',
 				kind: 'new-over-budget',
-				lineCount: 22,
-				maxLines: 20,
+				lineCount: 25,
+				maxLines: 23,
 			}),
 		])
 	} finally {

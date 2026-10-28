@@ -66,6 +66,7 @@ export const credentialListCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'credentialList',
+		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
 			'List every credential you can use in this org as one shape: Keys (secrets) and the opt-in url, login, and signing kinds, OAuth integrations, and MCP servers (kind "mcp"). Includes your own personal credentials granted to this org (scope "personal"). Filter by text, kind, scope, package-scoped Keys, or package locks. Metadata only: never values. To add one, send the person to /connect/credential (kind, kindMode=hint|required, name, provider, allowedHosts).',

@@ -51,18 +51,23 @@ beforeEach(async () => {
 
 const sessions = new Map<AccessFixturePerson, string>()
 
-async function visit(person: AccessFixturePerson, ticket?: string | null) {
+async function visit(
+	person: AccessFixturePerson,
+	ticket?: string | null,
+	path = `/packages/${accessFixture.privateApp.slug}`,
+	websocket = false,
+) {
 	const session =
 		sessions.get(person) ?? (await packageAppSessionCookieFor(person))
 	sessions.set(person, session)
 	const response = await exports.default.fetch(
-		new Request(
-			`${accessFixtureOrigin}/packages/${accessFixture.privateApp.slug}`,
-			{
-				redirect: 'manual',
-				headers: { Cookie: [session, ticket].filter(Boolean).join('; ') },
+		new Request(`${accessFixtureOrigin}${path}`, {
+			redirect: 'manual',
+			headers: {
+				Cookie: [session, ticket].filter(Boolean).join('; '),
+				...(websocket ? { Upgrade: 'websocket' } : {}),
 			},
-		),
+		}),
 	)
 	await response.arrayBuffer()
 	const setCookie = response.headers.get('Set-Cookie') ?? ''
@@ -71,6 +76,17 @@ async function visit(person: AccessFixturePerson, ticket?: string | null) {
 		location: response.headers.get('Location'),
 		ticket:
 			/(__Host-kody_pkg_ticket_[\w-]+=[^;]+)/.exec(setCookie)?.[1] ?? null,
+	}
+}
+
+async function visitAnonymously(path: string) {
+	const response = await exports.default.fetch(
+		new Request(`${accessFixtureOrigin}${path}`, { redirect: 'manual' }),
+	)
+	return {
+		status: response.status,
+		location: response.headers.get('Location'),
+		body: await response.text(),
 	}
 }
 
@@ -123,12 +139,34 @@ test('revoking access takes effect at the next ticket refresh and logs the deny'
 	])
 })
 
+test('private app sign-in and execute gates cover pages, assets, and realtime', async () => {
+	const anonymous = await visitAnonymously(
+		`/packages/${accessFixture.privateApp.slug}`,
+	)
+	expect(anonymous.status).toBe(403)
+	expect(anonymous.body).toContain('Open this package app from Kody')
+
+	await revokeMemberGrant()
+	const noAccessLocation = `https://app.kody.test:8788/@${accessFixture.orgSlug}/${accessFixture.privateApp.slug}`
+	for (const [path, websocket] of [
+		[`/packages/${accessFixture.privateApp.slug}`, false],
+		[`/packages/${accessFixture.privateApp.slug}/_assets/app.js`, false],
+		[`/packages/${accessFixture.privateApp.slug}/ws`, true],
+	] as const) {
+		expect(await visit('member', null, path, websocket)).toMatchObject({
+			status: 302,
+			location: noAccessLocation,
+		})
+	}
+})
+
 test('app visibility writes bump the org access epoch; projection refreshes do not', async () => {
 	const before = await readEpoch()
 	await updateSavedPackage(env.APP_DB, {
 		userId: accessFixture.orgId,
 		packageId: accessFixture.privateApp.id,
 		description: 'refreshed on publish',
+		audit: null,
 	})
 	expect(await readEpoch()).toBe(before)
 
@@ -136,6 +174,7 @@ test('app visibility writes bump the org access epoch; projection refreshes do n
 		userId: accessFixture.orgId,
 		packageId: accessFixture.privateApp.id,
 		hidden: false,
+		audit: null,
 	})
 	expect(await readEpoch()).toBe(before + 1)
 
@@ -146,6 +185,7 @@ test('app visibility writes bump the org access epoch; projection refreshes do n
 		packageId: accessFixture.privateApp.id,
 		hidden: true,
 		expectedUpdatedAt: '2000-01-01T00:00:00.000Z',
+		audit: null,
 	})
 	expect(staleChanged).toBe(false)
 	const missingDeleted = await deleteSavedPackage(env.APP_DB, {

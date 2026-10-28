@@ -11,7 +11,17 @@ import {
 	setAuthSessionSecret,
 } from '#app/auth-session.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
-import { verifyEmailChangeToken } from '#app/email-change.ts'
+import {
+	notifyFormerAddressOfEmailChange,
+	verifyEmailChangeToken,
+} from '#app/email-change.ts'
+import { waitUntil } from 'cloudflare:workers'
+
+function getRequestCountry(request: Request) {
+	const cf = (request as Request & { cf?: { country?: string } }).cf
+	const country = cf?.country?.trim()
+	return country && country.length > 0 ? country : undefined
+}
 
 function getVerifyEmailChangeError(result: {
 	reason:
@@ -101,6 +111,21 @@ export async function executeVerifyEmailChange({
 		path: '/verify-email-change',
 		reason: `old_email=${result.oldEmail}`,
 	})
+
+	// The change already committed; a slow security-notice send must not hold
+	// up the success response.
+	waitUntil(
+		notifyFormerAddressOfEmailChange({
+			env,
+			requestUrl: request.url,
+			oldEmail: result.oldEmail,
+			newEmail: result.newEmail,
+			ip: requestIp,
+			userAgent: request.headers.get('user-agent'),
+			country: getRequestCountry(request),
+		}),
+	)
+
 	return {
 		title: 'Email changed',
 		setCookie: setCookie ?? undefined,

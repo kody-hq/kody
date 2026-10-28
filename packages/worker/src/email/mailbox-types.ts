@@ -4,6 +4,7 @@ import {
 	type EmailDeliveryEventType,
 	type EmailDeliveryStatus,
 	type EmailDirection,
+	type EmailMessageView,
 	type EmailProcessingStatus,
 } from './types.ts'
 import { type DurableObjectPitrRpc } from '#worker/dr/do-pitr.ts'
@@ -39,10 +40,10 @@ export const mailboxRetentionContinuationDelayMs = 1_000
 export const mailboxBlobDeleteMaxKeys = 1000
 
 /**
- * Bump when initializeSchema's DDL set changes. Warm objects run additive
- * migrations (CREATE INDEX IF NOT EXISTS / guarded ALTER) until they match.
+ * Bump when initializeSchema's DDL set changes. Warm objects run the
+ * version-gated migrations in `initializeMailboxSchema` until they match.
  */
-export const mailboxSchemaVersion = 5
+export const mailboxSchemaVersion = 6
 export const mailboxMetaSchemaVersionKey = 'schema_version'
 
 export type MailboxThreadRecord = {
@@ -80,6 +81,7 @@ export type MailboxMessageRecord = {
 	processingStatus: EmailProcessingStatus
 	classification: EmailClassification
 	classificationReason: string | null
+	archivedAt: string | null
 	providerMessageId: string | null
 	deliveryStatus: EmailDeliveryStatus | null
 	deliveryStatusAt: string | null
@@ -192,6 +194,7 @@ export type MailboxMessageInput = {
 	processingStatus: EmailProcessingStatus
 	classification: EmailClassification
 	classificationReason: string | null
+	archivedAt: string | null
 	providerMessageId: string | null
 	deliveryStatus: EmailDeliveryStatus | null
 	deliveryStatusAt: string | null
@@ -362,6 +365,8 @@ export type MailboxListMessagesInput = {
 	processingStatus?: EmailProcessingStatus | null
 	deliveryStatus?: EmailDeliveryStatus | null
 	classification?: EmailClassification | null
+	/** List view; omitted means every message (internal callers). */
+	view?: EmailMessageView | null
 	limit?: number
 	/** Keyset cursor; when set, `offset` is ignored. */
 	cursor?: string | null
@@ -376,6 +381,8 @@ export type MailboxSearchMessagesInput = {
 	processingStatus?: EmailProcessingStatus | null
 	deliveryStatus?: EmailDeliveryStatus | null
 	classification?: EmailClassification | null
+	/** List view; omitted means every message (internal callers). */
+	view?: EmailMessageView | null
 	limit?: number
 	offset?: number | null
 }
@@ -386,6 +393,8 @@ export type MailboxCountMessagesInput = {
 	processingStatus?: EmailProcessingStatus | null
 	deliveryStatus?: EmailDeliveryStatus | null
 	classification?: EmailClassification | null
+	/** List view; omitted means every message (internal callers). */
+	view?: EmailMessageView | null
 	/** When set, applies the same subject/from/envelope substring match as search. */
 	query?: string | null
 }
@@ -409,12 +418,18 @@ export type MailboxUpdateMessageDeliveryInput = {
 	updatedAt: string
 }
 
-/** Partial classification update — equal/newer `updatedAt` only. */
+/**
+ * Partial triage update, applied only for an equal or newer `updatedAt`. At least one of
+ * `classification` / `archivedAt` must be present; omitted fields are kept.
+ * `classificationReason` is written only alongside `classification`.
+ */
 export type MailboxSetMessageClassificationInput = {
 	ownerId: OwnerId
 	messageId: string
-	classification: EmailClassification
-	classificationReason: string | null
+	classification?: EmailClassification
+	classificationReason?: string | null
+	/** ISO timestamp archives, `null` unarchives, omitted leaves it. */
+	archivedAt?: string | null
 	updatedAt: string
 }
 

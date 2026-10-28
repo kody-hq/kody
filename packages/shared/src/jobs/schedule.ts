@@ -83,10 +83,6 @@ function parseUtcIsoTimestamp(value: string, label: string) {
 	return parsed
 }
 
-function parseOnceRunAt(runAt: string) {
-	return parseUtcIsoTimestamp(runAt, 'Once schedules')
-}
-
 /**
  * Normalize an optional job expiry timestamp. Pass `null`/`undefined` for no
  * expiry; otherwise require a UTC ISO string and return canonical ISO form.
@@ -150,8 +146,6 @@ export function computeNextRunAt(input: {
 		)
 	}
 	switch (input.schedule.type) {
-		case 'once':
-			return parseOnceRunAt(input.schedule.runAt).toISOString()
 		case 'interval':
 			return new Date(
 				from.valueOf() + parseIntervalEvery(input.schedule.every).everyMs,
@@ -173,13 +167,26 @@ export function computeNextRunAt(input: {
 	return assertNeverJobSchedule(input.schedule)
 }
 
+/**
+ * Advance past a claimed/completed occurrence. Using wall-clock `now` here
+ * drops intermediate cron/interval fires when a tick settles late; advancing
+ * from the occurrence keeps at-most-one catch-up per pass (the next slot after
+ * this one stays due until a later alarm drains it).
+ */
+export function computeNextRunAtAfterOccurrence(input: {
+	schedule: JobSchedule
+	timezone?: string | null
+	scheduledFor: Date | string
+}) {
+	return computeNextRunAt({
+		schedule: input.schedule,
+		timezone: input.timezone,
+		from: input.scheduledFor,
+	})
+}
+
 export function normalizeJobSchedule(schedule: JobSchedule) {
 	switch (schedule.type) {
-		case 'once':
-			return {
-				type: 'once' as const,
-				runAt: parseOnceRunAt(schedule.runAt).toISOString(),
-			}
 		case 'interval':
 			return {
 				type: 'interval' as const,
@@ -197,9 +204,8 @@ export function normalizeJobSchedule(schedule: JobSchedule) {
 const cronIntervalSampleCount = 24
 
 /**
- * Smallest gap between recurring firings. `once` schedules (and crons that
- * do not produce two future runs) return null so a one-shot is never treated
- * as a polling interval.
+ * Smallest gap between recurring firings. Crons that do not produce two
+ * future runs return null.
  */
 export function estimateScheduleMinIntervalMs(input: {
 	schedule: JobSchedule
@@ -208,8 +214,6 @@ export function estimateScheduleMinIntervalMs(input: {
 }): number | null {
 	const schedule = normalizeJobSchedule(input.schedule)
 	switch (schedule.type) {
-		case 'once':
-			return null
 		case 'interval':
 			return parseIntervalEvery(schedule.every).everyMs
 		case 'cron': {
@@ -258,8 +262,6 @@ export function formatScheduleSummary(input: {
 }) {
 	const timezone = normalizeJobTimezone(input.timezone)
 	switch (input.schedule.type) {
-		case 'once':
-			return `Runs once at ${parseOnceRunAt(input.schedule.runAt).toISOString()}`
 		case 'interval':
 			return `Runs every ${parseIntervalEvery(input.schedule.every).every}`
 		case 'cron':

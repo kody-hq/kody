@@ -46,7 +46,7 @@ test('file views link to the raw file and directory views do not', async () => {
 		}),
 	)
 	expect(html).toMatch(
-		/<a[^>]*href="\/@jane\/tab-width-fixture\/raw\/main\/example\.tsx"[^>]*>Raw<\/a>/,
+		/<a[^>]*href="\/@jane\/tab-width-fixture\/raw\/main\/example\.tsx"[^>]*>[\s\S]*?<\/a>/,
 	)
 	expect(html).toContain('aria-label="View raw example.tsx"')
 
@@ -64,4 +64,14 @@ test('file views link to the raw file and directory views do not', async () => {
 		}),
 	)
 	expect(directoryHtml).not.toContain('package-files-raw-link')
+})
+
+test('file links keep the picked install org from ?org', async () => {
+	const html = await renderToString(
+		jsx(PackageFilesExplorer, { data: tabbedFileData() }),
+		'/@jane/tab-width-fixture/tree/main?org=example-team',
+	)
+	expect(html).toContain(
+		'href="/@jane/tab-width-fixture/tree/main/example.tsx?org=example-team"',
+	)
 })

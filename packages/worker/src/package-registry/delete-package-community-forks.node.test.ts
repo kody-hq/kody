@@ -14,7 +14,6 @@ const mockModule = vi.hoisted(() => ({
 	listJobRowsByUserId: vi.fn(),
 	syncJobManagerAlarm: vi.fn(),
 	deleteSavedPackageVector: vi.fn(),
-	removePackageRetrieverManifestCacheEntries: vi.fn(),
 	deleteAllPackageScopedSecrets: vi.fn(),
 	removeAllSecretApprovalsForPackage: vi.fn(),
 	clearStorage: vi.fn(async () => ({ ok: true as const })),
@@ -37,12 +36,6 @@ vi.mock('#worker/package-config-cleanup.ts', () => ({
 	deleteAllPackageScopedSecrets: mockModule.deleteAllPackageScopedSecrets,
 	removeAllSecretApprovalsForPackage:
 		mockModule.removeAllSecretApprovalsForPackage,
-}))
-
-vi.mock('#worker/package-retrievers/manifest-cache.ts', () => ({
-	removePackageRetrieverManifestCacheEntries:
-		mockModule.removePackageRetrieverManifestCacheEntries,
-	refreshPackageRetrieverManifestCache: vi.fn(),
 }))
 
 vi.mock('./vectorize.ts', () => ({
@@ -126,6 +119,11 @@ function createDeleteForkDb() {
 
 			created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 			updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+		);
+		CREATE TABLE package_app_rate_limits (
+			bucket_key TEXT PRIMARY KEY,
+			window_start INTEGER NOT NULL,
+			count INTEGER NOT NULL
 		);
 		CREATE TABLE entity_sources (
 			id TEXT PRIMARY KEY NOT NULL,
@@ -291,7 +289,6 @@ test('package delete removes community_forks so Fork outdated does not linger', 
 	mockModule.listJobRowsByUserId.mockResolvedValue([])
 	for (const cleanup of [
 		mockModule.deleteSavedPackageVector,
-		mockModule.removePackageRetrieverManifestCacheEntries,
 		mockModule.deleteAllPackageScopedSecrets,
 		mockModule.removeAllSecretApprovalsForPackage,
 	]) {
@@ -302,6 +299,7 @@ test('package delete removes community_forks so Fork outdated does not linger', 
 		env,
 		userId: ownerIdFromStored('user-kent'),
 		packageId: 'package-live',
+		audit: null,
 	})
 
 	const remaining = await db

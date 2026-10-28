@@ -2,7 +2,10 @@ import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { buildRepoSearchInvalidRegexCallerMessage } from '#worker/repo/repo-session-caller-error.ts'
+import {
+	buildRepoSearchEmptyPatternCallerMessage,
+	buildRepoSearchInvalidRegexCallerMessage,
+} from '#worker/repo/repo-session-caller-error.ts'
 
 const mocks = vi.hoisted(() => ({
 	repoSessionRpc: vi.fn(),
@@ -101,4 +104,75 @@ test('repoSearch maps invalid regex failures to McpCallerError and rethrows othe
 			createContext(),
 		),
 	).rejects.toBe(boom)
+})
+
+test('repoSearch rejects whitespace-only patterns at the schema boundary', async () => {
+	mocks.repoSessionRpc.mockReturnValue({ search: vi.fn() })
+
+	const error = await repoSearchCapability
+		.handler(
+			{
+				session_id: 'session-1',
+				pattern: ' ',
+			},
+			createContext(),
+		)
+		.then(
+			() => null,
+			(thrown: unknown) => thrown,
+		)
+
+	expect(error).toBeInstanceOf(McpCallerError)
+	expect((error as Error).message).toContain('Invalid input for capability')
+	expect((error as Error).message).toContain('pattern')
+	expect(mocks.repoSessionRpc).not.toHaveBeenCalled()
+})
+
+test('repoSearch maps blank-pattern DO failures to McpCallerError', async () => {
+	// Schema rejects whitespace at the boundary; pass a real pattern so the
+	// handler reaches RPC and exercises DO-phrase re-wrapping (Open API / CLI /
+	// in-flight DO builds that still throw). KODY-BA.
+	const emptyPatternMessage = buildRepoSearchEmptyPatternCallerMessage()
+	const search = vi.fn().mockRejectedValue(new Error(emptyPatternMessage))
+	mocks.repoSessionRpc.mockReturnValue({ search })
+
+	const error = await repoSearchCapability
+		.handler(
+			{
+				session_id: 'session-1',
+				pattern: 'hello',
+			},
+			createContext(),
+		)
+		.then(
+			() => null,
+			(thrown: unknown) => thrown,
+		)
+
+	expect(error).toBeInstanceOf(McpCallerError)
+	expect((error as Error).message).toBe(emptyPatternMessage)
+
+	// Legacy exact phrase from pre-KODY-BA DO builds.
+	const legacy = vi
+		.fn()
+		.mockRejectedValue(new Error('repoSearch requires a non-empty pattern.'))
+	mocks.repoSessionRpc.mockReturnValue({ search: legacy })
+
+	const legacyError = await repoSearchCapability
+		.handler(
+			{
+				session_id: 'session-1',
+				pattern: 'hello',
+			},
+			createContext(),
+		)
+		.then(
+			() => null,
+			(thrown: unknown) => thrown,
+		)
+
+	expect(legacyError).toBeInstanceOf(McpCallerError)
+	expect((legacyError as Error).message).toBe(
+		'repoSearch requires a non-empty pattern.',
+	)
 })

@@ -169,7 +169,7 @@ export function renderAccountEmailDestinationsPanel(
 							value={draftEmail}
 							disabled={isSending}
 							onInput={onDraftEmailInput}
-							css={accountInputCss}
+							css={{ ...accountInputCss, maxWidth: '28rem' }}
 						/>
 						<span css={accountFieldNoteCss}>
 							Up to {additionalLimit} extras besides your account email. We send
@@ -180,7 +180,10 @@ export function renderAccountEmailDestinationsPanel(
 					<button
 						type="submit"
 						disabled={isSending || draftEmail.trim().length === 0}
-						css={getPillButtonCss()}
+						css={{
+							...getPillButtonCss({ mobileFullWidth: true }),
+							justifySelf: 'start',
+						}}
 					>
 						{isSending && pendingId === null
 							? 'Sending…'

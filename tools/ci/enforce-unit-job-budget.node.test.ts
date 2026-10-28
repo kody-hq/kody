@@ -193,15 +193,15 @@ test('unit job budgets warn at watch and fail only past the hard ceiling', () =>
 	process.exitCode = previousExitCode
 })
 
-test('the unit job hard ceiling is advisory outside pull requests', () => {
+test('the unit job hard ceiling is advisory outside pull requests and merge groups', () => {
 	const previousExitCode = process.exitCode
 	const workflow = readFileSync(
 		new URL('../../.github/workflows/validate.yml', import.meta.url),
 		'utf8',
 	)
-	// Both post-suite budget checks: enforced on PRs, advisory elsewhere.
+	// Both post-suite budget checks: enforced on PRs and merge groups.
 	const advisoryFlag =
-		/"\$UNIT_JOB_START_EPOCH" \$\{\{ github\.event_name != 'pull_request' &&\s+'--advisory' \|\| '' \}\}/g
+		/"\$UNIT_JOB_START_EPOCH" \$\{\{ github\.event_name != 'pull_request' &&\s+github\.event_name != 'merge_group' &&\s+'--advisory' \|\| '' \}\}/g
 	expect(workflow.match(advisoryFlag)).toHaveLength(2)
 
 	const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})

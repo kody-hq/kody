@@ -28,7 +28,7 @@ const manualVerifyMessage =
 	'Rewritten file still contains a `storage` identifier; migrate to `packageStorage()` manually.'
 
 const manualExecutionSurfaceMessage =
-	'Package declares an app, service, job, subscription, webhook, or retriever. Ambient `storage` and `packageStorage()` use different bucket identities for those surfaces; migrate manually to avoid silent data repointing.'
+	'Package declares an app, service, job, subscription, or webhook. Ambient `storage` and `packageStorage()` use different bucket identities for those surfaces; migrate manually to avoid silent data repointing.'
 
 const scannableModuleFilePattern = /\.(?:[cm]?[jt]s|[jt]sx)$/
 
@@ -417,13 +417,7 @@ function packageDeclaresNonExportExecutionSurface(
 		return { blocked: false as const }
 	}
 	const record = kody as Record<string, unknown>
-	const surfaceKeys = [
-		'app',
-		'jobs',
-		'subscriptions',
-		'webhooks',
-		'retrievers',
-	] as const
+	const surfaceKeys = ['app', 'jobs', 'subscriptions', 'webhooks'] as const
 	for (const key of surfaceKeys) {
 		const value = record[key]
 		if (value == null) continue

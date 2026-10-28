@@ -5,6 +5,11 @@
  * never saved that the other path would refuse.
  */
 import {
+	enablementToggleEvent,
+	toggleActorFromRequest,
+	toggleSourceFromRequest,
+} from '#worker/jobs/toggle-audit.ts'
+import {
 	EmailSenderInsertAdopted,
 	armCronJobsForCallerEnablementIds,
 	planTriggerEnablementForCaller,
@@ -37,9 +42,10 @@ import { type UsableCredential } from './credential-candidates.ts'
 import {
 	buildCredentialMappingUnchangedStatement,
 	buildWriteCredentialMappingStatement,
+	noteCredentialMappingWritesCommitted,
 	type CredentialMappingRowTarget,
 } from './credential-mappings.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import { type SavedCredentialNeed } from './credential-needs.ts'
 import {
 	findStoredRow,
 	needAcceptsKind,
@@ -99,7 +105,7 @@ function describePick(pick: CredentialPick) {
 
 function resolvePick(input: {
 	pick: CredentialPick
-	need: CredentialNeed
+	need: SavedCredentialNeed
 	usable: ReadonlyArray<UsableCredential>
 	createUrl: string
 }): UsableCredential {
@@ -331,6 +337,24 @@ export async function resolveMappingChanges(
 					`Package "${scope.savedPackage.kodyId}" has no credential need "${change.needKey}".`,
 				)
 			}
+			const orgLevel =
+				change.target.type === 'default' && change.target.layer === 'org'
+			if (
+				need.supplier === 'publisher' &&
+				!orgLevel &&
+				change.credentials !== null
+			) {
+				refuse(
+					'not_allowed',
+					`Credential need "${need.key}" is supplied by the publisher. Only the org-level mapping can set it.`,
+				)
+			}
+			if (need.supplier === 'executor' && orgLevel) {
+				refuse(
+					'not_allowed',
+					`Credential need "${need.key}" is supplied by the executor. Org-level mappings cannot set it.`,
+				)
+			}
 			const target = resolveTarget(scope, change, sender)
 			const stored = target.rowTarget
 				? findStoredRow(scope, need.key, target.rowTarget)
@@ -501,10 +525,9 @@ export class MappingWriteRefused extends Error {
  * Planning a turn-on never asks for webhook approval; only `enablementEnable`
  * does. An inbound-email subscription without a sender is a write refusal.
  */
-export type MappingWriteRefusalCode = Exclude<
-	TriggerEnablementError['code'],
-	'webhook_approval_required'
->
+export type MappingWriteRefusalCode =
+	| Exclude<TriggerEnablementError['code'], 'webhook_approval_required'>
+	| 'not_allowed'
 type MappingWriteRefusal = TriggerEnablementError & {
 	code: MappingWriteRefusalCode
 }
@@ -579,6 +602,31 @@ export async function writeMappingChanges(
 			resolved.map((change) => [changeTargetKey(change), change]),
 		).values(),
 	]
+	for (const change of finalChanges) {
+		const need = scope.needs.find(
+			(candidate) => candidate.key === change.needKey,
+		)
+		const orgLevel =
+			change.target.type === 'default' && change.target.layer === 'org'
+		if (
+			need?.supplier === 'publisher' &&
+			!orgLevel &&
+			change.credentialIds !== null
+		) {
+			throw new MappingWriteRefused(
+				change,
+				'not_allowed',
+				`Credential need "${need.key}" is supplied by the publisher. Only the org-level mapping can set it.`,
+			)
+		}
+		if (need?.supplier === 'executor' && orgLevel) {
+			throw new MappingWriteRefused(
+				change,
+				'not_allowed',
+				`Credential need "${need.key}" is supplied by the executor. Org-level mappings cannot set it.`,
+			)
+		}
+	}
 	const db = scope.env.APP_DB
 	const audit = orgAuditWriterFromRequest(scope.env, scope.request)
 	const commitMappingWrite = async () => {
@@ -679,6 +727,27 @@ export async function writeMappingChanges(
 			)
 			auditPlans.push(mappingAuditPlan(audit, scope, change))
 		}
+		for (const plan of newEnablements) {
+			auditPlans.push(
+				planOrgAuditOutbox(
+					audit,
+					enablementToggleEvent({
+						enablement: {
+							id: plan.enablementId,
+							orgId: plan.orgId,
+							triggerKind: plan.kind,
+							triggerName: plan.triggerName,
+							instanceId: plan.instanceId,
+						},
+						from: 'off',
+						to: 'on',
+						source: toggleSourceFromRequest(scope.request),
+						actorKind: toggleActorFromRequest(scope.request).kind,
+						reason: 'Approved on the credentials page.',
+					}),
+				),
+			)
+		}
 		try {
 			await runNewEnablementPlans({
 				db,
@@ -699,6 +768,7 @@ export async function writeMappingChanges(
 			}
 			throw error
 		}
+		if (statements.length > 0) noteCredentialMappingWritesCommitted(db)
 		for (const plan of auditPlans) {
 			await commitOrgAuditOutbox({ ...audit, appDb: db }, plan)
 		}

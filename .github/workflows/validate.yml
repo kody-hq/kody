@@ -12,6 +12,8 @@ on:
       - reopened
       - synchronize
       - ready_for_review
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       runner:
@@ -60,8 +62,8 @@ permissions:
 # Pin CI=1 (not GitHub's CI=true) so Nx cache hashes match local
 # `validate` / `test:push`. Anyone who can push already has the write
 # token locally, so same-repo validate (push, workflow_dispatch, and
-# non-fork pull_request) presents it too. Fork PRs use the read token
-# only: a missing read secret stays empty and does not fall through
+# non-fork pull_request) presents it too. Fork PRs and merge-group runs use the
+# read token only: a missing read secret stays empty and does not fall through
 # to write. Literal secret refs only — do not index `secrets[...]`
 # (overprovisions the whole secrets context). Nx treats an
 # unreachable self-hosted cache as a fatal error, so setup-validate
@@ -82,12 +84,16 @@ env:
   VALIDATE_ITERATION: ${{ inputs.iteration || 0 }}
   NX_SKIP_NX_CACHE: ${{ inputs.no_cache == true && 'true' || '' }}
   NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: >-
-    ${{ inputs.no_cache != true && (github.event.pull_request.head.repo.fork ==
-    true && secrets.NX_SELF_HOSTED_REMOTE_CACHE_READ_TOKEN ||
-    github.event.pull_request.head.repo.fork != true &&
+    ${{ inputs.no_cache != true && ( github.event_name == 'merge_group' &&
+    secrets.NX_SELF_HOSTED_REMOTE_CACHE_READ_TOKEN || github.event_name ==
+    'pull_request' && github.event.pull_request.head.repo.fork == true &&
+    secrets.NX_SELF_HOSTED_REMOTE_CACHE_READ_TOKEN || github.event_name ==
+    'pull_request' && github.event.pull_request.head.repo.fork != true &&
+    secrets.NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN || github.event_name !=
+    'pull_request' && github.event_name != 'merge_group' &&
     secrets.NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN || '') || '' }}
 
-# PR and manual runs cancel superseded runs. `main` pushes queue instead: a
+# PR, merge-group, and manual runs cancel superseded runs. `main` pushes queue instead: a
 # busy `main` cancelled every run and starved production deploys (#3380). One
 # run stays in progress and GitHub replaces the pending one with the newest
 # push; deploy.yml's sha-guard can deploy any completed run that is ahead of
@@ -161,6 +167,10 @@ jobs:
       - name: 🧾 Generated worker types
         if: ${{ !cancelled() }}
         run: npm run generate-types:check
+
+      - name: 🌳 Generated Start route tree
+        if: ${{ !cancelled() }}
+        run: npm run routes:generate:check
 
       - name: 🏗️ Backup build
         if: ${{ !cancelled() }}
@@ -247,11 +257,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run migrations:check
         env:
-          # PRs trust the fetched base SHA; main pushes trust the pre-push SHA.
+          # PRs and merge groups trust the fetched base SHA; main pushes trust the pre-push SHA.
           # The validator rejects this value if it resolves to HEAD.
           MIGRATION_VALIDATION_BASE: >-
-            ${{ github.event.pull_request.base.sha || github.event.before || ''
-            }}
+            ${{ github.event.pull_request.base.sha ||
+            github.event.merge_group.base_sha || github.event.before || '' }}
           # Advisory open-PR migration prefix scan. Missing auth skips it and
           # does not fail this step.
           GH_TOKEN: ${{ github.token }}
@@ -280,11 +290,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run workflows:check
         env:
-          # PRs compare server.json to the fetched base SHA; main pushes
+          # PRs and merge groups compare server.json to the fetched base SHA; main pushes
           # compare to the pre-push SHA so a multi-commit bump is one change.
           MCP_REGISTRY_VALIDATION_BASE: >-
-            ${{ github.event.pull_request.base.sha || github.event.before || ''
-            }}
+            ${{ github.event.pull_request.base.sha ||
+            github.event.merge_group.base_sha || github.event.before || '' }}
 
       - name: 🔐 Production dependency audit
         if: ${{ !cancelled() }}
@@ -294,7 +304,9 @@ jobs:
           # the PR base). Main pushes and other changes report findings as
           # warnings; the scheduled 🔐 Audit bump workflow opens the fix PR.
           AUDIT_MODE: ${{ github.event_name == 'push' && 'report' || 'auto' }}
-          AUDIT_BASE: ${{ github.event.pull_request.base.sha || '' }}
+          AUDIT_BASE: >-
+            ${{ github.event.pull_request.base.sha ||
+            github.event.merge_group.base_sha || '' }}
         run: npm run audit:prod
 
       - name: ⏱️ Job wall-clock
@@ -329,7 +341,7 @@ jobs:
     steps:
       # Self-driving test-time budget (tools/ci/enforce-unit-job-budget.ts):
       # warn at watch 700s (~Node p95 + headroom); hard-fail at 840s on PRs
-      # (under this job's 15m timeout). Cache hit or miss does not change
+      # and merge groups (under this job's 15m timeout). Cache hit or miss does not change
       # either threshold. Setup + tests both count; do not delete tests to
       # stay under.
       - name: ⏱️ Mark job start
@@ -356,18 +368,18 @@ jobs:
         run: npm run test:node
         env:
           MIGRATION_VALIDATION_BASE: >-
-            ${{ github.event.pull_request.base.sha || github.event.before || ''
-            }}
+            ${{ github.event.pull_request.base.sha ||
+            github.event.merge_group.base_sha || github.event.before || '' }}
 
       - name: ⏱️ Unit shard budget (watch 700s / hard 840s)
         if: success()
-        # Watch warns always; hard fail on pull requests only. Advisory
+        # Watch warns always; hard fail on pull requests and merge groups. Advisory
         # (warning only) on push to main and manual dispatches so a slow
         # cold run cannot block deploy.
         run: >-
           node tools/ci/enforce-unit-job-budget.ts --leg node --start-epoch
           "$UNIT_JOB_START_EPOCH" ${{ github.event_name != 'pull_request' &&
-          '--advisory' || '' }}
+          github.event_name != 'merge_group' && '--advisory' || '' }}
 
       - name: ⏱️ Job wall-clock
         if: always() && !cancelled()
@@ -494,13 +506,13 @@ jobs:
 
       - name: ⏱️ Unit shard budget (watch 620s / hard 780s)
         if: success()
-        # Watch warns always; hard fail on pull requests only. Advisory
+        # Watch warns always; hard fail on pull requests and merge groups. Advisory
         # (warning only) on push to main and manual dispatches so a slow
         # cold run cannot block deploy.
         run: >-
           node tools/ci/enforce-unit-job-budget.ts --leg workers --start-epoch
           "$UNIT_JOB_START_EPOCH" ${{ github.event_name != 'pull_request' &&
-          '--advisory' || '' }}
+          github.event_name != 'merge_group' && '--advisory' || '' }}
 
       - name: ⏱️ Job wall-clock
         if: always() && !cancelled()

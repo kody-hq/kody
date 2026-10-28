@@ -8,7 +8,7 @@ import {
 import {
 	BackupError,
 	backupPayload,
-	configuredSourceDatabases,
+	restExportSourceDatabases,
 	errorCode,
 	isBackupEnabled,
 	safeLog,
@@ -188,7 +188,7 @@ async function handleAuthenticated(
 				)
 			}
 			const scheduledAt = new Date()
-			const sources = configuredSourceDatabases(env)
+			const sources = restExportSourceDatabases(env)
 			const results: Array<string> = []
 			for (const source of sources) {
 				const payload = backupPayload(env, scheduledAt, source)

@@ -26,12 +26,14 @@ import {
 
 /**
  * Bootstrap defaults = local-execute parity + `org:read` (account reads) +
- * plain-repo push (`package:write`) + self-revoke (`token:delete`).
+ * plain-repo push (`package:write`) + stub package create via
+ * `packageGetGitRemote` (`package:create`) + self-revoke (`token:delete`).
  */
 const cliCredentialBootstrapDefaultScopes = normalizeApiTokenScopes([
 	...localExecuteOrgPermissions,
 	'org:read',
 	'package:write',
+	'package:create',
 	'token:delete',
 ]) as Array<ApiTokenScope>
 
@@ -55,7 +57,8 @@ export const cliCredentialBootstrapPolicy = {
 	 * the use-level scopes saved packages need (package-graph
 	 * `package:execute`, `createAuthenticatedFetch` → `integration:read`,
 	 * secrets, email, jobs, …), plus `package:write` (plain-repo / package
-	 * pushes) and `token:delete` (self-revoke). Do not mint `search:read`.
+	 * pushes), `package:create` (`packageGetGitRemote` create stubs), and
+	 * `token:delete` (self-revoke). Do not mint `search:read`.
 	 */
 	defaultScopes: cliCredentialBootstrapDefaultScopes,
 	minIdleTtlSeconds: apiTokenPolicy.minIdleTtlSeconds,

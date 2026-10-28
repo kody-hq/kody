@@ -2,7 +2,6 @@ import { defineDomain } from '#mcp/capabilities/define-domain.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { mcpServerAddCapability } from './mcp-server-add.ts'
 import { mcpServerListCapability } from './mcp-server-list.ts'
-import { mcpServerLockCapability } from './mcp-server-lock.ts'
 import { mcpServerReconnectCapability } from './mcp-server-reconnect.ts'
 import { mcpServerRefreshCapability } from './mcp-server-refresh.ts'
 import { mcpServerRemoveCapability } from './mcp-server-remove.ts'
@@ -30,6 +29,5 @@ export const mcpServersDomain = defineDomain({
 		mcpServerRefreshCapability,
 		mcpServerRemoveCapability,
 		mcpServerSetEnabledCapability,
-		mcpServerLockCapability,
 	],
 })

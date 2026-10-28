@@ -22,6 +22,7 @@ export const waitingSummaryCapability = defineDomainCapability(
 	capabilityDomainNames.account,
 	{
 		name: 'waitingSummary',
+		contextRuns: 'allow',
 		orgPermission: 'org:read',
 		description:
 			'List things currently waiting on the signed-in human: email verification, OAuth reconnects, your own paused automations (enablements whose run lost access it needs), expired secrets, MCP reconnects, locked-package publishes, plan caps, wizard resume, first-use setup (search, memory, execute, package, job, integration, secret, Discord membership), and an elevated open-error rate that still needs Activity triage. Ignored and resolved Activity errors do not keep that card around. This is a current-state queue, not run history — use runSummary for Activity. Vendor outages do not appear here.',

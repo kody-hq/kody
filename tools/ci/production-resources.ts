@@ -4,6 +4,7 @@ import {
 	deleteEmailSendingEventSubscriptionIfPresent,
 	ensureArtifactsAccountEventSubscription,
 	ensureCloudflareQueue,
+	ensureD1Database,
 	ensureDmarcEmailRoutingRule,
 	ensureDmarcReportingTxtRecords,
 	ensureEmailSendingEventSubscription,
@@ -12,7 +13,6 @@ import {
 	fail,
 	isValidBareHostname,
 	listCloudflareQueues,
-	listD1Databases,
 	listKvNamespaces,
 	listPackageAppHostnames,
 	parseJsonc,
@@ -49,6 +49,8 @@ type ResolvedProductionBindings = {
 	d1ConfiguredId: string
 	auditD1DatabaseName: string
 	auditD1ConfiguredId: string
+	jobsD1DatabaseName?: string
+	jobsD1ConfiguredId?: string
 	oauthKvTitle: string
 	oauthKvConfiguredId: string
 	bundleArtifactsKvTitle: string
@@ -254,57 +256,6 @@ function emailSendingEventSubscriptionName(input: {
 	return truncateWithSuffix(input.workerName, suffix, 63)
 }
 
-function ensureD1Database({
-	name,
-	configuredId,
-	location,
-	dryRun,
-}: {
-	name: string
-	configuredId: string
-	location?: string
-	dryRun: boolean
-}) {
-	if (dryRun) {
-		console.error(`[dry-run] ensure D1 database: ${name}`)
-		return { name, id: `dry-run-${name}` }
-	}
-
-	const databases = listD1Databases()
-
-	if (configuredId) {
-		const byId = databases.find((entry) => entry.uuid === configuredId)
-		if (byId) {
-			console.error(`D1 database exists by id: ${byId.name} (${byId.uuid})`)
-			return { name: byId.name, id: byId.uuid }
-		}
-	}
-
-	const byName = databases.find((entry) => entry.name === name)
-	if (byName) {
-		console.error(`D1 database exists by name: ${name} (${byName.uuid})`)
-		return { name: byName.name, id: byName.uuid }
-	}
-
-	const args = ['d1', 'create', name]
-	if (location && location.length > 0) {
-		args.push('--location', location)
-	}
-	// If Wrangler prompts to update config, always answer "no".
-	const createResult = runWrangler(args, { input: 'n\n', quiet: true })
-	if (createResult.status !== 0) {
-		fail(`Failed to create D1 database: ${name}`)
-	}
-
-	const created = listD1Databases().find((entry) => entry.name === name)
-	if (!created) {
-		fail(`Created D1 database "${name}" but could not find it via list.`)
-	}
-
-	console.error(`Created D1 database: ${name} (${created.uuid})`)
-	return { name: created.name, id: created.uuid }
-}
-
 function ensureKvNamespace({
 	title,
 	configuredId,
@@ -448,6 +399,24 @@ async function resolveProductionBindings({
 	}
 	const auditD1ConfiguredId =
 		typeof auditD1Entry.database_id === 'string' ? auditD1Entry.database_id : ''
+
+	const jobsD1Entry = d1Databases.find((entry) => {
+		if (!entry || typeof entry !== 'object') return false
+		return (entry as Record<string, unknown>).binding === 'JOBS_DB'
+	}) as Record<string, unknown> | undefined
+	let jobsD1DatabaseName: string | undefined
+	let jobsD1ConfiguredId = ''
+	if (jobsD1Entry) {
+		const name = jobsD1Entry.database_name
+		if (typeof name !== 'string' || name.length === 0) {
+			fail(
+				`wrangler config "${wranglerConfigPath}" is missing "database_name" for production "JOBS_DB".`,
+			)
+		}
+		jobsD1DatabaseName = name
+		jobsD1ConfiguredId =
+			typeof jobsD1Entry.database_id === 'string' ? jobsD1Entry.database_id : ''
+	}
 
 	const kvNamespaces = (productionEnv as Record<string, unknown>).kv_namespaces
 	if (!Array.isArray(kvNamespaces)) {
@@ -621,6 +590,8 @@ async function resolveProductionBindings({
 		d1ConfiguredId,
 		auditD1DatabaseName,
 		auditD1ConfiguredId,
+		jobsD1DatabaseName,
+		jobsD1ConfiguredId,
 		oauthKvTitle,
 		oauthKvConfiguredId,
 		bundleArtifactsKvTitle,
@@ -648,18 +619,26 @@ async function ensureProductionResources(options: CliOptions) {
 		`Ensuring production resources for worker: ${bindings.workerName} (D1: ${bindings.d1DatabaseName}, OAuth KV: ${bindings.oauthKvTitle}, Bundle KV: ${bindings.bundleArtifactsKvTitle}, Community R2: ${bindings.communityAssetsBucketName}, Email R2: ${bindings.emailBlobsBucketName}, Email Queue: ${bindings.emailDeliveryQueueName}, Email DLQ: ${bindings.emailDeliveryDeadLetterQueueName}, Artifacts Repo Events Queue: ${bindings.artifactsRepoEventsQueueName}, Artifacts Repo Events DLQ: ${bindings.artifactsRepoEventsDeadLetterQueueName}, Platform Feedback Queue: ${bindings.platformFeedbackDispatchQueueName}, Platform Feedback DLQ: ${bindings.platformFeedbackDispatchDeadLetterQueueName}, Community Activity Queue: ${bindings.communityActivityDispatchQueueName}, Community Activity DLQ: ${bindings.communityActivityDispatchDeadLetterQueueName}, Community Listing Published Queue: ${bindings.communityListingPublishedDispatchQueueName}, Community Listing Published DLQ: ${bindings.communityListingPublishedDispatchDeadLetterQueueName}, Package Events Queue: ${bindings.packageEventsDispatchQueueName}, Package Events DLQ: ${bindings.packageEventsDispatchDeadLetterQueueName}, Webhook Dispatch Queue: ${bindings.webhookDispatchQueueName}, Webhook Dispatch DLQ: ${bindings.webhookDispatchDeadLetterQueueName})`,
 	)
 
-	const d1 = ensureD1Database({
+	const d1 = await ensureD1Database({
 		name: bindings.d1DatabaseName,
 		configuredId: bindings.d1ConfiguredId,
 		location: options.d1Location,
 		dryRun: options.dryRun,
 	})
-	const auditD1 = ensureD1Database({
+	const auditD1 = await ensureD1Database({
 		name: bindings.auditD1DatabaseName,
 		configuredId: bindings.auditD1ConfiguredId,
 		location: options.d1Location,
 		dryRun: options.dryRun,
 	})
+	const jobsD1 = bindings.jobsD1DatabaseName
+		? await ensureD1Database({
+				name: bindings.jobsD1DatabaseName,
+				configuredId: bindings.jobsD1ConfiguredId ?? '',
+				location: options.d1Location,
+				dryRun: options.dryRun,
+			})
+		: null
 	const oauthKv = ensureKvNamespace({
 		title: bindings.oauthKvTitle,
 		configuredId: bindings.oauthKvConfiguredId,
@@ -670,19 +649,19 @@ async function ensureProductionResources(options: CliOptions) {
 		configuredId: bindings.bundleArtifactsKvConfiguredId,
 		dryRun: options.dryRun,
 	})
-	const emailBlobs = ensureR2Bucket({
+	const emailBlobs = await ensureR2Bucket({
 		name: bindings.emailBlobsBucketName,
 		dryRun: options.dryRun,
 	})
-	const repoSessionBlobs = ensureR2Bucket({
+	const repoSessionBlobs = await ensureR2Bucket({
 		name: bindings.repoSessionBlobsBucketName,
 		dryRun: options.dryRun,
 	})
-	const operatorBackups = ensureR2Bucket({
+	const operatorBackups = await ensureR2Bucket({
 		name: bindings.operatorBackupsBucketName,
 		dryRun: options.dryRun,
 	})
-	const communityAssets = ensureR2Bucket({
+	const communityAssets = await ensureR2Bucket({
 		name: bindings.communityAssetsBucketName,
 		dryRun: options.dryRun,
 	})
@@ -907,6 +886,12 @@ async function ensureProductionResources(options: CliOptions) {
 		d1DatabaseId: d1.id,
 		auditD1DatabaseName: auditD1.name,
 		auditD1DatabaseId: auditD1.id,
+		...(jobsD1
+			? {
+					jobsD1DatabaseName: jobsD1.name,
+					jobsD1DatabaseId: jobsD1.id,
+				}
+			: {}),
 		oauthKvId: oauthKv.id,
 		bundleArtifactsKvId: bundleArtifactsKv.id,
 		communityAssetsBucketName: communityAssets.name,
@@ -987,6 +972,10 @@ async function ensureProductionResources(options: CliOptions) {
 	console.log(`d1_database_id=${d1.id}`)
 	console.log(`audit_d1_database_name=${auditD1.name}`)
 	console.log(`audit_d1_database_id=${auditD1.id}`)
+	if (jobsD1) {
+		console.log(`jobs_d1_database_name=${jobsD1.name}`)
+		console.log(`jobs_d1_database_id=${jobsD1.id}`)
+	}
 	console.log(`oauth_kv_title=${oauthKv.title}`)
 	console.log(`oauth_kv_id=${oauthKv.id}`)
 	console.log(`bundle_artifacts_kv_title=${bundleArtifactsKv.title}`)

@@ -1,4 +1,9 @@
 import { escapeHtml } from '@kody-internal/shared/escape-html.ts'
+import {
+	emailFooterMark,
+	emailHeaderLogo,
+	type EmailBrandImage,
+} from './brand-images.ts'
 
 /**
  * Shared layout for every transactional email Kody sends. Table-based with
@@ -17,16 +22,8 @@ export type EmailAfterActionBlock = string | { kind: 'quote'; text: string }
 /** A body paragraph, or one that ends in a link (rendered as an anchor in HTML). */
 export type EmailBodyBlock = string | { text: string; link: EmailAction }
 
-type EmailIllustration = {
-	/** Site-relative path resolved against `appBaseUrl`. */
-	src: string
-	alt: string
-	width: number
-	height: number
-}
-
 export type TransactionalEmailContent = {
-	/** Absolute origin used to load the Kody mark; keeps the image reachable from mail clients. */
+	/** Absolute origin used to load the Kody logo and mark; keeps the images reachable from mail clients. */
 	appBaseUrl: string
 	/** Subject line, also used as the document title. */
 	subject: string
@@ -42,8 +39,6 @@ export type TransactionalEmailContent = {
 	secondaryAction?: EmailAction
 	/** Paragraphs or quoted prompts shown below the action button, above the footer. */
 	afterAction?: Array<EmailAfterActionBlock>
-	/** Optional decorative image centered at the bottom of the card. */
-	illustration?: EmailIllustration
 	/** Small muted line at the very bottom of the card. */
 	footnote?: string
 	/** Trusted HTML comment stamped into the card (inventory markers). */
@@ -111,6 +106,19 @@ function afterActionBlocks(
 		.join('\n                ')
 }
 
+/**
+ * Hosted PNG on its own white plate (baked into the image), so the black
+ * light-mode artwork stays readable when a client darkens the email.
+ */
+function brandImage(
+	image: EmailBrandImage,
+	appBaseUrl: string,
+	centered = false,
+) {
+	const src = new URL(image.src, appBaseUrl).toString()
+	return `<img src="${escapeHtml(src)}" alt="Kody" width="${image.width}" height="${image.height}" style="display: block;${centered ? ' margin: 0 auto;' : ''} width: ${image.width}px; height: ${image.height}px; border: 0; outline: none; text-decoration: none;" />`
+}
+
 function afterActionText(values: Array<EmailAfterActionBlock>) {
 	return values.map((value) =>
 		typeof value === 'string' ? value : `"${value.text}"`,
@@ -122,10 +130,6 @@ export function renderTransactionalEmail(
 ): RenderedEmail {
 	const bodyStyle = `margin: 0 0 16px; font-family: ${fontStack}; font-size: 16px; line-height: 1.6; color: ${colors.text};`
 	const mutedStyle = `margin: 0 0 16px; font-family: ${fontStack}; font-size: 14px; line-height: 1.6; color: ${colors.muted};`
-	const markUrl = new URL(
-		'/images/kody-mark.png',
-		content.appBaseUrl,
-	).toString()
 	const quoteStyle = `margin: 0 0 16px; padding: 12px 16px; border-left: 3px solid ${colors.accent}; font-family: ${fontStack}; font-size: 16px; line-height: 1.6; color: ${colors.text};`
 	const action = content.action
 	const secondaryAction = content.secondaryAction
@@ -145,17 +149,14 @@ export function renderTransactionalEmail(
 								: ''
 						}`
 		: ''
-	const illustration = content.illustration
-	const illustrationBlock = illustration
-		? `
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 8px 0 0;">
+	const footerMarkBlock = `
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin: 16px 0 0;">
               <tr>
                 <td align="center">
-                  <img src="${escapeHtml(new URL(illustration.src, content.appBaseUrl).toString())}" alt="${escapeHtml(illustration.alt)}" width="${illustration.width}" height="${illustration.height}" style="display: block; margin: 0 auto; width: ${illustration.width}px; height: ${illustration.height}px; border: 0;" />
+                  ${brandImage(emailFooterMark, content.appBaseUrl, true)}
                 </td>
               </tr>
             </table>`
-		: ''
 
 	const html = `<!doctype html>
 <html lang="en">
@@ -184,23 +185,14 @@ export function renderTransactionalEmail(
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 560px;">
             <tr>
               <td style="padding-bottom: 20px;">
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td style="padding-right: 10px;" valign="middle">
-                      <img src="${escapeHtml(markUrl)}" alt="Kody" width="34" height="34" style="display: block; width: 34px; height: 34px; border: 0;" />
-                    </td>
-                    <td valign="middle">
-                      <span class="kody-text" style="font-family: ${displayFontStack}; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: ${colors.text};">Kody</span>
-                    </td>
-                  </tr>
-                </table>
+                ${brandImage(emailHeaderLogo, content.appBaseUrl)}
               </td>
             </tr>
             <tr>
               <td class="kody-card" style="background-color: ${colors.card}; border: 1px solid ${colors.border}; border-radius: 14px; padding: 32px;">
                 <h1 class="kody-text" style="margin: 0 0 16px; font-family: ${displayFontStack}; font-size: 24px; line-height: 1.25; font-weight: 700; letter-spacing: -0.02em; color: ${colors.text};">${escapeHtml(content.heading)}</h1>
                 ${paragraphs(content.body, 'kody-text', bodyStyle)}${actionBlock}
-                ${content.afterAction?.length ? afterActionBlocks(content.afterAction, mutedStyle, quoteStyle) : ''}${illustrationBlock}${
+                ${content.afterAction?.length ? afterActionBlocks(content.afterAction, mutedStyle, quoteStyle) : ''}${footerMarkBlock}${
 									content.htmlComment
 										? `<!-- ${escapeHtml(content.htmlComment)} -->`
 										: ''

@@ -13,21 +13,11 @@ export type FilterableAccountJob = {
 	dueNow: boolean
 	lastRunStatus: string | null
 	nextRunAt: string
-	scheduleType: 'once' | 'interval' | 'cron'
+	scheduleType: 'interval' | 'cron'
 }
 
-/**
- * Ops-surface rule: live work plus upcoming one-offs.
- * enabled OR (once schedule with a future run_at / nextRunAt).
- */
-export function isActiveAccountJob(
-	job: Pick<FilterableAccountJob, 'enabled' | 'scheduleType' | 'nextRunAt'>,
-	nowMs: number = Date.now(),
-) {
-	if (job.enabled) return true
-	if (job.scheduleType !== 'once') return false
-	const runAtMs = Date.parse(job.nextRunAt)
-	return Number.isFinite(runAtMs) && runAtMs > nowMs
+export function isActiveAccountJob(job: Pick<FilterableAccountJob, 'enabled'>) {
+	return job.enabled
 }
 
 export function filterAccountJobs<Job extends FilterableAccountJob>(
@@ -41,7 +31,7 @@ export function filterAccountJobs<Job extends FilterableAccountJob>(
 	const nowMs = input.nowMs ?? Date.now()
 	return jobs.filter((job) => {
 		if (input.view !== 'all') {
-			const active = isActiveAccountJob(job, nowMs)
+			const active = isActiveAccountJob(job)
 			if (input.view === 'active' ? !active : active) return false
 		}
 		return matchesSearchQuery(input.search, [

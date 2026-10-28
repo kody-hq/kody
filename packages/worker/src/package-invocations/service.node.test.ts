@@ -1,5 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
+import * as credentialClientModule from '#worker/credentials/credential-client.ts'
+import { CredentialClientError } from '#worker/credentials/credential-client.ts'
 import type * as packageSourceModule from '#worker/package-registry/source.ts'
 import {
 	AccountSuspendedError,
@@ -43,6 +45,9 @@ vi.mock('#worker/package-registry/source.ts', () => ({
 	loadPackageSourceRowForUser: (
 		...args: Parameters<typeof packageSourceModule.loadPackageSourceRowForUser>
 	) => repoMockModule.loadPackageSourceRowForUser(...args),
+	loadPackageSourceRowsForUser: (
+		...args: Parameters<typeof packageSourceModule.loadPackageSourceRowsForUser>
+	) => repoMockModule.loadPackageSourceRowsForUser(...args),
 	loadPackageManifestForSource: (
 		...args: Parameters<typeof packageSourceModule.loadPackageManifestForSource>
 	) => repoMockModule.loadPackageManifestForSource(...args),
@@ -58,11 +63,6 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', () => ({
 		repoMockModule.loadPublishedBundleArtifactByIdentity(...args),
 	persistPublishedBundleArtifact: (...args: Array<unknown>) =>
 		repoMockModule.persistPublishedBundleArtifact(...args),
-}))
-
-vi.mock('#worker/repo/checks.ts', () => ({
-	typecheckPackageEntrypointsFromSourceFiles: (...args: Array<unknown>) =>
-		repoMockModule.typecheckPackageEntrypointsFromSourceFiles(...args),
 }))
 
 vi.mock('#mcp/run-kody-registry.ts', () => ({
@@ -111,6 +111,33 @@ vi.mock('#worker/identity/background-mcp-user.ts', () => ({
 type ExportRequest = Parameters<typeof invokePackageExport>[0]['request']
 type Db = ReturnType<typeof createDatabase>
 
+const directPackageFixture = {
+	packageId: 'package-1',
+	name: 'sample-package',
+	kodyId: 'sample-package',
+	description: 'Sample package',
+	exportName: './run',
+	entryPoint: 'src/run.ts',
+}
+
+const supplierPreflightMocks = vi.hoisted(() => ({
+	isEnabled: vi.fn(async () => false),
+	needs: new Map(),
+}))
+
+const loadRunNeedsSpy = vi.spyOn(
+	credentialClientModule,
+	'loadRunCredentialNeeds',
+)
+const openCredentialClientSpy = vi.spyOn(
+	credentialClientModule,
+	'openCredentialClient',
+)
+
+vi.mock('#worker/credentials/credential-suppliers-flag.ts', () => ({
+	isPackageCredentialSuppliersEnabled: () => supplierPreflightMocks.isEnabled(),
+}))
+
 const runMock = repoMockModule.runBundledModuleWithRegistry
 const fromDiscord = {
 	source: 'discord-gateway',
@@ -154,6 +181,24 @@ function dispatchRequest(
 		idempotencyKey,
 		...overrides,
 	}
+}
+
+function directRunRequest(idempotencyKey: string): ExportRequest {
+	return dispatchRequest(idempotencyKey, {
+		packageIdOrKodyId: 'sample-package',
+		exportName: 'run',
+	})
+}
+
+function directRunToken() {
+	return {
+		...createToken({
+			packageId: directPackageFixture.packageId,
+			exportNames: [directPackageFixture.exportName],
+		}),
+		tokenId: 'direct-run-token',
+		request: { kind: 'api-token', tokenId: 'direct-run-token' },
+	} as unknown as ReturnType<typeof createToken>
 }
 
 function invoke(
@@ -227,6 +272,17 @@ async function invokeAndDisconnect(
 	return await pending
 }
 
+beforeEach(() => {
+	supplierPreflightMocks.isEnabled.mockReset()
+	supplierPreflightMocks.needs = new Map()
+	loadRunNeedsSpy
+		.mockReset()
+		.mockImplementation(async () => supplierPreflightMocks.needs)
+	openCredentialClientSpy.mockReset().mockImplementation(async () => {
+		throw new Error('Unexpected credential preflight')
+	})
+})
+
 test('invokePackageExport executes a scoped package export successfully', async () => {
 	const db = createDatabase()
 	seedPackageResolution()
@@ -251,6 +307,144 @@ test('invokePackageExport executes a scoped package export successfully', async 
 	expect(runMock).toHaveBeenCalledTimes(1)
 	expect(runOptionsAt(0)).toMatchObject({ packageContext })
 	expect(runOptionsAt(0)).not.toHaveProperty('packageInvokeTools')
+})
+
+test('a direct run blocks before execution when a required executor credential is missing', async () => {
+	const db = createDatabase()
+	seedPackageResolution(directPackageFixture)
+	runMock.mockReset().mockResolvedValue({ result: { ok: true }, logs: [] })
+	supplierPreflightMocks.needs = new Map([
+		[
+			'calendar',
+			{
+				key: 'calendar',
+				provider: 'calendar',
+				description: 'Calendar access',
+				multiple: false,
+				supplier: 'executor',
+				required: true,
+			},
+		],
+	])
+	supplierPreflightMocks.isEnabled.mockResolvedValue(true)
+	openCredentialClientSpy.mockRejectedValue(
+		new CredentialClientError({
+			code: 'credential_unbound',
+			message: 'No credential is connected.',
+			retryWith: [],
+		}),
+	)
+	const token = directRunToken()
+
+	const response = await invoke(db, directRunRequest('direct-required'), token)
+
+	expect(supplierPreflightMocks.isEnabled).toHaveBeenCalled()
+	expect(await supplierPreflightMocks.isEnabled.mock.results[0]?.value).toBe(
+		true,
+	)
+	expect(loadRunNeedsSpy).toHaveBeenCalled()
+	expect(response.status).toBe(409)
+	expect(response.body).toMatchObject({
+		ok: false,
+		error: {
+			code: 'credential_required',
+			message: expect.stringContaining('"calendar"'),
+		},
+	})
+	expect(runMock).not.toHaveBeenCalled()
+})
+
+test('a direct run proceeds when its required executor credential is available', async () => {
+	const db = createDatabase()
+	seedPackageResolution(directPackageFixture)
+	runMock.mockReset().mockResolvedValue({ result: { ok: true }, logs: [] })
+	supplierPreflightMocks.needs = new Map([
+		[
+			'calendar',
+			{
+				key: 'calendar',
+				provider: 'calendar',
+				description: 'Calendar access',
+				multiple: false,
+				supplier: 'executor',
+				required: true,
+			},
+		],
+	])
+	supplierPreflightMocks.isEnabled.mockResolvedValue(true)
+	openCredentialClientSpy.mockResolvedValue({} as never)
+	const token = directRunToken()
+
+	const response = await invoke(
+		db,
+		directRunRequest('direct-required-connected'),
+		token,
+	)
+
+	expect(response.status).toBe(200)
+	expect(supplierPreflightMocks.isEnabled).toHaveBeenCalled()
+	expect(loadRunNeedsSpy).toHaveBeenCalled()
+	expect(openCredentialClientSpy).toHaveBeenCalledWith(
+		expect.objectContaining({ packageId: 'package-1' }),
+		{ key: 'calendar' },
+	)
+	expect(runMock).toHaveBeenCalledTimes(1)
+})
+
+test('optional executor needs do not block a direct run', async () => {
+	const db = createDatabase()
+	seedPackageResolution(directPackageFixture)
+	runMock.mockReset().mockResolvedValue({ result: { ok: true }, logs: [] })
+	supplierPreflightMocks.needs = new Map([
+		[
+			'calendar',
+			{
+				key: 'calendar',
+				provider: 'calendar',
+				description: 'Calendar access',
+				multiple: false,
+				supplier: 'executor',
+				required: false,
+			},
+		],
+	])
+	supplierPreflightMocks.isEnabled.mockResolvedValue(true)
+	const token = directRunToken()
+
+	const response = await invoke(db, directRunRequest('direct-optional'), token)
+
+	expect(response.status).toBe(200)
+	expect(loadRunNeedsSpy).toHaveBeenCalled()
+	expect(openCredentialClientSpy).not.toHaveBeenCalled()
+	expect(runMock).toHaveBeenCalledTimes(1)
+})
+
+test('supplier flag off leaves required executor needs out of the direct-run gate', async () => {
+	const db = createDatabase()
+	seedPackageResolution(directPackageFixture)
+	runMock.mockReset().mockResolvedValue({ result: { ok: true }, logs: [] })
+	supplierPreflightMocks.needs = new Map([
+		[
+			'calendar',
+			{
+				key: 'calendar',
+				provider: 'calendar',
+				description: 'Calendar access',
+				multiple: false,
+				supplier: 'executor',
+				required: true,
+			},
+		],
+	])
+	supplierPreflightMocks.isEnabled.mockResolvedValue(false)
+	const token = directRunToken()
+
+	const response = await invoke(db, directRunRequest('direct-flag-off'), token)
+
+	expect(response.status).toBe(200)
+	expect(loadRunNeedsSpy).not.toHaveBeenCalled()
+	expect(openCredentialClientSpy).not.toHaveBeenCalled()
+	expect(runMock).toHaveBeenCalledTimes(1)
 })
 
 test('suspended owners are refused before package code loads, cannot replay stored responses, and the denial is not stored', async () => {
@@ -776,11 +970,18 @@ test('invokePackageExport treats a missing npm-backed runtime bundle as retryabl
 				'Package artifact preparation failed before execution. Please retry.',
 		},
 	})
-	expect(
-		repoMockModule.typecheckPackageEntrypointsFromSourceFiles,
-	).not.toHaveBeenCalled()
 	expect(repoMockModule.persistPublishedBundleArtifact).not.toHaveBeenCalled()
 	expect(runMock).not.toHaveBeenCalled()
+	// The owner's run record keeps the real cause, not only the generic line.
+	const preparationRun = [...db.runLog.runRows.values()].find(
+		(row) => row['errorName'] === 'artifact_preparation_failed',
+	)
+	expect(preparationRun?.['errorMessage']).toMatch(
+		/^Package artifact preparation failed before execution\. \S/,
+	)
+	expect(String(preparationRun?.['errorMessage'])).not.toBe(
+		'Package artifact preparation failed before execution.',
+	)
 })
 
 test('invokePackageSubscription uses the normal capability registry with package storage and source metadata intact', async () => {
@@ -1093,4 +1294,46 @@ test('disconnect finish fence loss returns the durable ledger response', async (
 	} finally {
 		finishSpy.mockRestore()
 	}
+})
+
+test('key-less invokes report the commit they resolve and refuse a moved pinned commit before running', async () => {
+	const db = createDatabase()
+	invalidateSeededInvokeContract()
+	seedPackageResolution()
+	runMock.mockReset()
+	runMock.mockResolvedValue({ result: { ok: true }, logs: [] })
+	const resolved: Array<string | null> = []
+	const invokeKeyless = (pinnedCommit: string | null) =>
+		invokePackageExport({
+			env: createEnv(db),
+			baseUrl: 'https://kody.dev',
+			token: createToken(),
+			request: dispatchRequest('unused-key'),
+			ephemeral: true,
+			sourceRevision: {
+				pinnedCommit,
+				onResolved: (commit) => resolved.push(commit),
+			},
+		})
+
+	const latest = await invokeKeyless(null)
+	expect(latest.status).toBe(200)
+	const pinnedMatch = await invokeKeyless('commit-1')
+	expect(pinnedMatch.status).toBe(200)
+	expect(runMock).toHaveBeenCalledTimes(2)
+
+	const moved = await invokeKeyless('commit-0')
+	expect(moved.status).toBe(409)
+	expect(moved.body).toMatchObject({
+		ok: false,
+		error: {
+			code: 'source_revision_changed',
+			message: expect.stringContaining(
+				'pinned to commit commit-0 but the published commit is now commit-1',
+			),
+		},
+	})
+	// Refused before any sandbox work.
+	expect(runMock).toHaveBeenCalledTimes(2)
+	expect(resolved).toEqual(['commit-1', 'commit-1', 'commit-1'])
 })

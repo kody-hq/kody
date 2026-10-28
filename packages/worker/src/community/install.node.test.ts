@@ -6,11 +6,31 @@ const mockModule = vi.hoisted(() => ({
 	persistPreparedCommunityFork: vi.fn(),
 	runRepoChecks: vi.fn(),
 	refreshSavedPackageProjection: vi.fn(),
+	getSavedPackageById: vi.fn(),
+	existingFork: null as null | Record<string, unknown>,
 }))
 
 vi.mock('./service.ts', () => ({
 	prepareCommunityFork: mockModule.prepareCommunityFork,
 	persistPreparedCommunityFork: mockModule.persistPreparedCommunityFork,
+	// Claim + existing-fork lookup are covered in community-service and
+	// fork-claims tests; here every install is a first fork.
+	runIdempotentCommunityFork: (
+		_input: unknown,
+		handlers: {
+			create: (hold: { claimId: string }) => Promise<unknown>
+			existing: (fork: unknown) => Promise<unknown>
+		},
+	) =>
+		mockModule.existingFork
+			? handlers.existing(mockModule.existingFork)
+			: handlers.create({ claimId: 'test-claim' }),
+	buildAlreadyForkedMessage: (input: { targetName: string }) =>
+		`You already forked this listing as "${input.targetName}".`,
+}))
+
+vi.mock('#worker/package-registry/repo.ts', () => ({
+	getSavedPackageById: mockModule.getSavedPackageById,
 }))
 
 vi.mock('#worker/repo/checks.ts', async (importOriginal) => {
@@ -147,6 +167,7 @@ test('install publishes clean forks, keeps failed checks inert, and propagates e
 		{ path: 'src/index.ts', type: 'file' },
 	])
 	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith({
+		audit: null,
 		env,
 		baseUrl: 'https://kody.test',
 		userId: ownerIdFromStored('user-b'),
@@ -290,4 +311,55 @@ test('install re-checks and projects the synced fork files when fallback differs
 	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
 		expect.objectContaining({ sourceFiles: syncedFiles }),
 	)
+})
+
+test('install returns the existing fork instead of forking again', async () => {
+	mockCleanInstall()
+	mockModule.prepareCommunityFork.mockClear()
+	mockModule.persistPreparedCommunityFork.mockClear()
+	mockModule.existingFork = {
+		id: 'fork-existing',
+		listingId: 'listing-1',
+		forkerUserId: 'user-b',
+		originCommit: 'commit-1',
+		forkedPackageId: 'package-existing',
+		forkedSourceId: 'source-existing',
+		targetKodyId: 'demo',
+		createdAt: '2026-10-23T18:00:00.000Z',
+		adoptedAt: null,
+		adoptionNote: null,
+	}
+	try {
+		// Inert fork (no live package yet): still the same fork, needs adapting.
+		mockModule.getSavedPackageById.mockResolvedValueOnce(null)
+		expect(await install()).toEqual({
+			status: 'adaptation_required',
+			forkId: 'fork-existing',
+			packageId: 'package-existing',
+			sourceId: 'source-existing',
+			targetKodyId: 'demo',
+			targetName: '@userb/demo',
+			originCommit: 'commit-1',
+			alreadyInstalled: true,
+			message: 'You already forked this listing as "@userb/demo".',
+			failedChecks: [],
+			crossScopeReferences: [],
+		})
+		// Published fork: installed under its live name.
+		mockModule.getSavedPackageById.mockResolvedValueOnce({
+			id: 'package-existing',
+			name: '@userb/demo-renamed',
+			sourceId: 'source-live',
+		})
+		expect(await install()).toMatchObject({
+			status: 'installed',
+			alreadyInstalled: true,
+			targetName: '@userb/demo-renamed',
+			sourceId: 'source-live',
+		})
+		expect(mockModule.prepareCommunityFork).not.toHaveBeenCalled()
+		expect(mockModule.persistPreparedCommunityFork).not.toHaveBeenCalled()
+	} finally {
+		mockModule.existingFork = null
+	}
 })

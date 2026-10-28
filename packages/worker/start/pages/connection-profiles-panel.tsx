@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { surfaceCardCss } from '#universal/styles/surface.ts'
 import {
 	createConnectionProfile,
 	updateConnectionProfile,
@@ -663,11 +664,10 @@ const profileListCss: CSSObject = {
 	gap: spacing.lg,
 }
 const cardCss: CSSObject = {
+	...surfaceCardCss,
 	display: 'grid',
 	gap: spacing.sm,
 	padding: spacing.md,
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.md,
 }
 const profileHeaderCss: CSSObject = {
 	display: 'flex',

@@ -1,3 +1,7 @@
+import {
+	optionalOrgAuditWriter,
+	orgAuditCauseFromCaller,
+} from '#worker/orgs/org-audit.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { authorizePackageWrite } from '#worker/authorization/authorize.ts'
@@ -30,6 +34,7 @@ export const deletePackageCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageDelete',
+		contextRuns: 'deny',
 		orgPermission: 'package:delete',
 		description:
 			'Permanently delete a saved package the signed-in user owns. This cannot be undone. It removes the package from the account and from /community if it was public, stops its jobs, clears package storage and package-scoped secrets, and best-effort deletes Artifacts repos. Existing forks keep their copies. Hiding (`packageUpdate` hidden) or making a package private is not deletion. Do not call this because a package is unused, failing, or over quota unless the owner explicitly asked to delete that specific package. Load it with packageGet or packageList, show the owner the package name and what will be destroyed, wait for them to type that name, then pass package_id and confirm_name matching the package name exactly.',
@@ -92,6 +97,11 @@ export const deletePackageCapability = defineDomainCapability(
 					userId: owner.ownerUserId,
 					actorUserId: owner.actorUserId,
 					packageId: args.package_id,
+					audit: optionalOrgAuditWriter(
+						ctx.env,
+						ctx.callerContext.request ?? null,
+						orgAuditCauseFromCaller(ctx.callerContext),
+					),
 				})
 			} catch (error) {
 				if (error instanceof PackageStorageCleanupError) {

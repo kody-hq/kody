@@ -47,6 +47,8 @@ export type UserCreatedEvent = {
 export type UserDeletedEvent = {
 	event: UserDeletedTopic
 	user: UserLifecycleIdentity
+	/** Account signup time (ISO 8601), read before or at deletion. */
+	created_at: string
 	deleted_at: string
 }
 
@@ -92,13 +94,34 @@ export function buildUserCreatedEvent(input: {
 	}
 }
 
+const sqliteUtcTimestampPattern =
+	/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/
+
+/**
+ * Normalizes a stored `users.created_at` value to the same ISO 8601 shape as
+ * `deleted_at`. SQLite `CURRENT_TIMESTAMP` rows read as `YYYY-MM-DD HH:MM:SS`
+ * in UTC with no zone, so they are treated as UTC. Values that cannot be
+ * parsed are passed through unchanged rather than dropping the event.
+ */
+export function toUserLifecycleIsoTimestamp(value: string) {
+	const trimmed = value.trim()
+	const sqliteMatch = sqliteUtcTimestampPattern.exec(trimmed)
+	const candidate = sqliteMatch
+		? `${sqliteMatch[1]}T${sqliteMatch[2]}Z`
+		: trimmed
+	const parsed = new Date(candidate)
+	return Number.isNaN(parsed.getTime()) ? trimmed : parsed.toISOString()
+}
+
 export function buildUserDeletedEvent(input: {
 	user: UserLifecycleIdentity
+	createdAt: string
 	deletedAt: string
 }): UserDeletedEvent {
 	return {
 		event: userDeletedTopic,
 		user: input.user,
+		created_at: toUserLifecycleIsoTimestamp(input.createdAt),
 		deleted_at: input.deletedAt,
 	}
 }

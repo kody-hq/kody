@@ -11,6 +11,10 @@ import {
 	type OnboardingChecklistItemId,
 } from './onboarding-process.ts'
 import { enablementMappingPauseResourceType } from './credential-contracts.ts'
+import {
+	packageApprovePublishHrefFromScope,
+	packageScopeFromNameOrOwner,
+} from './community-links.ts'
 import { orgResourcePathForAccountPath } from './org-pages.ts'
 import { routes } from './routes.ts'
 
@@ -288,6 +292,11 @@ export function buildWaitingItems(
 	}
 
 	for (const pkg of signals.lockedPackages) {
+		const scope = packageScopeFromNameOrOwner({
+			packageName: pkg.name,
+			ownerUsername: signals.username,
+			kodyId: pkg.kodyId,
+		})
 		items.push({
 			id: `publish-lock:${pkg.id}`,
 			kind: 'publish-lock',
@@ -295,10 +304,12 @@ export function buildWaitingItems(
 			why: 'Agents can push drafts, but published code does not move until you promote a commit or unlock it.',
 			who: 'you',
 			doLabel: 'Review lock',
-			href: routes.communityPackageApprovePublish.href({
-				username: signals.username,
-				kodyId: pkg.kodyId,
-			}),
+			href: scope
+				? packageApprovePublishHrefFromScope(scope)
+				: routes.communityPackageApprovePublish.href({
+						username: signals.username,
+						kodyId: pkg.kodyId,
+					}),
 			severity: 'block',
 		})
 	}

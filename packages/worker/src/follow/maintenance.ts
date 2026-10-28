@@ -2,20 +2,31 @@ import { flushPendingWindow } from './push-ingress.ts'
 import {
 	deleteFollowPushPendingIfUnchanged,
 	deletePausedFollowsBefore,
+	deleteStaleFollowRecentUpdates,
 	hasAppDb,
 	listDueFollowPushPending,
 } from './repo.ts'
-import { followPauseRetentionMs, followPushWindowMs } from './types.ts'
+import {
+	followPauseRetentionMs,
+	followPushWindowMs,
+	followRecentUpdatesRetentionMs,
+} from './types.ts'
 
 /**
  * Every cron tick: flush push windows that have been open for five minutes,
- * then delete follows paused longer than 30 days.
+ * delete follows paused longer than 30 days, then drop Recent updates older
+ * than 30 days or whose follow is gone.
  */
 export async function runFollowMaintenance(input: {
 	env: Env
 	now: Date
-}): Promise<{ flushed: number; pausedDeleted: number }> {
-	if (!hasAppDb(input.env.APP_DB)) return { flushed: 0, pausedDeleted: 0 }
+}): Promise<{
+	flushed: number
+	pausedDeleted: number
+	recentUpdatesDeleted: number
+}> {
+	if (!hasAppDb(input.env.APP_DB))
+		return { flushed: 0, pausedDeleted: 0, recentUpdatesDeleted: 0 }
 	const cutoff = new Date(
 		input.now.getTime() - followPushWindowMs,
 	).toISOString()
@@ -37,5 +48,11 @@ export async function runFollowMaintenance(input: {
 		input.env.APP_DB,
 		pauseCutoff,
 	)
-	return { flushed, pausedDeleted }
+	const recentUpdatesDeleted = await deleteStaleFollowRecentUpdates(
+		input.env.APP_DB,
+		new Date(
+			input.now.getTime() - followRecentUpdatesRetentionMs,
+		).toISOString(),
+	)
+	return { flushed, pausedDeleted, recentUpdatesDeleted }
 }

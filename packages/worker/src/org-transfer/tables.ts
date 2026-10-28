@@ -34,8 +34,17 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	package_security_audits: keep(
 		'Informational package security audits. Rows for moved packages are deleted so the destination owner can re-audit.',
 	),
+	package_app_cookie_warnings: keep(
+		'Cookie warnings are informational source-owner observations. Rows for moved packages are deleted so the destination owner can collect new findings.',
+	),
 	package_app_custom_hostnames: keep(
 		'App-level rows bind by package_id (unchanged on transfer), so the hostname follows the moved package. Org-level rows bind by org_id and stay with the source org. created_by_user_id is attribution only.',
+	),
+	package_app_rate_limits: keep(
+		'Rate-limit buckets bind to package ids, which do not change on org transfer.',
+	),
+	package_app_grant_credential_mappings: keep(
+		'Visitor credential mappings follow the person and their app grant, not the package owner.',
 	),
 	package_approval_requests: keep(
 		'Approval requests are addressed to the source owner. Rows for moved packages are deleted; the destination owner gets a new request on the next publish.',
@@ -58,6 +67,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	),
 	community_forks: move(
 		'forker_user_id re-pointed for forks that produced a moved package.',
+	),
+	follow_recent_updates: keep(
+		'Recent updates belong to the follower org and its follow rows, which stay with that org.',
 	),
 	follows: keep(
 		'Follow rows stay with the follower org (follower_org_id is not re-pointed). The transfer batch rewrites denormalized target_owner_id and target_name so followers keep watching the same target ids under the destination owner.',
@@ -139,6 +151,18 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 		'Approved picks name source-org credentials; an agent proposes again in the target org.',
 	),
 	credential_org_grants: keep(personOwned),
+	execution_contexts: keep(
+		'Execution contexts are machines their operator controls; they stay in the owning org and are not moved by a resource transfer.',
+	),
+	execution_context_opt_ins: keep(personOwned),
+	execution_context_org_attachments: keep(
+		'Attachments link a context to an org by its operator; they are not resources of the transferred packages.',
+	),
+	execution_context_chains: keep(personOwned),
+	execution_context_chain_entries: keep(personOwned),
+	execution_context_registration_challenges: keep(
+		'Short-lived registration challenges for a person; nothing to move.',
+	),
 	credit_debit_progress: keep(usageHistory),
 	credit_ledger_entries: keep(usageHistory),
 	credit_wallets: keep(usageHistory),
@@ -164,6 +188,7 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 		'Client callback subscriptions belong to the OAuth client connection.',
 	),
 	oauth_connections: keep(personOwned),
+	oauth_device_authorizations: keep(personOwned),
 	org_invite_link_pending: keep(orgMembershipShape),
 	org_invite_link_redemptions: keep(orgMembershipShape),
 	org_invite_links: keep(orgMembershipShape),
@@ -191,6 +216,7 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	teams: keep(orgMembershipShape),
 	transactional_email_delivery_index: keep(emailStays),
 	usage_attribution_daily: keep(usageHistory),
+	package_app_visitor_attribution_daily: keep(usageHistory),
 	usage_connection_daily: keep(usageHistory),
 	usage_rollups: keep(usageHistory),
 	user_email_claims: keep(personOwned),

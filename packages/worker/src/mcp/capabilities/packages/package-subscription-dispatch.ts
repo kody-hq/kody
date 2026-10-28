@@ -1,6 +1,5 @@
 import { z } from 'zod'
 import { utf8ByteLength } from '@kody-internal/shared/backup-restore-safety.ts'
-import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { authorize, packageResource } from '#worker/authorization/authorize.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -9,6 +8,7 @@ import {
 	requireMcpRequest,
 	requireMcpUser,
 } from '#mcp/capabilities/meta/require-user.ts'
+import { requireInteractiveMcpCaller } from '#mcp/capabilities/meta/require-interactive-caller.ts'
 import { inheritRequest } from '#worker/request-context/request-context.ts'
 import {
 	buildEmailReceiptSubscriptionEnvelope,
@@ -30,41 +30,17 @@ import {
 	trustedSyntheticSubscriptionDispatch,
 } from '#worker/package-invocations/subscription-envelope.ts'
 import { listPackageSubscriptions } from '#worker/package-registry/manifest.ts'
-import {
-	normalizePackageNameInput,
-	packageIdLookupDescription,
-	packageNameLookupDescription,
-} from '#worker/package-registry/package-name.ts'
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
-import {
-	getSavedPackageById,
-	resolveSavedPackageRef,
-} from '#worker/package-registry/repo.ts'
 import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
+import {
+	findOwnedSavedPackage,
+	packageIdentityCountMessage,
+	packageIdentityInputShape,
+} from './owned-package-lookup.ts'
 
 const maxSyntheticSubscriptionResultBytes = 102_400
 
 const packageRuntimeCallerErrorMessage = `${packageSubscriptionDispatchCapabilityName} is unavailable from package runtime contexts. It is the interactive-MCP post-publish subscription smoke test. Compose another package with a static kody:@scope/pkg/export import.`
-
-function assertDirectMcpCaller(callerContext: {
-	executionOrigin?: string
-	storageContext?: {
-		packageId?: string | null
-		appId?: string | null
-		storageId?: string | null
-	} | null
-}) {
-	if (callerContext.executionOrigin !== 'interactive') {
-		throw new McpCallerError(packageRuntimeCallerErrorMessage)
-	}
-	const storageContext = callerContext.storageContext
-	const packageId = storageContext?.packageId?.trim() ?? ''
-	const appId = storageContext?.appId?.trim() ?? ''
-	const storageId = storageContext?.storageId?.trim() ?? ''
-	if (packageId || appId || storageId) {
-		throw new McpCallerError(packageRuntimeCallerErrorMessage)
-	}
-}
 
 function requireExactlyOneDispatchInput(input: {
 	email_message_id?: string
@@ -113,6 +89,7 @@ export const packageSubscriptionDispatchCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: packageSubscriptionDispatchCapabilityName,
+		contextRuns: 'deny',
 		orgPermission: 'package:execute',
 		description:
 			'Interactive-MCP post-publish smoke test for one declared package.json#kody.subscriptions handler on an owner-scoped saved package. Real-surface run with real side effects; does not wait for a production event and is unavailable from package jobs, subscriptions, webhooks, or other package runtimes. Package composition is a static kody:@scope/pkg/export import (plus kody.dependencies), not this capability. Pass params for a fixture envelope or email_message_id to replay stored inbound mail. The platform marks the run synthetic.',
@@ -142,16 +119,7 @@ export const packageSubscriptionDispatchCapability = defineDomainCapability(
 		destructive: true,
 		inputSchema: z
 			.object({
-				package_id: z
-					.string()
-					.min(1)
-					.optional()
-					.describe(packageIdLookupDescription),
-				kody_id: z
-					.string()
-					.min(1)
-					.optional()
-					.describe(packageNameLookupDescription),
+				...packageIdentityInputShape,
 				topic: z
 					.string()
 					.min(1)
@@ -173,14 +141,14 @@ export const packageSubscriptionDispatchCapability = defineDomainCapability(
 					),
 			})
 			.superRefine((value, ctx) => {
-				const packageIdentityCount =
+				if (
 					(value.package_id !== undefined ? 1 : 0) +
-					(value.kody_id !== undefined ? 1 : 0)
-				if (packageIdentityCount !== 1) {
+						(value.kody_id !== undefined ? 1 : 0) !==
+					1
+				) {
 					ctx.addIssue({
 						code: 'custom',
-						message:
-							'Provide exactly one of `package_id` or the package name leaf.',
+						message: packageIdentityCountMessage,
 					})
 				}
 				const dispatchModeCount =
@@ -214,35 +182,21 @@ export const packageSubscriptionDispatchCapability = defineDomainCapability(
 		}),
 		async handler(args, ctx) {
 			const user = requireMcpUser(ctx.callerContext)
-			assertDirectMcpCaller(ctx.callerContext)
+			requireInteractiveMcpCaller(
+				ctx.callerContext,
+				packageRuntimeCallerErrorMessage,
+			)
 			requireExactlyOneDispatchInput(args)
 			const owner = await resolvePackageOwnerContext(ctx.env, {
 				user,
 				request: requireMcpRequest(ctx.callerContext),
 			})
-			let requestedKodyId: string | undefined
-			if (args.kody_id !== undefined) {
-				try {
-					requestedKodyId = normalizePackageNameInput({
-						value: args.kody_id,
-						ownerScope: owner.ownerScope,
-						action: 'resolve',
-					})
-				} catch (error) {
-					throw new McpCallerError(getErrorMessage(error), { cause: error })
-				}
-			}
-			const savedPackage =
-				args.package_id !== undefined
-					? await getSavedPackageById(ctx.env.APP_DB, {
-							userId: owner.ownerUserId,
-							packageId: args.package_id,
-						})
-					: await resolveSavedPackageRef(ctx.env.APP_DB, {
-							userId: owner.ownerUserId,
-							ref: requestedKodyId ?? '',
-							match: 'slug',
-						})
+			const { savedPackage } = await findOwnedSavedPackage({
+				db: ctx.env.APP_DB,
+				userId: owner.ownerUserId,
+				ownerScope: owner.ownerScope,
+				args,
+			})
 			if (!savedPackage) {
 				const missingId = args.package_id ?? args.kody_id
 				throw new McpCallerError(`Saved package "${missingId}" was not found.`)

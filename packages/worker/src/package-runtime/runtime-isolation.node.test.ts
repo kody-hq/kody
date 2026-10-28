@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -58,6 +58,7 @@ type RuntimeModule = {
 	credential?:
 		| (((key: string) => Promise<unknown>) & {
 				named: (name: string) => Promise<unknown>
+				visitor: (need: string) => Promise<unknown>
 		  })
 		| undefined
 	credentials?: ((key: string) => Promise<unknown>) | undefined
@@ -77,7 +78,10 @@ async function writeTempFiles(
 	cleanupCallbacks: Array<() => Promise<void>>,
 	files: Record<string, string>,
 ) {
-	const dir = await mkdtemp(join(tmpdir(), 'kody-runtime-isolation-'))
+	// Resolve macOS temp-directory symlinks so relative and direct imports share one module.
+	const dir = await realpath(
+		await mkdtemp(join(tmpdir(), 'kody-runtime-isolation-')),
+	)
 	cleanupCallbacks.push(() => rm(dir, { recursive: true, force: true }))
 	const urls: Record<string, string> = {}
 	for (const [relativePath, source] of Object.entries(files)) {
@@ -254,7 +258,10 @@ test('credential is callable when runtime.js first evaluates inside ALS with bin
 						key,
 						sign: async () => `signed:${key}`,
 					}),
-					{ named: async (name: string) => ({ name }) },
+					{
+						named: async (name: string) => ({ name }),
+						visitor: async (need: string) => ({ need }),
+					},
 				),
 				credentials: async (key: string) => [{ key }],
 			}
@@ -271,6 +278,7 @@ test('credential is callable when runtime.js first evaluates inside ALS with bin
 					key: handle.key,
 					signature: await handle.sign(),
 					named: await mod.credential.named('powersync-jwt'),
+					visitor: await mod.credential.visitor('github'),
 					list: await mod.credentials?.('powersync-jwt'),
 				}
 			})
@@ -278,6 +286,7 @@ test('credential is callable when runtime.js first evaluates inside ALS with bin
 				key: 'powersync-jwt',
 				signature: 'signed:powersync-jwt',
 				named: { name: 'powersync-jwt' },
+				visitor: { need: 'github' },
 				list: [{ key: 'powersync-jwt' }],
 			})
 		},

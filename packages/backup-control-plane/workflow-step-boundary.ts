@@ -1,17 +1,13 @@
 import { type BackupRuntimeStep } from './backup-runtime.ts'
 import { BackupError } from './backup-policy.ts'
+import { nonRetryableBackupError } from './workflow-terminal-error.ts'
 
-type NonRetryableErrorFactory = (error: BackupError) => Error
-
-async function runStepCallback<T>(
-	callback: () => Promise<T>,
-	createNonRetryableError: NonRetryableErrorFactory,
-): Promise<T> {
+async function runStepCallback<T>(callback: () => Promise<T>): Promise<T> {
 	try {
 		return await callback()
 	} catch (error) {
 		if (error instanceof BackupError && !error.retryable) {
-			throw createNonRetryableError(error)
+			throw nonRetryableBackupError(error)
 		}
 		throw error
 	}
@@ -19,7 +15,6 @@ async function runStepCallback<T>(
 
 export function withNonRetryableBackupErrors(
 	step: BackupRuntimeStep,
-	createNonRetryableError: NonRetryableErrorFactory,
 ): BackupRuntimeStep {
 	return {
 		do<T>(
@@ -29,18 +24,13 @@ export function withNonRetryableBackupErrors(
 		): Promise<T> {
 			if (typeof configOrCallback === 'function') {
 				return step.do(name, () =>
-					runStepCallback(
-						configOrCallback as () => Promise<T>,
-						createNonRetryableError,
-					),
+					runStepCallback(configOrCallback as () => Promise<T>),
 				)
 			}
 			if (!callback) {
 				throw new Error('Workflow step callback is required.')
 			}
-			return step.do(name, configOrCallback, () =>
-				runStepCallback(callback, createNonRetryableError),
-			)
+			return step.do(name, configOrCallback, () => runStepCallback(callback))
 		},
 		sleep(name, duration) {
 			return step.sleep(name, duration)

@@ -6,6 +6,22 @@ import {
 } from './types.ts'
 
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+
+export function webhookEndpointNotOffSql(alias: string) {
+	return `(EXISTS (
+		SELECT 1 FROM enablements
+		WHERE org_id = ${alias}.user_id
+			AND trigger_kind = 'webhook'
+			AND instance_id = ${alias}.id
+			AND state <> 'off'
+	) OR NOT EXISTS (
+		SELECT 1 FROM enablements
+		WHERE org_id = ${alias}.user_id
+			AND trigger_kind = 'webhook'
+			AND instance_id = ${alias}.id
+	))`
+}
+
 type WebhookEndpointRow = {
 	id: string
 	user_id: OwnerId
@@ -21,7 +37,6 @@ type WebhookEndpointRow = {
 	previous_hmac_secret_name?: string | null
 	previous_hmac_secret_encrypted?: string | null
 	previous_hmac_secret_expires_at?: string | null
-	enabled: number
 	created_at: string
 	rotated_at: string
 	instance_label?: string | null
@@ -44,7 +59,6 @@ function mapEndpointRow(row: WebhookEndpointRow): WebhookEndpointRecord {
 		previousHmacSecretName: row.previous_hmac_secret_name ?? null,
 		previousHmacSecretEncrypted: row.previous_hmac_secret_encrypted ?? null,
 		previousHmacSecretExpiresAt: row.previous_hmac_secret_expires_at ?? null,
-		enabled: row.enabled === 1,
 		createdAt: row.created_at,
 		rotatedAt: row.rotated_at,
 		instanceLabel: row.instance_label?.trim()
@@ -57,9 +71,6 @@ function mapEndpointRow(row: WebhookEndpointRow): WebhookEndpointRecord {
  * Insert or rotate a minted webhook URL secret. Hash and ciphertext are written
  * in the same statement. The caller encrypts with `id` as AAD, so `id` must be
  * the existing endpoint id on update.
- *
- * When `updateEnabledOnConflict` is true (mint/activate), updates also set
- * `enabled`. Rotate passes false so disable state sticks.
  *
  * On update, the outgoing hash becomes the previous secret for the rotate
  * overlap window (`previousExpiresAt`, default 24h from `now`).
@@ -77,8 +88,6 @@ export async function upsertWebhookEndpointSecret(input: {
 	urlSecretHash: string
 	urlSecretEncrypted: string
 	hmacSecretEncrypted?: string | null
-	enabled?: boolean
-	updateEnabledOnConflict?: boolean
 	now?: string
 	previousExpiresAt?: string
 	/**
@@ -89,7 +98,6 @@ export async function upsertWebhookEndpointSecret(input: {
 	instanceLabel?: string | null
 }): Promise<WebhookEndpointRecord> {
 	const now = input.now ?? new Date().toISOString()
-	const enabled = input.enabled === false ? 0 : 1
 	const instanceLabel = input.instanceLabel?.trim() || null
 	const existingById = await getWebhookEndpointByIdForUser({
 		db: input.db,
@@ -114,93 +122,47 @@ export async function upsertWebhookEndpointSecret(input: {
 			input.previousExpiresAt ?? webhookUrlRotationGraceExpiresAt(now)
 		const writeHmac = input.hmacSecretEncrypted !== undefined
 		const hmacValue = input.hmacSecretEncrypted ?? null
-		const result = input.updateEnabledOnConflict
-			? writeHmac
-				? await input.db
-						.prepare(
-							`UPDATE webhook_endpoints
-							SET previous_url_secret_hash = url_secret_hash,
-								previous_url_secret_expires_at = ?,
-								url_secret_hash = ?,
-								url_secret_encrypted = ?,
-								hmac_secret_encrypted = ?,
-								rotated_at = ?,
-								enabled = ?
-							WHERE user_id = ? AND id = ?${andLiveDeletedAtSql()}`,
-						)
-						.bind(
-							previousExpiresAt,
-							input.urlSecretHash,
-							input.urlSecretEncrypted,
-							hmacValue,
-							now,
-							enabled,
-							input.userId,
-							existing.id,
-						)
-						.run()
-				: await input.db
-						.prepare(
-							`UPDATE webhook_endpoints
-							SET previous_url_secret_hash = url_secret_hash,
-								previous_url_secret_expires_at = ?,
-								url_secret_hash = ?,
-								url_secret_encrypted = ?,
-								rotated_at = ?,
-								enabled = ?
-							WHERE user_id = ? AND id = ?${andLiveDeletedAtSql()}`,
-						)
-						.bind(
-							previousExpiresAt,
-							input.urlSecretHash,
-							input.urlSecretEncrypted,
-							now,
-							enabled,
-							input.userId,
-							existing.id,
-						)
-						.run()
-			: writeHmac
-				? await input.db
-						.prepare(
-							`UPDATE webhook_endpoints
-							SET previous_url_secret_hash = url_secret_hash,
-								previous_url_secret_expires_at = ?,
-								url_secret_hash = ?,
-								url_secret_encrypted = ?,
-								hmac_secret_encrypted = ?,
-								rotated_at = ?
-							WHERE user_id = ? AND id = ?${andLiveDeletedAtSql()}`,
-						)
-						.bind(
-							previousExpiresAt,
-							input.urlSecretHash,
-							input.urlSecretEncrypted,
-							hmacValue,
-							now,
-							input.userId,
-							existing.id,
-						)
-						.run()
-				: await input.db
-						.prepare(
-							`UPDATE webhook_endpoints
-							SET previous_url_secret_hash = url_secret_hash,
-								previous_url_secret_expires_at = ?,
-								url_secret_hash = ?,
-								url_secret_encrypted = ?,
-								rotated_at = ?
-							WHERE user_id = ? AND id = ?${andLiveDeletedAtSql()}`,
-						)
-						.bind(
-							previousExpiresAt,
-							input.urlSecretHash,
-							input.urlSecretEncrypted,
-							now,
-							input.userId,
-							existing.id,
-						)
-						.run()
+		const result = writeHmac
+			? await input.db
+					.prepare(
+						`UPDATE webhook_endpoints
+						SET previous_url_secret_hash = url_secret_hash,
+							previous_url_secret_expires_at = ?,
+							url_secret_hash = ?,
+							url_secret_encrypted = ?,
+							hmac_secret_encrypted = ?,
+							rotated_at = ?
+						WHERE user_id = ? AND id = ?${andLiveDeletedAtSql()}`,
+					)
+					.bind(
+						previousExpiresAt,
+						input.urlSecretHash,
+						input.urlSecretEncrypted,
+						hmacValue,
+						now,
+						input.userId,
+						existing.id,
+					)
+					.run()
+			: await input.db
+					.prepare(
+						`UPDATE webhook_endpoints
+						SET previous_url_secret_hash = url_secret_hash,
+							previous_url_secret_expires_at = ?,
+							url_secret_hash = ?,
+							url_secret_encrypted = ?,
+							rotated_at = ?
+						WHERE user_id = ? AND id = ?${andLiveDeletedAtSql()}`,
+					)
+					.bind(
+						previousExpiresAt,
+						input.urlSecretHash,
+						input.urlSecretEncrypted,
+						now,
+						input.userId,
+						existing.id,
+					)
+					.run()
 		if ((result.meta.changes ?? 0) === 0) {
 			throw new Error('Unable to upsert webhook endpoint.')
 		}
@@ -209,9 +171,9 @@ export async function upsertWebhookEndpointSecret(input: {
 			.prepare(
 				`INSERT INTO webhook_endpoints (
 					id, user_id, package_id, webhook_name, url_secret_hash,
-					url_secret_encrypted, hmac_secret_encrypted, enabled, created_at, rotated_at,
+					url_secret_encrypted, hmac_secret_encrypted, created_at, rotated_at,
 					instance_label
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.bind(
 				input.id,
@@ -221,7 +183,6 @@ export async function upsertWebhookEndpointSecret(input: {
 				input.urlSecretHash,
 				input.urlSecretEncrypted,
 				input.hmacSecretEncrypted ?? null,
-				enabled,
 				now,
 				now,
 				instanceLabel,
@@ -488,28 +449,6 @@ export async function getWebhookEndpointByIdForUser(input: {
 		.bind(input.endpointId, input.userId)
 		.first<WebhookEndpointRow>()
 	return row ? mapEndpointRow(row) : null
-}
-
-export async function setWebhookEndpointEnabled(input: {
-	db: D1Database
-	userId: string
-	endpointId: string
-	enabled: boolean
-}): Promise<WebhookEndpointRecord | null> {
-	const result = await input.db
-		.prepare(
-			`UPDATE webhook_endpoints
-			SET enabled = ?
-			WHERE user_id = ? AND id = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(input.enabled ? 1 : 0, input.userId, input.endpointId)
-		.run()
-	if ((result.meta.changes ?? 0) === 0) return null
-	return getWebhookEndpointByIdForUser({
-		db: input.db,
-		userId: input.userId,
-		endpointId: input.endpointId,
-	})
 }
 
 /** Drop the rotate-overlap previous secret (confirmed on the new URL, or expired). */

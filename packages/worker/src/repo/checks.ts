@@ -2,11 +2,9 @@ import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
 	getPackageAppAssetsDirectory,
 	getPackageAppClientEntryPath,
-	listPackageRetrievers,
 	listPackageSubscriptions,
 	normalizePackageWorkspacePath,
 	parseAuthoredPackageJson,
-	resolvePackageExportPath,
 } from '#worker/package-registry/manifest.ts'
 import {
 	findStaticKodyDependencyCycle,
@@ -43,11 +41,7 @@ import {
 	collectStaticKodyPackageImportsFromFiles,
 	isTypeDeclarationFilePath,
 } from '#worker/package-runtime/static-kody-imports.ts'
-import {
-	hasTopLevelDefaultExport,
-	parseModuleSource,
-	type ModuleAstNode,
-} from '#worker/module-source.ts'
+import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
 import {
 	importWorkerBundler,
 	importWorkerBundlerTypescript,
@@ -55,9 +49,12 @@ import {
 import {
 	createRepoCapabilitiesModuleTypecheckHarness,
 	mapRepoCapabilitiesModuleTypecheckHarnessLines,
-	repoBackedModuleEntrypointExportErrorMessage,
 	repoCapabilitiesModuleTypecheckHarnessPath,
 } from './repo-kody-execution.ts'
+import {
+	collectEntrypointsMissingDefaultExport,
+	formatMissingDefaultExportMessage,
+} from './published-entrypoint-checks.ts'
 import {
 	createIsolatedCheckPhaseRunner,
 	isolatedBundleChunkConcurrency,
@@ -81,6 +78,7 @@ import {
 	formatFetchBodySecretResolutionWarning,
 } from '#worker/credentials/fetch-body-secret-resolution.ts'
 import { buildCredentialPatternCheck } from './credential-pattern-check.ts'
+import { resolveSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import { credentialNeedKeyNotes } from '#worker/credentials/credential-needs.ts'
 import { computeCredentialNeedsClosure } from '#worker/credentials/credential-needs-closure.ts'
 import { republishedNeedsNote } from '#worker/enablements/republish-needs-note.ts'
@@ -520,7 +518,32 @@ type KodyEventsRuntime = {
 declare module "kody:runtime" {
   export const kody: Record<string, KodyCapability> & {
     readonly mcp: Record<string, KodyMcpServerTools>;
+    appRateLimit: (input: {
+      key: string;
+      limit: number;
+      windowSeconds: number;
+    }) => Promise<{
+      allowed: boolean;
+      remaining: number;
+      resetAt: string;
+      retryAfterSeconds: number | null;
+    }>;
+    appSpendGet: (input?: Record<string, never>) => Promise<{
+      month: string;
+      creditsMicroUsd: number;
+      days: Array<{
+        day: string;
+        creditsMicroUsd: number;
+        meters: Array<{
+          meter: "unique_worker_days" | "durable_object_rows_read";
+          units: number;
+          creditsMicroUsd: number;
+        }>;
+      }>;
+    }>;
   };
+  export function hasScope(request: Request, scope: string): boolean;
+  export function hasVisitorCredential(request: Request, key: string): boolean;
   export function createAuthenticatedFetch(
     providerName: string,
   ): Promise<(input: string | URL | Request, init?: RequestInit) => Promise<Response>>;
@@ -533,6 +556,7 @@ declare module "kody:runtime" {
     kodyId: string;
     appBasePath?: string;
     hostedUrl?: string;
+    cookiePrefix?: string;
     assetBasePath?: string;
     clientModuleUrl?: string | null;
   } | null;
@@ -569,6 +593,8 @@ declare module "kody:runtime" {
       name: string,
       options?: { scope?: "org" | "personal" | null },
     ): Promise<KodyCredentialClient>;
+    /** Package apps: the credential this visitor chose for an executor need. */
+    visitor(key: string): Promise<KodyCredentialClient>;
   };
   /**
    * Every credential the caller's \`credentials\` map picks for the key, or
@@ -619,7 +645,7 @@ export type PackageBundleTarget = {
 }
 
 /**
- * `callable` entrypoints (jobs, subscription handlers, retrievers) are invoked
+ * `callable` entrypoints (jobs, subscription handlers) are invoked
  * through their default export, so they must default export a function.
  * `module` entrypoints are `package.json#exports` modules, which may expose
  * only named exports.
@@ -674,15 +700,6 @@ function collectPackageBundleTargets(manifest: AuthoredPackageJson) {
 	for (const target of collectPublishedPackageArtifactTargets(manifest)) {
 		remember(target.entryPoint, toPackageBundleKind(target))
 	}
-	for (const retriever of listPackageRetrievers(manifest)) {
-		remember(
-			resolvePackageExportPath({
-				manifest,
-				exportName: retriever.exportName,
-			}),
-			'callable',
-		)
-	}
 	return Array.from(targets.values()).sort(compareBundleTargets)
 }
 
@@ -706,15 +723,6 @@ function collectPackageTypecheckTargets(manifest: AuthoredPackageJson) {
 	}
 	for (const subscription of listPackageSubscriptions(manifest)) {
 		remember(subscription.handler, 'callable')
-	}
-	for (const retriever of listPackageRetrievers(manifest)) {
-		remember(
-			resolvePackageExportPath({
-				manifest,
-				exportName: retriever.exportName,
-			}),
-			'callable',
-		)
 	}
 	for (const target of collectPublishedPackageArtifactTargets(manifest)) {
 		if (target.bundleKind === 'importable-module') {
@@ -957,15 +965,15 @@ function collectReachableTypecheckSourceFiles(input: {
  * is opted into by shipping the tsconfig the author's editor already uses.
  */
 const sourceFilesNotTypecheckedMessage =
-	'Package source files, including package.json exports, are not typechecked: add a root tsconfig.json to typecheck every TypeScript file reachable from exports, jobs, subscription handlers, and retrievers.'
+	'Package source files, including package.json exports, are not typechecked: add a root tsconfig.json to typecheck every TypeScript file reachable from exports, jobs, and subscription handlers.'
 
 function getPackageTypecheckDiagnostics(input: {
 	targets: Array<PackageTypecheckTarget>
 	/**
-	 * When present, diagnostics inside these files are reported too. Runtime
-	 * rebuilds of already-published source always omit it and only verify the
-	 * callable contract, so the publish-time source check never breaks
-	 * packages retroactively.
+	 * When present, diagnostics inside these files are reported too. Only
+	 * publish (and `kody dev check`) typechecks; runtime rebuilds of
+	 * already-published source never do (see published-entrypoint-checks.ts),
+	 * so no check here can break a published package retroactively.
 	 */
 	reachableSourceFilePaths?: Array<string>
 	languageService: {
@@ -1087,113 +1095,6 @@ function formatPackageTypecheckDiagnostics(
 	)
 }
 
-function collectEntrypointsMissingDefaultExport(input: {
-	snapshot: { read(path: string): string | null }
-	targets: Array<{ path: string }>
-}) {
-	return [
-		...new Set(
-			input.targets
-				.map((target) => target.path)
-				.filter((path) => {
-					const source = input.snapshot.read(path)
-					return source != null && !hasTopLevelDefaultExport(source)
-				}),
-		),
-	]
-}
-
-function formatMissingDefaultExportMessage(paths: Array<string>) {
-	return `${repoBackedModuleEntrypointExportErrorMessage} Missing default export in: ${paths
-		.map((path) => `"${path}"`)
-		.join(', ')}.`
-}
-
-export async function typecheckPackageEntrypointsFromSourceFiles(input: {
-	sourceFiles: Record<string, string>
-	entryPoints: Array<{
-		path: string
-	}>
-	emittedEventTopics?: Array<string>
-}): Promise<{
-	ok: boolean
-	message: string
-}> {
-	const { createFileSystemSnapshot } = await loadWorkerBundlerSnapshotTools()
-	const snapshot = await createFileSystemSnapshot(
-		(async function* () {
-			for (const [path, content] of Object.entries(input.sourceFiles)) {
-				yield [path, content] as const
-			}
-		})(),
-	)
-	const missingEntryPoints = input.entryPoints
-		.map((target) => target.path)
-		.filter((path) => snapshot.read(path) == null)
-	if (missingEntryPoints.length > 0) {
-		return {
-			ok: false,
-			message: `Typecheck skipped because package runtime entrypoint(s) are missing from the published source snapshot: ${missingEntryPoints
-				.map((path) => `"${path}"`)
-				.join(', ')}.`,
-		}
-	}
-	const missingDefaultExports = collectEntrypointsMissingDefaultExport({
-		snapshot,
-		targets: input.entryPoints,
-	})
-	if (missingDefaultExports.length > 0) {
-		return {
-			ok: false,
-			message: formatMissingDefaultExportMessage(missingDefaultExports),
-		}
-	}
-	const typecheckFileSystem = createRepoChecksFileSystem({
-		fileSystem: snapshot,
-	})
-	const baseTsconfig = snapshot.read(repoChecksSyntheticTsconfigPath)
-	if (baseTsconfig != null) {
-		typecheckFileSystem.write(
-			repoChecksSyntheticTsconfigExtendsPath.slice('./'.length),
-			baseTsconfig,
-		)
-	}
-	typecheckFileSystem.write(
-		repoChecksSyntheticTsconfigPath,
-		buildRepoChecksTsconfig(baseTsconfig),
-	)
-	const created = await createRepoChecksTypescriptLanguageService({
-		fileSystem: typecheckFileSystem,
-	})
-	if (!created.ok) {
-		return created
-	}
-	const { fileSystem, languageService } = created
-	try {
-		const diagnostics = getPackageTypecheckDiagnostics({
-			targets: input.entryPoints.map((entryPoint) => ({
-				path: entryPoint.path,
-				kind: 'callable',
-				emittedEventTopics: input.emittedEventTopics ?? [],
-			})),
-			languageService,
-			fileSystem,
-		})
-		const ok = diagnostics.every((entry) => entry.diagnostics.length === 0)
-		return {
-			ok,
-			message: ok
-				? `No semantic diagnostics for ${input.entryPoints.length} package runtime entrypoint(s).`
-				: formatPackageTypecheckDiagnostics(diagnostics).join('\n'),
-		}
-	} finally {
-		// `using` needs Symbol.dispose in the worker lib target; manual
-		// disposal releases the compiler program eagerly instead of keeping
-		// the whole TypeScript program reachable until GC gets around to it.
-		languageService.dispose()
-	}
-}
-
 function formatBundleCheckMessage(input: {
 	missingEntryPoints: Array<string>
 	targetCount: number
@@ -1204,7 +1105,7 @@ function formatBundleCheckMessage(input: {
 			.join(', ')}.`
 	}
 	if (input.targetCount === 0) {
-		return 'Package defines no app entry, exports, jobs, subscriptions, or retrievers to bundle.'
+		return 'Package defines no app entry, exports, jobs, or subscriptions to bundle.'
 	}
 	return `Resolved ${input.targetCount} package target(s) for bundling.`
 }
@@ -1673,7 +1574,16 @@ export async function runRepoChecks(input: {
 	// overwrites descriptions). Hard-fails on unstampable patterns / server eval
 	// / missing descriptions (issue #3836 phase 1) unless the caller opts out
 	// (community install / platform codemods).
-	const credentialPatternCheck = buildCredentialPatternCheck(sourceFiles)
+	const credentialPatternCheck = buildCredentialPatternCheck(sourceFiles, {
+		secretProviders:
+			input.env && input.userId
+				? await resolveSecretProviderSlots({
+						env: input.env,
+						userId: input.userId,
+						files: sourceFiles,
+					})
+				: undefined,
+	})
 	sourceFiles = credentialPatternCheck.sourceFiles
 	const enforceCredentialStamp = input.enforceCredentialStamp !== false
 	const credentialCheckOk = enforceCredentialStamp

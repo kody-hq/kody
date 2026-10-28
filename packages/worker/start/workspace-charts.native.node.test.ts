@@ -87,3 +87,22 @@ test('spend chart preserves sub-cent charges and renders truthful over-include m
 	expect(html).toContain('120 used, 100 included')
 	expect(html).not.toContain('No credits spent')
 })
+
+test('empty stacked charts render an empty state instead of invalid scales', async () => {
+	const { StackedBarChart } = await import('./charts/stacked-bar-chart.tsx')
+	for (const input of [
+		{ series: [], xLabels: ['10-01', '10-02'] },
+		{ series: [{ label: 'Reads', color: '#123456', values: [] }], xLabels: [] },
+	]) {
+		const html = await renderStartPage(
+			createElement(StackedBarChart, {
+				id: 'empty-reads',
+				ariaLabel: 'Daily reads',
+				...input,
+			}),
+		)
+		expect(html).toContain('Daily reads: no activity')
+		expect(html).toContain('No activity in this period.')
+		expect(html).not.toContain('<svg')
+	}
+})

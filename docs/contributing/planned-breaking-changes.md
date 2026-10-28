@@ -18,7 +18,11 @@ known, or for a stable ref. The leaf after `/` is the URL slug.
 
 `kody_id` (MCP / DB / URLs) and authored `package.json#kody.id` still work.
 Create and resolve accept a leaf or a matching `@scope/leaf`. They are leftover
-identity names. A future breaking change will remove the authored field, the
+identity names. Input schemas mark `kody_id` / `kodyId` as deprecated, and
+successful MCP / OpenAPI / CLI **object** responses for a call that still passed
+leftover `kody_id` include a `kody_id_deprecation` hint (with the preferred
+`name` and/or `package_id` when the result can resolve them). Non-object results
+are unchanged. A future breaking change will remove the authored field, the
 public MCP param, and (separately) rename the `saved_packages.kody_id` column.
 
 Prefer the scoped `name` in docs, capability blurbs, and new callers. Mention
@@ -34,10 +38,12 @@ the name leaf. Rename redirects write only `package_slug_redirects`; the legacy
 release/delete. Dropping the columns and the legacy table is
 [#3676](https://github.com/kody-hq/kody/issues/3676) (reopened #1909 phase 4).
 
-**Ready when:** agent transcripts and create/resolve traffic no longer need the
-leftover param (Sentry KODY-7M and similar scoped-name-as-`kody_id` collisions
-stay quiet), and a dedicated removal PR can drop the field without a fleet
-codemod.
+**Ready when:** Analytics Engine `kody_mcp_protocol_events` blob8
+(`package_identity_param`) for `tools/call` stays under about **10** `kody_id` +
+`both` requests per week for **two consecutive completed calendar weeks**
+(counts only; see #3676 for the weekly query). Sentry KODY-7M and similar
+scoped-name-as-`kody_id` collisions stay quiet. Then a dedicated removal PR can
+drop the param and columns without a fleet codemod.
 
 **Introduced as leftover by:** the change that documents identity as scoped
 `name` or `package_id` while leaving the leftover param in the runtime contract.

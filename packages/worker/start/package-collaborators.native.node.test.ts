@@ -20,6 +20,7 @@ test('outside collaborators stay removable but cannot be edited or invited from 
 			publishedCommit: null,
 			ownerProfilePublic: true,
 			viewerCanManage: true,
+			viewerCanSeeConnectedPeople: false,
 		},
 		view: {
 			ok: true,

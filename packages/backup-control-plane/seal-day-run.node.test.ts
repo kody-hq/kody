@@ -2,10 +2,9 @@ import assert from 'node:assert/strict'
 
 import { test, vi } from 'vitest'
 
-import { workflowBackupErrorMessage } from './backup-policy.ts'
+import { NonRetryableError } from 'cloudflare:workflows'
 import {
 	RetryingWorkflowStep,
-	TestNonRetryableError,
 	backupError,
 	environment,
 } from './backup-control-plane-test-support.ts'
@@ -23,10 +22,7 @@ test('seal workflow step returns a sealed day and does not retry an incomplete d
 	const env = environment()
 	const day = '2026-09-22'
 	const engine = new RetryingWorkflowStep()
-	const step = withNonRetryableBackupErrors(
-		engine,
-		(error) => new TestNonRetryableError(workflowBackupErrorMessage(error)),
-	)
+	const step = withNonRetryableBackupErrors(engine)
 	const manifestKey = `daily/full/${day}/manifest.json`
 	const sealedDay = (alreadySealed: boolean) => async () => ({
 		kind: 'sealed' as const,
@@ -48,7 +44,7 @@ test('seal workflow step returns a sealed day and does not retry an incomplete d
 	await assert.rejects(
 		runSealDay(env, day, step),
 		(error: unknown) =>
-			error instanceof TestNonRetryableError &&
+			error instanceof NonRetryableError &&
 			error.message ===
 				'[d1-manifest-missing] Day 2026-09-22 is not ready to seal (d1-manifest-missing).',
 	)

@@ -93,10 +93,7 @@ export function PackageWebhookSettings({
 			setMessageTone('error')
 		}
 	}
-	function confirmation(
-		webhook: PackageWebhookListItem,
-		intent: 'rotate' | 'disable',
-	) {
+	function confirmation(webhook: PackageWebhookListItem, intent: 'rotate') {
 		const key = `${webhook.id}:${intent}`
 		return {
 			armed: confirmed === key,
@@ -120,10 +117,10 @@ export function PackageWebhookSettings({
 			<p>
 				Inbound webhook URLs this package declares in{' '}
 				<code>package.json#kody.webhooks</code>. Mint a URL here, copy it into
-				the provider that will POST to it, and rotate or disable it when it
-				leaks or goes unused. Rotate keeps the previous URL live for a short
-				overlap so providers can finish switching. Agents connected over MCP can
-				mint and apply handles but never see these URLs.
+				the provider that will POST to it, and rotate it if it leaks. Turn it
+				off from Triggers when it goes unused. Rotate keeps the previous URL
+				live for a short overlap so providers can finish switching. Agents
+				connected over MCP can mint and apply handles but never see these URLs.
 			</p>
 
 			{status === 'loading' ? (
@@ -170,10 +167,11 @@ export function PackageWebhookSettings({
 										deliveriesHref={`${orgResourcePath(username, 'activity')}?view=recent&status=all&surface=webhook`}
 										{...{
 											webhook,
+											username,
+											kodyId,
 											revealedUrl: revealedUrls.get(webhook.id) ?? null,
 											isMutating: mutating,
 											rotateCheck: confirmation(webhook, 'rotate'),
-											disableCheck: confirmation(webhook, 'disable'),
 											onIntent: (payload) => void runIntent(webhook, payload),
 											showMintAnother:
 												webhook.minted &&

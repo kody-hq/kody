@@ -83,6 +83,7 @@ async function setup() {
 		scope: 'user',
 		name: 'apiKey',
 		value: 'secret-value',
+		audit: null,
 	})
 	const ctx = (
 		userId: string,
@@ -298,6 +299,7 @@ test('deleting a credential revokes its grants and pending invites, and a recrea
 		userId: t.orgId,
 		scope: 'user',
 		name: 'apiKey',
+		audit: null,
 	})
 	await saveSecret({
 		env: t.env,
@@ -305,6 +307,7 @@ test('deleting a credential revokes its grants and pending invites, and a recrea
 		scope: 'user',
 		name: 'apiKey',
 		value: 'recreated-value',
+		audit: null,
 	})
 
 	await expect(

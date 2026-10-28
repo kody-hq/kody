@@ -407,10 +407,16 @@ export async function refreshCompletedD1Export(
 				true,
 			)
 		case 'lost':
-			// Short-lived poll results expire quickly; start a fresh export and
-			// fast-poll to completion. Callers must key objects by the returned
-			// bookmark (new export ⇒ new object key).
-			return awaitExportReady(env, { kind: 'lost' }, options)
+			// The poll result for this bookmark has expired. Do not start a
+			// second blocking export inside the upload step — `runBackupRuntime`
+			// recovers with a new durable-export attempt (fresh step names).
+			// Instance `restart()` alone is not enough: Workflows replay
+			// successful start/poll steps and would hand the upload the same
+			// expired bookmark again.
+			throw new BackupError(
+				'export-result-expired',
+				'D1 export result expired before upload; runtime will start a new export under new durable step names',
+			)
 		default: {
 			const exhaustive: never = state
 			throw exhaustive

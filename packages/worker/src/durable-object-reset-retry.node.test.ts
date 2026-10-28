@@ -1,10 +1,13 @@
 import { expect, test, vi } from 'vitest'
 import {
+	agentsSdkSqlErrorMessagePrefix,
 	durableObjectCodeUpdatedResetMessage,
 	durableObjectInstanceInactiveCloseMessage,
+	durableObjectIsolateMemoryResetMessage,
 	durableObjectSqliteOutOfMemoryMessage,
 } from '#worker/sentry-options.ts'
 import {
+	isDurableObjectIsolateResourceLimitResetError,
 	isTransientDurableObjectResetError,
 	runWithTransientDurableObjectResetRetry,
 } from './durable-object-reset-retry.ts'
@@ -24,6 +27,33 @@ async function settle<T>(pending: Promise<T>) {
 }
 
 test('transient Durable Object reset retry recovers thrown and result errors then exhausts', async () => {
+	const resourceLimitCases: Array<unknown> = [
+		durableObjectIsolateMemoryResetMessage,
+		new Error(durableObjectIsolateMemoryResetMessage),
+		durableObjectSqliteOutOfMemoryMessage.replace(/\.$/, ''),
+		new Error(durableObjectSqliteOutOfMemoryMessage),
+		// KODY-B9: Agents SDK SqlError wraps the bare DO SQLite OOM.
+		`${agentsSdkSqlErrorMessagePrefix} ${durableObjectSqliteOutOfMemoryMessage.replace(/\.$/, '')}`,
+		new Error(
+			`${agentsSdkSqlErrorMessagePrefix} ${durableObjectSqliteOutOfMemoryMessage}`,
+			{
+				cause: new Error(
+					durableObjectSqliteOutOfMemoryMessage.replace(/\.$/, ''),
+				),
+			},
+		),
+	]
+	expect(
+		resourceLimitCases.filter(
+			(error) => !isDurableObjectIsolateResourceLimitResetError(error),
+		),
+	).toEqual([])
+	expect(
+		resourceLimitCases.filter((error) =>
+			isTransientDurableObjectResetError(error),
+		),
+	).toEqual([])
+
 	const transientCases: Array<[unknown, boolean]> = [
 		[new Error(durableObjectCodeUpdatedResetMessage), true],
 		// KODY-A9: D1 bindings surface the same code-updated reset under D1_ERROR:.
@@ -41,12 +71,41 @@ test('transient Durable Object reset retry recovers thrown and result errors the
 			true,
 		],
 		[new Error(durableObjectInstanceInactiveCloseMessage), true],
-		[durableObjectSqliteOutOfMemoryMessage.replace(/\.$/, ''), true],
-		[new Error(durableObjectSqliteOutOfMemoryMessage), true],
+		// Resource limits are not transient: same work OOMs again on retry.
+		[new Error(durableObjectIsolateMemoryResetMessage), false],
+		[durableObjectSqliteOutOfMemoryMessage.replace(/\.$/, ''), false],
+		[new Error(durableObjectSqliteOutOfMemoryMessage), false],
+		[
+			`${agentsSdkSqlErrorMessagePrefix} ${durableObjectSqliteOutOfMemoryMessage.replace(/\.$/, '')}`,
+			false,
+		],
+		[
+			new Error(
+				`${agentsSdkSqlErrorMessagePrefix} ${durableObjectSqliteOutOfMemoryMessage}`,
+				{
+					cause: new Error(
+						durableObjectSqliteOutOfMemoryMessage.replace(/\.$/, ''),
+					),
+				},
+			),
+			false,
+		],
+		[
+			new Error(
+				`${agentsSdkSqlErrorMessagePrefix} database is locked: SQLITE_BUSY`,
+			),
+			false,
+		],
 		[new Error('user code failed'), false],
 		[
 			new Error(
 				`serveMcp could not recover after retries: D1_ERROR: ${durableObjectCodeUpdatedResetMessage}`,
+			),
+			false,
+		],
+		[
+			new Error(
+				`serveMcp could not recover after retries: ${agentsSdkSqlErrorMessagePrefix} ${durableObjectSqliteOutOfMemoryMessage}`,
 			),
 			false,
 		],
@@ -98,6 +157,14 @@ test('transient Durable Object reset retry recovers thrown and result errors the
 			runWithTransientDurableObjectResetRetry({ operation: permanent }),
 		).rejects.toThrow('user code failed')
 		expect(permanent).toHaveBeenCalledTimes(1)
+
+		const memoryLimit = vi
+			.fn<() => Promise<never>>()
+			.mockRejectedValue(new Error(durableObjectIsolateMemoryResetMessage))
+		await expect(
+			runWithTransientDurableObjectResetRetry({ operation: memoryLimit }),
+		).rejects.toThrow(durableObjectIsolateMemoryResetMessage)
+		expect(memoryLimit).toHaveBeenCalledTimes(1)
 
 		const exhausted = vi
 			.fn<() => Promise<{ error: string }>>()

@@ -9,6 +9,10 @@ import { resolveOwnedPackageSource } from '#mcp/capabilities/packages/resolve-pa
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { authorize, packageResource } from '#worker/authorization/authorize.ts'
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
+import {
+	packageIdLookupDescription,
+	packageKodyIdOptionalInput,
+} from '#worker/package-registry/package-name.ts'
 import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
 import {
 	kodyPublishGitNoteSchema,
@@ -22,8 +26,12 @@ const inputSchema = z
 			.min(1)
 			.optional()
 			.describe('Shared entity source id for any repo-backed entity.'),
-		package_id: z.string().min(1).optional(),
-		kody_id: z.string().min(1).optional(),
+		package_id: z
+			.string()
+			.min(1)
+			.optional()
+			.describe(packageIdLookupDescription),
+		kody_id: packageKodyIdOptionalInput(),
 		commit: z
 			.string()
 			.min(1)
@@ -42,7 +50,7 @@ const inputSchema = z
 				code: z.ZodIssueCode.custom,
 				path: ['source_id'],
 				message:
-					'Provide exactly one of `source_id`, `package_id`, or the package name leaf.',
+					'Provide exactly one of `source_id`, `package_id`, or leftover `kody_id`. Prefer `package_id` or `source_id`.',
 			})
 		}
 	})
@@ -60,6 +68,7 @@ export const repoShowPublishNoteCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoShowPublishNote',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'Read the Kody publish harness git note attached to a published Artifacts commit. Use this to inspect publish provenance, session/conversation ids, and check summaries without opening D1.',

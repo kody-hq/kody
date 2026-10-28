@@ -1,3 +1,4 @@
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { refreshSavedPackageProjection } from '#worker/package-registry/service.ts'
 import {
@@ -5,11 +6,18 @@ import {
 	runRepoChecks,
 	type RepoCheckResult,
 } from '#worker/repo/checks.ts'
+import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
+	buildAlreadyForkedMessage,
 	persistPreparedCommunityFork,
 	prepareCommunityFork,
+	runIdempotentCommunityFork,
 } from './service.ts'
-import { type CommunityForkActor, type CrossScopeReference } from './types.ts'
+import {
+	type CommunityForkActor,
+	type CommunityForkRecord,
+	type CrossScopeReference,
+} from './types.ts'
 
 type InstallProgressUpdate = {
 	progress: number
@@ -52,6 +60,13 @@ type InstallForkSummary = {
 	targetKodyId: string
 	targetName: string
 	originCommit: string
+	/**
+	 * True when the account already had a fork of this listing (or one was
+	 * in flight and finished while this request waited). Nothing new was
+	 * created; `message` says so.
+	 */
+	alreadyInstalled?: boolean
+	message?: string
 }
 
 export type InstallCommunityListingResult =
@@ -62,19 +77,7 @@ export type InstallCommunityListingResult =
 			crossScopeReferences: Array<CrossScopeReference>
 	  })
 
-/**
- * One-click install: fork a community listing into the caller's scope and,
- * when the fork passes the same publish checks a repo session would run,
- * immediately publish it as a live saved package (which also schedules any
- * declared jobs). When checks fail — most commonly
- * because of cross-scope `kody:@` imports that cannot resolve in the
- * installer's account — the fork is kept as an inert source so an agent can
- * resume it through `repoOpenSession`, and no package is published.
- *
- * Callers are responsible for the acknowledgement gate: public listings
- * must only reach this after the user explicitly acknowledged the risk.
- */
-export async function installCommunityListing(input: {
+type InstallCommunityListingInput = {
 	env: Env
 	baseUrl: string
 	userId: OwnerId
@@ -99,7 +102,85 @@ export async function installCommunityListing(input: {
 	actor?: CommunityForkActor | null
 	waitUntil?: (promise: Promise<unknown>) => void
 	reportProgress?: ReportInstallProgress
-}): Promise<InstallCommunityListingResult> {
+}
+
+/**
+ * One-click install: fork a community listing into the caller's scope and,
+ * when the fork passes the same publish checks a repo session would run,
+ * immediately publish it as a live saved package (which also schedules any
+ * declared jobs). When checks fail — most commonly
+ * because of cross-scope `kody:@` imports that cannot resolve in the
+ * installer's account — the fork is kept as an inert source so an agent can
+ * resume it through `repoOpenSession`, and no package is published.
+ *
+ * Callers are responsible for the acknowledgement gate: public listings
+ * must only reach this after the user explicitly acknowledged the risk.
+ *
+ * Idempotent per (owner, listing): a repeat or concurrent install returns
+ * the existing fork (`alreadyInstalled`) instead of creating a duplicate.
+ */
+export async function installCommunityListing(
+	input: InstallCommunityListingInput,
+): Promise<InstallCommunityListingResult> {
+	return await runIdempotentCommunityFork<InstallCommunityListingResult>(
+		{
+			env: input.env,
+			userId: input.userId,
+			listingId: input.listingId,
+			kodyId: input.kodyId,
+			creatorUserId: input.creatorUserId,
+			onWaiting: () =>
+				reportInstallProgress(input.reportProgress, {
+					progress: 1,
+					total: 4,
+					message:
+						'A fork of this listing is already in progress; waiting for it instead of starting another.',
+				}),
+		},
+		{
+			existing: (fork) => existingInstallResult(input, fork),
+			create: (hold) => createCommunityInstall(input, hold.claimId),
+		},
+	)
+}
+
+async function existingInstallResult(
+	input: InstallCommunityListingInput,
+	fork: CommunityForkRecord,
+): Promise<InstallCommunityListingResult> {
+	const saved = await getSavedPackageById(input.env.APP_DB, {
+		userId: input.userId,
+		packageId: fork.forkedPackageId,
+	})
+	const packageScope = input.expectedPackageScope.replace(/^@/, '')
+	const targetName = saved?.name ?? `@${packageScope}/${fork.targetKodyId}`
+	const summary: InstallForkSummary = {
+		forkId: fork.id,
+		packageId: fork.forkedPackageId,
+		sourceId: saved?.sourceId ?? fork.forkedSourceId,
+		targetKodyId: fork.targetKodyId,
+		targetName,
+		originCommit: fork.originCommit,
+		alreadyInstalled: true,
+		message: buildAlreadyForkedMessage({
+			targetName,
+			forkedPackageId: fork.forkedPackageId,
+			forkedSourceId: fork.forkedSourceId,
+		}),
+	}
+	if (saved) return { ...summary, status: 'installed' }
+	return {
+		...summary,
+		status: 'adaptation_required',
+		failedChecks: [],
+		crossScopeReferences: [],
+	}
+}
+
+async function createCommunityInstall(
+	input: InstallCommunityListingInput,
+	claimId: string,
+): Promise<InstallCommunityListingResult> {
 	const installStartedAt = Date.now()
 	await reportInstallProgress(input.reportProgress, {
 		progress: 1,
@@ -138,7 +219,7 @@ export async function installCommunityListing(input: {
 			'Typechecking and bundling npm deps — overlapping Artifacts bootstrap…',
 	})
 	const overlapStartedAt = Date.now()
-	const persistPromise = persistPreparedCommunityFork(prepared)
+	const persistPromise = persistPreparedCommunityFork(prepared, { claimId })
 	const checksPromise = runRepoChecks({
 		workspace: createSnapshotFilesWorkspace(prepared.files),
 		manifestPath: 'package.json',
@@ -248,6 +329,9 @@ export async function installCommunityListing(input: {
 		sourceId: fork.sourceId,
 		sourceFiles: fork.files,
 		waitUntil: input.waitUntil,
+		audit: optionalOrgAuditWriter(input.env, {
+			userId: input.creatorUserId ?? null,
+		}),
 	})
 	logInstallPhaseTiming({
 		phase: 'install-projection',

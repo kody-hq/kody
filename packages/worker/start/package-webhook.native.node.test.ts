@@ -43,7 +43,6 @@ const listCommands: PackageWebhookListItem = {
 	minted: false,
 	handle: null,
 	urlHost: null,
-	enabled: null,
 	urlRecoverable: false,
 	createdAt: null,
 	rotatedAt: null,
@@ -62,7 +61,6 @@ const run: PackageWebhookListItem = {
 	minted: true,
 	handle: 'whh_11111111-1111-1111-1111-111111111111',
 	urlHost: 'kody.example',
-	enabled: true,
 	urlRecoverable: true,
 	createdAt: '2026-09-01T10:00:00.000Z',
 	rotatedAt: '2026-09-05T10:00:00.000Z',
@@ -83,23 +81,29 @@ const renderCard = (
 	renderStartPage(
 		jsx(PackageWebhookCard, {
 			webhook,
+			username: 'jane',
+			kodyId: 'raycast',
 			revealedUrl,
 			isMutating: false,
 			rotateCheck: { armed: false, onClick() {}, onBlur() {} },
-			disableCheck: { armed: false, onClick() {}, onBlur() {} },
 			onIntent() {},
 			onHideUrl() {},
 			deliveriesHref: '/@ada/-/activity?view=recent&status=all&surface=webhook',
 		}),
 	)
-test('a webhook card points legacy mints at Rotate instead of Reveal and offers Enable when disabled', async () => {
+test('a webhook card points legacy mints at Rotate instead of Reveal and links approved webhooks to Triggers', async () => {
 	const html = await renderCard({
 		...run,
 		urlRecoverable: false,
-		enabled: false,
 	})
 	expect(html).not.toContain('data-testid="package-webhook-reveal"')
-	expect(html).toContain('aria-label="Enable raycast/run"')
+	expect(html).toContain('>Approved<')
+	expect(html).not.toContain('>Active<')
+	expect(html).toContain('Turn off on Triggers')
+	expect(html).toContain('href="/@jane/raycast/triggers"')
+	expect(html).toContain(
+		'Turning it off on Triggers makes this URL answer 404.',
+	)
 })
 
 test('a webhook card shows previous URL overlap until the grace timestamp', async () => {
@@ -109,9 +113,12 @@ test('a webhook card shows previous URL overlap until the grace timestamp', asyn
 	expect(html).toContain('Previous URL')
 	expect(html).toMatch(new RegExp(`dateTime="${until}"`, 'i'))
 
-	const disabledHtml = await renderCard({ ...overlapping, enabled: false })
-	expect(disabledHtml).not.toContain('Previous URL')
-	expect(disabledHtml).toContain('>Disabled<')
+	const unapprovedHtml = await renderCard({ ...overlapping, approved: false })
+	expect(unapprovedHtml).not.toContain('Previous URL')
+	expect(unapprovedHtml).toContain('>Needs approval<')
+	expect(unapprovedHtml).toMatch(
+		/Minting a URL does not turn the webhook on\. Deliveries don(?:&#x27;|')t run until you approve it \(409 before the first approval, 404 after it was turned off\)\./,
+	)
 })
 
 test('revealed credential is rendered only while supplied to the local card', async () => {
@@ -309,7 +316,7 @@ test('webhook mutation waits for authoritative scoped read without caching its o
 		defaultOptions: { queries: { retry: false } },
 	})
 	const before = listPayload([run])
-	const after = listPayload([{ ...run, enabled: false }])
+	const after = listPayload([{ ...run, approved: false }])
 	let finish!: (data: typeof after) => void
 	const query = createPageQuery(
 		'loadPackageWebhooks',
@@ -368,7 +375,7 @@ test.each(
 			defaultOptions: { queries: { retry: false } },
 		})
 		const before = listPayload([run])
-		const after = listPayload([{ ...run, enabled: false }])
+		const after = listPayload([{ ...run, approved: false }])
 		let finishRead!: (data: typeof before) => void
 		let finishWrite!: () => void
 		let failWrite!: (error: Error) => void

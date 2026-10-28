@@ -25,11 +25,15 @@ import {
 import {
 	deletePublishedBundleArtifactRowsBySourceId,
 	getPublishedBundleArtifactByIdentity,
+	listPublishedBundleArtifactsByIdentities,
 	listPublishedBundleArtifactsBySourceId,
+	publishedBundleArtifactIdentityKey,
+	type PublishedBundleArtifactIdentity,
 	type PublishedBundleArtifactRecord,
 	type PublishedBundleArtifactUpsertInput,
 	updatePublishedBundleArtifactRow,
 	upsertPublishedBundleArtifactRow,
+	upsertPublishedBundleArtifactRows,
 } from '#worker/repo/published-bundle-artifacts-repo.ts'
 import { listEntitySourcesByIds } from '#worker/repo/entity-sources.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
@@ -140,9 +144,16 @@ function matchesPublishedBundleArtifactIdentity(input: {
 	)
 }
 
-export async function persistPublishedBundleArtifact(
+type PreparedPublishedBundleArtifactPersist = {
+	env: Env
+	kvKey: string
+	artifact: PublishedBundleArtifact
+	rowInput: PublishedBundleArtifactUpsertInput
+}
+
+function preparePublishedBundleArtifactPersist(
 	input: PersistPublishedBundleArtifactInput,
-) {
+): PreparedPublishedBundleArtifactPersist | null {
 	if (
 		!input.source.published_commit ||
 		!hasPublishedRuntimeArtifacts(input.env)
@@ -172,36 +183,263 @@ export async function persistPublishedBundleArtifact(
 		packageContext: input.packageContext ?? null,
 		createdAt: new Date().toISOString(),
 		// Persisted modules come from the current builder, which binds package
-		// `fetch` lexically and never inlines an unbound pre-fix bundle.
+		// `fetch` lexically and never inlines an unbound pre-fetch bundle.
 		packageBindingRewrite: packageBindingRewriteVersion,
 	}
-	const rowInput = toDbRowInput({
-		userId: input.userId,
-		sourceId: input.source.id,
-		publishedCommit: input.source.published_commit,
-		kind: input.kind,
-		artifactName,
-		entryPoint,
+	return {
+		env: input.env,
 		kvKey,
-		dependencies: input.dependencies,
-	})
-	try {
-		await writePublishedBundleArtifact({
-			env: input.env,
-			artifact,
+		artifact,
+		rowInput: toDbRowInput({
+			userId: input.userId,
+			sourceId: input.source.id,
+			publishedCommit: input.source.published_commit,
+			kind: input.kind,
+			artifactName,
+			entryPoint,
 			kvKey,
-		})
-		await upsertPublishedBundleArtifactRow(input.env.APP_DB, rowInput)
-	} catch (error) {
-		await deletePublishedBundleArtifact({
-			env: input.env,
-			kvKey,
-		}).catch(() => {
-			// Best effort; preserve the original DB/KV failure as the root cause.
-		})
-		throw error
+			dependencies: input.dependencies,
+		}),
 	}
-	return kvKey
+}
+
+type WrittenPublishedBundleArtifactPersist = {
+	env: Env
+	kvKey: string
+	rowInput: PublishedBundleArtifactUpsertInput
+}
+
+/** Last write wins per identity — matches upsertPublishedBundleArtifactRows. */
+function dedupePreparedPublishedBundleArtifacts(
+	prepared: ReadonlyArray<PreparedPublishedBundleArtifactPersist>,
+) {
+	const byKey = new Map<string, PreparedPublishedBundleArtifactPersist>()
+	for (const entry of prepared) {
+		byKey.set(
+			publishedBundleArtifactIdentityKey({
+				sourceId: entry.rowInput.sourceId,
+				artifactKind: entry.rowInput.artifactKind,
+				artifactName: entry.rowInput.artifactName,
+				entryPoint: entry.rowInput.entryPoint,
+			}),
+			entry,
+		)
+	}
+	return [...byKey.values()]
+}
+
+/**
+ * Persist many published bundle artifacts with one batched identity upsert
+ * (constant D1 round trips for the row writes). D1 is committed first; KV is
+ * written only for accepted rows. That avoids same-commit KV overwrites that
+ * can skip rebuild or strand committed rows when a later step fails.
+ */
+export async function persistPublishedBundleArtifacts(
+	inputs: ReadonlyArray<PersistPublishedBundleArtifactInput>,
+): Promise<Array<string | null>> {
+	if (inputs.length === 0) return []
+	const preparedByIndex: Array<PreparedPublishedBundleArtifactPersist | null> =
+		inputs.map((input) => preparePublishedBundleArtifactPersist(input))
+	const prepared = dedupePreparedPublishedBundleArtifacts(
+		preparedByIndex.filter(
+			(entry): entry is PreparedPublishedBundleArtifactPersist => entry != null,
+		),
+	)
+	if (prepared.length === 0) {
+		return preparedByIndex.map(() => null)
+	}
+	const written = prepared.map((entry) => ({
+		env: entry.env,
+		kvKey: entry.kvKey,
+		rowInput: entry.rowInput,
+	}))
+	const rowIds = await upsertPreparedPublishedBundleArtifactRows(written)
+	const accepted: Array<PreparedPublishedBundleArtifactPersist> = []
+	for (const [index, entry] of prepared.entries()) {
+		if (rowIds[index] == null) continue
+		accepted.push(entry)
+	}
+	const settled = await Promise.allSettled(
+		accepted.map(async (entry) => {
+			await writePublishedBundleArtifact({
+				env: entry.env,
+				artifact: entry.artifact,
+				kvKey: entry.kvKey,
+			})
+		}),
+	)
+	const rejected = settled.find((result) => result.status === 'rejected')
+	if (rejected && rejected.status === 'rejected') {
+		throw rejected.reason
+	}
+	const kvByIdentity = new Map<string, string>()
+	for (const [index, entry] of prepared.entries()) {
+		if (rowIds[index] == null) continue
+		kvByIdentity.set(
+			publishedBundleArtifactIdentityKey({
+				sourceId: entry.rowInput.sourceId,
+				artifactKind: entry.rowInput.artifactKind,
+				artifactName: entry.rowInput.artifactName,
+				entryPoint: entry.rowInput.entryPoint,
+			}),
+			entry.kvKey,
+		)
+	}
+	return preparedByIndex.map((entry) => {
+		if (!entry) return null
+		return (
+			kvByIdentity.get(
+				publishedBundleArtifactIdentityKey({
+					sourceId: entry.rowInput.sourceId,
+					artifactKind: entry.rowInput.artifactKind,
+					artifactName: entry.rowInput.artifactName,
+					entryPoint: entry.rowInput.entryPoint,
+				}),
+			) ?? null
+		)
+	})
+}
+
+async function writePreparedPublishedBundleArtifact(
+	prepared: PreparedPublishedBundleArtifactPersist,
+) {
+	await writePublishedBundleArtifact({
+		env: prepared.env,
+		artifact: prepared.artifact,
+		kvKey: prepared.kvKey,
+	})
+}
+
+function writtenPublishedBundleArtifactIdentityKey(
+	entry: WrittenPublishedBundleArtifactPersist,
+) {
+	return publishedBundleArtifactIdentityKey({
+		sourceId: entry.rowInput.sourceId,
+		artifactKind: entry.rowInput.artifactKind,
+		artifactName: entry.rowInput.artifactName,
+		entryPoint: entry.rowInput.entryPoint,
+	})
+}
+
+async function upsertPreparedPublishedBundleArtifactRows(
+	prepared: ReadonlyArray<WrittenPublishedBundleArtifactPersist>,
+): Promise<Array<string | null>> {
+	if (prepared.length === 0) return []
+	const unique = new Map<string, WrittenPublishedBundleArtifactPersist>()
+	for (const entry of prepared) {
+		unique.set(writtenPublishedBundleArtifactIdentityKey(entry), entry)
+	}
+	const entries = [...unique.values()]
+	const db = entries[0]!.env.APP_DB
+	const rowInputs = entries.map((entry) => entry.rowInput)
+	const uniqueRowIds =
+		rowInputs.length === 1
+			? [await upsertPublishedBundleArtifactRow(db, rowInputs[0]!)]
+			: await upsertPublishedBundleArtifactRows(db, rowInputs)
+	const idByIdentity = new Map<string, string | null>()
+	for (const [index, entry] of entries.entries()) {
+		idByIdentity.set(
+			writtenPublishedBundleArtifactIdentityKey(entry),
+			uniqueRowIds[index] ?? null,
+		)
+	}
+	// Expand back to the caller’s written order (duplicates share the winner).
+	return prepared.map(
+		(entry) =>
+			idByIdentity.get(writtenPublishedBundleArtifactIdentityKey(entry)) ??
+			null,
+	)
+}
+
+export async function persistPublishedBundleArtifact(
+	input: PersistPublishedBundleArtifactInput,
+) {
+	const [kvKey] = await persistPublishedBundleArtifacts([input])
+	return kvKey ?? null
+}
+
+export type LoadedPublishedBundleArtifact = {
+	row: PublishedBundleArtifactRecord
+	artifact: PublishedBundleArtifact | null
+}
+
+/**
+ * Cap concurrent rebuilds and KV hydrations so a many-export package cannot
+ * stack isolate heap. Two at a time cuts typical 4-target publishes roughly in
+ * half without reopening the session-DO memory failure in kody-hq/kody#987.
+ */
+const publishedPackageArtifactRebuildConcurrency = 2
+
+async function mapWithConcurrency<T>(
+	items: ReadonlyArray<T>,
+	concurrency: number,
+	mapper: (item: T) => Promise<void>,
+) {
+	if (items.length === 0) return
+	const limit = Math.max(1, Math.min(concurrency, items.length))
+	let nextIndex = 0
+	async function worker() {
+		while (nextIndex < items.length) {
+			const index = nextIndex
+			nextIndex += 1
+			const item = items[index]
+			if (item === undefined) return
+			await mapper(item)
+		}
+	}
+	await Promise.all(Array.from({ length: limit }, () => worker()))
+}
+
+export function publishedBundleLoadIdentityKey(input: {
+	sourceId: string
+	kind: BundleArtifactKind
+	artifactName?: string | null
+	entryPoint: string
+}) {
+	return publishedBundleArtifactIdentityKey({
+		sourceId: input.sourceId,
+		artifactKind: input.kind,
+		artifactName: normalizeArtifactName(input.artifactName),
+		entryPoint: normalizeEntryPoint(input.entryPoint),
+	})
+}
+
+async function hydratePublishedBundleArtifactRow(input: {
+	env: Env
+	row: PublishedBundleArtifactRecord
+	kind: BundleArtifactKind
+	artifactName: string | null
+	entryPoint: string
+}): Promise<LoadedPublishedBundleArtifact> {
+	const artifact = await readPublishedBundleArtifact({
+		env: input.env,
+		kvKey: input.row.kvKey,
+	})
+	if (!artifact) {
+		return {
+			row: input.row,
+			artifact: null,
+		}
+	}
+	if (
+		!matchesPublishedBundleArtifactIdentity({
+			artifact,
+			sourceId: input.row.sourceId,
+			publishedCommit: input.row.publishedCommit,
+			kind: input.kind,
+			artifactName: input.artifactName,
+			entryPoint: input.entryPoint,
+		})
+	) {
+		return {
+			row: input.row,
+			artifact: null,
+		}
+	}
+	return {
+		row: input.row,
+		artifact,
+	}
 }
 
 export async function loadPublishedBundleArtifactByIdentity(input: {
@@ -211,7 +449,7 @@ export async function loadPublishedBundleArtifactByIdentity(input: {
 	kind: BundleArtifactKind
 	artifactName?: string | null
 	entryPoint: string
-}) {
+}): Promise<LoadedPublishedBundleArtifact | null> {
 	const artifactName = normalizeArtifactName(input.artifactName)
 	const entryPoint = normalizeEntryPoint(input.entryPoint)
 	const row = await getPublishedBundleArtifactByIdentity(input.env.APP_DB, {
@@ -222,35 +460,94 @@ export async function loadPublishedBundleArtifactByIdentity(input: {
 		entryPoint,
 	})
 	if (!row) return null
-	const artifact = await readPublishedBundleArtifact({
+	return await hydratePublishedBundleArtifactRow({
 		env: input.env,
-		kvKey: row.kvKey,
+		row,
+		kind: input.kind,
+		artifactName,
+		entryPoint,
 	})
-	if (!artifact) {
-		return {
-			row,
-			artifact: null,
+}
+
+/**
+ * Batch form of {@link loadPublishedBundleArtifactByIdentity}: one D1 identity
+ * SELECT (chunked only at the D1 bind cap), then parallel KV hydrations.
+ * Keys use {@link publishedBundleLoadIdentityKey}.
+ */
+export async function loadPublishedBundleArtifactsByIdentities(input: {
+	env: Env
+	userId: string
+	identities: ReadonlyArray<{
+		sourceId: string
+		kind: BundleArtifactKind
+		artifactName?: string | null
+		entryPoint: string
+	}>
+}): Promise<Map<string, LoadedPublishedBundleArtifact | null>> {
+	const normalized = new Map<
+		string,
+		{
+			identity: PublishedBundleArtifactIdentity
+			kind: BundleArtifactKind
+			artifactName: string | null
+			entryPoint: string
 		}
-	}
-	if (
-		!matchesPublishedBundleArtifactIdentity({
-			artifact,
-			sourceId: row.sourceId,
-			publishedCommit: row.publishedCommit,
-			kind: input.kind,
+	>()
+	for (const identity of input.identities) {
+		const artifactName = normalizeArtifactName(identity.artifactName)
+		const entryPoint = normalizeEntryPoint(identity.entryPoint)
+		const key = publishedBundleArtifactIdentityKey({
+			sourceId: identity.sourceId,
+			artifactKind: identity.kind,
 			artifactName,
 			entryPoint,
 		})
-	) {
-		return {
-			row,
-			artifact: null,
+		if (!normalized.has(key)) {
+			normalized.set(key, {
+				identity: {
+					sourceId: identity.sourceId,
+					artifactKind: identity.kind,
+					artifactName,
+					entryPoint,
+				},
+				kind: identity.kind,
+				artifactName,
+				entryPoint,
+			})
 		}
 	}
-	return {
-		row,
-		artifact,
-	}
+	const loaded = new Map<string, LoadedPublishedBundleArtifact | null>()
+	if (normalized.size === 0) return loaded
+
+	const rowsByKey = await listPublishedBundleArtifactsByIdentities(
+		input.env.APP_DB,
+		{
+			userId: input.userId,
+			identities: [...normalized.values()].map((entry) => entry.identity),
+		},
+	)
+	await mapWithConcurrency(
+		[...normalized.entries()],
+		publishedPackageArtifactRebuildConcurrency,
+		async ([key, entry]) => {
+			const row = rowsByKey.get(key) ?? null
+			if (!row) {
+				loaded.set(key, null)
+				return
+			}
+			loaded.set(
+				key,
+				await hydratePublishedBundleArtifactRow({
+					env: input.env,
+					row,
+					kind: entry.kind,
+					artifactName: entry.artifactName,
+					entryPoint: entry.entryPoint,
+				}),
+			)
+		},
+	)
+	return loaded
 }
 
 /**
@@ -273,6 +570,70 @@ export function isPublishedBundleArtifactCurrentForCommit(input: {
 }
 
 /**
+ * Batch-load identity rows + KV payloads for every rebuild target. Multi-target
+ * rebuild pre-checks should call this once and pass each result as `preloaded`
+ * so D1 does not repeat the per-identity SELECT (Sentry KODY-B2).
+ */
+export async function loadPublishedBundleArtifactsForPackageTargets(input: {
+	env: Env
+	userId: string
+	sourceId: string
+	targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
+}): Promise<Map<string, LoadedPublishedBundleArtifact | null>> {
+	return await loadPublishedBundleArtifactsByIdentities({
+		env: input.env,
+		userId: input.userId,
+		identities: input.targets.map((target) => ({
+			sourceId: input.sourceId,
+			kind: target.kind,
+			artifactName: target.artifactName,
+			entryPoint: target.entryPoint,
+		})),
+	})
+}
+
+export function publishedBundleArtifactForPackageTarget(input: {
+	sourceId: string
+	target: PublishedPackageArtifactBuildTarget
+	loadedByIdentity: ReadonlyMap<string, LoadedPublishedBundleArtifact | null>
+}): LoadedPublishedBundleArtifact | null {
+	return (
+		input.loadedByIdentity.get(
+			publishedBundleLoadIdentityKey({
+				sourceId: input.sourceId,
+				kind: input.target.kind,
+				artifactName: input.target.artifactName,
+				entryPoint: input.target.entryPoint,
+			}),
+		) ?? null
+	)
+}
+
+async function resolvePublishedBundleArtifactForTarget(input: {
+	env: Env
+	userId: string
+	sourceId: string
+	target: PublishedPackageArtifactBuildTarget
+	/**
+	 * When the property is present (including `null`), skip the identity load.
+	 */
+	preloaded?: LoadedPublishedBundleArtifact | null
+	preloadedProvided: boolean
+}): Promise<LoadedPublishedBundleArtifact | null> {
+	if (input.preloadedProvided) {
+		return input.preloaded ?? null
+	}
+	return await loadPublishedBundleArtifactByIdentity({
+		env: input.env,
+		userId: input.userId,
+		sourceId: input.sourceId,
+		kind: input.target.kind,
+		artifactName: input.target.artifactName,
+		entryPoint: input.target.entryPoint,
+	})
+}
+
+/**
  * True when a published bundle artifact already exists for this target
  * identity at `publishedCommit` (row + KV payload) and the artifact is not
  * older than the snapshot's `invalidateArtifactsBefore` cutoff. Used to
@@ -292,15 +653,21 @@ export async function isPublishedPackageArtifactBuiltForCommit(input: {
 	 * `null` means that load found none. Omit to read it here.
 	 */
 	publishedSnapshot?: PublishedSourceSnapshot | null
+	/**
+	 * When present (including `null`), skips the identity D1/KV load.
+	 * Prefer {@link loadPublishedBundleArtifactsForPackageTargets} for
+	 * multi-target rebuilds.
+	 */
+	preloaded?: LoadedPublishedBundleArtifact | null
 }) {
 	if (!hasPublishedRuntimeArtifacts(input.env)) return false
-	const loaded = await loadPublishedBundleArtifactByIdentity({
+	const loaded = await resolvePublishedBundleArtifactForTarget({
 		env: input.env,
 		userId: input.userId,
 		sourceId: input.sourceId,
-		kind: input.target.kind,
-		artifactName: input.target.artifactName,
-		entryPoint: input.target.entryPoint,
+		target: input.target,
+		preloaded: input.preloaded,
+		preloadedProvided: 'preloaded' in input,
 	})
 	if (!loaded?.artifact) return false
 	if (
@@ -425,15 +792,21 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 	 * Prior-commit snapshots still go through `snapshotCache`.
 	 */
 	publishedSnapshot?: PublishedSourceSnapshot | null
+	/**
+	 * When present (including `null`), skips the identity D1/KV load.
+	 * Prefer {@link loadPublishedBundleArtifactsForPackageTargets} for
+	 * multi-target rebuilds.
+	 */
+	preloaded?: LoadedPublishedBundleArtifact | null
 }) {
 	if (!hasPublishedRuntimeArtifacts(input.env)) return false
-	const loaded = await loadPublishedBundleArtifactByIdentity({
+	const loaded = await resolvePublishedBundleArtifactForTarget({
 		env: input.env,
 		userId: input.userId,
 		sourceId: input.sourceId,
-		kind: input.target.kind,
-		artifactName: input.target.artifactName,
-		entryPoint: input.target.entryPoint,
+		target: input.target,
+		preloaded: input.preloaded,
+		preloadedProvided: 'preloaded' in input,
 	})
 	if (!loaded?.artifact) return false
 	if (
@@ -625,6 +998,38 @@ async function buildPublishedPackageArtifactTargetBundle(
 	}
 }
 
+function toPersistPublishedPackageArtifactInput(input: {
+	env: Env
+	userId: string
+	source: EntitySourceRow
+	savedPackage: SavedPackageRecord
+	target: PublishedPackageArtifactBuildTarget
+	bundle: {
+		mainModule: string
+		modules: WorkerLoaderModules
+		dependencies: Array<BundleArtifactDependency>
+		dynamicDependencies?: Array<BundleArtifactDynamicDependency>
+	}
+}): PersistPublishedBundleArtifactInput {
+	return {
+		env: input.env,
+		userId: input.userId,
+		source: input.source,
+		kind: input.target.kind,
+		artifactName: input.target.artifactName,
+		entryPoint: input.target.entryPoint,
+		mainModule: input.bundle.mainModule,
+		modules: input.bundle.modules,
+		dependencies: input.bundle.dependencies,
+		dynamicDependencies: input.bundle.dynamicDependencies,
+		packageContext: {
+			packageId: input.savedPackage.id,
+			kodyId: input.savedPackage.kodyId,
+			sourceId: input.savedPackage.sourceId,
+		},
+	}
+}
+
 export async function persistPublishedPackageArtifactTarget(
 	input: {
 		env: Env
@@ -635,51 +1040,120 @@ export async function persistPublishedPackageArtifactTarget(
 	} & PublishedPackageArtifactBuilders,
 ) {
 	const bundle = await buildPublishedPackageArtifactTargetBundle(input)
-	return await persistPublishedBundleArtifact({
-		env: input.env,
-		userId: input.userId,
-		source: input.source,
-		kind: input.target.kind,
-		artifactName: input.target.artifactName,
-		entryPoint: input.target.entryPoint,
-		mainModule: bundle.mainModule,
-		modules: bundle.modules,
-		dependencies: bundle.dependencies,
-		dynamicDependencies: bundle.dynamicDependencies,
-		packageContext: {
-			packageId: input.savedPackage.id,
-			kodyId: input.savedPackage.kodyId,
-			sourceId: input.savedPackage.sourceId,
-		},
-	})
+	return await persistPublishedBundleArtifact(
+		toPersistPublishedPackageArtifactInput({ ...input, bundle }),
+	)
 }
 
-/**
- * Cap concurrent esbuild-wasm rebuilds so a many-export package cannot stack
- * isolate heap the way fully sequential rebuilds used to stretch wall time.
- * Two at a time cuts typical 4-target publishes roughly in half without
- * reopening the session-DO memory failure in kody-hq/kody#987.
- */
-const publishedPackageArtifactRebuildConcurrency = 2
+export type PersistPublishedPackageArtifactTargetResult =
+	| {
+			ok: true
+			target: PublishedPackageArtifactBuildTarget
+			kvKey: string | null
+	  }
+	| {
+			ok: false
+			target: PublishedPackageArtifactBuildTarget
+			error: unknown
+	  }
 
-async function mapWithConcurrency<T>(
-	items: ReadonlyArray<T>,
-	concurrency: number,
-	mapper: (item: T) => Promise<void>,
-) {
-	if (items.length === 0) return
-	const limit = Math.max(1, Math.min(concurrency, items.length))
-	let nextIndex = 0
-	async function worker() {
-		while (nextIndex < items.length) {
-			const index = nextIndex
-			nextIndex += 1
-			const item = items[index]
-			if (item === undefined) return
-			await mapper(item)
+/**
+ * Build then persist many package artifact targets with one batched D1 upsert.
+ * Each successful build writes KV immediately (so heap stays one bundle) and
+ * only the identity row writes are batched. Per-target build failures are
+ * isolated; a batch upsert failure marks built targets failed but leaves their
+ * KV keys (orphan KV is safe; deleting keys identity rows may point at is not).
+ */
+export async function persistPublishedPackageArtifactTargets(
+	input: {
+		env: Env
+		userId: string
+		source: EntitySourceRow
+		savedPackage: SavedPackageRecord
+		targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
+	} & PublishedPackageArtifactBuilders,
+): Promise<Array<PersistPublishedPackageArtifactTargetResult>> {
+	if (input.targets.length === 0) return []
+	const results: Array<PersistPublishedPackageArtifactTargetResult | null> =
+		input.targets.map(() => null)
+	const pending: Array<{
+		index: number
+		prepared: PreparedPublishedBundleArtifactPersist
+	}> = []
+	for (const [index, target] of input.targets.entries()) {
+		try {
+			const bundle = await buildPublishedPackageArtifactTargetBundle({
+				...input,
+				target,
+			})
+			const prepared = preparePublishedBundleArtifactPersist(
+				toPersistPublishedPackageArtifactInput({
+					env: input.env,
+					userId: input.userId,
+					source: input.source,
+					savedPackage: input.savedPackage,
+					target,
+					bundle,
+				}),
+			)
+			if (!prepared) {
+				results[index] = { ok: true, target, kvKey: null }
+				continue
+			}
+			pending.push({ index, prepared })
+		} catch (error) {
+			results[index] = { ok: false, target, error }
 		}
 	}
-	await Promise.all(Array.from({ length: limit }, () => worker()))
+	if (pending.length > 0) {
+		try {
+			const written = pending.map(({ prepared }) => ({
+				env: prepared.env,
+				kvKey: prepared.kvKey,
+				rowInput: prepared.rowInput,
+			}))
+			const rowIds = await upsertPreparedPublishedBundleArtifactRows(written)
+			for (const [persistOffset, entry] of pending.entries()) {
+				const target = input.targets[entry.index]
+				if (!target) continue
+				if (rowIds[persistOffset] == null) {
+					results[entry.index] = {
+						ok: false,
+						target,
+						error: new Error(
+							'Published bundle artifact identity write was refused (stale live commit).',
+						),
+					}
+					continue
+				}
+				await writePreparedPublishedBundleArtifact(entry.prepared)
+				results[entry.index] = {
+					ok: true,
+					target,
+					kvKey: entry.prepared.kvKey,
+				}
+			}
+		} catch (error) {
+			for (const entry of pending) {
+				const target = input.targets[entry.index]
+				if (!target) continue
+				if (results[entry.index]) continue
+				results[entry.index] = { ok: false, target, error }
+			}
+		}
+	}
+	return results.map((result, index) => {
+		if (result) return result
+		const target = input.targets[index]
+		if (!target) {
+			throw new Error('Published package artifact target missing at index.')
+		}
+		return {
+			ok: false,
+			target,
+			error: new Error('Published package artifact target was not built.'),
+		}
+	})
 }
 
 export async function rebuildPublishedPackageArtifacts(
@@ -695,11 +1169,27 @@ export async function rebuildPublishedPackageArtifacts(
 	const snapshotCache: PublishedPackageArtifactReuseSnapshotCache = new Map()
 	const dependencySourceCache: PublishedPackageArtifactDependencySourceCache =
 		new Map()
+	const targets = collectPublishedPackageArtifactTargets(input.manifest)
+	const loadedByIdentity =
+		publishedCommit && hasPublishedRuntimeArtifacts(input.env)
+			? await loadPublishedBundleArtifactsForPackageTargets({
+					env: input.env,
+					userId: input.userId,
+					sourceId: input.source.id,
+					targets,
+				})
+			: null
+	const targetsNeedingPersist: Array<PublishedPackageArtifactBuildTarget> = []
 	await mapWithConcurrency(
-		collectPublishedPackageArtifactTargets(input.manifest),
+		targets,
 		publishedPackageArtifactRebuildConcurrency,
 		async (target) => {
-			if (publishedCommit) {
+			if (publishedCommit && loadedByIdentity) {
+				const preloaded = publishedBundleArtifactForPackageTarget({
+					sourceId: input.source.id,
+					target,
+					loadedByIdentity,
+				})
 				const alreadyBuilt = await isPublishedPackageArtifactBuiltForCommit({
 					env: input.env,
 					userId: input.userId,
@@ -707,6 +1197,7 @@ export async function rebuildPublishedPackageArtifacts(
 					publishedCommit,
 					target,
 					snapshotCache,
+					preloaded,
 				})
 				if (alreadyBuilt) return
 				const reused = await reusePublishedPackageArtifactIfUnchanged({
@@ -717,22 +1208,66 @@ export async function rebuildPublishedPackageArtifacts(
 					target,
 					snapshotCache,
 					dependencySourceCache,
+					preloaded,
 				})
 				if (reused) return
 			}
-			await persistPublishedPackageArtifactTarget({
-				env: input.env,
-				userId: input.userId,
-				source: input.source,
-				savedPackage: input.savedPackage,
-				target,
-				buildAppBundle: input.buildAppBundle,
-				buildAppClientBundle: input.buildAppClientBundle,
-				buildModuleBundle: input.buildModuleBundle,
-				buildImportableModuleBundle: input.buildImportableModuleBundle,
-			})
+			targetsNeedingPersist.push(target)
 		},
 	)
+	if (targetsNeedingPersist.length === 0) return
+
+	// Overlap esbuild (cap 2), batch D1 identity upserts, then write KV only
+	// for accepted rows. Build failures are isolated so successful siblings
+	// still land (same as the prior per-target persist loop).
+	const pending: Array<PreparedPublishedBundleArtifactPersist> = []
+	let firstError: unknown = null
+	await mapWithConcurrency(
+		targetsNeedingPersist,
+		publishedPackageArtifactRebuildConcurrency,
+		async (target) => {
+			try {
+				const bundle = await buildPublishedPackageArtifactTargetBundle({
+					target,
+					buildAppBundle: input.buildAppBundle,
+					buildAppClientBundle: input.buildAppClientBundle,
+					buildModuleBundle: input.buildModuleBundle,
+					buildImportableModuleBundle: input.buildImportableModuleBundle,
+				})
+				const prepared = preparePublishedBundleArtifactPersist(
+					toPersistPublishedPackageArtifactInput({
+						env: input.env,
+						userId: input.userId,
+						source: input.source,
+						savedPackage: input.savedPackage,
+						target,
+						bundle,
+					}),
+				)
+				if (!prepared) return
+				pending.push(prepared)
+			} catch (error) {
+				firstError ??= error
+			}
+		},
+	)
+	if (pending.length > 0) {
+		try {
+			const written = pending.map((prepared) => ({
+				env: prepared.env,
+				kvKey: prepared.kvKey,
+				rowInput: prepared.rowInput,
+			}))
+			const rowIds = await upsertPreparedPublishedBundleArtifactRows(written)
+			for (const [index, prepared] of pending.entries()) {
+				if (rowIds[index] == null) continue
+				await writePreparedPublishedBundleArtifact(prepared)
+			}
+		} catch (error) {
+			firstError ??= error
+		}
+	}
+	if (firstError != null) throw firstError
 }
 
 export async function deletePublishedArtifactsForSource(input: {

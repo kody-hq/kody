@@ -320,12 +320,14 @@ async function saveWakeTokenLockedTo(userId: string, packageId: string) {
 		scope: 'user',
 		name: 'wakeToken',
 		value: 'wake-secret-value',
+		audit: null,
 	})
 	await lockSecretToPackage({
 		env,
 		userId: ownerIdFromStored(userId),
 		name: 'wakeToken',
 		packageId,
+		audit: null,
 	})
 }
 
@@ -915,6 +917,7 @@ export default async function selfAdopt() {
 			scope: 'user',
 			name: 'userToken',
 			value: 'user-secret-value',
+			audit: null,
 		})
 
 		const executed = await runBundledModuleWithRegistry(
@@ -1008,6 +1011,7 @@ export default async function wake(probe) {
 			name: 'wakeToken',
 			value: 'package-wake-secret-value',
 			storageContext,
+			audit: null,
 		})
 		await setSecretAllowedHosts({
 			env,
@@ -1016,6 +1020,7 @@ export default async function wake(probe) {
 			name: 'wakeToken',
 			allowedHosts: ['example.com'],
 			storageContext,
+			audit: null,
 		})
 
 		const executeImportBundle = await buildModule(userId, {
@@ -1096,6 +1101,7 @@ async function setupStalePackageWake() {
 		name: 'wakeToken',
 		value: 'x',
 		storageContext,
+		audit: null,
 	})
 	await publishDependent(userId, { 'src/main.ts': importWakeEntry })
 	const call = async () =>
@@ -1205,6 +1211,7 @@ test(
 			scope: 'package',
 			name: 'wakeToken',
 			storageContext,
+			audit: null,
 		})
 		expect(deleted).toBe(true)
 		const cutoff = await call()

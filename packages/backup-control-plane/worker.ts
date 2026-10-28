@@ -3,9 +3,9 @@ import { runFreshnessAndRetry } from './freshness-retry.ts'
 import {
 	BackupError,
 	backupPayload,
-	configuredSourceDatabases,
 	errorCode,
 	isBackupEnabled,
+	restExportSourceDatabases,
 	safeLog,
 	workflowInstanceId,
 } from './backup-policy.ts'
@@ -48,7 +48,7 @@ async function triggerBackup(
 	scheduledAt: Date,
 ): Promise<void> {
 	const errors: Array<unknown> = []
-	for (const source of configuredSourceDatabases(env)) {
+	for (const source of restExportSourceDatabases(env)) {
 		const payload = backupPayload(env, scheduledAt, source)
 		const instanceId = workflowInstanceId(source.id, payload.day)
 		try {
@@ -81,7 +81,7 @@ async function retryBackup(
 	scheduledAt: Date,
 ): Promise<void> {
 	const errors: Array<unknown> = []
-	for (const source of configuredSourceDatabases(env)) {
+	for (const source of restExportSourceDatabases(env)) {
 		const payload = backupPayload(
 			env,
 			primaryBackupTimeForDay(scheduledAt),

@@ -136,6 +136,12 @@
 				},
 			],
 		},
+		// Execution context sessions. A new class: Cloudflare refuses a version
+		// rollback across this tag, so it ships in its own PR.
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["ExecutionContextSessionV1"],
+		},
 	],
 	"observability": {
 		"enabled": true,
@@ -202,6 +208,10 @@
 					{
 						"class_name": "RepoSession",
 						"name": "REPO_SESSION",
+					},
+					{
+						"class_name": "ExecutionContextSessionV1",
+						"name": "EXECUTION_CONTEXT_SESSION",
 					},
 					// Runtime-owned classes reached cross-script (ADR 0016).
 					{
@@ -366,6 +376,10 @@
 						"StripePlanRefresh",
 					],
 				},
+				{
+					"tag": "v2",
+					"new_sqlite_classes": ["ExecutionContextSessionV1"],
+				},
 			],
 			"worker_loaders": [
 				{
@@ -416,6 +430,10 @@
 					{
 						"class_name": "RepoSession",
 						"name": "REPO_SESSION",
+					},
+					{
+						"class_name": "ExecutionContextSessionV1",
+						"name": "EXECUTION_CONTEXT_SESSION",
 					},
 					{
 						"class_name": "StorageRunner",

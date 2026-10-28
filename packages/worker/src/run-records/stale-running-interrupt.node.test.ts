@@ -13,12 +13,13 @@ function platformInterruptTriage(overrides: Partial<RunRecordContext>) {
 }
 
 test('platform interrupt has a stable error contract and only auto-ignores retryable deliveries', () => {
+	// Scheduled job ticks stay owner-visible: ignoring them hid missed slots.
 	expect(
 		platformInterruptTriage({
 			surface: 'job',
 			idempotencyKey: 'scheduled-job:job-1:2026-08-21T00:00:00.000Z',
 		}),
-	).toBe('ignored')
+	).toBeNull()
 	expect(
 		platformInterruptTriage({
 			surface: 'subscription',

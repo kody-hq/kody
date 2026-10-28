@@ -37,10 +37,12 @@ import {
 	type ResolvedClientPlacement,
 	type ResolverCall,
 } from './credential-resolver.ts'
+import { SecretPlacementError } from '#mcp/secrets/secret-placement.ts'
 import {
-	fillSiteFromCredentialInject,
-	observeFillPlacementWouldBlock,
-} from './fill-placement.ts'
+	enforceFillPlacement,
+	resolveEffectiveFillPlacement,
+} from './fill-placement-enforcement.ts'
+import { fillSiteFromCredentialInject } from './fill-placement.ts'
 import { authorizePersonalCredentialUse } from './personal-credentials.ts'
 import {
 	authorizeStoredCredential,
@@ -163,15 +165,28 @@ export const clientKeyResolver: CredentialResolver<'client-key'> = {
 						"This credential's inject is not set up correctly. Its manager can fix it with credentialUpdate.",
 					)
 				}
-				// Observe only: enforcement refuses in a later PR.
-				observeFillPlacementWouldBlock({
-					credentialName: found.name,
-					placement: found.placement,
-					site: fillSiteFromCredentialInject(inject),
-					surface: 'credential-client',
-					env: call.input.env,
+				const placement = await resolveEffectiveFillPlacement({
+					db: call.input.env.APP_DB,
 					credentialId: credential.credentialId,
+					stored: found.placement,
 				})
+				try {
+					enforceFillPlacement({
+						env: call.input.env,
+						credentialName: found.name,
+						credentialId: credential.credentialId,
+						slot: null,
+						placement,
+						sites: [fillSiteFromCredentialInject(inject)],
+						surface: 'credential-client',
+					})
+				} catch (error) {
+					if (!(error instanceof SecretPlacementError)) throw error
+					throw new CredentialRequestRefusedError(
+						'invalid_request',
+						error.message,
+					)
+				}
 			},
 			async apply() {
 				// `authorize` returned, so the lookup and inject are set.

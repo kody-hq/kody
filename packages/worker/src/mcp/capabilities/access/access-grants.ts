@@ -80,6 +80,7 @@ export const accessGrantCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'accessGrant',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: async (args, ctx) => {
 			if (args.resource_type !== 'org') return false
@@ -118,7 +119,7 @@ export const accessGrantCapability = defineDomainCapability(
 			return existing.some(grantChangesMemberOrBilling)
 		},
 		description:
-			'Grant a user or team Use, Contribute, or Manage on a resource in the organization this request is bound to, or pass an explicit permission list instead of a preset. Secrets, integrations, MCP servers, and vault bindings use resource_type credential with the credential_id from secretList, integrationList, mcpServerList, or secretProviderList; the grant follows the credential, not its name. resource_type secret or integration with a name still works: the name resolves to its credential once, when the grant is made. Organization grants use resource_type org and this organization id. You need manage access on that resource (or member:write for an organization grant). Only an Owner can put org:write, org:delete, member:write, or member:delete on an organization grant.',
+			'Grant a user or team Use, Contribute, or Manage on a resource in the organization this request is bound to, or pass an explicit permission list instead of a preset. Secrets, integrations, MCP servers, and vault bindings use resource_type credential with the credential_id from secretList, integrationList, mcpServerList, or secretProviderList; the grant follows the credential, not its name. resource_type secret or integration with a name still works: the name resolves to its credential once, when the grant is made. Organization grants use resource_type org and this organization id; besides org-level permissions they may carry the read-only package:read, app:read, job:read, integration:read, or email:read for org-wide reads (no write, execute, or use). You need manage access on that resource (or member:write for an organization grant). Only an Owner can put org:write, org:delete, member:write, or member:delete on an organization grant.',
 		keywords: ['grant', 'access', 'permission', 'share', 'preset'],
 		readOnly: false,
 		idempotent: true,
@@ -206,6 +207,7 @@ export const accessRevokeCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'accessRevoke',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: async (args, ctx) => {
 			const request = ctx.callerContext.request
@@ -264,6 +266,7 @@ export const accessListCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'accessList',
+		contextRuns: 'allow',
 		orgPermission: 'member:read',
 		description:
 			'List live grants in the organization this request is bound to. Filter by resource or subject when you already know which one you want.',

@@ -1,12 +1,15 @@
+import {
+	packageScopeFromNameOrOwner,
+	packageSettingsHrefFromScope,
+} from '#universal/community-links.ts'
 import { type PackageWebhookListItem } from '#universal/loader-data.ts'
 import { docHref } from '#universal/docs-nav.ts'
-import { routes } from '#universal/routes.ts'
 import { colors } from '#universal/styles/tokens.ts'
 
 /** The triggers guide section on inbound webhooks (`docs/guides/triggers.md`). */
 export const webhooksDocHref = `${docHref('triggers')}#inbound-webhooks-the-external-http-knock`
 
-export type WebhookIntent = 'mint' | 'rotate' | 'reveal' | 'enable' | 'disable'
+export type WebhookIntent = 'mint' | 'rotate' | 'reveal'
 
 /**
  * Declared count is unique package+name pairs (account index) or unique names
@@ -40,18 +43,24 @@ export function packageWebhookCardId(input: {
 /**
  * Package settings is where URLs get minted and copied; the account index
  * and any "manage this webhook" link land on the owning package's section
- * (or one webhook's card when the name / endpoint is known).
+ * (or one webhook's card when the name / endpoint is known). Owner always
+ * comes from the package's scoped name (`@owner/kody-id`), not the viewer.
  */
 export function buildPackageWebhooksHref(input: {
-	username: string
-	kodyId: string
+	packageName: string
+	kodyId?: string | null
+	/** Fallback when `packageName` is not scoped (should not happen for saved packages). */
+	ownerUsername?: string | null
 	webhookName?: string | null
 	endpointId?: string | null
 }) {
-	const settingsHref = routes.communityPackageSettings.href({
-		username: input.username,
+	const scope = packageScopeFromNameOrOwner({
+		packageName: input.packageName,
+		ownerUsername: input.ownerUsername,
 		kodyId: input.kodyId,
 	})
+	if (!scope) return '#'
+	const settingsHref = packageSettingsHrefFromScope(scope)
 	const anchor = input.webhookName
 		? packageWebhookCardId({
 				webhookName: input.webhookName,
@@ -61,21 +70,18 @@ export function buildPackageWebhooksHref(input: {
 	return `${settingsHref}#${anchor}`
 }
 
-type WebhookStatusInput = Pick<
-	PackageWebhookListItem,
-	'minted' | 'approved' | 'enabled'
->
+type WebhookStatusInput = Pick<PackageWebhookListItem, 'minted' | 'approved'>
 
 export function webhookStatusLabel(webhook: WebhookStatusInput) {
 	if (!webhook.minted) return 'No URL yet'
 	if (!webhook.approved) return 'Needs approval'
-	return webhook.enabled ? 'Active' : 'Disabled'
+	return 'Approved'
 }
 
 export function webhookStatusColor(webhook: WebhookStatusInput) {
 	if (!webhook.minted) return colors.textMuted
 	if (!webhook.approved) return colors.warningText
-	return webhook.enabled ? colors.primary : colors.error
+	return colors.primary
 }
 
 export function webhookModeLabel(
@@ -107,10 +113,6 @@ export function webhookSuccessMessage(
 			return `Webhook URL rotated. The previous URL stays active until the new one receives a delivery, or for 24 hours.${approvalUrl ? approveStillRequired : ''}`
 		case 'reveal':
 			return null
-		case 'enable':
-			return 'Webhook enabled.'
-		case 'disable':
-			return 'Webhook disabled. Deliveries now answer 404.'
 		default: {
 			const exhaustive: never = intent
 			return String(exhaustive)
@@ -126,10 +128,6 @@ export function webhookFailureMessage(intent: WebhookIntent) {
 			return 'Unable to rotate the webhook URL.'
 		case 'reveal':
 			return 'Unable to reveal the webhook URL.'
-		case 'enable':
-			return 'Unable to enable the webhook.'
-		case 'disable':
-			return 'Unable to disable the webhook.'
 		default: {
 			const exhaustive: never = intent
 			return String(exhaustive)

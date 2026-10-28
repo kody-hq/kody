@@ -7,10 +7,12 @@ import {
 	buildSpawnEnv,
 	buildWranglerSecretBulkFlags,
 	collectSpawnedProcessOutput,
+	isSecretBulkUndeployedVersionError,
 	parseDotenv,
 	parseEnvSourceSpec,
 	retrySecretBulkUpload,
-	toDotenv,
+	shouldFallbackToVersionedSecretBulk,
+	toSecretBulkJson,
 } from './sync-worker-secrets'
 
 const baseOptions = {
@@ -26,19 +28,48 @@ const baseOptions = {
 	emptyAsSpace: false,
 }
 
-test('toDotenv and parseDotenv round-trip multiline PEM values and literal backslash-n', () => {
-	const cases: Array<[string, string, string]> = [
+test('toSecretBulkJson stages JSON, PEM, and backslash values verbatim for wrangler secret bulk', () => {
+	const frameKeys = JSON.stringify([
+		{
+			kid: 'ecp-frame-test',
+			privateKeyJwk: { kty: 'OKP', crv: 'Ed25519', x: 'x', d: 'd' },
+			notAfter: 1,
+		},
+	])
+	const secrets = new Map([
+		['ECP_FRAME_SIGNING_KEYS', frameKeys],
 		[
 			'OIDC_SIGNING_PRIVATE_KEY_PEM',
 			'-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----',
-			'OIDC_SIGNING_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\\nMIIE\\n-----END PRIVATE KEY-----"\n',
 		],
-		['LITERAL_ESCAPE', '\\n', 'LITERAL_ESCAPE="\\\\n"\n'],
-	]
-	for (const [key, value, encoded] of cases) {
-		expect(toDotenv(new Map([[key, value]]))).toBe(encoded)
-		expect(parseDotenv(encoded).get(key)).toBe(value)
-	}
+		['LITERAL_ESCAPE', '\\n "quoted" \\"'],
+	])
+	const staged = JSON.parse(toSecretBulkJson(secrets)) as Record<string, string>
+	expect(Object.keys(staged)).toEqual([
+		'ECP_FRAME_SIGNING_KEYS',
+		'LITERAL_ESCAPE',
+		'OIDC_SIGNING_PRIVATE_KEY_PEM',
+	])
+	for (const [key, value] of secrets) expect(staged[key]).toBe(value)
+	expect(JSON.parse(staged.ECP_FRAME_SIGNING_KEYS!)).toEqual(
+		JSON.parse(frameKeys),
+	)
+})
+
+test('parseDotenv reads escaped multiline PEM values and literal backslash-n', () => {
+	expect(
+		parseDotenv(
+			'OIDC_SIGNING_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\\nMIIE\\n-----END PRIVATE KEY-----"\nLITERAL_ESCAPE="\\\\n"\n',
+		),
+	).toEqual(
+		new Map([
+			[
+				'OIDC_SIGNING_PRIVATE_KEY_PEM',
+				'-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----',
+			],
+			['LITERAL_ESCAPE', '\\n'],
+		]),
+	)
 })
 
 test('buildSpawnEnv preserves optional vars only when they have values', () => {
@@ -192,6 +223,60 @@ test('versioned secrets stage bindings without deploying pending code', () => {
 		'--name',
 		'kody-platform',
 	])
+
+	expect(
+		buildWranglerSecretBulkFlags(
+			{
+				...baseOptions,
+				versioned: true,
+				env: 'production',
+				config: 'packages/worker/wrangler-production.generated.json',
+			},
+			'/tmp/secrets.env',
+		),
+	).toEqual([
+		'versions',
+		'secret',
+		'bulk',
+		'/tmp/secrets.env',
+		'--env',
+		'production',
+		'--config',
+		'packages/worker/wrangler-production.generated.json',
+	])
+})
+
+test('secret bulk detects Cloudflare 10215 undeployed-version refusals', () => {
+	expect(
+		isSecretBulkUndeployedVersionError(
+			"Secret edit failed. You attempted to modify a secret, but the latest version of your Worker isn't currently deployed. [code: 10215]",
+		),
+	).toBe(true)
+	expect(
+		isSecretBulkUndeployedVersionError(
+			'PATCH /accounts/acct/workers/scripts/kody-runtime/secrets-bulk -> 503 Service Unavailable',
+		),
+	).toBe(false)
+	expect(
+		shouldFallbackToVersionedSecretBulk(
+			{ versioned: undefined },
+			{
+				exitCode: 1,
+				output:
+					"Secret edit failed. You attempted to modify a secret, but the latest version of your Worker isn't currently deployed. [code: 10215]",
+			},
+		),
+	).toBe(true)
+	expect(
+		shouldFallbackToVersionedSecretBulk(
+			{ versioned: true },
+			{
+				exitCode: 1,
+				output:
+					"Secret edit failed. You attempted to modify a secret, but the latest version of your Worker isn't currently deployed. [code: 10215]",
+			},
+		),
+	).toBe(false)
 })
 
 test('secret bulk rejects --env with --name so it cannot target name-env', () => {

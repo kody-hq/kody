@@ -142,11 +142,16 @@ class UnresolvedFeatureFlagUser extends Error {
 async function loadFreshCallerFeatureFlagResolution(
 	env: Env,
 	stableUserId: string,
+	orgId: string | null,
 ): Promise<CallerFeatureFlagResolution> {
 	const userId = await resolveFeatureFlagUserId(env.APP_DB, stableUserId)
 	// Do not cache this. A users row can appear in the same TTL window.
 	if (userId === null) throw new UnresolvedFeatureFlagUser()
-	const evaluations = await getFeatureFlagEvaluationsForUser(env.APP_DB, userId)
+	const evaluations = await getFeatureFlagEvaluationsForUser(
+		env.APP_DB,
+		userId,
+		orgId ? { orgId } : null,
+	)
 	await recordFeatureFlagExposures(env, {
 		stableUserId,
 		evaluations,
@@ -164,10 +169,15 @@ async function loadCallerFeatureFlagResolution(
 			if (!env.APP_DB) return { status: 'anonymous' }
 			const stableUserId = callerContext.user?.userId?.trim()
 			if (!stableUserId) return { status: 'anonymous' }
+			// Org rows apply to the org the call runs in (the request
+			// context org), so the same person can see different values in
+			// different orgs and the cache is keyed by both.
+			const orgId = callerContext.request?.org.id?.trim() || null
 			try {
 				return await callerFeatureFlagEvaluationCache(env.APP_DB).getOrCreate({
-					cacheKey: stableUserId,
-					create: () => loadFreshCallerFeatureFlagResolution(env, stableUserId),
+					cacheKey: orgId ? `${stableUserId}\u0000${orgId}` : stableUserId,
+					create: () =>
+						loadFreshCallerFeatureFlagResolution(env, stableUserId, orgId),
 				})
 			} catch (error) {
 				if (error instanceof UnresolvedFeatureFlagUser) {

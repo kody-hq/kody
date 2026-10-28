@@ -23,6 +23,11 @@ import {
 	type LoadedPackageManifest,
 } from '#worker/package-registry/source.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import { tryAllowedPackagesSafetyWindowGrant } from '#worker/credentials/allowed-packages-safety-window.ts'
+import {
+	scheduleAllowedPackagesWouldBlock,
+	type AllowedPackagesWouldBlockAccessKind,
+} from '#worker/credentials/allowed-packages-would-block.ts'
 
 type SecretMountDefinition = {
 	name: string
@@ -69,23 +74,33 @@ export function isPackageSecretAccessUnavailableError(error: unknown) {
  */
 const inflightImplicitUserSecretAccess = new WeakMap<
 	D1Database,
-	Map<string, Promise<boolean>>
+	Map<string, Promise<AllowedPackagesWouldBlockAccessKind | null>>
 >()
 
 /**
  * Self-authored packages (no `community_forks` row) and adopted community
  * forks may read/use user secrets without an explicit `allowed_packages`
- * grant, but only while that secret's `allowed_packages` list is empty. A
- * non-empty list is enforced for every package (issue #4129); callers check
- * the list before relying on this. Missing packages and unadopted forks do
- * not get implicit access. Host allowlists are a separate gate and are never
- * implied by this check.
+ * grant, but only while that secret's list is empty. A non-empty list is
+ * enforced for every package (issue #4129); callers check the list first. Missing packages and unadopted forks do not. Host allowlists are
+ * a separate gate and are never implied by this check.
  */
 export async function packageHasImplicitUserSecretReadAccess(input: {
 	env: Pick<Env, 'APP_DB'>
 	userId: OwnerId
 	packageId: string
 }): Promise<boolean> {
+	return (await implicitUserSecretReadAccessKind(input)) !== null
+}
+
+/**
+ * Same check as `packageHasImplicitUserSecretReadAccess`, but says why access
+ * is implied (`self_authored` or `adopted`), or null when it is not.
+ */
+export async function implicitUserSecretReadAccessKind(input: {
+	env: Pick<Env, 'APP_DB'>
+	userId: OwnerId
+	packageId: string
+}): Promise<AllowedPackagesWouldBlockAccessKind | null> {
 	const db = input.env.APP_DB
 	const cacheKey = `${input.userId}\0${input.packageId}`
 	let inflight = inflightImplicitUserSecretAccess.get(db)
@@ -106,17 +121,30 @@ async function loadImplicitUserSecretReadAccess(input: {
 	env: Pick<Env, 'APP_DB'>
 	userId: OwnerId
 	packageId: string
-}): Promise<boolean> {
+}): Promise<AllowedPackagesWouldBlockAccessKind | null> {
 	const savedPackage = await getSavedPackageById(input.env.APP_DB, {
 		userId: input.userId,
 		packageId: input.packageId,
 	})
-	if (!savedPackage) return false
-	return await savedPackageHasImplicitUserSecretReadAccess({
+	if (!savedPackage) return null
+	return await savedPackageImplicitUserSecretReadAccessKind({
 		db: input.env.APP_DB,
 		userId: input.userId,
 		savedPackage,
 	})
+}
+
+export async function savedPackageImplicitUserSecretReadAccessKind(input: {
+	db: D1Database
+	userId: OwnerId
+	savedPackage: SavedPackageRecord
+}): Promise<AllowedPackagesWouldBlockAccessKind | null> {
+	const communityFork = await getCommunityForkByForkedPackageId(input.db, {
+		forkerUserId: input.userId,
+		forkedPackageId: input.savedPackage.id,
+	})
+	if (!communityFork) return 'self_authored'
+	return communityFork.adoptedAt ? 'adopted' : null
 }
 
 async function savedPackageHasImplicitUserSecretReadAccess(input: {
@@ -124,11 +152,7 @@ async function savedPackageHasImplicitUserSecretReadAccess(input: {
 	userId: OwnerId
 	savedPackage: SavedPackageRecord
 }): Promise<boolean> {
-	const communityFork = await getCommunityForkByForkedPackageId(input.db, {
-		forkerUserId: input.userId,
-		forkedPackageId: input.savedPackage.id,
-	})
-	return !communityFork || Boolean(communityFork.adoptedAt)
+	return (await savedPackageImplicitUserSecretReadAccessKind(input)) !== null
 }
 
 export async function resolveSecretPageOrgSlug(input: {
@@ -196,9 +220,6 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 	})
 	if (!packageId || input.resolved.scope !== 'user') return
 	if (input.resolved.allowedPackages.includes(packageId)) return
-	// A non-empty allowed-packages list is enforced for every package,
-	// including self-authored and adopted ones (issue #4129).
-	const lockedToOtherPackages = input.resolved.allowedPackages.length > 0
 
 	const intent = input.intent ?? 'use'
 	const runContext =
@@ -210,20 +231,51 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 	// fetch auth shares one package + fork load (KODY-9K). Missing packages
 	// still fall through to the explicit not-found error below. Nested use
 	// must apply the GHSA-5fv3 hybrid rule below, so it never short-circuits.
-	if (
-		intent === 'use' &&
-		!nested &&
-		!lockedToOtherPackages &&
-		(await packageHasImplicitUserSecretReadAccess({
+	let savedPackage: SavedPackageRecord | null = null
+	if (intent === 'use' && !nested) {
+		const implicitKind = await implicitUserSecretReadAccessKind({
 			env: input.env,
 			userId: input.userId,
 			packageId,
-		}))
-	) {
-		return
+		})
+		if (implicitKind && input.resolved.allowedPackages.length === 0) return
+		if (implicitKind) {
+			// A non-empty list is enforced for self-authored and adopted
+			// packages too (#4129). Keep the deduped marker (now a refusal or a
+			// safety-window grant) off the hot path; it never logs values.
+			const credentialId = input.resolved.credentialId?.trim()
+			if (credentialId) {
+				scheduleAllowedPackagesWouldBlock({
+					env: input.env,
+					marker: {
+						ownerId: String(input.userId),
+						credentialId,
+						packageId,
+						accessKind: implicitKind,
+					},
+				})
+				savedPackage = await getSavedPackageById(input.env.APP_DB, {
+					userId: input.userId,
+					packageId,
+				})
+				if (
+					savedPackage &&
+					(await tryAllowedPackagesSafetyWindowGrant({
+						env: input.env,
+						ownerId: String(input.userId),
+						credentialId,
+						packageId,
+						packageCreatedAt: savedPackage.createdAt,
+						accessKind: implicitKind,
+					}))
+				) {
+					return
+				}
+			}
+		}
 	}
 
-	const savedPackage = await getSavedPackageById(input.env.APP_DB, {
+	savedPackage ??= await getSavedPackageById(input.env.APP_DB, {
 		userId: input.userId,
 		packageId,
 	})
@@ -238,6 +290,7 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 			userId: input.userId,
 			packageId,
 		})
+		const lockedToOther = input.resolved.allowedPackages.length > 0
 		const runCanUse = async () => {
 			if (runContext === null) return true
 			if (input.resolved.allowedPackages.includes(runContext)) return true
@@ -247,7 +300,7 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 				packageId: runContext,
 			})
 		}
-		if (authorityImplicit && !lockedToOtherPackages && (await runCanUse())) {
+		if (authorityImplicit && !lockedToOther && (await runCanUse())) {
 			return
 		}
 	}
@@ -278,7 +331,7 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 			secretName: input.secretName,
 			packageName: savedPackage.kodyId,
 			approvalUrl,
-			notOnAllowedList: lockedToOtherPackages,
+			notOnAllowedList: input.resolved.allowedPackages.length > 0,
 		}),
 	)
 }

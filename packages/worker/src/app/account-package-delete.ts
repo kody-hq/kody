@@ -1,3 +1,4 @@
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { loadWritableAccountSavedPackage } from '#app/account-package-write-access.ts'
 import {
 	packageMutationResult,
@@ -57,6 +58,7 @@ export async function deleteAccountPackage(input: {
 			userId: ownerUserId,
 			actorUserId,
 			packageId,
+			audit: optionalOrgAuditWriter(input.env, input.user.request),
 		})
 	} catch (error) {
 		if (error instanceof CommunityActionError) {

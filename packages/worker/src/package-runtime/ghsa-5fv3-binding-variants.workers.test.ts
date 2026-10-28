@@ -12,6 +12,7 @@ import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
+import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
 import {
 	buildKodyImportableModuleBundle,
 	buildKodyModuleBundle,
@@ -20,6 +21,7 @@ import {
 	buildPackageAppWorker,
 	createPackageAppCallerContext,
 } from './package-app.ts'
+import { withPackageAppVisitTicket } from './package-app-visit-ticket.ts'
 import { persistPublishedBundleArtifact } from './published-bundle-artifacts.ts'
 import { persistPublishedSourceSnapshot } from './published-runtime-artifacts.ts'
 import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
@@ -44,6 +46,7 @@ async function runSql(sql: string, ...values: Array<unknown>) {
 async function ensureSecretAuthorityTestSchema() {
 	await ensureEntitlementTestSchema(env.APP_DB)
 	await ensureOrgsTestSchema(env.APP_DB)
+	await ensureUsageRollupsTestSchema(env.APP_DB)
 	await runSql(`CREATE TABLE IF NOT EXISTS entity_sources (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
@@ -74,6 +77,17 @@ async function ensureSecretAuthorityTestSchema() {
 		locked_at TEXT,
 		created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 		updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+	)`)
+	await runSql(`CREATE TABLE IF NOT EXISTS package_app_oauth_grants (
+		id TEXT PRIMARY KEY,
+		person_id TEXT NOT NULL,
+		org_username TEXT NOT NULL,
+		kody_id TEXT NOT NULL,
+		scopes TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		revoked_at TEXT,
+		last_used_at TEXT,
+		UNIQUE (person_id, org_username, kody_id)
 	)`)
 	try {
 		await runSql(
@@ -397,6 +411,7 @@ async function setupA(wakeSource: string) {
 		name: 'wakeToken',
 		value: DUMMY_SECRET,
 		storageContext,
+		audit: null,
 	})
 	await setSecretAllowedHosts({
 		env,
@@ -405,6 +420,7 @@ async function setupA(wakeSource: string) {
 		name: 'wakeToken',
 		allowedHosts: ['upstream.example.com'],
 		storageContext,
+		audit: null,
 	})
 	return { userId, wake }
 }
@@ -515,7 +531,10 @@ async function serveApp(userId: string, appSource: string) {
 	})
 	const entrypoint = appWorker.stub.getEntrypoint(appWorker.entrypointName)
 	const response = await entrypoint.fetch(
-		new Request(`https://${username}.packages.isolated.test/`),
+		withPackageAppVisitTicket(
+			new Request(`https://${username}.packages.isolated.test/`),
+			appWorker.visit.ticket,
+		),
 	)
 	const text = await response.text()
 	return { seen, status: response.status, text }
@@ -855,12 +874,21 @@ async function ensureCredentialColumns() {
 	for (const ddl of credentialTablesDdl) await runSql(ddl)
 }
 
-async function setupCredentialVault() {
+async function setupCredentialVault(
+	options: {
+		beforeWake?: (userId: string) => Promise<unknown>
+		extraKody?: Record<string, unknown>
+		extraSourceFiles?: Record<string, string>
+		extraExports?: Record<string, string>
+	} = {},
+) {
 	silenceIncidentalRuntimeWarnings()
 	await ensureSecretAuthorityTestSchema()
 	await ensureCredentialColumns()
 	const userId = `user-${crypto.randomUUID()}`
 	await provisionTestUser(userId, `wt-${userId.slice(-12)}`)
+	await options.beforeWake?.(userId)
+	const extraExports = options.extraExports ?? {}
 	const wake = await publishForkedPackage({
 		userId,
 		name: '@kentcdodds/grok-bot',
@@ -874,12 +902,20 @@ async function setupCredentialVault() {
 					credentials: {
 						wakeToken: { kind: 'secret', description: 'Wake token.' },
 					},
+					...options.extraKody,
 				},
-				{ exports: { './wake': './src/wake.ts' } },
+				{ exports: { './wake': './src/wake.ts', ...extraExports } },
 			),
 			'src/wake.ts': credentialWake,
+			...options.extraSourceFiles,
 		},
-		exports: [{ artifactName: './wake', entryPoint: 'src/wake.ts' }],
+		exports: [
+			{ artifactName: './wake', entryPoint: 'src/wake.ts' },
+			...Object.entries(extraExports).map(([artifactName, path]) => ({
+				artifactName,
+				entryPoint: path.replace(/^\.\//, ''),
+			})),
+		],
 	})
 	const storageContext = {
 		sessionId: null,
@@ -894,6 +930,7 @@ async function setupCredentialVault() {
 		name: 'wakeToken',
 		value: DUMMY_SECRET,
 		storageContext,
+		audit: null,
 	})
 	await setSecretAllowedHosts({
 		env,
@@ -902,6 +939,7 @@ async function setupCredentialVault() {
 		name: 'wakeToken',
 		allowedHosts: ['upstream.example.com'],
 		storageContext,
+		audit: null,
 	})
 	return { userId, wake }
 }
@@ -1004,6 +1042,52 @@ export default async function main() {
 		expect(out['steal']).toBeUndefined()
 		expect(out['opened']).not.toMatchObject({ name: 'wakeToken' })
 		expect(out['named']).not.toBe('wakeToken')
+	},
+)
+
+test(
+	'credential client passing: a client the caller opens works inside a dependency it is handed to',
+	{ timeout: 120_000 },
+	async () => {
+		const { userId } = await setupCredentialVault({
+			beforeWake: (userId) =>
+				publishForkedPackage({
+					userId,
+					name: '@kentcdodds/shared-poster',
+					kodyId: 'shared-poster',
+					sourceFiles: {
+						'package.json': manifest(
+							'@kentcdodds/shared-poster',
+							{ id: 'shared-poster', description: 'Posts with a client' },
+							{ exports: { './post': './src/post.ts' } },
+						),
+						'src/post.ts': `export default async function post(client) {
+	const res = await client.fetch('https://upstream.example.com/a-only/wake', { method: 'POST' })
+	return { status: res.status }
+}`,
+					},
+					exports: [{ artifactName: './post', entryPoint: 'src/post.ts' }],
+				}),
+			extraKody: { dependencies: { '@kentcdodds/shared-poster': '*' } },
+			extraExports: { './pass': './src/pass.ts' },
+			extraSourceFiles: {
+				'src/pass.ts': `import { credential } from 'kody:runtime'
+import post from 'kody:@kentcdodds/shared-poster/post'
+export default async function pass() {
+	return await post(await credential('wakeToken'))
+}`,
+			},
+		})
+		const seen = installFakeUpstream()
+		const run = await runModule(userId, {
+			'entry.ts': `import pass from 'kody:@kentcdodds/grok-bot/pass'
+export default async function main() {
+	return await pass()
+}`,
+		})
+		expect(run.error).toBeUndefined()
+		expect(run.result).toEqual({ status: 200 })
+		expect(pathsCarrying(seen, DUMMY_SECRET)).toEqual(['POST /a-only/wake'])
 	},
 )
 

@@ -39,6 +39,12 @@ except for content you deliberately make public (public packages published to
 Community and a public profile), the narrow admin review of approved platform
 feedback, and the community activity metadata described below.
 
+When you sign in to someone's package app with Sign in with Kody, people who
+manage that app can see your username, display name, avatar, when you first
+connected, when you last used the app, and what you allowed it to do. They never
+see your credentials or their values. Revoking the app on **Account > Connected
+apps** removes you from that list.
+
 When profile visibility is **public**, display name, bio, public package
 metadata, and public activity are visible on `/@username`. When visibility is
 **private**, the public profile is not found. See
@@ -138,12 +144,12 @@ includes private package source, rating notes, email, stable user ids, private
 profiles, secrets, or unrelated account content. Admin-configured notification
 packages may receive the same community metadata, and a metadata-only
 `user.created` or `user.deleted` event when a person account is created or
-self-deleted (stable user id, username, email, the create source and
-`created_at` or delete timestamp, and first-touch marketing attribution fields
-when present). Referral rows are account data (export and deletion) and are not
-included on those lifecycle events. Those lifecycle events omit passwords,
-roles, plan, secrets, and unrelated account content. Admin-configured
-notification packages may also receive a metadata-only
+deleted (stable user id, username, email, the create source, the signup
+`created_at` on both events, the delete timestamp, and first-touch marketing
+attribution fields when present). Referral rows are account data (export and
+deletion) and are not included on those lifecycle events. Those lifecycle events
+omit passwords, roles, plan, secrets, and unrelated account content.
+Admin-configured notification packages may also receive a metadata-only
 `user.email_verification.failed` event when signup/verify mail first hits a
 terminal delivery failure (stable user id, username, email, status, `class`
 (`sender_block` / `other` / `null`), an admin user URL, and `occurred_at`). That

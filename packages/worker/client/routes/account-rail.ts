@@ -103,6 +103,12 @@ const accountRailItems: Array<AccountRailItem> = [
 		icon: 'users',
 	},
 	{
+		href: routes.accountConnectedApps.href(),
+		id: 'connected-apps',
+		label: 'Connected apps',
+		icon: 'link',
+	},
+	{
 		href: routes.accountExperiments.href(),
 		id: 'experiments',
 		label: 'Experiments',
@@ -125,6 +131,30 @@ export function workspaceHomeHref(org: {
 	return org.role === null
 		? routes.profile.href({ username: org.slug })
 		: orgOverviewPath(org.slug)
+}
+
+/**
+ * Where to land after leaving one of an owner's pages (for example after
+ * deleting a package). A public handle can differ from the org slug, so
+ * match the viewer's own workspaces first and fall back to the public page.
+ */
+export function ownerWorkspaceHref(input: {
+	ownerHandle: string
+	ownerIsPersonal: boolean
+	organizations: ReadonlyArray<
+		Pick<OrganizationSummary, 'slug' | 'personal' | 'role'>
+	>
+}) {
+	const org =
+		input.organizations.find(
+			(entry) => entry.slug === input.ownerHandle && entry.role !== null,
+		) ??
+		(input.ownerIsPersonal
+			? input.organizations.find((entry) => entry.personal)
+			: undefined)
+	return org
+		? orgOverviewPath(org.slug)
+		: routes.profile.href({ username: input.ownerHandle })
 }
 
 /** Target policy is presentation only; destination loaders authorize every request. */
@@ -213,15 +243,35 @@ function creditsRailItem(orgSlug: string): AccountRailItem {
 }
 
 /**
- * Entry into an organization's workspace rail. Lands on Repositories (the
- * first Build section) so Activity, Secrets, and the rest stay one click away
- * on the existing `/@slug/-/<section>` rail — not a second navigation system.
+ * The public face of a workspace: a person's profile or a team org's home at
+ * `/@slug`. Listed under Overview so that page has its own rail item instead
+ * of borrowing Overview's highlight.
+ */
+function publicProfileRailItem(
+	orgSlug: string,
+	profileUsername?: string | null,
+): AccountRailItem {
+	return {
+		href: routes.profile.href({
+			username: profileUsername?.trim() || orgSlug,
+		}),
+		id: 'public-profile',
+		label: 'Public profile',
+		icon: 'globe',
+		description: 'What everyone else sees at this workspace handle.',
+	}
+}
+
+/**
+ * Entry into an organization's workspace rail. Lands on Overview, the top of
+ * the existing `/@slug/-/<section>` rail, so every section stays one click
+ * away. Without a slug yet it opens the person hub.
  */
 export function workspaceLandingItem(
 	orgSlug: string | null | undefined,
 ): AccountRailItem {
 	return {
-		href: accountPackagesNavHref(orgSlug),
+		href: orgSlug ? orgOverviewPath(orgSlug) : routes.account.href(),
 		id: 'workspace',
 		label: 'Workspace',
 		icon: 'box',
@@ -298,7 +348,8 @@ function repositoriesRailItem(
 		id: 'repositories',
 		label: 'Repositories',
 		icon: 'box',
-		description: 'Every repository in this workspace, private ones included.',
+		description:
+			'Repositories and packages in this workspace, private ones included.',
 	}
 }
 
@@ -309,6 +360,19 @@ function jobsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 		label: 'Jobs',
 		icon: 'briefcase',
 		description: 'Scheduled package jobs. Run one now or pause it.',
+	}
+}
+
+function executionContextsRailItem(
+	orgSlug: string | null | undefined,
+): AccountRailItem {
+	return {
+		href: orgSectionHref(orgSlug, 'execution-contexts'),
+		id: 'execution-contexts',
+		label: 'Execution contexts',
+		icon: 'server',
+		description:
+			'Your machines and shared servers that run execute, and the order Kody tries them in.',
 	}
 }
 
@@ -425,6 +489,7 @@ function membersRailItem(orgSlug: string, role: OrgRole): AccountRailItem {
 function workspaceResourceGroups(
 	orgSlug: string | null | undefined,
 	personal: boolean,
+	executionContexts = false,
 ): Array<AccountRailGroup> {
 	return [
 		{
@@ -432,6 +497,7 @@ function workspaceResourceGroups(
 			items: [
 				repositoriesRailItem(orgSlug),
 				jobsRailItem(orgSlug),
+				...(executionContexts ? [executionContextsRailItem(orgSlug)] : []),
 				{
 					href: orgSectionHref(orgSlug, 'webhooks'),
 					id: 'webhooks',
@@ -466,6 +532,12 @@ function workspaceResourceGroups(
 			label: 'Agents & data',
 			items: [
 				agentsRailItem(orgSlug),
+				{
+					href: orgSectionHref(orgSlug, 'skills'),
+					id: 'skills',
+					label: 'Skills',
+					icon: 'book',
+				},
 				...(personal ? [memoriesRailItem(orgSlug)] : []),
 				{
 					href: orgSectionHref(orgSlug, 'email'),
@@ -497,8 +569,17 @@ export function workspaceRailGroups(input: {
 	/** True when `orgSlug` is the signup (personal) organization. */
 	personal: boolean
 	role: OrgRole | null
+	/**
+	 * The person's username on their personal org. A legacy rename can leave
+	 * it different from the immutable org slug, and the profile lives at the
+	 * username.
+	 */
+	profileUsername?: string | null
+	/** The `execution-contexts` flag is on for the viewer. */
+	executionContexts?: boolean
 }): Array<AccountRailGroup> {
 	const { orgSlug, personal, role } = input
+	const profileUsername = personal ? input.profileUsername : null
 	// Team chrome needs a slug. A missing signup slug still lists the
 	// personal-shaped sections with `/account` fallbacks until one exists.
 	if (!orgSlug && !personal) return []
@@ -506,6 +587,7 @@ export function workspaceRailGroups(input: {
 	if (role === null) {
 		if (!orgSlug) return []
 		return [
+			{ label: null, items: [publicProfileRailItem(orgSlug, profileUsername)] },
 			{
 				label: 'Agents & data',
 				items: [agentsRailItem(orgSlug)],
@@ -560,8 +642,18 @@ export function workspaceRailGroups(input: {
 				]
 
 	return [
-		...(orgSlug ? [{ label: null, items: [overviewRailItem(orgSlug)] }] : []),
-		...workspaceResourceGroups(orgSlug, personal),
+		...(orgSlug
+			? [
+					{
+						label: null,
+						items: [
+							overviewRailItem(orgSlug),
+							publicProfileRailItem(orgSlug, profileUsername),
+						],
+					},
+				]
+			: []),
+		...workspaceResourceGroups(orgSlug, personal, input.executionContexts),
 		{ label: 'Organization', items: organizationItems },
 	]
 }

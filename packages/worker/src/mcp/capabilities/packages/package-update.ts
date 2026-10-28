@@ -1,3 +1,7 @@
+import {
+	optionalOrgAuditWriter,
+	orgAuditCauseFromCaller,
+} from '#worker/orgs/org-audit.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { authorizePackageWrite } from '#worker/authorization/authorize.ts'
@@ -118,6 +122,7 @@ export const packageUpdateCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageUpdate',
+		contextRuns: 'allow',
 		orgPermission: 'package:write',
 		description:
 			'Update mutable settings for a saved package: hidden search-discovery, publish lock (`changes.locked: true`; agents cannot unlock), repo visibility / forkable (`changes.visibility`), and internet-visible app serving (`changes.internet_visible`). Making a package public lists it on /community with full source and fork. Before setting visibility public, review source, README, Intent, description, tags, examples, and hardcoded identifiers for overly personal material. If anything looks personal or household-specific, do not publish yet — tell the user what you found, suggest how to generalize, and wait for explicit go-ahead. No MIT, logo, or Intent platform gates. Making it private unlists it (public URLs 404; forks keep their copies) — pass confirm_name matching the package slug after the owner typed that name. Internet-visible is independent of forkable and requires owner capability approval on the website. Canonical package metadata such as name, description, and tags remains derived from package.json. Visibility is not package.json#private.',
@@ -234,6 +239,11 @@ export const packageUpdateCapability = defineDomainCapability(
 					userId: owner.ownerUserId,
 					packageId: args.package_id,
 					hidden: args.changes.hidden,
+					audit: optionalOrgAuditWriter(
+						ctx.env,
+						ctx.callerContext.request ?? null,
+						orgAuditCauseFromCaller(ctx.callerContext),
+					),
 				})
 				if (!changed) {
 					throw new McpCallerError('Saved package not found for this user.')
@@ -287,6 +297,11 @@ export const packageUpdateCapability = defineDomainCapability(
 						userId: owner.ownerUserId,
 						packageId: args.package_id,
 						isPrivate: true,
+						audit: optionalOrgAuditWriter(
+							ctx.env,
+							ctx.callerContext.request ?? null,
+							orgAuditCauseFromCaller(ctx.callerContext),
+						),
 					})
 					if (!changed) {
 						throw new McpCallerError('Saved package not found for this user.')

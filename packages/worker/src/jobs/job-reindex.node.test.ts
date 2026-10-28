@@ -55,7 +55,7 @@ function buildJobRow(id: string, userId = 'user-1') {
 		sourceId: 'source-1',
 		publishedCommit: null,
 		storageId: `job:${id}`,
-		schedule: { type: 'once', runAt: '2026-01-01T00:00:00.000Z' },
+		schedule: { type: 'interval', every: '1h' },
 		timezone: 'UTC',
 		enabled: true,
 		killSwitchEnabled: false,

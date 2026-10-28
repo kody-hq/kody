@@ -143,7 +143,7 @@ export const entitlementResourceVisibility: Record<
 		whatCounts:
 			'Distinct code your MCP execute calls ran today (UTC). Each new module graph loads one sandbox worker and counts once per day; running the same code again (any params, success or failure) is free. Calls that never load a worker (refused before running) do not count. Does not include webhooks, package-export HTTP invocations, subscriptions, or jobs. Public plans also cap the UTC week.',
 		howToReduce:
-			'Reuse the same code and vary params instead of writing new code for each call.',
+			'Reuse the same code and vary params instead of writing new code for each call. Shell-capable hosts can run `npx -y @kodycodes/cli@latest execute --local` (Node 22+); if it is not signed in, call `api` with `cliCredentialBootstrap` and run its `cli_command`.',
 		upgradeOffer: ', or upgrade your plan.',
 	},
 	outbound_fetches_per_day: {

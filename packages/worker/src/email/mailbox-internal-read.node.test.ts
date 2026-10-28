@@ -55,6 +55,7 @@ function mailboxMessage(): MailboxMessageRecord {
 		processingStatus: 'stored',
 		classification: 'accepted',
 		classificationReason: null,
+		archivedAt: null,
 		providerMessageId: null,
 		deliveryStatus: null,
 		deliveryStatusAt: null,

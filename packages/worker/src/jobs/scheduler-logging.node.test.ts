@@ -10,7 +10,7 @@ test('logJobSchedulerError truncates oversized fields, caps outcome count, and a
 	try {
 		const manyOutcomes = Array.from({ length: 11 }, (_, index) => ({
 			jobId: `job-${index}`,
-			scheduleType: 'once' as const,
+			scheduleType: 'cron' as const,
 			outcome: 'success' as const,
 			nextRunAt: null,
 			deleted: false,
@@ -33,7 +33,7 @@ test('logJobSchedulerError truncates oversized fields, caps outcome count, and a
 			jobOutcomes: [
 				{
 					jobId: 'job-123',
-					scheduleType: 'once',
+					scheduleType: 'cron',
 					outcome: 'failure',
 					nextRunAt: null,
 					deleted: true,

@@ -295,7 +295,7 @@ export function renderAlreadyAddedNotice(items: Array<string>) {
 	)
 }
 
-export const secretPackageIdentityCss: CSSObject = {
+const secretPackageIdentityCss: CSSObject = {
 	display: 'grid',
 	gap: spacing.xs,
 	minWidth: 0,

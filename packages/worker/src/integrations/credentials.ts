@@ -18,6 +18,11 @@ import {
 	updateOauthAppClientSecretCiphertext,
 } from './repo.ts'
 import { type IntegrationRefreshPolicy } from './refresh-policy.ts'
+import {
+	credentialAuditActions,
+	recordCredentialAudit,
+} from '#worker/credentials/credential-audit.ts'
+import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 
 type CredentialEnv = Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
 
@@ -42,7 +47,20 @@ export async function persistIntegrationTokens(input: {
 	 * overwrite tokens a newer refresher already rotated.
 	 */
 	refreshLeaseId?: string
+	/**
+	 * Person-initiated connects pass the org audit writer so a reconnect over
+	 * an existing token audits as a replaced value. Host-side refresh passes
+	 * null: a refresh is not an org change.
+	 */
+	audit: OrgAuditWriter | null
 }): Promise<void> {
+	const previous = input.audit
+		? await getIntegrationCredentialCiphertexts({
+				db: input.env.APP_DB,
+				userId: input.userId,
+				name: input.name,
+			})
+		: null
 	const context = userIntegrationCredentialContext(input.userId, input.name)
 	const accessTokenEncrypted = await encryptUserOauthAccessToken(
 		input.env,
@@ -68,6 +86,18 @@ export async function persistIntegrationTokens(input: {
 		throw new Error(
 			`Token refresh lease for integration "${input.name}" expired before its tokens were saved.`,
 		)
+	}
+	if (previous?.accessTokenEncrypted) {
+		await recordCredentialAudit(input.audit, {
+			orgId: input.userId,
+			credential: {
+				id: previous.credentialId,
+				kind: 'integration',
+				name: input.name,
+			},
+			action: credentialAuditActions.valueReplaced,
+			details: { fields: ['value'] },
+		})
 	}
 	try {
 		await clearIntegrationAuthFailure({

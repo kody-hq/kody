@@ -1,3 +1,4 @@
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -18,6 +19,7 @@ export const mcpServerRemoveCapability = defineDomainCapability(
 	capabilityDomainNames.mcpServers,
 	{
 		name: 'mcpServerRemove',
+		contextRuns: 'deny',
 		orgPermission: 'integration:delete',
 		description:
 			'Remove a saved MCP server: disconnects it, deletes stored OAuth tokens and client registrations, and removes its kody.mcp capabilities.',
@@ -41,6 +43,7 @@ export const mcpServerRemoveCapability = defineDomainCapability(
 				env: ctx.env,
 				userId: ownerIdFromCaller(ctx.callerContext),
 				id: setting.id,
+				audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 			})
 			return {
 				removed,

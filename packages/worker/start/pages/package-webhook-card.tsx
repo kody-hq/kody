@@ -20,6 +20,7 @@ import {
 } from '#client/routes/webhooks-shared.ts'
 import { CopyCard } from './onboarding-mcp-client-cards.tsx'
 import { type PackageWebhookListItem } from '#universal/loader-data.ts'
+import { packageCredentialsTabHref } from '#universal/package-credentials-page.ts'
 import {
 	descriptionCss,
 	fieldCss,
@@ -152,8 +153,7 @@ function challengeValue(webhook: PackageWebhookListItem) {
 /**
  * One declared webhook on package settings: metadata, the URL slot (Mint /
  * Reveal + Copy / Hide), Approve until a person approves it, then the Rotate
- * and Enable / Disable actions. The
- * card never renders a URL it did not just receive from a reveal.
+ * action. The card never renders a URL it did not just receive from a reveal.
  */
 export type PackageWebhookCardIntent = {
 	intent: WebhookIntent
@@ -163,10 +163,11 @@ export type PackageWebhookCardIntent = {
 
 export function renderPackageWebhookCard(input: {
 	webhook: PackageWebhookListItem
+	username: string
+	kodyId: string
 	revealedUrl: string | null
 	isMutating: boolean
 	rotateCheck: WebhookConfirmation
-	disableCheck: WebhookConfirmation
 	onIntent: (payload: PackageWebhookCardIntent) => void
 	onHideUrl: () => void
 	deliveriesHref: string
@@ -175,10 +176,11 @@ export function renderPackageWebhookCard(input: {
 }) {
 	const {
 		webhook,
+		username,
+		kodyId,
 		revealedUrl,
 		isMutating,
 		rotateCheck,
-		disableCheck,
 		onIntent,
 		onHideUrl,
 		showMintAnother = false,
@@ -246,7 +248,7 @@ export function renderPackageWebhookCard(input: {
 						label: 'Rotated',
 						value: <TimestampValue value={webhook.rotatedAt} />,
 					},
-					...(webhook.enabled && webhook.previousUrlActiveUntil
+					...(webhook.approved && webhook.previousUrlActiveUntil
 						? [
 								{
 									label: 'Previous URL',
@@ -297,32 +299,19 @@ export function renderPackageWebhookCard(input: {
 								Approve it from this package's Credentials page.
 							</span>
 						)
-					) : webhook.enabled ? (
-						<button
-							type="button"
-							disabled={isMutating}
-							aria-label={
-								disableCheck.armed
-									? `Confirm disable ${webhookLabel}`
-									: `Disable ${webhookLabel}`
-							}
-							css={secondaryButtonCss}
-							onClick={disableCheck.onClick}
-							onBlur={disableCheck.onBlur}
+					) : null}
+					{webhook.approved ? (
+						<SiteLink
+							href={packageCredentialsTabHref({
+								username,
+								kodyId,
+								tab: 'triggers',
+							})}
+							css={mutedLinkCss}
 						>
-							{disableCheck.armed ? 'Confirm disable' : 'Disable'}
-						</button>
-					) : (
-						<button
-							type="button"
-							disabled={isMutating}
-							aria-label={`Enable ${webhookLabel}`}
-							css={secondaryButtonCss}
-							onClick={() => onIntent({ intent: 'enable' })}
-						>
-							Enable
-						</button>
-					)}
+							Turn off on Triggers
+						</SiteLink>
+					) : null}
 					<button
 						type="button"
 						disabled={isMutating}
@@ -352,16 +341,17 @@ export function renderPackageWebhookCard(input: {
 
 			{webhook.minted && !webhook.approved ? (
 				<AccountManagementMessage tone="info">
-					Minting a URL does not turn the webhook on. Deliveries answer 409
-					until you approve it.
+					Minting a URL does not turn the webhook on. Deliveries don't run until
+					you approve it (409 before the first approval, 404 after it was turned
+					off).
 				</AccountManagementMessage>
 			) : null}
 
 			{webhook.minted ? (
 				<p css={descriptionCss}>
-					Disabling answers 404 without deleting the mint; enabling restores the
-					same URL. Removing the declaration from the package manifest retires
-					the ingress.{' '}
+					Turning it off on Triggers makes this URL answer 404. Turn it back on
+					by Approving the same URL. Removing the declaration from the package
+					manifest retires the ingress.{' '}
 					<SiteLink href={webhooksDocHref} css={primaryLinkCss}>
 						Inbound webhooks docs
 					</SiteLink>

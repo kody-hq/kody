@@ -5,7 +5,7 @@ summary:
   How Kody lets your agent use your API keys, tokens, and private keys without
   ever reading them: the no-secret_get rule, `{{secret:name}}` placeholders
   resolved at the network boundary, host approval, package approval (website
-  Allow links via `secretLock`), and expiry. Keys are one credential kind; the
+  Allow links via `resourceLock`), and expiry. Keys are one credential kind; the
   Credentials guide covers every kind. Load this when someone asks whether the
   agent can see a key.
 category: platform
@@ -27,7 +27,7 @@ for the locked Gmail drafts loop, written up in
 ## The rule: there is no `secret_get`
 
 The secrets capabilities are `secretList`, `secretSet`, `secretSetMany`,
-`secretLock`, `secretDisconnect`, `secretDelete`, and `secretJwtSign`. No
+`resourceLock`, `secretDisconnect`, `secretDelete`, and `secretJwtSign`. No
 capability returns a secret value. `secretList` returns metadata only: names,
 descriptions, approved hosts, expiry, remaining time to live, `disconnected`
 (value cleared, row kept), and `package_id` for package-scoped secrets.
@@ -36,10 +36,10 @@ hosts, and grants so reconnect with `secretSet` restores the same record.
 `secretDelete` removes the credential and every record of it. Explicit listing
 includes caller-owned package-scoped metadata even from execute; using a package
 secret still requires package context. Search does not return or rank those
-rows. `secretLock` returns grant-status metadata and an `approval_url` for the
-owner to click; it does not apply the grant. External vaults use
-[custom secret providers](./secret-providers.md) (`secretProvider*` capabilities
-and `{{secret/<provider>:<ref>}}` placeholders).
+rows. `resourceLock({ kind: 'secret', name, package_id })` returns grant-status
+metadata and an `approval_url` for the owner to click; it does not apply the
+grant. External vaults use [custom secret providers](./secret-providers.md)
+(`secretProvider*` capabilities and `{{secret/<provider>:<ref>}}` placeholders).
 
 This is why you can hand an agent a job that needs your GitHub token without the
 token ever entering the prompt, the transcript, or the model provider's logs.
@@ -55,12 +55,13 @@ boundary, on the final serialized request, and only for hosts you approved.
   HTTPS `fetch` (a header, the URL path or query, or a text body) resolves when
   the request leaves Kody, if the host is one you approved for that secret. Each
   credential also stores a **fill placement** (headers, query, path, and/or
-  body). Null means anywhere; new credentials default to headers-only. Set
-  placement on create/edit (`secretSet` / `credentialUpdate`, the credential
-  detail page, or `/connect/secret-set`). The gateway fills every part and logs
-  would-block when a fill is outside the declared placement. A path fill is one
-  encoded segment: store only the token for webhook URLs, with the path prefix
-  literal in code (see
+  body). New credentials default to headers-only. Set placement on create/edit
+  (`secretSet` / `credentialUpdate`, the credential detail page, or
+  `/connect/secret-set`). The gateway refuses a fill outside the placement, and
+  query, URL path, and body also need the owner's opt-in on the credential page.
+  Credentials seen filling a query, path, or body before enforcement keep those
+  parts (migration 0195). A path fill is one encoded segment: store only the
+  token for webhook URLs, with the path prefix literal in code (see
   [Secrets and host approval](../use/secrets-and-values.md#placeholders-in-fetch)).
   On plain `http://` or an unapproved host the request is refused with an error
   naming the secret and host; a placeholder is never sent unfilled. External
@@ -72,12 +73,27 @@ boundary, on the final serialized request, and only for hosts you approved.
   produces the header without exposing either half. Each secret argument accepts
   a saved secret name **or** an opaque `{{secret:…}}` ref from
   `packageSecrets.get`.
-- **Signed JWTs** — `secretJwtSign` signs a JWT with a stored key and returns
-  the compact token, never the key. HMAC (`HS256` / `HS384` / `HS512`) reads key
-  material from the saved secret (`key_encoding` defaults to `base64`) and
-  rejects keys shorter than 32, 48, or 64 bytes (JWA). `RS*`, `PS*`, `ES*`, and
-  `EdDSA` use a PKCS#8 PEM private key. Pass the secret as
-  `private_key_secret_name` (name **or** opaque `{{secret:…}}` ref).
+- **Signed JWTs**: `secretJwtSign` signs a JWT with a stored key and returns a
+  sealed handle for the compact token, never the key or the token. Put the
+  handle in a fetch header or body and Kody fills the JWT on egress. HMAC
+  (`HS256` / `HS384` / `HS512`) reads key material from the saved secret
+  (`key_encoding` defaults to `base64`) and rejects keys shorter than 32, 48, or
+  64 bytes (JWA). `RS*`, `PS*`, `ES*`, and `EdDSA` use a PKCS#8 PEM private key.
+  Pass the secret as `private_key_secret_name` (a saved secret name **or** the
+  opaque ref from `packageSecrets.get`).
+
+- **Saving a token from a token exchange**: a token response (`access_token`,
+  `refresh_token`, `id_token`) to a request Kody filled a credential into comes
+  back sealed (`{{integration-token:kody-sealed.…}}`), good only in that run for
+  up to an hour. To keep a long-lived one (Plaid's `access_token` from
+  `/item/public_token/exchange`), pass it to
+  `secretSet({ name, scope: 'user', sealed_token })` in the same run. Kody opens
+  it and saves the real token as a Key, never returned to code. The Key goes
+  only to the token endpoint's host, the exact hosts approved on the credentials
+  that minted it, and its JWT audience host, in a header or the body (never the
+  URL). Saving over an existing Key keeps its narrower hosts and placement.
+  `secretSet` refuses a sealed token passed as `value`, one from another run, an
+  expired one, and a signed JWT.
 
 Placeholders are live tokens. Do not paste one into an issue body, a comment, a
 log line, or a returned string — write `{{secret:<name>}}` with angle brackets
@@ -99,21 +115,25 @@ Saving a secret does not by itself let anything use it.
   user-scoped secret. Approval is checked against the stamped package — the
   module that originated the call — so dependents statically import the owning
   export instead of needing their own grant. Packages you authored and community
-  forks you adopted after reviewing the source get read/use automatically.
-  Unadopted forks need an explicit grant. Updating, disconnecting, or deleting a
-  user secret from package code always needs the grant. Only the account owner
-  can add a package to that grant on `/@<slug>/-/secrets/user/:name` or
+  forks you adopted after reviewing the source get read/use automatically while
+  the secret's `allowed_packages` list is empty. A non-empty list is enforced
+  for every package, including ones you authored or adopted. Unadopted forks
+  need an explicit grant. Updating, disconnecting, or deleting a user secret
+  from package code always needs the grant. Only the account owner can add a
+  package to that grant on `/@<slug>/-/secrets/user/:name` or
   `/@<slug>/-/secrets/approve` — a focused Allow page, the same spirit as host
-  approval on `/connect/secrets`. `secretLock` returns that approval URL for the
-  owner to click; it does not change `allowed_packages`. Send the link and wait.
-  Removing a grant is also website-only.
+  approval on `/connect/secrets`.
+  `resourceLock({ kind: 'secret', name, package_id })` returns that approval URL
+  for the owner to click; it does not change `allowed_packages`. Send the link
+  and wait. Removing a grant is also website-only.
 
 Bulk approval URLs (`/@<slug>/-/secrets/approve?package_id=…&names=a,b`) let you
 approve several pending secrets for one package in a click.
 
 Publish and save warn when a package fills a user credential whose
-`allowed_packages` list is non-empty and does not include that package. Approve
-the package or move the use into an already-allowed package.
+`allowed_packages` list is non-empty and does not include that package, because
+that use is denied at runtime. Approve the package or move the use into an
+already-allowed package.
 
 ## Scopes
 

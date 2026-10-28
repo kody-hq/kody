@@ -242,6 +242,8 @@ export type PackageCredentialNeedView = {
 	provider: string
 	description: string
 	multiple: boolean
+	supplier?: 'publisher' | 'executor'
+	required?: boolean
 	from?: string
 	defaults: {
 		org: StoredCredentialMapping | null
@@ -485,6 +487,14 @@ const createLinkKnownParams = new Set([
 	'expiresAt',
 	'allowedPackages',
 ])
+
+/** Whether a query carries any creation-link prefill the form reads. */
+export function hasCredentialCreatePrefill(search: URLSearchParams) {
+	for (const key of search.keys()) {
+		if (createLinkKnownParams.has(key)) return true
+	}
+	return false
+}
 
 function commaList(values: ReadonlyArray<string> | undefined) {
 	return [...new Set((values ?? []).map((value) => value.trim()))].filter(

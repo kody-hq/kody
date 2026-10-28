@@ -102,7 +102,9 @@ test('real local Wrangler returns quick_check rows through the production parser
 	} finally {
 		await rm(directory, { recursive: true, force: true })
 	}
-}, 30_000)
+	// Two real Wrangler/workerd cold starts run alongside the rest of the Node
+	// shard on CI. Keep a bounded integration-test budget for both processes.
+}, 120_000)
 
 test('Cloudflare create adapter uses documented endpoint and validates response envelope', async () => {
 	const fetcher = vi.fn(async () => {

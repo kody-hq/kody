@@ -1,3 +1,4 @@
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
@@ -12,6 +13,7 @@ export const secretProviderBindCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'secretProviderBind',
+		contextRuns: 'deny',
 		orgPermission: 'secret:write',
 		description:
 			'Pin which saved package serves an external secret provider id for this account, plus which user secret holds the door key. Declaring kody.secretProvider on a package does not bind it. Owner-controlled; does not return secret values.',
@@ -62,6 +64,7 @@ export const secretProviderBindCapability = defineDomainCapability(
 					packageId: args.package_id,
 					doorSecretName: args.door_secret_name,
 					config: args.config,
+					audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 				})
 				return {
 					provider: bound.providerId,

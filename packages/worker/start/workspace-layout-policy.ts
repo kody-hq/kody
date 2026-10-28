@@ -44,9 +44,15 @@ export function workspaceLayoutNavigation(
 	if (typeof username !== 'string') return null
 	const org = session.organizations?.find((entry) => entry.slug === username)
 	if (policy === 'profile') {
-		// A person's public profile stays a public page, even for that person.
-		return org && !org.personal && navigation
-			? { ...navigation, orgSlug: username }
+		// Workspaces the viewer belongs to (their own profile included) keep
+		// the workspace rail with Public profile selected. Everyone else's
+		// profile stays a plain public page.
+		if (!navigation) return null
+		if (org) return { ...navigation, orgSlug: username }
+		// A legacy rename can leave the username apart from the personal org
+		// slug; the rail then falls back to the personal org.
+		return session.username === username
+			? { ...navigation, orgSlug: null }
 			: null
 	}
 	if (!org && session.username !== username) return null

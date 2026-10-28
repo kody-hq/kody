@@ -21,6 +21,7 @@ import {
 import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
 import { loadPublishedEntityManifest } from '#worker/repo/published-source.ts'
 import { type EntitySourceRow } from '#worker/repo/types.ts'
+import { isPackageCredentialSuppliersEnabled } from './credential-suppliers-flag.ts'
 import {
 	mergeCredentialNeeds,
 	ownCredentialNeeds,
@@ -91,6 +92,8 @@ export async function loadPublishedCredentialNeeds(input: {
 	source?: EntitySourceRow | null
 	visiting?: ReadonlySet<string>
 	fresh?: boolean
+	supplierSemanticsEnabled?: boolean
+	request?: object | null
 }): Promise<Array<CredentialNeed>> {
 	const visiting = input.visiting ?? new Set<string>()
 	if (visiting.has(input.sourceId)) return []
@@ -106,6 +109,13 @@ export async function loadPublishedCredentialNeeds(input: {
 	) {
 		return []
 	}
+	const supplierSemanticsEnabled =
+		input.supplierSemanticsEnabled ??
+		(await isPackageCredentialSuppliersEnabled({
+			db: input.env.APP_DB,
+			orgId: input.userId,
+			request: input.request,
+		}))
 	const stored = input.fresh
 		? null
 		: readStoredCredentialNeeds(
@@ -114,6 +124,7 @@ export async function loadPublishedCredentialNeeds(input: {
 					sourceId: source.id,
 					publishedCommit: source.published_commit,
 				}),
+				{ supplierSemanticsEnabled },
 			)
 	if (stored) return stored
 	const { manifest } = await loadPublishedEntityManifest({
@@ -127,13 +138,19 @@ export async function loadPublishedCredentialNeeds(input: {
 		sourceId: source.id,
 		publishedCommit: source.published_commit,
 	})
-	if (!snapshot) return ownCredentialNeeds(manifest.kody.credentials)
+	if (!snapshot) {
+		return ownCredentialNeeds(manifest.kody.credentials, {
+			supplierSemanticsEnabled,
+		})
+	}
 	const { needs } = await computeCredentialNeedsClosure({
 		env: input.env,
 		userId: input.userId,
 		manifest,
 		files: packageSourceFiles({ source, files: snapshot.files }).files,
 		visiting: new Set([...visiting, source.id]),
+		supplierSemanticsEnabled,
+		request: input.request,
 	})
 	return needs
 }
@@ -155,6 +172,8 @@ async function loadDependencyCredentialNeeds(input: {
 	manifest: AuthoredPackageJson
 	files: Record<string, string>
 	visiting: ReadonlySet<string>
+	supplierSemanticsEnabled: boolean
+	request?: object | null
 }): Promise<Array<DependencyCredentialNeeds>> {
 	const names = [
 		...new Set(
@@ -195,6 +214,8 @@ async function loadDependencyCredentialNeeds(input: {
 				sourceId: resolution.row.sourceId,
 				source: sourcesById.get(resolution.row.sourceId) ?? null,
 				visiting: input.visiting,
+				supplierSemanticsEnabled: input.supplierSemanticsEnabled,
+				request: input.request,
 			})
 			return { packageName, needs }
 		}),
@@ -209,14 +230,47 @@ export async function computeCredentialNeedsClosure(input: {
 	manifest: AuthoredPackageJson
 	files: Record<string, string>
 	visiting?: ReadonlySet<string>
+	supplierSemanticsEnabled?: boolean
+	request?: object | null
 }) {
-	return mergeCredentialNeeds({
-		own: ownCredentialNeeds(input.manifest.kody.credentials),
+	const supplierSemanticsEnabled =
+		input.supplierSemanticsEnabled ??
+		(await isPackageCredentialSuppliersEnabled({
+			db: input.env.APP_DB,
+			orgId: input.userId,
+			request: input.request,
+		}))
+	const merged = mergeCredentialNeeds({
+		own: ownCredentialNeeds(input.manifest.kody.credentials, {
+			supplierSemanticsEnabled,
+		}),
 		dependencies: await loadDependencyCredentialNeeds({
 			...input,
 			visiting: input.visiting ?? new Set(),
+			supplierSemanticsEnabled,
+			request: input.request,
 		}),
+		supplierSemanticsEnabled,
 	})
+	if (!supplierSemanticsEnabled) return merged
+	const publisherKeys = new Set(
+		merged.needs
+			.filter((need) => need.supplier === 'publisher')
+			.map((need) => need.key),
+	)
+	const visitorNeedConflicts = Object.entries(
+		input.manifest.kody.app?.visitorNeeds ?? {},
+	).flatMap(([visitorNeedKey, visitorNeed]) =>
+		visitorNeed.credential && publisherKeys.has(visitorNeed.credential)
+			? [
+					`kody.app.visitorNeeds.${visitorNeedKey} cannot reference publisher-supplied credential need "${visitorNeed.credential}".`,
+				]
+			: [],
+	)
+	return {
+		...merged,
+		conflicts: [...merged.conflicts, ...visitorNeedConflicts],
+	}
 }
 
 /**

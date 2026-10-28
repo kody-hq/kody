@@ -274,6 +274,67 @@ function isArtifactsNamespaceNotFoundMessage(message: string) {
 	)
 }
 
+function isArtifactsNamespaceDeletionInProgressMessage(message: string) {
+	return /deletion is already in progress/i.test(message)
+}
+
+function isArtifactsNamespaceActivationInProgressMessage(message: string) {
+	return /activation is already in progress/i.test(message)
+}
+
+async function waitForArtifactsNamespaceActivation(input: {
+	accountId: string
+	apiToken: string
+	namespace: string
+	apiBaseUrl?: string
+	fetcher?: typeof fetch
+	sleep?: (ms: number) => Promise<void>
+	maxAttempts?: number
+	deadlineMs?: number
+	now?: () => number
+	activationWaitDeadlineMs?: number
+	activationPollIntervalMs?: number
+}) {
+	const waitDeadlineMs = input.activationWaitDeadlineMs ?? 180_000
+	const pollIntervalMs = input.activationPollIntervalMs ?? 5_000
+	const wait = input.sleep ?? sleep
+	const now = input.now ?? Date.now
+	const deadline = now() + waitDeadlineMs
+	while (true) {
+		try {
+			const response = await cloudflareApiRequest<ArtifactsNamespaceInfo>({
+				...input,
+				pathname: `/artifacts/namespaces/${encodeURIComponent(input.namespace)}`,
+				method: 'GET',
+			})
+			if (response.result?.namespace) {
+				console.error(
+					`Artifacts namespace exists: ${response.result.namespace}`,
+				)
+				return { namespace: response.result.namespace }
+			}
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error)
+			if (!isArtifactsNamespaceNotFoundMessage(message)) {
+				throw new CloudflareResourceError(
+					'artifacts',
+					input.namespace,
+					`Failed to check Artifacts namespace activation for ${input.namespace}: ${message}`,
+					{ cause: error },
+				)
+			}
+		}
+		const timeLeft = deadline - now()
+		if (timeLeft <= 0) break
+		await wait(Math.min(pollIntervalMs, timeLeft))
+	}
+	throw new CloudflareResourceError(
+		'artifacts',
+		input.namespace,
+		`Artifacts namespace ${input.namespace} is still activating after ${String(Math.ceil(waitDeadlineMs / 1_000))}s.`,
+	)
+}
+
 /**
  * Ensure a Cloudflare Artifacts namespace exists (create if missing). Idempotent.
  * Namespaces are account-scoped containers for Artifacts repos; preview uses
@@ -290,6 +351,8 @@ export async function ensureArtifactsNamespace(input: {
 	maxAttempts?: number
 	deadlineMs?: number
 	now?: () => number
+	activationWaitDeadlineMs?: number
+	activationPollIntervalMs?: number
 }) {
 	if (input.dryRun) {
 		console.error(`[dry-run] ensure Artifacts namespace: ${input.namespace}`)
@@ -329,6 +392,9 @@ export async function ensureArtifactsNamespace(input: {
 		return { namespace: name }
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error)
+		if (isArtifactsNamespaceActivationInProgressMessage(message)) {
+			return waitForArtifactsNamespaceActivation(input)
+		}
 		if (isArtifactsNamespaceAlreadyExistsMessage(message)) {
 			console.error(`Artifacts namespace exists: ${input.namespace}`)
 			return { namespace: input.namespace }
@@ -405,6 +471,18 @@ export async function deleteArtifactsNamespace(input: {
 			console.error(`Artifacts namespace already deleted: ${input.namespace}`)
 			return
 		}
+		if (isArtifactsNamespaceDeletionInProgressMessage(message)) {
+			console.error(
+				`Artifacts namespace deletion already in progress: ${input.namespace}`,
+			)
+			return
+		}
+		if (isArtifactsNamespaceActivationInProgressMessage(message)) {
+			console.error(
+				`Artifacts namespace activation in progress; skipping delete: ${input.namespace}`,
+			)
+			return
+		}
 		throw new CloudflareResourceError(
 			'artifacts',
 			input.namespace,
@@ -449,6 +527,18 @@ export async function deleteArtifactsNamespace(input: {
 		const message = error instanceof Error ? error.message : String(error)
 		if (isArtifactsNamespaceNotFoundMessage(message)) {
 			console.error(`Artifacts namespace already deleted: ${input.namespace}`)
+			return
+		}
+		if (isArtifactsNamespaceDeletionInProgressMessage(message)) {
+			console.error(
+				`Artifacts namespace deletion already in progress: ${input.namespace}`,
+			)
+			return
+		}
+		if (isArtifactsNamespaceActivationInProgressMessage(message)) {
+			console.error(
+				`Artifacts namespace activation in progress; skipping delete: ${input.namespace}`,
+			)
 			return
 		}
 		// Namespace DELETE is not always documented; after emptying repos the
@@ -536,6 +626,7 @@ type WranglerRetryInput = {
 	maxAttempts?: number
 	deadlineMs?: number
 	now?: () => number
+	run?: typeof runWrangler
 }
 
 export async function runWranglerWithRetry(
@@ -545,8 +636,9 @@ export async function runWranglerWithRetry(
 	const maxAttempts = options?.maxAttempts ?? cloudflareApiRetryMaxAttempts
 	const wait = options?.sleep ?? sleep
 	const now = options?.now ?? Date.now
+	const run = options?.run ?? runWrangler
 	const timeoutMs = options?.timeoutMs ?? 30_000
-	let lastResult = runWrangler(args, {
+	let lastResult = run(args, {
 		input: options?.input,
 		quiet: options?.quiet,
 		timeoutMs,
@@ -571,7 +663,7 @@ export async function runWranglerWithRetry(
 		await wait(
 			Math.min(cloudflareApiRetryBaseDelayMs * 2 ** (attempt - 1), timeLeft),
 		)
-		lastResult = runWrangler(args, {
+		lastResult = run(args, {
 			input: options?.input,
 			quiet: options?.quiet,
 			timeoutMs,
@@ -640,6 +732,99 @@ export function listD1Databases(): Array<D1DatabaseListEntry> {
 	} catch {
 		throw new Error('Could not parse JSON output from wrangler d1 list --json.')
 	}
+}
+
+export async function ensureD1Database(input: {
+	name: string
+	configuredId?: string
+	location?: string
+	dryRun: boolean
+	sleep?: (ms: number) => Promise<void>
+	maxAttempts?: number
+	deadlineMs?: number
+	now?: () => number
+	list?: typeof listD1Databases
+	run?: typeof runWrangler
+	listRetryDelayMs?: number
+}) {
+	if (input.dryRun) {
+		console.error(`[dry-run] ensure D1 database: ${input.name}`)
+		return { name: input.name, id: `dry-run-${input.name}` }
+	}
+
+	const list = input.list ?? listD1Databases
+	const databases = list()
+	if (input.configuredId) {
+		const byId = databases.find(
+			(entry) => entry.uuid === input.configuredId && entry.uuid,
+		)
+		if (byId) {
+			console.error(`D1 database exists by id: ${byId.name} (${byId.uuid})`)
+			return { name: byId.name, id: byId.uuid }
+		}
+	}
+	const byName = databases.find(
+		(entry) => entry.name === input.name && entry.uuid,
+	)
+	if (byName) {
+		console.error(`D1 database exists by name: ${input.name} (${byName.uuid})`)
+		return { name: byName.name, id: byName.uuid }
+	}
+
+	const args = ['d1', 'create', input.name]
+	if (input.location) args.push('--location', input.location)
+	const createResult = await runWranglerWithRetry(args, {
+		input: 'n\n',
+		quiet: true,
+		sleep: input.sleep,
+		maxAttempts: input.maxAttempts,
+		deadlineMs: input.deadlineMs,
+		now: input.now,
+		run: input.run,
+	})
+	const output =
+		`${createResult.stdout}${createResult.stderr} ${createResult.errorMessage ?? ''}`.trim()
+	const alreadyExists = /already exists/i.test(output)
+	if (createResult.status !== 0 && !alreadyExists) {
+		throw new CloudflareResourceError(
+			'd1',
+			input.name,
+			`Failed to create D1 database "${input.name}"${output ? `: ${output}` : '.'}`,
+		)
+	}
+
+	const listAttempts = alreadyExists ? 3 : 1
+	const wait = input.sleep ?? sleep
+	const listRetryDelayMs = input.listRetryDelayMs ?? 1_000
+	let found: D1DatabaseListEntry | undefined
+	let listError: unknown
+	for (let attempt = 0; attempt < listAttempts; attempt += 1) {
+		try {
+			found = list().find(
+				(entry) => entry.name === input.name && entry.uuid.length > 0,
+			)
+			if (found) break
+		} catch (error) {
+			listError = error
+		}
+		if (attempt + 1 < listAttempts) {
+			await wait(listRetryDelayMs)
+		}
+	}
+	if (!found) {
+		const reason = alreadyExists
+			? `D1 database "${input.name}" already exists but could not be found via list after ${String(listAttempts)} attempts`
+			: `Created D1 database "${input.name}" but could not find it via list`
+		throw new CloudflareResourceError(
+			'd1',
+			input.name,
+			`${reason}.${listError instanceof Error ? ` Last list error: ${listError.message}` : ''}`,
+			{ cause: listError },
+		)
+	}
+
+	console.error(`Created D1 database: ${found.name} (${found.uuid})`)
+	return { name: found.name, id: found.uuid }
 }
 
 export function listKvNamespaces(): Array<KvNamespaceListEntry> {
@@ -734,27 +919,46 @@ export function isR2BucketAlreadyExistsOutput(output: string) {
 	)
 }
 
-export function ensureR2Bucket({
+export async function ensureR2Bucket({
 	name,
 	dryRun,
+	sleep: wait,
+	maxAttempts,
+	deadlineMs,
+	now,
+	run,
 }: {
 	name: string
 	dryRun: boolean
-}): { name: string } {
+	sleep?: (ms: number) => Promise<void>
+	maxAttempts?: number
+	deadlineMs?: number
+	now?: () => number
+	run?: typeof runWrangler
+}): Promise<{ name: string }> {
 	if (dryRun) {
 		console.error(`[dry-run] ensure R2 bucket: ${name}`)
 		return { name }
 	}
 
-	const createResult = runWrangler(['r2', 'bucket', 'create', name], {
-		quiet: true,
-	})
+	const createResult = await runWranglerWithRetry(
+		['r2', 'bucket', 'create', name],
+		{
+			quiet: true,
+			sleep: wait,
+			maxAttempts,
+			deadlineMs,
+			now,
+			run,
+		},
+	)
 	if (createResult.status === 0) {
 		console.error(`Created R2 bucket: ${name}`)
 		return { name }
 	}
 
-	const output = `${createResult.stdout}${createResult.stderr}`.trim()
+	const output =
+		`${createResult.stdout}${createResult.stderr} ${createResult.errorMessage ?? ''}`.trim()
 	if (isR2BucketAlreadyExistsOutput(output)) {
 		console.error(`R2 bucket exists: ${name}`)
 		return { name }
@@ -2790,6 +2994,8 @@ export async function writeGeneratedWranglerConfig({
 	d1DatabaseId,
 	auditD1DatabaseName,
 	auditD1DatabaseId,
+	jobsD1DatabaseName,
+	jobsD1DatabaseId,
 	oauthKvId,
 	bundleArtifactsKvId,
 	communityAssetsBucketName,
@@ -2811,6 +3017,9 @@ export async function writeGeneratedWranglerConfig({
 	d1DatabaseId: string
 	auditD1DatabaseName: string
 	auditD1DatabaseId: string
+	/** Required when the target env binds JOBS_DB (production paced backup). */
+	jobsD1DatabaseName?: string
+	jobsD1DatabaseId?: string
 	oauthKvId: string
 	bundleArtifactsKvId: string
 	communityAssetsBucketName: string
@@ -2872,23 +3081,40 @@ export async function writeGeneratedWranglerConfig({
 		)
 	}
 
-	for (const binding of [
+	const requiredD1Bindings: Array<{
+		name: string
+		databaseName: string
+		databaseId: string
+		required: boolean
+	}> = [
 		{
 			name: 'APP_DB',
 			databaseName: d1DatabaseName,
 			databaseId: d1DatabaseId,
+			required: true,
 		},
 		{
 			name: 'AUDIT_DB',
 			databaseName: auditD1DatabaseName,
 			databaseId: auditD1DatabaseId,
+			required: true,
 		},
-	]) {
+	]
+	if (jobsD1DatabaseName && jobsD1DatabaseId) {
+		requiredD1Bindings.push({
+			name: 'JOBS_DB',
+			databaseName: jobsD1DatabaseName,
+			databaseId: jobsD1DatabaseId,
+			required: false,
+		})
+	}
+	for (const binding of requiredD1Bindings) {
 		const entryIndex = d1Databases.findIndex((entry) => {
 			if (!entry || typeof entry !== 'object') return false
 			return (entry as Record<string, unknown>).binding === binding.name
 		})
 		if (entryIndex < 0) {
+			if (!binding.required) continue
 			fail(
 				`wrangler config "${baseConfigPath}" has no ${envName} D1 binding for "${binding.name}".`,
 			)
@@ -2899,6 +3125,15 @@ export async function writeGeneratedWranglerConfig({
 			database_name: binding.databaseName,
 			database_id: binding.databaseId,
 		}
+	}
+	const jobsDbIndex = d1Databases.findIndex((entry) => {
+		if (!entry || typeof entry !== 'object') return false
+		return (entry as Record<string, unknown>).binding === 'JOBS_DB'
+	})
+	if (jobsDbIndex >= 0 && !(jobsD1DatabaseName && jobsD1DatabaseId)) {
+		fail(
+			`wrangler config "${baseConfigPath}" binds JOBS_DB in env.${envName} but writeGeneratedWranglerConfig was not given jobsD1DatabaseName/jobsD1DatabaseId.`,
+		)
 	}
 
 	const kvNamespaces = (targetEnv as Record<string, unknown>).kv_namespaces
@@ -3002,6 +3237,31 @@ export async function writeGeneratedWranglerConfig({
 		if (typeof value === 'string' && value.length > 0) {
 			resolvedVars[key] = value
 		}
+	}
+	// Paced D1 shadow backup: expand DR_D1_PACED_SOURCES with live D1 UUIDs at
+	// deploy time (APP + AUDIT + JOBS). Committed wrangler vars already list
+	// all three; expansion keeps UUIDs aligned with resource bindings.
+	if (resolvedVars.DR_D1_PACED_BACKUP_ENABLED === 'true') {
+		const pacedSources: Array<{
+			binding: string
+			name: string
+			id: string
+		}> = [
+			{ binding: 'APP_DB', name: d1DatabaseName, id: d1DatabaseId },
+			{
+				binding: 'AUDIT_DB',
+				name: auditD1DatabaseName,
+				id: auditD1DatabaseId,
+			},
+		]
+		if (jobsD1DatabaseName && jobsD1DatabaseId) {
+			pacedSources.push({
+				binding: 'JOBS_DB',
+				name: jobsD1DatabaseName,
+				id: jobsD1DatabaseId,
+			})
+		}
+		resolvedVars.DR_D1_PACED_SOURCES = JSON.stringify(pacedSources)
 	}
 	// Deployed preview/production must never carry the local-dev Turnstile
 	// bypass. Local `npm run dev` writes a separate generated config.

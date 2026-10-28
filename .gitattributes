@@ -1,1 +1,3 @@
 packages/worker/migrations/*.sql text eol=lf
+# Hashed by check-skills-lock, so Windows checkouts must not add CRLF.
+.agents/skills/** text eol=lf

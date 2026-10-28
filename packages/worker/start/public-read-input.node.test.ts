@@ -6,8 +6,17 @@ test('community inputs exclude attribution and normalize query and bounds', () =
 		communityReadInput(
 			'?q=%20tools%20&sort=popular&category=dev&limit=1000&utm_source=demo',
 		),
-	).toEqual({ query: 'tools', sort: 'popular', category: 'dev', limit: 100 })
+	).toEqual({
+		query: 'tools',
+		sort: 'popular',
+		category: 'dev',
+		limit: 100,
+		installOrg: null,
+	})
 	expect(communityReadInput('?limit=invalid').limit).toBe(50)
+	expect(communityReadInput('?org=%20example-team%20').installOrg).toBe(
+		'example-team',
+	)
 })
 test('profile filtering remains local until a limit is requested', () => {
 	expect(profileReadInput('owner', '?q=tools')).toEqual({

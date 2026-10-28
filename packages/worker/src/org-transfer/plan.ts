@@ -92,6 +92,8 @@ const movedTables: ReadonlyArray<OrgTransferMovedTable> = [
 	'package_capability_approvals',
 	// Kept empty: audits for moved packages are orphan-deleted (re-audit).
 	'package_security_audits',
+	// Kept empty: cookie findings are orphan-deleted for the destination owner.
+	'package_app_cookie_warnings',
 	// Kept empty: requests for moved packages are orphan-deleted.
 	'package_approval_requests',
 	'user_repos',
@@ -644,6 +646,18 @@ export function planOrgTransfer(
 			text(row, 'id'),
 			packageIds.has(text(row, 'package_id'))
 				? 'security audits describe the source owner review; the destination owner can re-audit'
+				: 'package no longer exists',
+			'delete',
+		)
+	}
+
+	for (const row of source.package_app_cookie_warnings) {
+		orphan(
+			'package_app_cookie_warnings',
+			row,
+			text(row, 'cookie_name'),
+			packageIds.has(text(row, 'package_id'))
+				? 'cookie warning observations belong to the source owner; the destination owner can collect new findings'
 				: 'package no longer exists',
 			'delete',
 		)

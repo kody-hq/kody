@@ -13,6 +13,7 @@ import { FreeOrgLimitError } from '#worker/orgs/billing.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { routes } from '#universal/routes.ts'
+import { orgOverviewPath } from '#universal/org-pages.ts'
 
 type AuthenticatedUser = NonNullable<
 	Awaited<ReturnType<typeof readAuthenticatedAppUser>>
@@ -87,7 +88,11 @@ async function redirectAfterAccept(
 			})
 		}
 	}
-	return `/@${orgSlug}`
+	// Members land on the workspace Overview; grant-only collaborators have
+	// none, so they open the org home that lists what was shared.
+	return invite.kind === 'membership'
+		? orgOverviewPath(orgSlug)
+		: `/@${orgSlug}`
 }
 
 /** Accept an invite addressed to this person from Waiting or Organizations. */

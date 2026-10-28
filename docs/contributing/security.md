@@ -36,8 +36,10 @@ package-app surfaces:
    (`packages/worker/src/app/deployment-env.ts`) so it is unreachable in
    production.
 4. **Credential endpoints are rate limited.** Any new endpoint that accepts a
-   password, token, or reset code must join the shared auth rate-limit bucket in
-   `packages/worker/src/origin-handler.ts` (`rateLimitedAuthPaths`).
+   password, token, or reset code must join the shared `auth:ip` bucket: either
+   list the path in `packages/worker/src/origin-handler.ts`
+   (`rateLimitedAuthPaths`), or consume the same bucket from the Start function
+   that handles the request (password reset and two-factor login do this today).
 5. **New passwords go through the shared policy.** Use `getPasswordPolicyError`
    from `@kody-internal/shared/password-policy.ts` wherever a password is set.
 6. **OAuth PKCE stays S256-only.** Keep the `getPkceValidationError` check in
@@ -83,15 +85,21 @@ package-app surfaces:
     `SameSite=None`, without adding CSRF tokens at the same time.
 11. **Email change requires a verified current address.**
     `POST /account/email-change.json` refuses to start a change when
-    `users.email_verified_at` is null (403, audit reason `email_unverified`). A
-    former-email claim collision at password or social-login signup is a
-    controlled 409 with audit reason `former_email_claimed` (copy tells the
-    person to sign in with the email that account uses now, or release the
-    address from Account settings — never leaking the current email). The owner
-    re-verifies the former address (`POST /account/email-claim-release.json`
-    plus `/verify-email-claim-release`) to drop the claim; that path is rate
-    limited. New accounts get random `stable_user_id` values. Only `users.email`
-    and active `user_email_claims` rows reserve an address; a legacy email-hash
+    `users.email_verified_at` is null (403, audit reason `email_unverified`).
+    Starting a change also requires the current password. The new address must
+    confirm via `/verify-email-change` before `users.email` updates. After that
+    commit, Kody emails the previous address (`email_changed` transactional
+    kind) with a partial mask of the new address, when/IP/UA/country when
+    available, and links to account settings, password reset, and `support@` on
+    the system email domain. A former-email claim collision at password or
+    social-login signup is a controlled 409 with audit reason
+    `former_email_claimed` (copy tells the person to sign in with the email that
+    account uses now, or release the address from Account settings — never
+    leaking the current email). The owner re-verifies the former address
+    (`POST /account/email-claim-release.json` plus
+    `/verify-email-claim-release`) to drop the claim; that path is rate limited.
+    New accounts get random `stable_user_id` values. Only `users.email` and
+    active `user_email_claims` rows reserve an address; a legacy email-hash
     `stable_user_id` reserves nothing and is never recomputed from an email.
 12. **Unverified accounts are reclaimed on a provider-verified social match.**
     When a social login profile presents a verified email that matches
@@ -132,15 +140,16 @@ package-app surfaces:
     passkeys and `oauth_connections`, and tells the owner in the confirmation
     email. Signed-in `changePassword` leaves those factors in place.
 15. **User-secret trust grants are never applied by MCP or package runtimes.**
-    `secretLock` returns a website approval URL and does not write
-    `allowed_packages`. Community fork adoption widens implicit user-secret
-    read/use for a fork, so only the signed-in account session writes it
-    (`adopt-community-fork` on `POST /account/packages.json`, from the package
-    settings page). `communityForkAdopt` is read-only and returns that link.
-    Interactive `execute` runs imported package code with the agent's caller
-    context, so no `kody.*` capability may adopt: an unadopted fork would adopt
-    itself. Package apps, jobs, webhooks, and other package runtimes cannot
-    adopt or grant themselves secrets.
+    `resourceLock({ kind: 'secret', name, package_id })` returns a website
+    approval URL and does not write `allowed_packages`. Community fork adoption
+    widens implicit user-secret read/use for a fork, so only the signed-in
+    account session writes it (`adopt-community-fork` on
+    `POST /account/packages.json`, from the package settings page).
+    `communityForkAdopt` is read-only and returns that link. Interactive
+    `execute` runs imported package code with the agent's caller context, so no
+    `kody.*` capability may adopt: an unadopted fork would adopt itself. Package
+    apps, jobs, webhooks, and other package runtimes cannot adopt or grant
+    themselves secrets.
 
 ## First-party HTTP security headers
 
@@ -308,6 +317,54 @@ username, the subdomain label, and the path's owner username to all match
 (`servePackageAppRequest` in
 `packages/worker/src/package-runtime/package-app-serve.ts`), so a handoff minted
 for one account cannot authorize another user's subdomain.
+
+**Set-Cookie Domain scrub (HTTP).** Until `kody.run` is on the Public Suffix
+List, a response from `{username}.kody.run` (or the apex) could otherwise set
+`Domain=kody.run` / `.kody.run` and have browsers send that cookie to every
+other tenant subdomain and to apex routes. Every response leaving a package-app
+host (author apps, proxied upstreams, and platform `/-/` routes) therefore runs
+through `scrubPackageAppSetCookieDomains`
+(`packages/worker/src/package-runtime/package-app-set-cookie.ts`): Domain
+attributes that cover a configured package-app apex or another host under that
+apex are removed so the cookie becomes host-only; exact-host Domain values and
+cookies with no Domain stay. Strips are logged as
+`package-app-set-cookie-domain-stripped` (Worker logs at the origin boundary;
+author-app strips also `console.warn` inside the isolate so they appear on the
+package Activity run). This does **not** stop
+`document.cookie = "...; Domain=kody.run"` from page JavaScript; browsers only
+refuse that once the apex is on the PSL (operational follow-up in decision
+0017).
+
+**Package-app HttpOnly cookies (HTTP).** After the Domain scrub and package
+cookie-prefix filter, the author-entrypoint response path uses
+`isPackageAppAuthCookie` in
+`packages/worker/src/package-runtime/package-app-cookie-httponly.ts` as its
+single auth-cookie identification rule. Kody appends HttpOnly to matching
+cookies and leaves other cookies unchanged, recording warning findings by cookie
+name only, never values, for the package owner's dashboard. This only covers
+`Set-Cookie` headers; cookies written by page scripts through `document.cookie`
+are out of reach.
+
+An app whose page scripts must read an auth-looking cookie can list its
+unprefixed name in `kody.app.cookies.clientReadable`:
+
+```json
+{
+	"kody": {
+		"app": {
+			"entry": "./src/app.ts",
+			"cookies": {
+				"clientReadable": ["theme-session"]
+			}
+		}
+	}
+}
+```
+
+Names match exactly and case-sensitively. Exempted cookies stay as set and
+continue to appear in the owner's dashboard. If page scripts do not need to read
+a cookie, keep HttpOnly on it. Use `clientReadable` or a name that does not look
+like auth or session state only for cookies that page scripts must read.
 
 Sibling subdomains also stay **same-site** with each other until the domain is
 on the Public Suffix List, so a `SameSite=Lax` cookie still attaches to their
@@ -596,15 +653,18 @@ guarded by a bearer secret comparison.
 ## Inbound email spam controls
 
 Inbound mail is classified at receive time (`accepted` or `quarantined`) before
-package subscription dispatch. Authentication-Results are decided first (DMARC
-fail, or SPF fail/softfail without DKIM pass → suspect; missing header fails
-open). Per-user sender rules then apply against the RFC5322 From (exact address
-or domain with subdomain matching; address rules beat domain rules; SMTP `block`
-still matches the envelope): `block` rejects at SMTP before quota is charged,
-`quarantine` stores as flagged, `allow` accepts only when From authenticates
-(DMARC pass or aligned SPF) — spoofed or unaligned From is never accepted
-because of an allow rule. When no rule matches, suspect mail is quarantined and
-other mail is accepted. Accepted user mail dispatches `email.message.received`;
+package subscription dispatch. Trusted Cloudflare Authentication-Results are
+decided first (authserv-id `*.cloudflare.net` on Email Worker `message.headers`
+only; sender-forged AR/ARC and third-party ARC seals are ignored). DMARC fail,
+or both SPF and DKIM fail/softfail with no DMARC policy → suspect and
+quarantined with reason `Failed sender authentication.`; missing or untrusted
+header fails open. Per-user sender rules then apply against the RFC5322 From
+(exact address or domain with subdomain matching; address rules beat domain
+rules; SMTP `block` still matches the envelope): `block` rejects at SMTP before
+quota is charged, `quarantine` stores as flagged, `allow` overrides
+auto-quarantine for failed sender authentication. When no rule matches, suspect
+mail is quarantined and other mail is accepted. The same path covers operator
+system inboxes. Accepted user mail dispatches `email.message.received`;
 quarantined user mail dispatches `email.message.quarantined` instead.
 `emailReply` refuses a quarantined inbound message (`quarantined_inbound_reply`)
 before any send or daily send quota is used, so a reply cannot backscatter to a
@@ -645,16 +705,16 @@ blast radius:
   recorded as a rejected delivery), background work, and both email directions
   (inbound storage rejects with a bounded `account-suspension` rejection event;
   outbound send throws). Background lanes — jobs, package invocations and
-  subscriptions, workflows, retrievers, and realtime hooks — share one choke
-  point: `resolveBackgroundMcpUser` throws `AccountSuspendedError`, which
-  package invocations surface as 403 `account_suspended` and workflow steps
-  raise as a non-retryable failure. That resolver caches identities per isolate
-  for 60 seconds, so a new suspension can take up to that long to stop
-  background work already warm in an isolate. Set and cleared through the
-  audited `suspend_user` / `unsuspend_user` actions on `POST /admin/users.json`.
-  Hard delete is a separate audited action (`adminUserAccountDelete` plus the
-  admin users **Delete account** modal). It requires a one-page approval or a
-  typed-handle confirmation and frees the handle immediately.
+  subscriptions, workflows, and realtime hooks — share one choke point:
+  `resolveBackgroundMcpUser` throws `AccountSuspendedError`, which package
+  invocations surface as 403 `account_suspended` and workflow steps raise as a
+  non-retryable failure. That resolver caches identities per isolate for 60
+  seconds, so a new suspension can take up to that long to stop background work
+  already warm in an isolate. Set and cleared through the audited `suspend_user`
+  / `unsuspend_user` actions on `POST /admin/users.json`. Hard delete is a
+  separate audited action (`adminUserAccountDelete` plus the admin users
+  **Delete account** modal). It requires a one-page approval or a typed-handle
+  confirmation and frees the handle immediately.
 - **Automatic outbound-email pause (`orgs.email_outbound_paused_at`).** The
   delivery queue evaluates provider delivery events
   (`packages/worker/src/email/outbound-abuse.ts`): one spam complaint, or five

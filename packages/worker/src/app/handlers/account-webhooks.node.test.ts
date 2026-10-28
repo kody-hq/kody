@@ -1,6 +1,7 @@
 import { loadAccountWebhooksData } from '#app/package-webhooks-data.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import {
 	ownerIdFromStored,
@@ -180,4 +181,37 @@ test('account webhooks API lists across packages and is read-only: mutations bel
 		'sentry-bridge',
 	])
 	expect(body.webhooks.every((webhook) => !webhook.minted)).toBe(true)
+})
+
+test('org-bound webhooks payload username is the team org slug, not the person handle', async () => {
+	const personId = testStableUserIdFromEmail(owner.email)
+	const teamOrgId = ownerIdFromStored('team-org-owner')
+	const data = await loadAccountWebhooksData({
+		env: createEnv(),
+		requestUrl: 'https://kody.example/@team-org/-/webhooks',
+		user: {
+			username: 'personal-handle',
+			mcpUser: {
+				userId: personIdFromStored(personId),
+				email: owner.email,
+				username: 'personal-handle',
+				displayName: 'personal-handle',
+			},
+			request: deriveRequestContext({
+				user: {
+					userId: personIdFromStored(personId),
+					username: 'personal-handle',
+				},
+				source: { kind: 'session' },
+				orgBinding: {
+					org: { id: teamOrgId, slug: 'team-org' },
+					role: 'owner',
+				},
+			}),
+		},
+	})
+	expect(data.username).toBe('team-org')
+	expect(
+		data.webhooks.every((webhook) => webhook.packageName.startsWith('@')),
+	).toBe(true)
 })

@@ -15,6 +15,7 @@ import { Mailbox } from './email/mailbox-do.ts'
 import { RepoSession } from './repo/repo-session-do.ts'
 import { RepoSessionIndex } from './repo/repo-session-index-do.ts'
 import { OAuthPurgeCoordinator } from './oauth-purge.ts'
+import { ExecutionContextSessionV1 } from './execution-contexts/session-do.ts'
 import { getWorkerSentryOptions } from './sentry-options.ts'
 
 /**
@@ -42,6 +43,7 @@ export {
 	RepoSession,
 	RepoSessionIndex,
 	StripePlanRefresh,
+	ExecutionContextSessionV1,
 	KodyFetchGateway,
 	DynamicWorkerUsageTail,
 	PackageAppRuntimeBridge,

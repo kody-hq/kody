@@ -6,6 +6,8 @@ export const oauthPaths = {
 	authorize: '/oauth/authorize',
 	authorizeInfo: '/oauth/authorize-info',
 	token: '/oauth/token',
+	deviceAuthorization: '/oauth/device_authorization',
+	device: '/device',
 	register: '/oauth/register',
 	callback: '/oauth/callback',
 	userinfo: '/oauth/userinfo',

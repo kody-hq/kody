@@ -43,6 +43,7 @@ export const adminUserMeterStorageReconcileCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminUserMeterStorageReconcile',
+		contextRuns: 'deny',
 		description:
 			"Admin-only corrective physical-storage reconciliation under UserMeter authority. Runs one bounded oldest-first page: recomputes each user's absolute storage bytes from D1 payload tables and applies the result to UserMeter via a revision-guarded CAS (never clobbers a live reservation). `updated` counts successful CAS applications; `deferred` counts CAS misses or init-race rows that were safely rotated to the back of the queue for the next sweep — deferred rows are not failures. `failed` counts per-row errors (unexpected exceptions). Failed and deferred rows are both moved to the back of the oldest-first queue. Safe to repeat as a corrective or catch-up sweep; not idempotent with live writes.",
 		keywords: [

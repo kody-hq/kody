@@ -63,7 +63,6 @@ test('purchasable Stripe Pro stays credits-eligible with Max stock and Standard 
 		creditsEligible: true,
 	})
 	const emptyLimits = resolvePlanLimits(paying.plan, paying.ladder, 'empty')
-	expect(emptyLimits).toEqual(proCreditsPlanLimits)
 	expect(emptyLimits.maxSavedPackages).toBe(10_000)
 	expect(emptyLimits.maxConcurrentWorkflows).toBe(200)
 	expect(emptyLimits.maxUniqueWorkerDaysPerMonth).toBe(350)

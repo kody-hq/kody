@@ -15,6 +15,7 @@ import {
 	createLocalExecuteRuntimeShimSource,
 } from './local-execute-runtime-support.ts'
 import { toApiError } from '#worker/open-api/errors.ts'
+import { verifyLocalExecutePackageBindingClaims } from './local-execute-package-binding.ts'
 import {
 	resolveRelativeModulePath,
 	runtimeModulePath,
@@ -150,6 +151,20 @@ export default async function main(params) { return greet(params.name) }`
 
 	expect(graph.imports).toEqual(['kody:@kentcdodds/example-package/hello'])
 	expect(graph.warnings).toEqual([])
+	expect(graph.packageIdsByImport).toEqual({
+		'kody:@kentcdodds/example-package/hello': 'pkg-1',
+	})
+	expect(Object.keys(graph.packageBindings)).toEqual(['pkg-1'])
+	expect(graph.packageBindings['pkg-1']).toMatch(/^kpb1\./)
+	// The entry code's direct imports are the run's entries, signed into
+	// every binding so CapabilityProxy reads mappings from the entry.
+	await expect(
+		verifyLocalExecutePackageBindingClaims({
+			env: graphInput.env,
+			token: graph.packageBindings['pkg-1'],
+			subject: { org: graphInput.userId, actor: graphInput.actorUserId },
+		}),
+	).resolves.toEqual({ packageId: 'pkg-1', entryPackageIds: ['pkg-1'] })
 	const entry = graph.modules.find(
 		(module) => module.name === 'kody:@kentcdodds/example-package/hello',
 	)
@@ -1119,6 +1134,95 @@ test('local isolate wraps globalThis.fetch so frozen copies still hop secrets', 
 			Reflect.set(globalThis, patchedSymbol, originalPatched)
 		}
 	}
+})
+
+test('local bound createAuthenticatedFetch sends its own package binding', async () => {
+	const outerBinding = 'kpb1.outer-binding.sig'
+	const innerBinding = 'kpb1.inner-binding.sig'
+	const shim = createLocalExecuteRuntimeShimSource(runtimeModulePath, {
+		packageBindings: { 'pkg-outer': outerBinding, 'pkg-inner': innerBinding },
+	})
+
+	const bindingsStart = shim.indexOf('const __kodyPackageBindings')
+	const bindingsEnd = shim.indexOf('// Pure placeholder builders')
+	expect(bindingsStart).toBeGreaterThan(-1)
+	expect(bindingsEnd).toBeGreaterThan(bindingsStart)
+	const bindingsSource = shim.slice(bindingsStart, bindingsEnd)
+
+	// Helpers + CAF live between null-body statuses and bound gatewayFetch.
+	const cafStart = shim.indexOf('const __kodyNullBodyStatuses')
+	const cafEnd = shim.indexOf(
+		'export function __kodyCreatePackageBoundGatewayFetch',
+		cafStart,
+	)
+	expect(cafStart).toBeGreaterThan(-1)
+	expect(cafEnd).toBeGreaterThan(cafStart)
+	const cafSource = shim.slice(cafStart, cafEnd).replaceAll(/^export /gm, '')
+
+	const authCalls: Array<unknown> = []
+	const kody = {
+		authenticatedFetch: async (args: unknown) => {
+			authCalls.push(args)
+			return {
+				status: 200,
+				statusText: 'OK',
+				headers: {},
+				bodyBase64: btoa('ok'),
+			}
+		},
+	}
+	const {
+		__kodyCreatePackageBoundAuthenticatedFetch,
+		createAuthenticatedFetch,
+	} = new Function(
+		'kody',
+		`${bindingsSource}
+${cafSource}
+return {
+	__kodyCreatePackageBoundAuthenticatedFetch,
+	createAuthenticatedFetch,
+};`,
+	)(kody) as {
+		__kodyCreatePackageBoundAuthenticatedFetch: (
+			packageId: string,
+		) => (
+			providerName: string,
+		) => Promise<
+			(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+		>
+		createAuthenticatedFetch: (
+			providerName: string,
+		) => Promise<
+			(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+		>
+	}
+
+	const outerFetch =
+		await __kodyCreatePackageBoundAuthenticatedFetch('pkg-outer')('demo')
+	await outerFetch('https://api.example.com/outer')
+	expect(authCalls).toEqual([
+		expect.objectContaining({
+			providerName: 'demo',
+			packageId: outerBinding,
+		}),
+	])
+
+	authCalls.length = 0
+	const innerFetch =
+		await __kodyCreatePackageBoundAuthenticatedFetch('pkg-inner')('demo')
+	await innerFetch('https://api.example.com/inner')
+	expect(authCalls).toEqual([
+		expect.objectContaining({
+			providerName: 'demo',
+			packageId: innerBinding,
+		}),
+	])
+
+	authCalls.length = 0
+	const unboundFetch = await createAuthenticatedFetch('demo')
+	await unboundFetch('https://api.example.com/adhoc')
+	expect(authCalls).toHaveLength(1)
+	expect((authCalls[0] as { packageId?: string }).packageId).toBeUndefined()
 })
 
 test('local bound gatewayFetch sends its own package binding; meter does not elevate (GHSA-5fv3-qv7j-rqf5)', async () => {

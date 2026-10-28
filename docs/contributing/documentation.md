@@ -33,16 +33,16 @@ the rule lives in [Local CLI execute](../guides/local-execute.md) and
 Negations stay allowed. Mermaid parses fenced diagrams in docs and agent skills
 (and `--stdin` recap blocks) so GitHub's "Unable to render rich display"
 failures fail locally. `npm run deps:check` runs the dependency group (lockfile
-peer drift, dependency overrides, and skills-lock hash), including a `ship-pr`
-edit that did not refresh `computedHash`. `npm run slop-ratchet:check` holds the
-client-route and node-test file-size allowlists (line budgets counted after
-`oxfmt`), the root `AGENTS.md` line budget (`agents-md`), and rejects decorative
-`========` / `----------` comment banners. `kody-custom/no-tautological-absence`
-rejects vanished-copy `not.toContain` leftovers in tests during `npm run lint`.
-`npm run knip` fails on unused files, exports, and types against the configured
-entrypoints. `kody-custom/no-oversized-guide-section` rejects official guide
-headings that exceed the search response budget. These run as part of
-`npm run validate`.
+peer drift, dependency overrides, skills-lock hash, and the npm floor),
+including a `ship-pr` edit that did not refresh `computedHash`.
+`npm run slop-ratchet:check` holds the client-route and node-test file-size
+allowlists (line budgets counted after `oxfmt`), the root `AGENTS.md` line
+budget (`agents-md`), and rejects decorative `========` / `----------` comment
+banners. `kody-custom/no-tautological-absence` rejects vanished-copy
+`not.toContain` leftovers in tests during `npm run lint`. `npm run knip` fails
+on unused files, exports, and types against the configured entrypoints.
+`kody-custom/no-oversized-guide-section` rejects official guide headings that
+exceed the search response budget. These run as part of `npm run validate`.
 
 Docs-like product copy follows the same rule: MCP server instructions, tool and
 schema descriptions, and user-visible UI strings should not read like release

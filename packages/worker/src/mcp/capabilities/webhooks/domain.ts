@@ -1,8 +1,6 @@
 import { defineDomain } from '#mcp/capabilities/define-domain.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { webhookDeliveryListCapability } from './webhook-delivery-list.ts'
-import { webhookDisableCapability } from './webhook-disable.ts'
-import { webhookEnableCapability } from './webhook-enable.ts'
 import { webhookListCapability } from './webhook-list.ts'
 import { webhookUrlApplyCapability } from './webhook-url-apply.ts'
 import { webhookUrlMintCapability } from './webhook-url-mint.ts'
@@ -35,8 +33,6 @@ export const webhooksDomain = defineDomain({
 		webhookUrlMintCapability,
 		webhookUrlRotateCapability,
 		webhookUrlApplyCapability,
-		webhookEnableCapability,
-		webhookDisableCapability,
 		webhookDeliveryListCapability,
 		webhookSyntheticDispatchCapability,
 	],

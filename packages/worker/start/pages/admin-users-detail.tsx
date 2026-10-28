@@ -21,7 +21,7 @@ import {
 } from './account-management-components.tsx'
 import { RecordTable, recordBodyCss } from './record-table.tsx'
 import { ChartLegend } from '../components/chart-legend.tsx'
-import { StackedBarChart } from '../components/stacked-bar-chart.tsx'
+import { StackedBarChart } from '../charts/stacked-bar-chart.tsx'
 import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
 import {
 	formatMonthKeyLabel,

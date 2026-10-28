@@ -19,7 +19,10 @@ import {
 	listUserSecretsForSearch,
 	resolveSecret,
 	saveSecret,
+	setSecretAllowedHosts,
 	setSecretAllowedPackages,
+	setSecretsAllowedHosts,
+	setSecretsAllowedPackages,
 	setSecretsAtomically,
 	updateSecret,
 	updateUserSecretForPackage,
@@ -28,6 +31,7 @@ import {
 import { createUnresolvedSecretMessage } from './unresolved-secret.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import * as packageManifestPlacement from '#worker/credentials/package-manifest-fill-placement.ts'
+import { readFillPlacementOptIn } from '#worker/credentials/fill-placement-opt-ins.ts'
 
 const migrationsDirectory = new URL('../../../migrations/', import.meta.url)
 const userId = ownerIdFromStored('user-123')
@@ -92,7 +96,14 @@ test('resolveSecret returns the first scope hit in precedence order and ignores 
 	const { env, sqlite } = await createSecretEnv()
 	const name = 'shared-secret'
 	const storageContext = ctx('package-xyz', 'session-abc')
-	await saveSecret({ env, userId, scope: 'user', name, value: 'user-value' })
+	await saveSecret({
+		env,
+		userId,
+		scope: 'user',
+		name,
+		value: 'user-value',
+		audit: null,
+	})
 	await saveSecret({
 		env,
 		userId,
@@ -100,6 +111,7 @@ test('resolveSecret returns the first scope hit in precedence order and ignores 
 		name,
 		value: 'package-value',
 		storageContext,
+		audit: null,
 	})
 	await saveSecret({
 		env,
@@ -109,6 +121,7 @@ test('resolveSecret returns the first scope hit in precedence order and ignores 
 		value: 'session-value',
 		storageContext,
 		sessionExpiresAt: '2099-01-01T00:00:00.000Z',
+		audit: null,
 	})
 	const sessionHit = {
 		credentialId: expect.any(String),
@@ -151,6 +164,7 @@ test('saveSecret rejects unavailable scoped storage as McpCallerError', async ()
 				name: 'token',
 				value: `missing-${scope}`,
 				storageContext: { sessionId: null, appId: null, packageId: null },
+				audit: null,
 			}),
 		).rejects.toSatisfy(
 			(error: unknown) =>
@@ -169,6 +183,7 @@ test('listSecrets from execute lists caller-owned package metadata without weake
 		scope: 'user',
 		name: 'accountToken',
 		value: 'user-value',
+		audit: null,
 	})
 	for (const [packageId, name, value] of [
 		['pkg-discord', 'discordBotToken', 'package-only-value'],
@@ -181,6 +196,7 @@ test('listSecrets from execute lists caller-owned package metadata without weake
 			name,
 			value,
 			storageContext: ctx(packageId),
+			audit: null,
 		})
 	}
 	await saveSecret({
@@ -191,6 +207,7 @@ test('listSecrets from execute lists caller-owned package metadata without weake
 		value: 'session-only-value',
 		storageContext: ctx(null, 'session-abc'),
 		sessionExpiresAt: '2099-01-01T00:00:00.000Z',
+		audit: null,
 	})
 	await saveSecret({
 		env,
@@ -199,6 +216,7 @@ test('listSecrets from execute lists caller-owned package metadata without weake
 		name: 'foreignToken',
 		value: 'other-user-value',
 		storageContext: ctx('pkg-foreign'),
+		audit: null,
 	})
 	const discord = expect.objectContaining({
 		name: 'discordBotToken',
@@ -309,7 +327,7 @@ test('package writes to user secrets require every package approval and apply at
 		['xRefreshToken', 'old-refresh'],
 		['xAccessToken', 'old-access'],
 	] as const) {
-		await saveSecret({ env, userId, scope: 'user', name, value })
+		await saveSecret({ env, userId, scope: 'user', name, value, audit: null })
 	}
 	for (const name of ['shared-token', 'xRefreshToken']) {
 		await setSecretAllowedPackages({
@@ -318,6 +336,7 @@ test('package writes to user secrets require every package approval and apply at
 			scope: 'user',
 			name,
 			allowedPackages: ['package-1'],
+			audit: null,
 		})
 	}
 
@@ -329,6 +348,7 @@ test('package writes to user secrets require every package approval and apply at
 			name: 'shared-token',
 			value: 'new-value',
 			description: 'Updated by package',
+			audit: null,
 		}),
 	).resolves.toMatchObject({
 		name: 'shared-token',
@@ -346,6 +366,7 @@ test('package writes to user secrets require every package approval and apply at
 			packageId: 'package-2',
 			name: 'shared-token',
 			value: 'unauthorized-value',
+			audit: null,
 		}),
 	).rejects.toThrow('not approved for package "package-2"')
 
@@ -359,6 +380,7 @@ test('package writes to user secrets require every package approval and apply at
 				{ name: 'xRefreshToken', value: 'new-refresh' },
 				{ name: 'xAccessToken', value: 'new-access' },
 			],
+			audit: null,
 		}),
 	).rejects.toThrow('not approved for package "package-1"')
 	await expect(resolveUser('xRefreshToken')).resolves.toMatchObject({
@@ -376,6 +398,7 @@ test('package writes to user secrets require every package approval and apply at
 		scope: 'user',
 		name: 'xAccessToken',
 		allowedPackages: ['package-1'],
+		audit: null,
 	})
 	await setSecretsAtomically({
 		env,
@@ -385,6 +408,7 @@ test('package writes to user secrets require every package approval and apply at
 			{ name: 'xAccessToken', value: 'new-access', scope: 'user' },
 		],
 		storageContext: { ...ctx('package-1'), storageId: null },
+		audit: null,
 	})
 	await expect(resolveUser('xRefreshToken')).resolves.toMatchObject({
 		found: true,
@@ -410,6 +434,7 @@ test('saveSecret enforces plan secret quotas including updates and max ceiling',
 			scope: 'user',
 			name,
 			value,
+			audit: null,
 		})
 
 	for (let index = 0; index < limit; index += 1) {
@@ -435,6 +460,7 @@ test('saveSecret enforces plan secret quotas including updates and max ceiling',
 			name: 'quota-secret-0',
 			value: 'rotated-value',
 			description: 'rotated',
+			audit: null,
 		}),
 	).resolves.toMatchObject({ name: 'quota-secret-0', description: 'rotated' })
 
@@ -486,6 +512,7 @@ test('user secrets persist per-entry expiry, stay listed after expiry, and fail 
 			name: 'githubPat',
 			value: 'ghp_old',
 			expiresAt,
+			audit: null,
 		})
 
 	const saved = await savePat(futureDateOnly)
@@ -524,6 +551,7 @@ test('user secrets persist per-entry expiry, stay listed after expiry, and fail 
 		scope: 'user',
 		name: 'githubPat',
 		expiresAt: null,
+		audit: null,
 	})
 	expect(cleared.expiresAt).toBeNull()
 	expect(cleared.ttlMs).toBeNull()
@@ -544,6 +572,7 @@ test('scope move can preserve anywhere placement; brand-new Keys stay headers-on
 		value: 'legacy-value',
 		// Explicit null: simulate a pre-default row (or a move preserving anywhere).
 		placementOnInsert: null,
+		audit: null,
 	})
 	await expect(
 		resolveSecret({ env, userId, name: 'legacyAnywhere', scope: 'user' }),
@@ -557,6 +586,7 @@ test('scope move can preserve anywhere placement; brand-new Keys stay headers-on
 		value: 'legacy-value',
 		storageContext: packageContext,
 		placementOnInsert: null,
+		audit: null,
 	})
 	await expect(
 		resolveSecret({
@@ -574,6 +604,7 @@ test('scope move can preserve anywhere placement; brand-new Keys stay headers-on
 		scope: 'user',
 		name: 'brandNew',
 		value: 'new-value',
+		audit: null,
 	})
 	await expect(
 		resolveSecret({ env, userId, name: 'brandNew', scope: 'user' }),
@@ -589,6 +620,7 @@ test('disconnect clears the value; reconnect preserves placement over a later de
 		name: 'keptPlacement',
 		value: 'secret-value',
 		placementOnInsert: { headers: true, body: true },
+		audit: null,
 	})
 	await expect(
 		resolveSecret({ env, userId, name: 'keptPlacement', scope: 'user' }),
@@ -613,7 +645,13 @@ test('disconnect clears the value; reconnect preserves placement over a later de
 	})
 	expect(beforeDisconnect.credentialId).toBeTruthy()
 	await expect(
-		disconnectSecret({ env, userId, name: 'keptPlacement', scope: 'user' }),
+		disconnectSecret({
+			env,
+			userId,
+			name: 'keptPlacement',
+			scope: 'user',
+			audit: null,
+		}),
 	).resolves.toBe(true)
 	await expect(
 		resolveSecret({ env, userId, name: 'keptPlacement', scope: 'user' }),
@@ -639,6 +677,7 @@ test('disconnect clears the value; reconnect preserves placement over a later de
 		scope: 'user',
 		name: 'keptPlacement',
 		allowedPackages: ['package-1'],
+		audit: null,
 	})
 	await setSecretsAtomically({
 		env,
@@ -647,6 +686,7 @@ test('disconnect clears the value; reconnect preserves placement over a later de
 			{ name: 'keptPlacement', value: 'batch-restored', scope: 'user' },
 		],
 		storageContext: { ...ctx('package-1'), storageId: null },
+		audit: null,
 	})
 	await expect(
 		resolveSecret({ env, userId, name: 'keptPlacement', scope: 'user' }),
@@ -671,6 +711,7 @@ test('disconnect clears the value; reconnect preserves placement over a later de
 		value: 'pkg-value',
 		storageContext: ctx('package-2'),
 		placementOnInsert: { headers: true, query: true },
+		audit: null,
 	})
 	await disconnectSecret({
 		env,
@@ -678,6 +719,7 @@ test('disconnect clears the value; reconnect preserves placement over a later de
 		name: 'pkgKept',
 		scope: 'package',
 		storageContext: ctx('package-2'),
+		audit: null,
 	})
 	await expect(
 		listPackageSecretsByPackageIds({
@@ -719,6 +761,7 @@ test('package insert marks unread defaults; later secretSet repairs untouched de
 		value: 'first',
 		storageContext: packageContext,
 		baseUrl: 'https://kody.example',
+		audit: null,
 	})
 	expect(inserted).toMatchObject({
 		placement: { headers: true },
@@ -751,6 +794,7 @@ test('package insert marks unread defaults; later secretSet repairs untouched de
 		value: 'second',
 		storageContext: packageContext,
 		baseUrl: 'https://kody.example',
+		audit: null,
 	})
 	expect(repaired).toMatchObject({
 		placement: { body: true },
@@ -776,6 +820,7 @@ test('package insert marks unread defaults; later secretSet repairs untouched de
 		value: 'third',
 		storageContext: packageContext,
 		baseUrl: 'https://kody.example',
+		audit: null,
 	})
 	expect(ownerWins).toMatchObject({
 		placement: { headers: true },
@@ -783,4 +828,210 @@ test('package insert marks unread defaults; later secretSet repairs untouched de
 	})
 
 	readSpy.mockRestore()
+})
+
+test('setSecretsAllowedPackages and setSecretsAllowedHosts batch upserts and skip missing-name loops', async () => {
+	const { env } = await createSecretEnv()
+	for (const name of ['alphaToken', 'bravoToken', 'charlieToken']) {
+		await saveSecret({
+			env,
+			userId,
+			scope: 'user',
+			name,
+			value: `${name}-value`,
+			audit: null,
+		})
+	}
+
+	const originalBatch = env.APP_DB.batch.bind(env.APP_DB)
+	let batchCalls = 0
+	env.APP_DB.batch = (async (...args: Parameters<D1Database['batch']>) => {
+		batchCalls += 1
+		return originalBatch(...args)
+	}) as D1Database['batch']
+
+	await expect(
+		setSecretsAllowedPackages({
+			env,
+			userId,
+			scope: 'user',
+			updates: [
+				{ name: 'alphaToken', allowedPackages: ['pkg-a'] },
+				{ name: 'bravoToken', allowedPackages: ['pkg-a', 'pkg-b'] },
+				{ name: 'charlieToken', allowedPackages: ['pkg-a'] },
+			],
+			audit: null,
+		}),
+	).resolves.toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				name: 'alphaToken',
+				allowedPackages: ['pkg-a'],
+			}),
+			expect.objectContaining({
+				name: 'bravoToken',
+				allowedPackages: ['pkg-a', 'pkg-b'],
+			}),
+			expect.objectContaining({
+				name: 'charlieToken',
+				allowedPackages: ['pkg-a'],
+			}),
+		]),
+	)
+	expect(batchCalls).toBe(1)
+
+	batchCalls = 0
+	await expect(
+		setSecretsAllowedHosts({
+			env,
+			userId,
+			scope: 'user',
+			updates: [
+				{ name: 'alphaToken', allowedHosts: ['api.example.com'] },
+				{ name: 'bravoToken', allowedHosts: ['hooks.slack.com'] },
+			],
+			audit: null,
+		}),
+	).resolves.toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				name: 'alphaToken',
+				allowedHosts: ['api.example.com'],
+			}),
+			expect.objectContaining({
+				name: 'bravoToken',
+				allowedHosts: ['hooks.slack.com'],
+			}),
+		]),
+	)
+	expect(batchCalls).toBe(1)
+
+	await expect(listSecrets({ env, userId, scope: 'user' })).resolves.toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				name: 'alphaToken',
+				allowedPackages: ['pkg-a'],
+				allowedHosts: ['api.example.com'],
+			}),
+			expect.objectContaining({
+				name: 'bravoToken',
+				allowedPackages: ['pkg-a', 'pkg-b'],
+				allowedHosts: ['hooks.slack.com'],
+			}),
+			expect.objectContaining({
+				name: 'charlieToken',
+				allowedPackages: ['pkg-a'],
+				allowedHosts: [],
+			}),
+		]),
+	)
+
+	await expect(
+		setSecretsAllowedPackages({
+			env,
+			userId,
+			scope: 'user',
+			updates: [{ name: 'missingToken', allowedPackages: ['pkg-a'] }],
+			audit: null,
+		}),
+	).rejects.toThrow('Secret not found for this scope.')
+
+	await expect(
+		setSecretAllowedPackages({
+			env,
+			userId,
+			scope: 'user',
+			name: 'alphaToken',
+			allowedPackages: ['pkg-a', 'pkg-c'],
+			audit: null,
+		}),
+	).resolves.toMatchObject({
+		name: 'alphaToken',
+		allowedPackages: ['pkg-a', 'pkg-c'],
+	})
+	await expect(
+		setSecretAllowedHosts({
+			env,
+			userId,
+			scope: 'user',
+			name: 'charlieToken',
+			allowedHosts: ['api.openai.com'],
+			audit: null,
+		}),
+	).resolves.toMatchObject({
+		name: 'charlieToken',
+		allowedHosts: ['api.openai.com'],
+	})
+})
+
+test('a new credential records the opt-in its website form passes; a copied origin alone grants none', async () => {
+	const { env } = await createSecretEnv()
+	await saveSecret({
+		env,
+		userId,
+		scope: 'user',
+		name: 'ownerBody',
+		value: 'secret-value',
+		placementOnInsert: { headers: true, body: true },
+		placementOriginOnInsert: 'owner',
+		fillPlacementOptInOnInsert: { query: false, path: false, body: true },
+		audit: null,
+	})
+	await saveSecret({
+		env,
+		userId,
+		scope: 'user',
+		name: 'codeBody',
+		value: 'secret-value',
+		placementOnInsert: { headers: true, body: true },
+		placementOriginOnInsert: 'owner',
+		audit: null,
+	})
+	const owner = await resolveSecret({
+		env,
+		userId,
+		name: 'ownerBody',
+		scope: 'user',
+	})
+	const code = await resolveSecret({
+		env,
+		userId,
+		name: 'codeBody',
+		scope: 'user',
+	})
+	if (!owner.found || !code.found) throw new Error('expected both credentials')
+	await expect(
+		readFillPlacementOptIn(env.APP_DB, owner.credentialId!),
+	).resolves.toEqual({ query: false, path: false, body: true })
+	await expect(
+		readFillPlacementOptIn(env.APP_DB, code.credentialId!),
+	).resolves.toEqual({ query: false, path: false, body: false })
+})
+
+test('a website save of an existing credential records its opt-in even when placement is unchanged', async () => {
+	const { env } = await createSecretEnv()
+	const save = (optIn?: { query: boolean; path: boolean; body: boolean }) =>
+		saveSecret({
+			env,
+			userId,
+			scope: 'user',
+			name: 'codeQuery',
+			value: 'secret-value',
+			placementOnInsert: { headers: true, query: true },
+			placementOriginOnInsert: 'owner',
+			...(optIn ? { fillPlacementOptInOnInsert: optIn } : {}),
+			audit: null,
+		})
+	await save()
+	await save({ query: true, path: false, body: false })
+	const found = await resolveSecret({
+		env,
+		userId,
+		name: 'codeQuery',
+		scope: 'user',
+	})
+	if (!found.found) throw new Error('expected the credential')
+	await expect(
+		readFillPlacementOptIn(env.APP_DB, found.credentialId!),
+	).resolves.toEqual({ query: true, path: false, body: false })
 })

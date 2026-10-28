@@ -70,13 +70,14 @@ async function claimInviteLinkUse(input: {
 	const bumped = await input.db
 		.prepare(
 			`UPDATE org_invite_links
-			 SET use_count = use_count + 1
+			 SET use_count = use_count + 1,
+			     last_used_at = ?
 			 WHERE id = ?
 			   AND status = 'active'
 			   AND expires_at > ?
 			   AND (max_uses IS NULL OR use_count < max_uses)`,
 		)
-		.bind(input.linkId, input.nowIso)
+		.bind(input.nowIso, input.linkId, input.nowIso)
 		.run()
 	if ((bumped.meta?.changes ?? 0) === 0) {
 		await input.db
@@ -262,8 +263,17 @@ export async function inviteLinkAlreadySatisfied(
 	const role = await liveMembershipRole(db, link.orgId, userId)
 	const target = link.target
 	switch (target.kind) {
-		case 'membership':
-			return role != null
+		case 'membership': {
+			if (role == null) return false
+			for (const teamId of await liveDefaultTeamIds(
+				db,
+				link.orgId,
+				link.teamIds,
+			)) {
+				if (!(await isLiveTeamMember(db, teamId, userId))) return false
+			}
+			return true
+		}
 		case 'team':
 			return role != null && (await isLiveTeamMember(db, target.teamId, userId))
 		case 'resource':
@@ -403,6 +413,41 @@ async function recordJoined(
 	})
 }
 
+async function liveDefaultTeamIds(
+	db: D1Database,
+	orgId: string,
+	teamIds: ReadonlyArray<string>,
+) {
+	const liveTeamIds: Array<string> = []
+	for (const teamId of teamIds) {
+		const team = await db
+			.prepare(
+				`SELECT id FROM teams
+				 WHERE id = ? AND org_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(teamId, orgId)
+			.first<{ id: string }>()
+		if (team) liveTeamIds.push(team.id)
+	}
+	return liveTeamIds
+}
+
+async function addLiveDefaultTeams(
+	input: RedeemInput<Extract<InviteLinkTarget, { kind: 'membership' }>>,
+	liveTeamIds: ReadonlyArray<string>,
+) {
+	for (const teamId of liveTeamIds) {
+		await addTeamMember({
+			db: input.db,
+			orgId: input.link.orgId,
+			teamId,
+			userId: input.user.userId,
+			addedByUserId: input.link.createdByUserId,
+			audit: input.audit,
+		})
+	}
+}
+
 async function redeemMembershipLink(
 	input: RedeemInput<Extract<InviteLinkTarget, { kind: 'membership' }>>,
 ): Promise<RedeemInviteLinkResult> {
@@ -414,7 +459,24 @@ async function redeemMembershipLink(
 		target,
 		orgId: link.orgId,
 	})
+	const liveTeamIds = await liveDefaultTeamIds(db, link.orgId, link.teamIds)
+	const finishMembershipAccess = async () => {
+		await addLiveDefaultTeams(input, liveTeamIds)
+		// Seat sync sits after teams. A prior attempt may have added the
+		// member and then failed before sync; retries must still catch up.
+		if (seatRole(target.role)) {
+			await syncSeatsAfterMembershipChange({
+				db,
+				env: input.env,
+				orgId: link.orgId,
+			})
+		}
+	}
+	// Already in the org: still apply missing default teams. A prior attempt
+	// may have granted membership and then failed mid-team-write; releasing
+	// the claim would leave a member with no redemption and no teams.
 	if (await liveMembershipRole(db, link.orgId, user.userId)) {
+		await finishMembershipAccess()
 		return success(true)
 	}
 
@@ -433,26 +495,40 @@ async function redeemMembershipLink(
 		alreadyRedeemed &&
 		(await liveMembershipRole(db, link.orgId, user.userId))
 	) {
+		await finishMembershipAccess()
 		return success(true)
 	}
 
-	await addOrgMember({
-		db,
-		orgId: link.orgId,
-		userId: user.userId,
-		role: target.role,
-		invitedByUserId: link.createdByUserId,
-		audit: input.audit,
-	})
-	if (seatRole(target.role)) {
-		await syncSeatsAfterMembershipChange({
+	const writeMembership = async () => {
+		await addOrgMember({
 			db,
-			env: input.env,
 			orgId: link.orgId,
+			userId: user.userId,
+			role: target.role,
+			invitedByUserId: link.createdByUserId,
+			audit: input.audit,
 		})
+		await finishMembershipAccess()
+	}
+	if (alreadyRedeemed) {
+		await writeMembership()
+	} else {
+		try {
+			await writeMembership()
+		} catch (error) {
+			// Do not release after a partial grant: membership would remain
+			// while the claim disappears, and retries would skip team writes.
+			if (!(await liveMembershipRole(db, link.orgId, user.userId))) {
+				await releaseClaim({ ...input, target })
+			}
+			throw error
+		}
 	}
 	if (!alreadyRedeemed) {
-		await recordJoined(input, { role: target.role })
+		await recordJoined(input, {
+			role: target.role,
+			teamIds: liveTeamIds,
+		})
 	}
 	return success(false)
 }

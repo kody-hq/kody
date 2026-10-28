@@ -1,4 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import {
+	dashboardPanelCss,
+	dashboardHeaderCss,
+	dashboardHeadingCss,
+	dashboardLinkCss,
+} from './workspace-dashboard-styles.ts'
+import { renderIcon } from '../components/icon.tsx'
 import { type CSSObject } from '@emotion/react'
 import {
 	formatWorkspaceChartUtcDay,
@@ -55,7 +62,7 @@ export function WorkspaceCharts({
 			<section css={panelCss} aria-labelledby="execution-history">
 				<div css={headerCss}>
 					<h2 id="execution-history" css={headingCss}>
-						Execution history
+						{renderIcon('chart')} Execution history
 					</h2>
 					<span css={mutedCss}>Last 7 days · UTC</span>
 				</div>
@@ -86,7 +93,7 @@ export function WorkspaceCharts({
 			<section css={panelCss} aria-labelledby="activity-source">
 				<div css={headerCss}>
 					<h2 id="activity-source" css={headingCss}>
-						Activity by source
+						{renderIcon('pie-chart')} Activity by source
 					</h2>
 					<span css={mutedCss}>Last 7 days</span>
 				</div>
@@ -115,7 +122,7 @@ export function WorkspaceCharts({
 				>
 					<div css={headerCss}>
 						<h2 id="credits-by-package" css={headingCss}>
-							Credits spent by package
+							{renderIcon('wallet')} Credits spent by package
 						</h2>
 						<SiteLink css={moreCss} href={`${base}/usage`}>
 							Usage & billing
@@ -216,32 +223,14 @@ export function WorkspaceCharts({
 const gridCss: CSSObject = {
 	display: 'grid',
 	gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)',
-	gap: '0.75rem',
+	gap: '1.25rem',
 	'@media (max-width: 1100px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
 }
-const panelCss: CSSObject = {
-	minWidth: 0,
-	border: `1px solid ${colors.border}`,
-	borderRadius: '0.5rem',
-	background: colors.surface,
-	overflow: 'hidden',
-}
-const headerCss: CSSObject = {
-	display: 'flex',
-	justifyContent: 'space-between',
-	alignItems: 'baseline',
-	flexWrap: 'wrap',
-	gap: '0.5rem',
-	padding: '0.65rem 0.8rem',
-	borderBottom: `1px solid ${colors.border}`,
-}
-const headingCss: CSSObject = {
-	margin: 0,
-	fontSize: '0.875rem',
-	fontWeight: 650,
-}
+const panelCss = dashboardPanelCss
+const headerCss = dashboardHeaderCss
+const headingCss = dashboardHeadingCss
 const mutedCss: CSSObject = { fontSize: '0.8rem', color: colors.textMuted }
-const bodyCss: CSSObject = { padding: '0.65rem 0.8rem' }
+const bodyCss: CSSObject = { padding: '0.75rem 1.25rem 1.25rem' }
 const billingGridCss: CSSObject = {
 	...bodyCss,
 	display: 'grid',
@@ -288,4 +277,4 @@ const emptyCss: CSSObject = {
 	fontSize: '0.875rem',
 	color: colors.textMuted,
 }
-const moreCss: CSSObject = { fontSize: '0.8rem', color: colors.primaryText }
+const moreCss = dashboardLinkCss

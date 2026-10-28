@@ -1,3 +1,4 @@
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -11,6 +12,7 @@ export const secretProviderUnbindCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'secretProviderUnbind',
+		contextRuns: 'deny',
 		orgPermission: 'secret:delete',
 		description:
 			'Remove the account binding for an external secret provider id. Unbind and rebind to a different package drop every grant for that provider. Does not return secret values.',
@@ -32,6 +34,7 @@ export const secretProviderUnbindCapability = defineDomainCapability(
 				env: ctx.env,
 				userId: ownerIdFromCaller(ctx.callerContext),
 				providerId: args.provider,
+				audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 			})
 			return { provider: result.providerId, unbound: true }
 		},

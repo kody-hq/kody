@@ -2,8 +2,10 @@ import {
 	followCreateLimitPerHour,
 	followEventsForKind,
 	followPausedRetentionDays,
+	followRecentUpdatesRetentionDays,
 	type FollowEvent,
 	type FollowPauseReason,
+	type FollowRecentUpdateDetail,
 } from '#universal/follows.ts'
 
 export {
@@ -31,6 +33,18 @@ export const followPushMaxCommits = 20
 export const followPauseRetentionMs =
 	followPausedRetentionDays * 24 * 60 * 60 * 1000
 export const followZeroCreditsSkipReason = 'zero_credits'
+export const followRecentUpdatesRetentionMs =
+	followRecentUpdatesRetentionDays * 24 * 60 * 60 * 1000
+
+/** A stored Recent updates row joined to its follow's target. */
+export type FollowRecentUpdateRecord = {
+	id: string
+	followId: string
+	targetName: string
+	targetKind: FollowTargetKind
+	detail: FollowRecentUpdateDetail
+	occurredAt: string
+}
 
 export type FollowPushCommit = {
 	id: string

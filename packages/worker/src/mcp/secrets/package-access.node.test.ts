@@ -12,6 +12,14 @@ const mockModule = vi.hoisted(() => ({
 	loadPackageManifestBySourceId: vi.fn(),
 	findSecret: vi.fn(),
 	getOrgById: vi.fn(),
+	tryAllowedPackagesSafetyWindowGrant: vi.fn(
+		async (..._args: Array<unknown>) => false,
+	),
+}))
+
+vi.mock('#worker/credentials/allowed-packages-safety-window.ts', () => ({
+	tryAllowedPackagesSafetyWindowGrant: (...args: Array<unknown>) =>
+		mockModule.tryAllowedPackagesSafetyWindowGrant(...args),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
@@ -459,25 +467,48 @@ test('a non-empty allowed list is enforced for self-authored and adopted package
 		return true
 	}
 
+	const datedPackage = {
+		...savedPackage,
+		createdAt: '2026-01-01T00:00:00.000Z',
+	}
+
 	// Self-authored: no implicit shortcut once the list is non-empty.
 	clearLookups()
-	mockModule.getSavedPackageById.mockResolvedValueOnce(savedPackage)
+	lookups(datedPackage, null, { packageLoads: 2 })
 	await expect(
 		assertPackageCanAccessResolvedSecret(
 			accessInput({ resolved: lockedToOther }),
 		),
 	).rejects.toSatisfy(expectNotOnList)
-	expect(mockModule.getCommunityForkByForkedPackageId).not.toHaveBeenCalled()
+	expect(mockModule.tryAllowedPackagesSafetyWindowGrant).toHaveBeenCalledWith(
+		expect.objectContaining({
+			credentialId: 'cred-user-token',
+			packageId: 'pkg-1',
+			packageCreatedAt: '2026-01-01T00:00:00.000Z',
+			accessKind: 'self_authored',
+		}),
+	)
 
-	// Adopted fork: same. The fork lookup is skipped because the list check
-	// runs first, so adoption cannot widen a non-empty list.
+	// Adopted fork: same; adoption cannot widen a non-empty list.
 	clearLookups()
-	mockModule.getSavedPackageById.mockResolvedValueOnce(savedPackage)
+	lookups(datedPackage, adoptedFork, { packageLoads: 2 })
 	await expect(
 		assertPackageCanAccessResolvedSecret(
 			accessInput({ resolved: lockedToOther }),
 		),
 	).rejects.toSatisfy(expectNotOnList)
+
+	// Safety window approves the pre-cutover pair on first use.
+	clearLookups()
+	lookups(datedPackage, null, { packageLoads: 2 })
+	mockModule.tryAllowedPackagesSafetyWindowGrant.mockResolvedValueOnce(true)
+	await expect(
+		assertPackageCanAccessResolvedSecret(
+			accessInput({ resolved: lockedToOther }),
+		),
+	).resolves.toBeUndefined()
+	mockModule.getSavedPackageById.mockReset()
+	mockModule.getCommunityForkByForkedPackageId.mockReset()
 
 	// Nested self-authored authority under its own run: still denied.
 	clearLookups()

@@ -83,6 +83,26 @@ export function isRepoSearchInvalidRegexMessage(message: string) {
 }
 
 /**
+ * Stable prefix when `repoSearch` gets a blank or whitespace-only pattern.
+ * Schema trims and rejects these at the MCP/Open API boundary; the DO still
+ * throws this phrase for other entry points. Subclass identity does not
+ * survive Durable Object RPC. KODY-BA.
+ */
+export const repoSearchEmptyPatternMessagePrefix =
+	'repoSearch requires a non-empty pattern'
+
+export function isRepoSearchEmptyPatternMessage(message: string) {
+	return message.startsWith(repoSearchEmptyPatternMessagePrefix)
+}
+
+export function buildRepoSearchEmptyPatternCallerMessage() {
+	return (
+		`${repoSearchEmptyPatternMessagePrefix}. ` +
+		'Pass literal text or a JavaScript RegExp pattern; whitespace-only patterns are rejected.'
+	)
+}
+
+/**
  * Stable phrase from `resolveRepoWorkspacePath` when a caller path escapes
  * the session workspace or names a `.git` segment. Subclass identity does
  * not survive Durable Object RPC. Also match the pre-normalization wording

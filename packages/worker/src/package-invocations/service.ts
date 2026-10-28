@@ -12,6 +12,7 @@ import {
 	type PackageInvocationTokenScope,
 	type PackageRuntimeContext,
 	type PackageRuntimeToolFactories,
+	type PackageSourceRevisionOptions,
 } from './common.ts'
 import { invokePackageExportWithToolFactories } from './http-invoke.ts'
 import { type PackageEventsDispatchQueueMessage } from '#worker/package-events/dispatch-queue-producer.ts'
@@ -19,6 +20,7 @@ import {
 	createPackageEventToolsWithToolFactories,
 	deliverPackageEventWithToolFactories,
 	invokePackageSubscriptionWithToolFactories,
+	type SubscriptionInvocationInput,
 } from './subscription-dispatch.ts'
 import { type TrustedSyntheticSubscriptionDispatch } from './subscription-envelope.ts'
 
@@ -71,6 +73,8 @@ export async function invokePackageExport(input: {
 	executorTimeoutMs?: number | null
 	/** Inbound request abort. Caller disconnect finishes the keyed run. */
 	signal?: AbortSignal
+	/** Report, and optionally pin, the commit the invoke resolves. */
+	sourceRevision?: PackageSourceRevisionOptions | null
 }): Promise<PackageInvocationResponse> {
 	return await invokePackageExportWithToolFactories({
 		...input,
@@ -102,6 +106,8 @@ export async function invokePackageSubscription(input: {
 	actorTokenId?: string
 	request: RequestSource
 	audience?: EnablementAudience | null
+	resourceEventDepth?: number
+	paramsForRun?: SubscriptionInvocationInput['paramsForRun']
 	inboundFromAddress?: string | null
 	inboundFromAuthenticated?: boolean
 	runtimeInvokeDepth?: number

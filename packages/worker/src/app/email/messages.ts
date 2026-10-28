@@ -1,4 +1,5 @@
 import { renderTransactionalEmail } from '#app/email/template.ts'
+import { platformFeedbackAcknowledgementSubject } from '#worker/platform-feedback/email-threading.ts'
 import { type PlatformFeedbackOutcomeStatus } from '#worker/platform-feedback/types.ts'
 import { ERROR_AGENT_PROMPT_ATTR } from '#universal/error-agent-prompt.ts'
 import { buildBillingFailureAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
@@ -44,12 +45,6 @@ export function buildVerificationEmail(input: {
 		],
 		action: { label: 'Verify email address', url: input.verificationUrl },
 		afterAction: ['This link expires in 24 hours.'],
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			'If you did not create a Kody account, you can safely ignore this email.',
 	})
@@ -74,6 +69,89 @@ export function buildEmailChangeEmail(input: {
 		afterAction: ['This link expires in 24 hours.'],
 		footnote:
 			'If you did not request this change, you can safely ignore this email — your current address stays in place.',
+	})
+}
+
+/**
+ * Partially mask an address for security notices so the recipient sees that
+ * the login email moved without learning the full new local-part from this
+ * mail alone (they already know the domain in many cases).
+ */
+export function maskEmailAddressForNotice(email: string) {
+	const trimmed = email.trim().toLowerCase()
+	const at = trimmed.indexOf('@')
+	if (at <= 0 || at === trimmed.length - 1) return '***'
+	const local = trimmed.slice(0, at)
+	const domain = trimmed.slice(at + 1)
+	if (local.length === 1) return `***@${domain}`
+	return `${local.slice(0, 1)}***@${domain}`
+}
+
+function formatEmailChangeWhen(changedAt: Date) {
+	return `${changedAt.toISOString().replace(/\.\d{3}Z$/, 'Z')} (UTC)`
+}
+
+function formatEmailChangeRequestContext(input: {
+	ip?: string | null
+	userAgent?: string | null
+	country?: string | null
+}) {
+	const parts: Array<string> = []
+	const ip = input.ip?.trim()
+	if (ip) parts.push(`IP ${ip}`)
+	const country = input.country?.trim()
+	if (country) parts.push(`country ${country}`)
+	const userAgent = input.userAgent?.trim()
+	if (userAgent) {
+		const shortened =
+			userAgent.length > 160 ? `${userAgent.slice(0, 157)}...` : userAgent
+		parts.push(`browser ${shortened}`)
+	}
+	return parts.length > 0 ? parts.join('; ') : null
+}
+
+/** Security notice to the previous login address after an email change commits. */
+export function buildEmailChangedSecurityEmail(input: {
+	appBaseUrl: string
+	oldEmail: string
+	newEmail: string
+	changedAt: Date
+	accountUrl: string
+	resetPasswordUrl: string
+	supportEmail?: string
+	ip?: string | null
+	userAgent?: string | null
+	country?: string | null
+}) {
+	const maskedNew = maskEmailAddressForNotice(input.newEmail)
+	const supportEmail = input.supportEmail?.trim() || 'support@kody.codes'
+	const requestContext = formatEmailChangeRequestContext(input)
+	const body = [
+		`The login email on your Kody account was changed from ${input.oldEmail} to ${maskedNew}.`,
+		`When: ${formatEmailChangeWhen(input.changedAt)}.`,
+	]
+	if (requestContext) {
+		body.push(`Request details: ${requestContext}.`)
+	}
+	body.push(
+		'If this was you, no action is needed. If it was not, secure the account immediately.',
+	)
+
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: 'Your Kody account email was changed',
+		preheader: `Login email moved to ${maskedNew}.`,
+		heading: 'Your account email was changed',
+		body,
+		action: { label: 'Open account settings', url: input.accountUrl },
+		secondaryAction: {
+			label: 'Reset your password',
+			url: input.resetPasswordUrl,
+		},
+		afterAction: [
+			`This wasn't you? Reset your password, review sign-in methods on your account, and email ${supportEmail}.`,
+		],
+		footnote: `We sent this to ${input.oldEmail} because it was the previous login address. Contact ${supportEmail} if you need help recovering access.`,
 	})
 }
 
@@ -119,6 +197,27 @@ export function buildEmailClaimReleaseEmail(input: {
 		afterAction: ['This link expires in 24 hours.'],
 		footnote:
 			'If you did not ask to release this address, you can safely ignore this email — the claim stays in place.',
+	})
+}
+
+export function buildDeletedAccountReleaseEmail(input: {
+	appBaseUrl: string
+	email: string
+	verificationUrl: string
+}) {
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: 'Start a new Kody account with this email',
+		preheader: `Confirm you want to reuse ${input.email} for a new Kody account.`,
+		heading: 'Reuse this email for a new account',
+		body: [
+			`Someone tried to sign up with ${input.email}, which still belongs to a deleted Kody account.`,
+			"Confirm this link to release the address and that account's username so you can sign up again. The deleted account can no longer be restored after this.",
+		],
+		action: { label: 'Release and sign up again', url: input.verificationUrl },
+		afterAction: ['This link expires in 24 hours.'],
+		footnote:
+			'If you did not try to sign up, you can safely ignore this email. Nothing changes.',
 	})
 }
 
@@ -179,12 +278,6 @@ export function buildUserEntitlementWarningEmail(input: {
 		afterAction: [
 			`You can also see every limit on your usage page: ${input.usageUrl}`,
 		],
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote: copy.footnote,
 	})
 }
@@ -257,12 +350,6 @@ export function buildConnectAgentEmail(input: {
 			'That one connection is the home: packages of code, memory, secrets, and jobs follow you to every host.',
 		],
 		action: { label: 'Connect your agent', url: input.onboardingUrl },
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			"You're receiving this because you verified a Kody account and have not connected an agent yet.",
 		unsubscribe: input.unsubscribe,
@@ -295,12 +382,6 @@ export function buildKeepPackageEmail(input: {
 			"And if what it did wasn't useful, then send it this:",
 			{ kind: 'quote', text: "Let's talk about how we can use Kody" },
 		],
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			"You're receiving this because you connected an agent to Kody and have not saved a package yet.",
 		unsubscribe: input.unsubscribe,
@@ -325,12 +406,6 @@ export function buildSecondAgentEmail(input: {
 		afterAction: input.trialUrl
 			? [`A second-agent trial is available on your account: ${input.trialUrl}`]
 			: undefined,
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			"You're receiving this because you saved a Kody package and have connected one agent.",
 		unsubscribe: input.unsubscribe,
@@ -352,12 +427,6 @@ export function buildCoolingHomeEmail(input: {
 			'When you want them again, open the agent you already use and connect.',
 		],
 		action: { label: 'Open Kody', url: input.onboardingUrl },
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			"You're receiving this because your Kody account has been quiet. This is the only poke.",
 		unsubscribe: input.unsubscribe,
@@ -387,12 +456,6 @@ export function buildAdvocateReferralEmail(input: {
 			label: 'Email a short testimonial',
 			url: kodyTestimonialMailto,
 		},
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			"You're receiving this because you've been using Kody. This is the only ask.",
 		unsubscribe: input.unsubscribe,
@@ -416,21 +479,8 @@ export function buildBillingSuccessEmail(input: {
 		],
 		action: { label: 'Join the Kody Discord', url: input.discordUrl },
 		afterAction: [`You can manage billing anytime: ${input.billingUrl}`],
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote: "You're receiving this because you subscribed to a Kody plan.",
 	})
-}
-
-const creditsIllustration = {
-	src: '/images/kody-lantern.png',
-	alt: '',
-	width: 96,
-	height: 96,
 }
 
 export function buildCreditsAutoRefilledEmail(input: {
@@ -448,7 +498,6 @@ export function buildCreditsAutoRefilledEmail(input: {
 			`Auto-refill added ${input.amountLabel} to your Kody credits. Your balance is now ${input.balanceLabel}.`,
 		],
 		action: { label: 'Manage credits', url: input.creditsUrl },
-		illustration: creditsIllustration,
 		footnote:
 			"You're receiving this because auto-refill notices are on. Turn them off on your credits page.",
 	})
@@ -467,7 +516,6 @@ export function buildCreditsMonthlyCapEmail(input: {
 			'Your credits are low, but another auto-refill would pass the monthly cap you set. When credits run out, usage past your monthly include stops. Add credits or raise the cap to keep going.',
 		],
 		action: { label: 'Manage credits', url: input.creditsUrl },
-		illustration: creditsIllustration,
 		footnote:
 			"You're receiving this because monthly cap notices are on. Turn them off on your credits page.",
 	})
@@ -487,7 +535,6 @@ export function buildCreditsLowBalanceEmail(input: {
 			`Your Kody credit balance is ${input.balanceLabel}. When credits run out, usage past your monthly include stops until you add more.`,
 		],
 		action: { label: 'Add credits', url: input.creditsUrl },
-		illustration: creditsIllustration,
 		footnote:
 			"You're receiving this because low-balance notices are on. Turn them off on your credits page.",
 	})
@@ -512,12 +559,6 @@ export function buildPaymentFailedEmail(input: {
 		action: { label: 'Update billing', url: input.billingUrl },
 		afterAction,
 		htmlComment: ERROR_AGENT_PROMPT_ATTR,
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			"You're receiving this because a Kody subscription payment failed.",
 	})
@@ -539,12 +580,6 @@ export function buildPastDueEmail(input: {
 		action: { label: 'Fix billing', url: input.billingUrl },
 		afterAction,
 		htmlComment: ERROR_AGENT_PROMPT_ATTR,
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			"You're receiving this because your Kody subscription is past due.",
 	})
@@ -631,12 +666,6 @@ export function buildPackageOwnerErrorSpikeEmail(input: {
 			'Disable a broken job or trigger from Jobs if the failure is looping.',
 			`Support: ${input.supportUrl}`,
 		],
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			"You're receiving this because a package you publish crossed an hourly error-spike threshold. You will not get another email for this episode until it recovers.",
 	})
@@ -662,12 +691,6 @@ export function buildJobAutoDisabledEmail(input: {
 		],
 		action: { label: 'Review jobs', url: input.jobsUrl },
 		afterAction: [`Support: ${input.supportUrl}`],
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			"You're receiving this because Kody turned off a scheduled job on an account you own.",
 	})
@@ -691,12 +714,6 @@ export function buildCustomDomainActiveEmail(input: {
 			'Kody checked it for you, so there is nothing else to do. Keep the DNS records in place; removing them takes the domain offline.',
 		],
 		action: { label: input.openLabel, url: input.openUrl },
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			"You're receiving this because a custom domain on an account you own just went live.",
 	})
@@ -728,12 +745,6 @@ export function buildCustomDomainNeedsAttentionEmail(input: {
 		],
 		action: { label: 'Review custom domains', url: input.manageUrl },
 		afterAction: [`Setup guide: ${input.docsUrl}`],
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			"You're receiving this because a custom domain on an account you own needs attention.",
 	})
@@ -786,12 +797,6 @@ export function buildUserErrorRateEmail(input: {
 		],
 		action: { label: 'Review account activity', url: input.activityUrl },
 		afterAction: [`Support: ${input.supportUrl}`],
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote:
 			"You're receiving this because your Kody account crossed an error-rate threshold.",
 	})
@@ -804,7 +809,7 @@ export function buildPlatformFeedbackAcknowledgementEmail(input: {
 	const feedbackId = input.feedbackId.trim()
 	return renderTransactionalEmail({
 		appBaseUrl: input.appBaseUrl,
-		subject: 'We got your Kody feedback',
+		subject: platformFeedbackAcknowledgementSubject,
 		preheader: 'Thanks — we have your note and will take a look.',
 		heading: 'We got your feedback',
 		body: [
@@ -812,12 +817,6 @@ export function buildPlatformFeedbackAcknowledgementEmail(input: {
 			`Your feedback id is ${feedbackId}.`,
 			'Your agent can check status anytime with metaPlatformFeedbackGet.',
 		],
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote: "You're receiving this because you sent Kody platform feedback.",
 	})
 }
@@ -849,12 +848,6 @@ export function buildPlatformFeedbackOutcomeEmail(input: {
 			'Thanks for taking the time to tell us. Notes like yours help us make Kody better.',
 			'If you have more to share, tell your agent you want to send more Kody feedback.',
 		],
-		illustration: {
-			src: '/images/kody-lantern.png',
-			alt: '',
-			width: 96,
-			height: 96,
-		},
 		footnote: "You're receiving this because you sent Kody platform feedback.",
 	})
 }

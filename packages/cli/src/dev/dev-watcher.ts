@@ -5,7 +5,7 @@
  * graph backs it up, so a missed event can never leave a stale bundle serving.
  */
 
-import { watch, type FSWatcher } from 'chokidar'
+import chokidar, { type FSWatcher } from 'chokidar'
 import { stat } from 'node:fs/promises'
 import { relative, sep } from 'node:path'
 
@@ -53,7 +53,7 @@ export function createDevWatcher(input: {
 	const ignored = (path: string) =>
 		shouldIgnoreWatchPath(relative(input.root, path), ignorePrefixes)
 
-	const watcher: FSWatcher = watch(input.root, {
+	const watcher: FSWatcher = chokidar.watch(input.root, {
 		ignoreInitial: true,
 		ignored,
 		atomic: true,

@@ -125,6 +125,34 @@ export function parseStartupProfileSummary(
 	}
 }
 
+export function isStartupProfilerTimeout(error: unknown) {
+	const record =
+		error && typeof error === 'object'
+			? (error as { stdout?: unknown; stderr?: unknown })
+			: undefined
+	const output = [
+		error instanceof Error ? error.message : String(error),
+		record?.stdout,
+		record?.stderr,
+	]
+		.filter((part): part is string => typeof part === 'string')
+		.join('\n')
+	return /startup profiling timed out/i.test(output)
+}
+
+export async function profileStartupWithRetry<T>(
+	profile: () => Promise<T>,
+): Promise<T> {
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		try {
+			return await profile()
+		} catch (error) {
+			if (!isStartupProfilerTimeout(error) || attempt === 2) throw error
+		}
+	}
+	throw new Error('Startup profile retries exhausted unexpectedly.')
+}
+
 export async function readStartupBudget(
 	budgetPath = startupBudgetPath,
 ): Promise<StartupBudget> {
@@ -217,11 +245,8 @@ export async function checkWorkerStartupTime() {
 			const samples: Array<StartupProfileSummary> = []
 			for (let run = 0; run < budget.runs; run++) {
 				samples.push(
-					await profileStartupOnce(
-						resolvedTarget,
-						outputRoot,
-						wranglerBinary,
-						run,
+					await profileStartupWithRetry(() =>
+						profileStartupOnce(resolvedTarget, outputRoot, wranglerBinary, run),
 					),
 				)
 			}

@@ -18,9 +18,10 @@ export const webhookUrlRotateCapability = defineDomainCapability(
 	capabilityDomainNames.webhooks,
 	{
 		name: 'webhookUrlRotate',
+		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
-			'Rotate the URL secret for a minted package webhook and return a new opaque handle. The previous URL stays active for 24 hours, or until the first accepted delivery arrives on the new URL. Register the new URL with webhookUrlApply — the credential is never returned.',
+			'Rotate the URL secret for a minted package webhook and return a new opaque handle without changing its on/off state. The previous URL stays active for 24 hours, or until the first accepted delivery arrives on the new URL. Register the new URL with webhookUrlApply — the credential is never returned.',
 		keywords: ['webhook', 'rotate', 'secret', 'handle', 'url'],
 		readOnly: false,
 		idempotent: false,

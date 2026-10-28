@@ -5,15 +5,20 @@ import { test } from 'vitest'
 import {
 	assertConfiguredIdentity,
 	assertRemoteDatabaseIdentity,
+	BackupError,
 	backupPayload,
 	configuredSourceDatabases,
 	declaredSourceDatabases,
+	errorCode,
 	isBackupEnabled,
 	objectKeyForBookmark,
 	primarySourceDatabase,
 	resolveSourceDatabase,
 	restoreImportOrder,
+	restExportSourceDatabases,
 	sourceDatabaseFromObjectPrefix,
+	sourceRestExportEnabled,
+	workflowBackupErrorMessage,
 	workflowInstanceId,
 } from './backup-policy.ts'
 import {
@@ -173,6 +178,44 @@ test('rejects SOURCE_DATABASES missing from the allowlist or missing SOURCE_DATA
 	}
 })
 
+test('SOURCE_DATABASES accepts optional restExport and defaults it to enabled', () => {
+	const env = multiDatabaseEnv()
+	env.SOURCE_DATABASES = JSON.stringify([
+		APP_DB,
+		{ ...JOBS_DB, restExport: false },
+	])
+	const sources = configuredSourceDatabases(env)
+	assert.equal(sources.length, 2)
+	assert.equal(sourceRestExportEnabled(sources[0]!), true)
+	assert.equal(sourceRestExportEnabled(sources[1]!), false)
+	assert.deepEqual(restExportSourceDatabases(env), [
+		{ id: DATABASE_ID, name: 'production-db' },
+	])
+	assert.doesNotThrow(() => assertConfiguredIdentity(env))
+	env.SOURCE_DATABASES = JSON.stringify([
+		{ ...APP_DB, restExport: true },
+		JOBS_DB,
+	])
+	assert.deepEqual(
+		restExportSourceDatabases(env).map((source) => source.name),
+		['production-db', 'kody-jobs'],
+	)
+	env.SOURCE_DATABASES = JSON.stringify([
+		{ id: DATABASE_ID, name: 'production-db', restExport: 'nope' },
+	])
+	assert.throws(
+		() => configuredSourceDatabases(env),
+		backupError('invalid-source-databases'),
+	)
+	env.SOURCE_DATABASES = JSON.stringify([
+		{ id: DATABASE_ID, name: 'production-db', extra: true },
+	])
+	assert.throws(
+		() => configuredSourceDatabases(env),
+		backupError('invalid-source-databases'),
+	)
+})
+
 test('declaredSourceDatabases uses the sealed day list and notes absent configured DBs', () => {
 	const env = multiDatabaseEnv()
 	assert.deepEqual(declaredSourceDatabases(env), [primarySourceDatabase(env)])
@@ -201,4 +244,25 @@ test('declaredSourceDatabases uses the sealed day list and notes absent configur
 			]),
 		backupError('restore-d1-source-not-configured'),
 	)
+})
+
+test('errorCode reads BackupError and Workflows RPC NonRetryableError messages', () => {
+	const expired = new BackupError(
+		'export-result-expired',
+		'D1 export result expired before upload; runtime will start a new export under new durable step names',
+	)
+	assert.equal(errorCode(expired), 'export-result-expired')
+	assert.equal(
+		errorCode(new Error(workflowBackupErrorMessage(expired))),
+		'export-result-expired',
+	)
+	// Production reconstitutes terminal step failures across the RPC boundary
+	// as a plain Error whose message is prefixed with NonRetryableError:.
+	assert.equal(
+		errorCode(
+			new Error(`NonRetryableError: ${workflowBackupErrorMessage(expired)}`),
+		),
+		'export-result-expired',
+	)
+	assert.equal(errorCode(new Error('nope')), 'unexpected-error')
 })

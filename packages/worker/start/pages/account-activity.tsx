@@ -1,10 +1,12 @@
 /** @jsxImportSource @emotion/react */
+import { surfaceCardCss } from '#universal/styles/surface.ts'
 import { formatTimestamp } from '../components/local-timestamp.tsx'
 import { useInfiniteQuery, hashKey } from '@tanstack/react-query'
 import { activityQuery } from '../activity-query.ts'
 import { useRouter } from '@tanstack/react-router'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { renderActivityRunDetail } from './account-activity-detail.tsx'
+import { AccountActivityToggleChanges } from './account-activity-toggle-changes.tsx'
 import {
 	activityEmptyLabel,
 	activityErrorReviewPrompt,
@@ -45,12 +47,7 @@ import {
 	type AccountActivityTriageFilter,
 	type AccountActivityViewFilter,
 } from '#universal/account-activity-filters.ts'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 
 const clampedCellCss = recordCellClamp(30)
@@ -79,7 +76,7 @@ export function AccountActivityPage({
 	const router = useRouter()
 	if (!query.data) return null
 	const first = query.data.pages[0]!.payload
-	const { selectedRun, summary, retentionDays } = first
+	const { selectedRun, summary, retentionDays, toggleChanges } = first
 	const seen = new Set<string>()
 	const runs = query.data.pages
 		.flatMap((page) => page.payload.runs)
@@ -229,9 +226,7 @@ export function AccountActivityPage({
 									display: 'grid',
 									gap: spacing.xs,
 									padding: spacing.md,
-									border: `1px solid ${colors.border}`,
-									borderRadius: radius.md,
-									backgroundColor: colors.surface,
+									...surfaceCardCss,
 								}}
 							>
 								<span
@@ -447,6 +442,9 @@ export function AccountActivityPage({
 						}
 						record={detail ? renderActivityRunDetail(detail) : null}
 					/>
+					{toggleChanges ? (
+						<AccountActivityToggleChanges changes={toggleChanges} />
+					) : null}
 				</>
 			) : null}
 		</AccountManagementShell>

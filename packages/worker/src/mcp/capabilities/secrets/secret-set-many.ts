@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { assertCanSetSecrets } from '#mcp/secrets/package-access.ts'
 import { secretPageOrgSlugFromCaller } from '#mcp/secrets/package-approval-url.ts'
@@ -76,6 +77,7 @@ export const secretSetManyCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'secretSetMany',
+		contextRuns: 'deny',
 		orgPermission: 'secret:write',
 		description:
 			'Assert authorization for, and optionally atomically persist, multiple secret references for the signed-in user (API keys, PATs, HMAC secrets). Use assertOnly before a multi-write that must not partially succeed. Do not use this for OAuth access or refresh tokens — `/connect/oauth` and `createAuthenticatedFetch` / `integrationTokenRefresh` persist those on the connection. Host use is authorized through secret policy approvals. Saved secrets are consumed in outbound `fetch` calls by placeholder, e.g. `{{secret:name}}`, resolved only for approved hosts.',
@@ -131,6 +133,9 @@ export const secretSetManyCapability = defineDomainCapability(
 			}
 			const saved = await setSecretsAtomically({
 				env: ctx.env,
+				audit: parsed.secrets.some((secret) => secret.scope === 'user')
+					? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
+					: null,
 				userId: ownerIdFromCaller(ctx.callerContext),
 				userEmail: user.email,
 				secrets: parsed.secrets.map((secret) => ({

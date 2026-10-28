@@ -1,3 +1,4 @@
+import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -30,6 +31,7 @@ export const mcpServerAddCapability = defineDomainCapability(
 	capabilityDomainNames.mcpServers,
 	{
 		name: 'mcpServerAdd',
+		contextRuns: 'deny',
 		orgPermission: 'integration:create',
 		description:
 			'Add a remote MCP server for the signed-in user and connect to it. Servers that require OAuth return an authUrl: a signed-in Kody consent page the user opens and confirms before Kody sends them to the provider; other servers connect immediately. Pass bearerToken for servers that authenticate with a static Authorization header instead of (or in addition to) OAuth. Connected server tools become kody.mcp["server-name"].tool_name(...) capabilities. When OAuth fails with origin or redirect URI errors, the remote authorization server must allow Kody\'s oauthClientOrigin, oauthCallbackUrl, and oauthClientMetadataUrl (CIMD client_id) when present.',
@@ -90,6 +92,7 @@ export const mcpServerAddCapability = defineDomainCapability(
 				baseUrl: oauth.clientOrigin,
 				bearerToken: args.bearerToken,
 				waitUntil: ctx.waitUntil,
+				audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 			})
 			const error = connection.error
 				? enrichMcpOAuthProviderError(connection.error, oauth)

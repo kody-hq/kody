@@ -92,6 +92,7 @@ export const adminMemoryPersonalizeCopyCapability = defineDomainCapability(
 		...adminMutationCapabilityAccess,
 		idempotent: true,
 		name: 'adminMemoryPersonalizeCopy',
+		contextRuns: 'deny',
 		description:
 			"Copy each live team-org memory to every person with effective memory:read at snapshot time (ADR 0072 personal-only memory). Originals stay on the team org (write-frozen). Copies go into each reader's personal org with a provenance source_uri; identical subject+summary+details already in personal are skipped. dryRun defaults to true. Page with orgCursor and memoryCursor until both nextOrgCursor and nextMemoryCursor are null.",
 		keywords: [

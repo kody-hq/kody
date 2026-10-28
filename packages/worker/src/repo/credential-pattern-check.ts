@@ -1,3 +1,4 @@
+import { type ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	detectLegacyCredentialPatternsCodemod,
 	detectLegacyCredentialPatternsCodemodId,
@@ -14,9 +15,9 @@ import {
 	type CredentialReference,
 } from '#worker/credentials/credential-inventory-scan.ts'
 import {
-	type PackageCredentialKind,
+	type PackageCredentialSlotKind,
 	type PackageCredentialSlot,
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
 } from '#worker/package-registry/types.ts'
 import {
 	readSecretMountAliases,
@@ -80,7 +81,7 @@ const declaredSlotKindByNameKind = {
 } as const satisfies Record<CredentialReference['nameKind'], 'secret' | 'oauth'>
 
 const packageCredentialKinds: ReadonlySet<string> = new Set(
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
 )
 
 function credentialTypeHintFor(
@@ -153,9 +154,9 @@ function credentialTypeHintLines(sourceFiles: Record<string, string>) {
 }
 
 function declaredSlotKinds(
-	slots: ReadonlyArray<{ name: string; kind?: PackageCredentialKind }>,
+	slots: ReadonlyArray<{ name: string; kind?: PackageCredentialSlotKind }>,
 ) {
-	const kinds = new Map<string, PackageCredentialKind | null>()
+	const kinds = new Map<string, PackageCredentialSlotKind | null>()
 	for (const slot of slots) {
 		kinds.set(slot.name, slot.kind ?? null)
 	}
@@ -164,7 +165,7 @@ function declaredSlotKinds(
 
 function referenceNamesDeclaredSlot(
 	reference: CredentialReference,
-	declared: ReadonlyMap<string, PackageCredentialKind | null>,
+	declared: ReadonlyMap<string, PackageCredentialSlotKind | null>,
 ) {
 	if (!declared.has(reference.name)) return false
 	const kind = declared.get(reference.name)
@@ -178,7 +179,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isPackageCredentialKind(
 	value: string,
-): value is PackageCredentialKind {
+): value is PackageCredentialSlotKind {
 	return packageCredentialKinds.has(value)
 }
 
@@ -241,8 +242,9 @@ export type CredentialPatternCheckResult = {
  */
 export function buildCredentialPatternCheck(
 	sourceFiles: Record<string, string>,
+	options: { secretProviders?: ResolvedSecretProviderSlots } = {},
 ): CredentialPatternCheckResult {
-	const preliminary = scanCredentialStamp(sourceFiles)
+	const preliminary = scanCredentialStamp(sourceFiles, options)
 	const merged = mergeCredentialStampIntoManifestFiles(
 		sourceFiles,
 		preliminary.keys,
@@ -253,7 +255,7 @@ export function buildCredentialPatternCheck(
 	const stamp =
 		merged.addedKeys.length === 0
 			? preliminary
-			: scanCredentialStamp(merged.files)
+			: scanCredentialStamp(merged.files, options)
 	const patternsByPath = new Map<string, Array<string>>()
 	for (const finding of detectLegacyCredentialPatternsCodemod.detect(
 		merged.files,

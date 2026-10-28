@@ -143,6 +143,7 @@ async function setup() {
 			scope: 'user',
 			name,
 			value,
+			audit: null,
 		})
 		if (name === 'UNGRANTED_KEY') continue
 		await secretService.lockSecretToPackage({
@@ -150,6 +151,7 @@ async function setup() {
 			userId: orgId,
 			name,
 			packageId,
+			audit: null,
 		})
 	}
 	await secretService.setSecretAllowedHosts({
@@ -158,6 +160,7 @@ async function setup() {
 		name: 'HOSTED_KEY',
 		scope: 'user',
 		allowedHosts: ['api.example.com'],
+		audit: null,
 	})
 	vi.spyOn(packageSource, 'loadPackageManifestBySourceId').mockResolvedValue({
 		source: {} as packageSource.LoadedPackageManifest['source'],

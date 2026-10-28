@@ -139,6 +139,15 @@ export async function ensureCommunityFlowSchema(db: D1Database) {
 			actor TEXT CHECK (actor IS NULL OR actor IN ('human', 'agent')),
 			created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
 		)`,
+		`CREATE TABLE IF NOT EXISTS community_fork_claims (
+			owner_id TEXT NOT NULL,
+			listing_id TEXT NOT NULL,
+			claim_id TEXT NOT NULL,
+			requested_kody_id TEXT,
+			started_at TEXT NOT NULL,
+			expires_at TEXT NOT NULL,
+			PRIMARY KEY (owner_id, listing_id)
+		)`,
 		`CREATE INDEX IF NOT EXISTS idx_community_forks_forked_package_id
 			ON community_forks(forked_package_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_community_forks_listing_id

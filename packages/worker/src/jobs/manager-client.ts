@@ -4,6 +4,11 @@ import {
 	type JobManagerDebugState,
 	type JobManagerDebugStatus,
 } from '@kody-internal/shared/jobs/manager-debug.ts'
+import {
+	optionalOrgAuditWriter,
+	orgAuditCauseFromCaller,
+} from '#worker/orgs/org-audit.ts'
+import { recordJobRunAudit } from './job-audit.ts'
 import { jobsData, jobsService } from './jobs-data.ts'
 import {
 	logJobSchedulerError,
@@ -121,6 +126,11 @@ export async function exportJobManagerForUser(input: {
 	})
 }
 
+/**
+ * Run one job now (trigger `manual`). Both manual lanes, the website Run now
+ * button and the `jobRunNow` capability, come through here, so the `job.ran`
+ * org audit row is recorded here once the run finishes, success or error.
+ */
 export async function runJobNowViaManager(input: {
 	env: Env
 	userId: OwnerId
@@ -132,10 +142,24 @@ export async function runJobNowViaManager(input: {
 	if (!jobs) {
 		throw new Error('Missing JOBS binding for jobs scheduling.')
 	}
-	return jobs.runJobNow({
+	const result = await jobs.runJobNow({
 		userId: input.userId,
 		jobId: input.jobId,
 		callerContext: input.callerContext ?? null,
 		repoCheckPolicyOverride: input.repoCheckPolicyOverride,
 	})
+	await recordJobRunAudit(
+		optionalOrgAuditWriter(
+			input.env,
+			input.callerContext?.request ?? null,
+			input.callerContext ? orgAuditCauseFromCaller(input.callerContext) : null,
+		),
+		{
+			orgId: input.userId,
+			jobId: result.job.id,
+			name: result.job.name,
+			ok: result.execution.ok,
+		},
+	)
+	return result
 }

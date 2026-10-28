@@ -15,6 +15,8 @@ import {
 } from './community-data.ts'
 
 const mockModule = vi.hoisted(() => ({
+	getPackageScopeByUserId: vi.fn(),
+	resolveCommunityInstallOwner: vi.fn(),
 	readAuthenticatedAppUser: vi.fn(),
 	listCommunityIndexOverview: vi.fn(),
 	getCommunityCategoryCounts: vi.fn(),
@@ -34,6 +36,14 @@ const mockModule = vi.hoisted(() => ({
 	resolveListingPinAncestry: vi.fn<
 		typeof forkListingRelation.resolveListingPinAncestry
 	>(async () => null),
+	loadViewerPrivateCommunityForks: vi.fn(async () => [] as Array<unknown>),
+	countCommunityForksByListingIds: vi.fn(
+		async () => ({}) as Record<string, number>,
+	),
+}))
+
+vi.mock('#app/community-forks-data.ts', () => ({
+	loadViewerPrivateCommunityForks: mockModule.loadViewerPrivateCommunityForks,
 }))
 
 vi.mock('#app/authenticated-user.ts', () => ({
@@ -55,6 +65,7 @@ vi.mock('#worker/community/service.ts', () => ({
 
 vi.mock('#worker/community/repo.ts', () => ({
 	getCommunityListingById: mockModule.getCommunityListingById,
+	countCommunityForksByListingIds: mockModule.countCommunityForksByListingIds,
 	listCommunityForksByListingIdsAndUser:
 		mockModule.listCommunityForksByListingIdsAndUser,
 }))
@@ -82,6 +93,11 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 
 vi.mock('#worker/package-registry/user-scope.ts', () => ({
 	getMcpUserPackageScope: mockModule.getMcpUserPackageScope,
+	getPackageScopeByUserId: mockModule.getPackageScopeByUserId,
+}))
+
+vi.mock('#app/community-install-org.ts', () => ({
+	resolveCommunityInstallOwner: mockModule.resolveCommunityInstallOwner,
 }))
 
 const sampleListing = {
@@ -226,6 +242,19 @@ test('community detail overlays viewerInstall for forked listings and omits it w
 
 	const notForked = await loadDetail('/community/listing-github')
 	expect(notForked?.viewerInstall).toBeNull()
+	expect(notForked?.listing?.forkCount).toBe(1)
+
+	invalidateCommunityPublicCache()
+	// Fresh public count (0: the cached fork was just hidden) plus 2 private.
+	mockModule.countCommunityForksByListingIds.mockResolvedValueOnce({
+		'listing-github': 0,
+	})
+	mockModule.loadViewerPrivateCommunityForks.mockResolvedValueOnce([
+		{ forkId: 'private-fork' },
+		{ forkId: 'other-private-fork' },
+	])
+	const withPrivateForks = await loadDetail('/community/listing-github-private')
+	expect(withPrivateForks?.listing?.forkCount).toBe(2)
 
 	invalidateCommunityPublicCache()
 	mockModule.listCommunityForksByListingIdsAndUser.mockResolvedValue([
@@ -372,4 +401,138 @@ test('community index omits viewerInstall for anonymous viewers and auth failure
 	expect(failedAuth.listings[0]?.viewerInstall).toBeUndefined()
 	expect(mockModule.listSavedPackagesBySlugs).not.toHaveBeenCalled()
 	expect(consoleError).toHaveBeenCalled()
+})
+
+test('loadCommunityDetailData forgets rejected loads so D1 retries can re-read (KODY-B7)', async () => {
+	invalidateCommunityPublicCache()
+	const sameRequest = request('/community/listing-github-retry')
+	const d1Export = new Error(
+		'D1_ERROR: Currently processing a long-running export.',
+	)
+	mockModule.readAuthenticatedAppUser.mockResolvedValue(null)
+	mockModule.getCommunityListingWithAggregates
+		.mockRejectedValueOnce(d1Export)
+		.mockResolvedValueOnce(sampleListing)
+	mockModule.getCommunityListingById.mockResolvedValue(sampleListing)
+	mockModule.getEntitySourceById.mockResolvedValue(null)
+	mockModule.getUserSocialRowByUsername.mockResolvedValue({
+		profile_visibility: 'public',
+		stable_user_id: 'owner-mcp-id',
+	})
+
+	await expect(
+		loadCommunityDetailData({} as Env, sameRequest, 'listing-github'),
+	).rejects.toBe(d1Export)
+	const recovered = await loadCommunityDetailData(
+		{} as Env,
+		sameRequest,
+		'listing-github',
+	)
+	expect(recovered?.listing?.id).toBe('listing-github')
+	expect(mockModule.getCommunityListingWithAggregates).toHaveBeenCalledTimes(2)
+})
+
+test('install badges follow the picked org and fall back to personal when it is rejected', async () => {
+	const teamOwnerId = ownerIdFromStored('org-example-team')
+	const loadIndex = (installOrg: string) =>
+		loadCommunityIndexData({} as Env, request(`/community?org=${installOrg}`), {
+			query: '',
+			sort: null,
+			category: null,
+			limit: 50,
+			installOrg,
+		})
+	invalidateCommunityPublicCache()
+	mockModule.readAuthenticatedAppUser.mockResolvedValue(signedInUser())
+	mockModule.listCommunityIndexOverview.mockResolvedValue(sampleOverview())
+	mockModule.getMcpUserPackageScope.mockResolvedValue('burhan')
+	mockModule.getPackageScopeByUserId.mockResolvedValue('example-team')
+	mockModule.listSavedPackagesByIds.mockResolvedValue([])
+	// The personal account forked; the picked org has not.
+	mockModule.listCommunityForksByListingIdsAndUser.mockImplementation(
+		async (_db: unknown, input: { userId: string }) =>
+			input.userId === teamOwnerId ? [] : [viewerFork()],
+	)
+	mockModule.listSavedPackagesBySlugs.mockImplementation(
+		async (_db: unknown, input: { userId: string }) =>
+			input.userId === teamOwnerId ? [] : [viewerGithubPackage],
+	)
+	mockModule.resolveCommunityInstallOwner.mockResolvedValue({
+		ok: true,
+		ownerId: teamOwnerId,
+		orgSlug: 'example-team',
+	})
+	const team = await loadIndex('example-team')
+	expect(team.installOrg).toBe('example-team')
+	expect(team.listings[0]?.viewerInstall).toBeUndefined()
+	expect(mockModule.listCommunityForksByListingIdsAndUser).toHaveBeenCalledWith(
+		undefined,
+		expect.objectContaining({ userId: teamOwnerId }),
+	)
+
+	// A stale or forbidden ?org= renders the personal badges instead.
+	mockModule.resolveCommunityInstallOwner.mockResolvedValue({
+		ok: false,
+		status: 403,
+		error: 'nope',
+	})
+	const rejected = await loadIndex('other-team')
+	expect(rejected.installOrg).toBeNull()
+	expect(rejected.listings[0]?.viewerInstall?.status).toBe('installed')
+})
+
+test('detail outdated badge is relative to the picked org', async () => {
+	const teamOwnerId = ownerIdFromStored('org-example-team')
+	invalidateCommunityPublicCache()
+	mockModule.getCommunityListingWithAggregates.mockResolvedValue({
+		...sampleListing,
+		pinnedCommit: 'commit-new',
+	})
+	mockModule.getCommunityListingById.mockResolvedValue(sampleListing)
+	mockModule.getEntitySourceById.mockResolvedValue(null)
+	mockModule.getUserSocialRowByUsername.mockResolvedValue({
+		profile_visibility: 'public',
+		stable_user_id: 'owner-mcp-id',
+	})
+	mockModule.readAuthenticatedAppUser.mockResolvedValue(signedInUser())
+	mockModule.getPackageScopeByUserId.mockResolvedValue('example-team')
+	mockModule.listSavedPackagesByIds.mockResolvedValue([])
+	// Only the picked org holds a fork, and it is behind the listing.
+	mockModule.listCommunityForksByListingIdsAndUser.mockImplementation(
+		async (_db: unknown, input: { userId: string }) =>
+			input.userId === teamOwnerId
+				? [viewerFork({ originCommit: 'abc1234567890' })]
+				: [],
+	)
+	mockModule.listSavedPackagesBySlugs.mockImplementation(
+		async (_db: unknown, input: { userId: string }) =>
+			input.userId === teamOwnerId
+				? [{ ...viewerGithubPackage, name: '@example-team/github' }]
+				: [],
+	)
+	mockModule.resolveListingPinAncestry.mockResolvedValue(false)
+	mockModule.resolveCommunityInstallOwner.mockResolvedValue({
+		ok: true,
+		ownerId: teamOwnerId,
+		orgSlug: 'example-team',
+	})
+	const team = await loadCommunityDetailData(
+		{} as Env,
+		request('/community/listing-github?org=example-team'),
+		'listing-github',
+		'example-team',
+	)
+	expect(team?.viewerInstall).toEqual(
+		expect.objectContaining({
+			targetName: '@example-team/github',
+			listingAhead: true,
+		}),
+	)
+
+	const personal = await loadCommunityDetailData(
+		{} as Env,
+		request('/community/listing-github'),
+		'listing-github',
+	)
+	expect(personal?.viewerInstall).toBeNull()
 })

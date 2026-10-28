@@ -1,5 +1,8 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import {
+	type RuntimePackageAppIdentity,
+	type RuntimePackageAppVisitor,
+} from '@kody-internal/shared/runtime-worker.ts'
 import { html } from 'remix/html-template'
 import { createHtmlResponse } from 'remix/response/html'
 import {
@@ -10,6 +13,7 @@ import {
 	buildPackagePagePath,
 } from '@kody-internal/shared/public-urls.ts'
 import {
+	isPackageAppHostProbePath,
 	isPackageAppHostRobotsTxtPath,
 	isPackageAppLegacySubdomainMountPath,
 	packageAppHostDefaultRobotsTxt,
@@ -17,7 +21,6 @@ import {
 	packageAppHostSystemPrefix,
 } from '@kody-internal/shared/package-app-host-paths.ts'
 import { parseLegacyHosts } from '#worker/app-legacy-redirect.ts'
-import { isPackageAppCustomDomainsEnabled } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import { lookupCachedPackageAppCustomHostname } from '#worker/package-app-custom-hostnames/lookup-cache.ts'
 import {
 	isVerifiedAppCustomHostname,
@@ -41,8 +44,13 @@ import {
 	getPackageAppOriginConfigurationError,
 	isKodyReservedCustomHostname,
 	joinAppUrl,
+	listPackageAppOrigins,
 	parsePackageAppRequestHost,
 } from '#worker/app-base-url.ts'
+import {
+	logPackageAppSetCookieDomainStripped,
+	scrubPackageAppSetCookieDomains,
+} from '#worker/package-runtime/package-app-set-cookie.ts'
 import { redirectToLoginWhenUnauthenticated } from '#app/auth-redirect.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
@@ -56,6 +64,10 @@ import {
 	packageAppHandoffQueryParam,
 } from '#app/package-app-handoff.ts'
 import { createHealthHandler } from '#app/handlers/health.ts'
+import {
+	findLivePackageAppOauthGrant,
+	notePackageAppOauthGrantUse,
+} from '#app/package-app-oauth-grants.ts'
 import { handlePackageAppOauthHostAuth } from '#app/package-app-oauth-host-auth.ts'
 import {
 	resolvePackageAppOrgOwnerByHandle,
@@ -129,7 +141,7 @@ import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.
  * signed-in outsiders are not redirected there: `/@{username}/packages/…` on
  * the app origin stays on that origin and shows the saved-package page.
  *
- * When `package-app-custom-domains` is globally on, a verified app-level
+ * A verified app-level
  * custom hostname serves that package at `/` (assets at `/_assets/...`).
  * A verified org-level hostname serves private apps at
  * `/{kodyId}` like `{slug}.kody.run` (legacy `/packages/{kodyId}` is still
@@ -371,7 +383,7 @@ function redirectToPackagePage(input: {
 	})
 }
 
-type AuthorizedPackageAppServe =
+export type AuthorizedPackageAppServe =
 	| {
 			kind: 'ok'
 			owner: PackageAppServeOwner
@@ -382,7 +394,12 @@ type AuthorizedPackageAppServe =
 			sessionIssuedAt: number
 	  }
 	| { kind: 'session-required' }
-	| { kind: 'forbidden'; visitorEmail: string }
+	| {
+			kind: 'forbidden'
+			visitorEmail: string
+			/** The live session person, for an identity-only internet-visible serve. */
+			person: RuntimePackageAppIdentity
+	  }
 
 /**
  * Resolve the org named in the host/path, confirm the session person is still
@@ -394,7 +411,7 @@ type AuthorizedPackageAppServe =
  * computed concurrently with an access write is stored under the epoch it
  * may already be stale for, never under the new one.
  */
-async function authorizePackageAppVisitorForOrg(input: {
+export async function authorizePackageAppVisitorForOrg(input: {
 	env: Env
 	stableUserId: string
 	issuedAt: number
@@ -452,7 +469,11 @@ async function authorizePackageAppVisitorForOrg(input: {
 		cachePackageAppAccessDecision({ ...decisionScope, decision })
 	}
 	if (!decision.allowed) {
-		return { kind: 'forbidden', visitorEmail: person.email }
+		return {
+			kind: 'forbidden',
+			visitorEmail: person.email,
+			person: { userId: viewer.userId, username: person.username },
+		}
 	}
 
 	// Team org entitlements resolve by org id alone. Pairing the visitor's
@@ -538,7 +559,7 @@ function configuredAppHostnames(env: Env) {
 }
 
 /**
- * Verified app-level custom hostname for this request, when the flag is on.
+ * Verified app-level custom hostname for this request, if any.
  * Returns null for the app origin, package-app hosts, `*.workers.dev`, and
  * any hostname that is not both active and serving an app binding. Callers
  * that already refused the host can then let the request through.
@@ -557,14 +578,13 @@ export async function resolveVerifiedCustomHostnameIfEnabled(
 	if (!hostname) return null
 	const appHostnames = configuredAppHostnames(env)
 	// Custom domains are a hosted-origin feature. With no canonical app host
-	// configured, skip the flag read so ordinary test traffic stays off D1.
+	// configured, skip the lookup so ordinary test traffic stays off D1.
 	if (appHostnames.length === 0) return null
 	if (appHostnames.includes(hostname)) return null
 	if (parsePackageAppRequestHost({ env, url })) return null
 	// Author code on a customer host must stay cross-site from Kody cookies.
 	// Registration refuses the same hosts (see addPackageAppCustomHostname).
 	if (isKodyReservedCustomHostname({ env, hostname })) return null
-	if (!(await isPackageAppCustomDomainsEnabled(env.APP_DB))) return null
 	const mapping = await lookupCachedPackageAppCustomHostname({
 		db: env.APP_DB,
 		hostname,
@@ -584,7 +604,6 @@ async function buildCustomHostnameHandoffTarget(input: {
 	kodyId: string
 	bindingKind: 'app' | 'org'
 } | null> {
-	if (!(await isPackageAppCustomDomainsEnabled(input.env.APP_DB))) return null
 	const appMapping = await lookupVerifiedAppCustomHostnameForPackage({
 		db: input.env.APP_DB,
 		username: input.packagePath.username,
@@ -973,6 +992,14 @@ async function serveInternetVisiblePackageApp(input: {
 	handle: string
 	packagePath: PackageAppPath
 	serverTiming: Array<ServerTimingEntry>
+	/**
+	 * Names a signed-in person who cannot run the app but signed in to it with
+	 * Kody. They are served exactly like an anonymous visitor except that
+	 * package code can read who they are. Grants nothing.
+	 */
+	resolveIdentity?: (
+		kodyId: string,
+	) => Promise<RuntimePackageAppIdentity | null>
 }): Promise<Response | null> {
 	const org = await resolvePackageAppOrgOwnerByHandle({
 		env: input.env,
@@ -990,6 +1017,17 @@ async function serveInternetVisiblePackageApp(input: {
 		requestUrl: input.request.url,
 	})
 	if (!approvedPublishedCommit) return null
+	// Only an app that will actually serve pays the identity lookup.
+	// The lookup only adds identity, so a failure serves the visitor anonymously.
+	let identity: RuntimePackageAppIdentity | null = null
+	try {
+		identity =
+			(await input.resolveIdentity?.(
+				lookup?.savedPackage.kodyId ?? input.packagePath.kodyId,
+			)) ?? null
+	} catch (error) {
+		console.warn('package-app-identity-lookup-failed', error)
+	}
 	const response = await servePackageAppRequest({
 		request: input.request,
 		env: input.env,
@@ -1000,11 +1038,42 @@ async function serveInternetVisiblePackageApp(input: {
 			displayName: org.displayName,
 		},
 		visitor: null,
+		identity,
 		approvedPublishedCommit,
 		packagePath: input.packagePath,
 		serverTiming: input.serverTiming,
 	})
-	return applyPackageAppCacheHeaders(response, 'anonymous')
+	// A response that may name the visitor must never reach a shared cache.
+	return applyPackageAppCacheHeaders(
+		response,
+		identity ? 'signed-in' : 'anonymous',
+	)
+}
+
+/**
+ * The identity-only visitor for an internet-visible serve: a live session
+ * person who cannot run the app, but only while they hold a live Sign in with
+ * Kody grant for it (the same bar `/-/auth/me` uses). A stale handoff session
+ * from someone who lost access gets nothing.
+ */
+export async function resolvePackageAppIdentityOnlyVisitor(input: {
+	env: Env
+	authorized: AuthorizedPackageAppServe
+	handle: string
+	packagePath: PackageAppPath
+	/** The saved package's kodyId, the key serve and the runtime read grants by. */
+	kodyId?: string
+}): Promise<RuntimePackageAppIdentity | null> {
+	if (input.authorized.kind !== 'forbidden') return null
+	const grant = await findLivePackageAppOauthGrant({
+		db: input.env.APP_DB,
+		personId: input.authorized.person.userId,
+		orgUsername: input.handle.toLowerCase(),
+		kodyId: input.kodyId ?? input.packagePath.kodyId,
+	})
+	if (!grant) return null
+	await notePackageAppOauthGrantUse({ db: input.env.APP_DB, grant })
+	return input.authorized.person
 }
 
 function withSetCookie(response: Response, setCookie: string) {
@@ -1161,6 +1230,14 @@ async function servePackageAppForSession(input: {
 		handle,
 		packagePath,
 		serverTiming,
+		resolveIdentity: (kodyId) =>
+			resolvePackageAppIdentityOnlyVisitor({
+				env,
+				authorized,
+				handle,
+				packagePath,
+				kodyId,
+			}),
 	})
 	if (anonymous) return anonymous
 
@@ -1424,6 +1501,11 @@ async function handleCustomHostnameRequest(input: {
 	mapping: VerifiedAppCustomHostname
 }) {
 	const { request, env, url, mapping } = input
+	// VCS / scanner probes on a bound custom host never reach the app. Refuse
+	// before session handoff and the metered entitlement seat-count gate.
+	if (isPackageAppHostProbePath(url.pathname)) {
+		return createUnmatchedPackageAppPathResponse()
+	}
 	const appBaseUrl = getAppBaseUrl({ env })
 	const hostAuth = await handlePackageAppOauthHostAuth({ request, env, url })
 	if (hostAuth) return hostAuth
@@ -1476,7 +1558,24 @@ export async function handlePackageAppOriginRequest(
 	if (!response) return null
 	// servePackageAppRequest logs x-kody-runtime-run-id, then this boundary
 	// strips it so a browser on the package-app origin never sees the header.
-	return stripPackageAppRuntimeRunId(response).response
+	const withoutRuntimeRunId = stripPackageAppRuntimeRunId(response).response
+	// Defense in depth for every package-app host response (author apps, /-/
+	// system routes, apex redirects): never let Set-Cookie Domain cover the
+	// shared apex or another tenant host.
+	const url = new URL(request.url)
+	const scrubbed = scrubPackageAppSetCookieDomains(withoutRuntimeRunId, {
+		responseHostname: url.hostname,
+		packageAppApexHostnames: listPackageAppOrigins({ env }).map(
+			(origin) => origin.hostname,
+		),
+	})
+	logPackageAppSetCookieDomainStripped({
+		hostname: url.hostname,
+		pathname: url.pathname,
+		stripped: scrubbed.stripped,
+		surface: 'package-app-origin',
+	})
+	return scrubbed.response
 }
 
 async function dispatchPackageAppOriginRequest(request: Request, env: Env) {

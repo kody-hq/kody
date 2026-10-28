@@ -114,14 +114,14 @@ function createContext(db: D1Database): ApiInvocationContext {
 		principal: { kind: 'mcp' },
 		getFeatureFlags: async () => ({
 			'demo-indicator': false,
-			'jev-search-rerank': false,
-			'execute-invoke': false,
 			'connection-profiles': false,
 			'mcp-skills-extension': false,
 			'mcp-events-extension': false,
-			'package-app-custom-domains': false,
+			'package-credential-suppliers': false,
 			'repo-push-queue': false,
+			'execution-contexts': false,
 			'credential-need-enforcement': false,
+			'credential-allowed-packages-safety-window': false,
 		}),
 	}
 }

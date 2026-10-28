@@ -22,6 +22,7 @@ export const integrationOauthAppListCapability = defineDomainCapability(
 	capabilityDomainNames.integrations,
 	{
 		name: 'integrationOauthAppList',
+		contextRuns: 'allow',
 		orgPermission: 'integration:read',
 		description:
 			'List OAuth apps for the signed-in user with connection counts and the connection names that share each app. Use this before rotating client credentials so one write updates every sibling connection.',

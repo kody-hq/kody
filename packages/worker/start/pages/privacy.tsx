@@ -81,6 +81,14 @@ export function PrivacyRoute() {
 					<code>/@username</code>. When visibility is <strong>private</strong>,
 					the public profile is not found.
 				</p>
+				<p css={descriptionCss}>
+					When you sign in to someone's package app with Sign in with Kody,
+					people who manage that app can see your username, display name,
+					avatar, when you first connected, when you last used the app, and what
+					you allowed it to do. They never see your credentials or their values.
+					Revoking the app on <strong>Account &gt; Connected apps</strong>{' '}
+					removes you from that list.
+				</p>
 			</section>
 
 			<section css={cardCss}>
@@ -173,12 +181,12 @@ export function PrivacyRoute() {
 					secrets, or unrelated account content. Admin-configured notification
 					packages may receive the same community metadata, and a metadata-only{' '}
 					<code>user.created</code> or <code>user.deleted</code> event when a
-					person account is created or self-deleted (stable user id, username,
-					email, the create source and <code>created_at</code> or delete
-					timestamp, and first-touch marketing attribution fields when present).
-					Those lifecycle events omit passwords, roles, plan, secrets, and
-					unrelated account content. Admin-configured notification packages may
-					also receive a metadata-only{' '}
+					person account is created or deleted (stable user id, username, email,
+					the create source, the signup <code>created_at</code> on both events,
+					the delete timestamp, and first-touch marketing attribution fields
+					when present). Those lifecycle events omit passwords, roles, plan,
+					secrets, and unrelated account content. Admin-configured notification
+					packages may also receive a metadata-only{' '}
 					<code>user.email_verification.failed</code> event when signup/verify
 					mail first hits a terminal delivery failure (stable user id, username,
 					email, status, <code>class</code> (<code>sender_block</code> /{' '}

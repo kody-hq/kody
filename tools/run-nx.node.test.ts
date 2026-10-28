@@ -4,6 +4,7 @@ import {
 	isNxRemoteCacheDegradableFailure,
 	isNxRemoteCacheRejected,
 	isNxRemoteCacheTransportFailure,
+	nxFailedTasksAreRemoteCacheOnly,
 	nxRunReportedFailedTasks,
 	nxRunReportedTaskFailure,
 	nxTasksSucceededDespiteRemoteCacheFailure,
@@ -40,6 +41,23 @@ const cacheRejectedBeforeTasks = `
  NX   Misconfigured remote cache endpoint: Requests should respond with text/plain on 401s
 
 Pass --verbose to see the stacktrace.
+`
+
+const cacheRejectedAsFailedTaskAfterSuccess = `
+✔  nx run worker:typecheck  [remote cache]
+✔  nx run highlight-worker:typecheck
+
+ NX   Running target typecheck for 12 projects and 3 tasks they depend on failed
+
+Failed tasks:
+
+- highlight-worker:typecheck
+
+Output of 15 successful tasks were not shown. Run with --verbose or --output-style=static to see it.
+
+  Cache:             14/14 hit (100%)
+
+Misconfigured remote cache endpoint: Unexpected response status: 404 Not Found
 `
 
 const cacheUnauthorizedAfterTasks = `
@@ -93,8 +111,20 @@ test('isNxRemoteCacheTransportFailure requires the Nx request error and cache pa
 	).toBe(false)
 	const mixedFailure = `${cacheRejectedAfterTasks}\nFailed tasks:\n\n- other:typecheck\n`
 	expect(nxRunReportedFailedTasks(mixedFailure)).toBe(true)
+	expect(nxFailedTasksAreRemoteCacheOnly(mixedFailure)).toBe(false)
 	expect(nxRunReportedTaskFailure(mixedFailure)).toBe(true)
 	expect(nxTasksSucceededDespiteRemoteCacheFailure(mixedFailure)).toBe(false)
+	expect(
+		nxFailedTasksAreRemoteCacheOnly(cacheRejectedAsFailedTaskAfterSuccess),
+	).toBe(true)
+	expect(nxRunReportedTaskFailure(cacheRejectedAsFailedTaskAfterSuccess)).toBe(
+		false,
+	)
+	expect(
+		nxTasksSucceededDespiteRemoteCacheFailure(
+			cacheRejectedAsFailedTaskAfterSuccess,
+		),
+	).toBe(true)
 	expect(
 		nxRunReportedFailedTasks(
 			'Tasks stopped before they finished:\n\n- worker:typecheck',
@@ -489,6 +519,32 @@ test('runNxWithRemoteCacheFallback still fails a real task error when the cache 
 	})
 	expect(result.status).toBe(1)
 	expect(attempts).toEqual([1])
+})
+
+test('runNxWithRemoteCacheFallback treats a post-success cache 404 attributed as Failed tasks as success', async () => {
+	const attempts: Array<ReadonlyArray<string>> = []
+	const logs: Array<string> = []
+	const result = await runNxWithRemoteCacheFallback({
+		args: ['run-many', '-t', 'typecheck'],
+		env: {
+			NX_SELF_HOSTED_REMOTE_CACHE_SERVER: remoteCacheServer,
+		},
+		log: (line) => {
+			logs.push(line)
+		},
+		probe: usableProbe,
+		run: (args) => {
+			attempts.push(args)
+			return {
+				status: 1,
+				output: cacheRejectedAsFailedTaskAfterSuccess,
+				errorMessage: '',
+			}
+		},
+	})
+	expect(result.status).toBe(0)
+	expect(attempts).toEqual([['run-many', '-t', 'typecheck']])
+	expect(logs.join('\n')).toMatch(/after tasks succeeded/)
 })
 
 test('runNxWithRemoteCacheFallback keeps a failed exit when another target failed beside the cache error', async () => {

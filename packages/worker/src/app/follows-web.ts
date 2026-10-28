@@ -6,9 +6,14 @@ import {
 	loadFollowTargetSnapshot,
 } from '#worker/follow/access.ts'
 import {
+	followRecentUpdateView,
+	loadUnhandledFollowEvents,
+} from '#worker/follow/handlers.ts'
+import {
 	deleteFollowForOrg,
 	getFollowByTarget,
 	getFollowForOrg,
+	listFollowRecentUpdates,
 	listFollowsByFollower,
 } from '#worker/follow/repo.ts'
 import {
@@ -100,11 +105,23 @@ export async function loadPackageFollowState(input: {
 				targetKind: target.kind,
 				targetId: target.id,
 			})
+			const [unhandledEvents, recentUpdates] = follow
+				? await Promise.all([
+						loadUnhandledFollowEvents({ env: input.env, orgId: org.id }),
+						listFollowRecentUpdates(input.env.APP_DB, {
+							followerOrgId: org.id,
+							followId: follow.id,
+							limit: packageFollowRecentUpdatesLimit,
+						}),
+					])
+				: [[], []]
 			return {
 				slug: org.slug,
 				displayName: org.display_name,
 				personal: org.id === personalOrgId,
 				follow: follow ? summaryFromRecord(follow) : null,
+				unhandledEvents,
+				recentUpdates: recentUpdates.map(followRecentUpdateView),
 			}
 		}),
 	)
@@ -123,6 +140,9 @@ export async function loadPackageFollowState(input: {
 		workspaces,
 	}
 }
+
+const packageFollowRecentUpdatesLimit = 3
+const orgFollowsRecentUpdatesLimit = 50
 
 function orgFollowRow(record: FollowRecord): OrgFollowRow {
 	return {
@@ -143,11 +163,20 @@ export async function loadOrgFollowsData(input: {
 	env: Env
 	org: { id: string; slug: string }
 }): Promise<OrgFollowsLoaderData> {
-	const follows = await listFollowsByFollower(input.env.APP_DB, input.org.id)
+	const [follows, unhandledEvents, recentUpdates] = await Promise.all([
+		listFollowsByFollower(input.env.APP_DB, input.org.id),
+		loadUnhandledFollowEvents({ env: input.env, orgId: input.org.id }),
+		listFollowRecentUpdates(input.env.APP_DB, {
+			followerOrgId: input.org.id,
+			limit: orgFollowsRecentUpdatesLimit,
+		}),
+	])
 	return {
 		ok: true,
 		orgSlug: input.org.slug,
 		follows: follows.map(orgFollowRow),
+		unhandledEvents,
+		recentUpdates: recentUpdates.map(followRecentUpdateView),
 	}
 }
 

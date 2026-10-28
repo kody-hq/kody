@@ -219,7 +219,7 @@ The gateway **hard-refuses** a percent-encoded or base64-encoded placeholder
 form it will not fill. The error is clear and actionable (names the form). There
 is no deprecation window.
 
-Still supported (the gateway already fills these):
+The gateway fills:
 
 - literal `{{secret:…}}` / `{{integration-token:…}}` / related forms
 - percent-encoded placeholder punctuation in the URL path or query

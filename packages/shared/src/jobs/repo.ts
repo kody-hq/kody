@@ -1,6 +1,7 @@
 import { parseJsonWithFallback } from '../json-parsing.ts'
 import { type OwnerId } from '../owner-person-ids.ts'
 import { requirePackageIdFromJobId } from './package-job-id.ts'
+import { jobExpiredDisabledReason } from './disabled-reason.ts'
 import { createJobStorageId } from './storage-id.ts'
 import { type JobRecord, type PersistedJobCallerContext } from './types.ts'
 
@@ -23,6 +24,7 @@ type JobRowRecord = {
 	enabled: number
 	kill_switch_enabled: number
 	expires_at: string | null
+	disabled_reason: string | null
 	caller_context_json: string
 	created_at: string
 	updated_at: string
@@ -61,6 +63,8 @@ function serializeJob(job: JobRecord) {
 		enabled: job.enabled ? 1 : 0,
 		kill_switch_enabled: job.killSwitchEnabled ? 1 : 0,
 		expires_at: job.expiresAt ?? null,
+		// A job that is on has no disabled reason.
+		disabled_reason: job.enabled ? null : (job.disabledReason ?? null),
 		created_at: job.createdAt,
 		updated_at: job.updatedAt,
 		last_run_at: job.lastRunAt ?? null,
@@ -95,17 +99,26 @@ function mapRow(row: Record<string, unknown>): JobRow {
 			row['params_json'] == null ? null : String(row['params_json']),
 			undefined,
 		),
-		schedule: parseJsonWithFallback<JobRecord['schedule']>(
-			String(row['schedule_json']),
-			{
-				type: 'once',
-				runAt: String(row['next_run_at']),
-			},
-		),
+		schedule: (() => {
+			const schedule = parseJsonWithFallback<JobRecord['schedule'] | null>(
+				String(row['schedule_json']),
+				null,
+			)
+			if (!schedule) {
+				throw new Error(
+					`Job "${jobId}" has an invalid schedule_json; expected a cron or interval schedule.`,
+				)
+			}
+			return schedule
+		})(),
 		timezone: String(row['timezone']),
 		enabled: Number(row['enabled']) === 1,
 		killSwitchEnabled: Number(row['kill_switch_enabled']) === 1,
 		expiresAt: row['expires_at'] == null ? null : String(row['expires_at']),
+		disabledReason:
+			Number(row['enabled']) === 1 || row['disabled_reason'] == null
+				? null
+				: String(row['disabled_reason']),
 		createdAt: String(row['created_at']),
 		updatedAt: String(row['updated_at']),
 		lastRunAt:
@@ -144,6 +157,7 @@ function mapRow(row: Record<string, unknown>): JobRow {
 		enabled: record.enabled ? 1 : 0,
 		kill_switch_enabled: record.killSwitchEnabled ? 1 : 0,
 		expires_at: record.expiresAt,
+		disabled_reason: record.disabledReason ?? null,
 		caller_context_json: String(row['caller_context_json']),
 		created_at: record.createdAt,
 		updated_at: record.updatedAt,
@@ -196,8 +210,8 @@ export async function insertJobRow(input: {
 			`INSERT INTO jobs (
 				id, user_id, name, source_id, published_commit, repo_check_policy_json, storage_id, params_json, schedule_json, timezone, enabled,
 				kill_switch_enabled, expires_at, caller_context_json, created_at, updated_at,
-				last_run_at, last_run_status, next_run_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				last_run_at, last_run_status, next_run_at, disabled_reason
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		)
 		.bind(
 			serialized.id,
@@ -219,6 +233,7 @@ export async function insertJobRow(input: {
 			serialized.last_run_at,
 			serialized.last_run_status,
 			serialized.next_run_at,
+			serialized.disabled_reason,
 		)
 		.run()
 }
@@ -239,7 +254,7 @@ export async function updateJobRow(input: {
 				next_run_at = ?,
 				claim_token = NULL, running_since = NULL, lease_expires_at = NULL,
 				claimed_scheduled_for = NULL, retry_scheduled_for = NULL,
-				retry_count = 0
+				retry_count = 0, disabled_reason = ?
 			WHERE id = ? AND user_id = ?`,
 		)
 		.bind(
@@ -259,6 +274,7 @@ export async function updateJobRow(input: {
 			serialized.last_run_at,
 			serialized.last_run_status,
 			serialized.next_run_at,
+			serialized.disabled_reason,
 			serialized.id,
 			input.userId,
 		)
@@ -414,7 +430,6 @@ export async function listStuckSkippedJobRowsPage(
 				AND enabled = 1
 				AND kill_switch_enabled = 0
 				AND (expires_at IS NULL OR expires_at > ?)
-				AND json_extract(schedule_json, '$.type') != 'once'
 				AND last_completed_scheduled_for IS NOT NULL
 				AND last_completed_scheduled_for = COALESCE(retry_scheduled_for, next_run_at)
 			ORDER BY id ASC
@@ -591,7 +606,7 @@ export async function finalizeClaimedJobRow(input: {
 				next_run_at = ?,
 				claim_token = NULL, running_since = NULL, lease_expires_at = NULL,
 				claimed_scheduled_for = NULL, retry_scheduled_for = NULL,
-				retry_count = 0, last_completed_scheduled_for = ?
+				retry_count = 0, last_completed_scheduled_for = ?, disabled_reason = ?
 			WHERE id = ? AND user_id = ? AND claim_token = ?`,
 		)
 		.bind(
@@ -601,6 +616,7 @@ export async function finalizeClaimedJobRow(input: {
 			serialized.last_run_status,
 			serialized.next_run_at,
 			input.scheduledFor,
+			serialized.disabled_reason,
 			serialized.id,
 			input.userId,
 			input.claimToken,
@@ -839,13 +855,14 @@ export async function disableExpiredJobRowsForUser(input: {
 		.prepare(
 			`UPDATE jobs SET
 				enabled = 0,
+				disabled_reason = ?,
 				updated_at = ?
 			WHERE user_id = ?
 				AND enabled = 1
 				AND expires_at IS NOT NULL
 				AND expires_at <= ?`,
 		)
-		.bind(input.nowIso, input.userId, input.nowIso)
+		.bind(jobExpiredDisabledReason, input.nowIso, input.userId, input.nowIso)
 		.run()
 	return result.meta.changes ?? 0
 }

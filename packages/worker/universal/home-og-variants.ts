@@ -186,6 +186,8 @@ export function applyHomeOgVariant(
 		...page,
 		imageTitle: variant.imageTitle,
 		imageSubtitle: variant.imageSubtitle,
+		// Sized for the default card's copy; variants use the default size.
+		imageTitleFontSize: undefined,
 		ogTitle: variant.ogTitle,
 		ogDescription: variant.ogDescription,
 	}

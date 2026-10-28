@@ -1,4 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { buildCommunityForkUpstreamUpdatedEvent } from './fork-upstream-updated-subscription-event.ts'
 import { type CommunityForkRecord } from './types.ts'
 
@@ -21,9 +22,9 @@ vi.mock('#worker/package-invocations/service.ts', async (importOriginal) => {
 vi.mock('#worker/package-registry/repo.ts', () => ({
 	listSavedPackagesByUserId: mocks.listSavedPackagesByUserId,
 }))
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 const { deliverCommunityForkUpstreamUpdatedAlias } =
 	await import('./fork-upstream-updated-package-subscriptions.ts')

@@ -14,17 +14,20 @@ ogImage: /images/kody-factory-map-og.jpg
 
 Kody is Your agents' cloud, laid out as a hosted factory: capabilities your
 agent can discover, combine, and keep running after the conversation ends. Your
-agent connects to Kody over MCP and starts with two tools:
+agent connects to Kody over MCP and starts with **search** and **execute**. MCP
+also registers **api** for HTTPS operations and token minting — see
+[Open API](./open-api.md). That tool does not replace search and execute.
 
 - **`search`** finds capabilities, official guides, saved packages,
   integrations, connected MCP servers, and relevant memories. Unscoped results
   rank the MCP server, not every remote tool. Search before building so the
   agent can reuse what you already have.
-- **`execute`** runs a temporary TypeScript module on Kody's servers. It can
-  compose discovered capabilities, call connected services, and import exports
-  from packages you own.
+- **`execute`** runs a temporary TypeScript module. When Node ≥22 and the CLI
+  are available, run it with local CLI execute
+  ([Local CLI execute](./local-execute.md)). Do not use hosted MCP `execute`
+  when a local or Open API path exists.
 
-Those two doors lead to a set of user-isolated primitives.
+Those doors lead to a set of user-isolated primitives.
 
 ## What is on the factory floor
 
@@ -107,7 +110,9 @@ the owner operates the process. See
 
 1. Search for the outcome and inspect the exact capability shape.
 2. Connect the needed secret, integration, or remote MCP server.
-3. Use `execute` for a one-off composition and authenticated smoke test.
+3. Run a one-off composition and authenticated smoke test. When Node ≥22 and the
+   CLI are available, use local CLI execute
+   ([Local CLI execute](./local-execute.md)).
 4. Fork a close public package or author an owned package when the behavior
    should be reusable, reviewed, or scheduled.
 5. Keep runtime state in `packageStorage()` and expose only the app, webhook,

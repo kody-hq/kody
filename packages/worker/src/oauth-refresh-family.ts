@@ -5,6 +5,8 @@ import {
 	encryptSecretValue,
 } from '#worker/mcp/secrets/crypto.ts'
 import { isCloudflareKvTransientHttpErrorMessage } from './cloudflare-kv-platform-error.ts'
+import { rememberCimdLastKnownGood } from './oauth-cimd-last-known-good.ts'
+import { runWithTokenRequestClientId } from './oauth-provider-error-log.ts'
 
 /**
  * MCP hosts on one machine often share a stored OAuth client but keep their
@@ -295,6 +297,22 @@ export async function handleMcpOAuthTokenRequest(input: {
 		.clone()
 		.formData()
 		.catch(() => null)
+	// Token error reports get the public client_id from here (the provider
+	// does not pass them the request, and its body is consumed by then).
+	return runWithTokenRequestClientId(
+		readFormString(formData?.get('client_id')),
+		() => routeMcpOAuthTokenRequest(input, formData),
+	)
+}
+
+async function routeMcpOAuthTokenRequest(
+	input: {
+		request: Request
+		env: Env
+		fetchProvider: (request: Request) => Promise<Response>
+	},
+	formData: FormData | null,
+) {
 	const grantType = readFormString(formData?.get('grant_type'))
 	if (grantType === 'refresh_token' && formData) {
 		const presented = readFormString(formData.get('refresh_token'))
@@ -341,6 +359,13 @@ async function completeMcpOAuthTokenRequest(
 	}
 	const response = await input.fetchProvider(input.request)
 	if (response.ok) {
+		// A CIMD document that resolved live for this token request becomes the
+		// last known good copy (oauth-cimd-last-known-good.ts). Rejected token
+		// requests never write it.
+		await rememberCimdLastKnownGood({
+			env: input.env,
+			clientId: readFormString(formData?.get('client_id')),
+		})
 		await persistRefreshFamilyBestEffort({
 			env: input.env,
 			response,

@@ -49,3 +49,32 @@ export class CommunityListingPublishedDispatchCancelledError extends Error {
 		this.listingId = listingId
 	}
 }
+
+/**
+ * Another request is still creating a fork of this listing for the same
+ * account. Nothing new was started; the in-flight fork shows up when it
+ * finishes.
+ */
+export class CommunityForkInProgressError extends CommunityActionError {
+	readonly startedAt: string | null
+	constructor(startedAt: string | null) {
+		super(
+			'A fork of this listing into this account is already in progress, so a second fork was not started. It shows up in your packages when it finishes (usually within a minute). Check again shortly instead of forking again.',
+		)
+		this.name = 'CommunityForkInProgressError'
+		this.startedAt = startedAt
+	}
+}
+
+/**
+ * This request's fork claim was taken over (lease expired without renewal, or
+ * another holder won). Stop before creating a second fork of the same listing.
+ */
+export class CommunityForkClaimLostError extends CommunityActionError {
+	constructor() {
+		super(
+			'The fork claim for this listing was lost before the fork finished, so creation stopped to avoid a duplicate. Try forking again.',
+		)
+		this.name = 'CommunityForkClaimLostError'
+	}
+}

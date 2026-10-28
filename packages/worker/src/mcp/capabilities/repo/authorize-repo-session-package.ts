@@ -67,12 +67,13 @@ export async function authorizeRepoSessionPackageWrite(
  */
 export async function authorizeRepoSessionPackageRead(
 	input: RepoSessionAuthorizationInput,
-): Promise<void> {
+): Promise<EntitySourceRow | null> {
 	const source = await loadRepoSessionSource(input)
-	if (source?.entity_kind !== 'package') return
+	if (source?.entity_kind !== 'package') return null
 	await authorize(
 		{ env: input.env, request: input.request },
 		'package:read',
 		packageResource({ id: source.entity_id, userId: source.user_id }),
 	)
+	return source
 }

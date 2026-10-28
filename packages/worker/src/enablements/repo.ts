@@ -47,6 +47,25 @@ const enablementColumns = `id, org_id, package_id, trigger_kind, trigger_name,
 	paused_resource_type, paused_resource_id, paused_credential_id, paused_at,
 	origin, sender_kind, sender_value, enabled_at, disabled_at, updated_at`
 
+/** 'live': an on or paused row; 'off': only off rows (turned off); 'never': no row (never approved). */
+export async function getWebhookEnablementPresence(input: {
+	db: D1Database
+	orgId: string
+	endpointId: string
+}): Promise<'live' | 'off' | 'never'> {
+	const row = await input.db
+		.prepare(
+			`SELECT COUNT(*) AS total,
+				SUM(CASE WHEN state <> 'off' THEN 1 ELSE 0 END) AS live
+			 FROM enablements
+			 WHERE org_id = ? AND trigger_kind = 'webhook' AND instance_id = ?`,
+		)
+		.bind(input.orgId, input.endpointId)
+		.first<{ total: number; live: number | null }>()
+	if ((row?.live ?? 0) > 0) return 'live'
+	return (row?.total ?? 0) > 0 ? 'off' : 'never'
+}
+
 function isTriggerKind(value: string): value is EnablementTriggerKind {
 	return (enablementTriggerKinds as ReadonlyArray<string>).includes(value)
 }
@@ -495,21 +514,30 @@ export async function resumeEnablement(input: {
 }
 
 /** Turn an enablement off for good. Returns false when it was already off. */
-export async function disableEnablement(input: {
+/** The turn-off statement; changes no row when the enablement is already off. */
+export function buildDisableEnablementStatement(input: {
 	db: D1Database
 	orgId: string
 	id: string
 	now?: string
-}): Promise<boolean> {
+}) {
 	const now = input.now ?? new Date().toISOString()
-	const result = await input.db
+	return input.db
 		.prepare(
 			`UPDATE enablements
 			 SET state = 'off', disabled_at = ?, updated_at = ?
 			 WHERE id = ? AND org_id = ? AND state <> 'off'`,
 		)
 		.bind(now, now, input.id, input.orgId)
-		.run()
+}
+
+export async function disableEnablement(input: {
+	db: D1Database
+	orgId: string
+	id: string
+	now?: string
+}): Promise<boolean> {
+	const result = await buildDisableEnablementStatement(input).run()
 	return (result.meta.changes ?? 0) > 0
 }
 

@@ -426,12 +426,55 @@ const enforceImportBoundariesRule = {
 	},
 }
 
+/**
+ * The Workflows engine stops retrying a step only when the thrown error's name
+ * is `NonRetryableError` (it cannot use `instanceof` across RPC). The
+ * constructor's optional second argument overrides that name, so any second
+ * argument silently turns a terminal failure into a retried one.
+ */
+const noNonRetryableErrorNameRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Forbid passing a custom name to NonRetryableError, which makes the Workflows engine retry the step.',
+		},
+		schema: [],
+		messages: {
+			customName:
+				'Do not pass a name to NonRetryableError. The Workflows engine only skips retries when the error name is "NonRetryableError", so a custom name makes the step retry. Keep codes in the message instead.',
+		},
+	},
+	createOnce(context) {
+		return {
+			NewExpression(node) {
+				const callee = node.callee
+				const calleeName =
+					callee.type === 'Identifier'
+						? callee.name
+						: callee.type === 'MemberExpression' &&
+							  !callee.computed &&
+							  callee.property.type === 'Identifier'
+							? callee.property.name
+							: null
+				if (calleeName !== 'NonRetryableError') return
+				const passesName =
+					node.arguments.length > 1 ||
+					node.arguments.some((argument) => argument.type === 'SpreadElement')
+				if (!passesName) return
+				context.report({ node, messageId: 'customName' })
+			},
+		}
+	},
+}
+
 const plugin = {
 	meta: { name: 'kody-custom' },
 	rules: {
 		'enforce-import-boundaries': enforceImportBoundariesRule,
 		'no-example-identifier': noExampleIdentifierRule,
 		'no-literal-frame-src': noLiteralFrameSrcRule,
+		'no-nonretryable-error-name': noNonRetryableErrorNameRule,
 		'no-oversized-guide-section': noOversizedGuideSectionRule,
 		'no-tautological-absence': noTautologicalAbsenceRule,
 		'prefer-loader-data-types': preferLoaderDataTypesRule,

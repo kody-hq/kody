@@ -151,6 +151,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 			currentHref={`/@${data.org.slug}/-/settings`}
 		>
 			<AccountPageHeader
+				entity="settings"
 				title="Settings"
 				description="The organization's name, handle, and photo."
 				currentHref={`/@${data.org.slug}/-/settings`}
@@ -295,7 +296,6 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 						key={data.org.slug}
 						data={data}
 						queryKey={queryKey}
-						onMessage={(text, tone) => setMessage({ text, tone })}
 					/>
 					{data.canDelete ? (
 						<AccountManagementPanel title="Delete organization">

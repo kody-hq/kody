@@ -59,6 +59,7 @@ export const adminSoftDeletePurgeRunCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminSoftDeletePurgeRun',
+		contextRuns: 'deny',
 		description:
 			'Run one bounded pass of the soft-delete purge lane (orgs and person accounts past the 30-day restore window, plus legacy account deletions left with deleting_at set and deleted_at null, which have no restore window). dryRun defaults to true and lists candidates without hard deletes. Set dryRun false to execute writes (respects SOFT_DELETE_PURGE_ENABLED on the worker unless dryRun is explicitly false). Admin-only and destructive.',
 		keywords: [

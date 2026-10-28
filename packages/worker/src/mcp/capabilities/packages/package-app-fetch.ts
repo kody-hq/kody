@@ -1,5 +1,4 @@
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
-import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
@@ -9,19 +8,11 @@ import {
 	requireMcpRequest,
 	requireMcpUser,
 } from '#mcp/capabilities/meta/require-user.ts'
+import { requireInteractiveMcpCaller } from '#mcp/capabilities/meta/require-interactive-caller.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
 import { resolveSavedPackageWithFreshnessCache } from '#worker/package-invocations/invoke-contract-cache.ts'
-import {
-	normalizePackageNameInput,
-	packageIdLookupDescription,
-	packageNameLookupDescription,
-} from '#worker/package-registry/package-name.ts'
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
-import {
-	getSavedPackageById,
-	resolveSavedPackageRef,
-} from '#worker/package-registry/repo.ts'
 import {
 	buildPlainRepoPromotionErrorMessage,
 	findPlainRepoPromotionHint,
@@ -34,6 +25,12 @@ import {
 	packageAppFetchCapabilityName,
 	packageAppSyntheticHeaderName,
 } from '#worker/package-runtime/package-app-synthetic.ts'
+import {
+	findOwnedSavedPackage,
+	normalizeRequestedKodyId,
+	packageIdentityCountMessage,
+	packageIdentityInputShape,
+} from './owned-package-lookup.ts'
 
 export const packageAppFetchMaxBodyBytes = 102_400
 
@@ -72,26 +69,6 @@ const allowedMethods = new Set([
 	'DELETE',
 	'OPTIONS',
 ])
-
-function assertDirectMcpCaller(callerContext: {
-	executionOrigin?: string
-	storageContext?: {
-		packageId?: string | null
-		appId?: string | null
-		storageId?: string | null
-	} | null
-}) {
-	if (callerContext.executionOrigin !== 'interactive') {
-		throw new McpCallerError(packageRuntimeCallerErrorMessage)
-	}
-	const storageContext = callerContext.storageContext
-	const packageId = storageContext?.packageId?.trim() ?? ''
-	const appId = storageContext?.appId?.trim() ?? ''
-	const storageId = storageContext?.storageId?.trim() ?? ''
-	if (packageId || appId || storageId) {
-		throw new McpCallerError(packageRuntimeCallerErrorMessage)
-	}
-}
 
 function normalizePackageAppFetchPath(path: string | undefined) {
 	const trimmed = path?.trim() ?? ''
@@ -259,49 +236,11 @@ function assertRequestBodyWithinLimit(body: string | undefined) {
 	}
 }
 
-async function resolveOwnedSavedPackage(input: {
-	db: D1Database
-	userId: string
-	ownerScope: string
-	packageId?: string
-	kodyId?: string
-}) {
-	let requestedKodyId = input.kodyId
-	if (input.packageId === undefined && input.kodyId !== undefined) {
-		try {
-			requestedKodyId = normalizePackageNameInput({
-				value: input.kodyId,
-				ownerScope: input.ownerScope,
-				action: 'resolve',
-			})
-		} catch (error) {
-			throw new McpCallerError(getErrorMessage(error), { cause: error })
-		}
-	}
-	const packageIdOrKodyId = input.packageId ?? requestedKodyId ?? ''
-	return await resolveSavedPackageWithFreshnessCache({
-		userId: input.userId,
-		packageIdOrKodyId,
-		load: async () => {
-			if (input.packageId !== undefined) {
-				return await getSavedPackageById(input.db, {
-					userId: input.userId,
-					packageId: input.packageId,
-				})
-			}
-			return await resolveSavedPackageRef(input.db, {
-				userId: input.userId,
-				ref: requestedKodyId ?? '',
-				match: 'slug',
-			})
-		},
-	})
-}
-
 export const packageAppFetchCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: packageAppFetchCapabilityName,
+		contextRuns: 'allow',
 		orgPermission: 'app:execute',
 		description:
 			'Invoke a published package app fetch handler with a synthetic HTTP request for post-publish smoke tests. Runs on the app_fetch surface with normal package context, packageStorage(), and secret mounts; handler side effects are real. Does not replace hosted-URL checks for browser UI, cookies, OAuth redirects, or websocket realtime flows.',
@@ -321,23 +260,19 @@ export const packageAppFetchCapability = defineDomainCapability(
 		destructive: true,
 		inputSchema: z
 			.object({
-				package_id: z
-					.string()
-					.min(1)
-					.optional()
-					.describe(packageIdLookupDescription),
-				kody_id: z
-					.string()
-					.min(1)
-					.optional()
-					.describe(packageNameLookupDescription),
+				...packageIdentityInputShape,
 				path: z
 					.string()
 					.optional()
 					.describe(
 						'Path after the app mount that the handler sees. Defaults to /.',
 					),
-				method: z.string().optional().describe('HTTP method. Defaults to GET.'),
+				method: z
+					.string()
+					.optional()
+					.describe(
+						'HTTP method, case-insensitive: GET, HEAD, POST, PUT, PATCH, DELETE, or OPTIONS. Defaults to GET.',
+					),
 				headers: z
 					.record(z.string(), z.string())
 					.optional()
@@ -346,9 +281,10 @@ export const packageAppFetchCapability = defineDomainCapability(
 					),
 				body: z
 					.string()
+					.max(packageAppFetchMaxBodyBytes)
 					.optional()
 					.describe(
-						'Raw request body string for POST, PUT, or PATCH. Capped at about 100 KB.',
+						'Raw request body string for POST, PUT, or PATCH. At most 102,400 UTF-8 bytes; the schema bounds characters and the bytes are checked when the request is sent.',
 					),
 			})
 			.superRefine((value, ctx) => {
@@ -358,8 +294,7 @@ export const packageAppFetchCapability = defineDomainCapability(
 				if (identityCount !== 1) {
 					ctx.addIssue({
 						code: 'custom',
-						message:
-							'Provide exactly one of `package_id` or the package name leaf.',
+						message: packageIdentityCountMessage,
 					})
 				}
 			}),
@@ -371,7 +306,10 @@ export const packageAppFetchCapability = defineDomainCapability(
 		}),
 		async handler(args, ctx) {
 			const user = requireMcpUser(ctx.callerContext)
-			assertDirectMcpCaller(ctx.callerContext)
+			requireInteractiveMcpCaller(
+				ctx.callerContext,
+				packageRuntimeCallerErrorMessage,
+			)
 
 			const method = (args.method?.trim().toUpperCase() || 'GET') as string
 			if (!allowedMethods.has(method)) {
@@ -414,13 +352,24 @@ export const packageAppFetchCapability = defineDomainCapability(
 				user,
 				request: callerRequest,
 			})
-			const lookupId = args.package_id ?? args.kody_id ?? ''
-			const savedPackage = await resolveOwnedSavedPackage({
-				db: ctx.env.APP_DB,
-				userId: owner.ownerUserId,
-				ownerScope: owner.ownerScope,
-				packageId: args.package_id,
+			const requestedKodyId = normalizeRequestedKodyId({
 				kodyId: args.kody_id,
+				ownerScope: owner.ownerScope,
+			})
+			const packageIdOrKodyId = args.package_id ?? requestedKodyId ?? ''
+			const lookupId = args.package_id ?? args.kody_id ?? ''
+			const savedPackage = await resolveSavedPackageWithFreshnessCache({
+				userId: owner.ownerUserId,
+				packageIdOrKodyId,
+				load: async () =>
+					(
+						await findOwnedSavedPackage({
+							db: ctx.env.APP_DB,
+							userId: owner.ownerUserId,
+							ownerScope: owner.ownerScope,
+							args,
+						})
+					).savedPackage,
 			})
 			if (!savedPackage) {
 				const plainRepo = await findPlainRepoPromotionHint(ctx.env.APP_DB, {

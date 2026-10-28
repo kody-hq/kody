@@ -92,6 +92,7 @@ export const routes = {
 			`/account/packages/${segment(params.packageId)}/files${filePath(params.relativePath)}`,
 	},
 	accountExperiments: { href: () => '/account/experiments' },
+	accountConnectedApps: { href: () => '/account/connected-apps' },
 	accountMemoriesExport: { href: () => '/account/memories-export.json' },
 	accountPackagesApi: { href: () => '/account/packages.json' },
 	accountPasskeys: { href: () => '/account/passkeys' },
@@ -247,6 +248,13 @@ export const routes = {
 		href: (params: { orgSlug: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/credentials/new`,
 	},
+	orgExecutionContexts: {
+		href: (params: {
+			orgSlug: string | number
+			rest?: string | number | null
+		}) =>
+			`/@${segment(params.orgSlug)}/-/execution-contexts${filePath(params.rest)}`,
+	},
 	orgUsage: {
 		href: (params: { orgSlug: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/usage`,
@@ -292,6 +300,10 @@ export const routes = {
 	orgRepositories: {
 		href: (params: { orgSlug: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/repositories`,
+	},
+	orgRepositoryNew: {
+		href: (params: { orgSlug: string | number }) =>
+			`/@${segment(params.orgSlug)}/-/repositories/new`,
 	},
 	orgPackages: {
 		href: (params: { orgSlug: string | number }) =>
@@ -433,6 +445,14 @@ export const routes = {
 	communityPackageCollaborators: {
 		href: (params: { username: string | number; kodyId: string | number }) =>
 			`/@${segment(params.username)}/${segment(params.kodyId)}/collaborators`,
+	},
+	communityPackageConnectedPeople: {
+		href: (params: { username: string | number; kodyId: string | number }) =>
+			`/@${segment(params.username)}/${segment(params.kodyId)}/connected-people`,
+	},
+	communityPackageForks: {
+		href: (params: { username: string | number; kodyId: string | number }) =>
+			`/@${segment(params.username)}/${segment(params.kodyId)}/forks`,
 	},
 	communityPackageApproveCredentials: {
 		href: (params: { username: string | number; kodyId: string | number }) =>

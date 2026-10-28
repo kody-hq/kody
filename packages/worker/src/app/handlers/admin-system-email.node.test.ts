@@ -36,8 +36,11 @@ vi.mock('#worker/audit-log.ts', async (importOriginal) => {
 	}
 })
 
-const { deleteAdminSystemEmail } =
-	await import('#worker/admin/system-email-operations.ts')
+const {
+	blockAdminSystemEmailSender,
+	classifyAdminSystemEmail,
+	deleteAdminSystemEmail,
+} = await import('#worker/admin/system-email-operations.ts')
 
 const migrationsDirectory = new URL('../../../migrations/', import.meta.url)
 
@@ -201,7 +204,27 @@ function createHarness() {
 			return payload
 		})
 	}
-	return { sqlite, memoryBlobs, messageId, rawMimeKey, attachmentKey, call }
+	const admin = async (
+		run: (input: { env: Env; request: Request }) => Promise<unknown>,
+		roles: Array<RoleName> = ['admin'],
+	) => {
+		mockModule.readAuthenticatedAppUser.mockResolvedValue(createActor(roles))
+		return adminOperationOutcome(() =>
+			run({
+				env,
+				request: new Request(url, { headers: { Accept: 'application/json' } }),
+			}),
+		)
+	}
+	return {
+		sqlite,
+		memoryBlobs,
+		messageId,
+		rawMimeKey,
+		attachmentKey,
+		call,
+		admin,
+	}
 }
 
 test('admin system email API lists, gets, and deletes operator-owned mail only', async () => {
@@ -298,4 +321,166 @@ test('committed system email deletion does not depend on reloading the inbox', a
 	} finally {
 		read.mockRestore()
 	}
+})
+
+test('admin system email spam and archive are non-destructive, filtered, and audited', async () => {
+	const { sqlite, messageId, call, admin } = createHarness()
+	const listIds = async (search = '') => {
+		const result = await call({ search })
+		const body = (await Promise.resolve(result.data)) as {
+			view: string
+			total: number
+			messages: Array<{
+				id: string
+				classification: string
+				classification_reason: string | null
+				archived_at: string | null
+			}>
+		}
+		return body
+	}
+
+	expect(await listIds()).toMatchObject({
+		view: 'inbox',
+		total: 1,
+		messages: [
+			{ id: messageId, classification: 'accepted', archived_at: null },
+		],
+	})
+
+	const forbidden = await admin(
+		(input) =>
+			classifyAdminSystemEmail({ ...input, messageId, classification: 'spam' }),
+		['user'],
+	)
+	expect(forbidden.status).toBe(403)
+
+	const spam = await admin((input) =>
+		classifyAdminSystemEmail({ ...input, messageId, classification: 'spam' }),
+	)
+	expect(spam.status).toBe(200)
+	expect(spam.data).toEqual({ ok: true, messageId, classification: 'spam' })
+	expect(
+		sqlite
+			.prepare(
+				`SELECT classification, classification_reason, archived_at
+				 FROM system_email_messages WHERE id = ?`,
+			)
+			.get(messageId),
+	).toEqual({
+		classification: 'spam',
+		classification_reason: 'Marked as spam.',
+		archived_at: null,
+	})
+	expect(logAuditEventSpy).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			category: 'admin',
+			action: 'adminSystemEmailClassify',
+			result: 'success',
+			reason: `target_message_id=${messageId};classification=spam`,
+		}),
+	)
+	expect((await listIds()).messages).toEqual([])
+	expect((await listIds('?view=spam')).messages).toEqual([
+		expect.objectContaining({
+			id: messageId,
+			classification: 'spam',
+			classification_reason: 'Marked as spam.',
+		}),
+	])
+
+	const blocked = await admin((input) =>
+		blockAdminSystemEmailSender({ ...input, messageId }),
+	)
+	expect(blocked.status).toBe(200)
+	expect(blocked.data).toMatchObject({
+		ok: true,
+		messageId,
+		rule: { kind: 'address', value: 'phish@example.net' },
+	})
+	expect(
+		sqlite
+			.prepare(
+				`SELECT kind, value, effect FROM email_sender_rules WHERE user_id = ?`,
+			)
+			.all(String(systemEmailOwnerId)),
+	).toEqual([{ kind: 'address', value: 'phish@example.net', effect: 'block' }])
+	expect(logAuditEventSpy).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			category: 'admin',
+			action: 'adminSystemEmailSenderRuleSet',
+			result: 'success',
+		}),
+	)
+
+	const restored = await admin((input) =>
+		classifyAdminSystemEmail({
+			...input,
+			messageId,
+			classification: 'accepted',
+			archived: true,
+		}),
+	)
+	expect(restored.status).toBe(200)
+	const row = sqlite
+		.prepare(
+			`SELECT classification, classification_reason, archived_at
+			 FROM system_email_messages WHERE id = ?`,
+		)
+		.get(messageId) as {
+		classification: string
+		classification_reason: string | null
+		archived_at: string | null
+	}
+	expect(row.classification).toBe('accepted')
+	expect(row.classification_reason).toBeNull()
+	expect(row.archived_at).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+	expect((await listIds()).messages).toEqual([])
+	expect((await listIds('?view=archived')).messages).toEqual([
+		expect.objectContaining({ id: messageId, archived_at: row.archived_at }),
+	])
+	expect((await listIds('?view=all')).total).toBe(1)
+
+	const unarchived = await admin((input) =>
+		classifyAdminSystemEmail({ ...input, messageId, archived: false }),
+	)
+	expect(unarchived.data).toEqual({ ok: true, messageId, archived: false })
+	expect((await listIds()).messages).toEqual([
+		expect.objectContaining({ id: messageId, archived_at: null }),
+	])
+
+	const missing = await admin((input) =>
+		classifyAdminSystemEmail({
+			...input,
+			messageId: 'missing-id',
+			classification: 'spam',
+		}),
+	)
+	expect(missing.status).toBe(404)
+	expect(logAuditEventSpy).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			action: 'adminSystemEmailClassify',
+			result: 'failure',
+			reason: 'target_message_id=missing-id;classification=spam;not_found',
+		}),
+	)
+	const empty = await admin((input) =>
+		classifyAdminSystemEmail({ ...input, messageId }),
+	)
+	expect(empty.status).toBe(400)
+	const missingSender = await admin((input) =>
+		blockAdminSystemEmailSender({ ...input, messageId: 'missing-id' }),
+	)
+	expect(missingSender.status).toBe(404)
+
+	expect(
+		sqlite
+			.prepare(`SELECT COUNT(*) AS count FROM system_email_attachments`)
+			.get(),
+	).toEqual({ count: 1 })
+	expect(
+		sqlite
+			.prepare(`SELECT COUNT(*) AS count FROM system_email_delivery_events`)
+			.get(),
+	).toEqual({ count: 1 })
 })

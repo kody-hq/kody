@@ -32,6 +32,7 @@ export function renderCommunityEmptyState(
 	query: string | null,
 	sort?: CommunityListingSort,
 	category?: CommunityListingCategory | null,
+	installOrg?: string | null,
 ) {
 	if (query) {
 		const createPackagePrompt = buildCreatePackagePrompt(query)
@@ -63,7 +64,7 @@ export function renderCommunityEmptyState(
 						Read the package authoring guide
 					</SiteLink>
 					<SiteLink
-						href={buildCommunityIndexHref({ sort, category })}
+						href={buildCommunityIndexHref({ sort, category, installOrg })}
 						css={secondaryLinkCss}
 					>
 						Clear search
@@ -83,7 +84,7 @@ export function renderCommunityEmptyState(
 				<p css={emptyTextCss}>{copy.description}</p>
 				<p css={emptyCtaCss}>
 					<SiteLink
-						href={buildCommunityIndexHref({ sort })}
+						href={buildCommunityIndexHref({ sort, installOrg })}
 						css={getGhostButtonCss()}
 					>
 						Browse all packages

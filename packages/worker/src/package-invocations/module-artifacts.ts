@@ -15,7 +15,7 @@ import {
 	normalizePackageWorkspacePath,
 	resolvePackageExportPath,
 } from '#worker/package-registry/manifest.ts'
-import { typecheckPackageEntrypointsFromSourceFiles } from '#worker/repo/checks.ts'
+import { checkPublishedEntrypointsForRebuild } from '#worker/repo/published-entrypoint-checks.ts'
 import {
 	loadPublishedBundleArtifactByIdentity,
 	persistPublishedBundleArtifact,
@@ -246,7 +246,7 @@ async function ensureModuleArtifactUncached(input: {
 	// The caller's manifest may come from the freshness-cached source row and
 	// trail a republish by up to the freshness TTL, while the source load
 	// above is always current. Re-derive the module resolution from the
-	// freshly loaded manifest so the typecheck, bundle, and persisted
+	// freshly loaded manifest so the entrypoint check, bundle, and persisted
 	// artifact identity are all self-consistent with the commit being built.
 	const freshResolution = resolvePackageModuleResolution({
 		manifest: packageSource.manifest,
@@ -284,13 +284,14 @@ async function ensureModuleArtifactUncached(input: {
 			bundleLabel: `Saved package export "${freshResolution.artifactName}"`,
 		})
 	}
-	const typecheckResult = await typecheckPackageEntrypointsFromSourceFiles({
+	// Invocation trusts what publish accepted: no typecheck here, only the
+	// structural preconditions execution needs anyway.
+	const entrypointCheck = checkPublishedEntrypointsForRebuild({
 		sourceFiles: packageSource.files,
 		entryPoints: [{ path: freshResolution.entryPoint }],
-		emittedEventTopics: Object.keys(packageSource.manifest.kody.emits ?? {}),
 	})
-	if (!typecheckResult.ok) {
-		throw new Error(typecheckResult.message)
+	if (!entrypointCheck.ok) {
+		throw new Error(entrypointCheck.message)
 	}
 	const { buildKodyModuleBundle } =
 		await import('#worker/package-runtime/module-graph.ts')

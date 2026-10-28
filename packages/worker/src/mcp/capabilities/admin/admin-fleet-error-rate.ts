@@ -164,6 +164,7 @@ export const adminFleetErrorRateCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminFleetErrorRate',
+		contextRuns: 'deny',
 		description:
 			'Read-only fleet package-runtime error-rate health: the same hour/day KV snapshot as /admin/insights, plus a daily caught vs error breakdown (default 7 days, max 31) with distinct users-with-errors counts, and per-day failed-run / static-call counts by error name (Analytics Engine blob13). Optional stableUserId scopes daily rows to one account. Admin-only; daily aggregates never list handles. Concentration usernames appear only when the shared snapshot is elevated (same as the page). Error names are forward-looking from the blob13 write; historical days before that dimension group under an empty name.',
 		keywords: [

@@ -13,6 +13,11 @@ import {
 import { resolvePackageAppLinks } from '#app/package-repo-actions.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { getUserSocialRowByUsername } from '#worker/community/profile-repo.ts'
+import {
+	isRetryableD1LockError,
+	runD1WithRetry,
+	transientDatabaseUnavailableMessage,
+} from '#worker/d1-retry.ts'
 import { findPublicOwnerIdentityByHandle } from '#worker/identity/user-lookup.ts'
 import { normalizeUsername } from '#worker/identity/username.ts'
 import {
@@ -83,6 +88,8 @@ export type PackagePageAccess =
 			viewerCanDelete: boolean
 			/** May change who can use the package (`package:manage_access`). */
 			viewerCanManageAccess: boolean
+			/** Sees the Connected people tab (Manage on a package with an app). */
+			viewerCanSeeConnectedPeople: boolean
 			/** May adopt a community fork (org owner only; widens secret access). */
 			viewerCanAdoptCommunityFork: boolean
 			/**
@@ -147,6 +154,30 @@ function sameKodyId(left: string, right: string) {
 }
 
 /**
+ * Package page APP_DB reads have no per-query `runD1WithRetry`. Nightly DR
+ * exports lock D1 (`Currently processing a long-running export`); without a
+ * retry the raw D1 error dehydrates into the TanStack Start document and the
+ * browser SDK reports it (KODY-B7). Retry the whole load, then remap exhausted
+ * blips to the public storage-unavailable message so the client never sees
+ * the platform sentence.
+ */
+async function loadPackagePageWithD1Retry(input: {
+	env: Env
+	request: Request
+	username: string
+	kodyId: string
+	viewer?: McpUserContext | null
+	installOrg?: string | null
+}): Promise<PackagePageAccess> {
+	try {
+		return await runD1WithRetry(() => loadPackagePageUncached(input))
+	} catch (error) {
+		if (!isRetryableD1LockError(error)) throw error
+		throw new Error(transientDatabaseUnavailableMessage, { cause: error })
+	}
+}
+
+/**
  * One SSR request resolves the same package several times: the page handler,
  * the `community-detail` frame rendered while the response streams, and the
  * files loader that gates on the same access decision. Memoize per request so
@@ -162,6 +193,8 @@ export function loadPackagePage(input: {
 	 * file reads). Omit to read the session cookie; `null` is anonymous.
 	 */
 	viewer?: McpUserContext | null
+	/** Org whose community installs badge the page (`?org=`). */
+	installOrg?: string | null
 }): Promise<PackagePageAccess> {
 	const viewerKey =
 		input.viewer === undefined
@@ -169,11 +202,11 @@ export function loadPackagePage(input: {
 			: `viewer:${input.viewer?.userId ?? 'anonymous'}`
 	return memoizePerRequest({
 		request: input.request,
-		key: `package-page:${input.username}:${input.kodyId}:${viewerKey}`,
+		key: `package-page:${input.username}:${input.kodyId}:${viewerKey}:${input.installOrg ?? ''}`,
 		load: () =>
 			recordServerTiming(
 				'package-page',
-				() => loadPackagePageUncached(input),
+				() => loadPackagePageWithD1Retry(input),
 				input.request,
 			),
 	})
@@ -338,6 +371,7 @@ async function loadPlainRepoPage(input: {
 		viewerCanPublish: false,
 		viewerCanDelete: false,
 		viewerCanManageAccess: false,
+		viewerCanSeeConnectedPeople: false,
 		viewerCanAdoptCommunityFork: false,
 		loggedIn: Boolean(viewer),
 		viewerMayRun: false,
@@ -357,6 +391,7 @@ async function loadPackagePageUncached(input: {
 	username: string
 	kodyId: string
 	viewer?: McpUserContext | null
+	installOrg?: string | null
 }): Promise<PackagePageAccess> {
 	// The URL lookup only needs the pair; the viewer lookup only needs the
 	// cookie. Neither waits on the other.
@@ -406,6 +441,7 @@ async function resolvePackagePageForViewer(
 		request: Request
 		username: string
 		kodyId: string
+		installOrg?: string | null
 	},
 	target: Awaited<ReturnType<typeof resolvePackagePageUrl>>,
 	viewer: McpUserContext | null,
@@ -538,7 +574,12 @@ async function resolvePackagePageForViewer(
 		])
 		const [listing, ownerPackage] = await Promise.all([
 			target.listingId
-				? loadCommunityDetailData(input.env, input.request, target.listingId)
+				? loadCommunityDetailData(
+						input.env,
+						input.request,
+						target.listingId,
+						input.installOrg ?? null,
+					)
 				: Promise.resolve(null),
 			loadAccountPackageDetail({
 				env: input.env,
@@ -567,6 +608,8 @@ async function resolvePackagePageForViewer(
 			viewerCanPublish,
 			viewerCanDelete,
 			viewerCanManageAccess,
+			viewerCanSeeConnectedPeople:
+				viewerCanManage && ownerPackage?.hasApp === true,
 			viewerCanAdoptCommunityFork,
 			viewerMayRun,
 			loggedIn: true,
@@ -579,7 +622,12 @@ async function resolvePackagePageForViewer(
 
 	if (target.listingId) {
 		const [listing, viewerMayRun] = await Promise.all([
-			loadCommunityDetailData(input.env, input.request, target.listingId),
+			loadCommunityDetailData(
+				input.env,
+				input.request,
+				target.listingId,
+				input.installOrg ?? null,
+			),
 			viewer && target.savedPackage
 				? viewerCanExecutePackageApp({
 						env: input.env,
@@ -602,6 +650,7 @@ async function resolvePackagePageForViewer(
 			viewerCanPublish: false,
 			viewerCanDelete: false,
 			viewerCanManageAccess: false,
+			viewerCanSeeConnectedPeople: false,
 			viewerCanAdoptCommunityFork: false,
 			viewerMayRun,
 			loggedIn: Boolean(viewer),

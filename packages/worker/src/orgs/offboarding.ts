@@ -5,6 +5,11 @@
  * applying job dispositions. Live listing paths stay filtered elsewhere.
  */
 
+import {
+	automationToggleActor,
+	recordToggleAudit,
+} from '#worker/jobs/toggle-audit.ts'
+import { offboardingDisabledReason } from '@kody-internal/shared/jobs/disabled-reason.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { deleteApprovalBundlesForMember } from '#worker/approval-bundles/repo.ts'
@@ -17,7 +22,9 @@ import {
 	type OAuthGrantHelpers,
 	type OAuthGrantListItem,
 } from '#worker/oauth-grants.ts'
+import { jobAuditActions, recordJobAudit } from '#worker/jobs/job-audit.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { syncJobManagerAlarm } from '#worker/jobs/manager-client.ts'
 
 export type OffboardingJobDisposition = 'cancel' | 'delete' | 'keep_running'
@@ -437,6 +444,9 @@ async function applyJobDispositions(input: {
 				const updated = {
 					...job.record,
 					enabled: false,
+					disabledReason: job.record.enabled
+						? offboardingDisabledReason
+						: job.record.disabledReason,
 					updatedAt: input.nowIso,
 				}
 				await jobsStore.updateJob({
@@ -444,6 +454,20 @@ async function applyJobDispositions(input: {
 					job: updated,
 					callerContextJson: job.callerContextJson,
 				})
+				if (job.record.enabled) {
+					await recordToggleAudit({
+						env: input.env,
+						orgId: input.orgId,
+						resource: 'job',
+						resourceId: job.record.id,
+						name: job.record.name,
+						from: 'on',
+						to: 'off',
+						source: 'offboarding',
+						actor: automationToggleActor(),
+						reason: offboardingDisabledReason,
+					})
+				}
 				applied.push(choice)
 				break
 			}
@@ -451,6 +475,12 @@ async function applyJobDispositions(input: {
 				await jobsStore.deleteJob({
 					userId: input.orgId,
 					jobId: choice.jobId,
+				})
+				await recordJobAudit(optionalOrgAuditWriter(input.env, null), {
+					orgId: input.orgId,
+					jobId: job.record.id,
+					name: job.record.name,
+					action: jobAuditActions.deleted,
 				})
 				applied.push(choice)
 				break

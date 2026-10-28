@@ -2,7 +2,10 @@
 
 **Public / private** is repo visibility. **Community** is the catalog
 (`/community`, `/@username`) and the official Discord server — not a second kind
-of package. A listing is the catalog row for a public package.
+of package. A listing is the catalog row for a public package. Your own packages
+live on the workspace **Repositories** page with plain repos; this catalog is
+only published public listings (see
+[Packages](./packages.md#repositories-page-vs-package-in-the-api)).
 
 Public **packages** appear in that catalog. Visibility lives on the **repo
 record in D1** (default private), not `package.json#private`. Making a package
@@ -142,8 +145,10 @@ the package apps guide.
   When you omit a name, the leaf is the listing leaf. If that leaf is already
   taken by an unrelated package, Kody uses the next free leaf (`leaf-2`, then
   `leaf-3`, …). Pass an explicit leaf (or `@owner/leaf`) to choose the name;
-  that path errors if the name is taken. Forking the same listing again errors
-  with the existing fork's identity instead of minting another leaf.
+  that path errors if the name is taken. Forking the same listing again without
+  a new leaf returns that existing fork (`already_forked: true` and a short
+  `message`) instead of creating a duplicate. Pass a different `@owner/leaf`
+  when you want a second fork of the same listing.
 - **No saved package row is created**, so nothing runs yet — no imports, jobs,
   subscriptions, or package app. Lookups that need a saved package
   (`packageGet`, `packageGetGitRemote`) name the pending fork and point at
@@ -206,8 +211,14 @@ account can react through the `community.fork.upstream_updated` subscription
 topic. Forking also follows the upstream package. You can follow a public
 package without forking it (`follow.published` / `follow.pushed`): choose
 **Follow** on its page, pick the workspace and events, and manage every follow
-on your workspace's **Follows** page. Use the fork topic to auto-rebase, or to
-ping you on Discord. See
+on your workspace's **Follows** page. When no enabled package subscription in
+the workspace handles a follow's events, Kody keeps them as **Recent updates**
+on the Follows page (and the latest few on the package's Follow panel): the
+source, a new version or the pushed commits, the time, and a link. Each follow
+keeps its latest 20 for 30 days, and nothing is charged. Add a package
+subscription for `follow.published` / `follow.pushed` to get them by email,
+Discord, or anything else instead. Use the fork topic to auto-rebase, or to ping
+you on Discord. See
 [Package subscriptions](../guides/package-subscriptions.md#communityforkupstream_updated).
 
 ## One-click install
@@ -223,6 +234,31 @@ that flag). Clicking elsewhere, navigating, or leaving the control clears the
 armed state. Logged-out visitors get the same icon as a login link and sign in
 on the first click. While the fork runs, that slot shows a spinner whose tooltip
 names the current stage.
+
+### Choosing an org
+
+When you can create packages in more than one org, a **Fork into** picker sits
+beside the install control. It defaults to your personal workspace and lists
+only orgs where you hold `package:create`. The picked org rides in the page URL
+as `?org=<slug>` (personal drops it), so switching it reloads the **Installed**,
+**Forked**, **Fork outdated**, and **Fork ahead** badges and the open-fork link
+for that org. `/community` shows the same picker and keeps `?org=` on catalog
+card, category, and sort links. Each org's **Repositories** page has a **Fork a
+community package** button that opens `/community?org=<slug>` with that org
+preselected.
+
+The install endpoint takes the same choice as an optional body field:
+
+```json
+{ "acknowledged": true, "org": "example-team" }
+```
+
+Omitting `org` keeps the personal org. A named org must exist for you and pass
+`package:create`; otherwise the endpoint responds `404`
+(`Organization @example-team was not found.`) or `403`
+(`You do not have permission to create packages in @example-team.`) and nothing
+is forked. URL query params and the last-org cookie never change the install
+target; only the body `org` does.
 
 A current fork shows an open icon that links to the fork. An outdated fork shows
 a link-break icon in that slot; the click copies the absorb prompt and opens the

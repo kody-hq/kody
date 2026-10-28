@@ -42,6 +42,7 @@ export function buildComputedPackageImportCallBundle(input: {
 	mainModule: string
 	modules: WorkerLoaderModules
 	dependencies: Array<BundleArtifactDependency>
+	packageBindingRewrite?: number
 } {
 	const targetImport = createRelativeImportSpecifier(
 		computedPackageImportCallEntryPath,
@@ -81,6 +82,11 @@ export default async function __kodyComputedImportCall(params) {
 		mainModule: computedPackageImportCallEntryPath,
 		modules,
 		dependencies,
+		...(input.artifact.packageBindingRewrite === undefined
+			? {}
+			: {
+					packageBindingRewrite: input.artifact.packageBindingRewrite,
+				}),
 	}
 }
 

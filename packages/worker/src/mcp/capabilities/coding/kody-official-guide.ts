@@ -114,6 +114,7 @@ export const kodyOfficialGuideCapability = defineDomainCapability(
 	capabilityDomainNames.coding,
 	{
 		name: 'codingGuideGet',
+		contextRuns: 'allow',
 		orgPermission: 'none',
 		description: buildCapabilityDescription(),
 		keywords: [...allKeywords],

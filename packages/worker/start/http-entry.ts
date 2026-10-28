@@ -31,7 +31,7 @@ export function createHttpRequestHandler(renderDocument: RenderDocument) {
 		try {
 			const bindings = getEnv(env)
 			setAuthSessionSecret(bindings.COOKIE_SECRET)
-			return await inRequest(async () => {
+			const response = inRequest(async () => {
 				if (isServerFunctionRequest(request)) {
 					const response = await renderDocument(request, bindings)
 					// Start serializes thrown redirects after request middleware finishes.
@@ -47,6 +47,16 @@ export function createHttpRequestHandler(renderDocument: RenderDocument) {
 				}
 				return renderDocument(request, bindings)
 			})
+			// Start initializes shared route modules on the first request. Keep that
+			// work alive if a health probe disconnects during cold initialization,
+			// otherwise workerd can leave later requests waiting on cancelled I/O.
+			ctx?.waitUntil(
+				response.then(
+					() => undefined,
+					() => undefined,
+				),
+			)
+			return await response
 		} catch (error) {
 			console.error('Native app request failed:', error)
 			if (!wasSentryReported(error)) {

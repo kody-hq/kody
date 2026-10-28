@@ -19,10 +19,11 @@ export type PackageRepoActions = {
 	publishHref: string | null
 	/**
 	 * Open app. Someone who may run the app (`app:execute`) gets
-	 * `/@{user}/packages/{name}/open`, which hands off to the hosted origin.
-	 * Everyone else gets the canonical hosted origin only when the app is
-	 * approved for anonymous serving. Inline deployments use the path mount.
-	 * There is no second host-labeled button.
+	 * `/@{user}/packages/{name}/open`, which hands off to the hosted origin
+	 * (verified app custom hostname when one exists, else the kody.run
+	 * subdomain). Everyone else gets that same hosted origin only when the
+	 * app is approved for anonymous serving. Inline deployments use the path
+	 * mount. There is no second host-labeled button.
 	 */
 	packageAppHref: string | null
 	/**

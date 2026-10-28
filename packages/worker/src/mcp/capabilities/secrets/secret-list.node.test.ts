@@ -19,7 +19,18 @@ import { secretListCapability } from './secret-list.ts'
 const mockModule = vi.hoisted(() => ({
 	getSavedPackageById: vi.fn(),
 	getCommunityForkByForkedPackageId: vi.fn(),
+	safetyWindowActive: vi.fn(async () => false),
 }))
+
+vi.mock(
+	'#worker/credentials/allowed-packages-safety-window.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<
+			typeof import('#worker/credentials/allowed-packages-safety-window.ts')
+		>()),
+		isAllowedPackagesSafetyWindowActive: () => mockModule.safetyWindowActive(),
+	}),
+)
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
 	getSavedPackageById: (...args: Array<unknown>) =>
@@ -190,6 +201,7 @@ test('secretList from execute returns caller-owned package metadata with package
 			packageId: 'pkg-discord',
 			storageId: 'pkg-discord',
 		},
+		audit: null,
 	})
 
 	const listed = await secretListCapability.handler(
@@ -247,6 +259,7 @@ test('secretList package scope uses declaring-package authority like secretSet',
 			packageId: providerPackageId,
 			storageId: providerPackageId,
 		},
+		audit: null,
 	})
 	await secretService.saveSecret({
 		env,
@@ -260,6 +273,7 @@ test('secretList package scope uses declaring-package authority like secretSet',
 			packageId: consumerPackageId,
 			storageId: consumerPackageId,
 		},
+		audit: null,
 	})
 
 	const consumerContext = {
@@ -338,4 +352,68 @@ test('secretList package scope uses declaring-package authority like secretSet',
 	expect(forged.secrets[0]).toMatchObject({
 		package_id: consumerPackageId,
 	})
+})
+
+test('secretList hides user secrets whose non-empty list excludes even an implicit package (#4129)', async () => {
+	const listSecretsSpy = vi
+		.spyOn(secretService, 'listSecrets')
+		.mockResolvedValue([
+			...listedSecrets,
+			secretMetadata({
+				name: 'LockedSearch',
+				scope: 'user',
+				allowedPackages: ['pkg-other'],
+			}),
+			secretMetadata({
+				name: 'LockedNewSearch',
+				scope: 'user',
+				allowedPackages: ['pkg-other'],
+				createdAt: '2026-12-01T00:00:00.000Z',
+			}),
+		])
+	const ctx = {
+		env: { APP_DB: {} } as Env,
+		callerContext: createMcpCallerContext({
+			source: { kind: 'mcp-oauth' },
+			baseUrl: 'https://example.com',
+			user: {
+				userId: personIdFromStored('user-1'),
+				email: 'user@example.com',
+				displayName: 'User',
+			},
+			storageContext: {
+				sessionId: null,
+				appId: null,
+				packageId: 'pkg-1',
+				storageId: null,
+			},
+		}),
+	}
+	const names = async () =>
+		(await secretListCapability.handler({}, ctx)).secrets.map(
+			(secret) => secret.name,
+		)
+	const pkg = { ...savedPackage, createdAt: '2026-01-01T00:00:00.000Z' }
+
+	mockModule.getSavedPackageById.mockResolvedValueOnce(pkg)
+	mockModule.getCommunityForkByForkedPackageId.mockResolvedValueOnce(null)
+	expect(await names()).toEqual([
+		'BraveSearch',
+		'GrantedSearch',
+		'packageToken',
+	])
+
+	// Safety window: the pre-cutover credential stays listed for a
+	// pre-cutover package, the post-cutover one does not.
+	mockModule.safetyWindowActive.mockResolvedValueOnce(true)
+	mockModule.getSavedPackageById.mockResolvedValue(pkg)
+	mockModule.getCommunityForkByForkedPackageId.mockResolvedValueOnce(null)
+	expect(await names()).toEqual([
+		'BraveSearch',
+		'GrantedSearch',
+		'packageToken',
+		'LockedSearch',
+	])
+	mockModule.getSavedPackageById.mockReset()
+	listSecretsSpy.mockRestore()
 })

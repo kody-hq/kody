@@ -66,6 +66,7 @@ export const adminCredentialStampMigrateCapability = defineDomainCapability(
 		...adminMutationCapabilityAccess,
 		destructive: true,
 		name: 'adminCredentialStampMigrate',
+		contextRuns: 'deny',
 		description: `Platform-side credential-stamp migration for issue #3836: fleet dry-run/apply of ${credentialStampConvertCodemodId} (declare allowlisted missing bare deps such as remix, seal inferred kody.credentials). Does not strip |scope= placeholders. Skips Kent holdouts and packages that cannot be proven conversion-ready. No owner contact. Does not enable phase 3 runtime fail-closed. ${pagingHint}`,
 		keywords: [
 			'admin',

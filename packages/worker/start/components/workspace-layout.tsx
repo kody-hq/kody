@@ -21,6 +21,76 @@ export function WorkspaceLayout() {
 	const matches = useMatches()
 	const navigation = workspaceLayoutNavigation(matches, session)
 	if (!navigation || !session) return <Outlet />
+	const resources = (
+		<nav
+			aria-label="Resources"
+			css={{
+				display: 'grid',
+				gap: '0.25rem',
+				borderTop: `1px solid ${colors.border}`,
+				paddingTop: '0.75rem',
+				fontSize: '0.875rem',
+				'& a': {
+					display: 'flex',
+					alignItems: 'center',
+					gap: '0.5rem',
+					padding: '0.4rem 0.65rem',
+					borderRadius: '0.5rem',
+					color: colors.textMuted,
+					textDecoration: 'none',
+					'&:hover': {
+						background: colors.primarySoftest,
+						color: colors.text,
+					},
+				},
+			}}
+		>
+			<h2
+				css={{
+					margin: '0 0 0.25rem',
+					paddingInline: '0.65rem',
+					fontSize: '0.7rem',
+					fontWeight: 600,
+					letterSpacing: '0.06em',
+					textTransform: 'uppercase',
+					color: colors.textMuted,
+				}}
+			>
+				Resources
+			</h2>
+			<SiteLink href="/docs">
+				<span aria-hidden="true">{renderIcon('book', { size: '1rem' })}</span>
+				Documentation
+			</SiteLink>
+		</nav>
+	)
+	const adminLink = session.roles.includes('admin') ? (
+		<div
+			css={{
+				flexShrink: 0,
+				padding: '0.75rem 1rem',
+				borderTop: `1px solid ${colors.border}`,
+			}}
+		>
+			<SiteLink
+				href="/admin/users"
+				css={{
+					display: 'block',
+					padding: '0.4rem 0.65rem',
+					borderRadius: '0.5rem',
+					color: colors.textMuted,
+					textDecoration: 'none',
+					fontSize: '0.875rem',
+					'&:hover': {
+						background: colors.primarySoftest,
+						color: colors.text,
+					},
+				}}
+			>
+				Admin
+			</SiteLink>
+		</div>
+	) : null
 	return (
 		<WorkspaceLayoutContext value={true}>
 			<div
@@ -45,8 +115,13 @@ export function WorkspaceLayout() {
 						boxSizing: 'border-box',
 						display: 'flex',
 						flexDirection: 'column',
-						borderRight: `1px solid ${colors.border}`,
-						background: colors.background,
+						background: `color-mix(in srgb, ${colors.background} 60%, ${colors.surface})`,
+						boxShadow: `4px 0 18px color-mix(in srgb, ${colors.text} 3%, transparent)`,
+						'@media (prefers-color-scheme: dark)': {
+							boxShadow: 'none',
+							borderRight: `1px solid ${colors.borderSubtle}`,
+						},
+						zIndex: 1,
 						'& [data-account-navigation]': {
 							minHeight: 0,
 							paddingTop: 0,
@@ -56,8 +131,12 @@ export function WorkspaceLayout() {
 						[accountManagementNarrowMq]: {
 							position: 'relative',
 							height: 'auto',
-							borderRight: 0,
-							borderBottom: `1px solid ${colors.border}`,
+							boxShadow: `0 4px 18px color-mix(in srgb, ${colors.text} 3%, transparent)`,
+							'@media (prefers-color-scheme: dark)': {
+								boxShadow: 'none',
+								borderRight: 0,
+								borderBottom: `1px solid ${colors.borderSubtle}`,
+							},
 							'& [data-account-navigation]': {
 								overflow: 'visible',
 								paddingTop: 0,
@@ -81,14 +160,14 @@ export function WorkspaceLayout() {
 								css={{
 									display: 'inline-flex',
 									alignItems: 'center',
-									gap: '0.7rem',
+									gap: '0.6rem',
 									color: colors.text,
 									textDecoration: 'none',
-									font: `700 1.75rem/1 ${typography.fontFamilyDisplay}`,
+									font: `700 1.5rem/1 ${typography.fontFamilyDisplay}`,
 									letterSpacing: '-0.01em',
 								}}
 							>
-								<KodyMark size={34} />
+								<KodyMark size={28} />
 								Kody
 							</SiteLink>
 						</BrandContextMenu>
@@ -123,79 +202,21 @@ export function WorkspaceLayout() {
 						{session.featureFlags['demo-indicator'] ? <DemoIndicator /> : null}
 						<ShellNavigation
 							navigation={navigation}
+							mobileFooter={
+								<>
+									{resources}
+									{adminLink}
+								</>
+							}
 							separateWorkspaceSwitcher
 						/>
-						<nav
-							aria-label="Resources"
-							css={{
-								display: 'grid',
-								gap: '0.25rem',
-								borderTop: `1px solid ${colors.border}`,
-								paddingTop: '0.75rem',
-								fontSize: '0.875rem',
-								'& a': {
-									display: 'flex',
-									alignItems: 'center',
-									gap: '0.5rem',
-									padding: '0.4rem 0.65rem',
-									borderRadius: '0.5rem',
-									color: colors.textMuted,
-									textDecoration: 'none',
-									'&:hover': {
-										background: colors.primarySoftest,
-										color: colors.text,
-									},
-								},
-							}}
-						>
-							<h2
-								css={{
-									margin: '0 0 0.25rem',
-									paddingInline: '0.65rem',
-									fontSize: '0.7rem',
-									fontWeight: 600,
-									letterSpacing: '0.06em',
-									textTransform: 'uppercase',
-									color: colors.textMuted,
-								}}
-							>
-								Resources
-							</h2>
-							<SiteLink href="/docs">
-								<span aria-hidden="true">
-									{renderIcon('book', { size: '1rem' })}
-								</span>
-								Documentation
-							</SiteLink>
-						</nav>
-					</div>
-					{session.roles.includes('admin') ? (
-						<div
-							css={{
-								flexShrink: 0,
-								padding: '0.75rem 1rem',
-								borderTop: `1px solid ${colors.border}`,
-							}}
-						>
-							<SiteLink
-								href="/admin/users"
-								css={{
-									display: 'block',
-									padding: '0.4rem 0.65rem',
-									borderRadius: '0.5rem',
-									color: colors.textMuted,
-									textDecoration: 'none',
-									fontSize: '0.875rem',
-									'&:hover': {
-										background: colors.primarySoftest,
-										color: colors.text,
-									},
-								}}
-							>
-								Admin
-							</SiteLink>
+						<div css={{ [accountManagementNarrowMq]: { display: 'none' } }}>
+							{resources}
 						</div>
-					) : null}
+					</div>
+					<div css={{ [accountManagementNarrowMq]: { display: 'none' } }}>
+						{adminLink}
+					</div>
 				</aside>
 				<main
 					id="main"
@@ -203,7 +224,7 @@ export function WorkspaceLayout() {
 					data-workspace-panel
 					css={{
 						minWidth: 0,
-						background: colors.surface,
+						background: colors.background,
 						fontSize: '0.875rem',
 						lineHeight: 1.5,
 						'--control-font-size': '0.875rem',

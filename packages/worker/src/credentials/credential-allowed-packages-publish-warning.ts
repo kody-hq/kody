@@ -1,10 +1,12 @@
 /**
  * Non-blocking publish/save warnings when a package fills a user-scope
  * credential by literal name and that credential's allowed-packages list is
- * non-empty and does not include this package. Kody denies those uses at
- * runtime for every package, including self-authored and adopted ones (see
- * `assertPackageCanAccessResolvedSecret`), so the warning tells the owner how
- * to approve or move the use before it fails.
+ * non-empty and does not include this package.
+ *
+ * Kody denies those uses at runtime for every package, including
+ * self-authored and adopted ones (see `assertPackageCanAccessResolvedSecret`,
+ * issue #4129), so the warning tells the owner how to approve or move the use
+ * before it fails.
  *
  * Does not change fill, access, publish, or save behavior.
  */
@@ -14,9 +16,9 @@ import {
 	type PackageCredentialScan,
 } from '#worker/credentials/credential-inventory-scan.ts'
 import {
-	type PackageCredentialKind,
+	type PackageCredentialSlotKind,
 	type PackageCredentialSlot,
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
 } from '#worker/package-registry/types.ts'
 import {
 	getSavedPackageById,
@@ -39,7 +41,7 @@ export type CredentialAllowedPackagesPublishWarning = {
 }
 
 const packageCredentialKinds: ReadonlySet<string> = new Set(
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
 )
 
 /**
@@ -314,11 +316,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isPackageCredentialKind(
 	value: string,
-): value is PackageCredentialKind {
+): value is PackageCredentialSlotKind {
 	return packageCredentialKinds.has(value)
 }
 
-function readDeclaredCredentialSlots(
+export function readDeclaredCredentialSlots(
 	manifestSource: string | undefined,
 ): Record<string, PackageCredentialSlot> | undefined {
 	if (manifestSource == null) return undefined

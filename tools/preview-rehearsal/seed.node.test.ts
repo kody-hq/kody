@@ -3,7 +3,6 @@ import {
 	assertNotSeeded,
 	classifyRehearsalSeed,
 	rehearsalSeedEmails,
-	rehearsalSeedRosterSize,
 	rehearsalSeedStatus,
 } from './seed.ts'
 
@@ -59,17 +58,6 @@ function fakeSeedStatusApi(input: {
 }
 
 const worker = 'kody-branch-teams-rehearsal'
-
-test('roster emails are the five people (the rehearsal org has no users row)', () => {
-	expect(rehearsalSeedRosterSize).toBe(5)
-	expect(rehearsalSeedEmails).toEqual([
-		'rh-admin@example.com',
-		'rh-alice@example.com',
-		'rh-bob@example.com',
-		'rh-carol@example.com',
-		'rh-dave@example.com',
-	])
-})
 
 test('classifyRehearsalSeed requires the carol auto-refill write for complete', () => {
 	expect(classifyRehearsalSeed({ count: 0, carolAutoRefill: false })).toBe(

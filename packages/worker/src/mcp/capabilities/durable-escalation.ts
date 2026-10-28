@@ -92,7 +92,7 @@ function createDispatchedHandle(input: {
 		idempotency_key: input.idempotencyKey,
 		run_status: input.workflow.status ?? null,
 		message:
-			'Work exceeded the inline budget and was dispatched to a durable workflow. Poll workflowRunList with this workflow_id; do not retry the same operation while the run is active.',
+			'Work exceeded the inline budget and was dispatched to a durable workflow. Poll with workflowRunList({ workflow_id }) until the run is terminal; do not retry the same operation while the run is active.',
 	}
 }
 
@@ -229,7 +229,7 @@ export async function runWithDurableEscalation<T>(input: {
 					idempotency_key: existing.idempotencyKey,
 					run_status: existing.status,
 					message:
-						'An active durable run already exists for this idempotency key. Poll workflowRunList with this workflow_id; do not create another run.',
+						'An active durable run already exists for this idempotency key. Poll with workflowRunList({ workflow_id }) until the run is terminal; do not create another run.',
 				},
 			}
 		}

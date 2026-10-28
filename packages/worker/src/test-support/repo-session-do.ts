@@ -41,6 +41,7 @@ export function createExternalClone(headCommit: string) {
 			symlink: vi.fn(async () => undefined),
 		},
 		isAncestorCommit: vi.fn(async () => true),
+		releaseGitObjects: vi.fn(async () => undefined),
 		collectFiles: vi.fn(async () => ({
 			'package.json': '{"name":"@kody/demo"}',
 			'index.ts': 'export const ready = true\n',
@@ -244,6 +245,12 @@ export const repoSessionMockModule = (() => {
 		isPublishedPackageArtifactBuiltForCommit: vi.fn<
 			typeof publishedBundleArtifactsModule.isPublishedPackageArtifactBuiltForCommit
 		>(async () => false),
+		loadPublishedBundleArtifactsForPackageTargets: vi.fn<
+			typeof publishedBundleArtifactsModule.loadPublishedBundleArtifactsForPackageTargets
+		>(async () => new Map()),
+		publishedBundleArtifactForPackageTarget: vi.fn<
+			typeof publishedBundleArtifactsModule.publishedBundleArtifactForPackageTarget
+		>(() => null),
 		persistPublishedPackageArtifactTarget: vi.fn<
 			typeof publishedBundleArtifactsModule.persistPublishedPackageArtifactTarget
 		>(async () => 'kv:artifact'),
@@ -279,6 +286,35 @@ export const repoSessionMockModule = (() => {
  * module-load defaults. Session/source/artifact-repo lookups and `gitState`
  * are left to the caller.
  */
+/**
+ * vi.mock overrides for published-bundle-artifacts that call through to
+ * {@link repoSessionMockModule}. Keeps per-file mock blocks under the node
+ * test size ratchet.
+ */
+export function publishedBundleArtifactsRepoSessionMocks(
+	mocks: typeof repoSessionMockModule = repoSessionMockModule,
+) {
+	return {
+		isPublishedPackageArtifactBuiltForCommit: (
+			...args: Parameters<typeof mocks.isPublishedPackageArtifactBuiltForCommit>
+		) => mocks.isPublishedPackageArtifactBuiltForCommit(...args),
+		loadPublishedBundleArtifactsForPackageTargets: (
+			...args: Parameters<
+				typeof mocks.loadPublishedBundleArtifactsForPackageTargets
+			>
+		) => mocks.loadPublishedBundleArtifactsForPackageTargets(...args),
+		publishedBundleArtifactForPackageTarget: (
+			...args: Parameters<typeof mocks.publishedBundleArtifactForPackageTarget>
+		) => mocks.publishedBundleArtifactForPackageTarget(...args),
+		persistPublishedPackageArtifactTarget: (
+			...args: Parameters<typeof mocks.persistPublishedPackageArtifactTarget>
+		) => mocks.persistPublishedPackageArtifactTarget(...args),
+		deletePublishedArtifactsForSource: (
+			...args: Parameters<typeof mocks.deletePublishedArtifactsForSource>
+		) => mocks.deletePublishedArtifactsForSource(...args),
+	}
+}
+
 export function restoreRepoSessionMockBaseline() {
 	const mocks = repoSessionMockModule
 	const { gitState } = mocks
@@ -303,6 +339,8 @@ export function restoreRepoSessionMockBaseline() {
 		mocks.loadPublishedSourceSnapshot,
 		mocks.loadPublishedSourceManifestSnapshot,
 		mocks.isPublishedPackageArtifactBuiltForCommit,
+		mocks.loadPublishedBundleArtifactsForPackageTargets,
+		mocks.publishedBundleArtifactForPackageTarget,
 		mocks.persistPublishedPackageArtifactTarget,
 		mocks.deletePublishedArtifactsForSource,
 		mocks.getSavedPackageById,
@@ -320,6 +358,11 @@ export function restoreRepoSessionMockBaseline() {
 	mocks.deleteStorageBucketInventory.mockClear()
 	mocks.storageBucketInventoryExists.mockClear()
 	mocks.storageBucketInventoryExists.mockResolvedValue(false)
+	mocks.isPublishedPackageArtifactBuiltForCommit.mockResolvedValue(false)
+	mocks.loadPublishedBundleArtifactsForPackageTargets.mockResolvedValue(
+		new Map(),
+	)
+	mocks.publishedBundleArtifactForPackageTarget.mockReturnValue(null)
 
 	mocks.workspaceExists.mockResolvedValue(false)
 	mocks.workspaceStat.mockResolvedValue(null)

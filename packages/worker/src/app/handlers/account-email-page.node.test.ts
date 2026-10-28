@@ -93,7 +93,7 @@ test('email server resources return independent message lists and actor destinat
 		pageSize: 25,
 		total: 0,
 		query: '',
-		classification: null,
+		view: 'inbox',
 	})
 	vi.mocked(listEmailNotificationDestinations).mockResolvedValue([
 		{
@@ -111,7 +111,7 @@ test('email server resources return independent message lists and actor destinat
 			data: {
 				org: null,
 				query: '',
-				classification: null,
+				view: 'inbox',
 				page: 1,
 				pageSize: 25,
 			},
@@ -165,7 +165,7 @@ test('org inbox passes explicit filters and never derives selection from a reque
 		data: {
 			org: 'team',
 			query: ' subject ',
-			classification: 'quarantined',
+			view: 'spam',
 			page: 3,
 			pageSize: 50,
 		},
@@ -173,14 +173,13 @@ test('org inbox passes explicit filters and never derives selection from a reque
 	expect(state.collection).toHaveBeenLastCalledWith({
 		orgSlug: 'team',
 		section: 'email',
-		returnTo:
-			'/@team/-/email?q=subject&page=3&pageSize=50&classification=quarantined',
+		returnTo: '/@team/-/email?q=subject&page=3&pageSize=50&view=spam',
 	})
 	expect(readAccountEmailData).toHaveBeenLastCalledWith({
 		env: { APP_DB: {} },
 		user: { userId: 42 },
 		query: 'subject',
-		classification: 'quarantined',
+		view: 'spam',
 		page: 3,
 		pageSize: 50,
 	})

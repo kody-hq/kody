@@ -277,6 +277,32 @@ export const loadExperimentsPage = createServerFn({ method: 'GET' })
 		}
 	})
 
+export const loadConnectedAppsPage = createServerFn({ method: 'GET' })
+	.validator(z.object({}))
+	.handler(async () => {
+		const [
+			{ loadPersonalCollection },
+			{ loadAccountConnectedAppsData },
+			{ loadDocumentHead },
+		] = await Promise.all([
+			import('./collection-context.ts'),
+			import('../../src/app/handlers/account-connected-apps.ts'),
+			import('./document-head.ts'),
+		])
+		const pathname = '/account/connected-apps'
+		const { bindings, user } = await loadPersonalCollection(pathname)
+		const payload = await loadAccountConnectedAppsData({
+			env: bindings,
+			user,
+		})
+		return {
+			payload,
+			head: loadDocumentHead('accountConnectedApps', pathname, {
+				accountConnectedApps: payload,
+			}),
+		}
+	})
+
 export const loadActivityPage = createServerFn({ method: 'GET' })
 	.validator(
 		z.object({
@@ -293,7 +319,6 @@ export const loadActivityPage = createServerFn({ method: 'GET' })
 				'app_realtime',
 				'job',
 				'workflow',
-				'retriever',
 				'webhook',
 			]),
 			triageFilter: z.enum(['open', 'ignored', 'resolved', 'all']),

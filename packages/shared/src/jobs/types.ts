@@ -10,10 +10,6 @@ export type JobSchedule =
 			type: 'interval'
 			every: string
 	  }
-	| {
-			type: 'once'
-			runAt: string
-	  }
 
 export type JobRunStatus = 'success' | 'error'
 
@@ -41,6 +37,12 @@ export type JobRecord = {
 	 * Separate from `lease_expires_at` (claim lease).
 	 */
 	expiresAt: string | null
+	/**
+	 * Why the job is off, in plain words: the reason given when someone turned
+	 * it off, or what Kody did (auto-disable or expiry).
+	 * Null while the job is on, and for jobs turned off before this existed.
+	 */
+	disabledReason?: string | null
 	createdAt: string
 	updatedAt: string
 	lastRunAt?: string
@@ -109,4 +111,6 @@ export type JobUpdateInput = {
 	killSwitchEnabled?: boolean
 	/** Pass null to clear expiry. Omit to leave unchanged. */
 	expiresAt?: string | null
+	/** Why `enabled` changed, recorded in the org audit log. */
+	reason?: string | null
 }

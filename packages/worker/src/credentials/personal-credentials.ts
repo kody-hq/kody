@@ -30,6 +30,7 @@ import { type OrgAuditWriter } from '#worker/orgs/org-audit-outbox.ts'
 import { runAppDbBatchWithOrgAudit } from '#worker/orgs/org-audit.ts'
 import { isOrgActive, loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { integrationConnectedSql } from '#worker/integrations/connected.ts'
+import { bumpUsableCredentialsGeneration } from './credential-read-generation.ts'
 import {
 	credentialPermissionFamily,
 	getOrgCredential,
@@ -184,6 +185,7 @@ export async function grantPersonalCredentialToOrg(input: {
 				})
 			).changed
 		: ((await insert.run()).meta.changes ?? 0) > 0
+	if (created) bumpUsableCredentialsGeneration(input.db)
 	return {
 		...credential,
 		ownerKind: 'user',
@@ -227,7 +229,9 @@ export async function revokePersonalCredentialOrgGrant(input: {
 		.bind(input.credentialId, input.ownerPersonId, input.orgId)
 	if (!input.audit) {
 		const result = await remove.run()
-		return (result.meta.changes ?? 0) > 0
+		const changed = (result.meta.changes ?? 0) > 0
+		if (changed) bumpUsableCredentialsGeneration(input.db)
+		return changed
 	}
 	const ownerOrgId = await loadPersonalOrgIdForPerson(
 		input.db,
@@ -253,6 +257,7 @@ export async function revokePersonalCredentialOrgGrant(input: {
 		}),
 		onlyIfChanged: true,
 	})
+	if (changed) bumpUsableCredentialsGeneration(input.db)
 	return changed
 }
 

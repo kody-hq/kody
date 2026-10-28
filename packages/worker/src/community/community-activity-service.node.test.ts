@@ -2,11 +2,7 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import {
-	countCommunityForksByListingIds,
-	insertCommunityFork,
-	upsertCommunityRating,
-} from './repo.ts'
+import { insertCommunityFork, upsertCommunityRating } from './repo.ts'
 import {
 	getCommunityActivityForAdmin,
 	listCommunityActivityForAdmin,
@@ -203,16 +199,4 @@ test('admin community activity reads forks and latest ratings newest-first with 
 		listingId: 'listing-2',
 	})
 	expect(deletedListingActivity.items).toEqual([fork3Activity])
-
-	expect(
-		await countCommunityForksByListingIds(db, [
-			'listing-1',
-			'listing-2',
-			'listing-without-forks',
-		]),
-	).toEqual({
-		'listing-1': 2,
-		'listing-2': 1,
-		'listing-without-forks': 0,
-	})
 })

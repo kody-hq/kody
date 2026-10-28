@@ -208,6 +208,8 @@ function manageAccessPermission(resourceType: OrgResourceType): OrgPermission {
 			return 'memory:manage_access'
 		case 'email':
 			return 'email:manage_access'
+		case 'execution_context':
+			return 'execution_context:manage_access'
 		default: {
 			const exhaustive: never = resourceType
 			throw new Error(`Unhandled resource type: ${String(exhaustive)}`)
@@ -271,6 +273,20 @@ async function grantTargetCheck(
 				resource: credentialResource(orgId, credential),
 			}
 		}
+		case 'execution_context':
+			// Adding run access to someone's machine goes through
+			// executionContextShareSet, which only the operator or a Manage
+			// holder may call (decision 13b). Removing a share stays here.
+			if (purpose === 'grant') {
+				throw new McpCallerError(
+					'Share an execution context with executionContextShareSet; accessGrant does not add execution context grants.',
+				)
+			}
+			return {
+				family: resourceType,
+				permission: manageAccessPermission(resourceType),
+				resource: { type: resourceType, id: resourceId, orgId },
+			}
 		case 'package':
 		case 'app':
 		case 'job':
@@ -376,7 +392,7 @@ export function grantChangesMemberOrBilling(input: {
  * organization grant includes any of `ownerOnlyOrgGrantPermissions`.
  */
 export async function resolveAuthorizedGrantPermissions(
-	ctx: CapabilityContext,
+	ctx: GrantChangeContext,
 	input: {
 		family: OrgResourceType | 'org'
 		preset?: GrantPreset | null
@@ -526,6 +542,14 @@ export async function hashInviteToken(token: string) {
 
 export function inviteAcceptPrompt(input: { orgSlug: string; token: string }) {
 	return `You are invited to the ${input.orgSlug} organization. Call inviteAccept with this token: ${input.token}. The token is shown once and cannot be looked up later.`
+}
+
+export function inviteLinkAcceptPrompt(input: {
+	orgSlug: string
+	token: string
+	url?: string
+}) {
+	return `Shareable invite link for the ${input.orgSlug} organization. Recipients open ${input.url ?? `/join/${input.token}`} or call inviteLinkAccept with this token: ${input.token}. The credential is shown once; Kody stores only a hash.`
 }
 
 export function optionalInviteeEmail(value: string | undefined) {

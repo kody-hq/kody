@@ -63,6 +63,7 @@ export const adminOrgLimitOverridesSetCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminOrgLimitOverridesSet',
+		contextRuns: 'deny',
 		description:
 			'Set, change, or remove admin limit overrides on any org (daily, weekly, and monthly caps). An override only raises: the enforced limit is the larger of the plan limit and the override. Takes effect on the next counted check. Credits and billing are unchanged. Every change writes an org audit event with the admin, old and new values, and the reason.',
 		keywords: [

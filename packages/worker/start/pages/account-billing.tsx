@@ -6,7 +6,7 @@ import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { formatTimestampDate as formatCancelDate } from '../components/local-timestamp.tsx'
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { orgIdentity } from '#universal/org-pages.ts'
+import { orgIdentity, orgOverviewPath } from '#universal/org-pages.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { adminGrantDiffersFromSubscription } from '#universal/account-plan-display.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
@@ -314,6 +314,7 @@ export function AccountBillingPage({
 			busy={false}
 		>
 			<AccountPageHeader
+				entity="billing"
 				title="Billing"
 				description={
 					payload.org.personal
@@ -394,7 +395,7 @@ export function AccountBillingPage({
 								</span>
 							) : null}
 							<SiteLink
-								href={billing.usageHref ?? `/@${billing.org.slug}`}
+								href={billing.usageHref ?? orgOverviewPath(billing.org.slug)}
 								css={mutedLinkCss}
 							>
 								view usage
@@ -688,7 +689,11 @@ export function AccountBillingPage({
 
 			<p css={{ margin: 0 }}>
 				<SiteLink
-					href={payload.org.personal ? '/account' : `/@${payload.org.slug}`}
+					href={
+						payload.org.personal
+							? '/account'
+							: orgOverviewPath(payload.org.slug)
+					}
 					css={primaryLinkCss}
 				>
 					{payload.org.personal ? 'Back to account' : `Back to ${orgName}`}

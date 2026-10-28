@@ -8,6 +8,7 @@ import {
 } from '@kody-internal/shared/url-hosts.ts'
 import { isBrowserFetchNetworkError } from '#client/browser-fetch-network-error.ts'
 import { type AccountIntegrationListItem } from '#universal/loader-data.ts'
+import { resolveAuthorizeRequestScopes } from '#universal/oauth-authorize-scopes.ts'
 
 export type OAuthFlow = 'pkce' | 'confidential' | 'device'
 export type TokenExchangeStyle = 'form' | 'basic-json' | 'basic-form'
@@ -481,7 +482,32 @@ function resolveConnectOauthScopes(input: {
 	if (input.queryConfig.scopes && input.queryConfig.scopes.length > 0) {
 		return input.queryConfig.scopes
 	}
-	return input.storedIntegration?.authorization?.scopes ?? []
+	const stored = input.storedIntegration?.authorization?.scopes ?? []
+	if (stored.length > 0) return stored
+	// Platform apps keep an empty selection empty (operator menu / intentional
+	// clear). Bring-your-own prefills historically forced scopes to [] with no
+	// fallback, which sent Google (and similar) authorize requests without a
+	// scope parameter. Fill known host defaults so the consent screen can load.
+	if (input.storedIntegration?.platformAppSlug) {
+		return []
+	}
+	const authorizeHost =
+		input.queryConfig.authorizeHost ??
+		(input.storedIntegration?.authorization?.authorizeUrl
+			? safeParseHost(input.storedIntegration.authorization.authorizeUrl)
+			: null) ??
+		(input.queryConfig.authorizeUrl
+			? safeParseHost(input.queryConfig.authorizeUrl)
+			: null) ??
+		(input.queryConfig.deviceAuthorizationUrl
+			? safeParseHost(input.queryConfig.deviceAuthorizationUrl)
+			: null)
+	const resolved = resolveAuthorizeRequestScopes({
+		scopes: [],
+		authorizeHost,
+		fillDefaults: true,
+	})
+	return resolved.ok ? resolved.scopes : []
 }
 
 function resolveConnectOauthExtraAuthorizeParams(input: {

@@ -750,6 +750,7 @@ async function exchangeRefreshTokenWithLease({
 			: null,
 		refreshPolicy: 'required',
 		refreshLeaseId: leaseId,
+		audit: null,
 	})
 
 	const refreshedAt = new Date().toISOString()

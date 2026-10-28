@@ -11,6 +11,7 @@ import {
 	type PackageCredentialsView,
 	type PackageTriggerView,
 	type StoredCredentialMapping,
+	buildCredentialCreateHref,
 } from '#universal/credential-contracts.ts'
 import { credentialKindLabel } from '#universal/credentials-list.ts'
 import {
@@ -45,6 +46,7 @@ export type MappingCellInput = {
 	stored: StoredCredentialMapping | null
 	inheritLabel: string
 	editable: boolean
+	clearable?: boolean
 	trigger: PackageTriggerView | null
 }
 type TriggerEnablementActionInput = PackageCredentialsEnablementAction
@@ -117,9 +119,20 @@ function toneColor(tone: MappingStatusTone) {
 }
 export function renderStatus(mapping: EffectiveCredentialMapping) {
 	const { label, tone } = mappingStatusLabel(mapping.status)
+	return renderStatusBadge(label, tone, { mappingStatus: mapping.status })
+}
+function renderExecutorStatus() {
+	return renderStatusBadge('Executor', 'muted', { supplier: 'executor' })
+}
+function renderStatusBadge(
+	label: string,
+	tone: MappingStatusTone,
+	data: { mappingStatus?: string; supplier?: string },
+) {
 	return (
 		<span
-			data-mapping-status={mapping.status}
+			data-mapping-status={data.mappingStatus}
+			data-credential-supplier={data.supplier}
 			css={{
 				display: 'inline-flex',
 				padding: `0 ${spacing.sm}`,
@@ -216,23 +229,28 @@ function needSummary(need: PackageCredentialNeedView) {
 	const parts = [kind, need.provider]
 	if (need.multiple) parts.push('several allowed')
 	if (need.from) parts.push(`from ${need.from}`)
+	if (need.supplier === 'publisher') parts.unshift('Set by the publisher')
+	else if (need.supplier === 'executor')
+		parts.unshift(need.required ? 'Required' : 'Optional')
 	return parts.join(' · ')
 }
-export const tabBodyCss = { display: 'grid', gap: spacing.md }
 /** Every incomplete mapping on Credentials; on the other tabs, only the ones that tab fixes. */
 export function renderIncomplete(
 	context: PackageTabContext,
 	currentTab: PackageCredentialsTab,
 ) {
 	const { view } = context
+	const needs = new Map(view.needs.map((need) => [need.key, need]))
 	const items =
 		currentTab === 'credentials'
 			? view.incomplete
 			: view.incomplete.filter(
 					(item) => incompleteMappingTab(item) === currentTab,
 				)
-	if (items.length === 0) return null
-	const needs = new Map(view.needs.map((need) => [need.key, need]))
+	const actionableItems = items.filter(
+		(item) => needs.get(item.needKey)?.supplier !== 'executor',
+	)
+	if (actionableItems.length === 0) return null
 	return (
 		<section
 			aria-labelledby="package-credentials-incomplete"
@@ -244,12 +262,12 @@ export function renderIncomplete(
 			}}
 		>
 			<h2 id="package-credentials-incomplete" css={cardTitleCss}>
-				{items.length === 1
+				{actionableItems.length === 1
 					? '1 mapping needs attention'
-					: `${items.length} mappings need attention`}
+					: `${actionableItems.length} mappings need attention`}
 			</h2>
 			<ul css={listCss}>
-				{items.map((item) => {
+				{actionableItems.map((item) => {
 					const tab = incompleteMappingTab(item)
 					const createUrl = needs.get(item.needKey)?.createUrl
 					const key = `${item.needKey}:${item.where.type === 'trigger' ? `${item.where.trigger.kind}:${item.where.trigger.name}` : 'default'}`
@@ -283,7 +301,7 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 	const { view, orgSlug } = context
 	const needs = sortNeedsByAttention(view.needs)
 	return (
-		<div css={tabBodyCss}>
+		<>
 			{renderIncomplete(context, 'credentials')}
 			<section
 				aria-labelledby="package-credentials-used"
@@ -315,13 +333,31 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 										<td>
 											<strong>{need.key}</strong>
 											<div css={mutedCss}>{needSummary(need)}</div>
+											{need.supplier === 'publisher' ? (
+												<div css={mutedCss}>
+													Publisher credentials:{' '}
+													{need.defaults.org ? 'Set' : 'Not set'}
+												</div>
+											) : null}
 											{need.description ? (
 												<div css={mutedCss}>{need.description}</div>
 											) : null}
 										</td>
-										<td>{renderEffective(orgSlug, need.effective)}</td>
+										<td>
+											{need.supplier === 'executor' ? (
+												<span css={mutedCss}>
+													Each person who runs it supplies their own
+												</span>
+											) : (
+												renderEffective(orgSlug, need.effective)
+											)}
+										</td>
 										<td>{mappingSourceLabel(need.effective.source)}</td>
-										<td>{renderStatus(need.effective)}</td>
+										<td>
+											{need.supplier === 'executor'
+												? renderExecutorStatus()
+												: renderStatus(need.effective)}
+										</td>
 									</tr>
 								))}
 							</tbody>
@@ -382,8 +418,21 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 						))}
 					</ul>
 				)}
+				{view.package.canManage ? (
+					<SiteLink
+						data-testid="package-credentials-add-key"
+						href={buildCredentialCreateHref({
+							orgSlug,
+							kind: 'secret',
+							kindMode: 'required',
+							packageScopedTo: view.package.id,
+						})}
+					>
+						Add a key only this package can read
+					</SiteLink>
+				) : null}
 			</section>
-		</div>
+		</>
 	)
 }
 export function renderMappingsTab(context: PackageTabContext): ReactNode {
@@ -398,7 +447,7 @@ export function renderMappingsTab(context: PackageTabContext): ReactNode {
 		)
 	}
 	return (
-		<div css={tabBodyCss}>
+		<>
 			{renderIncomplete(context, 'mappings')}
 			<p css={mutedCss}>
 				Default mappings pick the credential each need uses when you run the
@@ -441,7 +490,11 @@ export function renderMappingsTab(context: PackageTabContext): ReactNode {
 									need,
 									stored: need.defaults.mine,
 									inheritLabel: 'Not set (uses the org default)',
-									editable: true,
+									editable: need.supplier !== 'publisher',
+									clearable:
+										need.supplier === 'publisher' &&
+										((need.defaults.mine?.credentials.length ?? 0) > 0 ||
+											(need.defaults.mine?.unusableIds.length ?? 0) > 0),
 									trigger: null,
 								})}
 							</dd>
@@ -462,6 +515,6 @@ export function renderMappingsTab(context: PackageTabContext): ReactNode {
 					</SiteLink>
 				</section>
 			))}
-		</div>
+		</>
 	)
 }

@@ -173,6 +173,7 @@ test('updateSavedPackage keeps kody_id in lockstep with a renamed name leaf', as
 		packageId,
 		name: '@rename/after',
 		description: 'After',
+		audit: null,
 	})
 
 	expect(
@@ -224,6 +225,7 @@ test('updateSavedPackage expectedUpdatedAt refuses a stale visibility write', as
 		packageId,
 		isInternetVisible: false,
 		updatedAt: nextSavedPackageUpdatedAt(stampedAt),
+		audit: null,
 	})
 	expect(cleared).toBe(true)
 	expect(
@@ -237,6 +239,7 @@ test('updateSavedPackage expectedUpdatedAt refuses a stale visibility write', as
 		packageId,
 		isInternetVisible: true,
 		expectedUpdatedAt: stampedAt,
+		audit: null,
 	})
 	expect(staleEnable).toBe(false)
 

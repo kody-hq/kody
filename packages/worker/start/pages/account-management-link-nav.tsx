@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { type CSSObject } from '@emotion/react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon, type IconName } from '../components/icon.tsx'
 import { colors, transitions } from '#universal/styles/tokens.ts'
@@ -34,6 +34,7 @@ type AccountManagementLinkNavGroup = {
 }
 
 type AccountManagementLinkNavProps = {
+	mobileFooter?: ReactNode
 	label: string
 	/** Names whose settings these are: "Account", or "Workspace" plus `@slug`. */
 	heading?: { eyebrow: string; name?: string }
@@ -313,6 +314,7 @@ export function AccountManagementLinkNav(props: AccountManagementLinkNavProps) {
 						) : null}
 						{renderRailGroups(props.groups, accountMobileNavLinkCss)}
 					</nav>
+					{props.mobileFooter}
 				</details>
 			</>
 		)

@@ -44,6 +44,17 @@ When an operation, field, or path is deprecated:
   is actually deprecated (we do not send those headers preemptively).
 - Docs and [`/llms.txt`](/llms.txt) point at the replacement guide.
 
+## Current deprecations
+
+This is the formal deprecation list; every row is tracked by a cleanup issue.
+
+| operationId          | route                                       | replacement                                                              | deprecated | sunset     | cleanup                                              |
+| -------------------- | ------------------------------------------- | ------------------------------------------------------------------------ | ---------- | ---------- | ---------------------------------------------------- |
+| `secretLock`         | `POST /v1/secrets/lock`                     | `resourceLock` (POST `/v1/resource-locks`) with kind `"secret"`          | 2026-10-24 | 2027-01-22 | [#4322](https://github.com/kody-hq/kody/issues/4322) |
+| `secretProviderLock` | `POST /v1/secret-providers/{provider}/lock` | `resourceLock` (POST `/v1/resource-locks`) with kind `"secret_provider"` | 2026-10-24 | 2027-01-22 | [#4322](https://github.com/kody-hq/kody/issues/4322) |
+| `integrationLock`    | `POST /v1/integrations/{name}/lock`         | `resourceLock` (POST `/v1/resource-locks`) with kind `"integration"`     | 2026-10-24 | 2027-01-22 | [#4322](https://github.com/kody-hq/kody/issues/4322) |
+| `mcpServerLock`      | `POST /v1/mcp-servers/{server}/lock`        | `resourceLock` (POST `/v1/resource-locks`) with kind `"mcp_server"`      | 2026-10-24 | 2027-01-22 | [#4322](https://github.com/kody-hq/kody/issues/4322) |
+
 ## Rate limits
 
 Edge rate limits on `api.kody.codes` return HTTP `429` with `Retry-After`

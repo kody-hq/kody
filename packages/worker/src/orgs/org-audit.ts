@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/cloudflare'
+import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import { auditDatabaseFromEnv } from '#worker/audit-log.ts'
@@ -8,6 +9,7 @@ import {
 	orgAuditOutboxInsertStatement,
 	planOrgAuditOutbox,
 	redactOrgAuditOutboxActorIdsForDeletedUser,
+	type OrgAuditCause,
 	type OrgAuditOutboxEvent,
 	type OrgAuditWriter,
 } from './org-audit-outbox.ts'
@@ -119,7 +121,7 @@ export async function redactOrgAuditActorIdsForDeletedUser(input: {
 	await redactOrgAuditEventsActorIds(db, input.userId)
 }
 
-export type { OrgAuditWriter } from './org-audit-outbox.ts'
+export type { OrgAuditCause, OrgAuditWriter } from './org-audit-outbox.ts'
 
 export function orgAuditWriterFromRequest(
 	env: Env,
@@ -132,6 +134,101 @@ export function orgAuditWriterFromRequest(
 		actorUsername: request.actor?.username ?? null,
 		credentialKind: request.credential.kind,
 		credentialId: request.credential.id,
+		env,
+	}
+}
+
+/**
+ * What caused a capability call's change: the package whose run made the
+ * call (its storage context) and the resource event depth that started that
+ * run. Null for a call outside a package run.
+ */
+export function orgAuditCauseFromCaller(
+	callerContext: Partial<
+		Pick<McpCallerContext, 'storageContext' | 'resourceEventDepth'>
+	>,
+): OrgAuditCause | null {
+	const packageId = callerContext.storageContext?.packageId?.trim() || null
+	const resourceEventDepth = callerContext.resourceEventDepth ?? 0
+	if (!packageId && resourceEventDepth === 0) return null
+	return { packageId, resourceEventDepth }
+}
+
+/**
+ * The audit writer for a capability call: the caller's request context.
+ * Throws when the call has no signed-in request (it could not write).
+ */
+export function orgAuditWriterFromCaller(
+	env: Env,
+	callerContext: Pick<McpCallerContext, 'request'> &
+		Partial<Pick<McpCallerContext, 'storageContext' | 'resourceEventDepth'>>,
+): OrgAuditWriter {
+	if (!callerContext.request) {
+		throw new Error('Credential writes require a signed-in request.')
+	}
+	return {
+		...orgAuditWriterFromRequest(env, callerContext.request),
+		cause: orgAuditCauseFromCaller(callerContext),
+	}
+}
+
+/**
+ * The writer for a change that already committed and must not fail on its
+ * audit row (packages, jobs, memories). Null when no audit database is
+ * configured.
+ */
+export function optionalOrgAuditWriter(
+	env: Pick<Env, 'APP_DB' | 'AUDIT_DB' | 'SENTRY_ENVIRONMENT'>,
+	actor:
+		| RequestContext
+		| { userId: string | null; username?: string | null }
+		| null,
+	cause: OrgAuditCause | null = null,
+): OrgAuditWriter | null {
+	const db = env.AUDIT_DB ?? auditDatabaseFromEnv(env)
+	if (!db) return null
+	// Callers pass the full worker env; the narrow type only names what the
+	// audit row itself needs.
+	const fullEnv = env as Env
+	if (actor && 'credential' in actor) {
+		return {
+			appDb: env.APP_DB,
+			db,
+			actorUserId: actor.actor?.userId ?? null,
+			actorUsername: actor.actor?.username ?? null,
+			credentialKind: actor.credential.kind,
+			credentialId: actor.credential.id,
+			cause,
+			env: fullEnv,
+		}
+	}
+	return {
+		appDb: env.APP_DB,
+		db,
+		actorUserId: actor?.userId ?? null,
+		actorUsername: actor?.username ?? null,
+		credentialKind: null,
+		credentialId: null,
+		cause,
+		env: fullEnv,
+	}
+}
+
+/**
+ * {@link recordOrgAuditEvent} for a change that already committed: a failed
+ * audit write is logged and reported, never thrown. No writer records nothing.
+ */
+export async function recordCommittedOrgAuditEvent(
+	writer: OrgAuditWriter | null,
+	event: OrgAuditOutboxEvent,
+): Promise<boolean> {
+	if (!writer) return false
+	try {
+		await recordOrgAuditEvent(writer, event)
+		return true
+	} catch {
+		// recordOrgAuditEvent already logged and reported the failure.
+		return false
 	}
 }
 
@@ -146,6 +243,7 @@ export function orgAuditWriterForPerson(
 		actorUsername: actor.username ?? null,
 		credentialKind: null,
 		credentialId: null,
+		env,
 	}
 }
 

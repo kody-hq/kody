@@ -103,6 +103,7 @@ function message(ownerId: string): MailboxMessageRecord & MailboxMessageInput {
 		processingStatus: 'stored',
 		classification: 'accepted',
 		classificationReason: null,
+		archivedAt: '2026-08-01T01:02:04.000Z',
 		providerMessageId: null,
 		deliveryStatus: 'delivered',
 		deliveryStatusAt: '2026-08-01T01:02:03.000Z',
@@ -409,7 +410,7 @@ test('Mailbox importer drills into scratch objects, resumes, and fails closed', 
 	).toBeNull()
 	expect(
 		await replacedMailbox.getMessage({ messageId: 'restore-message' }),
-	).not.toBeNull()
+	).toMatchObject({ archivedAt: '2026-08-01T01:02:04.000Z' })
 	expect(await occupied.readAlarm(occupiedOwner)).not.toBeNull()
 
 	const invalidOwner = `workers-import-invalid-${crypto.randomUUID()}`

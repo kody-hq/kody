@@ -69,7 +69,6 @@ export type WebhookEndpointRecord = {
 	/** Previous signing value ciphertext during the signing-secret grace. */
 	previousHmacSecretEncrypted: string | null
 	previousHmacSecretExpiresAt: string | null
-	enabled: boolean
 	createdAt: string
 	rotatedAt: string
 	/**

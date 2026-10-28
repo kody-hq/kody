@@ -7,20 +7,38 @@ this document covers Cloud Agent VM gotchas only.
 
 ## Node 26
 
-The repo requires Node **>=26** (`engines` in root `package.json`). Cloud Agent
-VMs may ship Node 22 at `/exec-daemon/node`, which takes precedence over nvm
-unless nvm’s Node 26 bin directory is prepended to `PATH`. Verify with
-`node --version` before running scripts.
+The repo requires Node **>=26**. Root `package.json` declares it in
+`devEngines.runtime` with `onFail: "error"` (and the same range in
+`engines.node`), so `npm ci`, `npm install`, and `npm run` stop with
+`EBADDEVENGINES` on any older Node, including Node 24. `.nvmrc` pins `26`.
+
+Cloud Agent VMs may ship Node 22 at `/exec-daemon/node`, which takes precedence
+over nvm unless nvm's Node 26 bin directory is prepended to `PATH`. Node 22 also
+ships npm 10, which is below the root `devEngines.packageManager` range (npm 10
+misreads this lockfile). Put Node 26 first before installing or running scripts:
+
+```bash
+source "$NVM_DIR/nvm.sh"
+nvm install 26
+export PATH="$NVM_DIR/versions/node/$(nvm version 26)/bin:$PATH"
+node --version   # expect v26.x
+npm --version    # expect 11.11.1 or newer
+npm ci
+```
+
+The Cursor dashboard install command for this repo must do the same `PATH` step
+before `npm ci`, or the snapshot install fails with `EBADDEVENGINES`. Do not
+fall back to `npm install` and do not commit the lockfile it rewrites.
 
 ## Playwright browsers
 
 Playwright's Chromium (used by `npm run test:e2e:run` / `validate`) is
 pre-installed in `~/.cache/ms-playwright` and persists in the VM snapshot, so
 normally nothing extra is needed. The **non-obvious gotcha**:
-`playwright install` (and `test:e2e:ensure`) **hangs** on this VM kernel — its
-Node-based zip extractor stalls on an `io_uring` write partway through (around
-`libwidevinecdm.so`), and `UV_USE_IO_URING=0` does not stop it. The browser zip
-downloads fine; only the built-in extraction hangs.
+`playwright install` **hangs** on this VM kernel — its Node-based zip extractor
+stalls on an `io_uring` write partway through (around `libwidevinecdm.so`), and
+`UV_USE_IO_URING=0` does not stop it. The browser zip downloads fine; only the
+built-in extraction hangs.
 
 If browsers are ever missing (e.g. a Playwright version bump changes the
 revision), do **not** rely on `playwright install`. Run
@@ -109,7 +127,8 @@ Playwright gate locally. `wrangler-env.ts` defaults `X_LOCAL_EXPLORER=false` on
 these VMs, retriggers esbuild, and leaves ProxyWorker in a pause/reload loop
 after Ready. Opt in with `X_LOCAL_EXPLORER=true`. Wrangler 4.131+ keeps
 `Error inside ProxyWorker` request-scoped (workers-sdk#15252), so a transient
-ProxyWorker failure no longer exits the Playwright webServer.
+ProxyWorker failure stays request-scoped and the Playwright webServer keeps
+running.
 
 Cloud Agent environment `start` should run `npm run hooks:ensure` so a snapshot
 boot that skips `npm ci` still composes hooks after Cursor installs the
@@ -368,11 +387,15 @@ tests, and builds it. `npm run cli:openapi:check` fails when
 `packages/worker/src/open-api/operations.ts`.
 
 Merges to `main` that change the CLI in a publishable way (conventional `fix` /
-`feat` / `perf`, or a generated route-table diff) publish through
+`feat` / `perf`, a generated route-table diff, or a squash subject without a
+conventional prefix that still touches `packages/cli`) publish through
 [`.github/workflows/publish-cli.yml`](../../.github/workflows/publish-cli.yml).
 The package version in git stays `0.0.0-semantically-released`. Tags are
-`cli-vX.Y.Z`, continuing from `cli-v1.26.3`. npm trusted publishing for this
-repository and workflow is required; the workflow does not read an npm token.
+`cli-vX.Y.Z` created by the CLI publish workflow
+([`tools/publish-cli.ts`](../../tools/publish-cli.ts) /
+[`tools/cli-release-plan.ts`](../../tools/cli-release-plan.ts)). npm trusted
+publishing for this repository and workflow is required; the workflow does not
+read an npm token.
 
 Keep the merge commit (do not squash away the subtree history). Origin-side
 contracts:

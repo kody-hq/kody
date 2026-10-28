@@ -8,9 +8,12 @@ import {
 } from './repo.ts'
 import { systemEmailOwnerId } from './email-owner.ts'
 import {
+	defaultEmailMessageView,
+	emailMessageViewSqlClauses,
 	type EmailAttachmentRecord,
 	type EmailClassification,
 	type EmailMessageRecord,
+	type EmailMessageView,
 	type EmailProcessingStatus,
 	type EmailThreadRecord,
 } from './types.ts'
@@ -320,6 +323,7 @@ export async function insertSystemEmailMessage(input: {
 		delivery_status_at: null,
 		classification: input.message.classification ?? 'accepted',
 		classification_reason: input.message.classificationReason ?? null,
+		archived_at: null,
 	}
 	const columns = systemEmailMessageColumns
 	const values = columns.map((column) => row[column])
@@ -523,24 +527,36 @@ export async function touchSystemEmailThread(input: {
 export async function updateSystemEmailMessageClassification(input: {
 	db: D1Database
 	messageId: string
-	classification: EmailClassification
+	classification?: EmailClassification
 	classificationReason?: string | null
+	/** `true` stamps `archived_at`, `false` clears it, omitted keeps it. */
+	archived?: boolean
 	now?: string
 }) {
 	await assertSystemEmailGraphAuthority(input.db)
 	const updatedAt = input.now ?? nowIso()
+	const assignments: Array<string> = []
+	const values: Array<string | null> = []
+	if (input.classification !== undefined) {
+		assignments.push('classification = ?', 'classification_reason = ?')
+		values.push(input.classification, input.classificationReason ?? null)
+	}
+	if (input.archived !== undefined) {
+		assignments.push('archived_at = ?')
+		values.push(input.archived ? updatedAt : null)
+	}
+	if (assignments.length === 0) {
+		throw new Error(
+			'System email message update requires classification or archived.',
+		)
+	}
 	const dedicated = input.db
 		.prepare(
 			`UPDATE system_email_messages
-				SET classification = ?, classification_reason = ?, updated_at = ?
+				SET ${assignments.join(', ')}, updated_at = ?
 				WHERE id = ? AND direction = 'inbound'`,
 		)
-		.bind(
-			input.classification,
-			input.classificationReason ?? null,
-			updatedAt,
-			input.messageId,
-		)
+		.bind(...values, updatedAt, input.messageId)
 	const [updateResult] = await commitSystemEmailAuthorityBatch({
 		db: input.db,
 		statements: [dedicated],
@@ -713,14 +729,23 @@ export async function listSystemEmailAdminMessages(input: {
 	db: D1Database
 	pageSize: number
 	offset: number
+	/** Defaults to `inbox` (hides spam and archived mail). */
+	view?: EmailMessageView
 }) {
 	await assertSystemEmailGraphAuthority(input.db)
+	const where = [
+		`message.direction = 'inbound'`,
+		...emailMessageViewSqlClauses(
+			input.view ?? defaultEmailMessageView,
+			'message.',
+		),
+	].join(' AND ')
 	const [total, rows] = await Promise.all([
 		input.db
 			.prepare(
 				`SELECT COUNT(*) AS total
-				FROM system_email_messages
-				WHERE direction = 'inbound'`,
+				FROM system_email_messages AS message
+				WHERE ${where}`,
 			)
 			.first<{ total: number }>(),
 		input.db
@@ -728,10 +753,12 @@ export async function listSystemEmailAdminMessages(input: {
 				`SELECT message.id, inbox.name AS inbox_local_part,
 					message.from_address, message.envelope_from, message.subject,
 					message.processing_status, message.raw_size, message.received_at,
-					message.created_at, message.to_addresses_json
+					message.created_at, message.to_addresses_json,
+					message.classification, message.classification_reason,
+					message.archived_at
 				FROM system_email_messages AS message
 				${adminSystemInboxJoin}
-				WHERE message.direction = 'inbound'
+				WHERE ${where}
 				ORDER BY message.created_at DESC, message.id DESC
 				LIMIT ? OFFSET ?`,
 			)

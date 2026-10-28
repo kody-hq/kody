@@ -58,6 +58,8 @@ const runRecordMocks = vi.hoisted(() => {
 			updatedAt: input.updatedAt?.trim() || now,
 			completedAt: input.completedAt ?? null,
 			lastError: input.lastError ?? null,
+			enqueuedCommit: input.enqueuedCommit ?? null,
+			sourceRevision: input.sourceRevision ?? null,
 		}
 	}
 

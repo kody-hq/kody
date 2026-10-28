@@ -4,10 +4,12 @@ import {
 	emailDeliveryStatusValues,
 	emailDirectionValues,
 	emailProcessingStatusValues,
+	isEmailMessageView,
 	type EmailClassification,
 	type EmailDeliveryEventType,
 	type EmailDeliveryStatus,
 	type EmailDirection,
+	type EmailMessageView,
 	type EmailProcessingStatus,
 } from './types.ts'
 
@@ -152,6 +154,15 @@ export function assertMailboxClassification(
 		)
 	}
 	return value as EmailClassification
+}
+
+export function assertMailboxView(value: string): EmailMessageView {
+	if (!isEmailMessageView(value)) {
+		throw new Error(
+			`Mailbox message view is invalid; got ${JSON.stringify(value)}.`,
+		)
+	}
+	return value
 }
 
 export function assertMailboxDeliveryStatus(

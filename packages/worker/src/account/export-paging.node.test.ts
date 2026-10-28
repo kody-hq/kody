@@ -337,6 +337,11 @@ test('run_records section exports runs, ledger, and dedicated state and pages ac
 		milestone: 'package_activated',
 		packageId: 'pkg-1',
 	}
+	const skillRead = {
+		id: 'skill-read-1',
+		actorId: 'person-1',
+		filePath: 'skills/writing/SKILL.md',
+	}
 	const fullPage = {
 		runs: [run],
 		logs,
@@ -345,6 +350,7 @@ test('run_records section exports runs, ledger, and dedicated state and pages ac
 		jobRunObservability: [jobRunObservability],
 		packageRunSuccesses: [packageRunSuccess],
 		activationMilestones: [activationMilestone],
+		skillReads: [skillRead],
 		nextStartAfter: null as string | null,
 		truncated: false,
 	}
@@ -379,7 +385,7 @@ test('run_records section exports runs, ledger, and dedicated state and pages ac
 
 	const accountExport = await exportUserA(env)
 	// One run plus one row from each RunLog export phase.
-	expect(accountExport.manifest.sections.run_records?.count).toBe(6)
+	expect(accountExport.manifest.sections.run_records?.count).toBe(7)
 	expect(accountExport.durableObjects.runRecords).toEqual(fullPage)
 
 	const section = await read('run_records')
@@ -391,6 +397,7 @@ test('run_records section exports runs, ledger, and dedicated state and pages ac
 		{ jobRunObservability },
 		{ packageRunSuccess },
 		{ activationMilestone },
+		{ skillRead },
 	])
 
 	const empty = {
@@ -402,6 +409,7 @@ test('run_records section exports runs, ledger, and dedicated state and pages ac
 		jobRunObservability: [],
 		packageRunSuccesses: [],
 		activationMilestones: [],
+		skillReads: [],
 	}
 	exportRuns
 		.mockResolvedValueOnce({

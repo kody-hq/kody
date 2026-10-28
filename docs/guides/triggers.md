@@ -30,7 +30,7 @@ subscription — and reach for a schedule when no event exists. Cron is fine; it
 is just not the hero.
 
 > [!WATCH] https://www.youtube.com/watch?v=o5L5OprLhBg Watch: Kody fixes a
-> Stripe webhook after we renamed the domain
+> Stripe webhook after a domain rename
 
 Also watch:
 [Shade automation from an INTENT.md — deterministic code, no model in the loop](https://www.youtube.com/watch?v=OZKDO9Pzmo0).
@@ -66,6 +66,16 @@ behavior it runs:
 - `jobUpdate` adjusts schedule, timezone, enabled state, params, and
   `expires_at`; `jobRunNow` fires one run for debugging. Name and source stay in
   the repo — change them there and publish.
+- A job that is off carries `disabled_reason`: the `reason` passed to
+  `jobUpdate` when someone turned it off (or how it was turned off when no
+  reason was given), or what Kody did (it passed its expiry time, the scheduler
+  could not compute the next run, its creator left the org). It is cleared when
+  the job turns back on and shows as **Why it is off** on the job page.
+- `enablementEnable` on a cron trigger also turns its job on when you hold
+  `job:write`. Without it the enablement still turns on, the job stays off, and
+  the result's `job` field says so (`state: "left_off"`,
+  `missing_permission: "job:write"`) with how to get it: ask an Owner to grant
+  `job:write` or to turn the job on.
 
 Jobs do not hang off an integration or an MCP connection. If a "job" has no
 package, save the package first. Runs show up on `/@<slug>/-/jobs`.
@@ -90,6 +100,7 @@ export default async function main() {
 		exportName: './rebuild-index',
 		runAt: new Date(Date.now() + 15 * 60_000),
 		idempotencyKey: 'rebuild-index:2026-09-08',
+		params: {},
 	})
 }
 ```
@@ -182,7 +193,8 @@ turns anything on.
   link and only returns a webhook enablement that already exists. A webhook URL
   has at most one live enablement, so a second person's Approve is refused.
 - `enablementList` shows yours (`scope: "mine"`); Owners can list the whole org
-  (`scope: "org"`). `enablementDisable` turns one off.
+  (`scope: "org"`). `enablementDisable` turns one off. A webhook turned off this
+  way answers 404; turn it back on by Approving the same URL again.
 - If you lose access to the package, the org, or a credential the run uses, the
   enablement pauses and events are dropped. It resumes by itself on the next
   event once access is back.

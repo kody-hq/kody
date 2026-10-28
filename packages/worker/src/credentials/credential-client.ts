@@ -65,7 +65,10 @@ import {
 	type NeedTarget,
 	needTarget,
 } from './credential-need-fit.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import {
+	savedCredentialNeeds,
+	type SavedCredentialNeed,
+} from './credential-needs.ts'
 import {
 	checkOwnerCredentialForVisitorsRateLimit,
 	loadOwnerCredentialAuthority,
@@ -84,6 +87,7 @@ import {
 } from './credential-resolver.ts'
 import { resolveCredential } from './resolve-credential.ts'
 import { type SigningOperation } from './signing-resolver.ts'
+import { findPackageAppGrantCredentialMapping } from '#app/package-app-oauth-grants.ts'
 
 export type CredentialClientErrorCode =
 	| 'credential_unbound'
@@ -208,7 +212,15 @@ export type CredentialClientContext = {
 	 * set, a key missing here reads as a provider: a package's latest publish
 	 * never adds needs the run's entry closures did not pin.
 	 */
-	runNeeds?: () => Promise<ReadonlyMap<string, CredentialNeed>>
+	runNeeds?: () => Promise<ReadonlyMap<string, SavedCredentialNeed>>
+	/**
+	 * The run's entry packages, from the host (run package context or a
+	 * host-signed binding), never from sandbox arguments. Stored mappings and
+	 * creation links for a need use the entry whose closure pins it, so a
+	 * dependency's `credential(key)` reads the entry package's mappings (ADR
+	 * 0068 amendment 2026-10-27). Unset means the calling package's own.
+	 */
+	runEntries?: () => Promise<RunCredentialEntries | null>
 	/**
 	 * Set only for package-app runs: a need that opts in with
 	 * `ownerCredentialForVisitors` resolves with the app's credential
@@ -216,7 +228,31 @@ export type CredentialClientContext = {
 	 * (`callerContext.request`) is unchanged for everything else.
 	 */
 	ownerCredentialScope?: OwnerCredentialScope | null
+	/**
+	 * Package-app runs only (ADR 0068 amendment 2026-10-24): how new handles
+	 * are stamped, and who a stamped handle resolves as on each use.
+	 */
+	packageAppAuthority?: PackageAppCredentialAuthority | null
 	waitUntil?: (promise: Promise<unknown>) => void
+}
+
+type PackageAppCredentialHandleIssue =
+	| { runsAs: true }
+	| { visitorNeed: string }
+	| { executorNeed: string }
+
+export type PackageAppCredentialAuthority = {
+	/** Opened as the app's runs-as person, or on a visitor's own need. */
+	issue: { runsAs: true } | { visitorNeed: string } | null
+	/** The live runs-as person, or null when nobody runs the app. */
+	runsAsRequest: () => Promise<RequestContext | null>
+	/** The visitor, or null unless their live consent covers `needKey`. */
+	visitorNeedRequest: (needKey: string) => Promise<RequestContext | null>
+	visitorNeedGrant: (
+		needKey: string,
+	) => Promise<{ request: RequestContext; grantId: string } | null>
+	/** The org that owns the app: checks declarations with no acting request. */
+	orgId?: string
 }
 
 export type OpenedCredentialClient = {
@@ -230,7 +266,12 @@ export type OpenedCredentialClient = {
 	hint?: string
 }
 
-type Picked = { credential: UsableCredential; hint: string | null }
+type Picked = {
+	credential: UsableCredential
+	hint: string | null
+	packageAppIssue?: PackageAppCredentialHandleIssue | null
+	packageAppRequest?: RequestContext
+}
 
 const maxKeyLength = 100
 
@@ -286,6 +327,28 @@ function retryFor(key: string | null, credential: UsableCredential) {
 	}
 }
 
+export type RunCredentialEntries = {
+	/** Entry package ids in precedence order. */
+	packageIds: ReadonlyArray<string>
+	/** For each pinned need key, the first entry whose closure declares it. */
+	entryByKey: ReadonlyMap<string, string>
+}
+
+/**
+ * The package whose stored mappings and creation link apply to `key`: the
+ * calling package when it is an entry itself (or no entries are known),
+ * else the first entry whose pinned closure has the key. Declared-use checks
+ * and bound Keys still use the calling package.
+ */
+async function mappingPackageIdFor(ctx: CredentialClientContext, key: string) {
+	if (!ctx.packageId) return null
+	const entries = ctx.runEntries ? await ctx.runEntries() : null
+	if (!entries || entries.packageIds.includes(ctx.packageId)) {
+		return ctx.packageId
+	}
+	return entries.entryByKey.get(key) ?? ctx.packageId
+}
+
 async function loadNeed(ctx: CredentialClientContext, key: string) {
 	if (ctx.runNeeds) return (await ctx.runNeeds()).get(key) ?? null
 	if (!ctx.packageId) return null
@@ -293,6 +356,7 @@ async function loadNeed(ctx: CredentialClientContext, key: string) {
 		env: ctx.env,
 		orgId: requireActorRequest(ctx).org.id,
 		packageId: ctx.packageId,
+		request: requireActorRequest(ctx),
 	})
 	return needs.find((need) => need.key === key) ?? null
 }
@@ -362,12 +426,13 @@ function assertApprovedForVisitors(
 /** The creation link for an unbound need, naming its package when known. */
 async function createUrlForNeed(
 	ctx: CredentialClientContext,
-	input: { key: string; provider: string; need: CredentialNeed | null },
+	input: { key: string; provider: string; need: SavedCredentialNeed | null },
 ) {
-	const saved = ctx.packageId
+	const packageId = await mappingPackageIdFor(ctx, input.key)
+	const saved = packageId
 		? await getSavedPackageById(ctx.env.APP_DB, {
 				userId: requireActorRequest(ctx).org.id,
-				packageId: ctx.packageId,
+				packageId,
 			}).catch(() => null)
 		: null
 	return buildNeedCreateUrl({
@@ -465,6 +530,10 @@ function pickOne(input: {
  * A package need's stored mapping (trigger override, then the actor's own
  * default, then the org default), or null to auto-resolve. Interactive runs
  * have no trigger override; a trigger run acts as its enabler.
+ *
+ * Concurrent opens share one mappings read via the microtask batcher
+ * (KODY-AZ). Sequential opens on the same request reuse a request-scoped
+ * unfiltered scope load (KODY-BF / queue consumers).
  */
 async function resolveMappedNeed(
 	ctx: CredentialClientContext,
@@ -474,24 +543,27 @@ async function resolveMappedNeed(
 		target: NeedTarget
 		usable: ReadonlyArray<UsableCredential>
 		createUrl: () => Promise<string>
+		supplier?: SavedCredentialNeed['supplier']
 	},
 ): Promise<Array<UsableCredential> | null> {
-	if (!ctx.packageId) return null
+	const packageId = await mappingPackageIdFor(ctx, input.key)
+	if (!packageId) return null
 	const enablementId = enablementIdOf(input.request)
 	const rows = await loadCredentialMappings({
 		db: ctx.env.APP_DB,
 		orgId: input.request.org.id,
-		packageId: ctx.packageId,
+		packageId,
 		personId: input.request.actor!.userId,
 		enablementIds: enablementId ? [enablementId] : [],
 		needKey: input.key,
+		request: input.request,
 	})
 	const layer = (target: CredentialMappingRowTarget['target']) =>
 		rows.find((row) => row.target.target === target)?.credentialIds ?? null
 	const resolved = resolveStoredMapping({
 		trigger: layer('enablement'),
 		mine: layer('mine'),
-		org: layer('org'),
+		org: input.supplier === 'executor' ? null : layer('org'),
 		usable: input.usable,
 		accepts: (credential) => mappedCredentialFits(credential, input.target),
 	})
@@ -612,6 +684,50 @@ function pickExplicit(input: {
 	}
 }
 
+/** The visitor's mapped credentials for an executor need, under their live grant. */
+async function resolveExecutorNeedPicks(
+	ctx: CredentialClientContext,
+	key: string,
+	need: NonNullable<Awaited<ReturnType<typeof loadNeed>>>,
+	mode: 'one' | 'many',
+): Promise<Array<Picked>> {
+	const grant = await ctx.packageAppAuthority?.visitorNeedGrant(key)
+	const visitorUsable = grant
+		? liveUsableCredentials(
+				await listUsableCredentials({
+					env: ctx.env,
+					request: grant.request,
+					packageId: ctx.packageId,
+				}),
+			)
+		: []
+	const credentialIds = grant
+		? await findPackageAppGrantCredentialMapping({
+				db: ctx.env.APP_DB,
+				grantId: grant.grantId,
+				needKey: key,
+			})
+		: []
+	const mapped = credentialIds
+		.map((id) => visitorUsable.find((credential) => credential.id === id))
+		.filter(
+			(credential): credential is UsableCredential =>
+				credential !== undefined &&
+				mappedCredentialFits(credential, needTarget(key, need)),
+		)
+	if (mapped.length === 0) {
+		throw refusal(
+			'credential_unbound',
+			`Credential need "${key}" is not connected. Sign in with Kody and allow need:${key} to choose credentials.`,
+		)
+	}
+	return (mode === 'one' ? mapped.slice(0, 1) : mapped).map((credential) => ({
+		credential,
+		hint: null,
+		packageAppRequest: grant!.request,
+	}))
+}
+
 async function resolveKey(
 	ctx: CredentialClientContext,
 	key: string,
@@ -632,7 +748,50 @@ async function resolveKey(
 				throw toCredentialClientError(error) ?? error
 			})
 		: null
-	const need = runNeed ?? declared?.get(key) ?? null
+	const declaredNeed = declared?.get(key)
+	const need =
+		runNeed ??
+		(declaredNeed ? (savedCredentialNeeds([declaredNeed])[0] ?? null) : null)
+	const isVisitorNeedAuthority = Boolean(
+		ctx.packageAppAuthority?.issue &&
+		'visitorNeed' in ctx.packageAppAuthority.issue,
+	)
+	const withPackageAppIssue = (picked: Array<Picked>) =>
+		isVisitorNeedAuthority
+			? picked.map((item) => ({
+					...item,
+					packageAppIssue:
+						need?.supplier === 'executor'
+							? ({ executorNeed: key } as const)
+							: ({ visitorNeed: key } as const),
+				}))
+			: picked
+	// An app's runs-as person is not the executor; each visitor picks theirs.
+	if (
+		ctx.packageAppAuthority?.issue &&
+		'runsAs' in ctx.packageAppAuthority.issue &&
+		need?.supplier === 'executor'
+	) {
+		throw refusal(
+			'credential_denied',
+			`Credential need "${key}" is supplied by each app visitor; use credential.visitor("${key}")`,
+		)
+	}
+	if (
+		ctx.packageAppAuthority?.issue &&
+		'visitorNeed' in ctx.packageAppAuthority.issue &&
+		need?.supplier === 'publisher'
+	) {
+		throw refusal(
+			'credential_denied',
+			`Credential need "${key}" is supplied by the publisher; use credential("${key}")`,
+		)
+	}
+	if (isVisitorNeedAuthority && need?.supplier === 'executor') {
+		return withPackageAppIssue(
+			await resolveExecutorNeedPicks(ctx, key, need, mode),
+		)
+	}
 	const target = needTarget(key, need)
 	const picks = ctx.callMap?.get(key)
 	if (!picks) {
@@ -645,15 +804,24 @@ async function resolveKey(
 					usable,
 					createUrl: () =>
 						createUrlForNeed(ctx, { key, provider: target.provider, need }),
+					supplier: need?.supplier,
 				})
 			: null
 		if (mapped) {
-			return (mode === 'one' ? mapped.slice(0, 1) : mapped).map(
-				(credential) => ({ credential, hint: null }),
+			return withPackageAppIssue(
+				(mode === 'one' ? mapped.slice(0, 1) : mapped).map((credential) => ({
+					credential,
+					hint: null,
+				})),
 			)
 		}
 		const resolution = need
-			? resolveNeedCandidates(need, usable)
+			? resolveNeedCandidates(
+					need,
+					need.supplier === 'publisher'
+						? usable.filter((credential) => credential.scope === 'org')
+						: usable,
+				)
 			: {
 					autoPick: null as UsableCredential | null,
 					candidates: usable.filter(
@@ -662,7 +830,9 @@ async function resolveKey(
 					possibleMatches: [] as Array<UsableCredential>,
 				}
 		if (resolution.autoPick) {
-			return [{ credential: resolution.autoPick, hint: null }]
+			return withPackageAppIssue([
+				{ credential: resolution.autoPick, hint: null },
+			])
 		}
 		const createUrl = await createUrlForNeed(ctx, {
 			key,
@@ -676,7 +846,7 @@ async function resolveKey(
 			describe: target.describe,
 			createUrl,
 		})
-		return [{ credential, hint: null }]
+		return withPackageAppIssue([{ credential, hint: null }])
 	}
 	if (mode === 'one' && picks.length === 0) {
 		throw refusal(
@@ -714,16 +884,19 @@ async function resolveKey(
 			},
 		)
 	}
-	return [...picked.values()]
+	return withPackageAppIssue([...picked.values()])
 }
 
 async function issueClient(
 	ctx: CredentialClientContext,
 	key: string | null,
-	{ credential: picked, hint }: Picked,
-	options: { ownerCredentialForVisitors?: boolean } = {},
+	{ credential: picked, hint, packageAppRequest }: Picked,
+	options: {
+		ownerCredentialForVisitors?: boolean
+		packageAppIssue?: PackageAppCredentialHandleIssue | null
+	} = {},
 ): Promise<OpenedCredentialClient> {
-	const request = requireActorRequest(ctx)
+	const request = packageAppRequest ?? requireActorRequest(ctx)
 	if (picked.kind === 'mcp' && picked.scope === 'personal') {
 		throw refusal(
 			'credential_denied',
@@ -745,7 +918,9 @@ async function issueClient(
 						ownerCredentialForVisitors: true as const,
 						needKey: key,
 					}
-				: {}),
+				: 'packageAppIssue' in options
+					? (options.packageAppIssue ?? {})
+					: (ctx.packageAppAuthority?.issue ?? {})),
 		},
 	})
 	return {
@@ -786,6 +961,34 @@ export async function openCredentialClient(
 		})
 	}
 	const key = readText(input.key, 'A credential key')
+	// A visitor from outside the app's org has no acting request there; only
+	// their own executor credentials, under their live grant, can open.
+	if (
+		!ctx.callerContext.request?.actor &&
+		ctx.packageAppAuthority?.issue &&
+		'visitorNeed' in ctx.packageAppAuthority.issue
+	) {
+		const need = await loadNeed(ctx, key)
+		if (need?.supplier === 'executor') {
+			const orgId = ctx.packageAppAuthority.orgId
+			if (!orgId) requireActorRequest(ctx)
+			// The run's needs are the entry app's; the opening package itself
+			// must declare the key too.
+			await assertCredentialUsesDeclared({
+				env: ctx.env,
+				request: null,
+				orgId: orgId!,
+				packageId: ctx.packageId,
+				references: [{ use: 'key', key }],
+			}).catch((error: unknown) => {
+				throw toCredentialClientError(error) ?? error
+			})
+			const [picked] = await resolveExecutorNeedPicks(ctx, key, need, 'one')
+			return await issueClient(ctx, key, picked!, {
+				packageAppIssue: { executorNeed: key },
+			})
+		}
+	}
 	const owner = await ownerCredentialOpen(ctx, key)
 	const opener = owner?.ctx ?? ctx
 	const usable = liveUsableCredentials(
@@ -799,6 +1002,9 @@ export async function openCredentialClient(
 	if (owner) assertApprovedForVisitors(key, owner, picked)
 	return await issueClient(opener, key, picked[0]!, {
 		ownerCredentialForVisitors: owner !== null,
+		...('packageAppIssue' in picked[0]!
+			? { packageAppIssue: picked[0]!.packageAppIssue }
+			: {}),
 	})
 }
 
@@ -826,6 +1032,9 @@ export async function openCredentialClients(
 		picked.map((one) =>
 			issueClient(opener, key, one, {
 				ownerCredentialForVisitors: owner !== null,
+				...('packageAppIssue' in one
+					? { packageAppIssue: one.packageAppIssue }
+					: {}),
 			}),
 		),
 	)
@@ -842,17 +1051,45 @@ export async function loadRunCredentialNeeds(input: {
 	/** The run's org; needs load without an acting person. */
 	orgId: string
 	packageIds: ReadonlyArray<string>
-}): Promise<ReadonlyMap<string, CredentialNeed>> {
+	request?: RequestContext | null
+}): Promise<ReadonlyMap<string, SavedCredentialNeed>> {
+	const { needs } = await loadRunCredentialNeedEntries(input)
+	return needs
+}
+
+/**
+ * `loadRunCredentialNeeds` plus, per key, the entry that pinned it (the same
+ * first-entry-wins rule), for mapping selection.
+ */
+export async function loadRunCredentialNeedEntries(input: {
+	env: Env
+	orgId: string
+	packageIds: ReadonlyArray<string>
+	request?: RequestContext | null
+}): Promise<{
+	needs: ReadonlyMap<string, SavedCredentialNeed>
+	entries: RunCredentialEntries
+}> {
 	const needLists = await Promise.all(
 		input.packageIds.map((packageId) =>
-			loadPackageNeeds({ env: input.env, orgId: input.orgId, packageId }),
+			loadPackageNeeds({
+				env: input.env,
+				orgId: input.orgId,
+				packageId,
+				request: input.request,
+			}),
 		),
 	)
-	const needs = new Map<string, CredentialNeed>()
-	for (const need of needLists.flat()) {
-		if (!needs.has(need.key)) needs.set(need.key, need)
-	}
-	return needs
+	const needs = new Map<string, SavedCredentialNeed>()
+	const entryByKey = new Map<string, string>()
+	needLists.forEach((list, index) => {
+		for (const need of list) {
+			if (needs.has(need.key)) continue
+			needs.set(need.key, need)
+			entryByKey.set(need.key, input.packageIds[index]!)
+		}
+	})
+	return { needs, entries: { packageIds: [...input.packageIds], entryByKey } }
 }
 
 /**
@@ -891,6 +1128,7 @@ export async function validateCredentialCallMap(input: {
 						env: input.env,
 						orgId: request.org.id,
 						packageId,
+						request,
 					}),
 				})),
 			),
@@ -907,7 +1145,7 @@ export async function validateCredentialCallMap(input: {
 				})),
 			),
 		])
-		const needs = new Map<string, CredentialNeed>()
+		const needs = new Map<string, SavedCredentialNeed>()
 		const needDeclaredBy = new Map<string, Array<string>>()
 		for (const { packageId, needs: list } of needLists) {
 			for (const need of list) {
@@ -923,6 +1161,12 @@ export async function validateCredentialCallMap(input: {
 		const warnings: Array<string> = []
 		for (const [key, picks] of input.map) {
 			const need = needs.get(key) ?? null
+			if (need?.supplier === 'publisher') {
+				throw refusal(
+					'invalid_request',
+					`Credential need "${need.key}" is supplied by the publisher. Only the org-level mapping can set it.`,
+				)
+			}
 			if (!need) {
 				const declared = [...needs.keys()]
 				const message = `credentials.${key} is not a need ${
@@ -976,7 +1220,11 @@ export async function validateCredentialCallMap(input: {
 
 type HandleContext = Pick<
 	CredentialClientContext,
-	'env' | 'callerContext' | 'binding' | 'ownerCredentialScope'
+	| 'env'
+	| 'callerContext'
+	| 'binding'
+	| 'ownerCredentialScope'
+	| 'packageAppAuthority'
 >
 
 /** A verified handle and who the door resolves it as. */
@@ -990,8 +1238,8 @@ type HandleUse = {
 /**
  * A visitor handle resolves as the authority. When the viewer is someone
  * else (or no one), the use is rate-limited and its audit row names them.
- * Each use re-checks that the approval still lists this credential for the
- * handle's need, so a remapped or revoked visitor credential fails closed.
+ * Each use re-checks live consent, and executor handles also re-check the
+ * credential mapping on that grant.
  */
 async function readHandle(
 	ctx: HandleContext,
@@ -1003,6 +1251,7 @@ async function readHandle(
 		request: RequestContext | null
 		approvedCredentialIds: ReadonlyMap<string, ReadonlySet<string>> | null
 	} = { request: null, approvedCredentialIds: null }
+	let appRequest: RequestContext | null = null
 	const handle = await verifyCredentialClientHandle({
 		env: ctx.env,
 		token: typeof token === 'string' ? token : '',
@@ -1019,12 +1268,53 @@ async function readHandle(
 			authority.approvedCredentialIds = loaded.approvedCredentialIds
 			return loaded.request
 		},
+		runsAsRequest: async () => {
+			const request = (await ctx.packageAppAuthority?.runsAsRequest()) ?? null
+			appRequest = request
+			return request
+		},
+		visitorNeedRequest: async (needKey) => {
+			const request =
+				(await ctx.packageAppAuthority?.visitorNeedRequest(needKey)) ?? null
+			appRequest = request
+			return request
+		},
+		visitorNeedGrant: async (needKey) => {
+			const grant =
+				(await ctx.packageAppAuthority?.visitorNeedGrant(needKey)) ?? null
+			appRequest = grant?.request ?? null
+			return grant
+		},
 	})
 	if (!kinds.includes(handle.kind)) {
 		throw refusal(
 			'invalid_request',
 			`A ${handle.kind} credential has no ${operation}.`,
 		)
+	}
+	if (handle.executorNeed) {
+		const grant =
+			(await ctx.packageAppAuthority?.visitorNeedGrant(handle.executorNeed)) ??
+			null
+		const credentialIds = grant
+			? await findPackageAppGrantCredentialMapping({
+					db: ctx.env.APP_DB,
+					grantId: grant.grantId,
+					needKey: handle.executorNeed,
+				})
+			: []
+		if (!credentialIds.includes(handle.id)) {
+			throw refusal(
+				'credential_unbound',
+				`Credential need "${handle.executorNeed}" is not connected. Sign in with Kody and allow need:${handle.executorNeed} to choose credentials.`,
+			)
+		}
+	}
+	if (
+		(handle.runsAs || handle.visitorNeed || handle.executorNeed) &&
+		appRequest
+	) {
+		return { handle, request: appRequest }
 	}
 	const viewer = ctx.callerContext.request ?? null
 	const scope = ctx.ownerCredentialScope
@@ -1218,6 +1508,8 @@ export async function applyCredentialClient(input: {
 	binding: string | null | undefined
 	/** See `CredentialClientContext.ownerCredentialScope`. */
 	ownerCredentialScope?: OwnerCredentialScope | null
+	/** See `CredentialClientContext.packageAppAuthority`. */
+	packageAppAuthority?: PackageAppCredentialAuthority | null
 	token: string
 	requestUrl: URL
 }): Promise<AppliedCredentialClient> {
@@ -1227,6 +1519,7 @@ export async function applyCredentialClient(input: {
 			packageId: input.packageId,
 			binding: input.binding ?? '',
 			ownerCredentialScope: input.ownerCredentialScope ?? null,
+			packageAppAuthority: input.packageAppAuthority ?? null,
 			callerContext: {
 				baseUrl: input.baseUrl,
 				request: input.request,

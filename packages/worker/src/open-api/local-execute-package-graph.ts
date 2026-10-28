@@ -124,6 +124,8 @@ export const localExecutePackageGraphOutputSchema = z.object({
 	),
 	imports: z.array(z.string()),
 	warnings: z.array(z.string()),
+	packageBindings: z.record(z.string(), z.string()),
+	packageIdsByImport: z.record(z.string(), z.string()),
 })
 
 export type LocalExecutePackageGraphOperationId = Extract<

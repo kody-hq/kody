@@ -45,26 +45,13 @@ function createDb() {
 			deleted_at TEXT,
 			is_internet_visible INTEGER NOT NULL DEFAULT 0
 		);
-		CREATE TABLE feature_flags (
-			key TEXT PRIMARY KEY,
-			enabled INTEGER NOT NULL,
-			rollout_percent INTEGER,
-			audience TEXT NOT NULL DEFAULT 'everyone'
-		);
 		CREATE TABLE users (
 			id INTEGER PRIMARY KEY,
 			stable_user_id TEXT,
 			personal_org_id TEXT,
-			experiments_opt_in INTEGER NOT NULL DEFAULT 0,
 			deleted_at TEXT
 		);
-		CREATE TABLE feature_flag_user_overrides (
-			flag_key TEXT NOT NULL,
-			user_id INTEGER NOT NULL,
-			enabled INTEGER NOT NULL,
-			PRIMARY KEY (flag_key, user_id)
-		);
-		INSERT INTO users (id, stable_user_id, experiments_opt_in) VALUES (1, 'person-1', 1);
+		INSERT INTO users (id, stable_user_id) VALUES (1, 'person-1');
 	`)
 	sqlite.exec(migrationSql)
 	return createD1FromSqlite(sqlite)
@@ -119,11 +106,6 @@ test('add rejects app-level hostnames for non-internet-visible packages', async 
 	const db = createDb()
 	await db
 		.prepare(
-			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
-		)
-		.run()
-	await db
-		.prepare(
 			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
 		)
 		.run()
@@ -142,7 +124,6 @@ test('add rejects app-level hostnames for non-internet-visible packages', async 
 		addPackageAppCustomHostname({
 			env: { ...createEnv(db), fetcher } as unknown as Env,
 			orgId: 'org-1',
-			actingUserId: 1,
 			createdByUserId: 'person-1',
 			bindingKind: 'app',
 			hostname: 'app.example.com',
@@ -154,11 +135,6 @@ test('add rejects app-level hostnames for non-internet-visible packages', async 
 
 test('add rejects hostnames under Kody-owned domains before calling Cloudflare', async () => {
 	const db = createDb()
-	await db
-		.prepare(
-			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
-		)
-		.run()
 	await db
 		.prepare(
 			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
@@ -184,7 +160,6 @@ test('add rejects hostnames under Kody-owned domains before calling Cloudflare',
 			addPackageAppCustomHostname({
 				env,
 				orgId: 'org-1',
-				actingUserId: 1,
 				createdByUserId: 'person-1',
 				bindingKind: 'org',
 				hostname,
@@ -196,11 +171,6 @@ test('add rejects hostnames under Kody-owned domains before calling Cloudflare',
 
 test('add rejects free-plan orgs before calling Cloudflare', async () => {
 	const db = createDb()
-	await db
-		.prepare(
-			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
-		)
-		.run()
 	await db
 		.prepare(
 			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'free')`,
@@ -215,7 +185,6 @@ test('add rejects free-plan orgs before calling Cloudflare', async () => {
 		addPackageAppCustomHostname({
 			env: { ...createEnv(db), fetcher } as unknown as Env,
 			orgId: 'org-1',
-			actingUserId: 1,
 			createdByUserId: 'person-1',
 			bindingKind: 'org',
 			hostname: 'team.example.com',
@@ -226,11 +195,6 @@ test('add rejects free-plan orgs before calling Cloudflare', async () => {
 
 test('add rejects when the org is at the abuse hostname cap', async () => {
 	const db = createDb()
-	await db
-		.prepare(
-			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
-		)
-		.run()
 	await db
 		.prepare(
 			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
@@ -262,7 +226,6 @@ test('add rejects when the org is at the abuse hostname cap', async () => {
 		addPackageAppCustomHostname({
 			env: { ...createEnv(db), fetcher } as unknown as Env,
 			orgId: 'org-1',
-			actingUserId: 1,
 			createdByUserId: 'person-1',
 			bindingKind: 'org',
 			hostname: 'overflow.example.com',
@@ -273,11 +236,6 @@ test('add rejects when the org is at the abuse hostname cap', async () => {
 
 test('list and delete still reach app hostnames after the package is soft-deleted', async () => {
 	const db = createDb()
-	await db
-		.prepare(
-			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
-		)
-		.run()
 	await db
 		.prepare(
 			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
@@ -315,7 +273,6 @@ test('list and delete still reach app hostnames after the package is soft-delete
 	const listed = await listPackageAppCustomHostnames({
 		env: { ...createEnv(db), fetcher } as unknown as Env,
 		orgId: 'org-1',
-		actingUserId: 1,
 	})
 	expect(listed.hostnames.map((row) => row.hostname)).toEqual([
 		'orphaned.example.com',
@@ -323,25 +280,18 @@ test('list and delete still reach app hostnames after the package is soft-delete
 	await deletePackageAppCustomHostname({
 		env: { ...createEnv(db), fetcher } as unknown as Env,
 		orgId: 'org-1',
-		actingUserId: 1,
 		hostname: 'orphaned.example.com',
 	})
 	expect(
 		await listPackageAppCustomHostnames({
 			env: { ...createEnv(db), fetcher } as unknown as Env,
 			orgId: 'org-1',
-			actingUserId: 1,
 		}),
 	).toEqual({ hostnames: [] })
 })
 
 test('abuse cap still counts app hostnames after the package is soft-deleted', async () => {
 	const db = createDb()
-	await db
-		.prepare(
-			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
-		)
-		.run()
 	await db
 		.prepare(
 			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
@@ -380,7 +330,6 @@ test('abuse cap still counts app hostnames after the package is soft-deleted', a
 		addPackageAppCustomHostname({
 			env: { ...createEnv(db), fetcher } as unknown as Env,
 			orgId: 'org-1',
-			actingUserId: 1,
 			createdByUserId: 'person-1',
 			bindingKind: 'org',
 			hostname: 'overflow.example.com',
@@ -389,13 +338,92 @@ test('abuse cap still counts app hostnames after the package is soft-deleted', a
 	expect(fetcher.fetch).not.toHaveBeenCalled()
 })
 
-test('add stores org binding with verification records and list returns it', async () => {
+test('add stores app binding against the migrated schema with check_window_started_at', async () => {
 	const db = createDb()
 	await db
 		.prepare(
-			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
+			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
 		)
 		.run()
+	await db
+		.prepare(
+			`INSERT INTO saved_packages (
+				id, user_id, name, kody_id, is_internet_visible, deleted_at
+			) VALUES ('pkg-1', 'org-1', '@acme/demo', 'demo', 1, NULL)`,
+		)
+		.run()
+	vi.spyOn(packageRepo, 'getSavedPackageById').mockResolvedValue({
+		id: 'pkg-1',
+		userId: 'org-1',
+		name: '@acme/demo',
+		isInternetVisible: true,
+	} as Awaited<ReturnType<typeof packageRepo.getSavedPackageById>>)
+
+	const fetcher = {
+		fetch: vi.fn(async (_url: string, init?: RequestInit) => {
+			if (init?.method === 'DELETE') {
+				return cfHostnameResponse({
+					id: 'cf-app',
+					hostname: 'app.example.com',
+					status: 'deleted',
+				})
+			}
+			return cfHostnameResponse({
+				id: 'cf-app',
+				hostname: 'app.example.com',
+			})
+		}),
+	} as unknown as Fetcher
+
+	const added = await addPackageAppCustomHostname({
+		env: { ...createEnv(db), fetcher } as unknown as Env,
+		orgId: 'org-1',
+		createdByUserId: 'person-1',
+		bindingKind: 'app',
+		hostname: 'app.example.com',
+		packageId: 'pkg-1',
+		sslMethod: 'txt',
+	})
+	expect(added.hostname.hostname).toBe('app.example.com')
+	expect(added.hostname.binding_kind).toBe('app')
+	expect(added.hostname.package_id).toBe('pkg-1')
+	expect(added.hostname.org_id).toBeNull()
+	expect(added.verification.ownership_verification?.value).toBe(
+		'ownership-token',
+	)
+
+	const stored = await db
+		.prepare(
+			`SELECT binding_kind, package_id, org_id, cloudflare_hostname_id,
+				check_window_started_at, needs_attention_at,
+				verification_errors_json, created_at
+			 FROM package_app_custom_hostnames WHERE hostname = ?`,
+		)
+		.bind('app.example.com')
+		.first<{
+			binding_kind: string
+			package_id: string | null
+			org_id: string | null
+			cloudflare_hostname_id: string | null
+			check_window_started_at: string | null
+			needs_attention_at: string | null
+			verification_errors_json: string | null
+			created_at: string
+		}>()
+	expect(stored).toMatchObject({
+		binding_kind: 'app',
+		package_id: 'pkg-1',
+		org_id: null,
+		cloudflare_hostname_id: 'cf-app',
+		needs_attention_at: null,
+		verification_errors_json: null,
+	})
+	expect(stored?.check_window_started_at).toBe(stored?.created_at)
+	expect(fetcher.fetch).toHaveBeenCalledTimes(1)
+})
+
+test('add stores org binding with verification records and list returns it', async () => {
+	const db = createDb()
 	await db
 		.prepare(
 			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
@@ -417,7 +445,6 @@ test('add stores org binding with verification records and list returns it', asy
 	const added = await addPackageAppCustomHostname({
 		env: { ...createEnv(db), fetcher } as unknown as Env,
 		orgId: 'org-1',
-		actingUserId: 1,
 		createdByUserId: 'person-1',
 		bindingKind: 'org',
 		hostname: 'team.example.com',
@@ -470,7 +497,6 @@ test('add stores org binding with verification records and list returns it', asy
 	const listed = await listPackageAppCustomHostnames({
 		env: createEnv(db),
 		orgId: 'org-1',
-		actingUserId: 1,
 	})
 	expect(listed.hostnames).toHaveLength(1)
 	expect(listed.hostnames[0]?.verification.ownership_verification?.value).toBe(
@@ -480,28 +506,33 @@ test('add stores org binding with verification records and list returns it', asy
 		listed.hostnames[0]?.verification.ssl_validation_records[0]?.value,
 	).toBe('ssl-token')
 
+	const stored = await db
+		.prepare(
+			`SELECT check_window_started_at, created_at
+			 FROM package_app_custom_hostnames WHERE hostname = ?`,
+		)
+		.bind('team.example.com')
+		.first<{
+			check_window_started_at: string | null
+			created_at: string
+		}>()
+	expect(stored?.check_window_started_at).toBe(stored?.created_at)
+
 	await deletePackageAppCustomHostname({
 		env: { ...createEnv(db), fetcher } as unknown as Env,
 		orgId: 'org-1',
-		actingUserId: 1,
 		hostname: 'team.example.com',
 	})
 	expect(
 		await listPackageAppCustomHostnames({
 			env: createEnv(db),
 			orgId: 'org-1',
-			actingUserId: 1,
 		}),
 	).toEqual({ hostnames: [] })
 })
 
 test('sync refreshes Cloudflare status and returns verification records', async () => {
 	const db = createDb()
-	await db
-		.prepare(
-			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
-		)
-		.run()
 	await db
 		.prepare(
 			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
@@ -536,7 +567,6 @@ test('sync refreshes Cloudflare status and returns verification records', async 
 	const synced = await syncPackageAppCustomHostname({
 		env: { ...createEnv(db), fetcher } as unknown as Env,
 		orgId: 'org-1',
-		actingUserId: 1,
 		id: 'row-1',
 		now: new Date('2026-10-13T12:00:00.000Z'),
 	})
@@ -556,11 +586,6 @@ test('sync refreshes Cloudflare status and returns verification records', async 
 
 test('add compensates with Cloudflare delete when the local insert fails', async () => {
 	const db = createDb()
-	await db
-		.prepare(
-			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
-		)
-		.run()
 	await db
 		.prepare(
 			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
@@ -596,7 +621,6 @@ test('add compensates with Cloudflare delete when the local insert fails', async
 		addPackageAppCustomHostname({
 			env: { ...createEnv(db), fetcher } as unknown as Env,
 			orgId: 'org-1',
-			actingUserId: 1,
 			createdByUserId: 'person-1',
 			bindingKind: 'org',
 			hostname: 'team.example.com',
@@ -607,11 +631,6 @@ test('add compensates with Cloudflare delete when the local insert fails', async
 
 test('add allows manual paid plan even when stripe_plan is free', async () => {
 	const db = createDb()
-	await db
-		.prepare(
-			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
-		)
-		.run()
 	await db
 		.prepare(
 			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'pro', NULL)`,
@@ -625,7 +644,6 @@ test('add allows manual paid plan even when stripe_plan is free', async () => {
 	const added = await addPackageAppCustomHostname({
 		env: { ...createEnv(db), fetcher } as unknown as Env,
 		orgId: 'org-1',
-		actingUserId: 1,
 		createdByUserId: 'person-1',
 		bindingKind: 'org',
 		hostname: 'manual.example.com',
@@ -635,11 +653,6 @@ test('add allows manual paid plan even when stripe_plan is free', async () => {
 
 test('sync prefers id over a conflicting hostname body', async () => {
 	const db = createDb()
-	await db
-		.prepare(
-			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
-		)
-		.run()
 	await db
 		.prepare(
 			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
@@ -667,7 +680,6 @@ test('sync prefers id over a conflicting hostname body', async () => {
 		syncPackageAppCustomHostname({
 			env: createEnv(db),
 			orgId: 'org-1',
-			actingUserId: 1,
 			id: 'row-a',
 			hostname: 'b.example.com',
 		}),
@@ -676,11 +688,6 @@ test('sync prefers id over a conflicting hostname body', async () => {
 
 test('sync marks Cloudflare-missing hostnames deleted and starts grace', async () => {
 	const db = createDb()
-	await db
-		.prepare(
-			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
-		)
-		.run()
 	await db
 		.prepare(
 			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
@@ -713,7 +720,6 @@ test('sync marks Cloudflare-missing hostnames deleted and starts grace', async (
 	const synced = await syncPackageAppCustomHostname({
 		env: { ...createEnv(db), fetcher } as unknown as Env,
 		orgId: 'org-1',
-		actingUserId: 1,
 		id: 'row-1',
 		now: new Date('2026-10-13T12:00:00.000Z'),
 	})
@@ -726,11 +732,6 @@ test('sync marks Cloudflare-missing hostnames deleted and starts grace', async (
 
 test('sync on a stalled pending hostname clears needs attention and restarts the check window', async () => {
 	const db = createDb()
-	await db
-		.prepare(
-			`INSERT INTO feature_flags (key, enabled) VALUES ('package-app-custom-domains', 1)`,
-		)
-		.run()
 	await db
 		.prepare(
 			`INSERT INTO orgs (id, slug, suspended_at, deleted_at, plan, stripe_plan) VALUES ('org-1', 'acme', NULL, NULL, 'free', 'pro')`,
@@ -759,7 +760,6 @@ test('sync on a stalled pending hostname clears needs attention and restarts the
 	const synced = await syncPackageAppCustomHostname({
 		env: { ...createEnv(db), fetcher } as unknown as Env,
 		orgId: 'org-1',
-		actingUserId: 1,
 		id: 'row-1',
 		now: new Date('2026-10-13T12:00:00.000Z'),
 	})

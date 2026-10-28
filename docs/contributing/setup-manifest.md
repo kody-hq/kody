@@ -323,10 +323,14 @@ secrets on the control plane remain one-time / out-of-band.
 The production Worker also stages non-D1 canonical stores into the same bucket
 when `DR_EXPORT_ENABLED=true` (StorageRunner dumps, `EMAIL_BLOBS` /
 `COMMUNITY_ASSETS` blobs, published `BUNDLE_ARTIFACTS_KV` source snapshots).
+When `DR_D1_PACED_BACKUP_ENABLED=true` and the DR S3 credentials are set, the
+same worker walks APP_DB and JOBS_DB into `d1-paced/` prefixes; REST D1 export
+on the control plane stays the UI drill and production-restore path.
 `REPO_SESSION_BLOBS` is ephemeral RepoSession Workspace scratch and is not
 exported. The control plane seals complete days and hosts the Access-protected
 Admin UI for drills and graduated production restore. See
-[Disaster recovery](./disaster-recovery.md).
+[Disaster recovery](./disaster-recovery.md) and
+[environment variables](./environment-variables.md).
 
 Use a separate provisioner token (never a Worker secret) to create the bucket
 and apply 35-day daily and 400-day weekly lock/lifecycle rules:
@@ -616,12 +620,11 @@ Configure these GitHub Actions secrets and variables for workflows:
   `kody.run`. Deploy prefers `secrets.PACKAGE_APP_ZONE_ID`, then
   `vars.PACKAGE_APP_ZONE_ID`. Written into origin and platform Worker vars so
   custom-hostname add/sync/reconcile can call the Custom Hostnames API. Required
-  before enabling `package-app-custom-domains`.)
+  for package-app custom domains.)
 - `CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN` (optional GitHub Actions **secret**;
   zone-limited **SSL and Certificates Edit** on the package-app SaaS zone.
   Synced to `kody-production` and `kody-platform` when present. Do not reuse
-  `CLOUDFLARE_API_TOKEN`. Required before enabling
-  `package-app-custom-domains`.)
+  `CLOUDFLARE_API_TOKEN`. Required for package-app custom domains.)
 - `COOKIE_SECRET` (same format as local)
 - `SECRET_STORE_KEY` (same format as local; required for deploys; also sealed
   into the DR bucket via `.github/workflows/dr-escrow.yml` using

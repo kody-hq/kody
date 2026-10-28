@@ -38,7 +38,8 @@ test.each([
 	['/account', 'account', 'profile'],
 	['/@jane/-/overview', 'workspace', 'overview'],
 	['/@acme/-/repositories', 'workspace', 'repositories'],
-	['/@acme', 'workspace', 'overview'],
+	['/@acme', 'workspace', 'public-profile'],
+	['/@jane', 'workspace', 'public-profile'],
 	['/@jane/example', 'workspace', 'repositories'],
 	['/@acme/example', 'workspace', 'repositories'],
 	['/admin/users', 'admin', 'users'],
@@ -57,7 +58,6 @@ test.each([
 test.each([
 	'/',
 	'/pricing',
-	'/@jane',
 	'/@someone',
 	'/@someone/example',
 	'/login',
@@ -65,6 +65,17 @@ test.each([
 	'/@jane/example/approve-capabilities',
 ])('%s keeps its public or focused layout', (path) => {
 	expect(workspaceLayoutNavigation(matches(path), session)).toBeNull()
+})
+
+test('a renamed person keeps the rail on their own profile', () => {
+	const renamed = { ...session, username: 'jane-new' }
+	expect(workspaceLayoutNavigation(matches('/@jane-new'), renamed)).toEqual({
+		rail: 'workspace',
+		item: 'public-profile',
+		orgSlug: null,
+		profileSlug: 'jane-new',
+	})
+	expect(workspaceLayoutNavigation(matches('/@someone'), renamed)).toBeNull()
 })
 
 test('the layout does not substitute for the existing authentication guards', () => {

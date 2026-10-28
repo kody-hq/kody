@@ -10,6 +10,17 @@ import { type OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
 import { credentialClientHintHeaderName } from '#mcp/credential-client-gateway.ts'
+import {
+	createCredentialClientKodyTools,
+	createCredentialClientOwnerOnlyMessage,
+} from '#mcp/credential-client-tools.ts'
+import { credentialClientToolNames } from '#mcp/execute-modules/credential-client-source.ts'
+import { createRunCredentialClientToolOptions } from '#mcp/run-kody-registry.ts'
+import { type CredentialClientToolOptions } from '#mcp/runtime-helper-manifest.ts'
+import { runWithCurrentSecretAuthority } from '#mcp/secrets/secret-authority.ts'
+import { createCapabilityProxyCredentialClientTools } from '#worker/open-api/capability-proxy.ts'
+import { type ApiInvocationContext } from '#worker/open-api/context.ts'
+import { signLocalExecutePackageBinding } from '#worker/package-runtime/local-execute-package-binding.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
@@ -37,6 +48,7 @@ import {
 } from './credential-call-map.ts'
 import {
 	applyCredentialClient,
+	loadRunCredentialNeedEntries,
 	loadRunCredentialNeeds,
 	openCredentialClient,
 	openCredentialClients,
@@ -48,11 +60,28 @@ import {
 	type CredentialMappingRowTarget,
 	deleteCredentialMappingsForMember,
 	deleteCredentialMappingsForPackage,
+	runCredentialMappingWrite,
 } from './credential-mappings.ts'
 import * as needsClosure from './credential-needs-closure.ts'
 import { type CredentialNeed } from './credential-needs.ts'
 import { ownerCredentialForVisitorsRateLimitConfig } from './owner-credential-for-visitors.ts'
 import { insertPackageCapabilityApproval } from '#worker/package-capabilities/capability-approvals-repo.ts'
+
+// These cases cover fills the owner has opted in to; enforcement of the
+// opt-in itself is covered in fill-placement-enforcement.node.test.ts.
+vi.mock(
+	'#worker/credentials/fill-placement-opt-ins.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<
+			typeof import('#worker/credentials/fill-placement-opt-ins.ts')
+		>()),
+		readFillPlacementOptIn: async () => ({
+			query: true,
+			path: true,
+			body: true,
+		}),
+	}),
+)
 
 const scheduledAudits = vi.hoisted(() => [] as Array<Promise<unknown>>)
 
@@ -135,6 +164,7 @@ async function setup() {
 		provider?: string | null
 		hosts?: Array<string>
 		inject?: unknown
+		placement?: unknown
 	}) => {
 		const ownerId = input.ownerId ?? acmeId
 		await saveSecret({
@@ -143,6 +173,7 @@ async function setup() {
 			scope: 'user',
 			name: input.name,
 			value: input.value ?? resendKey,
+			audit: null,
 		})
 		const row = await db
 			.prepare(
@@ -167,6 +198,12 @@ async function setup() {
 				ownerId,
 			)
 			.first<{ id: string }>()
+		if (input.placement !== undefined) {
+			await db
+				.prepare(`UPDATE secret_entries SET placement_json = ? WHERE id = ?`)
+				.bind(JSON.stringify(input.placement), row!.id)
+				.run()
+		}
 		return row!.id
 	}
 	const savePackage = async (input: { ownerId: OwnerId; name: string }) => {
@@ -349,6 +386,7 @@ test('basic and query injects place the value without exposing it', async () => 
 		provider: 'queryco',
 		hosts: ['api.query.example'],
 		inject: { kind: 'query', param: 'api_key' },
+		placement: { query: true },
 	})
 	const request = t.requestAs('bea', 'owner')
 	const ctx = t.contextFor({ request })
@@ -768,16 +806,19 @@ test('stored mappings pick the credential: trigger override, then your default, 
 		target: CredentialMappingRowTarget,
 		credentialIds: Array<string> | null,
 	) =>
-		buildWriteCredentialMappingStatement({
-			db: t.db,
-			orgId: t.acmeId,
-			packageId,
-			needKey: 'resend',
-			target,
-			credentialIds,
-			updatedByUserId: t.people.bea.personId,
-			now,
-		}).run()
+		runCredentialMappingWrite(
+			t.db,
+			buildWriteCredentialMappingStatement({
+				db: t.db,
+				orgId: t.acmeId,
+				packageId,
+				needKey: 'resend',
+				target,
+				credentialIds,
+				updatedByUserId: t.people.bea.personId,
+				now,
+			}),
+		)
 	const open = (request: ReturnType<typeof t.requestAs>) =>
 		openCredentialClient(t.contextFor({ request, packageId }), {
 			key: 'resend',
@@ -932,16 +973,19 @@ test('a stored mapping stops applying when the need changes or is removed, and a
 		name: '@acme-clients/digest',
 	})
 	const mapOrg = (credentialIds: Array<string>) =>
-		buildWriteCredentialMappingStatement({
-			db: t.db,
-			orgId: t.acmeId,
-			packageId,
-			needKey: 'resend',
-			target: { target: 'org' },
-			credentialIds,
-			updatedByUserId: t.people.bea.personId,
-			now,
-		}).run()
+		runCredentialMappingWrite(
+			t.db,
+			buildWriteCredentialMappingStatement({
+				db: t.db,
+				orgId: t.acmeId,
+				packageId,
+				needKey: 'resend',
+				target: { target: 'org' },
+				credentialIds,
+				updatedByUserId: t.people.bea.personId,
+				now,
+			}),
+		)
 	const open = () =>
 		openCredentialClient(
 			t.contextFor({ request: t.requestAs('bea', 'owner'), packageId }),
@@ -1001,16 +1045,19 @@ test('a call map pick wins over a stored mapping, and credentials() opens every 
 		name: '@acme-clients/digest',
 	})
 	mockNeeds([{ key: 'resend' }])
-	await buildWriteCredentialMappingStatement({
-		db: t.db,
-		orgId: t.acmeId,
-		packageId,
-		needKey: 'resend',
-		target: { target: 'org' },
-		credentialIds: [keyA, keyB],
-		updatedByUserId: t.people.bea.personId,
-		now,
-	}).run()
+	await runCredentialMappingWrite(
+		t.db,
+		buildWriteCredentialMappingStatement({
+			db: t.db,
+			orgId: t.acmeId,
+			packageId,
+			needKey: 'resend',
+			target: { target: 'org' },
+			credentialIds: [keyA, keyB],
+			updatedByUserId: t.people.bea.personId,
+			now,
+		}),
+	)
 	const request = t.requestAs('bea', 'owner')
 	await expect(
 		openCredentialClient(t.contextFor({ request, packageId }), {
@@ -1282,6 +1329,279 @@ test('a dependency opens against the entry package pinned need its picks passed,
 	await expect(
 		rejection(openCredentialClient(adHoc, { key: 'MAIL' })),
 	).resolves.toMatchObject({ body: { code: 'credential_unbound' } })
+})
+
+async function setupEntryAndDependency() {
+	const t = await setup()
+	const keyA = await t.storeKey({ name: 'resend-a' })
+	const keyB = await t.storeKey({ name: 'resend-b' })
+	const entryId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme-clients/storefront',
+	})
+	const depId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme-clients/mail-kit',
+	})
+	const mail: CredentialNeed = {
+		key: 'MAIL',
+		kind: 'secret',
+		provider: 'resend',
+		description: '',
+		multiple: false,
+	}
+	const needsBySource = new Map<string, Array<CredentialNeed>>([
+		[`source-${entryId}`, [{ ...mail, from: '@acme-clients/mail-kit' }]],
+		[`source-${depId}`, [mail]],
+	])
+	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockImplementation(
+		async ({ sourceId }) => needsBySource.get(sourceId) ?? [],
+	)
+	const map = (
+		packageId: string,
+		target: CredentialMappingRowTarget,
+		credentialIds: Array<string> | null,
+	) =>
+		runCredentialMappingWrite(
+			t.db,
+			buildWriteCredentialMappingStatement({
+				db: t.db,
+				orgId: t.acmeId,
+				packageId,
+				needKey: 'MAIL',
+				target,
+				credentialIds,
+				updatedByUserId: t.people.bea.personId,
+				now,
+			}),
+		)
+	const callerContextFor = (request: ReturnType<typeof t.requestAs>) =>
+		({
+			baseUrl: 'https://example.com',
+			request,
+			user: { userId: request.actor!.userId },
+		}) as unknown as McpCallerContext
+	const open = async (
+		options: CredentialClientToolOptions,
+		request: ReturnType<typeof t.requestAs>,
+		args: Record<string, unknown> = {},
+	) =>
+		(await createCredentialClientKodyTools({
+			env: t.env,
+			callerContext: callerContextFor(request),
+			options,
+		})[credentialClientToolNames.open]!({ key: 'MAIL', ...args })) as {
+			ok: boolean
+			value?: { name: string }
+			error?: { code: string; message: string; createUrl?: string }
+		}
+	return {
+		...t,
+		keyA,
+		keyB,
+		entryId,
+		depId,
+		mail,
+		needsBySource,
+		map,
+		callerContextFor,
+		open,
+	}
+}
+
+test('a dependency credential() reads stored mappings and the creation link from the run entry package', async () => {
+	const t = await setupEntryAndDependency()
+	const bea = t.requestAs('bea', 'owner')
+	const { needs, entries } = await loadRunCredentialNeedEntries({
+		env: t.env,
+		orgId: t.acmeId,
+		packageIds: [t.entryId],
+	})
+	expect(entries.entryByKey.get('MAIL')).toBe(t.entryId)
+	const dependency = (request: ReturnType<typeof t.requestAs>) => ({
+		...t.contextFor({ request, packageId: t.depId }),
+		runNeeds: async () => needs,
+		runEntries: async () => entries,
+	})
+	const open = (request = bea) =>
+		openCredentialClient(dependency(request), { key: 'MAIL' })
+
+	await expect(open()).rejects.toMatchObject({
+		body: { code: 'credential_ambiguous' },
+	})
+	await t.map(t.entryId, { target: 'org' }, [t.keyB])
+	await expect(open()).resolves.toMatchObject({ key: 'MAIL', name: 'resend-b' })
+	// The dependency's own scope has no mapping, so without the run's entries
+	// the same call stays ambiguous.
+	await expect(
+		openCredentialClient(
+			{ ...dependency(bea), runEntries: undefined },
+			{ key: 'MAIL' },
+		),
+	).rejects.toMatchObject({ body: { code: 'credential_ambiguous' } })
+	// A mapping stored on the dependency itself never applies to its entry's run.
+	await t.map(t.depId, { target: 'org' }, [t.keyA])
+	await expect(open()).resolves.toMatchObject({ name: 'resend-b' })
+	await t.map(t.entryId, { target: 'mine', personId: t.people.bea.personId }, [
+		t.keyA,
+	])
+	await expect(open()).resolves.toMatchObject({ name: 'resend-a' })
+	await t.map(
+		t.entryId,
+		{ target: 'mine', personId: t.people.bea.personId },
+		[],
+	)
+	const unbound = await rejection(open())
+	expect(unbound.body).toMatchObject({ code: 'credential_unbound' })
+	const createUrl = new URL((unbound.body as { createUrl: string }).createUrl)
+	expect(createUrl.searchParams.get('forPackage')).toBe('storefront')
+	expect(createUrl.searchParams.get('need')).toBe('MAIL')
+
+	// A trigger run reads the entry package's enablement mapping too.
+	await t.grantUse(t.keyA, 'ann')
+	await t.grantUse(t.keyB, 'ann')
+	const enablementId = 'enablement-ann-nightly'
+	const annTrigger = deriveRequestContext({
+		user: { userId: t.people.ann.personId },
+		source: {
+			kind: 'schedule',
+			jobId: 'job-1',
+			enablement: {
+				id: enablementId,
+				enabler: { userId: t.people.ann.personId },
+				role: 'member',
+			},
+		},
+		orgBinding: { org: { id: t.acmeId, slug: 'acme-clients' }, role: null },
+	})
+	const trigger = {
+		target: 'enablement',
+		enablementId,
+		personId: t.people.ann.personId,
+	} as const
+	await t.map(t.depId, trigger, [t.keyB])
+	await t.map(t.entryId, trigger, [t.keyA])
+	await expect(open(annTrigger)).resolves.toMatchObject({ name: 'resend-a' })
+})
+
+test('with several entries the first that pins the need picks the mapping, an entry caller keeps its own, and ad hoc code reads none', async () => {
+	const t = await setupEntryAndDependency()
+	const bea = t.requestAs('bea', 'owner')
+	const firstId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme-clients/newsletter',
+	})
+	t.needsBySource.set(`source-${firstId}`, [t.mail])
+	await t.map(firstId, { target: 'org' }, [t.keyA])
+	await t.map(t.entryId, { target: 'org' }, [t.keyB])
+	const { needs, entries } = await loadRunCredentialNeedEntries({
+		env: t.env,
+		orgId: t.acmeId,
+		packageIds: [firstId, t.entryId],
+	})
+	expect(entries.entryByKey.get('MAIL')).toBe(firstId)
+	const asPackage = (packageId: string | null) =>
+		openCredentialClient(
+			{
+				...t.contextFor({ request: bea, packageId }),
+				runNeeds: async () => needs,
+				runEntries: async () => entries,
+			},
+			{ key: 'MAIL' },
+		)
+	await expect(asPackage(t.depId)).resolves.toMatchObject({
+		name: 'resend-a',
+	})
+	await expect(asPackage(t.entryId)).resolves.toMatchObject({
+		name: 'resend-b',
+	})
+	await expect(asPackage(null)).rejects.toMatchObject({
+		body: { code: 'credential_ambiguous' },
+	})
+})
+
+test('hosted execute and invoke read the entry mapping for a bound dependency, and its code cannot name another package', async () => {
+	const t = await setupEntryAndDependency()
+	const bea = t.requestAs('bea', 'owner')
+	await t.map(t.entryId, { target: 'org' }, [t.keyB])
+	const hosted = (runPackageId: string | null) =>
+		createRunCredentialClientToolOptions({
+			env: t.env,
+			callerContext: t.callerContextFor(bea),
+			binding: 'run:test',
+			runPackageId,
+			entryPackageIds: [t.entryId],
+			callMap: null,
+		})!
+	// Invoke runs the entry package; ad hoc execute imports it, so it is the
+	// run's entry either way.
+	for (const options of [hosted(t.entryId), hosted(null)]) {
+		await expect(
+			runWithCurrentSecretAuthority(t.depId, () => t.open(options, bea)),
+		).resolves.toMatchObject({ ok: true, value: { name: 'resend-b' } })
+		await expect(
+			runWithCurrentSecretAuthority(t.depId, () =>
+				t.open(options, bea, { packageId: t.entryId }),
+			),
+		).resolves.toMatchObject({
+			ok: false,
+			error: {
+				code: 'credential_denied',
+				message: createCredentialClientOwnerOnlyMessage(t.entryId),
+			},
+		})
+	}
+	// The entry's own code reads its mapping; ad hoc code reads none.
+	await expect(t.open(hosted(t.entryId), bea)).resolves.toMatchObject({
+		ok: true,
+		value: { name: 'resend-b' },
+	})
+	await expect(t.open(hosted(null), bea)).resolves.toMatchObject({
+		ok: false,
+		error: { code: 'credential_ambiguous' },
+	})
+})
+
+test('local CapabilityProxy reads the entry mapping from the signed binding, never a claimed id', async () => {
+	const t = await setupEntryAndDependency()
+	const bea = t.requestAs('bea', 'owner')
+	await t.map(t.entryId, { target: 'org' }, [t.keyB])
+	const subject = { org: t.acmeId, actor: bea.actor!.userId }
+	const options = createCapabilityProxyCredentialClientTools(
+		{
+			env: t.env,
+			callerContext: t.callerContextFor(bea),
+		} as unknown as ApiInvocationContext,
+		null,
+	)!
+	const depBinding = await signLocalExecutePackageBinding({
+		env: t.env,
+		packageId: t.depId,
+		subject,
+		entryPackageIds: [t.entryId],
+	})
+	await expect(
+		t.open(options, bea, { packageId: depBinding }),
+	).resolves.toMatchObject({ ok: true, value: { name: 'resend-b' } })
+	// A binding minted without entries keeps the dependency's own scope.
+	const legacyBinding = await signLocalExecutePackageBinding({
+		env: t.env,
+		packageId: t.depId,
+		subject,
+	})
+	await expect(
+		t.open(options, bea, { packageId: legacyBinding }),
+	).resolves.toMatchObject({
+		ok: false,
+		error: { code: 'credential_ambiguous' },
+	})
+	// Bare ids are refused, the entry's included.
+	for (const packageId of [t.depId, t.entryId]) {
+		await expect(t.open(options, bea, { packageId })).resolves.toMatchObject({
+			ok: false,
+			error: { code: 'credential_denied' },
+		})
+	}
 })
 
 async function setupVisitorApp(input?: {

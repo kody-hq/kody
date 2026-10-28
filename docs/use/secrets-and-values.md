@@ -83,7 +83,11 @@ can change without a value (in a call of their own; the secret's value and
 `updated_at` stay as they are), and **`credentialUpdate`** sets them by
 credential id on secrets, OAuth connections, and MCP servers (OAuth connections
 and MCP servers always use `Authorization: Bearer`, so only their provider
-changes). Every change needs Write on the credential and is audited.
+changes). Every change needs Write on the credential and is audited. Change
+inject or widen placement on the credential detail page or with MCP `api`
+`credentialUpdate`. `execute` (hosted or `--local`), package, and app code
+cannot widen placement or change inject; those calls are refused with a link to
+the credential's page. Narrowing placement and provider changes work everywhere.
 
 ### Personal credentials in a team org
 
@@ -188,11 +192,16 @@ External providers use **`{{secret/<provider>:<ref>}}`** (first `:` after
 `secret/`). Canonical 1Password form is
 **`{{secret/1password:i/<item-id>/password}}`** where `<item-id>` is a UUID or a
 1Password Connect 26-char id. `op://…` is a writable synonym that must
-canonicalize to the same grant/cache key. The item's websites are the host
-allowlist; empty websites refuse the fetch. Ad hoc execute does not need a
-package grant; saved packages do (`secretProviderLock` returns the Allow URL).
-Bind and revoke on `/@<slug>/-/secret-providers`. Shared packages use the
-owner's provider binding. Search does not crawl vaults. See
+canonicalize to the same grant/cache key. Angle-bracket markers in a token
+(`<provider>`, `<item-id>`, `<field>`, and so on) and the grammar metavariable
+form `{{secret/provider:ref}}` mark documentation examples: the gateway does not
+fill them. Concrete example refs in package `status()` / help display fields are
+not credential uses for the publish stamp (only request and credential-mapped
+sites count). The item's websites are the host allowlist; empty websites refuse
+the fetch. Ad hoc execute does not need a package grant; saved packages do
+(`resourceLock` with kind `secret_provider` returns the Allow URL). Bind and
+revoke on `/@<slug>/-/secret-providers`. Shared packages use the owner's
+provider binding. Search does not crawl vaults. See
 [Custom secret providers](../guides/secret-providers.md).
 
 When an API requires Basic Auth derived from two saved secrets, import
@@ -228,9 +237,21 @@ secret-aware **`fetch`** paths.
 ## Signing JWTs with saved secrets
 
 Use **`kody.secretJwtSign(...)`** when a workflow needs a JWT signed by a key
-stored in a saved secret. The primitive returns **`{ jwt, algorithm }`**: use
-**`result.jwt`** as the compact JWT and **`result.algorithm`** for the signing
-algorithm. It never returns key material.
+stored in a saved secret. The primitive returns **`{ jwt, algorithm }`**:
+**`result.jwt`** is a sealed handle for the compact JWT, and
+**`result.algorithm`** is the signing algorithm. It never returns key material
+or the signed JWT. Put **`result.jwt`** in a fetch header or body (for example
+`Authorization: Bearer ${jwt}`) and Kody fills the JWT on egress. The handle
+fills on the registrable domain of an https **`aud`** claim or of
+**`send_to_host`** (pass it when `aud` is not a URL), never in a URL query or
+path, and expires with the JWT's `exp` (at most one hour). Without either, the
+handle may fill on any host and the result carries a deprecation **`warning`**;
+a future release will require **`send_to_host`**. A token endpoint's
+`access_token`, `refresh_token`, and `id_token` come back sealed the same way.
+They fill on the token URL's registrable domain and the client secret's approved
+hosts; an `access_token` JWT also fills on the exact host of its https **`aud`**
+(for example `https://management.azure.com` from `login.microsoftonline.com`),
+so the client secret stays approved for the token host only.
 
 The caller supplies the JWT header and claims, then performs any provider-
 specific token exchange with ordinary **`fetch`**. Pass the saved secret as
@@ -296,12 +317,15 @@ fetch even when package read/use is automatic.
 
 User-scoped secrets are available automatically for **reading and using**
 (mounts, fetch placeholders, named capability lookups including `secretList`) to
-packages the user authored themselves and adopted community forks. Only the
-account owner can adopt, on the package settings page after a real source
-review; `communityForkAdopt` returns that link and agents cannot adopt.
-Unadopted community-forked packages need explicit **package** approval
-(`allowed_packages`) before those read/use paths. Approval is checked against
-the **stamped** package — the module that originated the call — not the
+packages the user authored themselves and adopted community forks, as long as
+the secret's `allowed_packages` list is empty. A non-empty list is enforced for
+every package: a package that is not on it is denied, including packages you
+authored or adopted, and the error names the credential and the package with an
+approval link. Only the account owner can adopt, on the package settings page
+after a real source review; `communityForkAdopt` returns that link and agents
+cannot adopt. Unadopted community-forked packages need explicit **package**
+approval (`allowed_packages`) before those read/use paths. Approval is checked
+against the **stamped** package — the module that originated the call — not the
 importing run. Dependents statically import the owning export; they do not need
 their own grant for secrets locked to that owner. Updating, disconnecting, or
 deleting a user secret from package code (`secretSet`, `secretDisconnect`,
@@ -309,18 +333,20 @@ deleting a user secret from package code (`secretSet`, `secretDisconnect`,
 self-authored and adopted packages. Disconnect clears the value but keeps the
 row, placement, and grants; Delete removes the credential. Only the account
 owner can add a package to that grant on `/@<slug>/-/secrets/user/:name` or
-`/@<slug>/-/secrets/approve`. **`secretLock`** returns an approval URL for the
-owner to click (one-click Allow, same spirit as `/connect/secrets`); it does not
-change `allowed_packages`. Send the link and wait. Removing a grant is also
-website-only. `secretSet` cannot change `allowed_packages`. Official OAuth token
-rotation (`createAuthenticatedFetch` 401 retry via `integrationTokenRefresh`)
-persists host-side and does not need that write grant.
+`/@<slug>/-/secrets/approve`.
+**`resourceLock({ kind: 'secret', name, package_id })`** returns an approval URL
+for the owner to click (one-click Allow, same spirit as `/connect/secrets`); it
+does not change `allowed_packages`. Send the link and wait. Removing a grant is
+also website-only. `secretSet` cannot change `allowed_packages`. Official OAuth
+token rotation (`createAuthenticatedFetch` 401 retry via
+`integrationTokenRefresh`) persists host-side and does not need that write
+grant.
 
 Publish and save warn when a package fills a user credential whose
-`allowed_packages` list is non-empty and does not include that package;
-publishing and saving still succeed. Approve the package on the secret's page
-(or via the approval link in the warning), or move the credential use into a
-package that is already on the list.
+`allowed_packages` list is non-empty and does not include that package, because
+that use is denied at runtime; publishing and saving still succeed. Approve the
+package on the secret's page (or via the approval link in the warning), or move
+the credential use into a package that is already on the list.
 
 **Host approval is separate and is never automatic**, including for
 self-authored and adopted packages. An empty host allowlist blocks

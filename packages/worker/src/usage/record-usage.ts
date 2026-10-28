@@ -140,6 +140,8 @@ export type UsageEvent = {
 	 * (direct execute or unattributed). Never guess.
 	 */
 	packageId?: string | null
+	/** Present for package-app billable units; empty string means anonymous. */
+	packageAppVisitorUserId?: string
 	/**
 	 * Person who triggered the metered unit. Empty for Automation. When unset
 	 * at write time, defaults to `userId` (org billing id) for backward
@@ -184,6 +186,8 @@ export const usageEventBlobIndexes = {
 	automationSource: 10,
 	connectionKey: 11,
 	errorName: 12,
+	packageAppVisitorUserId: 13,
+	packageAppUsage: 14,
 } as const
 
 export function automationSourceForAnalytics(
@@ -286,6 +290,7 @@ export function usageEventBlobs(
 		| 'executeShape'
 		| 'cacheReuse'
 		| 'packageId'
+		| 'packageAppVisitorUserId'
 		| 'actorUserId'
 		| 'automationSource'
 		| 'connectionKey'
@@ -293,6 +298,8 @@ export function usageEventBlobs(
 	>,
 	timestamp: string,
 ): [
+	string,
+	string,
 	string,
 	string,
 	string,
@@ -324,6 +331,8 @@ export function usageEventBlobs(
 		event.outcome === 'success'
 			? usageErrorNameUnrecorded
 			: sanitizeUsageErrorName(event.errorName),
+		event.packageAppVisitorUserId ?? '',
+		event.packageAppVisitorUserId === undefined ? '' : 'package-app',
 	]
 }
 
@@ -359,6 +368,15 @@ ON CONFLICT (user_id, day, package_id, meter) DO UPDATE SET
 	updated_at = excluded.updated_at,
 	actor_user_id = excluded.actor_user_id,
 	automation_source = excluded.automation_source
+`.trim()
+
+const packageAppVisitorAttributionDailyUpsertStatement = `
+INSERT INTO package_app_visitor_attribution_daily (
+	user_id, day, package_id, visitor_user_id, meter, units, updated_at
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+ON CONFLICT (user_id, day, package_id, visitor_user_id, meter) DO UPDATE SET
+	units = units + excluded.units,
+	updated_at = excluded.updated_at
 `.trim()
 
 const usageConnectionDailyUpsertStatement = `
@@ -541,6 +559,12 @@ async function writeUsageRollup(
 			)
 			.run()
 		await writeUsageAttributionDaily(env, event, timestamp, eventCount)
+		await writePackageAppVisitorAttributionDaily(
+			env,
+			event,
+			timestamp,
+			eventCount,
+		)
 		await writeUsageConnectionDaily(env, event, timestamp, eventCount)
 	} catch (error) {
 		console.warn('usage-rollup-failed', error)
@@ -577,6 +601,33 @@ async function writeUsageAttributionDaily(
 			.run()
 	} catch (error) {
 		console.warn('usage-attribution-daily-failed', error)
+	}
+}
+
+async function writePackageAppVisitorAttributionDaily(
+	env: UsageEnv,
+	event: UsageEvent,
+	timestamp: string,
+	eventCount: number,
+) {
+	if (!env.APP_DB || event.packageAppVisitorUserId === undefined) return
+	const meter = creditAttributionMeterFromUsageEventType(event.eventType)
+	const packageId = event.packageId?.trim()
+	if (!meter || !packageId) return
+	try {
+		await env.APP_DB.prepare(packageAppVisitorAttributionDailyUpsertStatement)
+			.bind(
+				event.userId,
+				timestamp.slice(0, 'YYYY-MM-DD'.length),
+				packageId,
+				event.packageAppVisitorUserId,
+				meter,
+				eventCount,
+				timestamp,
+			)
+			.run()
+	} catch (error) {
+		console.warn('package-app-visitor-attribution-daily-failed', error)
 	}
 }
 

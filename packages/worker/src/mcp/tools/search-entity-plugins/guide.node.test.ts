@@ -26,7 +26,6 @@ function buildGuideCandidates(domain?: string) {
 		offline: true,
 		registry,
 		optionalRows: emptyOptionalRows,
-		retrieverResults: [],
 		queryEmbedding: [],
 		...(domain ? { domain } : {}),
 	})
@@ -255,3 +254,15 @@ test('guide entity detail focuses line anchors and rejects lines past the end', 
 		formatEntityDetailMarkdown({ ...detail, section: 'L999' }),
 	).toThrow(McpCallerError)
 })
+
+test.each(['executor credential', 'publisher and executor credential'])(
+	'searching %s finds the credentials guide',
+	async (query) => {
+		const result = await rankGuides(query)
+		expect(
+			result.matches.some(
+				(match) => match.type === 'guide' && match.id === 'credentials',
+			),
+		).toBe(true)
+	},
+)

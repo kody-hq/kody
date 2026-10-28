@@ -93,7 +93,7 @@ them:
 - `packages/worker/tsconfig-worker-test.json` extends the worker typecheck
   config and adds every worker `src/**` and `universal/**` test,
   `test-support/**`, and `packages/shared/src/**` tests, with `node` and
-  `@cloudflare/vitest-pool-workers` types.
+  `@cloudflare/vitest-plugin` types.
 - `packages/worker/tsconfig-client-test.json` extends the client config and adds
   `packages/worker/client/**` tests, with `node` types.
 - `tsconfig-tools-typecheck.json` extends `tsconfig-tools.json` and covers root
@@ -102,6 +102,18 @@ them:
 A new test file is typechecked as soon as it matches one of those `include`
 globs. Type mocks from the real signature (`vi.fn<typeof realFn>()`) instead of
 widening them to `any`.
+
+## Generated Start route tree (`packages/worker/start/routeTree.gen.ts`)
+
+`packages/worker/start/routeTree.gen.ts` is **generated** and must never be
+edited by hand.
+
+- To update it, run `npm run routes:generate`. That uses the same
+  `@tanstack/router-generator` config as the TanStack Start Vite plugin,
+  including the trailing `declare module '@tanstack/react-start'` `Register`
+  block. Do not call the bare generator without that footer.
+- `npm run routes:generate:check` (part of `npm run validate` and the CI static
+  job) fails when the committed file differs.
 
 ## Generated worker types (`packages/worker/worker-configuration.d.ts`)
 

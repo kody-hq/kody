@@ -108,11 +108,6 @@ test('cli mains and node script targets are entries; helpers are not', () => {
 	writeFixture(root, 'tools/repair.ts', 'export function repair() {}\n')
 
 	const entries = toolCliEntryFiles(root)
-	expect(entries).not.toContain('tools/from-script.ts')
-	expect(entries).not.toContain('tools/ci/from-workflow.ts')
-	expect(entries).not.toContain('tools/substituted.ts')
-	expect(entries).not.toContain('tools/repair.ts')
-	expect(entries).not.toContain('tools/helper.ts')
 	expect(entries).toEqual([
 		'tools/described.ts',
 		'tools/echoed.ts',

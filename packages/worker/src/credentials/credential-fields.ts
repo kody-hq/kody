@@ -23,6 +23,10 @@ import {
 	readCredentialFillPlacement,
 	serializeCredentialFillPlacement,
 } from './fill-placement.ts'
+import {
+	fillPlacementOptInFromPlacement,
+	ownerFillPlacementOptInStatement,
+} from './fill-placement-opt-ins.ts'
 import { loginExchangeSchema } from './login-resolver.ts'
 import {
 	assertOptInCredentialValue,
@@ -280,6 +284,11 @@ export async function updateCredentialFields(input: {
 	 * (default); MCP `credentialUpdate` passes `explicit`.
 	 */
 	placementOrigin?: 'owner' | 'explicit'
+	/**
+	 * The owner saved this placement on the website, so its query, path, and
+	 * body parts count as opted in. Only website handlers set it.
+	 */
+	ownerOptIn?: true
 }): Promise<CredentialFields> {
 	const credential = await getOrgCredential(
 		input.db,
@@ -381,7 +390,18 @@ export async function updateCredentialFields(input: {
 	await runAppDbBatchWithOrgAudit({
 		appDb: input.db,
 		audit: input.audit,
-		statements: [statement],
+		statements: [
+			statement,
+			...(setsPlacement && input.ownerOptIn
+				? [
+						ownerFillPlacementOptInStatement({
+							db: input.db,
+							credentialId: credential.id,
+							optIn: fillPlacementOptInFromPlacement(placement),
+						}),
+					]
+				: []),
+		],
 		event: {
 			orgId: input.orgId,
 			action: 'credential.fields_updated',

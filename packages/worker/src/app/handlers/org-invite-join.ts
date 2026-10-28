@@ -40,7 +40,7 @@ import {
 	type OrgInviteJoinLoaderData,
 	type OrgInviteJoinOffer,
 } from '#universal/loader-data.ts'
-import { orgRoleLabel } from '#universal/org-pages.ts'
+import { orgOverviewPath, orgRoleLabel } from '#universal/org-pages.ts'
 import {
 	packageCollaboratorPresetDescription,
 	packageCollaboratorPresetLabel,
@@ -98,12 +98,19 @@ async function buildOffer(input: {
 }): Promise<OrgInviteJoinOffer | null> {
 	const target = input.link.target
 	switch (target.kind) {
-		case 'membership':
+		case 'membership': {
+			const teamNames: Array<string> = []
+			for (const teamId of input.link.teamIds) {
+				const teamName = await readTeamName(input.db, input.link.orgId, teamId)
+				if (teamName) teamNames.push(teamName)
+			}
 			return {
 				kind: 'membership',
 				role: target.role,
 				roleLabel: orgRoleLabel(target.role),
+				teamNames,
 			}
+		}
 		case 'team': {
 			const teamName = await readTeamName(
 				input.db,
@@ -264,7 +271,7 @@ async function redirectAfterAccept(
 	if (!slug) return { orgSlug: null, redirectTo: '/' }
 	switch (target.kind) {
 		case 'membership':
-			return { orgSlug: slug, redirectTo: `/@${slug}` }
+			return { orgSlug: slug, redirectTo: orgOverviewPath(slug) }
 		case 'team':
 			return {
 				orgSlug: slug,

@@ -49,7 +49,11 @@ export function createFakeRunLogNamespace() {
 					limit?: number | null
 					cursor?: string | null
 					status?: string | null
+					statuses?: ReadonlyArray<string> | null
 					bindingName?: string | null
+					id?: string | null
+					packageId?: string | null
+					since?: string | null
 				}) => Promise<{
 					projections: Array<WorkflowProjectionRecord>
 					nextCursor: string | null
@@ -97,6 +101,8 @@ export function createFakeRunLogNamespace() {
 						updatedAt: nextUpdatedAt,
 						completedAt: input.completedAt ?? null,
 						lastError: input.lastError ?? null,
+						enqueuedCommit: input.enqueuedCommit ?? null,
+						sourceRevision: input.sourceRevision ?? null,
 					})
 					return { ok: true as const }
 				}
@@ -138,16 +144,31 @@ export function createFakeRunLogNamespace() {
 				limit?: number | null
 				cursor?: string | null
 				status?: string | null
+				statuses?: ReadonlyArray<string> | null
 				bindingName?: string | null
+				id?: string | null
+				packageId?: string | null
+				since?: string | null
 			}) {
 				const limit = Math.min(Math.max(input.limit ?? 25, 1), 100)
+				const statusSet =
+					!input.status && input.statuses && input.statuses.length > 0
+						? new Set(input.statuses)
+						: null
 				const rows = [...projections.values()]
 					.filter(
 						(row) =>
-							(input.status ? row.status === input.status : true) &&
+							(input.id ? row.id === input.id : true) &&
+							(input.status
+								? row.status === input.status
+								: statusSet
+									? row.status != null && statusSet.has(row.status)
+									: true) &&
 							(input.bindingName
 								? row.bindingName === input.bindingName
-								: true),
+								: true) &&
+							(input.packageId ? row.packageId === input.packageId : true) &&
+							(input.since ? row.createdAt >= input.since : true),
 					)
 					.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
 				return {
@@ -201,6 +222,8 @@ export function createFakeRunLogNamespace() {
 					updatedAt,
 					completedAt: null,
 					lastError: null,
+					enqueuedCommit: input.enqueuedCommit ?? null,
+					sourceRevision: input.sourceRevision ?? null,
 				})
 				const projection = projections.get(input.id)
 				if (!projection) {
@@ -346,8 +369,8 @@ export function createJobMutationDatabase(input: {
 								return { meta: { changes: 1, last_row_id: 0 } }
 							}
 							if (normalized.startsWith('UPDATE jobs SET')) {
-								const id = params[16]
-								const userId = params[17]
+								const id = params[17]
+								const userId = params[18]
 								const existing = selectOne(
 									'jobs',
 									(row) => row['id'] === id && row['user_id'] === userId,
@@ -371,6 +394,7 @@ export function createJobMutationDatabase(input: {
 									last_run_at: params[13],
 									last_run_status: params[14],
 									next_run_at: params[15],
+									disabled_reason: params[16],
 								}
 								const rows = table('jobs')
 								const index = rows.findIndex(

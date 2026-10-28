@@ -889,6 +889,19 @@ jobs:
         run: |
           node ./wrangler-env.ts d1 migrations apply JOBS_DB --remote --config "$WRANGLER_CONFIG"
 
+      # Read-only: name an uploaded-but-undeployed version before secret
+      # sync can fail on it with Cloudflare 10215.
+      - name: 🔎 Check for undeployed Worker versions (jobs, preflight)
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_CONFIG:
+            ${{ steps.jobs_resources.outputs.jobs_wrangler_config }}
+        run: |
+          if [ ! -f tools/ci/worker-orphan-check.ts ]; then exit 0; fi
+          node tools/ci/worker-orphan-check.ts --phase preflight --name kody-jobs --config "$WRANGLER_CONFIG"
+
       - name: 🔐 Sync jobs worker secrets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -917,6 +930,12 @@ jobs:
           DEPLOY_COMMIT_SHA: ${{ needs.sha-guard.outputs.deploy_sha }}
           WRANGLER_CONFIG:
             ${{ steps.jobs_resources.outputs.jobs_wrangler_config }}
+          # Split deploy (tools/ci/split-worker-deploy.ts): versions upload
+          # tagged with this run, then versions deploy of that same id. A
+          # retry redeploys the uploaded version instead of uploading again.
+          KODY_SPLIT_DEPLOY_TAG:
+            gh-${{ github.run_id }}-${{ github.run_attempt }}
+          KODY_SPLIT_DEPLOY_MESSAGE: ${{ needs.sha-guard.outputs.deploy_sha }}
         run: |
           set -euo pipefail
 
@@ -979,6 +998,46 @@ jobs:
             cat jobs-health.json >&2
           fi
           exit 1
+
+      - name: 🔎 Check for undeployed Worker versions (jobs, on failure)
+        if: failure()
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_CONFIG:
+            ${{ steps.jobs_resources.outputs.jobs_wrangler_config }}
+        run: |
+          if [ ! -f tools/ci/worker-orphan-check.ts ] || [ -z "${WRANGLER_CONFIG:-}" ]; then exit 0; fi
+          node tools/ci/worker-orphan-check.ts --phase failure --name kody-jobs --config "$WRANGLER_CONFIG"
+
+      - name: 🪵 Collect wrangler logs (jobs, on failure)
+        id: jobs_wrangler_logs
+        if: failure()
+        continue-on-error: true
+        env:
+          # Scan-only: tools/ci/collect-wrangler-logs.ts drops any log file
+          # that contains one of these values. Values are never printed.
+          # List each secret this job uses by name. Never serialize the
+          # whole secrets context: it hands every repository secret to the
+          # step, and once it landed every Deploy run was held as
+          # action_required.
+          # tools/ci/wrangler-log-scan-secrets.node.test.ts keeps this in sync.
+          WRANGLER_LOG_SCAN_SECRETS: >-
+            {"CLOUDFLARE_API_TOKEN": ${{ toJSON(secrets.CLOUDFLARE_API_TOKEN)
+            }}, "SENTRY_DSN": ${{ toJSON(secrets.SENTRY_DSN) }}}
+        run: |
+          if [ ! -f tools/ci/collect-wrangler-logs.ts ]; then exit 0; fi
+          node tools/ci/collect-wrangler-logs.ts --from "$HOME/.config/.wrangler/logs" --out "$RUNNER_TEMP/wrangler-logs"
+
+      - name: 📤 Upload wrangler logs (jobs, on failure)
+        if: failure() && steps.jobs_wrangler_logs.outputs.has_logs == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wrangler-logs-jobs-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/wrangler-logs/
+          if-no-files-found: ignore
+          retention-days: 5
 
   deploy:
     runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
@@ -1090,6 +1149,33 @@ jobs:
             --runtime-worker-name kody-runtime \
             --main-worker-name kody-production \
             --out-config packages/platform-worker/wrangler-production.generated.json | tee -a "$GITHUB_OUTPUT"
+
+      # Read-only: compare each Worker's newest version with its active
+      # deployment. A mismatch (an uploaded-but-undeployed version) is what
+      # makes classic secret bulk fail with Cloudflare 10215; report which
+      # version and which run uploaded it before secret sync runs.
+      - name: 🔎 Check for undeployed Worker versions (preflight)
+        if: steps.resources.outputs.origin_deploy_mode != 'fresh'
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ORIGIN_CONFIG: ${{ steps.resources.outputs.wrangler_config }}
+          PLATFORM_CONFIG:
+            ${{ steps.platform_config.outputs.platform_wrangler_config }}
+          RUNTIME_CONFIG:
+            ${{ steps.runtime_config.outputs.runtime_wrangler_config }}
+        run: |
+          if [ ! -f tools/ci/worker-orphan-check.ts ]; then exit 0; fi
+          PHASE=preflight
+          if [ -n "${PLATFORM_CONFIG:-}" ]; then
+            node tools/ci/worker-orphan-check.ts --phase "$PHASE" --name kody-platform --config "$PLATFORM_CONFIG"
+          fi
+          if [ -n "${RUNTIME_CONFIG:-}" ]; then
+            node tools/ci/worker-orphan-check.ts --phase "$PHASE" --name kody-runtime --config "$RUNTIME_CONFIG"
+          fi
+          if [ -n "${ORIGIN_CONFIG:-}" ]; then
+            node tools/ci/worker-orphan-check.ts --phase "$PHASE" --name kody-production --config "$ORIGIN_CONFIG" --env production
+          fi
 
       - name: 🔐 Sync Cloudflare Secrets (bulk)
         env:
@@ -1232,6 +1318,7 @@ jobs:
           OIDC_SIGNING_KEY_ID: ${{ secrets.OIDC_SIGNING_KEY_ID }}
           CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN:
             ${{ secrets.CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN }}
+          ECP_FRAME_SIGNING_KEYS: ${{ secrets.ECP_FRAME_SIGNING_KEYS }}
         run: >
           node tools/ci/sync-worker-secrets.ts
           ${PLATFORM_SECRET_MODE:+$PLATFORM_SECRET_MODE} --env "" --name
@@ -1253,6 +1340,7 @@ jobs:
           --set-from-env-optional STATUS_INCIDENT_EVENT_SECRET --set-from-env
           OIDC_SIGNING_PRIVATE_KEY_PEM --set-from-env OIDC_SIGNING_KEY_ID
           --set-from-env-optional CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN
+          --set-from-env-optional ECP_FRAME_SIGNING_KEYS
 
       - name: 🗄️ Apply D1 Migrations
         env:
@@ -1325,6 +1413,14 @@ jobs:
           DEPLOY_COMMIT_SHA: ${{ needs.sha-guard.outputs.deploy_sha }}
           WRANGLER_CONFIG:
             ${{ steps.platform_config.outputs.platform_wrangler_config }}
+          # Split deploy (tools/ci/split-worker-deploy.ts): versions upload
+          # tagged with this run, then versions deploy of that same id. A
+          # retry redeploys the uploaded version instead of uploading again.
+          # Fresh accounts keep the classic first deploy.
+          KODY_SPLIT_DEPLOY_TAG:
+            ${{ steps.resources.outputs.origin_deploy_mode != 'fresh' &&
+            format('gh-{0}-{1}', github.run_id, github.run_attempt) || '' }}
+          KODY_SPLIT_DEPLOY_MESSAGE: ${{ needs.sha-guard.outputs.deploy_sha }}
         run: |
           set -euo pipefail
 
@@ -1381,6 +1477,14 @@ jobs:
           DEPLOY_COMMIT_SHA: ${{ needs.sha-guard.outputs.deploy_sha }}
           WRANGLER_CONFIG:
             ${{ steps.runtime_config.outputs.runtime_wrangler_config }}
+          # Split deploy (tools/ci/split-worker-deploy.ts): versions upload
+          # tagged with this run, then versions deploy of that same id. A
+          # retry redeploys the uploaded version instead of uploading again.
+          # Fresh accounts keep the classic first deploy.
+          KODY_SPLIT_DEPLOY_TAG:
+            ${{ steps.resources.outputs.origin_deploy_mode != 'fresh' &&
+            format('gh-{0}-{1}', github.run_id, github.run_attempt) || '' }}
+          KODY_SPLIT_DEPLOY_MESSAGE: ${{ needs.sha-guard.outputs.deploy_sha }}
         run: |
           set -euo pipefail
 
@@ -1491,6 +1595,14 @@ jobs:
           APP_DEPLOY_INFO: ${{ steps.deploy_info.outputs.app_deploy_info }}
           WRANGLER_CONFIG: ${{ steps.resources.outputs.wrangler_config }}
           KODY_RETAIN_CLIENT_ASSETS: '1'
+          # Split deploy (tools/ci/split-worker-deploy.ts): versions upload
+          # tagged with this run, then versions deploy of that same id. A
+          # retry redeploys the uploaded version instead of uploading again.
+          # Fresh accounts keep the classic first deploy.
+          KODY_SPLIT_DEPLOY_TAG:
+            ${{ steps.resources.outputs.origin_deploy_mode != 'fresh' &&
+            format('gh-{0}-{1}', github.run_id, github.run_attempt) || '' }}
+          KODY_SPLIT_DEPLOY_MESSAGE: ${{ needs.sha-guard.outputs.deploy_sha }}
         run: |
           set -euo pipefail
           # Explicit --name: Vite emits a flattened wrangler.json whose
@@ -1768,6 +1880,101 @@ jobs:
           # A full sweep (omit --phases) is a DR / embedding-model rebuild, not a
           # ship gate.
           node tools/ci/reindex-capabilities.ts --url "$DEPLOY_URL" --phases capabilities
+
+      - name: 🔎 Check for undeployed Worker versions (on failure)
+        if: failure()
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ORIGIN_CONFIG: ${{ steps.resources.outputs.wrangler_config }}
+          PLATFORM_CONFIG:
+            ${{ steps.platform_config.outputs.platform_wrangler_config }}
+          RUNTIME_CONFIG:
+            ${{ steps.runtime_config.outputs.runtime_wrangler_config }}
+        run: |
+          if [ ! -f tools/ci/worker-orphan-check.ts ]; then exit 0; fi
+          PHASE=failure
+          if [ -n "${PLATFORM_CONFIG:-}" ]; then
+            node tools/ci/worker-orphan-check.ts --phase "$PHASE" --name kody-platform --config "$PLATFORM_CONFIG"
+          fi
+          if [ -n "${RUNTIME_CONFIG:-}" ]; then
+            node tools/ci/worker-orphan-check.ts --phase "$PHASE" --name kody-runtime --config "$RUNTIME_CONFIG"
+          fi
+          if [ -n "${ORIGIN_CONFIG:-}" ]; then
+            node tools/ci/worker-orphan-check.ts --phase "$PHASE" --name kody-production --config "$ORIGIN_CONFIG" --env production
+          fi
+
+      - name: 🪵 Collect wrangler logs (on failure)
+        id: wrangler_logs
+        if: failure()
+        continue-on-error: true
+        env:
+          # Scan-only: tools/ci/collect-wrangler-logs.ts drops any log file
+          # that contains one of these values. Values are never printed.
+          # List each secret this job uses by name. Never serialize the
+          # whole secrets context: it hands every repository secret to the
+          # step, and once it landed every Deploy run was held as
+          # action_required.
+          # tools/ci/wrangler-log-scan-secrets.node.test.ts keeps this in sync.
+          WRANGLER_LOG_SCAN_SECRETS: >-
+            {"AI_GATEWAY_ID": ${{ toJSON(secrets.AI_GATEWAY_ID) }},
+            "CAPABILITY_REINDEX_SECRET": ${{
+            toJSON(secrets.CAPABILITY_REINDEX_SECRET) }},
+            "CLOUDFLARE_API_TOKEN": ${{ toJSON(secrets.CLOUDFLARE_API_TOKEN) }},
+            "CLOUDFLARE_APP_API_TOKEN": ${{
+            toJSON(secrets.CLOUDFLARE_APP_API_TOKEN) }},
+            "CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN": ${{
+            toJSON(secrets.CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN) }},
+            "CLOUDFLARE_RUNTIME_API_TOKEN": ${{
+            toJSON(secrets.CLOUDFLARE_RUNTIME_API_TOKEN) }}, "COOKIE_SECRET":
+            ${{ toJSON(secrets.COOKIE_SECRET) }}, "DISCORD_BOT_TOKEN": ${{
+            toJSON(secrets.DISCORD_BOT_TOKEN) }}, "DISCORD_GUILD_ID": ${{
+            toJSON(secrets.DISCORD_GUILD_ID) }}, "DISCORD_MEMBER_ROLE_ID": ${{
+            toJSON(secrets.DISCORD_MEMBER_ROLE_ID) }}, "DISCORD_PRO_ROLE_ID":
+            ${{ toJSON(secrets.DISCORD_PRO_ROLE_ID) }},
+            "DISCORD_STANDARD_ROLE_ID": ${{
+            toJSON(secrets.DISCORD_STANDARD_ROLE_ID) }},
+            "ECP_FRAME_SIGNING_KEYS": ${{ toJSON(secrets.ECP_FRAME_SIGNING_KEYS)
+            }}, "GITHUB_TOKEN": ${{ toJSON(secrets.GITHUB_TOKEN) }},
+            "KIT_API_KEY": ${{ toJSON(secrets.KIT_API_KEY) }},
+            "OAUTH_DISCORD_CLIENT_ID": ${{
+            toJSON(secrets.OAUTH_DISCORD_CLIENT_ID) }},
+            "OAUTH_DISCORD_CLIENT_SECRET": ${{
+            toJSON(secrets.OAUTH_DISCORD_CLIENT_SECRET) }},
+            "OAUTH_GITHUB_CLIENT_ID": ${{ toJSON(secrets.OAUTH_GITHUB_CLIENT_ID)
+            }}, "OAUTH_GITHUB_CLIENT_SECRET": ${{
+            toJSON(secrets.OAUTH_GITHUB_CLIENT_SECRET) }},
+            "OAUTH_GOOGLE_CLIENT_ID": ${{ toJSON(secrets.OAUTH_GOOGLE_CLIENT_ID)
+            }}, "OAUTH_GOOGLE_CLIENT_SECRET": ${{
+            toJSON(secrets.OAUTH_GOOGLE_CLIENT_SECRET) }}, "OAUTH_X_CLIENT_ID":
+            ${{ toJSON(secrets.OAUTH_X_CLIENT_ID) }}, "OAUTH_X_CLIENT_SECRET":
+            ${{ toJSON(secrets.OAUTH_X_CLIENT_SECRET) }}, "OIDC_SIGNING_KEY_ID":
+            ${{ toJSON(secrets.OIDC_SIGNING_KEY_ID) }},
+            "OIDC_SIGNING_PRIVATE_KEY_PEM": ${{
+            toJSON(secrets.OIDC_SIGNING_PRIVATE_KEY_PEM) }},
+            "PACKAGE_APP_TICKET_KEYS": ${{
+            toJSON(secrets.PACKAGE_APP_TICKET_KEYS) }}, "PACKAGE_APP_ZONE_ID":
+            ${{ toJSON(secrets.PACKAGE_APP_ZONE_ID) }}, "SECRET_STORE_KEY": ${{
+            toJSON(secrets.SECRET_STORE_KEY) }}, "SENTRY_AUTH_TOKEN": ${{
+            toJSON(secrets.SENTRY_AUTH_TOKEN) }}, "SENTRY_DSN": ${{
+            toJSON(secrets.SENTRY_DSN) }}, "STATUS_INCIDENT_EVENT_SECRET": ${{
+            toJSON(secrets.STATUS_INCIDENT_EVENT_SECRET) }},
+            "STRIPE_SECRET_KEY": ${{ toJSON(secrets.STRIPE_SECRET_KEY) }},
+            "STRIPE_WEBHOOK_SECRET": ${{ toJSON(secrets.STRIPE_WEBHOOK_SECRET)
+            }}, "YOUTUBE_DATA_API_KEY": ${{ toJSON(secrets.YOUTUBE_DATA_API_KEY)
+            }}}
+        run: |
+          if [ ! -f tools/ci/collect-wrangler-logs.ts ]; then exit 0; fi
+          node tools/ci/collect-wrangler-logs.ts --from "$HOME/.config/.wrangler/logs" --out "$RUNNER_TEMP/wrangler-logs"
+
+      - name: 📤 Upload wrangler logs (on failure)
+        if: failure() && steps.wrangler_logs.outputs.has_logs == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wrangler-logs-production-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/wrangler-logs/
+          if-no-files-found: ignore
+          retention-days: 5
 
   deploy-status-worker:
     runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}

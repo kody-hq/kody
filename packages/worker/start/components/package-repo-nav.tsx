@@ -14,6 +14,7 @@ import {
 import { renderPackageStatusSignifiers } from './package-status-signifiers.tsx'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
+import { withInstallOrg } from '#universal/community-search.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
 
 export type PackageRepoNavActive =
@@ -21,6 +22,9 @@ export type PackageRepoNavActive =
 	| 'files'
 	| 'settings'
 	| 'collaborators'
+	| 'connected-people'
+	/** Forks has no tab of its own; it is reached from the Forks count. */
+	| 'forks'
 	| PackageCredentialsTab
 
 function renderPackageRepoNav(input: {
@@ -32,14 +36,20 @@ function renderPackageRepoNav(input: {
 	showCredentialTabs: boolean
 	/** Saved packages the viewer may manage access to (`package:manage_access`). */
 	showCollaboratorsTab: boolean
+	/** Manage on a package with an app: who signed in with Kody. */
+	showConnectedPeopleTab: boolean
 	/** Defaults to true. Pass false only to hide Files intentionally. */
 	showFilesNav?: boolean
 	active: PackageRepoNavActive
+	installOrg?: string | null
 }) {
-	const repoHref = routes.communityPackage.href({
-		username: input.username,
-		kodyId: input.kodyId,
-	})
+	const repoHref = withInstallOrg(
+		routes.communityPackage.href({
+			username: input.username,
+			kodyId: input.kodyId,
+		}),
+		input.installOrg,
+	)
 	const settingsHref = getPackageSettingsHref({
 		username: input.username,
 		kodyId: input.kodyId,
@@ -57,7 +67,7 @@ function renderPackageRepoNav(input: {
 			</SiteLink>
 			{showFilesNav ? (
 				<SiteLink
-					href={input.filesHref}
+					href={withInstallOrg(input.filesHref, input.installOrg)}
 					aria-current={input.active === 'files' ? 'page' : undefined}
 					data-testid="package-repo-nav-files"
 					css={tabCss}
@@ -95,6 +105,21 @@ function renderPackageRepoNav(input: {
 					Collaborators
 				</SiteLink>
 			) : null}
+			{input.showConnectedPeopleTab ? (
+				<SiteLink
+					href={routes.communityPackageConnectedPeople.href({
+						username: input.username,
+						kodyId: input.kodyId,
+					})}
+					aria-current={
+						input.active === 'connected-people' ? 'page' : undefined
+					}
+					data-testid="package-repo-nav-connected-people"
+					css={tabCss}
+				>
+					Connected people
+				</SiteLink>
+			) : null}
 			{input.viewerCanManage ? (
 				<SiteLink
 					href={settingsHref}
@@ -120,6 +145,8 @@ export function renderPackageRepoChrome(input: {
 	viewerCanManage: boolean
 	/** Shows the Collaborators tab. Defaults to false. */
 	viewerCanManageAccess?: boolean
+	/** Shows the Connected people tab. Defaults to false. */
+	viewerCanSeeConnectedPeople?: boolean
 	active: PackageRepoNavActive
 	filesHref: string
 	description?: string
@@ -130,10 +157,12 @@ export function renderPackageRepoChrome(input: {
 	animate?: boolean
 	/** Labeled controls on the tab row; status icons stay in the title. */
 	actions?: ReactNode
+	/** Picked install org (`?org=`), kept on tab and catalog links. */
+	installOrg?: string | null
 }) {
 	const backHref = input.viewerIsOwner
 		? orgResourcePath(input.username, 'repositories')
-		: routes.community.href()
+		: withInstallOrg(routes.community.href(), input.installOrg)
 	const backLabel = input.viewerIsOwner ? 'Repositories' : 'Public packages'
 	const profileHref =
 		input.ownerProfilePublic === false
@@ -202,10 +231,13 @@ export function renderPackageRepoChrome(input: {
 					username: input.username,
 					kodyId: input.kodyId,
 					filesHref: input.filesHref,
+					installOrg: input.installOrg,
 					viewerCanManage: input.viewerCanManage,
 					showCredentialTabs: input.viewerIsOwner && hasPackage,
 					showCollaboratorsTab:
 						input.viewerCanManageAccess === true && hasPackage,
+					showConnectedPeopleTab:
+						input.viewerCanSeeConnectedPeople === true && hasPackage,
 					active: input.active,
 				})}
 				{input.actions ? (
@@ -293,6 +325,31 @@ const descriptionCss = {
 	color: colors.textMuted,
 	fontSize: '1.05rem',
 	maxWidth: '58ch',
+}
+
+/**
+ * Body under the package tab row. Owns the gap below the tabs and the stack
+ * gap between blocks, so tab pages render bare cards and sections.
+ */
+export function PackageRepoTabPanel(props: { children: ReactNode }) {
+	return (
+		<div data-package-tab-panel css={packageRepoTabPanelCss}>
+			{props.children}
+		</div>
+	)
+}
+
+const packageRepoTabPanelCss = {
+	display: 'grid',
+	alignContent: 'start',
+	gap: spacing.xl,
+	marginTop: spacing.xl,
+	minWidth: 0,
+	'& > *': { marginBlock: 0 },
+	[mq.mobile]: {
+		gap: spacing.lg,
+		marginTop: spacing.lg,
+	},
 }
 
 const navRowCss = {

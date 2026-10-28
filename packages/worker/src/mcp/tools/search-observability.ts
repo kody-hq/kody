@@ -1,9 +1,8 @@
 /**
  * Measurement-only Analytics Engine points for MCP `search` wall clock.
  *
- * Not a `recordUsage()` event and not a UWD surface. Search retrievers
- * already mint `dynamic_worker_day` with surface `retriever`; this dataset
- * answers "is search slow this hour?" and "which exclusive tile grew?".
+ * Not a `recordUsage()` event and not a UWD surface. This dataset answers
+ * "is search slow this hour?" and "which exclusive tile grew?".
  * No user, conversation, or query text.
  *
  * Production dataset `kody_mcp_search_events` (preview:
@@ -42,8 +41,6 @@ export type SearchObservabilityPoint = {
 	responseTrimmed?: boolean
 	trimmedMatchCount?: number
 	offline?: boolean
-	/** Flag cohort for the Jev search experiment (`on` / `off` / `n/a`). */
-	jevFlagCohort?: 'on' | 'off' | 'n/a'
 	/** Stage-2 Jev outcome; empty when not a ranked list search. */
 	jevOutcome?: string
 	/** Short fallback-error reason; empty when not a Jev fallback-error. */
@@ -71,7 +68,6 @@ const searchTop1TypeCodes = {
 	integration: 5,
 	secret: 6,
 	domain: 7,
-	retriever_result: 8,
 } as const
 
 /** Stable numeric code for top-1 match type mix charts; -1 when unknown. */
@@ -105,7 +101,7 @@ export function recordSearchObservabilityEvent(
 				input.task ?? '',
 				input.responseTrimmed ? 'trimmed' : 'intact',
 				input.offline ? 'offline' : 'online',
-				input.jevFlagCohort ?? 'n/a',
+				'n/a', // blob6 reserved (formerly the jev-search-rerank flag cohort); keep positions stable.
 				input.jevOutcome ?? '',
 				input.jevErrorReason ?? '',
 			],
@@ -116,7 +112,7 @@ export function recordSearchObservabilityEvent(
 				numericPhase(input.phaseTimings, 'waitingItemsMs'),
 				numericPhase(input.phaseTimings, 'memoryEnrichmentMs'),
 				numericPhase(input.phaseTimings, 'rowAndRegistryLoadMs'),
-				numericPhase(input.phaseTimings, 'retrieversMs'),
+				-1, // double7 reserved (formerly retrieversMs); keep positions stable.
 				typeof input.intentConfidence === 'number'
 					? input.intentConfidence
 					: -1,

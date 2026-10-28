@@ -46,7 +46,10 @@ import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	collectPublishedPackageArtifactTargets,
 	isPublishedPackageArtifactBuiltForCommit,
+	loadPublishedBundleArtifactsForPackageTargets,
+	publishedBundleArtifactForPackageTarget,
 	persistPublishedPackageArtifactTarget,
+	persistPublishedPackageArtifactTargets,
 	type PublishedPackageArtifactBuildTarget,
 } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { type PreparedKodyGraphCache } from '#worker/package-runtime/module-graph.ts'
@@ -124,6 +127,7 @@ import {
 	finalizePublishedEntitySource,
 	publishFromExternalRef as publishExternalRefSource,
 } from './external-publish.ts'
+import { createEphemeralGitWorkspace } from './ephemeral-git-workspace.ts'
 import {
 	buildWorkspaceSqliteTooBigCallerMessage,
 	cloneExternalPublishWorkspace,
@@ -3084,9 +3088,19 @@ class RepoSessionBase extends DurableObject<Env> {
 		const results: Array<IsolatedArtifactRebuildTargetResult> = []
 		const remaining: Array<PublishedPackageArtifactBuildTarget> = []
 		const snapshotCache = new Map()
+		const loadedByIdentity =
+			!input.force && hasPublishedRuntimeArtifacts(this.env)
+				? await loadPublishedBundleArtifactsForPackageTargets({
+						env: this.env,
+						userId: input.userId,
+						sourceId: input.sourceId,
+						targets: input.targets,
+					})
+				: null
 		for (const target of input.targets) {
 			const alreadyBuilt =
 				!input.force &&
+				loadedByIdentity != null &&
 				(await isPublishedPackageArtifactBuiltForCommit({
 					env: this.env,
 					userId: input.userId,
@@ -3094,6 +3108,11 @@ class RepoSessionBase extends DurableObject<Env> {
 					publishedCommit: input.publishedCommit,
 					target,
 					snapshotCache,
+					preloaded: publishedBundleArtifactForPackageTarget({
+						sourceId: input.sourceId,
+						target,
+						loadedByIdentity,
+					}),
 				}))
 			if (alreadyBuilt) {
 				results.push({
@@ -3160,33 +3179,33 @@ class RepoSessionBase extends DurableObject<Env> {
 				return { ok: false, message, results }
 			}
 			const prepareCache: PreparedKodyGraphCache = new Map()
-			for (const target of remaining) {
-				try {
-					const kvKey =
-						await this.persistPublishedPackageArtifactTargetFromFiles({
-							source,
-							savedPackage,
-							userId: input.userId,
-							publishedCommit: input.publishedCommit,
-							target,
-							baseUrl: input.baseUrl,
-							sourceFiles,
-							prepareCache,
-						})
+			const persisted =
+				await this.persistPublishedPackageArtifactTargetsFromFiles({
+					source,
+					savedPackage,
+					userId: input.userId,
+					publishedCommit: input.publishedCommit,
+					targets: remaining,
+					baseUrl: input.baseUrl,
+					sourceFiles,
+					prepareCache,
+				})
+			for (const outcome of persisted) {
+				if (outcome.ok) {
 					results.push({
 						ok: true,
 						message: 'Published package artifact rebuilt.',
-						kvKey,
-						target,
+						kvKey: outcome.kvKey,
+						target: outcome.target,
 					})
-				} catch (error) {
-					results.push({
-						ok: false,
-						message: getErrorMessage(error),
-						...(isUserCodeError(error) ? { callerFailure: true } : {}),
-						target,
-					})
+					continue
 				}
+				results.push({
+					ok: false,
+					message: getErrorMessage(outcome.error),
+					...(isUserCodeError(outcome.error) ? { callerFailure: true } : {}),
+					target: outcome.target,
+				})
 			}
 		} catch (error) {
 			const message = getErrorMessage(error)
@@ -3337,6 +3356,96 @@ class RepoSessionBase extends DurableObject<Env> {
 					rootPackageId: input.savedPackage.id,
 					prepareCache,
 				}),
+		})
+	}
+
+	private async persistPublishedPackageArtifactTargetsFromFiles(input: {
+		source: EntitySourceRow
+		savedPackage: SavedPackageRecord
+		userId: OwnerId
+		publishedCommit: string
+		targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
+		baseUrl?: string
+		sourceFiles: Record<string, string>
+		prepareCache?: PreparedKodyGraphCache
+	}) {
+		if (input.targets.length === 0) return []
+		const sourceAtPublishedCommit = {
+			...input.source,
+			published_commit: input.publishedCommit,
+		}
+		const {
+			buildKodyAppBundle,
+			buildKodyAppClientBundle,
+			buildKodyModuleBundle,
+			buildKodyImportableModuleBundle,
+		} = await import('#worker/package-runtime/module-graph.ts')
+		const prepareCache = input.prepareCache ?? new Map()
+		const builders = {
+			buildAppBundle: async ({ entryPoint }: { entryPoint: string }) =>
+				await buildKodyAppBundle({
+					env: this.env,
+					baseUrl: input.baseUrl ?? input.source.source_root,
+					userId: input.userId,
+					sourceFiles: input.sourceFiles,
+					entryPoint,
+					rootPackageId: input.savedPackage.id,
+					cacheKey: null,
+					prepareCache,
+				}),
+			buildAppClientBundle: async ({ entryPoint }: { entryPoint: string }) =>
+				await buildKodyAppClientBundle({
+					sourceFiles: input.sourceFiles,
+					entryPoint,
+				}),
+			buildModuleBundle: async ({ entryPoint }: { entryPoint: string }) =>
+				await buildKodyModuleBundle({
+					env: this.env,
+					baseUrl: input.baseUrl ?? input.source.source_root,
+					userId: input.userId,
+					sourceFiles: input.sourceFiles,
+					entryPoint,
+					rootPackageId: input.savedPackage.id,
+					prepareCache,
+				}),
+			buildImportableModuleBundle: async ({
+				entryPoint,
+			}: {
+				entryPoint: string
+			}) =>
+				await buildKodyImportableModuleBundle({
+					env: this.env,
+					baseUrl: input.baseUrl ?? input.source.source_root,
+					userId: input.userId,
+					sourceFiles: input.sourceFiles,
+					entryPoint,
+					rootPackageId: input.savedPackage.id,
+					prepareCache,
+				}),
+		}
+		if (input.targets.length === 1) {
+			const target = input.targets[0]!
+			try {
+				const kvKey = await persistPublishedPackageArtifactTarget({
+					env: this.env,
+					userId: input.userId,
+					source: sourceAtPublishedCommit,
+					savedPackage: input.savedPackage,
+					target,
+					...builders,
+				})
+				return [{ ok: true as const, target, kvKey }]
+			} catch (error) {
+				return [{ ok: false as const, target, error }]
+			}
+		}
+		return await persistPublishedPackageArtifactTargets({
+			env: this.env,
+			userId: input.userId,
+			source: sourceAtPublishedCommit,
+			savedPackage: input.savedPackage,
+			targets: input.targets,
+			...builders,
 		})
 	}
 
@@ -3795,6 +3904,8 @@ class RepoSessionBase extends DurableObject<Env> {
 			rebuildPackageArtifacts: input.rebuildPackageArtifacts ?? true,
 			allowLockedPublish: input.allowLockedPublish,
 			actorUserId: input.requestedByUserId ?? undefined,
+			// Omitted: a platform rewrite of code a person already published.
+			publisherUnknown: input.requestedByUserId === null,
 		})
 		if (replaceHistory) {
 			await this.deleteAdvertisedSessionBranches({
@@ -3956,6 +4067,9 @@ class RepoSessionBase extends DurableObject<Env> {
 			phaseTimings,
 		})
 		const publishDir = publishClone.dir || externalPublishWorkspaceDir
+		// Checks only need the worktree; drop pack objects before the heavy
+		// phases so this DO does not keep clone + checks memory at once.
+		await publishClone.releaseGitObjects()
 		const checks = await runAuthoringPublishChecks({
 			workspace: publishClone.workspace,
 			manifestPath: resolveRepoWorkspacePath(source.manifest_path, publishDir),
@@ -4024,6 +4138,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					ancestor: previousCommit,
 					descendant: input.newCommit,
 				}),
+			releaseCloneGitObjects: () => publishClone.releaseGitObjects(),
 			allowForce: input.allowForce,
 			destructiveOverwriteConfirmed: input.destructiveOverwriteConfirmed,
 			workspace: publishClone.workspace,
@@ -4124,9 +4239,12 @@ class RepoSessionBase extends DurableObject<Env> {
 						source,
 					),
 				})
+				// Fresh workspace: publish releases the clone's `.git` before
+				// checks to free pack memory, so notes cannot reuse that FS.
+				const noteWorkspace = createEphemeralGitWorkspace()
 				await attachPublishGitNoteBestEffort({
-					filesystem: publishClone.filesystem,
-					dir: publishDir,
+					filesystem: noteWorkspace.filesystem,
+					dir: noteWorkspace.dir,
 					commitOid: input.newCommit,
 					remote: sourceWriteAccess.remote,
 					token: sourceWriteAccess.token,

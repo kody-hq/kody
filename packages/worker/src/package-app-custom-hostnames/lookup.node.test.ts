@@ -9,6 +9,7 @@ import {
 	lookupPackageAppCustomHostname,
 	lookupVerifiedAppCustomHostnameForPackage,
 	normalizeCustomHostname,
+	pickPrimaryVerifiedAppCustomHostname,
 } from './lookup.ts'
 
 const migrationSql = readFileSync(
@@ -190,6 +191,45 @@ test('lookup resolves a verified app binding and ignores unverified or org rows 
 		kodyId: 'demo',
 		username: 'pkg-owner',
 	})
+
+	await db
+		.prepare(
+			`INSERT INTO package_app_custom_hostnames (
+				id, hostname, binding_kind, package_id, org_id,
+				hostname_status, ssl_status, verified_at, created_at, updated_at
+			) VALUES (?, ?, 'app', 'pkg-demo', NULL, 'active', 'active', ?, ?, ?)`,
+		)
+		.bind(
+			'row-app-zeta',
+			'zeta.customer-test.example',
+			now,
+			'2026-10-14T00:00:00.000Z',
+			'2026-10-14T00:00:00.000Z',
+		)
+		.run()
+	await expect(
+		lookupVerifiedAppCustomHostnameForPackage({
+			db,
+			username: 'pkg-owner',
+			kodyId: 'demo',
+		}),
+	).resolves.toMatchObject({
+		hostname: 'app.customer-test.example',
+	})
+	expect(
+		pickPrimaryVerifiedAppCustomHostname([
+			{
+				hostname: 'zeta.customer-test.example',
+				hostnameStatus: 'active',
+				sslStatus: 'active',
+			},
+			{
+				hostname: 'app.customer-test.example',
+				hostnameStatus: 'active',
+				sslStatus: 'active',
+			},
+		]),
+	).toBe('app.customer-test.example')
 
 	// A retired handle that sorts first must not replace the live org slug.
 	await db

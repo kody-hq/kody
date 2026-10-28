@@ -15,6 +15,7 @@ vi.mock('#worker/orgs/is-personal-org.ts', () => ({
 	isPersonalOrg: async () => true,
 }))
 
+import { createTestOrgAuditWriter } from '#worker/test-support/create-audit-db.ts'
 import { rankMemoryVectorIdsWithin } from './memory-search.ts'
 import {
 	acknowledgeSurfacedMemories,
@@ -366,6 +367,7 @@ test('memory service upserts, verifies, soft deletes, and validates source uris'
 		tags: ['theme', 'dark-mode'],
 		sourceUris: [editorThemeUri],
 		verificationReference: 'verify-1',
+		audit: null,
 	})
 	expect(created.mode).toBe('created')
 	expect(created.memory.subject).toBe('Preferred editor theme')
@@ -396,6 +398,7 @@ test('memory service upserts, verifies, soft deletes, and validates source uris'
 		tags: ['theme', 'dark-mode'],
 		sourceUris: [editorThemeUri, memoryDocsUri],
 		verificationReference: 'verify-2',
+		audit: null,
 	})
 	expect(updated.mode).toBe('updated')
 	expect(updated.memory.summary).toBe('User prefers dark mode everywhere.')
@@ -405,6 +408,7 @@ test('memory service upserts, verifies, soft deletes, and validates source uris'
 		...base,
 		memoryId: created.memory.id,
 		force: false,
+		audit: null,
 	})
 	expect(deleted?.status).toBe('deleted')
 	expect(await getMemory({ ...base, memoryId: created.memory.id })).toBeNull()
@@ -423,6 +427,7 @@ test('memory service upserts, verifies, soft deletes, and validates source uris'
 			summary: 'This write should fail validation.',
 			sourceUris: ['not-a-url'],
 			verificationReference: 'verify-4',
+			audit: null,
 		}),
 	).rejects.toThrow('Memory source_uris entries must be valid URLs.')
 
@@ -458,6 +463,7 @@ test('memory search returns mutable user-owned ids and upsert rejects unknown id
 		summary: 'Search results should return ids that mutation calls can reuse.',
 		category: 'workflow',
 		verificationReference: 'verify-3',
+		audit: null,
 	})
 	await upsertMemory({
 		env: runtimeEnv,
@@ -466,6 +472,7 @@ test('memory search returns mutable user-owned ids and upsert rejects unknown id
 		summary: 'This other-user memory must not leak through search.',
 		category: 'workflow',
 		verificationReference: 'verify-4',
+		audit: null,
 	})
 
 	const search = await searchMemoryRecords({
@@ -484,11 +491,16 @@ test('memory search returns mutable user-owned ids and upsert rejects unknown id
 		summary: 'The exact search result id was accepted by upsert.',
 		category: 'workflow',
 		verificationReference: 'verify-5',
+		audit: null,
 	})
 	expect(updated.mode).toBe('updated')
 	expect(updated.memory.id).toBe(match.id)
 
-	const deleted = await deleteMemory({ ...base, memoryId: match.id })
+	const deleted = await deleteMemory({
+		...base,
+		memoryId: match.id,
+		audit: null,
+	})
 	expect(deleted?.id).toBe(match.id)
 	expect(deleted?.status).toBe('deleted')
 
@@ -500,6 +512,7 @@ test('memory search returns mutable user-owned ids and upsert rejects unknown id
 			summary: 'User prefers a dark theme in editors.',
 			category: 'preference',
 			verificationReference: 'verify-6',
+			audit: null,
 		}),
 	).rejects.toThrow(
 		'Memory "transcribed-memory-id" was not found in mutable memory storage for this signed-in user.',
@@ -518,6 +531,7 @@ test('memory search with a granted scope ranks only granted memories', async () 
 				subject: `Release checklist ${label}`,
 				summary: `Release checklist notes for ${label}.`,
 				verificationReference: `verify-${label}`,
+				audit: null,
 			}),
 		)
 	}
@@ -550,6 +564,7 @@ test('memory surfacing suppresses repeated memories per conversation', async () 
 		summary: 'User prefers deployments after 4pm.',
 		category: 'workflow',
 		verificationReference: 'verify-3',
+		audit: null,
 	})
 	const surface = (conversationId: string) =>
 		surfaceRelevantMemories({
@@ -593,6 +608,7 @@ test('acknowledgeSurfacedMemories writes suppressions and last_accessed in one b
 		summary: 'Atomic acknowledgement coverage.',
 		category: 'workflow',
 		verificationReference: 'verify-ack-batch',
+		audit: null,
 	})
 	testDb.batches.length = 0
 
@@ -811,28 +827,96 @@ test('force deletion removes an already soft-deleted memory only for its authori
 		subject: 'Delete fixture',
 		summary: 'Delete fixture',
 		verificationReference: 'verified',
+		audit: null,
 	})
 	const memoryId = created.memory.id
 	expect(
-		(await deleteMemory({ ...base, memoryId, force: false }))?.status,
+		(await deleteMemory({ ...base, memoryId, force: false, audit: null }))
+			?.status,
 	).toBe('deleted')
 	expect(await getMemory({ ...base, memoryId })).toBeNull()
-	expect(await deleteMemory({ ...base, memoryId, force: false })).toBeNull()
+	expect(
+		await deleteMemory({ ...base, memoryId, force: false, audit: null }),
+	).toBeNull()
 	expect(
 		await deleteMemory({
 			...base,
 			userId: ownerIdFromStored('foreign'),
 			memoryId,
 			force: true,
+			audit: null,
 		}),
 	).toBeNull()
 	expect(
 		await getMemory({ ...base, memoryId, includeDeleted: true }),
 	).not.toBeNull()
-	expect((await deleteMemory({ ...base, memoryId, force: true }))?.id).toBe(
-		memoryId,
-	)
+	expect(
+		(await deleteMemory({ ...base, memoryId, force: true, audit: null }))?.id,
+	).toBe(memoryId)
 	expect(
 		await getMemory({ ...base, memoryId, includeDeleted: true }),
 	).toBeNull()
+})
+
+test('memory writes audit create, real edits by field name, and one delete, never the text', async () => {
+	const testDb = createMemoryTestDb()
+	const audit = createTestOrgAuditWriter({ actorUserId: 'person-1' })
+	const base = {
+		env: env(testDb.db),
+		userId: ownerIdFromStored('user-123'),
+		audit,
+	}
+	const created = await upsertMemory({
+		...base,
+		subject: 'Preferred editor theme',
+		summary: 'User prefers a dark theme in editors.',
+		category: 'preference',
+		verificationReference: 'verify-1',
+	})
+	// Same content again is not a change.
+	await upsertMemory({
+		...base,
+		memoryId: created.memory.id,
+		subject: 'Preferred editor theme',
+		summary: 'User prefers a dark theme in editors.',
+		category: 'preference',
+		verificationReference: 'verify-2',
+	})
+	await upsertMemory({
+		...base,
+		memoryId: created.memory.id,
+		subject: 'Editor theme',
+		summary: 'User prefers dark mode everywhere.',
+		category: 'preference',
+		verificationReference: 'verify-3',
+	})
+	await deleteMemory({ ...base, memoryId: created.memory.id })
+	const { results } = await audit.db
+		.prepare(
+			`SELECT org_id, action, resource_type, resource_id, details_json
+			 FROM org_audit_events ORDER BY created_at, rowid`,
+		)
+		.all<{
+			org_id: string
+			action: string
+			resource_type: string
+			resource_id: string
+			details_json: string
+		}>()
+	expect(
+		results.map((row) => [row.action, JSON.parse(row.details_json)]),
+	).toEqual([
+		['memory.created', { name: 'Preferred editor theme', fields: [] }],
+		['memory.updated', { name: 'Editor theme', fields: ['title', 'content'] }],
+		['memory.deleted', { name: 'Editor theme', fields: [] }],
+	])
+	expect(
+		results.every(
+			(row) =>
+				row.org_id === ownerIdFromStored('user-123') &&
+				row.resource_type === 'memory' &&
+				row.resource_id === created.memory.id,
+		),
+	).toBe(true)
+	expect(JSON.stringify(results)).not.toContain('dark mode everywhere')
 })

@@ -8,7 +8,7 @@ import { credentialPickSchema } from '#universal/credential-pick-schema.ts'
 import { loadPackageMappingScopeForRequest } from '#worker/credentials/package-mapping-scope-access.ts'
 import {
 	packageIdLookupDescription,
-	packageNameLookupDescription,
+	packageKodyIdOptionalCamelInput,
 } from '#worker/package-registry/package-name.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -199,6 +199,7 @@ export const credentialMappingProposeCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'credentialMappingPropose',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
 			'Propose which credentials a package uses: org default mappings (defaults), your own defaults (mine), per-trigger mappings for your instance of a cron job, subscription, or webhook (triggers), and triggers to turn on with no mapping (enable). Never writes a mapping. Returns an approval URL to send to the person; nothing changes until they review it and click Approve, which applies every change at once and turns on every trigger it maps or enables. A webhook URL must be minted before it can be approved; minting alone does not turn it on. email.message.received and email.message.quarantined run only for a sender: pass sender (kind member, address, domain, or any_authenticated, and value except for any_authenticated) so the approval link names who it runs for. view.canApprove false lists what to fix first in view.changes[].error, view.enable[].error, and view.errors (unknown need or trigger, unminted webhook, missing or ambiguous credential with a createUrl, kind or provider mismatch, org defaults without package:write). Once the person approves, credentialTriggerPickSet can set those trigger picks again later. Needs package:execute on the package.',
@@ -223,11 +224,7 @@ export const credentialMappingProposeCapability = defineDomainCapability(
 					.min(1)
 					.optional()
 					.describe(packageIdLookupDescription),
-				kodyId: z
-					.string()
-					.min(1)
-					.optional()
-					.describe(packageNameLookupDescription),
+				kodyId: packageKodyIdOptionalCamelInput(),
 				defaults: needPicksSchema
 					.optional()
 					.describe('Org default mappings, keyed by need key.'),
@@ -284,7 +281,7 @@ export const credentialMappingProposeCapability = defineDomainCapability(
 					),
 			})
 			.refine((input) => Boolean(input.packageId ?? input.kodyId), {
-				message: 'Provide packageId or kodyId.',
+				message: 'Provide packageId or leftover kodyId. Prefer packageId.',
 				path: ['packageId'],
 			}),
 		outputSchema: z.object({

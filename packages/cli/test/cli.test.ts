@@ -32,6 +32,30 @@ import {
 	type StoredCredentials,
 } from '../src/store.js'
 
+/**
+ * Point CLI store lookups at an empty temp config home so host `kody login`
+ * / bootstrap files cannot change these tests (#4183).
+ */
+async function withTempKodyHome<T>(run: () => Promise<T>): Promise<T> {
+	const home = mkdtempSync(join(tmpdir(), 'kody-cli-hermetic-'))
+	const previousHome = process.env.HOME
+	const previousXdg = process.env.XDG_CONFIG_HOME
+	const previousToken = process.env.KODY_API_TOKEN
+	process.env.HOME = home
+	process.env.XDG_CONFIG_HOME = home
+	delete process.env.KODY_API_TOKEN
+	try {
+		return await run()
+	} finally {
+		if (previousHome === undefined) delete process.env.HOME
+		else process.env.HOME = previousHome
+		if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME
+		else process.env.XDG_CONFIG_HOME = previousXdg
+		if (previousToken === undefined) delete process.env.KODY_API_TOKEN
+		else process.env.KODY_API_TOKEN = previousToken
+	}
+}
+
 function sampleLoginCredentials(
 	overrides: Partial<StoredCredentials> = {},
 ): StoredCredentials {
@@ -355,8 +379,11 @@ test('resolveApiToken prefers --token, falls back to KODY_API_TOKEN, and require
 	)
 	assert.equal(resolveApiToken({}, { KODY_API_TOKEN: ' env ' }), 'env')
 	assert.throws(
-		() => resolveApiToken({}, {}),
-		/not authenticated[\s\S]*cliCredentialBootstrap[\s\S]*kody\.cliCredentialBootstrap[\s\S]*cli_command[\s\S]*never ask a human to paste a token[\s\S]*kody login[\s\S]*tokenCreate[\s\S]*KODY_API_TOKEN/,
+		() =>
+			resolveApiToken({}, {}, 'this command', {
+				loadApiToken: () => null,
+			}),
+		/not authenticated[\s\S]*operationId `cliCredentialBootstrap`[\s\S]*not `execute`[\s\S]*cli_command[\s\S]*never ask a human to paste a token[\s\S]*kody login[\s\S]*tokenCreate[\s\S]*KODY_API_TOKEN/,
 	)
 })
 
@@ -517,6 +544,7 @@ test('resolveLocalExecuteBearer fails clearly when neither login nor token is av
 })
 
 test('shouldUseApiToken prefers explicit --token and env token when not logged in', () => {
+	const noStoredToken = () => null
 	assert.equal(
 		shouldUseApiToken({
 			tokenValues: { token: 'flag' },
@@ -524,6 +552,7 @@ test('shouldUseApiToken prefers explicit --token and env token when not logged i
 			allowEnvWithoutLogin: true,
 			env: {},
 			hasSession: true,
+			loadApiToken: noStoredToken,
 		}),
 		true,
 	)
@@ -534,6 +563,7 @@ test('shouldUseApiToken prefers explicit --token and env token when not logged i
 			allowEnvWithoutLogin: true,
 			env: { KODY_API_TOKEN: 'env-tok' },
 			hasSession: false,
+			loadApiToken: noStoredToken,
 		}),
 		true,
 	)
@@ -544,6 +574,7 @@ test('shouldUseApiToken prefers explicit --token and env token when not logged i
 			allowEnvWithoutLogin: true,
 			env: { KODY_API_TOKEN: 'env-tok' },
 			hasSession: true,
+			loadApiToken: noStoredToken,
 		}),
 		false,
 	)
@@ -554,6 +585,7 @@ test('shouldUseApiToken prefers explicit --token and env token when not logged i
 			allowEnvWithoutLogin: true,
 			env: {},
 			hasSession: false,
+			loadApiToken: noStoredToken,
 		}),
 		false,
 	)
@@ -692,32 +724,34 @@ test('api command refuses bootstrap redeem and documents auth bootstrap', async 
 })
 
 test('--org selects an org for org-scoped commands and rejects a blank slug', async () => {
-	let stderr = ''
-	const missing = await runCli(['search', '--org', 'acme'], {
-		stderr: (text) => {
-			stderr += text
-		},
-	})
-	assert.equal(missing, 1)
-	assert.match(stderr, /No login stored for org "acme"|Not logged in/)
+	await withTempKodyHome(async () => {
+		let stderr = ''
+		const missing = await runCli(['search', '--org', 'acme'], {
+			stderr: (text) => {
+				stderr += text
+			},
+		})
+		assert.equal(missing, 1)
+		assert.match(stderr, /No login stored for org "acme"|Not logged in/)
 
-	stderr = ''
-	const blank = await runCli(['login', '--org', '   '], {
-		stderr: (text) => {
-			stderr += text
-		},
-	})
-	assert.equal(blank, 1)
-	assert.match(stderr, /kody login --org acme/)
+		stderr = ''
+		const blank = await runCli(['login', '--org', '   '], {
+			stderr: (text) => {
+				stderr += text
+			},
+		})
+		assert.equal(blank, 1)
+		assert.match(stderr, /kody login --org acme/)
 
-	stderr = ''
-	const wrongCommand = await runCli(['install', '--org', 'acme'], {
-		stderr: (text) => {
-			stderr += text
-		},
+		stderr = ''
+		const wrongCommand = await runCli(['install', '--org', 'acme'], {
+			stderr: (text) => {
+				stderr += text
+			},
+		})
+		assert.equal(wrongCommand, 1)
+		assert.match(stderr, /`--org` is not used with `kody install`/)
 	})
-	assert.equal(wrongCommand, 1)
-	assert.match(stderr, /`--org` is not used with `kody install`/)
 })
 
 type ApiStub = {
@@ -798,31 +832,32 @@ test('execute with --token (no --local) posts /v1/execute and never requires log
 })
 
 test('execute without token or login prompts clearly', async () => {
-	const previousMcpUrl = process.env.KODY_MCP_URL
-	const previousToken = process.env.KODY_API_TOKEN
-	process.env.KODY_MCP_URL = 'http://127.0.0.1:9/unreachable-mcp'
-	delete process.env.KODY_API_TOKEN
-	let stderr = ''
-	try {
-		const code = await runCli(['execute', '--code', 'export default () => 1'], {
-			stdout: () => {},
-			stderr: (text) => (stderr += text),
-		})
-		assert.equal(code, 1)
-	} finally {
-		if (previousMcpUrl === undefined) delete process.env.KODY_MCP_URL
-		else process.env.KODY_MCP_URL = previousMcpUrl
-		if (previousToken === undefined) delete process.env.KODY_API_TOKEN
-		else process.env.KODY_API_TOKEN = previousToken
-	}
-	assert.match(stderr, /Not authenticated/)
-	assert.match(stderr, /cliCredentialBootstrap/)
-	assert.match(stderr, /cli_command/)
-	assert.match(stderr, /never ask a human to paste a token/)
-	assert.match(stderr, /kody login/)
-	assert.match(stderr, /tokenCreate/)
-	assert.match(stderr, /org:execute/)
-	assert.match(stderr, /KODY_API_TOKEN/)
+	await withTempKodyHome(async () => {
+		const previousMcpUrl = process.env.KODY_MCP_URL
+		process.env.KODY_MCP_URL = 'http://127.0.0.1:9/unreachable-mcp'
+		let stderr = ''
+		try {
+			const code = await runCli(
+				['execute', '--code', 'export default () => 1'],
+				{
+					stdout: () => {},
+					stderr: (text) => (stderr += text),
+				},
+			)
+			assert.equal(code, 1)
+		} finally {
+			if (previousMcpUrl === undefined) delete process.env.KODY_MCP_URL
+			else process.env.KODY_MCP_URL = previousMcpUrl
+		}
+		assert.match(stderr, /Not authenticated/)
+		assert.match(stderr, /cliCredentialBootstrap/)
+		assert.match(stderr, /cli_command/)
+		assert.match(stderr, /never ask a human to paste a token/)
+		assert.match(stderr, /kody login/)
+		assert.match(stderr, /tokenCreate/)
+		assert.match(stderr, /org:execute/)
+		assert.match(stderr, /KODY_API_TOKEN/)
+	})
 })
 
 test('execute --local without token or login fails clearly', async () => {
@@ -834,7 +869,16 @@ test('execute --local without token or login fails clearly', async () => {
 	let stderr = ''
 	try {
 		const code = await runCli(
-			['execute', '--local', '--code', 'export default () => 1'],
+			[
+				'execute',
+				'--local',
+				'--mcp-url',
+				'https://no-login-test.invalid/mcp',
+				'--api-url',
+				'https://api.no-login-test.invalid',
+				'--code',
+				'export default () => 1',
+			],
 			{ stdout: () => {}, stderr: (text) => (stderr += text) },
 		)
 		assert.equal(code, 1)
@@ -1085,18 +1129,26 @@ test('execute --local --invoke rejects non-package export keys outside a package
 	}
 })
 
-test('buildExecuteToolArgs passes invoke without code and keeps params', () => {
+test('buildExecuteToolArgs mints invoke into code and keeps params', () => {
 	assert.deepEqual(
 		buildExecuteToolArgs({
-			invoke: 'kody:@cameronpak/skills/skill-get',
+			invoke: '@acme/skills#skill-get',
 			paramsJson: '{"name":"demo"}',
 			conversationId: 'conv-1',
 		}),
 		{
-			invoke: 'kody:@cameronpak/skills/skill-get',
+			code: `import action from "kody:@acme/skills/skill-get"
+
+export default async function main(params) {
+	return await action(params)
+}`,
 			params: { name: 'demo' },
 			conversationId: 'conv-1',
 		},
+	)
+	assert.throws(
+		() => buildExecuteToolArgs({ invoke: 'https://example.com/mod.js' }),
+		/Unsupported execute invoke specifier/,
 	)
 })
 

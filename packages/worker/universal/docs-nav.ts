@@ -120,6 +120,7 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 			},
 			{ slug: 'package-authoring', label: 'Authoring' },
 			{ slug: 'package-sharing', label: 'Sharing a package' },
+			{ slug: 'shared-packages', label: 'Shared packages for many accounts' },
 			{ slug: 'package-skills', label: 'Package skills' },
 			{ slug: 'package-apps', label: 'Package apps' },
 			{
@@ -128,6 +129,7 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 			},
 			{ slug: 'package-subscriptions', label: 'Subscriptions and events' },
 			{ slug: 'mcp-events', label: 'MCP Events' },
+			{ slug: 'wake-your-agent', label: 'Wake your agent' },
 			{ slug: 'heavy-work-offload', label: 'Offload heavy work' },
 		],
 	},

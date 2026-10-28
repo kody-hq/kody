@@ -1,5 +1,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import {
+	isGrantablePermission,
+	isOrgWideReadPermission,
+} from '@kody-internal/shared/grant-presets.ts'
+import {
 	orgPermissions,
 	type OrgGrantResourceType,
 	type OrgPermission,
@@ -280,6 +284,20 @@ function denialCode(
 	return null
 }
 
+function ownerCanGrant(
+	permission: OrgPermission,
+	resource: OrgResource | undefined,
+) {
+	if (resource) return 'An org Owner can grant it.'
+	if (isOrgWideReadPermission(permission)) {
+		return 'An org Owner can grant it org-wide on the Grants page or with accessGrant resource_type org.'
+	}
+	if (isGrantablePermission('org', permission)) {
+		return 'An org Owner can grant it org-wide with accessGrant resource_type org.'
+	}
+	return 'An org Owner can grant it.'
+}
+
 function denialMessage(
 	code: AuthorizationDenialCode,
 	permission: OrgPermission,
@@ -293,7 +311,7 @@ function denialMessage(
 		case 'wrong_org':
 			return `${resource ? describeResource(resource, permission) : 'This resource'} belongs to another org.`
 		case 'missing_permission':
-			return `Missing ${permission}${target}. An org Owner can grant it.`
+			return `Missing ${permission}${target}. ${ownerCanGrant(permission, resource)}`
 		case 'credential_scope':
 			return `This credential is not scoped for ${permission}${target}. Mint a token that adds it: from Kody MCP, call cliCredentialBootstrap({ lifetime: "short", scopes: [${mintScopes.map((scope) => JSON.stringify(scope)).join(', ')}] }) and run the returned cli_command; or after \`kody login\`, run \`npx @kodycodes/cli auth bootstrap --lifetime short --scopes ${mintScopes.join(',')}\`. Use those scopes with tokenCreate only for CI/headless.`
 		case 'connection_profile': {
@@ -478,7 +496,7 @@ export function checkOrgWide(
 		permission,
 		access,
 		resource: undefined,
-		message: `Missing ${permission} across this org. A grant on one resource does not cover org-wide reads. An org Owner can grant it.`,
+		message: `Missing ${permission} across this org. A grant on one resource does not cover org-wide reads. ${ownerCanGrant(permission, undefined)}`,
 	})
 }
 
@@ -524,15 +542,20 @@ export async function authorizePackageWrite(
 }
 
 /**
- * A bound profile names existing packages, so it cannot create one. Call this
- * from saved-package creation (`packageSave` and `packageGetGitRemote` when
- * the package does not exist yet, `communityFork`, `repoPromoteToPackage`).
- * Org-level `package:create` stays open so plain `repoCreate` is unchanged.
+ * The one check for creating a saved package (`packageSave` and
+ * `packageGetGitRemote` when the package does not exist yet, `communityFork`,
+ * `repoPromoteToPackage`). Creation needs org-level `package:create`, never
+ * org-wide `package:write`, which no org grant can hold. Writes to existing
+ * packages stay on `authorizePackageWrite`.
+ *
+ * A bound profile names existing packages, so it cannot create one. Plain
+ * `repoCreate` keeps its own `package:create` check and is unaffected.
  */
-export async function denyProfileBoundPackageCreate(ctx: {
+export async function authorizePackageCreate(ctx: {
 	env: Env
 	request: RequestContext | null
 }): Promise<void> {
+	await authorize(ctx, 'package:create')
 	if (!ctx.request?.credential.profileName) return
 	const access = await computeEffectivePermissions({
 		env: ctx.env,
@@ -638,9 +661,20 @@ export function authorizeCredentialScope(
 /**
  * What a capability or Open API operation requires. `none` declares that it
  * touches no org data (who-am-I, static guides, site-admin tools, which
- * `requiredRole` gates instead).
+ * `requiredRole` gates instead). A list passes when any one is held, for a
+ * surface whose handler picks the permission per call (create vs update).
  */
-export type SurfacePermission = OrgPermission | 'none'
+export type SurfacePermission =
+	| OrgPermission
+	| 'none'
+	| readonly [OrgPermission, OrgPermission, ...Array<OrgPermission>]
+
+export function surfacePermissionList(
+	permission: SurfacePermission,
+): ReadonlyArray<OrgPermission> {
+	if (permission === 'none') return []
+	return typeof permission === 'string' ? [permission] : permission
+}
 
 /**
  * A capability that needs a live person ran without one: from a triggered
@@ -679,6 +713,9 @@ export function isLivePersonRequest(request: RequestContext | null): boolean {
 		case 'webhook':
 		case 'inbound-email':
 		case 'platform-event':
+		// A machine acting for the requester while their run is active is
+		// never a live person (ECP 8.2), so requiresLivePerson denies.
+		case 'execution-context-run':
 			return false
 		default: {
 			const exhaustive: never = kind
@@ -731,6 +768,7 @@ export function nonInteractiveTriggerOf(
 		case 'mcp-oauth':
 		case 'cli':
 		case 'api-token':
+		case 'execution-context-run':
 			return { type: 'unattended', credentialId: id }
 		default: {
 			const exhaustive: never = kind
@@ -751,15 +789,31 @@ export function assertLivePerson(
 
 /**
  * The dispatch gate every capability and Open API operation passes. The
- * permission must be held in the org; handlers then call `authorize` with
+ * permission (or one from a list) must be held in the org; handlers then call `authorize` with
  * the concrete resource.
  */
 export async function authorizeSurface(
 	ctx: { env: Env; request: RequestContext | null },
 	permission: SurfacePermission,
 ): Promise<void> {
-	if (permission === 'none') return
-	await authorize(ctx, permission)
+	const [first, ...rest] = surfacePermissionList(permission)
+	if (!first) return
+	try {
+		await authorize(ctx, first)
+	} catch (error) {
+		if (!(error instanceof AuthorizationError)) throw error
+		for (const alternative of rest) {
+			const allowed = await authorize(ctx, alternative).then(
+				() => true,
+				(caught: unknown) => {
+					if (caught instanceof AuthorizationError) return false
+					throw caught
+				},
+			)
+			if (allowed) return
+		}
+		throw error
+	}
 }
 
 // Re-export so callers that only need the vocabulary keep one import path.

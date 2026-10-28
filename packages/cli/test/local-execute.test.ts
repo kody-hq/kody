@@ -543,6 +543,21 @@ test('createLocalRuntimeModuleSource exports credential and credentials for ad h
 	assert.match(source, /credential,\s*credentials,/s)
 })
 
+test('ad-hoc local host CAF does not send packageId (unbound)', () => {
+	const source = createLocalRuntimeModuleSource()
+	const cafStart = source.indexOf(
+		'export async function createAuthenticatedFetch',
+	)
+	assert.ok(cafStart >= 0)
+	const cafEnd = source.indexOf('export const secretHeaders', cafStart)
+	assert.ok(cafEnd > cafStart)
+	const caf = source.slice(cafStart, cafEnd)
+	assert.match(caf, /authenticatedFetch/)
+	assert.doesNotMatch(caf, /packageId/)
+	assert.doesNotMatch(source, /kpb1\./)
+	assert.doesNotMatch(source, /__kodyPackageBinding/)
+})
+
 test('createLocalRuntimeModuleSource implements kody.gatewayFetchStream as a host method', () => {
 	const source = createLocalRuntimeModuleSource()
 	assert.match(source, /async function gatewayFetchStream/)
@@ -929,6 +944,8 @@ export default async function main(p: { a?: string }) {
 				'--local',
 				'--token',
 				goodToken,
+				'--mcp-url',
+				`${apiUrl}/mcp`,
 				'--api-url',
 				apiUrl,
 				'--params',
@@ -1114,6 +1131,8 @@ test(
 				'src/bin.ts',
 				'execute',
 				'--local',
+				'--mcp-url',
+				`${apiUrl}/mcp`,
 				'--api-url',
 				apiUrl,
 				'--code',

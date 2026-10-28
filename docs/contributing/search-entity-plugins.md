@@ -25,8 +25,7 @@ To add a search entity:
 5. Extend the closed unions in `search-format-types.ts`, keeping these groups
    separate:
    - Always required for any list/result type (including result-only types such
-     as `retriever_result` and `domain`): `SearchMatchType`, `SearchMatch`, and
-     `SlimSearchMatch`.
+     as `domain`): `SearchMatchType`, `SearchMatch`, and `SlimSearchMatch`.
    - Entity-backed only (types accepted by `{type}:{id}` / entity detail):
      `SearchEntityType`, `SearchEntityDetail`, and related
      `SearchEntityDetailStructured` variants as needed.
@@ -35,7 +34,7 @@ To add a search entity:
    Plugin `formatSlimMatch` alone is not enough for agent-visible list text.
 7. Teach `resolveEntityDetail` in `search-detail.ts` how to load that entity
    when `search({ entity })` should support it (skip for result-only types such
-   as `retriever_result`).
+   as `domain`).
 8. Update `parseEntityRef` in `search-format-helpers.ts` so `{type}:{id}`
    parsing accepts the new entity-backed type (first `:` is the type; the id may
    contain colons). Unknown types and malformed refs share the same
@@ -64,7 +63,6 @@ Current candidate flatten order is:
 3. `package`
 4. `integration`
 5. `secret`
-6. `retriever_result`
 
 The **package** plugin may emit additional first-class candidates for strong
 export contracts (`id` / entity ref `package:{kodyId}#{subpath}`) alongside the

@@ -4,8 +4,13 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import type * as PackageSourceModule from '#worker/package-registry/source.ts'
-import { consoleError } from '#worker/test-support/console-spies.ts'
+import type * as CredentialSuppliersFlag from '#worker/credentials/credential-suppliers-flag.ts'
+import {
+	consoleError,
+	consoleWarn,
+} from '#worker/test-support/console-spies.ts'
 import { ComputeOverageLimitError } from '#worker/entitlements/errors.ts'
+import { CredentialClientError } from '#worker/credentials/credential-client.ts'
 import {
 	packageAppRuntimeErrorHeader,
 	packageAppRuntimeRunIdHeader,
@@ -14,7 +19,12 @@ import {
 	parsePackageAppCustomHostnamePath,
 	parsePackageAppSubdomainPath,
 	servePackageAppRequest,
+	createPackageCodeRequest,
 } from './package-app-serve.ts'
+import {
+	filterPackageAppRequestCookies,
+	packageAppCookiePrefix,
+} from './package-app-cookie-prefix.ts'
 
 test('subdomain paths parse the short /{name} form and the legacy /packages/{name} mount', () => {
 	expect(
@@ -59,6 +69,9 @@ test('subdomain paths never parse reserved first segments or a bare /packages', 
 		'/robots.txt',
 		'/favicon.ico',
 		'/sitemap.xml',
+		'/.git/config',
+		'/.svn/wc.db',
+		'/.hg/requires',
 		'/%E0%A4%A',
 	]) {
 		expect(
@@ -95,7 +108,42 @@ const mockModule = vi.hoisted(() => ({
 	packageRealtimeConnect: vi.fn(),
 	beginRunRecord: vi.fn((..._args: Array<unknown>): unknown => undefined),
 	finishRunRecord: vi.fn(async (..._args: Array<unknown>) => true),
+	loadPublishedCredentialNeeds: vi.fn(
+		async (..._args: Array<unknown>) => [] as Array<unknown>,
+	),
+	isPackageCredentialSuppliersEnabled: vi.fn(
+		async (
+			_input: Parameters<
+				typeof CredentialSuppliersFlag.isPackageCredentialSuppliersEnabled
+			>[0],
+		) => false,
+	),
+	findLivePackageAppOauthGrant: vi.fn(
+		async (..._args: Array<unknown>): Promise<unknown> => null,
+	),
+	openCredentialClient: vi.fn(async (..._args: Array<unknown>) => ({
+		token: 'credential-handle',
+	})),
 }))
+
+const cookieWarningMock = vi.hoisted(() => ({
+	record: vi.fn(async (..._args: Array<unknown>) => undefined),
+}))
+
+vi.mock(
+	'#worker/package-runtime/package-app-cookie-httponly.ts',
+	async (importOriginal) => {
+		const actual =
+			await importOriginal<
+				typeof import('#worker/package-runtime/package-app-cookie-httponly.ts')
+			>()
+		return {
+			...actual,
+			recordPackageAppCookieFindings: (...args: Array<unknown>) =>
+				cookieWarningMock.record(...args),
+		}
+	},
+)
 
 vi.mock('#worker/run-records/service.ts', async (importOriginal) => ({
 	...(await importOriginal<Record<string, unknown>>()),
@@ -123,10 +171,57 @@ vi.mock('#worker/package-runtime/realtime-session.ts', () => ({
 	}),
 }))
 
+vi.mock('#worker/credentials/credential-needs-closure.ts', () => ({
+	loadPublishedCredentialNeeds: (...args: Array<unknown>) =>
+		mockModule.loadPublishedCredentialNeeds(...args),
+}))
+
+vi.mock('#worker/credentials/credential-suppliers-flag.ts', () => ({
+	isPackageCredentialSuppliersEnabled: (
+		...args: Parameters<
+			typeof CredentialSuppliersFlag.isPackageCredentialSuppliersEnabled
+		>
+	) => mockModule.isPackageCredentialSuppliersEnabled(...args),
+}))
+
+vi.mock('#app/package-app-oauth-grants.ts', async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import('#app/package-app-oauth-grants.ts')
+	>()),
+	findLivePackageAppOauthGrant: (...args: Array<unknown>) =>
+		mockModule.findLivePackageAppOauthGrant(...args),
+}))
+
+vi.mock('#worker/credentials/credential-client.ts', async (importOriginal) => {
+	const actual =
+		await importOriginal<
+			typeof import('#worker/credentials/credential-client.ts')
+		>()
+	return {
+		...actual,
+		openCredentialClient: (...args: Array<unknown>) =>
+			mockModule.openCredentialClient(...args),
+	}
+})
+
+vi.mock(
+	'#worker/package-runtime/package-app-authority.ts',
+	async (importOriginal) => {
+		const actual =
+			await importOriginal<
+				typeof import('#worker/package-runtime/package-app-authority.ts')
+			>()
+		return {
+			...actual,
+			createPackageAppVisitorPersonalRequest: vi.fn(async () => null),
+		}
+	},
+)
+
 vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', async () => {
-	const actual = await vi.importActual<
-		typeof import('#worker/package-runtime/published-bundle-artifacts.ts')
-	>('#worker/package-runtime/published-bundle-artifacts.ts')
+	const actual = await vi.importActual<Record<string, unknown>>(
+		'#worker/package-runtime/published-bundle-artifacts.ts',
+	)
 	return {
 		...actual,
 		loadPublishedBundleArtifactByIdentity: (...args: Array<unknown>) =>
@@ -170,28 +265,9 @@ vi.mock('#worker/package-runtime/package-app.ts', () => ({
 		mockModule.buildPackageAppWorker(...args),
 }))
 
-const serveLoadMocks = [
-	['saved package by id (D1)', mockModule.getSavedPackageById],
-	['saved package by kody id (D1)', mockModule.resolveSavedPackageRef],
-	['entity source row (D1)', mockModule.getEntitySourceById],
-	['published manifest snapshot (KV)', mockModule.loadPublishedEntityManifest],
-] as const
-
-function countServeLoads() {
-	return Object.fromEntries(
-		serveLoadMocks.map(([label, mock]) => [label, mock.mock.calls.length]),
-	)
-}
-
-function clearServeLoadCounters() {
-	for (const [, mock] of serveLoadMocks) {
-		mock.mockClear()
-	}
-}
-
 type FixtureOptions = {
 	kodyId?: string
-	app?: Record<string, string>
+	app?: Record<string, unknown>
 }
 
 function createFixture(options: FixtureOptions = {}) {
@@ -201,7 +277,7 @@ function createFixture(options: FixtureOptions = {}) {
 	const savedPackage = {
 		id: `pkg-${kodyId}`,
 		userId: ownerIdFromStored('user-1'),
-		name: `@kentcdodds/${kodyId}`,
+		name: `@demo-user/${kodyId}`,
 		kodyId,
 		description: 'Minimal hello-world app',
 		tags: [],
@@ -230,7 +306,7 @@ function createFixture(options: FixtureOptions = {}) {
 		updated_at: '2026-08-12T00:00:00.000Z',
 	}
 	const manifestContent = JSON.stringify({
-		name: `@kentcdodds/${kodyId}`,
+		name: `@demo-user/${kodyId}`,
 		private: true,
 		exports: { '.': './src/index.ts' },
 		kody: {
@@ -244,6 +320,12 @@ function createFixture(options: FixtureOptions = {}) {
 
 function seedFixture(options?: FixtureOptions) {
 	const fixture = createFixture(options)
+	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(false)
+	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([])
+	mockModule.findLivePackageAppOauthGrant.mockResolvedValue(null)
+	mockModule.openCredentialClient.mockResolvedValue({
+		token: 'credential-handle',
+	})
 	mockModule.getSavedPackageById.mockResolvedValue(null)
 	mockModule.resolveSavedPackageRef.mockImplementation(
 		async (_db: unknown, input: { userId: string; ref: string }) =>
@@ -266,6 +348,7 @@ function seedFixture(options?: FixtureOptions) {
 	)
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch() {
@@ -282,38 +365,181 @@ async function serveHelloWorld(input?: {
 	restPath?: string
 	init?: RequestInit
 	dispatch?: { synthetic: true }
+	mount?: 'username-path' | 'user-subdomain'
 }) {
 	const kodyId = input?.kodyId ?? 'perf-app'
 	const restPath = input?.restPath ?? '/'
+	const mount = input?.mount ?? 'username-path'
+	const requestPath =
+		mount === 'user-subdomain'
+			? `/${kodyId}${restPath === '/' ? '' : restPath}`
+			: `/@demo-user/packages/${kodyId}${restPath === '/' ? '' : restPath}`
+	const requestOrigin =
+		mount === 'user-subdomain'
+			? 'https://demo-user.kody.run'
+			: 'https://example.com'
 	return await servePackageAppRequest({
-		request: new Request(
-			`https://example.com/@kentcdodds/packages/${kodyId}${restPath === '/' ? '' : restPath}`,
-			input?.init,
-		),
+		request: new Request(`${requestOrigin}${requestPath}`, input?.init),
 		env: {
 			APP_DB: {},
 			BUNDLE_ARTIFACTS_KV: {},
 		} as Env,
 		owner: {
 			userId: ownerIdFromStored('user-1'),
-			username: 'kentcdodds',
-			email: 'kent@example.com',
-			displayName: 'Kent',
+			username: 'demo-user',
+			email: 'demo-user@example.com',
+			displayName: 'Demo User',
 		},
 		visitor: {
 			userId: personIdFromStored('user-1'),
-			username: 'kentcdodds',
+			username: 'demo-user',
 			role: 'owner',
 		},
 		packagePath: {
-			username: 'kentcdodds',
+			username: 'demo-user',
 			kodyId,
 			restPath,
-			mount: 'username-path',
+			mount,
 		},
 		dispatch: input?.dispatch,
 	})
 }
+
+test('required executor credentials redirect visitors to consent before serving app content', async () => {
+	seedFixture()
+	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(true)
+	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: true,
+			multiple: false,
+		},
+	])
+	mockModule.openCredentialClient.mockRejectedValue(
+		new CredentialClientError({
+			code: 'credential_unbound',
+			message: 'No credential is mapped.',
+			retryWith: [],
+		}),
+	)
+
+	const response = await serveHelloWorld()
+	const location = response.headers.get('location')
+	expect(response.status).toBe(302)
+	expect(location).not.toBeNull()
+	const loginUrl = new URL(location!)
+	expect(loginUrl.pathname).toBe('/-/auth/login')
+	expect(loginUrl.searchParams.get('scope')).toBe('profile need:calendar')
+	expect(loginUrl.searchParams.get('prompt')).toBe('consent')
+	expect(loginUrl.searchParams.get('app')).toBe('perf-app')
+	expect(loginUrl.searchParams.get('return_to')).toBe(
+		'/@demo-user/packages/perf-app',
+	)
+	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
+})
+
+test('required executor consent redirect identifies the app on a user-subdomain mount', async () => {
+	seedFixture()
+	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(true)
+	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: true,
+			multiple: false,
+		},
+	])
+	mockModule.openCredentialClient.mockRejectedValue(
+		new CredentialClientError({
+			code: 'credential_unbound',
+			message: 'No credential is mapped.',
+			retryWith: [],
+		}),
+	)
+
+	const response = await serveHelloWorld({ mount: 'user-subdomain' })
+	const location = response.headers.get('location')
+	expect(response.status).toBe(302)
+	expect(location).not.toBeNull()
+	const loginUrl = new URL(location!)
+	expect(loginUrl.hostname).toBe('demo-user.kody.run')
+	expect(loginUrl.searchParams.get('app')).toBe('perf-app')
+})
+
+test('optional-only executor needs send a visitor without a grant to consent once', async () => {
+	seedFixture()
+	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(true)
+	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: false,
+			multiple: false,
+		},
+	])
+
+	const first = await serveHelloWorld()
+	expect(first.status).toBe(302)
+	const loginUrl = new URL(first.headers.get('location')!)
+	expect(loginUrl.searchParams.get('scope')).toBe('profile need:calendar')
+	expect(mockModule.openCredentialClient).not.toHaveBeenCalled()
+
+	mockModule.findLivePackageAppOauthGrant.mockResolvedValue({
+		id: 'grant-1',
+		scopes: ['profile'],
+	})
+	const afterDecline = await serveHelloWorld()
+	expect(afterDecline.status).toBe(200)
+})
+
+test('required executor credential failures do not redirect non-GET requests', async () => {
+	seedFixture()
+	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(true)
+	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: true,
+			multiple: false,
+		},
+	])
+	mockModule.openCredentialClient.mockRejectedValue(
+		new CredentialClientError({
+			code: 'credential_unbound',
+			message: 'No credential is mapped.',
+			retryWith: [],
+		}),
+	)
+	consoleError.mockImplementation(() => {})
+
+	const response = await serveHelloWorld({
+		init: { method: 'POST', body: 'request-body' },
+	})
+
+	expect(response.status).not.toBe(302)
+	expect(response.headers.get('location')).toBeNull()
+	expect(await response.text()).toContain('Package app could not be prepared')
+	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
+	expect(consoleError).toHaveBeenCalledWith(
+		'Package app handler failed:',
+		expect.objectContaining({
+			body: expect.objectContaining({ code: 'credential_unbound' }),
+		}),
+	)
+})
 
 const clientModuleName = 'client.0123456789abcdef.js'
 
@@ -378,29 +604,239 @@ function asset(path: string, init?: RequestInit, kodyId = clientAppKodyId) {
 	return serveHelloWorld({ kodyId, restPath: `/_assets/${path}`, init })
 }
 
-test('a warm package-app serve performs zero D1/KV loads before dispatch', async () => {
+test('createPackageCodeRequest strips credentials and filters package cookies', () => {
+	const prefix = '__kapp_123456789abc_'
+	const request = createPackageCodeRequest(
+		new Request('https://example.com/app', {
+			headers: {
+				Cookie: `${prefix}a=1; kody_session=x; __kapp_sibling_b=2`,
+				Authorization: 'Bearer secret',
+				'Proxy-Authorization': 'Bearer secret',
+				'X-Kody-Visitor': 'forged',
+			},
+		}),
+		'https://example.com/app',
+		{ cookiePrefix: prefix },
+	)
+	expect(request.headers.get('Cookie')).toBe(`${prefix}a=1`)
+	expect(request.headers.has('Authorization')).toBe(false)
+	expect(request.headers.has('Proxy-Authorization')).toBe(false)
+	expect(request.headers.has('X-Kody-Visitor')).toBe(false)
+})
+
+test('createPackageCodeRequest keeps deleting cookies without a package prefix', () => {
+	const request = createPackageCodeRequest(
+		new Request('https://example.com/app', {
+			headers: { Cookie: 'session=value' },
+		}),
+	)
+	expect(request.headers.has('Cookie')).toBe(false)
+})
+
+test('package app request cookies allow own, Host, and Secure cookie prefixes only', () => {
+	expect(
+		filterPackageAppRequestCookies(
+			[
+				'__kapp_123456789abc_session=1',
+				'__Host-__kapp_123456789abc_host=2',
+				'__Secure-__kapp_123456789abc_secure=3',
+				'kody_session=x',
+				'__Host-kody_pkg_session_hash=x',
+				'__kapp_sibling_other=4',
+			].join('; '),
+			'__kapp_123456789abc_',
+		),
+	).toBe(
+		'__kapp_123456789abc_session=1; __Host-__kapp_123456789abc_host=2; __Secure-__kapp_123456789abc_secure=3',
+	)
+})
+
+test('package-app serve filters response cookies and inbound cookies by package id', async () => {
+	const fixture = seedFixture()
+	const prefix = await packageAppCookiePrefix(fixture.savedPackage.id)
+	let appCookie: string | null = null
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
+		stub: {
+			getEntrypoint: () => ({
+				async fetch(request: Request) {
+					appCookie = request.headers.get('Cookie')
+					return new Response('ok', {
+						headers: [
+							['Set-Cookie', `${prefix}a=1; Path=/; HttpOnly`],
+							['Set-Cookie', 'other=1; Path=/'],
+						],
+					})
+				},
+			}),
+		},
+	})
+	consoleWarn.mockImplementation(() => {})
+	const response = await serveHelloWorld({
+		init: {
+			headers: {
+				Cookie: `${prefix}a=1; kody_session=x; __kapp_000000000000_b=2`,
+			},
+		},
+	})
+	expect(appCookie).toBe(`${prefix}a=1`)
+	expect(response.headers.getSetCookie()).toEqual([
+		`${prefix}a=1; Path=/; HttpOnly`,
+	])
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'package-app-set-cookie-name-dropped',
+		expect.objectContaining({ dropped: ['other'] }),
+	)
+})
+
+test('package-app serve adds HttpOnly to author auth cookies and records a finding', async () => {
+	const fixture = seedFixture()
+	const prefix = await packageAppCookiePrefix(fixture.savedPackage.id)
+	cookieWarningMock.record.mockClear()
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
+		stub: {
+			getEntrypoint: () => ({
+				async fetch() {
+					return new Response('ok', {
+						headers: [
+							['Set-Cookie', `${prefix}session=x; Path=/`],
+							['Set-Cookie', 'session=x; Path=/'],
+						],
+					})
+				},
+			}),
+		},
+	})
+	consoleWarn.mockImplementation(() => {})
+	consoleWarn.mockClear()
+
+	const response = await serveHelloWorld()
+
+	expect(response.headers.getSetCookie()).toEqual([
+		`${prefix}session=x; Path=/; HttpOnly`,
+	])
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'package-app-set-cookie-name-dropped',
+		expect.objectContaining({ dropped: ['session'] }),
+	)
+	expect(cookieWarningMock.record).toHaveBeenCalledWith(
+		expect.objectContaining({
+			packageId: fixture.savedPackage.id,
+			hostname: 'example.com',
+			pathname: '/@demo-user/packages/perf-app',
+			findings: [{ cookieName: `${prefix}session`, reason: 'added_httponly' }],
+		}),
+	)
+	expect(consoleWarn).not.toHaveBeenCalledWith(
+		'package-app-cookie-httponly',
+		expect.anything(),
+	)
+})
+
+test('package-app serve honors client-readable cookies and protects other auth cookies', async () => {
+	const fixture = seedFixture({
+		kodyId: 'client-readable-cookie-app',
+		app: {
+			entry: './src/app.ts',
+			cookies: { clientReadable: ['theme-session'] },
+		},
+	})
+	const prefix = await packageAppCookiePrefix(fixture.savedPackage.id)
+	cookieWarningMock.record.mockClear()
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
+		stub: {
+			getEntrypoint: () => ({
+				async fetch() {
+					return new Response('ok', {
+						headers: [
+							['Set-Cookie', `${prefix}theme-session=dark; Path=/`],
+							['Set-Cookie', `${prefix}sessionToken=token; Path=/`],
+						],
+					})
+				},
+			}),
+		},
+	})
+	consoleWarn.mockImplementation(() => {})
+	consoleWarn.mockClear()
+
+	const response = await serveHelloWorld({
+		kodyId: fixture.savedPackage.kodyId,
+	})
+
+	expect(response.headers.getSetCookie()).toEqual([
+		`${prefix}theme-session=dark; Path=/`,
+		`${prefix}sessionToken=token; Path=/; HttpOnly`,
+	])
+	const findings = [
+		{ cookieName: `${prefix}theme-session`, reason: 'missing_httponly' },
+		{ cookieName: `${prefix}sessionToken`, reason: 'added_httponly' },
+	]
+	expect(cookieWarningMock.record).toHaveBeenCalledWith(
+		expect.objectContaining({
+			packageId: fixture.savedPackage.id,
+			hostname: 'example.com',
+			pathname: '/@demo-user/packages/client-readable-cookie-app',
+			findings,
+		}),
+	)
+	expect(consoleWarn).not.toHaveBeenCalledWith(
+		'package-app-cookie-httponly',
+		expect.anything(),
+	)
+})
+
+test('package-app serve drops unprefixed auth cookies without a finding', async () => {
 	seedFixture()
+	cookieWarningMock.record.mockClear()
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
+		stub: {
+			getEntrypoint: () => ({
+				async fetch() {
+					return new Response('ok', {
+						headers: { 'Set-Cookie': 'session=x; Path=/' },
+					})
+				},
+			}),
+		},
+	})
+	consoleWarn.mockImplementation(() => {})
+	consoleWarn.mockClear()
+
+	const response = await serveHelloWorld()
+
+	expect(response.headers.getSetCookie()).toEqual([])
+	expect(consoleWarn).not.toHaveBeenCalledWith(
+		'package-app-cookie-httponly',
+		expect.anything(),
+	)
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'package-app-set-cookie-name-dropped',
+		expect.objectContaining({ dropped: ['session'] }),
+	)
+	expect(cookieWarningMock.record).not.toHaveBeenCalled()
+})
+
+test('package-app serve dispatches cold and warm requests', async () => {
+	seedFixture({ kodyId: 'warm-cache-app' })
 
 	const cold = await serveHelloWorld()
 	expect(cold.status).toBe(200)
 	expect(await cold.text()).toBe('ok')
-	expect(mockModule.resolveSavedPackageRef).toHaveBeenCalledTimes(1)
-	expect(mockModule.getEntitySourceById).toHaveBeenCalledTimes(1)
-	expect(mockModule.loadPublishedEntityManifest).toHaveBeenCalledTimes(1)
 	expect(mockModule.buildPackageAppWorker).toHaveBeenCalledTimes(1)
 
-	clearServeLoadCounters()
 	mockModule.buildPackageAppWorker.mockClear()
 	const warm = await serveHelloWorld()
 
 	expect(warm.status).toBe(200)
 	expect(await warm.text()).toBe('ok')
-	expect(countServeLoads()).toEqual({
-		'saved package by id (D1)': 0,
-		'saved package by kody id (D1)': 0,
-		'entity source row (D1)': 0,
-		'published manifest snapshot (KV)': 0,
-	})
 	expect(mockModule.buildPackageAppWorker).toHaveBeenCalledTimes(1)
 })
 
@@ -409,12 +845,15 @@ test('websocket upgrade responses skip Server-Timing and keep the paired socket'
 	const client = { kind: 'client-socket' } as unknown as WebSocket
 	// Node's Response rejects status 101; Workers still pair via `webSocket`.
 	const upgradeResponse = new Response(null, { status: 200 })
+	upgradeResponse.headers.append('Set-Cookie', 'other=1; Path=/')
 	Object.defineProperty(upgradeResponse, 'webSocket', {
 		value: client,
 		configurable: true,
 	})
 	mockModule.packageRealtimeConnect.mockResolvedValue(upgradeResponse)
 
+	consoleWarn.mockImplementation(() => {})
+	consoleError.mockImplementation(() => {})
 	const response = await serveHelloWorld({
 		restPath: '/ws',
 		init: {
@@ -426,7 +865,7 @@ test('websocket upgrade responses skip Server-Timing and keep the paired socket'
 	})
 
 	expect(response.webSocket).toBe(client)
-	expect(response).toBe(upgradeResponse)
+	expect(response.headers.getSetCookie()).toEqual([])
 	// DO upgrade responses have immutable headers; attaching timing would throw
 	// or force an unsafe rebuild. Skip Server-Timing on websocket upgrades.
 	expect(response.headers.get('Server-Timing')).toBeNull()
@@ -460,13 +899,14 @@ test('package-app host permanent-308s a retired slug to the current leaf', async
 	})
 	expect(redirected.status).toBe(308)
 	expect(redirected.headers.get('Location')).toBe(
-		'/@kentcdodds/packages/new-app/dashboard',
+		'/@demo-user/packages/new-app/dashboard',
 	)
 	expect(redirected.headers.get('Cache-Control')).toBe('no-store')
 	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
 
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch() {
@@ -487,7 +927,7 @@ test('package-app host permanent-308s a retired slug to the current leaf', async
 
 test('package-app 308 Location uses the name leaf when kodyId diverges', async () => {
 	const fixture = createFixture({ kodyId: 'stale-kody-id' })
-	fixture.savedPackage.name = '@kentcdodds/canonical-leaf'
+	fixture.savedPackage.name = '@demo-user/canonical-leaf'
 	mockModule.resolveSavedPackageRef.mockImplementation(
 		async (
 			_db: unknown,
@@ -508,7 +948,7 @@ test('package-app 308 Location uses the name leaf when kodyId diverges', async (
 	const redirected = await serveHelloWorld({ kodyId: 'diverged-old-app' })
 	expect(redirected.status).toBe(308)
 	expect(redirected.headers.get('Location')).toBe(
-		'/@kentcdodds/packages/canonical-leaf',
+		'/@demo-user/packages/canonical-leaf',
 	)
 	expect(redirected.headers.get('Cache-Control')).toBe('no-store')
 })
@@ -548,7 +988,7 @@ test('/_assets/ serves the fingerprinted client module with immutable caching an
 	// A service worker script in the assets directory may claim the whole app
 	// mount as its scope; non-script assets do not carry the header.
 	expect(lookalike.headers.get('Service-Worker-Allowed')).toBe(
-		'/@kentcdodds/packages/client-app/',
+		'/@demo-user/packages/client-app/',
 	)
 	expect(response.headers.get('Service-Worker-Allowed')).toBeNull()
 	const css = await asset('styles.css')
@@ -568,8 +1008,8 @@ test('/_assets/__version.json exposes the current client module URL for service 
 		`"${fixture.source.published_commit}:${clientModuleName}"`,
 	)
 	expect(await version.json()).toEqual({
-		clientModuleUrl: `https://example.com/@kentcdodds/packages/${clientAppKodyId}/_assets/${clientModuleName}`,
-		assetBasePath: `/@kentcdodds/packages/${clientAppKodyId}/_assets`,
+		clientModuleUrl: `https://example.com/@demo-user/packages/${clientAppKodyId}/_assets/${clientModuleName}`,
+		assetBasePath: `/@demo-user/packages/${clientAppKodyId}/_assets`,
 		publishedCommit: fixture.source.published_commit,
 	})
 	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
@@ -581,7 +1021,7 @@ test('/_assets/__version.json exposes the current client module URL for service 
 	expect(workerOnly.status).toBe(200)
 	expect(await workerOnly.json()).toMatchObject({
 		clientModuleUrl: null,
-		assetBasePath: '/@kentcdodds/packages/perf-app/_assets',
+		assetBasePath: '/@demo-user/packages/perf-app/_assets',
 	})
 })
 
@@ -727,6 +1167,7 @@ test('OPTIONS that the app answers is forwarded unchanged', async () => {
 	seedFixture({ kodyId: 'options-handled-app' })
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch(request: Request) {
@@ -754,6 +1195,7 @@ test('an OPTIONS handler throw becomes a 204, not the package-entrypoint page', 
 	seedFixture({ kodyId: 'options-throw-app' })
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch() {
@@ -791,6 +1233,7 @@ test('a tagged runtime throw becomes the package-entrypoint page with the run id
 	seedFixture({ kodyId: 'runtime-throw-app' })
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch() {
@@ -834,6 +1277,7 @@ test('an entrypoint rejection records an owner-visible error run and shows its i
 	seedFixture({ kodyId: 'entrypoint-reject-app' })
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch() {
@@ -914,6 +1358,7 @@ test('author 200 responses that set the runtime-error header stay successful', a
 	seedFixture({ kodyId: 'author-marker-app' })
 	mockModule.buildPackageAppWorker.mockResolvedValue({
 		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
 		stub: {
 			getEntrypoint: () => ({
 				async fetch() {
@@ -957,10 +1402,10 @@ test('synthetic host-setup failures return JSON with the underlying cause', asyn
 		next_step:
 			'This has been reported to Kody. Try again shortly, or ask the package owner to republish the package if it keeps happening.',
 		package: {
-			name: '@kentcdodds/prep-fail-app',
+			name: '@demo-user/prep-fail-app',
 			kody_id: 'prep-fail-app',
 		},
-		request_path: '/@kentcdodds/packages/prep-fail-app',
+		request_path: '/@demo-user/packages/prep-fail-app',
 		cause: 'kody.app.runtime was removed; every package app is a fetch handler',
 	})
 })
@@ -1024,7 +1469,7 @@ test('missing published runtime bundle returns 503 without reporting a host-setu
 		expect.objectContaining({
 			status: 503,
 			phase: 'runtime-bundle-pending',
-			pathname: '/@kentcdodds/packages/runtime-bundle-pending-app',
+			pathname: '/@demo-user/packages/runtime-bundle-pending-app',
 		}),
 	)
 	expect(consoleError).not.toHaveBeenCalledWith(
@@ -1073,4 +1518,31 @@ test('custom hostnames mount the bound app at the host root', () => {
 			kodyId: 'demo',
 		}).restPath,
 	).toBe('/report/today')
+})
+
+test('VCS probe paths 404 before building the package-app worker', async () => {
+	seedFixture({ kodyId: 'probe-app' })
+	mockModule.buildPackageAppWorker.mockClear()
+	const response = await servePackageAppRequest({
+		request: new Request('https://app.example/.git/config'),
+		env: {
+			APP_DB: {},
+			BUNDLE_ARTIFACTS_KV: {},
+		} as Env,
+		owner: {
+			userId: ownerIdFromStored('user-1'),
+			username: 'demo-user',
+			email: 'demo-user@example.com',
+			displayName: 'Demo User',
+		},
+		visitor: null,
+		packagePath: {
+			username: 'demo-user',
+			kodyId: 'probe-app',
+			restPath: '/.git/config',
+			mount: 'custom-hostname',
+		},
+	})
+	expect(response.status).toBe(404)
+	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
 })

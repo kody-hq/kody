@@ -27,6 +27,7 @@ import {
 	wranglerD1MigrationsRetryBaseDelayMs,
 	wranglerD1MigrationsRetryMaxAttempts,
 } from './tools/ci/retry-classifiers.ts'
+import { runWorkerDeploy } from './tools/ci/split-worker-deploy.ts'
 
 const envName = process.env.CLOUDFLARE_ENV ?? 'production'
 const portWaitTimeoutMs = 5000
@@ -285,7 +286,9 @@ if (
 }
 
 if (args[0] === 'deploy') {
-	const deployResult = await runWranglerDeployWithRetry({
+	// Production CI sets KODY_SPLIT_DEPLOY_TAG: versions upload + versions
+	// deploy of that same id (tools/ci/split-worker-deploy.ts).
+	const deployResult = await runWorkerDeploy({
 		command: wranglerCommand,
 		args: commandArgs,
 		env: processEnv,

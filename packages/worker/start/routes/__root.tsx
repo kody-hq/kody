@@ -153,6 +153,7 @@ export const Route = createRootRouteWithContext<{
 					context.queryClient,
 					context.actorKey,
 					location.searchStr,
+					context.orgScope?.orgSlug ?? null,
 					!context.inPlaceNavigation,
 				),
 				context.verifyAccess
@@ -208,9 +209,11 @@ export const Route = createRootRouteWithContext<{
 })
 
 export function useShellData() {
-	const { actorKey } = useRouteContext({ from: '__root__' })
+	const { actorKey, orgScope } = useRouteContext({ from: '__root__' })
 	const { shellLocation } = useLoaderData({ from: '__root__' })
-	return useSuspenseQuery(shellQuery(actorKey, shellLocation.searchStr)).data
+	return useSuspenseQuery(
+		shellQuery(actorKey, shellLocation.searchStr, orgScope?.orgSlug ?? null),
+	).data
 }
 
 function Root() {
@@ -394,10 +397,10 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					/>
 				) : null}
 				<meta name="viewport" content={documentViewport} />
-				{/* Rounded tiles: outlined black mark on white for light OS chrome,
-				    solid white mark on black for dark. Order matters: Chromium
-				    ignores `media` on icon links and picks the last best match, so
-				    the ICO is sized (not `any`) and the scheme-aware SVG comes last.
+				{/* Transparent edge-to-edge mark (no plate): outlined black for light
+				    OS chrome, solid white for dark. Order matters: Chromium ignores
+				    `media` on icon links and picks the last best match, so the ICO
+				    is sized (not `any`) and the scheme-aware SVG comes last.
 				    Follows the OS preference, not the in-app theme. */}
 				<link rel="icon" href={publicAsset('/favicon.ico')} sizes="32x32" />
 				<link

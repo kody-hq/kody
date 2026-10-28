@@ -36,6 +36,11 @@ import { readWentPublicSummary } from '#worker/package-capabilities/went-public-
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
+import {
+	savedCredentialNeeds,
+	type SavedCredentialNeed,
+} from '#worker/credentials/credential-needs.ts'
 import {
 	approvalItemKey,
 	type ApprovalGrantLine,
@@ -380,18 +385,26 @@ async function publishItemView(
 				),
 			}
 		}
-		case 'went_public':
+		case 'went_public': {
+			const needLines = await wentPublicNeedLines(viewer, savedPackage)
 			return {
 				...base,
-				...(publishState.canApprove &&
-				!(await wentPublicCapabilitiesApproved(viewer, savedPackage))
+				...(publishState.canApprove && needLines === null
 					? {
 							...publishState,
 							canApprove: false,
 							statusMessage:
-								'Its credentials and capabilities are not approved yet. Review them on the package’s approval page, where one Approve also turns on internet-visible serving.',
+								'Kody could not load the credentials this app asks for. Try again before approving.',
 						}
-					: publishState),
+					: publishState.canApprove &&
+						  !(await wentPublicCapabilitiesApproved(viewer, savedPackage))
+						? {
+								...publishState,
+								canApprove: false,
+								statusMessage:
+									'Its credentials and capabilities are not approved yet. Review them on the package’s approval page, where one Approve also turns on internet-visible serving.',
+							}
+						: publishState),
 				detailLabel: 'Published commit',
 				title: 'Serve on the public internet',
 				summary: `${readWentPublicSummary(request.details)} Approving turns on internet-visible serving for this version. Denying leaves it off.`,
@@ -407,13 +420,61 @@ async function publishItemView(
 						after: 'Anyone on the internet can reach this package’s app',
 						match: null,
 					},
+					...(needLines ?? []),
 				],
 			}
+		}
 		default: {
 			const exhaustive: never = request.reason
 			throw new Error(`Unknown approval reason: ${String(exhaustive)}`)
 		}
 	}
+}
+
+/** The published credential needs a public app asks for, by who supplies them. */
+async function wentPublicNeedLines(
+	viewer: ApprovalViewer,
+	savedPackage: SavedPackageRecord,
+): Promise<Array<ApprovalGrantLine> | null> {
+	try {
+		const needs = savedCredentialNeeds(
+			await loadPublishedCredentialNeeds({
+				env: viewer.env,
+				userId: viewer.request.org.id,
+				sourceId: savedPackage.sourceId,
+				request: viewer.request,
+			}),
+		)
+		return needs.map((need) => ({
+			change: 'added' as const,
+			label: need.key,
+			where: need.from ? `Declared by ${need.from}` : null,
+			kind: kindLabel(need.kind),
+			provider: need.provider,
+			hosts: [],
+			before: null,
+			after: `${describeNeedShape(need)}. ${describeNeedSupplier(need)}`,
+			match: null,
+		}))
+	} catch (error) {
+		console.error('Failed to load credential needs for went_public item:', {
+			packageId: savedPackage.id,
+			error: getErrorMessage(error),
+		})
+		return null
+	}
+}
+
+function describeNeedSupplier(need: SavedCredentialNeed) {
+	if (need.supplier === 'executor') {
+		return need.required === false
+			? 'Each visitor may choose their own credential (optional).'
+			: 'Each visitor must choose their own credential (required).'
+	}
+	if (need.supplier === 'publisher' || need.ownerCredentialForVisitors) {
+		return 'Supplied by the publisher; visitors use it through the app.'
+	}
+	return 'Resolved for whoever runs it: their own mapping, the org’s mapping, or a matching credential.'
 }
 
 /** Going public needs the live capability set approved first. */

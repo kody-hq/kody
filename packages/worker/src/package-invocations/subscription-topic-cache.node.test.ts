@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 
 const mocks = vi.hoisted(() => ({
@@ -13,9 +14,9 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 	listSavedPackagesByIds: mocks.listSavedPackagesByIds,
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 const {
 	buildPackageSubscriptionTopicGenerationKey,

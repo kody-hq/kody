@@ -32,7 +32,7 @@ export function AccountWebhooksPage({
 	payload: AccountWebhooksLoaderData
 	currentHref: string
 }) {
-	const { username, webhooks } = payload
+	const { webhooks } = payload
 
 	const mintedCount = webhooks.filter((webhook) => webhook.minted).length
 
@@ -65,7 +65,7 @@ export function AccountWebhooksPage({
 					rows={webhooks.map((webhook) => ({
 						id: webhook.id,
 						href: buildPackageWebhooksHref({
-							username,
+							packageName: webhook.packageName,
 							kodyId: webhook.packageKodyId,
 							webhookName: webhook.name,
 							endpointId: webhook.endpointId,

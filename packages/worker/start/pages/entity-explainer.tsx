@@ -4,7 +4,6 @@ import { type CSSObject } from '@emotion/react'
 import { useEffect } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon } from '../components/icon.tsx'
-import { routes } from '#universal/routes.ts'
 import { docHref } from '#universal/docs-nav.ts'
 import { hoverMq } from '#universal/styles/style-primitives.ts'
 import {
@@ -33,6 +32,115 @@ const packagesIntegrationsMcpGuide = {
 
 const entityExplainerDefinitions = [
 	{
+		id: 'overview',
+		question: 'What is this overview?',
+		paragraphs: [
+			'Overview brings together this workspace’s recent runs, repositories, and upcoming jobs.',
+		],
+		learnMore: [{ href: docHref('organizations'), label: 'Organizations' }],
+	},
+	{
+		id: 'repositories',
+		question: 'What is a repository?',
+		paragraphs: [
+			'A repository is the git home for code in this workspace. This page lists plain repositories and packages. A package is a repository with a Kody package manifest; the API and CLI still call that entity package (for example packageList and packageSave).',
+		],
+		learnMore: [
+			{ href: docHref('package-authoring'), label: 'Package authoring' },
+			{ href: docHref('package-lifecycle'), label: 'Package lifecycle' },
+		],
+	},
+	{
+		id: 'follows',
+		question: 'What are follows?',
+		paragraphs: [
+			'Follows track packages and repositories so this workspace can receive new versions and push events.',
+		],
+		learnMore: [
+			{
+				href: docHref('package-subscriptions'),
+				label: 'Subscriptions and events',
+			},
+		],
+	},
+	{
+		id: 'settings',
+		question: 'What are organization settings?',
+		paragraphs: [
+			'Settings control this organization’s identity, profile, and custom domains.',
+		],
+		learnMore: [{ href: docHref('organizations'), label: 'Organizations' }],
+	},
+	{
+		id: 'members',
+		question: 'What is a member?',
+		paragraphs: [
+			'A member belongs to this organization with an Owner, Member, or Billing role. Grants control access to individual resources.',
+		],
+		learnMore: [{ href: docHref('organizations'), label: 'Organizations' }],
+	},
+	{
+		id: 'teams',
+		question: 'What is a team?',
+		paragraphs: [
+			'A team groups organization members so you can grant them access to resources together.',
+		],
+		learnMore: [
+			{ href: docHref('package-sharing'), label: 'Sharing and grants' },
+		],
+	},
+	{
+		id: 'grants',
+		question: 'What is a grant?',
+		paragraphs: [
+			'A grant gives a person or team permission to use or manage specific resources in this workspace.',
+		],
+		learnMore: [
+			{ href: docHref('package-sharing'), label: 'Sharing and grants' },
+		],
+	},
+	{
+		id: 'collaborators',
+		question: 'What is an outside collaborator?',
+		paragraphs: [
+			'An outside collaborator has access to shared resources without joining the organization as a member.',
+		],
+		learnMore: [
+			{ href: docHref('package-sharing'), label: 'Sharing and grants' },
+		],
+	},
+	{
+		id: 'billing',
+		question: 'What is billing?',
+		paragraphs: [
+			'Billing manages this organization’s plan, paid seats, payment method, and invoices.',
+		],
+		learnMore: [
+			{ href: docHref('organizations'), label: 'Organizations and paid seats' },
+		],
+	},
+	{
+		id: 'secret-providers',
+		question: 'What is a secret provider?',
+		paragraphs: [
+			'A secret provider connects Kody to an external vault, so packages can use stored credentials without exposing their values.',
+		],
+		learnMore: [
+			{ href: docHref('secret-providers'), label: 'Custom secret providers' },
+		],
+	},
+	{
+		id: 'mcp-oauth-clients',
+		question: 'What is an MCP OAuth client?',
+		paragraphs: [
+			'An MCP OAuth client identifies an agent host connecting to Kody. Pre-register one when the host cannot register itself.',
+		],
+		learnMore: [
+			{ href: docHref('connect-your-agent'), label: 'Connect your agent' },
+		],
+	},
+
+	{
 		id: 'email',
 		question: 'What is email?',
 		paragraphs: [
@@ -50,6 +158,21 @@ const entityExplainerDefinitions = [
 		question: 'What is a job?',
 		paragraphs: [
 			'A job is scheduled work that runs in the cloud on Cloudflare Workers, whether or not your computer is on. Package-owned jobs live with the saved package that declares them.',
+		],
+		learnMore: [
+			{
+				href: docHref('how-kody-works'),
+				label: 'How Kody works',
+			},
+		],
+	},
+	{
+		id: 'execution-contexts',
+		question: 'What is an execution context?',
+		paragraphs: [
+			"An execution context is a machine you registered with the Kody CLI daemon, such as your laptop or a build server. When one is in your fallback chain, execute runs there instead of on Kody cloud, so runs can reach that machine's files and local network.",
+			'A new context is used by no one until someone adds it to a chain. Its operator can share it with specific people, a team, or everyone in an organization, and each of them opts in first, because the operator can see the code, inputs, logs and results of runs on it. Credential values stay on Kody.',
+			'Kody tries your chain in order and moves on when a context is offline or busy. Kody cloud stays last unless you remove it. Context runs do not count toward plan quotas, and agents use the same contexts and chain through the API.',
 		],
 		learnMore: [
 			{
@@ -163,6 +286,9 @@ const entityExplainerDefinitions = [
 		paragraphs: [
 			'Waiting is the queue of things only you can clear: verify email, reconnect an MCP server, promote a locked-package publish, confirm a pending email change, or finish setup.',
 		],
+		learnMore: [
+			{ href: docHref('organizations'), label: 'Invites and organizations' },
+		],
 	},
 	{
 		id: 'experiments',
@@ -170,12 +296,16 @@ const entityExplainerDefinitions = [
 		paragraphs: [
 			'Experiments is an opt-in for early, unfinished work. It puts your account in the experiments audience. Each flag still has to be on for you, and you can opt out anytime.',
 		],
+		learnMore: [{ href: docHref('how-kody-works'), label: 'How Kody works' }],
 	},
 	{
 		id: 'activity',
 		question: 'What is activity?',
 		paragraphs: [
 			'Activity is a short execution history for jobs, package apps, webhooks, and other runtimes: open errors with logs and triage, plus the last week of runs.',
+		],
+		learnMore: [
+			{ href: docHref('triggers'), label: 'Jobs, workflows, and webhooks' },
 		],
 	},
 	{
@@ -187,8 +317,8 @@ const entityExplainerDefinitions = [
 		],
 		learnMore: [
 			{
-				href: routes.pricing.href(),
-				label: 'Plans and pricing',
+				href: docHref('organizations'),
+				label: 'Organizations and billing',
 			},
 		],
 	},
@@ -201,8 +331,8 @@ const entityExplainerDefinitions = [
 		],
 		learnMore: [
 			{
-				href: routes.pricing.href(),
-				label: 'Plans and pricing',
+				href: docHref('organizations'),
+				label: 'Organizations and billing',
 			},
 		],
 	},

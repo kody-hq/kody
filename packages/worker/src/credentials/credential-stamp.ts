@@ -19,9 +19,15 @@ import {
 	walkAst,
 } from '#worker/credentials/module-placeholder-scan.ts'
 import {
+	isVaultCredentialUsePlacement,
 	scanPackageCredentials,
 	type PackageCredentialScan,
 } from '#worker/credentials/credential-inventory-scan.ts'
+import {
+	normalizeSecretProviderNeedId,
+	secretProviderSlotExample,
+} from '#worker/credentials/credential-needs.ts'
+import { type ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	getPackageAppClientEntryPath,
 	getPackageAppEntryPath,
@@ -30,10 +36,12 @@ import {
 	parseAuthoredPackageJson,
 } from '#worker/package-registry/manifest.ts'
 import {
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
+	secretProviderSlotKind,
 	packageCredentialSlotNamePattern,
 	type AuthoredPackageJson,
 	type PackageCredentialKind,
+	type PackageCredentialSlotKind,
 	type PackageCredentialSlot,
 } from '#worker/package-registry/types.ts'
 import { collectDynamicImportExpressionNodes } from '#worker/package-runtime/import-specifiers.ts'
@@ -164,7 +172,7 @@ export type CredentialStampScan = {
 export type CredentialStampSealSlot = {
 	key: string
 	description: string
-	kind?: PackageCredentialKind
+	kind?: PackageCredentialSlotKind
 }
 
 export type CredentialStampSealPlan = {
@@ -205,13 +213,14 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 const packageCredentialKinds: ReadonlySet<string> = new Set(
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
 )
 
 type ManifestCredentialSlot = {
 	description: string | null
-	kind?: PackageCredentialKind
+	kind?: PackageCredentialSlotKind
 	provider?: string
+	package?: string
 	multiple?: boolean
 }
 
@@ -240,11 +249,12 @@ function readManifestCredentialSlots(
 			typeof slot.kind === 'string' &&
 			packageCredentialKinds.has(slot.kind)
 		) {
-			declared.kind = slot.kind as PackageCredentialKind
+			declared.kind = slot.kind as PackageCredentialSlotKind
 		}
 		if (typeof slot.provider === 'string' && slot.provider.trim().length > 0) {
 			declared.provider = slot.provider
 		}
+		if (typeof slot.package === 'string') declared.package = slot.package.trim()
 		if (typeof slot.multiple === 'boolean') declared.multiple = slot.multiple
 		slots[name] = declared
 	}
@@ -374,6 +384,30 @@ function isCredentialNamedMember(
 	return isCredentialFunctionValue(node.object, bindings)
 }
 
+/** `credential.visitor(key)`: a literal key read on the visitor's grant. */
+function isCredentialVisitorMember(
+	node: AstNode | undefined,
+	bindings: CredentialBindings,
+): boolean {
+	if (
+		node?.type !== 'MemberExpression' &&
+		node?.type !== 'OptionalMemberExpression'
+	) {
+		return false
+	}
+	if (memberPropertyName(node) !== 'visitor') return false
+	return isCredentialFunctionValue(node.object, bindings)
+}
+
+function isCalledMember(node: AstNode, parent: AstNode | undefined) {
+	return Boolean(
+		parent &&
+		(parent.type === 'CallExpression' ||
+			parent.type === 'OptionalCallExpression') &&
+		parent.callee === node,
+	)
+}
+
 function isNonReferenceName(node: AstNode, parent: AstNode) {
 	if (parent.computed === true) return false
 	if (
@@ -418,7 +452,10 @@ function scanParsedCredentialKeys(
 				scan.named()
 				return
 			}
-			if (isCredentialCallee(node.callee, bindings)) {
+			if (
+				isCredentialCallee(node.callee, bindings) ||
+				isCredentialVisitorMember(node.callee, bindings)
+			) {
 				const key = resolveStringExpression(
 					node.arguments?.[0],
 					constantsWithoutShadows(constants, ancestors),
@@ -461,7 +498,20 @@ function scanParsedCredentialKeys(
 					parent.type === 'OptionalMemberExpression') &&
 				parent.object === node &&
 				memberPropertyName(parent) === 'named'
-			if (!called && !namedAccess) scan.indirect()
+			const visitorCall =
+				parent != null &&
+				parent.object === node &&
+				isCredentialVisitorMember(parent, bindings) &&
+				isCalledMember(parent, ancestors.at(-2))
+			if (!called && !namedAccess && !visitorCall) scan.indirect()
+			return
+		}
+		if (
+			(node.type === 'MemberExpression' ||
+				node.type === 'OptionalMemberExpression') &&
+			isCredentialVisitorMember(node, bindings)
+		) {
+			if (!isCalledMember(node, ancestors.at(-1))) scan.indirect()
 			return
 		}
 		if (node.type !== 'Identifier') return
@@ -482,12 +532,16 @@ function scanParsedCredentialKeys(
 			scan.named()
 			return
 		}
-		if (!isCallee) scan.indirect()
+		const isVisitorCall =
+			isCredentialVisitorMember(parent, bindings) &&
+			parent.object === node &&
+			isCalledMember(parent, ancestors.at(-2))
+		if (!isCallee && !isVisitorCall) scan.indirect()
 	})
 }
 
 const textCredentialCallPattern =
-	/\bcredentials?\s*\(\s*(?:(['"`])([^'"`$\\]*)\1)?/g
+	/\b(?:credentials?|credential\s*(?:\?\.|\.)\s*visitor)\s*\(\s*(?:(['"`])([^'"`$\\]*)\1)?/g
 
 function scanUnparsedCredentialKeys(source: string, scan: KeyScan) {
 	if (!/\bkody:runtime\b|\bkody\s*(?:\?\.|\.)\s*credentials?\b/.test(source)) {
@@ -1304,7 +1358,7 @@ function mcpServerFromMember(
  */
 export function inferCredentialStampDescription(input: {
 	key: string
-	kind?: PackageCredentialKind
+	kind?: PackageCredentialSlotKind
 	mcp?: boolean
 	jwtSign?: boolean
 	oauth?: boolean
@@ -1475,6 +1529,10 @@ export function applyCredentialStampSealPlan(
  */
 export function scanCredentialStamp(
 	files: Record<string, string>,
+	options: {
+		/** From {@link resolveSecretProviderSlots}; unresolved slots seal nothing. */
+		secretProviders?: ResolvedSecretProviderSlots
+	} = {},
 ): CredentialStampScan {
 	files = omitOversizedCredentialStampModules(files)
 	const keys = new Set<string>()
@@ -1521,7 +1579,7 @@ export function scanCredentialStamp(
 		})
 	}
 
-	scanModuleCredentialReferences(files, (path) => ({
+	scanModuleCredentialReferences(files, (_path) => ({
 		add: () => {},
 		named: (name, kind) => {
 			if (packageCredentialSlotNamePattern.test(name)) {
@@ -1531,16 +1589,43 @@ export function scanCredentialStamp(
 		},
 		// Non-literal helper args are refused via 0010 unstampable patterns.
 		computed: () => {},
-		unnamed: (via) => {
-			if (via === 'placeholder') {
-				failures.push({
-					code: 'unstampable_pattern',
-					path,
-					message: `${path}: vault placeholder {{secret/provider:ref}} cannot be stamped. Declare a kody.credentials slot keyed by the provider with a description, and use that literal key.`,
-				})
-			}
-		},
+		// Vault placeholders are gated from inventory placements below: only
+		// request / credential-mapped sites fail the stamp. Display strings
+		// (status example/help fields) are not credential uses.
+		unnamed: () => {},
 	}))
+
+	// A vault use seals only through a described kind "secret-provider" slot
+	// for its literal provider id. Refs stay governed by per-package grants.
+	const providerSlots = secretProviderSlotKeysByProvider(
+		slots,
+		options.secretProviders,
+	)
+	const undeclaredProviders = new Set<string>()
+	const vaultUses = scan.vaultUses.filter((use) =>
+		isVaultCredentialUsePlacement(use.placement),
+	)
+	for (const use of vaultUses) {
+		const provider = normalizeSecretProviderNeedId(use.provider)
+		const slotKeys = providerSlots.get(provider)
+		if (slotKeys) for (const key of slotKeys) keys.add(key)
+		else undeclaredProviders.add(provider)
+	}
+	// Fail closed on a vault use the scanner read no provider id from.
+	const unreadVaultUse =
+		scan.vaultPlacements.filter(isVaultCredentialUsePlacement).length >
+		vaultUses.length
+	if (undeclaredProviders.size > 0 || unreadVaultUse) {
+		failures.push({
+			code: 'unstampable_pattern',
+			message: vaultPlaceholderFixMessage(
+				[...undeclaredProviders].sort(),
+				slots,
+				options.secretProviders,
+			),
+		})
+	}
+	failures.push(...(options.secretProviders?.failures ?? []))
 
 	const modulePaths = listScannableModulePaths(files)
 	const parsedModules = new Map(
@@ -1564,7 +1649,7 @@ export function scanCredentialStamp(
 					code: 'non_literal',
 					path,
 					message: nonLiteralFixMessage(
-						`${path}: credential() / credentials() was called with a non-literal key.`,
+						`${path}: credential() / credentials() / credential.visitor() was called with a non-literal key. Call it with a literal key, e.g. credential.visitor("SLOT") for a need each visitor supplies.`,
 					),
 				})
 			},
@@ -1579,7 +1664,7 @@ export function scanCredentialStamp(
 				failures.push({
 					code: 'non_literal',
 					path,
-					message: `${path}: passes credential/credentials around instead of calling it with a literal key. ${credentialStampConversionFixGuidance}`,
+					message: `${path}: passes credential/credentials around instead of calling it with a literal key. Call credential("SLOT"), credentials("SLOT"), or credential.visitor("SLOT") directly. ${credentialStampConversionFixGuidance}`,
 				})
 			},
 		}
@@ -1632,6 +1717,49 @@ export function scanCredentialStamp(
 		oauthKeys: [...oauthKeys].sort(),
 		scan,
 	}
+}
+
+/**
+ * Slot keys by the provider id their package declares. Only slots that are
+ * described secret-provider slots in this manifest and that resolved count.
+ */
+function secretProviderSlotKeysByProvider(
+	slots: Record<string, ManifestCredentialSlot>,
+	resolved: ResolvedSecretProviderSlots | undefined,
+) {
+	const byProvider = new Map<string, Array<string>>()
+	for (const [key, slot] of Object.entries(slots)) {
+		if (slot.kind !== secretProviderSlotKind || slot.description == null) {
+			continue
+		}
+		if (!packageCredentialSlotNamePattern.test(key)) continue
+		const provider = resolved?.ids[key]
+		if (provider == null) continue
+		byProvider.set(provider, [...(byProvider.get(provider) ?? []), key])
+	}
+	return byProvider
+}
+
+function vaultPlaceholderFixMessage(
+	providers: ReadonlyArray<string>,
+	slots: Record<string, ManifestCredentialSlot>,
+	resolved: ResolvedSecretProviderSlots | undefined,
+) {
+	const which =
+		providers.length > 0
+			? ` for provider id${providers.length === 1 ? '' : 's'} ${providers.map((id) => `"${id}"`).join(', ')}`
+			: ''
+	const declared = Object.entries(slots)
+		.filter(([, slot]) => slot.kind === secretProviderSlotKind)
+		.map(([key, slot]) => {
+			const id = resolved?.ids[key]
+			return `${key} (package "${slot.package ?? ''}"${id ? `, provider id "${id}"` : ', unresolved'})`
+		})
+	const declaredNote =
+		declared.length > 0
+			? ` Declared secret-provider slots: ${declared.join('; ')}.`
+			: ''
+	return `A vault placeholder {{secret/provider:ref}}${which} appears in a request or credential-mapped site (fetch URL, header, query, path, body, signing key, SDK option, call argument, or an object, array, or helper return that can feed one) and no declared provider package serves that provider id.${declaredNote} Declare a kody.credentials slot with kind "secret-provider" that names the saved provider package whose kody.secretProvider.id matches, for example:\n\n"kody": {\n  "credentials": {\n    ${secretProviderSlotExample()}\n  }\n}\n\nThe placeholder's provider id must be literal. Each ref still needs a per-package grant on the secret-providers page (resourceLock kind "secret_provider"). Placeholders only in values returned from status(), help(), docs(), or usage() are display text and do not block the stamp.`
 }
 
 function unstampablePatternFix(pattern: LegacyCredentialPattern): string {

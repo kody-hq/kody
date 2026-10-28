@@ -1,8 +1,6 @@
 import { expect, test } from 'vitest'
-import {
-	runRepoChecks,
-	typecheckPackageEntrypointsFromSourceFiles,
-} from './checks.ts'
+import { runRepoChecks } from './checks.ts'
+import { checkPublishedEntrypointsForRebuild } from './published-entrypoint-checks.ts'
 import { withRequiredPackageDocs } from './checks-test-docs.ts'
 
 // These tests run the real TypeScript language service (no mocks) so they
@@ -178,6 +176,35 @@ export async function callTools() {
 	})
 })
 
+test('publish typecheck types credential.visitor for executor needs', async () => {
+	const typecheck = await runTypecheck({
+		'package.json': JSON.stringify({
+			name: '@kody/typecheck-fixture',
+			exports: { '.': './src/index.ts' },
+			kody: {
+				id: 'typecheck-fixture',
+				description: 'Typecheck fixture package',
+				credentials: {
+					github: {
+						kind: 'secret',
+						provider: 'github',
+						supplier: 'executor',
+						description: 'Each visitor brings their own GitHub token.',
+					},
+				},
+			},
+		}),
+		'tsconfig.json': packageTsconfig,
+		'src/index.ts': `import { credential } from 'kody:runtime'
+export async function openVisitorGithub() {
+  const github = await credential.visitor('github')
+  return github.name
+}
+`,
+	})
+	expect(typecheck).toMatchObject({ kind: 'typecheck', ok: true })
+})
+
 test('export modules with only named exports pass publish typecheck', async () => {
 	const typecheck = await runTypecheck({
 		'package.json': createManifest({
@@ -236,7 +263,7 @@ test('job bodies with a tsconfig are typechecked, not only their default-export 
 			jobs: {
 				nightly: {
 					entry: 'src/job.ts',
-					schedule: { type: 'once', runAt: '2026-04-17T15:00:00Z' },
+					schedule: { type: 'interval', every: '1h' },
 				},
 			},
 		}),
@@ -261,40 +288,81 @@ test('without a tsconfig, publish discloses that exports are not typechecked', a
 		kind: 'typecheck',
 		ok: true,
 		message:
-			'Package source files, including package.json exports, are not typechecked: add a root tsconfig.json to typecheck every TypeScript file reachable from exports, jobs, subscription handlers, and retrievers.',
+			'Package source files, including package.json exports, are not typechecked: add a root tsconfig.json to typecheck every TypeScript file reachable from exports, jobs, and subscription handlers.',
 	})
 })
 
-test('runtime rebuild typecheck of published source only verifies the callable contract', async () => {
-	const result = await typecheckPackageEntrypointsFromSourceFiles({
-		sourceFiles: {
-			'package.json': createManifest({}),
-			'tsconfig.json': packageTsconfig,
-			'src/index.ts':
-				'const answer: number = "forty-two"\nexport default async () => answer\n',
-		},
-		entryPoints: [{ path: 'src/index.ts' }],
-	})
-	expect(result).toEqual({
+test('publish and invocation agree on exports with a narrowly typed required param', async () => {
+	// The reported failure: an export like this passed publish, then every
+	// invocation that rebuilt the artifact failed TS2345 against
+	// `(params?: Record<string, unknown>) => unknown`. Invocation no longer
+	// typechecks, so both sides accept it, with or without a tsconfig.
+	const exportSource =
+		'export default async function main(params: { name: string }) {\n  return params.name\n}\n'
+	const sourceFiles = {
+		'package.json': createManifest({}),
+		'src/index.ts': exportSource,
+	}
+	expect(await runTypecheck(sourceFiles)).toMatchObject({
+		kind: 'typecheck',
 		ok: true,
-		message: 'No semantic diagnostics for 1 package runtime entrypoint(s).',
 	})
-})
+	expect(
+		await runTypecheck({ ...sourceFiles, 'tsconfig.json': packageTsconfig }),
+	).toMatchObject({ kind: 'typecheck', ok: true })
+	expect(
+		checkPublishedEntrypointsForRebuild({
+			sourceFiles,
+			entryPoints: [{ path: 'src/index.ts' }],
+		}),
+	).toEqual({ ok: true })
+}, 60_000)
+
+test('package app rate-limit and spend helpers retain their specific result types', async () => {
+	const typecheck = await runTypecheck({
+		'package.json': createManifest({}),
+		'tsconfig.json': packageTsconfig,
+		'src/index.ts': `import { kody } from 'kody:runtime'
+
+export async function readUsage() {
+  const rateLimit = await kody.appRateLimit({
+    key: 'send-message',
+    limit: 5,
+    windowSeconds: 60,
+  })
+  const allowed: boolean = rateLimit.allowed
+  const spend = await kody.appSpendGet()
+  const creditsMicroUsd: number = spend.creditsMicroUsd
+  return { allowed, creditsMicroUsd }
+}
+`,
+	})
+	expect(typecheck).toMatchObject({ kind: 'typecheck', ok: true })
+}, 60_000)
 
 test('multi-callable typecheck keeps per-entrypoint diagnostics from one harness program', async () => {
-	const result = await typecheckPackageEntrypointsFromSourceFiles({
-		sourceFiles: {
-			'package.json': createManifest({}),
-			'src/job-a.ts': 'export default async function run() { return "a" }\n',
-			'src/job-b.ts': 'export default 42\n',
-		},
-		entryPoints: [{ path: 'src/job-a.ts' }, { path: 'src/job-b.ts' }],
+	const typecheck = await runTypecheck({
+		'package.json': createManifest({
+			jobs: {
+				a: {
+					entry: 'src/job-a.ts',
+					schedule: { type: 'interval', every: '1h' },
+				},
+				b: {
+					entry: 'src/job-b.ts',
+					schedule: { type: 'interval', every: '1h' },
+				},
+			},
+		}),
+		'src/index.ts': 'export const ready = true\n',
+		'src/job-a.ts': 'export default async function run() { return "a" }\n',
+		'src/job-b.ts': 'export default 42\n',
 	})
-	expect(result.ok).toBe(false)
+	expect(typecheck.ok).toBe(false)
 	// Harness contract failures keep the attributed source path without
 	// attaching shifted harness line/column coordinates.
-	expect(result.message).toMatch(/src\/job-b\.ts /)
-	expect(result.message).toMatch(/not assignable|Argument of type/i)
-	expect(result.message).not.toMatch(/src\/job-b\.ts:\d+:\d+/)
-	expect(result.message).not.toMatch(/src\/job-a\.ts/)
-})
+	expect(typecheck.message).toMatch(/src\/job-b\.ts /)
+	expect(typecheck.message).toMatch(/not assignable|Argument of type/i)
+	expect(typecheck.message).not.toMatch(/src\/job-b\.ts:\d+:\d+/)
+	expect(typecheck.message).not.toMatch(/src\/job-a\.ts/)
+}, 60_000)

@@ -138,6 +138,7 @@ export async function processWebhookDispatch(
 				startedAt: dispatchStartedAt,
 				receivedAt: message.receivedAt,
 				invocationErrorCode: invocationError.code ?? retryableCode,
+				invocationBody: response.body,
 				logs: buildWebhookDispatchFailureLogs({
 					httpStatus: response.status,
 					body: response.body,
@@ -145,6 +146,7 @@ export async function processWebhookDispatch(
 					attempts,
 				}),
 				requirePersistence: true,
+				request: response.request,
 			})
 			return 'terminal'
 		}
@@ -178,12 +180,14 @@ export async function processWebhookDispatch(
 					invocationErrorCode: placementRefused
 						? credentialPlacementRefusedCode
 						: invocationError.code,
+					invocationBody: response.body,
 					logs: buildWebhookDispatchFailureLogs({
 						httpStatus: response.status,
 						body: response.body,
 					}),
 				}),
 		requirePersistence: true,
+		request: response.request,
 	})
 	return 'terminal'
 }

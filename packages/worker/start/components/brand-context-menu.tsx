@@ -13,6 +13,7 @@ import {
 	type ReactNode,
 } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { isPopoverOpen } from '#client/popover-open.ts'
 import { toast } from '#client/toast.ts'
 import { publicAsset } from '../public-assets.ts'
 import {
@@ -292,6 +293,19 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 		}
 	}
 
+	// The menu renders inside the sticky sidebar or header, whose stacking
+	// context would otherwise let later page content (charts, cards) paint
+	// over it. The top layer sits above every stacking context. Declared
+	// before the clamp below so the menu is open when it is measured.
+	useLayoutEffect(() => {
+		if (!open) return
+		const menu = menuRef.current
+		// Without the Popover API (Safari < 17) it stays a plain fixed menu.
+		if (!menu || typeof menu.showPopover !== 'function') return
+		if (isPopoverOpen(menu)) return
+		menu.showPopover()
+	}, [open])
+
 	// The menu is wider than the old text-only list; keep it inside the
 	// viewport when the pointer is near the right or bottom edge.
 	useLayoutEffect(() => {
@@ -417,6 +431,7 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 					id={menuId}
 					role="menu"
 					aria-label="Kody brand"
+					popover="manual"
 					css={menuCss}
 					style={{ left: coords.x, top: coords.y }}
 				>
@@ -469,10 +484,15 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 
 const menuCss: CSSObject = {
 	position: 'fixed',
+	// Top layer ignores this; it still lifts the non-popover fallback.
 	zIndex: 1000,
+	// Reset the UA popover centering; inline left/top place it at the pointer.
+	inset: 'auto',
 	width: 'min(21rem, calc(100vw - 1rem))',
 	margin: 0,
 	padding: '0.35rem',
+	// Only rendered while open, and shown before paint, so a base `display`
+	// never exposes a closed popover; it also keeps the non-popover fallback.
 	display: 'grid',
 	gap: '0.1rem',
 	border: `1.5px solid ${colors.border}`,

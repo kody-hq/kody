@@ -24,16 +24,6 @@ import {
 } from '#worker/jobs/types.ts'
 import { type RunRecord } from '#worker/run-records/types.ts'
 
-const onceScheduleSchema = z.object({
-	type: z.literal('once'),
-	run_at: z
-		.string()
-		.min(1)
-		.describe(
-			'UTC timestamp for the one-off run, for example 2026-04-20T18:30:00Z.',
-		),
-})
-
 const intervalScheduleSchema = z.object({
 	type: z.literal('interval'),
 	every: z
@@ -55,12 +45,13 @@ const cronScheduleSchema = z.object({
 })
 
 export const scheduledJobScheduleSchema = z.discriminatedUnion('type', [
-	onceScheduleSchema,
 	intervalScheduleSchema,
 	cronScheduleSchema,
 ])
 
-export const scheduledJobSummarySchema = scheduledJobScheduleSchema
+export const scheduledJobSummarySchema = scheduledJobScheduleSchema.describe(
+	'Recurring package schedule (cron or interval). One-shot delayed work uses workflows.create(...).',
+)
 
 export const jobGetInputSchema = z
 	.object({
@@ -135,6 +126,12 @@ export const jobInspectionSchema = z.object({
 	schedule_summary: z.string(),
 	timezone: z.string(),
 	enabled: z.boolean(),
+	disabled_reason: z
+		.string()
+		.nullable()
+		.describe(
+			'Why the job is off: the reason given when someone turned it off, or what Kody did (expiry or auto-disable). Null while the job is on.',
+		),
 	kill_switch_enabled: z.boolean(),
 	expires_at: z
 		.string()
@@ -218,6 +215,12 @@ export const jobViewOutputSchema = z.object({
 	schedule_summary: z.string(),
 	timezone: z.string(),
 	enabled: z.boolean(),
+	disabled_reason: z
+		.string()
+		.nullable()
+		.describe(
+			'Why the job is off: the reason given when someone turned it off, or what Kody did (expiry or auto-disable). Null while the job is on.',
+		),
 	kill_switch_enabled: z.boolean(),
 	expires_at: z.string().nullable(),
 	expired: z.boolean(),
@@ -278,7 +281,9 @@ export const jobUpdateInputSchema = z
 			),
 		schedule: scheduledJobScheduleSchema
 			.optional()
-			.describe('Optional replacement schedule for the job.'),
+			.describe(
+				'Optional replacement recurring schedule (cron or interval). One-shot delayed work uses workflows.create(...).',
+			),
 		timezone: z
 			.string()
 			.min(1)
@@ -304,6 +309,14 @@ export const jobUpdateInputSchema = z
 			.optional()
 			.describe(
 				'Optional UTC ISO timestamp after which the platform stops scheduling this job and auto-disables it (enabled=false). Pass null to clear.',
+			),
+		reason: z
+			.string()
+			.trim()
+			.max(500)
+			.optional()
+			.describe(
+				'Optional short reason for turning the job on or off. Recorded in the org audit log with who changed it, when, and from where. When turning the job off, it is also saved as the job disabled_reason.',
 			),
 		code: z
 			.unknown()
@@ -348,11 +361,6 @@ export const jobUpdateInputSchema = z
 export const jobRunNowOutputSchema = z.object({
 	job: jobViewOutputSchema,
 	execution: jobExecutionOutputSchema,
-	deleted_after_run: z
-		.boolean()
-		.describe(
-			'Whether the job was deleted after this run. One-off jobs stay on their package instead of being deleted after running.',
-		),
 })
 
 export type JobGetCapabilityInput = z.infer<typeof jobGetInputSchema>
@@ -378,11 +386,6 @@ function assertNeverScheduledJobSchedule(schedule: never): never {
 
 export function buildJobScheduleSummaryOutput(schedule: JobView['schedule']) {
 	switch (schedule.type) {
-		case 'once':
-			return {
-				type: 'once' as const,
-				run_at: schedule.runAt,
-			}
 		case 'interval':
 			return {
 				type: 'interval' as const,
@@ -401,11 +404,6 @@ export function toJobSchedule(
 	schedule: z.infer<typeof scheduledJobScheduleSchema>,
 ): JobSchedule {
 	switch (schedule.type) {
-		case 'once':
-			return {
-				type: 'once',
-				runAt: schedule.run_at,
-			}
 		case 'interval':
 			return {
 				type: 'interval',
@@ -460,6 +458,7 @@ export function buildJobViewOutput(
 		schedule_summary: job.scheduleSummary,
 		timezone: job.timezone,
 		enabled: job.enabled,
+		disabled_reason: job.enabled ? null : (job.disabledReason ?? null),
 		kill_switch_enabled: job.killSwitchEnabled,
 		expires_at: expiresAt,
 		expired,
@@ -526,6 +525,7 @@ export function buildJobInspectionOutput(
 		schedule_summary: job.scheduleSummary,
 		timezone: job.timezone,
 		enabled: job.enabled,
+		disabled_reason: job.enabled ? null : (job.disabledReason ?? null),
 		kill_switch_enabled: job.killSwitchEnabled,
 		expires_at: expiresAt,
 		expired,
@@ -570,7 +570,6 @@ export function buildJobManagerDebugOutput(
 export function buildJobRunNowOutput(input: {
 	job: JobView
 	execution: JobExecutionResult
-	deletedAfterRun: boolean
 	enablementHint?: string | null
 }) {
 	return {
@@ -578,7 +577,6 @@ export function buildJobRunNowOutput(input: {
 			enablementHint: input.enablementHint,
 		}),
 		execution: input.execution,
-		deleted_after_run: input.deletedAfterRun,
 	}
 }
 
@@ -594,6 +592,7 @@ export function resolveJobUpdateBody(
 		enabled: input.enabled,
 		killSwitchEnabled: input.kill_switch_enabled,
 		...(input.expires_at !== undefined ? { expiresAt: input.expires_at } : {}),
+		...(input.reason ? { reason: input.reason } : {}),
 	}
 }
 

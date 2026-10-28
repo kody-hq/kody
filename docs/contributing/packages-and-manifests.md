@@ -33,9 +33,14 @@ Use `package.json` as the canonical source of truth for saved package metadata.
 - `kody.credentials` — optional credential slots (`kind`, `provider`,
   `multiple`, `description`); see
   [Credential slots](../use/packages.md#credential-slots-kodycredentials).
-  Declaring slots does not change placeholder resolution. Publish stores the
-  needs closure (own slots plus static dependencies' closures) under the
-  `credential-needs` KV key for the source and commit
+  `kind: "secret-provider"` slots name the provider package in `package`
+  (resolved at publish by
+  `packages/worker/src/credentials/secret-provider-slots.ts`) and are left out
+  of mapping consumers through `savedCredentialNeeds`
+  (`packages/worker/src/credentials/credential-needs.ts`). Declaring slots does
+  not change placeholder resolution. Publish stores the needs closure (own slots
+  plus static dependencies' closures) under the `credential-needs` KV key for
+  the source and commit
   (`packages/worker/src/credentials/credential-needs-closure.ts`); a publish
   that stored none reads as the package's own slots
 - `kody.secretMounts` — optional package-scoped secret mount declarations
@@ -48,7 +53,6 @@ Use `package.json` as the canonical source of truth for saved package metadata.
 - `kody.webhooks` — optional inbound webhook declarations bound to package
   exports (see [`docs/use/webhooks.md`](../use/webhooks.md))
 - `kody.jobs` — optional package-owned schedules
-- `kody.retrievers` — optional package-owned search/context retrievers
 
 The validation schema (`authoredPackageJsonSchema` in
 `packages/worker/src/package-registry/types.ts`) is authoritative when this list
@@ -79,8 +83,8 @@ Important behavior:
 
 - Kody resolves and bundles saved-package npm dependencies during repo checks
   and publish-time artifact rebuilds.
-- Published bundle artifacts are what package exports, jobs, subscriptions,
-  retrievers, and apps execute at runtime.
+- Published bundle artifacts are what package exports, jobs, subscriptions, and
+  apps execute at runtime.
 - External publish flips `published_commit` before the per-target npm bundle
   rebuild finishes. While that rebuild is in flight, invoke may serve the
   previous npm-backed bundle for two minutes, keyed to the published source
@@ -119,7 +123,6 @@ Think in terms of:
 - package-owned jobs
 - package-owned subscriptions
 - package-owned webhooks
-- package-owned retrievers
 - package-owned workflows (declared in runtime code, not the manifest)
 
 The repo is the top-level persisted source; a saved package is the identity of
@@ -137,8 +140,8 @@ A saved package is a repo with the package extension activated. Four concepts:
 3. **Package storage** — StorageRunner bucket
    `storageId = buildPackageStorageId(packageId)` →
    `package:{encodeURIComponent(packageId)}`, reached via `packageStorage()`
-   from every package surface (exports, subscriptions, retrievers, jobs, apps).
-   Non-secret knobs and runtime state live here.
+   from every package surface (exports, subscriptions, jobs, apps). Non-secret
+   knobs and runtime state live here.
 4. **Package jobs** — `package.json#kody.jobs` with schedule/execution metadata
    in D1 `jobs` rows; each run binds
    `job:package-job:{packageId}:{encodeURIComponent(jobName)}` scratch storage;
@@ -243,16 +246,13 @@ import handleEvent from 'kody:@kentcdodds/event-subscriber/handle-event'
 await handleEvent({ event })
 ```
 
-`kody:runtime` exports `packages` only as an always-`null` leftover so old
-`if (packages)` guards keep bundling
-([#1750](https://github.com/kody-hq/kody/issues/1750)). Computed
+`kody:runtime` always exports `packages` as `null`. Treat any `if (packages)`
+branch as dead code and use static `kody:@` imports (codemod `0008`,
+[0037](./decisions/0037-no-author-packages-invoke.md)). Computed
 `import(specifier)` loads caller-owned modules through a separate host bridge.
-Fleet source migrates with package codemod
-`0008-packages-invoke-to-static-import`. See
-[0037](./decisions/0037-no-author-packages-invoke.md). Interactive MCP
-`packageSubscriptionDispatch` is the post-publish subscription smoke test
-([0013](./decisions/0013-synthetic-package-requests.md)), not a composition
-primitive.
+Interactive MCP `packageSubscriptionDispatch` is the post-publish subscription
+smoke test ([0013](./decisions/0013-synthetic-package-requests.md)), not a
+composition primitive.
 
 Exact scoped resolution avoids bare-id collisions. A `kody:@scope/...` target
 resolves only to a package in the caller's org. A package from another org,
@@ -622,54 +622,6 @@ Publishing a package with a `kody.workflows` block fails fast with:
 
 Remove the block and call `workflows.create` from runtime code instead.
 
-## Package-owned retrievers
-
-Retrievers let packages return user-owned documents or facts to Kody search and
-automatic context retrieval without promoting those records to durable memory.
-
-- Define retrievers under `package.json#kody.retrievers`
-- Each retriever names a package export, display name, description, and one or
-  more scopes: `search`, `context`
-- Package metadata is the source of truth; runtime discovery uses derived KV
-  manifest and scope indexes that are rebuilt on package refresh
-- Retriever exports reach the package storage bucket through `packageStorage()`
-  in a closed-world, read-only sandbox: they can read granted buckets and return
-  results, but cannot write storage, call `kody.*` capabilities, invoke
-  packages, dispatch events, create workflows, or `fetch` the public internet.
-  Live integration reads and writes belong in `execute` or a package export.
-- Host budgets default to 3s for `search` and 1s for `context` (clamped to 5s /
-  3s). Optional enrichment: a timed-out or failing retriever is skipped with a
-  warning and must not fail the surrounding MCP `search` / `execute` call
-
-Example:
-
-```json
-{
-	"kody": {
-		"retrievers": {
-			"personal-inbox": {
-				"export": "./search",
-				"name": "Personal Inbox",
-				"description": "Searches saved notes and snippets.",
-				"scopes": ["search"],
-				"timeoutMs": 3000,
-				"maxResults": 5
-			}
-		}
-	}
-}
-```
-
-Retriever exports receive their first function argument with `query`, `scope`,
-`memoryContext`, `limit`, and `conversationId`, and return
-`{ "results": [...] }` where each result has `id`, `title`, `summary`, optional
-`details`, optional `score`, optional `source`, optional `url`, and optional
-`metadata`.
-
-The runtime validates retriever output before surfacing it. A retriever may
-return at most 20 results; payloads with more than 20 results are rejected.
-Retriever implementations should truncate or paginate before returning.
-
 ## Repo-backed workflow
 
 Package source is edited and published through repo-backed flows.
@@ -711,9 +663,13 @@ esbuild for targets whose reachable inputs and bundler root config are unchanged
 versus the previous published snapshot, and copies those artifacts onto the new
 commit key so the identity row never points at a hole. Shared modules, stale
 captured `kody:@` dependency commits, missing prior artifacts, first publish,
-force, and mismatched `already_published` snapshot rewrites still rebuild. Check
-failures before promotion return the failed checks and do not mutate D1, KV
-snapshots, published bundle artifacts, package projections, or vectors. A
+force, and mismatched `already_published` snapshot rewrites still rebuild. Same
+tip + current `publishChecksVersion` is a true no-op (skips checks). Same tip
+with a missing or older stored checker version re-runs authoring checks,
+refreshes the credential stamp, writes the current checks version, and returns
+`already_published` with `checks_rerun: true` (no tip move, no follower notify).
+Check failures before promotion return the failed checks and do not mutate D1,
+KV snapshots, published bundle artifacts, package projections, or vectors. A
 rebuild failure after promotion returns `checks_failed` with a bundle check;
 re-run the publish capability to repair artifacts. Non-fast-forward external
 heads are refused unless the caller passes `allow_force: true`. When
@@ -767,10 +723,9 @@ queries recognize user-owned UUIDs, package name leaves, current-origin account
 package URLs, and owner-matching hosted package URLs without mixing in semantic
 capability results. Hidden exact query matches require the opt-in; known-id
 entity lookup by UUID or package name leaf, **`packageList`**, **`packageGet`**,
-and context-scope package retrievers are unaffected. Hiding is not deletion,
-community delisting, or entitlement exclusion. Deletion is `packageDelete`
-(agents, `confirm_name` matching the package name) or **Delete package** on the
-package page (type the package name).
+are unaffected. Hiding is not deletion, community delisting, or entitlement
+exclusion. Deletion is `packageDelete` (agents, `confirm_name` matching the
+package name) or **Delete package** on the package page (type the package name).
 
 `packageUpdate` is reserved for mutable package settings (`hidden`, and
 `locked: true`; unlocking is website-only). Manifest-derived metadata and

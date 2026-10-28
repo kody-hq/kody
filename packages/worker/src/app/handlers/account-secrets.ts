@@ -5,6 +5,11 @@ import {
 	type ExchangeOAuthTokenInput,
 } from '#universal/secret-mutations.ts'
 import {
+	fillPlacementOptInFromPlacement,
+	readFillPlacementOptIn,
+	type FillPlacementOptIn,
+} from '#worker/credentials/fill-placement-opt-ins.ts'
+import {
 	getSecretContextForAccountSecret,
 	listAccountSecrets,
 	type loadAccountSecretsSelection,
@@ -40,6 +45,8 @@ import {
 	type SaveSecretCredential,
 	setSecretAllowedHosts,
 	setSecretAllowedPackages,
+	setSecretsAllowedHosts,
+	setSecretsAllowedPackages,
 } from '#mcp/secrets/service.ts'
 import { type SecretScope } from '#mcp/secrets/types.ts'
 import {
@@ -91,7 +98,14 @@ import {
 	upsertOauthAppWithoutConnection,
 	upsertPlatformIntegration,
 } from '#worker/integrations/service.ts'
-import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
+import {
+	orgAuditWriterFromRequest,
+	type OrgAuditWriter,
+} from '#worker/orgs/org-audit.ts'
+import {
+	credentialAuditActions,
+	recordCredentialAudit,
+} from '#worker/credentials/credential-audit.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
@@ -389,6 +403,7 @@ export async function connectAccountOAuth(input: {
 					platformAppSlug: platformApp.slug,
 					name: provider,
 					scopes,
+					audit: orgAuditWriterFromRequest(input.env, input.user.request),
 				})
 			).name
 		: await saveIntegrationConfig({
@@ -417,6 +432,7 @@ export async function connectAccountOAuth(input: {
 							extraAuthorizeParams,
 						}
 					: null,
+				audit: orgAuditWriterFromRequest(input.env, input.user.request),
 			})
 	const ownerId = ownerIdFromCaller({
 		request: input.user.request,
@@ -429,6 +445,7 @@ export async function connectAccountOAuth(input: {
 		accessToken,
 		refreshToken,
 		refreshPolicy: inferIntegrationRefreshPolicy(tokenRecord),
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 	})
 	const connected = await getJoinedIntegration({
 		env: input.env,
@@ -868,6 +885,7 @@ async function saveIntegrationConfig(input: {
 		scopeSeparator: string | null
 		extraAuthorizeParams: Record<string, string>
 	} | null
+	audit: OrgAuditWriter | null
 }) {
 	const providerKey = canonicalIntegrationName(input.provider)
 	if (!providerKey) {
@@ -897,6 +915,7 @@ async function saveIntegrationConfig(input: {
 		userId: input.userId,
 		config: normalizeIntegrationConfig(parsed.data),
 		waitUntil,
+		audit: input.audit,
 	})
 	return integration.name
 }
@@ -1021,6 +1040,10 @@ async function handleApprovalAction(input: {
 						.map((item) => [item.name, item]),
 				)
 				const missingNames: Array<string> = []
+				const updates: Array<{
+					name: string
+					allowedPackages: Array<string>
+				}> = []
 				for (const name of approval.names) {
 					const secret = byName.get(name)
 					if (!secret) {
@@ -1028,18 +1051,11 @@ async function handleApprovalAction(input: {
 						continue
 					}
 					if (secret.allowedPackages.includes(approval.packageId)) continue
-					await setSecretAllowedPackages({
-						env: input.env,
-						userId: ownerIdFromCaller({
-							request: input.user.request,
-							user: input.user.mcpUser,
-						}),
+					updates.push({
 						name,
-						scope: 'user',
 						allowedPackages: Array.from(
 							new Set([...secret.allowedPackages, approval.packageId]),
 						),
-						storageContext: null,
 					})
 				}
 				if (missingNames.length === approval.names.length) {
@@ -1047,6 +1063,19 @@ async function handleApprovalAction(input: {
 						{ ok: false, error: 'None of the listed secrets were found.' },
 						404,
 					)
+				}
+				if (updates.length > 0) {
+					await setSecretsAllowedPackages({
+						env: input.env,
+						audit: orgAuditWriterFromRequest(input.env, input.user.request),
+						userId: ownerIdFromCaller({
+							request: input.user.request,
+							user: input.user.mcpUser,
+						}),
+						scope: 'user',
+						updates,
+						storageContext: null,
+					})
 				}
 			}
 			return operationResult({
@@ -1091,6 +1120,7 @@ async function handleApprovalAction(input: {
 				}
 				await setSecretAllowedPackages({
 					env: input.env,
+					audit: orgAuditWriterFromRequest(input.env, input.user.request),
 					userId: ownerIdFromCaller({
 						request: input.user.request,
 						user: input.user.mcpUser,
@@ -1141,6 +1171,7 @@ async function handleApprovalAction(input: {
 				}
 				await setSecretAllowedHosts({
 					env: input.env,
+					audit: orgAuditWriterFromRequest(input.env, input.user.request),
 					userId: ownerIdFromCaller({
 						request: input.user.request,
 						user: input.user.mcpUser,
@@ -1190,25 +1221,22 @@ async function handleApprovalAction(input: {
 						.map((item) => [item.name, item]),
 				)
 				const missingNames: Array<string> = []
+				const updates: Array<{
+					name: string
+					allowedHosts: Array<string>
+				}> = []
 				for (const name of approval.names) {
 					const secret = byName.get(name)
 					if (!secret) {
 						missingNames.push(name)
 						continue
 					}
-					await setSecretAllowedHosts({
-						env: input.env,
-						userId: ownerIdFromCaller({
-							request: input.user.request,
-							user: input.user.mcpUser,
-						}),
+					updates.push({
 						name,
-						scope: approval.scope,
 						allowedHosts: normalizeAllowedHosts([
 							...secret.allowedHosts,
 							...hostsToGrant,
 						]),
-						storageContext: approval.storageContext,
 					})
 				}
 				if (missingNames.length === approval.names.length) {
@@ -1216,6 +1244,19 @@ async function handleApprovalAction(input: {
 						{ ok: false, error: 'None of the listed secrets were found.' },
 						404,
 					)
+				}
+				if (updates.length > 0) {
+					await setSecretsAllowedHosts({
+						env: input.env,
+						audit: orgAuditWriterFromRequest(input.env, input.user.request),
+						userId: ownerIdFromCaller({
+							request: input.user.request,
+							user: input.user.mcpUser,
+						}),
+						scope: approval.scope,
+						updates,
+						storageContext: approval.storageContext,
+					})
 				}
 			}
 			return operationResult({
@@ -1525,8 +1566,11 @@ export async function saveAccountSecret(input: {
 	let renamedInPlace = false
 	if (willRenameInPlace && currentSecret) {
 		try {
+			// Audited once below, after the save succeeds, so a rolled back
+			// rename leaves no audit row.
 			const renamed = await renameSecret({
 				env: input.env,
+				audit: null,
 				userId: ownerIdFromCaller({
 					request: input.user.request,
 					user: input.user.mcpUser,
@@ -1570,6 +1614,12 @@ export async function saveAccountSecret(input: {
 	// package declaration (and marks unread when the manifest cannot be read).
 	let placementOnInsert: CredentialFillPlacement | null | undefined
 	let placementOriginOnInsert: CredentialPlacementOrigin | null | undefined
+	let fillPlacementOptInOnInsert: FillPlacementOptIn | undefined
+	// A website placement save is the owner's opt-in, whichever path writes it.
+	if (requestedPlacement !== undefined) {
+		fillPlacementOptInOnInsert =
+			fillPlacementOptInFromPlacement(requestedPlacement)
+	}
 	if (requestedPlacement !== undefined && credential == null) {
 		placementOnInsert = requestedPlacement
 		placementOriginOnInsert = 'owner'
@@ -1589,6 +1639,13 @@ export async function saveAccountSecret(input: {
 		if (source.found) {
 			placementOnInsert = source.placement
 			placementOriginOnInsert = source.placementOrigin
+			// A move keeps the source's opt-in; it never grants a new one.
+			if (source.credentialId) {
+				fillPlacementOptInOnInsert = await readFillPlacementOptIn(
+					input.env.APP_DB,
+					source.credentialId,
+				)
+			}
 		}
 	}
 
@@ -1596,6 +1653,7 @@ export async function saveAccountSecret(input: {
 	try {
 		saved = await saveSecret({
 			env: input.env,
+			audit: orgAuditWriterFromRequest(input.env, input.user.request),
 			userId: ownerIdFromCaller({
 				request: input.user.request,
 				user: input.user.mcpUser,
@@ -1618,6 +1676,7 @@ export async function saveAccountSecret(input: {
 						placementOriginOnInsert: placementOriginOnInsert ?? null,
 					}
 				: {}),
+			...(fillPlacementOptInOnInsert ? { fillPlacementOptInOnInsert } : {}),
 		})
 		if (
 			requestedPlacement !== undefined &&
@@ -1648,12 +1707,14 @@ export async function saveAccountSecret(input: {
 					credentialId: found.credentialId,
 					update: { placement: requestedPlacement },
 					audit: orgAuditWriterFromRequest(input.env, input.user.request),
+					ownerOptIn: true,
 				})
 			}
 		}
 		if (setsKeyHosts) {
 			await setSecretAllowedHosts({
 				env: input.env,
+				audit: orgAuditWriterFromRequest(input.env, input.user.request),
 				userId: ownerIdFromCaller({
 					request: input.user.request,
 					user: input.user.mcpUser,
@@ -1669,6 +1730,7 @@ export async function saveAccountSecret(input: {
 		}
 		await setSecretAllowedPackages({
 			env: input.env,
+			audit: orgAuditWriterFromRequest(input.env, input.user.request),
 			userId: ownerIdFromCaller({
 				request: input.user.request,
 				user: input.user.mcpUser,
@@ -1688,6 +1750,7 @@ export async function saveAccountSecret(input: {
 			try {
 				await renameSecret({
 					env: input.env,
+					audit: null,
 					userId: ownerIdFromCaller({
 						request: input.user.request,
 						user: input.user.mcpUser,
@@ -1712,6 +1775,32 @@ export async function saveAccountSecret(input: {
 			}
 		}
 		return operationResult({ ok: false, error: saveError }, 400)
+	}
+
+	if (renamedInPlace && currentSecret?.scope === 'user') {
+		const orgId = ownerIdFromCaller({
+			request: input.user.request,
+			user: input.user.mcpUser,
+		})
+		const stored = await findSecret({
+			env: input.env,
+			userId: orgId,
+			name,
+			scope: currentSecret.scope,
+			includeExpired: true,
+			storageContext: getSecretContextForAccountSecret(currentSecret),
+		})
+		if (stored.credentialId) {
+			await recordCredentialAudit(
+				orgAuditWriterFromRequest(input.env, input.user.request),
+				{
+					orgId,
+					credential: { id: stored.credentialId, kind: 'secret', name },
+					action: credentialAuditActions.renamed,
+					details: { previousName: currentSecret.name, fields: ['name'] },
+				},
+			)
+		}
 	}
 
 	// Post-commit provider link must not claim the save failed — a create retry
@@ -1758,6 +1847,7 @@ export async function saveAccountSecret(input: {
 		try {
 			await deleteSecret({
 				env: input.env,
+				audit: orgAuditWriterFromRequest(input.env, input.user.request),
 				userId: ownerIdFromCaller({
 					request: input.user.request,
 					user: input.user.mcpUser,
@@ -1828,6 +1918,7 @@ export async function deleteAccountSecret(input: {
 
 	const deleted = await deleteSecret({
 		env: input.env,
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 		userId: ownerIdFromCaller({
 			request: input.user.request,
 			user: input.user.mcpUser,
@@ -1861,6 +1952,7 @@ export async function disconnectAccountSecret(input: {
 
 	const disconnected = await disconnectSecret({
 		env: input.env,
+		audit: orgAuditWriterFromRequest(input.env, input.user.request),
 		userId: ownerIdFromCaller({
 			request: input.user.request,
 			user: input.user.mcpUser,

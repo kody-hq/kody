@@ -21,6 +21,7 @@ import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { approveWentPublicRequest } from '#app/account-package-approval-requests.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
+import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { logOrgAuditEvent } from '#worker/orgs/org-audit.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
@@ -81,6 +82,12 @@ async function evaluateTreePackage(
 	env: Env,
 	sourceId: string,
 	pinnedCommit: string,
+	/**
+	 * Shared memo key for the package-credential-suppliers flag across the
+	 * dependency tree (KODY-BT). The flag is per org; without this each
+	 * package re-runs owner lookup + feature-flag reads.
+	 */
+	flagMemo: object,
 ): Promise<TreePackageResult> {
 	const source = await getEntitySourceById(env.APP_DB, sourceId)
 	if (!source?.published_commit) {
@@ -114,16 +121,31 @@ async function evaluateTreePackage(
 		declaresAny(kody.credentials) ||
 		declaresAny(kody.invalidCredentialSlots)
 	) {
-		const needKeys = Object.keys(
+		const slots = Object.values(
 			(kody.credentials ?? {}) as Record<string, unknown>,
 		)
+		// With the flag off, `supplier` is ignored and nothing is visitor-supplied.
+		const suppliersEnabled = await isPackageCredentialSuppliersEnabled({
+			db: env.APP_DB,
+			orgId: source.user_id,
+			request: flagMemo,
+		})
+		const executorNeedCount = suppliersEnabled
+			? slots.filter(
+					(slot) =>
+						typeof slot === 'object' &&
+						slot !== null &&
+						(slot as { supplier?: unknown }).supplier === 'executor',
+				).length
+			: 0
 		return {
 			blocker: 'declares_credentials',
 			reasons: [
 				{
 					kind: 'credential_needs',
 					sourceId,
-					needCount: Math.max(1, needKeys.length),
+					needCount: Math.max(1, slots.length),
+					...(executorNeedCount > 0 ? { executorNeedCount } : {}),
 				},
 			],
 		}
@@ -146,12 +168,21 @@ async function evaluateTreePackage(
 		userId: source.user_id,
 		sourceId,
 		fresh: true,
+		request: flagMemo,
 	})
 	if (needs.length > 0) {
+		const executorNeedCount = needs.filter(
+			(need) => need.supplier === 'executor',
+		).length
 		return {
 			blocker: 'declares_credentials',
 			reasons: [
-				{ kind: 'credential_needs', sourceId, needCount: needs.length },
+				{
+					kind: 'credential_needs',
+					sourceId,
+					needCount: needs.length,
+					...(executorNeedCount > 0 ? { executorNeedCount } : {}),
+				},
 			],
 		}
 	}
@@ -248,8 +279,16 @@ export async function evaluateSelfPublish(input: {
 				[dependency.sourceId, dependency.publishedCommit] as const,
 		),
 	])
+	// One memo object for the whole tree so same-org packages share one
+	// package-credential-suppliers evaluation (KODY-BT).
+	const flagMemo = {}
 	for (const [sourceId, commit] of pinned) {
-		const result = await evaluateTreePackage(input.env, sourceId, commit)
+		const result = await evaluateTreePackage(
+			input.env,
+			sourceId,
+			commit,
+			flagMemo,
+		)
 		if (result.blocker) {
 			return {
 				eligible: false,

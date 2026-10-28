@@ -398,16 +398,15 @@ line and never reach Sentry; genuine platform failures still do. New "not found
 `search` also publishes exclusive wall-clock tiles (`rateLimitMs`,
 `usernameLookupMs`, `identityResolutionMs`, `loadAndRankMs`, suffix stamps,
 `waitingItemsMs`, `formattingMs`) plus `exclusiveMs` / `unaccountedMs` so named
-phases reconcile against `timing.durationMs`. Overlapping detail (memory,
-retrievers, candidate plugins) stays beside those tiles and is not summed. Each
-call writes one privacy-safe point to `MCP_SEARCH_EVENTS` (see
+phases reconcile against `timing.durationMs`. Overlapping detail (memory
+enrichment and candidate plugins) stays beside those tiles and is not summed.
+Each call writes one privacy-safe point to `MCP_SEARCH_EVENTS` (see
 [Usage metering — MCP search duration](./usage-metering.md#mcp-search-duration)).
-Operators asking "is search slow this hour?" query that dataset; UWD `retriever`
-surface attribution is unchanged and does not measure search latency.
-`/admin/insights` has no search-latency chart. The same page does show the
-onboarding funnel (`ONBOARDING_FUNNEL_EVENTS`): unique users per stage for the
-last 7 and 28 days. See
-[Usage metering — Onboarding funnel](./usage-metering.md#onboarding-funnel).
+Operators asking "is search slow this hour?" query that dataset; UWD surface
+attribution does not measure search latency. `/admin/insights` has no
+search-latency chart. The same page does show the onboarding funnel
+(`ONBOARDING_FUNNEL_EVENTS`): unique users per stage for the last 7 and 28 days.
+See [Usage metering — Onboarding funnel](./usage-metering.md#onboarding-funnel).
 
 Authentication and authorization denials are deliberately **not**
 `McpCallerError`. `/mcp` rejects anonymous callers at the transport before any

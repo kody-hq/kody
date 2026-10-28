@@ -461,3 +461,11 @@ test('resources/read fails when the snapshot no longer matches the indexed diges
 		message: expect.stringContaining('digest'),
 	})
 })
+
+test('human inventories report index failures instead of silently dropping packages', async () => {
+	mocks.listOwn.mockResolvedValue([savedPackage()])
+	mocks.readIndex.mockRejectedValue(new Error('Index unavailable'))
+	await expect(
+		loadCallerSkillsCatalog({ env, callerContext, failOnError: true }),
+	).rejects.toThrow('Index unavailable')
+})

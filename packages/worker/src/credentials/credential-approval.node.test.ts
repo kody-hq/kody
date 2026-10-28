@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import {
 	dailyTarget as daily,
 	mineTarget as mine,
@@ -15,7 +16,11 @@ import {
 	approveCredentialProposal,
 	resolveCredentialApproval,
 } from './credential-approval.ts'
-import { buildWriteCredentialMappingStatement } from './credential-mappings.ts'
+import {
+	buildWriteCredentialMappingStatement,
+	runCredentialMappingWrite,
+} from './credential-mappings.ts'
+import * as needsClosure from './credential-needs-closure.ts'
 import { buildPackageCredentialsView } from './package-credential-mappings.ts'
 
 vi.mock(
@@ -28,9 +33,9 @@ vi.mock(
 
 const mocks = vi.hoisted(() => ({ loadPackageManifestBySourceId: vi.fn() }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 const setup = () =>
 	setupPackageCredentialMappingFixture({
@@ -274,16 +279,19 @@ test('a stored mapping of unusable credentials shows their ids and changes the f
 		.bind(new Date().toISOString(), gone1, gone2)
 		.run()
 	const storeMine = (id: string) =>
-		buildWriteCredentialMappingStatement({
-			db: t.db,
-			orgId: t.acmeId,
-			packageId: t.savedPackage.id,
-			needKey: 'mail',
-			target: { target: 'mine', personId: t.people.bea.personId },
-			credentialIds: [id],
-			updatedByUserId: t.people.bea.personId,
-			now: new Date().toISOString(),
-		}).run()
+		runCredentialMappingWrite(
+			t.db,
+			buildWriteCredentialMappingStatement({
+				db: t.db,
+				orgId: t.acmeId,
+				packageId: t.savedPackage.id,
+				needKey: 'mail',
+				target: { target: 'mine', personId: t.people.bea.personId },
+				credentialIds: [id],
+				updatedByUserId: t.people.bea.personId,
+				now: new Date().toISOString(),
+			}),
+		)
 	const proposal = proposalOf([
 		{ target: mine, needKey: 'mail', credentials: [{ name: 'resend-prod' }] },
 	])
@@ -353,6 +361,42 @@ test('a member cannot approve org defaults but can approve their own', async () 
 		)
 	).view
 	expect(mineView.canApprove).toBe(true)
+})
+
+test('publisher-supplied needs reject personal and trigger mapping proposals', async () => {
+	const t = await setup()
+	const credentialId = await t.storeKey('publisher-key', 'resend')
+	const needs = vi
+		.spyOn(needsClosure, 'loadPublishedCredentialNeeds')
+		.mockResolvedValue([
+			{
+				key: 'mail',
+				kind: 'secret',
+				provider: 'resend',
+				description: 'Publisher email.',
+				multiple: false,
+				supplier: 'publisher',
+			},
+		])
+	const scope = await t.scopeFor('bea', 'owner')
+	for (const target of [mine, daily]) {
+		const { view } = await resolveCredentialApproval(
+			scope,
+			proposalOf([
+				{
+					target,
+					needKey: 'mail',
+					credentials: [{ id: credentialId }],
+				},
+			]),
+		)
+		expect(view.changes[0]?.error).toMatchObject({
+			code: 'not_allowed',
+			message:
+				'Credential need "mail" is supplied by the publisher. Only the org-level mapping can set it.',
+		})
+	}
+	needs.mockRestore()
 })
 
 test('an enable-only proposal turns a minted webhook on at Approve, once', async () => {
@@ -722,16 +766,19 @@ test('approving a sender mapping writes that sender enablement, not an older one
 		'2026-10-13T00:01:00.000Z',
 	)
 	const writeMapping = (enablementId: string, credentialId: string) =>
-		buildWriteCredentialMappingStatement({
-			db: t.db,
-			orgId: t.acmeId,
-			packageId: t.savedPackage.id,
-			needKey: 'mail',
-			target: { target: 'enablement', enablementId, personId: enabler },
-			credentialIds: [credentialId],
-			updatedByUserId: enabler,
-			now: '2026-10-13T00:00:00.000Z',
-		}).run()
+		runCredentialMappingWrite(
+			t.db,
+			buildWriteCredentialMappingStatement({
+				db: t.db,
+				orgId: t.acmeId,
+				packageId: t.savedPackage.id,
+				needKey: 'mail',
+				target: { target: 'enablement', enablementId, personId: enabler },
+				credentialIds: [credentialId],
+				updatedByUserId: enabler,
+				now: '2026-10-13T00:00:00.000Z',
+			}),
+		)
 	await writeMapping(senderA.id, credA)
 	await writeMapping(senderB.id, credB)
 	const proposal = parseCredentialApprovalQuery(

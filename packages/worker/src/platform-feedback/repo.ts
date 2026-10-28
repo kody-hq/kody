@@ -359,6 +359,55 @@ export async function listPlatformFeedbackPageRowsForSubmitter(
 	return (rows.results ?? []).map(mapPlatformFeedbackSubmitterListRow)
 }
 
+export async function getPlatformFeedbackAcknowledgementMessageId(
+	db: D1Database,
+	feedbackId: string,
+): Promise<string | null> {
+	const id = feedbackId.trim()
+	if (!id) return null
+	const row = await db
+		.prepare(
+			`SELECT acknowledgement_message_id
+			 FROM platform_feedback
+			 WHERE id = ?`,
+		)
+		.bind(id)
+		.first<{ acknowledgement_message_id: string | null }>()
+	const value = row?.acknowledgement_message_id
+	return typeof value === 'string' && value.trim().length > 0
+		? value.trim()
+		: null
+}
+
+/**
+ * Persist the Cloudflare Message-ID from a successful acknowledgement send.
+ * Idempotent: does not overwrite a non-empty value (first successful ack wins).
+ */
+export async function setPlatformFeedbackAcknowledgementMessageId(
+	db: D1Database,
+	input: {
+		feedbackId: string
+		messageId: string
+	},
+): Promise<boolean> {
+	const feedbackId = input.feedbackId.trim()
+	const messageId = input.messageId.trim()
+	if (!feedbackId || !messageId) return false
+	const result = await db
+		.prepare(
+			`UPDATE platform_feedback
+			 SET acknowledgement_message_id = ?
+			 WHERE id = ?
+			   AND (
+					acknowledgement_message_id IS NULL
+					OR TRIM(acknowledgement_message_id) = ''
+			   )`,
+		)
+		.bind(messageId, feedbackId)
+		.run()
+	return (result.meta.changes ?? 0) > 0
+}
+
 export async function updatePlatformFeedbackStatusForAdmin(
 	db: D1Database,
 	input: {

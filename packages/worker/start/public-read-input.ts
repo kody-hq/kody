@@ -11,6 +11,7 @@ export function communityReadInput(search: string) {
 		sort: params.get('sort'),
 		category: params.get('category'),
 		limit: optionalLimit(params.get('limit')) ?? 50,
+		installOrg: params.get('org')?.trim() || null,
 	}
 }
 export function profileReadInput(username: string, search: string) {

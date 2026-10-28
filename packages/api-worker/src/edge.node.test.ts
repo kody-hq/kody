@@ -81,6 +81,28 @@ test('forwards API routes with only safe headers and CORS on the response', asyn
 	expect(limited.join()).not.toContain('B'.repeat(43))
 })
 
+test('forwards signed execution context requests with their ECP headers', async () => {
+	const { env, forwarded } = createEnv()
+	const signature = 'ec=ec_test, ts=1, n=nonce, s=sig'
+	const response = await handleApiEdgeRequest(
+		new Request('https://api.kody.test/v1/execution-contexts', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json',
+				'Kody-ECP-Signature': signature,
+				'Kody-ECP-Run': 'run_1',
+			},
+			body: JSON.stringify({ name: 'my-machine' }),
+		}),
+		env,
+	)
+	expect(response.status).toBe(200)
+	const [request] = forwarded
+	expect(request?.headers.get('Kody-ECP-Signature')).toBe(signature)
+	expect(request?.headers.get('Kody-ECP-Run')).toBe('run_1')
+})
+
 test('opaque OAuth bearers get a hashed per-credential rate-limit key', async () => {
 	const oauth = 'cli-oauth-access-token-not-kody-at'
 	const { env, forwarded, limited } = createEnv()
@@ -304,5 +326,48 @@ test('gateway-fetch rejects a declared body over the Worker upload limit', async
 			message: expect.stringMatching(/100 MiB/),
 		},
 	})
+	expect(forwarded).toHaveLength(0)
+})
+
+test('execution context connect forwards the WebSocket upgrade to origin', async () => {
+	const { env, forwarded, limited } = createEnv()
+	const response = await handleApiEdgeRequest(
+		new Request(
+			'https://api.kody.test/v1/execution-contexts/connect?ticket=ec_test.abc',
+			{
+				headers: {
+					Upgrade: 'websocket',
+					Connection: 'Upgrade',
+					'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+					'Sec-WebSocket-Version': '13',
+					'CF-Connecting-IP': '203.0.113.9',
+					Cookie: 'leak=1',
+				},
+			},
+		),
+		env,
+	)
+	expect(response.status).toBe(200)
+	expect(forwarded).toHaveLength(1)
+	const [request] = forwarded
+	expect(new URL(request!.url).searchParams.get('ticket')).toBe('ec_test.abc')
+	expect(request!.headers.get('Upgrade')).toBe('websocket')
+	expect(request!.headers.get('Sec-WebSocket-Key')).toBe(
+		'dGhlIHNhbXBsZSBub25jZQ==',
+	)
+	expect(request!.headers.get('Cookie')).toBeNull()
+	expect(limited).toEqual(['ecp-connect:ec_test:203.0.113.9'])
+})
+
+test('execution context connect is rate limited per context and IP', async () => {
+	const { env, forwarded } = createEnv({ ipAllowed: false })
+	const response = await handleApiEdgeRequest(
+		new Request(
+			'https://api.kody.test/v1/execution-contexts/connect?ticket=ec_test.abc',
+			{ headers: { Upgrade: 'websocket' } },
+		),
+		env,
+	)
+	expect(response.status).toBe(429)
 	expect(forwarded).toHaveLength(0)
 })

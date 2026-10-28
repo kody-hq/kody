@@ -1,3 +1,4 @@
+import { type OAuthAuthorizeClientFailure } from '#universal/oauth-authorize-client-failure.ts'
 import {
 	type OnboardingFeaturedListing,
 	type ProfileVisibility,
@@ -25,8 +26,14 @@ import { type CredentialFillPlacementView } from '#universal/credential-fill-pla
 import { type ApprovalBundleLoaderData } from '#universal/approval-bundles.ts'
 import { type PackageCredentialApprovalLoaderData } from '#universal/package-credential-approval-page.ts'
 import { type PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
+import { type PackageAppConnectedPeopleLoaderData } from '#universal/package-app-connected-people.ts'
+import { type PackageForksLoaderData } from '#universal/package-forks.ts'
 import { type PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
+import {
+	type EmailClassification,
+	type EmailMessageView,
+} from '#universal/email-message-view.ts'
 import { type PackageFilesContentKind } from '#universal/package-file-media.ts'
 import {
 	type PackageAppCustomDomainRecordView,
@@ -178,6 +185,11 @@ export type CommunityIndexLoaderData = {
 	query: string | null
 	sort: CommunityListingSort
 	category: CommunityListingCategory | null
+	/**
+	 * Org slug the install badges were read for (`?org=`). Null means the
+	 * viewer's personal org, including when the requested org was rejected.
+	 */
+	installOrg?: string | null
 }
 
 export type CommunityDetailLoaderData = {
@@ -207,6 +219,8 @@ type PackageFilesChildLoaderData = {
 }
 
 export type PackageFilesLoaderData = {
+	viewedCommit?: string | null
+	skillRead?: { orgSlug: string; receipt: string } | null
 	ok: true
 	title: string
 	backHref: string
@@ -231,6 +245,8 @@ export type PackageFilesLoaderData = {
 	viewerIsOwner?: boolean
 	viewerCanManage?: boolean
 	viewerCanManageAccess?: boolean
+	/** Manage on a package with an app: shows the Connected people tab. */
+	viewerCanSeeConnectedPeople?: boolean
 	isPrivate?: boolean
 	isListed?: boolean
 	/** False for plain repos that share package chrome. Defaults to true. */
@@ -272,6 +288,8 @@ type CommunityDetailShellLoaderData = {
 	viewerIsOwner: boolean
 	viewerCanManage: boolean
 	viewerCanManageAccess?: boolean
+	/** Manage on a package with an app: shows the Connected people tab. */
+	viewerCanSeeConnectedPeople?: boolean
 	viewerCanPublish?: boolean
 	viewerCanDelete?: boolean
 	viewerCanAdoptCommunityFork?: boolean
@@ -1111,6 +1129,9 @@ type AdminSystemEmailListItem = {
 	received_at: string | null
 	created_at: string
 	to_addresses: Array<string>
+	classification: EmailClassification
+	classification_reason: string | null
+	archived_at: string | null
 }
 
 type AdminSystemEmailDetail = AdminSystemEmailListItem & {
@@ -1148,6 +1169,7 @@ export type AdminSystemEmailLoaderData = {
 	page: number
 	pageSize: number
 	total: number
+	view: EmailMessageView
 }
 
 export type AdminPlatformFeedbackListItem = {
@@ -1217,6 +1239,8 @@ export type AccountRestorableOrganization = {
 	slug: string
 	displayName: string | null
 	deletedAt: string
+	/** Last moment the org can be restored; null when `deletedAt` is unparseable. */
+	restoreUntil: string | null
 	avatarUrl?: string | null
 }
 
@@ -1303,6 +1327,8 @@ type OrgSettingsCustomHostnameView = {
 }
 
 type OrgSettingsCustomDomainsView = {
+	/** False on free plans: custom domains need a paid org (ADR 0071). */
+	canAdd: boolean
 	hostnames: Array<OrgSettingsCustomHostnameView>
 	dnsTarget: string | null
 }
@@ -1312,10 +1338,7 @@ export type OrgSettingsLoaderData = {
 	org: OrgManagementOrg
 	canManage: boolean
 	canDelete: boolean
-	/**
-	 * Present only when `package-app-custom-domains` is on for this
-	 * environment. Null when the flag is off (panel stays hidden).
-	 */
+	/** Null for personal orgs and for viewers who cannot manage the org. */
 	customDomains: OrgSettingsCustomDomainsView | null
 }
 
@@ -1342,13 +1365,23 @@ export type OrgInviteLinkView = {
 	id: string
 	role: 'member' | 'billing'
 	roleLabel: string
+	label: string | null
+	teamIds: Array<string>
+	teamNames: Array<string>
 	allowedEmailDomains: Array<string>
 	maxUses: number | null
 	useCount: number
+	lastUsedAt: string | null
 	expiresAt: string
 	createdAt: string
 	createdByUsername: string | null
 	createdByDisplayName: string | null
+}
+
+export type OrgMembersTeamOption = {
+	id: string
+	slug: string
+	name: string
 }
 
 export type OrgMembersLoaderData = {
@@ -1357,12 +1390,19 @@ export type OrgMembersLoaderData = {
 	members: Array<OrgMemberView>
 	invites: Array<OrgInviteView>
 	inviteLinks: Array<OrgInviteLinkView>
+	teams: Array<OrgMembersTeamOption>
 	canManage: boolean
 }
 
 /** What accepting an invite link gives, as the join page describes it. */
 export type OrgInviteJoinOffer =
-	| { kind: 'membership'; role: 'member' | 'billing'; roleLabel: string }
+	| {
+			kind: 'membership'
+			role: 'member' | 'billing'
+			roleLabel: string
+			/** Live default team names this link still assigns. */
+			teamNames: Array<string>
+	  }
 	| {
 			kind: 'team'
 			teamName: string
@@ -1491,6 +1531,23 @@ export type OrgGrantsLoaderData = {
 		}
 	>
 	canManage: boolean
+	/**
+	 * Owner-facing form for organization grants that carry read-only resource
+	 * permissions. Null when the viewer cannot grant them (no `member:write`)
+	 * or the organization is personal.
+	 */
+	orgWideRead: {
+		subjects: Array<OrgWideReadSubjectView>
+	} | null
+}
+
+export type OrgWideReadSubjectView = {
+	/** `user:<id>` or `team:<id>`; never shown. */
+	key: string
+	kind: 'user' | 'team'
+	label: string
+	/** Read-only permissions this subject already holds on the organization. */
+	reads: Array<string>
 }
 
 export type OrgCollaboratorView = {
@@ -1763,7 +1820,6 @@ export type PackageWebhookListItem = {
 	instanceLabel: string | null
 	handle: string | null
 	urlHost: string | null
-	enabled: boolean | null
 	/** True once a person approved it (a live enablement exists). */
 	approved: boolean
 	/** Where to approve a minted webhook; null when unminted or approved. */
@@ -2171,6 +2227,12 @@ export type AccountPackageDetail = AccountPackageListItem & {
 	 * or empty when the package has none.
 	 */
 	customDomains?: Array<PackageAppCustomDomainView>
+	/** Recent package-app cookie HttpOnly warnings (owner view only). */
+	cookieWarnings?: Array<{
+		cookieName: string
+		reason: 'added_httponly' | 'missing_httponly'
+		lastSeenAt: string
+	}>
 }
 
 type AccountPackagePublishDiffFile = {
@@ -2497,7 +2559,6 @@ type AccountLoaderJsonValue =
 	| { [key: string]: AccountLoaderJsonValue }
 
 type AccountJobSchedule =
-	| { type: 'once'; runAt: string }
 	| { type: 'interval'; every: string }
 	| { type: 'cron'; expression: string }
 
@@ -2511,6 +2572,8 @@ export type AccountJobListItem = {
 	scheduleType: AccountJobSchedule['type']
 	timezone: string
 	enabled: boolean
+	/** Why the job is off, or null while it is on. */
+	disabledReason: string | null
 	killSwitchEnabled: boolean
 	expiresAt: string | null
 	expired: boolean
@@ -2530,6 +2593,8 @@ type AccountJobRecentRun = {
 	status: 'success' | 'error' | 'running'
 	durationMs: number
 	error: string | null
+	/** How the run started: `manual`, `scheduled`, or another stored trigger. */
+	trigger: string
 }
 
 export type AccountJobDetail = AccountJobListItem & {
@@ -2626,6 +2691,26 @@ export type AccountActivityRunListItem = {
 	entry: 'invoke' | 'code' | null
 	/** Stable LOADER worker id (UWD graph identity) from run metadata. */
 	workerId: string | null
+	/**
+	 * Who started the run. Null for legacy rows (UI shows Unknown) or when
+	 * begin had no request context.
+	 */
+	startedBy: {
+		userId: string | null
+		username: string | null
+		client:
+			| 'session'
+			| 'mcp'
+			| 'cli'
+			| 'api-token'
+			| 'package-app'
+			| 'schedule'
+			| 'webhook'
+			| 'inbound-email'
+			| 'platform-event'
+			| 'execution-context'
+		label: string | null
+	} | null
 }
 
 type AccountActivityRunLog = {
@@ -2673,6 +2758,24 @@ type AccountActivityLoaderData = {
 	selectedRun: AccountActivityRunDetail | null
 	selectedRunId: string | null
 	retentionDays: number
+	toggleChanges: Array<AccountToggleChange> | null
+}
+
+/** One job or enablement on/off change from the org audit log. */
+export type AccountToggleChange = {
+	id: string
+	resource: 'job' | 'enablement'
+	resourceId: string
+	createdAt: string
+	actorUsername: string | null
+	actorKind: 'person' | 'automation' | 'admin'
+	from: 'on' | 'off' | 'paused'
+	to: 'on' | 'off' | 'paused'
+	source: string
+	reason: string | null
+	jobId: string | null
+	name: string | null
+	triggerKind: string | null
 }
 
 type AccountMemoryStatus = 'active' | 'archived' | 'deleted'
@@ -2766,8 +2869,9 @@ export type AccountEmailMessageListItem = {
 	subject: string | null
 	message_id_header: string | null
 	processing_status: string
-	classification: 'accepted' | 'quarantined'
+	classification: EmailClassification
 	classification_reason: string | null
+	archived_at: string | null
 	sender_classification: AccountEmailSenderClassification | null
 	sender_classification_reason: string | null
 	provider_message_id: string | null
@@ -2838,8 +2942,7 @@ export type AccountEmailLoaderData = {
 	pageSize: number
 	total: number
 	query: string
-	/** `null` means no classification filter (all messages). */
-	classification: 'accepted' | 'quarantined' | null
+	view: EmailMessageView
 }
 
 export type AuthProvidersLoaderData = {
@@ -2871,6 +2974,8 @@ export type OAuthAuthorizeLoaderData =
 			error: string
 			allowClientReset: boolean
 			code?: 'email_verification_required'
+			/** Set when the OAuth client itself did not resolve. */
+			clientFailure?: OAuthAuthorizeClientFailure
 	  }
 
 /** Hosted package-app OAuth consent on `/oauth/package-app/authorize`. */
@@ -2886,7 +2991,27 @@ export type PackageAppOauthConsentLoaderData = {
 	kodyId: string
 	redirectUri: string
 	scopes: Array<string>
+	requiredScopes: Array<string>
+	alreadyAllowedScopes: Array<string>
+	requiredLabels: Array<string>
 	claimLabels: Array<string>
+	optionalScopes: Array<{ scope: string; label: string }>
+	executorNeeds: Array<{
+		key: string
+		description: string
+		required: boolean
+		scope: string
+		credentials: Array<{ id: string; name: string; usedByApps: number }>
+		recommendedCredentialId: string | null
+		createUrl: string
+		/** Provider slug the need matches, e.g. `github`. */
+		provider: string
+		/** Declared credential kind label (e.g. `Key`), or null for any kind. */
+		kindLabel: string | null
+		/** Org handle the create link saves the credential to. */
+		createDestination: string | null
+	}>
+	alreadyAllowedLabels: Array<string>
 	hiddenFields: Record<string, string>
 }
 
@@ -2957,6 +3082,8 @@ export type AppLoaderData = {
 	accountCredentials?: AccountCredentialsResponse
 	packageCredentials?: PackageCredentialsLoaderData
 	packageCollaborators?: PackageCollaboratorsLoaderData
+	packageAppConnectedPeople?: PackageAppConnectedPeopleLoaderData
+	packageForks?: PackageForksLoaderData
 	packageCredentialApproval?: PackageCredentialApprovalLoaderData
 	approvalBundle?: ApprovalBundleLoaderData
 	accountSecrets?: AccountSecretsLoaderData
@@ -2976,6 +3103,7 @@ export type AppLoaderData = {
 	accountWaiting?: AccountWaitingLoaderData
 	orgFollows?: OrgFollowsLoaderData
 	accountExperiments?: AccountExperimentsLoaderData
+	accountConnectedApps?: AccountConnectedAppsLoaderData
 	discord?: DiscordPageLoaderData
 	walkthroughHosts?: WalkthroughHostPick
 	/** Homepage agent marquee: one SSR shuffle of `withAgents` slugs. */
@@ -3291,4 +3419,30 @@ export type AccountWaitingLoaderData = {
 export type AccountExperimentsLoaderData = {
 	ok: true
 	experimentsOptIn: boolean
+}
+
+/** One package app the person signed in to with Kody. */
+export type AccountConnectedAppView = {
+	/** Opaque to the page; names the grant to revoke. Never shown. */
+	appKey: string
+	appName: string
+	publisherName: string
+	iconUrl: string | null
+	/** What the app may see or use, in plain words. */
+	allows: Array<{
+		label: string
+		scope: string | null
+		disconnectableCredentials?: Array<{ id: string; name: string }>
+	}>
+	disconnectableCredentials: Array<{ id: string; name: string }>
+	connectedAt: string
+	lastUsedAt: string | null
+}
+
+export type AccountConnectedAppsLoaderData = {
+	ok: true
+	apps: Array<AccountConnectedAppView>
+	agents: Array<ConnectedMcpAgent>
+	/** True when the agent list could not load; apps still show. */
+	agentsUnavailable: boolean
 }

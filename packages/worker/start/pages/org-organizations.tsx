@@ -5,6 +5,7 @@ import {
 	suggestHandle,
 } from '@kody-internal/shared/handle-rules.ts'
 import { permanentHandleInputProps } from '#client/handle-field.ts'
+import { workspaceHomeHref } from '#client/routes/account-rail.ts'
 import {
 	usePendingInviteActions,
 	renderPendingInviteActions,
@@ -106,9 +107,21 @@ export function OrganizationsPage({
 								key: org.slug,
 								slug: org.slug,
 								displayName: org.displayName,
+								// The org avatar route only serves live orgs, so deleted rows
+								// keep the initial fallback.
 								personal: false,
 								viewer: data.viewer,
-								detail: `Deleted ${formatTimestampDate(org.deletedAt)}`,
+								detail: (
+									<>
+										Deleted {formatTimestampDate(org.deletedAt)}
+										{org.restoreUntil ? (
+											<>
+												{' · Restorable until '}
+												{formatTimestampDate(org.restoreUntil)}
+											</>
+										) : null}
+									</>
+								),
 								pills: [{ label: 'Deleted', tone: 'quiet' }],
 								testId: 'restorable-organization',
 								trailing: (
@@ -280,7 +293,9 @@ function CreateOrganizationForm() {
 										setConfirming(false)
 										return
 									}
-									void router.navigate({ href: `/@${result.slug}` })
+									void router.navigate({
+										href: orgOverviewPath(result.slug),
+									})
 								},
 							},
 						)
@@ -408,6 +423,7 @@ function renderOrgRow(input: {
 	key: string
 	slug: string
 	displayName: string | null
+	avatarUrl?: string | null
 	personal: boolean
 	viewer: OrgViewer
 	detail: ReactNode
@@ -481,16 +497,15 @@ function renderOrganizationList(data: AccountOrganizationsLoaderData) {
 					key: org.slug,
 					slug: org.slug,
 					displayName: org.displayName,
+					avatarUrl: org.avatarUrl,
 					personal: org.personal,
 					viewer: data.viewer,
 					detail: orgRoleLabel(org.role),
 					pills: [],
-					// Each org opens its overview: a team org's home (which
-					// links Settings, Members, and its sections), the signup
-					// org's workspace overview.
-					href: org.personal
-						? orgOverviewPath(org.slug)
-						: routes.profile.href({ username: org.slug }),
+					// Every org a person belongs to opens its workspace
+					// Overview. Grant-only collaborators have no Overview, so
+					// they open the org home that lists what was shared.
+					href: workspaceHomeHref(org),
 					testId: 'account-organization',
 				}),
 			)}
@@ -729,7 +744,8 @@ function useOrganizationRestore() {
 				{ orgSlug, actorKey },
 				{
 					onSuccess: (result) => {
-						if (isCurrent()) void router.navigate({ href: `/@${result.slug}` })
+						if (isCurrent())
+							void router.navigate({ href: orgOverviewPath(result.slug) })
 					},
 				},
 			)

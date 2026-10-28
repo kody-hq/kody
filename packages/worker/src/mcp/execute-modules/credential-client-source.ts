@@ -185,6 +185,7 @@ function __kodyCreateCredentialRuntime(__kodyCredentialCall) {
   const credential = async (key) => await open({ key });
   credential.named = async (name, options) =>
     await open({ name, scope: options?.scope ?? null });
+  credential.visitor = async (need) => await open({ visitorNeed: need });
   const credentials = async (key) => {
     const opened = await invoke(${JSON.stringify(credentialClientToolNames.openAll)}, { key });
     return (Array.isArray(opened) ? opened : []).map(toClient);

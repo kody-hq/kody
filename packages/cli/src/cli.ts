@@ -47,6 +47,10 @@ import {
 	runPackageCollaboratorPlan,
 } from './package-collaborators.js'
 import {
+	detectHeadlessLoginReason,
+	formatDeviceLoginNotice,
+	formatDeviceLoginSuggestion,
+	formatLoginSuccess,
 	formatLoginUrlNotice,
 	loginBrowserOpenFailedNotice,
 } from './login-notice.js'
@@ -90,8 +94,13 @@ export type CommandName =
 	| 'skill'
 	| 'help'
 	| 'version'
+	| 'context'
+	| 'chain'
+	| 'daemon'
 
 const orgScopedCommands = new Set<CommandName>([
+	'context',
+	'chain',
 	'login',
 	'logout',
 	'whoami',
@@ -138,7 +147,10 @@ const cliFlagOptions = {
 	scopes: { type: 'string' },
 	project: { type: 'boolean' },
 	'no-browser': { type: 'boolean' },
+	device: { type: 'boolean' },
 	org: { type: 'string' },
+	name: { type: 'string' },
+	context: { type: 'string' },
 	target: { type: 'string' },
 	'reset-storage': { type: 'boolean' },
 	'dry-run': { type: 'boolean' },
@@ -205,6 +217,9 @@ export function resolveCommand(argv: Array<string>): {
 		case 'skill':
 		case 'help':
 		case 'version':
+		case 'context':
+		case 'chain':
+		case 'daemon':
 			return { command: raw, positionals: positionals.slice(1), values }
 		default:
 			// Never embed full usage here: git credential helpers treat any
@@ -230,8 +245,10 @@ export async function runCli(
 	// global git config; skip git-credential (helper must stay fast / offline
 	// while the stored token is valid); skip version/help (no git touch).
 	const head = argv[0]
+	const underNodeTest =
+		process.env.NODE_TEST === '1' || process.env.NODE_TEST === 'true'
 	const skipHelperRefresh =
-		process.env.NODE_TEST === '1' ||
+		underNodeTest ||
 		process.env.KODY_SKIP_GIT_HELPER_REFRESH === '1' ||
 		head === 'git-credential' ||
 		head === 'version' ||
@@ -249,6 +266,31 @@ export async function runCli(
 		} catch {
 			// Ignore refresh failures; the user's command still runs.
 		}
+	}
+	const skipSkillRefresh =
+		underNodeTest ||
+		process.env.KODY_SKIP_SKILL_REFRESH === '1' ||
+		head === 'git-credential' ||
+		head === 'skill' ||
+		head === 'version' ||
+		head === '--version' ||
+		head === '-v' ||
+		head === 'help' ||
+		head === '--help' ||
+		head === '-h' ||
+		head === undefined
+	if (!skipSkillRefresh) {
+		void import('./skill.js')
+			.then(({ scheduleDetachedSkillRefresh }) => {
+				scheduleDetachedSkillRefresh({
+					origin: process.env.KODY_MCP_URL
+						? new URL(process.env.KODY_MCP_URL).origin
+						: undefined,
+				})
+			})
+			.catch(() => {
+				// Ignore schedule failures; the user's command still runs.
+			})
 	}
 	const jsonFlag = argvIncludesJsonFlag(argv)
 	try {
@@ -411,20 +453,77 @@ async function dispatch(
 		case 'version':
 			write(`${readPackageVersion()}\n`)
 			return 0
+		case 'context':
+		case 'chain':
+		case 'daemon': {
+			const apiUrl = apiUrlFrom({
+				apiUrl:
+					typeof parsed.values['api-url'] === 'string'
+						? parsed.values['api-url']
+						: undefined,
+			})
+			const { runExecutionContextCommand } =
+				await import('./execution-context/commands.js')
+			return await runExecutionContextCommand({
+				command: parsed.command,
+				positionals: parsed.positionals,
+				values: {
+					...(typeof parsed.values.name === 'string'
+						? { name: parsed.values.name }
+						: {}),
+					...(typeof parsed.values.context === 'string'
+						? { context: parsed.values.context }
+						: {}),
+					json,
+				},
+				apiUrl,
+				...(org ? { org } : {}),
+				token: () =>
+					accessTokenForOpenApi({
+						tokenValues: tokenFlagValues(parsed.values),
+						apiUrl,
+						mcpUrl,
+						...(org ? { org } : {}),
+					}),
+				clientVersion: readPackageVersion(),
+				write,
+			})
+		}
 		case 'login': {
-			const { login } = await import('./auth.js')
+			const { login, loginWithDevice } = await import('./auth.js')
 			const openBrowser = parsed.values['no-browser'] !== true
+			const lifetimeOption =
+				typeof parsed.values.lifetime === 'string'
+					? {
+							lifetime:
+								parsed.values.lifetime === 'short'
+									? ('short' as const)
+									: ('long' as const),
+						}
+					: {}
+			const loginApiUrl = apiUrlFrom({
+				apiUrl:
+					typeof parsed.values['api-url'] === 'string'
+						? parsed.values['api-url']
+						: undefined,
+			})
+			if (parsed.values.device === true) {
+				const result = await loginWithDevice({
+					mcpUrl,
+					apiUrl: loginApiUrl,
+					...lifetimeOption,
+					...(orgFlagOnly ? { org: orgFlagOnly } : {}),
+					onDeviceCode: (prompt) => write(formatDeviceLoginNotice(prompt)),
+				})
+				write(formatLoginSuccess(result))
+				return 0
+			}
+			const headlessReason = openBrowser ? detectHeadlessLoginReason() : null
+			if (headlessReason) write(formatDeviceLoginSuggestion(headlessReason))
 			const result = await login({
 				mcpUrl,
-				apiUrl: apiUrlFrom({
-					apiUrl:
-						typeof parsed.values['api-url'] === 'string'
-							? parsed.values['api-url']
-							: undefined,
-				}),
-				...(typeof parsed.values.lifetime === 'string'
-					? { lifetime: parsed.values.lifetime === 'short' ? 'short' : 'long' }
-					: {}),
+				apiUrl: loginApiUrl,
+				...lifetimeOption,
 				...(orgFlagOnly ? { org: orgFlagOnly } : {}),
 				openBrowser,
 				onAuthorizationUrl: (url) => {
@@ -434,26 +533,7 @@ async function dispatch(
 					if (!opened) write(loginBrowserOpenFailedNotice)
 				},
 			})
-			const orgLabel = result.org
-				? ` as org ${result.org}`
-				: result.credentials.org
-					? ` as org ${result.credentials.org}`
-					: ''
-			const accountLabel = result.account?.email
-				? ` (${result.account.email})`
-				: result.account?.displayName
-					? ` (${result.account.displayName})`
-					: ''
-			write(
-				`Logged in to ${result.credentials.mcpUrl}${orgLabel}${accountLabel}.\n`,
-			)
-			if (result.backendKind === 'file' && result.backendPath) {
-				write(
-					`OS keychain was unavailable; credentials saved at ${result.backendPath} (mode 0600).\n`,
-				)
-			} else {
-				write('Credentials stored in the OS keychain.\n')
-			}
+			write(formatLoginSuccess(result))
 			return 0
 		}
 		case 'logout': {
@@ -603,7 +683,7 @@ async function dispatch(
 			)
 			if (!code && !scopes) {
 				throw new Error(
-					'Provide --code <kody_bc_…> from cliCredentialBootstrap (MCP api / kody.cliCredentialBootstrap), or --scopes <list> to mint one with the current kody login session or API token.',
+					'Provide --code <kody_bc_…> from cliCredentialBootstrap (MCP api tool), or --scopes <list> to mint one with the current kody login session or API token.',
 				)
 			}
 			const lifetime = resolveCliTokenLifetime({
@@ -1022,7 +1102,7 @@ async function dispatch(
 						: undefined,
 			)
 			const args = buildExecuteToolArgs({
-				// Local published invoke is already minted into `code`.
+				// Already minted into `code` for local runs.
 				invoke:
 					localPackageInvoke || publishedInvokeCode !== undefined
 						? undefined
@@ -1193,7 +1273,6 @@ async function dispatch(
 								await import('./remote-execute.js')
 							).runRemoteExecuteWithToken({
 								code: typeof args.code === 'string' ? args.code : undefined,
-								invoke,
 								params: args.params,
 								conversationId: args.conversationId as string | undefined,
 								...(credentials !== undefined ? { credentials } : {}),
@@ -1217,7 +1296,6 @@ async function dispatch(
 									await import('./remote-execute.js')
 								).runRemoteExecuteWithToken({
 									code: typeof args.code === 'string' ? args.code : undefined,
-									invoke,
 									params: args.params,
 									conversationId: args.conversationId as string | undefined,
 									...(credentials !== undefined ? { credentials } : {}),
@@ -1823,7 +1901,11 @@ export function buildExecuteToolArgs(input: {
 		if (!invoke) {
 			throw new Error('Provide a non-empty --invoke value.')
 		}
-		return attachExecuteCommonArgs({ invoke }, input)
+		// Hosted execute takes only `code`; --invoke is client-side sugar.
+		return attachExecuteCommonArgs(
+			{ code: resolveExecuteInvokeCode(invoke) },
+			input,
+		)
 	}
 	if (code) {
 		return attachExecuteCommonArgs({ code }, input)

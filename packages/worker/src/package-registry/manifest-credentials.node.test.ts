@@ -102,7 +102,7 @@ test('publish rejects invalid kody.credentials slots and names the slot', () => 
 			GOOGLE: { kind: 'token', provider: 'google', description: 'x' },
 		}),
 	).toBe(
-		'Invalid package.json:\n✖ Invalid option: expected one of "secret"|"oauth"|"mcp"|"url"|"login"|"signing"\n  → at kody.credentials.GOOGLE.kind',
+		'Invalid package.json:\n✖ Invalid option: expected one of "secret"|"oauth"|"mcp"|"url"|"login"|"signing"|"secret-provider"\n  → at kody.credentials.GOOGLE.kind',
 	)
 	expect(
 		publishError({ GOOGLE: { kind: 'oauth', provider: '', description: 'x' } }),
@@ -167,6 +167,82 @@ test('a need opts in to owner credentials for visitors only with true', () => {
 			database: { description: 'x', ownerCredentialsForVisitors: true },
 		}),
 	).toMatch(/Unrecognized key: "ownerCredentialsForVisitors"/)
+})
+
+test('supplier and required fields validate and reject conflicting aliases', () => {
+	expect(
+		parseAuthoredPackageJson({
+			content: manifestWithCredentials({
+				publisher: {
+					description: 'Publisher access.',
+					supplier: 'publisher',
+				},
+				executor: {
+					description: 'Visitor access.',
+					supplier: 'executor',
+				},
+				optional: {
+					description: 'Optional visitor access.',
+					supplier: 'executor',
+					required: false,
+				},
+			}),
+		}).kody.credentials,
+	).toMatchObject({
+		publisher: { supplier: 'publisher' },
+		executor: { supplier: 'executor' },
+		optional: { supplier: 'executor', required: false },
+	})
+	expect(
+		publishError({
+			executor: {
+				description: 'Visitor access.',
+				supplier: 'executor',
+				ownerCredentialForVisitors: true,
+			},
+		}),
+	).toMatch(/kody\.credentials\.executor/)
+	expect(
+		publishError({
+			publisher: {
+				description: 'Publisher access.',
+				supplier: 'publisher',
+				required: true,
+			},
+		}),
+	).toMatch(/kody\.credentials\.publisher\.required/)
+	expect(
+		publishError({
+			legacy: { description: 'Legacy access.', required: false },
+		}),
+	).toMatch(/kody\.credentials\.legacy\.required/)
+	expect(
+		publishError({
+			GITHUB_TOKEN: { description: 'Visitor access.', supplier: 'executor' },
+		}),
+	).toMatch(/need:GITHUB_TOKEN/)
+	expect(
+		parseAuthoredPackageJson({
+			content: manifestWithCredentials({
+				GITHUB_TOKEN: {
+					description: 'Publisher access.',
+					supplier: 'publisher',
+				},
+			}),
+		}).kody.credentials,
+	).toMatchObject({ GITHUB_TOKEN: { supplier: 'publisher' } })
+})
+
+test('published snapshots keep an executor need whose key predates the consent-scope rule', () => {
+	const content = manifestWithCredentials({
+		GITHUB_TOKEN: { description: 'Visitor access.', supplier: 'executor' },
+	})
+	expect(
+		parseAuthoredPackageJson({ content, mode: 'published' }).kody.credentials,
+	).toMatchObject({ GITHUB_TOKEN: { supplier: 'executor' } })
+	expect(() => parseAuthoredPackageJson({ content })).toThrow(
+		/need:GITHUB_TOKEN/,
+	)
 })
 
 test('published snapshots load when an old kody.credentials key predates the schema', () => {
@@ -266,4 +342,36 @@ test('package.json cannot set invalidCredentialSlots', () => {
 		parseAuthoredPackageJson({ content, mode: 'published' }).kody
 			.invalidCredentialSlots,
 	).toBeUndefined()
+})
+
+test('a secret-provider slot requires a provider package and no saved-credential fields', () => {
+	const vault = {
+		kind: 'secret-provider' as const,
+		package: '@acme/op-provider',
+		description: 'Reads the deploy token from the team vault.',
+	}
+	expect(
+		parseAuthoredPackageJson({
+			content: manifestWithCredentials({ vault }),
+		}).kody.credentials,
+	).toEqual({ vault })
+	expect(
+		publishError({ vault: { kind: 'secret-provider', description: 'x' } }),
+	).toMatch(
+		/kody\.credentials\.vault has kind "secret-provider", so package must name the saved provider package/,
+	)
+	expect(publishError({ vault: { ...vault, package: '1password' } })).toMatch(
+		/package must name the saved provider package/,
+	)
+	expect(publishError({ vault: { ...vault, provider: '1password' } })).toMatch(
+		/kody\.credentials\.vault\.provider does not apply to kind "secret-provider"/,
+	)
+	expect(publishError({ vault: { ...vault, multiple: true } })).toMatch(
+		/vault\.multiple does not apply to kind "secret-provider"/,
+	)
+	expect(
+		publishError({
+			github: { package: '@acme/op-provider', description: 'x' },
+		}),
+	).toMatch(/kody\.credentials\.github\.package is only valid with kind/)
 })

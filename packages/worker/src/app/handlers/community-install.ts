@@ -1,8 +1,8 @@
-import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { z } from 'zod'
 import { waitUntil } from 'cloudflare:workers'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { resolveCommunityInstallOwner } from '#app/community-install-org.ts'
 import {
 	buildInstallAdaptPrompt,
 	buildInstallSuccessPrompt,
@@ -25,10 +25,21 @@ import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 const communityInstallPostSchema = z.object({
 	acknowledged: z.boolean().optional(),
 	kody_id: z.string().trim().min(1).optional(),
+	/** Org slug to fork into. Omitted keeps the personal org. */
+	org: z.string().trim().min(1).optional(),
 })
 
 const thirdPartyInstallConfirmError =
 	'This listing is from another account. Confirm to install it.'
+
+function alreadyInstalledFields(result: {
+	alreadyInstalled?: boolean
+	message?: string
+}) {
+	return result.alreadyInstalled
+		? { alreadyInstalled: true, message: result.message ?? null }
+		: {}
+}
 
 function installResult<T>(data: T, status = 200) {
 	return { data, status }
@@ -65,8 +76,21 @@ export async function installWebsiteCommunityPackage(input: {
 	}
 
 	try {
-		// Unscoped community installs always belong to the person's personal org.
-		const installOwnerId = personalOrgIdForPerson(user.mcpUser)
+		const installOwner = await resolveCommunityInstallOwner({
+			env,
+			request,
+			user,
+			orgSlug: parsed.data.org,
+		})
+		if (!installOwner.ok) {
+			return installResult(
+				{ ok: false, error: installOwner.error },
+				installOwner.status,
+			)
+		}
+		// Only the body `org` picks another org; URL params and the last-org
+		// cookie never redirect an install away from the personal org.
+		const installOwnerId = installOwner.ownerId
 		const expectedPackageScope = await getPackageScopeByUserId(
 			env.APP_DB,
 			installOwnerId,
@@ -99,9 +123,8 @@ export async function installWebsiteCommunityPackage(input: {
 			// Bind the install to origin HEAD (the commit the fork copies)
 			// so a concurrent push cannot activate content the user never saw.
 			expectedPinnedCommit,
-			// Projection already supports deferred search-index upsert and
-			// retriever-cache refresh; without waitUntil those await on the
-			// install response and stretch one-click / onboarding latency.
+			// Search-index upsert can run after the install response; without
+			// waitUntil it stretches one-click / onboarding latency.
 			waitUntil,
 		})
 		if (result.status === 'adaptation_required') {
@@ -111,6 +134,7 @@ export async function installWebsiteCommunityPackage(input: {
 				packageId: result.packageId,
 				sourceId: result.sourceId,
 				targetName: result.targetName,
+				...alreadyInstalledFields(result),
 				failedChecks: result.failedChecks.map((check) => ({
 					kind: check.kind,
 					message: check.message,
@@ -127,6 +151,7 @@ export async function installWebsiteCommunityPackage(input: {
 			packageId: result.packageId,
 			sourceId: result.sourceId,
 			targetName: result.targetName,
+			...alreadyInstalledFields(result),
 			agentPrompt: buildInstallSuccessPrompt({
 				targetName: result.targetName,
 			}),

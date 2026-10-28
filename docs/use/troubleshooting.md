@@ -54,6 +54,87 @@ skipping refresh. Cursor and Claude Code stay logged in. Email
 [`support@kody.codes`](mailto:support@kody.codes) with your Codex version and
 how often it asks again if you want us to look.
 
+## Authorizing from a remote or headless machine
+
+Codex, OpenCode, and the Kody CLI finish OAuth on a loopback callback on the
+machine they run on. On a remote VM or NAS, the browser on your computer cannot
+reach that callback, so login stalls or the final page fails to load. Codex and
+OpenCode have no device-code login for MCP, and Kody API tokens (`kody_at_`) are
+not accepted on `/mcp`, so a static bearer header is not an option.
+
+**Codex**
+
+1. On the remote machine, run `codex mcp login kody --no-browser`.
+2. Open the printed link in the browser on your own computer and approve.
+3. Copy the final redirected URL from the address bar (it fails to load; that is
+   expected) and paste it into the remote terminal.
+
+Or pin the callback port in `~/.codex/config.toml` and forward it:
+
+```toml
+mcp_oauth_callback_port = 5555
+```
+
+```bash
+ssh -L 127.0.0.1:5555:127.0.0.1:5555 user@host
+codex mcp login kody
+```
+
+See the Codex
+[`mcp login` source](https://github.com/openai/codex/blob/main/codex-rs/cli/src/mcp_cmd.rs)
+and [config reference](https://developers.openai.com/codex/config-reference).
+
+**OpenCode**
+
+OpenCode has no device-code flow for MCP. Its config schema documents the
+callback as `http://127.0.0.1:19876/mcp/oauth/callback` (port `19876`). If you
+set `oauth.callbackPort` (or `callback_port`) for `kody`, forward that port
+instead. Pinning a port also keeps newer builds from picking a random one.
+
+```bash
+ssh -L 127.0.0.1:19876:127.0.0.1:19876 user@host
+opencode mcp auth kody
+```
+
+Without a tunnel, approve in your own browser, copy the final callback URL from
+the address bar, and request it on the remote machine while
+`opencode mcp auth kody` is still waiting:
+
+```bash
+curl 'http://127.0.0.1:19876/mcp/oauth/callback?code=...&state=...'
+```
+
+See OpenCode's [MCP servers docs](https://opencode.ai/docs/mcp-servers/) and
+[config schema](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/v1/config/mcp.ts).
+
+**Kody CLI**
+
+Use the device flow. `kody login --device` prints `https://kody.codes/device`
+and a short code; open it on your phone or laptop, check that the code matches,
+and approve. Only approve a code you started yourself.
+
+```bash
+kody login --device
+```
+
+`kody login --no-browser` prints the link but still waits on the loopback
+callback at `http://127.0.0.1:43742/callback`. To use it, forward that port
+first:
+
+```bash
+ssh -L 127.0.0.1:43742:127.0.0.1:43742 user@host
+kody login --no-browser
+```
+
+Or skip the browser login. From an agent already connected to Kody, ask it to
+run `cliCredentialBootstrap`, then on the remote machine run
+`kody auth bootstrap --code <code>`. For scripts and CI, set `KODY_API_TOKEN`.
+See the
+[CLI README](https://github.com/kody-hq/kody/blob/main/packages/cli/README.md).
+
+Keep every callback bound to `127.0.0.1`. Forward ports over SSH only, and never
+expose a callback port on a public interface.
+
 ## Authorize says the request is missing its original connection details
 
 The authorize page needs the original OAuth query (`client_id`, `state`, PKCE).
@@ -61,6 +142,25 @@ Clicking Approve before that page finishes loading can replace those parameters
 with an empty honeypot field, and the server then asks you to start over. Use
 the browser Back button when the previous history entry still has `client_id` in
 the URL, or start the connection again from your client.
+
+## Authorize says Kody couldn't load the app's details
+
+Before you can approve, Kody downloads the host's Client ID Metadata Document
+(the short description of the app from the app's own website). When that fetch
+fails (`metadata_fetch` — timeout, 404, network error, or an invalid document),
+the authorize page says so and offers **Retry**. The problem is on the app's
+side, not your Kody account, and it is often temporary.
+
+- **Codex CLI:** sign in with dynamic registration instead. Replace `<server>`
+  with the name from `codex mcp list`:
+  `codex mcp login <server> --oauth-client-registration dcr`.
+- **Codex app or ChatGPT:** there is no DCR switch. Wait a few minutes and
+  retry.
+
+A different card, **This connection is not registered**
+(`missing_registration`), means the app reused a sign-in Kody does not have. Log
+out of Kody in the app and sign in again, or remove Kody and add it again. On
+Codex CLI that is `codex mcp logout <server>` then `codex mcp login <server>`.
 
 ## The host never opens the Kody authorize window
 
@@ -70,7 +170,7 @@ another browser or device. That is a host or environment issue, not a failed
 Kody registration. In Open WebUI, do not set an OAuth MCP tool as a model
 default or pre-enabled tool — enable it in the chat so the host can open the
 authorize window. Hosts that require a pre-registered Client ID and Client
-Secret can mint one at Account → Connections → Advanced → MCP OAuth clients
+Secret can mint one at Account → Agents → Advanced → MCP OAuth clients
 (`/account/mcp-oauth-clients`) and use the host’s static OAuth mode. Static mode
 runs authorize and token exchange.
 

@@ -43,7 +43,6 @@ const unminted: PackageWebhookListItem = {
 	instanceLabel: null,
 	handle: null,
 	urlHost: null,
-	enabled: null,
 	approved: false,
 	approvalUrl: null,
 	urlRecoverable: false,
@@ -71,7 +70,6 @@ const minted: PackageWebhookListItem = {
 	instanceLabel: null,
 	handle: 'whh_11111111-1111-1111-1111-111111111111',
 	urlHost: 'kody.example',
-	enabled: true,
 	approved: true,
 	approvalUrl: null,
 	urlRecoverable: true,
@@ -107,7 +105,7 @@ test('webhooks index lists declared webhooks with status and deep-links each row
 		'href="/@jane/raycast/settings#webhook-run-11111111-1111-1111-1111-111111111111"',
 	)
 	expect(html).toContain('href="/@jane/sentry-bridge/settings#webhook-sentry"')
-	expect(html).toContain('>Active<')
+	expect(html).toContain('>Approved<')
 	expect(html).toContain('>No URL yet<')
 	expect(html).toContain('URL secret only')
 	expect(html).toContain('hmac-sha256 · sentry-hook-signature')
@@ -121,4 +119,28 @@ test('webhooks index lists declared webhooks with status and deep-links each row
 	// Credential paths never appear on the index; mint/reveal/rotate live on
 	// package settings, which the deep-links above already exercise.
 	expect(html).not.toContain('/@jane/webhooks/')
+})
+
+test('webhook row hrefs use the package owner org even when the viewer belongs to two orgs', async () => {
+	const teamWebhook: PackageWebhookListItem = {
+		...minted,
+		id: 'ci-alerts/github/0a643410-53ff-40ee-aa4a-2f5eb1eb280a',
+		packageId: 'pkg-team',
+		packageKodyId: 'ci-alerts',
+		packageName: '@team-org/ci-alerts',
+		name: 'github',
+		endpointId: '0a643410-53ff-40ee-aa4a-2f5eb1eb280a',
+	}
+	// Page-level username is the signed-in person's personal handle (the
+	// pre-fix antipattern). Links must still follow the package scope.
+	const html = await renderWebhooksPage('/@team-org/-/webhooks', {
+		ok: true,
+		username: 'personal-handle',
+		webhooks: [teamWebhook],
+	})
+
+	expect(html).toContain(
+		'href="/@team-org/ci-alerts/settings#webhook-github-0a643410-53ff-40ee-aa4a-2f5eb1eb280a"',
+	)
+	expect(html).not.toContain('/@personal-handle/ci-alerts/')
 })

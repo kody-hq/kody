@@ -1,4 +1,3 @@
-import { chunkArray } from '@kody-internal/shared/chunk.ts'
 import { runQueueableDynamicWorkerWork } from '#worker/dynamic-worker-evaluation-budget.ts'
 import { listAdminStableUserIds } from '#worker/identity/permissions-db.ts'
 import { listPackageSubscriptions } from '#worker/package-registry/manifest.ts'
@@ -6,12 +5,16 @@ import {
 	listSavedPackagesByIds,
 	listSavedPackagesByUserId,
 } from '#worker/package-registry/repo.ts'
-import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	readPreExecutionPackageInvocationInfrastructureCode,
 	readRetryablePackageInvocationInfrastructureCode,
 } from './infrastructure-codes.ts'
+import {
+	type LoadedManifestForSavedPackage,
+	loadManifestsForSavedPackages,
+	mapSettledInChunks,
+} from './saved-package-manifest-discovery.ts'
 import { invokePackageSubscription } from './service.ts'
 import {
 	fillPackageSubscriptionTopicMapFromWakeScan,
@@ -22,6 +25,7 @@ import {
 export {
 	readPreExecutionPackageInvocationInfrastructureCode,
 	readRetryablePackageInvocationInfrastructureCode,
+	mapSettledInChunks,
 }
 
 export type LoadedPackageSubscription = {
@@ -29,27 +33,48 @@ export type LoadedPackageSubscription = {
 	subscription: ReturnType<typeof listPackageSubscriptions>[number]
 }
 
-const adminPackageSubscriptionConcurrency = 5
-
-export async function mapSettledInChunks<T, TResult>(
-	items: ReadonlyArray<T>,
-	mapper: (item: T) => Promise<TResult>,
-) {
-	const results: Array<PromiseSettledResult<TResult>> = []
-	for (const itemChunk of chunkArray(
-		items,
-		adminPackageSubscriptionConcurrency,
-	)) {
-		results.push(...(await Promise.allSettled(itemChunk.map(mapper))))
-	}
-	return results
-}
-
 function isMissingSavedPackagesTableError(error: unknown) {
 	return (
 		error instanceof Error &&
 		error.message.toLowerCase().includes('no such table: saved_packages')
 	)
+}
+
+function collectLoadedPackageSubscriptions(input: {
+	topic: string
+	savedPackages: ReadonlyArray<SavedPackageRecord>
+	settled: ReadonlyArray<PromiseSettledResult<LoadedManifestForSavedPackage>>
+	onFulfilled?: (loaded: LoadedManifestForSavedPackage) => void
+}): {
+	subscriptions: Array<LoadedPackageSubscription>
+	discoveryErrors: Array<unknown>
+} {
+	const subscriptions: Array<LoadedPackageSubscription> = []
+	const discoveryErrors: Array<unknown> = []
+	for (const [index, result] of input.settled.entries()) {
+		if (result.status === 'fulfilled') {
+			input.onFulfilled?.(result.value)
+			const subscription = listPackageSubscriptions(result.value.manifest).find(
+				(candidate) => candidate.topic === input.topic,
+			)
+			if (subscription) {
+				subscriptions.push({
+					savedPackage: result.value.savedPackage,
+					subscription,
+				})
+			}
+			continue
+		}
+		const savedPackage = input.savedPackages[index]
+		console.warn('admin-package-subscription-manifest-load-failed', {
+			topic: input.topic,
+			packageId: savedPackage?.id,
+			sourceId: savedPackage?.sourceId,
+			error: result.reason,
+		})
+		discoveryErrors.push(result.reason)
+	}
+	return { subscriptions, discoveryErrors }
 }
 
 /**
@@ -127,52 +152,28 @@ export async function loadMatchingPackageSubscriptions(input: {
 		return { subscriptions: [], discoveryErrors: [] }
 	}
 
-	const subscriptions: Array<LoadedPackageSubscription> = []
-	const discoveryErrors: Array<unknown> = []
 	const byTopic = new Map<string, Set<string>>()
 	const generation = await readPackageSubscriptionTopicGeneration({
 		env: input.env,
 		userId: input.userId,
 	}).catch(() => 0)
-	const settled = await mapSettledInChunks(
+	const settled = await loadManifestsForSavedPackages({
+		env: input.env,
+		userId: input.userId,
 		savedPackages,
-		async (savedPackage) => {
-			const loaded = await loadPackageManifestBySourceId({
-				env: input.env as Env,
-				baseUrl: input.baseUrl,
-				userId: input.userId,
-				sourceId: savedPackage.sourceId,
-			})
-			const declared = listPackageSubscriptions(loaded.manifest)
-			for (const subscription of declared) {
+	})
+	const { subscriptions, discoveryErrors } = collectLoadedPackageSubscriptions({
+		topic: input.topic,
+		savedPackages,
+		settled,
+		onFulfilled: (loaded) => {
+			for (const subscription of listPackageSubscriptions(loaded.manifest)) {
 				const packageIds = byTopic.get(subscription.topic) ?? new Set<string>()
-				packageIds.add(savedPackage.id)
+				packageIds.add(loaded.savedPackage.id)
 				byTopic.set(subscription.topic, packageIds)
 			}
-			const subscription = declared.find(
-				(candidate) => candidate.topic === input.topic,
-			)
-			if (!subscription) return null
-			return {
-				savedPackage,
-				subscription,
-			} satisfies LoadedPackageSubscription
 		},
-	)
-	for (const [index, result] of settled.entries()) {
-		if (result.status === 'fulfilled') {
-			if (result.value) subscriptions.push(result.value)
-			continue
-		}
-		const savedPackage = savedPackages[index]
-		console.warn('admin-package-subscription-manifest-load-failed', {
-			topic: input.topic,
-			packageId: savedPackage?.id,
-			sourceId: savedPackage?.sourceId,
-			error: result.reason,
-		})
-		discoveryErrors.push(result.reason)
-	}
+	})
 
 	// Incomplete scans must not be cached: a temporary manifest failure would
 	// drop that package from every later wake until the next publish.
@@ -214,42 +215,16 @@ async function loadSubscriptionsForSavedPackages(input: {
 	if (input.savedPackages.length === 0) {
 		return { subscriptions: [], discoveryErrors: [] }
 	}
-	const settled = await mapSettledInChunks(
-		input.savedPackages,
-		async (savedPackage) => {
-			const loaded = await loadPackageManifestBySourceId({
-				env: input.env as Env,
-				baseUrl: input.baseUrl,
-				userId: input.userId,
-				sourceId: savedPackage.sourceId,
-			})
-			const subscription = listPackageSubscriptions(loaded.manifest).find(
-				(candidate) => candidate.topic === input.topic,
-			)
-			if (!subscription) return null
-			return {
-				savedPackage,
-				subscription,
-			} satisfies LoadedPackageSubscription
-		},
-	)
-	const subscriptions: Array<LoadedPackageSubscription> = []
-	const discoveryErrors: Array<unknown> = []
-	for (const [index, result] of settled.entries()) {
-		if (result.status === 'fulfilled') {
-			if (result.value) subscriptions.push(result.value)
-			continue
-		}
-		const savedPackage = input.savedPackages[index]
-		console.warn('admin-package-subscription-manifest-load-failed', {
-			topic: input.topic,
-			packageId: savedPackage?.id,
-			sourceId: savedPackage?.sourceId,
-			error: result.reason,
-		})
-		discoveryErrors.push(result.reason)
-	}
-	return { subscriptions, discoveryErrors }
+	const settled = await loadManifestsForSavedPackages({
+		env: input.env,
+		userId: input.userId,
+		savedPackages: input.savedPackages,
+	})
+	return collectLoadedPackageSubscriptions({
+		topic: input.topic,
+		savedPackages: input.savedPackages,
+		settled,
+	})
 }
 
 /**

@@ -97,6 +97,7 @@ async function setup() {
 		scope: 'user',
 		name: 'MY_TOKEN',
 		value: secretValue,
+		audit: null,
 	})
 	const secretId = (await db
 		.prepare(

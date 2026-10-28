@@ -16,7 +16,6 @@ import {
 	listOrgCustomHostnameRows,
 	orgOwnsPackageIncludingDeleted,
 } from '#worker/package-app-custom-hostnames/count-org.ts'
-import { isPackageAppCustomDomainsEnabledForUser } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import {
 	packageAppCustomHostnameAddRateLimit,
 	packageAppCustomHostnameAddRateLimitKey,
@@ -251,17 +250,6 @@ function verificationFromCloudflare(
 	}
 }
 
-async function requireCustomDomainsEnabled(
-	db: D1Database,
-	actingUserId: number | null,
-) {
-	if (!(await isPackageAppCustomDomainsEnabledForUser(db, actingUserId))) {
-		throw new PackageAppCustomHostnameError(
-			'Package-app custom domains are not enabled for this user.',
-		)
-	}
-}
-
 function createCloudflareClient(env: Env & { fetcher?: Fetcher }) {
 	return new CloudflareCustomHostnamesClient({
 		CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN:
@@ -377,7 +365,7 @@ function dnsHint(env: Env, hostname: string): PackageAppCustomHostnameDnsHint {
  * second-agent/referral gift overlays — those are personal-org only).
  * Stripe $0.10 metering for extras is still deferred; extras get a note.
  */
-async function requirePaidOrgForCustomDomains(db: D1Database, orgId: string) {
+async function readOrgPlanForCustomDomains(db: D1Database, orgId: string) {
 	const org = await db
 		.prepare(
 			`SELECT plan, stripe_plan FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`,
@@ -387,11 +375,23 @@ async function requirePaidOrgForCustomDomains(db: D1Database, orgId: string) {
 	if (!org) {
 		throw new PackageAppCustomHostnameError('Organization not found.')
 	}
-	const { plan } = resolvePlanOverlay(
+	return resolvePlanOverlay(
 		parseStoredPlanName(org.plan ?? 'free'),
 		org.stripe_plan,
 		null,
-	)
+	).plan
+}
+
+/** Whether the org's plan allows adding custom domains (ADR 0071). */
+export async function orgPlanAllowsCustomDomains(
+	db: D1Database,
+	orgId: string,
+) {
+	return (await readOrgPlanForCustomDomains(db, orgId)) !== 'free'
+}
+
+async function requirePaidOrgForCustomDomains(db: D1Database, orgId: string) {
+	const plan = await readOrgPlanForCustomDomains(db, orgId)
 	if (plan === 'free') {
 		throw new PackageAppCustomHostnameError(
 			'Custom domains require a paid organization plan. Paying orgs include one domain at no extra charge (ADR 0071).',
@@ -491,70 +491,46 @@ async function insertCustomHostnameRow(input: {
 	const sslRecordsJson = serializeSslValidationRecords(
 		input.sslValidationRecords,
 	)
+	// One explicit-column INSERT for both bindings. Split app/org VALUES
+	// clauses previously drifted (app omitted a placeholder for
+	// check_window_started_at after migration 0175).
 	switch (input.bindingKind) {
-		case 'app': {
-			await input.env.APP_DB.prepare(
-				`INSERT INTO package_app_custom_hostnames (
-						id, hostname, binding_kind, package_id, org_id,
-						cloudflare_hostname_id, cloudflare_zone_id,
-						hostname_status, ssl_status,
-						ownership_verification_json, ssl_validation_records_json,
-						created_by_user_id, created_at, updated_at,
-						check_window_started_at
-					) VALUES (?, ?, 'app', ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			)
-				.bind(
-					input.id,
-					input.hostname,
-					input.packageId,
-					input.cloudflareHostnameId,
-					input.cloudflareZoneId,
-					input.hostnameStatus,
-					input.sslStatus,
-					ownershipJson,
-					sslRecordsJson,
-					input.createdByUserId,
-					input.now,
-					input.now,
-					input.now,
-				)
-				.run()
-			return
-		}
-		case 'org': {
-			await input.env.APP_DB.prepare(
-				`INSERT INTO package_app_custom_hostnames (
-						id, hostname, binding_kind, package_id, org_id,
-						cloudflare_hostname_id, cloudflare_zone_id,
-						hostname_status, ssl_status,
-						ownership_verification_json, ssl_validation_records_json,
-						created_by_user_id, created_at, updated_at,
-						check_window_started_at
-					) VALUES (?, ?, 'org', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			)
-				.bind(
-					input.id,
-					input.hostname,
-					input.orgId,
-					input.cloudflareHostnameId,
-					input.cloudflareZoneId,
-					input.hostnameStatus,
-					input.sslStatus,
-					ownershipJson,
-					sslRecordsJson,
-					input.createdByUserId,
-					input.now,
-					input.now,
-					input.now,
-				)
-				.run()
-			return
-		}
+		case 'app':
+		case 'org':
+			break
 		default: {
 			input.bindingKind satisfies never
 			throw new PackageAppCustomHostnameError('binding_kind is invalid.')
 		}
 	}
+	await input.env.APP_DB.prepare(
+		`INSERT INTO package_app_custom_hostnames (
+				id, hostname, binding_kind, package_id, org_id,
+				cloudflare_hostname_id, cloudflare_zone_id,
+				hostname_status, ssl_status,
+				ownership_verification_json, ssl_validation_records_json,
+				created_by_user_id, created_at, updated_at,
+				check_window_started_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	)
+		.bind(
+			input.id,
+			input.hostname,
+			input.bindingKind,
+			input.packageId,
+			input.orgId,
+			input.cloudflareHostnameId,
+			input.cloudflareZoneId,
+			input.hostnameStatus,
+			input.sslStatus,
+			ownershipJson,
+			sslRecordsJson,
+			input.createdByUserId,
+			input.now,
+			input.now,
+			input.now,
+		)
+		.run()
 }
 
 async function compensateCloudflareDelete(input: {
@@ -732,15 +708,12 @@ async function applyCloudflareStatus(input: {
 export async function addPackageAppCustomHostname(input: {
 	env: Env
 	orgId: string
-	/** Numeric `users.id` for feature-flag audience evaluation. */
-	actingUserId: number
 	createdByUserId: string
 	bindingKind: PackageAppCustomHostnameBindingKind
 	hostname: string
 	packageId?: string
 	sslMethod?: CustomHostnameSslMethod
 }) {
-	await requireCustomDomainsEnabled(input.env.APP_DB, input.actingUserId)
 	await requirePaidOrgForCustomDomains(input.env.APP_DB, input.orgId)
 	const hostname = normalizeCustomHostname(input.hostname)
 	if (!hostname) {
@@ -941,10 +914,7 @@ export async function addPackageAppCustomHostname(input: {
 export async function listPackageAppCustomHostnames(input: {
 	env: Env
 	orgId: string
-	/** Numeric `users.id` for feature-flag audience evaluation. */
-	actingUserId: number
 }) {
-	await requireCustomDomainsEnabled(input.env.APP_DB, input.actingUserId)
 	const rows = await listOrgCustomHostnameRows<CustomHostnameRowSql>(
 		input.env.APP_DB,
 		input.orgId,
@@ -957,13 +927,10 @@ export async function listPackageAppCustomHostnames(input: {
 export async function syncPackageAppCustomHostname(input: {
 	env: Env
 	orgId: string
-	/** Numeric `users.id` for feature-flag audience evaluation. */
-	actingUserId: number
 	hostname?: string
 	id?: string
 	now?: Date
 }) {
-	await requireCustomDomainsEnabled(input.env.APP_DB, input.actingUserId)
 	const row = await loadOwnedCustomHostnameRow(input)
 	const cfId = row.cloudflareHostnameId?.trim()
 	if (!cfId) {
@@ -1018,15 +985,46 @@ export async function removePackageAppCustomHostnameRow(input: {
 	invalidateCachedPackageAppCustomHostname(input.env.APP_DB, input.row.hostname)
 }
 
+/**
+ * Operator takedown (abuse, phishing): remove a custom hostname from
+ * Cloudflare for SaaS and the DB regardless of which org owns it. Callers
+ * must be site admins and record an audit reason.
+ */
+export async function adminRemovePackageAppCustomHostname(input: {
+	env: Env
+	hostname: string
+}) {
+	const hostname = normalizeCustomHostname(input.hostname)
+	if (!hostname) {
+		throw new PackageAppCustomHostnameError('hostname is invalid.')
+	}
+	const sqlRow = await input.env.APP_DB.prepare(
+		`SELECT * FROM package_app_custom_hostnames WHERE hostname = ?`,
+	)
+		.bind(hostname)
+		.first<CustomHostnameRowSql>()
+	if (!sqlRow) {
+		throw new PackageAppCustomHostnameError('Custom hostname not found.')
+	}
+	const row = rowFromSql(sqlRow)
+	await removePackageAppCustomHostnameRow({ env: input.env, row })
+	return {
+		ok: true as const,
+		id: row.id,
+		hostname: row.hostname,
+		binding_kind: row.bindingKind,
+		org_id: row.orgId,
+		package_id: row.packageId,
+		hostname_status: row.hostnameStatus,
+	}
+}
+
 export async function deletePackageAppCustomHostname(input: {
 	env: Env
 	orgId: string
-	/** Numeric `users.id` for feature-flag audience evaluation. */
-	actingUserId: number
 	hostname?: string
 	id?: string
 }) {
-	await requireCustomDomainsEnabled(input.env.APP_DB, input.actingUserId)
 	const row = await loadOwnedCustomHostnameRow(input)
 	await removePackageAppCustomHostnameRow({
 		env: input.env,

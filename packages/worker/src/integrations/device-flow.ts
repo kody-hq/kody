@@ -7,6 +7,10 @@
  * an opaque session id plus the user-facing code and verification URI.
  */
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
+import {
+	pickAuthorizeScopeHost,
+	resolveAuthorizeRequestScopes,
+} from '#universal/oauth-authorize-scopes.ts'
 import { checkRateLimit } from '#worker/rate-limit.ts'
 import { normalizeAllowedHosts } from '#worker/secrets/allowed-hosts.ts'
 import {
@@ -421,10 +425,23 @@ export async function startDeviceAuthorization(input: {
 	}
 
 	const scopeSeparator = input.scopeSeparator ?? ' '
+	const scopeHost = pickAuthorizeScopeHost([
+		input.authorizeUrl ? safeParseHost(input.authorizeUrl) : null,
+		deviceHost,
+		tokenHost,
+	])
+	const resolvedScopes = resolveAuthorizeRequestScopes({
+		scopes: input.scopes,
+		authorizeHost: scopeHost,
+		fillDefaults: !input.platformAppSlug,
+	})
+	if (!resolvedScopes.ok) {
+		return { ok: false, error: resolvedScopes.error, status: 400 }
+	}
 	const params = new URLSearchParams()
 	params.set('client_id', input.clientId)
-	if (input.scopes.length > 0) {
-		params.set('scope', input.scopes.join(scopeSeparator))
+	if (resolvedScopes.scopes.length > 0) {
+		params.set('scope', resolvedScopes.scopes.join(scopeSeparator))
 	}
 	for (const [key, value] of Object.entries(input.extraAuthorizeParams)) {
 		if (!params.has(key)) params.set(key, value)
@@ -537,7 +554,9 @@ export async function startDeviceAuthorization(input: {
 		clientId: input.clientId,
 		tokenExchangeStyle: input.tokenExchangeStyle,
 		allowedHosts,
-		scopes: input.scopes,
+		// Persist the scopes actually sent to the provider (including host
+		// defaults filled above), not the possibly-empty caller list.
+		scopes: resolvedScopes.scopes,
 		scopeSeparator: input.scopeSeparator,
 		extraAuthorizeParams: input.extraAuthorizeParams,
 		clientSecret: input.clientSecret,

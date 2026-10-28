@@ -30,7 +30,7 @@ import {
 	isCallerDisconnectAbort,
 } from '#worker/caller-disconnect.ts'
 import { recordExecuteInterpretableEvent } from '#mcp/execute-interpretable.ts'
-import { executeWorkerIdMetadataKey } from '#mcp/execute-invoke.ts'
+import { executeWorkerIdMetadataKey } from '#worker/run-records/execute-attribution.ts'
 import {
 	classifyExecuteThinGlue,
 	type ExecuteThinGlueClass,
@@ -78,10 +78,9 @@ import {
 	type RunCredentialCallMap,
 } from '#worker/credentials/credential-call-map.ts'
 import {
-	loadRunCredentialNeeds,
+	loadRunCredentialNeedEntries,
 	validateCredentialCallMap,
 } from '#worker/credentials/credential-client.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import {
 	buildKodyModuleBundle,
 	hydrateKodyRuntimeModules,
@@ -124,6 +123,7 @@ import {
 	isDirectBundleDependency,
 	type BundleArtifactDependency,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import { describePreBindingIdentityError } from '#worker/package-runtime/pre-binding-artifact-repair.ts'
 import {
 	recordUsage,
 	usageAttributionFieldsFromRequest,
@@ -441,6 +441,8 @@ export async function buildKodyToolContext(
 		reportProgress?: McpReportProgress
 		waitUntil?: (promise: Promise<unknown>) => void
 		openApiPrincipal?: CapabilityOpenApiPrincipal
+		localExecuteHop?: true
+		credentialClientBinding?: string
 	},
 ): Promise<{
 	tools: AdditionalKodyTools
@@ -498,6 +500,10 @@ export async function buildKodyToolContext(
 						...(options?.waitUntil ? { waitUntil: options.waitUntil } : {}),
 						...(options?.openApiPrincipal
 							? { openApiPrincipal: options.openApiPrincipal }
+							: {}),
+						...(options?.localExecuteHop ? { localExecuteHop: true } : {}),
+						...(options?.credentialClientBinding
+							? { credentialClientBinding: options.credentialClientBinding }
 							: {}),
 					})
 				} finally {
@@ -647,6 +653,7 @@ export async function buildKodyProvider(
 		capabilityRegistry?: BuiltCapabilityRegistry
 		reportProgress?: McpReportProgress
 		waitUntil?: (promise: Promise<unknown>) => void
+		credentialClientBinding?: string
 	},
 ): Promise<ResolvedProvider> {
 	const { tools, mcpServers } = await buildKodyToolContext(
@@ -743,6 +750,8 @@ export async function runModuleWithRegistry(
 			env,
 			userId: ownerIdFromCaller(callerContext) || null,
 			context: options?.runRecord ?? null,
+			request: callerContext.request,
+			startedByLabel: callerContext.request?.credential.profileName ?? null,
 			waitUntil: options?.waitUntil,
 		})
 	let enteredBundledRun = false
@@ -883,6 +892,52 @@ export function collectPackageStorageGrantIds(input: {
 }
 
 /**
+ * Hosted credential client options. The calling package decides declared
+ * use and bound Keys (GHSA-5fv3): the bound dispatcher's stamp, or the run
+ * package for unbound calls; naming another id is denied. Stored mappings
+ * and creation links come from the host-computed entries (ADR 0068
+ * amendment 2026-10-27), never from arguments.
+ */
+export function createRunCredentialClientToolOptions(input: {
+	env: Env
+	callerContext: McpCallerContext
+	binding: string
+	runPackageId: string | null
+	entryPackageIds: ReadonlyArray<string>
+	callMap: CredentialCallMap | null
+	waitUntil?: (promise: Promise<unknown>) => void
+}): CredentialClientToolOptions | undefined {
+	if (!input.callerContext.user?.userId) return undefined
+	let runNeedEntries: ReturnType<typeof loadRunCredentialNeedEntries> | null =
+		null
+	const loadRunNeedEntries = () => {
+		const request = input.callerContext.request
+		if (!request) return null
+		runNeedEntries ??= loadRunCredentialNeedEntries({
+			env: input.env,
+			orgId: request.org.id,
+			packageIds: input.entryPackageIds,
+			request,
+		})
+		return runNeedEntries
+	}
+	return {
+		binding: input.binding,
+		resolvePackageId: async (requested) =>
+			resolveCallerCredentialPackageId({
+				requested,
+				callerPackageId:
+					getSecretAuthorityScope()?.currentPackageId?.trim() ||
+					input.runPackageId,
+			}),
+		callMap: input.callMap,
+		runNeeds: async () => (await loadRunNeedEntries())?.needs ?? new Map(),
+		runEntries: async () => (await loadRunNeedEntries())?.entries ?? null,
+		waitUntil: input.waitUntil,
+	}
+}
+
+/**
  * The packages whose needs closures pin a run's credential needs, in
  * precedence order. A run's own package's static imports are pinned by its
  * closure, so they are not entries; ad hoc code has no closure, so its direct
@@ -940,11 +995,6 @@ export function createComputedPackageImportTools(input: {
 	 * the callee's own transitive deps.
 	 */
 	conversationId?: string | null
-	/**
-	 * Propagate closed-world retriever restrictions into nested library loads
-	 * when a restricted run supplies these tools explicitly.
-	 */
-	closedWorldRetrieverRuntime?: boolean
 	/** The caller's credential picks, which nested library loads keep. */
 	credentialCallMap?: CredentialCallMap | null
 }): ComputedPackageImportTools {
@@ -1004,6 +1054,11 @@ export function createComputedPackageImportTools(input: {
 					mainModule: callBundle.mainModule,
 					modules: callBundle.modules,
 					dependencies: callBundle.dependencies,
+					...(callBundle.packageBindingRewrite === undefined
+						? {}
+						: {
+								packageBindingRewrite: callBundle.packageBindingRewrite,
+							}),
 				},
 				rawInput.params,
 				{
@@ -1019,7 +1074,6 @@ export function createComputedPackageImportTools(input: {
 					signal: input.signal,
 					computedImportDepth: computedImportDepth + 1,
 					computedPackageImportTools: nestedTools,
-					closedWorldRetrieverRuntime: input.closedWorldRetrieverRuntime,
 					credentialCallMap: input.credentialCallMap
 						? { map: input.credentialCallMap, strict: false, checked: true }
 						: null,
@@ -1055,6 +1109,12 @@ export async function runBundledModuleWithRegistry(
 		 * context is granted.
 		 */
 		dependencies?: Array<BundleArtifactDependency>
+		/**
+		 * Marker stamped on post-GHSA lexical-binding publishes. Passed through
+		 * so identity-error rewriting can tell a current artifact from a
+		 * pre-binding one that needs a republish hint.
+		 */
+		packageBindingRewrite?: number
 	},
 	params?: Record<string, unknown>,
 	options?: {
@@ -1066,8 +1126,8 @@ export async function runBundledModuleWithRegistry(
 		packageEventTools?: PackageEventTools
 		/**
 		 * Host bridge for computed `import(specifier)` of caller-owned
-		 * `kody:@` names. When omitted on an authenticated run (outside
-		 * closed-world retriever), a default bridge is created.
+		 * `kody:@` names. When omitted on an authenticated run, a default
+		 * bridge is created.
 		 */
 		computedPackageImportTools?: ComputedPackageImportTools
 		/** Nested depth for computed import library loads. */
@@ -1085,12 +1145,6 @@ export async function runBundledModuleWithRegistry(
 		 */
 		skipExecuteUsage?: boolean
 		skipCapabilityRegistry?: boolean
-		/**
-		 * Retriever enrichment profile: no capability map, no workflows,
-		 * no package invoke/events, read-only packageStorage, no outbound
-		 * fetch. Search annotations depend on this being a runtime constraint.
-		 */
-		closedWorldRetrieverRuntime?: boolean
 		executorTimeoutMs?: number | null
 		signal?: AbortSignal
 		runRecord?: RunRecordContext | null
@@ -1153,6 +1207,8 @@ export async function runBundledModuleWithRegistry(
 			env,
 			userId: ownerIdFromCaller(callerContext) || null,
 			context: runRecordContext,
+			request: callerContext.request,
+			startedByLabel: callerContext.request?.credential.profileName ?? null,
 			waitUntil,
 		})
 	let runRecordFinished = false
@@ -1314,8 +1370,6 @@ export async function runBundledModuleWithRegistry(
 					.filter((packageId): packageId is string => Boolean(packageId)),
 			),
 		})
-		const closedWorldRetrieverRuntime =
-			options?.closedWorldRetrieverRuntime === true
 		const callMap = options?.credentialCallMap ?? null
 		const credentialEntryPackageIds = credentialNeedsEntryPackageIds({
 			packageContext: options?.packageContext ?? null,
@@ -1336,35 +1390,15 @@ export async function runBundledModuleWithRegistry(
 			if (warnings.length > 0) callMap.onWarnings?.(warnings)
 		}
 		const credentialClientBinding = newRunCredentialClientBinding()
-		let runNeeds: Promise<ReadonlyMap<string, CredentialNeed>> | null = null
-		const credentialClientTools: CredentialClientToolOptions | undefined =
-			callerContext.user?.userId && !closedWorldRetrieverRuntime
-				? {
-						binding: credentialClientBinding,
-						// The calling package decides whose needs, mappings, and bound
-						// Keys apply (GHSA-5fv3): the bound dispatcher's stamp, or the
-						// run package for unbound calls. Naming another id is denied.
-						resolvePackageId: async (requested) =>
-							resolveCallerCredentialPackageId({
-								requested,
-								callerPackageId:
-									getSecretAuthorityScope()?.currentPackageId?.trim() ||
-									(options?.packageContext?.packageId ?? null),
-							}),
-						callMap: callMap?.map ?? null,
-						runNeeds: () => {
-							const request = callerContext.request
-							if (!request) return Promise.resolve(new Map())
-							runNeeds ??= loadRunCredentialNeeds({
-								env,
-								orgId: request.org.id,
-								packageIds: credentialEntryPackageIds,
-							})
-							return runNeeds
-						},
-						waitUntil: options?.waitUntil,
-					}
-				: undefined
+		const credentialClientTools = createRunCredentialClientToolOptions({
+			env,
+			callerContext,
+			binding: credentialClientBinding,
+			runPackageId: options?.packageContext?.packageId ?? null,
+			entryPackageIds: credentialEntryPackageIds,
+			callMap: callMap?.map ?? null,
+			waitUntil: options?.waitUntil,
+		})
 		const packageSecretRefKey = createPackageSecretRefKey()
 		const executor = createExecuteExecutor({
 			env,
@@ -1412,7 +1446,6 @@ export async function runBundledModuleWithRegistry(
 			}),
 			packageId: options?.packageContext?.packageId ?? null,
 			executeShape: options?.executeShape,
-			allowOutboundFetch: !closedWorldRetrieverRuntime,
 			onWorkerId: runRecordHandle
 				? (workerId) => {
 						runRecordHandle.context = {
@@ -1427,17 +1460,16 @@ export async function runBundledModuleWithRegistry(
 			claimWorkerDay: options?.claimWorkerDay,
 			waitUntil: options?.waitUntil,
 		})
-		const workflowTools = closedWorldRetrieverRuntime
-			? undefined
-			: (options?.workflowTools ??
-				createWorkflowTools({
-					env,
-					callerContext,
-					packageContext: options?.packageContext ?? null,
-				}))
+		const workflowTools =
+			options?.workflowTools ??
+			createWorkflowTools({
+				env,
+				callerContext,
+				packageContext: options?.packageContext ?? null,
+			})
 		const computedPackageImportTools =
 			options?.computedPackageImportTools ??
-			(callerContext.user?.userId && !closedWorldRetrieverRuntime
+			(callerContext.user?.userId
 				? createComputedPackageImportTools({
 						env,
 						baseUrl: callerContext.baseUrl,
@@ -1454,7 +1486,6 @@ export async function runBundledModuleWithRegistry(
 						executorTimeoutMs: options?.executorTimeoutMs,
 						computedImportDepth: options?.computedImportDepth ?? 0,
 						conversationId: options?.conversationId ?? null,
-						closedWorldRetrieverRuntime,
 						credentialCallMap: callMap?.map ?? null,
 					})
 				: undefined)
@@ -1465,7 +1496,6 @@ export async function runBundledModuleWithRegistry(
 		const packageStorageTools = callerContext.user?.userId
 			? {
 					grantedPackageIds: grantedPackageStorageIds,
-					writable: !closedWorldRetrieverRuntime,
 					runPackageId: options?.packageContext?.packageId ?? null,
 				}
 			: undefined
@@ -1486,15 +1516,13 @@ export async function runBundledModuleWithRegistry(
 			packageStorageTools,
 			packageSecretTools,
 			credentialClientTools,
-			emailTools: closedWorldRetrieverRuntime ? undefined : options?.emailTools,
+			emailTools: options?.emailTools,
 			workflowTools,
-			skipCapabilityRegistry:
-				closedWorldRetrieverRuntime || options?.skipCapabilityRegistry,
-			capabilityRegistry: closedWorldRetrieverRuntime
-				? undefined
-				: options?.capabilityRegistry,
+			skipCapabilityRegistry: options?.skipCapabilityRegistry,
+			capabilityRegistry: options?.capabilityRegistry,
 			reportProgress,
 			waitUntil: options?.waitUntil,
+			...(credentialClientTools ? { credentialClientBinding } : {}),
 		})
 		runServerTiming.push({
 			name: 'provider-assembly',
@@ -1508,11 +1536,9 @@ export async function runBundledModuleWithRegistry(
 			packageStorageTools,
 			packageSecretTools,
 			credentialClientTools,
-			emailTools: closedWorldRetrieverRuntime ? undefined : options?.emailTools,
+			emailTools: options?.emailTools,
 			workflowTools,
-			packageEventTools: closedWorldRetrieverRuntime
-				? undefined
-				: options?.packageEventTools,
+			packageEventTools: options?.packageEventTools,
 			computedPackageImportTools,
 			staticCallMeterTools,
 		}
@@ -1669,11 +1695,27 @@ ${runtimeHelperRuntimePropertySource}
 				await recordPackageExportUsage('success')
 				return withRunId(sanitizedResult)
 			}
-			const rewrittenMessage = rewriteUnboundRuntimeHelperError({
-				error: result.error,
-				modules: hydratedModules,
-				unboundHelperNames: unboundOptionalRuntimeHelperNames,
-			})
+			const rewrittenMessage =
+				rewriteUnboundRuntimeHelperError({
+					error: result.error,
+					modules: hydratedModules,
+					unboundHelperNames: unboundOptionalRuntimeHelperNames,
+				}) ??
+				// A stored pre-fix bundle the load site could not rebuild runs an
+				// inlined package as the caller; say so and how to fix it.
+				describePreBindingIdentityError({
+					message: getErrorMessage(result.error),
+					artifact: {
+						modules: bundle.modules,
+						dependencies: bundle.dependencies ?? [],
+						packageContext: options?.packageContext ?? null,
+						...(bundle.packageBindingRewrite === undefined
+							? {}
+							: {
+									packageBindingRewrite: bundle.packageBindingRewrite,
+								}),
+					},
+				})
 			const finalResult = rewrittenMessage
 				? {
 						...sanitizedResult,

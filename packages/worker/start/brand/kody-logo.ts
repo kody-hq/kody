@@ -1,11 +1,10 @@
 import {
-	kodyMarkLeftEyePathD,
-	kodyMarkNosePathD,
-	kodyMarkOuterPathD,
-	kodyMarkOutlineStrokeWidth,
+	kodyMarkOutlinedLeftEyePathD,
+	kodyMarkOutlinedNosePathD,
+	kodyMarkOutlinedRightEyePathD,
+	kodyMarkOutlinedRingPathD,
 	kodyMarkPathD,
 	kodyMarkPathTransform,
-	kodyMarkRightEyePathD,
 	kodyMarkViewBox,
 } from './kody-mark-path.ts'
 
@@ -63,29 +62,14 @@ export function kodyLogoSvgMarkup(fill = '#ffffff'): string {
 `
 }
 
-/** Light-mode logo: outlined line-art mark + wordmark. */
-export function kodyLogoOutlinedSvgMarkup(
-	fill = '#000000',
-	clipId = 'kody-logo-outlined-clip',
-): string {
-	const strokeWidth = kodyMarkOutlineStrokeWidth * 2
-	// The clip and the stroke it clips carry the full transform themselves, so
-	// both live in root user space. Consumers that resolve `userSpaceOnUse`
-	// against the root instead of the referencing group still clip correctly.
-	const outlineTransform = `${kodyLogoMarkTransform} ${kodyMarkPathTransform}`
+/** Light-mode logo: outlined filled-path mark + wordmark. */
+export function kodyLogoOutlinedSvgMarkup(fill = '#000000'): string {
 	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${kodyLogoViewBox}" role="img" aria-label="Kody">
-  <defs>
-    <clipPath id="${clipId}">
-      <path transform="${outlineTransform}" d="${kodyMarkOuterPathD}"/>
-    </clipPath>
-  </defs>
-  <g clip-path="url(#${clipId})">
-    <path fill="none" stroke="${fill}" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round" transform="${outlineTransform}" d="${kodyMarkOuterPathD}"/>
-  </g>
   <g transform="${kodyLogoMarkTransform}">
-    <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkLeftEyePathD}"/>
-    <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkRightEyePathD}"/>
-    <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkNosePathD}"/>
+    <path fill="${fill}" fill-rule="evenodd" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedRingPathD}"/>
+    <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedLeftEyePathD}"/>
+    <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedRightEyePathD}"/>
+    <path fill="${fill}" transform="${kodyMarkPathTransform}" d="${kodyMarkOutlinedNosePathD}"/>
   </g>
   <path fill="${fill}" d="${kodyWordmarkPathD}"/>
 </svg>

@@ -10,8 +10,6 @@ import * as moduleGraph from '#worker/package-runtime/module-graph.ts'
 import { runBundledModuleWithRegistry } from './run-kody-registry.ts'
 import * as mcpExecutor from '#mcp/executor.ts'
 import { createFakeRunLogNamespace } from '#worker/test-support/run-kody-registry.ts'
-import * as settingsService from '#worker/mcp-client/settings-service.ts'
-import * as hubClient from '#worker/mcp-client/hub-client.ts'
 import * as usageModule from '#worker/usage/record-usage.ts'
 import * as runRecords from '#worker/run-records/service.ts'
 import {
@@ -260,46 +258,6 @@ test('runBundledModuleWithRegistry passes params and injects runtime helpers', a
 			userId: ownerIdFromStored('user-123'),
 			params: { greeting: 'hello' },
 		}),
-	)
-})
-
-test('closed-world retriever runtime skips capabilities, hub snapshots, workflows, invoke, and outbound fetch', async () => {
-	silenceIncidentalRuntimeWarnings()
-	const getRegistrySpy = vi
-		.spyOn(registryModule, 'getCapabilityRegistryForContext')
-		.mockResolvedValue({} as never)
-	const listMcpServerRefsSpy = vi
-		.spyOn(settingsService, 'listEnabledMcpServerRefsCached')
-		.mockResolvedValue([])
-	const getHubSnapshotSpy = vi
-		.spyOn(hubClient, 'getCachedMcpClientHubSnapshot')
-		.mockResolvedValue({ servers: [] })
-	const executor = mockExecutor()
-
-	const result = await runOk({
-		skipCapabilityRegistry: false,
-		closedWorldRetrieverRuntime: true,
-		packageContext: {
-			packageId: 'pkg-1',
-			kodyId: 'notes',
-			sourceId: 'source-1',
-		},
-		packageEventTools: {
-			dispatch: async () => {
-				throw new Error('dispatch should not be bound')
-			},
-		},
-	})
-	expect(result.result).toBe('ok')
-	expect(getRegistrySpy).not.toHaveBeenCalled()
-	expect(listMcpServerRefsSpy).not.toHaveBeenCalled()
-	expect(getHubSnapshotSpy).not.toHaveBeenCalled()
-	expect(executor.calls[0]?.input.allowOutboundFetch).toBe(false)
-	const fns = executor.fns()
-	expect(fns.packageWorkflowCreate).toBeUndefined()
-	expect(fns.emailSend).toBeUndefined()
-	await expect(fns.packageStorageSet?.({})).rejects.toThrow(
-		'packageStorage() is read-only during retriever runs',
 	)
 })
 

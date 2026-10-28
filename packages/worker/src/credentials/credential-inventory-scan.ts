@@ -14,8 +14,8 @@
  * binding adds references, not occurrences.
  */
 import {
-	type PackageCredentialKind,
 	type PackageCredentialSlot,
+	type PackageCredentialSlotKind,
 } from '#worker/package-registry/types.ts'
 import {
 	type AstNode,
@@ -64,6 +64,8 @@ export type CredentialOtherContext =
 	| 'url-host'
 	/** A module that did not parse, read as plain text. */
 	| 'unparsed'
+	/** Returned from a status/help/docs/usage function: package help text. */
+	| 'display'
 	| 'other'
 
 /**
@@ -93,6 +95,60 @@ export type CredentialPlacement =
 
 export type CredentialPlacementType = CredentialPlacement['type']
 
+/**
+ * True when a vault placeholder may reach the fetch gateway or a
+ * credential-mapped call. Fails closed: only display sites (values returned
+ * from status/help/docs/usage), unused bindings, and bindings (whose reads are
+ * recorded separately) are false, so a placeholder parked in an object,
+ * array, or helper return that later feeds a request still fails the stamp.
+ */
+export function isVaultCredentialUsePlacement(
+	placement: CredentialPlacement,
+): boolean {
+	switch (placement.type) {
+		case 'header':
+		case 'header-custom':
+		case 'query':
+		case 'basic':
+		case 'path':
+		case 'url':
+		case 'body':
+		case 'signing':
+			return true
+		case 'binding':
+			// Reads of the binding are recorded as their own placements.
+			return false
+		case 'other':
+			switch (placement.context) {
+				case 'display':
+				case 'unused-binding':
+					return false
+				case 'sdk-option':
+				case 'argument':
+				case 'url-host':
+				case 'unparsed':
+				case 'object':
+				case 'return':
+				case 'assignment':
+				case 'array':
+				case 'default-param':
+				case 'comparison':
+				case 'reassigned-binding':
+				case 'template-computed':
+				case 'other':
+					return true
+				default: {
+					const exhaustive: never = placement.context
+					return exhaustive
+				}
+			}
+		default: {
+			const exhaustive: never = placement
+			return exhaustive
+		}
+	}
+}
+
 export const credentialPlacementTypes = [
 	'header',
 	'query',
@@ -120,6 +176,7 @@ export const credentialOtherContexts = [
 	'template-computed',
 	'url-host',
 	'unparsed',
+	'display',
 	'other',
 ] as const satisfies ReadonlyArray<CredentialOtherContext>
 
@@ -133,8 +190,13 @@ export type CredentialReference = {
 
 export type CredentialSlotDeclaration = {
 	name: string
-	kind?: PackageCredentialKind
+	kind?: PackageCredentialSlotKind
 	provider: string
+}
+
+export type VaultPlaceholderUse = {
+	provider: string
+	placement: CredentialPlacement
 }
 
 export type PackageCredentialScan = {
@@ -143,6 +205,11 @@ export type PackageCredentialScan = {
 	references: Array<CredentialReference>
 	/** Where each `{{secret/provider:ref}}` vault placeholder sits. */
 	vaultPlacements: Array<CredentialPlacement>
+	/**
+	 * Each vault placeholder with its literal provider id (as written; not
+	 * normalized), in the same order as `vaultPlacements`.
+	 */
+	vaultUses: Array<VaultPlaceholderUse>
 	/** `secretJwtSign` calls: signatures made with a saved secret by name. */
 	jwtSignCalls: number
 	/**
@@ -262,6 +329,7 @@ export function scanPackageCredentials(input: {
 		placeholders: emptyPlaceholderCounts(),
 		references: [],
 		vaultPlacements: [],
+		vaultUses: [],
 		jwtSignCalls: 0,
 		jwtSignSecretNames: [],
 		slots: Object.entries(input.slots ?? {}).map(([name, slot]) => ({
@@ -324,7 +392,11 @@ function recordPlaceholders(
 		if (skip[match.kind] > 0) skip[match.kind] -= 1
 		else scan.placeholders[match.kind] += 1
 		if (match.kind === 'vault') {
-			scan.vaultPlacements.push(placementOf(match))
+			const placement = placementOf(match)
+			scan.vaultPlacements.push(placement)
+			if (match.provider != null) {
+				scan.vaultUses.push({ provider: match.provider, placement })
+			}
 			continue
 		}
 		const nameKind =
@@ -627,8 +699,24 @@ function scanParsedModule(
 ) {
 	const scopes = collectScopes(parsed, constants)
 	const readCount = new Map<Binding, number>()
+	// Display functions the module itself reads or calls (`fetch(status())`,
+	// `this.help()`) can feed a request, so their returns are not exempt.
+	// Member reads count only on `this`; `client.status()` is someone else's.
+	// Any other `this` use (aliases, dynamic keys, destructuring, arguments)
+	// could reach any of them, so it marks every display name.
+	const referencedDisplayNames = new Set<string>()
 	walkAst(parsed, (node, ancestors) => {
+		if (node.type === 'ThisExpression') {
+			for (const name of thisMemberDisplayNames(node, ancestors)) {
+				referencedDisplayNames.add(name)
+			}
+			return
+		}
 		if (node.type !== 'Identifier' || !isVariableRead(node, ancestors)) return
+		const name = getNodeName(node)?.toLowerCase()
+		if (name && displayReturnFunctionNames.has(name)) {
+			referencedDisplayNames.add(name)
+		}
 		const binding = bindingInScope(scopes, getNodeName(node), ancestors)
 		if (binding) readCount.set(binding, (readCount.get(binding) ?? 0) + 1)
 	})
@@ -677,6 +765,7 @@ function scanParsedModule(
 		const placementFor = (text: string) => (match: PlaceholderMatch) =>
 			classifyPlacement(text, match, node, ancestors, {
 				constants: constantsIn(ancestors),
+				referencedDisplayNames,
 				binding: (declarator) => {
 					const name = getNodeName(declarator.id)
 					const binding = bindingInScope(scopes, name, [
@@ -721,12 +810,17 @@ function scanParsedModule(
 			case 'TemplateElement': {
 				// A piece of a template that does not resolve to one string: the
 				// placeholder sits in a computed value, so only its kind is known.
+				const display = displayOnlyPlacement(
+					ancestors,
+					node,
+					referencedDisplayNames,
+				)
 				recordPlaceholders(
 					templateElementText(node),
 					(match) =>
 						match.kind === 'secret-basic'
 							? { type: 'basic' }
-							: otherPlacement('template-computed'),
+							: (display ?? otherPlacement('template-computed')),
 					scan,
 				)
 				return
@@ -799,8 +893,140 @@ function safeIdentifier(value: string | null) {
 
 type ClassifyContext = {
 	constants: ReadonlyMap<string, string>
+	referencedDisplayNames: ReadonlySet<string>
 	/** Whether the variable a declarator binds is read, reassigned, or unused. */
 	binding: (declarator: AstNode) => 'read' | 'reassigned' | 'unused'
+}
+
+/** Documentation keys recorded on display placements (labels only). */
+const displayDocumentationPropertyKeys = new Set([
+	'example',
+	'examples',
+	'description',
+	'help',
+	'usage',
+	'docs',
+	'documentation',
+	'hint',
+	'hints',
+	'sample',
+	'samples',
+])
+
+/** Function / method names whose returns are package help, not request builders. */
+const displayReturnFunctionNames = new Set(['status', 'help', 'docs', 'usage'])
+
+function thisMemberDisplayNames(
+	node: AstNode,
+	ancestors: ReadonlyArray<AstNode>,
+): Iterable<string> {
+	let child = node
+	let index = ancestors.length - 1
+	while (index >= 0 && transparentExpressionTypes.has(ancestors[index]!.type)) {
+		child = ancestors[index]!
+		index -= 1
+	}
+	const parent = ancestors[index]
+	if (
+		(parent?.type === 'MemberExpression' ||
+			parent?.type === 'OptionalMemberExpression') &&
+		parent.object === child
+	) {
+		const name = parent.computed
+			? typeof parent.property?.value === 'string'
+				? parent.property.value
+				: null
+			: getNodeName(parent.property)
+		if (name) {
+			const lower = name.toLowerCase()
+			return displayReturnFunctionNames.has(lower) ? [lower] : []
+		}
+	}
+	return displayReturnFunctionNames
+}
+
+function enclosingFunctionName(ancestors: ReadonlyArray<AstNode>) {
+	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+		const ancestor = ancestors[index]!
+		if (
+			ancestor.type === 'FunctionDeclaration' ||
+			ancestor.type === 'FunctionExpression' ||
+			ancestor.type === 'ArrowFunctionExpression'
+		) {
+			const own = getNodeName(ancestor.id) ?? getNodeName(ancestor.key) ?? null
+			if (own) return own
+			// `const status = () => …` / `status: () => …` — the name sits on
+			// the enclosing declarator or object property, not the function.
+			const holder = ancestors[index - 1]
+			if (holder?.type === 'VariableDeclarator' && holder.init === ancestor) {
+				return getNodeName(holder.id)
+			}
+			if (holder?.type === 'ObjectProperty' && holder.value === ancestor) {
+				return getNodeName(holder.key) ?? propertyKey(holder)
+			}
+			// Unnamed nested function (default param, callback, etc.): do not
+			// inherit an outer status/help name.
+			return null
+		}
+		if (
+			ancestor.type === 'ObjectMethod' ||
+			ancestor.type === 'ClassMethod' ||
+			ancestor.type === 'ClassPrivateMethod'
+		) {
+			return getNodeName(ancestor.key) ?? getNodeName(ancestor.id) ?? null
+		}
+	}
+	return null
+}
+
+/**
+ * Display/help sites for vault tokens: values returned from a
+ * status/help/docs/usage function the module never reads or calls itself, and
+ * never when a call or `new` encloses the placeholder (so fetch bodies and
+ * request helpers stay stamp-gated).
+ * Documentation-keyed objects elsewhere (`const spec = { description }`) are
+ * not exempt: a later read can feed them into a request.
+ */
+function displayOnlyPlacement(
+	ancestors: ReadonlyArray<AstNode>,
+	node: AstNode,
+	referencedDisplayNames: ReadonlySet<string>,
+): CredentialPlacement | null {
+	for (const ancestor of ancestors) {
+		if (
+			ancestor.type === 'CallExpression' ||
+			ancestor.type === 'OptionalCallExpression' ||
+			ancestor.type === 'NewExpression'
+		) {
+			return null
+		}
+	}
+	const inReturn =
+		ancestors.some((ancestor) => ancestor.type === 'ReturnStatement') ||
+		ancestors.some(
+			(ancestor, index) =>
+				ancestor.type === 'ArrowFunctionExpression' &&
+				ancestor.body === (ancestors[index + 1] ?? node),
+		)
+	if (!inReturn) return null
+	const functionName = enclosingFunctionName(ancestors)?.toLowerCase() ?? null
+	if (
+		!functionName ||
+		!displayReturnFunctionNames.has(functionName) ||
+		referencedDisplayNames.has(functionName)
+	) {
+		return null
+	}
+	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+		const ancestor = ancestors[index]!
+		if (ancestor.type === 'ObjectProperty') {
+			const key = safeIdentifier(propertyKey(ancestor))
+			if (key && displayDocumentationPropertyKeys.has(key.toLowerCase())) {
+				return otherPlacement('display', key)
+			}
+		}
+	}
+	return otherPlacement('display')
 }
 
 function classifyPlacement(
@@ -811,6 +1037,12 @@ function classifyPlacement(
 	context: ClassifyContext,
 ): CredentialPlacement {
 	if (match.kind === 'secret-basic') return { type: 'basic' }
+	const displayOnly = displayOnlyPlacement(
+		ancestors,
+		node,
+		context.referencedDisplayNames,
+	)
+	if (displayOnly) return displayOnly
 	const parent = parentOf(ancestors)
 	if (
 		parent?.node.type === 'VariableDeclarator' &&

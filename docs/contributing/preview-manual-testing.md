@@ -170,7 +170,7 @@ unless you are an operator with Cloudflare credentials. Create user data through
 supported MCP capabilities with `control-kody execute` / `search`, or use the
 browser UI. For a saved package, use
 `npm run control-kody -- package-create --origin <preview> --package-name <leaf-or-@scope/leaf> [--head-ahead]`.
-Package creation uses `packageGetGitRemote({ create: true, kody_id })` with the
+Package creation uses `packageGetGitRemote({ create: true, name })` with the
 package name leaf or `@owner/leaf`. Website-only reads and mutations use Start
 server functions, not public JSON action URLs. `/session`, `/auth`, and
 `/account/export.json` remain HTTP protocols. Use `control-kody` login rather
@@ -223,9 +223,9 @@ npm run control-kody -- browse --origin <preview> --path /@user-me/-/agents
 ```
 
 Without the label, the next preview seed deletes that allowlisted override, and
-the connection profile controls should no longer appear. An unknown
-`preview-flag:` label fails the seed step. Adding or removing the label on a
-closed pull request does not deploy.
+the connection profile controls do not appear. An unknown `preview-flag:` label
+fails the seed step. Adding or removing the label on a closed pull request does
+not deploy.
 
 ## Logged-in data and UI pass
 

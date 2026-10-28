@@ -1,3 +1,7 @@
+import {
+	optionalOrgAuditWriter,
+	orgAuditCauseFromCaller,
+} from '#worker/orgs/org-audit.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -27,6 +31,7 @@ export const metaMemoryDeleteCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'metaMemoryDelete',
+		contextRuns: 'allow',
 		orgPermission: memoryPersonalOnlyOrgPermission,
 		description:
 			'Soft-delete a **personal** memory by default, or hard-delete it when `force` is true. Always run `metaMemoryVerify` first. Memory is personal-only; team-org legacy rows cannot be deleted through this tool.',
@@ -88,6 +93,11 @@ export const metaMemoryDeleteCapability = defineDomainCapability(
 				userId: auth.userId,
 				memoryId: args.memory_id,
 				force: args.force ?? false,
+				audit: optionalOrgAuditWriter(
+					ctx.env,
+					ctx.callerContext.request ?? null,
+					orgAuditCauseFromCaller(ctx.callerContext),
+				),
 			})
 			return {
 				ok: true,

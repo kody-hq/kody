@@ -6,8 +6,6 @@ import {
 	mintPackageWebhook,
 	rotatePackageWebhook,
 	revealPackageWebhook,
-	enablePackageWebhook,
-	disablePackageWebhook,
 	readPackageWebhooksData,
 } from '#app/handlers/package-webhooks.ts'
 import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
@@ -178,8 +176,6 @@ async function setup(sessionUsername = 'owner') {
 		mint: mintPackageWebhook,
 		rotate: rotatePackageWebhook,
 		reveal: revealPackageWebhook,
-		enable: enablePackageWebhook,
-		disable: disablePackageWebhook,
 	}
 	const post = (
 		body: {
@@ -223,7 +219,7 @@ function urlSecretOf(url: string) {
 	return url.slice(url.lastIndexOf('/') + 1)
 }
 
-test('package webhooks API mints, reveals, rotates, and toggles a declared webhook without leaking the URL from the list', async () => {
+test('package webhooks API mints, reveals, and rotates a declared webhook without leaking the URL from the list', async () => {
 	const { db, userId, get, act } = await setup()
 
 	const listed = await get()
@@ -265,14 +261,13 @@ test('package webhooks API mints, reveals, rotates, and toggles a declared webho
 	const mintedUrl = minted.body.revealed!.url
 	const mintedHandle = minted.body.revealed!.handle
 	// Minting never turns the webhook on: the answer and the list both point
-	// at Approve, and the card must not read Active.
+	// at Approve, and the card must not read Approved.
 	const approvalUrl = `https://kody.example/@owner/sentry-bridge/approve-credentials?enable=webhook%3Alauncher%3A${mintedEndpointId}`
 	expect(minted.body.approvalUrl).toBe(approvalUrl)
 	expect(
 		launcherOf((await get()).data as PackageWebhooksLoaderData),
 	).toMatchObject({
 		minted: true,
-		enabled: true,
 		approved: false,
 		approvalUrl,
 		urlRecoverable: true,
@@ -312,13 +307,6 @@ test('package webhooks API mints, reveals, rotates, and toggles a declared webho
 	expect(remint.status).toBe(400)
 	expect(remint.body.error).toContain('Rotate')
 
-	const disabled = await act('disable')
-	expect(disabled.status).toBe(200)
-	expect(disabled.body.revealed).toBeUndefined()
-	expect(
-		launcherOf((await get()).data as PackageWebhooksLoaderData).enabled,
-	).toBe(false)
-
 	const rotated = await act('rotate')
 	expect(rotated.status).toBe(200)
 	expect(rotated.body.revealed?.url).not.toBe(mintedUrl)
@@ -326,19 +314,11 @@ test('package webhooks API mints, reveals, rotates, and toggles a declared webho
 	const rotatedLauncher = launcherOf(
 		(await get()).data as PackageWebhooksLoaderData,
 	)
-	// Rotate keeps the disabled state; only Enable flips it back.
-	expect(rotatedLauncher.enabled).toBe(false)
 	expect(rotatedLauncher.previousUrlActiveUntil).toEqual(expect.any(String))
 	const overlapUntil = Date.parse(rotatedLauncher.previousUrlActiveUntil!)
 	const overlapExpected = Date.now() + 24 * 60 * 60 * 1000
 	expect(overlapUntil).toBeGreaterThan(overlapExpected - 10_000)
 	expect(overlapUntil).toBeLessThan(overlapExpected + 10_000)
-
-	const enabled = await act('enable')
-	expect(enabled.status).toBe(200)
-	expect(
-		launcherOf((await get()).data as PackageWebhooksLoaderData).enabled,
-	).toBe(true)
 
 	const whereLauncher = `WHERE user_id = ? AND package_id = 'pkg-1' AND webhook_name = 'launcher'`
 	const stored = await db
@@ -525,22 +505,6 @@ test('native webhook operations mint labeled siblings and target one endpoint wi
 	expect((reveal.data as PackageWebhooksActionPayload).revealed?.url).toBe(
 		payload.revealed?.url,
 	)
-	expect(
-		(
-			await post({
-				intent: 'disable',
-				webhookName: 'launcher',
-				endpointId: extraId,
-			})
-		).status,
-	).toBe(200)
-	const after = (await get()).data as PackageWebhooksLoaderData
-	expect(
-		after.webhooks.find((row) => row.endpointId === extraId)?.enabled,
-	).toBe(false)
-	expect(
-		after.webhooks.find((row) => row.endpointId === originalId)?.enabled,
-	).toBe(true)
 	expect(
 		(
 			await post({

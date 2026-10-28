@@ -14,7 +14,10 @@ import {
 	fallbackDefaultBranchName,
 	getPackageTreeHref,
 } from '#universal/package-files.ts'
-import { renderPackageRepoChrome } from '../components/package-repo-nav.tsx'
+import {
+	PackageRepoTabPanel,
+	renderPackageRepoChrome,
+} from '../components/package-repo-nav.tsx'
 import { cardCss, cardTitleCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import { detailArticleCss } from '../components/community-detail-sections.tsx'
@@ -163,6 +166,8 @@ export function PackageCredentialsRoute({
 				viewerIsOwner: true,
 				viewerCanManage: shell?.viewerCanManage ?? false,
 				viewerCanManageAccess: shell?.viewerCanManageAccess ?? false,
+				viewerCanSeeConnectedPeople:
+					shell?.viewerCanSeeConnectedPeople ?? false,
 				active: path.tab,
 				filesHref: getPackageTreeHref({
 					username,
@@ -181,38 +186,39 @@ export function PackageCredentialsRoute({
 				}),
 				iconName: kodyId,
 			})}
-
-			{view
-				? renderTab(path.tab, {
-						orgSlug: username,
-						username,
-						kodyId,
-						view,
-						renderMappingCell: editor.renderCell,
-						setTriggerEnablement: (action) => {
-							if (!busyKey)
-								enablementMutation.mutate({
-									actorKey,
-									username,
-									kodyId,
-									action,
-								})
-						},
-						enablementBusyKey: busyKey,
-						enablementError:
-							ownEnablement && enablementMutation.error
-								? enablementMutation.error.message
-								: null,
-					})
-				: null}
-			{data && !data.view
-				? renderViewError({
-						pageUrl,
-						error:
-							data.viewError ??
-							'Kody could not load this package’s credentials.',
-					})
-				: null}
+			<PackageRepoTabPanel>
+				{view
+					? renderTab(path.tab, {
+							orgSlug: username,
+							username,
+							kodyId,
+							view,
+							renderMappingCell: editor.renderCell,
+							setTriggerEnablement: (action) => {
+								if (!busyKey)
+									enablementMutation.mutate({
+										actorKey,
+										username,
+										kodyId,
+										action,
+									})
+							},
+							enablementBusyKey: busyKey,
+							enablementError:
+								ownEnablement && enablementMutation.error
+									? enablementMutation.error.message
+									: null,
+						})
+					: null}
+				{data && !data.view
+					? renderViewError({
+							pageUrl,
+							error:
+								data.viewError ??
+								'Kody could not load this package’s credentials.',
+						})
+					: null}
+			</PackageRepoTabPanel>
 		</article>
 	)
 }

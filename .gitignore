@@ -34,6 +34,7 @@ playwright-report
 blob-report
 test-results
 packages/worker/wrangler-*.generated.json
+packages/worker/start/routeTree.gen.check.ts
 packages/worker/.generated/
 packages/worker/src/generated/
 packages/runtime-worker/wrangler-*.generated.json

@@ -10,6 +10,7 @@ import {
 	isRetryableCloudflareFailure,
 	isRetryableDeployFailure,
 	isRetryableE2eFailure,
+	isRetryableEmptyMigrationTagPrecondition,
 	isRetryableWorkersDevSubdomainRace,
 	isRetryableWranglerDeployFailure,
 	isWranglerD1MigrationsApply,
@@ -66,6 +67,10 @@ test('production deploy retries transient Cloudflare flakes and fails fast on re
 		'',
 		'  GET /accounts/acct/workers/scripts/kody-pr-3501-runtime/deployments -> 504 Gateway Timeout',
 	].join('\n')
+	const unknownCloudflare10013Log =
+		'An unknown error has occurred. If this error persists, please file a report in workers-sdk (https://github.com/cloudflare/workers-sdk/issues) or reach out to your account team. [code: 10013]'
+	const d1InternalError7500Log =
+		'internal error; reference = e_61GNS0_bc1361e65fb4404f972d6735a9a3e4b4 [code: 7500]'
 
 	expect(isRetryableDeployFailure(startupCpuLog)).toBe(true)
 	expect(
@@ -77,8 +82,24 @@ test('production deploy retries transient Cloudflare flakes and fails fast on re
 	expect(isRetryableDeployFailure(deploymentsList200Log)).toBe(true)
 	expect(isRetryableDeployFailure(gatewayTimeout504Log)).toBe(true)
 	expect(isRetryableDeployFailure('504 Gateway Timeout')).toBe(true)
+	expect(isRetryableDeployFailure(unknownCloudflare10013Log)).toBe(true)
 	expect(isRetryableDeployFailure(durableObjectMigrationLog)).toBe(false)
 	expect(isRetryableDeployFailure('')).toBe(false)
+	expect(isRetryableCloudflareFailure(unknownCloudflare10013Log)).toBe(true)
+	expect(isRetryableCloudflareFailure(d1InternalError7500Log)).toBe(true)
+	expect(
+		isRetryableCloudflareFailure(
+			'Cloudflare API request failed: temporary service issue [code: 10001]',
+		),
+	).toBe(true)
+	expect(
+		isRetryableCloudflareFailure('namespace not found [code: 10013]'),
+	).toBe(false)
+	expect(
+		isRetryableCloudflareFailure(
+			'D1 query failed: FOREIGN KEY constraint failed',
+		),
+	).toBe(false)
 
 	const startupLogPath = join(logDir, 'deploy-platform.log')
 	writeFileSync(startupLogPath, startupCpuLog)
@@ -346,6 +367,47 @@ test('runWranglerDeployWithRetry retries a D1 fetch-failed flake then succeeds',
 	expect(result.status).toBe(0)
 	expect(attempts).toEqual([1, 2])
 	expect(delays).toHaveLength(1)
+})
+
+test('runWranglerDeployWithRetry retries empty-tag 10079 then succeeds', async () => {
+	const emptyTag10079Log = [
+		'A request to the Cloudflare API (/accounts/acct/workers/scripts/kody-pr-4310-mock-cloudflare/versions) failed.',
+		"Actor migration tag precondition failed, got tag '' when expected tag is 'v2'",
+		'[code: 10079]',
+	].join('\n')
+	expect(isRetryableEmptyMigrationTagPrecondition(emptyTag10079Log)).toBe(true)
+	expect(isRetryableWranglerDeployFailure(emptyTag10079Log)).toBe(true)
+	expect(
+		isRetryableEmptyMigrationTagPrecondition(
+			"Actor migration tag precondition failed, got tag 'v1' when expected tag is 'v2' [code: 10079]",
+		),
+	).toBe(false)
+
+	const attempts: Array<number> = []
+	const result = await runWranglerDeployWithRetry({
+		command: 'wrangler',
+		args: ['deploy'],
+		maxAttempts: 3,
+		sleep: async () => {},
+		log: () => {},
+		run: () => {
+			attempts.push(attempts.length + 1)
+			if (attempts.length === 1) {
+				return {
+					status: 1,
+					output: emptyTag10079Log,
+					errorMessage: '',
+				}
+			}
+			return {
+				status: 0,
+				output: 'Uploaded kody-pr-4310-mock-cloudflare\n',
+				errorMessage: '',
+			}
+		},
+	})
+	expect(result.status).toBe(0)
+	expect(attempts).toEqual([1, 2])
 })
 
 test('runWranglerDeployWithRetry does not retry a genuine missing worker', async () => {

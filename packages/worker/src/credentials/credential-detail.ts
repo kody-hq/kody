@@ -11,12 +11,16 @@ import {
 	type CredentialNeedFit,
 } from '#universal/credentials-list.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import { listEntitySourcesByIds } from '#worker/repo/entity-sources.ts'
+import { type EntitySourceRow } from '#worker/repo/types.ts'
 import {
-	listUsableCredentials,
+	listUsableCredentialsByPackage,
 	resolveNeedCandidates,
 } from './credential-candidates.ts'
 import { readCredentialHostSettings } from './credential-hosts.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
+import { savedCredentialNeeds } from './credential-needs.ts'
+import { isPackageCredentialSuppliersEnabled } from './credential-suppliers-flag.ts'
 import { readFillPlacementObservation } from './fill-placement-observations.ts'
 
 /** Each package costs a closure read, so usage checks the most recent ones. */
@@ -76,31 +80,46 @@ async function listUsage(input: {
 	credentialId: string
 	packages: ReadonlyArray<SavedPackageRecord>
 }) {
-	// Load closures and per-package usable lists in parallel so a 40-package
-	// detail view does not re-walk credentials serially.
-	const packageViews = await Promise.all(
-		input.packages.map(async (pkg) => {
-			const [needs, usable] = await Promise.all([
-				loadPublishedCredentialNeeds({
-					env: input.env,
-					userId: input.orgId,
-					sourceId: pkg.sourceId,
-				}).catch((error: unknown) => {
-					Sentry.captureException(error, {
-						tags: { scope: 'credentials.detail.usage' },
-						extra: { packageId: pkg.id },
-					})
-					return null
-				}),
-				listUsableCredentials({
-					env: input.env,
-					request: input.request,
-					packageId: pkg.id,
-				}),
-			])
-			return { pkg, needs, usable }
+	// Shared org/personal/MCP rows load once; package-bound Keys are batched
+	// (KODY-BD). Closures still run per package in parallel, but the suppliers
+	// flag is evaluated once for the org and threaded with `request` so nested
+	// dependency walks share the same memo (Sentry KODY-BW / KODY-BT /
+	// KODY-BV), and every package's entity-source row loads in one batch
+	// (KODY-C1). A flag failure marks usage unreadable once instead of failing
+	// the whole detail.
+	let supplierSemanticsEnabled: boolean
+	try {
+		supplierSemanticsEnabled = await isPackageCredentialSuppliersEnabled({
+			db: input.env.APP_DB,
+			orgId: input.orgId,
+			request: input.request,
+		})
+	} catch (error) {
+		Sentry.captureException(error, {
+			tags: { scope: 'credentials.detail.usage' },
+			extra: { orgId: input.orgId },
+		})
+		return { usage: [], unreadable: input.packages.length }
+	}
+	const [usableByPackage, needResults] = await Promise.all([
+		listUsableCredentialsByPackage({
+			env: input.env,
+			request: input.request,
+			packageIds: input.packages.map((pkg) => pkg.id),
 		}),
-	)
+		loadPackageNeeds({
+			env: input.env,
+			request: input.request,
+			orgId: input.orgId,
+			packages: input.packages,
+			supplierSemanticsEnabled,
+		}),
+	])
+	const packageViews = needResults.map(({ pkg, needs }) => ({
+		pkg,
+		needs,
+		usable: usableByPackage.get(pkg.id) ?? [],
+	}))
 	const usage: AccountCredentialDetail['usage'] = []
 	let unreadable = 0
 	for (const { pkg, needs, usable } of packageViews) {
@@ -138,6 +157,56 @@ async function listUsage(input: {
 		),
 		unreadable,
 	}
+}
+
+/**
+ * Each package's published needs, or null when they could not be read. A
+ * package whose source row is missing or deleted has no needs.
+ */
+async function loadPackageNeeds(input: {
+	env: Env
+	request: RequestContext
+	orgId: string
+	packages: ReadonlyArray<SavedPackageRecord>
+	supplierSemanticsEnabled: boolean
+}) {
+	let sourcesById: Map<string, EntitySourceRow>
+	try {
+		const rows = await listEntitySourcesByIds(
+			input.env.APP_DB,
+			input.packages.map((pkg) => pkg.sourceId),
+		)
+		sourcesById = new Map(rows.map((row) => [row.id, row]))
+	} catch (error) {
+		Sentry.captureException(error, {
+			tags: { scope: 'credentials.detail.usage' },
+			extra: { orgId: input.orgId },
+		})
+		return input.packages.map((pkg) => ({ pkg, needs: null }))
+	}
+	return await Promise.all(
+		input.packages.map(async (pkg) => {
+			try {
+				const needs = savedCredentialNeeds(
+					await loadPublishedCredentialNeeds({
+						env: input.env,
+						userId: input.orgId,
+						sourceId: pkg.sourceId,
+						source: sourcesById.get(pkg.sourceId) ?? null,
+						supplierSemanticsEnabled: input.supplierSemanticsEnabled,
+						request: input.request,
+					}),
+				)
+				return { pkg, needs }
+			} catch (error) {
+				Sentry.captureException(error, {
+					tags: { scope: 'credentials.detail.usage' },
+					extra: { packageId: pkg.id },
+				})
+				return { pkg, needs: null }
+			}
+		}),
+	)
 }
 
 /**

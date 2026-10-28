@@ -165,6 +165,53 @@ test('scanCredentialStamp fails credential.named() in stamped packages', () => {
 	expect(bound.keys).toEqual([])
 })
 
+test('scanCredentialStamp stamps credential.visitor literal keys', () => {
+	const credentials = {
+		GITHUB: { kind: 'secret', description: 'GitHub token.' },
+	}
+	for (const source of [
+		[
+			"import { credential } from 'kody:runtime'",
+			'export default async function run() {',
+			"  return await credential.visitor('GITHUB')",
+			'}',
+		],
+		[
+			"import { kody } from 'kody:runtime'",
+			'export default async function run() {',
+			"  return await kody.credential.visitor('GITHUB')",
+			'}',
+		],
+	]) {
+		const result = scanCredentialStamp({
+			'package.json': manifest({ credentials }),
+			'src/index.ts': source.join('\n'),
+		})
+		expect(result.failures).toEqual([])
+		expect(result.keys).toEqual(['GITHUB'])
+	}
+	const escaped = scanCredentialStamp({
+		'package.json': manifest({ credentials }),
+		'src/index.ts': [
+			"import { credential } from 'kody:runtime'",
+			'const open = credential.visitor',
+			"export default async function run() { return open('GITHUB') }",
+		].join('\n'),
+	})
+	expect(escaped.failures.some((f) => f.code === 'non_literal')).toBe(true)
+	expect(escaped.failures[0]?.message).toMatch(/credential\.visitor\("SLOT"\)/)
+	const computed = scanCredentialStamp({
+		'package.json': manifest({ credentials }),
+		'src/index.ts': [
+			"import { credential } from 'kody:runtime'",
+			'export default async function run(key: string) {',
+			'  return await credential.visitor(key)',
+			'}',
+		].join('\n'),
+	})
+	expect(computed.failures.some((f) => f.code === 'non_literal')).toBe(true)
+})
+
 test('scanLiteralMcpServerKeys stamps literal servers and fails dynamic access', () => {
 	const literal = scanLiteralMcpServerKeys({
 		'package.json': manifest(),
@@ -883,6 +930,121 @@ test('computed |scope= fails the stamp gate and manifest-only secretMounts do no
 	expect(mounts.failures).toEqual([])
 })
 
+test('example vault references with angle-bracket or metavariable forms do not fail the stamp gate', () => {
+	const displayOnly = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'export function status() {',
+			"\treturn { example: '{{secret/bwvault:i/<item-uuid>/<field>}}' }",
+			'}',
+			"export const docs = 'Write {{secret/<provider>:<ref>}} or {{secret/provider:ref}}.'",
+		].join('\n'),
+	})
+	expect(displayOnly.failures).toEqual([])
+	expect(displayOnly.keys).toEqual([])
+
+	const liveVaultInFetch = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'export default async function run() {',
+			"\treturn fetch('https://api.example.com/v1', {",
+			"\t\theaders: { Authorization: 'Bearer {{secret/bwvault:i/11111111-1111-4111-8111-111111111111/password}}' },",
+			'\t})',
+			'}',
+		].join('\n'),
+	})
+	expect(
+		liveVaultInFetch.failures.some((f) => f.code === 'unstampable_pattern'),
+	).toBe(true)
+	expect(liveVaultInFetch.failures[0]?.message).toMatch(
+		/vault placeholder \{\{secret\/provider:ref\}\}/,
+	)
+})
+
+test('concrete vault refs in status/help display fields do not fail the stamp gate', () => {
+	const statusExamples = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'export function status() {',
+			'\treturn {',
+			"\t\texample: '{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',",
+			"\t\thelp: 'Use {{secret/bitwarden:i/00000000-0000-4000-8000-000000000000/value}}',",
+			"\t\tdescription: 'Item field ref shape for callers',",
+			'\t}',
+			'}',
+		].join('\n'),
+	})
+	expect(statusExamples.failures).toEqual([])
+	expect(statusExamples.keys).toEqual([])
+
+	const shapedExamples = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'export function status() {',
+			'\treturn {',
+			"\t\texample: 'https://api.example.com/?t={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',",
+			'\t\thelp: {',
+			'\t\t\theaders: {',
+			"\t\t\t\tAuthorization: 'Bearer {{secret/bitwarden:i/00000000-0000-4000-8000-000000000000/value}}',",
+			'\t\t\t},',
+			'\t\t},',
+			'\t}',
+			'}',
+		].join('\n'),
+	})
+	expect(shapedExamples.failures).toEqual([])
+
+	const liveVaultStillFails = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'export function status() {',
+			"\treturn { example: '{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}' }",
+			'}',
+			'export default async function run() {',
+			"\treturn fetch('https://api.example.com/v1', {",
+			"\t\theaders: { Authorization: 'Bearer {{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}' },",
+			'\t})',
+			'}',
+		].join('\n'),
+	})
+	expect(
+		liveVaultStillFails.failures.some((f) => f.code === 'unstampable_pattern'),
+	).toBe(true)
+	expect(liveVaultStillFails.failures[0]?.message).toMatch(
+		/request or credential-mapped site/,
+	)
+
+	const docsNamedFetchBody = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'export default async function run() {',
+			"\treturn fetch('https://api.example.com/v1', {",
+			"\t\tmethod: 'POST',",
+			"\t\tbody: JSON.stringify({ description: '{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}' }),",
+			'\t})',
+			'}',
+		].join('\n'),
+	})
+	expect(
+		docsNamedFetchBody.failures.some((f) => f.code === 'unstampable_pattern'),
+	).toBe(true)
+
+	const headerHelper = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': [
+			'function authHeaders() {',
+			'\treturn {',
+			"\t\theaders: { Authorization: 'Bearer {{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}' },",
+			'\t}',
+			'}',
+			'export default authHeaders',
+		].join('\n'),
+	})
+	expect(
+		headerHelper.failures.some((f) => f.code === 'unstampable_pattern'),
+	).toBe(true)
+})
+
 test('isStoredCredentialStamp rejects a dependency pin that is not an object', () => {
 	const stamp = {
 		version: 1,
@@ -903,4 +1065,144 @@ test('isStoredCredentialStamp rejects a dependency pin that is not an object', (
 			],
 		}),
 	).toBe(true)
+})
+
+const vaultRef = 'i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password'
+
+function vaultFetchModule(provider: string) {
+	return [
+		'function authHeaders() {',
+		`\treturn { Authorization: 'Bearer {{secret/${provider}:${vaultRef}}}' }`,
+		'}',
+		'export default async function run() {',
+		"\treturn fetch('https://api.example.com/v1', {",
+		"\t\tmethod: 'POST',",
+		'\t\theaders: authHeaders(),',
+		`\t\tbody: JSON.stringify({ token: '{{secret/${provider}:${vaultRef}}}' }),`,
+		'\t})',
+		'}',
+	].join('\n')
+}
+
+const vaultSlot = {
+	vault: {
+		kind: 'secret-provider',
+		package: '@acme/vault-provider',
+		description: 'Reads the deploy token from the team vault.',
+	},
+}
+
+test('a secret-provider slot seals vault placeholders whose id its package declares', () => {
+	for (const provider of ['1password', 'bitwarden']) {
+		const result = scanCredentialStamp(
+			{
+				'package.json': manifest({ credentials: vaultSlot }),
+				'src/index.ts': vaultFetchModule(provider),
+			},
+			{ secretProviders: { ids: { vault: provider }, failures: [] } },
+		)
+		expect(result.failures, provider).toEqual([])
+		expect(result.keys, provider).toEqual(['vault'])
+		expect(result.staleManifestKeys, provider).toEqual([])
+	}
+})
+
+test('vault placeholders without a matching provider package still fail the stamp gate', () => {
+	const cases: Array<
+		[
+			string,
+			Record<string, unknown> | undefined,
+			Record<string, string> | undefined,
+		]
+	> = [
+		['no slot', undefined, {}],
+		['package declares another id', vaultSlot, { vault: 'bitwarden' }],
+		['package not resolved', vaultSlot, undefined],
+		[
+			'slot keyed by the provider without the kind',
+			{ '1password': { description: 'Reads from 1Password.' } },
+			{},
+		],
+		[
+			'no description',
+			{ vault: { kind: 'secret-provider', package: '@acme/vault-provider' } },
+			{ vault: '1password' },
+		],
+	]
+	for (const [label, credentials, ids] of cases) {
+		const result = scanCredentialStamp(
+			{
+				'package.json': manifest(credentials ? { credentials } : {}),
+				'src/index.ts': vaultFetchModule('1password'),
+			},
+			ids ? { secretProviders: { ids, failures: [] } } : {},
+		)
+		const failure = result.failures.find(
+			(f) => f.code === 'unstampable_pattern',
+		)
+		expect(failure, label).toBeDefined()
+		expect(failure?.message, label).toContain('provider id "1password"')
+		expect(failure?.message, label).toContain('"kind": "secret-provider"')
+		expect(result.keys, label).not.toContain('vault')
+	}
+})
+
+test('secret-provider slot resolution failures fail the stamp gate', () => {
+	const result = scanCredentialStamp(
+		{
+			'package.json': manifest({ credentials: vaultSlot }),
+			'src/index.ts': 'export default () => 1',
+		},
+		{
+			secretProviders: {
+				ids: {},
+				failures: [
+					{
+						code: 'unstampable_pattern',
+						message: 'kody.credentials.vault names provider package x.',
+					},
+				],
+			},
+		},
+	)
+	expect(result.failures.map((f) => f.message)).toContain(
+		'kody.credentials.vault names provider package x.',
+	)
+})
+
+test('a vault placeholder with a computed provider id still fails the stamp gate', () => {
+	const result = scanCredentialStamp(
+		{
+			'package.json': manifest({ credentials: vaultSlot }),
+			'src/index.ts': [
+				'export default async function run(provider) {',
+				"\treturn fetch('https://api.example.com/v1', {",
+				`\t\theaders: { Authorization: \`Bearer {{secret/\${provider}:${vaultRef}}}\` },`,
+				'\t})',
+				'}',
+			].join('\n'),
+		},
+		{ secretProviders: { ids: { vault: '1password' }, failures: [] } },
+	)
+	expect(result.failures.some((f) => f.code === 'unstampable_pattern')).toBe(
+		true,
+	)
+	expect(result.keys).not.toContain('vault')
+})
+
+test('a secret-provider slot does not seal display-only vault placeholders', () => {
+	const result = scanCredentialStamp(
+		{
+			'package.json': manifest({ credentials: vaultSlot }),
+			'src/index.ts': [
+				'export function status() {',
+				`\treturn { example: '{{secret/1password:${vaultRef}}}' }`,
+				'}',
+			].join('\n'),
+		},
+		{ secretProviders: { ids: { vault: '1password' }, failures: [] } },
+	)
+	expect(result.failures).toEqual([])
+	expect(result.keys).toEqual([])
+	expect(result.staleManifestKeys).toEqual(['vault'])
 })

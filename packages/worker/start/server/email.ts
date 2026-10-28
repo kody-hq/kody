@@ -17,14 +17,14 @@ function validateList(input: EmailListInput): EmailListInput {
 		throw new Error('Invalid inbox organization')
 	const search = emailSearch({
 		q: input.query,
-		classification: input.classification,
+		view: input.view,
 		page: input.page,
 		pageSize: input.pageSize,
 	})
 	return {
 		org: input.org,
 		query: search.q.trim(),
-		classification: search.classification,
+		view: search.view,
 		page: search.page,
 		pageSize: search.pageSize,
 	}
@@ -40,7 +40,7 @@ export const loadEmailList = createServerFn({ method: 'GET' })
 				env: bindings,
 				user,
 				query: data.query,
-				classification: data.classification,
+				view: data.view,
 				page: data.page,
 				pageSize: data.pageSize,
 			})
@@ -51,7 +51,7 @@ export const loadEmailDetail = createServerFn({ method: 'GET' })
 		validateList({
 			...input,
 			query: '',
-			classification: null,
+			view: 'inbox',
 			page: 1,
 			pageSize: 25,
 		})
@@ -65,7 +65,7 @@ export const loadEmailDetail = createServerFn({ method: 'GET' })
 			emailListHref({
 				org: data.org,
 				query: '',
-				classification: null,
+				view: 'inbox',
 				page: 1,
 				pageSize: 25,
 			}),

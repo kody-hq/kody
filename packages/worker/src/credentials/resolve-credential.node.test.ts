@@ -203,6 +203,7 @@ async function setup() {
 		scope: 'user',
 		name: 'orgToken',
 		value: secretValue,
+		audit: null,
 	})
 	await upsertGrant({
 		db,
@@ -548,6 +549,7 @@ test('a webhook reads only a secret its own package may read (#3245)', async () 
 		name: 'orgToken',
 		scope: 'user',
 		allowedPackages: [t.packageId],
+		audit: null,
 	})
 	const webhookRead = (input: {
 		actor: ReturnType<typeof t.personRequest> | null
@@ -623,6 +625,7 @@ test('a package app in a team org acts as its visitor, never as the org itself; 
 		scope: 'user',
 		name: 'teamToken',
 		value: secretValue,
+		audit: null,
 	})
 	// What `PackageAppRuntimeBridge` builds for its Owner visitor.
 	const visitorRequest = () =>
@@ -720,6 +723,7 @@ test('a host the secret is not approved for is an audited denial, not a success'
 		name: 'orgToken',
 		scope: 'user',
 		allowedHosts: ['api.example.com'],
+		audit: null,
 	})
 	await expect(resolveForHost('api.example.com')).resolves.toMatchObject({
 		value: secretValue,
@@ -749,6 +753,7 @@ test('fetch placements are one audit row each, and a later place does not read t
 		name: 'orgToken',
 		scope: 'user',
 		allowedHosts: ['api.example.com'],
+		audit: null,
 	})
 	const readsBefore = valueReads.length
 	const credential = {
@@ -856,6 +861,7 @@ test('a header named body stays distinct from a body placement', async () => {
 		name: 'orgToken',
 		scope: 'user',
 		allowedHosts: ['api.example.com'],
+		audit: null,
 	})
 	const readsBefore = valueReads.length
 	await resolveCredential({
@@ -934,6 +940,7 @@ test('a claimed package stamp is held to vault grants, and an invalid provider i
 		scope: 'user',
 		name: doorSecretName,
 		value: 'op-sa-token',
+		audit: null,
 	})
 	await t.db
 		.prepare(
@@ -1099,6 +1106,7 @@ test('a Use grant follows the credential id through a rename; a deleted and recr
 		userId: t.orgId,
 		scope: 'user',
 		name: 'renamedToken',
+		audit: null,
 	})
 	await saveSecret({
 		env: t.env,
@@ -1106,6 +1114,7 @@ test('a Use grant follows the credential id through a rename; a deleted and recr
 		scope: 'user',
 		name: 'renamedToken',
 		value: 'recreated-value',
+		audit: null,
 	})
 	expect(await t.secretIdOf('renamedToken')).not.toBe(originalId)
 	const error = await denial(
@@ -1142,6 +1151,7 @@ test('a vault Use grant is keyed by the binding: it survives a door key rename, 
 		scope: 'user',
 		name: 'opToken',
 		value: 'op-sa-token',
+		audit: null,
 	})
 	const insertBinding = (doorSecretName: string) =>
 		t.db
@@ -1289,6 +1299,7 @@ test('authorize runs before apply: a denied actor or a refused host never decryp
 		name: 'orgToken',
 		scope: 'user',
 		allowedHosts: ['api.example.com'],
+		audit: null,
 	})
 	const owner = t.personRequest(t.ownerStableId, 'owner', 'owner')
 	const resolveAs = (

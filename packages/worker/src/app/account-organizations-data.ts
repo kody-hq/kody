@@ -18,6 +18,7 @@ import {
 	type PendingInviteSummary,
 } from '#worker/orgs/repo.ts'
 import { listRestorableOrganizationsForPerson } from '#worker/orgs/soft-delete.ts'
+import { softDeleteRestoreDeadlineIso } from '#worker/soft-delete/window.ts'
 
 export type AccountOrganizationSnapshot = {
 	organizations: Array<AccountOrganizationSummary>
@@ -157,6 +158,7 @@ export async function loadAccountOrganizationSnapshot(
 			slug: org.slug,
 			displayName: org.displayName,
 			deletedAt: org.deletedAt,
+			restoreUntil: softDeleteRestoreDeadlineIso(org.deletedAt),
 			avatarUrl: buildOrgAvatarUrl({
 				slug: org.slug,
 				avatarKey: org.avatarKey,

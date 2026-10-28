@@ -3,7 +3,6 @@ import { expect, test, vi } from 'vitest'
 import {
 	consoleError,
 	consoleWarn,
-	silenceExpectedConsoleErrors,
 } from '#worker/test-support/console-spies.ts'
 import { isEntitlementLimitError } from '#worker/entitlements/errors.ts'
 import { planLimits } from '#universal/plans.ts'
@@ -22,8 +21,6 @@ const { mockModule, pickMocks } = vi.hoisted(() => {
 		buildPackageSearchProjection: vi.fn(),
 		buildSavedPackageEmbedText: vi.fn(),
 		buildPublishedPackageArtifacts: vi.fn(),
-		refreshPackageRetrieverManifestCache: vi.fn(),
-		removePackageRetrieverManifestCacheEntries: vi.fn(),
 		writePackageSkillsIndex: vi.fn(),
 		removePackageSkillsIndexEntries: vi.fn(),
 		collectPackageSkills: vi.fn(),
@@ -32,6 +29,7 @@ const { mockModule, pickMocks } = vi.hoisted(() => {
 		deleteJobRow: vi.fn(),
 		deleteEntitySource: vi.fn(),
 		deleteSavedPackage: vi.fn(),
+		deletePackageAppRateLimits: vi.fn(),
 		deleteSavedPackageVector: vi.fn(),
 		getSavedPackageById: vi.fn(),
 		insertSavedPackage: vi.fn(),
@@ -81,12 +79,6 @@ vi.mock('#worker/package-config-cleanup.ts', () =>
 	pickMocks(
 		'deleteAllPackageScopedSecrets',
 		'removeAllSecretApprovalsForPackage',
-	),
-)
-vi.mock('#worker/package-retrievers/manifest-cache.ts', () =>
-	pickMocks(
-		'refreshPackageRetrieverManifestCache',
-		'removePackageRetrieverManifestCacheEntries',
 	),
 )
 vi.mock('#worker/package-registry/skills-index-cache.ts', () =>
@@ -246,11 +238,7 @@ function setupDefaultMocks() {
 	mockModule.buildPublishedPackageArtifacts.mockResolvedValue(undefined)
 	mockModule.syncPackageJobsForPackage.mockResolvedValue(false)
 	mockModule.syncJobManagerAlarm.mockResolvedValue(undefined)
-	mockModule.refreshPackageRetrieverManifestCache.mockResolvedValue(undefined)
 	mockModule.refreshPackageSubscriptionTopicMap.mockResolvedValue(undefined)
-	mockModule.removePackageRetrieverManifestCacheEntries.mockResolvedValue(
-		undefined,
-	)
 	mockModule.collectPackageSkills.mockResolvedValue([])
 	mockModule.buildPackageSkillsIndex.mockReturnValue({
 		version: 1,
@@ -286,6 +274,7 @@ function refresh(env: Env, overrides: Record<string, unknown> = {}) {
 		packageId: 'package-1',
 		sourceId: 'source-1',
 		...overrides,
+		audit: null,
 	})
 }
 
@@ -308,6 +297,7 @@ function deletePackage(
 		userId: ownerIdFromStored('user-1'),
 		packageId,
 		...(actorUserId ? { actorUserId } : {}),
+		audit: null,
 	})
 }
 
@@ -317,7 +307,7 @@ function clearedStorageIds() {
 	)
 }
 
-test('refreshSavedPackageProjection defers search-index upsert and retriever cache via waitUntil', async () => {
+test('refreshSavedPackageProjection defers search-index and skills index via waitUntil', async () => {
 	setupDefaultMocks()
 	const waitUntilPromises: Array<Promise<unknown>> = []
 	mockSource(shadeManifest({ tags: ['home'] }))
@@ -338,7 +328,6 @@ test('refreshSavedPackageProjection defers search-index upsert and retriever cac
 	)
 	expect(waitUntilPromises.length).toBeGreaterThanOrEqual(1)
 	await Promise.all(waitUntilPromises)
-	expect(mockModule.refreshPackageRetrieverManifestCache).toHaveBeenCalled()
 })
 
 test('refreshSavedPackageProjection uses caller-supplied source files instead of reloading KV', async () => {
@@ -417,20 +406,6 @@ test('refreshSavedPackageProjection syncs the job manager only when package jobs
 		buildAppClientBundle: expect.any(Function),
 		buildModuleBundle: expect.any(Function),
 		buildImportableModuleBundle: expect.any(Function),
-	})
-	expect(mockModule.refreshPackageRetrieverManifestCache).toHaveBeenCalledWith({
-		env,
-		userId: ownerIdFromStored('user-1'),
-		source: expect.objectContaining({
-			id: 'source-1',
-			published_commit: 'commit-1',
-		}),
-		savedPackage: expect.objectContaining({
-			id: 'package-1',
-			kodyId: 'shade-automation',
-			sourceId: 'source-1',
-		}),
-		manifest,
 	})
 	const savedPackageArg = mockModule.buildPublishedPackageArtifacts.mock
 		.calls[0]?.[0]?.savedPackage as { updatedAt: string } | undefined
@@ -533,7 +508,7 @@ test('refreshSavedPackageProjection continues best-effort cleanup when dependent
 	})
 	mockSource(manifest)
 	mockModule.getSavedPackageById.mockResolvedValue(savedPackageRecord())
-	mockModule.refreshPackageRetrieverManifestCache.mockRejectedValue(
+	mockModule.writePackageSkillsIndex.mockRejectedValue(
 		new Error('kv unavailable'),
 	)
 	const env = createEnv()
@@ -550,7 +525,7 @@ test('refreshSavedPackageProjection continues best-effort cleanup when dependent
 		actorUserId: undefined,
 	})
 	expect(mockModule.syncJobManagerAlarm).not.toHaveBeenCalled()
-	// The swallowed retriever-cache failure is still logged for operators.
+	// The swallowed skills-index failure is still logged for operators.
 	expect(consoleError).toHaveBeenCalledTimes(1)
 })
 
@@ -806,9 +781,6 @@ test('deleteSavedPackageProjection resyncs the job manager after removing packag
 		},
 	)
 	expect(mockModule.invalidateCommunityPublicCache).toHaveBeenCalledTimes(1)
-	expect(
-		mockModule.removePackageRetrieverManifestCacheEntries,
-	).toHaveBeenCalledWith(scoped)
 	expect(mockModule.deleteSavedPackageVector).toHaveBeenCalledWith(
 		env,
 		'package-1',
@@ -821,6 +793,20 @@ test('deleteSavedPackageProjection resyncs the job manager after removing packag
 		mockModule.syncJobManagerAlarm.mock.invocationCallOrder[0],
 	).toBeGreaterThan(mockModule.deleteSavedPackage.mock.invocationCallOrder[0]!)
 	expect(mockModule.unpublishCommunityListing).not.toHaveBeenCalled()
+})
+
+test('deleteSavedPackageProjection removes app rate-limit counters after deleting a package', async () => {
+	setupDefaultMocks()
+	const env = createEnv()
+	mockPackageRow()
+	mockModule.deleteSavedPackage.mockResolvedValue(true)
+
+	await deletePackage(env)
+
+	expect(mockModule.deletePackageAppRateLimits).toHaveBeenCalledWith(
+		'package-1:',
+		'package-1;',
+	)
 })
 
 test('deleteSavedPackageProjection unpublishes an active listing before removing the package', async () => {
@@ -859,10 +845,8 @@ test('deleteSavedPackageProjection unpublishes an active listing before removing
 })
 
 test('deleteSavedPackageProjection continues best-effort cleanup when dependent steps fail', async () => {
-	silenceExpectedConsoleErrors([
-		/"message":"package retriever projection update failed"/,
-	])
 	consoleWarn.mockImplementation(() => {})
+	consoleError.mockImplementation(() => {})
 	setupDefaultMocks()
 	const env = createEnv()
 	mockPackageRow()
@@ -885,7 +869,7 @@ test('deleteSavedPackageProjection continues best-effort cleanup when dependent 
 	expect(consoleWarn).toHaveBeenCalledTimes(1)
 
 	mockModule.deleteSavedPackageVector.mockClear()
-	mockModule.removePackageRetrieverManifestCacheEntries.mockRejectedValue(
+	mockModule.removePackageSkillsIndexEntries.mockRejectedValue(
 		new Error('kv unavailable'),
 	)
 	await deletePackage(env)
@@ -894,6 +878,11 @@ test('deleteSavedPackageProjection continues best-effort cleanup when dependent 
 		'package-1',
 	)
 	expect(mockModule.syncJobManagerAlarm).not.toHaveBeenCalled()
+	expect(consoleError).toHaveBeenCalledWith(
+		expect.stringContaining(
+			'"message":"package skills projection update failed"',
+		),
+	)
 })
 
 const uuidPackageId = 'b2fda105-005a-4e2b-9f22-1513b6752da2'
@@ -1160,6 +1149,10 @@ function createEntitlementsDatabase(input: {
 								query.includes('DELETE FROM package_kody_id_redirects') ||
 								query.includes('DELETE FROM credential_mappings')
 							) {
+								return { meta: { changes: 0 } }
+							}
+							if (query.includes('DELETE FROM package_app_rate_limits')) {
+								mockModule.deletePackageAppRateLimits(...params)
 								return { meta: { changes: 0 } }
 							}
 							throw new Error(`Unsupported run query: ${query}`)

@@ -101,6 +101,7 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 	env: MailboxEnv & { APP_DB: D1Database }
 	reportingEnv?: EmailReportingEnv
 	body: unknown
+	fetchImpl?: typeof fetch
 }) {
 	const providerEvent = parseCloudflareEmailDeliveryEvent(input.body)
 	if (!providerEvent) {
@@ -146,6 +147,7 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 				smtpEnhancedStatusCode:
 					providerEvent.payload.delivery.smtpEnhancedStatusCode,
 				smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
+				fetchImpl: input.fetchImpl,
 			})
 		}
 		return { ...result, providerEvent }
@@ -182,6 +184,7 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 		smtpEnhancedStatusCode:
 			providerEvent.payload.delivery.smtpEnhancedStatusCode,
 		smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
+		fetchImpl: input.fetchImpl,
 		recordVerificationSuppression: transactionalKindRecordsHardBounce(
 			transactional.event.kind,
 		),

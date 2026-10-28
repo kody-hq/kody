@@ -7,6 +7,28 @@ import { isRecord } from '@kody-internal/shared/is-record.ts'
 
 export const redactedSecretText = '[REDACTED SECRET]'
 
+function base64Encode(value: string) {
+	let binary = ''
+	for (const byte of new TextEncoder().encode(value)) {
+		binary += String.fromCharCode(byte)
+	}
+	return btoa(binary)
+}
+
+/** `value` plus its URL-encoded and base64 forms, for tracking. */
+export function secretValueForms(value: string) {
+	if (value.length === 0) return []
+	return [...new Set([value, encodeURIComponent(value), base64Encode(value)])]
+}
+
+export function trackSecretValueForms(
+	track: ((value: string) => void) | undefined,
+	value: unknown,
+) {
+	if (!track || typeof value !== 'string') return
+	for (const form of secretValueForms(value)) track(form)
+}
+
 export type ExecutionSecretRedactor = {
 	track(value: string): void
 	redactErrorMessage(value: string): string

@@ -7,7 +7,8 @@ import {
 	getErrorCauseChain,
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
-import { isMcpCallerError } from '#mcp/caller-error.ts'
+import { McpCallerError, isMcpCallerError } from '#mcp/caller-error.ts'
+import { isExecutionContextError } from '#worker/execution-contexts/errors.ts'
 import { EncodedPlaceholderError } from '#mcp/secrets/encoded-placeholder.ts'
 import {
 	AuthorizationError,
@@ -24,7 +25,7 @@ import {
 } from '#worker/entitlements/errors.ts'
 import { isQuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
 import {
-	isRetryableD1LockError,
+	isRetryableD1LockMessage,
 	transientDatabaseUnavailableMessage,
 } from '#worker/d1-retry.ts'
 import {
@@ -47,6 +48,16 @@ export const apiErrorCodes = [
 	'account_suspended',
 	'feature_unavailable',
 	'feature_disabled',
+	'not_granted',
+	'context_revoked',
+	'chain_changed',
+	'chain_too_long',
+	'context_not_usable',
+	'no_execution_context_available',
+	'execution_context_unavailable',
+	'execution_context_lease_invalid',
+	'execution_context_access_lost',
+	'execution_context_credential_not_granted',
 	'not_found',
 	'method_not_allowed',
 	'account_deleting',
@@ -215,6 +226,16 @@ export function toApiError(error: unknown): ApiError {
 			cause: error,
 		})
 	}
+	const contextError = getErrorCauseChain(error).find(isExecutionContextError)
+	if (contextError) {
+		return new ApiError({
+			status: contextError.status,
+			code: contextError.code,
+			message: contextError.message,
+			details: contextError.details,
+			cause: error,
+		})
+	}
 	const quarantinedReply = getErrorCauseChain(error).find((entry) =>
 		isQuarantinedInboundReplyError(entry),
 	)
@@ -223,6 +244,26 @@ export function toApiError(error: unknown): ApiError {
 			status: 409,
 			code: 'quarantined_inbound_reply',
 			message: quarantinedReply.message,
+			cause: error,
+		})
+	}
+	// Transient D1 before caller-error mapping: package prep and other hosts
+	// wrap retryable D1 failures in McpCallerError, and those must stay 503
+	// with Retry-After rather than becoming a 400 invalid_request. Match only
+	// non-caller entries: a McpCallerError message can echo caller input (for
+	// example a job id of "SQLITE_BUSY") and must not turn a 404 into a 503.
+	if (
+		getErrorCauseChain(error).some(
+			(entry) =>
+				!(entry instanceof McpCallerError) &&
+				isRetryableD1LockMessage(getErrorMessage(entry)),
+		)
+	) {
+		return new ApiError({
+			status: 503,
+			code: 'internal_error',
+			message: transientDatabaseUnavailableMessage,
+			headers: { 'Retry-After': transientDatabaseRetryAfterSeconds },
 			cause: error,
 		})
 	}
@@ -246,15 +287,6 @@ export function toApiError(error: unknown): ApiError {
 			message: unavailable.message,
 			details: unavailable.toApiDetails(),
 			cause: unavailable,
-		})
-	}
-	if (isRetryableD1LockError(error)) {
-		return new ApiError({
-			status: 503,
-			code: 'internal_error',
-			message: transientDatabaseUnavailableMessage,
-			headers: { 'Retry-After': transientDatabaseRetryAfterSeconds },
-			cause: error,
 		})
 	}
 	return new ApiError({

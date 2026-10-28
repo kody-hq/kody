@@ -7,6 +7,7 @@ import {
 	buildInsertWebhookEnablementStatement,
 	disableEnablement,
 	EmailSenderEnablementConflict,
+	getWebhookEnablementPresence,
 	insertEnablement,
 	isWebhookOneLiveConflict,
 	listEnablementsForInstance,
@@ -114,6 +115,36 @@ const webhookEnablement = (enablerUserId: string) => ({
 	instanceId: 'endpoint-1',
 	enablerUserId,
 	origin: 'enabled' as const,
+})
+
+test('webhook enablement presence distinguishes never, live, and off', async () => {
+	const db = setup()
+	const input = {
+		db,
+		orgId: 'org-1',
+		endpointId: 'endpoint-1',
+	}
+	expect(await getWebhookEnablementPresence(input)).toBe('never')
+
+	const inserted = await insertEnablement({
+		db,
+		enablement: webhookEnablement('user-1'),
+	})
+	expect(await getWebhookEnablementPresence(input)).toBe('live')
+	await pauseEnablement({
+		db,
+		orgId: 'org-1',
+		id: inserted.id,
+		pause: {
+			reason: 'org_access',
+			permission: null,
+			resourceType: null,
+			resourceId: null,
+		},
+	})
+	expect(await getWebhookEnablementPresence(input)).toBe('live')
+	await disableEnablement({ db, orgId: 'org-1', id: inserted.id })
+	expect(await getWebhookEnablementPresence(input)).toBe('off')
 })
 
 test('a webhook instance holds at most one live enablement; cron and subscription hold several', async () => {

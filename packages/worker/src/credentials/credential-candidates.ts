@@ -6,14 +6,16 @@
  * Candidates are credentials of the need's provider that the actor can Use in
  * the run org: org credentials with Use, plus the actor's own personal
  * credentials granted to that org. When resolving for package P, keys bound to
- * P are included too (never keys bound to other packages). When the need
- * declares `kind`, candidates must match it; when `kind` is omitted, any
- * fetch-capable credential (secret/Key, oauth, login) qualifies. A credential
- * with no provider never auto-resolves unless it is a package-bound key whose
- * name matches the need key exactly. Expired Keys stay in the candidate set
- * with `expired: true` so the Credentials UI can show them as bound-but-
- * expired; runtime fill must use `liveUsableCredentials` so expired values
- * are never injected. Nothing here reads a value.
+ * P are included too (never keys bound to other packages). When resolving for
+ * several packages, `listUsableCredentialsByPackage` loads shared org/personal
+ * rows once and batches package-bound Keys (KODY-BD). When the need declares
+ * `kind`, candidates must match it; when `kind` is omitted, any fetch-capable
+ * credential (secret/Key, oauth, login) qualifies. A credential with no
+ * provider never auto-resolves unless it is a package-bound key whose name
+ * matches the need key exactly. Expired Keys stay in the candidate set with
+ * `expired: true` so the Credentials UI can show them as bound-but-expired;
+ * runtime fill must use `liveUsableCredentials` so expired values are never
+ * injected. Nothing here reads a value.
  */
 import {
 	chunkArray,
@@ -39,8 +41,14 @@ import {
 	isFetchCapableCredentialKind,
 	type PackageCredentialKind,
 } from '#worker/package-registry/types.ts'
+import {
+	bumpUsableCredentialsGeneration,
+	usableCredentialsGenerationOf,
+} from './credential-read-generation.ts'
 import { type CredentialNeed } from './credential-needs.ts'
 import { listPersonalCredentialCandidates } from './personal-credentials.ts'
+
+export { bumpUsableCredentialsGeneration }
 
 export type UsableCredential = {
 	id: string
@@ -81,8 +89,11 @@ type Row = {
 type SecretScopeFilter = {
 	/** Include user-scope (unbound) secrets. */
 	includeUserScope: boolean
-	/** Include package-scope secrets bound to this package id only. */
-	packageId: string | null
+	/**
+	 * Include package-scope secrets bound to these package ids only (never
+	 * other packages' Keys). Empty means no package-bound rows.
+	 */
+	packageIds: ReadonlyArray<string>
 }
 
 const usableRowQueries = [
@@ -93,8 +104,10 @@ const usableRowQueries = [
 			if (scope.includeUserScope) {
 				scopeClauses.push(`(b.scope = 'user' AND b.binding_key = '')`)
 			}
-			if (scope.packageId) {
-				scopeClauses.push(`(b.scope = 'package' AND b.binding_key = ?)`)
+			if (scope.packageIds.length > 0) {
+				scopeClauses.push(
+					`(b.scope = 'package' AND b.binding_key IN (${scope.packageIds.map(() => '?').join(', ')}))`,
+				)
 			}
 			const scopeSql =
 				scopeClauses.length > 0
@@ -110,8 +123,7 @@ const usableRowQueries = [
 				AND e.encrypted_value IS NOT NULL AND e.encrypted_value != ''
 				${filter('e.id')}`
 		},
-		binds: (_now: string, scope: SecretScopeFilter) =>
-			scope.packageId ? [scope.packageId] : [],
+		binds: (_now: string, scope: SecretScopeFilter) => [...scope.packageIds],
 	},
 	{
 		family: 'integration' as const,
@@ -195,37 +207,120 @@ async function loadRows(input: {
 	ids: ReadonlyArray<string> | null
 	now: string
 	secretScope?: SecretScopeFilter
+	/**
+	 * Restrict which usable-row families run. Package-bound Key batches use
+	 * `['secret']` so org OAuth/MCP lists are not repeated per batch.
+	 */
+	families?: ReadonlyArray<'secret' | 'integration'>
 }) {
 	const secretScope: SecretScopeFilter = input.secretScope ?? {
 		includeUserScope: true,
-		packageId: null,
+		packageIds: [],
 	}
+	const families = new Set(input.families ?? ['secret', 'integration'])
 	const rows: Array<Row & { family: 'secret' | 'integration' }> = []
-	const extraBinds = secretScope.packageId ? 1 : 0
-	// ownerId + optional package binding_key; expiry is evaluated in JS.
-	const chunks =
-		input.ids === null
-			? [null]
-			: chunkArray(
-					[...new Set(input.ids)],
-					maxD1BoundParameters - 1 - extraBinds,
-				)
-	for (const chunk of chunks) {
-		if (chunk?.length === 0) continue
+	const uniqueIds = input.ids === null ? null : [...new Set(input.ids)]
+
+	const pushQuery = async (
+		query: (typeof usableRowQueries)[number],
+		scope: SecretScopeFilter,
+		idChunk: ReadonlyArray<string> | null,
+	) => {
+		if (idChunk?.length === 0) return
 		const filter = (column: string) =>
-			chunk ? ` AND ${column} IN (${chunk.map(() => '?').join(', ')})` : ''
-		for (const query of usableRowQueries) {
-			const result = await input.db
-				.prepare(query.sql(filter, secretScope))
-				.bind(
-					input.ownerId,
-					...query.binds(input.now, secretScope),
-					...(chunk ?? []),
-				)
-				.all<Row>()
-			for (const row of result.results ?? []) {
-				if (!needKinds.has(row.kind)) continue
-				rows.push({ ...row, family: query.family })
+			idChunk ? ` AND ${column} IN (${idChunk.map(() => '?').join(', ')})` : ''
+		const result = await input.db
+			.prepare(query.sql(filter, scope))
+			.bind(input.ownerId, ...query.binds(input.now, scope), ...(idChunk ?? []))
+			.all<Row>()
+		for (const row of result.results ?? []) {
+			if (!needKinds.has(row.kind)) continue
+			rows.push({ ...row, family: query.family })
+		}
+	}
+
+	// Integrations never bind package ids — keep their id-chunk budget at
+	// ownerId + ids only.
+	if (families.has('integration')) {
+		const idChunks =
+			uniqueIds === null
+				? [null]
+				: chunkArray(uniqueIds, maxD1BoundParameters - 1)
+		for (const idChunk of idChunks) {
+			for (const query of usableRowQueries) {
+				if (query.family !== 'integration') continue
+				await pushQuery(query, secretScope, idChunk)
+			}
+		}
+	}
+
+	if (!families.has('secret')) return rows
+
+	const secretQuery = usableRowQueries.find(
+		(query) => query.family === 'secret',
+	)
+	if (!secretQuery) return rows
+
+	const packageIds = [...new Set(secretScope.packageIds)]
+	const runSecret = async (scope: SecretScopeFilter) => {
+		if (!scope.includeUserScope && scope.packageIds.length === 0) return
+		// ownerId + package binding keys; leave room for an id IN-list when
+		// filtering by credential id (findCredentialById).
+		const packageBindCount = scope.packageIds.length
+		const idLimit = maxD1BoundParameters - 1 - packageBindCount
+		if (uniqueIds !== null && idLimit < 1) {
+			// Package binds alone filled the statement — nest package chunks
+			// under id chunks of size 1.
+			for (const pkgChunk of chunkArray(
+				[...scope.packageIds],
+				maxD1BoundParameters - 2,
+			)) {
+				for (const idChunk of chunkArray(uniqueIds, 1)) {
+					await pushQuery(
+						secretQuery,
+						{ includeUserScope: scope.includeUserScope, packageIds: pkgChunk },
+						idChunk,
+					)
+				}
+			}
+			return
+		}
+		const idChunks =
+			uniqueIds === null ? [null] : chunkArray(uniqueIds, Math.max(1, idLimit))
+		for (const idChunk of idChunks) {
+			await pushQuery(secretQuery, scope, idChunk)
+		}
+	}
+
+	// One OR query when user-scope plus package ids fit under the bind cap
+	// (the common single-package listUsableCredentials path). Otherwise split
+	// so user-scope secrets are not duplicated across package-id chunks.
+	const combinedPackageBindCount = packageIds.length
+	const combinedIdReserve = uniqueIds === null ? 0 : 1
+	const combinedFits =
+		secretScope.includeUserScope &&
+		packageIds.length > 0 &&
+		1 + combinedPackageBindCount + combinedIdReserve <= maxD1BoundParameters
+
+	if (combinedFits) {
+		await runSecret({
+			includeUserScope: true,
+			packageIds,
+		})
+	} else {
+		if (secretScope.includeUserScope) {
+			await runSecret({ includeUserScope: true, packageIds: [] })
+		}
+		if (packageIds.length > 0) {
+			const packageChunkSize =
+				uniqueIds === null
+					? maxD1BoundParameters - 1
+					: Math.max(1, maxD1BoundParameters - 2)
+			for (const pkgChunk of chunkArray(packageIds, packageChunkSize)) {
+				await runSecret({
+					includeUserScope: false,
+					packageIds: pkgChunk,
+				})
 			}
 		}
 	}
@@ -276,7 +371,7 @@ export async function findCredentialById(input: {
 		now,
 		secretScope: {
 			includeUserScope: true,
-			packageId: input.packageId ?? null,
+			packageIds: input.packageId ? [input.packageId] : [],
 		},
 	})
 	return row ? toUsable(row, input.scope, now) : null
@@ -305,7 +400,7 @@ export async function listOrgReachableCredentials(input: {
 		now,
 		secretScope: {
 			includeUserScope: true,
-			packageId: input.packageId ?? null,
+			packageIds: input.packageId ? [input.packageId] : [],
 		},
 	})
 	const credentials = orgRows.map((row) => toUsable(row, 'org', now))
@@ -338,6 +433,37 @@ export async function listOrgReachableCredentials(input: {
 }
 
 /**
+ * Usable-credential lists for one `RequestContext` share one D1 load of org
+ * rows, personal grants, and MCP server settings (KODY-AZ concurrent opens;
+ * KODY-BF sequential opens on the same queue/package execution). Kept for
+ * the request so sequential `await credential(key)` reuses the snapshot;
+ * keyed by request so another user's or later request never sees this list.
+ *
+ * A write that can change the usable set bumps
+ * `bumpUsableCredentialsGeneration` so the next open on this request
+ * re-reads (create-then-open in tests and mid-run storeKey).
+ */
+const usableCredentialsByRequest = new WeakMap<
+	RequestContext,
+	Map<string, Promise<Array<UsableCredential>>>
+>()
+
+function usableCredentialsCacheKey(input: {
+	orgId: string
+	actorUserId: string | null | undefined
+	membershipRole: string | null | undefined
+	packageId: string | null | undefined
+	scopes: ReadonlyArray<string> | null
+	/** Set only when the caller passed an explicit `now` (expiry boundary). */
+	explicitNow: string | null
+	generation: number
+}) {
+	const scopesKey =
+		input.scopes === null ? '*' : [...input.scopes].sort().join(',')
+	return `${input.orgId}\0${input.actorUserId ?? ''}\0${input.membershipRole ?? ''}\0${input.packageId ?? ''}\0${scopesKey}\0${input.explicitNow ?? ''}\0${input.generation}`
+}
+
+/**
  * Every credential the actor can Use in the run org, by kind: the org's own
  * credentials the actor holds Use on, and the actor's own personal
  * credentials granted to the org. In the actor's personal org, its
@@ -355,28 +481,82 @@ export async function listUsableCredentials(input: {
 	packageId?: string | null
 }): Promise<Array<UsableCredential>> {
 	const orgId = input.request.org.id
-	const now = (input.now ?? new Date()).toISOString()
+	const explicitNow = input.now ? input.now.toISOString() : null
+	const now = explicitNow ?? new Date().toISOString()
+	const cacheKey = usableCredentialsCacheKey({
+		orgId,
+		actorUserId: input.request.actor?.userId,
+		membershipRole: input.request.membership?.role,
+		packageId: input.packageId,
+		scopes: input.request.credential.scopes,
+		explicitNow,
+		generation: usableCredentialsGenerationOf(input.env.APP_DB),
+	})
+	let byKey = usableCredentialsByRequest.get(input.request)
+	if (!byKey) {
+		byKey = new Map()
+		usableCredentialsByRequest.set(input.request, byKey)
+	}
+	const existing = byKey.get(cacheKey)
+	if (existing) return existing
+	const pending = loadUsableCredentials({ ...input, now })
+	byKey.set(cacheKey, pending)
+	pending.catch(() => {
+		if (byKey.get(cacheKey) === pending) byKey.delete(cacheKey)
+	})
+	return pending
+}
+
+function compareUsableCredentials(
+	left: UsableCredential,
+	right: UsableCredential,
+) {
+	return (
+		left.name.localeCompare(right.name) || left.scope.localeCompare(right.scope)
+	)
+}
+
+async function loadUsableCredentials(input: {
+	env: Env
+	request: RequestContext
+	now: string
+	packageId?: string | null
+}): Promise<Array<UsableCredential>> {
+	const orgId = input.request.org.id
+	const { now } = input
+	const actor = input.request.actor?.userId ?? null
 	const secretScope: SecretScopeFilter = {
 		includeUserScope: true,
-		packageId: input.packageId ?? null,
+		packageIds: input.packageId ? [input.packageId] : [],
 	}
-	const [secretScopeAuth, integrationScope, orgRows, personal] =
-		await Promise.all([
-			loadResourceListScope(input, 'secret:use', 'credential'),
-			loadResourceListScope(input, 'integration:use', 'credential'),
-			loadRows({
-				db: input.env.APP_DB,
-				ownerId: orgId,
-				ids: null,
-				now,
-				secretScope,
-			}),
-			listPersonalCredentialCandidates({
-				db: input.env.APP_DB,
-				actorPersonId: input.request.actor?.userId ?? null,
-				orgId: orgId as OwnerId,
-			}),
-		])
+	// Start the personal-org read in the same turn as listPersonalCredentialCandidates
+	// so both share one users SELECT (in-flight + request-scoped).
+	const personalOrgPromise = actor
+		? loadPersonalOrgIdForPerson(input.env.APP_DB, actor, input.request)
+		: Promise.resolve(null)
+	const [
+		secretScopeAuth,
+		integrationScope,
+		orgRows,
+		personal,
+		personalOwnerId,
+	] = await Promise.all([
+		loadResourceListScope(input, 'secret:use', 'credential'),
+		loadResourceListScope(input, 'integration:use', 'credential'),
+		loadRows({
+			db: input.env.APP_DB,
+			ownerId: orgId,
+			ids: null,
+			now,
+			secretScope,
+		}),
+		listPersonalCredentialCandidates({
+			db: input.env.APP_DB,
+			actorPersonId: actor,
+			orgId: orgId as OwnerId,
+		}),
+		personalOrgPromise,
+	])
 	const usable = orgRows
 		.filter((row) =>
 			listScopeIncludes(
@@ -385,15 +565,14 @@ export async function listUsableCredentials(input: {
 			),
 		)
 		.map((row) => toUsable(row, 'org', now))
-	const actor = input.request.actor?.userId
 	// A scoped token narrows personal credentials too: Use of each family.
 	const tokenScopes = input.request.credential.scopes
 	const tokenAllows = (family: 'secret' | 'integration') =>
 		tokenScopes === null || tokenScopes.includes(`${family}:use`)
-	if (actor && personal.length > 0) {
+	if (personalOwnerId && personal.length > 0) {
 		const personalRows = await loadRows({
 			db: input.env.APP_DB,
-			ownerId: await loadPersonalOrgIdForPerson(input.env.APP_DB, actor),
+			ownerId: personalOwnerId,
 			ids: personal.map((credential) => credential.id),
 			now,
 		})
@@ -403,11 +582,61 @@ export async function listUsableCredentials(input: {
 				.map((row) => toUsable(row, 'personal', now)),
 		)
 	}
-	return usable.sort(
-		(left, right) =>
-			left.name.localeCompare(right.name) ||
-			left.scope.localeCompare(right.scope),
-	)
+	return usable.sort(compareUsableCredentials)
+}
+
+/**
+ * Usable credentials for several packages in one shared org/personal/MCP load
+ * plus a batched package-bound Key read (KODY-BD). Each package only receives
+ * Keys bound to itself; expired Keys stay in that package's set. Prefer this
+ * over N `listUsableCredentials({ packageId })` calls when a request resolves
+ * needs across a package list (credentials detail usage, etc.).
+ */
+export async function listUsableCredentialsByPackage(input: {
+	env: Env
+	request: RequestContext
+	now?: Date
+	packageIds: ReadonlyArray<string>
+}): Promise<Map<string, Array<UsableCredential>>> {
+	const packageIds = [...new Set(input.packageIds.filter(Boolean))]
+	const shared = await listUsableCredentials({
+		env: input.env,
+		request: input.request,
+		now: input.now,
+	})
+	const byPackage = new Map<string, Array<UsableCredential>>()
+	for (const packageId of packageIds) {
+		byPackage.set(packageId, [...shared])
+	}
+	if (packageIds.length === 0) return byPackage
+
+	const now = (input.now ?? new Date()).toISOString()
+	const [secretScopeAuth, packageRows] = await Promise.all([
+		loadResourceListScope(input, 'secret:use', 'credential'),
+		loadRows({
+			db: input.env.APP_DB,
+			ownerId: input.request.org.id,
+			ids: null,
+			now,
+			secretScope: {
+				includeUserScope: false,
+				packageIds,
+			},
+			families: ['secret'],
+		}),
+	])
+	for (const row of packageRows) {
+		if (!listScopeIncludes(secretScopeAuth, row.id)) continue
+		const credential = toUsable(row, 'org', now)
+		if (!credential.packageId) continue
+		const list = byPackage.get(credential.packageId)
+		if (!list) continue
+		list.push(credential)
+	}
+	for (const list of byPackage.values()) {
+		list.sort(compareUsableCredentials)
+	}
+	return byPackage
 }
 
 export type NeedResolution = {

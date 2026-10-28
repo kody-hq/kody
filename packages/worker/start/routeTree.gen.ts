@@ -21,6 +21,7 @@ import { Route as BrandGuideRouteImport } from './routes/brand-guide'
 import { Route as CaseStudiesRouteImport } from './routes/case-studies'
 import { Route as CommunityRouteImport } from './routes/community'
 import { Route as ContactRouteImport } from './routes/contact'
+import { Route as DeviceRouteImport } from './routes/device'
 import { Route as DiscordRouteImport } from './routes/discord'
 import { Route as DocsDotmdRouteImport } from './routes/docs[.]md'
 import { Route as FaqRouteImport } from './routes/faq'
@@ -114,11 +115,13 @@ import { Route as AppAtChar123usernameChar125KodyIdRouteImport } from './routes/
 import { Route as AppAccountActivityRouteImport } from './routes/_app.account_.activity'
 import { Route as AppAccountAgentsRouteImport } from './routes/_app.account_.agents'
 import { Route as AppAccountBillingRouteImport } from './routes/_app.account_.billing'
+import { Route as AppAccountConnectedAppsRouteImport } from './routes/_app.account_.connected-apps'
 import { Route as AppAccountConnectionsRouteImport } from './routes/_app.account_.connections'
 import { Route as AppAccountCredentialsRouteImport } from './routes/_app.account_.credentials'
 import { Route as AppAccountCreditsRouteImport } from './routes/_app.account_.credits'
 import { Route as AppAccountDataRouteImport } from './routes/_app.account_.data'
 import { Route as AppAccountEmailRouteImport } from './routes/_app.account_.email'
+import { Route as AppAccountExecutionContextsRouteImport } from './routes/_app.account_.execution-contexts'
 import { Route as AppAccountExperimentsRouteImport } from './routes/_app.account_.experiments'
 import { Route as AppAccountIntegrationsRouteImport } from './routes/_app.account_.integrations'
 import { Route as AppAccountJobsRouteImport } from './routes/_app.account_.jobs'
@@ -171,6 +174,7 @@ import { Route as AppAtChar123orgSlugChar125CollaboratorsRouteImport } from './r
 import { Route as AppAtChar123orgSlugChar125CredentialsRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials'
 import { Route as AppAtChar123orgSlugChar125CreditsRouteImport } from './routes/_app.@{$orgSlug}_.-.credits'
 import { Route as AppAtChar123orgSlugChar125EmailRouteImport } from './routes/_app.@{$orgSlug}_.-.email'
+import { Route as AppAtChar123orgSlugChar125ExecutionContextsRouteImport } from './routes/_app.@{$orgSlug}_.-.execution-contexts'
 import { Route as AppAtChar123orgSlugChar125FollowsRouteImport } from './routes/_app.@{$orgSlug}_.-.follows'
 import { Route as AppAtChar123orgSlugChar125GrantsRouteImport } from './routes/_app.@{$orgSlug}_.-.grants'
 import { Route as AppAtChar123orgSlugChar125IntegrationsRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations'
@@ -184,6 +188,7 @@ import { Route as AppAtChar123orgSlugChar125RepositoriesRouteImport } from './ro
 import { Route as AppAtChar123orgSlugChar125SecretProvidersRouteImport } from './routes/_app.@{$orgSlug}_.-.secret-providers'
 import { Route as AppAtChar123orgSlugChar125SecretsRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets'
 import { Route as AppAtChar123orgSlugChar125SettingsRouteImport } from './routes/_app.@{$orgSlug}_.-.settings'
+import { Route as AppAtChar123orgSlugChar125SkillsRouteImport } from './routes/_app.@{$orgSlug}_.-.skills'
 import { Route as AppAtChar123orgSlugChar125TeamsRouteImport } from './routes/_app.@{$orgSlug}_.-.teams'
 import { Route as AppAtChar123orgSlugChar125UsageRouteImport } from './routes/_app.@{$orgSlug}_.-.usage'
 import { Route as AppAtChar123orgSlugChar125WaitingRouteImport } from './routes/_app.@{$orgSlug}_.-.waiting'
@@ -193,7 +198,9 @@ import { Route as AppAtChar123usernameChar125KodyIdApproveCapabilitiesRouteImpor
 import { Route as AppAtChar123usernameChar125KodyIdApproveCredentialsRouteImport } from './routes/_app.@{$username}_.$kodyId_.approve-credentials'
 import { Route as AppAtChar123usernameChar125KodyIdApprovePublishRouteImport } from './routes/_app.@{$username}_.$kodyId_.approve-publish'
 import { Route as AppAtChar123usernameChar125KodyIdCollaboratorsRouteImport } from './routes/_app.@{$username}_.$kodyId_.collaborators'
+import { Route as AppAtChar123usernameChar125KodyIdConnectedPeopleRouteImport } from './routes/_app.@{$username}_.$kodyId_.connected-people'
 import { Route as AppAtChar123usernameChar125KodyIdCredentialsRouteImport } from './routes/_app.@{$username}_.$kodyId_.credentials'
+import { Route as AppAtChar123usernameChar125KodyIdForksRouteImport } from './routes/_app.@{$username}_.$kodyId_.forks'
 import { Route as AppAtChar123usernameChar125KodyIdMappingsRouteImport } from './routes/_app.@{$username}_.$kodyId_.mappings'
 import { Route as AppAtChar123usernameChar125KodyIdSettingsRouteImport } from './routes/_app.@{$username}_.$kodyId_.settings'
 import { Route as AppAtChar123usernameChar125KodyIdTriggersRouteImport } from './routes/_app.@{$username}_.$kodyId_.triggers'
@@ -239,12 +246,14 @@ import { Route as AppAtChar123orgSlugChar125BillingSuccessRouteImport } from './
 import { Route as AppAtChar123orgSlugChar125CredentialsCredentialIdRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.$credentialId'
 import { Route as AppAtChar123orgSlugChar125CredentialsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.new'
 import { Route as AppAtChar123orgSlugChar125EmailMessageIdRouteImport } from './routes/_app.@{$orgSlug}_.-.email_.$messageId'
+import { Route as AppAtChar123orgSlugChar125ExecutionContextsContextIdRouteImport } from './routes/_app.@{$orgSlug}_.-.execution-contexts_.$contextId'
 import { Route as AppAtChar123orgSlugChar125IntegrationsIntegrationNameRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.$integrationName'
 import { Route as AppAtChar123orgSlugChar125IntegrationsApproveRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.approve'
 import { Route as AppAtChar123orgSlugChar125JobsJobIdRouteImport } from './routes/_app.@{$orgSlug}_.-.jobs_.$jobId'
 import { Route as AppAtChar123orgSlugChar125McpServersServerIdRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers_.$serverId'
 import { Route as AppAtChar123orgSlugChar125McpServersNewRouteImport } from './routes/_app.@{$orgSlug}_.-.mcp-servers_.new'
 import { Route as AppAtChar123orgSlugChar125MemoriesMemoryIdRouteImport } from './routes/_app.@{$orgSlug}_.-.memories_.$memoryId'
+import { Route as AppAtChar123orgSlugChar125RepositoriesNewRouteImport } from './routes/_app.@{$orgSlug}_.-.repositories_.new'
 import { Route as AppAtChar123orgSlugChar125SecretProvidersApproveRouteImport } from './routes/_app.@{$orgSlug}_.-.secret-providers_.approve'
 import { Route as AppAtChar123orgSlugChar125SecretsApproveRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.approve'
 import { Route as AppAtChar123orgSlugChar125SecretsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets_.new'
@@ -325,6 +334,11 @@ const CommunityRoute = CommunityRouteImport.update({
 const ContactRoute = ContactRouteImport.update({
   id: '/contact',
   path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeviceRoute = DeviceRouteImport.update({
+  id: '/device',
+  path: '/device',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DiscordRoute = DiscordRouteImport.update({
@@ -808,6 +822,11 @@ const AppAccountBillingRoute = AppAccountBillingRouteImport.update({
   path: '/account/billing',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAccountConnectedAppsRoute = AppAccountConnectedAppsRouteImport.update({
+  id: '/account_/connected-apps',
+  path: '/account/connected-apps',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAccountConnectionsRoute = AppAccountConnectionsRouteImport.update({
   id: '/account_/connections',
   path: '/account/connections',
@@ -833,6 +852,12 @@ const AppAccountEmailRoute = AppAccountEmailRouteImport.update({
   path: '/account/email',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAccountExecutionContextsRoute =
+  AppAccountExecutionContextsRouteImport.update({
+    id: '/account_/execution-contexts',
+    path: '/account/execution-contexts',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAccountExperimentsRoute = AppAccountExperimentsRouteImport.update({
   id: '/account_/experiments',
   path: '/account/experiments',
@@ -1115,6 +1140,12 @@ const AppAtChar123orgSlugChar125EmailRoute =
     path: '/@{$orgSlug}/-/email',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125ExecutionContextsRoute =
+  AppAtChar123orgSlugChar125ExecutionContextsRouteImport.update({
+    id: '/@{$orgSlug}_/-/execution-contexts',
+    path: '/@{$orgSlug}/-/execution-contexts',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125FollowsRoute =
   AppAtChar123orgSlugChar125FollowsRouteImport.update({
     id: '/@{$orgSlug}_/-/follows',
@@ -1193,6 +1224,12 @@ const AppAtChar123orgSlugChar125SettingsRoute =
     path: '/@{$orgSlug}/-/settings',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125SkillsRoute =
+  AppAtChar123orgSlugChar125SkillsRouteImport.update({
+    id: '/@{$orgSlug}_/-/skills',
+    path: '/@{$orgSlug}/-/skills',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125TeamsRoute =
   AppAtChar123orgSlugChar125TeamsRouteImport.update({
     id: '/@{$orgSlug}_/-/teams',
@@ -1247,10 +1284,22 @@ const AppAtChar123usernameChar125KodyIdCollaboratorsRoute =
     path: '/@{$username}/$kodyId/collaborators',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123usernameChar125KodyIdConnectedPeopleRoute =
+  AppAtChar123usernameChar125KodyIdConnectedPeopleRouteImport.update({
+    id: '/@{$username}_/$kodyId_/connected-people',
+    path: '/@{$username}/$kodyId/connected-people',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123usernameChar125KodyIdCredentialsRoute =
   AppAtChar123usernameChar125KodyIdCredentialsRouteImport.update({
     id: '/@{$username}_/$kodyId_/credentials',
     path: '/@{$username}/$kodyId/credentials',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123usernameChar125KodyIdForksRoute =
+  AppAtChar123usernameChar125KodyIdForksRouteImport.update({
+    id: '/@{$username}_/$kodyId_/forks',
+    path: '/@{$username}/$kodyId/forks',
     getParentRoute: () => AppRoute,
   } as any)
 const AppAtChar123usernameChar125KodyIdMappingsRoute =
@@ -1517,6 +1566,12 @@ const AppAtChar123orgSlugChar125EmailMessageIdRoute =
     path: '/@{$orgSlug}/-/email/$messageId',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute =
+  AppAtChar123orgSlugChar125ExecutionContextsContextIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/execution-contexts_/$contextId',
+    path: '/@{$orgSlug}/-/execution-contexts/$contextId',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute =
   AppAtChar123orgSlugChar125IntegrationsIntegrationNameRouteImport.update({
     id: '/@{$orgSlug}_/-/integrations_/$integrationName',
@@ -1551,6 +1606,12 @@ const AppAtChar123orgSlugChar125MemoriesMemoryIdRoute =
   AppAtChar123orgSlugChar125MemoriesMemoryIdRouteImport.update({
     id: '/@{$orgSlug}_/-/memories_/$memoryId',
     path: '/@{$orgSlug}/-/memories/$memoryId',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125RepositoriesNewRoute =
+  AppAtChar123orgSlugChar125RepositoriesNewRouteImport.update({
+    id: '/@{$orgSlug}_/-/repositories_/new',
+    path: '/@{$orgSlug}/-/repositories/new',
     getParentRoute: () => AppRoute,
   } as any)
 const AppAtChar123orgSlugChar125SecretProvidersApproveRoute =
@@ -1702,6 +1763,7 @@ export interface FileRoutesByFullPath {
   '/case-studies': typeof CaseStudiesRoute
   '/community': typeof CommunityRoute
   '/contact': typeof ContactRoute
+  '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
   '/faq': typeof FaqRoute
@@ -1795,11 +1857,13 @@ export interface FileRoutesByFullPath {
   '/account/activity': typeof AppAccountActivityRoute
   '/account/agents': typeof AppAccountAgentsRoute
   '/account/billing': typeof AppAccountBillingRoute
+  '/account/connected-apps': typeof AppAccountConnectedAppsRoute
   '/account/connections': typeof AppAccountConnectionsRoute
   '/account/credentials': typeof AppAccountCredentialsRoute
   '/account/credits': typeof AppAccountCreditsRoute
   '/account/data': typeof AppAccountDataRoute
   '/account/email': typeof AppAccountEmailRoute
+  '/account/execution-contexts': typeof AppAccountExecutionContextsRoute
   '/account/experiments': typeof AppAccountExperimentsRoute
   '/account/integrations': typeof AppAccountIntegrationsRoute
   '/account/jobs': typeof AppAccountJobsRoute
@@ -1852,6 +1916,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
   '/@{$orgSlug}/-/credits': typeof AppAtChar123orgSlugChar125CreditsRoute
   '/@{$orgSlug}/-/email': typeof AppAtChar123orgSlugChar125EmailRoute
+  '/@{$orgSlug}/-/execution-contexts': typeof AppAtChar123orgSlugChar125ExecutionContextsRoute
   '/@{$orgSlug}/-/follows': typeof AppAtChar123orgSlugChar125FollowsRoute
   '/@{$orgSlug}/-/grants': typeof AppAtChar123orgSlugChar125GrantsRoute
   '/@{$orgSlug}/-/integrations': typeof AppAtChar123orgSlugChar125IntegrationsRoute
@@ -1865,6 +1930,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/@{$orgSlug}/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
   '/@{$orgSlug}/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/@{$orgSlug}/-/skills': typeof AppAtChar123orgSlugChar125SkillsRoute
   '/@{$orgSlug}/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
   '/@{$orgSlug}/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
   '/@{$orgSlug}/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -1874,7 +1940,9 @@ export interface FileRoutesByFullPath {
   '/@{$username}/$kodyId/approve-credentials': typeof AppAtChar123usernameChar125KodyIdApproveCredentialsRoute
   '/@{$username}/$kodyId/approve-publish': typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
   '/@{$username}/$kodyId/collaborators': typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
+  '/@{$username}/$kodyId/connected-people': typeof AppAtChar123usernameChar125KodyIdConnectedPeopleRoute
   '/@{$username}/$kodyId/credentials': typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
+  '/@{$username}/$kodyId/forks': typeof AppAtChar123usernameChar125KodyIdForksRoute
   '/@{$username}/$kodyId/mappings': typeof AppAtChar123usernameChar125KodyIdMappingsRoute
   '/@{$username}/$kodyId/settings': typeof AppAtChar123usernameChar125KodyIdSettingsRoute
   '/@{$username}/$kodyId/triggers': typeof AppAtChar123usernameChar125KodyIdTriggersRoute
@@ -1920,12 +1988,14 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   '/@{$orgSlug}/-/email/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
+  '/@{$orgSlug}/-/execution-contexts/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
   '/@{$orgSlug}/-/integrations/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   '/@{$orgSlug}/-/integrations/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   '/@{$orgSlug}/-/jobs/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId': typeof AppAtChar123orgSlugChar125McpServersServerIdRoute
   '/@{$orgSlug}/-/mcp-servers/new': typeof AppAtChar123orgSlugChar125McpServersNewRoute
   '/@{$orgSlug}/-/memories/$memoryId': typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRoute
+  '/@{$orgSlug}/-/repositories/new': typeof AppAtChar123orgSlugChar125RepositoriesNewRoute
   '/@{$orgSlug}/-/secret-providers/approve': typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
   '/@{$orgSlug}/-/secrets/approve': typeof AppAtChar123orgSlugChar125SecretsApproveRoute
   '/@{$orgSlug}/-/secrets/new': typeof AppAtChar123orgSlugChar125SecretsNewRoute
@@ -1961,6 +2031,7 @@ export interface FileRoutesByTo {
   '/case-studies': typeof CaseStudiesRoute
   '/community': typeof CommunityRoute
   '/contact': typeof ContactRoute
+  '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
   '/faq': typeof FaqRoute
@@ -2053,11 +2124,13 @@ export interface FileRoutesByTo {
   '/account/activity': typeof AppAccountActivityRoute
   '/account/agents': typeof AppAccountAgentsRoute
   '/account/billing': typeof AppAccountBillingRoute
+  '/account/connected-apps': typeof AppAccountConnectedAppsRoute
   '/account/connections': typeof AppAccountConnectionsRoute
   '/account/credentials': typeof AppAccountCredentialsRoute
   '/account/credits': typeof AppAccountCreditsRoute
   '/account/data': typeof AppAccountDataRoute
   '/account/email': typeof AppAccountEmailRoute
+  '/account/execution-contexts': typeof AppAccountExecutionContextsRoute
   '/account/experiments': typeof AppAccountExperimentsRoute
   '/account/integrations': typeof AppAccountIntegrationsRoute
   '/account/jobs': typeof AppAccountJobsRoute
@@ -2110,6 +2183,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
   '/@{$orgSlug}/-/credits': typeof AppAtChar123orgSlugChar125CreditsRoute
   '/@{$orgSlug}/-/email': typeof AppAtChar123orgSlugChar125EmailRoute
+  '/@{$orgSlug}/-/execution-contexts': typeof AppAtChar123orgSlugChar125ExecutionContextsRoute
   '/@{$orgSlug}/-/follows': typeof AppAtChar123orgSlugChar125FollowsRoute
   '/@{$orgSlug}/-/grants': typeof AppAtChar123orgSlugChar125GrantsRoute
   '/@{$orgSlug}/-/integrations': typeof AppAtChar123orgSlugChar125IntegrationsRoute
@@ -2123,6 +2197,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/@{$orgSlug}/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
   '/@{$orgSlug}/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/@{$orgSlug}/-/skills': typeof AppAtChar123orgSlugChar125SkillsRoute
   '/@{$orgSlug}/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
   '/@{$orgSlug}/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
   '/@{$orgSlug}/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -2132,7 +2207,9 @@ export interface FileRoutesByTo {
   '/@{$username}/$kodyId/approve-credentials': typeof AppAtChar123usernameChar125KodyIdApproveCredentialsRoute
   '/@{$username}/$kodyId/approve-publish': typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
   '/@{$username}/$kodyId/collaborators': typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
+  '/@{$username}/$kodyId/connected-people': typeof AppAtChar123usernameChar125KodyIdConnectedPeopleRoute
   '/@{$username}/$kodyId/credentials': typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
+  '/@{$username}/$kodyId/forks': typeof AppAtChar123usernameChar125KodyIdForksRoute
   '/@{$username}/$kodyId/mappings': typeof AppAtChar123usernameChar125KodyIdMappingsRoute
   '/@{$username}/$kodyId/settings': typeof AppAtChar123usernameChar125KodyIdSettingsRoute
   '/@{$username}/$kodyId/triggers': typeof AppAtChar123usernameChar125KodyIdTriggersRoute
@@ -2178,12 +2255,14 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   '/@{$orgSlug}/-/email/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
+  '/@{$orgSlug}/-/execution-contexts/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
   '/@{$orgSlug}/-/integrations/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   '/@{$orgSlug}/-/integrations/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   '/@{$orgSlug}/-/jobs/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
   '/@{$orgSlug}/-/mcp-servers/$serverId': typeof AppAtChar123orgSlugChar125McpServersServerIdRoute
   '/@{$orgSlug}/-/mcp-servers/new': typeof AppAtChar123orgSlugChar125McpServersNewRoute
   '/@{$orgSlug}/-/memories/$memoryId': typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRoute
+  '/@{$orgSlug}/-/repositories/new': typeof AppAtChar123orgSlugChar125RepositoriesNewRoute
   '/@{$orgSlug}/-/secret-providers/approve': typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
   '/@{$orgSlug}/-/secrets/approve': typeof AppAtChar123orgSlugChar125SecretsApproveRoute
   '/@{$orgSlug}/-/secrets/new': typeof AppAtChar123orgSlugChar125SecretsNewRoute
@@ -2221,6 +2300,7 @@ export interface FileRoutesById {
   '/case-studies': typeof CaseStudiesRoute
   '/community': typeof CommunityRoute
   '/contact': typeof ContactRoute
+  '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
   '/faq': typeof FaqRoute
@@ -2314,11 +2394,13 @@ export interface FileRoutesById {
   '/_app/account_/activity': typeof AppAccountActivityRoute
   '/_app/account_/agents': typeof AppAccountAgentsRoute
   '/_app/account_/billing': typeof AppAccountBillingRoute
+  '/_app/account_/connected-apps': typeof AppAccountConnectedAppsRoute
   '/_app/account_/connections': typeof AppAccountConnectionsRoute
   '/_app/account_/credentials': typeof AppAccountCredentialsRoute
   '/_app/account_/credits': typeof AppAccountCreditsRoute
   '/_app/account_/data': typeof AppAccountDataRoute
   '/_app/account_/email': typeof AppAccountEmailRoute
+  '/_app/account_/execution-contexts': typeof AppAccountExecutionContextsRoute
   '/_app/account_/experiments': typeof AppAccountExperimentsRoute
   '/_app/account_/integrations': typeof AppAccountIntegrationsRoute
   '/_app/account_/jobs': typeof AppAccountJobsRoute
@@ -2371,6 +2453,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
   '/_app/@{$orgSlug}_/-/credits': typeof AppAtChar123orgSlugChar125CreditsRoute
   '/_app/@{$orgSlug}_/-/email': typeof AppAtChar123orgSlugChar125EmailRoute
+  '/_app/@{$orgSlug}_/-/execution-contexts': typeof AppAtChar123orgSlugChar125ExecutionContextsRoute
   '/_app/@{$orgSlug}_/-/follows': typeof AppAtChar123orgSlugChar125FollowsRoute
   '/_app/@{$orgSlug}_/-/grants': typeof AppAtChar123orgSlugChar125GrantsRoute
   '/_app/@{$orgSlug}_/-/integrations': typeof AppAtChar123orgSlugChar125IntegrationsRoute
@@ -2384,6 +2467,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/_app/@{$orgSlug}_/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
   '/_app/@{$orgSlug}_/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/_app/@{$orgSlug}_/-/skills': typeof AppAtChar123orgSlugChar125SkillsRoute
   '/_app/@{$orgSlug}_/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
   '/_app/@{$orgSlug}_/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
   '/_app/@{$orgSlug}_/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -2393,7 +2477,9 @@ export interface FileRoutesById {
   '/_app/@{$username}_/$kodyId_/approve-credentials': typeof AppAtChar123usernameChar125KodyIdApproveCredentialsRoute
   '/_app/@{$username}_/$kodyId_/approve-publish': typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
   '/_app/@{$username}_/$kodyId_/collaborators': typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
+  '/_app/@{$username}_/$kodyId_/connected-people': typeof AppAtChar123usernameChar125KodyIdConnectedPeopleRoute
   '/_app/@{$username}_/$kodyId_/credentials': typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
+  '/_app/@{$username}_/$kodyId_/forks': typeof AppAtChar123usernameChar125KodyIdForksRoute
   '/_app/@{$username}_/$kodyId_/mappings': typeof AppAtChar123usernameChar125KodyIdMappingsRoute
   '/_app/@{$username}_/$kodyId_/settings': typeof AppAtChar123usernameChar125KodyIdSettingsRoute
   '/_app/@{$username}_/$kodyId_/triggers': typeof AppAtChar123usernameChar125KodyIdTriggersRoute
@@ -2439,12 +2525,14 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/credentials_/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/_app/@{$orgSlug}_/-/credentials_/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   '/_app/@{$orgSlug}_/-/email_/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
+  '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
   '/_app/@{$orgSlug}_/-/integrations_/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   '/_app/@{$orgSlug}_/-/integrations_/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   '/_app/@{$orgSlug}_/-/jobs_/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
   '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId': typeof AppAtChar123orgSlugChar125McpServersServerIdRoute
   '/_app/@{$orgSlug}_/-/mcp-servers_/new': typeof AppAtChar123orgSlugChar125McpServersNewRoute
   '/_app/@{$orgSlug}_/-/memories_/$memoryId': typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRoute
+  '/_app/@{$orgSlug}_/-/repositories_/new': typeof AppAtChar123orgSlugChar125RepositoriesNewRoute
   '/_app/@{$orgSlug}_/-/secret-providers_/approve': typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
   '/_app/@{$orgSlug}_/-/secrets_/approve': typeof AppAtChar123orgSlugChar125SecretsApproveRoute
   '/_app/@{$orgSlug}_/-/secrets_/new': typeof AppAtChar123orgSlugChar125SecretsNewRoute
@@ -2482,6 +2570,7 @@ export interface FileRouteTypes {
     | '/case-studies'
     | '/community'
     | '/contact'
+    | '/device'
     | '/discord'
     | '/docs.md'
     | '/faq'
@@ -2575,11 +2664,13 @@ export interface FileRouteTypes {
     | '/account/activity'
     | '/account/agents'
     | '/account/billing'
+    | '/account/connected-apps'
     | '/account/connections'
     | '/account/credentials'
     | '/account/credits'
     | '/account/data'
     | '/account/email'
+    | '/account/execution-contexts'
     | '/account/experiments'
     | '/account/integrations'
     | '/account/jobs'
@@ -2632,6 +2723,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/credentials'
     | '/@{$orgSlug}/-/credits'
     | '/@{$orgSlug}/-/email'
+    | '/@{$orgSlug}/-/execution-contexts'
     | '/@{$orgSlug}/-/follows'
     | '/@{$orgSlug}/-/grants'
     | '/@{$orgSlug}/-/integrations'
@@ -2645,6 +2737,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/secret-providers'
     | '/@{$orgSlug}/-/secrets'
     | '/@{$orgSlug}/-/settings'
+    | '/@{$orgSlug}/-/skills'
     | '/@{$orgSlug}/-/teams'
     | '/@{$orgSlug}/-/usage'
     | '/@{$orgSlug}/-/waiting'
@@ -2654,7 +2747,9 @@ export interface FileRouteTypes {
     | '/@{$username}/$kodyId/approve-credentials'
     | '/@{$username}/$kodyId/approve-publish'
     | '/@{$username}/$kodyId/collaborators'
+    | '/@{$username}/$kodyId/connected-people'
     | '/@{$username}/$kodyId/credentials'
+    | '/@{$username}/$kodyId/forks'
     | '/@{$username}/$kodyId/mappings'
     | '/@{$username}/$kodyId/settings'
     | '/@{$username}/$kodyId/triggers'
@@ -2700,12 +2795,14 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/credentials/$credentialId'
     | '/@{$orgSlug}/-/credentials/new'
     | '/@{$orgSlug}/-/email/$messageId'
+    | '/@{$orgSlug}/-/execution-contexts/$contextId'
     | '/@{$orgSlug}/-/integrations/$integrationName'
     | '/@{$orgSlug}/-/integrations/approve'
     | '/@{$orgSlug}/-/jobs/$jobId'
     | '/@{$orgSlug}/-/mcp-servers/$serverId'
     | '/@{$orgSlug}/-/mcp-servers/new'
     | '/@{$orgSlug}/-/memories/$memoryId'
+    | '/@{$orgSlug}/-/repositories/new'
     | '/@{$orgSlug}/-/secret-providers/approve'
     | '/@{$orgSlug}/-/secrets/approve'
     | '/@{$orgSlug}/-/secrets/new'
@@ -2741,6 +2838,7 @@ export interface FileRouteTypes {
     | '/case-studies'
     | '/community'
     | '/contact'
+    | '/device'
     | '/discord'
     | '/docs.md'
     | '/faq'
@@ -2833,11 +2931,13 @@ export interface FileRouteTypes {
     | '/account/activity'
     | '/account/agents'
     | '/account/billing'
+    | '/account/connected-apps'
     | '/account/connections'
     | '/account/credentials'
     | '/account/credits'
     | '/account/data'
     | '/account/email'
+    | '/account/execution-contexts'
     | '/account/experiments'
     | '/account/integrations'
     | '/account/jobs'
@@ -2890,6 +2990,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/credentials'
     | '/@{$orgSlug}/-/credits'
     | '/@{$orgSlug}/-/email'
+    | '/@{$orgSlug}/-/execution-contexts'
     | '/@{$orgSlug}/-/follows'
     | '/@{$orgSlug}/-/grants'
     | '/@{$orgSlug}/-/integrations'
@@ -2903,6 +3004,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/secret-providers'
     | '/@{$orgSlug}/-/secrets'
     | '/@{$orgSlug}/-/settings'
+    | '/@{$orgSlug}/-/skills'
     | '/@{$orgSlug}/-/teams'
     | '/@{$orgSlug}/-/usage'
     | '/@{$orgSlug}/-/waiting'
@@ -2912,7 +3014,9 @@ export interface FileRouteTypes {
     | '/@{$username}/$kodyId/approve-credentials'
     | '/@{$username}/$kodyId/approve-publish'
     | '/@{$username}/$kodyId/collaborators'
+    | '/@{$username}/$kodyId/connected-people'
     | '/@{$username}/$kodyId/credentials'
+    | '/@{$username}/$kodyId/forks'
     | '/@{$username}/$kodyId/mappings'
     | '/@{$username}/$kodyId/settings'
     | '/@{$username}/$kodyId/triggers'
@@ -2958,12 +3062,14 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/credentials/$credentialId'
     | '/@{$orgSlug}/-/credentials/new'
     | '/@{$orgSlug}/-/email/$messageId'
+    | '/@{$orgSlug}/-/execution-contexts/$contextId'
     | '/@{$orgSlug}/-/integrations/$integrationName'
     | '/@{$orgSlug}/-/integrations/approve'
     | '/@{$orgSlug}/-/jobs/$jobId'
     | '/@{$orgSlug}/-/mcp-servers/$serverId'
     | '/@{$orgSlug}/-/mcp-servers/new'
     | '/@{$orgSlug}/-/memories/$memoryId'
+    | '/@{$orgSlug}/-/repositories/new'
     | '/@{$orgSlug}/-/secret-providers/approve'
     | '/@{$orgSlug}/-/secrets/approve'
     | '/@{$orgSlug}/-/secrets/new'
@@ -3000,6 +3106,7 @@ export interface FileRouteTypes {
     | '/case-studies'
     | '/community'
     | '/contact'
+    | '/device'
     | '/discord'
     | '/docs.md'
     | '/faq'
@@ -3093,11 +3200,13 @@ export interface FileRouteTypes {
     | '/_app/account_/activity'
     | '/_app/account_/agents'
     | '/_app/account_/billing'
+    | '/_app/account_/connected-apps'
     | '/_app/account_/connections'
     | '/_app/account_/credentials'
     | '/_app/account_/credits'
     | '/_app/account_/data'
     | '/_app/account_/email'
+    | '/_app/account_/execution-contexts'
     | '/_app/account_/experiments'
     | '/_app/account_/integrations'
     | '/_app/account_/jobs'
@@ -3150,6 +3259,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/credentials'
     | '/_app/@{$orgSlug}_/-/credits'
     | '/_app/@{$orgSlug}_/-/email'
+    | '/_app/@{$orgSlug}_/-/execution-contexts'
     | '/_app/@{$orgSlug}_/-/follows'
     | '/_app/@{$orgSlug}_/-/grants'
     | '/_app/@{$orgSlug}_/-/integrations'
@@ -3163,6 +3273,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/secret-providers'
     | '/_app/@{$orgSlug}_/-/secrets'
     | '/_app/@{$orgSlug}_/-/settings'
+    | '/_app/@{$orgSlug}_/-/skills'
     | '/_app/@{$orgSlug}_/-/teams'
     | '/_app/@{$orgSlug}_/-/usage'
     | '/_app/@{$orgSlug}_/-/waiting'
@@ -3172,7 +3283,9 @@ export interface FileRouteTypes {
     | '/_app/@{$username}_/$kodyId_/approve-credentials'
     | '/_app/@{$username}_/$kodyId_/approve-publish'
     | '/_app/@{$username}_/$kodyId_/collaborators'
+    | '/_app/@{$username}_/$kodyId_/connected-people'
     | '/_app/@{$username}_/$kodyId_/credentials'
+    | '/_app/@{$username}_/$kodyId_/forks'
     | '/_app/@{$username}_/$kodyId_/mappings'
     | '/_app/@{$username}_/$kodyId_/settings'
     | '/_app/@{$username}_/$kodyId_/triggers'
@@ -3218,12 +3331,14 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/credentials_/$credentialId'
     | '/_app/@{$orgSlug}_/-/credentials_/new'
     | '/_app/@{$orgSlug}_/-/email_/$messageId'
+    | '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId'
     | '/_app/@{$orgSlug}_/-/integrations_/$integrationName'
     | '/_app/@{$orgSlug}_/-/integrations_/approve'
     | '/_app/@{$orgSlug}_/-/jobs_/$jobId'
     | '/_app/@{$orgSlug}_/-/mcp-servers_/$serverId'
     | '/_app/@{$orgSlug}_/-/mcp-servers_/new'
     | '/_app/@{$orgSlug}_/-/memories_/$memoryId'
+    | '/_app/@{$orgSlug}_/-/repositories_/new'
     | '/_app/@{$orgSlug}_/-/secret-providers_/approve'
     | '/_app/@{$orgSlug}_/-/secrets_/approve'
     | '/_app/@{$orgSlug}_/-/secrets_/new'
@@ -3261,6 +3376,7 @@ export interface RootRouteChildren {
   CaseStudiesRoute: typeof CaseStudiesRoute
   CommunityRoute: typeof CommunityRoute
   ContactRoute: typeof ContactRoute
+  DeviceRoute: typeof DeviceRoute
   DiscordRoute: typeof DiscordRoute
   DocsDotmdRoute: typeof DocsDotmdRoute
   FaqRoute: typeof FaqRoute
@@ -3453,6 +3569,13 @@ declare module '@tanstack/react-router' {
       path: '/contact'
       fullPath: '/contact'
       preLoaderRoute: typeof ContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/device': {
+      id: '/device'
+      path: '/device'
+      fullPath: '/device'
+      preLoaderRoute: typeof DeviceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/discord': {
@@ -4106,6 +4229,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountBillingRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/account_/connected-apps': {
+      id: '/_app/account_/connected-apps'
+      path: '/account/connected-apps'
+      fullPath: '/account/connected-apps'
+      preLoaderRoute: typeof AppAccountConnectedAppsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/account_/connections': {
       id: '/_app/account_/connections'
       path: '/account/connections'
@@ -4139,6 +4269,13 @@ declare module '@tanstack/react-router' {
       path: '/account/email'
       fullPath: '/account/email'
       preLoaderRoute: typeof AppAccountEmailRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/account_/execution-contexts': {
+      id: '/_app/account_/execution-contexts'
+      path: '/account/execution-contexts'
+      fullPath: '/account/execution-contexts'
+      preLoaderRoute: typeof AppAccountExecutionContextsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/account_/experiments': {
@@ -4505,6 +4642,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125EmailRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/execution-contexts': {
+      id: '/_app/@{$orgSlug}_/-/execution-contexts'
+      path: '/@{$orgSlug}/-/execution-contexts'
+      fullPath: '/@{$orgSlug}/-/execution-contexts'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/follows': {
       id: '/_app/@{$orgSlug}_/-/follows'
       path: '/@{$orgSlug}/-/follows'
@@ -4596,6 +4740,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125SettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/skills': {
+      id: '/_app/@{$orgSlug}_/-/skills'
+      path: '/@{$orgSlug}/-/skills'
+      fullPath: '/@{$orgSlug}/-/skills'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SkillsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/teams': {
       id: '/_app/@{$orgSlug}_/-/teams'
       path: '/@{$orgSlug}/-/teams'
@@ -4659,11 +4810,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdCollaboratorsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$username}_/$kodyId_/connected-people': {
+      id: '/_app/@{$username}_/$kodyId_/connected-people'
+      path: '/@{$username}/$kodyId/connected-people'
+      fullPath: '/@{$username}/$kodyId/connected-people'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdConnectedPeopleRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$username}_/$kodyId_/credentials': {
       id: '/_app/@{$username}_/$kodyId_/credentials'
       path: '/@{$username}/$kodyId/credentials'
       fullPath: '/@{$username}/$kodyId/credentials'
       preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdCredentialsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$username}_/$kodyId_/forks': {
+      id: '/_app/@{$username}_/$kodyId_/forks'
+      path: '/@{$username}/$kodyId/forks'
+      fullPath: '/@{$username}/$kodyId/forks'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdForksRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/@{$username}_/$kodyId_/mappings': {
@@ -4981,6 +5146,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125EmailMessageIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId': {
+      id: '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId'
+      path: '/@{$orgSlug}/-/execution-contexts/$contextId'
+      fullPath: '/@{$orgSlug}/-/execution-contexts/$contextId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/integrations_/$integrationName': {
       id: '/_app/@{$orgSlug}_/-/integrations_/$integrationName'
       path: '/@{$orgSlug}/-/integrations/$integrationName'
@@ -5021,6 +5193,13 @@ declare module '@tanstack/react-router' {
       path: '/@{$orgSlug}/-/memories/$memoryId'
       fullPath: '/@{$orgSlug}/-/memories/$memoryId'
       preLoaderRoute: typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/repositories_/new': {
+      id: '/_app/@{$orgSlug}_/-/repositories_/new'
+      path: '/@{$orgSlug}/-/repositories/new'
+      fullPath: '/@{$orgSlug}/-/repositories/new'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125RepositoriesNewRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/@{$orgSlug}_/-/secret-providers_/approve': {
@@ -5202,11 +5381,13 @@ interface AppRouteChildren {
   AppAccountActivityRoute: typeof AppAccountActivityRoute
   AppAccountAgentsRoute: typeof AppAccountAgentsRoute
   AppAccountBillingRoute: typeof AppAccountBillingRoute
+  AppAccountConnectedAppsRoute: typeof AppAccountConnectedAppsRoute
   AppAccountConnectionsRoute: typeof AppAccountConnectionsRoute
   AppAccountCredentialsRoute: typeof AppAccountCredentialsRoute
   AppAccountCreditsRoute: typeof AppAccountCreditsRoute
   AppAccountDataRoute: typeof AppAccountDataRoute
   AppAccountEmailRoute: typeof AppAccountEmailRoute
+  AppAccountExecutionContextsRoute: typeof AppAccountExecutionContextsRoute
   AppAccountExperimentsRoute: typeof AppAccountExperimentsRoute
   AppAccountIntegrationsRoute: typeof AppAccountIntegrationsRoute
   AppAccountJobsRoute: typeof AppAccountJobsRoute
@@ -5243,6 +5424,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125CredentialsRoute: typeof AppAtChar123orgSlugChar125CredentialsRoute
   AppAtChar123orgSlugChar125CreditsRoute: typeof AppAtChar123orgSlugChar125CreditsRoute
   AppAtChar123orgSlugChar125EmailRoute: typeof AppAtChar123orgSlugChar125EmailRoute
+  AppAtChar123orgSlugChar125ExecutionContextsRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsRoute
   AppAtChar123orgSlugChar125FollowsRoute: typeof AppAtChar123orgSlugChar125FollowsRoute
   AppAtChar123orgSlugChar125GrantsRoute: typeof AppAtChar123orgSlugChar125GrantsRoute
   AppAtChar123orgSlugChar125IntegrationsRoute: typeof AppAtChar123orgSlugChar125IntegrationsRoute
@@ -5256,6 +5438,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125SecretProvidersRoute: typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   AppAtChar123orgSlugChar125SecretsRoute: typeof AppAtChar123orgSlugChar125SecretsRoute
   AppAtChar123orgSlugChar125SettingsRoute: typeof AppAtChar123orgSlugChar125SettingsRoute
+  AppAtChar123orgSlugChar125SkillsRoute: typeof AppAtChar123orgSlugChar125SkillsRoute
   AppAtChar123orgSlugChar125TeamsRoute: typeof AppAtChar123orgSlugChar125TeamsRoute
   AppAtChar123orgSlugChar125UsageRoute: typeof AppAtChar123orgSlugChar125UsageRoute
   AppAtChar123orgSlugChar125WaitingRoute: typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -5265,7 +5448,9 @@ interface AppRouteChildren {
   AppAtChar123usernameChar125KodyIdApproveCredentialsRoute: typeof AppAtChar123usernameChar125KodyIdApproveCredentialsRoute
   AppAtChar123usernameChar125KodyIdApprovePublishRoute: typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
   AppAtChar123usernameChar125KodyIdCollaboratorsRoute: typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
+  AppAtChar123usernameChar125KodyIdConnectedPeopleRoute: typeof AppAtChar123usernameChar125KodyIdConnectedPeopleRoute
   AppAtChar123usernameChar125KodyIdCredentialsRoute: typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
+  AppAtChar123usernameChar125KodyIdForksRoute: typeof AppAtChar123usernameChar125KodyIdForksRoute
   AppAtChar123usernameChar125KodyIdMappingsRoute: typeof AppAtChar123usernameChar125KodyIdMappingsRoute
   AppAtChar123usernameChar125KodyIdSettingsRoute: typeof AppAtChar123usernameChar125KodyIdSettingsRoute
   AppAtChar123usernameChar125KodyIdTriggersRoute: typeof AppAtChar123usernameChar125KodyIdTriggersRoute
@@ -5301,12 +5486,14 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125CredentialsCredentialIdRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   AppAtChar123orgSlugChar125CredentialsNewRoute: typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   AppAtChar123orgSlugChar125EmailMessageIdRoute: typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
+  AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
   AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute: typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   AppAtChar123orgSlugChar125IntegrationsApproveRoute: typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   AppAtChar123orgSlugChar125JobsJobIdRoute: typeof AppAtChar123orgSlugChar125JobsJobIdRoute
   AppAtChar123orgSlugChar125McpServersServerIdRoute: typeof AppAtChar123orgSlugChar125McpServersServerIdRoute
   AppAtChar123orgSlugChar125McpServersNewRoute: typeof AppAtChar123orgSlugChar125McpServersNewRoute
   AppAtChar123orgSlugChar125MemoriesMemoryIdRoute: typeof AppAtChar123orgSlugChar125MemoriesMemoryIdRoute
+  AppAtChar123orgSlugChar125RepositoriesNewRoute: typeof AppAtChar123orgSlugChar125RepositoriesNewRoute
   AppAtChar123orgSlugChar125SecretProvidersApproveRoute: typeof AppAtChar123orgSlugChar125SecretProvidersApproveRoute
   AppAtChar123orgSlugChar125SecretsApproveRoute: typeof AppAtChar123orgSlugChar125SecretsApproveRoute
   AppAtChar123orgSlugChar125SecretsNewRoute: typeof AppAtChar123orgSlugChar125SecretsNewRoute
@@ -5337,11 +5524,13 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountActivityRoute: AppAccountActivityRoute,
   AppAccountAgentsRoute: AppAccountAgentsRoute,
   AppAccountBillingRoute: AppAccountBillingRoute,
+  AppAccountConnectedAppsRoute: AppAccountConnectedAppsRoute,
   AppAccountConnectionsRoute: AppAccountConnectionsRoute,
   AppAccountCredentialsRoute: AppAccountCredentialsRoute,
   AppAccountCreditsRoute: AppAccountCreditsRoute,
   AppAccountDataRoute: AppAccountDataRoute,
   AppAccountEmailRoute: AppAccountEmailRoute,
+  AppAccountExecutionContextsRoute: AppAccountExecutionContextsRoute,
   AppAccountExperimentsRoute: AppAccountExperimentsRoute,
   AppAccountIntegrationsRoute: AppAccountIntegrationsRoute,
   AppAccountJobsRoute: AppAccountJobsRoute,
@@ -5383,6 +5572,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppAtChar123orgSlugChar125CreditsRoute:
     AppAtChar123orgSlugChar125CreditsRoute,
   AppAtChar123orgSlugChar125EmailRoute: AppAtChar123orgSlugChar125EmailRoute,
+  AppAtChar123orgSlugChar125ExecutionContextsRoute:
+    AppAtChar123orgSlugChar125ExecutionContextsRoute,
   AppAtChar123orgSlugChar125FollowsRoute:
     AppAtChar123orgSlugChar125FollowsRoute,
   AppAtChar123orgSlugChar125GrantsRoute: AppAtChar123orgSlugChar125GrantsRoute,
@@ -5407,6 +5598,7 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125SecretsRoute,
   AppAtChar123orgSlugChar125SettingsRoute:
     AppAtChar123orgSlugChar125SettingsRoute,
+  AppAtChar123orgSlugChar125SkillsRoute: AppAtChar123orgSlugChar125SkillsRoute,
   AppAtChar123orgSlugChar125TeamsRoute: AppAtChar123orgSlugChar125TeamsRoute,
   AppAtChar123orgSlugChar125UsageRoute: AppAtChar123orgSlugChar125UsageRoute,
   AppAtChar123orgSlugChar125WaitingRoute:
@@ -5423,8 +5615,12 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123usernameChar125KodyIdApprovePublishRoute,
   AppAtChar123usernameChar125KodyIdCollaboratorsRoute:
     AppAtChar123usernameChar125KodyIdCollaboratorsRoute,
+  AppAtChar123usernameChar125KodyIdConnectedPeopleRoute:
+    AppAtChar123usernameChar125KodyIdConnectedPeopleRoute,
   AppAtChar123usernameChar125KodyIdCredentialsRoute:
     AppAtChar123usernameChar125KodyIdCredentialsRoute,
+  AppAtChar123usernameChar125KodyIdForksRoute:
+    AppAtChar123usernameChar125KodyIdForksRoute,
   AppAtChar123usernameChar125KodyIdMappingsRoute:
     AppAtChar123usernameChar125KodyIdMappingsRoute,
   AppAtChar123usernameChar125KodyIdSettingsRoute:
@@ -5474,6 +5670,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125CredentialsNewRoute,
   AppAtChar123orgSlugChar125EmailMessageIdRoute:
     AppAtChar123orgSlugChar125EmailMessageIdRoute,
+  AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute:
+    AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute,
   AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute:
     AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute,
   AppAtChar123orgSlugChar125IntegrationsApproveRoute:
@@ -5486,6 +5684,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125McpServersNewRoute,
   AppAtChar123orgSlugChar125MemoriesMemoryIdRoute:
     AppAtChar123orgSlugChar125MemoriesMemoryIdRoute,
+  AppAtChar123orgSlugChar125RepositoriesNewRoute:
+    AppAtChar123orgSlugChar125RepositoriesNewRoute,
   AppAtChar123orgSlugChar125SecretProvidersApproveRoute:
     AppAtChar123orgSlugChar125SecretProvidersApproveRoute,
   AppAtChar123orgSlugChar125SecretsApproveRoute:
@@ -5575,6 +5775,7 @@ const rootRouteChildren: RootRouteChildren = {
   CaseStudiesRoute: CaseStudiesRoute,
   CommunityRoute: CommunityRoute,
   ContactRoute: ContactRoute,
+  DeviceRoute: DeviceRoute,
   DiscordRoute: DiscordRoute,
   DocsDotmdRoute: DocsDotmdRoute,
   FaqRoute: FaqRoute,

@@ -1,3 +1,4 @@
+import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { computePackageCapabilitySet } from './compute-package-capability-set.ts'
 import {
@@ -288,6 +289,9 @@ export async function clearInternetVisible(input: {
 		packageId: input.packageId,
 		isInternetVisible: false,
 		updatedAt: nextSavedPackageUpdatedAt(live.updatedAt),
+		audit: optionalOrgAuditWriter(input.env, {
+			userId: input.actorUserId ?? null,
+		}),
 	})
 	// Package missing → false. Already-off with a superseded pending → true so
 	// MCP/settings can cancel a went_public without requiring the flag on.

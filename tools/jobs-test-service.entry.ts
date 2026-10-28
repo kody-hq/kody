@@ -9,6 +9,7 @@ import jobsSoftDeleteSql from '../packages/jobs-worker/migrations/0002-teams-exp
 import jobsEnabledBeforeSoftDeleteSql from '../packages/jobs-worker/migrations/0003-job-enabled-before-soft-delete.sql'
 import jobsDropPreservedSql from '../packages/jobs-worker/migrations/0005-drop-preserved-and-archived-artifacts.sql'
 import jobsRepairCallerContextPackageIdSql from '../packages/jobs-worker/migrations/0006-repair-job-caller-context-package-id.sql'
+import jobsDisabledReasonSql from '../packages/jobs-worker/migrations/0007-job-disabled-reason.sql'
 
 /**
  * Auxiliary worker for the workers-unit vitest pool: the main worker's test
@@ -42,6 +43,7 @@ const schemaStatements = [
 	...migrationStatements(jobsDropPreservedSql),
 	// 0004 is assert-only. 0006 repairs missing packageId and is idempotent.
 	...migrationStatements(jobsRepairCallerContextPackageIdSql),
+	...migrationStatements(jobsDisabledReasonSql),
 ]
 
 // Runs on every call (not memoized): the pool's isolated storage can reset

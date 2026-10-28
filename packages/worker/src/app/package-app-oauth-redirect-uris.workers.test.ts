@@ -1,5 +1,8 @@
 import { env } from 'cloudflare:workers'
-import { expect, test } from 'vitest'
+import { beforeEach, expect, test } from 'vitest'
+import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
+import { ensurePackageAppCustomHostnamesTestSchema } from '#worker/test-support/package-app-custom-hostnames-test-schema.ts'
+import { ensurePackageSubscriptionTestSchema } from '#worker/test-support/workers-seed.ts'
 import { parsePackageAppOauthClientId } from '#app/package-app-oauth-client-id.ts'
 import {
 	isAllowedPackageAppOauthRedirectUri,
@@ -9,6 +12,12 @@ import {
 	packageAppOauthLegacyPaths,
 	packageAppOauthPaths,
 } from '#universal/package-app-oauth-paths.ts'
+
+beforeEach(async () => {
+	await ensureOrgsTestSchema(env.APP_DB)
+	await ensurePackageSubscriptionTestSchema(env.APP_DB)
+	await ensurePackageAppCustomHostnamesTestSchema()
+})
 
 test('when PACKAGE_APP_BASE_URL is unset, app-origin callback is allowlisted', async () => {
 	const mutableEnv = env as unknown as Record<string, string | undefined>

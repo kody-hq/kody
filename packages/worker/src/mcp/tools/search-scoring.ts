@@ -231,8 +231,6 @@ const packageSurfaceTokenSignals = new Set([
 	'workflows',
 	'subscription',
 	'subscriptions',
-	'retriever',
-	'retrievers',
 	'job',
 	'jobs',
 ])

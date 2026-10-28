@@ -16,6 +16,13 @@ import {
 	systemEmailLocals,
 	systemEmailOwnerId,
 } from '#worker/email/system-email.ts'
+import {
+	defaultEmailMessageView,
+	emailClassificationValues,
+	isEmailMessageView,
+	type EmailClassification,
+	type EmailMessageView,
+} from '#worker/email/types.ts'
 
 export const adminSystemEmailListItemFieldNames = [
 	'id',
@@ -28,6 +35,9 @@ export const adminSystemEmailListItemFieldNames = [
 	'received_at',
 	'created_at',
 	'to_addresses',
+	'classification',
+	'classification_reason',
+	'archived_at',
 ] as const
 
 type AdminSystemEmailListItemFieldName =
@@ -47,6 +57,9 @@ export type AdminSystemEmailListItem = Record<
 	received_at: string | null
 	created_at: string
 	to_addresses: Array<string>
+	classification: EmailClassification
+	classification_reason: string | null
+	archived_at: string | null
 }
 
 export type AdminSystemEmailDetail = AdminSystemEmailListItem & {
@@ -85,6 +98,15 @@ function parseHeaders(value: string | null): Record<string, Array<string>> {
 	return headers
 }
 
+function readClassification(value: unknown): EmailClassification {
+	const classification = String(value ?? 'accepted')
+	return (emailClassificationValues as ReadonlyArray<string>).includes(
+		classification,
+	)
+		? (classification as EmailClassification)
+		: 'accepted'
+}
+
 function toListItem(row: Record<string, unknown>): AdminSystemEmailListItem {
 	return {
 		id: String(row['id']),
@@ -103,7 +125,19 @@ function toListItem(row: Record<string, unknown>): AdminSystemEmailListItem {
 				? null
 				: String(row['to_addresses_json']),
 		),
+		classification: readClassification(row['classification']),
+		classification_reason:
+			row['classification_reason'] == null
+				? null
+				: String(row['classification_reason']),
+		archived_at: row['archived_at'] == null ? null : String(row['archived_at']),
 	}
+}
+
+export function readAdminSystemEmailView(
+	value: string | null | undefined,
+): EmailMessageView {
+	return isEmailMessageView(value) ? value : defaultEmailMessageView
 }
 
 async function listAttachments(db: D1Database, messageId: string) {
@@ -174,12 +208,19 @@ export async function loadAdminSystemEmailData(
 		page,
 		pageSize,
 		messageId: selectedMessageId,
+		view: readAdminSystemEmailView(url.searchParams.get('view')),
 	})
 }
 export async function readAdminSystemEmailData(
 	env: Env,
-	input: { page: number; pageSize: number; messageId: string | null },
+	input: {
+		page: number
+		pageSize: number
+		messageId: string | null
+		view?: EmailMessageView | null
+	},
 ): Promise<AdminSystemEmailLoaderData> {
+	const view = input.view ?? defaultEmailMessageView
 	const page = Math.max(1, Math.floor(input.page))
 	const pageSize = Math.min(
 		maxPageSize,
@@ -192,6 +233,7 @@ export async function readAdminSystemEmailData(
 			db: env.APP_DB,
 			pageSize,
 			offset,
+			view,
 		}),
 		selectedMessageId
 			? loadAdminSystemEmailMessageById(
@@ -211,5 +253,6 @@ export async function readAdminSystemEmailData(
 		page,
 		pageSize,
 		total: list.total,
+		view,
 	}
 }

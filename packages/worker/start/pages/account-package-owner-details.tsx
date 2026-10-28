@@ -38,6 +38,7 @@ import { RecordChips, recordBodyCss } from './record-table.tsx'
 import { AccountPackageDeleteDialog } from './account-package-delete-dialog.tsx'
 import { PackagePublishingPanel } from './account-package-publishing-panel.tsx'
 import { AccountPackageForkAdoption } from './account-package-fork-adoption.tsx'
+import { PackageCookieWarningsCallout } from './package-cookie-warnings-callout.tsx'
 import { type AccountPackageDetail } from '#universal/loader-data.ts'
 
 function PackageAppLinks(props: { openHref: string | null }) {
@@ -283,6 +284,11 @@ export function AccountPackageOwnerDetails(props: {
 							? null
 							: routes.orgSettings.href({ orgSlug: props.ownerUsername })
 					}
+				/>
+			) : null}
+			{props.viewerCanPublish ? (
+				<PackageCookieWarningsCallout
+					warnings={packageDetail.cookieWarnings ?? []}
 				/>
 			) : null}
 			{props.viewerCanPublish ? (

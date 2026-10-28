@@ -51,6 +51,7 @@ export const metaMemoryVerifyCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'metaMemoryVerify',
+		contextRuns: 'allow',
 		orgPermission: memoryPersonalOnlyOrgPermission,
 		description:
 			'Always run this before writing or deleting **personal** memory (always the signed-in person\'s personal org, regardless of which org this connection uses). Submit the candidate, review related memories, then decide whether to upsert, delete, both, or do nothing. Do not upsert blindly. Do not copy a personal memory into an org package without asking the person first — shared org knowledge belongs in documented packages and org instructions. If the candidate is really package- or export-scoped guidance, update package docs or JSDoc instead (see search({ entity: "guide:agent_guidance" })).',

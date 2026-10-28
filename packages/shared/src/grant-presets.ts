@@ -20,6 +20,7 @@ const useByType: Record<OrgResourceType, ReadonlyArray<OrgPermission>> = {
 	integration: ['integration:use', 'integration:read'],
 	memory: ['memory:read'],
 	email: ['email:read'],
+	execution_context: ['execution_context:read', 'execution_context:execute'],
 }
 
 const contributeExtraByType: Record<
@@ -33,6 +34,7 @@ const contributeExtraByType: Record<
 	integration: ['integration:write'],
 	memory: ['memory:write'],
 	email: ['email:send', 'email:write'],
+	execution_context: ['execution_context:write'],
 }
 
 const manageExtraByType: Record<
@@ -46,10 +48,39 @@ const manageExtraByType: Record<
 	integration: ['integration:delete', 'integration:manage_access'],
 	memory: ['memory:delete', 'memory:manage_access'],
 	email: ['email:delete', 'email:manage_access'],
+	execution_context: [
+		'execution_context:delete',
+		'execution_context:manage_access',
+	],
+}
+
+/**
+ * Read-only resource permissions an `org` grant may carry, so a Member can read
+ * every resource of that type without Owner. None of them writes, runs, or
+ * reveals a secret value. Left out: `secret:read` (reveals values),
+ * `memory:read` (memories are personal, ADR 0072), `execution_context:read`
+ * (machines are listed per share, not org-wide), and every `use`,
+ * `execute`, `write`, `delete`, `publish`, and `manage_access` action.
+ */
+export const orgWideReadPermissions = [
+	'package:read',
+	'app:read',
+	'job:read',
+	'integration:read',
+	'email:read',
+] as const satisfies ReadonlyArray<OrgPermission>
+
+export type OrgWideReadPermission = (typeof orgWideReadPermissions)[number]
+
+export function isOrgWideReadPermission(
+	value: unknown,
+): value is OrgWideReadPermission {
+	return (orgWideReadPermissions as ReadonlyArray<unknown>).includes(value)
 }
 
 /** Org-level permissions that may appear on an `org` resource grant. */
 const orgResourceGrantable: ReadonlyArray<OrgPermission> = [
+	...orgWideReadPermissions,
 	'org:read',
 	'org:write',
 	'org:delete',
@@ -61,6 +92,7 @@ const orgResourceGrantable: ReadonlyArray<OrgPermission> = [
 	'integration:create',
 	'memory:create',
 	'email:create',
+	'execution_context:create',
 	'search:read',
 	'member:read',
 	'member:write',

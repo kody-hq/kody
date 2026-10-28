@@ -1,3 +1,4 @@
+import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import {
 	createAuthCookie,
 	setAuthSessionSecret,
@@ -68,6 +69,7 @@ function seedPackage(
 function createAppEnv(db: D1Database) {
 	return {
 		APP_DB: db,
+		AUDIT_DB: createAuditTestDb(),
 		APP_BASE_URL: 'http://example.com',
 		COOKIE_SECRET: testCookieSecret,
 		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
@@ -131,6 +133,7 @@ test('secret providers API lists grants and revokes them on the website', async 
 		providerId: '1password',
 		ref: canonicalRef,
 		packageId: 'pkg-consumer',
+		audit: null,
 	})
 	const handler = testAccountSecretProvidersApiHandler(env)
 	const cookie = await createAuthCookie(ownerSession, false)

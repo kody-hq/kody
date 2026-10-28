@@ -278,7 +278,9 @@ test('promotePendingOrg does not overwrite a fresh named login or steal activeOr
 
 test('kody org list and org use work for agents', async () => {
 	const dir = mkdtempSync(join(tmpdir(), 'kody-org-cli-'))
+	const previousHome = process.env.HOME
 	const previousXdg = process.env.XDG_CONFIG_HOME
+	process.env.HOME = dir
 	process.env.XDG_CONFIG_HOME = dir
 	try {
 		const { fileStorePath } = await import('../src/store.js')
@@ -314,6 +316,8 @@ test('kody org list and org use work for agents', async () => {
 		assert.match(stdout, /Active org is now acme/)
 		assert.equal(loadCredentials(mcpUrl, backend)?.org, 'acme')
 	} finally {
+		if (previousHome === undefined) delete process.env.HOME
+		else process.env.HOME = previousHome
 		if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME
 		else process.env.XDG_CONFIG_HOME = previousXdg
 	}

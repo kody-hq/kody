@@ -1,8 +1,8 @@
 import { type SearchEntityPlugin } from '../search-entity-plugin.ts'
 
 /**
- * Result-only type (like `retriever_result`): domain summaries come from the
- * broad-query overview in `searchUnified`, not from the candidate pipeline,
+ * Domain summaries come from the broad-query overview in `searchUnified`,
+ * not from the candidate pipeline,
  * and there is no `{id}:domain` entity detail.
  */
 export const domainSearchEntityPlugin = {

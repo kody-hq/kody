@@ -26,7 +26,8 @@ export const fileSizeRatchetGroups: ReadonlyArray<FileSizeRatchetGroup> = [
 		description: 'AGENTS.md',
 		// Reversible: raise this deliberately when the map must grow; do not
 		// grandfather AGENTS.md via the snapshot allowlist.
-		maxLines: 20,
+		// 23: production-deploy rule for agents (#4242).
+		maxLines: 23,
 	},
 	{
 		id: 'client-routes',

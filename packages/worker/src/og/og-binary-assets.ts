@@ -24,7 +24,9 @@ const OG_ASSET_URLS = {
 	// PNG of the homepage lantern at the orbs' rest pose.
 	kodyPrimitivesLantern: 'https://assets.local/og/kody-primitives-lantern.png',
 	kodyDiscord: 'https://assets.local/og/kody-discord.png',
-	kodyLogo: 'https://assets.local/og/kody-logo.png',
+	// Same files as the brand guide downloads; tinted per theme at render time.
+	kodyMarkSolid: 'https://assets.local/images/brand/kody-mark-white.svg',
+	kodyMarkOutlined: 'https://assets.local/images/brand/kody-mark-outlined.svg',
 } as const
 
 const AGENT_ICON_IDS = landingOrbitAgents.map((agent) => agent.icon)
@@ -45,7 +47,8 @@ type OgBinaryAssetCache = {
 	kodyBaseDataUri: string
 	kodyPrimitivesLanternDataUri: string
 	kodyDiscordDataUri: string
-	kodyLogoDataUri: string
+	kodyMarkSolidSvg: string
+	kodyMarkOutlinedSvg: string
 	agentIconSvgs: AgentIconSvgById
 }
 
@@ -72,10 +75,10 @@ function bytesToUtf8(bytes: Uint8Array): string {
 }
 
 /**
- * Homepage chips paint icons via CSS mask + `currentColor`. Satori has no
- * mask path, so retint the shared SVG fills to the theme text colour.
+ * Homepage chips and the header mark paint via `currentColor`. Satori has no
+ * such inheritance, so retint the shared SVG fills to the theme text colour.
  */
-function tintAgentSvg(svg: string, color: string): string {
+function tintSvgFills(svg: string, color: string): string {
 	return svg.replace(/fill="[^"]*"/gi, `fill="${color}"`)
 }
 
@@ -117,7 +120,8 @@ async function loadOgBinaryAssets(
 		kodyBase,
 		kodyPrimitivesLantern,
 		kodyDiscord,
-		kodyLogo,
+		kodyMarkSolid,
+		kodyMarkOutlined,
 		...iconResults
 	] = await Promise.all([
 		fetchAssetBytes(assets, OG_ASSET_URLS.bricolageGrotesqueLatin700),
@@ -127,7 +131,8 @@ async function loadOgBinaryAssets(
 		fetchAssetBytes(assets, OG_ASSET_URLS.kodyBase),
 		fetchAssetBytes(assets, OG_ASSET_URLS.kodyPrimitivesLantern),
 		fetchAssetBytes(assets, OG_ASSET_URLS.kodyDiscord),
-		fetchAssetBytes(assets, OG_ASSET_URLS.kodyLogo),
+		fetchAssetBytes(assets, OG_ASSET_URLS.kodyMarkSolid),
+		fetchAssetBytes(assets, OG_ASSET_URLS.kodyMarkOutlined),
 		...iconFetches,
 	])
 
@@ -144,7 +149,8 @@ async function loadOgBinaryAssets(
 		kodyBaseDataUri: bytesToPngDataUri(kodyBase),
 		kodyPrimitivesLanternDataUri: bytesToPngDataUri(kodyPrimitivesLantern),
 		kodyDiscordDataUri: bytesToPngDataUri(kodyDiscord),
-		kodyLogoDataUri: bytesToPngDataUri(kodyLogo),
+		kodyMarkSolidSvg: bytesToUtf8(kodyMarkSolid),
+		kodyMarkOutlinedSvg: bytesToUtf8(kodyMarkOutlined),
 		agentIconSvgs,
 	}
 }
@@ -211,13 +217,24 @@ export function getLandingAgentIconDataUri(
 	theme: OgTheme,
 ): string {
 	const svg = requireCache().agentIconSvgs[icon]
-	return svgToDataUri(tintAgentSvg(svg, getOgPalette(theme).text))
+	return svgToDataUri(tintSvgFills(svg, getOgPalette(theme).text))
 }
 
 export function getKodyDiscordDataUri(): string {
 	return requireCache().kodyDiscordDataUri
 }
 
-export function getKodyLogoDataUri(): string {
-	return requireCache().kodyLogoDataUri
+export function getKodyMarkDataUri(theme: OgTheme): string {
+	return kodyMarkDataUri(requireCache(), theme)
+}
+
+/**
+ * Same rule as the site header `KodyMark`: solid fill on dark grounds,
+ * outlined line-art on light ones, inked in the theme text colour so the mark
+ * always matches the wordmark beside it.
+ */
+function kodyMarkDataUri(loaded: OgBinaryAssetCache, theme: OgTheme): string {
+	const svg =
+		theme === 'light' ? loaded.kodyMarkOutlinedSvg : loaded.kodyMarkSolidSvg
+	return svgToDataUri(tintSvgFills(svg, getOgPalette(theme).text))
 }

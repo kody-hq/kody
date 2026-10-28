@@ -156,6 +156,8 @@ inbox**. It links here.
 
 ## Where to go next
 
+- [Wake your agent](./wake-your-agent.md) — pick MCP Events, a webhook POST, or
+  email wake from what the agent's client supports.
 - [Email primitives](../use/email-primitives.md) — addressing, plus-tags,
   quotas, `emailSend` / `emailReply`. `emailReply` will not answer quarantined
   mail until you release it.

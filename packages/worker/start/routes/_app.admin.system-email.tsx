@@ -5,6 +5,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { AdminSystemEmailPage } from '../pages/admin-system-email.tsx'
 import { loadAdminSystemEmail } from '#start/server/admin-system-email'
 import { documentHead } from '../components/document-head.ts'
+import { readEmailMessageViewParam } from '#universal/email-message-view.ts'
 const pageQuery = createPageQuery(
 	'loadAdminSystemEmail',
 	loadAdminSystemEmail,
@@ -29,6 +30,7 @@ export const Route = createFileRoute('/_app/admin/system-email')({
 				100,
 			),
 			messageId: new URLSearchParams(location.searchStr).get('messageId'),
+			view: readEmailMessageViewParam(new URLSearchParams(location.searchStr)),
 		},
 	}),
 	loader: ({ context, preload }) =>

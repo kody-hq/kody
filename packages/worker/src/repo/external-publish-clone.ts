@@ -24,6 +24,13 @@ import { unknownRequestedCommitError } from './requested-commit-error.ts'
  */
 export const externalPublishWorkspaceDir = '/repo'
 
+/**
+ * Published-source snapshot collected from the ephemeral clone. Matches the
+ * Artifacts pack ceiling so collectFiles fails closed with an actionable
+ * message instead of buffering a tree that will OOM the isolate.
+ */
+export const externalPublishSnapshotMaxTotalBytes = 32 * 1024 * 1024
+
 export type ExternalPublishCloneResult = {
 	workspace: RepoPublishWorkspace
 	headCommit: string | null
@@ -31,9 +38,38 @@ export type ExternalPublishCloneResult = {
 		ancestor: string
 		descendant: string
 	}) => Promise<boolean>
+	/**
+	 * Drop `.git` objects from the ephemeral FS after ancestry is resolved so
+	 * checks/rebuild staging do not keep the pack + inflated objects beside
+	 * the worktree and snapshot strings.
+	 */
+	releaseGitObjects(): Promise<void>
 	filesystem: PublishGitNoteFileSystem
 	dir: string
 	collectFiles(): Promise<Record<string, string>>
+}
+
+export function buildExternalPublishSnapshotTooLargeMessage(input: {
+	totalBytes: number
+	limitBytes: number
+	fileCount: number
+}) {
+	const totalMiB = (input.totalBytes / (1024 * 1024)).toFixed(1)
+	const limitMiB = (input.limitBytes / (1024 * 1024)).toFixed(0)
+	return (
+		`packagePublishExternalPush refused to materialize this package tip: ` +
+		`the checked-out tree is ${totalMiB} MiB across ${input.fileCount} file(s), ` +
+		`over the ${limitMiB} MiB publish snapshot limit (same ceiling as Artifacts ` +
+		`packs). Shrink the package source or move large assets out of the ` +
+		`published tree, then push and publish again.`
+	)
+}
+
+export function isExternalPublishSnapshotTooLargeMessage(message: string) {
+	return (
+		message.includes('packagePublishExternalPush refused to materialize') &&
+		message.includes('publish snapshot limit')
+	)
 }
 
 function normalizePublishPath(path: string) {
@@ -46,9 +82,13 @@ async function collectPublishWorkspaceFiles(input: {
 	filesystem: PublishGitNoteFileSystem
 	dir: string
 	listFiles: () => Promise<Array<string>>
+	maxTotalBytes?: number
 }) {
 	const dirPrefix = input.dir.endsWith('/') ? input.dir.slice(0, -1) : input.dir
+	const maxTotalBytes =
+		input.maxTotalBytes ?? externalPublishSnapshotMaxTotalBytes
 	const files: Record<string, string> = {}
+	let totalBytes = 0
 	for (const relative of await input.listFiles()) {
 		if (relative.split('/').includes('.git')) continue
 		const absolute = `${dirPrefix}/${relative}`.replace(/\/+/g, '/')
@@ -60,6 +100,16 @@ async function collectPublishWorkspaceFiles(input: {
 		} catch {
 			throw new Error(
 				`Failed to read published clone file "${absolute}" while refreshing the source snapshot.`,
+			)
+		}
+		totalBytes += bytes.byteLength
+		if (totalBytes > maxTotalBytes) {
+			throw new Error(
+				buildExternalPublishSnapshotTooLargeMessage({
+					totalBytes,
+					limitBytes: maxTotalBytes,
+					fileCount: Object.keys(files).length + 1,
+				}),
 			)
 		}
 		files[relative] = bytesToSnapshotString(bytes, relative)
@@ -206,11 +256,17 @@ export async function cloneExternalPublishWorkspace(input: {
 		})
 	}
 
-	const listFiles = async () =>
-		await git.listFiles({
+	// Cache the worktree paths while `.git` still exists. `releaseGitObjects`
+	// drops the index/pack, but checks still glob via this list + worktree reads.
+	let cachedRelativeFiles: Array<string> | null = null
+	const listFiles = async () => {
+		if (cachedRelativeFiles !== null) return cachedRelativeFiles
+		cachedRelativeFiles = await git.listFiles({
 			fs: workspace.fs,
 			dir,
 		})
+		return cachedRelativeFiles
+	}
 	const publishWorkspace = buildPublishWorkspaceFromCheckout({
 		dir,
 		filesystem: workspace.filesystem,
@@ -228,15 +284,26 @@ export async function cloneExternalPublishWorkspace(input: {
 				dir,
 				listFiles,
 			}),
+		releaseGitObjects: async () => {
+			// Warm the path cache before deleting the index so glob/collectFiles
+			// keep working for publish checks after pack memory is freed.
+			await listFiles()
+			try {
+				await workspace.filesystem.rm(`${dir}/.git`, { recursive: true })
+			} catch {
+				// Best effort: missing `.git` after a prior release is fine.
+			}
+		},
 		isAncestorCommit: async ({ ancestor, descendant }) => {
 			if (ancestor === descendant) return true
-			const commits = await git.log({
+			// Walk parents via isDescendent instead of materializing the full
+			// `git.log` array for long histories (peak memory during publish).
+			return await git.isDescendent({
 				fs: workspace.fs,
 				dir,
-				ref: descendant,
-				depth: Number.POSITIVE_INFINITY,
+				oid: descendant,
+				ancestor,
 			})
-			return commits.some((commit) => commit.oid === ancestor)
 		},
 	}
 }

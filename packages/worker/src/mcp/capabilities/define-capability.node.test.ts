@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
+import { kodyIdDeprecationField } from '#worker/package-registry/kody-id-deprecation.ts'
+import { packageKodyIdOptionalInput } from '#worker/package-registry/package-name.ts'
 import { defineCapability } from './define-capability.ts'
 import { defineDomain } from './define-domain.ts'
 
@@ -27,6 +29,7 @@ test('Zod capability validation failures identify the capability, fields, and re
 	const inputCapability = defineCapability({
 		name: 'packageGet',
 		orgPermission: 'none',
+		contextRuns: 'deny',
 		domain: 'packages',
 		description: 'Get a package.',
 		inputSchema: z.object({ package_id: z.string() }),
@@ -48,6 +51,7 @@ test('Zod capability validation failures identify the capability, fields, and re
 	const outputCapability = defineCapability({
 		name: 'packageSave',
 		orgPermission: 'none',
+		contextRuns: 'deny',
 		domain: 'packages',
 		description: 'Save a package.',
 		inputSchema: z.object({ package_id: z.string() }),
@@ -72,6 +76,7 @@ test('builtin identifiers reject snake_case while MCP tool names may use it', ()
 		defineCapability({
 			name: 'package_get',
 			orgPermission: 'none',
+			contextRuns: 'deny',
 			domain: 'packages',
 			description: 'Get a package.',
 			inputSchema: z.object({}),
@@ -83,6 +88,7 @@ test('builtin identifiers reject snake_case while MCP tool names may use it', ()
 		defineCapability({
 			name: 'package-get',
 			orgPermission: 'none',
+			contextRuns: 'deny',
 			domain: 'packages',
 			description: 'Get a package.',
 			inputSchema: z.object({}),
@@ -93,6 +99,7 @@ test('builtin identifiers reject snake_case while MCP tool names may use it', ()
 	defineCapability({
 		name: 'create_issue',
 		orgPermission: 'none',
+		contextRuns: 'deny',
 		domain: 'mcp:linear',
 		description: 'Create an issue.',
 		source: 'mcp-server',
@@ -108,11 +115,77 @@ test('builtin identifiers reject snake_case while MCP tool names may use it', ()
 	).toThrow(/camelCase/)
 })
 
+test('leftover kody_id input schemas mark deprecated in JSON Schema', () => {
+	const capability = defineCapability({
+		name: 'packageLookupDemo',
+		orgPermission: 'none',
+		contextRuns: 'deny',
+		domain: 'packages',
+		description: 'Lookup demo.',
+		inputSchema: z.object({
+			kody_id: packageKodyIdOptionalInput(),
+			package_id: z.string().optional(),
+		}),
+		outputSchema: z.object({
+			package_id: z.string(),
+			name: z.string(),
+		}),
+		handler: async () => ({ package_id: 'pkg-1', name: '@owner/demo' }),
+	})
+	const properties = capability.inputSchema.properties as Record<
+		string,
+		Record<string, unknown>
+	>
+	expect(properties['kody_id']?.['deprecated']).toBe(true)
+	expect(String(properties['kody_id']?.['description'] ?? '')).toMatch(
+		/Deprecated leftover/,
+	)
+})
+
+test('successful leftover kody_id calls attach a deprecation hint after output parse', async () => {
+	const capability = defineCapability({
+		name: 'packageLookupHint',
+		orgPermission: 'none',
+		contextRuns: 'deny',
+		domain: 'packages',
+		description: 'Lookup with hint.',
+		inputSchema: z.object({
+			kody_id: packageKodyIdOptionalInput(),
+			package_id: z.string().optional(),
+		}),
+		outputSchema: z.object({
+			package_id: z.string(),
+			name: z.string(),
+		}),
+		handler: async () => ({ package_id: 'pkg-1', name: '@owner/demo' }),
+	})
+
+	const withHint = await capability.handler(
+		{ kody_id: 'demo' },
+		createCapabilityContext(),
+	)
+	expect(withHint).toMatchObject({
+		package_id: 'pkg-1',
+		name: '@owner/demo',
+		[kodyIdDeprecationField]: expect.stringContaining('name: "@owner/demo"'),
+	})
+	expect(
+		(withHint as Record<string, unknown>)[kodyIdDeprecationField],
+	).toContain('package_id: "pkg-1"')
+
+	const withoutHint = await capability.handler(
+		{ package_id: 'pkg-1' },
+		createCapabilityContext(),
+	)
+	expect(withoutHint).toEqual({ package_id: 'pkg-1', name: '@owner/demo' })
+})
+
 test('the dispatch gate checks the declared org permission before the handler runs', async () => {
 	const handler = vi.fn(async () => ({}))
 	const gated = defineCapability({
 		name: 'gatedCapability',
 		orgPermission: 'package:read',
+		contextRuns: 'deny',
 		domain: 'packages',
 		description: 'Needs package:read.',
 		inputSchema: z.object({}),

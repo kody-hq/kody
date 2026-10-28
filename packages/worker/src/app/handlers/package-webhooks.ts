@@ -20,20 +20,13 @@ import {
 	mintWebhookUrlForUser,
 	revealWebhookUrlForWebsite,
 	rotateWebhookUrlForUser,
-	setWebhookEnabledForUser,
 } from '#worker/webhooks/service.ts'
 import {
 	type PackageWebhookRevealedUrl,
 	type PackageWebhooksActionPayload,
 } from '#universal/loader-data.ts'
 
-const webhookActionIntents = [
-	'mint',
-	'rotate',
-	'reveal',
-	'enable',
-	'disable',
-] as const
+const webhookActionIntents = ['mint', 'rotate', 'reveal'] as const
 
 type WebhookActionIntent = (typeof webhookActionIntents)[number]
 
@@ -127,18 +120,6 @@ export function revealPackageWebhook(input: PackageWebhookInput) {
 		revealed: await revealForUi(target),
 		approvalUrl: null,
 	}))
-}
-export function enablePackageWebhook(input: PackageWebhookInput) {
-	return changePackageWebhook(input, 'enable', async (target) => {
-		await setWebhookEnabledForUser({ ...target, enabled: true })
-		return { revealed: null, approvalUrl: null }
-	})
-}
-export function disablePackageWebhook(input: PackageWebhookInput) {
-	return changePackageWebhook(input, 'disable', async (target) => {
-		await setWebhookEnabledForUser({ ...target, enabled: false })
-		return { revealed: null, approvalUrl: null }
-	})
 }
 function webhookTarget(
 	env: Env,
@@ -274,10 +255,6 @@ function auditActionFor(intent: WebhookActionIntent) {
 			return 'webhook_url_rotate'
 		case 'reveal':
 			return 'webhook_url_reveal'
-		case 'enable':
-			return 'webhook_enable'
-		case 'disable':
-			return 'webhook_disable'
 		default: {
 			const exhaustive: never = intent
 			return String(exhaustive)
@@ -293,10 +270,6 @@ function failureMessageFor(intent: WebhookActionIntent) {
 			return 'Unable to rotate the webhook URL.'
 		case 'reveal':
 			return 'Unable to reveal the webhook URL.'
-		case 'enable':
-			return 'Unable to enable the webhook.'
-		case 'disable':
-			return 'Unable to disable the webhook.'
 		default: {
 			const exhaustive: never = intent
 			return String(exhaustive)
