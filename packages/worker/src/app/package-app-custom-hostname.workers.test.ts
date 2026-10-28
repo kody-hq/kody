@@ -12,6 +12,7 @@ import {
 	seedAccount,
 } from '#worker/test-support/workers-seed.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { ensurePackageAppCustomHostnamesTestSchema } from '#worker/test-support/package-app-custom-hostnames-test-schema.ts'
 import {
 	accessFixture,
 	accessFixtureOrigin,
@@ -96,43 +97,7 @@ async function ensureCustomHostnameSchema() {
 			updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
 		)`,
 	).run()
-	await env.APP_DB.prepare(
-		`CREATE TABLE IF NOT EXISTS package_app_custom_hostnames (
-			id TEXT PRIMARY KEY NOT NULL,
-			hostname TEXT NOT NULL,
-			binding_kind TEXT NOT NULL CHECK (binding_kind IN ('app', 'org')),
-			package_id TEXT,
-			org_id TEXT,
-			cloudflare_hostname_id TEXT,
-			cloudflare_zone_id TEXT,
-			hostname_status TEXT NOT NULL DEFAULT 'pending',
-			ssl_status TEXT NOT NULL DEFAULT 'pending',
-			verified_at TEXT,
-			dns_missing_since TEXT,
-			created_by_user_id TEXT,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL,
-			CHECK (
-				(
-					binding_kind = 'app'
-					AND package_id IS NOT NULL
-					AND org_id IS NULL
-				)
-				OR (
-					binding_kind = 'org'
-					AND org_id IS NOT NULL
-					AND package_id IS NULL
-				)
-			),
-			CHECK (hostname = lower(hostname)),
-			FOREIGN KEY (package_id) REFERENCES saved_packages (id) ON DELETE CASCADE,
-			FOREIGN KEY (org_id) REFERENCES orgs (id) ON DELETE CASCADE
-		)`,
-	).run()
-	await env.APP_DB.prepare(
-		`CREATE UNIQUE INDEX IF NOT EXISTS package_app_custom_hostnames_hostname_idx
-			ON package_app_custom_hostnames (hostname)`,
-	).run()
+	await ensurePackageAppCustomHostnamesTestSchema()
 }
 
 async function seedCustomHostnamePackage() {
