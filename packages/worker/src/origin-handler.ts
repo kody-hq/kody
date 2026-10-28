@@ -87,6 +87,7 @@ import {
 } from '#worker/user-namespace-routes.ts'
 import { requestSkipsAssetProbe } from './static-asset-probe.ts'
 import { handleOpenIdConfigurationRequest } from '#worker/oidc/discovery.ts'
+import { deviceCodeGrantType } from '#worker/oauth-device/device-grant.ts'
 import { handleOidcJwksRequest } from '#worker/oidc/jwks.ts'
 import { handleOidcUserinfoRequest } from '#worker/oidc/userinfo.ts'
 import { handleOidcLogoutRequest } from '#worker/oidc/logout.ts'
@@ -479,9 +480,21 @@ function isMcpResourceOwnedPath(pathname: string) {
 	)
 }
 
+/** The parsed form when `/oauth/token` carries the RFC 8628 device grant. */
+async function readDeviceCodeTokenForm(request: Request) {
+	const contentType = request.headers.get('Content-Type') ?? ''
+	if (!contentType.includes('application/x-www-form-urlencoded')) return null
+	const form = await request
+		.clone()
+		.formData()
+		.catch(() => null)
+	return form?.get('grant_type') === deviceCodeGrantType ? form : null
+}
+
 function isOAuthProviderOwnedPath(pathname: string) {
 	return (
 		pathname === oauthPaths.token ||
+		pathname === oauthPaths.deviceAuthorization ||
 		pathname === oauthPaths.register ||
 		pathname === oauthPaths.discovery ||
 		pathname === protectedResourceMetadataPath ||
@@ -991,7 +1004,44 @@ async function handleOriginAppFetch(
 	let mcpPeek: McpJsonRpcPeek = { kind: 'unknown' }
 	let mcpPeekCloned = false
 	try {
+		if (url.pathname === oauthPaths.deviceAuthorization) {
+			const { handleDeviceAuthorizationRequest } =
+				await import('#worker/oauth-device/authorization-endpoint.ts')
+			return await handleDeviceAuthorizationRequest(request, env)
+		}
+		if (url.pathname === oauthPaths.discovery && request.method === 'GET') {
+			const { withDeviceGrantDiscovery } =
+				await import('#worker/oauth-device/discovery.ts')
+			return await withDeviceGrantDiscovery(
+				request,
+				env,
+				await oauthProvider.fetch(request, env, ctx),
+			)
+		}
 		if (url.pathname === oauthPaths.token && request.method === 'POST') {
+			const deviceForm = await readDeviceCodeTokenForm(request)
+			if (deviceForm) {
+				await discardUnreadRequestBody(request)
+				const { handleDeviceCodeTokenRequest } =
+					await import('#worker/oauth-device/token-grant.ts')
+				const fetchProvider = (providerRequest: Request) =>
+					oauthProvider.fetch(providerRequest, env, ctx)
+				const result = await handleDeviceCodeTokenRequest({
+					request,
+					env,
+					form: deviceForm,
+					fetchProvider,
+				})
+				if ('response' in result) return result.response
+				const { response, grantType } = await handleMcpOAuthTokenRequest({
+					request: result.providerRequest,
+					env,
+					fetchProvider,
+				})
+				return enrichOAuthTokenResponse(result.providerRequest, response, env, {
+					grantType,
+				})
+			}
 			const { response, grantType } = await handleMcpOAuthTokenRequest({
 				request,
 				env,

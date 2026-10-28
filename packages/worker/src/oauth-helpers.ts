@@ -52,12 +52,20 @@ const inertHandler = {
  */
 export async function resolveOAuthHelpers<Helpers extends object>(
 	env: Env & { OAUTH_PROVIDER?: Helpers },
+	options: { requestUrl?: string } = {},
 ): Promise<Helpers | OAuthHelpers | undefined> {
 	if (env.OAUTH_PROVIDER) return env.OAUTH_PROVIDER
 	if (!env.OAUTH_KV) return undefined
 	const { getOAuthApi } =
 		await import('./node_modules/.kody-generated/oauth-provider.mjs')
-	const resource = mcpOAuthResourceUri(getAppBaseUrl({ env }))
+	// A request-path caller that mints grants (the device grant on
+	// `/oauth/token`) passes its URL so the audience matches that origin.
+	const resource = mcpOAuthResourceUri(
+		getAppBaseUrl({
+			env,
+			...(options.requestUrl ? { requestUrl: options.requestUrl } : {}),
+		}),
+	)
 	return getOAuthApi<Env>(
 		{
 			...createSharedOAuthProviderOptions(resource),

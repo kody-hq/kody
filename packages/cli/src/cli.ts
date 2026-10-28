@@ -47,6 +47,10 @@ import {
 	runPackageCollaboratorPlan,
 } from './package-collaborators.js'
 import {
+	detectHeadlessLoginReason,
+	formatDeviceLoginNotice,
+	formatDeviceLoginSuggestion,
+	formatLoginSuccess,
 	formatLoginUrlNotice,
 	loginBrowserOpenFailedNotice,
 } from './login-notice.js'
@@ -138,6 +142,7 @@ const cliFlagOptions = {
 	scopes: { type: 'string' },
 	project: { type: 'boolean' },
 	'no-browser': { type: 'boolean' },
+	device: { type: 'boolean' },
 	org: { type: 'string' },
 	target: { type: 'string' },
 	'reset-storage': { type: 'boolean' },
@@ -439,19 +444,40 @@ async function dispatch(
 			write(`${readPackageVersion()}\n`)
 			return 0
 		case 'login': {
-			const { login } = await import('./auth.js')
+			const { login, loginWithDevice } = await import('./auth.js')
 			const openBrowser = parsed.values['no-browser'] !== true
+			const lifetimeOption =
+				typeof parsed.values.lifetime === 'string'
+					? {
+							lifetime:
+								parsed.values.lifetime === 'short'
+									? ('short' as const)
+									: ('long' as const),
+						}
+					: {}
+			const loginApiUrl = apiUrlFrom({
+				apiUrl:
+					typeof parsed.values['api-url'] === 'string'
+						? parsed.values['api-url']
+						: undefined,
+			})
+			if (parsed.values.device === true) {
+				const result = await loginWithDevice({
+					mcpUrl,
+					apiUrl: loginApiUrl,
+					...lifetimeOption,
+					...(orgFlagOnly ? { org: orgFlagOnly } : {}),
+					onDeviceCode: (prompt) => write(formatDeviceLoginNotice(prompt)),
+				})
+				write(formatLoginSuccess(result))
+				return 0
+			}
+			const headlessReason = openBrowser ? detectHeadlessLoginReason() : null
+			if (headlessReason) write(formatDeviceLoginSuggestion(headlessReason))
 			const result = await login({
 				mcpUrl,
-				apiUrl: apiUrlFrom({
-					apiUrl:
-						typeof parsed.values['api-url'] === 'string'
-							? parsed.values['api-url']
-							: undefined,
-				}),
-				...(typeof parsed.values.lifetime === 'string'
-					? { lifetime: parsed.values.lifetime === 'short' ? 'short' : 'long' }
-					: {}),
+				apiUrl: loginApiUrl,
+				...lifetimeOption,
 				...(orgFlagOnly ? { org: orgFlagOnly } : {}),
 				openBrowser,
 				onAuthorizationUrl: (url) => {
@@ -461,26 +487,7 @@ async function dispatch(
 					if (!opened) write(loginBrowserOpenFailedNotice)
 				},
 			})
-			const orgLabel = result.org
-				? ` as org ${result.org}`
-				: result.credentials.org
-					? ` as org ${result.credentials.org}`
-					: ''
-			const accountLabel = result.account?.email
-				? ` (${result.account.email})`
-				: result.account?.displayName
-					? ` (${result.account.displayName})`
-					: ''
-			write(
-				`Logged in to ${result.credentials.mcpUrl}${orgLabel}${accountLabel}.\n`,
-			)
-			if (result.backendKind === 'file' && result.backendPath) {
-				write(
-					`OS keychain was unavailable; credentials saved at ${result.backendPath} (mode 0600).\n`,
-				)
-			} else {
-				write('Credentials stored in the OS keychain.\n')
-			}
+			write(formatLoginSuccess(result))
 			return 0
 		}
 		case 'logout': {

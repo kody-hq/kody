@@ -1,5 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
+import { AllowedPackagesPicker } from '../components/allowed-packages-picker.tsx'
+import { type ComboboxOption } from '../components/combobox.tsx'
 
 import {
 	credentialCreateKindSummary,
@@ -19,7 +22,6 @@ import {
 	cardCss,
 	fieldCss,
 	fieldLabelCss,
-	inputCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 const kindGridCss = {
@@ -125,7 +127,12 @@ export function renderKindList(input: {
 		</ul>
 	)
 }
-export function renderPackageAccess(input: {
+/**
+ * Who can read an org credential: any package in the org, or only a picked
+ * lock list. A package-private Key is not offered here; it is created from the
+ * package's own Credentials tab, or by a link that names the package.
+ */
+export function PackageAccessField(input: {
 	state: KeyFormState
 	packages: AccountCredentialsResponse['packages']
 	/** Only a Key can belong to one package; other kinds can only be locked. */
@@ -133,115 +140,94 @@ export function renderPackageAccess(input: {
 	update: (patch: Partial<KeyFormState>) => void
 }) {
 	const { state, packages, packageKeys, update } = input
-	const packageScoped = packageKeys && state.packageScope === 'package'
-	const known = new Set(packages.map((entry) => entry.id))
-	const unknownLocks = state.allowedPackages.filter((id) => !known.has(id))
-	const toggleLock = (id: string, checked: boolean) =>
-		update({
-			allowedPackages: checked
-				? [...new Set([...state.allowedPackages, id])]
-				: state.allowedPackages.filter((entry) => entry !== id),
-		})
+	const [onlyChosen, setOnlyChosen] = useState(
+		() => state.allowedPackages.length > 0,
+	)
+	if (packageKeys && state.packageScope === 'package') {
+		const owner = packages.find((entry) => entry.id === state.packageId)
+		return (
+			<div data-testid="connect-credential-package-access" css={fieldCss}>
+				<span css={fieldLabelCss}>Which packages can read it</span>
+				<p css={mutedCss} data-testid="connect-credential-package-key">
+					{owner ? (
+						<>
+							Only <code>{owner.kodyId}</code> can read this key. No other
+							package or agent code reads it.
+						</>
+					) : (
+						'This link makes a key for one package, so no other package or agent code reads it.'
+					)}
+				</p>
+			</div>
+		)
+	}
+	const restricted = onlyChosen || state.allowedPackages.length > 0
+	const options: Array<ComboboxOption> = packages.map((entry) => ({
+		id: entry.id,
+		label: entry.kodyId,
+		keywords: [entry.id, entry.name],
+	}))
 	return (
 		<fieldset
 			data-testid="connect-credential-package-access"
 			css={{ ...fieldCss, border: 'none', margin: 0, padding: 0 }}
 		>
 			<legend css={fieldLabelCss}>Which packages can read it</legend>
-			{packageKeys ? (
-				<>
-					<label css={choiceRowCss}>
-						<input
-							type="radio"
-							name="connect-credential-package-scope"
-							checked={!packageScoped}
-							onChange={() =>
-								update({ packageScope: 'org', replaceExisting: false })
-							}
-						/>
-						<span>
-							Packages in this org (lock it to some below, or leave it open)
-						</span>
-					</label>
-					<label css={choiceRowCss}>
-						<input
-							type="radio"
-							name="connect-credential-package-scope"
-							checked={packageScoped}
-							disabled={packages.length === 0}
-							onChange={() =>
-								update({ packageScope: 'package', replaceExisting: false })
-							}
-						/>
-						<span>
-							One package only (a package key that no other package or agent
-							code reads)
-						</span>
-					</label>
-				</>
-			) : null}
-			{packageScoped ? (
-				<select
-					aria-label="Package that owns this key"
-					value={state.packageId}
-					css={inputCss}
-					onChange={(event) =>
+			<label css={choiceRowCss}>
+				<input
+					type="radio"
+					name="connect-credential-package-access"
+					checked={!restricted}
+					onChange={() => {
+						setOnlyChosen(false)
+						update({ allowedPackages: [] })
+					}}
+				/>
+				<span>Any package in this org</span>
+			</label>
+			<label css={choiceRowCss}>
+				<input
+					type="radio"
+					name="connect-credential-package-access"
+					checked={restricted}
+					onChange={() => setOnlyChosen(true)}
+				/>
+				<span>Only these packages</span>
+			</label>
+			{restricted ? (
+				<AllowedPackagesPicker
+					id="connect-credential-allowed-package"
+					options={options}
+					selected={state.allowedPackages}
+					unknownLabel={
+						<>
+							Package{' '}
+							<span css={{ color: colors.textMuted, fontWeight: 'normal' }}>
+								(not found in this org)
+							</span>
+						</>
+					}
+					allSelectedText="Every package in this org is selected."
+					noOptionsText="This org has no packages yet."
+					onAdd={(id) =>
 						update({
-							packageId: event.currentTarget.value,
-							replaceExisting: false,
+							allowedPackages: [...new Set([...state.allowedPackages, id])],
 						})
 					}
-				>
-					<option value="">Choose a package</option>
-					{packages.map((entry) => (
-						<option key={entry.id} value={entry.id}>
-							{entry.kodyId}
-						</option>
-					))}
-				</select>
-			) : packages.length > 0 || unknownLocks.length > 0 ? (
-				<div
-					role="group"
-					aria-label="Lock to packages"
-					css={{ display: 'grid', gap: spacing.xs }}
-				>
-					{packages.map((entry) => (
-						<label key={entry.id} css={choiceRowCss}>
-							<input
-								type="checkbox"
-								checked={state.allowedPackages.includes(entry.id)}
-								onChange={(event) =>
-									toggleLock(entry.id, event.currentTarget.checked)
-								}
-							/>
-							<span>
-								Lock to <code>{entry.kodyId}</code>
-							</span>
-						</label>
-					))}
-					{unknownLocks.map((id) => (
-						<label key={id} css={choiceRowCss}>
-							<input
-								type="checkbox"
-								checked
-								onChange={(event) =>
-									toggleLock(id, event.currentTarget.checked)
-								}
-							/>
-							<span>
-								Lock to package <code>{id}</code>{' '}
-								<span css={{ color: colors.textMuted }}>
-									(not found in this org)
-								</span>
-							</span>
-						</label>
-					))}
-					<span css={mutedCss}>
-						A locked key is readable only by the packages you check. With none
-						checked, any package in this org can use it.
-					</span>
-				</div>
+					onRemove={(id) =>
+						update({
+							allowedPackages: state.allowedPackages.filter(
+								(entry) => entry !== id,
+							),
+						})
+					}
+				/>
 			) : null}
+			<span css={mutedCss}>
+				{restricted
+					? 'Only the packages you add can read it. With no packages selected, any package in this org can use it.'
+					: 'Any package in this org can use it. Choose "Only these packages" to lock it to some.'}
+			</span>
 		</fieldset>
 	)
 }

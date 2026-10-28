@@ -55,7 +55,7 @@ export function buildUsage(
 Install Kody as a remote MCP server in local agents, or use this CLI as a local client.
 
 Usage:
-  kody login [--mcp-url <url>] [--org <slug>] [--no-browser]
+  kody login [--mcp-url <url>] [--org <slug>] [--no-browser | --device]
   kody logout [--org <slug>] [--mcp-url <url>] [--api-url <url>]
   kody org list [--json] [--mcp-url <url>]
   kody org use [<slug>] [--mcp-url <url>]

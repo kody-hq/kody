@@ -11,6 +11,7 @@ import {
 	type PackageCredentialsView,
 	type PackageTriggerView,
 	type StoredCredentialMapping,
+	buildCredentialCreateHref,
 } from '#universal/credential-contracts.ts'
 import { credentialKindLabel } from '#universal/credentials-list.ts'
 import {
@@ -417,6 +418,19 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 						))}
 					</ul>
 				)}
+				{view.package.canManage ? (
+					<SiteLink
+						data-testid="package-credentials-add-key"
+						href={buildCredentialCreateHref({
+							orgSlug,
+							kind: 'secret',
+							kindMode: 'required',
+							packageScopedTo: view.package.id,
+						})}
+					>
+						Add a key only this package can read
+					</SiteLink>
+				) : null}
 			</section>
 		</>
 	)
