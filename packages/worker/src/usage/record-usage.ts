@@ -166,6 +166,18 @@ export type UsageEvent = {
 	 * rows written before this dimension existed. Never a free-form message.
 	 */
 	errorName?: string | null
+	/**
+	 * `git_push` only: milliseconds before the push's first Artifacts send
+	 * (time waiting in the queue or the isolate-local gate). double6.
+	 */
+	waitMs?: number | null
+	/**
+	 * `git_push` only: pushes already in the repo's push queue when this one
+	 * arrived (0 on the direct path). double7.
+	 */
+	queueDepth?: number | null
+	/** `git_push` only: Artifacts sends for this push (>1 means busy retries). double8. */
+	attempts?: number | null
 }
 
 export const dynamicWorkerCacheReuses = ['hit', 'miss'] as const
@@ -277,6 +289,10 @@ export const usageEventDoubleIndexes = {
 	bytesOrCoalescedCount: 2,
 	codeChars: 3,
 	paramsChars: 4,
+	/** `git_push` points only. */
+	waitMs: 5,
+	queueDepth: 6,
+	attempts: 7,
 } as const
 
 export function usageEventBlobs(
@@ -526,6 +542,9 @@ function writeUsageDataPoint(
 					: (event.bytes ?? 0),
 				event.codeChars ?? 0,
 				event.paramsChars ?? 0,
+				...(event.eventType === 'git_push'
+					? [event.waitMs ?? 0, event.queueDepth ?? 0, event.attempts ?? 0]
+					: []),
 			],
 		})
 	} catch (error) {

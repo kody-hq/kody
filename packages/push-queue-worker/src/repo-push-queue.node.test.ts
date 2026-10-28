@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	repoPushQueueAttemptsHeader,
+	repoPushQueueDepthHeader,
 	repoPushQueueOutcomeHeader,
 	repoPushQueuePathHeader,
 	repoPushQueuePositionHeader,
@@ -9,6 +10,7 @@ import {
 	repoPushQueueUpstreamHeader,
 	repoPushQueueV1Path,
 	repoPushQueueWaitMsHeader,
+	repoPushQueueWallMsHeader,
 } from '@kody-internal/shared/repo-push-queue-protocol.ts'
 import {
 	createDurableObjectPushQueueStore,
@@ -195,6 +197,53 @@ test('pushes from separate isolates share one FIFO and reach Artifacts one at a 
 			Number(response.headers.get(repoPushQueueWaitMsHeader)),
 		).toBeGreaterThanOrEqual(0)
 	}
+})
+
+test('every accepted response reports queue depth on arrival and Durable Object wall time', async () => {
+	const { store } = createMemoryStore()
+	let clock = 1_000
+	const gates: Array<ReturnType<typeof deferred<void>>> = []
+	const queue = new RepoPushQueue({
+		store,
+		now: () => clock,
+		limits: { maxEntries: 2 },
+		fetch: async (_url, init) => {
+			await new Response(init.body).text()
+			const gate = deferred()
+			gates.push(gate)
+			await gate.promise
+			return new Response('ok', { status: 200 })
+		},
+	})
+
+	const first = queue.handle(pushRequest('push-1'))
+	await settle()
+	clock += 100
+	const second = queue.handle(pushRequest('push-2'))
+	await settle()
+	clock += 50
+	const full = await queue.handle(pushRequest('push-3'))
+	expect(full.status).toBe(503)
+	expect(full.headers.get(repoPushQueueOutcomeHeader)).toBe('full')
+	expect(full.headers.get(repoPushQueueDepthHeader)).toBe('2')
+	expect(full.headers.get(repoPushQueueWallMsHeader)).toBe('0')
+
+	clock += 1_000
+	gates[0]!.resolve()
+	await settle()
+	clock += 500
+	gates[1]!.resolve()
+	const [firstResponse, secondResponse] = await Promise.all([first, second])
+	expect(firstResponse.headers.get(repoPushQueueDepthHeader)).toBe('0')
+	expect(firstResponse.headers.get(repoPushQueueWallMsHeader)).toBe('1150')
+	expect(secondResponse.headers.get(repoPushQueueDepthHeader)).toBe('1')
+	expect(secondResponse.headers.get(repoPushQueueWallMsHeader)).toBe('1550')
+
+	const invalid = await queue.handle(
+		pushRequest('x', { [repoPushQueueUpstreamHeader]: 'https://evil.test/x' }),
+	)
+	expect(invalid.status).toBe(400)
+	expect(invalid.headers.get(repoPushQueueDepthHeader)).toBeNull()
 })
 
 test('a push joins the queue only after its pack has fully landed', async () => {

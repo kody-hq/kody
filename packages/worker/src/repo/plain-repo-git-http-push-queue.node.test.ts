@@ -1,11 +1,14 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import {
+	repoPushQueueAttemptsHeader,
+	repoPushQueueDepthHeader,
 	repoPushQueueOutcomeHeader,
 	repoPushQueuePathHeader,
 	repoPushQueueSourceIdHeader,
 	repoPushQueueUpstreamHeader,
 	repoPushQueueV1Path,
 	repoPushQueueWaitMsHeader,
+	repoPushQueueWallMsHeader,
 } from '@kody-internal/shared/repo-push-queue-protocol.ts'
 import { http, HttpResponse } from 'msw'
 import { expect, test, vi } from 'vitest'
@@ -34,6 +37,21 @@ vi.mock('#worker/repo/artifacts.ts', () => ({
 		resolveExistingArtifactSourceRepo(...args),
 }))
 
+function fakeAnalyticsDataset() {
+	const points: Array<AnalyticsEngineDataPoint> = []
+	return {
+		points,
+		binding: {
+			writeDataPoint: (point?: AnalyticsEngineDataPoint) => {
+				if (point) points.push(point)
+			},
+		} as AnalyticsEngineDataset,
+	}
+}
+
+let usageEvents = fakeAnalyticsDataset()
+let flagExposures = fakeAnalyticsDataset()
+
 const { handlePlainRepoGitHttpRequest } =
 	await import('./plain-repo-git-http.ts')
 
@@ -44,6 +62,8 @@ const artifactToken = 'art_plain_token_secret'
 const packResult = '000eunpack ok\n0000'
 
 function seed() {
+	usageEvents = fakeAnalyticsDataset()
+	flagExposures = fakeAnalyticsDataset()
 	getEntitySourceById.mockReset()
 	resolveExistingArtifactSourceRepo.mockReset()
 	evaluateRepoFeatureFlag.mockReset()
@@ -134,6 +154,8 @@ test('flagged repos hand receive-pack to the push queue, not Artifacts', async (
 
 	const response = await handlePlainRepoGitHttpRequest(pushRequest('PACK-Q'), {
 		APP_DB: {},
+		USAGE_EVENTS: usageEvents.binding,
+		FLAG_EXPOSURES: flagExposures.binding,
 		REPO_PUSH_QUEUE: queue.binding,
 	} as unknown as Env)
 
@@ -171,6 +193,8 @@ test('unflagged repos keep the isolate-local wait-and-retry path', async () => {
 
 	const response = await handlePlainRepoGitHttpRequest(pushRequest('PACK-D'), {
 		APP_DB: {},
+		USAGE_EVENTS: usageEvents.binding,
+		FLAG_EXPOSURES: flagExposures.binding,
 		REPO_PUSH_QUEUE: queue.binding,
 	} as unknown as Env)
 
@@ -191,6 +215,8 @@ test('flag evaluation failures fail closed to the direct path', async () => {
 
 	const response = await handlePlainRepoGitHttpRequest(pushRequest(), {
 		APP_DB: {},
+		USAGE_EVENTS: usageEvents.binding,
+		FLAG_EXPOSURES: flagExposures.binding,
 		REPO_PUSH_QUEUE: queue.binding,
 	} as unknown as Env)
 
@@ -219,6 +245,8 @@ test('an unhealthy queue returns a retryable 503 with no fallback to Artifacts',
 
 	const response = await handlePlainRepoGitHttpRequest(pushRequest(), {
 		APP_DB: {},
+		USAGE_EVENTS: usageEvents.binding,
+		FLAG_EXPOSURES: flagExposures.binding,
 		REPO_PUSH_QUEUE: queue.binding,
 	} as unknown as Env)
 
@@ -236,10 +264,175 @@ test('without the queue binding (local dev, tests) the flag is not consulted', a
 
 	const response = await handlePlainRepoGitHttpRequest(pushRequest(), {
 		APP_DB: {},
+		USAGE_EVENTS: usageEvents.binding,
+		FLAG_EXPOSURES: flagExposures.binding,
 	} as unknown as Env)
 
 	expect(response!.status).toBe(200)
 	expect(response!.headers.get(repoPushQueuePathHeader)).toBe('off')
 	expect(evaluateRepoFeatureFlag).not.toHaveBeenCalled()
 	expect(direct.calls).toEqual(['PACK'])
+})
+
+function gitPushPoints() {
+	return usageEvents.points
+		.filter((point) => point.blobs?.[1] === 'git_push')
+		.map((point) => ({
+			userId: point.blobs?.[0],
+			path: point.blobs?.[2],
+			outcome: point.blobs?.[3],
+			errorName: point.blobs?.[12],
+			durationMs: point.doubles?.[0],
+			waitMs: point.doubles?.[5],
+			queueDepth: point.doubles?.[6],
+			attempts: point.doubles?.[7],
+		}))
+}
+
+function exposurePoints() {
+	return flagExposures.points.map((point) => point.blobs?.slice(0, 4))
+}
+
+test('queued pushes record git_push cost from queue headers and an owner exposure', async () => {
+	seed()
+	evaluateRepoFeatureFlag.mockResolvedValue({
+		enabled: true,
+		source: 'rollout',
+		repoOverride: false,
+	})
+	const queue = fakeQueue(
+		async () =>
+			new Response(packResult, {
+				status: 200,
+				headers: {
+					[repoPushQueuePathHeader]: 'v1',
+					[repoPushQueueWaitMsHeader]: '1200',
+					[repoPushQueueDepthHeader]: '3',
+					[repoPushQueueWallMsHeader]: '4500',
+					[repoPushQueueAttemptsHeader]: '2',
+				},
+			}),
+	)
+
+	const response = await handlePlainRepoGitHttpRequest(pushRequest(), {
+		APP_DB: {},
+		USAGE_EVENTS: usageEvents.binding,
+		FLAG_EXPOSURES: flagExposures.binding,
+		REPO_PUSH_QUEUE: queue.binding,
+	} as unknown as Env)
+
+	expect(response!.status).toBe(200)
+	expect(gitPushPoints()).toEqual([
+		{
+			userId: 'owner-1',
+			path: 'queued',
+			outcome: 'success',
+			errorName: '',
+			durationMs: 4500,
+			waitMs: 1200,
+			queueDepth: 3,
+			attempts: 2,
+		},
+	])
+	expect(exposurePoints()).toEqual([
+		['owner-1', 'repo-push-queue', 'on', 'rollout'],
+	])
+})
+
+test('queue timeouts and busy rejections are recorded as git_push errors', async () => {
+	for (const [outcome, errorName] of [
+		['timeout', 'timeout'],
+		['full', 'busy'],
+	] as const) {
+		seed()
+		evaluateRepoFeatureFlag.mockResolvedValue({
+			enabled: true,
+			source: 'global',
+			repoOverride: false,
+		})
+		const queue = fakeQueue(
+			async () =>
+				new Response('repository busy, retry', {
+					status: 503,
+					headers: {
+						'Retry-After': '2',
+						[repoPushQueuePathHeader]: 'v1',
+						[repoPushQueueOutcomeHeader]: outcome,
+						[repoPushQueueDepthHeader]: '64',
+						[repoPushQueueWallMsHeader]: '90001',
+					},
+				}),
+		)
+		const response = await handlePlainRepoGitHttpRequest(pushRequest(), {
+			APP_DB: {},
+			USAGE_EVENTS: usageEvents.binding,
+			FLAG_EXPOSURES: flagExposures.binding,
+			REPO_PUSH_QUEUE: queue.binding,
+		} as unknown as Env)
+		expect(response!.status).toBe(503)
+		expect(gitPushPoints()).toEqual([
+			expect.objectContaining({
+				path: 'queued',
+				outcome: 'error',
+				errorName,
+				durationMs: 90001,
+				queueDepth: 64,
+			}),
+		])
+	}
+})
+
+test('direct pushes record the wait-and-retry outcome and an off exposure', async () => {
+	seed()
+	evaluateRepoFeatureFlag.mockResolvedValue({
+		enabled: false,
+		source: 'default',
+		repoOverride: false,
+	})
+	const direct = directArtifactsServer()
+	using _server = direct.server
+	const queue = fakeQueue(async () => new Response('unexpected'))
+
+	await handlePlainRepoGitHttpRequest(pushRequest(), {
+		APP_DB: {},
+		USAGE_EVENTS: usageEvents.binding,
+		FLAG_EXPOSURES: flagExposures.binding,
+		REPO_PUSH_QUEUE: queue.binding,
+	} as unknown as Env)
+
+	const [point] = gitPushPoints()
+	expect(point).toEqual(
+		expect.objectContaining({
+			userId: 'owner-1',
+			path: 'direct',
+			outcome: 'success',
+			queueDepth: 0,
+			attempts: 1,
+		}),
+	)
+	expect(point!.durationMs).toBeGreaterThanOrEqual(point!.waitMs!)
+	expect(exposurePoints()).toEqual([
+		['owner-1', 'repo-push-queue', 'off', 'default'],
+	])
+})
+
+test('pushes record git_push without an exposure when the flag was not evaluated', async () => {
+	seed()
+	consoleWarn.mockImplementation(() => {})
+	evaluateRepoFeatureFlag.mockRejectedValue(new Error('D1 unavailable'))
+	const direct = directArtifactsServer()
+	using _server = direct.server
+	const queue = fakeQueue(async () => new Response('unexpected'))
+
+	await handlePlainRepoGitHttpRequest(pushRequest(), {
+		APP_DB: {},
+		USAGE_EVENTS: usageEvents.binding,
+		FLAG_EXPOSURES: flagExposures.binding,
+		REPO_PUSH_QUEUE: queue.binding,
+	} as unknown as Env)
+
+	expect(gitPushPoints()).toEqual([
+		expect.objectContaining({ path: 'direct', outcome: 'success' }),
+	])
+	expect(exposurePoints()).toEqual([])
 })

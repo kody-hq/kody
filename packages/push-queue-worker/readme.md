@@ -41,3 +41,8 @@ eviction) clears leftover chunks on start, and those callers retry.
   service binding resolves) and `preview.yml`.
 - Routing is gated by the repo-scoped `repo-push-queue` flag; see
   [docs/use/repos.md](../../docs/use/repos.md).
+- Every accepted response carries `Kody-Push-Queue-Depth` (queue depth on
+  arrival) and `Kody-Push-Queue-Wall-Ms` (this push's time in the Durable
+  Object). Origin records them, with wait and attempts, as the observe-only
+  `git_push` usage event; read the aggregates with `adminRepoPushQueueCost` (see
+  [feature flags](../../docs/contributing/architecture/feature-flags.md#repo-scoped-flags)).
