@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { denyProfileBoundPackageCreate } from '#worker/authorization/authorize.ts'
+import { authorizePackageCreate } from '#worker/authorization/authorize.ts'
 import { forkCommunityListing } from '#worker/community/service.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -77,7 +77,7 @@ export const communityForkCapability = defineDomainCapability(
 		}),
 		async handler(args, ctx) {
 			const user = requireMcpUser(ctx.callerContext)
-			await denyProfileBoundPackageCreate({
+			await authorizePackageCreate({
 				env: ctx.env,
 				request: ctx.callerContext.request,
 			})

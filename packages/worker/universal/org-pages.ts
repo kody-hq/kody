@@ -29,12 +29,20 @@ export type OrgOwnedAccountSection = (typeof orgOwnedAccountSections)[number]
 
 const orgOwnedSectionSet: ReadonlySet<string> = new Set(orgOwnedAccountSections)
 
-/** Sections whose org URL is only the index. Nested paths stay on other routes. */
-const exactOrgSections: ReadonlySet<string> = new Set([
-	'follows',
-	'repositories',
-	'webhooks',
+/**
+ * Sections whose org URL is only the index plus the listed nested pages.
+ * Other nested paths stay on other routes.
+ */
+const exactOrgSections: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+	['follows', new Set<string>()],
+	['repositories', new Set(['new'])],
+	['webhooks', new Set<string>()],
 ])
+
+function isNestedPathOutsideExactSection(section: string, rest: string) {
+	const allowed = exactOrgSections.get(section)
+	return Boolean(allowed && rest && !allowed.has(rest))
+}
 
 export type OrganizationSummary = {
 	slug: string
@@ -90,7 +98,7 @@ export function parseOrgResourcePath(
 	if (!isOrganizationSlug(slug) || !isOrgOwnedAccountSection(section)) {
 		return null
 	}
-	if (exactOrgSections.has(section) && rest) return null
+	if (isNestedPathOutsideExactSection(section, rest)) return null
 	return { slug, section, rest }
 }
 
@@ -252,7 +260,7 @@ export function orgResourcePathForAccountPath(
 	if (section.endsWith('.json') || section === 'packages') return null
 	if (!isOrgOwnedAccountSection(section)) return null
 	const rest = (match[2] ?? '').replace(/^\//, '').replace(/\/$/, '')
-	if (exactOrgSections.has(section) && rest) return null
+	if (isNestedPathOutsideExactSection(section, rest)) return null
 	return orgResourcePath(personalSlug, section, rest)
 }
 

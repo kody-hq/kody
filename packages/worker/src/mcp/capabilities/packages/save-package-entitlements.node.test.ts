@@ -16,6 +16,14 @@ import {
 	repoChecksFailedErrorName,
 } from '#worker/repo/repo-checks-failed-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
+import { AuthorizationError } from '#worker/authorization/authorize.ts'
+import {
+	addOrgMember,
+	addTeamMember,
+	createTeam,
+	upsertGrant,
+} from '#worker/orgs/access-writes.ts'
+import { createTestOrgAuditWriter } from '#worker/test-support/create-audit-db.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
@@ -263,6 +271,7 @@ async function setup({
 	savedPackages = () => [],
 	failInsertWithUniqueName = false,
 	teamOrg,
+	member,
 }: {
 	email?: string
 	plan?: string
@@ -270,6 +279,11 @@ async function setup({
 	savedPackages?: (userId: string) => Array<Row>
 	failInsertWithUniqueName?: boolean
 	teamOrg?: { id: string; slug: string; plan: string }
+	/** Join `teamOrg` as a member of team `maintainers` with these grants. */
+	member?: {
+		orgCreate: boolean
+		packageGrant?: { packageId: string; preset: 'use' | 'contribute' }
+	}
 } = {}) {
 	for (const mock of [
 		mockModule.ensureEntitySource,
@@ -329,6 +343,10 @@ async function setup({
 				: [],
 		},
 	)
+	if (member) {
+		if (!teamOrg) throw new Error('A member needs a team org.')
+		await joinAsMaintainer({ db, orgId: teamOrg.id, userId, ...member })
+	}
 	const ctx = {
 		env: { APP_DB: db } as Env,
 		callerContext: createMcpCallerContext({
@@ -342,7 +360,7 @@ async function setup({
 			orgBinding: teamOrg
 				? {
 						org: { id: ownerIdFromStored(teamOrg.id), slug: teamOrg.slug },
-						role: 'owner',
+						role: member ? 'member' : 'owner',
 					}
 				: undefined,
 		}),
@@ -356,6 +374,68 @@ async function setup({
 			)
 			.get(ownerUserId) as Row | null
 	return { userId, ownerUserId, save, latestPackage }
+}
+
+async function joinAsMaintainer(input: {
+	db: D1Database
+	orgId: string
+	userId: string
+	orgCreate: boolean
+	packageGrant?: { packageId: string; preset: 'use' | 'contribute' }
+}) {
+	const { db, orgId, userId } = input
+	const audit = createTestOrgAuditWriter({ actorUserId: userId })
+	await addOrgMember({
+		db,
+		orgId,
+		userId,
+		role: 'member',
+		invitedByUserId: userId,
+		audit,
+	})
+	const team = await createTeam({
+		db,
+		orgId,
+		slug: 'maintainers',
+		name: 'Maintainers',
+		createdByUserId: userId,
+		audit,
+	})
+	await addTeamMember({
+		db,
+		orgId,
+		teamId: team.id,
+		userId,
+		addedByUserId: userId,
+		audit,
+	})
+	const subject = { type: 'team', id: team.id } as const
+	if (input.orgCreate) {
+		await upsertGrant({
+			db,
+			orgId,
+			resourceType: 'org',
+			resourceId: orgId,
+			subject,
+			preset: null,
+			permissions: ['package:create'],
+			createdByUserId: userId,
+			audit,
+		})
+	}
+	if (input.packageGrant) {
+		await upsertGrant({
+			db,
+			orgId,
+			resourceType: 'package',
+			resourceId: input.packageGrant.packageId,
+			subject,
+			preset: input.packageGrant.preset,
+			permissions: null,
+			createdByUserId: userId,
+			audit,
+		})
+	}
 }
 
 const rejection = (promise: Promise<unknown>) =>
@@ -731,4 +811,85 @@ test('packageSave lists placeholder references from the published files, not onl
 
 	expect(result.next_steps).toContain('Credential stamp publish gate')
 	expect(result.next_steps).toMatch(/missing a description|OLD_KEY/)
+})
+
+const maintainersOrg = { id: 'd'.repeat(64), slug: 'kody', plan: 'max' }
+
+test('packageSave create needs org package:create, not package:write', async () => {
+	const allowed = await setup({
+		email: 'member@example.com',
+		username: 'member',
+		teamOrg: maintainersOrg,
+		member: { orgCreate: true },
+	})
+	await allowed.save({
+		files: buildPackageFiles('fresh-package', { username: 'kody' }),
+	})
+	expect(mockModule.ensureEntitySource).toHaveBeenCalled()
+	expect(allowed.latestPackage()).toMatchObject({ name: '@kody/fresh-package' })
+
+	// Write on another package passes the surface but does not allow creating.
+	const refused = await setup({
+		email: 'member@example.com',
+		username: 'member',
+		teamOrg: maintainersOrg,
+		savedPackages: (ownerId) => [
+			savedPackageRow(ownerId, 'package-other', 'other-package'),
+		],
+		member: {
+			orgCreate: false,
+			packageGrant: { packageId: 'package-other', preset: 'contribute' },
+		},
+	})
+	const error = await rejection(
+		refused.save({
+			files: buildPackageFiles('fresh-package', { username: 'kody' }),
+		}),
+	)
+	expect(error).toBeInstanceOf(AuthorizationError)
+	expect(error).toMatchObject({ permission: 'package:create' })
+	expect(mockModule.ensureEntitySource).not.toHaveBeenCalled()
+	expect(refused.latestPackage()).toMatchObject({ id: 'package-other' })
+})
+
+test('packageSave update keeps per-package write, even with org package:create', async () => {
+	const existing = (ownerId: string) => [
+		{
+			...savedPackageRow(ownerId, 'package-existing', 'shared-package'),
+			name: '@kody/shared-package',
+		},
+	]
+	const update = {
+		package_id: 'package-existing',
+		confirm_destructive_overwrite: true,
+		files: buildPackageFiles('shared-package', { username: 'kody' }),
+	}
+
+	const readOnly = await setup({
+		email: 'member@example.com',
+		username: 'member',
+		teamOrg: maintainersOrg,
+		savedPackages: existing,
+		member: {
+			orgCreate: true,
+			packageGrant: { packageId: 'package-existing', preset: 'use' },
+		},
+	})
+	const error = await rejection(readOnly.save(update))
+	expect(error).toBeInstanceOf(AuthorizationError)
+	expect(error).toMatchObject({ permission: 'package:write' })
+	expect(mockModule.syncArtifactSourceSnapshot).not.toHaveBeenCalled()
+
+	const contributor = await setup({
+		email: 'member@example.com',
+		username: 'member',
+		teamOrg: maintainersOrg,
+		savedPackages: existing,
+		member: {
+			orgCreate: false,
+			packageGrant: { packageId: 'package-existing', preset: 'contribute' },
+		},
+	})
+	await contributor.save(update)
+	expect(mockModule.syncArtifactSourceSnapshot).toHaveBeenCalled()
 })

@@ -7,6 +7,7 @@ import {
 	sharedProjectConfig,
 	sharedTestExclude,
 } from './vitest-shared.ts'
+import { harfbuzzWorker } from './tools/vite-harfbuzz-worker.ts'
 
 // The pool restarts a Wrangler config read per test file, and each read logs
 // "Using secrets defined in packages/worker/.env" at the default log level.
@@ -34,6 +35,7 @@ export default mergeConfig(
 	sharedProjectConfig,
 	defineProject({
 		plugins: [
+			harfbuzzWorker(),
 			cloudflareTest({
 				remoteBindings: false,
 				wrangler: {

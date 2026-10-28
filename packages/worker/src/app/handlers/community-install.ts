@@ -1,8 +1,8 @@
-import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { z } from 'zod'
 import { waitUntil } from 'cloudflare:workers'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { resolveCommunityInstallOwner } from '#app/community-install-org.ts'
 import {
 	buildInstallAdaptPrompt,
 	buildInstallSuccessPrompt,
@@ -25,6 +25,8 @@ import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 const communityInstallPostSchema = z.object({
 	acknowledged: z.boolean().optional(),
 	kody_id: z.string().trim().min(1).optional(),
+	/** Org slug to fork into. Omitted keeps the personal org. */
+	org: z.string().trim().min(1).optional(),
 })
 
 const thirdPartyInstallConfirmError =
@@ -74,8 +76,21 @@ export async function installWebsiteCommunityPackage(input: {
 	}
 
 	try {
-		// Unscoped community installs always belong to the person's personal org.
-		const installOwnerId = personalOrgIdForPerson(user.mcpUser)
+		const installOwner = await resolveCommunityInstallOwner({
+			env,
+			request,
+			user,
+			orgSlug: parsed.data.org,
+		})
+		if (!installOwner.ok) {
+			return installResult(
+				{ ok: false, error: installOwner.error },
+				installOwner.status,
+			)
+		}
+		// Only the body `org` picks another org; URL params and the last-org
+		// cookie never redirect an install away from the personal org.
+		const installOwnerId = installOwner.ownerId
 		const expectedPackageScope = await getPackageScopeByUserId(
 			env.APP_DB,
 			installOwnerId,

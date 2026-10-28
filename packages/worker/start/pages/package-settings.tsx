@@ -7,7 +7,10 @@ import { useState } from 'react'
 import { colors } from '#universal/styles/tokens.ts'
 import { type CommunityDetailApiPayload } from '../community-types.ts'
 import { renderPackageRepoActions } from '../components/package-title-actions.tsx'
-import { renderPackageRepoChrome } from '../components/package-repo-nav.tsx'
+import {
+	PackageRepoTabPanel,
+	renderPackageRepoChrome,
+} from '../components/package-repo-nav.tsx'
 import {
 	detailArticleCss,
 	detailSectionCss,
@@ -97,47 +100,51 @@ export function PackageSettingsRoute({
 				}),
 				iconName: kodyId,
 			})}
-			<section
-				aria-labelledby="package-owner-details-title"
-				css={detailSectionCss}
-			>
-				<h2 id="package-owner-details-title">Package details</h2>
-				{message ? (
-					<p
-						role="alert"
-						css={{
-							margin: '0.8rem 0 0',
-							color: colors.error,
-							fontSize: '0.95rem',
+			<PackageRepoTabPanel>
+				<section
+					aria-labelledby="package-owner-details-title"
+					css={detailSectionCss}
+				>
+					<h2 id="package-owner-details-title">Package details</h2>
+					{message ? (
+						<p
+							role="alert"
+							css={{
+								margin: '0.8rem 0 0',
+								color: colors.error,
+								fontSize: '0.95rem',
+							}}
+						>
+							{message}
+						</p>
+					) : null}
+					{ownerPackage.creditAttribution ? (
+						<PackageCreditAttributionPanel
+							row={ownerPackage.creditAttribution}
+						/>
+					) : null}
+					<AccountPackageOwnerDetails
+						ownerUsername={username}
+						packageAppHref={data.repoActions?.packageAppHref ?? null}
+						viewerCanPublish={data.viewerCanPublish === true}
+						viewerCanDelete={data.viewerCanDelete === true}
+						viewerCanAdoptCommunityFork={
+							data.viewerCanAdoptCommunityFork === true
+						}
+						packageDetail={{
+							...ownerPackage,
+							lockedAt: optimisticLockedAt ?? null,
 						}}
-					>
-						{message}
-					</p>
-				) : null}
-				{ownerPackage.creditAttribution ? (
-					<PackageCreditAttributionPanel row={ownerPackage.creditAttribution} />
-				) : null}
-				<AccountPackageOwnerDetails
-					ownerUsername={username}
-					packageAppHref={data.repoActions?.packageAppHref ?? null}
-					viewerCanPublish={data.viewerCanPublish === true}
-					viewerCanDelete={data.viewerCanDelete === true}
-					viewerCanAdoptCommunityFork={
-						data.viewerCanAdoptCommunityFork === true
-					}
-					packageDetail={{
-						...ownerPackage,
-						lockedAt: optimisticLockedAt ?? null,
-					}}
-					lockInFlight={lockBusy}
-					onToggleLock={() => void toggleLock()}
+						lockInFlight={lockBusy}
+						onToggleLock={() => void toggleLock()}
+					/>
+				</section>
+				<PackageWebhookSettings
+					key={`${username}/${kodyId}`}
+					username={username}
+					kodyId={kodyId}
 				/>
-			</section>
-			<PackageWebhookSettings
-				key={`${username}/${kodyId}`}
-				username={username}
-				kodyId={kodyId}
-			/>
+			</PackageRepoTabPanel>
 		</article>
 	)
 }

@@ -324,6 +324,18 @@ The floor is `0.35.5` for:
 
 The upper bound `<1.0.0` keeps the override within the same major version.
 
+### `fflate` (under `satori`) → `>=0.7.5 <0.8.0`
+
+`satori` pins `fflate` to exactly `0.7.3` (in `satori@0.33.5` and still in the
+latest `0.63.2`), so the Worker OG renderer cannot pick up the patch from its
+own range. The floor is `0.7.5` for:
+
+- [GHSA-px8p-9vwx-vf98](https://github.com/advisories/GHSA-px8p-9vwx-vf98):
+  `unzipSync` infinite loop on malformed ZIP64 archives (`<0.7.5`)
+
+The `<0.8.0` cap keeps the minor line satori was built against. Remove the
+override once a `satori` release depends on a patched `fflate`.
+
 ## Development overrides
 
 These packages are only reached through dev tooling, so `audit:prod` does not

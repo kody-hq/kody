@@ -2,6 +2,7 @@
 import { type CSSObject } from '@emotion/react'
 import { type ReactNode, useState, useMemo } from 'react'
 import { SiteLink } from './site-link.tsx'
+import { withInstallOrg } from '#universal/community-search.ts'
 
 import { CopyTextButton } from './copy-text-button.tsx'
 
@@ -23,9 +24,14 @@ import {
 import { directoryOfPackageFilePath } from '#universal/package-readme-images.ts'
 import { usePackageInstall } from '../use-package-install.ts'
 import { renderInstallStrip } from './community-detail-sections.tsx'
-import { PackageInstallContext } from './package-title-actions.tsx'
-import { renderPackageRepoActions } from './package-title-actions.tsx'
-import { renderPackageRepoChrome } from './package-repo-nav.tsx'
+import {
+	PackageInstallContext,
+	renderPackageRepoActions,
+} from './package-title-actions.tsx'
+import {
+	PackageRepoTabPanel,
+	renderPackageRepoChrome,
+} from './package-repo-nav.tsx'
 import { renderIcon } from './icon.tsx'
 import { type PackageFilesLoaderData } from '#universal/loader-data.ts'
 import {
@@ -74,6 +80,7 @@ export function PackageFilesExplorer(props: {
 		<PackageInstallContext.Provider value={install.context}>
 			<PackageFilesExplorerContent
 				{...props}
+				installOrg={install.org}
 				installStrip={renderInstallStrip(install)}
 			/>
 		</PackageInstallContext.Provider>
@@ -84,11 +91,15 @@ function PackageFilesExplorerContent({
 	data,
 	busy,
 	installStrip,
+	installOrg,
 }: {
 	data: PackageFilesLoaderData
 	busy?: boolean
 	installStrip?: ReactNode
+	installOrg: string | null
 }) {
+	const fileHref = (path: string) =>
+		withInstallOrg(joinPackageFilesPath(data.filesBasePath, path), installOrg)
 	const [expanded, setExpanded] = useState(
 		() =>
 			new Set([
@@ -125,7 +136,16 @@ function PackageFilesExplorerContent({
 	function collapseAll() {
 		setExpanded(new Set())
 	}
-	const contentNode = useMemo(() => renderContent(data), [data])
+	const contentNode = useMemo(
+		() =>
+			renderContent(data, (path) =>
+				withInstallOrg(
+					joinPackageFilesPath(data.filesBasePath, path),
+					installOrg,
+				),
+			),
+		[data, installOrg],
+	)
 
 	const showRepoChrome = Boolean(data.username && data.kodyId)
 
@@ -150,6 +170,7 @@ function PackageFilesExplorerContent({
 					active: 'files',
 					actions: renderPackageRepoActions(data.repoActions ?? null),
 					filesHref: data.filesBasePath,
+					installOrg,
 					description: data.description,
 					ownerProfilePublic: data.ownerProfilePublic,
 					iconUrl: data.iconUrl ?? null,
@@ -157,7 +178,10 @@ function PackageFilesExplorerContent({
 				})
 			) : (
 				<>
-					<SiteLink href={data.backHref} css={backLinkCss}>
+					<SiteLink
+						href={withInstallOrg(data.backHref, installOrg)}
+						css={backLinkCss}
+					>
 						{arrowLeftIcon()} {data.backLabel}
 					</SiteLink>
 					<header css={headCss}>
@@ -165,65 +189,73 @@ function PackageFilesExplorerContent({
 					</header>
 				</>
 			)}
-			{installStrip}
-			<div css={layoutCss}>
-				<nav aria-label="Files" css={treeCss}>
-					<div css={treeHeadCss}>
-						<h2 css={treeHeadingCss}>Files</h2>
-						{/* Always rendered so the row keeps its height — appearing and
+			<PackageRepoTabPanel>
+				{installStrip}
+				<div css={layoutCss}>
+					<nav aria-label="Files" css={treeCss}>
+						<div css={treeHeadCss}>
+							<h2 css={treeHeadingCss}>Files</h2>
+							{/* Always rendered so the row keeps its height — appearing and
 							    disappearing shifted the filter and tree below it. */}
-						<button
-							type="button"
-							disabled={expanded.size === 0}
-							css={
-								expanded.size > 0 ? collapseButtonCss : collapseButtonHiddenCss
-							}
-							onClick={collapseAll}
-						>
-							Collapse all
-						</button>
-					</div>
-					<div css={filterWrapCss}>
-						<div css={filterFieldCss}>
-							<span css={filterIconCss}>{searchIcon()}</span>
-							<input
-								type="text"
-								role="searchbox"
-								inputMode="search"
-								autoComplete="off"
-								placeholder="Go to file"
-								aria-label="Filter files"
-								css={filterInputCss}
-								value={query}
-								onChange={(event) => setQuery(event.currentTarget.value)}
-							/>
+							<button
+								type="button"
+								disabled={expanded.size === 0}
+								css={
+									expanded.size > 0
+										? collapseButtonCss
+										: collapseButtonHiddenCss
+								}
+								onClick={collapseAll}
+							>
+								Collapse all
+							</button>
 						</div>
-					</div>
-					<div css={treeScrollCss}>
-						{query.trim()
-							? renderMatches(data, query)
-							: renderTree(
-									data.paths,
-									'',
-									data.selectedPath,
-									data.filesBasePath,
-									expanded,
-									toggleDirectory,
-									0,
-								)}
-					</div>
-				</nav>
-				<section css={contentCss} aria-label="Selected file">
-					{contentNode}
-				</section>
-			</div>
+						<div css={filterWrapCss}>
+							<div css={filterFieldCss}>
+								<span css={filterIconCss}>{searchIcon()}</span>
+								<input
+									type="text"
+									role="searchbox"
+									inputMode="search"
+									autoComplete="off"
+									placeholder="Go to file"
+									aria-label="Filter files"
+									css={filterInputCss}
+									value={query}
+									onChange={(event) => setQuery(event.currentTarget.value)}
+								/>
+							</div>
+						</div>
+						<div css={treeScrollCss}>
+							{query.trim()
+								? renderMatches(data, query, fileHref)
+								: renderTree(
+										data.paths,
+										'',
+										data.selectedPath,
+										fileHref,
+										expanded,
+										toggleDirectory,
+										0,
+									)}
+						</div>
+					</nav>
+					<section css={contentCss} aria-label="Selected file">
+						{contentNode}
+					</section>
+				</div>
+			</PackageRepoTabPanel>
 		</article>
 	)
 }
 
 const maxFilterMatches = 100
 
-function renderMatches(data: PackageFilesLoaderData, query: string): ReactNode {
+function renderMatches(
+	data: PackageFilesLoaderData,
+	query: string,
+	fileHref: (path: string) => string,
+): ReactNode {
 	const matches = data.paths.filter((path) => matchesSearchQuery(query, [path]))
 	if (matches.length === 0) {
 		return <p css={emptyCss}>No file matches that filter.</p>
@@ -238,7 +270,7 @@ function renderMatches(data: PackageFilesLoaderData, query: string): ReactNode {
 				return (
 					<li key={path}>
 						<SiteLink
-							href={joinPackageFilesPath(data.filesBasePath, path)}
+							href={fileHref(path)}
 							aria-current={data.selectedPath === path ? 'page' : undefined}
 							css={data.selectedPath === path ? rowCurrentCss : rowCss}
 						>
@@ -262,7 +294,7 @@ function renderTree(
 	paths: Array<string>,
 	directoryPath: string,
 	selectedPath: string,
-	filesBasePath: string,
+	fileHref: (path: string) => string,
 	expanded: Set<string>,
 	toggleDirectory: (path: string) => void,
 	depth: number,
@@ -274,7 +306,7 @@ function renderTree(
 	return (
 		<ul css={treeListCss}>
 			{children.map((child) => {
-				const href = joinPackageFilesPath(filesBasePath, child.path)
+				const href = fileHref(child.path)
 				const current = selectedPath === child.path
 				const isDirectory = child.kind === 'directory'
 				const isOpen = isDirectory && expanded.has(child.path)
@@ -312,7 +344,7 @@ function renderTree(
 									paths,
 									child.path,
 									selectedPath,
-									filesBasePath,
+									fileHref,
 									expanded,
 									toggleDirectory,
 									depth + 1,
@@ -325,7 +357,10 @@ function renderTree(
 	)
 }
 
-function renderContent(data: PackageFilesLoaderData): ReactNode {
+function renderContent(
+	data: PackageFilesLoaderData,
+	fileHref: (path: string) => string,
+): ReactNode {
 	if (data.kind === 'directory' && !data.content) {
 		return (
 			<div>
@@ -343,10 +378,7 @@ function renderContent(data: PackageFilesLoaderData): ReactNode {
 					<ul css={dirListCss}>
 						{data.children.map((child) => (
 							<li key={child.path}>
-								<SiteLink
-									href={joinPackageFilesPath(data.filesBasePath, child.path)}
-									css={dirLinkCss}
-								>
+								<SiteLink href={fileHref(child.path)} css={dirLinkCss}>
 									<span
 										css={
 											child.kind === 'directory' ? rowDirIconCss : rowIconCss
@@ -567,7 +599,6 @@ const titleCss = {
 // Two columns need room for both: below the tablet breakpoint the blob is too
 // narrow to read code in, so the tree moves above it and runs full width.
 const layoutCss = {
-	marginTop: spacing.lg,
 	display: 'grid',
 	gridTemplateColumns: '18.75rem minmax(0, 1fr)',
 	gap: spacing.lg,

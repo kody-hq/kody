@@ -4,7 +4,10 @@ import { SiteLink } from '../components/site-link.tsx'
 import { AccountManagementPanel } from './account-management-components.tsx'
 import { IdentityIconMark } from '../components/identity-icon-mark.tsx'
 import { renderIcon } from '../components/icon.tsx'
-import { renderPackageRepoChrome } from '../components/package-repo-nav.tsx'
+import {
+	PackageRepoTabPanel,
+	renderPackageRepoChrome,
+} from '../components/package-repo-nav.tsx'
 import { detailArticleCss } from '../components/community-detail-sections.tsx'
 import { formatCommunityPublishedDate } from '#universal/community-display.ts'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
@@ -68,32 +71,34 @@ export function PackageForksRoute({
 					}),
 				iconName: kodyId,
 			})}
-			<AccountManagementPanel
-				title="Forks"
-				ariaLabel="Forks"
-				description={
-					total === 0
-						? undefined
-						: `${forkCountLabel(total)} you can see. Private forks only show up for people who can open them.`
-				}
-			>
-				{forks.length === 0 ? (
-					<p css={mutedCopyCss} data-testid="package-forks-empty">
-						{shell.isListed
-							? 'No forks you can see yet. Public forks show up here once someone forks this package.'
-							: 'This package is not listed publicly, so it has no forks yet.'}
-					</p>
-				) : (
-					<ul css={listCss} data-testid="package-forks-list">
-						{forks.map(renderFork)}
-					</ul>
-				)}
-				{hidden > 0 ? (
-					<p css={mutedCopyCss} data-testid="package-forks-more">
-						Showing the newest {forks.length} of {total}.
-					</p>
-				) : null}
-			</AccountManagementPanel>
+			<PackageRepoTabPanel>
+				<AccountManagementPanel
+					title="Forks"
+					ariaLabel="Forks"
+					description={
+						total === 0
+							? undefined
+							: `${forkCountLabel(total)} you can see. Private forks only show up for people who can open them.`
+					}
+				>
+					{forks.length === 0 ? (
+						<p css={mutedCopyCss} data-testid="package-forks-empty">
+							{shell.isListed
+								? 'No forks you can see yet. Public forks show up here once someone forks this package.'
+								: 'This package is not listed publicly, so it has no forks yet.'}
+						</p>
+					) : (
+						<ul css={listCss} data-testid="package-forks-list">
+							{forks.map(renderFork)}
+						</ul>
+					)}
+					{hidden > 0 ? (
+						<p css={mutedCopyCss} data-testid="package-forks-more">
+							Showing the newest {forks.length} of {total}.
+						</p>
+					) : null}
+				</AccountManagementPanel>
+			</PackageRepoTabPanel>
 		</article>
 	)
 }

@@ -2,12 +2,14 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test, vi } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
+import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { CommunityActionError } from '#worker/community/errors.ts'
 import { durableObjectIsolateMemoryResetMessage } from '#worker/sentry-options.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { installWebsiteCommunityPackage } from './community-install.ts'
 import type * as CloudflareWorkers from 'cloudflare:workers'
+import type * as Authorize from '#worker/authorization/authorize.ts'
 
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
@@ -15,7 +17,29 @@ const mockModule = vi.hoisted(() => ({
 	installCommunityListing: vi.fn(),
 	getPackageScopeByUserId: vi.fn(),
 	waitUntil: vi.fn(),
+	loadOrgBindingForSlug: vi.fn(),
+	authorizePackageCreate: vi.fn(),
 }))
+
+vi.mock('#worker/orgs/repo.ts', () => ({
+	loadOrgBindingForSlug: (...args: Array<unknown>) =>
+		mockModule.loadOrgBindingForSlug(...args),
+}))
+
+vi.mock('#mcp/context.ts', () => ({
+	createMcpCallerContext: (input: { orgBinding: unknown }) => ({
+		request: { orgBinding: input.orgBinding },
+	}),
+}))
+
+vi.mock('#worker/authorization/authorize.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof Authorize>()
+	return {
+		...actual,
+		authorizePackageCreate: (...args: Array<unknown>) =>
+			mockModule.authorizePackageCreate(...args),
+	}
+})
 
 vi.mock('cloudflare:workers', async (importOriginal) => {
 	const actual = await importOriginal<typeof CloudflareWorkers>()
@@ -282,4 +306,112 @@ test('community install uses the personal org despite a leftover team cookie or 
 			expectedPackageScope: 'userb',
 		}),
 	)
+})
+
+describe('community install `org` param', () => {
+	const personalOrgId = ownerIdFromStored('org-personal-user-b')
+	const teamOrgId = ownerIdFromStored('org-example-team')
+	const teamBinding = {
+		org: { id: teamOrgId, slug: 'example-team' },
+		role: 'member',
+	}
+
+	async function installInto(body: Record<string, unknown>) {
+		mockModule.readAuthenticatedAppUser.mockResolvedValue({
+			email: 'userb@example.com',
+			mcpUser: {
+				userId: personIdFromStored('stable-user-b'),
+				personalOrgId,
+				email: 'userb@example.com',
+			},
+		})
+		mockModule.getPackageScopeByUserId.mockImplementation(
+			async (_db: unknown, ownerId: unknown) =>
+				ownerId === teamOrgId ? 'example-team' : 'userb',
+		)
+		mockModule.getCommunityListingById.mockResolvedValue(
+			listing('listing-1', '@someone/demo'),
+		)
+		mockModule.installCommunityListing.mockReset()
+		mockModule.installCommunityListing.mockResolvedValue(installed('demo'))
+		return installWebsiteCommunityPackage({
+			env,
+			user: await mockModule.readAuthenticatedAppUser(),
+			request: new Request(
+				'https://example.com/community/listing-1/install.json',
+				{ method: 'POST' },
+			),
+			listingId: 'listing-1',
+			body: { acknowledged: true, ...body },
+		})
+	}
+
+	test('an org where the viewer may create packages receives the fork', async () => {
+		mockModule.loadOrgBindingForSlug.mockResolvedValue(teamBinding)
+		mockModule.authorizePackageCreate.mockResolvedValue(undefined)
+		const result = await installInto({ org: '@Example-Team' })
+		expect(result.status).toBe(200)
+		expect(mockModule.loadOrgBindingForSlug).toHaveBeenCalledWith(
+			env.APP_DB,
+			personIdFromStored('stable-user-b'),
+			'example-team',
+		)
+		expect(mockModule.authorizePackageCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				request: { orgBinding: teamBinding },
+			}),
+		)
+		expect(mockModule.installCommunityListing).toHaveBeenCalledWith(
+			expect.objectContaining({
+				userId: teamOrgId,
+				followerOrgId: teamOrgId,
+				expectedPackageScope: 'example-team',
+			}),
+		)
+	})
+
+	test('an org without package:create is rejected before any fork', async () => {
+		mockModule.loadOrgBindingForSlug.mockResolvedValue(teamBinding)
+		mockModule.authorizePackageCreate.mockRejectedValue(
+			new AuthorizationError({
+				code: 'missing_permission',
+				permission: 'package:create',
+				orgId: teamOrgId,
+				resource: null,
+				message: 'Not allowed.',
+			}),
+		)
+		const result = await installInto({ org: 'example-team' })
+		expect(result.status).toBe(403)
+		expect(result.data).toEqual({
+			ok: false,
+			error: 'You do not have permission to create packages in @example-team.',
+		})
+		expect(mockModule.installCommunityListing).not.toHaveBeenCalled()
+	})
+
+	test('an org the viewer cannot see reads as not found', async () => {
+		mockModule.loadOrgBindingForSlug.mockResolvedValue(null)
+		const result = await installInto({ org: 'missing-team' })
+		expect(result.status).toBe(404)
+		expect(result.data).toEqual({
+			ok: false,
+			error: 'Organization @missing-team was not found.',
+		})
+		expect(mockModule.installCommunityListing).not.toHaveBeenCalled()
+	})
+
+	test('omitting org keeps the personal org without an org lookup', async () => {
+		mockModule.loadOrgBindingForSlug.mockReset()
+		mockModule.authorizePackageCreate.mockReset()
+		const result = await installInto({})
+		expect(result.status).toBe(200)
+		expect(mockModule.loadOrgBindingForSlug).not.toHaveBeenCalled()
+		expect(mockModule.installCommunityListing).toHaveBeenCalledWith(
+			expect.objectContaining({
+				userId: personalOrgId,
+				expectedPackageScope: 'userb',
+			}),
+		)
+	})
 })

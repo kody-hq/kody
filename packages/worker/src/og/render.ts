@@ -54,6 +54,27 @@ export type SatoriElement = {
 	}
 }
 
+/**
+ * Satori does not inherit `textWrap`, so every element that holds text gets
+ * `balance` here unless it opts out. Wrapped lines come out even on every
+ * card, and a description never ends on a lone word.
+ */
+export function withBalancedTextWrap(
+	type: string,
+	props: Omit<SatoriElement['props'], 'children'>,
+	descendants: Array<SatoriChild>,
+): Omit<SatoriElement['props'], 'children'> {
+	// Spans are runs inside a single-line row; balancing them shrinks each
+	// run's box and the row paints them on top of each other.
+	if (type === 'span') return props
+	if (!descendants.some((child) => typeof child === 'string')) return props
+	const style = props.style ?? {}
+	if (style.textWrap !== undefined || style.whiteSpace === 'nowrap') {
+		return props
+	}
+	return { ...props, style: { ...style, textWrap: 'balance' } }
+}
+
 function renderSatoriChild(child: SatoriChild): ReactNode {
 	if (typeof child === 'string') return child
 	const { children, ...props } = child.props
@@ -63,7 +84,11 @@ function renderSatoriChild(child: SatoriChild): ReactNode {
 			: Array.isArray(children)
 				? children
 				: [children]
-	return createElement(child.type, props, ...descendants.map(renderSatoriChild))
+	return createElement(
+		child.type,
+		withBalancedTextWrap(child.type, props, descendants),
+		...descendants.map(renderSatoriChild),
+	)
 }
 
 let wasmReady: Promise<void> | null = null

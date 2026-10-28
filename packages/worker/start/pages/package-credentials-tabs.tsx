@@ -233,7 +233,6 @@ function needSummary(need: PackageCredentialNeedView) {
 		parts.unshift(need.required ? 'Required' : 'Optional')
 	return parts.join(' · ')
 }
-export const tabBodyCss = { display: 'grid', gap: spacing.md }
 /** Every incomplete mapping on Credentials; on the other tabs, only the ones that tab fixes. */
 export function renderIncomplete(
 	context: PackageTabContext,
@@ -301,7 +300,7 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 	const { view, orgSlug } = context
 	const needs = sortNeedsByAttention(view.needs)
 	return (
-		<div css={tabBodyCss}>
+		<>
 			{renderIncomplete(context, 'credentials')}
 			<section
 				aria-labelledby="package-credentials-used"
@@ -419,7 +418,7 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 					</ul>
 				)}
 			</section>
-		</div>
+		</>
 	)
 }
 export function renderMappingsTab(context: PackageTabContext): ReactNode {
@@ -434,7 +433,7 @@ export function renderMappingsTab(context: PackageTabContext): ReactNode {
 		)
 	}
 	return (
-		<div css={tabBodyCss}>
+		<>
 			{renderIncomplete(context, 'mappings')}
 			<p css={mutedCss}>
 				Default mappings pick the credential each need uses when you run the
@@ -502,6 +501,6 @@ export function renderMappingsTab(context: PackageTabContext): ReactNode {
 					</SiteLink>
 				</section>
 			))}
-		</div>
+		</>
 	)
 }

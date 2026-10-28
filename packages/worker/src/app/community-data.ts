@@ -49,8 +49,15 @@ import {
 	listSavedPackagesByIds,
 	listSavedPackagesBySlugs,
 } from '#worker/package-registry/repo.ts'
-import { getMcpUserPackageScope } from '#worker/package-registry/user-scope.ts'
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	getMcpUserPackageScope,
+	getPackageScopeByUserId,
+} from '#worker/package-registry/user-scope.ts'
+import {
+	ownerIdFromStored,
+	type OwnerId,
+} from '@kody-internal/shared/owner-person-ids.ts'
+import { resolveCommunityInstallOwner } from '#app/community-install-org.ts'
 
 const onboardingFeaturedListingLimit = 12
 
@@ -80,6 +87,8 @@ type CommunityIndexInput = {
 	sort: string | null
 	category: string | null
 	limit: number
+	/** Org whose installs badge the listings; null keeps the personal org. */
+	installOrg?: string | null
 }
 const requestIndexDataStore = new WeakMap<
 	Request,
@@ -123,7 +132,19 @@ async function loadCommunityIndexDataUncached(
 		category,
 		overview,
 	})
-	const viewerPromise = readOptionalAuthenticatedViewer(request, env)
+	const viewerPromise = readOptionalAuthenticatedAppUser(request, env).then(
+		async (appUser) => ({
+			user: appUser?.mcpUser ?? null,
+			installOwner: appUser
+				? await resolveViewerInstallOwner({
+						env,
+						request,
+						user: appUser,
+						orgSlug: resource.installOrg,
+					})
+				: null,
+		}),
+	)
 	const cached = await recordServerTiming(
 		'community-listings',
 		() =>
@@ -171,7 +192,7 @@ async function loadCommunityIndexDataUncached(
 		request,
 	)
 
-	const user = await recordServerTiming(
+	const { user, installOwner } = await recordServerTiming(
 		'viewer-auth',
 		() => viewerPromise,
 		request,
@@ -185,6 +206,7 @@ async function loadCommunityIndexDataUncached(
 			overlayViewerInstallsOnListings({
 				env,
 				user,
+				ownerId: installOwner?.ownerId,
 				listings: visibleListings,
 				request,
 			}),
@@ -207,6 +229,7 @@ async function loadCommunityIndexDataUncached(
 		query: query || null,
 		sort,
 		category,
+		installOrg: installOwner?.orgSlug ?? null,
 	}
 }
 
@@ -297,19 +320,26 @@ export function loadCommunityDetailData(
 	env: Env,
 	request: Request,
 	listingId: string,
+	installOrg: string | null = null,
 ): Promise<CommunityDetailLoaderData | null> {
 	let byListingId = requestDetailDataStore.get(request)
 	if (!byListingId) {
 		byListingId = new Map()
 		requestDetailDataStore.set(request, byListingId)
 	}
-	let pending = byListingId.get(listingId)
+	const key = `${listingId}\n${installOrg ?? ''}`
+	let pending = byListingId.get(key)
 	if (!pending) {
-		pending = loadCommunityDetailDataUncached(env, request, listingId)
-		byListingId.set(listingId, pending)
+		pending = loadCommunityDetailDataUncached(
+			env,
+			request,
+			listingId,
+			installOrg,
+		)
+		byListingId.set(key, pending)
 		pending.catch(() => {
-			if (byListingId.get(listingId) === pending) {
-				byListingId.delete(listingId)
+			if (byListingId.get(key) === pending) {
+				byListingId.delete(key)
 			}
 		})
 	}
@@ -401,6 +431,7 @@ async function loadCommunityDetailDataUncached(
 	env: Env,
 	request: Request,
 	listingId: string,
+	installOrg: string | null,
 ): Promise<CommunityDetailLoaderData | null> {
 	const publicData = await loadCommunityDetailPublicData(
 		env,
@@ -424,10 +455,19 @@ async function loadCommunityDetailDataUncached(
 	const viewerUserId = user?.request.org.id ?? null
 	const viewerIsOwner =
 		viewerUserId != null && ownerUserId != null && viewerUserId === ownerUserId
+	const installOwner = user
+		? await resolveViewerInstallOwner({
+				env,
+				request,
+				user,
+				orgSlug: installOrg,
+			})
+		: null
 	const [viewerInstalls, viewerPrivateForks] = await Promise.all([
 		loadViewerListingInstalls({
 			env,
 			user: user?.mcpUser ?? null,
+			ownerId: installOwner?.ownerId,
 			listings: [
 				{
 					id: listing.id,
@@ -526,11 +566,29 @@ async function readOptionalAuthenticatedViewer(request: Request, env: Env) {
 	return (await readOptionalAuthenticatedAppUser(request, env))?.mcpUser ?? null
 }
 
+/**
+ * The org install badges read from. A missing or forbidden `?org=` falls back
+ * to the personal account so a stale link still renders the page.
+ */
+async function resolveViewerInstallOwner(
+	input: Parameters<typeof resolveCommunityInstallOwner>[0],
+) {
+	if (!input.orgSlug) return null
+	try {
+		const owner = await resolveCommunityInstallOwner(input)
+		return owner.ok ? owner : null
+	} catch (error) {
+		console.warn('community-install-org-resolve-failed', error)
+		return null
+	}
+}
+
 async function overlayViewerInstallsOnListings<
 	T extends { id: string; kodyId: string },
 >(input: {
 	env: Env
 	user: McpUserContext | null
+	ownerId?: OwnerId
 	listings: Array<T>
 	request?: Request
 }): Promise<Array<T>> {
@@ -540,6 +598,7 @@ async function overlayViewerInstallsOnListings<
 	const viewerInstalls = await loadViewerListingInstalls({
 		env: input.env,
 		user: input.user,
+		ownerId: input.ownerId,
 		listings: input.listings,
 		request: input.request,
 	})
@@ -558,6 +617,8 @@ async function overlayViewerInstallsOnListings<
 async function loadViewerListingInstalls(input: {
 	env: Env
 	user: McpUserContext | null
+	/** Org to read installs from; omitted reads the viewer's own account. */
+	ownerId?: OwnerId
 	listings: Array<{
 		id: string
 		kodyId: string
@@ -572,14 +633,17 @@ async function loadViewerListingInstalls(input: {
 	try {
 		const listingIds = input.listings.map((listing) => listing.id)
 		const slugs = input.listings.map((listing) => listing.kodyId)
+		const ownerId = input.ownerId ?? input.user.userId
 		const [packageScope, forks, savedByKody] = await Promise.all([
-			getMcpUserPackageScope(input.env.APP_DB, input.user),
+			input.ownerId
+				? getPackageScopeByUserId(input.env.APP_DB, input.ownerId)
+				: getMcpUserPackageScope(input.env.APP_DB, input.user),
 			listCommunityForksByListingIdsAndUser(input.env.APP_DB, {
 				listingIds,
-				userId: input.user.userId,
+				userId: ownerId,
 			}),
 			listSavedPackagesBySlugs(input.env.APP_DB, {
-				userId: input.user.userId,
+				userId: ownerId,
 				slugs,
 			}),
 		])
@@ -599,7 +663,7 @@ async function loadViewerListingInstalls(input: {
 			missingPackageIds.length === 0
 				? []
 				: await listSavedPackagesByIds(input.env.APP_DB, {
-						userId: input.user.userId,
+						userId: ownerId,
 						packageIds: missingPackageIds,
 					})
 		const listingPinIsAncestorByListingId = await recordServerTiming(

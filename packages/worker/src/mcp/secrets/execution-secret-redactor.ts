@@ -7,6 +7,41 @@ import { isRecord } from '@kody-internal/shared/is-record.ts'
 
 export const redactedSecretText = '[REDACTED SECRET]'
 
+/**
+ * Host kody tool a sandbox helper calls to register a value it minted (for
+ * example an `oauthClientCredentials` access token) with the run's redactor.
+ */
+export const trackRunSecretToolName = '__kodyTrackRunSecret'
+
+function base64Encode(value: string) {
+	let binary = ''
+	for (const byte of new TextEncoder().encode(value)) {
+		binary += String.fromCharCode(byte)
+	}
+	return btoa(binary)
+}
+
+/** `value` plus its URL-encoded and base64 forms, for tracking. */
+export function secretValueForms(value: string) {
+	if (value.length === 0) return []
+	return [...new Set([value, encodeURIComponent(value), base64Encode(value)])]
+}
+
+export function trackSecretValueForms(
+	track: ((value: string) => void) | undefined,
+	value: unknown,
+) {
+	if (!track || typeof value !== 'string') return
+	for (const form of secretValueForms(value)) track(form)
+}
+
+/** The string `access_token` of an OAuth token payload, if any. */
+export function oauthAccessTokenFromPayload(payload: unknown) {
+	if (!isRecord(payload)) return null
+	const token = payload.access_token
+	return typeof token === 'string' && token.length > 0 ? token : null
+}
+
 export type ExecutionSecretRedactor = {
 	track(value: string): void
 	redactErrorMessage(value: string): string

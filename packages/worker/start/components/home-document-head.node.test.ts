@@ -14,12 +14,12 @@ test('home share variants preserve canonical origin and use the shared variant m
 	const head = homeDocumentHead(base, 'triggers')
 	expect(head?.canonicalUrl).toBe('https://kody.codes/')
 	expect(head?.og?.imageUrl).toBe(
-		'https://kody.codes/og/home.png?og=triggers&v=2',
+		'https://kody.codes/og/home.png?og=triggers&v=3',
 	)
-	expect(base.og?.imageUrl).toBe('https://kody.codes/og/home.png?v=2')
+	expect(base.og?.imageUrl).toBe('https://kody.codes/og/home.png?v=3')
 	for (const variant of homeOgVariantIds) {
 		expect(homeDocumentHead(base, variant)?.og?.imageUrl).toBe(
-			`https://kody.codes/og/home.png?og=${variant}&v=2`,
+			`https://kody.codes/og/home.png?og=${variant}&v=3`,
 		)
 	}
 })

@@ -468,7 +468,6 @@ const panelCss = {
 	display: 'grid',
 	gap: spacing.md,
 	padding: spacing.lg,
-	marginBlock: spacing.md,
 	borderRadius: radius.card,
 	border: `1.5px solid ${colors.border}`,
 	backgroundColor: colors.surface,

@@ -1,3 +1,4 @@
+import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { getActiveCommunityForkClaim } from '#worker/community/fork-claims.ts'
@@ -8,16 +9,19 @@ import { getCommunityPackageHrefFromName } from '#universal/community-links.ts'
 import { type CommunityForkState } from '#universal/community-public-types.ts'
 
 /**
- * The viewer's fork of a listing in the account one-click install writes to
- * (the personal org): an existing fork, one still being created, or none.
+ * The viewer's fork of a listing in the org one-click install writes to (the
+ * picked org, else the personal org): an existing fork, one still being
+ * created, or none.
  */
 export async function loadWebsiteCommunityForkState(input: {
 	env: Env
 	user: AuthenticatedAppUser
 	listingId: string
+	/** Already authorized install org; omitted reads the personal org. */
+	ownerId?: OwnerId
 }): Promise<CommunityForkState> {
 	const { env, user, listingId } = input
-	const ownerId = personalOrgIdForPerson(user.mcpUser)
+	const ownerId = input.ownerId ?? personalOrgIdForPerson(user.mcpUser)
 	const [claim, fork] = await Promise.all([
 		getActiveCommunityForkClaim(env.APP_DB, {
 			ownerIds: [ownerId],

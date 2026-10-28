@@ -12,10 +12,10 @@ import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidenta
 /**
  * Regression coverage for sandbox console capture: user modules are loaded via
  * `import("./main.js")`, so a lexical `const console` in `evaluate()` cannot
- * shadow the free `console` binding those modules resolve. Capture must assign
- * onto `globalThis` and restore in `finally` so reused dynamic workers do not
- * write into a previous run's `__logs`. Fetch uses a once-per-isolate patch
- * plus AsyncLocalStorage instead of restore-in-finally.
+ * shadow the free `console` binding those modules resolve. Capture patches
+ * `globalThis.console` once per isolate and routes each call's logs through
+ * AsyncLocalStorage (like fetch), so reused dynamic workers never write into
+ * another run's `__logs`, even when runs overlap.
  */
 
 const reuseEnv = {
@@ -156,5 +156,112 @@ test(
 			expect(run.error).toBeUndefined()
 			expect(run.logs).toEqual([label, `${label}-tail`])
 		}
+	},
+)
+
+test(
+	'overlapping runs on one dynamic worker capture only their own logs',
+	{ timeout: 60_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const userId = ownerIdFromStored('user-console-capture-overlap')
+		// Same code + acting user => same dynamic-worker id for every run.
+		const bundle = await bundleLines(reuseEnv, userId, [
+			"import { kody } from 'kody:runtime'",
+			'export default async function main() {',
+			'\tconst { label } = await kody.ping_capability({})',
+			'\tconsole.log(`${label}-before`)',
+			'\tawait kody.rendezvous_capability({})',
+			'\tconsole.warn(`${label}-after`)',
+			'\treturn label',
+			'}',
+		])
+		// Both runs log once, then wait until the other has logged too, so
+		// each run's second log happens while the other run is still active.
+		let arrivals = 0
+		let releaseBoth!: () => void
+		const bothArrived = new Promise<void>((resolve) => {
+			releaseBoth = resolve
+		})
+		const runOverlapping = (label: string) =>
+			runBundle(reuseEnv, userId, bundle, {
+				ping_capability: async () => ({ label }),
+				rendezvous_capability: async () => {
+					arrivals += 1
+					if (arrivals === 2) releaseBoth()
+					await bothArrived
+					return {}
+				},
+			})
+		const [first, second] = await Promise.all([
+			runOverlapping('first'),
+			runOverlapping('second'),
+		])
+		expect(
+			[first, second].map(({ error, result, logs }) => ({
+				error,
+				result,
+				logs,
+			})),
+		).toEqual([
+			{
+				error: undefined,
+				result: 'first',
+				logs: ['first-before', '[warn] first-after'],
+			},
+			{
+				error: undefined,
+				result: 'second',
+				logs: ['second-before', '[warn] second-after'],
+			},
+		])
+
+		for (const label of ['third', 'fourth']) {
+			const run = await runBundle(reuseEnv, userId, bundle, {
+				ping_capability: async () => ({ label }),
+				rendezvous_capability: async () => ({}),
+			})
+			expect({ error: run.error, logs: run.logs }).toEqual({
+				error: undefined,
+				logs: [`${label}-before`, `[warn] ${label}-after`],
+			})
+		}
+	},
+)
+
+test(
+	'console overwrites from one run do not leak into the next run on a reused worker',
+	{ timeout: 60_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const userId = ownerIdFromStored('user-console-capture-overwrite')
+		const bundle = await bundleLines(reuseEnv, userId, [
+			"import { kody } from 'kody:runtime'",
+			'export default async function main() {',
+			'\tconst { label, clobber } = await kody.ping_capability({})',
+			'\tconsole.log(label)',
+			"\tif (clobber === 'method') console.log = () => {}",
+			"\tif (clobber === 'object') globalThis.console = { log() {}, warn() {} }",
+			'\treturn label',
+			'}',
+		])
+		const runs = []
+		for (const [label, clobber] of [
+			['clobber-method', 'method'],
+			['after-method', null],
+			['clobber-object', 'object'],
+			['after-object', null],
+		] as const) {
+			const run = await runBundle(reuseEnv, userId, bundle, {
+				ping_capability: async () => ({ label, clobber }),
+			})
+			runs.push({ error: run.error, logs: run.logs })
+		}
+		expect(runs).toEqual([
+			{ error: undefined, logs: ['clobber-method'] },
+			{ error: undefined, logs: ['after-method'] },
+			{ error: undefined, logs: ['clobber-object'] },
+			{ error: undefined, logs: ['after-object'] },
+		])
 	},
 )

@@ -97,6 +97,13 @@ test('org resource paths alias back to account loaders and ignore package apps',
 		section: 'repositories',
 		rest: '',
 	})
+	expect(parseOrgResourcePath('/@acme/-/repositories/new')).toEqual({
+		slug: 'acme',
+		section: 'repositories',
+		rest: 'new',
+	})
+	expect(parseOrgResourcePath('/@acme/-/repositories/other')).toBeNull()
+	expect(parseOrgResourcePath('/@acme/-/follows/new')).toBeNull()
 	expect(parseOrgResourcePath('/@acme/-/packages')).toBeNull()
 })
 

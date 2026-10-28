@@ -3,7 +3,11 @@ import {
 	personIdFromStored,
 	personalOrgId,
 } from '@kody-internal/shared/owner-person-ids.ts'
+import { http, HttpResponse } from 'msw'
 import { expect, test, vi } from 'vitest'
+import { createExecuteHelperPrelude } from '#mcp/execute-modules/kody-runtime-utils.ts'
+import { kodyCallDispatcherName } from '#worker/kody-evaluate-bindings.ts'
+import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import * as registryModule from '#mcp/capabilities/registry.ts'
 import { buildCapabilityRegistry } from '#mcp/capabilities/build-capability-registry.ts'
@@ -572,6 +576,78 @@ export default async function run() {
 	expect(sanitized.errorResult.message).toBe('[REDACTED SECRET] error')
 	expect(sanitized.errorResult.cause).toBe(sanitized.errorResult)
 	expect(result.logs).toEqual(['[REDACTED SECRET] log'])
+})
+
+test('runModuleWithRegistry redacts an oauthClientCredentials access token from results and logs while the Bearer header keeps the real value', async () => {
+	silenceIncidentalRuntimeWarnings()
+	vi.spyOn(registryModule, 'getCapabilityRegistryForContext').mockResolvedValue(
+		secretSetRegistry(),
+	)
+	const callerContext = createMcpCallerContext({
+		source: { kind: 'mcp-oauth' },
+		baseUrl: 'https://heykody.dev',
+		user: {
+			userId: personIdFromStored('user-123'),
+			email: 'user@example.com',
+			displayName: 'User Example',
+		},
+	})
+	const accessToken = 'minted+access/token=='
+	const apiAuthorizations: Array<string | null> = []
+	using _server = createMswNodeServer([
+		http.post('https://oauth.example.com/token', () =>
+			HttpResponse.json({ access_token: accessToken, token_type: 'Bearer' }),
+		),
+		http.get('https://api.example.com/items', ({ request }) => {
+			apiAuthorizations.push(request.headers.get('authorization'))
+			return HttpResponse.json({ ok: true })
+		}),
+	])
+	mockExecutor(async (providers) => {
+		const fns = providers[0]!.fns
+		const createHelpers = new Function(
+			kodyCallDispatcherName,
+			`${createExecuteHelperPrelude()}; return { oauthClientCredentials };`,
+		) as (dispatch: (name: string, args: unknown) => Promise<unknown>) => {
+			oauthClientCredentials: (input: unknown) => Promise<{
+				access_token: string
+			}>
+		}
+		const helpers = createHelpers(
+			async (name, args) => await requireFn(fns, name)(args as never),
+		)
+		const token = await helpers.oauthClientCredentials({
+			tokenUrl: 'https://oauth.example.com/token',
+			clientIdSecret: 'exampleClientId',
+			clientSecretSecret: 'exampleClientSecret',
+		})
+		const response = await fetch('https://api.example.com/items', {
+			headers: { Authorization: `Bearer ${token.access_token}` },
+		})
+		return {
+			result: { token, status: response.status },
+			logs: [
+				`token ${token.access_token}`,
+				`encoded ${encodeURIComponent(accessToken)}`,
+				`base64 ${btoa(accessToken)}`,
+			],
+		}
+	})
+	const result = await runModuleWithRegistry(
+		{} as Env,
+		callerContext,
+		`export default async function run() { return null }`,
+	)
+	expect(apiAuthorizations).toEqual([`Bearer ${accessToken}`])
+	expect(result.result).toEqual({
+		token: { access_token: '[REDACTED SECRET]', token_type: 'Bearer' },
+		status: 200,
+	})
+	expect(result.logs).toEqual([
+		'token [REDACTED SECRET]',
+		'encoded [REDACTED SECRET]',
+		'base64 [REDACTED SECRET]',
+	])
 })
 
 test('buildKodyFns rejects package storage kody tools that collide with capabilities', async () => {

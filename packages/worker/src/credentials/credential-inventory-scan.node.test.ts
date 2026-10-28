@@ -70,8 +70,8 @@ test('URL-shaped and nested-header vault examples under status() stay display-on
 	`)
 	expect(result.placeholders.vault).toBe(2)
 	expect(result.vaultPlacements).toEqual([
-		other('object', 'example'),
-		other('object', 'help'),
+		other('display', 'example'),
+		other('display', 'help'),
 	])
 	expect(
 		result.vaultPlacements.every((p) => !isVaultCredentialUsePlacement(p)),
@@ -84,10 +84,99 @@ test('assigned status arrow returns stay display-only for vault examples', () =>
 			example: 'https://api.example.com/?t={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',
 		})
 	`)
-	expect(result.vaultPlacements).toEqual([other('object', 'example')])
+	expect(result.vaultPlacements).toEqual([other('display', 'example')])
 	expect(
 		result.vaultPlacements.every((p) => !isVaultCredentialUsePlacement(p)),
 	).toBe(true)
+
+	const directReturn = scan(`
+		export const status = () =>
+			'https://api.example.com/?t={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}'
+	`)
+	expect(directReturn.vaultPlacements).toEqual([other('display')])
+})
+
+test('interpolated status help text with a vault ref stays display-only', () => {
+	const result = scan(`
+		export function status(host) {
+			return \`curl https://\${host}/?t={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}\`
+		}
+	`)
+	expect(result.vaultPlacements).toEqual([other('display')])
+})
+
+test('status returns the module itself reads or calls are not display-only', () => {
+	const vault =
+		'{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}'
+	for (const source of [
+		`export function status() { return 'https://api.example.com/?t=${vault}' }
+		export const run = () => fetch(status())`,
+		`export default {
+			help() { return { headers: { Authorization: 'Bearer ${vault}' } } },
+			run() { return fetch('https://api.example.com', this.help()) },
+		}`,
+		`export default {
+			status() { return 'https://api.example.com/?t=${vault}' },
+			run() { const url = this.status; return fetch(url()) },
+		}`,
+		`export default {
+			status() { return 'https://api.example.com/?t=${vault}' },
+			run() { return fetch(this['status']()) },
+		}`,
+		`export default {
+			status() { return 'https://api.example.com/?t=${vault}' },
+			run(key) { return fetch(this[key]()) },
+		}`,
+		`export default {
+			status() { return 'https://api.example.com/?t=${vault}' },
+			run() { const { status } = this; return fetch(status()) },
+		}`,
+		`export default {
+			status() { return 'https://api.example.com/?t=${vault}' },
+			run() { const self = this as any; return fetch(self.status()) },
+		}`,
+		`export default {
+			status() { return 'https://api.example.com/?t=${vault}' },
+			run() { return fetch((this as any).status()) },
+		}`,
+		`export default {
+			status() { return 'https://api.example.com/?t=${vault}' },
+			run() { return go(this) },
+		}`,
+	]) {
+		expect(
+			scan(source).vaultPlacements.some(isVaultCredentialUsePlacement),
+		).toBe(true)
+	}
+})
+
+test('calling an unrelated client.status() keeps the own status() return display-only', () => {
+	const result = scan(`
+		export function status() {
+			return { example: 'https://api.example.com/?t={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}' }
+		}
+		export const run = (client) => client.status()
+	`)
+	expect(result.vaultPlacements).toEqual([other('display', 'example')])
+})
+
+test('vault refs in separately bound objects that feed a request stay credential uses', () => {
+	const vault =
+		'{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}'
+	for (const source of [
+		`const spec = { description: '${vault}' }
+		export const run = (url) => fetch(url, { headers: { Authorization: spec.description } })`,
+		`const opts = { token: '${vault}' }
+		export const run = (url) => fetch(url, { headers: { Authorization: opts.token } })`,
+		`const headers = { Authorization: 'Bearer ${vault}' }
+		export const run = (url) => fetch(url, { headers })`,
+		`const body = { token: '${vault}' }
+		export const run = (url) => fetch(url, { method: 'POST', body: JSON.stringify(body) })`,
+	]) {
+		expect(
+			scan(source).vaultPlacements.some(isVaultCredentialUsePlacement),
+		).toBe(true)
+	}
 })
 
 test('unnamed nested functions inside status do not inherit display-only returns', () => {
@@ -131,7 +220,7 @@ test('docs-named body fields and header helpers under fetch stay credential uses
 	)
 })
 
-test('isVaultCredentialUsePlacement matches request and credential-mapped sites only', () => {
+test('isVaultCredentialUsePlacement fails closed outside display sites', () => {
 	const uses: Array<CredentialPlacement> = [
 		{ type: 'header', name: 'authorization', format: 'Bearer {value}' },
 		{ type: 'query', param: 'token' },
@@ -145,19 +234,20 @@ test('isVaultCredentialUsePlacement matches request and credential-mapped sites 
 		{ type: 'other', context: 'argument', key: null, callee: 'connect' },
 		{ type: 'other', context: 'url-host', key: null, callee: null },
 		{ type: 'other', context: 'unparsed', key: null, callee: null },
-	]
-	const display: Array<CredentialPlacement> = [
-		{ type: 'binding' },
 		{ type: 'other', context: 'object', key: 'example', callee: null },
 		{ type: 'other', context: 'return', key: null, callee: null },
 		{ type: 'other', context: 'assignment', key: 'help', callee: null },
 		{ type: 'other', context: 'array', key: null, callee: null },
 		{ type: 'other', context: 'default-param', key: null, callee: null },
 		{ type: 'other', context: 'comparison', key: null, callee: null },
-		{ type: 'other', context: 'unused-binding', key: null, callee: null },
 		{ type: 'other', context: 'reassigned-binding', key: null, callee: null },
 		{ type: 'other', context: 'template-computed', key: null, callee: null },
 		{ type: 'other', context: 'other', key: null, callee: null },
+	]
+	const display: Array<CredentialPlacement> = [
+		{ type: 'binding' },
+		{ type: 'other', context: 'display', key: 'example', callee: null },
+		{ type: 'other', context: 'unused-binding', key: null, callee: null },
 	]
 	expect(uses.every(isVaultCredentialUsePlacement)).toBe(true)
 	expect(display.every((p) => !isVaultCredentialUsePlacement(p))).toBe(true)

@@ -17,6 +17,7 @@ import { ensureGuideCatalogModules } from './tools/build-guide-catalog-modules.t
 import { ensureWorkerBundlerModules } from './tools/build-worker-bundler-modules.ts'
 import { inlineCssText } from './tools/vite-inline-css-text.ts'
 import { markdownAsText } from './tools/vite-markdown-as-text.ts'
+import { harfbuzzWorker } from './tools/vite-harfbuzz-worker.ts'
 import { workerWholeGraphReload } from './tools/vite-worker-whole-graph-reload.ts'
 
 import {
@@ -182,6 +183,7 @@ export default defineConfig(async ({ command }) => {
 			outDir: process.env.KODY_VITE_OUTDIR ?? 'dist',
 		},
 		plugins: [
+			harfbuzzWorker(),
 			markdownAsText(),
 			inlineCssText(),
 			cloudflare({

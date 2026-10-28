@@ -165,6 +165,7 @@ async function loadPackagePageWithD1Retry(input: {
 	username: string
 	kodyId: string
 	viewer?: McpUserContext | null
+	installOrg?: string | null
 }): Promise<PackagePageAccess> {
 	try {
 		return await runD1WithRetry(() => loadPackagePageUncached(input))
@@ -190,6 +191,8 @@ export function loadPackagePage(input: {
 	 * file reads). Omit to read the session cookie; `null` is anonymous.
 	 */
 	viewer?: McpUserContext | null
+	/** Org whose community installs badge the page (`?org=`). */
+	installOrg?: string | null
 }): Promise<PackagePageAccess> {
 	const viewerKey =
 		input.viewer === undefined
@@ -197,7 +200,7 @@ export function loadPackagePage(input: {
 			: `viewer:${input.viewer?.userId ?? 'anonymous'}`
 	return memoizePerRequest({
 		request: input.request,
-		key: `package-page:${input.username}:${input.kodyId}:${viewerKey}`,
+		key: `package-page:${input.username}:${input.kodyId}:${viewerKey}:${input.installOrg ?? ''}`,
 		load: () =>
 			recordServerTiming(
 				'package-page',
@@ -385,6 +388,7 @@ async function loadPackagePageUncached(input: {
 	username: string
 	kodyId: string
 	viewer?: McpUserContext | null
+	installOrg?: string | null
 }): Promise<PackagePageAccess> {
 	// The URL lookup only needs the pair; the viewer lookup only needs the
 	// cookie. Neither waits on the other.
@@ -434,6 +438,7 @@ async function resolvePackagePageForViewer(
 		request: Request
 		username: string
 		kodyId: string
+		installOrg?: string | null
 	},
 	target: Awaited<ReturnType<typeof resolvePackagePageUrl>>,
 	viewer: McpUserContext | null,
@@ -566,7 +571,12 @@ async function resolvePackagePageForViewer(
 		])
 		const [listing, ownerPackage] = await Promise.all([
 			target.listingId
-				? loadCommunityDetailData(input.env, input.request, target.listingId)
+				? loadCommunityDetailData(
+						input.env,
+						input.request,
+						target.listingId,
+						input.installOrg ?? null,
+					)
 				: Promise.resolve(null),
 			loadAccountPackageDetail({
 				env: input.env,
@@ -607,7 +617,12 @@ async function resolvePackagePageForViewer(
 
 	if (target.listingId) {
 		const [listing, viewerMayRun] = await Promise.all([
-			loadCommunityDetailData(input.env, input.request, target.listingId),
+			loadCommunityDetailData(
+				input.env,
+				input.request,
+				target.listingId,
+				input.installOrg ?? null,
+			),
 			viewer && target.savedPackage
 				? viewerCanExecutePackageApp({
 						env: input.env,

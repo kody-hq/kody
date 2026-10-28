@@ -38,7 +38,6 @@ import {
 	renderMappingCell,
 	renderStatus,
 	rowCss,
-	tabBodyCss,
 	tableCss,
 } from './package-credentials-tabs.tsx'
 
@@ -321,7 +320,7 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 		)
 	}
 	return (
-		<div css={tabBodyCss}>
+		<>
 			{renderIncomplete(context, 'triggers')}
 			<p css={mutedCss}>
 				Each trigger runs as the person who turned it on. A trigger can map its
@@ -461,6 +460,6 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 					</section>
 				)
 			})}
-		</div>
+		</>
 	)
 }

@@ -387,7 +387,12 @@ test('the OpenAPI document covers every operation with resolvable refs', async (
 			}
 			expect(operation).not.toHaveProperty('x-kody-scope')
 			const permission = operation['x-kody-permission']
-			if (permission !== 'none' && !isOrgPermission(permission)) {
+			const valid =
+				permission === 'none' ||
+				(Array.isArray(permission)
+					? permission.length > 1 && permission.every(isOrgPermission)
+					: isOrgPermission(permission))
+			if (!valid) {
 				missingPermissions.push(String(operation.operationId))
 			}
 		}

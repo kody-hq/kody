@@ -7,7 +7,7 @@ export type ClaIdentity = {
 	email: string | null
 }
 
-export type ClaSigner = {
+type ClaSigner = {
 	github: string
 	signedAt: string
 	cla: 'individual' | 'entity'
@@ -23,7 +23,7 @@ export type ClaSignersFile = {
 	signers: Array<ClaSigner>
 }
 
-export type ClaMissingIdentity = {
+type ClaMissingIdentity = {
 	identity: ClaIdentity
 	reason: string
 }
@@ -224,7 +224,7 @@ export function applyIndividualClaSigningComments(
 	return { file: updated, recorded }
 }
 
-export function isAllowlistedIdentity(
+function isAllowlistedIdentity(
 	identity: ClaIdentity,
 	signersFile: ClaSignersFile,
 ) {
@@ -249,10 +249,7 @@ export function isAllowlistedIdentity(
 	)
 }
 
-export function hasSignedCla(
-	identity: ClaIdentity,
-	signersFile: ClaSignersFile,
-) {
+function hasSignedCla(identity: ClaIdentity, signersFile: ClaSignersFile) {
 	const login = identity.githubLogin ? normalize(identity.githubLogin) : null
 	if (!login) {
 		return false
@@ -303,7 +300,7 @@ export function formatClaFailure(
 		'Read docs/legal/individual-cla.md (or the Entity CLA if an organization owns the work).',
 		'Comment on the pull request: I have read the CLA and I hereby sign the CLA',
 		'That signing comment on the pull request satisfies this check.',
-		'The signer is recorded on main after the pull request merges. See docs/contributing/inbound-contributions.md.',
+		'The signer is recorded on the cla-signatures branch after the pull request merges. See docs/contributing/inbound-contributions.md.',
 		'',
 		'Missing signatures:',
 		...result.missing.map((entry) => `- ${entry.reason}`),

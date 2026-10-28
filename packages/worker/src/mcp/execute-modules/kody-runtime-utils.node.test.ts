@@ -6,7 +6,7 @@ import {
 	type ExecuteRequestInput,
 	createAuthenticatedFetch,
 	createExecuteHelperPrelude,
-	type oauthClientCredentials,
+	oauthClientCredentials,
 	type secretHeaders,
 } from './kody-runtime-utils.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
@@ -437,4 +437,65 @@ test('createExecuteHelperPrelude exposes sandbox oauth and secret helper binding
 	expect(clientCredentialsCalls[0]?.headers.get('authorization')).toBe(
 		'{{secret-basic:username=paypalClientId,password=paypalClientSecret|scope=user}}',
 	)
+})
+
+test('oauthClientCredentials passes the minted access token to trackAccessToken and returns the payload unchanged', async () => {
+	const tracked: Array<string> = []
+	const authorizations: Array<string | null> = []
+	const payload = await oauthClientCredentials(
+		{
+			tokenUrl: 'https://oauth.example.com/token',
+			clientIdSecret: 'exampleClientId',
+			clientSecretSecret: 'exampleClientSecret',
+		},
+		{
+			fetch: async (input, init) => {
+				authorizations.push(
+					new Request(input, init).headers.get('authorization'),
+				)
+				return Response.json({ access_token: 'minted-token', expires_in: 60 })
+			},
+			trackAccessToken: (accessToken) => tracked.push(accessToken),
+		},
+	)
+	expect(payload).toEqual({ access_token: 'minted-token', expires_in: 60 })
+	expect(tracked).toEqual(['minted-token'])
+	expect(authorizations).toEqual([
+		'{{secret-basic:username=exampleClientId,password=exampleClientSecret}}',
+	])
+})
+
+test('sandbox oauthClientCredentials registers the access token and still returns it when tracking is unavailable', async () => {
+	const calls: Array<{ name: string; args: CapabilityArgs }> = []
+	using _server = createMswNodeServer([
+		http.post('https://oauth.example.com/token', () =>
+			HttpResponse.json({
+				access_token: 'sandbox-token',
+				token_type: 'Bearer',
+			}),
+		),
+	])
+	const input = {
+		tokenUrl: 'https://oauth.example.com/token',
+		clientIdSecret: 'exampleClientId',
+		clientSecretSecret: 'exampleClientSecret',
+	}
+	const tracking = createSandboxHelpers(async (name, args) => {
+		calls.push({ name, args })
+		return { ok: true }
+	})
+	await expect(tracking.oauthClientCredentials(input)).resolves.toEqual({
+		access_token: 'sandbox-token',
+		token_type: 'Bearer',
+	})
+	expect(calls).toEqual([
+		{ name: '__kodyTrackRunSecret', args: { value: 'sandbox-token' } },
+	])
+	const untracked = createSandboxHelpers(async (name) => {
+		throw new Error(`${name} is not available in this sandbox.`)
+	})
+	await expect(untracked.oauthClientCredentials(input)).resolves.toEqual({
+		access_token: 'sandbox-token',
+		token_type: 'Bearer',
+	})
 })

@@ -223,3 +223,36 @@ test('community listings render sort controls, categories, empty states, and for
 		),
 	).toEqual(noGaps)
 })
+
+test('catalog links keep the picked install org so the detail page forks into it', async () => {
+	const html = await renderCommunityListingsContentHtml({
+		listings: [
+			{
+				...sampleListing,
+				kodyId: 'weather-widget',
+				name: '@sample-author/weather-widget',
+				ownerUsername: 'sample-author',
+				category: 'integrations',
+			},
+		],
+		query: null,
+		installOrg: 'example-team',
+	})
+	expect(html).toContain(
+		'href="/@sample-author/weather-widget?org=example-team"',
+	)
+	expect(html).toMatch(/href="\/community\?[^"]*org=example-team/)
+
+	const personal = await renderCommunityListingsContentHtml({
+		listings: [sampleListing],
+		query: null,
+	})
+	expect(personal).not.toContain('org=')
+
+	const empty = await renderCommunityListingsContentHtml({
+		listings: [],
+		query: 'missing',
+		installOrg: 'example-team',
+	})
+	expect(empty).toMatch(/href="\/community\?[^"]*org=example-team/)
+})

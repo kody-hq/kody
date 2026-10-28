@@ -18,6 +18,8 @@ import {
 	copyPromptTooltipCss,
 } from './fork-outdated-copy-button.tsx'
 import { renderIcon, type IconName } from './icon.tsx'
+import { CommunityInstallOrgSelect } from './community-install-org-select.tsx'
+import { type CommunityInstallOrgPicker } from '../use-community-install-org.ts'
 import {
 	getGhostButtonCss,
 	getPillButtonCss,
@@ -119,6 +121,7 @@ export function renderPackageRepoActions(
 					</span>
 				</SiteLink>
 			) : null}
+			{actions.fork?.loggedIn ? <InstallOrgControl /> : null}
 			{actions.fork ? renderStatusControl(actions.fork) : null}
 			{actions.packageAppHref ? (
 				<a
@@ -255,6 +258,8 @@ export const PackageInstallContext = createContext<{
 	inProgress: { startedAt: string } | null
 	onInstall: () => void
 	onDisarm: () => void
+	/** Org picker for the fork target; null when only one org can fork. */
+	orgPicker?: CommunityInstallOrgPicker | null
 }>({
 	busy: false,
 	confirmed: false,
@@ -262,7 +267,20 @@ export const PackageInstallContext = createContext<{
 	inProgress: null,
 	onInstall: () => {},
 	onDisarm: () => {},
+	orgPicker: null,
 })
+
+function InstallOrgControl() {
+	const install = useContext(PackageInstallContext)
+	if (!install.orgPicker) return null
+	return (
+		<CommunityInstallOrgSelect
+			picker={install.orgPicker}
+			disabled={install.busy}
+			compact
+		/>
+	)
+}
 function renderInstallControl(input: {
 	icon: IconName
 	label: string

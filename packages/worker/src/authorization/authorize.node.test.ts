@@ -20,7 +20,7 @@ import {
 	isLivePersonRequest,
 	LivePersonRequiredError,
 	AuthorizationError,
-	denyProfileBoundPackageCreate,
+	authorizePackageCreate,
 	canSeeResource,
 	checkOrgWide,
 	checkPermission,
@@ -337,7 +337,7 @@ test('a bound profile cannot create a saved package and an unbound caller can', 
 			actions: ['read', 'write'],
 		},
 	])
-	const error = await denyProfileBoundPackageCreate({
+	const error = await authorizePackageCreate({
 		env,
 		request: bound,
 	}).catch((caught: unknown) => caught)
@@ -355,17 +355,53 @@ test('a bound profile cannot create a saved package and an unbound caller can', 
 	stubCompile(emptyGrants)
 	mocks.resolveConnectionProfileGrants.mockResolvedValueOnce([])
 	await expect(
-		denyProfileBoundPackageCreate({ env, request: emptyGrants }),
+		authorizePackageCreate({ env, request: emptyGrants }),
 	).rejects.toMatchObject({ code: 'connection_profile' })
 
 	const unbound = sessionRequestContext('user-1')
 	stubCompile(unbound)
 	await expect(
-		denyProfileBoundPackageCreate({ env, request: unbound }),
+		authorizePackageCreate({ env, request: unbound }),
 	).resolves.toBeUndefined()
 	await expect(
-		denyProfileBoundPackageCreate({ env, request: null }),
+		authorizePackageCreate({ env, request: null }),
+	).rejects.toMatchObject({ code: 'unauthenticated' })
+})
+
+test('a member without package:create cannot create a saved package', async () => {
+	const member = deriveRequestContext({
+		user: { userId: personIdFromStored('user-1') },
+		source: { kind: 'mcp-oauth' },
+		orgBinding: {
+			org: { id: ownerIdFromStored('org-1'), slug: 'org-1' },
+			role: 'member',
+		},
+	})
+	stubCompile(member)
+	await expect(
+		authorizePackageCreate({ env, request: member }),
+	).rejects.toMatchObject({ permission: 'package:create' })
+})
+
+test('a surface permission list passes when any one permission is held', async () => {
+	const member = deriveRequestContext({
+		user: { userId: personIdFromStored('user-1') },
+		source: { kind: 'mcp-oauth' },
+		orgBinding: {
+			org: { id: ownerIdFromStored('org-1'), slug: 'org-1' },
+			role: 'member',
+		},
+	})
+	stubCompile(member)
+	await expect(
+		authorizeSurface({ env, request: member }, ['package:write', 'org:read']),
 	).resolves.toBeUndefined()
+	await expect(
+		authorizeSurface({ env, request: member }, [
+			'package:write',
+			'package:create',
+		]),
+	).rejects.toMatchObject({ permission: 'package:write' })
 })
 
 test('a request with no signed-in person is denied unless the surface touches no org data', async () => {

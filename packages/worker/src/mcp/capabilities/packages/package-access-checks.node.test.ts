@@ -15,6 +15,8 @@ import { createConnectionProfile } from '#worker/connection-profiles/repo.ts'
 import {
 	addOrgMember,
 	createOrg,
+	createTeam,
+	addTeamMember,
 	upsertGrant,
 } from '#worker/orgs/access-writes.ts'
 import { insertSavedPackage } from '#worker/package-registry/repo.ts'
@@ -30,11 +32,30 @@ import { listPackageSubscriptionsCapability } from './list-package-subscriptions
 import { packageSubscriptionDispatchCapability } from './package-subscription-dispatch.ts'
 
 // Artifacts and the manifest loader are the only fakes: they stand in for the
-// git backing store, not for any access decision.
+// git backing store, not for any access decision. The stub package writer is
+// faked too because it pushes the stub files to Artifacts.
+const stubWriter = vi.hoisted(() => ({
+	create:
+		vi.fn<
+			(input: {
+				owner: { ownerUserId: string; ownerScope: string }
+				kodyId: string
+			}) => Promise<unknown>
+		>(),
+}))
+
+vi.mock('./create-stub-package.ts', () => ({
+	createStubSavedPackage: (input: {
+		owner: { ownerUserId: string; ownerScope: string }
+		kodyId: string
+	}) => stubWriter.create(input),
+}))
+
 vi.mock('#worker/repo/source-safety-policy.ts', async (importOriginal) => {
 	const actual = await importOriginal<Record<string, unknown>>()
 	return {
 		...actual,
+		assertRestorablePackageSourceSnapshot: async () => undefined,
 		assertPublishedPackageSourceRepoHead: async (input: {
 			source: { id: string }
 		}) => ({
@@ -333,3 +354,143 @@ for (const [label, arrange] of [
 		}
 	})
 }
+
+/**
+ * `@rocket-co` owns package alpha. The teammate is a member of team
+ * `maintainers`, whose org grant holds `package:create` when `canCreate`, and
+ * who has a `use` grant (read, no write) on alpha.
+ */
+async function maintainerInRocketCo({ canCreate }: { canCreate: boolean }) {
+	const { db, env, kentId, memberId } = await setup()
+	const audit = createTestOrgAuditWriter({ actorUserId: kentId })
+	const teamOrg = await createOrg({
+		db,
+		env: {} as Env,
+		slug: 'rocket-co',
+		createdByUserId: kentId,
+		audit,
+	})
+	const teamOrgId = teamOrg.id as string
+	const alpha = await insertPackage(db, {
+		ownerId: teamOrgId,
+		scope: 'rocket-co',
+		leaf: 'alpha',
+	})
+	await addOrgMember({
+		db,
+		orgId: teamOrgId,
+		userId: memberId,
+		role: 'member',
+		invitedByUserId: kentId,
+		audit,
+	})
+	const team = await createTeam({
+		db,
+		orgId: teamOrgId,
+		slug: 'maintainers',
+		name: 'Maintainers',
+		createdByUserId: kentId,
+		audit,
+	})
+	await addTeamMember({
+		db,
+		orgId: teamOrgId,
+		teamId: team.id,
+		userId: memberId,
+		addedByUserId: kentId,
+		audit,
+	})
+	if (canCreate) {
+		await upsertGrant({
+			db,
+			orgId: teamOrgId,
+			resourceType: 'org',
+			resourceId: teamOrgId,
+			subject: { type: 'team', id: team.id },
+			preset: null,
+			permissions: ['package:create'],
+			createdByUserId: kentId,
+			audit,
+		})
+	}
+	await upsertGrant({
+		db,
+		orgId: teamOrgId,
+		resourceType: 'package',
+		resourceId: alpha,
+		subject: { type: 'team', id: team.id },
+		preset: 'use',
+		permissions: null,
+		createdByUserId: kentId,
+		audit,
+	})
+	stubWriter.create.mockReset()
+	stubWriter.create.mockImplementation(async (input) => {
+		await insertPackage(db, {
+			ownerId: input.owner.ownerUserId,
+			scope: input.owner.ownerScope,
+			leaf: input.kodyId,
+		})
+	})
+	return {
+		alpha,
+		ctx: context(env, {
+			personId: memberId,
+			username: 'teammate',
+			org: { id: teamOrgId, slug: 'rocket-co', role: 'member' },
+		}),
+	}
+}
+
+test('a member whose team holds org package:create creates a package and gets a write remote for it', async () => {
+	const { ctx } = await maintainerInRocketCo({ canCreate: true })
+
+	const remote = await getGitRemoteCapability.handler(
+		{ name: '@rocket-co/fresh', create: true, scope: 'write' },
+		ctx,
+	)
+	expect(remote).toMatchObject({ created: true, scope: 'write' })
+	expect(stubWriter.create).toHaveBeenCalledTimes(1)
+
+	const defaulted = await maintainerInRocketCo({ canCreate: true })
+	await expect(
+		getGitRemoteCapability.handler(
+			{ name: '@rocket-co/other', create: true },
+			defaulted.ctx,
+		),
+	).resolves.toMatchObject({ created: true, scope: 'write' })
+})
+
+test('a member without package:create is refused and no package is created', async () => {
+	const { ctx } = await maintainerInRocketCo({ canCreate: false })
+
+	const error = await rejection(
+		getGitRemoteCapability.handler(
+			{ name: '@rocket-co/fresh', create: true, scope: 'write' },
+			ctx,
+		),
+	)
+	expect(error).toBeInstanceOf(AuthorizationError)
+	expect(error).toMatchObject({ permission: 'package:create' })
+	expect(stubWriter.create).not.toHaveBeenCalled()
+})
+
+test('org package:create does not grant write on an existing package', async () => {
+	const { alpha, ctx } = await maintainerInRocketCo({ canCreate: true })
+
+	for (const args of [
+		{ package_id: alpha, scope: 'write' as const },
+		{ name: '@rocket-co/alpha', create: true, scope: 'write' as const },
+	]) {
+		const error = await rejection(getGitRemoteCapability.handler(args, ctx))
+		expect(error).toBeInstanceOf(AuthorizationError)
+		expect(error).toMatchObject({ permission: 'package:write' })
+	}
+	expect(stubWriter.create).not.toHaveBeenCalled()
+	await expect(
+		getGitRemoteCapability.handler(
+			{ name: '@rocket-co/alpha', create: true },
+			ctx,
+		),
+	).resolves.toMatchObject({ created: false, scope: 'read' })
+})

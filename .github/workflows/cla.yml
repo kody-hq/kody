@@ -41,6 +41,14 @@ jobs:
           ref: ${{ github.event.pull_request.base.ref }}
           persist-credentials: false
 
+      - name: 📜 Checkout CLA signatures
+        uses: actions/checkout@v6.0.2
+        with:
+          # Signer records live on this branch, never on the PR head.
+          ref: cla-signatures
+          path: cla-signatures
+          persist-credentials: false
+
       - name: 🟢 Setup Node
         uses: actions/setup-node@v6
         with:
@@ -105,12 +113,8 @@ jobs:
       - name: ✍️ Check CLA
         id: check
         run: |
-          if [ ! -f tools/ci/check-cla.ts ] || [ ! -f .github/cla-signers.json ]; then
-            echo "CLA checker is not on the base branch yet."
-            exit 0
-          fi
           check_args=(
-            --signers .github/cla-signers.json
+            --signers cla-signatures/cla-signers.json
             --identities-json cla-identities.json
           )
           if grep -q -- '--signing-comments-json' tools/ci/check-cla.ts; then
@@ -135,7 +139,7 @@ jobs:
 
             1. Read the [Individual CLA](https://github.com/${{ github.repository }}/blob/main/docs/legal/individual-cla.md) (or the [Entity CLA](https://github.com/${{ github.repository }}/blob/main/docs/legal/entity-cla.md) if an organization owns the work).
             2. Comment exactly: \`I have read the CLA and I hereby sign the CLA\`
-            3. That signing comment satisfies this check. The signer is recorded in \`.github/cla-signers.json\` on \`main\` after this pull request merges. See [Inbound contributions](https://github.com/${{ github.repository }}/blob/main/docs/contributing/inbound-contributions.md).
+            3. That signing comment satisfies this check. The signer is recorded on the \`cla-signatures\` branch after this pull request merges. See [Inbound contributions](https://github.com/${{ github.repository }}/blob/main/docs/contributing/inbound-contributions.md).
 
             Adding your own username on this branch does not pass the check.`
             const comments = await github.paginate(
@@ -253,7 +257,7 @@ jobs:
                 ? 'The CLA check will re-run.'
                 : 'The CLA check will include this signing comment on its next run.'
               const body = `${marker}
-            Thanks @${login} — your signature on this PR satisfies the CLA check, and you'll be recorded in \`.github/cla-signers.json\` on \`main\` after this PR merges. ${followUp}`
+            Thanks @${login} — your signature on this PR satisfies the CLA check, and you'll be recorded on the \`cla-signatures\` branch after this PR merges. ${followUp}`
               const comments = await github.paginate(
                 github.rest.issues.listComments,
                 {
@@ -290,32 +294,31 @@ jobs:
       'workflow_dispatch'
     runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
     name: 📝 Record CLA after merge
-    timeout-minutes: 60
+    timeout-minutes: 15
     concurrency:
-      group: cla-signers-main
+      group: cla-signatures
       cancel-in-progress: false
     permissions:
       contents: write
-      pull-requests: write
-      actions: write
-      checks: read
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - name: 📦 Checkout main
         uses: actions/checkout@v6.0.2
         with:
           ref: main
-          fetch-depth: 0
+          persist-credentials: false
 
       - name: 🟢 Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: 26
 
-      - name: 🌿 Checkout signer branch from main
-        run: |
-          git fetch origin main && git checkout -B cla/record-signers origin/main
+      - name: 📜 Checkout CLA signatures
+        uses: actions/checkout@v6.0.2
+        with:
+          # Signers are committed straight to this branch; the main ruleset
+          # does not cover it, so no bot PR or Validate run is needed.
+          ref: cla-signatures
+          path: cla-signatures
 
       - name: 🧾 Collect signing comments
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
@@ -471,129 +474,24 @@ jobs:
       - name: 📝 Apply signer comments
         id: record
         run: |
-          if [ ! -f tools/ci/check-cla.ts ] || [ ! -f .github/cla-signers.json ]; then
-            echo "CLA signer recorder is not on main yet."
-            echo "added=false" >> "$GITHUB_OUTPUT"
-            echo "github=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
           node tools/ci/check-cla.ts \
-            --signers .github/cla-signers.json \
+            --signers cla-signatures/cla-signers.json \
             --record-comments-json cla-signing-comments.json > cla-record-output.txt
           cat cla-record-output.txt
           grep -E '^(added|github)=' cla-record-output.txt >> "$GITHUB_OUTPUT"
 
-      - name: 🌱 Commit and push signer changes
-        id: pr
+      - name: 🌱 Commit and push signers
         if: steps.record.outputs.added == 'true'
+        working-directory: cla-signatures
         env:
           CLA_LOGINS: ${{ steps.record.outputs.github }}
         run: |
           set -euo pipefail
-          git add .github/cla-signers.json
+          git add cla-signers.json
           if git diff --cached --quiet; then
-            echo "added=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          title="Record CLA signers: @${CLA_LOGINS//,/, @}"
-          git commit -m "$title"
-          git push -f origin HEAD:refs/heads/cla/record-signers
-          IFS=',' read -r -a signer_logins <<< "$CLA_LOGINS"
-          {
-            echo "This bot PR records individual CLA signatures from recent merged pull requests."
-            echo
-            echo "Signers:"
-            for login in "${signer_logins[@]}"; do
-              echo "- @${login}"
-            done
-            echo
-            echo "Recording covers the last 50 merged pull requests and is self-healing."
-            echo "This PR merges only after ✅ Validate succeeds on the exact validated head."
-          } > cla-signers-pr-body.md
-          pull_query="repos/${GITHUB_REPOSITORY}/pulls?state=open&base=main&head=${GITHUB_REPOSITORY_OWNER}:cla/record-signers"
-          existing_pr="$(gh api "$pull_query" --jq '.[0].number // empty')"
-          if [ -n "$existing_pr" ]; then
-            gh pr edit "$existing_pr" --title "$title" --body-file cla-signers-pr-body.md
-          else
-            gh pr create \
-              --base main \
-              --head cla/record-signers \
-              --title "$title" \
-              --body-file cla-signers-pr-body.md
-          fi
-          pr_number="$(gh api "$pull_query" --jq '.[0].number // empty')"
-          if [ -z "$pr_number" ]; then
-            echo "Could not find the CLA signer pull request after creating it." >&2
-            exit 1
-          fi
-          echo "added=true" >> "$GITHUB_OUTPUT"
-          echo "branch=cla/record-signers" >> "$GITHUB_OUTPUT"
-          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
-          echo "pr_url=https://github.com/${GITHUB_REPOSITORY}/pull/${pr_number}" >> "$GITHUB_OUTPUT"
-
-      - name: ✅ Dispatch and wait for Validate
-        id: validate
-        if: steps.pr.outputs.added == 'true'
-        env:
-          BRANCH: ${{ steps.pr.outputs.branch }}
-          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
-          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
-          PR_URL: ${{ steps.pr.outputs.pr_url }}
-        run: |
-          set -euo pipefail
-          dispatch_started_at="$(date +%s%3N)"
-          if ! gh workflow run validate.yml --ref "$BRANCH" -f no_cache=false; then
-            echo "::warning title=CLA signer PR::Could not dispatch Validate for PR #${PR_NUMBER}: ${PR_URL}"
-            echo "passed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          deadline=$(( $(date +%s) + 3000 ))
-          check_runs_url="repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?check_name=%E2%9C%85%20Validate&per_page=100"
-          while [ "$(date +%s)" -lt "$deadline" ]; do
-            if ! check_runs="$(gh api "$check_runs_url")"; then
-              echo "::warning title=CLA signer PR::Could not read Validate status for PR #${PR_NUMBER}: ${PR_URL}"
-              echo "passed=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            check_run="$(printf '%s' "$check_runs" | jq -r '
-              [.check_runs[] | select(.name == "✅ Validate")]
-              | if length == 0 then "" else
-                  (sort_by(.started_at) | last
-                    | [.status // "", .conclusion // "", .started_at // ""]
-                    | @tsv)
-                end
-            ')"
-            if [ -n "$check_run" ]; then
-              IFS=$'\t' read -r status conclusion started_at <<< "$check_run"
-              # Check runs expose started_at (no created_at); an empty value
-              # would parse as midnight and never match this dispatch.
-              if [ -n "$started_at" ] && [ "$(date -d "$started_at" +%s%3N)" -ge "$dispatch_started_at" ]; then
-                if [ "$status" = completed ]; then
-                  if [ "$conclusion" = success ]; then
-                    echo "passed=true" >> "$GITHUB_OUTPUT"
-                    exit 0
-                  fi
-                  echo "::warning title=CLA signer PR::Validate concluded ${conclusion:-without a conclusion} for PR #${PR_NUMBER}: ${PR_URL}"
-                  echo "passed=false" >> "$GITHUB_OUTPUT"
-                  exit 0
-                fi
-              fi
-            fi
-            sleep 30
-          done
-          echo "::warning title=CLA signer PR::Validate did not finish within 50 minutes for PR #${PR_NUMBER}: ${PR_URL}"
-          echo "passed=false" >> "$GITHUB_OUTPUT"
-
-      - name: 🔀 Merge validated signer PR
-        if: steps.validate.outputs.passed == 'true'
-        env:
-          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
-          PR_URL: ${{ steps.pr.outputs.pr_url }}
-          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
-        run: |
-          if ! gh pr merge "$PR_NUMBER" --squash --delete-branch --match-head-commit "$HEAD_SHA"; then
-            echo "::warning title=CLA signer PR::Validate passed, but automatic merge failed for PR #${PR_NUMBER}: ${PR_URL}"
-          fi
+          git commit -m "Record CLA signers: @${CLA_LOGINS//,/, @}"
+          git push origin HEAD:refs/heads/cla-signatures

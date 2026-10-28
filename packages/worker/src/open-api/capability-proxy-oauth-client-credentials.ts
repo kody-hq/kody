@@ -120,6 +120,8 @@ async function authorizeOauthClientCredentialsPackageId(input: {
 export async function runCapabilityProxyOauthClientCredentials(input: {
 	ctx: ApiInvocationContext
 	args: ReadonlyArray<unknown>
+	/** Registers the minted access token with the proxy call's redactor. */
+	trackAccessToken?: (accessToken: string) => void
 }) {
 	const call = parseCapabilityProxyOauthClientCredentialsArgs(input.args)
 	const user = input.ctx.callerContext.user
@@ -162,5 +164,10 @@ export async function runCapabilityProxyOauthClientCredentials(input: {
 		})
 	}
 
-	return await oauthClientCredentials(oauthInput, { fetch: gatewayFetch })
+	return await oauthClientCredentials(oauthInput, {
+		fetch: gatewayFetch,
+		...(input.trackAccessToken
+			? { trackAccessToken: input.trackAccessToken }
+			: {}),
+	})
 }

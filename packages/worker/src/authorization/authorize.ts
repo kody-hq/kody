@@ -524,15 +524,20 @@ export async function authorizePackageWrite(
 }
 
 /**
- * A bound profile names existing packages, so it cannot create one. Call this
- * from saved-package creation (`packageSave` and `packageGetGitRemote` when
- * the package does not exist yet, `communityFork`, `repoPromoteToPackage`).
- * Org-level `package:create` stays open so plain `repoCreate` is unchanged.
+ * The one check for creating a saved package (`packageSave` and
+ * `packageGetGitRemote` when the package does not exist yet, `communityFork`,
+ * `repoPromoteToPackage`). Creation needs org-level `package:create`, never
+ * org-wide `package:write`, which no org grant can hold. Writes to existing
+ * packages stay on `authorizePackageWrite`.
+ *
+ * A bound profile names existing packages, so it cannot create one. Plain
+ * `repoCreate` keeps its own `package:create` check and is unaffected.
  */
-export async function denyProfileBoundPackageCreate(ctx: {
+export async function authorizePackageCreate(ctx: {
 	env: Env
 	request: RequestContext | null
 }): Promise<void> {
+	await authorize(ctx, 'package:create')
 	if (!ctx.request?.credential.profileName) return
 	const access = await computeEffectivePermissions({
 		env: ctx.env,
@@ -638,9 +643,20 @@ export function authorizeCredentialScope(
 /**
  * What a capability or Open API operation requires. `none` declares that it
  * touches no org data (who-am-I, static guides, site-admin tools, which
- * `requiredRole` gates instead).
+ * `requiredRole` gates instead). A list passes when any one is held, for a
+ * surface whose handler picks the permission per call (create vs update).
  */
-export type SurfacePermission = OrgPermission | 'none'
+export type SurfacePermission =
+	| OrgPermission
+	| 'none'
+	| readonly [OrgPermission, OrgPermission, ...Array<OrgPermission>]
+
+export function surfacePermissionList(
+	permission: SurfacePermission,
+): ReadonlyArray<OrgPermission> {
+	if (permission === 'none') return []
+	return typeof permission === 'string' ? [permission] : permission
+}
 
 /**
  * A capability that needs a live person ran without one: from a triggered
@@ -751,15 +767,31 @@ export function assertLivePerson(
 
 /**
  * The dispatch gate every capability and Open API operation passes. The
- * permission must be held in the org; handlers then call `authorize` with
+ * permission (or one from a list) must be held in the org; handlers then call `authorize` with
  * the concrete resource.
  */
 export async function authorizeSurface(
 	ctx: { env: Env; request: RequestContext | null },
 	permission: SurfacePermission,
 ): Promise<void> {
-	if (permission === 'none') return
-	await authorize(ctx, permission)
+	const [first, ...rest] = surfacePermissionList(permission)
+	if (!first) return
+	try {
+		await authorize(ctx, first)
+	} catch (error) {
+		if (!(error instanceof AuthorizationError)) throw error
+		for (const alternative of rest) {
+			const allowed = await authorize(ctx, alternative).then(
+				() => true,
+				(caught: unknown) => {
+					if (caught instanceof AuthorizationError) return false
+					throw caught
+				},
+			)
+			if (allowed) return
+		}
+		throw error
+	}
 }
 
 // Re-export so callers that only need the vocabulary keep one import path.

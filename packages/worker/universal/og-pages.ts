@@ -38,7 +38,7 @@ export const publicOgPages = {
 		imageTitle: homeOgImageTitle,
 		imageSubtitle: homeOgImageSubtitle,
 		// "your team's agents" overflows the title column at the default 78px.
-		imageTitleFontSize: 66,
+		imageTitleFontSize: 72,
 		ogTitle: stripOgEmphasis(homeOgImageTitle),
 		ogDescription: homeOgImageSubtitle,
 		path: '/',
