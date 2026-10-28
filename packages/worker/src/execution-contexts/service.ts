@@ -63,6 +63,7 @@ export async function requireExecutionContextsCaller(input: {
 		!(await isExecutionContextsEnabledFor(
 			input.env.APP_DB,
 			request.actor.userId,
+			request.org.id,
 		))
 	) {
 		throw new ExecutionContextError({

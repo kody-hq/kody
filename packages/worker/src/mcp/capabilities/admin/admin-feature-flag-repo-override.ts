@@ -34,7 +34,7 @@ const repoOverrideSchema = z.object({
 
 const repoEvaluationSchema = z.object({
 	enabled: z.boolean(),
-	source: z.enum(['override', 'global', 'rollout', 'default']),
+	source: z.enum(['override', 'org', 'global', 'rollout', 'default']),
 	repoOverride: z.boolean(),
 })
 

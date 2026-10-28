@@ -2,10 +2,14 @@ import { isFeatureEnabled } from '#worker/feature-flags/service.ts'
 
 export const executionContextsFlagKey = 'execution-contexts'
 
-/** Fails closed: an unknown person or a flag read error means off. */
+/**
+ * Fails closed: an unknown person or a flag read error means off. `orgId` is
+ * the request's org context, so a per-org row for that org applies.
+ */
 export async function isExecutionContextsEnabledFor(
 	db: D1Database,
 	personId: string,
+	orgId: string | null,
 ) {
 	try {
 		const row = await db
@@ -15,7 +19,12 @@ export async function isExecutionContextsEnabledFor(
 			.bind(personId)
 			.first<{ id: number }>()
 		if (!row) return false
-		return await isFeatureEnabled(db, executionContextsFlagKey, row.id)
+		return await isFeatureEnabled(
+			db,
+			executionContextsFlagKey,
+			row.id,
+			orgId ? { orgId } : null,
+		)
 	} catch {
 		return false
 	}

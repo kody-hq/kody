@@ -227,7 +227,9 @@ export async function handleExecutionContextKeyRoute(input: {
 	const caller = api.callerContext.request
 	if (!caller?.actor) throw signatureError('person_required', 403)
 	const userId = caller.actor.userId
-	if (!(await isExecutionContextsEnabledFor(env.APP_DB, userId))) {
+	if (
+		!(await isExecutionContextsEnabledFor(env.APP_DB, userId, caller.org.id))
+	) {
 		throw featureDisabled()
 	}
 	try {

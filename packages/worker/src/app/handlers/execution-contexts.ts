@@ -7,12 +7,13 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { isFeatureEnabled } from '#worker/feature-flags/service.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
-import { listTeams } from '#worker/orgs/org-teams-list.ts'
 import {
+	getOrgBySlug,
 	listOrgsForPerson,
 	loadOrgBindingForSlug,
 	type OrgBinding,
 } from '#worker/orgs/repo.ts'
+import { listTeams } from '#worker/orgs/org-teams-list.ts'
 import { executionContextsFlagKey } from '#universal/feature-flags/registry.ts'
 import {
 	type ExecutionChain,
@@ -371,11 +372,13 @@ export async function loadExecutionContextsPageData(input: {
 	contextId: string | null
 }): Promise<ExecutionContextsPageData | { notFound: true }> {
 	const { env, user } = input
+	const pageOrg = await getOrgBySlug(env.APP_DB, input.orgSlug)
 	const enabled =
 		(await isFeatureEnabled(
 			env.APP_DB,
 			executionContextsFlagKey,
 			user.userId,
+			pageOrg ? { orgId: pageOrg.id } : null,
 		)) && (await executionContextsCapabilitiesAvailable())
 	if (!enabled) return { enabled: false, orgSlug: input.orgSlug }
 	const scope = await loadExecutionContextsScope(input)

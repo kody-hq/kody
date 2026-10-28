@@ -148,7 +148,15 @@ test('D1 readout excludes mixed users from on/off and surfaces override usage', 
 			errorRate: 0,
 			avgDurationMs: 0,
 		},
+		orgOverride: {
+			users: 0,
+			eventCount: 0,
+			errorCount: 0,
+			errorRate: null,
+			avgDurationMs: null,
+		},
 		overrideUsers: 1,
+		orgOverrideUsers: 0,
 		mixedUsers: 1,
 	})
 	expect(queries.map((entry) => entry.params)).toEqual([
@@ -254,6 +262,7 @@ test('attachFeatureFlagMetricReadouts only fills measured non-stale flags', asyn
 		successMetric: null,
 		global: null,
 		overrides: [],
+		orgOverrides: [],
 		...overrides,
 	})
 	const flags = [

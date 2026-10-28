@@ -2,6 +2,8 @@ import {
 	type SetGlobalFeatureFlagInput,
 	type SetFeatureFlagOverrideInput,
 	type ClearFeatureFlagOverrideInput,
+	type SetFeatureFlagOrgOverrideInput,
+	type ClearFeatureFlagOrgOverrideInput,
 } from '#universal/admin-setting-mutations.ts'
 import { adminOperationResult } from './operation-result.ts'
 import {
@@ -12,8 +14,10 @@ import {
 import { requireUserWithRole } from '#app/permissions-server.ts'
 import { isFeatureFlagKey } from '#universal/feature-flags/registry.ts'
 import {
+	clearFeatureFlagOrgOverride,
 	clearFeatureFlagUserOverride,
 	deleteStaleFeatureFlag,
+	setFeatureFlagOrgOverride,
 	setFeatureFlagGlobalState,
 	setFeatureFlagUserOverride,
 } from '#worker/feature-flags/service.ts'
@@ -218,6 +222,121 @@ export async function clearAdminFeatureFlagOverride(input: {
 			`key=${key}`,
 			`target_stable_user_id=${resolvedUserId.stableUserId}`,
 		].join(';'),
+	})
+
+	return adminOperationResult({ ok: true as const })
+}
+
+async function resolveOrgBySlug(
+	db: D1Database,
+	rawSlug: string,
+): Promise<{ orgId: string; slug: string } | null> {
+	const slug = rawSlug.trim().replace(/^@/, '').toLowerCase()
+	if (!slug) return null
+	const row = await db
+		.prepare(`SELECT id, slug FROM orgs WHERE slug = ?${andLiveDeletedAtSql()}`)
+		.bind(slug)
+		.first<{ id: string; slug: string }>()
+	return row ? { orgId: row.id, slug: row.slug } : null
+}
+
+export async function setAdminFeatureFlagOrgOverride(input: {
+	env: Env
+	request: Request
+	fields: SetFeatureFlagOrgOverrideInput
+}) {
+	const actor = await requireUserWithRole(input.request, input.env, 'admin')
+	const key = input.fields.key.trim()
+	if (!key || !isFeatureFlagKey(key)) {
+		return adminOperationResult(
+			{ ok: false, error: 'Unknown or invalid feature flag key.' },
+			400,
+		)
+	}
+	const enabled = input.fields.enabled
+	if (typeof enabled !== 'boolean') {
+		return adminOperationResult(
+			{ ok: false, error: 'enabled must be a boolean.' },
+			400,
+		)
+	}
+	const org = await resolveOrgBySlug(input.env.APP_DB, input.fields.orgSlug)
+	if (!org) {
+		return adminOperationResult(
+			{ ok: false, error: 'Organization not found.' },
+			404,
+		)
+	}
+
+	await setFeatureFlagOrgOverride(input.env.APP_DB, {
+		key,
+		orgId: org.orgId,
+		enabled,
+		note: input.fields.note ?? undefined,
+		updatedByStableUserId: actor.mcpUser.userId,
+	})
+
+	const requestIp = getRequestIp(input.request) ?? undefined
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(input.env),
+		category: 'admin',
+		action: 'feature_flag_set_org_override',
+		result: 'success',
+		email: actor.email,
+		ip: requestIp,
+		path: '/admin/feature-flags',
+		reason: [
+			`key=${key}`,
+			`target_org_id=${org.orgId}`,
+			`enabled=${enabled}`,
+		].join(';'),
+	})
+
+	return adminOperationResult({ ok: true as const })
+}
+
+export async function clearAdminFeatureFlagOrgOverride(input: {
+	env: Env
+	request: Request
+	fields: ClearFeatureFlagOrgOverrideInput
+}) {
+	const actor = await requireUserWithRole(input.request, input.env, 'admin')
+	const key = input.fields.key.trim()
+	if (!key || !isFeatureFlagKey(key)) {
+		return adminOperationResult(
+			{ ok: false, error: 'Unknown or invalid feature flag key.' },
+			400,
+		)
+	}
+	const org = await resolveOrgBySlug(input.env.APP_DB, input.fields.orgSlug)
+	if (!org) {
+		return adminOperationResult(
+			{ ok: false, error: 'Organization not found.' },
+			404,
+		)
+	}
+
+	const cleared = await clearFeatureFlagOrgOverride(input.env.APP_DB, {
+		key,
+		orgId: org.orgId,
+	})
+	if (!cleared) {
+		return adminOperationResult(
+			{ ok: false, error: 'Organization override not found.' },
+			404,
+		)
+	}
+
+	const requestIp = getRequestIp(input.request) ?? undefined
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(input.env),
+		category: 'admin',
+		action: 'feature_flag_clear_org_override',
+		result: 'success',
+		email: actor.email,
+		ip: requestIp,
+		path: '/admin/feature-flags',
+		reason: [`key=${key}`, `target_org_id=${org.orgId}`].join(';'),
 	})
 
 	return adminOperationResult({ ok: true as const })

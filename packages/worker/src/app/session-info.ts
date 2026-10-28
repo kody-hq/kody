@@ -31,6 +31,8 @@ export type LoadedSessionResult = {
 export async function loadSessionInfo(
 	request: Request,
 	env: Env,
+	/** Page path when it differs from `request.url`; supplies flag org context. */
+	pathname?: string,
 ): Promise<LoadedSessionResult> {
 	const resolved = await loadResolvedRequestAuth(request, env)
 	// Suspended and deleting accounts are signed out in the SSR shell
@@ -50,10 +52,15 @@ export async function loadSessionInfo(
 		}
 	}
 
-	const featureFlags = await loadRequestFeatureFlags(request, env, {
-		userId: resolved.user.userId,
-		stableUserId: resolved.user.mcpUser.userId,
-	})
+	const featureFlags = await loadRequestFeatureFlags(
+		request,
+		env,
+		{
+			userId: resolved.user.userId,
+			stableUserId: resolved.user.mcpUser.userId,
+		},
+		pathname,
+	)
 	const organizations = await loadAccountOrganizationSnapshot(
 		env,
 		resolved.user,

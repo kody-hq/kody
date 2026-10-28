@@ -21,6 +21,21 @@ export const reservedUsernamesSchema = z.object({
 export type SetGlobalFeatureFlagInput = z.infer<
 	typeof setGlobalFeatureFlagSchema
 >
+export const clearFeatureFlagOrgOverrideSchema = z.object({
+	key: z.string(),
+	orgSlug: z.string(),
+})
+export const setFeatureFlagOrgOverrideSchema =
+	clearFeatureFlagOrgOverrideSchema.extend({
+		enabled: z.boolean(),
+		note: z.string().nullish(),
+	})
+export type SetFeatureFlagOrgOverrideInput = z.infer<
+	typeof setFeatureFlagOrgOverrideSchema
+>
+export type ClearFeatureFlagOrgOverrideInput = z.infer<
+	typeof clearFeatureFlagOrgOverrideSchema
+>
 export type SetFeatureFlagOverrideInput = z.infer<
 	typeof setFeatureFlagOverrideSchema
 >

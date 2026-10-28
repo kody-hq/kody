@@ -230,6 +230,9 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0083 — Context runs never receive credential values](./0083-context-runs-never-see-credential-values.md)
   — credentialed requests from execution-context runs leave from Kody cloud, so
   the machine never sees credential values
+- [0084: Org feature flag rows target the request org](./0084-org-feature-flag-rows.md)
+  Per-org rows sit between user overrides and the global row and apply only in
+  that org's request context; no org context means no org row
 
 ## Historical / UI / implementation
 
