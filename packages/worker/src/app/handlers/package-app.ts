@@ -201,7 +201,25 @@ async function handleTaggedPackageAppRequest(
 		appId: slugLookup?.savedPackage.id ?? null,
 	})
 	if (!canExecute) {
-		if (serveAnonymously) return await serveAnonymously()
+		if (serveAnonymously) {
+			const username = user.mcpUser.username
+			const identity = username
+				? await resolvePackageAppIdentityOnlyVisitor({
+						env,
+						authorized: {
+							kind: 'forbidden',
+							visitorEmail: '',
+							person: { userId: user.mcpUser.userId, username },
+						},
+						handle: packagePath.username,
+						packagePath,
+					}).catch((error: unknown) => {
+						console.warn('package-app-identity-lookup-failed', error)
+						return null
+					})
+				: null
+			return await serveAnonymously(identity)
+		}
 		return new Response(null, {
 			status: 302,
 			headers: {
