@@ -102,6 +102,14 @@ async function connect(ecid: string) {
 		protocol: { min: 1, max: 1 },
 		status: { acceptingRuns: true, running: 0, maxConcurrent: 2 },
 	})
+	// Sending a WebSocket frame does not wait for its async signature check.
+	// Dispatch only after the session has processed hello and accepts runs.
+	await expect
+		.poll(() => stub.getStatus())
+		.toMatchObject({
+			online: true,
+			acceptingRuns: true,
+		})
 	return { stub, ws, next, send, key, welcome }
 }
 
