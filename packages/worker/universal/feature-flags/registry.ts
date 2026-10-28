@@ -157,6 +157,14 @@ export const featureFlagDefinitions = [
 		// Intentionally no successMetric: a security boundary, not a product
 		// metric; the readout is the codemod rescan and credential_need_undeclared errors.
 	},
+	{
+		key: 'credential-allowed-packages-safety-window',
+		defaultEnabled: false,
+		description:
+			'Global switch (audience and rollout are ignored) for the issue #4129 30-day safety window. While on and inside the window, a self-authored or adopted package that is refused on a user credential whose non-empty allowed-packages list leaves it out is approved on first use instead, when both existed before enforcement cutover: Kody adds the package to the list, writes a credential.allowed_packages_updated audit row (reason grandfathered for #4129, source safety_window) and a log line, and never notifies the owner. After the window the rule is strict whether or not this flag is on. Delete the flag and gate sites once the window has closed.',
+		// Intentionally no successMetric: a credential authority boundary, not
+		// a product experiment; the readout is the safety_window audit rows.
+	},
 ] as const satisfies ReadonlyArray<FeatureFlagDefinition>
 
 export type FeatureFlagKey = (typeof featureFlagDefinitions)[number]['key']
@@ -180,6 +188,9 @@ export const executionContextsFlagKey =
 
 export const credentialNeedEnforcementFlagKey =
 	'credential-need-enforcement' satisfies FeatureFlagKey
+
+export const credentialAllowedPackagesSafetyWindowFlagKey =
+	'credential-allowed-packages-safety-window' satisfies FeatureFlagKey
 
 export const featureFlagKeys: ReadonlyArray<FeatureFlagKey> =
 	featureFlagDefinitions.map((definition) => definition.key)

@@ -72,7 +72,9 @@ so the user can paste immediately.
 Package approval rules live in [Secrets](./secrets.md#two-approvals-both-yours)
 (`guide:secrets`). `resourceLock({ kind: 'secret', name, package_id })` returns
 the approval URL. Send the link and wait. For an unadopted community fork, adopt
-it after reviewing the source or send the approval link.
+it after reviewing the source or send the approval link. When the secret's
+`allowed_packages` list is non-empty, every package that is not on it needs the
+approval link, including packages you authored or adopted.
 
 - Single secret:
   `/@<slug>/-/secrets/user/{secretName}?package_id={savedPackageId}&package={kodyId}`

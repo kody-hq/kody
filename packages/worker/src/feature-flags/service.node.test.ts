@@ -318,6 +318,7 @@ const registryKeys = [
 	'repo-push-queue',
 	'execution-contexts',
 	'credential-need-enforcement',
+	'credential-allowed-packages-safety-window',
 ] as const
 
 function everyFlag<T>(value: T, overrides: Partial<Record<FlagKey, T>> = {}) {
