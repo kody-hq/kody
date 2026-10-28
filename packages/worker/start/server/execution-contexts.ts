@@ -75,7 +75,7 @@ async function mutate<T>(
 ) {
 	const { withWebsiteMutation } = await import('./mutation-context.ts')
 	return withWebsiteMutation(
-		{ scope: { orgSlug: orgSlugValue, requireMembership: true } },
+		{ scope: { orgSlug: orgSlugValue, requireMembership: false } },
 		({ env, request, user }) =>
 			write({ env, request, user, orgSlug: orgSlugValue }),
 	)
@@ -140,7 +140,7 @@ export const loadExecutionContextRuns = createServerFn({ method: 'GET' })
 				import('../../src/app/handlers/execution-contexts.ts'),
 			])
 		return withWebsiteRead(
-			{ scope: { orgSlug: data.orgSlug, requireMembership: true } },
+			{ scope: { orgSlug: data.orgSlug, requireMembership: false } },
 			({ env, request, user }) =>
 				listExecutionContextRunsForUser({ env, request, user, ...data }),
 		)
@@ -161,7 +161,7 @@ export const loadExecutionContextAudit = createServerFn({ method: 'GET' })
 				import('../../src/app/handlers/execution-contexts.ts'),
 			])
 		return withWebsiteRead(
-			{ scope: { orgSlug: data.orgSlug, requireMembership: true } },
+			{ scope: { orgSlug: data.orgSlug, requireMembership: false } },
 			({ env, request, user }) =>
 				listExecutionContextAuditForUser({ env, request, user, ...data }),
 		)

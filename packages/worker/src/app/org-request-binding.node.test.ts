@@ -130,6 +130,7 @@ test('org sections follow the page gate for grant-only collaborators', async () 
 		adaId,
 	)
 	expect(orgSectionDenial(resolution, 'agents')).toBeNull()
+	expect(orgSectionDenial(resolution, 'execution-contexts')).toBeNull()
 	expect(orgSectionDenial(resolution, 'memories')).toBe(
 		'Organization resources unavailable',
 	)
