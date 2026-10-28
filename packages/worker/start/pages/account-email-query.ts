@@ -8,7 +8,8 @@ import {
 import { type AccountEmailLoaderData } from '#universal/loader-data.ts'
 import {
 	emailKeys,
-	type EmailListData,
+	isEmailMissingGrant,
+	type EmailListResult,
 	type EmailDetail,
 } from './email-resources.ts'
 
@@ -137,10 +138,10 @@ export async function publishEmailResponse(
 		queryKey: emailKeys.all(actorKey, org),
 		predicate: (query) => query.state.data !== undefined,
 	})
-	client.setQueriesData<EmailListData>(
+	client.setQueriesData<EmailListResult>(
 		{ queryKey: emailKeys.lists(actorKey, org) },
 		(data) => {
-			if (!data) return data
+			if (!data || isEmailMissingGrant(data)) return data
 			const patched = optimisticEmail(
 				{ ...data, selectedMessage: null },
 				action,
