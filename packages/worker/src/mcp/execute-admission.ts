@@ -41,7 +41,7 @@ export const executeCallsPerMinutePerOrg = executeCallsPerMinutePerSeat
 export const executeRateLimitedErrorCode = 'execute_rate_limited' as const
 
 /**
- * Identical execute calls (same code or invoke target and same params) one
+ * Identical execute calls (same code and same params) one
  * connection may start per window before the loop brake refuses. Polling a
  * status every 3 seconds stays under it; a back-to-back retry loop (each
  * call returns in a second or two) trips it within the first minute. The
@@ -70,8 +70,8 @@ export class ExecuteLoopDetectedError extends Error {
 
 /**
  * Repeat key for the loop brake: the connection (credential, acting user,
- * and the caller's conversation id when it sent one) plus the exact code or
- * invoke target, canonical params, and the normalized credentials call map
+ * and the caller's conversation id when it sent one) plus the exact code,
+ * canonical params, and the normalized credentials call map
  * (so equivalent pick shapes share a key).
  */
 export async function executeRepeatKey(input: {
@@ -79,7 +79,6 @@ export async function executeRepeatKey(input: {
 	actorUserId: string | null
 	conversationId: string | undefined
 	code: string | undefined
-	invoke: string | undefined
 	params: Record<string, unknown> | undefined
 	credentials?: CredentialCallMap | null
 }): Promise<string> {
@@ -90,7 +89,6 @@ export async function executeRepeatKey(input: {
 			actorUserId: input.actorUserId,
 			conversationId: input.conversationId ?? null,
 			code: input.code ?? null,
-			invoke: input.invoke ?? null,
 			params: input.params ?? null,
 			...(input.credentials
 				? { credentials: Object.fromEntries(input.credentials) }

@@ -12,18 +12,17 @@ import {
 } from '@modelcontextprotocol/sdk/types.js'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { z } from 'zod'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	callerFeatureFlagEvaluationFailed,
 	resolveCallerFeatureFlags,
 } from '#mcp/capabilities/access-control.ts'
 import { runWithRequestPermissions } from '#worker/authorization/authorize.ts'
 import {
-	executeInvokeFieldDescription,
-	executeInvokeFlagKey,
-	executeToolDescriptionWithInvoke,
-	buildExecuteAttributionMetadata,
-	resolveExecuteModule,
-} from '#mcp/execute-invoke.ts'
+	executeInvokeRemovedMessage,
+	hasRemovedExecuteInvoke,
+} from '#mcp/execute-invoke-removed.ts'
+import { buildExecuteAttributionMetadata } from '#worker/run-records/execute-attribution.ts'
 import { executeToolDescription } from '#mcp/instructions/execute-tool-description.ts'
 import {
 	defaultExecutionResponseLimitBytes,
@@ -249,6 +248,13 @@ export type ExecuteToolStructuredContent = StructuredContentFromFields<
 	typeof executeToolOutputSchema
 >
 
+const executeCodeRequiredMessage =
+	'execute requires `code`: a single ESM module string with a default export.'
+
+function executeCodeMissingError(issue: { input: unknown }) {
+	return issue.input === undefined ? executeCodeRequiredMessage : undefined
+}
+
 const executeCodeFieldDescription =
 	'Single ESM module string with imports/exports and a default export to execute. Imports may be arbitrary npm packages compatible with the Cloudflare Workers runtime; prefer packages over rewriting helpers.'
 
@@ -258,58 +264,58 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 		agent.getEnv(),
 		agent.getCallerContext(),
 	)
-	const invokeEnabled = featureFlags[executeInvokeFlagKey] === true
 	const executionContextsEnabled =
 		featureFlags[executionContextsFlagKey] === true
 	agent.server.registerTool(
 		executeTool.name,
 		{
 			title: executeTool.title,
-			description: invokeEnabled
-				? executeToolDescriptionWithInvoke
-				: executeTool.description,
+			description: executeTool.description,
 			outputSchema: executeToolOutputSchema,
 			...(icons ? { icons } : {}),
-			inputSchema: {
-				code: invokeEnabled
-					? z.string().optional().describe(executeCodeFieldDescription)
-					: z.string().describe(executeCodeFieldDescription),
-				...(invokeEnabled
-					? {
-							invoke: z
-								.string()
-								.min(1)
-								.optional()
-								.describe(executeInvokeFieldDescription),
-						}
-					: {}),
-				params: z
-					.record(z.string(), z.unknown())
-					.optional()
-					.describe(
-						'JSON object passed as the first argument to the default export. Put varying capability args here so the same `code` graph is reused.',
-					),
-				responseLimit: z
-					.number()
-					.int()
-					.min(1)
-					.optional()
-					.describe(
-						"Soft cap on the default export's JSON/text result. Oversized results are truncated. Project large API payloads before returning. Protocol __mcpContent media uses a separate limit and fails explicitly when oversized; oversized text-only protocol content is truncated.",
-					),
-				conversationId: conversationIdInputField,
-				memoryContext: memoryContextInputField,
-				idempotencyKey: z
-					.string()
-					.min(1)
-					.max(runRecordMaxIdempotencyKeyLength)
-					.optional()
-					.describe(
-						'Optional idempotency key. Omit it for ordinary calls. If the call is still running at the transport budget, Kody assigns one and returns it with runId. Reuse that key to read the in-progress or retained run instead of starting the mutation again.',
-					),
-				credentials: credentialCallMapSchema.optional(),
-				...(executionContextsEnabled ? executeRoutingInputFields : {}),
-			},
+			inputSchema: z
+				.object({
+					code: z
+						.string({ error: executeCodeMissingError })
+						.describe(executeCodeFieldDescription),
+					params: z
+						.record(z.string(), z.unknown())
+						.optional()
+						.describe(
+							'JSON object passed as the first argument to the default export. Put varying capability args here so the same `code` graph is reused.',
+						),
+					responseLimit: z
+						.number()
+						.int()
+						.min(1)
+						.optional()
+						.describe(
+							"Soft cap on the default export's JSON/text result. Oversized results are truncated. Project large API payloads before returning. Protocol __mcpContent media uses a separate limit and fails explicitly when oversized; oversized text-only protocol content is truncated.",
+						),
+					conversationId: conversationIdInputField,
+					memoryContext: memoryContextInputField,
+					idempotencyKey: z
+						.string()
+						.min(1)
+						.max(runRecordMaxIdempotencyKeyLength)
+						.optional()
+						.describe(
+							'Optional idempotency key. Omit it for ordinary calls. If the call is still running at the transport budget, Kody assigns one and returns it with runId. Reuse that key to read the in-progress or retained run instead of starting the mutation again.',
+						),
+					credentials: credentialCallMapSchema.optional(),
+					...(executionContextsEnabled ? executeRoutingInputFields : {}),
+				})
+				// Unknown keys pass through so a removed `invoke` reaches the
+				// check below instead of being silently stripped.
+				.loose()
+				.refine((args) => !hasRemovedExecuteInvoke(args), {
+					error: (issue) =>
+						executeInvokeRemovedMessage(
+							(issue.input as Record<string, unknown>)['invoke'],
+						),
+					path: ['invoke'],
+					when: () => true,
+				}),
 			annotations: executeTool.annotations,
 		},
 		async (args, toolExtra) =>
@@ -327,7 +333,6 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 
 export type ExecuteToolCallArgs = {
 	code?: string
-	invoke?: string
 	params?: Record<string, unknown>
 	responseLimit?: number
 	conversationId?: string
@@ -349,7 +354,6 @@ export async function runExecuteToolCall(input: {
 }) {
 	const {
 		code,
-		invoke,
 		params,
 		responseLimit,
 		conversationId,
@@ -518,10 +522,8 @@ export async function runExecuteToolCall(input: {
 			}
 		}
 
-		// Schema omit/advertise is decided at register. Re-read the
-		// flag here so a kill-switch applies on the next call even
-		// when a legacy session still has invoke in its tool list.
-		// Plan lookup overlaps that read. The daily counter is spent
+		// Re-read caller flags per call so a kill-switch applies on the
+		// next call even when the tool was registered earlier. Plan lookup overlaps that read. The daily counter is spent
 		// only after the read succeeds — an evaluation failure is
 		// fail-closed and must not consume quota.
 		const liveFlagsPromise = resolveCallerFeatureFlags(env, callerContext)
@@ -547,18 +549,16 @@ export async function runExecuteToolCall(input: {
 			callerContext,
 		})
 		void registryPromise.catch(() => {})
-		const resolvedModule = resolveExecuteModule({
-			code,
-			invoke,
-			invokeEnabled: liveFlags[executeInvokeFlagKey] === true,
-		})
-		const executeAttribution = buildExecuteAttributionMetadata({
-			entry: resolvedModule.entry,
-			invoke: resolvedModule.invoke,
-		})
+		if (hasRemovedExecuteInvoke(input.args)) {
+			throw new McpCallerError(executeInvokeRemovedMessage(input.args.invoke))
+		}
+		const moduleCode = code?.trim() ? code : undefined
+		if (!moduleCode) {
+			throw new McpCallerError(executeCodeRequiredMessage)
+		}
 		const executeRunMetadata = {
 			conversationId: resolvedConversationId,
-			...executeAttribution,
+			...buildExecuteAttributionMetadata(),
 		}
 
 		// Runaway and loop brakes before claim/bundling/sandbox so a refused call
@@ -606,8 +606,7 @@ export async function runExecuteToolCall(input: {
 								callerContext.user?.userId ??
 								null,
 							conversationId,
-							code,
-							invoke,
+							code: moduleCode,
 							params,
 							credentials: normalizedCallMap,
 						}),
@@ -754,7 +753,7 @@ export async function runExecuteToolCall(input: {
 			args: input.args,
 			enabled: liveFlags[executionContextsFlagKey] === true,
 			runRecord: claimedRunHandle,
-			code: resolvedModule.entry === 'invoke' ? null : resolvedModule.code,
+			code: moduleCode,
 			params,
 			conversationId: resolvedConversationId,
 			credentials: normalizedCallMap,
@@ -823,7 +822,7 @@ export async function runExecuteToolCall(input: {
 			const credentialCallMap = normalizedCallMap
 				? {
 						map: normalizedCallMap,
-						strict: resolvedModule.entry === 'invoke',
+						strict: false,
 						onWarnings: (warnings: Array<string>) => {
 							credentialCallMapWarnings.push(...warnings)
 						},
@@ -842,33 +841,27 @@ export async function runExecuteToolCall(input: {
 						const execution = runWithRequestPermissions(
 							{ env, request: callerContext.request },
 							async () =>
-								runModuleWithRegistry(
-									env,
-									callerContext,
-									resolvedModule.code,
-									params,
-									{
-										executorExports: input.loopbackExports,
-										capabilityRegistry: registry,
-										rawFetchHostSink: rawFetchHosts.sink,
-										conversationId: resolvedConversationId,
-										runRecordHandle: claimedRunHandle,
-										claimWorkerDay,
-										credentialCallMap,
-										waitUntil,
-										reportProgress: reportProgress ?? undefined,
-										signal: activeTransportSignal.signal,
-										runRecord: {
-											surface: 'execute',
-											name: null,
-											storageId: activeStorageId,
-											idempotencyKey:
-												claimedRunHandle?.context.idempotencyKey ??
-												normalizedIdempotencyKey,
-											metadata: executeRunMetadata,
-										},
+								runModuleWithRegistry(env, callerContext, moduleCode, params, {
+									executorExports: input.loopbackExports,
+									capabilityRegistry: registry,
+									rawFetchHostSink: rawFetchHosts.sink,
+									conversationId: resolvedConversationId,
+									runRecordHandle: claimedRunHandle,
+									claimWorkerDay,
+									credentialCallMap,
+									waitUntil,
+									reportProgress: reportProgress ?? undefined,
+									signal: activeTransportSignal.signal,
+									runRecord: {
+										surface: 'execute',
+										name: null,
+										storageId: activeStorageId,
+										idempotencyKey:
+											claimedRunHandle?.context.idempotencyKey ??
+											normalizedIdempotencyKey,
+										metadata: executeRunMetadata,
 									},
-								),
+								}),
 						)
 						const settled = execution.then(
 							async (value) => {
@@ -1058,9 +1051,7 @@ export async function runExecuteToolCall(input: {
 				callerContext,
 				conversationId: resolvedConversationId,
 				hostCounts: rawFetchHosts.hostCounts(),
-				usedIntegrationAuthHelpers: codeUsesIntegrationAuthHelpers(
-					resolvedModule.code,
-				),
+				usedIntegrationAuthHelpers: codeUsesIntegrationAuthHelpers(moduleCode),
 			})),
 			...(await resolvePreferLocalExecuteNudges({
 				agent: input.mcpAgent ?? agentlessNudgeState(),

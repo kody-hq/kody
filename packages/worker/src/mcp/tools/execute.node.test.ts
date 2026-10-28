@@ -1,6 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { type ContentBlock } from '@modelcontextprotocol/sdk/types.js'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
+import { z } from 'zod'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { planLimits } from '#universal/plans.ts'
 import {
@@ -18,10 +19,7 @@ import {
 	maxMcpContentBlockCount,
 	wrapDownstreamMcpToolResult,
 } from '#mcp/downstream-mcp-result.ts'
-import {
-	executeInvokeFlagOffMessage,
-	executeInvokeMutualExclusionMessage,
-} from '#mcp/execute-invoke.ts'
+import { executeInvokeRemovedMessage } from '#mcp/execute-invoke-removed.ts'
 import type * as AccessControlModule from '#mcp/capabilities/access-control.ts'
 import type * as MemoryToolContextModule from './memory-tool-context.ts'
 import type * as CapabilityRegistryModule from '#mcp/capabilities/registry.ts'
@@ -110,7 +108,6 @@ const mockModule = vi.hoisted(() => ({
 		async (
 			..._args: Parameters<typeof AccessControlModule.resolveCallerFeatureFlags>
 		) => ({
-			'execute-invoke': false,
 			'connection-profiles': false,
 			'mcp-skills-extension': false,
 			'mcp-events-extension': false,
@@ -253,6 +250,7 @@ function mockPerformanceSequence(...values: Array<number>) {
 
 type ExecuteInput = {
 	code?: string
+	/** Removed field; still sent by legacy callers. */
 	invoke?: string
 	params?: Record<string, unknown>
 	responseLimit?: number
@@ -323,12 +321,10 @@ async function getExecuteRegistration(
 		state?: Record<string, unknown>
 		setState?: (state: Record<string, unknown>) => void
 		waitUntil?: (promise: Promise<unknown>) => void
-		invokeEnabled?: boolean
 	} = {},
 ) {
 	vi.clearAllMocks()
 	mockModule.resolveCallerFeatureFlags.mockResolvedValue({
-		'execute-invoke': agentExtras.invokeEnabled === true,
 		'connection-profiles': false,
 		'mcp-skills-extension': false,
 		'mcp-events-extension': false,
@@ -348,7 +344,7 @@ async function getExecuteRegistration(
 	expect(registerTool).toHaveBeenCalledTimes(1)
 	return registerTool.mock.calls[0] as [
 		string,
-		{ description: string; inputSchema: Record<string, unknown> },
+		{ description: string; inputSchema: z.ZodType },
 		ExecuteHandler,
 	]
 }
@@ -1164,76 +1160,67 @@ test('execute tool refuses an identical call loop but still runs changed params'
 	)
 })
 
-test('execute invoke is omitted when the flag is off and mints the handwritten passthrough when on', async () => {
-	const [offName, offConfig, offHandler] = await getExecuteRegistration()
-	expect(offName).toBe('execute')
-	expect(offConfig.inputSchema).not.toHaveProperty('invoke')
+test('execute rejects the removed invoke field with the equivalent code', async () => {
+	const [name, config, handler] = await getExecuteRegistration({
+		baseUrl: 'https://example.com',
+		user: { userId: ownerIdFromStored('user-1') },
+	})
+	expect(name).toBe('execute')
+	expect(config.description).not.toMatch(/\binvoke\b/)
+	const jsonSchema = z.toJSONSchema(config.inputSchema) as {
+		properties: Record<string, unknown>
+		required?: Array<string>
+	}
+	expect(jsonSchema.properties).not.toHaveProperty('invoke')
+	expect(jsonSchema.required).toContain('code')
 
-	const rejected = await offHandler({
+	const expected = executeInvokeRemovedMessage('kody:@acme/github/listRepos')
+	expect(expected).toContain(
+		'import action from "kody:@acme/github/listRepos"\nexport default (params) => action(params)',
+	)
+	const parsed = config.inputSchema.safeParse({
 		invoke: 'kody:@acme/github/listRepos',
-		conversationId: 'conv-invoke-off',
+	})
+	expect(parsed.success).toBe(false)
+	expect(parsed.error?.issues.map((issue) => issue.message)).toContain(expected)
+	expect(
+		config.inputSchema.safeParse({ code: 'export default () => 1' }).success,
+	).toBe(true)
+
+	const rejected = await handler({
+		invoke: '@acme/github#listRepos',
+		conversationId: 'conv-invoke-removed',
 	})
 	expect(rejected.isError).toBe(true)
-	expect(rejected.structuredContent.error).toBe(executeInvokeFlagOffMessage)
-	expect(mockModule.runModuleWithRegistry).not.toHaveBeenCalled()
+	expect(rejected.structuredContent.error).toBe(expected)
 
-	const [, onConfig, onHandler] = await getExecuteRegistration(
-		{
-			baseUrl: 'https://example.com',
-			user: { userId: ownerIdFromStored('user-1') },
-		},
-		{ invokeEnabled: true },
-	)
-	expect(onConfig.inputSchema).toHaveProperty('invoke')
-
-	moduleReturns({ ok: true })
-	const invoked = await onHandler({
-		invoke: '@acme/github#listRepos',
-		params: { limit: 5 },
-		conversationId: 'conv-invoke-on',
-	})
-	expect(invoked.isError).toBe(false)
-	expect(mockModule.runModuleWithRegistry).toHaveBeenCalledWith(
-		expect.anything(),
-		expect.anything(),
-		`import action from "kody:@acme/github/listRepos"
-
-export default async function main(params) {
-	return await action(params)
-}`,
-		{ limit: 5 },
-		expect.objectContaining({
-			runRecord: expect.objectContaining({
-				metadata: {
-					conversationId: 'conv-invoke-on',
-					entry: 'invoke',
-					invoke: 'kody:@acme/github/listRepos',
-				},
-			}),
-		}),
-	)
-
-	const both = await onHandler({
+	const both = await handler({
 		code: 'export default async function main() { return 1 }',
 		invoke: 'kody:@acme/github/listRepos',
 		conversationId: 'conv-invoke-both',
 	})
 	expect(both.isError).toBe(true)
-	expect(both.structuredContent.error).toBe(executeInvokeMutualExclusionMessage)
+	expect(both.structuredContent.error).toBe(expected)
+	expect(mockModule.runModuleWithRegistry).not.toHaveBeenCalled()
 
-	mockModule.resolveCallerFeatureFlags.mockResolvedValue({
-		'execute-invoke': false,
-		'connection-profiles': false,
-		'mcp-skills-extension': false,
-		'mcp-events-extension': false,
+	moduleReturns({ ok: true })
+	const ran = await handler({
+		code: 'import action from "kody:@acme/github/listRepos"\nexport default (params) => action(params)',
+		params: { limit: 5 },
+		conversationId: 'conv-code',
 	})
-	const killed = await onHandler({
-		invoke: 'kody:@acme/github/listRepos',
-		conversationId: 'conv-invoke-killed',
-	})
-	expect(killed.isError).toBe(true)
-	expect(killed.structuredContent.error).toBe(executeInvokeFlagOffMessage)
-	expect(mockModule.runModuleWithRegistry).toHaveBeenCalledTimes(1)
+	expect(ran.isError).toBe(false)
+	expect(mockModule.runModuleWithRegistry).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.anything(),
+		expect.stringContaining('kody:@acme/github/listRepos'),
+		{ limit: 5 },
+		expect.objectContaining({
+			runRecord: expect.objectContaining({
+				metadata: { conversationId: 'conv-code', entry: 'code' },
+			}),
+		}),
+	)
 })
 
 test('execute does not run or reach the registry when live flag resolution fails', async () => {

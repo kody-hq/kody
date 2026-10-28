@@ -114,7 +114,6 @@ function createContext(db: D1Database): ApiInvocationContext {
 		principal: { kind: 'mcp' },
 		getFeatureFlags: async () => ({
 			'demo-indicator': false,
-			'execute-invoke': false,
 			'connection-profiles': false,
 			'mcp-skills-extension': false,
 			'mcp-events-extension': false,

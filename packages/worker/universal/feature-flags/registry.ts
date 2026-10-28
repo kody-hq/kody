@@ -76,20 +76,6 @@ export const featureFlagDefinitions = [
 		// admin notice), not to move a product metric.
 	},
 	{
-		key: 'execute-invoke',
-		defaultEnabled: false,
-		defaultAudience: 'experiments_opt_in',
-		description:
-			'MCP execute `invoke` shortcut: mint the canonical thin kody:@ passthrough for a package export, then run the existing execute path. Off by default; enable with audience experiments_opt_in. Delete the flag and gate sites when the experiment ends.',
-		successMetric: {
-			eventType: 'dynamic_worker_day',
-			measure: 'event_count',
-			goal: 'decrease',
-			hypothesis:
-				'Invoke-generated thin passthrough reuses one Dynamic Worker per package export, so experiment users burn fewer unique worker-days on execute.',
-		},
-	},
-	{
 		key: 'connection-profiles',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
@@ -188,8 +174,6 @@ export const featureFlagDefinitions = [
 ] as const satisfies ReadonlyArray<FeatureFlagDefinition>
 
 export type FeatureFlagKey = (typeof featureFlagDefinitions)[number]['key']
-
-export const executeInvokeFlagKey = 'execute-invoke' satisfies FeatureFlagKey
 
 export const connectionProfilesFlagKey =
 	'connection-profiles' satisfies FeatureFlagKey

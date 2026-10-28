@@ -255,8 +255,9 @@ ${orgBlock}
              before workerd loads them — same shape as hosted execute /
              publish. Unresolvable imports fail with a clear bundle error.
              \`--invoke kody:@scope/pkg/export\` (or \`@scope/pkg#export\`)
-             works with \`--local\` / \`--target mock\` — mints the same thin
-             passthrough as a \`--code\` import wrapper. From a package
+             is client-side sugar: the CLI writes the thin passthrough
+             (the \`--code\` import wrapper) and sends it as code, with or
+             without \`--local\` / \`--target mock\`. From a package
              directory, \`--invoke ./export\` runs a local package.json#exports
              key. Auth: \`--token\` /
              ${apiTokenEnvVar}, else stored \`auth bootstrap\` token, else

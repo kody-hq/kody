@@ -597,10 +597,11 @@ Kent decided four call-map questions (#3599).
    included, pauses a publish for approval; other changes publish freely. A
    dependency change never rebuilds or republishes a public app on its own.
 3. **Where the map goes.** The `credentials` map is accepted on MCP `execute`
-   (for `code` and `invoke`) and on the CapabilityProxy (CLI `--credential`). It
-   is not accepted on the package-callable `execute` capability: package code
-   would pick credentials by name there, which would bypass `credential.named`'s
-   sharing rules.
+   (for `code`; the `invoke` field is gone per
+   [0084](./0084-execute-takes-code-only.md)) and on the CapabilityProxy (CLI
+   `--credential`). It is not accepted on the package-callable `execute`
+   capability: package code would pick credentials by name there, which would
+   bypass `credential.named`'s sharing rules.
 4. **Several picks for one `credential(key)`.** It is an error whose message
    lists every option by name and scope, with matching `options` and
    `retryWith`, so an agent can pick one or show them to the user. The same

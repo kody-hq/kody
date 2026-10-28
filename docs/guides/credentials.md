@@ -508,11 +508,11 @@ applies:
 Kody never guesses between two matches. Zero matches is `credential_unbound` and
 two or more is `credential_ambiguous`.
 
-Pass a map on `execute`, for ad hoc code or an `invoke`:
+Pass a map on `execute` next to its `code`:
 
 ```json
 {
-	"invoke": "kody:@you/pr-digest/summarize",
+	"code": "import action from 'kody:@you/pr-digest/summarize'\nexport default (params) => action(params)",
 	"credentials": {
 		"github": "work",
 		"slack": { "name": "work", "scope": "org" }
@@ -523,9 +523,9 @@ Pass a map on `execute`, for ad hoc code or an `invoke`:
 A string picks by name, and an object adds `scope` when an org and a personal
 credential share a name. For a `multiple` need, an array picks several for
 `credentials(key)` (`"google": ["work", "personal"]`), and `[]` picks none on
-purpose. In an `invoke`, a key that no package in the run declares fails the run
-with `credential_need_unknown`; ad hoc code only gets a warning. The CLI takes
-the same picks:
+purpose. On `execute`, a key that no package in the run declares gets a warning,
+not a failure. The CLI takes the same picks (`--invoke` writes the passthrough
+for you):
 
 ```bash
 npx @kodycodes/cli execute --invoke kody:@you/pr-digest/summarize \

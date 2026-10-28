@@ -40,11 +40,7 @@ export async function runRemoteExecuteWithToken(
 			'--invoke cannot be combined with --code, --file, or a module string.',
 		)
 	}
-	// Cloud Open API execute still gates the `invoke` field on the
-	// execute-invoke experiment. Mint the same thin passthrough as `code` so
-	// `kody execute --invoke` keeps working for callers without that flag.
-	// When execute-invoke is generally available, prefer body.invoke here so
-	// Activity can attribute invoke vs handwritten code.
+	// `--invoke` is client-side sugar: hosted execute accepts only `code`.
 	body.code = resolveRemoteExecuteCode(input)
 	if (input.params !== undefined) body.params = input.params
 	if (input.conversationId !== undefined)

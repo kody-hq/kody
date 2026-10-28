@@ -282,7 +282,7 @@ test('saved-packages and non-preview enable-flag are rejected for remote seed', 
 			'--env',
 			'preview',
 			'--enable-flag',
-			'execute-invoke',
+			'mcp-skills-extension',
 		]),
 	).toThrow('process.exit called')
 	expect(consoleError).toHaveBeenCalledWith(

@@ -30,7 +30,7 @@ import {
 	isCallerDisconnectAbort,
 } from '#worker/caller-disconnect.ts'
 import { recordExecuteInterpretableEvent } from '#mcp/execute-interpretable.ts'
-import { executeWorkerIdMetadataKey } from '#mcp/execute-invoke.ts'
+import { executeWorkerIdMetadataKey } from '#worker/run-records/execute-attribution.ts'
 import {
 	classifyExecuteThinGlue,
 	type ExecuteThinGlueClass,

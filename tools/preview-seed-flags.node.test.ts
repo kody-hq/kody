@@ -19,7 +19,7 @@ test('preview-flag labels become allowlisted seed flag keys', () => {
 
 test('a preview-flag label outside the allowlist fails closed', () => {
 	expect(() =>
-		previewSeedFlagKeysFromLabels(['preview-flag:execute-invoke']),
+		previewSeedFlagKeysFromLabels(['preview-flag:mcp-skills-extension']),
 	).toThrow(/not an allowlisted preview seed flag/)
 	expect(() => previewSeedFlagKeysFromLabels(['preview-flag:'])).toThrow(
 		/not an allowlisted preview seed flag/,

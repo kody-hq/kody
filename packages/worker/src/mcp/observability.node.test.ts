@@ -40,7 +40,6 @@ const { assertKodyDescriptionLength, KODY_DESCRIPTION_MAX_LENGTH } =
 const { McpCallerError } = await import('./caller-error.ts')
 const { requireMcpRequest, requireMcpUser } =
 	await import('./capabilities/meta/require-user.ts')
-const { executeInvokeMissingInputMessage } = await import('./execute-invoke.ts')
 const { PackageSecretAccessDeniedError } =
 	await import('./secrets/package-access.ts')
 const { CommunityActionError } = await import('#worker/community/errors.ts')
@@ -636,7 +635,9 @@ test('package name, missing-import, execute-input, and description caller errors
 	)
 	expect(descriptionError).toBeInstanceOf(Error)
 	const missingPackage = new SavedPackageNotFoundError('@distilledtom/google')
-	const executeInputError = new McpCallerError(executeInvokeMissingInputMessage)
+	const executeInputError = new McpCallerError(
+		'execute requires `code`: a single ESM module string with a default export.',
+	)
 
 	const callerErrors: Array<McpEvent> = [
 		handlerFailure(

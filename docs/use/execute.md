@@ -65,15 +65,19 @@ the code is written. Use `import(specifier)` when the name is data.
 the module's **default export** as the first function argument. Shared helpers
 should receive that object through normal function arguments.
 
-When the `execute-invoke` experiment is on for the caller (operators enable that
-flag for the `experiments_opt_in` audience at `/account/experiments`),
-**execute** also accepts **`invoke`**: a package export specifier such as
-`kody:@scope/package/export` or `@scope/package#export`. `invoke` is mutually
-exclusive with `code`. Kody writes the same canonical thin passthrough a careful
-agent would write (`import action from "kody:@scope/package/export"` plus a
-default export that calls it with `params`) and then runs the ordinary execute
-path. The Dynamic Worker identity matches that hand-written module. Arbitrary
-URLs are rejected. Vary args via **`params`**.
+To call one package export, send a thin passthrough as **`code`** and vary args
+via **`params`**:
+
+```ts
+import action from 'kody:@scope/package/export'
+export default (params) => action(params)
+```
+
+**execute** has no `invoke` field
+([ADR 0084](../contributing/decisions/0084-execute-takes-code-only.md)). A call
+that still sends `invoke` fails with an error that shows this `code` form for
+its specifier. The CLI `kody execute --invoke kody:@scope/package/export` flag
+is client-side sugar: the CLI writes this module and sends it as `code`.
 
 Ad hoc worker identity follows the acting user plus that **`code`** module
 graph. Put varying capability args in **`params`**, not string literals inside
