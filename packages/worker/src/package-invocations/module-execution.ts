@@ -3,6 +3,8 @@ import { persistableExecutionArtifacts } from '#mcp/downstream-mcp-result.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
 import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
+import { resolvePackageAutomationRouting } from './automation-routing.ts'
+import { type AutomationExecutionTarget } from '#worker/execution-contexts/automation-settings.ts'
 import {
 	type RunRecordContext,
 	type RunRecordHandle,
@@ -159,6 +161,8 @@ export type SavedPackageModuleRunInput = {
 	externalRunRecordHandle?: RunRecordHandle | null
 	/** Where an automation asked to run (execution contexts). */
 	executionRouting?: AutomationRouting | null
+	/** Declared automation whose execution setting applies. */
+	executionTarget?: AutomationExecutionTarget | null
 	/** Report, and optionally pin, the commit this run resolves. */
 	sourceRevision?: PackageSourceRevisionOptions | null
 }
@@ -234,6 +238,17 @@ export async function runSavedPackageModuleOnce(
 				selector: input.moduleSelector,
 				userId: input.actor.orgId,
 			}))
+		const executionRouting =
+			input.executionRouting ??
+			(input.executionTarget
+				? await resolvePackageAutomationRouting({
+						env: input.env,
+						orgId: input.actor.orgId,
+						packageId: input.savedPackage.id,
+						sourceId: input.savedPackage.sourceId,
+						target: input.executionTarget,
+					})
+				: null)
 		const repoSource =
 			artifact.packageContext?.sourceId == null ||
 			artifact.packageContext.sourceId === sourceRow.id
@@ -414,10 +429,10 @@ export async function runSavedPackageModuleOnce(
 			{
 				executorTimeoutMs: input.executorTimeoutMs,
 				signal: input.signal,
-				...(input.executionRouting
+				...(executionRouting
 					? {
 							executionRouting: {
-								...input.executionRouting,
+								...executionRouting,
 								parentRunRecord: externalHandle?.context ?? null,
 								parentRunId: externalHandle?.id ?? null,
 							},

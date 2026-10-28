@@ -1,5 +1,6 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
+import { type AutomationExecutionTarget } from '#worker/execution-contexts/automation-settings.ts'
 import {
 	createPackageInvocationClientDisconnectedError,
 	isCallerDisconnectAbort,
@@ -188,6 +189,8 @@ export async function invokeSavedPackageModule(input: {
 	signal?: AbortSignal
 	/** Where an automation asked to run (execution contexts). */
 	executionRouting?: AutomationRouting | null
+	/** Declared automation whose execution setting applies. */
+	executionTarget?: AutomationExecutionTarget | null
 }) {
 	// Before the ledger: a suspended owner must neither replay a stored
 	// response nor leave a terminal denial that outlives the suspension.
@@ -535,6 +538,7 @@ export async function invokeSavedPackageModule(input: {
 		signal: input.signal,
 		externalRunRecordHandle: claimed.handle,
 		executionRouting: input.executionRouting ?? null,
+		executionTarget: input.executionTarget ?? null,
 	})
 	input.signal?.removeEventListener('abort', onCallerDisconnect)
 	if (disconnectFinish) {

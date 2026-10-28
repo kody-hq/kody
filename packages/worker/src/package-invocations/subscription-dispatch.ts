@@ -704,6 +704,7 @@ async function invokeSubscriptionOnce(
 		source,
 		topic,
 		notFoundCode: 'subscription_not_found',
+		executionTarget: { kind: 'subscription', name: topic },
 		runtimeInvokeDepth: input.runtimeInvokeDepth ?? 0,
 		toolFactories: input.toolFactories,
 		waitUntil: input.waitUntil,

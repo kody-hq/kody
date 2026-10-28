@@ -16,6 +16,11 @@ export const automationExecutionKinds = [
 ] as const
 export type AutomationExecutionKind = (typeof automationExecutionKinds)[number]
 
+/** Which declared automation a package run is, to look up its setting. */
+export type AutomationExecutionTarget =
+	| { kind: 'job'; name: string; jobId: string }
+	| { kind: 'webhook' | 'subscription'; name: string }
+
 export type AutomationExecutionOverride = {
 	execution: AutomationExecution
 	updatedAt: string
