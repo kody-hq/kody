@@ -255,11 +255,14 @@ test('guide entity detail focuses line anchors and rejects lines past the end', 
 	).toThrow(McpCallerError)
 })
 
-test('searching executor credential finds the credentials guide', async () => {
-	const result = await rankGuides('executor credential')
-	expect(
-		result.matches.some(
-			(match) => match.type === 'guide' && match.id === 'credentials',
-		),
-	).toBe(true)
-})
+test.each(['executor credential', 'publisher and executor credential'])(
+	'searching %s finds the credentials guide',
+	async (query) => {
+		const result = await rankGuides(query)
+		expect(
+			result.matches.some(
+				(match) => match.type === 'guide' && match.id === 'credentials',
+			),
+		).toBe(true)
+	},
+)

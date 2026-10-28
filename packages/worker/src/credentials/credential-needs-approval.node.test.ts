@@ -723,3 +723,13 @@ test('approving a paused session publish re-runs that session at the paused comm
 	await expect(approve(blip)).rejects.toThrow('Network blip')
 	expect(await status(blip)).toBe('pending')
 })
+
+test('flipping an executor need between optional and required reshapes it', () => {
+	const optional = need('GITHUB', { supplier: 'executor', required: false })
+	const required = need('GITHUB', { supplier: 'executor', required: true })
+	expect(diffCredentialNeeds([optional], [required])).toHaveLength(1)
+	expect(diffCredentialNeeds([required], [optional])).toHaveLength(1)
+	expect(
+		diffCredentialNeeds([required], [need('GITHUB', { supplier: 'executor' })]),
+	).toEqual([])
+})

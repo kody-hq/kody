@@ -82,10 +82,13 @@ function queryNarrowsGuideBySummary(
 	summary: string,
 ) {
 	if (tokens.length < 2) return false
-	const summaryText = normalizeSearchText(summary)
+	// Tokenize the summary like the query so stopwords drop out of both.
+	const summaryText = ` ${extractSearchTokens(summary)
+		.filter((token) => guideQueryTokens(token).length > 0)
+		.join(' ')} `
 	return (
 		tokens.some((token) => identity.includes(token)) &&
-		summaryText.includes(tokens.join(' '))
+		summaryText.includes(` ${tokens.join(' ')} `)
 	)
 }
 

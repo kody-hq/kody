@@ -100,6 +100,9 @@ function shape(need: CredentialNeed): NeedShape {
 function supplierChanged(prior: CredentialNeed, next: CredentialNeed) {
 	const before = needSupplier(prior)
 	const after = needSupplier(next)
+	if (before === 'executor' && after === 'executor') {
+		return (prior.required ?? true) !== (next.required ?? true)
+	}
 	return before !== after && !(before === 'publisher' && after === null)
 }
 

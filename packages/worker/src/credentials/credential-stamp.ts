@@ -1649,7 +1649,7 @@ export function scanCredentialStamp(
 					code: 'non_literal',
 					path,
 					message: nonLiteralFixMessage(
-						`${path}: credential() / credentials() was called with a non-literal key.`,
+						`${path}: credential() / credentials() / credential.visitor() was called with a non-literal key. Call it with a literal key, e.g. credential.visitor("SLOT") for a need each visitor supplies.`,
 					),
 				})
 			},

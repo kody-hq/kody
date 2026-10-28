@@ -26,6 +26,9 @@ vi.mock('#worker/repo/published-source.ts', () => ({
 	loadPublishedEntityManifest: (...args: Array<unknown>) =>
 		mockModule.loadPublishedEntityManifest(...args),
 }))
+vi.mock('#worker/credentials/credential-suppliers-flag.ts', () => ({
+	isPackageCredentialSuppliersEnabled: async () => true,
+}))
 vi.mock('#worker/credentials/credential-needs-closure.ts', () => ({
 	loadPublishedCredentialNeeds: (...args: Array<unknown>) =>
 		mockModule.loadPublishedCredentialNeeds(...args),

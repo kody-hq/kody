@@ -21,6 +21,7 @@ import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { approveWentPublicRequest } from '#app/account-package-approval-requests.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
+import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { logOrgAuditEvent } from '#worker/orgs/org-audit.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
@@ -123,12 +124,20 @@ async function evaluateTreePackage(
 		const slots = Object.values(
 			(kody.credentials ?? {}) as Record<string, unknown>,
 		)
-		const executorNeedCount = slots.filter(
-			(slot) =>
-				typeof slot === 'object' &&
-				slot !== null &&
-				(slot as { supplier?: unknown }).supplier === 'executor',
-		).length
+		// With the flag off, `supplier` is ignored and nothing is visitor-supplied.
+		const suppliersEnabled = await isPackageCredentialSuppliersEnabled({
+			db: env.APP_DB,
+			orgId: source.user_id,
+			request: flagMemo,
+		})
+		const executorNeedCount = suppliersEnabled
+			? slots.filter(
+					(slot) =>
+						typeof slot === 'object' &&
+						slot !== null &&
+						(slot as { supplier?: unknown }).supplier === 'executor',
+				).length
+			: 0
 		return {
 			blocker: 'declares_credentials',
 			reasons: [
