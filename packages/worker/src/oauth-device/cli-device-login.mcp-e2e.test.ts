@@ -7,8 +7,24 @@ import {
 	createUniqueTestUser,
 	getSharedMcpE2eServer,
 } from '../../../../tools/mcp-test-support.ts'
-import { loginWithDevice } from '../../../cli/src/auth.ts'
-import { createFileBackend } from '../../../cli/src/store.ts'
+
+// Loaded by path at runtime so the worker typecheck does not compile the CLI
+// sources under the Workers tsconfig (the CLI has its own Node tsconfig).
+type CliAuthModule = {
+	loginWithDevice: (options: Record<string, unknown>) => Promise<{
+		credentials: { accessToken: string }
+		org?: string
+	}>
+}
+type CliStoreModule = { createFileBackend: (path: string) => unknown }
+const cliSrc = new URL('../../../cli/src/', import.meta.url)
+async function loadCli() {
+	const auth = (await import(new URL('auth.ts', cliSrc).href)) as CliAuthModule
+	const store = (await import(
+		new URL('store.ts', cliSrc).href
+	)) as CliStoreModule
+	return { ...auth, ...store }
+}
 
 /**
  * `kody login --device` end to end against the dev worker: the real CLI
@@ -56,6 +72,7 @@ test('kody login --device signs in through /device approval', async () => {
 		return fetch(input, init)
 	}
 
+	const { loginWithDevice, createFileBackend } = await loadCli()
 	let approved = false
 	const dir = mkdtempSync(join(tmpdir(), 'kody-device-e2e-'))
 	const result = await loginWithDevice({
@@ -70,7 +87,7 @@ test('kody login --device signs in through /device approval', async () => {
 		sleep: async () => {
 			await new Promise((resolve) => setTimeout(resolve, 5_100))
 		},
-		onDeviceCode: (prompt) => {
+		onDeviceCode: (prompt: { verificationUri: string; userCode: string }) => {
 			expect(prompt.verificationUri).toBe(`${server.origin}/device`)
 			expect(prompt.userCode).toMatch(/^[A-Z]{4}-[A-Z]{4}$/)
 			void (async () => {
