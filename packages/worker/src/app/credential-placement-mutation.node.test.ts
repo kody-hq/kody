@@ -23,7 +23,6 @@ import { secretListCapability } from '#mcp/capabilities/secrets/secret-list.ts'
 import { secretSetCapability } from '#mcp/capabilities/secrets/secret-set.ts'
 
 const now = '2026-10-12T00:00:00.000Z'
-const hookUrl = 'https://hooks.example.com/services/T1/B1/hook-secret-part'
 
 async function setup() {
 	const sqlite = new DatabaseSync(':memory:')
