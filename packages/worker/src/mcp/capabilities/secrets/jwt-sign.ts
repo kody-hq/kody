@@ -160,7 +160,11 @@ export const jwtSignCapability = defineDomainCapability(
 				jwt: await sealToken({
 					env: ctx.env,
 					value: jwt,
-					to: { org: secretUserId, binding: null, domains },
+					to: {
+						org: secretUserId,
+						binding: ctx.credentialClientBinding ?? null,
+						domains,
+					},
 					expiresInSeconds:
 						exp === null ? null : exp - Math.floor(Date.now() / 1000),
 				}),

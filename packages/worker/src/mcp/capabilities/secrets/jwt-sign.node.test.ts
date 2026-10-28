@@ -74,7 +74,11 @@ function stubSecret(value: string | null) {
 }
 
 /** Signs, checks the result is sealed, and returns the JWT it sealed. */
-async function signWith(value: string, input: SignInput, context = ctx) {
+async function signWith(
+	value: string,
+	input: SignInput,
+	context: Parameters<typeof jwtSignCapability.handler>[1] = ctx,
+) {
 	stubSecret(value)
 	const seal = vi.spyOn(sealedToken, 'sealToken')
 	const result = await jwtSignCapability.handler(input, context)
@@ -545,4 +549,19 @@ test('secretJwtSign seals the JWT to the aud URL or send_to_host domain', async 
 		claims,
 	})
 	expect(anyHost.sealedTo.domains).toEqual([sealedToken.anySealedTokenDomain])
+})
+
+test('secretJwtSign binds the sealed JWT to the host-set run binding', async () => {
+	lookupSecretsThroughResolveSecret()
+	const { privateKey } = createKeyPair()
+	const signed = await signWith(
+		privateKey,
+		{
+			private_key_secret_name: 'serviceAccountKey',
+			algorithm: 'RS256',
+			claims: { iss: 'app', aud: 'https://api.example.com/' },
+		},
+		{ ...ctx, credentialClientBinding: 'run:example' },
+	)
+	expect(signed.sealedTo.binding).toBe('run:example')
 })

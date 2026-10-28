@@ -165,5 +165,9 @@ test('sealedTokenDomainForUrl uses the registrable domain', () => {
 	expect(
 		sealedTokenDomainForUrl('https://api-m.sandbox.example.co.uk/v1'),
 	).toBe('example.co.uk')
+	// Private suffixes keep sibling tenants apart.
+	expect(sealedTokenDomainForUrl('https://tenant-a.github.io/x')).toBe(
+		'tenant-a.github.io',
+	)
 	expect(sealedTokenDomainForUrl('not a url')).toBeNull()
 })

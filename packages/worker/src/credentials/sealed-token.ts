@@ -69,7 +69,7 @@ async function sealingKey(env: SealedTokenEnv) {
 export function sealedTokenDomainForUrl(url: string | URL) {
 	try {
 		const host = new URL(url).hostname.toLowerCase()
-		return getDomain(host) ?? host
+		return getDomain(host, { allowPrivateDomains: true }) ?? host
 	} catch {
 		return null
 	}

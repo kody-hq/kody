@@ -272,6 +272,13 @@ async function callKodyPath(input: {
 			}),
 			openApiPrincipal: toCapabilityOpenApiPrincipal(ctx.principal),
 			localExecuteHop: true,
+			...(ctx.callerContext.request
+				? {
+						credentialClientBinding: capabilityProxyCredentialClientBinding(
+							ctx.callerContext.request,
+						),
+					}
+				: {}),
 			...(ctx.waitUntil ? { waitUntil: ctx.waitUntil } : {}),
 			...(credentialClientTools ? { credentialClientTools } : {}),
 		},
