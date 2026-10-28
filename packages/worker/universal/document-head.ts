@@ -524,6 +524,7 @@ const orgDocumentHeads = {
 	},
 	orgCredentials: titleOnly('Credentials'),
 	orgCredentialNew: titleOnly('Add a credential'),
+	orgExecutionContexts: titleOnly('Execution contexts'),
 	orgEmail: titleOnly('Email inbox'),
 	orgIntegrations: titleOnly('Integrations'),
 	orgJobs: titleOnly('Jobs'),

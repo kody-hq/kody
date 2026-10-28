@@ -248,6 +248,13 @@ export const routes = {
 		href: (params: { orgSlug: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/credentials/new`,
 	},
+	orgExecutionContexts: {
+		href: (params: {
+			orgSlug: string | number
+			rest?: string | number | null
+		}) =>
+			`/@${segment(params.orgSlug)}/-/execution-contexts${filePath(params.rest)}`,
+	},
 	orgUsage: {
 		href: (params: { orgSlug: string | number }) =>
 			`/@${segment(params.orgSlug)}/-/usage`,

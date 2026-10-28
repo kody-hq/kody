@@ -26,6 +26,7 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { useShellData } from '../routes/__root.tsx'
 import { getSessionDisplayName, type SessionInfo } from '#client/session.ts'
+import { isFeatureFlagEnabled } from '#client/feature-flags.ts'
 import {
 	accountRailGroups,
 	accountRailOrgSlug,
@@ -585,6 +586,7 @@ function pageRail(input: {
 			personal,
 			role,
 			profileUsername: session?.username,
+			executionContexts: isFeatureFlagEnabled(session, 'execution-contexts'),
 		}),
 	}
 }
