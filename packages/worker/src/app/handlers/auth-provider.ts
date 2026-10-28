@@ -395,13 +395,7 @@ export function createAuthProviderCallbackHandler(env: Env) {
 				? await findSoftDeletedAccountById(env.APP_DB, connection.user_id)
 				: null
 		const releasedUsernames: Array<string> = []
-		if (supersededAccount) {
-			const released = await releaseSoftDeletedAccounts(env.APP_DB, [
-				supersededAccount,
-			])
-			releasedUsernames.push(...released.releasedUsernames)
-			connection = null
-		}
+		if (supersededAccount) connection = null
 
 		// 1. A signed-in user links the provider identity to their account
 		// (an existing connection for another user is a conflict, never an
@@ -495,6 +489,12 @@ export function createAuthProviderCallbackHandler(env: Env) {
 			return fail('no-verified-email', 'no_verified_email')
 		}
 		const email = normalizeEmail(profile.email)
+		if (supersededAccount) {
+			const released = await releaseSoftDeletedAccounts(env.APP_DB, [
+				supersededAccount,
+			])
+			releasedUsernames.push(...released.releasedUsernames)
+		}
 		const releasedForEmail = await releaseSoftDeletedAccountsForEmail(
 			env.APP_DB,
 			email,

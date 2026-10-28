@@ -389,3 +389,48 @@ test('password reset for a soft-deleted account mails the release link, not a re
 		7,
 	)
 })
+
+test('repeated password signups for a deleted address send one release mail per window', async () => {
+	const { sqlite, db } = await seedDeletedGoogleAccount()
+	consoleWarn.mockImplementation(() => {})
+
+	expect(
+		(await passwordSignup(db, { email, username: 'first-try' })).status,
+	).toBe(200)
+	expect(
+		(await passwordSignup(db, { email, username: 'second-try' })).status,
+	).toBe(200)
+	expect(
+		count(
+			sqlite,
+			`SELECT COUNT(*) AS count FROM pending_email_claim_releases WHERE user_id = 7`,
+		),
+	).toBe(1)
+	expect(
+		consoleWarn.mock.calls.filter(
+			([label]) => label === 'email-claim-release-send-skipped',
+		),
+	).toHaveLength(1)
+})
+
+test('a release link for another address never supersedes a deleted account', async () => {
+	const { sqlite, db, stableUserId } = await seedDeletedGoogleAccount()
+	const releaseToken = 'former-address-release-token'
+	sqlite
+		.prepare(
+			`INSERT INTO pending_email_claim_releases (user_id, email, token_hash, expires_at)
+			 VALUES (7, 'former-address@example.com', ?, ?)`,
+		)
+		.run(await hashVerificationToken(releaseToken), Date.now() + 60_000)
+
+	const result = await verifyEmailClaimReleaseToken({
+		db,
+		token: releaseToken,
+	})
+	expect(result).toMatchObject({ ok: false })
+	expect(
+		sqlite
+			.prepare(`SELECT email, username FROM users WHERE stable_user_id = ?`)
+			.get(stableUserId),
+	).toEqual({ email, username: handle })
+})

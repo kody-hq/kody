@@ -88,10 +88,24 @@ export async function createDeletedAccountReleaseVerification(input: {
 	email: string
 	requestUrl: string | URL
 }) {
+	const email = normalizeEmail(input.email)
+	// One mail per address per window, however many signups or resets ask.
+	const recent = await input.env.APP_DB.prepare(
+		`SELECT 1 AS hit FROM pending_email_claim_releases
+		 WHERE user_id = ? AND email = ?
+		   AND created_at > datetime('now', ?)`,
+	)
+		.bind(
+			input.deletedUserId,
+			email,
+			`-${emailClaimReleaseRequestRateLimitConfig.windowSeconds} seconds`,
+		)
+		.first<{ hit: number }>()
+	if (recent) return
 	await sendEmailClaimReleaseLink({
 		env: input.env,
 		userId: input.deletedUserId,
-		email: normalizeEmail(input.email),
+		email,
 		requestUrl: input.requestUrl,
 		buildMessage: buildDeletedAccountReleaseEmail,
 	})

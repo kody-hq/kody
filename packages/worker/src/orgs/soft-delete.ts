@@ -684,7 +684,8 @@ export async function restoreOrg(input: {
 				`UPDATE orgs
 				 SET deleted_at = NULL, deleting_at = NULL, updated_at = ?,
 				     access_epoch = access_epoch + 1
-				 WHERE id = ? AND deleted_at = ?${freeOrg ? freeOrgCapRestoreGuardSql : ''}`,
+				 WHERE id = ? AND deleted_at = ?
+				   AND slug NOT LIKE '~released-%'${freeOrg ? freeOrgCapRestoreGuardSql : ''}`,
 			)
 			.bind(
 				restoredAt,
@@ -988,7 +989,8 @@ export async function restoreUserAccount(input: {
 	const userUpdate = await input.env.APP_DB.prepare(
 		`UPDATE users
 		 SET deleted_at = NULL, deleting_at = NULL, updated_at = ?
-		 WHERE stable_user_id = ? AND deleted_at = ?`,
+		 WHERE stable_user_id = ? AND deleted_at = ?
+		   AND email NOT LIKE '%@released.kody.invalid'`,
 	)
 		.bind(restoredAt, input.userId, deletedAt)
 		.run()

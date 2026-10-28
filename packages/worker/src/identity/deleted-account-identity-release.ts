@@ -233,8 +233,9 @@ export type DeletedAccountReleaseTokenResult =
 
 /**
  * Consume a mailed release link minted for a soft-deleted account (password
- * signup cannot supersede one without proving the address). Returns null
- * when the token belongs to a live account's claim-release flow instead.
+ * signup cannot supersede one without proving the address). Only a link for
+ * the deleted account's own current address counts; anything else (e.g. a
+ * former-address link that outlived the deletion) returns null.
  */
 export async function consumeDeletedAccountReleaseToken(
 	db: D1Database,
@@ -246,7 +247,8 @@ export async function consumeDeletedAccountReleaseToken(
 			`SELECT pec.id, pec.user_id, pec.email, pec.expires_at
 			 FROM pending_email_claim_releases pec
 			 INNER JOIN users u ON u.id = pec.user_id
-			 WHERE pec.token_hash = ? AND u.deleted_at IS NOT NULL`,
+			 WHERE pec.token_hash = ? AND u.deleted_at IS NOT NULL
+			   AND u.email = pec.email`,
 		)
 		.bind(tokenHash)
 		.first<{ id: number; user_id: number; email: string; expires_at: number }>()
@@ -258,12 +260,9 @@ export async function consumeDeletedAccountReleaseToken(
 	if (record.expires_at < now.getTime()) {
 		return { ok: false, reason: 'expired_token' }
 	}
-	const released = await releaseSoftDeletedAccountsForEmail(
-		db,
-		record.email,
-		now,
-	)
-	if (released.releasedCount === 0) return { ok: false, reason: 'not_claimed' }
+	const account = await findSoftDeletedAccountById(db, record.user_id)
+	if (!account) return { ok: false, reason: 'not_claimed' }
+	await releaseSoftDeletedAccounts(db, [account], now)
 	return {
 		ok: true,
 		userId: record.user_id,

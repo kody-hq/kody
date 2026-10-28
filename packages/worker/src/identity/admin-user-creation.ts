@@ -89,6 +89,32 @@ async function resolveUsername(input: {
 	return explicitUsername
 }
 
+async function assertExplicitUsernameUsable(input: {
+	db: D1Database
+	env?: Pick<Env, 'BUNDLE_ARTIFACTS_KV'>
+	username?: string | null
+}) {
+	const explicitUsername = normalizeUsername(input.username)
+	if (!explicitUsername) return
+	const usernameError = await getEffectiveUsernameValidationError(
+		explicitUsername,
+		input.env,
+	)
+	if (usernameError) {
+		throw new AdminCreateUserError('invalid_username', usernameError)
+	}
+	const liveUser = await input.db
+		.prepare(`SELECT id FROM users WHERE username = ?${andLiveDeletedAtSql()}`)
+		.bind(explicitUsername)
+		.first<{ id: number }>()
+	if (liveUser) {
+		throw new AdminCreateUserError(
+			'username_exists',
+			'Username already registered.',
+		)
+	}
+}
+
 async function deleteUserBestEffort(input: {
 	db: D1Database
 	userId: number
@@ -168,6 +194,8 @@ export async function adminCreateUserWithPasswordSetup(input: {
 	if (existingUser) {
 		throw new AdminCreateUserError('email_exists', 'Email already registered.')
 	}
+	// Superseding is irreversible: reject a bad explicit username first.
+	await assertExplicitUsernameUsable(input)
 	await releaseSoftDeletedAccountsForEmail(input.db, email, input.now)
 
 	const username = await resolveUsername({
