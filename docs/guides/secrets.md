@@ -82,6 +82,19 @@ boundary, on the final serialized request, and only for hosts you approved.
   Pass the secret as `private_key_secret_name` (a saved secret name **or** the
   opaque ref from `packageSecrets.get`).
 
+- **Saving a token from a token exchange**: a token response (`access_token`,
+  `refresh_token`, `id_token`) to a request Kody filled a credential into comes
+  back sealed (`{{integration-token:kody-sealed.…}}`), good only in that run for
+  up to an hour. To keep a long-lived one (Plaid's `access_token` from
+  `/item/public_token/exchange`), pass it to
+  `secretSet({ name, scope: 'user', sealed_token })` in the same run. Kody opens
+  it and saves the real token as a Key, never returned to code. The Key goes
+  only to the token endpoint's host, the exact hosts approved on the credentials
+  that minted it, and its JWT audience host, in a header or the body (never the
+  URL). Saving over an existing Key keeps its narrower hosts and placement.
+  `secretSet` refuses a sealed token passed as `value`, one from another run, an
+  expired one, and a signed JWT.
+
 Placeholders are live tokens. Do not paste one into an issue body, a comment, a
 log line, or a returned string — write `{{secret:<name>}}` with angle brackets
 when you need to mention the syntax in prose.

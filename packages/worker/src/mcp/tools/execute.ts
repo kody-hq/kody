@@ -5,6 +5,10 @@ import {
 	executeRoutingInputFields,
 	routeExecuteForCaller,
 } from '#worker/execution-contexts/execute-routing.ts'
+import {
+	describeCloudFallback,
+	type ExecutionContextRunMetadata,
+} from '#worker/execution-contexts/routing.ts'
 import * as Sentry from '@sentry/cloudflare'
 import {
 	type ContentBlock,
@@ -242,6 +246,12 @@ export const executeToolOutputSchema = {
 		.unknown()
 		.optional()
 		.describe('Relevant stored memories surfaced for this call.'),
+	executionContext: z
+		.unknown()
+		.optional()
+		.describe(
+			'Where an execution-context run went: the context, every attempt, and fellBackToCloud when it ran on Kody cloud instead.',
+		),
 }
 
 export type ExecuteToolStructuredContent = StructuredContentFromFields<
@@ -773,6 +783,9 @@ export async function runExecuteToolCall(input: {
 				}
 			}
 		}
+		const { cloudFallbackContent, cloudFallbackFields } = cloudFallbackParts(
+			routed?.kind === 'cloud' ? routed.metadata : null,
+		)
 		if (routed?.kind === 'pending') {
 			transportDetached = true
 			const timing = finishToolTiming(timingStart)
@@ -1033,6 +1046,7 @@ export async function runExecuteToolCall(input: {
 				runId: spanned.runId,
 				idempotencyKey: spanned.idempotencyKey,
 				memories: surfacedMemories,
+				executionContext: routed?.kind === 'cloud' ? routed.metadata : null,
 			})
 		}
 		const result = spanned
@@ -1105,6 +1119,7 @@ export async function runExecuteToolCall(input: {
 						type: 'text',
 						text: formatExecutionOutput(result),
 					},
+					...cloudFallbackContent,
 					...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 					...formatSurfacedMemoriesMarkdown(surfacedMemories),
 				]),
@@ -1117,10 +1132,12 @@ export async function runExecuteToolCall(input: {
 					errorDetails,
 					...entitlementStructuredContent(result.error),
 					logs: result.logs ?? [],
+					...cloudFallbackFields,
 					...(rawFetchHostNudges.length > 0
 						? { warnings: rawFetchHostNudges }
 						: {}),
 					...buildMemoryStructuredContent(surfacedMemories),
+					...cloudFallbackFields,
 				},
 				isError: true,
 			}
@@ -1158,6 +1175,7 @@ export async function runExecuteToolCall(input: {
 							text: `Error: ${message}`,
 						},
 						...formatSurfacedMemoriesMarkdown(surfacedMemories),
+						...cloudFallbackContent,
 					]),
 					structuredContent: {
 						conversationId: resolvedConversationId,
@@ -1168,6 +1186,7 @@ export async function runExecuteToolCall(input: {
 						result: passthrough?.structuredResult ?? null,
 						logs: result.logs ?? [],
 						...buildMemoryStructuredContent(surfacedMemories),
+						...cloudFallbackFields,
 					},
 					isError: true,
 				}
@@ -1185,6 +1204,7 @@ export async function runExecuteToolCall(input: {
 							text: `Error: ${contentLimited.note}`,
 						},
 						...formatSurfacedMemoriesMarkdown(surfacedMemories),
+						...cloudFallbackContent,
 					]),
 					structuredContent: {
 						conversationId: resolvedConversationId,
@@ -1196,6 +1216,7 @@ export async function runExecuteToolCall(input: {
 						result: passthrough?.structuredResult ?? null,
 						logs: result.logs ?? [],
 						...buildMemoryStructuredContent(surfacedMemories),
+						...cloudFallbackFields,
 					},
 					isError: true,
 				}
@@ -1230,6 +1251,7 @@ export async function runExecuteToolCall(input: {
 					...contentLimited.blocks,
 					...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 					...formatSurfacedMemoriesMarkdown(surfacedMemories),
+					...cloudFallbackContent,
 				]),
 				structuredContent: {
 					conversationId: resolvedConversationId,
@@ -1252,6 +1274,7 @@ export async function runExecuteToolCall(input: {
 						? { warnings: rawFetchHostNudges }
 						: {}),
 					...buildMemoryStructuredContent(surfacedMemories),
+					...cloudFallbackFields,
 				},
 				isError,
 			}
@@ -1291,6 +1314,7 @@ export async function runExecuteToolCall(input: {
 						displayText: structuredResultValue.displayText,
 					}),
 				},
+				...cloudFallbackContent,
 				...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 				...formatSurfacedMemoriesMarkdown(surfacedMemories),
 			]),
@@ -1307,6 +1331,7 @@ export async function runExecuteToolCall(input: {
 					: {}),
 				result: structuredResultValue.value,
 				logs: result.logs ?? [],
+				...cloudFallbackFields,
 				...(rawFetchHostNudges.length > 0
 					? { warnings: rawFetchHostNudges }
 					: {}),
@@ -1335,13 +1360,18 @@ function buildTransportBudgetFollowResponse(input: {
 	runId: string
 	idempotencyKey: string
 	memories: Parameters<typeof formatSurfacedMemoriesMarkdown>[0]
+	executionContext?: unknown
 }) {
+	const { cloudFallbackContent, cloudFallbackFields } = cloudFallbackParts(
+		input.executionContext,
+	)
 	const text = input.idempotencyKey
 		? `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Retrying execute with idempotencyKey "${input.idempotencyKey}" reads this run instead of starting another mutation.`
 		: `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Do not start another mutation for this call.`
 	return {
 		content: prependToolMetadataContent(input.conversationId, [
 			{ type: 'text' as const, text },
+			...cloudFallbackContent,
 			...formatSurfacedMemoriesMarkdown(input.memories),
 		]),
 		structuredContent: {
@@ -1352,6 +1382,7 @@ function buildTransportBudgetFollowResponse(input: {
 			inProgress: true as const,
 			status: 'running' as const,
 			...buildMemoryStructuredContent(input.memories),
+			...cloudFallbackFields,
 		},
 		isError: false,
 	}
@@ -1389,6 +1420,9 @@ function buildKeyedExecuteLookupResponse(input: {
 	}
 
 	const retainedResult = input.run.metadata['result']
+	const { cloudFallbackContent, cloudFallbackFields } = cloudFallbackParts(
+		input.run.metadata['executionContext'],
+	)
 	if (input.run.status === 'error') {
 		const errorMessage =
 			input.run.errorMessage ?? 'Execute failed (replayed from run record).'
@@ -1400,6 +1434,7 @@ function buildKeyedExecuteLookupResponse(input: {
 					type: 'text',
 					text: `Error: ${errorMessage}`,
 				},
+				...cloudFallbackContent,
 			]),
 			structuredContent: {
 				conversationId: input.conversationId,
@@ -1415,6 +1450,7 @@ function buildKeyedExecuteLookupResponse(input: {
 				...entitlementStructuredContent(replayedError),
 				...(retainedResult !== undefined ? { result: retainedResult } : {}),
 				logs: [] as Array<unknown>,
+				...cloudFallbackFields,
 			},
 			isError: true,
 		}
@@ -1431,6 +1467,7 @@ function buildKeyedExecuteLookupResponse(input: {
 					displayText: undefined,
 				}),
 			},
+			...cloudFallbackContent,
 		]),
 		structuredContent: {
 			conversationId: input.conversationId,
@@ -1443,8 +1480,25 @@ function buildKeyedExecuteLookupResponse(input: {
 			returnedBytes: 0,
 			result: retainedResult,
 			logs: [] as Array<unknown>,
+			...cloudFallbackFields,
 		},
 		isError: false,
+	}
+}
+
+function isCloudFallback(value: unknown): value is ExecutionContextRunMetadata {
+	if (typeof value !== 'object' || value === null) return false
+	const candidate = value as Partial<ExecutionContextRunMetadata>
+	return candidate.fellBackToCloud === true && Array.isArray(candidate.attempts)
+}
+
+function cloudFallbackParts(metadata: unknown) {
+	const fallback = isCloudFallback(metadata) ? metadata : null
+	return {
+		cloudFallbackContent: fallback
+			? [{ type: 'text' as const, text: describeCloudFallback(fallback) }]
+			: [],
+		cloudFallbackFields: fallback ? { executionContext: fallback } : {},
 	}
 }
 

@@ -41,6 +41,18 @@ const transportBudgetMock = vi.hoisted(() => ({
 	remainingMs: null as number | null,
 }))
 
+const routingMock = vi.hoisted(() => ({
+	outcome: null as unknown,
+}))
+
+vi.mock(
+	'#worker/execution-contexts/execute-routing.ts',
+	async (importActual) => ({
+		...(await importActual<object>()),
+		routeExecuteForCaller: async () => routingMock.outcome,
+	}),
+)
+
 const heartbeatMock = vi.hoisted(() => ({
 	scheduleFleetExecuteLastSuccess: vi.fn(),
 }))
@@ -741,6 +753,31 @@ test('execute tool replays finished keyed runs and reports in-progress without r
 		result: { ok: true, agentId: 'agent-9' },
 	})
 
+	const fallback = {
+		id: 'ec_box',
+		name: 'build-box',
+		fellBackToCloud: true,
+		attempts: [
+			{
+				target: 'ec_box',
+				name: 'build-box',
+				outcome: 'rejected',
+				reason: 'busy',
+			},
+		],
+	}
+	const fallbackReplayed = await replay('conv-fallback-replay', {
+		metadata: { result: { ok: true }, executionContext: fallback },
+	})
+	expect(fallbackReplayed.structuredContent).toMatchObject({
+		replayed: true,
+		executionContext: fallback,
+	})
+	expect(fallbackReplayed.content).toContainEqual({
+		type: 'text',
+		text: 'Ran on Kody cloud: no execution context in your chain took this run (build-box (ec_box): rejected busy).',
+	})
+
 	const inProgress = await replay('conv-running', {
 		id: 'run-running-1',
 		status: 'running',
@@ -860,6 +897,47 @@ test('execute tool claims a keyed run, passes the handle, and returns runId', as
 	expect(response.structuredContent).toMatchObject({
 		runId: 'run-claimed-1',
 		result: { spawned: true },
+	})
+})
+
+test('execute tool shows a cloud fallback in the response when no context took the run', async () => {
+	const fallback = {
+		id: 'ec_box',
+		name: 'build-box',
+		fellBackToCloud: true,
+		attempts: [
+			{
+				target: 'ec_box',
+				name: 'build-box',
+				outcome: 'rejected',
+				reason: 'grant_mismatch',
+			},
+		],
+	}
+	routingMock.outcome = { kind: 'cloud', metadata: fallback }
+	onTestFinished(() => {
+		routingMock.outcome = null
+	})
+	const handler = await getExecuteHandler({
+		baseUrl: 'https://example.com',
+		user: {
+			userId: ownerIdFromStored('user-fallback-execute'),
+			email: 'fallback@example.com',
+			displayName: 'Fallback',
+		},
+	})
+	moduleReturns({ ok: true })
+	const response = await handler({
+		code: 'export default async () => ({ ok: true })',
+		conversationId: 'conv-fallback',
+	})
+	expect(response.structuredContent).toMatchObject({
+		result: { ok: true },
+		executionContext: fallback,
+	})
+	expect(response.content).toContainEqual({
+		type: 'text',
+		text: 'Ran on Kody cloud: no execution context in your chain took this run (build-box (ec_box): rejected grant_mismatch).',
 	})
 })
 
@@ -1326,8 +1404,16 @@ test('execute returns the server-assigned key with a finished run and does not a
 
 test('execute returns runId when the transport budget hits and keeps the sandbox running', async () => {
 	transportBudgetMock.remainingMs = 0
+	const fallback = {
+		id: 'ec_box',
+		name: 'build-box',
+		fellBackToCloud: true,
+		attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'offline' }],
+	}
+	routingMock.outcome = { kind: 'cloud', metadata: fallback }
 	onTestFinished(() => {
 		transportBudgetMock.remainingMs = null
+		routingMock.outcome = null
 	})
 	const handle = transportFollowHandle(
 		'run-follow-budget',
@@ -1351,6 +1437,7 @@ test('execute returns runId when the transport budget hits and keeps the sandbox
 		idempotencyKey: 'execute:budget-key',
 		inProgress: true,
 		status: 'running',
+		executionContext: fallback,
 	})
 	expect(response.structuredContent).not.toHaveProperty('error')
 	const text = response.content
@@ -1359,6 +1446,9 @@ test('execute returns runId when the transport budget hits and keeps the sandbox
 	expect(text).toContain('Poll runGet')
 	expect(text).toContain('execute:budget-key')
 	expect(text).not.toContain('Error:')
+	expect(text).toContain(
+		'Ran on Kody cloud: no execution context in your chain took this run (build-box (ec_box): offline).',
+	)
 	expect(mockModule.ensureRunRecordStarted).toHaveBeenCalledWith(
 		expect.objectContaining({ handle }),
 	)

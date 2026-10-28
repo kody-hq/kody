@@ -18,6 +18,7 @@ import {
 	abortableDelay,
 	runDaemon,
 	runDaemonConnection,
+	runRequestRefusal,
 	runScopedFetch,
 	welcomeTimeoutCloseCode,
 } from '../src/execution-context/daemon.js'
@@ -444,5 +445,31 @@ test('kody chain show prints names and an offline marker, and add on an empty ch
 	assert.equal(
 		await run(['show']),
 		'1. box (ec_box) [offline]\n2. ci (ec_ci)\n3. Kody cloud (always last)\n',
+	)
+})
+
+test('the daemon accepts runs naming its API origin and refuses any other origin', () => {
+	const apiUrl = 'https://api.kody.codes'
+	const acceptBy = 2_000
+	assert.equal(runRequestRefusal({ apiUrl, acceptBy }, apiUrl, 1_000), null)
+	assert.equal(
+		runRequestRefusal({ apiUrl: `${apiUrl}/`, acceptBy }, apiUrl, 1_000),
+		null,
+	)
+	assert.equal(
+		runRequestRefusal(
+			{ apiUrl: 'https://kody.codes', acceptBy },
+			apiUrl,
+			1_000,
+		),
+		'grant_mismatch',
+	)
+	assert.equal(
+		runRequestRefusal({ apiUrl: 'not a url', acceptBy }, apiUrl, 1_000),
+		'grant_mismatch',
+	)
+	assert.equal(
+		runRequestRefusal({ apiUrl, acceptBy }, apiUrl, 3_000),
+		'deadline_passed',
 	)
 })

@@ -54,6 +54,22 @@ export type ExecutionContextRunMetadata = {
 	fellBackToCloud: boolean
 }
 
+/**
+ * One line telling the caller that a run meant for an execution context
+ * ran on Kody cloud instead, and why each context passed on it.
+ */
+export function describeCloudFallback(metadata: ExecutionContextRunMetadata) {
+	const tried = metadata.attempts
+		.map((attempt) => {
+			const label = attempt.name
+				? `${attempt.name} (${attempt.target})`
+				: attempt.target
+			return `${label}: ${attempt.outcome}${attempt.reason ? ` ${attempt.reason}` : ''}`
+		})
+		.join('; ')
+	return `Ran on Kody cloud: no execution context in your chain took this run${tried ? ` (${tried})` : ''}.`
+}
+
 export type RoutingOutcome =
 	| { kind: 'cloud'; metadata: ExecutionContextRunMetadata | null }
 	| {
