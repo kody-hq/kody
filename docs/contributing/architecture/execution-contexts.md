@@ -52,9 +52,11 @@ sequenceDiagram
   `KODY_CONTEXT_KEY_PASSPHRASE`.
 - Server frames are signed with `ECP_FRAME_SIGNING_KEYS`; daemons trust only
   keys published at `/v1/execution-contexts/server-keys` and signed by a root
-  key pinned in `server-keys.ts`. Without `ECP_FRAME_SIGNING_KEYS` the session
-  refuses to connect, so set it (through the Deploy workflow's secrets, never by
-  hand) before turning the flag on anywhere.
+  key pinned in `server-keys.ts`. That route serves the committed test key set
+  only when the configured signer is a test key, and the production set
+  otherwise. Without `ECP_FRAME_SIGNING_KEYS` the session refuses to connect, so
+  set it (through the Deploy workflow's secrets, never by hand) before turning
+  the flag on anywhere.
 - Every API hop a run makes re-checks the requester's current access (account
   state, org membership, share, opt-in, attachment). Lost access ends the lease
   with `access_lost`. Leaving a team or org, opting out, detaching and narrowing
