@@ -682,6 +682,50 @@ function pickExplicit(input: {
 	}
 }
 
+/** The visitor's mapped credentials for an executor need, under their live grant. */
+async function resolveExecutorNeedPicks(
+	ctx: CredentialClientContext,
+	key: string,
+	need: NonNullable<Awaited<ReturnType<typeof loadNeed>>>,
+	mode: 'one' | 'many',
+): Promise<Array<Picked>> {
+	const grant = await ctx.packageAppAuthority?.visitorNeedGrant(key)
+	const visitorUsable = grant
+		? liveUsableCredentials(
+				await listUsableCredentials({
+					env: ctx.env,
+					request: grant.request,
+					packageId: ctx.packageId,
+				}),
+			)
+		: []
+	const credentialIds = grant
+		? await findPackageAppGrantCredentialMapping({
+				db: ctx.env.APP_DB,
+				grantId: grant.grantId,
+				needKey: key,
+			})
+		: []
+	const mapped = credentialIds
+		.map((id) => visitorUsable.find((credential) => credential.id === id))
+		.filter(
+			(credential): credential is UsableCredential =>
+				credential !== undefined &&
+				mappedCredentialFits(credential, needTarget(key, need)),
+		)
+	if (mapped.length === 0) {
+		throw refusal(
+			'credential_unbound',
+			`Credential need "${key}" is not connected. Sign in with Kody and allow need:${key} to choose credentials.`,
+		)
+	}
+	return (mode === 'one' ? mapped.slice(0, 1) : mapped).map((credential) => ({
+		credential,
+		hint: null,
+		packageAppRequest: grant!.request,
+	}))
+}
+
 async function resolveKey(
 	ctx: CredentialClientContext,
 	key: string,
@@ -741,47 +785,9 @@ async function resolveKey(
 			`Credential need "${key}" is supplied by the publisher; use credential("${key}")`,
 		)
 	}
-	if (
-		ctx.packageAppAuthority?.issue &&
-		'visitorNeed' in ctx.packageAppAuthority.issue &&
-		need?.supplier === 'executor'
-	) {
-		const grant = await ctx.packageAppAuthority.visitorNeedGrant(key)
-		const visitorUsable = grant
-			? liveUsableCredentials(
-					await listUsableCredentials({
-						env: ctx.env,
-						request: grant.request,
-						packageId: ctx.packageId,
-					}),
-				)
-			: []
-		const credentialIds = grant
-			? await findPackageAppGrantCredentialMapping({
-					db: ctx.env.APP_DB,
-					grantId: grant.grantId,
-					needKey: key,
-				})
-			: []
-		const mapped = credentialIds
-			.map((id) => visitorUsable.find((credential) => credential.id === id))
-			.filter(
-				(credential): credential is UsableCredential =>
-					credential !== undefined &&
-					mappedCredentialFits(credential, needTarget(key, need)),
-			)
-		if (mapped.length === 0) {
-			throw refusal(
-				'credential_unbound',
-				`Credential need "${key}" is not connected. Sign in with Kody and allow need:${key} to choose credentials.`,
-			)
-		}
+	if (isVisitorNeedAuthority && need?.supplier === 'executor') {
 		return withPackageAppIssue(
-			(mode === 'one' ? mapped.slice(0, 1) : mapped).map((credential) => ({
-				credential,
-				hint: null,
-				packageAppRequest: grant!.request,
-			})),
+			await resolveExecutorNeedPicks(ctx, key, need, mode),
 		)
 	}
 	const target = needTarget(key, need)
@@ -953,6 +959,21 @@ export async function openCredentialClient(
 		})
 	}
 	const key = readText(input.key, 'A credential key')
+	// A visitor from outside the app's org has no acting request there; only
+	// their own executor credentials, under their live grant, can open.
+	if (
+		!ctx.callerContext.request?.actor &&
+		ctx.packageAppAuthority?.issue &&
+		'visitorNeed' in ctx.packageAppAuthority.issue
+	) {
+		const need = await loadNeed(ctx, key)
+		if (need?.supplier === 'executor') {
+			const [picked] = await resolveExecutorNeedPicks(ctx, key, need, 'one')
+			return await issueClient(ctx, key, picked!, {
+				packageAppIssue: { executorNeed: key },
+			})
+		}
+	}
 	const owner = await ownerCredentialOpen(ctx, key)
 	const opener = owner?.ctx ?? ctx
 	const usable = liveUsableCredentials(

@@ -2884,8 +2884,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			const visitorContext = await this.createCallerContext(null, visitTicket)
 			const callerContext =
 				opener.mode === 'runs-as' ? opener.callerContext : visitorContext
+			// An outside-org visitor's handles resolve only through their own
+			// grant, so every opener names them for executor-need handles.
 			const visitorCredentialRequest =
-				opener.mode === 'visitor-need' && opener.executorNeed
+				(opener.mode === 'visitor-need' && opener.executorNeed) ||
+				visit?.executorOnly
 					? await createPackageAppVisitorCredentialRequest({
 							db: this.env.APP_DB,
 							orgId: this.ctx.props.userId,
