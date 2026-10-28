@@ -432,6 +432,18 @@ export async function routeExecute(input: {
 			},
 		}
 	}
+	if (
+		requires.length > 0 &&
+		chain.entries.some((entry) => entry.kind === 'cloud') &&
+		(!named || input.args.fallback === 'chain')
+	) {
+		attempts.push({
+			target: 'cloud',
+			name: 'Kody cloud',
+			outcome: 'skipped',
+			reason: requires.includes('fs') ? 'no_fs' : 'no_lan',
+		})
+	}
 	if (named && named !== 'cloud' && input.args.fallback !== 'chain') {
 		noContext(
 			attempts,
