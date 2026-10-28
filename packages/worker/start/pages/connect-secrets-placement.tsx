@@ -24,7 +24,12 @@ import {
 	approvalRejectedHosts,
 	approvalRequestedHosts,
 } from '#client/routes/account-approval-shared.ts'
-import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import {
+	colors,
+	radius,
+	spacing,
+	typography,
+} from '#universal/styles/tokens.ts'
 import {
 	cardCss,
 	getAccentCalloutCss,
@@ -80,8 +85,13 @@ const summaryCss: CSSObject = {
 	overflowWrap: 'anywhere',
 }
 const warningCss: CSSObject = {
-	...getAccentCalloutCss({ accentColor: colors.warning }),
-	color: colors.text,
+	display: 'grid',
+	gap: '0.35rem',
+	padding: spacing.md,
+	borderRadius: radius.md,
+	border: `1px solid ${colors.warning}`,
+	background: `color-mix(in srgb, ${colors.warning} 10%, transparent)`,
+	color: colors.warningText,
 }
 
 type Step = 'approve' | 'reject'
