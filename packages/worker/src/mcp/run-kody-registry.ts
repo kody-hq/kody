@@ -443,6 +443,7 @@ export async function buildKodyToolContext(
 		reportProgress?: McpReportProgress
 		waitUntil?: (promise: Promise<unknown>) => void
 		openApiPrincipal?: CapabilityOpenApiPrincipal
+		localExecuteHop?: true
 	},
 ): Promise<{
 	tools: AdditionalKodyTools
@@ -501,6 +502,7 @@ export async function buildKodyToolContext(
 						...(options?.openApiPrincipal
 							? { openApiPrincipal: options.openApiPrincipal }
 							: {}),
+						...(options?.localExecuteHop ? { localExecuteHop: true } : {}),
 					})
 				} finally {
 					if (shouldSampleFirstDispatch) {

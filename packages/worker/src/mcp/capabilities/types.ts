@@ -11,9 +11,10 @@ import { type McpReportProgress } from '#mcp/progress.ts'
 export const emptyCapabilityInputSchema = z.object({})
 
 /**
- * When a capability is invoked via the Open API (HTTP or MCP `api`), the
- * authenticated principal. Absent for hosted MCP `execute` / CapabilityProxy.
- * Token principals must not escalate scopes when minting credentials.
+ * When a capability is invoked via the Open API (HTTP, MCP `api`, or the
+ * CapabilityProxy hop behind `execute --local`), the authenticated principal.
+ * Absent for hosted MCP `execute`. Token principals must not escalate scopes
+ * when minting credentials.
  */
 export type CapabilityOpenApiPrincipal =
 	| { kind: 'token'; token: ApiTokenRecord }
@@ -36,6 +37,12 @@ export type CapabilityContext = {
 	waitUntil?: (promise: Promise<unknown>) => void
 	/** Set only when this capability runs as an Open API operation. */
 	openApiPrincipal?: CapabilityOpenApiPrincipal
+	/**
+	 * Set by the CapabilityProxy when the call is a `kody:runtime` hop from
+	 * `execute --local` code. Host-set, never read from module args, so local
+	 * code cannot clear it. Hosted execute has no `openApiPrincipal`.
+	 */
+	localExecuteHop?: true
 }
 
 export type CapabilityResult = unknown

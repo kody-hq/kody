@@ -100,7 +100,7 @@ export function assertCliBootstrapCode(code: string): string {
 	const trimmed = code.trim()
 	if (!parseCliBootstrapCode(trimmed)) {
 		throw new Error(
-			`Invalid bootstrap code. Expected a one-shot ${cliBootstrapCodePrefix}… from cliCredentialBootstrap (MCP api / kody.cliCredentialBootstrap).`,
+			`Invalid bootstrap code. Expected a one-shot ${cliBootstrapCodePrefix}… from cliCredentialBootstrap (MCP api tool).`,
 		)
 	}
 	return trimmed

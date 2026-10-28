@@ -111,7 +111,7 @@ you pass `--token` explicitly):
 
 ```bash
 # Preferred for agents on MCP (no tokenCreate, no second OAuth):
-# 1. MCP api / kody.cliCredentialBootstrap → { bootstrap_code, cli_command }
+# 1. MCP api tool, operationId cliCredentialBootstrap → { bootstrap_code, cli_command }
 npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
 npx @kodycodes/cli execute --local --file ./task.js
 

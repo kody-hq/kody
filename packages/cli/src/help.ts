@@ -116,10 +116,10 @@ ${orgBlock}
   --clients  Comma-separated ids: ${hostIds.join(', ')}
 
   auth bootstrap
-             Agents on Kody MCP: call \`cliCredentialBootstrap\` (MCP
-             \`execute\` with \`kody.cliCredentialBootstrap({ lifetime:
-             "short", scopes: [...] })\`, or MCP \`api\` with operationId
-             \`cliCredentialBootstrap\`) and run the returned \`cli_command\`
+             Agents on Kody MCP: call the MCP \`api\` tool with operationId
+             \`cliCredentialBootstrap\` and params \`{ lifetime: "short",
+             scopes: [...] }\` (\`execute\` is refused) and run the returned
+             \`cli_command\`
              (never ask a human to paste a token). Humans: \`kody login\`.
              This command redeems a one-shot \`kody_bc_…\` (POST
              /v1/tokens/bootstrap/redeem, no Authorization header).

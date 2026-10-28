@@ -58,7 +58,7 @@ use scopes), plus `package:write` (plain-repo / package pushes),
 The list replaces the defaults, so include every scope you need:
 
 ```bash
-# Agents on MCP: cliCredentialBootstrap({ lifetime: "short", scopes: ["org:execute", "org:read", "package:execute", "package:read", "package:write"] })
+# Agents on MCP, with the api tool (execute is refused): cliCredentialBootstrap({ lifetime: "short", scopes: ["org:execute", "org:read", "package:execute", "package:read", "package:write"] })
 npx @kodycodes/cli auth bootstrap --code 'kody_bc_…' --lifetime short
 
 # After `kody login`, the CLI mints the code itself and stores the token:

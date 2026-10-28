@@ -630,7 +630,7 @@ async function dispatch(
 			)
 			if (!code && !scopes) {
 				throw new Error(
-					'Provide --code <kody_bc_…> from cliCredentialBootstrap (MCP api / kody.cliCredentialBootstrap), or --scopes <list> to mint one with the current kody login session or API token.',
+					'Provide --code <kody_bc_…> from cliCredentialBootstrap (MCP api tool), or --scopes <list> to mint one with the current kody login session or API token.',
 				)
 			}
 			const lifetime = resolveCliTokenLifetime({

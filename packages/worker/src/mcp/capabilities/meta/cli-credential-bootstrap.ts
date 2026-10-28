@@ -105,15 +105,19 @@ const outputSchema = z.object({
 
 /**
  * Explicit MCP/API-session → CLI credential handoff (ADR 0056). Returns a
- * one-shot bootstrap code, never a `kody_at_`. Dual-exposed as Open API
- * `POST /v1/tokens/bootstrap` and `kody.cliCredentialBootstrap`.
+ * one-shot bootstrap code, never a `kody_at_`. Callable from the MCP `api`
+ * tool and Open API `POST /v1/tokens/bootstrap` only; `execute` code (hosted
+ * or `--local`) is refused so a module cannot mint itself a credential.
  */
+export const cliCredentialBootstrapExecuteRefusal =
+	'cliCredentialBootstrap cannot be called from execute code (hosted or --local). Call the MCP api tool with operationId "cliCredentialBootstrap" and run the returned cli_command.'
+
 export const cliCredentialBootstrapCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'cliCredentialBootstrap',
 		orgPermission: 'none',
-		description: `Seed CLI \`--local\` auth from the current Kody session without a second interactive OAuth: returns a one-shot \`kody_bc_…\` bootstrap code plus a CLI command that includes required lifetime flags. The CLI redeems the code over HTTPS for a scoped \`kody_at_…\` (never returned here). Prefer this over \`tokenCreate\` for interactive agents already on MCP. Do not paste API tokens into chat. Interactive desktop humans who already ran \`kody login\` can skip this. CI/headless may still mint \`kody_at_\` directly. ${apiTokenIdleTtlDescription()}`,
+		description: `Seed CLI \`--local\` auth from the current Kody session without a second interactive OAuth: returns a one-shot \`kody_bc_…\` bootstrap code plus a CLI command that includes required lifetime flags. The CLI redeems the code over HTTPS for a scoped \`kody_at_…\` (never returned here). Call it with the MCP \`api\` tool (operationId \`cliCredentialBootstrap\`); \`execute\` code (hosted or \`--local\`) is refused. Prefer this over \`tokenCreate\` for interactive agents already on MCP. Do not paste API tokens into chat. Interactive desktop humans who already ran \`kody login\` can skip this. CI/headless may still mint \`kody_at_\` directly. ${apiTokenIdleTtlDescription()}`,
 		keywords: [
 			'cli',
 			'local execute',
@@ -130,6 +134,9 @@ export const cliCredentialBootstrapCapability = defineDomainCapability(
 		inputSchema,
 		outputSchema,
 		async handler(args, ctx: CapabilityContext) {
+			if (!ctx.openApiPrincipal || ctx.localExecuteHop) {
+				throw new McpCallerError(cliCredentialBootstrapExecuteRefusal)
+			}
 			const user = requireMcpUser(ctx.callerContext)
 			const input = inputSchema.parse(args ?? {})
 			const storageContext = ctx.callerContext.storageContext

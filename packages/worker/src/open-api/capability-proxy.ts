@@ -277,6 +277,7 @@ async function callKodyPath(input: {
 				packageContext: null,
 			}),
 			openApiPrincipal: toCapabilityOpenApiPrincipal(ctx.principal),
+			localExecuteHop: true,
 			...(ctx.waitUntil ? { waitUntil: ctx.waitUntil } : {}),
 			...(credentialClientTools ? { credentialClientTools } : {}),
 		},
