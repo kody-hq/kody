@@ -598,7 +598,7 @@ Kent decided four call-map questions (#3599).
    dependency change never rebuilds or republishes a public app on its own.
 3. **Where the map goes.** The `credentials` map is accepted on MCP `execute`
    (for `code`; the `invoke` field is gone per
-   [0084](./0084-execute-takes-code-only.md)) and on the CapabilityProxy (CLI
+   [0085](./0085-execute-takes-code-only.md)) and on the CapabilityProxy (CLI
    `--credential`). It is not accepted on the package-callable `execute`
    capability: package code would pick credentials by name there, which would
    bypass `credential.named`'s sharing rules.
