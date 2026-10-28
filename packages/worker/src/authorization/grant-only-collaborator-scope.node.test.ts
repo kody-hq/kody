@@ -129,7 +129,7 @@ async function seedGrant(input: {
 	db: D1Database
 	orgId: string
 	subjectId: string
-	resourceType: OrgGrantResourceType
+	resourceType: OrgGrantResourceType | 'org'
 	resourceId: string
 	permissions: Array<string>
 }) {
