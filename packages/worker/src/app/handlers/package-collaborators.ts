@@ -33,6 +33,7 @@ import {
 	readPackageCollaboratorInvitee,
 	packageCollaboratorInviteeLabel,
 	type PackageCollaboratorPreset,
+	type PackageCollaboratorSubjectType,
 } from '#universal/package-collaborators.ts'
 
 type AppUser = NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
@@ -168,23 +169,47 @@ export async function readPackageCollaborators(input: CollaboratorsInput) {
 }
 export function grantPackageCollaborator(
 	input: CollaboratorsInput & {
-		subjectType: 'user' | 'team'
+		subjectType: PackageCollaboratorSubjectType
 		subjectId: string
 		preset: PackageCollaboratorPreset
 	},
 ) {
-	return changeCollaborator(input, async ({ ctx, savedPackage }) => {
+	return changeCollaborator(input, async (scope) => {
+		const { ctx, savedPackage } = scope
 		await setPackageCollaboratorAccess(
 			{
 				package_id: savedPackage.id,
-				...(input.subjectType === 'team'
-					? { team_id: input.subjectId }
-					: { user_id: input.subjectId }),
+				...subjectSelector(scope, input.subjectType, input.subjectId),
 				preset: input.preset,
 			},
 			ctx,
 		)
 	})
+}
+function subjectSelector(
+	scope: CollaboratorsScope,
+	subjectType: PackageCollaboratorSubjectType,
+	subjectId: string,
+) {
+	switch (subjectType) {
+		case 'team':
+			return { team_id: subjectId }
+		case 'user':
+			return { user_id: subjectId }
+		case 'org':
+			if (scope.personal || subjectId !== scope.org.id) {
+				throw new CollaboratorChangeRefused(
+					'Everyone in this organization can only be added in the team organization that owns this package.',
+				)
+			}
+			return { everyone: true }
+		default: {
+			const exhaustive: never = subjectType
+			throw new CollaboratorChangeRefused(
+				`Unknown subject ${String(exhaustive)}.`,
+			)
+		}
+	}
 }
 export function revokePackageCollaborator(
 	input: CollaboratorsInput & { grantId: string },

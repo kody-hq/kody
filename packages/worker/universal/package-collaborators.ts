@@ -1,7 +1,7 @@
 /**
  * The package Collaborators tab (`/@owner/<kody-id>/collaborators`): who holds
  * a grant on one package and which teams and org members a manager can still
- * add. Changes go through `packageCollaboratorSet` / `packageCollaboratorRemove`,
+ * add, plus "Everyone in this organization" (a live org-membership subject). Changes go through `packageCollaboratorSet` / `packageCollaboratorRemove`,
  * which only add teams and members of the owning org. A personal org has no
  * members, so there the tab invites people instead, through `inviteCreate`
  * (`kind: "grant"`) and `inviteRevoke`.
@@ -23,24 +23,30 @@ export function isPackageCollaboratorPreset(
 }
 
 /**
- * `team`: a team in the owning org. `member`: a person with a live
+ * `org`: everyone in the owning org, resolved live against membership (current
+ * and future members; someone who leaves loses it at once). `team`: a team in
+ * the owning org. `member`: a person with a live
  * membership in the owning org. `outside`: a person who holds this grant but
  * is not a member (granted elsewhere); the tab can remove them but not change
  * their access.
  */
-export type PackageCollaboratorKind = 'team' | 'member' | 'outside'
+export type PackageCollaboratorKind = 'org' | 'team' | 'member' | 'outside'
 
 export type PackageCollaboratorView = {
 	grantId: string
-	subjectType: 'user' | 'team'
+	subjectType: PackageCollaboratorSubjectType
 	subjectId: string
 	kind: PackageCollaboratorKind
-	/** `@username` for a person, the team name for a team. */
+	/**
+	 * `@username` for a person, the team name for a team, and "Everyone in this
+	 * organization" for the org subject.
+	 */
 	label: string
 	username: string | null
 	displayName: string | null
 	avatarUrl: string | null
 	teamSlug: string | null
+	/** Live member count for a team, or for the org subject. */
 	teamMemberCount: number | null
 	/** Null for an advanced grant with an explicit permission list. */
 	preset: PackageCollaboratorPreset | null
@@ -66,6 +72,14 @@ export type PackageCollaboratorTeamOption = {
 	memberCount: number
 }
 
+/** Everyone in the owning org, offered until it already holds a grant. */
+export type PackageCollaboratorEveryoneOption = {
+	orgId: string
+	memberCount: number
+}
+
+export type PackageCollaboratorSubjectType = 'user' | 'team' | 'org'
+
 export type PackageCollaboratorMemberOption = {
 	userId: string
 	username: string | null
@@ -81,6 +95,8 @@ export type PackageCollaboratorsView = {
 	invites: Array<PackageCollaboratorInviteView>
 	/** Teams and members not already holding a grant on this package. */
 	options: {
+		/** Null once everyone in the org already holds a grant here. */
+		everyone: PackageCollaboratorEveryoneOption | null
 		teams: Array<PackageCollaboratorTeamOption>
 		members: Array<PackageCollaboratorMemberOption>
 	}
@@ -110,7 +126,7 @@ export type PackageCollaboratorsWriteResult = {
 export type PackageCollaboratorsChange =
 	| {
 			intent: 'grant'
-			subjectType: 'user' | 'team'
+			subjectType: PackageCollaboratorSubjectType
 			subjectId: string
 			preset: PackageCollaboratorPreset
 	  }
@@ -192,6 +208,8 @@ export function packageCollaboratorPresetDescription(
 
 export function packageCollaboratorKindLabel(kind: PackageCollaboratorKind) {
 	switch (kind) {
+		case 'org':
+			return 'Everyone in this organization'
 		case 'team':
 			return 'Team'
 		case 'member':

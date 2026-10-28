@@ -11,7 +11,10 @@ import { parseJsonStringArray } from '@kody-internal/shared/json-parsing.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { listOrgMembers } from '#worker/orgs/org-members-list.ts'
-import { listGrants } from '#worker/orgs/access-writes.ts'
+import {
+	type GrantSubjectType,
+	listGrants,
+} from '#worker/orgs/access-writes.ts'
 import { listTeamMembers } from '#worker/orgs/org-teams-list.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
@@ -74,18 +77,23 @@ function grantIncludesMemoryRead(permissions: Array<string>) {
 async function expandGrantSubjectsToPersonIds(input: {
 	db: D1Database
 	orgId: string
-	subjectType: 'user' | 'team'
+	subjectType: GrantSubjectType
 	subjectId: string
 }): Promise<Array<string>> {
 	if (input.subjectType === 'user') return [input.subjectId]
+	if (input.subjectType === 'org') {
+		if (input.subjectId !== input.orgId) return []
+		const members = await listOrgMembers(input.db, input.orgId)
+		return members.map((member) => member.userId)
+	}
 	const members = await listTeamMembers(input.db, input.orgId, input.subjectId)
 	return members.map((member) => member.userId)
 }
 
 /**
  * People with effective memory:read on one memory in a team org: owners, plus
- * org-wide memory:read grantees, plus per-memory memory:read grantees (user or
- * team subjects expanded).
+ * org-wide memory:read grantees, plus per-memory memory:read grantees (user,
+ * team, and everyone-in-org subjects expanded).
  */
 export async function listMemoryReadersForOrgMemory(input: {
 	db: D1Database
@@ -107,7 +115,6 @@ export async function listMemoryReadersForOrgMemory(input: {
 	for (const grant of orgGrants) {
 		if (!grantIncludesMemoryRead(grant.permissions)) continue
 		const subjectType = grant.subjectType
-		if (subjectType !== 'user' && subjectType !== 'team') continue
 		for (const personId of await expandGrantSubjectsToPersonIds({
 			db: input.db,
 			orgId: input.orgId,
@@ -127,7 +134,6 @@ export async function listMemoryReadersForOrgMemory(input: {
 	for (const grant of memoryGrants) {
 		if (!grantIncludesMemoryRead(grant.permissions)) continue
 		const subjectType = grant.subjectType
-		if (subjectType !== 'user' && subjectType !== 'team') continue
 		for (const personId of await expandGrantSubjectsToPersonIds({
 			db: input.db,
 			orgId: input.orgId,

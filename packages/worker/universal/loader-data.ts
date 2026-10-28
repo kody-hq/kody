@@ -1507,7 +1507,8 @@ export type OrgGrantView = {
 	resourceType: string
 	resourceId: string
 	resourceLabel: string
-	subjectType: 'user' | 'team'
+	/** `org` is everyone in this organization, resolved live. */
+	subjectType: 'user' | 'team' | 'org'
 	subjectId: string
 	subjectLabel: string
 	preset: string | null

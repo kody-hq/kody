@@ -41,6 +41,8 @@ import {
 	type GrantResourceType,
 	type GrantView,
 	grantResourceTypes,
+	grantSubjectTypes,
+	GrantSubjectScopeError,
 	OrgSlugValidationError,
 } from '#worker/orgs/access-writes.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -99,7 +101,7 @@ export const accessGrantSchema = z.object({
 	id: z.string(),
 	resource_type: grantResourceTypeSchema,
 	resource_id: z.string(),
-	subject_type: z.enum(['user', 'team']),
+	subject_type: z.enum(grantSubjectTypes),
 	subject_id: z.string(),
 	preset: grantPresetSchema.nullable(),
 	permissions: z.array(z.string()),
@@ -153,7 +155,10 @@ export function toAccessGrantPayload(grant: GrantView) {
 
 export function rethrowAccessError(error: unknown): never {
 	if (error instanceof McpCallerError) throw error
-	if (error instanceof OrgSlugValidationError) {
+	if (
+		error instanceof OrgSlugValidationError ||
+		error instanceof GrantSubjectScopeError
+	) {
 		throw new McpCallerError(error.message)
 	}
 	if (error instanceof Error) {

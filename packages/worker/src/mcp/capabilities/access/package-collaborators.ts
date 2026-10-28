@@ -23,12 +23,12 @@ import {
 
 const collaboratorSchema = z.object({
 	grant_id: z.string(),
-	subject_type: z.enum(['user', 'team']),
+	subject_type: z.enum(['user', 'team', 'org']),
 	subject_id: z.string(),
 	kind: z
-		.enum(['team', 'member', 'outside'])
+		.enum(['org', 'team', 'member', 'outside'])
 		.describe(
-			'team: a team in this org. member: an org member. outside: holds this grant without membership (granted elsewhere).',
+			'org: everyone in this org, resolved live (current and future members). team: a team in this org. member: an org member. outside: holds this grant without membership (granted elsewhere).',
 		),
 	username: z.string().nullable(),
 	display_name: z.string().nullable(),
@@ -93,8 +93,9 @@ function readSelector(value: string | undefined) {
 }
 
 /**
- * The team or org member to add. Only subjects inside the owning org are
- * accepted; people outside it are refused rather than granted directly.
+ * The team, org member, or everyone in the org to add. Only subjects inside
+ * the owning org are accepted; people outside it are refused rather than
+ * granted directly.
  */
 async function resolveInternalSubject(
 	db: D1Database,
@@ -104,17 +105,23 @@ async function resolveInternalSubject(
 		team_id?: string
 		username?: string
 		user_id?: string
+		everyone?: boolean
 	},
-): Promise<{ type: 'user' | 'team'; id: string }> {
+): Promise<{ type: 'user' | 'team' | 'org'; id: string }> {
 	const teamSlug = readSelector(input.team_slug)
 	const teamId = readSelector(input.team_id)
 	const username = readSelector(input.username)
 	const userIdInput = readSelector(input.user_id)
-	if ([teamSlug, teamId, username, userIdInput].filter(Boolean).length !== 1) {
+	const everyone = input.everyone === true
+	if (
+		[teamSlug, teamId, username, userIdInput, everyone].filter(Boolean)
+			.length !== 1
+	) {
 		throw new McpCallerError(
-			'Pass exactly one of team_slug, team_id, username, or user_id.',
+			'Pass exactly one of team_slug, team_id, username, user_id, or everyone: true.',
 		)
 	}
+	if (everyone) return { type: 'org', id: orgId }
 	if (teamSlug || teamId) {
 		return {
 			type: 'team',
@@ -216,7 +223,7 @@ export const packageCollaboratorSetCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
-			'Add a team or org member as a collaborator on one package in the organization this request is bound to, or change the preset of one who already is. Pass exactly one of team_slug, team_id, username, or user_id, and a preset (use, contribute, or manage). Only teams and members of this organization are accepted; Owners already have full access. You need manage access on the package. Audited like accessGrant.',
+			'Add a team, an org member, or everyone in this organization as a collaborator on one package in the organization this request is bound to, or change the preset of one who already is. Pass exactly one of team_slug, team_id, username, user_id, or everyone: true, and a preset (use, contribute, or manage). everyone covers current and future members, resolved live, so someone who leaves loses it at once; the package stays private to everyone else. Only teams and members of this organization are accepted; Owners already have full access. You need manage access on the package. Audited like accessGrant.',
 		keywords: [
 			'collaborators',
 			'package',
@@ -240,6 +247,12 @@ export const packageCollaboratorSetCapability = defineDomainCapability(
 				.optional()
 				.describe('Username of an org member, without the leading @.'),
 			user_id: z.string().min(1).optional(),
+			everyone: z
+				.boolean()
+				.optional()
+				.describe(
+					'true: everyone in this organization (current and future members).',
+				),
 			preset: grantPresetSchema,
 		}),
 		outputSchema: z.object({

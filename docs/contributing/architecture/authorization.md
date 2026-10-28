@@ -40,11 +40,15 @@ synchronous, for callers that already hold the compiled permissions.
 3. **Effective permissions.** `computeEffectivePermissions` compiles
    memberships, team memberships, and grants (`access-compile.ts`): Owner holds
    every permission; Member and Billing hold their org-level basics plus any
-   direct or team grants; outside collaborators hold `search:read` plus grants
-   (and `org:execute` when they hold `package:execute` somewhere, the ad-hoc
-   rule). Compiled results are stored in `access_cache` and keyed by
-   `orgs.access_epoch`. Automation (no actor) acts for the org that owns the
-   job, webhook, or subscription. The result is also cached per request context.
+   direct, team, or everyone-in-org grants (`subject_type = 'org'`, whose
+   `subject_id` must equal the grant's `org_id`, a CHECK since migration 0201;
+   it matches any live `org_memberships` row at compile time, so joins and
+   leaves need no grant rows, only the existing epoch bumps); outside
+   collaborators hold `search:read` plus grants (and `org:execute` when they
+   hold `package:execute` somewhere, the ad-hoc rule). Compiled results are
+   stored in `access_cache` and keyed by `orgs.access_epoch`. Automation (no
+   actor) acts for the org that owns the job, webhook, or subscription. The
+   result is also cached per request context.
 4. **Credential scopes.** Non-null `credential.scopes` narrow the result.
 5. **Connection profile.** A bound profile narrows package resources to the
    packages and actions it lists (`read`, `execute`, `write`). Profiles list

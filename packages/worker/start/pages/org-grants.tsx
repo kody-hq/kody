@@ -157,7 +157,11 @@ function OrgGrantsContent({
 										<div css={rowCss}>
 											<span aria-hidden="true" css={iconCss}>
 												{renderIcon(
-													grant.subjectType === 'team' ? 'users' : 'user',
+													grant.subjectType === 'org'
+														? 'globe'
+														: grant.subjectType === 'team'
+															? 'users'
+															: 'user',
 													{ size: '1.25rem' },
 												)}
 											</span>

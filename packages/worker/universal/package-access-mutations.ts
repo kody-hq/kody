@@ -5,7 +5,7 @@ export const packageAccessInput = z.object({
 	kodyId: z.string().min(1),
 })
 export const grantPackageCollaboratorInput = packageAccessInput.extend({
-	subjectType: z.enum(['user', 'team']),
+	subjectType: z.enum(['user', 'team', 'org']),
 	subjectId: z.string().trim().min(1),
 	preset: z.enum(packageCollaboratorPresets),
 })

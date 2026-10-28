@@ -196,9 +196,19 @@ async function loadLiveGrantRows(
 			           AND t.deleted_at IS NULL
 			       )
 			     )
+			     OR (
+			       g.subject_type = 'org'
+			       AND g.subject_id = g.org_id
+			       AND EXISTS (
+			         SELECT 1 FROM org_memberships m
+			         WHERE m.org_id = g.org_id
+			           AND m.user_id = ?
+			           AND m.deleted_at IS NULL
+			       )
+			     )
 			   )`,
 		)
-		.bind(orgId, userId, userId, orgId)
+		.bind(orgId, userId, userId, orgId, userId)
 		.all<GrantRow>()
 	return result.results ?? []
 }
