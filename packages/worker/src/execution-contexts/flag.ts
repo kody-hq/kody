@@ -9,7 +9,9 @@ export async function isExecutionContextsEnabledFor(
 ) {
 	try {
 		const row = await db
-			.prepare(`SELECT id FROM users WHERE stable_user_id = ?`)
+			.prepare(
+				`SELECT id FROM users WHERE stable_user_id = ? AND deleted_at IS NULL`,
+			)
 			.bind(personId)
 			.first<{ id: number }>()
 		if (!row) return false

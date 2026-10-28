@@ -4,9 +4,9 @@ An execution context is a machine running `kody daemon` that registered with
 Kody. Execute runs can go there instead of Kody cloud. Everything is behind the
 `execution-contexts` feature flag (off by default, audience
 `experiments_opt_in`). With the flag off, management routes answer
-`403 { error: "feature_disabled" }` and execute ignores nothing: passing
-`context`, `fallback` or `requires` fails with `feature_disabled`, and runs
-without them behave exactly as before.
+`403 { error: "feature_disabled" }`, and passing `context`, `fallback` or
+`requires` fails with `feature_disabled`, and runs without them run on Kody
+cloud.
 
 ## Pieces
 

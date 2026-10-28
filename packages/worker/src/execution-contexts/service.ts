@@ -109,7 +109,7 @@ async function handlesFor(db: D1Database, ids: ReadonlyArray<string>) {
 	if (unique.length === 0) return map
 	const rows = await db
 		.prepare(
-			`SELECT stable_user_id, username FROM users WHERE stable_user_id IN (${unique.map(() => '?').join(', ')})`,
+			`SELECT stable_user_id, username FROM users WHERE stable_user_id IN (${unique.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
 		)
 		.bind(...unique)
 		.all<{ stable_user_id: string; username: string | null }>()
@@ -123,7 +123,7 @@ async function orgSlugsFor(db: D1Database, ids: ReadonlyArray<string>) {
 	if (unique.length === 0) return map
 	const rows = await db
 		.prepare(
-			`SELECT id, slug FROM orgs WHERE id IN (${unique.map(() => '?').join(', ')})`,
+			`SELECT id, slug FROM orgs WHERE id IN (${unique.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
 		)
 		.bind(...unique)
 		.all<{ id: string; slug: string | null }>()
@@ -726,7 +726,7 @@ export async function loadSharing(
 	const attachments = await db
 		.prepare(
 			`SELECT a.org_id, a.all_members, o.slug FROM execution_context_org_attachments a
-			 LEFT JOIN orgs o ON o.id = a.org_id WHERE a.context_id = ?`,
+			 LEFT JOIN orgs o ON o.id = a.org_id AND o.deleted_at IS NULL WHERE a.context_id = ?`,
 		)
 		.bind(row.id)
 		.all<{ org_id: string; all_members: number; slug: string | null }>()
