@@ -387,11 +387,13 @@ export function createAuthProviderCallbackHandler(env: Env) {
 				provider_id: profile.providerUserId,
 			},
 		})
-		// The same provider identity proves the person behind a deleted
-		// account; release it so this sign-in starts a fresh account.
-		const supersededAccount = connection
-			? await findSoftDeletedAccountById(env.APP_DB, connection.user_id)
-			: null
+		// Signed out, the same provider identity proves the person behind a
+		// deleted account; release it so this sign-in starts a fresh account.
+		// Signed-in linking never supersedes (it stays a connection conflict).
+		const supersededAccount =
+			connection && !session
+				? await findSoftDeletedAccountById(env.APP_DB, connection.user_id)
+				: null
 		const releasedUsernames: Array<string> = []
 		if (supersededAccount) {
 			const released = await releaseSoftDeletedAccounts(env.APP_DB, [

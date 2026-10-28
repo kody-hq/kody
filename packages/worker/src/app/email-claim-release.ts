@@ -1,7 +1,11 @@
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import { hashVerificationToken } from '#app/email-verification.ts'
-import { buildEmailClaimReleaseEmail } from '#app/email/messages.ts'
+import {
+	buildDeletedAccountReleaseEmail,
+	buildEmailClaimReleaseEmail,
+} from '#app/email/messages.ts'
+import { consumeDeletedAccountReleaseToken } from '#worker/identity/deleted-account-identity-release.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
 import {
 	countRecentEmailClaimReleases,
@@ -65,7 +69,46 @@ export async function createEmailClaimReleaseVerification(input: {
 	if (!releasable.ok) {
 		throw new EmailClaimReleaseRequestError(releasable.reason)
 	}
+	await sendEmailClaimReleaseLink({
+		env: input.env,
+		userId: input.userId,
+		email,
+		requestUrl: input.requestUrl,
+		buildMessage: buildEmailClaimReleaseEmail,
+	})
+}
 
+/**
+ * Mail a link that proves the signup email before a soft-deleted account
+ * holding it is superseded. Password signup alone is not proof.
+ */
+export async function createDeletedAccountReleaseVerification(input: {
+	env: Env
+	deletedUserId: number
+	email: string
+	requestUrl: string | URL
+}) {
+	await sendEmailClaimReleaseLink({
+		env: input.env,
+		userId: input.deletedUserId,
+		email: normalizeEmail(input.email),
+		requestUrl: input.requestUrl,
+		buildMessage: buildDeletedAccountReleaseEmail,
+	})
+}
+
+async function sendEmailClaimReleaseLink(input: {
+	env: Env
+	userId: number
+	email: string
+	requestUrl: string | URL
+	buildMessage: (input: {
+		appBaseUrl: string
+		email: string
+		verificationUrl: string
+	}) => { subject: string; html: string; text: string }
+}) {
+	const email = input.email
 	const token = generateEmailClaimReleaseToken()
 	const tokenHash = await hashVerificationToken(token)
 	const expiresAt = Date.now() + emailClaimReleaseTokenExpiryMs
@@ -101,7 +144,7 @@ export async function createEmailClaimReleaseVerification(input: {
 		emailConfig.appBaseUrl,
 	)
 	verificationUrl.searchParams.set('token', token)
-	const message = buildEmailClaimReleaseEmail({
+	const message = input.buildMessage({
 		appBaseUrl: emailConfig.appBaseUrl,
 		email,
 		verificationUrl: verificationUrl.toString(),
@@ -148,6 +191,7 @@ export type VerifyEmailClaimReleaseResult =
 			ok: true
 			userId: number
 			email: string
+			supersededDeletedAccount?: true
 	  }
 	| {
 			ok: false
@@ -169,6 +213,13 @@ export async function verifyEmailClaimReleaseToken(input: {
 	if (!token) return { ok: false, reason: 'missing_token' }
 
 	const tokenHash = await hashVerificationToken(token)
+	const now = input.now ?? new Date()
+	const deletedAccountRelease = await consumeDeletedAccountReleaseToken(
+		input.db,
+		tokenHash,
+		now,
+	)
+	if (deletedAccountRelease) return deletedAccountRelease
 	const record = await input.db
 		.prepare(
 			`SELECT pec.id, pec.user_id, pec.email, pec.expires_at,
@@ -185,7 +236,6 @@ export async function verifyEmailClaimReleaseToken(input: {
 			expires_at: number
 			current_email: string
 		}>()
-	const now = input.now ?? new Date()
 
 	if (!record) return { ok: false, reason: 'invalid_token' }
 	if (record.expires_at < now.getTime()) {

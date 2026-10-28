@@ -6,7 +6,6 @@
  */
 import { suggestHandle } from '@kody-internal/shared/handle-rules.ts'
 import { isUsernameClaimedInIdentity } from '#worker/identity/generated-username.ts'
-import { isUsernameReleasableForEmail } from '#worker/identity/deleted-account-identity-release.ts'
 import {
 	getEffectiveUsernameValidationError,
 	normalizeUsername,
@@ -114,8 +113,6 @@ export async function checkUsernameAvailability(input: {
 	env?: Pick<Env, 'BUNDLE_ARTIFACTS_KV'>
 	seeds?: UsernameSuggestionSeeds
 	suggestionLimit?: number
-	/** Signup email: its own soft-deleted account's handle counts as free. */
-	reclaimEmail?: string | null
 }): Promise<UsernameAvailabilityResult> {
 	const username = normalizeUsername(input.username)
 	const suggestionLimit = input.suggestionLimit ?? 3
@@ -161,17 +158,7 @@ export async function checkUsernameAvailability(input: {
 		}
 	}
 
-	if (
-		(await isUsernameClaimedInIdentity(input.db, username)) &&
-		!(
-			input.reclaimEmail &&
-			(await isUsernameReleasableForEmail(
-				input.db,
-				username,
-				input.reclaimEmail,
-			))
-		)
-	) {
+	if (await isUsernameClaimedInIdentity(input.db, username)) {
 		return {
 			username,
 			status: 'taken',

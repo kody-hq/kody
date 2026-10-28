@@ -1,11 +1,10 @@
 /**
  * soft-delete-read-filter: opt-out
  *
- * Finds soft-deleted accounts by design: a fresh signup with the same email
- * supersedes them so a deleted account never blocks its own owner.
+ * Finds soft-deleted accounts by design: a fresh signup that proves the same
+ * email supersedes them so a deleted account never blocks its own owner.
  */
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
-import { normalizeUsername } from '#worker/identity/username.ts'
 
 /**
  * Released tombstones move email and username to values no signup can ever
@@ -24,6 +23,10 @@ export type ReleasableDeletedAccount = {
 
 export function isReleasedAccountEmail(email: string) {
 	return email.trim().toLowerCase().endsWith(`@${releasedEmailDomain}`)
+}
+
+export function isReleasedOrgSlug(slug: string) {
+	return slug.startsWith(releasedUsernamePrefix)
 }
 
 function releasedEmailFor(account: ReleasableDeletedAccount) {
@@ -68,24 +71,9 @@ export async function findSoftDeletedAccountsHoldingEmail(
 }
 
 /**
- * True when `username` is held only by soft-deleted accounts that `email`
- * would supersede, so the same person may reclaim their old handle.
- */
-export async function isUsernameReleasableForEmail(
-	db: D1Database,
-	username: string,
-	email: string,
-) {
-	const normalized = normalizeUsername(username)
-	if (!normalized) return false
-	const accounts = await findSoftDeletedAccountsHoldingEmail(db, email)
-	return accounts.some(
-		(account) => normalizeUsername(account.username) === normalized,
-	)
-}
-
-/**
- * Supersede soft-deleted accounts holding `email`: move their email and
+ * Only call once the caller proved `email` (verified provider email, a
+ * mailed release link, or an admin). Supersede soft-deleted accounts holding
+ * `email`: move their email and
  * username to released tombstones, release their email claims, provider
  * links, handles, personal org slug, and platform inbox addresses. Ids,
  * `deleted_at`, and every owned row stay for the purge lane (ADR 0066); the
@@ -143,6 +131,11 @@ export async function findSoftDeletedAccountById(
 	}
 }
 
+/** Guards each release statement against a restore racing the batch. */
+const stillDeletedSql = `EXISTS (
+	SELECT 1 FROM users WHERE id = ? AND deleted_at IS NOT NULL
+)`
+
 export async function releaseSoftDeletedAccounts(
 	db: D1Database,
 	accounts: ReadonlyArray<ReleasableDeletedAccount>,
@@ -167,28 +160,36 @@ export async function releaseSoftDeletedAccounts(
 				.prepare(
 					`UPDATE user_email_claims
 					 SET status = 'released', released_at = ?, updated_at = ?
-					 WHERE user_id = ? AND status = 'claimed'`,
+					 WHERE user_id = ? AND status = 'claimed'
+					   AND ${stillDeletedSql}`,
 				)
-				.bind(releasedAt, releasedAt, account.id),
+				.bind(releasedAt, releasedAt, account.id, account.id),
 			db
-				.prepare(`DELETE FROM oauth_connections WHERE user_id = ?`)
-				.bind(account.id),
+				.prepare(
+					`DELETE FROM oauth_connections
+					 WHERE user_id = ? AND ${stillDeletedSql}`,
+				)
+				.bind(account.id, account.id),
 			db
 				.prepare(
 					`DELETE FROM handles
-					 WHERE user_id = ?
-					    OR (
-					      org_id = ?
-					      AND EXISTS (
-					        SELECT 1 FROM orgs
-					        WHERE id = ? AND deleted_at IS NOT NULL
-					      )
-					    )`,
+					 WHERE (
+					     user_id = ?
+					     OR (
+					       org_id = ?
+					       AND EXISTS (
+					         SELECT 1 FROM orgs
+					         WHERE id = ? AND deleted_at IS NOT NULL
+					       )
+					     )
+					   )
+					   AND ${stillDeletedSql}`,
 				)
 				.bind(
 					account.stableUserId,
 					account.personalOrgId,
 					account.personalOrgId,
+					account.id,
 				),
 			db
 				.prepare(
@@ -207,9 +208,15 @@ export async function releaseSoftDeletedAccounts(
 					     enabled = 0,
 					     updated_at = ?
 					 WHERE user_id IN (?, ?)
-					   AND address NOT LIKE '~released-%'`,
+					   AND address NOT LIKE '~released-%'
+					   AND ${stillDeletedSql}`,
 				)
-				.bind(releasedAt, account.stableUserId, account.personalOrgId),
+				.bind(
+					releasedAt,
+					account.stableUserId,
+					account.personalOrgId,
+					account.id,
+				),
 		])
 	}
 	return {
@@ -217,5 +224,50 @@ export async function releaseSoftDeletedAccounts(
 		releasedUsernames: accounts
 			.map((account) => account.username)
 			.filter((username) => !username.startsWith(releasedUsernamePrefix)),
+	}
+}
+
+export type DeletedAccountReleaseTokenResult =
+	| { ok: true; userId: number; email: string; supersededDeletedAccount: true }
+	| { ok: false; reason: 'expired_token' | 'not_claimed' }
+
+/**
+ * Consume a mailed release link minted for a soft-deleted account (password
+ * signup cannot supersede one without proving the address). Returns null
+ * when the token belongs to a live account's claim-release flow instead.
+ */
+export async function consumeDeletedAccountReleaseToken(
+	db: D1Database,
+	tokenHash: string,
+	now: Date,
+): Promise<DeletedAccountReleaseTokenResult | null> {
+	const record = await db
+		.prepare(
+			`SELECT pec.id, pec.user_id, pec.email, pec.expires_at
+			 FROM pending_email_claim_releases pec
+			 INNER JOIN users u ON u.id = pec.user_id
+			 WHERE pec.token_hash = ? AND u.deleted_at IS NOT NULL`,
+		)
+		.bind(tokenHash)
+		.first<{ id: number; user_id: number; email: string; expires_at: number }>()
+	if (!record) return null
+	await db
+		.prepare(`DELETE FROM pending_email_claim_releases WHERE id = ?`)
+		.bind(record.id)
+		.run()
+	if (record.expires_at < now.getTime()) {
+		return { ok: false, reason: 'expired_token' }
+	}
+	const released = await releaseSoftDeletedAccountsForEmail(
+		db,
+		record.email,
+		now,
+	)
+	if (released.releasedCount === 0) return { ok: false, reason: 'not_claimed' }
+	return {
+		ok: true,
+		userId: record.user_id,
+		email: record.email,
+		supersededDeletedAccount: true,
 	}
 }

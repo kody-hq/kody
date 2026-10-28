@@ -4,7 +4,10 @@
  * Soft-delete and restore must read and update tombstoned rows.
  */
 
-import { isReleasedAccountEmail } from '#worker/identity/deleted-account-identity-release.ts'
+import {
+	isReleasedAccountEmail,
+	isReleasedOrgSlug,
+} from '#worker/identity/deleted-account-identity-release.ts'
 import {
 	ownerIdFromStored,
 	type OwnerId,
@@ -646,11 +649,14 @@ export async function restoreOrg(input: {
 	const now = input.now ?? new Date()
 	const appDb = input.env.APP_DB
 	const row = await appDb
-		.prepare(`SELECT deleted_at, plan FROM orgs WHERE id = ?`)
+		.prepare(`SELECT deleted_at, plan, slug FROM orgs WHERE id = ?`)
 		.bind(input.orgId)
-		.first<{ deleted_at: string | null; plan: string }>()
+		.first<{ deleted_at: string | null; plan: string; slug: string }>()
 	if (!row?.deleted_at) {
 		throw new Error('org_not_deleted')
+	}
+	if (isReleasedOrgSlug(row.slug)) {
+		throw new Error('org_superseded_by_new_signup')
 	}
 	if (!isWithinSoftDeleteRestoreWindow(row.deleted_at, now)) {
 		throw new OrgRestoreWindowExpiredError()

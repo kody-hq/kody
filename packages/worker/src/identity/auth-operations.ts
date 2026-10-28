@@ -1,8 +1,6 @@
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
-import {
-	isUsernameReleasableForEmail,
-	releaseSoftDeletedAccountsForEmail,
-} from '#worker/identity/deleted-account-identity-release.ts'
+import { findSoftDeletedAccountsHoldingEmail } from '#worker/identity/deleted-account-identity-release.ts'
+import { createDeletedAccountReleaseVerification } from '#app/email-claim-release.ts'
 import { authOperationResult } from './auth-operation-result.ts'
 import { enum_, object, parseSafe, string } from 'remix/data-schema'
 import {
@@ -249,14 +247,38 @@ export async function authenticateWebsite({
 	}
 
 	if (normalizedMode === 'signup') {
-		if (
-			(await isUsernameClaimedInIdentity(env.APP_DB, normalizedUsername)) &&
-			!(await isUsernameReleasableForEmail(
-				env.APP_DB,
-				normalizedUsername,
-				normalizedEmail,
-			))
-		) {
+		// A soft-deleted account still holds this email. A password signup does
+		// not prove the address, so mail a release link instead of superseding
+		// it; same response as any accepted signup.
+		const [deletedHolder] = await findSoftDeletedAccountsHoldingEmail(
+			env.APP_DB,
+			normalizedEmail,
+		)
+		if (deletedHolder) {
+			try {
+				await createDeletedAccountReleaseVerification({
+					env,
+					deletedUserId: deletedHolder.id,
+					email: normalizedEmail,
+					requestUrl: url,
+				})
+			} catch (error) {
+				console.warn('deleted-account-release-email-failed', error)
+			}
+			void logAuditEvent({
+				db: auditDatabaseFromEnv(env),
+				category: 'auth',
+				action: 'signup',
+				result: 'failure',
+				email: normalizedEmail,
+				ip: requestIp,
+				path: url.pathname,
+				reason: 'deleted_account_holds_email',
+			})
+			return authOperationResult(signupAcceptedBody(normalizedMode))
+		}
+
+		if (await isUsernameClaimedInIdentity(env.APP_DB, normalizedUsername)) {
 			void logAuditEvent({
 				db: auditDatabaseFromEnv(env),
 				category: 'auth',
@@ -335,10 +357,6 @@ export async function authenticateWebsite({
 		}
 
 		const passwordHash = await createPasswordHash(normalizedPassword)
-
-		// A deleted account never blocks a fresh signup with its email: the
-		// new account supersedes it (fresh ids, nothing inherited).
-		await releaseSoftDeletedAccountsForEmail(env.APP_DB, normalizedEmail)
 
 		// Same body and status as a fresh signup so the endpoint does
 		// not confirm which addresses hold accounts. Nothing is created

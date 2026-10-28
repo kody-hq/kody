@@ -200,6 +200,27 @@ export function buildEmailClaimReleaseEmail(input: {
 	})
 }
 
+export function buildDeletedAccountReleaseEmail(input: {
+	appBaseUrl: string
+	email: string
+	verificationUrl: string
+}) {
+	return renderTransactionalEmail({
+		appBaseUrl: input.appBaseUrl,
+		subject: 'Start a new Kody account with this email',
+		preheader: `Confirm you want to reuse ${input.email} for a new Kody account.`,
+		heading: 'Reuse this email for a new account',
+		body: [
+			`Someone tried to sign up with ${input.email}, which still belongs to a deleted Kody account.`,
+			"Confirm this link to release the address and that account's username so you can sign up again. The deleted account can no longer be restored after this.",
+		],
+		action: { label: 'Release and sign up again', url: input.verificationUrl },
+		afterAction: ['This link expires in 24 hours.'],
+		footnote:
+			'If you did not try to sign up, you can safely ignore this email. Nothing changes.',
+	})
+}
+
 export const userEntitlementWarningKinds = ['approaching', 'reached'] as const
 
 export type UserEntitlementWarningKind =

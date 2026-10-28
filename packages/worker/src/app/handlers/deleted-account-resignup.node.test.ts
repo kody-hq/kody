@@ -5,6 +5,7 @@ import { adminCreateUserWithPasswordSetup } from '#worker/identity/admin-user-cr
 import { checkUsernameAvailability } from '#worker/identity/username-availability.ts'
 import * as JobManager from '#worker/jobs/manager-client.ts'
 import {
+	restoreOrg,
 	restoreUserAccount,
 	softDeleteUserAccount,
 } from '#worker/orgs/soft-delete.ts'
@@ -17,6 +18,7 @@ import {
 	startProviderFlow,
 	testCookieSecret,
 } from '#worker/test-support/auth-provider-harness.ts'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
@@ -53,6 +55,9 @@ const { completeOauthPendingSignup, loadOauthPendingSignupPage } =
 const { requestWebsitePasswordReset } =
 	await import('#worker/identity/password-reset-operations.ts')
 const { runWithDeferredWork } = await import('#worker/deferred-work.ts')
+const { verifyEmailClaimReleaseToken } =
+	await import('#app/email-claim-release.ts')
+const { hashVerificationToken } = await import('#app/email-verification.ts')
 
 const msw = createMswNodeServer()
 const email = 'returning@example.com'
@@ -270,30 +275,61 @@ test('google sign-in after deleting the account starts a fresh account that recl
 			now: deletedAt,
 		}),
 	).rejects.toThrow('user_superseded_by_new_signup')
+	const deletedOrgId = (
+		sqlite
+			.prepare(`SELECT personal_org_id FROM users WHERE stable_user_id = ?`)
+			.get(stableUserId) as { personal_org_id: string | null }
+	).personal_org_id
+	if (deletedOrgId) {
+		await expect(
+			restoreOrg({ env, orgId: deletedOrgId as never, now: deletedAt }),
+		).rejects.toThrow('org_superseded_by_new_signup')
+	}
 })
 
-test('password signup after deleting the account creates a fresh account with the old handle', async () => {
+test('password signup mails a release link before superseding a deleted account', async () => {
 	const { sqlite, db, stableUserId } = await seedDeletedGoogleAccount()
+	consoleWarn.mockImplementation(() => {})
 
-	const availability = await checkUsernameAvailability({
+	const first = await passwordSignup(db, { email, username: handle })
+	expect(first.status).toBe(200)
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'email-claim-release-send-skipped',
+		7,
+	)
+	expect(liveAccount(sqlite)).toBeUndefined()
+	expect(
+		sqlite
+			.prepare(`SELECT email, username FROM users WHERE stable_user_id = ?`)
+			.get(stableUserId),
+	).toEqual({ email, username: handle })
+
+	const releaseToken = 'deleted-account-release-token'
+	const pending = sqlite
+		.prepare(
+			`UPDATE pending_email_claim_releases SET token_hash = ?
+			 WHERE user_id = 7 AND email = ?`,
+		)
+		.run(await hashVerificationToken(releaseToken), email)
+	expect(pending.changes).toBe(1)
+
+	const released = await verifyEmailClaimReleaseToken({
 		db,
-		username: handle,
-		reclaimEmail: email,
+		token: releaseToken,
 	})
-	expect(availability.status).toBe('available')
+	expect(released).toMatchObject({ ok: true, supersededDeletedAccount: true })
 
-	const response = await passwordSignup(db, { email, username: handle })
-	expect(response.status).toBe(200)
+	const second = await passwordSignup(db, { email, username: handle })
+	expect(second.status).toBe(200)
 	expectFreshAccountOwnsHandle(sqlite, stableUserId)
 })
 
-test('a deleted account keeps its handle reserved from other emails', async () => {
+test('a deleted account keeps its handle reserved until its address is proven', async () => {
 	const { sqlite, db, stableUserId } = await seedDeletedGoogleAccount()
 
 	const availability = await checkUsernameAvailability({
 		db,
 		username: handle,
-		reclaimEmail: 'someone-else@example.com',
 	})
 	expect(availability.status).toBe('taken')
 
