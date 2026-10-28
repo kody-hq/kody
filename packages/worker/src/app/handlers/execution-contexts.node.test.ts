@@ -1,10 +1,12 @@
 import { expect, test } from 'vitest'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	ExecutionContextsUnavailableError,
 	normalizeAuditEvent,
 	normalizeContext,
 	normalizeRun,
 	parseChain,
+	readCapabilityFailure,
 	readExecutionContextFailure,
 } from './execution-contexts.ts'
 
@@ -156,4 +158,15 @@ test('normalizeRun and normalizeAuditEvent read the session DO row shapes', () =
 		at: '2026-01-02T03:04:05.000Z',
 		detail: '{"grantId":"g_1"}',
 	})
+})
+
+test('readCapabilityFailure turns caller errors into a shown message', () => {
+	expect(
+		readCapabilityFailure(new McpCallerError('No user named "nobody".')),
+	).toEqual({
+		ok: false,
+		error: 'invalid_input',
+		message: 'No user named "nobody".',
+	})
+	expect(readCapabilityFailure(new Error('boom'))).toBeNull()
 })

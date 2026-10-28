@@ -102,7 +102,7 @@ exports[`share copy for every access combination, as operator and as manager > a
 {
   "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
   "lan": null,
-  "noInviteLinksNote": "Add people by username or email. There are no invite links, so access cannot be forwarded.",
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
     "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
@@ -117,7 +117,7 @@ exports[`share copy for every access combination, as operator and as manager > a
 {
   "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
   "lan": null,
-  "noInviteLinksNote": "Add people by username or email. There are no invite links, so access cannot be forwarded.",
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
     "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
@@ -132,7 +132,7 @@ exports[`share copy for every access combination, as operator and as manager > l
 {
   "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
   "lan": "Local network access is on: their runs can reach devices and services on this machine's local network. Requests that use their credentials still leave from Kody cloud.",
-  "noInviteLinksNote": "Add people by username or email. There are no invite links, so access cannot be forwarded.",
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
     "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
@@ -147,7 +147,7 @@ exports[`share copy for every access combination, as operator and as manager > l
 {
   "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
   "lan": "Local network access is on: their runs can reach devices and services on this machine's local network. Requests that use their credentials still leave from Kody cloud.",
-  "noInviteLinksNote": "Add people by username or email. There are no invite links, so access cannot be forwarded.",
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
     "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
@@ -162,7 +162,7 @@ exports[`share copy for every access combination, as operator and as manager > l
 {
   "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
   "lan": null,
-  "noInviteLinksNote": "Add people by username or email. There are no invite links, so access cannot be forwarded.",
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
     "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
@@ -177,7 +177,7 @@ exports[`share copy for every access combination, as operator and as manager > l
 {
   "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
   "lan": null,
-  "noInviteLinksNote": "Add people by username or email. There are no invite links, so access cannot be forwarded.",
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
     "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
@@ -192,7 +192,7 @@ exports[`share copy for every access combination, as operator and as manager > p
 {
   "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
   "lan": null,
-  "noInviteLinksNote": "Add people by username or email. There are no invite links, so access cannot be forwarded.",
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
     "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
@@ -207,7 +207,7 @@ exports[`share copy for every access combination, as operator and as manager > p
 {
   "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
   "lan": null,
-  "noInviteLinksNote": "Add people by username or email. There are no invite links, so access cannot be forwarded.",
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
     "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",

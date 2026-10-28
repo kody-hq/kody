@@ -157,7 +157,7 @@ export function shareCopy(input: {
 			"Others' runs can call no Kody APIs until you allow some.",
 		ownerWithoutManageNote: `Only ${op} or people with Manage can add access.`,
 		noInviteLinksNote:
-			'Add people by username or email. There are no invite links, so access cannot be forwarded.',
+			'Add people by their Kody username. There are no invite links, so access cannot be forwarded.',
 	}
 }
 

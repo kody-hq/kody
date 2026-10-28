@@ -1,4 +1,5 @@
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { isMcpCallerError } from '#mcp/caller-error.ts'
 import { getStaticRegistry } from '#mcp/capabilities/registry.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
@@ -178,6 +179,18 @@ export function readExecutionContextFailure(
 		...(reason ? { reason } : {}),
 		...(typeof fields.max === 'number' ? { max: fields.max } : {}),
 	}
+}
+
+/** Like `readExecutionContextFailure`, plus plain caller errors such as an unknown username. */
+export function readCapabilityFailure(
+	error: unknown,
+): ExecutionContextFailure | null {
+	const failure = readExecutionContextFailure(error)
+	if (failure) return failure
+	if (isMcpCallerError(error) && error instanceof Error) {
+		return { ok: false, error: 'invalid_input', message: error.message }
+	}
+	return null
 }
 
 export function parseChain(value: unknown): ExecutionChain {
@@ -438,7 +451,7 @@ async function runScoped<T>(
 	try {
 		return await run(scope)
 	} catch (error) {
-		const failure = readExecutionContextFailure(error)
+		const failure = readCapabilityFailure(error)
 		if (failure) return failure
 		throw error
 	}
@@ -610,7 +623,7 @@ export async function setExecutionContextShareForUser(
 	input: ScopedInput & {
 		contextId: string
 		subject:
-			| { kind: 'user'; usernameOrEmail: string }
+			| { kind: 'user'; username: string }
 			| { kind: 'team'; slug: string }
 			| { kind: 'org' }
 		preset: 'use' | 'contribute' | 'manage'
@@ -623,7 +636,7 @@ export async function setExecutionContextShareForUser(
 			{
 				id: input.contextId,
 				...(input.subject.kind === 'user'
-					? { username: input.subject.usernameOrEmail.replace(/^@/, '') }
+					? { username: input.subject.username.replace(/^@/, '') }
 					: input.subject.kind === 'team'
 						? { team_slug: input.subject.slug }
 						: { all_members: true }),

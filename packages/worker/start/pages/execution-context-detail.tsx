@@ -92,6 +92,13 @@ const target = css({ minHeight: 44 })
 
 type Failure = { ok: false; error: string; message: string }
 
+const unexpectedErrorText = 'Something went wrong. Try again.'
+const unexpectedFailure: Failure = {
+	ok: false,
+	error: 'unexpected',
+	message: unexpectedErrorText,
+}
+
 function failureText(result: Failure) {
 	return result.error === 'credential_scope'
 		? loginPredatesPermissionsMessage
@@ -211,11 +218,20 @@ function OptInControls(props: {
 	async function optIn() {
 		setBusy(true)
 		setError(null)
+		try {
+			await optInAndChain()
+		} catch {
+			setError(unexpectedErrorText)
+		} finally {
+			setBusy(false)
+		}
+	}
+
+	async function optInAndChain() {
 		const result = (await optIntoExecutionContext({
 			data: { orgSlug: props.orgSlug, contextId: context.id },
 		})) as { ok: true } | Failure
 		if (!result.ok) {
-			setBusy(false)
 			setError(failureText(result))
 			return
 		}
@@ -232,7 +248,6 @@ function OptInControls(props: {
 				},
 			})
 		}
-		setBusy(false)
 		dialog.current?.close()
 		props.onChanged()
 	}
@@ -245,7 +260,7 @@ function OptInControls(props: {
 			onCommit: async () => {
 				const result = (await optOutOfExecutionContext({
 					data: { orgSlug: props.orgSlug, contextId: context.id },
-				})) as { ok: true } | Failure
+				}).catch(() => unexpectedFailure)) as { ok: true } | Failure
 				if (!result.ok) {
 					setLeftLocally(false)
 					setError(failureText(result))
@@ -418,13 +433,13 @@ function SharingPanel(props: {
 				contextId: context.id,
 				subject:
 					kind === 'user'
-						? { kind, usernameOrEmail: value }
+						? { kind, username: value }
 						: kind === 'team'
 							? { kind, slug: value }
 							: { kind },
 				preset,
 			},
-		})) as { ok: true } | Failure
+		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
 		setBusy(false)
 		if (!result.ok) return setError(failureText(result))
 		setValue('')
@@ -435,7 +450,7 @@ function SharingPanel(props: {
 		setConfirmRemove(null)
 		const result = (await removeExecutionContextShare({
 			data: { orgSlug: props.orgSlug, contextId: context.id, grantId },
-		})) as { ok: true } | Failure
+		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
 		if (!result.ok) return setError(failureText(result))
 		props.onChanged()
 	}
@@ -542,7 +557,7 @@ function SharingPanel(props: {
 						</label>
 						{kind === 'org' ? null : (
 							<label css={{ display: 'grid', gap: 2 }}>
-								{kind === 'user' ? 'Username or email' : 'Team slug'}
+								{kind === 'user' ? 'Username' : 'Team slug'}
 								<input
 									value={value}
 									required

@@ -154,7 +154,11 @@ export function ExecutionChainPanel(props: {
 				strict: !chainHasCloud(next.entries),
 				ifMatch: committed.current.updatedAt ?? null,
 			},
-		})) as { ok: true; chain: ExecutionChain } | ChainFailure
+		}).catch((): ChainFailure => ({
+			ok: false,
+			error: 'unexpected',
+			message: 'Could not save your chain. Try again.',
+		}))) as { ok: true; chain: ExecutionChain } | ChainFailure
 		if (result.ok) {
 			committed.current = result.chain
 			setChain(result.chain)

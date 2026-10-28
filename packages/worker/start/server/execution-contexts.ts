@@ -175,7 +175,7 @@ export const shareExecutionContext = createServerFn({ method: 'POST' })
 			subject: z.discriminatedUnion('kind', [
 				z.object({
 					kind: z.literal('user'),
-					usernameOrEmail: z.string().trim().min(1).max(320),
+					username: z.string().trim().min(1).max(64),
 				}),
 				z.object({ kind: z.literal('team'), slug: segment }),
 				z.object({ kind: z.literal('org') }),
