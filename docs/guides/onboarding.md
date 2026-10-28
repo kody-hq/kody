@@ -130,7 +130,8 @@ Forwarding mail into Kody is easy (`email.message.received` on
 wake path (cloud agent API, webhook, or wake URL). If the host is local-only
 with no wake API, say so in one sentence and help them pick another option — or
 build the email→event half now and defer the wake. Do not pretend a laptop agent
-will answer mail while it is closed.
+will answer mail while it is closed. `guide:wake_your_agent` picks the wake path
+(MCP Events, a webhook POST, or email) from what this client supports.
 
 ### Trigger Kody from Slack or Raycast
 
