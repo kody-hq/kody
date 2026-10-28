@@ -106,6 +106,9 @@ function pendingHostsOf(data: AccountSecretsLoaderData) {
 	const approval = data.approval
 	if (!approval) return []
 	const hosts = approvalRequestedHosts(approval)
+	// Package and session credentials can share a name across storage, so let
+	// the server-side host approval decide what is still pending.
+	if (approval.scope !== 'user') return hosts
 	const named = approval.names.length > 0 ? approval.names : [approval.name]
 	return hosts.filter((host) =>
 		named.some((name) => {
