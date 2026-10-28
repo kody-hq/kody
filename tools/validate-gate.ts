@@ -37,6 +37,11 @@ const parallelValidateLegs = [
 		command: 'npm run generate-types:check',
 		weight: 'check',
 	},
+	{
+		name: 'start-routes',
+		command: 'npm run routes:generate:check',
+		weight: 'check',
+	},
 	{ name: 'test-node', command: 'CI=1 npm run test:node', weight: 'suite' },
 	{
 		name: 'test-workers',
