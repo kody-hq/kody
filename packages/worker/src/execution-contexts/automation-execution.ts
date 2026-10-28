@@ -114,6 +114,7 @@ export type ContextRunDeferral = {
 	state: 'queued' | 'running'
 	runId: string
 	context: string
+	contextId?: string
 	expiresAt?: string
 }
 
@@ -187,7 +188,12 @@ export async function runAutomationOnContext(input: {
 						context,
 					},
 				},
-				deferred: { state: 'running', runId: routed.runId, context },
+				deferred: {
+					state: 'running',
+					runId: routed.runId,
+					context,
+					...(routed.metadata.id ? { contextId: routed.metadata.id } : {}),
+				},
 			}
 		}
 		case 'queued': {
@@ -202,7 +208,7 @@ export async function runAutomationOnContext(input: {
 						expiresAt,
 					},
 					logs: [
-						`${routed.contextName} is offline; this run is queued until it reconnects or ${expiresAt}.`,
+						`${routed.contextName} is offline or busy; this run is queued until it can take it or ${expiresAt}.`,
 					],
 				},
 				deferred: {

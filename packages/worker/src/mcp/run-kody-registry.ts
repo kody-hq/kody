@@ -112,6 +112,7 @@ import {
 	finishRunRecord,
 } from '#worker/run-records/service.ts'
 import { isExecutionContextsEnabledFor } from '#worker/execution-contexts/flag.ts'
+import { sessionStub } from '#worker/execution-contexts/store.ts'
 import {
 	type AutomationRouting,
 	automationContextWaitMs,
@@ -1413,6 +1414,12 @@ export async function runBundledModuleWithRegistry(
 			})
 		}
 		if (routed.kind === 'done' && routed.deferred && routing.needsResult) {
+			// A retried step must not run alongside the attempt it replaces.
+			if (routed.deferred.contextId) {
+				await sessionStub(env, routed.deferred.contextId)
+					.cancel({ runId: routed.deferred.runId, reason: 'caller_cancelled' })
+					.catch(() => undefined)
+			}
 			const message = `${routed.deferred.context} did not finish this workflow step in time, so the step failed. The context run ${routed.deferred.runId} continues in run history (execution_context_result_pending).`
 			await finishObservedRun({
 				status: 'error',
