@@ -19,7 +19,6 @@ import {
 	signupWelcomeCreditLedgerIdPrefix,
 	validateCreditAdminGrantCents,
 } from '#universal/credits.ts'
-import { type AccountCreditsLedgerItem } from '#universal/loader-data.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	fieldCss,
@@ -32,12 +31,7 @@ import {
 	AccountManagementPanel,
 	MetadataGrid,
 } from './account-management-components.tsx'
-const ledgerKindLabels: Record<AccountCreditsLedgerItem['kind'], string> = {
-	top_up: 'Top-up',
-	auto_refill: 'Auto-refill',
-	admin_grant: 'Admin grant',
-	debit: 'Debit',
-}
+import { formatAdminCreditLedgerKind } from './admin-display-labels.ts'
 type CreditsStatus = 'loading' | 'ready' | 'error'
 /**
  * Credit wallet for the selected account: balance, eligibility, a grant
@@ -47,6 +41,7 @@ type CreditsStatus = 'loading' | 'ready' | 'error'
 export function AdminUserCreditsPanel(props: {
 	stableUserId: string
 	organizationSlug?: string
+	personalOrganizationMissing?: boolean
 	onGranted?: () => void
 }) {
 	const invalidatePages = usePageInvalidation(mutationResources)
@@ -124,8 +119,10 @@ export function AdminUserCreditsPanel(props: {
 						<a
 							href={`/admin/orgs/${encodeURIComponent(props.organizationSlug)}`}
 						>
-							View personal organization
+							Open personal organization
 						</a>
+					) : props.personalOrganizationMissing ? (
+						'No personal organization.'
 					) : null}
 				</>
 			}
@@ -135,7 +132,10 @@ export function AdminUserCreditsPanel(props: {
 			) : null}
 			{message || walletQuery.error ? (
 				<AccountManagementMessage tone={messageTone}>
-					{message ?? walletQuery.error?.message}
+					{message ??
+						(props.personalOrganizationMissing
+							? 'No personal organization.'
+							: walletQuery.error?.message)}
 				</AccountManagementMessage>
 			) : null}
 			{wallet ? (
@@ -263,7 +263,7 @@ export function AdminUserCreditsPanel(props: {
 											fontVariantNumeric: 'tabular-nums',
 										}}
 									>
-										<strong>{ledgerKindLabels[item.kind]}</strong>
+										<strong>{formatAdminCreditLedgerKind(item.kind)}</strong>
 										<span>{formatSignedMicroUsd(item.amountMicroUsd)}</span>
 										<span css={{ color: colors.textMuted }}>
 											{formatTimestampDate(item.createdAt)}

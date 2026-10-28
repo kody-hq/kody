@@ -56,9 +56,11 @@ function parseValueText(text: string): LimitOverrideValue | null {
 export function AdminOrgLimitsPanel({
 	orgId,
 	organizationSlug,
+	personalOrganizationMissing = false,
 }: {
 	orgId: string
 	organizationSlug?: string
+	personalOrganizationMissing?: boolean
 }) {
 	const { actorKey } = useRouteContext({ from: '__root__' })
 	const client = useQueryClient()
@@ -176,12 +178,13 @@ export function AdminOrgLimitsPanel({
 				<>
 					{organizationSlug ? (
 						<>
-							Personal organization.{' '}
 							<a href={`/admin/orgs/${encodeURIComponent(organizationSlug)}`}>
-								View personal organization
+								Open personal organization
 							</a>
 							.{' '}
 						</>
+					) : personalOrganizationMissing ? (
+						<>No personal organization. </>
 					) : null}
 					Raise any daily, weekly, or monthly cap for this org. The enforced
 					limit is the larger of the plan limit and the override. Credits and
@@ -192,7 +195,10 @@ export function AdminOrgLimitsPanel({
 		>
 			{message || query.error ? (
 				<AccountManagementMessage tone={query.error ? 'error' : messageTone}>
-					{message ?? query.error?.message}
+					{message ??
+						(personalOrganizationMissing
+							? 'No personal organization.'
+							: query.error?.message)}
 				</AccountManagementMessage>
 			) : null}
 			{limits ? (

@@ -2,6 +2,7 @@
 import { useRouter } from '@tanstack/react-router'
 import { formatMicroUsd } from '#universal/credits.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
+import { isWithinSoftDeleteRestoreWindow } from '#worker/soft-delete/window.ts'
 import {
 	type AdminOrgDetail,
 	type AdminOrgsData,
@@ -11,10 +12,17 @@ import {
 import {
 	AccountManagementPanel,
 	AccountManagementShell,
+	AccountManagementMessage,
 	AdminPageHeader,
+	MetadataGrid,
 	TimestampValue,
 } from './account-management-components.tsx'
 import { AdminOrgLimitsPanel } from './admin-users-limits.tsx'
+import {
+	formatAdminCreditLedgerKind,
+	formatAdminEntitlementLadder,
+	formatAdminOrganizationRole,
+} from './admin-display-labels.ts'
 import {
 	RecordTable,
 	RecordTableSearch,
@@ -98,7 +106,14 @@ export function AdminOrgsPage(props: {
 					id: org.slug,
 					href: `/admin/orgs/${encodeURIComponent(org.slug)}`,
 					cells: {
-						organization: <span>{org.displayName || `@${org.slug}`}</span>,
+						organization: (
+							<span css={{ display: 'grid' }}>
+								<span>{org.displayName || `@${org.slug}`}</span>
+								{org.kind === 'team' ? (
+									<span css={{ color: colors.textMuted }}>@{org.slug}</span>
+								) : null}
+							</span>
+						),
 						kind: org.kind === 'personal' ? 'Personal' : 'Team',
 						plan: org.effectivePlan,
 						seats: org.seats,
@@ -176,65 +191,110 @@ export function AdminOrgDetailPage(props: {
 				description={`@${org.slug} · ${org.kind === 'personal' ? 'Personal organization' : 'Team organization'}`}
 				currentHref={props.currentHref}
 			/>
+			{data.softDelete ? (
+				<AccountManagementMessage tone="error">
+					This organization is deleted.{' '}
+					{data.softDelete.deletedAt &&
+					isWithinSoftDeleteRestoreWindow(data.softDelete.deletedAt) ? (
+						<>
+							Restorable until{' '}
+							<TimestampValue value={data.softDelete.restoreDeadline} />.
+						</>
+					) : (
+						'The restore window has passed.'
+					)}
+				</AccountManagementMessage>
+			) : null}
 			<AccountManagementPanel title="Overview">
-				<div css={{ display: 'grid', gap: spacing.sm }}>
-					<p>Handle: @{org.slug}</p>
-					<p>Kind: {org.kind === 'personal' ? 'Personal' : 'Team'}</p>
-					<p>
-						Created: <TimestampValue value={org.createdAt} />
-					</p>
-					<p>
-						Suspended: <TimestampValue value={org.suspendedAt} fallback="No" />
-					</p>
-					{org.kind === 'team' ? <p>Teams: {data.teamsCount}</p> : null}
-				</div>
+				<MetadataGrid
+					items={[
+						{ label: 'Handle', value: `@${org.slug}` },
+						{
+							label: 'Kind',
+							value: org.kind === 'personal' ? 'Personal' : 'Team',
+						},
+						{
+							label: 'Created',
+							value: <TimestampValue value={org.createdAt} />,
+						},
+						{
+							label: 'Updated',
+							value: <TimestampValue value={org.updatedAt} />,
+						},
+						{
+							label: 'Suspended',
+							value: <TimestampValue value={org.suspendedAt} fallback="No" />,
+						},
+						{ label: 'Teams', value: String(data.teamsCount) },
+					]}
+				/>
 			</AccountManagementPanel>
 			{data.softDelete ? (
 				<AccountManagementPanel title="Deleted">
-					<div css={{ display: 'grid', gap: spacing.sm }}>
-						<p>This organization is deleted.</p>
-						<p>
-							Deleted: <TimestampValue value={data.softDelete.deletedAt} />
-						</p>
-						<p>
-							Deletion started:{' '}
-							<TimestampValue value={data.softDelete.deletingAt} />
-						</p>
-						<p>
-							Restore deadline:{' '}
-							<TimestampValue value={data.softDelete.restoreDeadline} />
-						</p>
-					</div>
+					<MetadataGrid
+						items={[
+							{
+								label: 'Deleted',
+								value: <TimestampValue value={data.softDelete.deletedAt} />,
+							},
+							{
+								label: 'Deletion started',
+								value: <TimestampValue value={data.softDelete.deletingAt} />,
+							},
+							{
+								label: 'Restore deadline',
+								value: (
+									<TimestampValue value={data.softDelete.restoreDeadline} />
+								),
+							},
+						]}
+					/>
 				</AccountManagementPanel>
 			) : null}
 			<AccountManagementPanel
 				title="Plan"
 				description="Plan changes move here in a follow-up."
 			>
-				<div css={{ display: 'grid', gap: spacing.sm }}>
-					<p>Manual grant: {data.plan.manualPlan}</p>
-					<p>Stripe subscription: {data.plan.stripePlan ?? 'None'}</p>
-					<p>Effective plan: {data.plan.effectivePlan}</p>
-					<p>Entitlement ladder: {data.plan.entitlementLadder}</p>
-					<p>
-						Stripe customer linked:{' '}
-						{data.plan.stripeCustomerLinked ? 'Yes' : 'No'}
-					</p>
-					<p>
-						Admin credits eligible:{' '}
-						{data.plan.adminCreditsEligible ? 'Yes' : 'No'}
-					</p>
-					<p>
-						Stripe credits eligible:{' '}
-						{data.plan.stripeCreditsEligible ? 'Yes' : 'No'}
-					</p>
-					<p>Credits eligible: {data.plan.creditsEligible ? 'Yes' : 'No'}</p>
-				</div>
+				<MetadataGrid
+					items={[
+						{ label: 'Manual grant', value: data.plan.manualPlan },
+						{
+							label: 'Stripe subscription',
+							value: data.plan.stripePlan ?? 'None',
+						},
+						{ label: 'Effective plan', value: data.plan.effectivePlan },
+						{
+							label: 'Entitlement ladder',
+							value: formatAdminEntitlementLadder(data.plan.entitlementLadder),
+						},
+						{
+							label: 'Stripe customer',
+							value: data.plan.stripeCustomerLinked ? 'Linked' : 'Not linked',
+						},
+						{
+							label: 'Admin credits',
+							value: data.plan.adminCreditsEligible
+								? 'Eligible'
+								: 'Not eligible',
+						},
+						{
+							label: 'Stripe credits',
+							value: data.plan.stripeCreditsEligible
+								? 'Eligible'
+								: 'Not eligible',
+						},
+						{
+							label: 'Credits eligible',
+							value: data.plan.creditsEligible ? 'Yes' : 'No',
+						},
+					]}
+				/>
 			</AccountManagementPanel>
 			<AccountManagementPanel title="Seats & members">
 				<p>
-					{data.seats.live} live seats · {data.seats.billingOnly} billing-only
-					members
+					{data.seats.live} {data.seats.live === 1 ? 'seat' : 'seats'} (owners
+					and members) · {data.seats.billingOnly} billing-only{' '}
+					{data.seats.billingOnly === 1 ? 'member' : 'members'}
 				</p>
 				<RecordTable
 					mode="none"
@@ -251,7 +311,7 @@ export function AdminOrgDetailPage(props: {
 						href: `/admin/users/${encodeURIComponent(member.stableUserId)}`,
 						cells: {
 							username: member.username,
-							role: member.role,
+							role: formatAdminOrganizationRole(member.role),
 							joined: <TimestampValue value={member.joinedAt} />,
 							budget:
 								member.effectiveBudgetMicroUsd == null
@@ -267,20 +327,24 @@ export function AdminOrgDetailPage(props: {
 				/>
 			</AccountManagementPanel>
 			<AccountManagementPanel title="Budgets">
-				<div css={{ display: 'grid', gap: spacing.sm }}>
-					<p>
-						Default user budget:{' '}
-						{data.budgets.defaultUserBudgetMicroUsd == null
-							? 'None'
-							: formatMicroUsd(data.budgets.defaultUserBudgetMicroUsd)}
-					</p>
-					<p>
-						Automation budget:{' '}
-						{data.budgets.automationBudgetMicroUsd == null
-							? 'None'
-							: formatMicroUsd(data.budgets.automationBudgetMicroUsd)}
-					</p>
-				</div>
+				<MetadataGrid
+					items={[
+						{
+							label: 'Default user budget',
+							value:
+								data.budgets.defaultUserBudgetMicroUsd == null
+									? 'None'
+									: formatMicroUsd(data.budgets.defaultUserBudgetMicroUsd),
+						},
+						{
+							label: 'Automation budget',
+							value:
+								data.budgets.automationBudgetMicroUsd == null
+									? 'None'
+									: formatMicroUsd(data.budgets.automationBudgetMicroUsd),
+						},
+					]}
+				/>
 				<RecordTable
 					mode="none"
 					ariaLabel="Per-user budget overrides"
@@ -327,7 +391,7 @@ export function AdminOrgDetailPage(props: {
 					rows={data.wallet.recent.map((item, index) => ({
 						id: `${item.createdAt}-${index}`,
 						cells: {
-							type: item.kind,
+							type: formatAdminCreditLedgerKind(item.kind),
 							amount: formatMicroUsd(item.amountMicroUsd),
 							description: item.description,
 							created: <TimestampValue value={item.createdAt} />,

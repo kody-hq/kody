@@ -39,6 +39,10 @@ import {
 	formatUsagePercent,
 } from '#client/routes/admin-users-shared.ts'
 import { AdminUserCreditsPanel } from './admin-users-credits.tsx'
+import {
+	formatAdminEntitlementLadder,
+	formatAdminOrganizationRole,
+} from './admin-display-labels.ts'
 import { AdminUserAccountModeration } from './admin-account-delete-dialog.tsx'
 import {
 	costVsPayFootnote,
@@ -53,7 +57,10 @@ import {
 	measuredDurableObjectDurationFootnote,
 	formatDurableObjectGbSeconds,
 } from '#universal/durable-object-duration.ts'
-import { softDeleteRestoreDeadlineIso } from '#worker/soft-delete/window.ts'
+import {
+	isWithinSoftDeleteRestoreWindow,
+	softDeleteRestoreDeadlineIso,
+} from '#worker/soft-delete/window.ts'
 const selectCss = getSelectCss()
 const primaryButtonCss = getPillButtonCss({ size: 'sm' })
 const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
@@ -124,12 +131,7 @@ function AdminUserOrganizationsPanel({
 							</span>
 						),
 						kind: org.kind === 'personal' ? 'Personal' : 'Team',
-						role:
-							org.role === 'owner'
-								? 'Owner'
-								: org.role === 'billing'
-									? 'Billing'
-									: 'Member',
+						role: formatAdminOrganizationRole(org.role),
 						plan: org.effectivePlan,
 						seats: org.seats,
 						state: org.membershipDeletedAt ? (
@@ -163,27 +165,35 @@ function AdminDeletedUserDetail({
 		: null
 	return (
 		<div css={recordBodyCss}>
-			<AccountManagementPanel title="Deleted">
-				<div css={{ display: 'grid', gap: spacing.sm }}>
-					<strong>{selectedUser.username} is deleted.</strong>
-					<p>
-						Deleted: <TimestampValue value={selectedUser.deleted_at} />
-					</p>
-					<p>
-						Deletion started:{' '}
-						<TimestampValue value={selectedUser.deleting_at} />
-					</p>
-					<p>
-						Restore deadline: <TimestampValue value={deadline} />
-					</p>
-				</div>
-			</AccountManagementPanel>
+			<AccountManagementMessage tone="error">
+				{selectedUser.username} is deleted.{' '}
+				{selectedUser.deleted_at &&
+				isWithinSoftDeleteRestoreWindow(selectedUser.deleted_at) ? (
+					<>
+						Restorable until <TimestampValue value={deadline} />.
+					</>
+				) : (
+					'The restore window has passed.'
+				)}
+			</AccountManagementMessage>
 			<MetadataGrid
 				items={[
 					{ label: 'Email', value: selectedUser.email },
 					{
 						label: 'Created',
 						value: <TimestampValue value={selectedUser.created_at} />,
+					},
+					{
+						label: 'Deleted',
+						value: <TimestampValue value={selectedUser.deleted_at} />,
+					},
+					{
+						label: 'Deletion started',
+						value: <TimestampValue value={selectedUser.deleting_at} />,
+					},
+					{
+						label: 'Restore deadline',
+						value: <TimestampValue value={deadline} />,
 					},
 				]}
 			/>
@@ -312,10 +322,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 					},
 					{
 						label: 'Entitlement ladder',
-						value:
-							selectedUser.entitlementLadder === 'legacy'
-								? 'Legacy (pre-cut Standard/Pro ceilings)'
-								: 'Public',
+						value: formatAdminEntitlementLadder(selectedUser.entitlementLadder),
 					},
 					{
 						label: 'Stripe customer',
@@ -497,7 +504,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 							<a
 								href={`/admin/orgs/${encodeURIComponent(personalOrganization.slug)}`}
 							>
-								View personal organization
+								Open personal organization
 							</a>
 						) : null}
 					</>
@@ -550,12 +557,14 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 				key={selectedUser.stableUserId}
 				stableUserId={selectedUser.stableUserId}
 				organizationSlug={personalOrganization?.slug}
+				personalOrganizationMissing={!personalOrganization}
 				onGranted={props.onCreditsGranted}
 			/>
 			<AdminOrgLimitsPanel
 				key={`limits-${actorKey}-${selectedUser.stableUserId}`}
 				orgId={personalOrganization?.orgId ?? selectedUser.stableUserId}
 				organizationSlug={personalOrganization?.slug}
+				personalOrganizationMissing={!personalOrganization}
 			/>
 			<AccountManagementPanel
 				title="Moderation"
