@@ -48,7 +48,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
-export const adminUserRowSelectSql = `u.id, u.stable_user_id, u.username, u.email, u.email_verified_at, COALESCE(o.plan, 'free') AS plan, o.stripe_plan, COALESCE(o.entitlement_ladder, 'public') AS entitlement_ladder, o.stripe_customer_id, u.suspended_at,
+export const adminUserRowSelectSql = `u.id, u.stable_user_id, o.id AS org_id, u.username, u.email, u.email_verified_at, COALESCE(o.plan, 'free') AS plan, o.stripe_plan, COALESCE(o.entitlement_ladder, 'public') AS entitlement_ladder, o.stripe_customer_id, u.suspended_at,
 				o.email_outbound_paused_at, u.email_verification_delivery_status, u.email_verification_delivery_at, u.email_verification_delivery_detail, u.email_verification_delivery_class,
 				u.utm_source, u.utm_medium, u.utm_campaign, u.utm_content, u.utm_term, u.first_touch_landing_path, u.first_touch_referrer,
 				u.first_mcp_connected_at, u.first_execute_at, u.first_search_at, u.first_saved_package_at, u.mcp_client_name, u.last_active_at,
@@ -409,6 +409,13 @@ export async function updateAdminUserPlan(
 	)
 	if (!existingRow) return null
 
+	// Signups since #3053 phase 2 have orgs.id distinct from the person id.
+	const orgId = existingRow.org_id
+	if (!orgId) {
+		throw new Error(
+			`Cannot update billing: missing personal org ${existing.stableUserId}.`,
+		)
+	}
 	const now = input.now ?? new Date()
 	const nextPlan = resolvePlanWrite(input.plan)
 	const stripePlan = parseStripePlanName(existingRow.stripe_plan)
@@ -422,12 +429,12 @@ export async function updateAdminUserPlan(
 		.prepare(
 			`SELECT ${userEntitlementColumnsSql()} FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`,
 		)
-		.bind(existing.stableUserId)
+		.bind(orgId)
 		.first<UserEntitlementRow>()
 	if (entitlementRow) {
 		await forgiveCreditUsageBeforeUnlock({
 			db,
-			userId: existing.stableUserId,
+			userId: orgId,
 			current: entitlementRow,
 			next: {
 				...entitlementRow,
@@ -440,7 +447,7 @@ export async function updateAdminUserPlan(
 	const updatedAt = utcSqliteTimestamp(now)
 	const planWrite = await updateOrgBillingColumns({
 		db,
-		orgId: existing.stableUserId,
+		orgId,
 		setClause: 'plan = ?, entitlement_ladder = ?, updated_at = ?',
 		values: [nextPlan, nextLadder, updatedAt],
 	})
@@ -490,10 +497,15 @@ export async function clearAdminUserEmailOutboundPause(
 ): Promise<AdminUserListItem | null> {
 	const existing = await loadAdminUserRowByStableUserId(db, input.stableUserId)
 	if (!existing) return null
+	if (!existing.org_id) {
+		throw new Error(
+			`Cannot clear email pause: missing personal org ${input.stableUserId}.`,
+		)
+	}
 
 	await updateOrgBillingColumns({
 		db,
-		orgId: input.stableUserId,
+		orgId: existing.org_id,
 		setClause: 'email_outbound_paused_at = NULL, updated_at = ?',
 		values: [utcSqliteTimestamp()],
 	})
@@ -539,6 +551,8 @@ export async function loadRolesByUserIds(
 type AdminUserRow = {
 	id: number
 	stable_user_id: OwnerId
+	/** Live personal org row id (`users.personal_org_id`); null when missing. */
+	org_id: string | null
 	username: string
 	email: string
 	email_verified_at: string | null

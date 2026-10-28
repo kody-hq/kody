@@ -1,3 +1,4 @@
+import { type SkillReadEvent } from '#universal/skill-metrics.ts'
 import {
 	buildWorkspaceRunCharts,
 	workspaceChartWindow,
@@ -1205,6 +1206,7 @@ export async function exportRunRecords(input: {
 	jobRunObservability: Array<JobRunObservabilityRecord>
 	packageRunSuccesses: Array<PackageRunSuccessRecord>
 	activationMilestones: Array<ActivationMilestoneRecord>
+	skillReads: Array<SkillReadEvent>
 	nextStartAfter: string | null
 	truncated: boolean
 }> {
@@ -1217,6 +1219,7 @@ export async function exportRunRecords(input: {
 			jobRunObservability: [],
 			packageRunSuccesses: [],
 			activationMilestones: [],
+			skillReads: [],
 			nextStartAfter: null,
 			truncated: false,
 		}
@@ -1235,6 +1238,7 @@ export async function exportRunRecords(input: {
 		jobRunObservability: page.jobRunObservability ?? [],
 		packageRunSuccesses: page.packageRunSuccesses ?? [],
 		activationMilestones: page.activationMilestones ?? [],
+		skillReads: page.skillReads ?? [],
 	}
 }
 

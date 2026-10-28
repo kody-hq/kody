@@ -7,7 +7,7 @@ export function ExperimentOptIn({
 	experiment,
 	children,
 }: {
-	experiment: 'package-skills' | 'mcp-events'
+	experiment: 'package-skills' | 'mcp-events' | 'execution-contexts'
 	children: string
 }) {
 	const router = useRouter()

@@ -102,12 +102,14 @@ async function connect(ecid: string) {
 		protocol: { min: 1, max: 1 },
 		status: { acceptingRuns: true, running: 0, maxConcurrent: 2 },
 	})
-	// `ws.send` does not wait for the DO to handle hello; dispatching first
-	// finds no live socket and never sends run.request.
-	for (let i = 0; i < 100; i++) {
-		if ((await stub.getStatus()).acceptingRuns) break
-		await new Promise((resolve) => setTimeout(resolve, 50))
-	}
+	// Sending a WebSocket frame does not wait for its async signature check.
+	// Dispatch only after the session has processed hello and accepts runs.
+	await expect
+		.poll(() => stub.getStatus())
+		.toMatchObject({
+			online: true,
+			acceptingRuns: true,
+		})
 	return { stub, ws, next, send, key, welcome }
 }
 

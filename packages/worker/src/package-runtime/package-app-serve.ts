@@ -1137,6 +1137,31 @@ export async function servePackageAppRequest(input: {
 		const requiredExecutorNeeds = executorNeeds.filter(
 			(need) => need.required !== false,
 		)
+		// A signed-in visitor from outside the org brings their own executor
+		// credentials once they hold a live grant for this app. They get an
+		// executor-only visit: nothing else treats them as a visitor.
+		const executorGrant =
+			!visitor && identity && executorNeeds.length > 0
+				? await findLivePackageAppOauthGrant({
+						db: env.APP_DB,
+						personId: identity.userId,
+						orgUsername: packagePath.username.toLowerCase(),
+						kodyId: savedPackage.kodyId,
+					})
+				: null
+		const executorVisit =
+			identity && executorGrant
+				? {
+						visitor: {
+							userId: identity.userId,
+							username: identity.username,
+							role: null,
+						},
+						grantId: executorGrant.id,
+						scopes: executorGrant.scopes,
+					}
+				: null
+		const needVisitor = visitor ?? executorVisit?.visitor ?? null
 		const consentRedirect = () => {
 			const loginUrl = buildPackageAppLoginUrl({
 				requestUrl: request.url,
@@ -1194,7 +1219,7 @@ export async function servePackageAppRequest(input: {
 							},
 							visitorRequest: await createPackageAppVisitorPersonalRequest({
 								db: env.APP_DB,
-								visitor,
+								visitor: needVisitor,
 							}),
 							issue: { visitorNeed: need.key },
 							waitUntil: scheduleWorkerWaitUntil,
@@ -1214,12 +1239,13 @@ export async function servePackageAppRequest(input: {
 		// no grant for this app yet goes to consent, and any grant (even one
 		// that declined every optional need) serves the app after that.
 		if (
-			visitor &&
+			(visitor ?? identity) &&
 			(request.method === 'GET' || request.method === 'HEAD') &&
 			executorNeeds.some((need) => need.required === false) &&
+			!executorGrant &&
 			!(await findLivePackageAppOauthGrant({
 				db: env.APP_DB,
-				personId: visitor.userId,
+				personId: (visitor ?? identity)!.userId,
 				orgUsername: packagePath.username.toLowerCase(),
 				kodyId: savedPackage.kodyId,
 			}))
@@ -1250,6 +1276,7 @@ export async function servePackageAppRequest(input: {
 				servingUsername: packagePath.username,
 				hostedOrigin: requestUrl.origin,
 				mount: packagePath.mount,
+				executorVisit,
 			},
 		})
 		entrypoint = appWorker.stub.getEntrypoint(appWorker.entrypointName)

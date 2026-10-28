@@ -133,6 +133,7 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 			'/account/repos',
 			'/@{$username}',
 			'/@{$orgSlug}/-/packages',
+			'/@{$orgSlug}/-/skills',
 			'/@{$orgSlug}/-/repositories',
 			'/@{$orgSlug}/-/approvals',
 		],
@@ -179,6 +180,15 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 		title: 'Jobs',
 		file: 'jobs.md',
 		prefixes: ['/account/jobs', '/@{$orgSlug}/-/jobs'],
+	},
+	{
+		id: 'execution-contexts',
+		title: 'Execution contexts',
+		file: 'execution-contexts.md',
+		prefixes: [
+			'/account/execution-contexts',
+			'/@{$orgSlug}/-/execution-contexts',
+		],
 	},
 	{
 		id: 'workflows',

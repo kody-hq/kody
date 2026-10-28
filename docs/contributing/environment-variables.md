@@ -400,10 +400,9 @@ Worker bindings (see `packages/worker/wrangler.jsonc`):
   offline fusion path (`offline: true` in search results).
 - **`AI`** — Workers AI binding used by production and preview capability,
   memory, job, and saved-package embedding calls, and by ranked MCP search Jev
-  Score (`typesafe/jev`) when `jev-search-rerank` is on. Local dev and tests do
-  not require it because `WRANGLER_IS_LOCAL_DEV`, `SENTRY_ENVIRONMENT=test`, or
-  a missing non-production binding keeps search on the deterministic offline
-  path.
+  Score (`typesafe/jev`) for paid plans. Local dev and tests do not require it
+  because `WRANGLER_IS_LOCAL_DEV`, `SENTRY_ENVIRONMENT=test`, or a missing
+  non-production binding keeps search on the deterministic offline path.
 
 Worker secrets:
 

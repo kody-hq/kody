@@ -77,9 +77,9 @@ Prerequisites, install, and `npm run dev` notes. See the
   required for `npm run test` or unauthenticated local runs). Production uses
   Vectorize plus the Workers AI `@cf/baai/bge-small-en-v1.5` embedding model
   through the `AI` binding, optionally routed through AI Gateway. Ranked search
-  can also call `typesafe/jev` when `jev-search-rerank` is on; see
+  can also call `typesafe/jev` for paid plans; see
   [`environment-variables.md`](../environment-variables.md) and
-  [feature flags](../architecture/feature-flags.md).
+  [Search](../../use/search.md#ranked-search-scoring).
 - Add new mock API servers by following
   [`mock-api-servers.md`](../mock-api-servers.md).
 - `npm run dev:client`, `npm run dev:vite`, and `npm run dev:worker` all start

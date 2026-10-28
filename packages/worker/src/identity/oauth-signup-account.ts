@@ -1,4 +1,8 @@
 import { maybeTagKitSubscriberOnSignup } from '#app/kit-signup.ts'
+import {
+	findSoftDeletedAccountsHoldingEmail,
+	releaseSoftDeletedAccountsForEmail,
+} from '#worker/identity/deleted-account-identity-release.ts'
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
 import {
 	firstTouchAttributionCreateFields,
@@ -97,6 +101,30 @@ export async function createOauthSignupAccount(input: {
 	if (usernameError) {
 		return { ok: false, reason: 'invalid_username' }
 	}
+	// The provider verified this email, so its owner supersedes any
+	// soft-deleted account still holding it (and may reclaim its handle).
+	// Superseding is irreversible: reject a username held by anyone else first.
+	const releasable = await findSoftDeletedAccountsHoldingEmail(
+		env.APP_DB,
+		email,
+	)
+	if (await isUsernameClaimedInIdentity(env.APP_DB, username)) {
+		// Its own username, handle, or personal org slug is reclaimable.
+		let heldOnlyByReleasable = false
+		for (const account of releasable) {
+			if (
+				!(await isUsernameClaimedInIdentity(env.APP_DB, username, {
+					exceptStableUserId: account.stableUserId,
+					exceptOrgId: account.personalOrgId,
+				}))
+			) {
+				heldOnlyByReleasable = true
+				break
+			}
+		}
+		if (!heldOnlyByReleasable) return { ok: false, reason: 'username_exists' }
+	}
+	await releaseSoftDeletedAccountsForEmail(env.APP_DB, email)
 	if (await isUsernameClaimedInIdentity(env.APP_DB, username)) {
 		return { ok: false, reason: 'username_exists' }
 	}

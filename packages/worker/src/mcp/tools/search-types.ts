@@ -83,7 +83,11 @@ export type SearchTelemetry = {
 	trimmedMatchCount?: number
 	responseTrimmed?: boolean
 	jevRerank?: {
-		enabled: boolean
+		/**
+		 * Always true: the Jev stage runs on every ranked search (plan and
+		 * necessity decide `outcome`). Kept for search diagnostics readers.
+		 */
+		enabled: true
 		outcome: JevSearchRerankOutcome
 		candidatesBefore: number
 		candidatesAfter: number
@@ -114,8 +118,6 @@ export type SearchPhaseTimings = {
 	candidateGenerationMs: number
 	rerankingMs: number
 	jevRerankMs?: number
-	/** Flag evaluation before ranking; inside `loadAndRankMs`. */
-	featureFlagsMs?: number
 	formattingMs?: number
 	rowAndRegistryLoadMs?: number
 	queryEmbeddingMs?: number

@@ -363,6 +363,19 @@ function jobsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 	}
 }
 
+function executionContextsRailItem(
+	orgSlug: string | null | undefined,
+): AccountRailItem {
+	return {
+		href: orgSectionHref(orgSlug, 'execution-contexts'),
+		id: 'execution-contexts',
+		label: 'Execution contexts',
+		icon: 'server',
+		description:
+			'Your machines and shared servers that run execute, and the order Kody tries them in.',
+	}
+}
+
 function agentsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 	return {
 		href: orgSectionHref(orgSlug, 'agents'),
@@ -476,6 +489,7 @@ function membersRailItem(orgSlug: string, role: OrgRole): AccountRailItem {
 function workspaceResourceGroups(
 	orgSlug: string | null | undefined,
 	personal: boolean,
+	executionContexts = false,
 ): Array<AccountRailGroup> {
 	return [
 		{
@@ -483,6 +497,7 @@ function workspaceResourceGroups(
 			items: [
 				repositoriesRailItem(orgSlug),
 				jobsRailItem(orgSlug),
+				...(executionContexts ? [executionContextsRailItem(orgSlug)] : []),
 				{
 					href: orgSectionHref(orgSlug, 'webhooks'),
 					id: 'webhooks',
@@ -517,6 +532,12 @@ function workspaceResourceGroups(
 			label: 'Agents & data',
 			items: [
 				agentsRailItem(orgSlug),
+				{
+					href: orgSectionHref(orgSlug, 'skills'),
+					id: 'skills',
+					label: 'Skills',
+					icon: 'book',
+				},
 				...(personal ? [memoriesRailItem(orgSlug)] : []),
 				{
 					href: orgSectionHref(orgSlug, 'email'),
@@ -554,6 +575,8 @@ export function workspaceRailGroups(input: {
 	 * username.
 	 */
 	profileUsername?: string | null
+	/** The `execution-contexts` flag is on for the viewer. */
+	executionContexts?: boolean
 }): Array<AccountRailGroup> {
 	const { orgSlug, personal, role } = input
 	const profileUsername = personal ? input.profileUsername : null
@@ -630,7 +653,7 @@ export function workspaceRailGroups(input: {
 					},
 				]
 			: []),
-		...workspaceResourceGroups(orgSlug, personal),
+		...workspaceResourceGroups(orgSlug, personal, input.executionContexts),
 		{ label: 'Organization', items: organizationItems },
 	]
 }

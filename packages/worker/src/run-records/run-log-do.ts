@@ -1,3 +1,13 @@
+import {
+	type SkillReadEvent,
+	type SkillReadSummary,
+} from '#universal/skill-metrics.ts'
+import {
+	initializeSkillReads,
+	insertSkillRead,
+	summarizeSkillReads,
+	exportSkillReads,
+} from './skill-reads.ts'
 import { type WorkspaceRunBucket } from '#universal/workspace-charts.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { DurableObject } from 'cloudflare:workers'
@@ -98,7 +108,7 @@ const metaSchemaVersionKey = 'schema_version'
 /** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
 const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-const runLogSchemaVersion = 16
+const runLogSchemaVersion = 17
 
 function utcDayToMetaInt(day: string): number {
 	return Number(day.replaceAll('-', ''))
@@ -222,6 +232,7 @@ const exportWorkflowProjectionsCursorPrefix = 'workflow-projections:'
 const exportJobRunObservabilityCursorPrefix = 'job-run-observability:'
 const exportPackageRunSuccessesCursorPrefix = 'package-run-successes:'
 const exportActivationMilestonesCursorPrefix = 'activation-milestones:'
+const exportSkillReadsCursorPrefix = 'skill-reads:'
 
 const platformInterruptTriageNote =
 	'auto-ignored: idempotent scheduler or delivery queue will retry'
@@ -408,6 +419,7 @@ export type ExportRunsResult = {
 	jobRunObservability: Array<JobRunObservabilityRecord>
 	packageRunSuccesses: Array<PackageRunSuccessRecord>
 	activationMilestones: Array<ActivationMilestoneRecord>
+	skillReads: Array<SkillReadEvent>
 	nextStartAfter: string | null
 	truncated: boolean
 }
@@ -815,6 +827,16 @@ class RunLogBase extends DurableObject<Env> {
 		})
 	}
 
+	async recordSkillRead(event: SkillReadEvent): Promise<void> {
+		insertSkillRead(this.ctx.storage.sql, event)
+	}
+	async skillReadSummary(input: {
+		since: string
+		packageIds: Array<string>
+	}): Promise<SkillReadSummary> {
+		return summarizeSkillReads(this.ctx.storage.sql, input)
+	}
+
 	private initializeSchema() {
 		// Schema rebuild (clearAll / DR restore / warm-migration tests) may
 		// rewrite storage under us; drop counter memos so the next read reloads.
@@ -1061,6 +1083,7 @@ class RunLogBase extends DurableObject<Env> {
 				)
 			}
 		}
+		initializeSkillReads(this.ctx.storage.sql)
 		this.setMeta(metaSchemaVersionKey, runLogSchemaVersion)
 	}
 
@@ -4390,6 +4413,7 @@ class RunLogBase extends DurableObject<Env> {
 	 * 4. job-run-observability (`job-run-observability:`)
 	 * 5. package-run-successes (`package-run-successes:`)
 	 * 6. activation-milestones (`activation-milestones:`)
+	 * 7. skill-reads (`skill-reads:`)
 	 *
 	 * Each phase fills the remainder of the page into the next so exports stay
 	 * one-cursor. Old run-id and ledger cursors remain valid.
@@ -4405,6 +4429,7 @@ class RunLogBase extends DurableObject<Env> {
 			jobRunObservability: [],
 			packageRunSuccesses: [],
 			activationMilestones: [],
+			skillReads: [],
 			nextStartAfter: null,
 			truncated: false,
 		}
@@ -4416,6 +4441,7 @@ class RunLogBase extends DurableObject<Env> {
 			| 'job-run-observability'
 			| 'package-run-successes'
 			| 'activation-milestones'
+			| 'skill-reads'
 
 		const phaseOrder: Array<ExportPhase> = [
 			'runs',
@@ -4424,12 +4450,18 @@ class RunLogBase extends DurableObject<Env> {
 			'job-run-observability',
 			'package-run-successes',
 			'activation-milestones',
+			'skill-reads',
 		]
 
 		const parsePhase = (
 			cursor: string | null,
 		): { phase: ExportPhase; startAfterId: string } => {
 			if (!cursor) return { phase: 'runs', startAfterId: '' }
+			if (cursor.startsWith(exportSkillReadsCursorPrefix))
+				return {
+					phase: 'skill-reads',
+					startAfterId: cursor.slice(exportSkillReadsCursorPrefix.length),
+				}
 			if (cursor.startsWith(exportLedgerCursorPrefix)) {
 				return {
 					phase: 'invocation-ledger',
@@ -4483,6 +4515,8 @@ class RunLogBase extends DurableObject<Env> {
 					return exportJobRunObservabilityCursorPrefix
 				case 'package-run-successes':
 					return exportPackageRunSuccessesCursorPrefix
+				case 'skill-reads':
+					return exportSkillReadsCursorPrefix
 				case 'activation-milestones':
 					return exportActivationMilestonesCursorPrefix
 				default: {
@@ -4551,6 +4585,10 @@ class RunLogBase extends DurableObject<Env> {
 					result.packageRunSuccesses.push(...page.packageRunSuccesses)
 					break
 				}
+				case 'skill-reads': {
+					result.skillReads.push(...page.skillReads)
+					break
+				}
 				case 'activation-milestones': {
 					result.activationMilestones.push(...page.activationMilestones)
 					break
@@ -4610,6 +4648,7 @@ class RunLogBase extends DurableObject<Env> {
 			| 'job-run-observability'
 			| 'package-run-successes'
 			| 'activation-milestones'
+			| 'skill-reads'
 		startAfterId: string
 		limit: number
 	}): {
@@ -4620,6 +4659,7 @@ class RunLogBase extends DurableObject<Env> {
 		jobRunObservability: Array<JobRunObservabilityRecord>
 		packageRunSuccesses: Array<PackageRunSuccessRecord>
 		activationMilestones: Array<ActivationMilestoneRecord>
+		skillReads: Array<SkillReadEvent>
 		taken: number
 		truncated: boolean
 		nextId: string
@@ -4632,6 +4672,7 @@ class RunLogBase extends DurableObject<Env> {
 			jobRunObservability: [] as Array<JobRunObservabilityRecord>,
 			packageRunSuccesses: [] as Array<PackageRunSuccessRecord>,
 			activationMilestones: [] as Array<ActivationMilestoneRecord>,
+			skillReads: [] as Array<SkillReadEvent>,
 			taken: 0,
 			truncated: false,
 			nextId: input.startAfterId,
@@ -4780,6 +4821,20 @@ class RunLogBase extends DurableObject<Env> {
 					nextId: last ? String(last['package_id']) : input.startAfterId,
 				}
 			}
+			case 'skill-reads': {
+				const page = exportSkillReads(
+					this.ctx.storage.sql,
+					input.startAfterId,
+					limit,
+				)
+				return {
+					...empty,
+					skillReads: page.events,
+					taken: page.events.length,
+					truncated: page.truncated,
+					nextId: page.nextId,
+				}
+			}
 			case 'activation-milestones': {
 				const rows = this.ctx.storage.sql
 					.exec<Record<string, SqlStorageValue>>(
@@ -4834,6 +4889,11 @@ export const RunLog = Sentry.instrumentDurableObjectWithSentry(
 export type RunLog = InstanceType<typeof RunLog>
 
 export type RunLogRpc = DurableObjectPitrRpc & {
+	recordSkillRead: (event: SkillReadEvent) => Promise<void>
+	skillReadSummary: (input: {
+		since: string
+		packageIds: Array<string>
+	}) => Promise<SkillReadSummary>
 	startRun: (input: { run: RunLogRowInput }) => Promise<{ ok: true }>
 	claimRun: (input: { run: RunLogRowInput }) => Promise<{
 		claimed: boolean

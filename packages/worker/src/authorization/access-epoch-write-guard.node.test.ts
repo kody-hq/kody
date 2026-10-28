@@ -34,6 +34,7 @@ type Invalidation =
 	| 'person-row-gone'
 
 const writers: Record<string, Invalidation> = {
+	'admin/personal-org-repair.ts': 'same-batch-bump',
 	'orgs/access-writes.ts': 'same-batch-bump',
 	'orgs/offboarding.ts': 'same-batch-bump',
 	'orgs/convert-personal-org.ts': 'same-batch-bump',

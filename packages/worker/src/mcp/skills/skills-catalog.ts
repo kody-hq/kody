@@ -139,6 +139,8 @@ async function rebuildPackageSkillsIndex(input: {
  * miss cannot blank the caller's catalog.
  */
 export async function loadCallerSkillsCatalog(input: {
+	/** Human-facing inventories must not silently omit broken packages. */
+	failOnError?: boolean
 	env: Env
 	callerContext: McpCallerContext
 }): Promise<CallerSkillsCatalog> {
@@ -176,6 +178,7 @@ export async function loadCallerSkillsCatalog(input: {
 					index,
 				} satisfies CallerSkillsCatalogPackage
 			} catch (error) {
+				if (input.failOnError) throw error
 				// One package with a missing snapshot or bad skill must not
 				// blank the caller's entire skills surface.
 				console.error(

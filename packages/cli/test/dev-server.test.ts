@@ -270,7 +270,7 @@ test('process reaper kills tracked pids and removes the work dir when its pipe c
 test('process reaper kills a detached process group on pipe close', async () => {
 	const workDir = await mkdtemp(join(tmpdir(), 'kody-dev-reaper-group-'))
 	// Nested sleep under detached sh — killing only the shell would leave the child.
-	const shell = spawn('sh', ['-c', 'sleep 30'], {
+	const shell = spawn('sh', ['-c', 'sleep 30 & wait'], {
 		stdio: 'ignore',
 		detached: true,
 	})

@@ -49,8 +49,6 @@ import {
 import {
 	createExecutionSecretRedactor,
 	type ExecutionSecretRedactor,
-	trackRunSecretToolName,
-	trackSecretValueForms,
 } from '#mcp/secrets/execution-secret-redactor.ts'
 import { type BuiltCapabilityRegistry } from '#mcp/capabilities/build-capability-registry.ts'
 import { assertCallerCanAccessCapability } from '#mcp/capabilities/access-control.ts'
@@ -444,6 +442,7 @@ export async function buildKodyToolContext(
 		waitUntil?: (promise: Promise<unknown>) => void
 		openApiPrincipal?: CapabilityOpenApiPrincipal
 		localExecuteHop?: true
+		credentialClientBinding?: string
 	},
 ): Promise<{
 	tools: AdditionalKodyTools
@@ -503,6 +502,9 @@ export async function buildKodyToolContext(
 							? { openApiPrincipal: options.openApiPrincipal }
 							: {}),
 						...(options?.localExecuteHop ? { localExecuteHop: true } : {}),
+						...(options?.credentialClientBinding
+							? { credentialClientBinding: options.credentialClientBinding }
+							: {}),
 					})
 				} finally {
 					if (shouldSampleFirstDispatch) {
@@ -535,22 +537,11 @@ export async function buildKodyToolContext(
 		{},
 		...runtimeHelperKodyToolSets.map(({ tools }) => tools),
 	) as AdditionalKodyTools
-	const trackRunSecretTool = {
-		[trackRunSecretToolName]: async (args: unknown) => {
-			trackSecretValueForms(
-				options?.trackSecretInputValue,
-				isRecord(args) ? args.value : undefined,
-			)
-			return { ok: true }
-		},
-	} satisfies AdditionalKodyTools
-	assertNoCapabilityCollisions(capabilityMap, trackRunSecretTool)
 	return {
 		tools: {
 			...capabilityKodyTools,
 			...runtimeHelperKodyTools,
 			...additionalTools,
-			...trackRunSecretTool,
 		},
 		mcpServers,
 	}
@@ -662,6 +653,7 @@ export async function buildKodyProvider(
 		capabilityRegistry?: BuiltCapabilityRegistry
 		reportProgress?: McpReportProgress
 		waitUntil?: (promise: Promise<unknown>) => void
+		credentialClientBinding?: string
 	},
 ): Promise<ResolvedProvider> {
 	const { tools, mcpServers } = await buildKodyToolContext(
@@ -1530,6 +1522,7 @@ export async function runBundledModuleWithRegistry(
 			capabilityRegistry: options?.capabilityRegistry,
 			reportProgress,
 			waitUntil: options?.waitUntil,
+			...(credentialClientTools ? { credentialClientBinding } : {}),
 		})
 		runServerTiming.push({
 			name: 'provider-assembly',

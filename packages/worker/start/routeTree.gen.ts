@@ -121,6 +121,7 @@ import { Route as AppAccountCredentialsRouteImport } from './routes/_app.account
 import { Route as AppAccountCreditsRouteImport } from './routes/_app.account_.credits'
 import { Route as AppAccountDataRouteImport } from './routes/_app.account_.data'
 import { Route as AppAccountEmailRouteImport } from './routes/_app.account_.email'
+import { Route as AppAccountExecutionContextsRouteImport } from './routes/_app.account_.execution-contexts'
 import { Route as AppAccountExperimentsRouteImport } from './routes/_app.account_.experiments'
 import { Route as AppAccountIntegrationsRouteImport } from './routes/_app.account_.integrations'
 import { Route as AppAccountJobsRouteImport } from './routes/_app.account_.jobs'
@@ -173,6 +174,7 @@ import { Route as AppAtChar123orgSlugChar125CollaboratorsRouteImport } from './r
 import { Route as AppAtChar123orgSlugChar125CredentialsRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials'
 import { Route as AppAtChar123orgSlugChar125CreditsRouteImport } from './routes/_app.@{$orgSlug}_.-.credits'
 import { Route as AppAtChar123orgSlugChar125EmailRouteImport } from './routes/_app.@{$orgSlug}_.-.email'
+import { Route as AppAtChar123orgSlugChar125ExecutionContextsRouteImport } from './routes/_app.@{$orgSlug}_.-.execution-contexts'
 import { Route as AppAtChar123orgSlugChar125FollowsRouteImport } from './routes/_app.@{$orgSlug}_.-.follows'
 import { Route as AppAtChar123orgSlugChar125GrantsRouteImport } from './routes/_app.@{$orgSlug}_.-.grants'
 import { Route as AppAtChar123orgSlugChar125IntegrationsRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations'
@@ -186,6 +188,7 @@ import { Route as AppAtChar123orgSlugChar125RepositoriesRouteImport } from './ro
 import { Route as AppAtChar123orgSlugChar125SecretProvidersRouteImport } from './routes/_app.@{$orgSlug}_.-.secret-providers'
 import { Route as AppAtChar123orgSlugChar125SecretsRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets'
 import { Route as AppAtChar123orgSlugChar125SettingsRouteImport } from './routes/_app.@{$orgSlug}_.-.settings'
+import { Route as AppAtChar123orgSlugChar125SkillsRouteImport } from './routes/_app.@{$orgSlug}_.-.skills'
 import { Route as AppAtChar123orgSlugChar125TeamsRouteImport } from './routes/_app.@{$orgSlug}_.-.teams'
 import { Route as AppAtChar123orgSlugChar125UsageRouteImport } from './routes/_app.@{$orgSlug}_.-.usage'
 import { Route as AppAtChar123orgSlugChar125WaitingRouteImport } from './routes/_app.@{$orgSlug}_.-.waiting'
@@ -242,6 +245,7 @@ import { Route as AppAtChar123orgSlugChar125BillingSuccessRouteImport } from './
 import { Route as AppAtChar123orgSlugChar125CredentialsCredentialIdRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.$credentialId'
 import { Route as AppAtChar123orgSlugChar125CredentialsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.new'
 import { Route as AppAtChar123orgSlugChar125EmailMessageIdRouteImport } from './routes/_app.@{$orgSlug}_.-.email_.$messageId'
+import { Route as AppAtChar123orgSlugChar125ExecutionContextsContextIdRouteImport } from './routes/_app.@{$orgSlug}_.-.execution-contexts_.$contextId'
 import { Route as AppAtChar123orgSlugChar125IntegrationsIntegrationNameRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.$integrationName'
 import { Route as AppAtChar123orgSlugChar125IntegrationsApproveRouteImport } from './routes/_app.@{$orgSlug}_.-.integrations_.approve'
 import { Route as AppAtChar123orgSlugChar125JobsJobIdRouteImport } from './routes/_app.@{$orgSlug}_.-.jobs_.$jobId'
@@ -847,6 +851,12 @@ const AppAccountEmailRoute = AppAccountEmailRouteImport.update({
   path: '/account/email',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAccountExecutionContextsRoute =
+  AppAccountExecutionContextsRouteImport.update({
+    id: '/account_/execution-contexts',
+    path: '/account/execution-contexts',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAccountExperimentsRoute = AppAccountExperimentsRouteImport.update({
   id: '/account_/experiments',
   path: '/account/experiments',
@@ -1129,6 +1139,12 @@ const AppAtChar123orgSlugChar125EmailRoute =
     path: '/@{$orgSlug}/-/email',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125ExecutionContextsRoute =
+  AppAtChar123orgSlugChar125ExecutionContextsRouteImport.update({
+    id: '/@{$orgSlug}_/-/execution-contexts',
+    path: '/@{$orgSlug}/-/execution-contexts',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125FollowsRoute =
   AppAtChar123orgSlugChar125FollowsRouteImport.update({
     id: '/@{$orgSlug}_/-/follows',
@@ -1205,6 +1221,12 @@ const AppAtChar123orgSlugChar125SettingsRoute =
   AppAtChar123orgSlugChar125SettingsRouteImport.update({
     id: '/@{$orgSlug}_/-/settings',
     path: '/@{$orgSlug}/-/settings',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125SkillsRoute =
+  AppAtChar123orgSlugChar125SkillsRouteImport.update({
+    id: '/@{$orgSlug}_/-/skills',
+    path: '/@{$orgSlug}/-/skills',
     getParentRoute: () => AppRoute,
   } as any)
 const AppAtChar123orgSlugChar125TeamsRoute =
@@ -1537,6 +1559,12 @@ const AppAtChar123orgSlugChar125EmailMessageIdRoute =
     path: '/@{$orgSlug}/-/email/$messageId',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute =
+  AppAtChar123orgSlugChar125ExecutionContextsContextIdRouteImport.update({
+    id: '/@{$orgSlug}_/-/execution-contexts_/$contextId',
+    path: '/@{$orgSlug}/-/execution-contexts/$contextId',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute =
   AppAtChar123orgSlugChar125IntegrationsIntegrationNameRouteImport.update({
     id: '/@{$orgSlug}_/-/integrations_/$integrationName',
@@ -1828,6 +1856,7 @@ export interface FileRoutesByFullPath {
   '/account/credits': typeof AppAccountCreditsRoute
   '/account/data': typeof AppAccountDataRoute
   '/account/email': typeof AppAccountEmailRoute
+  '/account/execution-contexts': typeof AppAccountExecutionContextsRoute
   '/account/experiments': typeof AppAccountExperimentsRoute
   '/account/integrations': typeof AppAccountIntegrationsRoute
   '/account/jobs': typeof AppAccountJobsRoute
@@ -1880,6 +1909,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
   '/@{$orgSlug}/-/credits': typeof AppAtChar123orgSlugChar125CreditsRoute
   '/@{$orgSlug}/-/email': typeof AppAtChar123orgSlugChar125EmailRoute
+  '/@{$orgSlug}/-/execution-contexts': typeof AppAtChar123orgSlugChar125ExecutionContextsRoute
   '/@{$orgSlug}/-/follows': typeof AppAtChar123orgSlugChar125FollowsRoute
   '/@{$orgSlug}/-/grants': typeof AppAtChar123orgSlugChar125GrantsRoute
   '/@{$orgSlug}/-/integrations': typeof AppAtChar123orgSlugChar125IntegrationsRoute
@@ -1893,6 +1923,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/@{$orgSlug}/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
   '/@{$orgSlug}/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/@{$orgSlug}/-/skills': typeof AppAtChar123orgSlugChar125SkillsRoute
   '/@{$orgSlug}/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
   '/@{$orgSlug}/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
   '/@{$orgSlug}/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -1949,6 +1980,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   '/@{$orgSlug}/-/email/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
+  '/@{$orgSlug}/-/execution-contexts/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
   '/@{$orgSlug}/-/integrations/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   '/@{$orgSlug}/-/integrations/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   '/@{$orgSlug}/-/jobs/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
@@ -2090,6 +2122,7 @@ export interface FileRoutesByTo {
   '/account/credits': typeof AppAccountCreditsRoute
   '/account/data': typeof AppAccountDataRoute
   '/account/email': typeof AppAccountEmailRoute
+  '/account/execution-contexts': typeof AppAccountExecutionContextsRoute
   '/account/experiments': typeof AppAccountExperimentsRoute
   '/account/integrations': typeof AppAccountIntegrationsRoute
   '/account/jobs': typeof AppAccountJobsRoute
@@ -2142,6 +2175,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
   '/@{$orgSlug}/-/credits': typeof AppAtChar123orgSlugChar125CreditsRoute
   '/@{$orgSlug}/-/email': typeof AppAtChar123orgSlugChar125EmailRoute
+  '/@{$orgSlug}/-/execution-contexts': typeof AppAtChar123orgSlugChar125ExecutionContextsRoute
   '/@{$orgSlug}/-/follows': typeof AppAtChar123orgSlugChar125FollowsRoute
   '/@{$orgSlug}/-/grants': typeof AppAtChar123orgSlugChar125GrantsRoute
   '/@{$orgSlug}/-/integrations': typeof AppAtChar123orgSlugChar125IntegrationsRoute
@@ -2155,6 +2189,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/@{$orgSlug}/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
   '/@{$orgSlug}/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/@{$orgSlug}/-/skills': typeof AppAtChar123orgSlugChar125SkillsRoute
   '/@{$orgSlug}/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
   '/@{$orgSlug}/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
   '/@{$orgSlug}/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -2211,6 +2246,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   '/@{$orgSlug}/-/email/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
+  '/@{$orgSlug}/-/execution-contexts/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
   '/@{$orgSlug}/-/integrations/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   '/@{$orgSlug}/-/integrations/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   '/@{$orgSlug}/-/jobs/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
@@ -2355,6 +2391,7 @@ export interface FileRoutesById {
   '/_app/account_/credits': typeof AppAccountCreditsRoute
   '/_app/account_/data': typeof AppAccountDataRoute
   '/_app/account_/email': typeof AppAccountEmailRoute
+  '/_app/account_/execution-contexts': typeof AppAccountExecutionContextsRoute
   '/_app/account_/experiments': typeof AppAccountExperimentsRoute
   '/_app/account_/integrations': typeof AppAccountIntegrationsRoute
   '/_app/account_/jobs': typeof AppAccountJobsRoute
@@ -2407,6 +2444,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/credentials': typeof AppAtChar123orgSlugChar125CredentialsRoute
   '/_app/@{$orgSlug}_/-/credits': typeof AppAtChar123orgSlugChar125CreditsRoute
   '/_app/@{$orgSlug}_/-/email': typeof AppAtChar123orgSlugChar125EmailRoute
+  '/_app/@{$orgSlug}_/-/execution-contexts': typeof AppAtChar123orgSlugChar125ExecutionContextsRoute
   '/_app/@{$orgSlug}_/-/follows': typeof AppAtChar123orgSlugChar125FollowsRoute
   '/_app/@{$orgSlug}_/-/grants': typeof AppAtChar123orgSlugChar125GrantsRoute
   '/_app/@{$orgSlug}_/-/integrations': typeof AppAtChar123orgSlugChar125IntegrationsRoute
@@ -2420,6 +2458,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/_app/@{$orgSlug}_/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
   '/_app/@{$orgSlug}_/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/_app/@{$orgSlug}_/-/skills': typeof AppAtChar123orgSlugChar125SkillsRoute
   '/_app/@{$orgSlug}_/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
   '/_app/@{$orgSlug}_/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
   '/_app/@{$orgSlug}_/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -2476,6 +2515,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/credentials_/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/_app/@{$orgSlug}_/-/credentials_/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   '/_app/@{$orgSlug}_/-/email_/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
+  '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
   '/_app/@{$orgSlug}_/-/integrations_/$integrationName': typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   '/_app/@{$orgSlug}_/-/integrations_/approve': typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   '/_app/@{$orgSlug}_/-/jobs_/$jobId': typeof AppAtChar123orgSlugChar125JobsJobIdRoute
@@ -2620,6 +2660,7 @@ export interface FileRouteTypes {
     | '/account/credits'
     | '/account/data'
     | '/account/email'
+    | '/account/execution-contexts'
     | '/account/experiments'
     | '/account/integrations'
     | '/account/jobs'
@@ -2672,6 +2713,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/credentials'
     | '/@{$orgSlug}/-/credits'
     | '/@{$orgSlug}/-/email'
+    | '/@{$orgSlug}/-/execution-contexts'
     | '/@{$orgSlug}/-/follows'
     | '/@{$orgSlug}/-/grants'
     | '/@{$orgSlug}/-/integrations'
@@ -2685,6 +2727,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/secret-providers'
     | '/@{$orgSlug}/-/secrets'
     | '/@{$orgSlug}/-/settings'
+    | '/@{$orgSlug}/-/skills'
     | '/@{$orgSlug}/-/teams'
     | '/@{$orgSlug}/-/usage'
     | '/@{$orgSlug}/-/waiting'
@@ -2741,6 +2784,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/credentials/$credentialId'
     | '/@{$orgSlug}/-/credentials/new'
     | '/@{$orgSlug}/-/email/$messageId'
+    | '/@{$orgSlug}/-/execution-contexts/$contextId'
     | '/@{$orgSlug}/-/integrations/$integrationName'
     | '/@{$orgSlug}/-/integrations/approve'
     | '/@{$orgSlug}/-/jobs/$jobId'
@@ -2882,6 +2926,7 @@ export interface FileRouteTypes {
     | '/account/credits'
     | '/account/data'
     | '/account/email'
+    | '/account/execution-contexts'
     | '/account/experiments'
     | '/account/integrations'
     | '/account/jobs'
@@ -2934,6 +2979,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/credentials'
     | '/@{$orgSlug}/-/credits'
     | '/@{$orgSlug}/-/email'
+    | '/@{$orgSlug}/-/execution-contexts'
     | '/@{$orgSlug}/-/follows'
     | '/@{$orgSlug}/-/grants'
     | '/@{$orgSlug}/-/integrations'
@@ -2947,6 +2993,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/secret-providers'
     | '/@{$orgSlug}/-/secrets'
     | '/@{$orgSlug}/-/settings'
+    | '/@{$orgSlug}/-/skills'
     | '/@{$orgSlug}/-/teams'
     | '/@{$orgSlug}/-/usage'
     | '/@{$orgSlug}/-/waiting'
@@ -3003,6 +3050,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/credentials/$credentialId'
     | '/@{$orgSlug}/-/credentials/new'
     | '/@{$orgSlug}/-/email/$messageId'
+    | '/@{$orgSlug}/-/execution-contexts/$contextId'
     | '/@{$orgSlug}/-/integrations/$integrationName'
     | '/@{$orgSlug}/-/integrations/approve'
     | '/@{$orgSlug}/-/jobs/$jobId'
@@ -3146,6 +3194,7 @@ export interface FileRouteTypes {
     | '/_app/account_/credits'
     | '/_app/account_/data'
     | '/_app/account_/email'
+    | '/_app/account_/execution-contexts'
     | '/_app/account_/experiments'
     | '/_app/account_/integrations'
     | '/_app/account_/jobs'
@@ -3198,6 +3247,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/credentials'
     | '/_app/@{$orgSlug}_/-/credits'
     | '/_app/@{$orgSlug}_/-/email'
+    | '/_app/@{$orgSlug}_/-/execution-contexts'
     | '/_app/@{$orgSlug}_/-/follows'
     | '/_app/@{$orgSlug}_/-/grants'
     | '/_app/@{$orgSlug}_/-/integrations'
@@ -3211,6 +3261,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/secret-providers'
     | '/_app/@{$orgSlug}_/-/secrets'
     | '/_app/@{$orgSlug}_/-/settings'
+    | '/_app/@{$orgSlug}_/-/skills'
     | '/_app/@{$orgSlug}_/-/teams'
     | '/_app/@{$orgSlug}_/-/usage'
     | '/_app/@{$orgSlug}_/-/waiting'
@@ -3267,6 +3318,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/credentials_/$credentialId'
     | '/_app/@{$orgSlug}_/-/credentials_/new'
     | '/_app/@{$orgSlug}_/-/email_/$messageId'
+    | '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId'
     | '/_app/@{$orgSlug}_/-/integrations_/$integrationName'
     | '/_app/@{$orgSlug}_/-/integrations_/approve'
     | '/_app/@{$orgSlug}_/-/jobs_/$jobId'
@@ -4206,6 +4258,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountEmailRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/account_/execution-contexts': {
+      id: '/_app/account_/execution-contexts'
+      path: '/account/execution-contexts'
+      fullPath: '/account/execution-contexts'
+      preLoaderRoute: typeof AppAccountExecutionContextsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/account_/experiments': {
       id: '/_app/account_/experiments'
       path: '/account/experiments'
@@ -4570,6 +4629,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125EmailRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/execution-contexts': {
+      id: '/_app/@{$orgSlug}_/-/execution-contexts'
+      path: '/@{$orgSlug}/-/execution-contexts'
+      fullPath: '/@{$orgSlug}/-/execution-contexts'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/follows': {
       id: '/_app/@{$orgSlug}_/-/follows'
       path: '/@{$orgSlug}/-/follows'
@@ -4659,6 +4725,13 @@ declare module '@tanstack/react-router' {
       path: '/@{$orgSlug}/-/settings'
       fullPath: '/@{$orgSlug}/-/settings'
       preLoaderRoute: typeof AppAtChar123orgSlugChar125SettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/skills': {
+      id: '/_app/@{$orgSlug}_/-/skills'
+      path: '/@{$orgSlug}/-/skills'
+      fullPath: '/@{$orgSlug}/-/skills'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SkillsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/@{$orgSlug}_/-/teams': {
@@ -5053,6 +5126,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125EmailMessageIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId': {
+      id: '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId'
+      path: '/@{$orgSlug}/-/execution-contexts/$contextId'
+      fullPath: '/@{$orgSlug}/-/execution-contexts/$contextId'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/integrations_/$integrationName': {
       id: '/_app/@{$orgSlug}_/-/integrations_/$integrationName'
       path: '/@{$orgSlug}/-/integrations/$integrationName'
@@ -5287,6 +5367,7 @@ interface AppRouteChildren {
   AppAccountCreditsRoute: typeof AppAccountCreditsRoute
   AppAccountDataRoute: typeof AppAccountDataRoute
   AppAccountEmailRoute: typeof AppAccountEmailRoute
+  AppAccountExecutionContextsRoute: typeof AppAccountExecutionContextsRoute
   AppAccountExperimentsRoute: typeof AppAccountExperimentsRoute
   AppAccountIntegrationsRoute: typeof AppAccountIntegrationsRoute
   AppAccountJobsRoute: typeof AppAccountJobsRoute
@@ -5323,6 +5404,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125CredentialsRoute: typeof AppAtChar123orgSlugChar125CredentialsRoute
   AppAtChar123orgSlugChar125CreditsRoute: typeof AppAtChar123orgSlugChar125CreditsRoute
   AppAtChar123orgSlugChar125EmailRoute: typeof AppAtChar123orgSlugChar125EmailRoute
+  AppAtChar123orgSlugChar125ExecutionContextsRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsRoute
   AppAtChar123orgSlugChar125FollowsRoute: typeof AppAtChar123orgSlugChar125FollowsRoute
   AppAtChar123orgSlugChar125GrantsRoute: typeof AppAtChar123orgSlugChar125GrantsRoute
   AppAtChar123orgSlugChar125IntegrationsRoute: typeof AppAtChar123orgSlugChar125IntegrationsRoute
@@ -5336,6 +5418,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125SecretProvidersRoute: typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   AppAtChar123orgSlugChar125SecretsRoute: typeof AppAtChar123orgSlugChar125SecretsRoute
   AppAtChar123orgSlugChar125SettingsRoute: typeof AppAtChar123orgSlugChar125SettingsRoute
+  AppAtChar123orgSlugChar125SkillsRoute: typeof AppAtChar123orgSlugChar125SkillsRoute
   AppAtChar123orgSlugChar125TeamsRoute: typeof AppAtChar123orgSlugChar125TeamsRoute
   AppAtChar123orgSlugChar125UsageRoute: typeof AppAtChar123orgSlugChar125UsageRoute
   AppAtChar123orgSlugChar125WaitingRoute: typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -5382,6 +5465,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125CredentialsCredentialIdRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   AppAtChar123orgSlugChar125CredentialsNewRoute: typeof AppAtChar123orgSlugChar125CredentialsNewRoute
   AppAtChar123orgSlugChar125EmailMessageIdRoute: typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
+  AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
   AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute: typeof AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute
   AppAtChar123orgSlugChar125IntegrationsApproveRoute: typeof AppAtChar123orgSlugChar125IntegrationsApproveRoute
   AppAtChar123orgSlugChar125JobsJobIdRoute: typeof AppAtChar123orgSlugChar125JobsJobIdRoute
@@ -5425,6 +5509,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountCreditsRoute: AppAccountCreditsRoute,
   AppAccountDataRoute: AppAccountDataRoute,
   AppAccountEmailRoute: AppAccountEmailRoute,
+  AppAccountExecutionContextsRoute: AppAccountExecutionContextsRoute,
   AppAccountExperimentsRoute: AppAccountExperimentsRoute,
   AppAccountIntegrationsRoute: AppAccountIntegrationsRoute,
   AppAccountJobsRoute: AppAccountJobsRoute,
@@ -5466,6 +5551,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppAtChar123orgSlugChar125CreditsRoute:
     AppAtChar123orgSlugChar125CreditsRoute,
   AppAtChar123orgSlugChar125EmailRoute: AppAtChar123orgSlugChar125EmailRoute,
+  AppAtChar123orgSlugChar125ExecutionContextsRoute:
+    AppAtChar123orgSlugChar125ExecutionContextsRoute,
   AppAtChar123orgSlugChar125FollowsRoute:
     AppAtChar123orgSlugChar125FollowsRoute,
   AppAtChar123orgSlugChar125GrantsRoute: AppAtChar123orgSlugChar125GrantsRoute,
@@ -5490,6 +5577,7 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125SecretsRoute,
   AppAtChar123orgSlugChar125SettingsRoute:
     AppAtChar123orgSlugChar125SettingsRoute,
+  AppAtChar123orgSlugChar125SkillsRoute: AppAtChar123orgSlugChar125SkillsRoute,
   AppAtChar123orgSlugChar125TeamsRoute: AppAtChar123orgSlugChar125TeamsRoute,
   AppAtChar123orgSlugChar125UsageRoute: AppAtChar123orgSlugChar125UsageRoute,
   AppAtChar123orgSlugChar125WaitingRoute:
@@ -5559,6 +5647,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125CredentialsNewRoute,
   AppAtChar123orgSlugChar125EmailMessageIdRoute:
     AppAtChar123orgSlugChar125EmailMessageIdRoute,
+  AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute:
+    AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute,
   AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute:
     AppAtChar123orgSlugChar125IntegrationsIntegrationNameRoute,
   AppAtChar123orgSlugChar125IntegrationsApproveRoute:

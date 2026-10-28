@@ -10,8 +10,7 @@
  * with one get exposure recording and an on/off cohort readout on the admin
  * surfaces (see `docs/contributing/architecture/feature-flags.md`). Optional
  * `exposureRecording` selects the write site (`evaluation` chokepoints by
- * default, `paid-ranked-search` for the Jev experiment frame, or
- * `mcp-events-clients` for events-capable MCP clients only). The
+ * default, or `mcp-events-clients` for events-capable MCP clients only). The
  * `successMetric` field stays optional for flags that are genuinely
  * unmeasurable (such as the permanent `demo-indicator`), and the admin UI and
  * MCP list surface a notice strongly recommending one everywhere else.
@@ -43,15 +42,10 @@ export type FeatureFlagSuccessMetric = {
  * Where success-metric exposures are written for a measured flag.
  *
  * - `evaluation` (default): app session cache + MCP caller flag resolver.
- * - `paid-ranked-search`: only from paid list-mode ranked search (Jev frame);
- *   free/anonymous never enter the on/off cohorts for that flag.
  * - `mcp-events-clients`: only from `registerMcpEvents` after the client
  *   declares events support; execute and other MCP callers stay out.
  */
-export type FeatureFlagExposureRecording =
-	| 'evaluation'
-	| 'paid-ranked-search'
-	| 'mcp-events-clients'
+export type FeatureFlagExposureRecording = 'evaluation' | 'mcp-events-clients'
 
 export type FeatureFlagDefinition = {
 	key: string
@@ -80,21 +74,6 @@ export const featureFlagDefinitions = [
 		// Intentionally no successMetric: this permanent flag exists to
 		// exercise the flag system itself (including the "no success metric"
 		// admin notice), not to move a product metric.
-	},
-	{
-		key: 'jev-search-rerank',
-		defaultEnabled: false,
-		defaultAudience: 'experiments_opt_in',
-		description:
-			'Kill switch for improved ranked search: when on, paid plans (standard/pro/max) widen hybrid recall and may run Workers AI typesafe/jev Score (AI Gateway) when the post-hybrid pool looks ambiguous. Free and anonymous never get Jev (skipped-plan). Necessity skips: skipped-small-pool (≤8), skipped-clear-winner (9–20 with a decisive top hit). Pricing-page improved-search copy is gated by this same flag. List-mode ranked search only. Offline/deterministic paths skip Jev and use hybrid order. Plan gate is a feature gate, not an entitlement. Delete the flag and gate sites when the experiment ends.',
-		exposureRecording: 'paid-ranked-search',
-		successMetric: {
-			eventType: 'execute',
-			measure: 'event_count',
-			goal: 'increase',
-			hypothesis:
-				'Paid ranked-search users with the flag on (Jev-eligible: widen recall + selective Score; necessity may still skip) follow search with more execute calls than comparable paid flag-off searchers.',
-		},
 	},
 	{
 		key: 'execute-invoke',
@@ -196,9 +175,6 @@ export const featureFlagDefinitions = [
 
 export type FeatureFlagKey = (typeof featureFlagDefinitions)[number]['key']
 
-export const jevSearchRerankFlagKey =
-	'jev-search-rerank' satisfies FeatureFlagKey
-
 export const executeInvokeFlagKey = 'execute-invoke' satisfies FeatureFlagKey
 
 export const connectionProfilesFlagKey =
@@ -214,6 +190,9 @@ export const packageCredentialSuppliersFlagKey =
 	'package-credential-suppliers' satisfies FeatureFlagKey
 
 export const repoPushQueueFlagKey = 'repo-push-queue' satisfies FeatureFlagKey
+
+export const executionContextsFlagKey =
+	'execution-contexts' satisfies FeatureFlagKey
 
 export const credentialNeedEnforcementFlagKey =
 	'credential-need-enforcement' satisfies FeatureFlagKey
@@ -295,7 +274,7 @@ export function getFeatureFlagExposureRecording(
 /**
  * True when the app/MCP evaluation chokepoints should write an exposure for
  * this measured flag. Flags with a dedicated recording site (for example
- * paid ranked search) return false here and record only on that path.
+ * events-capable MCP clients) return false here and record only on that path.
  */
 export function recordsFeatureFlagExposureAtEvaluation(
 	key: FeatureFlagKey,

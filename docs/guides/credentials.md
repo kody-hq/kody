@@ -292,8 +292,12 @@ open org credentials they hold; everyone else cannot. Executor needs are the
 exception while the `package-credential-suppliers` flag is on: any signed-in
 visitor, inside or outside your org, can pick one of their own credentials for
 an executor need on the consent screen
-([above](#choose-who-supplies-a-package-credential)). To let the app use one for
-every visitor, add `"ownerCredentialForVisitors": true` to that need:
+([above](#choose-who-supplies-a-package-credential)). After Allow, a visitor
+outside your org gets a short-lived visit pass that only opens the executor
+credentials they approved, through `credential.visitor(key)`. Storage,
+capabilities and everything else still treat them as an anonymous visitor plus
+identity. To let the app use one for every visitor, add
+`"ownerCredentialForVisitors": true` to that need:
 
 ```json
 "credentials": {

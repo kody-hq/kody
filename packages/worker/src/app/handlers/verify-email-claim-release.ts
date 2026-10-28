@@ -75,8 +75,21 @@ export async function executeVerifyEmailClaimRelease({
 		result: 'success',
 		ip: requestIp,
 		path: '/verify-email-claim-release',
-		reason: 'released',
+		reason: result.supersededDeletedAccount
+			? 'deleted_account_superseded'
+			: 'released',
 	})
+	if (result.supersededDeletedAccount) {
+		return {
+			title: 'Email released',
+			ok: true,
+			kind: 'email_claim_release',
+			message:
+				'Your deleted Kody account no longer holds this address or its username. Sign up again to start a fresh account.',
+			ctaHref: '/signup',
+			ctaLabel: 'Sign up again',
+		}
+	}
 	return {
 		title: 'Email released',
 		ok: true,

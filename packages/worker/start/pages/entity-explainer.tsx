@@ -167,6 +167,21 @@ const entityExplainerDefinitions = [
 		],
 	},
 	{
+		id: 'execution-contexts',
+		question: 'What is an execution context?',
+		paragraphs: [
+			"An execution context is a machine you registered with the Kody CLI daemon, such as your laptop or a build server. When one is in your fallback chain, execute runs there instead of on Kody cloud, so runs can reach that machine's files and local network.",
+			'A new context is used by no one until someone adds it to a chain. Its operator can share it with specific people, a team, or everyone in an organization, and each of them opts in first, because the operator can see the code, inputs, logs and results of runs on it. Credential values stay on Kody.',
+			'Kody tries your chain in order and moves on when a context is offline or busy. Kody cloud stays last unless you remove it. Context runs do not count toward plan quotas, and agents use the same contexts and chain through the API.',
+		],
+		learnMore: [
+			{
+				href: docHref('how-kody-works'),
+				label: 'How Kody works',
+			},
+		],
+	},
+	{
 		id: 'workflows',
 		question: 'What is a workflow?',
 		paragraphs: [

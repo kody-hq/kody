@@ -26,6 +26,7 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { useShellData } from '../routes/__root.tsx'
 import { getSessionDisplayName, type SessionInfo } from '#client/session.ts'
+import { isFeatureFlagEnabled } from '#client/feature-flags.ts'
 import {
 	accountRailGroups,
 	accountRailOrgSlug,
@@ -310,9 +311,11 @@ export function ShellWorkspaceSwitcher({
 export function ShellNavigation({
 	navigation,
 	separateWorkspaceSwitcher = false,
+	mobileFooter,
 }: {
 	navigation?: MatchedPageNavigation
 	separateWorkspaceSwitcher?: boolean
+	mobileFooter?: ReactNode
 } = {}) {
 	const session = useShellData().session
 	const context = useRouteContext({ strict: false })
@@ -328,6 +331,7 @@ export function ShellNavigation({
 			}}
 		>
 			<AccountManagementLinkNav
+				mobileFooter={mobileFooter}
 				workspaceSwitcher={admin ? undefined : rail.workspaceSwitcher}
 				// Rail copy lives in ShellWorkspaceSwitcher above the scroll region;
 				// keep the drawer copy so narrow viewports still get a switcher.
@@ -585,6 +589,7 @@ function pageRail(input: {
 			personal,
 			role,
 			profileUsername: session?.username,
+			executionContexts: isFeatureFlagEnabled(session, 'execution-contexts'),
 		}),
 	}
 }

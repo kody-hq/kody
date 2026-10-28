@@ -53,7 +53,6 @@ vi.mock('#worker/feature-flags/exposure.ts', async (importOriginal) => {
 function createFlagMap(enabled: boolean): CallerFeatureFlags {
 	return {
 		'demo-indicator': enabled,
-		'jev-search-rerank': false,
 		'execute-invoke': false,
 		'connection-profiles': false,
 		'mcp-skills-extension': false,

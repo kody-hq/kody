@@ -411,6 +411,7 @@ export function createPackageAppCredentialAuthority(input: {
 }): PackageAppCredentialAuthority {
 	return {
 		issue: input.issue,
+		orgId: input.scope.orgId,
 		runsAsRequest: async () => {
 			const runsAs = await loadPackageAppRunsAs({
 				env: input.env,

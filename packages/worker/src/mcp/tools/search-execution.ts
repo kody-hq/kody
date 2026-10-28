@@ -1,11 +1,7 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import {
-	callerHasRole,
-	resolveCallerFeatureFlagEvaluations,
-	resolveCallerFeatureFlags,
-} from '#mcp/capabilities/access-control.ts'
+import { callerHasRole } from '#mcp/capabilities/access-control.ts'
 import { buildMemoryRetrievalQuery } from '#mcp/tools/memory-tool-context.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { resolvePublicUsername } from '#worker/identity/user-lookup.ts'
@@ -17,12 +13,10 @@ import {
 import { consumeSearchRateLimit } from '#worker/search-rate-limit.ts'
 import { getUserPlan } from '#worker/entitlements/service.ts'
 import { isPaidPlan, type PlanName } from '#universal/plans.ts'
-import { recordPaidRankedSearchFlagExposure } from '#worker/feature-flags/paid-ranked-search-exposure.ts'
 import { entitlementEmailForOwner } from '#worker/request-context/owner-id.ts'
 
 import { resolvePackageIdentitySearch } from './package-search-identity.ts'
 import { buildExactPackageSearchResult, searchUnified } from './search-core.ts'
-import { jevSearchRerankFlagKey } from './search-jev-rerank.ts'
 import { searchQueryUsesRankingEmbedding } from './search-domain-overview.ts'
 import { loadSearchRowsAndRegistry } from './search-loaders.ts'
 import {
@@ -228,28 +222,9 @@ export async function executeSearchList(
 		phaseTimings.rowAndRegistryLoadMs = elapsedMs(rowAndRegistryLoadStart)
 		return rows
 	})
-	const featureFlagsStart = performance.now()
-	// Flag reads overlap row load. Recall width needs the evaluation before
-	// candidate generation.
-	const evaluationsPromise = (async () => {
-		await resolveCallerFeatureFlags(input.env, input.callerContext)
-		return await resolveCallerFeatureFlagEvaluations(
-			input.env,
-			input.callerContext,
-		)
-	})().then((evaluations) => {
-		phaseTimings.featureFlagsMs = elapsedMs(featureFlagsStart)
-		return evaluations
-	})
-	const [searchRows, evaluations, jevPlan] = await Promise.all([
-		rowsPromise,
-		evaluationsPromise,
-		jevPlanPromise,
-	])
+	const [searchRows, jevPlan] = await Promise.all([rowsPromise, jevPlanPromise])
 	input.signal?.throwIfAborted()
 	warnings = searchRows.warnings
-	const jevEvaluation = evaluations?.[jevSearchRerankFlagKey]
-	const jevRerankEnabled = jevEvaluation?.enabled === true
 	const jevRerankPlanEligible = isPaidPlan(jevPlan)
 	const searchUnifiedStart = performance.now()
 	const rankedPromise = searchUnified({
@@ -264,24 +239,12 @@ export async function executeSearchList(
 		...(callerHasRole(input.callerContext, 'admin')
 			? { includeAdminGuides: true }
 			: {}),
-		...(jevRerankEnabled ? { jevRerankEnabled: true } : {}),
 		...(jevRerankPlanEligible ? { jevRerankPlanEligible: true } : {}),
 		...(input.signal ? { signal: input.signal } : {}),
 	})
 	result = await rankedPromise
 	input.signal?.throwIfAborted()
 	phaseTimings.searchUnifiedMs = elapsedMs(searchUnifiedStart)
-	// Only ranked-path results include jevRerank telemetry. Domain index /
-	// overview / empty-query short-circuits stay outside the experiment frame.
-	if (result.telemetry.jevRerank && jevEvaluation) {
-		await recordPaidRankedSearchFlagExposure({
-			env: input.env,
-			stableUserId: input.userId,
-			planEligible: jevRerankPlanEligible,
-			evaluation: jevEvaluation,
-			flagKey: jevSearchRerankFlagKey,
-		})
-	}
 	capabilityGuidance = result.guidance
 	const returnsDomainIndex =
 		result.matches.length > 0 &&

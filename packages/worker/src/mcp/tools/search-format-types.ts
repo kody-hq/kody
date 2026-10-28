@@ -23,7 +23,6 @@ export const jevSearchRerankOutcomes = [
 	'fallback-empty-after-drop',
 	'skipped-offline',
 	'skipped-no-ai',
-	'skipped-flag-off',
 	'skipped-plan',
 	'skipped-small-pool',
 	'skipped-clear-winner',
@@ -589,6 +588,7 @@ export type SearchEntityDetail =
 			description: string
 			record: SavedPackageRecord
 			manifest: AuthoredPackageJson
+			publishedCommit?: string | null
 			files: Record<string, string>
 			baseUrl: string
 			hostedUrl: string | null

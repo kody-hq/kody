@@ -110,6 +110,7 @@ export default async function main(params: { appId?: string } = {}) {
 		private_key_secret_name: 'originAppPrivateKey',
 		algorithm: 'EdDSA',
 		header: { kid: appId },
+		send_to_host: 'api.cursor.com',
 		claims: {
 			iss: appId,
 			aud: 'origin-apps',
