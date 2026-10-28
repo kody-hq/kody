@@ -178,8 +178,8 @@ export const packageCredentialKindValues = [
 export type PackageCredentialKind = (typeof packageCredentialKindValues)[number]
 
 /**
- * A `kody.credentials` slot kind that names a bound secret provider instead
- * of a saved credential. Its `provider` is the secret provider id; the org's
+ * A `kody.credentials` slot kind that names a secret provider package instead
+ * of a saved credential. Its `package` is the provider package; the org's
  * provider binding and per-ref package grants fill it, never a caller pick.
  */
 export const secretProviderSlotKind = 'secret-provider' as const
@@ -230,10 +230,15 @@ export const packageCredentialSlotSchema = z.strictObject({
 	kind: z.enum(packageCredentialSlotKindValues).optional(),
 	/**
 	 * Provider slug a credential must carry to auto-resolve for this need
-	 * (for example `github`). Defaults to the key. Required for kind
-	 * `secret-provider`, where it is the secret provider id (`1password`).
+	 * (for example `github`). Defaults to the key. Not used by kind
+	 * `secret-provider`.
 	 */
 	provider: z.string().trim().min(1).max(64).optional(),
+	/**
+	 * Kind `secret-provider` only: the saved provider package (its
+	 * package.json name) whose `kody.secretProvider.id` this package uses.
+	 */
+	package: z.string().trim().min(1).max(165).optional(),
 	/** `credentials(key)` returns the caller's picks as an array. */
 	multiple: z.boolean().optional(),
 	/** Shown to callers choosing a credential for this need. */
@@ -277,6 +282,12 @@ export const packageCredentialsSchema = z
 			}
 			if (slot.kind === secretProviderSlotKind) {
 				addSecretProviderSlotIssues(name, slot, ctx)
+			} else if (slot.package !== undefined) {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name, 'package'],
+					message: `kody.credentials.${name}.package is only valid with kind: "secret-provider".`,
+				})
 			}
 			if (slot.required !== undefined && slot.supplier !== 'executor') {
 				ctx.addIssue({
@@ -298,7 +309,12 @@ export const packageCredentialsSchema = z
 		}
 	})
 
+/** A scoped saved package name, such as `@acme/op-provider`. */
+export const secretProviderSlotPackagePattern =
+	/^@[a-z0-9][a-z0-9._-]{0,63}\/[a-z0-9][a-z0-9._-]{0,99}$/
+
 const secretProviderSlotOnlyFields = [
+	'provider',
 	'multiple',
 	'ownerCredentialForVisitors',
 	'supplier',
@@ -312,13 +328,13 @@ function addSecretProviderSlotIssues(
 	ctx: z.RefinementCtx,
 ) {
 	if (
-		slot.provider === undefined ||
-		!packageSecretProviderIdPattern.test(slot.provider)
+		slot.package === undefined ||
+		!secretProviderSlotPackagePattern.test(slot.package)
 	) {
 		ctx.addIssue({
 			code: 'custom',
-			path: [name, 'provider'],
-			message: `kody.credentials.${name} has kind "secret-provider", so provider must be a secret provider id (lowercase letter or digit, then lowercase letters, digits, dots, underscores, or hyphens; max 64), for example "1password".`,
+			path: [name, 'package'],
+			message: `kody.credentials.${name} has kind "secret-provider", so package must name the saved provider package (its package.json name, such as "@acme/op-provider").`,
 		})
 	}
 	for (const field of secretProviderSlotOnlyFields) {
@@ -326,7 +342,7 @@ function addSecretProviderSlotIssues(
 		ctx.addIssue({
 			code: 'custom',
 			path: [name, field],
-			message: `kody.credentials.${name}.${field} does not apply to kind "secret-provider": the org's provider binding and per-item package grants fill it, not a saved credential.`,
+			message: `kody.credentials.${name}.${field} does not apply to kind "secret-provider": it names the provider package, and the org's provider binding and per-item package grants fill it, not a saved credential.`,
 		})
 	}
 }

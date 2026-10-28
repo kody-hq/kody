@@ -15,10 +15,11 @@ including in ordinary message bodies). The publish stamp also ignores vault
 tokens that appear only in display/help text (for example `status()` example
 fields), even with a concrete provider id and ref. A token in a fetch/request or
 credential-mapped site stamps only when the package declares a described
-`kind: "secret-provider"` slot whose `provider` equals the token's literal
-provider id; that slot key is sealed into the stamp. Runtime enforcement matches
-a provider use on the need's `provider` (and still accepts an older slot keyed
-by the provider id).
+`kind: "secret-provider"` slot whose `package` (looked up in the publishing org)
+declares the token's literal provider id as `kody.secretProvider.id`; that slot
+key is sealed into the stamp. At run time a provider use is declared only when
+the org's binding for the id names the declared package (an older slot keyed by
+the provider id still counts).
 
 - `{{secret/1password:i/<item-id>/password}}` — canonical form (`<item-id>` is a
   UUID or a 1Password Connect 26-char id `^[a-z0-9]{26}$`)

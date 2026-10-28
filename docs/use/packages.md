@@ -181,13 +181,15 @@ credentials; opt-in types that a package can declare are described in
   `supplier: "publisher"` or `supplier: "executor"`, and executor needs may set
   `required`. See
   [Choose who supplies a package credential](../guides/credentials.md#choose-who-supplies-a-package-credential).
-- `kind: "secret-provider"` declares a bound custom secret provider instead of a
-  saved credential: `provider` is required and is the provider id (for example
-  `"onepassword": { "kind": "secret-provider", "provider": "1password", "description": "..." }`).
+- `kind: "secret-provider"` declares a custom secret provider package instead of
+  a saved credential: `package` is required and names the saved provider package
+  (for example
+  `"vault": { "kind": "secret-provider", "package": "@you/onepassword-provider", "description": "..." }`).
   It lets a stamped package use `{{secret/<provider>:<ref>}}` placeholders for
-  that provider; each ref still needs a per-package grant. It takes no
-  `multiple`, `supplier`, `required`, `ownerCredentialForVisitors`, or
-  `placement`, and mappings and call maps skip it. See
+  the provider id that package declares, while the org binds that package; each
+  ref still needs a per-package grant. It takes no `provider`, `multiple`,
+  `supplier`, `required`, `ownerCredentialForVisitors`, or `placement`, and
+  mappings and call maps skip it. See
   [Use a provider in a saved package](../guides/secret-providers.md#use-a-provider-in-a-saved-package).
 - Publish rejects any other key or a missing required field and names the slot.
   If a later rule rejects a slot in a version that is already published, the

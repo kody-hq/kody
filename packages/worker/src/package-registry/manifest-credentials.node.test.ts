@@ -317,37 +317,34 @@ test('package.json cannot set invalidCredentialSlots', () => {
 	).toBeUndefined()
 })
 
-test('a secret-provider slot requires a secret provider id and no saved-credential fields', () => {
+test('a secret-provider slot requires a provider package and no saved-credential fields', () => {
 	const vault = {
 		kind: 'secret-provider' as const,
-		provider: '1password',
+		package: '@acme/op-provider',
 		description: 'Reads the deploy token from the team vault.',
 	}
 	expect(
 		parseAuthoredPackageJson({
-			content: manifestWithCredentials({ onepassword: vault }),
+			content: manifestWithCredentials({ vault }),
 		}).kody.credentials,
-	).toEqual({ onepassword: vault })
+	).toEqual({ vault })
 	expect(
-		publishError({
-			onepassword: { kind: 'secret-provider', description: 'x' },
-		}),
+		publishError({ vault: { kind: 'secret-provider', description: 'x' } }),
 	).toMatch(
-		/kody\.credentials\.onepassword has kind "secret-provider", so provider must be a secret provider id/,
+		/kody\.credentials\.vault has kind "secret-provider", so package must name the saved provider package/,
+	)
+	expect(publishError({ vault: { ...vault, package: '1password' } })).toMatch(
+		/package must name the saved provider package/,
+	)
+	expect(publishError({ vault: { ...vault, provider: '1password' } })).toMatch(
+		/kody\.credentials\.vault\.provider does not apply to kind "secret-provider"/,
+	)
+	expect(publishError({ vault: { ...vault, multiple: true } })).toMatch(
+		/vault\.multiple does not apply to kind "secret-provider"/,
 	)
 	expect(
 		publishError({
-			onepassword: {
-				kind: 'secret-provider',
-				provider: '1Password Vault',
-				description: 'x',
-			},
+			github: { package: '@acme/op-provider', description: 'x' },
 		}),
-	).toMatch(/provider must be a secret provider id/)
-	expect(publishError({ onepassword: { ...vault, multiple: true } })).toMatch(
-		/kody\.credentials\.onepassword\.multiple does not apply to kind "secret-provider"/,
-	)
-	expect(
-		publishError({ onepassword: { ...vault, supplier: 'executor' } }),
-	).toMatch(/onepassword\.supplier does not apply to kind "secret-provider"/)
+	).toMatch(/kody\.credentials\.github\.package is only valid with kind/)
 })

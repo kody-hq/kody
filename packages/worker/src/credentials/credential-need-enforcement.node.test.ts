@@ -690,33 +690,28 @@ test('a declared slot counts only when its kind can fill the use', () => {
 		],
 		[{ use: 'provider', provider: 'op' }, [need('op')], true],
 		[
-			{ use: 'provider', provider: '1password' },
-			[need('vault', { kind: 'secret-provider', provider: '1password' })],
+			{ use: 'provider', provider: '1password', boundPackage: '@acme/op' },
+			[need('vault', { kind: 'secret-provider', package: '@acme/op' })],
 			true,
 		],
 		[
-			{ use: 'provider', provider: '1Password' },
-			[need('vault', { kind: 'secret-provider', provider: '1password' })],
-			true,
-		],
-		[
-			{ use: 'provider', provider: '1password' },
-			[need('vault', { kind: 'secret-provider', provider: 'bitwarden' })],
+			{ use: 'provider', provider: '1password', boundPackage: '@acme/fork' },
+			[need('vault', { kind: 'secret-provider', package: '@acme/op' })],
 			false,
 		],
 		[
-			{ use: 'provider', provider: '1password' },
-			[need('vault', { provider: '1password' })],
+			{ use: 'provider', provider: '1password', boundPackage: null },
+			[need('vault', { kind: 'secret-provider', package: '@acme/op' })],
 			false,
 		],
 		[
 			{ use: 'key', key: 'vault' },
-			[need('vault', { kind: 'secret-provider', provider: '1password' })],
+			[need('vault', { kind: 'secret-provider', package: '@acme/op' })],
 			false,
 		],
 		[
 			{ use: 'secret', name: 'vault', scope: null },
-			[need('vault', { kind: 'secret-provider', provider: '1password' })],
+			[need('vault', { kind: 'secret-provider', package: '@acme/op' })],
 			false,
 		],
 		[{ use: 'key', key: 'k' }, [need('k', { kind: 'signing' })], true],
@@ -768,7 +763,16 @@ test('a stamped package uses a vault provider only through a declared secret-pro
 	expect(undeclared).toMatchObject({ code: 'credential_need_undeclared' })
 	expect((undeclared as Error).message).toContain('"kind": "secret-provider"')
 
-	declare([need('vault', { kind: 'secret-provider', provider: '1password' })])
+	declare([need('vault', { kind: 'secret-provider', package: '@acme/other' })])
+	const wrongPackage = await t
+		.fill({ orgId: t.acmeId, packageId, header })
+		.catch((caught: unknown) => caught as Error)
+	expect(wrongPackage).toMatchObject({ code: 'credential_need_undeclared' })
+	expect((wrongPackage as Error).message).toContain(
+		'binds provider "1password" to package "@acme/op"',
+	)
+
+	declare([need('vault', { kind: 'secret-provider', package: '@acme/op' })])
 	// Declared: the normal grant check still blocks an ungranted ref.
 	const ungranted = await t
 		.fill({ orgId: t.acmeId, packageId, header })

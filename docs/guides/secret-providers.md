@@ -70,9 +70,10 @@ binding and grants, not their own.
 
 ## Use a provider in a saved package
 
-Declare the provider in `kody.credentials` with `kind: "secret-provider"`. The
-slot key follows the normal key rules (it starts with a letter), and the
-provider id goes in `provider`:
+Declare the provider package in `kody.credentials` with
+`kind: "secret-provider"`. `package` is the package.json name of the saved
+provider package (the one that declares `kody.secretProvider.id` and exports
+`./secretProvider`):
 
 ```json
 {
@@ -81,9 +82,9 @@ provider id goes in `provider`:
 	"kody": {
 		"description": "Deploy with a token kept in 1Password.",
 		"credentials": {
-			"onepassword": {
+			"vault": {
 				"kind": "secret-provider",
-				"provider": "1password",
+				"package": "@you/onepassword-provider",
 				"description": "Reads the deploy API token from the team vault."
 			}
 		}
@@ -91,7 +92,8 @@ provider id goes in `provider`:
 }
 ```
 
-Then reference the vault item with a literal provider id:
+Then reference the vault item with the provider id that package declares,
+written literally:
 
 ```ts
 export default async function deploy() {
@@ -105,24 +107,30 @@ export default async function deploy() {
 }
 ```
 
-The same shape works for any bound provider id (for example
-`"provider": "bitwarden"` with `{{secret/bitwarden:...}}`).
+The same shape works for any provider package (a Bitwarden provider package that
+declares `bitwarden` fills `{{secret/bitwarden:...}}`).
 
-- Publish seals the slot key into the credential stamp. The stamp seals the
-  provider, not individual refs.
+- Publish looks up `package` in the publishing org, reads its
+  `kody.secretProvider.id`, and seals the slot key into the credential stamp for
+  placeholders with that id. The stamp seals the provider, not refs.
+- At run time a vault use counts as declared only when the org's binding for
+  that provider id is the declared package. If the org binds a different
+  package, the fetch fails with `credential_need_undeclared`: bind the declared
+  package, or republish with a slot that names the bound one.
 - Each ref still needs its own grant for this package (above). Declaring the
-  slot does not grant anything, and a missing grant still blocks the fetch.
-- The binding check, the item websites as the host allowlist, `https:` only, and
-  redaction all still apply. The value never leaves the fetch gateway.
-- A secret-provider slot is never filled by a saved credential: it does not
-  appear in credential mappings, call maps, or `packageGet` needs, and
-  `credential("onepassword")` does not read it.
+  slot grants nothing, and a missing grant still blocks the fetch. The binding
+  check, item websites as the host allowlist, `https:` only, and redaction all
+  still apply, and the value never leaves the fetch gateway.
+- A secret-provider slot is never filled by a saved credential: credential
+  mappings, call maps, and `packageGet` needs skip it, and `credential("vault")`
+  does not read it.
 
-Publish still fails with `unstampable_pattern` when a vault placeholder in a
-request or credential-mapped site has no described `kind: "secret-provider"`
-slot for its provider id, when the slot names a different provider, or when the
-provider id is computed (for example `{{secret/${provider}:...}}`). A slot keyed
-by the provider id with no `kind` does not count.
+Publish fails with `unstampable_pattern` when the slot's package is missing,
+unreadable, or declares no `kody.secretProvider.id`, and when a vault
+placeholder in a request or credential-mapped site has a provider id that no
+declared package serves or a computed provider id (for example
+`{{secret/${provider}:...}}`). A slot keyed by the provider id with no `kind`
+does not count.
 
 Search does not crawl vaults. `secretProviderList` returns binding metadata
 only.

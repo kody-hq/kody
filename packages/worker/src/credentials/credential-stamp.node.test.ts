@@ -1037,92 +1037,106 @@ function vaultFetchModule(provider: string) {
 	].join('\n')
 }
 
-test('a declared secret-provider slot seals vault placeholders in request sites', () => {
+const vaultSlot = {
+	vault: {
+		kind: 'secret-provider',
+		package: '@acme/vault-provider',
+		description: 'Reads the deploy token from the team vault.',
+	},
+}
+
+test('a secret-provider slot seals vault placeholders whose id its package declares', () => {
 	for (const provider of ['1password', 'bitwarden']) {
-		const result = scanCredentialStamp({
-			'package.json': manifest({
-				credentials: {
-					vault: {
-						kind: 'secret-provider',
-						provider,
-						description: 'Reads the deploy token from the team vault.',
-					},
-				},
-			}),
-			'src/index.ts': vaultFetchModule(provider),
-		})
+		const result = scanCredentialStamp(
+			{
+				'package.json': manifest({ credentials: vaultSlot }),
+				'src/index.ts': vaultFetchModule(provider),
+			},
+			{ secretProviders: { ids: { vault: provider }, failures: [] } },
+		)
 		expect(result.failures, provider).toEqual([])
 		expect(result.keys, provider).toEqual(['vault'])
 		expect(result.staleManifestKeys, provider).toEqual([])
 	}
 })
 
-test('vault placeholders without a matching secret-provider slot still fail the stamp gate', () => {
-	const cases: Array<[string, Record<string, unknown> | undefined]> = [
-		['no slot', undefined],
+test('vault placeholders without a matching provider package still fail the stamp gate', () => {
+	const cases: Array<
 		[
-			'other provider',
-			{
-				vault: {
-					kind: 'secret-provider',
-					provider: 'bitwarden',
-					description: 'Reads from Bitwarden.',
-				},
-			},
-		],
+			string,
+			Record<string, unknown> | undefined,
+			Record<string, string> | undefined,
+		]
+	> = [
+		['no slot', undefined, {}],
+		['package declares another id', vaultSlot, { vault: 'bitwarden' }],
+		['package not resolved', vaultSlot, undefined],
 		[
 			'slot keyed by the provider without the kind',
-			{ bitwarden: { description: 'Reads from Bitwarden.' } },
-		],
-		[
-			'secret kind with a provider',
-			{
-				vault: {
-					kind: 'secret',
-					provider: '1password',
-					description: 'Reads from 1Password.',
-				},
-			},
+			{ '1password': { description: 'Reads from 1Password.' } },
+			{},
 		],
 		[
 			'no description',
-			{ vault: { kind: 'secret-provider', provider: '1password' } },
+			{ vault: { kind: 'secret-provider', package: '@acme/vault-provider' } },
+			{ vault: '1password' },
 		],
 	]
-	for (const [label, credentials] of cases) {
-		const result = scanCredentialStamp({
-			'package.json': manifest(credentials ? { credentials } : {}),
-			'src/index.ts': vaultFetchModule('1password'),
-		})
+	for (const [label, credentials, ids] of cases) {
+		const result = scanCredentialStamp(
+			{
+				'package.json': manifest(credentials ? { credentials } : {}),
+				'src/index.ts': vaultFetchModule('1password'),
+			},
+			ids ? { secretProviders: { ids, failures: [] } } : {},
+		)
 		const failure = result.failures.find(
 			(f) => f.code === 'unstampable_pattern',
 		)
 		expect(failure, label).toBeDefined()
-		expect(failure?.message, label).toContain('provider "1password"')
+		expect(failure?.message, label).toContain('provider id "1password"')
 		expect(failure?.message, label).toContain('"kind": "secret-provider"')
 		expect(result.keys, label).not.toContain('vault')
 	}
 })
 
-test('a vault placeholder with a computed provider id still fails the stamp gate', () => {
-	const result = scanCredentialStamp({
-		'package.json': manifest({
-			credentials: {
-				vault: {
-					kind: 'secret-provider',
-					provider: '1password',
-					description: 'Reads from 1Password.',
-				},
+test('secret-provider slot resolution failures fail the stamp gate', () => {
+	const result = scanCredentialStamp(
+		{
+			'package.json': manifest({ credentials: vaultSlot }),
+			'src/index.ts': 'export default () => 1',
+		},
+		{
+			secretProviders: {
+				ids: {},
+				failures: [
+					{
+						code: 'unstampable_pattern',
+						message: 'kody.credentials.vault names provider package x.',
+					},
+				],
 			},
-		}),
-		'src/index.ts': [
-			'export default async function run(provider) {',
-			"\treturn fetch('https://api.example.com/v1', {",
-			`\t\theaders: { Authorization: \`Bearer {{secret/\${provider}:${vaultRef}}}\` },`,
-			'\t})',
-			'}',
-		].join('\n'),
-	})
+		},
+	)
+	expect(result.failures.map((f) => f.message)).toContain(
+		'kody.credentials.vault names provider package x.',
+	)
+})
+
+test('a vault placeholder with a computed provider id still fails the stamp gate', () => {
+	const result = scanCredentialStamp(
+		{
+			'package.json': manifest({ credentials: vaultSlot }),
+			'src/index.ts': [
+				'export default async function run(provider) {',
+				"\treturn fetch('https://api.example.com/v1', {",
+				`\t\theaders: { Authorization: \`Bearer {{secret/\${provider}:${vaultRef}}}\` },`,
+				'\t})',
+				'}',
+			].join('\n'),
+		},
+		{ secretProviders: { ids: { vault: '1password' }, failures: [] } },
+	)
 	expect(result.failures.some((f) => f.code === 'unstampable_pattern')).toBe(
 		true,
 	)
@@ -1130,22 +1144,17 @@ test('a vault placeholder with a computed provider id still fails the stamp gate
 })
 
 test('a secret-provider slot does not seal display-only vault placeholders', () => {
-	const result = scanCredentialStamp({
-		'package.json': manifest({
-			credentials: {
-				vault: {
-					kind: 'secret-provider',
-					provider: '1password',
-					description: 'Reads from 1Password.',
-				},
-			},
-		}),
-		'src/index.ts': [
-			'export function status() {',
-			`\treturn { example: '{{secret/1password:${vaultRef}}}' }`,
-			'}',
-		].join('\n'),
-	})
+	const result = scanCredentialStamp(
+		{
+			'package.json': manifest({ credentials: vaultSlot }),
+			'src/index.ts': [
+				'export function status() {',
+				`\treturn { example: '{{secret/1password:${vaultRef}}}' }`,
+				'}',
+			].join('\n'),
+		},
+		{ secretProviders: { ids: { vault: '1password' }, failures: [] } },
+	)
 	expect(result.failures).toEqual([])
 	expect(result.keys).toEqual([])
 	expect(result.staleManifestKeys).toEqual(['vault'])

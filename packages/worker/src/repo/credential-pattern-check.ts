@@ -1,3 +1,4 @@
+import { type ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	detectLegacyCredentialPatternsCodemod,
 	detectLegacyCredentialPatternsCodemodId,
@@ -241,8 +242,9 @@ export type CredentialPatternCheckResult = {
  */
 export function buildCredentialPatternCheck(
 	sourceFiles: Record<string, string>,
+	options: { secretProviders?: ResolvedSecretProviderSlots } = {},
 ): CredentialPatternCheckResult {
-	const preliminary = scanCredentialStamp(sourceFiles)
+	const preliminary = scanCredentialStamp(sourceFiles, options)
 	const merged = mergeCredentialStampIntoManifestFiles(
 		sourceFiles,
 		preliminary.keys,
@@ -253,7 +255,7 @@ export function buildCredentialPatternCheck(
 	const stamp =
 		merged.addedKeys.length === 0
 			? preliminary
-			: scanCredentialStamp(merged.files)
+			: scanCredentialStamp(merged.files, options)
 	const patternsByPath = new Map<string, Array<string>>()
 	for (const finding of detectLegacyCredentialPatternsCodemod.detect(
 		merged.files,

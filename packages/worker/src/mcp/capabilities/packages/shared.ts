@@ -116,9 +116,13 @@ const credentialNeedShapeSchema = z.object({
 		.enum(packageCredentialSlotKindValues)
 		.optional()
 		.describe(
-			'Omitted when the need accepts any fetch-capable credential for the provider. "secret-provider" means the need is a bound secret provider (provider is its id).',
+			'Omitted when the need accepts any fetch-capable credential for the provider. "secret-provider" means the need names a secret provider package.',
 		),
 	provider: z.string(),
+	package: z
+		.string()
+		.optional()
+		.describe('Kind "secret-provider" only: the provider package name.'),
 	multiple: z.boolean(),
 })
 

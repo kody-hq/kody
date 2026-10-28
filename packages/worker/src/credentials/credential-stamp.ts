@@ -27,6 +27,7 @@ import {
 	normalizeSecretProviderNeedId,
 	secretProviderSlotExample,
 } from '#worker/credentials/credential-needs.ts'
+import { type ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	getPackageAppClientEntryPath,
 	getPackageAppEntryPath,
@@ -36,7 +37,6 @@ import {
 } from '#worker/package-registry/manifest.ts'
 import {
 	packageCredentialSlotKindValues,
-	packageSecretProviderIdPattern,
 	secretProviderSlotKind,
 	packageCredentialSlotNamePattern,
 	type AuthoredPackageJson,
@@ -220,6 +220,7 @@ type ManifestCredentialSlot = {
 	description: string | null
 	kind?: PackageCredentialSlotKind
 	provider?: string
+	package?: string
 	multiple?: boolean
 }
 
@@ -253,6 +254,7 @@ function readManifestCredentialSlots(
 		if (typeof slot.provider === 'string' && slot.provider.trim().length > 0) {
 			declared.provider = slot.provider
 		}
+		if (typeof slot.package === 'string') declared.package = slot.package.trim()
 		if (typeof slot.multiple === 'boolean') declared.multiple = slot.multiple
 		slots[name] = declared
 	}
@@ -1483,6 +1485,10 @@ export function applyCredentialStampSealPlan(
  */
 export function scanCredentialStamp(
 	files: Record<string, string>,
+	options: {
+		/** From {@link resolveSecretProviderSlots}; unresolved slots seal nothing. */
+		secretProviders?: ResolvedSecretProviderSlots
+	} = {},
 ): CredentialStampScan {
 	files = omitOversizedCredentialStampModules(files)
 	const keys = new Set<string>()
@@ -1547,7 +1553,10 @@ export function scanCredentialStamp(
 
 	// A vault use seals only through a described kind "secret-provider" slot
 	// for its literal provider id. Refs stay governed by per-package grants.
-	const providerSlots = secretProviderSlotKeysByProvider(slots)
+	const providerSlots = secretProviderSlotKeysByProvider(
+		slots,
+		options.secretProviders,
+	)
 	const undeclaredProviders = new Set<string>()
 	const vaultUses = scan.vaultUses.filter((use) =>
 		isVaultCredentialUsePlacement(use.placement),
@@ -1565,9 +1574,14 @@ export function scanCredentialStamp(
 	if (undeclaredProviders.size > 0 || unreadVaultUse) {
 		failures.push({
 			code: 'unstampable_pattern',
-			message: vaultPlaceholderFixMessage([...undeclaredProviders].sort()),
+			message: vaultPlaceholderFixMessage(
+				[...undeclaredProviders].sort(),
+				slots,
+				options.secretProviders,
+			),
 		})
 	}
+	failures.push(...(options.secretProviders?.failures ?? []))
 
 	const modulePaths = listScannableModulePaths(files)
 	const parsedModules = new Map(
@@ -1662,12 +1676,12 @@ export function scanCredentialStamp(
 }
 
 /**
- * Described `kind: "secret-provider"` slots by normalized provider id. A slot
- * with no description, or a provider that is not a valid secret provider id,
- * declares nothing.
+ * Slot keys by the provider id their package declares. Only slots that are
+ * described secret-provider slots in this manifest and that resolved count.
  */
 function secretProviderSlotKeysByProvider(
 	slots: Record<string, ManifestCredentialSlot>,
+	resolved: ResolvedSecretProviderSlots | undefined,
 ) {
 	const byProvider = new Map<string, Array<string>>()
 	for (const [key, slot] of Object.entries(slots)) {
@@ -1675,21 +1689,33 @@ function secretProviderSlotKeysByProvider(
 			continue
 		}
 		if (!packageCredentialSlotNamePattern.test(key)) continue
-		if (slot.provider == null) continue
-		const provider = normalizeSecretProviderNeedId(slot.provider)
-		if (!packageSecretProviderIdPattern.test(provider)) continue
+		const provider = resolved?.ids[key]
+		if (provider == null) continue
 		byProvider.set(provider, [...(byProvider.get(provider) ?? []), key])
 	}
 	return byProvider
 }
 
-function vaultPlaceholderFixMessage(providers: ReadonlyArray<string>) {
-	const example = providers[0] ?? '1password'
+function vaultPlaceholderFixMessage(
+	providers: ReadonlyArray<string>,
+	slots: Record<string, ManifestCredentialSlot>,
+	resolved: ResolvedSecretProviderSlots | undefined,
+) {
 	const which =
 		providers.length > 0
-			? ` for provider${providers.length === 1 ? '' : 's'} ${providers.map((id) => `"${id}"`).join(', ')}`
+			? ` for provider id${providers.length === 1 ? '' : 's'} ${providers.map((id) => `"${id}"`).join(', ')}`
 			: ''
-	return `A vault placeholder {{secret/provider:ref}}${which} appears in a request or credential-mapped site (fetch URL, header, query, path, body, signing key, SDK option, call argument, or an object, array, or helper return that can feed one) and the package does not declare that provider. Declare a kody.credentials slot with kind "secret-provider", the provider id, and a description, for example:\n\n"kody": {\n  "credentials": {\n    ${secretProviderSlotExample(example)}\n  }\n}\n\nThe placeholder's provider id must be literal. Each ref still needs a per-package grant on the secret-providers page (resourceLock kind "secret_provider"). Placeholders only in values returned from status(), help(), docs(), or usage() are display text and do not block the stamp.`
+	const declared = Object.entries(slots)
+		.filter(([, slot]) => slot.kind === secretProviderSlotKind)
+		.map(([key, slot]) => {
+			const id = resolved?.ids[key]
+			return `${key} (package "${slot.package ?? ''}"${id ? `, provider id "${id}"` : ', unresolved'})`
+		})
+	const declaredNote =
+		declared.length > 0
+			? ` Declared secret-provider slots: ${declared.join('; ')}.`
+			: ''
+	return `A vault placeholder {{secret/provider:ref}}${which} appears in a request or credential-mapped site (fetch URL, header, query, path, body, signing key, SDK option, call argument, or an object, array, or helper return that can feed one) and no declared provider package serves that provider id.${declaredNote} Declare a kody.credentials slot with kind "secret-provider" that names the saved provider package whose kody.secretProvider.id matches, for example:\n\n"kody": {\n  "credentials": {\n    ${secretProviderSlotExample()}\n  }\n}\n\nThe placeholder's provider id must be literal. Each ref still needs a per-package grant on the secret-providers page (resourceLock kind "secret_provider"). Placeholders only in values returned from status(), help(), docs(), or usage() are display text and do not block the stamp.`
 }
 
 function unstampablePatternFix(pattern: LegacyCredentialPattern): string {

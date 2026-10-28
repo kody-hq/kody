@@ -24,6 +24,8 @@ export const credentialNeedSchema = z.object({
 	key: z.string(),
 	kind: z.enum(packageCredentialSlotKindValues).optional(),
 	provider: z.string(),
+	/** Kind `secret-provider` only: the provider package name. */
+	package: z.string().optional(),
 	description: z.string(),
 	multiple: z.boolean(),
 	/**
@@ -56,18 +58,11 @@ export function normalizeSecretProviderNeedId(provider: string) {
 	return provider.trim().toLowerCase()
 }
 
-const secretProviderSlotKeyPattern = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/
-
-/** A `kody.credentials` slot key to suggest for a secret provider id. */
-export function suggestSecretProviderSlotKey(provider: string) {
-	const id = normalizeSecretProviderNeedId(provider)
-	return secretProviderSlotKeyPattern.test(id) ? id : `vault-${id}`.slice(0, 64)
-}
-
-/** The manifest shape that declares `provider`, for fix messages. */
-export function secretProviderSlotExample(provider: string) {
-	const id = normalizeSecretProviderNeedId(provider)
-	return `"${suggestSecretProviderSlotKey(id)}": { "kind": "secret-provider", "provider": "${id}", "description": "What this package reads from ${id}." }`
+/** The manifest shape that declares a provider package, for fix messages. */
+export function secretProviderSlotExample(
+	packageName = '@your-org/provider-package',
+) {
+	return `"vault": { "kind": "secret-provider", "package": "${packageName}", "description": "What this package reads from the vault." }`
 }
 
 /**
@@ -101,6 +96,7 @@ export function ownCredentialNeeds(
 				key,
 				...(slot.kind ? { kind: slot.kind } : {}),
 				provider: slot.provider ?? key,
+				...(slot.package ? { package: slot.package } : {}),
 				description: slot.description,
 				multiple: slot.multiple === true,
 				...(slot.ownerCredentialForVisitors
@@ -191,6 +187,7 @@ export function mergeCredentialNeeds(input: {
 		}
 		if (
 			existing.provider !== need.provider ||
+			existing.package !== need.package ||
 			!credentialNeedKindsCompatible(existing.kind, need.kind)
 		) {
 			conflicts.push(
@@ -248,6 +245,7 @@ export function mergeCredentialNeeds(input: {
 		byKey.set(need.key, {
 			key: existing.key,
 			provider: existing.provider,
+			...(existing.package ? { package: existing.package } : {}),
 			description: existing.description,
 			multiple,
 			...(kind ? { kind } : {}),
