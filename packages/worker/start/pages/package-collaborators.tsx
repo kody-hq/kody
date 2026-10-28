@@ -461,6 +461,8 @@ export function PackageCollaboratorsRoute({
 				viewerIsOwner: true,
 				viewerCanManage: shell?.viewerCanManage ?? false,
 				viewerCanManageAccess: true,
+				viewerCanSeeConnectedPeople:
+					shell?.viewerCanSeeConnectedPeople ?? false,
 				active: 'collaborators',
 				filesHref: getPackageTreeHref({
 					username,

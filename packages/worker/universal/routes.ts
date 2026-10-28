@@ -446,6 +446,10 @@ export const routes = {
 		href: (params: { username: string | number; kodyId: string | number }) =>
 			`/@${segment(params.username)}/${segment(params.kodyId)}/collaborators`,
 	},
+	communityPackageConnectedPeople: {
+		href: (params: { username: string | number; kodyId: string | number }) =>
+			`/@${segment(params.username)}/${segment(params.kodyId)}/connected-people`,
+	},
 	communityPackageForks: {
 		href: (params: { username: string | number; kodyId: string | number }) =>
 			`/@${segment(params.username)}/${segment(params.kodyId)}/forks`,

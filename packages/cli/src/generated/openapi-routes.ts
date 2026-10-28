@@ -697,6 +697,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'packageAppConnectedPeopleList',
+		method: 'GET',
+		pathTemplate: '/v1/packages/{package_id}/connected-people',
+		pathParamNames: ['package_id'],
+	},
+	{
+		operationId: 'packageAppConnectedPersonRevoke',
+		method: 'DELETE',
+		pathTemplate: '/v1/packages/{package_id}/connected-people/{grant_id}',
+		pathParamNames: ['package_id', 'grant_id'],
+	},
+	{
 		operationId: 'packageAppCustomHostnameAdd',
 		method: 'POST',
 		pathTemplate: '/v1/orgs/package-app-custom-hostnames',

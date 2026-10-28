@@ -88,6 +88,8 @@ export type PackagePageAccess =
 			viewerCanDelete: boolean
 			/** May change who can use the package (`package:manage_access`). */
 			viewerCanManageAccess: boolean
+			/** Sees the Connected people tab (Manage on a package with an app). */
+			viewerCanSeeConnectedPeople: boolean
 			/** May adopt a community fork (org owner only; widens secret access). */
 			viewerCanAdoptCommunityFork: boolean
 			/**
@@ -369,6 +371,7 @@ async function loadPlainRepoPage(input: {
 		viewerCanPublish: false,
 		viewerCanDelete: false,
 		viewerCanManageAccess: false,
+		viewerCanSeeConnectedPeople: false,
 		viewerCanAdoptCommunityFork: false,
 		loggedIn: Boolean(viewer),
 		viewerMayRun: false,
@@ -605,6 +608,8 @@ async function resolvePackagePageForViewer(
 			viewerCanPublish,
 			viewerCanDelete,
 			viewerCanManageAccess,
+			viewerCanSeeConnectedPeople:
+				viewerCanManage && ownerPackage?.hasApp === true,
 			viewerCanAdoptCommunityFork,
 			viewerMayRun,
 			loggedIn: true,
@@ -645,6 +650,7 @@ async function resolvePackagePageForViewer(
 			viewerCanPublish: false,
 			viewerCanDelete: false,
 			viewerCanManageAccess: false,
+			viewerCanSeeConnectedPeople: false,
 			viewerCanAdoptCommunityFork: false,
 			viewerMayRun,
 			loggedIn: Boolean(viewer),

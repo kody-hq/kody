@@ -346,6 +346,15 @@ const routeDocumentHeads = {
 			canonicalPath: pathname,
 		}
 	},
+	communityPackageConnectedPeople: ({ loaderData, pathname }) => {
+		const page = loaderData?.packageAppConnectedPeople
+		if (page && !page.ok) return titleOnly(NOT_FOUND_DOCUMENT_TITLE)
+		if (!page) return titleOnly('Connected people')
+		return {
+			title: `${page.shell.name} connected people`,
+			canonicalPath: pathname,
+		}
+	},
 	communityPackageForks: ({ loaderData, pathname }) => {
 		const page = loaderData?.packageForks
 		if (!page) return titleOnly('Package forks')

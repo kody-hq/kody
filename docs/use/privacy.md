@@ -39,6 +39,12 @@ except for content you deliberately make public (public packages published to
 Community and a public profile), the narrow admin review of approved platform
 feedback, and the community activity metadata described below.
 
+When you sign in to someone's package app with Sign in with Kody, people who
+manage that app can see your username, display name, avatar, when you first
+connected, when you last used the app, and what you allowed it to do. They never
+see your credentials or their values. Revoking the app on **Account > Connected
+apps** removes you from that list.
+
 When profile visibility is **public**, display name, bio, public package
 metadata, and public activity are visible on `/@username`. When visibility is
 **private**, the public profile is not found. See

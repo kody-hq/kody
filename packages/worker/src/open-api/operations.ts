@@ -317,6 +317,16 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'/v1/packages/{package_id}/collaborators/{grant_id}',
 			'packageCollaboratorRemove',
 		],
+		[
+			'GET',
+			'/v1/packages/{package_id}/connected-people',
+			'packageAppConnectedPeopleList',
+		],
+		[
+			'DELETE',
+			'/v1/packages/{package_id}/connected-people/{grant_id}',
+			'packageAppConnectedPersonRevoke',
+		],
 		['PATCH', '/v1/packages/{package_id}', 'packageUpdate'],
 		// Body-only so `kody_id` works as well as `package_id`.
 		['POST', '/v1/packages/app-fetch', 'packageAppFetch'],

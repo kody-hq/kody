@@ -30,6 +30,7 @@ type PackageForksShell = {
 	viewerIsOwner: boolean
 	viewerCanManage: boolean
 	viewerCanManageAccess: boolean
+	viewerCanSeeConnectedPeople: boolean
 }
 
 export type PackageForksLoaderData = {

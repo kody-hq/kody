@@ -51,6 +51,7 @@ export function PackageForksRoute({
 				viewerIsOwner: shell.viewerIsOwner,
 				viewerCanManage: shell.viewerCanManage,
 				viewerCanManageAccess: shell.viewerCanManageAccess,
+				viewerCanSeeConnectedPeople: shell.viewerCanSeeConnectedPeople,
 				active: 'forks',
 				filesHref: getPackageTreeHref({
 					username,
