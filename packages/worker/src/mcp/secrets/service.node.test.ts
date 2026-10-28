@@ -1007,3 +1007,31 @@ test('a new credential records the opt-in its website form passes; a copied orig
 		readFillPlacementOptIn(env.APP_DB, code.credentialId!),
 	).resolves.toEqual({ query: false, path: false, body: false })
 })
+
+test('a website save of an existing credential records its opt-in even when placement is unchanged', async () => {
+	const { env } = await createSecretEnv()
+	const save = (optIn?: { query: boolean; path: boolean; body: boolean }) =>
+		saveSecret({
+			env,
+			userId,
+			scope: 'user',
+			name: 'codeQuery',
+			value: 'secret-value',
+			placementOnInsert: { headers: true, query: true },
+			placementOriginOnInsert: 'owner',
+			...(optIn ? { fillPlacementOptInOnInsert: optIn } : {}),
+			audit: null,
+		})
+	await save()
+	await save({ query: true, path: false, body: false })
+	const found = await resolveSecret({
+		env,
+		userId,
+		name: 'codeQuery',
+		scope: 'user',
+	})
+	if (!found.found) throw new Error('expected the credential')
+	await expect(
+		readFillPlacementOptIn(env.APP_DB, found.credentialId!),
+	).resolves.toEqual({ query: true, path: false, body: false })
+})

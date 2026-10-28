@@ -1615,11 +1615,14 @@ export async function saveAccountSecret(input: {
 	let placementOnInsert: CredentialFillPlacement | null | undefined
 	let placementOriginOnInsert: CredentialPlacementOrigin | null | undefined
 	let fillPlacementOptInOnInsert: FillPlacementOptIn | undefined
+	// A website placement save is the owner's opt-in, whichever path writes it.
+	if (requestedPlacement !== undefined) {
+		fillPlacementOptInOnInsert =
+			fillPlacementOptInFromPlacement(requestedPlacement)
+	}
 	if (requestedPlacement !== undefined && credential == null) {
 		placementOnInsert = requestedPlacement
 		placementOriginOnInsert = 'owner'
-		fillPlacementOptInOnInsert =
-			fillPlacementOptInFromPlacement(requestedPlacement)
 	} else if (currentSecret && !samePlacement && credential == null) {
 		const source = await findSecret({
 			env: input.env,

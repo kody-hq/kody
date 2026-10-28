@@ -450,6 +450,15 @@ export async function saveSecret(
 						placement_json: credential.placementJson,
 					},
 				}),
+				...(optInNeedsRow(input.fillPlacementOptInOnInsert)
+					? [
+							ownerFillPlacementOptInStatement({
+								db: input.env.APP_DB,
+								credentialId,
+								optIn: input.fillPlacementOptInOnInsert,
+							}),
+						]
+					: []),
 			],
 			event: credential.audit.event(credentialId),
 		})
@@ -509,12 +518,10 @@ export async function saveSecret(
 					}
 				: {}),
 		})
+		// Also for an existing row: a website save of an unchanged code-set
+		// placement is still the owner's opt-in.
 		const optInOnInsert = input.fillPlacementOptInOnInsert
-		if (
-			existingEntry == null &&
-			optInOnInsert &&
-			(optInOnInsert.query || optInOnInsert.path || optInOnInsert.body)
-		) {
+		if (optInNeedsRow(optInOnInsert)) {
 			const insertedId = await readUserSecretEntryId({
 				db: input.env.APP_DB,
 				bucketId: bucket.id,
@@ -2548,4 +2555,10 @@ export async function lockSecretToPackage(input: {
 		allowedPackages: [...state.secret.allowedPackages, state.savedPackage.id],
 		audit: input.audit,
 	})
+}
+
+function optInNeedsRow(
+	optIn: FillPlacementOptIn | undefined,
+): optIn is FillPlacementOptIn {
+	return Boolean(optIn && (optIn.query || optIn.path || optIn.body))
 }
