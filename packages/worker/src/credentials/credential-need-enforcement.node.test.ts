@@ -9,6 +9,8 @@ import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { type OrgRole } from '@kody-internal/shared/request-context.ts'
 import { afterEach, expect, test, vi } from 'vitest'
 import { expandSecretPlaceholders } from '#mcp/fetch-gateway.ts'
+import * as declaredProvider from '#mcp/secrets/secret-providers/declared-provider.ts'
+import { SecretProviderGrantDeniedError } from '#mcp/secrets/secret-providers/errors.ts'
 import * as secretProviderService from '#mcp/secrets/secret-providers/service.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
 import * as featureFlags from '#worker/feature-flags/service.ts'
@@ -774,11 +776,13 @@ test('a stamped package uses a vault provider only through a declared secret-pro
 
 	declare([need('vault', { kind: 'secret-provider', package: '@acme/op' })])
 	// Declared: the normal grant check still blocks an ungranted ref.
+	vi.spyOn(declaredProvider, 'readDeclaredSecretProviderId').mockResolvedValue(
+		'1password',
+	)
 	const ungranted = await t
 		.fill({ orgId: t.acmeId, packageId, header })
 		.catch((caught: unknown) => caught as Error)
-	expect(ungranted).toBeInstanceOf(Error)
-	expect(ungranted).not.toMatchObject({ code: 'credential_need_undeclared' })
+	expect(ungranted).toBeInstanceOf(SecretProviderGrantDeniedError)
 
 	const resolve = vi
 		.spyOn(secretProviderService, 'resolveProviderSecret')

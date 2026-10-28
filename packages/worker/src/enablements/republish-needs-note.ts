@@ -53,7 +53,9 @@ export async function republishedNeedsNote(input: {
 				userId: saved.userId,
 				sourceId: saved.sourceId,
 			})
-		).map((need) => need.key),
+		)
+			.filter((need) => !isSecretProviderNeed(need))
+			.map((need) => need.key),
 	)
 	// Secret-provider needs fill from the provider binding, not a mapping.
 	const added = input.needs
