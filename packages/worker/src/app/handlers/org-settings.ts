@@ -16,11 +16,11 @@ import { softDeleteOrg } from '#worker/orgs/soft-delete.ts'
 import { type OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { packageAppCustomDomainsCnameTargetFromBaseUrl } from '#worker/package-app-custom-hostnames/cname-target.ts'
-import { isPackageAppCustomDomainsEnabledForUser } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import {
 	addPackageAppCustomHostname,
 	deletePackageAppCustomHostname,
 	listPackageAppCustomHostnames,
+	orgPlanAllowsCustomDomains,
 	PackageAppCustomHostnameError,
 	packageAppCustomDomainRecordViews,
 	syncPackageAppCustomHostname,
@@ -29,26 +29,11 @@ import {
 async function loadCustomDomainsView(
 	env: Env,
 	orgId: string,
-	actingUserId: number,
 ): Promise<OrgSettingsLoaderData['customDomains']> {
-	// Same gate as mutations/MCP: audience + per-user overrides. Global-only
-	// would hide the panel for override users who can still add/sync.
-	if (
-		!(await isPackageAppCustomDomainsEnabledForUser(
-			env.APP_DB,
-			actingUserId,
-			orgId,
-		))
-	) {
-		return null
-	}
 	try {
-		const listed = await listPackageAppCustomHostnames({
-			env,
-			orgId,
-			actingUserId,
-		})
+		const listed = await listPackageAppCustomHostnames({ env, orgId })
 		return {
+			canAdd: await orgPlanAllowsCustomDomains(env.APP_DB, orgId),
 			dnsTarget: packageAppCustomDomainsCnameTargetFromBaseUrl(
 				env.PACKAGE_APP_BASE_URL,
 			),
@@ -75,7 +60,7 @@ async function loadCustomDomainsView(
 		}
 	} catch (error) {
 		if (error instanceof PackageAppCustomHostnameError) {
-			// Flag flipped mid-request or env not ready — hide the panel.
+			// Env not ready (e.g. no package-app zone) — hide the panel.
 			return null
 		}
 		throw error
@@ -99,7 +84,7 @@ export async function loadOrgSettingsData(input: {
 		canDelete:
 			teamOrg && (await orgHasPermission(input.env, input.user, 'org:delete')),
 		customDomains: canManage
-			? await loadCustomDomainsView(input.env, input.org.id, input.user.userId)
+			? await loadCustomDomainsView(input.env, input.org.id)
 			: null,
 	}
 }
@@ -292,7 +277,6 @@ async function writeOrganizationDomain(
 	input: OrganizationWriteContext,
 	write: (access: {
 		orgId: string
-		actingUserId: number
 		createdByUserId: string
 	}) => Promise<unknown>,
 ) {
@@ -316,25 +300,9 @@ async function writeOrganizationDomain(
 			400,
 		)
 	}
-	if (
-		!(await isPackageAppCustomDomainsEnabledForUser(
-			env.APP_DB,
-			user.userId,
-			access.org.id,
-		))
-	) {
-		return operationResult(
-			{
-				ok: false,
-				error: 'Package-app custom domains are not enabled for this user.',
-			},
-			404,
-		)
-	}
 	try {
 		await write({
 			orgId: access.org.id,
-			actingUserId: user.userId,
 			createdByUserId: user.mcpUser.userId,
 		})
 	} catch (error) {

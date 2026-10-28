@@ -21,7 +21,6 @@ import {
 	packageAppHostSystemPrefix,
 } from '@kody-internal/shared/package-app-host-paths.ts'
 import { parseLegacyHosts } from '#worker/app-legacy-redirect.ts'
-import { isPackageAppCustomDomainsEnabled } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import { lookupCachedPackageAppCustomHostname } from '#worker/package-app-custom-hostnames/lookup-cache.ts'
 import {
 	isVerifiedAppCustomHostname,
@@ -142,7 +141,7 @@ import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.
  * signed-in outsiders are not redirected there: `/@{username}/packages/…` on
  * the app origin stays on that origin and shows the saved-package page.
  *
- * When `package-app-custom-domains` is globally on, a verified app-level
+ * A verified app-level
  * custom hostname serves that package at `/` (assets at `/_assets/...`).
  * A verified org-level hostname serves private apps at
  * `/{kodyId}` like `{slug}.kody.run` (legacy `/packages/{kodyId}` is still
@@ -560,7 +559,7 @@ function configuredAppHostnames(env: Env) {
 }
 
 /**
- * Verified app-level custom hostname for this request, when the flag is on.
+ * Verified app-level custom hostname for this request, if any.
  * Returns null for the app origin, package-app hosts, `*.workers.dev`, and
  * any hostname that is not both active and serving an app binding. Callers
  * that already refused the host can then let the request through.
@@ -579,14 +578,13 @@ export async function resolveVerifiedCustomHostnameIfEnabled(
 	if (!hostname) return null
 	const appHostnames = configuredAppHostnames(env)
 	// Custom domains are a hosted-origin feature. With no canonical app host
-	// configured, skip the flag read so ordinary test traffic stays off D1.
+	// configured, skip the lookup so ordinary test traffic stays off D1.
 	if (appHostnames.length === 0) return null
 	if (appHostnames.includes(hostname)) return null
 	if (parsePackageAppRequestHost({ env, url })) return null
 	// Author code on a customer host must stay cross-site from Kody cookies.
 	// Registration refuses the same hosts (see addPackageAppCustomHostname).
 	if (isKodyReservedCustomHostname({ env, hostname })) return null
-	if (!(await isPackageAppCustomDomainsEnabled(env.APP_DB))) return null
 	const mapping = await lookupCachedPackageAppCustomHostname({
 		db: env.APP_DB,
 		hostname,
@@ -606,7 +604,6 @@ async function buildCustomHostnameHandoffTarget(input: {
 	kodyId: string
 	bindingKind: 'app' | 'org'
 } | null> {
-	if (!(await isPackageAppCustomDomainsEnabled(input.env.APP_DB))) return null
 	const appMapping = await lookupVerifiedAppCustomHostnameForPackage({
 		db: input.env.APP_DB,
 		username: input.packagePath.username,

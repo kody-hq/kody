@@ -51,7 +51,6 @@ import {
 	normalizeCustomHostname,
 } from '#worker/package-app-custom-hostnames/lookup.ts'
 import { lookupCachedPackageAppCustomHostname } from '#worker/package-app-custom-hostnames/lookup-cache.ts'
-import { isPackageAppCustomDomainsEnabled } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import { buildUserAvatarUrl } from '#worker/community/public-urls.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -208,7 +207,7 @@ async function resolveLogoutAppSlug(input: {
 	}
 
 	const hostname = normalizeCustomHostname(input.url.hostname)
-	if (hostname && (await isPackageAppCustomDomainsEnabled(input.env.APP_DB))) {
+	if (hostname) {
 		const mapping = await lookupCachedPackageAppCustomHostname({
 			db: input.env.APP_DB,
 			hostname,
@@ -250,7 +249,7 @@ async function resolveHostApp(input: {
 	}
 
 	const hostname = normalizeCustomHostname(input.url.hostname)
-	if (hostname && (await isPackageAppCustomDomainsEnabled(input.env.APP_DB))) {
+	if (hostname) {
 		const mapping = await lookupCachedPackageAppCustomHostname({
 			db: input.env.APP_DB,
 			hostname,

@@ -314,7 +314,6 @@ const registryKeys = [
 	'connection-profiles',
 	'mcp-skills-extension',
 	'mcp-events-extension',
-	'package-app-custom-domains',
 	'package-credential-suppliers',
 	'repo-push-queue',
 	'execution-contexts',

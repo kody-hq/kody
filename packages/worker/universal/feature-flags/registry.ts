@@ -119,20 +119,6 @@ export const featureFlagDefinitions = [
 		},
 	},
 	{
-		key: 'package-app-custom-domains',
-		defaultEnabled: false,
-		defaultAudience: 'experiments_opt_in',
-		description:
-			'Serve package apps on customer custom hostnames (Cloudflare for SaaS on the package-app zone). Off by default; enable with audience experiments_opt_in so only opted-in users can manage domains. Anonymous serve still uses the global on switch once a hostname is verified. Delete the flag when custom domains ship.',
-		successMetric: {
-			eventType: 'execute',
-			measure: 'event_count',
-			goal: 'increase',
-			hypothesis:
-				'Users with a working custom-hostname package app keep executing against that package more than comparable flag-off users.',
-		},
-	},
-	{
 		key: 'package-credential-suppliers',
 		defaultEnabled: false,
 		description:
@@ -183,9 +169,6 @@ export const mcpSkillsExtensionFlagKey =
 
 export const mcpEventsExtensionFlagKey =
 	'mcp-events-extension' satisfies FeatureFlagKey
-
-export const packageAppCustomDomainsFlagKey =
-	'package-app-custom-domains' satisfies FeatureFlagKey
 
 export const packageCredentialSuppliersFlagKey =
 	'package-credential-suppliers' satisfies FeatureFlagKey

@@ -11,11 +11,9 @@ category: platform
 # Custom domains
 
 A package app normally lives on `*.kody.run`. A paid organization can also serve
-its apps on a hostname it owns, such as `apps.example.com`. Managing hostnames
-requires the `package-app-custom-domains` feature (off by default; experiments
-opt-in). Serving a verified hostname requires that feature's global switch to be
-on. Kody uses Cloudflare for SaaS to route the hostname and issue its
-certificate.
+its apps on a hostname it owns, such as `apps.example.com`. Every paid
+organization can add custom domains; free organizations cannot. Kody uses
+Cloudflare for SaaS to route the hostname and issue its certificate.
 
 There are two kinds of binding:
 
@@ -103,3 +101,13 @@ debugging. When an active hostname's CNAME disappears, Kody keeps the hostname
 for a grace period before removing it.
 
 Remove a hostname with `packageAppCustomHostnameDelete`.
+
+## Abuse takedown (Kody admins)
+
+A Kody admin can take down any org's custom hostname (for example after a
+phishing or abuse report) with `adminPackageAppCustomHostnameRemove`. Pass the
+`hostname` and a `reason` of at least 10 characters. Kody deletes the hostname
+from Cloudflare for SaaS and from the database, so it stops serving right away.
+The audit log records the admin, hostname, owning org or package, and the
+reason. The org can add the hostname again within its normal limits, so pair a
+takedown with account action when the abuse is ongoing.

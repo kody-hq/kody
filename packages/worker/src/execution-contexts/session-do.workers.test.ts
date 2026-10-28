@@ -276,6 +276,39 @@ test('two-phase dispatch: accept, commit, result, then per-hop authorization end
 	expect(JSON.stringify(history)).not.toContain('export default')
 })
 
+test('API-token and MCP runs carry the API origin the daemon connected through, not the app origin', async () => {
+	const ecid = 'ec_api_origin'
+	const { stub, next, send } = await connect(ecid)
+	// Both API-token and MCP callers route with callerContext.baseUrl, which
+	// is the app origin; the daemon only trusts its own API origin.
+	for (const runId of ['run_api_token', 'run_mcp']) {
+		const dispatching = stub.dispatch({
+			request: { ...runRequest(runId), apiUrl: 'https://kody.codes' },
+			lease: lease(ecid, runId),
+			runRecord: null,
+			position: 1,
+		})
+		const request = await next('run.request')
+		expect(request.body).toMatchObject({
+			runId,
+			apiUrl: 'https://session.test',
+		})
+		await send('run.accept', { runId }, { re: request.seq })
+		expect(await dispatching).toEqual({ outcome: 'committed' })
+		expect((await next('run.commit')).body.runId).toBe(runId)
+		await send('run.result', {
+			runId,
+			isError: false,
+			content: [{ type: 'text', text: '1' }],
+			structuredContent: { result: 1 },
+		})
+		await next('run.result.ack')
+		expect(await stub.awaitResult({ runId, waitMs: 1000 })).toMatchObject({
+			state: 'succeeded',
+		})
+	}
+})
+
 test('a reject falls through, and cancel and revocation end leases', async () => {
 	const ecid = 'ec_cancel'
 	const { stub, next, send, ws } = await connect(ecid)

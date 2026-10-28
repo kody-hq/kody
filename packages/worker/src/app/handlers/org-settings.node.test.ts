@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import {
 	ownerIdFromStored,
@@ -31,12 +32,6 @@ const mocks = vi.hoisted(() => ({
 	softDeleteOrg: vi.fn(),
 	processUserAvatar: vi.fn(),
 	saveOrgAvatar: vi.fn(),
-	customDomainsEnabled: vi.fn(async (..._args: unknown[]) => false),
-}))
-
-vi.mock('#worker/package-app-custom-hostnames/feature-flag.ts', () => ({
-	isPackageAppCustomDomainsEnabledForUser: (...args: unknown[]) =>
-		mocks.customDomainsEnabled(...args),
 }))
 vi.mock('#app/authenticated-user.ts', () => ({
 	readAuthenticatedAppUser: (...args: Array<unknown>) =>
@@ -84,6 +79,19 @@ type Person = keyof typeof people
 
 let sqlite: DatabaseSync
 let db: D1Database
+
+const customHostnameMigrationSql = [
+	'0133-package-app-custom-hostnames.sql',
+	'0135-package-app-custom-hostname-verification.sql',
+	'0175-package-app-custom-hostname-auto-check.sql',
+]
+	.map((name) =>
+		readFileSync(
+			new URL(`../../../migrations/${name}`, import.meta.url),
+			'utf8',
+		),
+	)
+	.join('\n')
 let acmeId = ''
 
 async function seed() {
@@ -94,6 +102,12 @@ async function seed() {
 		db,
 		columns: ['avatar_key'],
 	})
+	sqlite.exec(`CREATE TABLE IF NOT EXISTS saved_packages (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		deleted_at TEXT
+	)`)
+	sqlite.exec(customHostnameMigrationSql)
 	const now = '2026-01-01T00:00:00.000Z'
 	for (const [username, person] of Object.entries(people)) {
 		sqlite
@@ -194,7 +208,6 @@ beforeEach(async () => {
 	mocks.softDeleteOrg.mockClear()
 	mocks.processUserAvatar.mockReset()
 	mocks.saveOrgAvatar.mockReset()
-	mocks.customDomainsEnabled.mockReset().mockResolvedValue(false)
 	await seed()
 })
 
@@ -479,6 +492,7 @@ test('owner sees personal identity lock on their signup org and edits a team org
 		org: { slug: 'zeta-co', personal: false },
 		canManage: true,
 		canDelete: true,
+		customDomains: { canAdd: false, hostnames: [] },
 	})
 })
 
@@ -549,9 +563,6 @@ test('profile write succeeds without loading unrelated custom domain settings', 
 		body: JSON.stringify({ displayName: 'Saved name' }),
 	})
 	await signIn('ada', request)
-	mocks.customDomainsEnabled.mockRejectedValue(
-		new Error('Domain settings unavailable'),
-	)
 	const result = await callSettings(updateOrganizationProfile, env, {
 		request,
 	} as never)
@@ -561,5 +572,4 @@ test('profile write succeeds without loading unrelated custom domain settings', 
 		org: { displayName: 'Saved name' },
 	})
 	expect(result.data).not.toHaveProperty('customDomains')
-	expect(mocks.customDomainsEnabled).not.toHaveBeenCalled()
 })

@@ -84,7 +84,7 @@ orgs is evaluated only against that org, never against all memberships. Passing
 | MCP, `execute`, Open API (caller resolver)    | `callerContext.request.org` (org binding, else the personal org) |
 | Website session flags (`/session`, SSR shell) | the matched route's org scope (`/@slug/-/...`); none elsewhere   |
 | Execution contexts                            | the request org, or the `/@slug` org of the page                 |
-| Credential suppliers, custom domains          | the org that owns the credential or package app                  |
+| Credential suppliers                          | the org that owns the credential                                 |
 | Repo-scoped flags                             | the org that owns the repo (personal org for personal repos)     |
 | Connection profiles, MCP event fan-out        | none (user only)                                                 |
 

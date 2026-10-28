@@ -11,7 +11,6 @@ import {
 } from '#mcp/capabilities/orgs/package-app-custom-hostname-schemas.ts'
 import { packageAppCustomHostnameBindingKinds } from '#worker/package-app-custom-hostnames/types.ts'
 import { resolvePackageAppCustomHostnameActingUserId } from '#mcp/capabilities/orgs/package-app-custom-hostname-acting-user.ts'
-import { packageAppCustomDomainsFlagKey } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import {
 	addPackageAppCustomHostname,
 	PackageAppCustomHostnameError,
@@ -23,7 +22,6 @@ export const packageAppCustomHostnameAddCapability = defineDomainCapability(
 		name: 'packageAppCustomHostnameAdd',
 		contextRuns: 'deny',
 		orgPermission: 'org:write',
-		featureFlag: packageAppCustomDomainsFlagKey,
 		description:
 			'Register a custom hostname for this organization’s package apps (Cloudflare for SaaS). App-level hostnames apply to one internet-visible public app and serve it at the host root. Org-level hostnames apply to private apps and serve them at /packages/{kodyId} on the custom host. Only org admins on a paid plan may add domains. Hostnames under Kody’s own domains (for example kody.codes, kody.run) and workers.dev are rejected. The result includes setup: the exact DNS records (all DNS only, proxy off) and plain steps. Kody re-checks pending hostnames automatically every few minutes, so there is no need to loop on packageAppCustomHostnameSync. Optional ssl_method=txt pre-validates the certificate via TXT before traffic switches. Guide: guide:package_app_custom_domains.',
 		keywords: [
@@ -70,7 +68,7 @@ export const packageAppCustomHostnameAddCapability = defineDomainCapability(
 					'Custom hostnames must be added by a person with org:write.',
 				)
 			}
-			const actingUserId = await resolvePackageAppCustomHostnameActingUserId({
+			await resolvePackageAppCustomHostnameActingUserId({
 				db: ctx.env.APP_DB,
 				stableUserId: request.actor.userId,
 			})
@@ -78,7 +76,6 @@ export const packageAppCustomHostnameAddCapability = defineDomainCapability(
 				return await addPackageAppCustomHostname({
 					env: ctx.env,
 					orgId: request.org.id,
-					actingUserId,
 					createdByUserId: request.actor.userId,
 					bindingKind: args.binding_kind,
 					hostname: args.hostname,

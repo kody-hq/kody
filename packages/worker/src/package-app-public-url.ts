@@ -4,7 +4,6 @@ import {
 	buildPackageAppSubdomainUrl,
 } from '@kody-internal/shared/public-urls.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
-import { isPackageAppCustomDomainsEnabled } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import { lookupVerifiedAppCustomHostnameForPackage } from '#worker/package-app-custom-hostnames/lookup.ts'
 
 /**
@@ -67,7 +66,6 @@ async function verifiedAppCustomOrigin(input: {
 	kodyId: string
 }): Promise<string | null> {
 	try {
-		if (!(await isPackageAppCustomDomainsEnabled(input.env.APP_DB))) return null
 		const mapping = await lookupVerifiedAppCustomHostnameForPackage({
 			db: input.env.APP_DB,
 			username: input.username,

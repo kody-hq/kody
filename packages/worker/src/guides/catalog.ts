@@ -49,6 +49,7 @@ import apiVersioning from '../../../../docs/guides/api-versioning.md'
 import packagesIntegrationsMcp from '../../../../docs/guides/packages-integrations-mcp.md'
 import packageSubscriptions from '../../../../docs/guides/package-subscriptions.md'
 import mcpEvents from '../../../../docs/guides/mcp-events.md'
+import wakeYourAgent from '../../../../docs/guides/wake-your-agent.md'
 import textYourAgent from '../../../../docs/guides/text-your-agent.md'
 import openmuse from '../../../../docs/guides/openmuse.md'
 import cantOpenOrGetMail from '../../../../docs/guides/cant-open-or-get-mail.md'
@@ -120,6 +121,7 @@ const guideSources: Array<{ slug: string; raw: string }> = [
 	{ slug: 'package-app-custom-domains', raw: packageAppCustomDomains },
 	{ slug: 'package-subscriptions', raw: packageSubscriptions },
 	{ slug: 'mcp-events', raw: mcpEvents },
+	{ slug: 'wake-your-agent', raw: wakeYourAgent },
 	{ slug: 'heavy-work-offload', raw: heavyWorkOffload },
 	{ slug: 'integration-bootstrap', raw: integrationBootstrap },
 	{ slug: 'oauth', raw: oauth },

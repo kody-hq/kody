@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, expect, test, vi } from 'vitest'
+import { expect, test } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 
@@ -13,14 +13,6 @@ const migrationSql = readFileSync(
 	),
 	'utf8',
 )
-
-const featureFlag = vi.hoisted(() => ({
-	enabled: true,
-}))
-
-vi.mock('#worker/package-app-custom-hostnames/feature-flag.ts', () => ({
-	isPackageAppCustomDomainsEnabled: async () => featureFlag.enabled,
-}))
 
 function createEnv(input?: { withHostname?: 'verified' | 'pending' | 'none' }) {
 	const sqlite = new DatabaseSync(':memory:')
@@ -106,10 +98,6 @@ function createEnv(input?: { withHostname?: 'verified' | 'pending' | 'none' }) {
 		APP_DB: db,
 	} as unknown as Env
 }
-
-afterEach(() => {
-	featureFlag.enabled = true
-})
 
 test('resolvePublicPackageAppLocation uses a verified custom domain when present', async () => {
 	const env = createEnv({ withHostname: 'verified' })

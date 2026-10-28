@@ -150,6 +150,8 @@ type SocketAttachment = {
 	maxConcurrent: number
 	helloed: boolean
 	welcomed?: boolean
+	/** Open API origin the daemon connected through; run requests name it. */
+	apiOrigin?: string
 }
 
 type RunRow = {
@@ -441,6 +443,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			running: 0,
 			maxConcurrent: 1,
 			helloed: false,
+			apiOrigin: url.origin,
 		}
 		server.serializeAttachment(attachment)
 		this.ctx.waitUntil(this.#onConnected(server, snapshot))
@@ -895,8 +898,11 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				)
 			},
 		)
+		// The caller's base URL is the app origin (kody.codes), but the daemon
+		// only trusts the API origin it connected to.
 		const sent = await this.#send(live.ws, 'run.request', {
 			...input.request,
+			apiUrl: live.attachment.apiOrigin ?? input.request.apiUrl,
 		})
 		if (!sent) {
 			this.#acceptWaiters.delete(lease.runId)
