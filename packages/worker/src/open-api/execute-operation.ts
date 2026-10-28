@@ -1,3 +1,4 @@
+import { executeRoutingInputFields } from '#worker/execution-contexts/execute-routing.ts'
 import { z } from 'zod'
 import { runExecuteToolCall } from '#mcp/tools/execute.ts'
 import {
@@ -36,6 +37,7 @@ export const executeHttpInputSchema = z.object({
 		.max(runRecordMaxIdempotencyKeyLength)
 		.optional(),
 	credentials: credentialCallMapSchema.optional(),
+	...executeRoutingInputFields,
 })
 
 export const executeHttpOutputSchema = z.object({

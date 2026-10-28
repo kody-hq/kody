@@ -637,6 +637,9 @@ export async function listRunRecords(input: {
 		until: normalizeOptionalIsoTimestamp(input.filter?.until),
 		errorTriage: input.filter?.errorTriage ?? null,
 		startedByUserId: normalizeOptionalString(input.filter?.startedByUserId),
+		executionContextId: normalizeOptionalString(
+			input.filter?.executionContextId,
+		),
 		limit,
 		cursor: input.cursor ?? null,
 	})

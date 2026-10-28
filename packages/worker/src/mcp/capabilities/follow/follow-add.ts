@@ -11,6 +11,7 @@ export const followAddCapability = defineDomainCapability(
 	capabilityDomainNames.follow,
 	{
 		name: 'followAdd',
+		contextRuns: 'allow',
 		orgPermission: 'org:read',
 		description:
 			'Follow a package or plain repo by @handle/name so this org receives follow.published when its live version moves and, when you can read it, follow.pushed when the default branch moves. Public targets are followable by any signed-in caller. Private targets require package:read (a use grant qualifies; execute-only does not) and a missing or unreadable target is reported as not found. Creating a follow that already exists returns it and, if it was paused, resumes it when you can still read the target. Pass events to choose published and/or pushed; omit them to keep the current choice (both for a new follow).',

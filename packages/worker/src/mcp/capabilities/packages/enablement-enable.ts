@@ -35,6 +35,7 @@ export const enablementEnableCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'enablementEnable',
+		contextRuns: 'deny',
 		orgPermission: 'package:execute',
 		description:
 			'Turn a package cron job or subscription topic on for yourself. A webhook is different: turn it on only by Approve at the approval URL (webhookUrlMint or credentialMappingPropose returns it), including after it was turned off with enablementDisable. This capability refuses to turn a webhook on directly and only returns an existing live enablement. email.message.received and email.message.quarantined are refused here too: those run only for a sender, so a person Approves them from the inbox (the approval link includes sender_kind and sender_value). Every run then acts as you: your access, your credentials, billed and audited to you. Publishing never turns a trigger on, and nobody can enable one for someone else. Needs package:execute on the package. For a cron job that is itself off, this also turns the job on and schedules its next run from now when you hold job:write (what jobUpdate needs); without it the job stays off until someone with job:write turns it on, and the result job field says so (state left_off, missing_permission job:write, and how to get it). If you lose access later, the enablement pauses and resumes by itself once access is back.',

@@ -19,6 +19,7 @@ export const integrationPlatformAppListCapability = defineDomainCapability(
 	capabilityDomainNames.integrations,
 	{
 		name: 'integrationPlatformAppList',
+		contextRuns: 'allow',
 		orgPermission: 'integration:read',
 		description:
 			'List the published platform (built-in) OAuth apps this deployment offers. Each connects without a bring-your-own provider app at /connect/oauth?provider=<slug>&platform=<slug>. Often empty: operators publish built-ins individually, and every other provider connects with the user’s own OAuth app at /connect/oauth.',

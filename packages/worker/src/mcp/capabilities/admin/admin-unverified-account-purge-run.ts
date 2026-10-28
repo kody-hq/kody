@@ -74,6 +74,7 @@ export const adminUnverifiedAccountPurgeRunCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminUnverifiedAccountPurgeRun',
+		contextRuns: 'deny',
 		description: `Run one bounded pass of the unverified-account purge (person accounts unverified for ${unverifiedAccountPurgeDays}+ days with no linked provider) and return per-account outcomes so operators can see why the hourly lane is failing. dryRun lists what would be claimed without claiming or deleting. Admin-only and destructive; identifies accounts by stable user id and never returns emails or usernames.`,
 		keywords: [
 			'admin',

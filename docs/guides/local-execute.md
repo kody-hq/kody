@@ -79,6 +79,10 @@ code's scopes are fixed when it is minted.
 npx @kodycodes/cli login   # once
 ```
 
+On a remote VM, NAS, or SSH session, use `npx @kodycodes/cli login --device` and
+approve the printed code from any browser. See
+[Remote or headless machines](../../packages/cli/README.md#remote-or-headless-machines).
+
 **CI / headless only:** scoped `KODY_API_TOKEN` (`kody_at_…` with `org:execute`,
 plus `package:execute` for saved-package imports), usually from MCP `api`
 `tokenCreate` with a required lifetime. Put the value in the environment; never

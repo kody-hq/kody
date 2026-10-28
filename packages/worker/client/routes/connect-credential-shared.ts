@@ -6,6 +6,7 @@ import {
 	type CredentialListItem,
 	type ParsedCredentialCreateQuery,
 	buildCredentialApprovalHref,
+	hasCredentialCreatePrefill,
 } from '#universal/credential-contracts.ts'
 import { credentialKindLabel } from '#universal/credentials-list.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
@@ -556,6 +557,29 @@ export function credentialCreateAgentPrompt(input: {
 			: []),
 		`Kody said: ${input.error}`,
 		`Help me fix the link or the form. Do not ask me to paste the value into chat.`,
+	].join('\n')
+}
+
+/**
+ * A bare create page (no link prefill and no login exchange) leads with
+ * asking an agent; any link the form reads opens the form directly.
+ */
+export function credentialCreateShowsAgentFirst(search: URLSearchParams) {
+	return !hasCredentialCreatePrefill(search) && !search.has(loginExchangeParam)
+}
+
+/** The prompt a person pastes into their agent to get a prefilled creation link. */
+export function credentialCreateStartPrompt(input: {
+	orgSlug: string
+	pageUrl: string
+}) {
+	return [
+		`Help me add a credential to my Kody org "${input.orgSlug}" (${input.pageUrl}).`,
+		'If it is not obvious which service it is for, ask me.',
+		'Use Kody: search for the service, then use the credential creation capability or a creation link for this org.',
+		'Pick the right kind (key, URL, login, signing, OAuth, or MCP) and the hosts it may be sent to.',
+		'Give me the prefilled Kody creation link so I can paste the value there myself.',
+		'Never ask me to paste a secret value into this chat.',
 	].join('\n')
 }
 

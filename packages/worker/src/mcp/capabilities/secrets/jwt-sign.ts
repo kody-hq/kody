@@ -61,6 +61,7 @@ export const jwtSignCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'secretJwtSign',
+		contextRuns: 'deny',
 		orgPermission: 'secret:use',
 		description:
 			'Sign a JWT with a key stored in a saved secret without revealing the key. HMAC algorithms (HS256, HS384, HS512) use key material from the secret; RS*, PS*, ES*, and EdDSA use a PKCS#8 PEM private key. This generic primitive only signs caller-provided header and claims; package or execute code should perform any OAuth token exchange separately.',

@@ -495,6 +495,7 @@ const routeDocumentHeads = {
 	connectSecretSet: titleOnly('Set secret'),
 	connectWebhookApply: titleOnly('Approve webhook apply destination'),
 	oauthAuthorize: titleOnly('Authorize access'),
+	device: titleOnly('Sign in on a device'),
 	packageAppOauthAuthorize: titleOnly('Allow package app'),
 	oauthCallback: titleOnly('OAuth callback'),
 } as const satisfies Record<string, DocumentHeadResolver>

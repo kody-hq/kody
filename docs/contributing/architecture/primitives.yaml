@@ -631,6 +631,20 @@ primitives:
     docs:
       - docs/contributing/architecture/usage-metering.md
 
+  - id: execution-contexts
+    group: runtime
+    name: Execution contexts
+    summary:
+      Registered machines running kody daemon that execute runs instead of Kody
+      cloud, with a per-user fallback chain.
+    code:
+      - packages/worker/src/execution-contexts/
+      - packages/shared/src/execution-context-protocol/
+      - packages/cli/src/execution-context/
+      - packages/worker/src/mcp/capabilities/execution-contexts/
+    docs:
+      - docs/contributing/architecture/execution-contexts.md
+
   - id: run-records
     group: storage
     name: Run records

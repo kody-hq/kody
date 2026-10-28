@@ -29,6 +29,7 @@ export const packageAppRunsAsSetCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageAppRunsAsSet',
+		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		requiresLivePerson: true,
 		description:
@@ -85,6 +86,7 @@ export const packageAppRunsAsGetCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageAppRunsAsGet',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'Who a package app runs as in this org right now (whose credentials it uses and who pays), or why it cannot run as anyone.',

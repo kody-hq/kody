@@ -52,6 +52,7 @@ export const adminCredentialPathSegmentImpactCapability =
 	defineDomainCapability(capabilityDomainNames.admin, {
 		...adminCapabilityAccess,
 		name: 'adminCredentialPathSegmentImpact',
+		contextRuns: 'deny',
 		description:
 			'Read-only impact of path-segment credential encoding: from a complete adminCredentialInventoryScan run, count packages that fill a Key into a URL path where the stored value contains /, ?, or #. Decrypts only to test those characters; never returns values. Never emails or notifies owners. Admin-only; use counts in public text.',
 		keywords: [

@@ -61,6 +61,7 @@ export const adminSystemEmailSendCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminSystemEmailSend',
+		contextRuns: 'deny',
 		description:
 			'Send operator correspondence from a reserved system sender (kody@<apex> by default) to an external recipient. Admin-only and audit-logged; capped per sender per day. Mail from kody@ sets Reply-To to support@<apex> unless reply_to is provided. Use emailSend/emailReply for user mail — this sender speaks for the platform, not for a user account.',
 		keywords: [

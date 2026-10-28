@@ -24,6 +24,7 @@ export const runSummaryCapability = defineDomainCapability(
 	capabilityDomainNames.runs,
 	{
 		name: 'runSummary',
+		contextRuns: 'allow',
 		orgPermission: 'job:read',
 		description:
 			'Summarize recent run totals, open error count (excluding ignored/resolved), ignored/resolved counts, still-running count, and per-surface breakdown to answer "is anything broken?" before drilling into runList or runGet. Use runUpdate to mark handled error noise. Counts include successful ad-hoc execute runs. Records are retained about 30 days, capped per user, and pruned failure-last.',

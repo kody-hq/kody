@@ -131,6 +131,7 @@ export const searchCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'search',
+		contextRuns: 'allow',
 		orgPermission: 'search:read',
 		description:
 			'Search Kody capabilities, saved packages, integrations, and secret references using natural language or exact user-scoped package identity. An empty call returns the domain index. Pass "domain" to rank or list one capability domain. Use this inside package and execute runtimes when reusable code needs the same discovery surface as the public MCP search tool.',

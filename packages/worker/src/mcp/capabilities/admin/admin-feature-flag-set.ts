@@ -50,6 +50,7 @@ export const adminFeatureFlagSetCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminFeatureFlagSet',
+		contextRuns: 'deny',
 		description:
 			'Set global enabled state and optional percentage rollout for one registry feature flag. Admin-only; never returns user content.',
 		keywords: [

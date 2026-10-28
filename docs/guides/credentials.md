@@ -441,8 +441,19 @@ https://kody.codes/@acme/-/credentials/new?kind=url&name=alerts-bot&provider=tel
 `kind` preselects a kind; add `kindMode=required` to lock it. `name`,
 `provider`, `description`, and `allowedHosts` prefill the form. The page saves
 Key, URL, login, and signing credentials in place, and hands OAuth and MCP
-servers to their own connect flows. The **Add credential** button on the
-Credentials page opens the same form.
+servers to their own connect flows.
+
+The **Add credential** button on the Credentials page opens the page without a
+link. It leads with **Copy prompt**, a short prompt you paste into your agent so
+it works out the kind, name, and hosts and hands back a prefilled link. **Create
+one manually** opens the same form in place. A link with any prefill skips
+straight to the form.
+
+On that form, **Which packages can read it** is **Any package in this org** (the
+default) or **Only these packages**, which locks the credential to the packages
+you pick (`allowedPackages`). A key that belongs to one package is made from
+that package's own **Credentials** tab (**Add a key only this package can
+read**), or from a link that names the package (`scope=package&packageId=...`).
 
 Code that already holds a value (a key the package just minted) can store it
 with `secretSet`, which also takes `kind`, `hosts`, `login_exchange`,

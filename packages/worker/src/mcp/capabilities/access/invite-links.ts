@@ -144,6 +144,7 @@ export const inviteLinkCreateCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'inviteLinkCreate',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: true,
 		description:
@@ -344,6 +345,7 @@ export const inviteLinkListCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'inviteLinkList',
+		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
 			'List active membership invite links for the organization this request is bound to. Needs member:write. Does not return tokens; those are shown only when a link is created.',
@@ -408,6 +410,7 @@ export const inviteLinkRevokeCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'inviteLinkRevoke',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: true,
 		description:
@@ -461,6 +464,7 @@ export const inviteLinkAcceptCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'inviteLinkAccept',
+		contextRuns: 'deny',
 		orgPermission: 'org:read',
 		requiresLivePerson: true,
 		description:

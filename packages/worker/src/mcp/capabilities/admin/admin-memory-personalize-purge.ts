@@ -124,6 +124,7 @@ export const adminMemoryPersonalizePurgeCapability = defineDomainCapability(
 		...adminMutationCapabilityAccess,
 		idempotent: true,
 		name: 'adminMemoryPersonalizePurge',
+		contextRuns: 'deny',
 		description:
 			'Soft-delete verified legacy team-org mcp_memories and obsolete memory grants after ADR 0072 copy (adminMemoryPersonalizeCopy). Never deletes a memory until every effective reader has a personal copy (provenance URI or identical content). Rows report counts and provenance URIs only — never subject/summary/details. dryRun defaults to true. Page with orgCursor, memoryCursor, and plannedPurgeMemoryIds until nextOrgCursor and nextMemoryCursor are null (pass nextPlannedPurgeMemoryIds back on dry-run mid-org pages).',
 		keywords: [

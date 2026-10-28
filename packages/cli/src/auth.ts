@@ -36,7 +36,10 @@ import {
 	createPkcePair,
 	discoverCliAuthorizationServer,
 	exchangeAuthorizationCode,
+	pollDeviceAuthorization,
 	refreshOAuthTokens,
+	startDeviceAuthorization,
+	type OAuthTokenSet,
 } from './oauth-browser.js'
 import { OpenApiError, openApiGet, openApiRequest } from './open-api-client.js'
 import { openUrl } from './open-url.js'
@@ -441,7 +444,7 @@ function startCallbackServer(redirectUri: URL): Promise<Server> {
 			if ('code' in error && error.code === 'EADDRINUSE') {
 				reject(
 					new Error(
-						`Login callback port ${port} is in use. Stop the other listener and retry.`,
+						`Login callback port ${port} is in use. Stop the other listener and retry, or run \`kody login --device\`, which needs no local port.`,
 					),
 				)
 				return
@@ -563,6 +566,108 @@ function waitForCallback(input: {
 	})
 }
 
+type FinishLoginInput = {
+	options: LoginOptions
+	mcpUrl: string
+	apiUrl: string
+	orgHint: string | undefined
+	credentialDir: string | undefined
+	tokens: OAuthTokenSet
+	/** Lets the browser flow show its error page before the throw. */
+	fail: (error: LoginCallbackErrorKind) => void
+}
+
+/**
+ * Shared tail of `kody login` (browser) and `kody login --device`: exchange
+ * the CLI OAuth access token for the device API token (ADR 0076), resolve the
+ * org and account, and save the credentials.
+ */
+async function finishLoginWithOAuthTokens(input: FinishLoginInput) {
+	const { options, mcpUrl, apiUrl, orgHint, credentialDir, tokens } = input
+	const device = await mintDeviceToken({
+		apiUrl,
+		oauthAccessToken: tokens.accessToken,
+		lifetime: options.lifetime ?? 'long',
+		fetchFn: options.fetchFn,
+	})
+
+	let org = device.loginOrg ?? orgHint
+	let account: LoginCallbackAccount | undefined
+	const discover = options.discoverIdentity ?? discoverLoginIdentity
+	try {
+		const boundOrg = org
+		const identity = await discover({
+			mcpUrl,
+			apiUrl,
+			accessToken: device.token,
+			fetchFn: options.fetchFn,
+			...(boundOrg ? { org: boundOrg } : {}),
+		})
+		if (orgHint && identity.org !== orgHint) {
+			input.fail('failed')
+			throw new Error(
+				`Login was bound to org "${identity.org}" but \`--org ${orgHint}\` was requested.`,
+			)
+		}
+		org = identity.org
+		account = identity.account
+	} catch (error) {
+		// Org mismatch always fails. Soft-fail other discovery errors only
+		// when we can still name the login (--org) or park a sole pending
+		// migration (no named orgs yet). Otherwise a nameless pending
+		// beside existing orgs would never become active.
+		if (
+			error instanceof Error &&
+			error.message.startsWith('Login was bound to org ')
+		) {
+			throw error
+		}
+		if (!org) {
+			const existing = loadCredentialStore(
+				mcpUrl,
+				options.backend,
+				options.resolution,
+			)
+			if (existing && Object.keys(existing.orgs).length > 0) {
+				input.fail('failed')
+				throw new Error(
+					'Could not determine the organization for this login. Re-run with `kody login --org <slug>`.',
+				)
+			}
+		}
+	}
+
+	const credentials = deviceCredentials({
+		mcpUrl,
+		apiUrl,
+		authorizationServerUrl: tokens.issuer,
+		token: device.token,
+		expiresAt: device.expiresAt,
+		scopes: device.scopes,
+		org,
+	})
+	let saved: ReturnType<typeof saveCredentials>
+	try {
+		saved = saveCredentials(credentials, options.backend, options.resolution)
+	} catch (error) {
+		input.fail('save_failed')
+		if (isCredentialFolderError(error)) {
+			throw new CredentialDirError({
+				dir: credentialDir ?? credentialDirFor(mcpUrl, options.resolution),
+				cause: redactError(error),
+				phase: 'save',
+				...(options.platform ? { platform: options.platform } : {}),
+			})
+		}
+		throw new Error(
+			`You approved the sign-in, but Kody could not save it on this computer. What went wrong: ${redactError(error).message}`,
+			{ cause: error },
+		)
+	}
+
+	return { credentials, saved, org, account }
+}
+
 export async function login(options: LoginOptions = {}): Promise<{
 	credentials: StoredCredentials
 	authorizationUrl: URL
@@ -639,89 +744,19 @@ export async function login(options: LoginOptions = {}): Promise<{
 			codeVerifier: pkce.verifier,
 			fetchFn: options.fetchFn,
 		})
-		const device = await mintDeviceToken({
-			apiUrl,
-			oauthAccessToken: tokens.accessToken,
-			lifetime: options.lifetime ?? 'long',
-			fetchFn: options.fetchFn,
-		})
-
-		let org = device.loginOrg ?? orgHint
-		let account: LoginCallbackAccount | undefined
-		const discover = options.discoverIdentity ?? discoverLoginIdentity
-		try {
-			const boundOrg = org
-			const identity = await discover({
-				mcpUrl,
-				apiUrl,
-				accessToken: device.token,
-				fetchFn: options.fetchFn,
-				...(boundOrg ? { org: boundOrg } : {}),
-			})
-			if (orgHint && identity.org !== orgHint) {
-				completeCallback?.({ kind: 'error', error: 'failed' })
-				completeCallback = undefined
-				throw new Error(
-					`Login was bound to org "${identity.org}" but \`--org ${orgHint}\` was requested.`,
-				)
-			}
-			org = identity.org
-			account = identity.account
-		} catch (error) {
-			// Org mismatch always fails. Soft-fail other discovery errors only
-			// when we can still name the login (--org) or park a sole pending
-			// migration (no named orgs yet). Otherwise a nameless pending
-			// beside existing orgs would never become active.
-			if (
-				error instanceof Error &&
-				error.message.startsWith('Login was bound to org ')
-			) {
-				throw error
-			}
-			if (!org) {
-				const existing = loadCredentialStore(
-					mcpUrl,
-					options.backend,
-					options.resolution,
-				)
-				if (existing && Object.keys(existing.orgs).length > 0) {
-					completeCallback?.({ kind: 'error', error: 'failed' })
-					completeCallback = undefined
-					throw new Error(
-						'Could not determine the organization for this login. Re-run with `kody login --org <slug>`.',
-					)
-				}
-			}
-		}
-
-		const credentials = deviceCredentials({
+		const finished = await finishLoginWithOAuthTokens({
+			options,
 			mcpUrl,
 			apiUrl,
-			authorizationServerUrl: tokens.issuer,
-			token: device.token,
-			expiresAt: device.expiresAt,
-			scopes: device.scopes,
-			org,
+			orgHint,
+			credentialDir,
+			tokens,
+			fail: (error) => {
+				completeCallback?.({ kind: 'error', error })
+				completeCallback = undefined
+			},
 		})
-		let saved: ReturnType<typeof saveCredentials>
-		try {
-			saved = saveCredentials(credentials, options.backend, options.resolution)
-		} catch (error) {
-			completeCallback?.({ kind: 'error', error: 'save_failed' })
-			completeCallback = undefined
-			if (isCredentialFolderError(error)) {
-				throw new CredentialDirError({
-					dir: credentialDir ?? credentialDirFor(mcpUrl, options.resolution),
-					cause: redactError(error),
-					phase: 'save',
-					...(options.platform ? { platform: options.platform } : {}),
-				})
-			}
-			throw new Error(
-				`You approved the sign-in, but Kody could not save it on this computer. What went wrong: ${redactError(error).message}`,
-				{ cause: error },
-			)
-		}
+		const { credentials, saved, org, account } = finished
 
 		completeCallback?.({
 			kind: 'success',
@@ -741,6 +776,107 @@ export async function login(options: LoginOptions = {}): Promise<{
 	} catch (error) {
 		completeCallback?.({ kind: 'error', error: 'failed' })
 		server.close()
+		throw redactError(error)
+	}
+}
+
+export type DeviceLoginPrompt = {
+	userCode: string
+	verificationUri: string
+	verificationUriComplete?: string
+	expiresIn: number
+}
+
+export type DeviceLoginOptions = Omit<
+	LoginOptions,
+	'openBrowser' | 'onAuthorizationUrl' | 'onBrowserOpenResult' | 'openUrlFn'
+> & {
+	/** Called once with the code and URLs the person must open elsewhere. */
+	onDeviceCode?: (prompt: DeviceLoginPrompt) => void
+	/** Test seam for the poll wait. */
+	sleep?: (ms: number) => Promise<void>
+}
+
+/**
+ * `kody login --device`: OAuth 2.0 Device Authorization Grant (RFC 8628,
+ * ADR 0082) for machines whose browser cannot reach the localhost callback.
+ * The result is stored exactly like the browser flow (device API token).
+ */
+export async function loginWithDevice(
+	options: DeviceLoginOptions = {},
+): Promise<{
+	credentials: StoredCredentials
+	backendKind: 'keyring' | 'file'
+	backendPath?: string
+	org?: string
+	account?: LoginCallbackAccount
+}> {
+	const mcpUrl = options.mcpUrl ?? defaultMcpUrl
+	const apiUrl = options.apiUrl ?? defaultApiUrl
+	const orgHint =
+		options.org === undefined ? undefined : orgSlugFromFlag(options.org)
+	const credentialDir =
+		options.backend?.kind === 'file' && options.backend.path
+			? dirname(options.backend.path)
+			: options.backend
+				? undefined
+				: credentialDirFor(mcpUrl, options.resolution)
+	if (credentialDir) {
+		ensureCredentialDirWritable(
+			credentialDir,
+			options.platform ? { platform: options.platform } : {},
+		)
+	}
+	try {
+		const authorizationServer = await discoverCliAuthorizationServer({
+			issuer: new URL(new URL(mcpUrl).origin),
+			fetchFn: options.fetchFn,
+		})
+		const started = await startDeviceAuthorization({
+			authorizationServer,
+			mcpUrl,
+			...(orgHint ? { org: orgHint } : {}),
+			fetchFn: options.fetchFn,
+		})
+		options.onDeviceCode?.({
+			userCode: started.user_code,
+			verificationUri: started.verification_uri,
+			...(started.verification_uri_complete
+				? { verificationUriComplete: started.verification_uri_complete }
+				: {}),
+			expiresIn: started.expires_in,
+		})
+		const tokens = await pollDeviceAuthorization({
+			authorizationServer,
+			mcpUrl,
+			deviceCode: started.device_code,
+			intervalSeconds: started.interval ?? 5,
+			expiresInSeconds: Math.min(
+				started.expires_in,
+				Math.ceil((options.timeoutMs ?? started.expires_in * 1000) / 1000),
+			),
+			fetchFn: options.fetchFn,
+			...(options.now ? { now: options.now } : {}),
+			...(options.sleep ? { sleep: options.sleep } : {}),
+		})
+		const { credentials, saved, org, account } =
+			await finishLoginWithOAuthTokens({
+				options,
+				mcpUrl,
+				apiUrl,
+				orgHint,
+				credentialDir,
+				tokens,
+				fail: () => {},
+			})
+		return {
+			credentials,
+			backendKind: saved.backend.kind,
+			backendPath: saved.backend.path,
+			...(org ? { org } : {}),
+			...(account ? { account } : {}),
+		}
+	} catch (error) {
 		throw redactError(error)
 	}
 }

@@ -10,6 +10,7 @@ export const repoListCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoList',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'List plain repos owned by the org this connection is bound to, from D1 discovery metadata (no live Artifacts reads). Each repo includes icon_url when an indexed or published commit is available.',

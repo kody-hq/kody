@@ -19,6 +19,7 @@ export const mcpServerSetEnabledCapability = defineDomainCapability(
 	capabilityDomainNames.mcpServers,
 	{
 		name: 'mcpServerSetEnabled',
+		contextRuns: 'deny',
 		orgPermission: 'integration:write',
 		description:
 			'Enable or disable a saved MCP server. Disabled servers keep their stored connection and OAuth state but their tools are hidden from search, execute, and package code until re-enabled.',

@@ -325,6 +325,7 @@ export const resourceLockCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'resourceLock',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
 			'Narrow a credential-like resource to a saved package; unlock or removal is website-only, and this capability can never loosen usage. For kind secret, requires secret:use and returns only an approval_url that the owner must click; never treat it as a grant. The secret page is /@<slug>/-/secrets/approve. For kind secret_provider, requires secret:use and likewise returns only an owner-clicked approval_url; ad hoc execute does not need provider grants, but saved packages do. For kind integration, requires integration:use and immediately switches to packages mode and adds the package id; unlock at /account/integrations/:name, and integrationSave cannot change usageMode. For kind mcp_server, requires integration:use and immediately switches to packages mode and adds the package id; unlock at /account/mcp-servers/:serverId. secretSet cannot change allowed_packages.',
