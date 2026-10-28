@@ -1,6 +1,10 @@
 import { expect, test } from 'vitest'
 import { chainCloudOrderError } from './chain-rules.ts'
 import { registrationAuthorizationError } from './errors.ts'
+import { serverKeySetDocument } from './key-routes.ts'
+import productionServerKeys from './server-keys.production.json'
+import testServerKeys from './server-keys.local.json'
+import testKeys from '@kody-internal/shared/execution-context-protocol/vectors/test-keys.json'
 import { chainIsTooLong } from './store.ts'
 
 test('Kody cloud must be the last chain entry when present', () => {
@@ -65,4 +69,26 @@ test('registration without the permission at all is a plain denial, not a re-log
 	expect(error.code).toBe('not_granted')
 	expect(error.message).not.toContain('kody login')
 	expect(error.details).toMatchObject({ reason: 'missing_permission' })
+})
+
+test('server-keys serves the test set only when the signer is a test key', () => {
+	const testSigner = JSON.stringify([
+		{ ...testKeys.server, notAfter: 4102444800000 },
+	])
+	expect(serverKeySetDocument({ ECP_FRAME_SIGNING_KEYS: testSigner })).toBe(
+		testServerKeys,
+	)
+	// Production (or any env without the test signer) serves the production set.
+	expect(serverKeySetDocument({ ECP_FRAME_SIGNING_KEYS: undefined })).toBe(
+		productionServerKeys,
+	)
+	expect(serverKeySetDocument({ ECP_FRAME_SIGNING_KEYS: 'not json' })).toBe(
+		productionServerKeys,
+	)
+	const productionSigner = JSON.stringify([
+		{ ...testKeys.server, kid: 'ecp-frame-2026-10', notAfter: 4102444800000 },
+	])
+	expect(
+		serverKeySetDocument({ ECP_FRAME_SIGNING_KEYS: productionSigner }),
+	).toBe(productionServerKeys)
 })

@@ -5,6 +5,7 @@ import {
 	importEd25519PublicKey,
 	normalizeEd25519PublicJwk,
 	parseEcpSignatureHeader,
+	parseFrameSigningKeys,
 	sha256Base64Url,
 	verifyEcpHttpSignature,
 	type Ed25519PublicJwk,
@@ -62,10 +63,36 @@ function json(body: unknown, init: ResponseInit = {}) {
 	})
 }
 
-export function serverKeySetDocument(env: Pick<Env, 'ECP_SERVER_KEY_SET'>) {
-	return env.ECP_SERVER_KEY_SET === 'production'
-		? productionServerKeys
-		: testServerKeys
+const testServerKids = new Set(documentKids(testServerKeys))
+
+function documentKids(document: { p: string }) {
+	try {
+		const payload = JSON.parse(
+			atob(document.p.replaceAll('-', '+').replaceAll('_', '/')),
+		) as { keys: Array<{ kid: string }> }
+		return payload.keys.map((key) => key.kid)
+	} catch {
+		return []
+	}
+}
+
+/**
+ * The committed key set that publishes this deployment's frame signing key:
+ * the test set only when the configured signer is a test key, so production
+ * (and any misconfigured env) serves the production set.
+ */
+export function serverKeySetDocument(env: Pick<Env, 'ECP_FRAME_SIGNING_KEYS'>) {
+	let kids: Array<string> = []
+	try {
+		kids = env.ECP_FRAME_SIGNING_KEYS
+			? parseFrameSigningKeys(env.ECP_FRAME_SIGNING_KEYS).map((key) => key.kid)
+			: []
+	} catch {
+		kids = []
+	}
+	return kids.length > 0 && kids.every((kid) => testServerKids.has(kid))
+		? testServerKeys
+		: productionServerKeys
 }
 
 async function readBody(request: Request) {
@@ -339,17 +366,8 @@ export async function handleExecutionContextKeyRoute(input: {
 	)
 }
 
-function currentServerKid(env: Pick<Env, 'ECP_SERVER_KEY_SET'>) {
-	try {
-		const payload = JSON.parse(
-			atob(
-				serverKeySetDocument(env).p.replaceAll('-', '+').replaceAll('_', '/'),
-			),
-		) as { keys: Array<{ kid: string }> }
-		return payload.keys[0]?.kid ?? null
-	} catch {
-		return null
-	}
+function currentServerKid(env: Pick<Env, 'ECP_FRAME_SIGNING_KEYS'>) {
+	return documentKids(serverKeySetDocument(env))[0] ?? null
 }
 
 function randomToken() {
