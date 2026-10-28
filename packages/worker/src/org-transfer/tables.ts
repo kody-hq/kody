@@ -154,6 +154,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	execution_contexts: keep(
 		'Execution contexts are machines their operator controls; they stay in the owning org and are not moved by a resource transfer.',
 	),
+	automation_execution_settings: keep(
+		'Org overrides of where an automation runs; the manifest declaration travels with the package and the target org sets its own override.',
+	),
 	execution_context_opt_ins: keep(personOwned),
 	execution_context_org_attachments: keep(
 		'Attachments link a context to an org by its operator; they are not resources of the transferred packages.',
