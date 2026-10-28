@@ -90,8 +90,9 @@ export async function sealToken(input: {
 }) {
 	const now = input.now ?? Date.now()
 	const lifetimeMs =
-		typeof input.expiresInSeconds === 'number' && input.expiresInSeconds > 0
-			? Math.min(input.expiresInSeconds * 1000, maxLifetimeMs)
+		typeof input.expiresInSeconds === 'number' &&
+		Number.isFinite(input.expiresInSeconds)
+			? Math.min(Math.max(input.expiresInSeconds, 0) * 1000, maxLifetimeMs)
 			: maxLifetimeMs
 	const payload: z.infer<typeof sealedPayloadSchema> = {
 		v: input.value,

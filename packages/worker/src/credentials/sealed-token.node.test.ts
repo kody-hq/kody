@@ -41,6 +41,17 @@ test('a sealed token holds no readable value and opens only at its fill', async 
 	await expect(open(sealed, { parts: ['body'] })).resolves.toBe('minted-value')
 })
 
+test('a sealed token for an already expired lifetime does not get the cap', async () => {
+	const sealed = await sealToken({
+		env,
+		value: 'minted-value',
+		to,
+		expiresInSeconds: -5,
+		now: 0,
+	})
+	await expect(open(sealed, { now: 1 })).rejects.toThrow(/expired/)
+})
+
 test('a sealed token refuses another org, run, host, URL part, expiry, or tampering', async () => {
 	const sealed = await sealToken({ env, value: 'minted-value', to, now: 0 })
 	const late = { now: 2 * 60 * 60 * 1000 }
