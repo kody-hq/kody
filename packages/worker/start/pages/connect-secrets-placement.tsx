@@ -417,7 +417,8 @@ export function ConnectSecretsPlacementApproval({
 							</div>
 						) : null}
 
-						{canApprove && pendingParts.length > 0 ? (
+						{canApprove &&
+						(pendingParts.length > 0 || pendingHosts.length > 0) ? (
 							<div
 								css={warningCss}
 								role="note"

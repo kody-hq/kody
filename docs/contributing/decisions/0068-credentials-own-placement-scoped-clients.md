@@ -1127,4 +1127,4 @@ sanctioned path:
   `/@<org>/-/credentials/<credential>#fill-placement`, which opens the editor.
 - **Agent surface.** `credentialPlacementApprovalLink` (MCP `api`, Open API
   `POST /v1/credential-placement-approvals`, `kody api`) returns the link and
-  whether anything is pending. It is read-only. ||||||| d91c21d10
+  whether anything is pending. It is read-only.
