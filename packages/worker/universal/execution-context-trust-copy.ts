@@ -43,12 +43,12 @@ function internetLabel(grant: ExecutionContextGrantSummary) {
 	}
 }
 
-export function lanEnabled(grant: ExecutionContextGrantSummary) {
+function lanEnabled(grant: ExecutionContextGrantSummary) {
 	return grant.egress.mode === 'public-and-lan'
 }
 
 /** "files: … · local network: … · internet: … · Kody APIs: …" */
-export function accessLine(grant: ExecutionContextGrantSummary) {
+function accessLine(grant: ExecutionContextGrantSummary) {
 	return [
 		`files: ${filesLabel(grant)}`,
 		`local network: ${lanEnabled(grant) ? 'yes' : 'no'}`,

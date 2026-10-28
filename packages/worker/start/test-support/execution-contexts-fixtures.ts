@@ -60,7 +60,7 @@ export const sharedBuildbox = contextFixture({
 	chainUsage: { inMyChain: false, chainCount: 2 },
 })
 
-export const offlineServer = contextFixture({
+const offlineServer = contextFixture({
 	id: 'ec_server',
 	name: 'home-server',
 	status: 'offline',

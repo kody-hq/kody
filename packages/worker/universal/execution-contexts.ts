@@ -6,10 +6,10 @@
  */
 
 export const maxChainContexts = 3
-export const unutilizedNamedMax = 3
-export const revokedVisibleDays = 30
+const unutilizedNamedMax = 3
+const revokedVisibleDays = 30
 
-export const executionContextUnusableReasons = [
+const executionContextUnusableReasons = [
 	'not_attached',
 	'not_granted',
 	'revoked',
@@ -19,14 +19,14 @@ export const executionContextUnusableReasons = [
 export type ExecutionContextUnusableReason =
 	(typeof executionContextUnusableReasons)[number]
 
-export type ExecutionContextStatus = 'online' | 'offline' | 'revoked'
+type ExecutionContextStatus = 'online' | 'offline' | 'revoked'
 export type ExecutionContextDisplayStatus =
 	| 'online'
 	| 'busy'
 	| 'offline'
 	| 'revoked'
 
-export type ExecutionContextPermission =
+type ExecutionContextPermission =
 	| 'read'
 	| 'execute'
 	| 'write'
@@ -41,7 +41,7 @@ export type ExecutionContextEgressMode =
 	| 'allowlist'
 	| 'none'
 
-export type ExecutionContextGrantSubject =
+type ExecutionContextGrantSubject =
 	| { kind: 'user'; handle: string; outside?: boolean }
 	| { kind: 'team'; slug: string; name?: string; orgSlug?: string }
 
@@ -68,7 +68,7 @@ export type ExecutionContextGrantSummary = {
 	timeoutMs: number
 }
 
-export type ExecutionContextChainUsage = {
+type ExecutionContextChainUsage = {
 	inMyChain: boolean
 	chainCount: number
 }
@@ -164,7 +164,7 @@ export type ExecutionContextRunPage = {
 	scope: 'all' | 'own'
 }
 
-export type ExecutionContextAuditEvent = {
+type ExecutionContextAuditEvent = {
 	id: string
 	action: string
 	actor: { kind?: string; label: string } | null
@@ -192,15 +192,6 @@ export type ExecutionContextsPageData =
 			selectedMissing: boolean
 	  }
 
-export type ExecutionChainError =
-	| { error: 'chain_changed'; current: ExecutionChain }
-	| {
-			error: 'context_not_usable'
-			contextId: string
-			reason: ExecutionContextUnusableReason
-	  }
-	| { error: 'chain_too_long'; max: number }
-
 export function isUnusableReason(
 	value: unknown,
 ): value is ExecutionContextUnusableReason {
@@ -227,7 +218,7 @@ export function chainHasCloud(
 	return entries.some((entry) => entry.kind === 'cloud')
 }
 
-export function chainContextIds(
+function chainContextIds(
 	entries: ReadonlyArray<ExecutionChainEntry | ExecutionChainEntryInput>,
 ): Array<string> {
 	return entries.flatMap((entry) =>
@@ -455,7 +446,7 @@ export function unusableReasonCopy(input: {
 	}
 }
 
-export function egressLabel(mode: ExecutionContextEgressMode) {
+function egressLabel(mode: ExecutionContextEgressMode) {
 	switch (mode) {
 		case 'public':
 			return 'public'
@@ -482,13 +473,13 @@ export function runtimeLabel(runtime: ExecutionContextGrantSummary['runtime']) {
 	return runtime.count === 0 ? 'none' : `${runtime.count} allowed`
 }
 
-export function credentialsLabel(
+function credentialsLabel(
 	credentials: ExecutionContextGrantSummary['credentials'],
 ) {
 	return credentials === 'none' ? 'none' : String(credentials.count)
 }
 
-export function timeoutLabel(timeoutMs: number) {
+function timeoutLabel(timeoutMs: number) {
 	return `${Math.round(timeoutMs / 1000)} s`
 }
 
@@ -667,7 +658,7 @@ export function durationLabel(durationMs: number | null | undefined) {
 	return `${minutes} min ${Math.round(seconds % 60)} s`
 }
 
-export const executionContextAuditLabels: Record<string, string> = {
+const executionContextAuditLabels: Record<string, string> = {
 	'execution_context.registered': 'Registered',
 	'execution_context.grant_updated': 'Access changed',
 	'execution_context.key_rotated': 'Key rotated',
