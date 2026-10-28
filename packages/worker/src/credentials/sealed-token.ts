@@ -248,8 +248,7 @@ export async function sealTokenResponse(input: {
 	}
 	const domain = sealedTokenDomainForUrl(input.requestUrl)
 	if (!domain) return response
-	const text = await response.text()
-	const rebuilt = (body: string) => {
+	const rebuilt = (body: BodyInit) => {
 		const headers = new Headers(response.headers)
 		headers.delete('content-length')
 		headers.delete('content-encoding')
@@ -259,6 +258,9 @@ export async function sealTokenResponse(input: {
 			headers,
 		})
 	}
+	const head = await readUpTo(response.body, maxSealedResponseBytes)
+	if (head.rest) return rebuilt(head.rest)
+	const text = new TextDecoder().decode(head.bytes)
 	let parsed: unknown
 	try {
 		parsed = JSON.parse(text)
@@ -271,4 +273,40 @@ export async function sealTokenResponse(input: {
 		to: { org: input.org, binding: input.binding, domains: [domain] },
 	})
 	return rebuilt(sealed ? JSON.stringify(sealed) : text)
+}
+
+async function readUpTo(body: ReadableStream<Uint8Array>, limit: number) {
+	const reader = body.getReader()
+	const chunks: Array<Uint8Array> = []
+	let size = 0
+	for (;;) {
+		const { done, value } = await reader.read()
+		if (done) break
+		chunks.push(value)
+		size += value.byteLength
+		if (size > limit) {
+			// Too big to be a token response: replay what was read, then stream on.
+			const rest = new ReadableStream<Uint8Array>({
+				start(controller) {
+					for (const chunk of chunks) controller.enqueue(chunk)
+				},
+				async pull(controller) {
+					const next = await reader.read()
+					if (next.done) controller.close()
+					else controller.enqueue(next.value)
+				},
+				cancel(reason) {
+					return reader.cancel(reason)
+				},
+			})
+			return { bytes: null, rest }
+		}
+	}
+	const bytes = new Uint8Array(size)
+	let offset = 0
+	for (const chunk of chunks) {
+		bytes.set(chunk, offset)
+		offset += chunk.byteLength
+	}
+	return { bytes, rest: null }
 }

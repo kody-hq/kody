@@ -3,7 +3,11 @@ import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { capabilityProxyCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import { type ApiInvocationContext } from './context.ts'
-import { runCapabilityProxyOauthClientCredentials } from './capability-proxy-oauth-client-credentials.ts'
+import {
+	parseCapabilityProxyOauthClientCredentialsArgs,
+	runCapabilityProxyOauthClientCredentials,
+} from './capability-proxy-oauth-client-credentials.ts'
+import { ApiError } from './errors.ts'
 
 const gatewayCalls = vi.hoisted(
 	() => [] as Array<{ props: Record<string, unknown>; request: Request }>,
@@ -70,4 +74,41 @@ test('--local oauthClientCredentials mints on the host gateway bound to the Capa
 			>,
 		),
 	)
+})
+
+test('parseCapabilityProxyOauthClientCredentialsArgs accepts a valid grant and rejects missing secrets or non-basic auth', () => {
+	expect(
+		parseCapabilityProxyOauthClientCredentialsArgs([
+			{
+				tokenUrl: 'https://oauth.example.com/token',
+				clientIdSecret: 'client-id',
+				clientSecretSecret: 'client-secret',
+				authStyle: 'basic',
+				body: { audience: 'api' },
+				packageId: 'pkg-1',
+			},
+		]),
+	).toEqual({
+		tokenUrl: 'https://oauth.example.com/token',
+		clientIdSecret: 'client-id',
+		clientSecretSecret: 'client-secret',
+		authStyle: 'basic',
+		body: { audience: 'api' },
+		packageId: 'pkg-1',
+	})
+	expect(() =>
+		parseCapabilityProxyOauthClientCredentialsArgs([
+			{ tokenUrl: 'https://oauth.example.com/token', clientIdSecret: 'id' },
+		]),
+	).toThrow(ApiError)
+	expect(() =>
+		parseCapabilityProxyOauthClientCredentialsArgs([
+			{
+				tokenUrl: 'https://oauth.example.com/token',
+				clientIdSecret: 'id',
+				clientSecretSecret: 'secret',
+				authStyle: 'post',
+			},
+		]),
+	).toThrow(ApiError)
 })

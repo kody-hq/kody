@@ -137,6 +137,30 @@ test('sealTokenResponse seals JSON token responses and passes other bodies throu
 	await expect(text.text()).resolves.toBe('access_token=a-value')
 })
 
+test('sealTokenResponse streams a body too big to be a token response through unchanged', async () => {
+	const big = JSON.stringify({ items: 'x'.repeat(2 * 1024 * 1024) })
+	const chunks = [big.slice(0, 1000), big.slice(1000)]
+	const response = new Response(
+		new ReadableStream({
+			start(controller) {
+				for (const chunk of chunks) {
+					controller.enqueue(new TextEncoder().encode(chunk))
+				}
+				controller.close()
+			},
+		}),
+		{ headers: { 'content-type': 'application/json' } },
+	)
+	const passed = await sealTokenResponse({
+		env,
+		response,
+		requestUrl: 'https://api.example.com/v1/items',
+		org: 'org-1',
+		binding: 'run-1',
+	})
+	await expect(passed.text()).resolves.toBe(big)
+})
+
 test('sealedTokenDomainForUrl uses the registrable domain', () => {
 	expect(
 		sealedTokenDomainForUrl('https://api-m.sandbox.example.co.uk/v1'),
