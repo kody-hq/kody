@@ -63,6 +63,7 @@ INSERT INTO org_memberships (org_id, user_id, role, created_at) VALUES
 		}, id)
 		await page
 			.getByRole('link', { name: 'Add credential', exact: true })
+			.first()
 			.click()
 		await expect(page).toHaveURL(new RegExp(`/@${orgSlug}/-/credentials/new$`))
 		await expect(
