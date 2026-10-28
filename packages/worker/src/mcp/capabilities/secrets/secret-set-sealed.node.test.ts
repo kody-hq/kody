@@ -178,6 +178,69 @@ test('a sealed Plaid access_token saves as a Key on its hosts, body-placed, neve
 	expect((await t.entry('plaidAccessToken'))!.id).toBe(row!.id)
 })
 
+test('re-linking an existing Key never widens its hosts, placement, or opt-ins', async () => {
+	const t = await setup()
+	await t.set({ name: 'plaidAccessToken', sealed_token: await t.exchange() })
+	const row = await t.entry('plaidAccessToken')
+	// The owner narrowed the Key to production and headers, and turned the body off.
+	await t.db
+		.prepare(
+			`UPDATE secret_entries SET allowed_hosts = ?, placement_json = ? WHERE id = ?`,
+		)
+		.bind('["production.plaid.com"]', '{"headers":true}', row!.id)
+		.run()
+	await t.db
+		.prepare(
+			`UPDATE credential_fill_placement_opt_ins SET body = 0, source = 'owner' WHERE credential_id = ?`,
+		)
+		.bind(row!.id)
+		.run()
+	const saved = await t.set({
+		name: 'plaidAccessToken',
+		sealed_token: await t.exchange(),
+	})
+	expect(saved).toMatchObject({
+		allowed_hosts: ['production.plaid.com'],
+		placement: { headers: true },
+	})
+	const after = await t.entry('plaidAccessToken')
+	expect(after).toMatchObject({
+		id: row!.id,
+		allowed_hosts: '["production.plaid.com"]',
+		placement_json: '{"headers":true}',
+	})
+	await expect(readFillPlacementOptIn(t.db, row!.id)).resolves.toEqual({
+		query: false,
+		path: false,
+		body: false,
+	})
+	const source = await t.db
+		.prepare(
+			`SELECT source FROM credential_fill_placement_opt_ins WHERE credential_id = ?`,
+		)
+		.bind(row!.id)
+		.first<{ source: string }>()
+	expect(source?.source).toBe('owner')
+
+	// A Key on hosts the sealed token may not reach is refused, not re-pointed.
+	await t.db
+		.prepare(`UPDATE secret_entries SET allowed_hosts = ? WHERE id = ?`)
+		.bind('["api.example.com"]', row!.id)
+		.run()
+	await expect(
+		t.set({ name: 'plaidAccessToken', sealed_token: await t.exchange() }),
+	).rejects.toThrow(/approved for hosts this sealed token may not go to/)
+	await t.db
+		.prepare(
+			`UPDATE secret_entries SET allowed_hosts = ?, placement_json = ? WHERE id = ?`,
+		)
+		.bind('["production.plaid.com"]', '{"query":true}', row!.id)
+		.run()
+	await expect(
+		t.set({ name: 'plaidAccessToken', sealed_token: await t.exchange() }),
+	).rejects.toThrow(/may not fill a header or the body/)
+})
+
 test('a sealed token from another run, another account, or past its expiry is refused', async () => {
 	const t = await setup()
 	await expect(

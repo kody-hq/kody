@@ -1096,7 +1096,9 @@ sanctioned path:
   minted the token, and saving does not widen where it goes. The write is
   audited as `credential.kind_set` with `savedFrom: 'sealed_token'`, plus the
   usual created/value-replaced row. An existing name that is not a Key is
-  refused.
+  refused. Replacing an existing Key (re-linking a Plaid Item) never widens it:
+  its hosts and placement become the overlap of the Key's and the sealed
+  token's, its opt-ins stay as the owner left them, and no overlap is refused.
 - **Refused.** A token from another run, another org, or past its expiry; a
   `secretJwtSign` JWT (sign a new one when needed); a token whose text repeats a
   credential filled into its request (an echo, the same check that drops
