@@ -213,6 +213,7 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{ kind: 'user_id', table: 'connection_profiles' },
 	{ kind: 'user_id', table: 'mcp_event_subscriptions' },
 	{ kind: 'user_id', table: 'cli_credential_bootstrap_codes' },
+	{ kind: 'user_id', table: 'oauth_device_authorizations' },
 	{ kind: 'user_id', table: 'user_storage_buckets' },
 	{ kind: 'user_id', table: 'usage_rollups' },
 	{
@@ -1214,6 +1215,7 @@ export const accountExportRedactedColumnsByTable: Readonly<
 > = {
 	api_tokens: ['token_hash'],
 	cli_credential_bootstrap_codes: ['code_hash'],
+	oauth_device_authorizations: ['device_code_hash', 'user_code'],
 	email_verifications: ['token_hash'],
 	org_invite_links: ['token_hash'],
 	mcp_event_subscriptions: ['secret_encrypted', 'previous_secret_encrypted'],
