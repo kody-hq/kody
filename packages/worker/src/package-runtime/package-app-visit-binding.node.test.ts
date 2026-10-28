@@ -104,6 +104,14 @@ test('credential client binding comes from the visit ticket so open and sign sha
 		} as never,
 		{} as Env,
 	)
+	for (const bridge of [opener, signer]) {
+		vi.spyOn(
+			bridge as unknown as {
+				publishedCredentialSupplier: () => Promise<null>
+			},
+			'publishedCredentialSupplier',
+		).mockResolvedValue(null)
+	}
 	await opener.credentialClientCall({
 		name: credentialClientToolNames.open,
 		args: { key: 'powersync-jwt' },

@@ -1036,6 +1036,45 @@ test('package app runtime bridge credentialClientCall dispatches known tools and
 	).rejects.toThrow('Unknown credential client tool "credentialClientNope".')
 })
 
+test('package app runtime bridge refuses plain credential(key) for an executor need before any authority fallback', async () => {
+	const { credentialClientToolNames } =
+		await import('#worker/mcp/execute-modules/credential-client-source.ts')
+	const { bridge } = createPackageAppRuntimeBridgeForTest()
+	const opened: Array<unknown> = []
+	vi.spyOn(
+		bridge as unknown as {
+			getCredentialClientTools: () => Promise<
+				Record<string, (args: unknown) => Promise<unknown>>
+			>
+		},
+		'getCredentialClientTools',
+	).mockResolvedValue({
+		[credentialClientToolNames.open]: async (args) => {
+			opened.push(args)
+			return { ok: true, value: { handle: 'owner-handle' } }
+		},
+	})
+	vi.spyOn(
+		bridge as unknown as {
+			publishedCredentialSupplier: (key: string) => Promise<string | null>
+		},
+		'publishedCredentialSupplier',
+	).mockImplementation(async (key) => (key === 'github' ? 'executor' : null))
+
+	await expect(
+		bridge.credentialClientCall({
+			name: credentialClientToolNames.open,
+			args: { key: 'github' },
+		}),
+	).rejects.toMatchObject({
+		body: {
+			code: 'credential_denied',
+			message: expect.stringContaining('credential.visitor("github")'),
+		},
+	})
+	expect(opened).toEqual([])
+})
+
 test('buildPackageAppWorker claims the unique Dynamic Worker day with its surface off the stub path, only after acquiring the stub', async () => {
 	const usageModule = await import('#worker/usage/dynamic-worker-day.ts')
 	let resolveClaim: (() => void) | undefined
