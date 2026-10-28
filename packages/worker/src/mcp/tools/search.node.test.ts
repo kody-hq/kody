@@ -102,6 +102,7 @@ function cap(
 		idempotent: true,
 		destructive: false,
 		orgPermission: 'none',
+		contextRuns: 'deny',
 		requiresLivePerson: 'never',
 		source: 'builtin',
 		inputSchema: { type: 'object' as const, properties: {} },
@@ -410,6 +411,7 @@ test('searchUnified hides admin capabilities from non-admins in offline search',
 				defineDomainCapability('admin', {
 					name: 'adminUserList',
 					orgPermission: 'none',
+					contextRuns: 'deny',
 					description: 'List admin user account metadata and roles',
 					keywords: ['admin', 'users', 'roles', 'accounts'],
 					readOnly: true,
@@ -427,6 +429,7 @@ test('searchUnified hides admin capabilities from non-admins in offline search',
 				defineDomainCapability('meta', {
 					name: 'publicDocsSearch',
 					orgPermission: 'none',
+					contextRuns: 'deny',
 					description: 'Search public docs',
 					keywords: ['public', 'docs', 'search'],
 					readOnly: true,
@@ -807,6 +810,7 @@ test('searchUnified domain scoping: filter, browse, reject unknown, and overview
 				defineDomainCapability('email', {
 					name: 'emailSend',
 					orgPermission: 'none',
+					contextRuns: 'deny',
 					description: 'Send an email message from the per-user inbox',
 					keywords: ['email', 'send', 'mail'],
 					readOnly: false,
@@ -821,6 +825,7 @@ test('searchUnified domain scoping: filter, browse, reject unknown, and overview
 				defineDomainCapability('email', {
 					name: 'emailMessageList',
 					orgPermission: 'none',
+					contextRuns: 'deny',
 					description: 'List stored email messages',
 					keywords: ['email', 'list', 'mail'],
 					readOnly: true,
@@ -837,6 +842,7 @@ test('searchUnified domain scoping: filter, browse, reject unknown, and overview
 				defineDomainCapability('jobs', {
 					name: 'jobUpdate',
 					orgPermission: 'none',
+					contextRuns: 'deny',
 					description:
 						'Update metadata on a durable job that can send email reminders',
 					keywords: ['email', 'schedule', 'job', 'update'],
