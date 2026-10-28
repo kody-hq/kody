@@ -11,7 +11,9 @@ import {
 	type ExecutionContextLease,
 	type ExecutionContextRunResult,
 } from './session-do.ts'
+import { runChainShapeError } from './chain-rules.ts'
 import {
+	type ChainEntry,
 	type ExecutionContextRow,
 	type UnusableReason,
 	getChain,
@@ -31,6 +33,11 @@ export type ExecuteRoutingArgs = {
 	/** `chain` lets a named context fall back to the caller's chain. */
 	fallback?: 'chain'
 	requires?: Array<ExecuteRequirement>
+	/**
+	 * This run's own ordered chain: context ids or names, with `cloud` only
+	 * ever last. Replaces the caller's default chain for this run.
+	 */
+	chain?: Array<string>
 }
 
 export type RoutingAttempt = {
@@ -44,6 +51,7 @@ export type RoutingAttempt = {
 		| 'aborted'
 		| 'timeout'
 		| 'skipped'
+		| 'queued'
 	reason?: string
 }
 
@@ -56,6 +64,14 @@ export type ExecutionContextRunMetadata = {
 
 export type RoutingOutcome =
 	| { kind: 'cloud'; metadata: ExecutionContextRunMetadata | null }
+	| {
+			kind: 'queued'
+			runId: string
+			contextId: string
+			contextName: string
+			expiresAt: number
+			metadata: ExecutionContextRunMetadata
+	  }
 	| {
 			kind: 'ran'
 			result: ExecutionContextRunResult
@@ -154,6 +170,13 @@ export async function routeExecute(input: {
 	apiUrl: string
 	waitMs: number
 	signal?: AbortSignal
+	/**
+	 * Queue on the first offline context until it reconnects, instead of
+	 * failing, when nothing else can take the run (automations only).
+	 */
+	queue?: { expiresAt: number } | null
+	/** `skip` records an unknown chain entry as skipped instead of a 404. */
+	unknownChainRef?: 'error' | 'skip'
 }): Promise<RoutingOutcome> {
 	const requires = [...new Set(input.args.requires ?? [])]
 	const db = input.env.APP_DB
@@ -171,10 +194,19 @@ export async function routeExecute(input: {
 			})
 		}
 	}
-	const chain = await getChain(db, {
-		orgId: input.request.orgId,
-		userId: input.request.userId,
-	})
+	const chain = input.args.chain
+		? await resolveRunChain(db, {
+				orgId: input.request.orgId,
+				refs: input.args.chain,
+				unknownRef: input.unknownChainRef ?? 'error',
+			})
+		: {
+				...(await getChain(db, {
+					orgId: input.request.orgId,
+					userId: input.request.userId,
+				})),
+				skipped: [] as Array<RoutingAttempt>,
+			}
 	const targets = planTargets({
 		named,
 		fallback: input.args.fallback,
@@ -182,7 +214,7 @@ export async function routeExecute(input: {
 		strict: chain.strict,
 		requires,
 	})
-	const attempts: Array<RoutingAttempt> = []
+	const attempts: Array<RoutingAttempt> = [...chain.skipped]
 	const metadata = (
 		row: ExecutionContextRow | null,
 		fellBackToCloud: boolean,
@@ -197,6 +229,12 @@ export async function routeExecute(input: {
 		return { kind: 'cloud', metadata: null }
 	}
 	let lastTried: ExecutionContextRow | null = null
+	let firstOffline: {
+		row: ExecutionContextRow
+		request: EcpRunRequestBody
+		lease: ExecutionContextLease
+		requires: Array<ExecuteRequirement>
+	} | null = null
 	for (const target of targets) {
 		if (target.kind === 'cloud') {
 			return { kind: 'cloud', metadata: metadata(lastTried, true) }
@@ -307,6 +345,13 @@ export async function routeExecute(input: {
 			position: attempts.length + 1,
 		})
 		if (dispatched.outcome !== 'committed') {
+			if (
+				dispatched.outcome === 'offline' &&
+				dispatched.code !== 'revoked' &&
+				!firstOffline
+			) {
+				firstOffline = { row, request, lease, requires }
+			}
 			attempts.push({
 				target: row.id,
 				name: row.name,
@@ -360,6 +405,34 @@ export async function routeExecute(input: {
 			input.signal?.removeEventListener('abort', onAbort)
 		}
 	}
+	if (input.queue && firstOffline) {
+		const { row, request, lease } = firstOffline
+		const stub = sessionStub(input.env, row.id)
+		await stub.enqueue({
+			request,
+			lease,
+			runRecord: input.runRecord,
+			requires: firstOffline.requires,
+			position: attempts.length + 1,
+			expiresAt: input.queue.expiresAt,
+		})
+		return {
+			kind: 'queued',
+			runId: input.runId,
+			contextId: row.id,
+			contextName: row.name,
+			expiresAt: input.queue.expiresAt,
+			metadata: {
+				id: row.id,
+				name: row.name,
+				attempts: [
+					...attempts,
+					{ target: row.id, name: row.name, outcome: 'queued' },
+				],
+				fellBackToCloud: false,
+			},
+		}
+	}
 	if (named && named !== 'cloud' && input.args.fallback !== 'chain') {
 		noContext(
 			attempts,
@@ -403,5 +476,59 @@ function failure(message: string, code: string): ExecutionContextRunResult {
 		isError: true,
 		content: [{ type: 'text', text: `Error: ${message}` }],
 		structuredContent: { error: message, errorCode: code },
+	}
+}
+
+/**
+ * Resolves a run's own chain. Shape rules (cloud last, at most
+ * {@link ecpMaxChainContexts} contexts, no repeats) match the default chain.
+ */
+export async function resolveRunChain(
+	db: D1Database,
+	input: {
+		orgId: string
+		refs: ReadonlyArray<string>
+		unknownRef: 'error' | 'skip'
+	},
+): Promise<{
+	entries: Array<ChainEntry>
+	strict: boolean
+	skipped: Array<RoutingAttempt>
+}> {
+	const shapeError = runChainShapeError(input.refs)
+	if (shapeError) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: shapeError.code,
+			message: shapeError.message,
+		})
+	}
+	const entries: Array<ChainEntry> = []
+	const skipped: Array<RoutingAttempt> = []
+	for (const raw of input.refs) {
+		const ref = raw.trim()
+		if (ref === 'cloud') {
+			entries.push({ kind: 'cloud' })
+			continue
+		}
+		const row = await resolveExecutionContextRef(db, input.orgId, ref)
+		if (!row) {
+			if (input.unknownRef === 'error') {
+				throw new ExecutionContextError({
+					status: 404,
+					code: 'not_found',
+					message: `No execution context named ${ref} in this org. Run executionContextList to see the ones you can use.`,
+				})
+			}
+			skipped.push({ target: ref, outcome: 'skipped', reason: 'not_found' })
+			continue
+		}
+		if (entries.some((e) => e.kind === 'context' && e.id === row.id)) continue
+		entries.push({ kind: 'context', id: row.id })
+	}
+	return {
+		entries,
+		strict: !entries.some((entry) => entry.kind === 'cloud'),
+		skipped,
 	}
 }

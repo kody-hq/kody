@@ -30,6 +30,8 @@ import {
 	type Ed25519PublicJwk,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { finishRunRecord } from '#worker/run-records/service.ts'
+import { type ExecuteRequirement, grantRefusal } from './routing.ts'
+import { getExecutionContext, loadContextAccess, parseGrant } from './store.ts'
 import { type RunRecordHandle } from '#worker/run-records/types.ts'
 
 export const executionContextsUnavailableCode = 'execution_contexts_unavailable'
@@ -38,6 +40,18 @@ const ticketLifetimeMs = 30_000
 const historyRetentionMs = 30 * 24 * 60 * 60 * 1000
 const historyMaxRows = 1_000
 const maxRunResultBytes = 1024 * 1024
+const queuedRetryMs = 30_000
+const queuedAcceptWindowMs = 10_000
+
+type QueuedRow = {
+	run_id: string
+	request_json: string
+	lease_json: string
+	run_record_json: string | null
+	requires_json: string
+	position: number
+	expires_at: number
+}
 
 /** What origin hands the session about the registered context. */
 export type ExecutionContextSnapshot = {
@@ -243,6 +257,16 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 		sql.exec(
 			`CREATE INDEX IF NOT EXISTS history_dispatched ON history (dispatched_at)`,
 		)
+		sql.exec(`CREATE TABLE IF NOT EXISTS queued (
+			run_id TEXT PRIMARY KEY,
+			request_json TEXT NOT NULL,
+			lease_json TEXT NOT NULL,
+			run_record_json TEXT,
+			requires_json TEXT NOT NULL,
+			position INTEGER NOT NULL,
+			expires_at INTEGER NOT NULL,
+			created_at INTEGER NOT NULL
+		)`)
 		sql.exec(`CREATE TABLE IF NOT EXISTS audit (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			at INTEGER NOT NULL,
@@ -573,6 +597,7 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 				ws.serializeAttachment(attachment)
 				this.#updateStatus(ws, body.status)
 				await this.#recordCapabilities(body)
+				this.ctx.waitUntil(this.#drainQueue())
 				return
 			}
 			case 'status':
@@ -845,6 +870,203 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 		await this.#send(live.ws, 'run.commit', { runId: lease.runId })
 		await this.#ensureAlarm(input.request.deadline + ecpLostAfterDeadlineMs)
 		return { outcome: 'committed' }
+	}
+
+	/**
+	 * Holds a run that found this context offline until it reconnects, up to
+	 * `expiresAt`. Dispatch on reconnect re-checks access and the grant.
+	 */
+	async enqueue(input: {
+		request: EcpRunRequestBody
+		lease: ExecutionContextLease
+		runRecord: RunRecordHandle | null
+		requires: Array<ExecuteRequirement>
+		position: number
+		expiresAt: number
+	}) {
+		this.ctx.storage.sql.exec(
+			`INSERT INTO queued (run_id, request_json, lease_json, run_record_json,
+			   requires_json, position, expires_at, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			 ON CONFLICT(run_id) DO NOTHING`,
+			input.lease.runId,
+			JSON.stringify(input.request),
+			JSON.stringify(input.lease),
+			input.runRecord ? JSON.stringify(input.runRecord) : null,
+			JSON.stringify(input.requires),
+			input.position,
+			input.expiresAt,
+			Date.now(),
+		)
+		await this.#ensureAlarm(input.expiresAt)
+		// It may have come back between the offline probe and now.
+		if (this.#liveSocket()) this.ctx.waitUntil(this.#drainQueue())
+		return { queued: true }
+	}
+
+	/** Queued runs waiting for this context, oldest first. */
+	listQueued(): Array<{ runId: string; expiresAt: number; queuedAt: number }> {
+		return this.ctx.storage.sql
+			.exec<{ run_id: string; expires_at: number; created_at: number }>(
+				`SELECT run_id, expires_at, created_at FROM queued ORDER BY created_at`,
+			)
+			.toArray()
+			.map((row) => ({
+				runId: row.run_id,
+				expiresAt: row.expires_at,
+				queuedAt: row.created_at,
+			}))
+	}
+
+	#draining = false
+
+	async #drainQueue() {
+		if (this.#draining) return
+		this.#draining = true
+		try {
+			const now = Date.now()
+			await this.#expireQueued(now)
+			const rows = this.ctx.storage.sql
+				.exec<QueuedRow>(
+					`SELECT run_id, request_json, lease_json, run_record_json,
+					   requires_json, position, expires_at
+					 FROM queued ORDER BY created_at`,
+				)
+				.toArray()
+			for (const queued of rows) {
+				if (!this.#liveSocket()) return
+				const outcome = await this.#dispatchQueued(queued)
+				if (outcome === 'keep') {
+					if (this.#committedCount() > 0) {
+						await this.#ensureAlarm(Date.now() + queuedRetryMs)
+					}
+					return
+				}
+				this.ctx.storage.sql.exec(
+					`DELETE FROM queued WHERE run_id = ?`,
+					queued.run_id,
+				)
+			}
+		} finally {
+			this.#draining = false
+		}
+	}
+
+	async #dispatchQueued(queued: QueuedRow): Promise<'done' | 'keep'> {
+		const lease = JSON.parse(queued.lease_json) as ExecutionContextLease
+		const request = JSON.parse(queued.request_json) as EcpRunRequestBody
+		const requires = JSON.parse(
+			queued.requires_json,
+		) as Array<ExecuteRequirement>
+		const handle = queued.run_record_json
+			? (JSON.parse(queued.run_record_json) as RunRecordHandle)
+			: null
+		const fail = async (message: string, name: string) => {
+			if (handle) {
+				await finishRunRecord({
+					env: this.env,
+					handle,
+					status: 'error',
+					error: Object.assign(new Error(message), { name }),
+				})
+			}
+			return 'done' as const
+		}
+		const row = await getExecutionContext(this.env.APP_DB, lease.ecid)
+		if (!row || row.revoked_at) {
+			return await fail(
+				'The execution context this run was queued for was removed before it reconnected (execution_context_unavailable).',
+				'ExecutionContextUnavailable',
+			)
+		}
+		const access = await loadContextAccess(this.env.APP_DB, row, {
+			userId: lease.requester.userId,
+			orgId: lease.orgId,
+		})
+		if (!access.usable) {
+			return await fail(
+				`${row.name} reconnected, but the person this run acts as can no longer use it (${access.unusableReason ?? 'not_granted'}), so it did not run (execution_context_access_lost).`,
+				'ExecutionContextAccessLost',
+			)
+		}
+		const grant = parseGrant(row)
+		const picks = Object.entries(request.credentialPicks ?? {})
+		const refusal = grantRefusal({
+			grant,
+			requires,
+			credentials: picks.length > 0 ? (new Map(picks) as never) : null,
+		})
+		if (refusal) {
+			return await fail(
+				`${row.name} reconnected, but its grant no longer allows this run (${refusal}), so it did not run (context_not_usable).`,
+				'ExecutionContextNotUsable',
+			)
+		}
+		const now = Date.now()
+		const deadline = now + grant.limits.timeoutMs
+		const dispatched = await this.dispatch({
+			request: {
+				...request,
+				deadline,
+				acceptBy: now + queuedAcceptWindowMs,
+				grantVersion: row.grant_version,
+				limits: {
+					timeoutMs: grant.limits.timeoutMs,
+					maxResultBytes: grant.payload.maxResultBytes,
+					memoryMb: grant.limits.memoryMb,
+				},
+			},
+			lease: {
+				...lease,
+				deadline,
+				runtime: grant.runtime,
+				credentialIds:
+					grant.credentials.mode === 'list' ? grant.credentials.ids : [],
+			},
+			runRecord: handle,
+			position: queued.position,
+		})
+		switch (dispatched.outcome) {
+			case 'committed':
+				return 'done'
+			case 'rejected':
+				return await fail(
+					`${row.name} reconnected and refused this run (${dispatched.code ?? 'rejected'}).`,
+					'ExecutionContextRejected',
+				)
+			default:
+				return 'keep'
+		}
+	}
+
+	async #expireQueued(now: number) {
+		const expired = this.ctx.storage.sql
+			.exec<{
+				run_id: string
+				run_record_json: string | null
+				created_at: number
+			}>(
+				`DELETE FROM queued WHERE expires_at <= ?
+				 RETURNING run_id, run_record_json, created_at`,
+				now,
+			)
+			.toArray()
+		const name = this.#snapshot()?.name ?? 'The execution context'
+		for (const row of expired) {
+			if (!row.run_record_json) continue
+			const minutes = Math.round((now - row.created_at) / 60_000)
+			await finishRunRecord({
+				env: this.env,
+				handle: JSON.parse(row.run_record_json) as RunRecordHandle,
+				status: 'error',
+				error: Object.assign(
+					new Error(
+						`${name} did not reconnect within ${minutes} minutes, so the queued run expired without running (execution_context_queue_expired).`,
+					),
+					{ name: 'ExecutionContextQueueExpired' },
+				),
+			})
+		}
 	}
 
 	#setRunState(runId: string, state: string) {
@@ -1395,6 +1617,13 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 			now,
 		)
 		this.#pruneHistory(now)
+		await this.#expireQueued(now)
+		if (this.#liveSocket()) await this.#drainQueue()
+		const queuedNext = this.ctx.storage.sql
+			.exec<{ at: number | null }>(`SELECT MIN(expires_at) AS at FROM queued`)
+			.one().at
+		if (queuedNext !== null)
+			await this.#ensureAlarm(Math.max(now + 1000, queuedNext))
 		const next = this.ctx.storage.sql
 			.exec<{ deadline: number | null }>(
 				`SELECT MIN(deadline) AS deadline FROM runs WHERE state = 'committed'`,

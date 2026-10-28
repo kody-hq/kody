@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
+import { runChainShapeError } from './chain-rules.ts'
 import { grantRefusal, planTargets } from './routing.ts'
 import { type ExecutionContextRow } from './store.ts'
 
@@ -111,4 +112,14 @@ test('a grant refuses runs it cannot serve', () => {
 	expect(
 		grantRefusal({ grant: ecpDefaultGrant, requires: [], credentials: null }),
 	).toBeNull()
+})
+
+test('a run chain follows the default chain shape rules', () => {
+	expect(runChainShapeError(['laptop', 'cloud'])).toBeNull()
+	expect(runChainShapeError(['laptop'])).toBeNull()
+	expect(runChainShapeError(['cloud', 'laptop'])?.code).toBe('invalid_request')
+	expect(runChainShapeError(['a', 'a'])?.code).toBe('invalid_request')
+	expect(runChainShapeError(['a', 'b', 'c', 'd'])?.code).toBe('chain_too_long')
+	expect(runChainShapeError(['a', 'b', 'c', 'cloud'])).toBeNull()
+	expect(runChainShapeError([])?.code).toBe('invalid_request')
 })
