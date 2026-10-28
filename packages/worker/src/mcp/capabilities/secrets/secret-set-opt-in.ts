@@ -30,6 +30,7 @@ import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import { assertCredentialSecurityEditAllowed } from './credential-security-edit.ts'
 import { type SaveSecretCredential } from '#mcp/secrets/service.ts'
 import { type secretScopeValues } from '#mcp/secrets/types.ts'
 
@@ -123,11 +124,35 @@ export async function planOptInCredentialFields(
 	ctx: CapabilityContext,
 	input: { input: OptInInput; authorityPackageId: string | null | undefined },
 ): Promise<OptInCredentialPlan> {
-	return planOptInCredentialFieldsForOrg({
+	const orgId = ownerIdFromCaller(ctx.callerContext)
+	const { inject, placement } = input.input
+	const touchesSecurityFields = inject !== undefined || placement !== undefined
+	const existing = touchesSecurityFields
+		? await readStoredCredentialPlacement({
+				db: ctx.env.APP_DB,
+				orgId,
+				name: input.input.name.trim(),
+			})
+		: null
+	const plan = await planOptInCredentialFieldsForOrg({
 		db: ctx.env.APP_DB,
-		orgId: ownerIdFromCaller(ctx.callerContext),
+		orgId,
 		...input,
 	})
+	if (touchesSecurityFields && plan.mode !== 'none') {
+		assertCredentialSecurityEditAllowed(ctx, {
+			credential: { kind: 'secret', name: input.input.name.trim() },
+			before: existing ?? {
+				inject: defaultCredentialInject,
+				placement: defaultNewCredentialFillPlacement,
+			},
+			after: {
+				...(inject !== undefined ? { inject } : {}),
+				...(placement !== undefined ? { placement } : {}),
+			},
+		})
+	}
+	return plan
 }
 
 /**

@@ -948,3 +948,23 @@ manifest declaration could satisfy it.
   per-package per-ref grants, item websites as hosts, `https:` only, and
   redaction all still apply. Mappings, call maps, candidates, and creation links
   skip secret-provider needs.
+
+## Amendment 2026-10-27: widening placement and changing inject are website-only
+
+Kent decided on 2026-10-27 that code running with a credential's authority must
+not be able to move its value somewhere new. Before this, `credentialUpdate` and
+`secretSet` let ad hoc `execute` widen placement (for example add `body`) or
+point inject at a different header or query parameter.
+
+- **Refused.** Widening fill placement (null, or any request part or header name
+  the stored placement lacks) and any inject change, from hosted `execute`,
+  `execute --local`, package code, and app code. The refusal names the
+  credential and links to its page on the website.
+- **Signal.** The same host-set caller signals as the CLI bootstrap refusal:
+  hosted execute has no `openApiPrincipal`, the local CapabilityProxy sets
+  `localExecuteHop`, and package or app runtimes carry their storage context.
+  None of them comes from module arguments.
+- **Allowed.** Narrowing placement and provider changes, from every caller. The
+  website (credential page and account secret editor) and the MCP `api` tool
+  keep full edits. New credentials created from code may keep the defaults
+  (headers-only, `Authorization: Bearer`) or narrow them.

@@ -79,6 +79,7 @@ async function setup() {
 		scopes?: Array<OrgPermission>,
 	) => ({
 		env,
+		openApiPrincipal: { kind: 'mcp' } as const,
 		callerContext: createMcpCallerContext({
 			source: { kind: 'mcp-oauth' },
 			scopes,
@@ -569,4 +570,123 @@ test('new Keys default to headers-only; placement updates audit and can clear to
 	})
 	await t.set({ name: 'apiKey', placement: null })
 	expect((await t.entry('apiKey'))?.placement_json).toBeNull()
+})
+
+test('execute code cannot widen placement or change inject; narrowing and provider still work', async () => {
+	const t = await setup()
+	await t.set({ name: 'apiKey', value: 'sk_value' })
+	const listed = await secretListCapability.handler({ scope: 'user' }, t.owner)
+	const credentialId = listed.secrets.find(
+		(secret) => secret.name === 'apiKey',
+	)!.credential_id
+	const { openApiPrincipal: _mcp, ...hostedExecute } = t.owner
+	const localExecute = { ...t.owner, localExecuteHop: true as const }
+	const appCode = {
+		...t.owner,
+		callerContext: {
+			...t.owner.callerContext,
+			storageContext: {
+				sessionId: null,
+				appId: 'app-1',
+				packageId: null,
+				storageId: null,
+			},
+		},
+	}
+	for (const caller of [hostedExecute, localExecute, appCode]) {
+		await expect(
+			credentialUpdateCapability.handler(
+				{
+					credential_id: credentialId,
+					placement: { headers: true, body: true },
+				},
+				caller as never,
+			),
+		).rejects.toThrow(
+			/cannot widen its placement for credential "apiKey"[\s\S]*credential's page on the website: https:\/\/heykody\.dev\//,
+		)
+		await expect(
+			credentialUpdateCapability.handler(
+				{ credential_id: credentialId, placement: null },
+				caller as never,
+			),
+		).rejects.toThrow('cannot widen its placement')
+		await expect(
+			credentialUpdateCapability.handler(
+				{
+					credential_id: credentialId,
+					inject: { kind: 'query', param: 'api_key' },
+				},
+				caller as never,
+			),
+		).rejects.toThrow('cannot change its inject')
+		await expect(
+			secretSetCapability.handler(
+				{
+					scope: 'user',
+					name: 'apiKey',
+					inject: { kind: 'header', name: 'x-api-key', format: '{value}' },
+				} as never,
+				caller as never,
+			),
+		).rejects.toThrow('cannot change its inject')
+		await expect(
+			secretSetCapability.handler(
+				{ scope: 'user', name: 'apiKey', placement: { query: true } } as never,
+				caller as never,
+			),
+		).rejects.toThrow('cannot widen its placement')
+	}
+	const stored = await t.entry('apiKey')
+	expect(JSON.parse(stored!.placement_json!)).toEqual({ headers: true })
+	expect(JSON.parse(stored!.inject_json)).toEqual({
+		kind: 'header',
+		name: 'Authorization',
+		format: 'Bearer {value}',
+	})
+
+	const narrowed = await credentialUpdateCapability.handler(
+		{
+			credential_id: credentialId,
+			provider: 'example',
+			placement: { headers: ['Authorization'] },
+		},
+		hostedExecute as never,
+	)
+	expect(narrowed).toMatchObject({
+		provider: 'example',
+		placement: { headers: ['Authorization'] },
+	})
+	await secretSetCapability.handler(
+		{
+			scope: 'user',
+			name: 'apiKey',
+			placement: { headers: ['authorization'] },
+		} as never,
+		localExecute as never,
+	)
+	await secretSetCapability.handler(
+		{
+			scope: 'user',
+			name: 'freshKey',
+			value: 'sk_fresh',
+			placement: { headers: true },
+		} as never,
+		hostedExecute as never,
+	)
+	expect(JSON.parse((await t.entry('freshKey'))!.placement_json!)).toEqual({
+		headers: true,
+	})
+	await expect(
+		secretSetCapability.handler(
+			{
+				scope: 'user',
+				name: 'otherKey',
+				value: 'sk_other',
+				placement: { headers: true, path: true },
+			} as never,
+			hostedExecute as never,
+		),
+	).rejects.toThrow('cannot widen its placement')
+	expect(await t.entry('otherKey')).toBeNull()
 })
