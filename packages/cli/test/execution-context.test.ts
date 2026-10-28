@@ -14,6 +14,7 @@ import {
 	registerContext,
 	reloginMessage,
 } from '../src/execution-context/client.js'
+import { runExecutionContextCommand } from '../src/execution-context/commands.js'
 import { runScopedFetch } from '../src/execution-context/daemon.js'
 import {
 	decryptPrivateKey,
@@ -130,4 +131,62 @@ test('run-scoped fetch signs Kody API calls and never sends the bearer token', a
 	)
 	assert.equal(other!.headers.get('authorization'), 'Bearer other')
 	assert.equal(other!.headers.get(ecpSignatureHeader), null)
+})
+
+test('kody chain show and add read the chain out of the API response', async () => {
+	const chain = {
+		entries: [{ kind: 'cloud' }],
+		strict: false,
+		updatedAt: '2026-01-01T00:00:00.000Z',
+		updatedBy: null,
+	}
+	const puts: Array<unknown> = []
+	const fetchFn = (async (url: URL | string, init?: RequestInit) => {
+		const path = new URL(url).pathname
+		if (path === '/v1/execution-contexts') {
+			return Response.json({
+				contexts: [
+					{ id: 'ec_box', name: 'box', status: 'online', usable: true },
+				],
+			})
+		}
+		if (init?.method === 'PUT') {
+			const body = JSON.parse(String(init.body)) as {
+				entries: Array<{ kind: string; id?: string }>
+			}
+			puts.push(body)
+			return Response.json({
+				chain: { ...chain, entries: [...body.entries], strict: false },
+			})
+		}
+		return Response.json({ chain })
+	}) as typeof fetch
+	const run = async (positionals: Array<string>) => {
+		let text = ''
+		await runExecutionContextCommand({
+			command: 'chain',
+			positionals,
+			values: {},
+			apiUrl: 'https://api.kody.test',
+			token: async () => 'kody_at_test',
+			clientVersion: '0.0.0',
+			write: (chunk) => {
+				text += chunk
+			},
+			fetchFn,
+		})
+		return text
+	}
+	assert.equal(await run(['show']), '1. Kody cloud (always last)\n')
+	assert.equal(
+		await run(['add', 'box']),
+		'1. ec_box\n2. Kody cloud (always last)\n',
+	)
+	assert.deepEqual(puts, [
+		{
+			entries: [{ kind: 'context', id: 'ec_box' }, { kind: 'cloud' }],
+			strict: false,
+			ifMatch: '2026-01-01T00:00:00.000Z',
+		},
+	])
 })

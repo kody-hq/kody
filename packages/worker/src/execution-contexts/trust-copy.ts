@@ -56,7 +56,7 @@ export function optInTrustNotice(input: {
 export type RegistrationNextStep = {
 	kind: 'add_to_chain' | 'share'
 	text: string
-	cli: string
+	cli?: string
 	mcp: { capability: string }
 	api: { method: string; path: string }
 }
@@ -75,7 +75,6 @@ export function registrationNextSteps(input: {
 		{
 			kind: 'share',
 			text: `Optional: share ${input.name} with people, a team, or everyone in the org. Sharing lets them run code on this machine after they opt in.`,
-			cli: `kody context share ${input.name} --user <username>`,
 			mcp: { capability: 'executionContextShareSet' },
 			api: {
 				method: 'PUT',

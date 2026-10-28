@@ -67,6 +67,7 @@ export async function runExecutionContextCommand(
 	const base = {
 		apiUrl: input.apiUrl,
 		...(input.org ? { org: input.org } : {}),
+		...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
 	}
 	if (input.command === 'context' && sub === 'register') {
 		const name = input.values.name ?? rest[0]
@@ -83,7 +84,6 @@ export async function runExecutionContextCommand(
 			thumbprint,
 			capabilities: localCapabilities(),
 			client: { name: 'kody-cli', version: input.clientVersion },
-			...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
 		})
 		saveContext({
 			context: {
@@ -146,14 +146,15 @@ export async function runExecutionContextCommand(
 	}
 	if (input.command === 'chain') {
 		const token = await input.token()
-		const current = await apiJson({
+		const read = await apiJson({
 			...base,
 			token,
 			method: 'GET',
 			path: '/v1/execution-chain',
 		})
+		const current = chainOf(read)
 		if (sub === 'show' || sub === undefined) {
-			out(input, current, describeChain(current))
+			out(input, read, describeChain(current))
 			return 0
 		}
 		if (sub !== 'add' && sub !== 'remove') {
@@ -165,7 +166,6 @@ export async function runExecutionContextCommand(
 			...base,
 			token,
 			ref,
-			fetchFn: input.fetchFn,
 		})
 		const entries = (
 			(current.entries ?? []) as Array<{ kind: string; id?: string }>
@@ -194,7 +194,7 @@ export async function runExecutionContextCommand(
 				ifMatch: current.updatedAt ?? null,
 			},
 		})
-		out(input, updated, describeChain(updated))
+		out(input, updated, describeChain(chainOf(updated)))
 		return 0
 	}
 	if (input.command === 'daemon') {
@@ -259,6 +259,10 @@ async function resolveContextId(input: {
 	if (!match)
 		throw new Error(`No execution context named ${input.ref} in this org.`)
 	return match.id
+}
+
+function chainOf(body: Record<string, unknown>) {
+	return (body.chain ?? {}) as Record<string, unknown>
 }
 
 function describeChain(chain: Record<string, unknown>) {
