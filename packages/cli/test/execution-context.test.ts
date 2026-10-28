@@ -12,7 +12,6 @@ import {
 	generateContextKey,
 	importContextKey,
 	registerContext,
-	reloginMessage,
 } from '../src/execution-context/client.js'
 import { runExecutionContextCommand } from '../src/execution-context/commands.js'
 import { runScopedFetch } from '../src/execution-context/daemon.js'
@@ -80,9 +79,12 @@ test('registering with a pre-PR 2 login prints the exact kody login command', as
 			client: { name: 'kody-cli', version: '0.0.0' },
 			fetchFn,
 		}),
-		(error: Error) => error.message === reloginMessage,
+		(error: Error) => {
+			assert.match(error.message, /Run `kody login` again/)
+			assert.match(error.message, /kody context register/)
+			return true
+		},
 	)
-	assert.match(reloginMessage, /Run `kody login` again/)
 })
 
 test('run-scoped fetch signs Kody API calls and never sends the bearer token', async () => {
