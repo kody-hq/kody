@@ -74,7 +74,7 @@ export function PackageAppConnectedPeopleRoute({
 	})
 	const busy = mutation.isPending ? mutation.variables?.grantId : null
 	const people = view.people.filter((person) => !revoked.has(person.grantId))
-	const total = Math.max(0, view.total - revoked.size)
+	const total = Math.max(0, view.total - (view.people.length - people.length))
 	const pageCount = packageAppConnectedPeoplePageCount(view)
 
 	async function revoke(person: PackageAppConnectedPersonView) {
