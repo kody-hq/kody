@@ -15,7 +15,10 @@ import {
 	parseHostApprovalRequiredBatchMessage,
 	parsePackageAccessRequiredMessage,
 } from '#mcp/secrets/errors.ts'
-import { buildBasicAuthSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
+import {
+	buildBasicAuthSecretPlaceholder,
+	buildSecretPlaceholder,
+} from '#mcp/secrets/placeholders.ts'
 import * as secretPlacement from '#mcp/secrets/secret-placement.ts'
 import * as secretService from '#mcp/secrets/service.ts'
 import * as communityRepo from '#worker/community/repo.ts'
@@ -1941,4 +1944,45 @@ test('fetch gateway provider placeholders: normalize mixed case, deny wrong host
 	expect(resolveSpy).toHaveBeenLastCalledWith(
 		expect.objectContaining({ provider: '1Password', ref: providerRef }),
 	)
+})
+
+test('fetch gateway seals token fields of a credential-filled response and fills them on egress', async () => {
+	vi.spyOn(secretService, 'resolveSecret').mockResolvedValue(
+		userSecret('client-secret-value', ['auth.example.com']),
+	)
+	const seen: Array<string | null> = []
+	const globalFetch = vi.fn(async (outbound: Request) => {
+		seen.push(outbound.headers.get('authorization'))
+		return outbound.url.endsWith('/token')
+			? Response.json({ access_token: 'minted', token_type: 'Bearer' })
+			: Response.json({ echoed: outbound.headers.get('authorization') })
+	}) as unknown as typeof fetch
+	const runProps = { ...props, credentialClientBinding: 'run-a' }
+	const send = (url: string, authorization: string, gatewayProps = runProps) =>
+		executeGatewayFetch({
+			env,
+			props: gatewayProps,
+			request: new Request(url, { headers: { Authorization: authorization } }),
+			globalFetch,
+		})
+	const secret = buildSecretPlaceholder({ name: 'clientSecret', scope: null })
+	const text = await (
+		await send('https://auth.example.com/token', `Bearer ${secret}`)
+	).text()
+	expect(text).not.toContain('minted')
+	const bearer = `Bearer ${String((JSON.parse(text) as Record<string, unknown>).access_token)}`
+	// Filled on egress; the echo is redacted, not resealed.
+	const echoed = await send('https://api.example.com/v1/me', bearer)
+	expect(seen[1]).toBe('Bearer minted')
+	expect(await echoed.text()).not.toContain('minted')
+	await expect(
+		send('https://api.example.com/v1/me', bearer, {
+			...props,
+			credentialClientBinding: 'run-b',
+		}),
+	).rejects.toThrow(/another run/)
+	await expect(send('https://collector.test/x', bearer)).rejects.toThrow(
+		/may only be sent to example\.com, not collector\.test/,
+	)
+	expect(seen).toHaveLength(2)
 })

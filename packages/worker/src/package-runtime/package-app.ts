@@ -106,8 +106,6 @@ import {
 import {
 	createExecutionSecretRedactor,
 	type ExecutionSecretRedactor,
-	trackRunSecretToolName,
-	trackSecretValueForms,
 } from '#mcp/secrets/execution-secret-redactor.ts'
 import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import { beginRunRecord, finishRunRecord } from '#worker/run-records/service.ts'
@@ -2033,13 +2031,6 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		// Discard any caller-supplied authority field (GHSA-5fv3).
 		const { args } = takeSecretAuthorityFromCapabilityArgs([input.args ?? {}])
 		const capabilityArgs = (args[0] ?? {}) as Record<string, unknown>
-		if (name === trackRunSecretToolName) {
-			trackSecretValueForms(
-				(value) => this.secretRedactor.track(value),
-				capabilityArgs.value,
-			)
-			return { ok: true }
-		}
 		if (name === packageAppIdentityCapabilityName) {
 			return await this.visitorIdentityAnswer(
 				boundPackageId,

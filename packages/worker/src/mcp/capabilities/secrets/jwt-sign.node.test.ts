@@ -21,6 +21,7 @@ import {
 import * as secretService from '#mcp/secrets/service.ts'
 import * as unresolvedSecret from '#mcp/secrets/unresolved-secret.ts'
 import { personalOrgAccessD1 } from '#worker/test-support/org-binding-query.ts'
+import * as sealedToken from '#worker/credentials/sealed-token.ts'
 import { jwtSignCapability } from './jwt-sign.ts'
 import { decodeHmacKeyMaterial, extractSecretMaterial } from './jwt-signing.ts'
 
@@ -30,6 +31,7 @@ const ctx = {
 	env: {
 		APP_DB: personalOrgAccessD1(),
 		SENTRY_ENVIRONMENT: 'test',
+		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
 	} as unknown as Env,
 	callerContext: createMcpCallerContext({
 		source: { kind: 'mcp-oauth' },
@@ -71,9 +73,17 @@ function stubSecret(value: string | null) {
 	})
 }
 
-function signWith(value: string, input: SignInput, context = ctx) {
+/** Signs, checks the result is sealed, and returns the JWT it sealed. */
+async function signWith(value: string, input: SignInput, context = ctx) {
 	stubSecret(value)
-	return jwtSignCapability.handler(input, context)
+	const seal = vi.spyOn(sealedToken, 'sealToken')
+	const result = await jwtSignCapability.handler(input, context)
+	const sealedInput = seal.mock.calls.at(-1)?.[0]
+	seal.mockRestore()
+	if (!sealedInput) throw new Error('secretJwtSign returned an unsealed JWT.')
+	expect(result.jwt).not.toContain(sealedInput.value)
+	expect(result.jwt).not.toContain('.ey')
+	return { ...result, jwt: sealedInput.value, sealedTo: sealedInput.to }
 }
 
 function decodeJwtPart(value: string | undefined) {
@@ -507,4 +517,32 @@ test('secretJwtSign accepts opaque {{secret:…}} refs and remaps share-grant gu
 		}),
 	)
 	expect(JSON.stringify(signed)).not.toContain('PRIVATE KEY')
+})
+
+test('secretJwtSign seals the JWT to the aud URL or send_to_host domain', async () => {
+	lookupSecretsThroughResolveSecret()
+	const { privateKey } = createKeyPair()
+	const claims = { iss: 'app', iat: 1, exp: 3601 }
+	const byAudience = await signWith(privateKey, {
+		private_key_secret_name: 'serviceAccountKey',
+		algorithm: 'RS256',
+		claims: { ...claims, aud: 'https://oauth2.example.com/token' },
+	})
+	expect(byAudience.sealedTo).toMatchObject({
+		binding: null,
+		domains: ['example.com'],
+	})
+	const byHost = await signWith(privateKey, {
+		private_key_secret_name: 'serviceAccountKey',
+		algorithm: 'RS256',
+		send_to_host: 'api.example.org',
+		claims: { ...claims, aud: 'not-a-url' },
+	})
+	expect(byHost.sealedTo.domains).toEqual(['example.org'])
+	const anyHost = await signWith(privateKey, {
+		private_key_secret_name: 'serviceAccountKey',
+		algorithm: 'RS256',
+		claims,
+	})
+	expect(anyHost.sealedTo.domains).toEqual([sealedToken.anySealedTokenDomain])
 })

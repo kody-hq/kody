@@ -8,7 +8,6 @@ import { type CredentialClientToolOptions } from '#mcp/runtime-helper-manifest.t
 import {
 	createExecutionSecretRedactor,
 	type ExecutionSecretRedactor,
-	trackSecretValueForms,
 } from '#mcp/secrets/execution-secret-redactor.ts'
 import {
 	credentialCallMapSchema,
@@ -244,12 +243,7 @@ async function callKodyPath(input: {
 	}
 	if (path.length === 2 && name === 'oauthClientCredentials') {
 		return invokeCapability(() =>
-			runCapabilityProxyOauthClientCredentials({
-				ctx,
-				args,
-				trackAccessToken: (accessToken) =>
-					trackSecretValueForms((value) => redactor.track(value), accessToken),
-			}),
+			runCapabilityProxyOauthClientCredentials({ ctx, args }),
 		)
 	}
 	const needsPackageHostTools =

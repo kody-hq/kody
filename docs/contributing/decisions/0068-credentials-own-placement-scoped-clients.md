@@ -968,3 +968,30 @@ point inject at a different header or query parameter.
   website (credential page and account secret editor) and the MCP `api` tool
   keep full edits. New credentials created from code may keep the defaults
   (headers-only, `Authorization: Bearer`) or narrow them.
+
+## Amendment 2026-10-27: derived tokens come back sealed
+
+Kent decided on 2026-10-27 that a token Kody derives with a credential is a
+value code must not hold, the same as the credential. Before this,
+`oauthClientCredentials` returned the provider's raw token payload (with a
+best-effort redactor on hosted runs only), `secretJwtSign` returned the signed
+JWT, and a manual token request returned whatever the token endpoint sent.
+
+- **Sealed tokens.** `access_token`, `refresh_token`, and `id_token` in a JSON
+  response to a request the fetch gateway filled a credential into, and the
+  `secretJwtSign` JWT, come back as an integration-token placeholder whose name
+  is the token encrypted by the host (AES-GCM, key derived from
+  `SECRET_STORE_KEY`). Code passes it into a fetch header or body
+  (`Authorization: Bearer ...` keeps working) and the gateway opens it on
+  egress.
+- **Bound.** A sealed token fills only for its org, in the run that received it
+  (the run's credential-client binding, or the CapabilityProxy credential for
+  `--local`), on the registrable domain of the token URL (or of the JWT's https
+  `aud` or `send_to_host`), never in a URL query or path, and for at most one
+  hour. A JWT with neither an https `aud` nor `send_to_host` stays sealed and
+  org-bound but may fill on any host, so existing callers keep working.
+- **Server-side.** `oauthClientCredentials` runs its token request through the
+  gateway, hosted and `--local`. The `__kodyTrackRunSecret` redactor hop is
+  gone; nothing derived reaches code to redact.
+- **Unchanged.** Kody-managed integration refresh (`integrations/token-refresh`)
+  already runs on the host and does not go through the gateway.
