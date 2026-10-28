@@ -1,4 +1,4 @@
-# 0082: Context runs never receive credential values
+# 0083: Context runs never receive credential values
 
 - **Status:** accepted
 - **Date:** 2026-10-27

@@ -78,4 +78,4 @@ sequenceDiagram
   logs it and Sentry request URLs redact it.
 
 Decision record:
-[0082](../decisions/0082-context-runs-never-see-credential-values.md).
+[0083](../decisions/0083-context-runs-never-see-credential-values.md).
