@@ -341,6 +341,7 @@ type ListRunsInput = {
 	until?: string | null
 	errorTriage?: RunErrorTriageFilter | null
 	startedByUserId?: string | null
+	executionContextId?: string | null
 	limit: number
 	cursor?: string | null
 }
@@ -3944,6 +3945,10 @@ class RunLogBase extends DurableObject<Env> {
 		if (input.startedByUserId) {
 			clauses.push('r.started_by_user_id = ?')
 			params.push(input.startedByUserId)
+		}
+		if (input.executionContextId) {
+			clauses.push("json_extract(r.metadata_json, '$.executionContext.id') = ?")
+			params.push(input.executionContextId)
 		}
 		if (input.since) {
 			clauses.push('r.started_at >= ?')

@@ -1,3 +1,4 @@
+import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
 import { executionContextsFlagKey } from '#worker/execution-contexts/flag.ts'
 import {
 	type ExecuteRoutingArgs,
@@ -480,6 +481,9 @@ export async function runExecuteToolCall(input: {
 					...(errorDetails ? { errorDetails } : {}),
 					...entitlementStructuredContent(error),
 					...executeAdmissionStructuredContent(error),
+					...(error instanceof ExecutionContextError
+						? { errorCode: error.code, ...error.details }
+						: {}),
 				},
 				isError: true,
 			}
@@ -585,25 +589,31 @@ export async function runExecuteToolCall(input: {
 		// so let it overlap the registry read; nothing that writes, retrieves
 		// memories, or runs sandbox code proceeds until it has admitted.
 		const normalizedCallMap = normalizeCredentialCallMap(credentials)
-		const admissionPromise = claimWorkerDay
-			? admitHostedExecuteCall({
-					env,
-					ownerId: storageOwnerId,
-					email: entitlementEmail,
-					repeatKey: await executeRepeatKey({
-						credential: callerContext.request?.credential ?? null,
-						actorUserId:
-							callerContext.request?.actor?.userId ??
-							callerContext.user?.userId ??
-							null,
-						conversationId,
-						code,
-						invoke,
-						params,
-						credentials: normalizedCallMap,
-					}),
-				})
-			: null
+		// Runs on an execution context never count toward hosted quota, so
+		// when routing is possible admission waits until routing picks cloud.
+		const deferAdmission =
+			Boolean(claimWorkerDay) && liveFlags[executionContextsFlagKey] === true
+		const startAdmission = async () =>
+			claimWorkerDay
+				? admitHostedExecuteCall({
+						env,
+						ownerId: storageOwnerId,
+						email: entitlementEmail,
+						repeatKey: await executeRepeatKey({
+							credential: callerContext.request?.credential ?? null,
+							actorUserId:
+								callerContext.request?.actor?.userId ??
+								callerContext.user?.userId ??
+								null,
+							conversationId,
+							code,
+							invoke,
+							params,
+							credentials: normalizedCallMap,
+						}),
+					})
+				: null
+		let admissionPromise = deferAdmission ? null : startAdmission()
 		void admissionPromise?.catch(() => {})
 
 		if (storageOwnerId) {
@@ -794,6 +804,10 @@ export async function runExecuteToolCall(input: {
 				},
 				isError: routed.result.isError,
 			}
+		}
+		if (deferAdmission) {
+			admissionPromise = startAdmission()
+			await admissionPromise
 		}
 		const admittedWork = (async () => {
 			const [registry] = await Promise.all([registryPromise, admissionPromise])

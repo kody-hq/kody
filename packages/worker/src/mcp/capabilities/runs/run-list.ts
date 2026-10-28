@@ -30,6 +30,7 @@ const runListInputKeys = [
 	'since',
 	'error_triage',
 	'started_by',
+	'execution_context_id',
 	'limit',
 	'cursor',
 ] as const
@@ -95,6 +96,13 @@ export const runListInputSchema = z
 				.optional()
 				.describe(
 					'Optional exact match on the started-by person id (the actor who started the run or owns the enablement).',
+				),
+			execution_context_id: z
+				.string()
+				.min(1)
+				.optional()
+				.describe(
+					'Optional exact match on the execution context (ec_...) a run ran on or tried before falling back.',
 				),
 			limit: runListLimitSchema,
 			cursor: z
@@ -187,6 +195,7 @@ export const runListCapability = defineDomainCapability(
 					since: args.since ?? null,
 					errorTriage: args.error_triage ?? 'open',
 					startedByUserId: args.started_by ?? null,
+					executionContextId: args.execution_context_id ?? null,
 				},
 				limit: args.limit ?? null,
 				cursor: args.cursor ?? null,
