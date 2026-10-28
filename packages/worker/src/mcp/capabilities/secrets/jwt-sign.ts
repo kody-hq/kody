@@ -73,6 +73,7 @@ export const jwtSignCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'secretJwtSign',
+		contextRuns: 'deny',
 		orgPermission: 'secret:use',
 		description:
 			"Sign a JWT with a key stored in a saved secret without revealing the key or the JWT. The returned jwt is a sealed handle: put it in a fetch header or body to the aud URL's domain (or send_to_host) and Kody fills the signed JWT there; a token endpoint's access_token comes back sealed the same way. HMAC algorithms (HS256, HS384, HS512) use key material from the secret; RS*, PS*, ES*, and EdDSA use a PKCS#8 PEM private key. This generic primitive only signs caller-provided header and claims; package or execute code should perform any OAuth token exchange separately.",

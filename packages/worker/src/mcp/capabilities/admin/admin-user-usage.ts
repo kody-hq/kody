@@ -153,6 +153,7 @@ export const adminUserUsageCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminUserUsage',
+		contextRuns: 'deny',
 		description:
 			'Read usage rollups, entitlement counters, plan-limit consumption, estimated Cloudflare Dynamic Worker cost vs catalog list MRR, and observe-only Durable Object duration (GB-s) for one user account by stable user id, email, or username. Admin-only; never returns user content.',
 		keywords: [

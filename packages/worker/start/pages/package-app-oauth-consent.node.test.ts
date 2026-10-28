@@ -134,7 +134,7 @@ test('flag-off consent keeps standard scopes without executor credentials', asyn
 	expect(html).toContain('See your email address')
 	expect(html).toMatch(/name="selected_scopes"[^>]*value="email"/)
 	expect(html).not.toContain('Required credentials')
-	expect(html).not.toContain('Create new credentials')
+	expect(html).not.toContain('package-app-oauth-need-create-')
 })
 
 test('package-app OAuth consent hides an empty already allowed section', async () => {
@@ -183,6 +183,9 @@ test('package-app OAuth consent recommends one credential and hides alternates i
 						],
 						recommendedCredentialId: 'credential-one',
 						createUrl: '/@viewer/-/credentials/new?name=calendar',
+						provider: 'google-calendar',
+						kindLabel: 'OAuth',
+						createDestination: 'viewer',
 					},
 				],
 			},
@@ -197,7 +200,10 @@ test('package-app OAuth consent recommends one credential and hides alternates i
 	expect(html).toContain('>2<')
 	expect(html).toContain('Choose another credential')
 	expect(html).not.toContain('Other calendar credentials')
-	expect(html).toContain('Create new credentials')
+	expect(html.replace(/<!--[\s\S]*?-->|<[^>]*>/g, '')).toContain(
+		'Create a google-calendar OAuth credential',
+	)
+	expect(html).not.toContain('package-app-oauth-need-missing-calendar')
 	expect(html).toMatch(
 		/<input[^>]*name="credential_need:calendar"[^>]*checked=""[^>]*value="credential-one"/,
 	)
@@ -241,6 +247,9 @@ test('package-app consent advanced credential view lists every matching credenti
 							],
 							recommendedCredentialId: 'credential-one',
 							createUrl: '/@viewer/-/credentials/new?name=calendar',
+							provider: 'google-calendar',
+							kindLabel: 'OAuth',
+							createDestination: 'viewer',
 						},
 					],
 				},
@@ -259,7 +268,7 @@ test('package-app consent advanced credential view lists every matching credenti
 	}
 })
 
-test('package-app consent offers Create new credentials when no candidate matches', async () => {
+test('package-app consent names the wanted credential and blocks Allow next to a missing required need', async () => {
 	const html = await renderStartPage(
 		createElement(PackageAppOauthConsentPage, {
 			data: {
@@ -273,6 +282,9 @@ test('package-app consent offers Create new credentials when no candidate matche
 						credentials: [],
 						recommendedCredentialId: null,
 						createUrl: '/@viewer/-/credentials/new?name=calendar',
+						provider: 'google-calendar',
+						kindLabel: 'OAuth',
+						createDestination: 'viewer',
 					},
 				],
 			},
@@ -280,14 +292,79 @@ test('package-app consent offers Create new credentials when no candidate matche
 		href,
 	)
 
-	expect(html).toContain('No matching credentials are available yet.')
-	expect(html).toContain('Create new credentials')
+	const text = html.replace(/<!--[\s\S]*?-->|<[^>]*>/g, '')
+	expect(text).toContain('No google-calendar credential yet.')
+	expect(text).toContain('Create a google-calendar OAuth credential in @viewer')
+	expect(html).toContain('package-app-oauth-need-create-calendar')
 	expect(html).not.toContain('type="radio"')
 	const approveButton = html.match(
 		/<button\b[^>]*data-testid="package-app-oauth-approve"[^>]*>/,
 	)?.[0]
 	expect(approveButton).toContain('disabled=""')
-	expect(html).toContain(
-		'Create a matching credential before allowing this app.',
+	expect(approveButton).toContain(
+		'aria-describedby="package-app-oauth-allow-blocked"',
 	)
+	const missing = html.indexOf('package-app-oauth-need-missing-calendar')
+	expect(missing).toBeGreaterThan(-1)
+	expect(missing).toBeLessThan(html.indexOf('package-app-oauth-approve'))
+	expect(text).toContain(
+		'Required: create a google-calendar OAuth credential to allow this app.',
+	)
+})
+
+const optionalChatNeed = {
+	key: 'chat',
+	description: 'Chat access for this app',
+	required: false,
+	scope: 'need:chat',
+	credentials: [],
+	recommendedCredentialId: null,
+	createUrl: '/@viewer/-/credentials/new?name=chat',
+	provider: 'chat-provider',
+	kindLabel: null,
+	createDestination: 'viewer',
+}
+
+function approveButtonOf(html: string) {
+	return html.match(
+		/<button\b[^>]*data-testid="package-app-oauth-approve"[^>]*>/,
+	)?.[0]
+}
+
+test('package-app consent starts a new optional executor need unchecked', async () => {
+	const html = await renderStartPage(
+		createElement(PackageAppOauthConsentPage, {
+			data: {
+				...loaderData,
+				optionalScopes: [
+					...loaderData.optionalScopes,
+					{ scope: 'need:chat', label: 'Chat access for this app' },
+				],
+				executorNeeds: [optionalChatNeed],
+			},
+		}),
+		href,
+	)
+
+	const checkbox = html.match(
+		/<input\b[^>]*value="need:chat"[^>]*>|<input\b[^>]*name="need:chat"[^>]*>/,
+	)?.[0]
+	expect(checkbox).toBeDefined()
+	expect(checkbox).not.toContain('checked')
+	expect(approveButtonOf(html)).not.toContain('disabled=""')
+})
+
+test('package-app consent blocks Allow when an already allowed optional need lost its credential', async () => {
+	const html = await renderStartPage(
+		createElement(PackageAppOauthConsentPage, {
+			data: {
+				...loaderData,
+				alreadyAllowedScopes: ['need:chat'],
+				executorNeeds: [optionalChatNeed],
+			},
+		}),
+		href,
+	)
+
+	expect(approveButtonOf(html)).toContain('disabled=""')
 })

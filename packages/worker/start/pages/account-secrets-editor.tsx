@@ -3,13 +3,8 @@ import { type FormEvent } from 'react'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { type AccountSecretDetail } from '#universal/loader-data.ts'
 import { Combobox, type ComboboxOption } from '../components/combobox.tsx'
-import {
-	colors,
-	mq,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { AllowedPackagesPicker } from '../components/allowed-packages-picker.tsx'
+import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	fieldCss,
 	fieldLabelCss,
@@ -25,7 +20,6 @@ import {
 	accountInputCss,
 } from './account-management-components.tsx'
 import { recordBodyCss } from './record-table.tsx'
-import { secretPackageIdentityCss } from './account-secrets-approval.tsx'
 import {
 	type EditorState,
 	type SecretScope,
@@ -41,8 +35,6 @@ export type SecretEditorProps = {
 	setEditorState: (next: EditorState) => void
 	packageOptions: Array<{ id: string }>
 	packageSelectOptions: Array<ComboboxOption>
-	availableAllowedPackageOptions: Array<ComboboxOption>
-	packagesById: ReadonlyMap<string, { kodyId: string; name: string }>
 	canCreatePackageSecrets: boolean
 	isMutating: boolean
 	saveState: 'idle' | 'saving' | 'deleting' | 'disconnecting'
@@ -74,8 +66,6 @@ export function SecretEditor(props: SecretEditorProps) {
 		setEditorState,
 		packageOptions,
 		packageSelectOptions,
-		availableAllowedPackageOptions,
-		packagesById,
 		canCreatePackageSecrets,
 		isMutating,
 		saveState,
@@ -247,61 +237,17 @@ export function SecretEditor(props: SecretEditorProps) {
 							is never automatic, including for packages you wrote.
 						</p>
 					</div>
-					{editorState.allowedPackages.length > 0 ? (
-						<div css={{ display: 'grid', gap: spacing.sm }}>
-							{editorState.allowedPackages.map((packageId) => {
-								const metadata = packagesById.get(packageId)
-								const packageLabel = metadata?.kodyId ?? 'Unknown package'
-								return (
-									<div
-										key={packageId}
-										css={{
-											display: 'grid',
-											gridTemplateColumns: 'minmax(0, 1fr) auto',
-											gap: spacing.sm,
-											alignItems: 'center',
-											padding: spacing.sm,
-											border: `1px solid ${colors.border}`,
-											borderRadius: radius.md,
-										}}
-									>
-										<span css={secretPackageIdentityCss}>
-											<strong>{packageLabel}</strong>
-											<code>{packageId}</code>
-										</span>
-										<button
-											type="button"
-											aria-label={`Remove package ${packageLabel}`}
-											onClick={() => removeAllowedPackage(packageId)}
-											css={secondaryButtonCss}
-										>
-											Remove
-										</button>
-									</div>
-								)
-							})}
-						</div>
-					) : (
-						<p css={{ margin: 0, color: colors.textMuted }}>
-							No extra package grants. Self-authored and adopted packages can
-							still read and use this secret.
-						</p>
-					)}
-					{availableAllowedPackageOptions.length > 0 ? (
-						<Combobox
-							key={`allowed-package-picker:${editorState.allowedPackages.join(',')}`}
-							id="secret-allowed-package"
-							label="Add allowed package"
-							placeholder="Search saved packages"
-							value=""
-							options={availableAllowedPackageOptions}
-							onChange={addAllowedPackage}
-						/>
-					) : packageOptions.length > 0 ? (
-						<p css={{ margin: 0, color: colors.textMuted }}>
-							All saved packages are already allowed.
-						</p>
-					) : null}
+					<AllowedPackagesPicker
+						id="secret-allowed-package"
+						placeholder="Search saved packages"
+						options={packageSelectOptions}
+						selected={editorState.allowedPackages}
+						unknownLabel="Unknown package"
+						emptyText="No extra package grants. Self-authored and adopted packages can still read and use this secret."
+						allSelectedText="All saved packages are already allowed."
+						onAdd={addAllowedPackage}
+						onRemove={removeAllowedPackage}
+					/>
 				</div>
 			) : null}
 

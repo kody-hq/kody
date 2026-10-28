@@ -16,6 +16,7 @@ export const adminPackageCodemodDryRunCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminPackageCodemodDryRun',
+		contextRuns: 'deny',
 		description: `Fleet dry-run a registered package codemod: transform in memory and run publish checks without writing. Optional filters canary by userIds or packageIds. ${packageCodemodHeavyPagingHint}`,
 		keywords: [
 			'admin',

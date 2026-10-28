@@ -75,6 +75,7 @@ export const metaMemoryUpsertCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'metaMemoryUpsert',
+		contextRuns: 'allow',
 		orgPermission: memoryPersonalOnlyOrgPermission,
 		description:
 			'Create or update a **personal** memory for the signed-in person (always their personal org, regardless of which org this connection uses). Agents must run `metaMemoryVerify` first. Do not blindly write durable memory without verification. Do not copy a personal memory into an org package without asking the person first. Shared org knowledge belongs in documented packages and org instructions, not memory. If the candidate is really package- or export-scoped guidance, update package docs or JSDoc instead (see search({ entity: "guide:agent_guidance" })).',

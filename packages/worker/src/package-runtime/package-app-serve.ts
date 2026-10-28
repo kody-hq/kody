@@ -1,3 +1,4 @@
+import { packageAppVisitorNeedKeyPattern } from '#worker/package-registry/types.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	type RuntimePackageAppIdentity,
@@ -26,6 +27,7 @@ import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { renderErrorAgentPromptStaticHtml } from '#universal/error-agent-prompt.ts'
 import { buildPackageAppErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
+import { findLivePackageAppOauthGrant } from '#app/package-app-oauth-grants.ts'
 import {
 	getAppBaseUrl,
 	getCanonicalAppBaseUrl,
@@ -1120,9 +1122,47 @@ export async function servePackageAppRequest(input: {
 					}),
 				)
 			: []
-		const requiredExecutorNeeds = visitorNeeds.filter(
-			(need) => need.supplier === 'executor' && need.required !== false,
+		const executorNeeds = visitorNeeds.filter(
+			(need) => need.supplier === 'executor',
 		)
+		const requiredExecutorNeeds = executorNeeds.filter(
+			(need) => need.required !== false,
+		)
+		const consentRedirect = () => {
+			const loginUrl = buildPackageAppLoginUrl({
+				requestUrl: request.url,
+				appLeaf: getPackageNameLeaf(savedPackage.name),
+			})
+			loginUrl.searchParams.set(
+				'scope',
+				[
+					'profile',
+					// Optional needs ride along so consent can offer them; a key
+					// that cannot be a scope is left out rather than failing it.
+					...executorNeeds.flatMap((item) =>
+						item.required !== false ||
+						packageAppVisitorNeedKeyPattern.test(item.key)
+							? [`need:${item.key}`]
+							: [],
+					),
+				].join(' '),
+			)
+			loginUrl.searchParams.set('prompt', 'consent')
+			loginUrl.searchParams.set(
+				'return_to',
+				`${requestUrl.pathname}${requestUrl.search}`,
+			)
+			return attachPackageAppServerTiming(
+				new Response(null, {
+					status: 302,
+					headers: {
+						Location: loginUrl.toString(),
+						'Cache-Control': 'no-store',
+					},
+				}),
+				serverTiming,
+			)
+		}
 		for (const need of requiredExecutorNeeds) {
 			try {
 				await openCredentialClient(
@@ -1158,33 +1198,24 @@ export async function servePackageAppRequest(input: {
 				if (request.method !== 'GET' && request.method !== 'HEAD') {
 					throw error
 				}
-				const loginUrl = buildPackageAppLoginUrl({
-					requestUrl: request.url,
-					appLeaf: getPackageNameLeaf(savedPackage.name),
-				})
-				loginUrl.searchParams.set(
-					'scope',
-					[
-						'profile',
-						...requiredExecutorNeeds.map((item) => `need:${item.key}`),
-					].join(' '),
-				)
-				loginUrl.searchParams.set('prompt', 'consent')
-				loginUrl.searchParams.set(
-					'return_to',
-					`${requestUrl.pathname}${requestUrl.search}`,
-				)
-				return attachPackageAppServerTiming(
-					new Response(null, {
-						status: 302,
-						headers: {
-							Location: loginUrl.toString(),
-							'Cache-Control': 'no-store',
-						},
-					}),
-					serverTiming,
-				)
+				return consentRedirect()
 			}
+		}
+		// Optional needs never block serving, so offer them once: a visitor with
+		// no grant for this app yet goes to consent, and any grant (even one
+		// that declined every optional need) serves the app after that.
+		if (
+			visitor &&
+			(request.method === 'GET' || request.method === 'HEAD') &&
+			executorNeeds.some((need) => need.required === false) &&
+			!(await findLivePackageAppOauthGrant({
+				db: env.APP_DB,
+				personId: visitor.userId,
+				orgUsername: packagePath.username.toLowerCase(),
+				kodyId: savedPackage.kodyId,
+			}))
+		) {
+			return consentRedirect()
 		}
 		servedPublishedCommit = packageManifest.source.published_commit
 		const appWorker = await buildPackageAppWorker({

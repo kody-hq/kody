@@ -16,6 +16,7 @@ export const repoSearchCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoSearch',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'Search within a repo session using rg-style lexical matching over the live session workspace. This is scoped code/file search, not semantic retrieval. When mode=regex, patterns must be valid JavaScript RegExp syntax (not Python/PCRE inline flags). Whitespace-only patterns are rejected.',

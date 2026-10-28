@@ -118,6 +118,7 @@ export const adminPublishedImportableArtifactBackfillCapability =
 		...adminMutationCapabilityAccess,
 		destructive: true,
 		name: 'adminPublishedImportableArtifactBackfill',
+		contextRuns: 'deny',
 		description: `Fleet scan/apply for published packages whose importable-module artifacts are missing, stale, or unusable at the current published commit (a stored bundle the load sites refuse, such as a pre-binding bundle that inlines other packages, counts as missing). Rebuilds artifacts only (no source/content change). Safe and idempotent. ${pagingHint}`,
 		keywords: [
 			'admin',

@@ -28,6 +28,7 @@ export const adminSystemEmailClassifyCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminSystemEmailClassify',
+		contextRuns: 'deny',
 		description:
 			'Mark one operator-owned system inbox message as spam, not spam (accepted), or quarantined, and/or archive or unarchive it. Nothing is deleted; spam and archived mail leave the default adminSystemEmailList view. Never adds a sender rule (use adminSystemEmailSenderRuleSet). Admin-only and audit logged; never touches user-owned email.',
 		keywords: [

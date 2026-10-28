@@ -19,6 +19,7 @@ export const adminPackageCodemodRevertCapability = defineDomainCapability(
 		...adminMutationCapabilityAccess,
 		destructive: true,
 		name: 'adminPackageCodemodRevert',
+		contextRuns: 'deny',
 		description: `Fleet-revert a prior adminPackageCodemodApply (or other apply) run by republishing stored pre-codemod snapshots. ${packageCodemodHeavyPagingHint}`,
 		keywords: [
 			'admin',

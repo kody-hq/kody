@@ -12,6 +12,7 @@ export const secretProviderListCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'secretProviderList',
+		contextRuns: 'allow',
 		orgPermission: 'secret:use',
 		description:
 			'List account-bound external secret providers (credential id for accessGrant, provider id, bound package, door-key secret name, fill placement, non-secret config). Never returns credential values or vault items. Search does not crawl vaults.',

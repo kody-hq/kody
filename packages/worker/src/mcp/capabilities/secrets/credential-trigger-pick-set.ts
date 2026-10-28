@@ -41,6 +41,7 @@ export const credentialTriggerPickSetCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'credentialTriggerPickSet',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
 			"Set which credentials one need uses for your instance of a trigger (cron job, subscription, or webhook), but only to a value you already proposed with credentialMappingPropose and the person approved from that link, for example to switch back after the pick changed. The pick is resolved and written the same way Approve writes it. Anything else is refused: propose it instead. Never turns a trigger on; a trigger that is off needs approval. Needs package:execute on the package and an agent credential (MCP OAuth client, CLI, or API token); the person's own approval page and Credentials tab do not use this.",

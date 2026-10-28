@@ -79,6 +79,7 @@ function createCapabilityFromTool(input: {
 			`MCP server tool ${tool.name}.`,
 		keywords: buildKeywords(tool, ref),
 		...annotationHints,
+		contextRuns: 'allow',
 		orgPermission: 'integration:use',
 		source: 'mcp-server',
 		mcpServer: {

@@ -176,6 +176,35 @@ export async function callTools() {
 	})
 })
 
+test('publish typecheck types credential.visitor for executor needs', async () => {
+	const typecheck = await runTypecheck({
+		'package.json': JSON.stringify({
+			name: '@kody/typecheck-fixture',
+			exports: { '.': './src/index.ts' },
+			kody: {
+				id: 'typecheck-fixture',
+				description: 'Typecheck fixture package',
+				credentials: {
+					github: {
+						kind: 'secret',
+						provider: 'github',
+						supplier: 'executor',
+						description: 'Each visitor brings their own GitHub token.',
+					},
+				},
+			},
+		}),
+		'tsconfig.json': packageTsconfig,
+		'src/index.ts': `import { credential } from 'kody:runtime'
+export async function openVisitorGithub() {
+  const github = await credential.visitor('github')
+  return github.name
+}
+`,
+	})
+	expect(typecheck).toMatchObject({ kind: 'typecheck', ok: true })
+})
+
 test('export modules with only named exports pass publish typecheck', async () => {
 	const typecheck = await runTypecheck({
 		'package.json': createManifest({

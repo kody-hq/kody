@@ -16,6 +16,7 @@ import {
 	approveCredentialProposal,
 	resolveCredentialApproval,
 } from './credential-approval.ts'
+import * as needsClosure from './credential-needs-closure.ts'
 import { describePackageCredentialNeeds } from './package-credential-needs.ts'
 
 vi.mock(
@@ -124,4 +125,70 @@ test('your own default wins over the org default, and a default you cannot Use f
 		autoPick: null,
 		source: 'mine',
 	})
+})
+
+test('executor needs read as visitor-supplied, and only provider matches are listed', async () => {
+	const t = await setup()
+	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
+		{
+			key: 'code',
+			kind: 'secret',
+			provider: 'github',
+			description: 'Read repositories',
+			multiple: false,
+			supplier: 'executor',
+			required: true,
+		},
+		{
+			key: 'chat',
+			kind: 'secret',
+			provider: 'slack',
+			description: 'Post a summary',
+			multiple: false,
+			supplier: 'executor',
+			required: false,
+		},
+	])
+	await t.storeKey('gh-token', 'github')
+	await t.storeKey('unlabeled', 'github')
+	await t.env.APP_DB.prepare(
+		`UPDATE secret_entries SET provider = NULL WHERE name = 'unlabeled'`,
+	).run()
+	const needs = await describePackageCredentialNeeds({
+		env: t.env,
+		request: t.requestAs('bea', 'owner'),
+		ownerUserId: t.acmeId,
+		sourceId: t.savedPackage.sourceId,
+		packageId: t.savedPackage.id,
+	})
+	expect(
+		needs.map((need) => ({
+			key: need.key,
+			supplier: need.supplier,
+			required: need.required,
+			status: need.status,
+			source: need.source,
+			options: need.yourOptions.map((option) => option.name),
+			possibleMatchCount: need.possibleMatchCount,
+		})),
+	).toEqual([
+		{
+			key: 'code',
+			supplier: 'executor',
+			required: true,
+			status: 'executor_supplied',
+			source: 'visitor',
+			options: ['gh-token'],
+			possibleMatchCount: 1,
+		},
+		{
+			key: 'chat',
+			supplier: 'executor',
+			required: false,
+			status: 'executor_supplied',
+			source: 'visitor',
+			options: [],
+			possibleMatchCount: 1,
+		},
+	])
 })

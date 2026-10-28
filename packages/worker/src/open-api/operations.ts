@@ -13,6 +13,7 @@ export type ApiOperationMethod = (typeof apiOperationMethods)[number]
 export const apiOperationTags = [
 	'account',
 	'search',
+	'execution-contexts',
 	'memories',
 	'secrets',
 	'packages',
@@ -179,7 +180,7 @@ const capabilityProxyRoute = {
  *
  * Deliberately absent: secret plaintext reads, inbound webhook receive,
  * package-app HTTP/WebSocket traffic, admin, and runtime-only capabilities
- * (values, package-app fetch, synthetic dispatch). Hosted execute is
+ * (values, synthetic dispatch). Hosted execute is
  * `POST /v1/execute` (native). The in-sandbox `execute` capability stays
  * off this list.
  */
@@ -317,6 +318,8 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'packageCollaboratorRemove',
 		],
 		['PATCH', '/v1/packages/{package_id}', 'packageUpdate'],
+		// Body-only so `kody_id` works as well as `package_id`.
+		['POST', '/v1/packages/app-fetch', 'packageAppFetch'],
 		['GET', '/v1/packages/{package_id}/runs-as', 'packageAppRunsAsGet'],
 		['PUT', '/v1/packages/{package_id}/runs-as', 'packageAppRunsAsSet'],
 		['DELETE', '/v1/packages/{package_id}', 'packageDelete'],
@@ -481,6 +484,35 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'mcpServerLock',
 			{ deprecatedForward: resourceLockForward('mcp_server') },
 		],
+	]),
+	...capabilityRoutes('execution-contexts', [
+		['GET', '/v1/execution-contexts', 'executionContextList'],
+		['GET', '/v1/execution-contexts/{id}', 'executionContextGet'],
+		['PATCH', '/v1/execution-contexts/{id}', 'executionContextUpdate'],
+		['DELETE', '/v1/execution-contexts/{id}', 'executionContextRevoke'],
+		['POST', '/v1/execution-contexts/{id}/opt-in', 'executionContextOptIn'],
+		['DELETE', '/v1/execution-contexts/{id}/opt-in', 'executionContextOptOut'],
+		['GET', '/v1/execution-contexts/{id}/sharing', 'executionContextShareList'],
+		['PUT', '/v1/execution-contexts/{id}/sharing', 'executionContextShareSet'],
+		[
+			'DELETE',
+			'/v1/execution-contexts/{id}/sharing/{grant_id}',
+			'executionContextShareRemove',
+		],
+		[
+			'POST',
+			'/v1/execution-contexts/{id}/attachments',
+			'executionContextAttach',
+		],
+		[
+			'DELETE',
+			'/v1/execution-contexts/{id}/attachments/{org_id}',
+			'executionContextDetach',
+		],
+		['GET', '/v1/execution-contexts/{id}/runs', 'executionContextRunList'],
+		['GET', '/v1/execution-contexts/{id}/audit', 'executionContextAuditList'],
+		['GET', '/v1/execution-chain', 'executionChainGet'],
+		['PUT', '/v1/execution-chain', 'executionChainSet'],
 	]),
 	...capabilityRoutes('runs', [
 		['GET', '/v1/runs', 'runList'],

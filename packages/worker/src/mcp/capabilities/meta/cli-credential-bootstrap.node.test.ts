@@ -1,10 +1,7 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import {
-	cliCredentialBootstrapCapability,
-	cliCredentialBootstrapExecuteRefusal,
-} from './cli-credential-bootstrap.ts'
+import { cliCredentialBootstrapCapability } from './cli-credential-bootstrap.ts'
 
 function mcpCaller() {
 	return createMcpCallerContext({
@@ -24,7 +21,7 @@ test('cliCredentialBootstrap refuses hosted execute (no Open API principal)', as
 			{ lifetime: 'short' },
 			{ env: {} as Env, callerContext: mcpCaller() },
 		),
-	).rejects.toThrow(cliCredentialBootstrapExecuteRefusal)
+	).rejects.toThrow(/cannot be called from execute code/)
 })
 
 test('cliCredentialBootstrap refuses the execute --local CapabilityProxy hop', async () => {
@@ -38,7 +35,7 @@ test('cliCredentialBootstrap refuses the execute --local CapabilityProxy hop', a
 				localExecuteHop: true,
 			},
 		),
-	).rejects.toThrow(cliCredentialBootstrapExecuteRefusal)
+	).rejects.toThrow(/cannot be called from execute code/)
 })
 
 test('cliCredentialBootstrap rejects saved-package and app runtime contexts', async () => {

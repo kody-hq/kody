@@ -168,6 +168,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run generate-types:check
 
+      - name: 🌳 Generated Start route tree
+        if: ${{ !cancelled() }}
+        run: npm run routes:generate:check
+
       - name: 🏗️ Backup build
         if: ${{ !cancelled() }}
         run: npm run backup:build

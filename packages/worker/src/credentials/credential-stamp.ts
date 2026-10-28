@@ -384,6 +384,30 @@ function isCredentialNamedMember(
 	return isCredentialFunctionValue(node.object, bindings)
 }
 
+/** `credential.visitor(key)`: a literal key read on the visitor's grant. */
+function isCredentialVisitorMember(
+	node: AstNode | undefined,
+	bindings: CredentialBindings,
+): boolean {
+	if (
+		node?.type !== 'MemberExpression' &&
+		node?.type !== 'OptionalMemberExpression'
+	) {
+		return false
+	}
+	if (memberPropertyName(node) !== 'visitor') return false
+	return isCredentialFunctionValue(node.object, bindings)
+}
+
+function isCalledMember(node: AstNode, parent: AstNode | undefined) {
+	return Boolean(
+		parent &&
+		(parent.type === 'CallExpression' ||
+			parent.type === 'OptionalCallExpression') &&
+		parent.callee === node,
+	)
+}
+
 function isNonReferenceName(node: AstNode, parent: AstNode) {
 	if (parent.computed === true) return false
 	if (
@@ -428,7 +452,10 @@ function scanParsedCredentialKeys(
 				scan.named()
 				return
 			}
-			if (isCredentialCallee(node.callee, bindings)) {
+			if (
+				isCredentialCallee(node.callee, bindings) ||
+				isCredentialVisitorMember(node.callee, bindings)
+			) {
 				const key = resolveStringExpression(
 					node.arguments?.[0],
 					constantsWithoutShadows(constants, ancestors),
@@ -471,7 +498,20 @@ function scanParsedCredentialKeys(
 					parent.type === 'OptionalMemberExpression') &&
 				parent.object === node &&
 				memberPropertyName(parent) === 'named'
-			if (!called && !namedAccess) scan.indirect()
+			const visitorCall =
+				parent != null &&
+				parent.object === node &&
+				isCredentialVisitorMember(parent, bindings) &&
+				isCalledMember(parent, ancestors.at(-2))
+			if (!called && !namedAccess && !visitorCall) scan.indirect()
+			return
+		}
+		if (
+			(node.type === 'MemberExpression' ||
+				node.type === 'OptionalMemberExpression') &&
+			isCredentialVisitorMember(node, bindings)
+		) {
+			if (!isCalledMember(node, ancestors.at(-1))) scan.indirect()
 			return
 		}
 		if (node.type !== 'Identifier') return
@@ -492,12 +532,16 @@ function scanParsedCredentialKeys(
 			scan.named()
 			return
 		}
-		if (!isCallee) scan.indirect()
+		const isVisitorCall =
+			isCredentialVisitorMember(parent, bindings) &&
+			parent.object === node &&
+			isCalledMember(parent, ancestors.at(-2))
+		if (!isCallee && !isVisitorCall) scan.indirect()
 	})
 }
 
 const textCredentialCallPattern =
-	/\bcredentials?\s*\(\s*(?:(['"`])([^'"`$\\]*)\1)?/g
+	/\b(?:credentials?|credential\s*(?:\?\.|\.)\s*visitor)\s*\(\s*(?:(['"`])([^'"`$\\]*)\1)?/g
 
 function scanUnparsedCredentialKeys(source: string, scan: KeyScan) {
 	if (!/\bkody:runtime\b|\bkody\s*(?:\?\.|\.)\s*credentials?\b/.test(source)) {
@@ -1605,7 +1649,7 @@ export function scanCredentialStamp(
 					code: 'non_literal',
 					path,
 					message: nonLiteralFixMessage(
-						`${path}: credential() / credentials() was called with a non-literal key.`,
+						`${path}: credential() / credentials() / credential.visitor() was called with a non-literal key. Call it with a literal key, e.g. credential.visitor("SLOT") for a need each visitor supplies.`,
 					),
 				})
 			},
@@ -1620,7 +1664,7 @@ export function scanCredentialStamp(
 				failures.push({
 					code: 'non_literal',
 					path,
-					message: `${path}: passes credential/credentials around instead of calling it with a literal key. ${credentialStampConversionFixGuidance}`,
+					message: `${path}: passes credential/credentials around instead of calling it with a literal key. Call credential("SLOT"), credentials("SLOT"), or credential.visitor("SLOT") directly. ${credentialStampConversionFixGuidance}`,
 				})
 			},
 		}

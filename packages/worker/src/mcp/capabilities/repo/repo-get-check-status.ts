@@ -14,6 +14,7 @@ export const repoGetCheckStatusCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoGetCheckStatus',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'Inspect the most recent Worker-native check run metadata for an active repo session.',

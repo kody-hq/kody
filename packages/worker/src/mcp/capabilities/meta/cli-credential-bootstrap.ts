@@ -116,6 +116,7 @@ export const cliCredentialBootstrapCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'cliCredentialBootstrap',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		description: `Seed CLI \`--local\` auth from the current Kody session without a second interactive OAuth: returns a one-shot \`kody_bc_…\` bootstrap code plus a CLI command that includes required lifetime flags. The CLI redeems the code over HTTPS for a scoped \`kody_at_…\` (never returned here). Call it with the MCP \`api\` tool (operationId \`cliCredentialBootstrap\`); \`execute\` code (hosted or \`--local\`) is refused. Prefer this over \`tokenCreate\` for interactive agents already on MCP. Do not paste API tokens into chat. Interactive desktop humans who already ran \`kody login\` can skip this. CI/headless may still mint \`kody_at_\` directly. ${apiTokenIdleTtlDescription()}`,
 		keywords: [

@@ -17,6 +17,7 @@ export const repoRunChecksCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoRunChecks',
+		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
 			'MCP/tool-only pre-publish validate for an active repo session: manifest, docs, skills, dependencies, bundle, typecheck, lint, and credential-need checks (no local CLI required). Call after edits and before repoPublishSession. Coding agents that can run `@kodycodes/cli` may also use `kody dev` / `.kody/mocks.ts` / `execute --local` for unpublished surface tests — that is optional extra capability, not a substitute for these checks. Package publishes require non-empty root README.md (human-focused) and AGENTS.md (agent-focused).',

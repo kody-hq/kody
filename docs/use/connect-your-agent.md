@@ -117,7 +117,9 @@ you only have the MCP URL.
   `~/.codex/config.toml` `[mcp_servers.kody]` `url` entry. If Codex asks you to
   log in again after about an hour, see
   [Codex keeps asking for `codex mcp login kody`](./troubleshooting.md#codex-keeps-asking-for-codex-mcp-login-kody).
-  If authorize says Kody could not load Codex's details, see
+  On a remote machine or VM, see
+  [Remote or headless machines](#remote-or-headless-machines). If authorize says
+  Kody could not load Codex's details, see
   [Authorize says Kody couldn't load the app's details](./troubleshooting.md#authorize-says-kody-couldnt-load-the-apps-details).
 
   </details>
@@ -125,7 +127,8 @@ you only have the MCP URL.
 - **OpenCode** — After the CLI writes the remote entry, run
   `opencode mcp auth kody` if prompted. Manual includes
   `opencode mcp add kody --url <url>` and a `mcp.kody` remote entry in
-  `opencode.json` (`"type": "remote"`).
+  `opencode.json` (`"type": "remote"`). On a remote machine or NAS, see
+  [Remote or headless machines](#remote-or-headless-machines).
 - **Copilot** — After the CLI writes the remote entry, complete OAuth in that
   host. Manual includes `copilot mcp add --transport http kody <url>`. In VS
   Code Copilot Chat, use Add to VS Code or `.vscode/mcp.json` with root key
@@ -193,6 +196,16 @@ you only have the MCP URL.
   WebUI callback (`{open-webui}/oauth/clients/mcp:{connection-id}/callback`) and
   set OAuth Server URL to this deployment’s origin when discovery from the MCP
   URL is not enough.
+
+### Remote or headless machines
+
+MCP OAuth finishes on a loopback callback (`127.0.0.1`) on the machine that runs
+the agent. When that is a remote VM or NAS, your browser cannot reach it. Codex
+and OpenCode have no device-code login for MCP, and Kody API tokens do not work
+on `/mcp`. See
+[Authorizing from a remote or headless machine](./troubleshooting.md#authorizing-from-a-remote-or-headless-machine)
+for Codex `--no-browser`, OpenCode port forward, and `kody login --device`. Keep
+callbacks on loopback and never expose a callback port publicly.
 
 ### Coding vs non-coding agents
 

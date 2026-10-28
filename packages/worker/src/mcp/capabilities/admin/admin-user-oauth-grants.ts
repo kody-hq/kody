@@ -60,6 +60,7 @@ export const adminUserOauthGrantsCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminUserOauthGrants',
+		contextRuns: 'deny',
 		description:
 			"List one person's MCP OAuth grants with client id, bound org id, created time, and last-used time. Bound org prefers stamped metadata.orgId; older grants fall back to the personal org id. Admin-only; never returns tokens or user content.",
 		keywords: [

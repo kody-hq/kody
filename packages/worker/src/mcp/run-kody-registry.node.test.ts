@@ -12,6 +12,7 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 import * as moduleGraph from '#worker/package-runtime/module-graph.ts'
 import {
 	buildKodyFns,
+	buildKodyToolContext,
 	createWorkflowTools,
 	credentialNeedsEntryPackageIds,
 	executeBundleTimeoutMs,
@@ -204,6 +205,53 @@ function createWorkflowEnv(savedPackageRow: Record<string, unknown> | null) {
 	return { workflowEnv, created }
 }
 
+test('buildKodyToolContext forwards localExecuteHop to capability handlers only when set', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const registry = buildCapabilityRegistry([
+		{
+			name: 'meta',
+			description: 'Meta capabilities',
+			capabilities: [
+				defineDomainCapability('meta', {
+					name: 'hopProbe',
+					orgPermission: 'none',
+					contextRuns: 'deny',
+					description: 'Report the local execute hop flag',
+					readOnly: true,
+					idempotent: true,
+					inputSchema: { type: 'object', properties: {} },
+					handler: async (_args, ctx) => ({
+						localExecuteHop: ctx.localExecuteHop ?? null,
+					}),
+				}),
+			],
+		},
+	])
+	const callerContext = createMcpCallerContext({
+		source: { kind: 'mcp-oauth' },
+		baseUrl: 'https://example.com',
+		user: {
+			userId: personIdFromStored('user-1'),
+			email: 'user@example.com',
+			displayName: 'user',
+			roles: ['user'],
+		},
+	})
+	const hop = await buildKodyToolContext({} as Env, callerContext, {
+		capabilityRegistry: registry,
+		localExecuteHop: true,
+	})
+	await expect(requireFn(hop.tools, 'hopProbe')({})).resolves.toEqual({
+		localExecuteHop: true,
+	})
+	const direct = await buildKodyToolContext({} as Env, callerContext, {
+		capabilityRegistry: registry,
+	})
+	await expect(requireFn(direct.tools, 'hopProbe')({})).resolves.toEqual({
+		localExecuteHop: null,
+	})
+})
+
 test('buildKodyFns rejects role-gated capabilities even when passed an unfiltered registry', async () => {
 	// The stub Env has no MCP server storage, so metadata loading warns
 	// 'mcp-server-refs-load-failed' before degrading to "no MCP servers".
@@ -216,6 +264,7 @@ test('buildKodyFns rejects role-gated capabilities even when passed an unfiltere
 				defineDomainCapability('admin', {
 					name: 'adminUserList',
 					orgPermission: 'none',
+					contextRuns: 'deny',
 					description: 'List admin user account metadata',
 					readOnly: true,
 					idempotent: true,

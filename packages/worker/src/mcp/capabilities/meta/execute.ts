@@ -60,6 +60,7 @@ export const executeCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'execute',
+		contextRuns: 'deny',
 		orgPermission: 'org:execute',
 		description:
 			'Run `execute({ code, params })`: one ephemeral ESM module whose default export receives `params`. Example: `export default async function main(params) { return await kody.emailSend(params) }`. Same user and module graph reuse one isolate for the UTC day when varying args stay in `params`. Use this inside package and execute runtimes when reusable code needs the same module execution surface as the public MCP execute tool.',

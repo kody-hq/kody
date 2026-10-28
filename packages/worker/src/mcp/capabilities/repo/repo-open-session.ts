@@ -65,6 +65,7 @@ export const repoOpenSessionCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoOpenSession',
+		contextRuns: 'allow',
 		orgPermission: 'package:write',
 		description:
 			"Open or resume an MCP-native repo-backed editing session for a saved source artifact when editing through Kody tools instead of a local clone. Later repo capabilities can read, search, edit, validate, and publish against a mutable session branch. Pass conversation_id to resume that conversation's active session. Omitting conversation_id always mints a new session so concurrent callers of the same source do not share a workspace that has not checkpointed yet.",

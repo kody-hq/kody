@@ -914,18 +914,23 @@ export const hasScope = __kodyOptionalRuntimeFunctionExport('hasScope');
 export const hasVisitorCredential = __kodyOptionalRuntimeFunctionExport('hasVisitorCredential');
 export const secretHeaders = __kodyOptionalRuntimeObjectExport('secretHeaders', undefined);
 export const oauthClientCredentials = __kodyOptionalRuntimeFunctionExport('oauthClientCredentials');
-// \`credential\` carries \`credential.named\`, so it forwards the property too.
+// \`credential\` carries \`credential.named\` and \`credential.visitor\`, so it
+// forwards those properties too.
+function __kodyCredentialMemberExport(member) {
+	return (...args) => {
+		const runtimeExport = __kodyReadRuntimeExport('credential');
+		if (typeof runtimeExport?.[member] !== 'function') {
+			throw new Error(\`kody:runtime export "credential.\${member}" is not callable in this execution context.\`);
+		}
+		return runtimeExport[member](...args);
+	};
+}
 export const credential = __kodyOptionalRuntimeFunctionExport('credential') &&
 	Object.freeze(Object.assign(
 		__kodyCreateRuntimeFunctionExport('credential'),
 		{
-			named: (...args) => {
-				const runtimeExport = __kodyReadRuntimeExport('credential');
-				if (typeof runtimeExport?.named !== 'function') {
-					throw new Error('kody:runtime export "credential" is not callable in this execution context.');
-				}
-				return runtimeExport.named(...args);
-			},
+			named: __kodyCredentialMemberExport('named'),
+			visitor: __kodyCredentialMemberExport('visitor'),
 		},
 	));
 export const credentials = __kodyOptionalRuntimeFunctionExport('credentials');
@@ -994,6 +999,8 @@ export function __kodyCreatePackageBoundCredentialRuntime(packageId) {
 		{
 			named: (...args) =>
 				__kodyResolvePackageCredentialRuntime(packageId).credential.named(...args),
+			visitor: (...args) =>
+				__kodyResolvePackageCredentialRuntime(packageId).credential.visitor(...args),
 		},
 	);
 	return {

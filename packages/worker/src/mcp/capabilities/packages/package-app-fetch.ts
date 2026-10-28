@@ -240,6 +240,7 @@ export const packageAppFetchCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: packageAppFetchCapabilityName,
+		contextRuns: 'allow',
 		orgPermission: 'app:execute',
 		description:
 			'Invoke a published package app fetch handler with a synthetic HTTP request for post-publish smoke tests. Runs on the app_fetch surface with normal package context, packageStorage(), and secret mounts; handler side effects are real. Does not replace hosted-URL checks for browser UI, cookies, OAuth redirects, or websocket realtime flows.',
@@ -266,7 +267,12 @@ export const packageAppFetchCapability = defineDomainCapability(
 					.describe(
 						'Path after the app mount that the handler sees. Defaults to /.',
 					),
-				method: z.string().optional().describe('HTTP method. Defaults to GET.'),
+				method: z
+					.string()
+					.optional()
+					.describe(
+						'HTTP method, case-insensitive: GET, HEAD, POST, PUT, PATCH, DELETE, or OPTIONS. Defaults to GET.',
+					),
 				headers: z
 					.record(z.string(), z.string())
 					.optional()
@@ -275,9 +281,10 @@ export const packageAppFetchCapability = defineDomainCapability(
 					),
 				body: z
 					.string()
+					.max(packageAppFetchMaxBodyBytes)
 					.optional()
 					.describe(
-						'Raw request body string for POST, PUT, or PATCH. Capped at about 100 KB.',
+						'Raw request body string for POST, PUT, or PATCH. At most 102,400 UTF-8 bytes; the schema bounds characters and the bytes are checked when the request is sent.',
 					),
 			})
 			.superRefine((value, ctx) => {

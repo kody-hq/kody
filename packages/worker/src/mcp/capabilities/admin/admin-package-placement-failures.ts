@@ -83,6 +83,7 @@ export const adminPackagePlacementFailuresCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminPackagePlacementFailures',
+		contextRuns: 'deny',
 		description:
 			'Read-only content-free fleet read of failed package runs in a time window. Per package: owner handle, package id and kody id, the count and first/last started_at of failed runs whose error was a header-only secret placement refusal (the rule that filled secrets only in request headers), and, for flagged packages (packageIds or a codemod run finding), the count and first/last started_at of every failed run. Fans out one RunLog read per package owner. Admin-only; never returns run inputs, outputs, logs, error messages, or secrets, and sends nothing.',
 		keywords: [

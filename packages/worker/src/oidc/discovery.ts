@@ -1,6 +1,10 @@
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { mcpOauthScopes } from '#worker/mcp-oauth-scopes.ts'
 import { oauthPaths } from '#universal/oauth-paths.ts'
+import {
+	addDeviceGrantType,
+	deviceGrantDiscoveryFields,
+} from '#worker/oauth-device/discovery.ts'
 
 export function buildOpenIdConfiguration(input: {
 	env: Env
@@ -24,6 +28,7 @@ export function buildOpenIdConfiguration(input: {
 		issuer,
 		authorization_endpoint: `${issuer}${oauthPaths.authorize}`,
 		token_endpoint: tokenEndpoint,
+		...deviceGrantDiscoveryFields(issuer),
 		revocation_endpoint: tokenEndpoint,
 		userinfo_endpoint: `${issuer}${oauthPaths.userinfo}`,
 		jwks_uri: `${issuer}${oauthPaths.jwks}`,
@@ -46,7 +51,10 @@ export function buildOpenIdConfiguration(input: {
 			'preferred_username',
 			'name',
 		],
-		grant_types_supported: ['authorization_code', 'refresh_token'],
+		grant_types_supported: addDeviceGrantType([
+			'authorization_code',
+			'refresh_token',
+		]),
 		token_endpoint_auth_methods_supported: tokenEndpointAuthMethodsSupported,
 		revocation_endpoint_auth_methods_supported:
 			tokenEndpointAuthMethodsSupported,

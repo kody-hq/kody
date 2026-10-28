@@ -58,6 +58,7 @@ type RuntimeModule = {
 	credential?:
 		| (((key: string) => Promise<unknown>) & {
 				named: (name: string) => Promise<unknown>
+				visitor: (need: string) => Promise<unknown>
 		  })
 		| undefined
 	credentials?: ((key: string) => Promise<unknown>) | undefined
@@ -257,7 +258,10 @@ test('credential is callable when runtime.js first evaluates inside ALS with bin
 						key,
 						sign: async () => `signed:${key}`,
 					}),
-					{ named: async (name: string) => ({ name }) },
+					{
+						named: async (name: string) => ({ name }),
+						visitor: async (need: string) => ({ need }),
+					},
 				),
 				credentials: async (key: string) => [{ key }],
 			}
@@ -274,6 +278,7 @@ test('credential is callable when runtime.js first evaluates inside ALS with bin
 					key: handle.key,
 					signature: await handle.sign(),
 					named: await mod.credential.named('powersync-jwt'),
+					visitor: await mod.credential.visitor('github'),
 					list: await mod.credentials?.('powersync-jwt'),
 				}
 			})
@@ -281,6 +286,7 @@ test('credential is callable when runtime.js first evaluates inside ALS with bin
 				key: 'powersync-jwt',
 				signature: 'signed:powersync-jwt',
 				named: { name: 'powersync-jwt' },
+				visitor: { need: 'github' },
 				list: [{ key: 'powersync-jwt' }],
 			})
 		},

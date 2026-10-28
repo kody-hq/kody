@@ -13,7 +13,6 @@ export const openApiExcludedDomains = new Set(['admin', 'apps', 'coding'])
 export const openApiExcludedCapabilities = new Set([
 	'execute',
 	'metaListCapabilities',
-	'packageAppFetch',
 	'packageSubscriptionDispatch',
 	'webhookSyntheticDispatch',
 	'communitySetFeatured',

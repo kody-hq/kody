@@ -31,6 +31,7 @@ export const repoGetCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoGet',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'Load one plain repo in the org this connection is bound to, including live default-branch HEAD and progressive-disclosure hints when the tree is package-shaped.',

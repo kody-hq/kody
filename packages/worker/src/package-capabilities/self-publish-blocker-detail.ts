@@ -60,6 +60,8 @@ export type SelfPublishBlockerReason =
 			kind: 'credential_needs'
 			sourceId: string
 			needCount: number
+			/** Needs each visitor supplies (`supplier: "executor"`). */
+			executorNeedCount?: number
 	  }
 	| { kind: 'not_audited' }
 	| { kind: 'audit_concerns' }
@@ -127,8 +129,15 @@ function formatReason(reason: SelfPublishBlockerReason): string {
 		}
 		case 'manifest_field':
 			return `Published manifest for source ${reason.sourceId} declares kody.${reason.field}.`
-		case 'credential_needs':
-			return `Source ${reason.sourceId} has ${String(reason.needCount)} credential need(s) in its published closure.`
+		case 'credential_needs': {
+			const executor = reason.executorNeedCount ?? 0
+			if (executor > 0 && executor >= reason.needCount) {
+				return `Source ${reason.sourceId} has ${String(executor)} executor-supplied credential need(s). Visitors bring these, but a self-published package resolves no credentials at all, so the owner approves going internet-visible.`
+			}
+			const executorNote =
+				executor > 0 ? ` (${String(executor)} of them executor-supplied)` : ''
+			return `Source ${reason.sourceId} has ${String(reason.needCount)} credential need(s) in its published closure${executorNote}. Publisher-supplied needs always need the owner's approval.`
+		}
 		case 'not_audited':
 			return 'No security audit with verdict pass is recorded for the current published commit and capability fingerprint.'
 		case 'audit_concerns':

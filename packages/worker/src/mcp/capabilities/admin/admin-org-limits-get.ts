@@ -12,6 +12,7 @@ export const adminOrgLimitsGetCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminOrgLimitsGet',
+		contextRuns: 'deny',
 		description:
 			'Read one org’s overridable daily, weekly, and monthly caps: the plan limit, any admin override (value, expiry, reason, who set it), and the effective limit enforcement uses. Works for personal and team orgs.',
 		keywords: [
