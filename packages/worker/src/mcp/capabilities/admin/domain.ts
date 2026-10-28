@@ -59,6 +59,7 @@ import { adminEmailDestinationVerifyCapability } from './admin-email-destination
 import { adminAccountDeletionAbortCapability } from './admin-account-deletion-abort.ts'
 import { adminAccountWriteLeaseListCapability } from './admin-account-write-lease-list.ts'
 import { adminAccountWriteLeaseRepairCapability } from './admin-account-write-lease-repair.ts'
+import { adminPersonalOrgRepairCapability } from './admin-personal-org-repair.ts'
 import { adminUserMeterParityCapability } from './admin-user-meter-parity.ts'
 import { adminRunLogSqlBillingCapability } from './admin-run-log-sql-billing.ts'
 import { adminUserMeterStorageReconcileCapability } from './admin-user-meter-storage-reconcile.ts'
@@ -175,6 +176,7 @@ export const adminDomain = defineDomain({
 		adminMailboxMaintenanceCapability,
 		adminAccountWriteLeaseListCapability,
 		adminAccountWriteLeaseRepairCapability,
+		adminPersonalOrgRepairCapability,
 		adminAccountDeletionAbortCapability,
 		adminUnverifiedAccountPurgeRunCapability,
 		adminSoftDeletePurgeRunCapability,
