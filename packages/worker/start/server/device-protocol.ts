@@ -75,9 +75,6 @@ export async function handleDevicePost({ request }: { request: Request }) {
 	}
 	if (userCode) location.searchParams.set('user_code', userCode)
 	location.searchParams.set('error', result.kind)
-	if (result.kind === 'org_error') {
-		location.searchParams.set('message', result.message)
-	}
 	return seeOther(location)
 }
 

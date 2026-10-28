@@ -18,14 +18,12 @@ export type DevicePageData =
 			kind: 'enter'
 			userCode: string | null
 			error: DevicePageError | null
-			errorMessage: string | null
 	  }
 	| {
 			kind: 'consent'
 			request: DeviceVerificationRequest
 			account: { email: string; displayName: string }
 			error: DevicePageError | null
-			errorMessage: string | null
 	  }
 	| { kind: 'done'; result: 'approved' | 'denied' }
 
@@ -85,9 +83,8 @@ export const loadDevicePage = createServerFn({ method: 'GET' })
 			}
 		}
 		const error = readDevicePageError(params.get('error'))
-		const errorMessage = params.get('message')?.slice(0, 200) || null
 		if (!userCode) {
-			return { kind: 'enter', userCode: null, error, errorMessage }
+			return { kind: 'enter', userCode: null, error }
 		}
 		const lookup = await lookupDeviceAuthorization({
 			request,
@@ -100,7 +97,6 @@ export const loadDevicePage = createServerFn({ method: 'GET' })
 				kind: 'enter',
 				userCode,
 				error: lookup.kind,
-				errorMessage: null,
 			}
 		}
 		return {
@@ -108,6 +104,5 @@ export const loadDevicePage = createServerFn({ method: 'GET' })
 			request: lookup.request,
 			account: { email: user.email, displayName: user.displayName },
 			error,
-			errorMessage,
 		}
 	})

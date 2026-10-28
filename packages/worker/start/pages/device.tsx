@@ -31,10 +31,7 @@ import { AuthorizeOrgField } from './oauth-authorize-org-picker.tsx'
 const deviceAntiPhishingMessage =
 	'Only continue if you started this sign-in yourself on a device you control.'
 
-function deviceErrorText(
-	error: DevicePageError | null,
-	message: string | null,
-) {
+function deviceErrorText(error: DevicePageError | null) {
 	switch (error) {
 		case null:
 			return null
@@ -47,7 +44,7 @@ function deviceErrorText(
 		case 'email_unverified':
 			return 'Verify your account email before approving a device. Open the link from your inbox, then come back to this page.'
 		case 'org_error':
-			return message ?? 'Choose the organization this sign-in is for.'
+			return 'Choose an organization this account can use for this sign-in.'
 		default: {
 			const exhaustive: never = error
 			return exhaustive
@@ -144,7 +141,7 @@ function CodeEntryCard(props: {
 	data: Extract<DevicePageData, { kind: 'enter' }>
 }) {
 	const { data } = props
-	const error = deviceErrorText(data.error, data.errorMessage)
+	const error = deviceErrorText(data.error)
 	return (
 		<>
 			{error ? (
@@ -187,7 +184,7 @@ function ConsentCard(props: {
 }) {
 	const { request, account } = props.data
 	const [orgSlug, setOrgSlug] = useState<string | null>(request.selectedOrgSlug)
-	const error = deviceErrorText(props.data.error, props.data.errorMessage)
+	const error = deviceErrorText(props.data.error)
 	const orgMissing = request.orgs.length === 0
 	const orgUnavailableMessage = request.requestedOrgUnavailable
 		? `This sign-in was started for @${request.requestedOrgSlug}, which this account cannot use. Deny it, or sign in with an account in that organization.`

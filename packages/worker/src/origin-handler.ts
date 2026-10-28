@@ -1021,6 +1021,7 @@ async function handleOriginAppFetch(
 		if (url.pathname === oauthPaths.token && request.method === 'POST') {
 			const deviceForm = await readDeviceCodeTokenForm(request)
 			if (deviceForm) {
+				await discardUnreadRequestBody(request)
 				const { handleDeviceCodeTokenRequest } =
 					await import('#worker/oauth-device/token-grant.ts')
 				const fetchProvider = (providerRequest: Request) =>
