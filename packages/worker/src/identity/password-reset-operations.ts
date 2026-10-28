@@ -8,6 +8,7 @@ import {
 	redactEmailRecipient,
 } from '#worker/audit-log.ts'
 import { deferWork } from '#worker/deferred-work.ts'
+import { createDeletedAccountReleaseVerification } from '#app/email-claim-release.ts'
 import {
 	sendGatedTransactionalEmail,
 	type GatedTransactionalSendResult,
@@ -226,6 +227,28 @@ export async function requestWebsitePasswordReset({
 			email: normalizedEmail,
 			ip: requestIp,
 			path: url.pathname,
+		})
+	} else if (userRecord?.deleted_at) {
+		// Mail the release link instead: opening it frees the address and
+		// handle so the person can sign up again.
+		const deletedUserId = userRecord.id
+		void deferWork('password-reset-deleted-account-error', () =>
+			createDeletedAccountReleaseVerification({
+				env,
+				deletedUserId,
+				email: normalizedEmail,
+				requestUrl: url,
+			}),
+		)
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'auth',
+			action: 'password_reset_request',
+			result: 'failure',
+			email: normalizedEmail,
+			ip: requestIp,
+			path: url.pathname,
+			reason: 'account_deleted',
 		})
 	} else {
 		void logAuditEvent({

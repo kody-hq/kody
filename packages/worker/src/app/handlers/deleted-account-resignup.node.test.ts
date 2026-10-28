@@ -359,8 +359,9 @@ test('admin create with the deleted account email and handle succeeds', async ()
 	expectFreshAccountOwnsHandle(sqlite, stableUserId)
 })
 
-test('password reset never mints a token for a soft-deleted account', async () => {
+test('password reset for a soft-deleted account mails the release link, not a reset token', async () => {
 	const { sqlite, env } = await seedDeletedGoogleAccount()
+	consoleWarn.mockImplementation(() => {})
 	const url = new URL('http://example.com/reset-password')
 	const deferred: Array<Promise<unknown>> = []
 	const response = await runWithDeferredWork(
@@ -375,6 +376,16 @@ test('password reset never mints a token for a soft-deleted account', async () =
 	)
 	await Promise.all(deferred)
 	expect(response.status).toBe(200)
-	expect(deferred).toHaveLength(0)
 	expect(count(sqlite, `SELECT COUNT(*) AS count FROM password_resets`)).toBe(0)
+	expect(
+		count(
+			sqlite,
+			`SELECT COUNT(*) AS count FROM pending_email_claim_releases WHERE user_id = 7 AND email = ?`,
+			email,
+		),
+	).toBe(1)
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'email-claim-release-send-skipped',
+		7,
+	)
 })
