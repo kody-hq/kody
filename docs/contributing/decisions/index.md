@@ -222,6 +222,7 @@ Open these before proposing a new primitive, surface, or storage home.
   lock REST paths collapse to `POST /v1/resource-locks`; unlock stays
   website-only
 - [0081 — Follow Recent updates are the default delivery](./0081-follow-recent-updates-default-delivery.md)
+- [0082 — Context runs never receive credential values](./0082-context-runs-never-see-credential-values.md)
   — events no enabled subscription handles land in a bounded per-follow Recent
   updates list (20 per follow, 30 days, zero credits); builds on 0073
 
