@@ -149,3 +149,84 @@ test('Claude Desktop stays instruction-only', async () => {
 		/claude_desktop_config\.json/,
 	)
 })
+
+function cliHostRuntime(
+	headlessLoginReason: 'ssh' | 'no_display' | null,
+	commands: Array<string>,
+) {
+	return {
+		headlessLoginReason,
+		which: (command: string) => `/usr/bin/${command}`,
+		runCommand: async (command: string, args: Array<string>) => {
+			commands.push(`${command} ${args.join(' ')}`)
+			return true
+		},
+		upsertServer: () => ({
+			success: true,
+			path: '/home/me/.codex/config.toml',
+		}),
+	}
+}
+
+async function installOne(
+	clients: string,
+	runtime: ReturnType<typeof cliHostRuntime>,
+) {
+	let output = ''
+	const result = await runInstall(
+		{ mcpUrl, clients },
+		{
+			stdout: (text) => {
+				output += text
+			},
+			home: '/home/me',
+			cwd: '/proj',
+			isTTY: false,
+			listProcesses: async () => [],
+			runtime,
+		},
+	)
+	return { result, output }
+}
+
+test('Codex over SSH prints the --no-browser paste-back steps instead of starting OAuth', async () => {
+	const commands: Array<string> = []
+	const { result, output } = await installOne(
+		'codex',
+		cliHostRuntime('ssh', commands),
+	)
+	assert.equal(result.results[0]?.status, 'wrote')
+	assert.deepEqual(commands, [])
+	assert.match(output, /This looks like an SSH session/)
+	assert.match(output, /Run: codex mcp login kody --no-browser/)
+	assert.match(
+		output,
+		/Copy the whole URL from the address bar \(it starts with http:\/\/127\.0\.0\.1\) and paste it into this terminal/,
+	)
+	assert.doesNotMatch(output, /If OAuth does not start/)
+})
+
+test('OpenCode without a display prints the callback port forward', async () => {
+	const commands: Array<string> = []
+	const { result, output } = await installOne(
+		'opencode',
+		cliHostRuntime('no_display', commands),
+	)
+	assert.equal(result.results[0]?.status, 'wrote')
+	assert.deepEqual(commands, [])
+	assert.match(output, /No display was found on this machine/)
+	assert.match(output, /ssh -L 127\.0\.0\.1:19876:127\.0\.0\.1:19876 user@host/)
+	assert.match(output, /run: opencode mcp auth kody/)
+})
+
+test('Codex with a local browser still starts OAuth and keeps the short hint', async () => {
+	const commands: Array<string> = []
+	const { result, output } = await installOne(
+		'codex',
+		cliHostRuntime(null, commands),
+	)
+	assert.equal(result.results[0]?.status, 'wrote')
+	assert.deepEqual(commands, ['/usr/bin/codex mcp login kody'])
+	assert.match(output, /If OAuth does not start, run: codex mcp login kody/)
+	assert.doesNotMatch(output, /--no-browser/)
+})
