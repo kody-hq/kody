@@ -297,16 +297,6 @@ export const packageCredentialsSchema = z
 				})
 			}
 			if (
-				slot.supplier === 'executor' &&
-				!packageAppVisitorNeedKeyPattern.test(name)
-			) {
-				ctx.addIssue({
-					code: 'custom',
-					path: [name],
-					message: `kody.credentials.${name} uses supplier: "executor", so its key becomes the consent scope need:${name} and must be lowercase letters, numbers, or hyphens (max 40), e.g. "github".`,
-				})
-			}
-			if (
 				slot.ownerCredentialForVisitors === true &&
 				slot.supplier === 'executor'
 			) {

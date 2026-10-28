@@ -233,6 +233,18 @@ test('supplier and required fields validate and reject conflicting aliases', () 
 	).toMatchObject({ GITHUB_TOKEN: { supplier: 'publisher' } })
 })
 
+test('published snapshots keep an executor need whose key predates the consent-scope rule', () => {
+	const content = manifestWithCredentials({
+		GITHUB_TOKEN: { description: 'Visitor access.', supplier: 'executor' },
+	})
+	expect(
+		parseAuthoredPackageJson({ content, mode: 'published' }).kody.credentials,
+	).toMatchObject({ GITHUB_TOKEN: { supplier: 'executor' } })
+	expect(() => parseAuthoredPackageJson({ content })).toThrow(
+		/need:GITHUB_TOKEN/,
+	)
+})
+
 test('published snapshots load when an old kody.credentials key predates the schema', () => {
 	const content = manifestWithCredentials({ GOOGLE: 'my google account' })
 	expect(
