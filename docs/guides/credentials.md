@@ -449,8 +449,8 @@ straight to the form.
 On that form, **Which packages can read it** is **Any package in this org** (the
 default) or **Only these packages**, which locks the credential to the packages
 you pick (`allowedPackages`). A key that belongs to one package is made from
-that package's own **Credentials** tab, or from a link that names the package
-(`scope=package&packageId=...`).
+that package's own **Credentials** tab (**Add a key only this package can
+read**), or from a link that names the package (`scope=package&packageId=...`).
 
 Code that already holds a value (a key the package just minted) can store it
 with `secretSet`, which also takes `kind`, `hosts`, `login_exchange`,

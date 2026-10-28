@@ -363,4 +363,15 @@ test('a bare create page leads with the agent prompt, and links open the form di
 		page.getByTestId('connect-credential-package-key'),
 	).toContainText('can read this key')
 	await expect(page.getByLabel('Any package in this org')).toHaveCount(0)
+
+	// The package's own Credentials tab opens that same package key flow.
+	await page.goto(`/@${user.username}/example/credentials`)
+	await waitForClientHydration(page)
+	await page.getByTestId('package-credentials-add-key').click()
+	await expect(page).toHaveURL(
+		new RegExp(`scope=package&packageId=${created.packageId}`),
+	)
+	await expect(
+		page.getByTestId('connect-credential-package-key'),
+	).toContainText('can read this key')
 })
