@@ -1,0 +1,29 @@
+{
+	"runs": 6,
+	"targets": [
+		{
+			"label": "remix",
+			"commit": "8b2528460eb9be9d08d50b7a1d2ee8f491503d83",
+			"port": 5591,
+			"serverDirectory": "ssr"
+		},
+		{
+			"label": "shipped",
+			"commit": "2894f12c99431f7e78816b502c24fdc72813dffc",
+			"port": 5592,
+			"serverDirectory": "server"
+		},
+		{
+			"label": "main",
+			"commit": "214ce21bbd6045a132f7f474bcb6a0126a348722",
+			"port": 5593,
+			"serverDirectory": "server"
+		},
+		{
+			"label": "fixed",
+			"commit": "07ccd2ca8cafae10dadad7d19ad06b219363422e",
+			"port": 5594,
+			"serverDirectory": "server"
+		}
+	]
+}

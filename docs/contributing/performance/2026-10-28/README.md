@@ -1,5 +1,8 @@
 # Kody migration performance audit, October 28, 2026
 
+The [public cold-load follow-up](./cold-load/README.md) reruns all four sources
+after correcting critical asset delivery. This page preserves the initial audit.
+
 The migration improved local Worker startup CPU and cached navigation behavior,
 but it increased build time, initial JavaScript and the total emitted asset
 inventory. Main then added more initial JavaScript and CSS. This change removes
@@ -63,13 +66,14 @@ errors, failed requests or document reloads. Twenty-four controlled save cases
 completed and restored the seed data.
 
 These are local production builds with test bindings, disabled telemetry and
-local Workers. Local SSR HTML is uncompressed. Public content, layout and LCP
-elements change between revisions. Request counts include lazy work observed
-during the audit, not just the initial critical path. Fresh browsers do not mean
-cold Workers. These results do not establish global edge latency, field Core Web
-Vitals, real-user INP, React-versus-Redact cost or framework-only cost. The
-recovered edge protocol used applied DevTools throttling, so its numbers are not
-directly comparable to this simulated Lighthouse series.
+local Workers. The browser receives gzip HTML, with encoded and decoded sizes
+recorded in the follow-up. Public content, layout and LCP elements change
+between revisions. Request counts include lazy work observed during the audit,
+not just the initial critical path. Fresh browsers do not mean cold Workers.
+These results do not establish global edge latency, field Core Web Vitals,
+real-user INP, React-versus-Redact cost or framework-only cost. The recovered
+edge protocol used applied DevTools throttling, so its numbers are not directly
+comparable to this simulated Lighthouse series.
 
 ## Initial homepage assets
 
