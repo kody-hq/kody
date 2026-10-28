@@ -23,7 +23,10 @@ import {
 	type ResolverCall,
 } from './credential-resolver.ts'
 import { rememberFetchFillPlacement } from './fetch-fill-placement-cache.ts'
-import { observeFillPlacementWouldBlockSites } from './fill-placement.ts'
+import {
+	enforceFillPlacement,
+	resolveEffectiveFillPlacement,
+} from './fill-placement-enforcement.ts'
 import { authorizePersonalCredentialUse } from './personal-credentials.ts'
 
 type IntegrationNameLookup = {
@@ -146,35 +149,32 @@ export const integrationTokenResolver: CredentialResolver<'integration-token'> =
 				async authorize() {
 					await authorizeIntegrationUse(call, lookup)
 					if (credential.fillSites && credential.fillSites.length > 0) {
-						// Observe only: a D1 blip must not fail the fill.
-						try {
-							const placement = await getIntegrationFillPlacement({
+						const placement = await resolveEffectiveFillPlacement({
+							db: input.env.APP_DB,
+							credentialId: lookup.credentialId,
+							stored: await getIntegrationFillPlacement({
 								db: input.env.APP_DB,
 								userId: lookup.ownerId,
 								name: credential.name,
-							})
-							rememberFetchFillPlacement({
-								actor: call.input.actor,
-								orgId: call.input.orgId,
-								packageStamp: call.input.packageStamp,
-								credential,
-								placement,
-								credentialId: lookup.credentialId,
-							})
-							observeFillPlacementWouldBlockSites({
-								credentialName: credential.name,
-								placement,
-								sites: credential.fillSites,
-								surface: 'placeholder',
-								env: call.input.env,
-								credentialId: lookup.credentialId,
-							})
-						} catch (error) {
-							console.warn('credential-fill-placement-observe-failed', {
-								credentialName: credential.name,
-								error: error instanceof Error ? error.message : String(error),
-							})
-						}
+							}),
+						})
+						rememberFetchFillPlacement({
+							actor: call.input.actor,
+							orgId: call.input.orgId,
+							packageStamp: call.input.packageStamp,
+							credential,
+							placement,
+							credentialId: lookup.credentialId,
+						})
+						enforceFillPlacement({
+							env: call.input.env,
+							credentialName: credential.name,
+							credentialId: lookup.credentialId,
+							slot: credential.name,
+							placement,
+							sites: credential.fillSites,
+							surface: 'placeholder',
+						})
 					}
 					if (!credential.requestHost) return
 					const joined = await getJoinedIntegration({

@@ -21,7 +21,6 @@ const searchServerTimingPhases = [
 	['usernameLookup', 'usernameLookupMs'],
 	['identityResolution', 'identityResolutionMs'],
 	['rowAndRegistryLoad', 'rowAndRegistryLoadMs'],
-	['featureFlags', 'featureFlagsMs'],
 	['queryUnderstanding', 'queryUnderstandingMs'],
 	['candidateGeneration', 'candidateGenerationMs'],
 	['queryEmbedding', 'queryEmbeddingMs'],
@@ -46,7 +45,7 @@ export function toSearchServerTiming(input: {
 		if (name === 'reranking') {
 			const jevDurationMs = input.phaseTimings.jevRerankMs
 			if (
-				input.jevRerank?.enabled === true &&
+				input.jevRerank &&
 				typeof jevDurationMs === 'number' &&
 				Number.isFinite(jevDurationMs)
 			) {

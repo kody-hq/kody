@@ -1,14 +1,11 @@
 /**
  * Stage-2 Jev Score rerank/filter for ranked MCP `search({ query })`.
  *
- * Hybrid lexical+vector recall provides the initial candidates. Product gate (when the
- * `jev-search-rerank` flag is on): **paid plans only** (standard / pro /
- * max) and only when the post-hybrid pool looks ambiguous
- * ({@link evaluateJevSearchNecessity}). Free and anonymous never call Jev
- * (`skipped-plan`). The flag remains the rollout / kill switch
- * (`skipped-flag-off` when off); plan + necessity are the real product
- * gates so pricing "improved search" (also flag-gated in the UI) stays
- * truthful when the flag is on.
+ * Hybrid lexical+vector recall provides the initial candidates. Product
+ * gate: **paid plans only** (standard / pro / max) and only when the
+ * post-hybrid pool looks ambiguous ({@link evaluateJevSearchNecessity}).
+ * Free and anonymous never call Jev (`skipped-plan`). Plan + necessity keep
+ * the pricing page's "improved search" copy truthful.
  *
  * Eligible paid searches widen hybrid recall, then score with Workers AI
  * `typesafe/jev` through AI Gateway when necessity says so. Score questions
@@ -30,7 +27,6 @@
  */
 
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { jevSearchRerankFlagKey } from '#universal/feature-flags/registry.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 
 import {
@@ -43,7 +39,6 @@ import {
 } from './understand-search-query.ts'
 
 export type { JevSearchRerankOutcome }
-export { jevSearchRerankFlagKey }
 
 /** Cap skinny cards sent to Jev even when recall is wider. */
 export const jevSearchCandidateCap = 40
@@ -784,7 +779,7 @@ function mean(values: ReadonlyArray<number>): number {
  * hits stay in hybrid order. Failures and low mean confidence still fall
  * back to hybrid.
  *
- * Gate order: flag → paid plan → empty/offline/AI → necessity → Score.
+ * Gate order: paid plan → empty/offline/AI → necessity → Score.
  */
 export async function rerankSearchCandidatesWithJev(input: {
 	env: Env
@@ -793,11 +788,9 @@ export async function rerankSearchCandidatesWithJev(input: {
 	candidates: Array<SearchCandidate>
 	limit: number
 	offline: boolean
-	/** `jev-search-rerank` feature flag (rollout / kill switch). */
-	enabled: boolean
 	/**
 	 * Paid plan (standard/pro/max). Free and anonymous pass false and
-	 * record `skipped-plan` when the flag is on.
+	 * record `skipped-plan`.
 	 */
 	planEligible: boolean
 	/** Defaults to {@link jevSearchScoreBudgetMs}. */
@@ -840,7 +833,6 @@ export async function rerankSearchCandidatesWithJev(input: {
 			: {}),
 	})
 
-	if (!input.enabled) return emptyResult('skipped-flag-off')
 	if (!input.planEligible) return emptyResult('skipped-plan')
 	const attempted = {
 		model: jevSearchModel,

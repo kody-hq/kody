@@ -70,7 +70,7 @@ export const optInCredentialInputFields = {
 		.nullable()
 		.optional()
 		.describe(
-			'Optional fill placement for placeholders (secret, secret-basic, and related forms): which request parts may receive the credential — headers (optionally named), query, path, and/or body. Null means anywhere. New credentials default to headers-only when omitted. Distinct from inject, which only steers the scoped credential() client. The gateway does not enforce this yet.',
+			'Optional fill placement for placeholders (secret, secret-basic, and related forms): which request parts may receive the credential: headers (optionally named), query, path, and/or body. Null (legacy) means headers plus parts the owner opted into. New credentials default to headers-only when omitted. Distinct from inject, which only steers the scoped credential() client. The gateway enforces it; query, path, and body also need an owner opt-in on the credential page, because the host may store the value.',
 		),
 }
 
@@ -368,6 +368,7 @@ export async function applyCredentialFieldsOnly(
 		orgId: ownerIdFromCaller(ctx.callerContext),
 		credentialId: plan.credentialId,
 		update: plan.update,
+		placementOrigin: 'explicit',
 		audit: orgAuditWriterFromRequest(
 			ctx.env,
 			requireMcpRequest(ctx.callerContext),

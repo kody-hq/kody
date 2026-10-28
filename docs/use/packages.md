@@ -229,9 +229,9 @@ credentials; opt-in types (`url`, `login`, `signing`) are in
   detail page. Without a declaration, new package-scope secrets default to
   headers-only. See
   [Credentials](../guides/credentials.md#keys-and-placeholders). The fetch
-  gateway fills placeholders regardless of placement and logs would-block when a
-  fill is outside the declared parts. Placeholders work over HTTPS to a host the
-  secret or integration allows. See
+  gateway refuses a fill outside the credential's placement; query, path, and
+  body also need the owner's opt-in on the credential page. Placeholders work
+  over HTTPS to a host the secret or integration allows. See
   [Placeholders in `fetch`](./secrets-and-values.md#placeholders-in-fetch).
 
 #### Declare what a stamped package may use
@@ -328,8 +328,11 @@ A signed-in member with Use can still open org credentials they hold; a
 signed-out visitor and anyone without Use cannot. While the
 `package-credential-suppliers` flag is on, a signed-in visitor (inside or
 outside the org) fills an executor need with a credential they pick on consent
-and the app reads it with `credential.visitor(key)`. A need the app fills for
-every visitor (a shared database, an email sender) opts in per slot with
+and the app reads it with `credential.visitor(key)`. After Allow, someone
+outside the org gets a short-lived visit pass that only opens the executor
+credentials they approved; storage, capabilities and everything else still treat
+them as an anonymous visitor plus identity. A need the app fills for every
+visitor (a shared database, an email sender) opts in per slot with
 `ownerCredentialForVisitors: true`:
 
 ```json

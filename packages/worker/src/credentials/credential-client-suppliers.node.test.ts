@@ -611,3 +611,88 @@ test('flag-off legacy visitor handles still require live consent after grant rev
 		body: { code: 'invalid_request' },
 	})
 })
+
+test('an outside-org visitor with no acting request opens only their own executor credential', async () => {
+	const t = await setup()
+	const visitorOrg = personalOrgId(t.people.ann.personId)
+	await saveSecret({
+		env: t.env,
+		userId: visitorOrg,
+		scope: 'user',
+		name: 'outsider-github',
+		value: 'fixture-value',
+		audit: null,
+	})
+	const row = await t.db
+		.prepare(
+			`UPDATE secret_entries SET kind = 'secret', provider = 'github'
+			 WHERE name = 'outsider-github' AND bucket_id IN (
+			   SELECT id FROM secret_buckets WHERE user_id = ? AND scope = 'user'
+			 ) RETURNING id`,
+		)
+		.bind(visitorOrg)
+		.first<{ id: string }>()
+	await t.storeKey('publisher-github', 'github')
+	const executor: SavedCredentialNeed = {
+		key: 'github',
+		kind: 'secret',
+		provider: 'github',
+		description: 'GitHub access.',
+		multiple: false,
+		supplier: 'executor',
+		required: true,
+	}
+	const publisher: SavedCredentialNeed = {
+		...executor,
+		key: 'shared',
+		supplier: 'publisher',
+	}
+	await t.db
+		.prepare(
+			`INSERT INTO package_app_oauth_grants
+			 (id, person_id, org_username, kody_id, scopes, created_at)
+			 VALUES ('grant-outsider', ?, 'fixture-org', 'outsider-app', 'profile need:github', ?)`,
+		)
+		.bind(t.people.ann.personId, now)
+		.run()
+	await t.db
+		.prepare(
+			`INSERT INTO package_app_grant_credential_mappings
+			 (grant_id, need_key, credential_ids_json, created_at, updated_at)
+			 VALUES ('grant-outsider', 'github', ?, ?, ?)`,
+		)
+		.bind(JSON.stringify([row!.id]), now, now)
+		.run()
+	const visitorRequest = deriveRequestContext({
+		user: { userId: t.people.ann.personId, username: 'ann' },
+		source: { kind: 'package-app' },
+		orgBinding: { org: { id: visitorOrg, slug: 'ann' }, role: 'owner' },
+	})
+	let granted = true
+	const anonymous = (key: string): CredentialClientContext => ({
+		...contextFor(t, null as never, t.savedPackage.id),
+		runNeeds: async () =>
+			new Map([
+				[executor.key, executor],
+				[publisher.key, publisher],
+			]),
+		packageAppAuthority: {
+			issue: { visitorNeed: key },
+			orgId: t.acmeId,
+			runsAsRequest: async () => null,
+			visitorNeedRequest: async () => (granted ? visitorRequest : null),
+			visitorNeedGrant: async () =>
+				granted ? { request: visitorRequest, grantId: 'grant-outsider' } : null,
+		},
+	})
+	await expect(
+		openCredentialClient(anonymous('github'), { key: 'github' }),
+	).resolves.toMatchObject({ name: 'outsider-github' })
+	await expect(
+		openCredentialClient(anonymous('shared'), { key: 'shared' }),
+	).rejects.toMatchObject({ body: { code: 'credential_denied' } })
+	granted = false
+	await expect(
+		openCredentialClient(anonymous('github'), { key: 'github' }),
+	).rejects.toMatchObject({ body: { code: 'credential_unbound' } })
+})

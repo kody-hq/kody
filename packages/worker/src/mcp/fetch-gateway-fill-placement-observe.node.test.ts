@@ -5,11 +5,14 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { expandSecretPlaceholders } from '#mcp/fetch-gateway.ts'
+import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
+import { SecretPlacementError } from '#mcp/secrets/secret-placement.ts'
 import * as secretService from '#mcp/secrets/service.ts'
 import * as credentialResolver from '#worker/credentials/credential-resolver.ts'
 import * as orgsRepo from '#worker/orgs/repo.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import * as observations from '#worker/credentials/fill-placement-observations.ts'
+import * as optIns from '#worker/credentials/fill-placement-opt-ins.ts'
 
 vi.mock('cloudflare:workers', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('cloudflare:workers')>()
@@ -80,43 +83,46 @@ function mockSecret(placement: secretService.ResolvedSecret['placement']) {
 	}
 }
 
-test('headers-only placement still fills body but records would-block', async () => {
+const apiKey = buildSecretPlaceholder({ name: 'apiKey', scope: null })
+
+async function expandRefusal(request: Request) {
+	try {
+		const { request: expanded, bodyFillDone } = await expandSecretPlaceholders({
+			request,
+			props,
+			env,
+		})
+		await expanded.text()
+		await bodyFillDone
+	} catch (error) {
+		return error
+	}
+	return null
+}
+
+test('headers-only placement refuses a body fill and records would-block', async () => {
 	const schedule = vi
 		.spyOn(observations, 'scheduleFillPlacementObservation')
 		.mockImplementation(() => {})
 	const { findSpy, authSpy, orgSpy } = mockSecret({ headers: true })
 	try {
-		const { request: expanded, bodyFillDone } = await expandSecretPlaceholders({
-			request: new Request('https://api.example.com/v1', {
+		const refusal = await expandRefusal(
+			new Request('https://api.example.com/v1', {
 				method: 'POST',
 				headers: {
-					Authorization: 'Bearer {{secret:apiKey}}',
+					Authorization: `Bearer ${apiKey}`,
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({ token: '{{secret:apiKey}}' }),
-			}),
-			props,
-			env,
-		})
-		expect(expanded.headers.get('Authorization')).toBe('Bearer sk_live')
-		if (expanded.body) {
-			expect(JSON.parse(await expanded.clone().text())).toEqual({
-				token: 'sk_live',
-			})
-		}
-		await bodyFillDone
-		expect(schedule).toHaveBeenCalledWith(
-			expect.objectContaining({
-				credentialId: 'cred-apiKey',
-				filledParts: ['headers'],
-				wouldBlockParts: [],
+				body: JSON.stringify({ token: apiKey }),
 			}),
 		)
+		expect(refusal).toBeInstanceOf(SecretPlacementError)
+		expect((refusal as Error).message).toContain('may not fill body')
+		expect((refusal as Error).message).not.toContain('sk_live')
 		expect(schedule).toHaveBeenCalledWith(
 			expect.objectContaining({
 				credentialId: 'cred-apiKey',
-				filledParts: [],
-				wouldBlockParts: ['body'],
+				wouldBlockParts: expect.arrayContaining(['body']),
 			}),
 		)
 	} finally {
@@ -127,27 +133,18 @@ test('headers-only placement still fills body but records would-block', async ()
 	}
 })
 
-test('path and query fills are observed as distinct sites', async () => {
+test('path and query fills outside placement are refused and observed', async () => {
 	const schedule = vi
 		.spyOn(observations, 'scheduleFillPlacementObservation')
 		.mockImplementation(() => {})
 	const { findSpy, authSpy, orgSpy } = mockSecret({ headers: true })
 	try {
-		const { request: expanded, bodyFillDone } = await expandSecretPlaceholders({
-			request: new Request(
-				'https://api.example.com/{{secret:apiKey}}?q={{secret:apiKey}}',
-				{
-					headers: { Authorization: 'Bearer {{secret:apiKey}}' },
-				},
-			),
-			props,
-			env,
-		})
-		expect(expanded.headers.get('Authorization')).toBe('Bearer sk_live')
-		expect(new URL(expanded.url).pathname).toContain('sk_live')
-		expect(new URL(expanded.url).searchParams.get('q')).toBe('sk_live')
-		await bodyFillDone
-		expect(schedule).toHaveBeenCalledTimes(1)
+		const refusal = await expandRefusal(
+			new Request(`https://api.example.com/${apiKey}?q=${apiKey}`, {
+				headers: { Authorization: `Bearer ${apiKey}` },
+			}),
+		)
+		expect(refusal).toBeInstanceOf(SecretPlacementError)
 		expect(schedule).toHaveBeenCalledWith(
 			expect.objectContaining({
 				credentialId: 'cred-apiKey',
@@ -163,10 +160,13 @@ test('path and query fills are observed as distinct sites', async () => {
 	}
 })
 
-test('null placement (anywhere) does not record would-block', async () => {
+test('a legacy credential fills a body part it is opted in to', async () => {
 	const schedule = vi
 		.spyOn(observations, 'scheduleFillPlacementObservation')
 		.mockImplementation(() => {})
+	const optInSpy = vi
+		.spyOn(optIns, 'readFillPlacementOptIn')
+		.mockResolvedValue({ query: false, path: false, body: true })
 	const { findSpy, authSpy, orgSpy } = mockSecret(null)
 	try {
 		const { request: expanded, bodyFillDone } = await expandSecretPlaceholders({
@@ -202,6 +202,7 @@ test('null placement (anywhere) does not record would-block', async () => {
 			}),
 		)
 	} finally {
+		optInSpy.mockRestore()
 		schedule.mockRestore()
 		findSpy.mockRestore()
 		authSpy.mockRestore()

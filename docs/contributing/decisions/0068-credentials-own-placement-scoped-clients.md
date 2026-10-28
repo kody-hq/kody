@@ -836,8 +836,8 @@ switch" rule for Key placeholders (lines 115–117 and 408–410 above, and the
   (including package-scope rows that still have the headers-only default from an
   earlier insert, not only rows that still have null placement). (5) Enforcement
   with a clear refusal that names the credential, the refused part, and the
-  allowed parts. Enforcement ships last. Steps 4 and 5 are not approved to ship
-  yet.
+  allowed parts. Enforcement ships last. Steps 4 and 5 shipped in
+  [Amendment 2026-10-27: placement enforcement](#amendment-2026-10-27-placement-enforcement).
 - **Unchanged.** Host allowlists, HTTPS-only fill, scoped-client `inject` shapes
   (header / basic / query), and the rest of this record. Package need
   declarations may optionally carry fill placement (see
@@ -968,3 +968,66 @@ point inject at a different header or query parameter.
   website (credential page and account secret editor) and the MCP `api` tool
   keep full edits. New credentials created from code may keep the defaults
   (headers-only, `Authorization: Bearer`) or narrow them.
+
+## Amendment 2026-10-27: placement enforcement
+
+- **Context.** Fill placement shipped observe-only (steps 1 to 3 of
+  [Amendment 2026-10-17](#amendment-2026-10-17-per-credential-fill-placement)).
+  A credential with no placement filled anywhere, including the query, URL path,
+  and body, where a host may store what it receives.
+- **Decision.** The fetch gateway enforces each credential's placement on every
+  fill path (placeholders, secret providers, managed integration tokens, and the
+  scoped `credential()` client). The refusal names the credential, the refused
+  part, and the allowed parts, and never the value.
+- **Owner opt-in.** Headers follow the stored placement. Query, URL path, and
+  body also need a per-credential owner opt-in
+  (`credential_fill_placement_opt_ins`), recorded when the owner saves those
+  parts on the website, which shows a warning that the host may store the value.
+  Placement set from code or a package manifest stores the parts but does not
+  opt in. This covers a declared host that legitimately needs the secret in a
+  stored body field, the one case handles cannot.
+- **Legacy credentials.** A credential with no placement (null) fills headers
+  plus each query, path, or body part it was seen filled into before enforcement
+  (`credential_fill_placement_observations`). Migration 0195 copies those parts
+  into `observed` opt-ins, so nobody migrates anything by hand.
+- **Grandfathered fills.** Migration 0195 grants the `observed` opt-in to every
+  credential seen filling a query, path, or body part before enforcement,
+  including placements set from code or a package manifest, so every fill that
+  works today keeps working. It never widens a credential past its stored
+  placement. Placements set from code after 0195 still need the owner opt-in.
+- **Not built.** A per-host path allowlist; it comes later only if abuse shows
+  up.
+
+## Amendment 2026-10-27: derived tokens come back sealed
+
+Kent decided on 2026-10-27 that a token Kody derives with a credential is a
+value code must not hold, the same as the credential. Before this,
+`oauthClientCredentials` returned the provider's raw token payload (with a
+best-effort redactor on hosted runs only), `secretJwtSign` returned the signed
+JWT, and a manual token request returned whatever the token endpoint sent.
+
+- **Sealed tokens.** `access_token`, `refresh_token`, and `id_token` in a JSON
+  response to a request the fetch gateway filled a credential into, and the
+  `secretJwtSign` JWT, come back as an integration-token placeholder whose name
+  is the token encrypted by the host (AES-GCM, key derived from
+  `SECRET_STORE_KEY`). Code passes it into a fetch header or body
+  (`Authorization: Bearer ...` keeps working) and the gateway opens it on
+  egress.
+- **Bound.** A sealed token fills only for its org, in the run that received it
+  (the run's credential-client binding, or the CapabilityProxy credential for
+  `--local`), on the registrable domain of the token URL or of any approved host
+  of the credentials filled into the token request (so a token minted on a
+  separate auth domain still reaches the API the credential is approved for,
+  with no new `oauthClientCredentials` option), or of the JWT's https `aud` or
+  `send_to_host`, never in a URL query or path, and for at most one hour. A JWT
+  with neither an https `aud` nor `send_to_host` stays sealed and org-bound but
+  may fill on any host, so existing callers keep working; the result carries a
+  deprecation `warning`, and requiring `send_to_host` is tracked in
+  kody-hq/kody#4456.
+- **Refresh tokens.** A sealed `refresh_token` shares the one-run, one-hour cap.
+  Kody holding refresh tokens server side is tracked in kody-hq/kody#4457.
+- **Server-side.** `oauthClientCredentials` runs its token request through the
+  gateway, hosted and `--local`. The `__kodyTrackRunSecret` redactor hop is
+  gone; nothing derived reaches code to redact.
+- **Unchanged.** Kody-managed integration refresh (`integrations/token-refresh`)
+  already runs on the host and does not go through the gateway.

@@ -103,8 +103,8 @@ export function CredentialFillPlacementEditor(props: Props) {
 			<div css={css({ display: 'grid', gap: spacing.sm })}>
 				<code css={summaryCss}>{formatFillPlacementSummary(placement)}</code>
 				<p css={accountFieldNoteCss}>
-					Placeholders for this credential may only fill the parts above. The
-					gateway still fills today; enforcement ships later.
+					Placeholders for this credential may only fill the parts above; Kody
+					refuses a fill anywhere else.
 				</p>
 				<div css={accountActionsCss}>
 					<button

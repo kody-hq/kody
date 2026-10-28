@@ -59,6 +59,40 @@ test('owner details link Open Package App when the package declares an app', asy
 	expect(html).toContain('data-icon="share"')
 })
 
+test('cookie warning callout is shown only in the owner package details view', async () => {
+	const warning = {
+		cookieName: '__kapp_a_session',
+		reason: 'added_httponly' as const,
+		lastSeenAt: '2026-10-22T12:00:00.000Z',
+	}
+	const ownerHtml = await renderToString(
+		jsx(AccountPackageOwnerDetails, {
+			ownerUsername: 'kentcdodds',
+			packageDetail: packageDetail({ cookieWarnings: [warning] }),
+			lockInFlight: false,
+			viewerCanPublish: true,
+			viewerCanDelete: true,
+			viewerCanAdoptCommunityFork: true,
+			onToggleLock: () => {},
+		}),
+	)
+	expect(ownerHtml).toContain('data-testid="package-cookie-warnings"')
+	expect(ownerHtml).toContain('__kapp_a_session')
+
+	const nonOwnerHtml = await renderToString(
+		jsx(AccountPackageOwnerDetails, {
+			ownerUsername: 'kentcdodds',
+			packageDetail: packageDetail({ cookieWarnings: [warning] }),
+			lockInFlight: false,
+			viewerCanPublish: false,
+			viewerCanDelete: false,
+			viewerCanAdoptCommunityFork: false,
+			onToggleLock: () => {},
+		}),
+	)
+	expect(nonOwnerHtml).not.toContain('data-testid="package-cookie-warnings"')
+})
+
 test('owner details show No app when the package has no app', async () => {
 	const html = await renderToString(
 		jsx(AccountPackageOwnerDetails, {

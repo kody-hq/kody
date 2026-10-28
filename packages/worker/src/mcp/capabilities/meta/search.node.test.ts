@@ -8,10 +8,6 @@ import type * as capabilityRegistry from '#mcp/capabilities/registry.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import type * as secretsService from '#mcp/secrets/service.ts'
 import type * as memoryToolContext from '#mcp/tools/memory-tool-context.ts'
-import {
-	featureFlagKeys,
-	jevSearchRerankFlagKey,
-} from '#universal/feature-flags/registry.ts'
 import type * as entitlementsService from '#worker/entitlements/service.ts'
 import type * as integrationsService from '#worker/integrations/service.ts'
 import type * as packageRepo from '#worker/package-registry/repo.ts'
@@ -293,8 +289,8 @@ test('meta search wires exact package identity, hidden gating, and natural-langu
 		{ type: 'guide', entityRef: 'guide:search_and_execute' },
 	])
 	expect(naturalLanguage.telemetry?.jevRerank).toMatchObject({
-		enabled: false,
-		outcome: 'skipped-flag-off',
+		enabled: true,
+		outcome: 'skipped-plan',
 	})
 	expect(naturalLanguage.phaseTimings?.jevRerankMs).toEqual(expect.any(Number))
 
@@ -323,9 +319,6 @@ test('meta search wires exact package identity, hidden gating, and natural-langu
 	expect(mockModule.getCapabilityRegistryForContext).toHaveBeenCalledTimes(1)
 
 	mockUserPlan.plan = 'standard'
-	mockFeatureFlags.override = Object.fromEntries(
-		featureFlagKeys.map((key) => [key, key === jevSearchRerankFlagKey]),
-	)
 	try {
 		const jevEnabled = await searchCapability.handler(
 			{ query: 'search docs', conversationId: 'meta-jev-timing' },
@@ -354,13 +347,11 @@ test('meta search wires exact package identity, hidden gating, and natural-langu
 				'usernameLookup',
 				'identityResolution',
 				'rowAndRegistryLoad',
-				'featureFlags',
 				'loadAndRank',
 				'unaccounted',
 			]),
 		)
 	} finally {
-		mockFeatureFlags.override = null
 		mockUserPlan.plan = 'free'
 	}
 })

@@ -146,7 +146,6 @@ function rerank(
 		candidates: makeNecessityRunPool(pair),
 		limit: 2,
 		offline: false,
-		enabled: true,
 		planEligible: true,
 		...overrides,
 	})
@@ -197,7 +196,7 @@ test('selectJevKeptCandidates uses high bar, secondary floor with cluster, or em
 	).toEqual({ keepPath: 'kept-lowered', kept: ['mid-top', 'near'] })
 })
 
-test('rerankSearchCandidatesWithJev skips offline or flag-off and applies Score order', async () => {
+test('rerankSearchCandidatesWithJev skips offline or free plan and applies Score order', async () => {
 	const unusedRun = vi.fn()
 	const offline = await rerank(unusedRun, {
 		env: {} as Env,
@@ -210,17 +209,17 @@ test('rerankSearchCandidatesWithJev skips offline or flag-off and applies Score 
 	expect(offline.aiCallCount).toBe(0)
 	expect(offline.usage).toEqual({ inputTokens: null, outputTokens: null })
 
-	const flagOff = await rerank(unusedRun, {
+	const freePlan = await rerank(unusedRun, {
 		env: { AI: { run: unusedRun } } as unknown as Env,
 		candidates: pair,
 		limit: 1,
-		enabled: false,
+		planEligible: false,
 	})
-	expect(flagOff.outcome).toBe('skipped-flag-off')
-	expect(flagOff.candidates).toEqual([pair[0]])
-	expect(flagOff.model).toBeUndefined()
-	expect(flagOff.aiCallCount).toBeUndefined()
-	expect(flagOff.usage).toBeUndefined()
+	expect(freePlan.outcome).toBe('skipped-plan')
+	expect(freePlan.candidates).toEqual([pair[0]])
+	expect(freePlan.model).toBeUndefined()
+	expect(freePlan.aiCallCount).toBeUndefined()
+	expect(freePlan.usage).toBeUndefined()
 	expect(unusedRun).not.toHaveBeenCalled()
 
 	const applyRun = scoreRun((key) => {

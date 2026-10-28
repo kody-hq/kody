@@ -997,7 +997,9 @@ async function serveInternetVisiblePackageApp(input: {
 	 * Kody. They are served exactly like an anonymous visitor except that
 	 * package code can read who they are. Grants nothing.
 	 */
-	resolveIdentity?: () => Promise<RuntimePackageAppIdentity | null>
+	resolveIdentity?: (
+		kodyId: string,
+	) => Promise<RuntimePackageAppIdentity | null>
 }): Promise<Response | null> {
 	const org = await resolvePackageAppOrgOwnerByHandle({
 		env: input.env,
@@ -1019,7 +1021,10 @@ async function serveInternetVisiblePackageApp(input: {
 	// The lookup only adds identity, so a failure serves the visitor anonymously.
 	let identity: RuntimePackageAppIdentity | null = null
 	try {
-		identity = (await input.resolveIdentity?.()) ?? null
+		identity =
+			(await input.resolveIdentity?.(
+				lookup?.savedPackage.kodyId ?? input.packagePath.kodyId,
+			)) ?? null
 	} catch (error) {
 		console.warn('package-app-identity-lookup-failed', error)
 	}
@@ -1051,18 +1056,20 @@ async function serveInternetVisiblePackageApp(input: {
  * Kody grant for it (the same bar `/-/auth/me` uses). A stale handoff session
  * from someone who lost access gets nothing.
  */
-async function resolvePackageAppIdentityOnlyVisitor(input: {
+export async function resolvePackageAppIdentityOnlyVisitor(input: {
 	env: Env
 	authorized: AuthorizedPackageAppServe
 	handle: string
 	packagePath: PackageAppPath
+	/** The saved package's kodyId, the key serve and the runtime read grants by. */
+	kodyId?: string
 }): Promise<RuntimePackageAppIdentity | null> {
 	if (input.authorized.kind !== 'forbidden') return null
 	const grant = await findLivePackageAppOauthGrant({
 		db: input.env.APP_DB,
 		personId: input.authorized.person.userId,
 		orgUsername: input.handle.toLowerCase(),
-		kodyId: input.packagePath.kodyId,
+		kodyId: input.kodyId ?? input.packagePath.kodyId,
 	})
 	return grant ? input.authorized.person : null
 }
@@ -1221,12 +1228,13 @@ async function servePackageAppForSession(input: {
 		handle,
 		packagePath,
 		serverTiming,
-		resolveIdentity: () =>
+		resolveIdentity: (kodyId) =>
 			resolvePackageAppIdentityOnlyVisitor({
 				env,
 				authorized,
 				handle,
 				packagePath,
+				kodyId,
 			}),
 	})
 	if (anonymous) return anonymous

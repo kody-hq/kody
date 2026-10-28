@@ -126,6 +126,25 @@ const mockModule = vi.hoisted(() => ({
 	})),
 }))
 
+const cookieWarningMock = vi.hoisted(() => ({
+	record: vi.fn(async (..._args: Array<unknown>) => undefined),
+}))
+
+vi.mock(
+	'#worker/package-runtime/package-app-cookie-httponly.ts',
+	async (importOriginal) => {
+		const actual =
+			await importOriginal<
+				typeof import('#worker/package-runtime/package-app-cookie-httponly.ts')
+			>()
+		return {
+			...actual,
+			recordPackageAppCookieFindings: (...args: Array<unknown>) =>
+				cookieWarningMock.record(...args),
+		}
+	},
+)
+
 vi.mock('#worker/run-records/service.ts', async (importOriginal) => ({
 	...(await importOriginal<Record<string, unknown>>()),
 	beginRunRecord: (...args: Array<unknown>) =>
@@ -248,7 +267,7 @@ vi.mock('#worker/package-runtime/package-app.ts', () => ({
 
 type FixtureOptions = {
 	kodyId?: string
-	app?: Record<string, string>
+	app?: Record<string, unknown>
 }
 
 function createFixture(options: FixtureOptions = {}) {
@@ -669,6 +688,140 @@ test('package-app serve filters response cookies and inbound cookies by package 
 		'package-app-set-cookie-name-dropped',
 		expect.objectContaining({ dropped: ['other'] }),
 	)
+})
+
+test('package-app serve adds HttpOnly to author auth cookies and records a finding', async () => {
+	const fixture = seedFixture()
+	const prefix = await packageAppCookiePrefix(fixture.savedPackage.id)
+	cookieWarningMock.record.mockClear()
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
+		stub: {
+			getEntrypoint: () => ({
+				async fetch() {
+					return new Response('ok', {
+						headers: [
+							['Set-Cookie', `${prefix}session=x; Path=/`],
+							['Set-Cookie', 'session=x; Path=/'],
+						],
+					})
+				},
+			}),
+		},
+	})
+	consoleWarn.mockImplementation(() => {})
+	consoleWarn.mockClear()
+
+	const response = await serveHelloWorld()
+
+	expect(response.headers.getSetCookie()).toEqual([
+		`${prefix}session=x; Path=/; HttpOnly`,
+	])
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'package-app-set-cookie-name-dropped',
+		expect.objectContaining({ dropped: ['session'] }),
+	)
+	expect(cookieWarningMock.record).toHaveBeenCalledWith(
+		expect.objectContaining({
+			packageId: fixture.savedPackage.id,
+			hostname: 'example.com',
+			pathname: '/@demo-user/packages/perf-app',
+			findings: [{ cookieName: `${prefix}session`, reason: 'added_httponly' }],
+		}),
+	)
+	expect(consoleWarn).not.toHaveBeenCalledWith(
+		'package-app-cookie-httponly',
+		expect.anything(),
+	)
+})
+
+test('package-app serve honors client-readable cookies and protects other auth cookies', async () => {
+	const fixture = seedFixture({
+		kodyId: 'client-readable-cookie-app',
+		app: {
+			entry: './src/app.ts',
+			cookies: { clientReadable: ['theme-session'] },
+		},
+	})
+	const prefix = await packageAppCookiePrefix(fixture.savedPackage.id)
+	cookieWarningMock.record.mockClear()
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
+		stub: {
+			getEntrypoint: () => ({
+				async fetch() {
+					return new Response('ok', {
+						headers: [
+							['Set-Cookie', `${prefix}theme-session=dark; Path=/`],
+							['Set-Cookie', `${prefix}sessionToken=token; Path=/`],
+						],
+					})
+				},
+			}),
+		},
+	})
+	consoleWarn.mockImplementation(() => {})
+	consoleWarn.mockClear()
+
+	const response = await serveHelloWorld({
+		kodyId: fixture.savedPackage.kodyId,
+	})
+
+	expect(response.headers.getSetCookie()).toEqual([
+		`${prefix}theme-session=dark; Path=/`,
+		`${prefix}sessionToken=token; Path=/; HttpOnly`,
+	])
+	const findings = [
+		{ cookieName: `${prefix}theme-session`, reason: 'missing_httponly' },
+		{ cookieName: `${prefix}sessionToken`, reason: 'added_httponly' },
+	]
+	expect(cookieWarningMock.record).toHaveBeenCalledWith(
+		expect.objectContaining({
+			packageId: fixture.savedPackage.id,
+			hostname: 'example.com',
+			pathname: '/@demo-user/packages/client-readable-cookie-app',
+			findings,
+		}),
+	)
+	expect(consoleWarn).not.toHaveBeenCalledWith(
+		'package-app-cookie-httponly',
+		expect.anything(),
+	)
+})
+
+test('package-app serve drops unprefixed auth cookies without a finding', async () => {
+	seedFixture()
+	cookieWarningMock.record.mockClear()
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
+		stub: {
+			getEntrypoint: () => ({
+				async fetch() {
+					return new Response('ok', {
+						headers: { 'Set-Cookie': 'session=x; Path=/' },
+					})
+				},
+			}),
+		},
+	})
+	consoleWarn.mockImplementation(() => {})
+	consoleWarn.mockClear()
+
+	const response = await serveHelloWorld()
+
+	expect(response.headers.getSetCookie()).toEqual([])
+	expect(consoleWarn).not.toHaveBeenCalledWith(
+		'package-app-cookie-httponly',
+		expect.anything(),
+	)
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'package-app-set-cookie-name-dropped',
+		expect.objectContaining({ dropped: ['session'] }),
+	)
+	expect(cookieWarningMock.record).not.toHaveBeenCalled()
 })
 
 test('package-app serve dispatches cold and warm requests', async () => {

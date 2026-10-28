@@ -381,7 +381,8 @@ export async function chainView(caller: ExecutionContextCaller) {
 			return {
 				kind: 'context' as const,
 				id: entry.id,
-				name: row.name,
+				// Lost access hides a rename made after it.
+				name: access.unusableReason === 'not_granted' ? null : row.name,
 				usable: access.usable,
 				...(access.unusableReason
 					? { unusableReason: access.unusableReason }

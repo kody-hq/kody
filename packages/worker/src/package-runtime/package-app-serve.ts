@@ -41,6 +41,10 @@ import {
 	scrubPackageAppSetCookieDomains,
 } from '#worker/package-runtime/package-app-set-cookie.ts'
 import {
+	enforcePackageAppCookieHttpOnly,
+	recordPackageAppCookieFindings,
+} from '#worker/package-runtime/package-app-cookie-httponly.ts'
+import {
 	filterPackageAppRequestCookies,
 	packageAppCookiePrefix,
 } from '#worker/package-runtime/package-app-cookie-prefix.ts'
@@ -58,6 +62,7 @@ import {
 	resolveSavedPackageForPackageAppSlug,
 } from '#worker/package-invocations/module-artifacts.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
+import { getPackageAppClientReadableCookieNames } from '#worker/package-registry/manifest.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { savedCredentialNeeds } from '#worker/credentials/credential-needs.ts'
@@ -1084,6 +1089,7 @@ export async function servePackageAppRequest(input: {
 	let forwardedRequest: Request
 	let entrypoint: { fetch(request: Request): Promise<Response> }
 	let servedPublishedCommit: string | null = null
+	let clientReadableCookieNames: ReadonlyArray<string> = []
 	let visitNonce: string | null = null
 	try {
 		const [packageManifest, callerContext] = await Promise.all([
@@ -1101,6 +1107,9 @@ export async function servePackageAppRequest(input: {
 				packageId: savedPackage.id,
 			}),
 		])
+		clientReadableCookieNames = getPackageAppClientReadableCookieNames(
+			packageManifest.manifest,
+		)
 		const refusal = refuseUnapprovedAnonymousServe({
 			visitor,
 			approvedPublishedCommit: input.approvedPublishedCommit,
@@ -1128,6 +1137,31 @@ export async function servePackageAppRequest(input: {
 		const requiredExecutorNeeds = executorNeeds.filter(
 			(need) => need.required !== false,
 		)
+		// A signed-in visitor from outside the org brings their own executor
+		// credentials once they hold a live grant for this app. They get an
+		// executor-only visit: nothing else treats them as a visitor.
+		const executorGrant =
+			!visitor && identity && executorNeeds.length > 0
+				? await findLivePackageAppOauthGrant({
+						db: env.APP_DB,
+						personId: identity.userId,
+						orgUsername: packagePath.username.toLowerCase(),
+						kodyId: savedPackage.kodyId,
+					})
+				: null
+		const executorVisit =
+			identity && executorGrant
+				? {
+						visitor: {
+							userId: identity.userId,
+							username: identity.username,
+							role: null,
+						},
+						grantId: executorGrant.id,
+						scopes: executorGrant.scopes,
+					}
+				: null
+		const needVisitor = visitor ?? executorVisit?.visitor ?? null
 		const consentRedirect = () => {
 			const loginUrl = buildPackageAppLoginUrl({
 				requestUrl: request.url,
@@ -1185,7 +1219,7 @@ export async function servePackageAppRequest(input: {
 							},
 							visitorRequest: await createPackageAppVisitorPersonalRequest({
 								db: env.APP_DB,
-								visitor,
+								visitor: needVisitor,
 							}),
 							issue: { visitorNeed: need.key },
 							waitUntil: scheduleWorkerWaitUntil,
@@ -1205,12 +1239,13 @@ export async function servePackageAppRequest(input: {
 		// no grant for this app yet goes to consent, and any grant (even one
 		// that declined every optional need) serves the app after that.
 		if (
-			visitor &&
+			(visitor ?? identity) &&
 			(request.method === 'GET' || request.method === 'HEAD') &&
 			executorNeeds.some((need) => need.required === false) &&
+			!executorGrant &&
 			!(await findLivePackageAppOauthGrant({
 				db: env.APP_DB,
-				personId: visitor.userId,
+				personId: (visitor ?? identity)!.userId,
 				orgUsername: packagePath.username.toLowerCase(),
 				kodyId: savedPackage.kodyId,
 			}))
@@ -1241,6 +1276,7 @@ export async function servePackageAppRequest(input: {
 				servingUsername: packagePath.username,
 				hostedOrigin: requestUrl.origin,
 				mount: packagePath.mount,
+				executorVisit,
 			},
 		})
 		entrypoint = appWorker.stub.getEntrypoint(appWorker.entrypointName)
@@ -1384,6 +1420,29 @@ export async function servePackageAppRequest(input: {
 			),
 		})
 		const filtered = filterPackageAppSetCookies(scrubbed.response, cookiePrefix)
+		const enforced = enforcePackageAppCookieHttpOnly(filtered.response, {
+			clientReadable: clientReadableCookieNames,
+		})
+		if (enforced.findings.length > 0) {
+			const warningWrite = recordPackageAppCookieFindings({
+				db: env.APP_DB,
+				packageId: savedPackage.id,
+				findings: enforced.findings,
+				hostname: requestUrl.hostname,
+				pathname: requestUrl.pathname,
+				now: Date.now(),
+			}).catch((error) => {
+				console.warn('package-app-cookie-warning-record-failed', {
+					packageId: savedPackage.id,
+					error: getErrorMessage(error),
+				})
+			})
+			try {
+				scheduleWorkerWaitUntil(warningWrite)
+			} catch {
+				void warningWrite
+			}
+		}
 		logPackageAppSetCookieNamesDropped({
 			hostname: requestUrl.hostname,
 			pathname: requestUrl.pathname,
@@ -1397,7 +1456,7 @@ export async function servePackageAppRequest(input: {
 			surface: 'package-app-serve',
 		})
 		return endPackageAppVisitWithResponse(
-			attachPackageAppServerTiming(filtered.response, serverTiming),
+			attachPackageAppServerTiming(enforced.response, serverTiming),
 			visitNonce,
 		)
 	} catch (error) {

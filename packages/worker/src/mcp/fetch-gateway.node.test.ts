@@ -35,6 +35,22 @@ import * as providerService from '#mcp/secrets/secret-providers/service.ts'
 import * as usageModule from '#worker/usage/record-usage.ts'
 import { IntegrationHostNotAllowedError } from '#mcp/execute-modules/integration-host-allowlist.ts'
 
+// These cases cover fills the owner has opted in to; enforcement of the
+// opt-in itself is covered in fill-placement-enforcement.node.test.ts.
+vi.mock(
+	'#worker/credentials/fill-placement-opt-ins.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<
+			typeof import('#worker/credentials/fill-placement-opt-ins.ts')
+		>()),
+		readFillPlacementOptIn: async () => ({
+			query: true,
+			path: true,
+			body: true,
+		}),
+	}),
+)
+
 const userMeter = createInMemoryUserMeterEnv()
 const env = {
 	APP_DB: {

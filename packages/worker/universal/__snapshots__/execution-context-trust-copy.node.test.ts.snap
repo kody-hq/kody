@@ -1,0 +1,248 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`opt-in copy for every access combination > allowlist 1`] = `
+{
+  "chainFullNote": "Your chain is full, so this context will not be added to it.",
+  "checkboxLabel": "Add it to the end of my fallback chain",
+  "lan": null,
+  "managersNote": "Context managers see run metadata in the context's run history (who, when, duration, outcome), never results.",
+  "paragraphs": [
+    "Your runs will execute on buildbox, a machine operated by @sam. @sam can see the code, inputs, logs and results of your runs and the responses of credentialed requests they make. Your credential values stay on Kody.",
+    "Your runs get this machine's network position and access: files: 1 path, read · local network: no · internet: allowlist of 4 hosts · Kody APIs: none.",
+    "While your run is active, @sam's machine can make Kody API calls as you, within that Kody API access, and can change the results your run returns.",
+  ],
+  "title": "Opt into buildbox?",
+}
+`;
+
+exports[`opt-in copy for every access combination > lanWithFiles 1`] = `
+{
+  "chainFullNote": "Your chain is full, so this context will not be added to it.",
+  "checkboxLabel": "Add it to the end of my fallback chain",
+  "lan": "Local network access is on: your runs can reach devices and services on @sam's local network. Requests that use your credentials still leave from Kody cloud, so @sam's machine never sees your credential values.",
+  "managersNote": "Context managers see run metadata in the context's run history (who, when, duration, outcome), never results.",
+  "paragraphs": [
+    "Your runs will execute on buildbox, a machine operated by @sam. @sam can see the code, inputs, logs and results of your runs and the responses of credentialed requests they make. Your credential values stay on Kody.",
+    "Your runs get this machine's network position and access: files: 2 paths, write · local network: yes · internet: public · Kody APIs: 3 allowed.",
+    "While your run is active, @sam's machine can make Kody API calls as you, within that Kody API access, and can change the results your run returns.",
+  ],
+  "title": "Opt into buildbox?",
+}
+`;
+
+exports[`opt-in copy for every access combination > locked 1`] = `
+{
+  "chainFullNote": "Your chain is full, so this context will not be added to it.",
+  "checkboxLabel": "Add it to the end of my fallback chain",
+  "lan": null,
+  "managersNote": "Context managers see run metadata in the context's run history (who, when, duration, outcome), never results.",
+  "paragraphs": [
+    "Your runs will execute on buildbox, a machine operated by @sam. @sam can see the code, inputs, logs and results of your runs and the responses of credentialed requests they make. Your credential values stay on Kody.",
+    "Your runs get this machine's network position and access: files: none · local network: no · internet: none · Kody APIs: none.",
+    "While your run is active, @sam's machine can make Kody API calls as you, within that Kody API access, and can change the results your run returns.",
+  ],
+  "title": "Opt into buildbox?",
+}
+`;
+
+exports[`opt-in copy for every access combination > publicDefault 1`] = `
+{
+  "chainFullNote": "Your chain is full, so this context will not be added to it.",
+  "checkboxLabel": "Add it to the end of my fallback chain",
+  "lan": null,
+  "managersNote": "Context managers see run metadata in the context's run history (who, when, duration, outcome), never results.",
+  "paragraphs": [
+    "Your runs will execute on buildbox, a machine operated by @sam. @sam can see the code, inputs, logs and results of your runs and the responses of credentialed requests they make. Your credential values stay on Kody.",
+    "Your runs get this machine's network position and access: files: none · local network: no · internet: public · Kody APIs: all.",
+    "While your run is active, @sam's machine can make Kody API calls as you, within that Kody API access, and can change the results your run returns.",
+  ],
+  "title": "Opt into buildbox?",
+}
+`;
+
+exports[`register copy, personal and team, has no --no-chain and names kody login > personal 1`] = `
+{
+  "after": "It appears here within a few seconds, marked Not in any chain. Add it to your chain to start using it, or share it.",
+  "body": "Registration happens from the CLI because the context key is generated on the machine and never leaves it. On the machine that should run code:",
+  "commands": [
+    "npm install -g @kodycodes/cli",
+    "kody login",
+    "kody context register --name my-machine",
+    "kody daemon",
+  ],
+  "login": "If your Kody login predates execution context permissions, registering fails and tells you to run \`kody login\` again first. Other logins keep working as they are.",
+  "trust": [
+    "Code sent to this context runs on that machine, under the account that runs kody daemon.",
+    "It starts as Only me. If you share it, the people you share it with run code on that machine, and you can see their code, inputs, logs, results and the responses of credentialed requests their runs make. Their credential values stay on Kody.",
+    "What it exposes (files, local network, internet) is set on the machine; the CLI prints it.",
+  ],
+}
+`;
+
+exports[`register copy, personal and team, has no --no-chain and names kody login > team 1`] = `
+{
+  "after": "It appears here within a few seconds, marked Not in any chain. Add it to your chain to start using it, or share it.",
+  "body": "Registration happens from the CLI because the context key is generated on the machine and never leaves it. On the machine that should run code:",
+  "commands": [
+    "npm install -g @kodycodes/cli",
+    "kody login",
+    "kody context register --name my-machine --org acme",
+    "kody daemon",
+  ],
+  "login": "If your Kody login predates execution context permissions, registering fails and tells you to run \`kody login\` again first. Other logins keep working as they are.",
+  "trust": [
+    "Code sent to this context runs on that machine, under the account that runs kody daemon.",
+    "It starts as Only me. If you share it, the people you share it with run code on that machine, and you can see their code, inputs, logs, results and the responses of credentialed requests their runs make. Their credential values stay on Kody.",
+    "What it exposes (files, local network, internet) is set on the machine; the CLI prints it.",
+  ],
+}
+`;
+
+exports[`share copy for every access combination, as operator and as manager > allowlist:manager 1`] = `
+{
+  "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
+  "lan": null,
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
+  "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
+  "paragraphs": [
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
+    "Their runs get: files: 1 path, read · local network: no · internet: allowlist of 4 hosts · Kody APIs: none.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+  ],
+  "title": "Share buildbox",
+}
+`;
+
+exports[`share copy for every access combination, as operator and as manager > allowlist:operator 1`] = `
+{
+  "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
+  "lan": null,
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
+  "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
+  "paragraphs": [
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
+    "Their runs get: files: 1 path, read · local network: no · internet: allowlist of 4 hosts · Kody APIs: none.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+  ],
+  "title": "Share buildbox",
+}
+`;
+
+exports[`share copy for every access combination, as operator and as manager > lanWithFiles:manager 1`] = `
+{
+  "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
+  "lan": "Local network access is on: their runs can reach devices and services on this machine's local network. Requests that use their credentials still leave from Kody cloud.",
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
+  "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
+  "paragraphs": [
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
+    "Their runs get: files: 2 paths, write · local network: yes · internet: public · Kody APIs: 3 allowed.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+  ],
+  "title": "Share buildbox",
+}
+`;
+
+exports[`share copy for every access combination, as operator and as manager > lanWithFiles:operator 1`] = `
+{
+  "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
+  "lan": "Local network access is on: their runs can reach devices and services on this machine's local network. Requests that use their credentials still leave from Kody cloud.",
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
+  "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
+  "paragraphs": [
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
+    "Their runs get: files: 2 paths, write · local network: yes · internet: public · Kody APIs: 3 allowed.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+  ],
+  "title": "Share buildbox",
+}
+`;
+
+exports[`share copy for every access combination, as operator and as manager > locked:manager 1`] = `
+{
+  "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
+  "lan": null,
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
+  "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
+  "paragraphs": [
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
+    "Their runs get: files: none · local network: no · internet: none · Kody APIs: none.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+  ],
+  "title": "Share buildbox",
+}
+`;
+
+exports[`share copy for every access combination, as operator and as manager > locked:operator 1`] = `
+{
+  "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
+  "lan": null,
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
+  "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
+  "paragraphs": [
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
+    "Their runs get: files: none · local network: no · internet: none · Kody APIs: none.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+  ],
+  "title": "Share buildbox",
+}
+`;
+
+exports[`share copy for every access combination, as operator and as manager > publicDefault:manager 1`] = `
+{
+  "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
+  "lan": null,
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
+  "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
+  "paragraphs": [
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
+    "Their runs get: files: none · local network: no · internet: public · Kody APIs: all.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+  ],
+  "title": "Share buildbox",
+}
+`;
+
+exports[`share copy for every access combination, as operator and as manager > publicDefault:operator 1`] = `
+{
+  "firstShareRuntimeNote": "Others' runs can call no Kody APIs until you allow some.",
+  "lan": null,
+  "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
+  "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
+  "paragraphs": [
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.",
+    "Their runs get: files: none · local network: no · internet: public · Kody APIs: all.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+  ],
+  "title": "Share buildbox",
+}
+`;
+
+exports[`sharing levels and presets 1`] = `
+[
+  {
+    "help": "Only you can run code here.",
+    "label": "Only me",
+  },
+  {
+    "help": "These people, including people outside @acme, can run code here after opting in.",
+    "label": "Specific people",
+  },
+  {
+    "help": "Members of team build in @acme can run code here after opting in.",
+    "label": "Team",
+  },
+  {
+    "help": "Every member of @acme can run code here after opting in (not outside collaborators).",
+    "label": "Everyone in an org",
+  },
+]
+`;
+
+exports[`sharing levels and presets 2`] = `
+{
+  "contribute": "Contribute: also rename it and change what it exposes, within the machine's local policy",
+  "manage": "Manage: also share, unshare and revoke it",
+  "use": "Use: run code here",
+}
+`;

@@ -128,32 +128,6 @@ small badge in the app chrome and exists so the system stays exercised
 end-to-end. Experiment flags live in the same registry and are removed in the
 same way: delete the definition and every gate site.
 
-`jev-search-rerank` is a kill switch (default **off**, registry
-`defaultAudience: experiments_opt_in`) for improved ranked MCP
-`search({ query })`. When the flag is on, **paid** plans (`standard` / `pro` /
-`max`) widen hybrid recall and may run Workers AI `typesafe/jev` Score through
-AI Gateway when the post-hybrid pool looks ambiguous. Free and anonymous never
-call Jev. The plan gate is a **feature gate**, not an entitlement / usage
-counter. Pricing-page “improved search” copy is gated by the same flag
-(`isFeatureFlagEnabled` on the session) so the claim is not visible while the
-experiment is off. Offline/deterministic search skips Jev and uses hybrid order.
-See [Search](../../use/search.md) for skip reasons, telemetry, and Gateway
-requirements.
-
-**Success-metric exposure (F5):** this flag sets
-`exposureRecording: 'paid-ranked-search'`. Exposures are **not** written at the
-generic app/MCP evaluation chokepoints. They are written after list-mode search
-completes a **ranked** path (when `telemetry.jevRerank` is present) for **paid**
-users only: `on` when the same flag evaluation that gated search is enabled
-(Jev-eligible — necessity may still skip Score), `off` when it is disabled.
-Empty query / domain index / domain overview short-circuits stay outside the
-frame. Free and anonymous searchers are outside the frame. Assignment `source`
-still comes from that evaluation, so override dogfood is tagged and excluded
-from on/off (shown as the override cohort). Enable for dogfood with
-`adminFeatureFlagOverride({ key: "jev-search-rerank", username: "kentcdodds", enabled: true })`
-or via experiments opt-in while the global audience is `experiments_opt_in`.
-Remove the flag and gate sites when the experiment ends.
-
 `execute-invoke` is an experiment (default **off**, registry
 `defaultAudience: experiments_opt_in`) for the MCP `execute` `invoke` shortcut.
 When on for a caller, the execute tool advertises `invoke` (a
@@ -250,12 +224,12 @@ each stateless request inside the window. A kill switch or override can be stale
 until the TTL expires. Evaluation failures are not cached and fail closed (every
 flag off) without an exposure write, and execute refuses before loading a
 worker, so the failure never spends daily quota. Flags with
-`exposureRecording: 'paid-ranked-search'` (Jev) write only from paid list-mode
-ranked search so free opt-ins and non-search traffic stay outside that
-experiment frame. The write path mirrors usage metering — the `FLAG_EXPOSURES`
-Analytics Engine dataset in production/preview, the D1
-`feature_flag_exposure_rollups` table (migration `0001-squashed-init.sql`,
-90-day retention) in local dev and tests — and never throws.
+`exposureRecording: 'mcp-events-clients'` write only after an events-capable MCP
+client registers, so other MCP callers stay outside that experiment frame. The
+write path mirrors usage metering — the `FLAG_EXPOSURES` Analytics Engine
+dataset in production/preview, the D1 `feature_flag_exposure_rollups` table
+(migration `0001-squashed-init.sql`, 90-day retention) in local dev and tests —
+and never throws.
 
 The assignment source (`default` / `global` / `rollout` / `override`) is what
 keeps the readout honest: `override` users are hand-picked and excluded from

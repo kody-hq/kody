@@ -43,8 +43,8 @@ MCP Durable Object. UserMeter schema v12 inbound MCP last-used RPCs add a few KB
   user-secret read): local dry-run 5_096_278 bytes.
 - Destination-verify Cloudflare delivery index (email_destination_verification)
   on the shared add/resend path: local dry-run 5_097_119 bytes.
-- Flag-gated Jev search experiment (`jev-search-rerank` registry entry plus
-  shared search list wiring) spilled ~5 KB into the platform entry: CI measured
+- Jev search experiment (a since-removed feature flag registry entry plus shared
+  search list wiring) spilled ~5 KB into the platform entry: CI measured
   5_102_980 bytes against the previous 5_098_000 budget.
 - List-mode search `serverTiming` (execute-shaped `{ name, durationMs }`
   including `jevRerank`) adds a few hundred bytes: CI dry-run 5_105_268 against

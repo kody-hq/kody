@@ -1,5 +1,9 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { listPackageAppCustomDomainViewsForPackage } from '#worker/package-app-custom-hostnames/service.ts'
+import {
+	listPackageAppCookieWarnings,
+	type PackageAppCookieWarningView,
+} from '#worker/package-runtime/package-app-cookie-httponly.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
 	buildForkListingDiffHref,
@@ -566,24 +570,30 @@ async function toDetailWithListingState(input: {
 	username?: string
 	record: SavedPackageWithCommunityProvenanceRecord
 }): Promise<AccountPackageDetail> {
-	const [ownerIsPersonal, detailBase, customDomains] = await Promise.all([
-		resolveOwnerIsPersonal(input.env.APP_DB, input.userId),
-		toDetail({
-			env: input.env,
-			requestUrl: input.requestUrl,
-			userId: input.userId,
-			username: input.username,
-			record: input.record,
-			hasCommunityListing: false,
-			listingNeedsRepublish: false,
-			ownerIsPersonal: true,
-		}),
-		// Owner-only, like credit attribution: `username` is set only for
-		// viewers who can manage the package.
-		input.username
-			? loadPackageCustomDomains(input.env, input.record.id)
-			: Promise.resolve(undefined),
-	])
+	const [ownerIsPersonal, detailBase, customDomains, cookieWarnings] =
+		await Promise.all([
+			resolveOwnerIsPersonal(input.env.APP_DB, input.userId),
+			toDetail({
+				env: input.env,
+				requestUrl: input.requestUrl,
+				userId: input.userId,
+				username: input.username,
+				record: input.record,
+				hasCommunityListing: false,
+				listingNeedsRepublish: false,
+				ownerIsPersonal: true,
+			}),
+			// Owner-only, like credit attribution: `username` is set only for
+			// viewers who can manage the package.
+			input.username
+				? loadPackageCustomDomains(input.env, input.record.id)
+				: Promise.resolve(undefined),
+			loadPackageCookieWarningsForOwner({
+				env: input.env,
+				packageId: input.record.id,
+				ownerUsername: input.username,
+			}),
+		])
 	const listingState = await loadActiveCommunityListingState({
 		db: input.env.APP_DB,
 		userId: input.userId,
@@ -595,6 +605,30 @@ async function toDetailWithListingState(input: {
 		...listingState,
 		ownerIsPersonal,
 		...(customDomains?.length ? { customDomains } : {}),
+		...(cookieWarnings?.length ? { cookieWarnings } : {}),
+	}
+}
+
+export async function loadPackageCookieWarningsForOwner(input: {
+	env: Env
+	packageId: string
+	ownerUsername?: string
+	now?: number
+}): Promise<Array<PackageAppCookieWarningView> | undefined> {
+	if (!input.ownerUsername || typeof input.env.APP_DB?.prepare !== 'function') {
+		return undefined
+	}
+	try {
+		return await listPackageAppCookieWarnings({
+			db: input.env.APP_DB,
+			packageId: input.packageId,
+			now: input.now,
+		})
+	} catch (error) {
+		if (!/no such table/i.test(String(error))) {
+			console.warn('package-cookie-warnings-load-failed', error)
+		}
+		return undefined
 	}
 }
 

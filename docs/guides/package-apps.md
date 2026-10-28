@@ -1322,6 +1322,36 @@ share an origin, so client JavaScript can read cookies from sibling apps with
 `document.cookie`; mark session cookies `HttpOnly` and use `Secure` and an
 appropriate `SameSite` value.
 
+Kody appends HttpOnly to `Set-Cookie` headers it identifies as auth or session
+cookies. To decide, Kody removes an optional `__Host-` or `__Secure-` prefix and
+your `cookiePrefix`, then matches name segments such as `session`, `sid`,
+`auth`, `token`, `jwt`, `login`, `remember`, `refresh`, and `access`, plus
+common framework names like `connect.sid` and `next-auth.*`. Names with a `csrf`
+or `xsrf` segment are not matched. Once Kody adds HttpOnly, page scripts can no
+longer read that cookie through `document.cookie`. Other cookies without
+HttpOnly are left unchanged, and their names appear in the package owner's
+dashboard so you can decide whether to add the flag yourself. If page scripts
+must read a cookie that looks like auth or session state, list its name without
+the Kody cookie prefix in `kody.app.cookies.clientReadable`:
+
+```json
+{
+	"kody": {
+		"app": {
+			"entry": "./src/app.ts",
+			"cookies": {
+				"clientReadable": ["theme-session"]
+			}
+		}
+	}
+}
+```
+
+Names in this list are exact and case-sensitive. Exempted cookies stay as set
+and still appear in the owner's dashboard. If page scripts do not need to read a
+cookie, keep HttpOnly on it. Use `clientReadable` or a name that does not look
+like auth or session state only for cookies that page scripts must read.
+
 You can run your own login and OAuth flow, store your own tokens, and choose how
 to authenticate in app code: import `hasScope` from `kody:runtime`, then use
 `hasScope(request, 'need:<key>')` before calling `credential.visitor('<key>')`

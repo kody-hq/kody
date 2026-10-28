@@ -16,6 +16,7 @@ export type PageNavigation = {
 		| 'credits'
 		| 'data'
 		| 'email'
+		| 'execution-contexts'
 		| 'experiments'
 		| 'feature-flags'
 		| 'follows'

@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	buildPackageSearchProjection,
 	getPackageAppAssetsDirectory,
+	getPackageAppClientReadableCookieNames,
 	getPackageAppClientEntryPath,
 	getPackageAppClientExternals,
 	getPackageAppEntryPath,
@@ -133,6 +134,41 @@ test('parseAuthoredPackageJson accepts kody.app.client and kody.app.assets next 
 		{ mode: 'published' },
 	)
 	expect(published.kody.app).toEqual({ entry: './app/router.ts' })
+})
+
+test('kody.app.cookies.clientReadable accepts bounded non-empty names', () => {
+	const withClientReadable = parse('@kentcdodds/client-readable-cookies', {
+		app: {
+			entry: './src/app.ts',
+			cookies: { clientReadable: [' theme-session '] },
+		},
+	})
+	expect(getPackageAppClientReadableCookieNames(withClientReadable)).toEqual([
+		'theme-session',
+	])
+
+	const withoutClientReadable = parse('@kentcdodds/default-cookies', {
+		app: { entry: './src/app.ts' },
+	})
+	expect(getPackageAppClientReadableCookieNames(withoutClientReadable)).toEqual(
+		[],
+	)
+
+	expect(() =>
+		parse('@kentcdodds/empty-client-readable-cookie', {
+			app: { entry: './src/app.ts', cookies: { clientReadable: [''] } },
+		}),
+	).toThrow(/Invalid package.json/)
+	expect(() =>
+		parse('@kentcdodds/too-many-client-readable-cookies', {
+			app: {
+				entry: './src/app.ts',
+				cookies: {
+					clientReadable: Array.from({ length: 21 }, (_, i) => `c${i}`),
+				},
+			},
+		}),
+	).toThrow(/Invalid package.json/)
 })
 
 test('parseAuthoredPackageJson validates scoped package names against kody.id', () => {

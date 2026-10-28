@@ -55,12 +55,13 @@ boundary, on the final serialized request, and only for hosts you approved.
   HTTPS `fetch` (a header, the URL path or query, or a text body) resolves when
   the request leaves Kody, if the host is one you approved for that secret. Each
   credential also stores a **fill placement** (headers, query, path, and/or
-  body). Null means anywhere; new credentials default to headers-only. Set
-  placement on create/edit (`secretSet` / `credentialUpdate`, the credential
-  detail page, or `/connect/secret-set`). The gateway fills every part and logs
-  would-block when a fill is outside the declared placement. A path fill is one
-  encoded segment: store only the token for webhook URLs, with the path prefix
-  literal in code (see
+  body). New credentials default to headers-only. Set placement on create/edit
+  (`secretSet` / `credentialUpdate`, the credential detail page, or
+  `/connect/secret-set`). The gateway refuses a fill outside the placement, and
+  query, URL path, and body also need the owner's opt-in on the credential page.
+  Credentials seen filling a query, path, or body before enforcement keep those
+  parts (migration 0195). A path fill is one encoded segment: store only the
+  token for webhook URLs, with the path prefix literal in code (see
   [Secrets and host approval](../use/secrets-and-values.md#placeholders-in-fetch)).
   On plain `http://` or an unapproved host the request is refused with an error
   naming the secret and host; a placeholder is never sent unfilled. External
@@ -72,12 +73,14 @@ boundary, on the final serialized request, and only for hosts you approved.
   produces the header without exposing either half. Each secret argument accepts
   a saved secret name **or** an opaque `{{secret:…}}` ref from
   `packageSecrets.get`.
-- **Signed JWTs** — `secretJwtSign` signs a JWT with a stored key and returns
-  the compact token, never the key. HMAC (`HS256` / `HS384` / `HS512`) reads key
-  material from the saved secret (`key_encoding` defaults to `base64`) and
-  rejects keys shorter than 32, 48, or 64 bytes (JWA). `RS*`, `PS*`, `ES*`, and
-  `EdDSA` use a PKCS#8 PEM private key. Pass the secret as
-  `private_key_secret_name` (name **or** opaque `{{secret:…}}` ref).
+- **Signed JWTs**: `secretJwtSign` signs a JWT with a stored key and returns a
+  sealed handle for the compact token, never the key or the token. Put the
+  handle in a fetch header or body and Kody fills the JWT on egress. HMAC
+  (`HS256` / `HS384` / `HS512`) reads key material from the saved secret
+  (`key_encoding` defaults to `base64`) and rejects keys shorter than 32, 48, or
+  64 bytes (JWA). `RS*`, `PS*`, `ES*`, and `EdDSA` use a PKCS#8 PEM private key.
+  Pass the secret as `private_key_secret_name` (a saved secret name **or** the
+  opaque ref from `packageSecrets.get`).
 
 Placeholders are live tokens. Do not paste one into an issue body, a comment, a
 log line, or a returned string — write `{{secret:<name>}}` with angle brackets

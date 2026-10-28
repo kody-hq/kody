@@ -31,6 +31,7 @@ import {
 import { createUnresolvedSecretMessage } from './unresolved-secret.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import * as packageManifestPlacement from '#worker/credentials/package-manifest-fill-placement.ts'
+import { readFillPlacementOptIn } from '#worker/credentials/fill-placement-opt-ins.ts'
 
 const migrationsDirectory = new URL('../../../migrations/', import.meta.url)
 const userId = ownerIdFromStored('user-123')
@@ -961,4 +962,76 @@ test('setSecretsAllowedPackages and setSecretsAllowedHosts batch upserts and ski
 		name: 'charlieToken',
 		allowedHosts: ['api.openai.com'],
 	})
+})
+
+test('a new credential records the opt-in its website form passes; a copied origin alone grants none', async () => {
+	const { env } = await createSecretEnv()
+	await saveSecret({
+		env,
+		userId,
+		scope: 'user',
+		name: 'ownerBody',
+		value: 'secret-value',
+		placementOnInsert: { headers: true, body: true },
+		placementOriginOnInsert: 'owner',
+		fillPlacementOptInOnInsert: { query: false, path: false, body: true },
+		audit: null,
+	})
+	await saveSecret({
+		env,
+		userId,
+		scope: 'user',
+		name: 'codeBody',
+		value: 'secret-value',
+		placementOnInsert: { headers: true, body: true },
+		placementOriginOnInsert: 'owner',
+		audit: null,
+	})
+	const owner = await resolveSecret({
+		env,
+		userId,
+		name: 'ownerBody',
+		scope: 'user',
+	})
+	const code = await resolveSecret({
+		env,
+		userId,
+		name: 'codeBody',
+		scope: 'user',
+	})
+	if (!owner.found || !code.found) throw new Error('expected both credentials')
+	await expect(
+		readFillPlacementOptIn(env.APP_DB, owner.credentialId!),
+	).resolves.toEqual({ query: false, path: false, body: true })
+	await expect(
+		readFillPlacementOptIn(env.APP_DB, code.credentialId!),
+	).resolves.toEqual({ query: false, path: false, body: false })
+})
+
+test('a website save of an existing credential records its opt-in even when placement is unchanged', async () => {
+	const { env } = await createSecretEnv()
+	const save = (optIn?: { query: boolean; path: boolean; body: boolean }) =>
+		saveSecret({
+			env,
+			userId,
+			scope: 'user',
+			name: 'codeQuery',
+			value: 'secret-value',
+			placementOnInsert: { headers: true, query: true },
+			placementOriginOnInsert: 'owner',
+			...(optIn ? { fillPlacementOptInOnInsert: optIn } : {}),
+			audit: null,
+		})
+	await save()
+	await save({ query: true, path: false, body: false })
+	const found = await resolveSecret({
+		env,
+		userId,
+		name: 'codeQuery',
+		scope: 'user',
+	})
+	if (!found.found) throw new Error('expected the credential')
+	await expect(
+		readFillPlacementOptIn(env.APP_DB, found.credentialId!),
+	).resolves.toEqual({ query: true, path: false, body: false })
 })

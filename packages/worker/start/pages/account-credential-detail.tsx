@@ -162,8 +162,8 @@ function renderFillPlacementObservation(
 		<div css={{ display: 'grid', gap: spacing.xs }}>
 			{wouldBlock ? (
 				<p css={mutedCss}>
-					Kody would block placeholders in: {wouldBlock}. Placement is not
-					enforced yet; this is observe-only from recent fills.
+					Recent fills outside this placement: {wouldBlock}. Kody refuses these
+					now; allow a part above if this credential needs it there.
 				</p>
 			) : null}
 			{filled ? <p css={mutedCss}>Recently filled parts: {filled}.</p> : null}

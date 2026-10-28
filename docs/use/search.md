@@ -113,40 +113,39 @@ memory matches are not surfaced automatically.
 
 ### Ranked search scoring
 
-Optional stage-2 Jev Score rerank runs only for **paid** plans (Standard / Pro /
-Max) when the `jev-search-rerank` flag is on **and** the post-hybrid candidate
-pool looks ambiguous (small clear pools skip). Free and anonymous never get Jev.
-The flag is a kill switch; plan + necessity are the product gates.
+Stage-2 Jev Score rerank runs only for **paid** plans (Standard / Pro / Max),
+and only when the post-hybrid candidate pool looks ambiguous (small clear pools
+skip). Paid searches also widen hybrid recall. Free and anonymous never get Jev.
 
 Ranked list-mode structured content includes **`telemetry.jevRerank`**
 (`applied`, `skipped-*`, or `fallback-*`) and **`phaseTimings.jevRerankMs`**.
-Skip reasons include `skipped-flag-off`, `skipped-plan` (Free / anonymous),
-`skipped-small-pool` (≤8 hybrid candidates), and `skipped-clear-winner` (9–20
-with a decisive top hit). A `fallback-error` outcome includes a short
-**`errorReason`** (missing AI Gateway, Gateway 403/402, or incomplete Score
-answers, including sampled top-level response keys when answers are missing).
-Score batches share a 4-second budget; past it Kody aborts them and returns
-hybrid order with outcome `fallback-timeout`. When every Score misses the keep
-floors, the ranked list stays empty (`fallback-empty-after-drop`,
-`keepPath: empty`). Hybrid candidates whose package name, kody id, or name leaf
-equals a query term or a contiguous run of query terms stay in hybrid order
-(`keepPath: kept-identity`). `search({ query: "dropbox shared link" })` can
-still return the package `search({ query: "dropbox" })` finds. A package that
-only mentions those words in its description stays dropped. The response is
-still **No matches** when nothing matches an identity term. When the Jev stage
-runs or attempts, that object also carries **`model`**, **`aiCallCount`** (Score
-`AI.run` batches), and **`usage`** (`inputTokens` / `outputTokens`, or nulls
-when the binding omits them) so eval can weigh ranking quality against latency
-and token use. Public `search` also returns request-scoped
-**`timing.serverTiming`** phases (`{ name, durationMs }`, same shape as execute,
-not stored), including **`jevRerank`** when that stage ran. Execution-level
-tiles (`rateLimit`, `usernameLookup`, `identityResolution`,
-`rowAndRegistryLoad`, `featureFlags`, `loadAndRank`, `memoryEnrichment`) and
-`unaccounted` (wall clock minus the exclusive tiles) appear when that step ran.
-The `search` meta capability (usable inside **execute**) returns the same
-`telemetry`, `phaseTimings`, and top-level `serverTiming` on ranked `query`
-results. Entity lookups, domain listings, empty/broad discovery,
-`search({ domain })`, and exact package identity omit those Jev fields.
+Skip reasons include `skipped-plan` (Free / anonymous), `skipped-small-pool` (≤8
+hybrid candidates), and `skipped-clear-winner` (9–20 with a decisive top hit). A
+`fallback-error` outcome includes a short **`errorReason`** (missing AI Gateway,
+Gateway 403/402, or incomplete Score answers, including sampled top-level
+response keys when answers are missing). Score batches share a 4-second budget;
+past it Kody aborts them and returns hybrid order with outcome
+`fallback-timeout`. When every Score misses the keep floors, the ranked list
+stays empty (`fallback-empty-after-drop`, `keepPath: empty`). Hybrid candidates
+whose package name, kody id, or name leaf equals a query term or a contiguous
+run of query terms stay in hybrid order (`keepPath: kept-identity`).
+`search({ query: "dropbox shared link" })` can still return the package
+`search({ query: "dropbox" })` finds. A package that only mentions those words
+in its description stays dropped. The response is still **No matches** when
+nothing matches an identity term. When the Jev stage runs or attempts, that
+object also carries **`model`**, **`aiCallCount`** (Score `AI.run` batches), and
+**`usage`** (`inputTokens` / `outputTokens`, or nulls when the binding omits
+them) so eval can weigh ranking quality against latency and token use. Public
+`search` also returns request-scoped **`timing.serverTiming`** phases
+(`{ name, durationMs }`, same shape as execute, not stored), including
+**`jevRerank`** when that stage ran. Execution-level tiles (`rateLimit`,
+`usernameLookup`, `identityResolution`, `rowAndRegistryLoad`, `loadAndRank`,
+`memoryEnrichment`) and `unaccounted` (wall clock minus the exclusive tiles)
+appear when that step ran. The `search` meta capability (usable inside
+**execute**) returns the same `telemetry`, `phaseTimings`, and top-level
+`serverTiming` on ranked `query` results. Entity lookups, domain listings,
+empty/broad discovery, `search({ domain })`, and exact package identity omit
+those Jev fields.
 
 Ranked `search({ query })` may also prepend a **`## Waiting`** block when
 something the signed-in human must clear is `block` or `degraded` (reconnectable
