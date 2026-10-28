@@ -246,11 +246,7 @@ test('packageAppFetch rejects invalid callers, paths, and missing packages', asy
 			{},
 			'packageAppFetch path must not contain parent traversal segments.',
 		],
-		[
-			{ ...demo, method: 'POST', body: 'x'.repeat(102_401) },
-			{},
-			'Too big',
-		],
+		[{ ...demo, method: 'POST', body: 'x'.repeat(102_401) }, {}, 'Too big'],
 		[
 			// Under the character cap but over the UTF-8 byte cap.
 			{ ...demo, method: 'POST', body: 'é'.repeat(51_201) },
