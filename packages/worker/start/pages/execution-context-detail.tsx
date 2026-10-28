@@ -105,6 +105,8 @@ function failureText(result: Failure) {
 		: result.message
 }
 
+const allMembersKey = 'all-members'
+
 function subjectLabel(grant: ExecutionContextShareGrant) {
 	return grant.subject.kind === 'user'
 		? `@${grant.subject.handle}`
@@ -237,6 +239,7 @@ function OptInControls(props: {
 			setError(failureText(result))
 			return
 		}
+		setLeftLocally(false)
 		if (addToChain && !full) {
 			const chained = (await setExecutionChain({
 				data: {
@@ -331,6 +334,10 @@ function OptInControls(props: {
 						</button>
 					)}
 				</div>
+			) : leftLocally && context.optedIn && !undoable.pending ? (
+				<p css={mutedCss} role="status">
+					Leaving {context.name}…
+				</p>
 			) : canOptIntoContext({ ...context, optedIn }) ? (
 				<div>
 					<button
@@ -455,6 +462,20 @@ function SharingPanel(props: {
 		props.onChanged()
 	}
 
+	async function stopSharingWithEveryone() {
+		setConfirmRemove(null)
+		const result = (await shareExecutionContext({
+			data: {
+				orgSlug: props.orgSlug,
+				contextId: context.id,
+				subject: { kind: 'org', enabled: false },
+				preset: 'use',
+			},
+		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
+		if (!result.ok) return setError(failureText(result))
+		props.onChanged()
+	}
+
 	async function remove(grantId: string) {
 		setConfirmRemove(null)
 		const result = (await removeExecutionContextShare({
@@ -478,6 +499,40 @@ function SharingPanel(props: {
 				<AccountManagementMessage tone="error">
 					{error}
 				</AccountManagementMessage>
+			) : null}
+			{sharing.allMembers ? (
+				<p css={{ margin: 0 }}>
+					Everyone in @{context.ownerOrg.slug}, {presetLabels.use}{' '}
+					{!canAdd ? null : confirmRemove === allMembersKey ? (
+						<>
+							<span css={mutedCss}>
+								{stopSharingConfirm(`everyone in @${context.ownerOrg.slug}`)}
+							</span>{' '}
+							<button
+								type="button"
+								css={[getDangerButtonCss(), target]}
+								onClick={() => void stopSharingWithEveryone()}
+							>
+								Stop sharing
+							</button>{' '}
+							<button
+								type="button"
+								css={[getGhostButtonCss({ size: 'sm' }), target]}
+								onClick={() => setConfirmRemove(null)}
+							>
+								Cancel
+							</button>
+						</>
+					) : (
+						<button
+							type="button"
+							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							onClick={() => setConfirmRemove(allMembersKey)}
+						>
+							Remove
+						</button>
+					)}
+				</p>
 			) : null}
 			{sharing.grants.length > 0 ? (
 				<ul

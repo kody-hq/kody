@@ -178,7 +178,10 @@ export const shareExecutionContext = createServerFn({ method: 'POST' })
 					username: z.string().trim().min(1).max(64),
 				}),
 				z.object({ kind: z.literal('team'), slug: segment }),
-				z.object({ kind: z.literal('org') }),
+				z.object({
+					kind: z.literal('org'),
+					enabled: z.boolean().optional(),
+				}),
 			]),
 			preset: z.enum(['use', 'contribute', 'manage']),
 		}),

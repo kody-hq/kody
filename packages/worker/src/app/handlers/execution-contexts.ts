@@ -628,7 +628,7 @@ export async function setExecutionContextShareForUser(
 		subject:
 			| { kind: 'user'; username: string }
 			| { kind: 'team'; slug: string }
-			| { kind: 'org' }
+			| { kind: 'org'; enabled?: boolean }
 		preset: 'use' | 'contribute' | 'manage'
 	},
 ) {
@@ -642,7 +642,7 @@ export async function setExecutionContextShareForUser(
 					? { username: input.subject.username.replace(/^@/, '') }
 					: input.subject.kind === 'team'
 						? { team_slug: input.subject.slug }
-						: { all_members: true }),
+						: { all_members: input.subject.enabled ?? true }),
 				preset: input.preset,
 			},
 		)
