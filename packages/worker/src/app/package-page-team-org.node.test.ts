@@ -197,3 +197,32 @@ test('an unlisted team package rename only redirects viewers who can read it', a
 		kind: 'not_found',
 	})
 })
+
+test('a package page reads the org access epoch once per load', async () => {
+	const env = await createEnv()
+	const prepare = vi.spyOn(env.APP_DB, 'prepare')
+	const epochReads = () =>
+		prepare.mock.calls.filter(([sql]) =>
+			/SELECT access_epoch FROM orgs WHERE id = \?/.test(String(sql)),
+		).length
+
+	await expect(loadAs(env, memberId, 'shared')).resolves.toMatchObject({
+		kind: 'page',
+		viewerIsOwner: true,
+		viewerCanManage: false,
+	})
+	expect(epochReads()).toBe(1)
+
+	// A later request still sees a revocation: nothing outlives the load.
+	await env.APP_DB.batch([
+		env.APP_DB.prepare(
+			`UPDATE grants SET deleted_at = ? WHERE id = 'grant-read'`,
+		).bind(now),
+		env.APP_DB.prepare(
+			`UPDATE orgs SET access_epoch = access_epoch + 1 WHERE id = ?`,
+		).bind(teamId),
+	])
+	await expect(loadAs(env, memberId, 'shared')).resolves.toMatchObject({
+		kind: 'no_access',
+	})
+})
