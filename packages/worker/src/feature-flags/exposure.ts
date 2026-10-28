@@ -4,9 +4,9 @@
  * For every flag that declares a `successMetric` in the registry, exposures
  * record which value the user saw and how it was assigned. Most flags write
  * at the two evaluation chokepoints (the app session flag cache and the MCP
- * caller flag resolver). Flags with `exposureRecording: 'paid-ranked-search'`
- * (Jev) write only from paid list-mode ranked search so free opt-ins and
- * non-search traffic stay outside the experiment frame.
+ * caller flag resolver). Flags with `exposureRecording: 'mcp-events-clients'`
+ * write only after an events-capable MCP client registers, so other MCP
+ * callers stay outside the experiment frame.
  *
  * Exposures are what make the admin metric readout honest: current flag state
  * cannot reconstruct who was inside a percentage rollout last week, and
@@ -56,7 +56,7 @@ export type FeatureFlagExposureRecordingSite = 'evaluation' | 'dedicated'
  * request volume for unmeasured flags never reaches a sink.
  *
  * `recordingSite: 'evaluation'` (default) also skips flags that declare a
- * dedicated exposure path (for example `paid-ranked-search`). Pass
+ * dedicated exposure path (for example `mcp-events-clients`). Pass
  * `'dedicated'` from that path so those flags still write.
  */
 export async function recordFeatureFlagExposures(
