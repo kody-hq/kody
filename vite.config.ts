@@ -229,7 +229,8 @@ export default defineConfig(async ({ command }) => {
 						],
 					},
 				},
-				server: { entry: 'server.ts' },
+				// Shared CSS is one root asset. Inline it on cold documents, keeping JS split.
+				server: { entry: 'server.ts', build: { inlineCss: true } },
 			}),
 			react({
 				include: /\/start\/.*\.[jt]sx?$/,

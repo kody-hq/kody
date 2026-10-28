@@ -21,9 +21,10 @@ const sizes = runs.map((run) => {
 	if (
 		run.failure ||
 		run.errors.length ||
+		run.consoleErrorCount ||
 		run.steps.some((step) => step.fullDocumentReload)
 	)
-		failures.push('Navigation failed or reloaded the document')
+		failures.push('Page error, failed navigation or document reload')
 	if (!run.initial?.resources?.length)
 		throw new Error('Initial resource evidence is missing')
 	const scripts = run.initial.resources.filter((resource) =>
@@ -32,20 +33,22 @@ const sizes = runs.map((run) => {
 	const styles = run.initial.resources.filter((resource) =>
 		resource.path.endsWith('.css'),
 	)
-	if (!scripts.length || !styles.length)
+	if (!scripts.length || (!styles.length && !run.initial.inlineStylesheetBytes))
 		throw new Error('Initial script or stylesheet evidence is missing')
 	const jsBytes = scripts.reduce(
 		(sum, resource) => sum + resource.encodedBytes,
 		0,
 	)
-	const cssBytes = styles.reduce((sum, resource) => {
-		const asset = inventory.assets.find(
-			(asset) => asset.path === 'client' + resource.path,
-		)
-		if (!asset)
-			throw new Error(`Stylesheet not found in inventory: ${resource.path}`)
-		return sum + asset.bytes
-	}, 0)
+	const cssBytes =
+		(run.initial.inlineStylesheetBytes ?? 0) +
+		styles.reduce((sum, resource) => {
+			const asset = inventory.assets.find(
+				(asset) => asset.path === 'client' + resource.path,
+			)
+			if (!asset)
+				throw new Error(`Stylesheet not found in inventory: ${resource.path}`)
+			return sum + asset.bytes
+		}, 0)
 	if (jsBytes > budget.initialJsEncodedBytes)
 		failures.push(`Initial JS ${jsBytes} > ${budget.initialJsEncodedBytes}`)
 	if (cssBytes > budget.initialCssRawBytes)

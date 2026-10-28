@@ -63,6 +63,7 @@ try {
 					round: round + 1,
 					latencyMs,
 					errors: [],
+					consoleErrorCount: 0,
 					failedRequests: [],
 					steps: [],
 				}
@@ -87,6 +88,9 @@ try {
 					}
 					const page = await context.newPage()
 					page.on('pageerror', (error) => row.errors.push(error.message))
+					page.on('console', (message) => {
+						if (message.type() === 'error') row.consoleErrorCount++
+					})
 					page.on('requestfailed', (request) =>
 						row.failedRequests.push({
 							path: new URL(request.url()).pathname,
@@ -103,6 +107,21 @@ try {
 					})
 					await page.addInitScript(() => {
 						performance.setResourceTimingBufferSize(10_000)
+						const hydrated = new MutationObserver(() => {
+							if (document.documentElement?.dataset.hydrated === 'true') {
+								window.__benchmarkHydratedMs = performance.now()
+								hydrated.disconnect()
+							}
+						})
+						hydrated.observe(document, {
+							attributes: true,
+							subtree: true,
+							attributeFilter: ['data-hydrated'],
+						})
+						new PerformanceObserver((list) => {
+							for (const entry of list.getEntries())
+								window.__benchmarkLcpMs = entry.startTime
+						}).observe({ type: 'largest-contentful-paint', buffered: true })
 						document.addEventListener(
 							'click',
 							() => {
@@ -121,6 +140,30 @@ try {
 						throw new Error('Development build rejected')
 					row.initial = await page.evaluate(() => ({
 						heading: document.querySelector('h1')?.textContent,
+						hydratedMs: window.__benchmarkHydratedMs ?? null,
+						observedLcpMs: window.__benchmarkLcpMs ?? null,
+						observedFcpMs:
+							performance.getEntriesByName('first-contentful-paint')[0]
+								?.startTime ?? null,
+						inlineStylesheetBytes: [
+							...document.querySelectorAll('style[data-tsr-inline-css]'),
+						].reduce(
+							(sum, style) =>
+								sum + new TextEncoder().encode(style.textContent ?? '').length,
+							0,
+						),
+						inlineStyleBytes: [...document.querySelectorAll('style')].reduce(
+							(sum, style) =>
+								sum + new TextEncoder().encode(style.textContent ?? '').length,
+							0,
+						),
+						document: performance
+							.getEntriesByType('navigation')
+							.map((entry) => ({
+								encodedBytes: entry.encodedBodySize,
+								decodedBytes: entry.decodedBodySize,
+								transferBytes: entry.transferSize,
+							})),
 						resources: performance
 							.getEntriesByType('resource')
 							.map((resource) => ({

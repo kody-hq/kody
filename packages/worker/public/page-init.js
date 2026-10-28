@@ -1,8 +1,8 @@
 /* oxlint-disable no-undef -- classic browser script served from public/;
    the lint config's browser env does not apply here. */
 // Runs as a blocking classic script in <head> so enhance-only motion can
-// gate on `html.js` before first paint. Inline scripts are blocked by CSP
-// (`script-src 'self'`), hence this file. Color scheme is CSS-only
+// gate on `html.js` before first paint. Start embeds this static source with
+// its request nonce, other documents can load this file. Color scheme is CSS-only
 // (`prefers-color-scheme`); this script does not set a theme.
 ;(function () {
 	document.documentElement.classList.add('js')

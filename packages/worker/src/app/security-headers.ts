@@ -12,7 +12,7 @@
  *   client bundle is loaded as an external module from the same origin, so an
  *   injected inline `<script>` cannot execute. Do NOT add `'unsafe-inline'` to
  *   `script-src`. Start document responses add a request-specific nonce for
- *   framework scripts, including native Router scroll restoration. The base
+ *   framework and document startup scripts, including native Router scroll restoration. The base
  *   policy has no static inline-script hash allowance.
  * - `style-src` allows `'unsafe-inline'` because SSR streamed styles arrive as
  *   inline `<style>` tags; style injection is far lower risk than script

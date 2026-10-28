@@ -70,6 +70,8 @@ import {
 	mainGutterPaddingCss,
 } from '../components/app-layout.ts'
 import { AppBrowserEffects } from '../components/app-browser-effects.tsx'
+import pageInitScript from '../../public/page-init.js?raw'
+import emotionStyleHoistScript from '../../public/emotion-style-hoist.js?raw'
 import '../scroll-fades.css'
 import '../../public/styles.css'
 
@@ -454,16 +456,16 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					{...documentThemeColors.dark}
 					suppressHydrationWarning
 				/>
-				<link
-					rel="preload"
-					as="script"
-					href={publicAsset('/emotion-style-hoist.js')}
+				<script
+					data-kody-document-init
+					nonce={nonce}
+					dangerouslySetInnerHTML={{ __html: pageInitScript }}
 				/>
-				<script src={publicAsset('/page-init.js')} />
 				<link
 					rel="preload"
 					as="font"
 					type="font/woff2"
+					fetchPriority="high"
 					href={publicAsset('/fonts/bricolage-grotesque-latin.woff2')}
 					crossOrigin="anonymous"
 				/>
@@ -471,6 +473,7 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					rel="preload"
 					as="font"
 					type="font/woff2"
+					fetchPriority="high"
 					href={publicAsset('/fonts/wix-madefor-text-latin.woff2')}
 					crossOrigin="anonymous"
 				/>
@@ -489,7 +492,11 @@ function DocumentShell({ children }: { children: ReactNode }) {
 				{children}
 				<Toaster />
 				{/* Classic script: hoist Emotion SSR styles before module hydrate. */}
-				<script src={publicAsset('/emotion-style-hoist.js')} />
+				<script
+					data-kody-emotion-hoist
+					nonce={nonce}
+					dangerouslySetInnerHTML={{ __html: emotionStyleHoistScript }}
+				/>
 				<Scripts />
 			</body>
 		</html>

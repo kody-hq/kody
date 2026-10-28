@@ -86,3 +86,13 @@ assets.
 The [October 28 audit](../../docs/contributing/performance/2026-10-28/README.md)
 includes recovered migration drafts, four pinned revisions, per-sample evidence,
 fixes and the remaining cold-load and validation gaps.
+
+For browser verification alongside another checkout, set `KODY_E2E_PORT` to a
+free port when running `npm run test:e2e:run`. This changes both the isolated
+server and Playwright base URL, without reusing another checkout.
+
+The page-byte check counts native inlined stylesheet bytes as well as external
+CSS, so moving CSS into the document cannot make its cost disappear. Browser
+results also retain encoded/decoded document sizes, observed paint and hydration
+times, and console error counts. Observed local paint is separate from simulated
+Lighthouse metrics.
