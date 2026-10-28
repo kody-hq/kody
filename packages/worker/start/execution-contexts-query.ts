@@ -1,3 +1,5 @@
+import { useQueryClient } from '@tanstack/react-query'
+import { useRouter } from '@tanstack/react-router'
 import { createPageQuery } from './page-query.ts'
 import { loadExecutionContextsPage } from '#start/server/execution-contexts'
 
@@ -33,4 +35,19 @@ export function executionContextsPageQuery(
 	input: { orgSlug: string; contextId?: string },
 ) {
 	return pageQuery(actorKey, { ...input, search: [] })
+}
+
+/** Router invalidation alone reuses the cached page query, so refetch it too. */
+export function useRefreshExecutionContextsPage() {
+	const router = useRouter()
+	const queryClient = useQueryClient()
+	return () => {
+		void queryClient
+			.invalidateQueries({
+				predicate: (query) =>
+					query.queryKey[0] === 'page' &&
+					query.queryKey[2] === 'loadExecutionContextsPage',
+			})
+			.then(() => router.invalidate())
+	}
 }

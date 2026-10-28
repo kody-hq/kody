@@ -158,12 +158,15 @@ export function readExecutionContextFailure(
 		(typeof details.code === 'string' && details.code) ||
 		null
 	if (!code) return null
-	const message =
+	const rawMessage =
 		error instanceof Error
 			? error.message
 			: typeof value.message === 'string'
 				? value.message
 				: code
+	const message = rawMessage.endsWith(` (${code})`)
+		? rawMessage.slice(0, -(code.length + 3))
+		: rawMessage
 	const fields = { ...details, ...nested, ...value }
 	const string = (key: string) =>
 		typeof fields[key] === 'string' ? (fields[key] as string) : undefined

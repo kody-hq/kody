@@ -170,3 +170,14 @@ test('readCapabilityFailure turns caller errors into a shown message', () => {
 	})
 	expect(readCapabilityFailure(new Error('boom'))).toBeNull()
 })
+
+test('readExecutionContextFailure drops the code suffix from shown messages', () => {
+	const error = Object.assign(
+		new Error('The audit log is for the operator. (not_granted)'),
+		{ code: 'not_granted' },
+	)
+	expect(readExecutionContextFailure(error)).toMatchObject({
+		error: 'not_granted',
+		message: 'The audit log is for the operator.',
+	})
+})

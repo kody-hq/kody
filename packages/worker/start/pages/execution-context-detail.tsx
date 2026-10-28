@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { css } from '@emotion/react'
 import { useQuery } from '@tanstack/react-query'
-import { useRouter } from '@tanstack/react-router'
+import { useRefreshExecutionContextsPage } from '../execution-contexts-query.ts'
 import { useRef, useState } from 'react'
 import {
 	loadExecutionContextAudit,
@@ -118,7 +118,7 @@ export function ExecutionContextDetail(props: {
 	contexts: ReadonlyArray<ExecutionContextListItem>
 }) {
 	const { context, orgSlug } = props
-	const router = useRouter()
+	const refresh = useRefreshExecutionContextsPage()
 	const status = contextDisplayStatus(context)
 	const position = chainPosition(props.chain.entries, context.id)
 	const nameForId = (id: string) =>
@@ -182,9 +182,9 @@ export function ExecutionContextDetail(props: {
 					})}
 				</AccountManagementMessage>
 			) : null}
-			<OptInControls {...props} onChanged={() => void router.invalidate()} />
+			<OptInControls {...props} onChanged={refresh} />
 			{canManageSharing(context) && context.sharing ? (
-				<SharingPanel {...props} onChanged={() => void router.invalidate()} />
+				<SharingPanel {...props} onChanged={refresh} />
 			) : null}
 			<RunHistory orgSlug={orgSlug} context={context} nameForId={nameForId} />
 			<AuditLog orgSlug={orgSlug} context={context} />
@@ -236,7 +236,7 @@ function OptInControls(props: {
 			return
 		}
 		if (addToChain && !full) {
-			await setExecutionChain({
+			const chained = (await setExecutionChain({
 				data: {
 					orgSlug: props.orgSlug,
 					entries: insertBeforeCloud(
@@ -246,7 +246,14 @@ function OptInControls(props: {
 					strict: !chainHasCloud(props.chain.entries),
 					ifMatch: props.chain.updatedAt ?? null,
 				},
-			})
+			})) as { ok: true } | Failure
+			if (!chained.ok) {
+				props.onChanged()
+				setError(
+					`You opted in, but ${context.name} was not added to your chain. ${failureText(chained)}`,
+				)
+				return
+			}
 		}
 		dialog.current?.close()
 		props.onChanged()
@@ -687,7 +694,9 @@ function RunHistory(props: {
 			) : ok.length > 0 ? (
 				<p css={mutedCss}>You see your own runs on this context.</p>
 			) : null}
-			{failed ? (
+			{failed?.error === 'not_granted' ? (
+				<p css={mutedCss}>{failureText(failed)}</p>
+			) : failed ? (
 				<AccountManagementMessage tone="error">
 					{failureText(failed)}
 				</AccountManagementMessage>
@@ -787,7 +796,9 @@ function AuditLog(props: {
 			<h3 id="context-audit-title" css={{ margin: 0 }}>
 				Audit log
 			</h3>
-			{failed ? (
+			{failed?.error === 'not_granted' ? (
+				<p css={mutedCss}>{failureText(failed)}</p>
+			) : failed ? (
 				<AccountManagementMessage tone="error">
 					{failureText(failed)}
 				</AccountManagementMessage>

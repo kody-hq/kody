@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { css } from '@emotion/react'
-import { useRouter } from '@tanstack/react-router'
+import { useRefreshExecutionContextsPage } from '../execution-contexts-query.ts'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { setExecutionChain } from '#start/server/execution-contexts'
 import {
@@ -89,7 +89,7 @@ export function ExecutionChainPanel(props: {
 	chain: ExecutionChain
 	contexts: ReadonlyArray<ExecutionContextListItem>
 }) {
-	const router = useRouter()
+	const refresh = useRefreshExecutionContextsPage()
 	const [chain, setChain] = useState(props.chain)
 	const committed = useRef(props.chain)
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -162,7 +162,7 @@ export function ExecutionChainPanel(props: {
 		if (result.ok) {
 			committed.current = result.chain
 			setChain(result.chain)
-			void router.invalidate()
+			refresh()
 			return
 		}
 		if (result.error === 'chain_changed' && result.current) {
