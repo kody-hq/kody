@@ -1,0 +1,55 @@
+import { expect, test } from 'vitest'
+import { chainCloudOrderError } from './chain-rules.ts'
+import { registrationAuthorizationError } from './errors.ts'
+
+test('Kody cloud must be the last chain entry when present', () => {
+	expect(chainCloudOrderError([])).toBeNull()
+	expect(chainCloudOrderError([{ kind: 'cloud' }])).toBeNull()
+	expect(
+		chainCloudOrderError([
+			{ kind: 'context', id: 'ec_a' },
+			{ kind: 'context', id: 'ec_b' },
+			{ kind: 'cloud' },
+		]),
+	).toBeNull()
+	// A strict chain (no cloud) is allowed.
+	expect(chainCloudOrderError([{ kind: 'context', id: 'ec_a' }])).toBeNull()
+
+	const cloudFirst = chainCloudOrderError([
+		{ kind: 'cloud' },
+		{ kind: 'context', id: 'ec_a' },
+	])
+	expect(cloudFirst).toEqual({
+		cloudIndex: 0,
+		message: expect.stringContaining('Kody cloud must be the last entry'),
+	})
+	expect(
+		chainCloudOrderError([
+			{ kind: 'context', id: 'ec_a' },
+			{ kind: 'cloud' },
+			{ kind: 'context', id: 'ec_b' },
+		])?.cloudIndex,
+	).toBe(1)
+})
+
+test('registration with a login that predates execution context permissions names the exact login command', () => {
+	const error = registrationAuthorizationError({ code: 'credential_scope' })
+	expect(error.status).toBe(403)
+	expect(error.code).toBe('insufficient_scope')
+	expect(error.message).toContain(
+		'Your Kody login predates execution context permissions',
+	)
+	expect(error.message).toContain('Run `kody login` again')
+	expect(error.details).toEqual({
+		reason: 'credential_scope',
+		requiredScope: 'execution_context:create',
+		loginCommand: 'kody login',
+	})
+})
+
+test('registration without the permission at all is a plain denial, not a re-login prompt', () => {
+	const error = registrationAuthorizationError({ code: 'missing_permission' })
+	expect(error.code).toBe('not_granted')
+	expect(error.message).not.toContain('kody login')
+	expect(error.details).toMatchObject({ reason: 'missing_permission' })
+})

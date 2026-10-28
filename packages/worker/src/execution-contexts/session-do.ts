@@ -88,6 +88,23 @@ export type RunHistoryOutcome =
 	| 'busy'
 	| 'timeout'
 
+export type ExecutionContextAuditInput = {
+	event: string
+	actor?: { userId: string; handle: string | null } | null
+	orgId?: string | null
+	detail?: Record<string, unknown>
+}
+
+export type ExecutionContextAuditRow = {
+	id: number
+	at: string
+	event: string
+	actor: { userId: string; handle: string | null } | null
+	orgId: string | null
+	/** JSON text; kept as a string so the row stays RPC-serializable. */
+	detailJson: string | null
+}
+
 export type RunHistoryRow = {
 	runId: string
 	requester: { userId: string; handle: string | null }
@@ -226,6 +243,15 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 		sql.exec(
 			`CREATE INDEX IF NOT EXISTS history_dispatched ON history (dispatched_at)`,
 		)
+		sql.exec(`CREATE TABLE IF NOT EXISTS audit (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			at INTEGER NOT NULL,
+			event TEXT NOT NULL,
+			actor_user_id TEXT,
+			actor_handle TEXT,
+			org_id TEXT,
+			detail_json TEXT
+		)`)
 	}
 
 	// ---------- snapshot and keys ----------
@@ -1246,9 +1272,73 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 		return { ok: true }
 	}
 
+	/** Management events (registration, grants, sharing, opt-ins, revoke). */
+	async recordAudit(input: ExecutionContextAuditInput) {
+		this.ctx.storage.sql.exec(
+			`INSERT INTO audit (at, event, actor_user_id, actor_handle, org_id, detail_json)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
+			Date.now(),
+			input.event,
+			input.actor?.userId ?? null,
+			input.actor?.handle ?? null,
+			input.orgId ?? null,
+			input.detail ? JSON.stringify(input.detail).slice(0, 2048) : null,
+		)
+		return { ok: true }
+	}
+
+	async listAudit(input: {
+		orgId?: string
+		cursor?: number
+		limit?: number
+	}): Promise<{
+		rows: Array<ExecutionContextAuditRow>
+		nextCursor: number | null
+	}> {
+		this.#pruneHistory(Date.now())
+		const limit = Math.min(100, Math.max(1, input.limit ?? 20))
+		const rows = this.ctx.storage.sql
+			.exec<{
+				id: number
+				at: number
+				event: string
+				actor_user_id: string | null
+				actor_handle: string | null
+				org_id: string | null
+				detail_json: string | null
+			}>(
+				`SELECT id, at, event, actor_user_id, actor_handle, org_id, detail_json FROM audit
+				 WHERE (?1 IS NULL OR org_id IS NULL OR org_id = ?1)
+				   AND (?2 IS NULL OR id < ?2)
+				 ORDER BY id DESC LIMIT ?3`,
+				input.orgId ?? null,
+				input.cursor ?? null,
+				limit + 1,
+			)
+			.toArray()
+		const page = rows.slice(0, limit).map((row) => ({
+			id: row.id,
+			at: new Date(row.at).toISOString(),
+			event: row.event,
+			actor: row.actor_user_id
+				? { userId: row.actor_user_id, handle: row.actor_handle }
+				: null,
+			orgId: row.org_id,
+			detailJson: row.detail_json,
+		}))
+		return {
+			rows: page,
+			nextCursor: rows.length > limit ? (page.at(-1)?.id ?? null) : null,
+		}
+	}
+
 	async purgeRequester(input: { userId: string }) {
 		this.ctx.storage.sql.exec(
 			`DELETE FROM history WHERE requester_user_id = ?`,
+			input.userId,
+		)
+		this.ctx.storage.sql.exec(
+			`UPDATE audit SET actor_user_id = NULL, actor_handle = NULL WHERE actor_user_id = ?`,
 			input.userId,
 		)
 		return { ok: true }
@@ -1257,6 +1347,10 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 	#pruneHistory(now: number) {
 		this.ctx.storage.sql.exec(
 			`DELETE FROM history WHERE dispatched_at < ?`,
+			now - historyRetentionMs,
+		)
+		this.ctx.storage.sql.exec(
+			`DELETE FROM audit WHERE at < ?`,
 			now - historyRetentionMs,
 		)
 		this.ctx.storage.sql.exec(

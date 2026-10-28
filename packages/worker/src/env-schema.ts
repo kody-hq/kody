@@ -279,6 +279,9 @@ export const EnvSchema = object({
 	// may be unset; the feature requires it. Rotation:
 	// docs/contributing/secret-rotation.md.
 	ECP_FRAME_SIGNING_KEYS: optionalNonEmptyStringSchema,
+	// Which committed root-signed key set GET /v1/execution-contexts/server-keys
+	// serves: "production" only in the production env, the test set otherwise.
+	ECP_SERVER_KEY_SET: optionalNonEmptyStringSchema,
 	// Percent of the existing usage limit at which the package-app usage
 	// circuit breaker opens. Unset means 100 (trip exactly at the limit).
 	PACKAGE_APP_USAGE_BREAKER_LIMIT_PERCENT: optionalPositivePercentSchema,
