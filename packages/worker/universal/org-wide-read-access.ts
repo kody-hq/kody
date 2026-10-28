@@ -37,12 +37,6 @@ export const orgWideReadAccessOptions: ReadonlyArray<{
 		description:
 			'Every inbox and message, including any sign-in codes they receive.',
 	},
-	{
-		permission: 'execution_context:read',
-		label: 'Execution contexts',
-		description:
-			'Registered machines and their status. Running code on one still needs a share.',
-	},
 ]
 
 if (orgWideReadAccessOptions.length !== orgWideReadPermissions.length) {

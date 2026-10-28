@@ -132,7 +132,7 @@ test('the read access form lists members and teams with read-only options', asyn
 	expect(html).toContain('Organization-wide read access')
 	expect(html).toContain('@casey')
 	expect(html).toContain('Support (@support)')
-	expect(html.match(/data-testid="org-wide-read-option"/g)).toHaveLength(6)
+	expect(html.match(/data-testid="org-wide-read-option"/g)).toHaveLength(5)
 	expect(html).toContain('data-permission="job:read"')
 	expect(html).not.toMatch(/data-permission="[a-z_]+:(write|execute|use)"/)
 })

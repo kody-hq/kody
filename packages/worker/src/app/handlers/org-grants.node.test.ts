@@ -508,6 +508,27 @@ test('saving read access keeps other org permissions and drops unchecked reads',
 	expect(permissions.has('job:read')).toBe(false)
 })
 
+test('unchecking every read clears a reads-only org grant', async () => {
+	const env = createEnv()
+	const subject = `user:${people.bob.personId}`
+	expect(
+		(await grantReads(env, 'ada', { subject, permissions: ['job:read'] }))
+			.status,
+	).toBe(200)
+	expect((await bobOrgPermissions()).has('job:read')).toBe(true)
+	const cleared = await grantReads(env, 'ada', { subject, permissions: [] })
+	expect(cleared.status).toBe(200)
+	expect((await bobOrgPermissions()).has('job:read')).toBe(false)
+	const live = await db
+		.prepare(
+			`SELECT COUNT(*) AS n FROM grants
+			 WHERE org_id = ? AND resource_type = 'org' AND deleted_at IS NULL`,
+		)
+		.bind(acmeId)
+		.first<{ n: number }>()
+	expect(live?.n).toBe(0)
+})
+
 test('only a member:write holder can grant read access, and only to members or teams', async () => {
 	const env = createEnv()
 	const denied = await grantReads(env, 'bob', {

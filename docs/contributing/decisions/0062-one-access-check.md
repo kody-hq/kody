@@ -50,10 +50,9 @@ hierarchy. Operations publish `x-kody-permission` only.
 
 **Amended (org-wide reads, 2026-10-28):** organization grants may carry
 read-only resource permissions (`package:read`, `app:read`, `job:read`,
-`integration:read`, `email:read`, `execution_context:read`), so a Member can
-read across the org without Owner. No write, execute, use, or `manage_access`
-permission is grantable on the org. See
-[Authorization](../architecture/authorization.md#org-access).
+`integration:read`, `email:read`), so a Member can read across the org without
+Owner. No write, execute, use, or `manage_access` permission is grantable on the
+org. See [Authorization](../architecture/authorization.md#org-access).
 
 ## Consequences
 

@@ -58,7 +58,8 @@ const manageExtraByType: Record<
  * Read-only resource permissions an `org` grant may carry, so a Member can read
  * every resource of that type without Owner. None of them writes, runs, or
  * reveals a secret value. Left out: `secret:read` (reveals values),
- * `memory:read` (memories are personal, ADR 0072), and every `use`,
+ * `memory:read` (memories are personal, ADR 0072), `execution_context:read`
+ * (machines are listed per share, not org-wide), and every `use`,
  * `execute`, `write`, `delete`, `publish`, and `manage_access` action.
  */
 export const orgWideReadPermissions = [
@@ -67,7 +68,6 @@ export const orgWideReadPermissions = [
 	'job:read',
 	'integration:read',
 	'email:read',
-	'execution_context:read',
 ] as const satisfies ReadonlyArray<OrgPermission>
 
 export type OrgWideReadPermission = (typeof orgWideReadPermissions)[number]

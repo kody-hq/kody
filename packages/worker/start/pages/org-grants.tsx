@@ -328,6 +328,10 @@ function OrgWideReadAccessForm({
 								</optgroup>
 							) : null}
 						</select>
+						<p css={accountFieldNoteCss}>
+							Edits this member or team's own organization grant. Access a
+							member gets through a team is set on that team.
+						</p>
 					</label>
 					<fieldset css={fieldsetCss} disabled={!subject || mutation.isPending}>
 						<legend css={accountFieldLabelCss}>Can read</legend>

@@ -68,15 +68,16 @@ synchronous, for callers that already hold the compiled permissions.
 **Org-wide read grants.** An `org` grant may carry the read-only resource
 permissions in `orgWideReadPermissions`
 (`packages/shared/src/grant-presets.ts`): `package:read`, `app:read`,
-`job:read`, `integration:read`, `email:read`, and `execution_context:read`. They
-compile into org-level permissions, so a Member holding `job:read` on the org
-passes `authorizeOrgWide` and lists every run (`runList`, `runGet`,
-`runSummary`, `workflowList`, `jobList`, `jobGet`). Nothing else rides along:
-`use`, `execute`, `write`, `delete`, `publish`, and `manage_access` are never
-grantable on the org, so triage (`runUpdate`), edits, and runs still need their
-own permission. `secret:read` (reveals values) and `memory:read` (memories are
-personal, ADR 0072) are left out. Owners set these from the Grants page or with
-`accessGrant` (`resource_type: "org"`); a denial for one of them says so.
+`job:read`, `integration:read`, and `email:read`. They compile into org-level
+permissions, so a Member holding `job:read` on the org passes `authorizeOrgWide`
+and lists every run (`runList`, `runGet`, `runSummary`, `workflowList`,
+`jobList`, `jobGet`). Nothing else rides along: `use`, `execute`, `write`,
+`delete`, `publish`, and `manage_access` are never grantable on the org, so
+triage (`runUpdate`), edits, and runs still need their own permission.
+`secret:read` (reveals values), `memory:read` (memories are personal, ADR 0072),
+and `execution_context:read` (machines are listed per share) are left out.
+Owners set these from the Grants page or with `accessGrant`
+(`resource_type: "org"`); a denial for one of them says so.
 
 A surface check without a resource (capability `orgPermission`, Open API
 `x-kody-permission`) passes when the permission is held at org level **or on any

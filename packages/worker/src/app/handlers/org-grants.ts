@@ -353,20 +353,26 @@ export async function grantOrganizationReadAccess({
 				isOrgPermission(permission) && !isOrgWideReadPermission(permission),
 		)
 	const permissions = [...new Set([...kept, ...reads])]
-	if (permissions.length === 0) {
+	if (permissions.length === 0 && existing.length === 0) {
 		return operationResult(
-			{
-				ok: false,
-				error:
-					existing.length > 0
-						? 'Pick at least one kind of read access, or revoke the grant below.'
-						: 'Pick at least one kind of read access.',
-			},
+			{ ok: false, error: 'Pick at least one kind of read access.' },
 			400,
 		)
 	}
 	try {
 		await authorizeGrantTarget(ctx, 'org', access.org.id)
+		if (permissions.length === 0) {
+			// Unchecking the last read clears a grant that held only reads.
+			for (const grant of existing) {
+				await softDeleteGrant({
+					db: env.APP_DB,
+					orgId: access.org.id,
+					grantId: grant.id,
+					audit: orgAuditWriterFromRequest(env, user.request),
+				})
+			}
+			return operationResult({ ok: true as const, reads })
+		}
 		const resolved = await resolveAuthorizedGrantPermissions(ctx, {
 			family: 'org',
 			permissions,
