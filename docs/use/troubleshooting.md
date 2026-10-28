@@ -58,9 +58,9 @@ how often it asks again if you want us to look.
 
 Codex, OpenCode, and the Kody CLI finish OAuth on a loopback callback on the
 machine they run on. On a remote VM or NAS, the browser on your computer cannot
-reach that callback, so login stalls or the final page fails to load. Kody does
-not offer a device-code login, and Kody API tokens (`kody_at_`) are not accepted
-on `/mcp`, so a static bearer header is not an option.
+reach that callback, so login stalls or the final page fails to load. Codex and
+OpenCode have no device-code login for MCP, and Kody API tokens (`kody_at_`) are
+not accepted on `/mcp`, so a static bearer header is not an option.
 
 **Codex**
 
@@ -109,8 +109,17 @@ See OpenCode's [MCP servers docs](https://opencode.ai/docs/mcp-servers/) and
 
 **Kody CLI**
 
+Use the device flow. `kody login --device` prints `https://kody.codes/device`
+and a short code; open it on your phone or laptop, check that the code matches,
+and approve. Only approve a code you started yourself.
+
+```bash
+kody login --device
+```
+
 `kody login --no-browser` prints the link but still waits on the loopback
-callback at `http://127.0.0.1:43742/callback`. Forward that port first:
+callback at `http://127.0.0.1:43742/callback`. To use it, forward that port
+first:
 
 ```bash
 ssh -L 127.0.0.1:43742:127.0.0.1:43742 user@host
