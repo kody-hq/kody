@@ -2,6 +2,10 @@ import {
 	parseApiToken,
 	readBearerApiToken,
 } from '@kody-internal/shared/api-token-format.ts'
+import {
+	ecpRunHeader,
+	ecpSignatureHeader,
+} from '@kody-internal/shared/execution-context-protocol/index.ts'
 
 /**
  * Edge half of `api.kody.codes`. Everything here runs before the request
@@ -115,7 +119,8 @@ export function gatewayFetchUploadLimitMessage() {
 }
 
 /**
- * Only the API credential, content negotiation and cache validators reach origin. Cookies
+ * Only the API credential (a bearer token or a signed execution context
+ * request), content negotiation and cache validators reach origin. Cookies
  * never authenticate the API, and `X-Kody-*` headers are internal fleet
  * signals a public caller must not be able to set. Gateway-fetch also
  * forwards the allowlisted hop metadata headers.
@@ -127,6 +132,8 @@ function buildForwardHeaders(
 	const forwarded = new Headers()
 	for (const name of [
 		'Authorization',
+		ecpSignatureHeader,
+		ecpRunHeader,
 		'Content-Type',
 		'Accept',
 		'If-None-Match',

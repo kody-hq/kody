@@ -81,6 +81,28 @@ test('forwards API routes with only safe headers and CORS on the response', asyn
 	expect(limited.join()).not.toContain('B'.repeat(43))
 })
 
+test('forwards signed execution context requests with their ECP headers', async () => {
+	const { env, forwarded } = createEnv()
+	const signature = 'ec=ec_test, ts=1, n=nonce, s=sig'
+	const response = await handleApiEdgeRequest(
+		new Request('https://api.kody.test/v1/execution-contexts', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json',
+				'Kody-ECP-Signature': signature,
+				'Kody-ECP-Run': 'run_1',
+			},
+			body: JSON.stringify({ name: 'my-machine' }),
+		}),
+		env,
+	)
+	expect(response.status).toBe(200)
+	const [request] = forwarded
+	expect(request?.headers.get('Kody-ECP-Signature')).toBe(signature)
+	expect(request?.headers.get('Kody-ECP-Run')).toBe('run_1')
+})
+
 test('opaque OAuth bearers get a hashed per-credential rate-limit key', async () => {
 	const oauth = 'cli-oauth-access-token-not-kody-at'
 	const { env, forwarded, limited } = createEnv()
