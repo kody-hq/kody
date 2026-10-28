@@ -122,7 +122,10 @@ tests and timing stages separate. `run-local` owns and stops the local servers.
 The compact JSON files share identical initial resource inventories by hash and
 omit repeated cumulative step inventories, while preserving every measured
 sample, request list, error and failure. Full raw inventories and Lighthouse
-JSON/HTML reports are in the local archive linked from the PR.
+JSON/HTML reports were saved in a temporary local archive. That archive was
+cleared before the [mobile follow-up](./mobile-followup/README.md) and is
+unavailable. These committed samples and the original checksum record remain.
+The follow-up preserves its new raw evidence outside the checkout.
 
 ## Remaining work
 

@@ -1,0 +1,78 @@
+{
+	"chrome": "156.0.8078.48",
+	"results": [
+		{
+			"label": "fixed",
+			"commit": "8187ad43c8f6f0f761bf59d9b4e2d0a1202ef92d",
+			"pages": [
+				{
+					"path": "/",
+					"status": 200,
+					"encoding": "gzip",
+					"heading": "The shared cloud for your team’s agents",
+					"inlineStyles": 1,
+					"inlineCssBytes": 123171,
+					"namespacedFonts": true,
+					"linkedStyles": 0,
+					"nonceScripts": true,
+					"namespacedScripts": true
+				},
+				{
+					"path": "/pricing",
+					"status": 200,
+					"encoding": "gzip",
+					"heading": "Start free.Pay when Kody earns it.",
+					"inlineStyles": 1,
+					"inlineCssBytes": 123171,
+					"namespacedFonts": true,
+					"linkedStyles": 0,
+					"nonceScripts": true,
+					"namespacedScripts": true
+				},
+				{
+					"path": "/docs",
+					"status": 200,
+					"encoding": "gzip",
+					"heading": "What is Kody?",
+					"inlineStyles": 1,
+					"inlineCssBytes": 123171,
+					"namespacedFonts": true,
+					"linkedStyles": 0,
+					"nonceScripts": true,
+					"namespacedScripts": true
+				}
+			],
+			"fonts": [
+				{
+					"path": "/__start/8187ad43c8f6f0f761bf59d9b4e2d0a1202ef92d/fonts/bricolage-grotesque-latin.woff2",
+					"status": 200
+				},
+				{
+					"path": "/__start/8187ad43c8f6f0f761bf59d9b4e2d0a1202ef92d/fonts/wix-madefor-text-latin.woff2",
+					"status": 200
+				},
+				{
+					"path": "/__start/8187ad43c8f6f0f761bf59d9b4e2d0a1202ef92d/fonts/wix-madefor-text-italic-latin.woff2",
+					"status": 200
+				},
+				{
+					"path": "/__start/8187ad43c8f6f0f761bf59d9b4e2d0a1202ef92d/fonts/bricolage-grotesque-latin.woff2",
+					"status": 304
+				},
+				{
+					"path": "/__start/8187ad43c8f6f0f761bf59d9b4e2d0a1202ef92d/fonts/wix-madefor-text-latin.woff2",
+					"status": 304
+				},
+				{
+					"path": "/__start/8187ad43c8f6f0f761bf59d9b4e2d0a1202ef92d/fonts/bricolage-grotesque-latin.woff2",
+					"status": 304
+				},
+				{
+					"path": "/__start/8187ad43c8f6f0f761bf59d9b4e2d0a1202ef92d/fonts/wix-madefor-text-latin.woff2",
+					"status": 304
+				}
+			],
+			"errors": 0
+		}
+	]
+}

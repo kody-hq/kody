@@ -1,0 +1,46 @@
+[
+	{
+		"label": "remix",
+		"before": {
+			"files": 265,
+			"sha256": "63845a24f9028333ac430d990c3c287cdf5ec545d93063ef3127205e5bd265e9"
+		},
+		"after": {
+			"files": 265,
+			"sha256": "63845a24f9028333ac430d990c3c287cdf5ec545d93063ef3127205e5bd265e9"
+		}
+	},
+	{
+		"label": "shipped",
+		"before": {
+			"files": 1889,
+			"sha256": "02ee2707ea843289466251e66b69c7e648c6749e5e6c146442e07285c2797c19"
+		},
+		"after": {
+			"files": 1889,
+			"sha256": "02ee2707ea843289466251e66b69c7e648c6749e5e6c146442e07285c2797c19"
+		}
+	},
+	{
+		"label": "main",
+		"before": {
+			"files": 1980,
+			"sha256": "6e14a43a8f5000d08b93114068966c920cc9dd20d5a4dad302d6ba2d8e593832"
+		},
+		"after": {
+			"files": 1980,
+			"sha256": "6e14a43a8f5000d08b93114068966c920cc9dd20d5a4dad302d6ba2d8e593832"
+		}
+	},
+	{
+		"label": "fixed",
+		"before": {
+			"files": 1545,
+			"sha256": "06e1962ff7a5fc7460cd520213a269b928b305674f76465597c3273f5b12ab0d"
+		},
+		"after": {
+			"files": 1545,
+			"sha256": "06e1962ff7a5fc7460cd520213a269b928b305674f76465597c3273f5b12ab0d"
+		}
+	}
+]

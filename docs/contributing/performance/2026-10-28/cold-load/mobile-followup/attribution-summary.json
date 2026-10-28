@@ -1,0 +1,677 @@
+{
+	"note": "Generated UTF-8 JS spans attributed with source-map segments. Raw emitted bytes, not original source size or gzip attribution. Unmapped bytes remain explicit per asset. Shared modules can occur in multiple emitted assets. This summary retains the largest 40 sources per revision, the full raw attribution remains in the archive.",
+	"results": [
+		{
+			"label": "remix",
+			"commit": "8b2528460eb9be9d08d50b7a1d2ee8f491503d83",
+			"jsRawBytes": 1682781,
+			"mappedBytes": 1643145,
+			"topSources": [
+				{
+					"source": "@sentry/replay",
+					"bytes": 124555
+				},
+				{
+					"source": "@remix-run/component",
+					"bytes": 100964
+				},
+				{
+					"source": "@sentry/core",
+					"bytes": 63722
+				},
+				{
+					"source": "marked",
+					"bytes": 42694
+				},
+				{
+					"source": "packages/worker/universal/icon-glyphs.tsx",
+					"bytes": 29481
+				},
+				{
+					"source": "@remix-run/ui",
+					"bytes": 26250
+				},
+				{
+					"source": "@remix-run/route-pattern",
+					"bytes": 24950
+				},
+				{
+					"source": "qrcode",
+					"bytes": 22168
+				},
+				{
+					"source": "packages/worker/client/routes/privacy.tsx",
+					"bytes": 20188
+				},
+				{
+					"source": "packages/worker/client/provider-icons.tsx",
+					"bytes": 16944
+				},
+				{
+					"source": "@sentry/browser",
+					"bytes": 16182
+				},
+				{
+					"source": "packages/worker/universal/styles/style-primitives.ts",
+					"bytes": 14984
+				},
+				{
+					"source": "@sentry/browser-utils",
+					"bytes": 13232
+				},
+				{
+					"source": "packages/worker/universal/how-kody-works-transcript.ts",
+					"bytes": 12781
+				},
+				{
+					"source": "packages/worker/universal/routes.ts",
+					"bytes": 12779
+				},
+				{
+					"source": "packages/worker/client/routes/index.tsx",
+					"bytes": 12669
+				},
+				{
+					"source": "packages/worker/client/sentry-browser-filters.ts",
+					"bytes": 12322
+				},
+				{
+					"source": "packages/worker/client/package-files-explorer.tsx",
+					"bytes": 12193
+				},
+				{
+					"source": "packages/worker/client/client-router.tsx",
+					"bytes": 11445
+				},
+				{
+					"source": "packages/worker/client/routes/admin-feature-flags.tsx",
+					"bytes": 10826
+				},
+				{
+					"source": "packages/worker/client/routes/admin-users-detail.tsx",
+					"bytes": 10309
+				},
+				{
+					"source": "packages/worker/client/routes/admin-users.tsx",
+					"bytes": 9944
+				},
+				{
+					"source": "packages/worker/client/routes/terms.tsx",
+					"bytes": 9687
+				},
+				{
+					"source": "packages/worker/client/routes/onboarding-mcp-client-panels.tsx",
+					"bytes": 9589
+				},
+				{
+					"source": "packages/worker/client/routes/oauth-authorize.tsx",
+					"bytes": 9443
+				},
+				{
+					"source": "packages/worker/client/routes/pricing.tsx",
+					"bytes": 9384
+				},
+				{
+					"source": "packages/worker/universal/profile-content.tsx",
+					"bytes": 9353
+				},
+				{
+					"source": "packages/worker/client/routes/account-billing.tsx",
+					"bytes": 9242
+				},
+				{
+					"source": "packages/worker/client/routes/account-avatar-editor.tsx",
+					"bytes": 9236
+				},
+				{
+					"source": "packages/worker/client/routes/admin-insights-sections.tsx",
+					"bytes": 8993
+				},
+				{
+					"source": "packages/worker/client/routes/onboarding-wizard-panels.tsx",
+					"bytes": 8943
+				},
+				{
+					"source": "packages/worker/client/routes/account.tsx",
+					"bytes": 8741
+				},
+				{
+					"source": "packages/worker/universal/document-head.ts",
+					"bytes": 8524
+				},
+				{
+					"source": "@simplewebauthn/browser",
+					"bytes": 8516
+				},
+				{
+					"source": "packages/worker/client/routes/admin-codemods.tsx",
+					"bytes": 8394
+				},
+				{
+					"source": "packages/worker/client/routes/account-secrets.tsx",
+					"bytes": 8330
+				},
+				{
+					"source": "packages/worker/client/routes/account-usage-credits.tsx",
+					"bytes": 8290
+				},
+				{
+					"source": "packages/worker/client/routes/interactive-guide-walkthrough.tsx",
+					"bytes": 8246
+				},
+				{
+					"source": "packages/worker/client/routes/admin-insights-dashboard.tsx",
+					"bytes": 8161
+				},
+				{
+					"source": "packages/worker/client/routes/account-integrations-detail.tsx",
+					"bytes": 8063
+				}
+			]
+		},
+		{
+			"label": "shipped",
+			"commit": "2894f12c99431f7e78816b502c24fdc72813dffc",
+			"jsRawBytes": 2807597,
+			"mappedBytes": 2577037,
+			"topSources": [
+				{
+					"source": "@sentry/replay",
+					"bytes": 124667
+				},
+				{
+					"source": "zod",
+					"bytes": 80100
+				},
+				{
+					"source": "@sentry/core",
+					"bytes": 64877
+				},
+				{
+					"source": "@tanstack/redact",
+					"bytes": 62726
+				},
+				{
+					"source": "@tanstack/router-core",
+					"bytes": 59512
+				},
+				{
+					"source": "marked",
+					"bytes": 44894
+				},
+				{
+					"source": "@tanstack/query-core",
+					"bytes": 37415
+				},
+				{
+					"source": "packages/worker/start/components/icon-glyphs.tsx",
+					"bytes": 28547
+				},
+				{
+					"source": "packages/worker/public/feature-pages.css?raw",
+					"bytes": 28259
+				},
+				{
+					"source": "packages/worker/start/routeTree.gen.ts",
+					"bytes": 26215
+				},
+				{
+					"source": "seroval",
+					"bytes": 24427
+				},
+				{
+					"source": "qrcode",
+					"bytes": 22107
+				},
+				{
+					"source": "packages/worker/start/pages/privacy.tsx",
+					"bytes": 20028
+				},
+				{
+					"source": "@tanstack/react-router",
+					"bytes": 18335
+				},
+				{
+					"source": "packages/worker/start/components/provider-icons.tsx",
+					"bytes": 16928
+				},
+				{
+					"source": "@sentry/browser",
+					"bytes": 16179
+				},
+				{
+					"source": "packages/worker/universal/styles/style-primitives.ts",
+					"bytes": 15470
+				},
+				{
+					"source": "packages/worker/client/sentry-browser-filters.ts",
+					"bytes": 14121
+				},
+				{
+					"source": "packages/worker/start/pages/business-styles.ts",
+					"bytes": 13364
+				},
+				{
+					"source": "@sentry/browser-utils",
+					"bytes": 13246
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/gmail.tsx",
+					"bytes": 13115
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/slack.tsx",
+					"bytes": 12854
+				},
+				{
+					"source": "packages/worker/universal/how-kody-works-transcript.ts",
+					"bytes": 12781
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/scheduledWorkflows.tsx",
+					"bytes": 12724
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/customTools.tsx",
+					"bytes": 12492
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/sharedMemory.tsx",
+					"bytes": 12406
+				},
+				{
+					"source": "packages/worker/start/components/package-files-explorer.tsx",
+					"bytes": 12326
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/n8nAlternatives.tsx",
+					"bytes": 11629
+				},
+				{
+					"source": "packages/worker/universal/document-head.ts",
+					"bytes": 11056
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/automation.tsx",
+					"bytes": 11013
+				},
+				{
+					"source": "packages/worker/universal/routes.ts",
+					"bytes": 10910
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/claudeIntegrations.tsx",
+					"bytes": 10890
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/mcpGateway.tsx",
+					"bytes": 10818
+				},
+				{
+					"source": "packages/worker/start/pages/onboarding-mcp-client-panels.tsx",
+					"bytes": 10430
+				},
+				{
+					"source": "packages/worker/start/pages/admin-users-detail.tsx",
+					"bytes": 10276
+				},
+				{
+					"source": "packages/worker/start/components/primitive-widgets.tsx",
+					"bytes": 10195
+				},
+				{
+					"source": "@tanstack/start-client-core",
+					"bytes": 10112
+				},
+				{
+					"source": "packages/worker/start/pages/pricing.tsx",
+					"bytes": 10097
+				},
+				{
+					"source": "packages/worker/start/pages/features/secrets-scenes.tsx",
+					"bytes": 10067
+				},
+				{
+					"source": "packages/worker/start/pages/admin-feature-flags.tsx",
+					"bytes": 9707
+				}
+			]
+		},
+		{
+			"label": "main",
+			"commit": "214ce21bbd6045a132f7f474bcb6a0126a348722",
+			"jsRawBytes": 3149545,
+			"mappedBytes": 2899337,
+			"topSources": [
+				{
+					"source": "@tanstack/charts",
+					"bytes": 137292
+				},
+				{
+					"source": "@sentry/replay",
+					"bytes": 124676
+				},
+				{
+					"source": "zod",
+					"bytes": 82146
+				},
+				{
+					"source": "@sentry/core",
+					"bytes": 64887
+				},
+				{
+					"source": "@tanstack/redact",
+					"bytes": 62946
+				},
+				{
+					"source": "@tanstack/router-core",
+					"bytes": 59512
+				},
+				{
+					"source": "marked",
+					"bytes": 44894
+				},
+				{
+					"source": "@tanstack/query-core",
+					"bytes": 35067
+				},
+				{
+					"source": "packages/worker/start/components/icon-glyphs.tsx",
+					"bytes": 28543
+				},
+				{
+					"source": "packages/worker/public/feature-pages.css?raw",
+					"bytes": 28259
+				},
+				{
+					"source": "packages/worker/start/routeTree.gen.ts",
+					"bytes": 27529
+				},
+				{
+					"source": "seroval",
+					"bytes": 24427
+				},
+				{
+					"source": "qrcode",
+					"bytes": 22107
+				},
+				{
+					"source": "packages/worker/start/pages/privacy.tsx",
+					"bytes": 20048
+				},
+				{
+					"source": "@tanstack/react-router",
+					"bytes": 18466
+				},
+				{
+					"source": "packages/worker/start/components/provider-icons.tsx",
+					"bytes": 16928
+				},
+				{
+					"source": "@sentry/browser",
+					"bytes": 16179
+				},
+				{
+					"source": "packages/worker/universal/styles/style-primitives.ts",
+					"bytes": 15647
+				},
+				{
+					"source": "packages/worker/client/sentry-browser-filters.ts",
+					"bytes": 15418
+				},
+				{
+					"source": "packages/worker/start/pages/business-styles.ts",
+					"bytes": 13364
+				},
+				{
+					"source": "@sentry/browser-utils",
+					"bytes": 13244
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/gmail.tsx",
+					"bytes": 13115
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/slack.tsx",
+					"bytes": 12854
+				},
+				{
+					"source": "packages/worker/universal/how-kody-works-transcript.ts",
+					"bytes": 12781
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/scheduledWorkflows.tsx",
+					"bytes": 12724
+				},
+				{
+					"source": "packages/worker/start/pages/oauth-authorize.tsx",
+					"bytes": 12529
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/customTools.tsx",
+					"bytes": 12492
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/sharedMemory.tsx",
+					"bytes": 12406
+				},
+				{
+					"source": "packages/worker/start/components/package-files-explorer.tsx",
+					"bytes": 12275
+				},
+				{
+					"source": "packages/worker/start/brand/kody-mark-path.ts",
+					"bytes": 11866
+				},
+				{
+					"source": "packages/worker/universal/document-head.ts",
+					"bytes": 11657
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/n8nAlternatives.tsx",
+					"bytes": 11629
+				},
+				{
+					"source": "packages/worker/universal/routes.ts",
+					"bytes": 11335
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/automation.tsx",
+					"bytes": 11013
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/claudeIntegrations.tsx",
+					"bytes": 10890
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/mcpGateway.tsx",
+					"bytes": 10818
+				},
+				{
+					"source": "packages/worker/start/pages/onboarding-mcp-client-panels.tsx",
+					"bytes": 10702
+				},
+				{
+					"source": "packages/worker/start/components/primitive-widgets.tsx",
+					"bytes": 10195
+				},
+				{
+					"source": "@tanstack/start-client-core",
+					"bytes": 10112
+				},
+				{
+					"source": "packages/worker/start/pages/pricing.tsx",
+					"bytes": 10098
+				}
+			]
+		},
+		{
+			"label": "fixed",
+			"commit": "8187ad43c8f6f0f761bf59d9b4e2d0a1202ef92d",
+			"jsRawBytes": 3111628,
+			"mappedBytes": 2900817,
+			"topSources": [
+				{
+					"source": "@tanstack/charts",
+					"bytes": 137297
+				},
+				{
+					"source": "@sentry/replay",
+					"bytes": 124676
+				},
+				{
+					"source": "zod",
+					"bytes": 79098
+				},
+				{
+					"source": "@sentry/core",
+					"bytes": 64887
+				},
+				{
+					"source": "@tanstack/redact",
+					"bytes": 62755
+				},
+				{
+					"source": "@tanstack/router-core",
+					"bytes": 59495
+				},
+				{
+					"source": "marked",
+					"bytes": 44894
+				},
+				{
+					"source": "@tanstack/query-core",
+					"bytes": 35065
+				},
+				{
+					"source": "packages/worker/start/components/icon-glyphs.tsx",
+					"bytes": 28543
+				},
+				{
+					"source": "packages/worker/public/feature-pages.css?raw",
+					"bytes": 28259
+				},
+				{
+					"source": "packages/worker/start/routeTree.gen.ts",
+					"bytes": 27520
+				},
+				{
+					"source": "seroval",
+					"bytes": 24439
+				},
+				{
+					"source": "qrcode",
+					"bytes": 22109
+				},
+				{
+					"source": "packages/worker/start/pages/privacy.tsx",
+					"bytes": 20048
+				},
+				{
+					"source": "@tanstack/react-router",
+					"bytes": 17473
+				},
+				{
+					"source": "packages/worker/start/components/provider-icons.tsx",
+					"bytes": 16928
+				},
+				{
+					"source": "@sentry/browser",
+					"bytes": 16179
+				},
+				{
+					"source": "packages/worker/universal/styles/style-primitives.ts",
+					"bytes": 15647
+				},
+				{
+					"source": "packages/worker/client/sentry-browser-filters.ts",
+					"bytes": 15418
+				},
+				{
+					"source": "packages/worker/start/pages/business-styles.ts",
+					"bytes": 13364
+				},
+				{
+					"source": "@sentry/browser-utils",
+					"bytes": 13244
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/gmail.tsx",
+					"bytes": 13115
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/slack.tsx",
+					"bytes": 12854
+				},
+				{
+					"source": "packages/worker/universal/how-kody-works-transcript.ts",
+					"bytes": 12781
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/scheduledWorkflows.tsx",
+					"bytes": 12724
+				},
+				{
+					"source": "packages/worker/start/pages/oauth-authorize.tsx",
+					"bytes": 12528
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/customTools.tsx",
+					"bytes": 12492
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/sharedMemory.tsx",
+					"bytes": 12406
+				},
+				{
+					"source": "packages/worker/start/components/package-files-explorer.tsx",
+					"bytes": 12287
+				},
+				{
+					"source": "packages/worker/start/brand/kody-mark-path.ts",
+					"bytes": 11866
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/n8nAlternatives.tsx",
+					"bytes": 11629
+				},
+				{
+					"source": "packages/worker/universal/routes.ts",
+					"bytes": 11335
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/automation.tsx",
+					"bytes": 11013
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/claudeIntegrations.tsx",
+					"bytes": 10890
+				},
+				{
+					"source": "packages/worker/start/pages/acquisition/mcpGateway.tsx",
+					"bytes": 10818
+				},
+				{
+					"source": "packages/worker/start/pages/onboarding-mcp-client-panels.tsx",
+					"bytes": 10703
+				},
+				{
+					"source": "packages/worker/start/components/primitive-widgets.tsx",
+					"bytes": 10198
+				},
+				{
+					"source": "@tanstack/start-client-core",
+					"bytes": 10132
+				},
+				{
+					"source": "packages/worker/start/pages/pricing.tsx",
+					"bytes": 10099
+				},
+				{
+					"source": "packages/worker/start/pages/features/secrets-scenes.tsx",
+					"bytes": 10067
+				}
+			]
+		}
+	]
+}

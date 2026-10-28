@@ -1,5 +1,8 @@
 # Kody migration performance audit, October 28, 2026
 
+The [latest mobile and docs follow-up](./cold-load/mobile-followup/README.md)
+contains the new fixed-source comparison and durable raw archive record.
+
 The [public cold-load follow-up](./cold-load/README.md) reruns all four sources
 after correcting critical asset delivery. This page preserves the initial audit.
 
@@ -289,8 +292,11 @@ navigation evidence. Source hashes and inventory hashes are not changed to
 account for that compaction.
 
 Full raw reports, inventories, attribution, navigation resources and profiler
-logs are preserved in the local `kody-performance-audit-2026-10-28.tar.gz`
-archive with a separate SHA-256. It excludes credentials, seed databases, the
+logs were saved in the local `kody-performance-audit-2026-10-28.tar.gz` archive
+with a separate SHA-256. That temporary archive was cleared before the mobile
+follow-up and is unavailable. The committed samples above remain. The
+[mobile follow-up](./cold-load/mobile-followup/README.md) preserves its new raw
+evidence outside the checkout. It excludes credentials, seed databases, the
 private session log and unrelated historical tool inputs. The earlier pilot runs
 used different cache settings or incomplete fixes and are not pooled into this
 final browser dataset. Failed setup attempts and the failed in-checkout startup

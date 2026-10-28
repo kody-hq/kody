@@ -1,0 +1,2052 @@
+{
+	"metadata": {
+		"startedAt": "2026-10-28T22:29:08.110Z",
+		"node": "v26.12.1",
+		"platform": "darwin",
+		"architecture": "arm64",
+		"cpu": "Apple M5 Pro",
+		"chromeVersion": "Google Chrome 156.0.8078.48",
+		"lighthouseVersion": "13.5.0",
+		"count": 5,
+		"pages": ["home", "pricing", "docs"],
+		"modes": ["mobile", "desktop"],
+		"targets": [
+			{
+				"label": "remix",
+				"commit": "8b2528460eb9be9d08d50b7a1d2ee8f491503d83",
+				"port": 5591,
+				"serverDirectory": "ssr",
+				"root": "<remix-checkout>",
+				"origin": "http://127.0.0.1:5591"
+			},
+			{
+				"label": "shipped",
+				"commit": "2894f12c99431f7e78816b502c24fdc72813dffc",
+				"port": 5592,
+				"serverDirectory": "server",
+				"root": "<shipped-checkout>",
+				"origin": "http://127.0.0.1:5592"
+			},
+			{
+				"label": "main",
+				"commit": "214ce21bbd6045a132f7f474bcb6a0126a348722",
+				"port": 5593,
+				"serverDirectory": "server",
+				"root": "<main-checkout>",
+				"origin": "http://127.0.0.1:5593"
+			},
+			{
+				"label": "fixed",
+				"root": "<fixed-checkout>",
+				"origin": "http://127.0.0.1:5594",
+				"serverDirectory": "server",
+				"port": 5594,
+				"commit": "8187ad43c8f6f0f761bf59d9b4e2d0a1202ef92d"
+			}
+		],
+		"cache": "Lighthouse default storage reset; fresh Chrome process for every audit",
+		"throttling": "Lighthouse simulated mobile defaults, desktop preset defaults",
+		"order": "Sequential audits, target order rotates each round",
+		"caveats": [
+			"Local optimized production builds, not deployed edge or global network measurements.",
+			"Public unauthenticated pages only; Lighthouse does not prove functional parity.",
+			"External media/font availability and laptop load can affect results.",
+			"No scores or failures are discarded; raw reports and stderr logs are retained."
+		],
+		"updatedAt": "2026-10-28T22:51:07.545Z"
+	},
+	"groups": [
+		{
+			"label": "remix",
+			"page": "home",
+			"mode": "mobile",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 78,
+					"min": 78,
+					"max": 91
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 2116.551,
+					"min": 1968.5074,
+					"max": 2119.3237
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 5425.782300000001,
+					"min": 3169.3237,
+					"max": 5434.1358
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 28,
+					"min": 13.5,
+					"max": 39
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 2116.551,
+					"min": 1968.5074,
+					"max": 2119.3237
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 26,
+					"min": 11,
+					"max": 45
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 1050220,
+					"min": 1048399,
+					"max": 1052316
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 57,
+					"min": 56,
+					"max": 58
+				}
+			}
+		},
+		{
+			"label": "remix",
+			"page": "home",
+			"mode": "desktop",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 98,
+					"min": 98,
+					"max": 100
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 498.3279,
+					"min": 458.04949999999997,
+					"max": 536.5943
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 1049.9674,
+					"min": 696.5943000000001,
+					"max": 1080.3207499999996
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 498.3279,
+					"min": 458.04949999999997,
+					"max": 536.5943
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 33,
+					"min": 13,
+					"max": 43
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 1018195,
+					"min": 1015152,
+					"max": 1019656
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 58,
+					"min": 55,
+					"max": 58
+				}
+			}
+		},
+		{
+			"label": "remix",
+			"page": "pricing",
+			"mode": "mobile",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 95,
+					"min": 91,
+					"max": 96
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 1972.1787,
+					"min": 1965.4216,
+					"max": 2418.1425
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 2572.1787,
+					"min": 2415.4216,
+					"max": 3018.1425
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 1972.1787,
+					"min": 1965.4216,
+					"max": 2418.1425
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 18,
+					"min": 8,
+					"max": 22
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 397963,
+					"min": 397939,
+					"max": 397989
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 36,
+					"min": 36,
+					"max": 36
+				}
+			}
+		},
+		{
+			"label": "remix",
+			"page": "pricing",
+			"mode": "desktop",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 99,
+					"min": 99,
+					"max": 100
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 496.57550000000003,
+					"min": 458.82820000000004,
+					"max": 497.69679999999994
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 840.5325,
+					"min": 576.5755000000001,
+					"max": 847.0704999999998
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 496.57550000000003,
+					"min": 458.82820000000004,
+					"max": 497.69679999999994
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 11,
+					"min": 8,
+					"max": 19
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 397969,
+					"min": 397951,
+					"max": 397976
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 36,
+					"min": 36,
+					"max": 36
+				}
+			}
+		},
+		{
+			"label": "remix",
+			"page": "docs",
+			"mode": "mobile",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 93,
+					"min": 90,
+					"max": 93
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 2126.6234,
+					"min": 2123.7048,
+					"max": 2425.1089
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 2726.6233999999995,
+					"min": 2723.7047999999995,
+					"max": 3025.1088999999993
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 116,
+					"min": 111,
+					"max": 120
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 2126.6234,
+					"min": 2123.7048,
+					"max": 2425.1089
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 11,
+					"min": 10,
+					"max": 19
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 918131,
+					"min": 918114,
+					"max": 918150
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 104,
+					"min": 104,
+					"max": 104
+				}
+			}
+		},
+		{
+			"label": "remix",
+			"page": "docs",
+			"mode": "desktop",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 93,
+					"min": 92,
+					"max": 94
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 550.1952999999999,
+					"min": 474.39739999999995,
+					"max": 556.7002
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 1779.467499999998,
+					"min": 1660.612549999999,
+					"max": 1816.9014000000016
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 550.1952999999999,
+					"min": 474.39739999999995,
+					"max": 556.7002
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 11,
+					"min": 9,
+					"max": 14
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 918128,
+					"min": 918101,
+					"max": 918150
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 104,
+					"min": 104,
+					"max": 104
+				}
+			}
+		},
+		{
+			"label": "shipped",
+			"page": "home",
+			"mode": "mobile",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 86,
+					"min": 84,
+					"max": 90
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 96,
+					"min": 96,
+					"max": 96
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 3014.9156999999996,
+					"min": 2569.2864,
+					"max": 3164.6365999999994
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 3464.9156999999987,
+					"min": 3019.2864,
+					"max": 3614.636599999999
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 7,
+					"min": 4,
+					"max": 35.999999999998636
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 3014.9156999999996,
+					"min": 2569.2864,
+					"max": 3164.6365999999994
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 15,
+					"min": 10,
+					"max": 63
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 1201119,
+					"min": 1201097,
+					"max": 1201133
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 118,
+					"min": 118,
+					"max": 118
+				}
+			}
+		},
+		{
+			"label": "shipped",
+			"page": "home",
+			"mode": "desktop",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 99,
+					"min": 99,
+					"max": 100
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 96,
+					"min": 96,
+					"max": 96
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 699.8465,
+					"min": 614.2253000000002,
+					"max": 753.9475999999999
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 739.8465000000003,
+					"min": 694.2253000000001,
+					"max": 847.0858999999996
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 699.8465,
+					"min": 614.2253000000002,
+					"max": 753.9475999999999
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 11,
+					"min": 9,
+					"max": 17
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 1168929,
+					"min": 1168906,
+					"max": 1168975
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 118,
+					"min": 118,
+					"max": 118
+				}
+			}
+		},
+		{
+			"label": "shipped",
+			"page": "pricing",
+			"mode": "mobile",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 95,
+					"min": 94,
+					"max": 98
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 96,
+					"min": 96,
+					"max": 96
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 2114.2194,
+					"min": 1667.8704,
+					"max": 2264.6927000000005
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 2564.2194,
+					"min": 2267.8704000000002,
+					"max": 2714.6927
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 2114.2194,
+					"min": 1667.8704,
+					"max": 2264.6927000000005
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 6,
+					"min": 5,
+					"max": 8
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 776410,
+					"min": 776400,
+					"max": 776474
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 75,
+					"min": 75,
+					"max": 75
+				}
+			}
+		},
+		{
+			"label": "shipped",
+			"page": "pricing",
+			"mode": "desktop",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 96,
+					"min": 96,
+					"max": 96
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 533.5715,
+					"min": 496.3365,
+					"max": 535.7253000000001
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 574.1132,
+					"min": 539.1226,
+					"max": 615.7253000000001
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 533.5715,
+					"min": 496.3365,
+					"max": 535.7253000000001
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 5,
+					"min": 5,
+					"max": 9
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 776373,
+					"min": 776361,
+					"max": 776427
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 75,
+					"min": 75,
+					"max": 75
+				}
+			}
+		},
+		{
+			"label": "shipped",
+			"page": "docs",
+			"mode": "mobile",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 90,
+					"min": 89,
+					"max": 92
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 96,
+					"min": 96,
+					"max": 96
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 2419.5968000000003,
+					"min": 2269.0193,
+					"max": 2567.7991999999995
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 3014.7792,
+					"min": 2719.0193,
+					"max": 3017.7992
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 133.00000000000045,
+					"min": 125.99999999999955,
+					"max": 135.00000000000045
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 2419.5968000000003,
+					"min": 2269.0193,
+					"max": 2567.7991999999995
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 10,
+					"min": 7,
+					"max": 11
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 1413896,
+					"min": 1413875,
+					"max": 1413934
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 153,
+					"min": 153,
+					"max": 153
+				}
+			}
+		},
+		{
+			"label": "shipped",
+			"page": "docs",
+			"mode": "desktop",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 89,
+					"min": 89,
+					"max": 90
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 96,
+					"min": 96,
+					"max": 96
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 616.1750999999998,
+					"min": 577.7192,
+					"max": 656.2101
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 2144.1792499999983,
+					"min": 2009.838550000001,
+					"max": 2179.361599999999
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 616.1750999999998,
+					"min": 577.7192,
+					"max": 656.2101
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 9,
+					"min": 7,
+					"max": 12
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 1413928,
+					"min": 1413880,
+					"max": 1413942
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 153,
+					"min": 153,
+					"max": 153
+				}
+			}
+		},
+		{
+			"label": "main",
+			"page": "home",
+			"mode": "mobile",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 79,
+					"min": 78,
+					"max": 81
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 96,
+					"min": 96,
+					"max": 96
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 3613.190400000001,
+					"min": 3317.9207999999994,
+					"max": 3617.2091
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 4066.154300000004,
+					"min": 3917.9207999999962,
+					"max": 4213.1904
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 11,
+					"min": 6,
+					"max": 12
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 3613.190400000001,
+					"min": 3317.9207999999994,
+					"max": 3617.2091
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 11,
+					"min": 9,
+					"max": 18
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 1186832,
+					"min": 1186740,
+					"max": 1186879
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 128,
+					"min": 128,
+					"max": 128
+				}
+			}
+		},
+		{
+			"label": "main",
+			"page": "home",
+			"mode": "desktop",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 98,
+					"min": 98,
+					"max": 100
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 96,
+					"min": 96,
+					"max": 96
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 774.7252000000002,
+					"min": 612.8225999999999,
+					"max": 834.6654999999998
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 930.4833999999994,
+					"min": 692.8225999999999,
+					"max": 966.9186500000008
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 774.7252000000002,
+					"min": 612.8225999999999,
+					"max": 834.6654999999998
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 10,
+					"min": 9,
+					"max": 14
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 1216382,
+					"min": 1216326,
+					"max": 1216420
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 136,
+					"min": 136,
+					"max": 136
+				}
+			}
+		},
+		{
+			"label": "main",
+			"page": "pricing",
+			"mode": "mobile",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 91,
+					"min": 90,
+					"max": 93
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 96,
+					"min": 96,
+					"max": 96
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 2414.0335999999998,
+					"min": 2263.5103,
+					"max": 2565.0221
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 3013.4431,
+					"min": 2863.5103,
+					"max": 3015.022100000001
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 2414.0335999999998,
+					"min": 2263.5103,
+					"max": 2565.0221
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 7,
+					"min": 7,
+					"max": 9
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 523161,
+					"min": 523137,
+					"max": 523192
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 87,
+					"min": 87,
+					"max": 87
+				}
+			}
+		},
+		{
+			"label": "main",
+			"page": "pricing",
+			"mode": "desktop",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 96,
+					"min": 96,
+					"max": 96
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 571.9837,
+					"min": 293.0994,
+					"max": 572.7467
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 651.9837,
+					"min": 453.0994,
+					"max": 652.7466999999999
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 571.9837,
+					"min": 372.4668908178169,
+					"max": 572.7467
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 7,
+					"min": 6,
+					"max": 10
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 523147,
+					"min": 523108,
+					"max": 523168
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 87,
+					"min": 87,
+					"max": 87
+				}
+			}
+		},
+		{
+			"label": "main",
+			"page": "docs",
+			"mode": "mobile",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 90,
+					"min": 87,
+					"max": 91
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 96,
+					"min": 96,
+					"max": 96
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 2418.5845,
+					"min": 2415.1926,
+					"max": 2718.2251999999994
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 3015.1926000000003,
+					"min": 2867.2698,
+					"max": 3168.225199999999
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 133,
+					"min": 131,
+					"max": 139.00000000000045
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 2418.5845,
+					"min": 2415.1926,
+					"max": 2718.2251999999994
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 9,
+					"min": 8,
+					"max": 10
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 1194569,
+					"min": 1194552,
+					"max": 1194593
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 167,
+					"min": 167,
+					"max": 167
+				}
+			}
+		},
+		{
+			"label": "main",
+			"page": "docs",
+			"mode": "desktop",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 90,
+					"min": 88,
+					"max": 90
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 96,
+					"min": 96,
+					"max": 96
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 614.9846,
+					"min": 574.1058,
+					"max": 616.5014
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 2111.9522000000024,
+					"min": 2034.5182000000018,
+					"max": 2276.389600000001
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 614.9846,
+					"min": 574.1058,
+					"max": 616.5014
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 8,
+					"min": 7,
+					"max": 10
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 1194559,
+					"min": 1194541,
+					"max": 1194566
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 167,
+					"min": 167,
+					"max": 167
+				}
+			}
+		},
+		{
+			"label": "fixed",
+			"page": "home",
+			"mode": "mobile",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 84,
+					"min": 80,
+					"max": 86
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 3019.670299999999,
+					"min": 3012.610899999999,
+					"max": 3465.953599999998
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 3614.342499999997,
+					"min": 3462.6108999999988,
+					"max": 4019.6519999999987
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 7,
+					"min": 4.5,
+					"max": 8
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 3019.670299999999,
+					"min": 3012.610899999999,
+					"max": 3465.953599999998
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 12,
+					"min": 10,
+					"max": 14
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 1065825,
+					"min": 1065809,
+					"max": 1065865
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 108,
+					"min": 108,
+					"max": 108
+				}
+			}
+		},
+		{
+			"label": "fixed",
+			"page": "home",
+			"mode": "desktop",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 99,
+					"min": 98,
+					"max": 100
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 749.3769999999997,
+					"min": 616.0095000000001,
+					"max": 882.0092000000001
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 836.3146999999996,
+					"min": 696.0095,
+					"max": 968.3176000000001
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 749.3769999999997,
+					"min": 616.0095000000001,
+					"max": 882.0092000000001
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 10,
+					"min": 10,
+					"max": 21
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 1127589,
+					"min": 1127535,
+					"max": 1127621
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 116,
+					"min": 116,
+					"max": 116
+				}
+			}
+		},
+		{
+			"label": "fixed",
+			"page": "pricing",
+			"mode": "mobile",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 92,
+					"min": 91,
+					"max": 93
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 2412.7981,
+					"min": 2268.1127,
+					"max": 2414.3314
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 2868.1126999999997,
+					"min": 2862.5016,
+					"max": 3012.9919
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 2412.7981,
+					"min": 2268.1127,
+					"max": 2414.3314
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 7,
+					"min": 7,
+					"max": 12
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 475691,
+					"min": 475602,
+					"max": 475702
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 71,
+					"min": 71,
+					"max": 71
+				}
+			}
+		},
+		{
+			"label": "fixed",
+			"page": "pricing",
+			"mode": "desktop",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 533.0637,
+					"min": 531.6095,
+					"max": 611.8749
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 613.0637,
+					"min": 611.6095,
+					"max": 651.8749000000003
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 533.0637,
+					"min": 531.6095,
+					"max": 611.8749
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 7,
+					"min": 7,
+					"max": 8
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 475695,
+					"min": 475686,
+					"max": 475709
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 71,
+					"min": 71,
+					"max": 71
+				}
+			}
+		},
+		{
+			"label": "fixed",
+			"page": "docs",
+			"mode": "mobile",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 90,
+					"min": 90,
+					"max": 92
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 2562.6255,
+					"min": 2412.2963,
+					"max": 2563.5230999999994
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 3012.6255000000006,
+					"min": 2862.2963,
+					"max": 3013.5231000000003
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 75.99999999999955,
+					"min": 74.99999999999977,
+					"max": 76.99999999999909
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 2562.6255,
+					"min": 2412.2963,
+					"max": 2563.5230999999994
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 11,
+					"min": 9,
+					"max": 12
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 656446,
+					"min": 656407,
+					"max": 656483
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 84,
+					"min": 84,
+					"max": 84
+				}
+			}
+		},
+		{
+			"label": "fixed",
+			"page": "docs",
+			"mode": "desktop",
+			"attempts": 5,
+			"failures": [],
+			"scores": {
+				"performance": {
+					"count": 5,
+					"median": 96,
+					"min": 96,
+					"max": 96
+				},
+				"accessibility": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"best-practices": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				},
+				"seo": {
+					"count": 5,
+					"median": 100,
+					"min": 100,
+					"max": 100
+				}
+			},
+			"metrics": {
+				"fcpMs": {
+					"count": 5,
+					"median": 612.9082,
+					"min": 493.12699999999995,
+					"max": 613.818
+				},
+				"lcpMs": {
+					"count": 5,
+					"median": 1351.0074499999992,
+					"min": 1337.453,
+					"max": 1371.8982499999993
+				},
+				"cls": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"tbtMs": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"speedIndexMs": {
+					"count": 5,
+					"median": 612.9082,
+					"min": 493.12699999999995,
+					"max": 613.818
+				},
+				"ttfbMs": {
+					"count": 5,
+					"median": 10,
+					"min": 9,
+					"max": 17
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 656450,
+					"min": 656442,
+					"max": 656467
+				},
+				"requestCount": {
+					"count": 5,
+					"median": 84,
+					"min": 84,
+					"max": 84
+				}
+			}
+		}
+	]
+}

@@ -1,5 +1,9 @@
 # Public cold-load follow-up
 
+The [next mobile and docs follow-up](./mobile-followup/README.md) measures
+source `8187ad43`, resolves the desktop docs regression and reduces initial
+JavaScript. The measurements below remain the earlier `07ccd2ca` series.
+
 The mobile cold-load gap remains open. See
 [the four-way results, ranges and reproduction steps](./RESULTS.md).
 

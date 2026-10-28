@@ -1,0 +1,7 @@
+{
+	"archive": "/Users/tannerlinsley/.codex/visualizations/2026/10/28/01a180e0-2dc5-7372-953b-169fa7ad27e4/kody-mobile-followup-8187ad43-raw.tar.gz",
+	"sha256": "b89068bf015deef0f79e801cad86b4cbf2a8ffecad9039d24ad3a56a44e322c2",
+	"files": 485,
+	"bytes": 98627199,
+	"excluded": "Environment/config secrets, browser cookies, databases, private session logs and Playwright traces."
+}
