@@ -11,7 +11,7 @@ import {
 	type ExecutionContextLease,
 	type ExecutionContextRunResult,
 } from './session-do.ts'
-import { runChainShapeError } from './chain-rules.ts'
+import { runChainShapeError, type ExecuteRequirement } from './chain-rules.ts'
 import {
 	type ChainEntry,
 	type ExecutionContextRow,
@@ -24,8 +24,7 @@ import {
 	sessionStub,
 } from './store.ts'
 
-export const executeRequirements = ['fs', 'lan'] as const
-export type ExecuteRequirement = (typeof executeRequirements)[number]
+export { executeRequirements, type ExecuteRequirement } from './chain-rules.ts'
 
 export type ExecuteRoutingArgs = {
 	/** A context id or name, or `cloud`. */

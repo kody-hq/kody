@@ -3,127 +3,29 @@
  * the same `context` / `chain` / `fallback` / `requires` rules as execute,
  * plus `whenOffline` for what happens when the target is not connected.
  */
-import { ecpMaxChainContexts } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { z } from 'zod'
-import { type RunRecordHandle } from '#worker/run-records/types.ts'
-import { runChainShapeError } from './chain-rules.ts'
+import {
+	type RunRecordContext,
+	type RunRecordHandle,
+} from '#worker/run-records/types.ts'
+import {
+	type AutomationExecution,
+	automationQueueExpiresAt,
+} from './automation-execution-schema.ts'
 import { ExecutionContextError } from './errors.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
-import { executeRequirements, routeExecute } from './routing.ts'
-
-export const automationQueueDefaultMinutes = 60
-export const automationQueueMaxMinutes = 24 * 60
-
-export const automationExecutionSchema = z
-	.strictObject({
-		context: z
-			.string()
-			.trim()
-			.min(1)
-			.optional()
-			.describe(
-				'Execution context to run on: its name or id (ec_...), or "cloud". Never falls back unless fallback is "chain".',
-			),
-		fallback: z
-			.enum(['chain'])
-			.optional()
-			.describe(
-				'"chain" lets a named context that cannot take the run fall back to the chain.',
-			),
-		chain: z
-			.array(z.string().trim().min(1))
-			.min(1)
-			.max(ecpMaxChainContexts + 1)
-			.optional()
-			.describe(
-				'This automation\'s own ordered chain, replacing the default chain: up to 3 context names or ids, with "cloud" allowed only last.',
-			),
-		requires: z
-			.array(z.enum(executeRequirements))
-			.max(executeRequirements.length)
-			.optional()
-			.describe('Local access the run needs ("fs", "lan"). Skips Kody cloud.'),
-		whenOffline: z
-			.enum(['fail', 'queue'])
-			.optional()
-			.describe(
-				'"fail" (default) fails the run when no context can take it. "queue" waits for the first offline context to reconnect, up to queueMinutes.',
-			),
-		queueMinutes: z
-			.number()
-			.int()
-			.min(1)
-			.max(automationQueueMaxMinutes)
-			.optional()
-			.describe(
-				`How long a queued run waits for its context (default ${automationQueueDefaultMinutes}, max ${automationQueueMaxMinutes}).`,
-			),
-	})
-	.superRefine((value, ctx) => {
-		if (!value.context && !value.chain && !value.requires?.length) {
-			ctx.addIssue({
-				code: 'custom',
-				message: 'execution needs context, chain, or requires.',
-			})
-		}
-		if (value.fallback && !value.context) {
-			ctx.addIssue({
-				code: 'custom',
-				path: ['fallback'],
-				message: 'fallback applies only with context.',
-			})
-		}
-		if (value.queueMinutes !== undefined && value.whenOffline !== 'queue') {
-			ctx.addIssue({
-				code: 'custom',
-				path: ['queueMinutes'],
-				message: 'queueMinutes applies only with whenOffline: "queue".',
-			})
-		}
-		if (value.chain) {
-			const shape = runChainShapeError(value.chain)
-			if (shape) {
-				ctx.addIssue({
-					code: 'custom',
-					path: ['chain'],
-					message: shape.message,
-				})
-			}
-		}
-	})
-
-export type AutomationExecution = z.infer<typeof automationExecutionSchema>
-
-/** Parses a stored setting; anything unreadable is treated as unset. */
-export function parseAutomationExecution(
-	value: unknown,
-): AutomationExecution | null {
-	if (value == null) return null
-	const raw = typeof value === 'string' ? safeJson(value) : value
-	const parsed = automationExecutionSchema.safeParse(raw)
-	return parsed.success ? parsed.data : null
-}
-
-function safeJson(text: string): unknown {
-	try {
-		return JSON.parse(text)
-	} catch {
-		return null
-	}
-}
-
-export function automationQueueExpiresAt(
-	setting: AutomationExecution,
-	now = Date.now(),
-) {
-	return now + (setting.queueMinutes ?? automationQueueDefaultMinutes) * 60_000
-}
+import { routeExecute } from './routing.ts'
 
 export type AutomationRouting = {
 	setting: AutomationExecution
 	/** Module the context runs: imports the package export and calls it. */
 	contextCode: string | null
+	/**
+	 * The automation's own run when its caller owns that record (keyed
+	 * invocations). The context run gets a child record under it.
+	 */
+	parentRunRecord?: RunRecordContext | null
+	parentRunId?: string | null
 }
 
 /**
@@ -164,6 +66,14 @@ export async function routeAutomationRun(input: {
 		})
 	}
 	const { setting } = input.routing
+	if (input.routing.contextCode === null) {
+		throw new ExecutionContextError({
+			status: 409,
+			code: 'invalid_request',
+			message:
+				'This automation asks for an execution context, but its handler is not a package export, so a context cannot import it and it did not run. Export the handler from the package, or remove its execution setting.',
+		})
+	}
 	return await routeExecute({
 		env: input.env,
 		request: {
@@ -194,4 +104,127 @@ export async function routeAutomationRun(input: {
 				: null,
 		unknownChainRef: 'skip',
 	})
+}
+
+/** A context run the automation handed off: it finishes in run history. */
+export type ContextRunDeferral = {
+	state: 'queued' | 'running'
+	runId: string
+	context: string
+	expiresAt?: string
+}
+
+/** How long an automation waits on a context run before handing it off. */
+export const automationContextWaitMs = 5 * 60_000
+
+/**
+ * Runs an automation on its execution context. `cloud` means the hosted
+ * sandbox runs it as usual; `done` results already sit in run history.
+ */
+export async function runAutomationOnContext(input: {
+	env: Env
+	callerContext: McpCallerContext
+	routing: AutomationRouting
+	runRecord: RunRecordHandle | null
+	params: unknown
+	waitMs: number
+	signal?: AbortSignal
+}): Promise<
+	| { kind: 'cloud' }
+	| { kind: 'error'; error: Error }
+	| {
+			kind: 'done'
+			result: { result: unknown; error?: string; logs?: Array<string> }
+			deferred?: ContextRunDeferral
+	  }
+> {
+	let routed: Awaited<ReturnType<typeof routeAutomationRun>>
+	try {
+		routed = await routeAutomationRun(input)
+	} catch (error) {
+		if (!(error instanceof ExecutionContextError)) throw error
+		return {
+			kind: 'error',
+			error: Object.assign(new Error(automationRoutingMessage(error)), {
+				name: 'ExecutionContextRoutingError',
+				code: error.code,
+			}),
+		}
+	}
+	switch (routed.kind) {
+		case 'cloud':
+			return { kind: 'cloud' }
+		case 'ran': {
+			const content = routed.result.structuredContent ?? {}
+			const logs = Array.isArray(content.logs)
+				? content.logs.filter(
+						(line): line is string => typeof line === 'string',
+					)
+				: []
+			if (routed.result.isError) {
+				const error =
+					typeof content.error === 'string'
+						? content.error
+						: (firstText(routed.result.content) ??
+							`The run on ${routed.metadata.name} failed.`)
+				return { kind: 'done', result: { result: undefined, error, logs } }
+			}
+			return { kind: 'done', result: { result: content.result, logs } }
+		}
+		case 'pending': {
+			const context = routed.metadata.name ?? routed.metadata.id ?? 'context'
+			return {
+				kind: 'done',
+				result: {
+					result: {
+						status: 'running_on_execution_context',
+						runId: routed.runId,
+						context,
+					},
+				},
+				deferred: { state: 'running', runId: routed.runId, context },
+			}
+		}
+		case 'queued': {
+			const expiresAt = new Date(routed.expiresAt).toISOString()
+			return {
+				kind: 'done',
+				result: {
+					result: {
+						status: 'queued_for_execution_context',
+						runId: routed.runId,
+						context: routed.contextName,
+						expiresAt,
+					},
+					logs: [
+						`${routed.contextName} is offline; this run is queued until it reconnects or ${expiresAt}.`,
+					],
+				},
+				deferred: {
+					state: 'queued',
+					runId: routed.runId,
+					context: routed.contextName,
+					expiresAt,
+				},
+			}
+		}
+	}
+}
+
+function automationRoutingMessage(error: ExecutionContextError) {
+	return `${error.message} (${error.code})`
+}
+
+function firstText(content: Array<unknown>) {
+	for (const block of content) {
+		if (
+			block &&
+			typeof block === 'object' &&
+			'text' in block &&
+			typeof block.text === 'string'
+		) {
+			return block.text
+		}
+	}
+	return null
 }

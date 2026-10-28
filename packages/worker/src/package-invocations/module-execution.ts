@@ -2,6 +2,7 @@ import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { persistableExecutionArtifacts } from '#mcp/downstream-mcp-result.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
+import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
 import {
 	type RunRecordContext,
 	type RunRecordHandle,
@@ -156,6 +157,8 @@ export type SavedPackageModuleRunInput = {
 	 * that is only known after the artifact loads.
 	 */
 	externalRunRecordHandle?: RunRecordHandle | null
+	/** Where an automation asked to run (execution contexts). */
+	executionRouting?: AutomationRouting | null
 	/** Report, and optionally pin, the commit this run resolves. */
 	sourceRevision?: PackageSourceRevisionOptions | null
 }
@@ -411,6 +414,15 @@ export async function runSavedPackageModuleOnce(
 			{
 				executorTimeoutMs: input.executorTimeoutMs,
 				signal: input.signal,
+				...(input.executionRouting
+					? {
+							executionRouting: {
+								...input.executionRouting,
+								parentRunRecord: externalHandle?.context ?? null,
+								parentRunId: externalHandle?.id ?? null,
+							},
+						}
+					: {}),
 				// No ambient `storage` binding: package code reaches its bucket via
 				// `packageStorage()` (granted through packageContext below). Legacy
 				// ambient use gets the structured runtime_helper_unbound hint.

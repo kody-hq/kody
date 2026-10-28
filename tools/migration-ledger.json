@@ -711,6 +711,10 @@
 		{
 			"filename": "0195-credential-fill-placement-opt-ins.sql",
 			"sha256": "9c4ae5ee34158ebde5106433f0d5a9a0caf5dfb1b41ae8080c64034cdcb734cd"
+		},
+		{
+			"filename": "0196-automation-execution-settings.sql",
+			"sha256": "c66865bd1eafbe8c363a64390e1d45096f54a374a644be5c56c32f3e55ec6d6f"
 		}
 	]
 }

@@ -1,4 +1,5 @@
 import { type createMcpCallerContext } from '#mcp/context.ts'
+import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
 import { type RequestSource } from '#worker/request-context/request-context.ts'
 import { type EnablementAudience } from '#worker/enablements/run-gate.ts'
 import { type PackageEventTools } from '#mcp/run-kody-registry.ts'
@@ -75,6 +76,8 @@ export async function invokePackageExport(input: {
 	signal?: AbortSignal
 	/** Report, and optionally pin, the commit the invoke resolves. */
 	sourceRevision?: PackageSourceRevisionOptions | null
+	/** Where an automation asked to run (execution contexts). */
+	executionRouting?: AutomationRouting | null
 }): Promise<PackageInvocationResponse> {
 	return await invokePackageExportWithToolFactories({
 		...input,

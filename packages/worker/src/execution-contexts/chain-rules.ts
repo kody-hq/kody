@@ -2,6 +2,9 @@ import { ecpMaxChainContexts } from '@kody-internal/shared/execution-context-pro
 
 /** Pure chain rules shared by the API, routing, and tests. */
 
+export const executeRequirements = ['fs', 'lan'] as const
+export type ExecuteRequirement = (typeof executeRequirements)[number]
+
 export type ChainEntryLike = { kind: 'cloud' } | { kind: 'context'; id: string }
 
 /**

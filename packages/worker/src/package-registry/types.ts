@@ -4,6 +4,7 @@ import {
 } from '@kody-internal/shared/jobs/package-job-schedule.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
+import { automationExecutionSchema } from '#worker/execution-contexts/automation-execution-schema.ts'
 import { communityPackageCategories } from '#universal/community-categories.ts'
 import { type ForkListingRelation } from '#universal/community-listing-ahead.ts'
 import { credentialFillPlacementViewSchema } from '#universal/credential-fill-placement.ts'
@@ -36,6 +37,7 @@ export const packageJobDefinitionSchema = z.object({
 	schedule: packageJobScheduleSchema,
 	timezone: z.string().min(1).optional(),
 	enabled: z.boolean().optional(),
+	execution: automationExecutionSchema.optional(),
 })
 
 export type PackageJobDefinition = z.infer<typeof packageJobDefinitionSchema>
@@ -365,6 +367,7 @@ export const packageSubscriptionDefinitionSchema = z.object({
 	handler: z.string().min(1),
 	description: z.string().min(1).optional(),
 	filters: z.record(z.string().min(1), z.unknown()).optional(),
+	execution: automationExecutionSchema.optional(),
 })
 
 export type PackageSubscriptionDefinition = z.infer<
@@ -649,6 +652,7 @@ export const packageWebhookDefinitionSchema = z
 		verification: packageWebhookVerificationSchema.optional(),
 		replay: packageWebhookReplaySchema.optional(),
 		challenge: packageWebhookChallengeSchema.optional(),
+		execution: automationExecutionSchema.optional(),
 	})
 	.superRefine((webhook, ctx) => {
 		if (

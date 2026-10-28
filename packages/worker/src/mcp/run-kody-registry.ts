@@ -105,7 +105,18 @@ import { runWithTransientDurableObjectResetRetry } from '#worker/durable-object-
 import { isPreRunUsageDenial } from '#worker/entitlements/errors.ts'
 import { evaluationHasHostMediatedSideEffects } from '#mcp/evaluation-side-effects.ts'
 import { isTransientJobExecutionError } from '#worker/jobs/execution-safety.ts'
-import { beginRunRecord, finishRunRecord } from '#worker/run-records/service.ts'
+import {
+	abandonRunRecord,
+	beginRunRecord,
+	ensureRunRecordStarted,
+	finishRunRecord,
+} from '#worker/run-records/service.ts'
+import {
+	type AutomationRouting,
+	automationContextWaitMs,
+	type ContextRunDeferral,
+	runAutomationOnContext,
+} from '#worker/execution-contexts/automation-execution.ts'
 import {
 	type RunRecordContext,
 	type RunRecordHandle,
@@ -1178,11 +1189,17 @@ export async function runBundledModuleWithRegistry(
 		credentialCallMap?: RunCredentialCallMap | null
 		/** The package a computed-import library load runs. */
 		computedImportCalleePackageId?: string | null
+		/**
+		 * The automation's execution-context setting. Routed before the hosted
+		 * sandbox; a context run never reaches it.
+		 */
+		executionRouting?: AutomationRouting | null
 	},
 ): Promise<
 	ExecuteResult & {
 		runId?: string
 		serverTiming?: Array<ExecuteServerTimingEntry>
+		executionContext?: ContextRunDeferral
 	}
 > {
 	const runServerTiming: Array<ExecuteServerTimingEntry> = []
@@ -1302,6 +1319,79 @@ export async function runBundledModuleWithRegistry(
 				: result
 		if (!exposeRunId || !runRecordHandle) return timed
 		return { ...timed, runId: runRecordHandle.id }
+	}
+	if (options?.executionRouting) {
+		const routing = options.executionRouting
+		const parentContext =
+			routing.parentRunRecord ??
+			options.runRecord ??
+			runRecordHandle?.context ??
+			null
+		const parentRunId = routing.parentRunId ?? runRecordHandle?.id ?? null
+		// The context run gets its own record, owned by the context session,
+		// so the automation's record keeps its usual owner and finish path.
+		const contextRunRecord = parentContext
+			? beginRunRecord({
+					env,
+					userId: ownerIdFromCaller(callerContext) || null,
+					context: {
+						...parentContext,
+						idempotencyKey: null,
+						invocationId: null,
+						parentRunId,
+					},
+					request: callerContext.request,
+					waitUntil,
+				})
+			: null
+		const routed = await runAutomationOnContext({
+			env,
+			callerContext,
+			routing,
+			runRecord: contextRunRecord,
+			params: params ?? {},
+			waitMs: Math.min(
+				options.executorTimeoutMs ?? automationContextWaitMs,
+				automationContextWaitMs,
+			),
+			...(options.signal ? { signal: options.signal } : {}),
+		})
+		if (routed.kind !== 'done') {
+			await abandonRunRecord({ env, handle: contextRunRecord })
+		}
+		if (routed.kind === 'error') {
+			await finishObservedRun({
+				status: 'error',
+				error: routed.error,
+				logs: [routed.error.message],
+			})
+			return withRunId({
+				result: undefined,
+				error: routed.error.message,
+				logs: [routed.error.message],
+			})
+		}
+		if (routed.kind === 'done') {
+			await ensureRunRecordStarted({ env, handle: contextRunRecord })
+			const { result } = routed
+			await finishObservedRun(
+				result.error
+					? {
+							status: 'error',
+							error: new Error(result.error),
+							logs: result.logs ?? [],
+						}
+					: {
+							status: 'success',
+							result: result.result,
+							logs: result.logs ?? [],
+						},
+			)
+			return withRunId({
+				...result,
+				...(routed.deferred ? { executionContext: routed.deferred } : {}),
+			})
+		}
 	}
 	// Host-observed run outcome for static-call reclassification. Default to
 	// failed so an early throw before execute still treats buffered throws as
