@@ -267,7 +267,12 @@ export const packageAppFetchCapability = defineDomainCapability(
 					.describe(
 						'Path after the app mount that the handler sees. Defaults to /.',
 					),
-				method: z.string().optional().describe('HTTP method. Defaults to GET.'),
+				method: z
+					.string()
+					.optional()
+					.describe(
+						'HTTP method, case-insensitive: GET, HEAD, POST, PUT, PATCH, DELETE, or OPTIONS. Defaults to GET.',
+					),
 				headers: z
 					.record(z.string(), z.string())
 					.optional()
@@ -276,6 +281,7 @@ export const packageAppFetchCapability = defineDomainCapability(
 					),
 				body: z
 					.string()
+					.max(packageAppFetchMaxBodyBytes)
 					.optional()
 					.describe(
 						'Raw request body string for POST, PUT, or PATCH. Capped at about 100 KB.',

@@ -113,20 +113,19 @@ export const getPackageCapability = defineDomainCapability(
 			const packageSecrets = (packageSecretsById.get(saved.id) ?? []).map(
 				(secret) => toSecretCapabilityOutput(secret),
 			)
-			const [credentialNeeds, suppliersEnabled] = await Promise.all([
-				describePackageCredentialNeeds({
-					env: ctx.env,
-					request,
-					ownerUserId: owner.ownerUserId,
-					sourceId: saved.sourceId,
-					packageId: saved.id,
-				}),
-				isPackageCredentialSuppliersEnabled({
-					db: ctx.env.APP_DB,
-					orgId: owner.ownerUserId,
-					request,
-				}).catch(() => false),
-			])
+			const suppliersEnabled = await isPackageCredentialSuppliersEnabled({
+				db: ctx.env.APP_DB,
+				orgId: owner.ownerUserId,
+				request,
+			}).catch(() => false)
+			const credentialNeeds = await describePackageCredentialNeeds({
+				env: ctx.env,
+				request,
+				ownerUserId: owner.ownerUserId,
+				sourceId: saved.sourceId,
+				packageId: saved.id,
+				supplierSemanticsEnabled: suppliersEnabled,
+			})
 			return {
 				package_id: saved.id,
 				kody_id: saved.kodyId,

@@ -95,6 +95,8 @@ export async function describePackageCredentialNeeds(input: {
 	sourceId: string
 	/** Saved package id so Keys bound to this package can fill its needs. */
 	packageId: string
+	/** The caller's already-read flag result, so the needs agree with it. */
+	supplierSemanticsEnabled?: boolean
 }) {
 	try {
 		const needs = savedCredentialNeeds(
@@ -103,6 +105,7 @@ export async function describePackageCredentialNeeds(input: {
 				userId: input.ownerUserId,
 				sourceId: input.sourceId,
 				request: input.request,
+				supplierSemanticsEnabled: input.supplierSemanticsEnabled,
 			}),
 		)
 		if (needs.length === 0) return []
