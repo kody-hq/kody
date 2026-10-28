@@ -665,6 +665,13 @@ test('a webhook cannot verify with a secret its package may not read (#3245)', a
 	)
 		.bind(new Date().toISOString())
 		.run()
+	expect(await statusOf('sentry', signed)).toBe(401)
+	expect(mocks.enqueueWebhookDispatch).not.toHaveBeenCalled()
+
+	mocks.resolveSecret.mockResolvedValue({
+		...secretLookup(hmacSecret),
+		allowedPackages: ['pkg-other', 'pkg-1'],
+	})
 	expect(await statusOf('sentry', signed)).toBe(202)
 	expect(mocks.enqueueWebhookDispatch).toHaveBeenCalledTimes(1)
 })

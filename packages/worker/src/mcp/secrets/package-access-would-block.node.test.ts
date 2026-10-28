@@ -30,6 +30,10 @@ vi.mock('#worker/orgs/repo.ts', () => ({
 	getOrgById: (...args: Array<unknown>) => mockModule.getOrgById(...args),
 }))
 
+vi.mock('#worker/credentials/allowed-packages-safety-window.ts', () => ({
+	tryAllowedPackagesSafetyWindowGrant: vi.fn(async () => false),
+}))
+
 vi.mock('#worker/credentials/allowed-packages-would-block.ts', () => ({
 	scheduleAllowedPackagesWouldBlock: (...args: Array<unknown>) =>
 		mockModule.scheduleAllowedPackagesWouldBlock(...args),
@@ -86,11 +90,11 @@ beforeEach(() => {
 	mockModule.getOrgById.mockResolvedValue(null)
 })
 
-test('self-authored package outside a non-empty list is still allowed and records a would-block marker', async () => {
+test('self-authored package outside a non-empty list is refused and records a would-block marker', async () => {
 	mockModule.getCommunityForkByForkedPackageId.mockResolvedValue(null)
 	await expect(
 		assertPackageCanAccessResolvedSecret(accessInput()),
-	).resolves.toBeUndefined()
+	).rejects.toBeInstanceOf(PackageSecretAccessDeniedError)
 	expect(mockModule.scheduleAllowedPackagesWouldBlock).toHaveBeenCalledTimes(1)
 	expect(mockModule.scheduleAllowedPackagesWouldBlock).toHaveBeenCalledWith({
 		env: expect.anything(),
@@ -103,11 +107,11 @@ test('self-authored package outside a non-empty list is still allowed and record
 	})
 })
 
-test('adopted fork outside a non-empty list is still allowed and records adopted', async () => {
+test('adopted fork outside a non-empty list is refused and records adopted', async () => {
 	mockModule.getCommunityForkByForkedPackageId.mockResolvedValue(adoptedFork)
 	await expect(
 		assertPackageCanAccessResolvedSecret(accessInput()),
-	).resolves.toBeUndefined()
+	).rejects.toBeInstanceOf(PackageSecretAccessDeniedError)
 	expect(mockModule.scheduleAllowedPackagesWouldBlock).toHaveBeenCalledWith(
 		expect.objectContaining({
 			marker: expect.objectContaining({ accessKind: 'adopted' }),
