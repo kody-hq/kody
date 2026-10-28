@@ -13,6 +13,7 @@ export const approvalPendingListCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'approvalPendingList',
+		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
 			'List approvals waiting on the signed-in person in this org that they can decide: paused publishes whose credential needs changed or that make a package public, internet-visible packages whose credentials or storage changed, and credential picks proposed with credentialMappingPropose. Each item says in plain language what approving grants (credential, kind, provider, hosts) and what was approved before. Read-only; pass keys to approvalBundleCreate for one page the person approves in the browser.',

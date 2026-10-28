@@ -106,6 +106,7 @@ export const adminPackageCodemodOwnerNoticeCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminPackageCodemodOwnerNotice',
+		contextRuns: 'deny',
 		description:
 			'Email the owners of packages a codemod scan flagged before a breaking gateway or credential rule change: what breaks, when, and how to fix it, naming each affected package. Dry run by default; set dryRun false to send. Each owner is emailed once per noticeId. Page with nextCursor.',
 		keywords: [

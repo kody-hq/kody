@@ -14,6 +14,7 @@ export const followListCapability = defineDomainCapability(
 	capabilityDomainNames.follow,
 	{
 		name: 'followList',
+		contextRuns: 'allow',
 		orgPermission: 'org:read',
 		description:
 			'List follows owned by the org this connection is bound to. Each row is named by @handle/name. Status is active or paused. Paused follows stop receiving events until followAdd resumes them. recent_updates lists the newest follow events no enabled package subscription handled (Kody keeps them instead of dropping them). This list never includes internal ids.',

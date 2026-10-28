@@ -245,6 +245,7 @@ export const adminPackageCredentialSupplierReportCapability =
 	defineDomainCapability(capabilityDomainNames.admin, {
 		...adminCapabilityAccess,
 		name: 'adminPackageCredentialSupplierReport',
+		contextRuns: 'deny',
 		description:
 			'Read-only counts-only report of saved package credential.visitor usage, visitor needs, owner-credential-for-visitors needs, matching live personal and enablement credential mappings, and packages skipped after scan errors. Never returns handles, usernames, package names, emails, need keys, or package identifiers. Admin-only; counts are for internal rollout decisions.',
 		keywords: [

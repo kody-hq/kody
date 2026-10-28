@@ -51,6 +51,7 @@ export const usageGetCapability = defineDomainCapability(
 	capabilityDomainNames.account,
 	{
 		name: 'usageGet',
+		contextRuns: 'allow',
 		orgPermission: 'billing:read',
 		description:
 			'Read entitlement usage for the org this connection is bound to (personal or team) against that org’s plan limits, including monthly Worker compute and Rows read plus execute/outbound hard caps: per-resource current, limit, percent used, and plain-language guidance on what counts and how to reduce it.',

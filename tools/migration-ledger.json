@@ -699,6 +699,10 @@
 		{
 			"filename": "0190-grants-execution-context-resource-type.sql",
 			"sha256": "2ee08874e6fa1e1d7256eb642325d36de682ab1fd71ee910903ff4b47f97028d"
+		},
+		{
+			"filename": "0193-oauth-device-authorizations.sql",
+			"sha256": "f1c7bbbf9a2d164b4601e675547f600ac4d0be26cbda0bc985174f127ebffd78"
 		}
 	]
 }

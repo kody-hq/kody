@@ -1,4 +1,5 @@
 import { saveKeyThroughUi } from './account-fixtures.ts'
+import { createPreviewPackage } from '../tools/control-kody/package-create.ts'
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'
 
 test('Credentials lists a key, filters by kind, and opens its detail pane without the value', async ({
@@ -275,4 +276,102 @@ test('the creation link saves Key, URL, and login credentials from their prefill
 	await expect(page.getByTestId('connect-credential-saved')).toContainText(
 		'SITE_LOGIN is saved',
 	)
+})
+
+test('a bare create page leads with the agent prompt, and links open the form directly', async ({
+	page,
+	seedE2eUser,
+	login,
+	baseURL,
+}) => {
+	test.setTimeout(process.env.CI ? 120_000 : 90_000)
+	const runId = Date.now()
+	const user = await seedE2eUser({
+		email: `cl-${runId}@example.com`,
+		username: `cl-${runId}`,
+		password: 'credential-landing-password',
+	})
+	await login({ email: user.email, password: user.password, mode: 'login' })
+	const created = await createPreviewPackage({
+		origin: baseURL!,
+		email: user.email,
+		password: user.password,
+		kodyId: 'example',
+		headAhead: false,
+	})
+
+	// Server HTML already leads with the agent card; the form is not there.
+	const html = await (
+		await page.request.get(`/@${user.username}/-/credentials/new`)
+	).text()
+	expect(html).toContain('data-testid="connect-credential-agent-first"')
+	expect(html).not.toContain('data-testid="connect-credential-save"')
+
+	await page.goto(`/@${user.username}/-/credentials/new`)
+	await waitForClientHydration(page)
+	const card = page.getByTestId('connect-credential-agent-first')
+	await expect(card).toBeVisible()
+	await expect(card.getByRole('button', { name: 'Copy prompt' })).toBeVisible()
+	await expect(page.getByTestId('connect-credential-save')).toHaveCount(0)
+	await card.getByRole('button', { name: 'Create one manually' }).click()
+	await expect(card).toHaveCount(0)
+	await expect(
+		page.getByRole('region', { name: 'Credential kind' }),
+	).toBeFocused()
+	expect(await page.evaluate(() => window.scrollY)).toBe(0)
+
+	// One org control: any package by default, or a searchable lock list.
+	const access = page.getByTestId('connect-credential-package-access')
+	await expect(access.getByLabel('Any package in this org')).toBeChecked()
+	await expect(access.getByRole('combobox')).toHaveCount(0)
+	await access.getByLabel('Only these packages').check()
+	const picker = access.getByRole('combobox', { name: 'Add allowed package' })
+	await picker.fill('exam')
+	await page.keyboard.press('ArrowDown')
+	await page.keyboard.press('Enter')
+	const selected = access.getByRole('list', { name: 'Allowed packages' })
+	await expect(selected).toContainText(created.packageId)
+	await selected.getByRole('button', { name: /^Remove package / }).click()
+	await expect(selected).toHaveCount(0)
+
+	// A lock the org does not have stays listed and removable.
+	await page.goto(
+		`/@${user.username}/-/credentials/new?name=LOCKED_KEY&allowedPackages=pkg_missing`,
+	)
+	await waitForClientHydration(page)
+	await expect(page.getByTestId('connect-credential-agent-first')).toHaveCount(
+		0,
+	)
+	await expect(page.getByLabel('Name')).toHaveValue('LOCKED_KEY')
+	await expect(page.getByLabel('Only these packages')).toBeChecked()
+	const missing = page.getByRole('list', { name: 'Allowed packages' })
+	await expect(missing).toContainText('not found in this org')
+	await missing
+		.getByRole('button', { name: 'Remove package pkg_missing' })
+		.click()
+	await expect(missing).toHaveCount(0)
+
+	// A link that names a package keeps the package key flow.
+	await page.goto(
+		`/@${user.username}/-/credentials/new?kind=secret&name=PKG_KEY&scope=package&packageId=${created.packageId}`,
+	)
+	await waitForClientHydration(page)
+	await expect(page.getByTestId('connect-credential-agent-first')).toHaveCount(
+		0,
+	)
+	await expect(
+		page.getByTestId('connect-credential-package-key'),
+	).toContainText('can read this key')
+	await expect(page.getByLabel('Any package in this org')).toHaveCount(0)
+
+	// The package's own Credentials tab opens that same package key flow.
+	await page.goto(`/@${user.username}/example/credentials`)
+	await waitForClientHydration(page)
+	await page.getByTestId('package-credentials-add-key').click()
+	await expect(page).toHaveURL(
+		new RegExp(`scope=package&packageId=${created.packageId}`),
+	)
+	await expect(
+		page.getByTestId('connect-credential-package-key'),
+	).toContainText('can read this key')
 })

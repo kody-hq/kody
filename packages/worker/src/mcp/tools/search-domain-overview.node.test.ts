@@ -21,6 +21,7 @@ function capability(
 		idempotent: true,
 		destructive: false,
 		orgPermission: 'none',
+		contextRuns: 'deny',
 		requiresLivePerson: 'never',
 		source: 'builtin',
 		inputSchema: { type: 'object', properties: {} },

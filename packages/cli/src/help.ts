@@ -55,7 +55,7 @@ export function buildUsage(
 Install Kody as a remote MCP server in local agents, or use this CLI as a local client.
 
 Usage:
-  kody login [--mcp-url <url>] [--org <slug>] [--no-browser]
+  kody login [--mcp-url <url>] [--org <slug>] [--no-browser | --device]
   kody logout [--org <slug>] [--mcp-url <url>] [--api-url <url>]
   kody org list [--json] [--mcp-url <url>]
   kody org use [<slug>] [--mcp-url <url>]
@@ -73,6 +73,9 @@ Usage:
   kody package grant <package> (--team <slug> | --user <username>) [--preset use|contribute|manage] [--org <slug>] [--json]
   kody package revoke <package> (--team <slug> | --user <username> | --grant <grant_id>) [--org <slug>] [--json]
   kody execute [--org <slug>] [--invoke <ref> | --code <esm> | --file <path>] [--params <json>] [--conversation-id <id>] [--json]
+  kody context register --name <name> [--org <slug>] | kody context list [--json]
+  kody chain show | add <name> | remove <name> [--org <slug>] [--json]
+  kody daemon [--context <ec id>]
                [--credential <key=name>]… [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
   kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]
   kody dev fetch <path> [--method <verb>] [--body <file>] [--target prod|mock] [--json] [--no-attach]

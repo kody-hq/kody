@@ -13,7 +13,9 @@
   2026-10-25 (default scopes also include `package:create` so
   `packageGetGitRemote` with `create: true` works from CLI bootstrap tokens;
   existing tokens unchanged); 2026-10-27 (minting is callable from the MCP `api`
-  tool and Open API only; `execute` code, hosted or `--local`, is refused)
+  tool and Open API only; `execute` code, hosted or `--local`, is refused);
+  2026-10-28 (the official CLI may use the OAuth device grant,
+  [0082](./0082-cli-oauth-device-authorization-grant.md))
 - **Amends:** [0053](./0053-scoped-api-tokens-are-not-mcp-oauth-scopes.md),
   [0055](./0055-cli-mcp-oauth-local-execute-http.md)
 
@@ -120,9 +122,10 @@ refused with a message pointing at the MCP `api` tool. Code a model wrote (or a
 package it imported) cannot mint itself a CLI credential; the explicit `api`
 call stays the handoff.
 
-Do **not** add OAuth device flow. Do **not** accept bootstrap codes as general
-Open API Bearers. Do **not** scavenge host MCP tokens from disk. Do **not** keep
-a flagless / default-lifetime mint path.
+Do **not** add OAuth device flow (superseded for the official CLI by
+[0082](./0082-cli-oauth-device-authorization-grant.md)). Do **not** accept
+bootstrap codes as general Open API Bearers. Do **not** scavenge host MCP tokens
+from disk. Do **not** keep a flagless / default-lifetime mint path.
 
 ## Consequences
 

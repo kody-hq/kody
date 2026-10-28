@@ -10,6 +10,7 @@ import { type FeatureFlagKey } from '#universal/feature-flags/registry.ts'
 export const previewSeedFlagAllowlist = [
 	'connection-profiles',
 	'demo-indicator',
+	'execution-contexts',
 ] as const satisfies ReadonlyArray<FeatureFlagKey>
 
 export type PreviewSeedFlagKey = (typeof previewSeedFlagAllowlist)[number]

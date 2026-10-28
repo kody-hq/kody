@@ -16,6 +16,7 @@ export const emailDestinationRemoveCapability = defineDomainCapability(
 	capabilityDomainNames.email,
 	{
 		name: 'emailDestinationRemove',
+		contextRuns: 'allow',
 		orgPermission: 'email:write',
 		description:
 			'Remove an additional email destination. The account identity email cannot be removed. If the removed address was the default, emailSend without `to` falls back to the identity email.',

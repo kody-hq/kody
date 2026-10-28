@@ -1358,6 +1358,8 @@
 			"vars": {
 				"SENTRY_ENVIRONMENT": "test",
 				"ARTIFACTS_NAMESPACE": "default",
+				// TEST ONLY frame-signing key (ecp-frame-test-1); see packages/shared/src/execution-context-protocol/vectors/test-keys.json.
+				"ECP_FRAME_SIGNING_KEYS": "[{\"kid\":\"ecp-frame-test-1\",\"privateKeyJwk\":{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"dhu5yQAAwEd6De_QQrbxRuozBukGgMr2XScwH8du5GU\",\"d\":\"Dg7fXFAhz9rb_g58f4ula78vd6QMBlLqDc6hMx8cq4g\"},\"notAfter\":4102444800000}]",
 				"COOKIE_SECRET": "LOCAL_AND_PREVIEW_COOKIE_SECRET_32_CHARS_MINIMUM",
 				"SECRET_STORE_KEY": "LOCAL_TEST_SECRET_STORE_KEY_32_CHARS_MINIMUM_OK",
 				"OIDC_SIGNING_KEY_ID": "kody-oidc-local-test",

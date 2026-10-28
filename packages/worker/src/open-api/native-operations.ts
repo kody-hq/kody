@@ -17,6 +17,8 @@ import { localExecutePackageGraphOperationDefinitions } from './local-execute-pa
 import {
 	parseNativeInput,
 	requireLocalExecuteHttpPrincipal,
+	assertContextRunRuntimePathAllowed,
+	assertContextRunSpecialPathAllowed,
 	type NativeApiOperationDefinition,
 } from './native-operation-helpers.ts'
 import { type NativeApiOperationId } from './operations.ts'
@@ -74,6 +76,21 @@ function capabilityProxySessionFromPrincipal(
 				limits,
 			}
 		}
+		case 'execution-context-run': {
+			const expiresAt = new Date(principal.deadline).toISOString()
+			return {
+				scopes: principal.scopes ?? ['org:execute'],
+				expiresAt,
+				maxExpiresAt: expiresAt,
+				idleTtlSeconds: Math.max(
+					0,
+					Math.floor((principal.deadline - Date.now()) / 1000),
+				),
+				user,
+				features,
+				limits,
+			}
+		}
 		default: {
 			const exhaustive: never = principal
 			throw new Error(
@@ -109,10 +126,10 @@ const capabilityProxyOperationDefinitions: Record<
 		usageEntityId: capabilityProxyUsageEntityId,
 		async handler(params, ctx) {
 			requireLocalExecuteHttpPrincipal(ctx)
-			return runCapabilityProxyCall({
-				ctx,
-				call: parseNativeInput(capabilityProxyCallInputSchema, params),
-			})
+			const call = parseNativeInput(capabilityProxyCallInputSchema, params)
+			assertContextRunRuntimePathAllowed(ctx, call.path)
+			assertContextRunSpecialPathAllowed(ctx, call.path)
+			return runCapabilityProxyCall({ ctx, call })
 		},
 	},
 	capabilityProxyGatewayFetch: {

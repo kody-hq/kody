@@ -30,6 +30,7 @@ export const runStartedByClientValues = [
 	'webhook',
 	'inbound-email',
 	'platform-event',
+	'execution-context',
 ] as const
 
 export type RunStartedByClient = (typeof runStartedByClientValues)[number]
@@ -73,6 +74,8 @@ export function runStartedByClientFromCredentialKind(
 			return 'schedule'
 		case 'platform-event':
 			return 'platform-event'
+		case 'execution-context-run':
+			return 'execution-context'
 		default: {
 			const exhaustive: never = kind
 			throw new Error(`Unhandled credential kind: ${String(exhaustive)}`)

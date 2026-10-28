@@ -240,6 +240,7 @@ export const packageAppFetchCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: packageAppFetchCapabilityName,
+		contextRuns: 'allow',
 		orgPermission: 'app:execute',
 		description:
 			'Invoke a published package app fetch handler with a synthetic HTTP request for post-publish smoke tests. Runs on the app_fetch surface with normal package context, packageStorage(), and secret mounts; handler side effects are real. Does not replace hosted-URL checks for browser UI, cookies, OAuth redirects, or websocket realtime flows.',

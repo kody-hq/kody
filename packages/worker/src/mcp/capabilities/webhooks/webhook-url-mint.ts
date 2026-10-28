@@ -18,6 +18,7 @@ export const webhookUrlMintCapability = defineDomainCapability(
 	capabilityDomainNames.webhooks,
 	{
 		name: 'webhookUrlMint',
+		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
 			'Mint (or remint) the URL secret for a package-declared webhook and return an opaque handle plus url_host. Pass createInstance+instanceLabel to mint another URL under the same declared name (each URL needs its own Approve). The credential URL is never returned — register it with webhookUrlApply. Minting does not turn the webhook on: deliveries fail with enablement_not_on until a person opens approval_url and clicks Approve, which runs it as them (and is where its credentials are mapped). Existing approvals are kept across remint and rotate; after enablementDisable, Approve is required again.',

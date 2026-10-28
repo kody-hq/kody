@@ -9,6 +9,7 @@ export const enablementListCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'enablementList',
+		contextRuns: 'allow',
 		orgPermission: 'org:read',
 		description:
 			'List your enablements: the cron jobs, subscriptions, and webhooks that run as you, with paused ones and why they paused. An Owner can pass scope "org" to list everyone\'s.',

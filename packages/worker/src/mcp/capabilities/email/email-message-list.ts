@@ -21,6 +21,7 @@ export const emailMessageListCapability = defineDomainCapability(
 	capabilityDomainNames.email,
 	{
 		name: 'emailMessageList',
+		contextRuns: 'allow',
 		orgPermission: 'email:read',
 		description:
 			'List stored inbound and outbound email messages for the current org. The default "inbox" view hides messages marked as spam and archived messages; pass view "spam", "archived", or "all" to see them.',

@@ -5,7 +5,13 @@ import { readAccountSecretsSaveWarning } from './account-secrets-shared.ts'
 import { persistConnectOauthOrgSlug } from './connect-oauth-shared.ts'
 import { SiteLink } from '../components/site-link.tsx'
 
-import { type ReactNode, type FormEvent, useState } from 'react'
+import {
+	type ReactNode,
+	type FormEvent,
+	useEffect,
+	useRef,
+	useState,
+} from 'react'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
@@ -20,6 +26,8 @@ import {
 	buildKeySaveBody,
 	createKeyFormState,
 	credentialCreateAgentPrompt,
+	credentialCreateShowsAgentFirst,
+	credentialCreateStartPrompt,
 	credentialCreateTitle,
 	credentialNeedApprovalHref,
 	expiresAtDateValue,
@@ -40,7 +48,7 @@ import {
 import {
 	renderKindList,
 	renderMatches,
-	renderPackageAccess,
+	PackageAccessField,
 } from './connect-credential-parts.tsx'
 import {
 	type CredentialKind,
@@ -55,6 +63,7 @@ import {
 import { orgResourcePath, orgSlugFromPathname } from '#universal/org-pages.ts'
 import {
 	cardCss,
+	cardTitleCss,
 	fieldCss,
 	fieldLabelCss,
 	getPrimaryButtonCss,
@@ -150,6 +159,11 @@ export function ConnectCredentialRoute({
 	const [savedName, setSavedName] = useState<string | null>(null)
 	const [savedPackageId, setSavedPackageId] = useState<string | null>(null)
 	const [message, setMessage] = useState<string | null>(null)
+	const [manual, setManual] = useState(false)
+	const manualFormRef = useRef<HTMLElement>(null)
+	useEffect(() => {
+		if (manual) manualFormRef.current?.focus({ preventScroll: true })
+	}, [manual])
 	const capture = useSubmitterScope()
 	const mutation = useCredentialMutation(
 		{ orgSlug: data.orgSlug },
@@ -458,12 +472,12 @@ export function ConnectCredentialRoute({
 							}
 						/>
 					</div>
-					{renderPackageAccess({
-						state,
-						packages: input.packages,
-						packageKeys: isKey,
-						update,
-					})}
+					<PackageAccessField
+						state={state}
+						packages={input.packages}
+						packageKeys={isKey}
+						update={update}
+					/>
 					<div css={fieldCss}>
 						<label htmlFor="connect-credential-expires" css={fieldLabelCss}>
 							Expires <span css={labelHintCss}>(optional)</span>
@@ -538,6 +552,7 @@ export function ConnectCredentialRoute({
 	)
 	const orgSlug = data?.orgSlug ?? ''
 	const selected = query.kind ?? 'secret'
+	const agentFirst = !manual && credentialCreateShowsAgentFirst(search)
 	const kinds = query.kindLocked && selected ? [selected] : credentialKinds
 	const matches = data ? findMatchingCredentials(data.credentials, query) : []
 	const packages = data?.packages ?? []
@@ -584,53 +599,98 @@ export function ConnectCredentialRoute({
 
 				{renderMatches({ matches, orgSlug })}
 
-				<section
-					aria-label="Credential kind"
-					css={{ display: 'grid', gap: spacing.sm }}
-				>
-					{query.kindLocked && selected ? (
+				{agentFirst ? (
+					<section
+						css={{ ...cardCss, display: 'grid', gap: spacing.md }}
+						aria-labelledby="connect-credential-agent-first-title"
+						data-testid="connect-credential-agent-first"
+					>
+						<h2 id="connect-credential-agent-first-title" css={cardTitleCss}>
+							Let your agent set it up
+						</h2>
 						<p css={mutedCss}>
-							This link asks for a {credentialKindLabel(selected)} credential.
+							The easiest way to add a credential is to ask your agent. It uses
+							Kody to work out the kind, name, and allowed hosts, then hands you
+							a prefilled link. You paste the secret value into Kody yourself,
+							never into chat.
 						</p>
-					) : (
-						<p css={mutedCss}>
-							{query.kind
-								? 'Suggested by the link. Pick another kind if it fits better.'
-								: 'A key fits most credentials. Pick another kind if it fits better.'}
-						</p>
-					)}
-					{renderKindList({ kinds, selected, href })}
-				</section>
+						<div
+							css={{
+								display: 'flex',
+								flexWrap: 'wrap',
+								gap: spacing.sm,
+								alignItems: 'center',
+							}}
+						>
+							<CopyTextButton
+								value={credentialCreateStartPrompt({ orgSlug, pageUrl })}
+								idleLabel="Copy prompt"
+								variant="primary"
+							/>
+							<button
+								type="button"
+								css={secondaryButtonCss}
+								data-testid="connect-credential-manual"
+								onClick={() => setManual(true)}
+							>
+								Create one manually
+							</button>
+						</div>
+					</section>
+				) : (
+					<>
+						<section
+							ref={manualFormRef}
+							tabIndex={-1}
+							aria-label="Credential kind"
+							css={{ display: 'grid', gap: spacing.sm, outline: 'none' }}
+						>
+							{query.kindLocked && selected ? (
+								<p css={mutedCss}>
+									This link asks for a {credentialKindLabel(selected)}{' '}
+									credential.
+								</p>
+							) : (
+								<p css={mutedCss}>
+									{query.kind
+										? 'Suggested by the link. Pick another kind if it fits better.'
+										: 'A key fits most credentials. Pick another kind if it fits better.'}
+								</p>
+							)}
+							{renderKindList({ kinds, selected, href })}
+						</section>
 
-				{renderKindBody({
-					kind: selected,
-					search,
-					orgSlug,
-					valueForm: (kind) =>
-						renderKeyForm({
-							kind,
-							state,
-							existing,
+						{renderKindBody({
+							kind: selected,
+							search,
 							orgSlug,
-							packages,
-							linkProblem,
-							forNeed:
-								pathOrgSlug && query.packageKodyId && query.needKey
-									? {
-											orgSlug: pathOrgSlug,
-											packageKodyId: query.packageKodyId,
-											needKey: query.needKey,
-										}
-									: null,
-							prompt: (error) =>
-								credentialCreateAgentPrompt({
+							valueForm: (kind) =>
+								renderKeyForm({
 									kind,
-									query,
-									pageUrl,
-									error,
+									state,
+									existing,
+									orgSlug,
+									packages,
+									linkProblem,
+									forNeed:
+										pathOrgSlug && query.packageKodyId && query.needKey
+											? {
+													orgSlug: pathOrgSlug,
+													packageKodyId: query.packageKodyId,
+													needKey: query.needKey,
+												}
+											: null,
+									prompt: (error) =>
+										credentialCreateAgentPrompt({
+											kind,
+											query,
+											pageUrl,
+											error,
+										}),
 								}),
-						}),
-				})}
+						})}
+					</>
+				)}
 			</section>
 		</AccountManagementShell>
 	)

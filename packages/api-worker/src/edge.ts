@@ -2,6 +2,10 @@ import {
 	parseApiToken,
 	readBearerApiToken,
 } from '@kody-internal/shared/api-token-format.ts'
+import {
+	ecpRunHeader,
+	ecpSignatureHeader,
+} from '@kody-internal/shared/execution-context-protocol/index.ts'
 
 /**
  * Edge half of `api.kody.codes`. Everything here runs before the request
@@ -115,7 +119,8 @@ export function gatewayFetchUploadLimitMessage() {
 }
 
 /**
- * Only the API credential, content negotiation and cache validators reach origin. Cookies
+ * Only the API credential (a bearer token or a signed execution context
+ * request), content negotiation and cache validators reach origin. Cookies
  * never authenticate the API, and `X-Kody-*` headers are internal fleet
  * signals a public caller must not be able to set. Gateway-fetch also
  * forwards the allowlisted hop metadata headers.
@@ -127,6 +132,8 @@ function buildForwardHeaders(
 	const forwarded = new Headers()
 	for (const name of [
 		'Authorization',
+		ecpSignatureHeader,
+		ecpRunHeader,
 		'Content-Type',
 		'Accept',
 		'If-None-Match',
@@ -224,6 +231,8 @@ export async function handleApiEdgeRequest(
 ): Promise<Response> {
 	const requestId = readRequestId(request)
 	const response = await routeApiEdgeRequest(request, env, requestId)
+	// A 101 WebSocket upgrade from origin passes through untouched.
+	if (response.status === 101) return response
 	response.headers.set(apiRequestIdHeader, requestId)
 	return response
 }
@@ -259,6 +268,10 @@ async function routeApiEdgeRequest(
 			`Method ${request.method} is not allowed.`,
 			{ Allow: allowedMethods.join(', ') },
 		)
+	}
+
+	if (isExecutionContextConnectRequest(request, url.pathname)) {
+		return forwardExecutionContextConnect({ request, env, url, requestId })
 	}
 
 	const keys = await rateLimitKeys(request)
@@ -343,6 +356,72 @@ export function describeOriginForwardFailure(
 	return {
 		reason: 'origin_unreachable' as const,
 		message: `The Kody API is temporarily unavailable (request id ${requestId}). Retry in a few seconds; if it keeps failing, quote the request id when you report it.`,
+	}
+}
+
+export const executionContextConnectPath = '/v1/execution-contexts/connect'
+
+const executionContextConnectHeaderNames = [
+	'Upgrade',
+	'Connection',
+	'Sec-WebSocket-Key',
+	'Sec-WebSocket-Version',
+	'Sec-WebSocket-Protocol',
+	'Sec-WebSocket-Extensions',
+] as const
+
+function isExecutionContextConnectRequest(request: Request, pathname: string) {
+	return (
+		request.method === 'GET' &&
+		pathname === executionContextConnectPath &&
+		request.headers.get('Upgrade')?.toLowerCase() === 'websocket'
+	)
+}
+
+/**
+ * Daemon WebSocket connect: forwards the upgrade to origin and returns its
+ * response as is. Rate limited per context and IP. The `ticket` query
+ * param is a bearer secret, so it is never logged here.
+ */
+async function forwardExecutionContextConnect(input: {
+	request: Request
+	env: ApiWorkerEnv
+	url: URL
+	requestId: string
+}) {
+	const { request, env, url, requestId } = input
+	const ecid = (url.searchParams.get('ticket') ?? '').split('.')[0] ?? ''
+	const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown'
+	if (
+		await isRateLimited(env.API_IP_RATE_LIMITER, `ecp-connect:${ecid}:${ip}`)
+	) {
+		return errorResponse(
+			429,
+			'rate_limited',
+			'Too many connect attempts. Back off and retry.',
+			{ 'Retry-After': '60' },
+		)
+	}
+	const forwarded = new Request(url.toString(), {
+		method: 'GET',
+		headers: buildForwardHeaders(
+			request.headers,
+			executionContextConnectHeaderNames,
+		),
+	})
+	try {
+		return await env.KODY_API.fetch(forwarded)
+	} catch (error) {
+		console.error('api-worker-ecp-connect-failed', error, {
+			requestId,
+			path: url.pathname,
+		})
+		return errorResponse(
+			503,
+			'internal_error',
+			'Kody could not reach its API origin. Retry in a few seconds.',
+			{ 'Retry-After': '5' },
+		)
 	}
 }
 

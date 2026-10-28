@@ -29,6 +29,7 @@ export const webhookSyntheticDispatchCapability = defineDomainCapability(
 	capabilityDomainNames.webhooks,
 	{
 		name: webhookSyntheticDispatchCapabilityName,
+		contextRuns: 'deny',
 		orgPermission: 'package:execute',
 		description:
 			'Interactive-MCP post-publish smoke test for one minted package.json#kody.webhooks export. Skips public URL and HMAC, invokes the bound export with a caller fixture, marks the Activity webhook run synthetic: true, and counts against automation usage like a normal delivery. Side effects are real. Unavailable from package jobs, subscriptions, webhooks, or other package runtimes. Does not return url or url_secret. Distinct from any package-local dryRun field on trusted-client POSTs.',

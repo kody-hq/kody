@@ -63,6 +63,7 @@ export const repoPromoteToPackageCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoPromoteToPackage',
+		contextRuns: 'deny',
 		orgPermission: 'package:create',
 		description:
 			'Promote a package-shaped plain repo (root package.json at HEAD) into a saved package. Runs the full external-push publish checks; on success creates the saved-package projection and removes the plain-repo row.',

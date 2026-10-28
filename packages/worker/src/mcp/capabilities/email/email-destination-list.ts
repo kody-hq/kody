@@ -16,6 +16,7 @@ export const emailDestinationListCapability = defineDomainCapability(
 	capabilityDomainNames.email,
 	{
 		name: 'emailDestinationList',
+		contextRuns: 'allow',
 		orgPermission: 'email:read',
 		description:
 			'List email destinations emailSend may use. Mail comes from your platform address. The account identity email is always included. Extra addresses must be verified before emailSend can use them.',

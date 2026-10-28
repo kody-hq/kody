@@ -26,6 +26,7 @@ export const adminSystemEmailSenderRuleDeleteCapability =
 		...adminMutationCapabilityAccess,
 		destructive: true,
 		name: 'adminSystemEmailSenderRuleDelete',
+		contextRuns: 'deny',
 		description:
 			'Delete a sender rule that controls inbound spam policy for operator system inboxes (kody@, abuse@, and other reserved locals on the apex domain). Admin-only; never mutates user-owned email rules.',
 		keywords: [
