@@ -319,6 +319,7 @@ export function AccountJobsPage({
 					detail
 						? renderAccountJobDetail({
 								username,
+								orgSlug,
 								currentHref,
 								detail,
 								isMutating,

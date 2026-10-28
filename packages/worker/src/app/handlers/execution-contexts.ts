@@ -50,6 +50,8 @@ export const executionContextCapabilityNames = {
 	shareList: 'executionContextShareList',
 	shareSet: 'executionContextShareSet',
 	shareRemove: 'executionContextShareRemove',
+	automationGet: 'automationExecutionGet',
+	automationSet: 'automationExecutionSet',
 } as const
 
 type CapabilityName =
@@ -673,4 +675,62 @@ export async function removeExecutionContextShareForUser(
 		)
 		return { ok: true as const, sharing: readSharing(result) }
 	})
+}
+
+export type AutomationExecutionTargetInput = {
+	kind: 'job' | 'webhook' | 'subscription'
+	jobId?: string | undefined
+	packageId?: string | undefined
+	name?: string | undefined
+}
+
+function automationTargetArgs(target: AutomationExecutionTargetInput) {
+	return {
+		kind: target.kind,
+		...(target.jobId ? { jobId: target.jobId } : {}),
+		...(target.packageId ? { packageId: target.packageId } : {}),
+		...(target.name ? { name: target.name } : {}),
+	}
+}
+
+export async function getAutomationExecutionForUser(
+	input: ScopedInput & { target: AutomationExecutionTargetInput },
+) {
+	return runScoped(input, async (scope) => ({
+		ok: true as const,
+		setting: await callCapability(
+			scope,
+			executionContextCapabilityNames.automationGet,
+			automationTargetArgs(input.target),
+		),
+		contexts: await callCapability(
+			scope,
+			executionContextCapabilityNames.list,
+			{},
+		).then((result) =>
+			(Array.isArray(result.contexts) ? result.contexts : [])
+				.map((context) => record(context))
+				.filter((context) => context !== null)
+				.map((context) => ({
+					id: String(context.id ?? ''),
+					name: String(context.name ?? context.id ?? ''),
+				})),
+		),
+	}))
+}
+
+export async function setAutomationExecutionForUser(
+	input: ScopedInput & {
+		target: AutomationExecutionTargetInput
+		execution: Record<string, unknown> | null
+	},
+) {
+	return runScoped(input, async (scope) => ({
+		ok: true as const,
+		setting: await callCapability(
+			scope,
+			executionContextCapabilityNames.automationSet,
+			{ ...automationTargetArgs(input.target), execution: input.execution },
+		),
+	}))
 }
