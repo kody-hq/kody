@@ -284,7 +284,7 @@ export const packageAppFetchCapability = defineDomainCapability(
 					.max(packageAppFetchMaxBodyBytes)
 					.optional()
 					.describe(
-						'Raw request body string for POST, PUT, or PATCH. Capped at about 100 KB.',
+						'Raw request body string for POST, PUT, or PATCH. At most 102,400 UTF-8 bytes; the schema bounds characters and the bytes are checked when the request is sent.',
 					),
 			})
 			.superRefine((value, ctx) => {
