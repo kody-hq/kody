@@ -47,3 +47,30 @@ test('runNowSuccessMessage and tone use the error style for a failed run', () =>
 		}),
 	).toBe('info')
 })
+
+test('runNowSuccessMessage does not claim success for a context handoff', () => {
+	expect(
+		runNowSuccessMessage({
+			ok: true,
+			jobId: 'job-1',
+			runNow: {
+				ok: true,
+				error: null,
+				contextRun: { state: 'queued', context: 'laptop', expiresAt: null },
+			},
+		}),
+	).toBe(
+		'laptop is offline. The run is queued until it reconnects; Activity shows the result.',
+	)
+	expect(
+		runNowSuccessMessage({
+			ok: true,
+			jobId: 'job-1',
+			runNow: {
+				ok: true,
+				error: null,
+				contextRun: { state: 'running', context: 'desk', expiresAt: null },
+			},
+		}),
+	).toBe('Started on desk. Activity shows the result.')
+})
