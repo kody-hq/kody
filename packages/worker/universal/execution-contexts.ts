@@ -678,6 +678,8 @@ const executionContextAuditLabels: Record<string, string> = {
 	opt_out: 'Opted out',
 	share_added: 'Shared',
 	share_removed: 'Stopped sharing',
+	all_members_on: 'Shared with everyone in the org',
+	all_members_off: 'Stopped sharing with everyone in the org',
 	attached: 'Attached to an org',
 	detached: 'Detached from an org',
 	chain_added: 'Added to a chain',
