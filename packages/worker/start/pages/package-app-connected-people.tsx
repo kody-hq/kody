@@ -171,7 +171,8 @@ export function PackageAppConnectedPeopleRoute({
 	}
 
 	function renderPager() {
-		if (pageCount <= 1) return null
+		const outOfRange = view.page > pageCount
+		if (pageCount <= 1 && !outOfRange) return null
 		const pageHref = (page: number) =>
 			packageAppConnectedPeopleHref({ username, kodyId, page })
 		return (
@@ -182,15 +183,17 @@ export function PackageAppConnectedPeopleRoute({
 			>
 				{view.page > 1 ? (
 					<SiteLink
-						href={pageHref(view.page - 1)}
+						href={pageHref(Math.min(view.page - 1, pageCount))}
 						css={getGhostButtonCss({ size: 'sm' })}
 					>
 						Newer
 					</SiteLink>
 				) : null}
-				<span css={mutedCopyCss}>
-					Page {view.page} of {pageCount}
-				</span>
+				{outOfRange ? null : (
+					<span css={mutedCopyCss}>
+						Page {view.page} of {pageCount}
+					</span>
+				)}
 				{view.page < pageCount ? (
 					<SiteLink
 						href={pageHref(view.page + 1)}
