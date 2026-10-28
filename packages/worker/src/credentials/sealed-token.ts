@@ -8,7 +8,9 @@
  * A sealed token is bound to its org, the run that received it (when the
  * run has a binding), the registrable domains it may be sent to, and an
  * expiry. A JWT access token may also go to the host its https `aud` names
- * (ADR 0068, 2026-10-28 amendment).
+ * (ADR 0068, 2026-10-28 amendment). A token from a token endpoint may be
+ * saved as a Key through `secretSet({ sealed_token })`; the host opens it
+ * and stores the value, which code still never holds.
  */
 import {
 	base64UrlToBytes,
@@ -16,6 +18,7 @@ import {
 } from '@kody-internal/shared/base64.ts'
 import { getDomain } from 'tldts'
 import { z } from 'zod'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { withLanding } from '#mcp/secrets/echo-redaction.ts'
 import { SecretPlacementError } from '#mcp/secrets/secret-placement.ts'
 import { buildIntegrationTokenPlaceholder } from '#mcp/secrets/placeholders.ts'
@@ -41,6 +44,11 @@ const sealedPayloadSchema = z.object({
 	src: z.enum(['jwt-sign', 'token-response']).optional(),
 	/** Hosts the token's https `aud` names, for the refusal hint. */
 	aud: z.array(z.string().min(1)).optional(),
+	/**
+	 * Exact hosts a saved copy may be sent to. Absent: the token cannot be
+	 * saved. Empty: the token repeats a filled credential.
+	 */
+	save: z.array(z.string().min(1)).optional(),
 })
 
 type SealedTokenEnv = Pick<Env, 'SECRET_STORE_KEY'>
@@ -50,6 +58,8 @@ export type SealedTokenBinding = {
 	binding: string | null
 	domains: ReadonlyArray<string>
 	source?: 'jwt-sign' | 'token-response'
+	/** Exact hosts a saved copy may be sent to (see `openSealedTokenForSave`). */
+	saveHosts?: ReadonlyArray<string>
 }
 
 async function sealingKey(env: SealedTokenEnv) {
@@ -112,6 +122,7 @@ export async function sealToken(input: {
 		exp: now + lifetimeMs,
 		...(input.to.source ? { src: input.to.source } : {}),
 		...(audienceHosts.length > 0 ? { aud: [...audienceHosts] } : {}),
+		...(input.to.saveHosts ? { save: [...new Set(input.to.saveHosts)] } : {}),
 	}
 	const iv = crypto.getRandomValues(new Uint8Array(12))
 	const sealed = await crypto.subtle.encrypt(
@@ -130,23 +141,23 @@ function refuse(message: string): never {
 	throw new SecretPlacementError(message, sealedTokenSlot)
 }
 
-/**
- * Opens a sealed token for a gateway fill. Refuses another org, another
- * run, an expired token, a host outside its domains, and the URL.
- */
-export async function openSealedToken(input: {
+type OpenSealedTokenInput = {
 	env: SealedTokenEnv
 	name: string
 	org: string
 	binding: string | null
-	requestHost: string
-	parts: ReadonlyArray<string>
 	now?: number
-}) {
+}
+
+/** Decrypts a sealed token and refuses another org, another run, or expiry. */
+async function openSealedPayload(
+	input: OpenSealedTokenInput,
+	fail: (message: string) => never,
+) {
 	const encoded = input.name.slice(sealedTokenNamePrefix.length)
 	const [ivText, sealedText, extra] = encoded.split('.')
 	if (!ivText || !sealedText || extra !== undefined) {
-		refuse('This sealed token is malformed.')
+		fail('This sealed token is malformed.')
 	}
 	let payload: z.infer<typeof sealedPayloadSchema>
 	try {
@@ -159,19 +170,33 @@ export async function openSealedToken(input: {
 			JSON.parse(new TextDecoder().decode(opened)),
 		)
 	} catch {
-		refuse('This sealed token was not issued by this Kody.')
+		fail('This sealed token was not issued by this Kody.')
 	}
 	if (payload.org !== input.org) {
-		refuse('This sealed token belongs to another account.')
+		fail('This sealed token belongs to another account.')
 	}
 	if (payload.binding && payload.binding !== input.binding) {
-		refuse(
+		fail(
 			'This sealed token belongs to another run. Mint a new one in this run.',
 		)
 	}
 	if ((input.now ?? Date.now()) >= payload.exp) {
-		refuse('This sealed token expired. Mint a new one.')
+		fail('This sealed token expired. Mint a new one.')
 	}
+	return payload
+}
+
+/**
+ * Opens a sealed token for a gateway fill. Refuses another org, another
+ * run, an expired token, a host outside its domains, and the URL.
+ */
+export async function openSealedToken(
+	input: OpenSealedTokenInput & {
+		requestHost: string
+		parts: ReadonlyArray<string>
+	},
+) {
+	const payload = await openSealedPayload(input, refuse)
 	const host = input.requestHost.toLowerCase()
 	if (
 		!payload.domains.some(
@@ -305,10 +330,17 @@ export async function sealTokenFields(input: {
 	for (const field of sealedTokenFields) {
 		const value = record[field]
 		if (typeof value !== 'string' || !value) continue
+		const echoes = repeatsFilledValue(value, input.filledValues)
 		next[field] = await sealToken({
 			env: input.env,
 			value,
-			to: { source: 'token-response', ...input.to },
+			to: {
+				source: 'token-response',
+				...input.to,
+				...(input.to.saveHosts
+					? { saveHosts: echoes ? [] : input.to.saveHosts }
+					: {}),
+			},
 			...(field === 'access_token'
 				? { audienceHosts: audienceHostsFor(value, input) }
 				: {}),
@@ -335,12 +367,17 @@ function audienceHostsFor(
 	token: string,
 	input: { to: SealedTokenBinding; filledValues?: ReadonlyArray<string> },
 ) {
-	const values = (input.filledValues ?? []).flatMap((value) => [
-		value,
-		...basicAuthPassword(value),
-	])
-	if (values.some((value) => value && token.includes(value))) return []
+	if (repeatsFilledValue(token, input.filledValues)) return []
 	return sealedTokenAudienceHosts(token, input.to.domains)
+}
+
+function repeatsFilledValue(
+	token: string,
+	filledValues: ReadonlyArray<string> = [],
+) {
+	return filledValues
+		.flatMap((value) => [value, ...basicAuthPassword(value)])
+		.some((value) => value && token.includes(value))
 }
 
 function basicAuthPassword(value: string) {
@@ -411,6 +448,10 @@ export async function sealTokenResponse(input: {
 			org: input.org,
 			binding: input.binding,
 			domains: [domain, ...approvedHostDomains(input.approvedHosts ?? [])],
+			saveHosts: [
+				new URL(input.requestUrl).hostname.toLowerCase(),
+				...(input.approvedHosts ?? []).filter((host) => !host.startsWith('*.')),
+			],
 		},
 		filledValues: input.filledValues,
 	})
@@ -490,4 +531,58 @@ function approvedHostDomains(hosts: ReadonlyArray<string>) {
 		)
 		return domain ? [domain] : []
 	})
+}
+
+/**
+ * The sealed-token name in `secretSet`'s `sealed_token` input: the
+ * `{{integration-token:kody-sealed.…}}` placeholder code received, or the bare
+ * name. Null when the text is neither.
+ */
+export function sealedTokenNameFromInput(text: string) {
+	const trimmed = text.trim()
+	const name =
+		/^\{\{integration-token:([^{}]+)\}\}$/.exec(trimmed)?.[1] ?? trimmed
+	return isSealedTokenName(name) && !/\s/.test(name) ? name : null
+}
+
+/** True when a plain secret value is (or holds) a sealed token. */
+export function containsSealedToken(value: string) {
+	return value.includes(sealedTokenNamePrefix)
+}
+
+export const sealedTokenValueRefusal =
+	'This value is a sealed token (kody-sealed.…), not the token itself, so saving it as text would store a placeholder that only works in this run. Pass it as secretSet({ name, scope: "user", sealed_token }) instead: Kody opens it and saves the real token, which code never sees.'
+
+function refuseSave(message: string): never {
+	throw new McpCallerError(message)
+}
+
+/**
+ * Opens a sealed token so `secretSet` can save it as a Key. Refuses what a
+ * gateway fill refuses (another org, another run, expiry), a signed JWT, and
+ * a token that repeats a credential filled into the request that minted it.
+ * Returns the exact hosts the saved Key may be sent to: the token endpoint's
+ * host, the filled credentials' exact approved hosts, and its audience hosts.
+ */
+export async function openSealedTokenForSave(input: OpenSealedTokenInput) {
+	const payload = await openSealedPayload(input, refuseSave)
+	if (payload.src === 'jwt-sign') {
+		refuseSave(
+			'A signed JWT cannot be saved as a secret. Sign a new one with secretJwtSign when you need it.',
+		)
+	}
+	if (!payload.save) {
+		refuseSave(
+			'This sealed token cannot be saved; it was not minted by a token endpoint call in a run that can save it. Mint a new one in this run.',
+		)
+	}
+	if (payload.save.length === 0) {
+		refuseSave(
+			'This sealed token repeats a credential sent with the request that minted it, so Kody will not save it as a new secret.',
+		)
+	}
+	return {
+		value: payload.v,
+		hosts: [...new Set([...payload.save, ...(payload.aud ?? [])])],
+	}
 }

@@ -3,11 +3,13 @@ import { parseIntegrationTokenPlaceholders } from '#mcp/secrets/placeholders.ts'
 import {
 	isSealedTokenName,
 	openSealedToken,
+	openSealedTokenForSave,
 	sealToken,
 	sealTokenFields,
 	sealTokenResponse,
 	sealedTokenAudienceHosts,
 	sealedTokenDomainForUrl,
+	sealedTokenNameFromInput,
 } from './sealed-token.ts'
 
 const env = { SECRET_STORE_KEY: 'test-sealing-key-material' }
@@ -437,4 +439,36 @@ test('a token response that echoes a filled secret keeps only the token and appr
 	await expect(
 		open(access_token!, { requestHost: 'evil.test' }),
 	).rejects.toThrow(/may only be sent to microsoftonline\.com, not evil\.test/)
+})
+
+test('a saved token goes to the token host, exact approved hosts, and its audience', async () => {
+	const token = fakeJwt({ aud: 'https://api.example-api.com' })
+	const sealed = await sealTokenResponse({
+		env,
+		response: Response.json({ access_token: token }),
+		requestUrl: 'https://login.example-auth.com/oauth/token',
+		approvedHosts: [
+			'login.example-auth.com',
+			'*.example.com',
+			'api.example.com',
+		],
+		org: 'org-1',
+		binding: 'run-1',
+	})
+	const body = (await sealed.json()) as Record<string, unknown>
+	const name = sealedTokenNameFromInput(String(body.access_token))
+	expect(name).toBe(nameOf(String(body.access_token)))
+	await expect(
+		openSealedTokenForSave({
+			env,
+			name: name!,
+			org: 'org-1',
+			binding: 'run-1',
+		}),
+	).resolves.toEqual({
+		value: token,
+		hosts: ['login.example-auth.com', 'api.example.com', 'api.example-api.com'],
+	})
+	expect(sealedTokenNameFromInput('not a sealed token')).toBeNull()
+	expect(sealedTokenNameFromInput(` ${name} `)).toBe(name)
 })
