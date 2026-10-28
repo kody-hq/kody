@@ -28,8 +28,11 @@ offer to build the Kody half now.
 | None of these                                                   | No wake. Tell the user; check Activity on next start |
 
 Check before you choose. If `server/discover` on `/mcp` shows an `events`
-capability, the client can use MCP Events. If you do not know whether the host
-has a wake URL, ask the user rather than guessing.
+capability, the client can use MCP Events. Kody only advertises `events` while
+the `mcp-events-extension` flag is on, so if the capability is missing and the
+client supports events, ask the user to turn the flag on before you fall back.
+If you do not know whether the host has a wake URL, ask the user rather than
+guessing.
 
 ## MCP Events
 
@@ -54,9 +57,10 @@ subscription (`run.error.recorded`, a package-emitted topic,
 `email.message.received`), an inbound webhook from an outside system (see
 [Triggers](./triggers.md)), or a job on a schedule.
 
-Store the wake URL as a **URL** credential (or a Key if the host wants a bearer
-token), so the package never holds it. Example: wake the agent when any run
-fails.
+Store the full wake URL as a **URL** credential so the package never holds it.
+Code passes an empty path to POST to the stored URL itself. If the host also
+wants a bearer token, declare it as a separate Key need. Example: wake the agent
+when a run fails.
 
 ```json
 {
@@ -88,7 +92,7 @@ export default async function onRunError(event: {
 	activity_url: string
 }) {
 	const wake = await credential('agent-wake')
-	await wake.fetch('/wake', {
+	const response = await wake.fetch('', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({
@@ -96,12 +100,15 @@ export default async function onRunError(event: {
 			link: event.activity_url,
 		}),
 	})
+	if (!response.ok) throw new Error(`Wake POST failed: ${response.status}`)
 	return { handled: true }
 }
 ```
 
-Send the agent the `activity_url` and a one-line reason, not logs. The agent can
-call `runGet` when it wakes. Payload fields are in
+`run.error.recorded` is best-effort, and failed subscription handlers (this one
+included) never emit it, so treat the wake as a nudge, not a guarantee. Send the
+agent the `activity_url` and a one-line reason, not logs. The agent can call
+`runGet` when it wakes. Payload fields are in
 [Package subscriptions](./package-subscriptions.md#runerrorrecorded).
 
 ## Email wake
