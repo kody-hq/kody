@@ -1,0 +1,163 @@
+{
+	"node": "v26.12.1",
+	"cpu": "Apple M5 Pro",
+	"targets": [
+		{
+			"label": "remix",
+			"root": "<snapshots>/remix",
+			"commit": "8b2528460eb9be9d08d50b7a1d2ee8f491503d83",
+			"origin": "http://127.0.0.1:5191",
+			"lockSha256": "618ac5f06a478b58430a2946c79486c3c5a8961eee8de6dcf50b5e4fae3016fe",
+			"packageSha256": "9e6009afc337b9d0e5aa0cf6c626685ccaf6f68c067c0cd505789c71179f54e3"
+		},
+		{
+			"label": "shipped",
+			"root": "<snapshots>/shipped",
+			"commit": "2894f12c99431f7e78816b502c24fdc72813dffc",
+			"origin": "http://127.0.0.1:5192",
+			"lockSha256": "673ee46137536e22aa16ade0d8b3920ef40e5c59c71cbf883ec8eb02caff42fa",
+			"packageSha256": "fce366c3c99cb15733d029cde78555e3707e14028dd3d18175c00cb8fc812527"
+		},
+		{
+			"label": "main",
+			"root": "<fixed-checkout>",
+			"commit": "214ce21bbd6045a132f7f474bcb6a0126a348722",
+			"origin": "http://127.0.0.1:5193",
+			"lockSha256": "70d026a7c59657f4eee8e0aa782adb90a1a157bdc9dc942570c837fcf9607ba4",
+			"packageSha256": "36aa0139f6ed213b31b3207f3aff0bf5343e6bbc7ff2340a99ce557d22812735"
+		}
+	],
+	"runs": [
+		{
+			"label": "remix",
+			"round": 1,
+			"elapsedMs": 4314.73525,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "shipped",
+			"round": 1,
+			"elapsedMs": 16346.704333000001,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "main",
+			"round": 1,
+			"elapsedMs": 21228.116542000003,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "shipped",
+			"round": 2,
+			"elapsedMs": 16647.965292,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "main",
+			"round": 2,
+			"elapsedMs": 16649.540208,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "remix",
+			"round": 2,
+			"elapsedMs": 4273.53850000001,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "main",
+			"round": 3,
+			"elapsedMs": 36103.397958,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "remix",
+			"round": 3,
+			"elapsedMs": 8490.733666999993,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "shipped",
+			"round": 3,
+			"elapsedMs": 36732.06395900001,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "remix",
+			"round": 4,
+			"elapsedMs": 4390.942875000008,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "shipped",
+			"round": 4,
+			"elapsedMs": 17640.98758299998,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "main",
+			"round": 4,
+			"elapsedMs": 19923.214542,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "shipped",
+			"round": 5,
+			"elapsedMs": 18270.410165999987,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "main",
+			"round": 5,
+			"elapsedMs": 15358.977416999987,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "remix",
+			"round": 5,
+			"elapsedMs": 3659.314249999996,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "main",
+			"round": 6,
+			"elapsedMs": 14118.692374999984,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "remix",
+			"round": 6,
+			"elapsedMs": 3830.488708000019,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "shipped",
+			"round": 6,
+			"elapsedMs": 17424.712,
+			"exitCode": 0,
+			"error": null
+		}
+	],
+	"caveats": [
+		"Complete npm build wall time, including source-map verification where that revision runs it.",
+		"First round is reported separately. Later rounds rotate target order and retain warm source/dependency caches.",
+		"All emitted JS/CSS includes lazy chunks. This is not page transfer or Worker upload size."
+	]
+}

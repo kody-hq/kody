@@ -82,3 +82,7 @@ The private scenario opens the seeded public profile from Account and returns
 with browser Back. Its markers identify actual destination data. The byte
 budgets check observed initial JavaScript and loaded CSS, rather than all lazy
 assets.
+
+The [October 28 audit](../../docs/contributing/performance/2026-10-28/README.md)
+includes recovered migration drafts, four pinned revisions, per-sample evidence,
+fixes and the remaining cold-load and validation gaps.

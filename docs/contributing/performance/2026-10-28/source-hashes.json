@@ -1,0 +1,18 @@
+{
+	"remix": {
+		"package-lock.json": "618ac5f06a478b58430a2946c79486c3c5a8961eee8de6dcf50b5e4fae3016fe",
+		"package.json": "9e6009afc337b9d0e5aa0cf6c626685ccaf6f68c067c0cd505789c71179f54e3"
+	},
+	"shipped": {
+		"package-lock.json": "673ee46137536e22aa16ade0d8b3920ef40e5c59c71cbf883ec8eb02caff42fa",
+		"package.json": "fce366c3c99cb15733d029cde78555e3707e14028dd3d18175c00cb8fc812527"
+	},
+	"main": {
+		"package-lock.json": "70d026a7c59657f4eee8e0aa782adb90a1a157bdc9dc942570c837fcf9607ba4",
+		"package.json": "36aa0139f6ed213b31b3207f3aff0bf5343e6bbc7ff2340a99ce557d22812735"
+	},
+	"fixed": {
+		"package-lock.json": "a74f9d77b0356d190459fe1e0ae5f4ad31635537c22858214a9c705a77bb1ad5",
+		"package.json": "29bc518f88a9375b641a6deb20f1ac1648f9e603b38b94da579c9cc91b4b9816"
+	}
+}
