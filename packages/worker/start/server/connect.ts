@@ -62,14 +62,20 @@ export const readConnectSecrets = createServerOnlyFn(
 				selectedSecretId: data.selectedSecretId,
 				approval: data.approval,
 			}),
-			path === '/connect/secrets'
-				? loadPlacementApproval({
-						env: bindings,
-						user,
-						names: data.approval.names,
-						parts: data.placement,
-					})
-				: null,
+			path !== '/connect/secrets'
+				? null
+				: data.approval.scope !== 'user' && data.placement.length > 0
+					? {
+							placementApproval: null,
+							placementApprovalError:
+								'Fill placement can only be requested for your own credentials. Ask for a new link without a package or session scope.',
+						}
+					: loadPlacementApproval({
+							env: bindings,
+							user,
+							names: data.approval.names,
+							parts: data.placement,
+						}),
 		])
 		const payload = placement ? { ...selection, ...placement } : selection
 		return {
