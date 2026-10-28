@@ -430,7 +430,7 @@ export function unusableReasonCopy(input: {
 }) {
 	switch (input.reason) {
 		case 'not_attached':
-			return `Not usable in @${input.orgSlug}: it is not shared with this organization. @${input.operator} can run \`kody context attach ${input.name} --org ${input.orgSlug}\`.`
+			return `Not usable in @${input.orgSlug}: it is not shared with this organization. Ask @${input.operator} to attach it to @${input.orgSlug}.`
 		case 'not_granted':
 			return `Not shared with you in @${input.orgSlug}. Ask @${input.operator} or someone who manages its sharing.`
 		case 'revoked':
