@@ -124,3 +124,47 @@ test('credential client binding comes from the visit ticket so open and sign sha
 	})
 	expect(seenBindings).toEqual([sharedBinding, sharedBinding])
 })
+
+test('plain credential(key) on an executor need is refused before any credential client opens', async () => {
+	seenBindings.length = 0
+	const bridge = new PackageAppRuntimeBridge(
+		{
+			props: {
+				baseUrl: 'https://example.com',
+				userId: ownerIdFromStored('user-1'),
+				orgSlug: 'user',
+				visitor: { userId: 'user-1', username: 'user', role: 'owner' },
+				packageId: 'package-1',
+				kodyId: 'example',
+				sourceId: 'source-1',
+				publishedCommit: 'commit-1',
+				packageStorageGrantIds: ['package-1'],
+				credentialClientBinding: 'run:test',
+				packageSecretRefKey: '',
+				packageBindingToken: 'binding-token-for-test',
+				gatewayProps: null,
+			},
+			waitUntil() {},
+		} as never,
+		{} as Env,
+	)
+	vi.spyOn(
+		bridge as unknown as {
+			publishedCredentialSupplier: (key: string) => Promise<string | null>
+		},
+		'publishedCredentialSupplier',
+	).mockImplementation(async (key) => (key === 'github' ? 'executor' : null))
+
+	await expect(
+		bridge.credentialClientCall({
+			name: credentialClientToolNames.open,
+			args: { key: 'github' },
+		}),
+	).rejects.toMatchObject({
+		body: {
+			code: 'credential_denied',
+			message: expect.stringContaining('credential.visitor("github")'),
+		},
+	})
+	expect(seenBindings).toEqual([])
+})
