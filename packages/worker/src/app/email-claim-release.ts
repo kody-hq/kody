@@ -88,26 +88,15 @@ export async function createDeletedAccountReleaseVerification(input: {
 	email: string
 	requestUrl: string | URL
 }) {
-	const email = normalizeEmail(input.email)
-	// One mail per address per window, however many signups or resets ask.
-	const recent = await input.env.APP_DB.prepare(
-		`SELECT 1 AS hit FROM pending_email_claim_releases
-		 WHERE user_id = ? AND email = ?
-		   AND created_at > datetime('now', ?)`,
-	)
-		.bind(
-			input.deletedUserId,
-			email,
-			`-${emailClaimReleaseRequestRateLimitConfig.windowSeconds} seconds`,
-		)
-		.first<{ hit: number }>()
-	if (recent) return
 	await sendEmailClaimReleaseLink({
 		env: input.env,
 		userId: input.deletedUserId,
-		email,
+		email: normalizeEmail(input.email),
 		requestUrl: input.requestUrl,
 		buildMessage: buildDeletedAccountReleaseEmail,
+		// One mail per address per window, however many signups or resets ask.
+		onlyIfNoneWithinSeconds:
+			emailClaimReleaseRequestRateLimitConfig.windowSeconds,
 	})
 }
 
@@ -121,24 +110,49 @@ async function sendEmailClaimReleaseLink(input: {
 		email: string
 		verificationUrl: string
 	}) => { subject: string; html: string; text: string }
+	/** Reserve atomically and skip the send when a link is this recent. */
+	onlyIfNoneWithinSeconds?: number
 }) {
 	const email = input.email
 	const token = generateEmailClaimReleaseToken()
 	const tokenHash = await hashVerificationToken(token)
 	const expiresAt = Date.now() + emailClaimReleaseTokenExpiryMs
 
-	await input.env.APP_DB.prepare(
-		`DELETE FROM pending_email_claim_releases WHERE user_id = ? AND email = ?`,
-	)
-		.bind(input.userId, email)
-		.run()
+	if (input.onlyIfNoneWithinSeconds == null) {
+		await input.env.APP_DB.prepare(
+			`DELETE FROM pending_email_claim_releases WHERE user_id = ? AND email = ?`,
+		)
+			.bind(input.userId, email)
+			.run()
 
-	await input.env.APP_DB.prepare(
-		`INSERT INTO pending_email_claim_releases (user_id, email, token_hash, expires_at)
-		 VALUES (?, ?, ?, ?)`,
-	)
-		.bind(input.userId, email, tokenHash, expiresAt)
-		.run()
+		await input.env.APP_DB.prepare(
+			`INSERT INTO pending_email_claim_releases (user_id, email, token_hash, expires_at)
+			 VALUES (?, ?, ?, ?)`,
+		)
+			.bind(input.userId, email, tokenHash, expiresAt)
+			.run()
+	} else {
+		const reserved = await input.env.APP_DB.prepare(
+			`INSERT INTO pending_email_claim_releases (user_id, email, token_hash, expires_at)
+			 SELECT ?, ?, ?, ?
+			 WHERE NOT EXISTS (
+			   SELECT 1 FROM pending_email_claim_releases
+			   WHERE user_id = ? AND email = ?
+			     AND created_at > datetime('now', ?)
+			 )`,
+		)
+			.bind(
+				input.userId,
+				email,
+				tokenHash,
+				expiresAt,
+				input.userId,
+				email,
+				`-${input.onlyIfNoneWithinSeconds} seconds`,
+			)
+			.run()
+		if ((reserved.meta.changes ?? 0) === 0) return
+	}
 
 	async function discardNewToken() {
 		await input.env.APP_DB.prepare(
