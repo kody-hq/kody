@@ -434,3 +434,29 @@ test('a release link for another address never supersedes a deleted account', as
 			.get(stableUserId),
 	).toEqual({ email, username: handle })
 })
+
+test('a stale deleted-account release link is replaced on the next request', async () => {
+	const { sqlite, db } = await seedDeletedGoogleAccount()
+	consoleWarn.mockImplementation(() => {})
+
+	expect(
+		(await passwordSignup(db, { email, username: 'first-try' })).status,
+	).toBe(200)
+	sqlite.exec(
+		`UPDATE pending_email_claim_releases SET created_at = datetime('now', '-1 day') WHERE user_id = 7`,
+	)
+	expect(
+		(await passwordSignup(db, { email, username: 'second-try' })).status,
+	).toBe(200)
+	expect(
+		count(
+			sqlite,
+			`SELECT COUNT(*) AS count FROM pending_email_claim_releases WHERE user_id = 7 AND created_at > datetime('now', '-1 hour')`,
+		),
+	).toBe(1)
+	expect(
+		consoleWarn.mock.calls.filter(
+			([label]) => label === 'email-claim-release-send-skipped',
+		),
+	).toHaveLength(2)
+})

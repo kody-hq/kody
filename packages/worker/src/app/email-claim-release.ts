@@ -1,3 +1,4 @@
+import { getUniqueConstraintField } from '#worker/database-errors.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import { hashVerificationToken } from '#app/email-verification.ts'
@@ -132,26 +133,31 @@ async function sendEmailClaimReleaseLink(input: {
 			.bind(input.userId, email, tokenHash, expiresAt)
 			.run()
 	} else {
-		const reserved = await input.env.APP_DB.prepare(
-			`INSERT INTO pending_email_claim_releases (user_id, email, token_hash, expires_at)
-			 SELECT ?, ?, ?, ?
-			 WHERE NOT EXISTS (
-			   SELECT 1 FROM pending_email_claim_releases
-			   WHERE user_id = ? AND email = ?
-			     AND created_at > datetime('now', ?)
-			 )`,
+		// (user_id, email) is unique: drop a stale link, then reserve; a
+		// concurrent caller that loses the insert sends nothing.
+		await input.env.APP_DB.prepare(
+			`DELETE FROM pending_email_claim_releases
+			 WHERE user_id = ? AND email = ?
+			   AND created_at <= datetime('now', ?)`,
 		)
-			.bind(
-				input.userId,
-				email,
-				tokenHash,
-				expiresAt,
-				input.userId,
-				email,
-				`-${input.onlyIfNoneWithinSeconds} seconds`,
-			)
+			.bind(input.userId, email, `-${input.onlyIfNoneWithinSeconds} seconds`)
 			.run()
-		if ((reserved.meta.changes ?? 0) === 0) return
+		try {
+			const reserved = await input.env.APP_DB.prepare(
+				`INSERT INTO pending_email_claim_releases (user_id, email, token_hash, expires_at)
+				 SELECT ?, ?, ?, ?
+				 WHERE NOT EXISTS (
+				   SELECT 1 FROM pending_email_claim_releases
+				   WHERE user_id = ? AND email = ?
+				 )`,
+			)
+				.bind(input.userId, email, tokenHash, expiresAt, input.userId, email)
+				.run()
+			if ((reserved.meta.changes ?? 0) === 0) return
+		} catch (error) {
+			if (getUniqueConstraintField(error)) return
+			throw error
+		}
 	}
 
 	async function discardNewToken() {
