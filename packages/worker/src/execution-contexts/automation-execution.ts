@@ -14,7 +14,7 @@ import {
 } from './automation-execution-schema.ts'
 import { ExecutionContextError } from './errors.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
-import { routeExecute } from './routing.ts'
+import { type ExecutionContextRunMetadata, routeExecute } from './routing.ts'
 
 export type AutomationRouting = {
 	setting: AutomationExecution
@@ -131,7 +131,7 @@ export async function runAutomationOnContext(input: {
 	waitMs: number
 	signal?: AbortSignal
 }): Promise<
-	| { kind: 'cloud' }
+	| { kind: 'cloud'; metadata?: ExecutionContextRunMetadata }
 	| { kind: 'error'; error: Error }
 	| {
 			kind: 'done'
@@ -154,7 +154,9 @@ export async function runAutomationOnContext(input: {
 	}
 	switch (routed.kind) {
 		case 'cloud':
-			return { kind: 'cloud' }
+			return routed.metadata
+				? { kind: 'cloud', metadata: routed.metadata }
+				: { kind: 'cloud' }
 		case 'ran': {
 			const content = routed.result.structuredContent ?? {}
 			const logs = Array.isArray(content.logs)

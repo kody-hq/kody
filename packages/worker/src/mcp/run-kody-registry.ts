@@ -1355,6 +1355,8 @@ export async function runBundledModuleWithRegistry(
 					userId: ownerIdFromCaller(callerContext) || null,
 					context: {
 						...parentContext,
+						// Job counters count the automation's own record only.
+						jobId: null,
 						idempotencyKey: null,
 						invocationId: null,
 						parentRunId,
@@ -1388,6 +1390,12 @@ export async function runBundledModuleWithRegistry(
 				})
 			}
 			throw error
+		}
+		if (routed.kind === 'cloud' && routed.metadata && parentContext) {
+			parentContext.metadata = {
+				...parentContext.metadata,
+				executionContext: routed.metadata,
+			}
 		}
 		if (routed.kind !== 'done') {
 			await abandonRunRecord({ env, handle: contextRunRecord })

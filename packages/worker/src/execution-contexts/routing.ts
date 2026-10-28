@@ -182,11 +182,23 @@ export async function routeExecute(input: {
 	const db = input.env.APP_DB
 	const namedRef = input.args.context?.trim() || null
 	let named: ExecutionContextRow | 'cloud' | null = null
+	let namedMissing: RoutingAttempt | null = null
 	if (namedRef === 'cloud') {
 		named = 'cloud'
 	} else if (namedRef) {
 		named = await resolveExecutionContextRef(db, input.request.orgId, namedRef)
-		if (!named) {
+		if (
+			!named &&
+			input.unknownChainRef === 'skip' &&
+			input.args.fallback === 'chain'
+		) {
+			namedMissing = {
+				target: namedRef,
+				name: namedRef,
+				outcome: 'skipped',
+				reason: 'not_found',
+			}
+		} else if (!named) {
 			throw new ExecutionContextError({
 				status: 404,
 				code: 'not_found',
@@ -214,7 +226,10 @@ export async function routeExecute(input: {
 		strict: chain.strict,
 		requires,
 	})
-	const attempts: Array<RoutingAttempt> = [...chain.skipped]
+	const attempts: Array<RoutingAttempt> = [
+		...(namedMissing ? [namedMissing] : []),
+		...chain.skipped,
+	]
 	const metadata = (
 		row: ExecutionContextRow | null,
 		fellBackToCloud: boolean,
@@ -226,7 +241,10 @@ export async function routeExecute(input: {
 	})
 	const onlyCloud = targets.every((t) => t.kind === 'cloud')
 	if (onlyCloud && targets.length > 0) {
-		return { kind: 'cloud', metadata: null }
+		return {
+			kind: 'cloud',
+			metadata: attempts.length > 0 ? metadata(null, true) : null,
+		}
 	}
 	let lastTried: ExecutionContextRow | null = null
 	let firstOffline: {
@@ -346,8 +364,8 @@ export async function routeExecute(input: {
 		})
 		if (dispatched.outcome !== 'committed') {
 			if (
-				dispatched.outcome === 'offline' &&
-				dispatched.code !== 'revoked' &&
+				((dispatched.outcome === 'offline' && dispatched.code !== 'revoked') ||
+					dispatched.outcome === 'busy') &&
 				!firstOffline
 			) {
 				firstOffline = { row, request, lease, requires }

@@ -38,6 +38,7 @@ import {
 	markQueuedAttemptRan,
 } from './routing.ts'
 import { getExecutionContext, loadContextAccess, parseGrant } from './store.ts'
+import { isExecutionContextsEnabledFor } from './flag.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
 import { type RunRecordHandle } from '#worker/run-records/types.ts'
 
@@ -1022,6 +1023,28 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 	}
 
+	async #failAllQueued(message: string, name: string) {
+		const rows = this.ctx.storage.sql
+			.exec<{ run_id: string; run_record_json: string | null }>(
+				`SELECT run_id, run_record_json FROM queued`,
+			)
+			.toArray()
+		for (const row of rows) {
+			if (row.run_record_json) {
+				await finishRunRecord({
+					env: this.env,
+					handle: JSON.parse(row.run_record_json) as RunRecordHandle,
+					status: 'error',
+					error: Object.assign(new Error(message), { name }),
+				})
+			}
+			this.ctx.storage.sql.exec(
+				`DELETE FROM queued WHERE run_id = ?`,
+				row.run_id,
+			)
+		}
+	}
+
 	async #dispatchQueued(queued: QueuedRow): Promise<'done' | 'keep'> {
 		const lease = JSON.parse(queued.lease_json) as ExecutionContextLease
 		const request = JSON.parse(queued.request_json) as EcpRunRequestBody
@@ -1047,6 +1070,24 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			return await fail(
 				'The execution context this run was queued for was removed before it reconnected (execution_context_unavailable).',
 				'ExecutionContextUnavailable',
+			)
+		}
+		const [member, enabled] = await Promise.all([
+			this.env.APP_DB.prepare(
+				`SELECT 1 AS ok FROM org_memberships WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+			)
+				.bind(lease.orgId, lease.requester.userId)
+				.first(),
+			isExecutionContextsEnabledFor(
+				this.env.APP_DB,
+				lease.requester.userId,
+				lease.orgId,
+			),
+		])
+		if (!member || !enabled) {
+			return await fail(
+				`${row.name} reconnected, but the person this run acts as is no longer in the org or no longer has execution contexts, so it did not run (execution_context_access_lost).`,
+				'ExecutionContextAccessLost',
 			)
 		}
 		const access = await loadContextAccess(this.env.APP_DB, row, {
@@ -1387,6 +1428,10 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			input.reason,
 		)
 		await this.endLeases({ reason: 'revoked' })
+		await this.#failAllQueued(
+			'The execution context this run was queued for was revoked, so it did not run (execution_context_unavailable).',
+			'ExecutionContextUnavailable',
+		)
 		for (const ws of this.ctx.getWebSockets()) {
 			await this.#send(ws, 'revoke', { reason: input.reason })
 			ws.close(1008, 'revoked')
