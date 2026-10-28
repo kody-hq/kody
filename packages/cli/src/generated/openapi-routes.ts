@@ -631,6 +631,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['id'],
 	},
 	{
+		operationId: 'packageAppFetch',
+		method: 'POST',
+		pathTemplate: '/v1/packages/app-fetch',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'packageAppRunsAsGet',
 		method: 'GET',
 		pathTemplate: '/v1/packages/{package_id}/runs-as',

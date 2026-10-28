@@ -317,6 +317,8 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'packageCollaboratorRemove',
 		],
 		['PATCH', '/v1/packages/{package_id}', 'packageUpdate'],
+		// Body-only so `kody_id` works as well as `package_id`.
+		['POST', '/v1/packages/app-fetch', 'packageAppFetch'],
 		['GET', '/v1/packages/{package_id}/runs-as', 'packageAppRunsAsGet'],
 		['PUT', '/v1/packages/{package_id}/runs-as', 'packageAppRunsAsSet'],
 		['DELETE', '/v1/packages/{package_id}', 'packageDelete'],

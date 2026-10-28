@@ -14,6 +14,7 @@ import {
 	findPendingCommunityForkForLookup,
 } from '#worker/community/pending-fork-lookup.ts'
 import { describePackageCredentialNeeds } from '#worker/credentials/package-credential-needs.ts'
+import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { buildPackageSearchProjection } from '#worker/package-registry/manifest.ts'
 import { buildPackageImportSpecifier } from '#worker/package-registry/package-import-specifier.ts'
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
@@ -111,13 +112,20 @@ export const getPackageCapability = defineDomainCapability(
 			const packageSecrets = (packageSecretsById.get(saved.id) ?? []).map(
 				(secret) => toSecretCapabilityOutput(secret),
 			)
-			const credentialNeeds = await describePackageCredentialNeeds({
-				env: ctx.env,
-				request,
-				ownerUserId: owner.ownerUserId,
-				sourceId: saved.sourceId,
-				packageId: saved.id,
-			})
+			const [credentialNeeds, suppliersEnabled] = await Promise.all([
+				describePackageCredentialNeeds({
+					env: ctx.env,
+					request,
+					ownerUserId: owner.ownerUserId,
+					sourceId: saved.sourceId,
+					packageId: saved.id,
+				}),
+				isPackageCredentialSuppliersEnabled({
+					db: ctx.env.APP_DB,
+					orgId: owner.ownerUserId,
+					request,
+				}).catch(() => false),
+			])
 			return {
 				package_id: saved.id,
 				kody_id: saved.kodyId,
@@ -145,7 +153,7 @@ export const getPackageCapability = defineDomainCapability(
 				created_at: saved.createdAt,
 				updated_at: saved.updatedAt,
 				package_secrets: packageSecrets,
-				credentials: { needs: credentialNeeds },
+				credentials: { needs: credentialNeeds, suppliersEnabled },
 				exports: (projection.exports ?? []).map((exportDetail) => ({
 					subpath: exportDetail.subpath,
 					import_specifier: buildPackageImportSpecifier(
