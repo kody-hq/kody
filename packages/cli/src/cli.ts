@@ -90,8 +90,13 @@ export type CommandName =
 	| 'skill'
 	| 'help'
 	| 'version'
+	| 'context'
+	| 'chain'
+	| 'daemon'
 
 const orgScopedCommands = new Set<CommandName>([
+	'context',
+	'chain',
 	'login',
 	'logout',
 	'whoami',
@@ -139,6 +144,8 @@ const cliFlagOptions = {
 	project: { type: 'boolean' },
 	'no-browser': { type: 'boolean' },
 	org: { type: 'string' },
+	name: { type: 'string' },
+	context: { type: 'string' },
 	target: { type: 'string' },
 	'reset-storage': { type: 'boolean' },
 	'dry-run': { type: 'boolean' },
@@ -205,6 +212,9 @@ export function resolveCommand(argv: Array<string>): {
 		case 'skill':
 		case 'help':
 		case 'version':
+		case 'context':
+		case 'chain':
+		case 'daemon':
 			return { command: raw, positionals: positionals.slice(1), values }
 		default:
 			// Never embed full usage here: git credential helpers treat any
@@ -438,6 +448,42 @@ async function dispatch(
 		case 'version':
 			write(`${readPackageVersion()}\n`)
 			return 0
+		case 'context':
+		case 'chain':
+		case 'daemon': {
+			const apiUrl = apiUrlFrom({
+				apiUrl:
+					typeof parsed.values['api-url'] === 'string'
+						? parsed.values['api-url']
+						: undefined,
+			})
+			const { runExecutionContextCommand } =
+				await import('./execution-context/commands.js')
+			return await runExecutionContextCommand({
+				command: parsed.command,
+				positionals: parsed.positionals,
+				values: {
+					...(typeof parsed.values.name === 'string'
+						? { name: parsed.values.name }
+						: {}),
+					...(typeof parsed.values.context === 'string'
+						? { context: parsed.values.context }
+						: {}),
+					json,
+				},
+				apiUrl,
+				...(org ? { org } : {}),
+				token: () =>
+					accessTokenForOpenApi({
+						tokenValues: tokenFlagValues(parsed.values),
+						apiUrl,
+						mcpUrl,
+						...(org ? { org } : {}),
+					}),
+				clientVersion: readPackageVersion(),
+				write,
+			})
+		}
 		case 'login': {
 			const { login } = await import('./auth.js')
 			const openBrowser = parsed.values['no-browser'] !== true
