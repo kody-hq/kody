@@ -53,6 +53,10 @@ test("an imported package's credential() opens with that package's id, not the e
 					opened.push({ packageId, name })
 					return { name }
 				},
+				visitor: async (need: string) => {
+					opened.push({ packageId, need })
+					return { need }
+				},
 			},
 		),
 		credentials: async (key: string) => {
@@ -71,10 +75,12 @@ test("an imported package's credential() opens with that package's id, not the e
 		key: string,
 	) => Promise<unknown>) & {
 		named: (name: string) => Promise<unknown>
+		visitor: (need: string) => Promise<unknown>
 	}
 	await run(async () => {
 		await credential('resend')
 		await credential.named('resend-prod')
+		await credential.visitor('github')
 		await (module.credentials as (key: string) => Promise<unknown>)('resend')
 		await (module.default.credential as (key: string) => Promise<unknown>)(
 			'github',
@@ -83,6 +89,7 @@ test("an imported package's credential() opens with that package's id, not the e
 	expect(opened).toEqual([
 		{ packageId: 'pkg-imported', key: 'resend' },
 		{ packageId: 'pkg-imported', name: 'resend-prod' },
+		{ packageId: 'pkg-imported', need: 'github' },
 		{ packageId: 'pkg-imported', key: 'resend', many: true },
 		{ packageId: 'pkg-imported', key: 'github' },
 	])
