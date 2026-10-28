@@ -50,7 +50,7 @@ function normalizePackageCheckPath(path: string) {
 function normalizePackageCheckFiles<Value>(
 	files: Record<string, Value>,
 ): Record<string, Value> {
-	const normalized: Record<string, Value> = {}
+	const normalized: Record<string, Value> = Object.create(null)
 	for (const [path, value] of Object.entries(files)) {
 		normalized[normalizePackageCheckPath(path)] = value
 	}

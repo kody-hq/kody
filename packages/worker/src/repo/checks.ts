@@ -156,16 +156,20 @@ export function createSnapshotFilesWorkspace(
 	return {
 		async readFile(path: string) {
 			const normalized = normalizeRepoWorkspacePath(path)
-			return files[normalized] ?? (normalized in binaryFileSizes ? '' : null)
+			if (Object.hasOwn(files, normalized)) return files[normalized] ?? null
+			return Object.hasOwn(binaryFileSizes, normalized) ? '' : null
 		},
 		async stat(path: string) {
-			const size = binaryFileSizes[normalizeRepoWorkspacePath(path)]
-			return size == null ? null : { size }
+			const normalized = normalizeRepoWorkspacePath(path)
+			if (!Object.hasOwn(binaryFileSizes, normalized)) return null
+			return { size: binaryFileSizes[normalized] ?? 0 }
 		},
 		async glob() {
 			return [
 				...Object.keys(files),
-				...Object.keys(binaryFileSizes).filter((path) => !(path in files)),
+				...Object.keys(binaryFileSizes).filter(
+					(path) => !Object.hasOwn(files, path),
+				),
 			].map((path) => ({
 				path,
 				type: 'file' as const,
