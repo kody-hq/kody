@@ -316,10 +316,37 @@ export async function buildLocalExecutePackageGraph(input: {
 	for (const dependency of prepared.publishedArtifactDependencies) {
 		if (dependency.packageId) graphPackageIds.add(dependency.packageId)
 	}
+	// The entry code is ad hoc, so its direct imports are the run's entries
+	// (`credentialNeedsEntryPackageIds`); each binding carries them so
+	// CapabilityProxy reads a dependency's mappings from its entry. Order them
+	// like hosted bundle dependencies (kodyId, then sourceId) so first entry
+	// wins picks the same entry in both.
+	const entryRows = new Map(
+		[...prepared.packages.values()].map((loaded) => [
+			loaded.row.id,
+			loaded.row,
+		]),
+	)
+	const entryPackageIds = [
+		...new Set(
+			staticImports.flatMap((specifier) => {
+				const packageId = packageIdsByImport.get(specifier)
+				return packageId ? [packageId] : []
+			}),
+		),
+	].sort((left, right) => {
+		const a = entryRows.get(left)
+		const b = entryRows.get(right)
+		return (
+			(a?.kodyId ?? left).localeCompare(b?.kodyId ?? right) ||
+			(a?.sourceId ?? left).localeCompare(b?.sourceId ?? right)
+		)
+	})
 	const packageBindings = await signLocalExecutePackageBindings({
 		env: input.env,
 		packageIds: graphPackageIds,
 		subject: { org: input.userId, actor: input.actorUserId },
+		entryPackageIds,
 	})
 	if (modulesByName.has(primaryRuntimePath) || packageBindings.size > 0) {
 		modulesByName.set(

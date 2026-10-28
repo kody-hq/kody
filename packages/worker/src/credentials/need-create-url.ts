@@ -1,7 +1,7 @@
 import { getDiscoverablePlatformOauthApp } from '#worker/integrations/platform-apps.ts'
 import { type PackageCredentialKind } from '#worker/package-registry/types.ts'
 import { buildCredentialCreateUrl } from '#universal/credential-contracts.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import { type SavedCredentialNeed } from './credential-needs.ts'
 
 const providerSlugPattern = /^[a-z0-9-]+$/
 
@@ -17,7 +17,7 @@ export async function buildNeedCreateUrl(input: {
 	orgSlug: string | null
 	key: string
 	provider: string
-	need: CredentialNeed | null
+	need: SavedCredentialNeed | null
 	packageKodyId: string | null
 }) {
 	const declaredKind: PackageCredentialKind | null = input.need?.kind ?? null

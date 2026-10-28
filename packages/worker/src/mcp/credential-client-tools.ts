@@ -77,6 +77,9 @@ export function createCredentialClientKodyTools(input: {
 			packageId: await input.options.resolvePackageId(args.packageId),
 			callMap: input.options.callMap ?? null,
 			runNeeds: input.options.runNeeds,
+			runEntries: input.options.runEntries
+				? () => input.options.runEntries!(args.packageId)
+				: undefined,
 			ownerCredentialScope: input.options.ownerCredentialScope ?? null,
 			packageAppAuthority: input.options.packageAppAuthority ?? null,
 			waitUntil: input.options.waitUntil,

@@ -21,6 +21,7 @@ import { Route as BrandGuideRouteImport } from './routes/brand-guide'
 import { Route as CaseStudiesRouteImport } from './routes/case-studies'
 import { Route as CommunityRouteImport } from './routes/community'
 import { Route as ContactRouteImport } from './routes/contact'
+import { Route as DeviceRouteImport } from './routes/device'
 import { Route as DiscordRouteImport } from './routes/discord'
 import { Route as DocsDotmdRouteImport } from './routes/docs[.]md'
 import { Route as FaqRouteImport } from './routes/faq'
@@ -328,6 +329,11 @@ const CommunityRoute = CommunityRouteImport.update({
 const ContactRoute = ContactRouteImport.update({
   id: '/contact',
   path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeviceRoute = DeviceRouteImport.update({
+  id: '/device',
+  path: '/device',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DiscordRoute = DiscordRouteImport.update({
@@ -1722,6 +1728,7 @@ export interface FileRoutesByFullPath {
   '/case-studies': typeof CaseStudiesRoute
   '/community': typeof CommunityRoute
   '/contact': typeof ContactRoute
+  '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
   '/faq': typeof FaqRoute
@@ -1984,6 +1991,7 @@ export interface FileRoutesByTo {
   '/case-studies': typeof CaseStudiesRoute
   '/community': typeof CommunityRoute
   '/contact': typeof ContactRoute
+  '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
   '/faq': typeof FaqRoute
@@ -2247,6 +2255,7 @@ export interface FileRoutesById {
   '/case-studies': typeof CaseStudiesRoute
   '/community': typeof CommunityRoute
   '/contact': typeof ContactRoute
+  '/device': typeof DeviceRoute
   '/discord': typeof DiscordRoute
   '/docs.md': typeof DocsDotmdRoute
   '/faq': typeof FaqRoute
@@ -2511,6 +2520,7 @@ export interface FileRouteTypes {
     | '/case-studies'
     | '/community'
     | '/contact'
+    | '/device'
     | '/discord'
     | '/docs.md'
     | '/faq'
@@ -2773,6 +2783,7 @@ export interface FileRouteTypes {
     | '/case-studies'
     | '/community'
     | '/contact'
+    | '/device'
     | '/discord'
     | '/docs.md'
     | '/faq'
@@ -3035,6 +3046,7 @@ export interface FileRouteTypes {
     | '/case-studies'
     | '/community'
     | '/contact'
+    | '/device'
     | '/discord'
     | '/docs.md'
     | '/faq'
@@ -3299,6 +3311,7 @@ export interface RootRouteChildren {
   CaseStudiesRoute: typeof CaseStudiesRoute
   CommunityRoute: typeof CommunityRoute
   ContactRoute: typeof ContactRoute
+  DeviceRoute: typeof DeviceRoute
   DiscordRoute: typeof DiscordRoute
   DocsDotmdRoute: typeof DocsDotmdRoute
   FaqRoute: typeof FaqRoute
@@ -3491,6 +3504,13 @@ declare module '@tanstack/react-router' {
       path: '/contact'
       fullPath: '/contact'
       preLoaderRoute: typeof ContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/device': {
+      id: '/device'
+      path: '/device'
+      fullPath: '/device'
+      preLoaderRoute: typeof DeviceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/discord': {
@@ -5642,6 +5662,7 @@ const rootRouteChildren: RootRouteChildren = {
   CaseStudiesRoute: CaseStudiesRoute,
   CommunityRoute: CommunityRoute,
   ContactRoute: ContactRoute,
+  DeviceRoute: DeviceRoute,
   DiscordRoute: DiscordRoute,
   DocsDotmdRoute: DocsDotmdRoute,
   FaqRoute: FaqRoute,

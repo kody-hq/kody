@@ -874,12 +874,21 @@ async function ensureCredentialColumns() {
 	for (const ddl of credentialTablesDdl) await runSql(ddl)
 }
 
-async function setupCredentialVault() {
+async function setupCredentialVault(
+	options: {
+		beforeWake?: (userId: string) => Promise<unknown>
+		extraKody?: Record<string, unknown>
+		extraSourceFiles?: Record<string, string>
+		extraExports?: Record<string, string>
+	} = {},
+) {
 	silenceIncidentalRuntimeWarnings()
 	await ensureSecretAuthorityTestSchema()
 	await ensureCredentialColumns()
 	const userId = `user-${crypto.randomUUID()}`
 	await provisionTestUser(userId, `wt-${userId.slice(-12)}`)
+	await options.beforeWake?.(userId)
+	const extraExports = options.extraExports ?? {}
 	const wake = await publishForkedPackage({
 		userId,
 		name: '@kentcdodds/grok-bot',
@@ -893,12 +902,20 @@ async function setupCredentialVault() {
 					credentials: {
 						wakeToken: { kind: 'secret', description: 'Wake token.' },
 					},
+					...options.extraKody,
 				},
-				{ exports: { './wake': './src/wake.ts' } },
+				{ exports: { './wake': './src/wake.ts', ...extraExports } },
 			),
 			'src/wake.ts': credentialWake,
+			...options.extraSourceFiles,
 		},
-		exports: [{ artifactName: './wake', entryPoint: 'src/wake.ts' }],
+		exports: [
+			{ artifactName: './wake', entryPoint: 'src/wake.ts' },
+			...Object.entries(extraExports).map(([artifactName, path]) => ({
+				artifactName,
+				entryPoint: path.replace(/^\.\//, ''),
+			})),
+		],
 	})
 	const storageContext = {
 		sessionId: null,
@@ -1025,6 +1042,52 @@ export default async function main() {
 		expect(out['steal']).toBeUndefined()
 		expect(out['opened']).not.toMatchObject({ name: 'wakeToken' })
 		expect(out['named']).not.toBe('wakeToken')
+	},
+)
+
+test(
+	'credential client passing: a client the caller opens works inside a dependency it is handed to',
+	{ timeout: 120_000 },
+	async () => {
+		const { userId } = await setupCredentialVault({
+			beforeWake: (userId) =>
+				publishForkedPackage({
+					userId,
+					name: '@kentcdodds/shared-poster',
+					kodyId: 'shared-poster',
+					sourceFiles: {
+						'package.json': manifest(
+							'@kentcdodds/shared-poster',
+							{ id: 'shared-poster', description: 'Posts with a client' },
+							{ exports: { './post': './src/post.ts' } },
+						),
+						'src/post.ts': `export default async function post(client) {
+	const res = await client.fetch('https://upstream.example.com/a-only/wake', { method: 'POST' })
+	return { status: res.status }
+}`,
+					},
+					exports: [{ artifactName: './post', entryPoint: 'src/post.ts' }],
+				}),
+			extraKody: { dependencies: { '@kentcdodds/shared-poster': '*' } },
+			extraExports: { './pass': './src/pass.ts' },
+			extraSourceFiles: {
+				'src/pass.ts': `import { credential } from 'kody:runtime'
+import post from 'kody:@kentcdodds/shared-poster/post'
+export default async function pass() {
+	return await post(await credential('wakeToken'))
+}`,
+			},
+		})
+		const seen = installFakeUpstream()
+		const run = await runModule(userId, {
+			'entry.ts': `import pass from 'kody:@kentcdodds/grok-bot/pass'
+export default async function main() {
+	return await pass()
+}`,
+		})
+		expect(run.error).toBeUndefined()
+		expect(run.result).toEqual({ status: 200 })
+		expect(pathsCarrying(seen, DUMMY_SECRET)).toEqual(['POST /a-only/wake'])
 	},
 )
 

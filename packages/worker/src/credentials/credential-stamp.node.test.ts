@@ -1019,3 +1019,143 @@ test('isStoredCredentialStamp rejects a dependency pin that is not an object', (
 		}),
 	).toBe(true)
 })
+
+const vaultRef = 'i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password'
+
+function vaultFetchModule(provider: string) {
+	return [
+		'function authHeaders() {',
+		`\treturn { Authorization: 'Bearer {{secret/${provider}:${vaultRef}}}' }`,
+		'}',
+		'export default async function run() {',
+		"\treturn fetch('https://api.example.com/v1', {",
+		"\t\tmethod: 'POST',",
+		'\t\theaders: authHeaders(),',
+		`\t\tbody: JSON.stringify({ token: '{{secret/${provider}:${vaultRef}}}' }),`,
+		'\t})',
+		'}',
+	].join('\n')
+}
+
+const vaultSlot = {
+	vault: {
+		kind: 'secret-provider',
+		package: '@acme/vault-provider',
+		description: 'Reads the deploy token from the team vault.',
+	},
+}
+
+test('a secret-provider slot seals vault placeholders whose id its package declares', () => {
+	for (const provider of ['1password', 'bitwarden']) {
+		const result = scanCredentialStamp(
+			{
+				'package.json': manifest({ credentials: vaultSlot }),
+				'src/index.ts': vaultFetchModule(provider),
+			},
+			{ secretProviders: { ids: { vault: provider }, failures: [] } },
+		)
+		expect(result.failures, provider).toEqual([])
+		expect(result.keys, provider).toEqual(['vault'])
+		expect(result.staleManifestKeys, provider).toEqual([])
+	}
+})
+
+test('vault placeholders without a matching provider package still fail the stamp gate', () => {
+	const cases: Array<
+		[
+			string,
+			Record<string, unknown> | undefined,
+			Record<string, string> | undefined,
+		]
+	> = [
+		['no slot', undefined, {}],
+		['package declares another id', vaultSlot, { vault: 'bitwarden' }],
+		['package not resolved', vaultSlot, undefined],
+		[
+			'slot keyed by the provider without the kind',
+			{ '1password': { description: 'Reads from 1Password.' } },
+			{},
+		],
+		[
+			'no description',
+			{ vault: { kind: 'secret-provider', package: '@acme/vault-provider' } },
+			{ vault: '1password' },
+		],
+	]
+	for (const [label, credentials, ids] of cases) {
+		const result = scanCredentialStamp(
+			{
+				'package.json': manifest(credentials ? { credentials } : {}),
+				'src/index.ts': vaultFetchModule('1password'),
+			},
+			ids ? { secretProviders: { ids, failures: [] } } : {},
+		)
+		const failure = result.failures.find(
+			(f) => f.code === 'unstampable_pattern',
+		)
+		expect(failure, label).toBeDefined()
+		expect(failure?.message, label).toContain('provider id "1password"')
+		expect(failure?.message, label).toContain('"kind": "secret-provider"')
+		expect(result.keys, label).not.toContain('vault')
+	}
+})
+
+test('secret-provider slot resolution failures fail the stamp gate', () => {
+	const result = scanCredentialStamp(
+		{
+			'package.json': manifest({ credentials: vaultSlot }),
+			'src/index.ts': 'export default () => 1',
+		},
+		{
+			secretProviders: {
+				ids: {},
+				failures: [
+					{
+						code: 'unstampable_pattern',
+						message: 'kody.credentials.vault names provider package x.',
+					},
+				],
+			},
+		},
+	)
+	expect(result.failures.map((f) => f.message)).toContain(
+		'kody.credentials.vault names provider package x.',
+	)
+})
+
+test('a vault placeholder with a computed provider id still fails the stamp gate', () => {
+	const result = scanCredentialStamp(
+		{
+			'package.json': manifest({ credentials: vaultSlot }),
+			'src/index.ts': [
+				'export default async function run(provider) {',
+				"\treturn fetch('https://api.example.com/v1', {",
+				`\t\theaders: { Authorization: \`Bearer {{secret/\${provider}:${vaultRef}}}\` },`,
+				'\t})',
+				'}',
+			].join('\n'),
+		},
+		{ secretProviders: { ids: { vault: '1password' }, failures: [] } },
+	)
+	expect(result.failures.some((f) => f.code === 'unstampable_pattern')).toBe(
+		true,
+	)
+	expect(result.keys).not.toContain('vault')
+})
+
+test('a secret-provider slot does not seal display-only vault placeholders', () => {
+	const result = scanCredentialStamp(
+		{
+			'package.json': manifest({ credentials: vaultSlot }),
+			'src/index.ts': [
+				'export function status() {',
+				`\treturn { example: '{{secret/1password:${vaultRef}}}' }`,
+				'}',
+			].join('\n'),
+		},
+		{ secretProviders: { ids: { vault: '1password' }, failures: [] } },
+	)
+	expect(result.failures).toEqual([])
+	expect(result.keys).toEqual([])
+	expect(result.staleManifestKeys).toEqual(['vault'])
+})

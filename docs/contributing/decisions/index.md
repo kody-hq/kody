@@ -224,6 +224,9 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0081 — Follow Recent updates are the default delivery](./0081-follow-recent-updates-default-delivery.md)
   — events no enabled subscription handles land in a bounded per-follow Recent
   updates list (20 per follow, 30 days, zero credits); builds on 0073
+- [0082 — OAuth device authorization grant for the Kody CLI](./0082-cli-oauth-device-authorization-grant.md)
+  — RFC 8628 on Kody's own authorization server for the official CLI only;
+  `kody login --device` and `/device`; amends 0056 and 0076
 
 ## Historical / UI / implementation
 

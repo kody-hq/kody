@@ -43,7 +43,10 @@ The kind names in manifests and APIs are `secret`, `oauth`, `mcp`, `url`,
 
 Custom secret providers (vaults such as 1Password) are not a credential kind.
 Granting Kody access to a vault is a separate trust decision, so they have their
-own page; see [Custom secret providers](./secret-providers.md).
+own page; see [Custom secret providers](./secret-providers.md). A saved package
+declares a provider it uses with a `kind: "secret-provider"` need (see
+[Use a provider in a saved package](./secret-providers.md#use-a-provider-in-a-saved-package)).
+No saved credential ever fills that need.
 
 Every credential has:
 
@@ -286,18 +289,21 @@ rate-limited and recorded in the org activity log with who used it. See
 
 Any saved Key can be used through a client. Set its provider so needs match it,
 and its inject if the service does not take `Authorization: Bearer`. This is
-one-time setup from ad hoc `execute` or the API, not package code (package
-runtimes cannot change a credential's provider or inject). `credentialList`
-returns each credential's `id`:
+one-time setup on the credential's page on the website, or with the MCP `api`
+tool (`credentialUpdate`). Changing inject or widening placement is refused from
+`execute` (hosted or `--local`), package, and app code, with a link to the
+credential's page; narrowing placement and setting the provider still work
+there. `credentialList` returns each credential's `id`:
 
-```ts
-import { kody } from 'kody:runtime'
-
-await kody.credentialUpdate({
-	credential_id: 'cred_…',
-	provider: 'anthropic',
-	inject: { kind: 'header', name: 'x-api-key', format: '{value}' },
-})
+```json
+{
+	"operationId": "credentialUpdate",
+	"params": {
+		"credential_id": "cred_…",
+		"provider": "anthropic",
+		"inject": { "kind": "header", "name": "x-api-key", "format": "{value}" }
+	}
+}
 ```
 
 ```ts
@@ -485,9 +491,20 @@ A pick grants nothing. It chooses only among credentials you can already Use.
 Running code through a client needs your Use on the credential; a package's
 identity never grants access on its own.
 
-Defaults and trigger mappings are stored per package. Agents propose changes
-with `credentialMappingPropose`; you approve them on the package's approval page
-or its **Credentials** tab.
+Defaults and trigger mappings are stored on the package you run (the entry
+package), including needs it inherits from its dependencies. When a dependency
+calls `credential(key)` in that run, it uses the entry package's mappings (the
+first entry that has the need when one run has several, and a caller that is
+itself an entry uses its own), and a creation link names the entry package. A
+mapping stored on the dependency applies only when you run the dependency
+itself. Agents propose changes with `credentialMappingPropose`; you approve them
+on the package's approval page or its **Credentials** tab.
+
+To build one shared package that many callers use with their own accounts, see
+[Shared packages for many accounts](./shared-packages.md).
+
+A Key bound to one package fills only that package's own `credential()` calls,
+so map an org or personal credential for a need the entry package inherits.
 
 ### Errors
 

@@ -17,9 +17,15 @@ import {
 } from '#worker/credentials/credential-call-map.ts'
 import {
 	CredentialClientError,
+	loadRunCredentialNeedEntries,
 	toCredentialClientError,
+	type RunCredentialEntries,
 } from '#worker/credentials/credential-client.ts'
 import { capabilityProxyCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
+import {
+	isLocalExecutePackageBindingToken,
+	verifyLocalExecutePackageBindingClaims,
+} from '#worker/package-runtime/local-execute-package-binding.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
 	toCapabilityOpenApiPrincipal,
@@ -157,12 +163,13 @@ async function invokeCapability<T>(invoke: () => Promise<T> | T) {
  * graph's signed binding, and stays a claim until `package:execute` on it
  * holds. A bare package id is refused.
  */
-function createCapabilityProxyCredentialClientTools(
+export function createCapabilityProxyCredentialClientTools(
 	ctx: ApiInvocationContext,
 	callMap: CredentialCallMap | null,
 ): CredentialClientToolOptions | undefined {
 	const request = ctx.callerContext.request
 	if (!request) return undefined
+	const runEntriesByKey = new Map<string, Promise<RunCredentialEntries>>()
 	return {
 		binding: capabilityProxyCredentialClientBinding(request),
 		callMap,
@@ -187,6 +194,32 @@ function createCapabilityProxyCredentialClientTools(
 					})
 				)
 			}
+		},
+		// Entries come only from the verified binding the call claims;
+		// `resolvePackageId` has already checked `package:execute` on it.
+		runEntries: async (requested) => {
+			if (!isLocalExecutePackageBindingToken(requested)) return null
+			const { entryPackageIds } = await verifyLocalExecutePackageBindingClaims({
+				env: ctx.env,
+				token: requested,
+				subject: {
+					org: ownerIdFromCaller(ctx.callerContext),
+					actor: request.actor?.userId ?? null,
+				},
+			}).catch(() => ({ entryPackageIds: [] as Array<string> }))
+			if (entryPackageIds.length === 0) return null
+			const cacheKey = entryPackageIds.join('\n')
+			let entries = runEntriesByKey.get(cacheKey)
+			if (!entries) {
+				entries = loadRunCredentialNeedEntries({
+					env: ctx.env,
+					orgId: request.org.id,
+					packageIds: entryPackageIds,
+					request,
+				}).then((loaded) => loaded.entries)
+				runEntriesByKey.set(cacheKey, entries)
+			}
+			return await entries
 		},
 		...(ctx.waitUntil ? { waitUntil: ctx.waitUntil } : {}),
 	}
@@ -244,6 +277,7 @@ async function callKodyPath(input: {
 				packageContext: null,
 			}),
 			openApiPrincipal: toCapabilityOpenApiPrincipal(ctx.principal),
+			localExecuteHop: true,
 			...(ctx.waitUntil ? { waitUntil: ctx.waitUntil } : {}),
 			...(credentialClientTools ? { credentialClientTools } : {}),
 		},

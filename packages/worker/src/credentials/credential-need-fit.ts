@@ -10,7 +10,10 @@ import {
 } from '#worker/package-registry/types.ts'
 import { type UsableCredential } from './credential-candidates.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import {
+	savedCredentialNeeds,
+	type SavedCredentialNeed,
+} from './credential-needs.ts'
 
 /** What a need key asks for: the declared need, or the key read as a provider. */
 export type NeedTarget = {
@@ -24,7 +27,10 @@ export type NeedTarget = {
 	match: 'exact' | 'fetch-capable' | 'any'
 }
 
-/** The credential needs `packageId`'s published source declares. */
+/**
+ * The credential needs `packageId`'s published source declares that a saved
+ * credential fills (secret-provider needs are left out).
+ */
 export async function loadPackageNeeds(input: {
 	env: Env
 	/** The org that owns the package. */
@@ -37,17 +43,19 @@ export async function loadPackageNeeds(input: {
 		packageId: input.packageId,
 	})
 	if (!saved) return []
-	return await loadPublishedCredentialNeeds({
-		env: input.env,
-		userId: saved.userId,
-		sourceId: saved.sourceId,
-		request: input.request,
-	})
+	return savedCredentialNeeds(
+		await loadPublishedCredentialNeeds({
+			env: input.env,
+			userId: saved.userId,
+			sourceId: saved.sourceId,
+			request: input.request,
+		}),
+	)
 }
 
 export function needTarget(
 	key: string,
-	need: CredentialNeed | null,
+	need: SavedCredentialNeed | null,
 ): NeedTarget {
 	if (!need) {
 		return {
@@ -103,7 +111,7 @@ export function mappedCredentialFits(
 /** Whether a mapped `credential` still fits declared `need`, as a run checks it. */
 export function mappedCredentialFitsNeed(
 	credential: UsableCredential,
-	need: CredentialNeed,
+	need: SavedCredentialNeed,
 ): boolean {
 	return mappedCredentialFits(credential, needTarget(need.key, need))
 }

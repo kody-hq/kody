@@ -105,9 +105,13 @@ export type PlaceholderMatch = {
 	names: Array<string>
 	/** Literal `|scope=` suffix, or null when it has none. */
 	scope: string | null
+	/** The literal provider id of a vault placeholder; null for other kinds. */
+	provider: string | null
 	start: number
 	end: number
 }
+
+const vaultProviderPattern = /^\{\{secret\/([a-zA-Z0-9._-]+):/
 
 /**
  * Every placeholder in `text` with its position. Prose that names nothing is
@@ -127,6 +131,10 @@ export function findPlaceholderMatches(text: string) {
 				kind: placeholderMatchKindByOpener[opener]!,
 				names: complete.kind ? found.slice(1) : [],
 				scope: /\|scope=([a-z]+)\}\}$/.exec(found[0])?.[1] ?? null,
+				provider:
+					opener === 'secret/'
+						? (vaultProviderPattern.exec(found[0])?.[1] ?? null)
+						: null,
 				start: match.index,
 				end: match.index + found[0].length,
 			})
@@ -138,6 +146,7 @@ export function findPlaceholderMatches(text: string) {
 			kind: 'computed',
 			names: [],
 			scope: null,
+			provider: null,
 			start: match.index,
 			end: match.index + opener.length + 2,
 		})

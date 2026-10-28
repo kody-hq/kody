@@ -78,6 +78,7 @@ import {
 	formatFetchBodySecretResolutionWarning,
 } from '#worker/credentials/fetch-body-secret-resolution.ts'
 import { buildCredentialPatternCheck } from './credential-pattern-check.ts'
+import { resolveSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import { credentialNeedKeyNotes } from '#worker/credentials/credential-needs.ts'
 import { computeCredentialNeedsClosure } from '#worker/credentials/credential-needs-closure.ts'
 import { republishedNeedsNote } from '#worker/enablements/republish-needs-note.ts'
@@ -1571,7 +1572,16 @@ export async function runRepoChecks(input: {
 	// overwrites descriptions). Hard-fails on unstampable patterns / server eval
 	// / missing descriptions (issue #3836 phase 1) unless the caller opts out
 	// (community install / platform codemods).
-	const credentialPatternCheck = buildCredentialPatternCheck(sourceFiles)
+	const credentialPatternCheck = buildCredentialPatternCheck(sourceFiles, {
+		secretProviders:
+			input.env && input.userId
+				? await resolveSecretProviderSlots({
+						env: input.env,
+						userId: input.userId,
+						files: sourceFiles,
+					})
+				: undefined,
+	})
 	sourceFiles = credentialPatternCheck.sourceFiles
 	const enforceCredentialStamp = input.enforceCredentialStamp !== false
 	const credentialCheckOk = enforceCredentialStamp

@@ -17,6 +17,7 @@ import {
 } from './credential-candidates.ts'
 import { readCredentialHostSettings } from './credential-hosts.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
+import { savedCredentialNeeds } from './credential-needs.ts'
 import { isPackageCredentialSuppliersEnabled } from './credential-suppliers-flag.ts'
 import { readFillPlacementObservation } from './fill-placement-observations.ts'
 
@@ -106,13 +107,15 @@ async function listUsage(input: {
 		Promise.all(
 			input.packages.map(async (pkg) => {
 				try {
-					const needs = await loadPublishedCredentialNeeds({
-						env: input.env,
-						userId: input.orgId,
-						sourceId: pkg.sourceId,
-						supplierSemanticsEnabled,
-						request: input.request,
-					})
+					const needs = savedCredentialNeeds(
+						await loadPublishedCredentialNeeds({
+							env: input.env,
+							userId: input.orgId,
+							sourceId: pkg.sourceId,
+							supplierSemanticsEnabled,
+							request: input.request,
+						}),
+					)
 					return { pkg, needs }
 				} catch (error) {
 					Sentry.captureException(error, {

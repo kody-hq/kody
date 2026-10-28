@@ -60,11 +60,77 @@ fetch (URL, header, or body).
 The item's websites are the host allowlist. Empty websites refuse the fetch. The
 request URL must be `https:`.
 
-Ad hoc execute does not need a package grant. Saved packages do:
+Ad hoc execute does not need a package grant. Saved packages need two things: a
+`kody.credentials` slot that declares the provider (see the next section) and a
+per-item grant.
 `resourceLock({ kind: 'secret_provider', provider, ref, package_id })` returns
 the Allow URL; grant and revoke on `/@<slug>/-/secret-providers`. A package runs
 in the org that owns it, so a collaborator holding a grant uses that org's
 binding and grants, not their own.
+
+## Use a provider in a saved package
+
+Declare the provider package in `kody.credentials` with
+`kind: "secret-provider"`. `package` is the package.json name of the saved
+provider package (the one that declares `kody.secretProvider.id` and exports
+`./secretProvider`):
+
+```json
+{
+	"name": "@you/deploy",
+	"exports": { ".": "./src/index.ts" },
+	"kody": {
+		"description": "Deploy with a token kept in 1Password.",
+		"credentials": {
+			"vault": {
+				"kind": "secret-provider",
+				"package": "@you/onepassword-provider",
+				"description": "Reads the deploy API token from the team vault."
+			}
+		}
+	}
+}
+```
+
+Then reference the vault item with the provider id that package declares,
+written literally:
+
+```ts
+export default async function deploy() {
+	return fetch('https://api.example.com/deploy', {
+		method: 'POST',
+		headers: {
+			Authorization:
+				'Bearer {{secret/1password:i/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/password}}',
+		},
+	})
+}
+```
+
+The same shape works for any provider package (a Bitwarden provider package that
+declares `bitwarden` fills `{{secret/bitwarden:...}}`).
+
+- Publish looks up `package` in the publishing org, reads its
+  `kody.secretProvider.id`, and seals the slot key into the credential stamp for
+  placeholders with that id. The stamp seals the provider, not refs.
+- At run time a vault use counts as declared only when the org's binding for
+  that provider id is the declared package. If the org binds a different
+  package, the fetch fails with `credential_need_undeclared`: bind the declared
+  package, or republish with a slot that names the bound one.
+- Each ref still needs its own grant for this package (above). Declaring the
+  slot grants nothing, and a missing grant still blocks the fetch. The binding
+  check, item websites as the host allowlist, `https:` only, and redaction all
+  still apply, and the value never leaves the fetch gateway.
+- A secret-provider slot is never filled by a saved credential: credential
+  mappings, call maps, and `packageGet` needs skip it, and `credential("vault")`
+  does not read it.
+
+Publish fails with `unstampable_pattern` when the slot's package is missing,
+unreadable, or declares no `kody.secretProvider.id`, and when a vault
+placeholder in a request or credential-mapped site has a provider id that no
+declared package serves or a computed provider id (for example
+`{{secret/${provider}:...}}`). A slot keyed by the provider id with no `kind`
+does not count.
 
 Search does not crawl vaults. `secretProviderList` returns binding metadata
 only.

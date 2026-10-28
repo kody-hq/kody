@@ -58,6 +58,11 @@ wins:
 3. **Default mapping**, `mine` layer, then `org` layer.
 4. **Auto-resolve**: exactly one candidate (ADR 0068 resolution rule 3).
 
+Steps 2 and 3 read the run's entry package, even when a dependency makes the
+call: a caller that is itself an entry reads its own mappings, and otherwise the
+first entry whose pinned closure has the key (ADR 0068 amendment 2026-10-27). Ad
+hoc code with no package skips them.
+
 These steps apply to legacy needs and executor needs in direct or trigger runs.
 An executor need in a package-app visitor run instead reads only the mapping for
 that need on the visitor's live grant, then rechecks live Use access for each

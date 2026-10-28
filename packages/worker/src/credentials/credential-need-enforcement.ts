@@ -13,6 +13,8 @@
  */
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import { getSecretProviderBinding } from '#mcp/secrets/secret-providers/repo.ts'
+import { secretProviderIdPattern } from '#mcp/secrets/secret-providers/types.ts'
 import { type SecretScope } from '#mcp/secrets/types.ts'
 import { credentialNeedEnforcementFlagKey } from '#universal/feature-flags/registry.ts'
 import {
@@ -23,7 +25,12 @@ import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import {
+	isSecretProviderNeed,
+	normalizeSecretProviderNeedId,
+	secretProviderSlotExample,
+	type CredentialNeed,
+} from './credential-needs.ts'
 import { packageCarriesCredentialStamp } from './credential-stamp-presence.ts'
 
 export const credentialNeedUndeclaredCode = 'credential_need_undeclared'
@@ -32,7 +39,15 @@ export const credentialNeedUndeclaredCode = 'credential_need_undeclared'
 export type CredentialNeedReference =
 	| { use: 'secret'; name: string; scope: SecretScope | null }
 	| { use: 'integration'; name: string }
-	| { use: 'provider'; provider: string }
+	| {
+			use: 'provider'
+			provider: string
+			/**
+			 * The package the org's binding for `provider` names, filled in by
+			 * {@link assertCredentialUsesDeclared}. Null when there is no binding.
+			 */
+			boundPackage?: string | null
+	  }
 	| { use: 'key'; key: string }
 
 export class CredentialNeedUndeclaredError extends McpCallerError {
@@ -127,12 +142,28 @@ export function findDeclaredNeed(
 	reference: CredentialNeedReference,
 	declarations: Declarations,
 ) {
+	if (reference.use === 'provider') {
+		// A kind "secret-provider" slot names the provider package, which must
+		// be the package the org bound for this provider id. An older slot
+		// keyed by the provider id still counts.
+		const boundPackage = reference.boundPackage ?? null
+		return (
+			declarations.find((need) =>
+				isSecretProviderNeed(need)
+					? boundPackage != null && need.package === boundPackage
+					: need.key === reference.provider &&
+						(need.kind == null || need.kind === 'secret'),
+			) ?? null
+		)
+	}
 	const key = referenceKey(reference)
 	const kinds = fillingKinds(reference)
 	return (
 		declarations.find(
 			(need) =>
 				need.key === key &&
+				// Saved-credential uses never resolve through a provider slot.
+				!isSecretProviderNeed(need) &&
 				(kinds === null || need.kind == null || kinds.includes(need.kind)),
 		) ?? null
 	)
@@ -165,19 +196,40 @@ function describeUse(reference: CredentialNeedReference) {
 	}
 }
 
+function providerFix(
+	reference: Extract<CredentialNeedReference, { use: 'provider' }>,
+	declarations: Declarations,
+) {
+	const declared = declarations
+		.filter(isSecretProviderNeed)
+		.map((need) => `"${need.package ?? ''}"`)
+	const bound = reference.boundPackage
+		? `the org binds provider "${reference.provider}" to package "${reference.boundPackage}"`
+		: `the org has no binding for provider "${reference.provider}"`
+	if (declared.length > 0) {
+		return `It declares provider package ${declared.join(', ')}, but ${bound}. Bind the declared package on the secret-providers page, or republish with a kind "secret-provider" slot that names the bound package.`
+	}
+	return `Add a kody.credentials slot with kind "secret-provider" that names the provider package (the one bound for "${reference.provider}") to its package.json, for example ${secretProviderSlotExample(reference.boundPackage ?? undefined)}, and publish again.`
+}
+
 function undeclaredError(
 	reference: CredentialNeedReference,
 	saved: SavedPackageRecord | null,
 	stamped: boolean,
+	declarations: Declarations,
 ) {
 	const key = referenceKey(reference)
 	const subject = saved ? `Package ${saved.name}` : 'This package'
 	const rule = stamped
 		? 'A package with a credential stamp may use only the credentials it declares.'
 		: 'A package run by anyone but its author may use only the credentials it declares.'
+	const fix =
+		reference.use === 'provider'
+			? providerFix(reference, declarations)
+			: `Add "${key}" to kody.credentials in its package.json (with a description) and publish again.`
 	return new CredentialNeedUndeclaredError({
 		key,
-		message: `${subject} uses ${describeUse(reference)} without declaring it. ${rule} Add "${key}" to kody.credentials in its package.json (with a description) and publish again.`,
+		message: `${subject} uses ${describeUse(reference)} without declaring it. ${rule} ${fix}`,
 	})
 }
 
@@ -319,6 +371,46 @@ export async function isPackageCredentialUseLimited(input: {
 	return enforced.kind === 'enforced'
 }
 
+/** Fills `boundPackage` on provider uses from the org's provider bindings. */
+async function withBoundProviderPackages(input: {
+	env: Env
+	orgId: string
+	references: ReadonlyArray<CredentialNeedReference>
+}): Promise<ReadonlyArray<CredentialNeedReference>> {
+	if (!input.references.some((reference) => reference.use === 'provider')) {
+		return input.references
+	}
+	const byProvider = new Map<string, Promise<string | null>>()
+	const boundPackage = (provider: string) => {
+		const id = normalizeSecretProviderNeedId(provider)
+		let loaded = byProvider.get(id)
+		if (!loaded) {
+			loaded = (async () => {
+				if (!secretProviderIdPattern.test(id)) return null
+				const binding = await getSecretProviderBinding(input.env.APP_DB, {
+					userId: input.orgId,
+					providerId: id,
+				})
+				if (!binding) return null
+				const bound = await getSavedPackageByIdInAnyOrg(
+					input.env.APP_DB,
+					binding.packageId,
+				)
+				return bound?.name ?? null
+			})()
+			byProvider.set(id, loaded)
+		}
+		return loaded
+	}
+	return Promise.all(
+		input.references.map(async (reference) =>
+			reference.use === 'provider'
+				? { ...reference, boundPackage: await boundPackage(reference.provider) }
+				: reference,
+		),
+	)
+}
+
 /**
  * Throws {@link CredentialNeedUndeclaredError} for the first use the stamped
  * package does not declare, and returns the declared need that fills each
@@ -351,6 +443,11 @@ export async function assertCredentialUsesDeclared(input: {
 		packageId: input.packageId,
 	})
 	if (enforced.kind === 'exempt') return declared
+	const references = await withBoundProviderPackages({
+		env: input.env,
+		orgId: input.orgId,
+		references: input.references,
+	})
 	const record = (
 		reference: CredentialNeedReference,
 		declarations: Declarations,
@@ -360,14 +457,12 @@ export async function assertCredentialUsesDeclared(input: {
 		return isCredentialReferenceDeclared(reference, declarations)
 	}
 	const stored = await enforced.stored()
-	const missing = input.references.filter(
-		(reference) => !record(reference, stored),
-	)
+	const missing = references.filter((reference) => !record(reference, stored))
 	if (missing.length === 0) return declared
 	const fresh = await enforced.fresh()
 	const undeclared = missing.find((reference) => !record(reference, fresh))
 	if (undeclared) {
-		throw undeclaredError(undeclared, enforced.saved, enforced.stamped)
+		throw undeclaredError(undeclared, enforced.saved, enforced.stamped, fresh)
 	}
 	return declared
 }

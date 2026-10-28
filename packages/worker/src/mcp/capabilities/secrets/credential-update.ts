@@ -4,6 +4,7 @@ import {
 	credentialFillPlacementSchema,
 	credentialInjectSchema,
 	credentialProviderSchema,
+	readCredentialFields,
 	updateCredentialFields,
 } from '#worker/credentials/credential-fields.ts'
 import {
@@ -20,6 +21,7 @@ import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { resolveCallerSecretAuthority } from '#mcp/secrets/secret-authority.ts'
+import { assertCredentialSecurityEditAllowed } from './credential-security-edit.ts'
 
 const inputSchema = z
 	.object({
@@ -38,13 +40,13 @@ const inputSchema = z
 		inject: credentialInjectSchema
 			.optional()
 			.describe(
-				'How a scoped credential client places a secret\'s value: a header with a "{value}" format, basic auth, or a query parameter. OAuth connections and MCP servers always use Authorization: Bearer.',
+				'How a scoped credential client places a secret\'s value: a header with a "{value}" format, basic auth, or a query parameter. OAuth connections and MCP servers always use Authorization: Bearer. Changing it is website-only from execute, package, and app code.',
 			),
 		placement: credentialFillPlacementSchema
 			.nullable()
 			.optional()
 			.describe(
-				'Where placeholders for this credential may be filled: headers (optionally named), query, path, and/or body. Null means anywhere. New credentials default to headers-only. Distinct from inject. Applies to secrets, OAuth integration tokens, and vault bindings. The gateway does not enforce this yet.',
+				'Where placeholders for this credential may be filled: headers (optionally named), query, path, and/or body. Null means anywhere. New credentials default to headers-only. Distinct from inject. Applies to secrets, OAuth integration tokens, and vault bindings. From execute, package, and app code only narrowing works; widening is website-only.',
 			),
 	})
 	.refine(
@@ -72,7 +74,7 @@ export const credentialUpdateCapability = defineDomainCapability(
 		name: 'credentialUpdate',
 		orgPermission: 'none',
 		description:
-			"Set a credential's provider, inject, and/or fill placement: which package credential needs it can satisfy, where a scoped `credential(key)` client puts its value, and which request parts placeholders may fill (headers, query, path, body; null = anywhere). Works for user-scope secrets, OAuth connections, MCP servers (provider/inject only), and vault bindings (placement only) by credential id; needs Write on that credential and is audited. Never takes or returns a value.",
+			"Set a credential's provider, inject, and/or fill placement: which package credential needs it can satisfy, where a scoped `credential(key)` client puts its value, and which request parts placeholders may fill (headers, query, path, body; null = anywhere). Works for user-scope secrets, OAuth connections, MCP servers (provider/inject only), and vault bindings (placement only) by credential id; needs Write on that credential and is audited. Never takes or returns a value. Widening placement or changing inject is website-only from execute (hosted or --local), package, and app code; those calls are refused with the credential's page URL.",
 		keywords: [
 			'credential',
 			'provider',
@@ -115,6 +117,22 @@ export const credentialUpdateCapability = defineDomainCapability(
 				`${credentialPermissionFamily(credential.kind)}:write`,
 				credentialResource(request.org.id, credential),
 			)
+			if (parsed.inject || parsed.placement !== undefined) {
+				const before = await readCredentialFields({
+					db: ctx.env.APP_DB,
+					credential,
+				})
+				assertCredentialSecurityEditAllowed(ctx, {
+					credential,
+					before,
+					after: {
+						...(parsed.inject ? { inject: parsed.inject } : {}),
+						...(parsed.placement !== undefined
+							? { placement: parsed.placement }
+							: {}),
+					},
+				})
+			}
 			const updated = await updateCredentialFields({
 				db: ctx.env.APP_DB,
 				orgId,

@@ -134,9 +134,9 @@ export function notAuthenticatedGuidance(
 	lifetime: CliTokenLifetimeAlias = 'short',
 ): string {
 	return (
-		`If you are an agent connected to the Kody MCP server, call \`cliCredentialBootstrap\` ` +
-		`(MCP \`execute\` with \`kody.cliCredentialBootstrap({ lifetime: "${lifetime}", scopes: [...] })\`, ` +
-		`or MCP \`api\` with operationId \`cliCredentialBootstrap\`) and run the returned \`cli_command\`; ` +
+		`If you are an agent connected to the Kody MCP server, call the MCP \`api\` tool with ` +
+		`operationId \`cliCredentialBootstrap\` and params \`{ lifetime: "${lifetime}", scopes: [...] }\` ` +
+		`(not \`execute\`, which is refused) and run the returned \`cli_command\`; ` +
 		`never ask a human to paste a token. Humans: run \`kody login\`. ` +
 		apiTokenMintInstructions()
 	)

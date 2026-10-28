@@ -12,7 +12,10 @@
   repos and self-revoke without a second mint; existing tokens unchanged);
   2026-10-25 (default scopes also include `package:create` so
   `packageGetGitRemote` with `create: true` works from CLI bootstrap tokens;
-  existing tokens unchanged)
+  existing tokens unchanged); 2026-10-27 (minting is callable from the MCP `api`
+  tool and Open API only; `execute` code, hosted or `--local`, is refused);
+  2026-10-28 (the official CLI may use the OAuth device grant,
+  [0082](./0082-cli-oauth-device-authorization-grant.md))
 - **Amends:** [0053](./0053-scoped-api-tokens-are-not-mcp-oauth-scopes.md),
   [0055](./0055-cli-mcp-oauth-local-execute-http.md)
 
@@ -36,14 +39,13 @@ credential and idle TTL did not help inside one day (#2966).
 
 One credential-bootstrap primitive, dual-exposed:
 
-1. **Capability + Open API** `cliCredentialBootstrap`
-   (`kody.cliCredentialBootstrap` / `POST /v1/tokens/bootstrap`, scope
-   `tokens:write`) - authenticated by the current MCP session or an eligible API
-   token. Returns a one-shot `kody_bc_…` bootstrap code + `cli_command`. Never
-   returns `kody_at_…`. The caller must choose the eventual token lifetime
-   (`lifetime: "short"|"long"` or both `idle_ttl_seconds` and
-   `max_lifetime_seconds`). The returned `cli_command` includes matching CLI
-   flags.
+1. **Capability + Open API** `cliCredentialBootstrap` (MCP `api` /
+   `POST /v1/tokens/bootstrap`, scope `tokens:write`) - authenticated by the
+   current MCP session or an eligible API token. Returns a one-shot `kody_bc_…`
+   bootstrap code + `cli_command`. Never returns `kody_at_…`. The caller must
+   choose the eventual token lifetime (`lifetime: "short"|"long"` or both
+   `idle_ttl_seconds` and `max_lifetime_seconds`). The returned `cli_command`
+   includes matching CLI flags.
 2. **Native Open API** `cliCredentialBootstrapRedeem`
    (`POST /v1/tokens/bootstrap/redeem`) - code-authenticated only (no Bearer).
    Burns the code and mints a normal scoped `kody_at_…` for the CLI to store.
@@ -113,9 +115,17 @@ Redeem also rejects (without burning the code) when the authorized absolute
 window (`created_at + max_lifetime_seconds`) has already ended, so a late redeem
 never returns an already-expired token.
 
-Do **not** add OAuth device flow. Do **not** accept bootstrap codes as general
-Open API Bearers. Do **not** scavenge host MCP tokens from disk. Do **not** keep
-a flagless / default-lifetime mint path.
+**Amended 2026-10-27:** `cliCredentialBootstrap` is not callable from `execute`
+code. Hosted execute has no `openApiPrincipal`, and the CapabilityProxy hop
+behind `execute --local` sets a host-only `localExecuteHop` marker; both are
+refused with a message pointing at the MCP `api` tool. Code a model wrote (or a
+package it imported) cannot mint itself a CLI credential; the explicit `api`
+call stays the handoff.
+
+Do **not** add OAuth device flow (superseded for the official CLI by
+[0082](./0082-cli-oauth-device-authorization-grant.md)). Do **not** accept
+bootstrap codes as general Open API Bearers. Do **not** scavenge host MCP tokens
+from disk. Do **not** keep a flagless / default-lifetime mint path.
 
 ## Consequences
 

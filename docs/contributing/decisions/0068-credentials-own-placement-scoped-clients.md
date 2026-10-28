@@ -37,7 +37,10 @@
   [Amendment 2026-10-20](#amendment-2026-10-20-package-manifest-fill-placement));
   2026-10-24 (Kent: package apps run as their publisher; visitors bring only
   identity; see
-  [Amendment 2026-10-24](#amendment-2026-10-24-package-apps-run-as-their-publisher))
+  [Amendment 2026-10-24](#amendment-2026-10-24-package-apps-run-as-their-publisher));
+  2026-10-27 (Kent: saved packages declare the secret provider package they use
+  with a `kind: "secret-provider"` slot; see
+  [Amendment 2026-10-27](#amendment-2026-10-27-secret-provider-slots))
 - **Supersedes in part:** [0021](./0021-publish-gated-package-composition.md)
   (credential authority for the opt-in types used through scoped clients), and
   credentials plan v4 section 3.3 (assignments) and section 3.4 (placeholder
@@ -891,3 +894,77 @@ credentials fill its needs. Visitors bring only verified identity.
   name, kind, hashed visitor), counted with
   `adminPackageAppAuthorityFallbackReport`. The visitor path and
   `ownerCredentialForVisitors` are removed only after those stay at zero.
+
+## Amendment 2026-10-27: dependency needs use the entry package's mappings
+
+Kent decided this on 2026-10-27 after a user report: a dependency's
+`credential(key)` ignored the mapping its entry package showed as ready.
+
+- **Rule.** When dependency D calls `credential(key)` or `credentials(key)` in a
+  run whose entry package E pins the need, stored mappings (the run's trigger
+  mapping, then `mine`, then `org`) and the creation link's `forPackage` come
+  from E. E is where `packageGet`, the capability set approval, and the
+  Credentials tab already show and set the mapping, and the only package a
+  caller in another org can map.
+- **Which entry.** The first entry whose pinned closure has the key, the same
+  first-entry-wins rule `loadRunCredentialNeeds` uses for the need definition. A
+  caller that is itself an entry reads its own mappings. Ad hoc code with no
+  package reads none.
+- **Identity split.** GHSA-5fv3 bound identity still decides authorization:
+  declared use is checked against D's own closure (the
+  [2026-10-15 amendment](#amendment-2026-10-15-credential-need-enforcement)),
+  and a Key bound to a package fills only that package's own calls. The entry is
+  used only to select mappings, and comes from the host: the run's package
+  context or, for CLI `--local`, the entries the package graph signs into each
+  package binding. Sandbox code cannot name it. E's code can already open any
+  key in its closure, and a mapping never grants Use, so reading E's mappings
+  for D's need grants nothing new.
+
+## Amendment 2026-10-27: secret-provider slots
+
+Kent decided on 2026-10-27 that saved packages must be able to use custom secret
+provider placeholders, and that the slot names the provider package. Before
+this, the publish stamp failed every vault placeholder in a request site, and no
+manifest declaration could satisfy it.
+
+- **Shape.** A `kody.credentials` slot with `kind: "secret-provider"`, a
+  required `package` (the saved provider package's package.json name), and a
+  description. The key follows the normal key grammar. `provider` and the
+  saved-credential fields (`multiple`, `supplier`, `required`,
+  `ownerCredentialForVisitors`, `placement`) are rejected.
+- **Publish.** The gate looks up `package` in the publishing org and reads its
+  `kody.secretProvider.id`. A vault placeholder in a request or
+  credential-mapped site stamps only when its literal provider id equals that
+  id; the slot key is sealed. A missing, unreadable, or id-less package fails
+  publish, as do computed provider ids and ids no declared package serves.
+  Display-only placeholders stay exempt.
+- **Runtime.** A provider use is declared only when the org's binding for the
+  placeholder's provider id is the declared package; otherwise it fails with
+  `credential_need_undeclared` naming the bound and declared packages. An older
+  slot keyed by the provider id still counts. Saved-credential uses
+  (`credential(key)`, `{{secret:NAME}}`) never resolve through a secret-provider
+  need.
+- **Unchanged.** The stamp seals the provider, not refs. The binding check,
+  per-package per-ref grants, item websites as hosts, `https:` only, and
+  redaction all still apply. Mappings, call maps, candidates, and creation links
+  skip secret-provider needs.
+
+## Amendment 2026-10-27: widening placement and changing inject are website-only
+
+Kent decided on 2026-10-27 that code running with a credential's authority must
+not be able to move its value somewhere new. Before this, `credentialUpdate` and
+`secretSet` let ad hoc `execute` widen placement (for example add `body`) or
+point inject at a different header or query parameter.
+
+- **Refused.** Widening fill placement (null, or any request part or header name
+  the stored placement lacks) and any inject change, from hosted `execute`,
+  `execute --local`, package code, and app code. The refusal names the
+  credential and links to its page on the website.
+- **Signal.** The same host-set caller signals as the CLI bootstrap refusal:
+  hosted execute has no `openApiPrincipal`, the local CapabilityProxy sets
+  `localExecuteHop`, and package or app runtimes carry their storage context.
+  None of them comes from module arguments.
+- **Allowed.** Narrowing placement and provider changes, from every caller. The
+  website (credential page and account secret editor) and the MCP `api` tool
+  keep full edits. New credentials created from code may keep the defaults
+  (headers-only, `Authorization: Bearer`) or narrow them.

@@ -61,6 +61,7 @@ function mockBootstrapToolContext(db: D1Database) {
 				openApiPrincipal?: Parameters<
 					typeof cliCredentialBootstrapCapability.handler
 				>[1]['openApiPrincipal']
+				localExecuteHop?: true
 			},
 		) => ({
 			mcpServers: [],
@@ -82,6 +83,7 @@ function mockBootstrapToolContext(db: D1Database) {
 							...(options.openApiPrincipal
 								? { openApiPrincipal: options.openApiPrincipal }
 								: {}),
+							...(options.localExecuteHop ? { localExecuteHop: true } : {}),
 						},
 					),
 			},
@@ -147,106 +149,97 @@ test('platform failures outside the capability return a generic error and log de
 	)
 })
 
-test('CapabilityProxy preserves token scopes when minting CLI bootstrap credentials', async () => {
+function parentTokenPrincipal() {
+	const now = new Date()
+	return {
+		kind: 'token' as const,
+		token: {
+			id: 'parent-token',
+			user_id: ownerIdFromStored('user-1'),
+			name: 'parent',
+			token_hash: 'hash',
+			scopes: ['org:execute'],
+			idle_ttl_seconds: 3600,
+			expires_at: new Date(now.getTime() + 3600_000).toISOString(),
+			max_expires_at: new Date(now.getTime() + 3600_000).toISOString(),
+			created_via: 'api',
+			created_at: now.toISOString(),
+			updated_at: now.toISOString(),
+			last_used_at: null,
+			rotated_at: null,
+			revoked_at: null,
+		},
+	}
+}
+
+function bootstrapDb() {
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, migrationsDirectory)
-	const db = createD1FromSqlite(sqlite)
+	return createD1FromSqlite(sqlite)
+}
+
+function openApiBootstrap(db: D1Database, args: Record<string, unknown>) {
+	return cliCredentialBootstrapCapability.handler(args, {
+		env: { APP_DB: db } as Env,
+		callerContext: createMcpCallerContext({
+			source: { kind: 'api-token', tokenId: 'token-1' },
+			baseUrl: 'https://kody.codes',
+			user: {
+				userId: personIdFromStored('user-1'),
+				email: 'caller@example.com',
+				displayName: 'Caller',
+			},
+		}),
+		openApiPrincipal: parentTokenPrincipal() as never,
+	})
+}
+
+test('CapabilityProxy refuses cliCredentialBootstrap from execute --local', async () => {
+	const db = bootstrapDb()
 	mockBootstrapToolContext(db)
-	const now = new Date()
 	const tokenCtx = {
 		...ctx,
-		principal: {
-			kind: 'token',
-			token: {
-				id: 'parent-token',
-				user_id: ownerIdFromStored('user-1'),
-				name: 'parent',
-				token_hash: 'hash',
-				scopes: ['org:execute'],
-				idle_ttl_seconds: 3600,
-				expires_at: new Date(now.getTime() + 3600_000).toISOString(),
-				max_expires_at: new Date(now.getTime() + 3600_000).toISOString(),
-				created_via: 'api',
-				created_at: now.toISOString(),
-				updated_at: now.toISOString(),
-				last_used_at: null,
-				rotated_at: null,
-				revoked_at: null,
-			},
-		},
+		principal: parentTokenPrincipal(),
 	} as unknown as ApiInvocationContext
 
 	const error = await runCapabilityProxyCall({
 		ctx: tokenCtx,
 		call: {
 			path: ['kody', 'cliCredentialBootstrap'],
-			args: [{ scopes: ['token:delete'], idle_ttl_seconds: 60 }],
+			args: [{ scopes: ['org:execute'], lifetime: 'short' }],
 		},
 	}).catch((value: unknown) => value)
 	expect(error).toMatchObject({
 		status: 400,
-		message: expect.stringMatching(/scopes it does not hold/),
+		message: expect.stringMatching(
+			/cannot be called from execute code[\s\S]*MCP api tool/,
+		),
 	})
 	expect(mockFns.buildKodyToolContext).toHaveBeenCalledWith(
 		expect.anything(),
 		expect.anything(),
-		expect.objectContaining({
-			openApiPrincipal: expect.objectContaining({
-				kind: 'token',
-				token: expect.objectContaining({ scopes: ['org:execute'] }),
-			}),
-		}),
+		expect.objectContaining({ localExecuteHop: true }),
 	)
 })
 
-test('CapabilityProxy caps bootstrap token lifetime to the parent token lifetime', async () => {
-	const sqlite = new DatabaseSync(':memory:')
-	applyAllMigrations(sqlite, migrationsDirectory)
-	const db = createD1FromSqlite(sqlite)
-	mockBootstrapToolContext(db)
-	const now = new Date()
-	const tokenCtx = {
-		...ctx,
-		principal: {
-			kind: 'token',
-			token: {
-				id: 'parent-token',
-				user_id: ownerIdFromStored('user-1'),
-				name: 'parent',
-				token_hash: 'hash',
-				scopes: ['org:execute'],
-				idle_ttl_seconds: 3600,
-				expires_at: new Date(now.getTime() + 3600_000).toISOString(),
-				max_expires_at: new Date(now.getTime() + 3600_000).toISOString(),
-				created_via: 'api',
-				created_at: now.toISOString(),
-				updated_at: now.toISOString(),
-				last_used_at: null,
-				rotated_at: null,
-				revoked_at: null,
-			},
-		},
-	} as unknown as ApiInvocationContext
-
-	const result = await runCapabilityProxyCall({
-		ctx: tokenCtx,
-		call: {
-			path: ['kody', 'cliCredentialBootstrap'],
-			args: [
-				{
-					scopes: ['org:execute'],
-					idle_ttl_seconds: 60,
-					max_lifetime_seconds: 7200,
-				},
-			],
-		},
+test('Open API token callers cannot escalate scopes when minting CLI bootstrap credentials', async () => {
+	const error = await openApiBootstrap(bootstrapDb(), {
+		scopes: ['token:delete'],
+		idle_ttl_seconds: 60,
+	}).catch((value: unknown) => value)
+	expect(error).toMatchObject({
+		message: expect.stringMatching(/scopes it does not hold/),
 	})
-	expect(
-		(result.result as { max_lifetime_seconds: number }).max_lifetime_seconds,
-	).toBeLessThanOrEqual(3600)
-	expect(
-		(result.result as { max_lifetime_seconds: number }).max_lifetime_seconds,
-	).toBeGreaterThan(3000)
+})
+
+test('Open API token callers get bootstrap lifetime capped to the parent token lifetime', async () => {
+	const result = (await openApiBootstrap(bootstrapDb(), {
+		scopes: ['org:execute'],
+		idle_ttl_seconds: 60,
+		max_lifetime_seconds: 7200,
+	})) as { max_lifetime_seconds: number }
+	expect(result.max_lifetime_seconds).toBeLessThanOrEqual(3600)
+	expect(result.max_lifetime_seconds).toBeGreaterThan(3000)
 })
 
 test('dotted kody.mcp[server].tool looks up raw tools-map keys, not sanitizeToolName dispatchName', async () => {

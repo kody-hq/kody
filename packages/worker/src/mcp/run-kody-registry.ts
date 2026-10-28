@@ -80,10 +80,9 @@ import {
 	type RunCredentialCallMap,
 } from '#worker/credentials/credential-call-map.ts'
 import {
-	loadRunCredentialNeeds,
+	loadRunCredentialNeedEntries,
 	validateCredentialCallMap,
 } from '#worker/credentials/credential-client.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import {
 	buildKodyModuleBundle,
 	hydrateKodyRuntimeModules,
@@ -444,6 +443,7 @@ export async function buildKodyToolContext(
 		reportProgress?: McpReportProgress
 		waitUntil?: (promise: Promise<unknown>) => void
 		openApiPrincipal?: CapabilityOpenApiPrincipal
+		localExecuteHop?: true
 	},
 ): Promise<{
 	tools: AdditionalKodyTools
@@ -502,6 +502,7 @@ export async function buildKodyToolContext(
 						...(options?.openApiPrincipal
 							? { openApiPrincipal: options.openApiPrincipal }
 							: {}),
+						...(options?.localExecuteHop ? { localExecuteHop: true } : {}),
 					})
 				} finally {
 					if (shouldSampleFirstDispatch) {
@@ -896,6 +897,52 @@ export function collectPackageStorageGrantIds(input: {
 		grantedPackageIds.add(packageId)
 	}
 	return grantedPackageIds
+}
+
+/**
+ * Hosted credential client options. The calling package decides declared
+ * use and bound Keys (GHSA-5fv3): the bound dispatcher's stamp, or the run
+ * package for unbound calls; naming another id is denied. Stored mappings
+ * and creation links come from the host-computed entries (ADR 0068
+ * amendment 2026-10-27), never from arguments.
+ */
+export function createRunCredentialClientToolOptions(input: {
+	env: Env
+	callerContext: McpCallerContext
+	binding: string
+	runPackageId: string | null
+	entryPackageIds: ReadonlyArray<string>
+	callMap: CredentialCallMap | null
+	waitUntil?: (promise: Promise<unknown>) => void
+}): CredentialClientToolOptions | undefined {
+	if (!input.callerContext.user?.userId) return undefined
+	let runNeedEntries: ReturnType<typeof loadRunCredentialNeedEntries> | null =
+		null
+	const loadRunNeedEntries = () => {
+		const request = input.callerContext.request
+		if (!request) return null
+		runNeedEntries ??= loadRunCredentialNeedEntries({
+			env: input.env,
+			orgId: request.org.id,
+			packageIds: input.entryPackageIds,
+			request,
+		})
+		return runNeedEntries
+	}
+	return {
+		binding: input.binding,
+		resolvePackageId: async (requested) =>
+			resolveCallerCredentialPackageId({
+				requested,
+				callerPackageId:
+					getSecretAuthorityScope()?.currentPackageId?.trim() ||
+					input.runPackageId,
+			}),
+		callMap: input.callMap,
+		runNeeds: async () => (await loadRunNeedEntries())?.needs ?? new Map(),
+		runEntries: async () => (await loadRunNeedEntries())?.entries ?? null,
+		waitUntil: input.waitUntil,
+	}
 }
 
 /**
@@ -1351,36 +1398,15 @@ export async function runBundledModuleWithRegistry(
 			if (warnings.length > 0) callMap.onWarnings?.(warnings)
 		}
 		const credentialClientBinding = newRunCredentialClientBinding()
-		let runNeeds: Promise<ReadonlyMap<string, CredentialNeed>> | null = null
-		const credentialClientTools: CredentialClientToolOptions | undefined =
-			callerContext.user?.userId
-				? {
-						binding: credentialClientBinding,
-						// The calling package decides whose needs, mappings, and bound
-						// Keys apply (GHSA-5fv3): the bound dispatcher's stamp, or the
-						// run package for unbound calls. Naming another id is denied.
-						resolvePackageId: async (requested) =>
-							resolveCallerCredentialPackageId({
-								requested,
-								callerPackageId:
-									getSecretAuthorityScope()?.currentPackageId?.trim() ||
-									(options?.packageContext?.packageId ?? null),
-							}),
-						callMap: callMap?.map ?? null,
-						runNeeds: () => {
-							const request = callerContext.request
-							if (!request) return Promise.resolve(new Map())
-							runNeeds ??= loadRunCredentialNeeds({
-								env,
-								orgId: request.org.id,
-								packageIds: credentialEntryPackageIds,
-								request,
-							})
-							return runNeeds
-						},
-						waitUntil: options?.waitUntil,
-					}
-				: undefined
+		const credentialClientTools = createRunCredentialClientToolOptions({
+			env,
+			callerContext,
+			binding: credentialClientBinding,
+			runPackageId: options?.packageContext?.packageId ?? null,
+			entryPackageIds: credentialEntryPackageIds,
+			callMap: callMap?.map ?? null,
+			waitUntil: options?.waitUntil,
+		})
 		const packageSecretRefKey = createPackageSecretRefKey()
 		const executor = createExecuteExecutor({
 			env,

@@ -36,6 +36,7 @@ import openapiIntegrations from '../../../../docs/guides/openapi-integrations.md
 import packageAuthoring from '../../../../docs/guides/package-authoring.md'
 import organizations from '../../../../docs/guides/organizations.md'
 import packageSharing from '../../../../docs/guides/package-sharing.md'
+import sharedPackages from '../../../../docs/guides/shared-packages.md'
 import packageSkills from '../../../../docs/guides/package-skills.md'
 import packageApps from '../../../../docs/guides/package-apps.md'
 import packageAppCustomDomains from '../../../../docs/guides/package-app-custom-domains.md'
@@ -113,6 +114,7 @@ const guideSources: Array<{ slug: string; raw: string }> = [
 	{ slug: 'package-lifecycle', raw: packageLifecycle },
 	{ slug: 'package-authoring', raw: packageAuthoring },
 	{ slug: 'package-sharing', raw: packageSharing },
+	{ slug: 'shared-packages', raw: sharedPackages },
 	{ slug: 'package-skills', raw: packageSkills },
 	{ slug: 'package-apps', raw: packageApps },
 	{ slug: 'package-app-custom-domains', raw: packageAppCustomDomains },

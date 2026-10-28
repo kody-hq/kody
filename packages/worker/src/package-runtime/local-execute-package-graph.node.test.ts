@@ -15,6 +15,7 @@ import {
 	createLocalExecuteRuntimeShimSource,
 } from './local-execute-runtime-support.ts'
 import { toApiError } from '#worker/open-api/errors.ts'
+import { verifyLocalExecutePackageBindingClaims } from './local-execute-package-binding.ts'
 import {
 	resolveRelativeModulePath,
 	runtimeModulePath,
@@ -155,6 +156,15 @@ export default async function main(params) { return greet(params.name) }`
 	})
 	expect(Object.keys(graph.packageBindings)).toEqual(['pkg-1'])
 	expect(graph.packageBindings['pkg-1']).toMatch(/^kpb1\./)
+	// The entry code's direct imports are the run's entries, signed into
+	// every binding so CapabilityProxy reads mappings from the entry.
+	await expect(
+		verifyLocalExecutePackageBindingClaims({
+			env: graphInput.env,
+			token: graph.packageBindings['pkg-1'],
+			subject: { org: graphInput.userId, actor: graphInput.actorUserId },
+		}),
+	).resolves.toEqual({ packageId: 'pkg-1', entryPackageIds: ['pkg-1'] })
 	const entry = graph.modules.find(
 		(module) => module.name === 'kody:@kentcdodds/example-package/hello',
 	)

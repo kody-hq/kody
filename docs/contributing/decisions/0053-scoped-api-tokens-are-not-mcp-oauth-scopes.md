@@ -51,5 +51,8 @@ device login. Kody does not push work from the cloud to a local venue.
   `org:read`, `package:read`, …). There is no write-implies-read hierarchy and
   no `account:read` / `local-execute` / `tokens:write` names. Parent tokens
   still cannot escalate scopes.
+- **Amended by [0082](./0082-cli-oauth-device-authorization-grant.md):** the
+  official CLI may log in with the OAuth device grant. It is the same CLI
+  credential as `kody login`, not a host-token scavenge.
 - Revisit if an MCP host needs a weaker-than-owner MCP session that an API token
   plus the Open API cannot serve.

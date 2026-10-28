@@ -15,7 +15,12 @@ import {
 	type CredentialMappingRowTarget,
 } from './credential-mappings.ts'
 import * as needsClosure from './credential-needs-closure.ts'
-import { ownCredentialNeeds, type CredentialNeed } from './credential-needs.ts'
+import {
+	ownCredentialNeeds,
+	savedCredentialNeeds,
+	type CredentialNeed,
+	type SavedCredentialNeed,
+} from './credential-needs.ts'
 import { normalizeCredentialCallMap } from './credential-call-map.ts'
 import {
 	applyCredentialClient,
@@ -292,7 +297,7 @@ test('call maps cannot select publisher-supplied credentials', async () => {
 test('ownerCredentialForVisitors has the same publisher visitor refusal as supplier publisher', async () => {
 	const t = await setup()
 	const request = t.requestAs('ann', 'member')
-	const canonical: CredentialNeed = {
+	const canonical: SavedCredentialNeed = {
 		key: 'database',
 		kind: 'secret',
 		provider: 'database',
@@ -300,14 +305,16 @@ test('ownerCredentialForVisitors has the same publisher visitor refusal as suppl
 		multiple: false,
 		supplier: 'publisher',
 	}
-	const alias = ownCredentialNeeds(
-		{
-			database: {
-				description: 'Database access.',
-				ownerCredentialForVisitors: true,
+	const alias = savedCredentialNeeds(
+		ownCredentialNeeds(
+			{
+				database: {
+					description: 'Database access.',
+					ownerCredentialForVisitors: true,
+				},
 			},
-		},
-		{ supplierSemanticsEnabled: true },
+			{ supplierSemanticsEnabled: true },
+		),
 	)[0]!
 	const authority: NonNullable<CredentialClientContext['packageAppAuthority']> =
 		{
@@ -316,7 +323,7 @@ test('ownerCredentialForVisitors has the same publisher visitor refusal as suppl
 			visitorNeedRequest: async () => request,
 			visitorNeedGrant: async () => null,
 		}
-	const context = (need: CredentialNeed): CredentialClientContext => ({
+	const context = (need: SavedCredentialNeed): CredentialClientContext => ({
 		...contextFor(t, request, t.savedPackage.id),
 		runNeeds: async () => new Map([[need.key, need]]),
 		packageAppAuthority: authority,
@@ -363,7 +370,7 @@ test('executor visitor credentials are isolated by grant and filtered against th
 		personalOrgIdForAnn,
 		'@fixture/other-org-app',
 	)
-	const need: CredentialNeed = {
+	const need: SavedCredentialNeed = {
 		key: 'database',
 		kind: 'secret',
 		provider: 'database',
@@ -527,7 +534,7 @@ test('flag-off legacy visitor handles still require live consent after grant rev
 		target: { target: 'org' },
 		credentialId,
 	})
-	const need: CredentialNeed = {
+	const need: SavedCredentialNeed = {
 		key: 'database',
 		kind: 'secret',
 		provider: 'database',

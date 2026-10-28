@@ -84,10 +84,9 @@ import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
 import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
-import { loadRunCredentialNeeds } from '#worker/credentials/credential-client.ts'
+import { loadRunCredentialNeedEntries } from '#worker/credentials/credential-client.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { type OwnerCredentialScope } from '#worker/credentials/owner-credential-for-visitors.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import {
 	createCredentialClientRuntimeSource,
 	credentialClientToolNames,
@@ -2864,7 +2863,16 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 							visitor: visit?.visitor ?? null,
 						})
 					: visitorContext.request
-			let runNeeds: Promise<ReadonlyMap<string, CredentialNeed>> | null = null
+			let runNeedEntries: ReturnType<
+				typeof loadRunCredentialNeedEntries
+			> | null = null
+			const loadRunNeedEntries = () =>
+				(runNeedEntries ??= loadRunCredentialNeedEntries({
+					env: this.env,
+					orgId: this.ctx.props.userId,
+					packageIds: [this.ctx.props.packageId],
+					request: callerContext.request,
+				}))
 			return createCredentialClientKodyTools({
 				env: this.env,
 				callerContext,
@@ -2877,15 +2885,10 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 						}),
 					// Needs load for anonymous visitors too: an opted-in need is the
 					// only way they reach a credential.
-					runNeeds: () => {
-						runNeeds ??= loadRunCredentialNeeds({
-							env: this.env,
-							orgId: this.ctx.props.userId,
-							packageIds: [this.ctx.props.packageId],
-							request: callerContext.request,
-						})
-						return runNeeds
-					},
+					runNeeds: async () => (await loadRunNeedEntries()).needs,
+					// The app package is the entry: a bound dependency's need reads
+					// the app's mappings.
+					runEntries: async () => (await loadRunNeedEntries()).entries,
 					// Under the runs-as person every declared need is theirs, so the
 					// `ownerCredentialForVisitors` opt-in only applies the legacy way.
 					ownerCredentialScope:

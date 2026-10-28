@@ -17,9 +17,9 @@ import {
 	type PackageCredentialScan,
 } from '#worker/credentials/credential-inventory-scan.ts'
 import {
-	type PackageCredentialKind,
+	type PackageCredentialSlotKind,
 	type PackageCredentialSlot,
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
 } from '#worker/package-registry/types.ts'
 import {
 	getSavedPackageById,
@@ -42,7 +42,7 @@ export type CredentialAllowedPackagesPublishWarning = {
 }
 
 const packageCredentialKinds: ReadonlySet<string> = new Set(
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
 )
 
 /**
@@ -317,7 +317,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isPackageCredentialKind(
 	value: string,
-): value is PackageCredentialKind {
+): value is PackageCredentialSlotKind {
 	return packageCredentialKinds.has(value)
 }
 

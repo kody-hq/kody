@@ -27,7 +27,7 @@ import { type CredentialNeed } from './credential-needs.ts'
 
 type NeedShape = Pick<
 	CredentialNeed,
-	'kind' | 'provider' | 'multiple' | 'ownerCredentialForVisitors'
+	'kind' | 'provider' | 'package' | 'multiple' | 'ownerCredentialForVisitors'
 >
 
 export type CredentialNeedChange =
@@ -75,6 +75,7 @@ function shape(need: CredentialNeed): NeedShape {
 	return {
 		...(need.kind ? { kind: need.kind } : {}),
 		provider: need.provider,
+		...(need.package ? { package: need.package } : {}),
 		multiple: need.multiple,
 		...(need.ownerCredentialForVisitors
 			? { ownerCredentialForVisitors: true as const }
@@ -108,6 +109,7 @@ export function diffCredentialNeeds(
 		if (
 			prior.kind !== need.kind ||
 			prior.provider !== need.provider ||
+			prior.package !== need.package ||
 			prior.multiple !== need.multiple ||
 			sharesWithVisitors
 		) {
@@ -125,6 +127,7 @@ export function diffCredentialNeeds(
 
 function describeNeedKind(kind: NeedShape['kind']) {
 	if (kind === undefined) return 'any fetch-capable kind'
+	if (kind === 'secret-provider') return 'secret provider'
 	return isCredentialKind(kind) ? credentialKindLabel(kind) : kind
 }
 
@@ -133,6 +136,7 @@ function describeNeedTail(need: NeedShape) {
 	const forVisitors = need.ownerCredentialForVisitors
 		? ' (app visitors may use your credential)'
 		: ''
+	if (need.package) return `secret provider package ${need.package}`
 	return `${describeNeedKind(need.kind)} from ${need.provider}${viaMultiple}${forVisitors}`
 }
 
