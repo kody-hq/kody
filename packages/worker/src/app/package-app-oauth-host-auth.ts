@@ -7,7 +7,10 @@ import {
 import { consumePackageAppOauthCode } from '#app/package-app-oauth-codes.ts'
 import { formatPackageAppOauthClientId } from '#app/package-app-oauth-client-id.ts'
 import { resolvePackageAppOauthClient } from '#app/package-app-oauth-client-resolve.ts'
-import { findLivePackageAppOauthGrant } from '#app/package-app-oauth-grants.ts'
+import {
+	findLivePackageAppOauthGrant,
+	notePackageAppOauthGrantUse,
+} from '#app/package-app-oauth-grants.ts'
 import {
 	createPackageAppOauthCodeVerifier,
 	createPackageAppOauthPkceCookie,
@@ -510,6 +513,9 @@ async function handleMe(input: { request: Request; env: Env; url: URL }) {
 		orgUsername: handle,
 		kodyId: slug,
 	})
+	if (grant) {
+		await notePackageAppOauthGrantUse({ db: input.env.APP_DB, grant })
+	}
 
 	let role: string | null = null
 	const ticket = await readPackageAppTicket({

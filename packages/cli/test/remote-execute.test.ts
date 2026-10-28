@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { buildExecuteToolArgs } from '../src/cli.js'
 import {
 	formatExecuteCapabilityResult,
 	resolveRemoteExecuteCode,
@@ -107,8 +108,9 @@ test('runRemoteExecuteWithToken posts /v1/execute', async () => {
 	})
 
 	calls.length = 0
+	const invokeArgs = buildExecuteToolArgs({ invoke: '@scope/pkg#go' })
 	await runRemoteExecuteWithToken({
-		invoke: '@scope/pkg#go',
+		code: invokeArgs.code as string,
 		token: 'tok',
 		apiUrl: 'https://api.kody.codes',
 		fetchFn,

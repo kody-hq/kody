@@ -233,7 +233,10 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0084: Org feature flag rows target the request org](./0084-org-feature-flag-rows.md)
   Per-org rows sit between user overrides and the global row and apply only in
   that org's request context; no org context means no org row
-- [0085 — Automations choose an execution context](./0085-automation-execution-contexts.md)
+- [0085: Execute takes code only](./0085-execute-takes-code-only.md) The
+  server-side execute `invoke` shortcut and its flag are removed; one export is
+  a two-line `code` passthrough, and CLI `--invoke` stays client-side
+- [0086 — Automations choose an execution context](./0086-automation-execution-contexts.md)
   — per-automation `execution` (context or own chain), offline fails or queues
   (default 60 min, max 24 h), runs use the automation actor's access
 

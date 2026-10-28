@@ -5,8 +5,8 @@ import { type ToolCallResult } from './tool-result.js'
 import { resolveExecuteInvokeCode } from './invoke-passthrough.js'
 
 export type RemoteExecuteInput = {
+	/** Module source; `--invoke` is already minted into this by the caller. */
 	code?: string
-	invoke?: string
 	params?: unknown
 	conversationId?: string
 	/**
@@ -75,19 +75,9 @@ export async function runRemoteExecuteWithToken(
 	input: RemoteExecuteInput,
 ): Promise<ToolCallResult> {
 	assertTokenSafeApiUrl(input.apiUrl)
-	const invoke = input.invoke?.trim()
 	const body: Record<string, unknown> = {}
-	if (invoke && input.code?.trim()) {
-		throw new Error(
-			'--invoke cannot be combined with --code, --file, or a module string.',
-		)
-	}
-	// Cloud Open API execute still gates the `invoke` field on the
-	// execute-invoke experiment. Mint the same thin passthrough as `code` so
-	// `kody execute --invoke` keeps working for callers without that flag.
-	// When execute-invoke is generally available, prefer body.invoke here so
-	// Activity can attribute invoke vs handwritten code.
-	body.code = resolveRemoteExecuteCode(input)
+	// `--invoke` is client-side sugar: hosted execute accepts only `code`.
+	body.code = resolveRemoteExecuteCode({ code: input.code })
 	if (input.params !== undefined) body.params = input.params
 	if (input.conversationId !== undefined)
 		body.conversationId = input.conversationId

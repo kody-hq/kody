@@ -81,6 +81,14 @@ export function PrivacyRoute() {
 					<code>/@username</code>. When visibility is <strong>private</strong>,
 					the public profile is not found.
 				</p>
+				<p css={descriptionCss}>
+					When you sign in to someone's package app with Sign in with Kody,
+					people who manage that app can see your username, display name,
+					avatar, when you first connected, when you last used the app, and what
+					you allowed it to do. They never see your credentials or their values.
+					Revoking the app on <strong>Account &gt; Connected apps</strong>{' '}
+					removes you from that list.
+				</p>
 			</section>
 
 			<section css={cardCss}>

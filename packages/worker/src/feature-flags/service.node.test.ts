@@ -311,7 +311,6 @@ function createFeatureFlagsTestDb(
 
 const registryKeys = [
 	'demo-indicator',
-	'execute-invoke',
 	'connection-profiles',
 	'mcp-skills-extension',
 	'mcp-events-extension',
@@ -461,7 +460,7 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 	const db = createFeatureFlagsTestDb()
 	await setFeatureFlagUserOverrides(db, [
 		{
-			key: 'execute-invoke',
+			key: 'mcp-skills-extension',
 			userId: 7,
 			enabled: true,
 			updatedBy: 7,
@@ -473,7 +472,7 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 			updatedBy: 7,
 		},
 	])
-	expect(await enabledFor(db, [7], 'execute-invoke')).toEqual([true])
+	expect(await enabledFor(db, [7], 'mcp-skills-extension')).toEqual([true])
 	expect(await enabledFor(db, [7], 'connection-profiles')).toEqual([true])
 
 	const originalPrepare = db.prepare.bind(db)
@@ -507,7 +506,7 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 				updatedBy: 7,
 			},
 			{
-				key: 'execute-invoke',
+				key: 'mcp-skills-extension',
 				userId: 7,
 				enabled: true,
 				updatedBy: 7,
@@ -515,8 +514,8 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 		]),
 	).rejects.toThrow('second override write failed')
 	expect(db.overrides.has('demo-indicator:7')).toBe(false)
-	expect(db.overrides.has('execute-invoke:7')).toBe(true)
-	expect(await enabledFor(db, [7], 'execute-invoke')).toEqual([true])
+	expect(db.overrides.has('mcp-skills-extension:7')).toBe(true)
+	expect(await enabledFor(db, [7], 'mcp-skills-extension')).toEqual([true])
 	expect(await enabledFor(db, [7], 'connection-profiles')).toEqual([true])
 })
 
@@ -605,7 +604,6 @@ test('listFeatureFlagsForAdmin includes registry flags and stale DB-only keys', 
 			'connection-profiles',
 			{ defaultAudience: 'experiments_opt_in', successMetric: executeMetric },
 		],
-		['execute-invoke', { defaultAudience: 'experiments_opt_in' }],
 		[
 			'demo-indicator',
 			{
@@ -758,7 +756,7 @@ test('experiments_opt_in audience requires users.experiments_opt_in; overrides s
 	).rejects.toThrow(/audience must be one of/)
 })
 
-test('execute-invoke first insert without audience uses registry defaultAudience', async () => {
+test('connection-profiles first insert without audience uses registry defaultAudience', async () => {
 	const db = createFeatureFlagsTestDb({
 		users: [
 			{ id: 7, username: 'opted', experiments_opt_in: 1 },
@@ -766,7 +764,12 @@ test('execute-invoke first insert without audience uses registry defaultAudience
 		],
 	})
 
-	await setGlobal(db, true, { key: 'execute-invoke' })
-	expect(db.globals.get('execute-invoke')?.audience).toBe('experiments_opt_in')
-	expect(await enabledFor(db, [7, 8], 'execute-invoke')).toEqual([true, false])
+	await setGlobal(db, true, { key: 'connection-profiles' })
+	expect(db.globals.get('connection-profiles')?.audience).toBe(
+		'experiments_opt_in',
+	)
+	expect(await enabledFor(db, [7, 8], 'connection-profiles')).toEqual([
+		true,
+		false,
+	])
 })

@@ -71,6 +71,7 @@ export const loadPackageForks = createServerFn({ method: 'GET' })
 				viewerIsOwner: page.viewerIsOwner,
 				viewerCanManage: page.viewerCanManage,
 				viewerCanManageAccess: page.viewerCanManageAccess,
+				viewerCanSeeConnectedPeople: page.viewerCanSeeConnectedPeople,
 			},
 			forks,
 			total,

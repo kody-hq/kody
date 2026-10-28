@@ -307,6 +307,25 @@ are not available through `credential.visitor()` or `kody.visitorNeed()`.
 Neither path falls back to the runs-as person. Revoking the app on **Account >
 Connected apps** takes effect on the next call.
 
+### See who signed in to your app
+
+People with Manage on a package with an app see a **Connected people** tab on
+the package page. It lists everyone with a live Sign in with Kody grant for the
+app, most recently used first: their name and username (linked when their
+profile is public), when they first connected, when they last used the app (to
+the minute), and what they approved, in the consent screen's words. Deleted
+accounts are left out. The consent screen tells visitors the owner can see this.
+Owners never see a visitor's credentials.
+
+**Sign out** (click again to confirm) ends one person's grant, the same as when
+they revoke it on **Account > Connected apps**: their next call to the app is
+signed out and they must approve again. Their own credentials stay in their
+account. Owner sign-outs are audit logged.
+
+Agents use `packageAppConnectedPeopleList` and `packageAppConnectedPersonRevoke`
+(Open API: `GET /v1/packages/{package_id}/connected-people` and
+`DELETE /v1/packages/{package_id}/connected-people/{grant_id}`).
+
 Executor credential needs use `need:<key>` scopes and are required by default.
 An optional executor need declares `required: false`. The visitor chooses a
 usable credential for each approved need during consent; the credential value

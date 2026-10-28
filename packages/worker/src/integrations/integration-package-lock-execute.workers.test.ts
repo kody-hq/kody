@@ -8,7 +8,6 @@ import { applyD1Migrations, type D1Migration } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { afterEach, beforeAll, expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { resolveExecuteInvokeCode } from '#mcp/execute-invoke.ts'
 import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
 import { persistIntegrationTokens } from '#worker/integrations/credentials.ts'
 import {
@@ -389,7 +388,7 @@ test(
 )
 
 test(
-	'execute invoke of the allowed package export uses the locked integration',
+	'execute passthrough of the allowed package export uses the locked integration',
 	{ timeout: 120_000 },
 	async () => {
 		silenceIncidentalRuntimeWarnings()
@@ -400,7 +399,7 @@ test(
 
 		const run = await execute(
 			person,
-			resolveExecuteInvokeCode(`kody:${allowed.name}/call`),
+			`import call from ${JSON.stringify(`kody:${allowed.name}/call`)}\nexport default (params) => call(params)`,
 		)
 
 		expect(run.error).toBeUndefined()

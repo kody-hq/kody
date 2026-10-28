@@ -2,7 +2,6 @@
  * Effective execution setting for one automation: the override set from the
  * API, CLI or UI, else the `execution` its package manifest declares.
  */
-import { buildExecuteInvokePassthroughSource } from '#mcp/execute-invoke.ts'
 import {
 	type AutomationExecution,
 	parseAutomationExecution,
@@ -107,6 +106,15 @@ export async function setAutomationExecutionOverride(
 }
 
 /** `kody:@scope/pkg/<export>`; the root export is the bare package. */
+/** Module a context runs for a package-export automation: call the export with the run's params. */
+export function buildExecuteInvokePassthroughSource(specifier: string): string {
+	return `import action from ${JSON.stringify(specifier)}
+
+export default async function main(params) {
+	return await action(params)
+}`
+}
+
 export function packageExportSpecifier(packageName: string, exportKey: string) {
 	const key = exportKey.replace(/^\.\/?/, '')
 	return `kody:${packageName}${key ? `/${key}` : ''}`

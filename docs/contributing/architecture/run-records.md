@@ -150,11 +150,13 @@ Rules:
   return value (at minimum webhook deliveries, package exports, and ad-hoc
   execute) should pass it so `runGet` can show what the handler returned.
 - Ad-hoc **execute** runs (MCP tool and in-runtime `meta.execute`) stamp
-  forward-only attribution in metadata: `entry` (`invoke` | `code`), optional
-  `invoke` specifier when entry is invoke, and `workerId` (the stable LOADER id
-  unique_worker_days already meters) once the module graph is minted. Package
-  columns (`package_id`, `published_commit`, …) stay first-class.
-  `published_commit` is the bundle that executed, which can trail
+  forward-only attribution in metadata: `entry` (`code`) and `workerId` (the
+  stable LOADER id unique_worker_days already meters) once the module graph is
+  minted. Older rows may carry `entry: invoke` plus an `invoke` specifier from
+  the removed execute shortcut
+  ([ADR 0085](../decisions/0085-execute-takes-code-only.md)); readers keep
+  showing them. Package columns (`package_id`, `published_commit`, …) stay
+  first-class. `published_commit` is the bundle that executed, which can trail
   `entity_sources.published_commit` for a short npm-backed republish window
   (bounded by the published source snapshot `createdAt`, not
   `entity_sources.updated_at`). No historical backfill.

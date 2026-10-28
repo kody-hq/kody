@@ -244,6 +244,7 @@ type PackageCollaboratorsPageShell = {
 	publishedCommit: string | null
 	ownerProfilePublic: boolean
 	viewerCanManage: boolean
+	viewerCanSeeConnectedPeople: boolean
 }
 
 export type PackageCollaboratorsLoaderData =

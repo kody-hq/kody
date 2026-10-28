@@ -412,6 +412,12 @@ export async function executeGatewayFetch(input: {
 			// Body placeholders may resolve while the upload streams; wait so
 			// echo redaction and redirect policy see every substituted value.
 			await bodyFillDone
+			if (credentialClient) {
+				substitutedValues = [
+					...expanded.substitutedValues,
+					...credentialClient.substitutedValues,
+				]
+			}
 			// Credential-bearing requests stay on redirect=manual (fail closed).
 			// Ordinary bodies that used manual only so mid-stream fills could be
 			// observed still get Fetch-like follow for redirects that do not
@@ -436,6 +442,7 @@ export async function executeGatewayFetch(input: {
 					response,
 					requestUrl: transformed.url,
 					approvedHosts: expanded.approvedHosts,
+					filledValues: substitutedValues,
 					org: input.props.userId,
 					binding: input.props.credentialClientBinding ?? null,
 				})

@@ -198,6 +198,90 @@ export async function listLivePackageAppOauthGrantsForPerson(input: {
 	return (result.results ?? []).map(toGrant)
 }
 
+/** A live grant for one app, with the visitor's live (not deleted) account. */
+export type PackageAppConnectedGrant = PackageAppOauthGrant & {
+	username: string | null
+	displayName: string | null
+	avatarKey: string | null
+	profilePublic: boolean
+}
+
+type ConnectedGrantRow = GrantRow & {
+	username: string | null
+	display_name: string | null
+	avatar_key: string | null
+	profile_visibility: string | null
+}
+
+const connectedGrantFrom = `FROM package_app_oauth_grants g
+	 INNER JOIN users u ON u.stable_user_id = g.person_id AND u.deleted_at IS NULL
+	 WHERE g.org_username = ? AND g.kody_id = ? AND g.revoked_at IS NULL`
+
+/**
+ * Live grants for one package app (`org_username`/`kody_id`, both lowercase),
+ * most recently used first; never-used grants sort by when they connected.
+ * Grants of deleted accounts are left out.
+ */
+export async function listLivePackageAppOauthGrantsForApp(input: {
+	db: D1Database
+	orgUsername: string
+	kodyId: string
+	limit: number
+	offset: number
+}): Promise<{ grants: Array<PackageAppConnectedGrant>; total: number }> {
+	const orgUsername = input.orgUsername.toLowerCase()
+	const kodyId = input.kodyId.toLowerCase()
+	const [rows, count] = await Promise.all([
+		input.db
+			.prepare(
+				`SELECT g.id, g.person_id, g.org_username, g.kody_id, g.scopes,
+				   g.created_at, g.last_used_at,
+				   u.username, u.display_name, u.avatar_key, u.profile_visibility
+				 ${connectedGrantFrom}
+				 ORDER BY COALESCE(g.last_used_at, g.created_at) DESC, g.id ASC
+				 LIMIT ? OFFSET ?`,
+			)
+			.bind(orgUsername, kodyId, input.limit, input.offset)
+			.all<ConnectedGrantRow>(),
+		input.db
+			.prepare(`SELECT COUNT(*) AS total ${connectedGrantFrom}`)
+			.bind(orgUsername, kodyId)
+			.first<{ total: number }>(),
+	])
+	return {
+		grants: (rows.results ?? []).map((row) => ({
+			...toGrant(row),
+			username: row.username,
+			displayName: row.display_name,
+			avatarKey: row.avatar_key,
+			profilePublic: row.profile_visibility === 'public',
+		})),
+		total: Number(count?.total ?? 0),
+	}
+}
+
+/** One live grant of this app by id, or null when it is gone or not this app's. */
+export async function findLivePackageAppOauthGrantForApp(input: {
+	db: D1Database
+	orgUsername: string
+	kodyId: string
+	grantId: string
+}): Promise<PackageAppOauthGrant | null> {
+	const row = await input.db
+		.prepare(
+			`SELECT ${grantColumns}
+			 FROM package_app_oauth_grants
+			 WHERE id = ? AND org_username = ? AND kody_id = ? AND revoked_at IS NULL`,
+		)
+		.bind(
+			input.grantId,
+			input.orgUsername.toLowerCase(),
+			input.kodyId.toLowerCase(),
+		)
+		.first<GrantRow>()
+	return row ? toGrant(row) : null
+}
+
 export function grantCoversScopes(
 	grant: PackageAppOauthGrant,
 	requested: ReadonlyArray<PackageAppOauthScope>,
@@ -449,6 +533,31 @@ export async function revokePackageAppOauthGrantScope(input: {
 
 /** Last-use timestamps move at most once a minute per grant. */
 export const packageAppOauthGrantLastUsedResolutionMs = 60_000
+
+/**
+ * Record a signed-in visit to the app on a grant just read, writing only when
+ * its last use is older than the resolution. Never throws.
+ */
+export async function notePackageAppOauthGrantUse(input: {
+	db: D1Database
+	grant: Pick<PackageAppOauthGrant, 'id' | 'lastUsedAt'>
+	now?: Date
+}) {
+	const now = input.now ?? new Date()
+	const lastUsed = input.grant.lastUsedAt
+		? Date.parse(input.grant.lastUsedAt)
+		: Number.NaN
+	if (now.getTime() - lastUsed < packageAppOauthGrantLastUsedResolutionMs) {
+		return
+	}
+	await touchPackageAppOauthGrantLastUsed({
+		db: input.db,
+		grantId: input.grant.id,
+		now,
+	}).catch((error: unknown) => {
+		console.warn('package-app-grant-last-used-failed', error)
+	})
+}
 
 export async function touchPackageAppOauthGrantLastUsed(input: {
 	db: D1Database

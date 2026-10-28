@@ -25,3 +25,9 @@ export const packageWebhookInput = packageAccessInput.extend({
 	createInstance: z.boolean().optional(),
 	instanceLabel: z.string().trim().min(1).max(64).optional(),
 })
+export const packageAppConnectedPeopleInput = packageAccessInput.extend({
+	page: z.number().int().min(1).max(100_000).optional(),
+})
+export const revokePackageAppConnectedPersonInput = packageAccessInput.extend({
+	grantId: z.string().trim().min(1),
+})

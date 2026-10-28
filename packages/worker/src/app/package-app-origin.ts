@@ -65,7 +65,10 @@ import {
 	packageAppHandoffQueryParam,
 } from '#app/package-app-handoff.ts'
 import { createHealthHandler } from '#app/handlers/health.ts'
-import { findLivePackageAppOauthGrant } from '#app/package-app-oauth-grants.ts'
+import {
+	findLivePackageAppOauthGrant,
+	notePackageAppOauthGrantUse,
+} from '#app/package-app-oauth-grants.ts'
 import { handlePackageAppOauthHostAuth } from '#app/package-app-oauth-host-auth.ts'
 import {
 	resolvePackageAppOrgOwnerByHandle,
@@ -1071,7 +1074,9 @@ export async function resolvePackageAppIdentityOnlyVisitor(input: {
 		orgUsername: input.handle.toLowerCase(),
 		kodyId: input.kodyId ?? input.packagePath.kodyId,
 	})
-	return grant ? input.authorized.person : null
+	if (!grant) return null
+	await notePackageAppOauthGrantUse({ db: input.env.APP_DB, grant })
+	return input.authorized.person
 }
 
 function withSetCookie(response: Response, setCookie: string) {

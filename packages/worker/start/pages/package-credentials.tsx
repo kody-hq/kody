@@ -166,6 +166,8 @@ export function PackageCredentialsRoute({
 				viewerIsOwner: true,
 				viewerCanManage: shell?.viewerCanManage ?? false,
 				viewerCanManageAccess: shell?.viewerCanManageAccess ?? false,
+				viewerCanSeeConnectedPeople:
+					shell?.viewerCanSeeConnectedPeople ?? false,
 				active: path.tab,
 				filesHref: getPackageTreeHref({
 					username,

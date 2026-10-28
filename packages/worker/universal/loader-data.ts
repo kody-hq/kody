@@ -26,6 +26,7 @@ import { type CredentialFillPlacementView } from '#universal/credential-fill-pla
 import { type ApprovalBundleLoaderData } from '#universal/approval-bundles.ts'
 import { type PackageCredentialApprovalLoaderData } from '#universal/package-credential-approval-page.ts'
 import { type PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
+import { type PackageAppConnectedPeopleLoaderData } from '#universal/package-app-connected-people.ts'
 import { type PackageForksLoaderData } from '#universal/package-forks.ts'
 import { type PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
@@ -244,6 +245,8 @@ export type PackageFilesLoaderData = {
 	viewerIsOwner?: boolean
 	viewerCanManage?: boolean
 	viewerCanManageAccess?: boolean
+	/** Manage on a package with an app: shows the Connected people tab. */
+	viewerCanSeeConnectedPeople?: boolean
 	isPrivate?: boolean
 	isListed?: boolean
 	/** False for plain repos that share package chrome. Defaults to true. */
@@ -285,6 +288,8 @@ type CommunityDetailShellLoaderData = {
 	viewerIsOwner: boolean
 	viewerCanManage: boolean
 	viewerCanManageAccess?: boolean
+	/** Manage on a package with an app: shows the Connected people tab. */
+	viewerCanSeeConnectedPeople?: boolean
 	viewerCanPublish?: boolean
 	viewerCanDelete?: boolean
 	viewerCanAdoptCommunityFork?: boolean
@@ -3061,6 +3066,7 @@ export type AppLoaderData = {
 	accountCredentials?: AccountCredentialsResponse
 	packageCredentials?: PackageCredentialsLoaderData
 	packageCollaborators?: PackageCollaboratorsLoaderData
+	packageAppConnectedPeople?: PackageAppConnectedPeopleLoaderData
 	packageForks?: PackageForksLoaderData
 	packageCredentialApproval?: PackageCredentialApprovalLoaderData
 	approvalBundle?: ApprovalBundleLoaderData

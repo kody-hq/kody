@@ -195,6 +195,7 @@ export async function loadCommunityPackagePayload(input: {
 			viewerIsOwner: page.viewerIsOwner,
 			viewerCanManage: page.viewerCanManage,
 			viewerCanManageAccess: page.viewerCanManageAccess,
+			viewerCanSeeConnectedPeople: page.viewerCanSeeConnectedPeople,
 			repoActions: await buildPackageRepoActionsForPage(page, env, request),
 			viewerCanPublish: page.viewerCanPublish,
 			viewerCanDelete: page.viewerCanDelete,

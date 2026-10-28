@@ -19,6 +19,7 @@ const shell: PackageForksLoaderData['shell'] = {
 	viewerIsOwner: false,
 	viewerCanManage: false,
 	viewerCanManageAccess: false,
+	viewerCanSeeConnectedPeople: false,
 }
 
 const render = async (payload: Omit<PackageForksLoaderData, 'ok' | 'shell'>) =>

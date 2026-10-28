@@ -1114,7 +1114,7 @@ async function dispatch(
 				return 1
 			}
 			const args = buildExecuteToolArgs({
-				// Local published invoke is already minted into `code`.
+				// Already minted into `code` for local runs.
 				invoke:
 					localPackageInvoke || publishedInvokeCode !== undefined
 						? undefined
@@ -1285,7 +1285,6 @@ async function dispatch(
 								await import('./remote-execute.js')
 							).runRemoteExecuteWithToken({
 								code: typeof args.code === 'string' ? args.code : undefined,
-								invoke,
 								params: args.params,
 								conversationId: args.conversationId as string | undefined,
 								...(credentials !== undefined ? { credentials } : {}),
@@ -1310,7 +1309,6 @@ async function dispatch(
 									await import('./remote-execute.js')
 								).runRemoteExecuteWithToken({
 									code: typeof args.code === 'string' ? args.code : undefined,
-									invoke,
 									params: args.params,
 									conversationId: args.conversationId as string | undefined,
 									...(credentials !== undefined ? { credentials } : {}),
@@ -1917,7 +1915,11 @@ export function buildExecuteToolArgs(input: {
 		if (!invoke) {
 			throw new Error('Provide a non-empty --invoke value.')
 		}
-		return attachExecuteCommonArgs({ invoke }, input)
+		// Hosted execute takes only `code`; --invoke is client-side sugar.
+		return attachExecuteCommonArgs(
+			{ code: resolveExecuteInvokeCode(invoke) },
+			input,
+		)
 	}
 	if (code) {
 		return attachExecuteCommonArgs({ code }, input)

@@ -67,6 +67,7 @@ exports[`contextRuns allow list snapshot 1`] = `
   "metaPlatformFeedbackSubmit",
   "metaSetMcpServerInstructions",
   "orgMemberList",
+  "packageAppConnectedPeopleList",
   "packageAppCustomHostnameList",
   "packageAppFetch",
   "packageAppRunsAsGet",

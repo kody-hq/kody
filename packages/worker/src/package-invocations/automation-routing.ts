@@ -1,8 +1,8 @@
-import { buildExecuteInvokePassthroughSource } from '#mcp/execute-invoke.ts'
 import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
 import {
 	type AutomationExecutionTarget,
 	automationTargetId,
+	buildExecuteInvokePassthroughSource,
 	exportKeyForPath,
 	packageExportSpecifier,
 	resolveAutomationRouting,

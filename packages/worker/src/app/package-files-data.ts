@@ -711,6 +711,7 @@ export async function loadAccessiblePackageFilesData(input: {
 			viewerIsOwner: page.viewerIsOwner,
 			viewerCanManage: page.viewerCanManage,
 			viewerCanManageAccess: page.viewerCanManageAccess,
+			viewerCanSeeConnectedPeople: page.viewerCanSeeConnectedPeople,
 			isPrivate: page.ownerPackage?.isPrivate ?? false,
 			username: page.username,
 			kodyId: page.kodyId,
@@ -776,6 +777,7 @@ export async function loadAccessiblePackageFilesData(input: {
 		...data,
 		viewerCanManage: page.viewerCanManage,
 		viewerCanManageAccess: page.viewerCanManageAccess,
+		viewerCanSeeConnectedPeople: page.viewerCanSeeConnectedPeople,
 		description: page.ownerPackage.description,
 		ownerProfilePublic: page.ownerProfilePublic,
 		repoActions: await buildPackageRepoActionsForPage(

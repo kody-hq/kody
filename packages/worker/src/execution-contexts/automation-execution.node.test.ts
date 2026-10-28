@@ -35,10 +35,7 @@ test('execution setting mirrors execute routing rules', () => {
 		{ context: 'a', requires: ['gpu'] },
 		{ context: 'a', extra: true },
 	]) {
-		expect(
-			automationExecutionSchema.safeParse(bad).success,
-			JSON.stringify(bad),
-		).toBe(false)
+		expect(automationExecutionSchema.safeParse(bad).success).toBe(false)
 	}
 	expect(parseAutomationExecution({ chain: ['cloud', 'a'] })).toBe(null)
 })

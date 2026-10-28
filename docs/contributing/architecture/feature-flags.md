@@ -159,20 +159,6 @@ small badge in the app chrome and exists so the system stays exercised
 end-to-end. Experiment flags live in the same registry and are removed in the
 same way: delete the definition and every gate site.
 
-`execute-invoke` is an experiment (default **off**, registry
-`defaultAudience: experiments_opt_in`) for the MCP `execute` `invoke` shortcut.
-When on for a caller, the execute tool advertises `invoke` (a
-`kody:@scope/package/export` specifier) and generates the same thin passthrough
-source a careful agent would write, then runs the existing execute path. When
-off, `invoke` is omitted from the tool schema and rejected if sent. The declared
-`successMetric` is `dynamic_worker_day` event count, goal decrease: stable
-invoke-generated graphs should reuse one isolate per package export instead of
-burning a unique worker-day per rewritten glue module. Exposures are recorded
-when the MCP execute tool is registered (invoke offered). Enable for experiment
-members with
-`adminFeatureFlagSet({ key: "execute-invoke", enabled: true, audience: "experiments_opt_in" })`.
-Remove the flag and gate sites when the experiment ends.
-
 `connection-profiles` is an experiment (default **off**, registry
 `defaultAudience: experiments_opt_in`) for named connection profiles on
 `/@<slug>/-/agents`. When on, experimenters create profiles with package grant

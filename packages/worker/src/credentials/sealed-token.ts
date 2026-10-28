@@ -7,7 +7,8 @@
  *
  * A sealed token is bound to its org, the run that received it (when the
  * run has a binding), the registrable domains it may be sent to, and an
- * expiry.
+ * expiry. A JWT access token may also go to the host its https `aud` names
+ * (ADR 0068, 2026-10-28 amendment).
  */
 import {
 	base64UrlToBytes,
@@ -36,6 +37,10 @@ const sealedPayloadSchema = z.object({
 	binding: z.string().min(1).nullable(),
 	domains: z.array(z.string().min(1)).min(1),
 	exp: z.number(),
+	/** Where the token came from, for the refusal hint. */
+	src: z.enum(['jwt-sign', 'token-response']).optional(),
+	/** Hosts the token's https `aud` names, for the refusal hint. */
+	aud: z.array(z.string().min(1)).optional(),
 })
 
 type SealedTokenEnv = Pick<Env, 'SECRET_STORE_KEY'>
@@ -44,6 +49,7 @@ export type SealedTokenBinding = {
 	org: string
 	binding: string | null
 	domains: ReadonlyArray<string>
+	source?: 'jwt-sign' | 'token-response'
 }
 
 async function sealingKey(env: SealedTokenEnv) {
@@ -87,6 +93,8 @@ export async function sealToken(input: {
 	to: SealedTokenBinding
 	/** Seconds the provider says the token lives; capped at one hour. */
 	expiresInSeconds?: number | null
+	/** Exact hosts (no subdomains) the token's audience names. */
+	audienceHosts?: ReadonlyArray<string>
 	now?: number
 }) {
 	const now = input.now ?? Date.now()
@@ -95,12 +103,15 @@ export async function sealToken(input: {
 		Number.isFinite(input.expiresInSeconds)
 			? Math.min(Math.max(input.expiresInSeconds, 0) * 1000, maxLifetimeMs)
 			: maxLifetimeMs
+	const audienceHosts = input.audienceHosts ?? []
 	const payload: z.infer<typeof sealedPayloadSchema> = {
 		v: input.value,
 		org: input.to.org,
 		binding: input.to.binding,
 		domains: [...new Set(input.to.domains)],
 		exp: now + lifetimeMs,
+		...(input.to.source ? { src: input.to.source } : {}),
+		...(audienceHosts.length > 0 ? { aud: [...audienceHosts] } : {}),
 	}
 	const iv = crypto.getRandomValues(new Uint8Array(12))
 	const sealed = await crypto.subtle.encrypt(
@@ -168,10 +179,11 @@ export async function openSealedToken(input: {
 				domain === anySealedTokenDomain ||
 				host === domain ||
 				host.endsWith(`.${domain}`),
-		)
+		) &&
+		!payload.aud?.includes(host)
 	) {
 		refuse(
-			`A sealed token may only be sent to ${payload.domains.join(', ')}, not ${host}.`,
+			`A sealed token may only be sent to ${[...payload.domains, ...(payload.aud ?? [])].join(', ')}, not ${host}. ${refusedHostHint(payload, host)}`,
 		)
 	}
 	const urlPart = input.parts.find(
@@ -185,14 +197,95 @@ export async function openSealedToken(input: {
 	return payload.v
 }
 
+function refusedHostHint(
+	payload: z.infer<typeof sealedPayloadSchema>,
+	host: string,
+) {
+	if (payload.src === 'jwt-sign') {
+		return `If ${host} is where this JWT goes, set its "aud" claim to https://${host} or pass send_to_host: "${host}" to secretJwtSign.`
+	}
+	if (payload.aud?.length) {
+		return `It was issued for ${payload.aud.map((aud) => `https://${aud}`).join(', ')}; if ${host} is a different API, mint a token whose scope or resource is ${host}'s API.`
+	}
+	return `It names no https audience Kody can read. If ${host} is the API it is for, have the identity provider issue a JWT access token whose "aud" is https://${host}, or approve ${host} on the credential that minted it.`
+}
+
+/**
+ * Hosts an access token is issued for, beyond `domains`: the https `aud` host
+ * of a JWT, plus the hosts Microsoft documents for an Entra resource whose
+ * identifier names another host. The identity provider chose `aud`; code only
+ * asked, and a token is only good at its audience. Exact hosts, not
+ * registrable domains, keep an `azure.com` audience off tenant-named hosts
+ * such as `<label>.<region>.cloudapp.azure.com`. A token naming two outside
+ * audiences gets none, so it cannot carry one API's access to another host.
+ */
+export function sealedTokenAudienceHosts(
+	token: string,
+	domains: ReadonlyArray<string> = [],
+) {
+	const covered = (host: string) =>
+		domains.some((domain) => host === domain || host.endsWith(`.${domain}`))
+	const outside = new Map<string, Array<string>>()
+	for (const host of readJwtAudiences(token).map(audienceHost)) {
+		if (host === null) continue
+		const hosts = [host, ...(entraResourceHostAliases[host] ?? [])].filter(
+			(candidate) => !covered(candidate),
+		)
+		if (hosts.length > 0) outside.set(host, hosts)
+	}
+	if (outside.size !== 1) return []
+	return [...outside.values()][0]!
+}
+
+/**
+ * Entra resource identifiers served at a host the identifier does not name.
+ * Only add a pair Microsoft documents, and only hosts Microsoft operates.
+ */
+const entraResourceHostAliases: Record<string, ReadonlyArray<string>> = {
+	// https://learn.microsoft.com/azure/azure-monitor/logs/api/access-api
+	'api.loganalytics.io': ['api.loganalytics.azure.com'],
+	// The classic ARM resource; Azure Resource Manager accepts both.
+	'management.core.windows.net': ['management.azure.com'],
+}
+
+function readJwtAudiences(token: string) {
+	const parts = token.split('.')
+	if (parts.length !== 3 || !parts[1]) return []
+	let claims: unknown
+	try {
+		claims = JSON.parse(new TextDecoder().decode(base64UrlToBytes(parts[1])))
+	} catch {
+		return []
+	}
+	if (!claims || typeof claims !== 'object' || Array.isArray(claims)) return []
+	const aud = (claims as Record<string, unknown>).aud
+	const audiences = Array.isArray(aud) ? aud : [aud]
+	return audiences.filter((value): value is string => typeof value === 'string')
+}
+
+function audienceHost(aud: string) {
+	if (!/^https:\/\//i.test(aud)) return null
+	let host: string
+	try {
+		host = new URL(aud).hostname.toLowerCase().replace(/\.$/, '')
+	} catch {
+		return null
+	}
+	// A public suffix, an IP, or a single label names no one API.
+	return getDomain(host, { allowPrivateDomains: true }) ? host : null
+}
+
 /**
  * Replaces the token fields of a JSON object with sealed tokens. Returns
- * null when there is nothing to seal.
+ * null when there is nothing to seal. An `access_token` JWT may also fill on
+ * the hosts its https `aud` names (see `sealedTokenAudienceHosts`).
  */
 export async function sealTokenFields(input: {
 	env: SealedTokenEnv
 	payload: unknown
 	to: SealedTokenBinding
+	/** Credential values filled into the request; see `audienceHostsFor`. */
+	filledValues?: ReadonlyArray<string>
 }) {
 	const { payload } = input
 	if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -215,7 +308,10 @@ export async function sealTokenFields(input: {
 		next[field] = await sealToken({
 			env: input.env,
 			value,
-			to: input.to,
+			to: { source: 'token-response', ...input.to },
+			...(field === 'access_token'
+				? { audienceHosts: audienceHostsFor(value, input) }
+				: {}),
 			// A refresh token outlives the access token; keep it for the max.
 			expiresInSeconds:
 				field === 'refresh_token'
@@ -226,6 +322,38 @@ export async function sealTokenFields(input: {
 		})
 	}
 	return next
+}
+
+/**
+ * An endpoint that echoes the request could hand back a filled secret dressed
+ * as a JWT naming any audience. Such a token keeps only `domains`. A filled
+ * Basic credential is also checked for its decoded password. Decoded JWT
+ * claims are not checked: real tokens carry the client id (Entra `appid`),
+ * and an approved host that re-encodes a secret already holds it.
+ */
+function audienceHostsFor(
+	token: string,
+	input: { to: SealedTokenBinding; filledValues?: ReadonlyArray<string> },
+) {
+	const values = (input.filledValues ?? []).flatMap((value) => [
+		value,
+		...basicAuthPassword(value),
+	])
+	if (values.some((value) => value && token.includes(value))) return []
+	return sealedTokenAudienceHosts(token, input.to.domains)
+}
+
+function basicAuthPassword(value: string) {
+	const encoded = value.replace(/^basic\s+/i, '')
+	if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return []
+	let decoded: string
+	try {
+		decoded = atob(encoded)
+	} catch {
+		return []
+	}
+	const colon = decoded.indexOf(':')
+	return colon < 0 ? [] : [decoded.slice(colon + 1)]
 }
 
 const maxSealedResponseBytes = 1024 * 1024
@@ -240,6 +368,8 @@ export async function sealTokenResponse(input: {
 	requestUrl: string
 	/** The filled credentials' approved hosts; the token may also go there. */
 	approvedHosts?: ReadonlyArray<string>
+	/** Credential values filled into the request. */
+	filledValues?: ReadonlyArray<string>
 	org: string
 	binding: string | null
 }) {
@@ -282,6 +412,7 @@ export async function sealTokenResponse(input: {
 			binding: input.binding,
 			domains: [domain, ...approvedHostDomains(input.approvedHosts ?? [])],
 		},
+		filledValues: input.filledValues,
 	})
 	return rebuilt(sealed ? JSON.stringify(sealed) : text)
 }

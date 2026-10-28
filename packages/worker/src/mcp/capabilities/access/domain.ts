@@ -23,6 +23,10 @@ import {
 	orgMemberUpdateCapability,
 } from './org-members.ts'
 import {
+	packageAppConnectedPeopleListCapability,
+	packageAppConnectedPersonRevokeCapability,
+} from './package-app-connected-people.ts'
+import {
 	packageCollaboratorListCapability,
 	packageCollaboratorRemoveCapability,
 	packageCollaboratorSetCapability,
@@ -55,6 +59,8 @@ export const accessDomain = defineDomain({
 		packageCollaboratorListCapability,
 		packageCollaboratorSetCapability,
 		packageCollaboratorRemoveCapability,
+		packageAppConnectedPeopleListCapability,
+		packageAppConnectedPersonRevokeCapability,
 		inviteCreateCapability,
 		inviteAcceptCapability,
 		inviteRevokeCapability,
