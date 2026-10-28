@@ -57,6 +57,7 @@ export async function checkWebsiteUsernameAvailability({
 		username,
 		env,
 		seeds,
+		reclaimEmail: seeds.email,
 	})
 
 	return authOperationResult({

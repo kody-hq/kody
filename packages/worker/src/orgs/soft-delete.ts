@@ -4,6 +4,7 @@
  * Soft-delete and restore must read and update tombstoned rows.
  */
 
+import { isReleasedAccountEmail } from '#worker/identity/deleted-account-identity-release.ts'
 import {
 	ownerIdFromStored,
 	type OwnerId,
@@ -961,12 +962,17 @@ export async function restoreUserAccount(input: {
 	const now = input.now ?? new Date()
 	const restoredAt = now.toISOString()
 	const userRow = await input.env.APP_DB.prepare(
-		`SELECT deleted_at FROM users WHERE stable_user_id = ?`,
+		`SELECT deleted_at, email FROM users WHERE stable_user_id = ?`,
 	)
 		.bind(input.userId)
-		.first<{ deleted_at: string | null }>()
+		.first<{ deleted_at: string | null; email: string }>()
 	if (!userRow?.deleted_at) {
 		throw new Error('user_not_deleted')
+	}
+	// A fresh signup with this email superseded the account and took its
+	// email and handle; restoring it would revive a nameless account.
+	if (isReleasedAccountEmail(userRow.email)) {
+		throw new Error('user_superseded_by_new_signup')
 	}
 	if (!isWithinSoftDeleteRestoreWindow(userRow.deleted_at, now)) {
 		throw new OrgRestoreWindowExpiredError()

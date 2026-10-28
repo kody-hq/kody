@@ -23,6 +23,12 @@ a long-lived feature flag or dual read paths.
 - **Purge** runs in a dedicated lane: rows past the retention cutoff are
   hard-deleted; `deleting_at` marks in-flight purge claims. **Org delete** and
   **user offboarding** are separate flows (org vs person scope).
+- **Same-email signup supersedes** a soft-deleted account: password, Google/
+  provider, and admin signup move its email and username to released tombstones
+  and free its email claims, provider links, handles, personal org slug, and
+  inbox addresses (`releaseSoftDeletedAccountsForEmail`). Ids and owned rows
+  stay for purge; the superseded account can no longer be restored. Other emails
+  still see the handle as taken until purge.
 - **Purge audit** appends to `org_audit_events` (AUDIT_DB, **1 year**
   retention). First production purge enable is **dry-run** (log only, no hard
   deletes).

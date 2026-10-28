@@ -1,4 +1,8 @@
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
+import {
+	isUsernameReleasableForEmail,
+	releaseSoftDeletedAccountsForEmail,
+} from '#worker/identity/deleted-account-identity-release.ts'
 import { authOperationResult } from './auth-operation-result.ts'
 import { enum_, object, parseSafe, string } from 'remix/data-schema'
 import {
@@ -245,7 +249,14 @@ export async function authenticateWebsite({
 	}
 
 	if (normalizedMode === 'signup') {
-		if (await isUsernameClaimedInIdentity(env.APP_DB, normalizedUsername)) {
+		if (
+			(await isUsernameClaimedInIdentity(env.APP_DB, normalizedUsername)) &&
+			!(await isUsernameReleasableForEmail(
+				env.APP_DB,
+				normalizedUsername,
+				normalizedEmail,
+			))
+		) {
 			void logAuditEvent({
 				db: auditDatabaseFromEnv(env),
 				category: 'auth',
@@ -325,13 +336,17 @@ export async function authenticateWebsite({
 
 		const passwordHash = await createPasswordHash(normalizedPassword)
 
+		// A deleted account never blocks a fresh signup with its email: the
+		// new account supersedes it (fresh ids, nothing inherited).
+		await releaseSoftDeletedAccountsForEmail(env.APP_DB, normalizedEmail)
+
 		// Same body and status as a fresh signup so the endpoint does
 		// not confirm which addresses hold accounts. Nothing is created
 		// or sent.
 		const existingUser = await db.findOne(usersTable, {
 			where: { email: normalizedEmail },
 		})
-		if (existingUser) {
+		if (existingUser && !existingUser.deleted_at) {
 			void logAuditEvent({
 				db: auditDatabaseFromEnv(env),
 				category: 'auth',

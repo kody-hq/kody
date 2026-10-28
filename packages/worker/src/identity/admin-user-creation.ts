@@ -7,6 +7,7 @@ import {
 	createPasswordResetToken,
 } from '#worker/identity/password-reset-tokens.ts'
 import { assignUserRole } from '#worker/identity/permissions-db.ts'
+import { releaseSoftDeletedAccountsForEmail } from '#worker/identity/deleted-account-identity-release.ts'
 import {
 	getAvailableGeneratedUsername,
 	userExistsByUsername,
@@ -167,6 +168,7 @@ export async function adminCreateUserWithPasswordSetup(input: {
 	if (existingUser) {
 		throw new AdminCreateUserError('email_exists', 'Email already registered.')
 	}
+	await releaseSoftDeletedAccountsForEmail(input.db, email, input.now)
 
 	const username = await resolveUsername({
 		db: input.db,

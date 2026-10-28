@@ -152,7 +152,9 @@ export async function requestWebsitePasswordReset({
 		where: { email: normalizedEmail },
 	})
 
-	if (userRecord) {
+	// A soft-deleted account cannot sign in, so a reset link for it would
+	// only land the person on a password that login then rejects.
+	if (userRecord && !userRecord.deleted_at) {
 		const userId = userRecord.id
 		// Token writes and the email send happen after the response so
 		// the reply latency does not depend on whether the address is
@@ -329,7 +331,7 @@ export async function confirmWebsitePasswordReset({
 	const userRecord = await db.findOne(usersTable, {
 		where: { id: resetRecord.user_id },
 	})
-	if (!userRecord) {
+	if (!userRecord || userRecord.deleted_at) {
 		void logAuditEvent({
 			db: auditDatabaseFromEnv(env),
 			category: 'auth',

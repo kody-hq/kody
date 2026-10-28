@@ -1,4 +1,5 @@
 import { maybeTagKitSubscriberOnSignup } from '#app/kit-signup.ts'
+import { releaseSoftDeletedAccountsForEmail } from '#worker/identity/deleted-account-identity-release.ts'
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
 import {
 	firstTouchAttributionCreateFields,
@@ -97,6 +98,9 @@ export async function createOauthSignupAccount(input: {
 	if (usernameError) {
 		return { ok: false, reason: 'invalid_username' }
 	}
+	// The provider verified this email, so its owner supersedes any
+	// soft-deleted account still holding it (and may reclaim its handle).
+	await releaseSoftDeletedAccountsForEmail(env.APP_DB, email)
 	if (await isUsernameClaimedInIdentity(env.APP_DB, username)) {
 		return { ok: false, reason: 'username_exists' }
 	}
