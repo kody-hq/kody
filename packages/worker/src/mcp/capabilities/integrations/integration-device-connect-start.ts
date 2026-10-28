@@ -60,6 +60,7 @@ export const integrationDeviceConnectStartCapability = defineDomainCapability(
 	capabilityDomainNames.integrations,
 	{
 		name: 'integrationDeviceConnectStart',
+		contextRuns: 'deny',
 		orgPermission: 'integration:write',
 		description:
 			'Start RFC 8628 OAuth device authorization for an integration. Returns a user_code and verification URI for the signed-in user to approve at the provider. The provider device_code and any client secret stay server-side and never appear in the output. Poll with integrationDeviceConnectPoll until approved or failed. Prefer /connect/oauth?flow=device for interactive browser flows; use this capability when an agent must drive device connect without a browser redirect.',

@@ -32,6 +32,7 @@ export const mcpServerListCapability = defineDomainCapability(
 	capabilityDomainNames.mcpServers,
 	{
 		name: 'mcpServerList',
+		contextRuns: 'allow',
 		orgPermission: 'integration:read',
 		description:
 			"List the signed-in user's saved MCP servers with live connection status, pending OAuth authUrls (Kody consent pages the user opens to approve access), whether stored tokens include a refresh token, discovered tool names, durable lastError when post-IdP settle or token refresh did not reach ready, and package usage (any context vs locked to listed packages).",

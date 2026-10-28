@@ -23,6 +23,7 @@ export const repoEditFilesCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoEditFiles',
+		contextRuns: 'allow',
 		orgPermission: 'package:write',
 		description: [
 			'Apply a batch of file-level edits in an active repo session: write, replace, writeJson, delete, or move. Same-path write/replace/writeJson edits in one call compose in order against each prior result.',

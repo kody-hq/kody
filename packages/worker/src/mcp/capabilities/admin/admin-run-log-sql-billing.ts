@@ -94,6 +94,7 @@ export const adminRunLogSqlBillingCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminRunLogSqlBilling',
+		contextRuns: 'deny',
 		description:
 			'Read-only content-free RunLog SQLite billing and schema snapshot for one user: per-op rowsRead/rowsWritten, run_logs PRAGMA index_list/table_info, COUNT(*) for runs/run_logs/ledger/workflow_projections, EXPLAIN QUERY PLAN for run_id DELETE/SELECT, and run_count meta versus COUNT(*) FROM runs. Admin-only; never returns run rows, logs, or other user-authored content. Same as listRuns or getSqlBillingStats: the first RPC on an account that has never used RunLog instantiates that Durable Object and writes the empty schema. Prefer inspecting accounts that already have run history.',
 		keywords: [

@@ -59,6 +59,7 @@ export const adminUserAccountDeleteCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminUserAccountDelete',
+		contextRuns: 'deny',
 		description:
 			'Start a hard delete of one person account. Admin-only. This never deletes anything: it returns an approval URL. The admin opens that single page, reviews the handle, email, created date, plan, and counts (packages, jobs, credentials, connections, sessions, org memberships, memories, webhooks, usage, and credit balance), and clicks Approve. Packages, sole ownership of a non-personal organization, or paid billing require an extra acknowledgement on that page before Approve works. Approval frees the handle so it can be registered again, removes the personal organization, and leaves organizations this person does not solely own (and their other members) in place. The link expires in 24 hours.',
 		keywords: [

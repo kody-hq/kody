@@ -14,6 +14,7 @@ export const repoLogCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoLog',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description: [
 			'Return git commit history for the active repo session workspace.',

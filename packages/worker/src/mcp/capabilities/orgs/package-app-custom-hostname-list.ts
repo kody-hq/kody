@@ -15,6 +15,7 @@ export const packageAppCustomHostnameListCapability = defineDomainCapability(
 	capabilityDomainNames.orgs,
 	{
 		name: 'packageAppCustomHostnameList',
+		contextRuns: 'allow',
 		orgPermission: 'org:write',
 		featureFlag: packageAppCustomDomainsFlagKey,
 		description:

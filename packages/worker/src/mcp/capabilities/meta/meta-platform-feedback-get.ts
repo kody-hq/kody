@@ -12,6 +12,7 @@ export const metaPlatformFeedbackGetCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'metaPlatformFeedbackGet',
+		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
 			'Read one platform feedback submission owned by the signed-in user by feedback_id. Returns id, category, summary, details, status, resolution_note, resolution_pr_urls, created_at, and updated_at (outcome time when status is resolved or dismissed). Not-owned ids return null, same as missing. Never exposes reviewer identity or admin notes. Use after metaPlatformFeedbackSubmit, or metaPlatformFeedbackList to find an id.',

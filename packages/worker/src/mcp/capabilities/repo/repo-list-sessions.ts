@@ -61,6 +61,7 @@ export const repoListSessionsCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoListSessions',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'List repo editing sessions in the org this connection is bound to, defaulting to active sessions so agents can discover sessions to resume, inspect, publish, or discard without already knowing session ids.',

@@ -197,6 +197,7 @@ export const adminMailboxMaintenanceCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminMailboxMaintenance',
+		contextRuns: 'deny',
 		description:
 			'Admin-only Mailbox retention/delete maintenance and structural status: final authority marker, provider repair, due-owner and delivery-alert health, thin provider-index counts, dedicated system-email counts/health, keyset-paged Mailbox retention, or owner-scoped delete_message. Audited.',
 		keywords: [

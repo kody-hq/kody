@@ -68,6 +68,7 @@ export const repoShowPublishNoteCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoShowPublishNote',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'Read the Kody publish harness git note attached to a published Artifacts commit. Use this to inspect publish provenance, session/conversation ids, and check summaries without opening D1.',

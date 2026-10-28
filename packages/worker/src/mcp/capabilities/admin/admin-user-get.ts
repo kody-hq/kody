@@ -32,6 +32,7 @@ export const adminUserGetCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminUserGet',
+		contextRuns: 'deny',
 		description:
 			'Get one user account metadata record and roles by stable user id, email, or username. Admin-only; never returns user content.',
 		keywords: ['admin', 'user', 'account', 'roles', 'lookup', 'rbac'],

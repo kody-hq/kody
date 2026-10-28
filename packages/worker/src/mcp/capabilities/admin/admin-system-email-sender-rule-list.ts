@@ -27,6 +27,7 @@ export const adminSystemEmailSenderRuleListCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminSystemEmailSenderRuleList',
+		contextRuns: 'deny',
 		description:
 			'List sender allow/block/quarantine rules that control inbound spam policy for operator system inboxes (kody@, abuse@, and other reserved locals on the apex domain). Admin-only; never reads user-owned email rules.',
 		keywords: [

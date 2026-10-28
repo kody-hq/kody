@@ -30,6 +30,7 @@ export const getPackageCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageGet',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'Load one saved package metadata record for the signed-in user, including community-fork source listing provenance, the full export array, callable export contracts, and FYI metadata for associated package-scoped secrets (names and package_id, never values), and its credential needs with how each resolves for you (`credentials.needs`). For a single export contract, prefer search({ entity: "package:{kodyId}#{subpath}" }). Does not return README, AGENTS.md, or source files; use repoOpenSession + repoReadFile (or packageGetGitRemote) for those.',

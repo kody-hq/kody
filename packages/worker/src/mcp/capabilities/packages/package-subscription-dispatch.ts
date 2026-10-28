@@ -89,6 +89,7 @@ export const packageSubscriptionDispatchCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: packageSubscriptionDispatchCapabilityName,
+		contextRuns: 'deny',
 		orgPermission: 'package:execute',
 		description:
 			'Interactive-MCP post-publish smoke test for one declared package.json#kody.subscriptions handler on an owner-scoped saved package. Real-surface run with real side effects; does not wait for a production event and is unavailable from package jobs, subscriptions, webhooks, or other package runtimes. Package composition is a static kody:@scope/pkg/export import (plus kody.dependencies), not this capability. Pass params for a fixture envelope or email_message_id to replay stored inbound mail. The platform marks the run synthetic.',

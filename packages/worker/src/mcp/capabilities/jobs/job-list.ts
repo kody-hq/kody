@@ -22,6 +22,7 @@ export const jobListCapability = defineDomainCapability(
 	capabilityDomainNames.jobs,
 	{
 		name: 'jobList',
+		contextRuns: 'allow',
 		orgPermission: 'job:read',
 		description:
 			"List existing scheduled jobs for the signed-in user with status, counters, and job-manager alarm state for debugging scheduling issues. Recurring schedules belong on a package (`kody.jobs`); deferred one-shots use `workflows.create`. recent_runs is empty here for efficiency; use jobGet for one job's recent runs or runList/runSummary for cross-job failure history.",

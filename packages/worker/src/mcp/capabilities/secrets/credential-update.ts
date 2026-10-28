@@ -70,6 +70,7 @@ export const credentialUpdateCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'credentialUpdate',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
 			"Set a credential's provider, inject, and/or fill placement: which package credential needs it can satisfy, where a scoped `credential(key)` client puts its value, and which request parts placeholders may fill (headers, query, path, body; null = anywhere). Works for user-scope secrets, OAuth connections, MCP servers (provider/inject only), and vault bindings (placement only) by credential id; needs Write on that credential and is audited. Never takes or returns a value.",

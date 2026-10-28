@@ -17,6 +17,7 @@ export const adminPackageCodemodApplyCapability = defineDomainCapability(
 		...adminMutationCapabilityAccess,
 		destructive: true,
 		name: 'adminPackageCodemodApply',
+		contextRuns: 'deny',
 		description: `Fleet-apply a registered package codemod: republishes transformed published trees after the same gates as dry-run. Prefer adminPackageCodemodDryRun first; canary with filters. Keep the returned runId to revert with adminPackageCodemodRevert. ${packageCodemodHeavyPagingHint}`,
 		keywords: [
 			'admin',

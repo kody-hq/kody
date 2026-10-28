@@ -135,6 +135,7 @@ export const credentialOrgGrantCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'credentialOrgGrant',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: true,
 		description:
@@ -182,6 +183,7 @@ export const credentialOrgRevokeCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'credentialOrgRevoke',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: true,
 		description:
@@ -221,6 +223,7 @@ export const credentialOrgGrantListCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'credentialOrgGrantList',
+		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
 			"List the orgs your personal credentials are granted to (ADR 0068), optionally for one credential. `active` is false when a grant does not work right now: the credential's value expired, its OAuth connection is disconnected, its MCP server is disabled, or you no longer belong to the org. Lists only your own grants, never anyone else's. Never returns values.",

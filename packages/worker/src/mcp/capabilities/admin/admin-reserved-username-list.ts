@@ -18,6 +18,7 @@ export const adminReservedUsernameListCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminReservedUsernameList',
+		contextRuns: 'deny',
 		description:
 			'List the built-in reserved usernames, runtime KV additions and removals, and registered usernames that collide with the effective reserved set. Admin-only; never returns emails or other account content beyond username and stable user id for conflicts.',
 		keywords: [

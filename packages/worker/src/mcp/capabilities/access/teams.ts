@@ -42,6 +42,7 @@ export const teamListCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'teamList',
+		contextRuns: 'allow',
 		orgPermission: 'team:read',
 		description:
 			'List live teams in the organization this request is bound to, with live member counts.',
@@ -77,6 +78,7 @@ export const teamCreateCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'teamCreate',
+		contextRuns: 'deny',
 		orgPermission: 'team:write',
 		description:
 			'Create a team in the organization this request is bound to. The slug is a handle unique inside the organization.',
@@ -135,6 +137,7 @@ export const teamMemberAddCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'teamMemberAdd',
+		contextRuns: 'deny',
 		orgPermission: 'team:write',
 		requiresLivePerson: true,
 		description:
@@ -188,6 +191,7 @@ export const teamMemberRemoveCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'teamMemberRemove',
+		contextRuns: 'deny',
 		orgPermission: 'team:delete',
 		requiresLivePerson: true,
 		description:

@@ -20,6 +20,7 @@ export const mcpServerRefreshCapability = defineDomainCapability(
 	capabilityDomainNames.mcpServers,
 	{
 		name: 'mcpServerRefresh',
+		contextRuns: 'allow',
 		orgPermission: 'integration:write',
 		description:
 			'Re-discover the tools exposed by a connected MCP server (for example after the server ships new tools).',

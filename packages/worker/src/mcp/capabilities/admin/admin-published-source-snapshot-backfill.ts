@@ -113,6 +113,7 @@ export const adminPublishedSourceSnapshotBackfillCapability =
 		...adminMutationCapabilityAccess,
 		destructive: true,
 		name: 'adminPublishedSourceSnapshotBackfill',
+		contextRuns: 'deny',
 		description: `Fleet scan/apply for published packages whose source-snapshot KV key is missing at the current published commit (entity_sources.published_commit with no BUNDLE_ARTIFACTS_KV snapshot). Rebuilds the snapshot from the Artifacts git tip only (no source/content change). Safe and idempotent. ${pagingHint}`,
 		keywords: [
 			'admin',
