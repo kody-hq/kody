@@ -222,6 +222,7 @@ test('the grant store and schema refuse an everyone grant naming another org', a
 			resourceId: 'pkg-1',
 			subject: { type: 'org', id: collaboratorPeople.dan.personId },
 			preset: 'use',
+			permissions: null,
 			createdByUserId: collaboratorPeople.ada.personId,
 			audit: createTestOrgAuditWriter(),
 		}),
