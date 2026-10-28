@@ -1273,7 +1273,6 @@ async function dispatch(
 								await import('./remote-execute.js')
 							).runRemoteExecuteWithToken({
 								code: typeof args.code === 'string' ? args.code : undefined,
-								invoke,
 								params: args.params,
 								conversationId: args.conversationId as string | undefined,
 								...(credentials !== undefined ? { credentials } : {}),
@@ -1297,7 +1296,6 @@ async function dispatch(
 									await import('./remote-execute.js')
 								).runRemoteExecuteWithToken({
 									code: typeof args.code === 'string' ? args.code : undefined,
-									invoke,
 									params: args.params,
 									conversationId: args.conversationId as string | undefined,
 									...(credentials !== undefined ? { credentials } : {}),

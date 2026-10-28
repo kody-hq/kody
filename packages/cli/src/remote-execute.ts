@@ -5,8 +5,8 @@ import { type ToolCallResult } from './tool-result.js'
 import { resolveExecuteInvokeCode } from './invoke-passthrough.js'
 
 export type RemoteExecuteInput = {
+	/** Module source; `--invoke` is already minted into this by the caller. */
 	code?: string
-	invoke?: string
 	params?: unknown
 	conversationId?: string
 	/**
@@ -33,15 +33,9 @@ export async function runRemoteExecuteWithToken(
 	input: RemoteExecuteInput,
 ): Promise<ToolCallResult> {
 	assertTokenSafeApiUrl(input.apiUrl)
-	const invoke = input.invoke?.trim()
 	const body: Record<string, unknown> = {}
-	if (invoke && input.code?.trim()) {
-		throw new Error(
-			'--invoke cannot be combined with --code, --file, or a module string.',
-		)
-	}
 	// `--invoke` is client-side sugar: hosted execute accepts only `code`.
-	body.code = resolveRemoteExecuteCode(input)
+	body.code = resolveRemoteExecuteCode({ code: input.code })
 	if (input.params !== undefined) body.params = input.params
 	if (input.conversationId !== undefined)
 		body.conversationId = input.conversationId
