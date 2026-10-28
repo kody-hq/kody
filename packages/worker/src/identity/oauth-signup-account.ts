@@ -110,13 +110,12 @@ export async function createOauthSignupAccount(input: {
 	)
 	if (await isUsernameClaimedInIdentity(env.APP_DB, username)) {
 		// Its own username, handle, or personal org slug is reclaimable.
-		let heldOnlyByReleasable = releasable.some(
-			(account) => normalizeUsername(account.username) === username,
-		)
-		for (const account of heldOnlyByReleasable ? [] : releasable) {
+		let heldOnlyByReleasable = false
+		for (const account of releasable) {
 			if (
 				!(await isUsernameClaimedInIdentity(env.APP_DB, username, {
 					exceptStableUserId: account.stableUserId,
+					exceptOrgId: account.personalOrgId,
 				}))
 			) {
 				heldOnlyByReleasable = true

@@ -118,6 +118,7 @@ async function sendEmailClaimReleaseLink(input: {
 	const token = generateEmailClaimReleaseToken()
 	const tokenHash = await hashVerificationToken(token)
 	const expiresAt = Date.now() + emailClaimReleaseTokenExpiryMs
+	let restorePrevious: (() => Promise<void>) | null = null
 
 	if (input.onlyIfNoneWithinSeconds == null) {
 		await input.env.APP_DB.prepare(
@@ -133,34 +134,71 @@ async function sendEmailClaimReleaseLink(input: {
 			.bind(input.userId, email, tokenHash, expiresAt)
 			.run()
 	} else {
-		// (user_id, email) is unique: drop a stale link, then reserve; a
-		// concurrent caller that loses the insert sends nothing.
-		await input.env.APP_DB.prepare(
-			`DELETE FROM pending_email_claim_releases
-			 WHERE user_id = ? AND email = ?
-			   AND created_at <= datetime('now', ?)`,
+		// (user_id, email) is unique. A recent link wins; a stale one is
+		// swapped in place (restored if the new mail fails); a concurrent
+		// caller that loses the swap or insert sends nothing.
+		const existing = await input.env.APP_DB.prepare(
+			`SELECT id, token_hash, expires_at, created_at,
+			        created_at > datetime('now', ?) AS recent
+			 FROM pending_email_claim_releases
+			 WHERE user_id = ? AND email = ?`,
 		)
-			.bind(input.userId, email, `-${input.onlyIfNoneWithinSeconds} seconds`)
-			.run()
-		try {
-			const reserved = await input.env.APP_DB.prepare(
-				`INSERT INTO pending_email_claim_releases (user_id, email, token_hash, expires_at)
+			.bind(`-${input.onlyIfNoneWithinSeconds} seconds`, input.userId, email)
+			.first<{
+				id: number
+				token_hash: string
+				expires_at: number
+				created_at: string
+				recent: number
+			}>()
+		if (existing?.recent) return
+		if (existing) {
+			const swapped = await input.env.APP_DB.prepare(
+				`UPDATE pending_email_claim_releases
+				 SET token_hash = ?, expires_at = ?, created_at = CURRENT_TIMESTAMP
+				 WHERE id = ? AND token_hash = ?`,
+			)
+				.bind(tokenHash, expiresAt, existing.id, existing.token_hash)
+				.run()
+			if ((swapped.meta.changes ?? 0) === 0) return
+			restorePrevious = async () => {
+				await input.env.APP_DB.prepare(
+					`UPDATE pending_email_claim_releases
+					 SET token_hash = ?, expires_at = ?, created_at = ?
+					 WHERE token_hash = ?`,
+				)
+					.bind(
+						existing.token_hash,
+						existing.expires_at,
+						existing.created_at,
+						tokenHash,
+					)
+					.run()
+			}
+		} else
+			try {
+				const reserved = await input.env.APP_DB.prepare(
+					`INSERT INTO pending_email_claim_releases (user_id, email, token_hash, expires_at)
 				 SELECT ?, ?, ?, ?
 				 WHERE NOT EXISTS (
 				   SELECT 1 FROM pending_email_claim_releases
 				   WHERE user_id = ? AND email = ?
 				 )`,
-			)
-				.bind(input.userId, email, tokenHash, expiresAt, input.userId, email)
-				.run()
-			if ((reserved.meta.changes ?? 0) === 0) return
-		} catch (error) {
-			if (getUniqueConstraintField(error)) return
-			throw error
-		}
+				)
+					.bind(input.userId, email, tokenHash, expiresAt, input.userId, email)
+					.run()
+				if ((reserved.meta.changes ?? 0) === 0) return
+			} catch (error) {
+				if (getUniqueConstraintField(error)) return
+				throw error
+			}
 	}
 
 	async function discardNewToken() {
+		if (restorePrevious) {
+			await restorePrevious().catch(() => undefined)
+			return
+		}
 		await input.env.APP_DB.prepare(
 			`DELETE FROM pending_email_claim_releases WHERE token_hash = ?`,
 		)
