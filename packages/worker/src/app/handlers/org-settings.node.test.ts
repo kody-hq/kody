@@ -492,7 +492,7 @@ test('owner sees personal identity lock on their signup org and edits a team org
 		org: { slug: 'zeta-co', personal: false },
 		canManage: true,
 		canDelete: true,
-		customDomains: { hostnames: [] },
+		customDomains: { canAdd: false, hostnames: [] },
 	})
 })
 

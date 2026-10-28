@@ -1320,6 +1320,8 @@ type OrgSettingsCustomHostnameView = {
 }
 
 type OrgSettingsCustomDomainsView = {
+	/** False on free plans: custom domains need a paid org (ADR 0071). */
+	canAdd: boolean
 	hostnames: Array<OrgSettingsCustomHostnameView>
 	dnsTarget: string | null
 }

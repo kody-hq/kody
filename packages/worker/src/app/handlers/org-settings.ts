@@ -20,6 +20,7 @@ import {
 	addPackageAppCustomHostname,
 	deletePackageAppCustomHostname,
 	listPackageAppCustomHostnames,
+	orgPlanAllowsCustomDomains,
 	PackageAppCustomHostnameError,
 	packageAppCustomDomainRecordViews,
 	syncPackageAppCustomHostname,
@@ -32,6 +33,7 @@ async function loadCustomDomainsView(
 	try {
 		const listed = await listPackageAppCustomHostnames({ env, orgId })
 		return {
+			canAdd: await orgPlanAllowsCustomDomains(env.APP_DB, orgId),
 			dnsTarget: packageAppCustomDomainsCnameTargetFromBaseUrl(
 				env.PACKAGE_APP_BASE_URL,
 			),

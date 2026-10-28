@@ -365,7 +365,7 @@ function dnsHint(env: Env, hostname: string): PackageAppCustomHostnameDnsHint {
  * second-agent/referral gift overlays — those are personal-org only).
  * Stripe $0.10 metering for extras is still deferred; extras get a note.
  */
-async function requirePaidOrgForCustomDomains(db: D1Database, orgId: string) {
+async function readOrgPlanForCustomDomains(db: D1Database, orgId: string) {
 	const org = await db
 		.prepare(
 			`SELECT plan, stripe_plan FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`,
@@ -375,11 +375,23 @@ async function requirePaidOrgForCustomDomains(db: D1Database, orgId: string) {
 	if (!org) {
 		throw new PackageAppCustomHostnameError('Organization not found.')
 	}
-	const { plan } = resolvePlanOverlay(
+	return resolvePlanOverlay(
 		parseStoredPlanName(org.plan ?? 'free'),
 		org.stripe_plan,
 		null,
-	)
+	).plan
+}
+
+/** Whether the org's plan allows adding custom domains (ADR 0071). */
+export async function orgPlanAllowsCustomDomains(
+	db: D1Database,
+	orgId: string,
+) {
+	return (await readOrgPlanForCustomDomains(db, orgId)) !== 'free'
+}
+
+async function requirePaidOrgForCustomDomains(db: D1Database, orgId: string) {
+	const plan = await readOrgPlanForCustomDomains(db, orgId)
 	if (plan === 'free') {
 		throw new PackageAppCustomHostnameError(
 			'Custom domains require a paid organization plan. Paying orgs include one domain at no extra charge (ADR 0071).',
