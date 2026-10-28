@@ -487,6 +487,8 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 	]),
 	...capabilityRoutes('execution-contexts', [
 		['GET', '/v1/execution-contexts', 'executionContextList'],
+		['GET', '/v1/automation-execution', 'automationExecutionGet'],
+		['PUT', '/v1/automation-execution', 'automationExecutionSet'],
 		['GET', '/v1/execution-contexts/{id}', 'executionContextGet'],
 		['PATCH', '/v1/execution-contexts/{id}', 'executionContextUpdate'],
 		['DELETE', '/v1/execution-contexts/{id}', 'executionContextRevoke'],

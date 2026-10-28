@@ -4,6 +4,7 @@ exports[`contextRuns allow list snapshot 1`] = `
 [
   "accessList",
   "approvalPendingList",
+  "automationExecutionGet",
   "codingGuideGet",
   "communityFork",
   "communityForkAdopt",

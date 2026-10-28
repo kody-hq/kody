@@ -43,6 +43,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'automationExecutionGet',
+		method: 'GET',
+		pathTemplate: '/v1/automation-execution',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'automationExecutionSet',
+		method: 'PUT',
+		pathTemplate: '/v1/automation-execution',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'capabilityProxyCall',
 		method: 'POST',
 		pathTemplate: '/v1/capability-proxy/call',
