@@ -89,7 +89,8 @@ How it works:
   enforcement.
 - Individual signatures do not need a maintainer to edit the signers file. The
   post-merge `pull_request_target` recorder commits new signers straight to the
-  `cla-signatures` branch, which the check reads from the trusted base; it never
+  `cla-signatures` branch; the check reads `cla-signers.json` from its own
+  checkout of that branch, separate from the trusted base checkout. It never
   writes `main`. Do not replace that recorder with an unmaintained signing bot
   that writes signer records from untrusted PR head. Using `pull_request_target`
   for the check-and-comment job (base checkout only) is intentional and required
