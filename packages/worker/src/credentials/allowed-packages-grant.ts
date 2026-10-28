@@ -88,7 +88,7 @@ export async function grantGrandfatheredPackageAccess(input: {
 	const update = await input.db
 		.prepare(
 			`UPDATE secret_entries SET allowed_packages = ?, updated_at = ?
-			 WHERE id = ? AND allowed_packages = ?`,
+			 WHERE id = ? AND allowed_packages = ? AND deleted_at IS NULL`,
 		)
 		.bind(stringifyAllowedPackages(after), now, row.id, row.allowed_packages)
 		.run()
