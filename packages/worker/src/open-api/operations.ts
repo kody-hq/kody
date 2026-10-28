@@ -179,7 +179,7 @@ const capabilityProxyRoute = {
  *
  * Deliberately absent: secret plaintext reads, inbound webhook receive,
  * package-app HTTP/WebSocket traffic, admin, and runtime-only capabilities
- * (values, package-app fetch, synthetic dispatch). Hosted execute is
+ * (values, synthetic dispatch). Hosted execute is
  * `POST /v1/execute` (native). The in-sandbox `execute` capability stays
  * off this list.
  */
