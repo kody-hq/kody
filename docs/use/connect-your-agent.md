@@ -200,24 +200,12 @@ you only have the MCP URL.
 ### Remote or headless machines
 
 MCP OAuth finishes on a loopback callback (`127.0.0.1`) on the machine that runs
-the agent. When that is a remote VM or NAS, your browser cannot reach it, so
-finish the login one of these ways. Codex and OpenCode have no device-code login
-for MCP, and Kody API tokens do not work on `/mcp`.
-
-- **Codex**: run `codex mcp login kody --no-browser`, open the printed link on
-  your own computer, then paste the final redirected URL back into the remote
-  terminal. Or set a fixed `mcp_oauth_callback_port` in `~/.codex/config.toml`
-  and forward that port with `ssh -L`.
-- **OpenCode**: forward the callback port before you run
-  `opencode mcp auth kody`, for example
-  `ssh -L 127.0.0.1:19876:127.0.0.1:19876 user@host`.
-- **Kody CLI**: run `kody login --device` and approve the code on any device. Or
-  forward port `43742`, or use a bootstrap code from an agent that is already
-  connected.
-
-Steps and fallbacks:
-[Authorizing from a remote or headless machine](./troubleshooting.md#authorizing-from-a-remote-or-headless-machine).
-Keep callbacks on loopback and never expose a callback port publicly.
+the agent. When that is a remote VM or NAS, your browser cannot reach it. Codex
+and OpenCode have no device-code login for MCP, and Kody API tokens do not work
+on `/mcp`. See
+[Authorizing from a remote or headless machine](./troubleshooting.md#authorizing-from-a-remote-or-headless-machine)
+for Codex `--no-browser`, OpenCode port forward, and `kody login --device`. Keep
+callbacks on loopback and never expose a callback port publicly.
 
 ### Coding vs non-coding agents
 

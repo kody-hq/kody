@@ -230,8 +230,8 @@ Declare `kind` only when the package needs a specific shape:
   exists yet), instead of headers-only. Disconnect clears the value but keeps
   the row and placement; reconnect fills the same record so placement wins over
   the manifest default. Delete removes the credential entirely; a later Connect
-  is a new insert. Package runtimes still cannot set placement themselves; the
-  owner can edit it on the credential detail page.
+  is a new insert. Package runtimes cannot set placement themselves; the owner
+  can edit it on the credential detail page.
 
 ### Choose who supplies a package credential
 
@@ -594,7 +594,7 @@ that org only in your own runs, through `credential(key)`; nobody else there can
 use it, Owners included, and `{{secret:name}}` placeholders never resolve it.
 `credentialOrgRevoke` removes the grant.
 
-## Not available yet
+## Limits
 
 - Using a personal MCP server through `credential()`. Add the MCP server to the
   org instead.

@@ -25,9 +25,9 @@ A package app is a hosted **Worker entry**. `kody.app.entry` default-exports a
 fetch handler (a function, `{ fetch }`, or a named `fetch` export). Anything
 esbuild can bundle that answers `fetch` is a valid app. The host strips the app
 mount before forwarding, so every entry sees `/notes` for
-`/<package-name>/notes` (legacy `/packages/<package-name>/notes` still works).
-Optional `kody.app.client` and `kody.app.assets` add a browser module and static
-files under `/_assets`. `kody:runtime` exposes `packageContext`,
+`/<package-name>/notes` (`/packages/<package-name>/notes` reaches the same
+handler). Optional `kody.app.client` and `kody.app.assets` add a browser module
+and static files under `/_assets`. `kody:runtime` exposes `packageContext`,
 `packageStorage()`, and the rest of the run. Remix is [Example A](#remix-recipe)
 — a recipe with its own boilerplate, not a host mode.
 
@@ -97,8 +97,8 @@ A one-file fetch handler is a complete app (see
 ## Session handoff
 
 Production-hosted apps live at `https://{username}.kody.run/<package-name>/…`
-(and on verified custom domains). That URL is the app. Legacy
-`/packages/<package-name>/…` on the same host still resolves to the same app.
+(and on verified custom domains). That URL is the app.
+`/packages/<package-name>/…` on the same host resolves to the same app.
 `https://kody.codes/@{username}/packages/…` is not the hosted origin: visitors
 who may run the app hand off to it; everyone else stays on the package page (or
 a same-origin landing).
@@ -119,8 +119,8 @@ is the client. Consent and sign-in stay on kody.codes; authorization codes +
 PKCE land a per-app host-only `__Host-kody_pkg_session_<hash>` cookie on the app
 origin (`*.kody.run` or a verified custom domain). Shared hosts keep one cookie
 per package leaf so logout of one app does not sign the visitor out of siblings.
-Redirect URIs are limited to `/-/auth/callback` on those origins (legacy
-`/_kody/auth/callback` still accepted). **Open app** uses the `/open` handoff
+Redirect URIs are limited to `/-/auth/callback` on those origins
+(`/_kody/auth/callback` is also accepted). **Open app** uses the `/open` handoff
 path.
 
 Near-zero-config helper:
@@ -174,7 +174,7 @@ Platform routes on every package-app host (host root, not under `/{leaf}`):
 | `GET\|POST /-/auth/logout?app={leaf}`      | Clear that app's session only      |
 | `GET /-/auth/me?app={leaf}`                | Current user JSON                  |
 
-Legacy `/_kody/auth/*` paths remain accepted on the same hosts.
+`/_kody/auth/*` paths are also accepted on the same hosts.
 
 #### Who is visiting, from server code
 
@@ -1515,8 +1515,8 @@ self.addEventListener('install', (event) => {
 ```
 
 Scope boundary: the bare mount URL (`hostedUrl`, `/app` with no trailing slash —
-where the handoff lands; legacy `/packages/app` behaves the same) sits outside
-an `/app/` scope, so the worker controls every page under the mount but not a
+where the handoff lands; `/packages/app` behaves the same) sits outside an
+`/app/` scope, so the worker controls every page under the mount but not a
 document loaded at that exact URL. Link and redirect to slash-terminated paths
 inside the app (`${appBase}/`, `${appBase}/settings`) so the pages people spend
 time on are controlled; the root visit still gets the module straight from the
