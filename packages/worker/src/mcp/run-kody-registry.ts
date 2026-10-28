@@ -83,7 +83,7 @@ import {
 	loadRunCredentialNeeds,
 	validateCredentialCallMap,
 } from '#worker/credentials/credential-client.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
+import { type SavedCredentialNeed } from '#worker/credentials/credential-needs.ts'
 import {
 	buildKodyModuleBundle,
 	hydrateKodyRuntimeModules,
@@ -1351,7 +1351,8 @@ export async function runBundledModuleWithRegistry(
 			if (warnings.length > 0) callMap.onWarnings?.(warnings)
 		}
 		const credentialClientBinding = newRunCredentialClientBinding()
-		let runNeeds: Promise<ReadonlyMap<string, CredentialNeed>> | null = null
+		let runNeeds: Promise<ReadonlyMap<string, SavedCredentialNeed>> | null =
+			null
 		const credentialClientTools: CredentialClientToolOptions | undefined =
 			callerContext.user?.userId
 				? {

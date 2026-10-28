@@ -33,9 +33,12 @@ Use `package.json` as the canonical source of truth for saved package metadata.
 - `kody.credentials` — optional credential slots (`kind`, `provider`,
   `multiple`, `description`); see
   [Credential slots](../use/packages.md#credential-slots-kodycredentials).
-  Declaring slots does not change placeholder resolution. Publish stores the
-  needs closure (own slots plus static dependencies' closures) under the
-  `credential-needs` KV key for the source and commit
+  `kind: "secret-provider"` slots name a secret provider id in `provider` and
+  are left out of mapping consumers through `savedCredentialNeeds`
+  (`packages/worker/src/credentials/credential-needs.ts`). Declaring slots does
+  not change placeholder resolution. Publish stores the needs closure (own slots
+  plus static dependencies' closures) under the `credential-needs` KV key for
+  the source and commit
   (`packages/worker/src/credentials/credential-needs-closure.ts`); a publish
   that stored none reads as the package's own slots
 - `kody.secretMounts` — optional package-scoped secret mount declarations

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { secretMetadataSchema } from '#mcp/capabilities/secrets/shared.ts'
 import {
 	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
 	type SavedPackageRecord,
 	type SavedPackageWithCommunityProvenanceRecord,
 } from '#worker/package-registry/types.ts'
@@ -112,10 +113,10 @@ export const packageSummaryWithCommunityProvenanceSchema =
 
 const credentialNeedShapeSchema = z.object({
 	kind: z
-		.enum(packageCredentialKindValues)
+		.enum(packageCredentialSlotKindValues)
 		.optional()
 		.describe(
-			'Omitted when the need accepts any fetch-capable credential for the provider.',
+			'Omitted when the need accepts any fetch-capable credential for the provider. "secret-provider" means the need is a bound secret provider (provider is its id).',
 		),
 	provider: z.string(),
 	multiple: z.boolean(),

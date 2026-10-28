@@ -177,6 +177,27 @@ export const packageCredentialKindValues = [
 ] as const
 export type PackageCredentialKind = (typeof packageCredentialKindValues)[number]
 
+/**
+ * A `kody.credentials` slot kind that names a bound secret provider instead
+ * of a saved credential. Its `provider` is the secret provider id; the org's
+ * provider binding and per-ref package grants fill it, never a caller pick.
+ */
+export const secretProviderSlotKind = 'secret-provider' as const
+
+/** Every `kind` a `kody.credentials` slot may declare. */
+export const packageCredentialSlotKindValues = [
+	...packageCredentialKindValues,
+	secretProviderSlotKind,
+] as const
+export type PackageCredentialSlotKind =
+	(typeof packageCredentialSlotKindValues)[number]
+
+export function isSavedCredentialKind(
+	kind: PackageCredentialSlotKind,
+): kind is PackageCredentialKind {
+	return kind !== secretProviderSlotKind
+}
+
 export const ownerCredentialForVisitorsValueMessage =
 	'kody.credentials ownerCredentialForVisitors takes only true. Omit it to keep app visitors from using the owner’s credential.'
 
@@ -206,10 +227,11 @@ export const packageCredentialSlotSchema = z.strictObject({
 	 * (secret/Key, oauth, login). Declare only when a specific shape is needed
 	 * (`signing`, `mcp`, `url`, or a provider that truly requires one kind).
 	 */
-	kind: z.enum(packageCredentialKindValues).optional(),
+	kind: z.enum(packageCredentialSlotKindValues).optional(),
 	/**
 	 * Provider slug a credential must carry to auto-resolve for this need
-	 * (for example `github`). Defaults to the key.
+	 * (for example `github`). Defaults to the key. Required for kind
+	 * `secret-provider`, where it is the secret provider id (`1password`).
 	 */
 	provider: z.string().trim().min(1).max(64).optional(),
 	/** `credentials(key)` returns the caller's picks as an array. */
@@ -253,6 +275,9 @@ export const packageCredentialsSchema = z
 						'Credential slot names start with a letter and use letters, numbers, dots, underscores, or hyphens (max 64).',
 				})
 			}
+			if (slot.kind === secretProviderSlotKind) {
+				addSecretProviderSlotIssues(name, slot, ctx)
+			}
 			if (slot.required !== undefined && slot.supplier !== 'executor') {
 				ctx.addIssue({
 					code: 'custom',
@@ -272,6 +297,39 @@ export const packageCredentialsSchema = z
 			}
 		}
 	})
+
+const secretProviderSlotOnlyFields = [
+	'multiple',
+	'ownerCredentialForVisitors',
+	'supplier',
+	'required',
+	'placement',
+] as const satisfies ReadonlyArray<keyof PackageCredentialSlot>
+
+function addSecretProviderSlotIssues(
+	name: string,
+	slot: PackageCredentialSlot,
+	ctx: z.RefinementCtx,
+) {
+	if (
+		slot.provider === undefined ||
+		!packageSecretProviderIdPattern.test(slot.provider)
+	) {
+		ctx.addIssue({
+			code: 'custom',
+			path: [name, 'provider'],
+			message: `kody.credentials.${name} has kind "secret-provider", so provider must be a secret provider id (lowercase letter or digit, then lowercase letters, digits, dots, underscores, or hyphens; max 64), for example "1password".`,
+		})
+	}
+	for (const field of secretProviderSlotOnlyFields) {
+		if (slot[field] === undefined) continue
+		ctx.addIssue({
+			code: 'custom',
+			path: [name, field],
+			message: `kody.credentials.${name}.${field} does not apply to kind "secret-provider": the org's provider binding and per-item package grants fill it, not a saved credential.`,
+		})
+	}
+}
 
 export const packageSubscriptionDefinitionSchema = z.object({
 	handler: z.string().min(1),

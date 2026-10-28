@@ -14,8 +14,8 @@
  * binding adds references, not occurrences.
  */
 import {
-	type PackageCredentialKind,
 	type PackageCredentialSlot,
+	type PackageCredentialSlotKind,
 } from '#worker/package-registry/types.ts'
 import {
 	type AstNode,
@@ -190,8 +190,13 @@ export type CredentialReference = {
 
 export type CredentialSlotDeclaration = {
 	name: string
-	kind?: PackageCredentialKind
+	kind?: PackageCredentialSlotKind
 	provider: string
+}
+
+export type VaultPlaceholderUse = {
+	provider: string
+	placement: CredentialPlacement
 }
 
 export type PackageCredentialScan = {
@@ -200,6 +205,11 @@ export type PackageCredentialScan = {
 	references: Array<CredentialReference>
 	/** Where each `{{secret/provider:ref}}` vault placeholder sits. */
 	vaultPlacements: Array<CredentialPlacement>
+	/**
+	 * Each vault placeholder with its literal provider id (as written; not
+	 * normalized), in the same order as `vaultPlacements`.
+	 */
+	vaultUses: Array<VaultPlaceholderUse>
 	/** `secretJwtSign` calls: signatures made with a saved secret by name. */
 	jwtSignCalls: number
 	/**
@@ -319,6 +329,7 @@ export function scanPackageCredentials(input: {
 		placeholders: emptyPlaceholderCounts(),
 		references: [],
 		vaultPlacements: [],
+		vaultUses: [],
 		jwtSignCalls: 0,
 		jwtSignSecretNames: [],
 		slots: Object.entries(input.slots ?? {}).map(([name, slot]) => ({
@@ -381,7 +392,11 @@ function recordPlaceholders(
 		if (skip[match.kind] > 0) skip[match.kind] -= 1
 		else scan.placeholders[match.kind] += 1
 		if (match.kind === 'vault') {
-			scan.vaultPlacements.push(placementOf(match))
+			const placement = placementOf(match)
+			scan.vaultPlacements.push(placement)
+			if (match.provider != null) {
+				scan.vaultUses.push({ provider: match.provider, placement })
+			}
 			continue
 		}
 		const nameKind =

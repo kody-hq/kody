@@ -87,7 +87,7 @@ import { newRunCredentialClientBinding } from '#worker/credentials/credential-cl
 import { loadRunCredentialNeeds } from '#worker/credentials/credential-client.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { type OwnerCredentialScope } from '#worker/credentials/owner-credential-for-visitors.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
+import { type SavedCredentialNeed } from '#worker/credentials/credential-needs.ts'
 import {
 	createCredentialClientRuntimeSource,
 	credentialClientToolNames,
@@ -2864,7 +2864,8 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 							visitor: visit?.visitor ?? null,
 						})
 					: visitorContext.request
-			let runNeeds: Promise<ReadonlyMap<string, CredentialNeed>> | null = null
+			let runNeeds: Promise<ReadonlyMap<string, SavedCredentialNeed>> | null =
+				null
 			return createCredentialClientKodyTools({
 				env: this.env,
 				callerContext,

@@ -1,5 +1,8 @@
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
+import {
+	isSecretProviderNeed,
+	type CredentialNeed,
+} from '#worker/credentials/credential-needs.ts'
 import {
 	getSavedPackageByName,
 	getSavedPackageBySourceId,
@@ -52,7 +55,9 @@ export async function republishedNeedsNote(input: {
 			})
 		).map((need) => need.key),
 	)
+	// Secret-provider needs fill from the provider binding, not a mapping.
 	const added = input.needs
+		.filter((need) => !isSecretProviderNeed(need))
 		.map((need) => need.key)
 		.filter((key) => !before.has(key))
 	if (added.length === 0) return null

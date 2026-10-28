@@ -9,6 +9,7 @@ import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { type OrgRole } from '@kody-internal/shared/request-context.ts'
 import { afterEach, expect, test, vi } from 'vitest'
 import { expandSecretPlaceholders } from '#mcp/fetch-gateway.ts'
+import * as secretProviderService from '#mcp/secrets/secret-providers/service.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
 import * as featureFlags from '#worker/feature-flags/service.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
@@ -31,7 +32,10 @@ import {
 	type CredentialNeedReference,
 } from './credential-need-enforcement.ts'
 import * as needsClosure from './credential-needs-closure.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import {
+	savedCredentialNeeds,
+	type CredentialNeed,
+} from './credential-needs.ts'
 import * as stampPresence from './credential-stamp-presence.ts'
 import { resolveCredential } from './resolve-credential.ts'
 
@@ -554,7 +558,13 @@ test('credential(key) checks the calling package even when a sibling entry decla
 		openCredentialClient(
 			{
 				...t.clientContext(t.acmeId, packageId),
-				runNeeds: async () => new Map([['resend', need('resend')]]),
+				runNeeds: async () =>
+					new Map(
+						savedCredentialNeeds([need('resend')]).map((item) => [
+							item.key,
+							item,
+						]),
+					),
 			},
 			{ key: 'resend' },
 		),
@@ -679,6 +689,36 @@ test('a declared slot counts only when its kind can fill the use', () => {
 			false,
 		],
 		[{ use: 'provider', provider: 'op' }, [need('op')], true],
+		[
+			{ use: 'provider', provider: '1password' },
+			[need('vault', { kind: 'secret-provider', provider: '1password' })],
+			true,
+		],
+		[
+			{ use: 'provider', provider: '1Password' },
+			[need('vault', { kind: 'secret-provider', provider: '1password' })],
+			true,
+		],
+		[
+			{ use: 'provider', provider: '1password' },
+			[need('vault', { kind: 'secret-provider', provider: 'bitwarden' })],
+			false,
+		],
+		[
+			{ use: 'provider', provider: '1password' },
+			[need('vault', { provider: '1password' })],
+			false,
+		],
+		[
+			{ use: 'key', key: 'vault' },
+			[need('vault', { kind: 'secret-provider', provider: '1password' })],
+			false,
+		],
+		[
+			{ use: 'secret', name: 'vault', scope: null },
+			[need('vault', { kind: 'secret-provider', provider: '1password' })],
+			false,
+		],
 		[{ use: 'key', key: 'k' }, [need('k', { kind: 'signing' })], true],
 		[{ use: 'key', key: 'k' }, [need('other')], false],
 	]
@@ -688,4 +728,70 @@ test('a declared slot counts only when its kind can fill the use', () => {
 			JSON.stringify(reference),
 		).toBe(declared)
 	}
+})
+
+test('a stamped package uses a vault provider only through a declared secret-provider slot', async () => {
+	const t = await setup()
+	const packageId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme/deploy',
+	})
+	await saveSecret({
+		env: t.env,
+		userId: t.acmeId,
+		scope: 'user',
+		name: 'opToken',
+		value: 'op-sa-token',
+		audit: null,
+	})
+	const providerPackageId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme/op',
+	})
+	await t.db
+		.prepare(
+			`INSERT INTO secret_provider_bindings (
+				user_id, provider_id, package_id, door_secret_name, config_json
+			) VALUES (?, '1password', ?, 'opToken', '{}')`,
+		)
+		.bind(t.acmeId, providerPackageId)
+		.run()
+	const ref = 'i/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/password'
+	const header = `Bearer {{secret/1password:${ref}}}`
+	enforcement(false)
+	stamp(true)
+
+	declare([])
+	const undeclared = await t
+		.fill({ orgId: t.acmeId, packageId, header })
+		.catch((caught: unknown) => caught as Error)
+	expect(undeclared).toMatchObject({ code: 'credential_need_undeclared' })
+	expect((undeclared as Error).message).toContain('"kind": "secret-provider"')
+
+	declare([need('vault', { kind: 'secret-provider', provider: '1password' })])
+	// Declared: the normal grant check still blocks an ungranted ref.
+	const ungranted = await t
+		.fill({ orgId: t.acmeId, packageId, header })
+		.catch((caught: unknown) => caught as Error)
+	expect(ungranted).toBeInstanceOf(Error)
+	expect(ungranted).not.toMatchObject({ code: 'credential_need_undeclared' })
+
+	const resolve = vi
+		.spyOn(secretProviderService, 'resolveProviderSecret')
+		.mockResolvedValue({
+			provider: '1password',
+			ref,
+			canonicalRef: ref,
+			value: 'vault-item-value',
+			hosts: ['api.resend.com'],
+		})
+	await expect(t.fill({ orgId: t.acmeId, packageId, header })).resolves.toBe(
+		'Bearer vault-item-value',
+	)
+	expect(resolve).toHaveBeenCalledWith(
+		expect.objectContaining({
+			provider: '1password',
+			authorityPackageId: packageId,
+		}),
+	)
 })

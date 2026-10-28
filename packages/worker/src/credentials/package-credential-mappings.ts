@@ -42,7 +42,10 @@ import {
 	type CredentialMappingRowTarget,
 } from './credential-mappings.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import {
+	savedCredentialNeeds,
+	type SavedCredentialNeed,
+} from './credential-needs.ts'
 import { buildNeedCreateUrl } from './need-create-url.ts'
 
 export type PackageMappingScope = {
@@ -53,7 +56,8 @@ export type PackageMappingScope = {
 	actorId: string
 	savedPackage: SavedPackageRecord
 	canManage: boolean
-	needs: Array<CredentialNeed>
+	/** Needs a saved credential fills; secret-provider needs are left out. */
+	needs: Array<SavedCredentialNeed>
 	usable: Array<UsableCredential>
 	triggers: Array<DeclaredTrigger>
 	rows: Array<CredentialMappingRow>
@@ -142,7 +146,7 @@ export async function loadPackageMappingScope(input: {
 			userId: savedPackage.userId,
 			sourceId: savedPackage.sourceId,
 			request: input.request,
-		}),
+		}).then(savedCredentialNeeds),
 		listUsableCredentials({
 			env: input.env,
 			request: input.request,
@@ -278,7 +282,7 @@ function storedView(
 
 function effectiveMapping(
 	scope: PackageMappingScope,
-	need: CredentialNeed,
+	need: SavedCredentialNeed,
 	input: { trigger: CredentialMappingRow | null; createUrl: string },
 ): EffectiveCredentialMapping {
 	const layer = (target: CredentialMappingRowTarget) =>

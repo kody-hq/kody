@@ -125,6 +125,7 @@ export function diffCredentialNeeds(
 
 function describeNeedKind(kind: NeedShape['kind']) {
 	if (kind === undefined) return 'any fetch-capable kind'
+	if (kind === 'secret-provider') return 'secret provider'
 	return isCredentialKind(kind) ? credentialKindLabel(kind) : kind
 }
 

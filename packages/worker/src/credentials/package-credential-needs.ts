@@ -19,7 +19,10 @@ import {
 } from './credential-mappings.ts'
 import { mappedCredentialFitsNeed } from './credential-need-fit.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import {
+	savedCredentialNeeds,
+	type SavedCredentialNeed,
+} from './credential-needs.ts'
 
 type NeedStatus = 'ready' | 'ambiguous' | 'unbound' | 'expired'
 
@@ -28,7 +31,7 @@ type NeedStatus = 'ready' | 'ambiguous' | 'unbound' | 'expired'
  * first, then auto-resolve. Trigger overrides are per run and not shown here.
  */
 function resolveNeedForCaller(
-	need: CredentialNeed,
+	need: SavedCredentialNeed,
 	usable: ReadonlyArray<UsableCredential>,
 	rows: ReadonlyArray<CredentialMappingRow>,
 ): {
@@ -85,12 +88,14 @@ export async function describePackageCredentialNeeds(input: {
 	packageId: string
 }) {
 	try {
-		const needs = await loadPublishedCredentialNeeds({
-			env: input.env,
-			userId: input.ownerUserId,
-			sourceId: input.sourceId,
-			request: input.request,
-		})
+		const needs = savedCredentialNeeds(
+			await loadPublishedCredentialNeeds({
+				env: input.env,
+				userId: input.ownerUserId,
+				sourceId: input.sourceId,
+				request: input.request,
+			}),
+		)
 		if (needs.length === 0) return []
 		const [usable, rows] = await Promise.all([
 			listUsableCredentials({

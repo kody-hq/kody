@@ -43,7 +43,10 @@ The kind names in manifests and APIs are `secret`, `oauth`, `mcp`, `url`,
 
 Custom secret providers (vaults such as 1Password) are not a credential kind.
 Granting Kody access to a vault is a separate trust decision, so they have their
-own page; see [Custom secret providers](./secret-providers.md).
+own page; see [Custom secret providers](./secret-providers.md). A saved package
+declares a provider it uses with a `kind: "secret-provider"` need (see
+[Use a provider in a saved package](./secret-providers.md#use-a-provider-in-a-saved-package)).
+No saved credential ever fills that need.
 
 Every credential has:
 

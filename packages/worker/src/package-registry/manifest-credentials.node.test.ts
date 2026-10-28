@@ -102,7 +102,7 @@ test('publish rejects invalid kody.credentials slots and names the slot', () => 
 			GOOGLE: { kind: 'token', provider: 'google', description: 'x' },
 		}),
 	).toBe(
-		'Invalid package.json:\n✖ Invalid option: expected one of "secret"|"oauth"|"mcp"|"url"|"login"|"signing"\n  → at kody.credentials.GOOGLE.kind',
+		'Invalid package.json:\n✖ Invalid option: expected one of "secret"|"oauth"|"mcp"|"url"|"login"|"signing"|"secret-provider"\n  → at kody.credentials.GOOGLE.kind',
 	)
 	expect(
 		publishError({ GOOGLE: { kind: 'oauth', provider: '', description: 'x' } }),
@@ -315,4 +315,39 @@ test('package.json cannot set invalidCredentialSlots', () => {
 		parseAuthoredPackageJson({ content, mode: 'published' }).kody
 			.invalidCredentialSlots,
 	).toBeUndefined()
+})
+
+test('a secret-provider slot requires a secret provider id and no saved-credential fields', () => {
+	const vault = {
+		kind: 'secret-provider' as const,
+		provider: '1password',
+		description: 'Reads the deploy token from the team vault.',
+	}
+	expect(
+		parseAuthoredPackageJson({
+			content: manifestWithCredentials({ onepassword: vault }),
+		}).kody.credentials,
+	).toEqual({ onepassword: vault })
+	expect(
+		publishError({
+			onepassword: { kind: 'secret-provider', description: 'x' },
+		}),
+	).toMatch(
+		/kody\.credentials\.onepassword has kind "secret-provider", so provider must be a secret provider id/,
+	)
+	expect(
+		publishError({
+			onepassword: {
+				kind: 'secret-provider',
+				provider: '1Password Vault',
+				description: 'x',
+			},
+		}),
+	).toMatch(/provider must be a secret provider id/)
+	expect(publishError({ onepassword: { ...vault, multiple: true } })).toMatch(
+		/kody\.credentials\.onepassword\.multiple does not apply to kind "secret-provider"/,
+	)
+	expect(
+		publishError({ onepassword: { ...vault, supplier: 'executor' } }),
+	).toMatch(/onepassword\.supplier does not apply to kind "secret-provider"/)
 })

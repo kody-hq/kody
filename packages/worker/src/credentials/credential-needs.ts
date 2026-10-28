@@ -13,14 +13,16 @@
 import { z } from 'zod'
 import {
 	isFetchCapableCredentialKind,
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
+	secretProviderSlotKind,
 	type AuthoredPackageJson,
 	type PackageCredentialKind,
+	type PackageCredentialSlotKind,
 } from '#worker/package-registry/types.ts'
 
 export const credentialNeedSchema = z.object({
 	key: z.string(),
-	kind: z.enum(packageCredentialKindValues).optional(),
+	kind: z.enum(packageCredentialSlotKindValues).optional(),
 	provider: z.string(),
 	description: z.string(),
 	multiple: z.boolean(),
@@ -38,6 +40,48 @@ export const credentialNeedSchema = z.object({
 export type CredentialNeed = z.infer<typeof credentialNeedSchema>
 
 export const credentialNeedsClosureSchema = z.array(credentialNeedSchema)
+
+/** A need a saved credential fills: every kind but `secret-provider`. */
+export type SavedCredentialNeed = Omit<CredentialNeed, 'kind'> & {
+	kind?: PackageCredentialKind
+}
+
+/** A need for a bound secret provider; `provider` is the provider id. */
+export function isSecretProviderNeed(need: Pick<CredentialNeed, 'kind'>) {
+	return need.kind === secretProviderSlotKind
+}
+
+/** A secret provider id as the gateway reads it (`normalizeProviderId`). */
+export function normalizeSecretProviderNeedId(provider: string) {
+	return provider.trim().toLowerCase()
+}
+
+const secretProviderSlotKeyPattern = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/
+
+/** A `kody.credentials` slot key to suggest for a secret provider id. */
+export function suggestSecretProviderSlotKey(provider: string) {
+	const id = normalizeSecretProviderNeedId(provider)
+	return secretProviderSlotKeyPattern.test(id) ? id : `vault-${id}`.slice(0, 64)
+}
+
+/** The manifest shape that declares `provider`, for fix messages. */
+export function secretProviderSlotExample(provider: string) {
+	const id = normalizeSecretProviderNeedId(provider)
+	return `"${suggestSecretProviderSlotKey(id)}": { "kind": "secret-provider", "provider": "${id}", "description": "What this package reads from ${id}." }`
+}
+
+/**
+ * Needs that callers fill with a saved credential. Secret-provider needs are
+ * filled by the org's provider binding and per-ref package grants, so they
+ * stay out of call maps, mappings, candidates, and creation links.
+ */
+export function savedCredentialNeeds(
+	needs: ReadonlyArray<CredentialNeed>,
+): Array<SavedCredentialNeed> {
+	return needs.filter(
+		(need): need is SavedCredentialNeed => !isSecretProviderNeed(need),
+	)
+}
 
 const providerSlugPattern = /^[a-z0-9-]+$/
 
@@ -71,7 +115,7 @@ export function ownCredentialNeeds(
 		.sort((left, right) => left.key.localeCompare(right.key))
 }
 
-function describeNeedKind(kind: PackageCredentialKind | undefined): string {
+function describeNeedKind(kind: PackageCredentialSlotKind | undefined): string {
 	return kind ?? 'any fetch-capable kind'
 }
 
@@ -81,8 +125,8 @@ function describeNeedKind(kind: PackageCredentialKind | undefined): string {
  * fetch-capable kind (the declared kind is kept).
  */
 export function credentialNeedKindsCompatible(
-	left: PackageCredentialKind | undefined,
-	right: PackageCredentialKind | undefined,
+	left: PackageCredentialSlotKind | undefined,
+	right: PackageCredentialSlotKind | undefined,
 ): boolean {
 	if (left === right) return true
 	if (left == null) return right != null && isFetchCapableCredentialKind(right)
@@ -91,9 +135,9 @@ export function credentialNeedKindsCompatible(
 }
 
 export function mergeCredentialNeedKinds(
-	left: PackageCredentialKind | undefined,
-	right: PackageCredentialKind | undefined,
-): PackageCredentialKind | undefined {
+	left: PackageCredentialSlotKind | undefined,
+	right: PackageCredentialSlotKind | undefined,
+): PackageCredentialSlotKind | undefined {
 	return left ?? right
 }
 
@@ -105,7 +149,7 @@ export function credentialNeedKeyNotes(
 	credentials: ManifestCredentials,
 ): Array<string> {
 	return Object.entries(credentials ?? {}).flatMap(([key, slot]) => {
-		if (providerSlugPattern.test(key)) return []
+		if (providerSlugPattern.test(key) || isSecretProviderNeed(slot)) return []
 		const provider = slot.provider ?? key
 		return [
 			providerSlugPattern.test(provider)

@@ -44,7 +44,11 @@ import {
 } from '#worker/credentials/credential-candidates.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { buildNeedCreateUrl } from '#worker/credentials/need-create-url.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
+import {
+	isSecretProviderNeed,
+	savedCredentialNeeds,
+	type SavedCredentialNeed,
+} from '#worker/credentials/credential-needs.ts'
 
 /**
  * App-origin authorize + consent for hosted package apps.
@@ -350,19 +354,20 @@ async function parseAndValidateAuthorizeRequest(input: {
 	}
 	const needKeys = visitorNeedKeysOfScopes(scopes)
 	const visitorNeedDescriptions: Record<string, string> = {}
-	let credentialNeeds: Array<CredentialNeed> = []
+	let credentialNeeds: Array<SavedCredentialNeed> = []
 	if (needKeys.length > 0) {
 		const { manifest } = await loadInvokeManifestBySourceId({
 			env: input.env,
 			userId: resolved.org.userId,
 			sourceId: resolved.savedPackage.sourceId,
 		})
-		credentialNeeds = await loadPublishedCredentialNeeds({
+		const allCredentialNeeds = await loadPublishedCredentialNeeds({
 			env: input.env,
 			userId: resolved.org.userId,
 			sourceId: resolved.savedPackage.sourceId,
 			request: input.request,
 		})
+		credentialNeeds = savedCredentialNeeds(allCredentialNeeds)
 		const declared = manifest.kody.app?.visitorNeeds ?? {}
 		for (const key of needKeys) {
 			const executorNeed = credentialNeeds.find(
@@ -372,8 +377,22 @@ async function parseAndValidateAuthorizeRequest(input: {
 				? declared[key]
 				: undefined
 			const visitorCredentialNeed = visitorNeed?.credential
-				? credentialNeeds.find((need) => need.key === visitorNeed.credential)
+				? allCredentialNeeds.find((need) => need.key === visitorNeed.credential)
 				: undefined
+			if (
+				visitorCredentialNeed &&
+				isSecretProviderNeed(visitorCredentialNeed)
+			) {
+				return {
+					ok: false as const,
+					response: redirectWithError({
+						redirectUri: safeRedirectUri,
+						state: input.query.state,
+						error: 'invalid_scope',
+						description: `kody.app.visitorNeeds.${key} cannot reference secret-provider credential need "${visitorCredentialNeed.key}".`,
+					}),
+				}
+			}
 			if (visitorCredentialNeed?.supplier === 'publisher') {
 				return {
 					ok: false as const,
@@ -436,7 +455,7 @@ async function loadExecutorNeedConsentData(input: {
 	env: Env
 	request: Request
 	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
-	needs: ReadonlyArray<CredentialNeed>
+	needs: ReadonlyArray<SavedCredentialNeed>
 	scopes: ReadonlyArray<PackageAppOauthScope>
 	kodyId: string
 }) {

@@ -181,6 +181,14 @@ credentials; opt-in types that a package can declare are described in
   `supplier: "publisher"` or `supplier: "executor"`, and executor needs may set
   `required`. See
   [Choose who supplies a package credential](../guides/credentials.md#choose-who-supplies-a-package-credential).
+- `kind: "secret-provider"` declares a bound custom secret provider instead of a
+  saved credential: `provider` is required and is the provider id (for example
+  `"onepassword": { "kind": "secret-provider", "provider": "1password", "description": "..." }`).
+  It lets a stamped package use `{{secret/<provider>:<ref>}}` placeholders for
+  that provider; each ref still needs a per-package grant. It takes no
+  `multiple`, `supplier`, `required`, `ownerCredentialForVisitors`, or
+  `placement`, and mappings and call maps skip it. See
+  [Use a provider in a saved package](../guides/secret-providers.md#use-a-provider-in-a-saved-package).
 - Publish rejects any other key or a missing required field and names the slot.
   If a later rule rejects a slot in a version that is already published, the
   package still loads with its other slots.
@@ -230,14 +238,14 @@ credentials; opt-in types that a package can declare are described in
 A package whose publish stored a credential stamp may use only the credentials
 its `kody.credentials` closure declares. That includes a run by the package's
 author. It covers `{{secret:NAME}}`, `{{integration-token:NAME}}`, vault refs
-(declare the provider), `credential(key)` / `credentials(key)`, and
-`secretJwtSign`. An undeclared use fails with `credential_need_undeclared`,
-naming the package and the key to add. A slot with no `kind` covers any of them.
-A slot declared `kind: "signing"` also fills `secretJwtSign` and
-`{{secret:NAME}}`. Literal `kody.mcp.SERVER` calls and `integrationTokenRefresh`
-may use only a declared server or integration name. Slots its imports declare
-count too. `credential.named()` is refused. This does not depend on the
-`credential-need-enforcement` flag.
+(declare the provider with a `kind: "secret-provider"` slot), `credential(key)`
+/ `credentials(key)`, and `secretJwtSign`. An undeclared use fails with
+`credential_need_undeclared`, naming the package and the key to add. A slot with
+no `kind` covers any of them. A slot declared `kind: "signing"` also fills
+`secretJwtSign` and `{{secret:NAME}}`. Literal `kody.mcp.SERVER` calls and
+`integrationTokenRefresh` may use only a declared server or integration name.
+Slots its imports declare count too. `credential.named()` is refused. This does
+not depend on the `credential-need-enforcement` flag.
 
 A package with no stamp uses the unstamped path. Your own unstamped package
 needs no declarations: a package in your personal org that is not an unadopted

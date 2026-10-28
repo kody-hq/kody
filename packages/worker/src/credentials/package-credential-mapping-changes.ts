@@ -45,7 +45,7 @@ import {
 	noteCredentialMappingWritesCommitted,
 	type CredentialMappingRowTarget,
 } from './credential-mappings.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import { type SavedCredentialNeed } from './credential-needs.ts'
 import {
 	findStoredRow,
 	needAcceptsKind,
@@ -105,7 +105,7 @@ function describePick(pick: CredentialPick) {
 
 function resolvePick(input: {
 	pick: CredentialPick
-	need: CredentialNeed
+	need: SavedCredentialNeed
 	usable: ReadonlyArray<UsableCredential>
 	createUrl: string
 }): UsableCredential {

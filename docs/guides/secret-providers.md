@@ -60,11 +60,69 @@ fetch (URL, header, or body).
 The item's websites are the host allowlist. Empty websites refuse the fetch. The
 request URL must be `https:`.
 
-Ad hoc execute does not need a package grant. Saved packages do:
+Ad hoc execute does not need a package grant. Saved packages need two things: a
+`kody.credentials` slot that declares the provider (see the next section) and a
+per-item grant.
 `resourceLock({ kind: 'secret_provider', provider, ref, package_id })` returns
 the Allow URL; grant and revoke on `/@<slug>/-/secret-providers`. A package runs
 in the org that owns it, so a collaborator holding a grant uses that org's
 binding and grants, not their own.
+
+## Use a provider in a saved package
+
+Declare the provider in `kody.credentials` with `kind: "secret-provider"`. The
+slot key follows the normal key rules (it starts with a letter), and the
+provider id goes in `provider`:
+
+```json
+{
+	"name": "@you/deploy",
+	"exports": { ".": "./src/index.ts" },
+	"kody": {
+		"description": "Deploy with a token kept in 1Password.",
+		"credentials": {
+			"onepassword": {
+				"kind": "secret-provider",
+				"provider": "1password",
+				"description": "Reads the deploy API token from the team vault."
+			}
+		}
+	}
+}
+```
+
+Then reference the vault item with a literal provider id:
+
+```ts
+export default async function deploy() {
+	return fetch('https://api.example.com/deploy', {
+		method: 'POST',
+		headers: {
+			Authorization:
+				'Bearer {{secret/1password:i/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/password}}',
+		},
+	})
+}
+```
+
+The same shape works for any bound provider id (for example
+`"provider": "bitwarden"` with `{{secret/bitwarden:...}}`).
+
+- Publish seals the slot key into the credential stamp. The stamp seals the
+  provider, not individual refs.
+- Each ref still needs its own grant for this package (above). Declaring the
+  slot does not grant anything, and a missing grant still blocks the fetch.
+- The binding check, the item websites as the host allowlist, `https:` only, and
+  redaction all still apply. The value never leaves the fetch gateway.
+- A secret-provider slot is never filled by a saved credential: it does not
+  appear in credential mappings, call maps, or `packageGet` needs, and
+  `credential("onepassword")` does not read it.
+
+Publish still fails with `unstampable_pattern` when a vault placeholder in a
+request or credential-mapped site has no described `kind: "secret-provider"`
+slot for its provider id, when the slot names a different provider, or when the
+provider id is computed (for example `{{secret/${provider}:...}}`). A slot keyed
+by the provider id with no `kind` does not count.
 
 Search does not crawl vaults. `secretProviderList` returns binding metadata
 only.

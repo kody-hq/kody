@@ -23,7 +23,12 @@ import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import {
+	isSecretProviderNeed,
+	normalizeSecretProviderNeedId,
+	secretProviderSlotExample,
+	type CredentialNeed,
+} from './credential-needs.ts'
 import { packageCarriesCredentialStamp } from './credential-stamp-presence.ts'
 
 export const credentialNeedUndeclaredCode = 'credential_need_undeclared'
@@ -127,12 +132,27 @@ export function findDeclaredNeed(
 	reference: CredentialNeedReference,
 	declarations: Declarations,
 ) {
+	if (reference.use === 'provider') {
+		// A kind "secret-provider" slot names the provider in `provider`; an
+		// older slot keyed by the provider id still counts.
+		const provider = normalizeSecretProviderNeedId(reference.provider)
+		return (
+			declarations.find((need) =>
+				isSecretProviderNeed(need)
+					? normalizeSecretProviderNeedId(need.provider) === provider
+					: need.key === reference.provider &&
+						(need.kind == null || need.kind === 'secret'),
+			) ?? null
+		)
+	}
 	const key = referenceKey(reference)
 	const kinds = fillingKinds(reference)
 	return (
 		declarations.find(
 			(need) =>
 				need.key === key &&
+				// Saved-credential uses never resolve through a provider slot.
+				!isSecretProviderNeed(need) &&
 				(kinds === null || need.kind == null || kinds.includes(need.kind)),
 		) ?? null
 	)
@@ -175,9 +195,13 @@ function undeclaredError(
 	const rule = stamped
 		? 'A package with a credential stamp may use only the credentials it declares.'
 		: 'A package run by anyone but its author may use only the credentials it declares.'
+	const fix =
+		reference.use === 'provider'
+			? `Add a kody.credentials slot with kind "secret-provider" to its package.json, for example ${secretProviderSlotExample(reference.provider)}, and publish again.`
+			: `Add "${key}" to kody.credentials in its package.json (with a description) and publish again.`
 	return new CredentialNeedUndeclaredError({
 		key,
-		message: `${subject} uses ${describeUse(reference)} without declaring it. ${rule} Add "${key}" to kody.credentials in its package.json (with a description) and publish again.`,
+		message: `${subject} uses ${describeUse(reference)} without declaring it. ${rule} ${fix}`,
 	})
 }
 
