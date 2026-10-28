@@ -19,6 +19,48 @@ export type RemoteExecuteInput = {
 	fetchFn?: typeof fetch
 	/** User-owned token org selection (`?org=`). */
 	org?: string
+	/** Execution-context routing: `context`, `fallback`, `requires`, `chain`. */
+	routing?: ExecuteRouting
+}
+
+export type ExecuteRouting = {
+	context?: string
+	fallback?: 'chain'
+	requires?: Array<string>
+	chain?: Array<string>
+}
+
+function listFlag(value: unknown) {
+	return typeof value === 'string'
+		? value
+				.split(',')
+				.map((entry) => entry.trim())
+				.filter(Boolean)
+		: []
+}
+
+/** `--context`, `--fallback chain`, `--requires fs,lan`, `--chain a,b,cloud`. */
+export function executeRoutingFromFlags(values: {
+	context?: unknown
+	fallback?: unknown
+	requires?: unknown
+	chain?: unknown
+}): ExecuteRouting | undefined {
+	const routing: ExecuteRouting = {}
+	if (typeof values.context === 'string' && values.context.trim()) {
+		routing.context = values.context.trim()
+	}
+	if (values.fallback !== undefined) {
+		if (values.fallback !== 'chain') {
+			throw new Error('--fallback only accepts "chain".')
+		}
+		routing.fallback = 'chain'
+	}
+	const requires = listFlag(values.requires)
+	if (requires.length) routing.requires = requires
+	const chain = listFlag(values.chain)
+	if (chain.length) routing.chain = chain
+	return Object.keys(routing).length ? routing : undefined
 }
 
 /**
@@ -50,6 +92,7 @@ export async function runRemoteExecuteWithToken(
 	if (input.conversationId !== undefined)
 		body.conversationId = input.conversationId
 	if (input.credentials !== undefined) body.credentials = input.credentials
+	if (input.routing) Object.assign(body, input.routing)
 	const payload = await openApiRequest({
 		token: input.token,
 		apiUrl: input.apiUrl,

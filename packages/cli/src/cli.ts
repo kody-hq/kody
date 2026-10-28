@@ -151,6 +151,9 @@ const cliFlagOptions = {
 	org: { type: 'string' },
 	name: { type: 'string' },
 	context: { type: 'string' },
+	fallback: { type: 'string' },
+	requires: { type: 'string' },
+	chain: { type: 'string' },
 	target: { type: 'string' },
 	'reset-storage': { type: 'boolean' },
 	'dry-run': { type: 'boolean' },
@@ -1101,6 +1104,15 @@ async function dispatch(
 						? [parsed.values.credential]
 						: undefined,
 			)
+			const executeRouting = (
+				await import('./remote-execute.js')
+			).executeRoutingFromFlags(parsed.values)
+			if (executeRouting && local) {
+				writeErr(
+					'--context, --fallback, --requires, and --chain route cloud execute; drop --local.\n',
+				)
+				return 1
+			}
 			const args = buildExecuteToolArgs({
 				// Local published invoke is already minted into `code`.
 				invoke:
@@ -1277,6 +1289,7 @@ async function dispatch(
 								params: args.params,
 								conversationId: args.conversationId as string | undefined,
 								...(credentials !== undefined ? { credentials } : {}),
+								...(executeRouting ? { routing: executeRouting } : {}),
 								token: requireApiToken(
 									tokenValues,
 									process.env,
@@ -1301,6 +1314,7 @@ async function dispatch(
 									params: args.params,
 									conversationId: args.conversationId as string | undefined,
 									...(credentials !== undefined ? { credentials } : {}),
+									...(executeRouting ? { routing: executeRouting } : {}),
 									token: session.accessToken,
 									apiUrl,
 									...(org ? { org } : {}),

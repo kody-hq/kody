@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
 import { type ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import {
@@ -456,6 +457,18 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 									)}
 								</div>
 							</details>
+						) : null}
+						{trigger.canEdit &&
+						(trigger.trigger.kind === 'subscription' ||
+							trigger.trigger.kind === 'webhook') ? (
+							<AutomationExecutionSettings
+								orgSlug={context.orgSlug}
+								target={{
+									kind: trigger.trigger.kind,
+									packageId: context.kodyId,
+									name: trigger.trigger.name,
+								}}
+							/>
 						) : null}
 					</section>
 				)
