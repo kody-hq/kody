@@ -557,6 +557,23 @@ export async function resolveRunChain(
 export function markQueuedAttemptExpired(
 	metadata: Record<string, unknown>,
 ): Record<string, unknown> {
+	return markQueuedAttempt(metadata, {
+		outcome: 'expired',
+		reason: 'queue_expired',
+	})
+}
+
+/** A queued run that the context took after reconnecting ran there. */
+export function markQueuedAttemptRan(
+	metadata: Record<string, unknown>,
+): Record<string, unknown> {
+	return markQueuedAttempt(metadata, { outcome: 'ran' })
+}
+
+function markQueuedAttempt(
+	metadata: Record<string, unknown>,
+	update: Pick<RoutingAttempt, 'outcome' | 'reason'>,
+): Record<string, unknown> {
 	const context = metadata.executionContext as
 		| ExecutionContextRunMetadata
 		| undefined
@@ -567,7 +584,7 @@ export function markQueuedAttemptExpired(
 			...context,
 			attempts: context.attempts.map((attempt, index) =>
 				index === context.attempts.length - 1 && attempt.outcome === 'queued'
-					? { ...attempt, outcome: 'expired', reason: 'queue_expired' }
+					? { ...attempt, ...update }
 					: attempt,
 			),
 		},

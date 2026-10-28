@@ -4,6 +4,7 @@ import { runChainShapeError } from './chain-rules.ts'
 import {
 	grantRefusal,
 	markQueuedAttemptExpired,
+	markQueuedAttemptRan,
 	planTargets,
 } from './routing.ts'
 import { type ExecutionContextRow } from './store.ts'
@@ -158,5 +159,22 @@ test('an expired queued run records its queued attempt as expired', () => {
 	})
 	expect(markQueuedAttemptExpired({ trigger: 'job' })).toEqual({
 		trigger: 'job',
+	})
+})
+
+test('a queued run the context took records its queued attempt as ran', () => {
+	const metadata = {
+		executionContext: {
+			id: 'ec_1',
+			name: 'laptop',
+			attempts: [{ target: 'ec_1', name: 'laptop', outcome: 'queued' }],
+			fellBackToCloud: false,
+		},
+	}
+	expect(markQueuedAttemptRan(metadata)).toEqual({
+		executionContext: {
+			...metadata.executionContext,
+			attempts: [{ target: 'ec_1', name: 'laptop', outcome: 'ran' }],
+		},
 	})
 })

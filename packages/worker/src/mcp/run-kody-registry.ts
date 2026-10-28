@@ -1363,18 +1363,32 @@ export async function runBundledModuleWithRegistry(
 					waitUntil,
 				})
 			: null
-		const routed = await runAutomationOnContext({
-			env,
-			callerContext,
-			routing,
-			runRecord: contextRunRecord,
-			params: params ?? {},
-			waitMs: Math.min(
-				options?.executorTimeoutMs ?? automationContextWaitMs,
-				automationContextWaitMs,
-			),
-			...(options?.signal ? { signal: options.signal } : {}),
-		})
+		let routed: Awaited<ReturnType<typeof runAutomationOnContext>>
+		try {
+			routed = await runAutomationOnContext({
+				env,
+				callerContext,
+				routing,
+				runRecord: contextRunRecord,
+				params: params ?? {},
+				waitMs: Math.min(
+					options?.executorTimeoutMs ?? automationContextWaitMs,
+					automationContextWaitMs,
+				),
+				...(options?.signal ? { signal: options.signal } : {}),
+			})
+		} catch (error) {
+			await abandonRunRecord({ env, handle: contextRunRecord })
+			if (!leavesCallerRunRecordOpen(error) && !runRecordFinished) {
+				const resolved = resolveThrownRunError(error)
+				await finishObservedRun({
+					status: 'error',
+					logs: resolved.logs,
+					error: resolved.error,
+				})
+			}
+			throw error
+		}
 		if (routed.kind !== 'done') {
 			await abandonRunRecord({ env, handle: contextRunRecord })
 		}

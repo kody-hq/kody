@@ -29,12 +29,13 @@ machine could not say so.
   busy, unusable, or lack `requires` are skipped. When nothing qualifies the run
   fails with each entry and why, and the run record shows it.
 - Offline fails by default. `whenOffline: "queue"` holds the run on the
-  context's session until it reconnects, for `queueMinutes` (default 60, max
-  1440). On reconnect the context, the person's access, the grant and its
-  version are checked again before dispatch; a queued run whose context was
-  revoked, deleted or narrowed fails. A connected context that is busy or not
-  accepting runs is retried every 30 seconds and on each status update. Expiry
-  fails the run with `execution_context_queue_expired`.
+  context's session only when no target in the chain can take it (a reachable
+  later entry, including Kody cloud, runs instead) until it reconnects, for
+  `queueMinutes` (default 60, max 1440). On reconnect the context, the person's
+  access, the grant and its version are checked again before dispatch; a queued
+  run whose context was revoked, deleted or narrowed fails. A connected context
+  that is busy or not accepting runs is retried every 30 seconds and on each
+  status update. Expiry fails the run with `execution_context_queue_expired`.
 - An automation's context run uses the access of the person it runs as
   (`callerContext.request.actor`): the job owner, the trigger enabler, or the
   workflow's lineage actor. That is the same actor background runs already bill

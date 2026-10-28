@@ -35,6 +35,7 @@ import {
 	type ExecuteRequirement,
 	grantRefusal,
 	markQueuedAttemptExpired,
+	markQueuedAttemptRan,
 } from './routing.ts'
 import { getExecutionContext, loadContextAccess, parseGrant } from './store.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
@@ -867,7 +868,11 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			`INSERT INTO runs (run_id, state, lease_json, deadline, accept_by,
 			   run_record_json, created_at)
 			 VALUES (?, 'dispatched', ?, ?, ?, ?, ?)
-			 ON CONFLICT(run_id) DO NOTHING`,
+			 ON CONFLICT(run_id) DO UPDATE SET state = 'dispatched',
+			   lease_json = excluded.lease_json, deadline = excluded.deadline,
+			   accept_by = excluded.accept_by,
+			   run_record_json = excluded.run_record_json
+			 WHERE runs.state IN ('aborted', 'rejected')`,
 			lease.runId,
 			JSON.stringify(lease),
 			input.request.deadline,
@@ -917,11 +922,16 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			await this.#send(live.ws, 'run.abort', { runId: lease.runId })
 			return { outcome: 'aborted' }
 		}
-		this.ctx.storage.sql.exec(
+		const committed = this.ctx.storage.sql.exec(
 			`UPDATE runs SET state = 'committed', started_at = ? WHERE run_id = ? AND state = 'dispatched'`,
 			Date.now(),
 			lease.runId,
-		)
+		).rowsWritten
+		if (committed === 0) {
+			record('aborted')
+			await this.#send(live.ws, 'run.abort', { runId: lease.runId })
+			return { outcome: 'aborted' }
+		}
 		record(null)
 		this.ctx.storage.sql.exec(
 			`UPDATE history SET started_at = ? WHERE run_id = ? AND attempt = ?`,
@@ -1083,7 +1093,15 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				credentialIds:
 					grant.credentials.mode === 'list' ? grant.credentials.ids : [],
 			},
-			runRecord: handle,
+			runRecord: handle
+				? {
+						...handle,
+						context: {
+							...handle.context,
+							metadata: markQueuedAttemptRan(handle.context.metadata ?? {}),
+						},
+					}
+				: null,
 			position: queued.position,
 		})
 		switch (dispatched.outcome) {
