@@ -368,6 +368,7 @@ export async function applyCredentialFieldsOnly(
 		orgId: ownerIdFromCaller(ctx.callerContext),
 		credentialId: plan.credentialId,
 		update: plan.update,
+		placementOrigin: 'explicit',
 		audit: orgAuditWriterFromRequest(
 			ctx.env,
 			requireMcpRequest(ctx.callerContext),
