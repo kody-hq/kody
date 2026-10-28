@@ -666,6 +666,13 @@ function RunHistory(props: {
 }) {
 	const [cursors, setCursors] = useState<Array<string | undefined>>([undefined])
 	const [requester, setRequester] = useState('')
+	const [requesterDraft, setRequesterDraft] = useState('')
+	function applyRequester() {
+		const next = requesterDraft.trim()
+		if (next === requester) return
+		setRequester(next)
+		setCursors([undefined])
+	}
 	const [outcome, setOutcome] = useState('')
 	const pages = useQuery({
 		queryKey: [
@@ -718,11 +725,13 @@ function RunHistory(props: {
 					<label css={{ display: 'grid', gap: 2 }}>
 						Requester
 						<input
-							value={requester}
+							value={requesterDraft}
+							placeholder="username"
 							css={[target, accountInputCss]}
-							onChange={(event) => {
-								setRequester(event.target.value)
-								setCursors([undefined])
+							onChange={(event) => setRequesterDraft(event.target.value)}
+							onBlur={applyRequester}
+							onKeyDown={(event) => {
+								if (event.key === 'Enter') applyRequester()
 							}}
 						/>
 					</label>
