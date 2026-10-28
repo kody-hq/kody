@@ -244,7 +244,9 @@ or the signed JWT. Put **`result.jwt`** in a fetch header or body (for example
 `Authorization: Bearer ${jwt}`) and Kody fills the JWT on egress. The handle
 fills on the registrable domain of an https **`aud`** claim or of
 **`send_to_host`** (pass it when `aud` is not a URL), never in a URL query or
-path, and expires with the JWT's `exp` (at most one hour). A token endpoint's
+path, and expires with the JWT's `exp` (at most one hour). Without either, the
+handle may fill on any host and the result carries a deprecation **`warning`**;
+a future release will require **`send_to_host`**. A token endpoint's
 `access_token`, `refresh_token`, and `id_token` come back sealed the same way.
 
 The caller supplies the JWT header and claims, then performs any provider-

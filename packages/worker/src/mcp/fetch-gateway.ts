@@ -419,6 +419,7 @@ export async function executeGatewayFetch(input: {
 					env: input.env,
 					response,
 					requestUrl: transformed.url,
+					approvedHosts: expanded.approvedHosts,
 					org: input.props.userId,
 					binding: input.props.credentialClientBinding ?? null,
 				})
@@ -641,6 +642,8 @@ export async function expandSecretPlaceholders(input: {
 	 * Used to warn on a 4xx; never includes values.
 	 */
 	pathSegmentEncodedNames: Array<string>
+	/** Approved hosts of the stored secrets this request filled. */
+	approvedHosts: Array<string>
 }> {
 	const headers = new Headers(input.request.headers)
 	// A client handle is for the gateway only; it never leaves.
@@ -687,6 +690,7 @@ export async function expandSecretPlaceholders(input: {
 			bodyFillDone: Promise.resolve(),
 			deferRedirectFollow: false,
 			pathSegmentEncodedNames: [],
+			approvedHosts: [],
 		}
 	}
 
@@ -714,6 +718,7 @@ export async function expandSecretPlaceholders(input: {
 	const credentialNamesByPlaceholder = new Map<string, string>()
 	const encodedBasicCredentials: Array<string> = []
 	const substitutedValues: Array<string> = []
+	const approvedHosts: Array<string> = []
 	let referencedAnyCredential = false
 
 	const requestHost = normalizeHost(requestUrl.hostname)
@@ -1129,7 +1134,8 @@ export async function expandSecretPlaceholders(input: {
 				return { referenced, resolved }
 			}),
 		)
-		for (const { referenced, value } of resolvedSecretResults) {
+		for (const { referenced, resolved, value } of resolvedSecretResults) {
+			approvedHosts.push(...resolved.allowedHosts)
 			const placeholder = buildSecretPlaceholder(referenced)
 			credentialNamesByPlaceholder.set(placeholder, referenced.name)
 			if (!replacements.has(placeholder)) {
@@ -1282,6 +1288,7 @@ export async function expandSecretPlaceholders(input: {
 		bodyFillDone,
 		deferRedirectFollow,
 		pathSegmentEncodedNames,
+		approvedHosts,
 	}
 }
 

@@ -1986,3 +1986,37 @@ test('fetch gateway seals token fields of a credential-filled response and fills
 	)
 	expect(seen).toHaveLength(2)
 })
+
+test('a token minted on a separate auth domain fills on the client secret approved hosts', async () => {
+	vi.spyOn(secretService, 'resolveSecret').mockResolvedValue(
+		userSecret('client-secret-value', [
+			'login.example-auth.com',
+			'api.example.org',
+		]),
+	)
+	const seen: Array<string | null> = []
+	const globalFetch = vi.fn(async (outbound: Request) => {
+		seen.push(outbound.headers.get('authorization'))
+		return outbound.url.endsWith('/token')
+			? Response.json({ access_token: 'minted', token_type: 'Bearer' })
+			: Response.json({ ok: true })
+	}) as unknown as typeof fetch
+	const send = (url: string, authorization: string) =>
+		executeGatewayFetch({
+			env,
+			props: { ...props, credentialClientBinding: 'run-a' },
+			request: new Request(url, { headers: { Authorization: authorization } }),
+			globalFetch,
+		})
+	const secret = buildSecretPlaceholder({ name: 'clientSecret', scope: null })
+	const token = (await (
+		await send('https://login.example-auth.com/token', `Bearer ${secret}`)
+	).json()) as Record<string, unknown>
+	const bearer = `Bearer ${String(token.access_token)}`
+	await send('https://api.example.org/v1/me', bearer)
+	expect(seen[1]).toBe('Bearer minted')
+	await expect(send('https://collector.test/x', bearer)).rejects.toThrow(
+		/may only be sent to example-auth\.com, example\.org, not collector\.test/,
+	)
+	expect(seen).toHaveLength(2)
+})

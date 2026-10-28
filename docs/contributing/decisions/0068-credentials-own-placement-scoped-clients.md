@@ -986,10 +986,17 @@ JWT, and a manual token request returned whatever the token endpoint sent.
   egress.
 - **Bound.** A sealed token fills only for its org, in the run that received it
   (the run's credential-client binding, or the CapabilityProxy credential for
-  `--local`), on the registrable domain of the token URL (or of the JWT's https
-  `aud` or `send_to_host`), never in a URL query or path, and for at most one
-  hour. A JWT with neither an https `aud` nor `send_to_host` stays sealed and
-  org-bound but may fill on any host, so existing callers keep working.
+  `--local`), on the registrable domain of the token URL or of any approved host
+  of the credentials filled into the token request (so a token minted on a
+  separate auth domain still reaches the API the credential is approved for,
+  with no new `oauthClientCredentials` option), or of the JWT's https `aud` or
+  `send_to_host`, never in a URL query or path, and for at most one hour. A JWT
+  with neither an https `aud` nor `send_to_host` stays sealed and org-bound but
+  may fill on any host, so existing callers keep working; the result carries a
+  deprecation `warning`, and requiring `send_to_host` is tracked in
+  kody-hq/kody#4456.
+- **Refresh tokens.** A sealed `refresh_token` shares the one-run, one-hour cap.
+  Kody holding refresh tokens server side is tracked in kody-hq/kody#4457.
 - **Server-side.** `oauthClientCredentials` runs its token request through the
   gateway, hosted and `--local`. The `__kodyTrackRunSecret` redactor hop is
   gone; nothing derived reaches code to redact.

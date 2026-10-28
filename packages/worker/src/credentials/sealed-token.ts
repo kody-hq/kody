@@ -237,6 +237,8 @@ export async function sealTokenResponse(input: {
 	env: SealedTokenEnv
 	response: Response
 	requestUrl: string
+	/** The filled credentials' approved hosts; the token may also go there. */
+	approvedHosts?: ReadonlyArray<string>
 	org: string
 	binding: string | null
 }) {
@@ -271,7 +273,11 @@ export async function sealTokenResponse(input: {
 	const sealed = await sealTokenFields({
 		env: input.env,
 		payload: parsed,
-		to: { org: input.org, binding: input.binding, domains: [domain] },
+		to: {
+			org: input.org,
+			binding: input.binding,
+			domains: [domain, ...approvedHostDomains(input.approvedHosts ?? [])],
+		},
 	})
 	return rebuilt(sealed ? JSON.stringify(sealed) : text)
 }
@@ -310,4 +316,13 @@ async function readUpTo(body: ReadableStream<Uint8Array>, limit: number) {
 		offset += chunk.byteLength
 	}
 	return { bytes, rest: null }
+}
+
+function approvedHostDomains(hosts: ReadonlyArray<string>) {
+	return hosts.flatMap((host) => {
+		const domain = sealedTokenDomainForUrl(
+			`https://${host.replace(/^\*\./, '')}`,
+		)
+		return domain ? [domain] : []
+	})
 }

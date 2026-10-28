@@ -101,6 +101,12 @@ export const jwtSignCapability = defineDomainCapability(
 		outputSchema: z.object({
 			jwt: z.string(),
 			algorithm: jwtAlgorithmSchema,
+			warning: z
+				.string()
+				.optional()
+				.describe(
+					'Deprecation notice when the sealed JWT may fill on any host. Pass send_to_host to bind it.',
+				),
 		}),
 		async handler(args, ctx: CapabilityContext) {
 			requireMcpUser(ctx.callerContext)
@@ -145,7 +151,8 @@ export const jwtSignCapability = defineDomainCapability(
 			}
 
 			// Without an https aud or send_to_host the JWT stays sealed and
-			// org-bound but may fill on any host, so existing callers keep working.
+			// org-bound but may fill on any host, so existing callers keep working
+			// until send_to_host is required (kody-hq/kody#4456).
 			const audienceDomains = sealedJwtDomains(args.claims, args.send_to_host)
 			const domains =
 				audienceDomains.length > 0 ? audienceDomains : [anySealedTokenDomain]
@@ -170,10 +177,16 @@ export const jwtSignCapability = defineDomainCapability(
 						exp === null ? null : exp - Math.floor(Date.now() / 1000),
 				}),
 				algorithm: args.algorithm,
+				...(audienceDomains.length > 0
+					? {}
+					: { warning: secretJwtSignAnyHostWarning }),
 			}
 		},
 	},
 )
+
+export const secretJwtSignAnyHostWarning =
+	'Deprecated: this sealed JWT may fill on any host because the "aud" claim is not an https URL and send_to_host was not passed. Pass send_to_host (for example "api.example.com"); a future release will require it.'
 
 function sealedJwtDomains(
 	claims: Record<string, unknown>,

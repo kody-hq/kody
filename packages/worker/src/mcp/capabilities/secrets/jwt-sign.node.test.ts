@@ -543,12 +543,15 @@ test('secretJwtSign seals the JWT to the aud URL or send_to_host domain', async 
 		claims: { ...claims, aud: 'not-a-url' },
 	})
 	expect(byHost.sealedTo.domains).toEqual(['example.org'])
+	expect(byAudience.warning).toBeUndefined()
+	expect(byHost.warning).toBeUndefined()
 	const anyHost = await signWith(privateKey, {
 		private_key_secret_name: 'serviceAccountKey',
 		algorithm: 'RS256',
 		claims,
 	})
 	expect(anyHost.sealedTo.domains).toEqual([sealedToken.anySealedTokenDomain])
+	expect(anyHost.warning).toMatch(/Deprecated: .*Pass send_to_host/)
 })
 
 test('secretJwtSign binds the sealed JWT to the host-set run binding', async () => {

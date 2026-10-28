@@ -120,6 +120,22 @@ test('sealTokenFields seals access, refresh, and id tokens and keeps the rest', 
 	).resolves.toBeNull()
 })
 
+test('a token minted on another domain also fills on the credential approved hosts', async () => {
+	const sealed = await sealTokenResponse({
+		env,
+		response: Response.json({ access_token: 'a-value' }, { status: 200 }),
+		requestUrl: 'https://login.example-auth.com/oauth/token',
+		approvedHosts: ['login.example-auth.com', '*.example.com'],
+		org: 'org-1',
+		binding: 'run-1',
+	})
+	const body = (await sealed.json()) as Record<string, unknown>
+	await expect(open(String(body.access_token))).resolves.toBe('a-value')
+	await expect(
+		open(String(body.access_token), { requestHost: 'evil.test' }),
+	).rejects.toThrow(/may only be sent to example-auth\.com, example\.com/)
+})
+
 test('sealTokenResponse seals JSON token responses and passes other bodies through', async () => {
 	const sealed = await sealTokenResponse({
 		env,
