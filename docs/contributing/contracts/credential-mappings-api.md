@@ -394,6 +394,8 @@ export type PackageCredentialsView = {
 		where:
 			{ type: 'default' } | { type: 'trigger'; trigger: CredentialTriggerRef }
 		status: 'unbound' | 'ambiguous' | 'unusable'
+		/** Unbound only: credentials of the right kind with no provider that a pick could link. */
+		possibleMatches?: Array<CredentialRef>
 	}>
 }
 ```
