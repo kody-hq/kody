@@ -258,9 +258,7 @@ function isOrgOwner(caller: ExecutionContextCaller) {
 }
 
 /** Protocol 7.1: usable contexts that are in none of the caller's chain. */
-export function unutilizedSummary(
-	views: ReadonlyArray<ContextView>,
-):
+export function unutilizedSummary(views: ReadonlyArray<ContextView>):
 	| {
 			count: number
 			contexts?: Array<{
@@ -1101,4 +1099,26 @@ export async function endLeasesWithoutAccess(
 export async function contextIdsVisibleInOrg(db: D1Database, orgId: string) {
 	const rows = await listOrgExecutionContexts(db, orgId)
 	return rows.filter((row) => !row.revoked_at).map((row) => row.id)
+}
+
+/**
+ * Membership hook: someone left an org or a team, so end their in-flight
+ * leases on that org's contexts. Best effort; the per-hop access check is
+ * the backstop.
+ */
+export async function endMemberExecutionContextLeases(
+	env: Env,
+	input: { orgId: string; userId: string },
+) {
+	try {
+		const ids = await contextIdsVisibleInOrg(env.APP_DB, input.orgId)
+		if (ids.length === 0) return
+		await endLeasesFor(env, ids, {
+			userIds: [input.userId],
+			orgId: input.orgId,
+			reason: 'access_lost',
+		})
+	} catch (error) {
+		console.error('execution-context-member-lease-end-failed', error)
+	}
 }

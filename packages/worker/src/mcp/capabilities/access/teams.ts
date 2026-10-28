@@ -1,3 +1,4 @@
+import { endMemberExecutionContextLeases } from '#worker/execution-contexts/service.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -229,6 +230,10 @@ export const teamMemberRemoveCapability = defineDomainCapability(
 					teamId,
 					userId,
 					audit: orgAuditWriterFromRequest(ctx.env, request),
+				})
+				await endMemberExecutionContextLeases(ctx.env, {
+					orgId: request.org.id,
+					userId,
 				})
 				return { team_id: teamId, user_id: userId, removed: true as const }
 			} catch (error) {
