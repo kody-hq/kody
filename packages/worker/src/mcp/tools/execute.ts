@@ -1122,7 +1122,6 @@ export async function runExecuteToolCall(input: {
 					...cloudFallbackContent,
 					...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 					...formatSurfacedMemoriesMarkdown(surfacedMemories),
-					...cloudFallbackContent,
 				]),
 				structuredContent: {
 					conversationId: resolvedConversationId,
