@@ -328,8 +328,11 @@ A signed-in member with Use can still open org credentials they hold; a
 signed-out visitor and anyone without Use cannot. While the
 `package-credential-suppliers` flag is on, a signed-in visitor (inside or
 outside the org) fills an executor need with a credential they pick on consent
-and the app reads it with `credential.visitor(key)`. A need the app fills for
-every visitor (a shared database, an email sender) opts in per slot with
+and the app reads it with `credential.visitor(key)`. After Allow, someone
+outside the org gets a short-lived visit pass that only opens the executor
+credentials they approved; storage, capabilities and everything else still treat
+them as an anonymous visitor plus identity. A need the app fills for every
+visitor (a shared database, an email sender) opts in per slot with
 `ownerCredentialForVisitors: true`:
 
 ```json

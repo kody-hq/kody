@@ -168,3 +168,81 @@ test('plain credential(key) on an executor need is refused before any credential
 	})
 	expect(seenBindings).toEqual([])
 })
+
+test('an executor-only ticket answers identity only and acts as no visitor elsewhere', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const visitAudience = {
+		host: 'https://example.com',
+		packageId: 'package-1',
+		kodyId: 'example',
+		sourceId: 'source-1',
+		publishedCommit: 'commit-1',
+	}
+	const minted = await mintPackageAppVisitTicket({
+		env: {} as Pick<Env, 'SECRET_STORE_KEY'>,
+		visitor: {
+			userId: personIdFromStored('outsider-1'),
+			username: 'outsider',
+			role: null,
+		},
+		owner: {
+			userId: ownerIdFromStored('org-1'),
+			orgSlug: 'org',
+			email: '',
+			displayName: 'Org',
+		},
+		audience: visitAudience,
+		credentialClientBinding: 'run:outsider',
+		grantId: 'grant-1',
+		scopes: ['profile', 'need:github'],
+		executorOnly: true,
+	})
+	const bridge = new PackageAppRuntimeBridge(
+		{
+			props: {
+				baseUrl: 'https://example.com',
+				userId: ownerIdFromStored('org-1'),
+				orgSlug: 'org',
+				visitor: null,
+				packageId: 'package-1',
+				kodyId: 'example',
+				sourceId: 'source-1',
+				publishedCommit: 'commit-1',
+				packageStorageGrantIds: ['package-1'],
+				credentialClientBinding: 'run:outsider',
+				packageSecretRefKey: '',
+				packageBindingToken: 'binding-token-for-test',
+				gatewayProps: null,
+				visitAudience,
+			},
+			waitUntil() {},
+		} as never,
+		{} as Env,
+	)
+	const internals = bridge as unknown as {
+		visitorFor: (ticket: string) => Promise<unknown>
+		createCallerContext: (
+			storageId: string | null,
+			ticket: string,
+		) => Promise<{ request: unknown; user: unknown }>
+		visitorIdentityAnswer: (
+			boundPackageId: string | null,
+			args: Record<string, unknown>,
+			ticket: string,
+		) => Promise<unknown>
+	}
+	expect(await internals.visitorFor(minted.ticket)).toBeNull()
+	const context = await internals.createCallerContext(null, minted.ticket)
+	expect(context.user).toBeNull()
+	expect(context.request).toBeNull()
+	expect(
+		await internals.visitorIdentityAnswer(null, {}, minted.ticket),
+	).toEqual({
+		user_id: 'outsider-1',
+		username: 'outsider',
+		email: '',
+		display_name: 'outsider',
+		org: { slug: 'org' },
+		scopes: ['profile', 'need:github'],
+	})
+})

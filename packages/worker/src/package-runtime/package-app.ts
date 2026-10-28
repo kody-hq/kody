@@ -1649,11 +1649,21 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
+	/**
+	 * The visit every path except executor credentials acts on. An
+	 * executor-only ticket (an outside-org visitor) counts as no visit, so
+	 * storage, capabilities and identity stay anonymous plus identity.
+	 */
+	private async requireActingVisit(ticket: string | null | undefined) {
+		const visit = await this.requireVisit(ticket)
+		return visit?.executorOnly ? null : visit
+	}
+
 	/** Who this call acts for the legacy way: the ticket's visitor, if any. */
 	private async visitorFor(
 		ticket: string | null | undefined,
 	): Promise<RuntimePackageAppVisitor | null> {
-		const visit = await this.requireVisit(ticket)
+		const visit = await this.requireActingVisit(ticket)
 		return visit?.visitor ?? null
 	}
 
@@ -1661,7 +1671,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		storageId: string | null,
 		ticket?: string | null,
 	) {
-		const visit = await this.requireVisit(ticket)
+		const visit = await this.requireActingVisit(ticket)
 		const visitor = visit?.visitor ?? null
 		const email = visit?.owner.email ?? this.ctx.props.email
 		const displayName = visit?.owner.displayName ?? this.ctx.props.displayName
@@ -2119,7 +2129,19 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		args: Record<string, unknown>,
 		visitTicket: string | null | undefined,
 	) {
-		const visitor = await this.visitorFor(visitTicket)
+		const visit = await this.requireVisit(visitTicket)
+		if (visit?.executorOnly) {
+			// An outside-org visitor gets the identity-only answer, never more.
+			return {
+				user_id: visit.visitor.userId,
+				username: visit.visitor.username,
+				email: '',
+				display_name: visit.visitor.username,
+				org: { slug: this.ctx.props.orgSlug ?? '' },
+				scopes: [...visit.scopes],
+			}
+		}
+		const visitor = visit?.visitor ?? null
 		const legacy = (await this.invokeCapability(
 			boundPackageId,
 			await this.createCallerContext(null, visitTicket),
@@ -2205,8 +2227,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	private async visitorConsentCallerContext(
 		needKey: string,
 		visitTicket: string | null | undefined,
+		options: { executorNeed?: boolean } = {},
 	) {
-		const visitor = await this.visitorFor(visitTicket)
+		const visitor = options.executorNeed
+			? ((await this.requireVisit(visitTicket))?.visitor ?? null)
+			: await this.visitorFor(visitTicket)
 		if (!visitor) {
 			throw new PackageAppVisitorConsentError(
 				'This needs a visitor signed in with Kody. Anonymous visitors cannot share their own data.',
@@ -2838,6 +2863,8 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			  },
 		visitTicket: string | null | undefined,
 	) {
+		// The full ticket: its binding scopes handles to this request, and only
+		// an executor need below reads an outside-org visitor from it.
 		const visit = await this.requireVisit(visitTicket)
 		const owner = boundPackageId ?? this.ctx.props.packageId
 		const binding = this.credentialBindingFor(visit)
@@ -3045,7 +3072,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			visitTicket,
 		)
 		if (directSupplier === 'executor') {
-			await this.visitorConsentCallerContext(key, visitTicket)
+			await this.visitorConsentCallerContext(key, visitTicket, {
+				executorNeed: true,
+			})
 			return await callTool(
 				await this.getCredentialClientTools(
 					boundPackageId,
@@ -3072,7 +3101,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			visitTicket,
 		)
 		const scopeNeed = supplier === 'executor' ? need.credential : key
-		await this.visitorConsentCallerContext(scopeNeed, visitTicket)
+		await this.visitorConsentCallerContext(scopeNeed, visitTicket, {
+			executorNeed: supplier === 'executor',
+		})
 		return await callTool(
 			await this.getCredentialClientTools(
 				boundPackageId,
@@ -3865,6 +3896,16 @@ export async function buildPackageAppWorker(input: {
 		servingUsername?: string
 		hostedOrigin?: string
 		mount?: PackageAppMount
+		/**
+		 * An outside-org visitor whose live grant covers this app's executor
+		 * needs. Gets an executor-only visit ticket; see
+		 * `createPackageAppRequestVisit`.
+		 */
+		executorVisit?: {
+			visitor: RuntimePackageAppVisitor
+			grantId: string
+			scopes: ReadonlyArray<string>
+		} | null
 	}
 	/** LOADER mint surface. HTTP serve is `app_fetch`; realtime passes `app_realtime`. */
 	surface?: 'app_fetch' | 'app_realtime'
@@ -3942,8 +3983,10 @@ export async function buildPackageAppWorker(input: {
 				publishedCommit: input.savedPackage.publishedCommit,
 			},
 			request: input.runtime.callerContext.request ?? null,
-			grantId: visitorGrant?.id ?? null,
-			scopes: visitorGrant?.scopes ?? ['profile'],
+			grantId: visitorGrant?.id ?? input.runtime.executorVisit?.grantId ?? null,
+			scopes: visitorGrant?.scopes ??
+				input.runtime.executorVisit?.scopes ?? ['profile'],
+			executorVisitor: input.runtime.executorVisit?.visitor ?? null,
 		})
 		const cacheKey = createPackageAppWorkerCacheKey({
 			userId: input.userId,

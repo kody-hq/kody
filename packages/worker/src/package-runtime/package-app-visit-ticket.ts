@@ -70,6 +70,12 @@ export type PackageAppVisitClaims = {
 	grantId: string | null
 	/** Scopes the visitor granted when this request began. */
 	scopes: ReadonlyArray<string>
+	/**
+	 * A visitor from outside the owning org: the ticket only opens the
+	 * executor credentials they approved. Every other path treats the request
+	 * as anonymous plus identity.
+	 */
+	executorOnly?: boolean
 	exp: number
 }
 
@@ -103,6 +109,7 @@ type StoredVisitTicket = {
 	binding: string
 	grantId: string | null
 	scopes: Array<string>
+	xo?: true
 }
 
 const liveNonces = new Map<string, number>()
@@ -203,7 +210,8 @@ function isStoredVisitTicket(value: unknown): value is StoredVisitTicket {
 		isNonEmptyText(record.binding) &&
 		(record.grantId === null || isText(record.grantId)) &&
 		Array.isArray(record.scopes) &&
-		record.scopes.every((scope) => typeof scope === 'string')
+		record.scopes.every((scope) => typeof scope === 'string') &&
+		(record.xo === undefined || record.xo === true)
 	)
 }
 
@@ -231,6 +239,7 @@ function claimsFromStored(stored: StoredVisitTicket): PackageAppVisitClaims {
 		credentialClientBinding: stored.binding,
 		grantId: stored.grantId,
 		scopes: stored.scopes,
+		...(stored.xo ? { executorOnly: true } : {}),
 		exp: stored.exp,
 	}
 }
@@ -340,6 +349,7 @@ export async function mintPackageAppVisitTicket(input: {
 	credentialClientBinding: string
 	grantId?: string | null
 	scopes?: ReadonlyArray<string>
+	executorOnly?: boolean
 	nonce?: string
 	now?: number
 }): Promise<{ ticket: string; nonce: string; exp: number }> {
@@ -366,6 +376,7 @@ export async function mintPackageAppVisitTicket(input: {
 			binding: input.credentialClientBinding,
 			grantId: input.grantId ?? null,
 			scopes: [...(input.scopes ?? [])],
+			...(input.executorOnly ? { xo: true as const } : {}),
 		} satisfies StoredVisitTicket),
 	)
 	const signature = await crypto.subtle.sign(
@@ -494,9 +505,49 @@ export async function createPackageAppRequestVisit(input: {
 	request: RequestContext | null
 	grantId?: string | null
 	scopes?: ReadonlyArray<string>
+	/**
+	 * An outside-org visitor with a live grant for this app's executor needs.
+	 * Only used when there is no `visitor`: the ticket names them for
+	 * `credential.visitor()` and nothing else.
+	 */
+	executorVisitor?: RuntimePackageAppVisitor | null
 	now?: number
 }): Promise<PackageAppRequestVisit> {
 	const credentialClientBinding = newRunCredentialClientBinding()
+	if (!input.visitor && input.executorVisitor) {
+		const executorVisitor = { ...input.executorVisitor, role: null }
+		const minted = await mintPackageAppVisitTicket({
+			env: input.env,
+			visitor: executorVisitor,
+			owner: input.owner,
+			audience: input.audience,
+			credentialClientBinding,
+			grantId: input.grantId,
+			scopes: input.scopes,
+			executorOnly: true,
+			now: input.now,
+		})
+		return {
+			ticket: minted.ticket,
+			nonce: minted.nonce,
+			visitor: null,
+			request: null,
+			credentialClientBinding,
+			email: input.owner.email,
+			displayName: input.owner.displayName,
+			claims: {
+				visitor: executorVisitor,
+				owner: input.owner,
+				audience: input.audience,
+				nonce: minted.nonce,
+				credentialClientBinding,
+				grantId: input.grantId ?? null,
+				scopes: [...(input.scopes ?? [])],
+				executorOnly: true,
+				exp: minted.exp,
+			},
+		}
+	}
 	if (!input.visitor || !input.request?.actor) {
 		return {
 			ticket: null,

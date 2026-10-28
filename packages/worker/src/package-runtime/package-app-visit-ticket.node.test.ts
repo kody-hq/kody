@@ -330,3 +330,41 @@ test('endPackageAppVisitWithResponse burns the nonce when the client cancels', a
 		).rejects.toBeInstanceOf(PackageAppVisitTicketError)
 	})
 })
+
+test('an outside-org visitor gets an executor-only ticket that names them without a role', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const outsider = await createPackageAppRequestVisit({
+		env: secretEnv,
+		visitor: null,
+		owner,
+		audience,
+		request: null,
+		grantId: 'grant-outsider',
+		scopes: ['profile', 'need:github'],
+		executorVisitor: visitorB,
+	})
+	expect(outsider.ticket).toMatch(/^kvt1\./)
+	expect(outsider.visitor).toBeNull()
+	expect(outsider.request).toBeNull()
+	const claims = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: outsider.ticket!,
+		audience,
+	})
+	expect(claims).toMatchObject({
+		executorOnly: true,
+		visitor: { userId: visitorB.userId, username: 'beta', role: null },
+		grantId: 'grant-outsider',
+		scopes: ['profile', 'need:github'],
+	})
+	const member = await mintFor(visitorA)
+	expect(
+		(
+			await verifyPackageAppVisitTicket({
+				env: secretEnv,
+				ticket: member.ticket,
+				audience,
+			})
+		).executorOnly,
+	).toBeUndefined()
+})
