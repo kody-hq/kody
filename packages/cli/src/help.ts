@@ -282,6 +282,9 @@ ${orgBlock}
              This run's own ordered chain (up to 3 contexts, \`cloud\` only
              last), replacing your default chain. Skipped entries are listed
              with a reason when nothing qualifies.
+             Automations set theirs with
+             \`kody api automationExecutionSet --params '{"kind":"job","jobId":"…","execution":{"context":"laptop"}}'\`
+             (read with \`automationExecutionGet\`).
   --credential <key=name>
              ADR 0068 call map: pick which credential each \`credential(key)\`
              / \`credentials(key)\` call gets. Repeatable.
