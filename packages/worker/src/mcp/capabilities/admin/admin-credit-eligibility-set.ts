@@ -43,6 +43,7 @@ export const adminCreditEligibilitySetCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminCreditEligibilitySet',
+		contextRuns: 'deny',
 		description:
 			'Turn admin prepaid-credit eligibility on or off for one account by stable user id, email, or username (users.admin_credits_eligible). Stripe refreshes never overwrite it. With an effective Pro plan (for example a manual adminUserUpdate plan grant), eligibility gives the account the same credit wallet as the purchasable Pro subscription: usage past the Pro include runs on credits and debits the wallet, and stops at the include when the balance runs out. Turning it off leaves the balance on hold. Does not create Stripe customers or subscriptions, and does not enable buying credits or auto-refill. Audited, with an optional note.',
 		keywords: [

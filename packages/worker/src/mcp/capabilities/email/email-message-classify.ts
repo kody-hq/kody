@@ -49,6 +49,7 @@ export const emailMessageClassifyCapability = defineDomainCapability(
 	capabilityDomainNames.email,
 	{
 		name: 'emailMessageClassify',
+		contextRuns: 'allow',
 		orgPermission: 'email:write',
 		description:
 			'Mark a stored inbound email message as spam, not spam, or quarantined, and/or archive or unarchive it. Nothing is deleted. Spam and archived mail leave the default inbox view (emailMessageList view "spam" / "archived" shows them). Setting classification to accepted releases a quarantined or spam message so emailReply can answer it. Receive-time classification decides package subscription dispatch once; reclassifying does not retroactively fire email.message.received. Marking spam never adds a sender rule; use emailSenderRuleSet to block future mail.',

@@ -2,6 +2,7 @@
  * soft-delete-read-filter: opt-out
  */
 
+import { endMemberExecutionContextLeases } from '#worker/execution-contexts/service.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { offboardOrgMember } from '#worker/orgs/offboarding.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
@@ -60,6 +61,10 @@ export async function onMemberSoftRemoved(
 		now: new Date(input.deletedAt),
 		oauthHelpers: oauthHelpers ?? null,
 		resumeDeletedAt: input.resume ? input.deletedAt : undefined,
+	})
+	await endMemberExecutionContextLeases(input.env, {
+		orgId: input.orgId,
+		userId: input.userId,
 	})
 	await recordOrgAuditEvent(input.audit, {
 		orgId: input.orgId,

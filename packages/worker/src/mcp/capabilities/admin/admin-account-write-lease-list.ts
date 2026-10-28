@@ -13,6 +13,7 @@ export const adminAccountWriteLeaseListCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminAccountWriteLeaseList',
+		contextRuns: 'deny',
 		description:
 			'Inspect active non-expiring account write leases before manual repair. Admin-only.',
 		keywords: ['admin', 'account', 'deletion', 'lease', 'repair'],

@@ -720,6 +720,17 @@ async function resolveKey(
 							: ({ visitorNeed: key } as const),
 				}))
 			: picked
+	// An app's runs-as person is not the executor; each visitor picks theirs.
+	if (
+		ctx.packageAppAuthority?.issue &&
+		'runsAs' in ctx.packageAppAuthority.issue &&
+		need?.supplier === 'executor'
+	) {
+		throw refusal(
+			'credential_denied',
+			`Credential need "${key}" is supplied by each app visitor; use credential.visitor("${key}")`,
+		)
+	}
 	if (
 		ctx.packageAppAuthority?.issue &&
 		'visitorNeed' in ctx.packageAppAuthority.issue &&

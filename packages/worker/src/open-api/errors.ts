@@ -8,6 +8,7 @@ import {
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
 import { McpCallerError, isMcpCallerError } from '#mcp/caller-error.ts'
+import { isExecutionContextError } from '#worker/execution-contexts/errors.ts'
 import { EncodedPlaceholderError } from '#mcp/secrets/encoded-placeholder.ts'
 import {
 	AuthorizationError,
@@ -47,6 +48,16 @@ export const apiErrorCodes = [
 	'account_suspended',
 	'feature_unavailable',
 	'feature_disabled',
+	'not_granted',
+	'context_revoked',
+	'chain_changed',
+	'chain_too_long',
+	'context_not_usable',
+	'no_execution_context_available',
+	'execution_context_unavailable',
+	'execution_context_lease_invalid',
+	'execution_context_access_lost',
+	'execution_context_credential_not_granted',
 	'not_found',
 	'method_not_allowed',
 	'account_deleting',
@@ -212,6 +223,16 @@ export function toApiError(error: unknown): ApiError {
 			// Hint only — entitlement reset is not a fixed window. Clients should
 			// back off at least this long before retrying a capped operation.
 			headers: { 'Retry-After': '60' },
+			cause: error,
+		})
+	}
+	const contextError = getErrorCauseChain(error).find(isExecutionContextError)
+	if (contextError) {
+		return new ApiError({
+			status: contextError.status,
+			code: contextError.code,
+			message: contextError.message,
+			details: contextError.details,
 			cause: error,
 		})
 	}

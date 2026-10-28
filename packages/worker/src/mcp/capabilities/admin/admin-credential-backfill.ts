@@ -62,6 +62,7 @@ export const adminCredentialBackfillCapability = defineDomainCapability(
 		...adminMutationCapabilityAccess,
 		idempotent: true,
 		name: 'adminCredentialBackfill',
+		contextRuns: 'deny',
 		description:
 			'Fill credential `provider` and `inject` from a complete inventory run (ADR 0068). provider is written only when every slot naming the credential agrees on one provider slug; inject only when every placement is the same header or the same query param. Only unset columns are written, and nothing reads them yet. An apply refuses a run with failed packages (counts.failedPackages) unless acknowledgedFailedPackageIds lists exactly those packages. Never reads a credential value. dryRun defaults to true.',
 		keywords: [

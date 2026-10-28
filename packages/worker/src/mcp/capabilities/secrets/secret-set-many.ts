@@ -77,6 +77,7 @@ export const secretSetManyCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'secretSetMany',
+		contextRuns: 'deny',
 		orgPermission: 'secret:write',
 		description:
 			'Assert authorization for, and optionally atomically persist, multiple secret references for the signed-in user (API keys, PATs, HMAC secrets). Use assertOnly before a multi-write that must not partially succeed. Do not use this for OAuth access or refresh tokens — `/connect/oauth` and `createAuthenticatedFetch` / `integrationTokenRefresh` persist those on the connection. Host use is authorized through secret policy approvals. Saved secrets are consumed in outbound `fetch` calls by placeholder, e.g. `{{secret:name}}`, resolved only for approved hosts.',

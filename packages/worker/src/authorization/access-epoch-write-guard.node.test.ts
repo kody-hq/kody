@@ -39,6 +39,7 @@ const writers: Record<string, Invalidation> = {
 	'orgs/convert-personal-org.ts': 'same-batch-bump',
 	'credentials/credential-grant-cleanup.ts': 'same-batch-bump',
 	'identity/permissions-db.ts': 'same-batch-bump',
+	'execution-contexts/service.ts': 'same-batch-bump',
 	'orgs/soft-delete.ts': 'org-tombstone-then-restore-bump',
 	'orgs/provision.ts': 'org-row-lifecycle',
 	'account/data-targets.ts': 'person-row-gone',

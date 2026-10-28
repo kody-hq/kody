@@ -14,6 +14,10 @@ const resourceActions = {
 	integration: ['use', 'read', 'write', 'delete', 'manage_access'],
 	memory: ['read', 'write', 'delete', 'manage_access'],
 	email: ['read', 'send', 'write', 'delete', 'manage_access'],
+	// A registered machine that runs execute. Org roles and org-wide grants
+	// confer read, write, delete and manage_access only; `execute` comes from
+	// a grant on the context itself (canExecuteOnContext), never from a role.
+	execution_context: ['read', 'execute', 'write', 'delete', 'manage_access'],
 } as const
 
 /** A permission family: the `resource-type` half of a permission string. */

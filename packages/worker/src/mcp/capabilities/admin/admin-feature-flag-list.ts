@@ -27,6 +27,7 @@ export const adminFeatureFlagListCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminFeatureFlagList',
+		contextRuns: 'deny',
 		description:
 			"List feature flags for admin review, including registry metadata, global state, per-user overrides, and each flag's declared success metric with its on/off cohort readout (exposures joined with usage events, current month to date). Registry flags without a success metric carry a successMetricNotice strongly recommending one. Admin-only; never returns user content.",
 		keywords: [

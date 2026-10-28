@@ -208,6 +208,8 @@ function manageAccessPermission(resourceType: OrgResourceType): OrgPermission {
 			return 'memory:manage_access'
 		case 'email':
 			return 'email:manage_access'
+		case 'execution_context':
+			return 'execution_context:manage_access'
 		default: {
 			const exhaustive: never = resourceType
 			throw new Error(`Unhandled resource type: ${String(exhaustive)}`)
@@ -271,6 +273,20 @@ async function grantTargetCheck(
 				resource: credentialResource(orgId, credential),
 			}
 		}
+		case 'execution_context':
+			// Adding run access to someone's machine goes through
+			// executionContextShareSet, which only the operator or a Manage
+			// holder may call (decision 13b). Removing a share stays here.
+			if (purpose === 'grant') {
+				throw new McpCallerError(
+					'Share an execution context with executionContextShareSet; accessGrant does not add execution context grants.',
+				)
+			}
+			return {
+				family: resourceType,
+				permission: manageAccessPermission(resourceType),
+				resource: { type: resourceType, id: resourceId, orgId },
+			}
 		case 'package':
 		case 'app':
 		case 'job':

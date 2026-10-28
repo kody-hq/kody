@@ -13,6 +13,7 @@ export const metaMemoryGetCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'metaMemoryGet',
+		contextRuns: 'allow',
 		orgPermission: memoryPersonalOnlyOrgPermission,
 		description:
 			'Load one stored **personal** memory by id for the signed-in person (always their personal org, regardless of which org this connection uses).',

@@ -28,6 +28,7 @@ test('search and api agree on which capabilities api can call', async () => {
 
 	expect(isCapabilityAvailableViaApiTool('webhookDeliveryList')).toBe(true)
 	expect(isCapabilityAvailableViaApiTool('metaGetCurrentUser')).toBe(true)
+	expect(isCapabilityAvailableViaApiTool('packageAppFetch')).toBe(true)
 	expect(
 		capabilityApiAvailabilitySummary('metaGetCurrentUser').summary,
 	).toContain('operationId')

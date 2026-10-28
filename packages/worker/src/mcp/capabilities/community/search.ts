@@ -22,6 +22,7 @@ export const communitySearchCapability = defineDomainCapability(
 	capabilityDomainNames.community,
 	{
 		name: 'communitySearch',
+		contextRuns: 'allow',
 		orgPermission: 'search:read',
 		description:
 			'Search public package listings on this deployment. Default ranking is relevance and community ratings; pass sort=newest for last published first. Pass category to browse one closed listing category. Use `communityGet` for full detail before forking.',

@@ -1,3 +1,4 @@
+import { buildSelfPublishBlockerDetail } from './self-publish-blocker-detail.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
@@ -24,6 +25,9 @@ vi.mock('#worker/repo/entity-sources.ts', () => ({
 vi.mock('#worker/repo/published-source.ts', () => ({
 	loadPublishedEntityManifest: (...args: Array<unknown>) =>
 		mockModule.loadPublishedEntityManifest(...args),
+}))
+vi.mock('#worker/credentials/credential-suppliers-flag.ts', () => ({
+	isPackageCredentialSuppliersEnabled: async () => true,
 }))
 vi.mock('#worker/credentials/credential-needs-closure.ts', () => ({
 	loadPublishedCredentialNeeds: (...args: Array<unknown>) =>
@@ -289,6 +293,33 @@ test('self-publish is blocked when the capability set has entries or the tree de
 			blocker: 'declares_credentials',
 		}),
 	)
+	mockModule.loadPublishedCredentialNeeds.mockImplementation(
+		async (input: { sourceId: string }) =>
+			input.sourceId === 'source-dep'
+				? [{ key: 'github', provider: 'github', supplier: 'executor' }]
+				: [],
+	)
+	const executorOnly = await evaluate()
+	expect(executorOnly).toEqual(
+		expect.objectContaining({
+			eligible: false,
+			blocker: 'declares_credentials',
+			reasons: [
+				{
+					kind: 'credential_needs',
+					sourceId: 'source-dep',
+					needCount: 1,
+					executorNeedCount: 1,
+				},
+			],
+		}),
+	)
+	expect(
+		buildSelfPublishBlockerDetail({
+			blocker: 'declares_credentials',
+			reasons: executorOnly.eligible ? [] : executorOnly.reasons,
+		}).message,
+	).toContain('executor-supplied credential need(s)')
 	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([])
 
 	for (const kody of [

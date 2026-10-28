@@ -76,6 +76,7 @@ export const adminJobOwnerEnablementBackfillCapability = defineDomainCapability(
 		...adminMutationCapabilityAccess,
 		idempotent: true,
 		name: 'adminJobOwnerEnablementBackfill',
+		contextRuns: 'deny',
 		description:
 			'Backfill an on cron enablement for the owner of each enabled package job that is missing one (so scheduled ticks run). Idempotent: skips jobs that already have a non-off owner enablement. dryRun defaults to true. Page with cursor until nextCursor is null, then set dryRun false and page again. Creating a job now auto-enables the owner; this repairs jobs that predate that rule.',
 		keywords: [

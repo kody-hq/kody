@@ -34,6 +34,7 @@ export const adminPlatformOauthAppListCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminPlatformOauthAppList',
+		contextRuns: 'deny',
 		description:
 			'List platform (built-in) OAuth apps with per-app user connection counts. Secret values are never included. Admin-only.',
 		keywords: [

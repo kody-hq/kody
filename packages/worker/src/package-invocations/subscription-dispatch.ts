@@ -548,6 +548,7 @@ function subscriptionEnablerScope(
 		case 'cli':
 		case 'api-token':
 		case 'package-app':
+		case 'execution-context-run':
 			return null
 		default: {
 			const exhaustive: never = request

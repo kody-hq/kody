@@ -227,6 +227,9 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0082 — OAuth device authorization grant for the Kody CLI](./0082-cli-oauth-device-authorization-grant.md)
   — RFC 8628 on Kody's own authorization server for the official CLI only;
   `kody login --device` and `/device`; amends 0056 and 0076
+- [0083 — Context runs never receive credential values](./0083-context-runs-never-see-credential-values.md)
+  — credentialed requests from execution-context runs leave from Kody cloud, so
+  the machine never sees credential values
 
 ## Historical / UI / implementation
 

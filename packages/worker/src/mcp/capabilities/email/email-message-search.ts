@@ -22,6 +22,7 @@ export const emailMessageSearchCapability = defineDomainCapability(
 	capabilityDomainNames.email,
 	{
 		name: 'emailMessageSearch',
+		contextRuns: 'allow',
 		orgPermission: 'email:read',
 		description:
 			'Search stored email messages for the current org by case-insensitive substring match against subject, header From, and envelope sender. The default "inbox" view skips spam and archived messages; pass view "all" to search everything.',

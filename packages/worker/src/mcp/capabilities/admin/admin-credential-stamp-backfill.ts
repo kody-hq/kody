@@ -178,6 +178,7 @@ export const adminCredentialStampBackfillCapability = defineDomainCapability(
 		...adminMutationCapabilityAccess,
 		destructive: true,
 		name: 'adminCredentialStampBackfill',
+		contextRuns: 'deny',
 		description: `Fleet scan/apply for published packages missing a complete credential stamp at the current published commit (issue #3836 phase 2). Reports stamped, would_restamp, needs_manifest (run codemod 0014-seal-credential-stamps), and unconvertible (agent convert then notify Kent). Apply restamps seal-ready packages only (no content change). ${pagingHint}`,
 		keywords: [
 			'admin',

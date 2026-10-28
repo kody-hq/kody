@@ -851,8 +851,7 @@ reconcile lane, cold-drift correction, and the parity report.
 
 ## Schema
 
-The current schema after the squashed baseline and subsequent migrations stores
-plan columns as they work today:
+Live `orgs` plan columns:
 
 - `orgs.plan` is NOT NULL with DEFAULT `'free'` and CHECK constraints for
   `free`, `standard`, `pro`, and `max`

@@ -51,8 +51,6 @@ vi.mock('./artifacts-git-retry.ts', () => ({
 
 const { cloneExternalPublishWorkspace } =
 	await import('./external-publish-clone.ts')
-const { buildUnknownRequestedCommitMessage } =
-	await import('./requested-commit-error.ts')
 
 test('cloneExternalPublishWorkspace clones into ephemeral FS and exposes publish helpers', async () => {
 	expect(
@@ -233,15 +231,19 @@ test('checkout of an unknown full SHA is not a clone or backup failure', async (
 			{ name: 'CommitNotFetchedError', code: 'CommitNotFetchedError' },
 		),
 	)
-	await expect(
-		cloneExternalPublishWorkspace({
-			remote:
-				'https://acct.artifacts.cloudflare.net/git/default/source-repo.git',
-			token: 'art_token',
-			branch: 'main',
-			checkoutCommit: commit,
-		}),
-	).rejects.toThrow(buildUnknownRequestedCommitMessage(commit))
+	const error = await cloneExternalPublishWorkspace({
+		remote: 'https://acct.artifacts.cloudflare.net/git/default/source-repo.git',
+		token: 'art_token',
+		branch: 'main',
+		checkoutCommit: commit,
+	}).catch((caught: unknown) => caught)
+	expect(error).toBeInstanceOf(Error)
+	expect((error as Error).message).toContain(
+		'was not found in the package source',
+	)
+	expect((error as Error).message).toContain(commit)
+	expect((error as Error).message).not.toContain('restorable backup')
+	expect((error as Error).message).not.toContain('source clone failed')
 })
 
 test('checkout keeps a storage failure distinct from a clone failure', async () => {

@@ -216,6 +216,33 @@ test('supplier and required fields validate and reject conflicting aliases', () 
 			legacy: { description: 'Legacy access.', required: false },
 		}),
 	).toMatch(/kody\.credentials\.legacy\.required/)
+	expect(
+		publishError({
+			GITHUB_TOKEN: { description: 'Visitor access.', supplier: 'executor' },
+		}),
+	).toMatch(/need:GITHUB_TOKEN/)
+	expect(
+		parseAuthoredPackageJson({
+			content: manifestWithCredentials({
+				GITHUB_TOKEN: {
+					description: 'Publisher access.',
+					supplier: 'publisher',
+				},
+			}),
+		}).kody.credentials,
+	).toMatchObject({ GITHUB_TOKEN: { supplier: 'publisher' } })
+})
+
+test('published snapshots keep an executor need whose key predates the consent-scope rule', () => {
+	const content = manifestWithCredentials({
+		GITHUB_TOKEN: { description: 'Visitor access.', supplier: 'executor' },
+	})
+	expect(
+		parseAuthoredPackageJson({ content, mode: 'published' }).kody.credentials,
+	).toMatchObject({ GITHUB_TOKEN: { supplier: 'executor' } })
+	expect(() => parseAuthoredPackageJson({ content })).toThrow(
+		/need:GITHUB_TOKEN/,
+	)
 })
 
 test('published snapshots load when an old kody.credentials key predates the schema', () => {

@@ -1,0 +1,81 @@
+{
+	"note": "ECP v1 signing vectors. Keys are in test-keys.json (TEST ONLY). Ed25519 is deterministic, so every signature here is exact.",
+	"contextPublicJwk": {
+		"kty": "OKP",
+		"crv": "Ed25519",
+		"x": "WyNY8vZaBNQewVS2a60-fViiEZAHO0L8OJ8LEIQDMWU"
+	},
+	"contextThumbprint": "gV7ueKL9W_Rhc3dDR-OelMausgyn_GY4MpYIEp9sMtw",
+	"contextFrame": {
+		"payload": {
+			"v": 1,
+			"t": "run.accept",
+			"ec": "ec_vector1",
+			"sid": "ses_vector1",
+			"seq": 1,
+			"ts": 1793116800123,
+			"re": 1,
+			"body": {
+				"runId": "run_vector1"
+			}
+		},
+		"envelope": {
+			"p": "eyJ2IjoxLCJ0IjoicnVuLmFjY2VwdCIsImVjIjoiZWNfdmVjdG9yMSIsInNpZCI6InNlc192ZWN0b3IxIiwic2VxIjoxLCJ0cyI6MTc5MzExNjgwMDEyMywicmUiOjEsImJvZHkiOnsicnVuSWQiOiJydW5fdmVjdG9yMSJ9fQ",
+			"s": "kUW1s1feke50ivPreUULBPyN7laV6O46zhwoPh7fYKQsI_F1nr3BMk8DatGcUfzkvb6xIWASUng-XPBnZ4ejDg",
+			"k": "ctx"
+		}
+	},
+	"serverFrame": {
+		"payload": {
+			"v": 1,
+			"t": "run.commit",
+			"ec": "ec_vector1",
+			"sid": "ses_vector1",
+			"seq": 2,
+			"ts": 1793116800200,
+			"re": 1,
+			"body": {
+				"runId": "run_vector1"
+			}
+		},
+		"envelope": {
+			"p": "eyJ2IjoxLCJ0IjoicnVuLmNvbW1pdCIsImVjIjoiZWNfdmVjdG9yMSIsInNpZCI6InNlc192ZWN0b3IxIiwic2VxIjoyLCJ0cyI6MTc5MzExNjgwMDIwMCwicmUiOjEsImJvZHkiOnsicnVuSWQiOiJydW5fdmVjdG9yMSJ9fQ",
+			"s": "gpBIwuhEveRJJPYULhvtDmegVf3nzvbqfS71LA4i0jNw19L1L3SDfOZyw1lAU2lnm7-h0TGK-yTSezaL_ISECA",
+			"k": "ecp-frame-test-1"
+		}
+	},
+	"keySet": {
+		"root": {
+			"kid": "root-test-1",
+			"x": "6qRBa8n9QOpgMVvKw2Ck3hUGuaVAi0D-bNGjum0u5rk"
+		},
+		"payload": {
+			"v": 1,
+			"keys": [
+				{
+					"kid": "ecp-frame-test-1",
+					"x": "dhu5yQAAwEd6De_QQrbxRuozBukGgMr2XScwH8du5GU",
+					"notAfter": 4102444800000
+				}
+			],
+			"issuedAt": 1793116800000
+		},
+		"document": {
+			"p": "eyJ2IjoxLCJrZXlzIjpbeyJraWQiOiJlY3AtZnJhbWUtdGVzdC0xIiwieCI6ImRodTV5UUFBd0VkNkRlX1FRcmJ4UnVvekJ1a0dnTXIyWFNjd0g4ZHU1R1UiLCJub3RBZnRlciI6NDEwMjQ0NDgwMDAwMH1dLCJpc3N1ZWRBdCI6MTc5MzExNjgwMDAwMH0",
+			"s": "UrGbh-9vggG-vCNetZPFcjpoSo5EX6CzfuXd6akwHoSGG1NNRS1kyz7A-K_Dkhj4lq8yaG_xOZhbz__0HSKXAQ",
+			"k": "root-test-1"
+		}
+	},
+	"http": {
+		"method": "POST",
+		"pathAndQuery": "/v1/execution-contexts/connect-ticket?org=example",
+		"body": "{}",
+		"header": "ec=ec_vector1, ts=1793116800000, n=AAAAAAAAAAAAAAAAAAAAAA, s=2OkQLvUo763SQev4acyV5dhhIBl81OpS_Nr0IiQ9d1pF1HiVoDr85d2wEegYFjuZ75TYoI6HgPsyQB13EL9oBA",
+		"signature": {
+			"ec": "ec_vector1",
+			"ts": 1793116800000,
+			"n": "AAAAAAAAAAAAAAAAAAAAAA",
+			"s": "2OkQLvUo763SQev4acyV5dhhIBl81OpS_Nr0IiQ9d1pF1HiVoDr85d2wEegYFjuZ75TYoI6HgPsyQB13EL9oBA"
+		}
+	}
+}

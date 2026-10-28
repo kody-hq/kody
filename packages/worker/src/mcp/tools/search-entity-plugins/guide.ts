@@ -72,6 +72,26 @@ function identityTokensCoveredByQuery(
 	return identityTokens.every((token) => queryTokens.includes(token))
 }
 
+/**
+ * A multi-word query that names the guide's topic and appears as a phrase in
+ * its summary, e.g. "executor credential" for the credentials guide.
+ */
+function queryNarrowsGuideBySummary(
+	tokens: ReadonlyArray<string>,
+	identity: string,
+	summary: string,
+) {
+	if (tokens.length < 2) return false
+	// Tokenize the summary like the query so stopwords drop out of both.
+	const summaryText = ` ${extractSearchTokens(summary)
+		.filter((token) => guideQueryTokens(token).length > 0)
+		.join(' ')} `
+	return (
+		tokens.some((token) => identity.includes(token)) &&
+		summaryText.includes(` ${tokens.join(' ')} `)
+	)
+}
+
 function guideHasStrongQueryMatch(query: string, guide: GuideMetadata) {
 	const identity = normalizeSearchText(guideSearchText(guide))
 	const tokens = guideQueryTokens(query)
@@ -91,6 +111,7 @@ function guideHasStrongQueryMatch(query: string, guide: GuideMetadata) {
 	}
 	if (identityTokensCoveredByQuery(idPhrase, tokens)) return true
 	if (identityTokensCoveredByQuery(slugPhrase, tokens)) return true
+	if (queryNarrowsGuideBySummary(tokens, identity, guide.summary)) return true
 	if (tokens.length === 1) {
 		return extractSearchTokens(identity).includes(tokens[0] ?? '')
 	}
@@ -118,7 +139,10 @@ export const guideSearchEntityPlugin = {
 		return searchableGuides(input.includeAdminGuides === true)
 			.filter((guide) => guideHasStrongQueryMatch(input.query, guide))
 			.map((guide) => {
-				const lexical = lexicalScore(input.query, guideSearchText(guide))
+				// A summary-phrase match has no identity overlap to score.
+				const lexical =
+					lexicalScore(input.query, guideSearchText(guide)) ||
+					lexicalScore(input.query, guide.summary)
 				return {
 					match: {
 						type: 'guide' as const,

@@ -22,8 +22,8 @@ There are two kinds of binding:
 - **App** (`binding_kind: "app"`): one internet-visible (public) app, served at
   the root of the hostname, for example `https://apps.example.com/`.
 - **Org** (`binding_kind: "org"`): the organization's private apps, served at
-  `https://apps.example.com/{package-name}` (legacy `/packages/{package-name}`
-  still works).
+  `https://apps.example.com/{package-name}` (`/packages/{package-name}` serves
+  the same app).
 
 ## Which hostnames are allowed
 

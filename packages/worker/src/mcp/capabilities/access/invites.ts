@@ -196,6 +196,7 @@ async function grantInviteFamily(
 		case 'job':
 		case 'memory':
 		case 'email':
+		case 'execution_context':
 			return resourceType
 		default: {
 			const exhaustive: never = resourceType
@@ -439,6 +440,7 @@ export const inviteCreateCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'inviteCreate',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: true,
 		description:
@@ -598,6 +600,7 @@ export const inviteAcceptCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'inviteAccept',
+		contextRuns: 'deny',
 		orgPermission: 'org:read',
 		requiresLivePerson: true,
 		description:
@@ -655,6 +658,7 @@ export const inviteRevokeCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'inviteRevoke',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: true,
 		description:

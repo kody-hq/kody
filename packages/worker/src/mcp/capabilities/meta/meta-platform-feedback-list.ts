@@ -15,6 +15,7 @@ export const metaPlatformFeedbackListCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'metaPlatformFeedbackList',
+		contextRuns: 'allow',
 		orgPermission: 'none',
 		description: `List platform feedback submissions owned by the signed-in user, newest first. Optional status filter (open, triaged, resolved, dismissed). Each row has id, category, summary, status, resolution_note, resolution_pr_urls, created_at, and updated_at (outcome time when resolved or dismissed). Also returns submissions_remaining and next_slot_at for the rolling ${platformFeedbackSubmissionRateLimit}-submission / 24-hour cap (same counting as metaPlatformFeedbackSubmit). Check remaining quota before asking the user to approve multiple submissions. Never exposes reviewer identity, admin notes, or other users' feedback. Use metaPlatformFeedbackGet for details on one id.`,
 		keywords: [

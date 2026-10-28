@@ -170,6 +170,8 @@ export function startedByClientLabel(
 			return 'inbound email'
 		case 'platform-event':
 			return 'event'
+		case 'execution-context':
+			return 'execution context'
 		default: {
 			const exhaustive: never = startedBy.client
 			return exhaustive

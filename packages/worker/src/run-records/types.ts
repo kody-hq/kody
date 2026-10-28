@@ -302,6 +302,8 @@ export type RunRecordFilter = {
 	 * enablement). Omit / `null` means no started-by filter.
 	 */
 	startedByUserId?: string | null
+	/** Exact match on the execution context a run ran on or tried. */
+	executionContextId?: string | null
 }
 
 export type RunRecordPage = {

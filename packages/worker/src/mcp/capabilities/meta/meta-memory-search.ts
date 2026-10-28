@@ -21,6 +21,7 @@ export const metaMemorySearchCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'metaMemorySearch',
+		contextRuns: 'allow',
 		orgPermission: memoryPersonalOnlyOrgPermission,
 		description:
 			"Search the signed-in person's **personal** memories (always their personal org, regardless of which org this connection uses). Returned matches are mutable for this person unless can_mutate is false. If you are considering writing or deleting a memory, prefer metaMemoryVerify first. Do not copy a personal memory into an org package without asking the person first.",

@@ -98,6 +98,10 @@ const authenticatedRoutes: RouteScenario[] = [
  * mid-fade reports the blend against the page ground (the hero title read as
  * `#989b9e` rather than its settled `#171b20`) as a contrast failure.
  *
+ * Landing `.reveal` items are CSS transitions that only start after hydration
+ * adds `.reveal` then `.in`. Under validate load, that can happen after this
+ * wait returns (empty `getAnimations()`), so scans also force reduced motion.
+ *
  * Indefinite animations (the spinner) never finish, so they are skipped rather
  * than waited on. Scroll-driven timelines also stay `running` for the life of
  * the page — treat those as settled too.
@@ -116,7 +120,12 @@ async function waitForAnimationsToSettle(page: Page) {
 }
 
 async function scanRoute(page: Page, scenario: RouteScenario, theme: Theme) {
-	await page.emulateMedia({ colorScheme: theme })
+	await page.emulateMedia({
+		colorScheme: theme,
+		// Settled colours only: `revealRef` skips motion when this is set, and
+		// CSS hides the `.reveal` fade behind `prefers-reduced-motion`.
+		reducedMotion: 'reduce',
+	})
 	await page.goto(scenario.path)
 	await page.evaluate((selectedTheme) => {
 		document.documentElement.dataset.theme = selectedTheme

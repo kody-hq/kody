@@ -1,7 +1,9 @@
 /**
  * Credential detail usage walks N packages in parallel. Each closure used to
  * evaluate package-credential-suppliers (and thus experiments_opt_in) once per
- * package when `request` was omitted (Sentry KODY-BW / issue 7813756991).
+ * package when `request` was omitted (Sentry KODY-BW / issue 7813756991), and
+ * read its entity_sources row once per package (Sentry KODY-C1 / issue
+ * 7816576729).
  */
 import { DatabaseSync } from 'node:sqlite'
 import {
@@ -37,13 +39,20 @@ vi.mock(
 )
 
 const publishedNeeds = new Map<string, unknown>()
+const unreadableSources = new Set<string>()
 
 vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () => ({
 	readPublishedCredentialNeeds: async (input: {
 		sourceId: string
 		publishedCommit: string
-	}) =>
-		publishedNeeds.get(`${input.sourceId}:${input.publishedCommit}`) ?? null,
+	}) => {
+		if (unreadableSources.has(input.sourceId)) {
+			throw new Error(`KV read failed for ${input.sourceId}`)
+		}
+		return (
+			publishedNeeds.get(`${input.sourceId}:${input.publishedCommit}`) ?? null
+		)
+	},
 	writePublishedCredentialNeeds: async () => undefined,
 	readPublishedSourceSnapshot: async () => null,
 }))
@@ -77,6 +86,16 @@ function isPackageCredentialSuppliersFlagLookup(query: string) {
 	)
 }
 
+function isEntitySourceByIdLookup(query: string) {
+	const normalized = query.replace(/\s+/g, ' ').trim().toLowerCase()
+	return normalized.startsWith('select * from entity_sources where id = ?')
+}
+
+function isEntitySourceBatchLookup(query: string) {
+	const normalized = query.replace(/\s+/g, ' ').trim().toLowerCase()
+	return normalized.startsWith('select * from entity_sources where id in (')
+}
+
 function credentialItem(
 	overrides: Partial<CredentialListItem> & { id: string; name: string },
 ): CredentialListItem {
@@ -103,6 +122,7 @@ function credentialItem(
 
 async function setup(packageCount: number) {
 	publishedNeeds.clear()
+	unreadableSources.clear()
 	const queries: Array<string> = []
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
@@ -279,4 +299,71 @@ test('loadCredentialDetail evaluates suppliers flag once across packages (KODY-B
 	expect(t.queries.filter(isPackageCredentialSuppliersFlagLookup)).toHaveLength(
 		2,
 	)
+})
+
+function loadDetail(t: Awaited<ReturnType<typeof setup>>) {
+	return loadCredentialDetail({
+		env: t.env,
+		request: t.request,
+		orgId: t.acmeId,
+		ownedByViewer: true,
+		credential: credentialItem({
+			id: t.orgKeyId,
+			name: 'OPENAI',
+			provider: 'openai',
+		}),
+		packages: t.packages,
+	})
+}
+
+test('loadCredentialDetail reads entity_sources in one batch across packages (KODY-C1)', async () => {
+	const t = await setup(6)
+	t.queries.length = 0
+	const detail = await loadDetail(t)
+
+	expect(detail.usage).toHaveLength(6)
+	expect(detail.usageUnreadable).toBe(0)
+	expect(t.queries.filter(isEntitySourceBatchLookup)).toHaveLength(1)
+	expect(t.queries.filter(isEntitySourceByIdLookup)).toHaveLength(0)
+})
+
+test('a deleted source yields no needs without a per-package read, and one unreadable closure stays isolated (KODY-C1)', async () => {
+	const t = await setup(4)
+	const [deleted, unreadable] = t.packages
+	if (!deleted || !unreadable) throw new Error('expected packages')
+	await t.env.APP_DB.prepare(
+		`UPDATE entity_sources SET deleted_at = ? WHERE id = ?`,
+	)
+		.bind(now, deleted.sourceId)
+		.run()
+	unreadableSources.add(unreadable.sourceId)
+	t.queries.length = 0
+	const detail = await loadDetail(t)
+
+	expect(detail.usage.map((row) => row.kodyId).sort()).toEqual(
+		t.packages
+			.filter((pkg) => pkg !== deleted && pkg !== unreadable)
+			.map((pkg) => pkg.kodyId)
+			.sort(),
+	)
+	expect(detail.usageUnreadable).toBe(1)
+	expect(t.queries.filter(isEntitySourceBatchLookup)).toHaveLength(1)
+	expect(t.queries.filter(isEntitySourceByIdLookup)).toHaveLength(0)
+})
+
+test('a failed entity_sources batch marks every package unreadable without failing the detail (KODY-C1)', async () => {
+	const t = await setup(3)
+	const prepare = t.env.APP_DB.prepare.bind(t.env.APP_DB)
+	vi.spyOn(t.env.APP_DB, 'prepare').mockImplementation((query: string) => {
+		if (isEntitySourceBatchLookup(query)) {
+			throw new Error('D1 batch read failed')
+		}
+		return prepare(query)
+	})
+	t.queries.length = 0
+	const detail = await loadDetail(t)
+
+	expect(detail.usage).toEqual([])
+	expect(detail.usageUnreadable).toBe(t.packages.length)
+	expect(t.queries.filter(isEntitySourceByIdLookup)).toHaveLength(0)
 })

@@ -593,6 +593,8 @@ declare module "kody:runtime" {
       name: string,
       options?: { scope?: "org" | "personal" | null },
     ): Promise<KodyCredentialClient>;
+    /** Package apps: the credential this visitor chose for an executor need. */
+    visitor(key: string): Promise<KodyCredentialClient>;
   };
   /**
    * Every credential the caller's \`credentials\` map picks for the key, or

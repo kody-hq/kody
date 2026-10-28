@@ -695,6 +695,9 @@ export function isLivePersonRequest(request: RequestContext | null): boolean {
 		case 'webhook':
 		case 'inbound-email':
 		case 'platform-event':
+		// A machine acting for the requester while their run is active is
+		// never a live person (ECP 8.2), so requiresLivePerson denies.
+		case 'execution-context-run':
 			return false
 		default: {
 			const exhaustive: never = kind
@@ -747,6 +750,7 @@ export function nonInteractiveTriggerOf(
 		case 'mcp-oauth':
 		case 'cli':
 		case 'api-token':
+		case 'execution-context-run':
 			return { type: 'unattended', credentialId: id }
 		default: {
 			const exhaustive: never = kind
