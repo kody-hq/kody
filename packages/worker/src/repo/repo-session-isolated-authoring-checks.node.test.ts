@@ -393,7 +393,7 @@ test('isolated authoring checks expose staged binary files by path and size', as
 	}
 	const repo = repoSession(kvEnv({ get: vi.fn(async () => staged) }))
 	mockModule.runRepoChecks.mockResolvedValueOnce({
-		ok: true,
+		ok: false,
 		results: [],
 		manifest: null,
 		sourceFiles: {},
