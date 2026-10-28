@@ -83,3 +83,43 @@ export function assertContextRunRuntimePathAllowed(
 		details: { reason: 'context_runtime', path: joined },
 	})
 }
+
+const credentialedRuntimeNames = new Set([
+	'authenticatedFetch',
+	'gatewayFetch',
+	'oauthClientCredentials',
+])
+
+/**
+ * Runtime paths with special handling on a context run: workflows never
+ * start from a machine, and credentialed calls need a grant that allows
+ * credentials. Credential values still never leave Kody cloud.
+ */
+export function assertContextRunSpecialPathAllowed(
+	ctx: ApiInvocationContext,
+	path: ReadonlyArray<string>,
+) {
+	if (ctx.principal.kind !== 'execution-context-run') return
+	const [root, name] = path
+	if (root === 'workflows') {
+		throw new ApiError({
+			status: 403,
+			code: 'insufficient_scope',
+			message:
+				'Runs on an execution context cannot start workflows. Start the workflow from Kody cloud instead.',
+			details: { reason: 'context_denied', path: path.join('.') },
+		})
+	}
+	const credentialed =
+		root === 'kody' &&
+		typeof name === 'string' &&
+		(credentialedRuntimeNames.has(name) || name.startsWith('credentialClient'))
+	if (credentialed && ctx.principal.credentialIds.length === 0) {
+		throw new ApiError({
+			status: 403,
+			code: 'execution_context_credential_not_granted',
+			message: `This execution context's grant allows no credentials, so kody.${name} cannot run here. Its operator can allow credentials in the context's grant, or run this on Kody cloud.`,
+			details: { path: path.join('.') },
+		})
+	}
+}

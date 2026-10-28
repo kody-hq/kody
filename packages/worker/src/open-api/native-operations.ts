@@ -18,6 +18,7 @@ import {
 	parseNativeInput,
 	requireLocalExecuteHttpPrincipal,
 	assertContextRunRuntimePathAllowed,
+	assertContextRunSpecialPathAllowed,
 	type NativeApiOperationDefinition,
 } from './native-operation-helpers.ts'
 import { type NativeApiOperationId } from './operations.ts'
@@ -127,6 +128,7 @@ const capabilityProxyOperationDefinitions: Record<
 			requireLocalExecuteHttpPrincipal(ctx)
 			const call = parseNativeInput(capabilityProxyCallInputSchema, params)
 			assertContextRunRuntimePathAllowed(ctx, call.path)
+			assertContextRunSpecialPathAllowed(ctx, call.path)
 			return runCapabilityProxyCall({ ctx, call })
 		},
 	},

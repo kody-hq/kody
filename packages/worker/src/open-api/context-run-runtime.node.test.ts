@@ -1,9 +1,13 @@
 import { expect, test } from 'vitest'
 import { type ApiInvocationContext } from './context.ts'
-import { assertContextRunRuntimePathAllowed } from './native-operation-helpers.ts'
+import {
+	assertContextRunRuntimePathAllowed,
+	assertContextRunSpecialPathAllowed,
+} from './native-operation-helpers.ts'
 
 function contextRun(
 	runtime: { mode: 'all' } | { mode: 'allowlist'; paths: Array<string> },
+	credentialIds: Array<string> = [],
 ) {
 	return {
 		principal: {
@@ -13,6 +17,7 @@ function contextRun(
 			deadline: Date.now() + 60_000,
 			scopes: null,
 			runtime,
+			credentialIds,
 		},
 	} as unknown as ApiInvocationContext
 }
@@ -45,5 +50,42 @@ test('other principals are not narrowed by a context grant', () => {
 	} as unknown as ApiInvocationContext
 	expect(() =>
 		assertContextRunRuntimePathAllowed(token, ['kody', 'emailSend']),
+	).not.toThrow()
+})
+
+test('context runs never start workflows', () => {
+	expect(() =>
+		assertContextRunSpecialPathAllowed(contextRun({ mode: 'all' }), [
+			'workflows',
+			'create',
+		]),
+	).toThrow(/cannot start workflows/)
+})
+
+test('credentialed runtime calls need a grant that allows credentials', () => {
+	for (const name of [
+		'authenticatedFetch',
+		'gatewayFetch',
+		'oauthClientCredentials',
+		'credentialClientCheck',
+	]) {
+		expect(() =>
+			assertContextRunSpecialPathAllowed(contextRun({ mode: 'all' }), [
+				'kody',
+				name,
+			]),
+		).toThrow(/allows no credentials/)
+		expect(() =>
+			assertContextRunSpecialPathAllowed(
+				contextRun({ mode: 'all' }, ['cred_test']),
+				['kody', name],
+			),
+		).not.toThrow()
+	}
+	expect(() =>
+		assertContextRunSpecialPathAllowed(contextRun({ mode: 'all' }), [
+			'kody',
+			'packageStorageGet',
+		]),
 	).not.toThrow()
 })

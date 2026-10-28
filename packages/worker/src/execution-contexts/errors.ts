@@ -14,6 +14,7 @@ export const executionContextErrorCodes = [
 	'insufficient_scope',
 	'execution_context_lease_invalid',
 	'execution_context_access_lost',
+	'execution_context_credential_not_granted',
 ] as const
 
 export type ExecutionContextErrorCode =

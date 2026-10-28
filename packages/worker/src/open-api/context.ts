@@ -41,6 +41,8 @@ export type ApiPrincipal =
 			/** The requester's credential scopes; null does not narrow. */
 			scopes: Array<string> | null
 			runtime: EcpGrant['runtime']
+			/** Credential ids the context's grant allows; empty means none. */
+			credentialIds: Array<string>
 	  }
 
 export function toCapabilityOpenApiPrincipal(

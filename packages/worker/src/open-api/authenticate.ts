@@ -470,6 +470,7 @@ async function authenticateWithExecutionContextLease(input: {
 			deadline: lease.deadline,
 			scopes: lease.callerScopes,
 			runtime: lease.runtime,
+			credentialIds: lease.credentialIds,
 		},
 		waitUntil: input.waitUntil,
 	})
