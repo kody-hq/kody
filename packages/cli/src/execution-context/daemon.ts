@@ -66,6 +66,26 @@ export function runScopedFetch(input: {
 	}
 }
 
+function originOf(url: string) {
+	try {
+		return new URL(url).origin
+	} catch {
+		return null
+	}
+}
+
+/** Why the daemon refuses a run request, or null when it can accept it. */
+export function runRequestRefusal(
+	request: Pick<EcpRunRequestBody, 'acceptBy' | 'apiUrl'>,
+	apiUrl: string,
+	now = Date.now(),
+) {
+	const origin = originOf(request.apiUrl)
+	if (!origin || origin !== originOf(apiUrl)) return 'grant_mismatch' as const
+	if (now > request.acceptBy) return 'deadline_passed' as const
+	return null
+}
+
 type DaemonInput = {
 	apiUrl: string
 	ecid: string
@@ -213,18 +233,9 @@ export async function runDaemonConnection(input: DaemonInput) {
 					await send('run.reject', { runId, code: 'busy' }, frame.seq)
 					return
 				}
-				if (Date.now() > request.acceptBy || request.apiUrl !== input.apiUrl) {
-					await send(
-						'run.reject',
-						{
-							runId,
-							code:
-								request.apiUrl !== input.apiUrl
-									? 'grant_mismatch'
-									: 'deadline_passed',
-						},
-						frame.seq,
-					)
+				const refusal = runRequestRefusal(request, input.apiUrl)
+				if (refusal) {
+					await send('run.reject', { runId, code: refusal }, frame.seq)
 					return
 				}
 				runs.set(runId, {

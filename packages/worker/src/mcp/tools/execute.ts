@@ -5,6 +5,7 @@ import {
 	executeRoutingInputFields,
 	routeExecuteForCaller,
 } from '#worker/execution-contexts/execute-routing.ts'
+import { describeCloudFallback } from '#worker/execution-contexts/routing.ts'
 import * as Sentry from '@sentry/cloudflare'
 import {
 	type ContentBlock,
@@ -242,6 +243,12 @@ export const executeToolOutputSchema = {
 		.unknown()
 		.optional()
 		.describe('Relevant stored memories surfaced for this call.'),
+	executionContext: z
+		.unknown()
+		.optional()
+		.describe(
+			'Where an execution-context run went: the context, every attempt, and fellBackToCloud when it ran on Kody cloud instead.',
+		),
 }
 
 export type ExecuteToolStructuredContent = StructuredContentFromFields<
@@ -773,6 +780,16 @@ export async function runExecuteToolCall(input: {
 				}
 			}
 		}
+		const cloudFallback =
+			routed?.kind === 'cloud' && routed.metadata?.fellBackToCloud
+				? routed.metadata
+				: null
+		const cloudFallbackContent = cloudFallback
+			? [{ type: 'text' as const, text: describeCloudFallback(cloudFallback) }]
+			: []
+		const cloudFallbackFields = cloudFallback
+			? { executionContext: cloudFallback }
+			: {}
 		if (routed?.kind === 'pending') {
 			transportDetached = true
 			const timing = finishToolTiming(timingStart)
@@ -1105,6 +1122,7 @@ export async function runExecuteToolCall(input: {
 						type: 'text',
 						text: formatExecutionOutput(result),
 					},
+					...cloudFallbackContent,
 					...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 					...formatSurfacedMemoriesMarkdown(surfacedMemories),
 				]),
@@ -1117,6 +1135,7 @@ export async function runExecuteToolCall(input: {
 					errorDetails,
 					...entitlementStructuredContent(result.error),
 					logs: result.logs ?? [],
+					...cloudFallbackFields,
 					...(rawFetchHostNudges.length > 0
 						? { warnings: rawFetchHostNudges }
 						: {}),
@@ -1291,6 +1310,7 @@ export async function runExecuteToolCall(input: {
 						displayText: structuredResultValue.displayText,
 					}),
 				},
+				...cloudFallbackContent,
 				...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 				...formatSurfacedMemoriesMarkdown(surfacedMemories),
 			]),
@@ -1307,6 +1327,7 @@ export async function runExecuteToolCall(input: {
 					: {}),
 				result: structuredResultValue.value,
 				logs: result.logs ?? [],
+				...cloudFallbackFields,
 				...(rawFetchHostNudges.length > 0
 					? { warnings: rawFetchHostNudges }
 					: {}),

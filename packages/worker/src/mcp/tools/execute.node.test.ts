@@ -41,6 +41,18 @@ const transportBudgetMock = vi.hoisted(() => ({
 	remainingMs: null as number | null,
 }))
 
+const routingMock = vi.hoisted(() => ({
+	outcome: null as unknown,
+}))
+
+vi.mock(
+	'#worker/execution-contexts/execute-routing.ts',
+	async (importActual) => ({
+		...(await importActual<object>()),
+		routeExecuteForCaller: async () => routingMock.outcome,
+	}),
+)
+
 const heartbeatMock = vi.hoisted(() => ({
 	scheduleFleetExecuteLastSuccess: vi.fn(),
 }))
@@ -860,6 +872,47 @@ test('execute tool claims a keyed run, passes the handle, and returns runId', as
 	expect(response.structuredContent).toMatchObject({
 		runId: 'run-claimed-1',
 		result: { spawned: true },
+	})
+})
+
+test('execute tool shows a cloud fallback in the response when no context took the run', async () => {
+	const fallback = {
+		id: 'ec_box',
+		name: 'build-box',
+		fellBackToCloud: true,
+		attempts: [
+			{
+				target: 'ec_box',
+				name: 'build-box',
+				outcome: 'rejected',
+				reason: 'grant_mismatch',
+			},
+		],
+	}
+	routingMock.outcome = { kind: 'cloud', metadata: fallback }
+	onTestFinished(() => {
+		routingMock.outcome = null
+	})
+	const handler = await getExecuteHandler({
+		baseUrl: 'https://example.com',
+		user: {
+			userId: ownerIdFromStored('user-fallback-execute'),
+			email: 'fallback@example.com',
+			displayName: 'Fallback',
+		},
+	})
+	moduleReturns({ ok: true })
+	const response = await handler({
+		code: 'export default async () => ({ ok: true })',
+		conversationId: 'conv-fallback',
+	})
+	expect(response.structuredContent).toMatchObject({
+		result: { ok: true },
+		executionContext: fallback,
+	})
+	expect(response.content).toContainEqual({
+		type: 'text',
+		text: 'Ran on Kody cloud: no execution context in your chain took this run (build-box (ec_box): rejected grant_mismatch).',
 	})
 })
 
