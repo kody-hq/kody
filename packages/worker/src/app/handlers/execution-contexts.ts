@@ -13,6 +13,7 @@ import {
 	loadOrgBindingForSlug,
 	type OrgBinding,
 } from '#worker/orgs/repo.ts'
+import { type AutomationExecutionSettingView } from '#universal/automation-execution.ts'
 import { executionContextsFlagKey } from '#universal/feature-flags/registry.ts'
 import {
 	type ExecutionChain,
@@ -698,11 +699,11 @@ export async function getAutomationExecutionForUser(
 ) {
 	return runScoped(input, async (scope) => ({
 		ok: true as const,
-		setting: await callCapability(
+		setting: (await callCapability(
 			scope,
 			executionContextCapabilityNames.automationGet,
 			automationTargetArgs(input.target),
-		),
+		)) as AutomationExecutionSettingView,
 		contexts: await callCapability(
 			scope,
 			executionContextCapabilityNames.list,
@@ -727,10 +728,10 @@ export async function setAutomationExecutionForUser(
 ) {
 	return runScoped(input, async (scope) => ({
 		ok: true as const,
-		setting: await callCapability(
+		setting: (await callCapability(
 			scope,
 			executionContextCapabilityNames.automationSet,
 			{ ...automationTargetArgs(input.target), execution: input.execution },
-		),
+		)) as AutomationExecutionSettingView,
 	}))
 }

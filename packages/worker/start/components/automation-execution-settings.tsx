@@ -7,6 +7,7 @@ import {
 } from '#start/server/execution-contexts'
 import {
 	type AutomationExecutionForm,
+	type AutomationExecutionSettingView,
 	type AutomationExecutionValue,
 	automationChainMaxContexts,
 	automationExecutionFormFrom,
@@ -33,12 +34,7 @@ export type AutomationExecutionTarget = {
 	name?: string
 }
 
-type Setting = {
-	declared: AutomationExecutionValue | null
-	override: AutomationExecutionValue | null
-	effective: AutomationExecutionValue | null
-	contextRunnable: boolean
-}
+type Setting = AutomationExecutionSettingView
 
 type Loaded = {
 	ok: true
@@ -71,7 +67,7 @@ export function AutomationExecutionSettings(props: {
 	const [loaded, setLoaded] = useState<Loaded | null>(null)
 	const [form, setForm] = useState<AutomationExecutionForm | null>(null)
 	const [status, setStatus] = useState<{
-		tone: 'error' | 'success'
+		tone: 'error' | 'info'
 		text: string
 	} | null>(null)
 	const [saving, setSaving] = useState(false)
@@ -125,7 +121,7 @@ export function AutomationExecutionSettings(props: {
 		}
 		setLoaded({ ...loaded!, setting: result.setting })
 		setForm(automationExecutionFormFrom(result.setting.effective))
-		setStatus({ tone: 'success', text: 'Saved.' })
+		setStatus({ tone: 'info', text: 'Saved.' })
 	}
 
 	const update = (patch: Partial<AutomationExecutionForm>) =>

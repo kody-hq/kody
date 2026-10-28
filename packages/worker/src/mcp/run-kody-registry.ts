@@ -111,6 +111,7 @@ import {
 	ensureRunRecordStarted,
 	finishRunRecord,
 } from '#worker/run-records/service.ts'
+import { isExecutionContextsEnabledFor } from '#worker/execution-contexts/flag.ts'
 import {
 	type AutomationRouting,
 	automationContextWaitMs,
@@ -1194,6 +1195,11 @@ export async function runBundledModuleWithRegistry(
 		 * sandbox; a context run never reaches it.
 		 */
 		executionRouting?: AutomationRouting | null
+		/**
+		 * Looks up a declared automation's setting, only once the run's actor
+		 * has the execution-contexts flag; with it off the run stays on cloud.
+		 */
+		resolveExecutionRouting?: (() => Promise<AutomationRouting | null>) | null
 	},
 ): Promise<
 	ExecuteResult & {
@@ -1320,11 +1326,20 @@ export async function runBundledModuleWithRegistry(
 		if (!exposeRunId || !runRecordHandle) return timed
 		return { ...timed, runId: runRecordHandle.id }
 	}
-	if (options?.executionRouting) {
-		const routing = options.executionRouting
+	const executionRoutingActorId = callerContext.request?.actor?.userId ?? null
+	const resolveExecutionRouting = options?.resolveExecutionRouting ?? null
+	const executionRouting =
+		options?.executionRouting ??
+		(resolveExecutionRouting &&
+		executionRoutingActorId &&
+		(await isExecutionContextsEnabledFor(env.APP_DB, executionRoutingActorId))
+			? await resolveExecutionRouting()
+			: null)
+	if (executionRouting) {
+		const routing = executionRouting
 		const parentContext =
 			routing.parentRunRecord ??
-			options.runRecord ??
+			options?.runRecord ??
 			runRecordHandle?.context ??
 			null
 		const parentRunId = routing.parentRunId ?? runRecordHandle?.id ?? null
@@ -1351,10 +1366,10 @@ export async function runBundledModuleWithRegistry(
 			runRecord: contextRunRecord,
 			params: params ?? {},
 			waitMs: Math.min(
-				options.executorTimeoutMs ?? automationContextWaitMs,
+				options?.executorTimeoutMs ?? automationContextWaitMs,
 				automationContextWaitMs,
 			),
-			...(options.signal ? { signal: options.signal } : {}),
+			...(options?.signal ? { signal: options.signal } : {}),
 		})
 		if (routed.kind !== 'done') {
 			await abandonRunRecord({ env, handle: contextRunRecord })

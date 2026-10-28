@@ -238,17 +238,7 @@ export async function runSavedPackageModuleOnce(
 				selector: input.moduleSelector,
 				userId: input.actor.orgId,
 			}))
-		const executionRouting =
-			input.executionRouting ??
-			(input.executionTarget
-				? await resolvePackageAutomationRouting({
-						env: input.env,
-						orgId: input.actor.orgId,
-						packageId: input.savedPackage.id,
-						sourceId: input.savedPackage.sourceId,
-						target: input.executionTarget,
-					})
-				: null)
+		const executionTarget = input.executionTarget ?? null
 		const repoSource =
 			artifact.packageContext?.sourceId == null ||
 			artifact.packageContext.sourceId === sourceRow.id
@@ -429,12 +419,27 @@ export async function runSavedPackageModuleOnce(
 			{
 				executorTimeoutMs: input.executorTimeoutMs,
 				signal: input.signal,
-				...(executionRouting
+				...(input.executionRouting || executionTarget
 					? {
-							executionRouting: {
-								...executionRouting,
-								parentRunRecord: externalHandle?.context ?? null,
-								parentRunId: externalHandle?.id ?? null,
+							resolveExecutionRouting: async () => {
+								const routing =
+									input.executionRouting ??
+									(executionTarget
+										? await resolvePackageAutomationRouting({
+												env: input.env,
+												orgId: input.actor.orgId,
+												packageId: input.savedPackage.id,
+												sourceId: input.savedPackage.sourceId,
+												target: executionTarget,
+											})
+										: null)
+								return routing
+									? {
+											...routing,
+											parentRunRecord: externalHandle?.context ?? null,
+											parentRunId: externalHandle?.id ?? null,
+										}
+									: null
 							},
 						}
 					: {}),

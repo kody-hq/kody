@@ -44,9 +44,13 @@ machine could not say so.
   `execution` setting.
 - ADR 0083 holds: credential values never reach a context; context runs never
   start workflows or run `execute`.
-- Everything is behind the `execution-contexts` flag. With the flag off, an
-  `execution` setting fails with `feature_disabled` and runs without one stay on
-  Kody cloud.
+- Everything is behind the `execution-contexts` flag, checked for the run's
+  actor before any setting is read. With the flag off, management (API, MCP,
+  CLI, UI) answers `feature_disabled` and automations run on Kody cloud exactly
+  as before, even when a manifest declares `execution`: an org without the flag
+  has no contexts to run on, and a flagless run costs no extra reads. Ad hoc
+  `execute` routing fields still fail with `feature_disabled`, because that
+  caller asked for a context explicitly.
 
 ## Consequences
 

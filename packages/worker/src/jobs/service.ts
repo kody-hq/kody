@@ -530,14 +530,15 @@ async function executePublishedJobArtifact(input: {
 		await import('#worker/package-invocations/service.ts')
 	const { resolvePackageAutomationRouting } =
 		await import('#worker/package-invocations/automation-routing.ts')
-	const executionRouting = packageContext
-		? await resolvePackageAutomationRouting({
-				env: input.env,
-				orgId: input.job.userId,
-				packageId: packageContext.packageId,
-				sourceId: packageContext.sourceId ?? input.job.sourceId,
-				target: { kind: 'job', name: input.job.name, jobId: input.job.id },
-			})
+	const resolveExecutionRouting = packageContext
+		? () =>
+				resolvePackageAutomationRouting({
+					env: input.env,
+					orgId: input.job.userId,
+					packageId: packageContext.packageId,
+					sourceId: packageContext.sourceId ?? input.job.sourceId,
+					target: { kind: 'job', name: input.job.name, jobId: input.job.id },
+				})
 		: null
 	const packageRuntimeTools = packageContext
 		? {
@@ -571,7 +572,7 @@ async function executePublishedJobArtifact(input: {
 			executorTimeoutMs: backgroundExecutorTimeoutMs,
 			runRecord,
 			runRecordHandle: input.runRecordHandle,
-			...(executionRouting ? { executionRouting } : {}),
+			...(resolveExecutionRouting ? { resolveExecutionRouting } : {}),
 			...packageRuntimeTools,
 			// Keep waitUntil even when the caller pre-claimed the run record
 			// (scheduled jobs). Terminal run-record writes stay awaited inside

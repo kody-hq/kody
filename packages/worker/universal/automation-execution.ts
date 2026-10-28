@@ -1,8 +1,8 @@
-export const automationQueueDefaultMinutes = 60
+const automationQueueDefaultMinutes = 60
 export const automationQueueMaxMinutes = 24 * 60
 export const automationChainMaxContexts = 3
 
-export type AutomationExecutionMode = 'cloud' | 'context' | 'chain'
+type AutomationExecutionMode = 'cloud' | 'context' | 'chain'
 
 export type AutomationExecutionForm = {
 	mode: AutomationExecutionMode
@@ -22,6 +22,14 @@ export type AutomationExecutionValue = {
 	requires?: Array<'fs' | 'lan'>
 	whenOffline?: 'fail' | 'queue'
 	queueMinutes?: number
+}
+
+/** One automation's setting as the get/set capabilities describe it. */
+export type AutomationExecutionSettingView = {
+	declared: AutomationExecutionValue | null
+	override: AutomationExecutionValue | null
+	effective: AutomationExecutionValue | null
+	contextRunnable: boolean
 }
 
 export function emptyAutomationExecutionForm(): AutomationExecutionForm {
