@@ -188,13 +188,16 @@ you only have the MCP URL.
   at Workspace → Agents → Advanced → MCP OAuth clients, with the redirect
   URI exactly `https://agent.meta.ai/api/hatch/oauth/callback`. Enter the
   ID and Secret only in Muse's Secure credentials store, never in chat.
+  See [Connect Muse chat to Kody](/docs/muse-chat) for the full walkthrough.
   Prove the connection by asking Muse to list tools, then run
   `search({ entity: "guide:onboarding" })`. Allowlist `search` before any
   other tool; do not allowlist `api`, and treat `execute` as a separate
   opt-in. If list-tools returns a Cloudflare 1010 error, read the error
-  body: the edge blocked the client's signature before the request
-  reached Kody, so the client Muse builds sets an honest,
-  client-identifying User-Agent instead of a library default. An Agents
+  body. The response may indicate that the edge blocked the client's
+  signature before the request reached Kody. Cloudflare recommends a
+  descriptive User-Agent instead of a library default. If Muse does not
+  provide a way to configure that header, contact the deployment owner to
+  review the Cloudflare rule. An Agents
   entry for Muse may be Muse Code, not Muse chat; read its connect steps
   before concluding Muse chat is granted.
 - **Wajo** — [Wajo](https://wajo.ai) (Fo) connects ChatGPT and Claude through
