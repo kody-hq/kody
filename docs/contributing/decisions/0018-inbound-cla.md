@@ -88,11 +88,13 @@ How it works:
 - The Licensor stays one party for FSL, the Apache conversion, relicensing, and
   enforcement.
 - Individual signatures do not need a maintainer to edit the signers file. The
-  post-merge `pull_request_target` recorder creates a bot pull request, which
-  must pass `✅ Validate` before its signer changes are merged to `main`. Do not
-  replace that recorder with an unmaintained signing bot that writes `main` from
-  untrusted PR head. Using `pull_request_target` for the check-and-comment job
-  (base checkout only) is intentional and required for fork PRs.
+  post-merge `pull_request_target` recorder commits new signers straight to the
+  `cla-signatures` branch; the check reads `cla-signers.json` from its own
+  checkout of that branch, separate from the trusted base checkout. It never
+  writes `main`. Do not replace that recorder with an unmaintained signing bot
+  that writes signer records from untrusted PR head. Using `pull_request_target`
+  for the check-and-comment job (base checkout only) is intentional and required
+  for fork PRs.
 - Public package authors keep their own copyright; they never sign this CLA
   unless they also patch this repository. Listings have no license gate (see
   [0043](./0043-repo-visibility-no-community-kind.md)).

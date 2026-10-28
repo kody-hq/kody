@@ -15,6 +15,7 @@ export const adminAccountDeletionAbortCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminAccountDeletionAbort',
+		contextRuns: 'deny',
 		description:
 			'Clear a leftover account-deletion fence (D1 users.deleting_at and the UserMeter tombstone) when cleanup never started or an operator needs to restore the account. Admin-only and destructive.',
 		keywords: ['admin', 'account', 'deletion', 'fence', 'abort', 'repair'],

@@ -34,6 +34,7 @@ export const deletePackageCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageDelete',
+		contextRuns: 'deny',
 		orgPermission: 'package:delete',
 		description:
 			'Permanently delete a saved package the signed-in user owns. This cannot be undone. It removes the package from the account and from /community if it was public, stops its jobs, clears package storage and package-scoped secrets, and best-effort deletes Artifacts repos. Existing forks keep their copies. Hiding (`packageUpdate` hidden) or making a package private is not deletion. Do not call this because a package is unused, failing, or over quota unless the owner explicitly asked to delete that specific package. Load it with packageGet or packageList, show the owner the package name and what will be destroyed, wait for them to type that name, then pass package_id and confirm_name matching the package name exactly.',

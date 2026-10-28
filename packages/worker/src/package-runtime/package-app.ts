@@ -84,7 +84,10 @@ import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
 import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
-import { loadRunCredentialNeedEntries } from '#worker/credentials/credential-client.ts'
+import {
+	CredentialClientError,
+	loadRunCredentialNeedEntries,
+} from '#worker/credentials/credential-client.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { type OwnerCredentialScope } from '#worker/credentials/owner-credential-for-visitors.ts'
 import {
@@ -2961,6 +2964,22 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			name === credentialClientToolNames.open ||
 			name === credentialClientToolNames.openAll ||
 			name === credentialClientToolNames.check
+		// Executor needs never resolve from the runs-as or legacy path. Refuse
+		// before runWithAuthority, whose legacy fallback would otherwise hand
+		// back the owner's credential.
+		if (
+			opens &&
+			typeof args.key === 'string' &&
+			(await this.publishedCredentialSupplier(args.key.trim(), visitTicket)) ===
+				'executor'
+		) {
+			const key = args.key.trim()
+			throw new CredentialClientError({
+				code: 'credential_denied',
+				message: `Credential need "${key}" is supplied by each app visitor; use credential.visitor("${key}")`,
+				retryWith: [],
+			})
+		}
 		if (!opens) {
 			// Sign, call, and refresh use an open handle, which carries who it
 			// acts as.
@@ -3068,7 +3087,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		)
 	}
 
-	private async assertVisitorCredentialIsExecutorSupplied(
+	private async publishedCredentialSupplier(
 		credentialKey: string,
 		visitTicket: string | null | undefined,
 	): Promise<'publisher' | 'executor' | null> {
@@ -3079,8 +3098,17 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			sourceId: this.ctx.props.sourceId,
 			request: callerContext.request,
 		})
-		const supplier =
-			needs.find((need) => need.key === credentialKey)?.supplier ?? null
+		return needs.find((need) => need.key === credentialKey)?.supplier ?? null
+	}
+
+	private async assertVisitorCredentialIsExecutorSupplied(
+		credentialKey: string,
+		visitTicket: string | null | undefined,
+	): Promise<'publisher' | 'executor' | null> {
+		const supplier = await this.publishedCredentialSupplier(
+			credentialKey,
+			visitTicket,
+		)
 		if (supplier !== 'publisher') return supplier
 		throw new PackageAppVisitorConsentError(
 			`Credential need "${credentialKey}" is supplied by the publisher; use credential("${credentialKey}")`,

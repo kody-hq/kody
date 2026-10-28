@@ -83,10 +83,11 @@ can change without a value (in a call of their own; the secret's value and
 `updated_at` stay as they are), and **`credentialUpdate`** sets them by
 credential id on secrets, OAuth connections, and MCP servers (OAuth connections
 and MCP servers always use `Authorization: Bearer`, so only their provider
-changes). Every change needs Write on the credential and is audited. Changing
-inject or widening placement is website-only from `execute` (hosted or
-`--local`), package, and app code: those calls are refused with a link to the
-credential's page. Narrowing placement and provider changes work everywhere.
+changes). Every change needs Write on the credential and is audited. Change
+inject or widen placement on the credential detail page or with MCP `api`
+`credentialUpdate`. `execute` (hosted or `--local`), package, and app code
+cannot widen placement or change inject; those calls are refused with a link to
+the credential's page. Narrowing placement and provider changes work everywhere.
 
 ### Personal credentials in a team org
 

@@ -56,6 +56,7 @@ export const selfPublishBlockerReasonSchema = z.discriminatedUnion('kind', [
 		kind: z.literal('credential_needs'),
 		sourceId: z.string(),
 		needCount: z.number().int().nonnegative(),
+		executorNeedCount: z.number().int().nonnegative().optional(),
 	}),
 	z.object({ kind: z.literal('not_audited') }),
 	z.object({ kind: z.literal('audit_concerns') }),

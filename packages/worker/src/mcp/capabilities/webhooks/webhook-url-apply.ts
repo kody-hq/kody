@@ -179,6 +179,7 @@ export const webhookUrlApplyCapability = defineDomainCapability(
 	capabilityDomainNames.webhooks,
 	{
 		name: 'webhookUrlApply',
+		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
 			'Register a minted webhook URL at an HTTPS destination without exposing the credential. Pass the handle from webhookUrlMint, webhookUrlRotate, or webhookList. Destination type http performs an outbound HTTPS request and substitutes {{webhookUrl}} (and optional {{webhookSecret}} — package-owned HMAC from the webhook URL record, or a verification.secretName copied onto that record at mint or rotate) server-side into url/headers/body — interactive MCP only, and only after the owner Approves the exact destination via the same account approval flow as /connect/secrets host approval (approval_url → website Allow → durable grant → retry). Package-owned HMAC is not a user secrets-list entry and never needs a secret→host Allow; destination.secretName Bearer auth does. For GitHub repository hooks, POST https://api.github.com/repos/{owner}/{repo}/hooks with User-Agent kody, {{webhookUrl}} in config.url, {{webhookSecret}} in config.secret when HMAC is declared (omit verification.secretName so mint stores package-owned HMAC), and integration "github" (or a host-approved token). Returns ok, remote_id, and url_host only — never the credential URL or signing secret.',

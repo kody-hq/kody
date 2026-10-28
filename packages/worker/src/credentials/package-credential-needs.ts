@@ -24,7 +24,12 @@ import {
 	type SavedCredentialNeed,
 } from './credential-needs.ts'
 
-type NeedStatus = 'ready' | 'ambiguous' | 'unbound' | 'expired'
+type NeedStatus =
+	| 'ready'
+	| 'ambiguous'
+	| 'unbound'
+	| 'expired'
+	| 'executor_supplied'
 
 /**
  * How one need resolves with no call map entry: a stored default mapping
@@ -37,8 +42,12 @@ function resolveNeedForCaller(
 ): {
 	status: NeedStatus
 	autoPick: string | null
-	source: 'mine' | 'org' | 'auto'
+	source: 'mine' | 'org' | 'auto' | 'visitor'
 } {
+	// Each visitor picks on consent; the caller's own defaults never fill it.
+	if (need.supplier === 'executor') {
+		return { status: 'executor_supplied', autoPick: null, source: 'visitor' }
+	}
 	const layer = (target: 'mine' | 'org') =>
 		rows.find((row) => row.needKey === need.key && row.target.target === target)
 			?.credentialIds ?? null
@@ -86,6 +95,8 @@ export async function describePackageCredentialNeeds(input: {
 	sourceId: string
 	/** Saved package id so Keys bound to this package can fill its needs. */
 	packageId: string
+	/** The caller's already-read flag result, so the needs agree with it. */
+	supplierSemanticsEnabled?: boolean
 }) {
 	try {
 		const needs = savedCredentialNeeds(
@@ -94,6 +105,7 @@ export async function describePackageCredentialNeeds(input: {
 				userId: input.ownerUserId,
 				sourceId: input.sourceId,
 				request: input.request,
+				supplierSemanticsEnabled: input.supplierSemanticsEnabled,
 			}),
 		)
 		if (needs.length === 0) return []
@@ -116,7 +128,13 @@ export async function describePackageCredentialNeeds(input: {
 			return {
 				...need,
 				...resolveNeedForCaller(need, usable, rows),
-				yourOptions: resolution.options
+				// Provider matches only. Same-kind credentials with no provider
+				// are counted, not listed, so a GitHub need does not list every
+				// unlabeled Key.
+				possibleMatchCount: resolution.possibleMatches.filter(
+					(option) => need.supplier !== 'publisher' || option.scope === 'org',
+				).length,
+				yourOptions: resolution.candidates
 					.filter(
 						(option) => need.supplier !== 'publisher' || option.scope === 'org',
 					)

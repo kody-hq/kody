@@ -39,6 +39,7 @@ export const resourceRestoreCapability = defineDomainCapability(
 			'Restore one soft-deleted org-owned resource row while the org is still within the restore window. Soft-deleted orgs cannot be bound, so authorization mirrors orgRestore (deletion-generation Owner + `org:write` on scoped credentials). Minimal stub for P7; expands with resource-specific permissions later.',
 		keywords: ['org', 'restore', 'resource', 'soft delete'],
 		// Soft-deleted orgs are not bindable; authorize in the handler.
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		inputSchema,
 		outputSchema,

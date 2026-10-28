@@ -79,6 +79,7 @@ function createCapability(
 		idempotent: true,
 		destructive: false,
 		orgPermission: 'none',
+		contextRuns: 'deny',
 		requiresLivePerson: 'never',
 		...(featureFlag ? { featureFlag } : {}),
 		source: 'builtin',

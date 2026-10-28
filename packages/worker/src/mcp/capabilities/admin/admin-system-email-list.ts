@@ -70,6 +70,7 @@ export const adminSystemEmailListCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminSystemEmailList',
+		contextRuns: 'deny',
 		description:
 			'List operator-owned system inbox messages for reserved platform addresses, with classification and archive state. The default "inbox" view hides spam and archived mail; pass view "spam", "archived", or "all" to see them. Admin-only; never returns user-owned email.',
 		keywords: [

@@ -10,6 +10,7 @@ export const repoGetSessionCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoGetSession',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'Inspect one repo editing session by id so the model can resume work without reopening it.',

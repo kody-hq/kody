@@ -83,6 +83,7 @@ export const adminFeatureFlagOverrideCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminFeatureFlagOverride',
+		contextRuns: 'deny',
 		description:
 			'Set or clear a per-user feature flag override by stable user id or username. Admin-only; never returns user content.',
 		keywords: [

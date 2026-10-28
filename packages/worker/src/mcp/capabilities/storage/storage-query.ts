@@ -51,6 +51,7 @@ export const storageQueryCapability = defineDomainCapability(
 	capabilityDomainNames.storage,
 	{
 		name: 'storageQuery',
+		contextRuns: 'allow',
 		orgPermission: 'package:write',
 		description:
 			'Run SQL against one durable storage bucket. Requires package:write (connection-profile write) whenever storage_id resolves to a package bucket — including writable:false SELECT/EXPLAIN/PRAGMA inspection. Defaults to read-only SQL and only allows SELECT, EXPLAIN, and schema PRAGMA queries unless writable is explicitly true. A large read is allowed and metered; warning is set once the scan crosses the oversized-read line, and the call stops only after the documented row ceiling.',

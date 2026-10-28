@@ -47,6 +47,7 @@ export const adminUserCreateCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminUserCreate',
+		contextRuns: 'deny',
 		description:
 			'Create one user account by email, assign the default user role, and return a password setup link. The email must be a real address: syntactically valid, not a disposable domain, not a common typo (the error suggests the corrected address), and the domain must have an MX record or an A/AAAA fallback. Admin-only; does not send mail and does not expose user content.',
 		keywords: ['admin', 'user', 'create', 'account', 'email', 'password setup'],

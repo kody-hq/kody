@@ -26,6 +26,7 @@ export const integrationOauthAppDeleteCapability = defineDomainCapability(
 	capabilityDomainNames.integrations,
 	{
 		name: 'integrationOauthAppDelete',
+		contextRuns: 'deny',
 		orgPermission: 'integration:delete',
 		description:
 			'Delete a user-registered OAuth app and every connection on it. Built-in (platform) apps cannot be deleted this way — disconnect their connections with integrationDelete instead.',

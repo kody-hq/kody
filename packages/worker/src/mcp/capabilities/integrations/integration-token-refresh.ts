@@ -29,6 +29,7 @@ export const integrationTokenRefreshCapability = defineDomainCapability(
 	capabilityDomainNames.integrations,
 	{
 		name: 'integrationTokenRefresh',
+		contextRuns: 'deny',
 		orgPermission: 'integration:use',
 		description:
 			'Refresh the OAuth access token for a saved integration host-side and persist the new tokens on the connection. Connections whose provider issued neither a refresh token nor an access-token expiry at connect (for example GitHub OAuth Apps with token expiration off) are skipped with refreshed: false instead of failing. Returns metadata only — token values never appear in the output. createAuthenticatedFetch refreshes through this path for every integration; it is the only refresh path for platform (built-in) integrations, whose shared client secret stays server-side.',

@@ -27,6 +27,7 @@ export const adminReservedUsernameRemoveCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminReservedUsernameRemove',
+		contextRuns: 'deny',
 		description:
 			'Remove custom reserved usernames or unreserve built-in names that are not permanently locked (system-email locals and kody-prefixed built-ins). Admin-only; never returns user content beyond the reserved-username snapshot.',
 		keywords: ['admin', 'reserved username', 'username', 'denylist', 'remove'],

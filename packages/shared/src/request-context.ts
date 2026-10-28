@@ -41,6 +41,8 @@ export type RequestCredentialKind =
 	| 'webhook'
 	| 'schedule'
 	| 'platform-event'
+	/** A run on a registered execution context; the id is the run id. */
+	| 'execution-context-run'
 
 export type RequestCredential = {
 	kind: RequestCredentialKind

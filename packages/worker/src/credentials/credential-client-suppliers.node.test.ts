@@ -339,6 +339,39 @@ test('ownerCredentialForVisitors has the same publisher visitor refusal as suppl
 	})
 })
 
+test('an app opening an executor need as its runs-as person is refused, not filled by the publisher', async () => {
+	const t = await setup()
+	await t.storeKey('publisher-db', 'database')
+	const request = t.requestAs('bea', 'owner')
+	const need: SavedCredentialNeed = {
+		key: 'database',
+		kind: 'secret',
+		provider: 'database',
+		description: 'Database access.',
+		multiple: false,
+		supplier: 'executor',
+		required: true,
+	}
+	await expect(
+		openCredentialClient(
+			{
+				...contextFor(t, request, t.savedPackage.id),
+				runNeeds: async () => new Map([[need.key, need]]),
+				packageAppAuthority: {
+					issue: { runsAs: true },
+					runsAsRequest: async () => request,
+					visitorNeedRequest: async () => null,
+					visitorNeedGrant: async () => null,
+				},
+			},
+			{ key: need.key },
+		),
+	).rejects.toMatchObject({
+		body: { code: 'credential_denied' },
+		message: expect.stringContaining('credential.visitor("database")'),
+	})
+})
+
 test('executor visitor credentials are isolated by grant and filtered against the visitor', async () => {
 	const t = await setup()
 	const publisherCredentialId = await t.storeKey('publisher-db', 'database')

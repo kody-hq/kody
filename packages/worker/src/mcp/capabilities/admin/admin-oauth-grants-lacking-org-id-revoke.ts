@@ -95,6 +95,7 @@ export const adminOauthGrantsLackingOrgIdRevokeCapability =
 		...adminMutationCapabilityAccess,
 		idempotent: true,
 		name: 'adminOauthGrantsLackingOrgIdRevoke',
+		contextRuns: 'deny',
 		description:
 			'Teams P9 leftover (#3057): page OAUTH_KV grant:* keys and revoke MCP OAuth grants that still lack plaintext metadata.orgId. dryRun defaults to true (counts + by-client breakdown only). Apply requires confirm and revokes via OAuth helpers (idempotent; a complete second pass finds zero lacking). Audited. Never returns tokens or encrypted props.',
 		keywords: [

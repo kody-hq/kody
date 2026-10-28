@@ -293,14 +293,32 @@ export const packageCredentialNeedSchema = z.object({
 	provider: z.string(),
 	description: z.string(),
 	multiple: z.boolean(),
+	supplier: z
+		.enum(['publisher', 'executor'])
+		.optional()
+		.describe(
+			'Who supplies the credential when the package-credential-suppliers flag is on: publisher (the org mapping, usable by app visitors through the app) or executor (each person who uses the package picks their own). Omitted for needs with no supplier, which keep the default package behavior.',
+		),
+	required: z
+		.boolean()
+		.optional()
+		.describe(
+			'Executor needs only: true when a visitor must connect a credential before the app serves (the default); false for an optional need.',
+		),
+	ownerCredentialForVisitors: z
+		.literal(true)
+		.optional()
+		.describe(
+			'Older alias for supplier: "publisher". Still accepted in manifests.',
+		),
 	from: z
 		.string()
 		.optional()
 		.describe('The imported package that declares this need, when inherited.'),
 	status: z
-		.enum(['ready', 'ambiguous', 'unbound', 'expired'])
+		.enum(['ready', 'ambiguous', 'unbound', 'expired', 'executor_supplied'])
 		.describe(
-			'ready: a stored default mapping (yours, then the org default) names a credential you can Use, or auto-resolve finds one (exactly one of your credentials matches the need kind filter and provider, or one Key bound to this package is named exactly like the need key); it resolves with no call map entry. ambiguous: several match, no default mapping applies, and no package-bound Key matches the need key by name; pick one with a call map or propose a default with credentialMappingPropose. unbound: none match, or a default maps the need to no credential on purpose. expired: the resolved Key is bound but past expires_at (not missing; refresh or wait for the package to rewrite it).',
+			'executor_supplied: a `supplier: "executor"` need; each app visitor or runner picks their own credential (on Sign in with Kody consent for apps), so your credentials and default mappings never fill it. ready: a stored default mapping (yours, then the org default) names a credential you can Use, or auto-resolve finds one (exactly one of your credentials matches the need kind filter and provider, or one Key bound to this package is named exactly like the need key); it resolves with no call map entry. ambiguous: several match, no default mapping applies, and no package-bound Key matches the need key by name; pick one with a call map or propose a default with credentialMappingPropose. unbound: none match, or a default maps the need to no credential on purpose. expired: the resolved Key is bound but past expires_at (not missing; refresh or wait for the package to rewrite it).',
 		),
 	autoPick: z
 		.string()
@@ -309,9 +327,9 @@ export const packageCredentialNeedSchema = z.object({
 			'The credential name used when no call map entry is given. For a mapping of several credentials, the first one.',
 		),
 	source: z
-		.enum(['mine', 'org', 'auto'])
+		.enum(['mine', 'org', 'auto', 'visitor'])
 		.describe(
-			'Where status and autoPick come from: mine (your own default mapping), org (the org default mapping), or auto (matched by kind and provider). A trigger run may use its own trigger mapping instead.',
+			'Where status and autoPick come from: visitor (an executor need; each visitor picks), mine (your own default mapping), org (the org default mapping), or auto (matched by kind and provider). A trigger run may use its own trigger mapping instead.',
 		),
 	yourOptions: z
 		.array(
@@ -323,7 +341,14 @@ export const packageCredentialNeedSchema = z.object({
 			}),
 		)
 		.describe(
-			'Credentials you can Use that a call map may pick: the matches, plus matching-kind credentials with no provider (set their provider to auto-resolve).',
+			'Credentials you can Use whose kind and provider match the need. For an executor need these are the credentials you would pick when you use the package yourself.',
+		),
+	possibleMatchCount: z
+		.number()
+		.int()
+		.nonnegative()
+		.describe(
+			'Matching-kind credentials you can Use that have no provider set. A call map may still pick one by name; set its provider to list and auto-resolve it.',
 		),
 })
 
@@ -344,6 +369,11 @@ export const packageDetailSchema =
 		credentials: z
 			.object({
 				needs: z.array(packageCredentialNeedSchema),
+				suppliersEnabled: z
+					.boolean()
+					.describe(
+						'Whether the package-credential-suppliers early-access flag is on for the org that owns this package. When false, `supplier` and `required` in its manifest are ignored and executor needs behave like ordinary needs.',
+					),
 			})
 			.describe(
 				'Credential needs (ADR 0068): the published `kody.credentials` closure, including needs inherited from statically imported packages (`from`), each with how it resolves for you. Options list only credentials you can Use; never values.',

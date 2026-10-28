@@ -1,3 +1,4 @@
+import { endMemberExecutionContextLeases } from '#worker/execution-contexts/service.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -42,6 +43,7 @@ export const teamListCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'teamList',
+		contextRuns: 'allow',
 		orgPermission: 'team:read',
 		description:
 			'List live teams in the organization this request is bound to, with live member counts.',
@@ -77,6 +79,7 @@ export const teamCreateCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'teamCreate',
+		contextRuns: 'deny',
 		orgPermission: 'team:write',
 		description:
 			'Create a team in the organization this request is bound to. The slug is a handle unique inside the organization.',
@@ -135,6 +138,7 @@ export const teamMemberAddCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'teamMemberAdd',
+		contextRuns: 'deny',
 		orgPermission: 'team:write',
 		requiresLivePerson: true,
 		description:
@@ -188,6 +192,7 @@ export const teamMemberRemoveCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'teamMemberRemove',
+		contextRuns: 'deny',
 		orgPermission: 'team:delete',
 		requiresLivePerson: true,
 		description:
@@ -225,6 +230,10 @@ export const teamMemberRemoveCapability = defineDomainCapability(
 					teamId,
 					userId,
 					audit: orgAuditWriterFromRequest(ctx.env, request),
+				})
+				await endMemberExecutionContextLeases(ctx.env, {
+					orgId: request.org.id,
+					userId,
 				})
 				return { team_id: teamId, user_id: userId, removed: true as const }
 			} catch (error) {

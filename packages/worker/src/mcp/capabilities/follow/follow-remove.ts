@@ -11,6 +11,7 @@ export const followRemoveCapability = defineDomainCapability(
 	capabilityDomainNames.follow,
 	{
 		name: 'followRemove',
+		contextRuns: 'allow',
 		orgPermission: 'org:read',
 		description:
 			'Unfollow a package or plain repo by @handle/name for the org this connection is bound to. Works for paused follows too, including ones whose target was deleted. Returns the removed follow.',

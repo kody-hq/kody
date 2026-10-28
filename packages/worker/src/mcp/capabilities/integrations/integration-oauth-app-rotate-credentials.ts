@@ -29,6 +29,7 @@ const outputSchema = z.object({
 export const integrationOauthAppRotateCredentialsCapability =
 	defineDomainCapability(capabilityDomainNames.integrations, {
 		name: 'integrationOauthAppRotateCredentials',
+		contextRuns: 'deny',
 		orgPermission: 'integration:write',
 		description:
 			'Rotate the client id on a shared OAuth app. Every connection on that app sees the new client id on the next join — one write instead of updating each connection. Rotate the client secret value from /account/integrations.',

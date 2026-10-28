@@ -11,6 +11,8 @@ import {
 	type CredentialNeedFit,
 } from '#universal/credentials-list.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
+import { listEntitySourcesByIds } from '#worker/repo/entity-sources.ts'
+import { type EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	listUsableCredentialsByPackage,
 	resolveNeedCandidates,
@@ -82,7 +84,8 @@ async function listUsage(input: {
 	// (KODY-BD). Closures still run per package in parallel, but the suppliers
 	// flag is evaluated once for the org and threaded with `request` so nested
 	// dependency walks share the same memo (Sentry KODY-BW / KODY-BT /
-	// KODY-BV). A flag failure marks usage unreadable once instead of failing
+	// KODY-BV), and every package's entity-source row loads in one batch
+	// (KODY-C1). A flag failure marks usage unreadable once instead of failing
 	// the whole detail.
 	let supplierSemanticsEnabled: boolean
 	try {
@@ -104,28 +107,13 @@ async function listUsage(input: {
 			request: input.request,
 			packageIds: input.packages.map((pkg) => pkg.id),
 		}),
-		Promise.all(
-			input.packages.map(async (pkg) => {
-				try {
-					const needs = savedCredentialNeeds(
-						await loadPublishedCredentialNeeds({
-							env: input.env,
-							userId: input.orgId,
-							sourceId: pkg.sourceId,
-							supplierSemanticsEnabled,
-							request: input.request,
-						}),
-					)
-					return { pkg, needs }
-				} catch (error) {
-					Sentry.captureException(error, {
-						tags: { scope: 'credentials.detail.usage' },
-						extra: { packageId: pkg.id },
-					})
-					return { pkg, needs: null }
-				}
-			}),
-		),
+		loadPackageNeeds({
+			env: input.env,
+			request: input.request,
+			orgId: input.orgId,
+			packages: input.packages,
+			supplierSemanticsEnabled,
+		}),
 	])
 	const packageViews = needResults.map(({ pkg, needs }) => ({
 		pkg,
@@ -169,6 +157,56 @@ async function listUsage(input: {
 		),
 		unreadable,
 	}
+}
+
+/**
+ * Each package's published needs, or null when they could not be read. A
+ * package whose source row is missing or deleted has no needs.
+ */
+async function loadPackageNeeds(input: {
+	env: Env
+	request: RequestContext
+	orgId: string
+	packages: ReadonlyArray<SavedPackageRecord>
+	supplierSemanticsEnabled: boolean
+}) {
+	let sourcesById: Map<string, EntitySourceRow>
+	try {
+		const rows = await listEntitySourcesByIds(
+			input.env.APP_DB,
+			input.packages.map((pkg) => pkg.sourceId),
+		)
+		sourcesById = new Map(rows.map((row) => [row.id, row]))
+	} catch (error) {
+		Sentry.captureException(error, {
+			tags: { scope: 'credentials.detail.usage' },
+			extra: { orgId: input.orgId },
+		})
+		return input.packages.map((pkg) => ({ pkg, needs: null }))
+	}
+	return await Promise.all(
+		input.packages.map(async (pkg) => {
+			try {
+				const needs = savedCredentialNeeds(
+					await loadPublishedCredentialNeeds({
+						env: input.env,
+						userId: input.orgId,
+						sourceId: pkg.sourceId,
+						source: sourcesById.get(pkg.sourceId) ?? null,
+						supplierSemanticsEnabled: input.supplierSemanticsEnabled,
+						request: input.request,
+					}),
+				)
+				return { pkg, needs }
+			} catch (error) {
+				Sentry.captureException(error, {
+					tags: { scope: 'credentials.detail.usage' },
+					extra: { packageId: pkg.id },
+				})
+				return { pkg, needs: null }
+			}
+		}),
+	)
 }
 
 /**

@@ -77,6 +77,7 @@ export const metaListCapabilitiesCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'metaListCapabilities',
+		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
 			'Browse the current runtime capability registry, including dynamic capabilities from connected MCP servers. Without a domain, returns a compact domain index. Pass a domain for exact capability names and optional TypeScript call shapes.',

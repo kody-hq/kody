@@ -11,6 +11,10 @@ import {
 	usageAttributionFieldsFromRequest,
 } from '#worker/usage/record-usage.ts'
 import { authenticateApiRequest } from './authenticate.ts'
+import {
+	handleExecutionContextKeyRoute,
+	isExecutionContextKeyRoute,
+} from '#worker/execution-contexts/key-routes.ts'
 import { type ApiInvocationContext } from './context.ts'
 import {
 	buildOpenApiDocument,
@@ -291,6 +295,7 @@ async function handleOperation(input: {
 			// CLIs) and on POST /v1/tokens/device (mint a device kody_at_).
 			// Other Open API ops stay `kody_at_`-only (ADR 0053/0055).
 			allowMcpOauth: operationAllowsCliOauth(matchedOperation),
+			allowExecutionContextLease: isCapabilityProxyOperation(matchedOperation),
 		})
 	} catch (error) {
 		const apiError = toApiError(error)
@@ -469,6 +474,9 @@ export async function handleOpenApiRequest(input: {
 				version: kodyApiVersion,
 				openapi: `${url.origin}${openApiDocumentPath}`,
 			})
+		}
+		if (isExecutionContextKeyRoute(input.request.method, url.pathname)) {
+			return await handleExecutionContextKeyRoute({ ...input, url })
 		}
 		return await handleOperation({ ...input, url })
 	} catch (error) {

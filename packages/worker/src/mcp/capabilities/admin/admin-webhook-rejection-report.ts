@@ -88,6 +88,7 @@ export const adminWebhookRejectionReportCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminWebhookRejectionReport',
+		contextRuns: 'deny',
 		description:
 			'Count rejected inbound webhook deliveries across every owner with a minted webhook URL since a time, by endpoint and owner, with successful deliveries in the same window. Filter by HTTP status (default 401) and exact rejection code such as missing_signature. Reads each owner RunLog, so it is slow; use it to size an incident. Returns ids, slugs, names, counts, and timestamps only; never payloads or secrets. Admin-only.',
 		keywords: [

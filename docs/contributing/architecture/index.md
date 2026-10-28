@@ -100,6 +100,8 @@ wrote during that fetch) so the next cron can skip the synthetic.
   imports zero, keyless package export runs tens of milliseconds), watching
   `kody_usage_events` percentiles per surface, and the PR-level budget
   justification required for any new awaited D1 write on a hot invocation path.
+- [Execution contexts](./execution-contexts.md): machines running `kody daemon`
+  that run execute instead of Kody cloud, behind the `execution-contexts` flag.
 - [Run records](./run-records.md): per-user execution history and logs across
   every runtime surface (`RunLog` Durable Object, `runs` MCP domain,
   `/@<slug>/-/activity`).
