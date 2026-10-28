@@ -43,7 +43,8 @@ export async function resolveCredentialClientPlacement(input: {
 					env: input.env,
 					scope: input.props.packageAppAuthority.scope,
 					grantScope: input.props.packageAppAuthority.grantScope,
-					visitorRequest: input.props.request,
+					visitorRequest:
+						input.props.executorVisitorRequest ?? input.props.request,
 					issue: null,
 				})
 			: null,

@@ -678,6 +678,7 @@ test('an outside-org visitor with no acting request opens only their own executo
 			]),
 		packageAppAuthority: {
 			issue: { visitorNeed: key },
+			orgId: t.acmeId,
 			runsAsRequest: async () => null,
 			visitorNeedRequest: async () => (granted ? visitorRequest : null),
 			visitorNeedGrant: async () =>

@@ -251,6 +251,8 @@ export type PackageAppCredentialAuthority = {
 	visitorNeedGrant: (
 		needKey: string,
 	) => Promise<{ request: RequestContext; grantId: string } | null>
+	/** The org that owns the app: checks declarations with no acting request. */
+	orgId?: string
 }
 
 export type OpenedCredentialClient = {
@@ -968,6 +970,19 @@ export async function openCredentialClient(
 	) {
 		const need = await loadNeed(ctx, key)
 		if (need?.supplier === 'executor') {
+			const orgId = ctx.packageAppAuthority.orgId
+			if (!orgId) requireActorRequest(ctx)
+			// The run's needs are the entry app's; the opening package itself
+			// must declare the key too.
+			await assertCredentialUsesDeclared({
+				env: ctx.env,
+				request: null,
+				orgId: orgId!,
+				packageId: ctx.packageId,
+				references: [{ use: 'key', key }],
+			}).catch((error: unknown) => {
+				throw toCredentialClientError(error) ?? error
+			})
 			const [picked] = await resolveExecutorNeedPicks(ctx, key, need, 'one')
 			return await issueClient(ctx, key, picked!, {
 				packageAppIssue: { executorNeed: key },

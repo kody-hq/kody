@@ -96,6 +96,7 @@ import { IntegrationHostNotAllowedError } from './execute-modules/integration-ho
 import { type StorageContext } from '#mcp/storage.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
+	createPackageAppVisitorPersonalRequest,
 	loadPackageAppRunsAs,
 	type PackageAppAuthorityScope,
 	type PackageAppVisitorGrantScope,
@@ -175,6 +176,12 @@ type FetchGatewayProps = {
 		grantScope: PackageAppVisitorGrantScope | null
 	} | null
 	/**
+	 * An outside-org visitor's own request, from an executor-only visit
+	 * ticket. Only resolves their executor credential handles; `request`
+	 * stays null so nothing else acts as them.
+	 */
+	executorVisitorRequest?: RequestContext | null
+	/**
 	 * Per-run HMAC key for package-scoped `packageSecrets.get` placeholders
 	 * (GHSA-5fv3). Omitted outside bundled sandbox runs.
 	 */
@@ -250,6 +257,7 @@ async function applyPackageAppVisitTicketToGateway(input: {
 			props: {
 				...input.props,
 				request: null,
+				executorVisitorRequest: null,
 				credentialClientBinding: null,
 			},
 		}
@@ -271,7 +279,15 @@ async function applyPackageAppVisitTicketToGateway(input: {
 		props: {
 			...input.props,
 			email: claims.owner.email,
-			request: requestContextFromVisitClaims(claims),
+			request: claims.executorOnly
+				? null
+				: requestContextFromVisitClaims(claims),
+			executorVisitorRequest: claims.executorOnly
+				? await createPackageAppVisitorPersonalRequest({
+						db: input.env.APP_DB,
+						visitor: claims.visitor,
+					})
+				: null,
 			credentialClientBinding: claims.credentialClientBinding,
 		},
 	}
