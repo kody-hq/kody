@@ -23,6 +23,12 @@ test('createRepoChecksFailedError joins failed check messages', () => {
 })
 
 test('isRepoChecksFailedError matches live class, name-only RPC shape, and JSRPC prefix', () => {
+	expect(
+		isRepoChecksFailedError(
+			new RepoChecksFailedError('src/receive.js type mismatch'),
+		),
+	).toBe(true)
+
 	const nameOnly = new Error('src/receive.js type mismatch')
 	nameOnly.name = repoChecksFailedErrorName
 	expect(isRepoChecksFailedError(nameOnly)).toBe(true)
