@@ -4,10 +4,10 @@ import {
 	adminCostRiskNoneStatus,
 	fleetDynamicWorkerCostAlertUsd,
 } from '#universal/dynamic-worker-cost.ts'
-import {
-	type AdminCostRiskKind,
-	type AdminInsightsRunLogCompleteness,
-	type AdminUsageMetric,
+import type {
+	AdminCostRiskKind,
+	AdminInsightsRunLogCompleteness,
+	AdminUsageMetric,
 } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 

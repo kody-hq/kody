@@ -1,4 +1,4 @@
-import { type RefCallback } from 'react'
+import type { RefCallback } from 'react'
 
 type RevealKind = 'reveal' | 'reveal-pop' | 'reveal-card'
 let observer: IntersectionObserver | null = null

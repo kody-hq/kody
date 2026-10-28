@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { renderIcon } from './icon.tsx'
-import { type CSSObject } from '@emotion/react'
+import type {  CSSObject } from '@emotion/react'
 import { useEffect, useId, useState, useRef, type ReactNode } from 'react'
 import { writeClipboardText } from '#client/clipboard.ts'
 import {

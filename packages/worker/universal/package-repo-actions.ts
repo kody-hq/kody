@@ -1,4 +1,4 @@
-import { type ViewerListingInstall } from './community-public-types.ts'
+import type { ViewerListingInstall } from './community-public-types.ts'
 export type PackageRepoForkAction = {
 	listingId: string
 	trusted: boolean

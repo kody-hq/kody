@@ -12,10 +12,10 @@ import {
 } from './account-management-components.tsx'
 import { RecordTable } from './record-table.tsx'
 import { formatEstimatedCreditMicroUsd } from '#universal/credits.ts'
-import {
-	type OrgCreditsBudget,
-	type OrgCreditsLedgerEntry,
-	type OrgCreditsLoaderData,
+import type {
+	OrgCreditsBudget,
+	OrgCreditsLedgerEntry,
+	OrgCreditsLoaderData,
 } from '#universal/loader-data.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import {

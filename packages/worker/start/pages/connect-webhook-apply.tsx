@@ -5,13 +5,13 @@ import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildHumanApprovalErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import { connectWebhookApplyQuery } from '../connect-approval-queries.ts'
 
-import { type ConnectWebhookApplyLoaderData } from '#universal/loader-data.ts'
+import type { ConnectWebhookApplyLoaderData } from '#universal/loader-data.ts'
 
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import {

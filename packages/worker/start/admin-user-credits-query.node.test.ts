@@ -1,4 +1,4 @@
-import { type AdminCreditWalletSummary } from '#universal/loader-data.ts'
+import type { AdminCreditWalletSummary } from '#universal/loader-data.ts'
 import { MutationObserver, QueryClient } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from 'vitest'
 import {

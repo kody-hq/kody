@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { type ReactNode } from 'react'
-import { type CSSObject } from '@emotion/react'
+import type { ReactNode } from 'react'
+import type { CSSObject } from '@emotion/react'
 import {
 	breakpoints,
 	colors,

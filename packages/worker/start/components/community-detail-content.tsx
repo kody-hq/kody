@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
 /** @jsxRuntime automatic */
-import { type CSSProperties, type ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { SiteLink } from './site-link.tsx'
-import { type PublicCommunityListing } from '#universal/community-public-types.ts'
+import type { PublicCommunityListing } from '#universal/community-public-types.ts'
 import { communityPackageCategoryCopy } from '#universal/community-categories.ts'
 import { buildCommunityIndexHref } from '#universal/community-search.ts'
 import {

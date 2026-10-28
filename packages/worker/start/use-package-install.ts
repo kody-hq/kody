@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouteContext } from '@tanstack/react-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { type PackageRepoForkAction } from '#universal/package-repo-actions.ts'
+import type { PackageRepoForkAction } from '#universal/package-repo-actions.ts'
 import { installCommunityPackage } from '#start/server/community-mutations'
 import { communityForkStateQuery } from './community-fork-state-query.ts'
-import {
-	type CommunityInstallApiPayload,
-	type CommunityInstallOutcome,
+import type {
+	CommunityInstallApiPayload,
+	CommunityInstallOutcome,
 } from './community-types.ts'
 import { usePageInvalidation } from './page-invalidation.ts'
 import { useSubmitterScope } from './use-submitter-scope.ts'

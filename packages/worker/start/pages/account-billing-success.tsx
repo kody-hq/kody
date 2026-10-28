@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from '../components/site-link.tsx'
 import { kodyDiscordInviteUrl } from '#universal/community-links.ts'
-import { type AccountBillingSuccessLoaderData } from '#universal/loader-data.ts'
+import type { AccountBillingSuccessLoaderData } from '#universal/loader-data.ts'
 import {
 	cardCss,
 	getGhostButtonCss,

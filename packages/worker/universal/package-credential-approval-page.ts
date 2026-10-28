@@ -4,13 +4,13 @@
  * the page payload, how changes group, and the copy each one shows. Nothing
  * here carries a credential value.
  */
-import {
-	type CredentialApprovalChangeView,
-	type CredentialApprovalEnableView,
-	type CredentialApprovalView,
-	type CredentialMappingTarget,
-	type CredentialRef,
-	type CredentialTriggerRef,
+import type {
+	CredentialApprovalChangeView,
+	CredentialApprovalEnableView,
+	CredentialApprovalView,
+	CredentialMappingTarget,
+	CredentialRef,
+	CredentialTriggerRef,
 } from '#universal/credential-contracts.ts'
 import {
 	credentialRefLabel,

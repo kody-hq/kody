@@ -2,7 +2,7 @@
 import { formatTimestamp } from '../components/local-timestamp.tsx'
 import { AccountManagementPanel } from './account-management-components.tsx'
 import { recordStampCss } from './record-table.tsx'
-import { type AccountToggleChange } from '#universal/loader-data.ts'
+import type { AccountToggleChange } from '#universal/loader-data.ts'
 import {
 	colors,
 	radius,

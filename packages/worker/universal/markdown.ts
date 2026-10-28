@@ -1,5 +1,5 @@
 import { parseMarkdown } from '@tanstack/markdown/parser'
-import { type MarkdownExtension } from '@tanstack/markdown'
+import type {  MarkdownExtension } from '@tanstack/markdown'
 import { firstPartyDetailsExtension } from './markdown-first-party.ts'
 
 /** Keep explicit angle links supported without enabling arbitrary HTML. */

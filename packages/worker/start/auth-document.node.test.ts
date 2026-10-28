@@ -3,9 +3,9 @@ import { expect, test } from 'vitest'
 import { renderStartPage } from './test-support/render-start-page.ts'
 import { LoginPage } from './pages/login.tsx'
 import { OAuthAuthorizeRoute } from './pages/oauth-authorize.tsx'
-import { type SessionInfo } from '#client/session.ts'
+import type { SessionInfo } from '#client/session.ts'
 import { featureFlagKeys } from '#universal/feature-flags/registry.ts'
-import { type OAuthAuthorizeLoaderData } from '#universal/loader-data.ts'
+import type { OAuthAuthorizeLoaderData } from '#universal/loader-data.ts'
 
 const authConfig = {
 	turnstileSiteKey: null,

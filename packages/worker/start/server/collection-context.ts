@@ -1,6 +1,6 @@
 import { createServerOnlyFn } from '@tanstack/react-start'
 import { notFound, redirect } from '@tanstack/react-router'
-import { type OrgOwnedAccountSection } from '#universal/org-pages.ts'
+import type { OrgOwnedAccountSection } from '#universal/org-pages.ts'
 
 /** Resource scope is explicit. The request remains the authenticated RPC/document. */
 export const loadScopedCollection = createServerOnlyFn(

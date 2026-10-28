@@ -3,7 +3,7 @@ import {
 	type QueryClient,
 	type Query,
 } from '@tanstack/react-query'
-import { type loadPackage } from '#start/server/public-data'
+import type { loadPackage } from '#start/server/public-data'
 import { invalidatePageResources } from './page-invalidation-cache.ts'
 
 type PackagePage = Awaited<ReturnType<typeof loadPackage>>

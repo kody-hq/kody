@@ -46,7 +46,7 @@ import {
 	openMuseGuideUrl,
 	wajoSiteUrl,
 } from '#client/routes/onboarding-mcp-clients.ts'
-import { type HighlightedCode } from '#universal/highlighted-code.ts'
+import type { HighlightedCode } from '#universal/highlighted-code.ts'
 import {
 	AppIconCard,
 	ChatGptDeveloperModeWarning,

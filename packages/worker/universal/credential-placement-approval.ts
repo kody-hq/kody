@@ -4,7 +4,7 @@
  * The host may store a value sent there, so only the owner can approve it on
  * the website; agents only build and share the link.
  */
-import { type CredentialFillPlacementView } from './credential-fill-placement.ts'
+import type {  CredentialFillPlacementView } from './credential-fill-placement.ts'
 
 export const placementApprovalParts = ['query', 'path', 'body'] as const
 

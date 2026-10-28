@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react'
 import { SkillReadAcknowledgement } from '../components/skill-read-acknowledgement.tsx'
 import { SkillMetricsPanel } from './skill-metrics.tsx'
-import { type loadSkillsPage } from '#start/server/skills'
+import type {  loadSkillsPage } from '#start/server/skills'
 import { colors } from '#universal/styles/tokens.ts'
 import {
 	AccountManagementShell,

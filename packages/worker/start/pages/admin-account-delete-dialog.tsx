@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useRef, useState, type FormEvent } from 'react'
 import {
 	deleteAdminUserAccount,

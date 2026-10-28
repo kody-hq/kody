@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
 import { dismissOpenPopoverPanel } from '#client/popover-open.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useLocation } from '@tanstack/react-router'
 import { SiteLink } from './site-link.tsx'

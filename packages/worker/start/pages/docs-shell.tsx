@@ -1,10 +1,10 @@
 /** @jsxImportSource @emotion/react */
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { mergeCss } from '../components/merge-css.ts'
 import { type ReactNode, type CSSProperties, useEffect, useRef } from 'react'
-import { type DocSummaryLoaderData } from '#universal/loader-data.ts'
+import type { DocSummaryLoaderData } from '#universal/loader-data.ts'
 import {
 	docHref,
 	docsCurrentPageLabel,

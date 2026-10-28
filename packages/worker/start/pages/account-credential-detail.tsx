@@ -2,7 +2,7 @@
 import { SiteLink } from '../components/site-link.tsx'
 
 import { css } from '@emotion/react'
-import { type ReactNode } from 'react'
+import type {  ReactNode } from 'react'
 import {
 	IdValue,
 	MetadataGrid,
@@ -13,10 +13,10 @@ import { CredentialFillPlacementEditor } from './account-credential-fill-placeme
 import { RecordChips, recordBodyCss } from './record-table.tsx'
 import { formatFillPlacementSummary } from '#universal/credential-fill-placement.ts'
 import { fillPlacementAnchor } from '#universal/credential-placement-approval.ts'
-import {
-	type CredentialInjectView,
-	type CredentialListItem,
-	type CredentialPlacementOriginView,
+import type {
+	 CredentialInjectView,
+	 CredentialListItem,
+	 CredentialPlacementOriginView,
 } from '#universal/credential-contracts.ts'
 import {
 	type AccountCredentialDetail,

@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { updateExperiments } from '#start/server/account-mutations'
-import { type AccountExperimentsLoaderData } from '#universal/loader-data.ts'
+import type { AccountExperimentsLoaderData } from '#universal/loader-data.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'

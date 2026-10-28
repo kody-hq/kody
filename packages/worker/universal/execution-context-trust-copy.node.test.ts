@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type ExecutionContextGrantSummary } from './execution-contexts.ts'
+import type {  ExecutionContextGrantSummary } from './execution-contexts.ts'
 import {
 	credentialValuesStayOnKody,
 	loginPredatesPermissionsMessage,

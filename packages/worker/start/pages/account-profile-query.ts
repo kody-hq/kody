@@ -1,5 +1,5 @@
 import { useMutationState } from '@tanstack/react-query'
-import { type ProfileVisibility } from '#universal/loader-data.ts'
+import type { ProfileVisibility } from '#universal/loader-data.ts'
 type ProfileEdit = {
 	displayName: string
 	bio: string

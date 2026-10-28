@@ -1,10 +1,10 @@
 /** @jsxImportSource @emotion/react */
 import { relocateAccountHref } from '#universal/org-pages.ts'
-import { type AccountIntegrationsLoaderData } from '#universal/loader-data.ts'
-import { type PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
+import type { AccountIntegrationsLoaderData } from '#universal/loader-data.ts'
+import type { PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
 import { routes } from '#universal/routes.ts'
 import { docHref } from '#universal/docs-nav.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { ProviderIcon } from '../components/provider-icons.tsx'

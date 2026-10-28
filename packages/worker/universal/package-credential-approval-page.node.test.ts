@@ -1,9 +1,9 @@
 import { expect, test } from 'vitest'
-import {
-	type CredentialApprovalChangeView,
-	type CredentialApprovalEnableView,
-	type CredentialApprovalView,
-	type CredentialRef,
+import type {
+	CredentialApprovalChangeView,
+	CredentialApprovalEnableView,
+	CredentialApprovalView,
+	CredentialRef,
 } from '#universal/credential-contracts.ts'
 import {
 	approvalChangeIsNoop,

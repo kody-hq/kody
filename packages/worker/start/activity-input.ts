@@ -1,5 +1,5 @@
 import { readAccountActivityFilters } from '#universal/account-activity-filters.ts'
-import { type ActivityInput } from './activity-query.ts'
+import type { ActivityInput } from './activity-query.ts'
 
 /** Normalize browser URL filters once, before they become Query keys or RPC inputs. */
 export function activityInput(

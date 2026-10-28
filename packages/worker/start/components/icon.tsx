@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 /** @jsxRuntime automatic */
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { iconGlyphs, type IconName } from './icon-glyphs.tsx'
 
 export type { IconName } from './icon-glyphs.tsx'

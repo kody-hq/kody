@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from './site-link.tsx'
 /** @jsxRuntime automatic */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 
 import {
 	communityActivityVerb,
@@ -10,18 +10,18 @@ import {
 import { formatCommunityPublishedDate } from '#universal/community-display.ts'
 import { renderCommunityListingName } from './community-listing-name.tsx'
 import { IdentityIconMark } from './identity-icon-mark.tsx'
-import {
-	type ProfilePackageAppFilter,
-	type ProfilePackageFilters,
-	type ProfilePackageHiddenFilter,
-	type ProfilePackageListingFilter,
-	type ProfilePackagePresenceFilter,
-	type ProfilePackageSort,
-	type ProfilePackageSortDirection,
-	type ProfilePackageVisibilityFilter,
-	type PublicCommunityActivityItem,
-	type PublicCommunityProfile,
-	type PublicProfilePackageItem,
+import type {
+	ProfilePackageAppFilter,
+	ProfilePackageFilters,
+	ProfilePackageHiddenFilter,
+	ProfilePackageListingFilter,
+	ProfilePackagePresenceFilter,
+	ProfilePackageSort,
+	ProfilePackageSortDirection,
+	ProfilePackageVisibilityFilter,
+	PublicCommunityActivityItem,
+	PublicCommunityProfile,
+	PublicProfilePackageItem,
 } from '#universal/community-public-types.ts'
 import { getCommunityListingHref } from '#universal/community-links.ts'
 import { renderIcon, type IconName } from './icon.tsx'

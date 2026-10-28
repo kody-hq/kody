@@ -1,7 +1,7 @@
-import {
-	type BlockNode,
-	type InlineNode,
-	type MarkdownExtension,
+import type {
+	 BlockNode,
+	 InlineNode,
+	 MarkdownExtension,
 } from '@tanstack/markdown'
 
 const firstPartyAlertKinds = ['NOTE', 'TIP', 'IMPORTANT', 'WARNING'] as const

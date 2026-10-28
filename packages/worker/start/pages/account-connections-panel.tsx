@@ -3,9 +3,9 @@ import {
 	disconnectAccountProvider,
 	syncDiscordMemberRole as syncDiscordRole,
 } from '#start/server/account-mutations'
-import { type loadAccountPage } from '#start/server/account-page'
+import type { loadAccountPage } from '#start/server/account-page'
 import { kodyDiscordInviteUrl } from '#universal/community-links.ts'
-import { type AccountConnectionsLoaderData } from '#universal/loader-data.ts'
+import type { AccountConnectionsLoaderData } from '#universal/loader-data.ts'
 import { getOauthLoginErrorMessage } from '#universal/oauth-login-errors.ts'
 import {
 	getDangerPillCss,

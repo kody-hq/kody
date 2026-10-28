@@ -1,4 +1,4 @@
-import { type CommunityDetailApiPayload } from '../community-types.ts'
+import type { CommunityDetailApiPayload } from '../community-types.ts'
 import { createServerFn } from '@tanstack/react-start'
 import { notFound } from '@tanstack/react-router'
 

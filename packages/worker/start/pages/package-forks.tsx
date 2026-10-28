@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { AccountManagementPanel } from './account-management-components.tsx'
 import { IdentityIconMark } from '../components/identity-icon-mark.tsx'
@@ -15,9 +15,9 @@ import {
 	fallbackDefaultBranchName,
 	getPackageTreeHref,
 } from '#universal/package-files.ts'
-import {
-	type PackageForkView,
-	type PackageForksLoaderData,
+import type {
+	PackageForkView,
+	PackageForksLoaderData,
 } from '#universal/package-forks.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import {

@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 import { jsx } from 'react/jsx-runtime'
-import { type PackageForksLoaderData } from '#universal/package-forks.ts'
+import type { PackageForksLoaderData } from '#universal/package-forks.ts'
 import { renderStartPage } from '../test-support/render-start-page.ts'
 import { PackageForksRoute } from './package-forks.tsx'
 

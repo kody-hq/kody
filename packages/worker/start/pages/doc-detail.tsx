@@ -7,12 +7,12 @@ import {
 	mcpEventsExtensionFlagKey,
 	mcpSkillsExtensionFlagKey,
 } from '#universal/feature-flags/registry.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { type CSSProperties, type ReactNode, useMemo } from 'react'
-import { type HighlightedCode } from '#universal/highlighted-code.ts'
-import { type DocDetailLoaderData } from '#universal/loader-data.ts'
-import { type WalkthroughHostPick } from '#universal/walkthrough-hosts.ts'
-import { type SessionInfo } from '#client/session.ts'
+import type { HighlightedCode } from '#universal/highlighted-code.ts'
+import type { DocDetailLoaderData } from '#universal/loader-data.ts'
+import type { WalkthroughHostPick } from '#universal/walkthrough-hosts.ts'
+import type { SessionInfo } from '#client/session.ts'
 import { routes } from '#universal/routes.ts'
 import { findDocsNavSection } from '#universal/docs-nav.ts'
 import { extractDocWatchMarkdown } from '#universal/doc-youtube.ts'

@@ -10,9 +10,9 @@ import { orgIdentity, orgOverviewPath } from '#universal/org-pages.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { adminGrantDiffersFromSubscription } from '#universal/account-plan-display.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
-import {
-	type AccountBillingLoaderData,
-	type AdminPlanName,
+import type {
+	AccountBillingLoaderData,
+	AdminPlanName,
 } from '#universal/loader-data.ts'
 import {
 	accountFieldCss,

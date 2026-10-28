@@ -2,7 +2,7 @@
 import { mergeCss } from './merge-css.ts'
 import { SiteLink } from './site-link.tsx'
 /** @jsxRuntime automatic */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useState, useRef, useEffect } from 'react'
 import { writeClipboardText } from '#client/clipboard.ts'
 import { communityStatusPillBoxCss } from '#universal/community-status-pill.ts'

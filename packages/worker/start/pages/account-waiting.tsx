@@ -9,14 +9,14 @@ import { recordWaitingClick } from '#start/server/account-mutations'
 import { SiteLink } from '../components/site-link.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 
-import { type AccountWaitingLoaderData } from '#universal/loader-data.ts'
+import type { AccountWaitingLoaderData } from '#universal/loader-data.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import {
 	getAccentCalloutCss,
 	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import { type WaitingSeverity } from '#universal/waiting.ts'
+import type { WaitingSeverity } from '#universal/waiting.ts'
 import {
 	AccountManagementPanel,
 	AccountManagementMessage,

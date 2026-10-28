@@ -1,4 +1,4 @@
-import { type ResolvedDocumentHead } from '#universal/document-head-contract.ts'
+import type { ResolvedDocumentHead } from '#universal/document-head-contract.ts'
 
 /** Translate the existing head contract into TanStack Router head entries. */
 export function documentHead(head: ResolvedDocumentHead | undefined) {

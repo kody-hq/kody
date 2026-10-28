@@ -1,9 +1,9 @@
-import { type PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
+import type { PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
 import { createServerFn } from '@tanstack/react-start'
 import { notFound, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
 import { routes } from '#universal/routes.ts'
-import { type AccountCredentialsResponse } from '#universal/credentials-list.ts'
+import type { AccountCredentialsResponse } from '#universal/credentials-list.ts'
 
 const orgSlug = z.string().regex(/^[a-zA-Z0-9_-]+$/)
 const segment = z

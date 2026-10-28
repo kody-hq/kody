@@ -5,7 +5,7 @@ import {
 	grantSecretProvider,
 	revokeSecretProvider,
 } from '#start/server/account-mutations'
-import { type AccountSecretProvidersLoaderData } from '#universal/loader-data.ts'
+import type { AccountSecretProvidersLoaderData } from '#universal/loader-data.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import {
 	fieldCss,

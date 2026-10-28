@@ -3,7 +3,7 @@ import {
 	addAdminReservedUsernames,
 	removeAdminReservedUsernames,
 } from '#start/server/admin-mutations'
-import { type AdminReservedUsernamesLoaderData } from '#universal/loader-data.ts'
+import type { AdminReservedUsernamesLoaderData } from '#universal/loader-data.ts'
 import {
 	cardCss,
 	descriptionCss,

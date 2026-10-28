@@ -1,12 +1,12 @@
 /** @jsxImportSource react */
 /** @jsxRuntime automatic */
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 /**
  * Inner paths from Iconic (https://iconic.app) SVG icons.
  * 24×24 bounding box, 1.5px stroke. Cropping lives in `icon.tsx`.
  */
-import { type IconName } from '#universal/icon-names.ts'
+import type { IconName } from '#universal/icon-names.ts'
 export type { IconName } from '#universal/icon-names.ts'
 
 export const iconGlyphs = {

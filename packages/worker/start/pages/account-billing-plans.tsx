@@ -1,15 +1,15 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from '../components/site-link.tsx'
-import {
-	type AccountBillingLoaderData,
-	type AdminPlanName,
+import type {
+	AccountBillingLoaderData,
+	AdminPlanName,
 } from '#universal/loader-data.ts'
 import {
 	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementPanel,
 } from './account-management-components.tsx'
-import { type BillingInterval } from '../billing-checkout.ts'
+import type { BillingInterval } from '../billing-checkout.ts'
 import {
 	colors,
 	mq,

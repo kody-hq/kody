@@ -10,7 +10,7 @@ import {
 	type UseQueryOptions,
 } from '@tanstack/react-query'
 import { isNotFound } from '@tanstack/react-router'
-import { type ResolvedDocumentHead } from '#universal/document-head-contract.ts'
+import type { ResolvedDocumentHead } from '#universal/document-head-contract.ts'
 
 export type PageQueryPolicy<TInput = unknown> = {
 	/** How long this resource can be reused without another read. */

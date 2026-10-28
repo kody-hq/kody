@@ -1,11 +1,11 @@
 /** @jsxImportSource @emotion/react */
 import { formatTimestamp } from '../components/local-timestamp.tsx'
-import {
-	type AccountIntegrationListItem,
-	type AccountOauthAppListItem,
+import type {
+	AccountIntegrationListItem,
+	AccountOauthAppListItem,
 } from '#universal/loader-data.ts'
-import { type ReactNode } from 'react'
-import { type CSSObject } from '@emotion/react'
+import type { ReactNode } from 'react'
+import type { CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { ProviderMark } from '../components/provider-icons.tsx'

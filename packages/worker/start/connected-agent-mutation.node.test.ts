@@ -1,9 +1,9 @@
 import { QueryClient } from '@tanstack/react-query'
 import { expect, test, vi } from 'vitest'
 import { connectedAgentMutationOptions } from './connected-agent-mutation.ts'
-import {
-	type AccountConnectedAgentListItem,
-	type AccountConnectedAgentsLoaderData,
+import type {
+	AccountConnectedAgentListItem,
+	AccountConnectedAgentsLoaderData,
 } from '#universal/loader-data.ts'
 
 const nativeMutation = vi.hoisted(() => vi.fn())

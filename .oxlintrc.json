@@ -13,6 +13,31 @@
 				"typescript/no-explicit-any": "off",
 				"eslint/no-warning-comments": "off"
 			}
+		},
+		{
+			"files": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
+			"rules": {
+				"import/consistent-type-specifier-style": "off"
+			}
+		},
+		{
+			"files": [
+				"packages/worker/start/**/*.ts",
+				"packages/worker/start/**/*.tsx",
+				"packages/worker/start/**/*.mts",
+				"packages/worker/start/**/*.cts",
+				"packages/worker/client/**/*.ts",
+				"packages/worker/client/**/*.tsx",
+				"packages/worker/client/**/*.mts",
+				"packages/worker/client/**/*.cts",
+				"packages/worker/universal/**/*.ts",
+				"packages/worker/universal/**/*.tsx",
+				"packages/worker/universal/**/*.mts",
+				"packages/worker/universal/**/*.cts"
+			],
+			"rules": {
+				"typescript/no-import-type-side-effects": "error"
+			}
 		}
 	]
 }

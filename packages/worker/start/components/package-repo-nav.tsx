@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 /** @jsxRuntime automatic */
-import { type CSSProperties, type ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { packageCollaboratorsHref } from '#universal/package-collaborators.ts'
 import { SiteLink } from './site-link.tsx'
 import { IdentityIconMark } from './identity-icon-mark.tsx'

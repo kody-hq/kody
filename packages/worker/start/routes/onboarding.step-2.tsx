@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { createFileRoute } from '@tanstack/react-router'
 import { loadOnboardingRoute, onboardingQuery } from '../onboarding-query.ts'
-import { type OnboardingLocation } from '#universal/onboarding-process.ts'
+import type { OnboardingLocation } from '#universal/onboarding-process.ts'
 import { documentHead } from '../components/document-head.ts'
 
 export const Route = createFileRoute('/onboarding/step-2')({

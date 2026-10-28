@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { type ReactNode, type CSSProperties } from 'react'
-import { type LandingPrimitiveId } from '#universal/landing-lantern.ts'
+import type { ReactNode, CSSProperties } from 'react'
+import type { LandingPrimitiveId } from '#universal/landing-lantern.ts'
 import { at, icon, wires, wire, choice } from './primitive-widget-parts.tsx'
 // Memory: one saved preference, recalled by whichever agent asks.
 

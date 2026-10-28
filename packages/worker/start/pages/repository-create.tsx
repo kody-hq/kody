@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import { useId, useState } from 'react'

@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import { useMatches, useRouteContext } from '@tanstack/react-router'
-import { type MatchedPageNavigation } from '../page-navigation.ts'
+import type { MatchedPageNavigation } from '../page-navigation.ts'
 import { appShellForMatches } from '../app-shell.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useContext, type ReactNode, type FormEvent } from 'react'
 import { surfaceCardCss } from '#universal/styles/surface.ts'
 import { WorkspaceSwitcher } from '../components/workspace-switcher.tsx'
@@ -35,7 +35,7 @@ import {
 	workspaceRailGroups,
 	type AccountRailGroup,
 } from '#client/routes/account-rail.ts'
-import { type IconName } from '../components/icon.tsx'
+import type { IconName } from '../components/icon.tsx'
 import {
 	EntityExplainer,
 	resolveEntityExplainer,

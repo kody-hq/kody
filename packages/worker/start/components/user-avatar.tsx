@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 /** @jsxRuntime automatic */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { colors, radius, typography } from '#universal/styles/tokens.ts'
 
 /**

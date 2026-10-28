@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { useCallback } from 'react'
-import { type OnboardingLocation } from '#universal/onboarding-process.ts'
+import type { OnboardingLocation } from '#universal/onboarding-process.ts'
 import { staticDocumentHead } from '../components/static-document-head.ts'
 import { createFileRoute, useMatches } from '@tanstack/react-router'
 import { usePageQuery } from '../page-query.ts'

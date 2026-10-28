@@ -14,7 +14,7 @@ import {
 	webhookVerificationLabel,
 	webhooksDocHref,
 } from '#client/routes/webhooks-shared.ts'
-import { type AccountWebhooksLoaderData } from '#universal/loader-data.ts'
+import type { AccountWebhooksLoaderData } from '#universal/loader-data.ts'
 import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 

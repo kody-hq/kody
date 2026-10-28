@@ -1,7 +1,7 @@
-import { type OnboardingPayload } from '#universal/onboarding-types.ts'
-import {
-	type AccountConnectionsLoaderData,
-	type AccountProfileLoaderData,
+import type { OnboardingPayload } from '#universal/onboarding-types.ts'
+import type {
+	AccountConnectionsLoaderData,
+	AccountProfileLoaderData,
 } from '#universal/loader-data.ts'
 
 export type AccountPagePayloads = {

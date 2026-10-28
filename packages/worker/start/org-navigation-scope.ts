@@ -1,4 +1,4 @@
-import { type OrgOwnedAccountSection } from '#universal/org-pages.ts'
+import type { OrgOwnedAccountSection } from '#universal/org-pages.ts'
 
 export type OrgNavigationPolicy = { section?: OrgOwnedAccountSection }
 

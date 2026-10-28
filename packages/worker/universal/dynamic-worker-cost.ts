@@ -1,4 +1,4 @@
-import { type PlanName } from './plans.ts'
+import type { PlanName } from './plans.ts'
 
 /**
  * Cloudflare Dynamic Worker list price used for operator cost estimates.

@@ -1,13 +1,13 @@
-import { type ConnectedMcpAgent } from '#universal/connected-mcp-agents.ts'
-import { type SecondAgentStandardGiftState } from '#universal/second-agent-standard-gift.ts'
-import { type OnboardingFeaturedListing } from '#universal/community-public-types.ts'
-import {
-	type OnboardingChecklistLoaderData,
-	type OnboardingCustomMcpServer,
-	type OnboardingFeaturedMcpServer,
+import type { ConnectedMcpAgent } from '#universal/connected-mcp-agents.ts'
+import type { SecondAgentStandardGiftState } from '#universal/second-agent-standard-gift.ts'
+import type { OnboardingFeaturedListing } from '#universal/community-public-types.ts'
+import type {
+	OnboardingChecklistLoaderData,
+	OnboardingCustomMcpServer,
+	OnboardingFeaturedMcpServer,
 } from '#universal/loader-data.ts'
-import { type HighlightedCode } from '#universal/highlighted-code.ts'
-import { type PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
+import type { HighlightedCode } from '#universal/highlighted-code.ts'
+import type { PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
 
 /**
  * Shared onboarding status payload used by page data and the native route.

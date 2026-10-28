@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import type {} from './request-context.ts'
-import { type CommittedPage } from './presentation-navigation.ts'
+import type { CommittedPage } from './presentation-navigation.ts'
 import { readRouterNonce } from '#start/server/router-nonce'
 import { createRouter } from '@tanstack/react-router'
 import { QueryClient } from '@tanstack/react-query'

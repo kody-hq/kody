@@ -1,4 +1,4 @@
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 // Scoped to the business route so navigation cannot change other pages.
 export const businessCss: CSSObject = {
 	'--ink': '#202c2a',

@@ -7,7 +7,7 @@
  * Nothing here carries a credential value.
  */
 import { parsePersonId } from '@kody-internal/shared/owner-person-ids.ts'
-import { type CredentialFillPlacementView } from './credential-fill-placement.ts'
+import type { CredentialFillPlacementView } from './credential-fill-placement.ts'
 
 export const credentialKinds = [
 	'secret',

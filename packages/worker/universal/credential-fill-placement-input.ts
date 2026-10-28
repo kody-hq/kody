@@ -1,7 +1,7 @@
 import { z } from 'zod'
-import {
-	type CredentialFillPlacementView,
-	type FillPlacementDraft,
+import type {
+	CredentialFillPlacementView,
+	FillPlacementDraft,
 } from './credential-fill-placement.ts'
 
 /** RFC 9110 token characters for HTTP field names. */

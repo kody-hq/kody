@@ -2,7 +2,7 @@ import {
 	packageScopeFromNameOrOwner,
 	packageSettingsHrefFromScope,
 } from '#universal/community-links.ts'
-import { type PackageWebhookListItem } from '#universal/loader-data.ts'
+import type { PackageWebhookListItem } from '#universal/loader-data.ts'
 import { docHref } from '#universal/docs-nav.ts'
 import { colors } from '#universal/styles/tokens.ts'
 

@@ -10,7 +10,7 @@ import {
 	accountActionsCss,
 	accountDisclosureCss,
 } from './account-management-components.tsx'
-import { type PackageAppOauthConsentLoaderData } from '#universal/loader-data.ts'
+import type { PackageAppOauthConsentLoaderData } from '#universal/loader-data.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import {
 	getGhostButtonCss,

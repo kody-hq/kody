@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useEffect, useId, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { type YoutubeWatchLoaderData } from '#universal/loader-data.ts'
+import type { YoutubeWatchLoaderData } from '#universal/loader-data.ts'
 import {
 	parseYoutubeWatchSearch,
 	stripYoutubeWatchSearch,

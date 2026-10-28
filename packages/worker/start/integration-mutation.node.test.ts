@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
-import {
-	type AccountIntegrationsLoaderData,
-	type AccountIntegrationListItem,
+import type {
+	AccountIntegrationsLoaderData,
+	AccountIntegrationListItem,
 } from '#universal/loader-data.ts'
 import {
 	projectIntegrationWrites,

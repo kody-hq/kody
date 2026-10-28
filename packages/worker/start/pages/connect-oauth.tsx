@@ -10,9 +10,9 @@ import {
 	useMemo,
 	type FormEvent,
 } from 'react'
-import {
-	type ConnectOauthExistingConnection,
-	type ConnectOauthLoaderData,
+import type {
+	ConnectOauthExistingConnection,
+	ConnectOauthLoaderData,
 } from '#universal/loader-data.ts'
 
 import {

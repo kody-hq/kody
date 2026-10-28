@@ -1,5 +1,5 @@
-import { type AdminPlanName } from '#universal/loader-data.ts'
-import { type CreditWalletState } from '#universal/plans.ts'
+import type { AdminPlanName } from '#universal/loader-data.ts'
+import type { CreditWalletState } from '#universal/plans.ts'
 
 type CreditsAction = {
 	label: 'Add credits' | 'Switch to Pro' | 'Manage credits'

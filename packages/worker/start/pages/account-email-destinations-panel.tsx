@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
-import { type FormEvent } from 'react'
-import { type EmailNotificationDestination } from '#universal/email-destinations.ts'
+import type { CSSObject } from '@emotion/react'
+import type { FormEvent } from 'react'
+import type { EmailNotificationDestination } from '#universal/email-destinations.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	getGhostButtonCss,

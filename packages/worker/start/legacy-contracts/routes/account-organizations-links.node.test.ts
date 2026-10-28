@@ -2,8 +2,8 @@ import { jsx } from 'react/jsx-runtime'
 import { renderStartPage } from '../../test-support/render-start-page.ts'
 import { expect, test } from 'vitest'
 import { OrganizationsPage } from '../../pages/org-organizations.tsx'
-import { type SessionInfo } from '../../../client/session.ts'
-import { type AccountOrganizationsLoaderData } from '#universal/loader-data.ts'
+import type { SessionInfo } from '../../../client/session.ts'
+import type { AccountOrganizationsLoaderData } from '#universal/loader-data.ts'
 
 const session: SessionInfo = {
 	email: 'jane@example.com',

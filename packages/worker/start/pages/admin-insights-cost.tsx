@@ -7,10 +7,10 @@ import {
 	costVsPayFootnote,
 	formatDynamicWorkerUsd,
 } from '#universal/dynamic-worker-cost.ts'
-import {
-	type AdminCostRiskKind,
-	type AdminInsightsDynamicWorkerCost,
-	type AdminInsightsDynamicWorkerCostConsumer,
+import type {
+	AdminCostRiskKind,
+	AdminInsightsDynamicWorkerCost,
+	AdminInsightsDynamicWorkerCostConsumer,
 } from '#universal/loader-data.ts'
 import {
 	adminUserDetailHref,

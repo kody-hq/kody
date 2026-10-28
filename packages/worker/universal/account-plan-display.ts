@@ -1,4 +1,4 @@
-import { type AdminPlanName } from '#universal/loader-data.ts'
+import type { AdminPlanName } from '#universal/loader-data.ts'
 
 /**
  * True when an admin grant is a deliberate non-free override that does not

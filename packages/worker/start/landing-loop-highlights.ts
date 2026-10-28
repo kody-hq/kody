@@ -1,4 +1,4 @@
-import { type QueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { loadLandingLoopHighlights } from '#start/server/landing-loop-highlights'
 export async function fetchLandingLoopHighlights(queryClient: QueryClient) {
 	try {

@@ -6,7 +6,7 @@ import {
 	dashboardLinkCss,
 } from './workspace-dashboard-styles.ts'
 import { renderIcon } from '../components/icon.tsx'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import {
 	formatWorkspaceChartUtcDay,
 	type WorkspaceBilling,

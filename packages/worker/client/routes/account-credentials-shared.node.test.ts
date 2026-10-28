@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type CredentialListItem } from '#universal/credential-contracts.ts'
+import type { CredentialListItem } from '#universal/credential-contracts.ts'
 import { credentialManageHref } from './account-credentials-shared.ts'
 
 function credential(

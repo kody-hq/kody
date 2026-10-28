@@ -1,4 +1,4 @@
-import { type QueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { invalidatePageResources } from './page-invalidation-cache.ts'
 
 /** Membership and grant writes affect both page and resource query caches. */

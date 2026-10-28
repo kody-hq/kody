@@ -1,10 +1,10 @@
 /** @jsxImportSource @emotion/react */
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import {
 	icon,
 	PrimitiveWidgetFrame,
 } from '../../components/primitive-widget-parts.tsx'
-import { type Brief } from './apps-intake.tsx'
+import type { Brief } from './apps-intake.tsx'
 /**
  * `/features/apps` scenes. The page's own controls drive them. A keyed
  * `.pw-run` replays a story on each click. The intake fields stay outside

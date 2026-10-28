@@ -19,7 +19,7 @@ import {
 	signupWelcomeCreditLedgerIdPrefix,
 	validateCreditAdminGrantCents,
 } from '#universal/credits.ts'
-import { type AccountCreditsLedgerItem } from '#universal/loader-data.ts'
+import type { AccountCreditsLedgerItem } from '#universal/loader-data.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	fieldCss,

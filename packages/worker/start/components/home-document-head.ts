@@ -1,4 +1,4 @@
-import { type ResolvedDocumentHead } from '#universal/document-head-contract.ts'
+import type { ResolvedDocumentHead } from '#universal/document-head-contract.ts'
 import {
 	getHomeOgVariant,
 	homeOgImagePath,

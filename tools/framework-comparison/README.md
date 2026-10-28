@@ -112,3 +112,11 @@ public pages, CSP nonces, native inline CSS, and versioned scripts and fonts. It
 accepts normal 200 and cached 304 font responses. The runner owns server startup
 and cleanup and verifies that build files did not change during the check. This
 is a local release check, without a deploy.
+
+Pure type imports in browser code must use `import type`. With
+`verbatimModuleSyntax`, `import { type T } from './module'` can leave an empty
+runtime import that still evaluates the module. The browser lint rule rejects
+that form, and the shared inline-only style preference is disabled. Mixed
+imports that also use runtime values can keep inline type specifiers. The
+regression test runs the actual auto-fixer twice and checks the emitted
+JavaScript, so a commit hook cannot silently restore the runtime dependency.

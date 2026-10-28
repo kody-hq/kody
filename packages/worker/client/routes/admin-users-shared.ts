@@ -2,7 +2,7 @@ import { createListDetailLinks } from '#client/list-detail-route.ts'
 import { formatIntegerNumber } from '#client/charts/chart-theme.ts'
 import { isUnlimitedLimit } from '#universal/plans.ts'
 
-import { type AdminUserVerificationFilter } from '#universal/email-verification-delivery.ts'
+import type { AdminUserVerificationFilter } from '#universal/email-verification-delivery.ts'
 
 const { buildDetailHref } = createListDetailLinks('/admin/users')
 

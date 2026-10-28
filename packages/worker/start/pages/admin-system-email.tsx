@@ -14,7 +14,7 @@ import {
 	type EmailClassification,
 	type EmailMessageView,
 } from '#universal/email-message-view.ts'
-import { type AdminSystemEmailLoaderData } from '#universal/loader-data.ts'
+import type { AdminSystemEmailLoaderData } from '#universal/loader-data.ts'
 import {
 	cardCss,
 	getDangerPillCss,

@@ -2,14 +2,14 @@
 import { DemoIndicator } from './demo-indicator.tsx'
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
 import { dismissOpenPopoverPanel } from '#client/popover-open.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { BrandContextMenu } from './brand-context-menu.tsx'
 import { FeaturesMenu } from './features-menu.tsx'
 import { KodyMark } from './kody-mark.tsx'
 import { SiteLink } from './site-link.tsx'
 import { Suspense, useEffect, useState } from 'react'
 import { lazyRouteComponent } from '@tanstack/react-router'
-import { type OrganizationSession } from './org-switcher.tsx'
+import type { OrganizationSession } from './org-switcher.tsx'
 
 import {
 	colors,

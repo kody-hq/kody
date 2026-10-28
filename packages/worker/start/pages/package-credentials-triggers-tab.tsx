@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
-import { type ReactNode } from 'react'
+import type {  ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import {
 	canEditTrigger,

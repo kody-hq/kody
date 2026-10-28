@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { revealRef } from '../components/reveal.ts'
 import { useShellData } from '../routes/__root.tsx'

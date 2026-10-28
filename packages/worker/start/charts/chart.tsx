@@ -1,4 +1,4 @@
-import { type ChartValue } from '@tanstack/charts'
+import type {  ChartValue } from '@tanstack/charts'
 import {
 	Chart as RendererChart,
 	type ChartProps,

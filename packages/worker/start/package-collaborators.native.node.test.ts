@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 import { PackageCollaboratorsRoute } from './pages/package-collaborators.tsx'
 import { PackageCollaboratorInvites } from './pages/package-collaborators-invites.tsx'
 import { renderStartPage } from './test-support/render-start-page.ts'
-import { type PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
+import type { PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
 
 test('outside collaborators stay removable but cannot be edited or invited from the tab', async () => {
 	const payload: Extract<PackageCollaboratorsLoaderData, { ok: true }> = {

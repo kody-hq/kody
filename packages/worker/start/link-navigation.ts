@@ -1,4 +1,4 @@
-import { type AnyRouter } from '@tanstack/react-router'
+import type { AnyRouter } from '@tanstack/react-router'
 
 declare module '@tanstack/router-core' {
 	interface StaticDataRouteOption {

@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { renderIcon } from './icon.tsx'
 
 /** Decorative link icon for prose heading permalinks. */

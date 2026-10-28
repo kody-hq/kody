@@ -7,7 +7,7 @@ import {
 } from '../test-support/execution-contexts-fixtures.ts'
 import { renderStartPage } from '../test-support/render-start-page.ts'
 import { createElement } from 'react'
-import { type ExecutionContextsPageData } from '#universal/execution-contexts.ts'
+import type {  ExecutionContextsPageData } from '#universal/execution-contexts.ts'
 import { ExecutionContextsRoute } from './execution-contexts.tsx'
 
 function route(

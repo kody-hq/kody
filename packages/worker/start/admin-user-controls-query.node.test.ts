@@ -7,7 +7,7 @@ import {
 	adminOrgLimitsQuery,
 } from './admin-user-controls-query.ts'
 
-import { type AdminOrgLimits } from '#universal/loader-data.ts'
+import type { AdminOrgLimits } from '#universal/loader-data.ts'
 function limits(orgId: string): AdminOrgLimits {
 	return {
 		org: { id: orgId, slug: orgId, displayName: null },

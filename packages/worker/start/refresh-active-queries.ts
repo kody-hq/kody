@@ -1,4 +1,4 @@
-import { type QueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 
 /** Verify the document actor before refreshing only the data currently in use. */
 export async function refreshActiveQueries(

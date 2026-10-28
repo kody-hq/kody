@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildHumanApprovalErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
-import { type AccountSecretsLoaderData } from '#universal/loader-data.ts'
-import { type CSSObject } from '@emotion/react'
+import type { AccountSecretsLoaderData } from '#universal/loader-data.ts'
+import type { CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import {
 	type ApprovalAction,

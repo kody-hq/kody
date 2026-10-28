@@ -7,9 +7,9 @@
  * collapsed to spaces. The default home card (no param) stays in `og-pages.ts`.
  */
 
-import { type LandingPrimitiveId } from '#universal/landing-lantern.ts'
+import type { LandingPrimitiveId } from '#universal/landing-lantern.ts'
 import { stripOgEmphasis } from '#universal/og-emphasis.ts'
-import { type PublicOgPage } from '#universal/og-pages.ts'
+import type { PublicOgPage } from '#universal/og-pages.ts'
 
 const homeOgQueryParam = 'og'
 

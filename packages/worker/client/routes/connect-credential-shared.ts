@@ -1,4 +1,4 @@
-import { type SaveSecretInput } from '#universal/secret-mutations.ts'
+import type { SaveSecretInput } from '#universal/secret-mutations.ts'
 import { buildAccountSecretId } from '@kody-internal/shared/account-secret-route.ts'
 import { normalizeSecretExpiresAt } from '@kody-internal/shared/secret-expires-at.ts'
 import {

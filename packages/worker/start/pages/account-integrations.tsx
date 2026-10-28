@@ -22,10 +22,10 @@ import {
 	type IntegrationWrite,
 } from '../integration-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
-import {
-	type AccountIntegrationListItem,
-	type AccountIntegrationsLoaderData,
-	type AccountOauthAppListItem,
+import type {
+	AccountIntegrationListItem,
+	AccountIntegrationsLoaderData,
+	AccountOauthAppListItem,
 } from '#universal/loader-data.ts'
 import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
 import { SiteLink } from '../components/site-link.tsx'

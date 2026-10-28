@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import { expect, test } from 'vitest'
-import { type OrgCreditsLoaderData } from '#universal/loader-data.ts'
+import type { OrgCreditsLoaderData } from '#universal/loader-data.ts'
 import { orgCreditsPath } from '#universal/org-pages.ts'
 import { renderStartPage } from './test-support/render-start-page.ts'
 import {

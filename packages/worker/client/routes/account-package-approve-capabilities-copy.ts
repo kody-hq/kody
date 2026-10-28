@@ -1,6 +1,6 @@
 import { isCredentialKind } from '#universal/credential-contracts.ts'
 import { credentialKindLabel } from '#universal/credentials-list.ts'
-import { type AccountPackageApproveCapabilitiesLoaderData } from '#universal/loader-data.ts'
+import type { AccountPackageApproveCapabilitiesLoaderData } from '#universal/loader-data.ts'
 
 export type CapabilityEntry =
 	AccountPackageApproveCapabilitiesLoaderData['entries'][number]
