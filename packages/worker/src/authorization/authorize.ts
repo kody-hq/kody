@@ -1,5 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { isGrantablePermission } from '@kody-internal/shared/grant-presets.ts'
+import {
+	isGrantablePermission,
+	isOrgWideReadPermission,
+} from '@kody-internal/shared/grant-presets.ts'
 import {
 	orgPermissions,
 	type OrgGrantResourceType,
@@ -285,8 +288,12 @@ function ownerCanGrant(
 	permission: OrgPermission,
 	resource: OrgResource | undefined,
 ) {
-	if (!resource && isGrantablePermission('org', permission)) {
+	if (resource) return 'An org Owner can grant it.'
+	if (isOrgWideReadPermission(permission)) {
 		return 'An org Owner can grant it org-wide on the Grants page or with accessGrant resource_type org.'
+	}
+	if (isGrantablePermission('org', permission)) {
+		return 'An org Owner can grant it org-wide with accessGrant resource_type org.'
 	}
 	return 'An org Owner can grant it.'
 }
