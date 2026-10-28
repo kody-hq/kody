@@ -77,6 +77,8 @@ import { adminPublishedCommitRefRepairCapability } from './admin-published-commi
 import { adminCredentialInventoryScanCapability } from './admin-credential-inventory-scan.ts'
 import { adminCredentialPathSegmentImpactCapability } from './admin-credential-path-segment-impact.ts'
 import { adminCredentialAllowedPackagesWouldBlockReportCapability } from './admin-credential-allowed-packages-would-block-report.ts'
+import { adminCredentialAllowedPackagesGrandfatherCapability } from './admin-credential-allowed-packages-grandfather.ts'
+import { adminPreBindingArtifactRebuildCapability } from './admin-pre-binding-artifact-rebuild.ts'
 import { adminPackageAppAuthorityFallbackReportCapability } from './admin-package-app-authority-fallback-report.ts'
 import { adminPackageCredentialSupplierReportCapability } from './admin-package-credential-supplier-report.ts'
 import { adminCredentialBackfillCapability } from './admin-credential-backfill.ts'
@@ -194,11 +196,13 @@ export const adminDomain = defineDomain({
 		adminPackageCodemodRevertCapability,
 		adminPackageCodemodOwnerNoticeCapability,
 		adminPublishedImportableArtifactBackfillCapability,
+		adminPreBindingArtifactRebuildCapability,
 		adminPublishedSourceSnapshotBackfillCapability,
 		adminPublishedCommitRefRepairCapability,
 		adminCredentialInventoryScanCapability,
 		adminCredentialPathSegmentImpactCapability,
 		adminCredentialAllowedPackagesWouldBlockReportCapability,
+		adminCredentialAllowedPackagesGrandfatherCapability,
 		adminPackageAppAuthorityFallbackReportCapability,
 		adminPackageCredentialSupplierReportCapability,
 		adminCredentialBackfillCapability,
