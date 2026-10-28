@@ -1053,9 +1053,11 @@ too, which widens where the secret itself may go. Kent kept
   the token and approved domains gets none (an `aud` like Auth0's `userinfo` on
   the token domain does not count), so a multi-audience token cannot carry one
   API's access to a second host.
-- **Not an echo.** A token whose text, or any base64url-decoded segment of it,
-  contains a value Kody filled into the request (an endpoint that echoed the
-  secret) gets no audience host.
+- **Not an echo.** A token whose text contains a value Kody filled into the
+  request, or the decoded password of a filled Basic credential (an endpoint
+  that echoed the secret), gets no audience host. Decoded JWT claims are not
+  searched: real tokens carry the client id (Entra `appid`), and an approved
+  host that re-encodes the secret already holds it.
 - **Opaque tokens.** A token that is not a JWT with an https `aud` keeps the
   token and approved domains. Kody does not read the requested `scope` or
   `resource`: code wrote those, so they cannot vouch for where the token goes.

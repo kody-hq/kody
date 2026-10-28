@@ -362,32 +362,61 @@ test('an audience host fills exactly, not on its subdomains', async () => {
 	).rejects.toThrow(/not evil\.management\.azure\.com/)
 })
 
-test('a filled secret echoed inside an encoded JWT segment also keeps only the token and approved domains', async () => {
-	for (const echoed of [
-		fakeJwt({ aud: 'https://evil.test', leak: 'client-secret-value' }),
-		fakeJwt({ aud: 'https://evil.test', leak: 'quote"secret' }),
-		fakeJwt({ aud: 'https://evil.test' }).replace(
-			'signature',
-			Buffer.from('client-secret-value').toString('base64url'),
-		),
-	]) {
-		const sealed = await sealTokenResponse({
-			env,
-			response: Response.json({ access_token: echoed }),
-			requestUrl:
-				'https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token',
-			approvedHosts: ['login.microsoftonline.com'],
-			filledValues: ['client-secret-value', 'quote"secret'],
-			org: 'org-1',
-			binding: 'run-1',
-		})
-		const { access_token } = (await sealed.json()) as Record<string, string>
-		await expect(
-			open(access_token!, { requestHost: 'evil.test' }),
-		).rejects.toThrow(
-			/may only be sent to microsoftonline\.com, not evil\.test/,
-		)
-	}
+test('a Basic-filled client secret echoed raw in a JWT keeps only the token and approved domains', async () => {
+	const basic = Buffer.from('client-id:client-secret-value').toString('base64')
+	const sealed = await sealTokenResponse({
+		env,
+		response: Response.json({
+			access_token: fakeJwt({ aud: 'https://evil.test' }).replace(
+				'signature',
+				'client-secret-value',
+			),
+		}),
+		requestUrl: 'https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token',
+		approvedHosts: ['login.microsoftonline.com'],
+		filledValues: [`Basic ${basic}`, basic],
+		org: 'org-1',
+		binding: 'run-1',
+	})
+	const { access_token } = (await sealed.json()) as Record<string, string>
+	await expect(
+		open(access_token!, { requestHost: 'evil.test' }),
+	).rejects.toThrow(/may only be sent to microsoftonline\.com, not evil\.test/)
+})
+
+test('a JWT whose claims carry the filled client id still fills on its audience', async () => {
+	const sealed = await sealTokenResponse({
+		env,
+		response: Response.json({
+			access_token: fakeJwt({
+				aud: 'https://management.azure.com',
+				appid: 'client-id-value',
+			}),
+		}),
+		requestUrl: 'https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token',
+		approvedHosts: ['login.microsoftonline.com'],
+		filledValues: ['client-id-value', 'client-secret-value'],
+		org: 'org-1',
+		binding: 'run-1',
+	})
+	const { access_token } = (await sealed.json()) as Record<string, string>
+	await expect(
+		open(access_token!, { requestHost: 'management.azure.com' }),
+	).resolves.toMatch(/^eyJ/)
+})
+
+test('an approved Entra resource host still adds its documented alias', () => {
+	expect(
+		sealedTokenAudienceHosts(fakeJwt({ aud: 'https://api.loganalytics.io' }), [
+			'api.loganalytics.io',
+		]),
+	).toEqual(['api.loganalytics.azure.com'])
+	expect(
+		sealedTokenAudienceHosts(fakeJwt({ aud: 'https://api.loganalytics.io' }), [
+			'loganalytics.io',
+			'azure.com',
+		]),
+	).toEqual([])
 })
 
 test('a token response that echoes a filled secret keeps only the token and approved domains', async () => {

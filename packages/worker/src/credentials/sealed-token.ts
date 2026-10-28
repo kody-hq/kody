@@ -225,13 +225,16 @@ export function sealedTokenAudienceHosts(
 ) {
 	const covered = (host: string) =>
 		domains.some((domain) => host === domain || host.endsWith(`.${domain}`))
-	const outside = readJwtAudiences(token)
-		.map(audienceHost)
-		.filter((host): host is string => host !== null && !covered(host))
-	const unique = [...new Set(outside)]
-	if (unique.length !== 1) return []
-	const [host] = unique as [string]
-	return [host, ...(entraResourceHostAliases[host] ?? [])]
+	const outside = new Map<string, Array<string>>()
+	for (const host of readJwtAudiences(token).map(audienceHost)) {
+		if (host === null) continue
+		const hosts = [host, ...(entraResourceHostAliases[host] ?? [])].filter(
+			(candidate) => !covered(candidate),
+		)
+		if (hosts.length > 0) outside.set(host, hosts)
+	}
+	if (outside.size !== 1) return []
+	return [...outside.values()][0]!
 }
 
 /**
@@ -323,30 +326,34 @@ export async function sealTokenFields(input: {
 
 /**
  * An endpoint that echoes the request could hand back a filled secret dressed
- * as a JWT naming any audience, raw or base64url-encoded in a segment. Such a
- * token keeps only `domains`.
+ * as a JWT naming any audience. Such a token keeps only `domains`. A filled
+ * Basic credential is also checked for its decoded password. Decoded JWT
+ * claims are not checked: real tokens carry the client id (Entra `appid`),
+ * and an approved host that re-encodes a secret already holds it.
  */
 function audienceHostsFor(
 	token: string,
 	input: { to: SealedTokenBinding; filledValues?: ReadonlyArray<string> },
 ) {
-	const texts = [token, ...decodedJwtSegments(token)]
-	const echoes = (value: string) => {
-		const escaped = JSON.stringify(value).slice(1, -1)
-		return texts.some((text) => text.includes(value) || text.includes(escaped))
-	}
-	if (input.filledValues?.some((value) => value && echoes(value))) return []
+	const values = (input.filledValues ?? []).flatMap((value) => [
+		value,
+		...basicAuthPassword(value),
+	])
+	if (values.some((value) => value && token.includes(value))) return []
 	return sealedTokenAudienceHosts(token, input.to.domains)
 }
 
-function decodedJwtSegments(token: string) {
-	return token.split('.').flatMap((segment) => {
-		try {
-			return [new TextDecoder().decode(base64UrlToBytes(segment))]
-		} catch {
-			return []
-		}
-	})
+function basicAuthPassword(value: string) {
+	const encoded = value.replace(/^basic\s+/i, '')
+	if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return []
+	let decoded: string
+	try {
+		decoded = atob(encoded)
+	} catch {
+		return []
+	}
+	const colon = decoded.indexOf(':')
+	return colon < 0 ? [] : [decoded.slice(colon + 1)]
 }
 
 const maxSealedResponseBytes = 1024 * 1024
