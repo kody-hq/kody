@@ -24,6 +24,9 @@ export type Ed25519PrivateJwk = Ed25519PublicJwk & { d: string }
 
 export type EcpEnvelope = { p: string; s: string; k: string }
 
+/** WebCrypto key type that resolves under both Workers and Node typings. */
+export type EcpCryptoKey = Awaited<ReturnType<typeof crypto.subtle.importKey>>
+
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
@@ -94,7 +97,7 @@ export async function importEd25519PrivateKey(jwk: Ed25519PrivateJwk) {
 export async function signDetached(input: {
 	prefix: string
 	message: string
-	privateKey: CryptoKey
+	privateKey: EcpCryptoKey
 }) {
 	const signature = await crypto.subtle.sign(
 		{ name: 'Ed25519' },
@@ -108,7 +111,7 @@ export async function verifyDetached(input: {
 	prefix: string
 	message: string
 	signature: string
-	publicKey: CryptoKey
+	publicKey: EcpCryptoKey
 }) {
 	if (!base64UrlPattern.test(input.signature)) return false
 	const signature = base64UrlToBytes(input.signature)
@@ -151,7 +154,7 @@ export function parseEnvelope(value: unknown): EcpEnvelope | null {
 export async function signEnvelope(input: {
 	prefix: string
 	payload: unknown
-	privateKey: CryptoKey
+	privateKey: EcpCryptoKey
 	kid: string
 }): Promise<EcpEnvelope> {
 	const p = encodeEnvelopePayload(input.payload)
@@ -167,7 +170,7 @@ export async function signEnvelope(input: {
 export async function verifyEnvelope(input: {
 	prefix: string
 	envelope: EcpEnvelope
-	publicKey: CryptoKey
+	publicKey: EcpCryptoKey
 }): Promise<unknown> {
 	const ok = await verifyDetached({
 		prefix: input.prefix,

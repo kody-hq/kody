@@ -11,6 +11,7 @@ import {
 	signEnvelope,
 	verifyEnvelope,
 	type EcpEnvelope,
+	type EcpCryptoKey,
 } from './envelope.ts'
 import { checkFrameClock, checkNextSeq } from './replay.ts'
 
@@ -241,7 +242,7 @@ export function classifyFrameText(text: string): FrameDecodeResult {
 }
 
 export async function signFrame(input: {
-	privateKey: CryptoKey
+	privateKey: EcpCryptoKey
 	kid: string
 	payload: EcpFramePayload
 }) {
@@ -264,7 +265,7 @@ export type FrameVerifyResult =
  */
 export async function verifyFrame(input: {
 	envelope: EcpEnvelope
-	publicKey: CryptoKey
+	publicKey: EcpCryptoKey
 	expect: { ec: string; sid: string; lastSeq: number; kid?: string }
 	now: number
 }): Promise<FrameVerifyResult> {

@@ -9,6 +9,7 @@ import {
 	ecpHttpSignaturePrefix,
 	signDetached,
 	verifyDetached,
+	type EcpCryptoKey,
 } from './envelope.ts'
 
 export const ecpSignatureHeader = 'Kody-ECP-Signature'
@@ -84,7 +85,7 @@ export async function signEcpHttpRequest(input: {
 	method: string
 	pathAndQuery: string
 	body: Uint8Array | string
-	privateKey: CryptoKey
+	privateKey: EcpCryptoKey
 	now?: number
 	nonce?: string
 }): Promise<EcpHttpSignature> {
@@ -105,7 +106,7 @@ export async function verifyEcpHttpSignature(input: {
 	method: string
 	pathAndQuery: string
 	body: Uint8Array | string
-	publicKey: CryptoKey
+	publicKey: EcpCryptoKey
 	now?: number
 }): Promise<'ok' | 'clock_skew' | 'bad_signature'> {
 	const now = input.now ?? Date.now()
