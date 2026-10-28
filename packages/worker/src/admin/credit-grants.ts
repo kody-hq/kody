@@ -6,6 +6,11 @@
  * same audit event. `adminCreditEligibilitySet` owns the admin half of
  * wallet eligibility (`orgs.admin_credits_eligible`).
  */
+/**
+ * soft-delete-read-filter: opt-out
+ *
+ * The admin wallet reader can inspect wallets owned by deleted organizations.
+ */
 import {
 	type AdminCreditLedgerItem,
 	type AdminCreditWalletSummary,
@@ -113,7 +118,15 @@ export async function loadAdminCreditWallet(
 	const db = env.APP_DB
 	const row = await loadCreditGrantTarget(db, target)
 	if (!row) return null
-	const stableUserId = row.stable_user_id
+	return readAdminCreditWallet(db, row, row.stable_user_id, row.username)
+}
+
+async function readAdminCreditWallet(
+	db: D1Database,
+	row: UserEntitlementRow & { org_id: string; username: string },
+	stableUserId: string,
+	username: string,
+): Promise<AdminCreditWalletSummary> {
 	const orgId = row.org_id
 	const [entitlement, wallet, entries] = await Promise.all([
 		resolveUserEntitlementFromRow({ db, stableUserId: orgId, row }),
@@ -140,7 +153,7 @@ export async function loadAdminCreditWallet(
 	return {
 		ok: true,
 		stableUserId,
-		username: row.username,
+		username,
 		plan: entitlement.plan,
 		eligible: entitlement.creditWallet !== 'none',
 		adminCreditsEligible: Number(row.admin_credits_eligible) === 1,
@@ -148,6 +161,22 @@ export async function loadAdminCreditWallet(
 		balanceMicroUsd: wallet.balanceMicroUsd,
 		recent,
 	}
+}
+
+/** Read a wallet by its owning organization, including deleted organizations. */
+export async function loadAdminCreditWalletByOrgId(
+	db: D1Database,
+	orgId: string,
+): Promise<AdminCreditWalletSummary | null> {
+	const row = await db
+		.prepare(
+			`SELECT o.id AS org_id, o.slug AS username, ${userEntitlementColumnsSql('o')}
+			 FROM orgs o WHERE o.id = ?`,
+		)
+		.bind(orgId)
+		.first<UserEntitlementRow & { org_id: string; username: string }>()
+	if (!row) return null
+	return readAdminCreditWallet(db, row, row.org_id, row.username)
 }
 
 export function parseAdminCreditGrantNote(value: unknown): string | null {

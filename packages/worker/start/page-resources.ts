@@ -7,6 +7,7 @@ import type * as admin_codemods from '#start/server/admin-codemods'
 import type * as admin_community_reports from '#start/server/admin-community-reports'
 import type * as admin_feature_flags from '#start/server/admin-feature-flags'
 import type * as admin_insights from '#start/server/admin-insights'
+import type * as admin_orgs from '#start/server/admin-orgs'
 import type * as admin_platform_feedback from '#start/server/admin-platform-feedback'
 import type * as admin_platform_integrations from '#start/server/admin-platform-integrations'
 import type * as admin_provider_marks from '#start/server/admin-provider-marks'
@@ -47,6 +48,7 @@ export type PageResource =
 	| keyof typeof admin_community_reports
 	| keyof typeof admin_feature_flags
 	| keyof typeof admin_insights
+	| keyof typeof admin_orgs
 	| keyof typeof admin_platform_feedback
 	| keyof typeof admin_platform_integrations
 	| keyof typeof admin_provider_marks

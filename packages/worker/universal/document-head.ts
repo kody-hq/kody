@@ -269,6 +269,8 @@ const routeDocumentHeads = {
 	accountMcpOauthClients: titleOnly('MCP OAuth clients'),
 	accountTwoFactor: titleOnly('Two-factor authentication'),
 	admin: titleOnly('Admin users'),
+	adminOrgs: titleOnly('Admin organizations'),
+	adminOrgDetail: titleOnly('Admin organization'),
 	adminUsers: titleOnly('Admin users'),
 	adminUserDetail: titleOnly('Admin users'),
 	adminAccountDeletion: titleOnly('Delete account'),

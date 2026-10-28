@@ -19,6 +19,7 @@ export type AdminUserFilterState = {
 	search: string
 	role: string
 	verification: AdminUserVerificationFilter | ''
+	status: 'live' | 'deleted'
 }
 
 export function buildUserDetailHrefFrom(

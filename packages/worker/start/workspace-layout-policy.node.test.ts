@@ -43,6 +43,7 @@ test.each([
 	['/@jane/example', 'workspace', 'repositories'],
 	['/@acme/example', 'workspace', 'repositories'],
 	['/admin/users', 'admin', 'users'],
+	['/admin/orgs', 'admin', 'orgs'],
 ] as const)(
 	'existing URL %s uses the shared workspace route',
 	(path, rail, item) => {

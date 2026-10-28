@@ -16,6 +16,7 @@ test('admin list identity depends on filter values and page size, not selected u
 		query: '',
 		role: '',
 		verification: '',
+		status: 'live',
 		pageSize: 20,
 	})
 	expect(adminUsersFilters(defaultParseSearch('?pageSize=1000')).pageSize).toBe(
@@ -26,6 +27,9 @@ test('admin list identity depends on filter values and page size, not selected u
 	).toBe(20)
 	expect(adminUsersFilters(defaultParseSearch('?pageSize=40')).pageSize).toBe(
 		40,
+	)
+	expect(adminUsersFilters(defaultParseSearch('?status=deleted')).status).toBe(
+		'deleted',
 	)
 })
 

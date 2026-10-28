@@ -53,7 +53,13 @@ function parseValueText(text: string): LimitOverrideValue | null {
  * set, change, or remove an override with a reason. Every change is
  * recorded in the org audit log.
  */
-export function AdminOrgLimitsPanel({ orgId }: { orgId: string }) {
+export function AdminOrgLimitsPanel({
+	orgId,
+	organizationSlug,
+}: {
+	orgId: string
+	organizationSlug?: string
+}) {
 	const { actorKey } = useRouteContext({ from: '__root__' })
 	const client = useQueryClient()
 	const query = useQuery(adminOrgLimitsQuery(actorKey, orgId))
@@ -166,7 +172,23 @@ export function AdminOrgLimitsPanel({ orgId }: { orgId: string }) {
 	return (
 		<AccountManagementPanel
 			title="Limit overrides"
-			description="Raise any daily, weekly, or monthly cap for this org. The enforced limit is the larger of the plan limit and the override. Credits and billing are unchanged. Every change is recorded in the org audit log with your username and the reason."
+			description={
+				<>
+					{organizationSlug ? (
+						<>
+							Personal organization.{' '}
+							<a href={`/admin/orgs/${encodeURIComponent(organizationSlug)}`}>
+								View personal organization
+							</a>
+							.{' '}
+						</>
+					) : null}
+					Raise any daily, weekly, or monthly cap for this org. The enforced
+					limit is the larger of the plan limit and the override. Credits and
+					billing are unchanged. Every change is recorded in the org audit log
+					with your username and the reason.
+				</>
+			}
 		>
 			{message || query.error ? (
 				<AccountManagementMessage tone={query.error ? 'error' : messageTone}>

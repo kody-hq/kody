@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { loadAdminUserByTarget } from '#worker/admin/users-data.ts'
+import { listAdminUserOrgMemberships } from '#worker/admin/orgs-data.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import {
@@ -24,7 +25,21 @@ const inputSchema = z
 	)
 
 const outputSchema = z.object({
-	user: adminUserMetadataSchema.nullable(),
+	user: adminUserMetadataSchema
+		.extend({
+			orgs: z.array(
+				z.object({
+					orgId: z.string(),
+					slug: z.string(),
+					displayName: z.string().nullable(),
+					kind: z.enum(['personal', 'team']),
+					role: z.enum(['owner', 'member', 'billing']),
+					effectivePlan: z.enum(['free', 'standard', 'pro', 'max']),
+					deleted: z.boolean(),
+				}),
+			),
+		})
+		.nullable(),
 })
 
 export const adminUserGetCapability = defineDomainCapability(
@@ -41,7 +56,25 @@ export const adminUserGetCapability = defineDomainCapability(
 		async handler(args, ctx) {
 			return auditAdminCapabilityInvocation(ctx, 'adminUserGet', async () => {
 				const user = await loadAdminUserByTarget(ctx.env.APP_DB, args)
-				return { user }
+				if (!user) return { user: null }
+				const orgs = await listAdminUserOrgMemberships(
+					ctx.env.APP_DB,
+					user.stableUserId,
+				)
+				return {
+					user: {
+						...user,
+						orgs: orgs.map((org) => ({
+							orgId: org.orgId,
+							slug: org.slug,
+							displayName: org.displayName,
+							kind: org.kind,
+							role: org.role,
+							effectivePlan: org.effectivePlan,
+							deleted: org.orgDeletedAt !== null,
+						})),
+					},
+				}
 			})
 		},
 	},

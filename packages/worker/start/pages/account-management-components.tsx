@@ -423,6 +423,12 @@ export function AccountManagementHeader(props: AccountManagementHeaderProps) {
 
 const adminNavItems = [
 	{
+		href: '/admin/orgs',
+		label: 'Organizations',
+		icon: 'users',
+		id: 'orgs',
+	},
+	{
 		href: '/admin/users',
 		label: 'Users',
 		icon: 'users',
@@ -660,7 +666,7 @@ export function AccountManagementMessage(props: AccountManagementMessageProps) {
 type AccountManagementPanelProps = {
 	id?: string
 	title?: string
-	description?: string
+	description?: AccountManagementSlot
 	children?: AccountManagementSlot
 	asForm?: boolean
 	onSubmit?: (event: FormEvent<HTMLFormElement>) => void

@@ -940,6 +940,8 @@ binds on the next counted check everywhere, with no TTL that can hide it.
 
 **Admin surfaces** (all `requiredRole: 'admin'`):
 
+- `adminOrgGet` — read organization details, deleted state, members, budgets,
+  and wallet/ledger by `orgId` or `org` handle, including soft-deleted orgs.
 - `adminOrgLimitsGet` — plan, effective limit, and override per key for one org,
   addressed by `orgId` or `org` handle (`@kody` or `kody`).
 - `adminOrgLimitOverridesSet` — set, change, or remove (`value: null`) any

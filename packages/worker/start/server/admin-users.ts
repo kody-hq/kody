@@ -34,6 +34,7 @@ export const loadAdminUsers = createServerFn({ method: 'GET' })
 				query: data.query,
 				role: data.role,
 				verification: data.verification,
+				status: data.status,
 				pageSize: data.pageSize,
 				selectedStableUserId: data.selectedStableUserId,
 				page: 1,

@@ -19,11 +19,13 @@ const pageQuery = createPageQuery('loadAdminUsers', loadAdminUsers, {
 
 export const Route = createFileRoute('/_app/admin/users_/$stableUserId')({
 	staticData: {
-		filterSearchKeys: ['q', 'role', 'verification', 'pageSize'],
+		filterSearchKeys: ['q', 'role', 'verification', 'status', 'pageSize'],
 		navigation: { rail: 'admin', item: 'users' },
 	},
 	validateSearch: adminUsersSearch,
-	search: { middlewares: [stripSearchParams({ pageSize: 20 })] },
+	search: {
+		middlewares: [stripSearchParams({ pageSize: 20, status: 'live' })],
+	},
 	loaderDeps: ({ search }) => ({
 		selected: search.selected,
 	}),

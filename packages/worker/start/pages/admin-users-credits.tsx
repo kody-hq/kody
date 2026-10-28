@@ -46,6 +46,7 @@ type CreditsStatus = 'loading' | 'ready' | 'error'
  */
 export function AdminUserCreditsPanel(props: {
 	stableUserId: string
+	organizationSlug?: string
 	onGranted?: () => void
 }) {
 	const invalidatePages = usePageInvalidation(mutationResources)
@@ -115,7 +116,19 @@ export function AdminUserCreditsPanel(props: {
 	return (
 		<AccountManagementPanel
 			title="Credits"
-			description="Prepaid wallet. Grants add to the balance immediately and are recorded with your username."
+			description={
+				<>
+					Personal organization prepaid wallet. Grants add to the balance
+					immediately and are recorded with your username.{' '}
+					{props.organizationSlug ? (
+						<a
+							href={`/admin/orgs/${encodeURIComponent(props.organizationSlug)}`}
+						>
+							View personal organization
+						</a>
+					) : null}
+				</>
+			}
 		>
 			{status === 'loading' && !wallet ? (
 				<p css={{ margin: 0, color: colors.textMuted }}>Loading credits…</p>

@@ -42,6 +42,7 @@ export type PageNavigation = {
 		| 'teams'
 		| 'usage'
 		| 'users'
+		| 'orgs'
 		| 'waiting'
 		| 'webhooks'
 		| 'workflows'
