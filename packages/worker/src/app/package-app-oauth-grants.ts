@@ -534,6 +534,31 @@ export async function revokePackageAppOauthGrantScope(input: {
 /** Last-use timestamps move at most once a minute per grant. */
 export const packageAppOauthGrantLastUsedResolutionMs = 60_000
 
+/**
+ * Record a signed-in visit to the app on a grant just read, writing only when
+ * its last use is older than the resolution. Never throws.
+ */
+export async function notePackageAppOauthGrantUse(input: {
+	db: D1Database
+	grant: Pick<PackageAppOauthGrant, 'id' | 'lastUsedAt'>
+	now?: Date
+}) {
+	const now = input.now ?? new Date()
+	const lastUsed = input.grant.lastUsedAt
+		? Date.parse(input.grant.lastUsedAt)
+		: Number.NaN
+	if (now.getTime() - lastUsed < packageAppOauthGrantLastUsedResolutionMs) {
+		return
+	}
+	await touchPackageAppOauthGrantLastUsed({
+		db: input.db,
+		grantId: input.grant.id,
+		now,
+	}).catch((error: unknown) => {
+		console.warn('package-app-grant-last-used-failed', error)
+	})
+}
+
 export async function touchPackageAppOauthGrantLastUsed(input: {
 	db: D1Database
 	grantId: string

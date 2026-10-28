@@ -27,7 +27,10 @@ import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { renderErrorAgentPromptStaticHtml } from '#universal/error-agent-prompt.ts'
 import { buildPackageAppErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
-import { findLivePackageAppOauthGrant } from '#app/package-app-oauth-grants.ts'
+import {
+	findLivePackageAppOauthGrant,
+	notePackageAppOauthGrantUse,
+} from '#app/package-app-oauth-grants.ts'
 import {
 	getAppBaseUrl,
 	getCanonicalAppBaseUrl,
@@ -1149,6 +1152,12 @@ export async function servePackageAppRequest(input: {
 						kodyId: savedPackage.kodyId,
 					})
 				: null
+		if (executorGrant) {
+			await notePackageAppOauthGrantUse({
+				db: env.APP_DB,
+				grant: executorGrant,
+			})
+		}
 		const executorVisit =
 			identity && executorGrant
 				? {
