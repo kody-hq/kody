@@ -202,3 +202,37 @@ test('runPersonalOrgRepair skips soft-deleted orgs and pages with a cursor', asy
 	expect(next.counts.scanned).toBe(1)
 	expect(next.nextCursor).toBeNull()
 })
+
+test('runPersonalOrgRepair reports a handle conflict as failed and writes nothing', async () => {
+	const { sqlite, db } = createDb()
+	const other = await insertUser(sqlite, db, { username: 'other' })
+	const orgId = testStableUserIdFromEmail('conflict-org@example.com')
+	await insertUser(sqlite, db, {
+		username: 'conflicted',
+		orgId,
+		provision: false,
+	})
+	sqlite
+		.prepare(
+			'INSERT INTO handles (handle, user_id, org_id, created_at) VALUES (?, ?, ?, ?)',
+		)
+		.run(
+			'conflicted',
+			other.stableUserId,
+			other.orgId,
+			'2026-10-20T00:00:00.000Z',
+		)
+
+	const result = await runPersonalOrgRepair({ env: env(db), dryRun: false })
+
+	expect(result.counts.failed).toBe(1)
+	expect(result.counts.repaired).toBe(0)
+	expect(
+		sqlite.prepare('SELECT COUNT(*) AS n FROM orgs WHERE id = ?').get(orgId),
+	).toEqual({ n: 0 })
+	expect(
+		sqlite
+			.prepare('SELECT COUNT(*) AS n FROM org_memberships WHERE org_id = ?')
+			.get(orgId),
+	).toEqual({ n: 0 })
+})

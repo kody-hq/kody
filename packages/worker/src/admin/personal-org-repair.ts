@@ -2,7 +2,9 @@
  * Find and repair live accounts whose personal org (`users.personal_org_id`)
  * has no live `orgs` row, owner membership, or handle. Repairs recreate only
  * those rows with default free billing columns (no plan, credit, or
- * enablement changes) and write one audit event per repaired account.
+ * enablement changes) and write one audit event per repaired account. Inserts
+ * are plain (not OR IGNORE): a slug/handle conflict fails the account's batch
+ * atomically and reports `failed` instead of a false `repaired`.
  */
 import { unusablePasswordHash } from '#worker/identity/usable-password.ts'
 import { normalizeUsername } from '#worker/identity/username.ts'
@@ -175,7 +177,7 @@ export async function runPersonalOrgRepair(input: {
 				statements.push(
 					db
 						.prepare(
-							`INSERT OR IGNORE INTO orgs (id, slug, plan, entitlement_ladder, created_by_user_id, created_at, updated_at)
+							`INSERT INTO orgs (id, slug, plan, entitlement_ladder, created_by_user_id, created_at, updated_at)
 							 VALUES (?, ?, 'free', 'public', ?, ?, ?)`,
 						)
 						.bind(row.org_id, slug, row.stable_user_id, now, now),
@@ -197,7 +199,7 @@ export async function runPersonalOrgRepair(input: {
 				statements.push(
 					db
 						.prepare(
-							`INSERT OR IGNORE INTO handles (handle, user_id, org_id, created_at)
+							`INSERT INTO handles (handle, user_id, org_id, created_at)
 							 VALUES (?, ?, ?, ?)`,
 						)
 						.bind(slug, row.stable_user_id, row.org_id, now),

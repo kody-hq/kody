@@ -102,6 +102,7 @@ export const adminPersonalOrgRepairCapability = defineDomainCapability(
 						cursor: args.cursor ?? null,
 					}),
 				{
+					resultOf: (r) => (r.counts.failed > 0 ? 'failure' : 'success'),
 					successReason: (r) =>
 						`dry_run=${r.dryRun};scanned=${r.counts.scanned};needs_repair=${r.counts.needsRepair};repaired=${r.counts.repaired};failed=${r.counts.failed}`,
 				},
