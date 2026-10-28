@@ -12,7 +12,7 @@ import {
 	parseEnvSourceSpec,
 	retrySecretBulkUpload,
 	shouldFallbackToVersionedSecretBulk,
-	toDotenv,
+	toSecretBulkJson,
 } from './sync-worker-secrets'
 
 const baseOptions = {
@@ -28,19 +28,48 @@ const baseOptions = {
 	emptyAsSpace: false,
 }
 
-test('toDotenv and parseDotenv round-trip multiline PEM values and literal backslash-n', () => {
-	const cases: Array<[string, string, string]> = [
+test('toSecretBulkJson stages JSON, PEM, and backslash values verbatim for wrangler secret bulk', () => {
+	const frameKeys = JSON.stringify([
+		{
+			kid: 'ecp-frame-test',
+			privateKeyJwk: { kty: 'OKP', crv: 'Ed25519', x: 'x', d: 'd' },
+			notAfter: 1,
+		},
+	])
+	const secrets = new Map([
+		['ECP_FRAME_SIGNING_KEYS', frameKeys],
 		[
 			'OIDC_SIGNING_PRIVATE_KEY_PEM',
 			'-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----',
-			'OIDC_SIGNING_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\\nMIIE\\n-----END PRIVATE KEY-----"\n',
 		],
-		['LITERAL_ESCAPE', '\\n', 'LITERAL_ESCAPE="\\\\n"\n'],
-	]
-	for (const [key, value, encoded] of cases) {
-		expect(toDotenv(new Map([[key, value]]))).toBe(encoded)
-		expect(parseDotenv(encoded).get(key)).toBe(value)
-	}
+		['LITERAL_ESCAPE', '\\n "quoted" \\"'],
+	])
+	const staged = JSON.parse(toSecretBulkJson(secrets)) as Record<string, string>
+	expect(Object.keys(staged)).toEqual([
+		'ECP_FRAME_SIGNING_KEYS',
+		'LITERAL_ESCAPE',
+		'OIDC_SIGNING_PRIVATE_KEY_PEM',
+	])
+	for (const [key, value] of secrets) expect(staged[key]).toBe(value)
+	expect(JSON.parse(staged.ECP_FRAME_SIGNING_KEYS!)).toEqual(
+		JSON.parse(frameKeys),
+	)
+})
+
+test('parseDotenv reads escaped multiline PEM values and literal backslash-n', () => {
+	expect(
+		parseDotenv(
+			'OIDC_SIGNING_PRIVATE_KEY_PEM="-----BEGIN PRIVATE KEY-----\\nMIIE\\n-----END PRIVATE KEY-----"\nLITERAL_ESCAPE="\\\\n"\n',
+		),
+	).toEqual(
+		new Map([
+			[
+				'OIDC_SIGNING_PRIVATE_KEY_PEM',
+				'-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----',
+			],
+			['LITERAL_ESCAPE', '\\n'],
+		]),
+	)
 })
 
 test('buildSpawnEnv preserves optional vars only when they have values', () => {

@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare'
 import { DurableObject } from 'cloudflare:workers'
 import {
 	classifyFrameText,
@@ -36,6 +37,7 @@ import {
 	markQueuedAttemptExpired,
 } from './routing.ts'
 import { getExecutionContext, loadContextAccess, parseGrant } from './store.ts'
+import { buildSentryOptions } from '#worker/sentry-options.ts'
 import { type RunRecordHandle } from '#worker/run-records/types.ts'
 
 export const executionContextsUnavailableCode = 'execution_contexts_unavailable'
@@ -145,6 +147,7 @@ type SocketAttachment = {
 	running: number
 	maxConcurrent: number
 	helloed: boolean
+	welcomed?: boolean
 }
 
 type RunRow = {
@@ -199,7 +202,7 @@ function terminalOutcome(state: string): RunHistoryOutcome | null {
  * authorizes each CapabilityProxy hop against the run's lease, and keeps a
  * bounded per-context run history (30 days, 1,000 rows, metadata only).
  */
-export class ExecutionContextSessionV1 extends DurableObject<Env> {
+export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	#acceptWaiters = new Map<
 		string,
 		Waiter<{ accepted: boolean; code?: string }>
@@ -324,7 +327,11 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 				kid: key.kid,
 				key: await importEd25519PrivateKey(key.privateKeyJwk),
 			}
-		})()
+		})().catch((error: unknown) => {
+			// Retry on the next frame so a fixed secret heals without a restart.
+			this.#signer = null
+			throw error
+		})
 		return await this.#signer
 	}
 
@@ -439,7 +446,7 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 	}
 
 	async #onConnected(ws: WebSocket, snapshot: ExecutionContextSnapshot) {
-		await this.#send(ws, 'welcome', {
+		const sent = await this.#send(ws, 'welcome', {
 			sid: (ws.deserializeAttachment() as SocketAttachment).sid,
 			protocol: ecpProtocolVersion,
 			serverTime: Date.now(),
@@ -449,6 +456,14 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 			grantVersion: snapshot.grantVersion,
 			limits: { maxFrameBytes: 6 * 1024 * 1024, maxConcurrentRuns: 4 },
 		})
+		if (!sent) return
+		try {
+			const attachment = ws.deserializeAttachment() as SocketAttachment
+			attachment.welcomed = true
+			ws.serializeAttachment(attachment)
+		} catch {
+			// Closed before the welcome landed; webSocketClose skips last-seen.
+		}
 		await this.#touchLastSeen(snapshot.ecid)
 	}
 
@@ -474,11 +489,24 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 		body: Record<string, unknown>,
 		re?: number,
 	) {
-		const signer = await this.#frameSigner()
+		let signer: { kid: string; key: CryptoKey } | null
+		try {
+			signer = await this.#frameSigner()
+		} catch (error) {
+			return this.#failSend(ws, type, 'server keys invalid', error)
+		}
 		const snapshot = this.#snapshot()
 		if (!signer || !snapshot) {
-			ws.close(1011, 'server keys unavailable')
-			return false
+			return this.#failSend(
+				ws,
+				type,
+				'server keys unavailable',
+				new Error(
+					signer
+						? 'Execution context session has no snapshot.'
+						: 'ECP_FRAME_SIGNING_KEYS is unset or has no unexpired key.',
+				),
+			)
 		}
 		const attachment = ws.deserializeAttachment() as SocketAttachment
 		attachment.outSeq += 1
@@ -498,14 +526,41 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 				await signFrame({ privateKey: signer.key, kid: signer.kid, payload }),
 			)
 			return true
-		} catch {
-			return false
+		} catch (error) {
+			return this.#failSend(ws, type, 'frame send failed', error)
 		}
 	}
 
+	/** A frame the server cannot send ends the session loudly: log, Sentry, 1011. */
+	#failSend(ws: WebSocket, type: string, reason: string, error: unknown) {
+		const ecid = this.#snapshot()?.ecid ?? null
+		console.error('execution_context_frame_send_failed', {
+			ecid,
+			frameType: type,
+			reason,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		Sentry.withScope((scope) => {
+			scope.setTag('execution_context.operation', 'frame_send')
+			scope.setTag('execution_context.frame_type', type)
+			scope.setContext('execution_context', { ecid, frameType: type, reason })
+			Sentry.captureException(error)
+		})
+		try {
+			ws.close(1011, reason)
+		} catch {
+			// Already closed: the failure above is what matters.
+		}
+		return false
+	}
+
 	async #sendError(ws: WebSocket, code: string, message: string, close = true) {
-		await this.#send(ws, 'error', { code, message, retryable: !close })
-		if (close) ws.close(1008, code)
+		const sent = await this.#send(ws, 'error', {
+			code,
+			message,
+			retryable: !close,
+		})
+		if (close && sent) ws.close(1008, code)
 	}
 
 	override async webSocketMessage(
@@ -688,7 +743,9 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 
 	override async webSocketClose(ws: WebSocket) {
 		const snapshot = this.#snapshot()
-		if (snapshot) await this.#touchLastSeen(snapshot.ecid)
+		const welcomed = (ws.deserializeAttachment() as SocketAttachment | null)
+			?.welcomed
+		if (snapshot && welcomed) await this.#touchLastSeen(snapshot.ecid)
 		try {
 			ws.close(1000, 'closed')
 		} catch {
@@ -1646,3 +1703,12 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 }
 
 export const executionContextRunLogLines = ecpMaxRunLogLines
+
+export const ExecutionContextSessionV1 =
+	Sentry.instrumentDurableObjectWithSentry(
+		(env: Env) => buildSentryOptions(env),
+		ExecutionContextSessionV1Base,
+	)
+export type ExecutionContextSessionV1 = InstanceType<
+	typeof ExecutionContextSessionV1
+>

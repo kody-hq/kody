@@ -153,8 +153,26 @@ export async function runExecutionContextCommand(
 			path: '/v1/execution-chain',
 		})
 		const current = chainOf(read)
+		const contexts = async () =>
+			contextsById(
+				await apiJson({
+					...base,
+					token,
+					method: 'GET',
+					path: '/v1/execution-contexts',
+				}),
+			)
+		// Names and status are display-only; never fail the chain command on them.
+		const contextMetadata = async () => {
+			if (input.values.json) return new Map<string, ContextSummary>()
+			try {
+				return await contexts()
+			} catch {
+				return new Map<string, ContextSummary>()
+			}
+		}
 		if (sub === 'show' || sub === undefined) {
-			out(input, read, describeChain(current))
+			out(input, read, describeChain(current, await contextMetadata()))
 			return 0
 		}
 		if (sub !== 'add' && sub !== 'remove') {
@@ -177,6 +195,8 @@ export async function runExecutionContextCommand(
 			)
 			.filter((entry) => !(entry.kind === 'context' && entry.id === id))
 		if (sub === 'add') {
+			// Kody cloud is always last; an empty chain starts as [context, cloud].
+			if (entries.length === 0) entries.push({ kind: 'cloud' })
 			const cloudAt = entries.findIndex((entry) => entry.kind === 'cloud')
 			entries.splice(cloudAt === -1 ? entries.length : cloudAt, 0, {
 				kind: 'context',
@@ -194,7 +214,11 @@ export async function runExecutionContextCommand(
 				ifMatch: current.updatedAt ?? null,
 			},
 		})
-		out(input, updated, describeChain(chainOf(updated)))
+		out(
+			input,
+			updated,
+			describeChain(chainOf(updated), await contextMetadata()),
+		)
 		return 0
 	}
 	if (input.command === 'daemon') {
@@ -265,18 +289,35 @@ function chainOf(body: Record<string, unknown>) {
 	return (body.chain ?? {}) as Record<string, unknown>
 }
 
-function describeChain(chain: Record<string, unknown>) {
+type ContextSummary = { id: string; name?: string | null; status?: string }
+
+function contextsById(body: Record<string, unknown>) {
+	const contexts = (body.contexts ?? []) as Array<ContextSummary>
+	return new Map(contexts.map((context) => [context.id, context]))
+}
+
+function describeChain(
+	chain: Record<string, unknown>,
+	contexts: ReadonlyMap<string, ContextSummary> = new Map(),
+) {
 	const entries = (chain.entries ?? []) as Array<{
 		kind: string
 		id?: string
+		name?: string | null
 		usable?: boolean
 		unusableReason?: string
 	}>
-	const lines = entries.map((entry, index) =>
-		entry.kind === 'cloud'
-			? `${index + 1}. Kody cloud (always last)`
-			: `${index + 1}. ${entry.id}${entry.usable === false ? ` (skipped: ${entry.unusableReason})` : ''}`,
-	)
+	const lines = entries.map((entry, index) => {
+		if (entry.kind === 'cloud') return `${index + 1}. Kody cloud (always last)`
+		const known = entry.id ? contexts.get(entry.id) : undefined
+		const name = entry.name ?? known?.name
+		const label = name ? `${name} (${entry.id})` : String(entry.id)
+		const offline =
+			known?.status && known.status !== 'online' ? ` [${known.status}]` : ''
+		const skipped =
+			entry.usable === false ? ` (skipped: ${entry.unusableReason})` : ''
+		return `${index + 1}. ${label}${offline}${skipped}`
+	})
 	if (chain.strict) lines.push('Strict: Kody cloud is not in this chain.')
 	return lines.join('\n') || 'Empty chain.'
 }
