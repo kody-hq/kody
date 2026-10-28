@@ -42,11 +42,13 @@ export type ReceivePackOutcome = {
 /** Direct-path counters filled in by the wait-and-retry proxy. */
 export type DirectReceivePackStats = {
 	attempts: number
+	/** When this push got the isolate-local gate (before its body is read). */
+	gateAcquiredAt: number | null
 	firstSendAt: number | null
 }
 
 export function createDirectReceivePackStats(): DirectReceivePackStats {
-	return { attempts: 0, firstSendAt: null }
+	return { attempts: 0, gateAcquiredAt: null, firstSendAt: null }
 }
 
 export function classifyReceivePackResponse(
@@ -121,17 +123,26 @@ export function measureReceivePack(input: {
 		path: input.path,
 		outcome,
 		durationMs: elapsedMs,
-		// With no send, only a busy gate timeout spent the time waiting; a
-		// rejected body (408/413) or proxy error never queued.
-		waitMs:
-			input.direct.firstSendAt === null
-				? outcome.kind === 'busy'
-					? elapsedMs
-					: 0
-				: Math.max(0, input.direct.firstSendAt - input.startedAt),
+		waitMs: directWaitMs(input.direct, outcome, input.startedAt, elapsedMs),
 		queueDepth: 0,
 		attempts: input.direct.attempts,
 	}
+}
+
+/**
+ * Time before the first Artifacts send. Without a send, the gate wait still
+ * counts (a body rejected with 408/413 after its turn); a gate timeout spent
+ * the whole request waiting.
+ */
+function directWaitMs(
+	direct: DirectReceivePackStats,
+	outcome: ReceivePackOutcome,
+	startedAt: number,
+	elapsedMs: number,
+) {
+	const waitedUntil = direct.firstSendAt ?? direct.gateAcquiredAt
+	if (waitedUntil !== null) return Math.max(0, waitedUntil - startedAt)
+	return outcome.kind === 'busy' ? elapsedMs : 0
 }
 
 export async function recordReceivePackMetrics(input: {

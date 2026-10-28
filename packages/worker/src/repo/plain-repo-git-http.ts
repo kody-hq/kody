@@ -423,6 +423,7 @@ async function proxyArtifactsReceivePack(input: {
 			input.sourceId,
 			artifactsReceivePackWaitBudgetMs,
 			async () => {
+				input.stats.gateAcquiredAt = Date.now()
 				// Buffer only while holding the gate so queued pushes do not each
 				// retain a full pack in isolate memory while they wait their turn.
 				let packBody: Uint8Array

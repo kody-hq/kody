@@ -69,7 +69,7 @@ test('queued metrics fall back to origin wall time and position for older queue 
 		response: response(200, { [repoPushQueuePositionHeader]: '2' }),
 		startedAt: 1_000,
 		endedAt: 1_750,
-		direct: { attempts: 0, firstSendAt: null },
+		direct: { attempts: 0, gateAcquiredAt: null, firstSendAt: null },
 	})
 	expect(metrics).toMatchObject({
 		durationMs: 750,
@@ -86,7 +86,7 @@ test('direct metrics measure wait until the first Artifacts send', () => {
 			response: response(200),
 			startedAt: 1_000,
 			endedAt: 3_000,
-			direct: { attempts: 3, firstSendAt: 1_400 },
+			direct: { attempts: 3, gateAcquiredAt: 1_200, firstSendAt: 1_400 },
 		}),
 	).toMatchObject({
 		durationMs: 2_000,
@@ -100,7 +100,7 @@ test('direct metrics measure wait until the first Artifacts send', () => {
 			response: response(503, { 'Retry-After': '5' }),
 			startedAt: 1_000,
 			endedAt: 46_000,
-			direct: { attempts: 0, firstSendAt: null },
+			direct: { attempts: 0, gateAcquiredAt: null, firstSendAt: null },
 		}),
 	).toMatchObject({ waitMs: 45_000, outcome: { kind: 'busy' } })
 	expect(
@@ -109,7 +109,16 @@ test('direct metrics measure wait until the first Artifacts send', () => {
 			response: response(413),
 			startedAt: 1_000,
 			endedAt: 1_300,
-			direct: { attempts: 0, firstSendAt: null },
+			direct: { attempts: 0, gateAcquiredAt: null, firstSendAt: null },
 		}),
 	).toMatchObject({ durationMs: 300, waitMs: 0, attempts: 0 })
+	expect(
+		measureReceivePack({
+			path: 'direct',
+			response: response(408),
+			startedAt: 1_000,
+			endedAt: 9_000,
+			direct: { attempts: 0, gateAcquiredAt: 3_500, firstSendAt: null },
+		}),
+	).toMatchObject({ durationMs: 8_000, waitMs: 2_500, attempts: 0 })
 })
