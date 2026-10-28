@@ -83,7 +83,12 @@ export function AutomationExecutionSettings(props: {
 			.then((result) => {
 				if (cancelled || !result.ok) return
 				setLoaded(result)
-				setForm(automationExecutionFormFrom(result.setting.effective))
+				setForm(
+					automationExecutionFormFrom(
+						result.setting.effective,
+						result.contexts,
+					),
+				)
 			})
 			.catch(() => {})
 		return () => {
@@ -120,7 +125,9 @@ export function AutomationExecutionSettings(props: {
 			return
 		}
 		setLoaded({ ...loaded!, setting: result.setting })
-		setForm(automationExecutionFormFrom(result.setting.effective))
+		setForm(
+			automationExecutionFormFrom(result.setting.effective, loaded?.contexts),
+		)
 		setStatus({ tone: 'info', text: 'Saved.' })
 	}
 

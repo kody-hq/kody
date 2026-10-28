@@ -57,3 +57,13 @@ test('describes settings in plain words', () => {
 		}),
 	).toBe('a → Kody cloud · needs lan · queues up to 60 min when offline')
 })
+
+test('a context named in the manifest selects its id in the form', () => {
+	const contexts = [{ id: 'ec_1', name: 'laptop' }]
+	expect(
+		automationExecutionFormFrom({ context: 'laptop' }, contexts),
+	).toMatchObject({ mode: 'context', context: 'ec_1' })
+	expect(
+		automationExecutionFormFrom({ chain: ['laptop', 'cloud'] }, contexts),
+	).toMatchObject({ mode: 'chain', chain: ['ec_1'], cloudLast: true })
+})
