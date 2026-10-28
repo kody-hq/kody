@@ -389,23 +389,16 @@ export function buildSpawnEnv(
 	return spawnEnv
 }
 
-function escapeDotenvValue(value: string) {
-	if (!/[\n\r\t"\\]/.test(value) && value === value.trim()) {
-		return value
-	}
-	return `"${value
-		.replace(/\\/g, '\\\\')
-		.replace(/\n/g, '\\n')
-		.replace(/\r/g, '\\r')
-		.replace(/\t/g, '\\t')
-		.replace(/"/g, '\\"')}"`
-}
-
-export function toDotenv(secrets: ReadonlyMap<string, string>) {
-	const lines = Array.from(secrets.entries())
-		.sort(([left], [right]) => left.localeCompare(right))
-		.map(([key, value]) => `${key}=${escapeDotenvValue(value)}`)
-	return `${lines.join('\n')}\n`
+/**
+ * `wrangler secret bulk` reads a JSON object file verbatim. Its dotenv
+ * fallback only unescapes `\n`/`\r`, so a dotenv-staged JSON secret would
+ * land on the Worker with literal `\"` and fail to parse.
+ */
+export function toSecretBulkJson(secrets: ReadonlyMap<string, string>) {
+	const sorted = Array.from(secrets.entries()).sort(([left], [right]) =>
+		left.localeCompare(right),
+	)
+	return `${JSON.stringify(Object.fromEntries(sorted), null, 2)}\n`
 }
 
 /**
@@ -442,18 +435,21 @@ export function buildWranglerSecretBulkFlags(
 	return args
 }
 
-async function runWranglerSecretBulk(options: CliOptions, dotenvText: string) {
+async function runWranglerSecretBulk(
+	options: CliOptions,
+	secretsFileText: string,
+) {
 	const wranglerBin = resolveLocalBinary('wrangler')
 	const spawnEnv = buildSpawnEnv(options)
 	const secretsFilePath = join(
 		tmpdir(),
-		`wrangler-secrets-${Date.now()}-${randomBytes(6).toString('hex')}.env`,
+		`wrangler-secrets-${Date.now()}-${randomBytes(6).toString('hex')}.json`,
 	)
 	const classicArgs = [
 		wranglerBin,
 		...buildWranglerSecretBulkFlags(options, secretsFilePath),
 	]
-	await writeFile(secretsFilePath, dotenvText, {
+	await writeFile(secretsFilePath, secretsFileText, {
 		encoding: 'utf8',
 		mode: 0o600,
 	})
@@ -559,8 +555,7 @@ async function main() {
 	if (secrets.size === 0) {
 		fail('No secrets to sync (empty input).')
 	}
-	const dotenvText = toDotenv(secrets)
-	await runWranglerSecretBulk(options, dotenvText)
+	await runWranglerSecretBulk(options, toSecretBulkJson(secrets))
 	const envLabel =
 		options.env && options.env.length > 0 ? options.env : 'default'
 	console.log(

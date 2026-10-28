@@ -13,8 +13,8 @@ import {
 export const executionContextsPath = '/v1/execution-contexts'
 
 /** Old logins lack execution context scopes; never widen them silently. */
-export const reloginMessage =
-	'Your Kody login predates execution context permissions, so it cannot register a machine. Run `kody login` again, then retry `kody context register`.'
+export const reloginHint =
+	'Run `kody login` again, then retry `kody context register`.'
 
 export class ExecutionContextApiError extends Error {
 	constructor(
@@ -169,7 +169,9 @@ async function registrationError(response: Response) {
 		error.message.includes('predates execution context permissions')
 	) {
 		return new ExecutionContextApiError(
-			reloginMessage,
+			error.message.includes('kody login')
+				? error.message
+				: `${error.message.trim()} ${reloginHint}`,
 			error.status,
 			error.code,
 		)

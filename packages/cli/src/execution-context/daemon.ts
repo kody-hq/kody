@@ -79,7 +79,11 @@ type DaemonInput = {
 	fetchFn?: typeof fetch
 	WebSocketImpl?: typeof WebSocket
 	signal?: AbortSignal
+	welcomeTimeoutMs?: number
 }
+
+export const welcomeTimeoutMs = 15_000
+export const welcomeTimeoutCloseCode = 4000
 
 /** One connection: resolves when the socket closes. */
 export async function runDaemonConnection(input: DaemonInput) {
@@ -188,6 +192,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 		const runId = typeof body.runId === 'string' ? body.runId : ''
 		switch (frame.t) {
 			case 'welcome':
+				clearTimeout(welcomeTimer)
 				await send('hello', {
 					protocol: { min: ecpProtocolVersion, max: ecpProtocolVersion },
 					client: input.client,
@@ -262,11 +267,21 @@ export async function runDaemonConnection(input: DaemonInput) {
 		}
 	}
 
+	const timeoutMs = input.welcomeTimeoutMs ?? welcomeTimeoutMs
+	let welcomeTimer: ReturnType<typeof setTimeout> | undefined
 	return await new Promise<{ code: number; reason: string }>((resolve) => {
 		const ping = setInterval(() => {
 			if (ws.readyState === ws.OPEN) ws.send(ecpPingFrame)
 		}, 30_000)
-		input.signal?.addEventListener('abort', () => ws.close(1000, 'shutdown'))
+		welcomeTimer = setTimeout(() => {
+			input.log(
+				`Kody did not send a welcome frame within ${Math.round(timeoutMs / 1000)}s, so this context cannot come online. Closing and retrying.`,
+			)
+			ws.close(welcomeTimeoutCloseCode, 'welcome timeout')
+		}, timeoutMs)
+		const shutdown = () => ws.close(1000, 'shutdown')
+		if (input.signal?.aborted) shutdown()
+		input.signal?.addEventListener('abort', shutdown, { once: true })
 		ws.addEventListener('message', (event) => {
 			const text = typeof event.data === 'string' ? event.data : ''
 			void (async () => {
@@ -296,6 +311,8 @@ export async function runDaemonConnection(input: DaemonInput) {
 		})
 		ws.addEventListener('close', (event) => {
 			clearInterval(ping)
+			clearTimeout(welcomeTimer)
+			input.signal?.removeEventListener('abort', shutdown)
 			for (const run of runs.values()) run.abort.abort()
 			resolve({ code: event.code, reason: event.reason })
 		})
@@ -333,8 +350,20 @@ export async function runDaemon(input: DaemonInput) {
 		if (Date.now() - startedAt > 60_000) attempt = 0
 		attempt += 1
 		const delay = Math.min(60_000, 1000 * 2 ** Math.min(attempt, 6))
-		await new Promise((resolve) =>
-			setTimeout(resolve, delay * (0.5 + Math.random() / 2)),
-		)
+		await abortableDelay(delay * (0.5 + Math.random() / 2), input.signal)
 	}
+}
+
+/** Resolves after `ms`, or as soon as `signal` aborts (SIGINT/SIGTERM). */
+export function abortableDelay(ms: number, signal?: AbortSignal) {
+	return new Promise<void>((resolve) => {
+		if (signal?.aborted) return resolve()
+		const done = () => {
+			clearTimeout(timer)
+			signal?.removeEventListener('abort', done)
+			resolve()
+		}
+		const timer = setTimeout(done, ms)
+		signal?.addEventListener('abort', done, { once: true })
+	})
 }

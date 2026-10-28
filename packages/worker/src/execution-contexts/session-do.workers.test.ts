@@ -12,6 +12,7 @@ import {
 	type EcpFramePayload,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import testKeys from '@kody-internal/shared/execution-context-protocol/vectors/test-keys.json'
+import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	ExecutionContextSessionV1,
 	type ExecutionContextLease,
@@ -371,4 +372,61 @@ test('history purges a requester and keeps nothing but metadata', async () => {
 	await runInDurableObject(stub, async (instance) => {
 		expect(instance).toBeInstanceOf(ExecutionContextSessionV1)
 	})
+})
+
+test('a malformed ECP_FRAME_SIGNING_KEYS closes the socket loudly, then heals once the keys parse', async () => {
+	consoleError.mockImplementation(() => {})
+	const ecid = 'ec_bad_keys'
+	const stub = env.EXECUTION_CONTEXT_SESSION.get(
+		env.EXECUTION_CONTEXT_SESSION.idFromName(ecid),
+	)
+	const goodKeys = env.ECP_FRAME_SIGNING_KEYS
+	if (!goodKeys) throw new Error('test signing keys missing')
+	// What the dotenv-staged deploy secret looked like: escaped quotes.
+	const setKeys = (raw: string) =>
+		runInDurableObject(stub, (instance) => {
+			;(instance as unknown as { env: Env }).env = {
+				...env,
+				ECP_FRAME_SIGNING_KEYS: raw,
+			}
+		})
+	await setKeys(JSON.stringify(goodKeys).slice(1, -1))
+	const issued = await stub.issueConnectTicket({
+		snapshot: snapshot(ecid),
+		nonce: crypto.randomUUID(),
+	})
+	if (!issued.ok) throw new Error(issued.code)
+	const response = await stub.fetch(
+		`https://session.test/connect?ticket=${issued.ticket}`,
+		{ headers: { Upgrade: 'websocket' } },
+	)
+	expect(response.status).toBe(101)
+	const ws = response.webSocket!
+	const frames: Array<string> = []
+	ws.addEventListener('message', (event) => frames.push(String(event.data)))
+	const closed = new Promise<{ code: number; reason: string }>((resolve) =>
+		ws.addEventListener('close', (event) =>
+			resolve({ code: event.code, reason: event.reason }),
+		),
+	)
+	ws.accept()
+	await expect(closed).resolves.toEqual({
+		code: 1011,
+		reason: 'server keys invalid',
+	})
+	expect(frames).toEqual([])
+	expect(consoleError).toHaveBeenCalledWith(
+		'execution_context_frame_send_failed',
+		expect.objectContaining({
+			ecid,
+			frameType: 'welcome',
+			reason: 'server keys invalid',
+			error: 'ECP_FRAME_SIGNING_KEYS is not valid JSON.',
+		}),
+	)
+	expect(JSON.stringify(consoleError.mock.calls)).not.toContain('"d"')
+
+	await setKeys(goodKeys)
+	const { welcome } = await connect(ecid)
+	expect(welcome.t).toBe('welcome')
 })
