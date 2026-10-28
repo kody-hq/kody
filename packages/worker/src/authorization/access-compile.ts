@@ -15,6 +15,7 @@ import {
 	type OrgRole,
 	type RequestContext,
 } from '@kody-internal/shared/request-context.ts'
+import { memoizePerRequest } from '#worker/request-context.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 const allOrgPermissions: ReadonlySet<OrgPermission> = new Set(orgPermissions)
@@ -376,16 +377,31 @@ export async function compileAccessForActor(input: {
 	const { orgId, userId, role } = input
 	if (role === 'owner') return ownerCompiledAccess(orgId, 0)
 
-	const epochOrNull = await readOrgEpoch(input.db, orgId)
+	// One HTTP request can derive many request contexts for the same person
+	// (a page checking several package permissions), so share the compile
+	// across the request. Every new request still reads access_epoch.
+	return await memoizePerRequest({
+		key: `compiled-access:${orgId}:${userId}:${role ?? 'none'}`,
+		load: () => compileUncached(input.db, orgId, userId, role),
+	})
+}
+
+async function compileUncached(
+	db: D1Database,
+	orgId: OwnerId,
+	userId: string,
+	role: OrgRole | null,
+): Promise<CompiledAccess> {
+	const epochOrNull = await readOrgEpoch(db, orgId)
 	if (epochOrNull === null) {
 		throw new Error(`Org ${orgId} was not found while compiling access.`)
 	}
 	const epoch = epochOrNull
 
-	const cached = await readAccessCache(input.db, orgId, userId, epoch)
+	const cached = await readAccessCache(db, orgId, userId, epoch)
 	if (cached) return cached
 
-	const grantRows = await loadLiveGrantRows(input.db, orgId, userId)
+	const grantRows = await loadLiveGrantRows(db, orgId, userId)
 	const compiled = compileFromRoleAndGrants({
 		orgId,
 		epoch,
@@ -393,7 +409,7 @@ export async function compileAccessForActor(input: {
 		grantRows,
 	})
 	try {
-		await writeAccessCache(input.db, compiled, userId)
+		await writeAccessCache(db, compiled, userId)
 	} catch {
 		// Cache is derived; a write failure must not block the request.
 	}
