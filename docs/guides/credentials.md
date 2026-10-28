@@ -5,10 +5,12 @@ summary:
   What a Kody credential is and every kind it comes in (Key, OAuth, MCP server,
   URL, login, signing), how `{{secret:name}}` placeholders and scoped
   `credential(key)` clients place a value at the network boundary, how packages
-  declare needs in `kody.credentials`, how callers pick between credentials with
-  names and call maps, the `credential_ambiguous` / `credential_unbound` errors,
-  and webhook verification. Load this when someone asks how credentials work,
-  which kind to use, or why a credential did not resolve.
+  declare needs in `kody.credentials` (including publisher and executor
+  credential needs that app visitors fill with `credential.visitor(key)`), how
+  callers pick between credentials with names and call maps, the
+  `credential_ambiguous` / `credential_unbound` errors, and webhook
+  verification. Load this when someone asks how credentials work, which kind to
+  use, or why a credential did not resolve.
 category: platform
 ---
 
@@ -247,6 +249,23 @@ that person's live Sign in with Kody grant. It does not fall back to the
 publisher's credentials, the visitor's personal defaults, or automatic matching.
 A mapped credential is rechecked for live Use access on every call.
 
+`kody.credentials` is where a credential need and its supplier are declared. An
+executor need gets its own `need:<key>` consent scope from that declaration and
+needs no `kody.app.visitorNeeds` entry. A `kody.app.visitorNeeds` entry whose
+`credential` names an executor need is accepted as an alias for it; it cannot
+name a publisher need. Use `kody.app.visitorNeeds` for capability needs.
+
+In app code, open an executor need with `credential.visitor("key")`. Plain
+`credential("key")` never reads the visitor's pick. Inside an app it is refused
+with `credential_denied`, naming `credential.visitor`. In a direct run (execute,
+a job, or another package calling it) the person running it is the executor, so
+`credential("key")` resolves their own credentials.
+
+To check whether the flag is on for an org, call `packageGet` on one of its
+packages: `credentials.suppliersEnabled` is `true` when it is. While it is
+`false`, `supplier` and `required` are ignored and needs resolve as they did
+before.
+
 Executor needs default to required. Set `required: false` to make a need
 optional. Required needs cannot be skipped in consent, and the app does not
 serve until the visitor has connected a usable credential. A direct run that
@@ -262,7 +281,11 @@ behavior.
 
 People who open an internet-visible app run it as themselves, or as no one when
 they are signed out or outside your org. A signed-in member with Use can still
-open org credentials they hold; everyone else cannot. To let the app use one for
+open org credentials they hold; everyone else cannot. Executor needs are the
+exception while the `package-credential-suppliers` flag is on: any signed-in
+visitor, inside or outside your org, can pick one of their own credentials for
+an executor need on the consent screen
+([above](#choose-who-supplies-a-package-credential)). To let the app use one for
 every visitor, add `"ownerCredentialForVisitors": true` to that need:
 
 ```json

@@ -165,6 +165,53 @@ test('scanCredentialStamp fails credential.named() in stamped packages', () => {
 	expect(bound.keys).toEqual([])
 })
 
+test('scanCredentialStamp stamps credential.visitor literal keys', () => {
+	const credentials = {
+		GITHUB: { kind: 'secret', description: 'GitHub token.' },
+	}
+	for (const source of [
+		[
+			"import { credential } from 'kody:runtime'",
+			'export default async function run() {',
+			"  return await credential.visitor('GITHUB')",
+			'}',
+		],
+		[
+			"import { kody } from 'kody:runtime'",
+			'export default async function run() {',
+			"  return await kody.credential.visitor('GITHUB')",
+			'}',
+		],
+	]) {
+		const result = scanCredentialStamp({
+			'package.json': manifest({ credentials }),
+			'src/index.ts': source.join('\n'),
+		})
+		expect(result.failures).toEqual([])
+		expect(result.keys).toEqual(['GITHUB'])
+	}
+	const escaped = scanCredentialStamp({
+		'package.json': manifest({ credentials }),
+		'src/index.ts': [
+			"import { credential } from 'kody:runtime'",
+			'const open = credential.visitor',
+			"export default async function run() { return open('GITHUB') }",
+		].join('\n'),
+	})
+	expect(escaped.failures.some((f) => f.code === 'non_literal')).toBe(true)
+	expect(escaped.failures[0]?.message).toMatch(/credential\.visitor\("SLOT"\)/)
+	const computed = scanCredentialStamp({
+		'package.json': manifest({ credentials }),
+		'src/index.ts': [
+			"import { credential } from 'kody:runtime'",
+			'export default async function run(key: string) {',
+			'  return await credential.visitor(key)',
+			'}',
+		].join('\n'),
+	})
+	expect(computed.failures.some((f) => f.code === 'non_literal')).toBe(true)
+})
+
 test('scanLiteralMcpServerKeys stamps literal servers and fails dynamic access', () => {
 	const literal = scanLiteralMcpServerKeys({
 		'package.json': manifest(),

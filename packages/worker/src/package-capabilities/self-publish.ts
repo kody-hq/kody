@@ -120,16 +120,23 @@ async function evaluateTreePackage(
 		declaresAny(kody.credentials) ||
 		declaresAny(kody.invalidCredentialSlots)
 	) {
-		const needKeys = Object.keys(
+		const slots = Object.values(
 			(kody.credentials ?? {}) as Record<string, unknown>,
 		)
+		const executorNeedCount = slots.filter(
+			(slot) =>
+				typeof slot === 'object' &&
+				slot !== null &&
+				(slot as { supplier?: unknown }).supplier === 'executor',
+		).length
 		return {
 			blocker: 'declares_credentials',
 			reasons: [
 				{
 					kind: 'credential_needs',
 					sourceId,
-					needCount: Math.max(1, needKeys.length),
+					needCount: Math.max(1, slots.length),
+					...(executorNeedCount > 0 ? { executorNeedCount } : {}),
 				},
 			],
 		}
@@ -155,10 +162,18 @@ async function evaluateTreePackage(
 		request: flagMemo,
 	})
 	if (needs.length > 0) {
+		const executorNeedCount = needs.filter(
+			(need) => need.supplier === 'executor',
+		).length
 		return {
 			blocker: 'declares_credentials',
 			reasons: [
-				{ kind: 'credential_needs', sourceId, needCount: needs.length },
+				{
+					kind: 'credential_needs',
+					sourceId,
+					needCount: needs.length,
+					...(executorNeedCount > 0 ? { executorNeedCount } : {}),
+				},
 			],
 		}
 	}

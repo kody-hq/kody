@@ -223,9 +223,12 @@ export default {
   internet-visible app) gets `user_id` and `username` too, while their Sign in
   with Kody grant for the app is live. Identity is all they get: the request is
   otherwise served exactly like an anonymous visitor, so storage, credentials,
-  and capabilities that need permission fail closed. Visitor usage is still
-  attributed to their stable user id, without granting them app access. To give
-  a specific person real access, grant them Use on the app (`inviteCreate` with
+  and capabilities that need permission fail closed. The exception is an
+  executor credential need while the `package-credential-suppliers` flag is on:
+  it uses the credential the visitor picked for it on consent
+  ([visitor needs](#who-the-app-runs-as)). Visitor usage is still attributed to
+  their stable user id, without granting them app access. To give a specific
+  person real access, grant them Use on the app (`inviteCreate` with
   `kind: "grant"`, `resource_type: "app"`).
 - A visitor who is not signed in has no identity, so the call throws
   "Authenticated MCP user is required". Treat that as signed out.
@@ -297,11 +300,12 @@ consent screen shows the `description`. A need names exactly one of a
 `kody.credentials` key or a capability (run it with
 `kody.visitorNeed({ need: 'calendar', args })`). Capability calls run as the
 visitor and need a live grant that covers the scope, read on every call.
-Credential needs use the supplier declared in `kody.credentials`: executor needs
-resolve only the credential mapping on that visitor's live grant, while
-publisher needs are not available through `credential.visitor()` or
-`kody.visitorNeed()`. Neither path falls back to the runs-as person. Revoking
-the app on **Account > Connected apps** takes effect on the next call.
+Credential needs use the supplier declared in `kody.credentials`, so an executor
+need does not also need a `kody.app.visitorNeeds` entry. Executor needs resolve
+only the credential mapping on that visitor's live grant, while publisher needs
+are not available through `credential.visitor()` or `kody.visitorNeed()`.
+Neither path falls back to the runs-as person. Revoking the app on **Account >
+Connected apps** takes effect on the next call.
 
 Executor credential needs use `need:<key>` scopes and are required by default.
 An optional executor need declares `required: false`. The visitor chooses a
