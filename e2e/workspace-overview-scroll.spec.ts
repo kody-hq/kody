@@ -48,12 +48,17 @@ for (const viewport of viewports) {
 		await expect
 			.poll(() => page.evaluate(() => window.scrollY))
 			.toBeGreaterThan(0)
-		await page.evaluate((href) => {
-			const link = document.querySelector<HTMLAnchorElement>(
-				`[data-workspace-rail] a[href="${href}"], a[href="${href}"]`,
-			)
-			link?.click()
-		}, overview)
+		if (viewport.name === 'mobile') {
+			// Narrow layouts navigate through the menu drawer, which closes on click.
+			const menu = page
+				.locator('details')
+				.filter({ has: page.locator(`nav a[href="${overview}"]`) })
+				.first()
+			await menu.locator('summary').click()
+			await menu.locator(`nav a[href="${overview}"]`).click()
+		} else {
+			await page.locator(`a[href="${overview}"]:visible`).first().click()
+		}
 		await expect(page).toHaveURL(new RegExp(`${overview}$`))
 		await expect
 			.poll(() => readScroll(page))
