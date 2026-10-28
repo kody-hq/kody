@@ -426,6 +426,22 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 			'Error',
 			new Error('EISDIR: /session/src is a directory'),
 		),
+		// repoReadFile with a folder path (KODY-CA): remapped phrase and raw
+		// EISDIR from an older DO build both stay off Sentry.
+		handlerFailure(
+			'repoReadFile',
+			'repo',
+			'Error',
+			new Error(
+				'repo session read target "src" is a directory. Pass a file path (for example src/index.ts), or use repoTree to list the folder.',
+			),
+		),
+		handlerFailure(
+			'repoReadFile',
+			'repo',
+			'Error',
+			new Error('EISDIR: /session/src is a directory'),
+		),
 		// restoreFiles writes caller paths without DO EISDIR remap.
 		handlerFailure(
 			'repoRestore',

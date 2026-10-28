@@ -141,6 +141,10 @@ test('isRepoSessionDirectoryTargetCallerMessage matches directory edit targets o
 	)
 	const directoryTargetCases = [
 		[
+			'read',
+			'repo session read target "src" is a directory. Pass a file path (for example src/index.ts), or use repoTree to list the folder.',
+		],
+		[
 			'move',
 			'repo session move edit source "src" is a directory. Pass a file path (for example src/index.ts), not a folder.',
 		],
@@ -162,6 +166,7 @@ test('isRepoSessionDirectoryTargetCallerMessage matches directory edit targets o
 		'Source "abc" was not found.',
 		'git apply patch did not apply cleanly to src/index.ts.',
 		'repo session write edit target "" is a directory. Pass a file path (for example src/index.ts), not a folder.',
+		'repo session read target "" is a directory. Pass a file path (for example src/index.ts), or use repoTree to list the folder.',
 	]
 	expect(
 		platformMessages.filter((message) =>

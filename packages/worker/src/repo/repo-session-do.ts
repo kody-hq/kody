@@ -2308,12 +2308,19 @@ class RepoSessionBase extends DurableObject<Env> {
 			input.userId,
 		)
 		await this.touchRepoSession(sessionRow)
-		return {
-			path: input.path,
-			content: await this.workspace.readFile(
-				resolveRepoWorkspacePath(input.path, repoSessionWorkspacePrefix),
-			),
+		const workspacePath = resolveRepoWorkspacePath(
+			input.path,
+			repoSessionWorkspacePrefix,
+		)
+		let content: string | null
+		try {
+			content = await this.workspace.readFile(workspacePath)
+		} catch (error) {
+			// Agents pass a folder from repoTree (`src`); the shell throws raw
+			// EISDIR. KODY-CA.
+			this.remapWorkspaceEisdirError(error, 'read', input.path)
 		}
+		return { path: input.path, content }
 	}
 
 	async writeFile(input: {

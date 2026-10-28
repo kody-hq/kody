@@ -1,3 +1,4 @@
+import { getErrorCauseChain } from '@kody-internal/shared/error-message.ts'
 import { recordSkillFileRead } from '#worker/package-registry/skill-read-events.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
@@ -12,6 +13,7 @@ import {
 	readAnchoredText,
 	splitFileAnchor,
 } from '#worker/guides/file-anchor.ts'
+import { isRepoSessionDirectoryTargetCallerMessage } from '#worker/repo/repo-session-caller-error.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import {
 	repoReadFileInputSchema,
@@ -42,11 +44,13 @@ export const repoReadFileCapability = defineDomainCapability(
 				sessionId: args.session_id,
 			})
 			const requested = splitFileAnchorForCaller(args.path)
-			const file = await repoSessionRpc(ctx.env, args.session_id).readFile({
-				sessionId: args.session_id,
-				userId: ownerId,
-				path: requested.path,
-			})
+			const file = await repoSessionRpc(ctx.env, args.session_id)
+				.readFile({
+					sessionId: args.session_id,
+					userId: ownerId,
+					path: requested.path,
+				})
+				.catch(rethrowDirectoryTargetAsCallerError)
 			const recordRead = async () => {
 				const skillName = /^skills\/([^/]+)\//.exec(file.path)?.[1]
 				if (!source || !skillName || file.content == null) return
@@ -126,4 +130,20 @@ function splitFileAnchorForCaller(path: string) {
 		}
 		throw error
 	}
+}
+
+/**
+ * A folder path (`src`) is caller-correctable. DO RPC loses Error subclass
+ * identity, so match the stable phrase. KODY-CA.
+ */
+function rethrowDirectoryTargetAsCallerError(error: unknown): never {
+	const match = getErrorCauseChain(error).find(
+		(entry) =>
+			entry instanceof Error &&
+			isRepoSessionDirectoryTargetCallerMessage(entry.message),
+	)
+	if (match instanceof Error) {
+		throw new McpCallerError(match.message, { cause: error })
+	}
+	throw error
 }
