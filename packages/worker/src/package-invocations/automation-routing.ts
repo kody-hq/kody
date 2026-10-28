@@ -1,8 +1,10 @@
+import { buildExecuteInvokePassthroughSource } from '#mcp/execute-invoke.ts'
 import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
 import {
 	type AutomationExecutionTarget,
 	automationTargetId,
 	exportKeyForPath,
+	packageExportSpecifier,
 	resolveAutomationRouting,
 } from '#worker/execution-contexts/automation-settings.ts'
 import { normalizePackageExportKey } from '#worker/package-registry/manifest.ts'
@@ -24,6 +26,17 @@ export async function resolvePackageAutomationRouting(input: {
 		userId: input.orgId,
 		sourceId: input.sourceId,
 	})
+	if (input.target.kind === 'workflow') {
+		return {
+			setting: input.target.execution,
+			contextCode: buildExecuteInvokePassthroughSource(
+				packageExportSpecifier(
+					manifest.name,
+					normalizePackageExportKey(input.target.exportName),
+				),
+			),
+		}
+	}
 	const exports = manifest.exports ?? {}
 	let declared: unknown = null
 	let exportKey: string | null = null

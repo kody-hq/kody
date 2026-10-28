@@ -20,6 +20,8 @@ export type AutomationExecutionKind = (typeof automationExecutionKinds)[number]
 export type AutomationExecutionTarget =
 	| { kind: 'job'; name: string; jobId: string }
 	| { kind: 'webhook' | 'subscription'; name: string }
+	/** Package workflows carry their setting from `workflows.create`. */
+	| { kind: 'workflow'; exportName: string; execution: AutomationExecution }
 
 export type AutomationExecutionOverride = {
 	execution: AutomationExecution

@@ -774,7 +774,7 @@ export async function runExecuteToolCall(input: {
 				}
 			}
 		}
-		if (routed?.kind === 'pending') {
+		if (routed?.kind === 'pending' || routed?.kind === 'queued') {
 			transportDetached = true
 			const timing = finishToolTiming(timingStart)
 			return buildTransportBudgetFollowResponse({

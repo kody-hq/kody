@@ -785,6 +785,7 @@ function createWorkflowsProxy(runtimeBridge) {
 				...(packageId ? { packageId } : {}),
 				...(exportName ? { exportName } : {}),
 				...(code ? { code } : {}),
+				...(input.execution === undefined ? {} : { execution: input.execution }),
 			};
 			return await runtimeBridge.workflowCreate(
 				payload,
