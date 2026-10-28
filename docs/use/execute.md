@@ -458,9 +458,11 @@ to be approved for both secrets, and only sends the derived Basic header in the
 outbound request. The token request runs on Kody, hosted and `--local`, and its
 `access_token` and `refresh_token` come back as sealed handles: use
 `Authorization: Bearer ${token.access_token}` in a fetch to the token host's
-registrable domain, or to any host approved for the client secrets, and Kody
-fills the token on egress. Code never sees the token. Any JSON response to a
-request Kody filled a credential into is sealed the same way.
+registrable domain, to any host approved for the client secrets, or to the exact
+host of the access token's https `aud` claim (an Azure token for
+`https://management.azure.com/.default` fills on `management.azure.com`), and
+Kody fills the token on egress. Code never sees the token. Any JSON response to
+a request Kody filled a credential into is sealed the same way.
 
 See [Secrets and host approval](./secrets-and-values.md) for placeholders, host
 approval, and **`kody.secretList`** / **`secretSet`**.

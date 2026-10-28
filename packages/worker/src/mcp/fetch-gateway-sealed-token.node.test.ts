@@ -156,3 +156,79 @@ test('a token minted on a separate auth domain fills on the client secret approv
 	)
 	expect(seen).toHaveLength(2)
 })
+
+test('an Entra client-credentials token reaches its audience APIs with the secret approved only for login', async () => {
+	vi.spyOn(secretService, 'resolveSecret').mockResolvedValue(
+		userSecret('client-secret-value', ['login.microsoftonline.com']),
+	)
+	const jwt = (aud: string) =>
+		`${Buffer.from('{"alg":"RS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ aud })).toString('base64url')}.sig`
+	const seen: Array<[string, string | null]> = []
+	const globalFetch = vi.fn(async (outbound: Request) => {
+		const url = new URL(outbound.url)
+		seen.push([url.hostname, outbound.headers.get('authorization')])
+		if (url.hostname !== 'login.microsoftonline.com') {
+			return Response.json({ ok: true })
+		}
+		const scope = new URLSearchParams(await outbound.text()).get('scope')
+		return Response.json({
+			token_type: 'Bearer',
+			expires_in: 3599,
+			access_token: jwt(String(scope).replace('/.default', '')),
+		})
+	}) as unknown as typeof fetch
+	const send = (url: string, init: RequestInit) =>
+		executeGatewayFetch({
+			env,
+			props: { ...props, credentialClientBinding: 'run-a' },
+			request: new Request(url, init),
+			globalFetch,
+		})
+	const mint = async (scope: string) => {
+		const body = new URLSearchParams({
+			grant_type: 'client_credentials',
+			scope,
+		})
+		const token = (await (
+			await send(
+				'https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token',
+				{
+					method: 'POST',
+					headers: {
+						'content-type': 'application/x-www-form-urlencoded',
+						authorization: `Basic ${buildSecretPlaceholder({ name: 'clientSecret', scope: null })}`,
+					},
+					body: body.toString(),
+				},
+			)
+		).json()) as Record<string, unknown>
+		return `Bearer ${String(token.access_token)}`
+	}
+	const arm = await mint('https://management.azure.com/.default')
+	const logs = await mint('https://api.loganalytics.io/.default')
+	expect(arm).not.toContain('.sig')
+	await send(
+		'https://management.azure.com/subscriptions?api-version=2022-12-01',
+		{
+			headers: { Authorization: arm },
+		},
+	)
+	await send('https://api.loganalytics.azure.com/v1/workspaces/w/query', {
+		method: 'POST',
+		headers: { Authorization: logs },
+		body: '{}',
+	})
+	expect(seen.slice(2)).toEqual([
+		['management.azure.com', `Bearer ${jwt('https://management.azure.com')}`],
+		[
+			'api.loganalytics.azure.com',
+			`Bearer ${jwt('https://api.loganalytics.io')}`,
+		],
+	])
+	await expect(
+		send('https://collector.test/x', { headers: { Authorization: arm } }),
+	).rejects.toThrow(
+		/may only be sent to microsoftonline\.com, management\.azure\.com, not collector\.test/,
+	)
+	expect(seen).toHaveLength(4)
+})

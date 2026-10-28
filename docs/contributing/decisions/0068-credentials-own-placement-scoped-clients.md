@@ -1031,3 +1031,36 @@ JWT, and a manual token request returned whatever the token endpoint sent.
   gone; nothing derived reaches code to redact.
 - **Unchanged.** Kody-managed integration refresh (`integrations/token-refresh`)
   already runs on the host and does not go through the gateway.
+
+### 2026-10-28: an access token also fills on its audience
+
+The first cut broke every identity provider whose token host is not the API host
+(Azure Entra at `login.microsoftonline.com` for `management.azure.com`; Google,
+Okta, and Auth0 custom APIs) unless the client secret was approved for the API
+too, which widens where the secret itself may go. Kent kept
+`oauthClientCredentials` free of a `send_to_host` option, so a sealed
+`access_token` that is a JWT also fills on the host its https `aud` names:
+
+- **Why it is safe.** The identity provider chose `aud`; code only asked for a
+  scope or resource. A token is only good at its audience, so sending it there
+  is the use it was minted for. A token for an attacker's audience gives the
+  attacker a token only that attacker accepts, never the secret or another API's
+  access.
+- **Exact host.** `aud` adds its exact host, not its registrable domain or
+  subdomains, so an `https://management.azure.com` token does not fill on
+  `<label>.<region>.cloudapp.azure.com` or `evil.management.azure.com`.
+- **One outside audience.** A JWT naming more than one https audience outside
+  the token and approved domains gets none (an `aud` like Auth0's `userinfo` on
+  the token domain does not count), so a multi-audience token cannot carry one
+  API's access to a second host.
+- **Not an echo.** A token whose text contains a value Kody filled into the
+  request (an endpoint that echoed the secret) gets no audience host.
+- **Opaque tokens.** A token that is not a JWT with an https `aud` keeps the
+  token and approved domains. Kody does not read the requested `scope` or
+  `resource`: code wrote those, so they cannot vouch for where the token goes.
+  The refusal says so and names the fix (a JWT access token whose `aud` is the
+  API, or approving the API on the credential).
+- **Documented aliases.** Entra resource identifiers Microsoft serves at another
+  host also fill there: `api.loganalytics.io` on `api.loganalytics.azure.com`,
+  and `management.core.windows.net` on `management.azure.com`. Add a pair only
+  when Microsoft documents it.
