@@ -159,6 +159,7 @@ async function handleTaggedPackageAppRequest(
 				authorized,
 				handle: packagePath.username,
 				packagePath,
+				kodyId: slugLookup?.savedPackage.kodyId,
 			}).catch((error: unknown) => {
 				console.warn('package-app-identity-lookup-failed', error)
 				return null
@@ -213,6 +214,7 @@ async function handleTaggedPackageAppRequest(
 						},
 						handle: packagePath.username,
 						packagePath,
+						kodyId: slugLookup?.savedPackage.kodyId,
 					}).catch((error: unknown) => {
 						console.warn('package-app-identity-lookup-failed', error)
 						return null
