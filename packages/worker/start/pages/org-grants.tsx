@@ -4,7 +4,14 @@ import {
 	type OrgGrantView,
 } from '#universal/loader-data.ts'
 import { orgCollaboratorsPath, orgTeamsPath } from '#universal/org-pages.ts'
-import { getDangerPillCss } from '#universal/styles/style-primitives.ts'
+import {
+	orgWideReadAccessLabel,
+	orgWideReadAccessOptions,
+} from '#universal/org-wide-read-access.ts'
+import {
+	getDangerPillCss,
+	getPillButtonCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -21,12 +28,61 @@ import {
 	AccountManagementPanel,
 	AccountManagementShell,
 	AccountPageHeader,
+	accountActionsCss,
+	accountFieldCss,
+	accountFieldLabelCss,
+	accountFieldNoteCss,
+	accountInputCss,
 } from './account-management-components.tsx'
-import { revokeOrganizationGrant } from '#start/server/org-mutations'
+import {
+	grantOrganizationReadAccess,
+	revokeOrganizationGrant,
+} from '#start/server/org-mutations'
 import { useOrgPeopleMutation } from './org-people-mutation.ts'
 function grantSummary(grant: OrgGrantView) {
+	if (grant.resourceType === 'org') {
+		return `${grant.subjectLabel} · Organization-wide access`
+	}
 	const access = grant.presetLabel ?? 'Custom permissions'
 	return `${grant.subjectLabel} · ${access} on ${grant.resourceLabel}`
+}
+
+function grantDetail(grant: OrgGrantView) {
+	if (grant.preset) return resourceTypeLabel(grant.resourceType)
+	const reads = grant.permissions.flatMap(
+		(permission) => orgWideReadAccessLabel(permission) ?? [],
+	)
+	const other = grant.permissions.filter(
+		(permission) => !orgWideReadAccessLabel(permission),
+	)
+	const parts = [
+		...(reads.length > 0 ? [`Read: ${reads.join(', ')}`] : []),
+		...other,
+	]
+	return `${resourceTypeLabel(grant.resourceType)} · ${parts.join(', ') || 'no permissions'}`
+}
+
+function resourceTypeLabel(resourceType: string) {
+	switch (resourceType) {
+		case 'org':
+			return 'Organization'
+		case 'package':
+			return 'Package'
+		case 'app':
+			return 'Package app'
+		case 'job':
+			return 'Job'
+		case 'credential':
+			return 'Credential'
+		case 'memory':
+			return 'Memory'
+		case 'email':
+			return 'Email'
+		case 'execution_context':
+			return 'Execution context'
+		default:
+			return resourceType
+	}
 }
 
 export function OrgGrantsPage(props: {
@@ -107,12 +163,7 @@ function OrgGrantsContent({
 											</span>
 											<span css={rowTextCss}>
 												<span css={rowNameCss}>{grantSummary(grant)}</span>
-												<span css={rowDetailCss}>
-													{grant.resourceType}
-													{grant.preset
-														? ''
-														: ` · ${grant.permissions.join(', ') || 'no permissions'}`}
-												</span>
+												<span css={rowDetailCss}>{grantDetail(grant)}</span>
 											</span>
 											{data.canManage && grant.canRevoke ? (
 												<button
@@ -169,7 +220,173 @@ function OrgGrantsContent({
 					)}
 				</AccountManagementPanel>
 			) : null}
+			{data?.ok && data.orgWideRead ? (
+				<OrgWideReadAccessForm
+					orgSlug={data.org.slug}
+					subjects={data.orgWideRead.subjects}
+					queryKey={queryKey}
+				/>
+			) : null}
 		</AccountManagementShell>
+	)
+}
+
+function OrgWideReadAccessForm({
+	orgSlug,
+	subjects,
+	queryKey,
+}: {
+	orgSlug: string
+	subjects: NonNullable<OrgGrantsLoaderData['orgWideRead']>['subjects']
+	queryKey: QueryKey
+}) {
+	const capture = useSubmitterScope()
+	const mutation = useOrgPeopleMutation(queryKey, grantOrganizationReadAccess)
+	const [subjectKey, setSubjectKey] = useState('')
+	const [selected, setSelected] = useState<Array<string>>([])
+	const [message, setMessage] = useState<{
+		tone: 'info' | 'error'
+		text: string
+	} | null>(null)
+	const subject = subjects.find((entry) => entry.key === subjectKey) ?? null
+	const people = subjects.filter((entry) => entry.kind === 'user')
+	const teams = subjects.filter((entry) => entry.kind === 'team')
+	const unchanged =
+		subject !== null &&
+		selected.length === subject.reads.length &&
+		selected.every((permission) => subject.reads.includes(permission))
+	return (
+		<AccountManagementPanel
+			title="Organization-wide read access"
+			description="Let a member or team read every resource of a kind in this organization without making them an Owner. This is read only: it never lets them run, change, delete, or share anything."
+		>
+			{subjects.length === 0 ? (
+				<p css={mutedCopyCss} data-testid="org-wide-read-empty">
+					Add members or teams to this organization first. Owners already have
+					full access.
+				</p>
+			) : (
+				<form
+					data-testid="org-wide-read-form"
+					css={formCss}
+					onSubmit={(event) => {
+						event.preventDefault()
+						if (!subject) return
+						const isCurrent = capture()
+						setMessage(null)
+						mutation.mutate(
+							{ orgSlug, subject: subject.key, permissions: selected },
+							{
+								onSuccess: () => {
+									if (!isCurrent()) return
+									setMessage({
+										tone: 'info',
+										text: `Read access saved for ${subject.label}.`,
+									})
+								},
+								onError: (error) => {
+									if (isCurrent())
+										setMessage({ tone: 'error', text: error.message })
+								},
+							},
+						)
+					}}
+				>
+					<label css={accountFieldCss}>
+						<span css={accountFieldLabelCss}>Member or team</span>
+						<select
+							name="subject"
+							value={subjectKey}
+							data-field-ring
+							css={selectCss}
+							onChange={(event) => {
+								const next = event.currentTarget.value
+								setSubjectKey(next)
+								setSelected(
+									subjects.find((entry) => entry.key === next)?.reads ?? [],
+								)
+								setMessage(null)
+							}}
+						>
+							<option value="">Choose a member or team…</option>
+							{people.length > 0 ? (
+								<optgroup label="Members">
+									{people.map((entry) => (
+										<option key={entry.key} value={entry.key}>
+											{entry.label}
+										</option>
+									))}
+								</optgroup>
+							) : null}
+							{teams.length > 0 ? (
+								<optgroup label="Teams">
+									{teams.map((entry) => (
+										<option key={entry.key} value={entry.key}>
+											{entry.label}
+										</option>
+									))}
+								</optgroup>
+							) : null}
+						</select>
+						<p css={accountFieldNoteCss}>
+							Edits this member or team's own organization grant. Access a
+							member gets through a team is set on that team.
+						</p>
+					</label>
+					<fieldset css={fieldsetCss} disabled={!subject || mutation.isPending}>
+						<legend css={accountFieldLabelCss}>Can read</legend>
+						{orgWideReadAccessOptions.map((option) => {
+							const checked = selected.includes(option.permission)
+							return (
+								<label
+									key={option.permission}
+									css={checkRowCss}
+									data-testid="org-wide-read-option"
+									data-permission={option.permission}
+								>
+									<input
+										type="checkbox"
+										name="permissions"
+										value={option.permission}
+										checked={checked}
+										css={checkboxCss}
+										onChange={() =>
+											setSelected((current) =>
+												checked
+													? current.filter(
+															(permission) => permission !== option.permission,
+														)
+													: [...current, option.permission],
+											)
+										}
+									/>
+									<span css={checkTextCss}>
+										<span css={checkLabelCss}>{option.label}</span>
+										<span css={accountFieldNoteCss}>{option.description}</span>
+									</span>
+								</label>
+							)
+						})}
+					</fieldset>
+					{message ? (
+						<AccountManagementMessage tone={message.tone}>
+							{message.text}
+						</AccountManagementMessage>
+					) : null}
+					<div css={accountActionsCss}>
+						<button
+							type="submit"
+							data-testid="org-wide-read-save"
+							disabled={!subject || unchanged || mutation.isPending}
+							css={getPillButtonCss({ size: 'sm' })}
+						>
+							{renderIcon('check', { size: '1.05rem' })}
+							{mutation.isPending ? 'Saving…' : 'Save read access'}
+						</button>
+					</div>
+				</form>
+			)}
+		</AccountManagementPanel>
 	)
 }
 const mutedCopyCss = {
@@ -234,4 +451,55 @@ const iconCss = {
 	color: colors.textMuted,
 	backgroundColor: colors.background,
 	flexShrink: 0,
+}
+
+const formCss = {
+	display: 'grid',
+	gap: spacing.lg,
+}
+
+const selectCss = {
+	...accountInputCss,
+	padding: '0.55rem 0.7rem',
+}
+
+const fieldsetCss = {
+	border: 0,
+	margin: 0,
+	padding: 0,
+	minWidth: 0,
+	display: 'grid',
+	gap: spacing.sm,
+	'&:disabled': { opacity: 0.6 },
+}
+
+const checkRowCss = {
+	display: 'flex',
+	alignItems: 'flex-start',
+	gap: spacing.sm,
+	padding: '0.7rem 0.9rem',
+	borderRadius: radius.card,
+	border: `1.5px solid ${colors.border}`,
+	backgroundColor: colors.surface,
+	cursor: 'pointer',
+	'&:has(input:checked)': {
+		borderColor: colors.primary,
+		backgroundColor: colors.primarySoftest,
+	},
+}
+
+const checkboxCss = {
+	marginTop: '0.2rem',
+	accentColor: colors.primary,
+	flexShrink: 0,
+}
+
+const checkTextCss = {
+	display: 'grid',
+	gap: '0.15rem',
+	minWidth: 0,
+}
+
+const checkLabelCss = {
+	fontWeight: 600,
 }

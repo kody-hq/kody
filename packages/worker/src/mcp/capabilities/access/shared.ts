@@ -392,7 +392,7 @@ export function grantChangesMemberOrBilling(input: {
  * organization grant includes any of `ownerOnlyOrgGrantPermissions`.
  */
 export async function resolveAuthorizedGrantPermissions(
-	ctx: CapabilityContext,
+	ctx: GrantChangeContext,
 	input: {
 		family: OrgResourceType | 'org'
 		preset?: GrantPreset | null

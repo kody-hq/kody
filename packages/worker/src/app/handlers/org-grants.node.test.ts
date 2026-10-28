@@ -32,8 +32,13 @@ vi.mock('#app/page-auth.ts', () => ({
 }))
 
 const { loadOrgCollaboratorsData } = await import('./org-collaborators.ts')
-const { testOrgGrantsApiHandler, testOrgGrantsRevokePostHandler } =
-	await import('./org-grants.test-support.ts')
+const {
+	grantOrganizationReadAccess,
+	testOrgGrantsApiHandler,
+	testOrgGrantsRevokePostHandler,
+} = await import('./org-grants.test-support.ts')
+const { compileAccessForActor } =
+	await import('#worker/authorization/access-compile.ts')
 
 async function readCollaborators(env: Env, { request }: { request: Request }) {
 	const { resolveOrgManagementAccess } =
@@ -381,4 +386,168 @@ test('collaborators JSON is 404 for grant-only people', async () => {
 			} as never)
 		).status,
 	).toBe(404)
+})
+
+async function grantReads(
+	env: Env,
+	person: Person,
+	fields: { subject: string; permissions: Array<string> },
+) {
+	const request = new Request('https://kody.test/@zeta-co/-/grants', {
+		method: 'POST',
+	})
+	await signIn(person, request)
+	const user = await mocks.readAuthenticatedAppUser(request, env)
+	return await grantOrganizationReadAccess({
+		request,
+		env,
+		user,
+		orgSlug: 'zeta-co',
+		...fields,
+	})
+}
+
+async function bobOrgPermissions() {
+	const compiled = await compileAccessForActor({
+		db,
+		orgId: acmeId as never,
+		userId: people.bob.personId,
+		role: 'member',
+	})
+	return compiled.orgPermissions
+}
+
+test('an owner grants a member org-wide read access; no write comes with it', async () => {
+	const env = createEnv()
+	const listReq = new Request('https://kody.test/@zeta-co/-/grants')
+	await signIn('ada', listReq)
+	const before = (
+		await testOrgGrantsApiHandler(env).execute({ request: listReq } as never)
+	).data as {
+		orgWideRead: {
+			subjects: Array<{ key: string; label: string; reads: Array<string> }>
+		}
+	}
+	// Owners already hold everything, and outside collaborators are not listed.
+	expect(before.orgWideRead.subjects).toEqual([
+		{
+			key: `user:${people.bob.personId}`,
+			kind: 'user',
+			label: '@bob',
+			reads: [],
+		},
+	])
+	expect(await bobOrgPermissions()).not.toContain('job:read')
+
+	const saved = await grantReads(env, 'ada', {
+		subject: `user:${people.bob.personId}`,
+		permissions: ['job:read', 'app:read'],
+	})
+	expect(saved.status).toBe(200)
+	const permissions = await bobOrgPermissions()
+	expect(permissions.has('job:read')).toBe(true)
+	expect(permissions.has('app:read')).toBe(true)
+	for (const write of [
+		'job:write',
+		'job:execute',
+		'app:execute',
+		'org:execute',
+	]) {
+		expect(permissions.has(write as never)).toBe(false)
+	}
+
+	const after = (
+		await testOrgGrantsApiHandler(env).execute({ request: listReq } as never)
+	).data as {
+		orgWideRead: { subjects: Array<{ reads: Array<string> }> }
+		grants: Array<{ resourceType: string; permissions: Array<string> }>
+	}
+	expect([...(after.orgWideRead.subjects[0]?.reads ?? [])].sort()).toEqual([
+		'app:read',
+		'job:read',
+	])
+	expect(
+		after.grants.find((grant) => grant.resourceType === 'org'),
+	).toBeTruthy()
+
+	const refused = await grantReads(env, 'ada', {
+		subject: `user:${people.bob.personId}`,
+		permissions: ['job:write'],
+	})
+	expect(refused.status).toBe(400)
+	expect(refused.data).toMatchObject({ ok: false })
+	expect((await bobOrgPermissions()).has('job:write')).toBe(false)
+})
+
+test('saving read access keeps other org permissions and drops unchecked reads', async () => {
+	const env = createEnv()
+	const now = '2026-01-01T00:00:00.000Z'
+	sqlite
+		.prepare(
+			`INSERT INTO grants (
+			   id, org_id, resource_type, resource_id, subject_type, subject_id,
+			   created_by_user_id, created_at, updated_at
+			 ) VALUES ('grant-bob-org', ?, 'org', ?, 'user', ?, ?, ?, ?)`,
+		)
+		.run(acmeId, acmeId, people.bob.personId, people.ada.personId, now, now)
+	for (const permission of ['audit:read', 'job:read']) {
+		sqlite
+			.prepare(
+				`INSERT INTO grant_permissions (grant_id, permission) VALUES ('grant-bob-org', ?)`,
+			)
+			.run(permission)
+	}
+	const saved = await grantReads(env, 'ada', {
+		subject: `user:${people.bob.personId}`,
+		permissions: ['package:read'],
+	})
+	expect(saved.status).toBe(200)
+	const permissions = await bobOrgPermissions()
+	expect(permissions.has('audit:read')).toBe(true)
+	expect(permissions.has('package:read')).toBe(true)
+	expect(permissions.has('job:read')).toBe(false)
+})
+
+test('unchecking every read clears a reads-only org grant', async () => {
+	const env = createEnv()
+	const subject = `user:${people.bob.personId}`
+	expect(
+		(await grantReads(env, 'ada', { subject, permissions: ['job:read'] }))
+			.status,
+	).toBe(200)
+	expect((await bobOrgPermissions()).has('job:read')).toBe(true)
+	const cleared = await grantReads(env, 'ada', { subject, permissions: [] })
+	expect(cleared.status).toBe(200)
+	expect((await bobOrgPermissions()).has('job:read')).toBe(false)
+	const live = await db
+		.prepare(
+			`SELECT COUNT(*) AS n FROM grants
+			 WHERE org_id = ? AND resource_type = 'org' AND deleted_at IS NULL`,
+		)
+		.bind(acmeId)
+		.first<{ n: number }>()
+	expect(live?.n).toBe(0)
+})
+
+test('only a member:write holder can grant read access, and only to members or teams', async () => {
+	const env = createEnv()
+	const denied = await grantReads(env, 'bob', {
+		subject: `user:${people.bob.personId}`,
+		permissions: ['job:read'],
+	})
+	expect(denied.status).toBe(403)
+	expect((await bobOrgPermissions()).has('job:read')).toBe(false)
+
+	for (const subject of [
+		`user:${people.dan.personId}`,
+		`user:${people.ada.personId}`,
+		'team:missing',
+		'nonsense',
+	]) {
+		const refused = await grantReads(env, 'ada', {
+			subject,
+			permissions: ['job:read'],
+		})
+		expect(refused.status).toBe(400)
+	}
 })

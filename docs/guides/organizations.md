@@ -22,6 +22,36 @@ Members hold the org basics (`org:read`, `member:read`, `team:read`,
 catalog search (`search:read`) plus their grants. See
 [Share a package](/docs/package-sharing) for presets and grants.
 
+### Org-wide read access
+
+To let a Member read everything of one kind without making them an Owner, an
+Owner grants read access on the organization: **Grants** page,
+**Organization-wide read access**, or `accessGrant` with `resource_type: "org"`:
+
+```json
+{
+	"resource_type": "org",
+	"resource_id": "<org id>",
+	"subject_type": "user",
+	"username": "casey",
+	"permissions": ["job:read"]
+}
+```
+
+From the CLI: `kody api accessGrant --org <slug> --params '<that JSON>'`.
+
+| Permission         | Reads                                                     |
+| ------------------ | --------------------------------------------------------- |
+| `job:read`         | Every job, workflow, and run (`runList`, `runGet`, ...)   |
+| `app:read`         | Every package app and its sessions                        |
+| `package:read`     | Source, skills, and checks for every package and repo     |
+| `integration:read` | Which integrations and MCP servers exist, never a token   |
+| `email:read`       | Every inbox and message, including sign-in codes they get |
+
+These are read only. Running, editing, triaging runs, sharing, and using a
+credential still need their own grant. Secret values and memories are never
+grantable org-wide.
+
 ## Personal vs team
 
 |                    | Personal                                             | Team                                                                                                                                                                                            |

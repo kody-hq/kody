@@ -242,11 +242,11 @@ test('trusted history allows a listed migration-repairs digest rewrite', async (
 	const ledger = await readMigrationLedger()
 	const bootstrapFiles = ledger.migrations.map((entry) => ({ ...entry }))
 	const historicalEntry = {
-		filename: '0199-repairable.sql',
+		filename: '9999-repairable.sql',
 		sha256: hashMigrationContent('SELECT 1;\n'),
 	}
 	const trustedHistory: TrustedMigrationHistory = {
-		ref: 'trusted-base-with-0199',
+		ref: 'trusted-base-with-9999',
 		files: [...bootstrapFiles, historicalEntry],
 		ledgerEntries: [...bootstrapFiles, historicalEntry],
 		ledgerBaselineSha256: expectedMigrationBaselineSha256,

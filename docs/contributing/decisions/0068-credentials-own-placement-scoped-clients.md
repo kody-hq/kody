@@ -1068,3 +1068,41 @@ too, which widens where the secret itself may go. Kent kept
   host also fill there: `api.loganalytics.io` on `api.loganalytics.azure.com`,
   and `management.core.windows.net` on `management.azure.com`. Add a pair only
   when Microsoft documents it.
+
+### 2026-10-28: a sealed token can be saved as a Key
+
+Sealing broke every flow that keeps a long-lived token a token exchange returns.
+Plaid's `/item/public_token/exchange` `access_token` came back sealed, so
+`secretSet` stored the `kody-sealed.…` text, which only works in the run that
+received it, and Plaid later answered `INVALID_ACCESS_TOKEN`. Kent asked for a
+sanctioned path:
+
+- **`secretSet({ name, scope: 'user', sealed_token })`.** The host opens a
+  sealed token from the current run (same org, run-binding, and expiry checks as
+  a fill) and saves the real token as a user-scope Key through `saveSecret`, so
+  the value is encrypted and audited like any Key and never returned. It works
+  hosted, `--local` (the CapabilityProxy binding matches the gateway's), and
+  through the Open API route, where an Open API caller has no run and is refused
+  as another run.
+- **Hosts.** A sealed token now records exact save hosts: the token URL host and
+  the filled credentials' exact (non-wildcard) approved hosts. The Key gets
+  those plus the token's `aud` hosts. Keys match hosts exactly, so the Key is
+  never wider than the sealed token's registrable domains.
+- **Placement.** The Key's placement is headers and body, with the body opt-in
+  recorded as source `sealed_token` (migration 0199), not `owner`. A sealed
+  token already filled the body. The URL query and path stay refused because
+  hosts log URLs.
+- **No new approval.** The owner approved the hosts on the credentials that
+  minted the token, and saving does not widen where it goes. The write is
+  audited as `credential.kind_set` with `savedFrom: 'sealed_token'`, plus the
+  usual created/value-replaced row. An existing name that is not a Key is
+  refused. Replacing an existing Key (re-linking a Plaid Item) never widens it:
+  its hosts and placement become the overlap of the Key's and the sealed
+  token's, its opt-ins stay as the owner left them, and no overlap is refused.
+- **Refused.** A token from another run, another org, or past its expiry; a
+  `secretJwtSign` JWT (sign a new one when needed); a token whose text repeats a
+  credential filled into its request (an echo, the same check that drops
+  audience hosts); a token sealed before save hosts existed; and package
+  runtimes, which cannot create user secrets. A `value` (or `secretSetMany`
+  value) that contains `kody-sealed.` is refused with a pointer to
+  `sealed_token`.

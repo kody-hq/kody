@@ -1531,6 +1531,23 @@ export type OrgGrantsLoaderData = {
 		}
 	>
 	canManage: boolean
+	/**
+	 * Owner-facing form for organization grants that carry read-only resource
+	 * permissions. Null when the viewer cannot grant them (no `member:write`)
+	 * or the organization is personal.
+	 */
+	orgWideRead: {
+		subjects: Array<OrgWideReadSubjectView>
+	} | null
+}
+
+export type OrgWideReadSubjectView = {
+	/** `user:<id>` or `team:<id>`; never shown. */
+	key: string
+	kind: 'user' | 'team'
+	label: string
+	/** Read-only permissions this subject already holds on the organization. */
+	reads: Array<string>
 }
 
 export type OrgCollaboratorView = {
