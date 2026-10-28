@@ -779,8 +779,6 @@ export async function runSearchTool(input: {
 			responseTrimmed: result.telemetry?.responseTrimmed ?? false,
 			trimmedMatchCount,
 			offline: execution.result.offline,
-			jevFlagCohort:
-				jevTelemetry == null ? 'n/a' : jevTelemetry.enabled ? 'on' : 'off',
 			jevOutcome: jevTelemetry?.outcome ?? '',
 			jevErrorReason: jevTelemetry?.errorReason,
 			candidatesBeforeJev: jevTelemetry?.candidatesBefore,
