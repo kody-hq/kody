@@ -5,7 +5,10 @@ import {
 	executeRoutingInputFields,
 	routeExecuteForCaller,
 } from '#worker/execution-contexts/execute-routing.ts'
-import { describeCloudFallback } from '#worker/execution-contexts/routing.ts'
+import {
+	describeCloudFallback,
+	type ExecutionContextRunMetadata,
+} from '#worker/execution-contexts/routing.ts'
 import * as Sentry from '@sentry/cloudflare'
 import {
 	type ContentBlock,
@@ -780,16 +783,9 @@ export async function runExecuteToolCall(input: {
 				}
 			}
 		}
-		const cloudFallback =
-			routed?.kind === 'cloud' && routed.metadata?.fellBackToCloud
-				? routed.metadata
-				: null
-		const cloudFallbackContent = cloudFallback
-			? [{ type: 'text' as const, text: describeCloudFallback(cloudFallback) }]
-			: []
-		const cloudFallbackFields = cloudFallback
-			? { executionContext: cloudFallback }
-			: {}
+		const { cloudFallbackContent, cloudFallbackFields } = cloudFallbackParts(
+			routed?.kind === 'cloud' ? routed.metadata : null,
+		)
 		if (routed?.kind === 'pending') {
 			transportDetached = true
 			const timing = finishToolTiming(timingStart)
@@ -1125,6 +1121,7 @@ export async function runExecuteToolCall(input: {
 					...cloudFallbackContent,
 					...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 					...formatSurfacedMemoriesMarkdown(surfacedMemories),
+					...cloudFallbackContent,
 				]),
 				structuredContent: {
 					conversationId: resolvedConversationId,
@@ -1140,6 +1137,7 @@ export async function runExecuteToolCall(input: {
 						? { warnings: rawFetchHostNudges }
 						: {}),
 					...buildMemoryStructuredContent(surfacedMemories),
+					...cloudFallbackFields,
 				},
 				isError: true,
 			}
@@ -1177,6 +1175,7 @@ export async function runExecuteToolCall(input: {
 							text: `Error: ${message}`,
 						},
 						...formatSurfacedMemoriesMarkdown(surfacedMemories),
+						...cloudFallbackContent,
 					]),
 					structuredContent: {
 						conversationId: resolvedConversationId,
@@ -1187,6 +1186,7 @@ export async function runExecuteToolCall(input: {
 						result: passthrough?.structuredResult ?? null,
 						logs: result.logs ?? [],
 						...buildMemoryStructuredContent(surfacedMemories),
+						...cloudFallbackFields,
 					},
 					isError: true,
 				}
@@ -1204,6 +1204,7 @@ export async function runExecuteToolCall(input: {
 							text: `Error: ${contentLimited.note}`,
 						},
 						...formatSurfacedMemoriesMarkdown(surfacedMemories),
+						...cloudFallbackContent,
 					]),
 					structuredContent: {
 						conversationId: resolvedConversationId,
@@ -1215,6 +1216,7 @@ export async function runExecuteToolCall(input: {
 						result: passthrough?.structuredResult ?? null,
 						logs: result.logs ?? [],
 						...buildMemoryStructuredContent(surfacedMemories),
+						...cloudFallbackFields,
 					},
 					isError: true,
 				}
@@ -1249,6 +1251,7 @@ export async function runExecuteToolCall(input: {
 					...contentLimited.blocks,
 					...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 					...formatSurfacedMemoriesMarkdown(surfacedMemories),
+					...cloudFallbackContent,
 				]),
 				structuredContent: {
 					conversationId: resolvedConversationId,
@@ -1271,6 +1274,7 @@ export async function runExecuteToolCall(input: {
 						? { warnings: rawFetchHostNudges }
 						: {}),
 					...buildMemoryStructuredContent(surfacedMemories),
+					...cloudFallbackFields,
 				},
 				isError,
 			}
@@ -1410,6 +1414,9 @@ function buildKeyedExecuteLookupResponse(input: {
 	}
 
 	const retainedResult = input.run.metadata['result']
+	const { cloudFallbackContent, cloudFallbackFields } = cloudFallbackParts(
+		input.run.metadata['executionContext'],
+	)
 	if (input.run.status === 'error') {
 		const errorMessage =
 			input.run.errorMessage ?? 'Execute failed (replayed from run record).'
@@ -1421,6 +1428,7 @@ function buildKeyedExecuteLookupResponse(input: {
 					type: 'text',
 					text: `Error: ${errorMessage}`,
 				},
+				...cloudFallbackContent,
 			]),
 			structuredContent: {
 				conversationId: input.conversationId,
@@ -1436,6 +1444,7 @@ function buildKeyedExecuteLookupResponse(input: {
 				...entitlementStructuredContent(replayedError),
 				...(retainedResult !== undefined ? { result: retainedResult } : {}),
 				logs: [] as Array<unknown>,
+				...cloudFallbackFields,
 			},
 			isError: true,
 		}
@@ -1452,6 +1461,7 @@ function buildKeyedExecuteLookupResponse(input: {
 					displayText: undefined,
 				}),
 			},
+			...cloudFallbackContent,
 		]),
 		structuredContent: {
 			conversationId: input.conversationId,
@@ -1464,8 +1474,25 @@ function buildKeyedExecuteLookupResponse(input: {
 			returnedBytes: 0,
 			result: retainedResult,
 			logs: [] as Array<unknown>,
+			...cloudFallbackFields,
 		},
 		isError: false,
+	}
+}
+
+function isCloudFallback(value: unknown): value is ExecutionContextRunMetadata {
+	if (typeof value !== 'object' || value === null) return false
+	const candidate = value as Partial<ExecutionContextRunMetadata>
+	return candidate.fellBackToCloud === true && Array.isArray(candidate.attempts)
+}
+
+function cloudFallbackParts(metadata: unknown) {
+	const fallback = isCloudFallback(metadata) ? metadata : null
+	return {
+		cloudFallbackContent: fallback
+			? [{ type: 'text' as const, text: describeCloudFallback(fallback) }]
+			: [],
+		cloudFallbackFields: fallback ? { executionContext: fallback } : {},
 	}
 }
 

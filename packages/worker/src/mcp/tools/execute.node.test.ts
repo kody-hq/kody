@@ -753,6 +753,31 @@ test('execute tool replays finished keyed runs and reports in-progress without r
 		result: { ok: true, agentId: 'agent-9' },
 	})
 
+	const fallback = {
+		id: 'ec_box',
+		name: 'build-box',
+		fellBackToCloud: true,
+		attempts: [
+			{
+				target: 'ec_box',
+				name: 'build-box',
+				outcome: 'rejected',
+				reason: 'busy',
+			},
+		],
+	}
+	const fallbackReplayed = await replay('conv-fallback-replay', {
+		metadata: { result: { ok: true }, executionContext: fallback },
+	})
+	expect(fallbackReplayed.structuredContent).toMatchObject({
+		replayed: true,
+		executionContext: fallback,
+	})
+	expect(fallbackReplayed.content).toContainEqual({
+		type: 'text',
+		text: 'Ran on Kody cloud: no execution context in your chain took this run (build-box (ec_box): rejected busy).',
+	})
+
 	const inProgress = await replay('conv-running', {
 		id: 'run-running-1',
 		status: 'running',
