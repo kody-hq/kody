@@ -65,6 +65,8 @@ export type DeviceVerificationRequest = {
 	orgs: Array<DeviceVerificationOrg>
 	selectedOrgSlug: string | null
 	requestedOrgSlug: string | null
+	/** The CLI asked for an org this person cannot use. */
+	requestedOrgUnavailable: boolean
 }
 
 export type DeviceLookupResult =
@@ -173,10 +175,17 @@ export async function lookupDeviceAuthorization(input: {
 		input.env.APP_DB,
 		input.user.personId,
 	)
-	const { orgs, selectedOrgSlug } = selectConsentOrgsForLoader(
-		accessible,
-		row.requested_org_slug,
+	const requestedOrgUnavailable = Boolean(
+		row.requested_org_slug &&
+		!accessible.some((org) => org.slug === row.requested_org_slug),
 	)
+	const consent = selectConsentOrgsForLoader(accessible, row.requested_org_slug)
+	// A sign-in started for an org this person cannot use must not fall back to
+	// their sole org on the consent screen; approve would refuse it anyway.
+	const orgs = requestedOrgUnavailable ? [] : consent.orgs
+	const selectedOrgSlug = requestedOrgUnavailable
+		? null
+		: consent.selectedOrgSlug
 	return {
 		kind: 'found',
 		request: {
@@ -188,6 +197,7 @@ export async function lookupDeviceAuthorization(input: {
 			orgs,
 			selectedOrgSlug,
 			requestedOrgSlug: row.requested_org_slug,
+			requestedOrgUnavailable,
 		},
 	}
 }

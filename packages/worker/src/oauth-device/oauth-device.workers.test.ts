@@ -290,3 +290,30 @@ test('user code guesses are rate limited per person, and misses keep their slot'
 		}),
 	).resolves.toMatchObject({ kind: 'rate_limited' })
 })
+
+test('a sign-in started for an org the person cannot use offers no org to approve', async () => {
+	const person = await seedPerson()
+	const response = await postForm('/oauth/device_authorization', {
+		client_id: cliClientId,
+		scope: 'profile email',
+		resource,
+		org: 'not-my-organization',
+	})
+	const started = (await response.json()) as DeviceStart
+	await expect(
+		lookupDeviceAuthorization({
+			request: verificationRequest('192.0.2.77'),
+			env,
+			user: person,
+			userCode: started.user_code,
+		}),
+	).resolves.toMatchObject({
+		kind: 'found',
+		request: {
+			requestedOrgSlug: 'not-my-organization',
+			requestedOrgUnavailable: true,
+			orgs: [],
+			selectedOrgSlug: null,
+		},
+	})
+})

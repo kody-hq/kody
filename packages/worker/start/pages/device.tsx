@@ -189,6 +189,9 @@ function ConsentCard(props: {
 	const [orgSlug, setOrgSlug] = useState<string | null>(request.selectedOrgSlug)
 	const error = deviceErrorText(props.data.error, props.data.errorMessage)
 	const orgMissing = request.orgs.length === 0
+	const orgUnavailableMessage = request.requestedOrgUnavailable
+		? `This sign-in was started for @${request.requestedOrgSlug}, which this account cannot use. Deny it, or sign in with an account in that organization.`
+		: null
 	return (
 		<>
 			<section css={cardCss} data-testid="device-grant">
@@ -238,6 +241,11 @@ function ConsentCard(props: {
 				<p css={signedInCss}>Signed in as {account.displayName}</p>
 				<p css={descriptionCss}>{account.email}</p>
 			</section>
+			{orgUnavailableMessage ? (
+				<p role="alert" css={getAlertCardCss('error')}>
+					{orgUnavailableMessage}
+				</p>
+			) : null}
 			{error ? (
 				<p role="alert" css={getAlertCardCss('error')}>
 					{error}
@@ -250,12 +258,14 @@ function ConsentCard(props: {
 				data-testid="device-consent-form"
 			>
 				<input type="hidden" name="user_code" value={request.userCode} />
-				<AuthorizeOrgField
-					orgs={request.orgs}
-					selectedOrgSlug={orgSlug}
-					signedIn
-					onChange={setOrgSlug}
-				/>
+				{request.requestedOrgUnavailable ? null : (
+					<AuthorizeOrgField
+						orgs={request.orgs}
+						selectedOrgSlug={orgSlug}
+						signedIn
+						onChange={setOrgSlug}
+					/>
+				)}
 				<div css={actionsCss}>
 					<button
 						type="submit"
