@@ -110,3 +110,61 @@ test('native Start flags invalid connect-secrets hosts instead of offering Allow
 	).toEqual([])
 	expect(html).not.toContain('Allow all 2 hosts')
 })
+
+test('native Start renders a placement approval with hosts and the host-may-store warning', async () => {
+	const secret = userSecret('plaidSecret', ['production.plaid.com'])
+	const html = (
+		await renderStartPage(
+			createElement(ConnectSecretsRoute, {
+				initialData: {
+					ok: true,
+					email,
+					packageOptions: [],
+					packages: [],
+					secrets: [{ ...secret, placement: { headers: true } }],
+					selectedSecret: null,
+					approval: {
+						name: 'plaidSecret',
+						names: ['plaidSecret'],
+						scope: 'user',
+						requestedHost: 'production.plaid.com',
+						requestedHosts: ['production.plaid.com'],
+						rejectedHosts: [],
+						requestedPackageId: null,
+						currentAllowedHosts: ['production.plaid.com'],
+						currentAllowedPackages: [],
+					},
+					approvalError: null,
+					placementApproval: {
+						parts: ['body'],
+						credentials: [
+							{
+								name: 'plaidSecret',
+								placement: { headers: true },
+								pendingParts: ['body'],
+								placementAfter: { headers: true, body: true },
+							},
+						],
+						missingNames: [],
+					},
+					placementApprovalError: null,
+				},
+			}),
+			'/connect/secrets?name=plaidSecret&hosts=production.plaid.com&placement=body',
+		)
+	).replaceAll('<!-- -->', '')
+	expect(
+		missing(html, [
+			'data-testid="connect-secrets-placement"',
+			'Allow plaidSecret in the request body',
+			'production.plaid.com',
+			'data-testid="connect-secrets-placement-warning"',
+			'The host may store this value',
+			'Allow body',
+			'Decline',
+			'headers, body',
+		]),
+	).toEqual([])
+	expect(html).not.toContain('Will be allowed')
+	expect(html).not.toContain('data-testid="connect-secrets-card"')
+})

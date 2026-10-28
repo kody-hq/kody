@@ -156,6 +156,16 @@ enforcement keeps those parts without a new save: migration 0195 records them as
 opted in, so nobody has to migrate anything by hand. Older credentials with no
 placement set fill headers plus those parts.
 
+Agents cannot widen placement, but they can ask the owner to. A refused query,
+path, or body fill of a user Key carries a ready approval link,
+`/connect/secrets?name=<key>&placement=body` (add `&hosts=<host>` to approve the
+host in the same click). The owner sees the credential, the requested part, and
+the "host may store this" warning, then approves or declines. Agents can build
+the same link with `credentialPlacementApprovalLink` (MCP `api`, or
+`kody api credentialPlacementApprovalLink --params '{"name":"plaidSecret","parts":["body"],"hosts":["production.plaid.com"]}'`),
+which never changes placement itself. Other refusals link to the credential's
+fill placement setting (`/@<org>/-/credentials/<credential>#fill-placement`).
+
 Full placeholder rules (encodings, multipart, the inert `{{secret:<name>}}`
 mention form):
 [Secrets and host approval](../use/secrets-and-values.md#placeholders-in-fetch).

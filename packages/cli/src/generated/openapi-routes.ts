@@ -169,6 +169,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['credential_id', 'org'],
 	},
 	{
+		operationId: 'credentialPlacementApprovalLink',
+		method: 'POST',
+		pathTemplate: '/v1/credential-placement-approvals',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'credentialTriggerPickSet',
 		method: 'PUT',
 		pathTemplate: '/v1/credential-trigger-picks',

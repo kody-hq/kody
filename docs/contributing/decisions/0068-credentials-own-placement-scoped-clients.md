@@ -1068,3 +1068,25 @@ too, which widens where the secret itself may go. Kent kept
   host also fill there: `api.loganalytics.io` on `api.loganalytics.azure.com`,
   and `management.core.windows.net` on `management.azure.com`. Add a pair only
   when Microsoft documents it.
+
+## Amendment 2026-10-28: owner placement approval links
+
+- **Context.** A new user Key for a body-auth API (Plaid) was approved for its
+  host through `/connect/secrets` but kept the headers-only default, so every
+  fill failed with `credential_placement_refused` and the owner had to find the
+  placement setting by hand. Agents correctly cannot widen placement.
+- **Decision.** Agents can ask, never approve. `/connect/secrets` takes
+  `placement=query,path,body` (with or without `hosts`); the owner sees the
+  credential, the parts, the hosts, and the "host may store this" warning, and
+  one approval allows the hosts and widens the stored placement. The opt-in it
+  records is `owner` and covers exactly the requested parts plus parts already
+  opted in; parts set from code that the owner never saw stay un-opted. A legacy
+  (null) placement becomes explicit: what it already fills, plus the requested
+  parts.
+- **Errors carry the link.** A query, path, or body refusal of a user Key the
+  run org owns carries its approval link (with the request host). Other refusals
+  link to the credential's fill placement setting,
+  `/@<org>/-/credentials/<credential>#fill-placement`, which opens the editor.
+- **Agent surface.** `credentialPlacementApprovalLink` (MCP `api`, Open API
+  `POST /v1/credential-placement-approvals`, `kody api`) returns the link and
+  whether anything is pending. It is read-only.

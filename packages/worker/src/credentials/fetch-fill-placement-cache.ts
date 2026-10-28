@@ -6,11 +6,13 @@
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { type CredentialTarget } from './credential-resolver.ts'
 import { type CredentialFillPlacement } from './fill-placement.ts'
+import { type FillPlacementRefusalLinks } from './fill-placement-enforcement.ts'
 import { type PackageStamp } from './package-stamp.ts'
 
 type CachedFillPlacement = {
 	placement: CredentialFillPlacement | null
 	credentialId: string | null
+	refusalLinks: FillPlacementRefusalLinks | null
 }
 
 const fillPlacementByActor = new WeakMap<
@@ -78,6 +80,7 @@ export function rememberFetchFillPlacement(input: {
 	credential: CredentialTarget
 	placement: CredentialFillPlacement | null
 	credentialId?: string | null
+	refusalLinks?: FillPlacementRefusalLinks | null
 }): void {
 	const cacheKey = fetchFillPlacementCacheKey(input)
 	if (!input.actor || !cacheKey) return
@@ -89,6 +92,7 @@ export function rememberFetchFillPlacement(input: {
 	byKey.set(cacheKey, {
 		placement: input.placement,
 		credentialId: input.credentialId ?? null,
+		refusalLinks: input.refusalLinks ?? null,
 	})
 }
 
@@ -112,4 +116,17 @@ export function readFetchFillPlacementCredentialId(input: {
 	const cacheKey = fetchFillPlacementCacheKey(input)
 	if (!input.actor || !cacheKey) return undefined
 	return fillPlacementByActor.get(input.actor)?.get(cacheKey)?.credentialId
+}
+
+export function readFetchFillPlacementRefusalLinks(input: {
+	actor: RequestContext | null
+	orgId: string
+	packageStamp?: PackageStamp | null
+	credential: CredentialTarget
+}): FillPlacementRefusalLinks | null {
+	const cacheKey = fetchFillPlacementCacheKey(input)
+	if (!input.actor || !cacheKey) return null
+	return (
+		fillPlacementByActor.get(input.actor)?.get(cacheKey)?.refusalLinks ?? null
+	)
 }

@@ -7,6 +7,11 @@
  * opt-ins by migration 0195), so nobody migrates anything by hand.
  */
 import { SecretPlacementError } from '#mcp/secrets/secret-placement.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import {
+	buildCredentialPlacementApprovalUrl,
+	buildCredentialPlacementSettingUrl,
+} from './placement-approval-links.ts'
 import {
 	type CredentialFillPlacement,
 	type CredentialFillSite,
@@ -60,10 +65,96 @@ export async function resolveEffectiveFillPlacement(input: {
 	return effectiveFillPlacement(input.stored, optIn)
 }
 
-function refusalHint(site: CredentialFillSite) {
-	return site.part === 'header'
-		? 'Its owner can allow that header on the credential page.'
-		: `Its owner can allow the ${site.part === 'path' ? 'URL path' : site.part} on the credential page, which warns that the host may store the value there.`
+/**
+ * What a refusal can link to. Only the owner can approve a wider placement;
+ * the links are for the agent to hand to them.
+ */
+export type FillPlacementRefusalLinks = {
+	baseUrl: string
+	/** The slug of the org that owns the credential, when known. */
+	orgSlug: string | null
+	/**
+	 * Set for a user-scope secret the org owns: query, path, and body refusals
+	 * carry its `/connect/secrets?placement=` owner-approval link.
+	 */
+	approvalSecretName?: string | null
+	requestHost?: string | null
+}
+
+/** The run org's slug when the actor runs in `orgId`, for refusal links. */
+export function refusalLinkOrgSlug(input: {
+	actor: RequestContext | null
+	orgId: string
+}) {
+	return input.actor?.org.id === input.orgId
+		? (input.actor.org.slug ?? null)
+		: null
+}
+
+function partPhrase(site: CredentialFillSite) {
+	switch (site.part) {
+		case 'header':
+			return 'that header'
+		case 'path':
+			return 'the URL path'
+		case 'query':
+		case 'body':
+			return `the ${site.part}`
+		default: {
+			const exhaustive: never = site
+			throw new Error(`Unhandled fill site: ${String(exhaustive)}`)
+		}
+	}
+}
+
+function safeLink(build: () => string) {
+	try {
+		return build()
+	} catch {
+		return null
+	}
+}
+
+function refusalHint(input: {
+	site: CredentialFillSite
+	credentialId: string | null
+	links?: FillPlacementRefusalLinks | null
+}) {
+	const { site, links } = input
+	const phrase = partPhrase(site)
+	const storesWarning =
+		site.part === 'header'
+			? ''
+			: ', which warns that the host may store the value there'
+	const approvalUrl =
+		site.part !== 'header' && links?.approvalSecretName
+			? safeLink(() =>
+					buildCredentialPlacementApprovalUrl({
+						baseUrl: links.baseUrl,
+						names: [links.approvalSecretName ?? ''],
+						parts: [site.part],
+						hosts: links.requestHost ? [links.requestHost] : [],
+						orgSlug: links.orgSlug,
+					}),
+				)
+			: null
+	if (approvalUrl) {
+		return `Ask its owner to open ${approvalUrl} to allow ${phrase}${storesWarning}. Only the owner can approve it; do not retry until they do.`
+	}
+	const settingUrl =
+		links?.orgSlug && input.credentialId
+			? safeLink(() =>
+					buildCredentialPlacementSettingUrl({
+						baseUrl: links.baseUrl,
+						orgSlug: links.orgSlug ?? '',
+						credentialId: input.credentialId ?? '',
+					}),
+				)
+			: null
+	if (settingUrl) {
+		return `Its owner can allow ${phrase} in the credential's fill placement setting${storesWarning}: ${settingUrl}`
+	}
+	return `Its owner can allow ${phrase} on the credential page${storesWarning}.`
 }
 
 /**
@@ -79,6 +170,7 @@ export function enforceFillPlacement(input: {
 	sites: ReadonlyArray<CredentialFillSite>
 	surface: FillPlacementObserveSurface
 	resolutionMode?: SecretResolutionFillMode
+	links?: FillPlacementRefusalLinks | null
 }) {
 	observeFillPlacementWouldBlockSites({
 		credentialName: input.credentialName,
@@ -99,7 +191,11 @@ export function enforceFillPlacement(input: {
 			credentialName: input.credentialName,
 			site: refused,
 			placement: input.placement,
-		})} ${refusalHint(refused)}`,
+		})} ${refusalHint({
+			site: refused,
+			credentialId: input.credentialId,
+			links: input.links,
+		})}`,
 		input.slot,
 	)
 }

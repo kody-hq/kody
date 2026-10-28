@@ -24,6 +24,7 @@ import { type CommunityListingSort } from '#universal/community-search.ts'
 import { type AccountCredentialsResponse } from '#universal/credentials-list.ts'
 import { type CredentialFillPlacementView } from '#universal/credential-fill-placement.ts'
 import { type ApprovalBundleLoaderData } from '#universal/approval-bundles.ts'
+import { type CredentialPlacementApprovalView } from '#universal/credential-placement-approval.ts'
 import { type PackageCredentialApprovalLoaderData } from '#universal/package-credential-approval-page.ts'
 import { type PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
 import { type PackageAppConnectedPeopleLoaderData } from '#universal/package-app-connected-people.ts'
@@ -2516,6 +2517,9 @@ export type AccountSecretsLoaderData = {
 		currentAllowedPackages: Array<string>
 	} | null
 	approvalError: string | null
+	/** `/connect/secrets?placement=`: the fill placement the owner is asked to allow. */
+	placementApproval?: CredentialPlacementApprovalView | null
+	placementApprovalError?: string | null
 	/**
 	 * Set when the secret value/access writes committed but linking the Key to
 	 * a credential provider failed. Callers must not treat this as a failed

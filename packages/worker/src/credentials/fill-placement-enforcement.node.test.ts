@@ -131,6 +131,67 @@ test('enforcement refuses a part outside the placement and names it', () => {
 	expect(message).toContain('slot "apiKey"')
 })
 
+test('a body refusal of a user Key carries its owner-approval link', () => {
+	const env = { APP_DB: migratedDb() }
+	let refused: unknown
+	try {
+		enforceFillPlacement({
+			env,
+			credentialName: 'plaidSecret',
+			credentialId: 'cred_1',
+			slot: 'plaidSecret',
+			placement: { headers: true },
+			sites: [{ part: 'body' }],
+			surface: 'placeholder',
+			links: {
+				baseUrl: 'https://kody.codes',
+				orgSlug: 'kentcdodds',
+				approvalSecretName: 'plaidSecret',
+				requestHost: 'production.plaid.com',
+			},
+		})
+	} catch (error) {
+		refused = error
+	}
+	expect(refused).toBeInstanceOf(SecretPlacementError)
+	const message = (refused as Error).message
+	expect(message).toContain(
+		'https://kody.codes/connect/secrets?name=plaidSecret&hosts=production.plaid.com&placement=body&org=kentcdodds',
+	)
+	expect(message).toContain('host may store the value')
+	expect(message).toContain('Only the owner can approve it')
+	expect(message).toContain('slot "plaidSecret"')
+})
+
+test('other refusals link to the fill placement setting', () => {
+	const env = { APP_DB: migratedDb() }
+	const refuse = (
+		site: { part: 'header'; name: string } | { part: 'query' },
+	) => {
+		try {
+			enforceFillPlacement({
+				env,
+				credentialName: 'vault',
+				credentialId: 'cred_9',
+				slot: null,
+				placement: { headers: ['Authorization'] },
+				sites: [site],
+				surface: 'placeholder',
+				links: { baseUrl: 'https://kody.codes', orgSlug: 'acme' },
+			})
+		} catch (error) {
+			return (error as Error).message
+		}
+		return ''
+	}
+	expect(refuse({ part: 'header', name: 'x-api-key' })).toContain(
+		'https://kody.codes/@acme/-/credentials/cred_9#fill-placement',
+	)
+	expect(refuse({ part: 'query' })).toContain(
+		'fill placement setting, which warns that the host may store the value there: https://kody.codes/@acme/-/credentials/cred_9#fill-placement',
+	)
+})
+
 test('migration 0195 opts legacy credentials in to the parts they were seen filled into', () => {
 	const migrations = new URL('../../migrations/', import.meta.url)
 	const target = '0195-credential-fill-placement-opt-ins.sql'

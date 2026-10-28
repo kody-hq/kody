@@ -26,6 +26,8 @@ import { rememberFetchFillPlacement } from './fetch-fill-placement-cache.ts'
 import {
 	enforceFillPlacement,
 	resolveEffectiveFillPlacement,
+	type FillPlacementRefusalLinks,
+	refusalLinkOrgSlug,
 } from './fill-placement-enforcement.ts'
 import { authorizePersonalCredentialUse } from './personal-credentials.ts'
 
@@ -158,6 +160,16 @@ export const integrationTokenResolver: CredentialResolver<'integration-token'> =
 								name: credential.name,
 							}),
 						})
+						const refusalLinks: FillPlacementRefusalLinks | null =
+							lookup.owner === 'org'
+								? {
+										baseUrl: input.baseUrl,
+										orgSlug: refusalLinkOrgSlug({
+											actor: call.input.actor,
+											orgId: call.input.orgId,
+										}),
+									}
+								: null
 						rememberFetchFillPlacement({
 							actor: call.input.actor,
 							orgId: call.input.orgId,
@@ -165,6 +177,7 @@ export const integrationTokenResolver: CredentialResolver<'integration-token'> =
 							credential,
 							placement,
 							credentialId: lookup.credentialId,
+							refusalLinks,
 						})
 						enforceFillPlacement({
 							env: call.input.env,
@@ -174,6 +187,7 @@ export const integrationTokenResolver: CredentialResolver<'integration-token'> =
 							placement,
 							sites: credential.fillSites,
 							surface: 'placeholder',
+							links: refusalLinks,
 						})
 					}
 					if (!credential.requestHost) return
