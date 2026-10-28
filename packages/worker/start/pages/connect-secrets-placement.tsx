@@ -184,7 +184,14 @@ export function ConnectSecretsPlacementApproval({
 		credentials.length > 0 &&
 		pendingParts.length === 0 &&
 		pendingHosts.length === 0
-	const done = completed === 'approve' || nothingPending
+	const done =
+		(completed === 'approve' || nothingPending) &&
+		missingNames.length === 0 &&
+		rejectedHosts.length === 0
+	const partlyDone =
+		!done &&
+		(completed === 'approve' || nothingPending) &&
+		(missingNames.length > 0 || rejectedHosts.length > 0)
 	const error = data.placementApprovalError ?? data.approvalError ?? null
 	const canApprove =
 		!done &&
@@ -198,17 +205,19 @@ export function ConnectSecretsPlacementApproval({
 		const isCurrent = capture()
 		setMessage(null)
 		try {
-			if (pendingHosts.length > 0) {
-				await approveHosts.mutateAsync({
-					data: { orgSlug, refresh: connectSecretsInput(url.search) },
-				})
-			}
+			// Placement first: it needs Write on each credential, so a refusal
+			// stops before any host is allowed.
 			const names = credentials
 				.filter((credential) => credential.pendingParts.length > 0)
 				.map((credential) => credential.name)
 			if (names.length > 0) {
 				await approvePlacement.mutateAsync({
 					data: { orgSlug, names, parts: view.parts },
+				})
+			}
+			if (pendingHosts.length > 0) {
+				await approveHosts.mutateAsync({
+					data: { orgSlug, refresh: connectSecretsInput(url.search) },
 				})
 			}
 			if (isCurrent()) setCompleted('approve')
@@ -226,20 +235,24 @@ export function ConnectSecretsPlacementApproval({
 
 	const title = done
 		? 'Placement allowed'
-		: completed === 'reject'
-			? 'Request declined'
-			: single
-				? `Allow ${single.name} in the request ${partsLabel}`
-				: credentials.length > 1
-					? `Allow these credentials in the request ${partsLabel}`
-					: 'Allow credential placement'
-	const description = done
-		? `Kody can fill ${single ? single.name : 'these credentials'} into the request ${partsLabel} on requests to ${single ? 'its' : 'their'} allowed hosts.`
-		: completed === 'reject'
-			? 'Nothing changed. You can approve later from this same link.'
-			: credentials.length > 0
-				? `An agent asked to let Kody fill ${single ? 'this credential' : 'these credentials'} into the request ${partsLabel}. Kody keeps headers only until you approve here.`
-				: 'Open a placement approval link from Kody to allow a credential in the query, URL path, or body.'
+		: partlyDone
+			? 'Some of this request could not be allowed'
+			: completed === 'reject'
+				? 'Request declined'
+				: single
+					? `Allow ${single.name} in the request ${partsLabel}`
+					: credentials.length > 1
+						? `Allow these credentials in the request ${partsLabel}`
+						: 'Allow credential placement'
+	const description = partlyDone
+		? 'Everything valid was allowed. Credentials that are not saved and hosts that are not valid were left out; fix those, then open the approval link again.'
+		: done
+			? `Kody can fill ${single ? single.name : 'these credentials'} into the request ${partsLabel} on requests to ${single ? 'its' : 'their'} allowed hosts.`
+			: completed === 'reject'
+				? 'Nothing changed. You can approve later from this same link.'
+				: credentials.length > 0
+					? `An agent asked to let Kody fill ${single ? 'this credential' : 'these credentials'} into the request ${partsLabel}. Kody keeps headers only until you approve here.`
+					: 'Open a placement approval link from Kody to allow a credential in the query, URL path, or body.'
 
 	return (
 		<section css={pageCss} data-testid="connect-secrets-placement">

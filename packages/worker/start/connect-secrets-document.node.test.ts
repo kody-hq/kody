@@ -168,3 +168,40 @@ test('native Start renders a placement approval with hosts and the host-may-stor
 	expect(html).not.toContain('Will be allowed')
 	expect(html).not.toContain('data-testid="connect-secrets-card"')
 })
+
+test('native Start does not call a placement request allowed while a named credential is missing', async () => {
+	const secret = userSecret('plaidSecret', [])
+	const html = (
+		await renderStartPage(
+			createElement(ConnectSecretsRoute, {
+				initialData: {
+					ok: true,
+					email,
+					packageOptions: [],
+					packages: [],
+					secrets: [{ ...secret, placement: { headers: true, body: true } }],
+					selectedSecret: null,
+					approval: null,
+					approvalError: null,
+					placementApproval: {
+						parts: ['body'],
+						credentials: [
+							{
+								name: 'plaidSecret',
+								placement: { headers: true, body: true },
+								pendingParts: [],
+								placementAfter: null,
+							},
+						],
+						missingNames: ['plaidClientId'],
+					},
+					placementApprovalError: null,
+				},
+			}),
+			'/connect/secrets?names=plaidSecret,plaidClientId&placement=body',
+		)
+	).replaceAll('<!-- -->', '')
+	expect(html).toContain('Some of this request could not be allowed')
+	expect(html).toContain('data-testid="connect-secrets-placement-missing"')
+	expect(html).not.toContain('Placement allowed')
+})
