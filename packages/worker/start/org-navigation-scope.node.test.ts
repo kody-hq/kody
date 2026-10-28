@@ -66,6 +66,7 @@ test('every native organization route declares its verification policy', () => {
 		'mcp-servers',
 		'memories',
 		'repositories',
+		'skills',
 		'secret-providers',
 		'secrets',
 		'waiting',

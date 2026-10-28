@@ -18,6 +18,7 @@ const orgOwnedAccountSections = [
 	'mcp-servers',
 	'memories',
 	'repositories',
+	'skills',
 	'secret-providers',
 	'secrets',
 	'waiting',
@@ -37,6 +38,7 @@ const exactOrgSections: ReadonlyMap<string, ReadonlySet<string>> = new Map([
 	['follows', new Set<string>()],
 	['repositories', new Set(['new'])],
 	['webhooks', new Set<string>()],
+	['skills', new Set<string>()],
 ])
 
 function isNestedPathOutsideExactSection(section: string, rest: string) {

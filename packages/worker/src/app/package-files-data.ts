@@ -1,3 +1,7 @@
+import {
+	skillFileReadResource,
+	type SkillReadResource,
+} from '#worker/package-registry/skill-read-events.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { type McpUserContext } from '@kody-internal/shared/chat.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
@@ -126,6 +130,7 @@ async function toLoaderData(input: {
 		children: input.view.children,
 		content,
 		contentPath: input.view.contentPath,
+		viewedCommit: input.viewedCommit,
 		contentKind,
 		language,
 		contentByteLength: input.view.contentByteLength,
@@ -1033,7 +1038,10 @@ type PackageFileRawBytes = {
 } & PackageFileRawType
 
 export type PackageFileRawResult =
-	| (PackageFileRawBytes & { isPrivate: boolean })
+	| (PackageFileRawBytes & {
+			isPrivate: boolean
+			skillReadResource?: SkillReadResource | null
+	  })
 	| { kind: 'not-found' }
 	| { kind: 'too-large' }
 
@@ -1171,7 +1179,18 @@ export async function loadAccountPackageFileRaw(input: {
 		commit: resolved.commit,
 	})
 	if (raw.kind !== 'ok') return raw
-	return { ...raw, isPrivate: record.isPrivate }
+	return {
+		...raw,
+		isPrivate: record.isPrivate,
+		skillReadResource: await skillFileReadResource({
+			packageId: record.id,
+			packageName: record.name,
+			packageOwnerId: record.userId,
+			publishedCommit: resolved.commit,
+			path: input.selectedPath,
+			files,
+		}),
+	}
 }
 
 export async function loadPlainRepoFileRaw(input: {
@@ -1271,13 +1290,40 @@ export async function loadAccessiblePackageFileRaw(input: {
 	if (page.kind !== 'page') return { kind: 'not-found' }
 
 	if (page.listing?.listing) {
-		return loadCommunityPackageFileRaw({
+		const raw = await loadCommunityPackageFileRaw({
 			env: input.env,
 			request: input.request,
 			listingId: page.listing.listing.id,
 			selectedPath: input.selectedPath,
 			ref: input.ref,
 		})
+		if (
+			raw.kind !== 'ok' ||
+			!page.ownerPackage ||
+			!input.selectedPath.startsWith('skills/')
+		)
+			return raw
+		const data = await loadCommunityPackageFilesData({
+			env: input.env,
+			request: input.request,
+			listingId: page.listing.listing.id,
+			selectedPath: input.selectedPath,
+			ref: input.ref,
+		})
+		if (!data) return raw
+		const files = Object.fromEntries(data.paths.map((path) => [path, '']))
+		files[input.selectedPath] = data.content ?? ''
+		const resource = await skillFileReadResource({
+			packageId: page.ownerPackage.id,
+			packageName: `@${page.username}/${page.kodyId}`,
+			packageOwnerId: page.ownerUserId,
+			publishedCommit: data.viewedCommit ?? null,
+			files,
+			path: input.selectedPath,
+		})
+		if (resource)
+			resource.digest = `sha256:${Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(raw.bytes))), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
+		return { ...raw, skillReadResource: resource }
 	}
 
 	if (!page.ownerPackage) return { kind: 'not-found' }

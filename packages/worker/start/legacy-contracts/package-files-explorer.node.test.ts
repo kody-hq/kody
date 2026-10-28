@@ -46,7 +46,7 @@ test('file views link to the raw file and directory views do not', async () => {
 		}),
 	)
 	expect(html).toMatch(
-		/<a[^>]*href="\/@jane\/tab-width-fixture\/raw\/main\/example\.tsx"[^>]*>Raw<\/a>/,
+		/<a[^>]*href="\/@jane\/tab-width-fixture\/raw\/main\/example\.tsx"[^>]*>[\s\S]*?<\/a>/,
 	)
 	expect(html).toContain('aria-label="View raw example.tsx"')
 

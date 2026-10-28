@@ -38,6 +38,7 @@ export type PageNavigation = {
 		| 'secret-providers'
 		| 'security'
 		| 'settings'
+		| 'skills'
 		| 'system-email'
 		| 'teams'
 		| 'usage'

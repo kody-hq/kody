@@ -13,7 +13,6 @@ import {
 	type ProcessOutputMode,
 } from './tools/dev-process-output.ts'
 import {
-	defaultHealthTimeoutMs,
 	defaultWorkerPort,
 	isWorkerHealthOk,
 	workerPortRange,
@@ -350,17 +349,20 @@ async function waitForMockReady(baseUrl: string, child: ChildProcess) {
 	return false
 }
 
-async function isWorkerReady(workerOrigin: string) {
-	return isWorkerHealthOk(workerOrigin, { timeoutMs: defaultHealthTimeoutMs })
-}
-
 async function waitForWorkerReady(workerOrigin: string, child: ChildProcess) {
 	const start = Date.now()
 	while (Date.now() - start < workerReadyTimeoutMs) {
 		if (child.killed || child.exitCode !== null) {
 			return false
 		}
-		if (await isWorkerReady(workerOrigin)) {
+		// Cold Start requests import the route graph. Aborting after the short
+		// discovery timeout can strand that shared initialization in workerd.
+		// Give a started server the remaining startup budget to answer.
+		if (
+			await isWorkerHealthOk(workerOrigin, {
+				timeoutMs: Math.max(1, workerReadyTimeoutMs - (Date.now() - start)),
+			})
+		) {
 			return true
 		}
 		await delay(workerReadyPollMs)

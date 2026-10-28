@@ -66,6 +66,7 @@ test('raw viewer uses a package:read token and reads as anonymous without it', a
 	const request = rawRequest({ Authorization: 'Bearer kody_at_abc_def' })
 	expect(await resolvePackageFileRawViewer({ env, request })).toEqual({
 		kind: 'token',
+		callerContext: { user: tokenUser },
 		user: tokenUser,
 		orgId: null,
 	})
@@ -78,6 +79,7 @@ test('raw viewer uses a package:read token and reads as anonymous without it', a
 	)
 	expect(await resolvePackageFileRawViewer({ env, request })).toEqual({
 		kind: 'token',
+		callerContext: { user: tokenUser },
 		user: null,
 		orgId: null,
 	})
@@ -87,6 +89,7 @@ test('raw viewer uses a package:read token and reads as anonymous without it', a
 	)
 	expect(await resolvePackageFileRawViewer({ env, request })).toEqual({
 		kind: 'token',
+		callerContext: { user: tokenUser },
 		user: tokenUser,
 		orgId: 'team-a',
 	})

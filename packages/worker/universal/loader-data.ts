@@ -218,6 +218,8 @@ type PackageFilesChildLoaderData = {
 }
 
 export type PackageFilesLoaderData = {
+	viewedCommit?: string | null
+	skillRead?: { orgSlug: string; receipt: string } | null
 	ok: true
 	title: string
 	backHref: string

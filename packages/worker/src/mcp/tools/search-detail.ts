@@ -164,6 +164,7 @@ export async function resolveEntityDetail(input: {
 			record,
 			manifest: loaded.manifest,
 			files: loaded.files,
+			publishedCommit: loaded.source?.published_commit ?? null,
 			baseUrl: input.callerContext.baseUrl,
 			ownerUsername,
 			listingAhead: record.listingAhead ?? null,

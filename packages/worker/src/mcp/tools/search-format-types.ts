@@ -589,6 +589,7 @@ export type SearchEntityDetail =
 			description: string
 			record: SavedPackageRecord
 			manifest: AuthoredPackageJson
+			publishedCommit?: string | null
 			files: Record<string, string>
 			baseUrl: string
 			hostedUrl: string | null

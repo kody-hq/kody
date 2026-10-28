@@ -81,6 +81,20 @@ content-free index per published version. Packages without `skills/` are
 unaffected. See [Package authoring](./package-authoring.md) and the
 [package lifecycle](./package-lifecycle.md).
 
+## Browse skills in Kody
+
+Open **Skills** in the workspace sidebar to browse published skills across
+packages you can read. Use **All skills** for a flat list or **By package** to
+group them. Search matches skill names, descriptions, and package names.
+
+Select a skill to read its instructions and supporting files. Markdown has
+rendered and raw views; other text files show their source, and binary files can
+be downloaded. The viewer is read-only. Update skills through the normal package
+publish flow.
+
+Browsing does not require the Skills-over-MCP feature flag or a connected agent.
+Package read permissions still apply.
+
 ## Over MCP
 
 When all of these are true, a connection serves the package's skills:
@@ -138,3 +152,31 @@ See also: [Connect your agent](./connect-your-agent.md),
 [Package lifecycle](./package-lifecycle.md), and
 [Package authoring](./package-authoring.md). Decision record:
 [0058](../contributing/decisions/0058-skills-over-mcp-progressive-enhancement.md).
+
+## Read metrics
+
+The Skills page shows the last 30 days of instruction reads, supporting-file
+reads, distinct people, most-read skills, and recent reads with reader
+attribution. The Overview includes a smaller Skills widget. Published skill and
+package counts reflect the current catalog; read totals include readable
+packages that no longer publish skills.
+
+Kody records authenticated reads through MCP skill resources, search file
+results, repoReadFile, the Skills viewer, the package file viewer, and raw
+package file requests within an organization. Discovery and index requests,
+failed reads, HEAD requests, and browser preloads do not count. Browser
+acknowledgements are signed, bound to the reader and snapshot, and deduplicated
+on retry. Supporting-file reads are separate from SKILL.md reads. Repo sessions
+read mutable drafts, so their logs carry a file digest and no published commit.
+
+Each content-free event records the organization, person or automation,
+connection, channel, time, package, skill, file, version, and digest. Events
+live in the organization's durable RunLog, are included in account exports, and
+are removed with account deletion. The 30-day dashboard window does not expire
+the underlying events. Metrics are filtered by package read permission.
+
+A read is evidence that Kody delivered or displayed a file, not proof that an
+agent followed its instructions or completed a task. Anonymous visitors, local
+Git file reads, and cached or offline agent reads cannot be attributed to an
+organization and are not counted. Collection starts when this feature is
+deployed, with no historical backfill.

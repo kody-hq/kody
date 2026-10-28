@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { SkillMetricsPanel } from './skill-metrics.tsx'
+import { type SkillMetrics } from '#universal/skill-metrics.ts'
 import { EntityExplainer, resolveEntityExplainer } from './entity-explainer.tsx'
 import { WorkspaceCharts } from './workspace-charts.tsx'
 import {
@@ -31,6 +33,7 @@ import {
 import { colors } from '#universal/styles/tokens.ts'
 
 type OverviewData = {
+	skillMetrics: SkillMetrics
 	charts: WorkspaceRunCharts
 	billing: WorkspaceBilling | null
 	slug: string
@@ -120,6 +123,7 @@ export function WorkspaceOverview({ data }: { data: OverviewData }) {
 						))}
 					</div>
 				</section>
+
 				<WorkspaceCharts
 					charts={data.charts}
 					billing={data.billing}
@@ -210,40 +214,55 @@ export function WorkspaceOverview({ data }: { data: OverviewData }) {
 							)}
 						</section>
 					</div>
-					<section css={panelCss} aria-labelledby="upcoming-jobs">
-						<div css={panelHeaderCss}>
-							<h2 id="upcoming-jobs" css={headingCss}>
-								{renderIcon('clock')} Upcoming jobs
-							</h2>
-							<SiteLink href={`${base}/jobs`} css={moreCss}>
-								View all
-							</SiteLink>
-						</div>
-						{data.upcomingJobs.length ? (
-							<ul css={listCss}>
-								{data.upcomingJobs.map((job) => (
-									<li key={job.id}>
-										<SiteLink
-											href={`${base}/jobs?selected=${encodeURIComponent(job.id)}`}
-											css={rowCss}
-										>
-											<span css={copyCss}>
-												<strong css={nameCss}>{job.name}</strong>
-												<span css={mutedCss}>
-													{job.dueNow
-														? 'Due now'
-														: formatTimestamp(job.nextRunAt)}
+					<div
+						css={{
+							...stackCss,
+							'@media (min-width: 601px) and (max-width: 1100px)': {
+								gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+								alignItems: 'start',
+							},
+						}}
+					>
+						<SkillMetricsPanel
+							metrics={data.skillMetrics}
+							href={`${base}/skills`}
+							compact
+						/>
+						<section css={panelCss} aria-labelledby="upcoming-jobs">
+							<div css={panelHeaderCss}>
+								<h2 id="upcoming-jobs" css={headingCss}>
+									{renderIcon('clock')} Upcoming jobs
+								</h2>
+								<SiteLink href={`${base}/jobs`} css={moreCss}>
+									View all
+								</SiteLink>
+							</div>
+							{data.upcomingJobs.length ? (
+								<ul css={listCss}>
+									{data.upcomingJobs.map((job) => (
+										<li key={job.id}>
+											<SiteLink
+												href={`${base}/jobs?selected=${encodeURIComponent(job.id)}`}
+												css={rowCss}
+											>
+												<span css={copyCss}>
+													<strong css={nameCss}>{job.name}</strong>
+													<span css={mutedCss}>
+														{job.dueNow
+															? 'Due now'
+															: formatTimestamp(job.nextRunAt)}
+													</span>
+													<span css={mutedCss}>{job.scheduleSummary}</span>
 												</span>
-												<span css={mutedCss}>{job.scheduleSummary}</span>
-											</span>
-										</SiteLink>
-									</li>
-								))}
-							</ul>
-						) : (
-							<p css={emptyCss}>No jobs scheduled.</p>
-						)}
-					</section>
+											</SiteLink>
+										</li>
+									))}
+								</ul>
+							) : (
+								<p css={emptyCss}>No jobs scheduled.</p>
+							)}
+						</section>
+					</div>
 				</div>
 			</div>
 		</AccountManagementShell>

@@ -39,3 +39,16 @@ limitations.
   hostname when verified, else the kody.run subdomain). There is no host-labeled
   secondary open button (`package-app-origin-link` is not in the title action
   group).
+
+## Skills viewer
+
+- Reach `/@{$orgSlug}/-/skills` from the Skills sidebar item.
+- Publish two local fixture packages with `skills/<name>/SKILL.md` and at least
+  one supporting Markdown and source file. Use `control-kody execute` against
+  the local mock Artifacts origin to create the fixtures.
+- Check All skills, By package, name/description/package search, and no matches.
+- Open instructions, raw Markdown, and supporting files inside the viewer.
+- Back to skills preserves the search and grouping; direct skill/file URLs load
+  the same selection. Repeat at a narrow viewport.
+- Verify with the MCP skills flag off. A caller without package read access must
+  not see the skill or read its files through a direct selection URL.

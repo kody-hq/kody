@@ -1,7 +1,22 @@
 /** @jsxImportSource @emotion/react */
+import {
+	useRecordTableModel,
+	type RecordTableOptions,
+} from './record-table-model.ts'
+import {
+	RecordTableDataControls,
+	RecordTablePagination,
+	RecordSelectionCheckbox,
+} from './record-table-data-controls.tsx'
 import { nestedSurfaceDarkCss } from '#universal/styles/surface.ts'
 import { type CSSObject } from '@emotion/react'
-import { useId, type ReactNode, type MouseEvent } from 'react'
+import {
+	useId,
+	useMemo,
+	useState,
+	type ReactNode,
+	type MouseEvent,
+} from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import {
 	colors,
@@ -36,23 +51,23 @@ export {
  * it instead of leaving the reader at the top of the list.
  *
  * Sizing is answered by container queries, not viewport breakpoints: these
- * tables live inside a 200px-railed shell, so the viewport says very little
- * about how much room the table actually has.
+ * tables live inside a 200px-railed shell. Rows scroll horizontally by
+ * default; the toolbar offers an explicit stacked layout.
  */
 
 type Slot = ReactNode
 
 export type RecordTableColumn = {
+	sortable?: boolean
+	searchable?: boolean
+	hideable?: boolean
+	filter?: (value: unknown, filter: unknown, row: RecordTableRow) => boolean
 	/** Pairs the column with the value under the same key in `row.cells`. */
 	key: string
 	label: string
 	/** Numeric columns right-align and take tabular figures. */
 	align?: 'end'
-	/**
-	 * Priority at which this column stops earning its width and drops out.
-	 * `3` goes first. Columns squeeze equally without this, which is how a
-	 * table ends up with five unreadable ones instead of three readable.
-	 */
+	/** Legacy layout hint. Columns now stay visible when the table narrows. */
 	drop?: 1 | 2 | 3
 	/**
 	 * The row's heading: carries the link, and is the card's title rather
@@ -62,6 +77,9 @@ export type RecordTableColumn = {
 }
 
 export type RecordTableRow = {
+	/** Raw values for sorting/filtering, separate from rendered cells. */
+	values?: Record<string, string | number | boolean | null>
+	selectionLabel?: string
 	id: string
 	/** Omitted for `mode: 'none'`, and while a mutation is in flight. */
 	href?: string
@@ -121,6 +139,9 @@ function resolveRecordTableSelection({
 }
 
 type RecordTableProps = {
+	dataControls?: RecordTableOptions
+	rowGroup?: (row: RecordTableRow) => string
+	dense?: boolean
 	/**
 	 * `expand` unfolds the record inside the table under its own row,
 	 * `pane` renders it below the table, `none` is a table with no selection.
@@ -184,33 +205,9 @@ type RecordTableProps = {
 
 const defaultScrollHeight = '22rem'
 
-/**
- * Columns drop one priority at a time as the container narrows, then the
- * whole table becomes cards. Each threshold is its own class so a cell can
- * carry exactly one.
- */
-const dropHiddenTableCss = {
-	width: 0,
-	minWidth: 0,
-	maxWidth: 0,
-	paddingInline: 0,
-	border: 'none',
-	overflow: 'hidden',
-	visibility: 'hidden',
-	fontSize: 0,
-	lineHeight: 0,
-} as const
-
-const dropCss: CSSObject = {
-	1: { '@container (max-width: 680px)': dropHiddenTableCss },
-	2: { '@container (max-width: 780px)': dropHiddenTableCss },
-	3: { '@container (max-width: 900px)': dropHiddenTableCss },
-} as const
-
 const numericCss: CSSObject = {
 	textAlign: 'right',
 	fontVariantNumeric: 'tabular-nums',
-	'@container (max-width: 620px)': { textAlign: 'left' },
 }
 
 const shellCss: CSSObject = {
@@ -238,11 +235,8 @@ const paneCss: CSSObject = {
 const tableScrollerCss: CSSObject = {
 	width: '100%',
 	minWidth: 0,
-	overflowX: 'hidden' as const,
-	'@container (max-width: 400px)': {
-		overflowX: 'auto' as const,
-		WebkitOverflowScrolling: 'touch' as const,
-	},
+	overflowX: 'auto',
+	WebkitOverflowScrolling: 'touch',
 }
 
 const toolbarCss: CSSObject = {
@@ -303,50 +297,44 @@ const cellCss: CSSObject = {
 	textOverflow: 'ellipsis',
 }
 
-/**
- * Below 620px the same `<table>` becomes a list of cards — no duplicate DOM.
- * Cells carry their own label from `data-label`; the primary cell is the
- * card's heading and keeps none. Column `drop` priorities shed fields first.
- * `table-layout: fixed` keeps the table in the pane at normal widths; the
- * scroller only allows horizontal overflow on a very narrow container
- * (unbreakable leftovers, not five readable columns fighting for 26ch each).
- */
+/** Stacking is an explicit display choice, independent of container width. */
 const cardFallbackCss: CSSObject = {
-	'@container (max-width: 620px)': {
-		'& thead': { display: 'none' },
-		'& table, & tbody, & tr, & td': { display: 'block', width: 'auto' },
-		'& tbody tr[data-record-row]': { padding: 0 },
-		'& tbody tr:not([data-record-row])': {
-			borderBottom: `1px solid ${colors.borderSubtle}`,
-			padding: `0.55rem ${spacing.md}`,
-		},
-		'& td': {
-			borderBottom: 0,
-			padding: '0.1rem 0',
-			display: 'flex',
-			gap: spacing.sm,
-			alignItems: 'baseline',
-		},
-		'& td[data-drop]': { display: 'none' },
-		'& td::before': {
-			content: 'attr(data-label)',
-			flex: 'none',
-			minWidth: '6.5rem',
-			fontSize: '0.68rem',
-			fontWeight: 700,
-			letterSpacing: '0.07em',
-			textTransform: 'uppercase',
-			color: colors.textMuted,
-		},
-		'& td[data-primary]': {
-			display: 'block',
-			fontSize: typography.fontSize.base,
-			marginBottom: '0.2rem',
-		},
-		'& td[data-primary]::before': { content: 'none' },
-		'& tr[data-record-row] > td': { padding: 0 },
-		'& tr[data-record-row] > td::before': { content: 'none' },
+	'& thead': { display: 'none' },
+	'& table, & tbody, & tr, & td': { display: 'block', width: 'auto' },
+	'& tbody tr[data-record-row]': { padding: 0 },
+	'& tbody tr:not([data-record-row])': {
+		borderBottom: `1px solid ${colors.borderSubtle}`,
+		padding: `0.55rem ${spacing.md}`,
 	},
+	'& td': {
+		textAlign: 'left',
+		whiteSpace: 'normal',
+		overflowWrap: 'anywhere',
+		borderBottom: 0,
+		padding: '0.1rem 0',
+		display: 'flex',
+		gap: spacing.sm,
+		alignItems: 'baseline',
+	},
+	'& td:not([data-label])::before': { content: 'none' },
+	'& td::before': {
+		content: 'attr(data-label)',
+		flex: 'none',
+		minWidth: '6.5rem',
+		fontSize: '0.68rem',
+		fontWeight: 700,
+		letterSpacing: '0.07em',
+		textTransform: 'uppercase',
+		color: colors.textMuted,
+	},
+	'& td[data-primary]': {
+		display: 'block',
+		fontSize: typography.fontSize.base,
+		marginBottom: '0.2rem',
+	},
+	'& td[data-primary]::before': { content: 'none' },
+	'& tr[data-record-row] > td': { padding: 0 },
+	'& tr[data-record-row] > td::before': { content: 'none' },
 }
 
 const rowCss: CSSObject = {
@@ -422,21 +410,36 @@ const footerCss: CSSObject = {
 
 export function RecordTable(props: RecordTableProps) {
 	const id = useId()
+	const [stacked, setStacked] = useState(false)
 	function columnCss(column: RecordTableColumn) {
-		return [
-			column.align === 'end' ? numericCss : null,
-			column.drop ? dropCss[column.drop] : null,
-		]
+		return [column.align === 'end' ? numericCss : null]
 	}
 
 	{
-		const { mode, columns, onNavigate } = props
-		const { rows, selectedId } = resolveRecordTableSelection({
-			columns,
-			rows: props.rows,
-			selectedId: props.selectedId,
-			createRow: props.createRow,
-		})
+		const { mode, onNavigate } = props
+		const resolved = useMemo(
+			() =>
+				resolveRecordTableSelection({
+					columns: props.columns,
+					rows: props.rows,
+					selectedId: props.selectedId,
+					createRow: props.createRow,
+				}),
+			[props.columns, props.rows, props.selectedId, props.createRow],
+		)
+		const model = useRecordTableModel(
+			props.columns,
+			resolved.rows,
+			props.dataControls,
+		)
+		const columns = props.columns.filter((column) =>
+			model.getColumn(column.key)!.getIsVisible(),
+		)
+		const modelRows = model.getRowModel().rows
+		const rows = modelRows.map((row) => row.original)
+		const selectedId = resolved.selectedId
+		const hasSelection = Boolean(props.dataControls?.selection)
+		const colSpan = columns.length + Number(hasSelection)
 		const selectable = mode !== 'none'
 		// `expand` must not cap the list: the record renders inside the
 		// scroller, so a max-height traps it in a nested scroll you have to
@@ -467,23 +470,72 @@ export function RecordTable(props: RecordTableProps) {
 		)
 
 		const table = (
-			<table aria-label={props.ariaLabel} css={tableCss}>
+			<table
+				aria-label={props.ariaLabel}
+				css={[
+					tableCss,
+					!stacked && { minWidth: `${Math.max(24, columns.length * 10)}rem` },
+				]}
+			>
 				<thead>
 					<tr>
+						{hasSelection ? (
+							<th css={headCellCss} scope="col">
+								<RecordSelectionCheckbox
+									label="Select this page"
+									checked={model.getIsAllPageRowsSelected()}
+									mixed={model.getIsSomePageRowsSelected()}
+									onChange={(value) => model.toggleAllPageRowsSelected(value)}
+								/>
+							</th>
+						) : null}
 						{columns.map((column) => (
 							<th
 								key={column.key}
 								scope="col"
+								aria-sort={
+									model.getColumn(column.key)!.getIsSorted() === 'asc'
+										? 'ascending'
+										: model.getColumn(column.key)!.getIsSorted() === 'desc'
+											? 'descending'
+											: undefined
+								}
 								data-drop={column.drop ? String(column.drop) : undefined}
 								css={[headCellCss, ...columnCss(column)]}
 							>
-								{column.label}
+								{model.getColumn(column.key)!.getCanSort() ? (
+									<button
+										type="button"
+										onClick={model
+											.getColumn(column.key)!
+											.getToggleSortingHandler()}
+										css={{
+											font: 'inherit',
+											color: 'inherit',
+											background: 'none',
+											border: 0,
+											padding: 0,
+											cursor: 'pointer',
+										}}
+									>
+										{column.label}{' '}
+										<span aria-hidden="true">
+											{model.getColumn(column.key)!.getIsSorted() === 'desc'
+												? '↓'
+												: model.getColumn(column.key)!.getIsSorted() === 'asc'
+													? '↑'
+													: '↕'}
+										</span>
+									</button>
+								) : (
+									column.label
+								)}
 							</th>
 						))}
 					</tr>
 				</thead>
 				<tbody>
-					{rows.flatMap((row) => {
+					{rows.flatMap((row, rowIndex) => {
 						const selected = selectable && row.id === selectedId
 						const recordRowId = `${id}-record-${row.id}`
 						// A selected row with no record yet (still loading, or the detail
@@ -494,12 +546,37 @@ export function RecordTable(props: RecordTableProps) {
 						)
 
 						return [
+							props.rowGroup &&
+							(rowIndex === 0 ||
+								props.rowGroup(rows[rowIndex - 1]!) !== props.rowGroup(row)) ? (
+								<tr key={`group-${row.id}`}>
+									<th
+										colSpan={colSpan}
+										scope="rowgroup"
+										css={{ ...headCellCss, position: 'static' }}
+									>
+										{props.rowGroup(row)}
+									</th>
+								</tr>
+							) : null,
 							<tr
 								key={row.id}
 								data-selected={selected ? 'true' : undefined}
 								data-record-focus={selected ? 'true' : undefined}
 								css={rowCss}
 							>
+								{hasSelection ? (
+									<td css={cellCss}>
+										<RecordSelectionCheckbox
+											label={`Select ${row.selectionLabel ?? row.id}`}
+											checked={modelRows[rowIndex]!.getIsSelected()}
+											disabled={!modelRows[rowIndex]!.getCanSelect()}
+											onChange={(value) =>
+												modelRows[rowIndex]!.toggleSelected(value)
+											}
+										/>
+									</td>
+								) : null}
 								{columns.map((column) => {
 									const content = row.cells[column.key] ?? null
 									const rowHref = row.href
@@ -569,7 +646,7 @@ export function RecordTable(props: RecordTableProps) {
 									data-record-row="true"
 									css={recordRowCss}
 								>
-									<td colSpan={columns.length}>{props.record}</td>
+									<td colSpan={colSpan}>{props.record}</td>
 								</tr>
 							) : null,
 						]
@@ -585,10 +662,72 @@ export function RecordTable(props: RecordTableProps) {
 				data-record-focus-pending={focusPending ? 'true' : undefined}
 				css={shellCss}
 			>
-				<div css={[paneCss, cardFallbackCss]}>
-					{props.toolbar || props.countLabel ? (
+				<div
+					css={[
+						paneCss,
+						props.dense && {
+							borderRadius: '0.375rem',
+							boxShadow: 'none',
+							backgroundImage: 'none',
+							'& table': { tableLayout: 'auto', fontSize: '0.8rem' },
+							'& td, & th': { padding: '0.45rem 0.65rem' },
+							'& th': {
+								textTransform: 'none',
+								letterSpacing: 0,
+								fontWeight: 500,
+							},
+						},
+						stacked && cardFallbackCss,
+					]}
+				>
+					{props.toolbar ||
+					props.countLabel ||
+					props.dataControls ||
+					rows.length > 0 ? (
 						<div key="record-table-toolbar" css={toolbarCss}>
 							{props.toolbar}
+							<button
+								type="button"
+								aria-label="Stack rows"
+								aria-pressed={stacked}
+								title={stacked ? 'Show table rows' : 'Stack rows'}
+								onClick={() => setStacked((value) => !value)}
+								css={{
+									marginLeft: 'auto',
+									display: 'inline-flex',
+									padding: '0.35rem',
+									border: `1px solid ${colors.border}`,
+									borderRadius: '0.3rem',
+									color: colors.text,
+									background: stacked ? colors.primarySoftest : colors.surface,
+									cursor: 'pointer',
+								}}
+							>
+								<svg
+									width="16"
+									height="16"
+									viewBox="0 0 16 16"
+									fill="none"
+									stroke="currentColor"
+									aria-hidden="true"
+								>
+									<rect x="1.5" y="2" width="13" height="12" rx="1" />
+									<path
+										d={
+											stacked
+												? 'M1.5 6h13M1.5 10h13'
+												: 'M1.5 6h13M6 6v8M10.5 6v8'
+										}
+									/>
+								</svg>
+							</button>
+							{props.dataControls ? (
+								<RecordTableDataControls
+									model={model}
+									columns={props.columns}
+									options={props.dataControls}
+								/>
+							) : null}
 							{props.countLabel ? (
 								<p css={countCss} data-busy={props.busy ? 'true' : undefined}>
 									{props.countLabel}
@@ -616,9 +755,12 @@ export function RecordTable(props: RecordTableProps) {
 							<p css={emptyCss}>{props.emptyLabel ?? 'Nothing to show yet.'}</p>
 						) : (
 							<div
+								role="region"
+								aria-label={`${props.ariaLabel} rows`}
+								tabIndex={stacked ? undefined : 0}
 								css={{
 									...tableScrollerCss,
-									...(capped
+									...(capped && !props.dataControls
 										? {
 												maxHeight: props.scrollHeight ?? defaultScrollHeight,
 												overflowY: 'auto' as const,
@@ -630,6 +772,7 @@ export function RecordTable(props: RecordTableProps) {
 							</div>
 						)}
 					</div>
+					{props.dataControls ? <RecordTablePagination model={model} /> : null}
 					{props.footer ? <div css={footerCss}>{props.footer}</div> : null}
 				</div>
 				{(mode === 'pane' || orphanedRecord) && props.record ? (

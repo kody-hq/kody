@@ -221,7 +221,7 @@ async function upgradeFromLegacySchema(
 				initializeSchema: () => void
 			}
 			proto.initializeSchema.call(instance)
-			expect(schemaVersion(state)).toBe(16)
+			expect(schemaVersion(state)).toBe(17)
 			verify(state)
 		},
 	)
@@ -1557,7 +1557,7 @@ test('getSqlBillingStats and inspectRunLogSqlBilling report listRuns/finishRun c
 	)
 
 	const inspection = await inspectRunLogSqlBilling({ env, userId })
-	expect(inspection.schemaVersion).toBe(16)
+	expect(inspection.schemaVersion).toBe(17)
 	expect(inspection.tableCounts.runs).toBeGreaterThanOrEqual(1)
 	expect(inspection.tableCounts.runLogs).toBeGreaterThanOrEqual(1)
 	expect(inspection.runCount.actual).toBe(inspection.tableCounts.runs)

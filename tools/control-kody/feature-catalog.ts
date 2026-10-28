@@ -133,6 +133,7 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 			'/account/repos',
 			'/@{$username}',
 			'/@{$orgSlug}/-/packages',
+			'/@{$orgSlug}/-/skills',
 			'/@{$orgSlug}/-/repositories',
 			'/@{$orgSlug}/-/approvals',
 		],
