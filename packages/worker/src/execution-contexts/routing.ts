@@ -51,6 +51,7 @@ export type RoutingAttempt = {
 		| 'timeout'
 		| 'skipped'
 		| 'queued'
+		| 'expired'
 	reason?: string
 }
 
@@ -407,6 +408,21 @@ export async function routeExecute(input: {
 	if (input.queue && firstOffline) {
 		const { row, request, lease } = firstOffline
 		const stub = sessionStub(input.env, row.id)
+		const queuedMetadata: ExecutionContextRunMetadata = {
+			id: row.id,
+			name: row.name,
+			attempts: [
+				...attempts,
+				{ target: row.id, name: row.name, outcome: 'queued' },
+			],
+			fellBackToCloud: false,
+		}
+		if (input.runRecord) {
+			input.runRecord.context.metadata = {
+				...input.runRecord.context.metadata,
+				executionContext: queuedMetadata,
+			}
+		}
 		await stub.enqueue({
 			request,
 			lease,
@@ -421,15 +437,7 @@ export async function routeExecute(input: {
 			contextId: row.id,
 			contextName: row.name,
 			expiresAt: input.queue.expiresAt,
-			metadata: {
-				id: row.id,
-				name: row.name,
-				attempts: [
-					...attempts,
-					{ target: row.id, name: row.name, outcome: 'queued' },
-				],
-				fellBackToCloud: false,
-			},
+			metadata: queuedMetadata,
 		}
 	}
 	if (
@@ -541,5 +549,26 @@ export async function resolveRunChain(
 		entries,
 		strict: !entries.some((entry) => entry.kind === 'cloud'),
 		skipped,
+	}
+}
+
+/** A queued run that expired never ran: mark its queued attempt `expired`. */
+export function markQueuedAttemptExpired(
+	metadata: Record<string, unknown>,
+): Record<string, unknown> {
+	const context = metadata.executionContext as
+		| ExecutionContextRunMetadata
+		| undefined
+	if (!context?.attempts?.length) return metadata
+	return {
+		...metadata,
+		executionContext: {
+			...context,
+			attempts: context.attempts.map((attempt, index) =>
+				index === context.attempts.length - 1 && attempt.outcome === 'queued'
+					? { ...attempt, outcome: 'expired', reason: 'queue_expired' }
+					: attempt,
+			),
+		},
 	}
 }

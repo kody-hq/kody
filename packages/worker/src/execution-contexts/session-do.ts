@@ -30,7 +30,11 @@ import {
 	type Ed25519PublicJwk,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { finishRunRecord } from '#worker/run-records/service.ts'
-import { type ExecuteRequirement, grantRefusal } from './routing.ts'
+import {
+	type ExecuteRequirement,
+	grantRefusal,
+	markQueuedAttemptExpired,
+} from './routing.ts'
 import { getExecutionContext, loadContextAccess, parseGrant } from './store.ts'
 import { type RunRecordHandle } from '#worker/run-records/types.ts'
 
@@ -1055,9 +1059,13 @@ export class ExecutionContextSessionV1 extends DurableObject<Env> {
 		for (const row of expired) {
 			if (!row.run_record_json) continue
 			const minutes = Math.round((now - row.created_at) / 60_000)
+			const handle = JSON.parse(row.run_record_json) as RunRecordHandle
+			handle.context.metadata = markQueuedAttemptExpired(
+				handle.context.metadata ?? {},
+			)
 			await finishRunRecord({
 				env: this.env,
-				handle: JSON.parse(row.run_record_json) as RunRecordHandle,
+				handle,
 				status: 'error',
 				error: Object.assign(
 					new Error(
