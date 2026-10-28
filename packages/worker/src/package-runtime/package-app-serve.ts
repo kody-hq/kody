@@ -1,3 +1,4 @@
+import { packageAppVisitorNeedKeyPattern } from '#worker/package-registry/types.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	type RuntimePackageAppIdentity,
@@ -1169,8 +1170,14 @@ export async function servePackageAppRequest(input: {
 					'scope',
 					[
 						'profile',
-						// Optional needs ride along so consent can offer them.
-						...executorNeeds.map((item) => `need:${item.key}`),
+						// Optional needs ride along so consent can offer them; a key
+						// that cannot be a scope is left out rather than failing it.
+						...executorNeeds.flatMap((item) =>
+							item.required !== false ||
+							packageAppVisitorNeedKeyPattern.test(item.key)
+								? [`need:${item.key}`]
+								: [],
+						),
 					].join(' '),
 				)
 				loginUrl.searchParams.set('prompt', 'consent')

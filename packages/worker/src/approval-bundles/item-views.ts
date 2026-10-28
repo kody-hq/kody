@@ -385,18 +385,26 @@ async function publishItemView(
 				),
 			}
 		}
-		case 'went_public':
+		case 'went_public': {
+			const needLines = await wentPublicNeedLines(viewer, savedPackage)
 			return {
 				...base,
-				...(publishState.canApprove &&
-				!(await wentPublicCapabilitiesApproved(viewer, savedPackage))
+				...(publishState.canApprove && needLines === null
 					? {
 							...publishState,
 							canApprove: false,
 							statusMessage:
-								'Its credentials and capabilities are not approved yet. Review them on the package’s approval page, where one Approve also turns on internet-visible serving.',
+								'Kody could not load the credentials this app asks for. Try again before approving.',
 						}
-					: publishState),
+					: publishState.canApprove &&
+						  !(await wentPublicCapabilitiesApproved(viewer, savedPackage))
+						? {
+								...publishState,
+								canApprove: false,
+								statusMessage:
+									'Its credentials and capabilities are not approved yet. Review them on the package’s approval page, where one Approve also turns on internet-visible serving.',
+							}
+						: publishState),
 				detailLabel: 'Published commit',
 				title: 'Serve on the public internet',
 				summary: `${readWentPublicSummary(request.details)} Approving turns on internet-visible serving for this version. Denying leaves it off.`,
@@ -412,9 +420,10 @@ async function publishItemView(
 						after: 'Anyone on the internet can reach this package’s app',
 						match: null,
 					},
-					...(await wentPublicNeedLines(viewer, savedPackage)),
+					...(needLines ?? []),
 				],
 			}
+		}
 		default: {
 			const exhaustive: never = request.reason
 			throw new Error(`Unknown approval reason: ${String(exhaustive)}`)
@@ -426,7 +435,7 @@ async function publishItemView(
 async function wentPublicNeedLines(
 	viewer: ApprovalViewer,
 	savedPackage: SavedPackageRecord,
-): Promise<Array<ApprovalGrantLine>> {
+): Promise<Array<ApprovalGrantLine> | null> {
 	try {
 		const needs = savedCredentialNeeds(
 			await loadPublishedCredentialNeeds({
@@ -452,7 +461,7 @@ async function wentPublicNeedLines(
 			packageId: savedPackage.id,
 			error: getErrorMessage(error),
 		})
-		return []
+		return null
 	}
 }
 
@@ -465,7 +474,7 @@ function describeNeedSupplier(need: SavedCredentialNeed) {
 	if (need.supplier === 'publisher' || need.ownerCredentialForVisitors) {
 		return 'Supplied by the publisher; visitors use it through the app.'
 	}
-	return 'Supplied by the org’s credential mappings.'
+	return 'Resolved for whoever runs it: their own mapping, the org’s mapping, or a matching credential.'
 }
 
 /** Going public needs the live capability set approved first. */

@@ -311,3 +311,60 @@ test('package-app consent names the wanted credential and blocks Allow next to a
 		'Required: create a google-calendar OAuth credential to allow this app.',
 	)
 })
+
+const optionalChatNeed = {
+	key: 'chat',
+	description: 'Chat access for this app',
+	required: false,
+	scope: 'need:chat',
+	credentials: [],
+	recommendedCredentialId: null,
+	createUrl: '/@viewer/-/credentials/new?name=chat',
+	provider: 'chat-provider',
+	kindLabel: null,
+	createDestination: 'viewer',
+}
+
+function approveButtonOf(html: string) {
+	return html.match(
+		/<button\b[^>]*data-testid="package-app-oauth-approve"[^>]*>/,
+	)?.[0]
+}
+
+test('package-app consent starts a new optional executor need unchecked', async () => {
+	const html = await renderStartPage(
+		createElement(PackageAppOauthConsentPage, {
+			data: {
+				...loaderData,
+				optionalScopes: [
+					...loaderData.optionalScopes,
+					{ scope: 'need:chat', label: 'Chat access for this app' },
+				],
+				executorNeeds: [optionalChatNeed],
+			},
+		}),
+		href,
+	)
+
+	const checkbox = html.match(
+		/<input\b[^>]*value="need:chat"[^>]*>|<input\b[^>]*name="need:chat"[^>]*>/,
+	)?.[0]
+	expect(checkbox).toBeDefined()
+	expect(checkbox).not.toContain('checked')
+	expect(approveButtonOf(html)).not.toContain('disabled=""')
+})
+
+test('package-app consent blocks Allow when an already allowed optional need lost its credential', async () => {
+	const html = await renderStartPage(
+		createElement(PackageAppOauthConsentPage, {
+			data: {
+				...loaderData,
+				alreadyAllowedScopes: ['need:chat'],
+				executorNeeds: [optionalChatNeed],
+			},
+		}),
+		href,
+	)
+
+	expect(approveButtonOf(html)).toContain('disabled=""')
+})

@@ -32,7 +32,13 @@ export function PackageAppOauthConsentPage({
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const [selectedScopes, setSelectedScopes] = useState(
-		() => new Set(data.optionalScopes.map(({ scope }) => scope)),
+		// Optional credential needs start unchecked; the visitor opts in.
+		() =>
+			new Set(
+				data.optionalScopes
+					.map(({ scope }) => scope)
+					.filter((scope) => !scope.startsWith('need:')),
+			),
 	)
 	const [selectedCredentialIds, setSelectedCredentialIds] = useState(
 		() =>
@@ -55,7 +61,7 @@ export function PackageAppOauthConsentPage({
 			),
 	)
 	const missingSelectedCredential = data.executorNeeds.some((need) => {
-		const isSelected = need.required || selectedScopes.has(need.scope)
+		const isSelected = needIsAsked(need)
 		return (
 			isSelected &&
 			!need.credentials.some(
@@ -63,8 +69,15 @@ export function PackageAppOauthConsentPage({
 			)
 		)
 	})
+	function needIsAsked(need: (typeof data.executorNeeds)[number]) {
+		return (
+			need.required ||
+			selectedScopes.has(need.scope) ||
+			data.alreadyAllowedScopes.includes(need.scope)
+		)
+	}
 	const needIsMissing = (need: (typeof data.executorNeeds)[number]) =>
-		(need.required || selectedScopes.has(need.scope)) &&
+		needIsAsked(need) &&
 		!need.credentials.some(
 			(credential) => credential.id === selectedCredentialIds[need.key],
 		)

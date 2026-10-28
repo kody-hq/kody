@@ -460,6 +460,7 @@ async function loadExecutorNeedConsentData(input: {
 	needs: ReadonlyArray<SavedCredentialNeed>
 	scopes: ReadonlyArray<PackageAppOauthScope>
 	kodyId: string
+	grantId: string | null
 }) {
 	const needs = input.scopes.flatMap((scope) => {
 		if (!scope.startsWith('need:')) return []
@@ -509,6 +510,29 @@ async function loadExecutorNeedConsentData(input: {
 			}
 		}
 	}
+	const mappedIds = new Map<string, Array<string>>()
+	if (input.grantId) {
+		const mapped = await input.env.APP_DB.prepare(
+			`SELECT need_key, credential_ids_json
+			 FROM package_app_grant_credential_mappings
+			 WHERE grant_id = ?`,
+		)
+			.bind(input.grantId)
+			.all<{ need_key: string; credential_ids_json: string }>()
+		for (const row of mapped.results ?? []) {
+			try {
+				const ids: unknown = JSON.parse(row.credential_ids_json)
+				if (Array.isArray(ids)) {
+					mappedIds.set(
+						row.need_key,
+						ids.filter((id): id is string => typeof id === 'string'),
+					)
+				}
+			} catch {
+				// A malformed row just loses its preselection.
+			}
+		}
+	}
 	const baseUrl = getAppBaseUrl({
 		env: input.env,
 		requestUrl: input.request.url,
@@ -527,7 +551,11 @@ async function loadExecutorNeedConsentData(input: {
 					left.name.localeCompare(right.name)
 				)
 			})
-			const [recommended] = ranked
+			// Renewed consent keeps the credential this grant already maps.
+			const current = ranked.find((credential) =>
+				mappedIds.get(need.key)?.includes(credential.id),
+			)
+			const recommended = current ?? ranked[0]
 			const createUrl = await buildNeedCreateUrl({
 				db: input.env.APP_DB,
 				baseUrl,
@@ -658,6 +686,7 @@ export async function handlePackageAppOauthAuthorizeRequest(
 			needs: validated.credentialNeeds,
 			scopes: validated.scopes,
 			kodyId: validated.client.kodyId,
+			grantId: null,
 		})
 		const selectedScopes = new Set<PackageAppOauthScope>([
 			'profile',
@@ -812,6 +841,7 @@ export async function handlePackageAppOauthAuthorizeRequest(
 		needs: validated.credentialNeeds,
 		scopes: validated.scopes,
 		kodyId: validated.client.kodyId,
+		grantId: grant?.id ?? null,
 	})
 
 	return {
