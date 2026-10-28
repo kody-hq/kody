@@ -14,6 +14,12 @@ vi.unmock('#worker/audit-log.ts')
 const mocks = vi.hoisted(() => ({
 	resolveSavedPackage: vi.fn(),
 	loadInvokeManifestBySourceId: vi.fn(),
+	loadPublishedCredentialNeeds: vi.fn(),
+}))
+
+vi.mock('#worker/credentials/credential-needs-closure.ts', () => ({
+	loadPublishedCredentialNeeds: (...args: Array<unknown>) =>
+		mocks.loadPublishedCredentialNeeds(...args),
 }))
 
 vi.mock('#worker/package-invocations/module-artifacts.ts', () => ({
@@ -81,6 +87,14 @@ async function createSeed(): Promise<PackageCollaboratorsSeed> {
 			},
 		},
 	})
+	mocks.loadPublishedCredentialNeeds.mockReset()
+	mocks.loadPublishedCredentialNeeds.mockResolvedValue([
+		{
+			key: 'payroll',
+			supplier: 'executor',
+			description: 'Run payroll with your account',
+		},
+	])
 	return seed
 }
 
@@ -126,7 +140,13 @@ function seedConnectedPeople(seed: PackageCollaboratorsSeed) {
 	insertAppGrant(seed, {
 		id: 'g-bob',
 		person: 'bob',
-		scopes: ['profile', 'email', 'need:calendar', 'need:unknown-key'],
+		scopes: [
+			'profile',
+			'email',
+			'need:calendar',
+			'need:payroll',
+			'need:unknown-key',
+		],
 		createdAt: '2026-01-01T00:00:00.000Z',
 		lastUsedAt: '2026-01-05T00:00:00.000Z',
 	})
@@ -204,10 +224,11 @@ test('lists live people for the app by last used, paginated, with plain-language
 			'See their name, username, and avatar',
 			'See their email address',
 			'Use their own data or credentials: Read your calendar',
+			'Use their own data or credentials: Run payroll with your account',
 			'Use their own data or credentials for this app',
 		],
 	})
-	expect(JSON.stringify(first)).not.toMatch(/need:|unknown-key/)
+	expect(JSON.stringify(first)).not.toMatch(/need:|unknown-key|payroll"/)
 
 	const second = await packageAppConnectedPeopleListCapability.handler(
 		{ package_id: 'demo-package', page: 2, page_size: 2 },

@@ -7,6 +7,8 @@ import {
 } from '#app/package-app-oauth-grants.ts'
 import { visitorNeedKeysOfScopes } from '#app/package-app-oauth-scopes.ts'
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
+import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
+import { savedCredentialNeeds } from '#worker/credentials/credential-needs.ts'
 import {
 	checkPermission,
 	computeEffectivePermissions,
@@ -119,6 +121,21 @@ async function loadVisitorNeedDescriptions(
 		}
 	} catch {
 		// Without the manifest, needs still read as credentials, never raw keys.
+	}
+	try {
+		const needs = await loadPublishedCredentialNeeds({
+			env,
+			userId: target.orgId,
+			sourceId: target.package.sourceId,
+		})
+		// Same precedence as the consent screen: executor needs win.
+		for (const need of savedCredentialNeeds(needs)) {
+			if (need.supplier === 'executor' && need.description) {
+				descriptions[need.key] = need.description
+			}
+		}
+	} catch {
+		// Fall back to the visitorNeeds wording loaded above.
 	}
 	return descriptions
 }
