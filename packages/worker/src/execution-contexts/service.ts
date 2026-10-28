@@ -1,3 +1,4 @@
+import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
 import {
 	ecpMaxChainContexts,
 	type EcpCancelReason,
@@ -958,6 +959,7 @@ export async function detachContext(
 				row.id,
 				targetOrgId,
 			),
+		bumpAccessEpochStatement(db, targetOrgId, { onlyIfPreviousChanged: true }),
 		db
 			.prepare(
 				`DELETE FROM execution_context_opt_ins WHERE context_id = ? AND org_id = ?`,
