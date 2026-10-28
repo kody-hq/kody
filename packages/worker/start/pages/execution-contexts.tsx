@@ -39,7 +39,8 @@ const codeCss = css({
 	borderRadius: radius.md,
 	background: colors.background,
 	border: `1px solid ${colors.borderSubtle}`,
-	overflowX: 'auto',
+	whiteSpace: 'pre-wrap',
+	overflowWrap: 'anywhere',
 	fontSize: '0.9rem',
 })
 

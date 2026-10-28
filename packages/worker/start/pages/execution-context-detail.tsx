@@ -53,7 +53,12 @@ import {
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import { UndoToast } from '../components/undo-toast.tsx'
 import { useUndoableAction } from '../components/use-undoable-action.ts'
-import { AccountManagementMessage } from './account-management-components.tsx'
+import {
+	AccountManagementMessage,
+	accountInputCss,
+} from './account-management-components.tsx'
+import { selectCss } from './package-collaborators-parts.tsx'
+import { recordBodyCss } from './record-table.tsx'
 
 const sectionCss = css({ display: 'grid', gap: spacing.sm })
 const mutedCss = css({ color: colors.textMuted, margin: 0 })
@@ -114,7 +119,12 @@ export function ExecutionContextDetail(props: {
 	return (
 		<div
 			data-testid="execution-context-detail"
-			css={{ display: 'grid', gap: spacing.lg, containerType: 'inline-size' }}
+			css={{
+				...recordBodyCss,
+				display: 'grid',
+				gap: spacing.lg,
+				containerType: 'inline-size',
+			}}
 		>
 			<dl css={dlCss}>
 				<dt>Status</dt>
@@ -520,7 +530,7 @@ function SharingPanel(props: {
 							Share with
 							<select
 								value={kind}
-								css={target}
+								css={[target, selectCss]}
 								onChange={(event) => setKind(event.target.value as typeof kind)}
 							>
 								<option value="user">A person</option>
@@ -536,7 +546,7 @@ function SharingPanel(props: {
 								<input
 									value={value}
 									required
-									css={target}
+									css={[target, accountInputCss]}
 									onChange={(event) => setValue(event.target.value)}
 								/>
 							</label>
@@ -545,7 +555,7 @@ function SharingPanel(props: {
 							Access
 							<select
 								value={preset}
-								css={target}
+								css={[target, selectCss]}
 								onChange={(event) =>
 									setPreset(event.target.value as ExecutionContextPreset)
 								}
@@ -633,7 +643,7 @@ function RunHistory(props: {
 						Requester
 						<input
 							value={requester}
-							css={target}
+							css={[target, accountInputCss]}
 							onChange={(event) => {
 								setRequester(event.target.value)
 								setCursors([undefined])
@@ -644,7 +654,7 @@ function RunHistory(props: {
 						Outcome
 						<select
 							value={outcome}
-							css={target}
+							css={[target, selectCss]}
 							onChange={(event) => {
 								setOutcome(event.target.value)
 								setCursors([undefined])

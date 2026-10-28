@@ -28,6 +28,7 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import { AccountManagementMessage } from './account-management-components.tsx'
+import { selectCss } from './package-collaborators-parts.tsx'
 
 const saveDelayMs = 600
 
@@ -48,7 +49,7 @@ const rowCss = css({
 	borderRadius: radius.md,
 	background: colors.surface,
 	'@container (max-width: 520px)': {
-		gridTemplateColumns: 'auto minmax(0, 1fr)',
+		gridTemplateColumns: 'auto auto minmax(0, 1fr)',
 	},
 })
 const grabbedRowCss = css({
@@ -519,7 +520,7 @@ export function ExecutionChainPanel(props: {
 								value={addId}
 								disabled={full}
 								onChange={(event) => setAddId(event.target.value)}
-								css={[targetCss, { borderRadius: radius.sm }]}
+								css={[targetCss, selectCss]}
 							>
 								<option value="">Choose…</option>
 								{addable.map((context) => (
