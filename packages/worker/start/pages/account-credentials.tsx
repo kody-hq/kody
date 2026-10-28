@@ -29,6 +29,7 @@ import {
 	type CredentialListFilters,
 	type CredentialListItem,
 	orgCredentialCreatePath,
+	buildCredentialCreateHref,
 	credentialKinds,
 	isCredentialKind,
 } from '#universal/credential-contracts.ts'
@@ -360,8 +361,28 @@ export function AccountCredentialsRoute({
 					credentials.length === 0
 						? shownProviders.length > 0
 							? 'No keys, OAuth connections, or MCP servers yet. Your custom secret providers are listed below.'
-							: 'No credentials yet. Add a key, connect an OAuth service, or add an MCP server to get started.'
+							: 'No credentials yet. Add a key, connect an OAuth service, or connect a remote MCP server Kody can use.'
 						: 'No credentials match the current filters.'
+				}
+				emptyAction={
+					credentials.length === 0 && orgSlug ? (
+						<>
+							<SiteLink
+								href={orgCredentialCreatePath(orgSlug)}
+								css={getPillButtonCss({ size: 'sm' })}
+								data-testid="credentials-empty-add"
+							>
+								Add credential
+							</SiteLink>
+							<SiteLink
+								href={buildCredentialCreateHref({ orgSlug, kind: 'mcp' })}
+								css={getGhostButtonCss({ size: 'sm' })}
+								data-testid="credentials-empty-connect-mcp"
+							>
+								Connect a remote MCP server
+							</SiteLink>
+						</>
+					) : undefined
 				}
 				toolbar={
 					<>

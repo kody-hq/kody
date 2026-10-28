@@ -136,7 +136,7 @@ export async function setupPackageCredentialMappingFixture(input: {
 			.bind(acmeId)
 			.run()
 	}
-	const storeKey = async (name: string, provider: string) => {
+	const storeKey = async (name: string, provider: string | null) => {
 		await saveSecret({
 			env,
 			userId: acmeId,

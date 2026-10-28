@@ -181,3 +181,40 @@ test('grandfathered publisher personal defaults offer only a clear action when m
 		'aria-label="Clear your default for publisher-empty"',
 	)
 })
+
+test('unbound needs with a possible match point at Mappings instead of add', async () => {
+	const match = {
+		id: 'cred-raw-id-123',
+		name: 'Work calendar',
+		kind: 'oauth' as const,
+		scope: 'org' as const,
+	}
+	const calendar = need('calendar')
+	calendar.effective = { ...calendar.effective, candidates: [match] }
+	calendar.createUrl = '/credentials/new?need=calendar'
+	const view: PackageCredentialsView = {
+		ok: true,
+		package: { id: 'package-a', kodyId: 'repo', canManage: true },
+		needs: [calendar],
+		triggers: [],
+		locked: [],
+		incomplete: [{ ...incomplete('calendar'), possibleMatches: [match] }],
+	}
+	const context = { orgSlug: 'team', username: 'team', kodyId: 'repo', view }
+
+	const credentialsHtml = await renderStartPage(renderCredentialsTab(context))
+	expect(credentialsHtml).toContain('Not linked yet')
+	expect(credentialsHtml).toContain('Work calendar')
+	expect(credentialsHtml).toContain('looks like a match')
+	expect(credentialsHtml).toContain('Link it in Mappings')
+	expect(credentialsHtml).toContain('#package-mapping-calendar')
+	expect(credentialsHtml).not.toContain('No matching credential')
+	expect(credentialsHtml).not.toContain('>No credential<')
+	expect(credentialsHtml).not.toContain('Add a credential')
+	expect(credentialsHtml).not.toContain('cred-raw-id-123<')
+
+	const mappingsHtml = await renderStartPage(renderMappingsTab(context))
+	expect(mappingsHtml).toContain('Not linked yet')
+	expect(mappingsHtml).not.toContain('Add a credential for')
+	expect(mappingsHtml).not.toContain('Link it in Mappings')
+})

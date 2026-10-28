@@ -155,7 +155,10 @@ export function mappingSourceLabel(source: CredentialMappingSource) {
 
 export type MappingStatusTone = 'ok' | 'muted' | 'warning' | 'danger'
 
-export function mappingStatusLabel(status: EffectiveCredentialMappingStatus): {
+export function mappingStatusLabel(
+	status: EffectiveCredentialMappingStatus,
+	options: { hasPossibleMatch?: boolean } = {},
+): {
 	label: string
 	tone: MappingStatusTone
 } {
@@ -165,7 +168,9 @@ export function mappingStatusLabel(status: EffectiveCredentialMappingStatus): {
 		case 'none':
 			return { label: 'None on purpose', tone: 'muted' }
 		case 'unbound':
-			return { label: 'No credential', tone: 'danger' }
+			return options.hasPossibleMatch
+				? { label: 'Not linked yet', tone: 'warning' }
+				: { label: 'No credential', tone: 'danger' }
 		case 'ambiguous':
 			return { label: 'Pick one', tone: 'warning' }
 		case 'unusable':
@@ -190,8 +195,18 @@ export function describeIncompleteMapping(
 				? `${describeTrigger(item.where.trigger)} (one of your instances) runs`
 				: `${describeTrigger(item.where.trigger)} runs`
 	switch (item.status) {
-		case 'unbound':
-			return `${where} have no credential for “${item.needKey}”. Add one or map an existing one.`
+		case 'unbound': {
+			const matches = item.possibleMatches ?? []
+			if (matches.length === 0) {
+				return `${where} have no credential for “${item.needKey}”. Add one or map an existing one.`
+			}
+			const names = matches
+				.map((ref) => `“${credentialRefLabel(ref)}”`)
+				.join(', ')
+			const verb =
+				matches.length === 1 ? 'looks like a match' : 'look like matches'
+			return `${where} aren’t linked to a credential for “${item.needKey}” yet. ${names} ${verb}; pick it in ${packageCredentialsTabLabel(incompleteMappingTab(item))}.`
+		}
 		case 'ambiguous':
 			return `${where} match several credentials for “${item.needKey}”. Pick one so runs don’t fail.`
 		case 'unusable':

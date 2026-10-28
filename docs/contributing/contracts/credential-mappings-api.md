@@ -179,7 +179,9 @@ export type EffectiveCredentialMapping = {
 	/**
 	 * - `ready`: a run would use `credentials`.
 	 * - `none`: mapped to `[]` on purpose; the need is unbound.
-	 * - `unbound`: nothing mapped and no candidate.
+	 * - `unbound`: nothing mapped and no provider match. Credentials of the
+	 *   right kind with no provider sit in `candidates` as possible matches a
+	 *   mapping could link.
 	 * - `ambiguous`: nothing mapped and several candidates (`candidates`).
 	 * - `unusable`: a trigger mapping names a credential the enabler cannot Use.
 	 * - `expired`: bound to a Key whose expiry has passed (still listed; not

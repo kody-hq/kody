@@ -117,8 +117,13 @@ function toneColor(tone: MappingStatusTone) {
 		}
 	}
 }
+function hasPossibleMatch(mapping: EffectiveCredentialMapping) {
+	return mapping.status === 'unbound' && mapping.candidates.length > 0
+}
 export function renderStatus(mapping: EffectiveCredentialMapping) {
-	const { label, tone } = mappingStatusLabel(mapping.status)
+	const { label, tone } = mappingStatusLabel(mapping.status, {
+		hasPossibleMatch: hasPossibleMatch(mapping),
+	})
 	return renderStatusBadge(label, tone, { mappingStatus: mapping.status })
 }
 function renderExecutorStatus() {
@@ -167,6 +172,8 @@ function renderRefs(orgSlug: string, refs: ReadonlyArray<CredentialRef>) {
 export function renderEffective(
 	orgSlug: string,
 	mapping: EffectiveCredentialMapping,
+	/** Where to link a possible match; omit when the picker is on this page. */
+	pickHref?: string,
 ) {
 	switch (mapping.status) {
 		case 'ready':
@@ -186,6 +193,20 @@ export function renderEffective(
 		case 'none':
 			return <span css={mutedCss}>Nothing, on purpose</span>
 		case 'unbound':
+			if (mapping.candidates.length > 0) {
+				return (
+					<span data-testid="mapping-possible-match">
+						Not linked yet. Possible match:{' '}
+						{renderRefs(orgSlug, mapping.candidates)}
+						{pickHref ? (
+							<>
+								{' '}
+								<SiteLink href={pickHref}>Link it in Mappings</SiteLink>
+							</>
+						) : null}
+					</span>
+				)
+			}
 			return <span css={mutedCss}>No matching credential</span>
 		case 'ambiguous':
 			return <span>One of: {renderRefs(orgSlug, mapping.candidates)}</span>
@@ -286,7 +307,9 @@ export function renderIncomplete(
 										Open {packageCredentialsTabLabel(tab)}
 									</SiteLink>
 								)}
-								{item.status === 'unbound' && createUrl ? (
+								{item.status === 'unbound' &&
+								createUrl &&
+								(item.possibleMatches?.length ?? 0) === 0 ? (
 									<SiteLink href={createUrl}>Add a credential</SiteLink>
 								) : null}
 							</span>
@@ -349,7 +372,15 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 													Each person who runs it supplies their own
 												</span>
 											) : (
-												renderEffective(orgSlug, need.effective)
+												renderEffective(
+													orgSlug,
+													need.effective,
+													`${packageCredentialsTabHref({
+														username: context.username,
+														kodyId: context.kodyId,
+														tab: 'mappings',
+													})}#package-mapping-${need.key}`,
+												)
 											)}
 										</td>
 										<td>{mappingSourceLabel(need.effective.source)}</td>
@@ -510,9 +541,11 @@ export function renderMappingsTab(context: PackageTabContext): ReactNode {
 							</dd>
 						</div>
 					</dl>
-					<SiteLink href={need.createUrl}>
-						Add a credential for {need.key}
-					</SiteLink>
+					{hasPossibleMatch(need.effective) ? null : (
+						<SiteLink href={need.createUrl}>
+							Add a credential for {need.key}
+						</SiteLink>
+					)}
 				</section>
 			))}
 		</>

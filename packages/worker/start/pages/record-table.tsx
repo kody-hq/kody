@@ -188,6 +188,8 @@ type RecordTableProps = {
 	 */
 	recordLoading?: boolean
 	emptyLabel?: string
+	/** Actions under the empty copy, e.g. the screen's create link. */
+	emptyAction?: Slot
 	/** Below the table, inside its pane: the infinite-list "Load more" control. */
 	footer?: Slot
 	/**
@@ -391,6 +393,19 @@ const emptyCss: CSSObject = {
 	padding: spacing.lg,
 	color: colors.textMuted,
 	fontSize: typography.fontSize.sm,
+}
+
+const emptyStateCss: CSSObject = {
+	...emptyCss,
+	display: 'grid',
+	gap: spacing.md,
+	justifyItems: 'start',
+}
+
+const emptyActionsCss: CSSObject = {
+	display: 'flex',
+	flexWrap: 'wrap',
+	gap: spacing.sm,
 }
 
 /** Padding and rhythm for whatever a screen renders as its record. */
@@ -752,7 +767,18 @@ export function RecordTable(props: RecordTableProps) {
 					 */}
 					<div key="record-table-collection">
 						{rows.length === 0 ? (
-							<p css={emptyCss}>{props.emptyLabel ?? 'Nothing to show yet.'}</p>
+							props.emptyAction ? (
+								<div css={emptyStateCss} data-testid="record-table-empty">
+									<p css={{ margin: 0 }}>
+										{props.emptyLabel ?? 'Nothing to show yet.'}
+									</p>
+									<div css={emptyActionsCss}>{props.emptyAction}</div>
+								</div>
+							) : (
+								<p css={emptyCss}>
+									{props.emptyLabel ?? 'Nothing to show yet.'}
+								</p>
+							)
 						) : (
 							<div
 								role="region"
