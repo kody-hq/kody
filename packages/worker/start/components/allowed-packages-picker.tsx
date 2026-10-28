@@ -38,6 +38,7 @@ export function AllowedPackagesPicker(props: {
 	unknownLabel: ReactNode
 	emptyText?: ReactNode
 	allSelectedText: ReactNode
+	noOptionsText?: ReactNode
 	onAdd: (packageId: string) => void
 	onRemove: (packageId: string) => void
 }) {
@@ -96,6 +97,8 @@ export function AllowedPackagesPicker(props: {
 				/>
 			) : props.options.length > 0 ? (
 				<p css={mutedCss}>{props.allSelectedText}</p>
+			) : props.noOptionsText ? (
+				<p css={mutedCss}>{props.noOptionsText}</p>
 			) : null}
 		</div>
 	)

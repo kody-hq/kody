@@ -208,6 +208,7 @@ export function PackageAccessField(input: {
 						</>
 					}
 					allSelectedText="Every package in this org is selected."
+					noOptionsText="This org has no packages yet."
 					onAdd={(id) =>
 						update({
 							allowedPackages: [...new Set([...state.allowedPackages, id])],
