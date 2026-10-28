@@ -28,6 +28,8 @@ import { redirectToLoginWhenUnauthenticated } from '#app/auth-redirect.ts'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
 import { type PackageAppOauthConsentLoaderData } from '#universal/loader-data.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
+import { isCredentialKind } from '#universal/credential-contracts.ts'
+import { credentialKindLabel } from '#universal/credentials-list.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
 import {
@@ -476,7 +478,7 @@ async function loadExecutorNeedConsentData(input: {
 	)
 	const candidateIds = new Set(
 		needs.flatMap(({ need }) =>
-			resolveNeedCandidates(need, usable).options.map(({ id }) => id),
+			resolveNeedCandidates(need, usable).candidates.map(({ id }) => id),
 		),
 	)
 	const usage = new Map<string, { usedByApps: number; recent: string | null }>()
@@ -513,7 +515,9 @@ async function loadExecutorNeedConsentData(input: {
 	})
 	return await Promise.all(
 		needs.map(async ({ need, scope }) => {
-			const credentials = resolveNeedCandidates(need, usable).options
+			// Only credentials for the need's provider; provider-less ones are
+			// not offered as matches.
+			const credentials = resolveNeedCandidates(need, usable).candidates
 			const ranked = [...credentials].sort((left, right) => {
 				const leftUsage = usage.get(left.id)
 				const rightUsage = usage.get(right.id)
@@ -545,6 +549,12 @@ async function loadExecutorNeedConsentData(input: {
 				})),
 				recommendedCredentialId: recommended?.id ?? null,
 				createUrl,
+				provider: need.provider,
+				kindLabel:
+					need.kind && isCredentialKind(need.kind)
+						? credentialKindLabel(need.kind)
+						: null,
+				createDestination: input.user.request.org.slug ?? null,
 			}
 		}),
 	)

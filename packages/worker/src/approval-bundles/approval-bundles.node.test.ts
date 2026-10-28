@@ -806,6 +806,10 @@ test('a went-public item waits for the capability set, which the package page ap
 		statusMessage: expect.stringContaining('one Approve also turns on'),
 	})
 	expect(waiting.reviewHref).toContain('/approve-capabilities')
+	// The credential needs the app asks for are listed, not just the hostname.
+	expect(waiting.grants.map((grant) => grant.label)).toEqual(
+		expect.arrayContaining(['mail', 'chat']),
+	)
 
 	const approved = await approvePackageCapabilitySet({
 		env: t.env,

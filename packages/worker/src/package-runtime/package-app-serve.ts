@@ -1120,8 +1120,11 @@ export async function servePackageAppRequest(input: {
 					}),
 				)
 			: []
-		const requiredExecutorNeeds = visitorNeeds.filter(
-			(need) => need.supplier === 'executor' && need.required !== false,
+		const executorNeeds = visitorNeeds.filter(
+			(need) => need.supplier === 'executor',
+		)
+		const requiredExecutorNeeds = executorNeeds.filter(
+			(need) => need.required !== false,
 		)
 		for (const need of requiredExecutorNeeds) {
 			try {
@@ -1166,7 +1169,8 @@ export async function servePackageAppRequest(input: {
 					'scope',
 					[
 						'profile',
-						...requiredExecutorNeeds.map((item) => `need:${item.key}`),
+						// Optional needs ride along so consent can offer them.
+						...executorNeeds.map((item) => `need:${item.key}`),
 					].join(' '),
 				)
 				loginUrl.searchParams.set('prompt', 'consent')

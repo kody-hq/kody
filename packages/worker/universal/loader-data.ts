@@ -2974,6 +2974,12 @@ export type PackageAppOauthConsentLoaderData = {
 		credentials: Array<{ id: string; name: string; usedByApps: number }>
 		recommendedCredentialId: string | null
 		createUrl: string
+		/** Provider slug the need matches, e.g. `github`. */
+		provider: string
+		/** Declared credential kind label (e.g. `Key`), or null for any kind. */
+		kindLabel: string | null
+		/** Org handle the create link saves the credential to. */
+		createDestination: string | null
 	}>
 	alreadyAllowedLabels: Array<string>
 	hiddenFields: Record<string, string>

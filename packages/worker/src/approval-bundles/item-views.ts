@@ -36,6 +36,11 @@ import { readWentPublicSummary } from '#worker/package-capabilities/went-public-
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
+import {
+	savedCredentialNeeds,
+	type SavedCredentialNeed,
+} from '#worker/credentials/credential-needs.ts'
 import {
 	approvalItemKey,
 	type ApprovalGrantLine,
@@ -407,6 +412,7 @@ async function publishItemView(
 						after: 'Anyone on the internet can reach this package’s app',
 						match: null,
 					},
+					...(await wentPublicNeedLines(viewer, savedPackage)),
 				],
 			}
 		default: {
@@ -414,6 +420,52 @@ async function publishItemView(
 			throw new Error(`Unknown approval reason: ${String(exhaustive)}`)
 		}
 	}
+}
+
+/** The published credential needs a public app asks for, by who supplies them. */
+async function wentPublicNeedLines(
+	viewer: ApprovalViewer,
+	savedPackage: SavedPackageRecord,
+): Promise<Array<ApprovalGrantLine>> {
+	try {
+		const needs = savedCredentialNeeds(
+			await loadPublishedCredentialNeeds({
+				env: viewer.env,
+				userId: viewer.request.org.id,
+				sourceId: savedPackage.sourceId,
+				request: viewer.request,
+			}),
+		)
+		return needs.map((need) => ({
+			change: 'added' as const,
+			label: need.key,
+			where: need.from ? `Declared by ${need.from}` : null,
+			kind: kindLabel(need.kind),
+			provider: need.provider,
+			hosts: [],
+			before: null,
+			after: `${describeNeedShape(need)}. ${describeNeedSupplier(need)}`,
+			match: null,
+		}))
+	} catch (error) {
+		console.error('Failed to load credential needs for went_public item:', {
+			packageId: savedPackage.id,
+			error: getErrorMessage(error),
+		})
+		return []
+	}
+}
+
+function describeNeedSupplier(need: SavedCredentialNeed) {
+	if (need.supplier === 'executor') {
+		return need.required === false
+			? 'Each visitor may choose their own credential (optional).'
+			: 'Each visitor must choose their own credential (required).'
+	}
+	if (need.supplier === 'publisher' || need.ownerCredentialForVisitors) {
+		return 'Supplied by the publisher; visitors use it through the app.'
+	}
+	return 'Supplied by the org’s credential mappings.'
 }
 
 /** Going public needs the live capability set approved first. */
