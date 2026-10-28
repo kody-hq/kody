@@ -28,7 +28,7 @@ import { useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { AuthorizeOrgField } from './oauth-authorize-org-picker.tsx'
 
-export const deviceAntiPhishingMessage =
+const deviceAntiPhishingMessage =
 	'Only continue if you started this sign-in yourself on a device you control.'
 
 function deviceErrorText(
