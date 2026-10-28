@@ -705,6 +705,10 @@
 			"sha256": "f1c7bbbf9a2d164b4601e675547f600ac4d0be26cbda0bc985174f127ebffd78"
 		},
 		{
+			"filename": "0194-package-app-cookie-warnings.sql",
+			"sha256": "a5470e3405f1f379c82d37285e1f6731e8b070e272066166a056039916511f8d"
+		},
+		{
 			"filename": "0195-credential-fill-placement-opt-ins.sql",
 			"sha256": "9c4ae5ee34158ebde5106433f0d5a9a0caf5dfb1b41ae8080c64034cdcb734cd"
 		}

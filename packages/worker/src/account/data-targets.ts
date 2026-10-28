@@ -432,6 +432,11 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		columns: ['owner_user_id'],
 	},
 	{
+		kind: 'user_columns',
+		table: 'package_app_cookie_warnings',
+		columns: ['owner_user_id'],
+	},
+	{
 		kind: 'replace_user_column',
 		table: 'package_security_audits',
 		matchColumn: 'recorded_by_user_id',

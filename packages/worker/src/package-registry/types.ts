@@ -127,6 +127,20 @@ export const packageAppDefinitionSchema = z.object({
 	 */
 	assets: z.string().trim().min(1).optional(),
 	/**
+	 * Cookie names the app's page scripts must read. Kody normally adds
+	 * HttpOnly to cookies that look like sign-in or session cookies; names
+	 * listed here are left as set and still shown on the owner dashboard.
+	 * Use the name without the Kody cookie prefix.
+	 */
+	cookies: z
+		.object({
+			clientReadable: z
+				.array(z.string().trim().min(1).max(128))
+				.max(20)
+				.optional(),
+		})
+		.optional(),
+	/**
 	 * Kody capabilities the app may call as the person it runs as (its
 	 * publisher unless an owner chose someone else). Anything not listed
 	 * never runs with that person's authority.

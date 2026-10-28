@@ -448,6 +448,12 @@ export function getPackageAppAssetsDirectory(manifest: AuthoredPackageJson) {
 	return normalized.length > 0 ? normalized : null
 }
 
+export function getPackageAppClientReadableCookieNames(
+	manifest: AuthoredPackageJson,
+): ReadonlyArray<string> {
+	return manifest.kody.app?.cookies?.clientReadable ?? []
+}
+
 export function listPackageSubscriptions(manifest: AuthoredPackageJson) {
 	return Object.entries(manifest.kody.subscriptions ?? {})
 		.map(([topic, subscription]) => ({

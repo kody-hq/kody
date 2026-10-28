@@ -335,6 +335,37 @@ package Activity run). This does **not** stop
 refuse that once the apex is on the PSL (operational follow-up in decision
 0017).
 
+**Package-app HttpOnly cookies (HTTP).** After the Domain scrub and package
+cookie-prefix filter, the author-entrypoint response path uses
+`isPackageAppAuthCookie` in
+`packages/worker/src/package-runtime/package-app-cookie-httponly.ts` as its
+single auth-cookie identification rule. Kody appends HttpOnly to matching
+cookies and leaves other cookies unchanged, recording warning findings by cookie
+name only, never values, for the package owner's dashboard. This only covers
+`Set-Cookie` headers; cookies written by page scripts through `document.cookie`
+are out of reach.
+
+An app whose page scripts must read an auth-looking cookie can list its
+unprefixed name in `kody.app.cookies.clientReadable`:
+
+```json
+{
+	"kody": {
+		"app": {
+			"entry": "./src/app.ts",
+			"cookies": {
+				"clientReadable": ["theme-session"]
+			}
+		}
+	}
+}
+```
+
+Names match exactly and case-sensitively. Exempted cookies stay as set and
+continue to appear in the owner's dashboard. If page scripts do not need to read
+a cookie, keep HttpOnly on it. Use `clientReadable` or a name that does not look
+like auth or session state only for cookies that page scripts must read.
+
 Sibling subdomains also stay **same-site** with each other until the domain is
 on the Public Suffix List, so a `SameSite=Lax` cookie still attaches to their
 cross-origin requests. In a browser holding sessions for two accounts (a shared
