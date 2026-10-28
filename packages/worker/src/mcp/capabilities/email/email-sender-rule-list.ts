@@ -13,6 +13,7 @@ export const emailSenderRuleListCapability = defineDomainCapability(
 	capabilityDomainNames.email,
 	{
 		name: 'emailSenderRuleList',
+		contextRuns: 'allow',
 		orgPermission: 'email:read',
 		description:
 			'List sender allow/block/quarantine rules for the current org. Classification matches rules on RFC5322 From after trusted Cloudflare Authentication-Results (SPF/DKIM/DMARC): allow overrides auto-quarantine for failed sender authentication; block/quarantine still apply (address beats domain; subdomain suffix matching).',

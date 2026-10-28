@@ -70,6 +70,7 @@ export const adminPlatformProviderMarkSaveCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminPlatformProviderMarkSave',
+		contextRuns: 'deny',
 		description:
 			'Create or update an operator-owned provider brand mark used after an explicit upload and before auto-favicon on saved integrations and MCP servers. Admin-only.',
 		keywords: [

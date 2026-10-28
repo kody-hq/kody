@@ -2679,6 +2679,7 @@ export type AccountActivityRunListItem = {
 			| 'webhook'
 			| 'inbound-email'
 			| 'platform-event'
+			| 'execution-context'
 		label: string | null
 	} | null
 }

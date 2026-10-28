@@ -29,6 +29,7 @@ test('Zod capability validation failures identify the capability, fields, and re
 	const inputCapability = defineCapability({
 		name: 'packageGet',
 		orgPermission: 'none',
+		contextRuns: 'deny',
 		domain: 'packages',
 		description: 'Get a package.',
 		inputSchema: z.object({ package_id: z.string() }),
@@ -50,6 +51,7 @@ test('Zod capability validation failures identify the capability, fields, and re
 	const outputCapability = defineCapability({
 		name: 'packageSave',
 		orgPermission: 'none',
+		contextRuns: 'deny',
 		domain: 'packages',
 		description: 'Save a package.',
 		inputSchema: z.object({ package_id: z.string() }),
@@ -74,6 +76,7 @@ test('builtin identifiers reject snake_case while MCP tool names may use it', ()
 		defineCapability({
 			name: 'package_get',
 			orgPermission: 'none',
+			contextRuns: 'deny',
 			domain: 'packages',
 			description: 'Get a package.',
 			inputSchema: z.object({}),
@@ -85,6 +88,7 @@ test('builtin identifiers reject snake_case while MCP tool names may use it', ()
 		defineCapability({
 			name: 'package-get',
 			orgPermission: 'none',
+			contextRuns: 'deny',
 			domain: 'packages',
 			description: 'Get a package.',
 			inputSchema: z.object({}),
@@ -95,6 +99,7 @@ test('builtin identifiers reject snake_case while MCP tool names may use it', ()
 	defineCapability({
 		name: 'create_issue',
 		orgPermission: 'none',
+		contextRuns: 'deny',
 		domain: 'mcp:linear',
 		description: 'Create an issue.',
 		source: 'mcp-server',
@@ -114,6 +119,7 @@ test('leftover kody_id input schemas mark deprecated in JSON Schema', () => {
 	const capability = defineCapability({
 		name: 'packageLookupDemo',
 		orgPermission: 'none',
+		contextRuns: 'deny',
 		domain: 'packages',
 		description: 'Lookup demo.',
 		inputSchema: z.object({
@@ -140,6 +146,7 @@ test('successful leftover kody_id calls attach a deprecation hint after output p
 	const capability = defineCapability({
 		name: 'packageLookupHint',
 		orgPermission: 'none',
+		contextRuns: 'deny',
 		domain: 'packages',
 		description: 'Lookup with hint.',
 		inputSchema: z.object({
@@ -178,6 +185,7 @@ test('the dispatch gate checks the declared org permission before the handler ru
 	const gated = defineCapability({
 		name: 'gatedCapability',
 		orgPermission: 'package:read',
+		contextRuns: 'deny',
 		domain: 'packages',
 		description: 'Needs package:read.',
 		inputSchema: z.object({}),

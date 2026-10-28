@@ -16,6 +16,7 @@ export const emailMessageGetCapability = defineDomainCapability(
 	capabilityDomainNames.email,
 	{
 		name: 'emailMessageGet',
+		contextRuns: 'allow',
 		orgPermission: 'email:read',
 		description:
 			'Get one stored email message, including parsed bodies, headers, attachment metadata, and processing state.',

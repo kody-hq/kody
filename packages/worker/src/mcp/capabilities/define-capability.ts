@@ -31,6 +31,7 @@ import {
 	assertLivePerson,
 	authorizeSurface,
 } from '#worker/authorization/authorize.ts'
+import { assertContextRunAllowed } from '#worker/execution-contexts/context-run-policy.ts'
 import { attachKodyIdDeprecationHint } from '#worker/package-registry/kody-id-deprecation.ts'
 
 // Normalize capability authoring input into the JSON-Schema-based shape
@@ -96,6 +97,7 @@ export function defineCapability<
 		idempotent: definition.idempotent ?? false,
 		destructive: definition.destructive ?? false,
 		orgPermission: definition.orgPermission,
+		contextRuns: definition.contextRuns,
 		requiresLivePerson: livePersonMode(definition.requiresLivePerson),
 		...(definition.requiredRole
 			? { requiredRole: definition.requiredRole }
@@ -129,6 +131,11 @@ export function defineCapability<
 				userId,
 				...(storageId ? { storageId } : {}),
 			}
+			assertContextRunAllowed(
+				ctx.callerContext.request,
+				definition.name,
+				definition.contextRuns,
+			)
 			if (definition.requiresLivePerson === true) {
 				assertLivePerson(ctx.callerContext.request, definition.name)
 			}

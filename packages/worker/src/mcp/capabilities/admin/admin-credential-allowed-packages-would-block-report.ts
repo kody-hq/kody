@@ -108,6 +108,7 @@ export const adminCredentialAllowedPackagesWouldBlockReportCapability =
 	defineDomainCapability(capabilityDomainNames.admin, {
 		...adminCapabilityAccess,
 		name: 'adminCredentialAllowedPackagesWouldBlockReport',
+		contextRuns: 'deny',
 		description:
 			'Read-only observe-mode report for issue #4129: uses where a self-authored or adopted package read a user credential whose allowed packages list is non-empty and leaves that package out. Access is still allowed today; this sizes enforcement. Returns distinct owner, credential, and package counts plus per-owner detail (ids, credential names, package kody ids, day counts, first/last seen). Never returns credential values. Never notifies owners. Admin-only; use counts in public text.',
 		keywords: [

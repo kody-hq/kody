@@ -18,6 +18,7 @@ export const storageExportCapability = defineDomainCapability(
 	capabilityDomainNames.storage,
 	{
 		name: 'storageExport',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'Export one durable storage bucket as JSON for inspection, debugging, or comparisons.',

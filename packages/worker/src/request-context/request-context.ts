@@ -56,6 +56,8 @@ export type RequestSource =
 	| { kind: 'cli' }
 	| { kind: 'api-token'; tokenId: string }
 	| { kind: 'package-app' }
+	/** A run on a registered execution context, acting as its requester. */
+	| { kind: 'execution-context-run'; ecid: string; runId: string }
 	| { kind: 'schedule'; jobId: string; enablement?: EnablementRun }
 	| { kind: 'webhook'; sourceId: string; enablement?: EnablementRun }
 	| {
@@ -165,13 +167,23 @@ function automation(input: {
 function credentialIdFor(
 	source: Extract<
 		RequestSource,
-		{ kind: 'session' | 'mcp-oauth' | 'cli' | 'api-token' | 'package-app' }
+		{
+			kind:
+				| 'session'
+				| 'mcp-oauth'
+				| 'cli'
+				| 'api-token'
+				| 'package-app'
+				| 'execution-context-run'
+		}
 	>,
 	oauthClientId: string | null | undefined,
 ): string | null {
 	switch (source.kind) {
 		case 'api-token':
 			return source.tokenId
+		case 'execution-context-run':
+			return source.runId
 		case 'mcp-oauth':
 		case 'cli':
 			return oauthClientId?.trim() || null
@@ -210,7 +222,8 @@ export function deriveRequestContext(input: {
 		case 'mcp-oauth':
 		case 'cli':
 		case 'api-token':
-		case 'package-app': {
+		case 'package-app':
+		case 'execution-context-run': {
 			const actor = actorFor(input.user)
 			return {
 				org: binding.org,
@@ -383,6 +396,7 @@ export function backgroundRunBilledActor(
 		case 'cli':
 		case 'api-token':
 		case 'package-app':
+		case 'execution-context-run':
 			return null
 		default: {
 			const exhaustive: never = source

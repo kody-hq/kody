@@ -84,6 +84,7 @@ export const adminAuditLogQueryCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminAuditLogQuery',
+		contextRuns: 'deny',
 		description:
 			'Query sanitized account-administration audit metadata by action, actor, result, category, or time range. Admin-only; never returns user content.',
 		keywords: ['admin', 'audit', 'log', 'events', 'account metadata'],

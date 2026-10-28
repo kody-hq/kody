@@ -21,6 +21,7 @@ export const packageAppCustomHostnameAddCapability = defineDomainCapability(
 	capabilityDomainNames.orgs,
 	{
 		name: 'packageAppCustomHostnameAdd',
+		contextRuns: 'deny',
 		orgPermission: 'org:write',
 		featureFlag: packageAppCustomDomainsFlagKey,
 		description:

@@ -10,6 +10,7 @@ export const sessionEmitCapability = defineDomainCapability(
 	capabilityDomainNames.apps,
 	{
 		name: 'sessionEmit',
+		contextRuns: 'allow',
 		orgPermission: 'app:execute',
 		description:
 			'Send one websocket event to one active package realtime session.',

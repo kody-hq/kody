@@ -54,7 +54,22 @@ export function redactKodyCredentialsInSentryEvent(
 		}
 	}
 
+	const request = event.request
+	if (request) {
+		if (typeof request.url === 'string') {
+			request.url = redactConnectTicket(request.url)
+		}
+		if (typeof request.query_string === 'string') {
+			request.query_string = redactConnectTicket(request.query_string)
+		}
+	}
+
 	return event
+}
+
+/** Execution context connect tickets are bearer secrets in a query param. */
+export function redactConnectTicket(value: string) {
+	return value.replace(/([?&]|^)ticket=[^&#\s]*/g, '$1ticket=[redacted]')
 }
 
 /**

@@ -54,6 +54,78 @@ skipping refresh. Cursor and Claude Code stay logged in. Email
 [`support@kody.codes`](mailto:support@kody.codes) with your Codex version and
 how often it asks again if you want us to look.
 
+## Authorizing from a remote or headless machine
+
+Codex, OpenCode, and the Kody CLI finish OAuth on a loopback callback on the
+machine they run on. On a remote VM or NAS, the browser on your computer cannot
+reach that callback, so login stalls or the final page fails to load. Kody does
+not offer a device-code login, and Kody API tokens (`kody_at_`) are not accepted
+on `/mcp`, so a static bearer header is not an option.
+
+**Codex**
+
+1. On the remote machine, run `codex mcp login kody --no-browser`.
+2. Open the printed link in the browser on your own computer and approve.
+3. Copy the final redirected URL from the address bar (it fails to load; that is
+   expected) and paste it into the remote terminal.
+
+Or pin the callback port in `~/.codex/config.toml` and forward it:
+
+```toml
+mcp_oauth_callback_port = 5555
+```
+
+```bash
+ssh -L 127.0.0.1:5555:127.0.0.1:5555 user@host
+codex mcp login kody
+```
+
+See the Codex
+[`mcp login` source](https://github.com/openai/codex/blob/main/codex-rs/cli/src/mcp_cmd.rs)
+and [config reference](https://developers.openai.com/codex/config-reference).
+
+**OpenCode**
+
+OpenCode has no device-code flow for MCP. Its config schema documents the
+callback as `http://127.0.0.1:19876/mcp/oauth/callback` (port `19876`). If you
+set `oauth.callbackPort` (or `callback_port`) for `kody`, forward that port
+instead. Pinning a port also keeps newer builds from picking a random one.
+
+```bash
+ssh -L 127.0.0.1:19876:127.0.0.1:19876 user@host
+opencode mcp auth kody
+```
+
+Without a tunnel, approve in your own browser, copy the final callback URL from
+the address bar, and request it on the remote machine while
+`opencode mcp auth kody` is still waiting:
+
+```bash
+curl 'http://127.0.0.1:19876/mcp/oauth/callback?code=...&state=...'
+```
+
+See OpenCode's [MCP servers docs](https://opencode.ai/docs/mcp-servers/) and
+[config schema](https://github.com/anomalyco/opencode/blob/dev/packages/core/src/v1/config/mcp.ts).
+
+**Kody CLI**
+
+`kody login --no-browser` prints the link but still waits on the loopback
+callback at `http://127.0.0.1:43742/callback`. Forward that port first:
+
+```bash
+ssh -L 127.0.0.1:43742:127.0.0.1:43742 user@host
+kody login --no-browser
+```
+
+Or skip the browser login. From an agent already connected to Kody, ask it to
+run `cliCredentialBootstrap`, then on the remote machine run
+`kody auth bootstrap --code <code>`. For scripts and CI, set `KODY_API_TOKEN`.
+See the
+[CLI README](https://github.com/kody-hq/kody/blob/main/packages/cli/README.md).
+
+Keep every callback bound to `127.0.0.1`. Forward ports over SSH only, and never
+expose a callback port on a public interface.
+
 ## Authorize says the request is missing its original connection details
 
 The authorize page needs the original OAuth query (`client_id`, `state`, PKCE).

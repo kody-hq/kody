@@ -31,6 +31,7 @@ export const metaMemoryDeleteCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'metaMemoryDelete',
+		contextRuns: 'allow',
 		orgPermission: memoryPersonalOnlyOrgPermission,
 		description:
 			'Soft-delete a **personal** memory by default, or hard-delete it when `force` is true. Always run `metaMemoryVerify` first. Memory is personal-only; team-org legacy rows cannot be deleted through this tool.',

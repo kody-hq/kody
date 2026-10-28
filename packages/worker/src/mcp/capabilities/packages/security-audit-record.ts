@@ -40,6 +40,7 @@ export const packageSecurityAuditRecordCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageSecurityAuditRecord',
+		contextRuns: 'allow',
 		orgPermission: 'package:write',
 		description:
 			'Record an informational security audit for the exact published version of a saved package: its published commit plus capability-set fingerprint (both shown in the security audit prompt on the package capability approval page, and in the security_audit next step packageUpdate returns when a package moves toward internet-visible). Review that version first: declared vs used credentials, leaked credentials, unintended public exposure, risky network hosts, and package storage use. Then record verdict pass or concerns with a plain-language summary. The audit is tied to that commit and fingerprint; a new publish or changed capability set reads as not audited again. Recording an audit approves nothing by itself. One exception: when a request to make the package internet-visible is already pending (packageUpdate internet_visible: true), recording verdict pass re-evaluates self-publish, which makes the package internet-visible without the owner click (self_published: true) when the resolved capability set is empty and nothing in its dependency tree declares a credential or another capability. Otherwise hand the owner approval_url next. Requires package:read (to review the source) as well as package:write. Token-shaped strings in the summary are redacted.',

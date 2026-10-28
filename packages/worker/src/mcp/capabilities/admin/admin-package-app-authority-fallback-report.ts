@@ -88,6 +88,7 @@ export const adminPackageAppAuthorityFallbackReportCapability =
 	defineDomainCapability(capabilityDomainNames.admin, {
 		...adminCapabilityAccess,
 		name: 'adminPackageAppAuthorityFallbackReport',
+		contextRuns: 'deny',
 		description:
 			'Read-only report of package app calls that failed as the app’s runs-as person (publisher authority) and fell back to the legacy visitor authority, so the app kept working. Counts per app, per call name, and per kind of difference. Visitors are hashed; never returns handles, names, or credential values. Admin-only; use counts in public text.',
 		keywords: [

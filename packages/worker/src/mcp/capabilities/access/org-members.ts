@@ -50,6 +50,7 @@ export const orgCreateCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'orgCreate',
+		contextRuns: 'deny',
 		orgPermission: 'org:write',
 		description:
 			'Create an organization you own. The slug becomes the permanent handle (kody.codes/@<slug>) and cannot be changed later; only the display name can. The id is new and separate from your personal organization. Calls that change the new organization need a request bound to it.',
@@ -106,6 +107,7 @@ export const orgMemberListCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'orgMemberList',
+		contextRuns: 'allow',
 		orgPermission: 'member:read',
 		description:
 			'List live members of the organization this request is bound to, with username, display name, and role.',
@@ -154,6 +156,7 @@ export const orgMemberUpdateCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'orgMemberUpdate',
+		contextRuns: 'deny',
 		orgPermission: 'member:write',
 		requiresLivePerson: true,
 		description:
@@ -235,6 +238,7 @@ export const orgMemberRemoveCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'orgMemberRemove',
+		contextRuns: 'deny',
 		orgPermission: 'member:delete',
 		requiresLivePerson: true,
 		description:

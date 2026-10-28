@@ -1,3 +1,4 @@
+import { type EcpGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
 	resolveCallerFeatureFlags,
@@ -26,6 +27,23 @@ export type ApiPrincipal =
 			/** OIDC grant scopes (`openid` / `profile` / `email`), not API scopes. */
 			grantScopes: Array<string>
 	  }
+	/**
+	 * A run on a registered execution context calling back into Kody as its
+	 * requester: authenticated per request by the context's signature and an
+	 * active lease, never by a bearer token.
+	 */
+	| {
+			kind: 'execution-context-run'
+			ecid: string
+			runId: string
+			/** Lease deadline (epoch ms). */
+			deadline: number
+			/** The requester's credential scopes; null does not narrow. */
+			scopes: Array<string> | null
+			runtime: EcpGrant['runtime']
+			/** Credential ids the context's grant allows; empty means none. */
+			credentialIds: Array<string>
+	  }
 
 export function toCapabilityOpenApiPrincipal(
 	principal: ApiPrincipal,
@@ -37,6 +55,12 @@ export function toCapabilityOpenApiPrincipal(
 			return { kind: 'mcp' }
 		case 'mcp-oauth':
 			return { kind: 'mcp-oauth' }
+		case 'execution-context-run':
+			return {
+				kind: 'execution-context-run',
+				ecid: principal.ecid,
+				runId: principal.runId,
+			}
 	}
 }
 

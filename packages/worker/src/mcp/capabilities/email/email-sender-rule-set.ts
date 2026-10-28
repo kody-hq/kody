@@ -20,6 +20,7 @@ export const emailSenderRuleSetCapability = defineDomainCapability(
 	capabilityDomainNames.email,
 	{
 		name: 'emailSenderRuleSet',
+		contextRuns: 'allow',
 		orgPermission: 'email:write',
 		description:
 			'Create or update a sender rule for the current org. Classification matches rules on RFC5322 From after trusted Cloudflare Authentication-Results: allow/block/quarantine by address or domain (address beats domain; subdomain suffix matching). Allow overrides auto-quarantine for failed sender authentication; block rejects at SMTP before quota; quarantine stores mail and fires email.message.quarantined instead of email.message.received.',

@@ -21,6 +21,7 @@ export const secretDeleteCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'secretDelete',
+		contextRuns: 'deny',
 		orgPermission: 'secret:delete',
 		description:
 			'Delete an existing secret reference for the signed-in user: removes the credential row and every record of it (including placement and grants). Plaintext values stay hidden. Distinct from secretDisconnect, which clears only the value and keeps the row. Prefer secretDisconnect for package Connect/Disconnect flows that should preserve placement. When a package runtime calls this on a package-scope secret, the platform disconnects instead of deleting so existing package Disconnect code keeps placement.',

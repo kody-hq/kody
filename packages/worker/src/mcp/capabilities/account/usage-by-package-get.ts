@@ -77,6 +77,7 @@ export const usageByPackageGetCapability = defineDomainCapability(
 	capabilityDomainNames.account,
 	{
 		name: 'usageByPackageGet',
+		contextRuns: 'allow',
 		orgPermission: 'billing:read',
 		description:
 			'Read the current UTC month past-include credit attribution for the org this connection is bound to (personal or team) by package (Where it went): Worker compute and Rows read credits only — not execute, jobs, or package exports. Optional packageId returns that package’s slice of the same period breakdown.',

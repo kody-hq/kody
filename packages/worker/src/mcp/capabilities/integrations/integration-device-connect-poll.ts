@@ -54,6 +54,7 @@ export const integrationDeviceConnectPollCapability = defineDomainCapability(
 	capabilityDomainNames.integrations,
 	{
 		name: 'integrationDeviceConnectPoll',
+		contextRuns: 'deny',
 		orgPermission: 'integration:write',
 		description:
 			'Poll an in-flight RFC 8628 device authorization started with integrationDeviceConnectStart. Returns authorization_pending or slow_down until the user approves, then approved with the integration name (credentials are persisted server-side; token values never appear). access_denied and expired_token are terminal failures. Respect the returned interval before polling again.',

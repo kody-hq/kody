@@ -131,6 +131,8 @@ const tagDescriptions: Record<ApiOperation['tag'], string> = {
 	integrations: 'OAuth integrations and OAuth apps.',
 	'mcp-servers': 'User-added MCP servers.',
 	runs: 'Execution run history and triage.',
+	'execution-contexts':
+		'Execution contexts (machines running `kody daemon`), their sharing, run history and audit, and your per-org fallback chain. Kody cloud, when present, is always the last chain entry. Behind the `execution-contexts` feature flag: off answers 403 `feature_disabled`.',
 	storage: 'Durable storage export and SQL query.',
 	community: 'Public packages in the community catalog, and profile.',
 	tokens: 'Scoped, short-lived API tokens.',

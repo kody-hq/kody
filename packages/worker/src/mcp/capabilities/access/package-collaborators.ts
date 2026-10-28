@@ -168,6 +168,7 @@ export const packageCollaboratorListCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'packageCollaboratorList',
+		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
 			'List who can use one package in the organization this request is bound to: teams, org members, and outside collaborators with their preset (Use, Contribute, or Manage) and grant_id. package_id takes the package id or its kody id. You need manage access on the package. Add a team or org member, or change their preset, with packageCollaboratorSet; remove one with packageCollaboratorRemove.',
@@ -212,6 +213,7 @@ export const packageCollaboratorSetCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'packageCollaboratorSet',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
 			'Add a team or org member as a collaborator on one package in the organization this request is bound to, or change the preset of one who already is. Pass exactly one of team_slug, team_id, username, or user_id, and a preset (use, contribute, or manage). Only teams and members of this organization are accepted; Owners already have full access. You need manage access on the package. Audited like accessGrant.',
@@ -277,6 +279,7 @@ export const packageCollaboratorRemoveCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'packageCollaboratorRemove',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
 			'Remove one collaborator from a package in the organization this request is bound to, by the grant_id from packageCollaboratorList. Works for teams, org members, and outside collaborators. You need manage access on the package. Audited like accessRevoke.',

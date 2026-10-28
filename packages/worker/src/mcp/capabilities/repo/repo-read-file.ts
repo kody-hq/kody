@@ -20,6 +20,7 @@ export const repoReadFileCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoReadFile',
+		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
 			'Read a file from the active repo session workspace. Reads the live session overlay, not just the published base commit. Append #L165, #L165-L180, or a Markdown heading slug (#export-jsdoc) to path to return that region instead of the whole file. A missing or invalid anchor fails instead of ignoring the fragment.',

@@ -99,6 +99,7 @@ export const adminPublishedCommitRefRepairCapability = defineDomainCapability(
 		...adminMutationCapabilityAccess,
 		destructive: true,
 		name: 'adminPublishedCommitRefRepair',
+		contextRuns: 'deny',
 		description:
 			'Find published packages whose published_commit is not reachable from any Artifacts ref (a publish advanced the pointer but the git ref never moved), and repair them from the published source snapshot. Repair backs up the source row, refs, and affected sessions to KV, commits the snapshot tree as a fast-forward child of the default-branch tip, confirms the ref, moves session branches and records that pointed at the lost commit, then advances published_commit and rebuilds artifacts. Never force-pushes the default branch and never deletes. Packages with no snapshot are reported as unrecoverable. dryRun defaults to true; apply requires packageIds. One page per execute; resume with nextCursor until null.',
 		keywords: [

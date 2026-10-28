@@ -9,6 +9,7 @@ export const orgUpdateCapability = defineDomainCapability(
 	capabilityDomainNames.orgs,
 	{
 		name: 'orgUpdate',
+		contextRuns: 'deny',
 		orgPermission: 'org:write',
 		description:
 			'Update the display name of the organization this request is bound to. The handle (slug, kody.codes/@<slug>) is permanent and cannot be changed; passing any other handle fails. Signup organizations keep the person’s account profile as their identity.',

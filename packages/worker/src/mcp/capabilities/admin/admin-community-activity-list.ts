@@ -64,6 +64,7 @@ export const adminCommunityActivityListCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminCommunityActivityList',
+		contextRuns: 'deny',
 		description:
 			'List admin-only metadata about who forked or rated public packages in the Community catalog and when. Fork rows include both agent forks and one-click installs because the existing data model records both identically. Returns no package source, rating notes, secrets, or unrelated user content.',
 		keywords: [

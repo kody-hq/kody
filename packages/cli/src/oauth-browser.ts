@@ -174,3 +174,115 @@ export async function createPkcePair(): Promise<{
 	const challenge = await oauth.calculatePKCECodeChallenge(verifier)
 	return { verifier, challenge }
 }
+
+/** RFC 8628 section 3.1: ask the server for a device_code and user_code. */
+export async function startDeviceAuthorization(input: {
+	authorizationServer: oauth.AuthorizationServer
+	mcpUrl: string
+	org?: string
+	scope?: string
+	fetchFn?: typeof fetch
+}): Promise<oauth.DeviceAuthorizationResponse> {
+	if (!input.authorizationServer.device_authorization_endpoint) {
+		throw new Error(
+			'This Kody server does not support `kody login --device` yet. Use `kody login` instead.',
+		)
+	}
+	const client = cliOAuthClient(input.mcpUrl)
+	const parameters = new URLSearchParams()
+	parameters.set('scope', input.scope ?? defaultScopes.join(' '))
+	parameters.set('resource', input.mcpUrl)
+	if (input.org !== undefined) parameters.set('org', orgSlugFromFlag(input.org))
+	const response = await oauth.deviceAuthorizationRequest(
+		input.authorizationServer,
+		client,
+		oauth.None(),
+		parameters,
+		{
+			...insecure(input.authorizationServer.issuer),
+			[oauth.customFetch]: fetchFrom(input.fetchFn),
+		},
+	)
+	return oauth.processDeviceAuthorizationResponse(
+		input.authorizationServer,
+		client,
+		response,
+	)
+}
+
+/** Terminal device-grant outcomes, as readable errors. */
+export function deviceGrantErrorMessage(code: string): string | null {
+	switch (code) {
+		case 'access_denied':
+			return 'The sign-in was denied in the browser. Run `kody login --device` to try again.'
+		case 'expired_token':
+			return 'The sign-in code expired before it was approved. Run `kody login --device` to get a new code.'
+		case 'invalid_grant':
+			return 'The sign-in code is no longer valid. Run `kody login --device` to get a new code.'
+		case 'unauthorized_client':
+			return 'This Kody server does not allow device sign-in for the CLI.'
+		default:
+			return null
+	}
+}
+
+/**
+ * RFC 8628 section 3.4/3.5: poll the token endpoint at the server's interval,
+ * adding five seconds on every `slow_down`, until approval, denial, or expiry.
+ */
+export async function pollDeviceAuthorization(input: {
+	authorizationServer: oauth.AuthorizationServer
+	mcpUrl: string
+	deviceCode: string
+	intervalSeconds: number
+	expiresInSeconds: number
+	fetchFn?: typeof fetch
+	now?: () => number
+	sleep?: (ms: number) => Promise<void>
+}): Promise<OAuthTokenSet> {
+	const client = cliOAuthClient(input.mcpUrl)
+	const now = input.now ?? Date.now
+	const sleep =
+		input.sleep ??
+		((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+	const deadline = now() + input.expiresInSeconds * 1000
+	let intervalSeconds = Math.max(5, input.intervalSeconds)
+	const resource = new URLSearchParams()
+	resource.set('resource', input.mcpUrl)
+	while (true) {
+		await sleep(intervalSeconds * 1000)
+		if (now() >= deadline) {
+			throw new Error(deviceGrantErrorMessage('expired_token') ?? 'expired')
+		}
+		const response = await oauth.deviceCodeGrantRequest(
+			input.authorizationServer,
+			client,
+			oauth.None(),
+			input.deviceCode,
+			{
+				...insecure(input.authorizationServer.issuer),
+				[oauth.customFetch]: fetchFrom(input.fetchFn),
+				additionalParameters: resource,
+			},
+		)
+		try {
+			const tokens = await oauth.processDeviceCodeResponse(
+				input.authorizationServer,
+				client,
+				response,
+			)
+			return tokenSetFromResult(input.authorizationServer.issuer, tokens)
+		} catch (error) {
+			if (!(error instanceof oauth.ResponseBodyError)) throw error
+			if (error.error === 'authorization_pending') continue
+			if (error.error === 'slow_down') {
+				intervalSeconds += 5
+				continue
+			}
+			throw new Error(
+				deviceGrantErrorMessage(error.error) ??
+					`Device sign-in failed: ${error.error_description ?? error.error}`,
+			)
+		}
+	}
+}
