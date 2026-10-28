@@ -182,7 +182,7 @@ function openApiBootstrap(db: D1Database, args: Record<string, unknown>) {
 	return cliCredentialBootstrapCapability.handler(args, {
 		env: { APP_DB: db } as Env,
 		callerContext: createMcpCallerContext({
-			source: { kind: 'api-token' },
+			source: { kind: 'api-token', tokenId: 'token-1' },
 			baseUrl: 'https://kody.codes',
 			user: {
 				userId: personIdFromStored('user-1'),

@@ -383,7 +383,7 @@ test('resolveApiToken prefers --token, falls back to KODY_API_TOKEN, and require
 			resolveApiToken({}, {}, 'this command', {
 				loadApiToken: () => null,
 			}),
-		/not authenticated[\s\S]*cliCredentialBootstrap[\s\S]*kody\.cliCredentialBootstrap[\s\S]*cli_command[\s\S]*never ask a human to paste a token[\s\S]*kody login[\s\S]*tokenCreate[\s\S]*KODY_API_TOKEN/,
+		/not authenticated[\s\S]*operationId `cliCredentialBootstrap`[\s\S]*not `execute`[\s\S]*cli_command[\s\S]*never ask a human to paste a token[\s\S]*kody login[\s\S]*tokenCreate[\s\S]*KODY_API_TOKEN/,
 	)
 })
 
