@@ -78,11 +78,22 @@ function headlessOAuthSteps(
 			'3. The last page fails to load; that is expected. Copy the whole URL from the address bar (it starts with http://127.0.0.1) and paste it into this terminal.',
 		]
 	}
+	const portNote =
+		'If you set oauth.callbackPort (or callback_port) for kody, use that port instead of 19876.'
+	if (reason === 'ssh') {
+		return [
+			lead,
+			'1. From your own computer, reconnect with the callback port forwarded: ssh -L 127.0.0.1:19876:127.0.0.1:19876 user@host',
+			'2. In that session, run: opencode mcp auth kody and approve Kody in your browser.',
+			portNote,
+		]
+	}
 	return [
 		lead,
-		'1. From your own computer, reconnect with the callback port forwarded: ssh -L 127.0.0.1:19876:127.0.0.1:19876 user@host',
-		'2. In that session, run: opencode mcp auth kody and approve Kody in your browser.',
-		'If you set oauth.callbackPort for kody, forward that port instead.',
+		'1. Run: opencode mcp auth kody and leave it waiting.',
+		'2. Open the printed link in a browser on any computer and approve Kody.',
+		"3. The last page fails to load; that is expected. Copy the whole URL from the address bar (it starts with http://127.0.0.1:19876/mcp/oauth/callback) and, in another terminal here, run: curl '<that URL>'",
+		portNote,
 	]
 }
 
@@ -356,6 +367,7 @@ export async function applyHost(input: {
 		}
 		case 'codex': {
 			const written = writeMappedHost(input)
+			if (written.status === 'manual') return written
 			const headless = headlessReasonFor(input.runtime)
 			if (headless) {
 				return {
@@ -376,6 +388,7 @@ export async function applyHost(input: {
 		}
 		case 'opencode': {
 			const written = writeMappedHost(input)
+			if (written.status === 'manual') return written
 			const headless = headlessReasonFor(input.runtime)
 			if (headless) {
 				return {

@@ -161,7 +161,7 @@ function cliHostRuntime(
 			commands.push(`${command} ${args.join(' ')}`)
 			return true
 		},
-		upsertServer: () => ({
+		upsertServer: (): { success: boolean; path: string; error?: string } => ({
 			success: true,
 			path: '/home/me/.codex/config.toml',
 		}),
@@ -206,7 +206,21 @@ test('Codex over SSH prints the --no-browser paste-back steps instead of startin
 	assert.doesNotMatch(output, /If OAuth does not start/)
 })
 
-test('OpenCode without a display prints the callback port forward', async () => {
+test('OpenCode over SSH prints the callback port forward', async () => {
+	const commands: Array<string> = []
+	const { result, output } = await installOne(
+		'opencode',
+		cliHostRuntime('ssh', commands),
+	)
+	assert.equal(result.results[0]?.status, 'wrote')
+	assert.deepEqual(commands, [])
+	assert.match(output, /This looks like an SSH session/)
+	assert.match(output, /ssh -L 127\.0\.0\.1:19876:127\.0\.0\.1:19876 user@host/)
+	assert.match(output, /run: opencode mcp auth kody/)
+	assert.match(output, /oauth\.callbackPort \(or callback_port\)/)
+})
+
+test('OpenCode without a display prints the curl callback steps, not a tunnel', async () => {
 	const commands: Array<string> = []
 	const { result, output } = await installOne(
 		'opencode',
@@ -215,8 +229,28 @@ test('OpenCode without a display prints the callback port forward', async () => 
 	assert.equal(result.results[0]?.status, 'wrote')
 	assert.deepEqual(commands, [])
 	assert.match(output, /No display was found on this machine/)
-	assert.match(output, /ssh -L 127\.0\.0\.1:19876:127\.0\.0\.1:19876 user@host/)
-	assert.match(output, /run: opencode mcp auth kody/)
+	assert.match(output, /Run: opencode mcp auth kody and leave it waiting/)
+	assert.match(
+		output,
+		/it starts with http:\/\/127\.0\.0\.1:19876\/mcp\/oauth\/callback/,
+	)
+	assert.match(output, /run: curl '<that URL>'/)
+	assert.doesNotMatch(output, /ssh -L/)
+})
+
+test('a failed config write keeps its error instead of headless OAuth steps', async () => {
+	const commands: Array<string> = []
+	const { result, output } = await installOne('codex', {
+		...cliHostRuntime('ssh', commands),
+		upsertServer: () => ({
+			success: false,
+			path: '',
+			error: 'config.toml is not writable',
+		}),
+	})
+	assert.equal(result.results[0]?.status, 'manual')
+	assert.match(output, /config\.toml is not writable/)
+	assert.doesNotMatch(output, /--no-browser/)
 })
 
 test('Codex with a local browser still starts OAuth and keeps the short hint', async () => {
