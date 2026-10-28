@@ -11,7 +11,7 @@ import {
 	type PlacementApprovalPart,
 } from '#universal/credential-placement-approval.ts'
 import { routes } from '#universal/routes.ts'
-import { normalizeBulkHostApprovalHosts } from '#mcp/secrets/host-approval.ts'
+import { classifyBulkApprovalHosts } from '#mcp/secrets/host-approval.ts'
 import { normalizeBulkPackageSecretApprovalNames } from '#mcp/secrets/package-approval-url.ts'
 
 const connectSecretsPath = '/connect/secrets'
@@ -40,7 +40,12 @@ export function buildCredentialPlacementApprovalUrl(input: {
 	const url = new URL(connectSecretsPath, input.baseUrl)
 	if (names.length === 1) url.searchParams.set('name', names[0] ?? '')
 	else url.searchParams.set('names', names.join(','))
-	const hosts = normalizeBulkHostApprovalHosts([...(input.hosts ?? [])])
+	// Keep invalid hosts so the owner's page lists them instead of hiding them.
+	const classified = classifyBulkApprovalHosts([...(input.hosts ?? [])])
+	const hosts = [
+		...classified.valid,
+		...classified.rejected.map(({ host }) => host),
+	]
 	if (hosts.length > 0) url.searchParams.set('hosts', hosts.join(','))
 	url.searchParams.set(placementApprovalParam, parts.join(','))
 	const orgSlug = input.orgSlug?.trim()

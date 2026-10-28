@@ -187,11 +187,14 @@ export function ConnectSecretsPlacementApproval({
 	const done =
 		(completed === 'approve' || nothingPending) &&
 		missingNames.length === 0 &&
-		rejectedHosts.length === 0
+		rejectedHosts.length === 0 &&
+		!data.approvalError
 	const partlyDone =
 		!done &&
 		(completed === 'approve' || nothingPending) &&
-		(missingNames.length > 0 || rejectedHosts.length > 0)
+		(missingNames.length > 0 ||
+			rejectedHosts.length > 0 ||
+			Boolean(data.approvalError))
 	const error = data.placementApprovalError ?? data.approvalError ?? null
 	const canApprove =
 		!done &&
