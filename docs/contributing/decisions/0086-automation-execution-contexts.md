@@ -22,9 +22,11 @@ machine could not say so.
   MCP (`automationExecutionSet`) or UI wins over the package manifest's
   `execution` (`kody.jobs.<name>`, `kody.webhooks[]`,
   `kody.subscriptions.<topic>`). Workflow steps take `execution` on
-  `workflows.create`. An override of `{ context: "cloud" }` pins an automation
-  to Kody cloud even when its manifest names a context; clearing the override
-  restores the manifest setting.
+  `workflows.create`. A workflow step needs its result before the next step, so
+  it cannot queue, and a context run that outlives the wait fails the step. An
+  override of `{ context: "cloud" }` pins an automation to Kody cloud even when
+  its manifest names a context; clearing the override restores the manifest
+  setting.
 - Chains are followed in order. Entries that are unknown, inaccessible, offline,
   busy, unusable, or lack `requires` are skipped. When nothing qualifies the run
   fails with each entry and why, and the run record shows it.

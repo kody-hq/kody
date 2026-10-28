@@ -84,6 +84,7 @@ export async function resolvePackageAutomationRouting(input: {
 		})
 		return {
 			setting: input.target.execution,
+			needsResult: true,
 			contextCode: buildExecuteInvokePassthroughSource(
 				packageExportSpecifier(
 					manifest.name,

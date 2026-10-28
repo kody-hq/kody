@@ -1162,6 +1162,11 @@ async function resolveWorkflowExecution(input: {
 			`workflows.create execution is invalid: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`,
 		)
 	}
+	if (parsed.data.whenOffline === 'queue') {
+		throw new Error(
+			'workflows.create execution cannot use whenOffline: "queue": a workflow step needs its result before the next step runs. Omit whenOffline so an offline context fails the step.',
+		)
+	}
 	const actorId = input.lineage.actor?.userId ?? null
 	if (
 		!actorId ||

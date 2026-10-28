@@ -26,6 +26,8 @@ export type AutomationRouting = {
 	 */
 	parentRunRecord?: RunRecordContext | null
 	parentRunId?: string | null
+	/** Workflow steps: a handed-off (still running) context run fails the step. */
+	needsResult?: boolean
 }
 
 /**

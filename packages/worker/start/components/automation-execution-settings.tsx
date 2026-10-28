@@ -288,7 +288,17 @@ export function AutomationExecutionSettings(props: {
 					type="button"
 					css={getPillButtonCss()}
 					disabled={saving || !setting.contextRunnable}
-					onClick={() => void save(automationExecutionFromForm(form))}
+					onClick={() => {
+						const execution = automationExecutionFromForm(form)
+						if (!execution) {
+							setStatus({
+								tone: 'error',
+								text: 'Pick a context, or at least one chain entry, before saving.',
+							})
+							return
+						}
+						void save(execution)
+					}}
 				>
 					{saving ? 'Saving…' : 'Save'}
 				</button>

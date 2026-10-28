@@ -1412,6 +1412,17 @@ export async function runBundledModuleWithRegistry(
 				logs: [routed.error.message],
 			})
 		}
+		if (routed.kind === 'done' && routed.deferred && routing.needsResult) {
+			const message = `${routed.deferred.context} did not finish this workflow step in time, so the step failed. The context run ${routed.deferred.runId} continues in run history (execution_context_result_pending).`
+			await finishObservedRun({
+				status: 'error',
+				error: Object.assign(new Error(message), {
+					name: 'ExecutionContextResultPending',
+				}),
+				logs: [message],
+			})
+			return withRunId({ result: undefined, error: message, logs: [message] })
+		}
 		if (routed.kind === 'done') {
 			await ensureRunRecordStarted({ env, handle: contextRunRecord })
 			const { result } = routed
