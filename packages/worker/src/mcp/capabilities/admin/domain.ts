@@ -9,6 +9,7 @@ import { adminOrgLimitOverridesSetCapability } from './admin-org-limit-overrides
 import { adminOrgLimitsGetCapability } from './admin-org-limits-get.ts'
 import { adminOrgResourceTransferCapability } from './admin-org-resource-transfer.ts'
 import { adminOrgRestoreCapability } from './admin-org-restore.ts'
+import { adminPackageAppCustomHostnameRemoveCapability } from './admin-package-app-custom-hostname-remove.ts'
 import { adminCommunityOrphanForksCleanupCapability } from './admin-community-orphan-forks-cleanup.ts'
 import { adminFeatureFlagListCapability } from './admin-feature-flag-list.ts'
 import { adminFeatureFlagOverrideCapability } from './admin-feature-flag-override.ts'
@@ -238,5 +239,6 @@ export const adminDomain = defineDomain({
 		adminCommunityOrphanForksCleanupCapability,
 		adminOrgResourceTransferCapability,
 		adminOrgRestoreCapability,
+		adminPackageAppCustomHostnameRemoveCapability,
 	],
 })

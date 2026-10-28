@@ -3,7 +3,6 @@ import {
 	lookupVerifiedAppCustomHostnameForPackage,
 	lookupVerifiedOrgCustomHostnameForPackage,
 } from '#worker/package-app-custom-hostnames/lookup.ts'
-import { isPackageAppCustomDomainsEnabled } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import {
 	isPackageAppOauthCallbackPathname,
 	packageAppOauthLegacyPaths,
@@ -87,10 +86,6 @@ export async function listAllowedPackageAppOauthRedirectUris(input: {
 		} catch {
 			// Ignore unparsable app origin.
 		}
-	}
-
-	if (!(await isPackageAppCustomDomainsEnabled(input.env.APP_DB))) {
-		return allowed
 	}
 
 	const appMapping = await lookupVerifiedAppCustomHostnameForPackage({

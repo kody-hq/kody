@@ -1329,10 +1329,7 @@ export type OrgSettingsLoaderData = {
 	org: OrgManagementOrg
 	canManage: boolean
 	canDelete: boolean
-	/**
-	 * Present only when `package-app-custom-domains` is on for this
-	 * environment. Null when the flag is off (panel stays hidden).
-	 */
+	/** Null for personal orgs and for viewers who cannot manage the org. */
 	customDomains: OrgSettingsCustomDomainsView | null
 }
 

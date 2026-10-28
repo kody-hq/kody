@@ -5,7 +5,6 @@ import { createAuthCookie, setAuthSessionSecret } from '#app/auth-session.ts'
 import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
 import { buildPackageAppNotFoundMessage } from '#worker/package-runtime/package-app-synthetic.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
-import { packageAppCustomDomainsFlagKey } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import { silenceExpectedConsoleErrors } from '#worker/test-support/console-spies.ts'
 import {
 	ensurePackageSubscriptionTestSchema,
@@ -26,7 +25,6 @@ const ownerUsername = 'customhost'
 const customHostname = 'app.customer-test.example'
 const customOrigin = `https://${customHostname}`
 const packageId = 'pkg-custom-demo'
-const ownerPackageAppOrigin = `https://${ownerUsername}.packages.isolated.test`
 
 function configureOrigins() {
 	const mutableEnv = env as unknown as Record<string, string | undefined>
@@ -176,28 +174,33 @@ async function seedCustomHostnamePackage() {
 		.run()
 }
 
-async function setCustomDomainsFlag(enabled: boolean) {
+/** A disabled row for the deleted `package-app-custom-domains` flag key. */
+async function seedLeftoverDisabledFlagRow() {
 	await ensureCustomHostnameSchema()
 	await env.APP_DB.prepare(
 		`INSERT INTO feature_flags (key, enabled, note, audience, updated_at)
-		 VALUES (?, ?, '', 'everyone', CURRENT_TIMESTAMP)
+		 VALUES ('package-app-custom-domains', 0, '', 'everyone', CURRENT_TIMESTAMP)
 		 ON CONFLICT(key) DO UPDATE SET
 			enabled = excluded.enabled,
 			updated_at = CURRENT_TIMESTAMP`,
-	)
-		.bind(packageAppCustomDomainsFlagKey, enabled ? 1 : 0)
-		.run()
+	).run()
 }
 
-test('custom hostnames stay refused and handoff stays on the user subdomain when the flag is off', async () => {
+async function deleteLeftoverFlagRow() {
+	await env.APP_DB.prepare(
+		`DELETE FROM feature_flags WHERE key = 'package-app-custom-domains'`,
+	).run()
+}
+
+test('a leftover disabled row for the deleted flag key does not hide a verified custom hostname', async () => {
 	configureOrigins()
 	const sessionCookie = await seedOwnerSessionCookie()
 	await seedCustomHostnamePackage()
-	await setCustomDomainsFlag(false)
+	await seedLeftoverDisabledFlagRow()
 
-	const customHost = await workerFetch(`${customOrigin}/`)
-	expect(customHost.status).toBe(404)
-	await expect(customHost.json()).resolves.toEqual({ error: 'not_found' })
+	const unknownHost = await workerFetch('https://unknown-host.example.com/')
+	expect(unknownHost.status).toBe(404)
+	await expect(unknownHost.json()).resolves.toEqual({ error: 'not_found' })
 
 	const appOriginResponse = await workerFetch(
 		`${appOrigin}/@${ownerUsername}/packages/demo`,
@@ -205,15 +208,15 @@ test('custom hostnames stay refused and handoff stays on the user subdomain when
 	)
 	expect(appOriginResponse.status).toBe(302)
 	const location = new URL(appOriginResponse.headers.get('Location') ?? '')
-	expect(location.origin).toBe(ownerPackageAppOrigin)
-	expect(location.pathname).toBe('/demo')
+	expect(location.origin).toBe(customOrigin)
 	expect(location.searchParams.get(packageAppHandoffQueryParam)).toBeTruthy()
+	await deleteLeftoverFlagRow()
 })
 
 test('verified app custom host OAuth uses the configured Kody origin', async () => {
 	configureOrigins()
 	await seedCustomHostnamePackage()
-	await setCustomDomainsFlag(true)
+	await ensureCustomHostnameSchema()
 
 	const response = await workerFetch(
 		`${customOrigin}${packageAppOauthPaths.login}?scope=profile`,
@@ -226,7 +229,7 @@ test('anonymous and signed-in outsiders are not redirected to an app custom host
 	configureOrigins()
 	const sessionCookie = await seedOwnerSessionCookie()
 	await seedCustomHostnamePackage()
-	await setCustomDomainsFlag(true)
+	await ensureCustomHostnameSchema()
 	const outsiderEmail = 'custom-host-outsider@example.com'
 	await seedAccount({
 		db: env.APP_DB,
@@ -285,7 +288,6 @@ test('anonymous and signed-in outsiders are not redirected to an app custom host
 	expect(new URL(ownerResponse.headers.get('Location') ?? '').origin).toBe(
 		customOrigin,
 	)
-	await setCustomDomainsFlag(false)
 })
 
 test('a verified app custom hostname serves at / behind the same host-only handoff', async () => {
@@ -296,7 +298,7 @@ test('a verified app custom hostname serves at / behind the same host-only hando
 	configureOrigins()
 	const sessionCookie = await seedOwnerSessionCookie()
 	await seedCustomHostnamePackage()
-	await setCustomDomainsFlag(true)
+	await ensureCustomHostnameSchema()
 	const entryUrl = `${appOrigin}/@${ownerUsername}/packages/demo`
 
 	const missingSession = await workerFetch(`${customOrigin}/`)
@@ -376,15 +378,12 @@ test('a verified app custom hostname serves at / behind the same host-only hando
 	await expect(crossOriginPost.text()).resolves.toContain(
 		'Cross-origin mutating requests to a package-app custom hostname are not allowed.',
 	)
-
-	await setCustomDomainsFlag(false)
 })
 
 test('internet-visible apps skip an org-level custom hostname and go to the subdomain', async () => {
 	configureOrigins()
 	await seedPackageAppAccessFixture()
 	await ensureCustomHostnameSchema()
-	await setCustomDomainsFlag(true)
 	const { orgId, orgSlug, privateApp, publicApp } = accessFixture
 	const orgHostname = 'apps.cost-org-test.example'
 	const now = '2026-10-14T00:00:00.000Z'
@@ -444,5 +443,4 @@ test('internet-visible apps skip an org-level custom hostname and go to the subd
 	await env.APP_DB.prepare(
 		`DELETE FROM package_app_custom_hostnames WHERE id = 'host-cost-org'`,
 	).run()
-	await setCustomDomainsFlag(false)
 })

@@ -16,7 +16,6 @@ import {
 	listOrgCustomHostnameRows,
 	orgOwnsPackageIncludingDeleted,
 } from '#worker/package-app-custom-hostnames/count-org.ts'
-import { isPackageAppCustomDomainsEnabledForUser } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import {
 	packageAppCustomHostnameAddRateLimit,
 	packageAppCustomHostnameAddRateLimitKey,
@@ -248,17 +247,6 @@ function verificationFromCloudflare(
 	return {
 		ownership_verification: cf.ownershipVerification,
 		ssl_validation_records: cf.sslValidationRecords,
-	}
-}
-
-async function requireCustomDomainsEnabled(
-	db: D1Database,
-	actingUserId: number | null,
-) {
-	if (!(await isPackageAppCustomDomainsEnabledForUser(db, actingUserId))) {
-		throw new PackageAppCustomHostnameError(
-			'Package-app custom domains are not enabled for this user.',
-		)
 	}
 }
 
@@ -708,15 +696,12 @@ async function applyCloudflareStatus(input: {
 export async function addPackageAppCustomHostname(input: {
 	env: Env
 	orgId: string
-	/** Numeric `users.id` for feature-flag audience evaluation. */
-	actingUserId: number
 	createdByUserId: string
 	bindingKind: PackageAppCustomHostnameBindingKind
 	hostname: string
 	packageId?: string
 	sslMethod?: CustomHostnameSslMethod
 }) {
-	await requireCustomDomainsEnabled(input.env.APP_DB, input.actingUserId)
 	await requirePaidOrgForCustomDomains(input.env.APP_DB, input.orgId)
 	const hostname = normalizeCustomHostname(input.hostname)
 	if (!hostname) {
@@ -917,10 +902,7 @@ export async function addPackageAppCustomHostname(input: {
 export async function listPackageAppCustomHostnames(input: {
 	env: Env
 	orgId: string
-	/** Numeric `users.id` for feature-flag audience evaluation. */
-	actingUserId: number
 }) {
-	await requireCustomDomainsEnabled(input.env.APP_DB, input.actingUserId)
 	const rows = await listOrgCustomHostnameRows<CustomHostnameRowSql>(
 		input.env.APP_DB,
 		input.orgId,
@@ -933,13 +915,10 @@ export async function listPackageAppCustomHostnames(input: {
 export async function syncPackageAppCustomHostname(input: {
 	env: Env
 	orgId: string
-	/** Numeric `users.id` for feature-flag audience evaluation. */
-	actingUserId: number
 	hostname?: string
 	id?: string
 	now?: Date
 }) {
-	await requireCustomDomainsEnabled(input.env.APP_DB, input.actingUserId)
 	const row = await loadOwnedCustomHostnameRow(input)
 	const cfId = row.cloudflareHostnameId?.trim()
 	if (!cfId) {
@@ -994,15 +973,46 @@ export async function removePackageAppCustomHostnameRow(input: {
 	invalidateCachedPackageAppCustomHostname(input.env.APP_DB, input.row.hostname)
 }
 
+/**
+ * Operator takedown (abuse, phishing): remove a custom hostname from
+ * Cloudflare for SaaS and the DB regardless of which org owns it. Callers
+ * must be site admins and record an audit reason.
+ */
+export async function adminRemovePackageAppCustomHostname(input: {
+	env: Env
+	hostname: string
+}) {
+	const hostname = normalizeCustomHostname(input.hostname)
+	if (!hostname) {
+		throw new PackageAppCustomHostnameError('hostname is invalid.')
+	}
+	const sqlRow = await input.env.APP_DB.prepare(
+		`SELECT * FROM package_app_custom_hostnames WHERE hostname = ?`,
+	)
+		.bind(hostname)
+		.first<CustomHostnameRowSql>()
+	if (!sqlRow) {
+		throw new PackageAppCustomHostnameError('Custom hostname not found.')
+	}
+	const row = rowFromSql(sqlRow)
+	await removePackageAppCustomHostnameRow({ env: input.env, row })
+	return {
+		ok: true as const,
+		id: row.id,
+		hostname: row.hostname,
+		binding_kind: row.bindingKind,
+		org_id: row.orgId,
+		package_id: row.packageId,
+		hostname_status: row.hostnameStatus,
+	}
+}
+
 export async function deletePackageAppCustomHostname(input: {
 	env: Env
 	orgId: string
-	/** Numeric `users.id` for feature-flag audience evaluation. */
-	actingUserId: number
 	hostname?: string
 	id?: string
 }) {
-	await requireCustomDomainsEnabled(input.env.APP_DB, input.actingUserId)
 	const row = await loadOwnedCustomHostnameRow(input)
 	await removePackageAppCustomHostnameRow({
 		env: input.env,

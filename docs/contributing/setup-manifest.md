@@ -620,12 +620,11 @@ Configure these GitHub Actions secrets and variables for workflows:
   `kody.run`. Deploy prefers `secrets.PACKAGE_APP_ZONE_ID`, then
   `vars.PACKAGE_APP_ZONE_ID`. Written into origin and platform Worker vars so
   custom-hostname add/sync/reconcile can call the Custom Hostnames API. Required
-  before enabling `package-app-custom-domains`.)
+  for package-app custom domains.)
 - `CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN` (optional GitHub Actions **secret**;
   zone-limited **SSL and Certificates Edit** on the package-app SaaS zone.
   Synced to `kody-production` and `kody-platform` when present. Do not reuse
-  `CLOUDFLARE_API_TOKEN`. Required before enabling
-  `package-app-custom-domains`.)
+  `CLOUDFLARE_API_TOKEN`. Required for package-app custom domains.)
 - `COOKIE_SECRET` (same format as local)
 - `SECRET_STORE_KEY` (same format as local; required for deploys; also sealed
   into the DR bucket via `.github/workflows/dr-escrow.yml` using
