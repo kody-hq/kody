@@ -203,9 +203,12 @@ export function describeIncompleteMapping(
 			const names = matches
 				.map((ref) => `“${credentialRefLabel(ref)}”`)
 				.join(', ')
-			const verb =
-				matches.length === 1 ? 'looks like a match' : 'look like matches'
-			return `${where} aren’t linked to a credential for “${item.needKey}” yet. ${names} ${verb}; pick it in ${packageCredentialsTabLabel(incompleteMappingTab(item))}.`
+			const tab = packageCredentialsTabLabel(incompleteMappingTab(item))
+			const match =
+				matches.length === 1
+					? `${names} looks like a match; pick it in ${tab}.`
+					: `${names} look like matches; pick one in ${tab}.`
+			return `${where} aren’t linked to a credential for “${item.needKey}” yet. ${match}`
 		}
 		case 'ambiguous':
 			return `${where} match several credentials for “${item.needKey}”. Pick one so runs don’t fail.`

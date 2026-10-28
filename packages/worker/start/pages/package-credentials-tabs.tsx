@@ -117,6 +117,11 @@ function toneColor(tone: MappingStatusTone) {
 		}
 	}
 }
+function effectiveSourceLabel(mapping: EffectiveCredentialMapping) {
+	return mappingSourceLabel(
+		mapping.status === 'unbound' ? 'none' : mapping.source,
+	)
+}
 function hasPossibleMatch(mapping: EffectiveCredentialMapping) {
 	return mapping.status === 'unbound' && mapping.candidates.length > 0
 }
@@ -383,7 +388,7 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 												)
 											)}
 										</td>
-										<td>{mappingSourceLabel(need.effective.source)}</td>
+										<td>{effectiveSourceLabel(need.effective)}</td>
 										<td>
 											{need.supplier === 'executor'
 												? renderExecutorStatus()
@@ -535,7 +540,7 @@ export function renderMappingsTab(context: PackageTabContext): ReactNode {
 							<dd css={{ ...rowCss, margin: 0 }}>
 								{renderEffective(orgSlug, need.effective)}
 								<span css={mutedCss}>
-									{mappingSourceLabel(need.effective.source)}
+									{effectiveSourceLabel(need.effective)}
 								</span>
 								{renderStatus(need.effective)}
 							</dd>
