@@ -350,3 +350,20 @@ test('a deleted source yields no needs without a per-package read, and one unrea
 	expect(t.queries.filter(isEntitySourceBatchLookup)).toHaveLength(1)
 	expect(t.queries.filter(isEntitySourceByIdLookup)).toHaveLength(0)
 })
+
+test('a failed entity_sources batch marks every package unreadable without failing the detail (KODY-C1)', async () => {
+	const t = await setup(3)
+	const prepare = t.env.APP_DB.prepare.bind(t.env.APP_DB)
+	vi.spyOn(t.env.APP_DB, 'prepare').mockImplementation((query: string) => {
+		if (isEntitySourceBatchLookup(query)) {
+			throw new Error('D1 batch read failed')
+		}
+		return prepare(query)
+	})
+	t.queries.length = 0
+	const detail = await loadDetail(t)
+
+	expect(detail.usage).toEqual([])
+	expect(detail.usageUnreadable).toBe(t.packages.length)
+	expect(t.queries.filter(isEntitySourceByIdLookup)).toHaveLength(0)
+})
