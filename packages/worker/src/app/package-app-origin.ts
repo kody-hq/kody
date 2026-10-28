@@ -1051,7 +1051,7 @@ async function serveInternetVisiblePackageApp(input: {
  * Kody grant for it (the same bar `/-/auth/me` uses). A stale handoff session
  * from someone who lost access gets nothing.
  */
-async function resolvePackageAppIdentityOnlyVisitor(input: {
+export async function resolvePackageAppIdentityOnlyVisitor(input: {
 	env: Env
 	authorized: AuthorizedPackageAppServe
 	handle: string
