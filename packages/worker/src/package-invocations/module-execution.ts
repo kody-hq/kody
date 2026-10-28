@@ -161,6 +161,8 @@ export type SavedPackageModuleRunInput = {
 	externalRunRecordHandle?: RunRecordHandle | null
 	/** Where an automation asked to run (execution contexts). */
 	executionRouting?: AutomationRouting | null
+	/** Caller-owned record (workflow step) that a context run hangs under. */
+	parentRunHandle?: RunRecordHandle | null
 	/** Declared automation whose execution setting applies. */
 	executionTarget?: AutomationExecutionTarget | null
 	/** Report, and optionally pin, the commit this run resolves. */
@@ -433,11 +435,13 @@ export async function runSavedPackageModuleOnce(
 												target: executionTarget,
 											})
 										: null)
+								const parentHandle =
+									externalHandle ?? input.parentRunHandle ?? null
 								return routing
 									? {
 											...routing,
-											parentRunRecord: externalHandle?.context ?? null,
-											parentRunId: externalHandle?.id ?? null,
+											parentRunRecord: parentHandle?.context ?? null,
+											parentRunId: parentHandle?.id ?? null,
 										}
 									: null
 							},

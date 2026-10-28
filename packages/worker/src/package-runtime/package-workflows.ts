@@ -2000,6 +2000,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 								exportName: payload.exportName,
 								execution: payload.execution,
 							},
+							parentRunHandle: runHandle,
 						}
 					: {}),
 				sourceRevision: {

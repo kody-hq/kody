@@ -4,7 +4,10 @@ import { type AutomationExecutionTarget } from '#worker/execution-contexts/autom
 import { type RequestSource } from '#worker/request-context/request-context.ts'
 import { type EnablementAudience } from '#worker/enablements/run-gate.ts'
 import { type PackageEventTools } from '#mcp/run-kody-registry.ts'
-import { type RunRecordContext } from '#worker/run-records/types.ts'
+import {
+	type RunRecordContext,
+	type RunRecordHandle,
+} from '#worker/run-records/types.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	normalizeExportName,
@@ -79,6 +82,8 @@ export async function invokePackageExport(input: {
 	sourceRevision?: PackageSourceRevisionOptions | null
 	/** Where an automation asked to run (execution contexts). */
 	executionRouting?: AutomationRouting | null
+	/** Caller-owned record (workflow step) that a context run hangs under. */
+	parentRunHandle?: RunRecordHandle | null
 	/** Declared automation whose execution setting applies. */
 	executionTarget?: AutomationExecutionTarget | null
 }): Promise<PackageInvocationResponse> {

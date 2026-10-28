@@ -69,7 +69,9 @@ export function automationExecutionFormFrom(
 	if (typeof setting.queueMinutes === 'number') {
 		form.queueMinutes = setting.queueMinutes
 	}
-	if (typeof setting.context === 'string') {
+	if (setting.context === 'cloud') {
+		form.mode = 'cloud'
+	} else if (typeof setting.context === 'string') {
 		form.mode = 'context'
 		form.context = idFor(setting.context)
 		form.fallbackToChain = setting.fallback === 'chain'
@@ -81,7 +83,10 @@ export function automationExecutionFormFrom(
 	return form
 }
 
-/** Form state as the `execution` setting; null means run on Kody cloud. */
+/**
+ * Form state as the `execution` setting. Cloud is explicit (`context: "cloud"`)
+ * so it can override a manifest context; null only clears the override.
+ */
 export function automationExecutionFromForm(
 	form: AutomationExecutionForm,
 ): AutomationExecutionValue | null {
@@ -98,7 +103,7 @@ export function automationExecutionFromForm(
 		if (!chain.length) return null
 		routing.chain = chain
 	} else if (!form.requires.length) {
-		return null
+		return { context: 'cloud' }
 	}
 	if (form.requires.length) routing.requires = [...form.requires]
 	if (form.whenOffline === 'queue') {
@@ -115,7 +120,9 @@ export function describeAutomationExecution(
 	value: AutomationExecutionValue | null,
 	nameFor: (ref: string) => string = (ref) => ref,
 ) {
-	if (!value) return 'Kody cloud'
+	if (!value || (value.context === 'cloud' && !value.requires?.length)) {
+		return 'Kody cloud'
+	}
 	const target = value.context
 		? `${nameFor(value.context)}${value.fallback === 'chain' ? ', then your chain' : ' only'}`
 		: value.chain

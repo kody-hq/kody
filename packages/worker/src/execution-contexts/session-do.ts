@@ -661,6 +661,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			}
 			case 'status':
 				this.#updateStatus(ws, body)
+				this.ctx.waitUntil(this.#drainQueue())
 				return
 			case 'capabilities.update':
 				await this.#recordCapabilities(body)
@@ -998,9 +999,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				if (!this.#liveSocket()) return
 				const outcome = await this.#dispatchQueued(queued)
 				if (outcome === 'keep') {
-					if (this.#committedCount() > 0) {
-						await this.#ensureAlarm(Date.now() + queuedRetryMs)
-					}
+					await this.#ensureAlarm(Date.now() + queuedRetryMs)
 					return
 				}
 				this.ctx.storage.sql.exec(
@@ -1126,7 +1125,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				status: 'error',
 				error: Object.assign(
 					new Error(
-						`${name} did not reconnect within ${minutes} minutes, so the queued run expired without running (execution_context_queue_expired).`,
+						`${name} did not take the queued run within ${minutes} minutes (offline or busy), so it expired without running (execution_context_queue_expired).`,
 					),
 					{ name: 'ExecutionContextQueueExpired' },
 				),
@@ -1695,7 +1694,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			)
 			.one().deadline
 		if (next !== null) {
-			await this.ctx.storage.setAlarm(
+			await this.#ensureAlarm(
 				Math.max(now + 1000, next + ecpLostAfterDeadlineMs),
 			)
 		}

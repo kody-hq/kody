@@ -6,8 +6,14 @@ import {
 	emptyAutomationExecutionForm,
 } from './automation-execution.ts'
 
-test('cloud form with no requirements clears the setting', () => {
-	expect(automationExecutionFromForm(emptyAutomationExecutionForm())).toBe(null)
+test('cloud form saves an explicit cloud setting that loads back as cloud', () => {
+	expect(automationExecutionFromForm(emptyAutomationExecutionForm())).toEqual({
+		context: 'cloud',
+	})
+	expect(automationExecutionFormFrom({ context: 'cloud' })).toMatchObject({
+		mode: 'cloud',
+	})
+	expect(describeAutomationExecution({ context: 'cloud' })).toBe('Kody cloud')
 })
 
 test('context form round-trips with fallback and queue', () => {

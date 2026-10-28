@@ -1,3 +1,4 @@
+import { type RunRecordHandle } from '#worker/run-records/types.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
 import { type AutomationExecutionTarget } from '#worker/execution-contexts/automation-settings.ts'
@@ -60,6 +61,8 @@ export async function invokePackageExportWithToolFactories(input: {
 	sourceRevision?: PackageSourceRevisionOptions | null
 	/** Where an automation asked to run (execution contexts). */
 	executionRouting?: AutomationRouting | null
+	/** Caller-owned record (workflow step) that a context run hangs under. */
+	parentRunHandle?: RunRecordHandle | null
 	/** Declared automation whose execution setting applies. */
 	executionTarget?: AutomationExecutionTarget | null
 }): Promise<PackageInvocationResponse> {
@@ -145,6 +148,7 @@ export async function invokePackageExportWithToolFactories(input: {
 		signal: input.signal,
 		sourceRevision: input.sourceRevision,
 		executionRouting: input.executionRouting ?? null,
+		parentRunHandle: input.parentRunHandle ?? null,
 		executionTarget: input.executionTarget ?? null,
 	}
 

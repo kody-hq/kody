@@ -158,6 +158,8 @@ export async function resolveAutomationRouting(input: {
 	const setting =
 		override?.execution ?? parseAutomationExecution(input.declared)
 	if (!setting) return null
+	// An explicit cloud override runs on Kody cloud exactly as before.
+	if (setting.context === 'cloud' && !setting.requires?.length) return null
 	return {
 		setting,
 		contextCode:

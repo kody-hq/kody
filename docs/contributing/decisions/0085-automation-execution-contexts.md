@@ -22,7 +22,9 @@ machine could not say so.
   MCP (`automationExecutionSet`) or UI wins over the package manifest's
   `execution` (`kody.jobs.<name>`, `kody.webhooks[]`,
   `kody.subscriptions.<topic>`). Workflow steps take `execution` on
-  `workflows.create`.
+  `workflows.create`. An override of `{ context: "cloud" }` pins an automation
+  to Kody cloud even when its manifest names a context; clearing the override
+  restores the manifest setting.
 - Chains are followed in order. Entries that are unknown, inaccessible, offline,
   busy, unusable, or lack `requires` are skipped. When nothing qualifies the run
   fails with each entry and why, and the run record shows it.
@@ -30,8 +32,9 @@ machine could not say so.
   context's session until it reconnects, for `queueMinutes` (default 60, max
   1440). On reconnect the context, the person's access, the grant and its
   version are checked again before dispatch; a queued run whose context was
-  revoked, deleted or narrowed fails. Expiry fails the run with
-  `execution_context_queue_expired`.
+  revoked, deleted or narrowed fails. A connected context that is busy or not
+  accepting runs is retried every 30 seconds and on each status update. Expiry
+  fails the run with `execution_context_queue_expired`.
 - An automation's context run uses the access of the person it runs as
   (`callerContext.request.actor`): the job owner, the trigger enabler, or the
   workflow's lineage actor. That is the same actor background runs already bill

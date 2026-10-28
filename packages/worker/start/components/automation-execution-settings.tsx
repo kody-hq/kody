@@ -171,7 +171,9 @@ export function AutomationExecutionSettings(props: {
 						})
 					}
 				>
-					<option value="cloud">Kody cloud or your chain</option>
+					<option value="cloud">
+						Kody cloud (your chain if it needs fs or lan)
+					</option>
 					<option value="context">One context</option>
 					<option value="chain">Its own chain</option>
 				</select>

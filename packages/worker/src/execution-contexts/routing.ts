@@ -442,8 +442,9 @@ export async function routeExecute(input: {
 	}
 	if (
 		requires.length > 0 &&
-		chain.entries.some((entry) => entry.kind === 'cloud') &&
-		(!named || input.args.fallback === 'chain')
+		(named === 'cloud' ||
+			(chain.entries.some((entry) => entry.kind === 'cloud') &&
+				(!named || input.args.fallback === 'chain')))
 	) {
 		attempts.push({
 			target: 'cloud',
