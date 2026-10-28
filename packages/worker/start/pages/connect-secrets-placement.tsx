@@ -452,7 +452,7 @@ export function ConnectSecretsPlacementApproval({
 	)
 }
 
-export function approveLabel(input: {
+function approveLabel(input: {
 	parts: ReadonlyArray<PlacementApprovalPart>
 	hostCount: number
 }) {

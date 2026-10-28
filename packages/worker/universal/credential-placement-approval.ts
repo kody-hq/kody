@@ -41,7 +41,7 @@ export function normalizePlacementApprovalParts(
 	return placementApprovalParts.filter((part) => requested.has(part))
 }
 
-export function placementApprovalPartLabel(part: PlacementApprovalPart) {
+function placementApprovalPartLabel(part: PlacementApprovalPart) {
 	switch (part) {
 		case 'query':
 			return 'query'
@@ -66,7 +66,7 @@ export function formatPlacementApprovalParts(
 	return `${labels.slice(0, -1).join(', ')}, and ${labels.at(-1)}`
 }
 
-export type CredentialPlacementApprovalItem = {
+type CredentialPlacementApprovalItem = {
 	name: string
 	/** The stored placement before approval. Null means not set (legacy). */
 	placement: CredentialFillPlacementView | null
