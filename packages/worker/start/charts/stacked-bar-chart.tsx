@@ -104,6 +104,21 @@ export function StackedBarChart(props: StackedBarChartProps) {
 			},
 		})
 	}, [series, xLabels, props.xTickEvery])
+	if (series.length === 0 || xLabels.length === 0) {
+		return (
+			<div
+				role="img"
+				aria-label={`${ariaLabel}: no activity`}
+				css={{
+					height: props.height ?? 230,
+					display: 'grid',
+					placeItems: 'center',
+				}}
+			>
+				No activity in this period.
+			</div>
+		)
+	}
 	return (
 		<div css={chartScrollerNewestFirstCss}>
 			<div

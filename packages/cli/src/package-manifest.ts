@@ -2,7 +2,7 @@
  * Read and validate the authored package.json `kody` surface used by `kody dev`.
  */
 
-import { readFile } from 'node:fs/promises'
+import { readFile, realpath } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import {
 	formatPackageJobScheduleSummary,
@@ -80,7 +80,8 @@ export async function loadPackageManifest(
 	cwd: string = process.cwd(),
 ): Promise<KodyPackageManifest> {
 	const packageJsonPath = await findPackageJson(cwd)
-	const root = dirname(packageJsonPath)
+	// Match bundler and watcher paths when the working directory is a symlink.
+	const root = await realpath(dirname(packageJsonPath))
 	let raw: unknown
 	try {
 		raw = JSON.parse(await readFile(packageJsonPath, 'utf8'))
