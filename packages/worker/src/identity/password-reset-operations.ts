@@ -8,6 +8,7 @@ import {
 	redactEmailRecipient,
 } from '#worker/audit-log.ts'
 import { deferWork } from '#worker/deferred-work.ts'
+import { createDeletedAccountReleaseVerification } from '#app/email-claim-release.ts'
 import {
 	sendGatedTransactionalEmail,
 	type GatedTransactionalSendResult,
@@ -152,7 +153,9 @@ export async function requestWebsitePasswordReset({
 		where: { email: normalizedEmail },
 	})
 
-	if (userRecord) {
+	// A soft-deleted account cannot sign in, so a reset link for it would
+	// only land the person on a password that login then rejects.
+	if (userRecord && !userRecord.deleted_at) {
 		const userId = userRecord.id
 		// Token writes and the email send happen after the response so
 		// the reply latency does not depend on whether the address is
@@ -224,6 +227,28 @@ export async function requestWebsitePasswordReset({
 			email: normalizedEmail,
 			ip: requestIp,
 			path: url.pathname,
+		})
+	} else if (userRecord?.deleted_at) {
+		// Mail the release link instead: opening it frees the address and
+		// handle so the person can sign up again.
+		const deletedUserId = userRecord.id
+		void deferWork('password-reset-deleted-account-error', () =>
+			createDeletedAccountReleaseVerification({
+				env,
+				deletedUserId,
+				email: normalizedEmail,
+				requestUrl: url,
+			}),
+		)
+		void logAuditEvent({
+			db: auditDatabaseFromEnv(env),
+			category: 'auth',
+			action: 'password_reset_request',
+			result: 'failure',
+			email: normalizedEmail,
+			ip: requestIp,
+			path: url.pathname,
+			reason: 'account_deleted',
 		})
 	} else {
 		void logAuditEvent({
@@ -329,7 +354,7 @@ export async function confirmWebsitePasswordReset({
 	const userRecord = await db.findOne(usersTable, {
 		where: { id: resetRecord.user_id },
 	})
-	if (!userRecord) {
+	if (!userRecord || userRecord.deleted_at) {
 		void logAuditEvent({
 			db: auditDatabaseFromEnv(env),
 			category: 'auth',

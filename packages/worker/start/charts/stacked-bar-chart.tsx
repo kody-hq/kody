@@ -1,7 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { xyChartDefaults } from './xy-chart-defaults.ts'
+import { tooltipRows } from './tooltip-content.ts'
 import { useMemo } from 'react'
 import { defineChart, barY } from '@tanstack/charts'
-import { Chart } from '@tanstack/charts/react'
+import { Chart } from './chart.tsx'
 import { scaleLinear } from '@tanstack/charts/scales/linear'
 import { scaleBand } from '@tanstack/charts/scales/band'
 import { tooltip } from '@tanstack/charts/tooltip'
@@ -54,6 +56,7 @@ export function StackedBarChart(props: StackedBarChartProps) {
 		)
 		const every = props.xTickEvery ?? Math.max(1, Math.ceil(xLabels.length / 6))
 		return defineChart({
+			...xyChartDefaults,
 			marks: [
 				barY(rows, {
 					x: 'index',
@@ -88,11 +91,34 @@ export function StackedBarChart(props: StackedBarChartProps) {
 			},
 			tooltip: {
 				use: tooltip,
-				format: (point) =>
-					`${point.datum.label} · ${point.datum.series}: ${formatIntegerNumber(point.datum.value)}`,
+				content: (points, context) =>
+					tooltipRows(
+						points,
+						context,
+						(datum) => ({
+							label: datum.series,
+							value: formatIntegerNumber(datum.value),
+						}),
+						points[0]?.datum.label,
+					),
 			},
 		})
 	}, [series, xLabels, props.xTickEvery])
+	if (series.length === 0 || xLabels.length === 0) {
+		return (
+			<div
+				role="img"
+				aria-label={`${ariaLabel}: no activity`}
+				css={{
+					height: props.height ?? 230,
+					display: 'grid',
+					placeItems: 'center',
+				}}
+			>
+				No activity in this period.
+			</div>
+		)
+	}
 	return (
 		<div css={chartScrollerNewestFirstCss}>
 			<div

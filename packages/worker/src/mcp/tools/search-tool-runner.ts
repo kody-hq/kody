@@ -1,3 +1,4 @@
+import { recordSkillFileRead } from '#worker/package-registry/skill-read-events.ts'
 import {
 	personalOrgId,
 	type OwnerId,
@@ -469,6 +470,12 @@ export async function runSearchTool(input: {
 			const entityResult = formatEntityDetailMarkdown(outcome.detail, {
 				includeBoilerplate: includePreamble,
 			})
+			await recordSearchSkillRead(
+				env,
+				callerContext,
+				outcome.detail,
+				entityResult.structured,
+			)
 			rememberConversationPreamble()
 			const timing = finishToolTiming(timingStart)
 			const phaseTimings = reconcileSearchPhaseTimings({
@@ -547,6 +554,12 @@ export async function runSearchTool(input: {
 					)
 					continue
 				}
+				await recordSearchSkillRead(
+					env,
+					callerContext,
+					entry.detail,
+					entityResult.structured,
+				)
 				successCount += 1
 				structuredResults.push(entityResult.structured)
 				markdownParts.push(entityResult.markdown)
@@ -860,4 +873,35 @@ export async function runSearchTool(input: {
 			isError: true,
 		}
 	}
+}
+
+async function recordSearchSkillRead(
+	env: Env,
+	callerContext: McpCallerContext,
+	detail: Awaited<ReturnType<typeof resolveEntityDetail>>,
+	result: SearchEntityDetailStructured,
+) {
+	if (
+		detail.type !== 'package' ||
+		result.kind !== 'entity' ||
+		result.type !== 'package' ||
+		result.detailMode !== 'file'
+	)
+		return
+	const path = result.path
+	const content = detail.files[path]
+	const skillName = /^skills\/([^/]+)\//.exec(path)?.[1]
+	if (content === undefined || !skillName) return
+	await recordSkillFileRead({
+		env,
+		callerContext,
+		channel: 'search',
+		packageId: detail.record.id,
+		packageName: detail.record.name,
+		packageOwnerId: detail.record.userId,
+		publishedCommit: detail.publishedCommit ?? null,
+		path,
+		content,
+		hasManifest: detail.files[`skills/${skillName}/SKILL.md`] !== undefined,
+	})
 }

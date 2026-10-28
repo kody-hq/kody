@@ -21,6 +21,76 @@ export function WorkspaceLayout() {
 	const matches = useMatches()
 	const navigation = workspaceLayoutNavigation(matches, session)
 	if (!navigation || !session) return <Outlet />
+	const resources = (
+		<nav
+			aria-label="Resources"
+			css={{
+				display: 'grid',
+				gap: '0.25rem',
+				borderTop: `1px solid ${colors.border}`,
+				paddingTop: '0.75rem',
+				fontSize: '0.875rem',
+				'& a': {
+					display: 'flex',
+					alignItems: 'center',
+					gap: '0.5rem',
+					padding: '0.4rem 0.65rem',
+					borderRadius: '0.5rem',
+					color: colors.textMuted,
+					textDecoration: 'none',
+					'&:hover': {
+						background: colors.primarySoftest,
+						color: colors.text,
+					},
+				},
+			}}
+		>
+			<h2
+				css={{
+					margin: '0 0 0.25rem',
+					paddingInline: '0.65rem',
+					fontSize: '0.7rem',
+					fontWeight: 600,
+					letterSpacing: '0.06em',
+					textTransform: 'uppercase',
+					color: colors.textMuted,
+				}}
+			>
+				Resources
+			</h2>
+			<SiteLink href="/docs">
+				<span aria-hidden="true">{renderIcon('book', { size: '1rem' })}</span>
+				Documentation
+			</SiteLink>
+		</nav>
+	)
+	const adminLink = session.roles.includes('admin') ? (
+		<div
+			css={{
+				flexShrink: 0,
+				padding: '0.75rem 1rem',
+				borderTop: `1px solid ${colors.border}`,
+			}}
+		>
+			<SiteLink
+				href="/admin/users"
+				css={{
+					display: 'block',
+					padding: '0.4rem 0.65rem',
+					borderRadius: '0.5rem',
+					color: colors.textMuted,
+					textDecoration: 'none',
+					fontSize: '0.875rem',
+					'&:hover': {
+						background: colors.primarySoftest,
+						color: colors.text,
+					},
+				}}
+			>
+				Admin
+			</SiteLink>
+		</div>
+	) : null
 	return (
 		<WorkspaceLayoutContext value={true}>
 			<div
@@ -132,79 +202,21 @@ export function WorkspaceLayout() {
 						{session.featureFlags['demo-indicator'] ? <DemoIndicator /> : null}
 						<ShellNavigation
 							navigation={navigation}
+							mobileFooter={
+								<>
+									{resources}
+									{adminLink}
+								</>
+							}
 							separateWorkspaceSwitcher
 						/>
-						<nav
-							aria-label="Resources"
-							css={{
-								display: 'grid',
-								gap: '0.25rem',
-								borderTop: `1px solid ${colors.border}`,
-								paddingTop: '0.75rem',
-								fontSize: '0.875rem',
-								'& a': {
-									display: 'flex',
-									alignItems: 'center',
-									gap: '0.5rem',
-									padding: '0.4rem 0.65rem',
-									borderRadius: '0.5rem',
-									color: colors.textMuted,
-									textDecoration: 'none',
-									'&:hover': {
-										background: colors.primarySoftest,
-										color: colors.text,
-									},
-								},
-							}}
-						>
-							<h2
-								css={{
-									margin: '0 0 0.25rem',
-									paddingInline: '0.65rem',
-									fontSize: '0.7rem',
-									fontWeight: 600,
-									letterSpacing: '0.06em',
-									textTransform: 'uppercase',
-									color: colors.textMuted,
-								}}
-							>
-								Resources
-							</h2>
-							<SiteLink href="/docs">
-								<span aria-hidden="true">
-									{renderIcon('book', { size: '1rem' })}
-								</span>
-								Documentation
-							</SiteLink>
-						</nav>
-					</div>
-					{session.roles.includes('admin') ? (
-						<div
-							css={{
-								flexShrink: 0,
-								padding: '0.75rem 1rem',
-								borderTop: `1px solid ${colors.border}`,
-							}}
-						>
-							<SiteLink
-								href="/admin/users"
-								css={{
-									display: 'block',
-									padding: '0.4rem 0.65rem',
-									borderRadius: '0.5rem',
-									color: colors.textMuted,
-									textDecoration: 'none',
-									fontSize: '0.875rem',
-									'&:hover': {
-										background: colors.primarySoftest,
-										color: colors.text,
-									},
-								}}
-							>
-								Admin
-							</SiteLink>
+						<div css={{ [accountManagementNarrowMq]: { display: 'none' } }}>
+							{resources}
 						</div>
-					) : null}
+					</div>
+					<div css={{ [accountManagementNarrowMq]: { display: 'none' } }}>
+						{adminLink}
+					</div>
 				</aside>
 				<main
 					id="main"

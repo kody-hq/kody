@@ -153,6 +153,7 @@ export const Route = createRootRouteWithContext<{
 					context.queryClient,
 					context.actorKey,
 					location.searchStr,
+					context.orgScope?.orgSlug ?? null,
 					!context.inPlaceNavigation,
 				),
 				context.verifyAccess
@@ -208,9 +209,11 @@ export const Route = createRootRouteWithContext<{
 })
 
 export function useShellData() {
-	const { actorKey } = useRouteContext({ from: '__root__' })
+	const { actorKey, orgScope } = useRouteContext({ from: '__root__' })
 	const { shellLocation } = useLoaderData({ from: '__root__' })
-	return useSuspenseQuery(shellQuery(actorKey, shellLocation.searchStr)).data
+	return useSuspenseQuery(
+		shellQuery(actorKey, shellLocation.searchStr, orgScope?.orgSlug ?? null),
+	).data
 }
 
 function Root() {

@@ -1,8 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { xyChartDefaults } from '../charts/xy-chart-defaults.ts'
+import { tooltipRows } from '../charts/tooltip-content.ts'
 import { useMemo } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { barX, barY, defineChart, stack } from '@tanstack/charts'
-import { Chart } from '@tanstack/charts/react'
+import { Chart } from '../charts/chart.tsx'
 import { scaleBand } from '@tanstack/charts/scales/band'
 import { scaleLinear } from '@tanstack/charts/scales/linear'
 import { tooltip } from '@tanstack/charts/tooltip'
@@ -34,6 +36,7 @@ export function ExecutionHistoryChart({
 			...days.map((day) => day.success + day.error + day.running),
 		)
 		return defineChart({
+			...xyChartDefaults,
 			marks: [
 				barY(rows, {
 					x: 'day',
@@ -66,8 +69,13 @@ export function ExecutionHistoryChart({
 			},
 			tooltip: {
 				use: tooltip,
-				format: (point) =>
-					`${point.datum.day} · ${point.datum.status}: ${point.datum.count}`,
+				content: (points, context) =>
+					tooltipRows(
+						points,
+						context,
+						(datum) => ({ label: datum.status, value: String(datum.count) }),
+						points[0]?.datum.day,
+					),
 			},
 		})
 	}, [days])
@@ -128,6 +136,7 @@ export function WorkspaceRankingChart({
 	const definition = useMemo(() => {
 		const max = Math.max(currency ? 0.01 : 1, ...rows.map((row) => row.value))
 		return defineChart({
+			...xyChartDefaults,
 			marks: [
 				barX(rows, {
 					x: 'value',
@@ -173,8 +182,13 @@ export function WorkspaceRankingChart({
 			},
 			tooltip: {
 				use: tooltip,
-				format: (point) =>
-					`${point.datum.label}: ${currency ? formatOnCreditsMicroUsd(point.datum.value * 1_000_000) : point.datum.value.toLocaleString('en-US')}`,
+				content: (points, context) =>
+					tooltipRows(points, context, (datum) => ({
+						label: datum.label,
+						value: currency
+							? formatOnCreditsMicroUsd(datum.value * 1_000_000)
+							: datum.value.toLocaleString('en-US'),
+					})),
 			},
 		})
 	}, [rows, currency])

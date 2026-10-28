@@ -16,10 +16,15 @@
  * On evaluation failure for an authenticated user, every flag is forced off
  * (fail closed) so a default-on registry flag cannot bypass a kill switch when
  * D1 is unavailable. Anonymous requests still use registry defaults.
+ *
+ * Org context: the org in the page path (`/@slug/...`), so per-org rows apply
+ * on that org's pages for its members. Pages outside an org path have no org
+ * context and ignore org rows.
  */
 
 import { recordFeatureFlagExposures } from '#worker/feature-flags/exposure.ts'
 import { getFeatureFlagEvaluationsForUser } from '#worker/feature-flags/service.ts'
+import { getOrgBySlug } from '#worker/orgs/repo.ts'
 import {
 	featureFlagDefinitions,
 	featureFlagKeys,
@@ -35,8 +40,29 @@ export type FeatureFlagRequestUser = {
 
 const requestFeatureFlagsStore = new WeakMap<
 	Request,
-	Promise<EvaluatedFeatureFlags>
+	Map<string, Promise<EvaluatedFeatureFlags>>
 >()
+
+const orgPathPattern = /^\/@([^/]+)(?:\/|$)/
+
+/** Org slug of an org-scoped page path (`/@slug/...`), else null. */
+export function featureFlagOrgSlugFromPathname(pathname: string) {
+	const match = orgPathPattern.exec(pathname)
+	if (!match?.[1]) return null
+	try {
+		return decodeURIComponent(match[1]).trim().toLowerCase() || null
+	} catch {
+		return null
+	}
+}
+
+function requestPathname(request: Request) {
+	try {
+		return new URL(request.url).pathname
+	} catch {
+		return '/'
+	}
+}
 
 function defaultFeatureFlags(): EvaluatedFeatureFlags {
 	const flags = {} as EvaluatedFeatureFlags
@@ -57,14 +83,17 @@ function disabledFeatureFlags(): EvaluatedFeatureFlags {
 async function resolveRequestFeatureFlags(
 	env: Env,
 	user: FeatureFlagRequestUser | null,
+	orgSlug: string | null,
 ): Promise<EvaluatedFeatureFlags> {
 	if (user === null) {
 		return defaultFeatureFlags()
 	}
 	try {
+		const org = orgSlug ? await getOrgBySlug(env.APP_DB, orgSlug) : null
 		const evaluations = await getFeatureFlagEvaluationsForUser(
 			env.APP_DB,
 			user.userId,
+			org ? { orgId: org.id } : null,
 		)
 		await recordFeatureFlagExposures(env, {
 			stableUserId: user.stableUserId,
@@ -81,15 +110,27 @@ async function resolveRequestFeatureFlags(
 	}
 }
 
+/**
+ * `pathname` is the page being rendered when it differs from `request.url`
+ * (the shell server function); it supplies the org context.
+ */
 export function loadRequestFeatureFlags(
 	request: Request,
 	env: Env,
 	user: FeatureFlagRequestUser | null,
+	pathname: string = requestPathname(request),
 ): Promise<EvaluatedFeatureFlags> {
-	let promise = requestFeatureFlagsStore.get(request)
+	const orgSlug = featureFlagOrgSlugFromPathname(pathname)
+	let byOrg = requestFeatureFlagsStore.get(request)
+	if (!byOrg) {
+		byOrg = new Map()
+		requestFeatureFlagsStore.set(request, byOrg)
+	}
+	const cacheKey = orgSlug ?? ''
+	let promise = byOrg.get(cacheKey)
 	if (!promise) {
-		promise = resolveRequestFeatureFlags(env, user)
-		requestFeatureFlagsStore.set(request, promise)
+		promise = resolveRequestFeatureFlags(env, user, orgSlug)
+		byOrg.set(cacheKey, promise)
 	}
 	return promise
 }

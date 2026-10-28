@@ -56,6 +56,7 @@ export async function routeAutomationRun(input: {
 	const enabled = await isExecutionContextsEnabledFor(
 		input.env.APP_DB,
 		actor.userId,
+		request.org.id,
 	)
 	if (!enabled) {
 		throw new ExecutionContextError({

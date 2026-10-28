@@ -1079,6 +1079,7 @@ async function resolveWorkflowPayload(input: {
 		raw: body.execution,
 		code,
 		lineage: input.lineage,
+		orgId: input.userId,
 	})
 	if (code) {
 		return createInlineWorkflowPayload({
@@ -1147,6 +1148,7 @@ async function resolveWorkflowExecution(input: {
 	raw: unknown
 	code: string | null | undefined
 	lineage: RequestLineage
+	orgId: string
 }): Promise<AutomationExecution | null> {
 	if (input.raw === undefined || input.raw === null) return null
 	if (input.code) {
@@ -1161,7 +1163,10 @@ async function resolveWorkflowExecution(input: {
 		)
 	}
 	const actorId = input.lineage.actor?.userId ?? null
-	if (!actorId || !(await isExecutionContextsEnabledFor(input.db, actorId))) {
+	if (
+		!actorId ||
+		!(await isExecutionContextsEnabledFor(input.db, actorId, input.orgId))
+	) {
 		throw new Error(
 			'workflows.create execution needs the execution-contexts feature, which is not enabled for you. Omit execution to run on Kody cloud.',
 		)

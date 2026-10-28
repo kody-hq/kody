@@ -1,8 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { xyChartDefaults } from './xy-chart-defaults.ts'
+import { tooltipRows } from './tooltip-content.ts'
 import { useMemo } from 'react'
 import { defineChart, areaY, lineY, dot } from '@tanstack/charts'
 import { decorative } from '@tanstack/charts/mark/decorative'
-import { Chart } from '@tanstack/charts/react'
+import { Chart } from './chart.tsx'
 import { scaleLinear } from '@tanstack/charts/scales/linear'
 import { d3Curve } from '@tanstack/charts/d3/shape'
 import { curveMonotoneX } from 'd3-shape'
@@ -51,6 +53,7 @@ export function AreaChart(props: AreaChartProps) {
 		const max = Math.max(1, ...rows.map((row) => row.value))
 		const every = props.xTickEvery ?? Math.max(1, Math.ceil(xLabels.length / 6))
 		return defineChart({
+			...xyChartDefaults,
 			gradients: series.map((entry, index) => ({
 				id: `area-${index}`,
 				x1: 0,
@@ -130,8 +133,16 @@ export function AreaChart(props: AreaChartProps) {
 			},
 			tooltip: {
 				use: tooltip,
-				format: (point) =>
-					`${point.datum.label} · ${point.datum.series}: ${formatIntegerNumber(point.datum.value)}`,
+				content: (points, context) =>
+					tooltipRows(
+						points,
+						context,
+						(datum) => ({
+							label: datum.series,
+							value: formatIntegerNumber(datum.value),
+						}),
+						points[0]?.datum.label,
+					),
 			},
 		})
 	}, [series, xLabels, props.xTickEvery])

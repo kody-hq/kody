@@ -1332,7 +1332,11 @@ export async function runBundledModuleWithRegistry(
 		options?.executionRouting ??
 		(resolveExecutionRouting &&
 		executionRoutingActorId &&
-		(await isExecutionContextsEnabledFor(env.APP_DB, executionRoutingActorId))
+		(await isExecutionContextsEnabledFor(
+			env.APP_DB,
+			executionRoutingActorId,
+			callerContext.request?.org?.id ?? null,
+		))
 			? await resolveExecutionRouting()
 			: null)
 	if (executionRouting) {
