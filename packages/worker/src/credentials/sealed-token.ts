@@ -323,16 +323,30 @@ export async function sealTokenFields(input: {
 
 /**
  * An endpoint that echoes the request could hand back a filled secret dressed
- * as a JWT naming any audience. Such a token keeps only `domains`.
+ * as a JWT naming any audience, raw or base64url-encoded in a segment. Such a
+ * token keeps only `domains`.
  */
 function audienceHostsFor(
 	token: string,
 	input: { to: SealedTokenBinding; filledValues?: ReadonlyArray<string> },
 ) {
-	if (input.filledValues?.some((value) => value && token.includes(value))) {
-		return []
+	const texts = [token, ...decodedJwtSegments(token)]
+	const echoes = (value: string) => {
+		const escaped = JSON.stringify(value).slice(1, -1)
+		return texts.some((text) => text.includes(value) || text.includes(escaped))
 	}
+	if (input.filledValues?.some((value) => value && echoes(value))) return []
 	return sealedTokenAudienceHosts(token, input.to.domains)
+}
+
+function decodedJwtSegments(token: string) {
+	return token.split('.').flatMap((segment) => {
+		try {
+			return [new TextDecoder().decode(base64UrlToBytes(segment))]
+		} catch {
+			return []
+		}
+	})
 }
 
 const maxSealedResponseBytes = 1024 * 1024

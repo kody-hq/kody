@@ -362,6 +362,34 @@ test('an audience host fills exactly, not on its subdomains', async () => {
 	).rejects.toThrow(/not evil\.management\.azure\.com/)
 })
 
+test('a filled secret echoed inside an encoded JWT segment also keeps only the token and approved domains', async () => {
+	for (const echoed of [
+		fakeJwt({ aud: 'https://evil.test', leak: 'client-secret-value' }),
+		fakeJwt({ aud: 'https://evil.test', leak: 'quote"secret' }),
+		fakeJwt({ aud: 'https://evil.test' }).replace(
+			'signature',
+			Buffer.from('client-secret-value').toString('base64url'),
+		),
+	]) {
+		const sealed = await sealTokenResponse({
+			env,
+			response: Response.json({ access_token: echoed }),
+			requestUrl:
+				'https://login.microsoftonline.com/tenant-id/oauth2/v2.0/token',
+			approvedHosts: ['login.microsoftonline.com'],
+			filledValues: ['client-secret-value', 'quote"secret'],
+			org: 'org-1',
+			binding: 'run-1',
+		})
+		const { access_token } = (await sealed.json()) as Record<string, string>
+		await expect(
+			open(access_token!, { requestHost: 'evil.test' }),
+		).rejects.toThrow(
+			/may only be sent to microsoftonline\.com, not evil\.test/,
+		)
+	}
+})
+
 test('a token response that echoes a filled secret keeps only the token and approved domains', async () => {
 	const echoed = fakeJwt({ aud: 'https://evil.test' }).replace(
 		'signature',
