@@ -79,7 +79,7 @@ function headlessOAuthSteps(
 		]
 	}
 	const portNote =
-		'If you set oauth.callbackPort (or callback_port) for kody, use that port instead of 19876.'
+		'If you set oauth.callbackPort (or callback_port) for kody, use that port instead of 19876. Without it, newer OpenCode builds can pick a random port, so pin it to 19876 first.'
 	if (reason === 'ssh') {
 		return [
 			lead,
