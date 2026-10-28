@@ -218,3 +218,34 @@ test('unbound needs with a possible match point at Mappings instead of add', asy
 	expect(mappingsHtml).not.toContain('Add a credential for')
 	expect(mappingsHtml).not.toContain('Link it in Mappings')
 })
+
+test('a publisher possible match sends non-managers to a package manager', async () => {
+	const match = {
+		id: 'cred-raw-id-456',
+		name: 'Team calendar',
+		kind: 'oauth' as const,
+		scope: 'org' as const,
+	}
+	const calendar = need('calendar', 'publisher')
+	calendar.effective = { ...calendar.effective, candidates: [match] }
+	calendar.createUrl = '/credentials/new?need=calendar'
+	const view: PackageCredentialsView = {
+		ok: true,
+		package: { id: 'package-a', kodyId: 'repo', canManage: false },
+		needs: [calendar],
+		triggers: [],
+		locked: [],
+		incomplete: [{ ...incomplete('calendar'), possibleMatches: [match] }],
+	}
+	const context = { orgSlug: 'team', username: 'team', kodyId: 'repo', view }
+
+	const html = await renderStartPage(renderCredentialsTab(context))
+	expect(html).toContain('Possible match')
+	expect(html).toContain('Team calendar')
+	expect(html).toContain('ask a package manager to link it')
+	expect(html).toContain('A package manager can link it.')
+	expect(html).not.toContain('Link it in Mappings')
+	expect(html).not.toContain('pick it in')
+	expect(html).toContain('Add a credential')
+	expect(html).not.toContain('cred-raw-id-456<')
+})

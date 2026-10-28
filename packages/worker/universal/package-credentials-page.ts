@@ -187,6 +187,8 @@ export function mappingStatusLabel(
 /** What to do about one incomplete mapping, in a sentence. */
 export function describeIncompleteMapping(
 	item: PackageCredentialsIncomplete,
+	/** False when this viewer cannot edit the mapping that would link a match. */
+	options: { canLink?: boolean } = {},
 ): string {
 	const where =
 		item.where.type === 'default'
@@ -205,9 +207,11 @@ export function describeIncompleteMapping(
 				.join(', ')
 			const tab = packageCredentialsTabLabel(incompleteMappingTab(item))
 			const match =
-				matches.length === 1
-					? `${names} looks like a match; pick it in ${tab}.`
-					: `${names} look like matches; pick one in ${tab}.`
+				options.canLink === false
+					? `${names} ${matches.length === 1 ? 'looks like a match' : 'look like matches'}; ask a package manager to link it.`
+					: matches.length === 1
+						? `${names} looks like a match; pick it in ${tab}.`
+						: `${names} look like matches; pick one in ${tab}.`
 			return `${where} aren’t linked to a credential for “${item.needKey}” yet. ${match}`
 		}
 		case 'ambiguous':

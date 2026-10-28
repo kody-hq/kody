@@ -369,7 +369,9 @@ function effectiveMapping(
 		: notReady(
 				'unbound',
 				'auto',
-				resolution.possibleMatches.map(toCredentialRef),
+				resolution.possibleMatches
+					.filter((credential) => !credential.expired)
+					.map(toCredentialRef),
 			)
 }
 

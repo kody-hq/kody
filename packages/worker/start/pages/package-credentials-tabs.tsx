@@ -122,6 +122,13 @@ function effectiveSourceLabel(mapping: EffectiveCredentialMapping) {
 		mapping.status === 'unbound' ? 'none' : mapping.source,
 	)
 }
+/** Publisher mappings are org defaults, so only package managers can link them. */
+function canLinkNeed(
+	view: PackageCredentialsView,
+	need: Pick<PackageCredentialNeedView, 'supplier'> | undefined,
+) {
+	return view.package.canManage || need?.supplier !== 'publisher'
+}
 function hasPossibleMatch(mapping: EffectiveCredentialMapping) {
 	return mapping.status === 'unbound' && mapping.candidates.length > 0
 }
@@ -177,8 +184,11 @@ function renderRefs(orgSlug: string, refs: ReadonlyArray<CredentialRef>) {
 export function renderEffective(
 	orgSlug: string,
 	mapping: EffectiveCredentialMapping,
-	/** Where to link a possible match; omit when the picker is on this page. */
-	pickHref?: string,
+	/**
+	 * Where to link a possible match; omit when the picker is on this page,
+	 * null when this viewer cannot link it.
+	 */
+	pickHref?: string | null,
 ) {
 	switch (mapping.status) {
 		case 'ready':
@@ -208,6 +218,8 @@ export function renderEffective(
 								{' '}
 								<SiteLink href={pickHref}>Link it in Mappings</SiteLink>
 							</>
+						) : pickHref === null ? (
+							<span css={mutedCss}> A package manager can link it.</span>
 						) : null}
 					</span>
 				)
@@ -296,10 +308,11 @@ export function renderIncomplete(
 				{actionableItems.map((item) => {
 					const tab = incompleteMappingTab(item)
 					const createUrl = needs.get(item.needKey)?.createUrl
+					const canLink = canLinkNeed(view, needs.get(item.needKey))
 					const key = `${item.needKey}:${item.where.type === 'trigger' ? `${item.where.trigger.kind}:${item.where.trigger.name}` : 'default'}`
 					return (
 						<li key={key} css={{ display: 'grid', gap: spacing.xs }}>
-							<span>{describeIncompleteMapping(item)}</span>
+							<span>{describeIncompleteMapping(item, { canLink })}</span>
 							<span css={rowCss}>
 								{tab === currentTab ? null : (
 									<SiteLink
@@ -314,7 +327,7 @@ export function renderIncomplete(
 								)}
 								{item.status === 'unbound' &&
 								createUrl &&
-								(item.possibleMatches?.length ?? 0) === 0 ? (
+								(!canLink || (item.possibleMatches?.length ?? 0) === 0) ? (
 									<SiteLink href={createUrl}>Add a credential</SiteLink>
 								) : null}
 							</span>
@@ -380,11 +393,13 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 												renderEffective(
 													orgSlug,
 													need.effective,
-													`${packageCredentialsTabHref({
-														username: context.username,
-														kodyId: context.kodyId,
-														tab: 'mappings',
-													})}#package-mapping-${need.key}`,
+													canLinkNeed(view, need)
+														? `${packageCredentialsTabHref({
+																username: context.username,
+																kodyId: context.kodyId,
+																tab: 'mappings',
+															})}#package-mapping-${need.key}`
+														: null,
 												)
 											)}
 										</td>
