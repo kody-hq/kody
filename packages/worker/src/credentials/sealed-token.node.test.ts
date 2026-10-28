@@ -188,6 +188,40 @@ test('sealTokenResponse streams a body too big to be a token response through un
 	await expect(passed.text()).resolves.toBe(big)
 })
 
+test('sealTokenResponse refuses a body too big to seal that names a token field', async () => {
+	const big = JSON.stringify({
+		items: 'x'.repeat(2 * 1024 * 1024),
+		access_token: 'a-value',
+	})
+	const passed = await sealTokenResponse({
+		env,
+		response: new Response(big, {
+			headers: { 'content-type': 'application/json' },
+		}),
+		requestUrl: 'https://auth.example.com/oauth/token',
+		org: 'org-1',
+		binding: 'run-1',
+	})
+	await expect(passed.text()).rejects.toThrow(/credential_placement_refused/)
+})
+
+test('sealTokenResponse keeps the upstream response url', async () => {
+	const upstream = new Response(JSON.stringify({ ok: true }), {
+		headers: { 'content-type': 'application/json' },
+	})
+	Object.defineProperty(upstream, 'url', {
+		value: 'https://api.example.com/v1/items',
+	})
+	const passed = await sealTokenResponse({
+		env,
+		response: upstream,
+		requestUrl: 'https://api.example.com/v1/items',
+		org: 'org-1',
+		binding: 'run-1',
+	})
+	expect(passed.url).toBe('https://api.example.com/v1/items')
+})
+
 test('sealedTokenDomainForUrl uses the registrable domain', () => {
 	expect(
 		sealedTokenDomainForUrl('https://api-m.sandbox.example.co.uk/v1'),

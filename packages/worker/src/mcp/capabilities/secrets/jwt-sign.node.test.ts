@@ -554,6 +554,21 @@ test('secretJwtSign seals the JWT to the aud URL or send_to_host domain', async 
 	expect(anyHost.warning).toMatch(/Deprecated: .*Pass send_to_host/)
 })
 
+test('secretJwtSign rejects a send_to_host that is not a bare host', async () => {
+	lookupSecretsThroughResolveSecret()
+	const { privateKey } = createKeyPair()
+	for (const sendToHost of [' ', 'https://api.example.com/x']) {
+		await expect(
+			signWith(privateKey, {
+				private_key_secret_name: 'serviceAccountKey',
+				algorithm: 'RS256',
+				send_to_host: sendToHost,
+				claims: { iss: 'app', aud: 'not-a-url' },
+			}),
+		).rejects.toThrow(/send_to_host must be a bare host/)
+	}
+})
+
 test('secretJwtSign binds the sealed JWT to the host-set run binding', async () => {
 	lookupSecretsThroughResolveSecret()
 	const { privateKey } = createKeyPair()

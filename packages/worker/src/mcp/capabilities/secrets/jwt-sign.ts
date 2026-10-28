@@ -196,9 +196,19 @@ function sealedJwtDomains(
 	const urls = audiences.filter(
 		(aud): aud is string => typeof aud === 'string' && /^https:\/\//i.test(aud),
 	)
-	if (sendToHost) urls.push(`https://${sendToHost.trim()}`)
-	return urls.flatMap((url) => {
+	const domains = urls.flatMap((url) => {
 		const domain = sealedTokenDomainForUrl(url)
 		return domain ? [domain] : []
 	})
+	if (sendToHost === undefined) return domains
+	const host = sendToHost.trim()
+	const hostDomain = /^[a-z0-9.-]+$/i.test(host)
+		? sealedTokenDomainForUrl(`https://${host}`)
+		: null
+	if (!hostDomain) {
+		throw new McpCallerError(
+			`send_to_host must be a bare host such as "api.example.com".`,
+		)
+	}
+	return [...domains, hostDomain]
 }

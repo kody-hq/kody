@@ -15,6 +15,7 @@ import {
 } from '@kody-internal/shared/base64.ts'
 import { getDomain } from 'tldts'
 import { z } from 'zod'
+import { withLanding } from '#mcp/secrets/echo-redaction.ts'
 import { SecretPlacementError } from '#mcp/secrets/secret-placement.ts'
 import { buildIntegrationTokenPlaceholder } from '#mcp/secrets/placeholders.ts'
 
@@ -245,24 +246,27 @@ export async function sealTokenResponse(input: {
 	const { response } = input
 	const contentType = response.headers.get('content-type') ?? ''
 	if (!/\bjson\b/i.test(contentType) || !response.body) return response
-	const length = Number(response.headers.get('content-length'))
-	if (Number.isFinite(length) && length > maxSealedResponseBytes) {
-		return response
-	}
 	const domain = sealedTokenDomainForUrl(input.requestUrl)
 	if (!domain) return response
 	const rebuilt = (body: BodyInit) => {
 		const headers = new Headers(response.headers)
 		headers.delete('content-length')
 		headers.delete('content-encoding')
-		return new Response(body, {
-			status: response.status,
-			statusText: response.statusText,
-			headers,
-		})
+		return withLanding(
+			new Response(body, {
+				status: response.status,
+				statusText: response.statusText,
+				headers,
+			}),
+			{ url: response.url, redirected: response.redirected },
+		)
+	}
+	const length = Number(response.headers.get('content-length'))
+	if (Number.isFinite(length) && length > maxSealedResponseBytes) {
+		return rebuilt(refuseTokenFields(response.body))
 	}
 	const head = await readUpTo(response.body, maxSealedResponseBytes)
-	if (head.rest) return rebuilt(head.rest)
+	if (head.rest) return rebuilt(refuseTokenFields(head.rest))
 	const text = new TextDecoder().decode(head.bytes)
 	let parsed: unknown
 	try {
@@ -280,6 +284,36 @@ export async function sealTokenResponse(input: {
 		},
 	})
 	return rebuilt(sealed ? JSON.stringify(sealed) : text)
+}
+
+const tokenFieldKey = new RegExp(`"(?:${sealedTokenFields.join('|')})"`)
+
+/**
+ * A response too big to parse streams through, but fails closed if it names a
+ * token field, since a token in it could not be sealed. A key split across
+ * chunks is caught before its value is passed on.
+ */
+function refuseTokenFields(body: ReadableStream<Uint8Array>) {
+	const decoder = new TextDecoder()
+	let tail = ''
+	return body.pipeThrough(
+		new TransformStream<Uint8Array, Uint8Array>({
+			transform(chunk, controller) {
+				const text = tail + decoder.decode(chunk, { stream: true })
+				if (tokenFieldKey.test(text)) {
+					controller.error(
+						new SecretPlacementError(
+							'A credential-filled JSON response over 1 MiB names a token field, so Kody refused it rather than return an unsealed token.',
+							sealedTokenSlot,
+						),
+					)
+					return
+				}
+				tail = text.slice(-32)
+				controller.enqueue(chunk)
+			},
+		}),
+	)
 }
 
 async function readUpTo(body: ReadableStream<Uint8Array>, limit: number) {
