@@ -152,7 +152,8 @@ export type ExecutionContextRun = {
 	startedAt?: string | null
 	endedAt?: string | null
 	durationMs?: number | null
-	outcome: ExecutionContextRunOutcome
+	/** Null while the run is still in progress. */
+	outcome: ExecutionContextRunOutcome | null
 	cancelReason?: string | null
 	fallback?: { position: number; ranOn?: string } | null
 }
@@ -534,12 +535,6 @@ export function sharingSummary(
 		if (org.allMembers) parts.push(`Everyone in @${org.slug}`)
 	}
 	return parts.length > 0 ? parts.join(' + ') : 'Only me'
-}
-
-export function canManageSharing(
-	context: Pick<ExecutionContextListItem, 'isOperator' | 'myPermissions'>,
-) {
-	return context.isOperator || context.myPermissions.includes('manage_access')
 }
 
 export function canOptIntoContext(

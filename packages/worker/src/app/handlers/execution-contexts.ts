@@ -1,5 +1,6 @@
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { isMcpCallerError } from '#mcp/caller-error.ts'
+import { resolvePersonId } from '#mcp/capabilities/access/shared.ts'
 import { getStaticRegistry } from '#mcp/capabilities/registry.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
@@ -321,7 +322,7 @@ export function normalizeRun(value: unknown): ExecutionContextRun | null {
 		durationMs: typeof row.durationMs === 'number' ? row.durationMs : null,
 		outcome: (typeof row.outcome === 'string'
 			? row.outcome
-			: 'lost') as ExecutionContextRun['outcome'],
+			: null) as ExecutionContextRun['outcome'],
 		cancelReason:
 			typeof row.cancelReason === 'string' ? row.cancelReason : null,
 		fallback: fallback
@@ -394,7 +395,8 @@ export async function loadExecutionContextsPageData(input: {
 							throw error
 						})
 					: Promise.resolve(null),
-				scope.personal
+				// Grant-only collaborators share a context, not the org's team roster.
+				scope.personal || scope.binding.role == null
 					? Promise.resolve([])
 					: listTeams(env.APP_DB, scope.org.id),
 				listOrgsForPerson(env.APP_DB, user.mcpUser.userId),
@@ -529,6 +531,12 @@ export async function listExecutionContextRunsForUser(
 	},
 ) {
 	return runScoped(input, async (scope) => {
+		// Run history filters on user ids; people type the handle they see.
+		const requester = input.requester
+			? await resolvePersonId(input.env.APP_DB, {
+					username: input.requester.trim().replace(/^@/, ''),
+				})
+			: undefined
 		const result = await callCapability(
 			scope,
 			executionContextCapabilityNames.runList,
@@ -536,7 +544,7 @@ export async function listExecutionContextRunsForUser(
 				id: input.contextId,
 				limit: 20,
 				...(input.cursor ? { cursor: input.cursor } : {}),
-				...(input.requester ? { requester: input.requester } : {}),
+				...(requester ? { requester } : {}),
 				...(input.outcome ? { outcome: input.outcome } : {}),
 			},
 		)

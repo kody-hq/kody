@@ -139,7 +139,7 @@ test('normalizeRun and normalizeAuditEvent read the session DO row shapes', () =
 		}),
 	).toMatchObject({
 		requester: { userId: 'u_1', handle: 'deleted user' },
-		outcome: 'lost',
+		outcome: null,
 		fallback: { position: 1, ranOn: 'cloud' },
 	})
 	expect(

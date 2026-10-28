@@ -26,7 +26,6 @@ import {
 	type ExecutionContextRunPage,
 	type ExecutionContextShareGrant,
 	auditEventLabel,
-	canManageSharing,
 	canOptIntoContext,
 	chainEntryInputs,
 	chainHasCloud,
@@ -185,9 +184,7 @@ export function ExecutionContextDetail(props: {
 				</AccountManagementMessage>
 			) : null}
 			<OptInControls {...props} onChanged={refresh} />
-			{canManageSharing(context) && context.sharing ? (
-				<SharingPanel {...props} onChanged={refresh} />
-			) : null}
+			{context.sharing ? <SharingPanel {...props} onChanged={refresh} /> : null}
 			<RunHistory orgSlug={orgSlug} context={context} nameForId={nameForId} />
 			<AuditLog orgSlug={orgSlug} context={context} />
 		</div>
@@ -780,7 +777,11 @@ function RunHistory(props: {
 									<td>{new Date(run.dispatchedAt).toLocaleString()}</td>
 									<td>@{run.requester.handle}</td>
 									<td>{durationLabel(run.durationMs)}</td>
-									<td>{runOutcomeLabels[run.outcome]}</td>
+									<td>
+										{run.outcome
+											? runOutcomeLabels[run.outcome]
+											: 'In progress'}
+									</td>
 									<td>
 										{runFallbackLabel({
 											run,
