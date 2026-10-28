@@ -102,6 +102,12 @@ async function connect(ecid: string) {
 		protocol: { min: 1, max: 1 },
 		status: { acceptingRuns: true, running: 0, maxConcurrent: 2 },
 	})
+	// `ws.send` does not wait for the DO to handle hello; dispatching first
+	// finds no live socket and never sends run.request.
+	for (let i = 0; i < 100; i++) {
+		if ((await stub.getStatus()).acceptingRuns) break
+		await new Promise((resolve) => setTimeout(resolve, 50))
+	}
 	return { stub, ws, next, send, key, welcome }
 }
 
