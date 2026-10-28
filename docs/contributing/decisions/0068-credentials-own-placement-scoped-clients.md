@@ -990,5 +990,10 @@ point inject at a different header or query parameter.
   plus each query, path, or body part it was seen filled into before enforcement
   (`credential_fill_placement_observations`). Migration 0195 copies those parts
   into `observed` opt-ins, so nobody migrates anything by hand.
+- **Grandfathered fills.** Migration 0195 grants the `observed` opt-in to every
+  credential seen filling a query, path, or body part before enforcement,
+  including placements set from code or a package manifest, so every fill that
+  works today keeps working. It never widens a credential past its stored
+  placement. Placements set from code after 0195 still need the owner opt-in.
 - **Not built.** A per-host path allowlist; it comes later only if abuse shows
   up.
