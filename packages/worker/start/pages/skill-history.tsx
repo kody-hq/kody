@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useServerFn } from '@tanstack/react-start'
 import { useRouter, useRouteContext } from '@tanstack/react-router'
 import { createPageQuery } from '../page-query.ts'
@@ -63,10 +63,11 @@ function SkillHistoryView({
 	} | null>(null)
 	const read = useQuery({
 		...historyQuery(actorKey, { orgSlug, skill, ...selection }),
+		placeholderData: keepPreviousData,
 		retry: false,
 	})
 	const loading = read.isFetching
-	const result = read.isError || loading ? undefined : read.data
+	const result = read.isError ? undefined : read.data
 	const error =
 		mutationError ||
 		(read.error
@@ -89,7 +90,7 @@ function SkillHistoryView({
 		maxWidth: '100%' as const,
 	}
 	async function restore() {
-		if (!result) return
+		if (!result || loading) return
 		const isCurrent = capture()
 		setRestoring(true)
 		setError('')
@@ -142,7 +143,7 @@ function SkillHistoryView({
 					) : null}
 				</p>
 			) : null}
-			{loading ? <p role="status">Loading history…</p> : null}
+			{loading && !result ? <p role="status">Loading history…</p> : null}
 			{notice ? (
 				<p role="status">
 					{notice.message}{' '}
@@ -248,7 +249,7 @@ function SkillHistoryView({
 							</p>
 							<button
 								type="button"
-								disabled={restoring}
+								disabled={loading || restoring}
 								onClick={() => void restore()}
 								css={controlStyle}
 							>
@@ -289,7 +290,7 @@ function SkillHistoryView({
 							))}
 						</select>
 					</label>
-					{!loading && !error ? (
+					{!error ? (
 						<div
 							css={{
 								overflow: 'auto',
