@@ -61,9 +61,7 @@ This example also declares a package app (`kody.app.entry`) because
 {
 	"name": "@you/ping-notifier",
 	"type": "module",
-	"exports": {
-		".": "./src/app.ts"
-	},
+	"exports": {},
 	"kody": {
 		"description": "Emits a ping event an MCP host can subscribe to.",
 		"app": {

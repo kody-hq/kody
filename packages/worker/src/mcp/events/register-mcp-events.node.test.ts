@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 	recordMcpEventsClientsFlagExposure: vi.fn(),
 	listMcpEventSources: vi.fn(),
 	subscribeMcpEvent: vi.fn(),
+	unsubscribeMcpEvent: vi.fn(),
 }))
 
 vi.mock('#mcp/capabilities/access-control.ts', () => ({
@@ -35,6 +36,12 @@ vi.mock('./subscribe.ts', async (importOriginal) => ({
 	...(await importOriginal<Record<string, unknown>>()),
 	subscribeMcpEvent: (...args: Array<unknown>) =>
 		mocks.subscribeMcpEvent(...args),
+}))
+
+vi.mock('./unsubscribe.ts', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	unsubscribeMcpEvent: (...args: Array<unknown>) =>
+		mocks.unsubscribeMcpEvent(...args),
 }))
 
 vi.mock('./list-events.ts', async (importOriginal) => ({
@@ -150,6 +157,12 @@ async function connectModernClient(input: {
 				subscribeResultSchema,
 			)
 		},
+		async unsubscribe() {
+			return await client.request(
+				{ method: 'events/unsubscribe', params: subscribeParams },
+				z.object({}),
+			)
+		},
 		async [Symbol.asyncDispose]() {
 			await client.close().catch(() => undefined)
 		},
@@ -167,6 +180,7 @@ afterEach(() => {
 	mocks.recordMcpEventsClientsFlagExposure.mockReset()
 	mocks.listMcpEventSources.mockReset()
 	mocks.subscribeMcpEvent.mockReset()
+	mocks.unsubscribeMcpEvent.mockReset()
 })
 
 const discordMessageCreated = {
@@ -238,6 +252,40 @@ test('OAuth caller with the flag on and no client declaration gets events advert
 		expect.objectContaining({ callerContext, oauthClientId: 'client-a' }),
 		expect.objectContaining({ name: discordMessageCreated.name }),
 	)
+})
+
+test('events/subscribe as the first events call records exposure before subscribing', async () => {
+	mocks.resolveCallerFeatureFlagEvaluations.mockResolvedValue(evaluations(true))
+	mocks.subscribeMcpEvent.mockImplementation(async () => {
+		expect(mocks.recordMcpEventsClientsFlagExposure).toHaveBeenCalledTimes(1)
+		return {
+			id: 'sub_fake',
+			refreshBefore: null,
+			cursor: null,
+			truncated: true,
+		}
+	})
+	await using connection = await connectModernClient({})
+
+	await expect(connection.subscribe()).resolves.toMatchObject({
+		id: 'sub_fake',
+	})
+	expect(mocks.subscribeMcpEvent).toHaveBeenCalledTimes(1)
+	expect(mocks.listMcpEventSources).not.toHaveBeenCalled()
+})
+
+test('events/unsubscribe as the first events call records exposure before unsubscribing', async () => {
+	mocks.resolveCallerFeatureFlagEvaluations.mockResolvedValue(evaluations(true))
+	mocks.unsubscribeMcpEvent.mockImplementation(async () => {
+		expect(mocks.recordMcpEventsClientsFlagExposure).toHaveBeenCalledTimes(1)
+		return {}
+	})
+	await using connection = await connectModernClient({})
+
+	await expect(connection.unsubscribe()).resolves.toEqual({})
+	expect(mocks.unsubscribeMcpEvent).toHaveBeenCalledTimes(1)
+	expect(mocks.listMcpEventSources).not.toHaveBeenCalled()
+	expect(mocks.subscribeMcpEvent).not.toHaveBeenCalled()
 })
 
 test('a client that still declares events support keeps working', async () => {
