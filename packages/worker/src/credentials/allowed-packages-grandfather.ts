@@ -24,8 +24,8 @@ import {
 import { packageSourceFiles } from '#worker/credentials/credential-needs-closure.ts'
 import {
 	credentialAuditActions,
+	credentialAuditEvent,
 	listDelta,
-	recordCredentialAudit,
 } from '#worker/credentials/credential-audit.ts'
 import { type AllowedPackagesWouldBlockAccessKind } from '#worker/credentials/allowed-packages-would-block.ts'
 import { savedPackageImplicitUserSecretReadAccessKind } from '#mcp/secrets/package-access.ts'
@@ -33,7 +33,10 @@ import {
 	parseAllowedPackages,
 	stringifyAllowedPackages,
 } from '#mcp/secrets/allowed-packages.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import {
+	type OrgAuditWriter,
+	runAppDbBatchWithOrgAudit,
+} from '#worker/orgs/org-audit.ts'
 import { listCandidatePackages } from '#worker/package-runtime/published-importable-artifact-backfill.ts'
 import { readPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { loadPackageSourceRowForUser } from '#worker/package-registry/source.ts'
@@ -186,6 +189,8 @@ type LogPairRow = {
 	observations: number
 }
 
+const logPairPackageChunkSize = 90
+
 async function listLogPairsForPackages(input: {
 	db: D1Database
 	packageIds: ReadonlyArray<string>
@@ -193,19 +198,29 @@ async function listLogPairsForPackages(input: {
 	lastSeenAfter: string | null
 }): Promise<Array<LogPairRow>> {
 	if (input.packageIds.length === 0) return []
-	const placeholders = input.packageIds.map(() => '?').join(', ')
-	const result = await input.db
-		.prepare(
-			`SELECT w.owner_id AS owner_id, w.credential_id AS credential_id,
-				w.package_id AS package_id, MAX(w.access_kind) AS access_kind,
-				MAX(w.last_seen_at) AS last_seen_at, SUM(w.observations) AS observations
-			 FROM credential_allowed_packages_would_block w
-			 WHERE w.day >= ? AND w.package_id IN (${placeholders})
-			 GROUP BY w.owner_id, w.credential_id, w.package_id`,
-		)
-		.bind(input.since, ...input.packageIds)
-		.all<LogPairRow>()
-	return (result.results ?? []).filter(
+	// D1 allows 100 bound parameters per query; `since` takes one.
+	const rows: Array<LogPairRow> = []
+	for (
+		let index = 0;
+		index < input.packageIds.length;
+		index += logPairPackageChunkSize
+	) {
+		const chunk = input.packageIds.slice(index, index + logPairPackageChunkSize)
+		const placeholders = chunk.map(() => '?').join(', ')
+		const result = await input.db
+			.prepare(
+				`SELECT w.owner_id AS owner_id, w.credential_id AS credential_id,
+					w.package_id AS package_id, MAX(w.access_kind) AS access_kind,
+					MAX(w.last_seen_at) AS last_seen_at, SUM(w.observations) AS observations
+				 FROM credential_allowed_packages_would_block w
+				 WHERE w.day >= ? AND w.package_id IN (${placeholders})
+				 GROUP BY w.owner_id, w.credential_id, w.package_id`,
+			)
+			.bind(input.since, ...chunk)
+			.all<LogPairRow>()
+		rows.push(...(result.results ?? []))
+	}
+	return rows.filter(
 		(row) => !input.lastSeenAfter || row.last_seen_at > input.lastSeenAfter,
 	)
 }
@@ -243,25 +258,36 @@ export async function grantGrandfatheredPackageAccess(input: {
 		stringifyAllowedPackages([...before, input.packageId]),
 	)
 	const now = new Date().toISOString()
-	const update = await input.db
+	const update = input.db
 		.prepare(
 			`UPDATE secret_entries SET allowed_packages = ?, updated_at = ?
 			 WHERE id = ? AND allowed_packages = ? AND deleted_at IS NULL`,
 		)
 		.bind(stringifyAllowedPackages(after), now, row.id, row.allowed_packages)
-		.run()
-	if (!update.meta?.changes) return 'conflict'
-	await recordCredentialAudit(input.audit, {
-		orgId: ownerIdFromStored(input.ownerId),
-		credential: { id: row.id, kind: 'secret', name: row.name },
-		action: credentialAuditActions.allowedPackagesUpdated,
-		details: {
-			packages: listDelta(before, after),
-			fields: ['allowed_packages'],
-			reason: allowedPackagesGrandfatherReason,
-			source: input.source,
-		},
+	if (!input.audit) {
+		const result = await update.run()
+		return result.meta?.changes ? 'granted' : 'conflict'
+	}
+	// The guarded UPDATE and its audit outbox row commit together, so a grant
+	// is never left without its audit row.
+	const { changed } = await runAppDbBatchWithOrgAudit({
+		appDb: input.db,
+		audit: input.audit,
+		statements: [update],
+		onlyIfChanged: true,
+		event: credentialAuditEvent({
+			orgId: ownerIdFromStored(input.ownerId),
+			credential: { id: row.id, kind: 'secret', name: row.name },
+			action: credentialAuditActions.allowedPackagesUpdated,
+			details: {
+				packages: listDelta(before, after),
+				fields: ['allowed_packages'],
+				reason: allowedPackagesGrandfatherReason,
+				source: input.source,
+			},
+		}),
 	})
+	if (!changed) return 'conflict'
 	return 'granted'
 }
 
@@ -345,6 +371,9 @@ export async function runAllowedPackagesGrandfather(input: {
 
 	const byKey = new Map<string, AllowedPackagesGrandfatherPair>()
 	const unresolvedPackages = new Set<string>()
+	// Unpublished packages and unadopted forks cannot use the credential today,
+	// so a log marker for one never earns a grant.
+	const ineligiblePackages = new Set<string>()
 	for (const savedPackage of packages) {
 		let scan: StaticPackageScan
 		try {
@@ -358,6 +387,9 @@ export async function runAllowedPackagesGrandfather(input: {
 		if (scan.status !== 'scanned') {
 			if (scan.status === 'unpublished') result.skippedUnpublished += 1
 			if (scan.status === 'unadopted_fork') result.skippedUnadoptedFork += 1
+			if (scan.status === 'unpublished' || scan.status === 'unadopted_fork') {
+				ineligiblePackages.add(savedPackage.id)
+			}
 			if (scan.status === 'no_snapshot') {
 				result.skippedNoSnapshot += 1
 				unresolvedPackages.add(savedPackage.id)
@@ -394,6 +426,7 @@ export async function runAllowedPackagesGrandfather(input: {
 		lastSeenAfter: input.logLastSeenAfter ?? null,
 	})
 	for (const row of logRows) {
+		if (ineligiblePackages.has(row.package_id)) continue
 		const key = `${row.credential_id}\0${row.package_id}`
 		const existing = byKey.get(key)
 		if (existing) {

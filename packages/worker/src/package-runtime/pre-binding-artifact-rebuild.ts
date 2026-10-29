@@ -98,9 +98,13 @@ async function findStaleTargets(input: {
 		isRepairableArtifactKind(target.kind),
 	)
 	const stale: Array<PublishedPackageArtifactBuildTarget> = []
+	/** No stored artifact, or one built from another published commit. */
+	const notCurrent: Array<PublishedPackageArtifactBuildTarget> = []
 	let multiPackage = 0
 	let stored = 0
-	if (candidates.length === 0) return { stale, multiPackage, stored }
+	if (candidates.length === 0) {
+		return { stale, notCurrent, multiPackage, stored }
+	}
 	const loadedByIdentity = await loadPublishedBundleArtifactsForPackageTargets({
 		env: input.env,
 		userId: input.userId,
@@ -114,14 +118,20 @@ async function findStaleTargets(input: {
 			loadedByIdentity,
 		})
 		const artifact = loaded?.artifact
-		if (!artifact) continue
+		if (!artifact) {
+			notCurrent.push(target)
+			continue
+		}
 		stored += 1
-		if (artifact.publishedCommit !== input.publishedCommit) continue
+		if (artifact.publishedCommit !== input.publishedCommit) {
+			notCurrent.push(target)
+			continue
+		}
 		if (!isStalePreBindingArtifact(artifact)) continue
 		stale.push(target)
 		if (publishedArtifactInlinesOtherPackages(artifact)) multiPackage += 1
 	}
-	return { stale, multiPackage, stored }
+	return { stale, notCurrent, multiPackage, stored }
 }
 
 export async function runPreBindingArtifactRebuild(input: {
@@ -282,10 +292,12 @@ export async function runPreBindingArtifactRebuild(input: {
 				publishedCommit,
 				targets: scan.stale,
 			})
-			if (after.stale.length > 0) {
+			// Every rebuilt target must now be stored at this commit and bound.
+			const notRebuilt = after.stale.length + after.notCurrent.length
+			if (notRebuilt > 0) {
 				result.stillStaleAfterRebuild += 1
 				throw new Error(
-					`${after.stale.length} target(s) still pre-binding after rebuild.`,
+					`${notRebuilt} target(s) not current after rebuild (${after.stale.length} still pre-binding, ${after.notCurrent.length} missing or at another commit).`,
 				)
 			}
 			result.rebuiltPackages += 1

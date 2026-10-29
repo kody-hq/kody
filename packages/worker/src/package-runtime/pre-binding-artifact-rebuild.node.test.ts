@@ -170,3 +170,35 @@ test('apply reports a failure when a target is still pre-binding afterwards', as
 		stillStaleAfterRebuild: 1,
 	})
 })
+
+test('apply reports a failure when a rebuilt target is missing afterwards', async () => {
+	mocks.rebuild.mockImplementation(async () => {
+		mocks.loadPublishedBundleArtifactsForPackageTargets.mockResolvedValue(
+			new Map([['module', current]]),
+		)
+	})
+	const result = await runPreBindingArtifactRebuild({
+		env,
+		baseUrl: 'https://x',
+		dryRun: false,
+	})
+	expect(result).toMatchObject({
+		rebuiltPackages: 0,
+		failedPackages: 1,
+		stillStaleAfterRebuild: 1,
+	})
+})
+
+test('apply skips the rebuild when the published commit moves', async () => {
+	mocks.loadPackageSourceRowForUser
+		.mockResolvedValueOnce({ published_commit: 'c1' })
+		.mockResolvedValueOnce({ published_commit: 'c2' })
+	const result = await runPreBindingArtifactRebuild({
+		env,
+		baseUrl: 'https://x',
+		dryRun: false,
+	})
+	expect(mocks.rebuild).not.toHaveBeenCalled()
+	expect(result).toMatchObject({ rebuiltPackages: 0, failedPackages: 1 })
+	expect(result.outcomes[0]).toMatchObject({ outcome: 'failed' })
+})
