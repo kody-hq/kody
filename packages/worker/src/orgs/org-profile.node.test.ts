@@ -369,3 +369,41 @@ test('package owner links follow the person profile, else the team org visibilit
 	expect(await loadOwnerProfilePublic(db, 'acme-private')).toBe(false)
 	expect(await loadOwnerProfilePublic(db, 'nobody-here')).toBe(false)
 })
+
+test('updateOrgProfile reports a conflict instead of overwriting a concurrent visibility change', async () => {
+	const db = await createDb()
+	const org = await createTeamOrg(db, { slug: 'acme-team' })
+	const auditDb = createAuditTestDb()
+	const racing = new Proxy(db, {
+		get(target, key) {
+			if (key !== 'prepare') return Reflect.get(target, key)
+			return (sql: string) => {
+				const statement = target.prepare(sql)
+				if (!sql.trimStart().startsWith('UPDATE orgs')) return statement
+				return {
+					bind: (...values: Array<unknown>) => ({
+						async run() {
+							await target
+								.prepare(
+									`UPDATE orgs SET profile_visibility = 'private' WHERE id = ?`,
+								)
+								.bind(org.id)
+								.run()
+							return statement.bind(...values).run()
+						},
+					}),
+				}
+			}
+		},
+	}) as D1Database
+
+	expect(
+		await updateOrgProfile(racing, {
+			orgId: org.id,
+			profileVisibility: 'public',
+			audit: createTestOrgAuditWriter({ db: auditDb }),
+		}),
+	).toMatchObject({ ok: false, code: 'conflict' })
+	expect(await loadOrgProfileVisibility(db, org.id)).toBe('private')
+	expect(await auditRows(auditDb)).toEqual([])
+})

@@ -30,7 +30,7 @@ export type UpdateOrgProfileResult =
 	| {
 			ok: false
 			error: string
-			code: 'not_found' | 'personal' | 'validation'
+			code: 'not_found' | 'personal' | 'validation' | 'conflict'
 	  }
 
 /**
@@ -106,9 +106,10 @@ export async function updateOrgProfile(
 			input.profileVisibility === undefined ? null : previousVisibility,
 			previousVisibility,
 		)
+	let changed: boolean
 	if (nextVisibility !== previousVisibility && input.audit) {
 		// The change and its audit outbox row commit together.
-		await runAppDbBatchWithOrgAudit({
+		;({ changed } = await runAppDbBatchWithOrgAudit({
 			appDb: db,
 			audit: input.audit,
 			statements: [update],
@@ -121,9 +122,18 @@ export async function updateOrgProfile(
 					previous_profile_visibility: previousVisibility,
 				},
 			},
-		})
+		}))
 	} else {
-		await update.run()
+		const result = await update.run()
+		changed = (result.meta?.changes ?? 0) > 0
+	}
+	if (!changed && input.profileVisibility !== undefined) {
+		return {
+			ok: false,
+			error:
+				'Organization visibility changed while you were editing. Reload and try again.',
+			code: 'conflict',
+		}
 	}
 
 	return {
