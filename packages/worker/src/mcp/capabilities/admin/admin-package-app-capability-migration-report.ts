@@ -16,7 +16,7 @@ const inputSchema = z.object({
 		.string()
 		.min(1)
 		.describe(
-			`Run id of a ${declarePackageAppCapabilitiesCodemodId} scan, dry run, or apply.`,
+			`Run id of a ${declarePackageAppCapabilitiesCodemodId} dry run or apply. Scan runs only detect and record nothing to add, so they are refused.`,
 		),
 	packageId: z
 		.string()
@@ -97,7 +97,7 @@ export const adminPackageAppCapabilityMigrationReportCapability =
 					})
 					if (!report) {
 						throw new Error(
-							`No ${declarePackageAppCapabilitiesCodemodId} run with that id.`,
+							`No ${declarePackageAppCapabilitiesCodemodId} dry run or apply with that id.`,
 						)
 					}
 					return report

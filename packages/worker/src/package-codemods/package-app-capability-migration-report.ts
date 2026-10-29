@@ -33,7 +33,11 @@ export async function buildPackageAppCapabilityMigrationReport(input: {
 	packageId?: string
 }): Promise<PackageAppCapabilityMigrationReport | null> {
 	const run = await getPackageCodemodRunById(input.db, input.runId)
-	if (!run || run.codemodId !== declarePackageAppCapabilitiesCodemodId) {
+	if (
+		!run ||
+		run.codemodId !== declarePackageAppCapabilitiesCodemodId ||
+		(run.mode !== 'dry-run' && run.mode !== 'apply')
+	) {
 		return null
 	}
 	const rows = await input.db

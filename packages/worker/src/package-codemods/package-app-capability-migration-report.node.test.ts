@@ -142,6 +142,16 @@ test('the migration report returns one app list only when asked, and only for 00
 	expect(
 		await buildPackageAppCapabilityMigrationReport({ db, runId: 'run-other' }),
 	).toBeNull()
+	await createPackageCodemodRun(db, {
+		id: 'run-scan',
+		codemodId: declarePackageAppCapabilitiesCodemodId,
+		mode: 'scan',
+		scopeUserId: null,
+		initiatedByUserId: 'admin-1',
+	})
+	expect(
+		await buildPackageAppCapabilityMigrationReport({ db, runId: 'run-scan' }),
+	).toBeNull()
 	expect(
 		await buildPackageAppCapabilityMigrationReport({ db, runId: 'missing' }),
 	).toBeNull()
