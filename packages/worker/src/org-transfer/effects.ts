@@ -13,7 +13,7 @@ import {
 } from '#worker/orgs/org-audit-outbox.ts'
 import {
 	listPinnedConnectionsForOrg,
-	wipePinnedConnections,
+	planPinnedConnectionWipes,
 } from '#worker/integrations/pinned-connections.ts'
 import { type OrgTransferEffects } from './apply.ts'
 import { writeOrgTransferBackup } from './backup.ts'
@@ -75,26 +75,23 @@ export function defaultOrgTransferEffects(input: {
 			mcpClientHubTransferStub({ env, userId }).discardTransferredServer({
 				serverId,
 			}),
-		async wipePinnedMemberConnections({ orgId, appSlugs }) {
-			if (appSlugs.length === 0) return
-			if (!env.SECRET_STORE_KEY) {
-				throw new Error(
-					'SECRET_STORE_KEY is not bound; cannot wipe pinned connections.',
-				)
-			}
-			const audit = orgAuditWriterForPerson(env, input.actor)
+		async planPinnedMemberWipes({ orgId, appSlugs }) {
+			const connections = []
 			for (const appSlug of appSlugs) {
-				await wipePinnedConnections({
-					env: { APP_DB: env.APP_DB, SECRET_STORE_KEY: env.SECRET_STORE_KEY },
-					connections: await listPinnedConnectionsForOrg({
+				connections.push(
+					...(await listPinnedConnectionsForOrg({
 						db: env.APP_DB,
 						pinnedOrgId: orgId,
 						appSlug,
-					}),
-					reason: 'app_deleted',
-					audit,
-				})
+					})),
+				)
 			}
+			return planPinnedConnectionWipes({
+				env,
+				connections,
+				reason: 'app_deleted',
+				audit: orgAuditWriterForPerson(env, input.actor),
+			})
 		},
 		async jobCallerContextJson({ userId, packageId }) {
 			return serializeCallerContext(

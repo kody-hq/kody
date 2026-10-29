@@ -25,7 +25,11 @@ import {
 	resolveIntegrationRefreshToken,
 	resolveUserOauthAppClientSecret,
 } from './credentials.ts'
-import { deleteIntegrationConnection, getOauthAppBySlug } from './repo.ts'
+import {
+	deleteIntegrationConnection,
+	getOauthAppBySlug,
+	integrationConnectionDeleteStatements,
+} from './repo.ts'
 import {
 	revokeOauthTokensUpstream,
 	type UpstreamRevokeResult,
@@ -210,30 +214,34 @@ async function readAppForRevoke(
 	}
 }
 
-/**
- * Wipes one pinned connection: reads its tokens and the org app's client
- * credentials host-side, deletes the row and its grants, then revokes it
- * upstream. Audits the wipe in the owner's personal org and, for an admin
- * revoke, the revoke in the pinned org. Tokens never leave this function.
- */
-export async function wipePinnedConnection(input: {
-	env: WipeEnv
+type PreparedPinnedWipe = {
 	connection: PinnedConnection
+	tokens: Awaited<ReturnType<typeof readTokensForRevoke>>
+	app: Awaited<ReturnType<typeof readAppForRevoke>>
+}
+
+/** Reads what the upstream revoke needs before the row (or app) is gone. */
+async function preparePinnedWipe(
+	env: WipeEnv,
+	connection: PinnedConnection,
+): Promise<PreparedPinnedWipe> {
+	const [tokens, app] = await Promise.all([
+		readTokensForRevoke(keyedEnv(env), connection),
+		readAppForRevoke(keyedEnv(env), connection),
+	])
+	return { connection, tokens, app }
+}
+
+/** After the local delete: best-effort upstream revoke, then audit. */
+async function finishPinnedWipe(input: {
+	prepared: PreparedPinnedWipe
+	wiped: boolean
 	reason: PinnedConnectionWipeReason
 	audit: OrgAuditWriter | null
 	fetchImpl?: typeof fetch
 }): Promise<PinnedConnectionWipeResult> {
-	const { connection } = input
-	const [tokens, app] = await Promise.all([
-		readTokensForRevoke(keyedEnv(input.env), connection),
-		readAppForRevoke(keyedEnv(input.env), connection),
-	])
-	const wiped = await deleteIntegrationConnection({
-		db: input.env.APP_DB,
-		userId: connection.ownerOrgId,
-		name: connection.name,
-	})
-	if (wiped) bumpUsableCredentialsGeneration(input.env.APP_DB)
+	const { connection, tokens, app } = input.prepared
+	const { wiped } = input
 	const upstream: UpstreamRevokeResult = app
 		? await revokeOauthTokensUpstream({
 				app: {
@@ -284,6 +292,77 @@ export async function wipePinnedConnection(input: {
 		})
 	}
 	return { credentialId: connection.credentialId, wiped, upstream }
+}
+
+/**
+ * Wipes one pinned connection: reads its tokens and the org app's client
+ * credentials host-side, deletes the row and its grants, then revokes it
+ * upstream. Audits the wipe in the owner's personal org and, for an admin
+ * revoke, the revoke in the pinned org. Tokens never leave this function.
+ */
+export async function wipePinnedConnection(input: {
+	env: WipeEnv
+	connection: PinnedConnection
+	reason: PinnedConnectionWipeReason
+	audit: OrgAuditWriter | null
+	fetchImpl?: typeof fetch
+}): Promise<PinnedConnectionWipeResult> {
+	const prepared = await preparePinnedWipe(input.env, input.connection)
+	const wiped = await deleteIntegrationConnection({
+		db: input.env.APP_DB,
+		userId: input.connection.ownerOrgId,
+		name: input.connection.name,
+	})
+	if (wiped) bumpUsableCredentialsGeneration(input.env.APP_DB)
+	return finishPinnedWipe({ ...input, prepared, wiped })
+}
+
+/**
+ * Plans wipes that commit inside a caller's batch (org transfer): the delete
+ * statements join the batch, and `afterCommit` revokes upstream and audits.
+ * If the batch fails nothing was deleted or revoked.
+ */
+export async function planPinnedConnectionWipes(input: {
+	env: WipeEnv
+	connections: ReadonlyArray<PinnedConnection>
+	reason: PinnedConnectionWipeReason
+	audit: OrgAuditWriter | null
+	fetchImpl?: typeof fetch
+}): Promise<{
+	statements: Array<D1PreparedStatement>
+	afterCommit(): Promise<Array<PinnedConnectionWipeResult>>
+}> {
+	const prepared: Array<PreparedPinnedWipe> = []
+	for (const connection of input.connections) {
+		prepared.push(await preparePinnedWipe(input.env, connection))
+	}
+	return {
+		statements: prepared.flatMap(({ connection }) =>
+			integrationConnectionDeleteStatements({
+				db: input.env.APP_DB,
+				userId: connection.ownerOrgId,
+				name: connection.name,
+			}),
+		),
+		async afterCommit() {
+			if (prepared.length > 0) bumpUsableCredentialsGeneration(input.env.APP_DB)
+			const results: Array<PinnedConnectionWipeResult> = []
+			for (const item of prepared) {
+				results.push(
+					await finishPinnedWipe({
+						...input,
+						prepared: item,
+						wiped: true,
+					}).catch((): PinnedConnectionWipeResult => ({
+						credentialId: item.connection.credentialId,
+						wiped: true,
+						upstream: { outcome: 'failed', status: null },
+					})),
+				)
+			}
+			return results
+		},
+	}
 }
 
 /**

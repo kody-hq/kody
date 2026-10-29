@@ -45,6 +45,7 @@ import {
 import {
 	listPinnedConnectionsForOrg,
 	pinnedConnectionAuditActions,
+	planPinnedConnectionWipes,
 	wipePinnedConnectionsForMember,
 } from './pinned-connections.ts'
 import { upsertOauthApp } from './repo.ts'
@@ -484,6 +485,38 @@ test('deleting the org app without SECRET_STORE_KEY still wipes members locally'
 		.bind(t.orgs.acme.id)
 		.first<{ n: number }>()
 	expect(remaining!.n).toBe(0)
+})
+
+test('a planned wipe (org transfer) deletes nothing and revokes nothing until its batch commits', async () => {
+	const t = await setup()
+	const saved = await t.connect('ann', t.orgs.acme)
+	if (!saved.ok) throw new Error(saved.error)
+	const fetchMock = stubUpstream(204)
+	const count = async () =>
+		(await t.db
+			.prepare(
+				`SELECT COUNT(*) AS n FROM user_integrations WHERE app_owner_id = ?`,
+			)
+			.bind(t.orgs.acme.id)
+			.first<{ n: number }>())!.n
+	const plan = await planPinnedConnectionWipes({
+		env: t.env,
+		connections: await listPinnedConnectionsForOrg({
+			db: t.db,
+			pinnedOrgId: t.orgs.acme.id,
+		}),
+		reason: 'app_deleted',
+		audit: null,
+	})
+	// A batch that never runs (the transfer failed) leaves the member intact.
+	expect(await count()).toBe(1)
+	expect(fetchMock).not.toHaveBeenCalled()
+	await t.db.batch(plan.statements)
+	await expect(plan.afterCommit()).resolves.toMatchObject([
+		{ credentialId: saved.credentialId, wiped: true },
+	])
+	expect(await count()).toBe(0)
+	expect(fetchMock).toHaveBeenCalledTimes(1)
 })
 
 test('placeholders, credential(), createAuthenticatedFetch and refresh resolve it only for its owner in the pinned org', async () => {

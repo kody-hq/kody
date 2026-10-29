@@ -135,6 +135,8 @@ export function buildOrgTransferStatements(input: {
 	cleanupOrphans: boolean
 	now: string
 	auditStatements: Array<D1PreparedStatement>
+	/** Deletes of members' connections pinned to the moving apps. */
+	pinnedWipeStatements?: Array<D1PreparedStatement>
 }): Array<D1PreparedStatement> {
 	const { db, plan, sealed, now } = input
 	const fromId = plan.from.id
@@ -162,8 +164,9 @@ export function buildOrgTransferStatements(input: {
 	}
 
 	// The org's own connections follow its moving apps. Members' pinned
-	// personal connections were wiped before the batch; one made since
-	// fails the deferred app FK, so the transfer does not commit.
+	// personal connections are deleted in this batch (`pinnedWipeStatements`);
+	// one made since they were listed fails the deferred app FK, so the
+	// transfer does not commit.
 	statements.push(
 		db
 			.prepare(
@@ -331,6 +334,7 @@ export function buildOrgTransferStatements(input: {
 
 	statements.push(bumpAccessEpochStatement(db, fromId))
 	statements.push(bumpAccessEpochStatement(db, toId))
+	statements.push(...(input.pinnedWipeStatements ?? []))
 	statements.push(...input.auditStatements)
 	return statements
 }

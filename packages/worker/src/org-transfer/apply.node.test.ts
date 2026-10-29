@@ -372,7 +372,10 @@ function createEffects(input: {
 		discardMcpServerImport: async ({ userId, serverId }) => {
 			calls.push(`discardMcp:${userId}:${serverId}`)
 		},
-		wipePinnedMemberConnections: async () => {},
+		planPinnedMemberWipes: async () => ({
+			statements: [],
+			afterCommit: async () => [],
+		}),
 		jobCallerContextJson: async ({ userId, packageId }) =>
 			JSON.stringify({ userId, packageId }),
 		transferJobs: async ({ fromUserId, toUserId, jobs }) => {

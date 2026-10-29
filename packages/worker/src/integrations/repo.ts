@@ -573,21 +573,32 @@ export async function addPlatformIntegrationRequiredHosts(input: {
 		.run()
 }
 
-export async function deleteIntegrationConnection(input: {
+/** Grant cleanup, then the row delete last (its `changes` tells if it existed). */
+export function integrationConnectionDeleteStatements(input: {
 	db: D1Database
 	userId: string
 	name: string
-}): Promise<boolean> {
+}): Array<D1PreparedStatement> {
 	const liveRowSql = `FROM user_integrations
 			WHERE user_id = ? AND name = ?${andLiveDeletedAtSql()}`
-	const results = await input.db.batch([
+	return [
 		...credentialGrantCleanupStatements(input.db, {
 			ownerId: input.userId,
 			credentialIdSql: `SELECT id ${liveRowSql}`,
 			credentialIdBindings: [input.userId, input.name],
 		}),
 		input.db.prepare(`DELETE ${liveRowSql}`).bind(input.userId, input.name),
-	])
+	]
+}
+
+export async function deleteIntegrationConnection(input: {
+	db: D1Database
+	userId: string
+	name: string
+}): Promise<boolean> {
+	const results = await input.db.batch(
+		integrationConnectionDeleteStatements(input),
+	)
 	return (results.at(-1)?.meta.changes ?? 0) > 0
 }
 
