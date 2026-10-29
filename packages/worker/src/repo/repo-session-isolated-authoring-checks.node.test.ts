@@ -177,37 +177,30 @@ vi.mock('./artifacts.ts', async () => {
 	}
 })
 
-vi.mock('./checks.ts', () => ({
-	runRepoChecks: (...args: Parameters<typeof Checks.runRepoChecks>) =>
-		mockModule.runRepoChecks(...args),
-	validatePackageBundles: (
-		...args: Parameters<typeof Checks.validatePackageBundles>
-	) => mockModule.validatePackageBundles(...args),
-	runPackageTypecheckLanguageService: (
-		...args: Parameters<typeof Checks.runPackageTypecheckLanguageService>
-	) => mockModule.runPackageTypecheckLanguageService(...args),
-	formatFailedRepoCheckMessages: (
-		results: Array<{ ok: boolean; message: string }>,
-		fallback = 'Publish checks failed.',
-	) => {
-		const failed = results
-			.filter((entry) => !entry.ok)
-			.map((entry) => entry.message)
-			.filter((message) => message.trim().length > 0)
-		return failed.length > 0 ? failed.join('\n') : fallback
-	},
-	createSnapshotFilesWorkspace: (files: Record<string, string>) => ({
-		async readFile(path: string) {
-			return files[path.trim().replace(/^\/+/, '')] ?? null
+vi.mock('./checks.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof Checks>()
+	return {
+		runRepoChecks: (...args: Parameters<typeof Checks.runRepoChecks>) =>
+			mockModule.runRepoChecks(...args),
+		validatePackageBundles: (
+			...args: Parameters<typeof Checks.validatePackageBundles>
+		) => mockModule.validatePackageBundles(...args),
+		runPackageTypecheckLanguageService: (
+			...args: Parameters<typeof Checks.runPackageTypecheckLanguageService>
+		) => mockModule.runPackageTypecheckLanguageService(...args),
+		formatFailedRepoCheckMessages: (
+			results: Array<{ ok: boolean; message: string }>,
+			fallback = 'Publish checks failed.',
+		) => {
+			const failed = results
+				.filter((entry) => !entry.ok)
+				.map((entry) => entry.message)
+				.filter((message) => message.trim().length > 0)
+			return failed.length > 0 ? failed.join('\n') : fallback
 		},
-		async glob() {
-			return Object.keys(files).map((path) => ({
-				path,
-				type: 'file' as const,
-			}))
-		},
-	}),
-}))
+		createSnapshotFilesWorkspace: actual.createSnapshotFilesWorkspace,
+	}
+})
 
 vi.mock('./external-publish-clone.ts', () => ({
 	externalPublishWorkspaceDir: '/repo',
@@ -390,4 +383,42 @@ test('isolated authoring checks run the publish checks on staged files and rejec
 		results: [{ message: expect.stringMatching(/expired or is missing/) }],
 	})
 	expect(mockModule.runRepoChecks.mock.calls.length).toBe(callsBefore)
+})
+
+test('isolated authoring checks expose staged binary files by path and size', async () => {
+	restoreRepoSessionMockBaseline()
+	const staged = {
+		sourceFiles: { 'package.json': '{"name":"@kody/demo"}' },
+		binaryFileSizes: { 'icons/icon-192.png': 52_126 },
+	}
+	const repo = repoSession(kvEnv({ get: vi.fn(async () => staged) }))
+	mockModule.runRepoChecks.mockResolvedValueOnce({
+		ok: false,
+		results: [],
+		manifest: null,
+		sourceFiles: {},
+	})
+	await repo.runIsolatedAuthoringChecks({
+		stagingKey: 'repo-checks-staging:v1:user-1:abc',
+		userId: ownerIdFromStored('user-1'),
+		baseUrl: 'https://kody.test',
+	})
+	const [{ workspace }] = mockModule.runRepoChecks.mock.lastCall as [
+		{
+			workspace: {
+				readFile(path: string): Promise<string | null>
+				stat(path: string): Promise<{ size: number } | null>
+				glob(pattern: string): Promise<Array<{ path: string }>>
+			}
+		},
+	]
+	expect((await workspace.glob('**/*')).map((file) => file.path)).toEqual([
+		'package.json',
+		'icons/icon-192.png',
+	])
+	await expect(workspace.readFile('icons/icon-192.png')).resolves.toBe('')
+	await expect(workspace.stat('icons/icon-192.png')).resolves.toEqual({
+		size: 52_126,
+	})
+	await expect(workspace.stat('package.json')).resolves.toBeNull()
 })

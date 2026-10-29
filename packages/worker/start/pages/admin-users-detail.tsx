@@ -14,7 +14,6 @@ import {
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
-	IdValue,
 	MetadataGrid,
 	TimestampValue,
 	noticeCardCss,
@@ -31,6 +30,7 @@ import { type RoleName } from '#universal/permissions.ts'
 import {
 	type AdminPlanName,
 	type AdminUserListItem,
+	type AdminUserOrgMembership,
 	type AdminUserUsageLoaderData,
 } from '#universal/loader-data.ts'
 import { describeEmailVerificationDelivery } from '#universal/email-verification-delivery.ts'
@@ -39,6 +39,10 @@ import {
 	formatUsagePercent,
 } from '#client/routes/admin-users-shared.ts'
 import { AdminUserCreditsPanel } from './admin-users-credits.tsx'
+import {
+	formatAdminEntitlementLadder,
+	formatAdminOrganizationRole,
+} from './admin-display-labels.ts'
 import { AdminUserAccountModeration } from './admin-account-delete-dialog.tsx'
 import {
 	costVsPayFootnote,
@@ -53,6 +57,10 @@ import {
 	measuredDurableObjectDurationFootnote,
 	formatDurableObjectGbSeconds,
 } from '#universal/durable-object-duration.ts'
+import {
+	isWithinSoftDeleteRestoreWindow,
+	softDeleteRestoreDeadlineIso,
+} from '#worker/soft-delete/window.ts'
 const selectCss = getSelectCss()
 const primaryButtonCss = getPillButtonCss({ size: 'sm' })
 const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
@@ -66,6 +74,7 @@ export type AdminUsersActionState =
 	| 'creatingUser'
 export type AdminUserDetailProps = {
 	selectedUser: AdminUserListItem
+	orgs: Array<AdminUserOrgMembership>
 	availableRoles: Array<RoleName>
 	availablePlans: Array<AdminPlanName>
 	actionState: AdminUsersActionState
@@ -90,14 +99,123 @@ export type AdminUserDetailProps = {
 	) => void
 	onAccountDeleted: (handle: string) => void
 }
+function AdminUserOrganizationsPanel({
+	orgs,
+}: {
+	orgs: Array<AdminUserOrgMembership>
+}) {
+	return (
+		<AccountManagementPanel title="Organizations">
+			<RecordTable
+				mode="none"
+				ariaLabel="User organizations"
+				emptyLabel="No organization memberships."
+				columns={[
+					{ key: 'organization', label: 'Organization', primary: true },
+					{ key: 'kind', label: 'Kind' },
+					{ key: 'role', label: 'Role' },
+					{ key: 'plan', label: 'Plan' },
+					{ key: 'seats', label: 'Seats', align: 'end' },
+					{ key: 'state', label: 'State' },
+				]}
+				rows={orgs.map((org) => ({
+					id: org.orgId,
+					cells: {
+						organization: (
+							<span>
+								{org.displayName || `@${org.slug}`}
+								<br />
+								<a href={`/admin/orgs/${encodeURIComponent(org.slug)}`}>
+									@{org.slug}
+								</a>
+							</span>
+						),
+						kind: org.kind === 'personal' ? 'Personal' : 'Team',
+						role: formatAdminOrganizationRole(org.role),
+						plan: org.effectivePlan,
+						seats: org.seats,
+						state: org.membershipDeletedAt ? (
+							'Membership removed'
+						) : org.orgDeletedAt ? (
+							<>
+								Deleted · restorable until{' '}
+								<TimestampValue
+									value={softDeleteRestoreDeadlineIso(org.orgDeletedAt)}
+								/>
+							</>
+						) : (
+							'Live'
+						),
+					},
+				}))}
+			/>
+		</AccountManagementPanel>
+	)
+}
+
+function AdminDeletedUserDetail({
+	selectedUser,
+	orgs,
+}: {
+	selectedUser: AdminUserListItem
+	orgs: Array<AdminUserOrgMembership>
+}) {
+	const deadline = selectedUser.deleted_at
+		? softDeleteRestoreDeadlineIso(selectedUser.deleted_at)
+		: null
+	return (
+		<div css={recordBodyCss}>
+			<AccountManagementMessage tone="error">
+				{selectedUser.username} is deleted.{' '}
+				{selectedUser.deleted_at &&
+				isWithinSoftDeleteRestoreWindow(selectedUser.deleted_at) ? (
+					<>
+						Restorable until <TimestampValue value={deadline} />.
+					</>
+				) : (
+					'The restore window has passed.'
+				)}
+			</AccountManagementMessage>
+			<MetadataGrid
+				items={[
+					{ label: 'Email', value: selectedUser.email },
+					{
+						label: 'Created',
+						value: <TimestampValue value={selectedUser.created_at} />,
+					},
+					{
+						label: 'Deleted',
+						value: <TimestampValue value={selectedUser.deleted_at} />,
+					},
+					{
+						label: 'Deletion started',
+						value: <TimestampValue value={selectedUser.deleting_at} />,
+					},
+					{
+						label: 'Restore deadline',
+						value: <TimestampValue value={deadline} />,
+					},
+				]}
+			/>
+			<AdminUserOrganizationsPanel orgs={orgs} />
+		</div>
+	)
+}
+
 export function AdminUserDetail(props: AdminUserDetailProps) {
 	const { selectedUser, actionState, selectedUsage } = props
 	const { actorKey } = useRouteContext({ from: '__root__' })
 	const [markVerifiedArmed, setMarkVerifiedArmed] = useState(false)
 	const isMutating = actionState !== 'idle'
+	const personalOrganization = props.orgs.find((org) => org.kind === 'personal')
 	const usageMonthsAscending = selectedUsage
 		? [...selectedUsage.monthUsage].reverse()
 		: []
+	if (selectedUser.deleted_at) {
+		return (
+			<AdminDeletedUserDetail selectedUser={selectedUser} orgs={props.orgs} />
+		)
+	}
 	return (
 		<div css={recordBodyCss}>
 			<div css={{ display: 'grid', gap: spacing.xs }}>
@@ -111,7 +229,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 					{selectedUser.username}
 				</h2>
 				<p css={{ margin: 0, color: colors.textMuted }}>
-					Account metadata only, no secrets, packages, or other user content
+					Account metadata only, no credentials, packages, or other user content
 					appears on this page.
 				</p>
 			</div>
@@ -184,15 +302,6 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 						value: selectedUser.last_active_at ?? 'Unknown',
 					},
 					{
-						label: 'Stable user id',
-						value: (
-							<IdValue
-								value={selectedUser.stableUserId}
-								label="stable user id"
-							/>
-						),
-					},
-					{
 						label: 'Roles',
 						value:
 							selectedUser.roles.length > 0
@@ -213,10 +322,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 					},
 					{
 						label: 'Entitlement ladder',
-						value:
-							selectedUser.entitlementLadder === 'legacy'
-								? 'Legacy (pre-cut Standard/Pro ceilings)'
-								: 'Public',
+						value: formatAdminEntitlementLadder(selectedUser.entitlementLadder),
 					},
 					{
 						label: 'Stripe customer',
@@ -249,6 +355,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 					},
 				]}
 			/>
+			<AdminUserOrganizationsPanel orgs={props.orgs} />
 			<AccountManagementPanel title="Manage roles">
 				<div
 					css={{
@@ -388,7 +495,20 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 			/>
 			<AccountManagementPanel
 				title="Manage plan"
-				description="Sets the admin grant (users.plan). Ordinary Stripe subscribers keep this as free; their paid tier lives on the subscription plan. The effective plan is the higher of the two."
+				description={
+					<>
+						Sets the admin grant on this person’s personal organization. The
+						effective plan reflects the higher of the manual grant and Stripe
+						subscription.{' '}
+						{personalOrganization ? (
+							<a
+								href={`/admin/orgs/${encodeURIComponent(personalOrganization.slug)}`}
+							>
+								Open personal organization
+							</a>
+						) : null}
+					</>
+				}
 			>
 				<div
 					css={{
@@ -436,11 +556,15 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 			<AdminUserCreditsPanel
 				key={selectedUser.stableUserId}
 				stableUserId={selectedUser.stableUserId}
+				organizationSlug={personalOrganization?.slug}
+				personalOrganizationMissing={!personalOrganization}
 				onGranted={props.onCreditsGranted}
 			/>
 			<AdminOrgLimitsPanel
 				key={`limits-${actorKey}-${selectedUser.stableUserId}`}
-				orgId={selectedUser.stableUserId}
+				orgId={personalOrganization?.orgId ?? selectedUser.stableUserId}
+				organizationSlug={personalOrganization?.slug}
+				personalOrganizationMissing={!personalOrganization}
 			/>
 			<AccountManagementPanel
 				title="Moderation"

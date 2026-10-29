@@ -12,16 +12,14 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { z } from 'zod'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { type FeatureFlagKey } from '#universal/feature-flags/registry.ts'
-import {
-	clientSupportsMcpEvents,
-	readMcpRequestClientCapabilities,
-	registerMcpEvents,
-} from './register-mcp-events.ts'
+import { registerMcpEvents } from './register-mcp-events.ts'
 
 const mocks = vi.hoisted(() => ({
 	resolveCallerFeatureFlagEvaluations: vi.fn(),
 	recordMcpEventsClientsFlagExposure: vi.fn(),
 	listMcpEventSources: vi.fn(),
+	subscribeMcpEvent: vi.fn(),
+	unsubscribeMcpEvent: vi.fn(),
 }))
 
 vi.mock('#mcp/capabilities/access-control.ts', () => ({
@@ -32,6 +30,18 @@ vi.mock('#mcp/capabilities/access-control.ts', () => ({
 vi.mock('#worker/feature-flags/mcp-events-clients-exposure.ts', () => ({
 	recordMcpEventsClientsFlagExposure: (...args: Array<unknown>) =>
 		mocks.recordMcpEventsClientsFlagExposure(...args),
+}))
+
+vi.mock('./subscribe.ts', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	subscribeMcpEvent: (...args: Array<unknown>) =>
+		mocks.subscribeMcpEvent(...args),
+}))
+
+vi.mock('./unsubscribe.ts', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	unsubscribeMcpEvent: (...args: Array<unknown>) =>
+		mocks.unsubscribeMcpEvent(...args),
 }))
 
 vi.mock('./list-events.ts', async (importOriginal) => ({
@@ -50,9 +60,20 @@ const callerContext = createMcpCallerContext({
 	},
 })
 
-const eventsExtensionCapabilities: ClientCapabilities = {
+const legacyEventsDeclaration: ClientCapabilities = {
 	extensions: { 'io.modelcontextprotocol/events': {} },
 }
+
+const subscribeParams = {
+	name: '@fake-user/discord.message.created',
+	delivery: {
+		mode: 'webhook',
+		url: 'https://callback.example.com/mcp-events',
+		secret: 'whsec_fake',
+	},
+}
+
+const subscribeResultSchema = z.object({ id: z.string() }).loose()
 
 const eventsListResultSchema = z.object({
 	events: z.array(z.object({ name: z.string() }).loose()),
@@ -73,7 +94,6 @@ async function connectModernClient(input: {
 }) {
 	const registered: Array<boolean> = []
 	const discoverCapabilities: Array<unknown> = []
-	let parsedBody: unknown
 	const handler = createMcpHandler(
 		async () => {
 			const server = new McpServer({ name: 'kody-mcp', version: '1.0.0' })
@@ -86,7 +106,6 @@ async function connectModernClient(input: {
 						input.oauthClientId === undefined
 							? 'client-a'
 							: input.oauthClientId,
-					clientCapabilities: readMcpRequestClientCapabilities(parsedBody),
 				}),
 			)
 			return server
@@ -107,7 +126,7 @@ async function connectModernClient(input: {
 		{
 			fetch: async (url, init) => {
 				const request = new Request(url, init)
-				parsedBody = await request.clone().json()
+				const parsedBody: unknown = await request.clone().json()
 				const response = await handler.fetch(request, { parsedBody })
 				// The client's typed ServerCapabilities strips unknown keys, so
 				// read the advertised capabilities off the wire.
@@ -132,6 +151,18 @@ async function connectModernClient(input: {
 				eventsListResultSchema,
 			)
 		},
+		async subscribe() {
+			return await client.request(
+				{ method: 'events/subscribe', params: subscribeParams },
+				subscribeResultSchema,
+			)
+		},
+		async unsubscribe() {
+			return await client.request(
+				{ method: 'events/unsubscribe', params: subscribeParams },
+				z.object({}),
+			)
+		},
 		async [Symbol.asyncDispose]() {
 			await client.close().catch(() => undefined)
 		},
@@ -148,95 +179,60 @@ afterEach(() => {
 	mocks.resolveCallerFeatureFlagEvaluations.mockReset()
 	mocks.recordMcpEventsClientsFlagExposure.mockReset()
 	mocks.listMcpEventSources.mockReset()
+	mocks.subscribeMcpEvent.mockReset()
+	mocks.unsubscribeMcpEvent.mockReset()
 })
 
-test('flag off: no events capability and events/* methods are not found', async () => {
-	mocks.resolveCallerFeatureFlagEvaluations.mockResolvedValue(
-		evaluations(false),
-	)
-	await using connection = await connectModernClient({
-		clientCapabilities: eventsExtensionCapabilities,
-	})
+const discordMessageCreated = {
+	name: '@fake-user/discord.message.created',
+	description: 'A Discord message was created.',
+	delivery: ['webhook'],
+	inputSchema: {
+		type: 'object',
+		properties: {},
+		additionalProperties: false,
+	},
+	payloadSchema: { type: 'object' },
+}
 
+function expectNothingAdvertised(connection: {
+	registered: Array<boolean>
+	discoverCapabilities: Array<unknown>
+}) {
+	expect(connection.registered).not.toHaveLength(0)
 	expect(connection.registered.every((value) => value === false)).toBe(true)
 	expect(connection.discoverCapabilities).not.toHaveLength(0)
 	for (const capabilities of connection.discoverCapabilities) {
 		expect(capabilities).not.toHaveProperty('events')
 	}
-	await expectMethodNotFound(connection.listEvents())
-	expect(mocks.listMcpEventSources).not.toHaveBeenCalled()
-	expect(mocks.recordMcpEventsClientsFlagExposure).not.toHaveBeenCalled()
-})
+}
 
-test('flag on without a client events capability registers nothing and skips the flag lookup', async () => {
-	mocks.resolveCallerFeatureFlagEvaluations.mockResolvedValue(evaluations(true))
-	await using connection = await connectModernClient({})
-
-	expect(connection.registered.every((value) => value === false)).toBe(true)
-	expect(connection.discoverCapabilities).not.toHaveLength(0)
-	for (const capabilities of connection.discoverCapabilities) {
-		expect(capabilities).not.toHaveProperty('events')
-	}
-	await expectMethodNotFound(connection.listEvents())
-	expect(mocks.resolveCallerFeatureFlagEvaluations).not.toHaveBeenCalled()
-})
-
-test('flag on with a non-OAuth caller registers nothing', async () => {
-	mocks.resolveCallerFeatureFlagEvaluations.mockResolvedValue(evaluations(true))
-	await using connection = await connectModernClient({
-		clientCapabilities: eventsExtensionCapabilities,
-		oauthClientId: null,
-	})
-
-	expect(connection.registered.every((value) => value === false)).toBe(true)
-	await expectMethodNotFound(connection.listEvents())
-})
-
-test('flag on and client capability advertises events and serves events/list', async () => {
+test('OAuth caller with the flag on and no client declaration gets events advertised, listed, and subscribable', async () => {
 	mocks.resolveCallerFeatureFlagEvaluations.mockResolvedValue(evaluations(true))
 	mocks.listMcpEventSources.mockResolvedValue(
 		new Map([
 			[
-				'@kentcdodds/discord.message.created',
-				{
-					definition: {
-						name: '@kentcdodds/discord.message.created',
-						description: 'A Discord message was created.',
-						delivery: ['webhook'],
-						inputSchema: {
-							type: 'object',
-							properties: {},
-							additionalProperties: false,
-						},
-						payloadSchema: { type: 'object' },
-					},
-					packageIds: ['pkg-1'],
-				},
+				discordMessageCreated.name,
+				{ definition: discordMessageCreated, packageIds: ['pkg-1'] },
 			],
 		]),
 	)
-	await using connection = await connectModernClient({
-		clientCapabilities: eventsExtensionCapabilities,
+	mocks.subscribeMcpEvent.mockResolvedValue({
+		id: 'sub_fake',
+		refreshBefore: null,
+		cursor: null,
+		truncated: true,
 	})
+	await using connection = await connectModernClient({})
 
 	expect(connection.registered.at(-1)).toBe(true)
 	expect(connection.discoverCapabilities.at(-1)).toMatchObject({
 		events: {},
 	})
+	expect(mocks.recordMcpEventsClientsFlagExposure).not.toHaveBeenCalled()
+
 	await expect(connection.listEvents()).resolves.toEqual({
-		events: [
-			{
-				name: '@kentcdodds/discord.message.created',
-				description: 'A Discord message was created.',
-				delivery: ['webhook'],
-				inputSchema: {
-					type: 'object',
-					properties: {},
-					additionalProperties: false,
-				},
-				payloadSchema: { type: 'object' },
-			},
-		],
+		events: [discordMessageCreated],
 	})
 	expect(mocks.listMcpEventSources).toHaveBeenCalledWith({
 		env: expect.anything(),
@@ -248,28 +244,107 @@ test('flag on and client capability advertises events and serves events/list', a
 			evaluation: expect.objectContaining({ enabled: true }),
 		}),
 	)
+
+	await expect(connection.subscribe()).resolves.toMatchObject({
+		id: 'sub_fake',
+	})
+	expect(mocks.subscribeMcpEvent).toHaveBeenCalledWith(
+		expect.objectContaining({ callerContext, oauthClientId: 'client-a' }),
+		expect.objectContaining({ name: discordMessageCreated.name }),
+	)
 })
 
-test('clientSupportsMcpEvents accepts each declaration shape in circulation', () => {
-	expect(clientSupportsMcpEvents({ events: {} })).toBe(true)
-	expect(clientSupportsMcpEvents({ experimental: { events: {} } })).toBe(true)
-	expect(
-		clientSupportsMcpEvents({
-			extensions: { 'io.modelcontextprotocol/events': {} },
-		}),
-	).toBe(true)
-	expect(clientSupportsMcpEvents({ events: true })).toBe(false)
-	expect(
-		readMcpRequestClientCapabilities({
-			jsonrpc: '2.0',
-			id: 1,
-			method: 'server/discover',
-			params: {
-				_meta: {
-					'io.modelcontextprotocol/clientCapabilities': { events: {} },
-				},
-			},
-		}),
-	).toEqual({ events: {} })
-	expect(readMcpRequestClientCapabilities({ params: {} })).toBeNull()
+test('events/subscribe as the first events call records exposure before subscribing', async () => {
+	mocks.resolveCallerFeatureFlagEvaluations.mockResolvedValue(evaluations(true))
+	mocks.subscribeMcpEvent.mockImplementation(async () => {
+		expect(mocks.recordMcpEventsClientsFlagExposure).toHaveBeenCalledTimes(1)
+		return {
+			id: 'sub_fake',
+			refreshBefore: null,
+			cursor: null,
+			truncated: true,
+		}
+	})
+	await using connection = await connectModernClient({})
+
+	await expect(connection.subscribe()).resolves.toMatchObject({
+		id: 'sub_fake',
+	})
+	expect(mocks.subscribeMcpEvent).toHaveBeenCalledTimes(1)
+	expect(mocks.listMcpEventSources).not.toHaveBeenCalled()
+})
+
+test('events/unsubscribe as the first events call records exposure before unsubscribing', async () => {
+	mocks.resolveCallerFeatureFlagEvaluations.mockResolvedValue(evaluations(true))
+	mocks.unsubscribeMcpEvent.mockImplementation(async () => {
+		expect(mocks.recordMcpEventsClientsFlagExposure).toHaveBeenCalledTimes(1)
+		return {}
+	})
+	await using connection = await connectModernClient({})
+
+	await expect(connection.unsubscribe()).resolves.toEqual({})
+	expect(mocks.unsubscribeMcpEvent).toHaveBeenCalledTimes(1)
+	expect(mocks.listMcpEventSources).not.toHaveBeenCalled()
+	expect(mocks.subscribeMcpEvent).not.toHaveBeenCalled()
+})
+
+test('a client that still declares events support keeps working', async () => {
+	mocks.resolveCallerFeatureFlagEvaluations.mockResolvedValue(evaluations(true))
+	mocks.listMcpEventSources.mockResolvedValue(new Map())
+	await using connection = await connectModernClient({
+		clientCapabilities: legacyEventsDeclaration,
+	})
+
+	expect(connection.discoverCapabilities.at(-1)).toMatchObject({
+		events: {},
+	})
+	await expect(connection.listEvents()).resolves.toEqual({ events: [] })
+})
+
+test('flag off: nothing advertised, listed, or subscribable', async () => {
+	mocks.resolveCallerFeatureFlagEvaluations.mockResolvedValue(
+		evaluations(false),
+	)
+	await using connection = await connectModernClient({})
+
+	expectNothingAdvertised(connection)
+	await expectMethodNotFound(connection.listEvents())
+	await expectMethodNotFound(connection.subscribe())
+	expect(mocks.listMcpEventSources).not.toHaveBeenCalled()
+	expect(mocks.subscribeMcpEvent).not.toHaveBeenCalled()
+	expect(mocks.recordMcpEventsClientsFlagExposure).not.toHaveBeenCalled()
+})
+
+test('flag off ignores a client events declaration', async () => {
+	mocks.resolveCallerFeatureFlagEvaluations.mockResolvedValue(
+		evaluations(false),
+	)
+	await using connection = await connectModernClient({
+		clientCapabilities: legacyEventsDeclaration,
+	})
+
+	expectNothingAdvertised(connection)
+	await expectMethodNotFound(connection.listEvents())
+	expect(mocks.listMcpEventSources).not.toHaveBeenCalled()
+})
+
+test('flag evaluation failure fails closed', async () => {
+	mocks.resolveCallerFeatureFlagEvaluations.mockResolvedValue(null)
+	await using connection = await connectModernClient({})
+
+	expectNothingAdvertised(connection)
+	await expectMethodNotFound(connection.listEvents())
+	await expectMethodNotFound(connection.subscribe())
+	expect(mocks.recordMcpEventsClientsFlagExposure).not.toHaveBeenCalled()
+})
+
+test('non-OAuth caller with the flag on: nothing advertised, listed, or subscribable', async () => {
+	mocks.resolveCallerFeatureFlagEvaluations.mockResolvedValue(evaluations(true))
+	await using connection = await connectModernClient({ oauthClientId: null })
+
+	expectNothingAdvertised(connection)
+	await expectMethodNotFound(connection.listEvents())
+	await expectMethodNotFound(connection.subscribe())
+	expect(mocks.resolveCallerFeatureFlagEvaluations).not.toHaveBeenCalled()
+	expect(mocks.subscribeMcpEvent).not.toHaveBeenCalled()
 })

@@ -189,18 +189,20 @@ Remove the flag and gate sites when the experiment ends.
 `mcp-events-extension` is an experiment (default **off**, registry
 `defaultAudience: experiments_opt_in`) for the draft MCP Events extension
 (webhook delivery only; see
-[ADR 0059](../decisions/0059-mcp-events-extension-behind-flag.md)). When on for
-a caller whose stateless-lane request declares events support in its client
-capabilities, `server/discover` advertises `capabilities.events` and the server
-answers `events/list`, `events/subscribe`, and `events/unsubscribe`. Only
-`kody.emits` topics declared with `mcp: true` are listed. When off (or the
-client does not declare events), none of that is registered, and existing
-subscriptions stop receiving deliveries. Signed-in users can also turn it on
-from `/docs/mcp-events` (a per-user on override). The declared `successMetric`
-is `execute` event count, goal increase: event-driven clients follow deliveries
+[ADR 0059](../decisions/0059-mcp-events-extension-behind-flag.md) and
+[ADR 0087](../decisions/0087-mcp-events-no-client-declaration.md)). When on for
+an OAuth caller on the stateless lane, `server/discover` advertises
+`capabilities.events` and the server answers `events/list`, `events/subscribe`,
+and `events/unsubscribe`. Clients declare nothing. Only `kody.emits` topics
+declared with `mcp: true` are listed. When off (or the caller is not an OAuth
+principal), none of that is registered, and existing subscriptions stop
+receiving deliveries. Signed-in users can also turn it on from
+`/docs/mcp-events` (a per-user on override). The declared `successMetric` is
+`execute` event count, goal increase: event-driven clients follow deliveries
 with execute calls. Exposures use `exposureRecording: mcp-events-clients`
-(dedicated write from `registerMcpEvents` only), so execute and other non-events
-MCP callers stay out of the on/off cohorts. Enable for experiment members with
+(dedicated write from the `registerMcpEvents` `events/*` handlers only), so
+execute and other non-events MCP callers stay out of the on/off cohorts. Enable
+for experiment members with
 `adminFeatureFlagSet({ key: "mcp-events-extension", enabled: true, audience: "experiments_opt_in" })`.
 Remove the flag and gate sites when the experiment ends.
 
@@ -241,8 +243,8 @@ each stateless request inside the window. A kill switch or override can be stale
 until the TTL expires. Evaluation failures are not cached and fail closed (every
 flag off) without an exposure write, and execute refuses before loading a
 worker, so the failure never spends daily quota. Flags with
-`exposureRecording: 'mcp-events-clients'` write only after an events-capable MCP
-client registers, so other MCP callers stay outside that experiment frame. The
+`exposureRecording: 'mcp-events-clients'` write only when an MCP client calls an
+`events/*` method, so other MCP callers stay outside that experiment frame. The
 write path mirrors usage metering — the `FLAG_EXPOSURES` Analytics Engine
 dataset in production/preview, the D1 `feature_flag_exposure_rollups` table
 (migration `0001-squashed-init.sql`, 90-day retention) in local dev and tests —

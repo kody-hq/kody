@@ -109,6 +109,37 @@ test('kody dev check fails the stamped |scope=package case that publish refuses'
 	})
 })
 
+test('kody dev check sends binary files by path and size so binary-only app assets count', async () => {
+	await withPackage(async (root) => {
+		const png = Buffer.from([
+			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff,
+		])
+		await mkdir(join(root, 'icons'), { recursive: true })
+		await writeFile(join(root, 'icons/icon-192.png'), png)
+		await writeFile(join(root, 'icons/icon-512.png'), Buffer.concat([png, png]))
+		let sentFiles: Record<string, string> = {}
+		let sentBinary: Record<string, number> = {}
+		const out = capture()
+		const code = await runDevCheck({
+			target: 'mock',
+			cwd: root,
+			io: out.io,
+			runPublishChecks: async (files, binaryFiles) => {
+				sentFiles = files
+				sentBinary = binaryFiles
+				return { ok: true, checks: [{ kind: 'bundle', ok: true, message: '' }] }
+			},
+		})
+		assert.equal(code, 0, out.stdout)
+		assert.deepEqual(sentBinary, {
+			'icons/icon-192.png': png.byteLength,
+			'icons/icon-512.png': png.byteLength * 2,
+		})
+		assert.ok(!Object.keys(sentFiles).some((path) => path.startsWith('icons/')))
+		assert.match(out.stdout, /sent 2 binary file\(s\) by path and size only/)
+	})
+})
+
 test('kody dev check --json reports publish check results', async () => {
 	await withPackage(async (root) => {
 		const out = capture()

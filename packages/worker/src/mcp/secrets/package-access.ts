@@ -132,7 +132,7 @@ async function loadImplicitUserSecretReadAccess(input: {
 	})
 }
 
-async function savedPackageImplicitUserSecretReadAccessKind(input: {
+export async function savedPackageImplicitUserSecretReadAccessKind(input: {
 	db: D1Database
 	userId: OwnerId
 	savedPackage: SavedPackageRecord

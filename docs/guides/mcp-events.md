@@ -11,8 +11,8 @@ audience: agents
 
 # MCP Events from packages
 
-MCP Events let a connected host subscribe to things your packages emit — a
-Discord message, a checkout, a job finishing — and wake the agent when they
+MCP Events let a connected host subscribe to things your packages emit: a
+Discord message, a checkout, a job finishing. They wake the agent when they
 happen. Kody implements the **webhook-only** profile of the draft MCP Events
 extension (design sketch 2026-02-19; OpenAI ChatGPT profile on protocol
 `2026-07-28`). Poll and push delivery are out of scope.
@@ -27,7 +27,8 @@ the same bus exposed to an external MCP client.
 
 ## What you get
 
-When the flag is on **and** the MCP client advertises events support:
+When the flag is on and the client signed in with OAuth (clients declare
+nothing; the server advertises, as the OpenAI profile specifies):
 
 1. `/mcp` advertises an `events` capability on `server/discover`.
 2. The client can call `events/list`, `events/subscribe`, and
@@ -40,26 +41,32 @@ default: each topic opts in with `"mcp": true` on its `kody.emits` entry.
 
 ## Clients that consume it
 
-| Client                                                  | Support                                                                        |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| ChatGPT (Work chats on web; desktop Work + Cloud; dots) | Webhook MCP Events on protocol `2026-07-28`                                    |
-| Other MCP hosts                                         | Only if they advertise events support and implement webhook subscribe/delivery |
+| Client                                                  | Support                                           |
+| ------------------------------------------------------- | ------------------------------------------------- |
+| ChatGPT (Work chats on web; desktop Work + Cloud; dots) | Webhook MCP Events on protocol `2026-07-28`       |
+| Other MCP hosts                                         | Only if they implement webhook subscribe/delivery |
 
-Cursor, Claude, and other hosts that do not advertise the extension have no
-`events` capability, and `events/*` methods are not registered.
+Hosts that do not implement events (Cursor and Claude today) still see the
+`events` capability when the flag is on and ignore it. Non-OAuth callers and
+callers with the flag off get no `events` capability, and `events/*` methods are
+not registered.
 
 ## Opt a topic into MCP
 
-Declare the topic in `package.json#kody.emits` as usual, and set `mcp: true`:
+Declare the topic in `package.json#kody.emits` as usual, and set `mcp: true`.
+This example also declares a package app (`kody.app.entry`) because
+`events.dispatch` runs only inside a package runtime:
 
 ```json
 {
 	"name": "@you/ping-notifier",
-	"exports": {
-		".": "./src/index.ts"
-	},
+	"type": "module",
+	"exports": {},
 	"kody": {
 		"description": "Emits a ping event an MCP host can subscribe to.",
+		"app": {
+			"entry": "./src/app.ts"
+		},
 		"emits": {
 			"@you/ping.ready": {
 				"description": "A ping was requested.",
@@ -89,20 +96,38 @@ Rules:
 
 ## Emit
 
-Same helper as package-to-package events:
+`events` is bound only in package apps, package jobs, and subscription handlers.
+Ad hoc `execute` leaves it unbound, and statically importing a package export
+from `execute` does not bind it, so do not dispatch from `execute`. Emit from
+one of those runtimes instead. Here the app answers `POST /ping`:
 
 ```ts
 import { events } from 'kody:runtime'
 
-export default async function ping(input: { message: string }) {
-	await events.dispatch({
-		topic: '@you/ping.ready',
-		idempotencyKey: `ping:${input.message}:${Date.now()}`,
-		payload: { message: input.message },
-	})
-	return { ok: true as const }
+export default {
+	async fetch(request: Request) {
+		const url = new URL(request.url)
+		if (request.method !== 'POST' || url.pathname !== '/ping') {
+			return new Response('Not found', { status: 404 })
+		}
+		const body = (await request.json().catch(() => ({}))) as {
+			message?: unknown
+		}
+		const message =
+			typeof body.message === 'string' && body.message ? body.message : 'hello'
+		const result = await events.dispatch({
+			topic: '@you/ping.ready',
+			idempotencyKey: `ping:${crypto.randomUUID()}`,
+			payload: { message },
+		})
+		return Response.json(result)
+	},
 }
 ```
+
+The same `events.dispatch` call works from a `kody.jobs` entry (run it once with
+`jobRunNow`) or from a `kody.subscriptions` handler that re-emits another topic.
+See [Package subscriptions and events](./package-subscriptions.md).
 
 Dispatch stays asynchronous: validate → enqueue on
 `kody-package-events-dispatch` → deliver to package subscribers **and** any
@@ -146,10 +171,30 @@ accounts.
 
 1. Turn the flag on with the button on this page (or opt into experiments and
    wait for the experiments audience enable).
-2. Publish a package with an `mcp: true` topic (example above).
-3. Connect ChatGPT (or another events-capable host) to your Kody MCP server.
+2. Publish the package above with `packageSave` (or push it through the git
+   lane). Include a non-empty root `README.md` and `AGENTS.md`. `packageSave`
+   rejects the package without them.
+3. Connect ChatGPT (or another events-capable host) to your Kody MCP server with
+   OAuth. Its `server/discover` now includes `events: {}`, and `events/list`
+   returns `@you/ping.ready`.
 4. Ask the host to monitor `@you/ping.ready` and say what to do when it fires.
-5. `execute` the package export that dispatches the event.
+5. Trigger the app route. From `execute`, call `packageAppFetch` with the
+   package id:
+
+   ```json
+   {
+   	"package_id": "<your package id>",
+   	"path": "/ping",
+   	"method": "POST",
+   	"headers": { "content-type": "application/json" },
+   	"body": "{\"message\":\"hello\"}"
+   }
+   ```
+
+   The response body is the dispatch result, for example
+   `{"topic":"@you/ping.ready","status":"enqueued",...}`. The host receives a
+   signed webhook for its subscription and wakes the agent.
 
 Further reading: [Package subscriptions and events](./package-subscriptions.md),
-[ADR 0059](../contributing/decisions/0059-mcp-events-extension-behind-flag.md).
+[ADR 0059](../contributing/decisions/0059-mcp-events-extension-behind-flag.md),
+[ADR 0087](../contributing/decisions/0087-mcp-events-no-client-declaration.md).

@@ -144,6 +144,7 @@ import { Route as AppAdminCodemodsRouteImport } from './routes/_app.admin.codemo
 import { Route as AppAdminCommunityReportsRouteImport } from './routes/_app.admin.community-reports'
 import { Route as AppAdminFeatureFlagsRouteImport } from './routes/_app.admin.feature-flags'
 import { Route as AppAdminInsightsRouteImport } from './routes/_app.admin.insights'
+import { Route as AppAdminOrgsRouteImport } from './routes/_app.admin.orgs'
 import { Route as AppAdminPlatformFeedbackRouteImport } from './routes/_app.admin.platform-feedback'
 import { Route as AppAdminPlatformIntegrationsRouteImport } from './routes/_app.admin.platform-integrations'
 import { Route as AppAdminProviderMarksRouteImport } from './routes/_app.admin.provider-marks'
@@ -225,6 +226,7 @@ import { Route as AppAccountSecretsApproveRouteImport } from './routes/_app.acco
 import { Route as AppAccountSecretsNewRouteImport } from './routes/_app.account_.secrets_.new'
 import { Route as AppAccountWorkflowsWorkflowIdRouteImport } from './routes/_app.account_.workflows_.$workflowId'
 import { Route as AppAdminAccountDeletionsApprovalIdRouteImport } from './routes/_app.admin.account-deletions_.$approvalId'
+import { Route as AppAdminOrgsOrgSlugRouteImport } from './routes/_app.admin.orgs_.$orgSlug'
 import { Route as AppAdminPlatformIntegrationsSlugRouteImport } from './routes/_app.admin.platform-integrations_.$slug'
 import { Route as AppAdminPlatformIntegrationsNewRouteImport } from './routes/_app.admin.platform-integrations_.new'
 import { Route as AppAdminUsersStableUserIdRouteImport } from './routes/_app.admin.users_.$stableUserId'
@@ -971,6 +973,11 @@ const AppAdminInsightsRoute = AppAdminInsightsRouteImport.update({
   path: '/admin/insights',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminOrgsRoute = AppAdminOrgsRouteImport.update({
+  id: '/admin/orgs',
+  path: '/admin/orgs',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAdminPlatformFeedbackRoute =
   AppAdminPlatformFeedbackRouteImport.update({
     id: '/admin/platform-feedback',
@@ -1439,6 +1446,11 @@ const AppAdminAccountDeletionsApprovalIdRoute =
     path: '/admin/account-deletions/$approvalId',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAdminOrgsOrgSlugRoute = AppAdminOrgsOrgSlugRouteImport.update({
+  id: '/admin/orgs_/$orgSlug',
+  path: '/admin/orgs/$orgSlug',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAdminPlatformIntegrationsSlugRoute =
   AppAdminPlatformIntegrationsSlugRouteImport.update({
     id: '/admin/platform-integrations_/$slug',
@@ -1885,6 +1897,7 @@ export interface FileRoutesByFullPath {
   '/admin/community-reports': typeof AppAdminCommunityReportsRoute
   '/admin/feature-flags': typeof AppAdminFeatureFlagsRoute
   '/admin/insights': typeof AppAdminInsightsRoute
+  '/admin/orgs': typeof AppAdminOrgsRoute
   '/admin/platform-feedback': typeof AppAdminPlatformFeedbackRoute
   '/admin/platform-integrations': typeof AppAdminPlatformIntegrationsRoute
   '/admin/provider-marks': typeof AppAdminProviderMarksRoute
@@ -1966,6 +1979,7 @@ export interface FileRoutesByFullPath {
   '/account/secrets/new': typeof AppAccountSecretsNewRoute
   '/account/workflows/$workflowId': typeof AppAccountWorkflowsWorkflowIdRoute
   '/admin/account-deletions/$approvalId': typeof AppAdminAccountDeletionsApprovalIdRoute
+  '/admin/orgs/$orgSlug': typeof AppAdminOrgsOrgSlugRoute
   '/admin/platform-integrations/$slug': typeof AppAdminPlatformIntegrationsSlugRoute
   '/admin/platform-integrations/new': typeof AppAdminPlatformIntegrationsNewRoute
   '/admin/users/$stableUserId': typeof AppAdminUsersStableUserIdRoute
@@ -2152,6 +2166,7 @@ export interface FileRoutesByTo {
   '/admin/community-reports': typeof AppAdminCommunityReportsRoute
   '/admin/feature-flags': typeof AppAdminFeatureFlagsRoute
   '/admin/insights': typeof AppAdminInsightsRoute
+  '/admin/orgs': typeof AppAdminOrgsRoute
   '/admin/platform-feedback': typeof AppAdminPlatformFeedbackRoute
   '/admin/platform-integrations': typeof AppAdminPlatformIntegrationsRoute
   '/admin/provider-marks': typeof AppAdminProviderMarksRoute
@@ -2233,6 +2248,7 @@ export interface FileRoutesByTo {
   '/account/secrets/new': typeof AppAccountSecretsNewRoute
   '/account/workflows/$workflowId': typeof AppAccountWorkflowsWorkflowIdRoute
   '/admin/account-deletions/$approvalId': typeof AppAdminAccountDeletionsApprovalIdRoute
+  '/admin/orgs/$orgSlug': typeof AppAdminOrgsOrgSlugRoute
   '/admin/platform-integrations/$slug': typeof AppAdminPlatformIntegrationsSlugRoute
   '/admin/platform-integrations/new': typeof AppAdminPlatformIntegrationsNewRoute
   '/admin/users/$stableUserId': typeof AppAdminUsersStableUserIdRoute
@@ -2422,6 +2438,7 @@ export interface FileRoutesById {
   '/_app/admin/community-reports': typeof AppAdminCommunityReportsRoute
   '/_app/admin/feature-flags': typeof AppAdminFeatureFlagsRoute
   '/_app/admin/insights': typeof AppAdminInsightsRoute
+  '/_app/admin/orgs': typeof AppAdminOrgsRoute
   '/_app/admin/platform-feedback': typeof AppAdminPlatformFeedbackRoute
   '/_app/admin/platform-integrations': typeof AppAdminPlatformIntegrationsRoute
   '/_app/admin/provider-marks': typeof AppAdminProviderMarksRoute
@@ -2503,6 +2520,7 @@ export interface FileRoutesById {
   '/_app/account_/secrets_/new': typeof AppAccountSecretsNewRoute
   '/_app/account_/workflows_/$workflowId': typeof AppAccountWorkflowsWorkflowIdRoute
   '/_app/admin/account-deletions_/$approvalId': typeof AppAdminAccountDeletionsApprovalIdRoute
+  '/_app/admin/orgs_/$orgSlug': typeof AppAdminOrgsOrgSlugRoute
   '/_app/admin/platform-integrations_/$slug': typeof AppAdminPlatformIntegrationsSlugRoute
   '/_app/admin/platform-integrations_/new': typeof AppAdminPlatformIntegrationsNewRoute
   '/_app/admin/users_/$stableUserId': typeof AppAdminUsersStableUserIdRoute
@@ -2692,6 +2710,7 @@ export interface FileRouteTypes {
     | '/admin/community-reports'
     | '/admin/feature-flags'
     | '/admin/insights'
+    | '/admin/orgs'
     | '/admin/platform-feedback'
     | '/admin/platform-integrations'
     | '/admin/provider-marks'
@@ -2773,6 +2792,7 @@ export interface FileRouteTypes {
     | '/account/secrets/new'
     | '/account/workflows/$workflowId'
     | '/admin/account-deletions/$approvalId'
+    | '/admin/orgs/$orgSlug'
     | '/admin/platform-integrations/$slug'
     | '/admin/platform-integrations/new'
     | '/admin/users/$stableUserId'
@@ -2959,6 +2979,7 @@ export interface FileRouteTypes {
     | '/admin/community-reports'
     | '/admin/feature-flags'
     | '/admin/insights'
+    | '/admin/orgs'
     | '/admin/platform-feedback'
     | '/admin/platform-integrations'
     | '/admin/provider-marks'
@@ -3040,6 +3061,7 @@ export interface FileRouteTypes {
     | '/account/secrets/new'
     | '/account/workflows/$workflowId'
     | '/admin/account-deletions/$approvalId'
+    | '/admin/orgs/$orgSlug'
     | '/admin/platform-integrations/$slug'
     | '/admin/platform-integrations/new'
     | '/admin/users/$stableUserId'
@@ -3228,6 +3250,7 @@ export interface FileRouteTypes {
     | '/_app/admin/community-reports'
     | '/_app/admin/feature-flags'
     | '/_app/admin/insights'
+    | '/_app/admin/orgs'
     | '/_app/admin/platform-feedback'
     | '/_app/admin/platform-integrations'
     | '/_app/admin/provider-marks'
@@ -3309,6 +3332,7 @@ export interface FileRouteTypes {
     | '/_app/account_/secrets_/new'
     | '/_app/account_/workflows_/$workflowId'
     | '/_app/admin/account-deletions_/$approvalId'
+    | '/_app/admin/orgs_/$orgSlug'
     | '/_app/admin/platform-integrations_/$slug'
     | '/_app/admin/platform-integrations_/new'
     | '/_app/admin/users_/$stableUserId'
@@ -4432,6 +4456,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminInsightsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin/orgs': {
+      id: '/_app/admin/orgs'
+      path: '/admin/orgs'
+      fullPath: '/admin/orgs'
+      preLoaderRoute: typeof AppAdminOrgsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/admin/platform-feedback': {
       id: '/_app/admin/platform-feedback'
       path: '/admin/platform-feedback'
@@ -4999,6 +5030,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminAccountDeletionsApprovalIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin/orgs_/$orgSlug': {
+      id: '/_app/admin/orgs_/$orgSlug'
+      path: '/admin/orgs/$orgSlug'
+      fullPath: '/admin/orgs/$orgSlug'
+      preLoaderRoute: typeof AppAdminOrgsOrgSlugRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/admin/platform-integrations_/$slug': {
       id: '/_app/admin/platform-integrations_/$slug'
       path: '/admin/platform-integrations/$slug'
@@ -5409,6 +5447,7 @@ interface AppRouteChildren {
   AppAdminCommunityReportsRoute: typeof AppAdminCommunityReportsRoute
   AppAdminFeatureFlagsRoute: typeof AppAdminFeatureFlagsRoute
   AppAdminInsightsRoute: typeof AppAdminInsightsRoute
+  AppAdminOrgsRoute: typeof AppAdminOrgsRoute
   AppAdminPlatformFeedbackRoute: typeof AppAdminPlatformFeedbackRoute
   AppAdminPlatformIntegrationsRoute: typeof AppAdminPlatformIntegrationsRoute
   AppAdminProviderMarksRoute: typeof AppAdminProviderMarksRoute
@@ -5474,6 +5513,7 @@ interface AppRouteChildren {
   AppAccountSecretsNewRoute: typeof AppAccountSecretsNewRoute
   AppAccountWorkflowsWorkflowIdRoute: typeof AppAccountWorkflowsWorkflowIdRoute
   AppAdminAccountDeletionsApprovalIdRoute: typeof AppAdminAccountDeletionsApprovalIdRoute
+  AppAdminOrgsOrgSlugRoute: typeof AppAdminOrgsOrgSlugRoute
   AppAdminPlatformIntegrationsSlugRoute: typeof AppAdminPlatformIntegrationsSlugRoute
   AppAdminPlatformIntegrationsNewRoute: typeof AppAdminPlatformIntegrationsNewRoute
   AppAdminUsersStableUserIdRoute: typeof AppAdminUsersStableUserIdRoute
@@ -5552,6 +5592,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAdminCommunityReportsRoute: AppAdminCommunityReportsRoute,
   AppAdminFeatureFlagsRoute: AppAdminFeatureFlagsRoute,
   AppAdminInsightsRoute: AppAdminInsightsRoute,
+  AppAdminOrgsRoute: AppAdminOrgsRoute,
   AppAdminPlatformFeedbackRoute: AppAdminPlatformFeedbackRoute,
   AppAdminPlatformIntegrationsRoute: AppAdminPlatformIntegrationsRoute,
   AppAdminProviderMarksRoute: AppAdminProviderMarksRoute,
@@ -5650,6 +5691,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountWorkflowsWorkflowIdRoute: AppAccountWorkflowsWorkflowIdRoute,
   AppAdminAccountDeletionsApprovalIdRoute:
     AppAdminAccountDeletionsApprovalIdRoute,
+  AppAdminOrgsOrgSlugRoute: AppAdminOrgsOrgSlugRoute,
   AppAdminPlatformIntegrationsSlugRoute: AppAdminPlatformIntegrationsSlugRoute,
   AppAdminPlatformIntegrationsNewRoute: AppAdminPlatformIntegrationsNewRoute,
   AppAdminUsersStableUserIdRoute: AppAdminUsersStableUserIdRoute,

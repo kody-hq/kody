@@ -216,6 +216,12 @@ function createAdminCapabilityTest(
 
 test('admin capabilities list and get account metadata and query sanitized audit rows', async () => {
 	const t = createAdminCapabilityTest([admin, jane])
+	t.sqlite
+		.prepare(
+			`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+			 VALUES (?, ?, 'owner', '2026-01-03T00:00:00.000Z')`,
+		)
+		.run(janeStableId, janeStableId)
 
 	const list = await adminUserListCapability.handler({ pageSize: 10 }, t.ctx)
 	expect(list).toMatchObject({
@@ -242,6 +248,16 @@ test('admin capabilities list and get account metadata and query sanitized audit
 		username: 'jane',
 		email: 'jane@example.com',
 		roles: ['user'],
+		orgs: [
+			{
+				orgId: janeStableId,
+				slug: 'jane',
+				kind: 'personal',
+				role: 'owner',
+				effectivePlan: 'free',
+				deleted: false,
+			},
+		],
 	})
 
 	const usage = await adminUserUsageCapability.handler(

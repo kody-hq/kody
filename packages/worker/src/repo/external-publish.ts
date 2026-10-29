@@ -39,6 +39,7 @@ import { assertPackageSourceOverwriteAllowed } from './source-safety-policy.ts'
 
 export type RepoPublishWorkspace = {
 	readFile(path: string): Promise<string | null>
+	stat?(path: string): Promise<{ size: number } | null>
 	glob(pattern: string): Promise<Array<{ path: string; type: string }>>
 }
 

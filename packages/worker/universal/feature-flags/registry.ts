@@ -10,7 +10,7 @@
  * with one get exposure recording and an on/off cohort readout on the admin
  * surfaces (see `docs/contributing/architecture/feature-flags.md`). Optional
  * `exposureRecording` selects the write site (`evaluation` chokepoints by
- * default, or `mcp-events-clients` for events-capable MCP clients only). The
+ * default, or `mcp-events-clients` for MCP clients that call `events/*` only). The
  * `successMetric` field stays optional for flags that are genuinely
  * unmeasurable (such as the permanent `demo-indicator`), and the admin UI and
  * MCP list surface a notice strongly recommending one everywhere else.
@@ -42,8 +42,8 @@ export type FeatureFlagSuccessMetric = {
  * Where success-metric exposures are written for a measured flag.
  *
  * - `evaluation` (default): app session cache + MCP caller flag resolver.
- * - `mcp-events-clients`: only from `registerMcpEvents` after the client
- *   declares events support; execute and other MCP callers stay out.
+ * - `mcp-events-clients`: only from the `registerMcpEvents` `events/*`
+ *   handlers; execute and other MCP callers stay out.
  */
 export type FeatureFlagExposureRecording = 'evaluation' | 'mcp-events-clients'
 
@@ -108,7 +108,7 @@ export const featureFlagDefinitions = [
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
-			'MCP Events extension (draft, webhook delivery only) on the stateless /mcp lane: advertise the events capability and serve events/list, events/subscribe, and events/unsubscribe for package kody.emits topics that opt in with mcp: true. Only for clients that declare events support. Off by default; enable with audience experiments_opt_in. Signed-in users can also turn it on from /docs/mcp-events. Delete the flag and gate sites when the experiment ends.',
+			'MCP Events extension (draft, webhook delivery only) on the stateless /mcp lane: advertise the events capability and serve events/list, events/subscribe, and events/unsubscribe for package kody.emits topics that opt in with mcp: true. OAuth callers only; clients declare nothing. Off by default; enable with audience experiments_opt_in. Signed-in users can also turn it on from /docs/mcp-events. Delete the flag and gate sites when the experiment ends.',
 		exposureRecording: 'mcp-events-clients',
 		successMetric: {
 			eventType: 'execute',

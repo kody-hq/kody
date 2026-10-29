@@ -2947,6 +2947,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
 			sourceFiles?: Record<string, string>
+			binaryFileSizes?: Record<string, number>
 		}>(input.stagingKey, 'json')
 		const sourceFiles = staged?.sourceFiles
 		if (!sourceFiles) {
@@ -3008,6 +3009,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
 			sourceFiles?: Record<string, string>
+			binaryFileSizes?: Record<string, number>
 		}>(input.stagingKey, 'json')
 		const sourceFiles = staged?.sourceFiles
 		if (!sourceFiles) {
@@ -3025,6 +3027,9 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 		const checks = await runAuthoringPublishChecksOnFiles({
 			files: sourceFiles,
+			...(staged?.binaryFileSizes
+				? { binaryFileSizes: staged.binaryFileSizes }
+				: {}),
 			env: this.env,
 			baseUrl: input.baseUrl,
 			userId: input.userId,

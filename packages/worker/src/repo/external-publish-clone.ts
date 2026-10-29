@@ -133,6 +133,15 @@ function buildPublishWorkspaceFromCheckout(input: {
 				return null
 			}
 		},
+		// readFile UTF-8-decodes binaries lossily; size limits need real bytes.
+		async stat(path) {
+			try {
+				const stats = await input.filesystem.stat(normalizePublishPath(path))
+				return { size: stats.size }
+			} catch {
+				return null
+			}
+		},
 		async glob(pattern) {
 			const files = await input.listFiles()
 			// runRepoChecks builds patterns from normalizeRepoWorkspacePath(sourceRoot),

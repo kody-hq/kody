@@ -444,6 +444,8 @@ export type AdminUserListItem = {
 	last_active_at: string | null
 	created_at: string
 	updated_at: string
+	deleted_at: string | null
+	deleting_at: string | null
 	roles: Array<RoleName>
 }
 
@@ -455,11 +457,25 @@ export type AdminUsersLoaderData = {
 	 * (or a selected user outside the current page) still has detail data.
 	 */
 	selectedUser: AdminUserListItem | null
+	selectedUserOrgs: Array<AdminUserOrgMembership>
 	page: number
 	pageSize: number
 	total: number
+	statusFilter: 'live' | 'deleted'
 	availableRoles: Array<RoleName>
 	availablePlans: Array<AdminPlanName>
+}
+
+export type AdminUserOrgMembership = {
+	orgId: string
+	slug: string
+	displayName: string | null
+	kind: 'personal' | 'team'
+	role: 'owner' | 'member' | 'billing'
+	effectivePlan: AdminPlanName
+	seats: number
+	membershipDeletedAt: string | null
+	orgDeletedAt: string | null
 }
 
 export type AdminCreditLedgerItem = AccountCreditsLedgerItem & {

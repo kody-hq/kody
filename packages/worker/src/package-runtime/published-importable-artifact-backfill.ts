@@ -150,7 +150,7 @@ function matchesOptionalFilters(
 	return true
 }
 
-async function listCandidatePackages(input: {
+export async function listCandidatePackages(input: {
 	env: Env
 	afterId: string | null
 	limit: number
