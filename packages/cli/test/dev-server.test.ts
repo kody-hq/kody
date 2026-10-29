@@ -279,7 +279,8 @@ function isLiveNonZombie(pid: number) {
 			stat.slice(stat.lastIndexOf(')') + 2, stat.lastIndexOf(')') + 3) !== 'Z'
 		)
 	} catch {
-		return false
+		// Exited between the probes, or /proc is unreadable: trust kill(pid, 0).
+		return isProcessAlive(pid)
 	}
 }
 

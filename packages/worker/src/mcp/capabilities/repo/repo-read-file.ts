@@ -52,7 +52,12 @@ export const repoReadFileCapability = defineDomainCapability(
 					path: requested.path,
 				})
 				.catch(rethrowDirectoryTargetAsCallerError)
-			const recordRead = async () => {
+			const recordRead = () =>
+				recordReadEvent().catch((error: unknown) => {
+					// Analytics only: never fail a read the caller is authorized for.
+					console.warn('skill-read-record-failed', error)
+				})
+			const recordReadEvent = async () => {
 				const path = canonicalRepoPath(file.path)
 				const skillName = /^skills\/([^/]+)\//.exec(path)?.[1]
 				if (!source || !skillName || file.content == null) return
