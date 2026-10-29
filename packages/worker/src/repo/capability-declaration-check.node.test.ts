@@ -248,3 +248,13 @@ test('a loader failure is reported instead of failing the check', async () => {
 	expect(check).toMatchObject({ kind: 'capabilities', ok: true })
 	expect(check?.message).not.toContain('boom')
 })
+
+test('a closure walk past its budget is reported instead of holding publish', async () => {
+	const check = await buildCapabilityDeclarationCheck({
+		manifest: appManifest(['secretList']),
+		sourceFiles: importsHelper,
+		loadPackage: () => new Promise(() => {}),
+		closureBudgetMs: 10,
+	})
+	expect(check?.message).toContain('walking the import closure took too long')
+})

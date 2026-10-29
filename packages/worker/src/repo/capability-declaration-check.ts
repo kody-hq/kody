@@ -24,6 +24,10 @@ type CapabilityDeclarationFinding =
 	| { kind: 'closure-undeclared'; names: Array<string> }
 	| { kind: 'closure-unverifiable'; calls: number }
 	| { kind: 'closure-unresolved'; imports: number }
+	| { kind: 'closure-timeout' }
+
+/** Publish waits at most this long for the closure walk; it never blocks. */
+const closureBudgetMs = 5_000
 
 /** `kody.capabilities` plus, for an app, `kody.app.capabilities`. */
 export function declaredPackageCapabilities(
@@ -152,6 +156,9 @@ function formatFinding(finding: CapabilityDeclarationFinding) {
 	if (finding.kind === 'closure-unresolved') {
 		return `- ${finding.imports} import(s) of other packages could not be resolved statically, so the capabilities they need were not checked.`
 	}
+	if (finding.kind === 'closure-timeout') {
+		return '- Imported packages were not checked: walking the import closure took too long.'
+	}
 	return `- \`${finding.path}\` picks ${finding.calls} capability name(s) at run time (a computed \`kody[...]\` call or \`kody.mcp\`), and the package declares no capabilities that could cover them.`
 }
 
@@ -160,18 +167,31 @@ export async function buildCapabilityDeclarationCheck(input: {
 	sourceFiles: Record<string, string>
 	/** Without one (offline checks) only the package's own modules are read. */
 	loadPackage?: ClosurePackageLoader
+	closureBudgetMs?: number
 }) {
 	const findings = findCapabilityDeclarationGaps(input)
 	if (input.loadPackage) {
+		let timer: ReturnType<typeof setTimeout> | undefined
+		const timedOut = new Promise<'timeout'>((resolve) => {
+			timer = setTimeout(
+				() => resolve('timeout'),
+				input.closureBudgetMs ?? closureBudgetMs,
+			)
+		})
 		try {
+			const closure = await Promise.race([
+				findClosureGaps({ ...input, loadPackage: input.loadPackage }),
+				timedOut,
+			])
 			findings.push(
-				...(await findClosureGaps({
-					...input,
-					loadPackage: input.loadPackage,
-				})),
+				...(closure === 'timeout'
+					? [{ kind: 'closure-timeout' as const }]
+					: closure),
 			)
 		} catch {
 			findings.push({ kind: 'closure-unresolved', imports: 1 })
+		} finally {
+			clearTimeout(timer)
 		}
 	}
 	if (findings.length === 0) return null
