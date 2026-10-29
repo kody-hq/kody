@@ -283,12 +283,14 @@ export const restoreSkillVersion = createServerFn({ method: 'POST' })
 				const [
 					{ repoOpenSessionCapability },
 					{ repoCommitCapability },
+					{ repoRunChecksCapability },
 					{ repoPublishSessionCapability },
 					{ repoDiscardSessionCapability },
 					{ repoSessionRpc },
 				] = await Promise.all([
 					import('#mcp/capabilities/repo/repo-open-session.ts'),
 					import('#mcp/capabilities/repo/repo-commit.ts'),
+					import('#mcp/capabilities/repo/repo-run-checks.ts'),
 					import('#mcp/capabilities/repo/repo-publish-session.ts'),
 					import('#mcp/capabilities/repo/repo-discard-session.ts'),
 					import('#worker/repo/repo-session-rpc.ts'),
@@ -319,6 +321,20 @@ export const restoreSkillVersion = createServerFn({ method: 'POST' })
 						},
 						ctx,
 					)
+					const checks = (await repoRunChecksCapability.handler(
+						{ session_id: opened.id },
+						ctx,
+					)) as {
+						ok: boolean
+						results: Array<{ status: string; message: string }>
+					}
+					if (!checks.ok)
+						throw new Error(
+							`Publish checks failed: ${checks.results
+								.filter((result) => result.status === 'fail')
+								.map((result) => result.message)
+								.join(' ')}`,
+						)
 					const result = (await repoPublishSessionCapability.handler(
 						{ session_id: opened.id },
 						ctx,

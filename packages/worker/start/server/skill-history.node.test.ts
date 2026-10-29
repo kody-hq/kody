@@ -11,6 +11,7 @@ const state = vi.hoisted(() => ({
 	open: vi.fn(),
 	restore: vi.fn(),
 	commit: vi.fn(),
+	checks: vi.fn(),
 	publish: vi.fn(),
 	discard: vi.fn(),
 }))
@@ -57,6 +58,9 @@ vi.mock('#mcp/capabilities/repo/repo-open-session.ts', () => ({
 }))
 vi.mock('#mcp/capabilities/repo/repo-commit.ts', () => ({
 	repoCommitCapability: { handler: state.commit },
+}))
+vi.mock('#mcp/capabilities/repo/repo-run-checks.ts', () => ({
+	repoRunChecksCapability: { handler: state.checks },
 }))
 vi.mock('#mcp/capabilities/repo/repo-publish-session.ts', () => ({
 	repoPublishSessionCapability: { handler: state.publish },
@@ -126,6 +130,7 @@ beforeEach(async () => {
 				: '2026-10-27T12:00:00Z',
 	}))
 	state.open.mockResolvedValue({ id: 'session', base_commit: 'new' })
+	state.checks.mockResolvedValue({ ok: true, results: [] })
 	state.publish.mockResolvedValue({ status: 'ok', message: 'Published' })
 })
 test('compares archived published files and binds reads to the signed-in org', async () => {
@@ -182,6 +187,13 @@ test('restores through a fresh checked publish and cleans up its editing session
 		commit: 'old',
 		name: 'writing',
 	})
+	expect(state.checks).toHaveBeenCalledWith(
+		{ session_id: 'session' },
+		expect.anything(),
+	)
+	expect(state.checks.mock.invocationCallOrder[0]).toBeLessThan(
+		state.publish.mock.invocationCallOrder[0]!,
+	)
 	expect(state.publish).toHaveBeenCalledWith(
 		{ session_id: 'session' },
 		expect.anything(),
@@ -231,4 +243,18 @@ test('does not report a published restore as failed when cleanup fails', async (
 	} finally {
 		error.mockRestore()
 	}
+})
+
+test('does not publish a restored revision when its checks fail', async () => {
+	state.checks.mockResolvedValue({
+		ok: false,
+		results: [{ status: 'fail', message: 'Invalid skill frontmatter' }],
+	})
+	await expect(
+		restoreSkillVersion({
+			data: { ...data, commit: 'old', expectedCommit: 'new' },
+		}),
+	).rejects.toThrow('Publish checks failed: Invalid skill frontmatter')
+	expect(state.publish).not.toHaveBeenCalled()
+	expect(state.discard).toHaveBeenCalled()
 })
