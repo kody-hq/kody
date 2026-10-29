@@ -1,4 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
+import { PermissionDeniedError } from '#universal/permission-denied.ts'
 import { notFound } from '@tanstack/react-router'
 import { z } from 'zod'
 
@@ -52,7 +53,7 @@ export const loadOrgMembers = createServerFn({ method: 'GET' })
 			if (access.status === 404) throw notFound()
 			const { setResponseStatus } = await import('@tanstack/react-start/server')
 			setResponseStatus(403)
-			throw new Error(access.error)
+			throw new PermissionDeniedError(access.error)
 		}
 
 		return loadOrgMembersData({ ...input, org: access.org })
@@ -75,7 +76,7 @@ export const loadOrgSettings = createServerFn({ method: 'GET' })
 			if (access.status === 404) throw notFound()
 			const { setResponseStatus } = await import('@tanstack/react-start/server')
 			setResponseStatus(403)
-			throw new Error(access.error)
+			throw new PermissionDeniedError(access.error)
 		}
 
 		return loadOrgSettingsData({ ...input, org: access.org })
@@ -98,7 +99,7 @@ export const loadOrgTeams = createServerFn({ method: 'GET' })
 			if (access.status === 404) throw notFound()
 			const { setResponseStatus } = await import('@tanstack/react-start/server')
 			setResponseStatus(403)
-			throw new Error(access.error)
+			throw new PermissionDeniedError(access.error)
 		}
 
 		return loadOrgTeamsData({ ...input, org: access.org })
@@ -121,7 +122,7 @@ export const loadOrgGrants = createServerFn({ method: 'GET' })
 			if (access.status === 404) throw notFound()
 			const { setResponseStatus } = await import('@tanstack/react-start/server')
 			setResponseStatus(403)
-			throw new Error(access.error)
+			throw new PermissionDeniedError(access.error)
 		}
 
 		return loadOrgGrantsData({ ...input, org: access.org })
@@ -144,7 +145,7 @@ export const loadOrgCollaborators = createServerFn({ method: 'GET' })
 			if (access.status === 404) throw notFound()
 			const { setResponseStatus } = await import('@tanstack/react-start/server')
 			setResponseStatus(403)
-			throw new Error(access.error)
+			throw new PermissionDeniedError(access.error)
 		}
 
 		return loadOrgCollaboratorsData({ ...input, org: access.org })

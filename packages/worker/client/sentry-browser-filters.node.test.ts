@@ -10,6 +10,7 @@ import {
 	isTanStackRouterNotFoundError,
 	isTanStackServerFnFetchNetworkError,
 } from './sentry-browser-filters.ts'
+import { PermissionDeniedError } from '#universal/permission-denied.ts'
 
 type Frame = {
 	filename?: string
@@ -1189,4 +1190,24 @@ test('drops TanStack Router notFound control flow (KODY-AH)', () => {
 	expect(filterBrowserSentryEvent(event, { isNotFound: false })).toBe(event)
 	const real = makeEvent(['Error', 'Real failure'])
 	expect(filterBrowserSentryEvent(real, new Error('Real failure'))).toBe(real)
+})
+
+test('drops expected permission denials and keeps real errors', () => {
+	const event = makeEvent(['PermissionDeniedError', 'Missing email:read.'])
+	expect(
+		filterBrowserSentryEvent(
+			event,
+			new PermissionDeniedError('Missing email:read.', {
+				permission: 'email:read',
+			}),
+		),
+	).toBeNull()
+	const authorization = Object.assign(new Error('Missing email:read.'), {
+		name: 'AuthorizationError',
+	})
+	expect(filterBrowserSentryEvent(event, authorization)).toBeNull()
+	const real = makeEvent(['Error', 'Missing email:read.'])
+	expect(filterBrowserSentryEvent(real, new Error('Missing email:read.'))).toBe(
+		real,
+	)
 })

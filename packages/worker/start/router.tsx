@@ -5,7 +5,7 @@ import { readRouterNonce } from '#start/server/router-nonce'
 import { createRouter } from '@tanstack/react-router'
 import { QueryClient } from '@tanstack/react-query'
 import { setupRouterSsrQueryIntegration } from '@tanstack/react-router-ssr-query'
-import { InternalErrorPage } from './components/internal-error-page.tsx'
+import { RouteErrorPage } from './components/route-error-page.tsx'
 import { captureClientException } from '#client/sentry-client.ts'
 import { installNavigationMotion } from './navigation-motion.ts'
 import { readDocumentActor } from './document-actor.ts'
@@ -43,7 +43,7 @@ export function getRouter() {
 					: null,
 		},
 		caseSensitive: true,
-		defaultErrorComponent: InternalErrorPage,
+		defaultErrorComponent: RouteErrorPage,
 		defaultOnCatch: captureClientException,
 		defaultViewTransition: false,
 		scrollRestoration: true,

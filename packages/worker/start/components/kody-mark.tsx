@@ -1,6 +1,5 @@
 /** @jsxImportSource @emotion/react */
 import { type CSSObject } from '@emotion/react'
-import { useId } from 'react'
 import {
 	kodyMarkAspectRatio,
 	kodyMarkOutlinedLeftEyePathD,
@@ -45,9 +44,10 @@ export function KodyMark({
 }: KodyMarkProps) {
 	const width = Math.round(size * kodyMarkAspectRatio)
 	const labelled = title.trim().length > 0
-	const reactId = useId().replace(/:/g, '')
-	const outlinedClass = `kody-mark-outlined-${reactId}`
-	const solidClass = `kody-mark-solid-${reactId}`
+	// Every `auto` mark emits the same rules, so shared class names are safe and
+	// keep SSR/client markup identical when a route boundary re-renders.
+	const outlinedClass = 'kody-mark-outlined'
+	const solidClass = 'kody-mark-solid'
 	const showOutlined = variant === 'outlined' || variant === 'auto'
 	const showSolid = variant === 'solid' || variant === 'auto'
 

@@ -86,6 +86,29 @@ export function buildUnauthorizedErrorAgentPrompt(input: {
 	})
 }
 
+/** Org page denied by a missing permission (route 403 explainer). */
+export function buildPermissionDeniedErrorAgentPrompt(input: {
+	path?: string | null
+	message: string
+	orgSlug: string | null
+}) {
+	return buildErrorAgentPrompt({
+		activity: 'Opening a Kody page that returned a permission denial (403).',
+		errorCode: 'permission_denied',
+		errorMessage: input.message,
+		ids: { path: input.path, orgSlug: input.orgSlug },
+		likelyCause:
+			'My role in this organization does not include the permission this page needs.',
+		nextSteps: [
+			'Check my role in this org with orgMemberList and my grants with accessGrant.',
+			'If an org Owner should grant it, draft the accessGrant request for them.',
+			'Tell me whether to switch org or ask an Owner for access.',
+		],
+		kodyTools: ['orgMemberList', 'accessGrant'],
+		docs: ['search({ entity: "guide:organizations" })'],
+	})
+}
+
 /** Signed-in visitor opened a package they cannot read (private / no grant). */
 export function buildPackageNoAccessErrorAgentPrompt(input: {
 	path?: string | null

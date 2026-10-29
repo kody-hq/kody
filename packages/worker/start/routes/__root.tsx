@@ -49,7 +49,7 @@ import {
 } from '../document-shell-meta.ts'
 import { SENTRY_CONFIG_META_NAME } from '#universal/sentry-config.ts'
 import { NotFoundPage } from '../components/not-found-page.tsx'
-import { InternalErrorPage } from '../components/internal-error-page.tsx'
+import { RouteErrorPage } from '../components/route-error-page.tsx'
 import { Toaster } from '../components/toaster.tsx'
 import { YouTubeWatchOverlay } from '../components/youtube-watch-overlay.tsx'
 
@@ -202,7 +202,7 @@ export const Route = createRootRouteWithContext<{
 					<SiteLink href="/">Go home</SiteLink>
 				</section>
 			) : (
-				<InternalErrorPage />
+				<RouteErrorPage error={error} />
 			)}
 		</main>
 	),

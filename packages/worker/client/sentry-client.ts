@@ -16,6 +16,7 @@ import {
 	isTanStackServerFnFetchNetworkError,
 	isUnknownStartReleaseError,
 } from '#client/sentry-browser-filters.ts'
+import { isPermissionDeniedError } from '#universal/permission-denied.ts'
 import {
 	parseSentryClientConfig,
 	SENTRY_CONFIG_META_NAME,
@@ -86,7 +87,8 @@ function shouldIgnoreBufferedError(error: unknown) {
 		isSyntaxHighlightCoreDynamicImportFailureError(error) ||
 		isLocalViteDevError(error) ||
 		isCloudflareTurnstileClientError(error) ||
-		isTanStackRouterNotFoundError(error)
+		isTanStackRouterNotFoundError(error) ||
+		isPermissionDeniedError(error)
 	)
 }
 
