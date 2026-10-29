@@ -5,6 +5,7 @@ import {
 import { env } from 'cloudflare:workers'
 import { expect, test } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { beginRunRecord, finishRunRecord } from '#worker/run-records/service.ts'
 import {
 	type RunRecordContext,
@@ -162,9 +163,16 @@ test(
 			outcome: 'delivered',
 			result: { ok: true, agentId: 'agent-123' },
 		})
+		// A miss falls through to execution context history; this database has
+		// no execution_contexts table, so that lookup warns and returns nothing.
+		consoleWarn.mockImplementation(() => {})
 		await expect(other.get(handle.id)).rejects.toThrow(/was not found/)
 		await expect(owner.get(crypto.randomUUID())).rejects.toThrow(
 			/was not found/,
+		)
+		expect(consoleWarn).toHaveBeenCalledWith(
+			'execution-context-run-lookup-failed',
+			expect.anything(),
 		)
 
 		// Owner totals include the in-flight workflow run; other tenant sees zeros.
