@@ -29,7 +29,10 @@ import {
 	type FillPlacementRefusalLinks,
 	refusalLinkOrgSlug,
 } from './fill-placement-enforcement.ts'
-import { authorizePersonalCredentialUse } from './personal-credentials.ts'
+import {
+	authorizePersonalCredentialUse,
+	loadPinnedOrgId,
+} from './personal-credentials.ts'
 
 type IntegrationNameLookup = {
 	owner: 'org' | 'personal'
@@ -109,7 +112,12 @@ async function findIntegrationByName(
 		userId: call.input.orgId,
 		name: call.credential.name,
 	})
-	if (orgId) {
+	// A personal connection pinned to another org's app is never an org
+	// credential of its own (personal) org; the personal path decides.
+	if (
+		orgId &&
+		!(await loadPinnedOrgId(call.input.env.APP_DB, call.input.orgId, orgId))
+	) {
 		return { owner: 'org', ownerId: call.input.orgId, credentialId: orgId }
 	}
 	const person = call.input.actor?.actor?.userId

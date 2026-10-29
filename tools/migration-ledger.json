@@ -727,6 +727,10 @@
 		{
 			"filename": "0201-grants-org-everyone-subject.sql",
 			"sha256": "ea9af01477cc26dcec8d4b64a517686550bd78eb19c5843163f63aae8be830ca"
+		},
+		{
+			"filename": "0202-integration-app-owner.sql",
+			"sha256": "1e979e460810d54c91b3288e4e4a0b2cf838e320541613c009b0051814b14bb8"
 		}
 	]
 }

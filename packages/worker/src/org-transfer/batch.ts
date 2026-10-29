@@ -161,6 +161,16 @@ export function buildOrgTransferStatements(input: {
 		}
 	}
 
+	// The org's apps move with it, so every connection made through them
+	// (its own and members' pinned personal ones) follows.
+	statements.push(
+		db
+			.prepare(
+				`UPDATE user_integrations SET app_owner_id = ? WHERE app_owner_id = ?`,
+			)
+			.bind(toId, fromId),
+	)
+
 	for (const row of plan.moves.saved_packages) {
 		const packageId = cell(row, 'id')
 		const packageName = transferredPackageName(row, plan.to.slug)

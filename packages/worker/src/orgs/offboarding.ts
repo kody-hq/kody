@@ -25,6 +25,7 @@ import {
 import { jobAuditActions, recordJobAudit } from '#worker/jobs/job-audit.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import { wipePinnedConnectionsForMember } from '#worker/integrations/pinned-connections.ts'
 import { syncJobManagerAlarm } from '#worker/jobs/manager-client.ts'
 
 export type OffboardingJobDisposition = 'cancel' | 'delete' | 'keep_running'
@@ -526,6 +527,13 @@ export async function offboardOrgMember(input: {
 		resumeDeletedAt: input.resumeDeletedAt,
 	})
 
+	// Connections pinned to this org's OAuth apps end with the binding.
+	await wipePinnedConnectionsForMember({
+		env: input.env,
+		orgId: input.orgId,
+		personId: input.memberUserId,
+		audit: optionalOrgAuditWriter(input.env, null),
+	})
 	await deletePersonalCredentialOrgGrantsForMember({
 		db: input.appDb,
 		orgId: input.orgId,

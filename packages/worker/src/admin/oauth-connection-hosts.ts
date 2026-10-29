@@ -61,7 +61,7 @@ export async function loadAdminOauthConnectionHosts(input: {
 				i.updated_at AS updated_at
 			FROM user_integrations i
 			LEFT JOIN user_oauth_apps a
-				ON a.user_id = i.user_id AND a.slug = i.app_slug AND a.deleted_at IS NULL
+				ON a.user_id = COALESCE(i.app_owner_id, i.user_id) AND a.slug = i.app_slug AND a.deleted_at IS NULL
 			LEFT JOIN platform_oauth_apps p ON p.slug = i.platform_app_slug
 			WHERE i.user_id = ? AND i.deleted_at IS NULL
 				AND (? IS NULL
