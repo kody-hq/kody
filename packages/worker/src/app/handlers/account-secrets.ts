@@ -93,6 +93,7 @@ import {
 	assertScopesAllowedForPlatformApp,
 	findOauthAppForProviderSetup,
 	getAvailablePlatformApp,
+	assertOauthAppReplaceConfirmed,
 	getJoinedIntegration,
 	LiveOauthAppReplaceError,
 	type LiveConnectionGuard,
@@ -557,6 +558,49 @@ async function emitConnectOauthAuthSucceeded(input: {
 	}
 }
 
+/**
+ * Device connects persist after the poll, so refuse to start one that would
+ * swap a live connection's app before the user confirmed it.
+ */
+async function refuseUnconfirmedDeviceReplace(input: {
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	fields: Parameters<typeof startAccountDeviceConnect>[0]['fields']
+}) {
+	const { fields } = input
+	const tokenUrl = fields.tokenUrl?.trim()
+	const clientId = fields.clientId?.trim()
+	if (fields.platformAppSlug?.trim() || !tokenUrl || !clientId) return null
+	try {
+		await assertOauthAppReplaceConfirmed({
+			env: input.env,
+			userId: ownerIdFromCaller({
+				request: input.user.request,
+				user: input.user.mcpUser,
+			}),
+			guard: { confirmed: fields.replaceLiveConnection === true },
+			config: {
+				name: fields.provider,
+				tokenUrl,
+				apiBaseUrl: fields.apiBaseUrl?.trim() || null,
+				flow: 'device',
+				clientId,
+				deviceAuthorizationUrl: fields.deviceAuthorizationUrl?.trim() || null,
+				authorization: fields.authorizeUrl?.trim()
+					? { authorizeUrl: fields.authorizeUrl.trim() }
+					: null,
+			},
+		})
+		return null
+	} catch (error) {
+		if (!(error instanceof LiveOauthAppReplaceError)) return null
+		return operationResult(
+			{ ok: false, error: error.message, code: error.code },
+			400,
+		)
+	}
+}
+
 export async function startAccountDeviceConnect(input: {
 	env: Env
 	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
@@ -575,8 +619,11 @@ export async function startAccountDeviceConnect(input: {
 		extraAuthorizeParams?: Record<string, string>
 		allowedHosts?: Array<string>
 		tokenExchangeStyle?: string | null
+		replaceLiveConnection?: boolean
 	}
 }) {
+	const guardFailure = await refuseUnconfirmedDeviceReplace(input)
+	if (guardFailure) return guardFailure
 	const started = await startIntegrationDeviceConnect({
 		env: input.env,
 		request: input.user.request,

@@ -40,7 +40,10 @@
   [Amendment 2026-10-24](#amendment-2026-10-24-package-apps-run-as-their-publisher));
   2026-10-27 (Kent: saved packages declare the secret provider package they use
   with a `kind: "secret-provider"` slot; see
-  [Amendment 2026-10-27](#amendment-2026-10-27-secret-provider-slots))
+  [Amendment 2026-10-27](#amendment-2026-10-27-secret-provider-slots));
+  2026-10-29 (Kent: placeholders and `createAuthenticatedFetch` resolve the
+  actor's own granted personal credentials, the set scoped clients resolve; see
+  [Amendment 2026-10-29](#amendment-2026-10-29-placeholders-and-createauthenticatedfetch-resolve-granted-personal-credentials))
 - **Supersedes in part:** [0021](./0021-publish-gated-package-composition.md)
   (credential authority for the opt-in types used through scoped clients), and
   credentials plan v4 section 3.3 (assignments) and section 3.4 (placeholder
@@ -1128,3 +1131,23 @@ sanctioned path:
 - **Agent surface.** `credentialPlacementApprovalLink` (MCP `api`, Open API
   `POST /v1/credential-placement-approvals`, `kody api`) returns the link and
   whether anything is pending. It is read-only.
+
+## Amendment 2026-10-29: placeholders and createAuthenticatedFetch resolve granted personal credentials
+
+- **Context.** #3727 made placeholders and scoped `credential()` clients share
+  one personal-grant rule, but user docs still said `{{secret:NAME}}`
+  placeholders never resolve a personal credential, and name-based
+  `createAuthenticatedFetch(name)` pre-read its config through the org-only
+  `integrationGet`, so a granted personal OAuth connection failed with "not
+  found" even though the token gateway would have filled it.
+- **Decision.** In a run org, `{{secret:NAME}}` and `{{integration-token:NAME}}`
+  placeholders resolve the same set scoped clients do: the org credential of
+  that name first, else the actor's own personal credential of that name granted
+  to the run org (live grant, actor is the owner, live org binding,
+  `integration:use` / token scope, package allowlist on the owning org). Nobody
+  else can use it, Owners and Automation included.
+- **createAuthenticatedFetch.** Its config read follows the same rule through a
+  host-only runtime helper that shares the gateway's lookup
+  (`findIntegrationLookupByName`) and checks. It returns only `name`,
+  `apiBaseUrl`, and `requiredHosts`; tokens and refresh stay host-side. The
+  public `integrationGet` capability stays run-org-only.

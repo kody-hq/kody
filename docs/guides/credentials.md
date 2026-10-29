@@ -634,8 +634,10 @@ Treat a minted webhook URL like any other credential. Details:
 
 A Key, OAuth connection, or MCP server in your personal org is a personal
 credential. Grant it to a team org with `credentialOrgGrant`. It then works in
-that org only in your own runs, through `credential(key)`; nobody else there can
-use it, Owners included, and `{{secret:name}}` placeholders never resolve it.
+that org only in your own runs: through `credential(key)`, through
+`{{secret:name}}` and `{{integration-token:name}}` placeholders, and through
+`createAuthenticatedFetch(name)`. An org credential with the same name wins
+first. Nobody else there can use it, Owners and Automation included.
 `credentialOrgRevoke` removes the grant.
 
 ## Limits

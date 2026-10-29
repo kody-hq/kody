@@ -1379,6 +1379,24 @@ async function assertLiveConnectionReplaceConfirmed(input: {
 	)
 }
 
+/**
+ * Pre-flight for flows that persist later (device connect): refuse to start
+ * swapping a live connection's app unless the caller confirmed it.
+ */
+export async function assertOauthAppReplaceConfirmed(input: {
+	env: IntegrationWriteEnv
+	userId: string
+	config: OauthAppConfigInput
+	guard: LiveConnectionGuard
+}) {
+	await assertLiveConnectionReplaceConfirmed({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		config: normalizeOauthAppConfig(input.config),
+		guard: input.guard,
+	})
+}
+
 function buildOauthAppRow(input: {
 	userId: string
 	slug: string

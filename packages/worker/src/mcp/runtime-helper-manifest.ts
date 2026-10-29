@@ -538,7 +538,10 @@ const runtimeHelperManifest: Array<RuntimeHelperManifestEntry> = [
 				: 'integrationGet' in context.capabilityMap,
 		createPrelude: () => createExecuteHelperPrelude(),
 		createKodyTools: (context) => {
-			const integrationGet = context.capabilityMap.integrationGet as Capability
+			const integrationGet = context.capabilityMap.integrationGet as
+				| Capability
+				| undefined
+			if (!integrationGet) return {}
 			return {
 				[INTEGRATION_RUNTIME_CONFIG_TOOL_NAME]: (args) =>
 					readIntegrationRuntimeConfig({

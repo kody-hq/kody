@@ -2028,6 +2028,24 @@ export type AccountIntegrationsLoaderData = {
 export type ConnectOauthExistingConnection = {
 	lane: 'user' | 'platform'
 	appSlug: string
+	/** Display name of the app behind the connection (label, else slug). */
+	appName: string
+	/** True once the connection holds tokens (`connected_at` is set). */
+	connected: boolean
+	/**
+	 * The user-lane app's identity fields (non-secret). A save that changes
+	 * any of them rewrites the app this connection depends on. Null for
+	 * platform connections.
+	 */
+	identity: ConnectOauthAppIdentity | null
+}
+
+export type ConnectOauthAppIdentity = {
+	clientId: string
+	tokenUrl: string
+	authorizeUrl: string | null
+	deviceAuthorizationUrl: string | null
+	flow: 'pkce' | 'confidential' | 'device'
 }
 
 /**

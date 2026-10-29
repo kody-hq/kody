@@ -94,16 +94,17 @@ the credential's page. Narrowing placement and provider changes work everywhere.
 A secret, OAuth connection, or MCP server in your personal org is a personal
 credential. Grant it to a team org you belong to with **`credentialOrgGrant`**
 (`credential_id`, and `org` as a slug; `org` defaults to the org the request is
-bound to). It then works in that org only in your own runs, through scoped
-`credential(key)` clients (see [Packages](./packages.md)). Nobody else in that
-org can use it, Owners and Automation included, and `{{secret:name}}`
-placeholders never resolve it. **`credentialOrgRevoke`** removes one org's grant
-at once, and **`credentialOrgGrantList`** lists your grants, with
-`active: false` when one stops working (an expired value, a disconnected OAuth
-connection, a disabled MCP server, or you left the org). Leaving an org deletes
-your grants there. Granting and revoking need a live person (not a job, webhook,
-or package code) and Write on the credential; grants and revokes are audited in
-your personal org.
+bound to). It then works in that org only in your own runs: through scoped
+`credential(key)` clients (see [Packages](./packages.md)), through
+`{{secret:name}}` and `{{integration-token:name}}` placeholders, and through
+`createAuthenticatedFetch(name)`. An org credential with the same name wins
+first. Nobody else in that org can use it, Owners and Automation included.
+**`credentialOrgRevoke`** removes one org's grant at once, and
+**`credentialOrgGrantList`** lists your grants, with `active: false` when one
+stops working (an expired value, a disconnected OAuth connection, a disabled MCP
+server, or you left the org). Leaving an org deletes your grants there. Granting
+and revoking need a live person (not a job, webhook, or package code) and Write
+on the credential; grants and revokes are audited in your personal org.
 
 The account create/edit form has the same optional expiry field. Agents
 prefilling **`/connect/secret-set`** can set **`expiresAt`** as a query
