@@ -27,6 +27,13 @@ are checked in beside this report. The runner is
   change, not a dependency-controlled experiment. Small whole-app differences
   cannot be attributed exclusively to the Markdown migration.
 
+The recorded after lockfile fingerprint belongs to the measurement snapshot. A
+later CI fix restored Babel development peer dependencies using
+`--legacy-peer-deps=false`, matching CI. A global local npm setting had omitted
+those peers; the project `.npmrc` now keeps peer resolution consistent with CI.
+The raw measurements remain the original captured results; the final shipping
+lockfile includes that install fix.
+
 ## Production bundles
 
 Sizes are KiB, 1 KiB = 1,024 bytes. Gzip uses level 9 separately for each file.
@@ -186,7 +193,7 @@ baseline_dir=$(mktemp -d /tmp/kody-markdown-before-XXXXXX)
 git archive "$baseline_ref" | tar -x -C "$baseline_dir"
 (
   cd "$baseline_dir"
-  npm ci --include=dev --ignore-scripts
+  npm ci --include=dev --ignore-scripts --legacy-peer-deps=false
   node node_modules/patch-package/index.js
 )
 node tools/markdown-perf/run.mjs \
