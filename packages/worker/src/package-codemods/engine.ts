@@ -1622,9 +1622,12 @@ export async function runPackageCodemodStep(input: {
 					error: getErrorMessage(error),
 				})
 			}
-			await persistItem(input.env, result, run.id)
-			if (tracksAttempts) {
-				await input.env.BUNDLE_ARTIFACTS_KV.delete(attemptKey)
+			try {
+				await persistItem(input.env, result, run.id)
+			} finally {
+				if (tracksAttempts) {
+					await input.env.BUNDLE_ARTIFACTS_KV.delete(attemptKey)
+				}
 			}
 			items.push(toPublicItem(result))
 			incrementSummary(summary, result.status)
