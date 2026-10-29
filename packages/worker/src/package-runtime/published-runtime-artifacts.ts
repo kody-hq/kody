@@ -21,9 +21,10 @@ const credentialStampPrefix = 'credential-stamp'
  * Authoring publish check / stamp-scanner semantics version. Bump when a
  * same-commit republish must re-run checks (for example a stamp false-positive
  * fix). Missing or mismatched stored versions force a re-check instead of a
- * pure `already_published` short-circuit.
+ * pure `already_published` short-circuit. v2: checks and snapshots honor
+ * `.kodyignore`.
  */
-export const publishChecksVersion = 1 as const
+export const publishChecksVersion = 2 as const
 const publishChecksPrefix = 'publish-checks'
 
 /**

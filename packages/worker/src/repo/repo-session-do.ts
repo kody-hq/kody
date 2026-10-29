@@ -3865,7 +3865,13 @@ class RepoSessionBase extends DurableObject<Env> {
 		})
 		// Commit/push do not rewrite workspace file bytes, so reuse the
 		// snapshot collected once above for the published source KV write.
-		const snapshotFiles = workspaceSnapshot.files
+		// The tree hash covers the whole workspace; credential scans, the
+		// published snapshot, and finalize use the `.kodyignore`-filtered set
+		// that checks ran on.
+		const snapshotFiles = omitKodyIgnoredFiles(
+			workspaceSnapshot.files,
+			source.source_root,
+		)
 		const publishedCommit = sessionHeadCommit ?? sessionRow.base_commit
 		const patternNotice =
 			source.entity_kind === 'package'
