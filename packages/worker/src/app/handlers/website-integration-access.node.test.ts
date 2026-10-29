@@ -27,7 +27,13 @@ import {
 	rotateAccountOauthAppCredentials,
 } from './account-integrations.ts'
 import {
+	loadDevicePendingSession,
+	storeDevicePendingSession,
+} from '#worker/integrations/device-flow.ts'
+import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
+import {
 	connectAccountOAuth,
+	pollAccountDeviceConnect,
 	saveAccountOAuthApp,
 	startAccountDeviceConnect,
 } from './account-secrets.ts'
@@ -296,4 +302,55 @@ test('an OAuth app saved in one org is never prefilled or returned for another o
 		})
 		expect(found?.clientId ?? null).not.toBe(githubApp.clientId)
 	}
+})
+
+test('a device poll rechecks connect access before persisting tokens', async () => {
+	const { env: baseEnv, teamId, teamOwner, teamMember } = await setup()
+	const env = { ...baseEnv, OAUTH_KV: createMemoryKvNamespace().kv } as Env
+	await saveAccountOAuthApp({ env, user: teamOwner, fields: githubApp })
+	const sessionId = 'member-device-session'
+	// Started while allowed; the team's app or connection changed before approval.
+	await storeDevicePendingSession({
+		env,
+		sessionId,
+		session: {
+			userId: teamId,
+			deviceCode: 'device-code',
+			intervalSeconds: 5,
+			expiresAtMs: Date.now() + 600_000,
+			nextPollAtMs: 0,
+			provider: 'github',
+			platformAppSlug: null,
+			tokenUrl: githubApp.tokenUrl,
+			apiBaseUrl: githubApp.apiBaseUrl,
+			authorizeUrl: null,
+			deviceAuthorizationUrl: 'https://github.com/login/device/code',
+			flow: 'device',
+			usePkce: null,
+			clientId: 'member-device-client',
+			tokenExchangeStyle: null,
+			allowedHosts: ['api.github.com'],
+			scopes: ['repo'],
+			scopeSeparator: null,
+			extraAuthorizeParams: {},
+			clientSecret: null,
+			approvedTokenPayload: { access_token: 'member-device-token' },
+		},
+	})
+
+	await expectDenied(
+		pollAccountDeviceConnect({ env, user: teamMember, fields: { sessionId } }),
+		'integration:write',
+	)
+	expect(
+		await loadDevicePendingSession({ env, userId: teamId, sessionId }),
+	).toMatchObject({
+		approvedTokenPayload: { access_token: 'member-device-token' },
+	})
+	const connections = await env.APP_DB.prepare(
+		`SELECT COUNT(*) AS n FROM user_integrations WHERE user_id = ?`,
+	)
+		.bind(teamId)
+		.first<{ n: number }>()
+	expect(connections?.n ?? 0).toBe(0)
 })

@@ -820,6 +820,7 @@ export function ConnectOauthRoute({
 							void handleConnect()
 						},
 						onToggleScope: toggleRequestedScope,
+						orgSlug: flowOrg,
 						wouldReplace: wouldReplaceDifferentApp({
 							config: currentConfig,
 							existingConnection,

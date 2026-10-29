@@ -692,6 +692,32 @@ export async function pollAccountDeviceConnect(input: {
 		request: input.user.request,
 		mcpUser: input.user.mcpUser,
 		sessionId,
+		authorizePersist: (session) =>
+			requireWebsiteOauthAppConnectAccess({
+				env: input.env,
+				user: input.user,
+				config: {
+					name: session.provider,
+					tokenUrl: session.tokenUrl,
+					apiBaseUrl: session.apiBaseUrl,
+					flow: 'device',
+					usePkce: session.usePkce,
+					clientId: session.clientId,
+					tokenExchangeStyle: resolveTokenExchangeStyle({
+						tokenUrl: session.tokenUrl,
+						tokenExchangeStyle: session.tokenExchangeStyle,
+					}),
+					deviceAuthorizationUrl: session.deviceAuthorizationUrl,
+					authorization: session.authorizeUrl
+						? {
+								authorizeUrl: session.authorizeUrl,
+								scopes: session.scopes,
+								scopeSeparator: session.scopeSeparator,
+								extraAuthorizeParams: session.extraAuthorizeParams,
+							}
+						: null,
+				},
+			}),
 	})
 	if (!polled.ok) {
 		return operationResult(

@@ -21,6 +21,7 @@ import {
 	type ConnectOauthHostApprovalLink,
 } from '#worker/integrations/connect-oauth-persist.ts'
 import {
+	type DevicePollSuccess,
 	completeDevicePendingSession,
 	loadDevicePendingSession,
 	pollDeviceAuthorization,
@@ -62,6 +63,8 @@ export type DeviceConnectPollInput = {
 	sessionId: string
 	fetchImpl?: typeof fetch
 	nowMs?: number
+	/** Re-checks the caller may still persist this session right before tokens land. */
+	authorizePersist?: (session: DevicePollSuccess['session']) => Promise<void>
 }
 
 export type DeviceConnectPollApproved = {
@@ -295,6 +298,7 @@ export async function pollIntegrationDeviceConnect(
 		}
 	}
 
+	if (!platformApp) await input.authorizePersist?.(polled.session)
 	let persisted: Awaited<ReturnType<typeof persistConnectOauthTokens>>
 	try {
 		persisted = await persistConnectOauthTokens({
