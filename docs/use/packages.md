@@ -88,7 +88,8 @@ Important fields:
   pass the `@owner/leaf` name or the name leaf.
 - `private` — leftover npm-style field; ignored for catalog listing. Visibility
   is a repo setting (`packageUpdate` `changes.visibility`), default private.
-- `exports` — authoritative import/export map
+- `exports` — authoritative import/export map. Optional: omitting it means no
+  exports, the same as `"exports": {}` (e.g. a data-only package with an app)
 - `kody.description` — short public tagline for search, detail, community
   listings, and share cards (~80–120 characters ideal; max 200). Prefer outcome
   phrasing (“Send transactional email via Resend”) over feature lists; put API

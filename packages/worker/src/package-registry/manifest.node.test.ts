@@ -1202,3 +1202,32 @@ export default forecast
 		})?.functions,
 	).toEqual([expect.objectContaining({ name: 'forecast' })])
 })
+
+test('parseAuthoredPackageJson treats a missing exports field as no exports', () => {
+	const content = JSON.stringify({
+		name: '@acme/board',
+		kody: {
+			id: 'board',
+			description: 'Data-only package with an app',
+			app: { entry: './src/app.ts' },
+		},
+	})
+	for (const mode of ['authoring', 'published'] as const) {
+		const manifest = parseAuthoredPackageJson({
+			content,
+			manifestPath: 'package.json',
+			mode,
+		})
+		expect(manifest.exports).toEqual({})
+		expect(manifest).toEqual(
+			parseAuthoredPackageJson({
+				content: JSON.stringify({ ...JSON.parse(content), exports: {} }),
+				manifestPath: 'package.json',
+				mode,
+			}),
+		)
+	}
+	expect(() => parse('@acme/board', {}, { exports: null })).toThrow(
+		/Invalid package.json/,
+	)
+})

@@ -171,6 +171,28 @@ test('runRepoChecks leaves apps without kody.app.client on the Worker-only path'
 	expect(mockModule.buildKodyAppClientBundle).not.toHaveBeenCalled()
 })
 
+test('runRepoChecks publishes a data-only app package with no exports field', async () => {
+	const result = await runChecks({ entry: './src/app.ts' }, [
+		[
+			'package.json',
+			JSON.stringify({
+				name: '@kody/board-app',
+				kody: {
+					id: 'board-app',
+					description: 'Data-only package with an app',
+					app: { entry: './src/app.ts' },
+				},
+			}),
+		],
+	])
+	expect(result.ok).toBe(true)
+	expect(result.manifest?.exports).toEqual({})
+	expect(result.results[0]).toMatchObject({ kind: 'manifest', ok: true })
+	expect(mockModule.buildKodyAppBundle).toHaveBeenCalledTimes(1)
+	expect(mockModule.buildKodyModuleBundle).not.toHaveBeenCalled()
+	expect(mockModule.buildKodyImportableModuleBundle).not.toHaveBeenCalled()
+})
+
 test('runRepoChecks reports kody.app client, asset, and graph problems as bundle failures', async () => {
 	const importsClient = [
 		"import './client.ts'",

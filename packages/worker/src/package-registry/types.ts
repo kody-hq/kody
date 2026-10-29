@@ -877,7 +877,8 @@ export type AuthoredPackageKody = Omit<
 export const authoredPackageJsonSchema = z.object({
 	name: z.string().min(1),
 	private: z.boolean().optional(),
-	exports: z.record(z.string().min(1), packageExportTargetSchema),
+	/** Omitted means no exports, the same as `{}` (e.g. an app-only package). */
+	exports: z.record(z.string().min(1), packageExportTargetSchema).default({}),
 	kody: authoredPackageKodySchema,
 })
 
