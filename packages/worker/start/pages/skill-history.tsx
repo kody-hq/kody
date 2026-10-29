@@ -66,7 +66,7 @@ function SkillHistoryView({
 		placeholderData: keepPreviousData,
 		retry: false,
 	})
-	const loading = read.isFetching
+	const loading = read.isFetching || read.isPlaceholderData
 	const result = read.isError ? undefined : read.data
 	const error =
 		mutationError ||

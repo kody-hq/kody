@@ -308,12 +308,19 @@ export const restoreSkillVersion = createServerFn({ method: 'POST' })
 						throw new Error(
 							'This package changed. Reload history before restoring.',
 						)
-					await repoSessionRpc(env, opened.id).restorePublishedSkill({
+					const restored = await repoSessionRpc(
+						env,
+						opened.id,
+					).restorePublishedSkill({
 						sessionId: opened.id,
 						userId: current.package.ownerUserId,
 						commit: data.commit,
 						name: current.skill.name,
 					})
+					if (!restored.changed)
+						throw new Error(
+							'This version of the skill matches the current one.',
+						)
 					await repoCommitCapability.handler(
 						{
 							session_id: opened.id,

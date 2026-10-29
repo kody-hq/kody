@@ -101,8 +101,8 @@ supporting files and binary assets, as a new revision. Other skills and package
 files stay unchanged. Normal publish checks and approval rules still apply. If
 the package changes while history is open, reload before restoring. Read-only
 collaborators can browse and compare versions but cannot restore. History
-includes versions whose skill indexes and source snapshots are still available,
-it does not reconstruct versions from before skills were indexed.
+includes versions whose skill indexes and source snapshots are still available.
+It does not reconstruct versions from before skills were indexed.
 
 Browsing does not require the Skills-over-MCP feature flag or a connected agent.
 Package read permissions still apply.

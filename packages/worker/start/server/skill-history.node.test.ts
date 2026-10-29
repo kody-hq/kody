@@ -130,6 +130,7 @@ beforeEach(async () => {
 				: '2026-10-27T12:00:00Z',
 	}))
 	state.open.mockResolvedValue({ id: 'session', base_commit: 'new' })
+	state.restore.mockResolvedValue({ changed: true })
 	state.checks.mockResolvedValue({ ok: true, results: [] })
 	state.publish.mockResolvedValue({ status: 'ok', message: 'Published' })
 })
@@ -255,6 +256,18 @@ test('does not publish a restored revision when its checks fail', async () => {
 			data: { ...data, commit: 'old', expectedCommit: 'new' },
 		}),
 	).rejects.toThrow('Publish checks failed: Invalid skill frontmatter')
+	expect(state.publish).not.toHaveBeenCalled()
+	expect(state.discard).toHaveBeenCalled()
+})
+
+test('does not commit or publish when the archived skill already matches', async () => {
+	state.restore.mockResolvedValue({ changed: false })
+	await expect(
+		restoreSkillVersion({
+			data: { ...data, commit: 'old', expectedCommit: 'new' },
+		}),
+	).rejects.toThrow('matches the current one')
+	expect(state.commit).not.toHaveBeenCalled()
 	expect(state.publish).not.toHaveBeenCalled()
 	expect(state.discard).toHaveBeenCalled()
 })
