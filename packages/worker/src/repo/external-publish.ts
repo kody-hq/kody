@@ -462,12 +462,11 @@ export async function publishFromExternalRef(input: {
 			run_id: runId,
 		}
 	}
-	// input.files (clone collectFiles) is repo-rooted; checks.sourceFiles is
-	// already package-relative. Pass sourceRoot only for the repo-rooted shape.
+	// input.files (clone collectFiles) is keyed relative to the repo, while
+	// input.sourceRoot is workspace-prefixed, so scope clone maps by the stored
+	// repo-relative root. checks.sourceFiles is already package-relative.
 	const pendingFilesSourceRoot =
-		input.files != null ? (input.sourceRoot ?? source.source_root) : undefined
-	// Clone files are keyed relative to the repo, while input.sourceRoot is
-	// workspace-prefixed, so match `.kodyignore` against the stored root.
+		input.files != null ? source.source_root : undefined
 	const pendingFiles = input.files
 		? omitKodyIgnoredFiles(input.files, source.source_root)
 		: checks.sourceFiles
