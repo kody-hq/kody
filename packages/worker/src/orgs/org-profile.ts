@@ -112,6 +112,7 @@ export async function updateOrgProfile(
 			appDb: db,
 			audit: input.audit,
 			statements: [update],
+			onlyIfChanged: true,
 			event: {
 				orgId: input.orgId,
 				action: 'org.profile_visibility_changed',
