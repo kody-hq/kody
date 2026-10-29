@@ -1922,6 +1922,8 @@ export type PendingVerificationLoaderData = {
 }
 
 export type AccountIntegrationListItem = {
+	/** Org OAuth app a member connects their own account through (ADR 0068). */
+	pinnedAppSlug?: string | null
 	name: string
 	appSlug: string
 	provider: string
@@ -2056,6 +2058,18 @@ export type ConnectOauthLoaderData = {
 	ok: true
 	provider: string | null
 	integration: AccountIntegrationListItem | null
+	/**
+	 * `mode=personal`: the member connects their own account through this
+	 * org app (ADR 0068). Never carries a client secret.
+	 */
+	pinnedConnect?: {
+		orgSlug: string
+		appSlug: string
+		appLabel: string | null
+		connectionName: string
+	}
+	/** Why `mode=personal` cannot connect here (not a member, no app, ...). */
+	pinnedConnectError?: string
 	/** Built-in connections use platform discovery links instead. */
 	builtInAvailable?: boolean
 	/** See {@link ConnectOauthExistingConnection}. */

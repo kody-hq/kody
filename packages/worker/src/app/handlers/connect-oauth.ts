@@ -1,4 +1,7 @@
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
+import { toAppOnlyIntegrationRecord } from '#app/account-integrations-data.ts'
+import { oauthAppToSetupPrefill } from '#worker/integrations/service.ts'
+import { resolvePinnedConnectTarget } from '#worker/integrations/pinned-connect.ts'
 import {
 	hasStoredConnectClientSecret,
 	loadAccountIntegrationByName,
@@ -40,6 +43,7 @@ export async function loadConnectOauthLoaderData(
 		error?: string
 		appSlug?: string
 		platformSlug?: string
+		mode?: string
 	},
 	authenticatedUser?: Awaited<ReturnType<typeof readAuthenticatedAppUser>>,
 ): Promise<ConnectOauthLoaderData> {
@@ -81,6 +85,13 @@ export async function loadConnectOauthLoaderData(
 	if (!user) {
 		return { ok: true, provider: null, integration: null, redirectUri }
 	}
+	const pinnedAppSlug =
+		input.mode === 'personal' && input.appSlug?.trim()
+			? normalizeProviderKey(input.appSlug.trim())
+			: null
+	if (pinnedAppSlug) {
+		return loadPinnedConnectLoaderData(env, user, pinnedAppSlug, redirectUri)
+	}
 	// `app=<slug>` reuses a saved bring-your-own app under `provider`.
 	// Explicit platform intent uses the same visibility rules as the integration resolver.
 	const integration = await loadAccountIntegrationByName(
@@ -108,5 +119,56 @@ export async function loadConnectOauthLoaderData(
 		existingConnection,
 		hasStoredClientSecret,
 		redirectUri,
+	}
+}
+
+/**
+ * `mode=personal&app=<slug>`: a member connects their own account through
+ * the scoped org's app. The record carries the app's public client id and
+ * endpoints only; the secret stays host-side, so the setup step is skipped.
+ */
+async function loadPinnedConnectLoaderData(
+	env: Env,
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>,
+	appSlug: string,
+	redirectUri: string,
+): Promise<ConnectOauthLoaderData> {
+	const target = await resolvePinnedConnectTarget({
+		env,
+		request: user.request,
+		mcpUser: user.mcpUser,
+		appSlug,
+	})
+	if (!target.ok) {
+		return {
+			ok: true,
+			provider: null,
+			integration: null,
+			redirectUri,
+			pinnedConnectError: target.error,
+		}
+	}
+	const record = toAppOnlyIntegrationRecord(
+		oauthAppToSetupPrefill(target.app),
+		target.connectionName,
+	)
+	return {
+		ok: true,
+		provider: record.name,
+		integration: {
+			...record,
+			hasClientSecret: true,
+			pinnedAppSlug: target.app.slug,
+		},
+		builtInAvailable: false,
+		existingConnection: null,
+		hasStoredClientSecret: true,
+		redirectUri,
+		pinnedConnect: {
+			orgSlug: target.orgSlug,
+			appSlug: target.app.slug,
+			appLabel: target.app.label,
+			connectionName: target.connectionName,
+		},
 	}
 }

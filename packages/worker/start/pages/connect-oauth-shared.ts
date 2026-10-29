@@ -236,6 +236,9 @@ async function saveConnectOauthConnection(input: {
 				clientId: config.clientId,
 				allowedHosts: config.allowedHosts,
 				tokenPayload: input.tokenPayload,
+				...(config.pinnedAppSlug
+					? { pinnedAppSlug: config.pinnedAppSlug }
+					: {}),
 			},
 		},
 	})) as Record<string, unknown>
@@ -518,6 +521,9 @@ async function exchangeConnectOauthCode(
 				allowedHosts: nextConfig.allowedHosts,
 				...(nextConfig.platformAppSlug
 					? { platformAppSlug: nextConfig.platformAppSlug }
+					: {}),
+				...(nextConfig.pinnedAppSlug
+					? { pinnedAppSlug: nextConfig.pinnedAppSlug }
 					: {}),
 			},
 		},

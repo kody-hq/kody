@@ -38,6 +38,8 @@ export const connectOauthSchema = z.object({
 	error: z.string().optional(),
 	appSlug: z.string().optional(),
 	platformSlug: z.string().optional(),
+	/** `personal`: connect your own account through the org's `app`. */
+	mode: z.string().optional(),
 })
 export const connectWebhookSchema = z.object({
 	...locationFields,
@@ -85,6 +87,7 @@ export function connectOauthInput(
 		error: params.get('error') ?? undefined,
 		appSlug: params.get('app') ?? undefined,
 		platformSlug: params.get('platform') ?? undefined,
+		mode: params.get('mode') ?? undefined,
 	}
 }
 export function connectWebhookInput(
