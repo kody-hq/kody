@@ -363,7 +363,7 @@ test('the link capability refuses an unknown Key', async () => {
 })
 
 const websiteUser = (as: {
-	callerContext: { request: unknown; user: unknown }
+	callerContext: { request: unknown; user?: unknown }
 }) =>
 	({
 		request: as.callerContext.request,
