@@ -189,6 +189,7 @@ async function sha256Hex(text: string) {
 }
 
 const maxErrorSummaryChars = 500
+const maxFailureReasonChars = 100
 
 function boundedSummary(text: string) {
 	const trimmed = text.trim()
@@ -222,7 +223,9 @@ export function summarizeRunFailure(result: ExecutionContextRunResult): {
 	const code = structured.errorCode
 	return {
 		failureReason:
-			typeof code === 'string' && code.trim() ? code.trim() : 'run_error',
+			typeof code === 'string' && code.trim()
+				? code.trim().slice(0, maxFailureReasonChars)
+				: 'run_error',
 		errorSummary: boundedSummary(errorText || firstText || 'Run failed.'),
 	}
 }
