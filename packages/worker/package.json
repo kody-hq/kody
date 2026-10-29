@@ -39,6 +39,7 @@
     "aws4fetch": "^1.0.20",
     "d3-shape": "^3.2.0",
     "diff": "^9.0.0",
+    "ignore": "^7.0.5",
     "isomorphic-git": ">=1.40.0 <1.40.8",
     "postal-mime": "^4.0.8",
     "qrcode": "^1.5.4",

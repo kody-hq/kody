@@ -65,6 +65,7 @@ import {
 	buildRepoLargeFileMessage,
 	maxRepoSourceFileBytes,
 } from './large-file-policy.ts'
+import { createKodyIgnoreMatcher, kodyIgnoreFileName } from './kodyignore.ts'
 import { normalizeRepoWorkspacePath } from './manifest.ts'
 import {
 	timePublishExternalPushPhase,
@@ -327,17 +328,27 @@ async function* workspaceFilesForSnapshot(input: {
 		'',
 	)
 	const pattern = normalizedRoot === '' ? '**/*' : `${normalizedRoot}/**/*`
+	const isKodyIgnored = createKodyIgnoreMatcher(
+		await input.workspace.readFile(
+			normalizedRoot === ''
+				? kodyIgnoreFileName
+				: `${normalizedRoot}/${kodyIgnoreFileName}`,
+		),
+	)
 	const files = await input.workspace.glob(pattern)
 	for (const file of files) {
 		if (file.type !== 'file') continue
 		const normalizedPath = normalizeRepoWorkspacePath(file.path)
 		if (normalizedPath.split('/').includes('.git')) continue
-		const content = await input.workspace.readFile(file.path)
-		if (content == null) continue
 		const relativePath =
 			normalizedRoot && normalizedPath.startsWith(`${normalizedRoot}/`)
 				? normalizedPath.slice(normalizedRoot.length + 1)
 				: normalizedPath
+		// Skipped before reading or counting, so ignored files never reach a
+		// check and never count toward the publish check caps.
+		if (isKodyIgnored?.(relativePath)) continue
+		const content = await input.workspace.readFile(file.path)
+		if (content == null) continue
 		// Prefer the filesystem's byte size: readFile UTF-8-decodes binary
 		// blobs lossily, so re-encoding the string can overstate a binary
 		// file's size by up to 3x.

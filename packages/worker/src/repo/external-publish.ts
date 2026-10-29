@@ -1,6 +1,7 @@
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import * as Sentry from '@sentry/cloudflare'
+import { omitKodyIgnoredFiles } from './kodyignore.ts'
 import { refreshCommunityIconForPackagePublish } from '#worker/community/community-icon.ts'
 import { syncActiveCommunityListingToPublishedCommit } from '#worker/community/sync-active-community-listing.ts'
 import { notifyFollowsOfPublishedPackage } from '#worker/follow/notify.ts'
@@ -456,11 +457,13 @@ export async function publishFromExternalRef(input: {
 			run_id: runId,
 		}
 	}
-	const pendingFiles = input.files ?? checks.sourceFiles
 	// input.files (clone collectFiles) is repo-rooted; checks.sourceFiles is
 	// already package-relative. Pass sourceRoot only for the repo-rooted shape.
 	const pendingFilesSourceRoot =
 		input.files != null ? (input.sourceRoot ?? source.source_root) : undefined
+	const pendingFiles = input.files
+		? omitKodyIgnoredFiles(input.files, pendingFilesSourceRoot)
+		: checks.sourceFiles
 	const secretMountCompat =
 		source.entity_kind === 'package'
 			? await loadSecretMountCompatNotice({

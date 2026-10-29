@@ -1189,6 +1189,43 @@ roughly 32 MiB of pack content with a raw HTTP 413 before Kody is involved, so
 oversized files can fail at `git push` with an unhelpful error even before
 publish checks run.
 
+### Package size limits and `.kodyignore`
+
+Publish and `kody dev check` run the same checks under the same limits, so a dev
+check pass predicts the publish checks:
+
+| Limit                                     | Value                       |
+| ----------------------------------------- | --------------------------- |
+| Files under the source root               | 2,000                       |
+| Total bytes under the source root         | 15 MiB                      |
+| Any single file                           | 10 MiB                      |
+| Checked-out tree for `git push` publishes | 32 MiB                      |
+| JS/TS source scanned in the main isolate  | 256 KiB (more gets its own) |
+
+Each check isolate also has a fixed memory and CPU budget. When a step runs out,
+the error names the step (cloning, reading the source tree, the credential stamp
+scan, package checks, lint, bundle validation, typecheck, finalizing, or the
+artifact rebuild) and what to shrink.
+
+To keep fixtures, generated data, notes, or other non-runtime files in the repo
+without paying for them at publish, list them in a `.kodyignore` file at the
+package source root (next to `package.json`). It uses `.gitignore` syntax:
+
+```gitignore
+fixtures/
+docs/drafts/
+*.generated.ts
+!src/schema.generated.ts
+```
+
+Matching files are never read by the publish checks (credential scan, lint,
+typecheck, bundle validation), do not count toward the limits above, and are
+left out of the published snapshot. `package.json` and `.kodyignore` itself are
+always kept. Ignoring a file that runtime code imports fails bundle validation,
+so `.kodyignore` cannot hide code that runs. Kody does not read `package.json`
+`files`, because that field usually describes an npm build output that Kody does
+not publish.
+
 1. Mint a short-lived remote credential:
 
    ```json

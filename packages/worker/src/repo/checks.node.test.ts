@@ -246,6 +246,32 @@ test('runRepoChecks keeps non-code source files for publish snapshots while excl
 	expect(snapshotFiles.has('.git/config')).toBe(false)
 })
 
+test('runRepoChecks skips .kodyignore matches before checks and publish caps', async () => {
+	const files = packageFiles(manifest('ignored-fixtures'), {
+		'.kodyignore': 'fixtures/\n',
+		...Object.fromEntries(
+			Array.from({ length: repoChecksSourceMaxFiles + 1 }, (_, index) => [
+				`fixtures/case-${index}.ts`,
+				`export const value = ${index}\n`,
+			]),
+		),
+	})
+	const { result } = await runChecks(files)
+
+	expect(Object.keys(result.sourceFiles).sort()).toEqual([
+		'.kodyignore',
+		'AGENTS.md',
+		'README.md',
+		'package.json',
+		'src/index.ts',
+	])
+	expect(
+		result.results.some((check) =>
+			check.message.includes('file publish check limit'),
+		),
+	).toBe(false)
+})
+
 test('runRepoChecks strips repo-session workspace prefixes from package snapshot paths', async () => {
 	const { result, snapshot, snapshotFiles, getSemanticDiagnostics } =
 		await runChecks(
