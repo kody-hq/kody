@@ -190,6 +190,7 @@ import {
 	measureRepoSourceFileBytes,
 	measureRepoSourceFileLines,
 } from './large-file-policy.ts'
+import { omitKodyIgnoredFiles } from './kodyignore.ts'
 import {
 	deleteStorageBucketInventory,
 	maybeRefreshStorageBucketEstimate,
@@ -4284,7 +4285,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					publishResult.published_commit &&
 					hasPublishedRuntimeArtifacts(this.env)
 				) {
-					const files = snapshotFiles
+					const files = omitKodyIgnoredFiles(snapshotFiles, source.source_root)
 					if (typeof files[source.manifest_path] === 'string') {
 						const existingSnapshot = await loadPublishedSourceSnapshot({
 							env: this.env,
