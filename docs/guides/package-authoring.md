@@ -272,9 +272,8 @@ The rest of hosted apps is the [Package apps](./package-apps.md) playbook
 (`guide:package_apps`); this is the mount-prefix recipe they share.
 
 Production-hosted package apps live at
-`https://{username}.kody.run/<package-name>/<path>` (the username is in the
-hostname; the path mount is `/<package-name>`). Confirmed non-production
-runtimes may serve inline on the app origin at
+`https://{username}.kody.run/<package-name>/<path>` (mount `/<package-name>`).
+Confirmed non-production runtimes may serve inline on the app origin at
 `/@username/packages/<package-name>/<path>` instead.
 
 Every package app receives only `/<path>` after the host strips the mount.
@@ -445,10 +444,11 @@ then call it.
 - **Exactly-once** → [workflows](../use/workflows.md), not a keyed invoke.
 - **External HTTP clients** → [inbound webhooks](../use/webhooks.md).
 
-**Apps declare what their imports call.** `kody.app.capabilities` caps every
-Kody call while the app runs, imports included: if `@example/app` imports
-`@example/helper`, which calls `kody.secretList` and `kody.secretSet`,
-`@example/app` lists both ([details](./package-apps.md#who-the-app-runs-as)).
+**App capabilities cover imports.** `kody.app.capabilities` caps every Kody call
+while the app runs, imports included. Until publish derives this from the import
+closure, list them: if `@example/app` imports `@example/helper`, which calls
+`kody.secretList` and `kody.secretSet`, `@example/app` lists both
+([details](./package-apps.md#who-the-app-runs-as)).
 
 README, `AGENTS.md`, and export `@example` blocks follow the same rules: import
 and call. Do not demo a `packages` helper. Package codemod

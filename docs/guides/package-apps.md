@@ -277,8 +277,11 @@ run as anyone.
   `kody.app.capabilities` run as that person, and only within what that person
   may do in the org right now.
 - The cap covers every Kody capability call made while the app runs, including
-  calls made by packages the app imports. The importing app's manifest is the
-  one checked, so the app must declare the capabilities its dependencies use.
+  calls made by packages the app imports. Publish is moving to compute an app's
+  effective requirement from its own declarations plus its whole import closure,
+  and to enforce it. Until then the running app's manifest is the one checked,
+  so today the fix is to list the capabilities its dependencies call in the
+  app's own `kody.app.capabilities`.
 
 ```json
 {
@@ -299,8 +302,8 @@ run as anyone.
 
 For example, `@example/app` imports `kody:@example/helper/save-token`, and that
 helper export calls `kody.secretList(...)` and `kody.secretSet(...)`. Those
-calls run while `@example/app` runs, so `@example/app` lists both, even though
-its own code never calls them:
+calls run while `@example/app` runs, so today `@example/app` lists both, even
+though its own code never calls them:
 
 ```json
 {
@@ -381,10 +384,12 @@ reported as `credential_unbound`. Keep publisher-supplied needs on
 `credential(key)`.
 
 If a bridge call cannot run as the runs-as person (a capability missing from
-`kody.app.capabilities`, for example), the platform may still execute it as the
-visitor and log a `package_app_authority_fallback` event with the app, the call
-name, and the kind of difference. Add what the logs name to the manifest. Admins
-count these per app with `adminPackageAppAuthorityFallbackReport`, and the
+`kody.app.capabilities`, for example), the platform may for now still execute it
+as the visitor and log a `package_app_authority_fallback` event with the app,
+the call name, and the kind of difference. This fallback is temporary and will
+be removed, so add what the logs name to the manifest rather than relying on it.
+Admins count these per app with `adminPackageAppAuthorityFallbackReport`, and
+the
 [0017 scan](../contributing/package-codemods.md#0017-detect-package-app-visitor-authority)
 lists published apps that will hit them.
 
