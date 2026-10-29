@@ -55,9 +55,10 @@ limitations.
 
 ## Skill history
 
-- Open a skill, then **History**. Choose a published version and supporting file.
-- Turn on **Show changes** and compare two versions. Added and removed lines
-  and files must be distinguishable without relying on color alone.
+- Open a skill, then **History**. Choose a published version and supporting
+  file.
+- Turn on **Show changes** and compare two versions. Added and removed lines and
+  files must be distinguishable without relying on color alone.
 - A reader can compare history but cannot restore. With package write access,
   **Restore this version**, then **Restore and publish**, creates a new checked
   revision of only that skill directory. Verify binary assets, deleted later
