@@ -396,6 +396,16 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		setColumn: 'connected_by_user_id',
 		value: 'deleted-user',
 	},
+	// Members' personal connections pinned to this org's apps (ADR 0068)
+	// live in their personal orgs and end with the app.
+	{
+		kind: 'user_columns',
+		table: 'user_integrations',
+		columns: ['app_owner_id'],
+		includeInExport: false,
+		surface: 'user_integrations_pinned_to_org_apps',
+		reason: "members' personal connections pinned to the org's OAuth apps",
+	},
 	{ kind: 'user_id', table: 'user_oauth_apps' },
 	{ kind: 'user_id', table: 'mcp_server_settings' },
 	{

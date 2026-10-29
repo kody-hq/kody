@@ -47,7 +47,12 @@ import {
 	upsertIntegrationConnection,
 	upsertOauthApp,
 } from './repo.ts'
+import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { providerFromSlug } from './provider-from-slug.ts'
+import {
+	listPinnedConnectionsForOrg,
+	wipePinnedConnections,
+} from './pinned-connections.ts'
 import {
 	normalizeIntegrationUsageMode,
 	type IntegrationUsageMode,
@@ -1015,7 +1020,13 @@ export async function deleteOauthAppWithConnections(input: {
 	})
 	const connectionNames: Array<string> = []
 	for (const entry of joined) {
-		if (entry.lane !== 'user' || entry.app.slug !== existing.slug) continue
+		if (
+			entry.lane !== 'user' ||
+			entry.app.slug !== existing.slug ||
+			entry.app.userId !== input.userId
+		) {
+			continue
+		}
 		const deleted = await deleteIntegrationConnection({
 			db: input.env.APP_DB,
 			userId: input.userId,
@@ -1035,6 +1046,23 @@ export async function deleteOauthAppWithConnections(input: {
 		})
 	}
 
+	// Members' personal connections pinned to this app stop with it.
+	const pinnedConnections = await listPinnedConnectionsForOrg({
+		db: input.env.APP_DB,
+		pinnedOrgId: ownerIdFromStored(input.userId),
+		appSlug: existing.slug,
+	})
+	if (pinnedConnections.length > 0) {
+		await wipePinnedConnections({
+			env: {
+				APP_DB: input.env.APP_DB,
+				SECRET_STORE_KEY: input.env.SECRET_STORE_KEY,
+			},
+			connections: pinnedConnections,
+			reason: 'app_deleted',
+			audit: input.audit,
+		})
+	}
 	const deleted = await deleteOauthApp({
 		db: input.env.APP_DB,
 		userId: input.userId,

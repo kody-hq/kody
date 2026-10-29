@@ -223,6 +223,7 @@ async function findOauthConnection(
 		ownerId: owner,
 		id: credentialId,
 		scope: 'personal',
+		runOrgId: input.orgId,
 	})
 	return personal ? { owner, connection: personal } : null
 }

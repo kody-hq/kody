@@ -169,7 +169,7 @@ function toBringYourOwnSetupFromPlatformConnection(
  * across accounts. Disagreed family fields are omitted / left empty so the UI
  * does not invent a secret name or endpoint.
  */
-function toAppOnlyIntegrationRecord(
+export function toAppOnlyIntegrationRecord(
 	prefill: OauthAppSetupPrefill,
 	requestedName: string,
 ): AccountIntegrationRecord {

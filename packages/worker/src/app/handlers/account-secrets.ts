@@ -1,4 +1,9 @@
 import {
+	resolvePinnedConnectClientSecret,
+	resolvePinnedConnectTarget,
+	savePinnedConnection,
+} from '#worker/integrations/pinned-connect.ts'
+import {
 	type SaveSecretInput,
 	type SaveOAuthAppInput,
 	type ConnectOAuthInput,
@@ -306,6 +311,44 @@ export async function connectAccountOAuth(input: {
 	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 	fields: ConnectOAuthInput
 }) {
+	const pinnedAppSlug = input.fields.pinnedAppSlug?.trim() ?? null
+	if (pinnedAppSlug) {
+		const target = await resolvePinnedConnectTarget({
+			env: input.env,
+			request: input.user.request,
+			mcpUser: input.user.mcpUser,
+			appSlug: pinnedAppSlug,
+		})
+		if (!target.ok) {
+			return operationResult({ ok: false, error: target.error }, target.status)
+		}
+		const tokenPayload = input.fields.tokenPayload
+		if (!tokenPayload || typeof tokenPayload !== 'object') {
+			return operationResult(
+				{ ok: false, error: 'Token payload is required.' },
+				400,
+			)
+		}
+		const saved = await savePinnedConnection({
+			env: input.env,
+			request: input.user.request,
+			target,
+			scopes: input.fields.scopes ?? [],
+			allowedHosts: input.fields.allowedHosts ?? [],
+			tokenRecord: tokenPayload as Record<string, unknown>,
+		})
+		if (!saved.ok) {
+			return operationResult({ ok: false, error: saved.error }, saved.status)
+		}
+		return operationResult({
+			ok: true,
+			accessTokenSaved: true,
+			refreshTokenSaved: saved.refreshTokenSaved,
+			allowedHosts: saved.allowedHosts,
+			integrationName: saved.integrationName,
+			nextSteps: null,
+		})
+	}
 	const provider = input.fields.provider?.trim() || null
 	const platformAppSlug = input.fields.platformAppSlug?.trim() ?? null
 	const platformApp = platformAppSlug
@@ -823,6 +866,15 @@ export async function exchangeAccountOAuthToken(input: {
 			400,
 		)
 	}
+	const pinnedAppSlug = input.fields.pinnedAppSlug?.trim() ?? null
+	if (pinnedAppSlug) {
+		return handlePinnedOAuthExchange({
+			env: input.env,
+			user: input.user,
+			paramsRaw,
+			appSlug: pinnedAppSlug,
+		})
+	}
 	const platformAppSlug = input.fields.platformAppSlug?.trim() ?? null
 	if (platformAppSlug) {
 		return handlePlatformOAuthExchange({
@@ -887,6 +939,58 @@ export async function exchangeAccountOAuthToken(input: {
 }
 
 /**
+ * A member connecting their own account through the scoped org's app: the
+ * token URL, client id, and client secret come from the org's app row, never
+ * from the request body (ADR 0068 amendment 2026-10-29).
+ */
+async function handlePinnedOAuthExchange(input: {
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	paramsRaw: string
+	appSlug: string
+}) {
+	const target = await resolvePinnedConnectTarget({
+		env: input.env,
+		request: input.user.request,
+		mcpUser: input.user.mcpUser,
+		appSlug: input.appSlug,
+	})
+	if (!target.ok) {
+		return operationResult({ ok: false, error: target.error }, target.status)
+	}
+	const clientSecret = await resolvePinnedConnectClientSecret({
+		env: input.env,
+		target,
+	})
+	if (target.app.flow === 'confidential' && !clientSecret) {
+		return operationResult(
+			{ ok: false, error: "The org's OAuth app has no client secret saved." },
+			400,
+		)
+	}
+	const params = new URLSearchParams(input.paramsRaw)
+	// Host-side client credentials only ever back the browser code exchange.
+	if (params.get('grant_type') !== 'authorization_code') {
+		return operationResult(
+			{ ok: false, error: 'Only the authorization_code grant is allowed.' },
+			400,
+		)
+	}
+	params.set('client_id', target.app.clientId)
+	params.delete('client_secret')
+	return exchangeOAuthToken({
+		tokenUrl: target.app.tokenUrl,
+		params,
+		flow: target.app.flow === 'confidential' ? 'confidential' : 'pkce',
+		clientSecret,
+		style: resolveTokenExchangeStyle({
+			tokenUrl: target.app.tokenUrl,
+			tokenExchangeStyle: target.app.tokenExchangeStyle,
+		}),
+	})
+}
+
+/**
  * Every exchange input comes from the operator-provisioned app row, never
  * from the request body, so a caller cannot point the decrypted shared client
  * secret at an arbitrary token URL. Only discoverable (enabled + published)
@@ -931,6 +1035,13 @@ async function handlePlatformOAuthExchange(input: {
 		)
 	}
 	const params = new URLSearchParams(input.paramsRaw)
+	// Host-side client credentials only ever back the browser code exchange.
+	if (params.get('grant_type') !== 'authorization_code') {
+		return operationResult(
+			{ ok: false, error: 'Only the authorization_code grant is allowed.' },
+			400,
+		)
+	}
 	params.set('client_id', platformApp.clientId)
 	params.delete('client_secret')
 	return exchangeOAuthToken({

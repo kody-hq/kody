@@ -43,6 +43,8 @@ export const saveOAuthAppSchema = z.object(oauthFields)
 export const connectOAuthSchema = z.object({
 	...oauthFields,
 	platformAppSlug: text,
+	/** Personal connection through the scoped org's OAuth app (ADR 0068). */
+	pinnedAppSlug: text,
 	allowedHosts: z.array(z.string()).default([]),
 	scopes: z.array(z.string()).default([]),
 	tokenPayload: z.record(z.string(), z.unknown()),
@@ -50,6 +52,8 @@ export const connectOAuthSchema = z.object({
 export const exchangeOAuthTokenSchema = z.object({
 	params: z.string(),
 	platformAppSlug: text,
+	/** Personal connection through the scoped org's OAuth app (ADR 0068). */
+	pinnedAppSlug: text,
 	tokenUrl: text,
 	flow: text,
 	allowedHosts: z.array(z.string()).default([]),

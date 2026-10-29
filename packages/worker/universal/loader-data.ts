@@ -1928,6 +1928,8 @@ export type PendingVerificationLoaderData = {
 }
 
 export type AccountIntegrationListItem = {
+	/** Org OAuth app a member connects their own account through (ADR 0068). */
+	pinnedAppSlug?: string | null
 	name: string
 	appSlug: string
 	provider: string
@@ -2080,6 +2082,20 @@ export type ConnectOauthLoaderData = {
 	ok: true
 	provider: string | null
 	integration: AccountIntegrationListItem | null
+	/**
+	 * `mode=personal`: the member connects their own account through this
+	 * org app (ADR 0068). Never carries a client secret.
+	 */
+	pinnedConnect?: {
+		orgSlug: string
+		appSlug: string
+		appLabel: string | null
+		connectionName: string
+	}
+	/** Why `mode=personal` cannot connect here (not a member, no app, ...). */
+	pinnedConnectError?: string
+	/** The connection is pinned to an org app: reconnect through it here. */
+	pinnedReconnectHref?: string
 	/** Built-in connections use platform discovery links instead. */
 	builtInAvailable?: boolean
 	/** See {@link ConnectOauthExistingConnection}. */
@@ -3490,4 +3506,23 @@ export type AccountConnectedAppsLoaderData = {
 	agents: Array<ConnectedMcpAgent>
 	/** True when the agent list could not load; apps still show. */
 	agentsUnavailable: boolean
+}
+
+/** A member's own connection through an org OAuth app (ADR 0068). */
+export type OrgAppMemberConnection = {
+	credentialId: string
+	memberUsername: string | null
+	memberDisplayName: string | null
+	accountLabel: string | null
+	connectedAt: string
+	yours: boolean
+}
+
+export type OrgAppMemberConnectionsData = {
+	teamOrg: boolean
+	canConnectOwn: boolean
+	canManage: boolean
+	own: OrgAppMemberConnection | null
+	/** Every member's connection; empty unless `canManage`. */
+	connections: Array<OrgAppMemberConnection>
 }

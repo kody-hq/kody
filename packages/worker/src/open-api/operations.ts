@@ -478,6 +478,16 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		],
 		['POST', '/v1/integrations/{name}/refresh', 'integrationTokenRefresh'],
 		['GET', '/v1/oauth-apps', 'integrationOauthAppList'],
+		[
+			'GET',
+			'/v1/oauth-apps/member-connections',
+			'integrationMemberConnectionList',
+		],
+		[
+			'DELETE',
+			'/v1/oauth-apps/member-connections/{credential_id}',
+			'integrationMemberConnectionRevoke',
+		],
 		['DELETE', '/v1/oauth-apps/{slug}', 'integrationOauthAppDelete'],
 		[
 			'POST',

@@ -51,6 +51,13 @@ vi.mock('#app/connect-oauth-chooser.ts', () => ({
 	) => mockModule.loadConnectOauthChooser(...args),
 }))
 
+vi.mock('#worker/integrations/pinned-connect.ts', async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import('#worker/integrations/pinned-connect.ts')
+	>()),
+	pinnedReconnectHref: async () => null,
+}))
+
 vi.mock('#app/account-integrations-data.ts', () => ({
 	loadAccountIntegrationByName: (
 		...args: Parameters<

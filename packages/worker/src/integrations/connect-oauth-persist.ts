@@ -334,7 +334,7 @@ async function listConnectClientSecretSlugs(input: {
 	return slugs
 }
 
-async function emitConnectOauthAuthSucceeded(input: {
+export async function emitConnectOauthAuthSucceeded(input: {
 	env: Env
 	userId: OwnerId
 	integration: {

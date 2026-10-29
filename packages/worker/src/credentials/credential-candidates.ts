@@ -36,7 +36,10 @@ import {
 	loadResourceListScope,
 } from '#worker/authorization/authorize.ts'
 import { getIntegrationAllowedHosts } from '#mcp/execute-modules/integration-host-allowlist.ts'
-import { integrationConnectedSql } from '#worker/integrations/connected.ts'
+import {
+	integrationConnectedSql,
+	integrationUsableInOrgSql,
+} from '#worker/integrations/connected.ts'
 import {
 	isFetchCapableCredentialKind,
 	type PackageCredentialKind,
@@ -137,11 +140,14 @@ const usableRowQueries = [
 				NULL AS expires_at, NULL AS bucket_expires_at
 			FROM user_integrations i
 			LEFT JOIN user_oauth_apps a
-				ON a.user_id = i.user_id AND a.slug = i.app_slug AND a.deleted_at IS NULL
+				ON a.user_id = COALESCE(i.app_owner_id, i.user_id) AND a.slug = i.app_slug AND a.deleted_at IS NULL
 			LEFT JOIN platform_oauth_apps p ON p.slug = i.platform_app_slug
-			WHERE i.user_id = ? AND i.deleted_at IS NULL
+			WHERE i.user_id = ? AND ${integrationUsableInOrgSql('?', 'i')}
+				AND i.deleted_at IS NULL
 				AND ${integrationConnectedSql('i.connected_at')}${filter('i.id')}`,
-		binds: (_now: string, _scope: SecretScopeFilter) => [],
+		binds: (_now: string, _scope: SecretScopeFilter, runOrgId: string) => [
+			runOrgId,
+		],
 	},
 	{
 		family: 'integration' as const,
@@ -212,6 +218,11 @@ async function loadRows(input: {
 	 * `['secret']` so org OAuth/MCP lists are not repeated per batch.
 	 */
 	families?: ReadonlyArray<'secret' | 'integration'>
+	/**
+	 * Org whose run resolves these rows (defaults to `ownerId`). A personal
+	 * connection pinned to an org app loads only in runs of that org.
+	 */
+	runOrgId?: string
 }) {
 	const secretScope: SecretScopeFilter = input.secretScope ?? {
 		includeUserScope: true,
@@ -231,7 +242,11 @@ async function loadRows(input: {
 			idChunk ? ` AND ${column} IN (${idChunk.map(() => '?').join(', ')})` : ''
 		const result = await input.db
 			.prepare(query.sql(filter, scope))
-			.bind(input.ownerId, ...query.binds(input.now, scope), ...(idChunk ?? []))
+			.bind(
+				input.ownerId,
+				...query.binds(input.now, scope, input.runOrgId ?? input.ownerId),
+				...(idChunk ?? []),
+			)
 			.all<Row>()
 		for (const row of result.results ?? []) {
 			if (!needKinds.has(row.kind)) continue
@@ -240,12 +255,12 @@ async function loadRows(input: {
 	}
 
 	// Integrations never bind package ids — keep their id-chunk budget at
-	// ownerId + ids only.
+	// ownerId + runOrgId + ids only.
 	if (families.has('integration')) {
 		const idChunks =
 			uniqueIds === null
 				? [null]
-				: chunkArray(uniqueIds, maxD1BoundParameters - 1)
+				: chunkArray(uniqueIds, maxD1BoundParameters - 2)
 		for (const idChunk of idChunks) {
 			for (const query of usableRowQueries) {
 				if (query.family !== 'integration') continue
@@ -362,10 +377,13 @@ export async function findCredentialById(input: {
 	now?: Date
 	/** When set, also look in that package's bound Key bucket. */
 	packageId?: string | null
+	/** Org of the run, when it is not `ownerId` (a personal credential). */
+	runOrgId?: string
 }): Promise<UsableCredential | null> {
 	const now = (input.now ?? new Date()).toISOString()
 	const [row] = await loadRows({
 		db: input.db,
+		runOrgId: input.runOrgId,
 		ownerId: input.ownerId,
 		ids: [input.id],
 		now,
@@ -424,6 +442,7 @@ export async function listOrgReachableCredentials(input: {
 			ownerId: await loadPersonalOrgIdForPerson(input.db, person),
 			ids: personal.map((credential) => credential.id),
 			now,
+			runOrgId: input.orgId,
 		})
 		credentials.push(
 			...personalRows.map((row) => toUsable(row, 'personal', now)),
@@ -575,6 +594,7 @@ async function loadUsableCredentials(input: {
 			ownerId: personalOwnerId,
 			ids: personal.map((credential) => credential.id),
 			now,
+			runOrgId: orgId,
 		})
 		usable.push(
 			...personalRows

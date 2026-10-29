@@ -57,6 +57,8 @@ import {
 	renderChooser,
 	renderIncompleteConfig,
 	renderStatusCallout,
+	renderPinnedConnectNotice,
+	renderPinnedConnectError,
 	renderLiveAppReplaceWarning,
 	type LiveReplaceState,
 	newConnectionNameError,
@@ -205,6 +207,14 @@ function initialOauthState(
 		if (url.searchParams.get('code') || url.searchParams.get('error')) {
 			return
 		}
+		// `?org=&app=&mode=personal` may omit `provider`; the loader names it.
+		if (
+			!url.searchParams.get('provider')?.trim() &&
+			routeData.pinnedConnect &&
+			routeData.provider
+		) {
+			url.searchParams.set('provider', routeData.provider)
+		}
 		requestedProvider =
 			url.searchParams.get('provider')?.trim() || routeData.provider
 		if (!requestedProvider) {
@@ -304,7 +314,10 @@ export function ConnectOauthRoute({
 		organizations.find((org) => org.personal)?.slug ??
 		organizations[0]?.slug
 	const hydrated = useHydrated()
-	const targetOrg = connectOauthTargetOrg({ organizations, flowOrg })
+	// `mode=personal` saves to the member's personal org, pinned to `?org=`.
+	const targetOrg = initialData.pinnedConnect
+		? (organizations.find((org) => org.personal) ?? null)
+		: connectOauthTargetOrg({ organizations, flowOrg })
 	const pickOrg = shouldPickConnectOauthOrg({
 		organizations,
 		flowOrg,
@@ -781,6 +794,9 @@ export function ConnectOauthRoute({
 					{description ? <p css={pageDescriptionCss}>{description}</p> : null}
 				</header>
 				{orgTarget}
+				{initialData.pinnedConnectError
+					? renderPinnedConnectError(initialData.pinnedConnectError)
+					: null}
 				{renderStatusCallout({
 					statusTone,
 					statusMessage,
@@ -821,6 +837,11 @@ export function ConnectOauthRoute({
 				{description ? <p css={pageDescriptionCss}>{description}</p> : null}
 			</header>
 			{orgTarget}
+			{initialData.pinnedConnect && currentConfig.pinnedAppSlug
+				? renderPinnedConnectNotice({
+						pinnedConnect: initialData.pinnedConnect,
+					})
+				: null}
 			{renderStatusCallout({
 				statusTone,
 				statusMessage,

@@ -541,7 +541,15 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   `CHECK` constraint; both FKs use `ON DELETE RESTRICT`. Holds `scopes_json`,
   `required_hosts_json`, `usage_mode` / `allowed_packages_json`, and access /
   refresh token ciphertext. The non-secret `client_id` is stored inline on the
-  owning app row.
+  owning app row. `0202-integration-app-owner.sql` rebuilds the table to add
+  nullable `app_owner_id`, the org whose app the connection uses; the app FK is
+  now `(app_owner_id, app_slug) → user_oauth_apps(user_id, slug)`, and user-lane
+  rows were backfilled with `app_owner_id = user_id`. A row whose `app_owner_id`
+  differs from `user_id` is a member's personal connection pinned to that org
+  (ADR 0068 amendment 2026-10-29): tokens live with the member's personal org,
+  the client secret with the org's app. Deleting the org's app, the member
+  leaving, or org purge (`account/data-targets.ts`) wipes those rows; org
+  transfer rewrites `app_owner_id` with the apps.
 
 App access pattern:
 

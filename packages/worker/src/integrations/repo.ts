@@ -1,3 +1,4 @@
+import { integrationAppOwnerSql } from './connected.ts'
 import {
 	chunkArray,
 	maxD1BoundParameters,
@@ -51,6 +52,7 @@ type JoinedIntegrationRow = NullablePrefixed<UserOauthAppRow, 'a_'> &
 		connection_name: string
 		app_slug: string | null
 		platform_app_slug: string | null
+		app_owner_id: string | null
 		account_label: string | null
 		description: string
 		scopes_json: string
@@ -144,6 +146,7 @@ const joinedSelectColumns = `
 	i.name AS connection_name,
 	i.app_slug AS app_slug,
 	i.platform_app_slug AS platform_app_slug,
+	i.app_owner_id AS app_owner_id,
 	i.account_label AS account_label,
 	i.description AS description,
 	i.scopes_json AS scopes_json,
@@ -166,7 +169,7 @@ const joinedSelectColumns = `
 const joinedFromClause = `
 	FROM user_integrations i
 	LEFT JOIN user_oauth_apps a
-		ON a.user_id = i.user_id AND a.slug = i.app_slug${andLiveDeletedAtSql('a')}
+		ON a.user_id = ${integrationAppOwnerSql('i')} AND a.slug = i.app_slug${andLiveDeletedAtSql('a')}
 	LEFT JOIN platform_oauth_apps p
 		ON p.slug = i.platform_app_slug
 `
@@ -335,7 +338,7 @@ export async function listOauthAppsWithConnectionCounts(input: {
 				(
 					SELECT count(*)
 					FROM user_integrations i
-					WHERE i.user_id = a.user_id AND i.app_slug = a.slug
+					WHERE i.app_owner_id = a.user_id AND i.app_slug = a.slug
 				) AS connection_count
 			FROM user_oauth_apps a
 			WHERE a.user_id = ?${andLiveDeletedAtSql()}
@@ -358,7 +361,7 @@ export async function countConnectionsForApp(input: {
 		.prepare(
 			`SELECT count(*) AS count
 			FROM user_integrations
-			WHERE user_id = ? AND app_slug = ?${andLiveDeletedAtSql()}`,
+			WHERE app_owner_id = ? AND app_slug = ?${andLiveDeletedAtSql()}`,
 		)
 		.bind(input.userId, input.appSlug)
 		.first<{ count: number }>()
@@ -488,6 +491,11 @@ export async function upsertIntegrationConnection(input: {
 		created_at?: string
 		updated_at?: string
 	}
+	/**
+	 * Org that owns `app_slug` when it is not `row.user_id`: a personal
+	 * connection made through that org's app, pinned to it (ADR 0068).
+	 */
+	appOwnerId?: string | null
 }): Promise<void> {
 	const now = new Date().toISOString()
 	await input.db
@@ -495,17 +503,20 @@ export async function upsertIntegrationConnection(input: {
 			`INSERT INTO user_integrations (
 				user_id, name, app_slug, platform_app_slug, account_label, description,
 				scopes_json, required_hosts_json, connected_at, token_refreshed_at,
-				created_at, updated_at, provider, placement_json
+				created_at, updated_at, provider, placement_json, app_owner_id
 			) VALUES (
 				?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
 				COALESCE(
 					(SELECT provider FROM platform_oauth_apps WHERE slug = ?4),
-					(SELECT provider FROM user_oauth_apps WHERE user_id = ?1 AND slug = ?3)
+					(SELECT provider FROM user_oauth_apps
+						WHERE user_id = COALESCE(?14, ?1) AND slug = ?3)
 				),
-				?13
+				?13,
+				CASE WHEN ?3 IS NULL THEN NULL ELSE COALESCE(?14, ?1) END
 			)
 			ON CONFLICT(user_id, name)
 			DO UPDATE SET
+				app_owner_id = excluded.app_owner_id,
 				app_slug = excluded.app_slug,
 				platform_app_slug = excluded.platform_app_slug,
 				provider = excluded.provider,
@@ -531,6 +542,7 @@ export async function upsertIntegrationConnection(input: {
 			input.row.created_at ?? now,
 			input.row.updated_at ?? now,
 			serializeCredentialFillPlacement(defaultNewCredentialFillPlacement),
+			input.appOwnerId ?? null,
 		)
 		.run()
 }
@@ -561,21 +573,32 @@ export async function addPlatformIntegrationRequiredHosts(input: {
 		.run()
 }
 
-export async function deleteIntegrationConnection(input: {
+/** Grant cleanup, then the row delete last (its `changes` tells if it existed). */
+export function integrationConnectionDeleteStatements(input: {
 	db: D1Database
 	userId: string
 	name: string
-}): Promise<boolean> {
+}): Array<D1PreparedStatement> {
 	const liveRowSql = `FROM user_integrations
 			WHERE user_id = ? AND name = ?${andLiveDeletedAtSql()}`
-	const results = await input.db.batch([
+	return [
 		...credentialGrantCleanupStatements(input.db, {
 			ownerId: input.userId,
 			credentialIdSql: `SELECT id ${liveRowSql}`,
 			credentialIdBindings: [input.userId, input.name],
 		}),
 		input.db.prepare(`DELETE ${liveRowSql}`).bind(input.userId, input.name),
-	])
+	]
+}
+
+export async function deleteIntegrationConnection(input: {
+	db: D1Database
+	userId: string
+	name: string
+}): Promise<boolean> {
+	const results = await input.db.batch(
+		integrationConnectionDeleteStatements(input),
+	)
 	return (results.at(-1)?.meta.changes ?? 0) > 0
 }
 
@@ -1166,7 +1189,7 @@ function mapJoinedRow(row: JoinedIntegrationRow): JoinedIntegration {
 	return {
 		lane: 'user',
 		app: mapOauthAppRow({
-			user_id: row.a_user_id ?? row.user_id,
+			user_id: row.a_user_id ?? row.app_owner_id ?? row.user_id,
 			slug: row.a_slug,
 			provider: row.a_provider ?? row.a_slug,
 			label: row.a_label,

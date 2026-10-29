@@ -301,6 +301,11 @@ async function prepareOauthAppsAndIntegrations(input: {
 				),
 			)
 		}
+		// Own-app rows keep pointing at the same (moved) app.
+		updates.push(
+			'app_owner_id = CASE WHEN app_owner_id = user_id THEN ? ELSE app_owner_id END',
+		)
+		binds.push(input.toId)
 		updates.push('user_id = ?')
 		binds.push(input.toId, row.rowid)
 		statements.push(

@@ -3,7 +3,10 @@
 import { type FormEvent } from 'react'
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import { type ConnectOauthExistingConnection } from '#universal/loader-data.ts'
+import {
+	type ConnectOauthExistingConnection,
+	type ConnectOauthLoaderData,
+} from '#universal/loader-data.ts'
 import { docHref } from '#universal/docs-nav.ts'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildConnectOauthFailureAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
@@ -441,6 +444,38 @@ export function renderStatusCallout(input: {
 		return <p css={pageDescriptionCss}>{input.statusMessage}</p>
 	}
 	return null
+}
+
+/**
+ * `mode=personal`: says whose account this is and what the org can do with
+ * it (ADR 0068 amendment 2026-10-29).
+ */
+export function renderPinnedConnectNotice(input: {
+	pinnedConnect: NonNullable<ConnectOauthLoaderData['pinnedConnect']>
+}) {
+	const appName = input.pinnedConnect.appLabel || input.pinnedConnect.appSlug
+	return (
+		<div role="note" css={getAccentCalloutCss({ accentColor: colors.primary })}>
+			<p css={{ margin: 0, fontWeight: 600 }}>Connect your own account</p>
+			<p css={{ margin: 0 }}>
+				You are connecting your own account through the {appName} OAuth app of
+				the {input.pinnedConnect.orgSlug} org. The connection is yours and is
+				saved in your personal org. It works only in{' '}
+				{input.pinnedConnect.orgSlug}, only in your own runs. Org admins can see
+				that it exists and revoke it, but never use it or read its tokens.
+				Leaving the org removes it.
+			</p>
+		</div>
+	)
+}
+
+/** Why `mode=personal` cannot connect on this page. */
+export function renderPinnedConnectError(message: string) {
+	return (
+		<div role="alert" css={getAccentCalloutCss({ accentColor: colors.error })}>
+			<p css={{ margin: 0, color: colors.error }}>{message}</p>
+		</div>
+	)
 }
 
 export function connectOauthHeaderTitle(input: {

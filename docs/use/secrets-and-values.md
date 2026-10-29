@@ -125,6 +125,15 @@ server, or you left the org). Leaving an org deletes your grants there. Granting
 and revoking need a live person (not a job, webhook, or package code) and Write
 on the credential; grants and revokes are audited in your personal org.
 
+An OAuth connection you make through a team org's own OAuth app (**Connect your
+own account** on the org app's page) is a personal connection pinned to that
+org. It is granted to that org when you connect, `credentialOrgGrant` refuses
+any other org, and it never works in your personal org. Org Owners can list and
+revoke it with **`integrationMemberConnectionList`** and
+**`integrationMemberConnectionRevoke`**, never use it. It is wiped and revoked
+with the provider when you leave the org, when an Owner revokes it, or when the
+org deletes the app.
+
 The account create/edit form has the same optional expiry field. Agents
 prefilling **`/connect/secret-set`** can set **`expiresAt`** as a query
 parameter so the human pastes the token without typing the date. See

@@ -114,6 +114,8 @@ test('connecting or reconnecting an integration records its OAuth app provider',
 			'utf8',
 		),
 	)
+	// Live upserts also write app_owner_id (0202).
+	sqlite.exec('ALTER TABLE user_integrations ADD COLUMN app_owner_id TEXT')
 	const db = createD1FromSqlite(sqlite)
 	const row: Parameters<typeof upsertIntegrationConnection>[0]['row'] = {
 		user_id: 'org-a',

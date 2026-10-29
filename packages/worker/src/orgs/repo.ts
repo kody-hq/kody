@@ -487,17 +487,24 @@ export async function loadOrgBindingForOrg(
 ): Promise<OrgBinding | null> {
 	return memoizePerRequest({
 		key: `org-binding:${personId}:${orgId}`,
-		load: async () => {
-			const statements = orgBindingForOrgStatements(db, personId, orgId)
-			const membership = await statements.membership.first<OrgBindingRow>()
-			if (membership) return toBinding(membership)
-			const grant = await statements.grant.first<{
-				org_id: string
-				org_slug: string
-			}>()
-			return orgBindingForOrgFromRows({ membership: null, grant })
-		},
+		load: () => loadLiveOrgBindingForOrg(db, personId, orgId),
 	})
+}
+
+/** Uncached binding, for a write that must see current membership. */
+export async function loadLiveOrgBindingForOrg(
+	db: D1Database,
+	personId: string,
+	orgId: string,
+): Promise<OrgBinding | null> {
+	const statements = orgBindingForOrgStatements(db, personId, orgId)
+	const membership = await statements.membership.first<OrgBindingRow>()
+	if (membership) return toBinding(membership)
+	const grant = await statements.grant.first<{
+		org_id: string
+		org_slug: string
+	}>()
+	return orgBindingForOrgFromRows({ membership: null, grant })
 }
 
 /** True when the org exists and is neither soft-deleted nor suspended. */

@@ -162,3 +162,33 @@ test('connect chooser offers published built-ins the user has not connected and 
 		providerKey: 'notion',
 	})
 })
+
+test('connect chooser offers members their own account through the org app, only with an org', () => {
+	const orgApp = {
+		slug: 'github',
+		label: 'GitHub',
+		providerKey: 'github',
+		logoPath: null,
+		autoLogoPath: null,
+		catalogLogoPath: null,
+	}
+	const [first] = buildConnectOauthChooserOptions({
+		orgSlug: 'acme',
+		connections: [],
+		platformApps: [],
+		orgApps: [orgApp],
+	})
+	expect(first).toMatchObject({
+		id: 'org-app:github',
+		kind: 'org-app',
+		href: '/connect/oauth?provider=github&app=github&org=acme&mode=personal',
+		detail: "Connect your own account through this org's app",
+	})
+	expect(
+		buildConnectOauthChooserOptions({
+			connections: [],
+			platformApps: [],
+			orgApps: [orgApp],
+		}),
+	).toEqual([])
+})

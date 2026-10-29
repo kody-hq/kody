@@ -167,6 +167,22 @@ Use, plus the actor's own personal credentials granted into the org, org first
 by name). See
 ([ADR 0068](../decisions/0068-credentials-own-placement-scoped-clients.md)).
 
+**Pinned connections** (`integrations/pinned-connect.ts`,
+`integrations/pinned-connections.ts`) are personal OAuth connections whose
+`app_owner_id` is a team org: the member connected their own account through
+that org's app. Connecting needs a live binding with the Member or Owner role,
+not `integration:use` (a per-credential grant for org credentials, which this is
+not); Billing and outside collaborators are refused. Saving grants it to that
+org; `credentialOrgGrant` refuses any other org. Every candidate query filters
+with `integrationUsableInOrgSql` (`integrations/connected.ts`), so it resolves
+only in its pinned org and, as a personal credential, only for its owner.
+Listing and revoking members' connections (`integrationMemberConnectionList` /
+`Revoke`) calls `authorizeOrgWide('integration:manage_access')`: only Owners
+hold it org-wide, and a grant on one integration does not reach members'
+connections. Revoke, `offboardOrgMember`, and app deletion wipe locally first
+and then revoke upstream (`integrations/upstream-revoke.ts`); an upstream
+failure never keeps the connection.
+
 `credential-storage-boundary.node.test.ts` fails if credential storage is read
 outside the door and its resolvers. Credential storage keys use
 `ownerIdFromCaller` (org id), not the acting person. Automation is Owner. See
