@@ -86,7 +86,9 @@ async function signWith(
 	seal.mockRestore()
 	if (!sealedInput) throw new Error('secretJwtSign returned an unsealed JWT.')
 	expect(result.jwt).not.toContain(sealedInput.value)
-	expect(result.jwt).not.toContain('.ey')
+	expect(result.jwt).toMatch(
+		/^\{\{integration-token:kody-sealed\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\}\}$/,
+	)
 	return { ...result, jwt: sealedInput.value, sealedTo: sealedInput.to }
 }
 
