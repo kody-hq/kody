@@ -13,6 +13,13 @@ export type PlacementApprovalPart = (typeof placementApprovalParts)[number]
 /** The `/connect/secrets` query parameter that requests placement parts. */
 export const placementApprovalParam = 'placement'
 
+/**
+ * The `/connect/secrets` query parameter that pins a single-name placement
+ * request to the exact credential that was refused. A different credential
+ * with the same name (another org, or one deleted and re-created) is refused.
+ */
+export const placementApprovalCredentialParam = 'credential'
+
 /** The credential page anchor of the fill placement setting. */
 export const fillPlacementAnchor = 'fill-placement'
 

@@ -145,7 +145,7 @@ test('a body refusal of a user Key carries its owner-approval link', () => {
 			surface: 'placeholder',
 			links: {
 				baseUrl: 'https://kody.codes',
-				orgSlug: 'kentcdodds',
+				orgSlug: 'acme',
 				approvalSecretName: 'plaidSecret',
 				requestHost: 'production.plaid.com',
 			},
@@ -156,11 +156,37 @@ test('a body refusal of a user Key carries its owner-approval link', () => {
 	expect(refused).toBeInstanceOf(SecretPlacementError)
 	const message = (refused as Error).message
 	expect(message).toContain(
-		'https://kody.codes/connect/secrets?name=plaidSecret&hosts=production.plaid.com&placement=body&org=kentcdodds',
+		'https://kody.codes/connect/secrets?name=plaidSecret&hosts=production.plaid.com&placement=body&org=acme&credential=cred_1',
 	)
 	expect(message).toContain('host may store the value')
 	expect(message).toContain('Only the owner can approve it')
 	expect(message).toContain('slot "plaidSecret"')
+})
+
+test('without the owning org, a refusal never builds a name-based approval link', () => {
+	const env = { APP_DB: migratedDb() }
+	let message = ''
+	try {
+		enforceFillPlacement({
+			env,
+			credentialName: 'plaidSecret',
+			credentialId: 'cred_1',
+			slot: 'plaidSecret',
+			placement: { headers: true },
+			sites: [{ part: 'body' }],
+			surface: 'placeholder',
+			links: {
+				baseUrl: 'https://kody.codes',
+				orgSlug: null,
+				approvalSecretName: 'plaidSecret',
+			},
+		})
+	} catch (error) {
+		message = (error as Error).message
+	}
+	expect(message).toContain('on the credential page')
+	expect(message).not.toContain('/connect/secrets')
+	expect(message).not.toContain('https://')
 })
 
 test('other refusals link to the fill placement setting', () => {

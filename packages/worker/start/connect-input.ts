@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { secretsInput } from './secrets-input.ts'
 import {
 	normalizePlacementApprovalParts,
+	placementApprovalCredentialParam,
 	placementApprovalParam,
 	placementApprovalParts,
 } from '#universal/credential-placement-approval.ts'
@@ -27,6 +28,8 @@ export const connectSecretsSchema = z.object({
 	}),
 	/** Owner-approval request to allow these fill placement parts. */
 	placement: z.array(z.enum(placementApprovalParts)).default([]),
+	/** Pins the placement request to exactly this credential. */
+	placementCredentialId: z.string().min(1).max(200).optional(),
 })
 export const connectOauthSchema = z.object({
 	...locationFields,
@@ -61,7 +64,15 @@ export function connectSecretsInput(
 	const placement = normalizePlacementApprovalParts(
 		params.getAll(placementApprovalParam),
 	)
-	return { ...location, selectedSecretId, approval, placement }
+	const placementCredentialId =
+		params.get(placementApprovalCredentialParam)?.trim() || undefined
+	return {
+		...location,
+		selectedSecretId,
+		approval,
+		placement,
+		placementCredentialId,
+	}
 }
 export function connectOauthInput(
 	search: string,

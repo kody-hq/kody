@@ -126,8 +126,13 @@ function refusalHint(input: {
 		site.part === 'header'
 			? ''
 			: ', which warns that the host may store the value there'
+	// Both links name the owning org and the exact credential id, so neither
+	// can open a same-named credential in the viewer's current org.
 	const approvalUrl =
-		site.part !== 'header' && links?.approvalSecretName
+		site.part !== 'header' &&
+		links?.approvalSecretName &&
+		links.orgSlug &&
+		input.credentialId
 			? safeLink(() =>
 					buildCredentialPlacementApprovalUrl({
 						baseUrl: links.baseUrl,
@@ -135,6 +140,7 @@ function refusalHint(input: {
 						parts: [site.part],
 						hosts: links.requestHost ? [links.requestHost] : [],
 						orgSlug: links.orgSlug,
+						credentialId: input.credentialId,
 					}),
 				)
 			: null

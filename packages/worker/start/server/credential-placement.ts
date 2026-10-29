@@ -43,6 +43,7 @@ export const approveCredentialPlacementRequest = createServerFn({
 				.optional(),
 			names: z.array(z.string().min(1)).min(1).max(20),
 			parts: z.array(z.enum(placementApprovalParts)).min(1),
+			credentialId: z.string().min(1).max(200).optional(),
 		}),
 	)
 	.handler(async ({ data }) => {
@@ -59,6 +60,7 @@ export const approveCredentialPlacementRequest = createServerFn({
 						user,
 						names: data.names,
 						parts: data.parts,
+						credentialId: data.credentialId ?? null,
 					}),
 				),
 		)

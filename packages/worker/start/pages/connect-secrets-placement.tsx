@@ -215,7 +215,12 @@ export function ConnectSecretsPlacementApproval({
 				.map((credential) => credential.name)
 			if (names.length > 0) {
 				await approvePlacement.mutateAsync({
-					data: { orgSlug, names, parts: view.parts },
+					data: {
+						orgSlug,
+						names,
+						parts: view.parts,
+						credentialId: connectSecretsInput(url.search).placementCredentialId,
+					},
 				})
 			}
 			if (pendingHosts.length > 0) {

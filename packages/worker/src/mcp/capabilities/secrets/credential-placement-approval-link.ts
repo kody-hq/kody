@@ -107,6 +107,7 @@ export const credentialPlacementApprovalLinkCapability = defineDomainCapability(
 				parts,
 				hosts: args.hosts ?? [],
 				orgSlug: secretPageOrgSlugFromCaller(ctx.callerContext),
+				credentialId: stored.id,
 			})
 			const label = formatPlacementApprovalParts(parts)
 			return {

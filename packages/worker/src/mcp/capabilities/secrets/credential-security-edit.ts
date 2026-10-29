@@ -7,6 +7,7 @@
  */
 import { type CredentialInject } from '#worker/credentials/credential-fields.ts'
 import { type CredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
+import { buildCredentialPlacementSettingUrl } from '#worker/credentials/placement-approval-links.ts'
 import { orgResourcePathForAccountPath } from '#universal/org-pages.ts'
 import { buildAccountSecretPath } from '@kody-internal/shared/account-secret-route.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
@@ -75,10 +76,18 @@ export function codeRunningCredentialEditor(
 
 function credentialPageUrl(
 	ctx: CapabilityContext,
-	credential: { kind: string; name: string },
+	credential: { kind: string; name: string; id?: string },
 ) {
 	const baseUrl = ctx.callerContext.baseUrl
 	const orgSlug = secretPageOrgSlugFromCaller(ctx.callerContext)
+	// By id, so the link opens exactly this credential (vault bindings too).
+	if (credential.id && orgSlug) {
+		return buildCredentialPlacementSettingUrl({
+			baseUrl,
+			orgSlug,
+			credentialId: credential.id,
+		})
+	}
 	if (credential.kind === 'secret' && orgSlug) {
 		return buildSecretEditorUrl({
 			baseUrl,
@@ -106,7 +115,7 @@ function credentialPageUrl(
 export function assertCredentialSecurityEditAllowed(
 	ctx: CapabilityContext,
 	input: {
-		credential: { kind: string; name: string }
+		credential: { kind: string; name: string; id?: string }
 		before: {
 			inject: CredentialInject
 			placement: CredentialFillPlacement | null

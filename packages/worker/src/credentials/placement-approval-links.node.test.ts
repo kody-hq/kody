@@ -19,14 +19,14 @@ test('the approval link names the credential, parts, hosts, and org', () => {
 			names: ['plaidSecret'],
 			parts: ['body'],
 			hosts: ['https://production.plaid.com/item/get'],
-			orgSlug: 'kentcdodds',
+			orgSlug: 'acme',
 		}),
 	)
 	expect(url.pathname).toBe('/connect/secrets')
 	expect(url.searchParams.get('name')).toBe('plaidSecret')
 	expect(url.searchParams.get('placement')).toBe('body')
 	expect(url.searchParams.get('hosts')).toBe('production.plaid.com')
-	expect(url.searchParams.get('org')).toBe('kentcdodds')
+	expect(url.searchParams.get('org')).toBe('acme')
 })
 
 test('the approval link works without hosts and rejects an empty request', () => {
@@ -53,8 +53,31 @@ test('the setting link opens the credential page at its fill placement', () => {
 	expect(
 		buildCredentialPlacementSettingUrl({
 			baseUrl: 'https://kody.codes',
-			orgSlug: 'kentcdodds',
+			orgSlug: 'acme',
 			credentialId: 'cred_123',
 		}),
-	).toBe('https://kody.codes/@kentcdodds/-/credentials/cred_123#fill-placement')
+	).toBe('https://kody.codes/@acme/-/credentials/cred_123#fill-placement')
+})
+
+test('a pinned approval link carries the exact credential id', () => {
+	const url = new URL(
+		buildCredentialPlacementApprovalUrl({
+			baseUrl: 'https://kody.codes',
+			names: ['loginPassword'],
+			parts: ['body'],
+			orgSlug: 'acme',
+			credentialId: 'cred_exact',
+		}),
+	)
+	expect(url.searchParams.get('name')).toBe('loginPassword')
+	expect(url.searchParams.get('credential')).toBe('cred_exact')
+	expect(url.searchParams.get('org')).toBe('acme')
+	expect(() =>
+		buildCredentialPlacementApprovalUrl({
+			baseUrl: 'https://kody.codes',
+			names: ['a', 'b'],
+			parts: ['body'],
+			credentialId: 'cred_exact',
+		}),
+	).toThrow(/exactly one name/)
 })

@@ -75,6 +75,7 @@ export const readConnectSecrets = createServerOnlyFn(
 							user,
 							names: data.approval.names,
 							parts: data.placement,
+							credentialId: data.placementCredentialId ?? null,
 						}),
 		])
 		const payload = placement ? { ...selection, ...placement } : selection

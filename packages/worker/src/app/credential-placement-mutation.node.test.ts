@@ -27,6 +27,9 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 import { credentialUpdateCapability } from '#mcp/capabilities/secrets/credential-update.ts'
 import { secretListCapability } from '#mcp/capabilities/secrets/secret-list.ts'
 import { secretSetCapability } from '#mcp/capabilities/secrets/secret-set.ts'
+import { getOrgCredential } from '#worker/credentials/credential-ids.ts'
+import { enforceFillPlacement } from '#worker/credentials/fill-placement-enforcement.ts'
+import { SecretPlacementError } from '#mcp/secrets/secret-placement.ts'
 
 const now = '2026-10-12T00:00:00.000Z'
 
@@ -138,7 +141,17 @@ async function setup() {
 	}
 	const set = (input: Record<string, unknown>, as = owner) =>
 		secretSetCapability.handler({ scope: 'user', ...input } as never, as)
-	return { sqlite, owner, member, ownerReadOnlyToken, entry, audits, set }
+	return {
+		sqlite,
+		db,
+		ownerId,
+		owner,
+		member,
+		ownerReadOnlyToken,
+		entry,
+		audits,
+		set,
+	}
 }
 
 test('the MCP api tool and the website keep full placement and inject edits', async () => {
@@ -223,7 +236,7 @@ test('an owner approval link widens a headers-only Key to the body in one click'
 		placement: { headers: true },
 	})
 	expect(link.approval_url).toBe(
-		'https://heykody.dev/connect/secrets?name=plaidSecret&hosts=production.plaid.com&placement=body&org=owneruser',
+		`https://heykody.dev/connect/secrets?name=plaidSecret&hosts=production.plaid.com&placement=body&org=owneruser&credential=${(await t.entry('plaidSecret'))!.id}`,
 	)
 	// Building the link changes nothing.
 	expect(JSON.parse((await t.entry('plaidSecret'))!.placement_json!)).toEqual({
@@ -347,4 +360,213 @@ test('the link capability refuses an unknown Key', async () => {
 			t.owner,
 		),
 	).rejects.toThrow(/No saved user Key named "nope"/)
+})
+
+const websiteUser = (as: {
+	callerContext: { request: unknown; user: unknown }
+}) =>
+	({
+		request: as.callerContext.request,
+		mcpUser: as.callerContext.user,
+	}) as never
+
+async function insertVaultBinding(t: Awaited<ReturnType<typeof setup>>) {
+	await t.db
+		.prepare(
+			`INSERT INTO saved_packages (id, user_id, name, kody_id, description, source_id)
+			 VALUES ('vault-package', ?, 'vault', 'vault', '', 'source')`,
+		)
+		.bind(t.ownerId)
+		.run()
+	await t.db
+		.prepare(
+			`INSERT INTO secret_provider_bindings (user_id, provider_id, package_id, door_secret_name, placement_json)
+			 VALUES (?, '1password', 'vault-package', 'doorKey', '{"headers":true}')`,
+		)
+		.bind(t.ownerId)
+		.run()
+	const row = await t.db
+		.prepare(
+			`SELECT id FROM secret_provider_bindings WHERE user_id = ? AND provider_id = '1password'`,
+		)
+		.bind(t.ownerId)
+		.first<{ id: string }>()
+	return row!.id
+}
+
+const vaultPlacement = async (
+	t: Awaited<ReturnType<typeof setup>>,
+	id: string,
+) => {
+	const row = await t.db
+		.prepare(`SELECT placement_json FROM secret_provider_bindings WHERE id = ?`)
+		.bind(id)
+		.first<{ placement_json: string | null }>()
+	return row?.placement_json ? JSON.parse(row.placement_json) : null
+}
+
+function refusalMessage(input: Parameters<typeof enforceFillPlacement>[0]) {
+	try {
+		enforceFillPlacement(input)
+	} catch (error) {
+		expect(error).toBeInstanceOf(SecretPlacementError)
+		return (error as Error).message
+	}
+	throw new Error('expected a placement refusal')
+}
+
+test('a vault refusal links to exactly the refused vault credential, never a look-alike Key', async () => {
+	const t = await setup()
+	// A door Key that looks related to the vault must never be the link target.
+	await t.set({ name: 'doorKey', value: 'door_value' })
+	const doorKeyId = (await t.entry('doorKey'))!.id
+	const bindingId = await insertVaultBinding(t)
+	const message = refusalMessage({
+		env: t.owner.env,
+		credentialName: 'secret/1password',
+		credentialId: bindingId,
+		slot: null,
+		placement: { headers: true },
+		sites: [{ part: 'body' }],
+		surface: 'placeholder',
+		links: { baseUrl: 'https://heykody.dev', orgSlug: 'owneruser' },
+	})
+	const urls = message.match(/https:\/\/\S+/g) ?? []
+	expect(urls).toEqual([
+		`https://heykody.dev/@owneruser/-/credentials/${bindingId}#fill-placement`,
+	])
+	expect(message).toContain('host may store the value')
+	expect(message).not.toContain(doorKeyId)
+	const target = await getOrgCredential(t.db, t.ownerId!, bindingId)
+	expect(target).toMatchObject({ id: bindingId, kind: 'vault', live: true })
+})
+
+test('a regular Key refusal pins the approval link to exactly that credential', async () => {
+	const t = await setup()
+	await t.set({ name: 'loginPassword', value: 'pw_value' })
+	const credentialId = (await t.entry('loginPassword'))!.id
+	const message = refusalMessage({
+		env: t.owner.env,
+		credentialName: 'loginPassword',
+		credentialId,
+		slot: 'loginPassword',
+		placement: { headers: true },
+		sites: [{ part: 'body' }],
+		surface: 'placeholder',
+		links: {
+			baseUrl: 'https://heykody.dev',
+			orgSlug: 'owneruser',
+			approvalSecretName: 'loginPassword',
+		},
+	})
+	const url = new URL(message.match(/https:\/\/\S+/)![0])
+	expect(url.pathname).toBe('/connect/secrets')
+	expect(url.searchParams.get('name')).toBe('loginPassword')
+	expect(url.searchParams.get('org')).toBe('owneruser')
+	expect(url.searchParams.get('credential')).toBe(credentialId)
+})
+
+test('a pinned approval link refuses a different credential with the same name', async () => {
+	const t = await setup()
+	await t.set({ name: 'loginPassword', value: 'pw_value' })
+	const realId = (await t.entry('loginPassword'))!.id
+	await expect(
+		loadCredentialPlacementApprovalView({
+			env: t.owner.env,
+			user: websiteUser(t.owner),
+			names: ['loginPassword'],
+			parts: ['body'],
+			credentialId: 'some-other-credential',
+		}),
+	).rejects.toThrow(/different credential/)
+	const refused = await approveCredentialPlacement({
+		env: t.owner.env,
+		user: websiteUser(t.owner),
+		names: ['loginPassword'],
+		parts: ['body'],
+		credentialId: 'some-other-credential',
+	})
+	expect(refused).toMatchObject({ status: 409 })
+	expect(JSON.parse((await t.entry('loginPassword'))!.placement_json!)).toEqual(
+		{ headers: true },
+	)
+	const approved = await approveCredentialPlacement({
+		env: t.owner.env,
+		user: websiteUser(t.owner),
+		names: ['loginPassword'],
+		parts: ['body'],
+		credentialId: realId,
+	})
+	expect(approved).toMatchObject({
+		status: 200,
+		data: { ok: true, approved: ['loginPassword'] },
+	})
+})
+
+test('the owner widens a vault credential to the body on the website; a member cannot', async () => {
+	const t = await setup()
+	const bindingId = await insertVaultBinding(t)
+	await expect(vaultPlacement(t, bindingId)).resolves.toEqual({
+		headers: true,
+	})
+	const denied = await setCredentialPlacement({
+		env: t.member.env,
+		user: websiteUser(t.member),
+		body: {
+			credentialId: bindingId,
+			placement: { headers: true, body: true },
+		},
+	})
+	expect(denied).toMatchObject({ status: 403 })
+	await expect(vaultPlacement(t, bindingId)).resolves.toEqual({
+		headers: true,
+	})
+	await expect(
+		readFillPlacementOptIn(t.owner.env.APP_DB, bindingId),
+	).resolves.toEqual({ query: false, path: false, body: false })
+
+	const saved = await setCredentialPlacement({
+		env: t.owner.env,
+		user: websiteUser(t.owner),
+		body: {
+			credentialId: bindingId,
+			placement: { headers: true, body: true },
+		},
+	})
+	expect(saved).toMatchObject({
+		data: { ok: true, changed: true, placement: { headers: true, body: true } },
+	})
+	await expect(vaultPlacement(t, bindingId)).resolves.toEqual({
+		headers: true,
+		body: true,
+	})
+	await expect(
+		readFillPlacementOptIn(t.owner.env.APP_DB, bindingId),
+	).resolves.toEqual({ query: false, path: false, body: true })
+})
+
+test('execute code cannot widen a vault credential and is sent to its exact page', async () => {
+	const t = await setup()
+	const bindingId = await insertVaultBinding(t)
+	const { openApiPrincipal: _mcp, ...hostedExecute } = t.owner
+	const localExecute = { ...t.owner, localExecuteHop: true as const }
+	for (const caller of [hostedExecute, localExecute]) {
+		await expect(
+			credentialUpdateCapability.handler(
+				{
+					credential_id: bindingId,
+					placement: { headers: true, body: true },
+				},
+				caller as never,
+			),
+		).rejects.toThrow(
+			`cannot widen its placement for credential "1password". Make this change on the credential's page on the website: https://heykody.dev/@owneruser/-/credentials/${bindingId}#fill-placement`,
+		)
+	}
+	await expect(vaultPlacement(t, bindingId)).resolves.toEqual({
+		headers: true,
+	})
+	await expect(
+		readFillPlacementOptIn(t.owner.env.APP_DB, bindingId),
+	).resolves.toEqual({ query: false, path: false, body: false })
 })

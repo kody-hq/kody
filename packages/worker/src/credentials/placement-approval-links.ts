@@ -7,6 +7,7 @@
 import {
 	fillPlacementAnchor,
 	normalizePlacementApprovalParts,
+	placementApprovalCredentialParam,
 	placementApprovalParam,
 	type PlacementApprovalPart,
 } from '#universal/credential-placement-approval.ts'
@@ -17,7 +18,7 @@ import { normalizeBulkPackageSecretApprovalNames } from '#mcp/secrets/package-ap
 const connectSecretsPath = '/connect/secrets'
 
 /**
- * `/connect/secrets?name=…&placement=body[&hosts=…][&org=…]`. Hosts already
+ * `/connect/secrets?name=…&placement=body[&hosts=…][&org=…][&credential=…]`. Hosts already
  * allowed are shown as allowed; any others are approved in the same click.
  */
 export function buildCredentialPlacementApprovalUrl(input: {
@@ -26,6 +27,8 @@ export function buildCredentialPlacementApprovalUrl(input: {
 	parts: ReadonlyArray<PlacementApprovalPart | string>
 	hosts?: ReadonlyArray<string>
 	orgSlug?: string | null
+	/** Pins a single-name request to this credential. */
+	credentialId?: string | null
 }) {
 	const names = normalizeBulkPackageSecretApprovalNames([...input.names])
 	const parts = normalizePlacementApprovalParts(input.parts)
@@ -50,6 +53,13 @@ export function buildCredentialPlacementApprovalUrl(input: {
 	url.searchParams.set(placementApprovalParam, parts.join(','))
 	const orgSlug = input.orgSlug?.trim()
 	if (orgSlug) url.searchParams.set('org', orgSlug)
+	const credentialId = input.credentialId?.trim()
+	if (credentialId) {
+		if (names.length !== 1) {
+			throw new Error('A pinned credential needs exactly one name.')
+		}
+		url.searchParams.set(placementApprovalCredentialParam, credentialId)
+	}
 	return url.toString()
 }
 
