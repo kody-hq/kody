@@ -172,14 +172,26 @@ async function ensureVectorizeMetadataIndexes(
 	)
 	for (const propertyName of vectorizeMetadataIndexProperties) {
 		if (existing.has(propertyName)) continue
-		await cloudflareApiRequest({
-			...client,
-			pathname: `/vectorize/v2/indexes/${encodeURIComponent(name)}/metadata_index/create`,
-			method: 'POST',
-			body: { propertyName, indexType: 'string' },
-		})
-		console.error(`Created Vectorize metadata index: ${name}.${propertyName}`)
+		try {
+			await cloudflareApiRequest({
+				...client,
+				pathname: `/vectorize/v2/indexes/${encodeURIComponent(name)}/metadata_index/create`,
+				method: 'POST',
+				body: { propertyName, indexType: 'string' },
+			})
+			console.error(`Created Vectorize metadata index: ${name}.${propertyName}`)
+		} catch (error) {
+			if (!isMetadataIndexAlreadyExistsError(error)) throw error
+			console.error(
+				`Vectorize metadata index already exists: ${name}.${propertyName}`,
+			)
+		}
 	}
+}
+
+function isMetadataIndexAlreadyExistsError(error: unknown) {
+	const message = error instanceof Error ? error.message : String(error)
+	return /already exists/i.test(message)
 }
 
 async function createVectorizeIndex(client: VectorizeClient, name: string) {
