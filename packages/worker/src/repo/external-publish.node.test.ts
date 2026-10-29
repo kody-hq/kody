@@ -328,6 +328,37 @@ test('publishes an external fast-forward ref after checks pass', async () => {
 	)
 })
 
+test('publish snapshot, credential scans, and finalize skip .kodyignore matches', async () => {
+	setupPublish()
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.runRepoChecks.mockResolvedValue(passingChecks)
+	const files = {
+		'package.json': '{"name":"@example/demo"}',
+		'.kodyignore': 'fixtures/\n',
+		'src/index.ts': 'export default async () => null',
+		'fixtures/large.ts': 'export const data = []',
+	}
+	const kept = {
+		'package.json': files['package.json'],
+		'.kodyignore': files['.kodyignore'],
+		'src/index.ts': files['src/index.ts'],
+	}
+
+	await expect(publish({ env: kvEnv, files })).resolves.toMatchObject({
+		status: 'published',
+	})
+
+	expect(mockModule.writePublishedSourceSnapshot).toHaveBeenCalledWith(
+		expect.objectContaining({ files: kept }),
+	)
+	expect(mockModule.storePublishedCredentialNeeds).toHaveBeenCalledWith(
+		expect.objectContaining({ files: kept }),
+	)
+	expect(mockModule.storePublishedCredentialStamp).toHaveBeenCalledWith(
+		expect.objectContaining({ files: kept }),
+	)
+})
+
 test('returns no-op when commit is already current', async () => {
 	setupPublish()
 	const alreadyPublished = {

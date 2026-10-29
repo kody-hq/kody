@@ -503,7 +503,7 @@ export async function publishFromExternalRef(input: {
 			source.entity_kind === 'package' &&
 			hasPublishedRuntimeArtifacts(input.env)
 		) {
-			const files = input.files ?? checks.sourceFiles
+			const files = pendingFiles
 			await storePublishedCredentialNeeds({
 				env: input.env,
 				source,
@@ -587,7 +587,7 @@ export async function publishFromExternalRef(input: {
 		env: input.env,
 		source,
 		publishedCommit: input.newCommit,
-		files: input.files ?? checks.sourceFiles,
+		files: pendingFiles,
 		baseUrl: input.baseUrl,
 		rebuildPackageArtifacts: input.rebuildPackageArtifacts,
 		allowLockedPublish: input.allowLockedPublish,

@@ -1219,12 +1219,14 @@ docs/drafts/
 ```
 
 Matching files are never read by the publish checks (credential scan, lint,
-typecheck, bundle validation), do not count toward the limits above, and are
-left out of the published snapshot. `package.json` and `.kodyignore` itself are
-always kept. Ignoring a file that runtime code imports fails bundle validation,
-so `.kodyignore` cannot hide code that runs. Kody does not read `package.json`
-`files`, because that field usually describes an npm build output that Kody does
-not publish.
+typecheck, bundle validation), do not count toward the source limits above, and
+are left out of the published snapshot. They are still part of the git tree, so
+they still count toward the 32 MiB checked-out tree cap for `git push`
+publishes; move very large files out of the repo instead. `package.json` and
+`.kodyignore` itself are always kept. Ignoring a file that runtime code imports
+fails bundle validation, so `.kodyignore` cannot hide code that runs. Kody does
+not read `package.json` `files`, because that field usually describes an npm
+build output that Kody does not publish.
 
 1. Mint a short-lived remote credential:
 
