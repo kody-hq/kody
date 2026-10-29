@@ -190,6 +190,14 @@ function initialOauthState(
 		if (url.searchParams.get('code') || url.searchParams.get('error')) {
 			return
 		}
+		// `?org=&app=&mode=personal` may omit `provider`; the loader names it.
+		if (
+			!url.searchParams.get('provider')?.trim() &&
+			routeData.pinnedConnect &&
+			routeData.provider
+		) {
+			url.searchParams.set('provider', routeData.provider)
+		}
 		requestedProvider =
 			url.searchParams.get('provider')?.trim() || routeData.provider
 		if (!requestedProvider) {

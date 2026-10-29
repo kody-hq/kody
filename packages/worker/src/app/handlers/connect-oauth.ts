@@ -1,5 +1,4 @@
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
-import { toAppOnlyIntegrationRecord } from '#app/account-integrations-data.ts'
 import { oauthAppToSetupPrefill } from '#worker/integrations/service.ts'
 import {
 	listPinnedConnectableApps,
@@ -9,6 +8,7 @@ import {
 	hasStoredConnectClientSecret,
 	loadAccountIntegrationByName,
 	loadExistingConnectionSummary,
+	toAppOnlyIntegrationRecord,
 } from '#app/account-integrations-data.ts'
 import { loadConnectOauthChooser } from '#app/connect-oauth-chooser.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
@@ -57,6 +57,27 @@ export async function loadConnectOauthLoaderData(
 	})
 	const provider = input.provider?.trim()
 	const providerKey = provider ? normalizeProviderKey(provider) : ''
+	const pinnedAppSlug =
+		input.mode === 'personal' && input.appSlug?.trim()
+			? normalizeProviderKey(input.appSlug.trim())
+			: null
+	if (pinnedAppSlug && !input.code && !input.error) {
+		const user =
+			authenticatedUser ??
+			(await readAuthenticatedAppUser(request, env, {
+				prefetchFeatureFlags: true,
+			}))
+		if (!user) {
+			return { ok: true, provider: null, integration: null, redirectUri }
+		}
+		return loadPinnedConnectLoaderData({
+			env,
+			user,
+			appSlug: pinnedAppSlug,
+			displayName: providerKey || pinnedAppSlug,
+			redirectUri,
+		})
+	}
 	if (!providerKey) {
 		if (input.provider || input.code || input.error) {
 			return { ok: true, provider: null, integration: null, redirectUri }
@@ -97,13 +118,6 @@ export async function loadConnectOauthLoaderData(
 	if (!user) {
 		return { ok: true, provider: null, integration: null, redirectUri }
 	}
-	const pinnedAppSlug =
-		input.mode === 'personal' && input.appSlug?.trim()
-			? normalizeProviderKey(input.appSlug.trim())
-			: null
-	if (pinnedAppSlug) {
-		return loadPinnedConnectLoaderData(env, user, pinnedAppSlug, redirectUri)
-	}
 	// `app=<slug>` reuses a saved bring-your-own app under `provider`.
 	// Explicit platform intent uses the same visibility rules as the integration resolver.
 	const integration = await loadAccountIntegrationByName(
@@ -139,12 +153,20 @@ export async function loadConnectOauthLoaderData(
  * the scoped org's app. The record carries the app's public client id and
  * endpoints only; the secret stays host-side, so the setup step is skipped.
  */
-async function loadPinnedConnectLoaderData(
-	env: Env,
-	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>,
-	appSlug: string,
-	redirectUri: string,
-): Promise<ConnectOauthLoaderData> {
+async function loadPinnedConnectLoaderData({
+	env,
+	user,
+	appSlug,
+	displayName,
+	redirectUri,
+}: {
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	appSlug: string
+	/** The `provider` the page shows; the saved name is `connectionName`. */
+	displayName: string
+	redirectUri: string
+}): Promise<ConnectOauthLoaderData> {
 	const target = await resolvePinnedConnectTarget({
 		env,
 		request: user.request,
@@ -162,7 +184,7 @@ async function loadPinnedConnectLoaderData(
 	}
 	const record = toAppOnlyIntegrationRecord(
 		oauthAppToSetupPrefill(target.app),
-		target.connectionName,
+		displayName,
 	)
 	return {
 		ok: true,
