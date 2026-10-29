@@ -9,7 +9,7 @@ import {
 } from '#app/package-viewer-access.ts'
 import { resolvePackageAppLinks } from '#app/package-repo-actions.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
-import { getUserSocialRowByUsername } from '#worker/community/profile-repo.ts'
+import { loadOwnerProfilePublic } from '#worker/orgs/org-public-profile.ts'
 import {
 	isRetryableD1LockError,
 	runD1WithRetry,
@@ -143,8 +143,7 @@ async function resolvePackagePageOwnerProfilePublic(input: {
 	if (typeof input.listing?.ownerProfilePublic === 'boolean') {
 		return input.listing.ownerProfilePublic
 	}
-	const row = await getUserSocialRowByUsername(input.env.APP_DB, input.username)
-	return row?.profile_visibility === 'public'
+	return await loadOwnerProfilePublic(input.env.APP_DB, input.username)
 }
 
 function sameKodyId(left: string, right: string) {

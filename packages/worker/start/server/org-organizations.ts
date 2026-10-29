@@ -39,7 +39,13 @@ export const loadOrganizations = createServerFn({ method: 'GET' }).handler(
 	},
 )
 export const createOrg = createServerFn({ method: 'POST' })
-	.validator(z.object({ displayName: z.string(), slug: z.string() }))
+	.validator(
+		z.object({
+			displayName: z.string(),
+			slug: z.string(),
+			profileVisibility: z.enum(['public', 'private']).optional(),
+		}),
+	)
 	.handler(async ({ data }) => {
 		const [{ withWebsiteMutation }, { createWebsiteOrganization }] =
 			await Promise.all([

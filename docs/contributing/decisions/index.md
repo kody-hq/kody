@@ -239,6 +239,9 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0086 — Automations choose an execution context](./0086-automation-execution-contexts.md)
   — per-automation `execution` (context or own chain), offline fails or queues
   (default 60 min, max 24 h), runs use the automation actor's access
+- [0088: Team orgs have a public page at `/@slug`](./0088-public-team-org-pages.md)
+  Public by default with a create-time choice; owners toggle it; lists only
+  public packages, never members; private orgs 404 like unknown handles
 
 ## Historical / UI / implementation
 

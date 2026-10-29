@@ -14,7 +14,10 @@ import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { resolveOrgManagementAccess } from '#app/org-management-access.ts'
-import { createTestOrgAuditWriter } from '#worker/test-support/create-audit-db.ts'
+import {
+	createAuditTestDb,
+	createTestOrgAuditWriter,
+} from '#worker/test-support/create-audit-db.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 
 const mocks = vi.hoisted(() => ({
@@ -253,6 +256,7 @@ async function callSettings(
 	const body = (await request.json()) as {
 		displayName?: string
 		slug?: string
+		profileVisibility?: 'public' | 'private'
 		confirmation?: string
 	}
 	if (operation === deleteOrganization)
@@ -264,6 +268,7 @@ async function callSettings(
 		...context,
 		displayName: body.displayName,
 		slug: body.slug,
+		profileVisibility: body.profileVisibility,
 	})
 }
 
@@ -572,4 +577,63 @@ test('profile write succeeds without loading unrelated custom domain settings', 
 		org: { displayName: 'Saved name' },
 	})
 	expect(result.data).not.toHaveProperty('customDomains')
+})
+
+test('owners toggle page visibility in settings with an audit event; members cannot', async () => {
+	const auditDb = createAuditTestDb()
+	const env = { ...createEnv(), AUDIT_DB: auditDb } as Env
+	const get = new Request('https://kody.test/@zeta-co/-/settings.json')
+	await signIn('ada', get)
+	expect(
+		(await readSettings(env, { request: get } as never)).data,
+	).toMatchObject({ ok: true, canManage: true, profileVisibility: 'public' })
+
+	const update = new Request('https://kody.test/@zeta-co/-/settings.json', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ profileVisibility: 'private' }),
+	})
+	await signIn('ada', update)
+	expect(
+		(
+			await callSettings(updateOrganizationProfile, env, {
+				request: update,
+			} as never)
+		).status,
+	).toBe(200)
+	await signIn('ada', get)
+	expect(
+		(await readSettings(env, { request: get } as never)).data,
+	).toMatchObject({ profileVisibility: 'private' })
+	const { results } = await auditDb
+		.prepare(
+			`SELECT action, details_json FROM org_audit_events
+			 WHERE action = 'org.profile_visibility_changed'`,
+		)
+		.all<{ action: string; details_json: string }>()
+	expect(results.map((row) => JSON.parse(row.details_json))).toEqual([
+		{ profile_visibility: 'private', previous_profile_visibility: 'public' },
+	])
+
+	const memberWrite = new Request(
+		'https://kody.test/@zeta-co/-/settings.json',
+		{
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ profileVisibility: 'public' }),
+		},
+	)
+	await signIn('bob', memberWrite)
+	expect(
+		(
+			await callSettings(updateOrganizationProfile, env, {
+				request: memberWrite,
+			} as never)
+		).status,
+	).toBe(403)
+	const personalGet = new Request('https://kody.test/@ada/-/settings.json')
+	await signIn('ada', personalGet)
+	expect(
+		(await readSettings(env, { request: personalGet } as never)).data,
+	).toMatchObject({ profileVisibility: null })
 })

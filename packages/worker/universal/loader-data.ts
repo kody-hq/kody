@@ -322,6 +322,8 @@ type CommunityPackageNoAccessLoaderData = {
 
 export type ProfileLoaderData = {
 	ok: true
+	/** `org` for a public team org page; absent for a person's profile. */
+	ownerKind?: 'org'
 	profile: PublicCommunityProfile
 	packages: Array<PublicProfilePackageItem>
 	/** Null when the profile has no activity source (e.g. team org repositories). */
@@ -349,6 +351,7 @@ export type ProfileShellLoaderData = {
 	isSelf: boolean
 	loggedIn: boolean
 	visibility: ProfileVisibility
+	ownerKind?: 'org'
 }
 
 export function toProfileShellLoaderData(
@@ -364,6 +367,7 @@ export function toProfileShellLoaderData(
 		isSelf: data.isSelf,
 		loggedIn: data.loggedIn,
 		visibility: data.profile.visibility,
+		...(data.ownerKind ? { ownerKind: data.ownerKind } : {}),
 	}
 }
 
@@ -1339,6 +1343,8 @@ export type OrgSettingsLoaderData = {
 	org: OrgManagementOrg
 	canManage: boolean
 	canDelete: boolean
+	/** Who sees `/@slug`; null for personal orgs (they follow the account profile). */
+	profileVisibility: 'public' | 'private' | null
 	/** Null for personal orgs and for viewers who cannot manage the org. */
 	customDomains: OrgSettingsCustomDomainsView | null
 }

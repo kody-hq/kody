@@ -11,7 +11,12 @@ import {
 	deleteOrgAvatar,
 	saveOrgAvatar,
 } from '#worker/orgs/org-avatar.ts'
+import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import { updateOrgProfile } from '#worker/orgs/org-profile.ts'
+import {
+	loadOrgProfileVisibility,
+	type OrgProfileVisibility,
+} from '#worker/orgs/org-public-profile.ts'
 import { softDeleteOrg } from '#worker/orgs/soft-delete.ts'
 import { type OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
@@ -83,6 +88,9 @@ export async function loadOrgSettingsData(input: {
 		canManage,
 		canDelete:
 			teamOrg && (await orgHasPermission(input.env, input.user, 'org:delete')),
+		profileVisibility: teamOrg
+			? await loadOrgProfileVisibility(input.env.APP_DB, input.org.id)
+			: null,
 		customDomains: canManage
 			? await loadCustomDomainsView(input.env, input.org.id)
 			: null,
@@ -101,7 +109,11 @@ type OrganizationWriteContext = {
 }
 
 export async function updateOrganizationProfile(
-	input: OrganizationWriteContext & { displayName?: string; slug?: string },
+	input: OrganizationWriteContext & {
+		displayName?: string
+		slug?: string
+		profileVisibility?: OrgProfileVisibility
+	},
 ) {
 	const { env, request, user } = input
 	const access = await resolveOrgManagementAccess({
@@ -127,6 +139,10 @@ export async function updateOrganizationProfile(
 		orgId: access.org.id,
 		displayName: input.displayName,
 		slug: input.slug,
+		profileVisibility: input.profileVisibility,
+		...(input.profileVisibility === undefined
+			? {}
+			: { audit: orgAuditWriterFromRequest(env, user.request) }),
 	})
 	if (!updated.ok) {
 		return operationResult({ ok: false, error: updated.error }, 400)

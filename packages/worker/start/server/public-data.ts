@@ -78,12 +78,9 @@ export const loadProfile = createServerFn({ method: 'GET' })
 			{ query: data.query, limit: data.limit },
 		)
 		if (!profile) {
-			const { loadSessionInfo } = await import('../../src/app/session-info.ts')
-			const { session, setCookie } = await loadSessionInfo(request, bindings)
-			if (setCookie) setResponseHeader('Set-Cookie', setCookie)
-			const orgHome = session?.organizations.find(
-				(org) => org.slug === data.username && !org.personal,
-			)
+			const member = await loadMemberOrgHome(request, bindings, data.username)
+			if (member?.setCookie) setResponseHeader('Set-Cookie', member.setCookie)
+			const orgHome = member?.org
 			if (!orgHome) throw notFound()
 			setResponseHeader('Cache-Control', 'no-store')
 			return {
@@ -95,15 +92,36 @@ export const loadProfile = createServerFn({ method: 'GET' })
 				},
 			}
 		}
+		// A public team org page is the same for everyone; a member also gets
+		// the link to the org home, so their copy is viewer-specific.
+		const orgHome =
+			profile.ownerKind === 'org' && profile.loggedIn
+				? await loadMemberOrgHome(request, bindings, data.username)
+				: null
+		if (orgHome) {
+			if (orgHome.setCookie) setResponseHeader('Set-Cookie', orgHome.setCookie)
+			setResponseHeader('Cache-Control', 'no-store')
+		}
 		return {
 			data: profile,
-			orgHome: null,
+			orgHome: orgHome?.org ?? null,
 			head: loadDocumentHead('profile', path, {
 				profileShell: toProfileShellLoaderData(profile),
 				profileList: toProfileListLoaderData(profile),
 			}),
 		}
 	})
+
+/** The team org at `slug` when the signed-in viewer's switcher lists it. */
+async function loadMemberOrgHome(request: Request, env: Env, slug: string) {
+	const { loadSessionInfo } = await import('../../src/app/session-info.ts')
+	const { session, setCookie } = await loadSessionInfo(request, env)
+	const org =
+		session?.organizations.find(
+			(candidate) => candidate.slug === slug && !candidate.personal,
+		) ?? null
+	return { org, setCookie }
+}
 
 export const loadPackage = createServerFn({ method: 'GET' })
 	.validator(

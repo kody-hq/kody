@@ -426,7 +426,11 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   org. Personal orgs reuse `users.stable_user_id` as `orgs.id`. Billing,
   profile, gift, and budget columns live on the org row. Soft-delete and actor
   columns exist on the row. See
-  [decision 0063](../decisions/0063-teams-expand-orgs.md).
+  [decision 0063](../decisions/0063-teams-expand-orgs.md). `profile_visibility`
+  (`public` default | `private`) decides whether a team org's `/@slug` page and
+  avatar are visible outside the org (set at create and in org Settings /
+  `orgUpdate`); personal orgs follow `users.profile_visibility` instead
+  ([decision 0088](../decisions/0088-public-team-org-pages.md)).
 - `handles` (0086): the username namespace. Handles are permanent (no username
   or org slug renames); rows left by pre-rule renames stay reserved.
 - `org_memberships` (0086): `(org_id, user_id)` with role `owner`, `member`, or
