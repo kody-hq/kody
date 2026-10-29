@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { staticDocumentHead } from '../components/document-head.ts'
+import { staticDocumentHead } from '../components/static-document-head.ts'
 import { createFileRoute } from '@tanstack/react-router'
 import { FeaturePage } from '../pages/features.tsx'
 import { MemoryFeature } from '../pages/features/memory.tsx'

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { credentialFillPlacementViewSchema } from '#universal/credential-fill-placement.ts'
+import { credentialFillPlacementViewSchema } from '#universal/credential-fill-placement-input.ts'
 
 const text = z.string().nullish()
 export const saveSecretSchema = z.object({

@@ -1,49 +1,16 @@
-import { z } from 'zod'
 import { secretsInput } from './secrets-input.ts'
 import {
 	normalizePlacementApprovalParts,
 	placementApprovalCredentialParam,
 	placementApprovalParam,
-	placementApprovalParts,
 } from '#universal/credential-placement-approval.ts'
 
-const locationFields = {
-	orgSlug: z
-		.string()
-		.regex(/^[a-zA-Z0-9_-]+$/)
-		.optional(),
-	// Lossless navigation state only. Authorization and reads use the explicit fields.
-	search: z.array(z.tuple([z.string(), z.string()])),
-}
-export const connectSecretsSchema = z.object({
-	...locationFields,
-	selectedSecretId: z.string().nullable(),
-	approval: z.object({
-		hosts: z.array(z.string()),
-		names: z.array(z.string()),
-		packageId: z.string().optional(),
-		scope: z.enum(['user', 'session', 'package']),
-		storagePackageId: z.string().optional(),
-		sessionId: z.string().optional(),
-	}),
-	/** Owner-approval request to allow these fill placement parts. */
-	placement: z.array(z.enum(placementApprovalParts)).default([]),
-	/** Pins the placement request to exactly this credential. */
-	placementCredentialId: z.string().min(1).max(200).optional(),
-})
-export const connectOauthSchema = z.object({
-	...locationFields,
-	provider: z.string().optional(),
-	code: z.string().optional(),
-	error: z.string().optional(),
-	appSlug: z.string().optional(),
-	platformSlug: z.string().optional(),
-})
-export const connectWebhookSchema = z.object({
-	...locationFields,
-	handle: z.string().nullable(),
-	fingerprint: z.string().nullable(),
-})
+import {
+	type ConnectSecretsInput,
+	type ConnectOauthInput,
+	type ConnectWebhookInput,
+} from './connect-input-types.ts'
+
 function connectionLocation(search: string) {
 	const params = new URLSearchParams(search)
 	return {
@@ -53,9 +20,7 @@ function connectionLocation(search: string) {
 		search: Array.from(params.entries()),
 	}
 }
-export function connectSecretsInput(
-	search: string,
-): z.infer<typeof connectSecretsSchema> {
+export function connectSecretsInput(search: string): ConnectSecretsInput {
 	const { params, ...location } = connectionLocation(search)
 	const { selectedSecretId, approval } = secretsInput(
 		location.orgSlug ?? '',
@@ -74,9 +39,7 @@ export function connectSecretsInput(
 		placementCredentialId,
 	}
 }
-export function connectOauthInput(
-	search: string,
-): z.infer<typeof connectOauthSchema> {
+export function connectOauthInput(search: string): ConnectOauthInput {
 	const { params, ...location } = connectionLocation(search)
 	return {
 		...location,
@@ -87,9 +50,7 @@ export function connectOauthInput(
 		platformSlug: params.get('platform') ?? undefined,
 	}
 }
-export function connectWebhookInput(
-	search: string,
-): z.infer<typeof connectWebhookSchema> {
+export function connectWebhookInput(search: string): ConnectWebhookInput {
 	const { params, ...location } = connectionLocation(search)
 	return {
 		...location,

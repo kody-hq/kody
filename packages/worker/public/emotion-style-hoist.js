@@ -4,7 +4,8 @@
 // body. The client Insertion returns null, so those nodes are not in the
 // hydrate tree. Emotion's createCache also hoists them, but only after the
 // Emotion module evaluates — which can race hydrateRoot. Run this classic
-// script at the end of <body> (before deferred module Scripts) so styles are
+// script with the document nonce at the end of <body> (before deferred module
+// Scripts) so styles are
 // already in <head> when hydration starts.
 ;(function () {
 	var styles = document.querySelectorAll('style[data-emotion]:not([data-s])')

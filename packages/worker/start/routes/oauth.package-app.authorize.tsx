@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { staticDocumentHead } from '../components/document-head.ts'
+import { staticDocumentHead } from '../components/static-document-head.ts'
 import {
 	packageAppOauthAuthorizeDocument,
 	packageAppOauthAuthorizePost,

@@ -1,0 +1,105 @@
+diff --git a/node_modules/@tanstack/start-plugin-core/dist/esm/start-manifest-plugin/manifestBuilder.d.ts b/node_modules/@tanstack/start-plugin-core/dist/esm/start-manifest-plugin/manifestBuilder.d.ts
+index 2fb31d4..ae53a91 100644
+--- a/node_modules/@tanstack/start-plugin-core/dist/esm/start-manifest-plugin/manifestBuilder.d.ts
++++ b/node_modules/@tanstack/start-plugin-core/dist/esm/start-manifest-plugin/manifestBuilder.d.ts
+@@ -43,7 +43,7 @@ export declare function buildStartManifest(options: {
+ }): StartManifest;
+ export declare function serializeStartManifest(startManifest: StartManifest): string;
+ export declare function scanClientChunks(clientBuild: NormalizedClientBuild): ScannedClientChunks;
+-export declare function createManifestAssetResolvers(basePath: string): ManifestAssetResolvers;
++export declare function createManifestAssetResolvers(basePath: string, chunksByFileName?: ReadonlyMap<string, NormalizedClientChunk>): ManifestAssetResolvers;
+ export declare function createChunkCssAssetCollector(options: {
+     chunksByFileName: ReadonlyMap<string, NormalizedClientChunk>;
+     getStylesheetLink: (cssFile: string) => ManifestCssLink;
+diff --git a/node_modules/@tanstack/start-plugin-core/dist/esm/start-manifest-plugin/manifestBuilder.js b/node_modules/@tanstack/start-plugin-core/dist/esm/start-manifest-plugin/manifestBuilder.js
+index 997896d..376cb4c 100644
+--- a/node_modules/@tanstack/start-plugin-core/dist/esm/start-manifest-plugin/manifestBuilder.js
++++ b/node_modules/@tanstack/start-plugin-core/dist/esm/start-manifest-plugin/manifestBuilder.js
+@@ -86,7 +86,7 @@ function appendAdditionalRouteEntries(route, entries) {
+ }
+ function buildStartManifest(options) {
+ 	const scannedChunks = scanClientChunks(options.clientBuild);
+-	const assetResolvers = createManifestAssetResolvers(options.basePath);
++	const assetResolvers = createManifestAssetResolvers(options.basePath, scannedChunks.chunksByFileName);
+ 	const routes = buildRouteManifestRoutes({
+ 		routeTreeRoutes: options.routeTreeRoutes,
+ 		routeChunksByFilePath: scannedChunks.routeChunksByFilePath,
+@@ -140,7 +140,7 @@ function scanClientChunks(clientBuild) {
+ 		routeChunksByFilePath
+ 	};
+ }
+-function createManifestAssetResolvers(basePath) {
++function createManifestAssetResolvers(basePath, chunksByFileName) {
+ 	const assetPathByFileName = /* @__PURE__ */ new Map();
+ 	const stylesheetLinkByFileName = /* @__PURE__ */ new Map();
+ 	const preloadsByChunk = /* @__PURE__ */ new Map();
+@@ -161,8 +161,18 @@ function createManifestAssetResolvers(basePath) {
+ 	const getChunkPreloads = (chunk) => {
+ 		const cachedPreloads = preloadsByChunk.get(chunk);
+ 		if (cachedPreloads) return cachedPreloads;
+-		const preloads = [getAssetPath(chunk.fileName)];
+-		for (let i = 0; i < chunk.imports.length; i++) preloads.push(getAssetPath(chunk.imports[i]));
++		const fileNames = [chunk.fileName];
++		const seen = new Set(fileNames);
++		for (let i = 0; i < fileNames.length; i++) {
++			const current = i === 0 ? chunk : chunksByFileName?.get(fileNames[i]);
++			if (!current) continue;
++			for (const importedFileName of current.imports) {
++				if (seen.has(importedFileName)) continue;
++				seen.add(importedFileName);
++				fileNames.push(importedFileName);
++			}
++		}
++		const preloads = fileNames.map(getAssetPath);
+ 		preloadsByChunk.set(chunk, preloads);
+ 		return preloads;
+ 	};
+diff --git a/node_modules/@tanstack/start-plugin-core/src/start-manifest-plugin/manifestBuilder.ts b/node_modules/@tanstack/start-plugin-core/src/start-manifest-plugin/manifestBuilder.ts
+index 02a8586..dee9e6b 100644
+--- a/node_modules/@tanstack/start-plugin-core/src/start-manifest-plugin/manifestBuilder.ts
++++ b/node_modules/@tanstack/start-plugin-core/src/start-manifest-plugin/manifestBuilder.ts
+@@ -265,7 +265,10 @@ export function buildStartManifest(options: {
+   >
+ }): StartManifest {
+   const scannedChunks = scanClientChunks(options.clientBuild)
+-  const assetResolvers = createManifestAssetResolvers(options.basePath)
++  const assetResolvers = createManifestAssetResolvers(
++    options.basePath,
++    scannedChunks.chunksByFileName,
++  )
+ 
+   const routes = buildRouteManifestRoutes({
+     routeTreeRoutes: options.routeTreeRoutes,
+@@ -355,6 +358,7 @@ export function scanClientChunks(
+ 
+ export function createManifestAssetResolvers(
+   basePath: string,
++  chunksByFileName?: ReadonlyMap<string, NormalizedClientChunk>,
+ ): ManifestAssetResolvers {
+   const assetPathByFileName = new Map<string, string>()
+   const stylesheetLinkByFileName = new Map<string, ManifestCssLink>()
+@@ -390,11 +394,20 @@ export function createManifestAssetResolvers(
+       return cachedPreloads
+     }
+ 
+-    const preloads = [getAssetPath(chunk.fileName)]
+-
+-    for (let i = 0; i < chunk.imports.length; i++) {
+-      preloads.push(getAssetPath(chunk.imports[i]!))
++    // Walk only static imports. A shallow list leaves another network
++    // waterfall before hydration, while dynamic imports belong to other loads.
++    const fileNames = [chunk.fileName]
++    const seen = new Set(fileNames)
++    for (let i = 0; i < fileNames.length; i++) {
++      const current = i === 0 ? chunk : chunksByFileName?.get(fileNames[i]!)
++      if (!current) continue
++      for (const importedFileName of current.imports) {
++        if (seen.has(importedFileName)) continue
++        seen.add(importedFileName)
++        fileNames.push(importedFileName)
++      }
+     }
++    const preloads = fileNames.map(getAssetPath)
+ 
+     preloadsByChunk.set(chunk, preloads)
+     return preloads

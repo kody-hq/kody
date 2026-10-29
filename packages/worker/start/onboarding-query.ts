@@ -9,10 +9,7 @@ import {
 	onboardingWizardStepHref,
 	type OnboardingLocation,
 } from '#universal/onboarding-process.ts'
-import {
-	absolutizeDocumentHead,
-	resolveDocumentHead,
-} from '#universal/document-head.ts'
+import { absolutizeDocumentHead } from '#universal/document-head-contract.ts'
 
 export const onboardingQuery = createPageQuery('loadOnboarding', loadOnboarding)
 
@@ -34,11 +31,11 @@ export async function loadOnboardingRoute(
 	preload: boolean,
 	selection: OnboardingLocation | 'index',
 ) {
-	const { payload, canonicalBaseUrl } = await ensurePageQuery(
-		queryClient,
-		options,
-		preload,
-	)
+	const [{ payload, canonicalBaseUrl }, { resolveDocumentHead }] =
+		await Promise.all([
+			ensurePageQuery(queryClient, options, preload),
+			import('#universal/document-head-resolver.ts'),
+		])
 	const search = location.searchStr
 	const redirectTo = normalizeRedirectTo(
 		new URLSearchParams(search).get('redirectTo'),

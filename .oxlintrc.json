@@ -13,6 +13,20 @@
 				"typescript/no-explicit-any": "off",
 				"eslint/no-warning-comments": "off"
 			}
+		},
+		{
+			"files": [
+				"packages/worker/start/components/document-head.ts",
+				"packages/worker/start/components/home-document-head.ts",
+				"packages/worker/start/components/site-header.tsx",
+				"packages/worker/start/page-query.ts",
+				"packages/worker/universal/document-head-resolver.ts",
+				"packages/worker/universal/loader-data.ts"
+			],
+			"rules": {
+				"import/consistent-type-specifier-style": "off",
+				"typescript/no-import-type-side-effects": "error"
+			}
 		}
 	]
 }

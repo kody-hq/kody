@@ -16,7 +16,7 @@ import {
 	rejectSecretAccess,
 } from '#start/server/account-mutations'
 import { type AccountSecretsLoaderData } from '#universal/loader-data.ts'
-import { fillPlacementViewFromDraft } from '#universal/credential-fill-placement.ts'
+import { fillPlacementViewFromDraft } from '#universal/credential-fill-placement-input.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import { type CSSObject } from '@emotion/react'
