@@ -20,6 +20,7 @@ import { setCredentialPlacement } from '#app/credential-placement-mutation.ts'
 import {
 	approveCredentialPlacement,
 	loadCredentialPlacementApprovalView,
+	pinnedCredentialMismatchFor,
 } from '#app/credential-placement-approval.ts'
 import { credentialPlacementApprovalLinkCapability } from '#mcp/capabilities/secrets/credential-placement-approval-link.ts'
 import { readFillPlacementOptIn } from '#worker/credentials/fill-placement-opt-ins.ts'
@@ -501,6 +502,27 @@ test('a pinned approval link refuses a different credential with the same name',
 		status: 200,
 		data: { ok: true, approved: ['loginPassword'] },
 	})
+})
+
+test('a pinned link cannot approve hosts for a different same-named credential', async () => {
+	const t = await setup()
+	await t.set({ name: 'loginPassword', value: 'pw_value' })
+	const realId = (await t.entry('loginPassword'))!.id
+	const check = (credentialId: string | null, names = ['loginPassword']) =>
+		pinnedCredentialMismatchFor({
+			env: t.owner.env,
+			user: websiteUser(t.owner),
+			names,
+			credentialId,
+		})
+	await expect(check('some-other-credential')).resolves.toMatch(
+		/different credential/,
+	)
+	await expect(
+		check(realId, ['loginPassword', 'otherPassword']),
+	).resolves.toMatch(/different credential/)
+	await expect(check(realId)).resolves.toBeNull()
+	await expect(check(null)).resolves.toBeNull()
 })
 
 test('the owner widens a vault credential to the body on the website; a member cannot', async () => {

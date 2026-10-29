@@ -89,6 +89,35 @@ function pinnedCredentialError(input: {
 	return input.storedId === input.credentialId ? null : pinnedCredentialMismatch
 }
 
+/**
+ * Null when every name resolves to the pinned credential in the viewer's org,
+ * or nothing is pinned. Guards the host approval that rides on a pinned link.
+ */
+export async function pinnedCredentialMismatchFor(input: {
+	env: Env
+	user: AuthenticatedAppUser
+	names: ReadonlyArray<string>
+	credentialId: string | null | undefined
+}): Promise<string | null> {
+	if (!input.credentialId) return null
+	const names = requestedNames(input.names)
+	if (names.length !== 1) return pinnedCredentialMismatch
+	const orgId = ownerIdFromCaller({
+		request: input.user.request,
+		user: input.user.mcpUser,
+	})
+	const stored = await readStoredCredentialPlacement({
+		db: input.env.APP_DB,
+		orgId,
+		name: names[0]!,
+	})
+	return pinnedCredentialError({
+		credentialId: input.credentialId,
+		names,
+		storedId: stored?.id ?? null,
+	})
+}
+
 /** What the approval page shows. Never reads a credential value. */
 export async function loadCredentialPlacementApprovalView(input: {
 	env: Env
