@@ -370,40 +370,73 @@ test('package owner links follow the person profile, else the team org visibilit
 	expect(await loadOwnerProfilePublic(db, 'nobody-here')).toBe(false)
 })
 
-test('updateOrgProfile reports a conflict instead of overwriting a concurrent visibility change', async () => {
-	const db = await createDb()
-	const org = await createTeamOrg(db, { slug: 'acme-team' })
-	const auditDb = createAuditTestDb()
-	const racing = new Proxy(db, {
+function racingDb(
+	db: D1Database,
+	orgId: string,
+	concurrent: 'public' | 'private',
+) {
+	const flip = () =>
+		db
+			.prepare(`UPDATE orgs SET profile_visibility = ? WHERE id = ?`)
+			.bind(concurrent, orgId)
+			.run()
+	return new Proxy(db, {
 		get(target, key) {
+			if (key === 'batch')
+				return async (statements: Array<D1PreparedStatement>) => {
+					await flip()
+					return target.batch(statements)
+				}
 			if (key !== 'prepare') return Reflect.get(target, key)
 			return (sql: string) => {
 				const statement = target.prepare(sql)
 				if (!sql.trimStart().startsWith('UPDATE orgs')) return statement
 				return {
-					bind: (...values: Array<unknown>) => ({
-						async run() {
-							await target
-								.prepare(
-									`UPDATE orgs SET profile_visibility = 'private' WHERE id = ?`,
-								)
-								.bind(org.id)
-								.run()
-							return statement.bind(...values).run()
-						},
-					}),
+					bind: (...values: Array<unknown>) => {
+						const bound = statement.bind(...values)
+						return Object.assign(Object.create(bound), {
+							async run() {
+								await flip()
+								return bound.run()
+							},
+						})
+					},
 				}
 			}
 		},
 	}) as D1Database
+}
 
+test('updateOrgProfile reports a conflict instead of overwriting a concurrent visibility change', async () => {
+	const db = await createDb()
+	const auditDb = createAuditTestDb()
+	const audit = createTestOrgAuditWriter({ db: auditDb })
+
+	// Audited change path: public -> private loses to a concurrent flip.
+	const changing = await createTeamOrg(db, { slug: 'acme-team' })
 	expect(
-		await updateOrgProfile(racing, {
-			orgId: org.id,
-			profileVisibility: 'public',
-			audit: createTestOrgAuditWriter({ db: auditDb }),
+		await updateOrgProfile(racingDb(db, changing.id, 'private'), {
+			orgId: changing.id,
+			profileVisibility: 'private',
+			audit,
 		}),
 	).toMatchObject({ ok: false, code: 'conflict' })
-	expect(await loadOrgProfileVisibility(db, org.id)).toBe('private')
-	expect(await auditRows(auditDb)).toEqual([])
+	expect(await loadOrgProfileVisibility(db, changing.id)).toBe('private')
+
+	// Same-value path: a stale "public" must not undo a concurrent "private".
+	const same = await createTeamOrg(db, { slug: 'acme-other' })
+	expect(
+		await updateOrgProfile(racingDb(db, same.id, 'private'), {
+			orgId: same.id,
+			profileVisibility: 'public',
+			audit,
+		}),
+	).toMatchObject({ ok: false, code: 'conflict' })
+	expect(await loadOrgProfileVisibility(db, same.id)).toBe('private')
+
+	expect(
+		(await auditRows(auditDb)).filter(
+			(row) => row.action === 'org.profile_visibility_changed',
+		),
+	).toEqual([])
 })
