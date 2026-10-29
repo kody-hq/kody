@@ -9,9 +9,8 @@ import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import {
 	type AstNode,
 	constantsWithoutShadows,
-	createModuleConstantsReader,
+	forEachScannableModule,
 	getNodeName,
-	listScannableModulePaths,
 	parseModule,
 	resolveStringExpression,
 	scannableModuleFilePattern,
@@ -75,22 +74,22 @@ export function measureCredentialStampModuleBytes(source: string): number {
 
 /**
  * Drop oversized scannable modules from a package file map before stamp
- * planning / sealing. Non-module assets and package.json are kept.
+ * planning / sealing. Non-module assets and package.json are kept. Returns
+ * `files` itself when nothing is dropped so the credential scans of one check
+ * share one module index.
  */
 export function omitOversizedCredentialStampModules(
 	files: Record<string, string>,
 ): Record<string, string> {
-	const next: Record<string, string> = {}
-	for (const [path, content] of Object.entries(files)) {
-		if (
+	const oversized = Object.entries(files).filter(
+		([path, content]) =>
 			scannableModuleFilePattern.test(path) &&
 			measureCredentialStampModuleBytes(content) >
-				credentialStampMaxModuleScanBytes
-		) {
-			continue
-		}
-		next[path] = content
-	}
+				credentialStampMaxModuleScanBytes,
+	)
+	if (oversized.length === 0) return files
+	const next = { ...files }
+	for (const [path] of oversized) delete next[path]
 	return next
 }
 
@@ -754,14 +753,8 @@ export function scanLiteralMcpServerKeys(files: Record<string, string>): {
 	const declaredMcpKeys = declaredMcpCredentialKeys(
 		readManifestCredentialSlots(files[packageManifestPath]),
 	)
-	const modulePaths = listScannableModulePaths(files)
-	const parsedModules = new Map(
-		modulePaths.map((path) => [path, parseModule(files[path]!)]),
-	)
-	const moduleConstants = createModuleConstantsReader(parsedModules)
-	for (const path of modulePaths) {
+	forEachScannableModule(files, (path, parsed, constants) => {
 		const source = files[path]!
-		const parsed = parsedModules.get(path)
 		if (!parsed) {
 			if (
 				/\bkody\s*(?:\?\.|\.)\s*mcp\b|\bkody\s*\[\s*['"`]mcp['"`]/.test(source)
@@ -772,9 +765,8 @@ export function scanLiteralMcpServerKeys(files: Record<string, string>): {
 					message: `${path}: kody.mcp access could not be parsed. Call kody.mcp.SERVER (or kody.mcp["SERVER"]) with a literal server name, and declare a kind "mcp" slot for each server.`,
 				})
 			}
-			continue
+			return
 		}
-		const constants = moduleConstants(path)
 		const body = parsed.program?.body ?? []
 		const kodyAliases = new Set<string>(['kody'])
 		const mcpAliases = createMcpAliasTable()
@@ -930,7 +922,7 @@ export function scanLiteralMcpServerKeys(files: Record<string, string>): {
 				message: `${path}: kody.mcp escaped as a value. Keep MCP access as literal kody.mcp.SERVER (or a local alias used only as mcp.SERVER) and declare each server as a kind "mcp" kody.credentials slot.`,
 			})
 		})
-	}
+	})
 	return { keys: [...keys].sort(), failures: dedupeFailures(failures) }
 }
 
@@ -1627,12 +1619,7 @@ export function scanCredentialStamp(
 	}
 	failures.push(...(options.secretProviders?.failures ?? []))
 
-	const modulePaths = listScannableModulePaths(files)
-	const parsedModules = new Map(
-		modulePaths.map((path) => [path, parseModule(files[path]!)]),
-	)
-	const moduleConstants = createModuleConstantsReader(parsedModules)
-	for (const path of modulePaths) {
+	forEachScannableModule(files, (path, parsed, constants) => {
 		const keyScan: KeyScan = {
 			key: (key) => {
 				if (packageCredentialSlotNamePattern.test(key)) keys.add(key)
@@ -1668,10 +1655,9 @@ export function scanCredentialStamp(
 				})
 			},
 		}
-		const parsed = parsedModules.get(path)
-		if (parsed) scanParsedCredentialKeys(parsed, moduleConstants(path), keyScan)
+		if (parsed) scanParsedCredentialKeys(parsed, constants, keyScan)
 		else scanUnparsedCredentialKeys(files[path]!, keyScan)
-	}
+	})
 
 	const mcp = scanLiteralMcpServerKeys(files)
 	for (const key of mcp.keys) keys.add(key)
