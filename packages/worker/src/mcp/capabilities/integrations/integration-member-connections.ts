@@ -8,6 +8,7 @@
  */
 import { z } from 'zod'
 import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
+import { authorizeOrgWide } from '#worker/authorization/authorize.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
 	listPinnedConnectionsForOrg,
@@ -63,6 +64,12 @@ export const integrationMemberConnectionListCapability = defineDomainCapability(
 		outputSchema: z.object({ connections: z.array(memberConnectionSchema) }),
 		async handler(args, ctx: CapabilityContext) {
 			requireMcpUser(ctx.callerContext)
+			// Org-wide only: a grant on one integration does not reach every
+			// member's connection.
+			await authorizeOrgWide(
+				{ env: ctx.env, request: ctx.callerContext.request ?? null },
+				'integration:manage_access',
+			)
 			const connections = await listPinnedConnectionsForOrg({
 				db: ctx.env.APP_DB,
 				pinnedOrgId: ownerIdFromCaller(ctx.callerContext),
@@ -124,6 +131,12 @@ export const integrationMemberConnectionRevokeCapability =
 		}),
 		async handler(args, ctx: CapabilityContext) {
 			requireMcpUser(ctx.callerContext)
+			// Org-wide only: a grant on one integration does not reach every
+			// member's connection.
+			await authorizeOrgWide(
+				{ env: ctx.env, request: ctx.callerContext.request ?? null },
+				'integration:manage_access',
+			)
 			const [connection] = await listPinnedConnectionsForOrg({
 				db: ctx.env.APP_DB,
 				pinnedOrgId: ownerIdFromCaller(ctx.callerContext),

@@ -7,8 +7,8 @@
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import {
-	authorize,
 	AuthorizationError,
+	authorizeOrgWide,
 } from '#worker/authorization/authorize.ts'
 import { resolvePinnedConnectTarget } from '#worker/integrations/pinned-connect.ts'
 import {
@@ -28,7 +28,10 @@ type WebsiteUser = NonNullable<
 
 async function canManageMemberConnections(env: Env, user: WebsiteUser) {
 	try {
-		await authorize({ env, request: user.request }, 'integration:manage_access')
+		await authorizeOrgWide(
+			{ env, request: user.request },
+			'integration:manage_access',
+		)
 		return true
 	} catch (error) {
 		if (error instanceof AuthorizationError) return false

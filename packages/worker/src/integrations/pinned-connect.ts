@@ -14,10 +14,6 @@ import { type McpUserContext } from '@kody-internal/shared/chat.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
 import { canonicalIntegrationName } from '#mcp/capabilities/integrations/integration-shared.ts'
-import {
-	authorize,
-	AuthorizationError,
-} from '#worker/authorization/authorize.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { getOrgById, loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
@@ -95,16 +91,16 @@ export async function resolvePinnedConnectTarget(input: {
 			status: 403,
 		}
 	}
-	try {
-		await authorize(
-			{ env: input.env, request: input.request },
-			'integration:use',
-		)
-	} catch (error) {
-		if (error instanceof AuthorizationError) {
-			return { ok: false, error: error.message, status: 403 }
+	// Members and Owners may connect their own account: the connection is
+	// theirs, usable only in their own runs here. Billing and outside
+	// collaborators may not (ADR 0068 amendment 2026-10-29).
+	if (binding.role !== 'owner' && binding.role !== 'member') {
+		return {
+			ok: false,
+			error:
+				'Connecting your own account through an org app needs the Member or Owner role in that org.',
+			status: 403,
 		}
-		throw error
 	}
 	const [app, org] = await Promise.all([
 		getOauthAppBySlug({
