@@ -1,6 +1,6 @@
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 
-type ConnectOauthChooserKind = 'connection' | 'platform'
+type ConnectOauthChooserKind = 'connection' | 'platform' | 'org-app'
 
 export type ConnectOauthChooserOption = {
 	id: string
@@ -124,10 +124,37 @@ export function buildConnectOauthChooserOptions(input: {
 		canDrive: boolean
 	}>
 	platformApps: ReadonlyArray<ConnectablePlatformApp>
+	/** The org's OAuth apps a member may connect their own account through. */
+	orgApps?: ReadonlyArray<{
+		slug: string
+		label: string
+		providerKey: string
+		logoPath: string | null
+		autoLogoPath: string | null
+		catalogLogoPath: string | null
+	}>
 	/** When set, every chooser link keeps this org through SSR and writes. */
 	orgSlug?: string | null
 }): Array<ConnectOauthChooserOption> {
 	const orgSlug = input.orgSlug?.trim() || null
+	const orgAppOptions = orgSlug
+		? (input.orgApps ?? []).map((app) => ({
+				id: `org-app:${app.slug}`,
+				href: buildConnectOauthHref({
+					name: app.slug,
+					appSlug: app.slug,
+					orgSlug,
+					mode: 'personal',
+				}),
+				label: app.label,
+				detail: "Connect your own account through this org's app",
+				providerKey: normalizeProviderKey(app.providerKey) || app.slug,
+				logoPath: app.logoPath,
+				autoLogoPath: app.autoLogoPath,
+				catalogLogoPath: app.catalogLogoPath,
+				kind: 'org-app' as const,
+			}))
+		: []
 	const connectionOptions = input.connections
 		.filter((connection) => connection.canDrive)
 		.map((connection) => {
@@ -173,5 +200,5 @@ export function buildConnectOauthChooserOptions(input: {
 		catalogLogoPath: app.catalogLogoPath,
 		kind: 'platform' as const,
 	}))
-	return [...connectionOptions, ...platformOptions]
+	return [...orgAppOptions, ...connectionOptions, ...platformOptions]
 }

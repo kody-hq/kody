@@ -16,6 +16,8 @@ import {
 } from '#worker/integrations/service.ts'
 import { toConnectablePlatformApp } from '#app/platform-integration-catalog.ts'
 
+import { type UserOauthApp } from '#worker/integrations/types.ts'
+
 export type { ConnectOauthChooserOption }
 
 export async function loadConnectOauthChooser(input: {
@@ -23,6 +25,8 @@ export async function loadConnectOauthChooser(input: {
 	userId: string
 	/** From `/connect/oauth?org=`; kept on every chooser option href. */
 	orgSlug?: string | null
+	/** Org apps the member may connect their own account through. */
+	orgApps?: ReadonlyArray<UserOauthApp>
 }): Promise<{ options: Array<ConnectOauthChooserOption> }> {
 	const [joined, platformApps, marks] = await Promise.all([
 		listJoinedIntegrations({ env: input.env, userId: input.userId }),
@@ -32,6 +36,17 @@ export async function loadConnectOauthChooser(input: {
 	return {
 		options: buildConnectOauthChooserOptions({
 			orgSlug: input.orgSlug,
+			orgApps: (input.orgApps ?? []).map((app) => ({
+				slug: app.slug,
+				label: app.label?.trim() || app.slug,
+				providerKey: app.provider,
+				...buildUserOauthAppLogoPaths(app),
+				catalogLogoPath: resolveProviderMarkLogoPath({
+					marks,
+					providerKey: app.provider,
+					host: hostFromProviderUrl(app.authorizeUrl),
+				}),
+			})),
 			connections: joined.map((entry) => ({
 				name: entry.connection.name,
 				label:

@@ -1,7 +1,10 @@
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import { toAppOnlyIntegrationRecord } from '#app/account-integrations-data.ts'
 import { oauthAppToSetupPrefill } from '#worker/integrations/service.ts'
-import { resolvePinnedConnectTarget } from '#worker/integrations/pinned-connect.ts'
+import {
+	listPinnedConnectableApps,
+	resolvePinnedConnectTarget,
+} from '#worker/integrations/pinned-connect.ts'
 import {
 	hasStoredConnectClientSecret,
 	loadAccountIntegrationByName,
@@ -73,6 +76,15 @@ export async function loadConnectOauthLoaderData(
 						env,
 						userId: user.mcpUser.userId,
 						orgSlug: input.orgSlug,
+						orgApps: input.orgSlug
+							? (
+									await listPinnedConnectableApps({
+										env,
+										request: user.request,
+										mcpUser: user.mcpUser,
+									})
+								)?.apps
+							: undefined,
 					})
 				: { options: [] },
 		}

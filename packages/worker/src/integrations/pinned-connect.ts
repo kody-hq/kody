@@ -35,6 +35,7 @@ import {
 	getOauthAppBySlug,
 	upsertIntegrationConnection,
 } from './repo.ts'
+import { listOauthAppsWithConnectionCounts } from './repo.ts'
 import { type UserOauthApp } from './types.ts'
 
 export type PinnedConnectTarget = {
@@ -59,12 +60,23 @@ export function pinnedConnectionName(appSlug: string, orgSlug: string) {
  * app: a team org (not their personal org), a live binding, and
  * `integration:use` there. Returns the org app without its secret.
  */
-export async function resolvePinnedConnectTarget(input: {
+/**
+ * The caller's live Member or Owner binding to the team org the request is
+ * scoped to: who may connect their own account through its OAuth apps.
+ */
+export async function resolvePinnedConnectOrg(input: {
 	env: Env
 	request: RequestContext
 	mcpUser: McpUserContext
-	appSlug: string
-}): Promise<({ ok: true } & PinnedConnectTarget) | Failure> {
+}): Promise<
+	| {
+			ok: true
+			orgId: OwnerId
+			personId: PersonId
+			personalOrgId: OwnerId
+	  }
+	| Failure
+> {
 	const orgId = ownerIdFromCaller({
 		request: input.request,
 		user: input.mcpUser,
@@ -102,6 +114,18 @@ export async function resolvePinnedConnectTarget(input: {
 			status: 403,
 		}
 	}
+	return { ok: true, orgId, personId, personalOrgId }
+}
+
+export async function resolvePinnedConnectTarget(input: {
+	env: Env
+	request: RequestContext
+	mcpUser: McpUserContext
+	appSlug: string
+}): Promise<({ ok: true } & PinnedConnectTarget) | Failure> {
+	const gate = await resolvePinnedConnectOrg(input)
+	if (!gate.ok) return gate
+	const { orgId, personId, personalOrgId } = gate
 	const [app, org] = await Promise.all([
 		getOauthAppBySlug({
 			db: input.env.APP_DB,
@@ -276,5 +300,32 @@ export async function savePinnedConnection(input: {
 		credentialId,
 		refreshTokenSaved: Boolean(refreshToken),
 		allowedHosts,
+	}
+}
+
+/**
+ * The team org's OAuth apps the caller may connect their own account
+ * through, or null when the request is not a Member/Owner team-org visit.
+ */
+export async function listPinnedConnectableApps(input: {
+	env: Env
+	request: RequestContext
+	mcpUser: McpUserContext
+}): Promise<{ orgSlug: string; apps: Array<UserOauthApp> } | null> {
+	const gate = await resolvePinnedConnectOrg(input)
+	if (!gate.ok) return null
+	const [apps, org] = await Promise.all([
+		listOauthAppsWithConnectionCounts({
+			db: input.env.APP_DB,
+			userId: gate.orgId,
+		}),
+		getOrgById(input.env.APP_DB, gate.orgId),
+	])
+	if (!org) return null
+	return {
+		orgSlug: org.slug,
+		apps: apps.filter(
+			(app) => app.flow !== 'device' && Boolean(app.authorizeUrl?.trim()),
+		),
 	}
 }
