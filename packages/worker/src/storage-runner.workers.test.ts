@@ -163,6 +163,32 @@ test('storage runner preserves isolated state per storage id', async () => {
 	}
 })
 
+test('storage runner exportStorage with maxBytes pages large values in bounded chunks', async () => {
+	await ensureStorageRunnerTestSchema()
+	const runner = runnerFor('user-export-bytes')
+	const big = 'x'.repeat(1_000)
+	for (const key of ['a', 'b', 'c', 'd', 'e']) {
+		await runner.setValue({ key, value: big })
+	}
+	const seen: Array<string> = []
+	let startAfter: string | null = null
+	for (let page = 0; page < 10; page += 1) {
+		const result = await runner.exportStorage({
+			pageSize: 250,
+			startAfter,
+			maxBytes: 2_000,
+		})
+		expect(result.entries.length).toBeLessThanOrEqual(2)
+		seen.push(...result.entries.map((entry) => entry.key))
+		if (!result.truncated) break
+		startAfter = result.nextStartAfter
+	}
+	expect(seen).toEqual(['a', 'b', 'c', 'd', 'e'])
+	const unbounded = await runner.exportStorage({ pageSize: 250 })
+	expect(unbounded.entries.map((entry) => entry.key)).toEqual(seen)
+	expect(unbounded.truncated).toBe(false)
+})
+
 test('storage runner write tools enforce storage byte entitlements for planned users', async () => {
 	const limit = proStorageLimit()
 	const pro = await seedPlannedStorageUser('storage-planned', 'pro', limit)
