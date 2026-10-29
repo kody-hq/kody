@@ -258,3 +258,21 @@ test('a closure walk past its budget is reported instead of holding publish', as
 	})
 	expect(check?.message).toContain('walking the import closure took too long')
 })
+
+test('a failing import keeps the gaps already found in other imports', async () => {
+	const check = await buildCapabilityDeclarationCheck({
+		manifest: appManifest(),
+		sourceFiles: {
+			'index.ts':
+				"import { listSecrets } from 'kody:@example/helper'\nimport { other } from 'kody:@example/other'\nexport default async () => [listSecrets(), other()]\n",
+		},
+		loadPackage: async (name) => {
+			if (name === '@example/helper')
+				return helperPackage({ capabilities: ['secretList'] })
+			throw new Error('boom')
+		},
+	})
+	expect(check?.message).toContain('secretList')
+	expect(check?.message).toContain('could not be resolved statically')
+	expect(check?.message).not.toContain('boom')
+})

@@ -171,20 +171,37 @@ export async function buildCapabilityDeclarationCheck(input: {
 }) {
 	const findings = findCapabilityDeclarationGaps(input)
 	if (input.loadPackage) {
+		const budgetMs = input.closureBudgetMs ?? closureBudgetMs
+		const deadline = Date.now() + budgetMs
+		const loadPackage = input.loadPackage
+		let overBudget = false
+		// Past the deadline, stop loading packages; a failed load counts as an
+		// unresolved import instead of discarding what was already found.
+		const boundedLoader: ClosurePackageLoader = async (packageName) => {
+			if (overBudget || Date.now() > deadline) {
+				overBudget = true
+				return null
+			}
+			try {
+				return await loadPackage(packageName)
+			} catch {
+				return null
+			}
+		}
 		let timer: ReturnType<typeof setTimeout> | undefined
 		const timedOut = new Promise<'timeout'>((resolve) => {
-			timer = setTimeout(
-				() => resolve('timeout'),
-				input.closureBudgetMs ?? closureBudgetMs,
-			)
+			timer = setTimeout(() => {
+				overBudget = true
+				resolve('timeout')
+			}, budgetMs)
 		})
 		try {
 			const closure = await Promise.race([
-				findClosureGaps({ ...input, loadPackage: input.loadPackage }),
+				findClosureGaps({ ...input, loadPackage: boundedLoader }),
 				timedOut,
 			])
 			findings.push(
-				...(closure === 'timeout'
+				...(closure === 'timeout' || overBudget
 					? [{ kind: 'closure-timeout' as const }]
 					: closure),
 			)
