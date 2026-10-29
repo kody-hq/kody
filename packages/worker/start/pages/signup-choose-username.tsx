@@ -150,6 +150,10 @@ export function SignupChooseUsernamePage(props: {
 							This is also your personal organization handle. Pick carefully:
 							you can't change it later.
 						</p>
+						<p data-testid="signup-org-hint">
+							Using Kody for a business? You can create an organization with its
+							own handle anytime.
+						</p>
 					</header>
 
 					<form

@@ -2,9 +2,8 @@ import { McpCallerError } from '#mcp/caller-error.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 /**
- * Resolve the acting person's numeric `users.id` for feature-flag audience
- * evaluation. Custom-hostname management is person-gated
- * (`experiments_opt_in`), so agent-only callers are refused.
+ * Require a live person behind custom-hostname management and return their
+ * numeric `users.id`. Agent-only callers are refused.
  */
 export async function resolvePackageAppCustomHostnameActingUserId(input: {
 	db: D1Database

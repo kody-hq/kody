@@ -311,9 +311,11 @@ export function ShellWorkspaceSwitcher({
 export function ShellNavigation({
 	navigation,
 	separateWorkspaceSwitcher = false,
+	mobileFooter,
 }: {
 	navigation?: MatchedPageNavigation
 	separateWorkspaceSwitcher?: boolean
+	mobileFooter?: ReactNode
 } = {}) {
 	const session = useShellData().session
 	const context = useRouteContext({ strict: false })
@@ -329,6 +331,7 @@ export function ShellNavigation({
 			}}
 		>
 			<AccountManagementLinkNav
+				mobileFooter={mobileFooter}
 				workspaceSwitcher={admin ? undefined : rail.workspaceSwitcher}
 				// Rail copy lives in ShellWorkspaceSwitcher above the scroll region;
 				// keep the drawer copy so narrow viewports still get a switcher.

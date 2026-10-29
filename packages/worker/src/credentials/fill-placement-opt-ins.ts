@@ -11,6 +11,9 @@ export type OptInFillPlacementPart = (typeof optInFillPlacementParts)[number]
 
 export type FillPlacementOptIn = Record<OptInFillPlacementPart, boolean>
 
+/** Who chose an opt-in: the owner, or a Key saved from a sealed token. */
+export type FillPlacementOptInSource = 'owner' | 'sealed_token'
+
 export const noFillPlacementOptIn: FillPlacementOptIn = {
 	query: false,
 	path: false,
@@ -56,6 +59,7 @@ export function ownerFillPlacementOptInStatement(input: {
 	db: D1Database
 	credentialId: string
 	optIn: FillPlacementOptIn
+	source?: FillPlacementOptInSource
 	at?: string
 }) {
 	const { optIn } = input
@@ -70,7 +74,7 @@ export function ownerFillPlacementOptInStatement(input: {
 		.prepare(
 			`INSERT INTO credential_fill_placement_opt_ins (
 				credential_id, query, path, body, source, updated_at
-			) VALUES (?, ?, ?, ?, 'owner', ?)
+			) VALUES (?, ?, ?, ?, ?, ?)
 			ON CONFLICT(credential_id) DO UPDATE SET
 				query = excluded.query,
 				path = excluded.path,
@@ -83,6 +87,7 @@ export function ownerFillPlacementOptInStatement(input: {
 			optIn.query ? 1 : 0,
 			optIn.path ? 1 : 0,
 			optIn.body ? 1 : 0,
+			input.source ?? 'owner',
 			input.at ?? new Date().toISOString(),
 		)
 }

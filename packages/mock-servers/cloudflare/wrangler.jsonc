@@ -57,7 +57,19 @@
 			},
 		},
 		"preview": {
-			"observability": { "enabled": true },
+			// Previews: traces off, 10% of logs (Workers Observability cost).
+			// `wrangler tail` still streams every log line live.
+			"observability": {
+				"enabled": true,
+				"logs": {
+					"enabled": true,
+					"head_sampling_rate": 0.1,
+					"invocation_logs": true,
+				},
+				"traces": {
+					"enabled": false,
+				},
+			},
 			"durable_objects": {
 				"bindings": [
 					{

@@ -39,7 +39,7 @@ export async function deleteAccountEmailMessage({
 	user,
 	messageId,
 }: EmailMutationContext) {
-	await authorize({ env, request: user.request }, 'email:read')
+	await authorize({ env, request: user.request }, 'email:delete')
 	if (!messageId.trim())
 		return operationResult({ ok: false, error: 'Message id is required.' }, 400)
 	const deleted = await deleteEmailMessage({
@@ -68,7 +68,7 @@ export async function classifyAccountEmailMessage({
 	classification?: EmailClassification
 	archived?: boolean
 }) {
-	await authorize({ env, request: user.request }, 'email:read')
+	await authorize({ env, request: user.request }, 'email:write')
 	if (!messageId.trim())
 		return operationResult({ ok: false, error: 'Message id is required.' }, 400)
 	if (classification === undefined && archived === undefined)

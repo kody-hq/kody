@@ -17,7 +17,15 @@ export const viewFilterOptions: Array<{
 export type AccountJobsActionPayload = {
 	ok: true
 	jobId: string
-	runNow?: { ok: boolean; error: string | null }
+	runNow?: {
+		ok: boolean
+		error: string | null
+		contextRun?: {
+			state: 'queued' | 'running'
+			context: string
+			expiresAt: string | null
+		} | null
+	}
 }
 
 export type AccountJobsMessageTone = 'info' | 'error'
@@ -35,6 +43,16 @@ export type PostAccountJobsAction<TInput> = (
 export function runNowSuccessMessage(payload: AccountJobsActionPayload) {
 	if (payload.runNow && !payload.runNow.ok) {
 		return `Run finished with an error${payload.runNow.error ? `: ${payload.runNow.error}` : '.'}`
+	}
+	const contextRun = payload.runNow?.contextRun
+	if (contextRun?.state === 'queued') {
+		const until = contextRun.expiresAt
+			? ` or ${new Date(contextRun.expiresAt).toLocaleString()}`
+			: ''
+		return `${contextRun.context} is offline. The run is queued until it reconnects${until}; Activity shows the result.`
+	}
+	if (contextRun?.state === 'running') {
+		return `Started on ${contextRun.context}. Activity shows the result.`
 	}
 	return 'Job ran successfully.'
 }

@@ -187,7 +187,10 @@ export async function toDocDetail(
 	serverTiming?: Array<ServerTimingEntry>,
 ): Promise<DocDetailLoaderData> {
 	const [bodyFences, walkthroughHighlights] = await Promise.all([
-		highlightMarkdownFences(env, guide.body, { serverTiming }),
+		highlightMarkdownFences(env, guide.body, {
+			serverTiming,
+			firstParty: true,
+		}),
 		highlightWalkthrough(env, guide.slug, serverTiming),
 	])
 	return {

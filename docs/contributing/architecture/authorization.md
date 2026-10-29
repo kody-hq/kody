@@ -40,11 +40,15 @@ synchronous, for callers that already hold the compiled permissions.
 3. **Effective permissions.** `computeEffectivePermissions` compiles
    memberships, team memberships, and grants (`access-compile.ts`): Owner holds
    every permission; Member and Billing hold their org-level basics plus any
-   direct or team grants; outside collaborators hold `search:read` plus grants
-   (and `org:execute` when they hold `package:execute` somewhere, the ad-hoc
-   rule). Compiled results are stored in `access_cache` and keyed by
-   `orgs.access_epoch`. Automation (no actor) acts for the org that owns the
-   job, webhook, or subscription. The result is also cached per request context.
+   direct, team, or everyone-in-org grants (`subject_type = 'org'`, whose
+   `subject_id` must equal the grant's `org_id`, a CHECK since migration 0201;
+   it matches any live `org_memberships` row at compile time, so joins and
+   leaves need no grant rows, only the existing epoch bumps); outside
+   collaborators hold `search:read` plus grants (and `org:execute` when they
+   hold `package:execute` somewhere, the ad-hoc rule). Compiled results are
+   stored in `access_cache` and keyed by `orgs.access_epoch`. Automation (no
+   actor) acts for the org that owns the job, webhook, or subscription. The
+   result is also cached per request context.
 4. **Credential scopes.** Non-null `credential.scopes` narrow the result.
 5. **Connection profile.** A bound profile narrows package resources to the
    packages and actions it lists (`read`, `execute`, `write`). Profiles list
@@ -64,6 +68,20 @@ synchronous, for callers that already hold the compiled permissions.
    mode mints a write remote for the package it just created on that check
    alone; it grants nothing on other packages and stores no grant on the new
    one. Plain repo create stays an org-level `package:create` check.
+
+**Org-wide read grants.** An `org` grant may carry the read-only resource
+permissions in `orgWideReadPermissions`
+(`packages/shared/src/grant-presets.ts`): `package:read`, `app:read`,
+`job:read`, `integration:read`, and `email:read`. They compile into org-level
+permissions, so a Member holding `job:read` on the org passes `authorizeOrgWide`
+and lists every run (`runList`, `runGet`, `runSummary`, `workflowList`,
+`jobList`, `jobGet`). Nothing else rides along: `use`, `execute`, `write`,
+`delete`, `publish`, and `manage_access` are never grantable on the org, so
+triage (`runUpdate`), edits, and runs still need their own permission.
+`secret:read` (reveals values), `memory:read` (memories are personal, ADR 0072),
+and `execution_context:read` (machines are listed per share) are left out.
+Owners set these from the Grants page or with `accessGrant`
+(`resource_type: "org"`); a denial for one of them says so.
 
 A surface check without a resource (capability `orgPermission`, Open API
 `x-kody-permission`) passes when the permission is held at org level **or on any

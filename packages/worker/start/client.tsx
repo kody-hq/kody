@@ -16,12 +16,14 @@ import {
 	initSentryClient,
 	type ClientErrorContext,
 } from '#client/sentry-client.ts'
+import { isPermissionDeniedError } from '#universal/permission-denied.ts'
 
 initSentryClient(document)
 window.addEventListener('vite:preloadError', onVitePreloadError)
 
 function reportReactError(error: unknown, context?: ClientErrorContext) {
-	console.error('React client error:', error)
+	if (!isPermissionDeniedError(error))
+		console.error('React client error:', error)
 	captureClientException(error, context)
 }
 

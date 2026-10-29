@@ -106,8 +106,9 @@ primitives:
     group: surfaces
     name: Highlight worker
     summary:
-      Service-binding-only Shiki tokenizer. Origin sends snippets over HIGHLIGHT
-      and receives serializable token trees; there is no public hostname.
+      Service-binding-only TanStack Highlight tokenizer. Origin sends snippets
+      over HIGHLIGHT and receives serializable token trees; there is no public
+      hostname.
     code:
       - packages/highlight-worker/
     docs:

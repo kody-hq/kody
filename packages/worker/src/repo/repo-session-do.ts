@@ -2308,12 +2308,19 @@ class RepoSessionBase extends DurableObject<Env> {
 			input.userId,
 		)
 		await this.touchRepoSession(sessionRow)
-		return {
-			path: input.path,
-			content: await this.workspace.readFile(
-				resolveRepoWorkspacePath(input.path, repoSessionWorkspacePrefix),
-			),
+		const workspacePath = resolveRepoWorkspacePath(
+			input.path,
+			repoSessionWorkspacePrefix,
+		)
+		let content: string | null
+		try {
+			content = await this.workspace.readFile(workspacePath)
+		} catch (error) {
+			// Agents pass a folder from repoTree (`src`); the shell throws raw
+			// EISDIR. KODY-CA.
+			this.remapWorkspaceEisdirError(error, 'read', input.path)
 		}
+		return { path: input.path, content }
 	}
 
 	async writeFile(input: {
@@ -2626,6 +2633,53 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 	}
 
+	async restorePublishedSkill(input: {
+		sessionId: string
+		userId: OwnerId
+		commit: string
+		name: string
+	}) {
+		const { sessionRow } = await this.getSessionState(
+			input.sessionId,
+			input.userId,
+		)
+		const { readPublishedSourceSnapshot } =
+			await import('#worker/package-runtime/published-runtime-artifacts.ts')
+		const { planSkillRestore } =
+			await import('#worker/package-registry/skill-history.ts')
+		const { snapshotStringToBytes } =
+			await import('#universal/package-file-media.ts')
+		const snapshot = await readPublishedSourceSnapshot({
+			env: this.env,
+			sourceId: sessionRow.source_id,
+			publishedCommit: input.commit,
+		})
+		if (!snapshot) throw new Error('This published snapshot is unavailable.')
+		const plan = planSkillRestore({
+			name: input.name,
+			current: await this.collectWorkspaceFiles(),
+			previous: snapshot.files,
+		})
+		for (const [path, content] of plan.writes) {
+			await this.workspace.writeFileBytes(
+				resolveRepoWorkspacePath(path, repoSessionWorkspacePrefix),
+				snapshotStringToBytes(content, path),
+			)
+		}
+		for (const path of plan.deletes)
+			await this.workspace.rm(
+				resolveRepoWorkspacePath(path, repoSessionWorkspacePrefix),
+				{ force: true },
+			)
+		await updateRepoSession(this.env, {
+			id: input.sessionId,
+			userId: sessionRow.user_id,
+			lastCheckpointAt: nowIso(),
+		})
+		this.refreshStoredEstimate(input.sessionId, sessionRow.user_id)
+		return { changed: plan.writes.length > 0 || plan.deletes.length > 0 }
+	}
+
 	async restoreFiles(input: {
 		sessionId: string
 		userId: OwnerId
@@ -2893,6 +2947,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
 			sourceFiles?: Record<string, string>
+			binaryFileSizes?: Record<string, number>
 		}>(input.stagingKey, 'json')
 		const sourceFiles = staged?.sourceFiles
 		if (!sourceFiles) {
@@ -2954,6 +3009,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
 			sourceFiles?: Record<string, string>
+			binaryFileSizes?: Record<string, number>
 		}>(input.stagingKey, 'json')
 		const sourceFiles = staged?.sourceFiles
 		if (!sourceFiles) {
@@ -2971,6 +3027,9 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 		const checks = await runAuthoringPublishChecksOnFiles({
 			files: sourceFiles,
+			...(staged?.binaryFileSizes
+				? { binaryFileSizes: staged.binaryFileSizes }
+				: {}),
 			env: this.env,
 			baseUrl: input.baseUrl,
 			userId: input.userId,

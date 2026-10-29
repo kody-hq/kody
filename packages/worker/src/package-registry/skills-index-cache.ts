@@ -35,7 +35,7 @@ export function buildPackageSkillsIndexKey(input: {
 	].join(':')
 }
 
-function buildPackageSkillsIndexPrefix(input: {
+export function buildPackageSkillsIndexPrefix(input: {
 	userId: string
 	packageId: string
 }) {
@@ -47,6 +47,33 @@ function buildPackageSkillsIndexPrefix(input: {
 			input.packageId,
 		].join(':') + ':'
 	)
+}
+
+/** Archived indexes are immutable per published commit, not mutable drafts. */
+export async function listPackageSkillsIndexes(input: {
+	env: Env
+	userId: string
+	packageId: string
+}) {
+	const kv = getSkillsKv(input.env)
+	const prefix = buildPackageSkillsIndexPrefix(input)
+	const keys = await listPackageSkillsIndexKeys({ kv, prefix })
+	const indexes: Array<PackageSkillsIndex> = []
+	// Bound concurrent KV reads even for packages with long histories.
+	for (let offset = 0; offset < keys.length; offset += 10) {
+		const batch = await Promise.all(
+			keys.slice(offset, offset + 10).map(async (key) => {
+				if (!key.startsWith(prefix))
+					throw new Error('Invalid skills history key.')
+				return readPackageSkillsIndex({
+					...input,
+					publishedCommit: key.slice(prefix.length),
+				})
+			}),
+		)
+		for (const index of batch) if (index) indexes.push(index)
+	}
+	return indexes
 }
 
 function isPackageSkillsIndex(value: unknown): value is PackageSkillsIndex {
@@ -84,13 +111,23 @@ export async function writePackageSkillsIndex(input: {
 	userId: string
 	index: PackageSkillsIndex
 }) {
+	const previous = await readPackageSkillsIndex({
+		...input,
+		packageId: input.index.packageId,
+		publishedCommit: input.index.publishedCommit,
+	})
+	const index = {
+		...input.index,
+		...(previous?.publishedBy ? { publishedBy: previous.publishedBy } : {}),
+		...(previous?.publishedAt ? { publishedAt: previous.publishedAt } : {}),
+	}
 	await getSkillsKv(input.env).put(
 		buildPackageSkillsIndexKey({
 			userId: input.userId,
 			packageId: input.index.packageId,
 			publishedCommit: input.index.publishedCommit,
 		}),
-		JSON.stringify(input.index),
+		JSON.stringify(index),
 	)
 }
 

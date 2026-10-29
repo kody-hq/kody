@@ -65,6 +65,7 @@ import {
 import {
 	readFetchFillPlacement,
 	readFetchFillPlacementCredentialId,
+	readFetchFillPlacementRefusalLinks,
 } from './fetch-fill-placement-cache.ts'
 import { enforceFillPlacement } from './fill-placement-enforcement.ts'
 import { type CredentialFillSite } from './fill-placement.ts'
@@ -493,6 +494,7 @@ export function auditResolvedFetchPlacements(
 					input.credential.use === 'integration-token'
 						? input.credential.name
 						: null,
+				links: readFetchFillPlacementRefusalLinks(input),
 			})
 		}
 	}

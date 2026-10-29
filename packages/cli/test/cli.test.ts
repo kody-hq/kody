@@ -869,7 +869,16 @@ test('execute --local without token or login fails clearly', async () => {
 	let stderr = ''
 	try {
 		const code = await runCli(
-			['execute', '--local', '--code', 'export default () => 1'],
+			[
+				'execute',
+				'--local',
+				'--mcp-url',
+				'https://no-login-test.invalid/mcp',
+				'--api-url',
+				'https://api.no-login-test.invalid',
+				'--code',
+				'export default () => 1',
+			],
 			{ stdout: () => {}, stderr: (text) => (stderr += text) },
 		)
 		assert.equal(code, 1)
@@ -1120,18 +1129,26 @@ test('execute --local --invoke rejects non-package export keys outside a package
 	}
 })
 
-test('buildExecuteToolArgs passes invoke without code and keeps params', () => {
+test('buildExecuteToolArgs mints invoke into code and keeps params', () => {
 	assert.deepEqual(
 		buildExecuteToolArgs({
-			invoke: 'kody:@cameronpak/skills/skill-get',
+			invoke: '@acme/skills#skill-get',
 			paramsJson: '{"name":"demo"}',
 			conversationId: 'conv-1',
 		}),
 		{
-			invoke: 'kody:@cameronpak/skills/skill-get',
+			code: `import action from "kody:@acme/skills/skill-get"
+
+export default async function main(params) {
+	return await action(params)
+}`,
 			params: { name: 'demo' },
 			conversationId: 'conv-1',
 		},
+	)
+	assert.throws(
+		() => buildExecuteToolArgs({ invoke: 'https://example.com/mod.js' }),
+		/Unsupported execute invoke specifier/,
 	)
 })
 

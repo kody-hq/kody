@@ -40,7 +40,6 @@ const { assertKodyDescriptionLength, KODY_DESCRIPTION_MAX_LENGTH } =
 const { McpCallerError } = await import('./caller-error.ts')
 const { requireMcpRequest, requireMcpUser } =
 	await import('./capabilities/meta/require-user.ts')
-const { executeInvokeMissingInputMessage } = await import('./execute-invoke.ts')
 const { PackageSecretAccessDeniedError } =
 	await import('./secrets/package-access.ts')
 const { CommunityActionError } = await import('#worker/community/errors.ts')
@@ -427,6 +426,16 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 			'Error',
 			new Error('EISDIR: /session/src is a directory'),
 		),
+		// repoReadFile with a folder path (KODY-CA): the DO-remapped phrase
+		// stays off Sentry.
+		handlerFailure(
+			'repoReadFile',
+			'repo',
+			'Error',
+			new Error(
+				'repo session read target "src" is a directory. Pass a file path (for example src/index.ts), or use repoTree to list the folder.',
+			),
+		),
 		// restoreFiles writes caller paths without DO EISDIR remap.
 		handlerFailure(
 			'repoRestore',
@@ -562,9 +571,19 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 				new Error('EISDIR: /tmp/snapshot is a directory'),
 			),
 		)
+		// repoReadFile remaps its own read EISDIR in the DO, so a raw one
+		// (e.g. from session init) is platform-visible.
+		logMcpEvent(
+			handlerFailure(
+				'repoReadFile',
+				'repo',
+				'Error',
+				new Error('EISDIR: /session/.git is a directory'),
+			),
+		)
 	})
 
-	expect(sentryMock.captureException).toHaveBeenCalledTimes(8)
+	expect(sentryMock.captureException).toHaveBeenCalledTimes(9)
 	expect(sentryMock.captureException).toHaveBeenNthCalledWith(
 		1,
 		expect.objectContaining({ message: 'platform handler blew up' }),
@@ -608,6 +627,12 @@ test('logMcpEvent keeps sandbox and caller failures off Sentry and still reports
 			message: 'EISDIR: /tmp/snapshot is a directory',
 		}),
 	)
+	expect(sentryMock.captureException).toHaveBeenNthCalledWith(
+		9,
+		expect.objectContaining({
+			message: 'EISDIR: /session/.git is a directory',
+		}),
+	)
 	expect(sentryMock.scope.setLevel).toHaveBeenCalledWith('error')
 	expect(sentryMock.scope.setUser).toHaveBeenCalledWith({ id: 'user-1' })
 	expect(sentryMock.scope.setContext).toHaveBeenCalledWith(
@@ -636,7 +661,9 @@ test('package name, missing-import, execute-input, and description caller errors
 	)
 	expect(descriptionError).toBeInstanceOf(Error)
 	const missingPackage = new SavedPackageNotFoundError('@distilledtom/google')
-	const executeInputError = new McpCallerError(executeInvokeMissingInputMessage)
+	const executeInputError = new McpCallerError(
+		'execute requires `code`: a single ESM module string with a default export.',
+	)
 
 	const callerErrors: Array<McpEvent> = [
 		handlerFailure(

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
-import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
@@ -66,7 +66,7 @@ test('GET /__kody/dev/status reports build id, state, and the last error', async
 test('kody dev --json emits NDJSON events and --ready-file is written before ready', async () => {
 	const previousWorkerd = process.env.KODY_WORKERD_PATH
 	process.env.KODY_WORKERD_PATH = await ensureWorkerdBinary()
-	const root = await mkdtemp(join(tmpdir(), 'kody-dev-json-'))
+	const root = await realpath(await mkdtemp(join(tmpdir(), 'kody-dev-json-')))
 	const cache = await mkdtemp(join(tmpdir(), 'kody-dev-json-cache-'))
 	const previousCache = process.env.KODY_CACHE_DIR
 	process.env.KODY_CACHE_DIR = cache

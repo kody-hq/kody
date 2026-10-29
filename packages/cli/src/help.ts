@@ -76,7 +76,7 @@ Usage:
   kody context register --name <name> [--org <slug>] | kody context list [--json]
   kody chain show | add <name> | remove <name> [--org <slug>] [--json]
   kody daemon [--context <ec id>]
-               [--credential <key=name>]… [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
+               [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
   kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]
   kody dev fetch <path> [--method <verb>] [--body <file>] [--target prod|mock] [--json] [--no-attach]
   kody dev job <name> [--target prod|mock] [--dry-run] [--json]
@@ -255,8 +255,9 @@ ${orgBlock}
              before workerd loads them — same shape as hosted execute /
              publish. Unresolvable imports fail with a clear bundle error.
              \`--invoke kody:@scope/pkg/export\` (or \`@scope/pkg#export\`)
-             works with \`--local\` / \`--target mock\` — mints the same thin
-             passthrough as a \`--code\` import wrapper. From a package
+             is client-side sugar: the CLI writes the thin passthrough
+             (the \`--code\` import wrapper) and sends it as code, with or
+             without \`--local\` / \`--target mock\`. From a package
              directory, \`--invoke ./export\` runs a local package.json#exports
              key. Auth: \`--token\` /
              ${apiTokenEnvVar}, else stored \`auth bootstrap\` token, else
@@ -271,6 +272,20 @@ ${orgBlock}
              trust a client package id) — use hosted package execute or
              \`/connect/secret-set\` / Open API with a user scope.
 
+  --context <id|name>
+             Run on one execution context (no fallback unless
+             \`--fallback chain\`). Behind the execution-contexts flag; cloud
+             execute only (not \`--local\`).
+  --requires fs,lan
+             Skip targets that lack local files (fs) or the local network
+             (lan); Kody cloud never satisfies either.
+  --chain <a,b,cloud>
+             This run's own ordered chain (up to 3 contexts, \`cloud\` only
+             last), replacing your default chain. Skipped entries are listed
+             with a reason when nothing qualifies.
+             Automations set theirs with
+             \`kody api automationExecutionSet --params '{"kind":"job","jobId":"…","execution":{"context":"laptop"}}'\`
+             (read with \`automationExecutionGet\`).
   --credential <key=name>
              ADR 0068 call map: pick which credential each \`credential(key)\`
              / \`credentials(key)\` call gets. Repeatable.

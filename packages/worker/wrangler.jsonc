@@ -217,12 +217,18 @@
 		"enabled": true,
 		// Workers automatic tracing (beta): OTel-standard spans for handler
 		// invocations, outbound fetches, and binding calls (D1, KV, R2, DO,
-		// queues). Spans share the Workers Logs event quota. Inherited by all
-		// environments unless overridden; local dev and tests ignore it. The
-		// production env overrides this block to add the Sentry OTLP export
-		// destination, so preview spans stay in the Cloudflare dashboard only.
+		// queues). Spans share the Workers Logs event quota, so traces are head
+		// sampled at 10% (this Worker emits ~15 spans per request) while logs
+		// stay at 100%. Local dev and tests ignore it. The production env adds
+		// the Sentry OTLP export destination; the preview env turns traces off.
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1,
+			"invocation_logs": true,
+		},
 		"traces": {
 			"enabled": true,
+			"head_sampling_rate": 0.1,
 		},
 	},
 	// Cron scheduling moved to the jobs worker (packages/jobs-worker, ADR
@@ -258,8 +264,14 @@
 			// See docs/contributing/setup-manifest.md.
 			"observability": {
 				"enabled": true,
+				"logs": {
+					"enabled": true,
+					"head_sampling_rate": 1,
+					"invocation_logs": true,
+				},
 				"traces": {
 					"enabled": true,
+					"head_sampling_rate": 0.1,
 					"destinations": ["sentry-otlp-traces"],
 				},
 			},
@@ -666,6 +678,19 @@
 			},
 		},
 		"preview": {
+			// Previews: traces off, 10% of logs (Workers Observability cost).
+			// `wrangler tail` still streams every log line live.
+			"observability": {
+				"enabled": true,
+				"logs": {
+					"enabled": true,
+					"head_sampling_rate": 0.1,
+					"invocation_logs": true,
+				},
+				"traces": {
+					"enabled": false,
+				},
+			},
 			"version_metadata": { "binding": "CF_VERSION_METADATA" },
 			// Deployed preview origins upload the slim entry and own no Durable
 			// Object class, so `tools/ci/preview-resources.ts` strips this block

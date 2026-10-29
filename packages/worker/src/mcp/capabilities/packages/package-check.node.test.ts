@@ -4,6 +4,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createSnapshotFilesWorkspace } from '#worker/repo/checks.ts'
 import { runAuthoringPublishChecks } from '#worker/repo/authoring-publish-checks.ts'
 
@@ -76,9 +77,12 @@ function stampedScopePackageFiles(): Record<string, string> {
 	}
 }
 
-async function check(files: Record<string, string>) {
+async function check(
+	files: Record<string, string>,
+	binaryFiles?: Record<string, number>,
+) {
 	return (await packageCheckCapability.handler(
-		{ files },
+		{ files, ...(binaryFiles ? { binary_files: binaryFiles } : {}) },
 		{ env, callerContext: callerContext() },
 	)) as {
 		ok: boolean
@@ -159,6 +163,90 @@ test('packageCheck rejects paths outside the package root', async () => {
 	).rejects.toThrow(/relative to the package root/)
 })
 
+/** A package app whose `kody.app.assets` directory holds only PNG files. */
+function binaryOnlyAssetsPackageFiles(): Record<string, string> {
+	return {
+		'package.json': JSON.stringify({
+			name: '@acme/maintenance',
+			type: 'module',
+			exports: { '.': './src/index.ts' },
+			kody: {
+				id: 'maintenance',
+				description: 'Tracks home maintenance.',
+				app: { entry: './src/app.ts', assets: './icons' },
+			},
+		}),
+		'README.md': '# maintenance\n\nTracks home maintenance.\n',
+		'AGENTS.md': '# Agents\n\nCall the default export.\n',
+		'src/index.ts': 'export default async function run() {\n\treturn 1\n}\n',
+		'src/app.ts': [
+			'export default {',
+			'\tasync fetch() {',
+			'\t\treturn new Response(\'<link rel="icon" href="_assets/icon-192.png">\', {',
+			"\t\t\theaders: { 'content-type': 'text/html' },",
+			'\t\t})',
+			'\t},',
+			'}',
+		].join('\n'),
+	}
+}
+
+const binaryOnlyAssets = {
+	'icons/icon-192.png': 52_126,
+	'icons/icon-512.png': 343_198,
+}
+
+test('packageCheck counts binary_files toward a binary-only kody.app.assets directory', async () => {
+	resetMocks()
+	// The app bundle phase runs after the assets gate; worker-bundler warns.
+	consoleWarn.mockImplementation(() => {})
+	const emptyAssetsMessage =
+		'package.json#kody.app.assets points at "icons", but no files exist under that directory. Add the static files or remove the field.'
+	const withoutBinaries = await check(binaryOnlyAssetsPackageFiles())
+	expect(withoutBinaries.checks).toContainEqual({
+		kind: 'bundle',
+		ok: false,
+		message: emptyAssetsMessage,
+	})
+
+	const withBinaries = await check(
+		binaryOnlyAssetsPackageFiles(),
+		binaryOnlyAssets,
+	)
+	expect(withBinaries.checks.map((entry) => entry.message)).not.toContain(
+		emptyAssetsMessage,
+	)
+	// Past the assets gate, the run reaches the app bundle phase (which can
+	// only build inside workerd, so Node reports that instead).
+	expect(withBinaries.checks).toContainEqual(
+		expect.objectContaining({
+			kind: 'bundle',
+			message: expect.stringMatching(/^src\/app\.ts: /),
+		}),
+	)
+})
+
+test('packageCheck counts binary_files toward the publish size limit', async () => {
+	resetMocks()
+	const result = await check(binaryOnlyAssetsPackageFiles(), {
+		'icons/huge.png': 64 * 1024 * 1024,
+	})
+	expect(result.ok).toBe(false)
+	expect(result.checks.some((entry) => /MiB|bytes/.test(entry.message))).toBe(
+		true,
+	)
+})
+
+test('packageCheck rejects a path in both files and binary_files', async () => {
+	resetMocks()
+	await expect(
+		check(binaryOnlyAssetsPackageFiles(), { 'src/app.ts': 10 }),
+	).rejects.toThrow(/both files and binary_files/)
+	await expect(
+		check(binaryOnlyAssetsPackageFiles(), { '../icon.png': 10 }),
+	).rejects.toThrow(/relative to the package root/)
+})
+
 function isolatedCheckEnv(
 	runIsolatedAuthoringChecks: (request: Record<string, unknown>) => unknown,
 ) {
@@ -210,6 +298,15 @@ test('packageCheck runs the publish checks in a throwaway check isolate when the
 		expectedPackageScope: 'acme',
 	})
 	expect(isolated.kv.delete).toHaveBeenCalledWith(stagingKey)
+
+	await packageCheckCapability.handler(
+		{ files, binary_files: { './icons/icon-192.png': 52_126 } },
+		{ env: isolated.env, callerContext: callerContext() },
+	)
+	expect(JSON.parse(isolated.kv.put.mock.calls[1]![1])).toEqual({
+		sourceFiles: files,
+		binaryFileSizes: { 'icons/icon-192.png': 52_126 },
+	})
 })
 
 test('packageCheck names the memory or CPU limit when the check isolate is reset', async () => {

@@ -304,3 +304,38 @@ test('first-party diagram blocks render a registered figure with the quote as it
 	expect(untrusted).not.toContain('data-doc-diagram')
 	expect(untrusted).toContain('[!DIAGRAM] placeholder-fill')
 })
+
+test('markdown preserves tables, tight task lists, entities, and reference links', async () => {
+	const html = await renderMarkdown(
+		[
+			'| Name | Value |',
+			'| :--- | ---: |',
+			'| **Key** | `42` |',
+			'',
+			'- [x] Done',
+			'- [ ] Pending',
+			'',
+			'Fish &amp; chips, [guide][ref].',
+			'',
+			'[ref]: https://example.com/docs',
+		].join('\n'),
+	)
+	expect(html).toContain('<table>')
+	expect(html).toContain('<strong>Key</strong>')
+	expect(html).toContain('<code>42</code>')
+	expect(html).toContain('text-align:right')
+	expect(html).toContain('type="checkbox" disabled="" checked=""')
+	expect(html).not.toContain('<li><p>')
+	expect(html).toContain('Fish &amp; chips')
+	expect(html).not.toContain('&amp;amp;')
+	expect(html).toContain('href="https://example.com/docs"')
+})
+
+test('markdown renders footnote text and links', async () => {
+	const html = await renderMarkdown(
+		'A claim[^source].\n\n[^source]: Supporting evidence.',
+	)
+	expect(html).toContain('Supporting evidence.')
+	expect(html).toContain('aria-label="Footnotes"')
+	expect(html).toMatch(/href="#markdown-footnote-[^"]+"/)
+})

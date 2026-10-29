@@ -12,6 +12,7 @@ import {
 	type EcpFramePayload,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import testKeys from '@kody-internal/shared/execution-context-protocol/vectors/test-keys.json'
+import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	ExecutionContextSessionV1,
 	type ExecutionContextLease,
@@ -102,6 +103,14 @@ async function connect(ecid: string) {
 		protocol: { min: 1, max: 1 },
 		status: { acceptingRuns: true, running: 0, maxConcurrent: 2 },
 	})
+	// Sending a WebSocket frame does not wait for its async signature check.
+	// Dispatch only after the session has processed hello and accepts runs.
+	await expect
+		.poll(() => stub.getStatus())
+		.toMatchObject({
+			online: true,
+			acceptingRuns: true,
+		})
 	return { stub, ws, next, send, key, welcome }
 }
 
@@ -267,6 +276,39 @@ test('two-phase dispatch: accept, commit, result, then per-hop authorization end
 	expect(JSON.stringify(history)).not.toContain('export default')
 })
 
+test('API-token and MCP runs carry the API origin the daemon connected through, not the app origin', async () => {
+	const ecid = 'ec_api_origin'
+	const { stub, next, send } = await connect(ecid)
+	// Both API-token and MCP callers route with callerContext.baseUrl, which
+	// is the app origin; the daemon only trusts its own API origin.
+	for (const runId of ['run_api_token', 'run_mcp']) {
+		const dispatching = stub.dispatch({
+			request: { ...runRequest(runId), apiUrl: 'https://kody.codes' },
+			lease: lease(ecid, runId),
+			runRecord: null,
+			position: 1,
+		})
+		const request = await next('run.request')
+		expect(request.body).toMatchObject({
+			runId,
+			apiUrl: 'https://session.test',
+		})
+		await send('run.accept', { runId }, { re: request.seq })
+		expect(await dispatching).toEqual({ outcome: 'committed' })
+		expect((await next('run.commit')).body.runId).toBe(runId)
+		await send('run.result', {
+			runId,
+			isError: false,
+			content: [{ type: 'text', text: '1' }],
+			structuredContent: { result: 1 },
+		})
+		await next('run.result.ack')
+		expect(await stub.awaitResult({ runId, waitMs: 1000 })).toMatchObject({
+			state: 'succeeded',
+		})
+	}
+})
+
 test('a reject falls through, and cancel and revocation end leases', async () => {
 	const ecid = 'ec_cancel'
 	const { stub, next, send, ws } = await connect(ecid)
@@ -371,4 +413,113 @@ test('history purges a requester and keeps nothing but metadata', async () => {
 	await runInDurableObject(stub, async (instance) => {
 		expect(instance).toBeInstanceOf(ExecutionContextSessionV1)
 	})
+})
+
+test('a queued run waits for reconnect and expires on the alarm', async () => {
+	const ecid = 'ec_queue'
+	const stub = env.EXECUTION_CONTEXT_SESSION.get(
+		env.EXECUTION_CONTEXT_SESSION.idFromName(ecid),
+	)
+	await stub.issueConnectTicket({
+		snapshot: snapshot(ecid),
+		nonce: crypto.randomUUID(),
+	})
+	const expiresAt = Date.now() + 60_000
+	expect(
+		await stub.enqueue({
+			request: runRequest('run_queued'),
+			lease: lease(ecid, 'run_queued'),
+			runRecord: null,
+			requires: [],
+			position: 1,
+			expiresAt,
+		}),
+	).toEqual({ queued: true })
+	expect(await stub.listQueued()).toEqual([
+		expect.objectContaining({ runId: 'run_queued', expiresAt }),
+	])
+	await runInDurableObject(stub, async (instance, state) => {
+		state.storage.sql.exec(`UPDATE queued SET expires_at = ?`, Date.now() - 1)
+		await instance.alarm()
+	})
+	expect(await stub.listQueued()).toEqual([])
+})
+
+test('a malformed ECP_FRAME_SIGNING_KEYS closes the socket loudly, then heals once the keys parse', async () => {
+	consoleError.mockImplementation(() => {})
+	const ecid = 'ec_bad_keys'
+	const stub = env.EXECUTION_CONTEXT_SESSION.get(
+		env.EXECUTION_CONTEXT_SESSION.idFromName(ecid),
+	)
+	const goodKeys = env.ECP_FRAME_SIGNING_KEYS
+	if (!goodKeys) throw new Error('test signing keys missing')
+	// What the dotenv-staged deploy secret looked like: escaped quotes.
+	const setKeys = (raw: string) =>
+		runInDurableObject(stub, (instance) => {
+			;(instance as unknown as { env: Env }).env = {
+				...env,
+				ECP_FRAME_SIGNING_KEYS: raw,
+			}
+		})
+	await setKeys(JSON.stringify(goodKeys).slice(1, -1))
+	const issued = await stub.issueConnectTicket({
+		snapshot: snapshot(ecid),
+		nonce: crypto.randomUUID(),
+	})
+	if (!issued.ok) throw new Error(issued.code)
+	const response = await stub.fetch(
+		`https://session.test/connect?ticket=${issued.ticket}`,
+		{ headers: { Upgrade: 'websocket' } },
+	)
+	expect(response.status).toBe(101)
+	const ws = response.webSocket!
+	const frames: Array<string> = []
+	ws.addEventListener('message', (event) => frames.push(String(event.data)))
+	const closed = new Promise<{ code: number; reason: string }>((resolve) =>
+		ws.addEventListener('close', (event) =>
+			resolve({ code: event.code, reason: event.reason }),
+		),
+	)
+	ws.accept()
+	await expect(closed).resolves.toEqual({
+		code: 1011,
+		reason: 'server keys invalid',
+	})
+	expect(frames).toEqual([])
+	expect(consoleError).toHaveBeenCalledWith(
+		'execution_context_frame_send_failed',
+		expect.objectContaining({
+			ecid,
+			frameType: 'welcome',
+			reason: 'server keys invalid',
+			error: 'ECP_FRAME_SIGNING_KEYS is not valid JSON.',
+		}),
+	)
+	expect(JSON.stringify(consoleError.mock.calls)).not.toContain('"d"')
+
+	await setKeys(goodKeys)
+	const { welcome } = await connect(ecid)
+	expect(welcome.t).toBe('welcome')
+})
+
+test('revoking a context fails its queued runs at once', async () => {
+	const ecid = 'ec_queue_revoked'
+	const stub = env.EXECUTION_CONTEXT_SESSION.get(
+		env.EXECUTION_CONTEXT_SESSION.idFromName(ecid),
+	)
+	await stub.issueConnectTicket({
+		snapshot: snapshot(ecid),
+		nonce: crypto.randomUUID(),
+	})
+	await stub.enqueue({
+		request: runRequest('run_queued_revoked'),
+		lease: lease(ecid, 'run_queued_revoked'),
+		runRecord: null,
+		requires: [],
+		position: 1,
+		expiresAt: Date.now() + 60_000,
+	})
+	expect(await stub.listQueued()).toHaveLength(1)
+	await stub.revoke({ reason: 'test' })
+	expect(await stub.listQueued()).toEqual([])
 })

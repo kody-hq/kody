@@ -18,12 +18,20 @@ import {
 } from '#universal/styles/tokens.ts'
 
 export function collaboratorName(collaborator: PackageCollaboratorView) {
-	if (collaborator.subjectType === 'team') return collaborator.label
+	if (collaborator.subjectType !== 'user') return collaborator.label
 	return collaborator.displayName?.trim() || collaborator.label
 }
 
 export function collaboratorDetail(collaborator: PackageCollaboratorView) {
 	const kind = packageCollaboratorKindLabel(collaborator.kind)
+	if (collaborator.subjectType === 'org') {
+		const count = collaborator.teamMemberCount
+		const members =
+			count === null ? null : `${count} ${count === 1 ? 'member' : 'members'}`
+		return [members, 'including anyone who joins later']
+			.filter(Boolean)
+			.join(' · ')
+	}
 	if (collaborator.subjectType === 'team') {
 		const count = collaborator.teamMemberCount
 		return count === null

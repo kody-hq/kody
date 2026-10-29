@@ -17,6 +17,7 @@ export type ErrorAgentPromptSkip = {
 /** Files that must include the `data-error-agent-prompt` marker. */
 export const errorAgentPromptAdoptFiles = [
 	'packages/worker/start/components/internal-error-page.tsx',
+	'packages/worker/start/components/route-error-page.tsx',
 	'packages/worker/start/components/not-found-page.tsx',
 	'packages/worker/start/routes/__root.tsx',
 	'packages/worker/start/components/error-agent-prompt-button.tsx',

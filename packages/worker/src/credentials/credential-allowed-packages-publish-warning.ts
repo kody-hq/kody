@@ -321,7 +321,7 @@ function isPackageCredentialKind(
 	return packageCredentialKinds.has(value)
 }
 
-function readDeclaredCredentialSlots(
+export function readDeclaredCredentialSlots(
 	manifestSource: string | undefined,
 ): Record<string, PackageCredentialSlot> | undefined {
 	if (manifestSource == null) return undefined

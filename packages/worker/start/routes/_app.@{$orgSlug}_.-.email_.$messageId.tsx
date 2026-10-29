@@ -1,6 +1,9 @@
 /** @jsxImportSource @emotion/react */
 import { createFileRoute, stripSearchParams } from '@tanstack/react-router'
-import { AccountEmailPage } from '../pages/account-email.tsx'
+import {
+	AccountEmailMissingGrant,
+	AccountEmailPage,
+} from '../pages/account-email.tsx'
 import { emailSearch, emailResourceInput } from '../pages/email-resources.ts'
 import {
 	loadEmailResources,
@@ -33,8 +36,14 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/email_/$messageId')({
 })
 function Page() {
 	const { actorKey, pageLocation, emailInput } = Route.useRouteContext()
+	const { orgSlug } = Route.useParams()
 	const emailHref = pageLocation.href
-	const { payload, destinations } = useEmailResources(actorKey, emailInput)
+	const resources = useEmailResources(actorKey, emailInput)
+	if (resources.missingGrant)
+		return (
+			<AccountEmailMissingGrant orgSlug={orgSlug} currentHref={emailHref} />
+		)
+	const { payload, destinations } = resources
 	if (!payload) return null
 	return (
 		<AccountEmailPage

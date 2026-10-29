@@ -13,13 +13,13 @@ test('paints token styles and escapes content', async () => {
 				code: 'const secret = "<script>"',
 				lang: 'typescript',
 				plain: false,
-				fg: '#24292e;--shiki-dark:#e6edf3',
-				bg: '#fff;--shiki-dark:#0d1117',
+				fg: '#24292e;--highlight-dark:#e6edf3',
+				bg: '#fff;--highlight-dark:#0d1117',
 				lines: [
 					[
 						{
 							content: 'const',
-							style: { color: '#d73a49', '--shiki-dark': '#ff7b72' },
+							style: { color: '#d73a49', '--highlight-dark': '#ff7b72' },
 						},
 						{ content: ' secret = "' },
 						{ content: '<script>', style: { color: '#032f62' } },
@@ -29,8 +29,8 @@ test('paints token styles and escapes content', async () => {
 			}),
 		}),
 	)
-	expect(html).toContain('class="shiki')
-	expect(html).toContain('--shiki-dark:')
+	expect(html).toContain('class="tanstack-highlight')
+	expect(html).toContain('--highlight-dark:')
 	expect(html).toContain('const')
 	expect(html).toContain('&lt;script&gt;')
 	expect(html).not.toContain('<script>')
@@ -44,7 +44,7 @@ test('plain payloads keep escaped text in the same wrapper', async () => {
 			),
 		}),
 	)
-	expect(html).toContain('class="shiki')
+	expect(html).toContain('class="tanstack-highlight')
 	expect(html).toContain('const x = 1')
-	expect(html).not.toContain('--shiki-dark:')
+	expect(html).not.toContain('--highlight-dark:')
 })

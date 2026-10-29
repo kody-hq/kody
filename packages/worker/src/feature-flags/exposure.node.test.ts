@@ -5,7 +5,7 @@ import {
 import { expect, test, vi, type Mock } from 'vitest'
 import { recordFeatureFlagExposures } from './exposure.ts'
 import {
-	executeInvokeFlagKey,
+	connectionProfilesFlagKey,
 	mcpEventsExtensionFlagKey,
 } from '#universal/feature-flags/registry.ts'
 
@@ -50,14 +50,14 @@ test('evaluation chokepoint skips dedicated-site flags; dedicated site records t
 		stableUserId: ownerIdFromStored('a').repeat(64),
 		evaluations: {
 			[mcpEventsExtensionFlagKey]: { enabled: true, source: 'global' },
-			[executeInvokeFlagKey]: { enabled: true, source: 'global' },
+			[connectionProfilesFlagKey]: { enabled: true, source: 'global' },
 		},
 		recordingSite: 'evaluation',
 		timestamp: '2026-09-20T00:00:00.000Z',
 	})
 	expect(writeDataPoint).toHaveBeenCalledTimes(1)
 	expect(writeDataPoint.mock.calls[0]?.[0]).toMatchObject({
-		blobs: expect.arrayContaining([executeInvokeFlagKey, 'on']),
+		blobs: expect.arrayContaining([connectionProfilesFlagKey, 'on']),
 	})
 
 	writeDataPoint.mockClear()

@@ -1,3 +1,4 @@
+import { recordRawSkillRead } from '#app/package-skill-reads.ts'
 import { anonymousPersonalizedJsonCacheHeaders } from '#app/anonymous-html-cache.ts'
 import {
 	loadAccessiblePackageFileRaw,
@@ -139,6 +140,16 @@ export function createCommunityPackageRawHandler(env: Env) {
 				? { viewer: viewer.user, viewerOrgId: viewer.orgId }
 				: {}),
 		})
+		if (result.kind === 'ok')
+			await recordRawSkillRead({
+				env,
+				request,
+				resource: result.skillReadResource,
+				allowSession: viewer.kind !== 'token',
+				tokenOrgId: viewer.kind === 'token' ? viewer.orgId : undefined,
+				callerContext:
+					viewer.kind === 'token' ? viewer.callerContext : undefined,
+			})
 		return respondRaw({ request, result })
 	}
 }

@@ -19,7 +19,7 @@ import {
 	type AccountEmailLoaderData,
 	type AccountEmailMessageDetail,
 } from '#universal/loader-data.ts'
-import { relocateAccountHref } from '#universal/org-pages.ts'
+import { orgGrantsPath, relocateAccountHref } from '#universal/org-pages.ts'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
@@ -30,6 +30,7 @@ import {
 import { useRouteContext, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { formatNullableTimestamp } from '../components/local-timestamp.tsx'
+import { SiteLink } from '../components/site-link.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useShellData } from '../routes/__root.tsx'
 import { invalidateShellQueries } from '../shell-query.ts'
@@ -83,6 +84,45 @@ function triageNotice(input: {
 	if (input.classification === 'accepted') return 'Marked as not spam.'
 	if (input.classification === 'quarantined') return 'Quarantined.'
 	return input.archived ? 'Archived.' : 'Unarchived.'
+}
+
+/** A member without `email:read`: explain the grant instead of failing. */
+export function AccountEmailMissingGrant({
+	orgSlug,
+	currentHref,
+}: {
+	orgSlug: string
+	currentHref: string
+}) {
+	return (
+		<AccountManagementShell
+			layout="list"
+			currentHref={currentHref}
+			maxWidth="min(100%, 92rem)"
+			busy={false}
+		>
+			<AccountPageHeader
+				entity="email"
+				title="Email inbox"
+				description="Browse inbound and outbound messages for your platform email address. Compose and reply through Kody agents. Manage the addresses emailSend may use here."
+				currentHref={currentHref}
+			/>
+			<div
+				data-testid="email-missing-grant"
+				css={{ display: 'grid', gap: spacing.sm }}
+			>
+				<AccountManagementMessage tone="info">
+					You need the <code>email:read</code> grant to read this workspace's
+					inbox. An org Owner can grant it org-wide on the Grants page.
+				</AccountManagementMessage>
+				<p css={{ margin: 0 }}>
+					<SiteLink href={orgGrantsPath(orgSlug)} css={getGhostButtonCss()}>
+						Open Grants
+					</SiteLink>
+				</p>
+			</div>
+		</AccountManagementShell>
+	)
 }
 
 export function AccountEmailPage({

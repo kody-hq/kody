@@ -142,13 +142,35 @@ export function formatFailedRepoCheckMessages(
  * In-memory workspace over a path→content map for the same `runRepoChecks`
  * surface used by external publish and community install.
  */
-export function createSnapshotFilesWorkspace(files: Record<string, string>) {
+/**
+ * Presents an in-memory package tree to {@link runRepoChecks}.
+ * `binaryFileSizes` lists binary files sent by path and byte size only (the
+ * `kody dev check` upload): they exist for checks such as
+ * `kody.app.assets`, count toward size limits, and read as empty text.
+ */
+export function createSnapshotFilesWorkspace(
+	files: Record<string, string>,
+	options: { binaryFileSizes?: Record<string, number> } = {},
+) {
+	const binaryFileSizes = options.binaryFileSizes ?? {}
 	return {
 		async readFile(path: string) {
-			return files[normalizeRepoWorkspacePath(path)] ?? null
+			const normalized = normalizeRepoWorkspacePath(path)
+			if (Object.hasOwn(files, normalized)) return files[normalized] ?? null
+			return Object.hasOwn(binaryFileSizes, normalized) ? '' : null
+		},
+		async stat(path: string) {
+			const normalized = normalizeRepoWorkspacePath(path)
+			if (!Object.hasOwn(binaryFileSizes, normalized)) return null
+			return { size: binaryFileSizes[normalized] ?? 0 }
 		},
 		async glob() {
-			return Object.keys(files).map((path) => ({
+			return [
+				...Object.keys(files),
+				...Object.keys(binaryFileSizes).filter(
+					(path) => !Object.hasOwn(files, path),
+				),
+			].map((path) => ({
 				path,
 				type: 'file' as const,
 			}))

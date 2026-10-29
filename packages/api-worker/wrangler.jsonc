@@ -13,8 +13,14 @@
 	"upload_source_maps": true,
 	"observability": {
 		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1,
+			"invocation_logs": true,
+		},
 		"traces": {
 			"enabled": true,
+			"head_sampling_rate": 0.25,
 		},
 	},
 	"env": {
@@ -55,6 +61,19 @@
 			],
 		},
 		"preview": {
+			// Previews: traces off, 10% of logs (Workers Observability cost).
+			// `wrangler tail` still streams every log line live.
+			"observability": {
+				"enabled": true,
+				"logs": {
+					"enabled": true,
+					"head_sampling_rate": 0.1,
+					"invocation_logs": true,
+				},
+				"traces": {
+					"enabled": false,
+				},
+			},
 			// `tools/ci/api-worker-config.ts` rewrites the service to the
 			// per-preview app worker (`kody-pr-<n>`).
 			"workers_dev": true,

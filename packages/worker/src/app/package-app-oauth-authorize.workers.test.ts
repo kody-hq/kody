@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers'
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
+import { ensurePackageAppCustomHostnamesTestSchema } from '#worker/test-support/package-app-custom-hostnames-test-schema.ts'
 import { createAuthCookie, setAuthSessionSecret } from '#app/auth-session.ts'
 import {
 	handlePackageAppOauthHostAuth,
@@ -33,6 +34,10 @@ vi.mock(
 		}
 	},
 )
+
+beforeEach(async () => {
+	await ensurePackageAppCustomHostnamesTestSchema()
+})
 
 const usableCredentials = vi.hoisted(() =>
 	vi.fn(async (): Promise<Array<unknown>> => []),

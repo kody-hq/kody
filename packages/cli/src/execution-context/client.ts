@@ -13,8 +13,8 @@ import {
 export const executionContextsPath = '/v1/execution-contexts'
 
 /** Old logins lack execution context scopes; never widen them silently. */
-export const reloginMessage =
-	'Your Kody login predates execution context permissions, so it cannot register a machine. Run `kody login` again, then retry `kody context register`.'
+export const reloginHint =
+	'Run `kody login` again, then retry `kody context register`.'
 
 export class ExecutionContextApiError extends Error {
 	constructor(
@@ -57,6 +57,7 @@ export async function signedFetch(input: {
 	runId?: string
 	headers?: Record<string, string>
 	fetchFn?: typeof fetch
+	signal?: AbortSignal
 }) {
 	const body = input.body ?? ''
 	const signature = await signEcpHttpRequest({
@@ -68,6 +69,7 @@ export async function signedFetch(input: {
 	})
 	return (input.fetchFn ?? fetch)(new URL(input.pathAndQuery, input.apiUrl), {
 		method: input.method,
+		signal: input.signal,
 		headers: {
 			...input.headers,
 			[ecpSignatureHeader]: formatEcpSignatureHeader(signature),
@@ -169,7 +171,9 @@ async function registrationError(response: Response) {
 		error.message.includes('predates execution context permissions')
 	) {
 		return new ExecutionContextApiError(
-			reloginMessage,
+			error.message.includes('kody login')
+				? error.message
+				: `${error.message.trim()} ${reloginHint}`,
 			error.status,
 			error.code,
 		)
@@ -182,6 +186,7 @@ export async function requestConnectTicket(input: {
 	ecid: string
 	privateKey: EcpCryptoKey
 	fetchFn?: typeof fetch
+	signal?: AbortSignal
 }) {
 	const response = await signedFetch({
 		...input,

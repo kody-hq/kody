@@ -174,6 +174,9 @@ function createFeatureFlagsTestDb(
 							),
 					)
 				}
+				if (has('from feature_flag_org_overrides')) {
+					return allResults<T>([])
+				}
 				if (has('select distinct flag_key from feature_flag_repo_overrides')) {
 					return allResults<T>(
 						[...new Set(repoOverrides.map((row) => row.flag_key))].map(
@@ -256,6 +259,9 @@ function createFeatureFlagsTestDb(
 					}
 					return { meta: { changes: before - repoOverrides.length } }
 				}
+				if (normalized.startsWith('delete from feature_flag_org_overrides')) {
+					return { meta: { changes: 0 } }
+				}
 				throw new Error(`Unsupported run query: ${query}`)
 			},
 		}
@@ -305,11 +311,9 @@ function createFeatureFlagsTestDb(
 
 const registryKeys = [
 	'demo-indicator',
-	'execute-invoke',
 	'connection-profiles',
 	'mcp-skills-extension',
 	'mcp-events-extension',
-	'package-app-custom-domains',
 	'package-credential-suppliers',
 	'repo-push-queue',
 	'execution-contexts',
@@ -455,7 +459,7 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 	const db = createFeatureFlagsTestDb()
 	await setFeatureFlagUserOverrides(db, [
 		{
-			key: 'execute-invoke',
+			key: 'mcp-skills-extension',
 			userId: 7,
 			enabled: true,
 			updatedBy: 7,
@@ -467,7 +471,7 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 			updatedBy: 7,
 		},
 	])
-	expect(await enabledFor(db, [7], 'execute-invoke')).toEqual([true])
+	expect(await enabledFor(db, [7], 'mcp-skills-extension')).toEqual([true])
 	expect(await enabledFor(db, [7], 'connection-profiles')).toEqual([true])
 
 	const originalPrepare = db.prepare.bind(db)
@@ -501,7 +505,7 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 				updatedBy: 7,
 			},
 			{
-				key: 'execute-invoke',
+				key: 'mcp-skills-extension',
 				userId: 7,
 				enabled: true,
 				updatedBy: 7,
@@ -509,8 +513,8 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 		]),
 	).rejects.toThrow('second override write failed')
 	expect(db.overrides.has('demo-indicator:7')).toBe(false)
-	expect(db.overrides.has('execute-invoke:7')).toBe(true)
-	expect(await enabledFor(db, [7], 'execute-invoke')).toEqual([true])
+	expect(db.overrides.has('mcp-skills-extension:7')).toBe(true)
+	expect(await enabledFor(db, [7], 'mcp-skills-extension')).toEqual([true])
 	expect(await enabledFor(db, [7], 'connection-profiles')).toEqual([true])
 })
 
@@ -599,7 +603,6 @@ test('listFeatureFlagsForAdmin includes registry flags and stale DB-only keys', 
 			'connection-profiles',
 			{ defaultAudience: 'experiments_opt_in', successMetric: executeMetric },
 		],
-		['execute-invoke', { defaultAudience: 'experiments_opt_in' }],
 		[
 			'demo-indicator',
 			{
@@ -648,12 +651,14 @@ test('listFeatureFlagsForAdmin includes registry flags and stale DB-only keys', 
 			updatedByStableUserId: null,
 			updatedAt: '2026-06-01T00:00:00.000Z',
 		},
+		orgOverrides: [],
 		overrides: [],
 	})
 	expect(byKey('retired-repo-flag')).toEqual({
 		key: 'retired-repo-flag',
 		...staleShape,
 		global: null,
+		orgOverrides: [],
 		overrides: [],
 	})
 	expect(byKey('repo-push-queue')?.stale).toBe(false)
@@ -661,6 +666,7 @@ test('listFeatureFlagsForAdmin includes registry flags and stale DB-only keys', 
 		key: 'orphan-override',
 		...staleShape,
 		global: null,
+		orgOverrides: [],
 		overrides: [
 			{
 				stableUserId: ownerIdFromStored('stable-3'),
@@ -749,7 +755,7 @@ test('experiments_opt_in audience requires users.experiments_opt_in; overrides s
 	).rejects.toThrow(/audience must be one of/)
 })
 
-test('execute-invoke first insert without audience uses registry defaultAudience', async () => {
+test('connection-profiles first insert without audience uses registry defaultAudience', async () => {
 	const db = createFeatureFlagsTestDb({
 		users: [
 			{ id: 7, username: 'opted', experiments_opt_in: 1 },
@@ -757,7 +763,12 @@ test('execute-invoke first insert without audience uses registry defaultAudience
 		],
 	})
 
-	await setGlobal(db, true, { key: 'execute-invoke' })
-	expect(db.globals.get('execute-invoke')?.audience).toBe('experiments_opt_in')
-	expect(await enabledFor(db, [7, 8], 'execute-invoke')).toEqual([true, false])
+	await setGlobal(db, true, { key: 'connection-profiles' })
+	expect(db.globals.get('connection-profiles')?.audience).toBe(
+		'experiments_opt_in',
+	)
+	expect(await enabledFor(db, [7, 8], 'connection-profiles')).toEqual([
+		true,
+		false,
+	])
 })

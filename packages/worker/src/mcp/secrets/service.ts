@@ -16,6 +16,7 @@ import {
 import {
 	ownerFillPlacementOptInStatement,
 	type FillPlacementOptIn,
+	type FillPlacementOptInSource,
 } from '#worker/credentials/fill-placement-opt-ins.ts'
 import { assertOptInCredentialValue } from '#worker/credentials/opt-in-credential-value.ts'
 import {
@@ -81,6 +82,10 @@ import {
 	resolvePackageSecretPlacement,
 } from '#worker/credentials/resolve-package-secret-placement.ts'
 import { type CredentialPlacementOrigin } from '#worker/credentials/placement-origin.ts'
+import {
+	containsSealedToken,
+	sealedTokenValueRefusal,
+} from '#worker/credentials/sealed-token.ts'
 import { isDisconnectedSecretEncryptedValue } from '#mcp/secrets/disconnected.ts'
 import { updateSecretEntryPlacement } from '#mcp/secrets/update-secret-placement.ts'
 import {
@@ -133,9 +138,12 @@ type SaveSecretInput = SecretOwnerContext &
 		placementOriginOnInsert?: CredentialPlacementOrigin | null
 		/**
 		 * Query, path, and body opt-in saved with a new row. Website handlers
-		 * set it (the owner's form, or the source of a move); code never does.
+		 * set it (the owner's form, or the source of a move); code never does,
+		 * except a Key saved from a sealed token, which keeps its placement.
 		 */
 		fillPlacementOptInOnInsert?: FillPlacementOptIn
+		/** Who chose `fillPlacementOptInOnInsert`; defaults to the owner. */
+		fillPlacementOptInSource?: FillPlacementOptInSource
 		/**
 		 * When set with a package-scope value write, may re-apply the package's
 		 * declared placement onto an untouched headers-only default.
@@ -312,6 +320,13 @@ async function readUserSecretEntryId(input: {
 	return entry?.id ?? null
 }
 
+/** A sealed token saved as text would only work in its run (ADR 0068). */
+function assertNotSealedTokenValue(value: string) {
+	if (containsSealedToken(value)) {
+		throw new McpCallerError(sealedTokenValueRefusal)
+	}
+}
+
 export async function saveSecret(
 	input: SaveSecretInput,
 ): Promise<SecretMetadata> {
@@ -324,6 +339,7 @@ export async function saveSecret(
 	if (!value) {
 		throw new Error('Secret value is required.')
 	}
+	assertNotSealedTokenValue(value)
 	const description = input.description?.trim() ?? ''
 	const credential = input.credential ?? null
 	if (credential && input.scope !== 'user') {
@@ -456,6 +472,9 @@ export async function saveSecret(
 								db: input.env.APP_DB,
 								credentialId,
 								optIn: input.fillPlacementOptInOnInsert,
+								...(input.fillPlacementOptInSource
+									? { source: input.fillPlacementOptInSource }
+									: {}),
 							}),
 						]
 					: []),
@@ -877,6 +896,7 @@ export async function updateUserSecretsForPackageAtomically(input: {
 		assertSecretNameAllowed(name)
 		const value = secret.value.trim()
 		if (!value) throw new Error('Secret value is required.')
+		assertNotSealedTokenValue(value)
 		const existingEntry = await getSecretEntry({
 			db: input.env.APP_DB,
 			bucketId: bucket.id,
@@ -1074,6 +1094,7 @@ async function saveSecretsAtomically(input: {
 		assertSecretNameAllowed(name)
 		const value = secret.value.trim()
 		if (!value) throw new Error('Secret value is required.')
+		assertNotSealedTokenValue(value)
 		const description = secret.description?.trim() ?? ''
 		const existingEntry = await getSecretEntry({
 			db: input.env.APP_DB,

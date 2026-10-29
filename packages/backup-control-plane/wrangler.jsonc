@@ -6,6 +6,11 @@
 	"compatibility_flags": ["nodejs_compat"],
 	"observability": {
 		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1,
+			"invocation_logs": true,
+		},
 	},
 	"triggers": {
 		"crons": ["15 2 * * *", "45 * * * *"],

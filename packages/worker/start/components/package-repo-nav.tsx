@@ -22,6 +22,7 @@ export type PackageRepoNavActive =
 	| 'files'
 	| 'settings'
 	| 'collaborators'
+	| 'connected-people'
 	/** Forks has no tab of its own; it is reached from the Forks count. */
 	| 'forks'
 	| PackageCredentialsTab
@@ -35,6 +36,8 @@ function renderPackageRepoNav(input: {
 	showCredentialTabs: boolean
 	/** Saved packages the viewer may manage access to (`package:manage_access`). */
 	showCollaboratorsTab: boolean
+	/** Manage on a package with an app: who signed in with Kody. */
+	showConnectedPeopleTab: boolean
 	/** Defaults to true. Pass false only to hide Files intentionally. */
 	showFilesNav?: boolean
 	active: PackageRepoNavActive
@@ -102,6 +105,21 @@ function renderPackageRepoNav(input: {
 					Collaborators
 				</SiteLink>
 			) : null}
+			{input.showConnectedPeopleTab ? (
+				<SiteLink
+					href={routes.communityPackageConnectedPeople.href({
+						username: input.username,
+						kodyId: input.kodyId,
+					})}
+					aria-current={
+						input.active === 'connected-people' ? 'page' : undefined
+					}
+					data-testid="package-repo-nav-connected-people"
+					css={tabCss}
+				>
+					Connected people
+				</SiteLink>
+			) : null}
 			{input.viewerCanManage ? (
 				<SiteLink
 					href={settingsHref}
@@ -127,6 +145,8 @@ export function renderPackageRepoChrome(input: {
 	viewerCanManage: boolean
 	/** Shows the Collaborators tab. Defaults to false. */
 	viewerCanManageAccess?: boolean
+	/** Shows the Connected people tab. Defaults to false. */
+	viewerCanSeeConnectedPeople?: boolean
 	active: PackageRepoNavActive
 	filesHref: string
 	description?: string
@@ -216,6 +236,8 @@ export function renderPackageRepoChrome(input: {
 					showCredentialTabs: input.viewerIsOwner && hasPackage,
 					showCollaboratorsTab:
 						input.viewerCanManageAccess === true && hasPackage,
+					showConnectedPeopleTab:
+						input.viewerCanSeeConnectedPeople === true && hasPackage,
 					active: input.active,
 				})}
 				{input.actions ? (

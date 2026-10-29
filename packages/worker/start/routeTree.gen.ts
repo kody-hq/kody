@@ -188,6 +188,7 @@ import { Route as AppAtChar123orgSlugChar125RepositoriesRouteImport } from './ro
 import { Route as AppAtChar123orgSlugChar125SecretProvidersRouteImport } from './routes/_app.@{$orgSlug}_.-.secret-providers'
 import { Route as AppAtChar123orgSlugChar125SecretsRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets'
 import { Route as AppAtChar123orgSlugChar125SettingsRouteImport } from './routes/_app.@{$orgSlug}_.-.settings'
+import { Route as AppAtChar123orgSlugChar125SkillsRouteImport } from './routes/_app.@{$orgSlug}_.-.skills'
 import { Route as AppAtChar123orgSlugChar125TeamsRouteImport } from './routes/_app.@{$orgSlug}_.-.teams'
 import { Route as AppAtChar123orgSlugChar125UsageRouteImport } from './routes/_app.@{$orgSlug}_.-.usage'
 import { Route as AppAtChar123orgSlugChar125WaitingRouteImport } from './routes/_app.@{$orgSlug}_.-.waiting'
@@ -197,6 +198,7 @@ import { Route as AppAtChar123usernameChar125KodyIdApproveCapabilitiesRouteImpor
 import { Route as AppAtChar123usernameChar125KodyIdApproveCredentialsRouteImport } from './routes/_app.@{$username}_.$kodyId_.approve-credentials'
 import { Route as AppAtChar123usernameChar125KodyIdApprovePublishRouteImport } from './routes/_app.@{$username}_.$kodyId_.approve-publish'
 import { Route as AppAtChar123usernameChar125KodyIdCollaboratorsRouteImport } from './routes/_app.@{$username}_.$kodyId_.collaborators'
+import { Route as AppAtChar123usernameChar125KodyIdConnectedPeopleRouteImport } from './routes/_app.@{$username}_.$kodyId_.connected-people'
 import { Route as AppAtChar123usernameChar125KodyIdCredentialsRouteImport } from './routes/_app.@{$username}_.$kodyId_.credentials'
 import { Route as AppAtChar123usernameChar125KodyIdForksRouteImport } from './routes/_app.@{$username}_.$kodyId_.forks'
 import { Route as AppAtChar123usernameChar125KodyIdMappingsRouteImport } from './routes/_app.@{$username}_.$kodyId_.mappings'
@@ -1222,6 +1224,12 @@ const AppAtChar123orgSlugChar125SettingsRoute =
     path: '/@{$orgSlug}/-/settings',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125SkillsRoute =
+  AppAtChar123orgSlugChar125SkillsRouteImport.update({
+    id: '/@{$orgSlug}_/-/skills',
+    path: '/@{$orgSlug}/-/skills',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125TeamsRoute =
   AppAtChar123orgSlugChar125TeamsRouteImport.update({
     id: '/@{$orgSlug}_/-/teams',
@@ -1274,6 +1282,12 @@ const AppAtChar123usernameChar125KodyIdCollaboratorsRoute =
   AppAtChar123usernameChar125KodyIdCollaboratorsRouteImport.update({
     id: '/@{$username}_/$kodyId_/collaborators',
     path: '/@{$username}/$kodyId/collaborators',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123usernameChar125KodyIdConnectedPeopleRoute =
+  AppAtChar123usernameChar125KodyIdConnectedPeopleRouteImport.update({
+    id: '/@{$username}_/$kodyId_/connected-people',
+    path: '/@{$username}/$kodyId/connected-people',
     getParentRoute: () => AppRoute,
   } as any)
 const AppAtChar123usernameChar125KodyIdCredentialsRoute =
@@ -1916,6 +1930,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/@{$orgSlug}/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
   '/@{$orgSlug}/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/@{$orgSlug}/-/skills': typeof AppAtChar123orgSlugChar125SkillsRoute
   '/@{$orgSlug}/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
   '/@{$orgSlug}/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
   '/@{$orgSlug}/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -1925,6 +1940,7 @@ export interface FileRoutesByFullPath {
   '/@{$username}/$kodyId/approve-credentials': typeof AppAtChar123usernameChar125KodyIdApproveCredentialsRoute
   '/@{$username}/$kodyId/approve-publish': typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
   '/@{$username}/$kodyId/collaborators': typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
+  '/@{$username}/$kodyId/connected-people': typeof AppAtChar123usernameChar125KodyIdConnectedPeopleRoute
   '/@{$username}/$kodyId/credentials': typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
   '/@{$username}/$kodyId/forks': typeof AppAtChar123usernameChar125KodyIdForksRoute
   '/@{$username}/$kodyId/mappings': typeof AppAtChar123usernameChar125KodyIdMappingsRoute
@@ -2181,6 +2197,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/@{$orgSlug}/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
   '/@{$orgSlug}/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/@{$orgSlug}/-/skills': typeof AppAtChar123orgSlugChar125SkillsRoute
   '/@{$orgSlug}/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
   '/@{$orgSlug}/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
   '/@{$orgSlug}/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -2190,6 +2207,7 @@ export interface FileRoutesByTo {
   '/@{$username}/$kodyId/approve-credentials': typeof AppAtChar123usernameChar125KodyIdApproveCredentialsRoute
   '/@{$username}/$kodyId/approve-publish': typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
   '/@{$username}/$kodyId/collaborators': typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
+  '/@{$username}/$kodyId/connected-people': typeof AppAtChar123usernameChar125KodyIdConnectedPeopleRoute
   '/@{$username}/$kodyId/credentials': typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
   '/@{$username}/$kodyId/forks': typeof AppAtChar123usernameChar125KodyIdForksRoute
   '/@{$username}/$kodyId/mappings': typeof AppAtChar123usernameChar125KodyIdMappingsRoute
@@ -2449,6 +2467,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/_app/@{$orgSlug}_/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
   '/_app/@{$orgSlug}_/-/settings': typeof AppAtChar123orgSlugChar125SettingsRoute
+  '/_app/@{$orgSlug}_/-/skills': typeof AppAtChar123orgSlugChar125SkillsRoute
   '/_app/@{$orgSlug}_/-/teams': typeof AppAtChar123orgSlugChar125TeamsRoute
   '/_app/@{$orgSlug}_/-/usage': typeof AppAtChar123orgSlugChar125UsageRoute
   '/_app/@{$orgSlug}_/-/waiting': typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -2458,6 +2477,7 @@ export interface FileRoutesById {
   '/_app/@{$username}_/$kodyId_/approve-credentials': typeof AppAtChar123usernameChar125KodyIdApproveCredentialsRoute
   '/_app/@{$username}_/$kodyId_/approve-publish': typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
   '/_app/@{$username}_/$kodyId_/collaborators': typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
+  '/_app/@{$username}_/$kodyId_/connected-people': typeof AppAtChar123usernameChar125KodyIdConnectedPeopleRoute
   '/_app/@{$username}_/$kodyId_/credentials': typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
   '/_app/@{$username}_/$kodyId_/forks': typeof AppAtChar123usernameChar125KodyIdForksRoute
   '/_app/@{$username}_/$kodyId_/mappings': typeof AppAtChar123usernameChar125KodyIdMappingsRoute
@@ -2717,6 +2737,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/secret-providers'
     | '/@{$orgSlug}/-/secrets'
     | '/@{$orgSlug}/-/settings'
+    | '/@{$orgSlug}/-/skills'
     | '/@{$orgSlug}/-/teams'
     | '/@{$orgSlug}/-/usage'
     | '/@{$orgSlug}/-/waiting'
@@ -2726,6 +2747,7 @@ export interface FileRouteTypes {
     | '/@{$username}/$kodyId/approve-credentials'
     | '/@{$username}/$kodyId/approve-publish'
     | '/@{$username}/$kodyId/collaborators'
+    | '/@{$username}/$kodyId/connected-people'
     | '/@{$username}/$kodyId/credentials'
     | '/@{$username}/$kodyId/forks'
     | '/@{$username}/$kodyId/mappings'
@@ -2982,6 +3004,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/secret-providers'
     | '/@{$orgSlug}/-/secrets'
     | '/@{$orgSlug}/-/settings'
+    | '/@{$orgSlug}/-/skills'
     | '/@{$orgSlug}/-/teams'
     | '/@{$orgSlug}/-/usage'
     | '/@{$orgSlug}/-/waiting'
@@ -2991,6 +3014,7 @@ export interface FileRouteTypes {
     | '/@{$username}/$kodyId/approve-credentials'
     | '/@{$username}/$kodyId/approve-publish'
     | '/@{$username}/$kodyId/collaborators'
+    | '/@{$username}/$kodyId/connected-people'
     | '/@{$username}/$kodyId/credentials'
     | '/@{$username}/$kodyId/forks'
     | '/@{$username}/$kodyId/mappings'
@@ -3249,6 +3273,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/secret-providers'
     | '/_app/@{$orgSlug}_/-/secrets'
     | '/_app/@{$orgSlug}_/-/settings'
+    | '/_app/@{$orgSlug}_/-/skills'
     | '/_app/@{$orgSlug}_/-/teams'
     | '/_app/@{$orgSlug}_/-/usage'
     | '/_app/@{$orgSlug}_/-/waiting'
@@ -3258,6 +3283,7 @@ export interface FileRouteTypes {
     | '/_app/@{$username}_/$kodyId_/approve-credentials'
     | '/_app/@{$username}_/$kodyId_/approve-publish'
     | '/_app/@{$username}_/$kodyId_/collaborators'
+    | '/_app/@{$username}_/$kodyId_/connected-people'
     | '/_app/@{$username}_/$kodyId_/credentials'
     | '/_app/@{$username}_/$kodyId_/forks'
     | '/_app/@{$username}_/$kodyId_/mappings'
@@ -4714,6 +4740,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125SettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/skills': {
+      id: '/_app/@{$orgSlug}_/-/skills'
+      path: '/@{$orgSlug}/-/skills'
+      fullPath: '/@{$orgSlug}/-/skills'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125SkillsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/teams': {
       id: '/_app/@{$orgSlug}_/-/teams'
       path: '/@{$orgSlug}/-/teams'
@@ -4775,6 +4808,13 @@ declare module '@tanstack/react-router' {
       path: '/@{$username}/$kodyId/collaborators'
       fullPath: '/@{$username}/$kodyId/collaborators'
       preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdCollaboratorsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$username}_/$kodyId_/connected-people': {
+      id: '/_app/@{$username}_/$kodyId_/connected-people'
+      path: '/@{$username}/$kodyId/connected-people'
+      fullPath: '/@{$username}/$kodyId/connected-people'
+      preLoaderRoute: typeof AppAtChar123usernameChar125KodyIdConnectedPeopleRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/@{$username}_/$kodyId_/credentials': {
@@ -5398,6 +5438,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125SecretProvidersRoute: typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   AppAtChar123orgSlugChar125SecretsRoute: typeof AppAtChar123orgSlugChar125SecretsRoute
   AppAtChar123orgSlugChar125SettingsRoute: typeof AppAtChar123orgSlugChar125SettingsRoute
+  AppAtChar123orgSlugChar125SkillsRoute: typeof AppAtChar123orgSlugChar125SkillsRoute
   AppAtChar123orgSlugChar125TeamsRoute: typeof AppAtChar123orgSlugChar125TeamsRoute
   AppAtChar123orgSlugChar125UsageRoute: typeof AppAtChar123orgSlugChar125UsageRoute
   AppAtChar123orgSlugChar125WaitingRoute: typeof AppAtChar123orgSlugChar125WaitingRoute
@@ -5407,6 +5448,7 @@ interface AppRouteChildren {
   AppAtChar123usernameChar125KodyIdApproveCredentialsRoute: typeof AppAtChar123usernameChar125KodyIdApproveCredentialsRoute
   AppAtChar123usernameChar125KodyIdApprovePublishRoute: typeof AppAtChar123usernameChar125KodyIdApprovePublishRoute
   AppAtChar123usernameChar125KodyIdCollaboratorsRoute: typeof AppAtChar123usernameChar125KodyIdCollaboratorsRoute
+  AppAtChar123usernameChar125KodyIdConnectedPeopleRoute: typeof AppAtChar123usernameChar125KodyIdConnectedPeopleRoute
   AppAtChar123usernameChar125KodyIdCredentialsRoute: typeof AppAtChar123usernameChar125KodyIdCredentialsRoute
   AppAtChar123usernameChar125KodyIdForksRoute: typeof AppAtChar123usernameChar125KodyIdForksRoute
   AppAtChar123usernameChar125KodyIdMappingsRoute: typeof AppAtChar123usernameChar125KodyIdMappingsRoute
@@ -5556,6 +5598,7 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125SecretsRoute,
   AppAtChar123orgSlugChar125SettingsRoute:
     AppAtChar123orgSlugChar125SettingsRoute,
+  AppAtChar123orgSlugChar125SkillsRoute: AppAtChar123orgSlugChar125SkillsRoute,
   AppAtChar123orgSlugChar125TeamsRoute: AppAtChar123orgSlugChar125TeamsRoute,
   AppAtChar123orgSlugChar125UsageRoute: AppAtChar123orgSlugChar125UsageRoute,
   AppAtChar123orgSlugChar125WaitingRoute:
@@ -5572,6 +5615,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123usernameChar125KodyIdApprovePublishRoute,
   AppAtChar123usernameChar125KodyIdCollaboratorsRoute:
     AppAtChar123usernameChar125KodyIdCollaboratorsRoute,
+  AppAtChar123usernameChar125KodyIdConnectedPeopleRoute:
+    AppAtChar123usernameChar125KodyIdConnectedPeopleRoute,
   AppAtChar123usernameChar125KodyIdCredentialsRoute:
     AppAtChar123usernameChar125KodyIdCredentialsRoute,
   AppAtChar123usernameChar125KodyIdForksRoute:

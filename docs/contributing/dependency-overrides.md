@@ -31,6 +31,10 @@ below. If the open `ci/audit-bump` PR has a commit from anyone other than
 `github-actions[bot]`, the workflow keeps that branch and only refreshes the PR
 body.
 
+The project `.npmrc` keeps `legacy-peer-deps=false` so local installs and CI
+resolve the same peer dependencies. A global `legacy-peer-deps=true` setting can
+otherwise prune peers from the lockfile and break a fresh `npm ci`.
+
 ## Dependency bump PRs
 
 Agents often notice the same advisory at the same time. Before opening a PR that

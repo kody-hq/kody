@@ -4,6 +4,7 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import {
 	findPackageAppGrantCredentialMapping,
 	findLivePackageAppOauthGrant,
+	notePackageAppOauthGrantUse,
 	hasCredentialMappingOutsidePackageAppRevoke,
 	revokePackageAppOauthGrantsForPersonApp,
 	revokePackageAppOauthGrantScope,
@@ -437,4 +438,42 @@ test('scope revocation retries after concurrent consent', async () => {
 		scopes: ['need:calendar', 'profile'],
 	})
 	sqlite.close()
+})
+
+test('a signed-in visit records last use at most once a minute', async () => {
+	const { db } = createGrantDatabase()
+	const grantOf = () =>
+		findLivePackageAppOauthGrant({
+			db,
+			personId: 'person-a',
+			orgUsername: 'zeta',
+			kodyId: 'demo',
+		})
+	await upsertPackageAppOauthGrant({
+		db,
+		personId: 'person-a',
+		orgUsername: 'zeta',
+		kodyId: 'demo',
+		scopes: ['profile'],
+		now: new Date('2026-01-01T00:00:00.000Z'),
+	})
+	expect((await grantOf())?.lastUsedAt).toBeNull()
+	await notePackageAppOauthGrantUse({
+		db,
+		grant: (await grantOf())!,
+		now: new Date('2026-01-01T00:05:00.000Z'),
+	})
+	expect((await grantOf())?.lastUsedAt).toBe('2026-01-01T00:05:00.000Z')
+	await notePackageAppOauthGrantUse({
+		db,
+		grant: (await grantOf())!,
+		now: new Date('2026-01-01T00:05:30.000Z'),
+	})
+	expect((await grantOf())?.lastUsedAt).toBe('2026-01-01T00:05:00.000Z')
+	await notePackageAppOauthGrantUse({
+		db,
+		grant: (await grantOf())!,
+		now: new Date('2026-01-01T00:07:00.000Z'),
+	})
+	expect((await grantOf())?.lastUsedAt).toBe('2026-01-01T00:07:00.000Z')
 })

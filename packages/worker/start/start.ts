@@ -11,6 +11,7 @@ import {
 	verifyBrowserDocument,
 } from '#start/server/document-actor'
 import { readDocumentActor } from './document-actor.ts'
+import { permissionDeniedSerializationAdapter } from './permission-denied-serialization.ts'
 import {
 	documentActorHeader,
 	documentDestinationHeader,
@@ -56,4 +57,5 @@ export const startInstance = createStart(() => ({
 		}),
 	],
 	functionMiddleware: [documentIdentity],
+	serializationAdapters: [permissionDeniedSerializationAdapter],
 }))

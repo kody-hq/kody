@@ -72,8 +72,8 @@ schedule should use a different account. See [Triggers](./triggers.md).
 
 ## Pick per run
 
-Pass a `credentials` map on `execute` (for `code` or `invoke`), or
-`--credential` on the CLI, to choose for one run:
+Pass a `credentials` map on `execute`, or `--credential` on the CLI, to choose
+for one run:
 
 ```bash
 npx @kodycodes/cli execute --invoke kody:@you/checkout/run \

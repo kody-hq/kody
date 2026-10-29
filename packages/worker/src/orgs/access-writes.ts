@@ -46,9 +46,55 @@ async function runAccessBatchWithAudit(input: {
 	})
 }
 
+/**
+ * Who a grant applies to. `org` is everyone in the grant's own org (any live
+ * membership); its id is always the grant's org id, and access checks resolve
+ * it against org_memberships at check time.
+ */
 export type GrantSubject =
 	| { type: 'user'; id: string }
 	| { type: 'team'; id: string }
+	| { type: 'org'; id: string }
+
+export type GrantSubjectType = GrantSubject['type']
+
+export const grantSubjectTypes = [
+	'user',
+	'team',
+	'org',
+] as const satisfies ReadonlyArray<GrantSubjectType>
+
+export function isGrantSubjectType(value: string): value is GrantSubjectType {
+	return (grantSubjectTypes as ReadonlyArray<string>).includes(value)
+}
+
+/**
+ * Refuses an "everyone in this organization" grant that names another org or
+ * sits on the org itself (org-level permissions come from roles and org
+ * grants to a person or team, never to everyone).
+ */
+export class GrantSubjectScopeError extends Error {}
+
+export function assertGrantSubjectInOrg(input: {
+	orgId: string
+	resourceType: string
+	subject: GrantSubject
+}) {
+	if (input.subject.type !== 'org') return
+	if (input.subject.id !== input.orgId) {
+		throw new GrantSubjectScopeError(
+			'An everyone-in-this-organization grant must name the organization it is made in.',
+		)
+	}
+	if (
+		input.resourceType === 'org' ||
+		input.resourceType === 'execution_context'
+	) {
+		throw new GrantSubjectScopeError(
+			`An everyone-in-this-organization grant cannot target resource_type ${input.resourceType}.`,
+		)
+	}
+}
 
 async function runBatch(
 	db: D1Database,
@@ -303,6 +349,7 @@ export async function upsertGrant(input: {
 	createdByUserId: string
 	audit: OrgAuditWriter
 }) {
+	assertGrantSubjectInOrg(input)
 	const family = input.family ?? grantFamilyOf(input.resourceType)
 	const permissions = resolveGrantPermissions({
 		family,
@@ -663,7 +710,7 @@ export type GrantView = {
 	orgId: string
 	resourceType: string
 	resourceId: string
-	subjectType: 'user' | 'team'
+	subjectType: GrantSubjectType
 	subjectId: string
 	preset: string | null
 	permissions: Array<string>
@@ -691,10 +738,9 @@ function groupGrantRows(rows: ReadonlyArray<GrantJoinRow>): Array<GrantView> {
 	for (const row of rows) {
 		let grant = byId.get(row.id)
 		if (!grant) {
-			const subjectType =
-				row.subject_type === 'user' || row.subject_type === 'team'
-					? row.subject_type
-					: null
+			const subjectType = isGrantSubjectType(row.subject_type)
+				? row.subject_type
+				: null
 			if (!subjectType) {
 				throw new Error(`Grant ${row.id} has subject type ${row.subject_type}.`)
 			}
@@ -727,7 +773,7 @@ export async function listGrants(input: {
 	grantId?: string | null
 	resourceType?: string | null
 	resourceId?: string | null
-	subjectType?: 'user' | 'team' | null
+	subjectType?: GrantSubjectType | null
 	subjectId?: string | null
 }): Promise<Array<GrantView>> {
 	const where = ['g.org_id = ?']

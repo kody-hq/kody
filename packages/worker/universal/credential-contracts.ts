@@ -323,6 +323,8 @@ export type PackageCredentialsIncomplete = {
 				enablementId?: string
 		  }
 	status: 'unbound' | 'ambiguous' | 'unusable'
+	/** Unbound only: credentials of the right kind with no provider that a pick could link. */
+	possibleMatches?: Array<CredentialRef>
 }
 
 export type PackageCredentialsView = {

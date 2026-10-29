@@ -2,13 +2,10 @@ import { loadAccountPackageDetail } from '#app/account-packages-data.ts'
 import { loadCommunityDetailData } from '#app/community-data.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
-	viewerCanDeleteSavedPackage,
-	viewerCanExecutePackageApp,
-	viewerCanManageSavedPackage,
-	viewerCanManageSavedPackageAccess,
-	viewerCanPublishSavedPackage,
+	loadSavedPackageViewerAccess,
+	savedPackageViewerAllows,
+	savedPackageViewerMayRunApp,
 	viewerCanReadSavedPackage,
-	viewerIsSavedPackageOrgOwner,
 } from '#app/package-viewer-access.ts'
 import { resolvePackageAppLinks } from '#app/package-repo-actions.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
@@ -40,6 +37,7 @@ import {
 	type CommunityDetailLoaderData,
 } from '#universal/loader-data.ts'
 import { type McpUserContext } from '@kody-internal/shared/chat.ts'
+import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 
 export type PackagePageAccess =
 	| { kind: 'redirect'; to: string; shared: boolean }
@@ -88,6 +86,8 @@ export type PackagePageAccess =
 			viewerCanDelete: boolean
 			/** May change who can use the package (`package:manage_access`). */
 			viewerCanManageAccess: boolean
+			/** Sees the Connected people tab (Manage on a package with an app). */
+			viewerCanSeeConnectedPeople: boolean
 			/** May adopt a community fork (org owner only; widens secret access). */
 			viewerCanAdoptCommunityFork: boolean
 			/**
@@ -369,6 +369,7 @@ async function loadPlainRepoPage(input: {
 		viewerCanPublish: false,
 		viewerCanDelete: false,
 		viewerCanManageAccess: false,
+		viewerCanSeeConnectedPeople: false,
 		viewerCanAdoptCommunityFork: false,
 		loggedIn: Boolean(viewer),
 		viewerMayRun: false,
@@ -482,10 +483,17 @@ async function resolvePackagePageForViewer(
 		}
 	}
 
-	const viewerIsOwner = target.savedPackage
-		? await viewerCanReadSavedPackage({
+	// One compile answers every viewer flag below, so the page reads the
+	// org's access_epoch once instead of once per flag.
+	const viewerAccess = target.savedPackage
+		? await loadSavedPackageViewerAccess({
 				env: input.env,
 				viewer,
+				ownerId: target.userId,
+			})
+		: null
+	const viewerIsOwner = target.savedPackage
+		? savedPackageViewerAllows(viewerAccess, 'package:read', {
 				ownerId: target.userId,
 				packageId: target.savedPackage.id,
 			})
@@ -525,50 +533,17 @@ async function resolvePackagePageForViewer(
 	if (viewerIsOwner && target.savedPackage) {
 		const packageId = target.savedPackage.id
 		const ownerId = target.userId
-		const [
-			viewerCanManage,
-			viewerCanPublish,
-			viewerCanDelete,
-			viewerCanManageAccess,
-			viewerCanAdoptCommunityFork,
-			viewerMayRun,
-		] = await Promise.all([
-			viewerCanManageSavedPackage({
-				env: input.env,
-				viewer,
-				ownerId,
-				packageId,
-			}),
-			viewerCanPublishSavedPackage({
-				env: input.env,
-				viewer,
-				ownerId,
-				packageId,
-			}),
-			viewerCanDeleteSavedPackage({
-				env: input.env,
-				viewer,
-				ownerId,
-				packageId,
-			}),
-			viewerCanManageSavedPackageAccess({
-				env: input.env,
-				viewer,
-				ownerId,
-				packageId,
-			}),
-			viewerIsSavedPackageOrgOwner({
-				env: input.env,
-				viewer,
-				ownerId,
-			}),
-			viewerCanExecutePackageApp({
-				env: input.env,
-				viewer,
-				ownerId,
-				appId: packageId,
-			}),
-		])
+		const allows = (permission: OrgPermission) =>
+			savedPackageViewerAllows(viewerAccess, permission, { ownerId, packageId })
+		const viewerCanManage = allows('package:write')
+		const viewerCanPublish = allows('package:publish')
+		const viewerCanDelete = allows('package:delete')
+		const viewerCanManageAccess = allows('package:manage_access')
+		const viewerCanAdoptCommunityFork = viewerAccess?.binding.role === 'owner'
+		const viewerMayRun = savedPackageViewerMayRunApp(viewerAccess, {
+			ownerId,
+			appId: packageId,
+		})
 		const [listing, ownerPackage] = await Promise.all([
 			target.listingId
 				? loadCommunityDetailData(
@@ -605,6 +580,8 @@ async function resolvePackagePageForViewer(
 			viewerCanPublish,
 			viewerCanDelete,
 			viewerCanManageAccess,
+			viewerCanSeeConnectedPeople:
+				viewerCanManage && ownerPackage?.hasApp === true,
 			viewerCanAdoptCommunityFork,
 			viewerMayRun,
 			loggedIn: true,
@@ -616,22 +593,18 @@ async function resolvePackagePageForViewer(
 	}
 
 	if (target.listingId) {
-		const [listing, viewerMayRun] = await Promise.all([
-			loadCommunityDetailData(
-				input.env,
-				input.request,
-				target.listingId,
-				input.installOrg ?? null,
-			),
-			viewer && target.savedPackage
-				? viewerCanExecutePackageApp({
-						env: input.env,
-						viewer,
-						ownerId: target.userId,
-						appId: target.savedPackage.id,
-					})
-				: Promise.resolve(false),
-		])
+		const listing = await loadCommunityDetailData(
+			input.env,
+			input.request,
+			target.listingId,
+			input.installOrg ?? null,
+		)
+		const viewerMayRun = target.savedPackage
+			? savedPackageViewerMayRunApp(viewerAccess, {
+					ownerId: target.userId,
+					appId: target.savedPackage.id,
+				})
+			: false
 		if (!listing) return { kind: 'not_found' }
 		return {
 			kind: 'page',
@@ -645,6 +618,7 @@ async function resolvePackagePageForViewer(
 			viewerCanPublish: false,
 			viewerCanDelete: false,
 			viewerCanManageAccess: false,
+			viewerCanSeeConnectedPeople: false,
 			viewerCanAdoptCommunityFork: false,
 			viewerMayRun,
 			loggedIn: Boolean(viewer),
@@ -667,9 +641,7 @@ async function resolvePackagePageForViewer(
 		// (share links / handoffs) is intentional product policy.
 		if (viewer && target.savedPackage) {
 			const mayRun = target.savedPackage.hasApp
-				? await viewerCanExecutePackageApp({
-						env: input.env,
-						viewer,
+				? savedPackageViewerMayRunApp(viewerAccess, {
 						ownerId: target.userId,
 						appId: target.savedPackage.id,
 					})

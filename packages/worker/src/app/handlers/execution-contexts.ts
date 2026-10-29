@@ -7,12 +7,14 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { isFeatureEnabled } from '#worker/feature-flags/service.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
-import { listTeams } from '#worker/orgs/org-teams-list.ts'
 import {
+	getOrgBySlug,
 	listOrgsForPerson,
 	loadOrgBindingForSlug,
 	type OrgBinding,
 } from '#worker/orgs/repo.ts'
+import { listTeams } from '#worker/orgs/org-teams-list.ts'
+import { type AutomationExecutionSettingView } from '#universal/automation-execution.ts'
 import { executionContextsFlagKey } from '#universal/feature-flags/registry.ts'
 import {
 	type ExecutionChain,
@@ -50,6 +52,8 @@ export const executionContextCapabilityNames = {
 	shareList: 'executionContextShareList',
 	shareSet: 'executionContextShareSet',
 	shareRemove: 'executionContextShareRemove',
+	automationGet: 'automationExecutionGet',
+	automationSet: 'automationExecutionSet',
 } as const
 
 type CapabilityName =
@@ -371,11 +375,13 @@ export async function loadExecutionContextsPageData(input: {
 	contextId: string | null
 }): Promise<ExecutionContextsPageData | { notFound: true }> {
 	const { env, user } = input
+	const pageOrg = await getOrgBySlug(env.APP_DB, input.orgSlug)
 	const enabled =
 		(await isFeatureEnabled(
 			env.APP_DB,
 			executionContextsFlagKey,
 			user.userId,
+			pageOrg ? { orgId: pageOrg.id } : null,
 		)) && (await executionContextsCapabilitiesAvailable())
 	if (!enabled) return { enabled: false, orgSlug: input.orgSlug }
 	const scope = await loadExecutionContextsScope(input)
@@ -673,4 +679,62 @@ export async function removeExecutionContextShareForUser(
 		)
 		return { ok: true as const, sharing: readSharing(result) }
 	})
+}
+
+export type AutomationExecutionTargetInput = {
+	kind: 'job' | 'webhook' | 'subscription'
+	jobId?: string | undefined
+	packageId?: string | undefined
+	name?: string | undefined
+}
+
+function automationTargetArgs(target: AutomationExecutionTargetInput) {
+	return {
+		kind: target.kind,
+		...(target.jobId ? { jobId: target.jobId } : {}),
+		...(target.packageId ? { packageId: target.packageId } : {}),
+		...(target.name ? { name: target.name } : {}),
+	}
+}
+
+export async function getAutomationExecutionForUser(
+	input: ScopedInput & { target: AutomationExecutionTargetInput },
+) {
+	return runScoped(input, async (scope) => ({
+		ok: true as const,
+		setting: (await callCapability(
+			scope,
+			executionContextCapabilityNames.automationGet,
+			automationTargetArgs(input.target),
+		)) as AutomationExecutionSettingView,
+		contexts: await callCapability(
+			scope,
+			executionContextCapabilityNames.list,
+			{},
+		).then((result) =>
+			(Array.isArray(result.contexts) ? result.contexts : [])
+				.map((context) => record(context))
+				.filter((context) => context !== null)
+				.map((context) => ({
+					id: String(context.id ?? ''),
+					name: String(context.name ?? context.id ?? ''),
+				})),
+		),
+	}))
+}
+
+export async function setAutomationExecutionForUser(
+	input: ScopedInput & {
+		target: AutomationExecutionTargetInput
+		execution: Record<string, unknown> | null
+	},
+) {
+	return runScoped(input, async (scope) => ({
+		ok: true as const,
+		setting: (await callCapability(
+			scope,
+			executionContextCapabilityNames.automationSet,
+			{ ...automationTargetArgs(input.target), execution: input.execution },
+		)) as AutomationExecutionSettingView,
+	}))
 }

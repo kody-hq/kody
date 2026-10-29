@@ -1,4 +1,6 @@
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
+import { findSoftDeletedAccountsHoldingEmail } from '#worker/identity/deleted-account-identity-release.ts'
+import { createDeletedAccountReleaseVerification } from '#app/email-claim-release.ts'
 import { authOperationResult } from './auth-operation-result.ts'
 import { enum_, object, parseSafe, string } from 'remix/data-schema'
 import {
@@ -245,6 +247,37 @@ export async function authenticateWebsite({
 	}
 
 	if (normalizedMode === 'signup') {
+		// A soft-deleted account still holds this email. A password signup does
+		// not prove the address, so mail a release link instead of superseding
+		// it; same response as any accepted signup.
+		const [deletedHolder] = await findSoftDeletedAccountsHoldingEmail(
+			env.APP_DB,
+			normalizedEmail,
+		)
+		if (deletedHolder) {
+			try {
+				await createDeletedAccountReleaseVerification({
+					env,
+					deletedUserId: deletedHolder.id,
+					email: normalizedEmail,
+					requestUrl: url,
+				})
+			} catch (error) {
+				console.warn('deleted-account-release-email-failed', error)
+			}
+			void logAuditEvent({
+				db: auditDatabaseFromEnv(env),
+				category: 'auth',
+				action: 'signup',
+				result: 'failure',
+				email: normalizedEmail,
+				ip: requestIp,
+				path: url.pathname,
+				reason: 'deleted_account_holds_email',
+			})
+			return authOperationResult(signupAcceptedBody(normalizedMode))
+		}
+
 		if (await isUsernameClaimedInIdentity(env.APP_DB, normalizedUsername)) {
 			void logAuditEvent({
 				db: auditDatabaseFromEnv(env),
@@ -331,7 +364,7 @@ export async function authenticateWebsite({
 		const existingUser = await db.findOne(usersTable, {
 			where: { email: normalizedEmail },
 		})
-		if (existingUser) {
+		if (existingUser && !existingUser.deleted_at) {
 			void logAuditEvent({
 				db: auditDatabaseFromEnv(env),
 				category: 'auth',

@@ -711,6 +711,22 @@
 		{
 			"filename": "0195-credential-fill-placement-opt-ins.sql",
 			"sha256": "9c4ae5ee34158ebde5106433f0d5a9a0caf5dfb1b41ae8080c64034cdcb734cd"
+		},
+		{
+			"filename": "0197-feature-flag-org-overrides.sql",
+			"sha256": "01798745f6d47a56ca2c5a3ca9799879afe8d49018288b4f3a3ab03be4790c4c"
+		},
+		{
+			"filename": "0199-sealed-token-fill-placement-opt-in-source.sql",
+			"sha256": "74d251b6ff979b4c4bd444a1ef6609987356df3f9e7ac7ca69362fa931f97830"
+		},
+		{
+			"filename": "0200-automation-execution-settings.sql",
+			"sha256": "c66865bd1eafbe8c363a64390e1d45096f54a374a644be5c56c32f3e55ec6d6f"
+		},
+		{
+			"filename": "0201-grants-org-everyone-subject.sql",
+			"sha256": "ea9af01477cc26dcec8d4b64a517686550bd78eb19c5843163f63aae8be830ca"
 		}
 	]
 }

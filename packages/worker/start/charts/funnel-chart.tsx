@@ -2,7 +2,7 @@
 import { useMemo } from 'react'
 import { barX, defineChart } from '@tanstack/charts'
 import { decorative } from '@tanstack/charts/mark/decorative'
-import { Chart } from '@tanstack/charts/react'
+import { Chart } from './chart.tsx'
 import { scaleBand } from '@tanstack/charts/scales/band'
 import { scaleLinear } from '@tanstack/charts/scales/linear'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'

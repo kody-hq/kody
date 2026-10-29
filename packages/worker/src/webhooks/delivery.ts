@@ -347,6 +347,7 @@ async function invokeWebhookExport(
 			source: 'webhook',
 			topic: `webhook:${input.packageKodyId}:${input.endpoint.webhookName}`,
 		},
+		executionTarget: { kind: 'webhook', name: input.endpoint.webhookName },
 		...(input.executorTimeoutMs === undefined
 			? {}
 			: { executorTimeoutMs: input.executorTimeoutMs }),

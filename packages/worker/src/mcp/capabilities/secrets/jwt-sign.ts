@@ -172,6 +172,7 @@ export const jwtSignCapability = defineDomainCapability(
 						org: secretUserId,
 						binding: ctx.credentialClientBinding ?? null,
 						domains,
+						source: 'jwt-sign',
 					},
 					expiresInSeconds:
 						exp === null ? null : exp - Math.floor(Date.now() / 1000),

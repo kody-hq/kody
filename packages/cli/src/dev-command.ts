@@ -632,6 +632,7 @@ export type PackageCheckResult = {
  */
 export type RunPublishChecks = (
 	files: Record<string, string>,
+	binaryFiles: Record<string, number>,
 ) => Promise<PackageCheckResult>
 
 /**
@@ -893,7 +894,7 @@ export async function runDevCheck(input: {
 	} else {
 		try {
 			const tree = await collectPackageCheckFiles(manifest.root)
-			const outcome = await input.runPublishChecks(tree.files)
+			const outcome = await input.runPublishChecks(tree.files, tree.binaryFiles)
 			publishChecksOk = outcome.ok
 			for (const check of outcome.checks) {
 				push(`publish:${check.kind}`, check.ok, check.message || undefined)
@@ -901,11 +902,12 @@ export async function runDevCheck(input: {
 			if (!outcome.ok && !outcome.checks.some((check) => !check.ok)) {
 				push('publish checks', false, 'publish checks failed')
 			}
-			if (tree.skippedBinary.length > 0) {
+			const binaryCount = Object.keys(tree.binaryFiles).length
+			if (binaryCount > 0) {
 				push(
 					'publish checks',
 					true,
-					`left out ${tree.skippedBinary.length} binary file(s); they only count toward publish size limits`,
+					`sent ${binaryCount} binary file(s) by path and size only; their contents stay local`,
 				)
 			}
 		} catch (error) {

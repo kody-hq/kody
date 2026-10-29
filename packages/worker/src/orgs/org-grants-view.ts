@@ -3,14 +3,18 @@ import {
 	type CredentialKind,
 	type OrgCredential,
 } from '#worker/credentials/credential-ids.ts'
-import { listGrants, type GrantView } from '#worker/orgs/access-writes.ts'
+import {
+	listGrants,
+	type GrantSubjectType,
+	type GrantView,
+} from '#worker/orgs/access-writes.ts'
 
 export type ListedOrgGrant = {
 	id: string
 	resourceType: string
 	resourceId: string
 	resourceLabel: string
-	subjectType: 'user' | 'team'
+	subjectType: GrantSubjectType
 	subjectId: string
 	subjectLabel: string
 	preset: string | null
@@ -181,6 +185,8 @@ function toOrgGrantView(
 		subjectLabel = user?.username
 			? `@${user.username}`
 			: user?.display_name?.trim() || grant.subjectId
+	} else if (grant.subjectType === 'org') {
+		subjectLabel = 'Everyone in this organization'
 	} else {
 		const team = teamById.get(grant.subjectId)
 		subjectLabel = team ? `${team.name} (@${team.slug})` : grant.subjectId

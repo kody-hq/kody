@@ -1,4 +1,10 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	type AutomationExecution,
+	automationExecutionSchema,
+	parseAutomationExecution,
+} from '#worker/execution-contexts/automation-execution-schema.ts'
+import { isExecutionContextsEnabledFor } from '#worker/execution-contexts/flag.ts'
 import { isoTimestampDayKey } from '@kody-internal/shared/date-keys.ts'
 import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
 import {
@@ -111,6 +117,8 @@ export type PackageWorkflowCreateInput = WorkflowCreateBaseInput &
 				 * the commit resolved at enqueue, or it refuses to run.
 				 */
 				sourceRevision?: WorkflowSourceRevisionPolicy
+				/** Execution-context routing for each step (flagged). */
+				execution?: unknown
 				code?: never
 		  }
 		| {
@@ -118,6 +126,7 @@ export type PackageWorkflowCreateInput = WorkflowCreateBaseInput &
 				exportName?: never
 				packageId?: never
 				sourceRevision?: never
+				execution?: never
 		  }
 	)
 
@@ -159,6 +168,8 @@ export type DynamicCallableWorkflowPayload =
 			enqueuedCommit?: string
 			/** Absent means `latest`. */
 			sourceRevision?: 'pinned'
+			/** Where each step runs (execution contexts); absent is Kody cloud. */
+			execution?: AutomationExecution
 	  }
 	| {
 			version: 3
@@ -540,6 +551,7 @@ function createDynamicPackageWorkflowPayload(input: {
 	lineage: RequestLineage | null
 	enqueuedCommit?: string | null
 	sourceRevision?: WorkflowSourceRevisionPolicy | null
+	execution?: AutomationExecution | null
 }): DynamicCallableWorkflowPayload {
 	const runAt = normalizeRunAt(input.runAt)
 	const idempotencyKey = normalizeWorkflowIdempotencyKey(input.idempotencyKey)
@@ -571,6 +583,7 @@ function createDynamicPackageWorkflowPayload(input: {
 		...(input.lineage ? { lineage: input.lineage } : {}),
 		...(enqueuedCommit ? { enqueuedCommit } : {}),
 		...(pinned ? { sourceRevision: 'pinned' as const } : {}),
+		...(input.execution ? { execution: input.execution } : {}),
 	}
 }
 
@@ -665,6 +678,7 @@ function validateDynamicCallableWorkflowPayload(
 			sourceRevision: parseWorkflowProjectionSourceRevision(
 				record['sourceRevision'],
 			),
+			execution: parseAutomationExecution(record['execution']),
 		})
 	}
 	throw new Error('Dynamic callable workflow payload sourceType is invalid.')
@@ -1060,6 +1074,13 @@ async function resolveWorkflowPayload(input: {
 	const body = input.body as PackageWorkflowCreateInput &
 		Record<string, unknown>
 	const { code, exportName } = assertWorkflowCreateBodyShape(input.body)
+	const execution = await resolveWorkflowExecution({
+		db: input.env.APP_DB,
+		raw: body.execution,
+		code,
+		lineage: input.lineage,
+		orgId: input.userId,
+	})
 	if (code) {
 		return createInlineWorkflowPayload({
 			userId: input.userId,
@@ -1114,7 +1135,48 @@ async function resolveWorkflowPayload(input: {
 		lineage: input.lineage,
 		enqueuedCommit,
 		sourceRevision,
+		execution,
 	})
+}
+
+/**
+ * `workflows.create({ execution })`: same rules as an automation's setting.
+ * Checked at enqueue so a flag-off or malformed setting fails up front.
+ */
+async function resolveWorkflowExecution(input: {
+	db: D1Database
+	raw: unknown
+	code: string | null | undefined
+	lineage: RequestLineage
+	orgId: string
+}): Promise<AutomationExecution | null> {
+	if (input.raw === undefined || input.raw === null) return null
+	if (input.code) {
+		throw new Error(
+			'workflows.create execution needs exportName: an execution context runs a package export, not inline code.',
+		)
+	}
+	const parsed = automationExecutionSchema.safeParse(input.raw)
+	if (!parsed.success) {
+		throw new Error(
+			`workflows.create execution is invalid: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`,
+		)
+	}
+	if (parsed.data.whenOffline === 'queue') {
+		throw new Error(
+			'workflows.create execution cannot use whenOffline: "queue": a workflow step needs its result before the next step runs. Omit whenOffline so an offline context fails the step.',
+		)
+	}
+	const actorId = input.lineage.actor?.userId ?? null
+	if (
+		!actorId ||
+		!(await isExecutionContextsEnabledFor(input.db, actorId, input.orgId))
+	) {
+		throw new Error(
+			'workflows.create execution needs the execution-contexts feature, which is not enabled for you. Omit execution to run on Kody cloud.',
+		)
+	}
+	return parsed.data
 }
 
 export async function createDynamicCallableWorkflow(input: {
@@ -1936,6 +1998,16 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				},
 				ephemeral: true,
 				executorTimeoutMs: backgroundExecutorTimeoutMs,
+				...(payload.execution
+					? {
+							executionTarget: {
+								kind: 'workflow' as const,
+								exportName: payload.exportName,
+								execution: payload.execution,
+							},
+							parentRunHandle: runHandle,
+						}
+					: {}),
 				sourceRevision: {
 					pinnedCommit,
 					// Per-attempt provenance, captured before any sandbox work.

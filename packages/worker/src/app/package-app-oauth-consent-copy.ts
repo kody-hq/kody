@@ -43,6 +43,31 @@ export function packageAppOauthClaimLabel(
 	return `Use your own data or credentials: ${description ?? key}`
 }
 
+/**
+ * What one visitor approved, in the consent screen's words, for the app's
+ * owner. Never raw scope ids: an unknown need still reads as credentials.
+ */
+export function packageAppOauthOwnerClaimLabels(
+	scopes: ReadonlyArray<PackageAppOauthScope | string>,
+	visitorNeedDescriptions: Readonly<Record<string, string>> = {},
+) {
+	const claims = ['See their name, username, and avatar']
+	if (scopesIncludeEmail(scopes)) {
+		claims.push('See their email address')
+	}
+	for (const key of visitorNeedKeysOfScopes(scopes)) {
+		const description = Object.hasOwn(visitorNeedDescriptions, key)
+			? visitorNeedDescriptions[key]
+			: undefined
+		claims.push(
+			description
+				? `Use their own data or credentials: ${description}`
+				: 'Use their own data or credentials for this app',
+		)
+	}
+	return claims
+}
+
 export function packageAppOauthAppDomain(redirectUri: string) {
 	try {
 		return new URL(redirectUri).hostname

@@ -1,3 +1,6 @@
+import { getErrorCauseChain } from '@kody-internal/shared/error-message.ts'
+import { recordSkillFileRead } from '#worker/package-registry/skill-read-events.ts'
+import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { authorizeRepoSessionPackageRead } from './authorize-repo-session-package.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -10,6 +13,7 @@ import {
 	readAnchoredText,
 	splitFileAnchor,
 } from '#worker/guides/file-anchor.ts'
+import { isRepoSessionDirectoryTargetCallerMessage } from '#worker/repo/repo-session-caller-error.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import {
 	repoReadFileInputSchema,
@@ -33,19 +37,54 @@ export const repoReadFileCapability = defineDomainCapability(
 		async handler(args, ctx: CapabilityContext) {
 			requireMcpUser(ctx.callerContext)
 			const ownerId = ownerIdFromCaller(ctx.callerContext)
-			await authorizeRepoSessionPackageRead({
+			const source = await authorizeRepoSessionPackageRead({
 				env: ctx.env,
 				request: ctx.callerContext.request,
 				userId: ownerId,
 				sessionId: args.session_id,
 			})
 			const requested = splitFileAnchorForCaller(args.path)
-			const file = await repoSessionRpc(ctx.env, args.session_id).readFile({
-				sessionId: args.session_id,
-				userId: ownerId,
-				path: requested.path,
-			})
+			const file = await repoSessionRpc(ctx.env, args.session_id)
+				.readFile({
+					sessionId: args.session_id,
+					userId: ownerId,
+					path: requested.path,
+				})
+				.catch(rethrowDirectoryTargetAsCallerError)
+			const recordRead = async () => {
+				const skillName = /^skills\/([^/]+)\//.exec(file.path)?.[1]
+				if (!source || !skillName || file.content == null) return
+				const manifest =
+					file.path === `skills/${skillName}/SKILL.md`
+						? file
+						: await repoSessionRpc(ctx.env, args.session_id).readFile({
+								sessionId: args.session_id,
+								userId: ownerId,
+								path: `skills/${skillName}/SKILL.md`,
+							})
+				if (manifest.content == null) return
+				const pkg = await getSavedPackageById(ctx.env.APP_DB, {
+					userId: ownerId,
+					packageId: source.entity_id,
+				})
+				if (!pkg) return
+				await recordSkillFileRead({
+					env: ctx.env,
+					callerContext: ctx.callerContext,
+					channel: 'package-api',
+					packageId: pkg.id,
+					packageName: pkg.name,
+					packageOwnerId: pkg.userId,
+					// A session reads a mutable overlay. Its file digest is authoritative.
+					publishedCommit: null,
+					path: file.path,
+					content: file.content,
+					hasManifest: true,
+				})
+			}
+
 			if (!requested.fragment || file.content == null) {
+				await recordRead()
 				return {
 					path: file.path,
 					content: file.content,
@@ -57,6 +96,7 @@ export const repoReadFileCapability = defineDomainCapability(
 					content: file.content,
 					fragment: requested.fragment,
 				})
+				await recordRead()
 				return {
 					path: file.path,
 					content: anchored.content,
@@ -90,4 +130,20 @@ function splitFileAnchorForCaller(path: string) {
 		}
 		throw error
 	}
+}
+
+/**
+ * A folder path (`src`) is caller-correctable. DO RPC loses Error subclass
+ * identity, so match the stable phrase. KODY-CA.
+ */
+function rethrowDirectoryTargetAsCallerError(error: unknown): never {
+	const match = getErrorCauseChain(error).find(
+		(entry) =>
+			entry instanceof Error &&
+			isRepoSessionDirectoryTargetCallerMessage(entry.message),
+	)
+	if (match instanceof Error) {
+		throw new McpCallerError(match.message, { cause: error })
+	}
+	throw error
 }

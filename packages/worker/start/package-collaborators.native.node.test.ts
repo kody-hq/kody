@@ -20,12 +20,13 @@ test('outside collaborators stay removable but cannot be edited or invited from 
 			publishedCommit: null,
 			ownerProfilePublic: true,
 			viewerCanManage: true,
+			viewerCanSeeConnectedPeople: false,
 		},
 		view: {
 			ok: true,
 			package: { id: 'pkg', kodyId: 'demo', name: 'Demo' },
 			org: { slug: 'acme', personal: false },
-			options: { teams: [], members: [] },
+			options: { everyone: null, teams: [], members: [] },
 			invites: [],
 			collaborators: [
 				{
@@ -65,7 +66,7 @@ test('personal package invites show access choices and pending recipients withou
 				package: { id: 'pkg', kodyId: 'demo', name: 'Demo' },
 				org: { slug: 'owner', personal: true },
 				collaborators: [],
-				options: { teams: [], members: [] },
+				options: { everyone: null, teams: [], members: [] },
 				invites: [
 					{
 						id: 'invite-one',

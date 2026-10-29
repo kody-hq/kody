@@ -54,17 +54,43 @@ leftover DB rows for removed keys surface as **stale** in the admin UI
 
 ## Evaluation precedence
 
-1. Per-user override row (wins over everything, including audience).
-2. Global row: off → off; on with `rollout_percent` set → deterministic FNV-1a
+1. Per-user override row (wins over everything, including audience). Explicit
+   off works.
+2. Per-org row for the org context (`feature_flag_org_overrides`, keyed by
+   stable `orgs.id`). Wins over the global row and the audience gate, on or off.
+   Applies only to live members of an active org (or the personal org's owner).
+   See [ADR 0084](../decisions/0084-org-feature-flag-rows.md).
+3. Global row: off → off; on with `rollout_percent` set → deterministic FNV-1a
    bucket of `key:userId` compared to the percentage (anonymous users are
    excluded from percentage rollouts); on without a percentage → on.
-3. Registry `defaultEnabled`.
-4. **Audience gate** (when the effective audience is not `everyone`): if the
+4. Registry `defaultEnabled`.
+5. **Audience gate** (when the effective audience is not `everyone`): if the
    evaluation would be on and the audience is `experiments_opt_in`, the user
    must have `users.experiments_opt_in = 1` (set from `/account/experiments`).
    Otherwise the flag stays off and keeps the same assignment source. The
    effective audience is the global row's `audience`, or the registry
    `defaultAudience` (`everyone` when omitted) when there is no global row.
+
+### Org context
+
+`evaluateFeatureFlag(db, key, userId, { orgId })`,
+`getFeatureFlagEvaluationsForUser(db, userId, { orgId })`, and
+`isFeatureEnabled(...)` take the org of the request or run. A user in several
+orgs is evaluated only against that org, never against all memberships. Passing
+`null` (the default) means no org context: org rows do not apply.
+
+| Surface                                       | Org context                                                      |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| MCP, `execute`, Open API (caller resolver)    | `callerContext.request.org` (org binding, else the personal org) |
+| Website session flags (`/session`, SSR shell) | the matched route's org scope (`/@slug/-/...`); none elsewhere   |
+| Execution contexts                            | the request org, or the `/@slug` org of the page                 |
+| Credential suppliers                          | the org that owns the credential                                 |
+| Repo-scoped flags                             | the org that owns the repo (personal org for personal repos)     |
+| Connection profiles, MCP event fan-out        | none (user only)                                                 |
+
+Evaluated-flag caches key on user and org (`stableUserId` plus org id in the MCP
+resolver; page org slug in the per-request app cache and in the website shell
+query key).
 
 Evaluation failures for authenticated users **fail closed** (all flags off) so a
 default-on flag can never bypass an operator kill switch when D1 is unavailable.
@@ -79,10 +105,12 @@ Object). `evaluateRepoFeatureFlag(db, key, { sourceId, ownerId })` in
 1. Per-repo override row (the allowlist; wins over everything, including
    audience).
 2. The repo owner's per-user override.
-3. Global row, with `rollout_percent` bucketed by `key:sourceId` (source ids are
+3. The org row for the org that owns the repo (the personal org for personal
+   repos).
+4. Global row, with `rollout_percent` bucketed by `key:sourceId` (source ids are
    stable; repo names are neither unique nor permanent).
-4. Registry `defaultEnabled`.
-5. Audience gate against the repo owner (stable user id or personal org id).
+5. Registry `defaultEnabled`.
+6. Audience gate against the repo owner (stable user id or personal org id).
 
 Operate it with `adminFeatureFlagRepoOverride({ key, sourceId, enabled })` (or
 `clear: true`) and inspect with `adminFeatureFlagRepoCheck({ key, sourceId })`;
@@ -108,9 +136,12 @@ Audience values: `everyone` (default) | `experiments_opt_in`.
 
 - **Admin UI**: `/admin/feature-flags` (Start server functions in
   `admin-mutations.ts`), admin-role gated, audited via `logAuditEvent`
-  (`feature_flag_*` actions).
+  (`feature_flag_*` actions). Each flag card has an Organization overrides panel
+  (by org handle) next to User overrides.
 - **MCP capabilities**: `adminFeatureFlagList`, `adminFeatureFlagSet`,
-  `adminFeatureFlagOverride` (admin role required, audited).
+  `adminFeatureFlagOverride`, `adminFeatureFlagOrgOverride` (`{ key, orgId }` or
+  `{ key, orgSlug }` with `enabled` and an optional `note`, or `clear: true`)
+  (admin role required, audited, `contextRuns: 'deny'`).
 - **Client**: evaluated per-request in `loadSessionInfo` (cached per request in
   `request-feature-flags-cache.ts`) and shipped as `session.featureFlags`; gate
   UI with `isFeatureFlagEnabled(session, key)` from
@@ -127,20 +158,6 @@ The registry ships with one permanent flag, `demo-indicator`, which renders a
 small badge in the app chrome and exists so the system stays exercised
 end-to-end. Experiment flags live in the same registry and are removed in the
 same way: delete the definition and every gate site.
-
-`execute-invoke` is an experiment (default **off**, registry
-`defaultAudience: experiments_opt_in`) for the MCP `execute` `invoke` shortcut.
-When on for a caller, the execute tool advertises `invoke` (a
-`kody:@scope/package/export` specifier) and generates the same thin passthrough
-source a careful agent would write, then runs the existing execute path. When
-off, `invoke` is omitted from the tool schema and rejected if sent. The declared
-`successMetric` is `dynamic_worker_day` event count, goal decrease: stable
-invoke-generated graphs should reuse one isolate per package export instead of
-burning a unique worker-day per rewritten glue module. Exposures are recorded
-when the MCP execute tool is registered (invoke offered). Enable for experiment
-members with
-`adminFeatureFlagSet({ key: "execute-invoke", enabled: true, audience: "experiments_opt_in" })`.
-Remove the flag and gate sites when the experiment ends.
 
 `connection-profiles` is an experiment (default **off**, registry
 `defaultAudience: experiments_opt_in`) for named connection profiles on
@@ -172,18 +189,20 @@ Remove the flag and gate sites when the experiment ends.
 `mcp-events-extension` is an experiment (default **off**, registry
 `defaultAudience: experiments_opt_in`) for the draft MCP Events extension
 (webhook delivery only; see
-[ADR 0059](../decisions/0059-mcp-events-extension-behind-flag.md)). When on for
-a caller whose stateless-lane request declares events support in its client
-capabilities, `server/discover` advertises `capabilities.events` and the server
-answers `events/list`, `events/subscribe`, and `events/unsubscribe`. Only
-`kody.emits` topics declared with `mcp: true` are listed. When off (or the
-client does not declare events), none of that is registered, and existing
-subscriptions stop receiving deliveries. Signed-in users can also turn it on
-from `/docs/mcp-events` (a per-user on override). The declared `successMetric`
-is `execute` event count, goal increase: event-driven clients follow deliveries
+[ADR 0059](../decisions/0059-mcp-events-extension-behind-flag.md) and
+[ADR 0087](../decisions/0087-mcp-events-no-client-declaration.md)). When on for
+an OAuth caller on the stateless lane, `server/discover` advertises
+`capabilities.events` and the server answers `events/list`, `events/subscribe`,
+and `events/unsubscribe`. Clients declare nothing. Only `kody.emits` topics
+declared with `mcp: true` are listed. When off (or the caller is not an OAuth
+principal), none of that is registered, and existing subscriptions stop
+receiving deliveries. Signed-in users can also turn it on from
+`/docs/mcp-events` (a per-user on override). The declared `successMetric` is
+`execute` event count, goal increase: event-driven clients follow deliveries
 with execute calls. Exposures use `exposureRecording: mcp-events-clients`
-(dedicated write from `registerMcpEvents` only), so execute and other non-events
-MCP callers stay out of the on/off cohorts. Enable for experiment members with
+(dedicated write from the `registerMcpEvents` `events/*` handlers only), so
+execute and other non-events MCP callers stay out of the on/off cohorts. Enable
+for experiment members with
 `adminFeatureFlagSet({ key: "mcp-events-extension", enabled: true, audience: "experiments_opt_in" })`.
 Remove the flag and gate sites when the experiment ends.
 
@@ -248,19 +267,19 @@ each stateless request inside the window. A kill switch or override can be stale
 until the TTL expires. Evaluation failures are not cached and fail closed (every
 flag off) without an exposure write, and execute refuses before loading a
 worker, so the failure never spends daily quota. Flags with
-`exposureRecording: 'mcp-events-clients'` write only after an events-capable MCP
-client registers, so other MCP callers stay outside that experiment frame. Flags
-with `exposureRecording: 'repo-push-owners'` (`repo-push-queue`) write only from
-the plain-repo git proxy, once per push, for the repo owner. The write path
-mirrors usage metering — the `FLAG_EXPOSURES` Analytics Engine dataset in
+`exposureRecording: 'mcp-events-clients'` write only when an MCP client calls an
+`events/*` method, so other MCP callers stay outside that experiment frame.
+Flags with `exposureRecording: 'repo-push-owners'` (`repo-push-queue`) write
+only from the plain-repo git proxy, once per push, for the repo owner. The write
+path mirrors usage metering — the `FLAG_EXPOSURES` Analytics Engine dataset in
 production/preview, the D1 `feature_flag_exposure_rollups` table (migration
 `0001-squashed-init.sql`, 90-day retention) in local dev and tests — and never
 throws.
 
-The assignment source (`default` / `global` / `rollout` / `override`) is what
-keeps the readout honest: `override` users are hand-picked and excluded from
-on/off comparisons (their usage is still shown as the override cohort), while
-`rollout` users are deterministically bucketed.
+The assignment source (`default` / `global` / `rollout` / `override` / `org`) is
+what keeps the readout honest: `override` and `org` users are hand-picked and
+excluded from on/off comparisons (their usage is still shown as the override and
+org override cohorts), while `rollout` users are deterministically bucketed.
 
 ### Readout
 
@@ -268,9 +287,10 @@ on/off comparisons (their usage is still shown as the override cohort), while
 declared `eventType` over the current UTC month to date, splits users into
 on/off cohorts, and aggregates event count, error rate, and average duration per
 cohort. Users with any override-sourced exposure are excluded from on/off and
-aggregated into `override`. Users who saw both fair values inside the window are
-counted as `mixedUsers` and excluded from on/off (month-level usage cannot be
-split at the switch without contaminating the later cohort). The admin UI
+aggregated into `override`; users with org-sourced exposures (and no user
+override) go to `orgOverride`. Users who saw both fair values inside the window
+are counted as `mixedUsers` and excluded from on/off (month-level usage cannot
+be split at the switch without contaminating the later cohort). The admin UI
 (`/admin/feature-flags`) and `adminFeatureFlagList` attach this readout to every
 measured flag. The comparison is decision support for a human — "keep rolling
 out or kill it" stays an operator call, not an automated one.

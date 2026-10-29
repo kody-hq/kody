@@ -28,7 +28,7 @@ export async function renderStartPage(
 	const queryClient = new QueryClient({
 		defaultOptions: { queries: { retry: false } },
 	})
-	queryClient.setQueryData(['shell', null, ''], { session })
+	queryClient.setQueryData(['shell', null, '', null], { session })
 	seedQueries?.(queryClient)
 	const root = createRootRouteWithContext<{
 		queryClient: QueryClient

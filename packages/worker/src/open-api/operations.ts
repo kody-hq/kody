@@ -274,6 +274,11 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['DELETE', '/v1/secrets/{scope}/{name}', 'secretDelete'],
 		['GET', '/v1/credentials', 'credentialList'],
 		['PATCH', '/v1/credentials/{credential_id}', 'credentialUpdate'],
+		[
+			'POST',
+			'/v1/credential-placement-approvals',
+			'credentialPlacementApprovalLink',
+		],
 		['POST', '/v1/credential-proposals', 'credentialMappingPropose'],
 		['GET', '/v1/personal-credential-grants', 'credentialOrgGrantList'],
 		[
@@ -316,6 +321,16 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'DELETE',
 			'/v1/packages/{package_id}/collaborators/{grant_id}',
 			'packageCollaboratorRemove',
+		],
+		[
+			'GET',
+			'/v1/packages/{package_id}/connected-people',
+			'packageAppConnectedPeopleList',
+		],
+		[
+			'DELETE',
+			'/v1/packages/{package_id}/connected-people/{grant_id}',
+			'packageAppConnectedPersonRevoke',
 		],
 		['PATCH', '/v1/packages/{package_id}', 'packageUpdate'],
 		// Body-only so `kody_id` works as well as `package_id`.
@@ -487,6 +502,8 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 	]),
 	...capabilityRoutes('execution-contexts', [
 		['GET', '/v1/execution-contexts', 'executionContextList'],
+		['GET', '/v1/automation-execution', 'automationExecutionGet'],
+		['PUT', '/v1/automation-execution', 'automationExecutionSet'],
 		['GET', '/v1/execution-contexts/{id}', 'executionContextGet'],
 		['PATCH', '/v1/execution-contexts/{id}', 'executionContextUpdate'],
 		['DELETE', '/v1/execution-contexts/{id}', 'executionContextRevoke'],

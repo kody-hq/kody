@@ -103,9 +103,8 @@ of learning a new MCP tool per capability.
 Pass **`code`**: a single module string. Import runtime helpers from
 `kody:runtime` and call builtins as `kody.capabilityId(params)`. MCP server
 tools are `kody.mcp["name"].tool_name(params)`. Known package exports use a
-static `kody:@scope/package/export` import. When the `execute-invoke` experiment
-is on for the caller, pass **`invoke`** with that specifier instead of writing
-the thin passthrough by hand — mutually exclusive with `code`. See
+static `kody:@scope/package/export` import, including a one-line passthrough
+when the call is just one export. `code` is the only module field. See
 [Execute and workflows](../use/execute.md).
 
 Optional **`params`** is a JSON object passed as the first argument to that
@@ -260,15 +259,18 @@ export default async function main() {
 }
 ```
 
-When the `execute-invoke` experiment is on for the caller, the same static
-import can be `invoke` instead of a hand-written `code` string:
+A call that is just one export with arguments can be a two-line passthrough,
+with the arguments in `params`:
 
 ```json
 {
-	"invoke": "kody:@you/favorite-bot-ships/whatShipped",
+	"code": "import action from 'kody:@you/favorite-bot-ships/whatShipped'\nexport default (params) => action(params)",
 	"params": {}
 }
 ```
+
+From the CLI, `kody execute --invoke kody:@you/favorite-bot-ships/whatShipped`
+writes that passthrough for you and sends it as `code`.
 
 When the target name is data (caller-owned or forked modules), use
 `import(specifier)` instead of a static `kody:@...` import.

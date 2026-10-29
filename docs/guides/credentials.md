@@ -156,6 +156,16 @@ enforcement keeps those parts without a new save: migration 0195 records them as
 opted in, so nobody has to migrate anything by hand. Older credentials with no
 placement set fill headers plus those parts.
 
+Agents cannot widen placement, but they can ask the owner to. A refused query,
+path, or body fill of a user Key carries a ready approval link,
+`/connect/secrets?name=<key>&placement=body` (add `&hosts=<host>` to approve the
+host in the same click). The owner sees the credential, the requested part, and
+the "host may store this" warning, then approves or declines. Agents can build
+the same link with `credentialPlacementApprovalLink` (MCP `api`, or
+`kody api credentialPlacementApprovalLink --params '{"name":"plaidSecret","parts":["body"],"hosts":["production.plaid.com"]}'`),
+which never changes placement itself. Other refusals link to the credential's
+fill placement setting (`/@<org>/-/credentials/<credential>#fill-placement`).
+
 Full placeholder rules (encodings, multipart, the inert `{{secret:<name>}}`
 mention form):
 [Secrets and host approval](../use/secrets-and-values.md#placeholders-in-fetch).
@@ -508,11 +518,11 @@ applies:
 Kody never guesses between two matches. Zero matches is `credential_unbound` and
 two or more is `credential_ambiguous`.
 
-Pass a map on `execute`, for ad hoc code or an `invoke`:
+Pass a map on `execute` next to its `code`:
 
 ```json
 {
-	"invoke": "kody:@you/pr-digest/summarize",
+	"code": "import action from 'kody:@you/pr-digest/summarize'\nexport default (params) => action(params)",
 	"credentials": {
 		"github": "work",
 		"slack": { "name": "work", "scope": "org" }
@@ -523,9 +533,9 @@ Pass a map on `execute`, for ad hoc code or an `invoke`:
 A string picks by name, and an object adds `scope` when an org and a personal
 credential share a name. For a `multiple` need, an array picks several for
 `credentials(key)` (`"google": ["work", "personal"]`), and `[]` picks none on
-purpose. In an `invoke`, a key that no package in the run declares fails the run
-with `credential_need_unknown`; ad hoc code only gets a warning. The CLI takes
-the same picks:
+purpose. On `execute`, a key that no package in the run declares gets a warning,
+not a failure. The CLI takes the same picks (`--invoke` writes the passthrough
+for you):
 
 ```bash
 npx @kodycodes/cli execute --invoke kody:@you/pr-digest/summarize \

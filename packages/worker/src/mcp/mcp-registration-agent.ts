@@ -24,7 +24,8 @@ export type McpToolIcon = {
 export type McpToolConfig = {
 	title?: string
 	description?: string
-	inputSchema?: Record<string, z.ZodType>
+	/** Raw shape, or an object schema when the tool needs object-level checks. */
+	inputSchema?: Record<string, z.ZodType> | z.ZodObject
 	outputSchema?: Record<string, z.ZodType>
 	annotations?: ToolAnnotations
 	icons?: Array<McpToolIcon>
@@ -41,7 +42,7 @@ export type McpPromptConfig = {
  * MCP server generations: `@modelcontextprotocol/sdk` v1 (`McpAgent`
  * Durable Object lane, 2025-era protocol revisions) and
  * `@modelcontextprotocol/server` v2 (stateless lane, 2026-07-28). Both
- * accept the raw-shape config form with a callback returning content +
+ * accept the raw-shape (or object-schema) config form with a callback returning content +
  * structured content (tools) or prompt messages, so one registration
  * definition backs both lanes and they can never drift apart.
  *

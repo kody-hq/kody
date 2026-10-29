@@ -14,6 +14,14 @@ export type EmailListInput = {
 	pageSize: number
 }
 export type EmailListData = Omit<AccountEmailLoaderData, 'selectedMessage'>
+/** A member without the org-wide `email:read` grant. Expected, not a failure. */
+export type EmailMissingGrant = { missingGrant: 'email:read' }
+export type EmailListResult = EmailListData | EmailMissingGrant
+export function isEmailMissingGrant(
+	value: EmailListResult | undefined,
+): value is EmailMissingGrant {
+	return value !== undefined && 'missingGrant' in value
+}
 export type EmailDetail = AccountEmailLoaderData['selectedMessage']
 
 function positive(

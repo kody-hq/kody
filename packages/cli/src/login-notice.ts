@@ -36,13 +36,22 @@ export function detectHeadlessLoginReason(
 	return null
 }
 
-export function formatDeviceLoginSuggestion(
-	reason: 'ssh' | 'no_display',
+export type HeadlessLoginReason = NonNullable<
+	ReturnType<typeof detectHeadlessLoginReason>
+>
+
+export function describeHeadlessLoginReason(
+	reason: HeadlessLoginReason,
 ): string {
-	const why =
-		reason === 'ssh'
-			? 'This looks like an SSH session'
-			: 'No display was found on this machine'
+	return reason === 'ssh'
+		? 'This looks like an SSH session'
+		: 'No display was found on this machine'
+}
+
+export function formatDeviceLoginSuggestion(
+	reason: HeadlessLoginReason,
+): string {
+	const why = describeHeadlessLoginReason(reason)
 	return `${why}, so a browser here may not be able to finish the sign-in.\nIf it can't, press Ctrl+C and run \`kody login --device\` to sign in from any other device.\n\n`
 }
 

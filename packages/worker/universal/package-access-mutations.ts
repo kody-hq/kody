@@ -5,7 +5,7 @@ export const packageAccessInput = z.object({
 	kodyId: z.string().min(1),
 })
 export const grantPackageCollaboratorInput = packageAccessInput.extend({
-	subjectType: z.enum(['user', 'team']),
+	subjectType: z.enum(['user', 'team', 'org']),
 	subjectId: z.string().trim().min(1),
 	preset: z.enum(packageCollaboratorPresets),
 })
@@ -24,4 +24,10 @@ export const packageWebhookInput = packageAccessInput.extend({
 	endpointId: z.string().trim().min(1).optional(),
 	createInstance: z.boolean().optional(),
 	instanceLabel: z.string().trim().min(1).max(64).optional(),
+})
+export const packageAppConnectedPeopleInput = packageAccessInput.extend({
+	page: z.number().int().min(1).max(100_000).optional(),
+})
+export const revokePackageAppConnectedPersonInput = packageAccessInput.extend({
+	grantId: z.string().trim().min(1),
 })

@@ -5,6 +5,10 @@ import {
 	executeRoutingInputFields,
 	routeExecuteForCaller,
 } from '#worker/execution-contexts/execute-routing.ts'
+import {
+	describeCloudFallback,
+	type ExecutionContextRunMetadata,
+} from '#worker/execution-contexts/routing.ts'
 import * as Sentry from '@sentry/cloudflare'
 import {
 	type ContentBlock,
@@ -12,18 +16,17 @@ import {
 } from '@modelcontextprotocol/sdk/types.js'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { z } from 'zod'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	callerFeatureFlagEvaluationFailed,
 	resolveCallerFeatureFlags,
 } from '#mcp/capabilities/access-control.ts'
 import { runWithRequestPermissions } from '#worker/authorization/authorize.ts'
 import {
-	executeInvokeFieldDescription,
-	executeInvokeFlagKey,
-	executeToolDescriptionWithInvoke,
-	buildExecuteAttributionMetadata,
-	resolveExecuteModule,
-} from '#mcp/execute-invoke.ts'
+	executeInvokeRemovedMessage,
+	hasRemovedExecuteInvoke,
+} from '#mcp/execute-invoke-removed.ts'
+import { buildExecuteAttributionMetadata } from '#worker/run-records/execute-attribution.ts'
 import { executeToolDescription } from '#mcp/instructions/execute-tool-description.ts'
 import {
 	defaultExecutionResponseLimitBytes,
@@ -243,11 +246,24 @@ export const executeToolOutputSchema = {
 		.unknown()
 		.optional()
 		.describe('Relevant stored memories surfaced for this call.'),
+	executionContext: z
+		.unknown()
+		.optional()
+		.describe(
+			'Where an execution-context run went: the context, every attempt, and fellBackToCloud when it ran on Kody cloud instead.',
+		),
 }
 
 export type ExecuteToolStructuredContent = StructuredContentFromFields<
 	typeof executeToolOutputSchema
 >
+
+const executeCodeRequiredMessage =
+	'execute requires `code`: a single ESM module string with a default export.'
+
+function executeCodeMissingError(issue: { input: unknown }) {
+	return issue.input === undefined ? executeCodeRequiredMessage : undefined
+}
 
 const executeCodeFieldDescription =
 	'Single ESM module string with imports/exports and a default export to execute. Imports may be arbitrary npm packages compatible with the Cloudflare Workers runtime; prefer packages over rewriting helpers.'
@@ -258,58 +274,58 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 		agent.getEnv(),
 		agent.getCallerContext(),
 	)
-	const invokeEnabled = featureFlags[executeInvokeFlagKey] === true
 	const executionContextsEnabled =
 		featureFlags[executionContextsFlagKey] === true
 	agent.server.registerTool(
 		executeTool.name,
 		{
 			title: executeTool.title,
-			description: invokeEnabled
-				? executeToolDescriptionWithInvoke
-				: executeTool.description,
+			description: executeTool.description,
 			outputSchema: executeToolOutputSchema,
 			...(icons ? { icons } : {}),
-			inputSchema: {
-				code: invokeEnabled
-					? z.string().optional().describe(executeCodeFieldDescription)
-					: z.string().describe(executeCodeFieldDescription),
-				...(invokeEnabled
-					? {
-							invoke: z
-								.string()
-								.min(1)
-								.optional()
-								.describe(executeInvokeFieldDescription),
-						}
-					: {}),
-				params: z
-					.record(z.string(), z.unknown())
-					.optional()
-					.describe(
-						'JSON object passed as the first argument to the default export. Put varying capability args here so the same `code` graph is reused.',
-					),
-				responseLimit: z
-					.number()
-					.int()
-					.min(1)
-					.optional()
-					.describe(
-						"Soft cap on the default export's JSON/text result. Oversized results are truncated. Project large API payloads before returning. Protocol __mcpContent media uses a separate limit and fails explicitly when oversized; oversized text-only protocol content is truncated.",
-					),
-				conversationId: conversationIdInputField,
-				memoryContext: memoryContextInputField,
-				idempotencyKey: z
-					.string()
-					.min(1)
-					.max(runRecordMaxIdempotencyKeyLength)
-					.optional()
-					.describe(
-						'Optional idempotency key. Omit it for ordinary calls. If the call is still running at the transport budget, Kody assigns one and returns it with runId. Reuse that key to read the in-progress or retained run instead of starting the mutation again.',
-					),
-				credentials: credentialCallMapSchema.optional(),
-				...(executionContextsEnabled ? executeRoutingInputFields : {}),
-			},
+			inputSchema: z
+				.object({
+					code: z
+						.string({ error: executeCodeMissingError })
+						.describe(executeCodeFieldDescription),
+					params: z
+						.record(z.string(), z.unknown())
+						.optional()
+						.describe(
+							'JSON object passed as the first argument to the default export. Put varying capability args here so the same `code` graph is reused.',
+						),
+					responseLimit: z
+						.number()
+						.int()
+						.min(1)
+						.optional()
+						.describe(
+							"Soft cap on the default export's JSON/text result. Oversized results are truncated. Project large API payloads before returning. Protocol __mcpContent media uses a separate limit and fails explicitly when oversized; oversized text-only protocol content is truncated.",
+						),
+					conversationId: conversationIdInputField,
+					memoryContext: memoryContextInputField,
+					idempotencyKey: z
+						.string()
+						.min(1)
+						.max(runRecordMaxIdempotencyKeyLength)
+						.optional()
+						.describe(
+							'Optional idempotency key. Omit it for ordinary calls. If the call is still running at the transport budget, Kody assigns one and returns it with runId. Reuse that key to read the in-progress or retained run instead of starting the mutation again.',
+						),
+					credentials: credentialCallMapSchema.optional(),
+					...(executionContextsEnabled ? executeRoutingInputFields : {}),
+				})
+				// Unknown keys pass through so a removed `invoke` reaches the
+				// check below instead of being silently stripped.
+				.loose()
+				.refine((args) => !hasRemovedExecuteInvoke(args), {
+					error: (issue) =>
+						executeInvokeRemovedMessage(
+							(issue.input as Record<string, unknown>)['invoke'],
+						),
+					path: ['invoke'],
+					when: () => true,
+				}),
 			annotations: executeTool.annotations,
 		},
 		async (args, toolExtra) =>
@@ -327,7 +343,6 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 
 export type ExecuteToolCallArgs = {
 	code?: string
-	invoke?: string
 	params?: Record<string, unknown>
 	responseLimit?: number
 	conversationId?: string
@@ -349,7 +364,6 @@ export async function runExecuteToolCall(input: {
 }) {
 	const {
 		code,
-		invoke,
 		params,
 		responseLimit,
 		conversationId,
@@ -518,10 +532,8 @@ export async function runExecuteToolCall(input: {
 			}
 		}
 
-		// Schema omit/advertise is decided at register. Re-read the
-		// flag here so a kill-switch applies on the next call even
-		// when a legacy session still has invoke in its tool list.
-		// Plan lookup overlaps that read. The daily counter is spent
+		// Re-read caller flags per call so a kill-switch applies on the
+		// next call even when the tool was registered earlier. Plan lookup overlaps that read. The daily counter is spent
 		// only after the read succeeds — an evaluation failure is
 		// fail-closed and must not consume quota.
 		const liveFlagsPromise = resolveCallerFeatureFlags(env, callerContext)
@@ -547,18 +559,16 @@ export async function runExecuteToolCall(input: {
 			callerContext,
 		})
 		void registryPromise.catch(() => {})
-		const resolvedModule = resolveExecuteModule({
-			code,
-			invoke,
-			invokeEnabled: liveFlags[executeInvokeFlagKey] === true,
-		})
-		const executeAttribution = buildExecuteAttributionMetadata({
-			entry: resolvedModule.entry,
-			invoke: resolvedModule.invoke,
-		})
+		if (hasRemovedExecuteInvoke(input.args)) {
+			throw new McpCallerError(executeInvokeRemovedMessage(input.args.invoke))
+		}
+		const moduleCode = code?.trim() ? code : undefined
+		if (!moduleCode) {
+			throw new McpCallerError(executeCodeRequiredMessage)
+		}
 		const executeRunMetadata = {
 			conversationId: resolvedConversationId,
-			...executeAttribution,
+			...buildExecuteAttributionMetadata(),
 		}
 
 		// Runaway and loop brakes before claim/bundling/sandbox so a refused call
@@ -606,8 +616,7 @@ export async function runExecuteToolCall(input: {
 								callerContext.user?.userId ??
 								null,
 							conversationId,
-							code,
-							invoke,
+							code: moduleCode,
 							params,
 							credentials: normalizedCallMap,
 						}),
@@ -754,7 +763,7 @@ export async function runExecuteToolCall(input: {
 			args: input.args,
 			enabled: liveFlags[executionContextsFlagKey] === true,
 			runRecord: claimedRunHandle,
-			code: resolvedModule.entry === 'invoke' ? null : resolvedModule.code,
+			code: moduleCode,
 			params,
 			conversationId: resolvedConversationId,
 			credentials: normalizedCallMap,
@@ -774,7 +783,10 @@ export async function runExecuteToolCall(input: {
 				}
 			}
 		}
-		if (routed?.kind === 'pending') {
+		const { cloudFallbackContent, cloudFallbackFields } = cloudFallbackParts(
+			routed?.kind === 'cloud' ? routed.metadata : null,
+		)
+		if (routed?.kind === 'pending' || routed?.kind === 'queued') {
 			transportDetached = true
 			const timing = finishToolTiming(timingStart)
 			return buildTransportBudgetFollowResponse({
@@ -823,7 +835,7 @@ export async function runExecuteToolCall(input: {
 			const credentialCallMap = normalizedCallMap
 				? {
 						map: normalizedCallMap,
-						strict: resolvedModule.entry === 'invoke',
+						strict: false,
 						onWarnings: (warnings: Array<string>) => {
 							credentialCallMapWarnings.push(...warnings)
 						},
@@ -842,33 +854,27 @@ export async function runExecuteToolCall(input: {
 						const execution = runWithRequestPermissions(
 							{ env, request: callerContext.request },
 							async () =>
-								runModuleWithRegistry(
-									env,
-									callerContext,
-									resolvedModule.code,
-									params,
-									{
-										executorExports: input.loopbackExports,
-										capabilityRegistry: registry,
-										rawFetchHostSink: rawFetchHosts.sink,
-										conversationId: resolvedConversationId,
-										runRecordHandle: claimedRunHandle,
-										claimWorkerDay,
-										credentialCallMap,
-										waitUntil,
-										reportProgress: reportProgress ?? undefined,
-										signal: activeTransportSignal.signal,
-										runRecord: {
-											surface: 'execute',
-											name: null,
-											storageId: activeStorageId,
-											idempotencyKey:
-												claimedRunHandle?.context.idempotencyKey ??
-												normalizedIdempotencyKey,
-											metadata: executeRunMetadata,
-										},
+								runModuleWithRegistry(env, callerContext, moduleCode, params, {
+									executorExports: input.loopbackExports,
+									capabilityRegistry: registry,
+									rawFetchHostSink: rawFetchHosts.sink,
+									conversationId: resolvedConversationId,
+									runRecordHandle: claimedRunHandle,
+									claimWorkerDay,
+									credentialCallMap,
+									waitUntil,
+									reportProgress: reportProgress ?? undefined,
+									signal: activeTransportSignal.signal,
+									runRecord: {
+										surface: 'execute',
+										name: null,
+										storageId: activeStorageId,
+										idempotencyKey:
+											claimedRunHandle?.context.idempotencyKey ??
+											normalizedIdempotencyKey,
+										metadata: executeRunMetadata,
 									},
-								),
+								}),
 						)
 						const settled = execution.then(
 							async (value) => {
@@ -1040,6 +1046,7 @@ export async function runExecuteToolCall(input: {
 				runId: spanned.runId,
 				idempotencyKey: spanned.idempotencyKey,
 				memories: surfacedMemories,
+				executionContext: routed?.kind === 'cloud' ? routed.metadata : null,
 			})
 		}
 		const result = spanned
@@ -1058,9 +1065,7 @@ export async function runExecuteToolCall(input: {
 				callerContext,
 				conversationId: resolvedConversationId,
 				hostCounts: rawFetchHosts.hostCounts(),
-				usedIntegrationAuthHelpers: codeUsesIntegrationAuthHelpers(
-					resolvedModule.code,
-				),
+				usedIntegrationAuthHelpers: codeUsesIntegrationAuthHelpers(moduleCode),
 			})),
 			...(await resolvePreferLocalExecuteNudges({
 				agent: input.mcpAgent ?? agentlessNudgeState(),
@@ -1114,6 +1119,7 @@ export async function runExecuteToolCall(input: {
 						type: 'text',
 						text: formatExecutionOutput(result),
 					},
+					...cloudFallbackContent,
 					...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 					...formatSurfacedMemoriesMarkdown(surfacedMemories),
 				]),
@@ -1126,10 +1132,12 @@ export async function runExecuteToolCall(input: {
 					errorDetails,
 					...entitlementStructuredContent(result.error),
 					logs: result.logs ?? [],
+					...cloudFallbackFields,
 					...(rawFetchHostNudges.length > 0
 						? { warnings: rawFetchHostNudges }
 						: {}),
 					...buildMemoryStructuredContent(surfacedMemories),
+					...cloudFallbackFields,
 				},
 				isError: true,
 			}
@@ -1167,6 +1175,7 @@ export async function runExecuteToolCall(input: {
 							text: `Error: ${message}`,
 						},
 						...formatSurfacedMemoriesMarkdown(surfacedMemories),
+						...cloudFallbackContent,
 					]),
 					structuredContent: {
 						conversationId: resolvedConversationId,
@@ -1177,6 +1186,7 @@ export async function runExecuteToolCall(input: {
 						result: passthrough?.structuredResult ?? null,
 						logs: result.logs ?? [],
 						...buildMemoryStructuredContent(surfacedMemories),
+						...cloudFallbackFields,
 					},
 					isError: true,
 				}
@@ -1194,6 +1204,7 @@ export async function runExecuteToolCall(input: {
 							text: `Error: ${contentLimited.note}`,
 						},
 						...formatSurfacedMemoriesMarkdown(surfacedMemories),
+						...cloudFallbackContent,
 					]),
 					structuredContent: {
 						conversationId: resolvedConversationId,
@@ -1205,6 +1216,7 @@ export async function runExecuteToolCall(input: {
 						result: passthrough?.structuredResult ?? null,
 						logs: result.logs ?? [],
 						...buildMemoryStructuredContent(surfacedMemories),
+						...cloudFallbackFields,
 					},
 					isError: true,
 				}
@@ -1239,6 +1251,7 @@ export async function runExecuteToolCall(input: {
 					...contentLimited.blocks,
 					...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 					...formatSurfacedMemoriesMarkdown(surfacedMemories),
+					...cloudFallbackContent,
 				]),
 				structuredContent: {
 					conversationId: resolvedConversationId,
@@ -1261,6 +1274,7 @@ export async function runExecuteToolCall(input: {
 						? { warnings: rawFetchHostNudges }
 						: {}),
 					...buildMemoryStructuredContent(surfacedMemories),
+					...cloudFallbackFields,
 				},
 				isError,
 			}
@@ -1300,6 +1314,7 @@ export async function runExecuteToolCall(input: {
 						displayText: structuredResultValue.displayText,
 					}),
 				},
+				...cloudFallbackContent,
 				...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 				...formatSurfacedMemoriesMarkdown(surfacedMemories),
 			]),
@@ -1316,6 +1331,7 @@ export async function runExecuteToolCall(input: {
 					: {}),
 				result: structuredResultValue.value,
 				logs: result.logs ?? [],
+				...cloudFallbackFields,
 				...(rawFetchHostNudges.length > 0
 					? { warnings: rawFetchHostNudges }
 					: {}),
@@ -1344,13 +1360,18 @@ function buildTransportBudgetFollowResponse(input: {
 	runId: string
 	idempotencyKey: string
 	memories: Parameters<typeof formatSurfacedMemoriesMarkdown>[0]
+	executionContext?: unknown
 }) {
+	const { cloudFallbackContent, cloudFallbackFields } = cloudFallbackParts(
+		input.executionContext,
+	)
 	const text = input.idempotencyKey
 		? `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Retrying execute with idempotencyKey "${input.idempotencyKey}" reads this run instead of starting another mutation.`
 		: `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Do not start another mutation for this call.`
 	return {
 		content: prependToolMetadataContent(input.conversationId, [
 			{ type: 'text' as const, text },
+			...cloudFallbackContent,
 			...formatSurfacedMemoriesMarkdown(input.memories),
 		]),
 		structuredContent: {
@@ -1361,6 +1382,7 @@ function buildTransportBudgetFollowResponse(input: {
 			inProgress: true as const,
 			status: 'running' as const,
 			...buildMemoryStructuredContent(input.memories),
+			...cloudFallbackFields,
 		},
 		isError: false,
 	}
@@ -1398,6 +1420,9 @@ function buildKeyedExecuteLookupResponse(input: {
 	}
 
 	const retainedResult = input.run.metadata['result']
+	const { cloudFallbackContent, cloudFallbackFields } = cloudFallbackParts(
+		input.run.metadata['executionContext'],
+	)
 	if (input.run.status === 'error') {
 		const errorMessage =
 			input.run.errorMessage ?? 'Execute failed (replayed from run record).'
@@ -1409,6 +1434,7 @@ function buildKeyedExecuteLookupResponse(input: {
 					type: 'text',
 					text: `Error: ${errorMessage}`,
 				},
+				...cloudFallbackContent,
 			]),
 			structuredContent: {
 				conversationId: input.conversationId,
@@ -1424,6 +1450,7 @@ function buildKeyedExecuteLookupResponse(input: {
 				...entitlementStructuredContent(replayedError),
 				...(retainedResult !== undefined ? { result: retainedResult } : {}),
 				logs: [] as Array<unknown>,
+				...cloudFallbackFields,
 			},
 			isError: true,
 		}
@@ -1440,6 +1467,7 @@ function buildKeyedExecuteLookupResponse(input: {
 					displayText: undefined,
 				}),
 			},
+			...cloudFallbackContent,
 		]),
 		structuredContent: {
 			conversationId: input.conversationId,
@@ -1452,8 +1480,25 @@ function buildKeyedExecuteLookupResponse(input: {
 			returnedBytes: 0,
 			result: retainedResult,
 			logs: [] as Array<unknown>,
+			...cloudFallbackFields,
 		},
 		isError: false,
+	}
+}
+
+function isCloudFallback(value: unknown): value is ExecutionContextRunMetadata {
+	if (typeof value !== 'object' || value === null) return false
+	const candidate = value as Partial<ExecutionContextRunMetadata>
+	return candidate.fellBackToCloud === true && Array.isArray(candidate.attempts)
+}
+
+function cloudFallbackParts(metadata: unknown) {
+	const fallback = isCloudFallback(metadata) ? metadata : null
+	return {
+		cloudFallbackContent: fallback
+			? [{ type: 'text' as const, text: describeCloudFallback(fallback) }]
+			: [],
+		cloudFallbackFields: fallback ? { executionContext: fallback } : {},
 	}
 }
 

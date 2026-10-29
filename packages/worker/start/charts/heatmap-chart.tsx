@@ -1,7 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { xyChartDefaults } from './xy-chart-defaults.ts'
+import { tooltipRows } from './tooltip-content.ts'
 import { useMemo } from 'react'
 import { cell, defineChart } from '@tanstack/charts'
-import { Chart } from '@tanstack/charts/react'
+import { Chart } from './chart.tsx'
 import { scaleBand } from '@tanstack/charts/scales/band'
 import { scaleOrdinal } from '@tanstack/charts/scales/ordinal'
 import { tooltip } from '@tanstack/charts/tooltip'
@@ -58,6 +60,7 @@ export function HeatmapChart({
 		)
 		const paints = [...new Set(rows.map((row) => row.paint))]
 		return defineChart({
+			...xyChartDefaults,
 			marks: [
 				cell(rows, {
 					x: 'hour',
@@ -89,8 +92,16 @@ export function HeatmapChart({
 			color: { scale: scaleOrdinal(paints, paints) },
 			tooltip: {
 				use: tooltip,
-				format: (point) =>
-					`${weekdayLabels[point.datum.weekday]} ${String(point.datum.hour).padStart(2, '0')}:00 UTC, ${point.datum.count} ${unitLabel}`,
+				content: (points, context) =>
+					tooltipRows(
+						points,
+						context,
+						(datum) => ({
+							label: weekdayLabels[datum.weekday] ?? '',
+							value: `${datum.count} ${unitLabel}`,
+						}),
+						`${String(points[0]?.datum.hour ?? 0).padStart(2, '0')}:00 UTC`,
+					),
 			},
 		})
 	}, [cells, color, unitLabel])

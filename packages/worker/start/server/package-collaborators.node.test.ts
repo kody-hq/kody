@@ -104,7 +104,7 @@ const view = {
 	org: { slug: 'acme', personal: false },
 	collaborators: [],
 	invites: [],
-	options: { teams: [], members: [] },
+	options: { everyone: null, teams: [], members: [] },
 }
 
 const input = { data: { username: 'acme', kodyId: 'release-notes' } }

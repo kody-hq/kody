@@ -24,6 +24,7 @@ import {
 	serializeCredentialFillPlacement,
 } from './fill-placement.ts'
 import {
+	type FillPlacementOptIn,
 	fillPlacementOptInFromPlacement,
 	ownerFillPlacementOptInStatement,
 } from './fill-placement-opt-ins.ts'
@@ -286,9 +287,10 @@ export async function updateCredentialFields(input: {
 	placementOrigin?: 'owner' | 'explicit'
 	/**
 	 * The owner saved this placement on the website, so its query, path, and
-	 * body parts count as opted in. Only website handlers set it.
+	 * body parts count as opted in (`true`), or exactly the parts given. Only
+	 * website handlers set it.
 	 */
-	ownerOptIn?: true
+	ownerOptIn?: true | FillPlacementOptIn
 }): Promise<CredentialFields> {
 	const credential = await getOrgCredential(
 		input.db,
@@ -397,7 +399,10 @@ export async function updateCredentialFields(input: {
 						ownerFillPlacementOptInStatement({
 							db: input.db,
 							credentialId: credential.id,
-							optIn: fillPlacementOptInFromPlacement(placement),
+							optIn:
+								input.ownerOptIn === true
+									? fillPlacementOptInFromPlacement(placement)
+									: input.ownerOptIn,
 						}),
 					]
 				: []),

@@ -1,4 +1,9 @@
+import { ecpMaxChainContexts } from '@kody-internal/shared/execution-context-protocol/index.ts'
+
 /** Pure chain rules shared by the API, routing, and tests. */
+
+export const executeRequirements = ['fs', 'lan'] as const
+export type ExecuteRequirement = (typeof executeRequirements)[number]
 
 export type ChainEntryLike = { kind: 'cloud' } | { kind: 'context'; id: string }
 
@@ -17,4 +22,47 @@ export function chainCloudOrderError(
 		message:
 			'Kody cloud must be the last entry in your chain: it is always available, so nothing after it would ever run. Move it to the end, or leave it out for a strict chain.',
 	}
+}
+
+/**
+ * Shape errors for a run's own chain (`chain: ["laptop", "cloud"]`): the same
+ * rules as the default chain, checked before any lookup.
+ */
+export function runChainShapeError(
+	refs: ReadonlyArray<string>,
+): { code: 'invalid_request' | 'chain_too_long'; message: string } | null {
+	const trimmed = refs.map((ref) => ref.trim())
+	if (trimmed.some((ref) => ref === '')) {
+		return {
+			code: 'invalid_request',
+			message:
+				'chain entries must be non-empty context ids or names, or "cloud".',
+		}
+	}
+	const order = chainCloudOrderError(
+		trimmed.map((ref) =>
+			ref === 'cloud' ? { kind: 'cloud' } : { kind: 'context', id: ref },
+		),
+	)
+	if (order) return { code: 'invalid_request', message: order.message }
+	const contexts = trimmed.filter((ref) => ref !== 'cloud')
+	if (new Set(contexts).size !== contexts.length) {
+		return {
+			code: 'invalid_request',
+			message: 'chain lists the same context more than once.',
+		}
+	}
+	if (contexts.length > ecpMaxChainContexts) {
+		return {
+			code: 'chain_too_long',
+			message: `chain can list at most ${ecpMaxChainContexts} contexts, plus "cloud" last.`,
+		}
+	}
+	if (trimmed.length === 0) {
+		return {
+			code: 'invalid_request',
+			message: 'chain needs at least one entry. Omit it to use your chain.',
+		}
+	}
+	return null
 }

@@ -50,6 +50,7 @@ export type CommunityDetailContentProps = {
 	viewerIsOwner: boolean
 	viewerCanManage: boolean
 	viewerCanManageAccess?: boolean
+	viewerCanSeeConnectedPeople?: boolean
 	repoActions: PackageRepoActions | null
 	treeRef?: string
 	/** Defaults to true. Plain repos pass false for the Repo mark. */
@@ -75,6 +76,7 @@ export function CommunityDetailContent(props: CommunityDetailContentProps) {
 		viewerIsOwner,
 		viewerCanManage,
 		viewerCanManageAccess,
+		viewerCanSeeConnectedPeople,
 		repoActions,
 		treeRef,
 		hasPackage,
@@ -104,6 +106,7 @@ export function CommunityDetailContent(props: CommunityDetailContentProps) {
 				viewerIsOwner,
 				viewerCanManage,
 				viewerCanManageAccess,
+				viewerCanSeeConnectedPeople,
 				active: 'repo',
 				filesHref,
 				installOrg: props.installOrg,

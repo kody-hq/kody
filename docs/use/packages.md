@@ -289,17 +289,15 @@ await resend.fetch('/emails', { method: 'POST', body: JSON.stringify(email) })
 - `credential.named(name, { scope })` picks by exact name. It works only in ad
   hoc execute and in unstamped packages of your personal org that are not listed
   in Community. A stamped package refuses it.
-- The caller picks among several matches with a `credentials` map on `execute`
-  (for `code` or `invoke`):
+- The caller picks among several matches with a `credentials` map on `execute`:
   `{ github: 'work', google: ['work', 'personal'], x: { name: 'work', scope: 'org' } }`.
   A pick's kind must match when the need declares one, and its provider must
   match when both have one. `credentials(key)` returns every pick for the key
   (`[]` picks none on purpose); without a map entry it returns the one match,
-  never "all of them". The map is checked before code runs: a key no package in
-  an invoked run declares fails the run with `credential_need_unknown`, and in
-  ad hoc code it is a warning. A package's `credential(key)` resolves the same
-  need the check used, pinned by the entry package, and a dependency's call
-  reads the entry package's stored mappings
+  never "all of them". The map is checked before code runs: on `execute`, a key
+  no package in the run declares is a warning. A package's `credential(key)`
+  resolves the same need the check used, pinned by the entry package, and a
+  dependency's call reads the entry package's stored mappings
   ([how mappings resolve](../guides/credentials.md#picking-a-credential),
   [shared packages for many accounts](../guides/shared-packages.md)). A pick
   with no provider opens with a `hint` to set one. A pick grants nothing; it

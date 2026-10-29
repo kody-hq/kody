@@ -597,10 +597,11 @@ Kent decided four call-map questions (#3599).
    included, pauses a publish for approval; other changes publish freely. A
    dependency change never rebuilds or republishes a public app on its own.
 3. **Where the map goes.** The `credentials` map is accepted on MCP `execute`
-   (for `code` and `invoke`) and on the CapabilityProxy (CLI `--credential`). It
-   is not accepted on the package-callable `execute` capability: package code
-   would pick credentials by name there, which would bypass `credential.named`'s
-   sharing rules.
+   (for `code`; the `invoke` field is gone per
+   [0085](./0085-execute-takes-code-only.md)) and on the CapabilityProxy (CLI
+   `--credential`). It is not accepted on the package-callable `execute`
+   capability: package code would pick credentials by name there, which would
+   bypass `credential.named`'s sharing rules.
 4. **Several picks for one `credential(key)`.** It is an error whose message
    lists every option by name and scope, with matching `options` and
    `retryWith`, so an agent can pick one or show them to the user. The same
@@ -1031,3 +1032,99 @@ JWT, and a manual token request returned whatever the token endpoint sent.
   gone; nothing derived reaches code to redact.
 - **Unchanged.** Kody-managed integration refresh (`integrations/token-refresh`)
   already runs on the host and does not go through the gateway.
+
+### 2026-10-28: an access token also fills on its audience
+
+The first cut broke every identity provider whose token host is not the API host
+(Azure Entra at `login.microsoftonline.com` for `management.azure.com`; Google,
+Okta, and Auth0 custom APIs) unless the client secret was approved for the API
+too, which widens where the secret itself may go. Kent kept
+`oauthClientCredentials` free of a `send_to_host` option, so a sealed
+`access_token` that is a JWT also fills on the host its https `aud` names:
+
+- **Why it is safe.** The identity provider chose `aud`; code only asked for a
+  scope or resource. A token is only good at its audience, so sending it there
+  is the use it was minted for. A token for an attacker's audience gives the
+  attacker a token only that attacker accepts, never the secret or another API's
+  access.
+- **Exact host.** `aud` adds its exact host, not its registrable domain or
+  subdomains, so an `https://management.azure.com` token does not fill on
+  `<label>.<region>.cloudapp.azure.com` or `evil.management.azure.com`.
+- **One outside audience.** A JWT naming more than one https audience outside
+  the token and approved domains gets none (an `aud` like Auth0's `userinfo` on
+  the token domain does not count), so a multi-audience token cannot carry one
+  API's access to a second host.
+- **Not an echo.** A token whose text contains a value Kody filled into the
+  request, or the decoded password of a filled Basic credential (an endpoint
+  that echoed the secret), gets no audience host. Decoded JWT claims are not
+  searched: real tokens carry the client id (Entra `appid`), and an approved
+  host that re-encodes the secret already holds it.
+- **Opaque tokens.** A token that is not a JWT with an https `aud` keeps the
+  token and approved domains. Kody does not read the requested `scope` or
+  `resource`: code wrote those, so they cannot vouch for where the token goes.
+  The refusal says so and names the fix (a JWT access token whose `aud` is the
+  API, or approving the API on the credential).
+- **Documented aliases.** Entra resource identifiers Microsoft serves at another
+  host also fill there: `api.loganalytics.io` on `api.loganalytics.azure.com`,
+  and `management.core.windows.net` on `management.azure.com`. Add a pair only
+  when Microsoft documents it.
+
+### 2026-10-28: a sealed token can be saved as a Key
+
+Sealing broke every flow that keeps a long-lived token a token exchange returns.
+Plaid's `/item/public_token/exchange` `access_token` came back sealed, so
+`secretSet` stored the `kody-sealed.…` text, which only works in the run that
+received it, and Plaid later answered `INVALID_ACCESS_TOKEN`. Kent asked for a
+sanctioned path:
+
+- **`secretSet({ name, scope: 'user', sealed_token })`.** The host opens a
+  sealed token from the current run (same org, run-binding, and expiry checks as
+  a fill) and saves the real token as a user-scope Key through `saveSecret`, so
+  the value is encrypted and audited like any Key and never returned. It works
+  hosted, `--local` (the CapabilityProxy binding matches the gateway's), and
+  through the Open API route, where an Open API caller has no run and is refused
+  as another run.
+- **Hosts.** A sealed token now records exact save hosts: the token URL host and
+  the filled credentials' exact (non-wildcard) approved hosts. The Key gets
+  those plus the token's `aud` hosts. Keys match hosts exactly, so the Key is
+  never wider than the sealed token's registrable domains.
+- **Placement.** The Key's placement is headers and body, with the body opt-in
+  recorded as source `sealed_token` (migration 0199), not `owner`. A sealed
+  token already filled the body. The URL query and path stay refused because
+  hosts log URLs.
+- **No new approval.** The owner approved the hosts on the credentials that
+  minted the token, and saving does not widen where it goes. The write is
+  audited as `credential.kind_set` with `savedFrom: 'sealed_token'`, plus the
+  usual created/value-replaced row. An existing name that is not a Key is
+  refused. Replacing an existing Key (re-linking a Plaid Item) never widens it:
+  its hosts and placement become the overlap of the Key's and the sealed
+  token's, its opt-ins stay as the owner left them, and no overlap is refused.
+- **Refused.** A token from another run, another org, or past its expiry; a
+  `secretJwtSign` JWT (sign a new one when needed); a token whose text repeats a
+  credential filled into its request (an echo, the same check that drops
+  audience hosts); a token sealed before save hosts existed; and package
+  runtimes, which cannot create user secrets. A `value` (or `secretSetMany`
+  value) that contains `kody-sealed.` is refused with a pointer to
+  `sealed_token`.
+
+## Amendment 2026-10-28: owner placement approval links
+
+- **Context.** A new user Key for a body-auth API (Plaid) was approved for its
+  host through `/connect/secrets` but kept the headers-only default, so every
+  fill failed with `credential_placement_refused` and the owner had to find the
+  placement setting by hand. Agents correctly cannot widen placement.
+- **Decision.** Agents can ask, never approve. `/connect/secrets` takes
+  `placement=query,path,body` (with or without `hosts`); the owner sees the
+  credential, the parts, the hosts, and the "host may store this" warning, and
+  one approval allows the hosts and widens the stored placement. The opt-in it
+  records is `owner` and covers exactly the requested parts plus parts already
+  opted in; parts set from code that the owner never saw stay un-opted. A legacy
+  (null) placement becomes explicit: what it already fills, plus the requested
+  parts.
+- **Errors carry the link.** A query, path, or body refusal of a user Key the
+  run org owns carries its approval link (with the request host). Other refusals
+  link to the credential's fill placement setting,
+  `/@<org>/-/credentials/<credential>#fill-placement`, which opens the editor.
+- **Agent surface.** `credentialPlacementApprovalLink` (MCP `api`, Open API
+  `POST /v1/credential-placement-approvals`, `kody api`) returns the link and
+  whether anything is pending. It is read-only.

@@ -366,7 +366,21 @@ function effectiveMapping(
 	}
 	return resolution.status === 'ambiguous'
 		? notReady('ambiguous', 'auto', resolution.candidates.map(toCredentialRef))
-		: notReady('unbound', 'auto')
+		: notReady(
+				'unbound',
+				'auto',
+				resolution.possibleMatches
+					.filter((credential) => !credential.expired)
+					.map(toCredentialRef),
+			)
+}
+
+function possibleMatchesOf(
+	effective: EffectiveCredentialMapping,
+): Pick<PackageCredentialsIncomplete, 'possibleMatches'> {
+	return effective.status === 'unbound' && effective.candidates.length > 0
+		? { possibleMatches: effective.candidates }
+		: {}
 }
 
 function isIncomplete(
@@ -426,6 +440,7 @@ export async function buildPackageCredentialsView(
 				needKey: need.key,
 				where: { type: 'default' },
 				status: effective.status,
+				...possibleMatchesOf(effective),
 			})
 		}
 		return {
@@ -526,6 +541,7 @@ export async function buildPackageCredentialsView(
 										...(liveOwnCount > 1 ? { enablementId: row.id } : {}),
 									},
 									status: effective.status,
+									...possibleMatchesOf(effective),
 								})
 							}
 							return {

@@ -50,14 +50,35 @@ export const readConnectSecrets = createServerOnlyFn(
 			path,
 			data,
 		)
-		const { loadAccountSecretsSelection } =
-			await import('../../src/app/account-secrets-data.ts')
-		const payload = await loadAccountSecretsSelection({
-			env: bindings,
-			user,
-			selectedSecretId: data.selectedSecretId,
-			approval: data.approval,
-		})
+		const [{ loadAccountSecretsSelection }, { loadPlacementApproval }] =
+			await Promise.all([
+				import('../../src/app/account-secrets-data.ts'),
+				import('../../src/app/credential-placement-approval.ts'),
+			])
+		const [selection, placement] = await Promise.all([
+			loadAccountSecretsSelection({
+				env: bindings,
+				user,
+				selectedSecretId: data.selectedSecretId,
+				approval: data.approval,
+			}),
+			path !== '/connect/secrets'
+				? null
+				: data.approval.scope !== 'user' && data.placement.length > 0
+					? {
+							placementApproval: null,
+							placementApprovalError:
+								'Fill placement can only be requested for your own credentials. Ask for a new link without a package or session scope.',
+						}
+					: loadPlacementApproval({
+							env: bindings,
+							user,
+							names: data.approval.names,
+							parts: data.placement,
+							credentialId: data.placementCredentialId ?? null,
+						}),
+		])
+		const payload = placement ? { ...selection, ...placement } : selection
 		return {
 			payload,
 			head: loadDocumentHead(

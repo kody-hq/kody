@@ -24,8 +24,10 @@ import { type CommunityListingSort } from '#universal/community-search.ts'
 import { type AccountCredentialsResponse } from '#universal/credentials-list.ts'
 import { type CredentialFillPlacementView } from '#universal/credential-fill-placement.ts'
 import { type ApprovalBundleLoaderData } from '#universal/approval-bundles.ts'
+import { type CredentialPlacementApprovalView } from '#universal/credential-placement-approval.ts'
 import { type PackageCredentialApprovalLoaderData } from '#universal/package-credential-approval-page.ts'
 import { type PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
+import { type PackageAppConnectedPeopleLoaderData } from '#universal/package-app-connected-people.ts'
 import { type PackageForksLoaderData } from '#universal/package-forks.ts'
 import { type PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
@@ -218,6 +220,8 @@ type PackageFilesChildLoaderData = {
 }
 
 export type PackageFilesLoaderData = {
+	viewedCommit?: string | null
+	skillRead?: { orgSlug: string; receipt: string } | null
 	ok: true
 	title: string
 	backHref: string
@@ -242,6 +246,8 @@ export type PackageFilesLoaderData = {
 	viewerIsOwner?: boolean
 	viewerCanManage?: boolean
 	viewerCanManageAccess?: boolean
+	/** Manage on a package with an app: shows the Connected people tab. */
+	viewerCanSeeConnectedPeople?: boolean
 	isPrivate?: boolean
 	isListed?: boolean
 	/** False for plain repos that share package chrome. Defaults to true. */
@@ -283,6 +289,8 @@ type CommunityDetailShellLoaderData = {
 	viewerIsOwner: boolean
 	viewerCanManage: boolean
 	viewerCanManageAccess?: boolean
+	/** Manage on a package with an app: shows the Connected people tab. */
+	viewerCanSeeConnectedPeople?: boolean
 	viewerCanPublish?: boolean
 	viewerCanDelete?: boolean
 	viewerCanAdoptCommunityFork?: boolean
@@ -1320,6 +1328,8 @@ type OrgSettingsCustomHostnameView = {
 }
 
 type OrgSettingsCustomDomainsView = {
+	/** False on free plans: custom domains need a paid org (ADR 0071). */
+	canAdd: boolean
 	hostnames: Array<OrgSettingsCustomHostnameView>
 	dnsTarget: string | null
 }
@@ -1329,10 +1339,7 @@ export type OrgSettingsLoaderData = {
 	org: OrgManagementOrg
 	canManage: boolean
 	canDelete: boolean
-	/**
-	 * Present only when `package-app-custom-domains` is on for this
-	 * environment. Null when the flag is off (panel stays hidden).
-	 */
+	/** Null for personal orgs and for viewers who cannot manage the org. */
 	customDomains: OrgSettingsCustomDomainsView | null
 }
 
@@ -1501,7 +1508,8 @@ export type OrgGrantView = {
 	resourceType: string
 	resourceId: string
 	resourceLabel: string
-	subjectType: 'user' | 'team'
+	/** `org` is everyone in this organization, resolved live. */
+	subjectType: 'user' | 'team' | 'org'
 	subjectId: string
 	subjectLabel: string
 	preset: string | null
@@ -1525,6 +1533,23 @@ export type OrgGrantsLoaderData = {
 		}
 	>
 	canManage: boolean
+	/**
+	 * Owner-facing form for organization grants that carry read-only resource
+	 * permissions. Null when the viewer cannot grant them (no `member:write`)
+	 * or the organization is personal.
+	 */
+	orgWideRead: {
+		subjects: Array<OrgWideReadSubjectView>
+	} | null
+}
+
+export type OrgWideReadSubjectView = {
+	/** `user:<id>` or `team:<id>`; never shown. */
+	key: string
+	kind: 'user' | 'team'
+	label: string
+	/** Read-only permissions this subject already holds on the organization. */
+	reads: Array<string>
 }
 
 export type OrgCollaboratorView = {
@@ -2510,6 +2535,9 @@ export type AccountSecretsLoaderData = {
 		currentAllowedPackages: Array<string>
 	} | null
 	approvalError: string | null
+	/** `/connect/secrets?placement=`: the fill placement the owner is asked to allow. */
+	placementApproval?: CredentialPlacementApprovalView | null
+	placementApprovalError?: string | null
 	/**
 	 * Set when the secret value/access writes committed but linking the Key to
 	 * a credential provider failed. Callers must not treat this as a failed
@@ -3059,6 +3087,7 @@ export type AppLoaderData = {
 	accountCredentials?: AccountCredentialsResponse
 	packageCredentials?: PackageCredentialsLoaderData
 	packageCollaborators?: PackageCollaboratorsLoaderData
+	packageAppConnectedPeople?: PackageAppConnectedPeopleLoaderData
 	packageForks?: PackageForksLoaderData
 	packageCredentialApproval?: PackageCredentialApprovalLoaderData
 	approvalBundle?: ApprovalBundleLoaderData

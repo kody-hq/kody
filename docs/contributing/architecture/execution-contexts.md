@@ -71,11 +71,20 @@ sequenceDiagram
   Leaving cloud out makes the chain strict.
 - A named context never falls back unless the run passes `fallback: "chain"`.
   `requires: ["fs" | "lan"]` skips Kody cloud.
+- A run (`execute` `chain`) or automation (`execution` on jobs, webhooks,
+  subscriptions and workflow steps) can set its own `context` or `chain`, which
+  overrides the default chain. API/MCP/UI overrides beat the manifest.
+  Automation context runs use the access of the person the automation runs as.
+- Offline or unusable targets fail the run by default, listing each skipped
+  entry. `whenOffline: "queue"` waits for reconnect for `queueMinutes` (default
+  60, max 1440), re-checks access and the grant on reconnect, and fails with
+  `execution_context_queue_expired` when the time runs out.
 - Context runs are recorded in run records with `metadata.executionContext`
   (`runList` filter `execution_context_id`) and do not count toward hosted
   execute quota.
 - The connect ticket is a bearer secret in a query parameter: the edge never
   logs it and Sentry request URLs redact it.
 
-Decision record:
-[0083](../decisions/0083-context-runs-never-see-credential-values.md).
+Decision records:
+[0083](../decisions/0083-context-runs-never-see-credential-values.md),
+[0086](../decisions/0086-automation-execution-contexts.md).

@@ -43,7 +43,11 @@ const resourceInput = z.object({
 	search: z.string().default(''),
 })
 const secretRefreshSchema = connectSecretsSchema
-	.pick({ selectedSecretId: true, approval: true })
+	.pick({
+		selectedSecretId: true,
+		approval: true,
+		placementCredentialId: true,
+	})
 	.default({
 		selectedSecretId: null,
 		approval: { hosts: [], names: [], scope: 'user' },
@@ -145,18 +149,33 @@ export const approveSecretAccess = createServerFn({ method: 'POST' })
 		const [
 			{ withWebsiteMutation },
 			{ approveAccountSecretAccess },
-			{ requireOperationResult },
+			{ requireOperationResult, operationResult },
+			{ pinnedCredentialMismatchFor },
 		] = await Promise.all([
 			import('./mutation-context.ts'),
 			import('../../src/app/handlers/account-secrets.ts'),
 			import('../../src/app/operation-result.ts'),
+			import('../../src/app/credential-placement-approval.ts'),
 		])
 		return withWebsiteMutation(
 			{ scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined },
-			async (context) =>
-				requireOperationResult(
+			async (context) => {
+				const mismatch = await pinnedCredentialMismatchFor({
+					env: context.env,
+					user: context.user,
+					names: data.refresh.approval.names,
+					credentialId: data.refresh.placementCredentialId,
+					target: data.refresh.approval,
+				})
+				if (mismatch) {
+					return requireOperationResult(
+						operationResult({ ok: false, error: mismatch }, 409),
+					)
+				}
+				return requireOperationResult(
 					await approveAccountSecretAccess({ ...context, ...data }),
-				),
+				)
+			},
 		)
 	})
 

@@ -75,12 +75,34 @@ export async function runAccountJobNow(input: {
 		jobId: id,
 		callerContext: buildCallerContext(input),
 	})
+	const contextRun = result.execution.ok
+		? contextRunFrom((result.execution as { result?: unknown }).result)
+		: null
 	return operationResult({
 		ok: true,
 		jobId: id,
 		runNow: {
 			ok: result.execution.ok,
 			error: result.execution.ok ? null : result.execution.error,
+			...(contextRun ? { contextRun } : {}),
 		},
 	})
+}
+
+/** A Run now that handed off to an execution context has not finished yet. */
+function contextRunFrom(value: unknown) {
+	if (!value || typeof value !== 'object') return null
+	const run = value as Record<string, unknown>
+	const context = typeof run.context === 'string' ? run.context : null
+	if (run.status === 'queued_for_execution_context' && context) {
+		return {
+			state: 'queued' as const,
+			context,
+			expiresAt: typeof run.expiresAt === 'string' ? run.expiresAt : null,
+		}
+	}
+	if (run.status === 'running_on_execution_context' && context) {
+		return { state: 'running' as const, context, expiresAt: null }
+	}
+	return null
 }

@@ -411,6 +411,11 @@ export function PackageAppOauthConsentPage({
 						Cancel
 					</button>
 				</form>
+				<p css={mutedCss} data-testid="package-app-oauth-owner-visibility">
+					The app's owner can see that you connected, when you last used it, and
+					what you allowed. They never see your credentials. You can revoke
+					access anytime in Account &gt; Connected apps.
+				</p>
 				{missingSelectedCredential ? (
 					<p id="package-app-oauth-allow-blocked" css={mutedCss}>
 						{missingRequiredCredential

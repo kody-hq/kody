@@ -45,11 +45,30 @@ platform-assigned sender address.
   transactional sender. All other apex mail is rejected.
 - Reserved local parts never route to an org inbox and can never be registered
   as usernames or slugs.
-- Outbound user mail always sends from `{username}@<platform domain>` of the
-  acting person, even when they are working in a team org. The from address is
-  platform-assigned: a verified sender identity for it is provisioned
-  automatically alongside the personal inbox. There is no self-service sender
-  registration or verification step.
+- Outbound user mail sends from `{username}@<platform domain>` of the acting
+  person, even when they are working in a team org, or from a plus alias of it
+  (`{username}+{tag}@<platform domain>`). The from address is platform-assigned:
+  a verified sender identity for it is provisioned automatically alongside the
+  personal inbox. There is no self-service sender registration or verification
+  step, and no way to send as another handle.
+- Plus aliases on outbound mail:
+  - `emailReply` sends from the exact owned address the original was delivered
+    to, plus tag included. A reply to mail sent to
+    `examplebot+support@inbox.kody.codes` comes from
+    `examplebot+support@inbox.kody.codes`, so the human's next reply routes back
+    by the same tag. Mail that reached the base address (or no owned address,
+    such as a list) is answered from the base address. A legacy platform domain
+    maps to the canonical one.
+  - `emailSend` and `emailReply` accept an optional `from`: your base platform
+    address or a plus alias of it. Anything else is refused before any quota or
+    delivery work: another handle, another domain, an empty tag, a second `+`,
+    or a tag that is not letters, digits, `.`, `_`, and `-` (starting and ending
+    with a letter or digit, local part at most 64 characters).
+  - When From is a plus alias, `Reply-To` defaults to the same alias, so reply
+    and reply-all keep the thread on the alias. A caller-supplied `reply_to` on
+    `emailSend` still wins. Base-address mail sets no `Reply-To`.
+  - Replies keep `In-Reply-To` (the original `Message-ID`) and `References` (the
+    original's references plus its `Message-ID`, deduplicated).
 
 ## Capabilities
 

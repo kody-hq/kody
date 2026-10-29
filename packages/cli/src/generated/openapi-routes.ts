@@ -43,6 +43,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'automationExecutionGet',
+		method: 'GET',
+		pathTemplate: '/v1/automation-execution',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'automationExecutionSet',
+		method: 'PUT',
+		pathTemplate: '/v1/automation-execution',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'capabilityProxyCall',
 		method: 'POST',
 		pathTemplate: '/v1/capability-proxy/call',
@@ -167,6 +179,12 @@ export const bakedOpenApiRoutes = [
 		method: 'DELETE',
 		pathTemplate: '/v1/personal-credential-grants/{credential_id}/{org}',
 		pathParamNames: ['credential_id', 'org'],
+	},
+	{
+		operationId: 'credentialPlacementApprovalLink',
+		method: 'POST',
+		pathTemplate: '/v1/credential-placement-approvals',
+		pathParamNames: [],
 	},
 	{
 		operationId: 'credentialTriggerPickSet',
@@ -695,6 +713,18 @@ export const bakedOpenApiRoutes = [
 		method: 'PATCH',
 		pathTemplate: '/v1/orgs',
 		pathParamNames: [],
+	},
+	{
+		operationId: 'packageAppConnectedPeopleList',
+		method: 'GET',
+		pathTemplate: '/v1/packages/{package_id}/connected-people',
+		pathParamNames: ['package_id'],
+	},
+	{
+		operationId: 'packageAppConnectedPersonRevoke',
+		method: 'DELETE',
+		pathTemplate: '/v1/packages/{package_id}/connected-people/{grant_id}',
+		pathParamNames: ['package_id', 'grant_id'],
 	},
 	{
 		operationId: 'packageAppCustomHostnameAdd',

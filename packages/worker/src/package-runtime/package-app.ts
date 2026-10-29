@@ -170,7 +170,10 @@ import {
 	schedulePackageAppAuthorityFallback,
 	type PackageAppAuthorityDifferenceKind,
 } from './package-app-authority-fallback.ts'
-import { findLivePackageAppOauthGrant } from '#app/package-app-oauth-grants.ts'
+import {
+	findLivePackageAppOauthGrant,
+	notePackageAppOauthGrantUse,
+} from '#app/package-app-oauth-grants.ts'
 import { scopesIncludeEmail } from '#app/package-app-oauth-scopes.ts'
 import {
 	buildPackageAppAssetBasePath,
@@ -785,6 +788,7 @@ function createWorkflowsProxy(runtimeBridge) {
 				...(packageId ? { packageId } : {}),
 				...(exportName ? { exportName } : {}),
 				...(code ? { code } : {}),
+				...(input.execution === undefined ? {} : { execution: input.execution }),
 			};
 			return await runtimeBridge.workflowCreate(
 				payload,
@@ -3958,6 +3962,12 @@ export async function buildPackageAppWorker(input: {
 						return null
 					})
 				: null
+		if (visitorGrant) {
+			await notePackageAppOauthGrantUse({
+				db: input.env.APP_DB,
+				grant: visitorGrant,
+			})
+		}
 		const requestVisit = await createPackageAppRequestVisit({
 			env: input.env,
 			visitor,

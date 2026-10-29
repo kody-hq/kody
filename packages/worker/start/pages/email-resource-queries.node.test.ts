@@ -135,3 +135,28 @@ it('starts independent reads together and reuses list and destinations when sele
 	expect(loadEmailDetail).toHaveBeenCalledTimes(2)
 	client.clear()
 })
+
+it('a missing email:read grant resolves the loader as data so the route does not fail', async () => {
+	const client = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	})
+	vi.mocked(loadEmailList).mockResolvedValue({ missingGrant: 'email:read' })
+	vi.mocked(loadEmailDetail).mockResolvedValue(null)
+	vi.mocked(loadEmailDestinations).mockResolvedValue({
+		ok: true,
+		destinations: [],
+		additionalLimit: 3,
+		additionalRemaining: 3,
+	})
+	const input = emailResourceInput(
+		{ orgSlug: 'tanstack', messageId: 'm1' },
+		emailSearch({}),
+	)
+	await expect(
+		loadEmailResources(client, 'member', input),
+	).resolves.toBeUndefined()
+	expect(client.getQueryData(emailKeys.list('member', input.list))).toEqual({
+		missingGrant: 'email:read',
+	})
+	client.clear()
+})

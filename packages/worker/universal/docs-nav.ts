@@ -129,6 +129,7 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 			},
 			{ slug: 'package-subscriptions', label: 'Subscriptions and events' },
 			{ slug: 'mcp-events', label: 'MCP Events' },
+			{ slug: 'wake-your-agent', label: 'Wake your agent' },
 			{ slug: 'heavy-work-offload', label: 'Offload heavy work' },
 		],
 	},

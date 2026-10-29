@@ -532,6 +532,12 @@ function workspaceResourceGroups(
 			label: 'Agents & data',
 			items: [
 				agentsRailItem(orgSlug),
+				{
+					href: orgSectionHref(orgSlug, 'skills'),
+					id: 'skills',
+					label: 'Skills',
+					icon: 'book',
+				},
 				...(personal ? [memoriesRailItem(orgSlug)] : []),
 				{
 					href: orgSectionHref(orgSlug, 'email'),

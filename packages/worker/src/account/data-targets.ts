@@ -331,6 +331,15 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		columns: ['attached_by_user_id'],
 	},
 	{ kind: 'user_id', table: 'execution_context_chains' },
+	// Org automation settings outlive the member who last edited them; only
+	// the editor id is anonymized.
+	{
+		kind: 'replace_user_column',
+		table: 'automation_execution_settings',
+		matchColumn: 'updated_by_user_id',
+		setColumn: 'updated_by_user_id',
+		value: 'deleted-user',
+	},
 	{ kind: 'user_id', table: 'execution_context_chain_entries' },
 	{
 		kind: 'user_id',

@@ -45,6 +45,8 @@ import { rememberFetchFillPlacement } from './fetch-fill-placement-cache.ts'
 import {
 	enforceFillPlacement,
 	resolveEffectiveFillPlacement,
+	type FillPlacementRefusalLinks,
+	refusalLinkOrgSlug,
 } from './fill-placement-enforcement.ts'
 import { authorizePersonalCredentialUse } from './personal-credentials.ts'
 
@@ -194,6 +196,23 @@ export const secretResolver: CredentialResolver<'secret'> = {
 					credentialId: found.credentialId,
 					stored: found.placement,
 				})
+				const ownedByRunOrg = lookup.owner === 'org'
+				const refusalLinks: FillPlacementRefusalLinks | null = ownedByRunOrg
+					? {
+							baseUrl: input.baseUrl,
+							orgSlug:
+								credential.orgSlug?.trim() ||
+								refusalLinkOrgSlug({
+									actor: call.input.actor,
+									orgId: call.input.orgId,
+								}),
+							approvalSecretName:
+								(found.scope ?? credential.scope ?? 'user') === 'user'
+									? credential.name
+									: null,
+							requestHost: credential.requestHost ?? null,
+						}
+					: null
 				rememberFetchFillPlacement({
 					actor: call.input.actor,
 					orgId: call.input.orgId,
@@ -201,6 +220,7 @@ export const secretResolver: CredentialResolver<'secret'> = {
 					credential,
 					placement,
 					credentialId: found.credentialId,
+					refusalLinks,
 				})
 				if (credential.fillSites && credential.fillSites.length > 0) {
 					enforceFillPlacement({
@@ -211,6 +231,7 @@ export const secretResolver: CredentialResolver<'secret'> = {
 						placement,
 						sites: credential.fillSites,
 						surface: 'placeholder',
+						links: refusalLinks,
 					})
 				}
 			},
@@ -424,6 +445,13 @@ export const vaultSecretResolver: CredentialResolver<'provider-secret'> = {
 						credentialId: binding.credentialId,
 						stored: binding.placement,
 					})
+					const refusalLinks: FillPlacementRefusalLinks = {
+						baseUrl: input.baseUrl,
+						orgSlug: refusalLinkOrgSlug({
+							actor: call.input.actor,
+							orgId: call.input.orgId,
+						}),
+					}
 					rememberFetchFillPlacement({
 						actor: call.input.actor,
 						orgId: call.input.orgId,
@@ -431,6 +459,7 @@ export const vaultSecretResolver: CredentialResolver<'provider-secret'> = {
 						credential,
 						placement,
 						credentialId: binding.credentialId,
+						refusalLinks,
 					})
 					if (credential.fillSites && credential.fillSites.length > 0) {
 						enforceFillPlacement({
@@ -441,6 +470,7 @@ export const vaultSecretResolver: CredentialResolver<'provider-secret'> = {
 							placement,
 							sites: credential.fillSites,
 							surface: 'placeholder',
+							links: refusalLinks,
 						})
 					}
 				}

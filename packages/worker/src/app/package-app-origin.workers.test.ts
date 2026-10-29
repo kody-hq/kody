@@ -1,5 +1,6 @@
 import { env, exports } from 'cloudflare:workers'
-import { expect, test } from 'vitest'
+import { beforeEach, expect, test } from 'vitest'
+import { ensurePackageAppCustomHostnamesTestSchema } from '#worker/test-support/package-app-custom-hostnames-test-schema.ts'
 import { ensureAuditEventsTestSchema } from '#worker/test-support/audit-events-test-schema.ts'
 import { createAuthCookie, setAuthSessionSecret } from '#app/auth-session.ts'
 import {
@@ -34,6 +35,11 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 
 // Different ports on purpose: swapping origins by mutating a `URL` keeps the
 // original port, and identical ports would hide that.
+
+beforeEach(async () => {
+	await ensurePackageAppCustomHostnamesTestSchema()
+})
+
 const appOrigin = 'https://app.kody.test:8788'
 const packageAppOrigin = 'https://packages.isolated.test'
 const ownerEmail = 'pkg-owner@example.com'

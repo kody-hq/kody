@@ -11,7 +11,9 @@ import {
 	type ExecutionContextLease,
 	type ExecutionContextRunResult,
 } from './session-do.ts'
+import { runChainShapeError, type ExecuteRequirement } from './chain-rules.ts'
 import {
+	type ChainEntry,
 	type ExecutionContextRow,
 	type UnusableReason,
 	getChain,
@@ -22,8 +24,7 @@ import {
 	sessionStub,
 } from './store.ts'
 
-export const executeRequirements = ['fs', 'lan'] as const
-export type ExecuteRequirement = (typeof executeRequirements)[number]
+export { executeRequirements, type ExecuteRequirement } from './chain-rules.ts'
 
 export type ExecuteRoutingArgs = {
 	/** A context id or name, or `cloud`. */
@@ -31,6 +32,11 @@ export type ExecuteRoutingArgs = {
 	/** `chain` lets a named context fall back to the caller's chain. */
 	fallback?: 'chain'
 	requires?: Array<ExecuteRequirement>
+	/**
+	 * This run's own ordered chain: context ids or names, with `cloud` only
+	 * ever last. Replaces the caller's default chain for this run.
+	 */
+	chain?: Array<string>
 }
 
 export type RoutingAttempt = {
@@ -44,6 +50,8 @@ export type RoutingAttempt = {
 		| 'aborted'
 		| 'timeout'
 		| 'skipped'
+		| 'queued'
+		| 'expired'
 	reason?: string
 }
 
@@ -54,8 +62,32 @@ export type ExecutionContextRunMetadata = {
 	fellBackToCloud: boolean
 }
 
+/**
+ * One line telling the caller that a run meant for an execution context
+ * ran on Kody cloud instead, and why each context passed on it.
+ */
+export function describeCloudFallback(metadata: ExecutionContextRunMetadata) {
+	const tried = metadata.attempts
+		.map((attempt) => {
+			const label = attempt.name
+				? `${attempt.name} (${attempt.target})`
+				: attempt.target
+			return `${label}: ${attempt.outcome}${attempt.reason ? ` ${attempt.reason}` : ''}`
+		})
+		.join('; ')
+	return `Ran on Kody cloud: no execution context in your chain took this run${tried ? ` (${tried})` : ''}.`
+}
+
 export type RoutingOutcome =
 	| { kind: 'cloud'; metadata: ExecutionContextRunMetadata | null }
+	| {
+			kind: 'queued'
+			runId: string
+			contextId: string
+			contextName: string
+			expiresAt: number
+			metadata: ExecutionContextRunMetadata
+	  }
 	| {
 			kind: 'ran'
 			result: ExecutionContextRunResult
@@ -154,16 +186,35 @@ export async function routeExecute(input: {
 	apiUrl: string
 	waitMs: number
 	signal?: AbortSignal
+	/**
+	 * Queue on the first offline context until it reconnects, instead of
+	 * failing, when nothing else can take the run (automations only).
+	 */
+	queue?: { expiresAt: number } | null
+	/** `skip` records an unknown chain entry as skipped instead of a 404. */
+	unknownChainRef?: 'error' | 'skip'
 }): Promise<RoutingOutcome> {
 	const requires = [...new Set(input.args.requires ?? [])]
 	const db = input.env.APP_DB
 	const namedRef = input.args.context?.trim() || null
 	let named: ExecutionContextRow | 'cloud' | null = null
+	let namedMissing: RoutingAttempt | null = null
 	if (namedRef === 'cloud') {
 		named = 'cloud'
 	} else if (namedRef) {
 		named = await resolveExecutionContextRef(db, input.request.orgId, namedRef)
-		if (!named) {
+		if (
+			!named &&
+			input.unknownChainRef === 'skip' &&
+			input.args.fallback === 'chain'
+		) {
+			namedMissing = {
+				target: namedRef,
+				name: namedRef,
+				outcome: 'skipped',
+				reason: 'not_found',
+			}
+		} else if (!named) {
 			throw new ExecutionContextError({
 				status: 404,
 				code: 'not_found',
@@ -171,10 +222,19 @@ export async function routeExecute(input: {
 			})
 		}
 	}
-	const chain = await getChain(db, {
-		orgId: input.request.orgId,
-		userId: input.request.userId,
-	})
+	const chain = input.args.chain
+		? await resolveRunChain(db, {
+				orgId: input.request.orgId,
+				refs: input.args.chain,
+				unknownRef: input.unknownChainRef ?? 'error',
+			})
+		: {
+				...(await getChain(db, {
+					orgId: input.request.orgId,
+					userId: input.request.userId,
+				})),
+				skipped: [] as Array<RoutingAttempt>,
+			}
 	const targets = planTargets({
 		named,
 		fallback: input.args.fallback,
@@ -182,7 +242,10 @@ export async function routeExecute(input: {
 		strict: chain.strict,
 		requires,
 	})
-	const attempts: Array<RoutingAttempt> = []
+	const attempts: Array<RoutingAttempt> = [
+		...(namedMissing ? [namedMissing] : []),
+		...chain.skipped,
+	]
 	const metadata = (
 		row: ExecutionContextRow | null,
 		fellBackToCloud: boolean,
@@ -194,9 +257,18 @@ export async function routeExecute(input: {
 	})
 	const onlyCloud = targets.every((t) => t.kind === 'cloud')
 	if (onlyCloud && targets.length > 0) {
-		return { kind: 'cloud', metadata: null }
+		return {
+			kind: 'cloud',
+			metadata: attempts.length > 0 ? metadata(null, true) : null,
+		}
 	}
 	let lastTried: ExecutionContextRow | null = null
+	let firstOffline: {
+		row: ExecutionContextRow
+		request: EcpRunRequestBody
+		lease: ExecutionContextLease
+		requires: Array<ExecuteRequirement>
+	} | null = null
 	for (const target of targets) {
 		if (target.kind === 'cloud') {
 			return { kind: 'cloud', metadata: metadata(lastTried, true) }
@@ -307,6 +379,13 @@ export async function routeExecute(input: {
 			position: attempts.length + 1,
 		})
 		if (dispatched.outcome !== 'committed') {
+			if (
+				((dispatched.outcome === 'offline' && dispatched.code !== 'revoked') ||
+					dispatched.outcome === 'busy') &&
+				!firstOffline
+			) {
+				firstOffline = { row, request, lease, requires }
+			}
 			attempts.push({
 				target: row.id,
 				name: row.name,
@@ -360,6 +439,54 @@ export async function routeExecute(input: {
 			input.signal?.removeEventListener('abort', onAbort)
 		}
 	}
+	if (input.queue && firstOffline) {
+		const { row, request, lease } = firstOffline
+		const stub = sessionStub(input.env, row.id)
+		const queuedMetadata: ExecutionContextRunMetadata = {
+			id: row.id,
+			name: row.name,
+			attempts: [
+				...attempts,
+				{ target: row.id, name: row.name, outcome: 'queued' },
+			],
+			fellBackToCloud: false,
+		}
+		if (input.runRecord) {
+			input.runRecord.context.metadata = {
+				...input.runRecord.context.metadata,
+				executionContext: queuedMetadata,
+			}
+		}
+		await stub.enqueue({
+			request,
+			lease,
+			runRecord: input.runRecord,
+			requires: firstOffline.requires,
+			position: attempts.length + 1,
+			expiresAt: input.queue.expiresAt,
+		})
+		return {
+			kind: 'queued',
+			runId: input.runId,
+			contextId: row.id,
+			contextName: row.name,
+			expiresAt: input.queue.expiresAt,
+			metadata: queuedMetadata,
+		}
+	}
+	if (
+		requires.length > 0 &&
+		(named === 'cloud' ||
+			(chain.entries.some((entry) => entry.kind === 'cloud') &&
+				(!named || input.args.fallback === 'chain')))
+	) {
+		attempts.push({
+			target: 'cloud',
+			name: 'Kody cloud',
+			outcome: 'skipped',
+			reason: requires.includes('fs') ? 'no_fs' : 'no_lan',
+		})
+	}
 	if (named && named !== 'cloud' && input.args.fallback !== 'chain') {
 		noContext(
 			attempts,
@@ -403,5 +530,97 @@ function failure(message: string, code: string): ExecutionContextRunResult {
 		isError: true,
 		content: [{ type: 'text', text: `Error: ${message}` }],
 		structuredContent: { error: message, errorCode: code },
+	}
+}
+
+/**
+ * Resolves a run's own chain. Shape rules (cloud last, at most
+ * {@link ecpMaxChainContexts} contexts, no repeats) match the default chain.
+ */
+export async function resolveRunChain(
+	db: D1Database,
+	input: {
+		orgId: string
+		refs: ReadonlyArray<string>
+		unknownRef: 'error' | 'skip'
+	},
+): Promise<{
+	entries: Array<ChainEntry>
+	strict: boolean
+	skipped: Array<RoutingAttempt>
+}> {
+	const shapeError = runChainShapeError(input.refs)
+	if (shapeError) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: shapeError.code,
+			message: shapeError.message,
+		})
+	}
+	const entries: Array<ChainEntry> = []
+	const skipped: Array<RoutingAttempt> = []
+	for (const raw of input.refs) {
+		const ref = raw.trim()
+		if (ref === 'cloud') {
+			entries.push({ kind: 'cloud' })
+			continue
+		}
+		const row = await resolveExecutionContextRef(db, input.orgId, ref)
+		if (!row) {
+			if (input.unknownRef === 'error') {
+				throw new ExecutionContextError({
+					status: 404,
+					code: 'not_found',
+					message: `No execution context named ${ref} in this org. Run executionContextList to see the ones you can use.`,
+				})
+			}
+			skipped.push({ target: ref, outcome: 'skipped', reason: 'not_found' })
+			continue
+		}
+		if (entries.some((e) => e.kind === 'context' && e.id === row.id)) continue
+		entries.push({ kind: 'context', id: row.id })
+	}
+	return {
+		entries,
+		strict: !entries.some((entry) => entry.kind === 'cloud'),
+		skipped,
+	}
+}
+
+/** A queued run that expired never ran: mark its queued attempt `expired`. */
+export function markQueuedAttemptExpired(
+	metadata: Record<string, unknown>,
+): Record<string, unknown> {
+	return markQueuedAttempt(metadata, {
+		outcome: 'expired',
+		reason: 'queue_expired',
+	})
+}
+
+/** A queued run that the context took after reconnecting ran there. */
+export function markQueuedAttemptRan(
+	metadata: Record<string, unknown>,
+): Record<string, unknown> {
+	return markQueuedAttempt(metadata, { outcome: 'ran' })
+}
+
+function markQueuedAttempt(
+	metadata: Record<string, unknown>,
+	update: Pick<RoutingAttempt, 'outcome' | 'reason'>,
+): Record<string, unknown> {
+	const context = metadata.executionContext as
+		| ExecutionContextRunMetadata
+		| undefined
+	if (!context?.attempts?.length) return metadata
+	return {
+		...metadata,
+		executionContext: {
+			...context,
+			attempts: context.attempts.map((attempt, index) =>
+				index === context.attempts.length - 1 && attempt.outcome === 'queued'
+					? { ...attempt, ...update }
+					: attempt,
+			),
+		},
 	}
 }

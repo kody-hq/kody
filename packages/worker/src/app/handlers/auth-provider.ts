@@ -57,6 +57,11 @@ import {
 } from '#worker/discord/guild-role.ts'
 import { touchLastActiveAt } from '#worker/identity/activation-stamps.ts'
 import { findActiveEmailClaim } from '#worker/identity/email-claims.ts'
+import {
+	findSoftDeletedAccountById,
+	releaseSoftDeletedAccounts,
+	releaseSoftDeletedAccountsForEmail,
+} from '#worker/identity/deleted-account-identity-release.ts'
 import { getAvailableUsernameFromBase } from '#worker/identity/generated-username.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { getCallbackRedirectUri } from '#worker/identity/oauth-provider-redirect.ts'
@@ -376,12 +381,21 @@ export function createAuthProviderCallbackHandler(env: Env) {
 			return redirect(postLoginPath, cookies)
 		}
 
-		const connection = await db.findOne(oauthConnectionsTable, {
+		let connection = await db.findOne(oauthConnectionsTable, {
 			where: {
 				provider_name: provider,
 				provider_id: profile.providerUserId,
 			},
 		})
+		// Signed out, the same provider identity proves the person behind a
+		// deleted account; release it so this sign-in starts a fresh account.
+		// Signed-in linking never supersedes (it stays a connection conflict).
+		const supersededAccount =
+			connection && !session
+				? await findSoftDeletedAccountById(env.APP_DB, connection.user_id)
+				: null
+		const releasedUsernames: Array<string> = []
+		if (supersededAccount) connection = null
 
 		// 1. A signed-in user links the provider identity to their account
 		// (an existing connection for another user is a conflict, never an
@@ -475,13 +489,24 @@ export function createAuthProviderCallbackHandler(env: Env) {
 			return fail('no-verified-email', 'no_verified_email')
 		}
 		const email = normalizeEmail(profile.email)
+		if (supersededAccount) {
+			const released = await releaseSoftDeletedAccounts(env.APP_DB, [
+				supersededAccount,
+			])
+			releasedUsernames.push(...released.releasedUsernames)
+		}
+		const releasedForEmail = await releaseSoftDeletedAccountsForEmail(
+			env.APP_DB,
+			email,
+		)
+		releasedUsernames.push(...releasedForEmail.releasedUsernames)
 
 		// 3. A provider-verified email matching an existing account links
 		// the identity and signs that account in. An unverified row is
 		// treated as a possible squat: invalidate the password, drop
 		// attacker-added factors, then link.
 		const existingUser = await db.findOne(usersTable, { where: { email } })
-		if (existingUser) {
+		if (existingUser && !existingUser.deleted_at) {
 			try {
 				await assertAccountWritableDb(
 					env.APP_DB,
@@ -610,7 +635,7 @@ export function createAuthProviderCallbackHandler(env: Env) {
 
 		const suggestedUsername = await getAvailableUsernameFromBase(
 			env.APP_DB,
-			profile.username ?? usernameFromEmail(email),
+			releasedUsernames[0] ?? profile.username ?? usernameFromEmail(email),
 			env,
 		)
 		setOauthPendingSignupSecret(env.COOKIE_SECRET)

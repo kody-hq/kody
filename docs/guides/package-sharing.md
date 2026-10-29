@@ -47,23 +47,51 @@ need manage access on the package.
 }
 ```
 
+### Everyone in this organization
+
+To give every member of a team org the same access to one package, grant it to
+the org itself with `subject_type: "org"` instead of granting each person:
+
+```json
+{
+	"resource_type": "package",
+	"resource_id": "<package id>",
+	"subject_type": "org",
+	"preset": "use"
+}
+```
+
+The grant is checked live against org membership every time access is checked,
+so it covers current members and anyone who joins later, and someone who leaves
+the org loses it at once. Kody writes one grant, never one row per member. It
+covers only the package it is granted on; everything else stays private, and
+outside collaborators and other orgs get nothing. `subject_id` may be omitted or
+must be this org's id: an everyone grant cannot name another org, cannot target
+`resource_type: "org"` or an execution context, and is refused in a personal org
+(which has no other members).
+
+An `everyone` team with Use on the package, plus an
+[org invite link](/docs/organizations) that adds new people to that team, keeps
+working the same way.
+
 `accessList` shows who holds what across the org. `accessRevoke` removes one
 grant by `grant_id`. To change someone's preset, call `accessGrant` again for
 the same subject; it updates the grant.
 
 ## Package collaborators
 
-For one package, three calls cover teams and members of the owning org. Each
-needs Manage on the package, and `package_id` accepts the saved-package UUID or
-the package name leaf (`@owner/leaf` or `leaf`).
+For one package, three calls cover teams, members, and everyone in the owning
+org. Each needs Manage on the package, and `package_id` accepts the
+saved-package UUID or the package name leaf (`@owner/leaf` or `leaf`).
 
 - `packageCollaboratorList` (`{ "package_id": "…" }`) lists everyone who holds a
-  grant on the package: teams, members, and outside collaborators, each with
-  `grant_id`, `kind`, username or team slug, and preset.
-- `packageCollaboratorSet` adds a team or org member, or changes the preset of
-  one already listed. Pass exactly one of `team_slug`, `team_id`, `username`, or
-  `user_id`. People outside the org are refused, and Owners already have full
-  access:
+  grant on the package: everyone in the org (`kind: "org"`), teams, members, and
+  outside collaborators, each with `grant_id`, `kind`, username or team slug,
+  and preset.
+- `packageCollaboratorSet` adds a team, an org member, or everyone in the org,
+  or changes the preset of one already listed. Pass exactly one of `team_slug`,
+  `team_id`, `username`, `user_id`, or `everyone: true`. People outside the org
+  are refused, and Owners already have full access:
 
   ```json
   {
@@ -83,10 +111,10 @@ audited the same way.
 
 People with Manage on a package see a **Collaborators** tab on the package page
 (`/@owner/<package>/collaborators`). It lists who has access and their preset,
-adds a team or org member, changes a preset, and removes access, using the
-package collaborator calls. Outside collaborators are listed and can be removed;
-their access is changed through `accessGrant`. Org owners always have full
-access and are not listed.
+adds everyone in this organization, a team, or an org member, changes a preset,
+and removes access, using the package collaborator calls. Outside collaborators
+are listed and can be removed; their access is changed through `accessGrant`.
+Org owners always have full access and are not listed.
 
 In a personal org there are no members or teams to add, so the tab invites
 people instead:

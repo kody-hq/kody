@@ -1,5 +1,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import {
+	isGrantablePermission,
+	isOrgWideReadPermission,
+} from '@kody-internal/shared/grant-presets.ts'
+import {
 	orgPermissions,
 	type OrgGrantResourceType,
 	type OrgPermission,
@@ -280,6 +284,20 @@ function denialCode(
 	return null
 }
 
+function ownerCanGrant(
+	permission: OrgPermission,
+	resource: OrgResource | undefined,
+) {
+	if (resource) return 'An org Owner can grant it.'
+	if (isOrgWideReadPermission(permission)) {
+		return 'An org Owner can grant it org-wide on the Grants page or with accessGrant resource_type org.'
+	}
+	if (isGrantablePermission('org', permission)) {
+		return 'An org Owner can grant it org-wide with accessGrant resource_type org.'
+	}
+	return 'An org Owner can grant it.'
+}
+
 function denialMessage(
 	code: AuthorizationDenialCode,
 	permission: OrgPermission,
@@ -293,7 +311,7 @@ function denialMessage(
 		case 'wrong_org':
 			return `${resource ? describeResource(resource, permission) : 'This resource'} belongs to another org.`
 		case 'missing_permission':
-			return `Missing ${permission}${target}. An org Owner can grant it.`
+			return `Missing ${permission}${target}. ${ownerCanGrant(permission, resource)}`
 		case 'credential_scope':
 			return `This credential is not scoped for ${permission}${target}. Mint a token that adds it: from Kody MCP, call cliCredentialBootstrap({ lifetime: "short", scopes: [${mintScopes.map((scope) => JSON.stringify(scope)).join(', ')}] }) and run the returned cli_command; or after \`kody login\`, run \`npx @kodycodes/cli auth bootstrap --lifetime short --scopes ${mintScopes.join(',')}\`. Use those scopes with tokenCreate only for CI/headless.`
 		case 'connection_profile': {
@@ -478,7 +496,7 @@ export function checkOrgWide(
 		permission,
 		access,
 		resource: undefined,
-		message: `Missing ${permission} across this org. A grant on one resource does not cover org-wide reads. An org Owner can grant it.`,
+		message: `Missing ${permission} across this org. A grant on one resource does not cover org-wide reads. ${ownerCanGrant(permission, undefined)}`,
 	})
 }
 

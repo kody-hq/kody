@@ -10,8 +10,8 @@
  * with one get exposure recording and an on/off cohort readout on the admin
  * surfaces (see `docs/contributing/architecture/feature-flags.md`). Optional
  * `exposureRecording` selects the write site (`evaluation` chokepoints by
- * default, `mcp-events-clients` for events-capable MCP clients only, or
- * `repo-push-owners` for repo owners on each git push). The
+ * default, `mcp-events-clients` for MCP clients that call `events/*` only,
+ * or `repo-push-owners` for repo owners on each git push). The
  * `successMetric` field stays optional for flags that are genuinely
  * unmeasurable (such as the permanent `demo-indicator`), and the admin UI and
  * MCP list surface a notice strongly recommending one everywhere else.
@@ -43,8 +43,8 @@ export type FeatureFlagSuccessMetric = {
  * Where success-metric exposures are written for a measured flag.
  *
  * - `evaluation` (default): app session cache + MCP caller flag resolver.
- * - `mcp-events-clients`: only from `registerMcpEvents` after the client
- *   declares events support; execute and other MCP callers stay out.
+ * - `mcp-events-clients`: only from the `registerMcpEvents` `events/*`
+ *   handlers; execute and other MCP callers stay out.
  * - `repo-push-owners`: only from the plain-repo git proxy on each
  *   receive-pack, attributed to the repo owner (repo-scoped flags).
  */
@@ -82,20 +82,6 @@ export const featureFlagDefinitions = [
 		// admin notice), not to move a product metric.
 	},
 	{
-		key: 'execute-invoke',
-		defaultEnabled: false,
-		defaultAudience: 'experiments_opt_in',
-		description:
-			'MCP execute `invoke` shortcut: mint the canonical thin kody:@ passthrough for a package export, then run the existing execute path. Off by default; enable with audience experiments_opt_in. Delete the flag and gate sites when the experiment ends.',
-		successMetric: {
-			eventType: 'dynamic_worker_day',
-			measure: 'event_count',
-			goal: 'decrease',
-			hypothesis:
-				'Invoke-generated thin passthrough reuses one Dynamic Worker per package export, so experiment users burn fewer unique worker-days on execute.',
-		},
-	},
-	{
 		key: 'connection-profiles',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
@@ -128,7 +114,7 @@ export const featureFlagDefinitions = [
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
-			'MCP Events extension (draft, webhook delivery only) on the stateless /mcp lane: advertise the events capability and serve events/list, events/subscribe, and events/unsubscribe for package kody.emits topics that opt in with mcp: true. Only for clients that declare events support. Off by default; enable with audience experiments_opt_in. Signed-in users can also turn it on from /docs/mcp-events. Delete the flag and gate sites when the experiment ends.',
+			'MCP Events extension (draft, webhook delivery only) on the stateless /mcp lane: advertise the events capability and serve events/list, events/subscribe, and events/unsubscribe for package kody.emits topics that opt in with mcp: true. OAuth callers only; clients declare nothing. Off by default; enable with audience experiments_opt_in. Signed-in users can also turn it on from /docs/mcp-events. Delete the flag and gate sites when the experiment ends.',
 		exposureRecording: 'mcp-events-clients',
 		successMetric: {
 			eventType: 'execute',
@@ -136,20 +122,6 @@ export const featureFlagDefinitions = [
 			goal: 'increase',
 			hypothesis:
 				'Experimenters whose MCP clients subscribe to package events run more event-driven execute calls than comparable flag-off users.',
-		},
-	},
-	{
-		key: 'package-app-custom-domains',
-		defaultEnabled: false,
-		defaultAudience: 'experiments_opt_in',
-		description:
-			'Serve package apps on customer custom hostnames (Cloudflare for SaaS on the package-app zone). Off by default; enable with audience experiments_opt_in so only opted-in users can manage domains. Anonymous serve still uses the global on switch once a hostname is verified. Delete the flag when custom domains ship.',
-		successMetric: {
-			eventType: 'execute',
-			measure: 'event_count',
-			goal: 'increase',
-			hypothesis:
-				'Users with a working custom-hostname package app keep executing against that package more than comparable flag-off users.',
 		},
 	},
 	{
@@ -201,8 +173,6 @@ export const featureFlagDefinitions = [
 
 export type FeatureFlagKey = (typeof featureFlagDefinitions)[number]['key']
 
-export const executeInvokeFlagKey = 'execute-invoke' satisfies FeatureFlagKey
-
 export const connectionProfilesFlagKey =
 	'connection-profiles' satisfies FeatureFlagKey
 
@@ -211,9 +181,6 @@ export const mcpSkillsExtensionFlagKey =
 
 export const mcpEventsExtensionFlagKey =
 	'mcp-events-extension' satisfies FeatureFlagKey
-
-export const packageAppCustomDomainsFlagKey =
-	'package-app-custom-domains' satisfies FeatureFlagKey
 
 export const packageCredentialSuppliersFlagKey =
 	'package-credential-suppliers' satisfies FeatureFlagKey

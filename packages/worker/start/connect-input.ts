@@ -1,5 +1,11 @@
 import { z } from 'zod'
 import { secretsInput } from './secrets-input.ts'
+import {
+	normalizePlacementApprovalParts,
+	placementApprovalCredentialParam,
+	placementApprovalParam,
+	placementApprovalParts,
+} from '#universal/credential-placement-approval.ts'
 
 const locationFields = {
 	orgSlug: z
@@ -20,6 +26,10 @@ export const connectSecretsSchema = z.object({
 		storagePackageId: z.string().optional(),
 		sessionId: z.string().optional(),
 	}),
+	/** Owner-approval request to allow these fill placement parts. */
+	placement: z.array(z.enum(placementApprovalParts)).default([]),
+	/** Pins the placement request to exactly this credential. */
+	placementCredentialId: z.string().min(1).max(200).optional(),
 })
 export const connectOauthSchema = z.object({
 	...locationFields,
@@ -46,12 +56,23 @@ function connectionLocation(search: string) {
 export function connectSecretsInput(
 	search: string,
 ): z.infer<typeof connectSecretsSchema> {
-	const { params: _, ...location } = connectionLocation(search)
+	const { params, ...location } = connectionLocation(search)
 	const { selectedSecretId, approval } = secretsInput(
 		location.orgSlug ?? '',
 		search,
 	)
-	return { ...location, selectedSecretId, approval }
+	const placement = normalizePlacementApprovalParts(
+		params.getAll(placementApprovalParam),
+	)
+	const placementCredentialId =
+		params.get(placementApprovalCredentialParam)?.trim() || undefined
+	return {
+		...location,
+		selectedSecretId,
+		approval,
+		placement,
+		placementCredentialId,
+	}
 }
 export function connectOauthInput(
 	search: string,

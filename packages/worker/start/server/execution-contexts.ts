@@ -246,3 +246,40 @@ export const redirectExecutionContextsEntry = createServerFn({ method: 'GET' })
 			throw error
 		}
 	})
+
+const automationTarget = z.object({
+	kind: z.enum(['job', 'webhook', 'subscription']),
+	jobId: segment.optional(),
+	packageId: segment.optional(),
+	name: z.string().min(1).max(200).optional(),
+})
+
+export const loadAutomationExecution = createServerFn({ method: 'GET' })
+	.validator(z.object({ orgSlug, target: automationTarget }))
+	.handler(async ({ data }) => {
+		const { getAutomationExecutionForUser } =
+			await import('../../src/app/handlers/execution-contexts.ts')
+		return mutate(data.orgSlug, (input) =>
+			getAutomationExecutionForUser({ ...input, target: data.target }),
+		)
+	})
+
+export const setAutomationExecution = createServerFn({ method: 'POST' })
+	.validator(
+		z.object({
+			orgSlug,
+			target: automationTarget,
+			execution: z.record(z.string(), z.unknown()).nullable(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { setAutomationExecutionForUser } =
+			await import('../../src/app/handlers/execution-contexts.ts')
+		return mutate(data.orgSlug, (input) =>
+			setAutomationExecutionForUser({
+				...input,
+				target: data.target,
+				execution: data.execution,
+			}),
+		)
+	})

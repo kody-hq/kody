@@ -1,4 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
+import { PermissionDeniedError } from '#universal/permission-denied.ts'
 import { notFound } from '@tanstack/react-router'
 import { z } from 'zod'
 
@@ -52,7 +53,7 @@ export const loadOrgMembers = createServerFn({ method: 'GET' })
 			if (access.status === 404) throw notFound()
 			const { setResponseStatus } = await import('@tanstack/react-start/server')
 			setResponseStatus(403)
-			throw new Error(access.error)
+			throw new PermissionDeniedError(access.error)
 		}
 
 		return loadOrgMembersData({ ...input, org: access.org })
@@ -75,7 +76,7 @@ export const loadOrgSettings = createServerFn({ method: 'GET' })
 			if (access.status === 404) throw notFound()
 			const { setResponseStatus } = await import('@tanstack/react-start/server')
 			setResponseStatus(403)
-			throw new Error(access.error)
+			throw new PermissionDeniedError(access.error)
 		}
 
 		return loadOrgSettingsData({ ...input, org: access.org })
@@ -98,7 +99,7 @@ export const loadOrgTeams = createServerFn({ method: 'GET' })
 			if (access.status === 404) throw notFound()
 			const { setResponseStatus } = await import('@tanstack/react-start/server')
 			setResponseStatus(403)
-			throw new Error(access.error)
+			throw new PermissionDeniedError(access.error)
 		}
 
 		return loadOrgTeamsData({ ...input, org: access.org })
@@ -121,7 +122,7 @@ export const loadOrgGrants = createServerFn({ method: 'GET' })
 			if (access.status === 404) throw notFound()
 			const { setResponseStatus } = await import('@tanstack/react-start/server')
 			setResponseStatus(403)
-			throw new Error(access.error)
+			throw new PermissionDeniedError(access.error)
 		}
 
 		return loadOrgGrantsData({ ...input, org: access.org })
@@ -144,7 +145,7 @@ export const loadOrgCollaborators = createServerFn({ method: 'GET' })
 			if (access.status === 404) throw notFound()
 			const { setResponseStatus } = await import('@tanstack/react-start/server')
 			setResponseStatus(403)
-			throw new Error(access.error)
+			throw new PermissionDeniedError(access.error)
 		}
 
 		return loadOrgCollaboratorsData({ ...input, org: access.org })
@@ -203,39 +204,53 @@ export const loadOrgOverview = createServerFn({ method: 'GET' })
 			import('../../src/app/handlers/org-usage.ts'),
 			import('../../universal/workspace-charts.ts'),
 		])
-		const [repositories, activity, jobs, charts, usage] = await Promise.all([
-			resolution.org.id === personalOrgIdForPerson(input.user.mcpUser)
-				? loadProfileData(
-						input.env,
-						input.request,
-						input.user.username,
-						undefined,
-						{ query: '', limit: 5 },
-					)
-				: loadOrgRepositoriesData({ ...input, query: '', limit: 5 }),
-			loadAccountActivityData({
-				...input,
-				selectedRunId: null,
-				viewFilter: 'recent',
-				statusFilter: 'all',
-				surfaceFilter: 'all',
-				triageFilter: 'all',
-				cursor: null,
-			}),
-			loadAccountJobsData({ ...input, selectedJobId: null }),
-			loadWorkspaceRunCharts({
-				env: input.env,
-				userId: input.user.request.org.id,
-			}),
-			loadOrgUsagePageResult({
-				...input,
-				orgSlug: slug,
-				credits: null,
-				error: null,
-				topup: null,
-				sessionId: null,
-			}),
-		])
+		const { loadSkillMetrics } = await import('#app/skill-metrics.ts')
+		const { createMcpCallerContext } = await import('#mcp/context.ts')
+		const [skillMetrics, repositories, activity, jobs, charts, usage] =
+			await Promise.all([
+				loadSkillMetrics({
+					env: input.env,
+					callerContext: {
+						...createMcpCallerContext({
+							baseUrl: new URL(input.request.url).origin,
+							user: input.user.mcpUser,
+							source: { kind: 'session' },
+						}),
+						request: input.user.request,
+					},
+				}),
+				resolution.org.id === personalOrgIdForPerson(input.user.mcpUser)
+					? loadProfileData(
+							input.env,
+							input.request,
+							input.user.username,
+							undefined,
+							{ query: '', limit: 5 },
+						)
+					: loadOrgRepositoriesData({ ...input, query: '', limit: 5 }),
+				loadAccountActivityData({
+					...input,
+					selectedRunId: null,
+					viewFilter: 'recent',
+					statusFilter: 'all',
+					surfaceFilter: 'all',
+					triageFilter: 'all',
+					cursor: null,
+				}),
+				loadAccountJobsData({ ...input, selectedJobId: null }),
+				loadWorkspaceRunCharts({
+					env: input.env,
+					userId: input.user.request.org.id,
+				}),
+				loadOrgUsagePageResult({
+					...input,
+					orgSlug: slug,
+					credits: null,
+					error: null,
+					topup: null,
+					sessionId: null,
+				}),
+			])
 		if (!repositories) throw notFound()
 		// Total runs and Running match the chart window/filters. Open errors
 		// stays Activity's untriaged count (live "is anything broken?") and is
@@ -243,6 +258,7 @@ export const loadOrgOverview = createServerFn({ method: 'GET' })
 		const chartTotals = overviewExecutionTotals(charts)
 		return {
 			slug,
+			skillMetrics,
 			charts,
 			billing:
 				usage.kind === 'data'

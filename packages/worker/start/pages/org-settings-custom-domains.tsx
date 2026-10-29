@@ -178,7 +178,15 @@ export function OrgSettingsCustomDomains({
 			) : (
 				<p css={mutedCopyCss}>No custom domains yet.</p>
 			)}
-			{data.canManage ? (
+			{data.canManage && !domains.canAdd ? (
+				<p data-testid="org-custom-domains-paid-only" css={accountFieldNoteCss}>
+					Custom domains need a paid plan.{' '}
+					<a css={primaryLinkCss} href={`/@${data.org.slug}/-/billing`}>
+						See plans
+					</a>
+				</p>
+			) : null}
+			{data.canManage && domains.canAdd ? (
 				<form
 					css={formCss}
 					onSubmit={(event) => {

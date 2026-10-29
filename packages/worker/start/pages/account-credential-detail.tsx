@@ -12,6 +12,7 @@ import { CredentialHostsEditor } from './account-credential-hosts-editor.tsx'
 import { CredentialFillPlacementEditor } from './account-credential-fill-placement-editor.tsx'
 import { RecordChips, recordBodyCss } from './record-table.tsx'
 import { formatFillPlacementSummary } from '#universal/credential-fill-placement.ts'
+import { fillPlacementAnchor } from '#universal/credential-placement-approval.ts'
 import {
 	type CredentialInjectView,
 	type CredentialListItem,
@@ -249,9 +250,9 @@ function packageName(
 ) {
 	return packagesById.get(id)?.kodyId ?? id
 }
-function renderField(label: string, body: ReactNode) {
+function renderField(label: string, body: ReactNode, id?: string) {
 	return (
-		<div css={fieldCss}>
+		<div css={fieldCss} id={id}>
 			<span css={fieldLabelCss}>{label}</span>
 			{body}
 		</div>
@@ -421,6 +422,7 @@ export function renderCredentialDetail(input: {
 								</p>
 							) : null}
 						</div>,
+						fillPlacementAnchor,
 					)
 				: null}
 

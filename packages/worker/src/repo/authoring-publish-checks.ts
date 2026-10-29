@@ -61,6 +61,8 @@ export async function runAuthoringPublishChecks(input: {
  */
 export async function runAuthoringPublishChecksOnFiles(input: {
 	files: Record<string, string>
+	/** Binary files sent by path and byte size only (see `packageCheck`). */
+	binaryFileSizes?: Record<string, number>
 	env: Env
 	baseUrl: string
 	userId: OwnerId
@@ -68,7 +70,10 @@ export async function runAuthoringPublishChecksOnFiles(input: {
 	expectedPackageScope?: string
 }): Promise<RepoCheckRunResult> {
 	return await runAuthoringPublishChecks({
-		workspace: createSnapshotFilesWorkspace(input.files),
+		workspace: createSnapshotFilesWorkspace(
+			input.files,
+			input.binaryFileSizes ? { binaryFileSizes: input.binaryFileSizes } : {},
+		),
 		manifestPath: 'package.json',
 		sourceRoot: '/',
 		env: input.env,

@@ -28,11 +28,12 @@ export async function userExistsByUsername(db: D1Database, username: string) {
 export async function isUsernameClaimedInIdentity(
 	db: D1Database,
 	username: string,
-	options?: { exceptStableUserId?: string },
+	options?: { exceptStableUserId?: string; exceptOrgId?: string },
 ) {
 	const normalized = normalizeUsername(username)
 	if (!normalized) return false
 	const except = options?.exceptStableUserId?.trim() || null
+	const exceptOrg = options?.exceptOrgId?.trim() || except
 	if (except) {
 		const otherUser = await db
 			.prepare(
@@ -64,7 +65,7 @@ export async function isUsernameClaimedInIdentity(
 				     )
 				   )`,
 			)
-			.bind(normalized, except, except)
+			.bind(normalized, except, exceptOrg)
 			.first<{ present: number }>()
 		if (foreignHandle) return true
 		const foreignOrg = await db
@@ -72,7 +73,7 @@ export async function isUsernameClaimedInIdentity(
 				`SELECT 1 AS present FROM orgs
 				 WHERE slug = ? AND id != ?`,
 			)
-			.bind(normalized, except)
+			.bind(normalized, exceptOrg)
 			.first<{ present: number }>()
 		return Boolean(foreignOrg)
 	}
