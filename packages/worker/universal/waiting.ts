@@ -224,7 +224,7 @@ export function buildWaitingItems(
 	}
 
 	for (const connection of signals.integrationAuth) {
-		const copy = integrationAuthFailureCopy(connection)
+		const copy = integrationAuthFailureCopy({ ...connection, orgSlug })
 		if (copy.who !== 'you' || !copy.reconnectable) continue
 		items.push({
 			id: `integration-auth:${connection.name}`,
