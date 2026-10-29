@@ -534,6 +534,21 @@ export async function listPackageCodemodRunItems(
 	return (rows.results ?? []).map(mapItemRow)
 }
 
+export async function hasPackageCodemodRunItemForPackage(
+	db: D1Database,
+	input: { runId: string; packageId: string },
+): Promise<boolean> {
+	const row = await db
+		.prepare(
+			`SELECT 1 AS found FROM package_codemod_run_items
+			WHERE run_id = ? AND package_id = ?
+			LIMIT 1`,
+		)
+		.bind(input.runId, input.packageId)
+		.first<{ found: number }>()
+	return row != null
+}
+
 export async function getPackageCodemodRunItemById(
 	db: D1Database,
 	itemId: string,

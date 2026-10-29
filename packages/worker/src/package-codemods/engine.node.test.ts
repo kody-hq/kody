@@ -1450,6 +1450,7 @@ test('a package whose earlier attempts never finished is recorded as failed and 
 					key,
 					...rest,
 				)) as typeof kv.namespace.get)
+	const deleteSpy = vi.spyOn(kv.namespace, 'delete')
 
 	const result = await step(env, {
 		mode: 'dry-run',
@@ -1461,5 +1462,14 @@ test('a package whose earlier attempts never finished is recorded as failed and 
 		error: unfinishedAttemptsError,
 	})
 	expect(mocks.loadPackageSourceBySourceId).not.toHaveBeenCalled()
-	expect(kv.store.size).toBe(0)
+	const attemptKey = `package-codemod-attempt:${result.runId}:${pkg.id}`
+	expect(deleteSpy).toHaveBeenCalledWith(attemptKey)
+
+	const retried = await step(env, {
+		mode: 'dry-run',
+		codemodId: explicitWebhookUrlSecretVerificationCodemodId,
+		runId: result.runId,
+	})
+	expect(retried.items).toEqual([])
+	expect(mocks.loadPackageSourceBySourceId).not.toHaveBeenCalled()
 })
