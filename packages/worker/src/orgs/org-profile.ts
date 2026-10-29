@@ -4,7 +4,7 @@ import {
 } from '#worker/identity/username.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { isPersonalOrg } from './is-personal-org.ts'
-import { recordOrgAuditEvent, type OrgAuditWriter } from './org-audit.ts'
+import { runAppDbBatchWithOrgAudit, type OrgAuditWriter } from './org-audit.ts'
 import {
 	loadOrgProfileVisibility,
 	type OrgProfileVisibility,
@@ -87,23 +87,32 @@ export async function updateOrgProfile(
 	if (nextVisibility !== previousVisibility && !input.audit)
 		throw new Error('Changing organization visibility needs an audit writer.')
 	const now = new Date().toISOString()
-	await db
+	const update = db
 		.prepare(
 			`UPDATE orgs
-			 SET display_name = ?, profile_visibility = ?, updated_at = ?
+			 SET display_name = ?,
+			   profile_visibility = COALESCE(?, profile_visibility),
+			   updated_at = ?
 			 WHERE id = ?${andLiveDeletedAtSql()}`,
 		)
-		.bind(nextDisplayName, nextVisibility, now, input.orgId)
-		.run()
+		.bind(nextDisplayName, input.profileVisibility ?? null, now, input.orgId)
 	if (nextVisibility !== previousVisibility && input.audit) {
-		await recordOrgAuditEvent(input.audit, {
-			orgId: input.orgId,
-			action: 'org.profile_visibility_changed',
-			details: {
-				profile_visibility: nextVisibility,
-				previous_profile_visibility: previousVisibility,
+		// The change and its audit outbox row commit together.
+		await runAppDbBatchWithOrgAudit({
+			appDb: db,
+			audit: input.audit,
+			statements: [update],
+			event: {
+				orgId: input.orgId,
+				action: 'org.profile_visibility_changed',
+				details: {
+					profile_visibility: nextVisibility,
+					previous_profile_visibility: previousVisibility,
+				},
 			},
 		})
+	} else {
+		await update.run()
 	}
 
 	return {

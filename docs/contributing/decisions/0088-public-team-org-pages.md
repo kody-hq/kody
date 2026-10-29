@@ -28,7 +28,9 @@ later.
   billing. The page is the same for every viewer.
 - **Members.** On a public org, members see the public page with a link to the
   org home (`/@slug?view=home`); the home links back to the public page. On a
-  private org, members get the home at `/@slug` as before.
+  private org, members get the home at `/@slug` as before. "Members" here means
+  anyone the org switcher lists, including grant-only collaborators, who get the
+  collaborator home (links only, no data), unchanged from before.
 - **No existence leak.** A private org, an unknown handle, a soft-deleted org,
   and a suspended org return the same 404 to anyone who is not a member.
 - **Personal orgs are unchanged.** The signup org's page is the person's profile
