@@ -42,7 +42,7 @@ export const runGetCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'job:read',
 		description:
-			'Load one retained run with its captured log lines, error details, soft triage fields (error_triage / note / who / when), and (when available) a bounded metadata.result snapshot of the handler return value — useful for webhook deliveries, package exports, execute runs, and workflow runs. Works for ignored/resolved runs too. Records are retained about 30 days, capped per user, and pruned failure-last. Runs that started on an execution context stay findable from that context's 30-day history (outcome, failure reason, error summary; no logs) after the full record is pruned.',
+			'Load one retained run with its captured log lines, error details, soft triage fields (error_triage / note / who / when), and (when available) a bounded metadata.result snapshot of the handler return value — useful for webhook deliveries, package exports, execute runs, and workflow runs. Works for ignored/resolved runs too. Records are retained about 30 days, capped per user, and pruned failure-last. Runs that started on an execution context stay findable from execution context history for 30 days (outcome, failure reason, error summary, no logs) after the full record is pruned.',
 		keywords: [
 			'run',
 			'logs',
