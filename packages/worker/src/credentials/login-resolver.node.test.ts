@@ -570,6 +570,7 @@ test('deleting a login credential deletes its stored session', async () => {
 		userId: t.acmeId,
 		scope: 'user',
 		name: 'portal-login',
+		audit: null,
 	})
 	expect(await count()).toEqual({ n: 0 })
 	clearLoginSessionsForTests()

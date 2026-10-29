@@ -177,6 +177,44 @@ test('a stored session is bound to its revision and owner, and is never stored i
 	).toBeNull()
 })
 
+test('after an org transfer the new owner claims the row and mints its own session', async () => {
+	const { env } = setup()
+	await obtainLoginSession({
+		...key,
+		env,
+		exchange: async () => ({
+			token: 'dummy-old-owner',
+			expiresAt: hourFromNow(),
+		}),
+	})
+	const newOwner = ownerIdFromStored('org-token-demo-target')
+	const exchange = vi.fn(async () => ({
+		token: 'dummy-new-owner',
+		expiresAt: hourFromNow(),
+	}))
+	const result = await obtainLoginSession({
+		...key,
+		ownerId: newOwner,
+		revision: 'rev-resealed',
+		env,
+		exchange,
+	})
+	expect(result).toMatchObject({
+		source: 'new',
+		session: { token: 'dummy-new-owner' },
+	})
+	expect(exchange).toHaveBeenCalledTimes(1)
+	expect(
+		await readStoredLoginSession({
+			...key,
+			ownerId: newOwner,
+			revision: 'rev-resealed',
+			env,
+		}),
+	).toMatchObject({ token: 'dummy-new-owner' })
+	expect(await readStoredLoginSession({ ...key, env })).toBeNull()
+})
+
 test('an expired session is not reused', async () => {
 	const { env } = setup()
 	await obtainLoginSession({

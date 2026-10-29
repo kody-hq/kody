@@ -5,7 +5,9 @@
  * inject strands it. One exchange runs at a time per credential: the caller
  * that wins the D1 lease runs it and writes the session; the others poll and
  * reuse that session, so a rotating provider never sees one refresh token
- * twice. A crashed holder's lease lapses after `leaseMs`.
+ * twice. A crashed holder's lease lapses after `leaseMs`. Credential ids are
+ * global, so a claim re-points `user_id` after an org transfer; the old
+ * owner's ciphertext is bound to that owner and never decrypts for the new one.
  */
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
@@ -86,15 +88,13 @@ async function claimLease(
 				(credential_id, user_id, lease_id, lease_expires_at, updated_at)
 			VALUES (?, ?, ?, ?, ?)
 			ON CONFLICT (credential_id) DO UPDATE SET
+				user_id = excluded.user_id,
 				lease_id = excluded.lease_id,
 				lease_expires_at = excluded.lease_expires_at,
 				updated_at = excluded.updated_at
-			WHERE login_credential_sessions.user_id = excluded.user_id
-				AND (
-					login_credential_sessions.lease_id IS NULL
-					OR login_credential_sessions.lease_expires_at IS NULL
-					OR login_credential_sessions.lease_expires_at <= ?
-				)`,
+			WHERE login_credential_sessions.lease_id IS NULL
+				OR login_credential_sessions.lease_expires_at IS NULL
+				OR login_credential_sessions.lease_expires_at <= ?`,
 		)
 		.bind(
 			input.credentialId,

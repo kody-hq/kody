@@ -90,6 +90,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	secret_entries: move(
 		'Values re-sealed under the target key context; bucket_id follows a merge.',
 	),
+	login_credential_sessions: keep(
+		'Encrypted login sessions are a cache bound to the source owner and the credential revision. The transfer re-seals the value, so the revision changes and the next use re-mints a session under the target owner.',
+	),
 	secret_provider_bindings: move(
 		'user_id re-pointed for bindings of moved packages.',
 	),

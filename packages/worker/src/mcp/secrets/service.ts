@@ -1544,9 +1544,9 @@ export type StoredCredential = {
 	/** Null means anywhere (placeholders / credential() may fill any part). */
 	placement: CredentialFillPlacement | null
 	/**
-	 * Digest of the stored ciphertext and `config_json`. Every value write
-	 * re-encrypts with a fresh IV, so any change to the value or exchange
-	 * changes it.
+	 * Digest of the stored ciphertext, `config_json`, `allowed_hosts`, and
+	 * `inject_json`. Every value write re-encrypts with a fresh IV, so any
+	 * change to the value, exchange, hosts, or inject changes it.
 	 */
 	revision: string
 }
