@@ -2,6 +2,7 @@
  * Warn-only publish check that a package declares the Kody capabilities its
  * own modules call (ADR 0089). Publish and `kody dev check` both run it through
  * `runRepoChecks`. It never fails a check until the rollout switch flips.
+ * With a package loader it also walks the static import closure.
  */
 import {
 	listScannableModulePaths,
@@ -11,11 +12,18 @@ import {
 	collectModuleKodyCalls,
 	needsCapabilityDeclaration,
 } from '#worker/package-codemods/codemods/0017-detect-package-app-visitor-authority.ts'
+import {
+	type ClosurePackageLoader,
+	scanPackageAppImportClosure,
+} from '#worker/package-codemods/package-app-capability-closure.ts'
 import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
 
 type CapabilityDeclarationFinding =
 	| { kind: 'undeclared'; path: string; names: Array<string> }
 	| { kind: 'unverifiable'; path: string; calls: number }
+	| { kind: 'closure-undeclared'; names: Array<string> }
+	| { kind: 'closure-unverifiable'; calls: number }
+	| { kind: 'closure-unresolved'; imports: number }
 
 /** `kody.capabilities` plus, for an app, `kody.app.capabilities`. */
 export function declaredPackageCapabilities(
@@ -57,19 +65,115 @@ export function findCapabilityDeclarationGaps(input: {
 	return findings
 }
 
+/**
+ * The package's effective capabilities: its own declaration plus the
+ * declarations of every package its static imports reach (ADR 0089), and the
+ * closure calls that set does not cover. The runtime still caps an app to
+ * `kody.app.capabilities` alone, so for an app imported needs count only once
+ * that list holds them.
+ */
+export async function computeCapabilityClosure(input: {
+	manifest: Pick<AuthoredPackageJson, 'kody' | 'name'>
+	sourceFiles: Record<string, string>
+	loadPackage: ClosurePackageLoader
+}) {
+	const selfId = `self:${input.manifest.name}`
+	const own = declaredPackageCapabilities(input.manifest)
+	const imported = new Set<string>()
+	const closure = await scanPackageAppImportClosure({
+		appPackageId: selfId,
+		appFiles: input.sourceFiles,
+		loadPackage: async (packageName) => {
+			if (packageName === input.manifest.name) {
+				return {
+					id: selfId,
+					files: {},
+					manifest: input.manifest as AuthoredPackageJson,
+				}
+			}
+			const loaded = await input.loadPackage(packageName)
+			if (loaded) {
+				for (const name of declaredPackageCapabilities(loaded.manifest)) {
+					imported.add(name)
+				}
+			}
+			return loaded
+		},
+	})
+	const effective = new Set([...own, ...imported])
+	const covering = input.manifest.kody.app ? own : effective
+	const needed = new Set([
+		...closure.names.filter(needsCapabilityDeclaration),
+		...(input.manifest.kody.app ? imported : []),
+	])
+	return {
+		effective: [...effective].sort(),
+		uncovered: [...needed].filter((name) => !covering.has(name)).sort(),
+		unverifiable:
+			covering.size === 0 ? closure.computedCalls + closure.mcpCalls : 0,
+		unresolvedImports: closure.unresolvedImports,
+	}
+}
+
+async function findClosureGaps(input: {
+	manifest: Pick<AuthoredPackageJson, 'kody' | 'name'>
+	sourceFiles: Record<string, string>
+	loadPackage: ClosurePackageLoader
+}): Promise<Array<CapabilityDeclarationFinding>> {
+	const closure = await computeCapabilityClosure(input)
+	const findings: Array<CapabilityDeclarationFinding> = []
+	if (closure.uncovered.length > 0) {
+		findings.push({ kind: 'closure-undeclared', names: closure.uncovered })
+	}
+	if (closure.unverifiable > 0) {
+		findings.push({ kind: 'closure-unverifiable', calls: closure.unverifiable })
+	}
+	if (closure.unresolvedImports > 0) {
+		findings.push({
+			kind: 'closure-unresolved',
+			imports: closure.unresolvedImports,
+		})
+	}
+	return findings
+}
+
 function formatFinding(finding: CapabilityDeclarationFinding) {
 	if (finding.kind === 'undeclared') {
 		const names = finding.names.map((name) => `\`${name}\``).join(', ')
 		return `- \`${finding.path}\` calls ${names}, which the package does not declare.`
 	}
+	if (finding.kind === 'closure-undeclared') {
+		const names = finding.names.map((name) => `\`${name}\``).join(', ')
+		return `- Imported packages call ${names}, which this package's declaration does not cover.`
+	}
+	if (finding.kind === 'closure-unverifiable') {
+		return `- Imported packages pick ${finding.calls} capability name(s) at run time, and this package declares no capabilities that could cover them.`
+	}
+	if (finding.kind === 'closure-unresolved') {
+		return `- ${finding.imports} import(s) of other packages could not be resolved statically, so the capabilities they need were not checked.`
+	}
 	return `- \`${finding.path}\` picks ${finding.calls} capability name(s) at run time (a computed \`kody[...]\` call or \`kody.mcp\`), and the package declares no capabilities that could cover them.`
 }
 
-export function buildCapabilityDeclarationCheck(input: {
-	manifest: Pick<AuthoredPackageJson, 'kody'>
+export async function buildCapabilityDeclarationCheck(input: {
+	manifest: Pick<AuthoredPackageJson, 'kody' | 'name'>
 	sourceFiles: Record<string, string>
+	/** Without one (offline checks) only the package's own modules are read. */
+	loadPackage?: ClosurePackageLoader
 }) {
 	const findings = findCapabilityDeclarationGaps(input)
+	if (input.loadPackage) {
+		try {
+			findings.push(
+				...(await findClosureGaps({
+					...input,
+					loadPackage: input.loadPackage,
+				})),
+			)
+		} catch {
+			findings.push({ kind: 'closure-unresolved', imports: 1 })
+		}
+	}
 	if (findings.length === 0) return null
 	const list = input.manifest.kody.app
 		? '`kody.app.capabilities`'
@@ -80,7 +184,7 @@ export function buildCapabilityDeclarationCheck(input: {
 		message: [
 			'Warning (does not fail publish yet): capability declarations are incomplete.',
 			...findings.map(formatFinding),
-			`Add each capability these modules call to ${list}. Apps that import this package will need them, and publish will start failing on these once the rollout switch flips (ADR 0089).`,
+			`Add each capability these modules and their imports call to ${list}. Apps that import this package will need them, and publish will start failing on these once the rollout switch flips (ADR 0089).`,
 		].join('\n'),
 	}
 }

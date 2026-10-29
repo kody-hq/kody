@@ -194,23 +194,22 @@ async function loadPlatformCapabilityNames() {
 	return Object.keys(registry.capabilityMap).sort()
 }
 
-export async function computePackageAppCapabilityHostFacts(input: {
+/** Loads imported packages from `userId`'s saved, published packages. */
+export function createSavedPackageClosureLoader(input: {
 	env: Env
 	baseUrl: string
-	savedPackage: SavedPackageRecord
-	files: Record<string, string>
-}): Promise<PackageAppCapabilityHostFacts> {
-	const { env, baseUrl, savedPackage } = input
-	const loadPackage: ClosurePackageLoader = async (packageName) => {
-		const row = await getSavedPackageByName(env.APP_DB, {
-			userId: savedPackage.userId,
+	userId: string
+}): ClosurePackageLoader {
+	return async (packageName) => {
+		const row = await getSavedPackageByName(input.env.APP_DB, {
+			userId: input.userId,
 			name: packageName,
 		})
 		if (!row) return null
 		try {
 			const source = await loadPackageSourceBySourceId({
-				env,
-				baseUrl,
+				env: input.env,
+				baseUrl: input.baseUrl,
 				userId: row.userId,
 				sourceId: row.sourceId,
 			})
@@ -220,6 +219,20 @@ export async function computePackageAppCapabilityHostFacts(input: {
 			return null
 		}
 	}
+}
+
+export async function computePackageAppCapabilityHostFacts(input: {
+	env: Env
+	baseUrl: string
+	savedPackage: SavedPackageRecord
+	files: Record<string, string>
+}): Promise<PackageAppCapabilityHostFacts> {
+	const { env, baseUrl, savedPackage } = input
+	const loadPackage = createSavedPackageClosureLoader({
+		env,
+		baseUrl,
+		userId: savedPackage.userId,
+	})
 	const [closure, observed, platformCapabilityNames] = await Promise.all([
 		scanPackageAppImportClosure({
 			appPackageId: savedPackage.id,

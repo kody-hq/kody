@@ -89,6 +89,7 @@ import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
 import { credentialNeedKeyNotes } from '#worker/credentials/credential-needs.ts'
 import { computeCredentialNeedsClosure } from '#worker/credentials/credential-needs-closure.ts'
 import { republishedNeedsNote } from '#worker/enablements/republish-needs-note.ts'
+import { createSavedPackageClosureLoader } from '#worker/package-codemods/package-app-capability-closure.ts'
 import { buildCapabilityDeclarationCheck } from './capability-declaration-check.ts'
 
 export const repoCheckKinds = [
@@ -1738,9 +1739,18 @@ export async function runRepoChecks(input: {
 			return toRepoCheckRunResult({ results, manifest, sourceFiles })
 		}
 	}
-	const capabilityDeclarationCheck = buildCapabilityDeclarationCheck({
+	const capabilityDeclarationCheck = await buildCapabilityDeclarationCheck({
 		manifest,
 		sourceFiles,
+		...(input.env && input.baseUrl && input.userId
+			? {
+					loadPackage: createSavedPackageClosureLoader({
+						env: input.env,
+						baseUrl: input.baseUrl,
+						userId: input.userId,
+					}),
+				}
+			: {}),
 	})
 	if (capabilityDeclarationCheck) results.push(capabilityDeclarationCheck)
 	// Cheap static gates for the package-app browser surface run before the

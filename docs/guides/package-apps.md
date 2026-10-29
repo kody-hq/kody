@@ -283,7 +283,8 @@ run as anyone.
   so today the fix is to list the capabilities its dependencies call in the
   app's own `kody.app.capabilities`. Imported packages declare their own calls
   in `kody.capabilities`; publish and `kody dev check` warn when a package's
-  modules call a capability it does not declare
+  modules, or the packages they import, call a capability its list does not
+  cover
   ([ADR 0089](../contributing/decisions/0089-packages-declare-capabilities.md)).
 
 ```json
