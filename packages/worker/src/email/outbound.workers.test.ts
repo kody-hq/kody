@@ -1240,6 +1240,19 @@ test('sendOutboundEmail sends from an owned plus alias and refuses any From the 
 			expect((refused as Error).message).toContain(`Cannot send from ${from}`)
 		}
 	}
+	for (const from of ['', '   ']) {
+		const refused = await rejection(
+			sendAs(account, {
+				env: sendEnv,
+				from,
+				recipientPolicy: 'reply',
+				replyToMessageId: inbound.id,
+				subject: 'Re: Need help',
+			}),
+		)
+		expect(refused, JSON.stringify(from)).toBeInstanceOf(McpCallerError)
+		expect((refused as Error).message).toContain('Cannot send from')
+	}
 	// Refusals happen before quota, storage, or the provider.
 	expect(sent).toHaveLength(2)
 	expect(await readDailyEmailSendCounter(account.userId)).toBe(sendsBefore)

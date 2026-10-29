@@ -570,13 +570,14 @@ export async function sendOutboundEmail(
 			userId: actorPersonId,
 		})
 		const acceptedSenderDomains = getAcceptedUserEmailDomains(input.env)
-		const requestedFrom = input.from?.trim()
-			? resolveRequestedSender({
-					requested: input.from.trim(),
-					sender,
-					acceptedDomains: acceptedSenderDomains,
-				})
-			: null
+		const requestedFrom =
+			input.from == null
+				? null
+				: resolveRequestedSender({
+						requested: input.from.trim(),
+						sender,
+						acceptedDomains: acceptedSenderDomains,
+					})
 		const accountEmailVerified = await isAccountEmailVerified({
 			db: input.env.APP_DB,
 			email: sender.accountEmail,
