@@ -35,6 +35,7 @@ import {
 	repoChecksSourceMaxFiles,
 	repoChecksSourceMaxTotalBytes,
 	runRepoChecks,
+	runRepoSourceWalkChecks,
 } from './checks.ts'
 import { withRequiredPackageDocs } from './checks-test-docs.ts'
 import {
@@ -271,6 +272,28 @@ test('runRepoChecks skips .kodyignore matches before checks and publish caps', a
 			check.message.includes('file publish check limit'),
 		),
 	).toBe(false)
+})
+
+test('runRepoSourceWalkChecks counts .kodyignore matches for plain repos', async () => {
+	const files = new Map<string, string>([
+		['.kodyignore', 'fixtures/\n'],
+		['README.md', '# notes\n'],
+		...Array.from(
+			{ length: repoChecksSourceMaxFiles },
+			(_, index) => [`fixtures/case-${index}.txt`, `${index}\n`] as const,
+		),
+	])
+	const result = await runRepoSourceWalkChecks({
+		workspace: {
+			readFile: async (path) => files.get(path) ?? null,
+			glob: async () =>
+				Array.from(files.keys(), (path) => ({ path, type: 'file' })),
+		},
+		sourceRoot: '/',
+	})
+
+	expect(result.ok).toBe(false)
+	expect(result.message).toContain('file publish check limit')
 })
 
 test('runRepoChecks strips repo-session workspace prefixes from package snapshot paths', async () => {

@@ -328,6 +328,7 @@ async function* workspaceFilesForSnapshot(input: {
 		stat?(path: string): Promise<{ size: number } | null>
 	}
 	root: string
+	applyKodyIgnore?: boolean
 }) {
 	const encoder = new TextEncoder()
 	const normalizedRoot = normalizeRepoWorkspacePath(input.root).replace(
@@ -335,13 +336,16 @@ async function* workspaceFilesForSnapshot(input: {
 		'',
 	)
 	const pattern = normalizedRoot === '' ? '**/*' : `${normalizedRoot}/**/*`
-	const isKodyIgnored = createKodyIgnoreMatcher(
-		await input.workspace.readFile(
-			normalizedRoot === ''
-				? kodyIgnoreFileName
-				: `${normalizedRoot}/${kodyIgnoreFileName}`,
-		),
-	)
+	const isKodyIgnored =
+		input.applyKodyIgnore === false
+			? null
+			: createKodyIgnoreMatcher(
+					await input.workspace.readFile(
+						normalizedRoot === ''
+							? kodyIgnoreFileName
+							: `${normalizedRoot}/${kodyIgnoreFileName}`,
+					),
+				)
 	const files = await input.workspace.glob(pattern)
 	for (const file of files) {
 		if (file.type !== 'file') continue
@@ -2127,9 +2131,12 @@ export async function runRepoSourceWalkChecks(input: {
 	const collected: Record<string, string> = {}
 	let fileCount = 0
 	let totalBytes = 0
+	// Plain repos push the whole tree, so `.kodyignore` must not shrink
+	// what this size gate counts.
 	for await (const [path, content, fileBytes] of workspaceFilesForSnapshot({
 		workspace: input.workspace,
 		root: sourceRoot,
+		applyKodyIgnore: false,
 	})) {
 		fileCount += 1
 		if (fileCount > repoChecksSourceMaxFiles) {

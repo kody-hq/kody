@@ -36,7 +36,8 @@ export function omitKodyIgnoredFiles<Value>(
 	files: Record<string, Value>,
 	sourceRoot = '',
 ): Record<string, Value> {
-	const root = sourceRoot.replace(/^\/+|\/+$/g, '')
+	const trimmed = sourceRoot.replace(/^(?:\.\/|\/)+|\/+$/g, '')
+	const root = trimmed === '.' ? '' : trimmed
 	const prefix = root === '' ? '' : `${root}/`
 	const ignoreFile = files[`${prefix}${kodyIgnoreFileName}`]
 	const isIgnored = createKodyIgnoreMatcher(

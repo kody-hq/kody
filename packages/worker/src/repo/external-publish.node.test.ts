@@ -359,6 +359,28 @@ test('publish snapshot, credential scans, and finalize skip .kodyignore matches'
 	)
 })
 
+test('clone-path publish matches .kodyignore against the repo-relative source root', async () => {
+	setupPublish({ source_root: '/packages/demo/' })
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.runRepoChecks.mockResolvedValue(passingChecks)
+	const files = {
+		'README.md': '# repo\n',
+		'packages/demo/package.json': '{"name":"@example/demo"}',
+		'packages/demo/.kodyignore': 'fixtures/\n',
+		'packages/demo/src/index.ts': 'export default async () => null',
+		'packages/demo/fixtures/large.ts': 'export const data = []',
+	}
+	const { 'packages/demo/fixtures/large.ts': _ignored, ...kept } = files
+
+	await expect(
+		publish({ env: kvEnv, files, sourceRoot: '/repo/packages/demo' }),
+	).resolves.toMatchObject({ status: 'published' })
+
+	expect(mockModule.writePublishedSourceSnapshot).toHaveBeenCalledWith(
+		expect.objectContaining({ files: kept }),
+	)
+})
+
 test('returns no-op when commit is already current', async () => {
 	setupPublish()
 	const alreadyPublished = {

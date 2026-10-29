@@ -466,8 +466,10 @@ export async function publishFromExternalRef(input: {
 	// already package-relative. Pass sourceRoot only for the repo-rooted shape.
 	const pendingFilesSourceRoot =
 		input.files != null ? (input.sourceRoot ?? source.source_root) : undefined
+	// Clone files are keyed relative to the repo, while input.sourceRoot is
+	// workspace-prefixed, so match `.kodyignore` against the stored root.
 	const pendingFiles = input.files
-		? omitKodyIgnoredFiles(input.files, pendingFilesSourceRoot)
+		? omitKodyIgnoredFiles(input.files, source.source_root)
 		: checks.sourceFiles
 	const secretMountCompat =
 		source.entity_kind === 'package'
