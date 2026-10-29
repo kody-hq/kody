@@ -32,25 +32,37 @@ export function OrgVisibilityFieldset(props: {
 	disabled?: boolean
 	testId?: string
 }) {
+	const baseId = props.testId ?? 'org-visibility'
 	return (
 		<fieldset css={fieldsetCss} data-testid={props.testId}>
 			<legend css={accountFieldLabelCss}>Page visibility</legend>
-			{options.map((option) => (
-				<label key={option.value} css={optionCss}>
-					<input
-						type="radio"
-						name="profileVisibility"
-						value={option.value}
-						checked={props.value === option.value}
-						disabled={props.disabled}
-						onChange={() => props.onChange(option.value)}
-					/>
-					<span css={optionTextCss}>
-						<span>{option.label}</span>
-						<span css={accountFieldNoteCss}>{option.note}</span>
-					</span>
-				</label>
-			))}
+			{options.map((option) => {
+				// The note describes the radio instead of labelling it, so its
+				// copy ("name, photo") does not match label lookups like "Name".
+				const noteId = `${baseId}-${option.value}-note`
+				return (
+					<div key={option.value} css={optionCss}>
+						<input
+							id={`${baseId}-${option.value}`}
+							type="radio"
+							name="profileVisibility"
+							value={option.value}
+							checked={props.value === option.value}
+							disabled={props.disabled}
+							aria-describedby={noteId}
+							onChange={() => props.onChange(option.value)}
+						/>
+						<span css={optionTextCss}>
+							<label htmlFor={`${baseId}-${option.value}`}>
+								{option.label}
+							</label>
+							<span id={noteId} css={accountFieldNoteCss}>
+								{option.note}
+							</span>
+						</span>
+					</div>
+				)
+			})}
 			<p css={accountFieldNoteCss}>
 				This controls kody.codes/@{props.handle || 'your-handle'}. Members are
 				never listed, and private packages never show there.
