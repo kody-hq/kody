@@ -1,4 +1,4 @@
-import { registerSkillRestoreTests } from './repo-session-skill-restore.test-cases.ts'
+import { registerSkillRestoreTests } from '#worker/test-support/repo-session-skill-restore.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { createWorkspaceStateBackend, type Workspace } from '@cloudflare/shell'

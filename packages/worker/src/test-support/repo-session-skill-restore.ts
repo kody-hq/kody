@@ -1,6 +1,6 @@
 import { expect, test, type Mock } from 'vitest'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type RepoSession } from './repo-session-do.ts'
+import { type RepoSession } from '../repo/repo-session-do.ts'
 import {
 	repoSessionMockModule as mockModule,
 	setCommonSessionFixtures,
@@ -11,7 +11,7 @@ export function registerSkillRestoreTests({
 	seedWorkspace,
 	skillSnapshot,
 }: {
-	repoSession: () => RepoSession
+	repoSession: () => InstanceType<typeof RepoSession>
 	seedWorkspace: (files: Record<string, string>) => void
 	skillSnapshot: Mock
 }) {
