@@ -89,3 +89,15 @@ test('a package with no kody calls has no check result', () => {
 		}),
 	).toBeNull()
 })
+
+test('a module-level kody that is not the runtime bridge is ignored', () => {
+	expect(
+		buildCapabilityDeclarationCheck({
+			manifest: kodyManifest(),
+			sourceFiles: {
+				'src/index.ts':
+					'const kody = { send() {} }\nexport default () => kody.send()\n',
+			},
+		}),
+	).toBeNull()
+})

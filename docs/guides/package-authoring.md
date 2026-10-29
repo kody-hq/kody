@@ -445,22 +445,10 @@ then call it.
 - **Exactly-once** → [workflows](../use/workflows.md), not a keyed invoke.
 - **External HTTP clients** → [inbound webhooks](../use/webhooks.md).
 
-**Declare the capabilities you call.** Every package lists the Kody capabilities
-its own modules call in `kody.capabilities` (an app uses
-`kody.app.capabilities`). Publish and `kody dev check` report undeclared
-`kody.<name>(...)` calls, and calls whose name is picked at run time when the
-package declares nothing, as a warning for now; they will fail publish once the
-rollout switch flips
+**Declare the capabilities you call** in `kody.capabilities`; publish and
+`kody dev check` warn on gaps
 ([ADR 0089](../contributing/decisions/0089-packages-declare-capabilities.md)).
-
-```json
-{ "kody": { "description": "Example.", "capabilities": ["secretList"] } }
-```
-
-**App capabilities cover imports.** `kody.app.capabilities` caps every Kody call
-while the app runs, imports included. Until publish derives this from the import
-closure, list them: if `@example/app` imports `@example/helper`, which calls
-`kody.secretList` and `kody.secretSet`, `@example/app` lists both
+An app's `kody.app.capabilities` must also cover what its imports call
 ([details](./package-apps.md#who-the-app-runs-as)).
 
 README, `AGENTS.md`, and export `@example` blocks follow the same rules: import
