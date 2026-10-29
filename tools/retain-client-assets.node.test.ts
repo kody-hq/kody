@@ -121,3 +121,53 @@ test('fails instead of serving changed bytes under an existing immutable URL', (
 		}),
 	).toThrow('Immutable client asset changed')
 })
+
+test('drops the oldest retained assets when deploys outgrow the asset budget', () => {
+	const root = mkdtempSync(path.join(tmpdir(), 'retained-assets-'))
+	directories.push(root)
+	const day = 24 * 60 * 60 * 1_000
+	const now = 10 * day
+	const previous = path.join(root, 'previous')
+	mkdirSync(path.join(previous, 'assets'), { recursive: true })
+	const manifest: Record<string, number> = {
+		'oldest-aaaaaaaa.js': now - 3 * day,
+		'older-bbbbbbbb.js': now - 2 * day,
+		'newer-cccccccc.js': now - day,
+	}
+	for (const name of Object.keys(manifest)) {
+		writeFileSync(path.join(previous, 'assets', name), name)
+	}
+	writeFileSync(path.join(previous, 'manifest.json'), JSON.stringify(manifest))
+	const client = path.join(root, 'client')
+	mkdirSync(path.join(client, 'assets'), { recursive: true })
+	writeFileSync(path.join(client, 'assets', 'fresh-dddddddd.js'), 'fresh')
+	writeFileSync(path.join(client, 'assets', 'fresh-eeeeeeee.css'), 'fresh')
+	const archive = path.join(root, 'archive')
+	retainClientAssets({
+		clientDirectory: client,
+		previousDirectory: previous,
+		archiveDirectory: archive,
+		now,
+		maxAssets: 3,
+	})
+	expect(
+		Object.keys(
+			JSON.parse(readFileSync(path.join(archive, 'manifest.json'), 'utf8')),
+		).sort(),
+	).toEqual(['fresh-dddddddd.js', 'fresh-eeeeeeee.css', 'newer-cccccccc.js'])
+	expect(
+		readFileSync(path.join(client, 'assets/newer-cccccccc.js'), 'utf8'),
+	).toBe('newer-cccccccc.js')
+	expect(() =>
+		readFileSync(path.join(client, 'assets/oldest-aaaaaaaa.js')),
+	).toThrow()
+	expect(() =>
+		retainClientAssets({
+			clientDirectory: client,
+			previousDirectory: archive,
+			archiveDirectory: path.join(root, 'too-big'),
+			now,
+			maxAssets: 1,
+		}),
+	).toThrow('Retained assets approach the Workers static asset limit')
+})

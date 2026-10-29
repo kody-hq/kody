@@ -11,6 +11,8 @@ import {
 import path from 'node:path'
 
 const retentionMs = 7 * 24 * 60 * 60 * 1_000
+/** Headroom under the Workers static asset file limit for non-hashed files. */
+const maxRetainedAssets = 19_000
 const hashedAsset =
 	/^.+-[\w-]{8,}\.(?:js|css|woff2?|ttf|otf|png|jpe?g|webp|avif|gif|svg|ico)$/
 
@@ -20,11 +22,14 @@ export function retainClientAssets({
 	previousDirectory,
 	archiveDirectory,
 	now = Date.now(),
+	maxAssets = maxRetainedAssets,
 }: {
 	clientDirectory: string
 	previousDirectory: string
 	archiveDirectory: string
 	now?: number
+	/** Most hashed files one deploy may carry (current build plus retained). */
+	maxAssets?: number
 }) {
 	const current = path.join(clientDirectory, 'assets')
 	const previous = path.join(previousDirectory, 'assets')
@@ -55,8 +60,17 @@ export function retainClientAssets({
 		readdirSync(current).filter((name) => hashedAsset.test(name)),
 	)
 	for (const name of fresh) timestamps[name] = now
-	if (Object.keys(timestamps).length > 19_000) {
+	if (fresh.size > maxAssets) {
 		throw new Error('Retained assets approach the Workers static asset limit')
+	}
+	// Frequent deploys can retain more than the asset budget within the
+	// retention window. Drop the oldest retained files first; the current
+	// build always ships in full.
+	const retained = Object.keys(timestamps)
+		.filter((name) => !fresh.has(name))
+		.sort((a, b) => (timestamps[b] ?? 0) - (timestamps[a] ?? 0))
+	for (const name of retained.slice(maxAssets - fresh.size)) {
+		delete timestamps[name]
 	}
 	for (const name of Object.keys(timestamps)) {
 		const destination = path.join(current, name)
