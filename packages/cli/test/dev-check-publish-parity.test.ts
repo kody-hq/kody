@@ -117,7 +117,11 @@ test('kody dev check passes a data-only app package with no exports field', asyn
 			JSON.stringify({
 				name: '@local/board',
 				type: 'module',
-				kody: { id: 'board', app: { entry: './src/app.ts' } },
+				kody: {
+					id: 'board',
+					description: 'Data-only package with an app.',
+					app: { entry: './src/app.ts' },
+				},
 			}),
 		)
 		await writeFile(join(root, 'README.md'), '# board\n')
