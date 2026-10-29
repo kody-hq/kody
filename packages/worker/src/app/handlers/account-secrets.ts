@@ -94,6 +94,8 @@ import {
 	findOauthAppForProviderSetup,
 	getAvailablePlatformApp,
 	getJoinedIntegration,
+	LiveOauthAppReplaceError,
+	type LiveConnectionGuard,
 	upsertIntegration,
 	upsertOauthAppWithoutConnection,
 	upsertPlatformIntegration,
@@ -202,6 +204,9 @@ export async function saveAccountOAuthApp(input: {
 	try {
 		const app = await upsertOauthAppWithoutConnection({
 			env: input.env,
+			liveConnectionGuard: {
+				confirmed: input.fields.replaceLiveConnection === true,
+			},
 			userId: ownerIdFromCaller({
 				request: input.user.request,
 				user: input.user.mcpUser,
@@ -273,6 +278,9 @@ export async function saveAccountOAuthApp(input: {
 					error instanceof Error
 						? error.message
 						: 'Unable to save OAuth app configuration.',
+				...(error instanceof LiveOauthAppReplaceError
+					? { code: error.code }
+					: {}),
 			},
 			400,
 		)
@@ -408,6 +416,9 @@ export async function connectAccountOAuth(input: {
 			).name
 		: await saveIntegrationConfig({
 				env: input.env,
+				liveConnectionGuard: {
+					confirmed: input.fields.replaceLiveConnection === true,
+				},
 				userId: ownerIdFromCaller({
 					request: input.user.request,
 					user: input.user.mcpUser,
@@ -869,6 +880,7 @@ async function exchangeOAuthToken(input: {
 
 async function saveIntegrationConfig(input: {
 	env: Env
+	liveConnectionGuard: LiveConnectionGuard
 	userId: OwnerId
 	provider: string
 	tokenUrl: string
@@ -914,6 +926,7 @@ async function saveIntegrationConfig(input: {
 		env: input.env,
 		userId: input.userId,
 		config: normalizeIntegrationConfig(parsed.data),
+		liveConnectionGuard: input.liveConnectionGuard,
 		waitUntil,
 		audit: input.audit,
 	})
