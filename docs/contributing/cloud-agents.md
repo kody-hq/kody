@@ -160,7 +160,10 @@ Do not symlink the whole `node_modules` directory into the worktree.
 `node_modules/@kody/*` and `node_modules/@kody-internal/shared` are relative
 links to `../../packages/*`. Through a whole-directory symlink they resolve to
 the main checkout's `packages/`, so typecheck and tests read the main checkout's
-branch instead of the worktree's (#3404).
+branch instead of the worktree's (#3404). The same whole-directory symlink also
+makes TypeScript see `csstype` through two paths, so a pre-push typecheck in the
+**main** checkout can fail with thousands of TS2883 errors on untouched style
+helpers (#4446).
 
 From the main checkout, link every entry except those workspace scopes, which
 are copied as links so they point at the worktree's own `packages/`. The repo
