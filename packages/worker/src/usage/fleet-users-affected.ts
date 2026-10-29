@@ -508,9 +508,10 @@ export function buildFleetUsersAffectedActorQuery(input: {
 	// Distinct actors: blob10 when set, else billing blob1 (legacy / automation
 	// defaults). Empty blob10 means Automation — count as one synthetic actor
 	// key so automation storms still register without inventing person ids.
+	// Analytics Engine SQL has no concat(); format() is its string builder.
 	return `
 SELECT
-	if(blob10 = '', concat('automation:', blob1), blob10) AS actor_id,
+	if(blob10 = '', format('automation:{}', blob1), blob10) AS actor_id,
 	count() AS event_count
 FROM ${input.dataset}
 WHERE timestamp >= toDateTime('${toAnalyticsDateTime(input.windowStart)}')
@@ -534,7 +535,7 @@ export function buildFleetUsersAffectedPackageActorQuery(input: {
 SELECT
 	blob3 AS package_id,
 	blob2 AS metric,
-	if(blob10 = '', concat('automation:', blob1), blob10) AS actor_id
+	if(blob10 = '', format('automation:{}', blob1), blob10) AS actor_id
 FROM ${input.dataset}
 WHERE timestamp >= toDateTime('${toAnalyticsDateTime(input.windowStart)}')
 	AND timestamp < toDateTime('${toAnalyticsDateTime(input.windowEnd)}')
