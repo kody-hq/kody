@@ -118,6 +118,19 @@ const workerdStartTimeoutMs = 30_000
 const cancelledError = 'Local execute was cancelled before it finished.'
 const setupCancelled = Symbol('setup cancelled')
 
+let workerdAcquisition: Promise<string> | undefined
+
+/** One in-flight workerd download per process, so a retry after a cancel reuses it. */
+function acquireWorkerdBinary(onStatus: LocalExecuteInput['onStatus']) {
+	workerdAcquisition ??= ensureWorkerdBinary({
+		onDownload: (url) =>
+			onStatus?.(`Downloading workerd for local execute from ${url}…`),
+	}).finally(() => {
+		workerdAcquisition = undefined
+	})
+	return workerdAcquisition
+}
+
 /** Settles with `setupCancelled` as soon as `signal` aborts, even if `work` stalls. */
 function untilAborted<T>(
 	work: Promise<T>,
@@ -174,16 +187,24 @@ export async function runLocalExecute(
 	}
 	// Skip the session preflight on the hot path (package-graph authenticates).
 	// `--credential` still opens a session for feature detection + call-map check.
-	if (input.credentials) {
-		const session = await openCapabilityProxySession(client)
-		assertCredentialCallMapSupported(session, input)
-		input.onStatus?.('Checking --credential picks against CapabilityProxy…')
-		const { warnings } = await checkCredentialCallMap({
-			...client,
-			credentials: input.credentials,
-			conversationId: input.conversationId,
-		})
-		for (const warning of warnings) {
+	const credentials = input.credentials
+	if (credentials) {
+		const preflight = await untilAborted(
+			(async () => {
+				const session = await openCapabilityProxySession(client)
+				assertCredentialCallMapSupported(session, input)
+				input.onStatus?.('Checking --credential picks against CapabilityProxy…')
+				const { warnings } = await checkCredentialCallMap({
+					...client,
+					credentials,
+					conversationId: input.conversationId,
+				})
+				return warnings
+			})(),
+			input.signal,
+		)
+		if (preflight === setupCancelled) return cancelledDuringSetup()
+		for (const warning of preflight) {
 			input.onStatus?.(warning)
 		}
 	}
@@ -212,15 +233,7 @@ export async function runLocalExecute(
 
 	const workerdPath =
 		input.workerdPath ??
-		(await untilAborted(
-			ensureWorkerdBinary({
-				onDownload: (url) =>
-					input.onStatus?.(
-						`Downloading workerd for local execute from ${url}…`,
-					),
-			}),
-			input.signal,
-		))
+		(await untilAborted(acquireWorkerdBinary(input.onStatus), input.signal))
 	if (workerdPath === setupCancelled) return cancelledDuringSetup()
 
 	const runSecret = randomBytes(32).toString('hex')
