@@ -8,6 +8,8 @@
  * counts.
  */
 
+import * as Sentry from '@sentry/cloudflare'
+
 export const hostSideEffectProviderName = '__kodyHostSideEffects'
 
 export const staticCallMeterRuntimeBridgeProviderName =
@@ -60,6 +62,44 @@ export function createHostSideEffectProvider(
 			},
 		},
 	}
+}
+
+/** Sandbox-side count of `recordFetch` calls that failed (fetch went ahead). */
+export type SandboxFetchRecordFailures = {
+	count: number
+	message: string | null
+}
+
+let reportedSandboxFetchRecordFailure = false
+
+/**
+ * The sandbox never fails a fetch because its attempt could not be recorded.
+ * Count the fetch here instead so the run still reads as having side
+ * effects, and report the first failure per isolate.
+ */
+export function noteSandboxFetchRecordFailures(
+	failures: SandboxFetchRecordFailures | null | undefined,
+	sideEffects: EvaluationSideEffectTracker,
+) {
+	const count = typeof failures?.count === 'number' ? failures.count : 0
+	if (count <= 0) return
+	for (let index = 0; index < count; index += 1) {
+		sideEffects.recordFetchAttempt()
+	}
+	if (reportedSandboxFetchRecordFailure) return
+	reportedSandboxFetchRecordFailure = true
+	const message =
+		typeof failures?.message === 'string'
+			? failures.message.slice(0, 200)
+			: 'unknown'
+	Sentry.withScope((scope) => {
+		scope.setTag('executor.fetch_record_failure', 'true')
+		scope.setContext('executor_fetch_record_failure', { count, message })
+		Sentry.captureMessage(
+			`Executor fetch-attempt recording failed: ${message}`,
+			'warning',
+		)
+	})
 }
 
 /**

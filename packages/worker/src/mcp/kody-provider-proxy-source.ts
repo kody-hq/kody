@@ -77,7 +77,15 @@ export function createKodyProviderProxySource(input: { providerName: string }) {
               return next;
             })()
           : args;
-      const resJson = await __dispatchers.${input.providerName}.call(dispatchName, JSON.stringify(payload ?? {}));
+      // A reused isolate can call this from a later run (e.g. a cached
+      // createAuthenticatedFetch refreshing a token). This run's stubs are
+      // disposed by then, so prefer the calling run's dispatchers.
+      const activeRun =
+        typeof __kodyEvaluateFetchStorage === 'undefined'
+          ? undefined
+          : __kodyReflectApplyCaptured(__kodyAlsGetStoreCaptured, __kodyEvaluateFetchStorage, []);
+      const dispatcher = activeRun?.dispatchers?.${input.providerName} ?? __dispatchers.${input.providerName};
+      const resJson = await dispatcher.call(dispatchName, JSON.stringify(payload ?? {}));
       const data = JSON.parse(resJson);
       if (data.error) throw new Error(data.error);
       return data.result;

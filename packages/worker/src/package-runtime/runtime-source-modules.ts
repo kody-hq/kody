@@ -945,12 +945,17 @@ function __kodyCreateBindingExecuteHelpers(${kodyCallDispatcherName}, fetch) {
 ${createExecuteHelperPrelude()}
 	return { createAuthenticatedFetch, oauthClientCredentials };
 }
+// Packages may cache the returned authenticated fetch in module scope, and
+// a reused isolate keeps module scope across runs. A binding wraps its run's
+// RPC stubs, which are disposed when that run's evaluate() returns, so the
+// helpers resolve the current run's binding on every call instead of closing
+// over this one.
 function __kodyBindingExecuteHelpersFor(packageId) {
-	const binding = __kodyPackageBindingFor(packageId);
-	if (binding == null) return null;
+	if (__kodyPackageBindingFor(packageId) == null) return null;
+	const boundKody = __kodyCreatePackageBoundKody(packageId);
 	return __kodyCreateBindingExecuteHelpers(
-		(name, args) => __kodyReflectApply(binding.kodyCall, binding, [name, args]),
-		(input, init) => __kodyReflectApply(binding.fetch, binding, [input, init]),
+		(name, args) => boundKody[name](args),
+		__kodyCreatePackageBoundFetch(packageId),
 	);
 }
 export function __kodyCreatePackageBoundAuthenticatedFetch(packageId) {

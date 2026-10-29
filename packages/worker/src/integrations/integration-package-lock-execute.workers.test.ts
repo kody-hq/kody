@@ -431,3 +431,106 @@ test(
 		])
 	},
 )
+
+// Execute reuses one sandbox isolate for identical code, so module scope
+// outlives a run. A package that caches its authenticated fetch there must
+// not reach an earlier run's RPC stubs, which die when that run's
+// evaluate() returns ("RPC stub used after being disposed.").
+const cachedAuthedFetchSource = `import { createAuthenticatedFetch } from 'kody:runtime'
+let authed = null
+export default async function call() {
+	authed ??= await createAuthenticatedFetch(${JSON.stringify(INTEGRATION)})
+	const res = await authed('https://upstream.example.com/locked')
+	return { status: res.status }
+}`
+
+test(
+	'a package-cached authenticated fetch keeps working when later executes reuse the isolate',
+	{ timeout: 120_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const person = await createPerson()
+		const allowed = await publishPackage(person, 'allowed', {
+			'src/call.ts': cachedAuthedFetchSource,
+		})
+		await connectLockedIntegration(person, allowed.packageId)
+		const seen = installFakeUpstream()
+
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			const run = await execute(person, importAndCall(allowed.name))
+			expect({ attempt, error: run.error }).toEqual({
+				attempt,
+				error: undefined,
+			})
+			expect(run.result).toEqual({ status: 200 })
+		}
+		expect(seen).toEqual(
+			Array.from({ length: 3 }, () => ({
+				path: '/locked',
+				authorization: `Bearer ${DUMMY_TOKEN}`,
+			})),
+		)
+	},
+)
+
+const chunkUploadSource = `import { createAuthenticatedFetch } from 'kody:runtime'
+let authed = null
+export default async function call() {
+	authed ??= await createAuthenticatedFetch(${JSON.stringify(INTEGRATION)})
+	const chunk = new Uint8Array(4 * 1024 * 1024).fill(7)
+	const res = await authed('https://upstream.example.com/upload', {
+		method: 'POST',
+		body: new ReadableStream({
+			start(controller) {
+				controller.enqueue(chunk.subarray(0, chunk.length / 2))
+				controller.enqueue(chunk.subarray(chunk.length / 2))
+				controller.close()
+			},
+		}),
+		duplex: 'half',
+	})
+	return await res.json()
+}`
+
+test(
+	'a package-cached authenticated fetch streams large upload chunks across reused isolates',
+	{ timeout: 120_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const person = await createPerson()
+		const allowed = await publishPackage(person, 'allowed', {
+			'src/call.ts': chunkUploadSource,
+		})
+		await connectLockedIntegration(person, allowed.packageId)
+		const realFetch = globalThis.fetch
+		vi.stubGlobal(
+			'fetch',
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				const request = new Request(input as RequestInfo, init)
+				if (new URL(request.url).hostname !== 'upstream.example.com') {
+					return realFetch(input as RequestInfo, init)
+				}
+				const bytes = new Uint8Array(await request.arrayBuffer())
+				return Response.json({
+					authorized:
+						request.headers.get('authorization') === `Bearer ${DUMMY_TOKEN}`,
+					bytes: bytes.length,
+					allSevens: bytes.every((byte) => byte === 7),
+				})
+			},
+		)
+
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			const run = await execute(person, importAndCall(allowed.name))
+			expect({ attempt, error: run.error }).toEqual({
+				attempt,
+				error: undefined,
+			})
+			expect(run.result).toEqual({
+				authorized: true,
+				bytes: 4 * 1024 * 1024,
+				allSevens: true,
+			})
+		}
+	},
+)

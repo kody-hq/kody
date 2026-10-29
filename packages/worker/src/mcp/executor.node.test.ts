@@ -35,6 +35,7 @@ import {
 	limitExecutionResultValue,
 	runWithDynamicWorkerEvaluationBudget,
 	type ClaimWorkerDayAttribution,
+	createSandboxRecordFetchAttemptSource,
 } from './executor.ts'
 import {
 	durableObjectCodeUpdatedResetMessage,
@@ -1724,4 +1725,63 @@ test('executor maps secret errors, formats guidance, and truncates on UTF-8 boun
 	expect(
 		new TextEncoder().encode(String(threeByteLimit.value)).byteLength,
 	).toBe(3)
+})
+
+type RecordFetchAttempt = (
+	hostSideEffects: {
+		call: (name: string, argsJson: string) => Promise<string>
+	} | null,
+	failures: { count: number; message: string | null },
+) => Promise<void>
+
+function loadSandboxRecordFetchAttempt() {
+	return new Function(
+		'__kodyJsonParseCaptured',
+		'__kodyErrorCaptured',
+		'__kodyStringCaptured',
+		`${createSandboxRecordFetchAttemptSource()}; return __kodyRecordFetchAttempt;`,
+	)(JSON.parse, Error, String) as RecordFetchAttempt
+}
+
+test('sandbox fetch recording never throws when the recorder stub is disposed', async () => {
+	const recordFetchAttempt = loadSandboxRecordFetchAttempt()
+	const failures = { count: 0, message: null as string | null }
+	const calls: Array<string> = []
+	let disposed = false
+	const recorder = {
+		async call(name: string) {
+			if (disposed) throw new Error('RPC stub used after being disposed.')
+			calls.push(name)
+			return JSON.stringify({ result: null })
+		},
+	}
+
+	await recordFetchAttempt(recorder, failures)
+	expect(calls).toEqual(['recordFetch'])
+	expect(failures).toEqual({ count: 0, message: null })
+
+	disposed = true
+	await expect(recordFetchAttempt(recorder, failures)).resolves.toBeUndefined()
+	await expect(recordFetchAttempt(recorder, failures)).resolves.toBeUndefined()
+	expect(failures).toEqual({
+		count: 2,
+		message: 'RPC stub used after being disposed.',
+	})
+
+	const errorEnvelope = {
+		async call() {
+			return JSON.stringify({ error: 'Execution has already completed.' })
+		},
+	}
+	const envelopeFailures = { count: 0, message: null as string | null }
+	await expect(
+		recordFetchAttempt(errorEnvelope, envelopeFailures),
+	).resolves.toBeUndefined()
+	expect(envelopeFailures).toEqual({
+		count: 1,
+		message: 'Execution has already completed.',
+	})
+
+	await expect(recordFetchAttempt(null, failures)).resolves.toBeUndefined()
+	expect(failures.count).toBe(2)
 })
