@@ -266,27 +266,34 @@ export async function purgeParkedDeadLetterMessages(
 	db: D1Database,
 	input: { deadLetterQueue: string; limit: number },
 ): Promise<{ messageIds: Array<string>; remainingCount: number }> {
-	const result = await db
-		.prepare(
-			`DELETE FROM dead_letter_messages
-			 WHERE rowid IN (
-				SELECT rowid FROM dead_letter_messages
-				WHERE dead_letter_queue = ?
-				ORDER BY enqueued_at_ms ASC, message_id ASC
-				LIMIT ?
-			 )
-			 RETURNING message_id`,
-		)
-		.bind(input.deadLetterQueue, input.limit)
-		.all<{ message_id: string }>()
-	const remaining = await db
-		.prepare(
-			`SELECT COUNT(*) AS count FROM dead_letter_messages WHERE dead_letter_queue = ?`,
-		)
-		.bind(input.deadLetterQueue)
-		.first<{ count: number }>()
+	// One batch is one transaction: a failed count rolls back the delete, so a
+	// purge never deletes rows it cannot report (and audit).
+	const [result, remaining] = await db.batch<{
+		message_id?: string
+		count?: number
+	}>([
+		db
+			.prepare(
+				`DELETE FROM dead_letter_messages
+				 WHERE rowid IN (
+					SELECT rowid FROM dead_letter_messages
+					WHERE dead_letter_queue = ?
+					ORDER BY enqueued_at_ms ASC, message_id ASC
+					LIMIT ?
+				 )
+				 RETURNING message_id`,
+			)
+			.bind(input.deadLetterQueue, input.limit),
+		db
+			.prepare(
+				`SELECT COUNT(*) AS count FROM dead_letter_messages WHERE dead_letter_queue = ?`,
+			)
+			.bind(input.deadLetterQueue),
+	])
 	return {
-		messageIds: (result.results ?? []).map((row) => row.message_id).sort(),
-		remainingCount: Number(remaining?.count ?? 0),
+		messageIds: (result?.results ?? [])
+			.map((row) => String(row.message_id))
+			.sort(),
+		remainingCount: Number(remaining?.results?.[0]?.count ?? 0),
 	}
 }
