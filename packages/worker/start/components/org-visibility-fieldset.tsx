@@ -56,7 +56,14 @@ export function OrgVisibilityFieldset(props: {
 							<label htmlFor={`${baseId}-${option.value}`}>
 								{option.label}
 							</label>
-							<span id={noteId} css={accountFieldNoteCss}>
+							{/* Clicking the note picks the option like its label does; the radio stays the accessible control. */}
+							<span
+								id={noteId}
+								css={[accountFieldNoteCss, { cursor: 'pointer' }]}
+								onClick={() => {
+									if (!props.disabled) props.onChange(option.value)
+								}}
+							>
 								{option.note}
 							</span>
 						</span>

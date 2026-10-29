@@ -93,9 +93,19 @@ export async function updateOrgProfile(
 			 SET display_name = ?,
 			   profile_visibility = COALESCE(?, profile_visibility),
 			   updated_at = ?
-			 WHERE id = ?${andLiveDeletedAtSql()}`,
+			 WHERE id = ?${andLiveDeletedAtSql()}
+			   AND (? IS NULL OR profile_visibility = ?)`,
 		)
-		.bind(nextDisplayName, input.profileVisibility ?? null, now, input.orgId)
+		.bind(
+			nextDisplayName,
+			input.profileVisibility ?? null,
+			now,
+			input.orgId,
+			// An explicit visibility applies only over the value it was read
+			// against, so a stale request cannot undo a concurrent change.
+			input.profileVisibility === undefined ? null : previousVisibility,
+			previousVisibility,
+		)
 	if (nextVisibility !== previousVisibility && input.audit) {
 		// The change and its audit outbox row commit together.
 		await runAppDbBatchWithOrgAudit({
