@@ -28,6 +28,11 @@ const publicRoutes: RouteScenario[] = [
 		ready: async (page) => {
 			await expect(page.getByLabel('Email')).toBeVisible()
 			await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
+			// Hydration enables the submit button and starts its opacity transition.
+			// Wait for that state before the shared animation-settling check.
+			await expect(
+				page.getByRole('button', { name: /^(Sign in|Create account)$/ }),
+			).toBeEnabled()
 		},
 	},
 	{
@@ -42,6 +47,11 @@ const publicRoutes: RouteScenario[] = [
 			).toBeVisible()
 			await expect(page.getByLabel('Email')).toBeVisible()
 			await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
+			// Hydration enables the submit button and starts its opacity transition.
+			// Wait for that state before the shared animation-settling check.
+			await expect(
+				page.getByRole('button', { name: /^(Sign in|Create account)$/ }),
+			).toBeEnabled()
 		},
 	},
 	{
