@@ -151,10 +151,9 @@ The fetch gateway enforces placement: a fill into a part the credential does not
 allow is refused with a message naming the credential, the refused part, and the
 allowed parts. Query, URL path, and body also need the owner's opt-in, given by
 saving them on the credential page, which warns that the host may store a value
-sent there. A credential already seen filling a query, path, or body before
-enforcement keeps those parts without a new save: migration 0195 records them as
-opted in, so nobody has to migrate anything by hand. Older credentials with no
-placement set fill headers plus those parts.
+sent there. A credential that already filled query, path, or body keeps those
+parts without a new save. Older credentials with no placement set fill headers
+plus those parts.
 
 Agents cannot widen placement, but they can ask the owner to. A refused query,
 path, or body fill of a user Key carries a ready approval link,
