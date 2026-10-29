@@ -47,7 +47,9 @@ discover them.
   hard-rejection counts stay at zero for about 14 days, delete the #4278 visitor
   fallback path in `runWithAuthority` (with `ownerCredentialForVisitors` and the
   fallback/rejection tables and report), and the Phase 1 migration code (codemod
-  0018, its closure scanner and report, and the codemod host-facts lane).
+  0018, its migration report, the codemod host-facts lane, and the fallback-log
+  gap filling). The import-closure scanner stays: the publish check uses it, so
+  it moves next to the publish checks instead of being deleted.
 
 ## Consequences
 
