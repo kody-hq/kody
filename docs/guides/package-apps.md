@@ -309,7 +309,7 @@ though its own code never calls them:
 {
 	"name": "@example/app",
 	"kody": {
-		"dependencies": ["@example/helper"],
+		"dependencies": { "@example/helper": "*" },
 		"app": {
 			"entry": "src/index.ts",
 			"capabilities": ["secretList", "secretSet"]
@@ -318,10 +318,12 @@ though its own code never calls them:
 }
 ```
 
-Without them the call fails with `PackageAppCapabilityNotDeclaredError`, which
-names the app (package name and version), the imported package that made the
-call, and the capability to add. Add it to the importing app's
-`kody.app.capabilities` and republish the app.
+Without them the call cannot run as the runs-as person. For now it may still run
+under the visitor's authority (see the temporary fallback below); when that also
+fails, the app gets `PackageAppCapabilityNotDeclaredError`, which names the app
+(package name and version), the imported package that made the call, and the
+capability to add. Add it to the importing app's `kody.app.capabilities` and
+republish the app.
 
 `kody.app.visitorNeeds` is how an app works on a signed-in visitor's own data.
 Each key is its own Sign in with Kody consent scope, `need:<key>`, and the

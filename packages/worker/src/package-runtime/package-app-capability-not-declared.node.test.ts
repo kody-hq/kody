@@ -46,7 +46,7 @@ test('names the checked app, the imported package that called, and the fix', () 
 	})
 	expect(error.capabilityName).toBe('secretSet')
 	expect(error.message).toBe(
-		'Package app capability "secretSet" is not listed in kody.app.capabilities of the app "@example/app@1.2.0". The call came from "@example/helper", a package the app imports. Apps run as their publisher and may call only the Kody capabilities they declare, including calls made by packages they import. Fix: add "secretSet" to kody.app.capabilities in the package.json of "@example/app", then republish the app.',
+		'Package app capability "secretSet" is not listed in kody.app.capabilities of the app "@example/app@1.2.0". The call came from "@example/helper", a package the app imports. Apps run as their runs-as person (the publisher unless an Owner chose someone else) and may call only the Kody capabilities they declare, including calls made by packages they import. Fix: add "secretSet" to kody.app.capabilities in the package.json of "@example/app", then republish the app.',
 	)
 	expect(packageAppAuthorityFallbackKindOf(error)).toBe(
 		'capability_not_declared',
@@ -56,7 +56,7 @@ test('names the checked app, the imported package that called, and the fix', () 
 test('without context the message stays generic and still says how to fix it', () => {
 	const error = new PackageAppCapabilityNotDeclaredError('secretList')
 	expect(error.message).toBe(
-		'Package app capability "secretList" is not listed in kody.app.capabilities. Apps run as their publisher and may call only the Kody capabilities they declare, including calls made by packages they import. Fix: add "secretList" to kody.app.capabilities in the app\'s package.json, then republish the app.',
+		'Package app capability "secretList" is not listed in kody.app.capabilities. Apps run as their runs-as person (the publisher unless an Owner chose someone else) and may call only the Kody capabilities they declare, including calls made by packages they import. Fix: add "secretList" to kody.app.capabilities in the app\'s package.json, then republish the app.',
 	)
 	expect(packageAppAuthorityFallbackKindOf(error)).toBe(
 		'capability_not_declared',
@@ -68,8 +68,9 @@ test('credential.named points at kody.credentials instead of the capability list
 		app: { name: '@example/app', version: null },
 	})
 	expect(error.message).toContain(
-		'kody.app.capabilities of the app "@example/app".',
+		'Package app call "credential.named" cannot open the runs-as person\'s credentials by name in the app "@example/app".',
 	)
+	expect(error.message).not.toContain('is not listed in kody.app.capabilities')
 	expect(error.message).toContain(
 		'Fix: declare the credential as a need in kody.credentials in the package.json of "@example/app" and open it with credential(key), then republish the app.',
 	)
@@ -110,6 +111,6 @@ test('a bridge built before app metadata existed still throws the generic error'
 		'helper-package-id',
 	)
 	expect(error.message).toContain(
-		'is not listed in kody.app.capabilities. Apps run as their publisher',
+		'is not listed in kody.app.capabilities. Apps run as their runs-as person',
 	)
 })

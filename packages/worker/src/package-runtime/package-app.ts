@@ -3889,7 +3889,9 @@ function collectDependencyPackageNames(input: {
 	for (const dependency of input.dependencies) {
 		if (!dependency.packageId) continue
 		names[dependency.packageId] =
-			dependency.packageName?.trim() || dependency.kodyId
+			dependency.packageName?.trim() ||
+			names[dependency.packageId] ||
+			dependency.kodyId
 	}
 	return names
 }

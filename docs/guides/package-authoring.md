@@ -273,8 +273,8 @@ The rest of hosted apps is the [Package apps](./package-apps.md) playbook
 
 Production-hosted package apps live at
 `https://{username}.kody.run/<package-name>/<path>` (mount `/<package-name>`).
-Confirmed non-production runtimes may serve inline on the app origin at
-`/@username/packages/<package-name>/<path>` instead.
+Non-production runtimes may serve inline on the app origin at
+`/@{username}/packages/<package-name>/<path>` instead.
 
 Every package app receives only `/<path>` after the host strips the mount.
 Root-relative links such as `/audio/123` therefore escape the mount. Import
@@ -309,8 +309,9 @@ const audioUrl = new URL(
 ```
 
 `hostedUrl` is the full public mount URL and `appBasePath` its origin-relative
-path. Kody derives both from the current serving username and package name leaf,
-including after a rename or fork; never hard-code either segment.
+path (empty on a custom hostname). Kody derives both from the current username
+and package name, including after a rename or fork; never hard-code either
+segment.
 
 ## `kody.description` (short public tagline)
 

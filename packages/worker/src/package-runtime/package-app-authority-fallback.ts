@@ -74,8 +74,11 @@ function capabilityNotDeclaredMessage(
 	const app = describeApp(site.app)
 	const appName = site.app?.name.trim() || null
 	const callingPackage = site.callingPackage?.trim() || null
+	const credentialNamed = capabilityName === credentialNamedCallName
 	const parts = [
-		`Package app capability "${capabilityName}" is not listed in kody.app.capabilities${app ? ` of the app "${app}"` : ''}.`,
+		credentialNamed
+			? `Package app call "${capabilityName}" cannot open the runs-as person's credentials by name${app ? ` in the app "${app}"` : ''}.`
+			: `Package app capability "${capabilityName}" is not listed in kody.app.capabilities${app ? ` of the app "${app}"` : ''}.`,
 	]
 	if (callingPackage) {
 		parts.push(
@@ -83,13 +86,15 @@ function capabilityNotDeclaredMessage(
 		)
 	}
 	parts.push(
-		'Apps run as their publisher and may call only the Kody capabilities they declare, including calls made by packages they import.',
+		credentialNamed
+			? 'Apps open only the credentials they declare, including from packages they import.'
+			: 'Apps run as their runs-as person (the publisher unless an Owner chose someone else) and may call only the Kody capabilities they declare, including calls made by packages they import.',
 	)
 	const manifest = appName
 		? `the package.json of "${appName}"`
 		: "the app's package.json"
 	parts.push(
-		capabilityName === credentialNamedCallName
+		credentialNamed
 			? `Fix: declare the credential as a need in kody.credentials in ${manifest} and open it with credential(key), then republish the app.`
 			: `Fix: add "${capabilityName}" to kody.app.capabilities in ${manifest}, then republish the app.`,
 	)
