@@ -24,6 +24,7 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
+import { IntegrationPackageAccessDeniedError } from '#worker/integrations/package-access.ts'
 import {
 	createAuthenticatedFetch,
 	INTEGRATION_RUNTIME_CONFIG_TOOL_NAME,
@@ -171,9 +172,11 @@ async function setup() {
 		source: Parameters<typeof createMcpCallerContext>[0]['source'] = {
 			kind: 'mcp-oauth',
 		},
+		scopes?: Parameters<typeof createMcpCallerContext>[0]['scopes'],
 	) =>
 		createMcpCallerContext({
 			source,
+			scopes,
 			baseUrl: 'https://example.com',
 			user: {
 				userId: people[person].personId,
@@ -393,6 +396,35 @@ test('a 401 on a granted personal connection refreshes host-side and retries', a
 		vi.unstubAllGlobals()
 	}
 	expect(tokenRequests).toEqual(['ann-personal-token-refresh'])
+})
+
+test('a token without integration:use cannot reach a granted personal connection', async () => {
+	const t = await setup()
+	await (await t.savePersonalConnection('ann')).grant()
+	const scoped = t.callerAs('ann', 'member', { kind: 'mcp-oauth' }, [
+		'package:read',
+	])
+
+	expect(await settle(t.readConfig(scoped))).not.toMatchObject({
+		value: { integration: { apiBaseUrl: 'https://ann.example.com' } },
+	})
+	await expect(t.fetchAs(scoped)).rejects.toThrow()
+})
+
+test("the package allowlist on the owner's personal org still applies", async () => {
+	const t = await setup()
+	const ann = await t.savePersonalConnection('ann')
+	await ann.grant()
+	await t.db
+		.prepare(
+			`UPDATE user_integrations SET usage_mode = 'packages', allowed_packages_json = '[]' WHERE id = ?`,
+		)
+		.bind(ann.credentialId)
+		.run()
+
+	await expect(t.readConfig(t.callerAs('ann', 'member'))).rejects.toThrow(
+		IntegrationPackageAccessDeniedError,
+	)
 })
 
 test('an org connection of the same name wins over a personal one', async () => {
