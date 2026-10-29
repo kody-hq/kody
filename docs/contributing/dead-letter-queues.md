@@ -52,13 +52,15 @@ Call them through `execute` like any other admin capability.
 
 ```ts
 // execute module
-export default async (codemode) => {
-	const { queues } = await codemode.adminDeadLetterQueueList({})
-	const peek = await codemode.adminDeadLetterQueuePeek({
+import { kody } from 'kody:runtime'
+
+export default async function main() {
+	const { queues } = await kody.adminDeadLetterQueueList({})
+	const peek = await kody.adminDeadLetterQueuePeek({
 		queue: 'kody-platform-feedback-dispatch-dlq',
 	})
 	// After triage, ack the one message (or replay it instead):
-	// await codemode.adminDeadLetterQueueAck({
+	// await kody.adminDeadLetterQueueAck({
 	// 	queue: 'kody-platform-feedback-dispatch-dlq',
 	// 	message_id: peek.messages[0].message_id,
 	// })
@@ -82,8 +84,10 @@ export default async (codemode) => {
   the row cannot be removed, the error says so: ack the message so it is not
   replayed twice.
 - Parking failures report to Sentry (`dead_letter.stage: park`, queue, message
-  id, attempts) and retry every 60 seconds for up to 100 attempts; the last
-  attempt reports at `fatal` level.
+  id, attempts) and retry with exponential backoff (60 seconds doubling to the
+  12-hour Cloudflare cap) for up to 100 attempts, about six weeks of APP_DB
+  outage. The DLQ consumers have no further DLQ, so a message that exhausts them
+  is deleted; the last attempt reports at `fatal` level.
 - Alerting is unchanged in spirit: the DLQ depth alert counts parked rows, so a
   DLQ keeps paging (`dlq-depth` fingerprint) until an admin replays, acks, or
   purges its messages.

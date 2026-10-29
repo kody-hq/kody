@@ -3,7 +3,10 @@ import { DatabaseSync } from 'node:sqlite'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { handleDeadLetterQueueBatch } from '#worker/dead-letter/consumer.ts'
+import {
+	deadLetterParkRetryDelaySeconds,
+	handleDeadLetterQueueBatch,
+} from '#worker/dead-letter/consumer.ts'
 import { describeDeadLetterBody } from '#worker/dead-letter/metadata.ts'
 import {
 	deadLetterQueueNames,
@@ -252,7 +255,10 @@ test('the DLQ consumer reports park failures to Sentry with queue, message id, a
 		definition,
 	)
 	expect(ack).not.toHaveBeenCalled()
-	expect(retry).toHaveBeenCalledWith({ delaySeconds: 60 })
+	expect(retry).toHaveBeenCalledWith({ delaySeconds: 43_200 })
+	expect([1, 2, 3, 10, 11, 100].map(deadLetterParkRetryDelaySeconds)).toEqual([
+		60, 120, 240, 30_720, 43_200, 43_200,
+	])
 	expect(sentry.captureException).toHaveBeenCalledTimes(1)
 	expect(sentry.contexts.at(-1)).toEqual({
 		stage: 'park',
