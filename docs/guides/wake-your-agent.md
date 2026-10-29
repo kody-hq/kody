@@ -43,8 +43,8 @@ the agent. Nothing to host and no URL to store.
 - The surface is behind the `mcp-events-extension` feature flag. The user turns
   it on from the MCP Events guide page on the website, or joins experiments.
 - Supported clients: ChatGPT (Work chats on web, desktop Work + Cloud, dots) on
-  protocol `2026-07-28`. Other hosts work only if they advertise events support
-  and implement webhook subscribe and delivery. Cursor and Claude do not today.
+  protocol `2026-07-28`. Other hosts work only if they implement webhook
+  subscribe and delivery. Cursor and Claude do not today.
 - Opt a topic in with `"mcp": true` on its `package.json#kody.emits` entry, and
   `events.dispatch` it from the package. To surface a Kody topic such as
   `run.error.recorded`, subscribe a small package to it and re-emit an opted-in

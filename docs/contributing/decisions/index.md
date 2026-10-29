@@ -138,7 +138,8 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0059 — MCP Events extension (webhook profile) behind a flag](./0059-mcp-events-extension-behind-flag.md)
   — `kody.emits` topics with `mcp: true` reach ChatGPT-style webhook subscribers
   through the existing package events consumer; flag plus client capability
-  gate; Workers-limited SSRF guard documented
+  gate; Workers-limited SSRF guard documented (client-declaration gate
+  superseded by 0087)
 - [0060 — Owner ids and person ids are separate types; storage stays keyed as-is](./0060-owner-and-person-ids.md)
   — `OwnerId` (owning org) vs `PersonId` (actor), `personalOrgId` is the only
   conversion; no `orgs` tables, column renames, or storage re-keying yet
@@ -239,6 +240,10 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0086 — Automations choose an execution context](./0086-automation-execution-contexts.md)
   — per-automation `execution` (context or own chain), offline fails or queues
   (default 60 min, max 24 h), runs use the automation actor's access
+- [0087: MCP Events need no client declaration](./0087-mcp-events-no-client-declaration.md)
+  The OAuth gate and the `mcp-events-extension` flag gate advertising and
+  subscribing; clients declare nothing, matching the OpenAI profile (supersedes
+  0059's client-declaration gate)
 
 ## Historical / UI / implementation
 
