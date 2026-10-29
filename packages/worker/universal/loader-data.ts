@@ -3481,3 +3481,22 @@ export type AccountConnectedAppsLoaderData = {
 	/** True when the agent list could not load; apps still show. */
 	agentsUnavailable: boolean
 }
+
+/** A member's own connection through an org OAuth app (ADR 0068). */
+export type OrgAppMemberConnection = {
+	credentialId: string
+	memberUsername: string | null
+	memberDisplayName: string | null
+	accountLabel: string | null
+	connectedAt: string
+	yours: boolean
+}
+
+export type OrgAppMemberConnectionsData = {
+	teamOrg: boolean
+	canConnectOwn: boolean
+	canManage: boolean
+	own: OrgAppMemberConnection | null
+	/** Every member's connection; empty unless `canManage`. */
+	connections: Array<OrgAppMemberConnection>
+}

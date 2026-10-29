@@ -7,6 +7,7 @@ import {
 import { type ReactNode } from 'react'
 import { type CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
+import { OrgAppMemberConnections } from './account-integrations-member-connections.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { ProviderMark } from '../components/provider-icons.tsx'
 import { renderIcon } from '../components/icon.tsx'
@@ -370,6 +371,9 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 				</div>
 			</header>
 
+			{isBuiltInApp(selectedApp) ? null : (
+				<OrgAppMemberConnections app={selectedApp} />
+			)}
 			<section css={{ display: 'grid', gap: spacing.sm }}>
 				<h3 css={sectionTitleCss}>Connections</h3>
 				{selectedApp.connections.length === 0 ? (

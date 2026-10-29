@@ -44,6 +44,8 @@ export function buildConnectOauthHref(input: {
 	platformSlug?: string
 	/** Creation / team handoff org; omitted for signup-org visits. */
 	orgSlug?: string | null
+	/** `personal`: connect your own account through the org's `appSlug`. */
+	mode?: 'personal'
 }): string {
 	const params = new URLSearchParams({ provider: input.name })
 	const appSlug = input.appSlug?.trim()
@@ -57,6 +59,9 @@ export function buildConnectOauthHref(input: {
 	const orgSlug = input.orgSlug?.trim()
 	if (orgSlug) {
 		params.set('org', orgSlug)
+	}
+	if (input.mode) {
+		params.set('mode', input.mode)
 	}
 	return `/connect/oauth?${params.toString()}`
 }
