@@ -735,6 +735,10 @@
 		{
 			"filename": "0203-package-app-authority-rejections.sql",
 			"sha256": "651d06f8cef558e6f830407647be3e83bc54edfd9edb620c33fd12f9eedc2f74"
+		},
+		{
+			"filename": "0204-package-codemod-run-item-owner-detail.sql",
+			"sha256": "3c8aa596e5dbf9460ce3a8051325286f0867fbdcbe394854b361aedb1f4d3d71"
 		}
 	]
 }

@@ -8,7 +8,39 @@ export type PackageCodemodTransformResult = {
 	changed: boolean
 	changedPaths: Array<string>
 	needsManual: Array<PackageCodemodFinding>
+	/**
+	 * Private per-package detail for the package owner (for example the exact
+	 * names a fix adds). Stored on the run item, admin-only, never returned in
+	 * step results or findings.
+	 */
+	ownerDetail?: Record<string, unknown>
 }
+
+/**
+ * What the static scan of a package app's import closure (every `kody:@`
+ * package it imports, followed from the imported export) found, plus the
+ * capability names the runtime authority logs saw this app call undeclared.
+ */
+export type PackageAppCapabilityHostFacts = {
+	closure: {
+		/** Statically named kody calls reachable through imported packages. */
+		names: Array<string>
+		computedCalls: number
+		mcpCalls: number
+		/** Imports that could not be followed (missing, computed, unparsable). */
+		unresolvedImports: number
+	}
+	observed: {
+		/** `capability_not_declared` call names from fallbacks and rejections. */
+		names: Array<string>
+		/** Observed `credential.named` refusals; no capability entry covers them. */
+		credentialNamedCalls: number
+	}
+	/** Builtin capability names; only these are ever added to a manifest. */
+	platformCapabilityNames: Array<string>
+}
+
+export type PackageCodemodHostFactKind = 'package-app-capabilities'
 
 /** Host facts about the package being repaired, never read from its files. */
 export type PackageCodemodContext = {
@@ -20,6 +52,11 @@ export type PackageCodemodContext = {
 	 */
 	manifestPath?: string
 	sourceRoot?: string
+	/**
+	 * Facts the engine computed with I/O before calling the codemod, only for
+	 * codemods that request them through `hostFacts`.
+	 */
+	packageAppCapabilities?: PackageAppCapabilityHostFacts
 }
 
 /**
@@ -44,6 +81,8 @@ export type PackageCodemod = {
 	 * head-and-published behavior (fleet default).
 	 */
 	applyMode?: PackageCodemodApplyMode
+	/** Host facts the engine computes and passes in through the context. */
+	hostFacts?: Array<PackageCodemodHostFactKind>
 	detect(
 		files: Record<string, string>,
 		context: PackageCodemodContext,

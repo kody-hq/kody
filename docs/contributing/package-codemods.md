@@ -604,6 +604,37 @@ Findings carry fixed messages only. Count flagged apps with
 count from `adminPackageAppAuthorityFallbackReport` (fallbacks, plus
 `hardRejections` for calls that failed both ways).
 
+### `0018-declare-package-app-capabilities`
+
+One-time Phase 1 migration for apps that run as their publisher (ADR 0068).
+`applyMode: 'published-only'`, so drifted apps are fixed on their published
+tree. Adds to `package.json#kody.app.capabilities` every platform capability the
+app calls by a static name:
+
+- directly, in its own modules (the `0017` scanner, `collectModuleKodyCalls`);
+- through its import closure: each `kody:@scope/name/export` the app imports is
+  followed from that export's entry module along relative imports and into the
+  packages those modules import (only what an import reaches counts);
+- from the runtime logs: `capability_not_declared` call names in
+  `package_app_authority_fallbacks` and `package_app_authority_rejections` for
+  this app (gap filling for computed names the scan cannot see).
+
+Codemods stay pure. The codemod sets `hostFacts: ['package-app-capabilities']`,
+and the engine computes those facts with I/O before calling it
+(`computePackageAppCapabilityHostFacts` in
+`package-codemods/package-app-capability-closure.ts`) and passes them in as
+`PackageCodemodContext.packageAppCapabilities`. Only names in the builtin
+capability registry are ever added.
+
+Findings stay fixed strings. The exact names added, and per-app counts of what
+stays unresolved (computed names, `kody.mcp`, imports that cannot be followed,
+non-platform names, observed `credential.named` refusals), go in the transform's
+`ownerDetail`, stored on the run item as `owner_detail_json` (admin-only, never
+in step results). Read a run with `adminPackageAppCapabilityMigrationReport`
+(`runId`): apps and owners affected, capabilities added (total and per
+capability), and unresolved apps by package id with counts. Pass `packageId` to
+read one app's private list for its owner.
+
 ## Engine
 
 The engine entry point is `runPackageCodemodStep` in
@@ -780,6 +811,9 @@ Admin-gated operator fleet runs:
 - `adminPackageCodemodApply`
 - `adminPackageCodemodRevert`
 - `adminPackageCodemodOwnerNotice` (see [Owner notice](#owner-notice))
+- `adminPackageAppCapabilityMigrationReport` (counts for a
+  [`0018-declare-package-app-capabilities`](#0018-declare-package-app-capabilities)
+  run)
 
 Their `filters` take `userIds`, `packageIds`, and `scope`. Setting
 `scope: 'credential-need-enforcement'` keeps a run to packages someone other

@@ -63,7 +63,7 @@ const identityCapabilityName = 'metaGetCurrentUser'
 /** Bridge calls that never need a kody.app.capabilities entry. */
 const alwaysAvailableCalls = new Set([identityCapabilityName, 'visitorNeed'])
 
-type AppManifest = {
+export type AppManifest = {
 	capabilities: Set<string>
 	visitorNeeds: number
 	ownerCredentialForVisitors: boolean
@@ -73,7 +73,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return value != null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function readAppManifest(source: string | undefined): AppManifest | null {
+export function readPackageAppManifest(
+	source: string | undefined,
+): AppManifest | null {
 	if (source == null) return null
 	let parsed: unknown
 	try {
@@ -126,14 +128,28 @@ function isKodyObject(node: AstNode | undefined, aliases: Set<string>) {
 	return node?.type === 'Identifier' && aliases.has(getNodeName(node) ?? '')
 }
 
-function detectInModule(
-	parsed: AstNode,
-	app: AppManifest,
-	add: (pattern: PackageAppVisitorAuthorityPattern) => void,
-) {
+export type ModuleKodyCalls = {
+	/** Capability names called with a static name (`kody.x()`, `kody['x']()`). */
+	names: Set<string>
+	/** Calls whose capability name is picked at run time. */
+	computedCalls: number
+	/** `kody.mcp` member reads. */
+	mcpCalls: number
+	readsEmail: boolean
+}
+
+/**
+ * The kody bridge calls one parsed module makes. Shared with the
+ * import-closure scan in `package-app-capability-closure.ts`.
+ */
+export function collectModuleKodyCalls(parsed: AstNode): ModuleKodyCalls {
 	const aliases = collectKodyAliases(parsed.program?.body ?? [])
-	let callsIdentity = false
-	let readsEmail = false
+	const calls: ModuleKodyCalls = {
+		names: new Set(),
+		computedCalls: 0,
+		mcpCalls: 0,
+		readsEmail: false,
+	}
 	walkAst(parsed, (node) => {
 		if (
 			node.type === 'CallExpression' ||
@@ -151,22 +167,12 @@ function detectInModule(
 					callee.property?.type === 'StringLiteral'
 						? getNodeName(callee.property)
 						: null
-				if (literal == null) add('computed capability')
-				else if (literal === identityCapabilityName) callsIdentity = true
-				else if (
-					!alwaysAvailableCalls.has(literal) &&
-					!app.capabilities.has(literal)
-				) {
-					add('undeclared capability')
-				}
+				if (literal == null) calls.computedCalls += 1
+				else calls.names.add(literal)
 				return
 			}
 			const name = getCalleeName(callee)
-			if (name == null) return
-			if (name === identityCapabilityName) callsIdentity = true
-			if (!alwaysAvailableCalls.has(name) && !app.capabilities.has(name)) {
-				add('undeclared capability')
-			}
+			if (name != null) calls.names.add(name)
 			return
 		}
 		if (isMemberExpression(node)) {
@@ -174,10 +180,10 @@ function detectInModule(
 				isKodyObject(node.object, aliases) &&
 				getNodeName(node.property) === 'mcp'
 			) {
-				add('kody.mcp')
+				calls.mcpCalls += 1
 			}
 			if (node.computed !== true && getNodeName(node.property) === 'email') {
-				readsEmail = true
+				calls.readsEmail = true
 			}
 			return
 		}
@@ -187,12 +193,36 @@ function detectInModule(
 					property.type === 'ObjectProperty' &&
 					getNodeName(property.key) === 'email'
 				) {
-					readsEmail = true
+					calls.readsEmail = true
 				}
 			}
 		}
 	})
-	if (callsIdentity && readsEmail) add('identity email')
+	return calls
+}
+
+/** Whether a statically named call needs a `kody.app.capabilities` entry. */
+export function needsCapabilityDeclaration(name: string) {
+	return !alwaysAvailableCalls.has(name)
+}
+
+function detectInModule(
+	parsed: AstNode,
+	app: AppManifest,
+	add: (pattern: PackageAppVisitorAuthorityPattern) => void,
+) {
+	const calls = collectModuleKodyCalls(parsed)
+	if (calls.computedCalls > 0) add('computed capability')
+	for (const name of calls.names) {
+		if (needsCapabilityDeclaration(name) && !app.capabilities.has(name)) {
+			add('undeclared capability')
+			break
+		}
+	}
+	if (calls.mcpCalls > 0) add('kody.mcp')
+	if (calls.names.has(identityCapabilityName) && calls.readsEmail) {
+		add('identity email')
+	}
 }
 
 function usesCredentialHelper(parsed: AstNode) {
@@ -223,7 +253,7 @@ function usesCredentialHelper(parsed: AstNode) {
 function detectPackageAppVisitorAuthority(
 	files: Record<string, string>,
 ): Array<PackageCodemodFinding> {
-	const app = readAppManifest(
+	const app = readPackageAppManifest(
 		Object.hasOwn(files, packageManifestPath)
 			? files[packageManifestPath]
 			: undefined,

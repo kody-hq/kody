@@ -39,6 +39,8 @@ export type PackageCodemodRunItemRecord = {
 	checkSummaryJson: string | null
 	error: string | null
 	revertSnapshotKey: string | null
+	/** Owner-private codemod detail (admin-only); see `ownerDetail`. */
+	ownerDetailJson: string | null
 	createdAt: string
 	updatedAt: string
 }
@@ -48,7 +50,8 @@ const runSelectColumns = `id, codemod_id, mode, scope_user_id, initiated_by_user
 
 const itemSelectColumns = `id, run_id, user_id, package_id, kody_id, status,
 	before_commit, after_commit, changed_paths_json, findings_json,
-	check_summary_json, error, revert_snapshot_key, created_at, updated_at`
+	check_summary_json, error, revert_snapshot_key, owner_detail_json, created_at,
+	updated_at`
 
 const maxFindingsStored = 50
 const maxChangedPathsStored = 200
@@ -171,6 +174,10 @@ function mapItemRow(row: Record<string, unknown>): PackageCodemodRunItemRecord {
 			row['revert_snapshot_key'] == null
 				? null
 				: String(row['revert_snapshot_key']),
+		ownerDetailJson:
+			row['owner_detail_json'] == null
+				? null
+				: String(row['owner_detail_json']),
 		createdAt: String(row['created_at']),
 		updatedAt: String(row['updated_at']),
 	}
@@ -365,6 +372,7 @@ export async function insertPackageCodemodRunItem(
 		checkSummaryJson?: string | null
 		error?: string | null
 		revertSnapshotKey?: string | null
+		ownerDetailJson?: string | null
 		createdAt?: string
 		updatedAt?: string
 	},
@@ -379,13 +387,15 @@ export async function insertPackageCodemodRunItem(
 	const checkSummaryJson = boundTextColumn(input.checkSummaryJson ?? null)
 	const error = boundTextColumn(input.error ?? null)
 	const revertSnapshotKey = input.revertSnapshotKey ?? null
+	const ownerDetailJson = boundTextColumn(input.ownerDetailJson ?? null)
 	await db
 		.prepare(
 			`INSERT INTO package_codemod_run_items (
 				id, run_id, user_id, package_id, kody_id, status,
 				before_commit, after_commit, changed_paths_json, findings_json,
-				check_summary_json, error, revert_snapshot_key, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				check_summary_json, error, revert_snapshot_key, owner_detail_json,
+				created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		)
 		.bind(
 			input.id,
@@ -401,6 +411,7 @@ export async function insertPackageCodemodRunItem(
 			checkSummaryJson,
 			error,
 			revertSnapshotKey,
+			ownerDetailJson,
 			createdAt,
 			updatedAt,
 		)
@@ -419,6 +430,7 @@ export async function insertPackageCodemodRunItem(
 		checkSummaryJson,
 		error,
 		revertSnapshotKey,
+		ownerDetailJson,
 		createdAt,
 		updatedAt,
 	}
