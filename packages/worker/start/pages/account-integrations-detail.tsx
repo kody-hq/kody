@@ -395,6 +395,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 							href={buildConnectOauthHref({
 								name: selectedApp.slug,
 								appSlug: selectedApp.slug,
+								orgSlug,
 							})}
 							css={{
 								...getPillButtonCss({ size: 'sm' }),
