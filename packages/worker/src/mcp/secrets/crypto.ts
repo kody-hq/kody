@@ -113,6 +113,8 @@ const webhookHmacSecretPurpose = 'webhook-hmac-secret'
 const mcpEventSubscriptionSecretPurpose = 'mcp-event-subscription-secret'
 /** Pre-registered OAuth client secrets for user-added MCP servers. */
 const mcpServerOAuthClientSecretPurpose = 'mcp-server-oauth-client-secret'
+/** Session tokens a `login` credential's exchange returned (never code-readable). */
+const loginCredentialSessionPurpose = 'login-credential-session'
 
 /** AAD context for a user-owned secret ciphertext. */
 export function userSecretContext(userId: OwnerId) {
@@ -440,5 +442,44 @@ export async function decryptSecretValue(
 		)
 	} catch {
 		throw new Error('Unable to decrypt secret value.')
+	}
+}
+
+/** AAD context for a login session: its credential and revision. */
+export function loginCredentialSessionContext(input: {
+	ownerId: OwnerId
+	credentialId: string
+	revision: string
+}) {
+	return `user:${input.ownerId}:login-session:${input.credentialId}:${input.revision}`
+}
+
+export async function encryptLoginCredentialSession(
+	env: Pick<Env, 'SECRET_STORE_KEY'>,
+	value: string,
+	context: string,
+) {
+	return encryptWithKey(
+		env.SECRET_STORE_KEY,
+		loginCredentialSessionPurpose,
+		context,
+		value,
+	)
+}
+
+export async function decryptLoginCredentialSession(
+	env: Pick<Env, 'SECRET_STORE_KEY'>,
+	payload: string,
+	context: string,
+) {
+	try {
+		return await decryptWithKey(
+			env.SECRET_STORE_KEY,
+			loginCredentialSessionPurpose,
+			context,
+			payload,
+		)
+	} catch {
+		throw new Error('Unable to decrypt login session.')
 	}
 }

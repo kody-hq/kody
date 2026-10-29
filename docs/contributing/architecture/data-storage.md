@@ -1553,8 +1553,20 @@ on write unless a migration backfills existing rows.
   credential's exchange: an HTTPS URL on one of the row's `allowed_hosts`, the
   body template, and where the session token is in the response. Other kinds
   leave it NULL. The value holds the login fields as one JSON object, and
-  `inject_json` places the session token. Sessions are kept per isolate, never
-  in storage.
+  `inject_json` places the session token. Kody keeps the session in
+  `login_credential_sessions`, never in `secret_entries`.
+- `login_credential_sessions` (`0206-login-credential-sessions.sql`,
+  `packages/worker/src/credentials/login-session-store.ts`) holds one row per
+  `login` credential: the session token its exchange returned, encrypted with
+  the `login-credential-session` purpose and bound (AAD) to the owner,
+  credential id, and revision, plus `expires_at`. The revision is a digest of
+  the credential's ciphertext, `config_json`, `allowed_hosts`, and
+  `inject_json`, so an edit to any of them strands the session; deleting the
+  credential deletes the row. `lease_id` / `lease_expires_at` are a 60-second D1
+  lease so one exchange runs at a time per credential across isolates. The
+  session is never code-readable and never in capability output, logs, errors,
+  or audit details. Account and org deletion delete rows by `user_id` (the
+  owning org); account export omits the table.
 - `credential_inventory_runs` and `credential_inventory_items`
   (`0112-credential-inventory.sql`,
   `packages/worker/src/credentials/credential-inventory.ts`) hold the admin

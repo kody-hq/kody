@@ -2,9 +2,10 @@
  * The `login` credential kind (ADR 0068): the value holds login fields (for
  * example a username and password) as one JSON object, and the credential's
  * `config_json` holds the exchange that turns them into a session token. The
- * gateway runs the exchange, keeps the session for its lifetime, and places
- * it on a request to one of the credential's hosts by the credential's
- * `inject`. Neither the fields nor the login response ever reach code.
+ * gateway runs the exchange, keeps the session for its lifetime (encrypted in
+ * `login_credential_sessions`, with a per-isolate front cache), and places it
+ * on a request to one of the credential's hosts by the credential's `inject`.
+ * Neither the fields, the login response, nor the session ever reach code.
  */
 import { z } from 'zod'
 import { readBoundedBody } from '#mcp/capabilities/integrations/read-bounded-body.ts'
@@ -15,6 +16,7 @@ import {
 	CredentialRequestRefusedError,
 } from './credential-request.ts'
 import { type CredentialResolver } from './credential-resolver.ts'
+import { type LoginSession, obtainLoginSession } from './login-session-store.ts'
 import {
 	authorizeStoredCredential,
 	findStoredCredential,
@@ -67,16 +69,19 @@ export type ResolvedLoginSession = {
 	substitutedValues: ReadonlyArray<string>
 }
 
-/** `expiresAt` is null when the response says the token is already expired. */
-type Session = { token: string; expiresAt: number | null }
+type Session = LoginSession
 
 /**
- * Sessions by credential id and revision (a digest of the stored ciphertext
- * and exchange), so a changed value or exchange starts a new session. Per isolate and never persisted; `authorize` still
- * runs on every resolution before a cached session is used.
+ * Front cache of sessions by credential id and revision (a digest of the
+ * stored ciphertext, exchange, hosts, and inject), so any of those edits
+ * starts a new session. The durable copy is in `login_credential_sessions`;
+ * `authorize` still runs on every resolution before a session is used.
  */
 const sessions = new Map<string, Session>()
-const pendingSessions = new Map<string, Promise<Session>>()
+const pendingSessions = new Map<
+	string,
+	Promise<{ session: Session; source: 'stored' | 'new' }>
+>()
 
 export function clearLoginSessionsForTests() {
 	sessions.clear()
@@ -307,14 +312,20 @@ export const loginCredentialResolver: CredentialResolver<'login'> = {
 				}
 				let pending = pendingSessions.get(key)
 				if (!pending) {
-					pending = (async () =>
-						runExchange(exchange!, readLoginFields(await readValue())))()
+					pending = obtainLoginSession({
+						env: call.input.env,
+						ownerId: found.ownerId,
+						credentialId: found.credentialId,
+						revision: found.revision,
+						exchange: async () =>
+							runExchange(exchange!, readLoginFields(await readValue())),
+					})
 					pendingSessions.set(key, pending)
 				}
 				try {
-					const session = await pending
+					const { session, source } = await pending
 					remember(key, session)
-					call.subject.details = { ...call.subject.details, session: 'new' }
+					call.subject.details = { ...call.subject.details, session: source }
 					return placeSession(inject!, session.token)
 				} finally {
 					pendingSessions.delete(key)

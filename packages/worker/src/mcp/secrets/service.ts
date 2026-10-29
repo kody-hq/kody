@@ -1532,6 +1532,8 @@ export async function findSecretForUse(input: ResolveSecretInput): Promise<{
 
 export type StoredCredential = {
 	credentialId: string
+	/** The org that owns the row (the personal org for a personal credential). */
+	ownerId: OwnerId
 	name: string
 	kind: StoredCredentialKind
 	allowedHosts: Array<string>
@@ -1574,6 +1576,7 @@ export async function findStoredCredentialForUse(input: {
 	return {
 		found: {
 			credentialId: row.id,
+			ownerId: input.ownerId,
 			name: row.name,
 			kind: row.kind,
 			allowedHosts: parseAllowedHosts(row.allowed_hosts),
@@ -1581,7 +1584,12 @@ export async function findStoredCredentialForUse(input: {
 			configJson: row.config_json,
 			placement: readCredentialFillPlacement(row.placement_json),
 			revision: await sha256Hex(
-				JSON.stringify([row.encrypted_value, row.config_json]),
+				JSON.stringify([
+					row.encrypted_value,
+					row.config_json,
+					row.allowed_hosts,
+					row.inject_json,
+				]),
 			),
 		},
 		readValue: () =>

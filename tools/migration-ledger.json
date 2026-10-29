@@ -739,6 +739,10 @@
 		{
 			"filename": "0204-package-codemod-run-item-owner-detail.sql",
 			"sha256": "3c8aa596e5dbf9460ce3a8051325286f0867fbdcbe394854b361aedb1f4d3d71"
+		},
+		{
+			"filename": "0206-login-credential-sessions.sql",
+			"sha256": "4f8025d5208873d7761c2f4e78233de172aa547f73b5572e606a645a8d927d6e"
 		}
 	]
 }

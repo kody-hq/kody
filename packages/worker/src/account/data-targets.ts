@@ -383,6 +383,14 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		parentTable: 'secret_buckets',
 	},
 	{ kind: 'user_id', table: 'secret_buckets' },
+	{
+		kind: 'user_id',
+		table: 'login_credential_sessions',
+		includeInExport: false,
+		surface: 'login_credential_sessions',
+		reason:
+			'Encrypted login sessions Kody minted from a login credential; operational cache that is re-minted from the credential, never user-readable.',
+	},
 	{ kind: 'user_id', table: 'secret_provider_grants' },
 	{ kind: 'user_id', table: 'secret_provider_bindings' },
 	// Connections reference OAuth apps with ON DELETE RESTRICT, so delete
