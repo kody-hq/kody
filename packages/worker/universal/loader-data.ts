@@ -2070,6 +2070,8 @@ export type ConnectOauthLoaderData = {
 	}
 	/** Why `mode=personal` cannot connect here (not a member, no app, ...). */
 	pinnedConnectError?: string
+	/** The connection is pinned to an org app: reconnect through it here. */
+	pinnedReconnectHref?: string
 	/** Built-in connections use platform discovery links instead. */
 	builtInAvailable?: boolean
 	/** See {@link ConnectOauthExistingConnection}. */

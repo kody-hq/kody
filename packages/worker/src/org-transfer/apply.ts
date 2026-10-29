@@ -87,6 +87,15 @@ export type OrgTransferEffects = {
 		jobs: Array<{ jobId: string; callerContextJson: string }>
 		updatedAt: string
 	}): Promise<{ transferred: number }>
+	/**
+	 * Wipes (and revokes upstream) members' personal connections pinned to
+	 * the org's moving OAuth apps: their grants are to this org, and the
+	 * apps leave it (ADR 0068 amendment 2026-10-29).
+	 */
+	wipePinnedMemberConnections(input: {
+		orgId: OwnerId
+		appSlugs: Array<string>
+	}): Promise<void>
 	/** Org audit outbox rows for the batch, and delivery after commit. */
 	planAudit(events: Array<OrgTransferAuditEvent>): {
 		statements: Array<D1PreparedStatement>
@@ -471,6 +480,10 @@ async function applyUnderLease(input: {
 		}
 
 		step = 'commit'
+		await effects.wipePinnedMemberConnections({
+			orgId: from.id,
+			appSlugs: plan.moves.user_oauth_apps.map((row) => String(row['slug'])),
+		})
 		const details = {
 			from_org_id: from.id,
 			from_slug: from.slug,

@@ -403,6 +403,7 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		table: 'user_integrations',
 		columns: ['app_owner_id'],
 		includeInExport: false,
+		surface: 'user_integrations_pinned_to_org_apps',
 		reason: "members' personal connections pinned to the org's OAuth apps",
 	},
 	{ kind: 'user_id', table: 'user_oauth_apps' },

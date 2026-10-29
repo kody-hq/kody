@@ -122,3 +122,21 @@ test('nothing to revoke without a token', async () => {
 	).resolves.toMatchObject({ outcome: 'no_token' })
 	expect(calls).toHaveLength(0)
 })
+
+test('a token host matching an Object prototype key is not a known revocation endpoint', async () => {
+	const { calls, fetchImpl } = recordingFetch(200)
+	await expect(
+		revokeOauthTokensUpstream({
+			app: {
+				provider: 'example',
+				tokenUrl: 'https://constructor/token',
+				clientId: 'fixture-client-id',
+			},
+			clientSecret: null,
+			accessToken: 'fixture-access-token',
+			refreshToken: null,
+			fetchImpl,
+		}),
+	).resolves.toEqual({ outcome: 'unsupported', status: null })
+	expect(calls).toHaveLength(0)
+})

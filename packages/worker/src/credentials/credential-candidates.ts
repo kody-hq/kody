@@ -255,12 +255,12 @@ async function loadRows(input: {
 	}
 
 	// Integrations never bind package ids — keep their id-chunk budget at
-	// ownerId + ids only.
+	// ownerId + runOrgId + ids only.
 	if (families.has('integration')) {
 		const idChunks =
 			uniqueIds === null
 				? [null]
-				: chunkArray(uniqueIds, maxD1BoundParameters - 1)
+				: chunkArray(uniqueIds, maxD1BoundParameters - 2)
 		for (const idChunk of idChunks) {
 			for (const query of usableRowQueries) {
 				if (query.family !== 'integration') continue

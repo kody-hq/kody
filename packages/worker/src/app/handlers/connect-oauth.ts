@@ -2,6 +2,7 @@ import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import { oauthAppToSetupPrefill } from '#worker/integrations/service.ts'
 import {
 	listPinnedConnectableApps,
+	pinnedReconnectHref,
 	resolvePinnedConnectTarget,
 } from '#worker/integrations/pinned-connect.ts'
 import {
@@ -117,6 +118,21 @@ export async function loadConnectOauthLoaderData(
 		}))
 	if (!user) {
 		return { ok: true, provider: null, integration: null, redirectUri }
+	}
+	const pinnedReconnect = await pinnedReconnectHref({
+		env,
+		request: user.request,
+		mcpUser: user.mcpUser,
+		name: providerKey,
+	})
+	if (pinnedReconnect) {
+		return {
+			ok: true,
+			provider: null,
+			integration: null,
+			redirectUri,
+			pinnedReconnectHref: pinnedReconnect,
+		}
 	}
 	// `app=<slug>` reuses a saved bring-your-own app under `provider`.
 	// Explicit platform intent uses the same visibility rules as the integration resolver.

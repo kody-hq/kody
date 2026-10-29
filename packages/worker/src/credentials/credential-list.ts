@@ -219,7 +219,7 @@ async function loadIntegrationRows(input: {
 	ids: ReadonlyArray<string> | null
 	runOrgId?: string
 }): Promise<Array<ListedRow>> {
-	const rows = await queryByIds('i.id', input.ids, 1, async (filter) => {
+	const rows = await queryByIds('i.id', input.ids, 2, async (filter) => {
 		const result = await input.db
 			.prepare(
 				`SELECT i.id, i.name, COALESCE(i.provider, p.provider, a.provider) AS provider,

@@ -1,7 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { SiteLink } from '../components/site-link.tsx'
+import { settleConnectionResources } from '../connection-resource-settlement.ts'
+import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import { buildConnectOauthHref } from '#universal/oauth-connect.ts'
 import {
@@ -43,6 +46,8 @@ export function OrgAppMemberConnections(props: {
 }) {
 	const { orgSlug } = useParams({ strict: false }) as { orgSlug?: string }
 	const appSlug = props.app.slug
+	const queryClient = useQueryClient()
+	const { actorKey } = useMatchedPageScope()
 	const [data, setData] = useState<OrgAppMemberConnectionsData | null>(null)
 	const [message, setMessage] = useState<string | null>(null)
 	const [armed, setArmed] = useState<string | null>(null)
@@ -84,7 +89,13 @@ export function OrgAppMemberConnections(props: {
 					? `Removed ${connection.yours ? 'your' : `${memberName(connection)}'s`} connection and revoked it with the provider.`
 					: `Removed ${connection.yours ? 'your' : `${memberName(connection)}'s`} connection. The provider did not confirm the revoke, so it may still list this app under the account's authorized apps.`,
 			)
-			await reload()
+			await Promise.all([
+				reload(),
+				// The page header counts the app's connections.
+				settleConnectionResources(queryClient, actorKey, orgSlug, [
+					'loadIntegrationsPage',
+				]),
+			])
 		} catch (error) {
 			setMessage(
 				error instanceof Error

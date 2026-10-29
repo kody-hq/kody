@@ -175,6 +175,9 @@ export const loadConnectOauth = createServerFn({ method: 'GET' })
 			data,
 			user,
 		)
+		if ('pinnedReconnectHref' in payload && payload.pinnedReconnectHref) {
+			throw redirect({ href: payload.pinnedReconnectHref, statusCode: 302 })
+		}
 		return {
 			payload,
 			head: loadDocumentHead(

@@ -161,14 +161,25 @@ export function buildOrgTransferStatements(input: {
 		}
 	}
 
-	// The org's apps move with it, so every connection made through them
-	// (its own and members' pinned personal ones) follows.
+	// The org's own connections follow its moving apps. Members' pinned
+	// personal connections were wiped before the batch; one made since
+	// fails the deferred app FK, so the transfer does not commit.
 	statements.push(
 		db
 			.prepare(
-				`UPDATE user_integrations SET app_owner_id = ? WHERE app_owner_id = ?`,
+				`UPDATE user_integrations SET app_owner_id = ?
+				 WHERE app_owner_id = ? AND user_id IN (?, ?)
+					AND app_slug IN (SELECT value FROM json_each(?))`,
 			)
-			.bind(toId, fromId),
+			.bind(
+				toId,
+				fromId,
+				fromId,
+				toId,
+				JSON.stringify(
+					plan.moves.user_oauth_apps.map((row) => cell(row, 'slug')),
+				),
+			),
 	)
 
 	for (const row of plan.moves.saved_packages) {

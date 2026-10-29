@@ -13,6 +13,7 @@ import {
 import { type McpUserContext } from '@kody-internal/shared/chat.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
+import { buildConnectOauthHref } from '#universal/oauth-connect.ts'
 import { canonicalIntegrationName } from '#mcp/capabilities/integrations/integration-shared.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { getOrgById, loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
@@ -25,6 +26,7 @@ import {
 import { grantPersonalCredentialToOrg } from '#worker/credentials/personal-credentials.ts'
 import { bumpUsableCredentialsGeneration } from '#worker/credentials/credential-read-generation.ts'
 import { normalizeAllowedHosts } from '#worker/secrets/allowed-hosts.ts'
+import { emitConnectOauthAuthSucceeded } from './connect-oauth-persist.ts'
 import {
 	persistIntegrationTokens,
 	resolveUserOauthAppClientSecret,
@@ -34,9 +36,46 @@ import {
 	getJoinedIntegrationByName,
 	getOauthAppBySlug,
 	upsertIntegrationConnection,
+	listOauthAppsWithConnectionCounts,
 } from './repo.ts'
-import { listOauthAppsWithConnectionCounts } from './repo.ts'
 import { type UserOauthApp } from './types.ts'
+
+/**
+ * `/connect/oauth?org=&app=&mode=personal` for the caller's own connection
+ * `name` when it is pinned to an org app, so a plain reconnect link (which
+ * names only the connection) goes back through that org's app.
+ */
+export async function pinnedReconnectHref(input: {
+	env: Env
+	request: RequestContext
+	mcpUser: McpUserContext
+	name: string
+}): Promise<string | null> {
+	const personalOrgId = personalOrgIdForPerson(input.mcpUser)
+	if (
+		ownerIdFromCaller({ request: input.request, user: input.mcpUser }) !==
+		personalOrgId
+	) {
+		return null
+	}
+	const row = await input.env.APP_DB.prepare(
+		`SELECT app_owner_id, app_slug FROM user_integrations
+		WHERE user_id = ? AND name = ? AND app_slug IS NOT NULL
+			AND app_owner_id IS NOT NULL AND app_owner_id <> user_id
+			AND deleted_at IS NULL`,
+	)
+		.bind(personalOrgId, input.name)
+		.first<{ app_owner_id: string; app_slug: string }>()
+	if (!row) return null
+	const org = await getOrgById(input.env.APP_DB, row.app_owner_id)
+	if (!org) return null
+	return buildConnectOauthHref({
+		name: row.app_slug,
+		appSlug: row.app_slug,
+		orgSlug: org.slug,
+		mode: 'personal',
+	})
+}
 
 export type PinnedConnectTarget = {
 	orgId: OwnerId
@@ -294,6 +333,21 @@ export async function savePinnedConnection(input: {
 		audit,
 	})
 	bumpUsableCredentialsGeneration(db)
+	await emitConnectOauthAuthSucceeded({
+		env: input.env,
+		userId: target.personalOrgId,
+		integration: {
+			name,
+			lane: 'user',
+			account_label: saved.connection.accountLabel,
+			description: saved.connection.description.trim() || null,
+			provider: saved.app.provider,
+			platform_app_slug: null,
+			scopes: input.scopes,
+			connected_at: saved.connection.connectedAt,
+			token_refreshed_at: saved.connection.tokenRefreshedAt,
+		},
+	})
 	return {
 		ok: true,
 		integrationName: name,

@@ -812,6 +812,13 @@ async function handlePinnedOAuthExchange(input: {
 		)
 	}
 	const params = new URLSearchParams(input.paramsRaw)
+	// Host-side client credentials only ever back the browser code exchange.
+	if (params.get('grant_type') !== 'authorization_code') {
+		return operationResult(
+			{ ok: false, error: 'Only the authorization_code grant is allowed.' },
+			400,
+		)
+	}
 	params.set('client_id', target.app.clientId)
 	params.delete('client_secret')
 	return exchangeOAuthToken({
@@ -871,6 +878,13 @@ async function handlePlatformOAuthExchange(input: {
 		)
 	}
 	const params = new URLSearchParams(input.paramsRaw)
+	// Host-side client credentials only ever back the browser code exchange.
+	if (params.get('grant_type') !== 'authorization_code') {
+		return operationResult(
+			{ ok: false, error: 'Only the authorization_code grant is allowed.' },
+			400,
+		)
+	}
 	params.set('client_id', platformApp.clientId)
 	params.delete('client_secret')
 	return exchangeOAuthToken({

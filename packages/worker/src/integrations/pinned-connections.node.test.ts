@@ -40,6 +40,7 @@ import {
 	pinnedConnectionName,
 	resolvePinnedConnectTarget,
 	savePinnedConnection,
+	pinnedReconnectHref,
 } from './pinned-connect.ts'
 import {
 	listPinnedConnectionsForOrg,
@@ -515,4 +516,30 @@ test('placeholders, credential(), createAuthenticatedFetch and refresh resolve i
 			)
 		}
 	}
+})
+
+test('a plain reconnect link for a pinned connection goes back through the org app', async () => {
+	const t = await setup()
+	const saved = await t.connect('ann', t.orgs.acme)
+	if (!saved.ok) throw new Error(saved.error)
+	const home = t.as('ann', { id: t.personalOf('ann'), slug: 'ann' }, 'owner')
+	await expect(
+		pinnedReconnectHref({
+			env: t.env,
+			request: home.callerContext.request!,
+			mcpUser: home.callerContext.user!,
+			name: saved.integrationName,
+		}),
+	).resolves.toBe(
+		`/connect/oauth?provider=github&app=github&org=${t.orgs.acme.slug}&mode=personal`,
+	)
+	const inOrg = t.as('ann', t.orgs.acme, 'member')
+	await expect(
+		pinnedReconnectHref({
+			env: t.env,
+			request: inOrg.callerContext.request!,
+			mcpUser: inOrg.callerContext.user!,
+			name: saved.integrationName,
+		}),
+	).resolves.toBeNull()
 })

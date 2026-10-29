@@ -52,7 +52,7 @@ export function isGithubOauthApp(app: UpstreamRevokeApp): boolean {
 export function upstreamRevocationSupported(app: UpstreamRevokeApp): boolean {
 	if (isGithubOauthApp(app)) return true
 	const host = tokenHost(app.tokenUrl)
-	return host != null && host in rfc7009RevocationUrls
+	return host != null && Object.hasOwn(rfc7009RevocationUrls, host)
 }
 
 function basicAuth(clientId: string, clientSecret: string) {
@@ -146,7 +146,10 @@ export async function revokeOauthTokensUpstream(input: {
 			})
 		}
 		const host = tokenHost(input.app.tokenUrl)
-		const url = host ? rfc7009RevocationUrls[host] : undefined
+		const url =
+			host && Object.hasOwn(rfc7009RevocationUrls, host)
+				? rfc7009RevocationUrls[host]
+				: undefined
 		if (!url) return { outcome: 'unsupported', status: null }
 		// Revoking the refresh token ends the whole grant where supported.
 		const token = input.refreshToken ?? input.accessToken

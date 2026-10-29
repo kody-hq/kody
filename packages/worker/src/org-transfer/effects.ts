@@ -11,6 +11,10 @@ import {
 	orgAuditOutboxInsertStatement,
 	planOrgAuditOutbox,
 } from '#worker/orgs/org-audit-outbox.ts'
+import {
+	listPinnedConnectionsForOrg,
+	wipePinnedConnections,
+} from '#worker/integrations/pinned-connections.ts'
 import { type OrgTransferEffects } from './apply.ts'
 import { writeOrgTransferBackup } from './backup.ts'
 import { runOrgTransferPostCommit } from './post-commit.ts'
@@ -71,6 +75,27 @@ export function defaultOrgTransferEffects(input: {
 			mcpClientHubTransferStub({ env, userId }).discardTransferredServer({
 				serverId,
 			}),
+		async wipePinnedMemberConnections({ orgId, appSlugs }) {
+			if (appSlugs.length === 0) return
+			if (!env.SECRET_STORE_KEY) {
+				throw new Error(
+					'SECRET_STORE_KEY is not bound; cannot wipe pinned connections.',
+				)
+			}
+			const audit = orgAuditWriterForPerson(env, input.actor)
+			for (const appSlug of appSlugs) {
+				await wipePinnedConnections({
+					env: { APP_DB: env.APP_DB, SECRET_STORE_KEY: env.SECRET_STORE_KEY },
+					connections: await listPinnedConnectionsForOrg({
+						db: env.APP_DB,
+						pinnedOrgId: orgId,
+						appSlug,
+					}),
+					reason: 'app_deleted',
+					audit,
+				})
+			}
+		},
 		async jobCallerContextJson({ userId, packageId }) {
 			return serializeCallerContext(
 				await createPackageJobCallerContext({

@@ -268,7 +268,10 @@ export async function wipePinnedConnection(input: {
 	return { credentialId: connection.credentialId, wiped, upstream }
 }
 
-/** Wipes every match, one at a time; one failure does not stop the rest. */
+/**
+ * Wipes every match, one at a time. A failed upstream revoke never stops the
+ * rest; a local write failure throws.
+ */
 export async function wipePinnedConnections(input: {
 	env: WipeEnv
 	connections: ReadonlyArray<PinnedConnection>
