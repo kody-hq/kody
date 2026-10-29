@@ -200,11 +200,10 @@ export async function buildCapabilityDeclarationCheck(input: {
 				findClosureGaps({ ...input, loadPackage: boundedLoader }),
 				timedOut,
 			])
-			findings.push(
-				...(closure === 'timeout' || overBudget
-					? [{ kind: 'closure-timeout' as const }]
-					: closure),
-			)
+			if (closure !== 'timeout') findings.push(...closure)
+			if (closure === 'timeout' || overBudget) {
+				findings.push({ kind: 'closure-timeout' })
+			}
 		} catch {
 			findings.push({ kind: 'closure-unresolved', imports: 1 })
 		} finally {
