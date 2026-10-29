@@ -256,6 +256,8 @@ const highlightedConnectionCardCss: CSSObject = {
 }
 
 export type IntegrationRecordProps = {
+	/** Team org whose integrations are shown; null for the personal org. */
+	orgSlug?: string | null
 	selectedApp: AccountOauthAppListItem
 	integrations: ReadonlyArray<AccountIntegrationListItem>
 	apps: ReadonlyArray<AccountOauthAppListItem>
@@ -284,6 +286,13 @@ export type IntegrationRecordProps = {
 	onRotated: (app: AccountOauthAppListItem) => void
 }
 
+function withConnectOauthOrg(href: string, orgSlug: string | null | undefined) {
+	if (!orgSlug) return href
+	const url = new URL(href, 'https://kody.local')
+	url.searchParams.set('org', orgSlug)
+	return `${url.pathname}${url.search}`
+}
+
 export function renderIntegrationRecord(props: IntegrationRecordProps) {
 	const {
 		selectedApp,
@@ -303,6 +312,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 		submitUsage,
 		usageSavingName,
 		onRotated,
+		orgSlug,
 	} = props
 	return (
 		<section css={recordBodyCss}>
@@ -416,8 +426,12 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 								: true
 							const connectHref =
 								connection?.lastAuthFailure?.who === 'you'
-									? connection.lastAuthFailure.reconnectHref
+									? withConnectOauthOrg(
+											connection.lastAuthFailure.reconnectHref,
+											orgSlug,
+										)
 									: buildConnectOauthHref({
+											orgSlug,
 											name: connectionRef.name,
 											appSlug: connection?.platform
 												? undefined
@@ -664,6 +678,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 									platform: highlightedConnection.platform === true,
 									currentScopes: highlightedConnection.authorization?.scopes,
 									allowedScopes: highlightedConnection.platformAllowedScopes,
+									orgSlug,
 								})}
 								idleLabel="Copy scope prompt"
 								variant="ghost"

@@ -539,6 +539,7 @@ export function AccountIntegrationsPage({
 										submitUsage,
 										usageSavingName,
 										onRotated: applyRotatedApp,
+										orgSlug,
 									})
 								: showConnectionNotFound
 									? renderRecordNotFound('connection')

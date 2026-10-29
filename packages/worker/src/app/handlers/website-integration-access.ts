@@ -9,6 +9,7 @@ import {
 	missingCredentialResource,
 } from '#worker/credentials/credential-ids.ts'
 import { findIntegrationCredentialId } from '#worker/integrations/credentials.ts'
+import { canonicalIntegrationName } from '#mcp/capabilities/integrations/integration-shared.ts'
 import {
 	findOauthAppReusedByConfig,
 	type OauthAppConfigInput,
@@ -76,9 +77,9 @@ export async function requireWebsiteIntegrationPermission(input: {
 }
 
 /**
- * Connecting through an org's existing OAuth app stays open to members (it
- * only adds a connection). Anything that would create or rewrite the app row
- * or its client secret needs `integration:write`, like `saveOAuthApp`.
+ * Connecting through an org's existing OAuth app stays open to members when it
+ * adds a new connection. Replacing an existing connection's tokens, or creating
+ * or rewriting the app row or its client secret, needs `integration:write`.
  */
 export async function requireWebsiteOauthAppConnectAccess(input: {
 	env: Env
@@ -95,7 +96,26 @@ export async function requireWebsiteOauthAppConnectAccess(input: {
 			}),
 			config: input.config,
 		})
-		if (reused) return
+		if (reused) {
+			const connectionName = canonicalIntegrationName(input.config.name)
+			const existing = await findIntegrationCredentialId({
+				env: input.env,
+				userId: ownerIdFromCaller({
+					request: input.user.request,
+					user: input.user.mcpUser,
+				}),
+				name: connectionName,
+			})
+			if (!existing) return
+			await requireWebsiteIntegrationPermission({
+				env: input.env,
+				user: input.user,
+				permission: 'integration:write',
+				action: 'replace this connection',
+				connectionName,
+			})
+			return
+		}
 	}
 	await requireWebsiteIntegrationPermission({
 		env: input.env,

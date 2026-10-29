@@ -257,6 +257,8 @@ test('team members can connect through an existing org OAuth app but not create 
 	const connected = await connect({})
 	expect(connected.status).toBe(200)
 	expect(connected.data).toMatchObject({ ok: true, integrationName: 'github' })
+
+	await expectDenied(connect({}), 'integration:write')
 })
 
 test('an OAuth app saved in one org is never prefilled or returned for another org', async () => {
