@@ -109,6 +109,10 @@ import {
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
+	requireWebsiteIntegrationPermission,
+	requireWebsiteOauthAppConnectAccess,
+} from '#app/handlers/website-integration-access.ts'
+import {
 	buildAccountSecretId,
 	parseAccountSecretId,
 } from '@kody-internal/shared/account-secret-route.ts'
@@ -199,6 +203,12 @@ export async function saveAccountOAuthApp(input: {
 		}
 	}
 
+	await requireWebsiteIntegrationPermission({
+		env: input.env,
+		user: input.user,
+		permission: 'integration:write',
+		action: 'save OAuth apps',
+	})
 	try {
 		const app = await upsertOauthAppWithoutConnection({
 			env: input.env,
@@ -364,6 +374,29 @@ export async function connectAccountOAuth(input: {
 			{ ok: false, error: 'Token payload is required.' },
 			400,
 		)
+	}
+	if (!platformApp) {
+		await requireWebsiteOauthAppConnectAccess({
+			env: input.env,
+			user: input.user,
+			clientSecret: input.fields.clientSecret,
+			config: {
+				name: provider,
+				tokenUrl,
+				apiBaseUrl,
+				flow: flow === 'confidential' || flow === 'device' ? flow : 'pkce',
+				usePkce,
+				clientId,
+				tokenExchangeStyle: resolveTokenExchangeStyle({
+					tokenUrl,
+					tokenExchangeStyle: input.fields.tokenExchangeStyle?.trim() ?? null,
+				}),
+				deviceAuthorizationUrl,
+				authorization: authorizeUrl
+					? { authorizeUrl, scopes, scopeSeparator, extraAuthorizeParams }
+					: null,
+			},
+		})
 	}
 	const tokenRecord = tokenPayload as Record<string, unknown>
 	const accessToken = readTokenField(tokenRecord, 'access_token')
@@ -566,6 +599,42 @@ export async function startAccountDeviceConnect(input: {
 		tokenExchangeStyle?: string | null
 	}
 }) {
+	const deviceTokenUrl = input.fields.tokenUrl?.trim()
+	const deviceClientId = input.fields.clientId?.trim()
+	if (
+		!input.fields.platformAppSlug?.trim() &&
+		deviceTokenUrl &&
+		deviceClientId
+	) {
+		const authorizeUrl = input.fields.authorizeUrl?.trim() || null
+		await requireWebsiteOauthAppConnectAccess({
+			env: input.env,
+			user: input.user,
+			clientSecret: input.fields.clientSecret,
+			config: {
+				name: input.fields.provider,
+				tokenUrl: deviceTokenUrl,
+				apiBaseUrl: input.fields.apiBaseUrl?.trim() || null,
+				flow: 'device',
+				usePkce: input.fields.usePkce ?? null,
+				clientId: deviceClientId,
+				tokenExchangeStyle: resolveTokenExchangeStyle({
+					tokenUrl: deviceTokenUrl,
+					tokenExchangeStyle: input.fields.tokenExchangeStyle ?? null,
+				}),
+				deviceAuthorizationUrl:
+					input.fields.deviceAuthorizationUrl?.trim() || null,
+				authorization: authorizeUrl
+					? {
+							authorizeUrl,
+							scopes: input.fields.scopes ?? [],
+							scopeSeparator: input.fields.scopeSeparator ?? null,
+							extraAuthorizeParams: input.fields.extraAuthorizeParams ?? {},
+						}
+					: null,
+			},
+		})
+	}
 	const started = await startIntegrationDeviceConnect({
 		env: input.env,
 		request: input.user.request,

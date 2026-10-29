@@ -1192,12 +1192,34 @@ function normalizeOauthAppConfig(
  * `upsertIntegration` (then attaches a connection) and
  * `upsertOauthAppWithoutConnection` (setup with zero connections).
  */
-async function resolveOrCreateOauthApp(input: {
+/**
+ * The saved app a connect would reuse unchanged (full-tuple match), or null
+ * when saving this config would create or rewrite an app row in the org.
+ * Invalid configs return null, so callers fail closed.
+ */
+export async function findOauthAppReusedByConfig(input: {
+	env: Pick<Env, 'APP_DB'>
+	userId: string
+	config: OauthAppConfigInput
+}): Promise<UserOauthApp | null> {
+	let config: OauthAppWriteConfig
+	try {
+		config = normalizeOauthAppConfig(input.config)
+	} catch {
+		return null
+	}
+	return await findOauthAppMatchingConfig({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		config,
+	})
+}
+
+async function findOauthAppMatchingConfig(input: {
 	db: D1Database
 	userId: string
 	config: OauthAppWriteConfig
-	existingConnectionApp: UserOauthApp | null
-}): Promise<{ appSlug: string }> {
+}) {
 	const now = new Date().toISOString()
 	const appTupleFields = buildOauthAppRow({
 		userId: input.userId,
@@ -1207,7 +1229,7 @@ async function resolveOrCreateOauthApp(input: {
 		createdAt: now,
 		updatedAt: now,
 	})
-	const matchedApp = await findOauthAppByAppTuple({
+	return await findOauthAppByAppTuple({
 		db: input.db,
 		userId: input.userId,
 		clientId: appTupleFields.client_id,
@@ -1221,6 +1243,16 @@ async function resolveOrCreateOauthApp(input: {
 		scopeSeparator: appTupleFields.scope_separator,
 		extraAuthorizeParamsJson: appTupleFields.extra_authorize_params_json,
 	})
+}
+
+async function resolveOrCreateOauthApp(input: {
+	db: D1Database
+	userId: string
+	config: OauthAppWriteConfig
+	existingConnectionApp: UserOauthApp | null
+}): Promise<{ appSlug: string }> {
+	const now = new Date().toISOString()
+	const matchedApp = await findOauthAppMatchingConfig(input)
 
 	if (matchedApp) {
 		// Additive reuse: attach/return only. Do not rewrite slug-derived

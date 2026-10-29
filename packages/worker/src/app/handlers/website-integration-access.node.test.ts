@@ -1,0 +1,296 @@
+import { DatabaseSync } from 'node:sqlite'
+import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { loadAccountIntegrationByName } from '#app/account-integrations-data.ts'
+import { createOrganization } from '#worker/orgs/create-organization.ts'
+import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
+import { findOauthAppForProviderSetup } from '#worker/integrations/service.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
+import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
+import {
+	createAuditTestDb,
+	createTestOrgAuditWriter,
+} from '#worker/test-support/create-audit-db.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
+import { isPermissionDeniedError } from '#universal/permission-denied.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+	type OwnerId,
+} from '@kody-internal/shared/owner-person-ids.ts'
+import { type OrgRole } from '@kody-internal/shared/request-context.ts'
+import { expect, test, vi } from 'vitest'
+import {
+	deleteAccountOauthApp,
+	disconnectAccountIntegration,
+	rotateAccountOauthAppCredentials,
+} from './account-integrations.ts'
+import {
+	connectAccountOAuth,
+	saveAccountOAuthApp,
+	startAccountDeviceConnect,
+} from './account-secrets.ts'
+
+vi.mock(
+	'#worker/test-support/apply-all-migrations.ts',
+	async (importOriginal) =>
+		(
+			await import('#worker/credentials/cached-migrations.test-support.ts')
+		).withCachedMigrations(await importOriginal()),
+)
+
+type WebsiteUser = NonNullable<
+	Awaited<ReturnType<typeof readAuthenticatedAppUser>>
+>
+
+const now = '2026-10-12T00:00:00.000Z'
+const teamSlug = 'test-team'
+
+const githubApp = {
+	provider: 'github',
+	tokenUrl: 'https://github.com/login/oauth/access_token',
+	authorizeUrl: 'https://github.com/login/oauth/authorize',
+	apiBaseUrl: 'https://api.github.com',
+	flow: 'confidential',
+	clientId: 'team-github-client',
+	clientSecret: 'team-github-secret',
+	extraAuthorizeParams: {},
+}
+
+async function setup() {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../../migrations/', import.meta.url))
+	const db = createD1FromSqlite(sqlite)
+	const env = {
+		APP_DB: db,
+		AUDIT_DB: createAuditTestDb(),
+		...createInMemoryUserMeterEnv().env,
+		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
+	} as unknown as Env
+	const people = {
+		owner: testStableUserIdFromEmail('team-owner@example.com'),
+		member: testStableUserIdFromEmail('team-member@example.com'),
+	}
+	for (const [username, stableUserId] of Object.entries(people)) {
+		await provisionPersonalOrg(db, {
+			stableUserId,
+			username: `test-${username}`,
+			createdAt: now,
+		})
+	}
+	const created = await createOrganization(
+		db,
+		{} as Pick<Env, 'BUNDLE_ARTIFACTS_KV'>,
+		{
+			personId: personIdFromStored(people.owner),
+			audit: createTestOrgAuditWriter(),
+			slug: teamSlug,
+			displayName: 'Test Team',
+		},
+	)
+	if (!created.ok) throw new Error(created.error)
+	const team = await db
+		.prepare(`SELECT id FROM orgs WHERE slug = ?`)
+		.bind(teamSlug)
+		.first<{ id: string }>()
+	const teamId = ownerIdFromStored(team!.id)
+	await db
+		.prepare(
+			`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+			 VALUES (?, ?, 'member', ?)`,
+		)
+		.bind(teamId, people.member, now)
+		.run()
+
+	const userFor = (
+		person: keyof typeof people,
+		org: { id: OwnerId; role: OrgRole } | null,
+	): WebsiteUser => {
+		const user = {
+			userId: personIdFromStored(people[person]),
+			username: `test-${person}`,
+		}
+		return {
+			mcpUser: { ...user, email: `team-${person}@example.com` },
+			request: deriveRequestContext({
+				user,
+				source: { kind: 'session' },
+				...(org
+					? {
+							orgBinding: {
+								org: { id: org.id, slug: teamSlug },
+								role: org.role,
+							},
+						}
+					: {}),
+			}),
+		} as unknown as WebsiteUser
+	}
+	return {
+		env,
+		db,
+		teamId,
+		teamOwner: userFor('owner', { id: teamId, role: 'owner' }),
+		teamMember: userFor('member', { id: teamId, role: 'member' }),
+		memberPersonal: userFor('member', null),
+	}
+}
+
+async function expectDenied(promise: Promise<unknown>, permission: string) {
+	const error = await promise.then(
+		() => null,
+		(caught: unknown) => caught,
+	)
+	expect(isPermissionDeniedError(error)).toBe(true)
+	expect(error).toMatchObject({ status: 403, permission })
+	expect((error as Error).message).toContain(`organization`)
+	expect((error as Error).message).toContain(permission)
+}
+
+const appCount = (db: D1Database, ownerId: string) =>
+	db
+		.prepare(`SELECT COUNT(*) AS n FROM user_oauth_apps WHERE user_id = ?`)
+		.bind(ownerId)
+		.first<{ n: number }>()
+		.then((row) => row?.n ?? 0)
+
+test('team members without integration:write cannot save, rotate, or delete org OAuth apps; owners and personal orgs can', async () => {
+	const { env, db, teamId, teamOwner, teamMember, memberPersonal } =
+		await setup()
+
+	await expectDenied(
+		saveAccountOAuthApp({ env, user: teamMember, fields: githubApp }),
+		'integration:write',
+	)
+	expect(await appCount(db, teamId)).toBe(0)
+
+	const saved = await saveAccountOAuthApp({
+		env,
+		user: teamOwner,
+		fields: githubApp,
+	})
+	expect(saved.status).toBe(200)
+	expect(await appCount(db, teamId)).toBe(1)
+
+	const personal = await saveAccountOAuthApp({
+		env,
+		user: memberPersonal,
+		fields: { ...githubApp, clientId: 'personal-github-client' },
+	})
+	expect(personal.status).toBe(200)
+
+	await expectDenied(
+		rotateAccountOauthAppCredentials({
+			env,
+			user: teamMember,
+			appSlug: 'github',
+			clientId: 'member-rotated-client',
+		}),
+		'integration:write',
+	)
+	await expectDenied(
+		deleteAccountOauthApp({ env, user: teamMember, appSlug: 'github' }),
+		'integration:delete',
+	)
+	await expectDenied(
+		disconnectAccountIntegration({ env, user: teamMember, name: 'github' }),
+		'integration:delete',
+	)
+	await expectDenied(
+		startAccountDeviceConnect({
+			env,
+			user: teamMember,
+			fields: {
+				provider: 'github',
+				tokenUrl: githubApp.tokenUrl,
+				deviceAuthorizationUrl: 'https://github.com/login/device/code',
+				clientId: 'member-device-client',
+			},
+		}),
+		'integration:write',
+	)
+	expect(await appCount(db, teamId)).toBe(1)
+
+	const deleted = await deleteAccountOauthApp({
+		env,
+		user: teamOwner,
+		appSlug: 'github',
+	})
+	expect(deleted.status).toBe(200)
+})
+
+test('team members can connect through an existing org OAuth app but not create or rewrite one', async () => {
+	const { env, db, teamId, teamOwner, teamMember } = await setup()
+	await saveAccountOAuthApp({ env, user: teamOwner, fields: githubApp })
+	const { clientSecret: _secret, ...connectFields } = githubApp
+	const connect = (
+		fields: Partial<typeof connectFields> & {
+			clientSecret?: string
+		},
+	) =>
+		connectAccountOAuth({
+			request: new Request('https://kody.local/connect/oauth'),
+			refresh: {} as never,
+			env,
+			user: teamMember,
+			fields: {
+				...connectFields,
+				...fields,
+				allowedHosts: ['api.github.com'],
+				scopes: ['repo'],
+				tokenPayload: { access_token: 'member-access-token' },
+			},
+		})
+
+	await expectDenied(
+		connect({ clientId: 'member-own-client' }),
+		'integration:write',
+	)
+	await expectDenied(
+		connect({ clientSecret: 'member-replacement-secret' }),
+		'integration:write',
+	)
+	expect(await appCount(db, teamId)).toBe(1)
+
+	const connected = await connect({})
+	expect(connected.status).toBe(200)
+	expect(connected.data).toMatchObject({ ok: true, integrationName: 'github' })
+})
+
+test('an OAuth app saved in one org is never prefilled or returned for another org', async () => {
+	const { env, teamId, teamOwner, memberPersonal } = await setup()
+	await saveAccountOAuthApp({ env, user: teamOwner, fields: githubApp })
+	const personalOrgId = memberPersonal.request!.org.id
+
+	expect(
+		await findOauthAppForProviderSetup({ env, userId: teamId, name: 'github' }),
+	).toMatchObject({ clientId: githubApp.clientId })
+	for (const name of ['github', 'github-work']) {
+		expect(
+			await findOauthAppForProviderSetup({
+				env,
+				userId: personalOrgId,
+				name,
+			}),
+		).toBeNull()
+	}
+	expect(
+		await loadAccountIntegrationByName(env, teamOwner, 'github-work', {
+			appSlug: 'github',
+		}),
+	).toMatchObject({ clientId: githubApp.clientId })
+	const ownerPersonal = {
+		...teamOwner,
+		request: deriveRequestContext({
+			user: teamOwner.mcpUser,
+			source: { kind: 'session' },
+		}),
+	} as WebsiteUser
+	for (const user of [ownerPersonal, memberPersonal]) {
+		const found = await loadAccountIntegrationByName(env, user, 'github-work', {
+			appSlug: 'github',
+		})
+		expect(found?.clientId ?? null).not.toBe(githubApp.clientId)
+	}
+})
