@@ -1031,17 +1031,23 @@ export async function deleteOauthAppWithConnections(input: {
 	}
 
 	// Members' personal connections pinned to this app stop with it.
-	if (input.env.SECRET_STORE_KEY) {
+	const pinnedConnections = await listPinnedConnectionsForOrg({
+		db: input.env.APP_DB,
+		pinnedOrgId: ownerIdFromStored(input.userId),
+		appSlug: existing.slug,
+	})
+	if (pinnedConnections.length > 0) {
+		if (!input.env.SECRET_STORE_KEY) {
+			throw new Error(
+				"SECRET_STORE_KEY is not configured; members' connections through this app cannot be revoked.",
+			)
+		}
 		await wipePinnedConnections({
 			env: {
 				APP_DB: input.env.APP_DB,
 				SECRET_STORE_KEY: input.env.SECRET_STORE_KEY,
 			},
-			connections: await listPinnedConnectionsForOrg({
-				db: input.env.APP_DB,
-				pinnedOrgId: ownerIdFromStored(input.userId),
-				appSlug: existing.slug,
-			}),
+			connections: pinnedConnections,
 			reason: 'app_deleted',
 			audit: input.audit,
 		})
