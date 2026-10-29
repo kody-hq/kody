@@ -23,7 +23,8 @@ vi.mock(
 	import('#worker/community/activity-dispatch-queue-names.ts'),
 	async (importOriginal) => ({
 		...(await importOriginal()),
-		communityActivityDispatchQueueName: 'kody-community-activity-dispatch',
+		communityActivityDispatchQueueName:
+			'kody-community-activity-dispatch' as const,
 	}),
 )
 
@@ -37,7 +38,7 @@ vi.mock(
 	async (importOriginal) => ({
 		...(await importOriginal()),
 		communityListingPublishedDispatchQueueName:
-			'kody-community-listing-published-dispatch',
+			'kody-community-listing-published-dispatch' as const,
 	}),
 )
 
