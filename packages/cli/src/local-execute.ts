@@ -115,6 +115,31 @@ type SandboxResponse = {
 }
 
 const workerdStartTimeoutMs = 30_000
+const cancelledError = 'Local execute was cancelled before it finished.'
+const setupCancelled = Symbol('setup cancelled')
+
+/** Settles with `setupCancelled` as soon as `signal` aborts, even if `work` stalls. */
+function untilAborted<T>(
+	work: Promise<T>,
+	signal: AbortSignal | undefined,
+): Promise<T | typeof setupCancelled> {
+	if (!signal) return work
+	return new Promise((resolve, reject) => {
+		const onAbort = () => resolve(setupCancelled)
+		if (signal.aborted) onAbort()
+		else signal.addEventListener('abort', onAbort, { once: true })
+		work.then(
+			(value) => {
+				signal.removeEventListener('abort', onAbort)
+				resolve(value)
+			},
+			(error: unknown) => {
+				signal.removeEventListener('abort', onAbort)
+				reject(error)
+			},
+		)
+	})
+}
 const workerdExitGraceMs = 1_000
 
 export const savedPackageImportLocalResolveStatus =
@@ -128,6 +153,15 @@ export async function runLocalExecute(
 ): Promise<ToolCallResult> {
 	assertLocalExecuteNodeEngine()
 	assertTokenSafeApiUrl(input.apiUrl)
+	const setupStartedAt = new Date()
+	const cancelledDuringSetup = () =>
+		buildLocalExecuteResult({
+			sandbox: { error: cancelledError },
+			startedAt: setupStartedAt,
+			endedAt: new Date(),
+			conversationId: input.conversationId,
+		})
+	if (input.signal?.aborted) return cancelledDuringSetup()
 	const code =
 		input.modulePath !== undefined
 			? await bundleLocalUserModule(input.modulePath)
@@ -162,21 +196,32 @@ export async function runLocalExecute(
 			? savedPackageImportLocalResolveStatus
 			: localExecutePackageGraphResolveStatus,
 	)
-	const packageGraph = await resolveLocalPackageGraph({
-		...client,
-		code,
-		conversationId: input.conversationId,
-		...(input.depResolve ? { depResolve: input.depResolve } : {}),
-		...(input.packageRoot ? { packageRoot: input.packageRoot } : {}),
-		onStatus: input.onStatus,
-	})
+	if (input.signal?.aborted) return cancelledDuringSetup()
+	const packageGraph = await untilAborted(
+		resolveLocalPackageGraph({
+			...client,
+			code,
+			conversationId: input.conversationId,
+			...(input.depResolve ? { depResolve: input.depResolve } : {}),
+			...(input.packageRoot ? { packageRoot: input.packageRoot } : {}),
+			onStatus: input.onStatus,
+		}),
+		input.signal,
+	)
+	if (packageGraph === setupCancelled) return cancelledDuringSetup()
 
 	const workerdPath =
 		input.workerdPath ??
-		(await ensureWorkerdBinary({
-			onDownload: (url) =>
-				input.onStatus?.(`Downloading workerd for local execute from ${url}…`),
-		}))
+		(await untilAborted(
+			ensureWorkerdBinary({
+				onDownload: (url) =>
+					input.onStatus?.(
+						`Downloading workerd for local execute from ${url}…`,
+					),
+			}),
+			input.signal,
+		))
+	if (workerdPath === setupCancelled) return cancelledDuringSetup()
 
 	const runSecret = randomBytes(32).toString('hex')
 	const workDir = await mkdtemp(join(tmpdir(), 'kody-local-'))
@@ -185,8 +230,7 @@ export async function runLocalExecute(
 	// SIGTERM makes workerd drain in-flight requests, which a hung module never finishes.
 	const stopWorkerd = () => child?.kill('SIGKILL')
 	input.signal?.addEventListener('abort', stopWorkerd, { once: true })
-	const cancelled = () =>
-		finish({ error: 'Local execute was cancelled before it finished.' })
+	const cancelled = () => finish({ error: cancelledError })
 	const releaseSignals = cleanupOnSignal(() => {
 		stopWorkerd()
 		rmSync(workDir, { recursive: true, force: true })
@@ -280,12 +324,12 @@ export async function runLocalExecute(
 			[runSecretEnvVar]: runSecret,
 		}
 		delete env[apiTokenEnvVar]
+		if (input.signal?.aborted) return cancelled()
 		child = spawn(workerdPath, ['serve', configPath, '--control-fd=3'], {
 			cwd: workDir,
 			env,
 			stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
 		})
-		if (input.signal?.aborted) return cancelled()
 		const workerd = watchWorkerd(child)
 		const started = await workerd.listening
 		if (input.signal?.aborted) return cancelled()

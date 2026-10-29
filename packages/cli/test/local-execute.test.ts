@@ -524,6 +524,23 @@ export default async function main(params) {
 	},
 )
 
+test('runLocalExecute returns cancelled without setup work when its signal is already aborted', async () => {
+	reset()
+	const abort = new AbortController()
+	abort.abort()
+	const result = await runLocalExecute({
+		code: 'export default () => 1',
+		token: goodToken,
+		apiUrl,
+		workerdPath: join(tmpdir(), 'missing-workerd-binary'),
+		signal: abort.signal,
+	})
+	assert.equal(result.isError, true)
+	const structured = result.structuredContent as Record<string, unknown>
+	assert.match(String(structured.error), /cancelled/)
+	assert.equal(proxyRequests.length, 0)
+})
+
 test(
 	'runLocalExecute stops workerd when its signal aborts mid-run',
 	{ timeout: 180_000 },
