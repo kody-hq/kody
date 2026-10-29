@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { SiteLink } from './site-link.tsx'
 import { writeClipboardText } from '#client/clipboard.ts'
-import { type ViewerListingInstall } from '#universal/community-public-types.ts'
+import type { ViewerListingInstall } from '#universal/community-public-types.ts'
 import { getCommunityPackageHrefFromName } from '#universal/community-links.ts'
 import {
 	FORK_AHEAD_TOOLTIP,
@@ -19,7 +19,7 @@ import {
 } from './fork-outdated-copy-button.tsx'
 import { renderIcon, type IconName } from './icon.tsx'
 import { CommunityInstallOrgSelect } from './community-install-org-select.tsx'
-import { type CommunityInstallOrgPicker } from '../use-community-install-org.ts'
+import type { CommunityInstallOrgPicker } from '../use-community-install-org.ts'
 import {
 	getGhostButtonCss,
 	getPillButtonCss,
@@ -50,7 +50,7 @@ import {
 	PACKAGE_FOLLOW_PANEL_ID,
 } from '#universal/package-repo-actions.ts'
 import { PackageFollowContext } from './package-follow-context.ts'
-export { type PackageRepoActions } from '#universal/package-repo-actions.ts'
+export type { PackageRepoActions } from '#universal/package-repo-actions.ts'
 
 function hasPackageRepoActions(actions: PackageRepoActions | null) {
 	if (!actions) return false

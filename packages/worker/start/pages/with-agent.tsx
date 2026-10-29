@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { type CSSProperties } from 'react'
+import type { CSSProperties } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { BuildWithAgentButton } from '../components/build-with-agent-button.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'

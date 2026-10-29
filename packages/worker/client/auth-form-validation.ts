@@ -1,6 +1,6 @@
 import { getHandleFormatError } from '@kody-internal/shared/handle-rules.ts'
 import { getPasswordPolicyError } from '@kody-internal/shared/password-policy.ts'
-import { type AuthInvalidField } from '#client/form-error-fields.ts'
+import type { AuthInvalidField } from '#client/form-error-fields.ts'
 
 // Match the auth handler: any non-empty local@domain after trim. Do not
 // require a dotted TLD — accounts like user@localhost must still log in.

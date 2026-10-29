@@ -1,5 +1,5 @@
 import { onboardingChecklistItemLabels } from '#universal/onboarding-process.ts'
-import { type OnboardingChecklistLoaderData } from '#universal/loader-data.ts'
+import type { OnboardingChecklistLoaderData } from '#universal/loader-data.ts'
 
 export function shouldShowOnboardingChecklist(
 	checklist: OnboardingChecklistLoaderData | null | undefined,

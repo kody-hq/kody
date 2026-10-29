@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { notFound, redirect } from '@tanstack/react-router'
 import { packageAccessInput } from '#universal/package-access-mutations.ts'
-import { type PackageForksLoaderData } from '#universal/package-forks.ts'
+import type { PackageForksLoaderData } from '#universal/package-forks.ts'
 
 export const loadPackageForks = createServerFn({ method: 'GET' })
 	.validator(packageAccessInput)

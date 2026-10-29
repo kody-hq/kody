@@ -1,0 +1,107 @@
+{
+	"node": "v26.12.1",
+	"profilerVersion": "4.147.0",
+	"targets": [
+		{
+			"label": "remix",
+			"commit": "8b2528460eb9be9d08d50b7a1d2ee8f491503d83",
+			"samples": [
+				{
+					"sample": 1,
+					"exitCode": 0,
+					"activeMs": 43.7,
+					"error": null
+				},
+				{
+					"sample": 2,
+					"exitCode": 0,
+					"activeMs": 40,
+					"error": null
+				},
+				{
+					"sample": 3,
+					"exitCode": 0,
+					"activeMs": 38.9,
+					"error": null
+				}
+			]
+		},
+		{
+			"label": "shipped",
+			"commit": "2894f12c99431f7e78816b502c24fdc72813dffc",
+			"samples": [
+				{
+					"sample": 1,
+					"exitCode": 0,
+					"activeMs": 21.2,
+					"error": null
+				},
+				{
+					"sample": 2,
+					"exitCode": 0,
+					"activeMs": 22.5,
+					"error": null
+				},
+				{
+					"sample": 3,
+					"exitCode": 0,
+					"activeMs": 22.7,
+					"error": null
+				}
+			]
+		},
+		{
+			"label": "main",
+			"commit": "214ce21bbd6045a132f7f474bcb6a0126a348722",
+			"samples": [
+				{
+					"sample": 1,
+					"exitCode": 0,
+					"activeMs": 22.7,
+					"error": null
+				},
+				{
+					"sample": 2,
+					"exitCode": 0,
+					"activeMs": 23.9,
+					"error": null
+				},
+				{
+					"sample": 3,
+					"exitCode": 0,
+					"activeMs": 23.7,
+					"error": null
+				}
+			]
+		},
+		{
+			"label": "fixed",
+			"commit": "d7077a679f7989b9956e332ad57895bc584177f0",
+			"samples": [
+				{
+					"sample": 1,
+					"exitCode": 0,
+					"activeMs": 22.6,
+					"error": null
+				},
+				{
+					"sample": 2,
+					"exitCode": 0,
+					"activeMs": 22.7,
+					"error": null
+				},
+				{
+					"sample": 3,
+					"exitCode": 0,
+					"activeMs": 23.9,
+					"error": null
+				}
+			]
+		}
+	],
+	"caveats": [
+		"Local module evaluation CPU, not request TTFB, global edge cold starts or an added cost on every request.",
+		"Each revision builds its real slim production-worker.ts entry with its own dependencies. A single pinned Wrangler/workerd profiler measures every artifact.",
+		"Three sequential samples per revision. No timed browser runs or other builds should overlap profiling."
+	]
+}

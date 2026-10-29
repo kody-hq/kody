@@ -4,7 +4,7 @@ import {
 	syncOrganizationDomain,
 	deleteOrganizationDomain,
 } from '#start/server/org-settings-mutations'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useEffect, useRef, useState } from 'react'
 import { orgDomainMutationOptions } from './org-domain-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -13,7 +13,7 @@ import {
 	useQueryClient,
 	type QueryKey,
 } from '@tanstack/react-query'
-import { type OrgSettingsLoaderData } from '#universal/loader-data.ts'
+import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import {
 	AccountManagementPanel,
 	AccountManagementMessage,

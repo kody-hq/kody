@@ -1,10 +1,10 @@
 /** @jsxImportSource @emotion/react */
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { mergeCss } from '../components/merge-css.ts'
 import { type ReactNode, type CSSProperties, useEffect, useRef } from 'react'
-import { type DocSummaryLoaderData } from '#universal/loader-data.ts'
+import type { DocSummaryLoaderData } from '#universal/loader-data.ts'
 import {
 	docHref,
 	docsCurrentPageLabel,
@@ -90,7 +90,7 @@ function renderDocsNavSections(
 			<h2>
 				{section.id === 'providers' ? (
 					<SiteLink
-						preload="render"
+						preload="intent"
 						href={routes.docsConnect.href()}
 						aria-current={current === 'connect' ? 'page' : undefined}
 					>
@@ -104,7 +104,7 @@ function renderDocsNavSections(
 				{section.items.map((item) => (
 					<li key={item.slug}>
 						<SiteLink
-							preload="render"
+							preload="intent"
 							href={docHref(item.slug)}
 							aria-current={item.slug === current ? 'page' : undefined}
 							data-section-current={
@@ -128,7 +128,7 @@ export function renderDocsPager(slug: string, isAdmin = false) {
 		<nav aria-label="Docs order" css={docsPagerCss}>
 			{prev ? (
 				<SiteLink
-					preload="render"
+					preload="intent"
 					href={docHref(prev.slug)}
 					css={docsPagerLinkCss}
 				>
@@ -138,7 +138,7 @@ export function renderDocsPager(slug: string, isAdmin = false) {
 			) : null}
 			{next ? (
 				<SiteLink
-					preload="render"
+					preload="intent"
 					href={docHref(next.slug)}
 					css={docsPagerNextLinkCss}
 				>
@@ -179,7 +179,7 @@ export function renderDocListItem(doc: DocSummaryLoaderData, index: number) {
 			data-rise
 			style={{ '--rise': String(index + 2) } as CSSProperties}
 		>
-			<SiteLink preload="render" href={docHref(doc.slug)} css={docListLinkCss}>
+			<SiteLink preload="intent" href={docHref(doc.slug)} css={docListLinkCss}>
 				<strong>{doc.title}</strong>
 				{doc.lastVerified ? (
 					<span css={docListMetaCss}>

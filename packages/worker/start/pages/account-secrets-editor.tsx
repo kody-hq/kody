@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
-import { type AccountSecretDetail } from '#universal/loader-data.ts'
+import type { AccountSecretDetail } from '#universal/loader-data.ts'
 import { Combobox, type ComboboxOption } from '../components/combobox.tsx'
 import { AllowedPackagesPicker } from '../components/allowed-packages-picker.tsx'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'

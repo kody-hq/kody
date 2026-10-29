@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { useState } from 'react'
 import { SiteLink } from '../../components/site-link.tsx'
-import { type Brief } from './apps-intake.tsx'
+import type { Brief } from './apps-intake.tsx'
 import { AppsShareScene, type AccessRole } from './apps-scenes.tsx'
 const roles = {
 	Use: 'Can read the source and run the package.',

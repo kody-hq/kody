@@ -1,0 +1,217 @@
+{
+	"node": "v26.12.1",
+	"cpu": "Apple M5 Pro",
+	"targets": [
+		{
+			"label": "remix",
+			"root": "<snapshots>/remix",
+			"commit": "8b2528460eb9be9d08d50b7a1d2ee8f491503d83",
+			"origin": "http://127.0.0.1:5591",
+			"serverDirectory": "ssr",
+			"lockSha256": "618ac5f06a478b58430a2946c79486c3c5a8961eee8de6dcf50b5e4fae3016fe",
+			"packageSha256": "9e6009afc337b9d0e5aa0cf6c626685ccaf6f68c067c0cd505789c71179f54e3"
+		},
+		{
+			"label": "shipped",
+			"root": "<snapshots>/shipped",
+			"commit": "2894f12c99431f7e78816b502c24fdc72813dffc",
+			"origin": "http://127.0.0.1:5592",
+			"serverDirectory": "server",
+			"lockSha256": "673ee46137536e22aa16ade0d8b3920ef40e5c59c71cbf883ec8eb02caff42fa",
+			"packageSha256": "fce366c3c99cb15733d029cde78555e3707e14028dd3d18175c00cb8fc812527"
+		},
+		{
+			"label": "main",
+			"root": "<snapshots>/main",
+			"commit": "214ce21bbd6045a132f7f474bcb6a0126a348722",
+			"origin": "http://127.0.0.1:5593",
+			"serverDirectory": "server",
+			"lockSha256": "70d026a7c59657f4eee8e0aa782adb90a1a157bdc9dc942570c837fcf9607ba4",
+			"packageSha256": "36aa0139f6ed213b31b3207f3aff0bf5343e6bbc7ff2340a99ce557d22812735"
+		},
+		{
+			"label": "fixed",
+			"root": "<fixed-checkout>",
+			"commit": "07ccd2ca8cafae10dadad7d19ad06b219363422e",
+			"origin": "http://127.0.0.1:5594",
+			"serverDirectory": "server",
+			"lockSha256": "a74f9d77b0356d190459fe1e0ae5f4ad31635537c22858214a9c705a77bb1ad5",
+			"packageSha256": "29bc518f88a9375b641a6deb20f1ac1648f9e603b38b94da579c9cc91b4b9816"
+		}
+	],
+	"runs": [
+		{
+			"label": "remix",
+			"round": 1,
+			"elapsedMs": 3363.38625,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "shipped",
+			"round": 1,
+			"elapsedMs": 11596.327333000001,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "main",
+			"round": 1,
+			"elapsedMs": 11059.010291999999,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "fixed",
+			"round": 1,
+			"elapsedMs": 11037.060958000002,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "shipped",
+			"round": 2,
+			"elapsedMs": 8684.265374999995,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "main",
+			"round": 2,
+			"elapsedMs": 7129.484041000003,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "fixed",
+			"round": 2,
+			"elapsedMs": 7746.644874999998,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "remix",
+			"round": 2,
+			"elapsedMs": 3299.459415999998,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "main",
+			"round": 3,
+			"elapsedMs": 25819.201,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "fixed",
+			"round": 3,
+			"elapsedMs": 13886.647333,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "remix",
+			"round": 3,
+			"elapsedMs": 3715.235459000003,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "shipped",
+			"round": 3,
+			"elapsedMs": 10785.745582999996,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "fixed",
+			"round": 4,
+			"elapsedMs": 11514.35775000001,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "remix",
+			"round": 4,
+			"elapsedMs": 2758.9267919999984,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "shipped",
+			"round": 4,
+			"elapsedMs": 9378.831666999991,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "main",
+			"round": 4,
+			"elapsedMs": 10197.527582999988,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "remix",
+			"round": 5,
+			"elapsedMs": 2239.178500000009,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "shipped",
+			"round": 5,
+			"elapsedMs": 8293.710958999989,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "main",
+			"round": 5,
+			"elapsedMs": 8941.003917000024,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "fixed",
+			"round": 5,
+			"elapsedMs": 9229.660667000018,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "shipped",
+			"round": 6,
+			"elapsedMs": 7581.826499999996,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "main",
+			"round": 6,
+			"elapsedMs": 7867.097165999992,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "fixed",
+			"round": 6,
+			"elapsedMs": 9255.524750000011,
+			"exitCode": 0,
+			"error": null
+		},
+		{
+			"label": "remix",
+			"round": 6,
+			"elapsedMs": 2418.349500000011,
+			"exitCode": 0,
+			"error": null
+		}
+	],
+	"caveats": [
+		"Complete npm build wall time, including source-map verification where that revision runs it.",
+		"First round is reported separately. Later rounds rotate target order and retain warm source/dependency caches.",
+		"All emitted JS/CSS includes lazy chunks. This is not page transfer or Worker upload size."
+	]
+}

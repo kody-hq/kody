@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { staticDocumentHead } from '../components/document-head.ts'
+import { staticDocumentHead } from '../components/static-document-head.ts'
 import { acquisitionMarkdown } from '#start/server/markdown'
 import { negotiatedDocument } from '../document-negotiation.ts'
 import { createFileRoute } from '@tanstack/react-router'

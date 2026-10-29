@@ -2,10 +2,10 @@ import { jsx } from 'react/jsx-runtime'
 import { renderStartPage as renderToString } from '../../test-support/render-start-page.ts'
 import { expect, test } from 'vitest'
 import { AccountWebhooksPage } from '../../pages/account-webhooks.tsx'
-import { type SessionInfo } from '../../../client/session.ts'
-import {
-	type AccountWebhooksLoaderData,
-	type PackageWebhookListItem,
+import type { SessionInfo } from '../../../client/session.ts'
+import type {
+	AccountWebhooksLoaderData,
+	PackageWebhookListItem,
 } from '#universal/loader-data.ts'
 
 const session: SessionInfo = {

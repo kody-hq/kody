@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { ExperimentOptIn } from '../components/experiment-opt-in.tsx'
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
 import { mcpEventsExtensionFlagKey } from '#universal/feature-flags/registry.ts'

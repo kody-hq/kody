@@ -1,4 +1,4 @@
-import { type ParsedHistoryState } from '@tanstack/history'
+import type { ParsedHistoryState } from '@tanstack/history'
 
 declare module '@tanstack/history' {
 	interface HistoryState {

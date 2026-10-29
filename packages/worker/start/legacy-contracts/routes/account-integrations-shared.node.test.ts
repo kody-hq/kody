@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { type AccountIntegrationListItem } from '#universal/loader-data.ts'
+import type { AccountIntegrationListItem } from '#universal/loader-data.ts'
 import { toIntegrationAuthFailureView } from '#universal/connection-trouble.ts'
 import {
 	connectionStatusLabel,

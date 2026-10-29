@@ -8,7 +8,7 @@ import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.
 import { buildHumanApprovalErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { usePackageMutation } from '../package-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { shortCommunityCommit } from '#universal/community-display.ts'
 import { useRouter } from '@tanstack/react-router'
@@ -28,9 +28,9 @@ import {
 	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	type AccountPackageListingBehindHint,
-	type AccountPackageApprovePublishLoaderData,
+import type {
+	AccountPackageListingBehindHint,
+	AccountPackageApprovePublishLoaderData,
 } from '#universal/loader-data.ts'
 import {
 	PublishChecksPanel,

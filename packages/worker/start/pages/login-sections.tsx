@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import { minPasswordLength } from '@kody-internal/shared/password-policy.ts'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
-import { type CSSObject } from '@emotion/react'
-import { type CSSProperties, type FormEvent } from 'react'
+import type { CSSObject } from '@emotion/react'
+import type { CSSProperties, FormEvent } from 'react'
 import { KodyMark } from '../components/kody-mark.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import {
@@ -31,7 +31,7 @@ import {
 	UsernameChoiceField,
 	type UsernameAvailabilityView,
 } from '../components/username-choice-field.tsx'
-import { type AuthStatus } from './login.tsx'
+import type { AuthStatus } from './login.tsx'
 
 const motionOk = '@media (prefers-reduced-motion: no-preference)'
 const mobileMq = '@media (max-width: 900px)'

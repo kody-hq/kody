@@ -9,7 +9,7 @@ import {
 	isSecondAgentStandardGiftActive,
 	resolvePlanOverlay,
 } from '#universal/second-agent-standard-gift.ts'
-import { type PlanName } from '#universal/plans.ts'
+import type { PlanName } from '#universal/plans.ts'
 
 /** 30 days. Observed through grant `expires_at`, not this export alone. */
 export const referralStandardCreditDurationMs = 30 * 24 * 60 * 60 * 1000

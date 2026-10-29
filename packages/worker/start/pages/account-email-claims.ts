@@ -2,7 +2,7 @@ import { usePageInvalidation } from '../page-invalidation.ts'
 import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
-import { type AccountFormerEmail } from '#universal/loader-data.ts'
+import type { AccountFormerEmail } from '#universal/loader-data.ts'
 import {
 	requestWebsiteEmailChange,
 	requestWebsiteEmailRelease,

@@ -6,7 +6,7 @@ import {
 	banAdminReportReporter,
 	banAdminReportOwner,
 } from '#start/server/admin-mutations'
-import { type AdminCommunityReportsLoaderData } from '#universal/loader-data.ts'
+import type { AdminCommunityReportsLoaderData } from '#universal/loader-data.ts'
 import {
 	cardCss,
 	descriptionCss,

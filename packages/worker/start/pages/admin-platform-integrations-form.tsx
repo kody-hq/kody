@@ -6,7 +6,7 @@ import {
 	joinList,
 	type ActionState,
 } from '#client/routes/admin-platform-integrations-shared.ts'
-import { type AdminPlatformIntegrationApp } from '#universal/loader-data.ts'
+import type { AdminPlatformIntegrationApp } from '#universal/loader-data.ts'
 import {
 	cardTitleCss,
 	descriptionCss,
@@ -19,7 +19,7 @@ import {
 	getSelectCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
-import { type ChangeEvent, type FormEvent } from 'react'
+import type { ChangeEvent, FormEvent } from 'react'
 import {
 	accountInputCss,
 	accountTextareaCss,

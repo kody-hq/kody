@@ -1,6 +1,6 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
-import { type OAuthDecisionData } from '../../src/oauth-handlers.ts'
+import type { OAuthDecisionData } from '../../src/oauth-handlers.ts'
 
 export const submitOAuthDecision = createServerFn({ method: 'POST' })
 	.inputValidator(

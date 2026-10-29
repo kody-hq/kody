@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { type ReactNode } from 'react'
-import { type CSSObject } from '@emotion/react'
+import type { ReactNode } from 'react'
+import type { CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import {
 	AccountManagementPanel,
@@ -26,7 +26,7 @@ import {
 	formatConnectionUsageCount,
 	formatConnectionUsageQuantity,
 } from '#universal/connection-usage-presentation.ts'
-import { type ConnectedMcpAgent } from '#universal/connected-mcp-agents.ts'
+import type { ConnectedMcpAgent } from '#universal/connected-mcp-agents.ts'
 import {
 	descriptionCss,
 	primaryLinkCss,

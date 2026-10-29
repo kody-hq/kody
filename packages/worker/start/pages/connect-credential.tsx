@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type SaveSecretInput } from '#universal/secret-mutations.ts'
+import type { SaveSecretInput } from '#universal/secret-mutations.ts'
 import { saveSecret } from '#start/server/account-mutations'
 import { readAccountSecretsSaveWarning } from './account-secrets-shared.ts'
 import { persistConnectOauthOrgSlug } from './connect-oauth-shared.ts'

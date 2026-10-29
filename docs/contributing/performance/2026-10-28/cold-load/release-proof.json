@@ -1,0 +1,59 @@
+{
+	"sha": "07ccd2ca8cafae10dadad7d19ad06b219363422e",
+	"origin": "http://127.0.0.1:5594",
+	"health": "\n> kody@0.0.0 control-kody\n> node tools/control-kody.ts health --origin http://127.0.0.1:5594 --sha 07ccd2ca8cafae10dadad7d19ad06b219363422e\n\nok http://127.0.0.1:5594 ok, commitSha 07ccd2ca8cafae10dadad7d19ad06b219363422e\n",
+	"rows": [
+		{
+			"path": "/",
+			"status": 200,
+			"encoding": "gzip",
+			"inlineCssBytes": 123158,
+			"heading": "The shared cloud for your team\u2019s agents"
+		},
+		{
+			"path": "/pricing",
+			"status": 200,
+			"encoding": "gzip",
+			"inlineCssBytes": 123158,
+			"heading": "Start free.Pay when Kody earns it."
+		},
+		{
+			"path": "/docs",
+			"status": 200,
+			"encoding": "gzip",
+			"inlineCssBytes": 123158,
+			"heading": "What is Kody?"
+		}
+	],
+	"fonts": [
+		{
+			"path": "/__start/07ccd2ca8cafae10dadad7d19ad06b219363422e/fonts/bricolage-grotesque-latin.woff2",
+			"status": 200
+		},
+		{
+			"path": "/__start/07ccd2ca8cafae10dadad7d19ad06b219363422e/fonts/wix-madefor-text-latin.woff2",
+			"status": 200
+		},
+		{
+			"path": "/__start/07ccd2ca8cafae10dadad7d19ad06b219363422e/fonts/wix-madefor-text-italic-latin.woff2",
+			"status": 200
+		},
+		{
+			"path": "/__start/07ccd2ca8cafae10dadad7d19ad06b219363422e/fonts/bricolage-grotesque-latin.woff2",
+			"status": 304
+		},
+		{
+			"path": "/__start/07ccd2ca8cafae10dadad7d19ad06b219363422e/fonts/wix-madefor-text-latin.woff2",
+			"status": 304
+		},
+		{
+			"path": "/__start/07ccd2ca8cafae10dadad7d19ad06b219363422e/fonts/bricolage-grotesque-latin.woff2",
+			"status": 304
+		},
+		{
+			"path": "/__start/07ccd2ca8cafae10dadad7d19ad06b219363422e/fonts/wix-madefor-text-latin.woff2",
+			"status": 304
+		}
+	],
+	"errors": []
+}

@@ -1,8 +1,8 @@
+import { fillPlacementViewFromDraft } from '#universal/credential-fill-placement-input.ts'
 import { expect, test } from 'vitest'
 import {
 	defaultFillPlacementDraft,
 	fillPlacementDraftFromView,
-	fillPlacementViewFromDraft,
 } from './credential-fill-placement.ts'
 
 test('new credentials draft headers-only', () => {

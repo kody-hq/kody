@@ -464,10 +464,8 @@ html.is-settled {
 		animation: card-in 600ms var(--ease-out) var(--reveal-delay, 0ms) backwards;
 	}
 
-	/* Page-open choreography: full document loads only — SPA navigations
-	   set html[data-spa-nav] and cut directly to the next page. `both` + opacity 0 delays LCP on the
-	   homepage h1 (PSI lab). Keep the motion anyway — the entrance is
-	   worth that hit. */
+	/* Keep page-open motion, but render readable content from the first frame.
+	   An opacity-zero entrance makes critical text wait for the animation. */
 	html.js:not([data-spa-nav]) [data-rise] {
 		animation: rise 700ms var(--ease-out) both;
 		animation-delay: calc(60ms + var(--rise, 0) * 90ms);
@@ -475,12 +473,10 @@ html.is-settled {
 
 	@keyframes rise {
 		from {
-			opacity: 0;
 			translate: 0 26px;
 		}
 
 		to {
-			opacity: 1;
 			translate: 0 0;
 		}
 	}

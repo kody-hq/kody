@@ -2,7 +2,7 @@ import { jsx } from 'react/jsx-runtime'
 import { expect, test } from 'vitest'
 import { renderStartPage } from '../../test-support/render-start-page.ts'
 import { OrgGrantsPage } from '../../pages/org-management.tsx'
-import { type OrgGrantsLoaderData } from '#universal/loader-data.ts'
+import type { OrgGrantsLoaderData } from '#universal/loader-data.ts'
 
 function grant(
 	id: string,

@@ -17,7 +17,7 @@ import {
 import {
 	NOT_FOUND_DOCUMENT_TITLE,
 	type ResolvedDocumentHead,
-} from '#universal/document-head.ts'
+} from '#universal/document-head-contract.ts'
 import { documentHead } from './document-head.ts'
 
 type PageHeadReference = {

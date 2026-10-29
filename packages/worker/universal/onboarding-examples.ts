@@ -1,4 +1,4 @@
-import { type OnboardingFeaturedListing } from '#universal/community-public-types.ts'
+import type { OnboardingFeaturedListing } from '#universal/community-public-types.ts'
 
 /**
  * Production featured zero-auth onboarding examples. Prefer matching live

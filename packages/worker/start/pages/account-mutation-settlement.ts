@@ -1,7 +1,7 @@
-import { type Query, type QueryClient } from '@tanstack/react-query'
+import type { Query, QueryClient } from '@tanstack/react-query'
 import { invalidatePageResources } from '../page-invalidation-cache.ts'
 import { pageQueryInputOrg } from '../page-query-scope.ts'
-import { type PageResource } from '../page-resources.ts'
+import type { PageResource } from '../page-resources.ts'
 import { invalidateShellQueries } from '../shell-query.ts'
 
 export const profileResources = [

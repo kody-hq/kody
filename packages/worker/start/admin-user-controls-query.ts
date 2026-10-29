@@ -3,10 +3,7 @@ import {
 	updateAdminOrgLimits,
 } from '#start/server/admin-controls'
 import { verifyAdminUserEmailDestination } from '#start/server/admin-mutations'
-import {
-	type LimitOverrideKey,
-	type LimitOverrideValue,
-} from '#universal/plans.ts'
+import type { LimitOverrideKey, LimitOverrideValue } from '#universal/plans.ts'
 import {
 	mutationOptions,
 	queryOptions,

@@ -5,7 +5,7 @@ import {
 	isProfilePackageFilterOnlyHrefChange,
 	readProfilePackageFiltersFromHref,
 } from './profile-search.ts'
-import { type PublicProfilePackageItem } from './community-public-types.ts'
+import type { PublicProfilePackageItem } from './community-public-types.ts'
 
 const listedApp = {
 	name: '@kody/notes-app',

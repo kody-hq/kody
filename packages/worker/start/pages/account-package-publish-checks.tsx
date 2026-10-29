@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useEffect, useState } from 'react'
-import { type AccountPackagePublishCheckPayload } from '#universal/loader-data.ts'
+import type { AccountPackagePublishCheckPayload } from '#universal/loader-data.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 export type PublishCommitChecksState =

@@ -1,0 +1,110 @@
+{
+	"note": "All emitted JS/CSS files, excluding source maps. Gzip uses Node zlib default compression per file. These totals are not initial-page transfer, preload traffic, deployment upload size or edge compression evidence.",
+	"nodeVersion": "v26.12.1",
+	"inventories": [
+		{
+			"label": "remix",
+			"root": "<snapshots>/remix",
+			"commit": "8b2528460eb9be9d08d50b7a1d2ee8f491503d83",
+			"origin": "http://127.0.0.1:5591",
+			"serverDirectory": "ssr",
+			"dist": "dist",
+			"inventorySha256": "1be3d21ca7a903f9f3a57464acf839b0501fe0025c32ff1cc6609be8e5bd6303",
+			"groups": {
+				"client": {
+					"files": 57,
+					"bytes": 1761137,
+					"gzipBytes": 528876
+				},
+				"server": {
+					"files": 0,
+					"bytes": 0,
+					"gzipBytes": 0
+				},
+				"ssr": {
+					"files": 208,
+					"bytes": 22971964,
+					"gzipBytes": 5576195
+				}
+			}
+		},
+		{
+			"label": "shipped",
+			"root": "<snapshots>/shipped",
+			"commit": "2894f12c99431f7e78816b502c24fdc72813dffc",
+			"origin": "http://127.0.0.1:5592",
+			"serverDirectory": "server",
+			"dist": "dist",
+			"inventorySha256": "9dc8709cc1d25bed695b6bebc0f7f41a2ccc65f0d7ee1aca947d71c9b4d9c7c3",
+			"groups": {
+				"client": {
+					"files": 621,
+					"bytes": 3124610,
+					"gzipBytes": 1064064
+				},
+				"server": {
+					"files": 1268,
+					"bytes": 28318993,
+					"gzipBytes": 7297491
+				},
+				"ssr": {
+					"files": 0,
+					"bytes": 0,
+					"gzipBytes": 0
+				}
+			}
+		},
+		{
+			"label": "main",
+			"root": "<snapshots>/main",
+			"commit": "214ce21bbd6045a132f7f474bcb6a0126a348722",
+			"origin": "http://127.0.0.1:5593",
+			"serverDirectory": "server",
+			"dist": "dist",
+			"inventorySha256": "5bdcdabebe6a08a8be448dcc7b1f2d986b59f122cc70aaa4e91bac275f5a4a3f",
+			"groups": {
+				"client": {
+					"files": 646,
+					"bytes": 3545684,
+					"gzipBytes": 1191179
+				},
+				"server": {
+					"files": 1334,
+					"bytes": 30764456,
+					"gzipBytes": 7937523
+				},
+				"ssr": {
+					"files": 0,
+					"bytes": 0,
+					"gzipBytes": 0
+				}
+			}
+		},
+		{
+			"label": "fixed",
+			"root": "<fixed-checkout>",
+			"commit": "d7077a679f7989b9956e332ad57895bc584177f0",
+			"origin": "http://127.0.0.1:5594",
+			"serverDirectory": "server",
+			"dist": "dist",
+			"inventorySha256": "8f54a3c2495457c648322fa6e3e8d26cf49f8ec2a3d75187e55a984a5aa9266c",
+			"groups": {
+				"client": {
+					"files": 648,
+					"bytes": 3508235,
+					"gzipBytes": 1187766
+				},
+				"server": {
+					"files": 1337,
+					"bytes": 30730478,
+					"gzipBytes": 7935429
+				},
+				"ssr": {
+					"files": 0,
+					"bytes": 0,
+					"gzipBytes": 0
+				}
+			}
+		}
+	]
+}

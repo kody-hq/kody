@@ -2,7 +2,7 @@ import { jsx } from 'react/jsx-runtime'
 import { expect, test } from 'vitest'
 import { renderStartPage as renderToString } from './test-support/render-start-page.ts'
 import { PackageCookieWarningsCallout } from './pages/package-cookie-warnings-callout.tsx'
-import { type AccountPackageDetail } from '#universal/loader-data.ts'
+import type { AccountPackageDetail } from '#universal/loader-data.ts'
 
 type CookieWarning = NonNullable<AccountPackageDetail['cookieWarnings']>[number]
 

@@ -1,11 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { fillPlacementViewFromDraft } from '#universal/credential-fill-placement-input.ts'
 import { css } from '@emotion/react'
 import { useState, useSyncExternalStore, type FormEvent } from 'react'
 import {
 	defaultFillPlacementDraft,
 	type FillPlacementDraft,
 	fillPlacementDraftFromView,
-	fillPlacementViewFromDraft,
 	formatFillPlacementSummary,
 	type CredentialFillPlacementView,
 } from '#universal/credential-fill-placement.ts'

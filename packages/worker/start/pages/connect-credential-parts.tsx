@@ -2,16 +2,16 @@
 import { useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { AllowedPackagesPicker } from '../components/allowed-packages-picker.tsx'
-import { type ComboboxOption } from '../components/combobox.tsx'
+import type { ComboboxOption } from '../components/combobox.tsx'
 
 import {
 	credentialCreateKindSummary,
 	type KeyFormState,
 	writeCredentialCreateKind,
 } from '#client/routes/connect-credential-shared.ts'
-import {
-	type CredentialKind,
-	type CredentialListItem,
+import type {
+	CredentialKind,
+	CredentialListItem,
 } from '#universal/credential-contracts.ts'
 import {
 	type AccountCredentialsResponse,

@@ -2,7 +2,7 @@
 import { useServerFn } from '@tanstack/react-start'
 import { handlePermanenceConfirmMessage } from '@kody-internal/shared/handle-permanence.ts'
 import { completeOauthPendingSignup } from '#start/server/auth-mutations'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { colors } from '#universal/styles/tokens.ts'
 import {
 	getPillButtonCss,

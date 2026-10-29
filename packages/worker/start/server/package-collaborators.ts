@@ -7,7 +7,7 @@ import {
 	createPackageCollaboratorInviteInput,
 	revokePackageCollaboratorInviteInput,
 } from '#universal/package-access-mutations.ts'
-import { type PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
+import type { PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
 
 export const loadPackageCollaborators = createServerFn({ method: 'GET' })
 	.validator(packageAccessInput)

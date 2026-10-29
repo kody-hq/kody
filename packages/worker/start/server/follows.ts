@@ -1,8 +1,8 @@
 import { createServerFn } from '@tanstack/react-start'
 import { notFound, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
-import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { type FollowOperationResult } from '#universal/follows.ts'
+import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import type { FollowOperationResult } from '#universal/follows.ts'
 
 const orgSlug = z.string().regex(/^[a-zA-Z0-9_-]+$/)
 const target = z.object({

@@ -5,7 +5,7 @@ import {
 	removeOrganizationPhoto,
 	saveOrganizationAvatar,
 } from '#start/server/org-settings-mutations'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useRef, useState } from 'react'
 import {
 	hashKey,
@@ -18,7 +18,7 @@ import {
 	handlePermanentNote,
 	handleUrlPreview,
 } from '@kody-internal/shared/handle-permanence.ts'
-import { type OrgSettingsLoaderData } from '#universal/loader-data.ts'
+import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { orgIdentity } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import {

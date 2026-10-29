@@ -1,4 +1,4 @@
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { colors } from './tokens.ts'
 
 /** A small elevation step for surfaces inside another card. */

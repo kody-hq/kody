@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useEffect } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { useRouter } from '@tanstack/react-router'
@@ -32,7 +32,7 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import { hoverMq } from '#universal/styles/style-primitives.ts'
-import { type HighlightedCode } from '#universal/highlighted-code.ts'
+import type { HighlightedCode } from '#universal/highlighted-code.ts'
 import { AgentAuthCallout } from './onboarding-agent-auth-callout.tsx'
 import {
 	renderPanelContent,

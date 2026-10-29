@@ -2,10 +2,10 @@ import { createElement } from 'react'
 import { expect, test } from 'vitest'
 import { ApprovalBundleRoute } from './pages/approval-bundle.tsx'
 import { renderStartPage } from './test-support/render-start-page.ts'
-import {
-	type ApprovalBundleLoaderData,
-	type ApprovalBundleView,
-	type ApprovalItemView,
+import type {
+	ApprovalBundleLoaderData,
+	ApprovalBundleView,
+	ApprovalItemView,
 } from '#universal/approval-bundles.ts'
 
 const item: ApprovalItemView = {

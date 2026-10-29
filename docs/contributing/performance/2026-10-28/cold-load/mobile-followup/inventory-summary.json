@@ -1,0 +1,122 @@
+{
+	"note": "All emitted JS/CSS files, excluding source maps. Gzip uses Node zlib default compression per file. These totals are not initial-page transfer, preload traffic, deployment upload size or edge compression evidence.",
+	"nodeVersion": "v26.12.1",
+	"inventories": [
+		{
+			"label": "remix",
+			"commit": "8b2528460eb9be9d08d50b7a1d2ee8f491503d83",
+			"port": 5591,
+			"serverDirectory": "ssr",
+			"root": "<remix-checkout>",
+			"origin": "http://127.0.0.1:5591",
+			"lockSha256": "618ac5f06a478b58430a2946c79486c3c5a8961eee8de6dcf50b5e4fae3016fe",
+			"packageSha256": "9e6009afc337b9d0e5aa0cf6c626685ccaf6f68c067c0cd505789c71179f54e3",
+			"dist": "dist",
+			"inventorySha256": "be8abb46d3bb682bedc70206ea0e282786cdb621ea1a7bb532ba52581ef71b4b",
+			"groups": {
+				"client": {
+					"files": 57,
+					"bytes": 1761137,
+					"gzipBytes": 528876
+				},
+				"server": {
+					"files": 0,
+					"bytes": 0,
+					"gzipBytes": 0
+				},
+				"ssr": {
+					"files": 208,
+					"bytes": 22971964,
+					"gzipBytes": 5576195
+				}
+			}
+		},
+		{
+			"label": "shipped",
+			"commit": "2894f12c99431f7e78816b502c24fdc72813dffc",
+			"port": 5592,
+			"serverDirectory": "server",
+			"root": "<shipped-checkout>",
+			"origin": "http://127.0.0.1:5592",
+			"lockSha256": "673ee46137536e22aa16ade0d8b3920ef40e5c59c71cbf883ec8eb02caff42fa",
+			"packageSha256": "fce366c3c99cb15733d029cde78555e3707e14028dd3d18175c00cb8fc812527",
+			"dist": "dist",
+			"inventorySha256": "9dc8709cc1d25bed695b6bebc0f7f41a2ccc65f0d7ee1aca947d71c9b4d9c7c3",
+			"groups": {
+				"client": {
+					"files": 621,
+					"bytes": 3124610,
+					"gzipBytes": 1064064
+				},
+				"server": {
+					"files": 1268,
+					"bytes": 28318993,
+					"gzipBytes": 7297491
+				},
+				"ssr": {
+					"files": 0,
+					"bytes": 0,
+					"gzipBytes": 0
+				}
+			}
+		},
+		{
+			"label": "main",
+			"commit": "214ce21bbd6045a132f7f474bcb6a0126a348722",
+			"port": 5593,
+			"serverDirectory": "server",
+			"root": "<main-checkout>",
+			"origin": "http://127.0.0.1:5593",
+			"lockSha256": "70d026a7c59657f4eee8e0aa782adb90a1a157bdc9dc942570c837fcf9607ba4",
+			"packageSha256": "36aa0139f6ed213b31b3207f3aff0bf5343e6bbc7ff2340a99ce557d22812735",
+			"dist": "dist",
+			"inventorySha256": "da8b0e53e5e721149b16c5aa8b043e9c72c871755ec3c6a2b49768d9d6fc700d",
+			"groups": {
+				"client": {
+					"files": 646,
+					"bytes": 3545684,
+					"gzipBytes": 1191179
+				},
+				"server": {
+					"files": 1334,
+					"bytes": 30763049,
+					"gzipBytes": 7937609
+				},
+				"ssr": {
+					"files": 0,
+					"bytes": 0,
+					"gzipBytes": 0
+				}
+			}
+		},
+		{
+			"label": "fixed",
+			"root": "<fixed-checkout>",
+			"origin": "http://127.0.0.1:5594",
+			"serverDirectory": "server",
+			"port": 5594,
+			"commit": "8187ad43c8f6f0f761bf59d9b4e2d0a1202ef92d",
+			"lockSha256": "a74f9d77b0356d190459fe1e0ae5f4ad31635537c22858214a9c705a77bb1ad5",
+			"packageSha256": "29bc518f88a9375b641a6deb20f1ac1648f9e603b38b94da579c9cc91b4b9816",
+			"dist": "dist",
+			"inventorySha256": "7d713e5096c73c61d91329c13886cb3db8f99ef51998f2f8a3a695595db48f60",
+			"groups": {
+				"client": {
+					"files": 426,
+					"bytes": 3473318,
+					"gzipBytes": 1152949
+				},
+				"server": {
+					"files": 1119,
+					"bytes": 30826547,
+					"gzipBytes": 7906776
+				},
+				"ssr": {
+					"files": 0,
+					"bytes": 0,
+					"gzipBytes": 0
+				}
+			}
+		}
+	]
+}

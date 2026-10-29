@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
-import {
-	type CredentialRef,
-	type PackageTriggerView,
+import type {
+	CredentialRef,
+	PackageTriggerView,
 } from '#universal/credential-contracts.ts'
 import {
 	canToggleTriggerEnablement,

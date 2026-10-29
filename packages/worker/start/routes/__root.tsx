@@ -58,8 +58,11 @@ import { documentForbiddenMessage } from '../document-failure.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { verifySession } from '#start/server/shell'
 import { shellQuery, ensureShellQuery } from '../shell-query.ts'
-import { NOT_FOUND_DOCUMENT_TITLE } from '#universal/document-head.ts'
-import { SiteHeader } from '../components/site-header.tsx'
+import { NOT_FOUND_DOCUMENT_TITLE } from '#universal/document-head-contract.ts'
+import {
+	SiteHeader,
+	preloadSiteHeaderAccountControls,
+} from '../components/site-header.tsx'
 import { SiteFooter } from '../components/site-footer.tsx'
 import { visuallyHiddenUntilFocusedCss } from '#universal/styles/style-primitives.ts'
 import { PageHead } from '../components/page-head.tsx'
@@ -70,7 +73,9 @@ import {
 	mainGutterPaddingCss,
 } from '../components/app-layout.ts'
 import { AppBrowserEffects } from '../components/app-browser-effects.tsx'
-import 'tw-fade/dist/tw-fade.css'
+import pageInitScript from '../../public/page-init.js?raw'
+import emotionStyleHoistScript from '../../public/emotion-style-hoist.js?raw'
+import '../scroll-fades.css'
 import '../../public/styles.css'
 
 export const Route = createRootRouteWithContext<{
@@ -163,6 +168,7 @@ export const Route = createRootRouteWithContext<{
 						})
 					: undefined,
 			])
+			if (shell.session) await preloadSiteHeaderAccountControls()
 			abortController.signal.throwIfAborted()
 			return {
 				actorKey: shell.actorKey,
@@ -454,11 +460,16 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					{...documentThemeColors.dark}
 					suppressHydrationWarning
 				/>
-				<script src={publicAsset('/page-init.js')} />
+				<script
+					data-kody-document-init
+					nonce={nonce}
+					dangerouslySetInnerHTML={{ __html: pageInitScript }}
+				/>
 				<link
 					rel="preload"
 					as="font"
 					type="font/woff2"
+					fetchPriority="high"
 					href={publicAsset('/fonts/bricolage-grotesque-latin.woff2')}
 					crossOrigin="anonymous"
 				/>
@@ -466,6 +477,7 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					rel="preload"
 					as="font"
 					type="font/woff2"
+					fetchPriority="high"
 					href={publicAsset('/fonts/wix-madefor-text-latin.woff2')}
 					crossOrigin="anonymous"
 				/>
@@ -484,7 +496,11 @@ function DocumentShell({ children }: { children: ReactNode }) {
 				{children}
 				<Toaster />
 				{/* Classic script: hoist Emotion SSR styles before module hydrate. */}
-				<script src={publicAsset('/emotion-style-hoist.js')} />
+				<script
+					data-kody-emotion-hoist
+					nonce={nonce}
+					dangerouslySetInnerHTML={{ __html: emotionStyleHoistScript }}
+				/>
 				<Scripts />
 			</body>
 		</html>

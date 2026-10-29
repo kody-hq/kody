@@ -8,7 +8,7 @@ import {
 	ConnectionUsageDetails,
 	type ConnectionUsageState,
 } from './account-connection-usage-panel.tsx'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { useAccountConnectedAgents } from './account-connected-agents-panel.tsx'
 import {
@@ -29,7 +29,7 @@ import {
 	accountConnectionsListHref,
 } from '#universal/account-connections.ts'
 import { docHref } from '#universal/docs-nav.ts'
-import { type AccountConnectedAgentsLoaderData } from '#universal/loader-data.ts'
+import type { AccountConnectedAgentsLoaderData } from '#universal/loader-data.ts'
 import { onboardingSecondAgentGreyedPresentation } from '#universal/onboarding-agent-ecosystems.ts'
 import {
 	type McpClientKind,

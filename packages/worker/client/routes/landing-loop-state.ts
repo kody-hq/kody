@@ -1,7 +1,7 @@
-import {
-	type TranscriptAct,
-	type TranscriptLine,
-	type TranscriptScene,
+import type {
+	TranscriptAct,
+	TranscriptLine,
+	TranscriptScene,
 } from './interactive-guide-transcript.ts'
 
 export const landingLoopTeaser = {

@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from '../components/site-link.tsx'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	cardCss,

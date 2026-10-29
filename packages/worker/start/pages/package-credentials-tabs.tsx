@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from '../components/site-link.tsx'
 
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import {
 	type CredentialMappingTarget,
 	type CredentialRef,

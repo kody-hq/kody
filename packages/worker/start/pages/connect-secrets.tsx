@@ -10,13 +10,13 @@ import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.
 import { buildHumanApprovalErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import { connectSecretsQuery } from '../connect-approval-queries.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import { type AccountSecretsLoaderData } from '#universal/loader-data.ts'
+import type { AccountSecretsLoaderData } from '#universal/loader-data.ts'
 import { ConnectSecretsPlacementApproval } from './connect-secrets-placement.tsx'
 
 import {

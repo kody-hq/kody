@@ -5,7 +5,7 @@ import {
 	addOrganizationTeamMember,
 	removeOrganizationTeamMember,
 } from '#start/server/org-mutations'
-import { type OrgTeamsLoaderData } from '#universal/loader-data.ts'
+import type { OrgTeamsLoaderData } from '#universal/loader-data.ts'
 import { orgIdentity } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import {
@@ -18,8 +18,8 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { type CSSObject } from '@emotion/react'
-import { type QueryKey } from '@tanstack/react-query'
+import type { CSSObject } from '@emotion/react'
+import type { QueryKey } from '@tanstack/react-query'
 import { useState } from 'react'
 import { renderIcon } from '../components/icon.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'

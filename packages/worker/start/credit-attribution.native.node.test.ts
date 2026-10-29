@@ -2,9 +2,9 @@ import { createElement } from 'react'
 import { expect, test } from 'vitest'
 import { WhereItWentPanel } from './pages/account-usage-where-it-went.tsx'
 import { renderStartPage } from './test-support/render-start-page.ts'
-import {
-	type CreditAttributionRow,
-	type CreditAttributionVisitorRow,
+import type {
+	CreditAttributionRow,
+	CreditAttributionVisitorRow,
 } from '#universal/credit-attribution.ts'
 const row: CreditAttributionRow = {
 	packageId: 'pkg',

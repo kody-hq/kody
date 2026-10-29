@@ -1,6 +1,6 @@
 import { QueryClient, QueryObserver } from '@tanstack/react-query'
 import { expect, test, vi } from 'vitest'
-import { type CommunityForkState } from '#universal/community-public-types.ts'
+import type { CommunityForkState } from '#universal/community-public-types.ts'
 import { refreshActiveQueries } from './refresh-active-queries.ts'
 
 vi.mock('#start/server/community-mutations', () => ({

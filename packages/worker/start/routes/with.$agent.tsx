@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { createFileRoute, notFound } from '@tanstack/react-router'
-import { staticDocumentHead } from '../components/document-head.ts'
+import { staticDocumentHead } from '../components/static-document-head.ts'
 import { WithAgentRoute } from '../pages/with-agent.tsx'
 import { findWithAgent } from '#universal/with-agents.ts'
 export const Route = createFileRoute('/with/$agent')({

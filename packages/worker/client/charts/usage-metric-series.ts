@@ -1,4 +1,4 @@
-import { type AdminUsageMetric } from '#universal/loader-data.ts'
+import type { AdminUsageMetric } from '#universal/loader-data.ts'
 import { chartColor } from './chart-theme.ts'
 
 export type UsageMetricSeries = {

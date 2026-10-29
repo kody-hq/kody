@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 
 import { SiteLink } from '../components/site-link.tsx'
 
@@ -19,7 +19,7 @@ import {
 	webhooksDocHref,
 } from '#client/routes/webhooks-shared.ts'
 import { CopyCard } from './onboarding-mcp-client-cards.tsx'
-import { type PackageWebhookListItem } from '#universal/loader-data.ts'
+import type { PackageWebhookListItem } from '#universal/loader-data.ts'
 import { packageCredentialsTabHref } from '#universal/package-credentials-page.ts'
 import {
 	descriptionCss,

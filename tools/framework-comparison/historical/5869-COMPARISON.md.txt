@@ -1,0 +1,7 @@
+# Kody: Start with Redact
+
+The candidate now uses `@tanstack/redact` 0.1.4 through the Vite integration used
+by tanstack.com. Verification and updated performance measurements are in
+progress. The previous React-based results remain in
+[the pre-Redact comparison](COMPARISON-REACT.md) and must not be attributed to the
+current runtime.

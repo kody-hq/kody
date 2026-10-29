@@ -1,0 +1,1142 @@
+{
+	"browser": [
+		{
+			"label": "remix",
+			"latencyMs": 0,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 145878,
+					"min": 145878,
+					"max": 145878
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 62958,
+					"min": 62958,
+					"max": 62958
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 62958,
+					"min": 62958,
+					"max": 62958
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 145.60000002384186,
+					"min": 133.19999998807907,
+					"max": 253.5
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 88,
+					"min": 72,
+					"max": 188
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 168,
+					"min": 84,
+					"max": 288
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 27622,
+					"min": 27606,
+					"max": 27624
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 152496,
+					"min": 152285,
+					"max": 152889
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 27922,
+					"min": 27906,
+					"max": 27924
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		},
+		{
+			"label": "remix",
+			"latencyMs": 100,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 145878,
+					"min": 145878,
+					"max": 145878
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 62958,
+					"min": 62958,
+					"max": 62958
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 62958,
+					"min": 62958,
+					"max": 62958
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 674.5,
+					"min": 670.1000000238419,
+					"max": 675.6999999880791
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 260,
+					"min": 252,
+					"max": 264
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 700,
+					"min": 692,
+					"max": 704
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 27619,
+					"min": 27611,
+					"max": 27623
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 152661,
+					"min": 152297,
+					"max": 152680
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 27919,
+					"min": 27911,
+					"max": 27923
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 0,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 259010,
+					"min": 259010,
+					"max": 259010
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 78550,
+					"min": 78550,
+					"max": 78550
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 100791,
+					"min": 100791,
+					"max": 100791
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 22241,
+					"min": 22241,
+					"max": 22241
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 274.80000001192093,
+					"min": 234.5,
+					"max": 349.30000001192093
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 124,
+					"min": 108,
+					"max": 132
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 124,
+					"min": 108,
+					"max": 132
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 21936,
+					"min": 21928,
+					"max": 21955
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 125546,
+					"min": 125336,
+					"max": 125755
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 22236,
+					"min": 22228,
+					"max": 22255
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 100,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 259010,
+					"min": 259010,
+					"max": 259010
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 78550,
+					"min": 78550,
+					"max": 78550
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 100791,
+					"min": 100791,
+					"max": 100791
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 22241,
+					"min": 22241,
+					"max": 22241
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 1827.3999999761581,
+					"min": 1821.2000000476837,
+					"max": 1832.300000011921
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 288,
+					"min": 276,
+					"max": 308
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 440,
+					"min": 428,
+					"max": 444
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 21933,
+					"min": 21926,
+					"max": 21949
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 125554,
+					"min": 125343,
+					"max": 125559
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 22233,
+					"min": 22226,
+					"max": 22249
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		},
+		{
+			"label": "main",
+			"latencyMs": 0,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 281455,
+					"min": 281455,
+					"max": 281455
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 157135,
+					"min": 157135,
+					"max": 157135
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 178089,
+					"min": 178089,
+					"max": 178089
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 20954,
+					"min": 20954,
+					"max": 20954
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 300.39999997615814,
+					"min": 258,
+					"max": 349.7999999523163
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 136,
+					"min": 112,
+					"max": 148
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 136,
+					"min": 112,
+					"max": 148
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 32400,
+					"min": 32379,
+					"max": 32413
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 135250,
+					"min": 135186,
+					"max": 135276
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 32700,
+					"min": 32679,
+					"max": 32713
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		},
+		{
+			"label": "main",
+			"latencyMs": 100,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 281455,
+					"min": 281455,
+					"max": 281455
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 157135,
+					"min": 157135,
+					"max": 157135
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 178089,
+					"min": 178089,
+					"max": 178089
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 20954,
+					"min": 20954,
+					"max": 20954
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 1933.4000000357628,
+					"min": 1927,
+					"max": 1941.5
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 292,
+					"min": 284,
+					"max": 316
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 440,
+					"min": 432,
+					"max": 452
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 32390,
+					"min": 32383,
+					"max": 32412
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 135285,
+					"min": 135232,
+					"max": 135301
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 32690,
+					"min": 32683,
+					"max": 32712
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 0,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 256571,
+					"min": 256571,
+					"max": 256571
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 122815,
+					"min": 122815,
+					"max": 122815
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 144586,
+					"min": 144586,
+					"max": 144586
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 144586,
+					"min": 144586,
+					"max": 144586
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 238.19999998807907,
+					"min": 214.5,
+					"max": 332.30000001192093
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 116,
+					"min": 108,
+					"max": 136
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 116,
+					"min": 108,
+					"max": 136
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 53794,
+					"min": 53786,
+					"max": 53803
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 269185,
+					"min": 269148,
+					"max": 269230
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 54094,
+					"min": 54086,
+					"max": 54103
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 100,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 256571,
+					"min": 256571,
+					"max": 256571
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 122815,
+					"min": 122815,
+					"max": 122815
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 144586,
+					"min": 144586,
+					"max": 144586
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 144586,
+					"min": 144586,
+					"max": 144586
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 1600.199999988079,
+					"min": 1598.8999999761581,
+					"max": 1607.5
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 268,
+					"min": 264,
+					"max": 288
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 268,
+					"min": 264,
+					"max": 288
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 53787,
+					"min": 53783,
+					"max": 53794
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 269233,
+					"min": 269188,
+					"max": 269259
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 54087,
+					"min": 54083,
+					"max": 54094
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		}
+	],
+	"private": [
+		{
+			"label": "remix",
+			"latencyMs": 0,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 281148,
+					"min": 281148,
+					"max": 281148
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 62958,
+					"min": 62958,
+					"max": 62958
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 62958,
+					"min": 62958,
+					"max": 62958
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 218.30000001192093,
+					"min": 170.0999999642372,
+					"max": 345.7999999523163
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 80,
+					"min": 76,
+					"max": 176
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 80,
+					"min": 76,
+					"max": 176
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 29894,
+					"min": 29894,
+					"max": 29894
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 164911,
+					"min": 164911,
+					"max": 164911
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 30194,
+					"min": 30194,
+					"max": 30194
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 2
+		},
+		{
+			"label": "remix",
+			"latencyMs": 100,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 281148,
+					"min": 281148,
+					"max": 281148
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 0,
+					"min": 0,
+					"max": 0
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 62958,
+					"min": 62958,
+					"max": 62958
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 62958,
+					"min": 62958,
+					"max": 62958
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 967.6000000238419,
+					"min": 964.3999999761581,
+					"max": 969.8999999761581
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 244,
+					"min": 240,
+					"max": 244
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 244,
+					"min": 240,
+					"max": 244
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 29894,
+					"min": 29893,
+					"max": 29894
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 164911,
+					"min": 164911,
+					"max": 164911
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 30194,
+					"min": 30193,
+					"max": 30194
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 1
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 0,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 273418,
+					"min": 273418,
+					"max": 273418
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 78550,
+					"min": 78550,
+					"max": 78550
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 120079,
+					"min": 120079,
+					"max": 120079
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 41529,
+					"min": 41529,
+					"max": 41529
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 320.80000001192093,
+					"min": 278.5,
+					"max": 386.69999998807907
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 92,
+					"min": 84,
+					"max": 128
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 92,
+					"min": 84,
+					"max": 128
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 18136,
+					"min": 18131,
+					"max": 18137
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 100825,
+					"min": 100825,
+					"max": 100827
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 18436,
+					"min": 18431,
+					"max": 18437
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 100,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 273418,
+					"min": 273418,
+					"max": 273418
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 78550,
+					"min": 78550,
+					"max": 78550
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 120079,
+					"min": 120079,
+					"max": 120079
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 41529,
+					"min": 41529,
+					"max": 41529
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 2020.7999999523163,
+					"min": 2017.1000000238419,
+					"max": 2024.800000011921
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 248,
+					"min": 240,
+					"max": 248
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 248,
+					"min": 240,
+					"max": 248
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 18135,
+					"min": 18133,
+					"max": 18137
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 100825,
+					"min": 100825,
+					"max": 100827
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 18435,
+					"min": 18433,
+					"max": 18437
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		},
+		{
+			"label": "main",
+			"latencyMs": 0,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 298963,
+					"min": 298963,
+					"max": 298963
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 157135,
+					"min": 157135,
+					"max": 157135
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 191195,
+					"min": 191195,
+					"max": 191195
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 34060,
+					"min": 34060,
+					"max": 34060
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 337.5,
+					"min": 267.69999998807907,
+					"max": 388.30000001192093
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 104,
+					"min": 64,
+					"max": 156
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 104,
+					"min": 64,
+					"max": 156
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 22715,
+					"min": 22713,
+					"max": 22719
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 97431,
+					"min": 97431,
+					"max": 97433
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 23015,
+					"min": 23013,
+					"max": 23019
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		},
+		{
+			"label": "main",
+			"latencyMs": 100,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 298963,
+					"min": 298963,
+					"max": 298963
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 157135,
+					"min": 157135,
+					"max": 157135
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 191195,
+					"min": 191195,
+					"max": 191195
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 34060,
+					"min": 34060,
+					"max": 34060
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 2121.399999976158,
+					"min": 2114.100000023842,
+					"max": 2126.199999988079
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 244,
+					"min": 244,
+					"max": 244
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 244,
+					"min": 244,
+					"max": 244
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 22715,
+					"min": 22713,
+					"max": 22717
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 97431,
+					"min": 97431,
+					"max": 97433
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 23015,
+					"min": 23013,
+					"max": 23017
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 0,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 274082,
+					"min": 274082,
+					"max": 274082
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 122815,
+					"min": 122815,
+					"max": 122815
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 156875,
+					"min": 156875,
+					"max": 156875
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 156875,
+					"min": 156875,
+					"max": 156875
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 334.5,
+					"min": 323.69999998807907,
+					"max": 337.9000000357628
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 92,
+					"min": 84,
+					"max": 116
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 92,
+					"min": 84,
+					"max": 116
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 43893,
+					"min": 43892,
+					"max": 43896
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 228776,
+					"min": 228776,
+					"max": 228778
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 44193,
+					"min": 44192,
+					"max": 44196
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 100,
+			"metrics": {
+				"jsEncodedBytes": {
+					"count": 5,
+					"median": 274082,
+					"min": 274082,
+					"max": 274082
+				},
+				"assetCssRawBytes": {
+					"count": 5,
+					"median": 122815,
+					"min": 122815,
+					"max": 122815
+				},
+				"allObservedCssRawBytes": {
+					"count": 5,
+					"median": 156875,
+					"min": 156875,
+					"max": 156875
+				},
+				"inlineStyleBytes": {
+					"count": 5,
+					"median": 156875,
+					"min": 156875,
+					"max": 156875
+				},
+				"hydratedMs": {
+					"count": 5,
+					"median": 2004,
+					"min": 1996.5999999642372,
+					"max": 2009.3999999761581
+				},
+				"observedFcpMs": {
+					"count": 5,
+					"median": 228,
+					"min": 224,
+					"max": 240
+				},
+				"observedLcpMs": {
+					"count": 5,
+					"median": 228,
+					"min": 224,
+					"max": 240
+				}
+			},
+			"document": {
+				"encodedBytes": {
+					"count": 5,
+					"median": 43893,
+					"min": 43893,
+					"max": 43897
+				},
+				"decodedBytes": {
+					"count": 5,
+					"median": 228776,
+					"min": 228776,
+					"max": 228776
+				},
+				"transferBytes": {
+					"count": 5,
+					"median": 44193,
+					"min": 44193,
+					"max": 44197
+				}
+			},
+			"pageErrors": 0,
+			"consoleErrors": 0,
+			"failedRequests": 0
+		}
+	]
+}

@@ -3,7 +3,7 @@ import { renderStartPage as renderToString } from '../../test-support/render-sta
 import { expect, test } from 'vitest'
 import { AccountPackageApprovePublishRoute } from '../../pages/account-package-approve-publish.tsx'
 import { PublishChecksPanel } from '../../pages/account-package-publish-checks.tsx'
-import { type AccountPackageApprovePublishLoaderData } from '#universal/loader-data.ts'
+import type { AccountPackageApprovePublishLoaderData } from '#universal/loader-data.ts'
 
 const approvePublishHref =
 	'/@kodykoala/gmail-drafts/approve-publish?commit=34f338c19f91c698c3a28edd2992e0ab87dcb4e0'

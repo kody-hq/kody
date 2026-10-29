@@ -7,7 +7,7 @@ import {
 import { auditedLabel } from './package-security-audit-field.tsx'
 import { packageSecurityAuditAnchor } from '#universal/package-security-audit-prompt.ts'
 import { useState, useRef, type ReactNode } from 'react'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import {
 	useMutation,
 	useQueryClient,

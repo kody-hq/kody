@@ -1,0 +1,335 @@
+{
+	"config": {
+		"rounds": 3,
+		"lighthouseRuns": 5,
+		"latencyMs": [0, 100],
+		"steps": [
+			{
+				"path": "/pricing",
+				"marker": {
+					"selector": "h1",
+					"text": "Start free."
+				}
+			},
+			{
+				"path": "/docs",
+				"marker": {
+					"selector": "h1",
+					"text": "What is Kody?"
+				}
+			},
+			{
+				"path": "/pricing",
+				"marker": {
+					"selector": "h1",
+					"text": "Start free."
+				}
+			}
+		],
+		"targets": [
+			{
+				"label": "remix",
+				"root": "<snapshots>/remix",
+				"commit": "8b2528460eb9be9d08d50b7a1d2ee8f491503d83",
+				"origin": "http://127.0.0.1:5591",
+				"serverDirectory": "ssr"
+			},
+			{
+				"label": "shipped",
+				"root": "<snapshots>/shipped",
+				"commit": "2894f12c99431f7e78816b502c24fdc72813dffc",
+				"origin": "http://127.0.0.1:5592",
+				"serverDirectory": "server"
+			},
+			{
+				"label": "main",
+				"root": "<snapshots>/main",
+				"commit": "214ce21bbd6045a132f7f474bcb6a0126a348722",
+				"origin": "http://127.0.0.1:5593",
+				"serverDirectory": "server"
+			},
+			{
+				"label": "fixed",
+				"root": "<fixed-checkout>",
+				"commit": "07ccd2ca8cafae10dadad7d19ad06b219363422e",
+				"origin": "http://127.0.0.1:5594",
+				"serverDirectory": "server"
+			}
+		],
+		"runs": 5,
+		"modes": ["mobile", "desktop"],
+		"freshnessRounds": 3,
+		"conditions": "Same pinned Remix, shipped and audit-start main snapshots. Fixed source 07ccd2ca8. Five rotating browser rounds, immutable cache headers, fresh contexts. Builds and this audit's tests run separately."
+	},
+	"runs": [
+		{
+			"label": "remix",
+			"round": 1,
+			"outcome": "accepted",
+			"errors": [],
+			"optimisticBeforeResponse": false,
+			"reconciledAfterUnmount": false,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "remix",
+			"round": 1,
+			"outcome": "rejected",
+			"errors": [],
+			"optimisticBeforeResponse": false,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "shipped",
+			"round": 1,
+			"outcome": "accepted",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "shipped",
+			"round": 1,
+			"outcome": "rejected",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "main",
+			"round": 1,
+			"outcome": "accepted",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "main",
+			"round": 1,
+			"outcome": "rejected",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "fixed",
+			"round": 1,
+			"outcome": "accepted",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "fixed",
+			"round": 1,
+			"outcome": "rejected",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "shipped",
+			"round": 2,
+			"outcome": "accepted",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "shipped",
+			"round": 2,
+			"outcome": "rejected",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "main",
+			"round": 2,
+			"outcome": "accepted",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "main",
+			"round": 2,
+			"outcome": "rejected",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "fixed",
+			"round": 2,
+			"outcome": "accepted",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "fixed",
+			"round": 2,
+			"outcome": "rejected",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "remix",
+			"round": 2,
+			"outcome": "accepted",
+			"errors": [],
+			"optimisticBeforeResponse": false,
+			"reconciledAfterUnmount": false,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "remix",
+			"round": 2,
+			"outcome": "rejected",
+			"errors": [],
+			"optimisticBeforeResponse": false,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "main",
+			"round": 3,
+			"outcome": "accepted",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "main",
+			"round": 3,
+			"outcome": "rejected",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "fixed",
+			"round": 3,
+			"outcome": "accepted",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "fixed",
+			"round": 3,
+			"outcome": "rejected",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "remix",
+			"round": 3,
+			"outcome": "accepted",
+			"errors": [],
+			"optimisticBeforeResponse": false,
+			"reconciledAfterUnmount": false,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "remix",
+			"round": 3,
+			"outcome": "rejected",
+			"errors": [],
+			"optimisticBeforeResponse": false,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "shipped",
+			"round": 3,
+			"outcome": "accepted",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		},
+		{
+			"label": "shipped",
+			"round": 3,
+			"outcome": "rejected",
+			"errors": [],
+			"optimisticBeforeResponse": true,
+			"reconciledAfterUnmount": true,
+			"persistedCorrectly": true,
+			"profilePath": "/@jane",
+			"restored": true
+		}
+	],
+	"caveats": [
+		"Controlled held writes and injected failures test correctness. They are not latency benchmarks.",
+		"Uses only seeded Jane accounts. Original display names are restored through each revision\u2019s own profile UI.",
+		"No retired profile JSON endpoint is required by the harness."
+	]
+}

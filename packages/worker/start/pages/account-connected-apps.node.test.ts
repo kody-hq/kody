@@ -2,7 +2,7 @@ import { createElement } from 'react'
 import { expect, test } from 'vitest'
 import { renderStartPage } from '../test-support/render-start-page.ts'
 import { AccountConnectedAppsPage } from './account-connected-apps.tsx'
-import { type AccountConnectedAppsLoaderData } from '#universal/loader-data.ts'
+import type { AccountConnectedAppsLoaderData } from '#universal/loader-data.ts'
 
 const payload: AccountConnectedAppsLoaderData = {
 	ok: true,

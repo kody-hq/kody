@@ -1,0 +1,145 @@
+# Start and Query cache optimization
+
+The cache implementation is complete. Final production-build measurements are
+still running. This report separates the results already collected from the
+remaining cold-load, expiry and long-session measurements.
+
+The strongest confirmed improvement is public cached navigation with network
+latency. Private cached navigation retains a fresh identity check and has not
+shown a latency win over Remix. This is not evidence that switching frameworks
+makes every interaction faster.
+
+## Fixed-route warm navigation
+
+These are five-sample medians for each route, build and latency setting. The
+100 ms setting applies Chrome's minimum request-to-response-header latency,
+with no bandwidth or CPU throttling. It is not a simulation of every property
+of a real remote or mobile connection. The marker is the requested article
+content or form value becoming visible, not merely a URL or heading change.
+
+| Warm revisit at 100 ms latency | Remix | Query before optimization | Final optimized Query |
+| --- | ---: | ---: | ---: |
+| Blog | 1,009.0 ms | 260.0 ms | 93.2 ms |
+| Docs | 42.5 ms | 777.5 ms | 28.4 ms |
+| Jobs | 109.8 ms | 124.0 ms | 122.4 ms |
+| Account | 115.9 ms | 116.2 ms | 126.2 ms |
+
+The final public ranges were 93.0 to 94.5 ms for blog and 27.7 to 30.1 ms for
+docs. These measurements include each application's rendering, animations,
+assets and scheduling. They are not isolated library overhead. In particular,
+the old implementations' eager docs work could continue into the next step.
+The entire observed time difference cannot be attributed to Query alone.
+
+The narrower causal result is clear: the final warm blog and docs visits made
+**zero identity, shell or page-data RPCs**. Private warm visits made one fresh
+identity RPC and no shell or page-data RPCs. Other browser requests, such as
+analytics, remain separate from those data counts.
+
+Opening docs from another page now makes one page-data RPC instead of 50. An
+initial SSR docs visit needs no article RPC after hydration. The old behavior
+fetched every sidebar destination. The final implementation fetches a chosen
+article on hover, focus or touch and shares that read with the subsequent click.
+An unprefetched click keeps the old article visible until the new one is ready.
+This deliberately gives up speculative preparation of all possible next guides.
+
+At zero added latency, blog revisit medians were 344.9 / 327.8 / 94.2 ms and
+docs were 43.8 / 30.1 / 29.0 ms, in the same build order. Per-sample ranges,
+request counts and first-entry results are retained in:
+
+- `measurements/query-optimization-v2-warm-public/{results,summary}.json`
+- `measurements/query-optimization-v2-warm-private/{results,summary}.json`
+
+All 60 final warm runs passed. The earlier candidate's separate results remain
+under `query-optimization-warm-*`; they are not pooled into these values.
+
+## What changed
+
+Query now owns page payloads, request sharing, cancellation and freshness.
+Router owns navigation and document metadata. Route loaders return the head
+metadata Router needs instead of a second full copy of the Query payload.
+
+The shell is cached separately. Public navigation can reuse presentation data
+without repeatedly asking the server for the session, banners and configuration.
+Private foreground navigation keeps a small fresh identity check. This preserves
+the tested behavior when a browser's account cookie changes underneath an open
+document. A cached session alone cannot establish that guarantee.
+
+Freshness is explicit by resource: five minutes for published content, one
+minute for settings, ten seconds for frequently changing job/activity data,
+and thirty seconds for ordinary remaining resources. Unused published payloads
+are retained for thirty minutes. These are reuse windows, not polling intervals.
+An ordinary age-stale cache entry can render during revalidation; a known
+invalidation or permission-sensitive entry follows the stricter readiness path.
+
+All 41 modules that previously used blanket page invalidation now declare
+resource dependencies. Accepted profile responses update their cached payload
+without a redundant confirming account read. Cross-page dependencies still
+refresh, and writes whose responses do not cover their full cached data still
+perform a scoped confirming read. Normalized URL inputs prevent tracking and
+presentation-only parameters from creating unnecessary data variants.
+
+See the [implementation details](./QUERY-CACHE-IMPLEMENTATION.md) for the exact
+policies, mutation ordering and authorization exceptions, and the
+[pinned reference review](./TANSTACK-REFERENCE-PRACTICES.md) for the source
+patterns used. No new runtime dependency or TanStack DB integration was added.
+
+## Stability and correctness
+
+This work found and fixed concrete problems while optimizing:
+
+- Router could commit head-only cached loader data after Query had evicted the
+  actual page payload, causing a rendering crash. Router now waits for missing
+  Query data while retained stale data remains immediately usable.
+- An admin preview could briefly appear from the old shell snapshot while the
+  URL was changing. Preview rendering now uses the committed location and its
+  matching authorized shell snapshot.
+- A rejected profile write could cancel the read an uncached destination was
+  waiting for. Rollback preserves that waiting read.
+- Focus invalidation during a pending optimistic write could block navigation
+  behind that write. Cached optimistic content remains navigable, and metadata
+  refresh runs after the accepted write settles.
+
+A proposed attempt to parallelize private identity verification was rejected
+after a regression test showed Router could share an earlier in-flight root
+loader with a later navigation. The fresh check remains in `beforeLoad`.
+
+Final local checks passed 72 Start Chromium tests, 3,514 Node tests, 375 Worker
+tests and 8 MCP tests. Types, lint, builds and the final formatting check passed.
+The frozen production build also passed all five identity/security probes.
+
+The authoritative repository gate still exits 1 because the original Remix
+suite has two existing failures and the dependency audit has five findings.
+The final validation run also initially caught report/config formatting, which
+was corrected and rechecked separately. See the
+[validation record](./QUERY-CACHE-VALIDATION.md) for the exact failures,
+coverage and evidence. This is substantial regression coverage, not a promise
+of 100% equivalence across every workflow, browser and deployment.
+
+## Code cost
+
+Compared with the first Query migration, this cache pass adds five runtime
+source files, 656 nonblank lines, 73 functions and one server function. The
+syntax-decision count increases by 98. These counts exclude tests, declarations
+and generated files. Retained legacy client source is unchanged.
+
+That extra code makes freshness, identity, mutation dependencies and navigation
+readiness explicit. It does not support a claim that this pass reduces total
+source complexity. Source lines, compressed chunks and observed transferred
+bytes are different measurements. The full
+[source accounting](./QUERY-CACHE-COMPLEXITY.md) explains the boundaries.
+
+## Remaining evidence and limits
+
+The rotating short sessions, real-expiry and held-response probes, 90 Lighthouse
+audits, the candidate's 30-minute session, and final bundle/build accounting are
+still in progress. They will be reported separately from the completed warm
+samples above, including failures and costs.
+
+These are local production builds. The private Cloudflare previews still run
+the earlier deployment, and the Access service-token handoff required for the
+new private measurement and real 60 fps recording has not been completed.
+No optimized deployment or live comparison video is claimed here.
+
+The previously reproduced missing-assets rollout problem also remains separate:
+a long-running tab can encounter an unavailable lazy chunk after deployment.
+This cache pass fixes Query-eviction readiness, not that release-lifecycle gap.

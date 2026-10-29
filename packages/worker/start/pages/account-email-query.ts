@@ -1,11 +1,11 @@
-import { type PageOrgScope } from '../page-query-scope.ts'
-import { type QueryClient } from '@tanstack/react-query'
+import type { PageOrgScope } from '../page-query-scope.ts'
+import type { QueryClient } from '@tanstack/react-query'
 import {
 	emailMessageMatchesView,
 	manualEmailClassificationReason,
 	type EmailClassification,
 } from '#universal/email-message-view.ts'
-import { type AccountEmailLoaderData } from '#universal/loader-data.ts'
+import type { AccountEmailLoaderData } from '#universal/loader-data.ts'
 import {
 	emailKeys,
 	isEmailMissingGrant,

@@ -1,0 +1,52 @@
+{
+	"label": "fixed",
+	"samples": 10,
+	"budget": {
+		"initialJsEncodedBytes": 270000,
+		"initialCssRawBytes": 135000,
+		"minimumSamples": 5
+	},
+	"sizes": [
+		{
+			"jsBytes": 240021,
+			"cssBytes": 122828
+		},
+		{
+			"jsBytes": 240021,
+			"cssBytes": 122828
+		},
+		{
+			"jsBytes": 240021,
+			"cssBytes": 122828
+		},
+		{
+			"jsBytes": 240021,
+			"cssBytes": 122828
+		},
+		{
+			"jsBytes": 240021,
+			"cssBytes": 122828
+		},
+		{
+			"jsBytes": 240021,
+			"cssBytes": 122828
+		},
+		{
+			"jsBytes": 240021,
+			"cssBytes": 122828
+		},
+		{
+			"jsBytes": 240021,
+			"cssBytes": 122828
+		},
+		{
+			"jsBytes": 240021,
+			"cssBytes": 122828
+		},
+		{
+			"jsBytes": 240021,
+			"cssBytes": 122828
+		}
+	],
+	"failures": []
+}

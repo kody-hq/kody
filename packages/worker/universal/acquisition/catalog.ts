@@ -8,7 +8,7 @@ import { slack } from './slack.ts'
 import { scheduledWorkflows } from './scheduledWorkflows.ts'
 import { claudeIntegrations } from './claudeIntegrations.ts'
 import { automation } from './automation.ts'
-import { type AcquisitionPage } from './types.ts'
+import type { AcquisitionPage } from './types.ts'
 
 export const acquisitionPages: Array<AcquisitionPage> = [
 	n8nAlternatives,

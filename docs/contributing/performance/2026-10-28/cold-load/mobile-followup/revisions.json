@@ -1,0 +1,43 @@
+{
+	"runs": 6,
+	"targets": [
+		{
+			"label": "remix",
+			"commit": "8b2528460eb9be9d08d50b7a1d2ee8f491503d83",
+			"port": 5591,
+			"serverDirectory": "ssr",
+			"root": "<remix-checkout>",
+			"origin": "http://127.0.0.1:5591"
+		},
+		{
+			"label": "shipped",
+			"commit": "2894f12c99431f7e78816b502c24fdc72813dffc",
+			"port": 5592,
+			"serverDirectory": "server",
+			"root": "<shipped-checkout>",
+			"origin": "http://127.0.0.1:5592"
+		},
+		{
+			"label": "main",
+			"commit": "214ce21bbd6045a132f7f474bcb6a0126a348722",
+			"port": 5593,
+			"serverDirectory": "server",
+			"root": "<main-checkout>",
+			"origin": "http://127.0.0.1:5593"
+		},
+		{
+			"label": "fixed",
+			"root": "<fixed-checkout>",
+			"origin": "http://127.0.0.1:5594",
+			"serverDirectory": "server",
+			"port": 5594,
+			"commit": "8187ad43c8f6f0f761bf59d9b4e2d0a1202ef92d"
+		}
+	],
+	"rounds": 5,
+	"latencyMs": [0, 100],
+	"modes": ["mobile", "desktop"],
+	"lighthouseRuns": 5,
+	"freshnessRounds": 3,
+	"conditions": "Same pinned Remix, shipped and audit-start main snapshots, frozen fixed source818. No builds or tests overlap timed stages."
+}

@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
-import { type FormEvent } from 'react'
+import type { CSSObject } from '@emotion/react'
+import type { FormEvent } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { CopyCard } from './onboarding-mcp-client-cards.tsx'
@@ -25,10 +25,10 @@ import {
 	listCss,
 	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
-import {
-	type ConnectOauthConfig,
-	type ConnectOauthNextSteps,
-	type StoredIntegrationConfig,
+import type {
+	ConnectOauthConfig,
+	ConnectOauthNextSteps,
+	StoredIntegrationConfig,
 } from '#client/routes/connect-oauth-config.ts'
 import { renderProviderInstructions } from './connect-oauth-detail.tsx'
 import { renderReplaceConfirmation } from './connect-oauth-sections.tsx'

@@ -3,7 +3,7 @@ import {
 	isEmailMessageView,
 	type EmailMessageView,
 } from '#universal/email-message-view.ts'
-import { type AccountEmailLoaderData } from '#universal/loader-data.ts'
+import type { AccountEmailLoaderData } from '#universal/loader-data.ts'
 import { searchText } from '../filter-search.ts'
 
 export type EmailListInput = {

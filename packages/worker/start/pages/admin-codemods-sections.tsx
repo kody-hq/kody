@@ -1,9 +1,9 @@
 /** @jsxImportSource @emotion/react */
 import { formatFindings } from '#client/routes/admin-codemods-shared.ts'
-import {
-	type AdminCodemodListItem,
-	type AdminCodemodRunItemListItem,
-	type AdminCodemodRunListItem,
+import type {
+	AdminCodemodListItem,
+	AdminCodemodRunItemListItem,
+	AdminCodemodRunListItem,
 } from '#universal/loader-data.ts'
 import {
 	descriptionCss,
@@ -12,7 +12,7 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { css } from '@emotion/react'
-import { type ButtonHTMLAttributes } from 'react'
+import type { ButtonHTMLAttributes } from 'react'
 import { formatNullableTimestamp } from '../components/local-timestamp.tsx'
 import { AccountManagementPanel } from './account-management-components.tsx'
 import {

@@ -64,6 +64,9 @@ test('youtube thumb proxy serves allowlisted first-party bytes', async () => {
 			.map(([input]) => String(input))
 			.filter((url) => isYoutubeThumbUrl(url)),
 	).toEqual([`https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`])
+	expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+		`https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
+	])
 	fetchMock.mockRestore()
 })
 

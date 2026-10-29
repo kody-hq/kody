@@ -5,7 +5,7 @@ import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
 import { useState } from 'react'
 import { colors } from '#universal/styles/tokens.ts'
-import { type CommunityDetailApiPayload } from '../community-types.ts'
+import type { CommunityDetailApiPayload } from '../community-types.ts'
 import { renderPackageRepoActions } from '../components/package-title-actions.tsx'
 import {
 	PackageRepoTabPanel,

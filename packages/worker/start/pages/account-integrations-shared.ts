@@ -1,8 +1,8 @@
 import { createListDetailLinks } from '#client/list-detail-route.ts'
 import { matchesSearchQuery } from '#client/search-filter.ts'
-import {
-	type AccountIntegrationListItem,
-	type AccountOauthAppListItem,
+import type {
+	AccountIntegrationListItem,
+	AccountOauthAppListItem,
 } from '#universal/loader-data.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import { getDangerPillCss } from '#universal/styles/style-primitives.ts'

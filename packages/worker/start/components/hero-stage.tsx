@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset, publicAssetSrcSet } from '../public-assets.ts'
-import { type CSSObject } from '@emotion/react'
-import { type CSSProperties, type RefCallback } from 'react'
+import type { CSSObject } from '@emotion/react'
+import type { CSSProperties, RefCallback } from 'react'
 import { heroBaseImage } from '#universal/landing-images.ts'
 
 /**

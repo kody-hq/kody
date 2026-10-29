@@ -1,0 +1,406 @@
+{
+	"browser": [
+		{
+			"label": "remix",
+			"latencyMs": 0,
+			"step": 1,
+			"path": "/pricing",
+			"count": 5,
+			"median": 56.80000001192093,
+			"min": 55.19999998807907,
+			"max": 65.80000001192093
+		},
+		{
+			"label": "remix",
+			"latencyMs": 0,
+			"step": 2,
+			"path": "/docs",
+			"count": 5,
+			"median": 118.69999998807907,
+			"min": 92.5,
+			"max": 123.89999997615814
+		},
+		{
+			"label": "remix",
+			"latencyMs": 0,
+			"step": 3,
+			"path": "/pricing",
+			"count": 5,
+			"median": 24.19999998807907,
+			"min": 22.80000001192093,
+			"max": 27.100000023841858
+		},
+		{
+			"label": "remix",
+			"latencyMs": 100,
+			"step": 1,
+			"path": "/pricing",
+			"count": 5,
+			"median": 147.19999998807907,
+			"min": 143.4000000357628,
+			"max": 165.80000001192093
+		},
+		{
+			"label": "remix",
+			"latencyMs": 100,
+			"step": 2,
+			"path": "/docs",
+			"count": 5,
+			"median": 592.9000000357628,
+			"min": 576.1999999880791,
+			"max": 593.3999999761581
+		},
+		{
+			"label": "remix",
+			"latencyMs": 100,
+			"step": 3,
+			"path": "/pricing",
+			"count": 5,
+			"median": 43,
+			"min": 41.89999997615814,
+			"max": 43.5
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 0,
+			"step": 1,
+			"path": "/pricing",
+			"count": 5,
+			"median": 54.69999998807907,
+			"min": 49.40000003576279,
+			"max": 59.90000003576279
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 0,
+			"step": 2,
+			"path": "/docs",
+			"count": 5,
+			"median": 92.60000002384186,
+			"min": 74.20000004768372,
+			"max": 104.69999998807907
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 0,
+			"step": 3,
+			"path": "/pricing",
+			"count": 5,
+			"median": 34.5,
+			"min": 24.100000023841858,
+			"max": 38.19999998807907
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 100,
+			"step": 1,
+			"path": "/pricing",
+			"count": 5,
+			"median": 153.89999997615814,
+			"min": 141.80000001192093,
+			"max": 159.10000002384186
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 100,
+			"step": 2,
+			"path": "/docs",
+			"count": 5,
+			"median": 476.60000002384186,
+			"min": 475.5,
+			"max": 493.39999997615814
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 100,
+			"step": 3,
+			"path": "/pricing",
+			"count": 5,
+			"median": 24.599999964237213,
+			"min": 19.399999976158142,
+			"max": 25.599999964237213
+		},
+		{
+			"label": "main",
+			"latencyMs": 0,
+			"step": 1,
+			"path": "/pricing",
+			"count": 5,
+			"median": 31.799999952316284,
+			"min": 30.900000035762787,
+			"max": 33.69999998807907
+		},
+		{
+			"label": "main",
+			"latencyMs": 0,
+			"step": 2,
+			"path": "/docs",
+			"count": 5,
+			"median": 73.69999998807907,
+			"min": 70.09999996423721,
+			"max": 77.29999995231628
+		},
+		{
+			"label": "main",
+			"latencyMs": 0,
+			"step": 3,
+			"path": "/pricing",
+			"count": 5,
+			"median": 15.900000035762787,
+			"min": 15.899999976158142,
+			"max": 16.899999976158142
+		},
+		{
+			"label": "main",
+			"latencyMs": 100,
+			"step": 1,
+			"path": "/pricing",
+			"count": 5,
+			"median": 128.39999997615814,
+			"min": 127.5,
+			"max": 138.80000001192093
+		},
+		{
+			"label": "main",
+			"latencyMs": 100,
+			"step": 2,
+			"path": "/docs",
+			"count": 5,
+			"median": 457.80000001192093,
+			"min": 456,
+			"max": 468.5999999642372
+		},
+		{
+			"label": "main",
+			"latencyMs": 100,
+			"step": 3,
+			"path": "/pricing",
+			"count": 5,
+			"median": 15.299999952316284,
+			"min": 14.900000035762787,
+			"max": 16.400000035762787
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 0,
+			"step": 1,
+			"path": "/pricing",
+			"count": 5,
+			"median": 35.60000002384186,
+			"min": 31.5,
+			"max": 44.5
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 0,
+			"step": 2,
+			"path": "/docs",
+			"count": 5,
+			"median": 78.10000002384186,
+			"min": 66,
+			"max": 106.80000001192093
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 0,
+			"step": 3,
+			"path": "/pricing",
+			"count": 5,
+			"median": 32.59999996423721,
+			"min": 30.600000023841858,
+			"max": 35
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 100,
+			"step": 1,
+			"path": "/pricing",
+			"count": 5,
+			"median": 129.30000001192093,
+			"min": 127.90000003576279,
+			"max": 134
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 100,
+			"step": 2,
+			"path": "/docs",
+			"count": 5,
+			"median": 460.39999997615814,
+			"min": 458.10000002384186,
+			"max": 467.10000002384186
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 100,
+			"step": 3,
+			"path": "/pricing",
+			"count": 5,
+			"median": 25.400000035762787,
+			"min": 24.899999976158142,
+			"max": 25.69999998807907
+		}
+	],
+	"private": [
+		{
+			"label": "remix",
+			"latencyMs": 0,
+			"step": 1,
+			"path": "/@jane",
+			"count": 5,
+			"median": 37.69999998807907,
+			"min": 25.200000047683716,
+			"max": 41.19999998807907
+		},
+		{
+			"label": "remix",
+			"latencyMs": 0,
+			"step": 2,
+			"path": "/account",
+			"count": 5,
+			"median": 80.30000001192093,
+			"min": 79.5,
+			"max": 162.5999999642372
+		},
+		{
+			"label": "remix",
+			"latencyMs": 100,
+			"step": 1,
+			"path": "/@jane",
+			"count": 5,
+			"median": 135.30000001192093,
+			"min": 123,
+			"max": 140
+		},
+		{
+			"label": "remix",
+			"latencyMs": 100,
+			"step": 2,
+			"path": "/account",
+			"count": 5,
+			"median": 164.30000001192093,
+			"min": 146.5999999642372,
+			"max": 165.19999998807907
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 0,
+			"step": 1,
+			"path": "/@jane",
+			"count": 5,
+			"median": 83.10000002384186,
+			"min": 74.10000002384186,
+			"max": 86
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 0,
+			"step": 2,
+			"path": "/account",
+			"count": 5,
+			"median": 20.80000001192093,
+			"min": 20.600000023841858,
+			"max": 29.099999964237213
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 100,
+			"step": 1,
+			"path": "/@jane",
+			"count": 5,
+			"median": 467,
+			"min": 465,
+			"max": 474.19999998807907
+		},
+		{
+			"label": "shipped",
+			"latencyMs": 100,
+			"step": 2,
+			"path": "/account",
+			"count": 5,
+			"median": 129.69999998807907,
+			"min": 128.5,
+			"max": 129.89999997615814
+		},
+		{
+			"label": "main",
+			"latencyMs": 0,
+			"step": 1,
+			"path": "/@jane",
+			"count": 5,
+			"median": 54.19999998807907,
+			"min": 52,
+			"max": 59.700000047683716
+		},
+		{
+			"label": "main",
+			"latencyMs": 0,
+			"step": 2,
+			"path": "/account",
+			"count": 5,
+			"median": 24.399999976158142,
+			"min": 24,
+			"max": 29
+		},
+		{
+			"label": "main",
+			"latencyMs": 100,
+			"step": 1,
+			"path": "/@jane",
+			"count": 5,
+			"median": 445.69999998807907,
+			"min": 444.0999999642372,
+			"max": 448.89999997615814
+		},
+		{
+			"label": "main",
+			"latencyMs": 100,
+			"step": 2,
+			"path": "/account",
+			"count": 5,
+			"median": 126.60000002384186,
+			"min": 125.19999998807907,
+			"max": 131.20000004768372
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 0,
+			"step": 1,
+			"path": "/@jane",
+			"count": 5,
+			"median": 55.39999997615814,
+			"min": 51.09999996423721,
+			"max": 59
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 0,
+			"step": 2,
+			"path": "/account",
+			"count": 5,
+			"median": 34.200000047683716,
+			"min": 29.69999998807907,
+			"max": 42.700000047683716
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 100,
+			"step": 1,
+			"path": "/@jane",
+			"count": 5,
+			"median": 242.19999998807907,
+			"min": 239.70000004768372,
+			"max": 254.0999999642372
+		},
+		{
+			"label": "fixed",
+			"latencyMs": 100,
+			"step": 2,
+			"path": "/account",
+			"count": 5,
+			"median": 130.19999998807907,
+			"min": 129.60000002384186,
+			"max": 133
+		}
+	]
+}

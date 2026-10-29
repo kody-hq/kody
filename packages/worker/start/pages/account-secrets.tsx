@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { connectSecretsInput } from '../connect-input.ts'
-import { type ListDetailSelection } from '#client/list-detail-route.ts'
+import type { ListDetailSelection } from '#client/list-detail-route.ts'
 import {
 	type ApprovalAction,
 	getScopeLabel,
@@ -15,11 +15,11 @@ import {
 	approveSecretAccess,
 	rejectSecretAccess,
 } from '#start/server/account-mutations'
-import { type AccountSecretsLoaderData } from '#universal/loader-data.ts'
-import { fillPlacementViewFromDraft } from '#universal/credential-fill-placement.ts'
+import type { AccountSecretsLoaderData } from '#universal/loader-data.ts'
+import { fillPlacementViewFromDraft } from '#universal/credential-fill-placement-input.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { buildAccountSecretPath } from '@kody-internal/shared/account-secret-route.ts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'

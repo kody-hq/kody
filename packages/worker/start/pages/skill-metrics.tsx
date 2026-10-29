@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import {
-	type SkillReadChannel,
-	type SkillMetrics,
+import type {
+	SkillReadChannel,
+	SkillMetrics,
 } from '#universal/skill-metrics.ts'
 import {
 	dashboardPanelCss,

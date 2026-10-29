@@ -1,8 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { publicAsset, publicAssetSrcSet } from '../public-assets.ts'
 import { homeMarkdown } from '#start/server/markdown'
 import { loadPageQuery, createPageQuery, usePageQuery } from '../page-query.ts'
-import { heroBaseImage } from '#universal/landing-images.ts'
 import { negotiatedDocument } from '../document-negotiation.ts'
 import { createFileRoute } from '@tanstack/react-router'
 import { loadHome } from '#start/server/home'
@@ -30,26 +28,8 @@ export const Route = createFileRoute('/')({
 		// Static metadata belongs to the route, independent of background data refresh.
 		return { head }
 	},
-	head: ({ loaderData, match }) => {
-		const head = documentHead(
-			homeDocumentHead(loaderData?.head, match.search.og),
-		)
-		return {
-			...head,
-			links: [
-				...(head.links ?? []),
-				{
-					rel: 'preload',
-					as: 'image',
-					type: 'image/webp',
-					href: publicAsset(heroBaseImage.src),
-					fetchPriority: 'high',
-					imageSrcSet: publicAssetSrcSet(heroBaseImage.srcSet),
-					imageSizes: heroBaseImage.sizes,
-				},
-			],
-		}
-	},
+	head: ({ loaderData, match }) =>
+		documentHead(homeDocumentHead(loaderData?.head, match.search.og)),
 	component: Home,
 })
 

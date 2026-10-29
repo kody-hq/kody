@@ -6,10 +6,10 @@ import { FunnelChart } from '../charts/funnel-chart.tsx'
 import { DonutChart } from '../charts/donut-chart.tsx'
 import { StatCard } from '../charts/stat-card.tsx'
 import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
-import {
-	type AdminInsightsLaunchFunnelStep,
-	type AdminInsightsLaunchSignals,
-	type AdminInsightsOnboardingFunnel,
+import type {
+	AdminInsightsLaunchFunnelStep,
+	AdminInsightsLaunchSignals,
+	AdminInsightsOnboardingFunnel,
 } from '#universal/loader-data.ts'
 import { onboardingFunnelStageLabels } from '#universal/onboarding-funnel.ts'
 import {

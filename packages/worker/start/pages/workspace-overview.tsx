@@ -1,19 +1,19 @@
 /** @jsxImportSource @emotion/react */
 import { SkillMetricsPanel } from './skill-metrics.tsx'
-import { type SkillMetrics } from '#universal/skill-metrics.ts'
+import type { SkillMetrics } from '#universal/skill-metrics.ts'
 import { EntityExplainer, resolveEntityExplainer } from './entity-explainer.tsx'
 import { WorkspaceCharts } from './workspace-charts.tsx'
-import {
-	type WorkspaceRunCharts,
-	type WorkspaceBilling,
+import type {
+	WorkspaceRunCharts,
+	WorkspaceBilling,
 } from '#universal/workspace-charts.ts'
-import { type CSSObject } from '@emotion/react'
-import {
-	type AccountActivityRunListItem,
-	type AccountActivitySummary,
+import type { CSSObject } from '@emotion/react'
+import type {
+	AccountActivityRunListItem,
+	AccountActivitySummary,
 } from '#app/account-activity-data.ts'
-import { type AccountJobListItem } from '#app/account-jobs-data.ts'
-import { type PublicProfilePackageItem } from '#universal/community-public-types.ts'
+import type { AccountJobListItem } from '#app/account-jobs-data.ts'
+import type { PublicProfilePackageItem } from '#universal/community-public-types.ts'
 import { AccountManagementShell } from './account-management-components.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { formatTimestamp } from '../components/local-timestamp.tsx'

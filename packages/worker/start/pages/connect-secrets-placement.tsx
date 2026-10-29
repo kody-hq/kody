@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
@@ -13,7 +13,7 @@ import { SiteLink } from '../components/site-link.tsx'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildHumanApprovalErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { routes } from '#universal/routes.ts'
-import { type AccountSecretsLoaderData } from '#universal/loader-data.ts'
+import type { AccountSecretsLoaderData } from '#universal/loader-data.ts'
 import { formatFillPlacementSummary } from '#universal/credential-fill-placement.ts'
 import {
 	type CredentialPlacementApprovalView,

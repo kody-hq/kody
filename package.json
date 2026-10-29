@@ -109,7 +109,11 @@
     "nx:show-projects": "nx show projects",
     "audit:prod": "node tools/ci/audit-gate.ts",
     "soft-delete-read-filter:check": "node tools/soft-delete-read-filter.ts",
-    "typecheck:start": "tsc -p packages/worker/tsconfig-start-server.json && tsc -p packages/worker/tsconfig-start.json && tsc -p packages/worker/tsconfig-start-tests.json && tsc -p packages/worker/tsconfig-start-server-tests.json"
+    "typecheck:start": "tsc -p packages/worker/tsconfig-start-server.json && tsc -p packages/worker/tsconfig-start.json && tsc -p packages/worker/tsconfig-start-tests.json && tsc -p packages/worker/tsconfig-start-server-tests.json",
+    "perf:prepare": "node tools/framework-comparison/prepare-snapshots.mjs",
+    "perf:builds": "node tools/framework-comparison/compare-builds.mjs",
+    "perf:local": "node tools/framework-comparison/run-local.mjs",
+    "perf:check": "node tools/framework-comparison/check-results.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -124,6 +128,7 @@
     "@mswjs/interceptors": "^0.45.6",
     "@playwright/test": "^1.63.0",
     "@sentry/cli": "^3.8.0",
+    "@tailwindcss/vite": "4.3.1",
     "@tanstack/start-client-core": "^1.170.34",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",

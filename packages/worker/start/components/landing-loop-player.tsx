@@ -17,7 +17,7 @@ import {
 	walkthroughHostForAct,
 	type WalkthroughHostPick,
 } from '#universal/walkthrough-hosts.ts'
-import { type TranscriptLine } from '#client/routes/interactive-guide-transcript.ts'
+import type { TranscriptLine } from '#client/routes/interactive-guide-transcript.ts'
 import { renderIcon } from './icon.tsx'
 import { fetchLandingLoopHighlights } from '../landing-loop-highlights.ts'
 import {

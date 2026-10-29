@@ -3,7 +3,7 @@ import {
 	fromDatetimeLocalValue,
 	toDatetimeLocalValue,
 } from '@kody-internal/shared/secret-expires-at.ts'
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useEffect, useRef, useId } from 'react'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
@@ -15,7 +15,7 @@ import {
 	inputCss,
 	textareaCss,
 } from '#universal/styles/style-primitives.ts'
-import { type FillPlacementDraft } from '#universal/credential-fill-placement.ts'
+import type { FillPlacementDraft } from '#universal/credential-fill-placement.ts'
 import { CredentialFillPlacementFields } from './credential-fill-placement-fields.tsx'
 
 type SecretEditorFieldsProps = {

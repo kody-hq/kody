@@ -1,0 +1,59 @@
+{
+	"threadId": "01a11c5c-45a6-7af3-ab0c-75e35fbd9432",
+	"source": "rollout-2026-10-08T10-32-51-01a11c5c-45a6-7af3-ab0c-75e35fbd9432.jsonl",
+	"artifacts": [
+		{
+			"line": 5869,
+			"path": "COMPARISON.md",
+			"file": "5869-COMPARISON.md.txt",
+			"kind": "literal Python write",
+			"sha256": "60d67dff255ebd0ea0e802df232efc81fa02d2639fbfa424be2ecba8657287aa",
+			"status": "Literal report snapshot recovered from a tool-call input, not original raw measurement files or proof that the write succeeded."
+		},
+		{
+			"line": 7874,
+			"path": "COMPARISON.md",
+			"file": "7874-COMPARISON.md.txt",
+			"kind": "literal shell heredoc",
+			"sha256": "7b51727ca0434b0685c59ea2d5e568a4ec5bddc54adc32b7cc9e10d9020e0886",
+			"status": "Literal report snapshot recovered from a tool-call input, not original raw measurement files or proof that the write succeeded."
+		},
+		{
+			"line": 13328,
+			"path": "COMPARISON.md",
+			"file": "13328-COMPARISON.md.txt",
+			"kind": "literal Python write",
+			"sha256": "d5b356c6933463ea9db7cab16ee3c268cb02f4afb7518c52beed7a4673de253c",
+			"status": "Literal report snapshot recovered from a tool-call input, not original raw measurement files or proof that the write succeeded."
+		},
+		{
+			"line": 24530,
+			"path": "QUERY-CACHE-COMPARISON.md",
+			"file": "24530-QUERY-CACHE-COMPARISON.md.txt",
+			"kind": "literal shell heredoc",
+			"sha256": "48db400f0a14d5212f46af26b82b80cb371a79937195043d2077cd2841230663",
+			"status": "Literal report snapshot recovered from a tool-call input, not original raw measurement files or proof that the write succeeded."
+		},
+		{
+			"line": 28573,
+			"path": "START-QUERY-PATTERN-AUDIT.md",
+			"file": "28573-START-QUERY-PATTERN-AUDIT.md.txt",
+			"kind": "literal shell heredoc",
+			"sha256": "3d7a9858fd1aaefde4710c2285a33ef3c16646d87f1f392b932a15389e400165",
+			"status": "Literal report snapshot recovered from a tool-call input, not original raw measurement files or proof that the write succeeded."
+		},
+		{
+			"line": 29140,
+			"path": "TKDODO-REFACTOR.md",
+			"file": "29140-TKDODO-REFACTOR.md.txt",
+			"kind": "literal shell heredoc",
+			"sha256": "ec0fc907de2b5e5ddf59ad4d1a2543eff6d735e9793b44fc367686e593efbb8e",
+			"status": "Literal report snapshot recovered from a tool-call input, not original raw measurement files or proof that the write succeeded."
+		}
+	],
+	"limits": [
+		"Draft snapshots from different stages. Do not pool their samples.",
+		"Raw Lighthouse traces, full request logs, original inventories and manifests were not recovered from the deleted checkout.",
+		"Later shell edits and partially reconstructed patches are not represented as complete final reports."
+	]
+}

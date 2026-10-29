@@ -10,7 +10,7 @@ import {
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import { type TipsUnsubscribeOutcome } from '#universal/token-outcomes.ts'
+import type { TipsUnsubscribeOutcome } from '#universal/token-outcomes.ts'
 
 export function UnsubscribeTipsRoute({
 	data,

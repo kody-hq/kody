@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { staticDocumentHead } from '../components/document-head.ts'
+import { staticDocumentHead } from '../components/static-document-head.ts'
 import { createFileRoute } from '@tanstack/react-router'
 import { PricingPage } from '../pages/pricing.tsx'
 import { useShellData } from './__root.tsx'

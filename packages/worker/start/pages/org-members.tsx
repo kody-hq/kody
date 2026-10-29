@@ -5,9 +5,9 @@ import {
 	removeOrganizationMember,
 	revokeOrganizationMemberInvite,
 } from '#start/server/org-mutations'
-import {
-	type OrgMembersLoaderData,
-	type OrgMemberView,
+import type {
+	OrgMembersLoaderData,
+	OrgMemberView,
 } from '#universal/loader-data.ts'
 import { orgIdentity, orgRoleLabel } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
@@ -23,8 +23,8 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { type CSSObject } from '@emotion/react'
-import { type QueryKey } from '@tanstack/react-query'
+import type { CSSObject } from '@emotion/react'
+import type { QueryKey } from '@tanstack/react-query'
 import { useState } from 'react'
 import { renderIcon } from '../components/icon.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'

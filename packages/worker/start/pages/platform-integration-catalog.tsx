@@ -1,9 +1,9 @@
 /** @jsxImportSource @emotion/react */
-import { type CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 
 import { SiteLink } from '../components/site-link.tsx'
 import { ProviderMark } from '../components/provider-icons.tsx'
-import { type PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
+import type { PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
 import {
 	colors,
 	radius,

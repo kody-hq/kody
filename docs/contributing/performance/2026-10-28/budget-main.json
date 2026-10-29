@@ -1,0 +1,52 @@
+{
+	"label": "main",
+	"samples": 10,
+	"budget": {
+		"initialJsEncodedBytes": 270000,
+		"initialCssRawBytes": 135000,
+		"minimumSamples": 5
+	},
+	"sizes": [
+		{
+			"jsBytes": 281455,
+			"cssBytes": 157135
+		},
+		{
+			"jsBytes": 281455,
+			"cssBytes": 157135
+		},
+		{
+			"jsBytes": 281455,
+			"cssBytes": 157135
+		},
+		{
+			"jsBytes": 281455,
+			"cssBytes": 157135
+		},
+		{
+			"jsBytes": 281455,
+			"cssBytes": 157135
+		},
+		{
+			"jsBytes": 281455,
+			"cssBytes": 157135
+		},
+		{
+			"jsBytes": 281455,
+			"cssBytes": 157135
+		},
+		{
+			"jsBytes": 281455,
+			"cssBytes": 157135
+		},
+		{
+			"jsBytes": 281455,
+			"cssBytes": 157135
+		},
+		{
+			"jsBytes": 281455,
+			"cssBytes": 157135
+		}
+	],
+	"failures": ["Initial JS 281455 > 270000", "Initial CSS 157135 > 135000"]
+}

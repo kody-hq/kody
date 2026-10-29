@@ -13,7 +13,7 @@ import {
 	setUsageSchema,
 	approvePackageSchema,
 } from '#universal/integration-mutations.ts'
-import { connectSecretsSchema } from '../connect-input.ts'
+import { connectSecretsSchema } from '../connect-input-schema.ts'
 import { emailClassificationValues } from '#universal/email-message-view.ts'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'

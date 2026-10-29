@@ -1,12 +1,12 @@
-import {
-	type CredentialMappingChange,
-	type CredentialMappingTarget,
-	type CredentialRef,
-	type PackageCredentialNeedView,
-	type PackageCredentialsView,
-	type PackageCredentialsWriteError,
-	type PackageTriggerView,
-	type StoredCredentialMapping,
+import type {
+	CredentialMappingChange,
+	CredentialMappingTarget,
+	CredentialRef,
+	PackageCredentialNeedView,
+	PackageCredentialsView,
+	PackageCredentialsWriteError,
+	PackageTriggerView,
+	StoredCredentialMapping,
 } from '#universal/credential-contracts.ts'
 import { describeTrigger } from '#universal/package-credentials-page.ts'
 

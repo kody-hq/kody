@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
-import { type AccountPackageDetail } from '#universal/loader-data.ts'
+import type { AccountPackageDetail } from '#universal/loader-data.ts'
 import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 

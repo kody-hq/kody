@@ -1,8 +1,8 @@
 import { createElement } from 'react'
 import { expect, test, vi } from 'vitest'
-import {
-	type PackageCredentialNeedView,
-	type PackageCredentialsView,
+import type {
+	PackageCredentialNeedView,
+	PackageCredentialsView,
 } from '#universal/credential-contracts.ts'
 import { renderStartPage } from '../test-support/render-start-page.ts'
 import { usePackageMappingEditor } from './package-credentials-editor.tsx'

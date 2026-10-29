@@ -7,7 +7,7 @@ import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { useMemo, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { type CommunityDetailApiPayload } from '../community-types.ts'
+import type { CommunityDetailApiPayload } from '../community-types.ts'
 import { getPackageTreeHref } from '#universal/package-files.ts'
 import { withInstallOrg } from '#universal/community-search.ts'
 import {

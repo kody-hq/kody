@@ -7,7 +7,7 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import { packageWebhooksQuery } from '../package-webhooks-query.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
-import { type PackageWebhookListItem } from '#universal/loader-data.ts'
+import type { PackageWebhookListItem } from '#universal/loader-data.ts'
 import {
 	webhookFailureMessage,
 	webhookSuccessMessage,

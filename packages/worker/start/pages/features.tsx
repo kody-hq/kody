@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Global } from '@emotion/react'
 import featureStyles from '../../public/feature-pages.css?raw'
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import {
 	layoutMaxWidths,
 	pageGutter,

@@ -21,7 +21,7 @@ import {
 	type RowSelectionState,
 	type ColumnVisibilityState,
 } from '@tanstack/react-table'
-import { type RecordTableColumn, type RecordTableRow } from './record-table.tsx'
+import type { RecordTableColumn, RecordTableRow } from './record-table.tsx'
 
 type RecordTableState = {
 	sorting: SortingState

@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 
 import { SiteLink } from '../components/site-link.tsx'
-import { type ConnectOauthExistingConnection } from '#universal/loader-data.ts'
+import type { ConnectOauthExistingConnection } from '#universal/loader-data.ts'
 import { docHref } from '#universal/docs-nav.ts'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildConnectOauthFailureAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
@@ -27,11 +27,11 @@ import {
 	connectOauthChooserOptionMarkSize,
 	filterConnectOauthChooserOptions,
 } from '#client/routes/connect-oauth-chooser-list.ts'
-import { type ConnectOauthConfig } from '#client/routes/connect-oauth-config.ts'
-import {
-	type ConnectOauthChooserOption,
-	type ConnectOauthStatusTone,
-	type ConnectOauthStep,
+import type { ConnectOauthConfig } from '#client/routes/connect-oauth-config.ts'
+import type {
+	ConnectOauthChooserOption,
+	ConnectOauthStatusTone,
+	ConnectOauthStep,
 } from './connect-oauth-shared.ts'
 
 export function wouldReplaceDifferentApp(input: {

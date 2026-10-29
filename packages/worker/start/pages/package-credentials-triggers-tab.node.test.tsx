@@ -1,11 +1,11 @@
 import { expect, test } from 'vitest'
-import {
-	type PackageCredentialNeedView,
-	type PackageCredentialsView,
-	type PackageTriggerView,
+import type {
+	PackageCredentialNeedView,
+	PackageCredentialsView,
+	PackageTriggerView,
 } from '#universal/credential-contracts.ts'
 import { renderStartPage } from '../test-support/render-start-page.ts'
-import { type MappingCellInput } from './package-credentials-tabs.tsx'
+import type { MappingCellInput } from './package-credentials-tabs.tsx'
 import { renderTriggersTab } from './package-credentials-triggers-tab.tsx'
 
 function trigger(
