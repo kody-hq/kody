@@ -276,6 +276,9 @@ run as anyone.
 - Authority is capped twice: only the capabilities the app lists in
   `kody.app.capabilities` run as that person, and only within what that person
   may do in the org right now.
+- The cap covers every Kody capability call made while the app runs, including
+  calls made by packages the app imports. The importing app's manifest is the
+  one checked, so the app must declare the capabilities its dependencies use.
 
 ```json
 {
@@ -293,6 +296,29 @@ run as anyone.
 	}
 }
 ```
+
+For example, `@example/app` imports `kody:@example/helper/save-token`, and that
+helper export calls `kody.secretList(...)` and `kody.secretSet(...)`. Those
+calls run while `@example/app` runs, so `@example/app` lists both, even though
+its own code never calls them:
+
+```json
+{
+	"name": "@example/app",
+	"kody": {
+		"dependencies": ["@example/helper"],
+		"app": {
+			"entry": "src/index.ts",
+			"capabilities": ["secretList", "secretSet"]
+		}
+	}
+}
+```
+
+Without them the call fails with `PackageAppCapabilityNotDeclaredError`, which
+names the app (package name and version), the imported package that made the
+call, and the capability to add. Add it to the importing app's
+`kody.app.capabilities` and republish the app.
 
 `kody.app.visitorNeeds` is how an app works on a signed-in visitor's own data.
 Each key is its own Sign in with Kody consent scope, `need:<key>`, and the

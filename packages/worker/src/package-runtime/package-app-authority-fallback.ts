@@ -47,13 +47,60 @@ export const packageAppAuthorityDifferenceKinds = [
 export type PackageAppAuthorityDifferenceKind =
 	(typeof packageAppAuthorityDifferenceKinds)[number]
 
+/**
+ * Where a not-declared call came from. Package names and versions only:
+ * never a visitor, handle, or credential value.
+ */
+export type PackageAppCapabilityCallSite = {
+	/** The app whose `kody.app.capabilities` was checked (its package.json). */
+	app?: { name: string; version?: string | null } | null
+	/** The imported package whose code made the call, when not the app. */
+	callingPackage?: string | null
+}
+
+const credentialNamedCallName = 'credential.named'
+
+function describeApp(app: PackageAppCapabilityCallSite['app']) {
+	const name = app?.name.trim()
+	if (!name) return null
+	const version = app?.version?.trim()
+	return version ? `${name}@${version}` : name
+}
+
+function capabilityNotDeclaredMessage(
+	capabilityName: string,
+	site: PackageAppCapabilityCallSite,
+) {
+	const app = describeApp(site.app)
+	const appName = site.app?.name.trim() || null
+	const callingPackage = site.callingPackage?.trim() || null
+	const parts = [
+		`Package app capability "${capabilityName}" is not listed in kody.app.capabilities${app ? ` of the app "${app}"` : ''}.`,
+	]
+	if (callingPackage) {
+		parts.push(
+			`The call came from "${callingPackage}", a package the app imports.`,
+		)
+	}
+	parts.push(
+		'Apps run as their publisher and may call only the Kody capabilities they declare, including calls made by packages they import.',
+	)
+	const manifest = appName
+		? `the package.json of "${appName}"`
+		: "the app's package.json"
+	parts.push(
+		capabilityName === credentialNamedCallName
+			? `Fix: declare the credential as a need in kody.credentials in ${manifest} and open it with credential(key), then republish the app.`
+			: `Fix: add "${capabilityName}" to kody.app.capabilities in ${manifest}, then republish the app.`,
+	)
+	return parts.join(' ')
+}
+
 export class PackageAppCapabilityNotDeclaredError extends Error {
 	readonly capabilityName: string
 
-	constructor(capabilityName: string) {
-		super(
-			`Package app capability "${capabilityName}" is not listed in kody.app.capabilities. Apps run as their publisher and may call only the Kody capabilities they declare.`,
-		)
+	constructor(capabilityName: string, site: PackageAppCapabilityCallSite = {}) {
+		super(capabilityNotDeclaredMessage(capabilityName, site))
 		this.name = 'PackageAppCapabilityNotDeclaredError'
 		this.capabilityName = capabilityName
 	}

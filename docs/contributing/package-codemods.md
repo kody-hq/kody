@@ -590,7 +590,9 @@ authority only through the logged would-break fallback. This scan finds package
 apps that would lean on that fallback:
 
 - `undeclared capability` / `computed capability`: a `kody.<name>()` call
-  missing from `kody.app.capabilities`, or a name picked at run time.
+  missing from `kody.app.capabilities`, or a name picked at run time. The scan
+  reads the app's own source only; calls made by imported packages also count
+  against the app's list at run time but are not reported here.
 - `kody.mcp`: an MCP server tool call from the app.
 - `visitor credential`: the app uses credentials, declares no
   `kody.app.visitorNeeds`, and opts no need into `ownerCredentialForVisitors`,

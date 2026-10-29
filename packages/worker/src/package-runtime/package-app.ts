@@ -1443,6 +1443,13 @@ type PackageAppRuntimeBridgeProps = {
 	 * app's runs-as person.
 	 */
 	declaredCapabilities: Array<string>
+	/** The app's package.json name and version, for not-declared errors. */
+	appPackage?: { name: string; version: string | null }
+	/**
+	 * Imported package names by saved-package UUID (bundle metadata), so a
+	 * not-declared error can name the package that made the call.
+	 */
+	dependencyPackageNames?: Record<string, string>
 	/** `kody.app.visitorNeeds`, by key: each is its own consent scope. */
 	visitorNeeds: Record<string, PackageAppVisitorNeed>
 }
@@ -2039,6 +2046,23 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return this.assertPackageStorageGranted(normalized)
 	}
 
+	/**
+	 * Names the app manifest that was checked and, for a call bound to an
+	 * imported package, that package. Read from bridge props only.
+	 */
+	private capabilityNotDeclared(name: string, boundPackageId: string | null) {
+		const { appPackage, dependencyPackageNames, packageId } = this.ctx.props
+		const bound = boundPackageId?.trim() || null
+		const callingPackage =
+			bound && bound !== packageId.trim()
+				? (dependencyPackageNames?.[bound] ?? null)
+				: null
+		return new PackageAppCapabilityNotDeclaredError(name, {
+			app: appPackage ?? null,
+			callingPackage,
+		})
+	}
+
 	private async callCapabilityAs(
 		boundPackageId: string | null,
 		input: { name: string; args?: unknown },
@@ -2069,7 +2093,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			visitTicket,
 			run: async (callerContext, mode) => {
 				if (mode === 'runs-as' && !declared.has(name)) {
-					throw new PackageAppCapabilityNotDeclaredError(name)
+					throw this.capabilityNotDeclared(name, boundPackageId)
 				}
 				return await this.invokeCapability(boundPackageId, callerContext, {
 					name,
@@ -3035,7 +3059,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				}
 				if (args.name !== undefined && args.name !== null) {
 					// The runs-as person's credentials are capped to declared needs.
-					throw new PackageAppCapabilityNotDeclaredError('credential.named')
+					throw this.capabilityNotDeclared('credential.named', boundPackageId)
 				}
 				return await callTool(
 					await this.getCredentialClientTools(
@@ -3709,13 +3733,16 @@ async function buildPackageAppWorkerOptionsUncached(
 			: null,
 	}
 	const mainModule = 'package-app-entry.js'
-	const { modules: hydratedModules, dynamicDependencyPackageIds } =
-		await hydrateKodyRuntimeModules({
-			env: input.env,
-			baseUrl: input.baseUrl,
-			userId: input.userId,
-			modules: bundled.modules,
-		})
+	const {
+		modules: hydratedModules,
+		dynamicDependencyPackageIds,
+		dynamicDependencyPackageNames,
+	} = await hydrateKodyRuntimeModules({
+		env: input.env,
+		baseUrl: input.baseUrl,
+		userId: input.userId,
+		modules: bundled.modules,
+	})
 	const packageStorageGrantIds = [
 		...collectPackageStorageGrantIds({
 			packageContext: {
@@ -3837,10 +3864,34 @@ async function buildPackageAppWorkerOptionsUncached(
 			visitTicket: null,
 			visitAudience,
 			declaredCapabilities: [...(manifest.kody.app?.capabilities ?? [])],
+			appPackage: { name: manifest.name, version: manifest.version ?? null },
+			dependencyPackageNames: collectDependencyPackageNames({
+				dependencies: bundled.dependencies,
+				dynamicDependencyPackageNames,
+			}),
 			visitorNeeds: { ...manifest.kody.app?.visitorNeeds },
 		},
 		gatewayProps,
 	}
+}
+
+function collectDependencyPackageNames(input: {
+	dependencies: Array<{
+		packageId?: string
+		packageName?: string
+		kodyId: string
+	}>
+	dynamicDependencyPackageNames: Record<string, string> | undefined
+}) {
+	const names: Record<string, string> = {
+		...input.dynamicDependencyPackageNames,
+	}
+	for (const dependency of input.dependencies) {
+		if (!dependency.packageId) continue
+		names[dependency.packageId] =
+			dependency.packageName?.trim() || dependency.kodyId
+	}
+	return names
 }
 
 function visitHostOf(hostedUrl: string, baseUrl: string) {
