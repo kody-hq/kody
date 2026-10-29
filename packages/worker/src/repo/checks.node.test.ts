@@ -31,6 +31,7 @@ vi.mock('#worker/package-runtime/module-graph.ts', () => ({
 
 import {
 	createSnapshotFilesWorkspace,
+	isolatedCredentialScanMinSourceBytes,
 	repoChecksSourceMaxFiles,
 	repoChecksSourceMaxTotalBytes,
 	runRepoChecks,
@@ -1081,6 +1082,77 @@ test('an isolate reset during a check phase becomes a failed check, not a crash'
 	expect(bundleResult?.message).toContain(
 		'search({ entity: "guide:heavy_work_offload" })',
 	)
+})
+
+test('large source trees run the credential stamp scan in its own isolate', async () => {
+	const filler = `export const filler = ${JSON.stringify('x'.repeat(1024))}\n`
+	const fillerFiles = Object.fromEntries(
+		Array.from(
+			{
+				length: Math.ceil(isolatedCredentialScanMinSourceBytes / filler.length),
+			},
+			(_, index) => [`src/generated/filler-${index}.ts`, filler],
+		),
+	)
+	const phaseRequests: Array<Record<string, unknown>> = []
+	const { env } = isolatedEnv(async (request) => {
+		phaseRequests.push(request)
+		if (request.phase === 'credentials') {
+			return {
+				ok: true,
+				message: 'credentials ok (isolated)',
+				changedFiles: { 'src/index.ts': '// stamped\n' },
+				stampKeys: [],
+			}
+		}
+		return { ok: true, message: 'ok (isolated)' }
+	})
+	const { result } = await runChecks(
+		packageFiles(manifest('large-tree-package'), {
+			'src/index.ts': `export default async function main() {\n\treturn 'ok'\n}\n`,
+			...fillerFiles,
+		}),
+		{ env, baseUrl: '/', userId: ownerIdFromStored('user-123') },
+	)
+
+	expect(phaseRequests.map((request) => request.phase)).toContain('credentials')
+	expect(findCheck(result, 'credentials')).toMatchObject({
+		ok: true,
+		message: 'credentials ok (isolated)',
+	})
+	expect(result.sourceFiles['src/index.ts']).toBe('// stamped\n')
+})
+
+test('an isolate reset during the credential scan names that step', async () => {
+	const filler = `export const filler = ${JSON.stringify('x'.repeat(1024))}\n`
+	const fillerFiles = Object.fromEntries(
+		Array.from(
+			{
+				length: Math.ceil(isolatedCredentialScanMinSourceBytes / filler.length),
+			},
+			(_, index) => [`src/generated/filler-${index}.ts`, filler],
+		),
+	)
+	const { env } = isolatedEnv(async (request) => {
+		if (request.phase === 'credentials') {
+			throw new Error(
+				"Durable Object's isolate exceeded its memory limit and was reset.",
+			)
+		}
+		return { ok: true, message: 'ok (isolated)' }
+	})
+	const { result } = await runChecks(
+		packageFiles(manifest('large-tree-package'), {
+			'src/index.ts': `export default async function main() {\n\treturn 'ok'\n}\n`,
+			...fillerFiles,
+		}),
+		{ env, baseUrl: '/', userId: ownerIdFromStored('user-123') },
+	)
+
+	expect(result.ok).toBe(false)
+	const credentials = findCheck(result, 'credentials')
+	expect(credentials?.ok).toBe(false)
+	expect(credentials?.message).toContain('credential stamp scan')
 })
 
 test('runRepoChecks validates package skills and fails publish on malformed SKILL.md frontmatter', async () => {

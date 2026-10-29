@@ -77,8 +77,15 @@ import {
 	findFetchBodiesMissingSecretResolution,
 	formatFetchBodySecretResolutionWarning,
 } from '#worker/credentials/fetch-body-secret-resolution.ts'
-import { buildCredentialPatternCheck } from './credential-pattern-check.ts'
-import { resolveSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
+import {
+	buildCredentialPatternCheck,
+	type CredentialPatternCheckResult,
+} from './credential-pattern-check.ts'
+import {
+	resolveSecretProviderSlots,
+	type ResolvedSecretProviderSlots,
+} from '#worker/credentials/secret-provider-slots.ts'
+import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
 import { credentialNeedKeyNotes } from '#worker/credentials/credential-needs.ts'
 import { computeCredentialNeedsClosure } from '#worker/credentials/credential-needs-closure.ts'
 import { republishedNeedsNote } from '#worker/enablements/republish-needs-note.ts'
@@ -1444,6 +1451,71 @@ async function buildCredentialNeedsCheck(input: {
 	}
 }
 
+/**
+ * Above this much JS/TS source, the credential stamp scan runs in its own
+ * throwaway isolate (like bundle chunks and typecheck) so its parse heap
+ * never stacks on the caller's. Publish and `kody dev check` both take the
+ * same branch for the same tree, so a dev check pass predicts publish.
+ */
+export const isolatedCredentialScanMinSourceBytes = 256 * 1024
+
+const credentialScanSourcePattern = /\.(?:[cm]?[jt]sx?)$/i
+
+function credentialScanSourceBytes(sourceFiles: Record<string, string>) {
+	let bytes = 0
+	for (const [path, content] of Object.entries(sourceFiles)) {
+		if (credentialScanSourcePattern.test(path)) bytes += content.length
+	}
+	return bytes
+}
+
+async function runCredentialPatternCheck(input: {
+	sourceFiles: Record<string, string>
+	env?: Env
+	userId?: string
+	secretProviders?: ResolvedSecretProviderSlots
+}): Promise<CredentialPatternCheckResult> {
+	const runner =
+		input.env &&
+		input.userId &&
+		credentialScanSourceBytes(input.sourceFiles) >=
+			isolatedCredentialScanMinSourceBytes
+			? createIsolatedCheckPhaseRunner(input.env)
+			: null
+	if (!runner || !input.userId) {
+		return buildCredentialPatternCheck(
+			input.sourceFiles,
+			input.secretProviders ? { secretProviders: input.secretProviders } : {},
+		)
+	}
+	const stagingKey = await runner.stage({
+		userId: input.userId,
+		sourceFiles: input.sourceFiles,
+	})
+	try {
+		const outcome = await runner.run({
+			phase: 'credentials',
+			stagingKey,
+			userId: input.userId,
+			...(input.secretProviders
+				? { secretProviders: input.secretProviders }
+				: {}),
+		})
+		return {
+			kind: 'credentials',
+			ok: outcome.ok,
+			message: outcome.message,
+			sourceFiles:
+				outcome.changedFiles && Object.keys(outcome.changedFiles).length > 0
+					? { ...input.sourceFiles, ...outcome.changedFiles }
+					: input.sourceFiles,
+			stampKeys: outcome.stampKeys ?? [],
+		}
+	} finally {
+		await runner.discard(stagingKey)
+	}
+}
+
 export async function runRepoChecks(input: {
 	workspace: {
 		readFile(path: string): Promise<string | null>
@@ -1484,6 +1556,11 @@ export async function runRepoChecks(input: {
 	 * until phase 2/3 of #3836. Omit (default true) for authoring publish.
 	 */
 	enforceCredentialStamp?: boolean
+	/**
+	 * Called before each coarse step so the caller can record it durably and
+	 * name the step if the isolate hits its memory or CPU limit.
+	 */
+	onStep?: (step: RepoCheckStep) => Promise<void>
 }): Promise<RepoCheckRunResult> {
 	const manifestContent = await input.workspace.readFile(input.manifestPath)
 	if (manifestContent == null) {
@@ -1540,6 +1617,7 @@ export async function runRepoChecks(input: {
 		/\/+$/,
 		'',
 	)
+	await input.onStep?.('source-walk')
 	const sourceWalk = await (async () => {
 		const collected: Record<string, string> = {}
 		let fileCount = 0
@@ -1596,15 +1674,20 @@ export async function runRepoChecks(input: {
 	// overwrites descriptions). Hard-fails on unstampable patterns / server eval
 	// / missing descriptions (issue #3836 phase 1) unless the caller opts out
 	// (community install / platform codemods).
-	const credentialPatternCheck = buildCredentialPatternCheck(sourceFiles, {
-		secretProviders:
-			input.env && input.userId
-				? await resolveSecretProviderSlots({
-						env: input.env,
-						userId: input.userId,
-						files: sourceFiles,
-					})
-				: undefined,
+	await input.onStep?.('credentials')
+	const secretProviders =
+		input.env && input.userId
+			? await resolveSecretProviderSlots({
+					env: input.env,
+					userId: input.userId,
+					files: sourceFiles,
+				})
+			: undefined
+	const credentialPatternCheck = await runCredentialPatternCheck({
+		sourceFiles,
+		env: input.env,
+		userId: input.userId,
+		secretProviders,
 	})
 	sourceFiles = credentialPatternCheck.sourceFiles
 	const enforceCredentialStamp = input.enforceCredentialStamp !== false
@@ -1636,6 +1719,7 @@ export async function runRepoChecks(input: {
 	if (enforceCredentialStamp && !credentialPatternCheck.ok) {
 		return toRepoCheckRunResult({ results, manifest, sourceFiles })
 	}
+	await input.onStep?.('package-checks')
 	const credentialNeedsCheck = await buildCredentialNeedsCheck({
 		env: input.env,
 		userId: input.userId,
@@ -1705,7 +1789,9 @@ export async function runRepoChecks(input: {
 			sourceFiles,
 		})
 	}
+	await input.onStep?.('lint')
 	const lintCheck = buildLintCheck(sourceFiles)
+	await input.onStep?.('bundle')
 	const { createFileSystemSnapshot } = await loadWorkerBundlerSnapshotTools()
 	const snapshot = await createFileSystemSnapshot(
 		(async function* () {

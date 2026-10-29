@@ -7,6 +7,7 @@ import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
 import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
 import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import { readLastCheckStep } from '#worker/repo/isolated-check-phases.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import {
@@ -20,7 +21,10 @@ import {
 	isTransientDurableObjectResetError,
 } from '#worker/durable-object-reset-retry.ts'
 import { isExternalPublishSnapshotTooLargeMessage } from '#worker/repo/external-publish-clone.ts'
-import { externalPublishResourceLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
+import {
+	externalPublishResourceLimitMessage,
+	type RepoCheckStep,
+} from '#worker/repo/isolated-runner-limit-message.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	getPackageNameLeaf,
@@ -124,9 +128,13 @@ export default async function main(params = {}) {
 	return await kody.packagePublishExternalPush(params)
 }`
 
-function throwIfExternalPublishResourceLimit(error: unknown): never | void {
+function throwIfExternalPublishResourceLimit(
+	error: unknown,
+	step: RepoCheckStep | null = null,
+): never | void {
+	if (error instanceof McpCallerError) throw error
 	if (isDurableObjectIsolateResourceLimitResetError(error)) {
-		throw new McpCallerError(externalPublishResourceLimitMessage(), {
+		throw new McpCallerError(externalPublishResourceLimitMessage(step), {
 			cause: error,
 		})
 	}
@@ -991,7 +999,7 @@ async function runExternalPublishAttempt(input: {
 									rebuiltTargetCount: rebuild.rebuiltTargetCount,
 								}
 							} catch (error) {
-								throwIfExternalPublishResourceLimit(error)
+								throwIfExternalPublishResourceLimit(error, 'rebuild')
 								if (isTransientDurableObjectResetError(error)) {
 									throw error
 								}
@@ -1224,7 +1232,7 @@ async function runExternalPublishAttempt(input: {
 							})
 							return { ok: true as const }
 						} catch (error) {
-							throwIfExternalPublishResourceLimit(error)
+							throwIfExternalPublishResourceLimit(error, 'rebuild')
 							if (isTransientDurableObjectResetError(error)) {
 								throw error
 							}
@@ -1345,6 +1353,17 @@ async function runExternalPublishAttempt(input: {
 			} as const
 		} catch (error) {
 			assertNotAborted(input.signal)
+			if (
+				!(error instanceof McpCallerError) &&
+				isDurableObjectIsolateResourceLimitResetError(error)
+			) {
+				// The reset instance left its current step in storage; this call
+				// reaches a fresh isolate for the same session id.
+				const step = await readLastCheckStep(
+					repoSessionRpc(input.env, sessionId),
+				)
+				throwIfExternalPublishResourceLimit(error, step)
+			}
 			throwIfExternalPublishResourceLimit(error)
 			if (!isTransientDurableObjectResetError(error)) {
 				throw error

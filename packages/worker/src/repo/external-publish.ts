@@ -1,5 +1,6 @@
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { refreshCommunityIconForPackagePublish } from '#worker/community/community-icon.ts'
 import { syncActiveCommunityListingToPublishedCommit } from '#worker/community/sync-active-community-listing.ts'
@@ -366,6 +367,8 @@ export async function publishFromExternalRef(input: {
 	credentialNeedsApproved?: boolean
 	requestedByUserId?: string | null
 	phaseTimings?: PublishPhaseTimings
+	/** Records each check step so a resource reset can name it. */
+	onCheckStep?: (step: RepoCheckStep) => Promise<void>
 	deferBundleCheckToRebuild?: boolean
 }): Promise<RepoExternalPublishResult> {
 	const source = await getEntitySourceById(input.env.APP_DB, input.sourceId)
@@ -445,8 +448,10 @@ export async function publishFromExternalRef(input: {
 		sourceId: source.id,
 		expectedPackageScope: input.expectedPackageScope,
 		phaseTimings: input.phaseTimings,
+		...(input.onCheckStep ? { onStep: input.onCheckStep } : {}),
 		...(deferBundleCheckToRebuild ? { deferBundleCheckToRebuild: true } : {}),
 	})
+	await input.onCheckStep?.('finalize')
 	const runId = input.runId ?? crypto.randomUUID()
 	if (!checks.ok) {
 		return {

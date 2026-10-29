@@ -4,6 +4,7 @@ import {
 	runRepoChecks,
 	type RepoCheckRunResult,
 } from './checks.ts'
+import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
 import { type PublishPhaseTimings } from './publish-phase-timing.ts'
 
 /**
@@ -36,6 +37,7 @@ export async function runAuthoringPublishChecks(input: {
 	 * never set this, so they always run the full bundle validation.
 	 */
 	deferBundleCheckToRebuild?: boolean
+	onStep?: (step: RepoCheckStep) => Promise<void>
 }): Promise<RepoCheckRunResult> {
 	return await runRepoChecks({
 		workspace: input.workspace,
@@ -49,6 +51,7 @@ export async function runAuthoringPublishChecks(input: {
 			? { expectedPackageScope: input.expectedPackageScope }
 			: {}),
 		...(input.phaseTimings ? { phaseTimings: input.phaseTimings } : {}),
+		...(input.onStep ? { onStep: input.onStep } : {}),
 		...(input.deferBundleCheckToRebuild === true
 			? { deferBundleCheckToRebuild: true }
 			: {}),
@@ -68,6 +71,7 @@ export async function runAuthoringPublishChecksOnFiles(input: {
 	userId: OwnerId
 	sourceId?: string
 	expectedPackageScope?: string
+	onStep?: (step: RepoCheckStep) => Promise<void>
 }): Promise<RepoCheckRunResult> {
 	return await runAuthoringPublishChecks({
 		workspace: createSnapshotFilesWorkspace(
@@ -76,6 +80,7 @@ export async function runAuthoringPublishChecksOnFiles(input: {
 		),
 		manifestPath: 'package.json',
 		sourceRoot: '/',
+		...(input.onStep ? { onStep: input.onStep } : {}),
 		env: input.env,
 		baseUrl: input.baseUrl,
 		userId: input.userId,
