@@ -35,6 +35,7 @@ async function websiteContext(options: WebsiteScope): Promise<WebsiteContext> {
 		// sign-out; redirecting to /login would bounce straight back here.
 		const sessionUser = resolved.user
 		if (
+			options.scope &&
 			sessionUser &&
 			resolved.sessionUserId &&
 			!sessionUser.accountSuspended &&

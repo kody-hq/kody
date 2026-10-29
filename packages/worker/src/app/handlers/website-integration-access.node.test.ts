@@ -186,6 +186,7 @@ test('team members without integration:write cannot save, rotate, or delete org 
 			user: teamMember,
 			appSlug: 'github',
 			clientId: 'member-rotated-client',
+			confirm: true,
 		}),
 		'integration:write',
 	)

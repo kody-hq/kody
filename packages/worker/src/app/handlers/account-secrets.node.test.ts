@@ -384,6 +384,7 @@ vi.mock('#worker/integrations/service.ts', async (importOriginal) => {
 				typeof IntegrationsService.findOauthAppForProviderSetup
 			>
 		) => mockModule.findOauthAppForProviderSetup(...args),
+		findOauthAppReusedByConfig: async () => null,
 		// Real scope validation so handler ordering tests exercise the actual
 		// allowlist semantics.
 		assertScopesAllowedForPlatformApp: actual.assertScopesAllowedForPlatformApp,
