@@ -469,6 +469,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['name'],
 	},
 	{
+		operationId: 'integrationMemberConnectionList',
+		method: 'GET',
+		pathTemplate: '/v1/oauth-apps/member-connections',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'integrationMemberConnectionRevoke',
+		method: 'DELETE',
+		pathTemplate: '/v1/oauth-apps/member-connections/{credential_id}',
+		pathParamNames: ['credential_id'],
+	},
+	{
 		operationId: 'integrationOauthAppDelete',
 		method: 'DELETE',
 		pathTemplate: '/v1/oauth-apps/{slug}',

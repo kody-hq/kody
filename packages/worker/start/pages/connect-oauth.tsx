@@ -49,6 +49,8 @@ import {
 	renderChooser,
 	renderIncompleteConfig,
 	renderStatusCallout,
+	renderPinnedConnectNotice,
+	renderPinnedConnectError,
 	wouldReplaceDifferentApp,
 } from './connect-oauth-sections.tsx'
 import {
@@ -685,6 +687,9 @@ export function ConnectOauthRoute({
 					<h1 css={pageTitleCss}>{title}</h1>
 					{description ? <p css={pageDescriptionCss}>{description}</p> : null}
 				</header>
+				{initialData.pinnedConnectError
+					? renderPinnedConnectError(initialData.pinnedConnectError)
+					: null}
 				{renderStatusCallout({
 					statusTone,
 					statusMessage,
@@ -724,6 +729,11 @@ export function ConnectOauthRoute({
 				<h1 css={pageTitleCss}>{title}</h1>
 				{description ? <p css={pageDescriptionCss}>{description}</p> : null}
 			</header>
+			{initialData.pinnedConnect && currentConfig.pinnedAppSlug
+				? renderPinnedConnectNotice({
+						pinnedConnect: initialData.pinnedConnect,
+					})
+				: null}
 			{renderStatusCallout({
 				statusTone,
 				statusMessage,
