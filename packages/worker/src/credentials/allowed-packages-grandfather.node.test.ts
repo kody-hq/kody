@@ -282,3 +282,24 @@ test('a full page of packages stays under the D1 bound-parameter limit', async (
 		logOnlyPairs: 1,
 	})
 })
+
+test('an eligibility lookup failure keeps log markers from granting', async () => {
+	const { db } = setup()
+	mocks.accessKind.mockImplementation(
+		async ({ savedPackage }: { savedPackage: { id: string } }) => {
+			if (savedPackage.id === 'pkg-dynamic') throw new Error('lookup failed')
+			return 'self_authored'
+		},
+	)
+	const result = await runAllowedPackagesGrandfather({
+		env: { APP_DB: db } as Env,
+		audit: null,
+		logSince: '2026-10-23',
+	})
+	expect(result).toMatchObject({
+		skippedEligibilityUnknown: 1,
+		unresolvedPackages: 1,
+		pairs: 1,
+		logOnlyPairs: 0,
+	})
+})

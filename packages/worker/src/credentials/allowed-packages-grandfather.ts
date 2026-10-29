@@ -79,6 +79,8 @@ export type AllowedPackagesGrandfatherResult = {
 	skippedUnpublished: number
 	skippedNoSnapshot: number
 	skippedUnadoptedFork: number
+	/** Eligibility (adoption or publication) lookup failed; never granted. */
+	skippedEligibilityUnknown: number
 	unparsedPackages: number
 	unresolvedPackages: number
 	pairs: number
@@ -133,7 +135,13 @@ async function listExcludingUserCredentials(
 }
 
 type StaticPackageScan =
-	| { status: 'unpublished' | 'no_snapshot' | 'unadopted_fork' }
+	| {
+			status:
+				| 'unpublished'
+				| 'no_snapshot'
+				| 'unadopted_fork'
+				| 'eligibility_unknown'
+	  }
 	| {
 			status: 'scanned'
 			accessKind: AllowedPackagesWouldBlockAccessKind
@@ -147,17 +155,24 @@ export async function scanPackageUserCredentialNames(input: {
 	env: Env
 	savedPackage: SavedPackageRecord
 }): Promise<StaticPackageScan> {
-	const accessKind = await savedPackageImplicitUserSecretReadAccessKind({
-		db: input.env.APP_DB,
-		userId: input.savedPackage.userId,
-		savedPackage: input.savedPackage,
-	})
-	if (!accessKind) return { status: 'unadopted_fork' }
-	const source = await loadPackageSourceRowForUser({
-		env: input.env,
-		userId: input.savedPackage.userId,
-		sourceId: input.savedPackage.sourceId,
-	})
+	let accessKind: AllowedPackagesWouldBlockAccessKind | null
+	let source: Awaited<ReturnType<typeof loadPackageSourceRowForUser>>
+	try {
+		accessKind = await savedPackageImplicitUserSecretReadAccessKind({
+			db: input.env.APP_DB,
+			userId: input.savedPackage.userId,
+			savedPackage: input.savedPackage,
+		})
+		if (!accessKind) return { status: 'unadopted_fork' }
+		source = await loadPackageSourceRowForUser({
+			env: input.env,
+			userId: input.savedPackage.userId,
+			sourceId: input.savedPackage.sourceId,
+		})
+	} catch {
+		// Current publication or adoption is unknown: never grant from a marker.
+		return { status: 'eligibility_unknown' }
+	}
 	const publishedCommit = source.published_commit?.trim() || null
 	if (!publishedCommit) return { status: 'unpublished' }
 	const snapshot = await readPublishedSourceSnapshot({
@@ -334,6 +349,7 @@ export async function runAllowedPackagesGrandfather(input: {
 		skippedUnpublished: 0,
 		skippedNoSnapshot: 0,
 		skippedUnadoptedFork: 0,
+		skippedEligibilityUnknown: 0,
 		unparsedPackages: 0,
 		unresolvedPackages: 0,
 		pairs: 0,
@@ -387,8 +403,16 @@ export async function runAllowedPackagesGrandfather(input: {
 		if (scan.status !== 'scanned') {
 			if (scan.status === 'unpublished') result.skippedUnpublished += 1
 			if (scan.status === 'unadopted_fork') result.skippedUnadoptedFork += 1
-			if (scan.status === 'unpublished' || scan.status === 'unadopted_fork') {
+			if (
+				scan.status === 'unpublished' ||
+				scan.status === 'unadopted_fork' ||
+				scan.status === 'eligibility_unknown'
+			) {
 				ineligiblePackages.add(savedPackage.id)
+			}
+			if (scan.status === 'eligibility_unknown') {
+				result.skippedEligibilityUnknown += 1
+				unresolvedPackages.add(savedPackage.id)
 			}
 			if (scan.status === 'no_snapshot') {
 				result.skippedNoSnapshot += 1

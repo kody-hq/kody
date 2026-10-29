@@ -202,3 +202,52 @@ test('apply skips the rebuild when the published commit moves', async () => {
 	expect(result).toMatchObject({ rebuiltPackages: 0, failedPackages: 1 })
 	expect(result.outcomes[0]).toMatchObject({ outcome: 'failed' })
 })
+
+test('a package with only other-commit artifacts is reported, not current', async () => {
+	mocks.loadPublishedBundleArtifactsForPackageTargets.mockResolvedValue(
+		new Map([
+			[
+				'module',
+				{
+					...current,
+					artifact: { ...current.artifact, publishedCommit: 'c0' },
+				},
+			],
+		]),
+	)
+	const result = await runPreBindingArtifactRebuild({
+		env,
+		baseUrl: 'https://x',
+	})
+	expect(result).toMatchObject({
+		currentPackages: 0,
+		otherCommitPackages: 1,
+		packagesNeedingRebuild: 0,
+	})
+	expect(result.outcomes[0]).toMatchObject({
+		outcome: 'other_commit_artifacts',
+		otherCommitTargets: 1,
+	})
+})
+
+test('apply fails when the published commit moves during the rebuild', async () => {
+	mocks.loadPackageSourceRowForUser
+		.mockResolvedValueOnce({ published_commit: 'c1' })
+		.mockResolvedValueOnce({ published_commit: 'c1' })
+		.mockResolvedValueOnce({ published_commit: 'c2' })
+	mocks.rebuild.mockImplementation(async () => {
+		mocks.loadPublishedBundleArtifactsForPackageTargets.mockResolvedValue(
+			new Map([
+				['module', current],
+				['job', current],
+			]),
+		)
+	})
+	const result = await runPreBindingArtifactRebuild({
+		env,
+		baseUrl: 'https://x',
+		dryRun: false,
+	})
+	expect(mocks.rebuild).toHaveBeenCalledTimes(1)
+	expect(result).toMatchObject({ rebuiltPackages: 0, failedPackages: 1 })
+})

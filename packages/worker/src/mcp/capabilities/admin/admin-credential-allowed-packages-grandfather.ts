@@ -65,6 +65,9 @@ const outputSchema = z.object({
 	skippedUnpublished: count,
 	skippedNoSnapshot: count,
 	skippedUnadoptedFork: count,
+	skippedEligibilityUnknown: count.describe(
+		'Packages whose adoption or publication lookup failed. Their log markers never become grants.',
+	),
 	unparsedPackages: count,
 	unresolvedPackages: count.describe(
 		'Packages with runtime-built credential names, unparsed modules, or no source snapshot.',
