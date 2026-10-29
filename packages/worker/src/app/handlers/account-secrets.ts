@@ -629,6 +629,9 @@ export async function startAccountDeviceConnect(input: {
 		env: input.env,
 		request: input.user.request,
 		mcpUser: input.user.mcpUser,
+		liveConnectionGuard: {
+			confirmed: input.fields.replaceLiveConnection === true,
+		},
 		provider: input.fields.provider ?? '',
 		platformAppSlug: input.fields.platformAppSlug,
 		tokenUrl: input.fields.tokenUrl,

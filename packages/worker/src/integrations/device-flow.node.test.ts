@@ -151,6 +151,37 @@ test('startDeviceAuthorization stores session and returns user-facing fields wit
 	expect(fetchImpl).toHaveBeenCalledOnce()
 })
 
+test('startDeviceAuthorization keeps a website live-replace guard for completion', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn(async () =>
+		jsonResponse({
+			device_code: 'guarded-device-code',
+			user_code: 'WXYZ-1234',
+			verification_uri: 'https://auth.example.com/verify',
+			expires_in: 600,
+			interval: 5,
+		}),
+	)
+	const guarded = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		liveConnectionGuard: { confirmed: false },
+		fetchImpl,
+	})
+	const unguarded = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		fetchImpl,
+	})
+	if (!guarded.ok || !unguarded.ok) throw new Error('start failed')
+	const load = (sessionId: string) =>
+		loadDevicePendingSession({ env, userId: baseStart.userId, sessionId })
+	expect((await load(guarded.sessionId))?.liveConnectionGuard).toEqual({
+		confirmed: false,
+	})
+	expect((await load(unguarded.sessionId))?.liveConnectionGuard).toBeUndefined()
+})
+
 test('pollDeviceAuthorization walks pending, slow_down (+5s), and success', async () => {
 	const env = createSqliteEnv()
 	const fetchImpl = vi
