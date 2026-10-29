@@ -30,6 +30,7 @@ import {
 	loadDevicePendingSession,
 	storeDevicePendingSession,
 } from '#worker/integrations/device-flow.ts'
+import { resolveConnectClientSecret } from '#worker/integrations/connect-oauth-persist.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
 import {
 	connectAccountOAuth,
@@ -353,4 +354,53 @@ test('a device poll rechecks connect access before persisting tokens', async () 
 		.bind(teamId)
 		.first<{ n: number }>()
 	expect(connections?.n ?? 0).toBe(0)
+})
+
+test('a device poll does not write a start-time app secret over a rotated one', async () => {
+	const { env: baseEnv, teamId, teamOwner } = await setup()
+	const env = { ...baseEnv, OAUTH_KV: createMemoryKvNamespace().kv } as Env
+	await saveAccountOAuthApp({ env, user: teamOwner, fields: githubApp })
+	const sessionId = 'owner-device-session'
+	await storeDevicePendingSession({
+		env,
+		sessionId,
+		session: {
+			userId: teamId,
+			deviceCode: 'device-code',
+			intervalSeconds: 5,
+			expiresAtMs: Date.now() + 600_000,
+			nextPollAtMs: 0,
+			provider: 'github',
+			platformAppSlug: null,
+			tokenUrl: githubApp.tokenUrl,
+			apiBaseUrl: githubApp.apiBaseUrl,
+			authorizeUrl: null,
+			deviceAuthorizationUrl: 'https://github.com/login/device/code',
+			flow: 'device',
+			usePkce: null,
+			clientId: githubApp.clientId,
+			tokenExchangeStyle: null,
+			allowedHosts: ['api.github.com'],
+			scopes: ['repo'],
+			scopeSeparator: null,
+			extraAuthorizeParams: {},
+			// Read from the saved app at start; the owner rotated it since.
+			clientSecret: 'stale-start-secret',
+			clientSecretFromInput: false,
+			approvedTokenPayload: { access_token: 'owner-device-token' },
+		},
+	})
+
+	await pollAccountDeviceConnect({
+		env,
+		user: teamOwner,
+		fields: { sessionId },
+	})
+	expect(
+		await resolveConnectClientSecret({
+			env,
+			userId: teamId,
+			provider: 'github',
+		}),
+	).toBe(githubApp.clientSecret)
 })

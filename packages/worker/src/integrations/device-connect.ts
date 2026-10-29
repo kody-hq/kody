@@ -197,6 +197,7 @@ export async function startIntegrationDeviceConnect(
 		authorizeUrl,
 		clientId,
 		clientSecret,
+		clientSecretFromInput: !platformApp && Boolean(input.clientSecret?.trim()),
 		scopes,
 		scopeSeparator,
 		extraAuthorizeParams,
@@ -320,7 +321,11 @@ export async function pollIntegrationDeviceConnect(
 			scopeSeparator: polled.session.scopeSeparator,
 			extraAuthorizeParams: polled.session.extraAuthorizeParams,
 			tokenRecord: polled.tokenPayload,
-			clientSecret: polled.clientSecret,
+			// A secret read from the saved app at start may be stale after a rotation.
+			clientSecret:
+				polled.session.clientSecretFromInput === false
+					? null
+					: polled.clientSecret,
 		})
 	} catch (error) {
 		// Leave the approved session in KV so a retry poll can re-read tokens.

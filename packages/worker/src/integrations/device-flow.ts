@@ -96,6 +96,12 @@ export type DevicePendingSession = {
 	/** BYO confidential secret captured at start; never returned to callers. */
 	clientSecret: string | null
 	/**
+	 * False when `clientSecret` was resolved from the saved app rather than
+	 * typed at start, so a poll must not write it back over a rotated secret.
+	 * Missing on sessions stored before this field existed.
+	 */
+	clientSecretFromInput?: boolean
+	/**
 	 * Set once the provider returns tokens. Later polls return this payload
 	 * without re-using `device_code` at the provider. Cleared when
 	 * `completeDevicePendingSession` writes the completion receipt.
@@ -370,6 +376,7 @@ export async function startDeviceAuthorization(input: {
 	authorizeUrl: string | null
 	clientId: string
 	clientSecret: string | null
+	clientSecretFromInput?: boolean
 	scopes: Array<string>
 	scopeSeparator: string | null
 	extraAuthorizeParams: Record<string, string>
@@ -560,6 +567,7 @@ export async function startDeviceAuthorization(input: {
 		scopeSeparator: input.scopeSeparator,
 		extraAuthorizeParams: input.extraAuthorizeParams,
 		clientSecret: input.clientSecret,
+		clientSecretFromInput: input.clientSecretFromInput,
 	}
 	await storeDevicePendingSession({
 		env: input.env,
