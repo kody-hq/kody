@@ -248,7 +248,7 @@ test('does not report a published restore as failed when cleanup fails', async (
 test('does not publish a restored revision when its checks fail', async () => {
 	state.checks.mockResolvedValue({
 		ok: false,
-		results: [{ status: 'fail', message: 'Invalid skill frontmatter' }],
+		results: [{ ok: false, message: 'Invalid skill frontmatter' }],
 	})
 	await expect(
 		restoreSkillVersion({

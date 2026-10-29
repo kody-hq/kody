@@ -326,12 +326,12 @@ export const restoreSkillVersion = createServerFn({ method: 'POST' })
 						ctx,
 					)) as {
 						ok: boolean
-						results: Array<{ status: string; message: string }>
+						results: Array<{ ok: boolean; message: string }>
 					}
 					if (!checks.ok)
 						throw new Error(
 							`Publish checks failed: ${checks.results
-								.filter((result) => result.status === 'fail')
+								.filter((result) => !result.ok)
 								.map((result) => result.message)
 								.join(' ')}`,
 						)
