@@ -50,6 +50,7 @@ import {
 import { SENTRY_CONFIG_META_NAME } from '#universal/sentry-config.ts'
 import { NotFoundPage } from '../components/not-found-page.tsx'
 import { RouteErrorPage } from '../components/route-error-page.tsx'
+import { isPermissionDeniedError } from '#universal/permission-denied.ts'
 import { Toaster } from '../components/toaster.tsx'
 import { YouTubeWatchOverlay } from '../components/youtube-watch-overlay.tsx'
 
@@ -377,7 +378,9 @@ function DocumentShell({ children }: { children: ReactNode }) {
 						failure instanceof Error &&
 						failure.message === documentForbiddenMessage
 							? 'Unauthorized | Kody'
-							: 'Something went wrong | Kody',
+							: isPermissionDeniedError(failure)
+								? 'Access denied | Kody'
+								: 'Something went wrong | Kody',
 				}
 			: undefined
 	useEffect(() => {

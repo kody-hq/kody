@@ -34,10 +34,17 @@ export function isPermissionDeniedError(error: unknown): error is Error {
 	)
 }
 
-export function toPermissionDeniedPayload(error: Error) {
+/** Grantable permission (e.g. `email:read`), or null for role-gated pages. */
+export function readDeniedPermission(error: Error) {
 	const permission = 'permission' in error ? error.permission : null
-	return {
-		message: error.message,
-		permission: typeof permission === 'string' ? permission : null,
-	}
+	return typeof permission === 'string' ? permission : null
+}
+
+export function toPermissionDeniedPayload(error: Error) {
+	return { message: error.message, permission: readDeniedPermission(error) }
+}
+
+/** 403 only when every route failure is a denial; any other failure stays 500. */
+export function isOnlyPermissionDenied(errors: ReadonlyArray<unknown>) {
+	return errors.length > 0 && errors.every(isPermissionDeniedError)
 }

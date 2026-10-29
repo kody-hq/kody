@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import { permissionDeniedSerializationAdapter } from './permission-denied-serialization.ts'
 import {
 	PermissionDeniedError,
+	isOnlyPermissionDenied,
 	isPermissionDeniedError,
 } from '#universal/permission-denied.ts'
 
@@ -38,4 +39,11 @@ test('Start adapter rebuilds a typed denial from an AuthorizationError', () => {
 		permission: 'email:read',
 		status: 403,
 	})
+})
+
+test('document status is 403 only when every route failure is a denial', () => {
+	const denied = new PermissionDeniedError('No.')
+	expect(isOnlyPermissionDenied([denied])).toBe(true)
+	expect(isOnlyPermissionDenied([new Error('boom'), denied])).toBe(false)
+	expect(isOnlyPermissionDenied([])).toBe(false)
 })

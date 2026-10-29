@@ -2,8 +2,11 @@
 import { useLocation, useParams } from '@tanstack/react-router'
 import { buildPermissionDeniedErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { ErrorAgentPromptButton } from './error-agent-prompt-button.tsx'
-import { isPermissionDeniedError } from '#universal/permission-denied.ts'
-import { orgGrantsPath } from '#universal/org-pages.ts'
+import {
+	isPermissionDeniedError,
+	readDeniedPermission,
+} from '#universal/permission-denied.ts'
+import { orgGrantsPath, orgMembersPath } from '#universal/org-pages.ts'
 import {
 	getGhostButtonCss,
 	getPillButtonCss,
@@ -28,7 +31,11 @@ export function RouteErrorPage({ error }: { error: unknown }) {
 				: null,
 	})
 	return isPermissionDeniedError(error) ? (
-		<PermissionDeniedPage message={error.message} orgSlug={orgSlug} />
+		<PermissionDeniedPage
+			message={error.message}
+			permission={readDeniedPermission(error)}
+			orgSlug={orgSlug}
+		/>
 	) : (
 		<InternalErrorPage />
 	)
@@ -36,9 +43,11 @@ export function RouteErrorPage({ error }: { error: unknown }) {
 
 export function PermissionDeniedPage({
 	message,
+	permission,
 	orgSlug,
 }: {
 	message: string
+	permission: string | null
 	orgSlug: string | null
 }) {
 	const path = useLocation({ select: (location) => location.pathname })
@@ -49,15 +58,28 @@ export function PermissionDeniedPage({
 			</h1>
 			<p css={illustratedErrorCopyCss}>{message}</p>
 			<p css={illustratedErrorCopyCss}>
-				{orgSlug
-					? 'An org Owner can grant access org-wide on the Grants page.'
-					: 'Ask an owner for access, then try again.'}
+				{!orgSlug ? (
+					'Ask an owner for access, then try again.'
+				) : permission ? (
+					<>
+						An org Owner can grant <code>{permission}</code> org-wide on the
+						Grants page.
+					</>
+				) : (
+					'Access comes from your role in this org. Ask an org Owner to change it.'
+				)}
 			</p>
 			<nav aria-label="What to try next" css={illustratedErrorActionsCss}>
 				{orgSlug ? (
-					<SiteLink href={orgGrantsPath(orgSlug)} css={getPillButtonCss()}>
-						Open Grants
-					</SiteLink>
+					permission ? (
+						<SiteLink href={orgGrantsPath(orgSlug)} css={getPillButtonCss()}>
+							Open Grants
+						</SiteLink>
+					) : (
+						<SiteLink href={orgMembersPath(orgSlug)} css={getPillButtonCss()}>
+							See members
+						</SiteLink>
+					)
 				) : null}
 				<SiteLink href={routes.home.href()} css={getGhostButtonCss()}>
 					Go home
@@ -67,6 +89,7 @@ export function PermissionDeniedPage({
 				prompt={buildPermissionDeniedErrorAgentPrompt({
 					path,
 					message,
+					permission,
 					orgSlug,
 				})}
 			/>

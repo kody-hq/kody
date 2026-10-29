@@ -90,21 +90,31 @@ export function buildUnauthorizedErrorAgentPrompt(input: {
 export function buildPermissionDeniedErrorAgentPrompt(input: {
 	path?: string | null
 	message: string
+	permission: string | null
 	orgSlug: string | null
 }) {
+	const grantable = input.permission !== null
 	return buildErrorAgentPrompt({
 		activity: 'Opening a Kody page that returned a permission denial (403).',
 		errorCode: 'permission_denied',
 		errorMessage: input.message,
 		ids: { path: input.path, orgSlug: input.orgSlug },
-		likelyCause:
-			'My role in this organization does not include the permission this page needs.',
-		nextSteps: [
-			'Check my role in this org with orgMemberList and my grants with accessGrant.',
-			'If an org Owner should grant it, draft the accessGrant request for them.',
-			'Tell me whether to switch org or ask an Owner for access.',
-		],
-		kodyTools: ['orgMemberList', 'accessGrant'],
+		likelyCause: grantable
+			? `I do not hold the ${input.permission} grant in this organization.`
+			: 'My role in this organization does not allow this page.',
+		nextSteps: grantable
+			? [
+					'Check my role in this org with orgMemberList.',
+					`Draft the accessGrant request an org Owner would run to grant ${input.permission}.`,
+					'Tell me whether to switch org or ask an Owner for access.',
+				]
+			: [
+					'Check my role in this org with orgMemberList.',
+					'Tell me which org Owner can change my role with orgMemberUpdate.',
+				],
+		kodyTools: grantable
+			? ['orgMemberList', 'accessGrant']
+			: ['orgMemberList', 'orgMemberUpdate'],
 		docs: ['search({ entity: "guide:organizations" })'],
 	})
 }

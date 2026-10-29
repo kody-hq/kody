@@ -4,26 +4,45 @@ import { renderStartPage } from '../test-support/render-start-page.ts'
 import { PermissionDeniedError } from '#universal/permission-denied.ts'
 import { PermissionDeniedPage, RouteErrorPage } from './route-error-page.tsx'
 
-test('permission denials render the 403 explainer with a Grants link', async () => {
+test('grantable denials name the permission and link to Grants', async () => {
 	const html = await renderStartPage(
 		jsx(PermissionDeniedPage, {
-			message: 'Only owners and billing admins can manage billing for @acme.',
+			message: 'Missing email:read.',
+			permission: 'email:read',
 			orgSlug: 'acme',
 		}),
 	)
 	expect(html).toContain('data-testid="permission-denied-page"')
 	expect(html).toContain('You do not have access to this page')
-	expect(html).toContain(
-		'Only owners and billing admins can manage billing for @acme.',
-	)
-	expect(html).toContain('An org Owner can grant access org-wide')
+	expect(html).toContain('Missing email:read.')
+	expect(html).toContain('An org Owner can grant <code>email:read</code>')
 	expect(html).toContain('href="/@acme/-/grants"')
 	expect(html).not.toContain('data-testid="internal-error-page"')
 })
 
+test('role-gated denials send members to an Owner, not Grants', async () => {
+	const html = await renderStartPage(
+		jsx(PermissionDeniedPage, {
+			message: 'Only owners and billing admins can manage billing for @acme.',
+			permission: null,
+			orgSlug: 'acme',
+		}),
+	)
+	expect(html).toContain(
+		'Only owners and billing admins can manage billing for @acme.',
+	)
+	expect(html).toContain('Ask an org Owner to change it.')
+	expect(html).toContain('href="/@acme/-/members"')
+	expect(html).not.toContain('/-/grants')
+})
+
 test('denials outside an org skip the Grants link', async () => {
 	const html = await renderStartPage(
-		jsx(PermissionDeniedPage, { message: 'No.', orgSlug: null }),
+		jsx(PermissionDeniedPage, {
+			message: 'No.',
+			permission: null,
+			orgSlug: null,
+		}),
 	)
 	expect(html).not.toContain('/-/grants')
 	expect(html).toContain('Ask an owner for access')

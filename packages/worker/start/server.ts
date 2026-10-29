@@ -5,7 +5,7 @@ import {
 	defaultStreamHandler,
 	getResponseStatus,
 } from '@tanstack/react-start/server'
-import { isPermissionDeniedError } from '#universal/permission-denied.ts'
+import { isOnlyPermissionDenied } from '#universal/permission-denied.ts'
 import { secureNativeResponse } from '../src/app/native-response-envelope.ts'
 
 const startHandler = createStartHandler(async (context) => {
@@ -14,8 +14,10 @@ const startHandler = createStartHandler(async (context) => {
 		throw new Error('Document rendering requires its matching request nonce')
 	}
 	// Router answers 500 for any errored match; a permission denial is a 403.
-	const denied = context.router.state.matches.some(
-		(match) => match.status === 'error' && isPermissionDeniedError(match.error),
+	const denied = isOnlyPermissionDenied(
+		context.router.state.matches
+			.filter((match) => match.status === 'error')
+			.map((match) => match.error),
 	)
 	const status = denied ? 403 : getResponseStatus()
 	const result = await defaultStreamHandler(context)
