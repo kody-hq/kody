@@ -64,13 +64,24 @@ export function retainClientAssets({
 		throw new Error('Retained assets approach the Workers static asset limit')
 	}
 	// Frequent deploys can retain more than the asset budget within the
-	// retention window. Drop the oldest retained files first; the current
-	// build always ships in full.
-	const retained = Object.keys(timestamps)
-		.filter((name) => !fresh.has(name))
-		.sort((a, b) => (timestamps[b] ?? 0) - (timestamps[a] ?? 0))
-	for (const name of retained.slice(maxAssets - fresh.size)) {
-		delete timestamps[name]
+	// retention window. Drop the oldest builds first, a whole build at a time
+	// (its files share one timestamp), so a kept chunk never loses a
+	// dependency from its own build. The current build always ships in full.
+	const builds = new Map<number, Array<string>>()
+	for (const [name, timestamp] of Object.entries(timestamps)) {
+		if (fresh.has(name)) continue
+		builds.set(timestamp, [...(builds.get(timestamp) ?? []), name])
+	}
+	let budget = maxAssets - fresh.size
+	let evicting = false
+	for (const timestamp of [...builds.keys()].sort((a, b) => b - a)) {
+		const names = builds.get(timestamp) ?? []
+		if (!evicting && names.length <= budget) {
+			budget -= names.length
+			continue
+		}
+		evicting = true
+		for (const name of names) delete timestamps[name]
 	}
 	for (const name of Object.keys(timestamps)) {
 		const destination = path.join(current, name)

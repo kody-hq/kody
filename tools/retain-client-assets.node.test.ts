@@ -160,7 +160,7 @@ test('drops the oldest retained assets when deploys outgrow the asset budget', (
 	).toBe('newer-cccccccc.js')
 	expect(() =>
 		readFileSync(path.join(client, 'assets/oldest-aaaaaaaa.js')),
-	).toThrow()
+	).toThrow(/ENOENT/)
 	expect(() =>
 		retainClientAssets({
 			clientDirectory: client,
@@ -170,4 +170,37 @@ test('drops the oldest retained assets when deploys outgrow the asset budget', (
 			maxAssets: 1,
 		}),
 	).toThrow('Retained assets approach the Workers static asset limit')
+})
+
+test('evicts a whole retained build instead of splitting a chunk from its dependency', () => {
+	const root = mkdtempSync(path.join(tmpdir(), 'retained-assets-'))
+	directories.push(root)
+	const day = 24 * 60 * 60 * 1_000
+	const now = 10 * day
+	const previous = path.join(root, 'previous')
+	mkdirSync(path.join(previous, 'assets'), { recursive: true })
+	const manifest: Record<string, number> = {
+		'lazy-aaaaaaaa.js': now - day,
+		'shared-bbbbbbbb.js': now - day,
+	}
+	for (const name of Object.keys(manifest)) {
+		writeFileSync(path.join(previous, 'assets', name), name)
+	}
+	writeFileSync(path.join(previous, 'manifest.json'), JSON.stringify(manifest))
+	const client = path.join(root, 'client')
+	mkdirSync(path.join(client, 'assets'), { recursive: true })
+	writeFileSync(path.join(client, 'assets', 'fresh-cccccccc.js'), 'fresh')
+	const archive = path.join(root, 'archive')
+	retainClientAssets({
+		clientDirectory: client,
+		previousDirectory: previous,
+		archiveDirectory: archive,
+		now,
+		maxAssets: 2,
+	})
+	expect(
+		Object.keys(
+			JSON.parse(readFileSync(path.join(archive, 'manifest.json'), 'utf8')),
+		),
+	).toEqual(['fresh-cccccccc.js'])
 })
