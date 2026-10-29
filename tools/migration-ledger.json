@@ -731,6 +731,10 @@
 		{
 			"filename": "0202-integration-app-owner.sql",
 			"sha256": "1e979e460810d54c91b3288e4e4a0b2cf838e320541613c009b0051814b14bb8"
+		},
+		{
+			"filename": "0203-package-app-authority-rejections.sql",
+			"sha256": "651d06f8cef558e6f830407647be3e83bc54edfd9edb620c33fd12f9eedc2f74"
 		}
 	]
 }

@@ -285,7 +285,7 @@ async function setup(input: { capabilities?: Array<string> } = {}) {
 		return JSON.parse(text) as Record<string, unknown>
 	}
 
-	return { ownerId, username, serve }
+	return { ownerId, username, packageId: savedPackage.id, serve }
 }
 
 test(
@@ -375,6 +375,33 @@ test(
 		expect(String(body.secretsError)).toMatch(notDeclared)
 		expect(body.packages).toBeUndefined()
 		expect(String(body.packagesError)).toMatch(notDeclared)
+		// Both refusals reached the app, so both count as hard rejections.
+		await expect
+			.poll(
+				async () =>
+					(
+						await env.APP_DB.prepare(
+							`SELECT call_name, difference_kind, visitor_hash
+							 FROM package_app_authority_rejections
+							 WHERE package_id = ? ORDER BY call_name`,
+						)
+							.bind(t.packageId)
+							.all()
+					).results,
+				{ timeout: 15_000 },
+			)
+			.toEqual([
+				{
+					call_name: 'packageList',
+					difference_kind: 'capability_not_declared',
+					visitor_hash: 'anonymous',
+				},
+				{
+					call_name: 'secretList',
+					difference_kind: 'capability_not_declared',
+					visitor_hash: 'anonymous',
+				},
+			])
 	},
 )
 

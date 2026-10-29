@@ -168,6 +168,7 @@ import {
 	packageAppAuthorityFallbackKindOf,
 	packageAppAuthorityFallbackKindOfResult,
 	schedulePackageAppAuthorityFallback,
+	schedulePackageAppAuthorityRejection,
 	type PackageAppAuthorityDifferenceKind,
 } from './package-app-authority-fallback.ts'
 import {
@@ -1532,6 +1533,28 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
+	/** Never throws: an unreadable visit ticket counts as anonymous. */
+	private async noteHardRejection(
+		callName: string,
+		visitTicket: string | null | undefined,
+	) {
+		let visitor: RuntimePackageAppVisitor | null = null
+		try {
+			visitor = await this.visitorFor(visitTicket)
+		} catch {}
+		schedulePackageAppAuthorityRejection({
+			env: this.env,
+			event: {
+				ownerId: this.ctx.props.userId,
+				packageId: this.ctx.props.packageId,
+				callName,
+				kind: 'capability_not_declared',
+				visitorId: visitor?.userId ?? null,
+			},
+			waitUntil: (promise) => this.ctx.waitUntil(promise),
+		})
+	}
+
 	/** A lookup failure runs the call the legacy way, never fails it. */
 	private async loadRunsAs(): Promise<PackageAppRunsAs> {
 		try {
@@ -1560,7 +1583,8 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	 * 2026-10-24). When that fails for an authority reason, the call runs the
 	 * legacy way (as the visitor, or anonymously) and, when that works,
 	 * leaves a would-break row. A call that fails both ways throws the
-	 * runs-as error. Never retries a failure that is not about authority.
+	 * runs-as error; when that error is "not declared", it also leaves a
+	 * hard-rejection row. Never retries a failure that is not about authority.
 	 */
 	private async runWithAuthority<T>(input: {
 		callName: string
@@ -1623,17 +1647,22 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			refusedKind = kind
 			refused = { error }
 		}
-		const giveUp = () => {
-			if ('error' in refused) throw refused.error
+		const giveUp = async () => {
+			if ('error' in refused) {
+				if (refused.error instanceof PackageAppCapabilityNotDeclaredError) {
+					await this.noteHardRejection(input.callName, input.visitTicket)
+				}
+				throw refused.error
+			}
 			return refused.result
 		}
 		let legacyResult: T
 		try {
 			legacyResult = await runLegacy()
 		} catch {
-			return giveUp()
+			return await giveUp()
 		}
-		if (input.refusedResultKind?.(legacyResult)) return giveUp()
+		if (input.refusedResultKind?.(legacyResult)) return await giveUp()
 		await noteFallback(refusedKind)
 		return legacyResult
 	}

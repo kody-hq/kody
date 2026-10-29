@@ -601,7 +601,8 @@ apps that would lean on that fallback:
 Findings carry fixed messages only. Count flagged apps with
 `adminPackageCodemodScan` (`codemodId`
 `0017-detect-package-app-visitor-authority`) and compare with the live fallback
-count from `adminPackageAppAuthorityFallbackReport`.
+count from `adminPackageAppAuthorityFallbackReport` (fallbacks, plus
+`hardRejections` for calls that failed both ways).
 
 ## Engine
 

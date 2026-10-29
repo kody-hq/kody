@@ -357,8 +357,11 @@ reported as `credential_unbound`. Keep publisher-supplied needs on
 If a bridge call cannot run as the runs-as person (a capability missing from
 `kody.app.capabilities`, for example), the platform may still execute it as the
 visitor and log a `package_app_authority_fallback` event with the app, the call
-name, and the kind of difference. Add what the logs name to the manifest. Admins
-count these per app with `adminPackageAppAuthorityFallbackReport`, and the
+name, and the kind of difference. Add what the logs name to the manifest. A call
+that fails both ways throws the "not listed in `kody.app.capabilities`" error
+and logs a `package_app_authority_rejection` event instead. Admins count both
+per app with `adminPackageAppAuthorityFallbackReport` (`hardRejections` holds
+the second), and the
 [0017 scan](../contributing/package-codemods.md#0017-detect-package-app-visitor-authority)
 lists published apps that will hit them.
 
