@@ -118,6 +118,27 @@ test('repoReadFile rewraps a folder path as a caller error (KODY-CA)', async () 
 	expect((error as Error).message).toBe(directoryMessage)
 })
 
+test('repoReadFile rewraps a nested directory-target cause as a caller error', async () => {
+	const directoryMessage =
+		'repo session read target "src" is a directory. Pass a file path (for example src/index.ts), or use repoTree to list the folder.'
+	mocks.repoSessionRpc.mockReturnValue({
+		readFile: vi.fn(async () => {
+			throw new Error('Repo session read failed.', {
+				cause: new Error(directoryMessage),
+			})
+		}),
+	})
+
+	const error = await repoReadFileCapability
+		.handler({ session_id: 'session-1', path: 'src' }, createContext())
+		.then(
+			() => null,
+			(caught: unknown) => caught,
+		)
+	expect(error).toBeInstanceOf(McpCallerError)
+	expect((error as Error).message).toBe(directoryMessage)
+})
+
 test('repoReadFile leaves other read failures platform-visible', async () => {
 	mocks.repoSessionRpc.mockReturnValue({
 		readFile: vi.fn(async () => {
