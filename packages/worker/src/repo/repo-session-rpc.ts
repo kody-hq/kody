@@ -30,6 +30,12 @@ import {
 } from './types.ts'
 
 export type RepoSessionRpc = {
+	restorePublishedSkill: (payload: {
+		sessionId: string
+		userId: string
+		commit: string
+		name: string
+	}) => Promise<{ changed: boolean }>
 	getEstimatedBytes: () => Promise<{ estimatedBytes: number }>
 	openSession: (payload: {
 		sessionId: string

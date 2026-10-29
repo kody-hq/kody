@@ -2626,6 +2626,53 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 	}
 
+	async restorePublishedSkill(input: {
+		sessionId: string
+		userId: OwnerId
+		commit: string
+		name: string
+	}) {
+		const { sessionRow } = await this.getSessionState(
+			input.sessionId,
+			input.userId,
+		)
+		const { readPublishedSourceSnapshot } =
+			await import('#worker/package-runtime/published-runtime-artifacts.ts')
+		const { planSkillRestore } =
+			await import('#worker/package-registry/skill-history.ts')
+		const { snapshotStringToBytes } =
+			await import('#universal/package-file-media.ts')
+		const snapshot = await readPublishedSourceSnapshot({
+			env: this.env,
+			sourceId: sessionRow.source_id,
+			publishedCommit: input.commit,
+		})
+		if (!snapshot) throw new Error('This published snapshot is unavailable.')
+		const plan = planSkillRestore({
+			name: input.name,
+			current: await this.collectWorkspaceFiles(),
+			previous: snapshot.files,
+		})
+		for (const [path, content] of plan.writes) {
+			await this.workspace.writeFileBytes(
+				resolveRepoWorkspacePath(path, repoSessionWorkspacePrefix),
+				snapshotStringToBytes(content, path),
+			)
+		}
+		for (const path of plan.deletes)
+			await this.workspace.rm(
+				resolveRepoWorkspacePath(path, repoSessionWorkspacePrefix),
+				{ force: true },
+			)
+		await updateRepoSession(this.env, {
+			id: input.sessionId,
+			userId: sessionRow.user_id,
+			lastCheckpointAt: nowIso(),
+		})
+		this.refreshStoredEstimate(input.sessionId, sessionRow.user_id)
+		return { changed: plan.writes.length > 0 || plan.deletes.length > 0 }
+	}
+
 	async restoreFiles(input: {
 		sessionId: string
 		userId: OwnerId
