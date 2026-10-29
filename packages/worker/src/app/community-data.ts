@@ -43,6 +43,7 @@ import {
 	searchCommunityListings,
 } from '#worker/community/service.ts'
 import { getUserSocialRowByUsername } from '#worker/community/profile-repo.ts'
+import { loadOwnerProfilePublic } from '#worker/orgs/org-public-profile.ts'
 import { resolveListingPinAncestry } from '#worker/community/fork-listing-relation.ts'
 import { resolveViewerListingInstalls } from '#worker/community/viewer-install.ts'
 import {
@@ -448,7 +449,9 @@ async function loadCommunityDetailDataUncached(
 		getUserSocialRowByUsername(env.APP_DB, listing.ownerUsername),
 		readOptionalAuthenticatedAppUser(request, env),
 	])
-	const ownerProfilePublic = ownerRow?.profile_visibility === 'public'
+	const ownerProfilePublic = ownerRow
+		? ownerRow.profile_visibility === 'public'
+		: await loadOwnerProfilePublic(env.APP_DB, listing.ownerUsername)
 	const ownerUserId = ownerRow
 		? ownerIdFromStored(ownerRow.stable_user_id)
 		: null

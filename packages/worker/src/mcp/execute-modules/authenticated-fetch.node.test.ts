@@ -5,6 +5,7 @@ import {
 	type KodyNamespace,
 	IntegrationHostNotAllowedError,
 	createAuthenticatedFetch,
+	INTEGRATION_RUNTIME_CONFIG_TOOL_NAME,
 } from './kody-runtime-utils.ts'
 import { assertIntegrationHostAllowed } from './integration-host-allowlist.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
@@ -29,7 +30,7 @@ type SpotifyIntegration = Omit<typeof spotifyIntegration, 'apiBaseUrl'> & {
 
 function createKody(integration: SpotifyIntegration = spotifyIntegration) {
 	const kody = {
-		async integrationGet(args: CapabilityArgs) {
+		async [INTEGRATION_RUNTIME_CONFIG_TOOL_NAME](args: CapabilityArgs) {
 			expect(args.name).toBe('spotify')
 			return { integration }
 		},

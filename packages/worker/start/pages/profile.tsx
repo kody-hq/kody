@@ -29,10 +29,13 @@ export function ProfileRoute({
 	data: savedData,
 	currentHref,
 	basePath,
+	orgHomeHref,
 }: {
 	data: ProfileLoaderData
 	currentHref: string
 	basePath?: string
+	/** Set for members viewing their team org's public page. */
+	orgHomeHref?: string | null
 }) {
 	const { actorKey } = useRouteContext({ from: '__root__' })
 	const pendingProfile = usePendingProfile(actorKey)
@@ -148,6 +151,7 @@ export function ProfileRoute({
 							workspaceOrgSlug: session?.organizations.find(
 								(org) => org.personal,
 							)?.slug,
+							orgHomeHref,
 						})
 					: null}
 

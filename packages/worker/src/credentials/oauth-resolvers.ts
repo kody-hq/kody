@@ -15,8 +15,9 @@ import { getIntegrationFillPlacement } from '#worker/integrations/repo.ts'
 import { getJoinedIntegration } from '#worker/integrations/service.ts'
 import { refreshIntegrationTokens } from '#worker/integrations/token-refresh.ts'
 import { assertIntegrationAllowsHost } from '#mcp/execute-modules/integration-host-allowlist.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
-	assertCredentialScopeAllows,
+	assertActorScopeAllowsCredential,
 	authorizeActorUse,
 	type CredentialResolver,
 	type CredentialTargetFor,
@@ -34,10 +35,39 @@ import {
 	loadPinnedOrgId,
 } from './personal-credentials.ts'
 
-type IntegrationNameLookup = {
+export type IntegrationNameLookup = {
 	owner: 'org' | 'personal'
 	ownerId: OwnerId
 	credentialId: string | null
+}
+
+/**
+ * Use check for a granted personal connection: the actor's token scope must
+ * allow `integration:use`, and only the owner may use it through a live
+ * grant to the run org (Owners and Automation included in the refusal).
+ */
+export async function authorizePersonalIntegrationLookup(input: {
+	env: Pick<Env, 'APP_DB'>
+	orgId: OwnerId
+	actor: RequestContext | null | undefined
+	credentialId: string | null
+	name: string
+}) {
+	assertActorScopeAllowsCredential(
+		{
+			actor: input.actor,
+			orgId: input.orgId,
+			credentialId: input.credentialId,
+			name: input.name,
+		},
+		'integration:use',
+	)
+	await authorizePersonalCredentialUse({
+		db: input.env.APP_DB,
+		actorPersonId: input.actor?.actor?.userId ?? null,
+		orgId: input.orgId,
+		credentialId: input.credentialId ?? '',
+	})
 }
 
 async function authorizeIntegrationUse(
@@ -53,12 +83,12 @@ async function authorizeIntegrationUse(
 			break
 		case 'personal':
 			call.subject.credentialId = lookup.credentialId
-			assertCredentialScopeAllows(call, 'integration:use')
-			await authorizePersonalCredentialUse({
-				db: input.env.APP_DB,
-				actorPersonId: input.actor?.actor?.userId ?? null,
+			await authorizePersonalIntegrationLookup({
+				env: input.env,
 				orgId: input.orgId,
-				credentialId: lookup.credentialId ?? '',
+				actor: input.actor,
+				credentialId: lookup.credentialId,
+				name: call.subject.name,
 			})
 			break
 		default: {
@@ -102,36 +132,56 @@ async function assertIntegrationUnchanged(
 }
 
 /** Org integration by name, else the actor's granted personal one. */
-async function findIntegrationByName(
+function findIntegrationByName(
 	call: ResolverCall<
 		CredentialTargetFor<'integration-token' | 'integration-refresh'>
 	>,
 ): Promise<IntegrationNameLookup> {
-	const orgId = await findIntegrationCredentialId({
+	return findIntegrationLookupByName({
 		env: call.input.env,
-		userId: call.input.orgId,
+		orgId: call.input.orgId,
+		actor: call.input.actor,
 		name: call.credential.name,
+	})
+}
+
+/**
+ * The one name lookup for integration tokens: the run org's connection
+ * first; when none, the actor's own personal-org connection of that name.
+ * A personal hit is only a candidate; authorize it with
+ * `authorizePersonalIntegrationLookup` before use.
+ */
+export async function findIntegrationLookupByName(input: {
+	env: Pick<Env, 'APP_DB'>
+	orgId: OwnerId
+	actor: RequestContext | null | undefined
+	name: string
+}): Promise<IntegrationNameLookup> {
+	const orgCredentialId = await findIntegrationCredentialId({
+		env: input.env,
+		userId: input.orgId,
+		name: input.name,
 	})
 	// A personal connection pinned to another org's app is never an org
 	// credential of its own (personal) org; the personal path decides.
 	if (
-		orgId &&
-		!(await loadPinnedOrgId(call.input.env.APP_DB, call.input.orgId, orgId))
+		orgCredentialId &&
+		!(await loadPinnedOrgId(input.env.APP_DB, input.orgId, orgCredentialId))
 	) {
-		return { owner: 'org', ownerId: call.input.orgId, credentialId: orgId }
+		return { owner: 'org', ownerId: input.orgId, credentialId: orgCredentialId }
 	}
-	const person = call.input.actor?.actor?.userId
+	const person = input.actor?.actor?.userId
 	if (!person) {
-		return { owner: 'org', ownerId: call.input.orgId, credentialId: null }
+		return { owner: 'org', ownerId: input.orgId, credentialId: null }
 	}
 	const personalOwner = await loadPersonalOrgIdForPerson(
-		call.input.env.APP_DB,
+		input.env.APP_DB,
 		person,
 	)
 	const personalId = await findIntegrationCredentialId({
-		env: call.input.env,
+		env: input.env,
 		userId: personalOwner,
-		name: call.credential.name,
+		name: input.name,
 	})
 	if (personalId) {
 		return {
@@ -140,7 +190,7 @@ async function findIntegrationByName(
 			credentialId: personalId,
 		}
 	}
-	return { owner: 'org', ownerId: call.input.orgId, credentialId: null }
+	return { owner: 'org', ownerId: input.orgId, credentialId: null }
 }
 
 export const integrationTokenResolver: CredentialResolver<'integration-token'> =

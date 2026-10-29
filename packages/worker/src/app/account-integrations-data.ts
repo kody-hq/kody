@@ -565,7 +565,29 @@ export async function loadExistingConnectionSummary(
 		name,
 	})
 	if (!joined) return null
-	return { lane: joined.lane, appSlug: joined.app.slug }
+	const connected = Boolean(joined.connection.connectedAt)
+	if (joined.lane === 'platform') {
+		return {
+			lane: 'platform',
+			appSlug: joined.app.slug,
+			appName: joined.app.slug,
+			connected,
+			identity: null,
+		}
+	}
+	return {
+		lane: 'user',
+		appSlug: joined.app.slug,
+		appName: joined.app.label ?? joined.app.slug,
+		connected,
+		identity: {
+			clientId: joined.app.clientId,
+			tokenUrl: joined.app.tokenUrl,
+			authorizeUrl: joined.app.authorizeUrl,
+			deviceAuthorizationUrl: joined.app.deviceAuthorizationUrl,
+			flow: joined.app.flow,
+		},
+	}
 }
 
 /**

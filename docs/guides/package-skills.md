@@ -190,5 +190,4 @@ the underlying events. Metrics are filtered by package read permission.
 A read is evidence that Kody delivered or displayed a file, not proof that an
 agent followed its instructions or completed a task. Anonymous visitors, local
 Git file reads, and cached or offline agent reads cannot be attributed to an
-organization and are not counted. Collection starts when this feature is
-deployed, with no historical backfill.
+organization and are not counted. There is no historical backfill.

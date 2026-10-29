@@ -232,6 +232,7 @@ export function renderConnectStep(input: {
 	onConnect: () => void
 	onToggleScope: (scope: string) => void
 	wouldReplace: boolean
+	onEditCredentials?: () => void
 }) {
 	return (
 		<section css={cardCss}>
@@ -266,6 +267,16 @@ export function renderConnectStep(input: {
 						: `Continue to ${input.config.provider}`}
 				</button>
 			)}
+			{input.onEditCredentials ? (
+				<button
+					type="button"
+					disabled={input.submitting}
+					css={connectOauthSecondaryButtonCss}
+					onClick={input.onEditCredentials}
+				>
+					Edit app credentials
+				</button>
+			) : null}
 			{input.wouldReplace && !input.replaceConfirmed
 				? null
 				: renderScopePicker({

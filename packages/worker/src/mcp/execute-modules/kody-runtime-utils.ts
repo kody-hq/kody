@@ -17,30 +17,24 @@ export type KodyNamespace = Record<
 	(args: CapabilityArgs) => Promise<CapabilityResult>
 >
 
+/** Non-secret config the host returns for `createAuthenticatedFetch`. */
 type IntegrationConfig = {
 	name: string
-	tokenUrl: string
 	apiBaseUrl?: string | null
-	flow: 'pkce' | 'confidential'
-	clientId: string
 	requiredHosts?: Array<string>
-	authorization?: {
-		authorizeUrl: string
-		scopes: Array<string>
-		scopeSeparator?: string | null
-		extraAuthorizeParams?: Record<string, string>
-	} | null
-	/**
-	 * Platform (built-in) app connection: the shared client secret stays
-	 * server-side, so token refresh must go through the host-side
-	 * `integrationTokenRefresh` capability.
-	 */
-	platform?: boolean
 }
 
-type IntegrationGetResult = {
+type IntegrationConfigResult = {
 	integration: IntegrationConfig | null
 }
+
+/**
+ * Host-side, runtime-only config read: the run org's connection by name,
+ * else the actor's own personal connection granted to the run org (the
+ * set the integration-token gateway resolves). Not a public capability.
+ */
+export const INTEGRATION_RUNTIME_CONFIG_TOOL_NAME =
+	'__kodyIntegrationRuntimeConfig'
 
 export type ExecuteRequestInput = string | URL | Request
 
@@ -83,7 +77,7 @@ export const secretHeaders = {
 }
 
 export const EXECUTE_HELPER_CAPABILITY_NAMES = [
-	'integrationGet',
+	INTEGRATION_RUNTIME_CONFIG_TOOL_NAME,
 	'integrationTokenRefresh',
 ] as const
 
@@ -293,13 +287,15 @@ async function readIntegrationConfig(
 	kody: KodyNamespace,
 	providerName: string,
 ) {
-	const integrationGet = kody.integrationGet
-	if (typeof integrationGet !== 'function') {
-		throw new Error('kody.integrationGet is not available in this sandbox.')
+	const readConfig = kody[INTEGRATION_RUNTIME_CONFIG_TOOL_NAME]
+	if (typeof readConfig !== 'function') {
+		throw new Error(
+			'createAuthenticatedFetch is not available in this sandbox.',
+		)
 	}
-	const result = (await integrationGet({
+	const result = (await readConfig({
 		name: providerName,
-	})) as IntegrationGetResult
+	})) as IntegrationConfigResult
 	const integration = result?.integration ?? null
 	if (!integration) {
 		throw new Error(`Integration "${providerName}" was not found.`)
@@ -580,7 +576,7 @@ const secretHeaders = {
   },
 };
 const __kodyReadIntegrationConfig = async (providerName) => {
-  const result = await ${kodyCallDispatcherName}('integrationGet', { name: providerName });
+  const result = await ${kodyCallDispatcherName}(${JSON.stringify(INTEGRATION_RUNTIME_CONFIG_TOOL_NAME)}, { name: providerName });
   const integration = result?.integration ?? null;
   if (!integration) {
     throw new Error(\`Integration "\${providerName}" was not found.\`);

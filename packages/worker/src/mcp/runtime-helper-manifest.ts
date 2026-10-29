@@ -11,7 +11,10 @@ import {
 import {
 	createExecuteHelperPrelude,
 	getExecuteHelperCapabilityNames,
+	INTEGRATION_RUNTIME_CONFIG_TOOL_NAME,
 } from '#mcp/execute-modules/kody-runtime-utils.ts'
+import { readIntegrationRuntimeConfig } from '#mcp/capabilities/integrations/integration-runtime-config.ts'
+import { type Capability } from '#mcp/capabilities/types.ts'
 import {
 	createPackageStorageHelperPrelude,
 	createPackageStorageKodyTools,
@@ -532,8 +535,23 @@ const runtimeHelperManifest: Array<RuntimeHelperManifestEntry> = [
 		isBound: (context) =>
 			context.provider
 				? providerExposesExecuteHelperCapabilities(context.provider)
-				: false,
+				: 'integrationGet' in context.capabilityMap,
 		createPrelude: () => createExecuteHelperPrelude(),
+		createKodyTools: (context): AdditionalKodyTools => {
+			const integrationGet = context.capabilityMap.integrationGet as
+				| Capability
+				| undefined
+			if (!integrationGet) return {}
+			return {
+				[INTEGRATION_RUNTIME_CONFIG_TOOL_NAME]: (args) =>
+					readIntegrationRuntimeConfig({
+						env: context.env,
+						callerContext: context.callerContext,
+						integrationGet,
+						args,
+					}),
+			}
+		},
 	},
 	{
 		runtimeName: 'packageStorage',

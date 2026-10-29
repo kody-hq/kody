@@ -426,7 +426,11 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   org. Personal orgs reuse `users.stable_user_id` as `orgs.id`. Billing,
   profile, gift, and budget columns live on the org row. Soft-delete and actor
   columns exist on the row. See
-  [decision 0063](../decisions/0063-teams-expand-orgs.md).
+  [decision 0063](../decisions/0063-teams-expand-orgs.md). `profile_visibility`
+  (`public` default | `private`) decides whether a team org's `/@slug` page and
+  avatar are visible outside the org (set at create and in org Settings /
+  `orgUpdate`); personal orgs follow `users.profile_visibility` instead
+  ([decision 0088](../decisions/0088-public-team-org-pages.md)).
 - `handles` (0086): the username namespace. Handles are permanent (no username
   or org slug renames); rows left by pre-rule renames stay reserved.
 - `org_memberships` (0086): `(org_id, user_id)` with role `owner`, `member`, or
@@ -469,8 +473,9 @@ The schema is defined by migrations in `packages/worker/migrations/`:
 - `mcp_event_subscriptions` (`0083-mcp-event-subscriptions.sql`): user-owned MCP
   Events webhook subscriptions (event name, callback URL, encrypted `whsec_`
   secrets). Deleted and exported with the account; secret columns are redacted
-  from export. See [MCP Events](../../guides/mcp-events.md) and
-  [0059](../decisions/0059-mcp-events-extension-behind-flag.md).
+  from export. See [MCP Events](../../guides/mcp-events.md),
+  [0059](../decisions/0059-mcp-events-extension-behind-flag.md), and
+  [0087](../decisions/0087-mcp-events-no-client-declaration.md).
 - `community_listings`, `community_forks`, `community_ratings`,
   `community_reports`, `community_bans`: public package listings and moderation
   (see [Public packages](../community-packages.md)). `community_forks` rows for

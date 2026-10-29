@@ -1,8 +1,6 @@
 import { expect, test } from 'vitest'
 import { type ExecutionContextGrantSummary } from './execution-contexts.ts'
 import {
-	credentialValuesStayOnKody,
-	loginPredatesPermissionsMessage,
 	optInCopy,
 	presetLabels,
 	registerCopy,
@@ -80,7 +78,7 @@ test('sharing levels and presets', () => {
 	expect(presetLabels).toMatchSnapshot()
 })
 
-test('register copy, personal and team, has no --no-chain and names kody login', () => {
+test('register copy, personal and team, names kody login', () => {
 	const personal = registerCopy({ orgSlug: null })
 	const team = registerCopy({ orgSlug: 'acme' })
 	expect(personal).toMatchSnapshot('personal')
@@ -89,12 +87,8 @@ test('register copy, personal and team, has no --no-chain and names kody login',
 		'kody context register --name my-machine --org acme',
 	)
 	for (const copy of [personal, team]) {
-		expect(copy.commands.join('\n')).not.toContain('--no-chain')
 		expect(copy.login).toContain('`kody login`')
 	}
-	expect(loginPredatesPermissionsMessage).toBe(
-		'Your Kody login predates execution context permissions. Run `kody login` again, then try again.',
-	)
 })
 
 test('LAN line appears only when local network access is on', () => {
@@ -108,7 +102,6 @@ test('LAN line appears only when local network access is on', () => {
 
 test('credential copy depends on oauthClientCredentials returning only a handle', () => {
 	// If credential values could reach a context, every "stay on Kody" line is false.
-	expect(credentialValuesStayOnKody).toBe(true)
 	expect(
 		optInCopy({ name: 'x', operator: 'sam', grant: grants.locked! })
 			.paragraphs[0],

@@ -50,8 +50,10 @@ The pages below are the MCP-level field contracts those guides link into.
 - [Repo-backed editing sessions](./repo-sessions.md)
 - [Raw MCP content blocks](./raw-content-blocks.md)
 - [Secrets and host approval](./secrets-and-values.md) — includes external
-  provider placeholders (`{{secret/<provider>:<ref>}}`); usage:
-  [Custom secret providers](../guides/secret-providers.md)
+  provider placeholders (`{{secret/<provider>:<ref>}}`), `sealed_token`, and
+  fill-placement approval; usage:
+  [Custom secret providers](../guides/secret-providers.md) and
+  [Credentials](../guides/credentials.md)
 - [Email primitives](./email-primitives.md) — the per-user inbox, verified
   destinations, notify-self sends, and replies
 - [Inbound webhooks](./webhooks.md) — user-owned HTTPS endpoints that dispatch

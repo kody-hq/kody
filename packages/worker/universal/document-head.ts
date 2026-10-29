@@ -405,9 +405,12 @@ const routeDocumentHeads = {
 		}
 
 		const ogTitle = `${shell.displayName} (@${shell.username}) — Kody`
+		const isOrg = shell.ownerKind === 'org'
 		const ogDescription =
 			shell.bio == null || shell.bio.trim() === ''
-				? 'Community profile on Kody.'
+				? isOrg
+					? 'Organization on Kody.'
+					: 'Community profile on Kody.'
 				: truncateText(shell.bio, 200)
 		return {
 			title,
@@ -415,7 +418,10 @@ const routeDocumentHeads = {
 			og: {
 				title: ogTitle,
 				description: ogDescription,
-				imagePath: `/profiles/${shell.username}/og.png`,
+				// The profile card renders people only; org pages use the site card.
+				imagePath: isOrg
+					? '/og/home.png'
+					: `/profiles/${shell.username}/og.png`,
 			},
 		}
 	},

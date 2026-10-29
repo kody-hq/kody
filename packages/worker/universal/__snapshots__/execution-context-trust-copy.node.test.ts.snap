@@ -60,7 +60,7 @@ exports[`opt-in copy for every access combination > publicDefault 1`] = `
 }
 `;
 
-exports[`register copy, personal and team, has no --no-chain and names kody login > personal 1`] = `
+exports[`register copy, personal and team, names kody login > personal 1`] = `
 {
   "after": "It appears here within a few seconds, marked Not in any chain. Add it to your chain to start using it, or share it.",
   "body": "Registration happens from the CLI because the context key is generated on the machine and never leaves it. On the machine that should run code:",
@@ -79,7 +79,7 @@ exports[`register copy, personal and team, has no --no-chain and names kody logi
 }
 `;
 
-exports[`register copy, personal and team, has no --no-chain and names kody login > team 1`] = `
+exports[`register copy, personal and team, names kody login > team 1`] = `
 {
   "after": "It appears here within a few seconds, marked Not in any chain. Add it to your chain to start using it, or share it.",
   "body": "Registration happens from the CLI because the context key is generated on the machine and never leaves it. On the machine that should run code:",

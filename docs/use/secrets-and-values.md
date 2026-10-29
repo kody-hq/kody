@@ -50,6 +50,16 @@ it to leave an existing expiry unchanged; pass `null` to clear. Updates that
 only change description or expiry may omit **`value`**. Package runtimes cannot
 change expiry on a user secret.
 
+Pass **`sealed_token`** instead of **`value`** to save a sealed token from the
+same run — an `access_token`, `refresh_token`, or `id_token` the gateway
+returned after filling a credential. Kody opens it and stores the real token as
+a Key. That Key fills only on the token endpoint's host, the exact hosts
+approved on the credentials that minted it, and its JWT audience host, in a
+header or the body (never the URL). Saving over an existing Key keeps its
+narrower hosts and placement. `secretSet` refuses a sealed token passed as
+**`value`**, one from another run, an expired one, and a signed JWT. See
+[Secrets](../guides/secrets.md).
+
 ### Opt-in credential fields
 
 A saved secret is a **Key** by default. Keys fill placeholders and use host
@@ -89,21 +99,31 @@ inject or widen placement on the credential detail page or with MCP `api`
 cannot widen placement or change inject; those calls are refused with a link to
 the credential's page. Narrowing placement and provider changes work everywhere.
 
+Each Key also stores a **fill placement** (headers, optionally named; query;
+path; and/or body). New Keys default to headers-only. Query, path, and body also
+need the owner's opt-in on the credential page, which warns that the host may
+store a value sent there. A refused query, path, or body fill of a user Key
+carries an approval link (`/connect/secrets?name=<key>&placement=body`; add
+`&hosts=<host>` to approve the host in the same click). Agents can mint the same
+link with **`credentialPlacementApprovalLink`** (MCP `api`); the call never
+changes placement. See [Credentials](../guides/credentials.md).
+
 ### Personal credentials in a team org
 
 A secret, OAuth connection, or MCP server in your personal org is a personal
 credential. Grant it to a team org you belong to with **`credentialOrgGrant`**
 (`credential_id`, and `org` as a slug; `org` defaults to the org the request is
-bound to). It then works in that org only in your own runs, through scoped
-`credential(key)` clients (see [Packages](./packages.md)). Nobody else in that
-org can use it, Owners and Automation included, and `{{secret:name}}`
-placeholders never resolve it. **`credentialOrgRevoke`** removes one org's grant
-at once, and **`credentialOrgGrantList`** lists your grants, with
-`active: false` when one stops working (an expired value, a disconnected OAuth
-connection, a disabled MCP server, or you left the org). Leaving an org deletes
-your grants there. Granting and revoking need a live person (not a job, webhook,
-or package code) and Write on the credential; grants and revokes are audited in
-your personal org.
+bound to). It then works in that org only in your own runs: through scoped
+`credential(key)` clients (see [Packages](./packages.md)), through
+`{{secret:name}}` and `{{integration-token:name}}` placeholders, and through
+`createAuthenticatedFetch(name)`. An org credential with the same name wins
+first. Nobody else in that org can use it, Owners and Automation included.
+**`credentialOrgRevoke`** removes one org's grant at once, and
+**`credentialOrgGrantList`** lists your grants, with `active: false` when one
+stops working (an expired value, a disconnected OAuth connection, a disabled MCP
+server, or you left the org). Leaving an org deletes your grants there. Granting
+and revoking need a live person (not a job, webhook, or package code) and Write
+on the credential; grants and revokes are audited in your personal org.
 
 An OAuth connection you make through a team org's own OAuth app (**Connect your
 own account** on the org app's page) is a personal connection pinned to that
@@ -139,14 +159,16 @@ hold:
 
 Otherwise the request is refused before any credential resolves, with an error
 that names the credential and the host; the gateway never sends a placeholder it
-would fill unfilled. A placeholder in the URL host or user info is always
-refused, so filling one can never change where a request goes. In a JSON body
-each value is JSON-escaped; in a form-encoded body or query string each value is
-form-encoded, and the other keys and values keep their bytes as written. In the
-URL path each value is encoded as segment data, so a `/`, `?`, or `#` in it
-cannot change the route. Prefer a literal path prefix plus a one-segment secret
-for webhook-style URLs (Slack, Discord, and similar): put the stable path in
-code and only the token segment in the credential.
+would fill unfilled. A fill into a part the credential does not allow is also
+refused, naming the credential, the refused part, and the allowed parts. A
+placeholder in the URL host or user info is always refused, so filling one can
+never change where a request goes. In a JSON body each value is JSON-escaped; in
+a form-encoded body or query string each value is form-encoded, and the other
+keys and values keep their bytes as written. In the URL path each value is
+encoded as segment data, so a `/`, `?`, or `#` in it cannot change the route.
+Prefer a literal path prefix plus a one-segment secret for webhook-style URLs
+(Slack, Discord, and similar): put the stable path in code and only the token
+segment in the credential.
 
 ```ts
 // Literal prefix + one-segment secret. The gateway fills the token as one

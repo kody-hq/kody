@@ -31,6 +31,10 @@ import { useRouter, useRouteContext } from '@tanstack/react-router'
 import { createOrg, restoreOrganization } from '#start/server/org-organizations'
 import { invalidateShellQueries } from '../shell-query.ts'
 import { SiteLink } from '../components/site-link.tsx'
+import {
+	OrgVisibilityFieldset,
+	type OrgProfileVisibilityChoice,
+} from '../components/org-visibility-fieldset.tsx'
 import { type AccountOrganizationsLoaderData } from '#universal/loader-data.ts'
 import {
 	orgIdentity,
@@ -174,6 +178,10 @@ function CreateOrganizationForm() {
 	const [displayName, setDisplayName] = useState(draft.get('displayName') ?? '')
 	const [slug, setSlug] = useState(draft.get('slug') ?? '')
 	const [slugEdited, setSlugEdited] = useState(Boolean(draft.get('slug')))
+	const [profileVisibility, setProfileVisibility] =
+		useState<OrgProfileVisibilityChoice>(
+			draft.get('profileVisibility') === 'private' ? 'private' : 'public',
+		)
 	const [confirming, setConfirming] = useState(false)
 	const [clientError, setClientError] = useState<{
 		message: string
@@ -189,7 +197,11 @@ function CreateOrganizationForm() {
 		mutationFn: ({
 			data,
 		}: {
-			data: { displayName: string; slug: string }
+			data: {
+				displayName: string
+				slug: string
+				profileVisibility: OrgProfileVisibilityChoice
+			}
 			actorKey: string | null
 		}) => createOrg({ data }),
 		onSuccess: async (_result, { actorKey }) => {
@@ -283,7 +295,7 @@ function CreateOrganizationForm() {
 						}
 						const isCurrent = capture()
 						mutation.mutate(
-							{ data: { displayName, slug }, actorKey },
+							{ data: { displayName, slug, profileVisibility }, actorKey },
 							{
 								onSuccess: (result) => {
 									if (!isCurrent()) return
@@ -372,6 +384,15 @@ function CreateOrganizationForm() {
 							.
 						</p>
 					</label>
+					<OrgVisibilityFieldset
+						value={profileVisibility}
+						onChange={(value) => {
+							setProfileVisibility(value)
+							setConfirming(false)
+						}}
+						handle={slug}
+						testId="create-organization-visibility"
+					/>
 					{confirming ? (
 						<p
 							css={accountFieldNoteCss}

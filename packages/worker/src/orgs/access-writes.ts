@@ -24,6 +24,7 @@ import {
 	liveFreeOwnedOrgCountSql,
 } from '#worker/orgs/billing.ts'
 import { getOrgHandleClaimError } from '#worker/orgs/org-handle-claim.ts'
+import { type OrgProfileVisibility } from '#worker/orgs/org-public-profile.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	recordOrgAuditEvent,
@@ -569,10 +570,13 @@ export async function createOrg(input: {
 	env: Pick<Env, 'BUNDLE_ARTIFACTS_KV'>
 	slug: string
 	displayName?: string | null
+	/** Who sees `/@slug`. Team orgs default to public. */
+	profileVisibility?: OrgProfileVisibility
 	createdByUserId: string
 	audit: OrgAuditWriter
 }) {
 	const slug = normalizeUsername(input.slug)
+	const profileVisibility = input.profileVisibility ?? 'public'
 	const slugError = await getOrgHandleClaimError(slug, input.db, input.env)
 	if (slugError) throw new OrgSlugValidationError(slugError)
 	const orgId = mintPersonId()
@@ -589,13 +593,14 @@ export async function createOrg(input: {
 					signup_welcome_credits_pending, access_epoch,
 					created_by_user_id, created_at, updated_at
 				)
-				SELECT ?, ?, ?, 'public', 'free', 'public', 0, 0, 0, 0, ?, ?, ?
+				SELECT ?, ?, ?, ?, 'free', 'public', 0, 0, 0, 0, ?, ?, ?
 				WHERE (${liveFreeOwnedOrgCountSql}) < ?`,
 			)
 			.bind(
 				orgId,
 				slug,
 				input.displayName?.trim() || slug,
+				profileVisibility,
 				input.createdByUserId,
 				now,
 				now,
@@ -623,9 +628,9 @@ export async function createOrg(input: {
 	await recordOrgAuditEvent(input.audit, {
 		orgId,
 		action: 'org.created',
-		details: { slug },
+		details: { slug, profile_visibility: profileVisibility },
 	})
-	return { id: orgId, slug }
+	return { id: orgId, slug, profileVisibility }
 }
 
 export type InviteKind = 'membership' | 'grant'

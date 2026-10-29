@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { useRouter } from '@tanstack/react-router'
+import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import { createOAuthCallbackNavigationScope } from '../oauth-callback-navigation.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import {
@@ -51,13 +52,19 @@ import {
 	renderStatusCallout,
 	renderPinnedConnectNotice,
 	renderPinnedConnectError,
+	renderLiveAppReplaceWarning,
+	type LiveReplaceState,
+	newConnectionNameError,
+	suggestNewConnectionName,
 	wouldReplaceDifferentApp,
+	wouldReplaceLiveApp,
 } from './connect-oauth-sections.tsx'
 import {
 	type ConnectOauthChooserOption,
 	type ConnectOauthStatusTone,
 	type ConnectOauthStep,
 	persistConnectOauthOrgSlug,
+	persistConnectOauthReplaceLive,
 	readConnectOauthOrgSlug,
 	useConnectOauthOperations,
 	connectOauthCallbackHref,
@@ -97,6 +104,8 @@ type OauthState = {
 	hasConfigError: boolean
 	existingConnection: ConnectOauthExistingConnection | null
 	replaceConfirmed: boolean
+	/** Set while the setup save waits on the live-app replace choice. */
+	liveReplace: LiveReplaceState | null
 	chooserOptions: Array<ConnectOauthChooserOption>
 	chooserFilter: string
 	requestedProvider: string | null
@@ -126,6 +135,7 @@ function initialOauthState(
 	let existingConnection: ConnectOauthExistingConnection | null = null
 	/** The user explicitly confirmed replacing a different-app connection. */
 	let replaceConfirmed = false
+	let liveReplace: LiveReplaceState | null = null
 	let chooserOptions: Array<ConnectOauthChooserOption> = []
 	let chooserFilter = ''
 	let requestedProvider: string | null = null
@@ -244,6 +254,7 @@ function initialOauthState(
 		hasConfigError,
 		existingConnection,
 		replaceConfirmed,
+		liveReplace,
 		chooserOptions,
 		chooserFilter,
 		requestedProvider,
@@ -323,6 +334,7 @@ export function ConnectOauthRoute({
 		hasConfigError,
 		existingConnection,
 		replaceConfirmed,
+		liveReplace,
 		chooserOptions,
 		chooserFilter,
 		requestedProvider,
@@ -404,6 +416,14 @@ export function ConnectOauthRoute({
 	}, [router, navigationScope])
 	async function handleSetupSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
+		await submitSetup({})
+	}
+	/**
+	 * `replace` and `newName` are the two explicit answers to the live-app
+	 * warning; without either, a save that would rewrite the app behind a
+	 * live connection stops and asks first.
+	 */
+	async function submitSetup(choice: { replace?: boolean; newName?: string }) {
 		if (!config || inFlight.current) return
 		inFlight.current = true
 		update({ submitting: true })
@@ -422,18 +442,49 @@ export function ConnectOauthRoute({
 				setStatus('Client secret is required for confidential flow.', 'error')
 				return
 			}
-			const nextConfig = {
+			const sameNameConfig = {
 				...config,
 				clientId,
 				hasClientSecret:
 					hasStoredClientSecret ||
 					(config.flow === 'confidential' && Boolean(clientSecret)),
 			}
+			if (
+				!choice.replace &&
+				!choice.newName &&
+				wouldReplaceLiveApp({ next: sameNameConfig, existingConnection })
+			) {
+				update({
+					liveReplace: {
+						mode: 'choose',
+						newName: suggestNewConnectionName(config.providerKey),
+						nameError: null,
+					},
+				})
+				return
+			}
+			if (choice.newName && config.flow === 'confidential' && !clientSecret) {
+				setStatus('Enter the client secret for the new app.', 'error')
+				return
+			}
+			const nextConfig = choice.newName
+				? {
+						...sameNameConfig,
+						provider: choice.newName,
+						providerKey: choice.newName,
+						hasClientSecret: config.flow === 'confidential',
+					}
+				: sameNameConfig
 			persistConnectOauthOrgSlug(flowOrg)
+			persistConnectOauthReplaceLive(choice.replace ? config.providerKey : null)
 			const result = await saveApp(
 				nextConfig,
 				clientSecret || undefined,
 				flowOrg,
+				{
+					replaceLiveConnection: choice.replace === true,
+					newConnection: Boolean(choice.newName),
+				},
 			)
 			if (!result || !isFlowActive()) return
 			if (!result.ok) {
@@ -444,6 +495,8 @@ export function ConnectOauthRoute({
 			persistConnectOauthConfig(saved)
 			update({
 				config: saved,
+				liveReplace: null,
+				...(choice.newName ? { existingConnection: null } : {}),
 				hasStoredClientId: true,
 				hasStoredClientSecret: saved.hasClientSecret,
 				revealStoredClientSecretField: false,
@@ -766,7 +819,7 @@ export function ConnectOauthRoute({
 					clientSecretInput={clientSecretInput}
 					submitting={submitting}
 					onClientIdInput={(value) => {
-						update({ clientIdInput: value })
+						update({ clientIdInput: value, liveReplace: null })
 					}}
 					onClientSecretInput={(value) => {
 						update({ clientSecretInput: value })
@@ -779,6 +832,51 @@ export function ConnectOauthRoute({
 					}}
 				/>
 			) : null}
+			{currentStep === 'setup' && liveReplace && existingConnection
+				? renderLiveAppReplaceWarning({
+						connectionName: currentConfig.providerKey,
+						existingConnection,
+						state: liveReplace,
+						submitting,
+						onReplace: () => {
+							void submitSetup({ replace: true })
+						},
+						onChooseNewName: () => {
+							update({
+								liveReplace: { ...liveReplace, mode: 'new-name' },
+								...(currentConfig?.flow === 'confidential'
+									? { revealStoredClientSecretField: true }
+									: {}),
+							})
+						},
+						onNewNameInput: (value) => {
+							update({
+								liveReplace: {
+									...liveReplace,
+									newName: value,
+									nameError: null,
+								},
+							})
+						},
+						onSaveAsNew: (event) => {
+							event.preventDefault()
+							const nameError = newConnectionNameError(
+								liveReplace.newName,
+								currentConfig.providerKey,
+							)
+							if (nameError) {
+								update({ liveReplace: { ...liveReplace, nameError } })
+								return
+							}
+							void submitSetup({
+								newName: normalizeProviderKey(liveReplace.newName),
+							})
+						},
+						onCancel: () => {
+							update({ liveReplace: null })
+						},
+					})
+				: null}
 			{currentStep === 'connect' ? (
 				<ConnectStep
 					{...{
@@ -798,6 +896,17 @@ export function ConnectOauthRoute({
 							config: currentConfig,
 							existingConnection,
 						}),
+						...(currentConfig && !currentConfig.platformAppSlug
+							? {
+									onEditCredentials: () => {
+										update({
+											currentStep: 'setup',
+											statusMessage: 'Edit the app credentials, then save.',
+											statusTone: 'info',
+										})
+									},
+								}
+							: {}),
 					}}
 				/>
 			) : null}

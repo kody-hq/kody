@@ -8,6 +8,7 @@ import {
 	createExecuteHelperPrelude,
 	oauthClientCredentials,
 	type secretHeaders,
+	INTEGRATION_RUNTIME_CONFIG_TOOL_NAME,
 } from './kody-runtime-utils.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
 import { buildBasicAuthSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
@@ -81,7 +82,7 @@ function createKody(
 ) {
 	const tokenRefreshCalls: Array<CapabilityArgs> = []
 	const kody = {
-		async integrationGet(args: CapabilityArgs) {
+		async [INTEGRATION_RUNTIME_CONFIG_TOOL_NAME](args: CapabilityArgs) {
 			expect(args.name).toBe(integration.name)
 			return { integration }
 		},
@@ -404,7 +405,7 @@ test('createExecuteHelperPrelude exposes sandbox oauth and secret helper binding
 	})
 	expect(typeof platformHelpers.createAuthenticatedFetch).toBe('function')
 	await platformHelpers.createAuthenticatedFetch('github')
-	expect(platformCalls).toEqual(['integrationGet'])
+	expect(platformCalls).toEqual([INTEGRATION_RUNTIME_CONFIG_TOOL_NAME])
 
 	const clientCredentialsCalls: Array<RecordedRequest> = []
 	{

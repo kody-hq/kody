@@ -265,6 +265,7 @@ export const exchangeOAuthToken = createServerFn({ method: 'POST' })
 
 const deviceConnectStartSchema = z.object({
 	provider: z.string(),
+	replaceLiveConnection: z.boolean().optional(),
 	platformAppSlug: z.string().nullish(),
 	tokenUrl: z.string().nullish(),
 	apiBaseUrl: z.string().nullish(),

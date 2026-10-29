@@ -244,6 +244,9 @@ Open these before proposing a new primitive, surface, or storage home.
   The OAuth gate and the `mcp-events-extension` flag gate advertising and
   subscribing; clients declare nothing, matching the OpenAI profile (supersedes
   0059's client-declaration gate)
+- [0088: Team orgs have a public page at `/@slug`](./0088-public-team-org-pages.md)
+  Public by default with a create-time choice; owners toggle it; lists only
+  public packages, never members; private orgs 404 like unknown handles
 
 ## Historical / UI / implementation
 

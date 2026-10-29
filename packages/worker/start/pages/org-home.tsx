@@ -322,6 +322,7 @@ const stepBodyCss = {
 
 export function OrgHomePage({
 	org,
+	publicPageHref,
 }: {
 	org: {
 		slug: string
@@ -329,6 +330,8 @@ export function OrgHomePage({
 		avatarUrl?: string | null
 		role: OrgRole | null
 	}
+	/** Link to the public `/@slug` page; null while the org is private. */
+	publicPageHref?: string | null
 }) {
 	const inWorkspace = useContext(WorkspaceLayoutContext)
 	const identity = orgIdentity(
@@ -350,7 +353,9 @@ export function OrgHomePage({
 					name: identity.name,
 					handle: identity.handle,
 					avatarName: identity.avatarName,
+					avatarUrl: identity.avatarUrl,
 					role: orgRoleLabel(org.role),
+					publicPageHref,
 				})}
 				{renderOrgHomeMain({
 					showNavigation: !inWorkspace,
