@@ -28,7 +28,11 @@ import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { type OrgAuditWriter } from '#worker/orgs/org-audit-outbox.ts'
 import { runAppDbBatchWithOrgAudit } from '#worker/orgs/org-audit.ts'
-import { isOrgActive, loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
+import {
+	isOrgActive,
+	loadLiveOrgBindingForOrg,
+	loadOrgBindingForOrg,
+} from '#worker/orgs/repo.ts'
 import {
 	integrationConnectedSql,
 	integrationUsableInOrgSql,
@@ -191,7 +195,7 @@ export async function grantPersonalCredentialToOrg(input: {
 		)
 	).get(input.credentialId)
 	if (!credential) throw new McpCallerError(notFoundMessage)
-	const binding = await loadOrgBindingForOrg(
+	const binding = await loadLiveOrgBindingForOrg(
 		input.db,
 		input.ownerPersonId,
 		input.orgId,

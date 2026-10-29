@@ -116,13 +116,21 @@ async function revokeRfc7009(input: {
 		body,
 		signal: AbortSignal.timeout(revokeTimeoutMs),
 	})
+	// RFC 7009 answers 200 for an invalid token; some providers send 400
+	// invalid_token instead. Other 400s (invalid_request, ...) left it live.
+	if (response.status === 400) {
+		const error = await response
+			.json()
+			.then((body) =>
+				body && typeof body === 'object' ? Reflect.get(body, 'error') : null,
+			)
+			.catch(() => null)
+		return error === 'invalid_token'
+			? { outcome: 'already_invalid', status: 400 }
+			: { outcome: 'failed', status: 400 }
+	}
 	await response.body?.cancel()
 	if (response.ok) return { outcome: 'revoked', status: response.status }
-	// RFC 7009 2.2.1: an invalid token is reported as 400 invalid_token by
-	// some providers; the connection is unusable either way.
-	if (response.status === 400) {
-		return { outcome: 'already_invalid', status: 400 }
-	}
 	return { outcome: 'failed', status: response.status }
 }
 

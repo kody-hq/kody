@@ -152,7 +152,10 @@ export type PinnedConnectionWipeResult = {
 	upstream: UpstreamRevokeResult
 }
 
-/** Without `SECRET_STORE_KEY` the local wipe still runs; upstream is skipped. */
+/**
+ * Without `SECRET_STORE_KEY` the local wipe still runs; upstream is skipped
+ * and recorded as `failed`.
+ */
 type WipeEnv = Pick<Env, 'APP_DB'> & { SECRET_STORE_KEY?: string | undefined }
 type KeyedWipeEnv = Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
 
@@ -218,6 +221,7 @@ type PreparedPinnedWipe = {
 	connection: PinnedConnection
 	tokens: Awaited<ReturnType<typeof readTokensForRevoke>>
 	app: Awaited<ReturnType<typeof readAppForRevoke>>
+	keyMissing: boolean
 }
 
 /** Reads what the upstream revoke needs before the row (or app) is gone. */
@@ -229,7 +233,7 @@ async function preparePinnedWipe(
 		readTokensForRevoke(keyedEnv(env), connection),
 		readAppForRevoke(keyedEnv(env), connection),
 	])
-	return { connection, tokens, app }
+	return { connection, tokens, app, keyMissing: !env.SECRET_STORE_KEY }
 }
 
 /** After the local delete: best-effort upstream revoke, then audit. */
@@ -242,19 +246,22 @@ async function finishPinnedWipe(input: {
 }): Promise<PinnedConnectionWipeResult> {
 	const { connection, tokens, app } = input.prepared
 	const { wiped } = input
-	const upstream: UpstreamRevokeResult = app
-		? await revokeOauthTokensUpstream({
-				app: {
-					provider: app.app.provider ?? connection.provider,
-					tokenUrl: app.app.tokenUrl,
-					clientId: app.app.clientId,
-				},
-				clientSecret: app.clientSecret,
-				accessToken: tokens.accessToken,
-				refreshToken: tokens.refreshToken,
-				fetchImpl: input.fetchImpl,
-			})
-		: { outcome: 'unsupported', status: null }
+	const upstream: UpstreamRevokeResult = input.prepared.keyMissing
+		? // Tokens could not be read, so the provider grant may still be live.
+			{ outcome: 'failed', status: null }
+		: app
+			? await revokeOauthTokensUpstream({
+					app: {
+						provider: app.app.provider ?? connection.provider,
+						tokenUrl: app.app.tokenUrl,
+						clientId: app.app.clientId,
+					},
+					clientSecret: app.clientSecret,
+					accessToken: tokens.accessToken,
+					refreshToken: tokens.refreshToken,
+					fetchImpl: input.fetchImpl,
+				})
+			: { outcome: 'unsupported', status: null }
 	if (!wiped) return { credentialId: connection.credentialId, wiped, upstream }
 	const details = {
 		credentialKind: 'integration',

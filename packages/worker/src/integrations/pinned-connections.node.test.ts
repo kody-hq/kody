@@ -309,6 +309,38 @@ test('connecting your own account needs a live team-org binding', async () => {
 	})
 })
 
+test('a binding that ends mid-connect leaves no connection behind', async () => {
+	const t = await setup()
+	const ctx = t.as('ann', t.orgs.acme, 'member')
+	const target = await resolvePinnedConnectTarget({
+		env: t.env,
+		request: ctx.callerContext.request!,
+		mcpUser: ctx.callerContext.user!,
+		appSlug: 'github',
+	})
+	if (!target.ok) throw new Error(target.error)
+	await t.db
+		.prepare(`DELETE FROM org_memberships WHERE org_id = ? AND user_id = ?`)
+		.bind(t.orgs.acme.id, t.ids.ann)
+		.run()
+	stubUpstream(204)
+	await expect(
+		savePinnedConnection({
+			env: t.env,
+			request: ctx.callerContext.request!,
+			target,
+			scopes: ['repo'],
+			allowedHosts: ['api.github.com'],
+			tokenRecord: fixtureTokens,
+		}),
+	).rejects.toThrow()
+	const remaining = await t.db
+		.prepare(`SELECT COUNT(*) AS n FROM user_integrations WHERE user_id = ?`)
+		.bind(t.personalOf('ann'))
+		.first<{ n: number }>()
+	expect(remaining!.n).toBe(0)
+})
+
 test('a pinned connection is usable only in the pinned org, only in its owner’s runs', async () => {
 	const t = await setup()
 	const saved = await t.connect('ann', t.orgs.acme)
@@ -468,6 +500,7 @@ test('deleting the org app without SECRET_STORE_KEY still wipes members locally'
 	const t = await setup()
 	const saved = await t.connect('ann', t.orgs.acme)
 	if (!saved.ok) throw new Error(saved.error)
+	consoleWarn.mockImplementation(() => {})
 	const fetchMock = stubUpstream(204)
 	await expect(
 		deleteOauthAppWithConnections({
@@ -477,6 +510,11 @@ test('deleting the org app without SECRET_STORE_KEY still wipes members locally'
 			audit: null,
 		}),
 	).resolves.toMatchObject({ deleted: true })
+	// Recorded as a failed upstream revoke: the provider grant may be live.
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'pinned-connection-upstream-revoke-failed',
+		expect.objectContaining({ status: null }),
+	)
 	expect(fetchMock).not.toHaveBeenCalled()
 	const remaining = await t.db
 		.prepare(

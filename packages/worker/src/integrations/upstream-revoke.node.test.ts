@@ -140,3 +140,30 @@ test('a token host matching an Object prototype key is not a known revocation en
 	).resolves.toEqual({ outcome: 'unsupported', status: null })
 	expect(calls).toHaveLength(0)
 })
+
+test('an RFC 7009 400 is already invalid only for invalid_token', async () => {
+	const google = {
+		provider: 'google',
+		tokenUrl: 'https://oauth2.googleapis.com/token',
+		clientId: 'fixture-client-id',
+	}
+	for (const [error, outcome] of [
+		['invalid_token', 'already_invalid'],
+		['invalid_request', 'failed'],
+		[null, 'failed'],
+	] as const) {
+		const fetchImpl = (async () =>
+			new Response(error ? JSON.stringify({ error }) : 'not json', {
+				status: 400,
+			})) as typeof fetch
+		await expect(
+			revokeOauthTokensUpstream({
+				app: google,
+				clientSecret: 'fixture-client-secret',
+				accessToken: 'fixture-access-token',
+				refreshToken: null,
+				fetchImpl,
+			}),
+		).resolves.toEqual({ outcome, status: 400 })
+	}
+})

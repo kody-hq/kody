@@ -24,6 +24,10 @@ import {
 	recordOrgAuditEvent,
 } from '#worker/orgs/org-audit.ts'
 import { grantPersonalCredentialToOrg } from '#worker/credentials/personal-credentials.ts'
+import {
+	listPinnedConnectionsForOrg,
+	wipePinnedConnections,
+} from './pinned-connections.ts'
 import { bumpUsableCredentialsGeneration } from '#worker/credentials/credential-read-generation.ts'
 import { normalizeAllowedHosts } from '#worker/secrets/allowed-hosts.ts'
 import { emitConnectOauthAuthSucceeded } from './connect-oauth-persist.ts'
@@ -325,13 +329,30 @@ export async function savePinnedConnection(input: {
 			},
 		})
 	}
-	await grantPersonalCredentialToOrg({
-		db,
-		ownerPersonId: target.personId,
-		credentialId,
-		orgId: target.orgId,
-		audit,
-	})
+	try {
+		await grantPersonalCredentialToOrg({
+			db,
+			ownerPersonId: target.personId,
+			credentialId,
+			orgId: target.orgId,
+			audit,
+		})
+	} catch (error) {
+		// The binding ended mid-connect: nothing pinned outlives it.
+		const orphaned = await listPinnedConnectionsForOrg({
+			db,
+			pinnedOrgId: target.orgId,
+			ownerOrgId: target.personalOrgId,
+			appSlug: target.app.slug,
+		})
+		await wipePinnedConnections({
+			env: input.env,
+			connections: orphaned.filter((row) => row.credentialId === credentialId),
+			reason: 'member_left',
+			audit,
+		})
+		throw error
+	}
 	bumpUsableCredentialsGeneration(db)
 	await emitConnectOauthAuthSucceeded({
 		env: input.env,
