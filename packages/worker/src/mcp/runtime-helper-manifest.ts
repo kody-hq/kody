@@ -537,7 +537,7 @@ const runtimeHelperManifest: Array<RuntimeHelperManifestEntry> = [
 				? providerExposesExecuteHelperCapabilities(context.provider)
 				: 'integrationGet' in context.capabilityMap,
 		createPrelude: () => createExecuteHelperPrelude(),
-		createKodyTools: (context) => {
+		createKodyTools: (context): AdditionalKodyTools => {
 			const integrationGet = context.capabilityMap.integrationGet as
 				| Capability
 				| undefined

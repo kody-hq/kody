@@ -2040,7 +2040,7 @@ export type ConnectOauthExistingConnection = {
 	identity: ConnectOauthAppIdentity | null
 }
 
-export type ConnectOauthAppIdentity = {
+type ConnectOauthAppIdentity = {
 	clientId: string
 	tokenUrl: string
 	authorizeUrl: string | null

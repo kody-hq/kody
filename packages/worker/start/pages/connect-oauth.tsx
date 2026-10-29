@@ -821,7 +821,12 @@ export function ConnectOauthRoute({
 							void submitSetup({ replace: true })
 						},
 						onChooseNewName: () => {
-							update({ liveReplace: { ...liveReplace, mode: 'new-name' } })
+							update({
+								liveReplace: { ...liveReplace, mode: 'new-name' },
+								...(currentConfig?.flow === 'confidential'
+									? { revealStoredClientSecretField: true }
+									: {}),
+							})
 						},
 						onNewNameInput: (value) => {
 							update({
@@ -870,6 +875,17 @@ export function ConnectOauthRoute({
 							config: currentConfig,
 							existingConnection,
 						}),
+						...(currentConfig && !currentConfig.platformAppSlug
+							? {
+									onEditCredentials: () => {
+										update({
+											currentStep: 'setup',
+											statusMessage: 'Edit the app credentials, then save.',
+											statusTone: 'info',
+										})
+									},
+								}
+							: {}),
 					}}
 				/>
 			) : null}
