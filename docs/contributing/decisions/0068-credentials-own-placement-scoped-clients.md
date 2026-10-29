@@ -1152,23 +1152,24 @@ but never use it or read its tokens.**
   `credentialOrgGrant` refuses every other org. It resolves (placeholders,
   `credential()` clients, `createAuthenticatedFetch`, refresh) only in runs of
   the pinned org whose actor is its owner: never in the owner's personal org,
-  another org, another member's runs, or for Owners or Automation on the
-  owner's behalf.
+  another org, another member's runs, or for Owners or Automation on the owner's
+  behalf.
 - **Admins.** `integrationMemberConnectionList` and
   `integrationMemberConnectionRevoke` (Open API
   `/v1/oauth-apps/member-connections`, website app page) need
   `integration:manage_access` org-wide, which only Owners hold; a grant on one
   integration does not reach members' connections. The list shows member, app,
-  account label, and dates, never tokens or scopes. Revoke wipes the
-  connection and its grant, then revokes upstream; it is audited in the org
+  account label, and dates, never tokens or scopes. Revoke wipes the connection
+  and its grant, then revokes upstream; it is audited in the org
   (`credential.pinned_connection_revoked`) and in the owner's personal org
   (`credential.pinned_connection_wiped`). Revoking never gives the admin the
   token.
 - **Cut-off.** Leaving or removal (`offboardOrgMember`) and deleting the org's
   app wipe every connection pinned to it and revoke upstream first, so deleting
   the app is never blocked by members' connections.
-- **Upstream revoke.** GitHub OAuth Apps: `DELETE /applications/{client_id}/token`
-  with the app's client credentials. Providers with an RFC 7009 endpoint: a
-  revocation request for the refresh token, else the access token. Otherwise
-  nothing upstream is revoked and the outcome says so. An upstream failure
-  never blocks the local wipe; it is logged and audited without token material.
+- **Upstream revoke.** GitHub OAuth Apps:
+  `DELETE /applications/{client_id}/token` with the app's client credentials.
+  Providers with an RFC 7009 endpoint: a revocation request for the refresh
+  token, else the access token. Otherwise nothing upstream is revoked and the
+  outcome says so. An upstream failure never blocks the local wipe; it is logged
+  and audited without token material.

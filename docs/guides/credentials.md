@@ -638,6 +638,17 @@ that org only in your own runs, through `credential(key)`; nobody else there can
 use it, Owners included, and `{{secret:name}}` placeholders never resolve it.
 `credentialOrgRevoke` removes the grant.
 
+When a team org has registered an OAuth app, each Member can connect their own
+account through it (**Connect your own account** on the app's page, or
+`/connect/oauth?org=<org>&app=<app>&mode=personal`). The connection is yours and
+lives in your personal org, but it is pinned to that org: it is granted there
+automatically, can never be granted anywhere else, and works only in your own
+runs in that org. The org's client secret stays with the org. Org Owners can see
+who connected (member, account label, date) and revoke a connection, but never
+use it or read its tokens. Revoking, leaving the org, or deleting the app wipes
+it and revokes it with the provider where the provider supports that. See
+[OAuth](./oauth.md#connect-your-own-account-through-an-orgs-app).
+
 ## Limits
 
 - Using a personal MCP server through `credential()`. Add the MCP server to the

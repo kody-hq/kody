@@ -46,6 +46,29 @@ Example shape:
 
 `https://kody.codes/connect/oauth?provider=...&authorizeUrl=...&tokenUrl=...`
 
+## Connect your own account through an org's app
+
+When a team org has registered an OAuth app, a Member or Owner of that org can
+connect **their own** provider account through it, so packages in that org run
+with each person's own account:
+
+`https://kody.codes/connect/oauth?org=<org>&app=<app slug>&mode=personal`
+
+The app's page in the org (**Integrations**, then the app) links there as
+**Connect your own account**. The page skips the app setup step: the client id
+and secret come from the org's app and stay on the server, so the member never
+sees or edits them. The connection and its tokens are saved in the member's
+personal org, granted to that org only, and used only in the member's own runs
+there (never in another org, the member's personal org, another member's runs,
+or by Owners or Automation on their behalf). Billing members and outside
+collaborators cannot use this mode. Org Owners see each member's connection on
+the app's page (member, account label, date; never tokens or scopes) and can
+revoke it. Revoking, leaving the org, or deleting the app wipes the connection
+and revokes it with the provider: GitHub OAuth Apps through the app's token
+revoke endpoint, and providers with an RFC 7009 revocation endpoint through it.
+Other providers keep listing the app under the account's authorized apps until
+the person removes it there.
+
 ## Token refresh
 
 All integrations refresh host-side through `createAuthenticatedFetch`, which
@@ -85,11 +108,12 @@ The provider-side setup is the same for every provider:
 
 ## Query parameters
 
-| Param          | Purpose                                                                                       |
-| -------------- | --------------------------------------------------------------------------------------------- |
-| `provider`     | Required. Short integration label used to derive stored names.                                |
-| `authorizeUrl` | Provider authorization endpoint URL. Required for a new provider setup; omitted on reconnect. |
-| `tokenUrl`     | Provider token endpoint URL. Required for a new provider setup; omitted on reconnect.         |
+| Param          | Purpose                                                                                                                            |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `provider`     | Required. Short integration label used to derive stored names.                                                                     |
+| `authorizeUrl` | Provider authorization endpoint URL. Required for a new provider setup; omitted on reconnect.                                      |
+| `tokenUrl`     | Provider token endpoint URL. Required for a new provider setup; omitted on reconnect.                                              |
+| `mode`         | `personal` with `org` and `app`: [connect your own account](#connect-your-own-account-through-an-orgs-app) through that org's app. |
 
 For reconnects, `/connect/oauth?provider=<name>` alone is enough — the page
 derives the endpoint URLs from the saved integration.
