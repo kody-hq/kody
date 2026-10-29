@@ -46,3 +46,10 @@ export function secretsSearch(search: Record<string, unknown>) {
 export function textSearch(search: Record<string, unknown>) {
 	return { ...search, q: searchText(search.q) }
 }
+
+/** Text filtering does not select a different resource or authorization scope. */
+export function withoutTextSearch(search: Record<string, unknown>) {
+	const deps = { ...search }
+	delete deps.q
+	return deps
+}

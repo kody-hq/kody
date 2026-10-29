@@ -76,6 +76,7 @@ export function ProfileRoute({
 						if (typeof value === 'string') search.append(key, value)
 					void navigate({
 						to: `${basePath ?? routes.profile.href({ username })}?${search}`,
+						resetScroll: false,
 					})
 				}}
 				css={searchFormCss}

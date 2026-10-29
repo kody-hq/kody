@@ -261,7 +261,7 @@ export function useAccountConnectedAgents(
 											href={accountConnectionsNewHref(group.kind, currentHref)}
 											data-testid="connected-agent-view-steps"
 											data-agent-kind={group.kind}
-											data-prevent-scroll-reset=""
+											resetScroll={false}
 											css={viewStepsLinkCss}
 										>
 											View connect steps

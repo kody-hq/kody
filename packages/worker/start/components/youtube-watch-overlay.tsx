@@ -38,7 +38,7 @@ export function YouTubeWatchOverlay({
 		dialog.current?.close()
 		const next = stripYoutubeWatchSearch(location.pathname, location.searchStr)
 		if (next !== `${location.pathname}${location.searchStr}`)
-			void navigate({ to: next })
+			void navigate({ to: next, resetScroll: false })
 	}
 	if (!videoId || !allowed) return null
 	return (

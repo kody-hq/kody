@@ -208,6 +208,7 @@ export function AdminUsersPage(props: {
 		return router.navigate({
 			to: pathname,
 			replace: true,
+			resetScroll: false,
 			search: (previous: Record<string, unknown>) => {
 				const search: Record<string, unknown> = samePage
 					? { ...previous }

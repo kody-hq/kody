@@ -151,7 +151,7 @@ export function WizardStepsNav(props: {
 								}
 								data-testid={`onboarding-step-${step.number}`}
 								data-step-state={state}
-								data-prevent-scroll-reset=""
+								resetScroll={false}
 								css={stepLinkCss}
 							>
 								<span

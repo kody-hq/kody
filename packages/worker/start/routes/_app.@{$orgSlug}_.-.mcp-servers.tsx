@@ -13,6 +13,7 @@ const pageQuery = createPageQuery('loadMcpServersPage', loadMcpServersPage, {
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/mcp-servers')({
 	validateSearch: textSearch,
 	staticData: {
+		presentationSearchKeys: ['q'],
 		workspaceSwitch: { section: 'mcp-servers' },
 		navigation: { rail: 'workspace', item: 'credentials' },
 		orgScope: { section: 'mcp-servers' },
@@ -32,6 +33,7 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/mcp-servers')({
 		}
 	},
 
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,

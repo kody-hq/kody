@@ -35,7 +35,7 @@ export const Route = createFileRoute('/_app/@{$username}')({
 		limit: search.limit,
 		q: search.limit != null ? search.q : undefined,
 	}),
-	context: ({ location, params }) => ({
+	beforeLoad: ({ location, params }) => ({
 		pageQueryInput: profileReadInput(params.username, location.searchStr),
 	}),
 	shouldReload: ({ context }) => !context.inPlaceNavigation,

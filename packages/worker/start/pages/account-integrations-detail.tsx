@@ -471,7 +471,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 												connectionRef.name,
 												currentSearch,
 											)}
-											data-prevent-scroll-reset
+											resetScroll={false}
 											css={primaryLinkCss}
 										>
 											{connection

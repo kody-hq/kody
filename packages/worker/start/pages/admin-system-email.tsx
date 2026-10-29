@@ -214,7 +214,10 @@ export function AdminSystemEmailPage({
 			await mutation.mutateAsync({ messageId: id })
 			if (!isCurrent()) return
 			setArmedId(null)
-			await router.navigate({ href: systemEmailHref({ view }) })
+			await router.navigate({
+				href: systemEmailHref({ view }),
+				resetScroll: false,
+			})
 		} catch (error) {
 			if (!isCurrent()) return
 			setArmedId(null)
@@ -277,6 +280,7 @@ export function AdminSystemEmailPage({
 									onChange={(value) => {
 										setBlockOfferId(null)
 										void router.navigate({
+											resetScroll: false,
 											href: systemEmailHref({
 												view: isEmailMessageView(value)
 													? value

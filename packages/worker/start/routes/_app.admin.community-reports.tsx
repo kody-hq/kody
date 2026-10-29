@@ -19,7 +19,7 @@ export const Route = createFileRoute('/_app/admin/community-reports')({
 		filterSearchKeys: ['status'],
 		navigation: { rail: 'admin', item: 'community-reports' },
 	},
-	context: ({ location, context }) => {
+	beforeLoad: ({ location, context }) => {
 		const pageQueryInput = {
 			returnTo: location.pathname,
 			status: new URLSearchParams(location.searchStr).get('status'),

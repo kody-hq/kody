@@ -248,6 +248,14 @@ const toolbarCss: CSSObject = {
 	flexWrap: 'wrap' as const,
 	padding: `0.7rem ${spacing.md}`,
 	borderBottom: `1px solid ${colors.borderSubtle}`,
+	// Conditional actions share field sizing so appearing buttons do not grow the row.
+	'& > button': {
+		borderWidth: '1px',
+		fontSize: 'var(--control-font-size, 1rem)',
+		lineHeight: 'var(--control-line-height, 1.2)',
+		paddingBlock: 'var(--control-padding-y, 0.85rem)',
+		minHeight: 'var(--control-min-height, auto)',
+	},
 	'@container (max-width: 620px)': {
 		gap: spacing.xs,
 	},
@@ -599,7 +607,7 @@ export function RecordTable(props: RecordTableProps) {
 										column.primary && rowHref ? (
 											<SiteLink
 												href={rowHref}
-												data-prevent-scroll-reset
+												resetScroll={false}
 												aria-current={selected ? 'true' : undefined}
 												aria-expanded={
 													mode === 'expand'

@@ -38,7 +38,7 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/repositories')({
 		limit: search.limit,
 		q: search.limit != null ? search.q : undefined,
 	}),
-	context: ({ params, location }) => ({
+	beforeLoad: ({ params, location }) => ({
 		pageQueryInput: {
 			slug: params.orgSlug,
 			...repositoryInput(location.searchStr),

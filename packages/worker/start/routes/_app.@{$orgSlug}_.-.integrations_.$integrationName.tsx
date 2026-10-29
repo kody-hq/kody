@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { textSearch } from '../filter-search.ts'
+import { textSearch, withoutTextSearch } from '../filter-search.ts'
 import { loadPageQuery, createPageQuery, usePageQuery } from '../page-query.ts'
 import { createFileRoute } from '@tanstack/react-router'
 import { AccountIntegrationsPage } from '../pages/account-integrations.tsx'
@@ -15,6 +15,7 @@ export const Route = createFileRoute(
 	'/_app/@{$orgSlug}_/-/integrations_/$integrationName',
 )({
 	staticData: {
+		presentationSearchKeys: ['q'],
 		workspaceSwitch: {
 			section: 'integrations',
 			suffix: [{ param: 'integrationName' }],
@@ -23,8 +24,8 @@ export const Route = createFileRoute(
 		orgScope: { section: 'integrations' },
 	},
 	validateSearch: textSearch,
-	loaderDeps: ({ search }) => search,
-	context: ({ location, params }) => ({
+	loaderDeps: ({ search }) => withoutTextSearch(search),
+	beforeLoad: ({ location, params }) => ({
 		pageQueryInput: {
 			orgSlug: params.orgSlug,
 			approve: false,
@@ -35,6 +36,7 @@ export const Route = createFileRoute(
 				new URLSearchParams(location.searchStr).get('package_id') ?? undefined,
 		},
 	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,

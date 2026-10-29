@@ -10,6 +10,16 @@ const pageQuery = createPageQuery('loadSkillsPage', loadSkillsPage, {
 
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/skills')({
 	staticData: {
+		presentationSearchKeys: [
+			'q',
+			'page',
+			'pageSize',
+			'sort',
+			'desc',
+			'package',
+			'activity',
+			'view',
+		],
 		workspaceSwitch: { section: 'skills' },
 		navigation: { rail: 'workspace', item: 'skills' },
 		orgScope: { section: 'skills' },
@@ -62,6 +72,7 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/skills')({
 			file: search.file,
 		},
 	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,
@@ -86,12 +97,14 @@ function Page() {
 				void navigate({
 					search: (previous) => ({ ...previous, ...patch }),
 					replace: true,
+					resetScroll: false,
 				})
 			}
 			onSearch={(q) =>
 				void navigate({
 					search: (previous) => ({ ...previous, q, page: 1 }),
 					replace: true,
+					resetScroll: false,
 				})
 			}
 		/>
