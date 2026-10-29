@@ -902,6 +902,9 @@ credentials fill its needs. Visitors bring only verified identity.
   `package_app_authority_rejections`, reported as `hardRejections` in the same
   report. The visitor path and `ownerCredentialForVisitors` are removed only
   after both stay at zero.
+- **Declarations.** How declarations cover imported packages, the publish check,
+  and the cleanup schedule are in
+  [0089](./0089-packages-declare-capabilities.md).
 
 ## Amendment 2026-10-27: dependency needs use the entry package's mappings
 
