@@ -2,7 +2,10 @@ import { z } from 'zod'
 import { loadAdminOrgDetail } from '#worker/admin/orgs-data.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
-import { adminCapabilityAccess } from './admin-shared.ts'
+import {
+	adminCapabilityAccess,
+	auditAdminCapabilityInvocation,
+} from './admin-shared.ts'
 import { adminOrgTargetSchema } from './org-limit-override-shared.ts'
 
 export const adminOrgDetailSchema = z.object({
@@ -89,12 +92,14 @@ export const adminOrgGetCapability = defineDomainCapability(
 		inputSchema: adminOrgTargetSchema,
 		outputSchema: adminOrgDetailSchema,
 		async handler(args, ctx) {
-			const detail = await loadAdminOrgDetail(ctx.env, {
-				orgId: args.orgId,
-				slug: args.org,
+			return auditAdminCapabilityInvocation(ctx, 'adminOrgGet', async () => {
+				const detail = await loadAdminOrgDetail(ctx.env, {
+					orgId: args.orgId,
+					slug: args.org,
+				})
+				if (!detail) throw new Error('Organization not found.')
+				return detail
 			})
-			if (!detail) throw new Error('Organization not found.')
-			return detail
 		},
 	},
 )

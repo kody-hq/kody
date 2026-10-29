@@ -43,8 +43,11 @@ export function AdminOrgsPage(props: {
 		kind?: string
 	}) {
 		const url = new URL(props.currentHref, 'http://localhost')
+		// Each filter drops its own default from the URL: status defaults to
+		// `live` (so `all` must stay), kind defaults to `all`.
+		const defaults: Record<string, string> = { status: 'live', kind: 'all' }
 		for (const [key, value] of Object.entries(next)) {
-			if (!value || value === 'live' || value === 'all')
+			if (!value || value === defaults[key])
 				url.searchParams.delete(key === 'query' ? 'q' : key)
 			else url.searchParams.set(key === 'query' ? 'q' : key, value)
 		}
@@ -308,7 +311,7 @@ export function AdminOrgDetailPage(props: {
 					]}
 					rows={data.members.map((member) => ({
 						id: member.stableUserId,
-						href: `/admin/users/${encodeURIComponent(member.stableUserId)}`,
+						href: adminMemberUserHref(member),
 						cells: {
 							username: member.username,
 							role: formatAdminOrganizationRole(member.role),
@@ -358,7 +361,7 @@ export function AdminOrgDetailPage(props: {
 						.filter((member) => member.individualBudgetMicroUsd !== null)
 						.map((member) => ({
 							id: member.stableUserId,
-							href: `/admin/users/${encodeURIComponent(member.stableUserId)}`,
+							href: adminMemberUserHref(member),
 							cells: {
 								username: member.username,
 								budget:
@@ -400,7 +403,22 @@ export function AdminOrgDetailPage(props: {
 					}))}
 				/>
 			</AccountManagementPanel>
-			<AdminOrgLimitsPanel orgId={org.id} />
+			{data.softDelete?.deletedAt ? (
+				<AccountManagementPanel title="Limits">
+					<p>Limit overrides are not available for a deleted organization.</p>
+				</AccountManagementPanel>
+			) : (
+				<AdminOrgLimitsPanel orgId={org.id} />
+			)}
 		</AccountManagementShell>
 	)
+}
+
+/** Deleted users only resolve on the users page with `status=deleted`. */
+function adminMemberUserHref(member: {
+	stableUserId: string
+	userDeletedAt: string | null
+}) {
+	const href = `/admin/users/${encodeURIComponent(member.stableUserId)}`
+	return member.userDeletedAt ? `${href}?status=deleted` : href
 }
