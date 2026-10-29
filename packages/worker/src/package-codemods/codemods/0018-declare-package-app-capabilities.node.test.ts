@@ -43,7 +43,7 @@ const helper: ClosurePackage = {
 		name: '@example/helper',
 		exports: { '.': './index.ts' },
 		kody: { description: 'Example helper.' },
-	} as ClosurePackage['manifest'],
+	} as unknown as ClosurePackage['manifest'],
 	files: {
 		'package.json': '{}',
 		'index.ts':
