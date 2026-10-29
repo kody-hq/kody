@@ -139,7 +139,7 @@ export const credentialOrgGrantCapability = defineDomainCapability(
 		orgPermission: 'none',
 		requiresLivePerson: true,
 		description:
-			'Grant one of your personal credentials (a secret, OAuth connection, or MCP server in your personal org) to an org you belong to (ADR 0068). It then works in that org only in your own runs, for scoped `credential(key)` clients; nobody else there can use it, Owners and Automation included. Granting again is a no-op. Needs Write on the credential (a token needs secret:write, or integration:write for OAuth connections and MCP servers) and a live person, and is audited in your personal org. `{{secret:name}}` placeholders never resolve personal credentials. Never takes or returns a value.',
+			'Grant one of your personal credentials (a secret, OAuth connection, or MCP server in your personal org) to an org you belong to (ADR 0068). It then works in that org only in your own runs: through scoped `credential(key)` clients, `{{secret:name}}` and `{{integration-token:name}}` placeholders, and `createAuthenticatedFetch(name)` (an org credential with the same name wins first). Nobody else there can use it, Owners and Automation included. Granting again is a no-op. Needs Write on the credential (a token needs secret:write, or integration:write for OAuth connections and MCP servers) and a live person, and is audited in your personal org. Never takes or returns a value.',
 		keywords: ['credential', 'personal', 'grant', 'share', 'org', 'team'],
 		readOnly: false,
 		idempotent: true,
