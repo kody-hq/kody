@@ -445,11 +445,11 @@ then call it.
 - **Exactly-once** → [workflows](../use/workflows.md), not a keyed invoke.
 - **External HTTP clients** → [inbound webhooks](../use/webhooks.md).
 
-**Declare the capabilities you call** in `kody.capabilities`; publish and
-`kody dev check` warn on gaps
-([ADR 0089](../contributing/decisions/0089-packages-declare-capabilities.md)).
-An app's `kody.app.capabilities` must also cover what its imports call
-([details](./package-apps.md#who-the-app-runs-as)).
+**Declare the capabilities you call** in `kody.capabilities` (apps:
+`kody.app.capabilities`, covering imports too); publish and `kody dev check`
+warn on gaps
+([ADR 0089](../contributing/decisions/0089-packages-declare-capabilities.md),
+[details](./package-apps.md#who-the-app-runs-as)).
 
 README, `AGENTS.md`, and export `@example` blocks follow the same rules: import
 and call. Do not demo a `packages` helper. Package codemod

@@ -21,10 +21,12 @@ type CapabilityDeclarationFinding =
 export function declaredPackageCapabilities(
 	manifest: Pick<AuthoredPackageJson, 'kody'>,
 ) {
-	return new Set([
-		...(manifest.kody.capabilities ?? []),
-		...(manifest.kody.app?.capabilities ?? []),
-	])
+	// Package-app authority checks only `kody.app.capabilities`, so an app's
+	// own calls count as declared only there.
+	const app = manifest.kody.app
+	return new Set(
+		app ? (app.capabilities ?? []) : (manifest.kody.capabilities ?? []),
+	)
 }
 
 export function findCapabilityDeclarationGaps(input: {

@@ -35,20 +35,34 @@ test('an undeclared literal call in a library package warns without failing', ()
 	expect(check?.message).toContain('`kody.capabilities`')
 })
 
-test('kody.capabilities and kody.app.capabilities both count as declared', () => {
+test('a library declares in kody.capabilities, an app in kody.app.capabilities', () => {
 	const sourceFiles = {
 		'src/index.ts':
-			"import { kody } from 'kody:runtime'\nexport default async () => { await kody.secretList({}); await kody.secretSet({}) }\n",
+			"import { kody } from 'kody:runtime'\nexport default async () => { await kody.secretList({}) }\n",
 	}
 	expect(
 		buildCapabilityDeclarationCheck({
+			manifest: kodyManifest({ capabilities: ['secretList'] }),
+			sourceFiles,
+		}),
+	).toBeNull()
+	expect(
+		buildCapabilityDeclarationCheck({
 			manifest: kodyManifest({
-				capabilities: ['secretList'],
-				app: { entry: 'src/index.ts', capabilities: ['secretSet'] },
+				app: { entry: 'src/index.ts', capabilities: ['secretList'] },
 			}),
 			sourceFiles,
 		}),
 	).toBeNull()
+	expect(
+		buildCapabilityDeclarationCheck({
+			manifest: kodyManifest({
+				capabilities: ['secretList'],
+				app: { entry: 'src/index.ts' },
+			}),
+			sourceFiles,
+		})?.message,
+	).toContain('secretList')
 })
 
 test('apps are pointed at kody.app.capabilities', () => {
@@ -100,4 +114,16 @@ test('a module-level kody that is not the runtime bridge is ignored', () => {
 			},
 		}),
 	).toBeNull()
+})
+
+test('a kody binding read from a kody:runtime namespace import is still the bridge', () => {
+	expect(
+		buildCapabilityDeclarationCheck({
+			manifest: kodyManifest(),
+			sourceFiles: {
+				'src/index.ts':
+					"import * as runtime from 'kody:runtime'\nconst kody = runtime.kody\nexport default () => kody.secretList({})\n",
+			},
+		})?.message,
+	).toContain('secretList')
 })

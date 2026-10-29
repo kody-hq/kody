@@ -846,8 +846,8 @@ export const authoredPackageKodySchema = z.object({
 	dependencies: kodyPackageDependenciesSchema.optional(),
 	/**
 	 * Kody capabilities this package's own modules call (ADR 0089). A package
-	 * app's own list is `kody.app.capabilities`; both count as this package's
-	 * declaration.
+	 * app declares its own calls in `kody.app.capabilities` instead, which is
+	 * what package-app authority checks.
 	 */
 	capabilities: z
 		.array(z.string().trim().regex(packageAppCapabilityNamePattern))
