@@ -375,8 +375,9 @@ placeholders; inject and provider only affect clients.
 
 ### OAuth
 
-Connect the service once (your agent sends a `/connect/oauth` link). Kody keeps
-the token fresh. Code looks exactly like the Key example:
+Connect the service once (your agent sends a `/connect/oauth` link, with
+`org=<slug>` for a team organization). Kody keeps the token fresh. Code looks
+exactly like the Key example:
 
 ```ts
 const github = await credential('github')

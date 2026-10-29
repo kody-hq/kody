@@ -59,6 +59,10 @@ Open the prefilled connect link while signed in to Kody:
 https://kody.codes/connect/oauth?provider=dropbox&authorizeUrl=https%3A%2F%2Fwww.dropbox.com%2Foauth2%2Fauthorize&tokenUrl=https%3A%2F%2Fapi.dropboxapi.com%2Foauth2%2Ftoken&apiBaseUrl=https%3A%2F%2Fapi.dropboxapi.com&scopes=account_info.read%20files.metadata.read%20files.metadata.write%20files.content.read%20files.content.write%20sharing.read%20sharing.write&extraAuthorizeParams=%7B%22token_access_type%22%3A%22offline%22%7D&allowedHosts=api.dropboxapi.com%2Ccontent.dropboxapi.com%2Cnotify.dropboxapi.com&dashboardUrl=https%3A%2F%2Fwww.dropbox.com%2Fdevelopers%2Fapps
 ```
 
+For a team organization, add `&org=<team-slug>` so the app and connection are
+saved there; without it they go to the personal organization (see
+`guide:oauth`).
+
 Decoded: authorize URL `https://www.dropbox.com/oauth2/authorize`, token URL
 `https://api.dropboxapi.com/oauth2/token`,
 `apiBaseUrl=https://api.dropboxapi.com`, the scopes listed below

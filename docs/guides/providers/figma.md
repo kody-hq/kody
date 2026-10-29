@@ -64,6 +64,10 @@ Open the prefilled connect URL while signed in to Kody:
 https://kody.codes/connect/oauth?provider=figma&authorizeUrl=https%3A%2F%2Fwww.figma.com%2Foauth&tokenUrl=https%3A%2F%2Fapi.figma.com%2Fv1%2Foauth%2Ftoken&apiBaseUrl=https%3A%2F%2Fapi.figma.com&scopes=current_user%3Aread%20file_content%3Aread%20file_metadata%3Aread%20file_comments%3Aread%20file_comments%3Awrite%20file_versions%3Aread%20library_content%3Aread%20library_assets%3Aread%20folders%3Aread&flow=confidential&pkce=true&allowedHosts=api.figma.com&dashboardUrl=https%3A%2F%2Fwww.figma.com%2Fdevelopers%2Fapps
 ```
 
+For a team organization, add `&org=<team-slug>` so the app and connection are
+saved there; without it they go to the personal organization (see
+`guide:oauth`).
+
 Decoded: authorize URL `https://www.figma.com/oauth`, token URL
 `https://api.figma.com/v1/oauth/token`, `apiBaseUrl=https://api.figma.com`,
 scopes space-separated as listed above, `flow=confidential`, `pkce=true`, and

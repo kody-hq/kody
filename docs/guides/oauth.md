@@ -46,6 +46,31 @@ Example shape:
 
 `https://kody.codes/connect/oauth?provider=...&authorizeUrl=...&tokenUrl=...`
 
+## Choosing the organization (`org`)
+
+OAuth apps and connections belong to one organization. Add `org=<slug>` to save
+the app and connection to that organization:
+
+`https://kody.codes/connect/oauth?org=test-team&provider=github&authorizeUrl=...&tokenUrl=...&flow=confidential`
+
+- The signed-in user must be a member of that organization; otherwise the page
+  answers "Organization not found." An empty `org=` is rejected (it never falls
+  back to the personal org).
+- Saving, rotating, or deleting a team organization's OAuth app needs
+  `integration:write` (`integration:delete` to delete). Owners have both;
+  members need a grant from an Owner. Connecting an account through an app the
+  organization already saved stays open to members.
+- Without `org`, single-organization users save to their personal organization.
+  Users in more than one organization first pick an organization (personal is
+  the default); the page then reloads with `org=<slug>` so it shows that
+  organization's saved apps.
+- The page always shows which organization it saves to. Lookups (`app=`,
+  provider-family prefill) only see apps saved in that organization.
+
+Agents: when setting up for anything other than the user's personal
+organization, always include `org=<slug>`. Otherwise the page may find the
+personal org's app with the same name and skip the client ID / secret form.
+
 ## Token refresh
 
 All integrations refresh host-side through `createAuthenticatedFetch`, which
@@ -105,6 +130,7 @@ with `allowedHosts` when needed.
 
 | Param                       | Purpose                                                                                                                          |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `org`                       | Organization slug that receives the app and connection. Omit only for the personal org; see above.                               |
 | `flow`                      | `pkce` (default), `confidential`, or `device` (RFC 8628).                                                                        |
 | `deviceAuthorizationUrl`    | Required when `flow=device`: the provider's device authorization endpoint.                                                       |
 | `pkce`                      | `true` or `false`; overrides the PKCE default for `pkce` / `confidential` only. Device flow ignores PKCE entirely (no override). |
@@ -248,7 +274,8 @@ already surface same-provider package suggestions.
 
 1. Confirm OAuth is the right auth shape.
 2. Build the connect URL with the required params:
-   `https://kody.codes/connect/oauth?...`.
+   `https://kody.codes/connect/oauth?...`. Add `org=<slug>` when the app is for
+   a team organization.
 3. Tell the user the exact redirect URI to register:
    `https://kody.codes/connect/oauth`. The page shows it with a copy button.
 4. Have the user open the URL while signed in, paste their client ID (and client

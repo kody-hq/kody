@@ -283,6 +283,7 @@ export function buildIncompleteConnectOauthAgentPrompt(input: {
 		nextSteps: [
 			'Open search({ entity: "guide:oauth" }) and, if a provider guide exists, search({ entity: "guide:provider_<slug>" }).',
 			'Return a complete /connect/oauth URL with provider, authorizeUrl, tokenUrl, and any scopes, flow, and allowedHosts the provider needs.',
+			'When the app belongs to a team organization, add org=<team-slug>; without it the page saves to the personal organization.',
 		],
 		kodyTools: [
 			'search({ entity: "guide:oauth" })',

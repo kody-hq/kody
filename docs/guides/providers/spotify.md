@@ -73,6 +73,10 @@ secret:
 https://kody.codes/connect/oauth?provider=spotify&authorizeUrl=https%3A%2F%2Faccounts.spotify.com%2Fauthorize&tokenUrl=https%3A%2F%2Faccounts.spotify.com%2Fapi%2Ftoken&scopes=user-read-recently-played%20user-read-playback-state%20user-library-read&allowedHosts=api.spotify.com
 ```
 
+For a team organization, add `&org=<team-slug>` so the app and connection are
+saved there; without it they go to the personal organization (see
+`guide:oauth`).
+
 Decoded: authorize URL `https://accounts.spotify.com/authorize`, token URL
 `https://accounts.spotify.com/api/token`, scopes
 `user-read-recently-played user-read-playback-state user-library-read`

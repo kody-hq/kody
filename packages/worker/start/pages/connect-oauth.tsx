@@ -28,6 +28,12 @@ import { organizationsWithSignupFallback } from '#universal/org-pages.ts'
 
 import { ProviderMark } from '../components/provider-icons.tsx'
 import {
+	ConnectOauthOrgPicker,
+	ConnectOauthOrgTarget,
+	connectOauthTargetOrg,
+	shouldPickConnectOauthOrg,
+} from './connect-oauth-org.tsx'
+import {
 	pageDescriptionCss,
 	pageTitleCss,
 } from '#universal/styles/style-primitives.ts'
@@ -285,6 +291,20 @@ export function ConnectOauthRoute({
 		organizations.find((org) => org.slug === flowOrg)?.slug ??
 		organizations.find((org) => org.personal)?.slug ??
 		organizations[0]?.slug
+	const targetOrg = connectOauthTargetOrg({ organizations, flowOrg })
+	const pickOrg = shouldPickConnectOauthOrg({
+		organizations,
+		flowOrg,
+		href: currentHref,
+	})
+	const viewer = {
+		displayName: session?.username ?? '',
+		avatarUrl: session?.avatarUrl ?? null,
+	}
+	const orgTarget =
+		targetOrg && !pickOrg ? (
+			<ConnectOauthOrgTarget org={targetOrg} viewer={viewer} />
+		) : null
 	const invalidatePages = usePageInvalidation(mutationResources)
 	const [state, setState] = useState(() =>
 		initialOauthState(
@@ -677,6 +697,22 @@ export function ConnectOauthRoute({
 	}
 	const description = connectOauthHeaderDescription(headerInput)
 	const title = connectOauthHeaderTitle(headerInput)
+	if (pickOrg) {
+		return (
+			<section css={connectOauthPageCss}>
+				<header css={connectOauthHeaderCss}>
+					<span css={connectOauthEyebrowCss}>Connect an account</span>
+					<h1 css={pageTitleCss}>{title}</h1>
+					{description ? <p css={pageDescriptionCss}>{description}</p> : null}
+				</header>
+				<ConnectOauthOrgPicker
+					organizations={organizations}
+					viewer={viewer}
+					href={currentHref}
+				/>
+			</section>
+		)
+	}
 	if (!config) {
 		return (
 			<section css={connectOauthPageCss}>
@@ -685,6 +721,7 @@ export function ConnectOauthRoute({
 					<h1 css={pageTitleCss}>{title}</h1>
 					{description ? <p css={pageDescriptionCss}>{description}</p> : null}
 				</header>
+				{orgTarget}
 				{renderStatusCallout({
 					statusTone,
 					statusMessage,
@@ -724,6 +761,7 @@ export function ConnectOauthRoute({
 				<h1 css={pageTitleCss}>{title}</h1>
 				{description ? <p css={pageDescriptionCss}>{description}</p> : null}
 			</header>
+			{orgTarget}
 			{renderStatusCallout({
 				statusTone,
 				statusMessage,
