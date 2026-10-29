@@ -37,9 +37,7 @@ const inputSchema = z.object({
 		),
 })
 
-const outputSchema = z.object({
-	since: z.string(),
-	until: z.string().nullable(),
+const eventSection = {
 	totals: z.object({
 		apps: z.number().int().nonnegative(),
 		owners: z.number().int().nonnegative(),
@@ -50,13 +48,7 @@ const outputSchema = z.object({
 			.describe(
 				'Distinct hashed visitors; all anonymous visitors count as one.',
 			),
-		observations: z
-			.number()
-			.int()
-			.nonnegative()
-			.describe(
-				'Calls that failed as the runs-as person and worked the legacy way.',
-			),
+		observations: z.number().int().nonnegative(),
 	}),
 	packagesTruncated: z.boolean(),
 	packages: z
@@ -82,6 +74,20 @@ const outputSchema = z.object({
 		.describe(
 			'Per-app detail for internal decisions only. Do not paste into public PR, issue, or commit text; use totals.',
 		),
+}
+
+const outputSchema = z.object({
+	since: z.string(),
+	until: z.string().nullable(),
+	...eventSection,
+	totals: eventSection.totals.describe(
+		'Calls that failed as the runs-as person and worked the legacy way.',
+	),
+	hardRejections: z
+		.object(eventSection)
+		.describe(
+			'Calls refused as not declared in kody.app.capabilities (including credential.named) that also failed the legacy way, so the app saw the error. Keyed like the fallbacks. Any count here is a bug to fix.',
+		),
 })
 
 export const adminPackageAppAuthorityFallbackReportCapability =
@@ -90,7 +96,7 @@ export const adminPackageAppAuthorityFallbackReportCapability =
 		name: 'adminPackageAppAuthorityFallbackReport',
 		contextRuns: 'deny',
 		description:
-			'Read-only report of package app calls that failed as the app’s runs-as person (publisher authority) and fell back to the legacy visitor authority, so the app kept working. Counts per app, per call name, and per kind of difference. Visitors are hashed; never returns handles, names, or credential values. Admin-only; use counts in public text.',
+			'Read-only report of package app calls that failed as the app’s runs-as person (publisher authority) and fell back to the legacy visitor authority, so the app kept working, plus `hardRejections`: undeclared-capability calls that failed both ways. Counts per app, per call name, and per kind of difference. Visitors are hashed; never returns handles, names, or credential values. Admin-only; use counts in public text.',
 		keywords: [
 			'admin',
 			'package app',
@@ -99,6 +105,7 @@ export const adminPackageAppAuthorityFallbackReportCapability =
 			'authority',
 			'fallback',
 			'would break',
+			'hard rejection',
 		],
 		inputSchema,
 		outputSchema,
@@ -118,7 +125,7 @@ export const adminPackageAppAuthorityFallbackReportCapability =
 					}),
 				{
 					successReason: (result) =>
-						`since=${result.since};apps=${String(result.totals.apps)};owners=${String(result.totals.owners)};observations=${String(result.totals.observations)}`,
+						`since=${result.since};apps=${String(result.totals.apps)};owners=${String(result.totals.owners)};observations=${String(result.totals.observations)};rejectedApps=${String(result.hardRejections.totals.apps)};rejections=${String(result.hardRejections.totals.observations)}`,
 				},
 			)
 		},

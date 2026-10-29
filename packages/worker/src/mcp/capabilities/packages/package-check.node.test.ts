@@ -147,6 +147,55 @@ test('packageCheck reports the same results publish computes for the same tree',
 	)
 })
 
+test('packageCheck and publish accept a data-only app package with no exports field', async () => {
+	resetMocks()
+	// The app bundle phase can only build inside workerd; Node warns and
+	// reports a bundle failure past the manifest check.
+	consoleWarn.mockImplementation(() => {})
+	const files = {
+		'package.json': JSON.stringify({
+			name: '@acme/board',
+			type: 'module',
+			kody: {
+				id: 'board',
+				description: 'Data-only package with an app.',
+				app: { entry: './src/app.ts' },
+			},
+		}),
+		'README.md': '# board\n\nA board app.\n',
+		'AGENTS.md': '# Agents\n\nOpen the app.\n',
+		'src/app.ts':
+			'export default { async fetch() { return new Response("ok") } }\n',
+	}
+	const viaCapability = await check(files)
+	expect(viaCapability.package_name).toBe('@acme/board')
+	expect(viaCapability.checks[0]).toEqual({
+		kind: 'manifest',
+		ok: true,
+		message: 'Validated package.json.',
+	})
+	expect(
+		viaCapability.checks.some((entry) => /exports/.test(entry.message)),
+	).toBe(false)
+	const viaPublish = await runAuthoringPublishChecks({
+		workspace: createSnapshotFilesWorkspace(files),
+		manifestPath: 'package.json',
+		sourceRoot: '/',
+		env,
+		baseUrl: 'https://kody.test',
+		userId: owner.ownerUserId,
+		expectedPackageScope: 'acme',
+	})
+	expect(viaPublish.manifest?.exports).toEqual({})
+	expect(viaCapability.checks).toEqual(
+		viaPublish.results.map((entry) => ({
+			kind: entry.kind,
+			ok: entry.ok,
+			message: entry.message,
+		})),
+	)
+})
+
 test('packageCheck refuses a package scope publish would refuse', async () => {
 	resetMocks()
 	const files = stampedScopePackageFiles()

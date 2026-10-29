@@ -879,7 +879,8 @@ export const authoredPackageJsonSchema = z.object({
 	/** Informational; a non-string value is dropped, never refused. */
 	version: z.string().optional().catch(undefined),
 	private: z.boolean().optional(),
-	exports: z.record(z.string().min(1), packageExportTargetSchema),
+	/** Omitted means no exports, the same as `{}` (e.g. an app-only package). */
+	exports: z.record(z.string().min(1), packageExportTargetSchema).default({}),
 	kody: authoredPackageKodySchema,
 })
 

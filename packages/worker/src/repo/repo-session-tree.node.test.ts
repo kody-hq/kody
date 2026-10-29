@@ -1,6 +1,9 @@
 import { expect, test } from 'vitest'
 import { isRepoDisallowedPathMessage } from './repo-session-caller-error.ts'
-import { resolveRepoWorkspacePath } from './repo-session-tree.ts'
+import {
+	canonicalRepoPath,
+	resolveRepoWorkspacePath,
+} from './repo-session-tree.ts'
 
 const workspacePrefix = '/session'
 
@@ -58,4 +61,16 @@ test('resolveRepoWorkspacePath keeps in-workspace .. and rejects escapes and .gi
 		),
 	).toBe(true)
 	expect(isRepoDisallowedPathMessage('Source "abc" was not found.')).toBe(false)
+})
+
+test('canonicalRepoPath spells equivalent repo paths the same way', () => {
+	expect(canonicalRepoPath('./skills/example/SKILL.md')).toBe(
+		'skills/example/SKILL.md',
+	)
+	expect(canonicalRepoPath('skills//example/SKILL.md')).toBe(
+		'skills/example/SKILL.md',
+	)
+	expect(canonicalRepoPath('skills/../skills/example/SKILL.md')).toBe(
+		'skills/example/SKILL.md',
+	)
 })

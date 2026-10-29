@@ -160,7 +160,7 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 			// button's own name: `aria-label` overrides the label text, so a named
 			// button would keep reading "Copy package id" after it had copied.
 			aria-describedby={`${id}-copy-status`}
-			title={props.ariaLabel ?? 'Copy'}
+			title={props.iconOnly ? (props.ariaLabel ?? 'Copy') : undefined}
 			css={
 				props.iconOnly
 					? {

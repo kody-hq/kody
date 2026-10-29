@@ -896,8 +896,12 @@ credentials fill its needs. Visitors bring only verified identity.
 - **Fallback.** A call that would fail as the runs-as person but worked as the
   visitor still runs as the visitor and records a would-break row (app, call
   name, kind, hashed visitor), counted with
-  `adminPackageAppAuthorityFallbackReport`. The visitor path and
-  `ownerCredentialForVisitors` are removed only after those stay at zero.
+  `adminPackageAppAuthorityFallbackReport`. A call refused as not declared
+  (including `credential.named`) that also fails as the visitor is a hard
+  rejection: the app sees the error, and a row with the same key lands in
+  `package_app_authority_rejections`, reported as `hardRejections` in the same
+  report. The visitor path and `ownerCredentialForVisitors` are removed only
+  after both stay at zero.
 
 ## Amendment 2026-10-27: dependency needs use the entry package's mappings
 

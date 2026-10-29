@@ -133,3 +133,27 @@ test('view receipts bind the snapshot and reader and reject tampering', async ()
 	)
 	vi.useRealTimers()
 })
+
+test('a failed read-event write does not fail the read', async () => {
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+	mocks.record.mockRejectedValueOnce(new Error('run log unavailable'))
+	await expect(
+		recordSkillFileRead({
+			env: {} as Env,
+			callerContext,
+			channel: 'search',
+			packageId: 'pkg',
+			packageName: '@team/docs',
+			packageOwnerId: 'team-1',
+			publishedCommit: null,
+			path: 'skills/writing/SKILL.md',
+			content: 'text',
+			hasManifest: true,
+		}),
+	).resolves.toBeUndefined()
+	expect(warn).toHaveBeenCalledWith(
+		'skill-read-record-failed',
+		expect.any(Error),
+	)
+	warn.mockRestore()
+})

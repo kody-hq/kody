@@ -218,6 +218,7 @@ export const loadOrgOverview = createServerFn({ method: 'GET' })
 						}),
 						request: input.user.request,
 					},
+					failOnError: false,
 				}),
 				resolution.org.id === personalOrgIdForPerson(input.user.mcpUser)
 					? loadProfileData(

@@ -1,12 +1,10 @@
 import {
 	type AstNode,
 	constantsWithoutShadows,
-	createModuleConstantsReader,
+	forEachScannableModule,
 	getCalleeName,
 	getNodeName,
-	listScannableModulePaths,
 	type NameKind,
-	parseModule,
 	resolveStringExpression,
 	walkAst,
 } from '#worker/credentials/module-placeholder-scan.ts'
@@ -322,16 +320,12 @@ function planDeclarations(
 		paths.add(path)
 		pathsByName.set(name, paths)
 	}
-	const modulePaths = listScannableModulePaths(files)
-	const parsedModules = new Map(
-		modulePaths.map((path) => [path, parseModule(files[path]!)]),
-	)
-	scanModuleCredentialReferences(files, (path) => ({
+	scanModuleCredentialReferences(files, (path, parsed) => ({
 		add: () => {},
 		named: (name, kind, via) => {
 			if (!gatewayVias.has(via)) return
 			// A text match in an unparsed module can sit in a comment or string.
-			if (parsedModules.get(path)) use(path, name, kind)
+			if (parsed) use(path, name, kind)
 			else flag(path, 'unparsedModule')
 		},
 		computed: (_kind, via) => {
@@ -341,9 +335,7 @@ function planDeclarations(
 			if (via === 'placeholder') flag(path, 'vault')
 		},
 	}))
-	const moduleConstants = createModuleConstantsReader(parsedModules)
-	for (const path of modulePaths) {
-		const parsed = parsedModules.get(path)
+	forEachScannableModule(files, (path, parsed, constants) => {
 		// A slot's kind decides what credential() can resolve (no kind means
 		// fetch-capable only), and source cannot say which kind a key takes.
 		const scan: KeyScan = {
@@ -355,9 +347,9 @@ function planDeclarations(
 			computed: () => flag(path, 'computed'),
 			indirect: () => flag(path, 'indirectCredential'),
 		}
-		if (parsed) scanParsedCredentialKeys(parsed, moduleConstants(path), scan)
+		if (parsed) scanParsedCredentialKeys(parsed, constants, scan)
 		else scanUnparsedCredentialKeys(files[path]!, scan)
-	}
+	})
 	const add: Array<string> = []
 	for (const [name, kinds] of [...uses].sort(([left], [right]) =>
 		left.localeCompare(right),

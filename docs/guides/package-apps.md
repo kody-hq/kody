@@ -390,8 +390,10 @@ If a bridge call cannot run as the runs-as person (a capability missing from
 as the visitor and log a `package_app_authority_fallback` event with the app,
 the call name, and the kind of difference. This fallback is temporary and will
 be removed, so add what the logs name to the manifest rather than relying on it.
-Admins count these per app with `adminPackageAppAuthorityFallbackReport`, and
-the
+A call that fails both ways throws the "not listed in `kody.app.capabilities`"
+error and logs a `package_app_authority_rejection` event instead. Admins count
+both per app with `adminPackageAppAuthorityFallbackReport` (`hardRejections`
+holds the second), and the
 [0017 scan](../contributing/package-codemods.md#0017-detect-package-app-visitor-authority)
 lists published apps that will hit them.
 

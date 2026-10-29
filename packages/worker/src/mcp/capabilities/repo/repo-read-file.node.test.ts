@@ -5,6 +5,7 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 
 const mocks = vi.hoisted(() => ({
 	repoSessionRpc: vi.fn(),
+	authorizeRead: vi.fn(async (): Promise<unknown> => undefined),
 }))
 
 vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
@@ -12,7 +13,7 @@ vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
 }))
 
 vi.mock('./authorize-repo-session-package.ts', () => ({
-	authorizeRepoSessionPackageRead: async () => undefined,
+	authorizeRepoSessionPackageRead: () => mocks.authorizeRead(),
 }))
 
 const { repoReadFileCapability } = await import('./repo-read-file.ts')
@@ -154,4 +155,26 @@ test('repoReadFile leaves other read failures platform-visible', async () => {
 		)
 	expect(error).toBeInstanceOf(Error)
 	expect(error).not.toBeInstanceOf(McpCallerError)
+})
+
+test('repoReadFile still returns the file when skill-read analytics fail', async () => {
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+	mocks.authorizeRead.mockResolvedValueOnce({ entity_id: 'pkg-1' })
+	const readFile = vi.fn(async ({ path }: { path: string }) => {
+		if (path.endsWith('/notes.md')) return { path, content: 'notes' }
+		throw new Error('manifest lookup failed')
+	})
+	mocks.repoSessionRpc.mockReturnValue({ readFile })
+
+	await expect(
+		repoReadFileCapability.handler(
+			{ session_id: 'session-1', path: './skills/example/notes.md' },
+			createContext(),
+		),
+	).resolves.toMatchObject({ content: 'notes' })
+	expect(warn).toHaveBeenCalledWith(
+		'skill-read-record-failed',
+		expect.any(Error),
+	)
+	warn.mockRestore()
 })
