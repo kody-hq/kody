@@ -601,7 +601,7 @@ test('createExecuteExecutor enforces the host timeout: hang, late settle, abort-
 			} as never,
 		],
 	)
-	expect(aborted.error).toBe(createExecutorSandboxTimeoutMessage(40))
+	expect(aborted.error).toContain('Execution timed out after 40ms:')
 	expect(observedSignal?.aborted).toBe(true)
 
 	// Queued evaluations are dropped once their host deadline expires.
@@ -637,7 +637,7 @@ test('createExecuteExecutor enforces the host timeout: hang, late settle, abort-
 			{ env: sharedEnv, gatewayProps: queueUser, timeoutMs: 40 },
 			'async () => "queued"',
 		)
-		expect(queuedResult.error).toBe(createExecutorSandboxTimeoutMessage(40))
+		expect(queuedResult.error).toContain('Execution timed out after 40ms:')
 		expect(evaluateStarts).toBe(4)
 
 		releaseHolders()

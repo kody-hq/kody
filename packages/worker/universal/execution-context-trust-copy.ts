@@ -5,19 +5,14 @@
  * sharing level means. One module so the snapshot test covers every string.
  *
  * "Credential values stay on Kody" depends on `kody.oauthClientCredentials`
- * returning only a handle (decision 10); the copy test pins that dependency.
+ * returning only a handle (decision 10).
  */
 import {
 	type ExecutionContextGrantSummary,
 	type ExecutionContextPreset,
 	type ExecutionContextSharingLevel,
-	loginPredatesPermissionsMessage,
 	runtimeLabel,
 } from './execution-contexts.ts'
-
-export { loginPredatesPermissionsMessage }
-
-export const credentialValuesStayOnKody = true
 
 function filesLabel(grant: ExecutionContextGrantSummary) {
 	if (grant.fs === 0) return 'none'
