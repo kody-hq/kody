@@ -1,5 +1,13 @@
 # Mobile and docs follow-up
 
+The PR was rebased onto main `f44abaf3e` after this measurement, including the
+TanStack Markdown and Highlight migration in #4516. The results below describe
+source `8187ad43` before that migration, they are not measurements of the
+rebased application. The original source SHAs, samples and archive checksum
+remain unchanged. Full `npm run validate` passes on rebased integration source
+`2024602d7`, including 7,771 Node tests, 610 Worker tests, 39 browser tests, CLI
+validation and startup CPU checks.
+
 Desktop docs LCP improves to 1,351 ms from pinned main's 2,112 ms, and from
 2,256 ms in the previous fix. Initial homepage JavaScript falls to 240,021
 encoded bytes, 14.7% below main and 6.5% below the previous fix. Homepage
@@ -149,10 +157,9 @@ preloading and signed-in desktop/phone account controls with and without
 JavaScript. Bundle and real auto-fixer regression tests passed after commit
 hooks. Lint passed before the source freeze.
 
-The prior authoritative `npm run validate` attempt remains blocked in the
-unchanged CLI native macOS Keychain test. This follow-up does not claim that
-full gate is green, and it does not substitute a different credential backend to
-make it pass.
+The authoritative `npm run validate` attempt on the measured pre-rebase source
+was blocked in the CLI native macOS Keychain test. That measured-source gate was
+not green. The successful rebased validation is recorded above.
 
 ## Raw archive
 
