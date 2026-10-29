@@ -101,12 +101,33 @@ type DaemonInput = {
 	signal?: AbortSignal
 	welcomeTimeoutMs?: number
 	closeSettleMs?: number
+	pingMs?: number
+	pongTimeoutMs?: number
 }
 
 export const welcomeTimeoutMs = 15_000
 export const welcomeTimeoutCloseCode = 4000
 /** How long a client-initiated close may wait for the close event. */
 export const closeSettleMs = 5_000
+export const defaultPingMs = 30_000
+export const defaultPongTimeoutMs = 10_000
+/** Kody stopped answering pings: the socket is half-dead. */
+export const heartbeatTimeoutCloseCode = 4001
+/**
+ * A server frame failed verification. Browser-style WebSockets (Node's
+ * included) only accept 1000 or 3000-4999 from the client; 1008 throws
+ * `InvalidAccessError: invalid code` and leaves the socket open.
+ */
+export const frameRejectedCloseCode = 4008
+
+function heartbeatSetting(value: unknown, fallback: number) {
+	return typeof value === 'number' &&
+		Number.isFinite(value) &&
+		value >= 1_000 &&
+		value <= 300_000
+		? value
+		: fallback
+}
 
 /** One connection: resolves when the socket closes. */
 export async function runDaemonConnection(input: DaemonInput) {
@@ -155,6 +176,8 @@ export async function runDaemonConnection(input: DaemonInput) {
 			}),
 		)
 	}
+	let rearmHeartbeat: ((pingMs: number, pongTimeoutMs: number) => void) | null =
+		null
 	const status = () => ({
 		running: runs.size,
 		maxConcurrent: input.maxConcurrent,
@@ -217,6 +240,12 @@ export async function runDaemonConnection(input: DaemonInput) {
 		switch (frame.t) {
 			case 'welcome':
 				clearTimeout(welcomeTimer)
+				if (input.pingMs === undefined && input.pongTimeoutMs === undefined) {
+					rearmHeartbeat?.(
+						heartbeatSetting(body.pingMs, defaultPingMs),
+						heartbeatSetting(body.pongTimeoutMs, defaultPongTimeoutMs),
+					)
+				}
 				await send('hello', {
 					protocol: { min: ecpProtocolVersion, max: ecpProtocolVersion },
 					client: input.client,
@@ -285,15 +314,40 @@ export async function runDaemonConnection(input: DaemonInput) {
 	const timeoutMs = input.welcomeTimeoutMs ?? welcomeTimeoutMs
 	let welcomeTimer: ReturnType<typeof setTimeout> | undefined
 	return await new Promise<{ code: number; reason: string }>((resolve) => {
-		const ping = setInterval(() => {
-			if (ws.readyState === ws.OPEN) ws.send(ecpPingFrame)
-		}, 30_000)
+		let lastInboundAt = Date.now()
+		let ping: ReturnType<typeof setInterval> | undefined
+		let pongTimer: ReturnType<typeof setTimeout> | undefined
+		// Client pings get an auto-response pong. A socket whose TCP path died
+		// stays ESTABLISHED and never emits close, so a missing pong is the
+		// only signal: close it and let runDaemon reconnect with backoff.
+		const armHeartbeat = (pingMs: number, pongTimeoutMs: number) => {
+			clearInterval(ping)
+			ping = setInterval(() => {
+				if (ws.readyState !== ws.OPEN || pongTimer) return
+				const sentAt = Date.now()
+				ws.send(ecpPingFrame)
+				pongTimer = setTimeout(() => {
+					pongTimer = undefined
+					if (lastInboundAt >= sentAt) return
+					input.log(
+						`Kody did not answer a ping within ${Math.round(pongTimeoutMs / 1000)}s, so the connection is dead. Closing and reconnecting.`,
+					)
+					closeAndSettle(heartbeatTimeoutCloseCode, 'heartbeat timeout')
+				}, pongTimeoutMs)
+			}, pingMs)
+		}
+		rearmHeartbeat = armHeartbeat
+		armHeartbeat(
+			input.pingMs ?? defaultPingMs,
+			input.pongTimeoutMs ?? defaultPongTimeoutMs,
+		)
 		let settled = false
 		let settleTimer: ReturnType<typeof setTimeout> | undefined
 		const finish = (code: number, reason: string) => {
 			if (settled) return
 			settled = true
 			clearInterval(ping)
+			clearTimeout(pongTimer)
 			clearTimeout(welcomeTimer)
 			clearTimeout(settleTimer)
 			input.signal?.removeEventListener('abort', shutdown)
@@ -321,33 +375,47 @@ export async function runDaemonConnection(input: DaemonInput) {
 		const shutdown = () => closeAndSettle(1000, 'shutdown')
 		if (input.signal?.aborted) shutdown()
 		input.signal?.addEventListener('abort', shutdown, { once: true })
+		const rejectFrame = (code: string) => {
+			input.log(
+				`Kody sent a frame that failed verification (${code}). Closing and reconnecting.`,
+			)
+			closeAndSettle(frameRejectedCloseCode, code)
+		}
+		// Frames are verified against the previous sequence number, so they
+		// must be handled one at a time in arrival order.
+		let inbound = Promise.resolve()
 		ws.addEventListener('message', (event) => {
+			lastInboundAt = Date.now()
 			const text = typeof event.data === 'string' ? event.data : ''
-			void (async () => {
-				const classified = classifyFrameText(text)
-				if (classified.kind !== 'frame') return
-				const key = serverKeys.get(classified.envelope.k)
-				if (!key) {
-					ws.close(1008, 'unknown server key')
-					return
-				}
-				if (!sid) {
-					sid = peekSid(classified.envelope.p)
-				}
-				const verified = await verifyFrame({
-					envelope: classified.envelope,
-					publicKey: await importEd25519PublicKey(publishedKeyJwk(key)),
-					expect: { ec: input.ecid, sid, lastSeq: inSeq },
-					now: Date.now(),
-				})
-				if (!verified.ok) {
-					ws.close(1008, verified.code)
-					return
-				}
-				inSeq = verified.frame.seq
-				await handle(verified.frame)
-			})().catch((error) => input.log(`Frame error: ${String(error)}`))
+			inbound = inbound
+				.then(() => onMessage(text))
+				.catch((error) => input.log(`Frame error: ${String(error)}`))
 		})
+		const onMessage = async (text: string) => {
+			if (settled || settleTimer) return
+			const classified = classifyFrameText(text)
+			if (classified.kind !== 'frame') return
+			const key = serverKeys.get(classified.envelope.k)
+			if (!key) {
+				rejectFrame('unknown_server_key')
+				return
+			}
+			if (!sid) {
+				sid = peekSid(classified.envelope.p)
+			}
+			const verified = await verifyFrame({
+				envelope: classified.envelope,
+				publicKey: await importEd25519PublicKey(publishedKeyJwk(key)),
+				expect: { ec: input.ecid, sid, lastSeq: inSeq },
+				now: Date.now(),
+			})
+			if (!verified.ok) {
+				rejectFrame(verified.code)
+				return
+			}
+			inSeq = verified.frame.seq
+			await handle(verified.frame)
+		}
 		ws.addEventListener('close', (event) => finish(event.code, event.reason))
 	})
 }

@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+	ecpPingFrame,
+	ecpPongFrame,
 	ecpRunHeader,
 	ecpSignatureHeader,
 	ed25519JwkThumbprint,
 	importEd25519PublicKey,
 	parseEcpSignatureHeader,
+	signFrame,
 	verifyEcpHttpSignature,
+	type EcpFramePayload,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import {
 	generateContextKey,
@@ -16,6 +20,8 @@ import {
 import { runExecutionContextCommand } from '../src/execution-context/commands.js'
 import {
 	abortableDelay,
+	frameRejectedCloseCode,
+	heartbeatTimeoutCloseCode,
 	runDaemon,
 	runDaemonConnection,
 	runRequestRefusal,
@@ -134,7 +140,7 @@ class SilentSocket extends EventTarget {
 		super()
 		SilentSocket.instances.push(this)
 	}
-	send() {}
+	send(_data?: string) {}
 	close(code = 1000, reason = '') {
 		if (this.closed) return
 		this.closed = { code, reason }
@@ -472,4 +478,162 @@ test('the daemon accepts runs naming its API origin and refuses any other origin
 		runRequestRefusal({ apiUrl, acceptBy }, apiUrl, 3_000),
 		'deadline_passed',
 	)
+})
+
+/**
+ * A Kody-side socket that opens with a signed welcome. Like Node's
+ * WebSocket, close() only accepts 1000 or 3000-4999.
+ */
+class ServerSocket extends SilentSocket {
+	static frames: Array<string> = []
+	static answerPings = false
+	sent: Array<string> = []
+	constructor(url: string) {
+		super(url)
+		const frames = ServerSocket.frames
+		setTimeout(() => {
+			for (const data of frames) {
+				this.dispatchEvent(Object.assign(new Event('message'), { data }))
+			}
+		}, 0)
+	}
+	override send(data = '') {
+		this.sent.push(data)
+		if (data === ecpPingFrame && ServerSocket.answerPings) {
+			queueMicrotask(() =>
+				this.dispatchEvent(
+					Object.assign(new Event('message'), { data: ecpPongFrame }),
+				),
+			)
+		}
+	}
+	override close(code = 1000, reason = '') {
+		if (code !== 1000 && (code < 3000 || code > 4999)) {
+			throw new DOMException('invalid code', 'InvalidAccessError')
+		}
+		super.close(code, reason)
+	}
+}
+
+async function serverFrames(
+	frames: Array<Pick<EcpFramePayload, 't' | 'body'> & { kid?: string }>,
+) {
+	const { privateKeyJwk } = await generateContextKey()
+	const privateKey = await importContextKey(privateKeyJwk)
+	const signed = await Promise.all(
+		frames.map((frame, index) =>
+			signFrame({
+				privateKey,
+				kid: frame.kid ?? 'srv_test',
+				payload: {
+					v: 1,
+					t: frame.t,
+					ec: 'ec_test',
+					sid: 'sid_test',
+					seq: index + 1,
+					ts: Date.now(),
+					body: frame.body,
+				},
+			}),
+		),
+	)
+	return {
+		signed,
+		serverKeys: [{ kid: 'srv_test', x: privateKeyJwk.x, notAfter: 4e12 }],
+	}
+}
+
+const welcome = { t: 'welcome', body: { sid: 'sid_test', grantVersion: 1 } }
+
+test('a half-dead socket that stops answering pings is closed with a heartbeat code', async () => {
+	SilentSocket.instances = []
+	const { signed, serverKeys } = await serverFrames([welcome])
+	ServerSocket.frames = signed
+	ServerSocket.answerPings = false
+	const { input, lines } = await daemonInput({
+		serverKeys,
+		pingMs: 30,
+		pongTimeoutMs: 30,
+		closeSettleMs: 20,
+		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
+	})
+	const closed = await runDaemonConnection(input)
+	assert.deepEqual(closed, {
+		code: heartbeatTimeoutCloseCode,
+		reason: 'heartbeat timeout',
+	})
+	assert.match(lines.join('\n'), /did not answer a ping/)
+	assert.ok(
+		(SilentSocket.instances[0] as unknown as ServerSocket).sent.includes(
+			ecpPingFrame,
+		),
+	)
+})
+
+test('a socket that answers pings stays connected until shutdown', async () => {
+	SilentSocket.instances = []
+	const { signed, serverKeys } = await serverFrames([welcome])
+	ServerSocket.frames = signed
+	ServerSocket.answerPings = true
+	const abort = new AbortController()
+	setTimeout(() => abort.abort(), 200)
+	const { input, lines } = await daemonInput({
+		serverKeys,
+		pingMs: 20,
+		pongTimeoutMs: 20,
+		signal: abort.signal,
+		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
+	})
+	const closed = await runDaemonConnection(input)
+	assert.deepEqual(closed, { code: 1000, reason: 'shutdown' })
+	assert.ok(lines.includes('Connected. Waiting for runs.'))
+	assert.ok(!lines.some((line) => /ping|Frame error/.test(line)))
+	ServerSocket.answerPings = false
+})
+
+test('frames that arrive back to back are verified in order, not raced', async () => {
+	SilentSocket.instances = []
+	const { signed, serverKeys } = await serverFrames([
+		welcome,
+		{ t: 'grant.update', body: { grantVersion: 2 } },
+		{ t: 'grant.update', body: { grantVersion: 3 } },
+	])
+	ServerSocket.frames = signed
+	const abort = new AbortController()
+	const { input, lines } = await daemonInput({
+		serverKeys,
+		signal: abort.signal,
+		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
+		log: (line: string) => {
+			lines.push(line)
+		},
+	})
+	setTimeout(() => abort.abort(), 150)
+	const closed = await runDaemonConnection(input)
+	assert.deepEqual(closed, { code: 1000, reason: 'shutdown' })
+	assert.deepEqual(
+		lines.filter((line) => /verification|Frame error/.test(line)),
+		[],
+	)
+	const sent = (SilentSocket.instances[0] as unknown as ServerSocket).sent
+	assert.equal(sent.filter((data) => data !== ecpPingFrame).length, 3)
+})
+
+test('a frame that fails verification closes with a valid code instead of throwing', async () => {
+	SilentSocket.instances = []
+	const { signed, serverKeys } = await serverFrames([
+		{ ...welcome, kid: 'srv_unknown' },
+	])
+	ServerSocket.frames = signed
+	const { input, lines } = await daemonInput({
+		serverKeys,
+		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
+	})
+	const closed = await runDaemonConnection(input)
+	assert.deepEqual(closed, {
+		code: frameRejectedCloseCode,
+		reason: 'unknown_server_key',
+	})
+	assert.match(lines.join('\n'), /failed verification \(unknown_server_key\)/)
+	assert.ok(!lines.some((line) => line.startsWith('Frame error')))
 })
