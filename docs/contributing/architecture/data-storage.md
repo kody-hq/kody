@@ -469,8 +469,9 @@ The schema is defined by migrations in `packages/worker/migrations/`:
 - `mcp_event_subscriptions` (`0083-mcp-event-subscriptions.sql`): user-owned MCP
   Events webhook subscriptions (event name, callback URL, encrypted `whsec_`
   secrets). Deleted and exported with the account; secret columns are redacted
-  from export. See [MCP Events](../../guides/mcp-events.md) and
-  [0059](../decisions/0059-mcp-events-extension-behind-flag.md).
+  from export. See [MCP Events](../../guides/mcp-events.md),
+  [0059](../decisions/0059-mcp-events-extension-behind-flag.md), and
+  [0087](../decisions/0087-mcp-events-no-client-declaration.md).
 - `community_listings`, `community_forks`, `community_ratings`,
   `community_reports`, `community_bans`: public package listings and moderation
   (see [Public packages](../community-packages.md)). `community_forks` rows for
