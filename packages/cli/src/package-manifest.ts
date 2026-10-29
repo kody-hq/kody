@@ -3,7 +3,7 @@
  */
 
 import { readFile, realpath } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import {
 	formatPackageJobScheduleSummary,
 	parsePackageJobSchedule,
@@ -79,9 +79,10 @@ export type KodyPackageManifest = {
 export async function loadPackageManifest(
 	cwd: string = process.cwd(),
 ): Promise<KodyPackageManifest> {
-	const packageJsonPath = await findPackageJson(cwd)
+	const foundPackageJsonPath = await findPackageJson(cwd)
 	// Match bundler and watcher paths when the working directory is a symlink.
-	const root = await realpath(dirname(packageJsonPath))
+	const root = await realpath(dirname(foundPackageJsonPath))
+	const packageJsonPath = join(root, basename(foundPackageJsonPath))
 	let raw: unknown
 	try {
 		raw = JSON.parse(await readFile(packageJsonPath, 'utf8'))

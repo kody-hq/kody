@@ -148,7 +148,9 @@ export function createCommunityPackageRawHandler(env: Env) {
 				allowSession: viewer.kind !== 'token',
 				tokenOrgId: viewer.kind === 'token' ? viewer.orgId : undefined,
 				callerContext:
-					viewer.kind === 'token' ? viewer.callerContext : undefined,
+					viewer.kind === 'token' && viewer.user
+						? viewer.callerContext
+						: undefined,
 			})
 		return respondRaw({ request, result })
 	}

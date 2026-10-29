@@ -92,6 +92,12 @@ export function resolveRepoWorkspacePath(
 		: `${workspacePrefix}/${resolved.segments.join('/')}`
 }
 
+/** Canonical repo-relative spelling (`./a//b` and `x/../a/b` become `a/b`). */
+export function canonicalRepoPath(path: string) {
+	const prefix = '/session'
+	return toExternalRepoPath(resolveRepoWorkspacePath(path, prefix), prefix)
+}
+
 export function toExternalRepoPath(path: string, workspacePrefix: string) {
 	return path.startsWith(`${workspacePrefix}/`)
 		? path.slice(workspacePrefix.length + 1)

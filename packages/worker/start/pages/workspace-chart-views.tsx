@@ -5,6 +5,7 @@ import { useMemo } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { barX, barY, defineChart, stack } from '@tanstack/charts'
 import { Chart } from '../charts/chart.tsx'
+import { focusNearestY } from '@tanstack/charts/focus'
 import { scaleBand } from '@tanstack/charts/scales/band'
 import { scaleLinear } from '@tanstack/charts/scales/linear'
 import { tooltip } from '@tanstack/charts/tooltip'
@@ -137,6 +138,8 @@ export function WorkspaceRankingChart({
 		const max = Math.max(currency ? 0.01 : 1, ...rows.map((row) => row.value))
 		return defineChart({
 			...xyChartDefaults,
+			// Rows are categories on y; x-group focus could select another row.
+			focus: focusNearestY,
 			marks: [
 				barX(rows, {
 					x: 'value',

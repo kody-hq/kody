@@ -34,22 +34,29 @@ export async function recordSkillRead(input: {
 }) {
 	const request = input.callerContext.request
 	if (!request) return
-	await runLogRpc({ env: input.env, userId: request.org.id }).recordSkillRead({
-		...input.resource,
-		id: input.eventId
-			? `${request.actor?.userId ?? 'automation'}:${input.channel}:${input.eventId}`
-			: crypto.randomUUID(),
-		occurredAt: new Date().toISOString(),
-		orgId: request.org.id,
-		actorId: request.actor?.userId ?? null,
-		actorUsername: request.actor?.username ?? null,
-		attribution: request.attribution,
-		credentialKind: request.credential.kind,
-		connectionId: request.credential.id,
-		clientId: input.callerContext.oauthClientId ?? null,
-		profileName: request.credential.profileName,
-		channel: input.channel,
-	})
+	// Analytics only: the content is already authorized and loaded.
+	try {
+		await runLogRpc({ env: input.env, userId: request.org.id }).recordSkillRead(
+			{
+				...input.resource,
+				id: input.eventId
+					? `${request.actor?.userId ?? 'automation'}:${input.channel}:${input.eventId}`
+					: crypto.randomUUID(),
+				occurredAt: new Date().toISOString(),
+				orgId: request.org.id,
+				actorId: request.actor?.userId ?? null,
+				actorUsername: request.actor?.username ?? null,
+				attribution: request.attribution,
+				credentialKind: request.credential.kind,
+				connectionId: request.credential.id,
+				clientId: input.callerContext.oauthClientId ?? null,
+				profileName: request.credential.profileName,
+				channel: input.channel,
+			},
+		)
+	} catch (error) {
+		console.warn('skill-read-record-failed', error)
+	}
 }
 
 export function catalogReadResource(match: {

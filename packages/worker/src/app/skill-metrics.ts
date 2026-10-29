@@ -16,10 +16,14 @@ export async function loadSkillMetrics(input: {
 	env: Env
 	callerContext: McpCallerContext
 	catalog?: CallerSkillsCatalog
+	failOnError?: boolean
 }): Promise<SkillMetrics> {
 	const catalog =
 		input.catalog ??
-		(await loadCallerSkillsCatalog({ ...input, failOnError: true }))
+		(await loadCallerSkillsCatalog({
+			...input,
+			failOnError: input.failOnError ?? true,
+		}))
 	const request = input.callerContext.request
 	if (!request) throw new Error('Skill metrics require an organization.')
 	const [access, records] = await Promise.all([
