@@ -10,6 +10,7 @@ import {
 	getDeadLetterQueue,
 	resolveDeadLetterQueue,
 } from '#worker/dead-letter/queues.ts'
+import { purgeParkedDeadLetterMessages } from '#worker/dead-letter/store.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
@@ -384,7 +385,7 @@ test('admins list depth, peek redacted metadata, replay, ack, and confirmed purg
 		queue: feedbackDlq,
 		purged_count: 1,
 		message_ids: ['msg-fixture-c'],
-		message_ids_truncated: false,
+		remaining_count: 0,
 		outcome: 'purged',
 	})
 	const after = await adminDeadLetterQueueListCapability.handler({}, t.ctx)
@@ -431,7 +432,7 @@ test('admins list depth, peek redacted metadata, replay, ack, and confirmed purg
 		{
 			action: 'adminDeadLetterQueuePurge',
 			result: 'success',
-			reason: `queue=${feedbackDlq};purged_count=1;outcome=purged`,
+			reason: `queue=${feedbackDlq};purged_count=1;remaining_count=0;outcome=purged`,
 		},
 	])
 	expect(events.every((event) => event.email_hash)).toBe(true)
@@ -513,4 +514,29 @@ test('non-admins cannot list, peek, replay, ack, or purge dead-letter queues', a
 			.prepare('SELECT COUNT(*) AS count FROM dead_letter_messages')
 			.get(),
 	).toEqual({ count: 1 })
+})
+
+test('purge deletes a bounded oldest-first batch and reports what remains', async () => {
+	const t = createHarness()
+	const queue = 'kody-platform-feedback-dispatch-dlq'
+	await t.park(queue, [
+		{ id: 'msg-fixture-1', body: { feedbackId: 'feedback-fixture-1' } },
+		{ id: 'msg-fixture-2', body: { feedbackId: 'feedback-fixture-2' } },
+		{ id: 'msg-fixture-3', body: { feedbackId: 'feedback-fixture-3' } },
+	])
+	await expect(
+		purgeParkedDeadLetterMessages(t.ctx.env.APP_DB, {
+			deadLetterQueue: queue,
+			limit: 2,
+		}),
+	).resolves.toEqual({
+		messageIds: ['msg-fixture-1', 'msg-fixture-2'],
+		remainingCount: 1,
+	})
+	await expect(
+		purgeParkedDeadLetterMessages(t.ctx.env.APP_DB, {
+			deadLetterQueue: queue,
+			limit: 2,
+		}),
+	).resolves.toEqual({ messageIds: ['msg-fixture-3'], remainingCount: 0 })
 })

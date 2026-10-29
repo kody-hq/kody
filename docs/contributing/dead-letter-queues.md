@@ -28,8 +28,9 @@ consumer, so the DLQ could not also be pushed to a worker) and an API token with
 Queues write scope. The worker's existing `CLOUDFLARE_API_TOKEN` is only relied
 on for queue metrics reads. Parking needs no new token, binding, queue, or
 permission: it uses the existing APP_DB binding and the existing producer
-bindings for replay. It also keeps ack/replay transactional with Kody's own
-audit log.
+bindings for replay. Ack, replay, and purge also write Kody's own audit log.
+Audit rows live in a separate database (AUDIT_DB), so they are best-effort, not
+transactional with the APP_DB delete.
 
 ## Capabilities
 
@@ -45,8 +46,9 @@ Call them through `execute` like any other admin capability.
   then remove it (`queue`, `message_id`).
 - `adminDeadLetterQueueAck`: delete one parked message without replaying
   (`queue`, `message_id`).
-- `adminDeadLetterQueuePurge`: delete every parked message in one DLQ. `confirm`
-  must equal the queue name exactly.
+- `adminDeadLetterQueuePurge`: delete parked messages in one DLQ, oldest first,
+  up to 200 per call. `confirm` must equal the queue name exactly. Repeat while
+  `remaining_count > 0`.
 
 ```ts
 // execute module

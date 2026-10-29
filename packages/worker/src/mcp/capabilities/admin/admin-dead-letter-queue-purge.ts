@@ -16,7 +16,8 @@ import {
 	requireDeadLetterQueue,
 } from './dead-letter-queue-shared.ts'
 
-const maxReturnedMessageIds = 100
+export const deadLetterPurgeBatchSize = 200
+const auditWriteChunkSize = 25
 
 const inputSchema = z.object({
 	queue: deadLetterQueueNameSchema,
@@ -31,7 +32,12 @@ const outputSchema = z.object({
 	queue: z.string(),
 	purged_count: z.number().int(),
 	message_ids: z.array(z.string()),
-	message_ids_truncated: z.boolean(),
+	remaining_count: z
+		.number()
+		.int()
+		.describe(
+			'Parked messages still in the queue. Call purge again while > 0.',
+		),
 	outcome: z.literal('purged'),
 })
 
@@ -43,7 +49,7 @@ export const adminDeadLetterQueuePurgeCapability = defineDomainCapability(
 		name: 'adminDeadLetterQueuePurge',
 		contextRuns: 'deny',
 		description:
-			'Purge every parked message from one production dead-letter queue without replaying. Requires confirm to equal the queue name. Prefer adminDeadLetterQueueAck for single messages. Admin-only; audit-logs each purged message id.',
+			'Purge parked messages from one production dead-letter queue without replaying, up to 200 per call (oldest first; repeat while remaining_count > 0). Requires confirm to equal the queue name. Prefer adminDeadLetterQueueAck for single messages. Admin-only; audit-logs each purged message id.',
 		keywords: ['admin', 'dead letter queue', 'dlq', 'purge', 'clear'],
 		inputSchema,
 		outputSchema,
@@ -59,10 +65,11 @@ export const adminDeadLetterQueuePurgeCapability = defineDomainCapability(
 							`Purge not confirmed for queue=${queue.name}: confirm must equal the queue name exactly.`,
 						)
 					}
-					let messageIds: Array<string>
+					let purged: Awaited<ReturnType<typeof purgeParkedDeadLetterMessages>>
 					try {
-						messageIds = await purgeParkedDeadLetterMessages(ctx.env.APP_DB, {
+						purged = await purgeParkedDeadLetterMessages(ctx.env.APP_DB, {
 							deadLetterQueue: queue.name,
+							limit: deadLetterPurgeBatchSize,
 						})
 					} catch (error) {
 						reportDeadLetterFailure({
@@ -74,26 +81,31 @@ export const adminDeadLetterQueuePurgeCapability = defineDomainCapability(
 							cause: error,
 						})
 					}
-					for (const messageId of messageIds) {
-						await logAuditEvent({
-							db: auditDatabaseFromEnv(ctx.env),
-							category: 'admin',
-							action: 'adminDeadLetterQueuePurge',
-							result: 'success',
-							email: admin.email,
-							path: '/mcp',
-							reason: deadLetterAuditReason({
-								queue: queue.name,
-								message_id: messageId,
-								outcome: 'purged',
-							}),
-						})
+					const { messageIds, remainingCount } = purged
+					for (let i = 0; i < messageIds.length; i += auditWriteChunkSize) {
+						await Promise.all(
+							messageIds.slice(i, i + auditWriteChunkSize).map((messageId) =>
+								logAuditEvent({
+									db: auditDatabaseFromEnv(ctx.env),
+									category: 'admin',
+									action: 'adminDeadLetterQueuePurge',
+									result: 'success',
+									email: admin.email,
+									path: '/mcp',
+									reason: deadLetterAuditReason({
+										queue: queue.name,
+										message_id: messageId,
+										outcome: 'purged',
+									}),
+								}),
+							),
+						)
 					}
 					return {
 						queue: queue.name,
 						purged_count: messageIds.length,
-						message_ids: messageIds.slice(0, maxReturnedMessageIds),
-						message_ids_truncated: messageIds.length > maxReturnedMessageIds,
+						message_ids: messageIds,
+						remaining_count: remainingCount,
 						outcome: 'purged' as const,
 					}
 				},
@@ -102,6 +114,7 @@ export const adminDeadLetterQueuePurgeCapability = defineDomainCapability(
 						deadLetterAuditReason({
 							queue: result.queue,
 							purged_count: result.purged_count,
+							remaining_count: result.remaining_count,
 							outcome: result.outcome,
 						}),
 				},

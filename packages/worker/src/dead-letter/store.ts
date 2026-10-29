@@ -258,17 +258,35 @@ export async function deleteParkedDeadLetterMessage(
 	return Number(result.meta?.changes ?? 0) > 0
 }
 
+/**
+ * Deletes up to `limit` parked messages (oldest first) so one purge call keeps
+ * its delete and audit fan-out bounded. Call again while `remainingCount > 0`.
+ */
 export async function purgeParkedDeadLetterMessages(
 	db: D1Database,
-	input: { deadLetterQueue: string },
-): Promise<Array<string>> {
+	input: { deadLetterQueue: string; limit: number },
+): Promise<{ messageIds: Array<string>; remainingCount: number }> {
 	const result = await db
 		.prepare(
 			`DELETE FROM dead_letter_messages
-			 WHERE dead_letter_queue = ?
+			 WHERE rowid IN (
+				SELECT rowid FROM dead_letter_messages
+				WHERE dead_letter_queue = ?
+				ORDER BY enqueued_at_ms ASC, message_id ASC
+				LIMIT ?
+			 )
 			 RETURNING message_id`,
 		)
-		.bind(input.deadLetterQueue)
+		.bind(input.deadLetterQueue, input.limit)
 		.all<{ message_id: string }>()
-	return (result.results ?? []).map((row) => row.message_id).sort()
+	const remaining = await db
+		.prepare(
+			`SELECT COUNT(*) AS count FROM dead_letter_messages WHERE dead_letter_queue = ?`,
+		)
+		.bind(input.deadLetterQueue)
+		.first<{ count: number }>()
+	return {
+		messageIds: (result.results ?? []).map((row) => row.message_id).sort(),
+		remainingCount: Number(remaining?.count ?? 0),
+	}
 }
