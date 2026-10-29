@@ -20,6 +20,10 @@ function required(flag) {
 const before = required('--before')
 const after = required('--after')
 const out = required('--out')
+if (args.includes('--reuse-builds'))
+	throw new Error(
+		'Build reuse is not supported. Run without --reuse-builds to build fresh production artifacts.',
+	)
 if (before === after)
 	throw new Error('Before and after must be separate source snapshots.')
 const beforeRef = args[args.indexOf('--before-ref') + 1]
@@ -79,59 +83,39 @@ async function sourceHashes(root) {
 		),
 	)
 }
-const previousResults = args.includes('--reuse-builds')
-	? JSON.parse(await readFile(path.join(out, 'results.json'), 'utf8'))
-	: null
 const variants = []
 for (const [name, root] of [
 	['before', before],
 	['after', after],
 ]) {
-	const previous = previousResults?.variants.find(
-		(variant) => variant.name === name,
-	)
-	if (
-		previousResults &&
-		(!previous ||
-			previous.lockSha256 !==
-				sha256(await readFile(path.join(root, 'package-lock.json'))) ||
-			JSON.stringify(previous.sourceHashes) !==
-				JSON.stringify(await sourceHashes(root)))
-	)
-		throw new Error(`Cannot reuse changed ${name} build`)
-	console.log(
-		`${previous ? 'Reusing' : 'Building'} ${name} production artifacts`,
-	)
+	console.log(`Building ${name} production artifacts`)
 	const destination = path.join(out, name)
 	await mkdir(destination, { recursive: true })
-	if (!previous) {
-		// Only generated output is removed. Clean builds avoid counting stale hashes.
-		await rm(path.join(root, 'dist'), { recursive: true, force: true })
-		const script = `
+	// Only generated output is removed. Clean builds avoid counting stale hashes.
+	await rm(path.join(root, 'dist'), { recursive: true, force: true })
+	const script = `
  const { ensureWorkerBundlerModules } = await import(${JSON.stringify(pathToFileURL(path.join(root, 'tools/build-worker-bundler-modules.ts')).href)});
  const { ensureGuideCatalogModules } = await import(${JSON.stringify(pathToFileURL(path.join(root, 'tools/build-guide-catalog-modules.ts')).href)});
  await ensureWorkerBundlerModules(); await ensureGuideCatalogModules();
  const { buildOriginProductionViteBundle } = await import(${JSON.stringify(pathToFileURL(path.join(root, 'tools/origin-vite-startup-build.ts')).href)});
  console.log(JSON.stringify(await buildOriginProductionViteBundle(${JSON.stringify(path.join(destination, 'origin'))})));`
-		await writeFile(
-			path.join(destination, 'origin-build.log'),
-			command(root, process.execPath, ['--input-type=module', '-e', script]),
-		)
-		await writeFile(
-			path.join(destination, 'highlight-build.log'),
-			command(root, path.join(root, 'node_modules/.bin/wrangler'), [
-				'deploy',
-				'--dry-run',
-				'--env',
-				'production',
-				'--config',
-				'packages/highlight-worker/wrangler.jsonc',
-				'--outdir',
-				path.join(destination, 'highlight'),
-			]),
-		)
-	}
-	// Compile identical harness source against each snapshot's actual modules.
+	await writeFile(
+		path.join(destination, 'origin-build.log'),
+		command(root, process.execPath, ['--input-type=module', '-e', script]),
+	)
+	await writeFile(
+		path.join(destination, 'highlight-build.log'),
+		command(root, path.join(root, 'node_modules/.bin/wrangler'), [
+			'deploy',
+			'--dry-run',
+			'--env',
+			'production',
+			'--config',
+			'packages/highlight-worker/wrangler.jsonc',
+			'--outdir',
+			path.join(destination, 'highlight'),
+		]),
+	) // Compile identical harness source against each snapshot's actual modules.
 	const entrySource = (
 		await readFile(path.join(here, 'sample-entry.mjs'), 'utf8')
 	).replaceAll('../../packages/', `${root}/packages/`)
@@ -279,7 +263,9 @@ const results = {
 	measuredAt: new Date().toISOString(),
 	renderer: '@tanstack/redact/server, production branches, minified harness',
 	baselineCommit: command(after, 'git', ['rev-parse', beforeRef]).trim(),
-	sourceDiffSha256: sha256(command(after, 'git', ['diff', '--binary', 'HEAD'])),
+	sourceDiffSha256: sha256(
+		command(after, 'git', ['diff', '--binary', beforeRef]),
+	),
 	machine: {
 		node: process.version,
 		platform: platform(),

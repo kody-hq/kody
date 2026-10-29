@@ -34,6 +34,11 @@ those peers; the project `.npmrc` now keeps peer resolution consistent with CI.
 The raw measurements remain the original captured results; the final shipping
 lockfile includes that install fix.
 
+Review follow-ups added an own-property alias check and per-snippet exception
+fallback to the highlighter. The recorded source hashes identify the measured
+implementation before those small safety guards; the original samples are
+retained rather than presented as new measurements of the final review fixes.
+
 ## Production bundles
 
 Sizes are KiB, 1 KiB = 1,024 bytes. Gzip uses level 9 separately for each file.

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { tokenizeSnippet } from './tokenize.ts'
+import { tokenizeSnippet, tokenizeSnippets } from './tokenize.ts'
 
 test('tokenizes known languages with dual-theme styles', () => {
 	const ts = tokenizeSnippet({ code: 'const secret = "<script>"', lang: 'ts' })
@@ -74,4 +74,19 @@ test('highlighting preserves source text across lines, aliases, and embedded lan
 			.flat()
 			.some((span) => span.content.includes('const') && span.style),
 	).toBe(true)
+})
+
+test('prototype-like language names stay plain without aborting the batch', () => {
+	const snippets = ['constructor', 'toString', '__proto__'].map((lang) => ({
+		code: 'const value = 42',
+		lang,
+	}))
+	const results = tokenizeSnippets([
+		...snippets,
+		{ code: 'const value = 42', lang: 'ts' },
+	])
+	expect(results.slice(0, 3)).toEqual(
+		snippets.map((snippet) => ({ ...snippet, plain: true, lines: [] })),
+	)
+	expect(results[3]?.plain).toBe(false)
 })

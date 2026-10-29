@@ -77,9 +77,15 @@ export function tokenizeSnippet(snippet: HighlightSnippet): HighlightedCode {
 			?.trim()
 			.toLowerCase()
 			.split(/[\s{,]+/, 1)[0] ?? ''
-	const lang = highlighter.normalizeLanguage(aliases[primary] ?? primary)
+	const alias = Object.hasOwn(aliases, primary) ? aliases[primary] : undefined
+	const lang = highlighter.normalizeLanguage(alias ?? primary)
 	if (lang === 'plaintext') return plainHighlightedCode(code, snippet.lang)
-	const result = highlighter.tokenize(code, { lang })
+	let result: ReturnType<typeof highlighter.tokenize>
+	try {
+		result = highlighter.tokenize(code, { lang })
+	} catch {
+		return plainHighlightedCode(code, snippet.lang)
+	}
 	const lines: Array<Array<HighlightedSpan>> = [[]]
 	for (const token of result.tokens) {
 		const parts = token.value.split('\n')
