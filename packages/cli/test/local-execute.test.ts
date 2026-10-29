@@ -524,6 +524,34 @@ export default async function main(params) {
 	},
 )
 
+test(
+	'runLocalExecute stops workerd when its signal aborts mid-run',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const abort = new AbortController()
+		const code = `
+export default async function main() {
+	await new Promise((resolve) => setTimeout(resolve, 120_000))
+	return 'finished'
+}
+`
+		const startedAt = Date.now()
+		const running = runLocalExecute({
+			code,
+			token: goodToken,
+			apiUrl,
+			signal: abort.signal,
+		})
+		setTimeout(() => abort.abort(), 3_000)
+		const result = await running
+		assert.equal(result.isError, true)
+		const structured = result.structuredContent as Record<string, unknown>
+		assert.match(String(structured.error), /cancelled/)
+		assert.ok(Date.now() - startedAt < 60_000)
+	},
+)
+
 test('createLocalRuntimeModuleSource exports credential and credentials for ad hoc local execute', () => {
 	const source = createLocalRuntimeModuleSource()
 	assert.match(

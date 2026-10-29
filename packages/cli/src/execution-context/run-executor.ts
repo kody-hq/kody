@@ -21,6 +21,7 @@ export async function runContextRun(input: {
 		token: 'execution-context-run',
 		apiUrl: input.apiUrl,
 		fetchFn: input.fetchFn,
+		signal: input.signal,
 	})
 	return {
 		isError: result.isError === true,

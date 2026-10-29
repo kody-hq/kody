@@ -104,6 +104,8 @@ export type LocalExecuteInput = {
 	/** `--target` for mock fetch gateway gating (default prod → no mocks). */
 	target?: 'prod' | 'mock'
 	onStatus?: (message: string) => void
+	/** Aborting kills workerd and ends the run with a cancelled error. */
+	signal?: AbortSignal
 }
 
 type SandboxResponse = {
@@ -182,6 +184,9 @@ export async function runLocalExecute(
 	let bridge: LocalRuntimeBridge | undefined
 	// SIGTERM makes workerd drain in-flight requests, which a hung module never finishes.
 	const stopWorkerd = () => child?.kill('SIGKILL')
+	input.signal?.addEventListener('abort', stopWorkerd, { once: true })
+	const cancelled = () =>
+		finish({ error: 'Local execute was cancelled before it finished.' })
 	const releaseSignals = cleanupOnSignal(() => {
 		stopWorkerd()
 		rmSync(workDir, { recursive: true, force: true })
@@ -280,8 +285,10 @@ export async function runLocalExecute(
 			env,
 			stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
 		})
+		if (input.signal?.aborted) return cancelled()
 		const workerd = watchWorkerd(child)
 		const started = await workerd.listening
+		if (input.signal?.aborted) return cancelled()
 		if ('exitDetail' in started) {
 			return finish({
 				error: `Local execute could not load the module${started.exitDetail}`,
@@ -295,6 +302,7 @@ export async function runLocalExecute(
 				body: JSON.stringify({ params: input.params ?? {} }),
 			})
 		} catch (error) {
+			if (input.signal?.aborted) return cancelled()
 			const exitDetail = await Promise.race([
 				workerd.exited,
 				delay(workerdExitGraceMs, null),
@@ -313,6 +321,7 @@ export async function runLocalExecute(
 		}
 		return finish(JSON.parse(response.body) as SandboxResponse)
 	} finally {
+		input.signal?.removeEventListener('abort', stopWorkerd)
 		releaseSignals()
 		stopWorkerd()
 		await bridge?.close()
