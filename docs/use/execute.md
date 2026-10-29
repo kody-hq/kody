@@ -468,7 +468,11 @@ host of the access token's https `aud` claim (an Azure token for
 Kody fills the token on egress. Code never sees the token. Any JSON response to
 a request Kody filled a credential into has its nonempty `access_token`,
 `refresh_token`, and `id_token` string fields sealed the same way; other fields
-stay readable.
+stay readable. To keep one, pass it to
+`secretSet({ name, scope: 'user', sealed_token })` in the same run. That works
+from ad hoc execute (hosted, `--local`, or Open API with a run), not from
+package code; a package that holds a refresh token uses a
+[login credential](../guides/credentials.md#login).
 
 See [Secrets and host approval](./secrets-and-values.md) for placeholders, host
 approval, and **`kody.secretList`** / **`secretSet`**.

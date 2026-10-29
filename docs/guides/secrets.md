@@ -93,7 +93,10 @@ boundary, on the final serialized request, and only for hosts you approved.
   that minted it, and its JWT audience host, in a header or the body (never the
   URL). Saving over an existing Key keeps its narrower hosts and placement.
   `secretSet` refuses a sealed token passed as `value`, one from another run, an
-  expired one, and a signed JWT.
+  expired one, and a signed JWT. Saving works from ad hoc execute (hosted,
+  `--local`, or Open API with a run), not from package code: a package that
+  holds a refresh token uses a [login credential](./credentials.md#login)
+  instead.
 
 Placeholders are live tokens. Do not paste one into an issue body, a comment, a
 log line, or a returned string — write `{{secret:<name>}}` with angle brackets

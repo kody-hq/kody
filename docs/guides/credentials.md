@@ -438,6 +438,48 @@ of the credential's hosts), `bodyFormat` (`json` or `form`), a `body` template
 where `{field}` is replaced by a login field, and `tokenPath`, the dot path to
 the token in the JSON response.
 
+A login also keeps a refresh token. The value holds the token as a field, and
+the exchange is the token request:
+
+```ts
+await kody.secretSet({
+	name: 'token-demo',
+	scope: 'user',
+	kind: 'login',
+	hosts: ['auth.example.com', 'api.example.com'],
+	value: JSON.stringify({ refresh_token: '<refresh token>' }),
+	login_exchange: {
+		url: 'https://auth.example.com/oauth/token',
+		bodyFormat: 'form',
+		body: {
+			grant_type: 'refresh_token',
+			client_id: '<client id>',
+			refresh_token: '{refresh_token}',
+		},
+		tokenPath: 'access_token',
+		expiresInPath: 'expires_in',
+	},
+})
+```
+
+Body values without a `{field}` token (`grant_type`, `client_id`) are sent as
+written. Without `expiresInPath`, a session lasts `ttlSeconds` (default 3600, at
+most 24 hours). The session goes in an `Authorization: Bearer` header unless the
+credential's `inject` says otherwise. The package declares the need with
+`"kind": "login"` in `kody.credentials` and calls
+`credential('token-demo').fetch('https://api.example.com/v1/items')`; it never
+sees the refresh token or the access token. The owner creates or rotates the
+credential on the website or with `secretSet` outside a package: package code
+cannot set `kind`, `hosts`, or `login_exchange`.
+
+Limits: the session is cached in memory per isolate, not persisted, so a cold
+isolate runs the exchange again. A rotated refresh token in the response is not
+saved, so this fits providers whose refresh tokens stay valid. The exchange
+sends only `content-type` and `accept` headers. Package code cannot save the
+sealed `access_token` from its own token request as a Key (`sealed_token` saving
+works from execute only); without a login credential, use the sealed token in
+the run that minted it and mint it again next run.
+
 ### Signing
 
 For APIs that want a signed JWT or an HMAC. Code gets the signature, never the

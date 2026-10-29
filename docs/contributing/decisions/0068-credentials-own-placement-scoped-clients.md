@@ -1116,6 +1116,15 @@ sanctioned path:
   runtimes, which cannot create user secrets. A `value` (or `secretSetMany`
   value) that contains `kody-sealed.` is refused with a pointer to
   `sealed_token`.
+- **2026-10-29: package refusals point to `login`.** No decision change: package
+  runtimes are still refused. A package caller that passes a sealed token as
+  `value` (either scope, `secretSet` or `secretSetMany`) or as `sealed_token`
+  (any scope) now gets one message that points to a `login` credential holding
+  the refresh token (Kody runs the token request and caches the session) or to
+  using the sealed token only in its run, instead of the `scope: 'user'` and
+  "save it from execute" advice that sent package authors in a circle. Persisted
+  package-held tokens remain open
+  ([kody-hq/kody#4457](https://github.com/kody-hq/kody/issues/4457)).
 
 ## Amendment 2026-10-28: owner placement approval links
 

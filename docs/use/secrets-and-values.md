@@ -57,7 +57,10 @@ a Key. That Key fills only on the token endpoint's host, the exact hosts
 approved on the credentials that minted it, and its JWT audience host, in a
 header or the body (never the URL). Saving over an existing Key keeps its
 narrower hosts and placement. `secretSet` refuses a sealed token passed as
-**`value`**, one from another run, an expired one, and a signed JWT. See
+**`value`**, one from another run, an expired one, and a signed JWT. Saving
+works from ad hoc execute (hosted, `--local`, or Open API with a run), not from
+package code; a package that holds a refresh token uses a
+[login credential](../guides/credentials.md#login). See
 [Secrets](../guides/secrets.md).
 
 ### Opt-in credential fields
