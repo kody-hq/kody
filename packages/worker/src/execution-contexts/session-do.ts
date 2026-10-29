@@ -191,6 +191,47 @@ async function sha256Hex(text: string) {
 const maxErrorSummaryChars = 500
 const maxFailureReasonChars = 100
 
+type HistorySqlRow = {
+	run_id: string
+	requester_user_id: string
+	requester_handle: string | null
+	run_org_id: string
+	dispatched_at: number
+	started_at: number | null
+	ended_at: number | null
+	outcome: string | null
+	cancel_reason: string | null
+	failure_reason: string | null
+	error_summary: string | null
+	position: number
+	ran_on: string | null
+}
+
+function historyRowFromSql(
+	row: HistorySqlRow,
+	ecid: string | null,
+): RunHistoryRow {
+	const ranOn = row.ran_on === 'here' ? (ecid ?? 'here') : row.ran_on
+	return {
+		runId: row.run_id,
+		requester: {
+			userId: row.requester_user_id,
+			handle: row.requester_handle,
+		},
+		runOrgId: row.run_org_id,
+		dispatchedAt: new Date(row.dispatched_at).toISOString(),
+		startedAt: row.started_at ? new Date(row.started_at).toISOString() : null,
+		endedAt: row.ended_at ? new Date(row.ended_at).toISOString() : null,
+		durationMs:
+			row.started_at && row.ended_at ? row.ended_at - row.started_at : null,
+		outcome: (row.outcome ?? terminalOutcome('')) as RunHistoryOutcome | null,
+		cancelReason: row.cancel_reason,
+		failureReason: row.failure_reason ?? null,
+		errorSummary: row.error_summary ?? null,
+		fallback: { position: row.position, ...(ranOn ? { ranOn } : {}) },
+	}
+}
+
 function boundedSummary(text: string) {
 	const trimmed = text.trim()
 	return trimmed.length > maxErrorSummaryChars
@@ -1642,21 +1683,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			binds.push(input.cursor)
 		}
 		const rows = this.ctx.storage.sql
-			.exec<{
-				run_id: string
-				requester_user_id: string
-				requester_handle: string | null
-				run_org_id: string
-				dispatched_at: number
-				started_at: number | null
-				ended_at: number | null
-				outcome: string | null
-				cancel_reason: string | null
-				failure_reason: string | null
-				error_summary: string | null
-				position: number
-				ran_on: string | null
-			}>(
+			.exec<HistorySqlRow>(
 				`SELECT * FROM history WHERE ${clauses.join(' AND ')}
 				 ORDER BY dispatched_at DESC, attempt DESC LIMIT ?`,
 				...binds,
@@ -1664,31 +1691,9 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			)
 			.toArray()
 		const snapshot = this.#snapshot()
-		const page = rows.slice(0, limit).map((row) => {
-			const ranOn =
-				row.ran_on === 'here' ? (snapshot?.ecid ?? 'here') : row.ran_on
-			return {
-				runId: row.run_id,
-				requester: {
-					userId: row.requester_user_id,
-					handle: row.requester_handle,
-				},
-				runOrgId: row.run_org_id,
-				dispatchedAt: new Date(row.dispatched_at).toISOString(),
-				startedAt: row.started_at
-					? new Date(row.started_at).toISOString()
-					: null,
-				endedAt: row.ended_at ? new Date(row.ended_at).toISOString() : null,
-				durationMs:
-					row.started_at && row.ended_at ? row.ended_at - row.started_at : null,
-				outcome: (row.outcome ??
-					terminalOutcome('')) as RunHistoryOutcome | null,
-				cancelReason: row.cancel_reason,
-				failureReason: row.failure_reason ?? null,
-				errorSummary: row.error_summary ?? null,
-				fallback: { position: row.position, ...(ranOn ? { ranOn } : {}) },
-			}
-		})
+		const page = rows
+			.slice(0, limit)
+			.map((row) => historyRowFromSql(row, snapshot?.ecid ?? null))
 		const last = rows[limit - 1]
 		return {
 			rows: page,
@@ -1709,9 +1714,10 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		name: string | null
 		row: RunHistoryRow
 	} | null> {
+		this.#pruneHistory(Date.now())
 		const found = this.ctx.storage.sql
-			.exec<{ dispatched_at: number }>(
-				`SELECT dispatched_at FROM history
+			.exec<HistorySqlRow>(
+				`SELECT * FROM history
 				 WHERE run_id = ? AND requester_user_id = ? AND run_org_id = ?
 				   AND started_at IS NOT NULL
 				 ORDER BY attempt DESC LIMIT 1`,
@@ -1721,21 +1727,11 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			)
 			.toArray()[0]
 		if (!found) return null
-		const page = await this.listHistory({
-			viewerUserId: input.requesterUserId,
-			orgId: input.orgId,
-			cursor: found.dispatched_at + 1,
-			limit: 100,
-		})
-		const row = page.rows.find(
-			(candidate) => candidate.runId === input.runId && candidate.startedAt,
-		)
-		if (!row) return null
 		const snapshot = this.#snapshot()
 		return {
 			ecid: snapshot?.ecid ?? null,
 			name: snapshot?.name ?? null,
-			row,
+			row: historyRowFromSql(found, snapshot?.ecid ?? null),
 		}
 	}
 
