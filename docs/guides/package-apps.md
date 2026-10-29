@@ -281,7 +281,10 @@ run as anyone.
   effective requirement from its own declarations plus its whole import closure,
   and to enforce it. Until then the running app's manifest is the one checked,
   so today the fix is to list the capabilities its dependencies call in the
-  app's own `kody.app.capabilities`.
+  app's own `kody.app.capabilities`. Imported packages declare their own calls
+  in `kody.capabilities`; publish and `kody dev check` warn when a package's
+  modules call a capability it does not declare
+  ([ADR 0089](../contributing/decisions/0089-packages-declare-capabilities.md)).
 
 ```json
 {

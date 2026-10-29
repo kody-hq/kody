@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { repoCheckKinds } from '#worker/repo/checks.ts'
 import { credentialNeedChangeSchema } from '#mcp/capabilities/packages/shared.ts'
 import {
 	packageIdLookupDescription,
@@ -548,17 +549,7 @@ export const repoDiscardSessionOutputSchema = z.object({
 })
 
 export const repoCheckResultSchema = z.object({
-	kind: z.enum([
-		'manifest',
-		'docs',
-		'skills',
-		'dependencies',
-		'bundle',
-		'typecheck',
-		'lint',
-		'credentials',
-		'smoke',
-	]),
+	kind: z.enum(repoCheckKinds),
 	ok: z.boolean(),
 	message: z.string(),
 })

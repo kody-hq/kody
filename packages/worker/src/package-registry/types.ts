@@ -844,6 +844,15 @@ export const authoredPackageKodySchema = z.object({
 	category: z.enum(communityPackageCategories).optional(),
 	searchText: z.string().min(1).optional(),
 	dependencies: kodyPackageDependenciesSchema.optional(),
+	/**
+	 * Kody capabilities this package's own modules call (ADR 0089). A package
+	 * app's own list is `kody.app.capabilities`; both count as this package's
+	 * declaration.
+	 */
+	capabilities: z
+		.array(z.string().trim().regex(packageAppCapabilityNamePattern))
+		.max(100)
+		.optional(),
 	credentials: packageCredentialsSchema.optional(),
 	secretMounts: z
 		.record(z.string().min(1), packageSecretMountDefinitionSchema)

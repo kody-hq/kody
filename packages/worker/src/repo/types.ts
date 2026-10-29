@@ -4,6 +4,7 @@ import { type CredentialNeedsApprovalRequired } from '#worker/credentials/creden
 import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
 import { type ServerTimingEntry } from '#worker/server-timing.ts'
 import { type PublishPhaseTimings } from './publish-phase-timing.ts'
+import { type RepoCheckKind } from './checks.ts'
 
 export const entityKindValues = ['package', 'repo'] as const
 export type EntityKind = (typeof entityKindValues)[number]
@@ -235,16 +236,7 @@ export type RepoSessionCheckStatus = {
 	checkedAt: string | null
 	ok: boolean | null
 	results: Array<{
-		kind:
-			| 'manifest'
-			| 'docs'
-			| 'skills'
-			| 'dependencies'
-			| 'bundle'
-			| 'typecheck'
-			| 'lint'
-			| 'credentials'
-			| 'smoke'
+		kind: RepoCheckKind
 		ok: boolean
 		message: string
 	}> | null
@@ -253,16 +245,7 @@ export type RepoSessionCheckStatus = {
 export type RepoSessionCheckRun = {
 	ok: boolean
 	results: Array<{
-		kind:
-			| 'manifest'
-			| 'docs'
-			| 'skills'
-			| 'dependencies'
-			| 'bundle'
-			| 'typecheck'
-			| 'lint'
-			| 'credentials'
-			| 'smoke'
+		kind: RepoCheckKind
 		ok: boolean
 		message: string
 	}>

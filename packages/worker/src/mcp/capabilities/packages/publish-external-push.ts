@@ -3,6 +3,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
+import { repoCheckKinds } from '#worker/repo/checks.ts'
 import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
 import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
 import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
@@ -207,17 +208,7 @@ async function delay(ms: number, signal?: AbortSignal) {
 }
 
 const checkSchema = z.object({
-	kind: z.enum([
-		'manifest',
-		'docs',
-		'skills',
-		'dependencies',
-		'bundle',
-		'typecheck',
-		'lint',
-		'credentials',
-		'smoke',
-	]),
+	kind: z.enum(repoCheckKinds),
 	ok: z.boolean(),
 	message: z.string(),
 })

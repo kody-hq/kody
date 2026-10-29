@@ -82,6 +82,7 @@ import { resolveSecretProviderSlots } from '#worker/credentials/secret-provider-
 import { credentialNeedKeyNotes } from '#worker/credentials/credential-needs.ts'
 import { computeCredentialNeedsClosure } from '#worker/credentials/credential-needs-closure.ts'
 import { republishedNeedsNote } from '#worker/enablements/republish-needs-note.ts'
+import { buildCapabilityDeclarationCheck } from './capability-declaration-check.ts'
 
 export const repoCheckKinds = [
 	'manifest',
@@ -92,6 +93,7 @@ export const repoCheckKinds = [
 	'typecheck',
 	'lint',
 	'credentials',
+	'capabilities',
 	'smoke',
 ] as const
 
@@ -1649,6 +1651,11 @@ export async function runRepoChecks(input: {
 			return toRepoCheckRunResult({ results, manifest, sourceFiles })
 		}
 	}
+	const capabilityDeclarationCheck = buildCapabilityDeclarationCheck({
+		manifest,
+		sourceFiles,
+	})
+	if (capabilityDeclarationCheck) results.push(capabilityDeclarationCheck)
 	// Cheap static gates for the package-app browser surface run before the
 	// heavy phases so a misconfigured manifest fails fast with one message.
 	const packageAppSurfaceChecks = [
