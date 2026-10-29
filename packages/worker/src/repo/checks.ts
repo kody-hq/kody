@@ -1460,11 +1460,14 @@ async function buildCredentialNeedsCheck(input: {
 export const isolatedCredentialScanMinSourceBytes = 256 * 1024
 
 const credentialScanSourcePattern = /\.(?:[cm]?[jt]sx?)$/i
+const credentialScanTextEncoder = new TextEncoder()
 
 function credentialScanSourceBytes(sourceFiles: Record<string, string>) {
 	let bytes = 0
 	for (const [path, content] of Object.entries(sourceFiles)) {
-		if (credentialScanSourcePattern.test(path)) bytes += content.length
+		if (credentialScanSourcePattern.test(path)) {
+			bytes += credentialScanTextEncoder.encode(content).byteLength
+		}
 	}
 	return bytes
 }
