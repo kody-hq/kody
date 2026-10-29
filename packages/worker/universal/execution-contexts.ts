@@ -155,6 +155,10 @@ export type ExecutionContextRun = {
 	/** Null while the run is still in progress. */
 	outcome: ExecutionContextRunOutcome | null
 	cancelReason?: string | null
+	/** Why a run that started on the context failed, was lost, or was cancelled. */
+	failureReason?: string | null
+	/** Short error text for that failure. */
+	errorSummary?: string | null
 	fallback?: { position: number; ranOn?: string } | null
 }
 

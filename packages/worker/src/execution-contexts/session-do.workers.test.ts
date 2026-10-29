@@ -523,3 +523,107 @@ test('revoking a context fails its queued runs at once', async () => {
 	await stub.revoke({ reason: 'test' })
 	expect(await stub.listQueued()).toEqual([])
 })
+
+test('history keeps a failure reason and error summary for failed, cancelled and lost runs', async () => {
+	const ecid = 'ec_failures'
+	const { stub, next, send, ws } = await connect(ecid)
+	const commit = async (runId: string) => {
+		const dispatching = stub.dispatch({
+			request: runRequest(runId),
+			lease: lease(ecid, runId),
+			runRecord: null,
+			position: 1,
+		})
+		const request = await next('run.request')
+		await send('run.accept', { runId }, { re: request.seq })
+		expect((await dispatching).outcome).toBe('committed')
+		await next('run.commit')
+	}
+
+	await commit('run_failed')
+	await send('run.result', {
+		runId: 'run_failed',
+		isError: true,
+		content: [{ type: 'text', text: 'Error: missing credential' }],
+		structuredContent: {
+			error: `Credential "example" is not available here. ${'x'.repeat(600)}`,
+			errorCode: 'credential_unavailable',
+		},
+	})
+	await next('run.result.ack')
+	await commit('run_cancelled')
+	await stub.cancel({ runId: 'run_cancelled', reason: 'caller_cancelled' })
+	await commit('run_lost')
+	await runInDurableObject(stub, async (instance, state) => {
+		state.storage.sql.exec(
+			`UPDATE runs SET deadline = ? WHERE run_id = 'run_lost'`,
+			Date.now() - 60_000,
+		)
+		await instance.alarm()
+	})
+
+	const rows = new Map(
+		(await stub.listHistory({})).rows.map((row) => [row.runId, row]),
+	)
+	const failed = rows.get('run_failed')
+	expect(failed).toMatchObject({
+		outcome: 'failed',
+		failureReason: 'credential_unavailable',
+	})
+	expect(failed?.errorSummary).toMatch(/^Credential "example" is not available/)
+	expect(failed?.errorSummary?.length).toBeLessThanOrEqual(500)
+	expect(rows.get('run_cancelled')).toMatchObject({
+		outcome: 'cancelled',
+		cancelReason: 'caller_cancelled',
+		failureReason: 'caller_cancelled',
+		errorSummary: 'The run was cancelled (caller_cancelled).',
+	})
+	expect(rows.get('run_lost')).toMatchObject({
+		outcome: 'lost',
+		failureReason: 'execution_context_lost',
+		errorSummary: expect.stringContaining('execution_context_lost'),
+	})
+
+	expect(
+		await stub.getStartedRun({
+			runId: 'run_failed',
+			requesterUserId: 'user_requester',
+			orgId: 'org_test',
+		}),
+	).toMatchObject({
+		ecid,
+		name: 'build-box',
+		row: { runId: 'run_failed', failureReason: 'credential_unavailable' },
+	})
+	expect(
+		await stub.getStartedRun({
+			runId: 'run_failed',
+			requesterUserId: 'user_someone_else',
+			orgId: 'org_test',
+		}),
+	).toBeNull()
+	ws.close()
+}, 60_000)
+
+test('a run that never started here is not returned as a started run', async () => {
+	const stub = env.EXECUTION_CONTEXT_SESSION.get(
+		env.EXECUTION_CONTEXT_SESSION.idFromName('ec_never_started'),
+	)
+	await stub.issueConnectTicket({
+		snapshot: snapshot('ec_never_started'),
+		nonce: crypto.randomUUID(),
+	})
+	await stub.dispatch({
+		request: runRequest('run_skipped'),
+		lease: lease('ec_never_started', 'run_skipped'),
+		runRecord: null,
+		position: 1,
+	})
+	expect(
+		await stub.getStartedRun({
+			runId: 'run_skipped',
+			requesterUserId: 'user_requester',
+			orgId: 'org_test',
+		}),
+	).toBeNull()
+})

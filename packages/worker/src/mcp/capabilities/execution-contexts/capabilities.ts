@@ -338,7 +338,7 @@ export const executionContextRunListCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'execution_context:read',
 		description:
-			'Run history of an execution context (who, when, duration, outcome, fallback), never results. Managers see every requester in this org; others see their own runs. Kept 30 days.',
+			'Run history of an execution context (who, when, duration, outcome, fallback), never results. Runs that started there and failed, were lost, or were cancelled keep failureReason (a code) and errorSummary (short error text). Managers see every requester in this org; others see their own runs. Kept 30 days.',
 		keywords: ['execution context', 'runs', 'history'],
 		readOnly: true,
 		idempotent: true,

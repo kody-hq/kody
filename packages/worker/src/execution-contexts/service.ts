@@ -36,6 +36,8 @@ import {
 	type UnusableReason,
 } from './store.ts'
 import { optInTrustNotice, sharingTrustNotice } from './trust-copy.ts'
+import { type RunHistoryRow } from './session-do.ts'
+import { type RunRecord } from '#worker/run-records/types.ts'
 
 /** Shared logic behind the execution-context MCP capabilities and routes. */
 
@@ -1006,6 +1008,103 @@ export async function listRuns(
 		scope: manager ? ('all' as const) : ('own' as const),
 		runs: page.rows,
 		nextCursor: page.nextCursor,
+	}
+}
+
+const historyErrorNames: Partial<Record<string, string>> = {
+	failed: 'ExecutionContextRunFailed',
+	lost: 'ExecutionContextLost',
+	cancelled: 'ExecutionContextRunCancelled',
+}
+
+/**
+ * A run record built from an execution context's own history row, for
+ * `runGet` after the general run record was pruned (it is capped per
+ * account; context history keeps 30 days). Metadata only: no logs or result.
+ */
+export function contextRunRecordFromHistory(input: {
+	ecid: string | null
+	name: string | null
+	row: RunHistoryRow
+}): RunRecord {
+	const { row } = input
+	const status =
+		row.outcome === 'succeeded'
+			? 'success'
+			: row.outcome === null
+				? 'running'
+				: 'error'
+	return {
+		id: row.runId,
+		surface: 'execute',
+		status,
+		name: null,
+		packageId: null,
+		kodyId: null,
+		sourceId: null,
+		publishedCommit: null,
+		storageId: null,
+		jobId: null,
+		workflowId: null,
+		invocationId: null,
+		sessionId: null,
+		idempotencyKey: null,
+		parentRunId: null,
+		startedAt: row.startedAt ?? row.dispatchedAt,
+		finishedAt: row.endedAt,
+		durationMs: row.durationMs,
+		errorName:
+			status === 'error'
+				? (historyErrorNames[row.outcome ?? ''] ?? 'ExecutionContextRunFailed')
+				: null,
+		errorMessage: status === 'error' ? row.errorSummary : null,
+		errorTriage: null,
+		triageNote: null,
+		triagedAt: null,
+		triagedBy: null,
+		startedBy: null,
+		metadata: {
+			executionContext: {
+				id: input.ecid,
+				name: input.name,
+				outcome: row.outcome,
+				failureReason: row.failureReason,
+				cancelReason: row.cancelReason,
+				position: row.fallback.position,
+			},
+			recordSource: 'execution_context_history',
+		},
+		logCount: 0,
+	}
+}
+
+/**
+ * Finds a person's run that started on one of the org's execution contexts.
+ * Never throws: runGet only reaches this after a miss.
+ */
+export async function findStartedContextRun(
+	env: Env,
+	input: { orgId: string; userId: string; runId: string },
+): Promise<RunRecord | null> {
+	try {
+		const rows = await listOrgExecutionContexts(env.APP_DB, input.orgId)
+		if (rows.length === 0) return null
+		const found = await Promise.all(
+			rows.map((row) =>
+				sessionStub(env, row.id)
+					.getStartedRun({
+						runId: input.runId,
+						requesterUserId: input.userId,
+						orgId: input.orgId,
+					})
+					.catch(() => null),
+			),
+		)
+		const hit = found.find((entry) => entry !== null)
+		return hit ? contextRunRecordFromHistory(hit) : null
+	} catch (error) {
+		console.warn('execution-context-run-lookup-failed', error)
+		return null
 	}
 }
 

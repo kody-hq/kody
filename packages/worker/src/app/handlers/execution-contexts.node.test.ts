@@ -135,11 +135,15 @@ test('normalizeRun and normalizeAuditEvent read the session DO row shapes', () =
 			durationMs: null,
 			outcome: null,
 			cancelReason: null,
+			failureReason: 'execution_context_lost',
+			errorSummary: 'The execution context disconnected.',
 			fallback: { position: 1, ranOn: 'cloud' },
 		}),
 	).toMatchObject({
 		requester: { userId: 'u_1', handle: 'deleted user' },
 		outcome: null,
+		failureReason: 'execution_context_lost',
+		errorSummary: 'The execution context disconnected.',
 		fallback: { position: 1, ranOn: 'cloud' },
 	})
 	expect(

@@ -329,6 +329,10 @@ export function normalizeRun(value: unknown): ExecutionContextRun | null {
 			: null) as ExecutionContextRun['outcome'],
 		cancelReason:
 			typeof row.cancelReason === 'string' ? row.cancelReason : null,
+		failureReason:
+			typeof row.failureReason === 'string' ? row.failureReason : null,
+		errorSummary:
+			typeof row.errorSummary === 'string' ? row.errorSummary : null,
 		fallback: fallback
 			? {
 					position:
