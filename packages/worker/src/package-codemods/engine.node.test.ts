@@ -97,8 +97,11 @@ vi.mock('./subscription-events.ts', () => ({
 		mocks.dispatchPackageCodemodSubscriptionEvent,
 }))
 
-const { buildPackageCodemodRevertSnapshotKvKey, runPackageCodemodStep } =
-	await import('./engine.ts')
+const {
+	buildPackageCodemodRevertSnapshotKvKey,
+	runPackageCodemodStep,
+	unfinishedAttemptsError,
+} = await import('./engine.ts')
 
 const codemodId = '0001-ambient-storage-to-package-storage'
 const userScope = {
@@ -1426,4 +1429,37 @@ test('fleet codemod revert skips applied items whose owner is mid-deletion', asy
 	expect(
 		(await getPackageCodemodRunItemById(env.APP_DB, 'item-legacy'))?.status,
 	).toBe('applied')
+})
+
+test('a package whose earlier attempts never finished is recorded as failed and paging moves on', async () => {
+	setupMocks()
+	const { env, kv } = createEnv()
+	const pkg = savedPackage('pkg-unfinished', {
+		kodyId: 'unfinished-pkg',
+		sourceId: 'source-unfinished',
+	})
+	mocks.listSavedPackagesByUserId.mockResolvedValue([pkg])
+	const get = kv.namespace.get.bind(kv.namespace)
+	vi.spyOn(kv.namespace, 'get').mockImplementation(((
+		key: string,
+		...rest: Array<unknown>
+	) =>
+		key.startsWith('package-codemod-attempt:') && key.endsWith(`:${pkg.id}`)
+			? Promise.resolve('2')
+			: (get as (...args: Array<unknown>) => unknown)(
+					key,
+					...rest,
+				)) as typeof kv.namespace.get)
+
+	const result = await step(env, {
+		mode: 'dry-run',
+		codemodId: explicitWebhookUrlSecretVerificationCodemodId,
+	})
+	expect(result.items[0]).toMatchObject({
+		status: 'failed',
+		packageId: pkg.id,
+		error: unfinishedAttemptsError,
+	})
+	expect(mocks.loadPackageSourceBySourceId).not.toHaveBeenCalled()
+	expect(kv.store.size).toBe(0)
 })

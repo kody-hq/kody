@@ -1471,6 +1471,21 @@ async function processRevertStep(input: {
 	}
 }
 
+/**
+ * A package whose processing kills the step (out of CPU or memory) never
+ * reaches the per-item catch, so the same cursor would fail forever. Each
+ * attempt is counted before processing and cleared after; past the limit the
+ * package is recorded as failed and paging moves on.
+ */
+const maxUnfinishedAttempts = 2
+const unfinishedAttemptTtlSeconds = 7 * 24 * 60 * 60
+export const unfinishedAttemptsError =
+	'Skipped: earlier attempts on this package did not finish (the step ran out of time or memory).'
+
+function unfinishedAttemptKvKey(runId: string, packageId: string) {
+	return `package-codemod-attempt:${runId}:${packageId}`
+}
+
 export async function runPackageCodemodStep(input: {
 	env: Env
 	baseUrl: string
@@ -1546,6 +1561,30 @@ export async function runPackageCodemodStep(input: {
 		const summary: Partial<Record<PackageCodemodItemStatus, number>> = {}
 		for (const savedPackage of packages) {
 			let result: PersistedItemResult
+			const attemptKey = unfinishedAttemptKvKey(run.id, savedPackage.id)
+			const unfinishedAttempts = Number(
+				(await input.env.BUNDLE_ARTIFACTS_KV.get(attemptKey)) ?? 0,
+			)
+			if (unfinishedAttempts >= maxUnfinishedAttempts) {
+				result = emptyItemResult({
+					itemId: crypto.randomUUID(),
+					userId: savedPackage.userId,
+					packageId: savedPackage.id,
+					kodyId: savedPackage.kodyId,
+					status: 'failed',
+					error: unfinishedAttemptsError,
+				})
+				await persistItem(input.env, result, run.id)
+				await input.env.BUNDLE_ARTIFACTS_KV.delete(attemptKey)
+				items.push(toPublicItem(result))
+				incrementSummary(summary, result.status)
+				continue
+			}
+			await input.env.BUNDLE_ARTIFACTS_KV.put(
+				attemptKey,
+				String(unfinishedAttempts + 1),
+				{ expirationTtl: unfinishedAttemptTtlSeconds },
+			)
 			try {
 				result = await processPackageForMode({
 					env: input.env,
@@ -1568,6 +1607,7 @@ export async function runPackageCodemodStep(input: {
 				})
 			}
 			await persistItem(input.env, result, run.id)
+			await input.env.BUNDLE_ARTIFACTS_KV.delete(attemptKey)
 			items.push(toPublicItem(result))
 			incrementSummary(summary, result.status)
 		}
