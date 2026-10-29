@@ -168,6 +168,7 @@ import {
 	packageAppAuthorityFallbackKindOf,
 	packageAppAuthorityFallbackKindOfResult,
 	schedulePackageAppAuthorityFallback,
+	schedulePackageAppAuthorityRejection,
 	type PackageAppAuthorityDifferenceKind,
 } from './package-app-authority-fallback.ts'
 import {
@@ -1443,6 +1444,13 @@ type PackageAppRuntimeBridgeProps = {
 	 * app's runs-as person.
 	 */
 	declaredCapabilities: Array<string>
+	/** The app's package.json name and version, for not-declared errors. */
+	appPackage?: { name: string; version: string | null }
+	/**
+	 * Imported package names by saved-package UUID (bundle metadata), so a
+	 * not-declared error can name the package that made the call.
+	 */
+	dependencyPackageNames?: Record<string, string>
 	/** `kody.app.visitorNeeds`, by key: each is its own consent scope. */
 	visitorNeeds: Record<string, PackageAppVisitorNeed>
 }
@@ -1532,6 +1540,28 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
+	/** Never throws: an unreadable visit ticket counts as anonymous. */
+	private async noteHardRejection(
+		callName: string,
+		visitTicket: string | null | undefined,
+	) {
+		let visitor: RuntimePackageAppVisitor | null = null
+		try {
+			visitor = await this.visitorFor(visitTicket)
+		} catch {}
+		schedulePackageAppAuthorityRejection({
+			env: this.env,
+			event: {
+				ownerId: this.ctx.props.userId,
+				packageId: this.ctx.props.packageId,
+				callName,
+				kind: 'capability_not_declared',
+				visitorId: visitor?.userId ?? null,
+			},
+			waitUntil: (promise) => this.ctx.waitUntil(promise),
+		})
+	}
+
 	/** A lookup failure runs the call the legacy way, never fails it. */
 	private async loadRunsAs(): Promise<PackageAppRunsAs> {
 		try {
@@ -1560,7 +1590,8 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	 * 2026-10-24). When that fails for an authority reason, the call runs the
 	 * legacy way (as the visitor, or anonymously) and, when that works,
 	 * leaves a would-break row. A call that fails both ways throws the
-	 * runs-as error. Never retries a failure that is not about authority.
+	 * runs-as error; when that error is "not declared", it also leaves a
+	 * hard-rejection row. Never retries a failure that is not about authority.
 	 */
 	private async runWithAuthority<T>(input: {
 		callName: string
@@ -1623,17 +1654,22 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			refusedKind = kind
 			refused = { error }
 		}
-		const giveUp = () => {
-			if ('error' in refused) throw refused.error
+		const giveUp = async () => {
+			if ('error' in refused) {
+				if (refused.error instanceof PackageAppCapabilityNotDeclaredError) {
+					await this.noteHardRejection(input.callName, input.visitTicket)
+				}
+				throw refused.error
+			}
 			return refused.result
 		}
 		let legacyResult: T
 		try {
 			legacyResult = await runLegacy()
 		} catch {
-			return giveUp()
+			return await giveUp()
 		}
-		if (input.refusedResultKind?.(legacyResult)) return giveUp()
+		if (input.refusedResultKind?.(legacyResult)) return await giveUp()
 		await noteFallback(refusedKind)
 		return legacyResult
 	}
@@ -2039,6 +2075,23 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return this.assertPackageStorageGranted(normalized)
 	}
 
+	/**
+	 * Names the app manifest that was checked and, for a call bound to an
+	 * imported package, that package. Read from bridge props only.
+	 */
+	private capabilityNotDeclared(name: string, boundPackageId: string | null) {
+		const { appPackage, dependencyPackageNames, packageId } = this.ctx.props
+		const bound = boundPackageId?.trim() || null
+		const callingPackage =
+			bound && bound !== packageId.trim()
+				? (dependencyPackageNames?.[bound] ?? null)
+				: null
+		return new PackageAppCapabilityNotDeclaredError(name, {
+			app: appPackage ?? null,
+			callingPackage,
+		})
+	}
+
 	private async callCapabilityAs(
 		boundPackageId: string | null,
 		input: { name: string; args?: unknown },
@@ -2069,7 +2122,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			visitTicket,
 			run: async (callerContext, mode) => {
 				if (mode === 'runs-as' && !declared.has(name)) {
-					throw new PackageAppCapabilityNotDeclaredError(name)
+					throw this.capabilityNotDeclared(name, boundPackageId)
 				}
 				return await this.invokeCapability(boundPackageId, callerContext, {
 					name,
@@ -3035,7 +3088,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				}
 				if (args.name !== undefined && args.name !== null) {
 					// The runs-as person's credentials are capped to declared needs.
-					throw new PackageAppCapabilityNotDeclaredError('credential.named')
+					throw this.capabilityNotDeclared('credential.named', boundPackageId)
 				}
 				return await callTool(
 					await this.getCredentialClientTools(
@@ -3709,13 +3762,16 @@ async function buildPackageAppWorkerOptionsUncached(
 			: null,
 	}
 	const mainModule = 'package-app-entry.js'
-	const { modules: hydratedModules, dynamicDependencyPackageIds } =
-		await hydrateKodyRuntimeModules({
-			env: input.env,
-			baseUrl: input.baseUrl,
-			userId: input.userId,
-			modules: bundled.modules,
-		})
+	const {
+		modules: hydratedModules,
+		dynamicDependencyPackageIds,
+		dynamicDependencyPackageNames,
+	} = await hydrateKodyRuntimeModules({
+		env: input.env,
+		baseUrl: input.baseUrl,
+		userId: input.userId,
+		modules: bundled.modules,
+	})
 	const packageStorageGrantIds = [
 		...collectPackageStorageGrantIds({
 			packageContext: {
@@ -3837,10 +3893,36 @@ async function buildPackageAppWorkerOptionsUncached(
 			visitTicket: null,
 			visitAudience,
 			declaredCapabilities: [...(manifest.kody.app?.capabilities ?? [])],
+			appPackage: { name: manifest.name, version: manifest.version ?? null },
+			dependencyPackageNames: collectDependencyPackageNames({
+				dependencies: bundled.dependencies,
+				dynamicDependencyPackageNames,
+			}),
 			visitorNeeds: { ...manifest.kody.app?.visitorNeeds },
 		},
 		gatewayProps,
 	}
+}
+
+function collectDependencyPackageNames(input: {
+	dependencies: Array<{
+		packageId?: string
+		packageName?: string
+		kodyId: string
+	}>
+	dynamicDependencyPackageNames: Record<string, string> | undefined
+}) {
+	const names: Record<string, string> = {
+		...input.dynamicDependencyPackageNames,
+	}
+	for (const dependency of input.dependencies) {
+		if (!dependency.packageId) continue
+		names[dependency.packageId] =
+			dependency.packageName?.trim() ||
+			names[dependency.packageId] ||
+			dependency.kodyId
+	}
+	return names
 }
 
 function visitHostOf(hostedUrl: string, baseUrl: string) {

@@ -268,22 +268,20 @@ agent-facing gotchas (strict keys, dry-run mode fields) in `AGENTS.md`.
 
 ## Package app routing
 
-Hosted-app session handoff, `packageAppFetch` smoke tests, asset URLs, and lean
-forks are the [Package apps](./package-apps.md) playbook (`guide:package_apps`).
-This section is the mount-prefix recipe those pages share.
+The rest of hosted apps is the [Package apps](./package-apps.md) playbook
+(`guide:package_apps`); this is the mount-prefix recipe they share.
 
 Production-hosted package apps live at
-`https://{username}.kody.run/<package-name>/<path>` (the username is in the
-hostname; the path mount is `/<package-name>`). Confirmed non-production
-runtimes may serve inline on the app origin at
-`/@username/packages/<package-name>/<path>` instead.
+`https://{username}.kody.run/<package-name>/<path>` (mount `/<package-name>`).
+Non-production runtimes may serve inline on the app origin at
+`/@{username}/packages/<package-name>/<path>` instead.
 
 Every package app receives only `/<path>` after the host strips the mount.
-Root-relative links such as `/audio/123` therefore escape the mount and are not
-routed back to the package app. Import `packageContext` from `kody:runtime` and
-build every in-app link, redirect, share/email URL, and OAuth callback against
-its public base. A Remix recipe that prefixes its route contract remounts the
-Request in the entry; see [Package apps](./package-apps.md#remix-recipe).
+Root-relative links such as `/audio/123` therefore escape the mount. Import
+`packageContext` from `kody:runtime` and build every in-app link, redirect,
+share/email URL, and OAuth callback against its public base. A Remix recipe that
+prefixes its route contract remounts the Request in the entry; see
+[Package apps](./package-apps.md#remix-recipe).
 
 ```ts
 import { packageContext } from 'kody:runtime'
@@ -310,13 +308,9 @@ const audioUrl = new URL(
 )
 ```
 
-- `packageContext.hostedUrl` is the full public URL of the app mount.
-- `packageContext.appBasePath` is the origin-relative mount path
-  (`/<package-name>` on a subdomain, `/@username/packages/<package-name>` when
-  inline).
-
-Kody derives both fields from the package's current serving username and package
-name leaf, including after a rename or fork. Do not hard-code either path
+`hostedUrl` is the full public mount URL and `appBasePath` its origin-relative
+path (empty on a custom hostname). Kody derives both from the current username
+and package name, including after a rename or fork; never hard-code either
 segment.
 
 ## `kody.description` (short public tagline)
@@ -450,6 +444,12 @@ then call it.
 
 - **Exactly-once** → [workflows](../use/workflows.md), not a keyed invoke.
 - **External HTTP clients** → [inbound webhooks](../use/webhooks.md).
+
+**App capabilities cover imports.** `kody.app.capabilities` caps every Kody call
+while the app runs, imports included. Until publish derives this from the import
+closure, list them: if `@example/app` imports `@example/helper`, which calls
+`kody.secretList` and `kody.secretSet`, `@example/app` lists both
+([details](./package-apps.md#who-the-app-runs-as)).
 
 README, `AGENTS.md`, and export `@example` blocks follow the same rules: import
 and call. Do not demo a `packages` helper. Package codemod

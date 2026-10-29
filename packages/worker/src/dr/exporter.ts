@@ -95,6 +95,23 @@ export const drExportMaxObjectBytes = 25 * 1024 * 1024
 /** Cap for an assembled storage dump before it is admitted to the index. */
 export const drExportMaxStorageDumpBufferBytes = 16 * 1024 * 1024
 const storageExportPageSize = 250
+/**
+ * Byte budget per StorageRunner export page. Unbounded 250-entry pages of
+ * large values stalled 2026-10-25 for days: the RPC page blew past Worker
+ * memory (KODY-AQ) and every tick retried the same page.
+ */
+export const drExportStoragePageMaxBytes = 1024 * 1024
+/** StorageRunner first pages fetched at once; commits stay serial. */
+const storageExportConcurrency = 4
+/**
+ * After a tick aborts (lease left set) on an unchanged storage cursor, the
+ * next ticks run one identity at a time and record the head identity as the
+ * suspect before fetching it. A suspect whose recorded attempts all aborted
+ * this many times is skipped with a `storage dump failed:` warning so one
+ * bucket cannot wedge the whole day. Outages that fail before the fetch
+ * (D1 inventory, S3 reads) never record an attempt.
+ */
+export const drExportStorageSuspectAttempts = 3
 const indexChunkEntryLimit = 100
 const previousSealedDayLookbackDays = 35
 const progressLeaseDurationMs = 2 * 60_000
@@ -180,6 +197,16 @@ export type DrExporterProgress = {
 	storageEntryChunkHead: string | null
 	/** Bounded tail; full chunks live under exporter/chunks/storage-index/. */
 	storagePendingEntries: Array<StorageIndexEntry>
+	/**
+	 * Storage cursor seen at the start of recent ticks and how many ticks in a
+	 * row began there. Unchanged across ticks means no storage progress.
+	 */
+	storageStall?: {
+		key: string
+		ticks: number
+		suspect?: string | null
+		attempts?: number
+	} | null
 	/** Index into backupR2BucketLabels. */
 	r2LabelIndex: number
 	r2ListCursor: string | null
@@ -312,6 +339,7 @@ function createInitialProgress(day: string, now: Date): DrExporterProgress {
 		storageEntryChunkCount: 0,
 		storageEntryChunkHead: null,
 		storagePendingEntries: [],
+		storageStall: null,
 		r2LabelIndex: 0,
 		r2ListCursor: null,
 		r2ChunkCount: 0,
@@ -483,13 +511,24 @@ function r2BindingForLabel(
  * last-write-wins corrupt the day. R2's S3 API honors If-Match / If-None-Match
  * on PutObject (412 PreconditionFailed on conflict).
  */
-async function persistProgress(s3: DrBackupS3Client, session: ProgressSession) {
+/**
+ * `advanced: false` is for lease bookkeeping only. `advancedAt` is what the
+ * watchdog, dashboard, and health check read as "the cursor moved"; bumping it
+ * on lease acquire let a day that failed every tick look healthy for days.
+ */
+async function persistProgress(
+	s3: DrBackupS3Client,
+	session: ProgressSession,
+	options: { advanced?: boolean } = {},
+) {
 	if (session.progress.leaseId) {
 		session.progress.leaseExpiresAt = new Date(
 			Date.now() + progressLeaseDurationMs,
 		).toISOString()
 	}
-	session.progress.advancedAt = new Date().toISOString()
+	if (options.advanced !== false) {
+		session.progress.advancedAt = new Date().toISOString()
+	}
 	session.progress.revision += 1
 	const body = JSON.stringify(session.progress)
 	const key = stagingProgressKey(session.progress.day)
@@ -798,6 +837,34 @@ function runLogDumpEntries(page: {
 }
 
 const oversizedStorageDumpWarningPrefix = 'storage dump too large: '
+const failedStorageDumpWarningPrefix = 'storage dump failed: '
+
+function storageStallKey(progress: DrExporterProgress) {
+	return JSON.stringify([
+		progress.storageIndex,
+		progress.storagePartialIdentity ?? null,
+		progress.storagePageStartAfter,
+		progress.storageDumpChunkCount,
+		progress.storageEntryChunkCount,
+		progress.storagePendingEntries.length,
+		progress.warnings.length,
+	])
+}
+
+function trackStorageStall(
+	progress: DrExporterProgress,
+	input: { previousTickAborted: boolean },
+) {
+	const key = storageStallKey(progress)
+	progress.storageStall =
+		input.previousTickAborted && progress.storageStall?.key === key
+			? {
+					...progress.storageStall,
+					key,
+					ticks: progress.storageStall.ticks + 1,
+				}
+			: { key, ticks: 1, suspect: null, attempts: 0 }
+}
 
 function resetPartialStorageState(progress: DrExporterProgress) {
 	progress.storagePageStartAfter = null
@@ -833,6 +900,9 @@ async function collectHandledStorageIdentities(input: {
 	for (const warning of input.progress.warnings) {
 		if (warning.startsWith(oversizedStorageDumpWarningPrefix)) {
 			handled.add(warning.slice(oversizedStorageDumpWarningPrefix.length))
+		}
+		if (warning.startsWith(failedStorageDumpWarningPrefix)) {
+			handled.add(warning.slice(failedStorageDumpWarningPrefix.length))
 		}
 	}
 	return handled
@@ -918,6 +988,12 @@ async function exportRunLogPhase(input: {
 	})
 }
 
+type StoragePage = {
+	entries: Array<{ key: string; value: unknown }>
+	truncated: boolean
+	nextStartAfter: string | null
+}
+
 async function exportStoragePhase(input: {
 	env: Env
 	s3: DrBackupS3Client
@@ -938,33 +1014,88 @@ async function exportStoragePhase(input: {
 		s3,
 		progress,
 	})
-	let inventoryIndex = 0
-	for (;;) {
-		if (Date.now() - input.startedAtMs >= input.timeBudgetMs) return true
-		let item: StorageInventoryEntry | undefined
-		while (inventoryIndex < inventory.length) {
-			const candidate = inventory[inventoryIndex]!
-			inventoryIndex += 1
-			if (!handledIdentities.has(candidate.identity)) {
-				item = candidate
-				break
-			}
+	const inventoryByIdentity = new Map(
+		inventory.map((item) => [item.identity, item]),
+	)
+	const budgetExhausted = () =>
+		Date.now() - input.startedAtMs >= input.timeBudgetMs
+	const stallTicks = progress.storageStall?.ticks ?? 1
+	const concurrency = stallTicks >= 2 ? 1 : storageExportConcurrency
+	// First pages already fetched for truncated identities; only one partial
+	// dump lives in progress, so the rest wait in memory for this tick.
+	const heldFirstPages: Array<{
+		item: StorageInventoryEntry
+		page: StoragePage
+	}> = []
+
+	const fetchPage = async (
+		item: StorageInventoryEntry,
+		startAfter: string | null,
+	): Promise<StoragePage> =>
+		await storageRunnerRpc({
+			env,
+			userId: item.userId,
+			storageId: item.storageId,
+		}).exportStorage({
+			pageSize: storageExportPageSize,
+			startAfter,
+			maxBytes: drExportStoragePageMaxBytes,
+		})
+
+	const nextIdentity = () => {
+		const partial = progress.storagePartialIdentity
+		if (partial && !handledIdentities.has(partial)) {
+			const item = inventoryByIdentity.get(partial)
+			if (item) return item
 		}
-		if (!item) break
+		return inventory.find((item) => !handledIdentities.has(item.identity))
+	}
+
+	if (stallTicks >= 2) {
+		const stall = progress.storageStall!
+		const suspect = nextIdentity()
+		if (
+			suspect &&
+			stall.suspect === suspect.identity &&
+			(stall.attempts ?? 0) >= drExportStorageSuspectAttempts
+		) {
+			console.error(
+				'dr_export_storage_identity_skipped',
+				JSON.stringify({
+					day: progress.day,
+					identity: suspect.identity,
+					abortedAttempts: stall.attempts,
+				}),
+			)
+			progress.warnings.push(
+				`${failedStorageDumpWarningPrefix}${suspect.identity}`,
+			)
+			progress.storageIndex += 1
+			resetPartialStorageState(progress)
+			handledIdentities.add(suspect.identity)
+			progress.storageStall = null
+			await persistProgress(s3, session)
+		} else if (suspect) {
+			progress.storageStall = {
+				...stall,
+				suspect: suspect.identity,
+				attempts:
+					(stall.suspect === suspect.identity ? (stall.attempts ?? 0) : 0) + 1,
+			}
+			await persistProgress(s3, session, { advanced: false })
+		}
+	}
+
+	async function consumeStoragePage(
+		item: StorageInventoryEntry,
+		page: StoragePage,
+	) {
 		if (progress.storagePartialIdentity !== item.identity) {
 			// The persisted partial page state belongs to a different (drifted)
 			// identity; restart this identity's dump from its first page.
 			resetPartialStorageState(progress)
 			progress.storagePartialIdentity = item.identity
 		}
-		const page = await storageRunnerRpc({
-			env,
-			userId: item.userId,
-			storageId: item.storageId,
-		}).exportStorage({
-			pageSize: storageExportPageSize,
-			startAfter: progress.storagePageStartAfter,
-		})
 		let pageBody = ''
 		for (const entry of page.entries) {
 			const dumpEntry = {
@@ -981,30 +1112,36 @@ async function exportStoragePhase(input: {
 		) {
 			skipOversizedStorageDump(progress, item.identity)
 			handledIdentities.add(item.identity)
-			await persistProgress(s3, session)
-			continue
+			return
 		}
-		if (pageBody.length > 0) {
-			progress.storageDumpChunkHead = await putLinkedChunk({
+		const finalPage = !(page.truncated && page.nextStartAfter)
+		let body: string
+		if (finalPage && progress.storageDumpChunkCount === 0) {
+			// Whole dump in one page: write it directly instead of a chunk
+			// round trip (PUT + GET) that only reassembles the same bytes.
+			body = pageBody
+		} else {
+			if (pageBody.length > 0) {
+				progress.storageDumpChunkHead = await putLinkedChunk({
+					s3,
+					keyPrefix: stagingStorageDumpChunkKey(progress.day, item.identity),
+					entriesBody: pageBody,
+					previousKey: progress.storageDumpChunkHead,
+				})
+				progress.storageDumpChunkCount += 1
+				progress.storagePartialBytes += pageBytes
+			}
+			if (!finalPage) {
+				progress.storagePageStartAfter = page.nextStartAfter
+				return
+			}
+			body = await readLinkedChunkBody({
 				s3,
-				keyPrefix: stagingStorageDumpChunkKey(progress.day, item.identity),
-				entriesBody: pageBody,
-				previousKey: progress.storageDumpChunkHead,
+				headKey: progress.storageDumpChunkHead,
+				chunkCount: progress.storageDumpChunkCount,
 			})
-			progress.storageDumpChunkCount += 1
-			progress.storagePartialBytes += pageBytes
-		}
-		if (page.truncated && page.nextStartAfter) {
-			progress.storagePageStartAfter = page.nextStartAfter
-			await persistProgress(s3, session)
-			continue
 		}
 		const objectKey = stagingStorageDumpKey(progress.day, item.identity)
-		const body = await readLinkedChunkBody({
-			s3,
-			headKey: progress.storageDumpChunkHead,
-			chunkCount: progress.storageDumpChunkCount,
-		})
 		const storedBody = await putImmutableOutput({
 			s3,
 			key: objectKey,
@@ -1026,9 +1163,83 @@ async function exportStoragePhase(input: {
 		progress.storageIndex += 1
 		resetPartialStorageState(progress)
 		input.counts.storageDumpsCompleted += 1
-		await persistProgress(s3, session)
+	}
+
+	for (;;) {
+		if (budgetExhausted()) return true
+		const partial = progress.storagePartialIdentity
+		const partialItem =
+			partial && !handledIdentities.has(partial)
+				? inventoryByIdentity.get(partial)
+				: undefined
+		if (partialItem) {
+			// Finish the in-progress dump before starting another identity.
+			const page = await fetchPage(partialItem, progress.storagePageStartAfter)
+			await consumeStoragePage(partialItem, page)
+			await persistProgress(s3, session)
+			continue
+		}
+		if (partial) resetPartialStorageState(progress)
+
+		const held = heldFirstPages.shift()
+		if (held) {
+			await consumeStoragePage(held.item, held.page)
+			await persistProgress(s3, session)
+			continue
+		}
+
+		const heldIdentities = new Set(
+			heldFirstPages.map((entry) => entry.item.identity),
+		)
+		const batch: Array<StorageInventoryEntry> = []
+		for (const candidate of inventory) {
+			if (batch.length >= concurrency) break
+			if (
+				handledIdentities.has(candidate.identity) ||
+				heldIdentities.has(candidate.identity)
+			) {
+				continue
+			}
+			batch.push(candidate)
+		}
+		if (batch.length === 0) break
+		const settled = await Promise.allSettled(
+			batch.map(async (item) => ({
+				item,
+				page: await fetchPage(item, null),
+			})),
+		)
+		const truncated: Array<{ item: StorageInventoryEntry; page: StoragePage }> =
+			[]
+		let consumed = false
+		let fetchFailure: unknown = null
+		for (const result of settled) {
+			if (result.status === 'rejected') {
+				fetchFailure ??= result.reason
+				continue
+			}
+			if (result.value.page.truncated && result.value.page.nextStartAfter) {
+				truncated.push(result.value)
+				continue
+			}
+			// Always commit one page per wave; past the budget, the rest are
+			// refetched next tick rather than pushing this tick over its slice.
+			if (consumed && budgetExhausted()) continue
+			await consumeStoragePage(result.value.item, result.value.page)
+			consumed = true
+		}
+		const continued =
+			consumed && budgetExhausted() ? undefined : truncated.shift()
+		if (continued) {
+			await consumeStoragePage(continued.item, continued.page)
+			consumed = true
+		}
+		heldFirstPages.push(...truncated)
+		if (consumed) await persistProgress(s3, session)
+		if (fetchFailure) throw fetchFailure
 	}
 	await flushStorageEntryChunk({ s3, progress })
+	progress.storageStall = null
 	progress.phase = 'r2'
 	await persistProgress(s3, session)
 	return false
@@ -1499,8 +1710,16 @@ export async function runDrExportTick(input: {
 		) {
 			return empty('progress-lease-active')
 		}
+		if (progress.phase === 'storage') {
+			// A lease still set here means the previous tick died or threw
+			// before releasing it. Only those count toward a stall; a tick that
+			// spent its budget elsewhere released the lease cleanly.
+			trackStorageStall(progress, {
+				previousTickAborted: Boolean(progress.leaseId),
+			})
+		}
 		progress.leaseId = crypto.randomUUID()
-		await persistProgress(s3, session)
+		await persistProgress(s3, session, { advanced: false })
 
 		const owners =
 			progress.phase === 'mailbox' || progress.phase === 'run-log'
@@ -1572,7 +1791,7 @@ export async function runDrExportTick(input: {
 		}
 		progress.leaseId = null
 		progress.leaseExpiresAt = null
-		await persistProgress(s3, session)
+		await persistProgress(s3, session, { advanced: false })
 
 		const result: DrExportTickResult = {
 			day,

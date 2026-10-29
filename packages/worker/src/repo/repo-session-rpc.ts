@@ -28,6 +28,7 @@ import {
 	type RepoSessionSearchResult,
 	type RepoSessionTreeResult,
 } from './types.ts'
+import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
 
 export type RepoSessionRpc = {
 	restorePublishedSkill: (payload: {
@@ -158,6 +159,8 @@ export type RepoSessionRpc = {
 	runIsolatedAuthoringChecks: (
 		payload: IsolatedAuthoringChecksRequest,
 	) => Promise<IsolatedAuthoringChecksOutcome>
+	/** Step that was running when this instance last hit a resource reset. */
+	takeLastCheckStep: () => Promise<RepoCheckStep | null>
 	getCheckStatus: (payload: {
 		sessionId: string
 		userId: string

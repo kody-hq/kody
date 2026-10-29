@@ -4,9 +4,16 @@ import { isDurableObjectIsolateResourceLimitResetMessage } from '#worker/sentry-
 import {
 	type PackageBundleTarget,
 	type PackageTypecheckTarget,
+	type RepoCheckKind,
 	type RepoCheckResult,
 } from './checks.ts'
-import { isolatedRunnerResourceLimitAdvice } from './isolated-runner-limit-message.ts'
+import { type ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
+import {
+	isRepoCheckStep,
+	repoCheckStepLabel,
+	repoCheckStepResourceLimitAdvice,
+	type RepoCheckStep,
+} from './isolated-runner-limit-message.ts'
 
 /**
  * Heavy repo-check phases (esbuild-wasm bundle validation, TypeScript
@@ -59,6 +66,12 @@ export type IsolatedCheckPhaseRequest =
 			userId: string
 			typecheckTargets: Array<PackageTypecheckTarget>
 	  }
+	| {
+			phase: 'credentials'
+			stagingKey: string
+			userId: string
+			secretProviders?: ResolvedSecretProviderSlots
+	  }
 
 /**
  * Staged snapshots are user-owned content, so the staging key is namespaced
@@ -81,6 +94,10 @@ export function isolatedCheckStagingKeyBelongsToUser(input: {
 export type IsolatedCheckPhaseOutcome = {
 	ok: boolean
 	message: string
+	/** `credentials` phase only: staged files the stamp merge rewrote. */
+	changedFiles?: Record<string, string>
+	/** `credentials` phase only. */
+	stampKeys?: Array<string>
 }
 
 type IsolatedCheckPhaseStub = {
@@ -110,6 +127,7 @@ type IsolatedAuthoringChecksStub = {
 	runIsolatedAuthoringChecks(
 		input: IsolatedAuthoringChecksRequest,
 	): Promise<IsolatedAuthoringChecksOutcome>
+	takeLastCheckStep(): Promise<RepoCheckStep | null>
 }
 
 export type IsolatedCheckPhaseRunner = {
@@ -129,12 +147,36 @@ function isDurableObjectResourceLimitResetError(error: unknown) {
 	)
 }
 
+function phaseStep(request: IsolatedCheckPhaseRequest): RepoCheckStep {
+	switch (request.phase) {
+		case 'bundle-chunk':
+			return 'bundle'
+		case 'typecheck':
+			return 'typecheck'
+		case 'credentials':
+			return 'credentials'
+		default: {
+			const exhaustive: never = request
+			throw new Error(`Unexpected check phase: ${JSON.stringify(exhaustive)}`)
+		}
+	}
+}
+
 function phaseLabel(request: IsolatedCheckPhaseRequest) {
-	return request.phase === 'bundle-chunk'
-		? `Bundle validation for ${request.bundleTargets
+	switch (request.phase) {
+		case 'bundle-chunk':
+			return `Bundle validation for ${request.bundleTargets
 				.map((target) => `"${target.path}"`)
 				.join(', ')}`
-		: 'The TypeScript typecheck'
+		case 'typecheck':
+			return 'The TypeScript typecheck'
+		case 'credentials':
+			return 'The credential stamp scan'
+		default: {
+			const exhaustive: never = request
+			throw new Error(`Unexpected check phase: ${JSON.stringify(exhaustive)}`)
+		}
+	}
 }
 
 /**
@@ -181,7 +223,7 @@ export function createIsolatedCheckPhaseRunner(
 						ok: false,
 						message:
 							`${phaseLabel(request)} exceeded the isolated check runner's ` +
-							`memory or CPU limits even on its own. ${isolatedRunnerResourceLimitAdvice()}`,
+							`memory or CPU limits even on its own. ${repoCheckStepResourceLimitAdvice(phaseStep(request))}`,
 					}
 				}
 				throw error
@@ -201,13 +243,45 @@ export function createIsolatedCheckPhaseRunner(
  * Message for a `packageCheck` run whose throwaway isolate hit a memory or
  * CPU reset. Names the limit so callers never see a generic outage.
  */
-export function authoringChecksResourceLimitMessage() {
+export function authoringChecksResourceLimitMessage(
+	step: RepoCheckStep | null = null,
+) {
+	const where = step ? ` during ${repoCheckStepLabel(step)}` : ''
 	return (
-		'The publish checks ran out of memory or CPU time in the check runner ' +
+		`The publish checks ran out of memory or CPU time in the check runner${where} ` +
 		'before they finished. This is a server limit, not a login or network ' +
-		'problem. Retry once; if it repeats, report it with the package size. ' +
-		isolatedRunnerResourceLimitAdvice()
+		'problem, and publish runs the same checks under the same limits, so ' +
+		'it would fail the same way. ' +
+		repoCheckStepResourceLimitAdvice(step)
 	)
+}
+
+/**
+ * Best effort: an instance on an older deploy may not have the method, and
+ * the step only sharpens the message.
+ */
+export async function readLastCheckStep(stub: {
+	takeLastCheckStep?: () => Promise<unknown>
+}): Promise<RepoCheckStep | null> {
+	try {
+		const recorded = await stub.takeLastCheckStep?.()
+		return isRepoCheckStep(recorded) ? recorded : null
+	} catch {
+		return null
+	}
+}
+
+function repoCheckKindForStep(step: RepoCheckStep | null): RepoCheckKind {
+	switch (step) {
+		case 'credentials':
+			return 'credentials'
+		case 'lint':
+			return 'lint'
+		case 'typecheck':
+			return 'typecheck'
+		default:
+			return 'bundle'
+	}
 }
 
 /**
@@ -267,13 +341,16 @@ export async function runAuthoringChecksInIsolate(input: {
 			})
 		} catch (error) {
 			if (isDurableObjectResourceLimitResetError(error)) {
+				// The step marker lives in the reset instance's storage; the
+				// next call reaches a fresh isolate for the same id.
+				const step = await readLastCheckStep(stub)
 				return {
 					ok: false,
 					results: [
 						{
-							kind: 'bundle',
+							kind: repoCheckKindForStep(step),
 							ok: false,
-							message: authoringChecksResourceLimitMessage(),
+							message: authoringChecksResourceLimitMessage(step),
 						},
 					],
 				}

@@ -7,7 +7,9 @@ import {
 	type SettleHungDueJobsResult,
 } from '@kody-internal/shared/jobs/rpc.ts'
 import { type ScheduledLaneMessage } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
+import * as Sentry from '@sentry/cloudflare'
 import { WorkerEntrypoint } from 'cloudflare:workers'
+import { getWorkerSentryOptions } from '#worker/sentry-options.ts'
 import { runScheduledLaneWithFailureIsolation } from '#worker/scheduled/scheduled-lanes.ts'
 import { runWithDynamicWorkerEvaluationBudget } from '#worker/dynamic-worker-evaluation-budget.ts'
 import {
@@ -26,7 +28,7 @@ import { type JobRepoCheckPolicy } from './types.ts'
  * which live in the main worker). Platform scheduled lanes the jobs worker
  * does not own are forwarded through `runScheduledLane`.
  */
-export class JobsHost
+class JobsHostEntrypoint
 	extends WorkerEntrypoint<Env>
 	implements JobsHostContract
 {
@@ -89,3 +91,17 @@ export class JobsHost
 		)
 	}
 }
+
+/**
+ * RPC methods on a bare `WorkerEntrypoint` run with no Sentry client, so
+ * `Sentry.captureException` inside them (every `scheduled_lane_failed`,
+ * including the DR staging watchdog) was dropped silently. Wrapping the class
+ * gives each RPC call its own client and flush.
+ */
+export const JobsHost = Sentry.withSentry(
+	// No DSN (including test envs) must stay disabled; `undefined` lets the
+	// SDK fall back to `env.SENTRY_DSN` without our filters.
+	(env: Env) => getWorkerSentryOptions(env) ?? { enabled: false },
+	JobsHostEntrypoint,
+)
+export type JobsHost = JobsHostEntrypoint

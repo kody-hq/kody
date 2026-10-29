@@ -50,6 +50,11 @@ import { kodyCallDispatcherName } from '#worker/kody-evaluate-bindings.ts'
 
 const defaultStorageExportPageSize = 250
 const maxStorageExportPageSize = 1_000
+/**
+ * `exportStorage({ maxBytes })` reads keys in batches this small so one page
+ * never materializes hundreds of large values at once (DR exporter OOMs).
+ */
+const storageExportByteBoundedBatchSize = 8
 /** Cap for StorageRunner sqlQuery row materialization (matches export max). */
 export const maxStorageSqlQueryRows = maxStorageExportPageSize
 const maxConcurrentStorageEstimateReads = 16
@@ -293,6 +298,21 @@ function readCloneableStorageValue(value: unknown) {
 		return structuredClone(value)
 	} catch (error) {
 		throw new Error(storageValueNotCloneableMessage, { cause: error })
+	}
+}
+
+const storageExportByteEncoder = new TextEncoder()
+
+function utf8Bytes(value: string) {
+	return storageExportByteEncoder.encode(value).byteLength
+}
+
+function estimateStorageValueJsonBytes(value: unknown) {
+	try {
+		const json = JSON.stringify(value)
+		return json === undefined ? 0 : utf8Bytes(json)
+	} catch {
+		return 0
 	}
 }
 
@@ -781,14 +801,64 @@ class StorageRunnerBase extends DurableObject<Env> {
 		}
 	}
 
+	/**
+	 * With `maxBytes`, the page also stops once the JSON size of its values
+	 * reaches that budget (at least one entry is always returned), so a bucket
+	 * of large values pages through in bounded chunks instead of one RPC
+	 * payload that can exceed Worker memory. `truncated` may then be true with
+	 * an empty next page.
+	 */
 	async exportStorage(input: {
 		pageSize?: number
 		startAfter?: string | null
-	}) {
-		return await this.listValues({
-			pageSize: input.pageSize,
-			startAfter: input.startAfter,
-		})
+		maxBytes?: number
+	}): Promise<StorageExportResult> {
+		if (
+			typeof input.maxBytes !== 'number' ||
+			!Number.isFinite(input.maxBytes)
+		) {
+			return await this.listValues({
+				pageSize: input.pageSize,
+				startAfter: input.startAfter,
+			})
+		}
+		const pageSize = normalizePageSize(input.pageSize)
+		const maxBytes = Math.max(1, Math.trunc(input.maxBytes))
+		const entries: Array<StorageEntry> = []
+		let cursor = input.startAfter?.trim() || undefined
+		let bytes = 0
+		for (;;) {
+			const batch = await this.ctx.storage.list({
+				...(cursor ? { startAfter: cursor } : {}),
+				limit: storageExportByteBoundedBatchSize,
+			})
+			let listed = 0
+			for (const [key, value] of batch) {
+				listed += 1
+				cursor = key
+				const readable = readCloneableStorageValue(value)
+				entries.push({ key, value: readable })
+				bytes += utf8Bytes(key) + estimateStorageValueJsonBytes(readable)
+				if (entries.length >= pageSize || bytes >= maxBytes) {
+					return {
+						entries,
+						estimatedBytes: this.ctx.storage.sql.databaseSize,
+						truncated: true,
+						nextStartAfter: key,
+						pageSize,
+					}
+				}
+			}
+			if (listed < storageExportByteBoundedBatchSize) {
+				return {
+					entries,
+					estimatedBytes: this.ctx.storage.sql.databaseSize,
+					truncated: false,
+					nextStartAfter: null,
+					pageSize,
+				}
+			}
+		}
 	}
 
 	/**
@@ -891,6 +961,7 @@ export type StorageRunnerTransferStub = {
 	exportStorage: (payload: {
 		pageSize?: number
 		startAfter?: string | null
+		maxBytes?: number
 	}) => Promise<StorageExportResult>
 	importStorageValues: (payload: {
 		replacePage: 'first' | 'continue'
@@ -967,6 +1038,7 @@ export function storageRunnerRpc(input: {
 			exportStorage: (payload: {
 				pageSize?: number
 				startAfter?: string | null
+				maxBytes?: number
 			}) => Promise<StorageExportResult>
 			importStorage: (payload: {
 				mode: 'replace'
@@ -1108,6 +1180,7 @@ export function storageRunnerRpc(input: {
 		exportStorage: (payload: {
 			pageSize?: number
 			startAfter?: string | null
+			maxBytes?: number
 		}) => runner.exportStorage(payload),
 		importStorage: async (payload: {
 			mode: 'replace'

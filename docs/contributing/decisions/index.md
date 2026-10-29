@@ -247,6 +247,10 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0088: Team orgs have a public page at `/@slug`](./0088-public-team-org-pages.md)
   Public by default with a create-time choice; owners toggle it; lists only
   public packages, never members; private orgs 404 like unknown handles
+- [0089: Every package declares its capabilities; publish checks the import closure](./0089-packages-declare-capabilities.md)
+  `kody.capabilities` on every package; an app's effective set is its closure;
+  publish and `kody dev check` warn (then fail) on unverifiable calls; runtime
+  is a backstop
 
 ## Historical / UI / implementation
 

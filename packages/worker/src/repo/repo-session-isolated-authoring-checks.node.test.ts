@@ -9,6 +9,7 @@ import type git from 'isomorphic-git'
 import type * as CloudflareWorkers from 'cloudflare:workers'
 import type * as Artifacts from './artifacts.ts'
 import type * as Checks from './checks.ts'
+import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
 import type * as EntitySources from './entity-sources.ts'
 import type * as ExternalPublishClone from './external-publish-clone.ts'
 import type * as RepoSessions from './repo-sessions.ts'
@@ -421,4 +422,44 @@ test('isolated authoring checks expose staged binary files by path and size', as
 		size: 52_126,
 	})
 	await expect(workspace.stat('package.json')).resolves.toBeNull()
+})
+
+test('isolated authoring checks keep the running step for takeLastCheckStep and clear it when done', async () => {
+	restoreRepoSessionMockBaseline()
+	const staged = { sourceFiles: { 'package.json': '{"name":"@kody/demo"}' } }
+	const repo = repoSession(kvEnv({ get: vi.fn(async () => staged) }))
+	const request = {
+		stagingKey: 'repo-checks-staging:v1:user-1:abc',
+		userId: ownerIdFromStored('user-1'),
+		baseUrl: 'https://kody.test',
+	}
+	let finish: (() => void) | undefined
+	const stepRecorded = new Promise<void>((resolveStep) => {
+		mockModule.runRepoChecks.mockImplementationOnce(
+			async (input: { onStep?: (step: RepoCheckStep) => Promise<void> }) => {
+				await input.onStep?.('credentials')
+				resolveStep()
+				await new Promise<void>((resolve) => {
+					finish = resolve
+				})
+				return { ok: false, results: [], manifest: null, sourceFiles: {} }
+			},
+		)
+	})
+	const run = repo.runIsolatedAuthoringChecks(request)
+	await stepRecorded
+	// What a caller reads after a memory or CPU reset mid-step.
+	await expect(repo.takeLastCheckStep()).resolves.toBe('credentials')
+	await expect(repo.takeLastCheckStep()).resolves.toBeNull()
+
+	mockModule.runRepoChecks.mockImplementationOnce(
+		async (input: { onStep?: (step: RepoCheckStep) => Promise<void> }) => {
+			await input.onStep?.('typecheck')
+			return { ok: false, results: [], manifest: null, sourceFiles: {} }
+		},
+	)
+	finish?.()
+	await run
+	await repo.runIsolatedAuthoringChecks(request)
+	await expect(repo.takeLastCheckStep()).resolves.toBeNull()
 })

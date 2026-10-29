@@ -276,6 +276,12 @@ run as anyone.
 - Authority is capped twice: only the capabilities the app lists in
   `kody.app.capabilities` run as that person, and only within what that person
   may do in the org right now.
+- The cap covers every Kody capability call made while the app runs, including
+  calls made by packages the app imports. Publish is moving to compute an app's
+  effective requirement from its own declarations plus its whole import closure,
+  and to enforce it. Until then the running app's manifest is the one checked,
+  so today the fix is to list the capabilities its dependencies call in the
+  app's own `kody.app.capabilities`.
 
 ```json
 {
@@ -293,6 +299,31 @@ run as anyone.
 	}
 }
 ```
+
+For example, `@example/app` imports `kody:@example/helper/save-token`, and that
+helper export calls `kody.secretList(...)` and `kody.secretSet(...)`. Those
+calls run while `@example/app` runs, so today `@example/app` lists both, even
+though its own code never calls them:
+
+```json
+{
+	"name": "@example/app",
+	"kody": {
+		"dependencies": { "@example/helper": "*" },
+		"app": {
+			"entry": "src/index.ts",
+			"capabilities": ["secretList", "secretSet"]
+		}
+	}
+}
+```
+
+Without them the call cannot run as the runs-as person. For now it may still run
+under the visitor's authority (see the temporary fallback below); when that also
+fails, the app gets `PackageAppCapabilityNotDeclaredError`, which names the app
+(package name and version), the imported package that made the call, and the
+capability to add. Add it to the importing app's `kody.app.capabilities` and
+republish the app.
 
 `kody.app.visitorNeeds` is how an app works on a signed-in visitor's own data.
 Each key is its own Sign in with Kody consent scope, `need:<key>`, and the
@@ -355,10 +386,14 @@ reported as `credential_unbound`. Keep publisher-supplied needs on
 `credential(key)`.
 
 If a bridge call cannot run as the runs-as person (a capability missing from
-`kody.app.capabilities`, for example), the platform may still execute it as the
-visitor and log a `package_app_authority_fallback` event with the app, the call
-name, and the kind of difference. Add what the logs name to the manifest. Admins
-count these per app with `adminPackageAppAuthorityFallbackReport`, and the
+`kody.app.capabilities`, for example), the platform may for now still execute it
+as the visitor and log a `package_app_authority_fallback` event with the app,
+the call name, and the kind of difference. This fallback is temporary and will
+be removed, so add what the logs name to the manifest rather than relying on it.
+A call that fails both ways throws the "not listed in `kody.app.capabilities`"
+error and logs a `package_app_authority_rejection` event instead. Admins count
+both per app with `adminPackageAppAuthorityFallbackReport` (`hardRejections`
+holds the second), and the
 [0017 scan](../contributing/package-codemods.md#0017-detect-package-app-visitor-authority)
 lists published apps that will hit them.
 

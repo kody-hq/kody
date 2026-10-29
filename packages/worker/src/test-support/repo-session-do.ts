@@ -430,9 +430,11 @@ export function createDurableObjectState() {
 			put: vi.fn(async (key: string, value: unknown) => {
 				storageState.set(key, value)
 			}),
+			delete: vi.fn(async (key: string) => storageState.delete(key)),
 			deleteAll: vi.fn(async () => {
 				storageState.clear()
 			}),
+			sync: vi.fn(async () => undefined),
 		},
 		waitUntil: vi.fn(),
 	} as unknown as DurableObjectState

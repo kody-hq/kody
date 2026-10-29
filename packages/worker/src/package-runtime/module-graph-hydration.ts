@@ -148,6 +148,8 @@ export type HydratedKodyRuntimeModules = {
 	 * grants with these ids alongside static bundle dependency metadata.
 	 */
 	dynamicDependencyPackageIds: Array<string>
+	/** Package name (from the import specifier) by saved-package UUID. */
+	dynamicDependencyPackageNames?: Record<string, string>
 }
 
 export async function hydrateKodyRuntimeModules(input: {
@@ -228,9 +230,17 @@ export async function hydrateKodyRuntimeModules(input: {
 					}),
 				),
 			].sort((left, right) => left.localeCompare(right))
+			const dynamicDependencyPackageNames: Record<string, string> = {}
+			for (const [specifier, resolved] of resolvedArtifacts) {
+				const packageId = resolved.artifact.packageContext?.packageId
+				if (!packageId) continue
+				dynamicDependencyPackageNames[packageId] ??=
+					parseKodyPackageSpecifier(specifier).packageName
+			}
 			return {
 				modules: refreshKodyRuntimeModules(modules),
 				dynamicDependencyPackageIds,
+				dynamicDependencyPackageNames,
 			}
 		}
 	}

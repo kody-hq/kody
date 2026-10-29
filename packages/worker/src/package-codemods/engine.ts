@@ -40,6 +40,7 @@ import {
 	packageCodemodAppliedTopic,
 	packageCodemodRevertedTopic,
 } from './subscription-events.ts'
+import { computePackageAppCapabilityHostFacts } from './package-app-capability-closure.ts'
 import {
 	type PackageCodemod,
 	type PackageCodemodApplyMode,
@@ -100,6 +101,8 @@ export type PackageCodemodRunStepResult = {
 
 type PersistedItemResult = PackageCodemodRunItemResult & {
 	revertSnapshotKey?: string | null
+	/** Owner-private detail; persisted, never returned in step results. */
+	ownerDetail?: Record<string, unknown> | null
 }
 
 const scanDefaultStepLimit = 20
@@ -220,6 +223,7 @@ function emptyItemResult(input: {
 	afterCommit?: string | null
 	checkSummary?: PackageCodemodRunItemResult['checkSummary']
 	revertSnapshotKey?: string | null
+	ownerDetail?: Record<string, unknown> | null
 }): PersistedItemResult {
 	return {
 		itemId: input.itemId,
@@ -234,6 +238,7 @@ function emptyItemResult(input: {
 		checkSummary: input.checkSummary ?? null,
 		error: input.error ?? null,
 		revertSnapshotKey: input.revertSnapshotKey ?? null,
+		ownerDetail: input.ownerDetail ?? null,
 	}
 }
 
@@ -567,6 +572,8 @@ async function persistItem(
 			result.checkSummary == null ? null : JSON.stringify(result.checkSummary),
 		error: result.error,
 		revertSnapshotKey: result.revertSnapshotKey ?? null,
+		ownerDetailJson:
+			result.ownerDetail == null ? null : JSON.stringify(result.ownerDetail),
 	})
 }
 
@@ -599,6 +606,9 @@ async function runChecksOnFiles(input: {
  */
 async function buildCodemodContext(input: {
 	env: Env
+	baseUrl: string
+	codemod: PackageCodemod
+	files: Record<string, string>
 	savedPackage: SavedPackageRecord
 	manifestPath: string
 	sourceRoot: string
@@ -613,6 +623,16 @@ async function buildCodemodContext(input: {
 		packageName: `@${ownerScope}/${leaf}`,
 		manifestPath: input.manifestPath,
 		sourceRoot: input.sourceRoot,
+		...(input.codemod.hostFacts?.includes('package-app-capabilities')
+			? {
+					packageAppCapabilities: await computePackageAppCapabilityHostFacts({
+						env: input.env,
+						baseUrl: input.baseUrl,
+						savedPackage: input.savedPackage,
+						files: input.files,
+					}),
+				}
+			: {}),
 	}
 }
 
@@ -659,6 +679,7 @@ async function processTransformGates(input: {
 			changedPaths: Array<string>
 			findings: Array<PackageCodemodFinding>
 			checkSummary: { ok: boolean; newFailures: Array<string> }
+			ownerDetail: Record<string, unknown> | null
 	  }
 > {
 	const itemId = crypto.randomUUID()
@@ -675,6 +696,7 @@ async function processTransformGates(input: {
 				status: 'needs_manual',
 				findings: transformed.needsManual,
 				beforeCommit: input.beforeCommit,
+				ownerDetail: transformed.ownerDetail,
 			}),
 		}
 	}
@@ -689,6 +711,7 @@ async function processTransformGates(input: {
 				status: 'clean',
 				findings: transformed.needsManual,
 				beforeCommit: input.beforeCommit,
+				ownerDetail: transformed.ownerDetail,
 			}),
 		}
 	}
@@ -705,6 +728,7 @@ async function processTransformGates(input: {
 				findings: transformed.needsManual,
 				changedPaths: transformed.changedPaths,
 				beforeCommit: input.beforeCommit,
+				ownerDetail: transformed.ownerDetail,
 				error:
 					'Codemod transform is not idempotent: a second transform pass still reported changes.',
 			}),
@@ -742,6 +766,7 @@ async function processTransformGates(input: {
 				findings: transformed.needsManual,
 				changedPaths: transformed.changedPaths,
 				beforeCommit: input.beforeCommit,
+				ownerDetail: transformed.ownerDetail,
 				checkSummary,
 			}),
 		}
@@ -753,6 +778,7 @@ async function processTransformGates(input: {
 		changedPaths: transformed.changedPaths,
 		findings: transformed.needsManual,
 		checkSummary,
+		ownerDetail: transformed.ownerDetail ?? null,
 	}
 }
 
@@ -804,6 +830,9 @@ async function processPackageForMode(input: {
 
 	const context = await buildCodemodContext({
 		env: input.env,
+		baseUrl: input.baseUrl,
+		codemod: input.codemod,
+		files: loaded.files,
 		savedPackage: input.savedPackage,
 		manifestPath: loaded.source.manifest_path,
 		sourceRoot: loaded.source.source_root,
@@ -838,6 +867,7 @@ async function processPackageForMode(input: {
 				status: 'dry_run_ok',
 				changedPaths: gated.changedPaths,
 				findings: gated.findings,
+				ownerDetail: gated.ownerDetail,
 				beforeCommit: publishedCommit,
 				checkSummary: gated.checkSummary,
 			})
@@ -872,6 +902,7 @@ async function processPackageForMode(input: {
 					status: 'skipped_drift',
 					changedPaths: gated.changedPaths,
 					findings: gated.findings,
+					ownerDetail: gated.ownerDetail,
 					beforeCommit: publishedCommit,
 					checkSummary: gated.checkSummary,
 				})
@@ -950,6 +981,7 @@ async function processPackageForMode(input: {
 						status: 'failed',
 						changedPaths: gated.changedPaths,
 						findings: gated.findings,
+						ownerDetail: gated.ownerDetail,
 						beforeCommit: publishedCommit,
 						checkSummary: gated.checkSummary,
 						revertSnapshotKey,
@@ -1000,6 +1032,7 @@ async function processPackageForMode(input: {
 					status: 'applied',
 					changedPaths: gated.changedPaths,
 					findings: gated.findings,
+					ownerDetail: gated.ownerDetail,
 					beforeCommit: publishedCommit,
 					afterCommit,
 					checkSummary: gated.checkSummary,
@@ -1014,6 +1047,7 @@ async function processPackageForMode(input: {
 					status: 'failed',
 					changedPaths: gated.changedPaths,
 					findings: gated.findings,
+					ownerDetail: gated.ownerDetail,
 					beforeCommit: publishedCommit,
 					checkSummary: gated.checkSummary,
 					revertSnapshotKey,

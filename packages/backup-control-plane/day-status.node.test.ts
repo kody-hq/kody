@@ -152,6 +152,32 @@ test('unrestorable SQL and legacy unknown stats are distinct', () => {
 	assert.equal(legacy.d1Restorable.tone, 'warn')
 })
 
+test('a day queued 48h+ behind an older recovering day is overdue, not quiet', () => {
+	const queuedSeed: StagingProgressFacts = {
+		phase: 'mailbox',
+		revision: 0,
+		advancedAtMs: null,
+		ownerIndex: 0,
+	}
+	const at = new Date('2026-10-29T15:00:00.000Z')
+	const day26 = derive({
+		day: '2026-10-26',
+		at,
+		stagingProgress: queuedSeed,
+		activeStagingDay: '2026-10-25',
+	})
+	const day28 = derive({
+		day: '2026-10-28',
+		at,
+		stagingProgress: queuedSeed,
+		activeStagingDay: '2026-10-25',
+	})
+	assert.equal(day26.staging.label, 'Overdue · queued behind 2026-10-25')
+	assert.equal(day26.staging.tone, 'warn')
+	assert.equal(day28.staging.label, 'Queued behind 2026-10-25')
+	assert.equal(day28.staging.tone, 'neutral')
+})
+
 test('the live 2026-10-18 backlog is queued or overdue, not a red no', () => {
 	const active = progress('2026-10-16')
 	const queuedSeed: StagingProgressFacts = {
