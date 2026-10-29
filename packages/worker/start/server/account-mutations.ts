@@ -165,6 +165,7 @@ export const approveSecretAccess = createServerFn({ method: 'POST' })
 					user: context.user,
 					names: data.refresh.approval.names,
 					credentialId: data.refresh.placementCredentialId,
+					target: data.refresh.approval,
 				})
 				if (mismatch) {
 					return requireOperationResult(

@@ -523,6 +523,24 @@ test('a pinned link cannot approve hosts for a different same-named credential',
 	).resolves.toMatch(/different credential/)
 	await expect(check(realId)).resolves.toBeNull()
 	await expect(check(null)).resolves.toBeNull()
+	await expect(
+		pinnedCredentialMismatchFor({
+			env: t.owner.env,
+			user: websiteUser(t.owner),
+			names: ['loginPassword'],
+			credentialId: realId,
+			target: { scope: 'package', storagePackageId: 'pkg_other' },
+		}),
+	).resolves.toMatch(/different credential/)
+	await expect(
+		pinnedCredentialMismatchFor({
+			env: t.owner.env,
+			user: websiteUser(t.owner),
+			names: ['loginPassword'],
+			credentialId: realId,
+			target: { scope: 'user' },
+		}),
+	).resolves.toBeNull()
 })
 
 test('the owner widens a vault credential to the body on the website; a member cannot', async () => {

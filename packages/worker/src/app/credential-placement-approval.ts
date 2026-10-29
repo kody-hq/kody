@@ -98,10 +98,21 @@ export async function pinnedCredentialMismatchFor(input: {
 	user: AuthenticatedAppUser
 	names: ReadonlyArray<string>
 	credentialId: string | null | undefined
+	/** Where the host update writes; pinned ids only name org-scope credentials. */
+	target?: { scope: string; storagePackageId?: string; sessionId?: string }
 }): Promise<string | null> {
 	if (!input.credentialId) return null
 	const names = requestedNames(input.names)
 	if (names.length !== 1) return pinnedCredentialMismatch
+	const target = input.target
+	if (
+		target &&
+		(target.scope !== 'user' ||
+			target.storagePackageId?.trim() ||
+			target.sessionId?.trim())
+	) {
+		return pinnedCredentialMismatch
+	}
 	const orgId = ownerIdFromCaller({
 		request: input.user.request,
 		user: input.user.mcpUser,
