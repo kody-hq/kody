@@ -177,3 +177,46 @@ test('emailReply gates unverified accounts, surfaces failed delivery, and forwar
 		}),
 	)
 })
+
+test('emailReply forwards an explicit from alias and dedupes References', async () => {
+	mocks.getMessage.mockResolvedValue({
+		...inboundMessage,
+		references: ['<root@example.com>', '<inbound@example.com>'],
+	})
+	mocks.sendOutboundEmail.mockResolvedValue({
+		status: 'sent',
+		error: null,
+		providerMessageId: 'provider-3',
+		message: outboundMessage({
+			id: 'outbound-3',
+			processingStatus: 'sent',
+			providerMessageId: 'provider-3',
+			sentAt: '2026-05-13T07:30:16.000Z',
+		}),
+	})
+	await emailReplyCapability.handler(
+		{
+			message_id: 'inbound-1',
+			text: 'Reply body',
+			from: 'examplebot+support@inbox.kody.codes',
+		},
+		createContext(),
+	)
+	expect(mocks.sendOutboundEmail).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			recipientPolicy: 'reply',
+			from: 'examplebot+support@inbox.kody.codes',
+			inReplyToHeader: '<inbound@example.com>',
+			references: ['<root@example.com>', '<inbound@example.com>'],
+		}),
+	)
+
+	// Omitted from defers to the alias the original was sent to.
+	await emailReplyCapability.handler(
+		{ message_id: 'inbound-1', text: 'Reply body' },
+		createContext(),
+	)
+	expect(mocks.sendOutboundEmail).toHaveBeenLastCalledWith(
+		expect.objectContaining({ from: null }),
+	)
+})

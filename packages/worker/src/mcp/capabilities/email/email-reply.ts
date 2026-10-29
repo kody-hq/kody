@@ -23,7 +23,7 @@ export const emailReplyCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'email:send',
 		description:
-			'Reply to a stored inbound email from your platform-assigned {username}@<platform domain> address, preserving thread headers and optionally attaching files (base64 content). The recipient always comes from the stored message. Refuses with quarantined_inbound_reply when that message is still quarantined, before any send or daily send quota is used, because replies to quarantined mail usually reach spoofed senders. Release it first with emailMessageClassify (classification "accepted") or Not spam on the email inbox page, then reply.',
+			'Reply to a stored inbound email, preserving thread headers (In-Reply-To, References) and optionally attaching files (base64 content). The reply is sent from the address the original was sent to when that is your platform address {username}@<platform domain> or a plus alias of it ({username}+{tag}@), so a message to {username}+support@ is answered from {username}+support@ with Reply-To set to the alias and the thread stays on it. Otherwise it is sent from {username}@<platform domain>. Pass `from` to choose another plus alias of your own address; any other From is refused. The recipient always comes from the stored message. Refuses with quarantined_inbound_reply when that message is still quarantined, before any send or daily send quota is used, because replies to quarantined mail usually reach spoofed senders. Release it first with emailMessageClassify (classification "accepted") or Not spam on the email inbox page, then reply.',
 		keywords: [
 			'email',
 			'reply',
@@ -31,6 +31,8 @@ export const emailReplyCapability = defineDomainCapability(
 			'message',
 			'attachment',
 			'quarantine',
+			'alias',
+			'plus',
 		],
 		readOnly: false,
 		idempotent: false,
@@ -38,6 +40,7 @@ export const emailReplyCapability = defineDomainCapability(
 		inputSchema: z
 			.object({
 				message_id: z.string().min(1),
+				from: z.string().min(1).optional(),
 				text: z.string().min(1).optional(),
 				html: z.string().min(1).optional(),
 				attachments: emailOutboundAttachmentsInputSchema,
@@ -73,6 +76,7 @@ export const emailReplyCapability = defineDomainCapability(
 				accountEmail: user.email,
 				recipientPolicy: 'reply',
 				replyToMessageId: original.id,
+				from: args.from ?? null,
 				subject: original.subject?.toLowerCase().startsWith('re:')
 					? original.subject
 					: `Re: ${original.subject ?? '(no subject)'}`,
@@ -80,10 +84,12 @@ export const emailReplyCapability = defineDomainCapability(
 				html: args.html ?? null,
 				attachments: toOutboundEmailAttachments(args.attachments),
 				inReplyToHeader: original.messageIdHeader ?? null,
-				references: [
-					...stringArray(original.references),
-					...(original.messageIdHeader ? [original.messageIdHeader] : []),
-				],
+				references: Array.from(
+					new Set([
+						...stringArray(original.references),
+						...(original.messageIdHeader ? [original.messageIdHeader] : []),
+					]),
+				),
 				threadId: original.threadId,
 				inboxId: original.inboxId,
 			})
