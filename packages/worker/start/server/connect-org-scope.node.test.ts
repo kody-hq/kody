@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
 	auth: vi.fn(),
 	binding: vi.fn(),
 	operation: vi.fn(),
+	resolution: vi.fn(),
 }))
 vi.mock('@tanstack/react-start', async () => ({
 	createServerFn: (
@@ -39,6 +40,10 @@ vi.mock('#app/authenticated-user.ts', () => ({
 vi.mock('#worker/orgs/repo.ts', () => ({
 	loadOrgBindingForSlug: state.binding,
 }))
+vi.mock('#app/org-request-binding.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#app/org-request-binding.ts')>()),
+	loadRequestOrgResolution: state.resolution,
+}))
 vi.mock('#worker/request-context/request-context.ts', () => ({
 	deriveRequestContext: (value: unknown) => value,
 }))
@@ -58,6 +63,7 @@ beforeEach(() => {
 	})
 	state.binding.mockResolvedValue({ org: { slug: 'team' }, role: 'member' })
 	state.operation.mockResolvedValue({ ok: true })
+	state.resolution.mockResolvedValue('personal')
 })
 for (const path of ['/connect/oauth', '/_serverFn/connect']) {
 	test.each(['?org=', '?org=%20', '?org=../other'])(
@@ -85,6 +91,26 @@ for (const path of ['/connect/oauth', '/_serverFn/connect']) {
 				}),
 			).rejects.toMatchObject({ isNotFound: true })
 		}
+		expect(state.operation).not.toHaveBeenCalled()
+	})
+	test(`${path} explicit org denied to a live session is notFound, not a login bounce`, async () => {
+		state.request = new Request(`https://kody.test${path}?org=team`)
+		state.authenticated.mockResolvedValue(null)
+		state.auth.mockResolvedValue({
+			sessionUserId: 'session',
+			user: { mcpUser: { userId: 'owner' } },
+		})
+		state.resolution.mockResolvedValue('denied')
+		const data = connectOauthInput('?org=team&provider=github')
+		await expect(loadConnectOauth({ data })).rejects.toMatchObject({
+			isNotFound: true,
+		})
+		state.auth.mockResolvedValue({ user: null })
+		const signedOut: unknown = await loadConnectOauth({ data }).catch(
+			(error: unknown) => error,
+		)
+		expect(signedOut).not.toMatchObject({ isNotFound: true })
+		expect(JSON.stringify(signedOut)).toContain('/login?redirectTo=')
 		expect(state.operation).not.toHaveBeenCalled()
 	})
 	test(`${path} keeps absent personal scope and valid membership`, async () => {

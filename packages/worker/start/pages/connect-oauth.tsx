@@ -20,6 +20,7 @@ import {
 	uniqueOauthScopes,
 } from '#universal/oauth-scopes.ts'
 import { isConnectOauthCallbackUrl } from '#universal/oauth-connect.ts'
+import { useHydrated } from '../components/use-hydrated.ts'
 
 import { readOrgSlugFromUrl } from '#universal/org-binding/url.ts'
 import { useShellData } from '../routes/__root.tsx'
@@ -291,6 +292,7 @@ export function ConnectOauthRoute({
 		organizations.find((org) => org.slug === flowOrg)?.slug ??
 		organizations.find((org) => org.personal)?.slug ??
 		organizations[0]?.slug
+	const hydrated = useHydrated()
 	const targetOrg = connectOauthTargetOrg({ organizations, flowOrg })
 	const pickOrg = shouldPickConnectOauthOrg({
 		organizations,
@@ -301,8 +303,12 @@ export function ConnectOauthRoute({
 		displayName: session?.username ?? '',
 		avatarUrl: session?.avatarUrl ?? null,
 	}
+	// The provider callback restores the org from sessionStorage, which SSR cannot read.
+	const orgKnown =
+		hydrated ||
+		!isConnectOauthCallbackUrl(new URL(currentHref, 'https://kody.local'))
 	const orgTarget =
-		targetOrg && !pickOrg ? (
+		targetOrg && !pickOrg && orgKnown ? (
 			<ConnectOauthOrgTarget org={targetOrg} viewer={viewer} />
 		) : null
 	const invalidatePages = usePageInvalidation(mutationResources)
