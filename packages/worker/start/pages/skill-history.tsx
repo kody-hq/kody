@@ -79,7 +79,7 @@ function SkillHistoryView({
 		setError('')
 	}
 	const versionLabel = (version: History['versions'][number]) =>
-		`${version.commit.slice(0, 8)}${version.commit === result?.currentCommit ? ' (current)' : ''}${version.createdAt ? ` · ${new Date(version.createdAt).toLocaleString()}` : ''}`
+		`${version.commit.slice(0, 8)}${version.commit === result?.currentCommit ? ' (current)' : ''}${version.createdAt ? ` · ${new Date(version.createdAt).toLocaleString()}` : ''}${version.publishedBy ? ` · @${version.publishedBy}` : ''}`
 	const controlStyle = {
 		padding: '0.4rem 0.55rem',
 		border: `1px solid ${colors.border}`,

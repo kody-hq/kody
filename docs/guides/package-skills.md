@@ -92,7 +92,8 @@ rendered and raw views; other text files show their source, and binary files can
 be downloaded. Open **History** to read archived published versions of a skill
 and its supporting files. **Show changes** compares the selected file with
 another version, including added and removed files. Version choices show the
-package commit and publication time, not mutable drafts.
+package commit and publication time, plus the publisher when recorded, not
+mutable drafts.
 
 People with package write access can choose **Restore this version**, then
 **Restore and publish**. This restores only that skill directory, including

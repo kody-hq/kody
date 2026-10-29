@@ -547,13 +547,19 @@ export async function refreshSavedPackageProjection(input: {
 					await writePackageSkillsIndex({
 						env: input.env,
 						userId: input.userId,
-						index: buildPackageSkillsIndex({
-							packageId: input.packageId,
-							// Scoped package.json name (`@owner/slug`) for skill:// URIs.
-							kodyId: savedPackage.name,
-							publishedCommit,
-							skills: collectedSkills,
-						}),
+						index: {
+							...buildPackageSkillsIndex({
+								packageId: input.packageId,
+								// Scoped package.json name (`@owner/slug`) for skill:// URIs.
+								kodyId: savedPackage.name,
+								publishedCommit,
+								skills: collectedSkills,
+							}),
+							...(input.audit?.actorUsername
+								? { publishedBy: input.audit.actorUsername }
+								: {}),
+							publishedAt: refreshedAt,
+						},
 					})
 				})().catch((error: unknown) => {
 					logPackageSkillsProjectionError({

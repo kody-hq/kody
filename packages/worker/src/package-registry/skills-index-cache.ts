@@ -111,13 +111,23 @@ export async function writePackageSkillsIndex(input: {
 	userId: string
 	index: PackageSkillsIndex
 }) {
+	const previous = await readPackageSkillsIndex({
+		...input,
+		packageId: input.index.packageId,
+		publishedCommit: input.index.publishedCommit,
+	})
+	const index = {
+		...input.index,
+		...(previous?.publishedBy ? { publishedBy: previous.publishedBy } : {}),
+		...(previous?.publishedAt ? { publishedAt: previous.publishedAt } : {}),
+	}
 	await getSkillsKv(input.env).put(
 		buildPackageSkillsIndexKey({
 			userId: input.userId,
 			packageId: input.index.packageId,
 			publishedCommit: input.index.publishedCommit,
 		}),
-		JSON.stringify(input.index),
+		JSON.stringify(index),
 	)
 }
 

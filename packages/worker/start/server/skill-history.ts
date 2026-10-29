@@ -71,21 +71,29 @@ async function historyContext(data: z.infer<typeof input>) {
 	)
 		indexes.push(current.package.index)
 	const versions = []
-	for (const index of indexes) {
-		const skill = index.skills.find(
-			(entry) => entry.name === current.skill.name,
+	for (let offset = 0; offset < indexes.length; offset += 10) {
+		const batch = await Promise.all(
+			indexes.slice(offset, offset + 10).map(async (index) => {
+				const skill = index.skills.find(
+					(entry) => entry.name === current.skill.name,
+				)
+				if (!skill) return null
+				const manifest = index.publishedAt
+					? null
+					: await readPublishedSourceManifestSnapshot({
+							env,
+							sourceId: current.package.sourceId,
+							publishedCommit: index.publishedCommit,
+						})
+				return {
+					commit: index.publishedCommit,
+					createdAt: index.publishedAt ?? manifest?.createdAt ?? null,
+					publishedBy: index.publishedBy ?? null,
+					skill,
+				}
+			}),
 		)
-		if (!skill) continue
-		const manifest = await readPublishedSourceManifestSnapshot({
-			env,
-			sourceId: current.package.sourceId,
-			publishedCommit: index.publishedCommit,
-		})
-		versions.push({
-			commit: index.publishedCommit,
-			createdAt: manifest?.createdAt ?? null,
-			skill,
-		})
+		for (const version of batch) if (version) versions.push(version)
 	}
 	versions.sort(
 		(a, b) =>
@@ -198,9 +206,10 @@ export const loadSkillHistory = createServerFn({ method: 'GET' })
 			request: callerContext.request!,
 		})
 		return {
-			versions: versions.map(({ commit, createdAt }) => ({
+			versions: versions.map(({ commit, createdAt, publishedBy }) => ({
 				commit,
 				createdAt,
+				publishedBy,
 			})),
 			currentCommit: current.package.index.publishedCommit,
 			commit: version.commit,
