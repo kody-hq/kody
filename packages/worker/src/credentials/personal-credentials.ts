@@ -63,7 +63,8 @@ export async function loadPinnedOrgId(
 		.prepare(
 			`SELECT app_owner_id FROM user_integrations
 			WHERE user_id = ? AND id = ? AND app_slug IS NOT NULL
-				AND app_owner_id IS NOT NULL AND app_owner_id <> user_id`,
+				AND app_owner_id IS NOT NULL AND app_owner_id <> user_id
+				AND deleted_at IS NULL`,
 		)
 		.bind(ownerOrgId, credentialId)
 		.first<{ app_owner_id: string }>()
