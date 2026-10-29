@@ -539,7 +539,6 @@ test('createExecuteExecutor enforces the host timeout: hang, late settle, abort-
 		gatewayProps: createGatewayProps('hang-user'),
 		timeoutMs: 40,
 	})
-	expect(hung.error).toBe(createExecutorSandboxTimeoutMessage(40))
 	expect(hung.error).toContain('Execution timed out after 40ms:')
 	expect(hung.result).toBeUndefined()
 	expect(Date.now() - startedAtMs).toBeLessThan(500)

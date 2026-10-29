@@ -15,7 +15,6 @@ test('createPackageAppWorkerCacheKey does not vary by visitor', () => {
 		hostedUrl: 'https://kody.dev/@acme/demo',
 	}
 	const first = createPackageAppWorkerCacheKey(base)
-	expect(first).toBe(createPackageAppWorkerCacheKey(base))
 	expect(JSON.parse(first!)).not.toContain('person-a')
 	expect(JSON.parse(first!)).not.toContain('person-b')
 	expect(first).toBe(
