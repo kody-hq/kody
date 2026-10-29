@@ -13,6 +13,7 @@ import {
 import { type OrgRole } from '@kody-internal/shared/request-context.ts'
 import { afterEach, expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
+import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import {
 	integrationMemberConnectionListCapability,
 	integrationMemberConnectionRevokeCapability,
@@ -36,6 +37,7 @@ import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { integrationUsableInOrgSql } from './connected.ts'
 import { persistUserOauthAppClientSecret } from './credentials.ts'
 import {
+	pinnedConnectionName,
 	resolvePinnedConnectTarget,
 	savePinnedConnection,
 } from './pinned-connect.ts'
@@ -46,6 +48,11 @@ import {
 } from './pinned-connections.ts'
 import { upsertOauthApp } from './repo.ts'
 import { deleteOauthAppWithConnections } from './service.ts'
+
+vi.mock('cloudflare:workers', async (importOriginal) => ({
+	...(await importOriginal<typeof import('cloudflare:workers')>()),
+	waitUntil: () => {},
+}))
 
 const now = '2026-10-29T00:00:00.000Z'
 const people = ['ann', 'bea', 'cy'] as const
@@ -453,4 +460,59 @@ test('deleting the org app cuts members off: wiped and revoked upstream', async 
 		.bind(t.orgs.acme.id)
 		.first<{ n: number }>()
 	expect(remaining!.n).toBe(0)
+})
+
+test('placeholders, credential(), createAuthenticatedFetch and refresh resolve it only for its owner in the pinned org', async () => {
+	const t = await setup()
+	const saved = await t.connect('ann', t.orgs.acme)
+	if (!saved.ok) throw new Error(saved.error)
+	const name = pinnedConnectionName('github', t.orgs.acme.slug)
+	const annHome = { id: t.personalOf('ann'), slug: 'ann' }
+	// Every integration surface goes through this one door.
+	const resolve = (
+		use: 'integration-token' | 'integration-refresh',
+		org: { id: OwnerId },
+		actor: ReturnType<typeof t.as> | null,
+	) =>
+		resolveCredential({
+			env: t.env,
+			orgId: org.id,
+			actor: actor?.callerContext.request ?? null,
+			baseUrl: 'https://heykody.dev',
+			credential: { use, name },
+		})
+
+	await expect(
+		resolve(
+			'integration-token',
+			t.orgs.acme,
+			t.as('ann', t.orgs.acme, 'member'),
+		),
+	).resolves.toBe('fixture-access-token')
+
+	for (const use of ['integration-token', 'integration-refresh'] as const) {
+		// Ann's own runs anywhere but the pinned org.
+		await expect(
+			resolve(use, t.orgs.other, t.as('ann', t.orgs.other, 'member')),
+		).rejects.toThrow(/Not allowed to use this personal credential/)
+		await expect(
+			resolve(use, annHome, t.as('ann', annHome, 'owner')),
+		).rejects.toThrow(/Not allowed to use this personal credential/)
+		// The Owner, another member, and Automation (no person) in the pinned org.
+		for (const actor of [
+			t.as('bea', t.orgs.acme, 'owner'),
+			t.as('cy', t.orgs.acme, 'member'),
+			null,
+		]) {
+			const result = await resolve(use, t.orgs.acme, actor).catch(
+				(error: unknown) => error,
+			)
+			expect(JSON.stringify(result ?? null)).not.toContain(
+				'fixture-access-token',
+			)
+			expect(JSON.stringify(result ?? null)).not.toContain(
+				'fixture-refresh-token',
+			)
+		}
+	}
 })
