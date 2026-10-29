@@ -151,10 +151,9 @@ The fetch gateway enforces placement: a fill into a part the credential does not
 allow is refused with a message naming the credential, the refused part, and the
 allowed parts. Query, URL path, and body also need the owner's opt-in, given by
 saving them on the credential page, which warns that the host may store a value
-sent there. A credential already seen filling a query, path, or body before
-enforcement keeps those parts without a new save: migration 0195 records them as
-opted in, so nobody has to migrate anything by hand. Older credentials with no
-placement set fill headers plus those parts.
+sent there. A credential that already filled query, path, or body keeps those
+parts without a new save. Older credentials with no placement set fill headers
+plus those parts.
 
 Agents cannot widen placement, but they can ask the owner to. A refused query,
 path, or body fill of a user Key carries a ready approval link,
@@ -635,8 +634,10 @@ Treat a minted webhook URL like any other credential. Details:
 
 A Key, OAuth connection, or MCP server in your personal org is a personal
 credential. Grant it to a team org with `credentialOrgGrant`. It then works in
-that org only in your own runs, through `credential(key)`; nobody else there can
-use it, Owners included, and `{{secret:name}}` placeholders never resolve it.
+that org only in your own runs: through `credential(key)`, through
+`{{secret:name}}` and `{{integration-token:name}}` placeholders, and through
+`createAuthenticatedFetch(name)`. An org credential with the same name wins
+first. Nobody else there can use it, Owners and Automation included.
 `credentialOrgRevoke` removes the grant.
 
 ## Limits

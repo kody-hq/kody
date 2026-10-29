@@ -206,6 +206,30 @@ for experiment members with
 `adminFeatureFlagSet({ key: "mcp-events-extension", enabled: true, audience: "experiments_opt_in" })`.
 Remove the flag and gate sites when the experiment ends.
 
+`repo-push-queue` is the repo-scoped kill switch for the per-repo push queue
+([ADR 0075](../decisions/0075-repo-push-queue-worker.md)); it stays in the
+registry after the global rollout so operators can turn the queue off. Its
+`successMetric` is the observe-only `git_push` event, `error_rate`, goal
+decrease: pushes should stop failing with busy (`503` + `Retry-After`), timeout
+(the queue's 90s budget), or other errors. Every receive-pack through the
+plain-repo git proxy records one `git_push` event for the repo owner
+(`entity_sources.user_id`, a person's stable id or an org id) with entity id
+`queued` or `direct`, the outcome and error name, wall time (the Durable
+Object's own wall time for queued pushes), wait before the first Artifacts send,
+queue depth on arrival, and Artifacts attempts. Exposures use
+`exposureRecording: 'repo-push-owners'`: the proxy writes one per push for the
+repo owner with the same evaluation that routed it, so the readout joins
+exposures and pushes on the owner id. An owner whose repos saw both values in
+the window counts as mixed, and owners with an allowlisted repo
+(`adminFeatureFlagRepoOverride`, source `override`) or an owner override land in
+the override cohort. Pushes on a deploy without the `REPO_PUSH_QUEUE` binding
+(local dev) or where flag evaluation failed record `git_push` but no exposure.
+Queue cost numbers (per path: ok/busy/timeout/error counts and rates, average
+and max wall time, total wall seconds, wait, attempts and busy retries, queue
+depth) come from `adminRepoPushQueueCost({ days })`, which returns aggregates
+only (never owners, usernames, or repo ids). Production writes go only to
+Analytics Engine; there is no per-push D1 write.
+
 ## Success metrics
 
 Every flag exists to move something; the `successMetric` field on a registry
@@ -244,11 +268,13 @@ until the TTL expires. Evaluation failures are not cached and fail closed (every
 flag off) without an exposure write, and execute refuses before loading a
 worker, so the failure never spends daily quota. Flags with
 `exposureRecording: 'mcp-events-clients'` write only when an MCP client calls an
-`events/*` method, so other MCP callers stay outside that experiment frame. The
-write path mirrors usage metering — the `FLAG_EXPOSURES` Analytics Engine
-dataset in production/preview, the D1 `feature_flag_exposure_rollups` table
-(migration `0001-squashed-init.sql`, 90-day retention) in local dev and tests —
-and never throws.
+`events/*` method, so other MCP callers stay outside that experiment frame.
+Flags with `exposureRecording: 'repo-push-owners'` (`repo-push-queue`) write
+only from the plain-repo git proxy, once per push, for the repo owner. The write
+path mirrors usage metering — the `FLAG_EXPOSURES` Analytics Engine dataset in
+production/preview, the D1 `feature_flag_exposure_rollups` table (migration
+`0001-squashed-init.sql`, 90-day retention) in local dev and tests — and never
+throws.
 
 The assignment source (`default` / `global` / `rollout` / `override` / `org`) is
 what keeps the readout honest: `override` and `org` users are hand-picked and

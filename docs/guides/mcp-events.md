@@ -175,8 +175,8 @@ accounts.
    lane). Include a non-empty root `README.md` and `AGENTS.md`. `packageSave`
    rejects the package without them.
 3. Connect ChatGPT (or another events-capable host) to your Kody MCP server with
-   OAuth. Its `server/discover` now includes `events: {}`, and `events/list`
-   returns `@you/ping.ready`.
+   OAuth. Its `server/discover` includes `events: {}`, and `events/list` returns
+   `@you/ping.ready`.
 4. Ask the host to monitor `@you/ping.ready` and say what to do when it fires.
 5. Trigger the app route. From `execute`, call `packageAppFetch` with the
    package id:

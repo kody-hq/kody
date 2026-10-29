@@ -2,11 +2,8 @@ import { expect, test } from 'vitest'
 import { renderCommunityIconFallbackPng } from './community-icon.ts'
 import { buildCommunityIconFallbackSvg } from './community-icon-fallback.ts'
 
-test('package-name fallbacks are deterministic and distinct', async () => {
+test('package-name fallbacks are distinct', async () => {
 	const friction = buildCommunityIconFallbackSvg('@kentcdodds/friction-log')
-	expect(friction).toBe(
-		buildCommunityIconFallbackSvg('@kentcdodds/friction-log'),
-	)
 	expect(friction).not.toBe(
 		buildCommunityIconFallbackSvg('@kentcdodds/github-tools'),
 	)

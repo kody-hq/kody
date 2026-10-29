@@ -59,9 +59,9 @@ boundary, on the final serialized request, and only for hosts you approved.
   (`secretSet` / `credentialUpdate`, the credential detail page, or
   `/connect/secret-set`). The gateway refuses a fill outside the placement, and
   query, URL path, and body also need the owner's opt-in on the credential page.
-  Credentials seen filling a query, path, or body before enforcement keep those
-  parts (migration 0195). A path fill is one encoded segment: store only the
-  token for webhook URLs, with the path prefix literal in code (see
+  A credential that already filled query, path, or body keeps those parts. A
+  path fill is one encoded segment: store only the token for webhook URLs, with
+  the path prefix literal in code (see
   [Secrets and host approval](../use/secrets-and-values.md#placeholders-in-fetch)).
   On plain `http://` or an unapproved host the request is refused with an error
   naming the secret and host; a placeholder is never sent unfilled. External

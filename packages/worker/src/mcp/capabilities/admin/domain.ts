@@ -20,6 +20,7 @@ import {
 	adminFeatureFlagRepoOverrideCapability,
 } from './admin-feature-flag-repo-override.ts'
 import { adminFeatureFlagSetCapability } from './admin-feature-flag-set.ts'
+import { adminRepoPushQueueCostCapability } from './admin-repo-push-queue-cost.ts'
 import { adminPackageCodemodApplyCapability } from './admin-package-codemod-apply.ts'
 import { adminPackageCodemodDryRunCapability } from './admin-package-codemod-dry-run.ts'
 import { adminPackageCodemodOwnerNoticeCapability } from './admin-package-codemod-owner-notice.ts'
@@ -231,6 +232,7 @@ export const adminDomain = defineDomain({
 		adminFeatureFlagOrgOverrideCapability,
 		adminFeatureFlagRepoOverrideCapability,
 		adminFeatureFlagRepoCheckCapability,
+		adminRepoPushQueueCostCapability,
 		adminReservedUsernameListCapability,
 		adminReservedUsernameAddCapability,
 		adminReservedUsernameRemoveCapability,

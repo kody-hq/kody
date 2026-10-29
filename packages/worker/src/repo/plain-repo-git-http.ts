@@ -25,6 +25,12 @@ import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { evaluateRepoFeatureFlag } from '#worker/feature-flags/repo-flags.ts'
 import { repoPushQueueFlagKey } from '#universal/feature-flags/registry.ts'
 import {
+	createDirectReceivePackStats,
+	measureReceivePack,
+	recordReceivePackMetrics,
+	type DirectReceivePackStats,
+} from '#worker/repo/receive-pack-metrics.ts'
+import {
 	repoPushQueueOutcomeHeader,
 	repoPushQueuePathDirect,
 	repoPushQueuePathHeader,
@@ -400,6 +406,7 @@ async function proxyArtifactsReceivePack(input: {
 	sourceId: string
 	request: Request
 	token: string
+	stats: DirectReceivePackStats
 }): Promise<Response> {
 	const upstreamUrl = buildArtifactsSmartHttpUrl(input.target.remote, {
 		kind: 'receive-pack',
@@ -416,6 +423,7 @@ async function proxyArtifactsReceivePack(input: {
 			input.sourceId,
 			artifactsReceivePackWaitBudgetMs,
 			async () => {
+				input.stats.gateAcquiredAt = Date.now()
 				// Buffer only while holding the gate so queued pushes do not each
 				// retain a full pack in isolate memory while they wait their turn.
 				let packBody: Uint8Array
@@ -449,13 +457,16 @@ async function proxyArtifactsReceivePack(input: {
 				const waited = await waitOutReceivePackBusy({
 					deadlineMs,
 					backoffMs: artifactsReceivePackBusyBackoffMs,
-					send: async (_attempt, signal) =>
-						fetchWithHeadersTimeout(upstreamUrl, {
+					send: async (_attempt, signal) => {
+						input.stats.attempts += 1
+						input.stats.firstSendAt ??= Date.now()
+						return fetchWithHeadersTimeout(upstreamUrl, {
 							method: 'POST',
 							headers,
 							body: packBody as BodyInit,
 							signal,
-						}),
+						})
+					},
 					isBusy: (response, bodyText) =>
 						isArtifactsGitReceivePackBusyResponse({
 							status: response.status,
@@ -488,19 +499,18 @@ async function proxyArtifactsReceivePack(input: {
  * Repo-scoped `repo-push-queue` flag. Evaluation failures fail closed to the
  * isolate-local wait-and-retry path, like every other flag.
  */
-async function isRepoPushQueueEnabled(
+async function evaluateRepoPushQueue(
 	db: D1Database,
 	subject: { sourceId: string; ownerId: string },
 ) {
 	try {
-		return (await evaluateRepoFeatureFlag(db, repoPushQueueFlagKey, subject))
-			.enabled
+		return await evaluateRepoFeatureFlag(db, repoPushQueueFlagKey, subject)
 	} catch (error) {
 		console.warn('repo-push-queue-flag-evaluation-failed', {
 			sourceId: subject.sourceId,
 			error: error instanceof Error ? error.message : String(error),
 		})
-		return false
+		return null
 	}
 }
 
@@ -559,6 +569,65 @@ async function proxyReceivePackViaQueue(input: {
 	})
 }
 
+/**
+ * Route one receive-pack to the push queue (flag on) or the isolate-local
+ * wait-and-retry proxy, then record its `git_push` cost/outcome event and
+ * the repo owner's flag exposure.
+ */
+async function proxyReceivePack(input: {
+	env: Env
+	target: ResolvedPlainGitTarget
+	sourceId: string
+	request: Request
+	token: string
+}): Promise<Response> {
+	const pushQueue = input.env.REPO_PUSH_QUEUE
+	const evaluation = pushQueue
+		? await evaluateRepoPushQueue(input.env.APP_DB, {
+				sourceId: input.sourceId,
+				ownerId: input.target.ownerId,
+			})
+		: null
+	const path = pushQueue && evaluation?.enabled ? 'queued' : 'direct'
+	const direct = createDirectReceivePackStats()
+	const startedAt = Date.now()
+	let response: Response | null = null
+	try {
+		if (pushQueue && path === 'queued') {
+			response = await proxyReceivePackViaQueue({
+				pushQueue,
+				target: input.target,
+				sourceId: input.sourceId,
+				request: input.request,
+				token: input.token,
+			})
+		} else {
+			response = await proxyArtifactsReceivePack({
+				target: input.target,
+				sourceId: input.sourceId,
+				request: input.request,
+				token: input.token,
+				stats: direct,
+			})
+			response.headers.set(repoPushQueuePathHeader, repoPushQueuePathDirect)
+		}
+		return response
+	} finally {
+		await recordReceivePackMetrics({
+			env: input.env,
+			ownerId: input.target.ownerId,
+			evaluation,
+			metrics: measureReceivePack({
+				path,
+				response,
+				startedAt,
+				endedAt: Date.now(),
+				direct,
+			}),
+		})
+	}
+}
+
 async function proxyArtifactsGitRequest(input: {
 	env: Env
 	target: ResolvedPlainGitTarget
@@ -568,30 +637,13 @@ async function proxyArtifactsGitRequest(input: {
 	service?: string | null
 }): Promise<Response> {
 	if (input.parsed.kind === 'receive-pack') {
-		const pushQueue = input.env.REPO_PUSH_QUEUE
-		if (
-			pushQueue &&
-			(await isRepoPushQueueEnabled(input.env.APP_DB, {
-				sourceId: input.parsed.sourceId,
-				ownerId: input.target.ownerId,
-			}))
-		) {
-			return proxyReceivePackViaQueue({
-				pushQueue,
-				target: input.target,
-				sourceId: input.parsed.sourceId,
-				request: input.request,
-				token: input.token,
-			})
-		}
-		const direct = await proxyArtifactsReceivePack({
+		return proxyReceivePack({
+			env: input.env,
 			target: input.target,
 			sourceId: input.parsed.sourceId,
 			request: input.request,
 			token: input.token,
 		})
-		direct.headers.set(repoPushQueuePathHeader, repoPushQueuePathDirect)
-		return direct
 	}
 
 	const upstreamUrl = buildArtifactsSmartHttpUrl(

@@ -226,3 +226,20 @@ test('a package page reads the org access epoch once per load', async () => {
 		kind: 'no_access',
 	})
 })
+
+test('team package pages link the owner only while the team org page is public', async () => {
+	const env = await createEnv()
+	await expect(loadAs(env, ownerId, 'secret')).resolves.toMatchObject({
+		kind: 'page',
+		ownerProfilePublic: true,
+	})
+	await env.APP_DB.prepare(
+		`UPDATE orgs SET profile_visibility = 'private' WHERE id = ?`,
+	)
+		.bind(teamId)
+		.run()
+	await expect(loadAs(env, ownerId, 'secret')).resolves.toMatchObject({
+		kind: 'page',
+		ownerProfilePublic: false,
+	})
+})

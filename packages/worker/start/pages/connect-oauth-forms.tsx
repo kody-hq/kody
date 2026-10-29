@@ -236,6 +236,7 @@ export function renderConnectStep(input: {
 	wouldReplace: boolean
 	/** Explicit `?org=` target, carried into the copied scope prompt. */
 	orgSlug?: string | null
+	onEditCredentials?: () => void
 }) {
 	return (
 		<section css={cardCss}>
@@ -270,6 +271,16 @@ export function renderConnectStep(input: {
 						: `Continue to ${input.config.provider}`}
 				</button>
 			)}
+			{input.onEditCredentials ? (
+				<button
+					type="button"
+					disabled={input.submitting}
+					css={connectOauthSecondaryButtonCss}
+					onClick={input.onEditCredentials}
+				>
+					Edit app credentials
+				</button>
+			) : null}
 			{input.wouldReplace && !input.replaceConfirmed
 				? null
 				: renderScopePicker({

@@ -382,11 +382,19 @@ export async function upsertIntegration(
 		description?: string | null
 		accountLabel?: string | null
 		audit: OrgAuditWriter | null
+		/** Website saves: refuse to swap a live connection's app unconfirmed. */
+		liveConnectionGuard?: LiveConnectionGuard
 	} & LogoWriteInput,
 ): Promise<IntegrationConfig> {
 	const parsed = integrationConfigSchema.parse(input.config)
 	const config = normalizeIntegrationConfig(parsed)
 	const now = new Date().toISOString()
+	await assertLiveConnectionReplaceConfirmed({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		config: oauthAppWriteConfigFromIntegration(config),
+		guard: input.liveConnectionGuard,
+	})
 	const existing = await getJoinedIntegrationByName({
 		db: input.env.APP_DB,
 		userId: input.userId,
@@ -482,9 +490,17 @@ export async function upsertOauthAppWithoutConnection(
 		env: IntegrationWriteEnv
 		userId: string
 		config: OauthAppConfigInput
+		/** Website setup: refuse to swap a live connection's app unconfirmed. */
+		liveConnectionGuard?: LiveConnectionGuard
 	} & LogoWriteInput,
 ): Promise<UserOauthApp> {
 	const config = normalizeOauthAppConfig(input.config)
+	await assertLiveConnectionReplaceConfirmed({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		config,
+		guard: input.liveConnectionGuard,
+	})
 	const { appSlug } = await resolveOrCreateOauthApp({
 		db: input.env.APP_DB,
 		userId: input.userId,
@@ -1330,6 +1346,111 @@ async function resolveOrCreateOauthApp(input: {
 		}),
 	})
 	return { appSlug }
+}
+
+/**
+ * A website save that would swap the OAuth app behind a live connection.
+ * Thrown unless the request explicitly confirmed the replacement, so a stale
+ * form or an agent-built link cannot silently rewrite it.
+ */
+export class LiveOauthAppReplaceError extends Error {
+	readonly code = 'live_connection_replace'
+	readonly connectionName: string
+	readonly appName: string
+	constructor(connectionName: string, appName: string) {
+		super(
+			`Connection "${connectionName}" is connected through the "${appName}" OAuth app. Saving a different client ID or endpoints replaces that app, and the connection must reconnect. Confirm the replacement, or save it as a new connection under another name.`,
+		)
+		this.name = 'LiveOauthAppReplaceError'
+		this.connectionName = connectionName
+		this.appName = appName
+	}
+}
+
+/** A website "save as a new connection" whose name already exists. */
+export class OauthConnectionNameTakenError extends Error {
+	readonly code = 'connection_name_taken'
+	constructor(connectionName: string) {
+		super(
+			`A connection named "${connectionName}" already exists. Pick another name for the new connection.`,
+		)
+		this.name = 'OauthConnectionNameTakenError'
+	}
+}
+
+/**
+ * Opt-in guard for website saves: {@link LiveOauthAppReplaceError} unless
+ * `confirmed`, and {@link OauthConnectionNameTakenError} when `newConnection`
+ * names an existing connection.
+ */
+export type LiveConnectionGuard = {
+	confirmed: boolean
+	newConnection?: boolean
+}
+
+function oauthAppIdentityChanged(
+	app: UserOauthApp,
+	next: ReturnType<typeof buildOauthAppRow>,
+) {
+	return (
+		app.clientId !== next.client_id ||
+		app.tokenUrl !== next.token_url ||
+		(app.authorizeUrl ?? null) !== next.authorize_url ||
+		(app.deviceAuthorizationUrl ?? null) !== next.device_authorization_url ||
+		app.flow !== next.flow
+	)
+}
+
+async function assertLiveConnectionReplaceConfirmed(input: {
+	db: D1Database
+	userId: string
+	config: OauthAppWriteConfig
+	guard: LiveConnectionGuard | undefined
+}) {
+	if (!input.guard) return
+	if (!input.guard.newConnection && input.guard.confirmed) return
+	const existing = await getJoinedIntegrationByName({
+		db: input.db,
+		userId: input.userId,
+		name: canonicalIntegrationName(input.config.name),
+	})
+	if (input.guard.newConnection) {
+		if (existing)
+			throw new OauthConnectionNameTakenError(existing.connection.name)
+		return
+	}
+	if (existing?.lane !== 'user' || !existing.connection.connectedAt) return
+	const next = buildOauthAppRow({
+		userId: input.userId,
+		slug: existing.app.slug,
+		config: input.config,
+		label: null,
+		createdAt: '',
+		updatedAt: '',
+	})
+	if (!oauthAppIdentityChanged(existing.app, next)) return
+	throw new LiveOauthAppReplaceError(
+		existing.connection.name,
+		existing.app.label ?? existing.app.slug,
+	)
+}
+
+/**
+ * Pre-flight for flows that persist later (device connect): refuse to start
+ * swapping a live connection's app unless the caller confirmed it.
+ */
+export async function assertOauthAppReplaceConfirmed(input: {
+	env: IntegrationWriteEnv
+	userId: string
+	config: OauthAppConfigInput
+	guard: LiveConnectionGuard
+}) {
+	await assertLiveConnectionReplaceConfirmed({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		config: normalizeOauthAppConfig(input.config),
+		guard: input.guard,
+	})
 }
 
 function buildOauthAppRow(input: {

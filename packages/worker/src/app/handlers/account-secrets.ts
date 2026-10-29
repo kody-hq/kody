@@ -93,7 +93,10 @@ import {
 	assertScopesAllowedForPlatformApp,
 	findOauthAppForProviderSetup,
 	getAvailablePlatformApp,
+	assertOauthAppReplaceConfirmed,
 	getJoinedIntegration,
+	LiveOauthAppReplaceError,
+	type LiveConnectionGuard,
 	upsertIntegration,
 	upsertOauthAppWithoutConnection,
 	upsertPlatformIntegration,
@@ -212,6 +215,10 @@ export async function saveAccountOAuthApp(input: {
 	try {
 		const app = await upsertOauthAppWithoutConnection({
 			env: input.env,
+			liveConnectionGuard: {
+				confirmed: input.fields.replaceLiveConnection === true,
+				newConnection: input.fields.newConnection === true,
+			},
 			userId: ownerIdFromCaller({
 				request: input.user.request,
 				user: input.user.mcpUser,
@@ -283,6 +290,9 @@ export async function saveAccountOAuthApp(input: {
 					error instanceof Error
 						? error.message
 						: 'Unable to save OAuth app configuration.',
+				...(error instanceof LiveOauthAppReplaceError
+					? { code: error.code }
+					: {}),
 			},
 			400,
 		)
@@ -441,6 +451,9 @@ export async function connectAccountOAuth(input: {
 			).name
 		: await saveIntegrationConfig({
 				env: input.env,
+				liveConnectionGuard: {
+					confirmed: input.fields.replaceLiveConnection === true,
+				},
 				userId: ownerIdFromCaller({
 					request: input.user.request,
 					user: input.user.mcpUser,
@@ -579,6 +592,49 @@ async function emitConnectOauthAuthSucceeded(input: {
 	}
 }
 
+/**
+ * Device connects persist after the poll, so refuse to start one that would
+ * swap a live connection's app before the user confirmed it.
+ */
+async function refuseUnconfirmedDeviceReplace(input: {
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	fields: Parameters<typeof startAccountDeviceConnect>[0]['fields']
+}) {
+	const { fields } = input
+	const tokenUrl = fields.tokenUrl?.trim()
+	const clientId = fields.clientId?.trim()
+	if (fields.platformAppSlug?.trim() || !tokenUrl || !clientId) return null
+	try {
+		await assertOauthAppReplaceConfirmed({
+			env: input.env,
+			userId: ownerIdFromCaller({
+				request: input.user.request,
+				user: input.user.mcpUser,
+			}),
+			guard: { confirmed: fields.replaceLiveConnection === true },
+			config: {
+				name: fields.provider,
+				tokenUrl,
+				apiBaseUrl: fields.apiBaseUrl?.trim() || null,
+				flow: 'device',
+				clientId,
+				deviceAuthorizationUrl: fields.deviceAuthorizationUrl?.trim() || null,
+				authorization: fields.authorizeUrl?.trim()
+					? { authorizeUrl: fields.authorizeUrl.trim() }
+					: null,
+			},
+		})
+		return null
+	} catch (error) {
+		if (!(error instanceof LiveOauthAppReplaceError)) return null
+		return operationResult(
+			{ ok: false, error: error.message, code: error.code },
+			400,
+		)
+	}
+}
+
 export async function startAccountDeviceConnect(input: {
 	env: Env
 	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
@@ -597,6 +653,7 @@ export async function startAccountDeviceConnect(input: {
 		extraAuthorizeParams?: Record<string, string>
 		allowedHosts?: Array<string>
 		tokenExchangeStyle?: string | null
+		replaceLiveConnection?: boolean
 	}
 }) {
 	const deviceTokenUrl = input.fields.tokenUrl?.trim()
@@ -635,10 +692,15 @@ export async function startAccountDeviceConnect(input: {
 			},
 		})
 	}
+	const guardFailure = await refuseUnconfirmedDeviceReplace(input)
+	if (guardFailure) return guardFailure
 	const started = await startIntegrationDeviceConnect({
 		env: input.env,
 		request: input.user.request,
 		mcpUser: input.user.mcpUser,
+		liveConnectionGuard: {
+			confirmed: input.fields.replaceLiveConnection === true,
+		},
 		provider: input.fields.provider ?? '',
 		platformAppSlug: input.fields.platformAppSlug,
 		tokenUrl: input.fields.tokenUrl,
@@ -964,6 +1026,7 @@ async function exchangeOAuthToken(input: {
 
 async function saveIntegrationConfig(input: {
 	env: Env
+	liveConnectionGuard: LiveConnectionGuard
 	userId: OwnerId
 	provider: string
 	tokenUrl: string
@@ -1009,6 +1072,7 @@ async function saveIntegrationConfig(input: {
 		env: input.env,
 		userId: input.userId,
 		config: normalizeIntegrationConfig(parsed.data),
+		liveConnectionGuard: input.liveConnectionGuard,
 		waitUntil,
 		audit: input.audit,
 	})

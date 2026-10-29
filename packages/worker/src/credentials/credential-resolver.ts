@@ -387,19 +387,40 @@ export function assertCredentialScopeAllows(
 	call: ResolverCall,
 	permission: OrgPermission,
 ) {
-	const scopes = call.input.actor?.credential.scopes ?? null
+	assertActorScopeAllowsCredential(
+		{
+			actor: call.input.actor,
+			orgId: call.input.orgId,
+			credentialId: call.subject.credentialId,
+			name: call.subject.name,
+		},
+		permission,
+	)
+}
+
+/** `assertCredentialScopeAllows` for callers outside a resolver call. */
+export function assertActorScopeAllowsCredential(
+	input: {
+		actor: RequestContext | null | undefined
+		orgId: OwnerId
+		credentialId: string | null
+		name: string
+	},
+	permission: OrgPermission,
+) {
+	const scopes = input.actor?.credential.scopes ?? null
 	if (scopes === null || scopes.includes(permission)) return
 	const mintScopes = [...new Set([...scopes, permission])].sort()
 	throw new AuthorizationError({
 		code: 'credential_scope',
 		permission,
-		orgId: call.input.orgId,
-		resource: call.subject.credentialId
-			? credentialResource(call.input.orgId, {
-					id: call.subject.credentialId,
-					name: call.subject.name,
+		orgId: input.orgId,
+		resource: input.credentialId
+			? credentialResource(input.orgId, {
+					id: input.credentialId,
+					name: input.name,
 				})
-			: missingCredentialResource(call.input.orgId, call.subject.name),
+			: missingCredentialResource(input.orgId, input.name),
 		message: `This credential is not scoped for ${permission}. Mint a token that adds it: from Kody MCP, call cliCredentialBootstrap({ lifetime: "short", scopes: [${mintScopes.map((scope) => JSON.stringify(scope)).join(', ')}] }) and run the returned cli_command; or after \`kody login\`, run \`npx @kodycodes/cli auth bootstrap --lifetime short --scopes ${mintScopes.join(',')}\`. Use those scopes with tokenCreate only for CI/headless.`,
 		mintScopes,
 	})

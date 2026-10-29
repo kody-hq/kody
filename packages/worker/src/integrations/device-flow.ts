@@ -95,6 +95,8 @@ export type DevicePendingSession = {
 	extraAuthorizeParams: Record<string, string>
 	/** BYO confidential secret captured at start; never returned to callers. */
 	clientSecret: string | null
+	/** Website starts: re-check the live-app replace guard at completion. */
+	liveConnectionGuard?: { confirmed: boolean }
 	/**
 	 * False when `clientSecret` was resolved from the saved app rather than
 	 * typed at start, so a poll must not write it back over a rotated secret.
@@ -385,6 +387,7 @@ export async function startDeviceAuthorization(input: {
 	platformAppSlug: string | null
 	usePkce: boolean | null
 	tokenExchangeStyle: TokenExchangeStyle | null
+	liveConnectionGuard?: { confirmed: boolean }
 	fetchImpl?: typeof fetch
 }): Promise<DeviceStartSuccess | DeviceStartFailure> {
 	const urlError = assertSafeDeviceAuthorizationUrl(
@@ -568,6 +571,9 @@ export async function startDeviceAuthorization(input: {
 		extraAuthorizeParams: input.extraAuthorizeParams,
 		clientSecret: input.clientSecret,
 		clientSecretFromInput: input.clientSecretFromInput,
+		...(input.liveConnectionGuard
+			? { liveConnectionGuard: input.liveConnectionGuard }
+			: {}),
 	}
 	await storeDevicePendingSession({
 		env: input.env,

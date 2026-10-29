@@ -322,6 +322,8 @@ type CommunityPackageNoAccessLoaderData = {
 
 export type ProfileLoaderData = {
 	ok: true
+	/** `org` for a public team org page; absent for a person's profile. */
+	ownerKind?: 'org'
 	profile: PublicCommunityProfile
 	packages: Array<PublicProfilePackageItem>
 	/** Null when the profile has no activity source (e.g. team org repositories). */
@@ -349,6 +351,7 @@ export type ProfileShellLoaderData = {
 	isSelf: boolean
 	loggedIn: boolean
 	visibility: ProfileVisibility
+	ownerKind?: 'org'
 }
 
 export function toProfileShellLoaderData(
@@ -364,6 +367,7 @@ export function toProfileShellLoaderData(
 		isSelf: data.isSelf,
 		loggedIn: data.loggedIn,
 		visibility: data.profile.visibility,
+		...(data.ownerKind ? { ownerKind: data.ownerKind } : {}),
 	}
 }
 
@@ -1355,6 +1359,8 @@ export type OrgSettingsLoaderData = {
 	org: OrgManagementOrg
 	canManage: boolean
 	canDelete: boolean
+	/** Who sees `/@slug`; null for personal orgs (they follow the account profile). */
+	profileVisibility: 'public' | 'private' | null
 	/** Null for personal orgs and for viewers who cannot manage the org. */
 	customDomains: OrgSettingsCustomDomainsView | null
 }
@@ -2044,6 +2050,24 @@ export type AccountIntegrationsLoaderData = {
 export type ConnectOauthExistingConnection = {
 	lane: 'user' | 'platform'
 	appSlug: string
+	/** Display name of the app behind the connection (label, else slug). */
+	appName: string
+	/** True once the connection holds tokens (`connected_at` is set). */
+	connected: boolean
+	/**
+	 * The user-lane app's identity fields (non-secret). A save that changes
+	 * any of them rewrites the app this connection depends on. Null for
+	 * platform connections.
+	 */
+	identity: ConnectOauthAppIdentity | null
+}
+
+type ConnectOauthAppIdentity = {
+	clientId: string
+	tokenUrl: string
+	authorizeUrl: string | null
+	deviceAuthorizationUrl: string | null
+	flow: 'pkce' | 'confidential' | 'device'
 }
 
 /**

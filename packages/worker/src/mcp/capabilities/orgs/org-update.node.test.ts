@@ -96,6 +96,7 @@ test('orgUpdate changes a team org display name, keeps the handle permanent, and
 		id: created.org.id,
 		slug: 'zeta-co',
 		display_name: 'Zeta Company',
+		profile_visibility: 'public',
 	})
 
 	await expect(
@@ -154,4 +155,114 @@ test('orgUpdate requires an input field', async () => {
 			}),
 		),
 	).rejects.toBeInstanceOf(McpCallerError)
+})
+
+test('orgCreate defaults to a public page and accepts private; orgUpdate toggles it for owners only, with an audit event', async () => {
+	const db = await createDb()
+	const ada = testStableUserIdFromEmail('ada3@example.com')
+	const bea = testStableUserIdFromEmail('bea3@example.com')
+	await db
+		.prepare(
+			`INSERT INTO users (id, username, email, password_hash, stable_user_id)
+			 VALUES (1, 'ada', 'ada3@example.com', 'x', ?), (2, 'bea', 'bea3@example.com', 'x', ?)`,
+		)
+		.bind(ada, bea)
+		.run()
+	await provisionPersonalOrg(db, { stableUserId: ada, username: 'ada' })
+	await provisionPersonalOrg(db, { stableUserId: bea, username: 'bea' })
+	const auditDb = createAuditTestDb()
+	const env = { APP_DB: db, AUDIT_DB: auditDb } as Env
+	const signedInAda = createMcpCallerContext({
+		source: { kind: 'mcp-oauth' },
+		baseUrl: 'https://heykody.dev',
+		user: {
+			userId: personIdFromStored(ada),
+			email: 'ada3@example.com',
+			displayName: 'Ada',
+			username: 'ada',
+		},
+	})
+	const open = await orgCreateCapability.handler(
+		{ slug: 'acme-team' },
+		{ env, callerContext: signedInAda },
+	)
+	expect(open.org.profile_visibility).toBe('public')
+	// The free plan allows one team org next to the personal one, so the
+	// private create runs as the second person.
+	const closed = await orgCreateCapability.handler(
+		{ slug: 'acme-private', profile_visibility: 'private' },
+		{
+			env,
+			callerContext: createMcpCallerContext({
+				source: { kind: 'mcp-oauth' },
+				baseUrl: 'https://heykody.dev',
+				user: {
+					userId: personIdFromStored(bea),
+					email: 'bea3@example.com',
+					displayName: 'Bea',
+					username: 'bea',
+				},
+			}),
+		},
+	)
+	expect(closed.org.profile_visibility).toBe('private')
+
+	const ownerContext = {
+		env,
+		callerContext: context({
+			db,
+			userId: ada,
+			org: { id: open.org.id, slug: 'acme-team', role: 'owner' },
+		}).callerContext,
+	}
+	const updated = await orgUpdateCapability.handler(
+		{ profile_visibility: 'private' },
+		ownerContext,
+	)
+	expect(updated.org).toMatchObject({
+		slug: 'acme-team',
+		profile_visibility: 'private',
+	})
+	const { results } = await auditDb
+		.prepare(
+			`SELECT action, details_json, actor_user_id FROM org_audit_events
+			 WHERE action = 'org.profile_visibility_changed'`,
+		)
+		.all<{ action: string; details_json: string; actor_user_id: string }>()
+	expect(results).toHaveLength(1)
+	expect(JSON.parse(results[0]!.details_json)).toEqual({
+		profile_visibility: 'private',
+		previous_profile_visibility: 'public',
+	})
+
+	await db
+		.prepare(
+			`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+			 VALUES (?, ?, 'member', ?)`,
+		)
+		.bind(open.org.id, bea, new Date().toISOString())
+		.run()
+	await db
+		.prepare(`UPDATE orgs SET access_epoch = access_epoch + 1 WHERE id = ?`)
+		.bind(open.org.id)
+		.run()
+	await expect(
+		orgUpdateCapability.handler(
+			{ profile_visibility: 'public' },
+			{
+				env,
+				callerContext: context({
+					db,
+					userId: bea,
+					org: { id: open.org.id, slug: 'acme-team', role: 'member' },
+				}).callerContext,
+			},
+		),
+	).rejects.toThrow(/org:write/)
+	expect(
+		await db
+			.prepare(`SELECT profile_visibility FROM orgs WHERE id = ?`)
+			.bind(open.org.id)
+			.first(),
+	).toEqual({ profile_visibility: 'private' })
 })

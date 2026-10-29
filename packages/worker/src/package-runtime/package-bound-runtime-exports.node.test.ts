@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { INTEGRATION_RUNTIME_CONFIG_TOOL_NAME } from '#mcp/execute-modules/kody-runtime-utils.ts'
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -185,7 +186,9 @@ test("an imported package's createAuthenticatedFetch and oauthClientCredentials 
 
 	expect(runLevel).toEqual([])
 	// The gateway seals the minted token, so no redactor call follows.
-	expect(calls).toEqual([{ name: 'integrationGet', args: { name: 'svc' } }])
+	expect(calls).toEqual([
+		{ name: INTEGRATION_RUNTIME_CONFIG_TOOL_NAME, args: { name: 'svc' } },
+	])
 	expect(fetched).toEqual([
 		{
 			url: 'https://api.example.com/v1/me',

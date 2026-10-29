@@ -161,9 +161,10 @@ credentials of an active personal org qualify: a user-scope secret that has not
 expired, an integration, or an MCP server. Vault bindings and package or session
 secrets never do. Leaving the org hard-deletes the person's rows for it, and an
 org transfer out of the personal org is blocked while a moved credential still
-has grants. Placeholders and scoped `credential()` clients resolve the same set
-(org credentials the actor can Use, plus the actor's own personal credentials
-granted into the org). See
+has grants. Placeholders, scoped `credential()` clients, and name-based
+`createAuthenticatedFetch` resolve the same set (org credentials the actor can
+Use, plus the actor's own personal credentials granted into the org, org first
+by name). See
 ([ADR 0068](../decisions/0068-credentials-own-placement-scoped-clients.md)).
 
 `credential-storage-boundary.node.test.ts` fails if credential storage is read

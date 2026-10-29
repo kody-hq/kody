@@ -51,6 +51,8 @@ export type DeviceConnectStartInput = {
 	extraAuthorizeParams?: Record<string, string>
 	allowedHosts?: Array<string>
 	tokenExchangeStyle?: string | null
+	/** Website starts only; MCP device connects stay unguarded. */
+	liveConnectionGuard?: { confirmed: boolean }
 	fetchImpl?: typeof fetch
 }
 
@@ -211,6 +213,9 @@ export async function startIntegrationDeviceConnect(
 				? platformApp.tokenExchangeStyle
 				: (input.tokenExchangeStyle ?? null),
 		}),
+		...(platformApp || !input.liveConnectionGuard
+			? {}
+			: { liveConnectionGuard: input.liveConnectionGuard }),
 		fetchImpl: input.fetchImpl,
 	})
 }
@@ -326,6 +331,7 @@ export async function pollIntegrationDeviceConnect(
 				polled.session.clientSecretFromInput === false
 					? null
 					: polled.clientSecret,
+			liveConnectionGuard: polled.session.liveConnectionGuard,
 		})
 	} catch (error) {
 		// Leave the approved session in KV so a retry poll can re-read tokens.

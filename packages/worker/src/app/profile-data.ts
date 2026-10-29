@@ -18,6 +18,7 @@ import {
 } from '#worker/authorization/authorize.ts'
 import {
 	getCommunityProfileByUsername,
+	getCommunityTeamOrgProfileBySlug,
 	getProfileActivity,
 	listProfileRepositories,
 } from '#worker/community/profile-service.ts'
@@ -25,6 +26,7 @@ import { type PublicProfilePackage } from '#worker/community/types.ts'
 import { findPublicOwnerIdentityByHandle } from '#worker/identity/user-lookup.ts'
 import { getUsernameFormatValidationError } from '#worker/identity/username.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
+import { buildOrgAvatarUrl } from '#worker/orgs/org-avatar.ts'
 import { loadOrgBindingForOrg, type OrgBinding } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 
@@ -114,6 +116,63 @@ function filterProfileRepositoriesForViewer(input: {
 	})
 }
 
+/**
+ * A public team org at `/@slug`, the same page for every viewer: identity
+ * plus public, non-hidden packages from the public-only SQL path (private
+ * names never leave the server). No members, teams, activity, or billing.
+ * Private orgs return null, so members fall through to the org home and
+ * everyone else gets the same 404 as an unknown handle.
+ */
+async function loadTeamOrgProfileData(input: {
+	env: Env
+	username: string
+	loggedIn: boolean
+	resource: { query: string; limit?: number }
+}): Promise<ProfileLoaderData | null> {
+	const org = await getCommunityTeamOrgProfileBySlug({
+		env: input.env,
+		slug: input.username,
+	})
+	if (!org || org.visibility !== 'public') return null
+	const serverQuery =
+		input.resource.limit == null ? undefined : input.resource.query || undefined
+	const repositories = await listProfileRepositories({
+		env: input.env,
+		ownerStableUserId: org.orgId,
+		ownerUsername: org.slug,
+		...(serverQuery ? { query: serverQuery } : {}),
+		...(input.resource.limit == null ? {} : { limit: input.resource.limit }),
+		includePrivate: false,
+	})
+	return {
+		ok: true,
+		ownerKind: 'org',
+		profile: {
+			username: org.slug,
+			displayName: org.displayName,
+			bio: org.bio,
+			avatarUrl: buildOrgAvatarUrl({
+				slug: org.slug,
+				avatarKey: org.avatarKey,
+			}),
+			visibility: 'public',
+			joinedAt: org.joinedAt,
+			publicPackageCount: org.publicPackageCount,
+			listingCount: org.listingCount,
+		},
+		packages: repositories.filter(isPublicProfileRepository).map((pkg) =>
+			toPublicProfilePackageItem(pkg, {
+				includeOwnerVisibility: false,
+				username: org.slug,
+			}),
+		),
+		activity: null,
+		query: input.resource.query || null,
+		isSelf: false,
+		loggedIn: input.loggedIn,
+	}
+}
+
 async function loadProfileDataUncached(
 	env: Env,
 	request: Request,
@@ -131,7 +190,13 @@ async function loadProfileDataUncached(
 		username,
 		includePrivate: true,
 	})
-	if (!profile) return null
+	if (!profile)
+		return await loadTeamOrgProfileData({
+			env,
+			username,
+			loggedIn: Boolean(user),
+			resource,
+		})
 
 	const viewerStableId = user?.mcpUser.userId ?? null
 	const isSelf = viewerStableId != null && profile.userId === viewerStableId

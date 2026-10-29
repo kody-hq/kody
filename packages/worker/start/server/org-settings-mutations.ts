@@ -7,6 +7,7 @@ export const updateOrganizationProfile = createServerFn({ method: 'POST' })
 			orgSlug,
 			displayName: z.string().optional(),
 			slug: z.string().optional(),
+			profileVisibility: z.enum(['public', 'private']).optional(),
 		}),
 	)
 	.handler(async ({ data }) => {

@@ -24,6 +24,7 @@ import {
 	getJoinedIntegration,
 	upsertIntegration,
 	upsertPlatformIntegration,
+	type LiveConnectionGuard,
 } from '#worker/integrations/service.ts'
 import { type PlatformOauthApp } from '#worker/integrations/platform-apps.ts'
 import {
@@ -64,6 +65,7 @@ export type PersistConnectOauthTokensInput = {
 	extraAuthorizeParams: Record<string, string>
 	tokenRecord: Record<string, unknown>
 	clientSecret?: string | null
+	liveConnectionGuard?: LiveConnectionGuard
 }
 
 export type PersistConnectOauthTokensResult =
@@ -146,6 +148,7 @@ export async function persistConnectOauthTokens(
 							}
 						: null,
 					audit: orgAuditWriterFromRequest(input.env, input.request),
+					liveConnectionGuard: input.liveConnectionGuard,
 				})
 	} catch (error) {
 		return {
@@ -269,6 +272,7 @@ async function saveIntegrationConfig(input: {
 		extraAuthorizeParams: Record<string, string>
 	} | null
 	audit: OrgAuditWriter | null
+	liveConnectionGuard?: LiveConnectionGuard
 }) {
 	const providerKey = canonicalIntegrationName(input.provider)
 	if (!providerKey) {
@@ -299,6 +303,7 @@ async function saveIntegrationConfig(input: {
 		config: normalizeIntegrationConfig(parsed.data),
 		waitUntil,
 		audit: input.audit,
+		liveConnectionGuard: input.liveConnectionGuard,
 	})
 	return integration.name
 }

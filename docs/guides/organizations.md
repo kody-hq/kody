@@ -63,8 +63,19 @@ grantable org-wide.
 
 Switch orgs from the workspace name at the top of the workspace rail (it keeps
 the section you are on), from the avatar menu's Manage group, or pick the org at
-MCP consent. Overview is `/@<slug>/-/overview` on a personal org and `/@<slug>`
-on a team org. One connection binds one org.
+MCP consent. Overview is `/@<slug>/-/overview`. One connection binds one org.
+
+## Public org page
+
+A team org's page at `kody.codes/@<slug>` is **Public** by default: anyone can
+see its name, photo, bio, and public packages. Members are never listed, and
+private or hidden packages never show. Pick **Private** when you create the org,
+or later in **Settings** (Owners only), or pass `profile_visibility` (`public` |
+`private`) to `orgCreate` / `orgUpdate`. A private org's page is a not-found
+page for everyone outside it, the same as a handle that doesn't exist. Members
+of a public org see the public page with an **Organization home** link
+(`/@<slug>?view=home`); on a private org the home is at `/@<slug>`. A personal
+org's page is your account profile, set on Account.
 
 ## Invites
 
