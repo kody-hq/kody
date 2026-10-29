@@ -6,14 +6,17 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	credentialAuditActions,
+	credentialAuditEvent,
 	listDelta,
-	recordCredentialAudit,
 } from '#worker/credentials/credential-audit.ts'
 import {
 	parseAllowedPackages,
 	stringifyAllowedPackages,
 } from '#mcp/secrets/allowed-packages.ts'
-import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import {
+	type OrgAuditWriter,
+	runAppDbBatchWithOrgAudit,
+} from '#worker/orgs/org-audit.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 export const allowedPackagesGrandfatherReason = 'grandfathered for #4129'
@@ -85,24 +88,35 @@ export async function grantGrandfatheredPackageAccess(input: {
 		stringifyAllowedPackages([...before, input.packageId]),
 	)
 	const now = new Date().toISOString()
-	const update = await input.db
+	const update = input.db
 		.prepare(
 			`UPDATE secret_entries SET allowed_packages = ?, updated_at = ?
 			 WHERE id = ? AND allowed_packages = ? AND deleted_at IS NULL`,
 		)
 		.bind(stringifyAllowedPackages(after), now, row.id, row.allowed_packages)
-		.run()
-	if (!update.meta?.changes) return 'conflict'
-	await recordCredentialAudit(input.audit, {
-		orgId: ownerIdFromStored(input.ownerId),
-		credential: { id: row.id, kind: 'secret', name: row.name },
-		action: credentialAuditActions.allowedPackagesUpdated,
-		details: {
-			packages: listDelta(before, after),
-			fields: ['allowed_packages'],
-			reason: allowedPackagesGrandfatherReason,
-			source: input.source,
-		},
+	if (!input.audit) {
+		const result = await update.run()
+		return result.meta?.changes ? 'granted' : 'conflict'
+	}
+	// The guarded UPDATE and its audit outbox row commit together, so a grant
+	// is never left without its audit row.
+	const { changed } = await runAppDbBatchWithOrgAudit({
+		appDb: input.db,
+		audit: input.audit,
+		statements: [update],
+		onlyIfChanged: true,
+		event: credentialAuditEvent({
+			orgId: ownerIdFromStored(input.ownerId),
+			credential: { id: row.id, kind: 'secret', name: row.name },
+			action: credentialAuditActions.allowedPackagesUpdated,
+			details: {
+				packages: listDelta(before, after),
+				fields: ['allowed_packages'],
+				reason: allowedPackagesGrandfatherReason,
+				source: input.source,
+			},
+		}),
 	})
+	if (!changed) return 'conflict'
 	return 'granted'
 }

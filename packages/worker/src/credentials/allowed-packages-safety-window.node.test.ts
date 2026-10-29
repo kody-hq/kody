@@ -5,13 +5,20 @@ import { setFeatureFlagGlobalState } from '#worker/feature-flags/service.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 
-const mocks = vi.hoisted(() => ({ recordCredentialAudit: vi.fn() }))
-vi.mock('#worker/credentials/credential-audit.ts', async (importOriginal) => ({
-	...(await importOriginal<
-		typeof import('#worker/credentials/credential-audit.ts')
-	>()),
-	recordCredentialAudit: (...args: Array<unknown>) =>
-		mocks.recordCredentialAudit(...args),
+const mocks = vi.hoisted(() => ({ auditBatch: vi.fn() }))
+vi.mock('#worker/orgs/org-audit.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#worker/orgs/org-audit.ts')>()),
+	runAppDbBatchWithOrgAudit: async (input: {
+		statements: Array<{ run(): Promise<{ meta?: { changes?: number } }> }>
+		onlyIfChanged?: boolean
+	}) => {
+		let changes = 0
+		for (const statement of input.statements) {
+			changes = (await statement.run()).meta?.changes ?? 0
+		}
+		if (!input.onlyIfChanged || changes > 0) mocks.auditBatch(input)
+		return { changed: changes > 0 }
+	},
 }))
 
 const {
@@ -90,8 +97,8 @@ test('flag on in the window: pre-cutover pair is added, audited and logged, once
 			)
 			.get(),
 	).toEqual({ allowed_packages: '["pkg-1","pkg-other"]' })
-	expect(mocks.recordCredentialAudit).toHaveBeenCalledTimes(1)
-	expect(mocks.recordCredentialAudit.mock.calls[0]?.[1]).toMatchObject({
+	expect(mocks.auditBatch).toHaveBeenCalledTimes(1)
+	expect(mocks.auditBatch.mock.calls[0]?.[0].event).toMatchObject({
 		action: 'credential.allowed_packages_updated',
 		details: {
 			packages: { added: ['pkg-1'], removed: [] },
@@ -121,5 +128,5 @@ test('flag on in the window: pre-cutover pair is added, audited and logged, once
 	await expect(
 		isAllowedPackagesSafetyWindowActive({ db, now: inWindow, cutoverAt }),
 	).resolves.toBe(true)
-	expect(mocks.recordCredentialAudit).toHaveBeenCalledTimes(1)
+	expect(mocks.auditBatch).toHaveBeenCalledTimes(1)
 })

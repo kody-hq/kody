@@ -179,6 +179,8 @@ type LogPairRow = {
 	observations: number
 }
 
+const logPairPackageChunkSize = 90
+
 async function listLogPairsForPackages(input: {
 	db: D1Database
 	packageIds: ReadonlyArray<string>
@@ -186,19 +188,29 @@ async function listLogPairsForPackages(input: {
 	lastSeenAfter: string | null
 }): Promise<Array<LogPairRow>> {
 	if (input.packageIds.length === 0) return []
-	const placeholders = input.packageIds.map(() => '?').join(', ')
-	const result = await input.db
-		.prepare(
-			`SELECT w.owner_id AS owner_id, w.credential_id AS credential_id,
-				w.package_id AS package_id, MAX(w.access_kind) AS access_kind,
-				MAX(w.last_seen_at) AS last_seen_at, SUM(w.observations) AS observations
-			 FROM credential_allowed_packages_would_block w
-			 WHERE w.day >= ? AND w.package_id IN (${placeholders})
-			 GROUP BY w.owner_id, w.credential_id, w.package_id`,
-		)
-		.bind(input.since, ...input.packageIds)
-		.all<LogPairRow>()
-	return (result.results ?? []).filter(
+	// D1 allows 100 bound parameters per query; `since` takes one.
+	const rows: Array<LogPairRow> = []
+	for (
+		let index = 0;
+		index < input.packageIds.length;
+		index += logPairPackageChunkSize
+	) {
+		const chunk = input.packageIds.slice(index, index + logPairPackageChunkSize)
+		const placeholders = chunk.map(() => '?').join(', ')
+		const result = await input.db
+			.prepare(
+				`SELECT w.owner_id AS owner_id, w.credential_id AS credential_id,
+					w.package_id AS package_id, MAX(w.access_kind) AS access_kind,
+					MAX(w.last_seen_at) AS last_seen_at, SUM(w.observations) AS observations
+				 FROM credential_allowed_packages_would_block w
+				 WHERE w.day >= ? AND w.package_id IN (${placeholders})
+				 GROUP BY w.owner_id, w.credential_id, w.package_id`,
+			)
+			.bind(input.since, ...chunk)
+			.all<LogPairRow>()
+		rows.push(...(result.results ?? []))
+	}
+	return rows.filter(
 		(row) => !input.lastSeenAfter || row.last_seen_at > input.lastSeenAfter,
 	)
 }
@@ -283,6 +295,9 @@ export async function runAllowedPackagesGrandfather(input: {
 
 	const byKey = new Map<string, AllowedPackagesGrandfatherPair>()
 	const unresolvedPackages = new Set<string>()
+	// Unpublished packages and unadopted forks cannot use the credential today,
+	// so a log marker for one never earns a grant.
+	const ineligiblePackages = new Set<string>()
 	for (const savedPackage of packages) {
 		let scan: StaticPackageScan
 		try {
@@ -296,6 +311,9 @@ export async function runAllowedPackagesGrandfather(input: {
 		if (scan.status !== 'scanned') {
 			if (scan.status === 'unpublished') result.skippedUnpublished += 1
 			if (scan.status === 'unadopted_fork') result.skippedUnadoptedFork += 1
+			if (scan.status === 'unpublished' || scan.status === 'unadopted_fork') {
+				ineligiblePackages.add(savedPackage.id)
+			}
 			if (scan.status === 'no_snapshot') {
 				result.skippedNoSnapshot += 1
 				unresolvedPackages.add(savedPackage.id)
@@ -332,6 +350,7 @@ export async function runAllowedPackagesGrandfather(input: {
 		lastSeenAfter: input.logLastSeenAfter ?? null,
 	})
 	for (const row of logRows) {
+		if (ineligiblePackages.has(row.package_id)) continue
 		const key = `${row.credential_id}\0${row.package_id}`
 		const existing = byKey.get(key)
 		if (existing) {

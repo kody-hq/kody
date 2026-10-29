@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 	accessKind: vi.fn(),
 	loadPackageSourceRowForUser: vi.fn(),
 	readPublishedSourceSnapshot: vi.fn(),
-	recordCredentialAudit: vi.fn(),
+	auditBatch: vi.fn(),
 }))
 
 vi.mock(
@@ -32,12 +32,19 @@ vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () => ({
 	readPublishedSourceSnapshot: (...args: Array<unknown>) =>
 		mocks.readPublishedSourceSnapshot(...args),
 }))
-vi.mock('#worker/credentials/credential-audit.ts', async (importOriginal) => ({
-	...(await importOriginal<
-		typeof import('#worker/credentials/credential-audit.ts')
-	>()),
-	recordCredentialAudit: (...args: Array<unknown>) =>
-		mocks.recordCredentialAudit(...args),
+vi.mock('#worker/orgs/org-audit.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#worker/orgs/org-audit.ts')>()),
+	runAppDbBatchWithOrgAudit: async (input: {
+		statements: Array<{ run(): Promise<{ meta?: { changes?: number } }> }>
+		onlyIfChanged?: boolean
+	}) => {
+		let changes = 0
+		for (const statement of input.statements) {
+			changes = (await statement.run()).meta?.changes ?? 0
+		}
+		if (!input.onlyIfChanged || changes > 0) mocks.auditBatch(input)
+		return { changed: changes > 0 }
+	},
 }))
 
 const { runAllowedPackagesGrandfather, grantGrandfatheredPackageAccess } =
@@ -75,7 +82,7 @@ function setup() {
 			'2026-10-24T02:00:00.000Z',
 			3,
 		)
-	return { sqlite, db: createD1FromSqlite(sqlite) }
+	return { sqlite, db: createD1FromSqlite(sqlite, { maxBindings: 100 }) }
 }
 
 const files: Record<string, Record<string, string>> = {
@@ -147,7 +154,7 @@ test('dry run joins static names and log markers without changing lists', async 
 		id: 'cred-locked',
 		allowed_packages: '["pkg-other"]',
 	})
-	expect(mocks.recordCredentialAudit).not.toHaveBeenCalled()
+	expect(mocks.auditBatch).not.toHaveBeenCalled()
 })
 
 test('unadopted forks are skipped and log pairs before the cutoff drop out', async () => {
@@ -182,14 +189,19 @@ test('apply adds the package and audits the #4129 reason and source', async () =
 			)
 			.get(),
 	).toEqual({ allowed_packages: '["pkg-other","pkg-static"]' })
-	expect(mocks.recordCredentialAudit).toHaveBeenCalledWith(
-		audit,
+	expect(mocks.auditBatch).toHaveBeenCalledWith(
 		expect.objectContaining({
-			action: 'credential.allowed_packages_updated',
-			details: expect.objectContaining({
-				packages: { added: ['pkg-static'], removed: [] },
-				reason: 'grandfathered for #4129',
-				source: 'static',
+			audit,
+			onlyIfChanged: true,
+			event: expect.objectContaining({
+				action: 'credential.allowed_packages_updated',
+				resourceType: 'credential',
+				resourceId: 'cred-locked',
+				details: expect.objectContaining({
+					packages: { added: ['pkg-static'], removed: [] },
+					reason: 'grandfathered for #4129',
+					source: 'static',
+				}),
 			}),
 		}),
 	)
@@ -217,4 +229,56 @@ test('grant never widens an empty list and skips missing credentials', async () 
 	await expect(
 		grantGrandfatheredPackageAccess({ ...base, credentialId: 'nope' }),
 	).resolves.toBe('missing')
+})
+
+test('log markers for unadopted forks never become log-only pairs', async () => {
+	const { db } = setup()
+	mocks.accessKind.mockImplementation(
+		async ({ savedPackage }: { savedPackage: { id: string } }) =>
+			savedPackage.id === 'pkg-dynamic' ? null : 'self_authored',
+	)
+	const result = await runAllowedPackagesGrandfather({
+		env: { APP_DB: db } as Env,
+		audit: null,
+		logSince: '2026-10-23',
+	})
+	expect(result).toMatchObject({
+		skippedUnadoptedFork: 1,
+		pairs: 1,
+		staticOnlyPairs: 1,
+		logOnlyPairs: 0,
+	})
+})
+
+test('a full page of packages stays under the D1 bound-parameter limit', async () => {
+	const { db } = setup()
+	mocks.listCandidatePackages.mockResolvedValue({
+		packages: [
+			savedPackage('pkg-static'),
+			savedPackage('pkg-dynamic'),
+			...Array.from({ length: 198 }, (_, index) =>
+				savedPackage(`pkg-empty-${index}`),
+			),
+		],
+		nextCursor: null,
+	})
+	mocks.readPublishedSourceSnapshot.mockImplementation(
+		async ({ sourceId }: { sourceId: string }) => ({
+			files: files[sourceId.replace('source-', '')] ?? {
+				'package.json': '{"name":"empty"}',
+				'index.ts': 'export default () => 1',
+			},
+		}),
+	)
+	const result = await runAllowedPackagesGrandfather({
+		env: { APP_DB: db } as Env,
+		audit: null,
+		limit: 200,
+		logSince: '2026-10-23',
+	})
+	expect(result).toMatchObject({
+		scannedPackages: 200,
+		pairs: 2,
+		logOnlyPairs: 1,
+	})
 })
