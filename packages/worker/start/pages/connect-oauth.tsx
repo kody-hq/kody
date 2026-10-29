@@ -323,10 +323,6 @@ export function ConnectOauthRoute({
 		displayName: session?.username ?? '',
 		avatarUrl: session?.avatarUrl ?? null,
 	}
-	// The provider callback restores the org from sessionStorage, which SSR cannot read.
-	const orgKnown =
-		hydrated ||
-		!isConnectOauthCallbackUrl(new URL(currentHref, 'https://kody.local'))
 	const invalidatePages = usePageInvalidation(mutationResources)
 	const [state, setState] = useState(() =>
 		initialOauthState(
@@ -372,6 +368,11 @@ export function ConnectOauthRoute({
 	// `mode=personal` saves to the member's personal org, pinned to `?org=`;
 	// the callback only knows that from the restored config.
 	const pinnedAppSlug = config?.pinnedAppSlug ?? null
+	// The provider callback restores the org and `mode=personal` from
+	// sessionStorage, which SSR cannot read; wait for the restored config.
+	const orgKnown =
+		(hydrated && config !== null) ||
+		!isConnectOauthCallbackUrl(new URL(currentHref, 'https://kody.local'))
 	const targetOrg =
 		initialData.pinnedConnect || pinnedAppSlug
 			? (organizations.find((org) => org.personal) ?? null)
