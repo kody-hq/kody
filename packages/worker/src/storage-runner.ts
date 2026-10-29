@@ -301,9 +301,16 @@ function readCloneableStorageValue(value: unknown) {
 	}
 }
 
+const storageExportByteEncoder = new TextEncoder()
+
+function utf8Bytes(value: string) {
+	return storageExportByteEncoder.encode(value).byteLength
+}
+
 function estimateStorageValueJsonBytes(value: unknown) {
 	try {
-		return JSON.stringify(value)?.length ?? 0
+		const json = JSON.stringify(value)
+		return json === undefined ? 0 : utf8Bytes(json)
 	} catch {
 		return 0
 	}
@@ -831,7 +838,7 @@ class StorageRunnerBase extends DurableObject<Env> {
 				cursor = key
 				const readable = readCloneableStorageValue(value)
 				entries.push({ key, value: readable })
-				bytes += key.length + estimateStorageValueJsonBytes(readable)
+				bytes += utf8Bytes(key) + estimateStorageValueJsonBytes(readable)
 				if (entries.length >= pageSize || bytes >= maxBytes) {
 					return {
 						entries,

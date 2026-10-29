@@ -104,12 +104,14 @@ export const drExportStoragePageMaxBytes = 1024 * 1024
 /** StorageRunner first pages fetched at once; commits stay serial. */
 const storageExportConcurrency = 4
 /**
- * Consecutive ticks that start on the same storage cursor without persisting
- * progress. From the second such tick the phase runs one identity at a time so
- * the head identity is the suspect; at the limit it is skipped with a
- * `storage dump failed:` warning so one bucket cannot wedge the whole day.
+ * After a tick aborts (lease left set) on an unchanged storage cursor, the
+ * next ticks run one identity at a time and record the head identity as the
+ * suspect before fetching it. A suspect whose recorded attempts all aborted
+ * this many times is skipped with a `storage dump failed:` warning so one
+ * bucket cannot wedge the whole day. Outages that fail before the fetch
+ * (D1 inventory, S3 reads) never record an attempt.
  */
-export const drExportStorageStallSkipTicks = 4
+export const drExportStorageSuspectAttempts = 3
 const indexChunkEntryLimit = 100
 const previousSealedDayLookbackDays = 35
 const progressLeaseDurationMs = 2 * 60_000
@@ -199,7 +201,12 @@ export type DrExporterProgress = {
 	 * Storage cursor seen at the start of recent ticks and how many ticks in a
 	 * row began there. Unchanged across ticks means no storage progress.
 	 */
-	storageStall?: { key: string; ticks: number } | null
+	storageStall?: {
+		key: string
+		ticks: number
+		suspect?: string | null
+		attempts?: number
+	} | null
 	/** Index into backupR2BucketLabels. */
 	r2LabelIndex: number
 	r2ListCursor: string | null
@@ -844,12 +851,19 @@ function storageStallKey(progress: DrExporterProgress) {
 	])
 }
 
-function trackStorageStall(progress: DrExporterProgress) {
+function trackStorageStall(
+	progress: DrExporterProgress,
+	input: { previousTickAborted: boolean },
+) {
 	const key = storageStallKey(progress)
 	progress.storageStall =
-		progress.storageStall?.key === key
-			? { key, ticks: progress.storageStall.ticks + 1 }
-			: { key, ticks: 1 }
+		input.previousTickAborted && progress.storageStall?.key === key
+			? {
+					...progress.storageStall,
+					key,
+					ticks: progress.storageStall.ticks + 1,
+				}
+			: { key, ticks: 1, suspect: null, attempts: 0 }
 }
 
 function resetPartialStorageState(progress: DrExporterProgress) {
@@ -1037,15 +1051,20 @@ async function exportStoragePhase(input: {
 		return inventory.find((item) => !handledIdentities.has(item.identity))
 	}
 
-	if (stallTicks >= drExportStorageStallSkipTicks) {
+	if (stallTicks >= 2) {
+		const stall = progress.storageStall!
 		const suspect = nextIdentity()
-		if (suspect) {
+		if (
+			suspect &&
+			stall.suspect === suspect.identity &&
+			(stall.attempts ?? 0) >= drExportStorageSuspectAttempts
+		) {
 			console.error(
 				'dr_export_storage_identity_skipped',
 				JSON.stringify({
 					day: progress.day,
 					identity: suspect.identity,
-					stalledTicks: stallTicks,
+					abortedAttempts: stall.attempts,
 				}),
 			)
 			progress.warnings.push(
@@ -1056,6 +1075,14 @@ async function exportStoragePhase(input: {
 			handledIdentities.add(suspect.identity)
 			progress.storageStall = null
 			await persistProgress(s3, session)
+		} else if (suspect) {
+			progress.storageStall = {
+				...stall,
+				suspect: suspect.identity,
+				attempts:
+					(stall.suspect === suspect.identity ? (stall.attempts ?? 0) : 0) + 1,
+			}
+			await persistProgress(s3, session, { advanced: false })
 		}
 	}
 
@@ -1683,8 +1710,15 @@ export async function runDrExportTick(input: {
 		) {
 			return empty('progress-lease-active')
 		}
+		if (progress.phase === 'storage') {
+			// A lease still set here means the previous tick died or threw
+			// before releasing it. Only those count toward a stall; a tick that
+			// spent its budget elsewhere released the lease cleanly.
+			trackStorageStall(progress, {
+				previousTickAborted: Boolean(progress.leaseId),
+			})
+		}
 		progress.leaseId = crypto.randomUUID()
-		if (progress.phase === 'storage') trackStorageStall(progress)
 		await persistProgress(s3, session, { advanced: false })
 
 		const owners =

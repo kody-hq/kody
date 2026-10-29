@@ -22,7 +22,7 @@ import { sha256Hex } from '#worker/dr/sha256.ts'
 import {
 	drExportMaxStorageDumpBufferBytes,
 	drExportStoragePageMaxBytes,
-	drExportStorageStallSkipTicks,
+	drExportStorageSuspectAttempts,
 	__testOnlyCreateInitialProgress,
 	__testOnlyParseProgress,
 	runDrExportTick,
@@ -1108,7 +1108,7 @@ test('storage pages are byte-bounded and a single-page dump skips the chunk roun
 	).toBe(false)
 })
 
-test('a storage identity that fails every tick is skipped after repeated stalled ticks', async () => {
+test('a storage identity whose serial attempts keep aborting is skipped', async () => {
 	const bad = encodeStorageIdentity('user-a', 'job:1')
 	consoleError.mockImplementation(() => {})
 	storageMocks.exportStorage.mockReset()
@@ -1128,7 +1128,13 @@ test('a storage identity that fails every tick is skipped after repeated stalled
 	const advancedAt = afterFirst.advancedAt
 	// Tick 1 entered storage from the owner phases; stall counting starts on
 	// the next tick that begins in storage.
-	for (let attempt = 1; attempt < drExportStorageStallSkipTicks; attempt += 1) {
+	// Then one plain stalled tick plus one aborted serial attempt per suspect
+	// attempt before the skip.
+	for (
+		let attempt = 0;
+		attempt < drExportStorageSuspectAttempts + 1;
+		attempt += 1
+	) {
 		// Expire the lease left by the failed tick.
 		const stored = JSON.parse(await readText(progressKey))
 		stored.leaseExpiresAt = new Date(0).toISOString()

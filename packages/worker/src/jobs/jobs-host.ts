@@ -99,7 +99,9 @@ class JobsHostEntrypoint
  * gives each RPC call its own client and flush.
  */
 export const JobsHost = Sentry.withSentry(
-	(env: Env) => getWorkerSentryOptions(env),
+	// No DSN (including test envs) must stay disabled; `undefined` lets the
+	// SDK fall back to `env.SENTRY_DSN` without our filters.
+	(env: Env) => getWorkerSentryOptions(env) ?? { enabled: false },
 	JobsHostEntrypoint,
 )
 export type JobsHost = JobsHostEntrypoint
