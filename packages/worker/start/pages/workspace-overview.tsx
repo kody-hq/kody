@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { SkillMetricsPanel } from './skill-metrics.tsx'
-import type {  SkillMetrics } from '#universal/skill-metrics.ts'
+import type { SkillMetrics } from '#universal/skill-metrics.ts'
 import { EntityExplainer, resolveEntityExplainer } from './entity-explainer.tsx'
 import { WorkspaceCharts } from './workspace-charts.tsx'
 import type {

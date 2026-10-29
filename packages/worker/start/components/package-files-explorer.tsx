@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { SkillReadAcknowledgement } from './skill-read-acknowledgement.tsx'
-import type {  CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { type ReactNode, useState, Fragment } from 'react'
 import { SiteLink } from './site-link.tsx'
 import { withInstallOrg } from '#universal/community-search.ts'
@@ -34,7 +34,7 @@ import {
 	renderPackageRepoChrome,
 } from './package-repo-nav.tsx'
 import { renderIcon } from './icon.tsx'
-import type {  PackageFilesLoaderData } from '#universal/loader-data.ts'
+import type { PackageFilesLoaderData } from '#universal/loader-data.ts'
 import {
 	colors,
 	mq,

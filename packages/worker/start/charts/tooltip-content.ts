@@ -1,5 +1,5 @@
-import type {  ChartPoint,  ChartValue } from '@tanstack/charts'
-import type {  ChartTooltipContentContext } from '@tanstack/charts/tooltip'
+import type { ChartPoint, ChartValue } from '@tanstack/charts'
+import type { ChartTooltipContentContext } from '@tanstack/charts/tooltip'
 
 export function tooltipRows<T, X extends ChartValue, Y extends ChartValue>(
 	points: readonly ChartPoint<T, X, Y>[],

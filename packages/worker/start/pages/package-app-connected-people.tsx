@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import type {  CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { revokePackageAppConnectedPerson } from '#start/server/package-app-connected-people'

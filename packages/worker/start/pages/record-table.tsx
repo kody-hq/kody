@@ -9,7 +9,7 @@ import {
 	RecordSelectionCheckbox,
 } from './record-table-data-controls.tsx'
 import { nestedSurfaceDarkCss } from '#universal/styles/surface.ts'
-import type {  CSSObject } from '@emotion/react'
+import type { CSSObject } from '@emotion/react'
 import {
 	useId,
 	useMemo,

@@ -5,7 +5,7 @@ import { MetadataGrid } from './account-management-components.tsx'
 import { CredentialFillPlacementEditor } from './account-credential-fill-placement-editor.tsx'
 import { recordBodyCss } from './record-table.tsx'
 import { fillPlacementAnchor } from '#universal/credential-placement-approval.ts'
-import type {  CredentialProviderBindingItem } from '#universal/credentials-list.ts'
+import type { CredentialProviderBindingItem } from '#universal/credentials-list.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import {
 	cardTitleCss,

@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import type {  ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Combobox, type ComboboxOption } from './combobox.tsx'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'

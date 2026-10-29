@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { AllowedPackagesPicker } from '../components/allowed-packages-picker.tsx'
-import type {  ComboboxOption } from '../components/combobox.tsx'
+import type { ComboboxOption } from '../components/combobox.tsx'
 
 import {
 	credentialCreateKindSummary,

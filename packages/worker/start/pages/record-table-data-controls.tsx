@@ -1,10 +1,10 @@
 /** @jsxImportSource @emotion/react */
 import { useEffect, useRef, useId } from 'react'
 import type {
-	 useRecordTableModel,
-	 RecordTableOptions,
+	useRecordTableModel,
+	RecordTableOptions,
 } from './record-table-model.ts'
-import type {  RecordTableColumn } from './record-table.tsx'
+import type { RecordTableColumn } from './record-table.tsx'
 import { colors } from '#universal/styles/tokens.ts'
 type Model = ReturnType<typeof useRecordTableModel>
 const control = {

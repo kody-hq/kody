@@ -5,7 +5,11 @@ import {
 	placementApprovalParam,
 } from '#universal/credential-placement-approval.ts'
 
-import type { ConnectSecretsInput, ConnectOauthInput, ConnectWebhookInput } from './connect-input-types.ts'
+import type {
+	ConnectSecretsInput,
+	ConnectOauthInput,
+	ConnectWebhookInput,
+} from './connect-input-types.ts'
 
 function connectionLocation(search: string) {
 	const params = new URLSearchParams(search)
@@ -16,9 +20,7 @@ function connectionLocation(search: string) {
 		search: Array.from(params.entries()),
 	}
 }
-export function connectSecretsInput(
-	search: string,
-): ConnectSecretsInput {
+export function connectSecretsInput(search: string): ConnectSecretsInput {
 	const { params, ...location } = connectionLocation(search)
 	const { selectedSecretId, approval } = secretsInput(
 		location.orgSlug ?? '',
@@ -37,9 +39,7 @@ export function connectSecretsInput(
 		placementCredentialId,
 	}
 }
-export function connectOauthInput(
-	search: string,
-): ConnectOauthInput {
+export function connectOauthInput(search: string): ConnectOauthInput {
 	const { params, ...location } = connectionLocation(search)
 	return {
 		...location,
@@ -50,9 +50,7 @@ export function connectOauthInput(
 		platformSlug: params.get('platform') ?? undefined,
 	}
 }
-export function connectWebhookInput(
-	search: string,
-): ConnectWebhookInput {
+export function connectWebhookInput(search: string): ConnectWebhookInput {
 	const { params, ...location } = connectionLocation(search)
 	return {
 		...location,
