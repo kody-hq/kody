@@ -172,7 +172,8 @@ accounts.
 1. Turn the flag on with the button on this page (or opt into experiments and
    wait for the experiments audience enable).
 2. Publish the package above with `packageSave` (or push it through the git
-   lane).
+   lane). Include a non-empty root `README.md` and `AGENTS.md`. `packageSave`
+   rejects the package without them.
 3. Connect ChatGPT (or another events-capable host) to your Kody MCP server with
    OAuth. Its `server/discover` now includes `events: {}`, and `events/list`
    returns `@you/ping.ready`.
