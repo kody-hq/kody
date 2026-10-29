@@ -2,13 +2,13 @@
 
 import { type ReactNode } from 'react'
 import {
-	shikiPreClass,
+	highlightPreClass,
 	type HighlightedCode,
 } from '#universal/highlighted-code.ts'
 
 /**
  * Paints a pre-tokenized code block. Origin (or the highlight worker) owns
- * Shiki; this module only turns serializable spans into JSX text and
+ * TanStack Highlight; this module only turns serializable spans into JSX text and
  * inline styles — never `innerHTML`.
  */
 function rootStyleFromTokens(fg: string | undefined, bg: string | undefined) {
@@ -33,7 +33,7 @@ export function renderHighlightedCode(
 ): ReactNode {
 	if (highlighted.plain || highlighted.lines.length === 0) {
 		return (
-			<pre key={key} className={shikiPreClass}>
+			<pre key={key} className={highlightPreClass}>
 				<code>{highlighted.code}</code>
 			</pre>
 		)
@@ -41,7 +41,7 @@ export function renderHighlightedCode(
 	return (
 		<pre
 			key={key}
-			className={shikiPreClass}
+			className={highlightPreClass}
 			style={rootStyleFromTokens(highlighted.fg, highlighted.bg)}
 		>
 			<code>

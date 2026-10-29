@@ -12,6 +12,8 @@ export default defineConfig({
 				'tools/ci/start-opt-in-probe-worker.ts',
 				// Preview workflow github-script steps require this CommonJS helper.
 				'tools/ci/github-api-retry.cjs',
+				// esbuild loads this harness against each performance snapshot.
+				'tools/markdown-perf/sample-entry.mjs',
 				'e2e/**/*.ts',
 				'vitest*.ts',
 			],

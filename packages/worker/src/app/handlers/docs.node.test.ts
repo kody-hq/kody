@@ -148,7 +148,7 @@ test('interactive doc JSON includes walkthrough highlight tokens', async () => {
 							[
 								{
 									content: snippet.code,
-									style: { color: '#111', '--shiki-dark': '#eee' },
+									style: { color: '#111', '--highlight-dark': '#eee' },
 								},
 							],
 						],

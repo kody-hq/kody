@@ -316,13 +316,14 @@ site-perf collector records these phases; it does not budget them.
 
 Browser pages that show code — markdown bodies on guides, blog posts, and
 community READMEs, onboarding MCP config snippets, and JSON dumps on account
-jobs/activity — highlight with [Shiki](https://shiki.style/) on the
-`kody-highlight` worker. Origin loaders POST snippets over the `HIGHLIGHT`
-service binding (`POST /highlight`) and attach serializable token trees to
-loader/API data. The browser only paints those tokens as JSX text and inline
-styles — never `innerHTML` — so untrusted README fences stay inside the markdown
-safety model. Light and dark tokens follow `prefers-color-scheme` via CSS
-variables in `packages/worker/public/styles.css`. Shiki grammars are not part of
+jobs/activity — highlight with
+[TanStack Highlight](https://tanstack.com/highlight) on the `kody-highlight`
+worker. Origin loaders POST snippets over the `HIGHLIGHT` service binding
+(`POST /highlight`) and attach serializable token trees to loader/API data. The
+browser only paints those tokens as JSX text and inline styles — never
+`innerHTML` — so untrusted README fences stay inside the markdown safety model.
+Light and dark tokens follow `prefers-color-scheme` via CSS variables in
+`packages/worker/public/styles.css`. TanStack Highlight grammars are not part of
 the browser bundle; missing tokens render as escaped plaintext in the same
 wrapper. Both origin and the highlight worker cache token batches keyed by
 highlighter version.

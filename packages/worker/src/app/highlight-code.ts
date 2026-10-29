@@ -1,4 +1,5 @@
-import { lexer, type Token, type Tokens } from 'marked'
+import { parseKodyMarkdown } from '#universal/markdown.ts'
+import { type BlockNode } from '@tanstack/markdown'
 import { highlightCacheHeaderName } from '#universal/highlight-cache-header.ts'
 import { highlightBatchCacheRequest } from '#universal/highlight-cache-request.ts'
 import {
@@ -153,42 +154,41 @@ export async function highlightSnippets(
 }
 
 function walkMarkdownTokens(
-	tokens: Array<Token>,
+	nodes: Array<BlockNode>,
 	fences: Array<HighlightSnippet>,
 ) {
-	for (const token of tokens) {
-		if (token.type === 'code') {
-			const code = token as Tokens.Code
-			fences.push({ code: code.text, lang: code.lang })
-			continue
-		}
-		if (token.type === 'list') {
-			const list = token as Tokens.List
-			for (const item of list.items) {
-				if (item.tokens) walkMarkdownTokens(item.tokens, fences)
-			}
-			continue
-		}
-		if ('tokens' in token && Array.isArray(token.tokens)) {
-			walkMarkdownTokens(token.tokens, fences)
-		}
+	for (const node of nodes) {
+		if (node.type === 'code') fences.push({ code: node.value, lang: node.lang })
+		else if (node.type === 'list' || node.type === 'footnotes') {
+			for (const item of node.items) walkMarkdownTokens(item.children, fences)
+		} else if (
+			'children' in node &&
+			node.type !== 'paragraph' &&
+			node.type !== 'heading'
+		)
+			walkMarkdownTokens(node.children, fences)
 	}
 }
 
 export function collectMarkdownFences(
 	markdown: string,
+	firstParty = false,
 ): Array<HighlightSnippet> {
 	const fences: Array<HighlightSnippet> = []
-	walkMarkdownTokens(lexer(markdown), fences)
+	walkMarkdownTokens(parseKodyMarkdown(markdown, firstParty).children, fences)
 	return fences
 }
 
 export async function highlightMarkdownFences(
 	env: HighlightEnv,
 	markdown: string,
-	options?: HighlightOptions,
+	options?: HighlightOptions & { firstParty?: boolean },
 ): Promise<Array<HighlightedCode>> {
-	return highlightSnippets(env, collectMarkdownFences(markdown), options)
+	return highlightSnippets(
+		env,
+		collectMarkdownFences(markdown, options?.firstParty),
+		options,
+	)
 }
 
 export async function highlightJsonValue(

@@ -1,6 +1,6 @@
 {
 	"$schema": "../../node_modules/wrangler/config-schema.json",
-	// Syntax-highlight worker: Shiki lives only here. Origin reaches it
+	// Syntax-highlight worker: TanStack Highlight lives only here. Origin reaches it
 	// through the HIGHLIGHT service binding (no public hostname).
 	"name": "kody-highlight",
 	"main": "./src/index.ts",

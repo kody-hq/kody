@@ -36,3 +36,42 @@ test('unknown languages and oversized snippets stay plaintext', () => {
 	expect(huge.plain).toBe(true)
 	expect(huge.lines).toEqual([])
 })
+
+test('highlighting preserves source text across lines, aliases, and embedded languages', () => {
+	for (const lang of [
+		'ts',
+		'typescript',
+		'js',
+		'javascript',
+		'jsx',
+		'tsx',
+		'bash',
+		'shellscript',
+		'dotenv',
+		'xml',
+		'yaml',
+		'json',
+		'python',
+		'rust',
+		'go',
+	]) {
+		const code = 'const text = "<&>"\n\n// next line\n'
+		const result = tokenizeSnippet({ code, lang })
+		expect(result.plain, lang).toBe(false)
+		expect(
+			result.lines
+				.map((line) => line.map((span) => span.content).join(''))
+				.join('\n'),
+			lang,
+		).toBe(code)
+	}
+	const html = tokenizeSnippet({
+		code: '<script>const value = 42</script>',
+		lang: 'html',
+	})
+	expect(
+		html.lines
+			.flat()
+			.some((span) => span.content.includes('const') && span.style),
+	).toBe(true)
+})

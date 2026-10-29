@@ -58,7 +58,7 @@ test('classifySitePerf scores healthy landing signals and flags cache, LCP, Shik
 	})
 	expect(shikiAndJs.verdict).toBe('needs-fix')
 	expect(shikiAndJs.findings.map((finding) => finding.id)).toEqual([
-		'shiki-on-home',
+		'syntax-highlight-on-home',
 		'js-over-budget',
 	])
 
