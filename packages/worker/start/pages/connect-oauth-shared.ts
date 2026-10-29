@@ -563,7 +563,7 @@ async function saveConnectOauthApp(
 	nextConfig: ConnectOauthConfig,
 	clientSecret?: string,
 	orgSlug: string | null = null,
-	options: { replaceLiveConnection?: boolean } = {},
+	options: { replaceLiveConnection?: boolean; newConnection?: boolean } = {},
 ): Promise<SaveOauthAppResult> {
 	const payload = (await saveOAuthApp({
 		data: {
@@ -586,6 +586,7 @@ async function saveConnectOauthApp(
 				...(options.replaceLiveConnection
 					? { replaceLiveConnection: true }
 					: {}),
+				...(options.newConnection ? { newConnection: true } : {}),
 			},
 		},
 	})) as Record<string, unknown>

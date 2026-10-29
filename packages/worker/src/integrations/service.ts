@@ -1335,8 +1335,26 @@ export class LiveOauthAppReplaceError extends Error {
 	}
 }
 
-/** Opt-in guard for {@link LiveOauthAppReplaceError} (website saves). */
-export type LiveConnectionGuard = { confirmed: boolean }
+/** A website "save as a new connection" whose name already exists. */
+export class OauthConnectionNameTakenError extends Error {
+	readonly code = 'connection_name_taken'
+	constructor(connectionName: string) {
+		super(
+			`A connection named "${connectionName}" already exists. Pick another name for the new connection.`,
+		)
+		this.name = 'OauthConnectionNameTakenError'
+	}
+}
+
+/**
+ * Opt-in guard for website saves: {@link LiveOauthAppReplaceError} unless
+ * `confirmed`, and {@link OauthConnectionNameTakenError} when `newConnection`
+ * names an existing connection.
+ */
+export type LiveConnectionGuard = {
+	confirmed: boolean
+	newConnection?: boolean
+}
 
 function oauthAppIdentityChanged(
 	app: UserOauthApp,
@@ -1357,12 +1375,18 @@ async function assertLiveConnectionReplaceConfirmed(input: {
 	config: OauthAppWriteConfig
 	guard: LiveConnectionGuard | undefined
 }) {
-	if (!input.guard || input.guard.confirmed) return
+	if (!input.guard) return
+	if (!input.guard.newConnection && input.guard.confirmed) return
 	const existing = await getJoinedIntegrationByName({
 		db: input.db,
 		userId: input.userId,
 		name: canonicalIntegrationName(input.config.name),
 	})
+	if (input.guard.newConnection) {
+		if (existing)
+			throw new OauthConnectionNameTakenError(existing.connection.name)
+		return
+	}
 	if (existing?.lane !== 'user' || !existing.connection.connectedAt) return
 	const next = buildOauthAppRow({
 		userId: input.userId,

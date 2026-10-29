@@ -207,6 +207,7 @@ export async function saveAccountOAuthApp(input: {
 			env: input.env,
 			liveConnectionGuard: {
 				confirmed: input.fields.replaceLiveConnection === true,
+				newConnection: input.fields.newConnection === true,
 			},
 			userId: ownerIdFromCaller({
 				request: input.user.request,

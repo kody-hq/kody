@@ -471,7 +471,10 @@ export function ConnectOauthRoute({
 				nextConfig,
 				clientSecret || undefined,
 				flowOrg,
-				{ replaceLiveConnection: choice.replace === true },
+				{
+					replaceLiveConnection: choice.replace === true,
+					newConnection: Boolean(choice.newName),
+				},
 			)
 			if (!result || !isFlowActive()) return
 			if (!result.ok) {

@@ -18,6 +18,7 @@ import {
 	listOauthApps,
 	listJoinedIntegrations,
 	LiveOauthAppReplaceError,
+	OauthConnectionNameTakenError,
 	rotateOauthAppClientCredentials,
 	upsertIntegration,
 	upsertOauthAppWithoutConnection,
@@ -640,12 +641,22 @@ test('website saves refuse to swap the app behind a live connection unless confi
 		clientId: 'client-a',
 	})
 
+	// Save as a new connection refuses a name that already exists.
+	await expect(
+		upsertOauthAppWithoutConnection({
+			env,
+			userId,
+			config: setup('client-b'),
+			liveConnectionGuard: { confirmed: false, newConnection: true },
+		}),
+	).rejects.toBeInstanceOf(OauthConnectionNameTakenError)
+
 	// Save as a new connection: a separate app + name, the live one untouched.
 	const saveAsNew = await upsertOauthAppWithoutConnection({
 		env,
 		userId,
 		config: setup('client-b', 'google-2'),
-		liveConnectionGuard: refuse,
+		liveConnectionGuard: { confirmed: false, newConnection: true },
 	})
 	expect(saveAsNew).toMatchObject({ slug: 'google-2', clientId: 'client-b' })
 	await upsertIntegration({

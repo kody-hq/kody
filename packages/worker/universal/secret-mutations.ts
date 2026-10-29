@@ -36,6 +36,8 @@ const oauthFields = {
 	tokenExchangeStyle: text,
 	/** Explicitly replace the app behind a live connection of this name. */
 	replaceLiveConnection: z.boolean().optional(),
+	/** "Save as a new connection": refuse a name that already exists. */
+	newConnection: z.boolean().optional(),
 }
 export const saveOAuthAppSchema = z.object(oauthFields)
 export const connectOAuthSchema = z.object({
