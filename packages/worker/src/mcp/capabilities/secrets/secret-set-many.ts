@@ -110,6 +110,7 @@ export const secretSetManyCapability = defineDomainCapability(
 				})
 			if (
 				authorityPackageId &&
+				!parsed.assertOnly &&
 				parsed.secrets.some(
 					(secret) =>
 						secret.value !== undefined && containsSealedToken(secret.value),

@@ -397,6 +397,19 @@ test('package code that tries to keep a sealed token is pointed at a login crede
 		expect(message).not.toContain(sealed)
 	}
 	expect(await t.entry('k')).toBeNull()
+	// assertOnly never writes the value, so it gets no sealed-token refusal.
+	const assertOnlyResult = await secretSetManyCapability
+		.handler(
+			{
+				secrets: [{ name: 'k', scope: 'package', value: sealed }],
+				assertOnly: true,
+			} as never,
+			pkg,
+		)
+		.catch((caught: unknown) => caught)
+	expect(String((assertOnlyResult as Error)?.message)).not.toMatch(
+		/login credential/,
+	)
 
 	// Outside a package the same calls keep today's messages.
 	await expect(

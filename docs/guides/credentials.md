@@ -467,10 +467,10 @@ written. Without `expiresInPath`, a session lasts `ttlSeconds` (default 3600, at
 most 24 hours). The session goes in an `Authorization: Bearer` header unless the
 credential's `inject` says otherwise. The package declares the need with
 `"kind": "login"` in `kody.credentials` and calls
-`credential('token-demo').fetch('https://api.example.com/v1/items')`; it never
-sees the refresh token or the access token. The owner creates or rotates the
-credential on the website or with `secretSet` outside a package: package code
-cannot set `kind`, `hosts`, or `login_exchange`.
+`(await credential('token-demo')).fetch('https://api.example.com/v1/items')`; it
+never sees the refresh token or the access token. The owner creates or rotates
+the credential on the website or with `secretSet` outside a package: package
+code cannot set `kind`, `hosts`, or `login_exchange`.
 
 Limits: the session is cached in memory per isolate, not persisted, so a cold
 isolate runs the exchange again. A rotated refresh token in the response is not
