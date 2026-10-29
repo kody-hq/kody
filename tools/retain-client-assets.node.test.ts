@@ -1,4 +1,5 @@
 import {
+	existsSync,
 	mkdtempSync,
 	mkdirSync,
 	readFileSync,
@@ -203,4 +204,50 @@ test('evicts a whole retained build instead of splitting a chunk from its depend
 			JSON.parse(readFileSync(path.join(archive, 'manifest.json'), 'utf8')),
 		),
 	).toEqual(['fresh-cccccccc.js'])
+})
+
+test('never drops a retained build inside the minimum retention window', () => {
+	const root = mkdtempSync(path.join(tmpdir(), 'retained-assets-'))
+	directories.push(root)
+	const hour = 60 * 60 * 1_000
+	const now = 240 * hour
+	const previous = path.join(root, 'previous')
+	mkdirSync(path.join(previous, 'assets'), { recursive: true })
+	const manifest: Record<string, number> = {
+		'recent-aaaaaaaa.js': now - 23 * hour,
+		'stale-bbbbbbbb.js': now - 25 * hour,
+	}
+	for (const name of Object.keys(manifest)) {
+		writeFileSync(path.join(previous, 'assets', name), name)
+	}
+	writeFileSync(path.join(previous, 'manifest.json'), JSON.stringify(manifest))
+	const client = path.join(root, 'client')
+	mkdirSync(path.join(client, 'assets'), { recursive: true })
+	writeFileSync(path.join(client, 'assets', 'fresh-cccccccc.js'), 'fresh')
+	const archive = path.join(root, 'archive')
+	retainClientAssets({
+		clientDirectory: client,
+		previousDirectory: previous,
+		archiveDirectory: archive,
+		now,
+		maxAssets: 2,
+	})
+	expect(
+		Object.keys(
+			JSON.parse(readFileSync(path.join(archive, 'manifest.json'), 'utf8')),
+		).sort(),
+	).toEqual(['fresh-cccccccc.js', 'recent-aaaaaaaa.js'])
+	const tight = path.join(root, 'tight-client')
+	mkdirSync(path.join(tight, 'assets'), { recursive: true })
+	writeFileSync(path.join(tight, 'assets', 'fresh-dddddddd.js'), 'fresh')
+	expect(() =>
+		retainClientAssets({
+			clientDirectory: tight,
+			previousDirectory: previous,
+			archiveDirectory: path.join(root, 'tight-archive'),
+			now,
+			maxAssets: 1,
+		}),
+	).toThrow('within the minimum retention window')
+	expect(existsSync(path.join(root, 'tight-archive'))).toBe(false)
 })
