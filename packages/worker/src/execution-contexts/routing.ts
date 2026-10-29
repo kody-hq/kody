@@ -5,6 +5,7 @@ import {
 	sha256Base64Url,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { type CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
+import { findPlaceholderMatches } from '#worker/credentials/module-placeholder-scan.ts'
 import { type RunRecordHandle } from '#worker/run-records/types.ts'
 import { ExecutionContextError } from './errors.ts'
 import {
@@ -126,11 +127,54 @@ export function planTargets(input: {
 	return targets
 }
 
+const credentialRuntimeExports = new Set([
+	'credential',
+	'credentials',
+	'createAuthenticatedFetch',
+])
+const runtimeNamedImportPattern =
+	/import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*['"]kody:runtime['"]/g
+const runtimeWholeImportPattern =
+	/import\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^}]*\}\s*)?from\s*['"]kody:runtime['"]/g
+
+/**
+ * True when execute code visibly needs a credential: a secret or
+ * integration placeholder, or a credential helper from `kody:runtime`. A
+ * cheap source check, so a context whose grant allows no credentials is
+ * skipped before the run starts instead of failing there.
+ */
+export function codeNeedsCredentials(code: string | null) {
+	if (!code) return false
+	if (findPlaceholderMatches(code).length > 0) return true
+	for (const match of code.matchAll(runtimeNamedImportPattern)) {
+		const names = match[1]!.split(',').map((part) =>
+			part
+				.trim()
+				.replace(/^type\s+/, '')
+				.split(/\s+as\s+/)[0]!
+				.trim(),
+		)
+		if (names.some((name) => credentialRuntimeExports.has(name))) return true
+	}
+	for (const match of code.matchAll(runtimeWholeImportPattern)) {
+		const alias = match[1]!.replace(/[$]/g, '\\$')
+		if (
+			new RegExp(
+				`\\b${alias}\\s*\\.\\s*(?:credentials?|createAuthenticatedFetch)\\b`,
+			).test(code)
+		) {
+			return true
+		}
+	}
+	return false
+}
+
 /** Why a grant cannot take this run, or null when it can. */
 export function grantRefusal(input: {
 	grant: EcpGrant
 	requires: ReadonlyArray<ExecuteRequirement>
 	credentials: CredentialCallMap | null
+	code?: string | null
 }): string | null {
 	if (input.requires.includes('fs') && input.grant.fs.length === 0) {
 		return 'no_fs'
@@ -142,9 +186,9 @@ export function grantRefusal(input: {
 		return 'no_lan'
 	}
 	if (
-		input.credentials &&
-		input.credentials.size > 0 &&
-		input.grant.credentials.mode === 'none'
+		input.grant.credentials.mode === 'none' &&
+		((input.credentials && input.credentials.size > 0) ||
+			codeNeedsCredentials(input.code ?? null))
 	) {
 		return 'credentials_not_allowed'
 	}
@@ -306,6 +350,7 @@ export async function routeExecute(input: {
 			grant,
 			requires,
 			credentials: input.credentials,
+			code: input.code,
 		})
 		if (refusal) {
 			skip(refusal)

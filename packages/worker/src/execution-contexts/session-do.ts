@@ -1112,6 +1112,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			grant,
 			requires,
 			credentials: picks.length > 0 ? (new Map(picks) as never) : null,
+			code: request.source.code,
 		})
 		if (refusal) {
 			return await fail(

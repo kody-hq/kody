@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { runChainShapeError } from './chain-rules.ts'
 import {
+	codeNeedsCredentials,
 	describeCloudFallback,
 	grantRefusal,
 	markQueuedAttemptExpired,
@@ -117,6 +118,81 @@ test('a grant refuses runs it cannot serve', () => {
 	).toBe('credentials_not_allowed')
 	expect(
 		grantRefusal({ grant: ecpDefaultGrant, requires: [], credentials: null }),
+	).toBeNull()
+})
+
+// Built at runtime so no literal placeholder sits in the source.
+const placeholder = (inner: string) =>
+	`${'{'.repeat(2)}${inner}${'}'.repeat(2)}`
+
+test('execute code that needs a credential is detected before it runs', () => {
+	expect(codeNeedsCredentials(null)).toBe(false)
+	expect(
+		codeNeedsCredentials(
+			"import { kody } from 'kody:runtime'\nexport default () => kody.metaGetCurrentUser({})",
+		),
+	).toBe(false)
+	expect(
+		codeNeedsCredentials(
+			`export default () => fetch('https://api.example.com', { headers: { authorization: 'Bearer ${placeholder('secret:example-token')}' } })`,
+		),
+	).toBe(true)
+	expect(
+		codeNeedsCredentials(
+			`export default () => fetch('https://api.example.com', { headers: { authorization: '${placeholder('integration-token:example')}' } })`,
+		),
+	).toBe(true)
+	expect(
+		codeNeedsCredentials(
+			"import { credential } from 'kody:runtime'\nexport default async () => (await credential('example')).fetch('/')",
+		),
+	).toBe(true)
+	expect(
+		codeNeedsCredentials(
+			'import { kody, createAuthenticatedFetch as authFetch } from "kody:runtime"\nexport default () => authFetch',
+		),
+	).toBe(true)
+	expect(
+		codeNeedsCredentials(
+			"import runtime from 'kody:runtime'\nexport default () => runtime.credentials('example')",
+		),
+	).toBe(true)
+	expect(
+		codeNeedsCredentials(
+			"import * as rt from 'kody:runtime'\nexport default () => rt.kody.metaGetCurrentUser({})",
+		),
+	).toBe(false)
+})
+
+test('a grant that allows no credentials refuses code that needs one', () => {
+	const code =
+		"import { credentials } from 'kody:runtime'\nexport default () => credentials('example')"
+	expect(
+		grantRefusal({
+			grant: ecpDefaultGrant,
+			requires: [],
+			credentials: null,
+			code,
+		}),
+	).toBe('credentials_not_allowed')
+	expect(
+		grantRefusal({
+			grant: {
+				...ecpDefaultGrant,
+				credentials: { mode: 'list', ids: ['cred_1'] },
+			},
+			requires: [],
+			credentials: null,
+			code,
+		}),
+	).toBeNull()
+	expect(
+		grantRefusal({
+			grant: ecpDefaultGrant,
+			requires: [],
+			credentials: null,
+			code: 'export default () => 1',
+		}),
 	).toBeNull()
 })
 

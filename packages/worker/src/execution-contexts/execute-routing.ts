@@ -39,7 +39,7 @@ export const executeRoutingInputFields = {
 		.max(ecpMaxChainContexts + 1)
 		.optional()
 		.describe(
-			'This run\'s own ordered chain, replacing your default chain: up to 3 context ids or names, with "cloud" allowed only last. Leaving out "cloud" means the run fails instead of falling back to Kody cloud. Entries that are offline, unusable or lack `requires` are skipped; if none qualifies the error lists each one and why.',
+			'This run\'s own ordered chain, replacing your default chain: up to 3 context ids or names, with "cloud" allowed only last. Leaving out "cloud" means the run fails instead of falling back to Kody cloud. Entries that are offline, unusable, lack `requires`, or allow no credentials while the run needs one (a credentials map, a secret or integration placeholder, or a kody:runtime credential helper) are skipped before the code starts; if none qualifies the error lists each one and why.',
 		),
 }
 
