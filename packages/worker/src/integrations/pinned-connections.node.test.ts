@@ -463,6 +463,29 @@ test('deleting the org app cuts members off: wiped and revoked upstream', async 
 	expect(remaining!.n).toBe(0)
 })
 
+test('deleting the org app without SECRET_STORE_KEY still wipes members locally', async () => {
+	const t = await setup()
+	const saved = await t.connect('ann', t.orgs.acme)
+	if (!saved.ok) throw new Error(saved.error)
+	const fetchMock = stubUpstream(204)
+	await expect(
+		deleteOauthAppWithConnections({
+			env: { ...t.env, SECRET_STORE_KEY: undefined } as unknown as Env,
+			userId: t.orgs.acme.id,
+			slug: 'github',
+			audit: null,
+		}),
+	).resolves.toMatchObject({ deleted: true })
+	expect(fetchMock).not.toHaveBeenCalled()
+	const remaining = await t.db
+		.prepare(
+			`SELECT COUNT(*) AS n FROM user_integrations WHERE app_owner_id = ?`,
+		)
+		.bind(t.orgs.acme.id)
+		.first<{ n: number }>()
+	expect(remaining!.n).toBe(0)
+})
+
 test('placeholders, credential(), createAuthenticatedFetch and refresh resolve it only for its owner in the pinned org', async () => {
 	const t = await setup()
 	const saved = await t.connect('ann', t.orgs.acme)

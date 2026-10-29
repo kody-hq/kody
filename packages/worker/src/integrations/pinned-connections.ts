@@ -148,9 +148,22 @@ export type PinnedConnectionWipeResult = {
 	upstream: UpstreamRevokeResult
 }
 
-type WipeEnv = Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
+/** Without `SECRET_STORE_KEY` the local wipe still runs; upstream is skipped. */
+type WipeEnv = Pick<Env, 'APP_DB'> & { SECRET_STORE_KEY?: string | undefined }
+type KeyedWipeEnv = Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
 
-async function readTokensForRevoke(env: WipeEnv, connection: PinnedConnection) {
+function keyedEnv(env: WipeEnv): KeyedWipeEnv | null {
+	return env.SECRET_STORE_KEY
+		? { APP_DB: env.APP_DB, SECRET_STORE_KEY: env.SECRET_STORE_KEY }
+		: null
+}
+
+async function readTokensForRevoke(
+	keyed: KeyedWipeEnv | null,
+	connection: PinnedConnection,
+) {
+	if (!keyed) return { accessToken: null, refreshToken: null }
+	const env = keyed
 	try {
 		const [access, refreshToken] = await Promise.all([
 			resolveIntegrationAccessToken({
@@ -173,7 +186,12 @@ async function readTokensForRevoke(env: WipeEnv, connection: PinnedConnection) {
 	}
 }
 
-async function readAppForRevoke(env: WipeEnv, connection: PinnedConnection) {
+async function readAppForRevoke(
+	keyed: KeyedWipeEnv | null,
+	connection: PinnedConnection,
+) {
+	if (!keyed) return null
+	const env = keyed
 	try {
 		const app = await getOauthAppBySlug({
 			db: env.APP_DB,
@@ -207,8 +225,8 @@ export async function wipePinnedConnection(input: {
 }): Promise<PinnedConnectionWipeResult> {
 	const { connection } = input
 	const [tokens, app] = await Promise.all([
-		readTokensForRevoke(input.env, connection),
-		readAppForRevoke(input.env, connection),
+		readTokensForRevoke(keyedEnv(input.env), connection),
+		readAppForRevoke(keyedEnv(input.env), connection),
 	])
 	const wiped = await deleteIntegrationConnection({
 		db: input.env.APP_DB,
@@ -269,8 +287,8 @@ export async function wipePinnedConnection(input: {
 }
 
 /**
- * Wipes every match, one at a time. A failed upstream revoke never stops the
- * rest; a local write failure throws.
+ * Wipes every match, one at a time. A failure on one connection does not stop
+ * the rest; local failures are rethrown together once every match was tried.
  */
 export async function wipePinnedConnections(input: {
 	env: WipeEnv
@@ -280,8 +298,23 @@ export async function wipePinnedConnections(input: {
 	fetchImpl?: typeof fetch
 }): Promise<Array<PinnedConnectionWipeResult>> {
 	const results: Array<PinnedConnectionWipeResult> = []
+	const failures: Array<unknown> = []
 	for (const connection of input.connections) {
-		results.push(await wipePinnedConnection({ ...input, connection }))
+		try {
+			results.push(await wipePinnedConnection({ ...input, connection }))
+		} catch (error) {
+			failures.push(error)
+			console.error('pinned-connection-wipe-failed', {
+				credentialId: connection.credentialId,
+				pinnedOrgId: connection.pinnedOrgId,
+			})
+		}
+	}
+	if (failures.length > 0) {
+		throw new AggregateError(
+			failures,
+			'Some pinned connections were not wiped.',
+		)
 	}
 	return results
 }

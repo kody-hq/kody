@@ -1037,11 +1037,6 @@ export async function deleteOauthAppWithConnections(input: {
 		appSlug: existing.slug,
 	})
 	if (pinnedConnections.length > 0) {
-		if (!input.env.SECRET_STORE_KEY) {
-			throw new Error(
-				"SECRET_STORE_KEY is not configured; members' connections through this app cannot be revoked.",
-			)
-		}
 		await wipePinnedConnections({
 			env: {
 				APP_DB: input.env.APP_DB,
