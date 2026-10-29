@@ -739,6 +739,10 @@
 		{
 			"filename": "0204-package-codemod-run-item-owner-detail.sql",
 			"sha256": "3c8aa596e5dbf9460ce3a8051325286f0867fbdcbe394854b361aedb1f4d3d71"
+		},
+		{
+			"filename": "0205-dead-letter-messages.sql",
+			"sha256": "70844e2b9878460431cf3ded00132b20e5d03fbaeb96f98ef7e6bd91f9e20eb7"
 		}
 	]
 }

@@ -1413,6 +1413,11 @@ runtimes skip the read. A failed metrics read fails the lane instead of
 reporting the queue as empty. Inbound email subscription dead-letters are
 terminal handler failures and are not part of this page.
 
+The origin worker consumes every production DLQ and parks each message in APP_DB
+`dead_letter_messages`; the alert counts those parked rows too, so a DLQ keeps
+paging until an admin replays, acks, or purges its messages with the admin DLQ
+capabilities ([dead-letter queues](../dead-letter-queues.md)).
+
 Production note:
 
 - Production deploys warn that the documented Artifacts Worker binding config is

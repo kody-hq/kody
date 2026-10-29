@@ -105,6 +105,8 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Operator accounts](./operator-accounts.md) (third-party services, secret
   names, recovery)
 - [Production backup and disaster recovery](./disaster-recovery.md)
+- [Dead-letter queues](./dead-letter-queues.md) (admin list, peek, replay, ack,
+  and purge; safety rules)
 - [Production rollback](./rollback.md)
 - Ops runbook: [account write-lease repair](./account-write-lease-repair.md)
 - Ops runbook: [org resource transfer](./org-resource-transfer.md)
