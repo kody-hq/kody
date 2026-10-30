@@ -35,9 +35,7 @@ function setup() {
 
 test('renaming to a revoked context name takes the released name', async () => {
 	const { caller, nameOf } = setup()
-	await updateContext(caller, 'ec_live', { name: 'coles-computer' }).catch(
-		() => {},
-	)
+	await updateContext(caller, 'ec_live', { name: 'coles-computer' })
 	expect(nameOf('ec_live')).toBe('coles-computer')
 	expect(nameOf('ec_revoked')).toBe('coles-computer')
 })
