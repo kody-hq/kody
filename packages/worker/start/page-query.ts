@@ -69,7 +69,7 @@ export async function ensurePageQuery<TData, TKey extends QueryKey>(
 	return client.ensureQueryData({ ...options, revalidateIfStale: true })
 }
 
-/** Router keeps the head fallback and exact cache reference, never a second page payload. */
+/** Router owns metadata; the cache reference supports title-only soft updates. */
 export async function loadPageQuery<
 	TData extends object,
 	TKey extends QueryKey,
@@ -82,7 +82,7 @@ export async function loadPageQuery<
 	const head = ('head' in data ? data.head : undefined) as
 		| ResolvedDocumentHead
 		| undefined
-	// Only content resources own reactive metadata. Shared resources leave it
+	// Only content resources update the title. Shared resources leave it
 	// to the matched route, such as Profile, Security and Data using one account read.
 	return { head, ...(head ? { pageHeadQueryKey: options.queryKey } : {}) }
 }

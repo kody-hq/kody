@@ -28,10 +28,13 @@ The root route's `shellComponent` owns the HTML document independently of loader
 success. The loaded app layout owns the header, rail, footer, and page outlet.
 Error and not-found components render inside that document.
 
-[`PageHead`](../../packages/worker/start/components/page-head.tsx) follows the
-committed page's exact Query cache reference, while Router retains
-responsibility for document assets. A background payload update can update
-metadata without another request or another copy of page data.
+Native Start `HeadContent` renders metadata from route heads for server HTML and
+route navigation.
+[`SoftPageTitle`](../../packages/worker/start/components/soft-page-title.tsx)
+follows the active page's exact Query cache reference and updates only
+`document.title` after soft changes. Descriptions, canonical links, and social
+tags stay tied to the loader snapshot until the next route load. Late updates
+from a departed page cannot overwrite the destination's title.
 
 Feature styles belong to the rendered `FeaturePage` through Emotion `Global`.
 The shared lazy feature component imports the stylesheet as raw CSS, so the

@@ -9,17 +9,19 @@ import {
 	RouterContextProvider,
 	Match,
 	Outlet,
+	HeadContent,
 } from '@tanstack/react-router'
-import { PageHead } from './page-head.tsx'
 
 test('unmatched SSR and native navigation use Not found metadata, then restore successful route head', async () => {
 	const root = createRootRoute({
-		head: () => ({ meta: [{ title: 'Kody' }] }),
+		head: ({ match }) => ({
+			meta: [{ title: match._notFound ? 'Not found' : 'Kody' }],
+		}),
 		shellComponent: ({ children }) =>
 			createElement(
 				'html',
 				null,
-				createElement('head', null, createElement(PageHead)),
+				createElement('head', null, createElement(HeadContent)),
 				createElement('body', null, children),
 			),
 		component: Outlet,

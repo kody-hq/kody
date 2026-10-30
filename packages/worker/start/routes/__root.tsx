@@ -23,6 +23,7 @@ import {
 	isRedirect,
 	Outlet,
 	Scripts,
+	HeadContent,
 	useLocation,
 	useMatches,
 	useLoaderData,
@@ -65,7 +66,7 @@ import {
 } from '../components/site-header.tsx'
 import { SiteFooter } from '../components/site-footer.tsx'
 import { visuallyHiddenUntilFocusedCss } from '#universal/styles/style-primitives.ts'
-import { PageHead } from '../components/page-head.tsx'
+import { SoftPageTitle } from '../components/soft-page-title.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
 import {
 	appFrameCss,
@@ -183,9 +184,17 @@ export const Route = createRootRouteWithContext<{
 			}
 		},
 	},
-	head: ({ loaderData }) => ({
+	head: ({ loaderData, matches }) => ({
 		meta: [
-			{ title: 'Kody' },
+			{
+				title: matches.some(
+					(match) => match._notFound || isNotFound(match.error),
+				)
+					? NOT_FOUND_DOCUMENT_TITLE
+					: (documentFailureTitle(
+							matches.find((match) => match.error)?.error,
+						) ?? 'Kody'),
+			},
 			...(loaderData?.sentryConfig
 				? [
 						{
@@ -336,6 +345,14 @@ function LoadedAppLayout() {
 	)
 }
 
+function documentFailureTitle(error: unknown) {
+	if (isNotFound(error)) return NOT_FOUND_DOCUMENT_TITLE
+	if (!error) return undefined
+	return error instanceof Error && error.message === documentForbiddenMessage
+		? 'Unauthorized | Kody'
+		: 'Something went wrong | Kody'
+}
+
 /** The document must render even when beforeLoad prevents every loader. */
 function DocumentShell({ children }: { children: ReactNode }) {
 	const nonce = useRouter().options.ssr?.nonce
@@ -375,17 +392,7 @@ function DocumentShell({ children }: { children: ReactNode }) {
 			  typeof identity.actorKey === 'string'
 			? identity.actorKey
 			: null
-	const failureHead = isNotFound(failure)
-		? { title: NOT_FOUND_DOCUMENT_TITLE }
-		: failure
-			? {
-					title:
-						failure instanceof Error &&
-						failure.message === documentForbiddenMessage
-							? 'Unauthorized | Kody'
-							: 'Something went wrong | Kody',
-				}
-			: undefined
+	const failureTitle = documentFailureTitle(failure)
 	useEffect(() => {
 		document.documentElement.dataset.hydrated = 'true'
 	}, [])
@@ -488,7 +495,8 @@ function DocumentShell({ children }: { children: ReactNode }) {
 					/>
 				) : null}
 				<meta name={documentActorMetaName} content={JSON.stringify(actorKey)} />
-				<PageHead overrideHead={failureHead} />
+				<HeadContent />
+				<SoftPageTitle overrideTitle={failureTitle} />
 				<FathomTracker siteId={loaded?.fathomSiteId} />
 			</head>
 			<body>
