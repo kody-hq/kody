@@ -144,10 +144,22 @@ primitives:
       - docs/contributing/decisions/0028-list-detail-expand.md
     adrs:
       - docs/contributing/architecture/index.md
+  - id: dotted
+    group: auth
+    name: Dotted
+    summary: ADR in docs via a relative segment.
+    docs:
+      - docs/contributing/architecture/../decisions/0028-list-detail-expand.md
+    adrs: []
   - id: undeclared
     group: auth
     name: Undeclared
     summary: No adrs key.
+  - id: bare
+    group: auth
+    name: Bare
+    summary: adrs key with no items.
+    adrs:
 `)
 	expect(
 		checkPrimitivesMapPaths(map).map(({ id, path, reason }) => ({
@@ -177,7 +189,17 @@ primitives:
 			reason: 'adrs entries must be docs/contributing/decisions/NNNN-slug.md',
 		},
 		{
+			id: 'dotted',
+			path: 'docs/contributing/architecture/../decisions/0028-list-detail-expand.md',
+			reason: 'decision records belong in adrs, not docs',
+		},
+		{
 			id: 'undeclared',
+			path: 'adrs',
+			reason: 'missing adrs list (use `adrs: []` when no record applies)',
+		},
+		{
+			id: 'bare',
 			path: 'adrs',
 			reason: 'missing adrs list (use `adrs: []` when no record applies)',
 		},

@@ -5,7 +5,7 @@
  * and string lists, plus `adrs: []`). Not a general YAML parser.
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { basename, resolve } from 'node:path'
+import { basename, relative, resolve, sep } from 'node:path'
 
 export const defaultMapPath = resolve(
 	import.meta.dirname,
@@ -121,7 +121,6 @@ export function parsePrimitivesMap(text) {
 		const listStart = line.match(/^ {4}(code|docs|adrs):\s*$/)
 		if (listStart) {
 			listField = /** @type {'code' | 'docs' | 'adrs'} */ (listStart[1])
-			if (listField === 'adrs' && 'code' in current) current.adrs ??= []
 			continue
 		}
 
@@ -305,7 +304,8 @@ export function checkPrimitivesMapPaths(
 					reason: 'docs path missing or not a file',
 				})
 			}
-			if (docPath.startsWith(decisionsDir)) {
+			const normalized = relative(repoRoot, absolute).split(sep).join('/')
+			if (`${normalized}/`.startsWith(decisionsDir)) {
 				errors.push({
 					kind,
 					id: entry.id,
