@@ -4,10 +4,12 @@ import {
 	ecpPingFrame,
 	ecpPongFrame,
 	ecpRunHeader,
+	decodeEnvelopePayload,
 	ecpSignatureHeader,
 	ed25519JwkThumbprint,
 	importEd25519PublicKey,
 	parseEcpSignatureHeader,
+	parseEnvelope,
 	signFrame,
 	verifyEcpHttpSignature,
 	type EcpFramePayload,
@@ -589,6 +591,29 @@ test('a socket that answers pings stays connected until shutdown', async () => {
 	assert.ok(lines.includes('Connected. Waiting for runs.'))
 	assert.ok(!lines.some((line) => /ping|Frame error/.test(line)))
 	ServerSocket.answerPings = false
+})
+
+test('hello tells Kody which runs this daemon still holds after a reconnect', async () => {
+	SilentSocket.instances = []
+	const { signed, serverKeys } = await serverFrames([welcome])
+	ServerSocket.frames = signed
+	const abort = new AbortController()
+	const { input } = await daemonInput({
+		serverKeys,
+		signal: abort.signal,
+		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
+	})
+	setTimeout(() => abort.abort(), 100)
+	await runDaemonConnection(input)
+	const hello = (SilentSocket.instances[0] as unknown as ServerSocket).sent
+		.filter((data) => data !== ecpPingFrame)
+		.map((data) => {
+			const envelope = parseEnvelope(JSON.parse(data))
+			return decodeEnvelopePayload(envelope!.p) as EcpFramePayload
+		})
+		.find((frame) => frame.t === 'hello')
+	assert.deepEqual(hello?.body.heldRuns, [])
+	assert.deepEqual(hello?.body.pendingResults, [])
 })
 
 test('frames that arrive back to back are verified in order, not raced', async () => {
