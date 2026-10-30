@@ -83,7 +83,7 @@ FROM grants;
 
 -- Row-for-row equality in both directions before the swap.
 INSERT INTO __migration_assertions (message)
-SELECT 'grants_next is missing a grants row; aborting 0212.'
+SELECT 'grants_next is missing a grants row; aborting 0211.'
 WHERE EXISTS (
 	SELECT id, org_id, resource_type, resource_id, subject_type, subject_id,
 		preset, created_by_user_id, created_at, updated_at, deleted_at, origin
@@ -95,7 +95,7 @@ WHERE EXISTS (
 );
 
 INSERT INTO __migration_assertions (message)
-SELECT 'grants_next has a row grants does not; aborting 0212.'
+SELECT 'grants_next has a row grants does not; aborting 0211.'
 WHERE EXISTS (
 	SELECT id, org_id, resource_type, resource_id, subject_type, subject_id,
 		preset, created_by_user_id, created_at, updated_at, deleted_at, origin
@@ -126,7 +126,7 @@ SELECT 'after',
 	(SELECT COUNT(*) FROM grant_permissions);
 
 INSERT INTO __migration_assertions (message)
-SELECT 'grant counts changed in 0212; aborting.'
+SELECT 'grant counts changed in 0211; aborting.'
 FROM __grants_rebuild_counts before_counts
 JOIN __grants_rebuild_counts after_counts
 	ON before_counts.phase = 'before' AND after_counts.phase = 'after'
