@@ -1048,3 +1048,37 @@ test('runs up to the grant-capped concurrency at once and report a timing breakd
 		)
 	}
 })
+
+test('kody context revoke and delete call the revoke and delete routes', async () => {
+	const calls: Array<string> = []
+	const fetchFn = (async (url: URL | string, init?: RequestInit) => {
+		calls.push(`${init?.method} ${new URL(url).pathname}`)
+		return Response.json({ ok: true })
+	}) as typeof fetch
+	const run = async (positionals: Array<string>) => {
+		let text = ''
+		await runExecutionContextCommand({
+			command: 'context',
+			positionals,
+			values: {},
+			apiUrl: 'https://api.kody.test',
+			token: async () => 'kody_at_test',
+			clientVersion: '0.0.0',
+			write: (chunk) => {
+				text += chunk
+			},
+			fetchFn,
+		})
+		return text
+	}
+	assert.equal(
+		await run(['revoke', 'box']),
+		'Revoked box. Delete it for good with: kody context delete box\n',
+	)
+	assert.equal(await run(['delete', 'box']), 'Deleted box.\n')
+	assert.deepEqual(calls, [
+		'DELETE /v1/execution-contexts/box',
+		'POST /v1/execution-contexts/box/delete',
+	])
+	await assert.rejects(run(['delete']), /Usage: kody context delete/)
+})

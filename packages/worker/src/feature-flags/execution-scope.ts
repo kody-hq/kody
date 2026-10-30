@@ -7,18 +7,29 @@ import { AsyncLocalStorage } from 'node:async_hooks'
  * one `executionId` per run; gateway calls in this isolate that carry it reuse
  * flag results, and the next execution gets a new id and reads D1 again.
  * Scopes idle past the TTL (or beyond the cap) are dropped.
+ *
+ * Only settled values cross gateway calls. Each gateway call is its own
+ * Workers request, and a request that awaits a promise another request is
+ * still resolving has no I/O of its own, so the runtime cancels it as hung.
+ * Concurrent calls each run their own read; one call's reads share in-flight.
  */
 const executionIdleTtlMs = 5 * 60_000
 const maxExecutions = 1_000
 
-type ExecutionReads = Map<string, Promise<unknown>>
+type SettledReads = Map<string, { value: unknown }>
+
+type CallReads = {
+	settled: SettledReads
+	inFlight: Map<string, Promise<unknown>>
+}
 
 const readsByExecution = new Map<
 	string,
-	{ reads: ExecutionReads; expiresAtMs: number }
+	{ settled: SettledReads; expiresAtMs: number }
 >()
-const executionReadsStorage = new AsyncLocalStorage<ExecutionReads>()
+const callReadsStorage = new AsyncLocalStorage<CallReads>()
 
+/** Runs one gateway call in its execution's scope. */
 export function runInFeatureFlagExecution<Result>(
 	executionId: string | null | undefined,
 	run: () => Result,
@@ -26,12 +37,12 @@ export function runInFeatureFlagExecution<Result>(
 	if (!executionId) return run()
 	const nowMs = Date.now()
 	const existing = readsByExecution.get(executionId)
-	const reads =
-		existing && existing.expiresAtMs > nowMs ? existing.reads : new Map()
+	const settled: SettledReads =
+		existing && existing.expiresAtMs > nowMs ? existing.settled : new Map()
 	// Re-insert so iteration order is least recently used first.
 	readsByExecution.delete(executionId)
 	readsByExecution.set(executionId, {
-		reads,
+		settled,
 		expiresAtMs: nowMs + executionIdleTtlMs,
 	})
 	for (const [id, entry] of readsByExecution) {
@@ -40,7 +51,7 @@ export function runInFeatureFlagExecution<Result>(
 		}
 		readsByExecution.delete(id)
 	}
-	return executionReadsStorage.run(reads, run)
+	return callReadsStorage.run({ settled, inFlight: new Map() }, run)
 }
 
 /**
@@ -52,14 +63,22 @@ export function memoizeForFeatureFlagExecution<Value>(
 	key: string,
 	load: () => Promise<Value>,
 ): Promise<Value> {
-	const reads = executionReadsStorage.getStore()
+	const reads = callReadsStorage.getStore()
 	if (!reads) return load()
-	const existing = reads.get(key) as Promise<Value> | undefined
-	if (existing) return existing
+	const settled = reads.settled.get(key)
+	if (settled) return Promise.resolve(settled.value as Value)
+	const pending = reads.inFlight.get(key) as Promise<Value> | undefined
+	if (pending) return pending
 	const value = load()
-	reads.set(key, value)
-	value.catch(() => {
-		if (reads.get(key) === value) reads.delete(key)
-	})
+	reads.inFlight.set(key, value)
+	value.then(
+		(result) => {
+			reads.settled.set(key, { value: result })
+			reads.inFlight.delete(key)
+		},
+		() => {
+			reads.inFlight.delete(key)
+		},
+	)
 	return value
 }

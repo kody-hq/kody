@@ -111,6 +111,15 @@ carries an approval link (`/connect/secrets?name=<key>&placement=body`; add
 link with **`credentialPlacementApprovalLink`** (MCP `api`); the call never
 changes placement. See [Credentials](../guides/credentials.md).
 
+### Who can add team credentials
+
+In a team org, Members can add secrets, OAuth connections, and MCP servers by
+default, and get full access to what they add. An Owner turns this off with
+**Members can create credentials** in organization settings (or grants
+`secret:create` / `integration:create` to specific people or teams on the Grants
+page instead). Changing or deleting an existing credential still needs Write on
+it. See [Organizations](../guides/organizations.md#member-permissions).
+
 ### Personal credentials in a team org
 
 A secret, OAuth connection, or MCP server in your personal org is a personal

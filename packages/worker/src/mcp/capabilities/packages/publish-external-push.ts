@@ -24,6 +24,7 @@ import {
 import { isExternalPublishSnapshotTooLargeMessage } from '#worker/repo/external-publish-clone.ts'
 import {
 	externalPublishResourceLimitMessage,
+	isPublishComputeLimitMessage,
 	type RepoCheckStep,
 } from '#worker/repo/isolated-runner-limit-message.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
@@ -140,7 +141,13 @@ function throwIfExternalPublishResourceLimit(
 		})
 	}
 	const message = getErrorMessage(error)
-	if (isExternalPublishSnapshotTooLargeMessage(message)) {
+	// A publish step that hit the limit in its own throwaway isolate: the
+	// message already names the step and what to do, and a retry of the
+	// same tree would hit it again.
+	if (
+		isExternalPublishSnapshotTooLargeMessage(message) ||
+		isPublishComputeLimitMessage(message)
+	) {
 		throw new McpCallerError(message, { cause: error })
 	}
 }

@@ -517,6 +517,7 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['GET', '/v1/execution-contexts/{id}', 'executionContextGet'],
 		['PATCH', '/v1/execution-contexts/{id}', 'executionContextUpdate'],
 		['DELETE', '/v1/execution-contexts/{id}', 'executionContextRevoke'],
+		['POST', '/v1/execution-contexts/{id}/delete', 'executionContextDelete'],
 		['POST', '/v1/execution-contexts/{id}/opt-in', 'executionContextOptIn'],
 		['DELETE', '/v1/execution-contexts/{id}/opt-in', 'executionContextOptOut'],
 		['GET', '/v1/execution-contexts/{id}/sharing', 'executionContextShareList'],

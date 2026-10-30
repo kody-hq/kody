@@ -19,6 +19,12 @@ import {
 	type GrantSubjectChoices,
 	grantSubjectMatchSql,
 } from '#worker/authorization/grant-subjects.ts'
+import {
+	defaultOrgMemberCreation,
+	memberCreationFromRow,
+	memberCreationGrants,
+	type OrgMemberCreation,
+} from '#worker/authorization/member-creation-permissions.ts'
 import { memoizePerRequest } from '#worker/request-context.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
@@ -232,10 +238,15 @@ function dbCanPrepare(db: D1Database) {
 	return typeof db?.prepare === 'function'
 }
 
+type OrgAccessRow = {
+	epoch: number
+	memberCreation: OrgMemberCreation
+}
+
 async function readOrgEpoch(
 	db: D1Database,
 	orgId: string,
-): Promise<number | null> {
+): Promise<OrgAccessRow | null> {
 	if (!dbCanPrepare(db)) {
 		throw new Error(
 			`APP_DB cannot prepare statements while compiling access for org ${orgId}.`,
@@ -244,12 +255,21 @@ async function readOrgEpoch(
 	try {
 		const row = await db
 			.prepare(
-				`SELECT access_epoch FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`,
+				`SELECT access_epoch, members_can_create_packages,
+				        members_can_create_credentials
+				 FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`,
 			)
 			.bind(orgId)
-			.first<{ access_epoch: number }>()
+			.first<{
+				access_epoch: number
+				members_can_create_packages: number | null
+				members_can_create_credentials: number | null
+			}>()
 		if (!row) return null
-		return Number(row.access_epoch) || 0
+		return {
+			epoch: Number(row.access_epoch) || 0,
+			memberCreation: memberCreationFromRow(row),
+		}
 	} catch (error) {
 		// Incomplete test DBs may lack the orgs table; production always has it
 		// after P3. Surface the error for non-owner callers instead.
@@ -322,6 +342,8 @@ function compileFromRoleAndGrants(input: {
 	epoch: number
 	role: OrgRole | null
 	grantRows: ReadonlyArray<GrantRow>
+	/** The org's member-creation settings; they add to the Member preset. */
+	memberCreation?: OrgMemberCreation
 }): CompiledAccess {
 	const isOwner = input.role === 'owner'
 	if (isOwner) {
@@ -338,6 +360,13 @@ function compileFromRoleAndGrants(input: {
 	const orgPerms = new Set<OrgPermission>(
 		input.role ? rolePresets[input.role] : outsideCollaboratorBasics,
 	)
+	if (input.role === 'member') {
+		for (const permission of memberCreationGrants(
+			input.memberCreation ?? defaultOrgMemberCreation,
+		)) {
+			orgPerms.add(permission)
+		}
+	}
 	const resourcePermissions = new Map<string, Set<OrgPermission>>()
 	applyGrantRows(input.grantRows, input.orgId, orgPerms, resourcePermissions)
 	applyAdHocRule(orgPerms, resourcePermissions)
@@ -437,11 +466,11 @@ async function compileUncached(
 	userId: string,
 	role: OrgRole | null,
 ): Promise<CompiledAccess> {
-	const epochOrNull = await readOrgEpoch(db, orgId)
-	if (epochOrNull === null) {
+	const orgRow = await readOrgEpoch(db, orgId)
+	if (orgRow === null) {
 		throw new Error(`Org ${orgId} was not found while compiling access.`)
 	}
-	const epoch = epochOrNull
+	const { epoch, memberCreation } = orgRow
 	const now = new Date().toISOString()
 
 	const cached = await readAccessCache(db, orgId, userId, epoch, now)
@@ -453,6 +482,7 @@ async function compileUncached(
 		epoch,
 		role,
 		grantRows,
+		memberCreation,
 	})
 	try {
 		await writeAccessCache(db, compiled, userId)

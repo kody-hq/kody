@@ -14,6 +14,7 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { isPermissionDeniedError } from '#universal/permission-denied.ts'
+import { buildAccountSecretId } from '@kody-internal/shared/account-secret-route.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -32,10 +33,12 @@ import {
 } from '#worker/integrations/device-flow.ts'
 import { resolveConnectClientSecret } from '#worker/integrations/connect-oauth-persist.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
+import { updateOrgMemberCreation } from '#worker/orgs/member-creation.ts'
 import {
 	connectAccountOAuth,
 	pollAccountDeviceConnect,
 	saveAccountOAuthApp,
+	saveAccountSecret,
 	startAccountDeviceConnect,
 } from './account-secrets.ts'
 
@@ -141,6 +144,7 @@ async function setup() {
 		teamOwner: userFor('owner', { id: teamId, role: 'owner' }),
 		teamMember: userFor('member', { id: teamId, role: 'member' }),
 		memberPersonal: userFor('member', null),
+		userFor,
 	}
 }
 
@@ -403,4 +407,97 @@ test('a device poll does not write a start-time app secret over a rotated one', 
 			provider: 'github',
 		}),
 	).toBe(githubApp.clientSecret)
+})
+
+test('Members add team secrets and OAuth connections unless an Owner turns member credentials off', async () => {
+	const { env, db, teamId, teamOwner, teamMember, userFor } = await setup()
+	await saveAccountOAuthApp({ env, user: teamOwner, fields: githubApp })
+	const { clientSecret: _secret, ...connectFields } = githubApp
+	const connect = (user: WebsiteUser, name: string) =>
+		connectAccountOAuth({
+			request: new Request('https://kody.local/connect/oauth'),
+			refresh: {} as never,
+			env,
+			user,
+			fields: {
+				...connectFields,
+				integrationName: name,
+				allowedHosts: ['api.github.com'],
+				scopes: ['repo'],
+				tokenPayload: { access_token: `${name}-access-token` },
+			} as never,
+		})
+	const saveSecret = (user: WebsiteUser, name: string, currentId?: string) =>
+		saveAccountSecret({
+			request: new Request('https://kody.local/connect/secrets'),
+			env,
+			user,
+			fields: {
+				...(currentId ? { currentId } : {}),
+				name,
+				scope: 'user',
+				value: `${name}-value`,
+				description: '',
+				allowedHosts: [],
+				allowedPackages: [],
+				placement: null,
+			} as never,
+		})
+
+	const memberSecret = await saveSecret(teamMember, 'memberDefaultKey')
+	expect(memberSecret.data).toMatchObject({ ok: true })
+	const memberSecretId = buildAccountSecretId({
+		name: 'memberDefaultKey',
+		scope: 'user',
+		packageId: null,
+	})
+
+	const turnedOff = await updateOrgMemberCreation(db, {
+		orgId: teamId,
+		credentials: false,
+		audit: createTestOrgAuditWriter({ appDb: db }),
+	})
+	expect(turnedOff).toMatchObject({ ok: true, changed: true })
+	// A request context keeps the access it compiled, so take a new one, as
+	// the next website request would.
+	const nextMember = userFor('member', { id: teamId, role: 'member' })
+
+	const deniedSecret = await saveSecret(nextMember, 'memberOffKey').catch(
+		(error: unknown) => error,
+	)
+	expect(deniedSecret).toMatchObject({
+		status: 403,
+		permission: 'secret:create',
+	})
+	expect(isPermissionDeniedError(deniedSecret)).toBe(true)
+	expect((deniedSecret as Error).message).toContain(
+		'Members can create credentials',
+	)
+	await expectDenied(connect(nextMember, 'github'), 'integration:create')
+
+	// Updating a secret the member already made still works.
+	expect(
+		(await saveSecret(nextMember, 'memberDefaultKey', memberSecretId)).data,
+	).toMatchObject({ ok: true })
+	// Owners always can.
+	expect((await saveSecret(teamOwner, 'ownerKey')).data).toMatchObject({
+		ok: true,
+	})
+	expect((await connect(teamOwner, 'github')).status).toBe(200)
+
+	// Changing a secret someone else made needs Write on it, as in secretSet.
+	const ownerSecretId = buildAccountSecretId({
+		name: 'ownerKey',
+		scope: 'user',
+		packageId: null,
+	})
+	const deniedUpdate = await saveSecret(
+		nextMember,
+		'ownerKey',
+		ownerSecretId,
+	).catch((error: unknown) => error)
+	expect(deniedUpdate).toMatchObject({
+		status: 403,
+		permission: 'secret:write',
+	})
 })

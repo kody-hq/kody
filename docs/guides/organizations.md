@@ -18,11 +18,39 @@ belong to one org. Handles are permanent: `@slug` does not rename.
 The org is the billing and data boundary: its resources, usage, limits, and bill
 stay inside it. Inside an org, grants control access. Owners hold everything,
 Members hold the org basics (`org:read`, `member:read`, `team:read`,
-`search:read`) plus what they are granted, and an outside collaborator holds
-catalog search (`search:read`) plus their grants. See
-[Share a package](/docs/package-sharing) for presets and grants.
+`search:read`), what [member permissions](#member-permissions) allow, and what
+they are granted. An outside collaborator holds catalog search (`search:read`)
+plus their grants. See [Share a package](/docs/package-sharing) for presets and
+grants.
 
-### Org-wide read access
+## Member permissions
+
+Like a code host's "members can create repositories" setting, an Owner chooses
+what every Member of a team org can create without a grant: **Organization
+settings**, **Member permissions**, or `orgUpdate`.
+
+| Setting                              | Default | Gives every Member                                                                  |
+| ------------------------------------ | ------- | ----------------------------------------------------------------------------------- |
+| Members can create packages and apps | Off     | `package:create`, `app:create`: save, fork, and first-publish packages, repos, apps |
+| Members can create credentials       | On      | `secret:create`, `integration:create`: new secrets, OAuth connections, MCP servers  |
+
+```json
+{ "members_can_create_packages": true, "members_can_create_credentials": true }
+```
+
+Owners can always create. Whoever creates something gets full (`manage`) access
+to it. Changing an existing package or credential still needs its own write
+permission, so these settings never let a Member edit what someone else made.
+The settings are enforced on the server for every path (MCP, the API, the CLI's
+first publish and repo push, and the website). A Member who is refused gets an
+error naming the setting and the Grants page.
+
+To let only some people or teams create, leave a setting off and use **Grants**,
+**Create access** (or `accessGrant` with `resource_type: "org"` and
+`permissions: ["package:create"]`, `["secret:create"]`, or
+`["integration:create"]`). Those grants still apply when a setting is off.
+
+## Org-wide read access
 
 To let a Member read everything of one kind without making them an Owner, an
 Owner grants read access on the organization: **Grants** page,

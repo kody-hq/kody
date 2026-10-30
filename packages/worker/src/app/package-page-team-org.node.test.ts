@@ -203,7 +203,7 @@ test('a package page reads the org access epoch once per load', async () => {
 	const prepare = vi.spyOn(env.APP_DB, 'prepare')
 	const epochReads = () =>
 		prepare.mock.calls.filter(([sql]) =>
-			/SELECT access_epoch FROM orgs WHERE id = \?/.test(String(sql)),
+			/SELECT access_epoch\b[^;]*FROM orgs WHERE id = \?/.test(String(sql)),
 		).length
 
 	await expect(loadAs(env, memberId, 'shared')).resolves.toMatchObject({
