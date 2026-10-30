@@ -788,6 +788,15 @@ export async function updateIntegrationCredentialCiphertexts(input: {
 	const now = new Date().toISOString()
 	const leaseFence =
 		input.refreshLeaseId === undefined ? '' : ' AND token_refresh_lease_id = ?'
+	// A connect or manual token save replaces the grant, so it ends any
+	// in-flight refresh: that refresher's lease-fenced write must not put the
+	// old grant's tokens back over these.
+	const leaseRelease =
+		input.refreshLeaseId === undefined
+			? `,
+				token_refresh_lease_id = NULL,
+				token_refresh_lease_expires_at = NULL`
+			: ''
 	// Stamp connected_at on first successful token write (user-lane OAuth
 	// connect used to leave it null). COALESCE keeps the original connect
 	// time across refreshes and reconnect token rotates.
@@ -798,7 +807,7 @@ export async function updateIntegrationCredentialCiphertexts(input: {
 				refresh_token_encrypted = COALESCE(?, refresh_token_encrypted),
 				refresh_policy = ?,
 				connected_at = COALESCE(connected_at, ?),
-				updated_at = ?
+				updated_at = ?${leaseRelease}
 			WHERE user_id = ? AND name = ?${leaseFence}${andLiveDeletedAtSql()}`,
 		)
 		.bind(
