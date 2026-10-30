@@ -249,6 +249,23 @@ no `kind` covers any of them. A slot declared `kind: "signing"` also fills
 Slots its imports declare count too. `credential.named()` is refused. This does
 not depend on the `credential-need-enforcement` flag.
 
+Publish (and `kody dev check`) can stamp `credential` / `credentials` only where
+code calls them with a literal key. Passing the function itself around at run
+time (`const open = credential`, `fn(credential)`, `{ credential }`,
+`return credential`, a re-export) fails with "passes credential/credentials
+around instead of calling it with a literal key". Type-only uses are fine:
+`typeof credential` inside a type alias, interface, annotation, generic, or an
+`as` / `satisfies` type, `declare` statements, and `.d.ts` files are erased
+before the code runs. A runtime `typeof credential === 'function'` check is
+allowed too. For a client type, import the one Kody already declares:
+
+```ts
+import { credential, type KodyCredentialClient } from 'kody:runtime'
+
+export type LoginClient = KodyCredentialClient
+// same type: Awaited<ReturnType<typeof credential>>
+```
+
 A package with no stamp uses the unstamped path. Your own unstamped package
 needs no declarations: a package in your personal org that is not an unadopted
 Community fork and is not internet-visible. When the

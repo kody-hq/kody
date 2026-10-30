@@ -4,7 +4,10 @@
  * built from.
  */
 import { isInertExamplePlaceholder } from '#mcp/secrets/placeholders.ts'
-import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
+import {
+	parseModuleSourceAllowingTypeAssertions,
+	type ModuleAstNode,
+} from '#worker/module-source.ts'
 import { collectBundlerResolvedSpecifiers } from '#worker/package-runtime/import-specifiers.ts'
 
 export const scannableModuleFilePattern = /\.(?:[cm]?[jt]s|[jt]sx)$/
@@ -943,7 +946,7 @@ export function getCalleeObjectName(callee: AstNode | undefined) {
 
 export function parseModule(source: string) {
 	try {
-		return parseModuleSource(source) as unknown as AstNode
+		return parseModuleSourceAllowingTypeAssertions(source) as unknown as AstNode
 	} catch {
 		return null
 	}

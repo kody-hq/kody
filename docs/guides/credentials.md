@@ -199,6 +199,13 @@ the credential only travels to its own hosts. A 401 or 403 response carries an
 `credentials(key)` returns an array of clients for a need declared with
 `multiple: true`.
 
+The client's type is `KodyCredentialClient`, exported from `kody:runtime`
+(`import type { KodyCredentialClient } from 'kody:runtime'`). Use it to type a
+helper that takes a client, and call `credential('key')` with a literal key
+where the client is opened: publish refuses code that passes `credential` itself
+around at run time, but type-only uses such as `typeof credential` are fine
+([stamp rule](../use/packages.md#declare-what-a-stamped-package-may-use)).
+
 ### Declare needs in `kody.credentials`
 
 A package lists the credentials it needs in `package.json`. Each need has a

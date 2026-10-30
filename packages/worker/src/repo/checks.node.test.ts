@@ -373,6 +373,7 @@ export default async (params) => {
 	)?.[1]
 	expect(prelude).toContain('declare module "kody:runtime"')
 	expect(prelude).toContain('export function packageStorage()')
+	expect(prelude).toContain('export type KodyCredentialClient = {')
 	expect(prelude).not.toMatch(
 		/declare const (capabilities|secretHeaders|packageContext|packages|email|workflows|events|packageSecrets)/,
 	)
