@@ -133,7 +133,8 @@ export type LocalExecuteInput = {
 	 * Execution-context host folders (server grant ∩ local policy). When the
 	 * grant names any folder, `node:fs` resolves through the bridge-backed shim.
 	 */
-	hostFs?: EffectiveFs
+	/** Current host folders (server grant ∩ local policy), checked on every host fs call. */
+	hostFs?: () => EffectiveFs
 	/** Told about the workerd process so a daemon can reap it after a crash. */
 	workerTracker?: LocalWorkerTracker
 }
@@ -294,9 +295,11 @@ export async function runLocalExecute(
 			allowPrivateNetwork: input.allowPrivateNetwork,
 			onStatus: input.onStatus,
 		})
+		const startFs = input.hostFs?.()
 		const hostFs =
 			input.hostFs &&
-			(input.hostFs.mounts.length > 0 || input.hostFs.grantRoots.length > 0)
+			startFs &&
+			(startFs.mounts.length > 0 || startFs.grantRoots.length > 0)
 				? input.hostFs
 				: undefined
 		bridge = await startLocalRuntimeBridge({
@@ -323,7 +326,7 @@ export async function runLocalExecute(
 			...(hostFs
 				? {
 						forwardHostFs: async (body: unknown) =>
-							await handleHostFsRequest(hostFs, body as HostFsRequest),
+							await handleHostFsRequest(hostFs(), body as HostFsRequest),
 					}
 				: {}),
 			forwardGatewayFetchStream: async ({ request, response, signal }) => {
@@ -352,8 +355,8 @@ export async function runLocalExecute(
 		if (hostFs) {
 			const routeRoots = [
 				...new Set([
-					...hostFs.mounts.map((mount) => mount.path),
-					...hostFs.grantRoots,
+					...startFs!.mounts.map((mount) => mount.path),
+					...startFs!.grantRoots,
 				]),
 			]
 			await writeFile(

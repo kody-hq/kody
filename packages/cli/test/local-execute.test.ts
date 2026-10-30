@@ -1413,7 +1413,7 @@ export default async function main(p) {
 			params: { rw, ro, denied },
 			token: goodToken,
 			apiUrl,
-			hostFs,
+			hostFs: () => hostFs,
 		})
 		assert.equal(result.isError, false, JSON.stringify(result.content))
 		const out = (result.structuredContent as { result: Record<string, string> })
@@ -1440,5 +1440,42 @@ export default async function main(p) {
 			existsSync('/tmp/v.txt') && readFileSync('/tmp/v.txt', 'utf8') === 'v',
 			false,
 		)
+	},
+)
+
+test(
+	'runLocalExecute re-checks host folders on every call, so a narrowed grant stops a running run',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const { effectiveFs } =
+			await import('../src/execution-context/fs-access.js')
+		const root = realpathSync(mkdtempSync(join(tmpdir(), 'kody-host-fs-')))
+		const granted = await effectiveFs(
+			[{ path: root, mode: 'rw' }],
+			[{ path: root, mode: 'rw' }],
+		)
+		const revoked = await effectiveFs([], [])
+		let calls = 0
+		// Call 1 sets up the run, call 2 serves the first write; then access is gone.
+		const hostFs = () => (++calls <= 2 ? granted : revoked)
+		const result = await runLocalExecute({
+			code: `import { promises as fsp } from 'node:fs'
+export default async function main(p) {
+	await fsp.writeFile(p.root + '/first.txt', 'ok')
+	try { await fsp.writeFile(p.root + '/second.txt', 'nope'); return 'wrote' } catch (error) { return error.code }
+}`,
+			params: { root },
+			token: goodToken,
+			apiUrl,
+			hostFs,
+		})
+		assert.equal(result.isError, false, JSON.stringify(result.content))
+		assert.equal(
+			(result.structuredContent as { result: string }).result,
+			'EACCES',
+		)
+		assert.equal(readFileSync(join(root, 'first.txt'), 'utf8'), 'ok')
+		assert.equal(existsSync(join(root, 'second.txt')), false)
 	},
 )

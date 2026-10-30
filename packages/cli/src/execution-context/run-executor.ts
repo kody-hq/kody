@@ -19,7 +19,7 @@ export async function runContextRun(input: {
 	workerTracker?: LocalWorkerTracker
 	/** The context grant's egress; absent means the default (public only). */
 	egress?: EcpGrant['egress']
-	hostFs?: EffectiveFs
+	hostFs?: () => EffectiveFs
 }) {
 	const { runLocalExecute } = await import('../local-execute.js')
 	const result = await runLocalExecute({

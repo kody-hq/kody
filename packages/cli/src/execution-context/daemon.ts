@@ -28,8 +28,8 @@ export type ContextRunExecutor = (input: {
 	signal: AbortSignal
 	/** Current grant egress (welcome / grant.update); the run enforces it. */
 	egress: EcpGrant['egress']
-	/** Host folders this run may use (server grant ∩ local policy). */
-	hostFs?: EffectiveFs
+	/** Host folders this run may use right now (server grant ∩ local policy). */
+	hostFs?: () => EffectiveFs
 }) => Promise<{
 	content?: Array<unknown>
 	structuredContent?: Record<string, unknown>
@@ -284,10 +284,11 @@ export async function runDaemonConnection(input: DaemonInput) {
 		)
 		let result: Awaited<ReturnType<ContextRunExecutor>>
 		try {
-			const runFs = input.fs ? await effectiveFsNow() : null
+			if (input.fs) hostFs = await effectiveFsNow()
 			result = await input.execute({
 				request: run.request,
-				...(runFs ? { hostFs: runFs } : {}),
+				// A getter, so a grant.update or policy change narrows runs already in flight.
+				...(input.fs ? { hostFs: () => hostFs } : {}),
 				signal: run.abort.signal,
 				egress: grantEgress,
 				fetchFn: runScopedFetch({
