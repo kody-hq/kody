@@ -105,6 +105,27 @@ test('follow alias emits the historical community.fork.upstream_updated payload'
 	expect(call.idempotencyKey).toBe(
 		'community-fork-upstream-updated:listing-1:commit-2:fork-1:auto-rebase',
 	)
+	expect(call.params).toEqual({
+		event: 'community.fork.upstream_updated',
+		event_id: 'event-1',
+		listing: {
+			id: 'listing-1',
+			name: '@owner/discord-gateway',
+			kody_id: 'discord-gateway',
+			public_url: 'https://heykody.dev/@owner/discord-gateway',
+		},
+		publisher: { username: 'owner' },
+		fork: {
+			id: 'fork-1',
+			package_id: 'forked-package-1',
+			kody_id: 'discord-gateway',
+			origin_commit: 'commit-1',
+			forked_at: '2026-09-01T00:00:00.000Z',
+		},
+		previous: { pinned_commit: 'commit-1', package_version: '1.0.0' },
+		current: { pinned_commit: 'commit-2', package_version: '1.1.0' },
+		published_at: '2026-09-30T12:00:00.000Z',
+	})
 })
 
 test('a 429 credit denial is recorded as zero_credits and does not throw', async () => {
