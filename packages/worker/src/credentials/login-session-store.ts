@@ -22,6 +22,14 @@ import { CredentialLoginFailedError } from './credential-request.ts'
  * `valueStatement` writes it only while the credential is unchanged, and the
  * session is stored under `revision` only when that write landed.
  */
+/** The credential changed after the caller read it; re-read and retry. */
+export class StaleLoginCredentialError extends Error {
+	constructor() {
+		super('The login credential changed while waiting for its session.')
+		this.name = 'StaleLoginCredentialError'
+	}
+}
+
 export type LoginValueReplacement = {
 	valueStatement: D1PreparedStatement
 	credentialId: string
@@ -262,6 +270,8 @@ export async function obtainLoginSession(
 	input: SessionKey & {
 		env: SessionEnv
 		exchange: () => Promise<LoginSession>
+		/** Whether the credential still matches what the caller read. */
+		isCurrent?: () => Promise<boolean>
 		rejectedSessionId?: string | null
 		leaseMs?: number
 		pollMs?: number
@@ -309,6 +319,10 @@ export async function obtainLoginSession(
 						sessionId: storedAfterClaim.sessionId,
 						valueReplaced: false,
 					}
+				}
+				// A rotation may have committed after the caller read the credential.
+				if (input.isCurrent && !(await input.isCurrent())) {
+					throw new StaleLoginCredentialError()
 				}
 				const session = await input.exchange()
 				if (session.expiresAt === null && !session.replacement) {

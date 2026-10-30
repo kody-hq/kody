@@ -7,6 +7,7 @@ import { CredentialLoginFailedError } from './credential-request.ts'
 import {
 	obtainLoginSession,
 	readStoredLoginSession,
+	StaleLoginCredentialError,
 } from './login-session-store.ts'
 
 vi.mock(
@@ -340,6 +341,29 @@ test('a failed session write releases the lease', async () => {
 		.prepare(
 			`SELECT lease_id FROM login_credential_sessions WHERE credential_id = ?`,
 		)
+		.bind(key.credentialId)
+		.first<{ lease_id: string | null }>()
+	expect(row?.lease_id).toBeNull()
+})
+
+test('a stale caller releases the lease without exchanging', async () => {
+	const { env } = setup()
+	const exchange = vi.fn(async () => ({
+		token: 'dummy-session',
+		expiresAt: hourFromNow(),
+	}))
+	await expect(
+		obtainLoginSession({
+			...key,
+			env,
+			exchange,
+			isCurrent: async () => false,
+		}),
+	).rejects.toBeInstanceOf(StaleLoginCredentialError)
+	expect(exchange).not.toHaveBeenCalled()
+	const row = await env.APP_DB.prepare(
+		`SELECT lease_id FROM login_credential_sessions WHERE credential_id = ?`,
+	)
 		.bind(key.credentialId)
 		.first<{ lease_id: string | null }>()
 	expect(row?.lease_id).toBeNull()
