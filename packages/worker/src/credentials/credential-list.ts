@@ -19,6 +19,7 @@ import {
 } from '#worker/authorization/authorize.ts'
 import { getIntegrationAllowedHosts } from '#mcp/execute-modules/integration-host-allowlist.ts'
 import { isReservedSecretName } from '#mcp/secrets/name-guards.ts'
+import { storedCredentialRevision } from '#mcp/secrets/service.ts'
 import {
 	integrationUsableInOrgSql,
 	oauthCredentialListStatus,
@@ -120,6 +121,29 @@ type SecretRow = {
 	expires_at: string | null
 	bucket_expires_at: string | null
 	encrypted_value: string | null
+	config_json: string | null
+	login_reconnect_revision: string | null
+}
+
+/** Login rows whose current revision the provider refused (`invalid_grant`). */
+async function loginsNeedingReconnect(rows: ReadonlyArray<SecretRow>) {
+	const ids = await Promise.all(
+		rows.map(async (row) =>
+			row.kind === 'login' &&
+			row.login_reconnect_revision &&
+			row.encrypted_value &&
+			row.inject_json &&
+			(await storedCredentialRevision({
+				encryptedValue: row.encrypted_value,
+				configJson: row.config_json,
+				allowedHostsJson: row.allowed_hosts,
+				injectJson: row.inject_json,
+			})) === row.login_reconnect_revision
+				? row.id
+				: null,
+		),
+	)
+	return new Set(ids.filter((id) => id !== null))
 }
 
 async function loadSecretRows(input: {
@@ -135,8 +159,11 @@ async function loadSecretRows(input: {
 					e.allowed_packages, e.inject_json, e.placement_json, e.placement_origin,
 					b.scope AS bucket_scope,
 					b.binding_key, e.created_at, e.updated_at, e.expires_at,
-					b.expires_at AS bucket_expires_at, e.encrypted_value
+					b.expires_at AS bucket_expires_at, e.encrypted_value, e.config_json,
+					s.failure_revision AS login_reconnect_revision
 				FROM secret_entries e JOIN secret_buckets b ON b.id = e.bucket_id
+				LEFT JOIN login_credential_sessions s
+					ON s.credential_id = e.id AND s.failure_kind = 'needs_reconnect'
 				WHERE b.user_id = ? AND b.scope IN ('user', 'package')
 					AND e.deleted_at IS NULL AND b.deleted_at IS NULL
 					AND e.id IS NOT NULL${filter.sql}`,
@@ -145,6 +172,7 @@ async function loadSecretRows(input: {
 			.all<SecretRow>()
 		return result.results ?? []
 	})
+	const needsReconnect = await loginsNeedingReconnect(rows)
 	return rows.flatMap((row): Array<ListedRow> => {
 		if (isReservedSecretName(row.name) || !isCredentialKind(row.kind)) {
 			return []
@@ -157,16 +185,21 @@ async function loadSecretRows(input: {
 		const expired = expiresAt !== null && expiresAt <= input.now
 		const disconnected =
 			row.encrypted_value == null || row.encrypted_value.length === 0
+		const reconnect = needsReconnect.has(row.id)
 		const status = disconnected
 			? ('disconnected' as const)
 			: expired
 				? ('expired' as const)
-				: ('ok' as const)
+				: reconnect
+					? ('needs_attention' as const)
+					: ('ok' as const)
 		const statusMessage = disconnected
 			? 'Disconnected. Connect again to restore the value.'
 			: expired
 				? 'This credential has expired.'
-				: null
+				: reconnect
+					? 'The provider rejected the saved refresh token (invalid_grant). Save a new value to reconnect.'
+					: null
 		return [
 			{
 				family: 'secret',

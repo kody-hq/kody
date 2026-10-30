@@ -490,6 +490,28 @@ Kody drops the session, runs the exchange once more, and retries the request
 once (with the same host and placement checks). A request with a body is
 returned as is.
 
+When the exchange fails, Kody records the failure for the credential's current
+revision and does not run the exchange again until a cooldown passes, so apps
+and jobs sharing one credential never hammer the provider's token endpoint. The
+caller that ran the exchange gets `login_failed`; every other caller, in any
+isolate, fails fast with `login_retry_later` without contacting the provider.
+Both carry `retryAfterSeconds`: wait that long, then retry. The cooldown is 30
+seconds after the first failure and doubles for each failure in a row, up to 15
+minutes (or longer when the provider's `Retry-After` asks for it, up to an
+hour). Network errors, timeouts, 5xx, and 429 recover on their own: after the
+cooldown the next request runs the exchange again, and a success clears the
+failure. While a cooldown is running, the 401 retry is skipped and the host's
+401 is returned; a freshly exchanged session that the host refuses again also
+backs off the next 401 retry the same way.
+
+When the token endpoint answers `invalid_grant` (the refresh token was revoked
+or is invalid), retrying cannot help: requests fail with
+`login_needs_reconnect`, the credential shows **Needs attention** in the
+credentials list, and Kody stops running the exchange. The owner reconnects it
+by saving a new value (for example a new refresh token, on the website or with
+`secretSet`). Saving a new value, or editing the exchange, hosts, or inject,
+starts a new revision with no failure state.
+
 A refresh token that a token request in an execute run returned sealed
 (`kody-sealed.…`) can become a login credential without code reading it: pass it
 as `sealed_token` together with `login_exchange`, as in
@@ -653,6 +675,9 @@ Every credential error is structured: it has a `code`, a message, and
 | `credential_need_undeclared` | A package someone else runs uses a credential it does not declare in `kody.credentials` |
 | `credential_denied`          | Authorization failed                                                                    |
 | `credential_rate_limited`    | An app's visitors used an owner's credential too often; try again shortly               |
+| `login_failed`               | A login's exchange failed; `retryAfterSeconds` says when Kody runs it again             |
+| `login_retry_later`          | A login's exchange failed recently and is cooling down; retry after `retryAfterSeconds` |
+| `login_needs_reconnect`      | The provider rejected the login's refresh token; the owner saves a new value            |
 | `host_not_allowed`           | The request's host is not one of the credential's hosts                                 |
 | `insecure_transport`         | The request is not HTTPS                                                                |
 

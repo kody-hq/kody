@@ -39,6 +39,8 @@ const sessionExpirySkewMs = 30_000
 const exchangeTimeoutMs = 30_000
 const maxCachedSessions = 500
 const maxExchangeResponseBytes = 64 * 1024
+/** A failed exchange's body is read only for its OAuth `error` code. */
+const maxErrorBodyBytes = 8 * 1024
 
 export const loginExchangeSchema = z
 	.object({
@@ -134,6 +136,23 @@ function misconfigured(): never {
 		'invalid_request',
 		"This login credential's exchange is not set up correctly. Its owner can fix it.",
 	)
+}
+
+/** Only the standard OAuth `error` code is read from a failed exchange. */
+function readOAuthError(payload: unknown) {
+	return payload && typeof payload === 'object' && 'error' in payload
+		? payload.error
+		: null
+}
+
+/** `Retry-After` as seconds (delta-seconds or an HTTP date), else null. */
+export function readRetryAfterSeconds(value: string | null, now = Date.now()) {
+	if (!value) return null
+	const trimmed = value.trim()
+	if (/^\d+$/.test(trimmed)) return Number(trimmed)
+	const at = Date.parse(trimmed)
+	if (Number.isNaN(at)) return null
+	return Math.max(0, Math.ceil((at - now) / 1000))
 }
 
 function parseJson(text: string | null) {
@@ -248,8 +267,22 @@ async function runExchange(
 		throw new CredentialLoginFailedError(null)
 	}
 	if (!response.ok) {
-		await response.body?.cancel()
-		throw new CredentialLoginFailedError(response.status)
+		const providerRetryAfterSeconds = readRetryAfterSeconds(
+			response.headers.get('retry-after'),
+		)
+		const invalidGrant =
+			response.status >= 400 &&
+			response.status < 500 &&
+			readOAuthError(
+				parseJson(
+					await readBoundedBody(response, maxErrorBodyBytes).catch(() => null),
+				),
+			) === 'invalid_grant'
+		await response.body?.cancel().catch(() => {})
+		throw new CredentialLoginFailedError(response.status, {
+			invalidGrant,
+			providerRetryAfterSeconds,
+		})
 	}
 	const payload = parseJson(
 		await readBoundedBody(response, maxExchangeResponseBytes).catch(() => null),

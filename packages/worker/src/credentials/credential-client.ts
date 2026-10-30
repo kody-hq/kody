@@ -77,6 +77,8 @@ import {
 } from './owner-credential-for-visitors.ts'
 import {
 	CredentialLoginFailedError,
+	CredentialLoginNeedsReconnectError,
+	CredentialLoginRetryLaterError,
 	CredentialNotFoundError,
 	CredentialRequestRefusedError,
 } from './credential-request.ts'
@@ -101,6 +103,8 @@ export type CredentialClientErrorCode =
 	| 'insecure_transport'
 	| 'invalid_request'
 	| 'login_failed'
+	| 'login_retry_later'
+	| 'login_needs_reconnect'
 
 export type CredentialClientOption = {
 	name: string
@@ -126,6 +130,8 @@ export type CredentialClientErrorBody = {
 	possibleMatches?: Array<CredentialClientOption>
 	/** Absolute creation link; always set for unbound, ambiguous, and not-found errors. */
 	createUrl?: string
+	/** Seconds until a login's exchange may run again after it failed. */
+	retryAfterSeconds?: number
 }
 
 export class CredentialClientError extends McpCallerError {
@@ -185,8 +191,22 @@ export function toCredentialClientError(
 				: {},
 		)
 	}
+	if (error instanceof CredentialLoginRetryLaterError) {
+		return refusal('login_retry_later', error.message, {
+			retryAfterSeconds: error.retryAfterSeconds,
+		})
+	}
+	if (error instanceof CredentialLoginNeedsReconnectError) {
+		return refusal('login_needs_reconnect', error.message)
+	}
 	if (error instanceof CredentialLoginFailedError) {
-		return refusal('login_failed', error.message)
+		return refusal(
+			'login_failed',
+			error.message,
+			error.retryAfterSeconds === null
+				? {}
+				: { retryAfterSeconds: error.retryAfterSeconds },
+		)
 	}
 	if (error instanceof CredentialClientHandleError) {
 		return refusal('invalid_request', error.message)

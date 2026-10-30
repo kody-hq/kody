@@ -8,6 +8,11 @@
  * twice. A crashed holder's lease lapses after `leaseMs`. Credential ids are
  * global, so a claim re-points `user_id` after an org transfer; the old
  * owner's ciphertext is bound to that owner and never decrypts for the new one.
+ *
+ * A failed exchange is recorded on the row for the revision that failed
+ * (ADR 0090, 2026-10-30): until `retry_after` passes, callers fail fast with a
+ * retry-after instead of running the exchange again, and `invalid_grant`
+ * stops the exchange until a new revision (a saved value) replaces it.
  */
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
@@ -15,7 +20,11 @@ import {
 	encryptLoginCredentialSession,
 	loginCredentialSessionContext,
 } from '#mcp/secrets/crypto.ts'
-import { CredentialLoginFailedError } from './credential-request.ts'
+import {
+	CredentialLoginFailedError,
+	CredentialLoginNeedsReconnectError,
+	CredentialLoginRetryLaterError,
+} from './credential-request.ts'
 
 /**
  * A replacement login value the exchange returned (a rotated refresh token):
@@ -69,6 +78,198 @@ type SessionKey = {
 
 const defaultLeaseMs = 60_000
 const defaultPollMs = 250
+
+/** The first wait after a failed exchange; it doubles per failure in a row. */
+export const loginFailureBaseMs = 30_000
+/** The longest wait between exchange attempts while failures continue. */
+export const loginFailureMaxMs = 15 * 60_000
+/** A provider's `Retry-After` beyond this is capped. */
+const maxProviderRetryAfterMs = 60 * 60_000
+
+type LoginFailureKind =
+	/** The exchange failed (network, timeout, HTTP error, no token). */
+	| 'exchange'
+	/** A host answered 401 again to a freshly exchanged session. */
+	| 'rejected'
+	/** The provider answered `invalid_grant`; only a new revision clears it. */
+	| 'needs_reconnect'
+
+type LoginFailure = {
+	kind: LoginFailureKind
+	count: number
+	retryAfter: number | null
+}
+
+export function loginFailureBackoffMs(count: number) {
+	return Math.min(
+		loginFailureBaseMs * 2 ** Math.min(Math.max(count, 1) - 1, 16),
+		loginFailureMaxMs,
+	)
+}
+
+function secondsUntil(at: number, now: number) {
+	return Math.max(1, Math.ceil((at - now) / 1000))
+}
+
+function isFailureKind(value: unknown): value is LoginFailureKind {
+	return (
+		value === 'exchange' || value === 'rejected' || value === 'needs_reconnect'
+	)
+}
+
+async function readLoginFailure(
+	db: D1Database,
+	input: SessionKey,
+): Promise<LoginFailure | null> {
+	const row = await db
+		.prepare(
+			`SELECT failure_kind, failure_count, retry_after
+			FROM login_credential_sessions
+			WHERE credential_id = ? AND user_id = ? AND failure_revision = ?`,
+		)
+		.bind(input.credentialId, input.ownerId, input.revision)
+		.first<{
+			failure_kind: string | null
+			failure_count: number | null
+			retry_after: number | null
+		}>()
+	if (!row || !isFailureKind(row.failure_kind)) return null
+	return {
+		kind: row.failure_kind,
+		count: row.failure_count ?? 1,
+		retryAfter: row.retry_after,
+	}
+}
+
+/**
+ * Throws when a recorded failure means this caller must not run the exchange
+ * yet. A `rejected` failure only holds back callers retrying after a 401.
+ */
+function refuseWhileCoolingDown(
+	failure: LoginFailure | null,
+	input: { now: number; rejected: boolean },
+) {
+	if (!failure) return
+	if (failure.kind === 'needs_reconnect') {
+		throw new CredentialLoginNeedsReconnectError()
+	}
+	if (failure.retryAfter === null || failure.retryAfter <= input.now) return
+	if (failure.kind === 'exchange' || input.rejected) {
+		throw new CredentialLoginRetryLaterError(
+			secondsUntil(failure.retryAfter, input.now),
+		)
+	}
+}
+
+/**
+ * Records a failed exchange for this revision while `leaseId` holds the lease,
+ * and releases the lease. Returns the error callers see: needs-reconnect for
+ * `invalid_grant`, otherwise the failure with its retry-after.
+ */
+async function recordFailureUnderLease(
+	input: SessionKey & {
+		db: D1Database
+		leaseId: string
+		error: CredentialLoginFailedError
+		previous: LoginFailure | null
+		now: number
+	},
+) {
+	const count =
+		input.previous?.kind === 'exchange' ? input.previous.count + 1 : 1
+	const providerMs =
+		input.error.providerRetryAfterSeconds === null
+			? 0
+			: Math.min(
+					input.error.providerRetryAfterSeconds * 1000,
+					maxProviderRetryAfterMs,
+				)
+	const delayMs = Math.max(loginFailureBackoffMs(count), providerMs)
+	const needsReconnect = input.error.invalidGrant
+	const result = await input.db
+		.prepare(
+			`UPDATE login_credential_sessions
+			SET failure_revision = ?, failure_kind = ?, failure_count = ?,
+				retry_after = ?, lease_id = NULL, lease_expires_at = NULL,
+				updated_at = ?
+			WHERE credential_id = ? AND user_id = ? AND lease_id = ?`,
+		)
+		.bind(
+			input.revision,
+			needsReconnect ? 'needs_reconnect' : 'exchange',
+			count,
+			needsReconnect ? null : input.now + delayMs,
+			new Date(input.now).toISOString(),
+			input.credentialId,
+			input.ownerId,
+			input.leaseId,
+		)
+		.run()
+	return {
+		recorded: (result.meta.changes ?? 0) > 0,
+		error: needsReconnect
+			? new CredentialLoginNeedsReconnectError()
+			: new CredentialLoginFailedError(input.error.status, {
+					retryAfterSeconds: Math.ceil(delayMs / 1000),
+				}),
+	}
+}
+
+/**
+ * After the gateway retried a request with a freshly exchanged session:
+ * another 401 records a `rejected` failure (with backoff) so the next 401
+ * does not run the exchange again until it passes; success clears it.
+ */
+export async function recordRetriedLoginSession(
+	env: Pick<SessionEnv, 'APP_DB'>,
+	input: { sessionId: string; rejected: boolean; now?: number },
+) {
+	const db = env.APP_DB
+	if (!input.rejected) {
+		await db
+			.prepare(
+				`UPDATE login_credential_sessions
+				SET failure_revision = NULL, failure_kind = NULL, failure_count = NULL,
+					retry_after = NULL
+				WHERE session_id = ? AND failure_kind = 'rejected'`,
+			)
+			.bind(input.sessionId)
+			.run()
+		return
+	}
+	const row = await db
+		.prepare(
+			`SELECT revision, failure_revision, failure_kind, failure_count
+			FROM login_credential_sessions WHERE session_id = ?`,
+		)
+		.bind(input.sessionId)
+		.first<{
+			revision: string | null
+			failure_revision: string | null
+			failure_kind: string | null
+			failure_count: number | null
+		}>()
+	if (!row?.revision) return
+	const now = input.now ?? Date.now()
+	const count =
+		row.failure_kind === 'rejected' && row.failure_revision === row.revision
+			? (row.failure_count ?? 0) + 1
+			: 1
+	await db
+		.prepare(
+			`UPDATE login_credential_sessions
+			SET failure_revision = revision, failure_kind = 'rejected',
+				failure_count = ?, retry_after = ?, updated_at = ?
+			WHERE session_id = ?`,
+		)
+		.bind(
+			count,
+			now + loginFailureBackoffMs(count),
+			new Date(now).toISOString(),
+			input.sessionId,
+		)
+		.run()
+}
 
 export async function readStoredLoginSession(
 	input: SessionKey & { env: SessionEnv; now?: number },
@@ -173,6 +374,19 @@ async function releaseLease(
 		.run()
 }
 
+/** A success clears exchange failures but keeps a `rejected` one's backoff. */
+const keepRejectedFailure = [
+	'failure_revision',
+	'failure_kind',
+	'failure_count',
+	'retry_after',
+]
+	.map(
+		(column) =>
+			`${column} = CASE WHEN failure_kind = 'rejected' THEN ${column} END`,
+	)
+	.join(', ')
+
 /**
  * Writes the session only while `leaseId` still holds the lease. With a
  * replacement value, the value write and the session write run in one batch,
@@ -207,7 +421,8 @@ async function writeSessionUnderLease(
 		.prepare(
 			`UPDATE login_credential_sessions
 			SET revision = ?, session_id = ?, session_encrypted = ?, expires_at = ?,
-				lease_id = NULL, lease_expires_at = NULL, updated_at = ?
+				lease_id = NULL, lease_expires_at = NULL, updated_at = ?,
+				${keepRejectedFailure}
 			WHERE credential_id = ? AND user_id = ? AND lease_id = ? ${guard}`,
 		)
 		.bind(
@@ -281,7 +496,12 @@ export async function obtainLoginSession(
 	const pollMs = input.pollMs ?? defaultPollMs
 	const deadline = Date.now() + leaseMs * 2
 	const leaseId = crypto.randomUUID()
+	const rejected = Boolean(input.rejectedSessionId)
 	if (input.rejectedSessionId) {
+		refuseWhileCoolingDown(await readLoginFailure(input.env.APP_DB, input), {
+			now: Date.now(),
+			rejected,
+		})
 		await dropRejectedSession(
 			input.env.APP_DB,
 			input.credentialId,
@@ -298,6 +518,10 @@ export async function obtainLoginSession(
 				valueReplaced: false,
 			}
 		}
+		refuseWhileCoolingDown(await readLoginFailure(input.env.APP_DB, input), {
+			now: Date.now(),
+			rejected,
+		})
 		const now = Date.now()
 		if (
 			await claimLease({
@@ -321,10 +545,27 @@ export async function obtainLoginSession(
 					}
 				}
 				// A rotation may have committed after the caller read the credential.
+				const failure = await readLoginFailure(input.env.APP_DB, input)
+				refuseWhileCoolingDown(failure, { now: Date.now(), rejected })
 				if (input.isCurrent && !(await input.isCurrent())) {
 					throw new StaleLoginCredentialError()
 				}
-				const session = await input.exchange()
+				let session: LoginSession
+				try {
+					session = await input.exchange()
+				} catch (error) {
+					if (!(error instanceof CredentialLoginFailedError)) throw error
+					const recorded = await recordFailureUnderLease({
+						...input,
+						db: input.env.APP_DB,
+						leaseId,
+						error,
+						previous: failure,
+						now: Date.now(),
+					})
+					leaseCleared = recorded.recorded
+					throw recorded.error
+				}
 				if (session.expiresAt === null && !session.replacement) {
 					return {
 						session,
