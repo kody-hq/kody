@@ -757,6 +757,10 @@
 			"sha256": "9cf506b9f0b61b52484698f834c6a48e83c8a5509fa86244053506cf935a859e"
 		},
 		{
+			"filename": "0209-agent-registrations.sql",
+			"sha256": "0713cbe4e214d27fa90062dadda1c18ee0aeb6e030d24a94179f4e7d1431fb4c"
+		},
+		{
 			"filename": "0210-enablement-enabler-narrowing.sql",
 			"sha256": "611d6838231313539698f202913361e2c928978f3ae4394f2037426c51967cad"
 		}

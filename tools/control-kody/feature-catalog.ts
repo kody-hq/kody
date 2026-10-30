@@ -50,6 +50,7 @@ export const featureCatalog: ReadonlyArray<Feature> = [
 			'/session',
 			'/oauth',
 			'/device',
+			'/agent',
 			'/-/auth',
 			'/_kody/auth',
 		],

@@ -1,7 +1,26 @@
 /** @jsxImportSource @emotion/react */
 import { useRouter } from '@tanstack/react-router'
-import { formatMicroUsd } from '#universal/credits.ts'
-import { colors, spacing } from '#universal/styles/tokens.ts'
+import { useMutation } from '@tanstack/react-query'
+import { useState, type FormEvent } from 'react'
+import {
+	grantAdminCreditsToOrg,
+	setAdminOrgCreditEligibility,
+	setAdminOrgPlan,
+} from '#start/server/admin-controls'
+import { parseDollarsToCents } from '#client/routes/credit-amount-input.ts'
+import {
+	formatMicroUsd,
+	validateCreditAdminGrantCents,
+} from '#universal/credits.ts'
+import { planNames, type PlanName } from '#universal/plans.ts'
+import { colors, mq, spacing } from '#universal/styles/tokens.ts'
+import {
+	fieldCss,
+	fieldLabelCss,
+	getAuthInputCss,
+	getPillButtonCss,
+	getSelectCss,
+} from '#universal/styles/style-primitives.ts'
 import { isWithinSoftDeleteRestoreWindow } from '#worker/soft-delete/window.ts'
 import {
 	type AdminOrgDetail,
@@ -22,12 +41,277 @@ import {
 	formatAdminCreditLedgerKind,
 	formatAdminEntitlementLadder,
 	formatAdminOrganizationRole,
+	formatAdminPlanLabel,
 } from './admin-display-labels.ts'
 import {
 	RecordTable,
 	RecordTableSearch,
 	RecordTableSelect,
 } from './record-table.tsx'
+
+const billingInputCss = getAuthInputCss()
+const billingSelectCss = getSelectCss()
+const billingButtonCss = getPillButtonCss({ size: 'sm' })
+
+function AdminOrgPlanForm(props: { orgId: string; manualPlan: PlanName }) {
+	const router = useRouter()
+	const [plan, setPlan] = useState(props.manualPlan)
+	const [reason, setReason] = useState('')
+	const [message, setMessage] = useState<string | null>(null)
+	const mutation = useMutation({
+		mutationFn: () =>
+			setAdminOrgPlan({
+				data: {
+					orgId: props.orgId,
+					plan: plan as PlanName,
+					reason,
+				},
+			}),
+		onSuccess: async (result) => {
+			setMessage(
+				result.changed
+					? 'Manual plan updated.'
+					: 'Organization is already on that plan.',
+			)
+			setReason('')
+			await router.invalidate()
+		},
+		onError: (error) => setMessage(error.message),
+	})
+	return (
+		<form
+			aria-label="Set organization manual plan"
+			onSubmit={(event) => {
+				event.preventDefault()
+				setMessage(null)
+				mutation.mutate()
+			}}
+			css={{
+				display: 'grid',
+				gap: spacing.md,
+				gridTemplateColumns: 'minmax(0, 12rem) minmax(0, 1fr) auto',
+				alignItems: 'end',
+				[mq.mobile]: { gridTemplateColumns: '1fr' },
+			}}
+		>
+			<label css={fieldCss}>
+				<span css={fieldLabelCss}>Manual grant</span>
+				<select
+					css={billingSelectCss}
+					value={plan}
+					onChange={(event) => setPlan(event.currentTarget.value as PlanName)}
+					disabled={mutation.isPending}
+				>
+					{planNames.map((name) => (
+						<option key={name} value={name}>
+							{formatAdminPlanLabel(name)}
+						</option>
+					))}
+				</select>
+			</label>
+			<label css={fieldCss}>
+				<span css={fieldLabelCss}>Reason</span>
+				<input
+					css={billingInputCss}
+					required
+					value={reason}
+					onChange={(event) => setReason(event.currentTarget.value)}
+					disabled={mutation.isPending}
+				/>
+			</label>
+			<button
+				type="submit"
+				css={billingButtonCss}
+				disabled={mutation.isPending}
+			>
+				{mutation.isPending ? 'Saving…' : 'Save'}
+			</button>
+			{message ? (
+				<div css={{ gridColumn: '1 / -1' }}>
+					<AccountManagementMessage tone={mutation.isError ? 'error' : 'info'}>
+						{message}
+					</AccountManagementMessage>
+				</div>
+			) : null}
+		</form>
+	)
+}
+
+function AdminOrgCreditsForms(props: {
+	orgId: string
+	creditsEligible: boolean
+}) {
+	const router = useRouter()
+	const [amountText, setAmountText] = useState('')
+	const [grantReason, setGrantReason] = useState('')
+	const [grantMessage, setGrantMessage] = useState<string | null>(null)
+	const [eligible, setEligible] = useState(props.creditsEligible)
+	const [eligibilityReason, setEligibilityReason] = useState('')
+	const [eligibilityMessage, setEligibilityMessage] = useState<string | null>(
+		null,
+	)
+	const grant = useMutation({
+		mutationFn: (input: { amountCents: number; reason: string }) =>
+			grantAdminCreditsToOrg({ data: { orgId: props.orgId, ...input } }),
+		onSuccess: async (result) => {
+			setGrantMessage(`Granted ${formatMicroUsd(result.amountCents * 10_000)}.`)
+			setAmountText('')
+			setGrantReason('')
+			await router.invalidate()
+		},
+		onError: (error) => setGrantMessage(error.message),
+	})
+	const eligibility = useMutation({
+		mutationFn: (input: { creditsEligible: boolean; reason: string }) =>
+			setAdminOrgCreditEligibility({
+				data: { orgId: props.orgId, ...input },
+			}),
+		onSuccess: async (result) => {
+			setEligibilityMessage(
+				result.changed
+					? 'Credit eligibility updated.'
+					: 'Credit eligibility is already set that way.',
+			)
+			setEligibilityReason('')
+			await router.invalidate()
+		},
+		onError: (error) => setEligibilityMessage(error.message),
+	})
+	function submitGrant(event: FormEvent<HTMLFormElement>) {
+		event.preventDefault()
+		const amount = validateCreditAdminGrantCents(
+			parseDollarsToCents(amountText) ?? Number.NaN,
+		)
+		if (!amount.ok) {
+			setGrantMessage(amount.error)
+			return
+		}
+		if (!grantReason.trim()) {
+			setGrantMessage('A reason is required.')
+			return
+		}
+		setGrantMessage(null)
+		grant.mutate({ amountCents: amount.cents, reason: grantReason })
+	}
+	return (
+		<div css={{ display: 'grid', gap: spacing.lg }}>
+			<form
+				aria-label="Grant organization credits"
+				onSubmit={submitGrant}
+				css={{
+					display: 'grid',
+					gap: spacing.md,
+					gridTemplateColumns: 'minmax(0, 10rem) minmax(0, 1fr) auto',
+					alignItems: 'end',
+					[mq.mobile]: { gridTemplateColumns: '1fr' },
+				}}
+			>
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Amount ($)</span>
+					<input
+						css={billingInputCss}
+						inputMode="decimal"
+						required
+						value={amountText}
+						onChange={(event) => setAmountText(event.currentTarget.value)}
+						disabled={grant.isPending}
+					/>
+				</label>
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Reason</span>
+					<input
+						css={billingInputCss}
+						required
+						value={grantReason}
+						onChange={(event) => setGrantReason(event.currentTarget.value)}
+						disabled={grant.isPending}
+					/>
+				</label>
+				<button type="submit" css={billingButtonCss} disabled={grant.isPending}>
+					{grant.isPending ? 'Granting…' : 'Grant'}
+				</button>
+				{grantMessage ? (
+					<div css={{ gridColumn: '1 / -1' }}>
+						<AccountManagementMessage
+							tone={
+								grant.isError || !grantMessage.startsWith('Granted')
+									? 'error'
+									: 'info'
+							}
+						>
+							{grantMessage}
+						</AccountManagementMessage>
+					</div>
+				) : null}
+			</form>
+			<form
+				aria-label="Set organization credit eligibility"
+				onSubmit={(event) => {
+					event.preventDefault()
+					if (!eligibilityReason.trim()) {
+						setEligibilityMessage('A reason is required.')
+						return
+					}
+					setEligibilityMessage(null)
+					eligibility.mutate({
+						creditsEligible: eligible,
+						reason: eligibilityReason,
+					})
+				}}
+				css={{
+					display: 'grid',
+					gap: spacing.md,
+					gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto',
+					alignItems: 'end',
+					[mq.mobile]: { gridTemplateColumns: '1fr' },
+				}}
+			>
+				<label css={{ ...fieldCss, display: 'flex', alignItems: 'center' }}>
+					<input
+						type="checkbox"
+						checked={eligible}
+						onChange={(event) => setEligible(event.currentTarget.checked)}
+						disabled={eligibility.isPending}
+					/>
+					<span>Admin credits eligible</span>
+				</label>
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Reason</span>
+					<input
+						css={billingInputCss}
+						required
+						value={eligibilityReason}
+						onChange={(event) =>
+							setEligibilityReason(event.currentTarget.value)
+						}
+						disabled={eligibility.isPending}
+					/>
+				</label>
+				<button
+					type="submit"
+					css={billingButtonCss}
+					disabled={eligibility.isPending}
+				>
+					{eligibility.isPending ? 'Saving…' : 'Save eligibility'}
+				</button>
+				{eligibilityMessage ? (
+					<div css={{ gridColumn: '1 / -1' }}>
+						<AccountManagementMessage
+							tone={
+								eligibility.isError ||
+								eligibilityMessage === 'A reason is required.'
+									? 'error'
+									: 'info'
+							}
+						>
+							{eligibilityMessage}
+						</AccountManagementMessage>
+					</div>
+				) : null}
+			</form>
+		</div>
+	)
+}
 
 export function AdminOrgsPage(props: {
 	payload: AdminOrgsData
@@ -187,6 +471,8 @@ export function AdminOrgDetailPage(props: {
 }) {
 	const org = props.payload.org
 	const data = props.payload
+	const softDelete = data.softDelete
+	const isDeleted = Boolean(softDelete?.deletedAt)
 	return (
 		<AccountManagementShell layout="detail" currentHref={props.currentHref}>
 			<AdminPageHeader
@@ -194,14 +480,13 @@ export function AdminOrgDetailPage(props: {
 				description={`@${org.slug} · ${org.kind === 'personal' ? 'Personal organization' : 'Team organization'}`}
 				currentHref={props.currentHref}
 			/>
-			{data.softDelete ? (
+			{softDelete?.deletedAt ? (
 				<AccountManagementMessage tone="error">
 					This organization is deleted.{' '}
-					{data.softDelete.deletedAt &&
-					isWithinSoftDeleteRestoreWindow(data.softDelete.deletedAt) ? (
+					{isWithinSoftDeleteRestoreWindow(softDelete.deletedAt) ? (
 						<>
 							Restorable until{' '}
-							<TimestampValue value={data.softDelete.restoreDeadline} />.
+							<TimestampValue value={softDelete.restoreDeadline} />.
 						</>
 					) : (
 						'The restore window has passed.'
@@ -256,7 +541,7 @@ export function AdminOrgDetailPage(props: {
 			) : null}
 			<AccountManagementPanel
 				title="Plan"
-				description="Plan changes move here in a follow-up."
+				description="Set the manual plan grant for this organization."
 			>
 				<MetadataGrid
 					items={[
@@ -292,6 +577,15 @@ export function AdminOrgDetailPage(props: {
 						},
 					]}
 				/>
+				{isDeleted ? (
+					<p>Billing changes are unavailable for a deleted organization.</p>
+				) : (
+					<AdminOrgPlanForm
+						key={org.id}
+						orgId={org.id}
+						manualPlan={data.plan.manualPlan}
+					/>
+				)}
 			</AccountManagementPanel>
 			<AccountManagementPanel title="Seats & members">
 				<p>
@@ -402,6 +696,13 @@ export function AdminOrgDetailPage(props: {
 						},
 					}))}
 				/>
+				{isDeleted ? null : (
+					<AdminOrgCreditsForms
+						key={org.id}
+						orgId={org.id}
+						creditsEligible={data.plan.adminCreditsEligible}
+					/>
+				)}
 			</AccountManagementPanel>
 			{data.softDelete?.deletedAt ? (
 				<AccountManagementPanel title="Limits">

@@ -44,7 +44,13 @@ vi.mock('../../src/admin/org-limit-overrides.ts', () => ({
 	loadAdminOrgLimits: state.readLimits,
 	applyAdminOrgLimitOverrideChanges: state.writeLimits,
 }))
-import { readAdminOrgLimits, updateAdminOrgLimits } from './admin-controls.ts'
+import {
+	grantAdminCreditsToOrg,
+	readAdminOrgLimits,
+	setAdminOrgCreditEligibility,
+	setAdminOrgPlan,
+	updateAdminOrgLimits,
+} from './admin-controls.ts'
 beforeEach(() => vi.clearAllMocks())
 test('native admin limit reads and writes refuse non-admins before domain access', async () => {
 	state.role.mockRejectedValue(new Error('Forbidden'))
@@ -66,4 +72,27 @@ test('native admin limit reads and writes refuse non-admins before domain access
 		'Cache-Control',
 		'private, no-store',
 	)
+})
+
+test('organization billing mutations refuse non-admins before domain access', async () => {
+	state.role.mockRejectedValue(new Error('Forbidden'))
+	await expect(
+		setAdminOrgPlan({
+			data: { orgId: 'org', plan: 'pro', reason: 'Support approval.' },
+		}),
+	).rejects.toThrow('Forbidden')
+	await expect(
+		grantAdminCreditsToOrg({
+			data: { orgId: 'org', amountCents: 100, reason: 'Support approval.' },
+		}),
+	).rejects.toThrow('Forbidden')
+	await expect(
+		setAdminOrgCreditEligibility({
+			data: {
+				orgId: 'org',
+				creditsEligible: true,
+				reason: 'Support approval.',
+			},
+		}),
+	).rejects.toThrow('Forbidden')
 })

@@ -237,20 +237,23 @@ export async function auditAdminCapabilityInvocation<TResult>(
 		successReason?: (result: TResult) => string
 		/** A resolved result that reports its own failure (default: success). */
 		resultOf?: (result: TResult) => 'success' | 'failure'
+		skipSuccessAudit?: (result: TResult) => boolean
 	} = {},
 ): Promise<TResult> {
 	const actorEmail = await resolveAuditActorEmail(ctx)
 	try {
 		const result = await run()
-		await logAuditEvent({
-			db: auditDatabaseFromEnv(ctx.env),
-			category: 'admin',
-			action: capabilityName,
-			result: options.resultOf?.(result) ?? 'success',
-			email: actorEmail,
-			path: '/mcp',
-			reason: options.successReason?.(result) ?? 'mcp_admin_capability',
-		})
+		if (!options.skipSuccessAudit?.(result)) {
+			await logAuditEvent({
+				db: auditDatabaseFromEnv(ctx.env),
+				category: 'admin',
+				action: capabilityName,
+				result: options.resultOf?.(result) ?? 'success',
+				email: actorEmail,
+				path: '/mcp',
+				reason: options.successReason?.(result) ?? 'mcp_admin_capability',
+			})
+		}
 		return result
 	} catch (error) {
 		await logAuditEvent({

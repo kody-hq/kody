@@ -6,6 +6,9 @@ import { adminCreditEligibilitySetCapability } from './admin-credit-eligibility-
 import { adminCreditGrantCapability } from './admin-credit-grant.ts'
 import { adminCreditWalletGetCapability } from './admin-credit-wallet-get.ts'
 import { adminOrgLimitOverridesSetCapability } from './admin-org-limit-overrides-set.ts'
+import { adminOrgPlanSetCapability } from './admin-org-plan-set.ts'
+import { adminOrgCreditGrantCapability } from './admin-org-credit-grant.ts'
+import { adminOrgCreditEligibilitySetCapability } from './admin-org-credit-eligibility-set.ts'
 import { adminOrgLimitsGetCapability } from './admin-org-limits-get.ts'
 import { adminOrgGetCapability } from './admin-org-get.ts'
 import { adminOrgResourceTransferCapability } from './admin-org-resource-transfer.ts'
@@ -236,6 +239,9 @@ export const adminDomain = defineDomain({
 		adminOrgLimitsGetCapability,
 		adminOrgGetCapability,
 		adminOrgLimitOverridesSetCapability,
+		adminOrgPlanSetCapability,
+		adminOrgCreditGrantCapability,
+		adminOrgCreditEligibilitySetCapability,
 		adminFeatureFlagListCapability,
 		adminFeatureFlagSetCapability,
 		adminFeatureFlagOverrideCapability,

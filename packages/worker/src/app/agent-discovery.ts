@@ -10,6 +10,7 @@ import {
 import { listGuides } from '#worker/guides/catalog.ts'
 import { mcpOauthScopes } from '#worker/mcp-oauth-scopes.ts'
 import { docHref, docsIntroSlug } from '#universal/docs-nav.ts'
+import { agentClaimGrantType } from '#worker/agent-registration/grant-type.ts'
 import { oauthPaths } from '#universal/oauth-paths.ts'
 
 export const mcpResourcePath = '/mcp'
@@ -419,6 +420,33 @@ export function buildAuthMarkdown(origin: string): string {
 		`- Scopes: \`${mcpOauthScopes.join('`, `')}\``,
 		`- Dynamic client registration: \`${registerUri}\``,
 		'- Client ID Metadata Documents (CIMD) are supported.',
+		'',
+		'## Register a person from a shell (auth.md `service_auth`)',
+		'',
+		'Agents without an MCP host can register the person they act for. The',
+		`\`agent_auth\` block in \`${origin}${oauthPaths.discovery}\` is authoritative.`,
+		'',
+		`1. \`POST ${origin}${oauthPaths.agentIdentity}\` with`,
+		'   `Content-Type: application/json` and',
+		'   `{"type":"service_auth","login_hint":"<their email>"}`. Optional',
+		'   `lifetime`: `"short"` or `"long"` (default `long`). Keep `claim_token`',
+		'   in memory only.',
+		'2. Show the person `claim.verification_uri` and `claim.user_code` in one',
+		'   message. They sign in or sign up (choosing their own username), verify',
+		'   their email, and type the code on that page. Kody never emails it.',
+		`3. Poll \`POST ${origin}${oauthPaths.token}\` with`,
+		`   \`grant_type=${agentClaimGrantType}&claim_token=<claim_token>\``,
+		'   every `interval` seconds. `authorization_pending`: wait. `slow_down`:',
+		'   add 5 seconds. `expired_token`: get a fresh code with',
+		`   \`POST ${origin}${oauthPaths.agentIdentityClaim}\` (JSON)`,
+		'   `{"claim_token":"<claim_token>","email":"<their email>"}`, then show',
+		'   the person `claim_attempt.verification_uri` and',
+		'   `claim_attempt.user_code`. After `claim_expired`, register again.',
+		'4. Success returns a `kody_at_` `access_token` for the Open API and',
+		'   `@kodycodes/cli` (`KODY_API_TOKEN`). It does not work on `/mcp`.',
+		'   There is no refresh token; register again when it expires.',
+		'',
+		'`anonymous` and `identity_assertion` registration are not enabled.',
 		'',
 	].join('\n')
 }

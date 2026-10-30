@@ -58,6 +58,7 @@ import { Route as AppAccountRouteImport } from './routes/_app.account'
 import { Route as AccountExportDotjsonRouteImport } from './routes/account_.export[.]json'
 import { Route as AccountMemoriesExportDotjsonRouteImport } from './routes/account_.memories-export[.]json'
 import { Route as AccountPackagesDotjsonRouteImport } from './routes/account_.packages[.]json'
+import { Route as AgentClaimRouteImport } from './routes/agent.claim'
 import { Route as BlogIndexRouteImport } from './routes/blog.index'
 import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
 import { Route as BlogRssDotxmlRouteImport } from './routes/blog_.rss[.]xml'
@@ -525,6 +526,11 @@ const AccountMemoriesExportDotjsonRoute =
 const AccountPackagesDotjsonRoute = AccountPackagesDotjsonRouteImport.update({
   id: '/account_/packages.json',
   path: '/account/packages.json',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AgentClaimRoute = AgentClaimRouteImport.update({
+  id: '/agent/claim',
+  path: '/agent/claim',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BlogIndexRoute = BlogIndexRouteImport.update({
@@ -1812,6 +1818,7 @@ export interface FileRoutesByFullPath {
   '/account/export.json': typeof AccountExportDotjsonRoute
   '/account/memories-export.json': typeof AccountMemoriesExportDotjsonRoute
   '/account/packages.json': typeof AccountPackagesDotjsonRoute
+  '/agent/claim': typeof AgentClaimRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/blog/rss.xml': typeof BlogRssDotxmlRoute
   '/blog/{$slug}.md': typeof BlogChar123slugChar125DotmdRoute
@@ -2081,6 +2088,7 @@ export interface FileRoutesByTo {
   '/account/export.json': typeof AccountExportDotjsonRoute
   '/account/memories-export.json': typeof AccountMemoriesExportDotjsonRoute
   '/account/packages.json': typeof AccountPackagesDotjsonRoute
+  '/agent/claim': typeof AgentClaimRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/blog/rss.xml': typeof BlogRssDotxmlRoute
   '/blog/{$slug}.md': typeof BlogChar123slugChar125DotmdRoute
@@ -2353,6 +2361,7 @@ export interface FileRoutesById {
   '/account_/export.json': typeof AccountExportDotjsonRoute
   '/account_/memories-export.json': typeof AccountMemoriesExportDotjsonRoute
   '/account_/packages.json': typeof AccountPackagesDotjsonRoute
+  '/agent/claim': typeof AgentClaimRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/blog_/rss.xml': typeof BlogRssDotxmlRoute
   '/blog_/{$slug}.md': typeof BlogChar123slugChar125DotmdRoute
@@ -2625,6 +2634,7 @@ export interface FileRouteTypes {
     | '/account/export.json'
     | '/account/memories-export.json'
     | '/account/packages.json'
+    | '/agent/claim'
     | '/blog/$slug'
     | '/blog/rss.xml'
     | '/blog/{$slug}.md'
@@ -2894,6 +2904,7 @@ export interface FileRouteTypes {
     | '/account/export.json'
     | '/account/memories-export.json'
     | '/account/packages.json'
+    | '/agent/claim'
     | '/blog/$slug'
     | '/blog/rss.xml'
     | '/blog/{$slug}.md'
@@ -3165,6 +3176,7 @@ export interface FileRouteTypes {
     | '/account_/export.json'
     | '/account_/memories-export.json'
     | '/account_/packages.json'
+    | '/agent/claim'
     | '/blog/$slug'
     | '/blog_/rss.xml'
     | '/blog_/{$slug}.md'
@@ -3435,6 +3447,7 @@ export interface RootRouteChildren {
   AccountExportDotjsonRoute: typeof AccountExportDotjsonRoute
   AccountMemoriesExportDotjsonRoute: typeof AccountMemoriesExportDotjsonRoute
   AccountPackagesDotjsonRoute: typeof AccountPackagesDotjsonRoute
+  AgentClaimRoute: typeof AgentClaimRoute
   BlogSlugRoute: typeof BlogSlugRoute
   BlogRssDotxmlRoute: typeof BlogRssDotxmlRoute
   BlogChar123slugChar125DotmdRoute: typeof BlogChar123slugChar125DotmdRoute
@@ -3852,6 +3865,13 @@ declare module '@tanstack/react-router' {
       path: '/account/packages.json'
       fullPath: '/account/packages.json'
       preLoaderRoute: typeof AccountPackagesDotjsonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agent/claim': {
+      id: '/agent/claim'
+      path: '/agent/claim'
+      fullPath: '/agent/claim'
+      preLoaderRoute: typeof AgentClaimRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/blog/': {
@@ -5852,6 +5872,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountExportDotjsonRoute: AccountExportDotjsonRoute,
   AccountMemoriesExportDotjsonRoute: AccountMemoriesExportDotjsonRoute,
   AccountPackagesDotjsonRoute: AccountPackagesDotjsonRoute,
+  AgentClaimRoute: AgentClaimRoute,
   BlogSlugRoute: BlogSlugRoute,
   BlogRssDotxmlRoute: BlogRssDotxmlRoute,
   BlogChar123slugChar125DotmdRoute: BlogChar123slugChar125DotmdRoute,
