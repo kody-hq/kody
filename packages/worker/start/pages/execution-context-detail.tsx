@@ -183,12 +183,21 @@ export function ExecutionContextDetail(props: {
 								<span css={hintCss}>
 									{context.capabilities?.os === 'win32' ? (
 										<>
-											Keep <code>kody daemon</code> running in a terminal.
-											Background services are not supported on Windows yet
+											Keep <code>kody daemon --context {context.id}</code>{' '}
+											running in a terminal. Background services are not
+											supported on Windows yet
+										</>
+									) : context.status === 'offline' ? (
+										<>
+											Run{' '}
+											<code>kody daemon install --context {context.id}</code> to
+											keep it running
 										</>
 									) : (
 										<>
-											Run <code>kody daemon install</code> to keep it running
+											To keep it running, stop the terminal daemon (Ctrl+C, it
+											drains in-flight runs), then run{' '}
+											<code>kody daemon install --context {context.id}</code>
 										</>
 									)}
 								</span>
