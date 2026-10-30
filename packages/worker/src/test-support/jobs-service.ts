@@ -649,6 +649,41 @@ export function createDatabase(
 							if (
 								query.startsWith('UPDATE jobs SET') &&
 								query.includes(
+									'last_run_at = ?, last_run_status = ?, updated_at = ?,',
+								)
+							) {
+								const existingJob = selectOne(
+									'jobs',
+									(existing) =>
+										existing['id'] === params[6] &&
+										existing['user_id'] === params[7],
+								)
+								if (!existingJob) {
+									return { meta: { changes: 0, last_row_id: 0 } }
+								}
+								const sameSchedule =
+									existingJob['schedule_json'] === params[3] &&
+									existingJob['timezone'] === params[4]
+								upsert(
+									'jobs',
+									(existing) =>
+										existing['id'] === params[6] &&
+										existing['user_id'] === params[7],
+									{
+										...existingJob,
+										last_run_at: params[0],
+										last_run_status: params[1],
+										updated_at: params[2],
+										next_run_at: sameSchedule
+											? params[5]
+											: existingJob['next_run_at'],
+									},
+								)
+								return { meta: { changes: 1, last_row_id: 0 } }
+							}
+							if (
+								query.startsWith('UPDATE jobs SET') &&
+								query.includes(
 									'source_id = ?, published_commit = ?, caller_context_json = ?, updated_at = ?',
 								)
 							) {

@@ -1533,16 +1533,26 @@ export async function runJobNow(input: {
 					from: outcome.finishedAt,
 				}),
 			})
-			// Outcome / schedule only — keep the published package caller context.
-			await jobsData(input.env).updateJob({
+			// Outcome only: the run can take minutes, and saving the row read
+			// before it would undo a turn-off, edit, or publish made meanwhile.
+			await jobsData(input.env).recordJobRunNowOutcome({
 				userId: input.userId,
-				job: updated,
-				callerContextJson: row.callerContextJson,
+				jobId: input.jobId,
+				lastRunAt: outcome.finishedAt,
+				lastRunStatus: updated.lastRunStatus,
+				updatedAt: updated.updatedAt,
+				nextRunAt: updated.nextRunAt,
+				scheduleJson: JSON.stringify(row.record.schedule),
+				timezone: row.record.timezone,
+			})
+			const current = await jobsData(input.env).getJobById({
+				userId: input.userId,
+				jobId: input.jobId,
 			})
 			const job = await hydrateJobViewFromRunLog({
 				env: input.env,
 				userId: input.userId,
-				job: toJobView(updated),
+				job: toJobView(current?.record ?? updated),
 			})
 			return {
 				job,
