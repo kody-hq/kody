@@ -4,6 +4,8 @@
 - **Date:** 2026-10-28
 - **Amends:** [0056](./0056-cli-credential-bootstrap.md),
   [0076](./0076-cli-login-device-token.md)
+- **Amended:** 2026-10-30 by [0091](./0091-auth-md-service-auth-registration.md)
+  (code and verification pieces shared with auth.md registration)
 
 ## Context
 
