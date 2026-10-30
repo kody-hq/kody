@@ -594,9 +594,11 @@ test('a publish step over the CPU limit names the compute limit, and the retry s
 		.publishSession(session)
 		.catch((caught: unknown) => caught as Error)
 	expect(error).toBeInstanceOf(Error)
-	expect((error as Error).message).toBe(
-		publishComputeLimitMessage('credentials'),
+	// The message also lists the session tree's largest non-runtime files.
+	expect((error as Error).message).toContain(
+		publishComputeLimitMessage('credentials').split(' Memory and CPU')[0],
 	)
+	expect((error as Error).message).toContain('`.kodyignore`')
 	expect((error as Error).message).not.toContain('storage was briefly')
 	expectStagingCleared(kv)
 
