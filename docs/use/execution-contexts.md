@@ -22,9 +22,9 @@ Execution contexts are an experiment. Turn them on at
   Read and set overrides with `automationExecutionGet` /
   `automationExecutionSet`.
 - Capabilities: `executionContextList`, `executionContextGet`,
-  `executionContextUpdate`, `executionContextRunList`,
-  `executionContextChainGet`, `executionContextChainSet`, and the sharing
-  capabilities. Find them with `search({ query: "execution context" })`.
+  `executionContextUpdate`, `executionContextRevoke`, `executionContextDelete`,
+  `executionContextRunList`, `executionChainGet`, `executionChainSet`, and the
+  sharing capabilities. Find them with `search({ query: "execution context" })`.
 - CLI: `kody context register --name <name>`,
   `kody context policy allow <path> [--mode ro|rw]`,
   `kody daemon [--max-concurrent <n>]` (`KODY_CONTEXT_MAX_CONCURRENT`, 1 to 8,

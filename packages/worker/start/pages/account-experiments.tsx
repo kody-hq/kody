@@ -87,7 +87,7 @@ export function AccountExperimentsPage({
 			{payload ? (
 				<AccountManagementPanel
 					title="Experiments you can try"
-					description="Each one is off until you turn it on, and only for your account. Read its guide first: it says what you get and what may change."
+					description="Turn each one on or off for your account. Your switch wins over any rollout. Read the guide first: it says what you get and what may change."
 				>
 					<ExperimentCatalog
 						experiments={payload.experiments}
@@ -101,7 +101,7 @@ export function AccountExperimentsPage({
 			{payload ? (
 				<AccountManagementPanel
 					title="Early access audience"
-					description="Join to be included when Kody rolls a not-yet-listed experiment out to people who opted in. This does not turn on the experiments above."
+					description="Join to be included when Kody rolls an experiment out to people who opted in. A rollout can turn on experiments above that you have not switched yourself."
 				>
 					<label
 						css={{
