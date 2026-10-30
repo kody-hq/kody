@@ -169,8 +169,8 @@ export function ExecutionContextDetail(props: {
 							{context.client.name} {context.client.version}
 							{context.client.outdated && context.client.latestVersion ? (
 								<span css={outdatedCss} data-testid="context-daemon-outdated">
-									Outdated, {context.client.latestVersion} is out. On the
-									machine, run <code>kody update</code>
+									Outdated: {context.client.latestVersion} is out. Run{' '}
+									<code>kody update</code> on the machine
 								</span>
 							) : null}
 						</dd>
@@ -181,8 +181,7 @@ export function ExecutionContextDetail(props: {
 							!context.capabilities?.service &&
 							context.status !== 'revoked' ? (
 								<span css={hintCss}>
-									Keep it running after reboots: run{' '}
-									<code>kody daemon install</code> on the machine
+									Run <code>kody daemon install</code> to keep it running
 								</span>
 							) : null}
 						</dd>

@@ -203,7 +203,7 @@ test('operator detail shows daemon version, outdated flag and background service
 	const body = text(html)
 	expect(body).toContain('kody-cli 1.40.0')
 	expect(body).toContain(
-		'Outdated, 1.52.0 is out. On the machine, run kody update',
+		'Outdated: 1.52.0 is out. Run kody update on the machine',
 	)
 	expect(body).toContain('Background service (systemd)')
 	expect(body).not.toContain('kody daemon install')
@@ -222,8 +222,6 @@ test('operator detail shows daemon version, outdated flag and background service
 		),
 	)
 	expect(plain).toContain('Terminal (not a background service)')
-	expect(plain).toContain(
-		'Keep it running after reboots: run kody daemon install',
-	)
+	expect(plain).toContain('Run kody daemon install to keep it running')
 	expect(plain).not.toContain('Outdated')
 })
