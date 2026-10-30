@@ -13,6 +13,7 @@ import {
 	type EcpGrant,
 	type EcpPublishedKey,
 	type EcpRunRequestBody,
+	type EcpRunTiming,
 	type EcpCryptoKey,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import {
@@ -31,6 +32,7 @@ export type ContextRunExecutor = (input: {
 	content?: Array<unknown>
 	structuredContent?: Record<string, unknown>
 	isError: boolean
+	timing?: Omit<EcpRunTiming, 'queueMs' | 'daemonMs'>
 }>
 
 /**
@@ -153,8 +155,25 @@ export async function runDaemonConnection(input: DaemonInput) {
 	let outSeq = 0
 	const runs = new Map<
 		string,
-		{ request: EcpRunRequestBody; abort: AbortController; committed: boolean }
+		{
+			request: EcpRunRequestBody
+			abort: AbortController
+			committed: boolean
+			committedAt?: number
+		}
 	>()
+	// The grant's limit can only lower what this machine offers.
+	let maxConcurrent = input.maxConcurrent
+	const applyLimits = (grant: unknown) => {
+		const limit = (grant as { limits?: { maxConcurrent?: unknown } } | null)
+			?.limits?.maxConcurrent
+		const previous = maxConcurrent
+		maxConcurrent =
+			typeof limit === 'number' && limit >= 1
+				? Math.min(input.maxConcurrent, Math.floor(limit))
+				: input.maxConcurrent
+		return maxConcurrent !== previous
+	}
 
 	const send = async (
 		t: string,
@@ -191,15 +210,17 @@ export async function runDaemonConnection(input: DaemonInput) {
 		null
 	const status = () => ({
 		running: runs.size,
-		maxConcurrent: input.maxConcurrent,
-		acceptingRuns: runs.size < input.maxConcurrent,
+		maxConcurrent,
+		acceptingRuns: runs.size < maxConcurrent,
 	})
 
 	const startRun = async (run: {
 		request: EcpRunRequestBody
 		abort: AbortController
+		committedAt?: number
 	}) => {
 		const startedAt = Date.now()
+		const committedAt = run.committedAt ?? startedAt
 		const timer = setTimeout(
 			() => run.abort.abort(),
 			Math.max(0, run.request.deadline - Date.now()),
@@ -232,16 +253,30 @@ export async function runDaemonConnection(input: DaemonInput) {
 			clearTimeout(timer)
 		}
 		const endedAt = Date.now()
+		const { timing: executorTiming, ...outcome } = result
 		const resultBytes = new TextEncoder().encode(
-			JSON.stringify(result),
+			JSON.stringify(outcome),
 		).byteLength
+		const timing: EcpRunTiming = {
+			queueMs: startedAt - committedAt,
+			setupMs: executorTiming?.setupMs ?? 0,
+			...(executorTiming?.packageGraphMs !== undefined
+				? {
+						packageGraphMs: executorTiming.packageGraphMs,
+						packageGraphCached: executorTiming.packageGraphCached === true,
+					}
+				: {}),
+			executeMs: executorTiming?.executeMs ?? endedAt - startedAt,
+			daemonMs: endedAt - committedAt,
+		}
 		runs.delete(run.request.runId)
 		await send('run.result', {
 			runId: run.request.runId,
-			...result,
+			...outcome,
 			startedAt,
 			endedAt,
 			resultBytes,
+			timing,
 		})
 		await send('status', status())
 	}
@@ -253,6 +288,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 			case 'welcome':
 				clearTimeout(welcomeTimer)
 				applyGrant(body.grant)
+				applyLimits(body.grant)
 				if (input.pingMs === undefined && input.pongTimeoutMs === undefined) {
 					rearmHeartbeat?.(
 						heartbeatSetting(body.pingMs, defaultPingMs),
@@ -275,7 +311,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 				return
 			case 'run.request': {
 				const request = body as unknown as EcpRunRequestBody
-				if (runs.size >= input.maxConcurrent) {
+				if (runs.size >= maxConcurrent) {
 					await send('run.reject', { runId, code: 'busy' }, frame.seq)
 					return
 				}
@@ -296,6 +332,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 				const run = runs.get(runId)
 				if (!run || run.committed) return
 				run.committed = true
+				run.committedAt = Date.now()
 				input.log(
 					`Running ${runId} for ${run.request.requestedBy.handle ?? run.request.requestedBy.userId}.`,
 				)
@@ -311,10 +348,13 @@ export async function runDaemonConnection(input: DaemonInput) {
 					await send('run.cancel.ack', { runId }, frame.seq)
 				return
 			}
-			case 'grant.update':
+			case 'grant.update': {
 				applyGrant(body.grant)
+				const limitsChanged = applyLimits(body.grant)
 				await send('grant.ack', { grantVersion: body.grantVersion }, frame.seq)
+				if (limitsChanged) await send('status', status())
 				return
+			}
 			case 'revoke':
 				input.log(
 					`This context was revoked (${String(body.reason ?? 'revoked')}).`,

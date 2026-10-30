@@ -251,7 +251,7 @@ export const executeToolOutputSchema = {
 		.unknown()
 		.optional()
 		.describe(
-			'Where the run happened, on every routed response (input errors before routing may omit it): { kind: "cloud" | "context", id: "cloud" | context id, name: "Kody cloud" | context name, yours?, attempts, fellBackToCloud }. attempts lists contexts that passed on it (offline, busy, skipped) with reasons.',
+			'Where the run happened, on every routed response (input errors before routing may omit it): { kind: "cloud" | "context", id: "cloud" | context id, name: "Kody cloud" | context name, yours?, timing?, attempts, fellBackToCloud }. attempts lists contexts that passed on it (offline, busy, skipped) with reasons. timing (ms, context runs that reported it): queueMs, setupMs (packageGraphMs, packageGraphCached), executeMs and daemonMs on the machine, serverMs on Kody, transitMs = serverMs - daemonMs for dispatch plus return.',
 		),
 	executionContext: z
 		.unknown()

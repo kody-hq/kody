@@ -500,6 +500,21 @@ Access tokens refresh automatically on expiry or HTTP 401.
 uses stored CLI credentials from `kody login`. Token-only cloud execute still
 only reads `--token` / `KODY_API_TOKEN`.
 
+## Execution context daemon performance
+
+`kody daemon` runs up to 2 context runs at once by default. Change it with
+`kody daemon --max-concurrent <n>` or `KODY_CONTEXT_MAX_CONCURRENT` (1 to 8).
+The context's grant `limits.maxConcurrent` can only lower it. Each run still
+gets its own workerd process and temp dir, so runs share no globals or files.
+The daemon caches package graphs (32 entries, 60 seconds, per requester, org,
+conversation and module source) so repeat runs skip that API round trip.
+
+Every context run reports where its time went in
+`structuredContent.ranOn.timing` on `execute`: `queueMs`, `setupMs` (including
+`packageGraphMs` and `packageGraphCached`), `executeMs` and `daemonMs` on the
+machine, plus `serverMs` and `transitMs` (dispatch and return on the wire)
+measured by Kody.
+
 ## Benchmark
 
 `npm run build && npm run bench` times the built CLI (startup, `status`, and
