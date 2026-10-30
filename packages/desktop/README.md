@@ -135,9 +135,11 @@ keyring binding. The check does not read or write stored credentials.
 Download the artifacts from the workflow run. They contain macOS DMG and ZIP
 files, Windows NSIS installers, or Linux AppImages, with architecture-specific
 filenames, SHA-256 checksums, and build metadata identifying the source commit.
-On Linux, make the downloaded AppImage executable before opening it. Artifacts
-expire after 30 days. The workflow uploads artifacts only, it does not publish
-GitHub releases or enable automatic app updates.
+On Linux, install your distribution's FUSE 2 compatibility library
+(`libfuse2t64` on Ubuntu 24.04), then make the downloaded AppImage executable
+before opening it. Artifacts expire after 30 days. The workflow uploads
+artifacts only, it does not publish GitHub releases or enable automatic app
+updates.
 
 CI builds are unsigned, and macOS builds are not notarized. Signing credentials
 are not configured in this repository. Windows installers work on x64 and arm64,
