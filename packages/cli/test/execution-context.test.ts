@@ -631,8 +631,24 @@ test('a run the local deadline stops reports cancelReason deadline, not a code e
 				),
 			),
 	})
-	setTimeout(() => abort.abort(), 300)
+	const sentResult = () =>
+		(SilentSocket.instances[0] as unknown as ServerSocket | undefined)?.sent
+			.filter((data) => data !== ecpPingFrame)
+			.some(
+				(data) =>
+					(
+						decodeEnvelopePayload(
+							parseEnvelope(JSON.parse(data))!.p,
+						) as EcpFramePayload
+					).t === 'run.result',
+			)
+	const poll = setInterval(() => {
+		if (sentResult()) abort.abort()
+	}, 10)
+	const giveUp = setTimeout(() => abort.abort(), 10_000)
 	await runDaemonConnection(input)
+	clearInterval(poll)
+	clearTimeout(giveUp)
 	const result = (SilentSocket.instances[0] as unknown as ServerSocket).sent
 		.filter((data) => data !== ecpPingFrame)
 		.map((data) => {

@@ -558,6 +558,9 @@ test('history keeps a failure reason and error summary for failed, cancelled and
 	await commit('run_cancelled')
 	await stub.cancel({ runId: 'run_cancelled', reason: 'caller_cancelled' })
 	await commit('run_lost')
+	// With the daemon still connected a late alarm cancels; gone, it is lost.
+	ws.close()
+	await expect.poll(() => stub.getStatus()).toMatchObject({ online: false })
 	await runInDurableObject(stub, async (instance, state) => {
 		state.storage.sql.exec(
 			`UPDATE runs SET deadline = ? WHERE run_id = 'run_lost'`,
@@ -606,7 +609,6 @@ test('history keeps a failure reason and error summary for failed, cancelled and
 			orgId: 'org_test',
 		}),
 	).toBeNull()
-	ws.close()
 }, 60_000)
 
 test('a run that never started here is not returned as a started run', async () => {

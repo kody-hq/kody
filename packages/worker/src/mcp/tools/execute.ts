@@ -258,6 +258,9 @@ export type ExecuteToolStructuredContent = StructuredContentFromFields<
 	typeof executeToolOutputSchema
 >
 
+/** Longest a detached context run waits for its main run record to start. */
+const runRecordStartWaitMs = 2_000
+
 const executeCodeRequiredMessage =
 	'execute requires `code`: a single ESM module string with a default export.'
 
@@ -791,12 +794,17 @@ export async function runExecuteToolCall(input: {
 			// The context finishes this row later; make sure the running row
 			// (idempotency key, started_by) is readable before the caller polls.
 			const started = claimedRunHandle
-				? await ensureRunRecordStarted({ env, handle: claimedRunHandle }).catch(
-						(error: unknown) => {
-							console.warn('execute-context-run-start-failed', error)
-							return false
-						},
-					)
+				? await Promise.race([
+						ensureRunRecordStarted({ env, handle: claimedRunHandle }).catch(
+							(error: unknown) => {
+								console.warn('execute-context-run-start-failed', error)
+								return false
+							},
+						),
+						new Promise<false>((resolve) =>
+							setTimeout(resolve, runRecordStartWaitMs, false),
+						),
+					])
 				: false
 			const timing = finishToolTiming(timingStart)
 			return buildTransportBudgetFollowResponse({

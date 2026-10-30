@@ -1926,13 +1926,11 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				now,
 			)
 			.toArray()
-		const staleIds = new Set(stale.map((run) => run.run_id))
 		if (this.#liveSocket()) {
 			// The daemon is still connected but missed its own deadline stop.
+			// A late alarm still cancels; only runs with no live daemon are lost.
 			for (const { run_id } of overdue) {
-				if (!staleIds.has(run_id)) {
-					await this.cancel({ runId: run_id, reason: 'deadline' })
-				}
+				await this.cancel({ runId: run_id, reason: 'deadline' })
 			}
 		}
 		for (const run of stale) {
