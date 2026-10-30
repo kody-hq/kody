@@ -66,3 +66,19 @@ export function runChainShapeError(
 	}
 	return null
 }
+
+/**
+ * The operator already runs every run on their own context, so a share with
+ * them would only flip the sharing level. Returns the refusal, or null.
+ */
+export function selfShareError(
+	operatorUserId: string,
+	subjects: ReadonlyArray<{ type: 'user' | 'team'; id: string }>,
+): string | null {
+	const self = subjects.some(
+		(subject) => subject.type === 'user' && subject.id === operatorUserId,
+	)
+	return self
+		? "That person is this context's operator and can already run code on it. Share it with someone else."
+		: null
+}

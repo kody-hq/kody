@@ -38,7 +38,7 @@ function snapshot(ecid: string): ExecutionContextSnapshot {
 	}
 }
 
-async function connect(ecid: string) {
+async function connect(ecid: string, hello: Record<string, unknown> = {}) {
 	const stub = env.EXECUTION_CONTEXT_SESSION.get(
 		env.EXECUTION_CONTEXT_SESSION.idFromName(ecid),
 	)
@@ -102,6 +102,7 @@ async function connect(ecid: string) {
 	await send('hello', {
 		protocol: { min: 1, max: 1 },
 		status: { acceptingRuns: true, running: 0, maxConcurrent: 2 },
+		...hello,
 	})
 	// Sending a WebSocket frame does not wait for its async signature check.
 	// Dispatch only after the session has processed hello and accepts runs.
@@ -627,3 +628,91 @@ test('a run that never started here is not returned as a started run', async () 
 		}),
 	).toBeNull()
 })
+
+test('a reconnecting daemon ends the committed runs it no longer holds at once', async () => {
+	const ecid = 'ec_reconnect'
+	const first = await connect(ecid, {
+		status: { acceptingRuns: true, running: 0, maxConcurrent: 3 },
+	})
+	const commit = async (runId: string) => {
+		const dispatching = first.stub.dispatch({
+			request: runRequest(runId),
+			lease: lease(ecid, runId),
+			runRecord: null,
+			position: 1,
+		})
+		const request = await first.next('run.request')
+		await first.send('run.accept', { runId }, { re: request.seq })
+		expect((await dispatching).outcome).toBe('committed')
+		await first.next('run.commit')
+	}
+	await commit('run_dropped')
+	await commit('run_finished_offline')
+	await commit('run_still_held')
+
+	const second = await connect(ecid, {
+		heldRuns: ['run_still_held'],
+		pendingResults: [
+			{
+				runId: 'run_finished_offline',
+				isError: false,
+				content: [{ type: 'text', text: 'done' }],
+				structuredContent: { result: { slept: 3 } },
+			},
+		],
+	})
+	expect(
+		await second.stub.awaitResult({ runId: 'run_dropped', waitMs: 0 }),
+	).toEqual({ state: 'lost' })
+	expect(
+		await second.stub.awaitResult({ runId: 'run_finished_offline', waitMs: 0 }),
+	).toMatchObject({
+		state: 'succeeded',
+		result: { structuredContent: { result: { slept: 3 } } },
+	})
+	expect(
+		await second.stub.awaitResult({ runId: 'run_still_held', waitMs: 0 }),
+	).toEqual({ state: 'pending' })
+	const rows = new Map(
+		(await second.stub.listHistory({})).rows.map((row) => [row.runId, row]),
+	)
+	expect(rows.get('run_dropped')).toMatchObject({
+		outcome: 'lost',
+		failureReason: 'execution_context_lost',
+	})
+	expect(rows.get('run_finished_offline')).toMatchObject({
+		outcome: 'succeeded',
+	})
+	await second.send('run.result', {
+		runId: 'run_still_held',
+		isError: false,
+		content: [],
+		structuredContent: { result: 1 },
+	})
+	await second.next('run.result.ack')
+	expect(
+		await second.stub.awaitResult({ runId: 'run_still_held', waitMs: 1_000 }),
+	).toMatchObject({ state: 'succeeded' })
+	second.ws.close()
+}, 60_000)
+
+test('an older daemon that omits heldRuns leaves committed runs to the alarm', async () => {
+	const ecid = 'ec_reconnect_legacy'
+	const first = await connect(ecid)
+	const dispatching = first.stub.dispatch({
+		request: runRequest('run_legacy'),
+		lease: lease(ecid, 'run_legacy'),
+		runRecord: null,
+		position: 1,
+	})
+	const request = await first.next('run.request')
+	await first.send('run.accept', { runId: 'run_legacy' }, { re: request.seq })
+	expect((await dispatching).outcome).toBe('committed')
+	await first.next('run.commit')
+
+	const second = await connect(ecid)
+	expect(
+		await second.stub.awaitResult({ runId: 'run_legacy', waitMs: 0 }),
+	).toEqual({ state: 'pending' })
+	second.ws.close()
+}, 60_000)

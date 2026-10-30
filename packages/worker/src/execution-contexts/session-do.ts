@@ -763,6 +763,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				attachment.helloed = true
 				ws.serializeAttachment(attachment)
 				this.#updateStatus(ws, body.status)
+				await this.#reconcileHeldRuns(body)
 				await this.#recordCapabilities(body)
 				this.ctx.waitUntil(this.#drainQueue())
 				return
@@ -1369,10 +1370,53 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	}
 
 	async #onRunResult(ws: WebSocket, frame: EcpFramePayload) {
-		const body = frame.body
+		const runId = typeof frame.body.runId === 'string' ? frame.body.runId : ''
+		await this.#send(ws, 'run.result.ack', { runId }, frame.seq)
+		await this.#applyRunResult(frame.body)
+	}
+
+	/**
+	 * A daemon that lists the committed runs it still holds in hello lets the
+	 * rest end now instead of at deadline + grace. Older daemons omit
+	 * `heldRuns`, so the alarm still decides for them. A run is never re-run.
+	 */
+	async #reconcileHeldRuns(body: Record<string, unknown>) {
+		if (!Array.isArray(body.heldRuns)) return
+		const held = new Set(
+			body.heldRuns.filter((id): id is string => typeof id === 'string'),
+		)
+		// Snapshot first: a run committed while results apply is not stale.
+		const committed = this.ctx.storage.sql
+			.exec<RunRow>(
+				`SELECT run_id, state, lease_json, deadline, accept_by, run_record_json,
+				   result_json, cancel_reason, started_at
+				 FROM runs WHERE state = 'committed'`,
+			)
+			.toArray()
+		const pending = Array.isArray(body.pendingResults)
+			? body.pendingResults
+			: []
+		for (const result of pending) {
+			if (result && typeof result === 'object') {
+				await this.#applyRunResult(result as Record<string, unknown>)
+			}
+		}
+		for (const run of committed) {
+			if (held.has(run.run_id)) continue
+			if (
+				this.#finishRun(run.run_id, 'lost', {
+					failureReason: 'execution_context_lost',
+					errorSummary: lostSummary,
+				})
+			) {
+				await this.#finishRunRecord(run, { lost: true })
+			}
+		}
+	}
+
+	async #applyRunResult(body: Record<string, unknown>) {
 		const runId = typeof body.runId === 'string' ? body.runId : ''
 		const run = this.#run(runId)
-		await this.#send(ws, 'run.result.ack', { runId }, frame.seq)
 		if (!run || run.state !== 'committed') return
 		const lease = JSON.parse(run.lease_json) as ExecutionContextLease
 		const result: ExecutionContextRunResult = {

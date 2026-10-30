@@ -252,6 +252,10 @@ export async function runDaemonConnection(input: DaemonInput) {
 					capabilities: input.capabilities,
 					grantVersion: body.grantVersion,
 					status: status(),
+					// Kody ends committed runs this daemon no longer holds right away.
+					heldRuns: [...runs.values()]
+						.filter((run) => run.committed)
+						.map((run) => run.request.runId),
 					pendingResults: [],
 				})
 				input.log('Connected. Waiting for runs.')
