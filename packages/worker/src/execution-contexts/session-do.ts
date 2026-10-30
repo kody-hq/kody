@@ -1597,8 +1597,15 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 
 	/** End the lease now, so the next hop fails even if the kill is slow. */
 	async cancel(input: { runId: string; reason: EcpCancelReason }) {
+		const { ended, finishRecord } = await this.#cancelRun(input)
+		await finishRecord()
+		return { cancelled: ended }
+	}
+
+	/** Ends the run and tells the daemon; the run record is left to the caller. */
+	async #cancelRun(input: { runId: string; reason: EcpCancelReason }) {
 		const run = this.#run(input.runId)
-		if (!run) return { cancelled: false }
+		if (!run) return { ended: false, finishRecord: async () => {} }
 		const ended = this.#finishRun(input.runId, 'cancelled', {
 			cancelReason: input.reason,
 			failureReason: input.reason,
@@ -1606,8 +1613,12 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		})
 		const ws = this.#socket()
 		if (ws) await this.#send(ws, 'run.cancel', input)
-		if (ended) await this.#finishRunRecord(run, { cancelled: input.reason })
-		return { cancelled: ended }
+		return {
+			ended,
+			finishRecord: async () => {
+				if (ended) await this.#finishRunRecord(run, { cancelled: input.reason })
+			},
+		}
 	}
 
 	/**
@@ -1964,9 +1975,16 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		if (this.#liveSocket()) {
 			// The daemon is still connected but missed its own deadline stop.
 			// A late alarm still cancels; only runs with no live daemon are lost.
+			// Frames go out in order; record writes don't hold up the next cancel.
+			const records: Array<Promise<void>> = []
 			for (const { run_id } of overdue) {
-				await this.cancel({ runId: run_id, reason: 'deadline' })
+				const { finishRecord } = await this.#cancelRun({
+					runId: run_id,
+					reason: 'deadline',
+				})
+				records.push(finishRecord())
 			}
+			await Promise.all(records)
 		}
 		for (const run of stale) {
 			if (
@@ -2000,12 +2018,15 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			.one().deadline
 		if (next !== null) {
 			const cancelAt = next + ecpDeadlineCancelGraceMs
-			await this.#ensureAlarm(
-				Math.max(
-					now + 1000,
-					cancelAt > now ? cancelAt : next + ecpLostAfterDeadlineMs,
-				),
-			)
+			// An overdue run waiting on a reconnect is rechecked before it is lost.
+			const recheckAt =
+				cancelAt > now
+					? cancelAt
+					: Math.min(
+							now + ecpDeadlineCancelGraceMs,
+							next + ecpLostAfterDeadlineMs,
+						)
+			await this.#ensureAlarm(Math.max(now + 1000, recheckAt))
 		}
 	}
 }

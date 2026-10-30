@@ -839,3 +839,38 @@ test('an older daemon that omits heldRuns leaves committed runs to the alarm', a
 	).toEqual({ state: 'pending' })
 	second.ws.close()
 }, 60_000)
+
+test('an overdue run with no daemon connected is rechecked before it would be lost', async () => {
+	const ecid = 'ec_overdue_recheck'
+	const { stub, next, send, ws } = await connect(ecid)
+	const dispatching = stub.dispatch({
+		request: runRequest('run_overdue'),
+		lease: lease(ecid, 'run_overdue'),
+		runRecord: null,
+		position: 1,
+	})
+	const request = await next('run.request')
+	await send('run.accept', { runId: 'run_overdue' }, { re: request.seq })
+	expect((await dispatching).outcome).toBe('committed')
+	await next('run.commit')
+	ws.close()
+	await expect.poll(() => stub.getStatus()).toMatchObject({ online: false })
+
+	await runInDurableObject(stub, async (instance, state) => {
+		state.storage.sql.exec(
+			`UPDATE runs SET deadline = ? WHERE run_id = 'run_overdue'`,
+			Date.now() - 10_000,
+		)
+		const before = Date.now()
+		await instance.alarm()
+		const row = state.storage.sql
+			.exec<{
+				state: string
+			}>(`SELECT state FROM runs WHERE run_id = 'run_overdue'`)
+			.one()
+		expect(row.state).toBe('committed')
+		const alarm = await state.storage.getAlarm()
+		expect(alarm).not.toBeNull()
+		expect(alarm ?? 0).toBeLessThanOrEqual(before + 6_000)
+	})
+})
