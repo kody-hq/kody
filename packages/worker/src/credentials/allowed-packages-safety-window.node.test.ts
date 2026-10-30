@@ -22,13 +22,13 @@ vi.mock('#worker/orgs/org-audit.ts', async (importOriginal) => ({
 }))
 
 const {
-	allowedPackagesSafetyWindowEndsAt,
 	isAllowedPackagesSafetyWindowActive,
 	tryAllowedPackagesSafetyWindowGrant,
 } = await import('./allowed-packages-safety-window.ts')
 
 const owner = ownerIdFromStored('owner-1')
-const cutoverAt = '2026-11-02T00:00:00.000Z'
+// Window: 2026-11-02 to 2026-12-02.
+const cutoverAt = '2026-12-02T00:00:00.000Z'
 const inWindow = new Date('2026-11-10T00:00:00.000Z')
 
 function setup() {
@@ -67,8 +67,19 @@ function grant(
 
 beforeEach(() => vi.clearAllMocks())
 
-test('flag off: nothing is granted', async () => {
-	const { env, sqlite } = setup()
+async function setFlag(db: D1Database, enabled: boolean) {
+	await setFeatureFlagGlobalState(db, {
+		key: 'credential-allowed-packages-safety-window',
+		enabled,
+		rolloutPercent: null,
+		updatedBy: 1,
+	})
+}
+
+test('flag off: nothing is granted or allowed', async () => {
+	const { env, db, sqlite } = setup()
+	sqlite.exec('PRAGMA foreign_keys = OFF')
+	await setFlag(db, false)
 	await expect(grant(env)).resolves.toBe(false)
 	expect(
 		sqlite
@@ -82,12 +93,6 @@ test('flag off: nothing is granted', async () => {
 test('flag on in the window: pre-cutover pair is added, audited and logged, once', async () => {
 	const { env, db, sqlite } = setup()
 	sqlite.exec('PRAGMA foreign_keys = OFF')
-	await setFeatureFlagGlobalState(db, {
-		key: 'credential-allowed-packages-safety-window',
-		enabled: true,
-		rolloutPercent: null,
-		updatedBy: 1,
-	})
 	const info = vi.spyOn(console, 'info').mockImplementation(() => {})
 	await expect(grant(env)).resolves.toBe(true)
 	expect(
@@ -109,21 +114,31 @@ test('flag on in the window: pre-cutover pair is added, audited and logged, once
 	expect(info).toHaveBeenCalledWith(
 		expect.stringContaining('credential_allowed_packages_safety_window_grant'),
 	)
-	info.mockRestore()
 
-	// Credential or package created after cutover, or after the window: strict.
-	await expect(grant(env, { credentialId: 'cred-new' })).resolves.toBe(false)
+	// A credential or package created after the window started is allowed
+	// without a grant; after cutover the rule is strict.
+	info.mockClear()
+	await expect(grant(env, { credentialId: 'cred-new' })).resolves.toBe(true)
 	await expect(
 		grant(env, {
 			packageId: 'pkg-2',
 			packageCreatedAt: '2026-11-03T00:00:00.000Z',
 		}),
-	).resolves.toBe(false)
+	).resolves.toBe(true)
+	expect(info).toHaveBeenCalledTimes(2)
+	expect(info).toHaveBeenCalledWith(
+		expect.stringContaining('credential_allowed_packages_safety_window_allow'),
+	)
+	info.mockRestore()
+	expect(
+		sqlite
+			.prepare(
+				`SELECT allowed_packages FROM secret_entries WHERE id = 'cred-new'`,
+			)
+			.get(),
+	).toEqual({ allowed_packages: '["pkg-other"]' })
 	await expect(
-		grant(env, {
-			packageId: 'pkg-3',
-			now: new Date(allowedPackagesSafetyWindowEndsAt(cutoverAt)),
-		}),
+		grant(env, { packageId: 'pkg-3', now: new Date(cutoverAt) }),
 	).resolves.toBe(false)
 	await expect(
 		isAllowedPackagesSafetyWindowActive({ db, now: inWindow, cutoverAt }),

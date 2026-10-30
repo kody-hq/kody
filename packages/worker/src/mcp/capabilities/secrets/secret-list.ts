@@ -6,11 +6,7 @@ import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 import { packageHasImplicitUserSecretReadAccess } from '#mcp/secrets/package-access.ts'
-import {
-	existedBeforeAllowedPackagesCutover,
-	isAllowedPackagesSafetyWindowActive,
-} from '#worker/credentials/allowed-packages-safety-window.ts'
-import { getSavedPackageById } from '#worker/package-registry/repo.ts'
+import { isAllowedPackagesSafetyWindowActive } from '#worker/credentials/allowed-packages-safety-window.ts'
 import { resolveCallerSecretAuthority } from '#mcp/secrets/secret-authority.ts'
 import { listSecrets } from '#mcp/secrets/service.ts'
 import { secretScopeValues } from '#mcp/secrets/types.ts'
@@ -99,29 +95,10 @@ async function filterSecretsForPackage(input: {
 	const locked = (secret: ListedSecret) =>
 		!onList(secret) && secret.allowedPackages.length > 0
 	if (!input.secrets.some(locked)) return input.secrets
-	// Safety window (#4129): pre-cutover pairs are approved on first use, so
-	// they stay listed while the window is active.
-	const windowCovers = await safetyWindowCoversPackage(input)
-	return input.secrets.filter(
-		(secret) =>
-			!locked(secret) ||
-			(windowCovers && existedBeforeAllowedPackagesCutover(secret.createdAt)),
-	)
-}
-
-async function safetyWindowCoversPackage(input: {
-	env: Env
-	userId: ReturnType<typeof ownerIdFromCaller>
-	packageId: string
-}) {
-	if (!(await isAllowedPackagesSafetyWindowActive({ db: input.env.APP_DB }))) {
-		return false
+	// Safety window (#4129): nothing is refused while it is open, so locked
+	// secrets stay listed.
+	if (await isAllowedPackagesSafetyWindowActive({ db: input.env.APP_DB })) {
+		return input.secrets
 	}
-	const savedPackage = await getSavedPackageById(input.env.APP_DB, {
-		userId: input.userId,
-		packageId: input.packageId,
-	})
-	return savedPackage
-		? existedBeforeAllowedPackagesCutover(savedPackage.createdAt)
-		: false
+	return input.secrets.filter((secret) => !locked(secret))
 }

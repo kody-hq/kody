@@ -403,8 +403,8 @@ test('secretList hides user secrets whose non-empty list excludes even an implic
 		'packageToken',
 	])
 
-	// Safety window: the pre-cutover credential stays listed for a
-	// pre-cutover package, the post-cutover one does not.
+	// Safety window: nothing is refused while it is open, so every locked
+	// secret stays listed.
 	mockModule.safetyWindowActive.mockResolvedValueOnce(true)
 	mockModule.getSavedPackageById.mockResolvedValue(pkg)
 	mockModule.getCommunityForkByForkedPackageId.mockResolvedValueOnce(null)
@@ -413,6 +413,7 @@ test('secretList hides user secrets whose non-empty list excludes even an implic
 		'GrantedSearch',
 		'packageToken',
 		'LockedSearch',
+		'LockedNewSearch',
 	])
 	mockModule.getSavedPackageById.mockReset()
 	listSecretsSpy.mockRestore()

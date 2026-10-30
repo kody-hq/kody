@@ -1,13 +1,15 @@
 /**
- * Issue #4129 safety window. For 30 days after enforcement cutover, a
- * self-authored or adopted package refused on a user credential whose
- * non-empty `allowed_packages` list leaves it out is approved on first use
- * instead, when both the package and the credential existed before cutover.
- * The grant adds the package to the list, writes one audit row (reason
- * `grandfathered for #4129`, source `safety_window`) and one log line. It
- * never emails or notifies the owner. Behind the
- * `credential-allowed-packages-safety-window` flag (global switch, off by
- * default). After the window closes the rule is strict whatever the flag says.
+ * Issue #4129 safety window: the 30 days before
+ * `allowedPackagesEnforcementCutoverAt`. While the
+ * `credential-allowed-packages-safety-window` flag is on (global switch, on by
+ * default), nothing is refused for a self-authored or adopted package that a
+ * user credential's non-empty `allowed_packages` list leaves out. A pair whose
+ * package and credential both existed before the window started is added to
+ * the list on first use (one audit row with reason `grandfathered for #4129`
+ * and source `safety_window`, one log line). Any other pair is quietly allowed
+ * with a log line, and the would-block marker keeps recording it. It never
+ * emails or notifies the owner. From cutover the rule is strict whatever the
+ * flag says.
  */
 import {
 	isFeatureGloballyEnabled,
@@ -21,15 +23,20 @@ import {
 	isBefore,
 } from './allowed-packages-grant.ts'
 
-/** When non-empty allowed-packages lists became enforced for every package. */
-export const allowedPackagesEnforcementCutoverAt = '2026-11-02T00:00:00.000Z'
+/**
+ * When non-empty allowed-packages lists become strict for every package: 30
+ * days after this change went live. Until then the safety window below
+ * applies while its flag is on.
+ */
+export const allowedPackagesEnforcementCutoverAt = '2026-11-30T00:00:00.000Z'
 export const allowedPackagesSafetyWindowDays = 30
 
-export function allowedPackagesSafetyWindowEndsAt(
+/** Start of the window: pairs that existed before this are approved on use. */
+export function allowedPackagesSafetyWindowStartsAt(
 	cutoverAt: string = allowedPackagesEnforcementCutoverAt,
 ) {
 	return new Date(
-		Date.parse(cutoverAt) + allowedPackagesSafetyWindowDays * 86_400_000,
+		Date.parse(cutoverAt) - allowedPackagesSafetyWindowDays * 86_400_000,
 	).toISOString()
 }
 
@@ -43,7 +50,10 @@ export async function isAllowedPackagesSafetyWindowActive(input: {
 	cutoverAt?: string
 }) {
 	const now = input.now ?? new Date()
-	if (now.toISOString() >= allowedPackagesSafetyWindowEndsAt(input.cutoverAt)) {
+	if (
+		now.toISOString() >=
+		(input.cutoverAt ?? allowedPackagesEnforcementCutoverAt)
+	) {
 		return false
 	}
 	try {
@@ -57,17 +67,19 @@ export async function isAllowedPackagesSafetyWindowActive(input: {
 	}
 }
 
-export function existedBeforeAllowedPackagesCutover(
+export function existedBeforeAllowedPackagesSafetyWindow(
 	createdAt: string,
 	cutoverAt: string = allowedPackagesEnforcementCutoverAt,
 ) {
-	return isBefore(createdAt, cutoverAt)
+	return isBefore(createdAt, allowedPackagesSafetyWindowStartsAt(cutoverAt))
 }
 
 /**
- * Approve the package on the credential when the window covers this pair.
- * Returns true when access should be allowed (granted now, or a concurrent
- * write already allowed it). Never notifies the owner.
+ * Decide a refused pair while the window is open. Returns true when access
+ * should be allowed. A pair whose package and credential both existed before
+ * the window started is added to the list (audited, logged); any other pair is
+ * quietly allowed and logged, and keeps its would-block marker. Never notifies
+ * the owner. False once the window closes or with the flag off.
  */
 export async function tryAllowedPackagesSafetyWindowGrant(input: {
 	env: Pick<Env, 'APP_DB'>
@@ -80,9 +92,6 @@ export async function tryAllowedPackagesSafetyWindowGrant(input: {
 	cutoverAt?: string
 }): Promise<boolean> {
 	const cutoverAt = input.cutoverAt ?? allowedPackagesEnforcementCutoverAt
-	if (!existedBeforeAllowedPackagesCutover(input.packageCreatedAt, cutoverAt)) {
-		return false
-	}
 	const db = input.env.APP_DB
 	if (
 		!(await isAllowedPackagesSafetyWindowActive({
@@ -93,33 +102,56 @@ export async function tryAllowedPackagesSafetyWindowGrant(input: {
 	) {
 		return false
 	}
+	const ids = {
+		ownerId: input.ownerId,
+		credentialId: input.credentialId,
+		packageId: input.packageId,
+		accessKind: input.accessKind,
+	}
+	if ((await grantPreWindowPair({ ...input, db, cutoverAt })) === 'granted') {
+		console.info(
+			JSON.stringify({
+				event: 'credential_allowed_packages_safety_window_grant',
+				...ids,
+			}),
+		)
+		return true
+	}
+	console.info(
+		JSON.stringify({
+			event: 'credential_allowed_packages_safety_window_allow',
+			...ids,
+		}),
+	)
+	return true
+}
+
+async function grantPreWindowPair(input: {
+	env: Pick<Env, 'APP_DB'>
+	db: D1Database
+	ownerId: string
+	credentialId: string
+	packageId: string
+	packageCreatedAt: string
+	cutoverAt: string
+}) {
+	const windowStartsAt = allowedPackagesSafetyWindowStartsAt(input.cutoverAt)
+	if (!isBefore(input.packageCreatedAt, windowStartsAt)) return 'not_eligible'
 	// Package code hands this a narrow env; the audit writer reads AUDIT_DB from
 	// the full worker env. No audit writer means no silent grant.
 	const audit = optionalOrgAuditWriter(input.env as Env, null)
-	if (!audit) return false
+	if (!audit) return 'not_eligible'
 	for (let attempt = 0; attempt < 2; attempt++) {
 		const outcome = await grantGrandfatheredPackageAccess({
-			db,
+			db: input.db,
 			audit,
 			ownerId: input.ownerId,
 			credentialId: input.credentialId,
 			packageId: input.packageId,
 			source: 'safety_window',
-			credentialCreatedBefore: cutoverAt,
+			credentialCreatedBefore: windowStartsAt,
 		})
-		if (outcome === 'conflict') continue
-		if (outcome === 'granted') {
-			console.info(
-				JSON.stringify({
-					event: 'credential_allowed_packages_safety_window_grant',
-					ownerId: input.ownerId,
-					credentialId: input.credentialId,
-					packageId: input.packageId,
-					accessKind: input.accessKind,
-				}),
-			)
-		}
-		return outcome === 'granted' || outcome === 'already_allowed'
+		if (outcome !== 'conflict') return outcome
 	}
-	return false
+	return 'conflict'
 }
