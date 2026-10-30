@@ -817,9 +817,11 @@ Admin-gated operator fleet runs:
   [`0018-declare-package-app-capabilities`](#0018-declare-package-app-capabilities)
   run)
 
-Their `filters` take `userIds`, `packageIds`, and `scope`. Setting
-`scope: 'credential-need-enforcement'` keeps a run to packages someone other
-than their author may run (see
+Their `filters` take `userIds`, `packageIds`, `excludePackageIds`, and `scope`.
+`excludePackageIds` records each listed package as `needs_manual` with a fixed
+"excluded by the operator" finding instead of processing it, for packages a
+fleet apply must step around. Setting `scope: 'credential-need-enforcement'`
+keeps a run to packages someone other than their author may run (see
 [`0013-declare-credential-needs`](#0013-declare-credential-needs)). Reverts
 ignore `scope`; they only touch items an earlier run applied.
 

@@ -70,6 +70,8 @@ const {
 	saveOrganizationPhoto,
 	deleteOrganization,
 	updateOrganizationProfile,
+	addOrganizationDomain,
+	deleteOrganizationDomain,
 } = await import('./org-settings.ts')
 
 const people = {
@@ -481,7 +483,9 @@ test('owner sees personal identity lock on their signup org and edits a team org
 		ok: true,
 		org: { slug: 'ada', personal: true },
 		canManage: false,
+		canManageDomains: true,
 		canDelete: false,
+		customDomains: { canAdd: false, hostnames: [] },
 	})
 
 	const teamGet = new Request('https://kody.test/@zeta-co/-/settings.json')
@@ -557,6 +561,80 @@ test('former platform orgs are not personal for settings identity editing', asyn
 	expect(updated.data).toMatchObject({
 		ok: true,
 		org: { slug: 'kody', displayName: 'Kody', personal: false },
+	})
+})
+
+test('paid personal orgs manage custom domains in settings; free personal orgs are refused', async () => {
+	const env = createEnv()
+	const addOnPersonal = async () => {
+		const request = new Request(
+			'https://kody.test/@ada/-/settings/domains.json',
+			{ method: 'POST' },
+		)
+		const user = await signIn('ada', request)
+		return addOrganizationDomain({
+			env,
+			request,
+			user,
+			orgSlug: 'ada',
+			hostname: 'apps.example.com',
+			bindingKind: 'org',
+		})
+	}
+
+	const freeAdd = await addOnPersonal()
+	expect(freeAdd.status).toBe(400)
+	expect(freeAdd.data).toMatchObject({
+		ok: false,
+		error: expect.stringContaining('paid organization plan'),
+	})
+
+	sqlite.prepare(`UPDATE orgs SET plan = 'pro' WHERE slug = 'ada'`).run()
+	const get = new Request('https://kody.test/@ada/-/settings.json')
+	await signIn('ada', get)
+	expect(
+		(await readSettings(env, { request: get } as never)).data,
+	).toMatchObject({
+		ok: true,
+		org: { slug: 'ada', personal: true },
+		canManage: false,
+		canManageDomains: true,
+		customDomains: { canAdd: true, hostnames: [] },
+	})
+
+	// Past the plan gate, the add reaches the Cloudflare setup check (no
+	// package-app zone in tests) instead of a personal-org refusal.
+	await expect(addOnPersonal()).rejects.toThrow('PACKAGE_APP_ZONE_ID')
+
+	const removeRequest = new Request(
+		'https://kody.test/@ada/-/settings/domains/delete.json',
+		{ method: 'POST' },
+	)
+	const user = await signIn('ada', removeRequest)
+	const removed = await deleteOrganizationDomain({
+		env,
+		request: removeRequest,
+		user,
+		orgSlug: 'ada',
+		hostname: 'apps.example.com',
+	})
+	expect(removed.data).toMatchObject({
+		ok: false,
+		error: 'Custom hostname not found.',
+	})
+})
+
+test('members without org:write get no custom domain settings', async () => {
+	const env = createEnv()
+	const get = new Request('https://kody.test/@zeta-co/-/settings.json')
+	await signIn('bob', get)
+	expect(
+		(await readSettings(env, { request: get } as never)).data,
+	).toMatchObject({
+		ok: true,
+		canManage: false,
+		canManageDomains: false,
+		customDomains: null,
 	})
 })
 

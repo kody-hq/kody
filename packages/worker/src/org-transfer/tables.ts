@@ -119,8 +119,8 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	),
 	enablements: move('org_id re-pointed for triggers of moved packages.'),
 
-	grants: keep(
-		'Resource grants name source-org subjects; transfer refuses while any exist on moved resources.',
+	grants: move(
+		"Creator grants (origin 'created') re-pointed when their person is a target member, else soft-deleted; any other resource grant names source-org subjects, so transfer refuses while one exists.",
 	),
 	access_cache: keep('Compiled access; both orgs bump access_epoch.'),
 	account_write_lease_repairs: keep(personOwned),

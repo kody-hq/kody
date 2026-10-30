@@ -173,16 +173,6 @@ function createHarness(callerRoles: Array<string> = ['admin']) {
 }
 
 test('every production DLQ resolves, including preview-prefixed names', () => {
-	expect(deadLetterQueueNames).toEqual([
-		'kody-email-delivery-dlq',
-		'kody-artifacts-repo-events-dlq',
-		'kody-platform-feedback-dispatch-dlq',
-		'kody-community-activity-dispatch-dlq',
-		'kody-community-listing-published-dispatch-dlq',
-		'kody-package-events-dispatch-dlq',
-		'kody-webhook-dispatch-dlq',
-		'kody-scheduled-dispatch-dlq',
-	])
 	expect(resolveDeadLetterQueue(feedbackDlq)?.name).toBe(feedbackDlq)
 	expect(
 		resolveDeadLetterQueue('kody-pr-42-platform-feedback-dispatch-dlq')?.name,

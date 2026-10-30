@@ -194,15 +194,49 @@ test('the signup org overview renders without remembering the org', async () => 
 		'private, no-store',
 	)
 })
+async function setAcmeRole(env: Env, role: string) {
+	await env.APP_DB.prepare(
+		'UPDATE org_memberships SET role = ? WHERE org_id = ?',
+	)
+		.bind(role, 'org-acme')
+		.run()
+}
+
+async function grantOrgJobRead(env: Env) {
+	await env.APP_DB.prepare(`INSERT INTO grants (
+		id, org_id, resource_type, resource_id, subject_type, subject_id,
+		preset, created_by_user_id, created_at, updated_at
+	) VALUES ('grant-read', 'org-acme', 'org', 'org-acme', 'user', ?,
+		'custom', ?, '2026-01-01', '2026-01-01')`)
+		.bind(adaId, bobId)
+		.run()
+	await env.APP_DB.prepare(
+		`INSERT INTO grant_permissions (grant_id, permission) VALUES ('grant-read', 'job:read')`,
+	).run()
+	await env.APP_DB.prepare(
+		`UPDATE orgs SET access_epoch = access_epoch + 1 WHERE id = 'org-acme'`,
+	).run()
+}
+
+function expectReadersScopedToAcme(readers: Array<unknown>) {
+	for (const reader of readers) {
+		expect(reader).toHaveBeenCalledWith(
+			expect.objectContaining({
+				user: expect.objectContaining({
+					request: expect.objectContaining({
+						org: expect.objectContaining({ id: 'org-acme' }),
+					}),
+				}),
+			}),
+		)
+	}
+}
+
 test.each(['owner', 'member', 'billing'])(
 	'a team org %s gets a dashboard scoped to the org',
 	async (role) => {
 		const env = await createEnv()
-		await env.APP_DB.prepare(
-			'UPDATE org_memberships SET role = ? WHERE org_id = ?',
-		)
-			.bind(role, 'org-acme')
-			.run()
+		await setAcmeRole(env, role)
 		mocks.loadOrgRepositoriesData.mockResolvedValue({
 			packages: [{ kodyId: 'team-repo' }],
 		})
@@ -219,27 +253,53 @@ test.each(['owner', 'member', 'billing'])(
 				limit: 5,
 			}),
 		)
-		for (const reader of [
-			mocks.loadAccountActivityData,
+		expectReadersScopedToAcme([
 			mocks.loadAccountJobsData,
 			mocks.loadOrgUsagePageResult,
-		]) {
-			expect(reader).toHaveBeenCalledWith(
-				expect.objectContaining({
-					user: expect.objectContaining({
-						request: expect.objectContaining({
-							org: expect.objectContaining({ id: 'org-acme' }),
-						}),
-					}),
-				}),
-			)
-		}
-		expect(mocks.loadWorkspaceRunCharts).toHaveBeenCalledWith({
-			env,
-			userId: 'org-acme',
-		})
+		])
 	},
 )
+
+test('an Owner gets org run history on the dashboard', async () => {
+	const env = await createEnv()
+	const result = await getOverview(env, 'acme')
+	expect(result.runHistory).not.toBeNull()
+	expectReadersScopedToAcme([mocks.loadAccountActivityData])
+	expect(mocks.loadWorkspaceRunCharts).toHaveBeenCalledWith({
+		env,
+		userId: 'org-acme',
+	})
+})
+
+test.each(['member', 'billing'])(
+	'a %s without org-wide job:read gets no run history, same as runList',
+	async (role) => {
+		const env = await createEnv()
+		await setAcmeRole(env, role)
+		const result = await getOverview(env, 'acme')
+		expect(result.runHistory).toBeNull()
+		expect(result).not.toHaveProperty('runs')
+		expect(result).not.toHaveProperty('summary')
+		expect(mocks.loadAccountActivityData).not.toHaveBeenCalled()
+		expect(mocks.loadWorkspaceRunCharts).not.toHaveBeenCalled()
+		// The rest of the dashboard still loads.
+		expect(mocks.loadAccountJobsData).toHaveBeenCalled()
+	},
+)
+
+test('a Member with an org job:read grant gets run history', async () => {
+	const env = await createEnv()
+	await setAcmeRole(env, 'member')
+	await grantOrgJobRead(env)
+	const result = await getOverview(env, 'acme')
+	expect(result.runHistory).not.toBeNull()
+	expectReadersScopedToAcme([mocks.loadAccountActivityData])
+	expect(mocks.loadWorkspaceRunCharts).toHaveBeenCalledWith({
+		env,
+		userId: 'org-acme',
+	})
+})
+
 test('an org you do not belong to is a 404', async () => {
 	await expect(getOverview(await createEnv(), 'bob')).rejects.toMatchObject({
 		isNotFound: true,
@@ -325,9 +385,9 @@ test('dashboard shows only runnable jobs, soonest first, and caps activity', asy
 	})
 	const result = await getOverview(await createEnv(), 'ada')
 	expect(result.upcomingJobs.map((job) => job.id)).toEqual(['next', 'later'])
-	expect(result.runs).toHaveLength(6)
+	expect(result.runHistory?.runs).toHaveLength(6)
 	// Total/Running come from charts; Open errors stays Activity untriaged.
-	expect(result.summary).toMatchObject({
+	expect(result.runHistory?.summary).toMatchObject({
 		since: '2026-01-01T00:00:00.000Z',
 		total: 12,
 		running: 0,

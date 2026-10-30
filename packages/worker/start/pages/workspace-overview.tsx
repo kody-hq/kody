@@ -16,6 +16,7 @@ import { type AccountJobListItem } from '#app/account-jobs-data.ts'
 import { type PublicProfilePackageItem } from '#universal/community-public-types.ts'
 import { AccountManagementShell } from './account-management-components.tsx'
 import { SiteLink } from '../components/site-link.tsx'
+import { RunHistoryAccessNotice } from '../components/run-history-access-notice.tsx'
 import { formatTimestamp } from '../components/local-timestamp.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import {
@@ -34,12 +35,15 @@ import { colors } from '#universal/styles/tokens.ts'
 
 type OverviewData = {
 	skillMetrics: SkillMetrics
-	charts: WorkspaceRunCharts
+	/** Null when the viewer lacks org-wide job:read. */
+	runHistory: {
+		charts: WorkspaceRunCharts
+		summary: AccountActivitySummary
+		runs: Array<AccountActivityRunListItem>
+	} | null
 	billing: WorkspaceBilling | null
 	slug: string
 	repositories: Array<PublicProfilePackageItem>
-	summary: AccountActivitySummary
-	runs: Array<AccountActivityRunListItem>
 	upcomingJobs: Array<AccountJobListItem>
 }
 
@@ -47,6 +51,7 @@ export function WorkspaceOverview({ data }: { data: OverviewData }) {
 	const explainer = resolveEntityExplainer('overview')
 	const base = `/@${encodeURIComponent(data.slug)}/-`
 	const activity = `${base}/activity?view=recent&status=all&triage=all`
+	const runHistory = data.runHistory
 	return (
 		<AccountManagementShell layout="dashboard" currentHref={`${base}/overview`}>
 			<div
@@ -60,72 +65,76 @@ export function WorkspaceOverview({ data }: { data: OverviewData }) {
 					</h1>
 					{explainer ? <EntityExplainer copy={explainer} /> : null}
 				</div>
-				<section aria-labelledby="execution-summary">
-					<h2 id="execution-summary" css={headingCss}>
-						Executions <span css={mutedCss}>Last 7 days</span>
-					</h2>
-					<div css={summaryCss}>
-						{[
-							{
-								label: 'Total runs',
-								icon: 'play' as const,
-								value: data.summary.total,
-								href: activity,
-							},
-							{
-								label: 'Running',
-								icon: 'refresh' as const,
-								value: data.summary.running,
-								href: `${base}/activity?view=recent&status=running&triage=all`,
-							},
-							{
-								label: 'Open errors',
-								icon: 'warning-triangle' as const,
-								hint: 'Untriaged, all retained',
-								value: data.summary.errors,
-								href: `${base}/activity?view=errors&status=error&triage=open`,
-							},
-						].map((item) => (
-							<SiteLink key={item.label} href={item.href} css={metricCss}>
-								<span
-									css={{
-										...dashboardIconCss,
-										...(item.label === 'Open errors' && item.value > 0
-											? {
-													color: colors.danger,
-													background: `color-mix(in srgb, ${colors.danger} 10%, transparent)`,
-												}
-											: {}),
-									}}
-								>
-									{renderIcon(item.icon, { size: '1.15rem' })}
-								</span>
-								<span css={metricCopyCss}>
-									<span css={mutedCss}>
-										{item.label}
-										{'hint' in item && item.hint ? (
-											<span css={hintCss}> · {item.hint}</span>
-										) : null}
-									</span>
-									<strong
+				{runHistory ? (
+					<section aria-labelledby="execution-summary">
+						<h2 id="execution-summary" css={headingCss}>
+							Executions <span css={mutedCss}>Last 7 days</span>
+						</h2>
+						<div css={summaryCss}>
+							{[
+								{
+									label: 'Total runs',
+									icon: 'play' as const,
+									value: runHistory.summary.total,
+									href: activity,
+								},
+								{
+									label: 'Running',
+									icon: 'refresh' as const,
+									value: runHistory.summary.running,
+									href: `${base}/activity?view=recent&status=running&triage=all`,
+								},
+								{
+									label: 'Open errors',
+									icon: 'warning-triangle' as const,
+									hint: 'Untriaged, all retained',
+									value: runHistory.summary.errors,
+									href: `${base}/activity?view=errors&status=error&triage=open`,
+								},
+							].map((item) => (
+								<SiteLink key={item.label} href={item.href} css={metricCss}>
+									<span
 										css={{
-											fontSize: '1.9rem',
-											fontVariantNumeric: 'tabular-nums',
-											letterSpacing: '-0.04em',
-											fontWeight: 650,
-											lineHeight: 1.2,
+											...dashboardIconCss,
+											...(item.label === 'Open errors' && item.value > 0
+												? {
+														color: colors.danger,
+														background: `color-mix(in srgb, ${colors.danger} 10%, transparent)`,
+													}
+												: {}),
 										}}
 									>
-										{item.value.toLocaleString('en-US')}
-									</strong>
-								</span>
-							</SiteLink>
-						))}
-					</div>
-				</section>
+										{renderIcon(item.icon, { size: '1.15rem' })}
+									</span>
+									<span css={metricCopyCss}>
+										<span css={mutedCss}>
+											{item.label}
+											{'hint' in item && item.hint ? (
+												<span css={hintCss}> · {item.hint}</span>
+											) : null}
+										</span>
+										<strong
+											css={{
+												fontSize: '1.9rem',
+												fontVariantNumeric: 'tabular-nums',
+												letterSpacing: '-0.04em',
+												fontWeight: 650,
+												lineHeight: 1.2,
+											}}
+										>
+											{item.value.toLocaleString('en-US')}
+										</strong>
+									</span>
+								</SiteLink>
+							))}
+						</div>
+					</section>
+				) : (
+					<RunHistoryAccessNotice orgSlug={data.slug} />
+				)}
 
 				<WorkspaceCharts
-					charts={data.charts}
+					charts={runHistory?.charts ?? null}
 					billing={data.billing}
 					base={base}
 				/>
@@ -182,9 +191,13 @@ export function WorkspaceOverview({ data }: { data: OverviewData }) {
 									View all
 								</SiteLink>
 							</div>
-							{data.runs.length ? (
+							{!runHistory ? (
+								<p css={emptyCss}>
+									Recent runs need read access to jobs across this organization.
+								</p>
+							) : runHistory.runs.length ? (
 								<ul css={listCss}>
-									{data.runs.map((run) => (
+									{runHistory.runs.map((run) => (
 										<li key={run.id}>
 											<SiteLink
 												href={`${activity}&selected=${encodeURIComponent(run.id)}`}

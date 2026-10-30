@@ -105,7 +105,15 @@ export type EcpGrant = {
 		hosts?: Array<string>
 		ports?: Array<number>
 	}
-	credentials: { mode: 'none' } | { mode: 'list'; ids: Array<string> }
+	/**
+	 * Which of the requester's credentials a run may use through Kody cloud
+	 * (ADR 0083). `requester` allows every credential the requester can use,
+	 * and only while the context is not shared.
+	 */
+	credentials:
+		| { mode: 'none' }
+		| { mode: 'list'; ids: Array<string> }
+		| { mode: 'requester' }
 	runtime: { mode: 'all' } | { mode: 'allowlist'; paths: Array<string> }
 	limits: { timeoutMs: number; memoryMb: number; maxConcurrent: number }
 	payload: {
@@ -178,6 +186,20 @@ export type EcpRunResultBody = {
 	resultBytes: number
 	sha256?: string
 	enforced?: { memory?: 'cgroup' | 'advisory'; cpu?: string }
+	timing?: EcpRunTiming
+}
+
+/** Where a run's time went on the daemon, in ms on the daemon's clock. */
+export type EcpRunTiming = {
+	/** run.commit received until the run started. */
+	queueMs: number
+	/** Start until the module was ready (package graph + workerd start). */
+	setupMs: number
+	packageGraphMs?: number
+	packageGraphCached?: boolean
+	executeMs: number
+	/** run.commit received until the result was sent. */
+	daemonMs: number
 }
 
 export type EcpFramePayload = {

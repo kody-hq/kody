@@ -1,6 +1,9 @@
 import { readdirSync, readFileSync, unwatchFile, watchFile } from 'node:fs'
 import { cpus, platform, totalmem } from 'node:os'
-import { ed25519JwkThumbprint } from '@kody-internal/shared/execution-context-protocol/index.ts'
+import {
+	ed25519JwkThumbprint,
+	ecpMaxConcurrentRunsCap,
+} from '@kody-internal/shared/execution-context-protocol/index.ts'
 import {
 	apiJson,
 	fetchServerKeys,
@@ -9,6 +12,7 @@ import {
 	registerContext,
 } from './client.js'
 import { runDaemon } from './daemon.js'
+import { createPackageGraphCache } from './package-graph-cache.js'
 import {
 	type FsMode,
 	allowLocalPath,
@@ -32,7 +36,13 @@ import {
 export type ExecutionContextCommandInput = {
 	command: 'context' | 'chain' | 'daemon'
 	positionals: Array<string>
-	values: { name?: string; context?: string; mode?: string; json?: boolean }
+	values: {
+		name?: string
+		context?: string
+		mode?: string
+		json?: boolean
+		maxConcurrent?: string
+	}
 	apiUrl: string
 	org?: string
 	token: () => Promise<string>
@@ -41,14 +51,36 @@ export type ExecutionContextCommandInput = {
 	fetchFn?: typeof fetch
 }
 
-export function localCapabilities() {
+export const defaultMaxConcurrentRuns = 2
+
+/** `--max-concurrent` or KODY_CONTEXT_MAX_CONCURRENT, 1..ecpMaxConcurrentRunsCap. */
+export function maxConcurrentRuns(
+	value: string | undefined = process.env.KODY_CONTEXT_MAX_CONCURRENT,
+) {
+	if (value === undefined || value === '') return defaultMaxConcurrentRuns
+	const parsed = Number(value)
+	if (
+		!Number.isInteger(parsed) ||
+		parsed < 1 ||
+		parsed > ecpMaxConcurrentRunsCap
+	) {
+		throw new Error(
+			`--max-concurrent (or KODY_CONTEXT_MAX_CONCURRENT) must be a whole number from 1 to ${ecpMaxConcurrentRunsCap}; got ${value}.`,
+		)
+	}
+	return parsed
+}
+
+export function localCapabilities(
+	maxConcurrent: number = defaultMaxConcurrentRuns,
+) {
 	return {
 		runtime: 'workerd',
 		node: process.versions.node,
 		os: platform(),
 		cpuCount: cpus().length,
 		memoryMb: Math.round(totalmem() / (1024 * 1024)),
-		maxConcurrent: 1,
+		maxConcurrent,
 		features: [],
 	}
 }
@@ -238,6 +270,10 @@ export async function runExecutionContextCommand(
 		return 0
 	}
 	if (input.command === 'daemon') {
+		if (input.values.maxConcurrent === '') {
+			throw new Error('--max-concurrent needs a value.')
+		}
+		const maxConcurrent = maxConcurrentRuns(input.values.maxConcurrent)
 		const ids = input.values.context
 			? [input.values.context]
 			: storedContextIds(input.apiUrl)
@@ -269,17 +305,23 @@ export async function runExecutionContextCommand(
 			)
 		}
 		const workerTracker = createLocalWorkerTracker(workersDir)
+		const packageGraphCache = createPackageGraphCache()
 		try {
 			await runDaemon({
 				apiUrl: input.apiUrl,
 				ecid: context.ecid,
 				privateKey,
 				serverKeys,
-				maxConcurrent: 1,
+				maxConcurrent,
 				client: { name: 'kody-cli', version: input.clientVersion },
-				capabilities: localCapabilities(),
+				capabilities: localCapabilities(maxConcurrent),
 				execute: (run) =>
-					runContextRun({ ...run, apiUrl: input.apiUrl, workerTracker }),
+					runContextRun({
+						...run,
+						apiUrl: input.apiUrl,
+						workerTracker,
+						packageGraphCache,
+					}),
 				fs: {
 					effective: async (grantFs) =>
 						await effectiveFs(grantFs, (await readLocalPolicy()).fs),
@@ -299,7 +341,7 @@ export async function runExecutionContextCommand(
 		return 0
 	}
 	throw new Error(
-		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody chain show | add <name> | remove <name> | kody daemon [--context <ec id>]',
+		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody chain show | add <name> | remove <name> | kody daemon [--context <ec id>] [--max-concurrent <n>]',
 	)
 }
 

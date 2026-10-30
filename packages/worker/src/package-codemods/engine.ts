@@ -30,6 +30,7 @@ import {
 	insertPackageCodemodRunItem,
 	listPackageCodemodRunItems,
 	updatePackageCodemodRunItem,
+	updatePackageCodemodRunFilters,
 	updatePackageCodemodRunStatus,
 	type PackageCodemodRunRecord,
 	hasPackageCodemodRunItemForPackage,
@@ -42,6 +43,7 @@ import {
 	packageCodemodRevertedTopic,
 } from './subscription-events.ts'
 import { computePackageAppCapabilityHostFacts } from './package-app-capability-closure.ts'
+import { isRepoCheckResourceLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import {
 	type PackageCodemod,
 	type PackageCodemodApplyMode,
@@ -58,6 +60,11 @@ export type PackageCodemodRunScope =
 export type PackageCodemodRunFilters = {
 	userIds?: Array<string>
 	packageIds?: Array<string>
+	/**
+	 * Saved package ids that scan, dry-run, and apply record as needs_manual
+	 * with a fixed finding instead of processing.
+	 */
+	excludePackageIds?: Array<string>
 	/**
 	 * Keep the run to packages the credential-need enforcement can reach.
 	 * Reverts ignore it: they only touch items an earlier run applied.
@@ -156,9 +163,34 @@ function failureKeys(result: RepoCheckRunResult): Set<string> {
 	const keys = new Set<string>()
 	for (const check of result.results) {
 		if (check.ok) continue
-		keys.add(`${check.kind}:${normalizeFailureMessage(check.message)}`)
+		for (const line of failureLines(check.message)) {
+			keys.add(`${check.kind}:${normalizeFailureMessage(line)}`)
+		}
 	}
 	return keys
+}
+
+/**
+ * Chunked checks join one line per failed chunk, so compare failures line by
+ * line and drop lines that only say a chunk hit the runner limit.
+ */
+function failureLines(message: string) {
+	const lines = message
+		.split('\n')
+		.map((line) => line.trim())
+		.filter((line) => line && !isRepoCheckResourceLimitMessage(line))
+	if (lines.length > 0 || isRepoCheckResourceLimitMessage(message)) return lines
+	return [message]
+}
+
+/**
+ * A check runner that hit its memory or CPU limit says nothing about the
+ * change, so the comparison is inconclusive rather than a new failure.
+ */
+function hitCheckRunnerLimit(result: RepoCheckRunResult) {
+	return result.results.some(
+		(check) => !check.ok && isRepoCheckResourceLimitMessage(check.message),
+	)
 }
 
 function computeCheckSummary(input: {
@@ -289,6 +321,12 @@ function normalizeFiltersJson(filters?: PackageCodemodRunFilters | null) {
 	const normalized: PackageCodemodRunFilters = {}
 	if (userIds.length > 0) normalized.userIds = userIds
 	if (packageIds.length > 0) normalized.packageIds = packageIds
+	const excludePackageIds = [...(filters?.excludePackageIds ?? [])].sort(
+		(left, right) => compareBinaryIds(left, right),
+	)
+	if (excludePackageIds.length > 0) {
+		normalized.excludePackageIds = excludePackageIds
+	}
 	if (filters?.scope) normalized.scope = filters.scope
 	return JSON.stringify(normalized)
 }
@@ -309,6 +347,11 @@ function parseStoredFiltersJson(filtersJson: string): PackageCodemodRunFilters {
 				(value): value is string => typeof value === 'string',
 			)
 		}
+		if (Array.isArray(record.excludePackageIds)) {
+			filters.excludePackageIds = record.excludePackageIds.filter(
+				(value): value is string => typeof value === 'string',
+			)
+		}
 		if (record.scope === credentialNeedEnforcementScope) {
 			filters.scope = credentialNeedEnforcementScope
 		}
@@ -316,6 +359,62 @@ function parseStoredFiltersJson(filtersJson: string): PackageCodemodRunFilters {
 	} catch {
 		return {}
 	}
+}
+
+/**
+ * True when `requested` keeps every stored filter and only adds package ids
+ * to `excludePackageIds`.
+ */
+function widensExclusionsOnly(
+	stored: PackageCodemodRunFilters,
+	requested: PackageCodemodRunFilters,
+) {
+	const withoutExclusions = (filters: PackageCodemodRunFilters) =>
+		normalizeFiltersJson({ ...filters, excludePackageIds: [] })
+	if (withoutExclusions(stored) !== withoutExclusions(requested)) return false
+	const requestedExclusions = new Set(requested.excludePackageIds ?? [])
+	return (stored.excludePackageIds ?? []).every((id) =>
+		requestedExclusions.has(id),
+	)
+}
+
+/**
+ * Accepts requested continuation filters that equal the stored ones or only
+ * widen `excludePackageIds`, persisting a widening with a compare-and-swap so
+ * concurrent continuations can't drop each other's exclusions.
+ */
+async function reconcileRunFilters(
+	db: D1Database,
+	input: {
+		run: PackageCodemodRunRecord
+		requested: PackageCodemodRunFilters
+		requestedJson: string
+	},
+): Promise<PackageCodemodRunRecord> {
+	let current = input.run
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const stored = parseStoredFiltersJson(current.filtersJson)
+		if (normalizeFiltersJson(stored) === input.requestedJson) return current
+		if (!widensExclusionsOnly(stored, input.requested)) {
+			throw new Error(
+				`Package codemod run "${current.id}" filters do not match the requested filters.`,
+			)
+		}
+		const changed = await updatePackageCodemodRunFilters(db, {
+			id: current.id,
+			expectedFiltersJson: current.filtersJson,
+			filtersJson: input.requestedJson,
+		})
+		if (changed > 0) return { ...current, filtersJson: input.requestedJson }
+		const reloaded = await getPackageCodemodRunById(db, current.id)
+		if (!reloaded) {
+			throw new Error(`Package codemod run "${current.id}" was not found.`)
+		}
+		current = reloaded
+	}
+	throw new Error(
+		`Package codemod run "${input.run.id}" filters kept changing concurrently; retry the step.`,
+	)
 }
 
 async function ensureRun(input: {
@@ -364,17 +463,17 @@ async function ensureRun(input: {
 			)
 		}
 		// Continuation steps may omit filters; the stored run is the source of
-		// truth. Only an explicit mismatched value is rejected.
-		if (input.filters !== undefined) {
-			const existingFiltersJson = normalizeFiltersJson(
-				parseStoredFiltersJson(existing.filtersJson),
-			)
-			if (existingFiltersJson !== filtersJson) {
-				throw new Error(
-					`Package codemod run "${input.runId}" filters do not match the requested filters.`,
-				)
-			}
-		}
+		// truth. Only an explicit mismatched value is rejected, except that an
+		// operator may widen `excludePackageIds` to step past a package that
+		// keeps failing mid-run (apply has no unfinished-attempt skip).
+		const run =
+			input.filters === undefined
+				? existing
+				: await reconcileRunFilters(input.env.APP_DB, {
+						run: existing,
+						requested: input.filters,
+						requestedJson: filtersJson,
+					})
 		if (existing.status !== 'completed') {
 			// Heartbeat: every continuation step re-asserts `running` and bumps
 			// `updated_at`, so stale-run reconciliation only marks runs nobody is
@@ -384,9 +483,9 @@ async function ensureRun(input: {
 				id: existing.id,
 				status: 'running',
 			})
-			return { ...existing, status: 'running' }
+			return { ...run, status: 'running' }
 		}
-		return existing
+		return run
 	}
 	return await createPackageCodemodRun(input.env.APP_DB, {
 		id: crypto.randomUUID(),
@@ -594,6 +693,9 @@ async function runChecksOnFiles(input: {
 		baseUrl: input.baseUrl,
 		userId: input.userId,
 		requirePackageDocs: false,
+		// The engine already walked the import closure for host facts; the
+		// warn-only capability check would walk it twice more per item.
+		followCapabilityImports: false,
 		// Platform migrations must still transform legacy credential patterns
 		// before phase 2/3 stamp enforcement (#3836).
 		enforceCredentialStamp: false,
@@ -755,6 +857,24 @@ async function processTransformGates(input: {
 		before: beforeChecks,
 		after: afterChecks,
 	})
+	if (checkSummary.ok && hitCheckRunnerLimit(afterChecks)) {
+		return {
+			kind: 'terminal',
+			result: emptyItemResult({
+				itemId,
+				userId: input.savedPackage.userId,
+				packageId: input.savedPackage.id,
+				kodyId: input.savedPackage.kodyId,
+				status: 'failed',
+				findings: transformed.needsManual,
+				changedPaths: transformed.changedPaths,
+				beforeCommit: input.beforeCommit,
+				ownerDetail: transformed.ownerDetail,
+				error:
+					'Repo checks on the transformed tree hit the check runner memory or CPU limits, so the change could not be verified.',
+			}),
+		}
+	}
 	if (!checkSummary.ok) {
 		return {
 			kind: 'terminal',
@@ -1481,6 +1601,11 @@ async function processRevertStep(input: {
  */
 const maxUnfinishedAttempts = 2
 const unfinishedAttemptTtlSeconds = 7 * 24 * 60 * 60
+export const operatorExcludedFinding: PackageCodemodFinding = {
+	path: null,
+	message:
+		'Excluded from this run by the operator; handle this package manually.',
+}
 export const unfinishedAttemptsError =
 	'Skipped: earlier attempts on this package did not finish (the step ran out of time or memory).'
 
@@ -1552,10 +1677,12 @@ export async function runPackageCodemodStep(input: {
 			})
 		}
 
+		const filters = input.filters ?? parseStoredFiltersJson(run.filtersJson)
+		const excluded = new Set(filters.excludePackageIds ?? [])
 		const { packages, nextCursor } = await listCandidatePackages({
 			env: input.env,
 			scope: input.scope,
-			filters: input.filters ?? parseStoredFiltersJson(run.filtersJson),
+			filters,
 			cursor: input.cursor ?? null,
 			limit,
 		})
@@ -1573,6 +1700,20 @@ export async function runPackageCodemodStep(input: {
 					packageId: savedPackage.id,
 				}))
 			) {
+				continue
+			}
+			if (excluded.has(savedPackage.id)) {
+				result = emptyItemResult({
+					itemId: crypto.randomUUID(),
+					userId: savedPackage.userId,
+					packageId: savedPackage.id,
+					kodyId: savedPackage.kodyId,
+					status: 'needs_manual',
+					findings: [operatorExcludedFinding],
+				})
+				await persistItem(input.env, result, run.id)
+				items.push(toPublicItem(result))
+				incrementSummary(summary, result.status)
 				continue
 			}
 			const attemptKey = unfinishedAttemptKvKey(run.id, savedPackage.id)

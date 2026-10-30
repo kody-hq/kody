@@ -3,6 +3,10 @@ import {
 	type PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { type EnablerCredential } from '#worker/enablements/owner-cron-enablement.ts'
+import {
+	createdPackageResources,
+	grantCreatorAccess,
+} from '#worker/orgs/creator-access.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { parseTagsJson } from '@kody-internal/shared/tags-json.ts'
@@ -267,6 +271,11 @@ export async function refreshSavedPackageProjection(input: {
 	 * package row before refreshing must pass it, since the row then exists.
 	 */
 	firstPublish?: boolean
+	/**
+	 * Who created the package. A first publish grants them access to it
+	 * (members with only `package:create` hold nothing on it otherwise).
+	 */
+	creatorUserId?: string | null
 }) {
 	// Filled inside the write lease, audited after it commits.
 	const pending: {
@@ -659,6 +668,21 @@ export async function refreshSavedPackageProjection(input: {
 				action: packageAuditActions.published,
 				details: { firstPublish: published.first, fields: published.fields },
 			})
+			if (published.first) {
+				// The publish is stored; a missed grant is repaired by
+				// adminCreatorAccessBackfill, so it must not fail the publish.
+				await grantCreatorAccess({
+					env: input.env,
+					orgId: input.userId,
+					creatorUserId: input.creatorUserId,
+					audit: input.audit,
+					resources: createdPackageResources(input.packageId),
+				}).catch((error: unknown) => {
+					Sentry.captureException(error, {
+						tags: { context: 'package-creator-grant' },
+					})
+				})
+			}
 		}
 	}
 }

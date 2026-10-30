@@ -66,8 +66,19 @@ synchronous, for callers that already hold the compiled permissions.
    the org, unlike `package:write`) and refuses a profile-bound credential,
    because a profile names existing packages only. `packageGetGitRemote` create
    mode mints a write remote for the package it just created on that check
-   alone; it grants nothing on other packages and stores no grant on the new
-   one. Plain repo create stays an org-level `package:create` check.
+   alone; it grants nothing on other packages. Plain repo create stays an
+   org-level `package:create` check.
+
+**Creator grants.** A non-owner member who creates a package (on its first
+publish) or a team-org credential (on its `credential.created` audit) gets a
+`manage` user grant on it, and on the package's app, with
+`grants.origin = 'created'` (`grantCreatorAccess` in
+`packages/worker/src/orgs/creator-access.ts`). Owners get none; they already
+hold everything. Owners can revoke the grant like any other. Org transfer
+re-points a creator grant when its person is a target member and drops it
+otherwise; a `manual` grant still blocks the move. `adminCreatorAccessBackfill`
+writes the same grants for older creations from the audit log, skipping anyone
+whose grant was ever revoked.
 
 **Org-wide read grants.** An `org` grant may carry the read-only resource
 permissions in `orgWideReadPermissions`
@@ -75,22 +86,30 @@ permissions in `orgWideReadPermissions`
 `job:read`, `integration:read`, and `email:read`. They compile into org-level
 permissions, so a Member holding `job:read` on the org passes `authorizeOrgWide`
 and lists every run (`runList`, `runGet`, `runSummary`, `workflowList`,
-`jobList`, `jobGet`). Nothing else rides along: `use`, `execute`, `write`,
-`delete`, `publish`, and `manage_access` are never grantable on the org, so
-triage (`runUpdate`), edits, and runs still need their own permission.
-`secret:read` (reveals values), `memory:read` (memories are personal, ADR 0072),
-and `execution_context:read` (machines are listed per share) are left out.
-Owners set these from the Grants page or with `accessGrant`
-(`resource_type: "org"`); a denial for one of them says so.
+`jobList`, `jobGet`). The website's org-wide run history uses the same org-wide
+check (`canReadOrgRunHistory`): the Activity page and the Overview's run
+summary, charts, and recent runs need org-wide `job:read`, and without it they
+show a permission state that links to Grants. A job-scoped grant still reads
+that one job's runs (`runList` with `job_id`, the job's page). Nothing else
+rides along: `use`, `execute`, `write`, `delete`, `publish`, and `manage_access`
+are never grantable on the org, so triage (`runUpdate`), edits, and runs still
+need their own permission. `secret:read` (reveals values), `memory:read`
+(memories are personal, ADR 0072), and `execution_context:read` (machines are
+listed per share) are left out. Owners set these from the Grants page or with
+`accessGrant` (`resource_type: "org"`); a denial for one of them says so.
 
 A surface check without a resource (capability `orgPermission`, Open API
 `x-kody-permission`) passes when the permission is held at org level **or on any
 resource grant** in the org. A surface that both creates and updates declares a
 list (`packageSave`: `package:write` or `package:create`) and passes on any one;
 the handler then checks the one the call needs. A check with a resource requires
-that resource. Personal-org Owners hold every permission, so steps 2 to 4 never
-deny for them. Profiles and the signed-in step are the other denials that can
-fire.
+that resource. Email Delete and Classify/Archive (MCP `emailMessageDelete` /
+`emailMessageClassify` and the website inbox) load the message first and check
+`email:delete` / `email:write` on its own inbox (`authorizeEmailMessageChange`),
+so a Manage grant on one inbox cannot touch another; a message with no inbox
+needs the permission org-wide. Personal-org Owners hold every permission, so
+steps 2 to 4 never deny for them. Profiles and the signed-in step are the other
+denials that can fire.
 
 **Credential resolution** goes through one door,
 `resolveCredential({ orgId, actor, packageStamp, credential })`

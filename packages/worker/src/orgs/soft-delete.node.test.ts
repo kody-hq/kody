@@ -73,6 +73,7 @@ async function createHarness() {
 		APP_DB: appDb,
 		AUDIT_DB: auditDb,
 		USER_METER: meter.env.USER_METER,
+		STRIPE_SECRET_KEY: 'sk_test_secret',
 	} as Env
 	return { env, appDb, auditDb, sqlite }
 }
@@ -1076,6 +1077,194 @@ test('restoring a free org refuses when an Owner is already at the free-org cap'
 		.first<{ deleted_at: string | null }>()
 	expect(membership?.deleted_at).toBeNull()
 	expect(await countLiveFreeOwnedOrgs(appDb, ownerId)).toBe(1)
+})
+
+test('restoring a tombstoned org with a stale Stripe plan still enforces the free-org cap', async () => {
+	const { env, appDb } = await createHarness()
+	const ownerId = testStableUserIdFromEmail('stripe-paid-restore@example.com')
+	const ts = '2026-01-01T00:00:00.000Z'
+	await appDb
+		.prepare(
+			`INSERT INTO users (id, email, username, password_hash, created_at, updated_at, stable_user_id)
+			 VALUES (45, 'stripe-paid-restore@example.com', 'stripepaidrestore', 'x', ?, ?, ?)`,
+		)
+		.bind(ts, ts, ownerId)
+		.run()
+	for (const [orgId, slug] of [
+		['org-stripe-cap-free-a', 'stripe-cap-free-a'],
+		['org-stripe-cap-free-b', 'stripe-cap-free-b'],
+		['org-stripe-cap-paid', 'stripe-cap-paid'],
+	] as const) {
+		await seedOrg(appDb, orgId, slug)
+		await appDb
+			.prepare(
+				`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+				 VALUES (?, ?, 'owner', ?)`,
+			)
+			.bind(orgId, ownerId, ts)
+			.run()
+	}
+	await appDb
+		.prepare(`UPDATE orgs SET stripe_plan = 'pro' WHERE id = ?`)
+		.bind('org-stripe-cap-paid')
+		.run()
+	await softDeleteOrg({
+		env,
+		orgId: ownerIdFromStored('org-stripe-cap-paid'),
+		actorUserId: ownerId,
+		now,
+	})
+	await appDb
+		.prepare(`UPDATE orgs SET stripe_plan = 'pro' WHERE id = ?`)
+		.bind('org-stripe-cap-paid')
+		.run()
+
+	await expect(
+		restoreOrg({
+			env,
+			orgId: ownerIdFromStored('org-stripe-cap-paid'),
+			actorUserId: ownerId,
+			now: new Date(now.getTime() + 60_000),
+		}),
+	).rejects.toBeInstanceOf(FreeOrgLimitError)
+	const restored = await appDb
+		.prepare(`SELECT deleted_at FROM orgs WHERE id = ?`)
+		.bind('org-stripe-cap-paid')
+		.first<{ deleted_at: string | null }>()
+	expect(restored?.deleted_at).toBeTruthy()
+	expect(await countLiveFreeOwnedOrgs(appDb, ownerId)).toBe(2)
+})
+
+test('restoring a manual-free org counts other live orgs by effective plan', async () => {
+	const { env, appDb } = await createHarness()
+	const ownerId = testStableUserIdFromEmail(
+		'restore-live-stripe-paid@example.com',
+	)
+	const ts = '2026-01-01T00:00:00.000Z'
+	await appDb
+		.prepare(
+			`INSERT INTO users (id, email, username, password_hash, created_at, updated_at, stable_user_id)
+			 VALUES (46, 'restore-live-stripe-paid@example.com', 'restorestripepaid', 'x', ?, ?, ?)`,
+		)
+		.bind(ts, ts, ownerId)
+		.run()
+	for (const [orgId, slug] of [
+		['org-restore-live-free', 'restore-live-free'],
+		['org-restore-live-paid', 'restore-live-paid'],
+		['org-restore-manual-free', 'restore-manual-free'],
+	] as const) {
+		await seedOrg(appDb, orgId, slug)
+		await appDb
+			.prepare(
+				`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+				 VALUES (?, ?, 'owner', ?)`,
+			)
+			.bind(orgId, ownerId, ts)
+			.run()
+	}
+	await appDb
+		.prepare(`UPDATE orgs SET stripe_plan = 'pro' WHERE id = ?`)
+		.bind('org-restore-live-paid')
+		.run()
+	await softDeleteOrg({
+		env,
+		orgId: ownerIdFromStored('org-restore-manual-free'),
+		actorUserId: ownerId,
+		now,
+	})
+
+	await expect(
+		restoreOrg({
+			env,
+			orgId: ownerIdFromStored('org-restore-manual-free'),
+			actorUserId: ownerId,
+			now: new Date(now.getTime() + 60_000),
+		}),
+	).resolves.toBeDefined()
+	expect(await countLiveFreeOwnedOrgs(appDb, ownerId)).toBe(2)
+})
+
+test('restore refreshes a linked Stripe customer and clears a canceled subscription plan', async () => {
+	const { env, appDb } = await createHarness()
+	const orgId = ownerIdFromStored('org-restore-stripe-refresh')
+	await seedOrg(appDb, orgId, 'restore-stripe-refresh')
+	await softDeleteOrg({ env, orgId, now })
+	await appDb
+		.prepare(
+			`UPDATE orgs
+			 SET stripe_customer_id = 'cus_restore_refresh', stripe_plan = 'pro'
+			 WHERE id = ?`,
+		)
+		.bind(orgId)
+		.run()
+	const fetchMock = vi.fn(
+		async () =>
+			new Response(JSON.stringify({ data: [] }), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			}),
+	)
+	vi.stubGlobal('fetch', fetchMock)
+	try {
+		await restoreOrg({
+			env,
+			orgId,
+			now: new Date(now.getTime() + 60_000),
+		})
+		expect(fetchMock).toHaveBeenCalledTimes(1)
+		expect(
+			await appDb
+				.prepare(`SELECT stripe_plan FROM orgs WHERE id = ?`)
+				.bind(orgId)
+				.first<{ stripe_plan: string | null }>(),
+		).toMatchObject({ stripe_plan: null })
+	} finally {
+		vi.unstubAllGlobals()
+	}
+})
+
+test('a failed Stripe refresh does not fail an org restore', async () => {
+	const { env, appDb } = await createHarness()
+	const orgId = ownerIdFromStored('org-restore-stripe-failure')
+	await seedOrg(appDb, orgId, 'restore-stripe-failure')
+	await softDeleteOrg({ env, orgId, now })
+	await appDb
+		.prepare(
+			`UPDATE orgs
+			 SET stripe_customer_id = 'cus_restore_failure', stripe_plan = 'pro'
+			 WHERE id = ?`,
+		)
+		.bind(orgId)
+		.run()
+	const error = new Error('Stripe unavailable')
+	const fetchMock = vi.fn(async () => {
+		throw error
+	})
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+	vi.stubGlobal('fetch', fetchMock)
+	try {
+		await expect(
+			restoreOrg({
+				env,
+				orgId,
+				now: new Date(now.getTime() + 60_000),
+			}),
+		).resolves.toBeDefined()
+		expect(fetchMock).toHaveBeenCalledTimes(1)
+		expect(warn).toHaveBeenCalledWith('org-restore-stripe-refresh-failed', {
+			orgId,
+			error: expect.any(Error),
+		})
+		expect(
+			await appDb
+				.prepare(`SELECT deleted_at FROM orgs WHERE id = ?`)
+				.bind(orgId)
+				.first<{ deleted_at: string | null }>(),
+		).toMatchObject({ deleted_at: null })
+	} finally {
+		warn.mockRestore()
+		vi.unstubAllGlobals()
+	}
 })
 
 test('the restore UPDATE refuses when a concurrent restore filled the free-org cap first', async () => {

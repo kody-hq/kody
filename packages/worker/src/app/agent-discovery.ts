@@ -388,23 +388,6 @@ export function buildApiCatalog(origin: string) {
 export function buildAuthMarkdown(origin: string): string {
 	const mcp = `${origin}${mcpResourcePath}`
 	const registerUri = `${origin}${oauthPaths.register}`
-	const agentAuth = {
-		skill: 'connect-kody',
-		register_uri: registerUri,
-		methods: [
-			{
-				type: 'oauth2',
-				grant_types: ['authorization_code', 'refresh_token'],
-				authorization_endpoint: `${origin}${oauthPaths.authorize}`,
-				token_endpoint: `${origin}${oauthPaths.token}`,
-				registration_endpoint: registerUri,
-				client_id_metadata_document_supported: true,
-				scopes: [...mcpOauthScopes],
-				resource: mcp,
-				bearer_methods_supported: ['header'],
-			},
-		],
-	}
 	return [
 		'# auth.md',
 		'',
@@ -436,12 +419,6 @@ export function buildAuthMarkdown(origin: string): string {
 		`- Scopes: \`${mcpOauthScopes.join('`, `')}\``,
 		`- Dynamic client registration: \`${registerUri}\``,
 		'- Client ID Metadata Documents (CIMD) are supported.',
-		'',
-		'## agent_auth',
-		'',
-		'```json',
-		JSON.stringify(agentAuth, null, 2),
-		'```',
 		'',
 	].join('\n')
 }

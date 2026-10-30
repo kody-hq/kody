@@ -267,6 +267,35 @@ export async function updatePackageCodemodRunStatus(
 }
 
 /**
+ * Compare-and-swap on `filters_json`: writes only when the stored value still
+ * equals `expectedFiltersJson`. Returns the number of rows changed (0 on a
+ * concurrent change).
+ */
+export async function updatePackageCodemodRunFilters(
+	db: D1Database,
+	input: {
+		id: string
+		expectedFiltersJson: string
+		filtersJson: string
+		updatedAt?: string
+	},
+) {
+	const result = await db
+		.prepare(
+			`UPDATE package_codemod_runs SET filters_json = ?, updated_at = ?
+			WHERE id = ? AND filters_json = ?`,
+		)
+		.bind(
+			input.filtersJson,
+			input.updatedAt ?? new Date().toISOString(),
+			input.id,
+			input.expectedFiltersJson,
+		)
+		.run()
+	return result.meta.changes ?? 0
+}
+
+/**
  * Mark `running` runs whose heartbeat (`updated_at`) predates the cutoff as
  * `abandoned`. Completion only happens when a caller pages to the end, so
  * runs whose caller stopped paging (closed tab, stopped agent) otherwise sit

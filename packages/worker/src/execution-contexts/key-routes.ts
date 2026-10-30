@@ -1,5 +1,4 @@
 import {
-	ecpDefaultGrant,
 	ecpSignatureHeader,
 	ed25519JwkThumbprint,
 	importEd25519PublicKey,
@@ -10,6 +9,7 @@ import {
 	verifyEcpHttpSignature,
 	type Ed25519PublicJwk,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
+import { registrationGrant } from './credential-grant.ts'
 import { authorizeOrgWide } from '#worker/authorization/authorize.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import { authenticateApiRequest } from '#worker/open-api/authenticate.ts'
@@ -314,7 +314,7 @@ export async function handleExecutionContextKeyRoute(input: {
 		})
 	}
 	const id = newExecutionContextId()
-	const grant = ecpDefaultGrant
+	const grant = registrationGrant
 	const row = {
 		id,
 		org_id: caller.org.id,

@@ -86,6 +86,18 @@ allows 500. When that cap is hit, every preview deploy fails (Cloudflare code
   running past the job timeout. Preview ensure also asserts Durable Object
   namespace headroom before provisioning so the job fails with a clear quota
   message near the 500-namespace cap instead of mid-deploy 10067/10090.
+- `.github/workflows/preview-pr-cleanup.yml` runs daily and deletes previews
+  whose pull request is closed or merged, judged only from GitHub PR state,
+  never age (`tools/ci/preview-pr-cleanup.ts`). `kody-pr-<n>` belongs to PR `n`.
+  `kody-branch-<slug>` belongs to the PRs of the branch it was last deployed
+  from, read from the `Preview deploy (branch: <name>)` run name or, for older
+  runs, from the `preview.yml` dispatch runs at the Worker's `APP_COMMIT_SHA`.
+  Previews it cannot tie to a PR (deployed from `main`, a branch with no PR, an
+  ambiguous source, an unknown PR, or a branch redeployed after its PRs closed)
+  are kept and listed in the job summary with the reason. Each delete re-reads
+  the PR state first, and branch deletes wait while a branch deploy is running.
+  Manual dispatch defaults to `dry_run`, and pull requests that change the job
+  run it as a dry run only.
 
 Cleanup is bounded, retry-safe, and idempotent. Transient Cloudflare 429 and 5xx
 responses (including wrangler 504 Gateway Timeout) retry with backoff inside the

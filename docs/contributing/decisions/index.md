@@ -248,10 +248,16 @@ Open these before proposing a new primitive, surface, or storage home.
   Public by default with a create-time choice; owners toggle it; lists only
   public packages, never members; private orgs 404 like unknown handles
 - [0089: Every package declares its capabilities; publish checks the import closure](./0089-packages-declare-capabilities.md)
-- [0090: `login` credentials are Kody-managed OAuth refresh](./0090-login-credentials-are-kody-managed-oauth-refresh.md)
   `kody.capabilities` on every package; an app's effective set is its closure;
   publish and `kody dev check` warn (then fail) on unverifiable calls; runtime
   is a backstop
+- [0090: `login` credentials are Kody-managed OAuth refresh](./0090-login-credentials-are-kody-managed-oauth-refresh.md)
+  Kody holds the refresh token, runs the exchange on the host, and keeps the
+  session encrypted; code never holds a refresh or access token
+- [0091: Agents register people with auth.md `service_auth`](./0091-auth-md-service-auth-registration.md)
+  `POST /agent/identity` takes `service_auth` only; the claim mints a user-owned
+  `kody_at_` (default `long`, amends 0056); no identity assertion or JWT-bearer
+  refresh; anonymous stays behind a flag that is off
 
 ## Historical / UI / implementation
 

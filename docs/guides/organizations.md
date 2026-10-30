@@ -40,13 +40,13 @@ Owner grants read access on the organization: **Grants** page,
 
 From the CLI: `kody api accessGrant --org <slug> --params '<that JSON>'`.
 
-| Permission         | Reads                                                     |
-| ------------------ | --------------------------------------------------------- |
-| `job:read`         | Every job, workflow, and run (`runList`, `runGet`, ...)   |
-| `app:read`         | Every package app and its sessions                        |
-| `package:read`     | Source, skills, and checks for every package and repo     |
-| `integration:read` | Which integrations and MCP servers exist, never a token   |
-| `email:read`       | Every inbox and message, including sign-in codes they get |
+| Permission         | Reads                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------- |
+| `job:read`         | Every job, workflow, and run (`runList`, `runGet`, the Activity page, Overview run history) |
+| `app:read`         | Every package app and its sessions                                                          |
+| `package:read`     | Source, skills, and checks for every package and repo                                       |
+| `integration:read` | Which integrations and MCP servers exist, never a token                                     |
+| `email:read`       | Every inbox and message, including sign-in codes they get                                   |
 
 These are read only. Running, editing, triaging runs, sharing, and using a
 credential still need their own grant. Secret values and memories are never

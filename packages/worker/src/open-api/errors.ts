@@ -58,6 +58,7 @@ export const apiErrorCodes = [
 	'execution_context_lease_invalid',
 	'execution_context_access_lost',
 	'execution_context_credential_not_granted',
+	'credentials_need_unshared_context',
 	'not_found',
 	'method_not_allowed',
 	'account_deleting',

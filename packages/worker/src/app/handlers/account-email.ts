@@ -19,6 +19,7 @@ import {
 } from '#worker/audit-log.ts'
 import { normalizeEmailAddress } from '#worker/email/address.ts'
 import { systemEmailOwnerId } from '#worker/email/email-owner.ts'
+import { authorizeEmailMessageChange } from '#worker/email/authorize-email-message.ts'
 import { auditUserEmailMessageTriage } from '#worker/email/message-triage-audit.ts'
 import { getOwnerEmailMessageById } from '#worker/email/owner-email-reader.ts'
 import {
@@ -42,15 +43,25 @@ export async function deleteAccountEmailMessage({
 	await authorize({ env, request: user.request }, 'email:delete')
 	if (!messageId.trim())
 		return operationResult({ ok: false, error: 'Message id is required.' }, 400)
-	const deleted = await deleteEmailMessage({
-		env,
-		db: env.APP_DB,
-		userId: ownerIdFromCaller({
-			request: user.request,
-			user: user.mcpUser,
-		}),
-		messageId,
+	const ownerId = ownerIdFromCaller({
+		request: user.request,
+		user: user.mcpUser,
 	})
+	const message = await authorizeEmailMessageChange({
+		env,
+		request: user.request,
+		ownerId,
+		messageId,
+		permission: 'email:delete',
+	})
+	const deleted = message
+		? await deleteEmailMessage({
+				env,
+				db: env.APP_DB,
+				userId: ownerId,
+				messageId,
+			})
+		: false
 	if (!deleted) {
 		return operationResult({ ok: false, error: 'Message not found.' }, 404)
 	}
@@ -96,19 +107,29 @@ export async function classifyAccountEmailMessage({
 			{ ok: false, error: 'System inbox messages are triaged by admins.' },
 			403,
 		)
-	const updated = await setEmailMessageClassification({
+	const message = await authorizeEmailMessageChange({
 		env,
-		db: env.APP_DB,
-		userId: ownerId,
+		request: user.request,
+		ownerId,
 		messageId,
-		...(classification === undefined
-			? {}
-			: {
-					classification,
-					classificationReason: manualEmailClassificationReason(classification),
-				}),
-		archived,
+		permission: 'email:write',
 	})
+	const updated = message
+		? await setEmailMessageClassification({
+				env,
+				db: env.APP_DB,
+				userId: ownerId,
+				messageId,
+				...(classification === undefined
+					? {}
+					: {
+							classification,
+							classificationReason:
+								manualEmailClassificationReason(classification),
+						}),
+				archived,
+			})
+		: false
 	await auditUserEmailMessageTriage({
 		env,
 		actorEmail: user.email,

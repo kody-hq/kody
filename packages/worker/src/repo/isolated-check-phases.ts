@@ -12,6 +12,8 @@ import {
 	isRepoCheckStep,
 	repoCheckStepLabel,
 	repoCheckStepResourceLimitAdvice,
+	isolatedCheckRunnerLimitMessage,
+	authoringCheckRunnerLimitLead,
 	type RepoCheckStep,
 } from './isolated-runner-limit-message.ts'
 
@@ -221,9 +223,7 @@ export function createIsolatedCheckPhaseRunner(
 				if (isDurableObjectResourceLimitResetError(error)) {
 					return {
 						ok: false,
-						message:
-							`${phaseLabel(request)} exceeded the isolated check runner's ` +
-							`memory or CPU limits even on its own. ${repoCheckStepResourceLimitAdvice(phaseStep(request))}`,
+						message: `${isolatedCheckRunnerLimitMessage(phaseLabel(request))} ${repoCheckStepResourceLimitAdvice(phaseStep(request))}`,
 					}
 				}
 				throw error
@@ -248,8 +248,8 @@ export function authoringChecksResourceLimitMessage(
 ) {
 	const where = step ? ` during ${repoCheckStepLabel(step)}` : ''
 	return (
-		`The publish checks ran out of memory or CPU time in the check runner${where} ` +
-		'before they finished. This is a server limit, not a login or network ' +
+		`${authoringCheckRunnerLimitLead(where)} ` +
+		'This is a server limit, not a login or network ' +
 		'problem, and publish runs the same checks under the same limits, so ' +
 		'it would fail the same way. ' +
 		repoCheckStepResourceLimitAdvice(step)

@@ -116,8 +116,9 @@ There are two ways to do that.
 
 ### Before you start
 
-- **A Kody account with a verified email.** Authorize cannot finish until the
-  address is verified. See [Connect your agent](/docs/connect-your-agent).
+- **A verified email.** You can create a Kody account from the authorize page if
+  you do not have one. Authorize cannot finish until that address is verified.
+  See [Connect your agent](/docs/connect-your-agent).
 - **OpenMuse running with a real model.** Follow its
   [quick start](https://github.com/CopilotKit/OpenMuse#quick-start) and
   [agent configuration](https://github.com/CopilotKit/OpenMuse#configure-the-agent-and-google).

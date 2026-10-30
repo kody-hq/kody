@@ -217,6 +217,7 @@ export async function finalizePublishedEntitySource(
 			// when artifact rebuild is deferred (`rebuildArtifacts: false`).
 			sourceFiles: input.files,
 			firstPublish: !previousPublishedCommit,
+			creatorUserId: input.actorUserId ?? null,
 			// A same-commit finalize (a retry or a clean no-op sync) is not a
 			// new publish, so it writes no audit row.
 			audit:

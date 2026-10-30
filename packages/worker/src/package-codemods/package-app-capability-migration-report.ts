@@ -43,7 +43,8 @@ export async function buildPackageAppCapabilityMigrationReport(input: {
 	const rows = await input.db
 		.prepare(
 			`SELECT user_id, package_id, status, owner_detail_json
-			FROM package_codemod_run_items WHERE run_id = ?`,
+			FROM package_codemod_run_items WHERE run_id = ?
+			ORDER BY created_at, id`,
 		)
 		.bind(input.runId)
 		.all<{
@@ -60,7 +61,17 @@ export async function buildPackageAppCapabilityMigrationReport(input: {
 	let appsAffected = 0
 	let total = 0
 	let app: PackageAppCapabilityMigrationReport['app'] = null
-	const items = rows.results ?? []
+	// A retried page can leave repeat rows for one package; the latest wins,
+	// except that an applied row is kept over a later retry's row (which
+	// sees the already-published change and comes back clean).
+	const latestByPackage = new Map<string, (typeof rows.results)[number]>()
+	for (const row of rows.results ?? []) {
+		const packageId = String(row.package_id)
+		const previous = latestByPackage.get(packageId)
+		if (previous?.status === 'applied' && row.status !== 'applied') continue
+		latestByPackage.set(packageId, row)
+	}
+	const items = [...latestByPackage.values()]
 	for (const row of items) {
 		const status = String(row.status)
 		byStatus[status] = (byStatus[status] ?? 0) + 1

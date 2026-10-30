@@ -14,6 +14,7 @@ import {
 	type QueryKey,
 } from '@tanstack/react-query'
 import { type OrgSettingsLoaderData } from '#universal/loader-data.ts'
+import { orgBillingPath } from '#universal/org-pages.ts'
 import {
 	AccountManagementPanel,
 	AccountManagementMessage,
@@ -129,7 +130,7 @@ export function OrgSettingsCustomDomains({
 										</div>
 									)}
 								</div>
-								{data.canManage ? (
+								{data.canManageDomains ? (
 									<div css={hostnameActionsCss}>
 										<button
 											type="button"
@@ -178,15 +179,15 @@ export function OrgSettingsCustomDomains({
 			) : (
 				<p css={mutedCopyCss}>No custom domains yet.</p>
 			)}
-			{data.canManage && !domains.canAdd ? (
+			{data.canManageDomains && !domains.canAdd ? (
 				<p data-testid="org-custom-domains-paid-only" css={accountFieldNoteCss}>
 					Custom domains need a paid plan.{' '}
-					<a css={primaryLinkCss} href={`/@${data.org.slug}/-/billing`}>
+					<a css={primaryLinkCss} href={orgBillingPath(data.org.slug)}>
 						See plans
 					</a>
 				</p>
 			) : null}
-			{data.canManage && domains.canAdd ? (
+			{data.canManageDomains && domains.canAdd ? (
 				<form
 					css={formCss}
 					onSubmit={(event) => {
