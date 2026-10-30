@@ -37,6 +37,7 @@ const writers: Record<string, Invalidation> = {
 	'admin/personal-org-repair.ts': 'same-batch-bump',
 	'orgs/access-writes.ts': 'same-batch-bump',
 	'orgs/offboarding.ts': 'same-batch-bump',
+	'org-transfer/batch.ts': 'same-batch-bump',
 	'orgs/convert-personal-org.ts': 'same-batch-bump',
 	'credentials/credential-grant-cleanup.ts': 'same-batch-bump',
 	'identity/permissions-db.ts': 'same-batch-bump',

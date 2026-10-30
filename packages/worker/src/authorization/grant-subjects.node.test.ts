@@ -64,6 +64,11 @@ const handWrittenSubjectMatches: Record<
 		count: 1,
 		reason: "Revokes the departing member's own user-subject rows.",
 	},
+	'orgs/creator-access.ts': {
+		count: 1,
+		reason:
+			"Reads the creator's own user-subject row (live or revoked) to stay idempotent.",
+	},
 	'orgs/invite-link-redeem.ts': {
 		count: 1,
 		reason:
