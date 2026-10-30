@@ -61,10 +61,15 @@ export async function buildPackageAppCapabilityMigrationReport(input: {
 	let appsAffected = 0
 	let total = 0
 	let app: PackageAppCapabilityMigrationReport['app'] = null
-	// A retried page can leave repeat rows for one package; the latest wins.
+	// A retried page can leave repeat rows for one package; the latest wins,
+	// except that an applied row is kept over a later retry's row (which
+	// sees the already-published change and comes back clean).
 	const latestByPackage = new Map<string, (typeof rows.results)[number]>()
 	for (const row of rows.results ?? []) {
-		latestByPackage.set(String(row.package_id), row)
+		const packageId = String(row.package_id)
+		const previous = latestByPackage.get(packageId)
+		if (previous?.status === 'applied' && row.status !== 'applied') continue
+		latestByPackage.set(packageId, row)
 	}
 	const items = [...latestByPackage.values()]
 	for (const row of items) {

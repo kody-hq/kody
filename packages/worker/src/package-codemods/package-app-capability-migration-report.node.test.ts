@@ -193,3 +193,30 @@ test('the migration report counts each package once, using its latest row', asyn
 	})
 	expect(report?.unresolvedApps).toEqual({ count: 0, apps: [] })
 })
+
+test('an apply retry that comes back clean keeps the applied row', async () => {
+	const { db, item } = await setup()
+	await item(
+		'item-1-applied',
+		'user-a',
+		'pkg-example-app',
+		'applied',
+		detail(['secretList', 'jobList']),
+		'2998-01-01T00:00:00.000Z',
+	)
+	await item(
+		'item-1-retry',
+		'user-a',
+		'pkg-example-app',
+		'clean',
+		null,
+		'2999-01-01T00:00:00.000Z',
+	)
+	const report = await buildPackageAppCapabilityMigrationReport({
+		db,
+		runId: 'run-1',
+	})
+	expect(report?.items.byStatus.applied).toBe(1)
+	expect(report?.items.byStatus.clean).toBeUndefined()
+	expect(report?.capabilitiesAdded.byCapability.secretList).toBe(2)
+})
