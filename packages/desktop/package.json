@@ -11,7 +11,9 @@
     "validate": "npm test",
     "test:smoke": "node test/smoke.cjs",
     "test:explorer": "node test/explorer-smoke.cjs",
-    "test:browser-login": "node test/browser-login-smoke.cjs"
+    "test:browser-login": "node test/browser-login-smoke.cjs",
+    "dist": "electron-builder --publish never",
+    "test:packaged-cli": "node test/packaged-cli.cjs"
   },
   "dependencies": {
     "@kodycodes/cli": "file:../cli",
@@ -37,7 +39,8 @@
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "identity": null
     },
@@ -49,9 +52,11 @@
     "linux": {
       "target": [
         "AppImage"
-      ]
+      ],
+      "executableName": "kody"
     },
-    "icon": "assets/icon.png"
+    "icon": "assets/icon.png",
+    "artifactName": "Kody-${version}-${os}-${arch}.${ext}"
   },
   "author": "Kody"
 }

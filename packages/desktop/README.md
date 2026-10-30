@@ -67,10 +67,11 @@ npm run validate
 ```
 
 Packaging produces an unpacked app under `artifacts/desktop/` for the current
-platform. Build each platform on its own CI host. Signing, notarization,
-installers, release publishing, and aggressive automatic shell/CLI updates still
-need a release pipeline. Application files are unpacked so CLI chunks, Node-API
-modules, and native executables have normal filesystem paths.
+platform. Build each platform on its own CI host. The Desktop binaries workflow
+builds installers for macOS, Windows, and Linux on native x64 and arm64 runners.
+Signing, notarization, release publishing, and automatic shell/CLI updates still
+need release configuration. Application files are unpacked so CLI chunks,
+Node-API modules, and native executables have normal filesystem paths.
 
 The smoke check needs a graphical desktop and the live website. To check a
 packaged build, pass its executable after `--`, for example:
@@ -120,3 +121,35 @@ Run
 after local control-kody login. It uses isolated profiles, approves the
 disposable local browser session, verifies the native workspace signs in, and
 checks wrong-verifier and replay rejection without opening your real browser.
+
+## CI binaries
+
+The **Desktop binaries** workflow runs on main and pull requests when desktop,
+CLI, shared code, or dependency manifests change. It can also be run manually
+from GitHub Actions. Each OS and architecture builds on a matching runner.
+
+Each job builds the workspace CLI, runs desktop tests, builds the installer, and
+runs that packaged Electron executable in Node mode to check its CLI and native
+keyring binding. The check does not read or write stored credentials.
+
+Download the artifacts from the workflow run. They contain macOS DMG and ZIP
+files, Windows NSIS installers, or Linux AppImages, with architecture-specific
+filenames, SHA-256 checksums, and build metadata identifying the source commit.
+On Linux, make the downloaded AppImage executable before opening it. Artifacts
+expire after 30 days. The workflow uploads artifacts only, it does not publish
+GitHub releases or enable automatic app updates.
+
+CI builds are unsigned, and macOS builds are not notarized. Signing credentials
+are not configured in this repository. Windows installers work on x64 and arm64,
+but the local execution runner remains disabled on Windows.
+
+To build the same native installers locally:
+
+```sh
+npm run build --workspace @kodycodes/cli
+npm run dist --workspace @kodycodes/desktop
+npm run test:packaged-cli --workspace @kodycodes/desktop
+```
+
+The packaged CLI check also accepts an absolute output directory after `--` when
+using a separate local packaging directory.
