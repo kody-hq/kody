@@ -163,7 +163,11 @@ function myPermissions(access: ContextAccess) {
 
 async function liveStatus(env: Env, row: ExecutionContextRow) {
 	if (row.revoked_at)
-		return { status: 'revoked' as const, acceptingRuns: false }
+		return {
+			status: 'revoked' as const,
+			acceptingRuns: false,
+			lastSeenAt: null,
+		}
 	try {
 		const status = await sessionStub(env, row.id).getStatus()
 		return {
@@ -173,9 +177,14 @@ async function liveStatus(env: Env, row: ExecutionContextRow) {
 					? ('online' as const)
 					: ('offline' as const),
 			acceptingRuns: status.acceptingRuns,
+			lastSeenAt: status.lastSeenAt ?? null,
 		}
 	} catch {
-		return { status: 'offline' as const, acceptingRuns: false }
+		return {
+			status: 'offline' as const,
+			acceptingRuns: false,
+			lastSeenAt: null,
+		}
 	}
 }
 
@@ -222,7 +231,7 @@ export async function formatContexts(
 				myPermissions: myPermissions(access),
 				status: live.status,
 				acceptingRuns: live.acceptingRuns,
-				lastSeenAt: row.last_seen_at,
+				lastSeenAt: live.lastSeenAt ?? row.last_seen_at,
 				revokedAt: row.revoked_at,
 				client: { name: row.client_name, version: row.client_version },
 				capabilities: {

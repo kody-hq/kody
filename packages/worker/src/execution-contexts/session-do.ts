@@ -300,6 +300,9 @@ function terminalOutcome(state: string): RunHistoryOutcome | null {
  * authorizes each CapabilityProxy hop against the run's lease, and keeps a
  * bounded per-context run history (30 days, 1,000 rows, metadata only).
  */
+/** How often a live session refreshes execution_contexts.last_seen_at. */
+const lastSeenWriteEveryMs = 60_000
+
 export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	#acceptWaiters = new Map<
 		string,
@@ -309,6 +312,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	#frameBudget = new Map<string, { windowStart: number; count: number }>()
 	#signer: Promise<{ kid: string; key: CryptoKey } | null> | null = null
 	#contextKey: Promise<CryptoKey> | null = null
+	#lastSeenWrittenAt = 0
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
@@ -575,12 +579,13 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		await this.#touchLastSeen(snapshot.ecid)
 	}
 
-	async #touchLastSeen(ecid: string) {
+	async #touchLastSeen(ecid: string, at = Date.now()) {
+		this.#lastSeenWrittenAt = at
 		try {
 			await this.env.APP_DB.prepare(
 				`UPDATE execution_contexts SET last_seen_at = ? WHERE id = ?`,
 			)
-				.bind(new Date().toISOString(), ecid)
+				.bind(new Date(at).toISOString(), ecid)
 				.run()
 		} catch {
 			// Best effort: liveness lives in this session, last_seen_at is display only.
@@ -876,7 +881,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		const lastProbe = this.ctx.getWebSocketAutoResponseTimestamp(ws)
 		const freshAt = lastProbe ? lastProbe.getTime() : attachment.connectedAt
 		if (Date.now() - freshAt > ecpLivenessFreshMs) return null
-		return { ws, attachment }
+		return { ws, attachment, heardAt: freshAt }
 	}
 
 	#committedCount() {
@@ -891,8 +896,19 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		online: boolean
 		acceptingRuns: boolean
 		revoked: boolean
+		lastSeenAt: string | null
 	}> {
 		const live = this.#liveSocket()
+		// Heartbeat pings are auto-responses that never wake this object, so
+		// last_seen_at catches up here, at most once a minute.
+		const snapshot = live ? this.#snapshot() : null
+		if (
+			live &&
+			snapshot &&
+			live.heardAt - this.#lastSeenWrittenAt >= lastSeenWriteEveryMs
+		) {
+			await this.#touchLastSeen(snapshot.ecid, live.heardAt)
+		}
 		return {
 			online: Boolean(live),
 			acceptingRuns: Boolean(
@@ -901,6 +917,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				this.#committedCount() < live.attachment.maxConcurrent,
 			),
 			revoked: Boolean(this.#revokedReason()),
+			lastSeenAt: live ? new Date(live.heardAt).toISOString() : null,
 		}
 	}
 
