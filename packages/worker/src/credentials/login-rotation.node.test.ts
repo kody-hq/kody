@@ -5,7 +5,6 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { type OrgRole } from '@kody-internal/shared/request-context.ts'
 import { afterEach, expect, test, vi } from 'vitest'
-import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -18,11 +17,7 @@ import {
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
-import { deleteSecret, saveSecret } from '#mcp/secrets/service.ts'
-import {
-	CredentialLoginFailedError,
-	CredentialNotFoundError,
-} from './credential-request.ts'
+import { saveSecret } from '#mcp/secrets/service.ts'
 import {
 	clearLoginSessionsForTests,
 	loginExchangeSchema,

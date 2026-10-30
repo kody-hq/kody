@@ -44,6 +44,21 @@ This is built in steps, each recorded here as it lands:
   integration token refresh lease on `user_integrations`). Other callers poll
   and reuse the winner's stored session. A crashed holder's lease lapses after
   60 seconds; a waiter gives up after twice the lease.
+- **401 retry.** When one of the credential's hosts answers 401 to a
+  `credential(key)` login fetch without a request body, the gateway drops that
+  session (only if it is still the stored one), resolves the credential again
+  (Use, host, and placement checks included), and retries the request once. A
+  second 401 is returned as is. A request with a body is never replayed.
+- **Rotated refresh token.** `login_exchange.refreshToken` (`path` in the
+  response, `field` of the login value it replaces; strict, and `field` must be
+  one the body sends) lets Kody save a rotated refresh token. The new value and
+  the new session are written in one D1 batch: the value write is a
+  compare-and-swap on the credential's ciphertext, exchange, hosts, and inject,
+  and the session lands only if it did. The audit records a value replacement
+  with no value. Setting it follows the same rules as `login_exchange`: owner,
+  outside a package, together with a value. It is not website-only because it
+  never widens where a value goes: the rotated token returns to the same
+  credential, with the same hosts and inject.
 
 ## Consequences
 

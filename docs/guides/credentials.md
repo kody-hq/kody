@@ -458,6 +458,7 @@ await kody.secretSet({
 		},
 		tokenPath: 'access_token',
 		expiresInPath: 'expires_in',
+		refreshToken: { path: 'refresh_token', field: 'refresh_token' },
 	},
 })
 ```
@@ -472,13 +473,27 @@ never sees the refresh token or the access token. The owner creates or rotates
 the credential on the website or with `secretSet` outside a package: package
 code cannot set `kind`, `hosts`, or `login_exchange`.
 
-Limits: the session is cached in memory per isolate, not persisted, so a cold
-isolate runs the exchange again. A rotated refresh token in the response is not
-saved, so this fits providers whose refresh tokens stay valid. The exchange
-sends only `content-type` and `accept` headers. Package code cannot save the
-sealed `access_token` from its own token request as a Key (`sealed_token` saving
-works from execute only); without a login credential, use the sealed token in
-the run that minted it and mint it again next run.
+`refreshToken` is for providers that rotate refresh tokens: `path` is where the
+response carries the new one, and `field` is the login field it replaces (a
+field the body sends). When the response has a new one, Kody saves it in place
+of the old one together with the new session, only if the credential did not
+change meanwhile, and records a value replacement in the audit log without the
+value.
+
+What Kody keeps: the session, encrypted, for this credential and its current
+value, exchange, hosts, and inject, until it expires (the 30 second early margin
+included). Every isolate reuses it, and only one exchange runs at a time per
+credential, so a rotating provider never sees the same refresh token twice.
+Editing the value, exchange, hosts, or inject, or deleting the credential, drops
+it. When one of the credential's hosts answers 401 to a request without a body,
+Kody drops the session, runs the exchange once more, and retries the request
+once (with the same host and placement checks). A request with a body is
+returned as is.
+
+Limits: the exchange sends only `content-type` and `accept` headers. Package
+code cannot save the sealed `access_token` from its own token request as a Key
+(`sealed_token` saving works from execute only); without a login credential, use
+the sealed token in the run that minted it and mint it again next run.
 
 ### Signing
 
