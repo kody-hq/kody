@@ -1,5 +1,26 @@
 const heavyWorkOffloadGuideId = 'heavy_work_offload'
 
+const isolatedCheckRunnerLimitPhrase =
+	"exceeded the isolated check runner's memory or CPU limits"
+const authoringCheckRunnerLimitPhrase =
+	'ran out of memory or CPU time in the check runner'
+
+export function isolatedCheckRunnerLimitMessage(phaseLabel: string) {
+	return `${phaseLabel} ${isolatedCheckRunnerLimitPhrase} even on its own.`
+}
+
+export function authoringCheckRunnerLimitLead(where: string) {
+	return `The publish checks ${authoringCheckRunnerLimitPhrase}${where} before they finished.`
+}
+
+/** True for a check result that only says the check runner hit its limits. */
+export function isRepoCheckResourceLimitMessage(message: string) {
+	return (
+		message.includes(isolatedCheckRunnerLimitPhrase) ||
+		message.includes(authoringCheckRunnerLimitPhrase)
+	)
+}
+
 /**
  * Shared advice appended when a throwaway check/rebuild isolate hits a
  * Durable Object memory or CPU reset. The usual cause is the npm graph

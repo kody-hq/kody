@@ -1582,6 +1582,12 @@ export async function runRepoChecks(input: {
 	 * name the step if the isolate hits its memory or CPU limit.
 	 */
 	onStep?: (step: RepoCheckStep) => Promise<void>
+	/**
+	 * When false, the warn-only capability check reads only this package's
+	 * modules. Platform codemods pass false: they compute the closure once
+	 * themselves, and its findings never fail a check.
+	 */
+	followCapabilityImports?: boolean
 }): Promise<RepoCheckRunResult> {
 	const manifestContent = await input.workspace.readFile(input.manifestPath)
 	if (manifestContent == null) {
@@ -1757,7 +1763,10 @@ export async function runRepoChecks(input: {
 	const capabilityDeclarationCheck = await buildCapabilityDeclarationCheck({
 		manifest,
 		sourceFiles,
-		...(input.env && input.baseUrl && input.userId
+		...(input.followCapabilityImports !== false &&
+		input.env &&
+		input.baseUrl &&
+		input.userId
 			? {
 					loadPackage: createSavedPackageClosureLoader({
 						env: input.env,
