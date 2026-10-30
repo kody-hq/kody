@@ -25,7 +25,9 @@ const credentialListItemSchema = z.object({
 	name: z.string(),
 	scope: z
 		.enum(['org', 'personal'])
-		.describe('personal: your own credential granted to this org.'),
+		.describe(
+			"org: stored in this org (secretSet scope 'user' or 'package', OAuth, MCP). personal: your own credential granted to this org. Same value as credential(key).scope.",
+		),
 	provider: z.string().nullable(),
 	description: z.string(),
 	hosts: z.array(z.string()),

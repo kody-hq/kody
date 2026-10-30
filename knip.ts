@@ -19,6 +19,10 @@ export default defineConfig({
 			],
 			project: ['tools/**/*.{ts,js,mjs,cjs}', '*.ts', 'e2e/**/*.ts'],
 		},
+		'packages/desktop': {
+			entry: ['cli-host.cjs', 'preload.cjs', 'test/**/*.cjs'],
+			project: ['**/*.cjs'],
+		},
 		'packages/worker': {
 			paths: {
 				'#start/server/*': ['./start/server/*.ts'],

@@ -47,3 +47,23 @@ test('HTML stays default and protocol JSON errors never turn into markdown', asy
 	expect(json.headers.get('Content-Type')).toContain('application/json')
 	expect(await json.json()).toEqual({ error: 'missing' })
 })
+
+test('HTML advertises desktop navigation, without advertising it on JSON or markdown', () => {
+	const response = secureNativeResponse(
+		new Request('https://kody.test/login', { method: 'HEAD' }),
+		new Response('<!doctype html>', {
+			headers: { 'Content-Type': 'text/html' },
+		}),
+		env,
+		'nonce',
+	)
+	expect(response.headers.get('X-Kody-Desktop-Navigation')).toBe('1')
+	expect(missing().headers.has('X-Kody-Desktop-Navigation')).toBe(false)
+	const json = secureNativeResponse(
+		new Request('https://kody.test/api'),
+		Response.json({}),
+		env,
+		'nonce',
+	)
+	expect(json.headers.has('X-Kody-Desktop-Navigation')).toBe(false)
+})

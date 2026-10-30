@@ -777,6 +777,10 @@
 			"sha256": "418ac9f8e5352de6a754fece077b91f8d85b6abb04c3c028f1f5a2e3d2421c84"
 		},
 		{
+			"filename": "0215-desktop-browser-login.sql",
+			"sha256": "e78b3f061da49bd219bc3dfe4080e9abb18f33a44688577a2da893b5189820ae"
+		},
+		{
 			"filename": "0216-login-credential-session-failures.sql",
 			"sha256": "f03eca3000bd5bccf11589889ccdbfdc141ff57b4879ac988b3f6a701b627e3b"
 		}

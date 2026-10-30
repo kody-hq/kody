@@ -54,8 +54,13 @@ Every credential has:
 
 - **name**: yours to choose, such as `work` or `personal`. Callers pick a
   credential by name.
-- **scope**: `org` (shared with the org under its Use grants) or `personal`
-  (yours, granted to an org one org at a time).
+- **scope**: who owns it, seen from the run's org. `org` means the run's org
+  owns it: every Key, login, OAuth connection, or MCP server stored in that org
+  reads `org`, including a credential saved with `secretSet({ scope: 'user' })`
+  and a Key bound to the package. `personal` means it is the caller's own
+  personal credential, stored in their personal org and granted to this org one
+  org at a time. In your personal org, your own credentials read `org`. See
+  [Scope in code](#scope-in-code).
 - **provider**: an optional slug such as `github`. Package needs match on it.
 - **hosts**: the only hosts the value may be sent to, over HTTPS. Hosts live on
   the credential, never in a package manifest, so publishing or forking a
@@ -198,6 +203,47 @@ the credential only travels to its own hosts. A 401 or 403 response carries an
 
 `credentials(key)` returns an array of clients for a need declared with
 `multiple: true`.
+
+### Scope in code
+
+`client.scope` uses the same two values as `credentialList` and call maps: `org`
+or `personal`, relative to the run's org. `secretSet` and `secretList` use a
+different word, the storage scope (`user`, `package`, or `session`), which says
+where a Key is stored, not whose it is. A `user`-scope Key is an owner-level Key
+of the org it was saved in, not a personal credential.
+
+| Credential                                                                   | `secretList` scope            | `client.scope`                 |
+| ---------------------------------------------------------------------------- | ----------------------------- | ------------------------------ |
+| Key saved with `secretSet({ scope: 'user' })` in the run's org               | `user`                        | `org`                          |
+| Key saved with `secretSet({ scope: 'package' })` for the running package     | `package`                     | `org`                          |
+| OAuth connection or MCP server in the run's org                              | not listed                    | `org`                          |
+| Your `user`-scope Key in your personal org, run in your personal org         | `user`                        | `org`                          |
+| Your `user`-scope Key in your personal org, granted to and run in a team org | `user` (in your personal org) | `personal`                     |
+| Key saved with `secretSet({ scope: 'session' })`                             | `session`                     | never opened by `credential()` |
+
+Most package code should not branch on `scope`. Kody already picked the
+credential and checked that the run may use it, and both scopes fetch the same
+way. Use it for labels, logs, or results that say whose account was used:
+
+```ts
+import { credential } from 'kody:runtime'
+
+export default async function checkPortal() {
+	const login = await credential('portal')
+	// Do not refuse a login because scope is 'org': a credential saved with
+	// secretSet({ scope: 'user' }) in the run's org reads 'org'.
+	const response = await login.fetch('/api/me')
+	return {
+		account: login.scope === 'personal' ? `${login.name} (yours)` : login.name,
+		ok: response.ok,
+	}
+}
+```
+
+To require one specific credential, declare the need with a `provider` and
+`kind`, and let the caller map it by `{ name, scope }` (see
+[Picking a credential](#picking-a-credential)) instead of checking `scope` in
+code.
 
 ### Declare needs in `kody.credentials`
 

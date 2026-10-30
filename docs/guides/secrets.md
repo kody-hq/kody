@@ -140,7 +140,12 @@ already-allowed package.
 
 ## Scopes
 
-- **User secrets** belong to the account and can be approved for any package.
+- **User secrets** belong to the org they were saved in (your personal org or a
+  team org) and can be approved for any package. `user` is a storage scope, not
+  ownership by a person: in that org, `credentialList` and
+  `credential(key).scope` report a user secret as `org`. Only a personal
+  credential granted to another org reads `personal` there. See
+  [Scope in code](./credentials.md#scope-in-code).
 - **Package secrets** belong to one saved package. They are package config,
   keyed by the package id, and can be used only with package context.
   `secretList` and `packageGet` expose their metadata with `package_id` even

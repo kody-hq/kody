@@ -25,6 +25,10 @@ export function secureNativeResponse(
 		Boolean(response.headers.get('Content-Type')?.includes('text/html'))
 	const markdown = negotiatedNotFound && prefersMarkdown(request)
 	const headers = new Headers(response.headers)
+	if (!markdown && headers.get('Content-Type')?.includes('text/html')) {
+		headers.set('X-Kody-Desktop-Navigation', '1')
+		headers.set('X-Kody-Desktop-Authentication', '1')
+	}
 	if (markdown) {
 		headers.set('Cache-Control', 'no-store')
 		headers.set('Content-Type', 'text/markdown; charset=utf-8')

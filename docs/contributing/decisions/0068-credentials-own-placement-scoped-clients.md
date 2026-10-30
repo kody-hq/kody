@@ -260,7 +260,10 @@ The keyed map stays. `provider` is optional and defaults to the key.
   oauth, url, login), `callTool` (mcp), or `sign` (signing). A relative URL
   resolves against the credential's first host; an absolute URL must be in
   `hosts`. If code sets the header the credential injects, the gateway
-  overwrites it.
+  overwrites it. `scope` is the owner seen from the run org: `org` for every
+  credential the run org owns (secret buckets with storage scope `user` or
+  `package` included), `personal` for the actor's own personal credential
+  granted to the run org. It is not the `secretList` storage scope.
 - `credentials(key)` returns an array, for `multiple: true` needs.
 - An undeclared key (ad hoc execute or author-only code) is treated as the
   provider.

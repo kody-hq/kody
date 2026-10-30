@@ -19,6 +19,12 @@ rank package-scoped secret references. Expired secrets stay in the list with
 **`ttl_ms: 0`**. Fetch placeholders and **`resolve`** treat them as missing so
 Kody stops sending the value.
 
+The `scope` in `secretList` and `secretSet` is a storage scope (`user`,
+`package`, or `session`). It is not the `org` / `personal` scope that
+`credentialList` and `credential(key).scope` report: a `user` or `package` Key
+in the run's org reads `org` there. See
+[Scope in code](../guides/credentials.md#scope-in-code).
+
 Package-scoped secrets belong to one saved package. **`packageGet`** includes
 their metadata as an FYI when you are inspecting that package. User-scoped
 secrets follow the bundler stamp: code that originates from package A authorizes
