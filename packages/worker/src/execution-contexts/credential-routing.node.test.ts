@@ -489,3 +489,25 @@ test('a same-commit snapshot write clears the cached credential-use answer', asy
 	})
 	expect(await s.kv.get(useKey)).toBeNull()
 })
+
+test('credentialed reads through a kody:runtime namespace import count, unrelated members do not', () => {
+	const uses = (source: string) =>
+		packageFilesUseCredentials({ 'run.ts': source })
+	const ns = "import * as rt from 'kody:runtime'\n"
+	expect(uses(`${ns}export default (p) => rt.kody[p.method](p)\n`)).toBe(true)
+	expect(
+		uses(
+			`${ns}const { authenticatedFetch } = rt.kody\nexport default () => authenticatedFetch('https://x.test')\n`,
+		),
+	).toBe(true)
+	expect(
+		uses(
+			`${ns}const k = rt.kody\nexport default () => k.gatewayFetch('https://x.test')\n`,
+		),
+	).toBe(true)
+	expect(
+		uses(
+			`${ns}export default (p, foo) => [rt.kody.metaGetCurrentUser({}), foo.authenticatedFetch, p.credentials]\n`,
+		),
+	).toBe(false)
+})

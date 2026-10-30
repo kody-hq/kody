@@ -117,6 +117,7 @@ export function moduleUsesCredentials(parsed: AstNode) {
 	const calls = collectModuleKodyCalls(parsed)
 	if (calls.computedCalls > 0) return true
 	if ([...calls.names].some(runtimeCallUsesCredentials)) return true
+	const runtimeNames = new Set<string>()
 	for (const node of parsed.program?.body ?? []) {
 		if (node.type !== 'ImportDeclaration') continue
 		if (getNodeName(node.source) !== 'kody:runtime') continue
@@ -125,7 +126,8 @@ export function moduleUsesCredentials(parsed: AstNode) {
 				specifier.type === 'ImportNamespaceSpecifier' ||
 				specifier.type === 'ImportDefaultSpecifier'
 			) {
-				if (readsCredentialedMember(parsed)) return true
+				const local = getNodeName(specifier.local)
+				if (local) runtimeNames.add(local)
 				continue
 			}
 			if (specifier.type !== 'ImportSpecifier') continue
@@ -133,24 +135,69 @@ export function moduleUsesCredentials(parsed: AstNode) {
 			if (imported && credentialRuntimeExports.has(imported)) return true
 		}
 	}
-	return false
+	return runtimeNames.size > 0 && readsCredentialedMember(parsed, runtimeNames)
 }
 
-/** `rt.kody.authenticatedFetch` and the like, through a namespace import. */
-function readsCredentialedMember(parsed: AstNode) {
+/**
+ * Credentialed reads through a namespace or default `kody:runtime` import:
+ * `rt.kody.authenticatedFetch`, `rt.kody[name]`, `const { gatewayFetch } =
+ * rt.kody`, and the same through a local alias of `rt` or `rt.kody`.
+ */
+function readsCredentialedMember(parsed: AstNode, runtimeNames: Set<string>) {
+	const names = new Set(runtimeNames)
+	const fromRuntime = (node: AstNode | undefined) => {
+		const root = rootIdentifier(node)
+		return root != null && names.has(root)
+	}
 	let found = false
 	walkAst(parsed, (node) => {
 		if (found) return
 		if (
-			node.type !== 'MemberExpression' &&
-			node.type !== 'OptionalMemberExpression'
+			node.type === 'MemberExpression' ||
+			node.type === 'OptionalMemberExpression'
 		) {
+			if (!fromRuntime(node.object)) return
+			const name = memberName(node)
+			if (name == null || runtimeCallUsesCredentials(name)) found = true
 			return
 		}
-		const name = getNodeName(node.property)
-		if (name && runtimeCallUsesCredentials(name)) found = true
+		if (node.type !== 'VariableDeclarator' || !fromRuntime(node.init)) return
+		if (node.id?.type === 'Identifier') {
+			const alias = getNodeName(node.id)
+			if (alias) names.add(alias)
+			return
+		}
+		if (node.id?.type !== 'ObjectPattern') return
+		for (const property of node.id.properties ?? []) {
+			const key =
+				property.type === 'RestElement' || property.computed
+					? null
+					: getNodeName(property.key)
+			if (key == null || runtimeCallUsesCredentials(key)) found = true
+		}
 	})
 	return found
+}
+
+function rootIdentifier(node: AstNode | undefined): string | null {
+	let current = node
+	while (
+		current?.type === 'MemberExpression' ||
+		current?.type === 'OptionalMemberExpression'
+	) {
+		current = current.object
+	}
+	return current?.type === 'Identifier' ? getNodeName(current) : null
+}
+
+/** The property a member expression reads; null when picked at run time. */
+function memberName(node: AstNode) {
+	if (!node.computed) return getNodeName(node.property)
+	const property = node.property
+	if (property?.type === 'StringLiteral' || property?.type === 'Literal') {
+		return typeof property.value === 'string' ? property.value : null
+	}
+	return null
 }
 
 function recordHasEntries(value: unknown) {
