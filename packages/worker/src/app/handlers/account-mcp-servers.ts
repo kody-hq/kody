@@ -2,6 +2,11 @@ import { buildMcpServerAuthorizeUrl } from '#worker/mcp-client/authorize-consent
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import { requireAuthenticatedPageUser } from '#app/page-auth.ts'
+import { callCapabilityAsWebsite } from '#app/website-capability.ts'
+import { mcpServerAddCapability } from '#mcp/capabilities/mcp-servers/mcp-server-add.ts'
+import { mcpServerReconnectCapability } from '#mcp/capabilities/mcp-servers/mcp-server-reconnect.ts'
+import { mcpServerRemoveCapability } from '#mcp/capabilities/mcp-servers/mcp-server-remove.ts'
+import { mcpServerSetEnabledCapability } from '#mcp/capabilities/mcp-servers/mcp-server-set-enabled.ts'
 import {
 	mcpOAuthReturnCookie,
 	readMcpOAuthReturnCookie,
@@ -19,11 +24,8 @@ import { extractMcpServerIdFromOAuthState } from '#worker/mcp-client/oauth-state
 import { normalizeMcpPreRegisteredOAuthClientInput } from '#worker/mcp-client/preregistered-oauth-client.ts'
 import { getMcpServerOwnerId } from '#worker/mcp-client/settings-repo.ts'
 import {
-	addMcpServer,
-	deleteMcpServer,
 	getMcpServerSettingById,
 	resolveMcpServerOAuthClientUrls,
-	setMcpServerEnabled,
 	setMcpServerLastError,
 	setMcpServerPreRegisteredOAuthClient,
 	setMcpServerUsage,
@@ -207,25 +209,21 @@ async function handleAddAction(input: {
 	bearerToken?: string
 	request: Request
 }) {
-	const oauth = resolveMcpServerOAuthClientUrls({
-		env: input.env,
-		requestUrl: input.request.url,
-	})
-	const { setting, connection } = await addMcpServer({
-		env: input.env,
-		userId: ownerIdFromCaller({
-			request: input.user.request,
-			user: input.user.mcpUser,
-		}),
-		personId: input.user.mcpUser.userId,
+	const bearerToken = input.bearerToken?.trim()
+	const added = await callCapabilityAsWebsite(input, mcpServerAddCapability, {
 		name: input.name.trim(),
 		url: input.url.trim(),
-		baseUrl: oauth.clientOrigin,
-		bearerToken: input.bearerToken?.trim() || undefined,
-		waitUntil,
-		audit: orgAuditWriterFromRequest(input.env, input.user.request),
+		...(bearerToken ? { bearerToken } : {}),
 	})
-	return operationResult(connectionOutcome(input, setting, connection))
+	return operationResult({
+		ok: true as const,
+		selectedServerId: added.id,
+		name: added.name,
+		state: added.state,
+		toolCount: added.toolCount,
+		error: added.error,
+		authUrl: added.authUrl,
+	})
 }
 
 async function handleConnectionAction(input: {
@@ -235,31 +233,33 @@ async function handleConnectionAction(input: {
 	request: Request
 	kind: 'reconnect' | 'refresh'
 }) {
+	if (input.kind === 'reconnect') {
+		const result = await callCapabilityAsWebsite(
+			input,
+			mcpServerReconnectCapability,
+			{ server: input.id },
+		)
+		return operationResult({
+			ok: true as const,
+			selectedServerId: result.id,
+			name: result.name,
+			state: result.state,
+			toolCount: result.toolCount,
+			error: result.error,
+			authUrl: result.authUrl,
+		})
+	}
 	const setting = await requireSetting(input)
 	const ownerOrgId = ownerIdFromCaller({
 		request: input.user.request,
 		user: input.user.mcpUser,
-	})
-	const actor = mcpOAuthAttemptActorFromIds({
-		ownerOrgId,
-		personId: input.user.mcpUser.userId,
 	})
 	const hub = createMcpClientHubClient({
 		env: input.env,
 		userId: ownerOrgId,
 		waitUntil,
 	})
-	const result =
-		input.kind === 'reconnect'
-			? await hub.reconnectServer({
-					serverId: setting.id,
-					actor,
-					callbackUrl: resolveMcpServerOAuthClientUrls({
-						env: input.env,
-						requestUrl: input.request.url,
-					}).callbackUrl,
-				})
-			: await hub.refreshServer({ serverId: setting.id })
+	const result = await hub.refreshServer({ serverId: setting.id })
 	if (result.state === 'ready') {
 		await setMcpServerLastError({
 			env: input.env,
@@ -291,17 +291,11 @@ async function handleSetEnabledAction(input: {
 	enabled: boolean
 	request: Request
 }) {
-	const setting = await requireSetting(input)
-	const updated = await setMcpServerEnabled({
-		env: input.env,
-		userId: ownerIdFromCaller({
-			request: input.user.request,
-			user: input.user.mcpUser,
-		}),
-		id: setting.id,
-		enabled: input.enabled,
-		audit: orgAuditWriterFromRequest(input.env, input.user.request),
-	})
+	const updated = await callCapabilityAsWebsite(
+		input,
+		mcpServerSetEnabledCapability,
+		{ server: input.id, enabled: input.enabled },
+	)
 	return operationResult({ ok: true, selectedServerId: updated.id })
 }
 
@@ -340,20 +334,15 @@ async function handleDeleteAction(input: {
 	id: string
 	request: Request
 }) {
-	const setting = await requireSetting(input)
-	const deleted = await deleteMcpServer({
-		env: input.env,
-		userId: ownerIdFromCaller({
-			request: input.user.request,
-			user: input.user.mcpUser,
-		}),
-		id: setting.id,
-		audit: orgAuditWriterFromRequest(input.env, input.user.request),
-	})
-	if (!deleted) {
+	const deleted = await callCapabilityAsWebsite(
+		input,
+		mcpServerRemoveCapability,
+		{ server: input.id },
+	)
+	if (!deleted.removed) {
 		return operationResult({ ok: false, error: 'MCP server not found.' }, 404)
 	}
-	return operationResult({ ok: true, deletedServerId: setting.id })
+	return operationResult({ ok: true, deletedServerId: deleted.id })
 }
 
 /**

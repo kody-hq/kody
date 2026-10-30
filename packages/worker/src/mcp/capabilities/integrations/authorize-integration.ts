@@ -41,6 +41,29 @@ export async function authorizeIntegration(
 	)
 }
 
+/**
+ * Connecting under `name` creates the connection when none exists yet
+ * (`integration:create`) and replaces it otherwise (`integration:write`).
+ */
+export async function authorizeIntegrationConnect(
+	ctx: CapabilityContext,
+	name: string,
+) {
+	const credentialId = await findIntegrationCredentialId({
+		env: ctx.env,
+		userId: ownerIdFromCaller(ctx.callerContext),
+		name,
+	})
+	if (credentialId) {
+		await authorizeIntegration(ctx, 'integration:write', name)
+		return
+	}
+	await authorize(
+		{ env: ctx.env, request: requireMcpRequest(ctx.callerContext) },
+		'integration:create',
+	)
+}
+
 /** An MCP server's row id is its credential id. */
 export async function authorizeMcpServer(
 	ctx: CapabilityContext,

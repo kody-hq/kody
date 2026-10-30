@@ -9,6 +9,10 @@ import {
 	orgWideReadAccessOptions,
 } from '#universal/org-wide-read-access.ts'
 import {
+	orgCreateAccessLabel,
+	orgCreateAccessOptions,
+} from '#universal/org-create-access.ts'
+import {
 	getDangerPillCss,
 	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
@@ -35,6 +39,7 @@ import {
 	accountInputCss,
 } from './account-management-components.tsx'
 import {
+	grantOrganizationCreateAccess,
 	grantOrganizationReadAccess,
 	revokeOrganizationGrant,
 } from '#start/server/org-mutations'
@@ -52,10 +57,15 @@ function grantDetail(grant: OrgGrantView) {
 	const reads = grant.permissions.flatMap(
 		(permission) => orgWideReadAccessLabel(permission) ?? [],
 	)
+	const creates = grant.permissions.flatMap(
+		(permission) => orgCreateAccessLabel(permission) ?? [],
+	)
 	const other = grant.permissions.filter(
-		(permission) => !orgWideReadAccessLabel(permission),
+		(permission) =>
+			!orgWideReadAccessLabel(permission) && !orgCreateAccessLabel(permission),
 	)
 	const parts = [
+		...(creates.length > 0 ? [`Create: ${creates.join(', ')}`] : []),
 		...(reads.length > 0 ? [`Read: ${reads.join(', ')}`] : []),
 		...other,
 	]
@@ -225,27 +235,70 @@ function OrgGrantsContent({
 				</AccountManagementPanel>
 			) : null}
 			{data?.ok && data.orgWideRead ? (
-				<OrgWideReadAccessForm
-					orgSlug={data.org.slug}
-					subjects={data.orgWideRead.subjects}
-					queryKey={queryKey}
-				/>
+				<>
+					<OrgWideAccessForm
+						kind="create"
+						orgSlug={data.org.slug}
+						subjects={data.orgWideRead.subjects}
+						queryKey={queryKey}
+					/>
+					<OrgWideAccessForm
+						kind="read"
+						orgSlug={data.org.slug}
+						subjects={data.orgWideRead.subjects}
+						queryKey={queryKey}
+					/>
+				</>
 			) : null}
 		</AccountManagementShell>
 	)
 }
 
-function OrgWideReadAccessForm({
+type OrgWideAccessSubject = NonNullable<
+	OrgGrantsLoaderData['orgWideRead']
+>['subjects'][number]
+
+const orgWideAccessForms = {
+	read: {
+		title: 'Organization-wide read access',
+		description:
+			'Let a member or team read every resource of a kind in this organization without making them an Owner. This is read only: it never lets them run, change, delete, or share anything.',
+		legend: 'Can read',
+		options: orgWideReadAccessOptions,
+		held: (subject: OrgWideAccessSubject) => subject.reads,
+		testId: 'org-wide-read',
+		save: 'Save read access',
+		saved: (label: string) => `Read access saved for ${label}.`,
+		send: grantOrganizationReadAccess,
+	},
+	create: {
+		title: 'Create access',
+		description:
+			'Let a member or team create new packages, secrets, or connections in this organization. They get full access to what they create. Organization settings decide what every member can create.',
+		legend: 'Can create',
+		options: orgCreateAccessOptions,
+		held: (subject: OrgWideAccessSubject) => subject.creates,
+		testId: 'org-create-access',
+		save: 'Save create access',
+		saved: (label: string) => `Create access saved for ${label}.`,
+		send: grantOrganizationCreateAccess,
+	},
+} as const
+
+function OrgWideAccessForm({
+	kind,
 	orgSlug,
 	subjects,
 	queryKey,
 }: {
+	kind: keyof typeof orgWideAccessForms
 	orgSlug: string
-	subjects: NonNullable<OrgGrantsLoaderData['orgWideRead']>['subjects']
+	subjects: ReadonlyArray<OrgWideAccessSubject>
 	queryKey: QueryKey
 }) {
+	const form = orgWideAccessForms[kind]
 	const capture = useSubmitterScope()
-	const mutation = useOrgPeopleMutation(queryKey, grantOrganizationReadAccess)
+	const mutation = useOrgPeopleMutation(queryKey, form.send)
 	const [subjectKey, setSubjectKey] = useState('')
 	const [selected, setSelected] = useState<Array<string>>([])
 	const [message, setMessage] = useState<{
@@ -257,21 +310,18 @@ function OrgWideReadAccessForm({
 	const teams = subjects.filter((entry) => entry.kind === 'team')
 	const unchanged =
 		subject !== null &&
-		selected.length === subject.reads.length &&
-		selected.every((permission) => subject.reads.includes(permission))
+		selected.length === form.held(subject).length &&
+		selected.every((permission) => form.held(subject).includes(permission))
 	return (
-		<AccountManagementPanel
-			title="Organization-wide read access"
-			description="Let a member or team read every resource of a kind in this organization without making them an Owner. This is read only: it never lets them run, change, delete, or share anything."
-		>
+		<AccountManagementPanel title={form.title} description={form.description}>
 			{subjects.length === 0 ? (
-				<p css={mutedCopyCss} data-testid="org-wide-read-empty">
+				<p css={mutedCopyCss} data-testid={`${form.testId}-empty`}>
 					Add members or teams to this organization first. Owners already have
 					full access.
 				</p>
 			) : (
 				<form
-					data-testid="org-wide-read-form"
+					data-testid={`${form.testId}-form`}
 					css={formCss}
 					onSubmit={(event) => {
 						event.preventDefault()
@@ -285,7 +335,7 @@ function OrgWideReadAccessForm({
 									if (!isCurrent()) return
 									setMessage({
 										tone: 'info',
-										text: `Read access saved for ${subject.label}.`,
+										text: form.saved(subject.label),
 									})
 								},
 								onError: (error) => {
@@ -307,7 +357,10 @@ function OrgWideReadAccessForm({
 								const next = event.currentTarget.value
 								setSubjectKey(next)
 								setSelected(
-									subjects.find((entry) => entry.key === next)?.reads ?? [],
+									(() => {
+										const match = subjects.find((entry) => entry.key === next)
+										return match ? [...form.held(match)] : []
+									})(),
 								)
 								setMessage(null)
 							}}
@@ -338,14 +391,14 @@ function OrgWideReadAccessForm({
 						</p>
 					</label>
 					<fieldset css={fieldsetCss} disabled={!subject || mutation.isPending}>
-						<legend css={accountFieldLabelCss}>Can read</legend>
-						{orgWideReadAccessOptions.map((option) => {
+						<legend css={accountFieldLabelCss}>{form.legend}</legend>
+						{form.options.map((option) => {
 							const checked = selected.includes(option.permission)
 							return (
 								<label
 									key={option.permission}
 									css={checkRowCss}
-									data-testid="org-wide-read-option"
+									data-testid={`${form.testId}-option`}
 									data-permission={option.permission}
 								>
 									<input
@@ -380,12 +433,12 @@ function OrgWideReadAccessForm({
 					<div css={accountActionsCss}>
 						<button
 							type="submit"
-							data-testid="org-wide-read-save"
+							data-testid={`${form.testId}-save`}
 							disabled={!subject || unchanged || mutation.isPending}
 							css={getPillButtonCss({ size: 'sm' })}
 						>
 							{renderIcon('check', { size: '1.05rem' })}
-							{mutation.isPending ? 'Saving…' : 'Save read access'}
+							{mutation.isPending ? 'Saving…' : form.save}
 						</button>
 					</div>
 				</form>

@@ -118,12 +118,19 @@ test('the read access form lists members and teams with read-only options', asyn
 		grants: [],
 		orgWideRead: {
 			subjects: [
-				{ key: 'user:p-1', kind: 'user', label: '@casey', reads: [] },
+				{
+					key: 'user:p-1',
+					kind: 'user',
+					label: '@casey',
+					reads: [],
+					creates: [],
+				},
 				{
 					key: 'team:t-1',
 					kind: 'team',
 					label: 'Support (@support)',
 					reads: ['job:read'],
+					creates: [],
 				},
 			],
 		},
@@ -135,6 +142,15 @@ test('the read access form lists members and teams with read-only options', asyn
 	expect(html.match(/data-testid="org-wide-read-option"/g)).toHaveLength(5)
 	expect(html).toContain('data-permission="job:read"')
 	expect(html).not.toMatch(/data-permission="[a-z_]+:(write|execute|use)"/)
+	expect(html).toContain('data-testid="org-create-access-form"')
+	expect(html.match(/data-testid="org-create-access-option"/g)).toHaveLength(3)
+	for (const permission of [
+		'package:create',
+		'secret:create',
+		'integration:create',
+	]) {
+		expect(html).toContain(`data-permission="${permission}"`)
+	}
 })
 
 test('the read access form is hidden from viewers who cannot grant', async () => {
@@ -146,4 +162,5 @@ test('the read access form is hidden from viewers who cannot grant', async () =>
 		orgWideRead: null,
 	})
 	expect(html).not.toContain('data-testid="org-wide-read-form"')
+	expect(html).not.toContain('data-testid="org-create-access-form"')
 })

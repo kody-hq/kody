@@ -1,10 +1,12 @@
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import {
+	callCapabilityAsWebsite,
+	websiteCapabilityContext,
+} from '#app/website-capability.ts'
 import { isMcpCallerError } from '#mcp/caller-error.ts'
 import { resolvePersonId } from '#mcp/capabilities/access/shared.ts'
 import { getStaticRegistry } from '#mcp/capabilities/registry.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
-import { createMcpCallerContext } from '#mcp/context.ts'
-import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { isFeatureEnabled } from '#worker/feature-flags/service.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import {
@@ -98,15 +100,8 @@ export async function loadExecutionContextsScope(input: {
 		input.orgSlug,
 	)
 	if (!binding) return null
-	const callerContext = createMcpCallerContext({
-		baseUrl: getAppBaseUrl({ env: input.env, requestUrl: input.request.url }),
-		source: { kind: 'session' },
-		executionOrigin: 'interactive',
-		user: input.user.mcpUser,
-		orgBinding: binding,
-	})
 	return {
-		ctx: { env: input.env, callerContext },
+		ctx: websiteCapabilityContext({ ...input, orgBinding: binding }),
 		org: binding.org,
 		personal: await isPersonalOrg(input.env.APP_DB, binding.org.id),
 		binding,
@@ -128,7 +123,7 @@ async function callCapability(
 	const registry = await getStaticRegistry()
 	const capability = registry.capabilityMap[name]
 	if (!capability) throw new ExecutionContextsUnavailableError()
-	const result = await capability.handler(args, scope.ctx)
+	const result = await callCapabilityAsWebsite(scope.ctx, capability, args)
 	return result && typeof result === 'object'
 		? (result as Record<string, unknown>)
 		: {}

@@ -12,6 +12,10 @@ import {
 	saveOrgAvatar,
 } from '#worker/orgs/org-avatar.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
+import {
+	loadOrgMemberCreation,
+	updateOrgMemberCreation,
+} from '#worker/orgs/member-creation.ts'
 import { updateOrgProfile } from '#worker/orgs/org-profile.ts'
 import {
 	loadOrgProfileVisibility,
@@ -95,6 +99,9 @@ export async function loadOrgSettingsData(input: {
 		customDomains: canWrite
 			? await loadCustomDomainsView(input.env, input.org.id)
 			: null,
+		memberCreation: teamOrg
+			? await loadOrgMemberCreation(input.env.APP_DB, input.org.id)
+			: null,
 	}
 }
 
@@ -154,6 +161,52 @@ export async function updateOrganizationProfile(
 		displayName: updated.displayName,
 	}
 	return operationResult({ ok: true, org: next })
+}
+
+/**
+ * Owners choose what every Member may create without a grant. Explicit
+ * `package:create`, `secret:create`, and `integration:create` grants still
+ * apply when a setting is off.
+ */
+export async function updateOrganizationMemberCreation(
+	input: OrganizationWriteContext & {
+		packages?: boolean
+		credentials?: boolean
+	},
+) {
+	const { env, request, user } = input
+	const access = await resolveOrgManagementAccess({
+		request,
+		env,
+		user,
+		orgSlug: input.orgSlug,
+		permission: 'org:write',
+	})
+	if (!access.ok) {
+		return operationResult({ ok: false, error: access.error }, access.status)
+	}
+	if (access.org.personal) {
+		return operationResult(
+			{
+				ok: false,
+				error: 'Member permissions apply to team organizations only.',
+			},
+			400,
+		)
+	}
+	const updated = await updateOrgMemberCreation(env.APP_DB, {
+		orgId: access.org.id,
+		packages: input.packages,
+		credentials: input.credentials,
+		audit: orgAuditWriterFromRequest(env, user.request),
+	})
+	if (!updated.ok) {
+		return operationResult(
+			{ ok: false, error: updated.error },
+			updated.code === 'not_found' ? 404 : 409,
+		)
+	}
+	return operationResult({ ok: true, memberCreation: updated.settings })
 }
 
 export async function removeOrganizationPhoto(input: OrganizationWriteContext) {
