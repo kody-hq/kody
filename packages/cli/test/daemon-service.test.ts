@@ -559,3 +559,31 @@ test('repair keeps --max-concurrent from both a systemd unit and a LaunchAgent p
 	}
 	assert.equal(serviceCommands.maxConcurrentInUnit(null), undefined)
 })
+
+test('a passphrase context refuses --key-storage keyring for a service', async () => {
+	const ecid = 'ec_passkeyring'
+	await storeContext(
+		ecid,
+		keystore.resolveWrappingKey({
+			ecid,
+			create: true,
+			env: { KODY_CONTEXT_KEY_PASSPHRASE: 'correct horse battery staple' },
+		}),
+	)
+	await assert.rejects(
+		serviceCommands.installDaemonService(
+			{
+				apiUrl,
+				clientVersion: '1.2.3',
+				write: () => {},
+				platform: 'linux',
+				isRoot: false,
+				entryPath: entry,
+				tmpDir: null,
+				run: () => assert.fail('must not touch systemctl'),
+			},
+			{ ecid, keyStorage: 'keyring' },
+		),
+		/passphrase-protected context[\s\S]*--key-storage file/,
+	)
+})

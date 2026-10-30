@@ -315,8 +315,16 @@ async function runCommand(
 			...(maxConcurrent === undefined ? {} : { maxConcurrent }),
 		}
 		if (input.values.install === true) {
-			await offerInstall(serviceEnv, install)
-			return 0
+			// --json keeps stdout a single JSON document; install progress goes to stderr.
+			const installEnv = input.values.json
+				? {
+						...serviceEnv,
+						write: (text: string) => {
+							process.stderr.write(text)
+						},
+					}
+				: serviceEnv
+			return (await offerInstall(installEnv, install)) ? 0 : 1
 		}
 		// Registration already succeeded: a default install that cannot run
 		// (npx, root, no systemd) is a hint, not a failure to retry.
