@@ -266,6 +266,22 @@ export async function updatePackageCodemodRunStatus(
 	return result.meta.changes ?? 0
 }
 
+export async function updatePackageCodemodRunFilters(
+	db: D1Database,
+	input: { id: string; filtersJson: string; updatedAt?: string },
+) {
+	await db
+		.prepare(
+			`UPDATE package_codemod_runs SET filters_json = ?, updated_at = ? WHERE id = ?`,
+		)
+		.bind(
+			input.filtersJson,
+			input.updatedAt ?? new Date().toISOString(),
+			input.id,
+		)
+		.run()
+}
+
 /**
  * Mark `running` runs whose heartbeat (`updated_at`) predates the cutoff as
  * `abandoned`. Completion only happens when a caller pages to the end, so
