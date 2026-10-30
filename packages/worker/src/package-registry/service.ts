@@ -2,6 +2,7 @@ import {
 	type OwnerId,
 	type PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
+import { type EnablerCredential } from '#worker/enablements/owner-cron-enablement.ts'
 import {
 	createdPackageResources,
 	grantCreatorAccess,
@@ -251,6 +252,8 @@ export async function refreshSavedPackageProjection(input: {
 	baseUrl: string
 	userId: OwnerId
 	actorUserId?: PersonId
+	/** The publishing person's credential; their package jobs stay within it. */
+	actorCredential?: EnablerCredential | null
 	userEmail?: string | null
 	packageId: string
 	sourceId: string
@@ -592,6 +595,7 @@ export async function refreshSavedPackageProjection(input: {
 					sourceId: input.sourceId,
 					manifest: loaded.manifest,
 					actorUserId: input.actorUserId,
+					actorCredential: input.actorCredential ?? null,
 				})
 				if (schedulerStateChanged) {
 					await syncJobManagerAlarm({

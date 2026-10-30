@@ -247,6 +247,8 @@ async function checkEnablerAccess(input: {
 			username: enabler.username,
 		},
 		role: binding.role,
+		scopes: enablement.enablerScopes,
+		profileName: enablement.enablerProfileName,
 	}
 	const request = deriveRequestContext({
 		user: run.enabler,

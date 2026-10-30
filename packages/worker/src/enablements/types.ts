@@ -1,3 +1,4 @@
+import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	type OwnerId,
 	type PersonId,
@@ -80,6 +81,14 @@ export type EnablementRecord = {
 	triggerName: string
 	instanceId: string
 	enablerUserId: PersonId
+	/**
+	 * Scopes of the credential that turned this on; a run never exceeds them.
+	 * Null does not narrow (session, unscoped token, or enabled before this
+	 * was recorded).
+	 */
+	enablerScopes: ReadonlyArray<OrgPermission> | null
+	/** Connection profile of the credential that turned this on. */
+	enablerProfileName: string | null
 	state: EnablementState
 	pause: EnablementPause | null
 	origin: EnablementOrigin

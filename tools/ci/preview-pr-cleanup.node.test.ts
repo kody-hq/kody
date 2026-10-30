@@ -32,11 +32,22 @@ test('decidePreviewCleanup deletes only when every resolved PR is closed', () =>
 			branch: 'x',
 			pullRequests: [],
 		}),
-	).toMatchObject({ action: 'keep-unresolved', reason: 'branch x has no PR' })
+	).toMatchObject({
+		action: 'delete',
+		match: 'no-pr',
+		reason: 'branch x has no PR',
+	})
+	expect(
+		decidePreviewCleanup('kody-branch-x', {
+			kind: 'none',
+			branch: 'main',
+			reason: 'deployed from main, which has no PR',
+		}),
+	).toMatchObject({ action: 'delete', match: 'no-pr', branch: 'main' })
 	expect(
 		decidePreviewCleanup('kody-branch-x', {
 			kind: 'unresolved',
-			reason: 'deployed from main, which has no PR',
+			reason: 'no recorded deploy commit',
 		}),
 	).toMatchObject({ action: 'keep-unresolved' })
 })
@@ -58,25 +69,6 @@ test('branchFromCommitRuns needs exactly one successful deploy branch', () => {
 	expect(branchFromCommitRuns([])).toBeNull()
 })
 
-test('a branch redeployed after all its PRs closed is kept', () => {
-	const ownership = (closedAt: string) =>
-		({
-			kind: 'pr',
-			branch: 'x',
-			deployedAt: '2026-10-10T00:00:00Z',
-			pullRequests: [{ number: 1, state: 'closed', merged: true, closedAt }],
-		}) as const
-	expect(
-		decidePreviewCleanup('kody-branch-x', ownership('2026-10-01T00:00:00Z')),
-	).toMatchObject({
-		action: 'keep-unresolved',
-		reason: 'branch x redeployed after its PRs closed',
-	})
-	expect(
-		decidePreviewCleanup('kody-branch-x', ownership('2026-10-11T00:00:00Z')),
-	).toMatchObject({ action: 'delete' })
-})
-
 test('listPreviewWorkerNames lists PR previews and live bare branch Workers only', () => {
 	expect(
 		listPreviewWorkerNames([
@@ -89,8 +81,51 @@ test('listPreviewWorkerNames lists PR previews and live bare branch Workers only
 			'kody-branch-live-runtime',
 			'kody-branch-orphan-runtime',
 			'kody-branch-live-mock-cloudflare',
+			'kody-branch-live-two',
+			'kody-api',
+			'kody-runtime',
+			'kody-nx-cache',
+			'kody-backup-control-plane',
+			'kody-branch',
+			'kody-branch-',
+			'kody-pr-',
+			'kody-pr-0',
+			'kody-pr-12x',
+			'kody-preview',
+			'kody-branch-Live',
+			'kody-production-branch-x',
+			'other-pr-1',
 		]),
-	).toEqual(['kody-pr-3', 'kody-pr-12', 'kody-branch-live'])
+	).toEqual([
+		'kody-pr-3',
+		'kody-pr-12',
+		'kody-branch-live',
+		'kody-branch-live-two',
+	])
+})
+
+test('production and other non-preview Workers never reach cleanup', async () => {
+	const { deps, cleaned } = createDeps({
+		scripts: [
+			'kody',
+			'kody-production',
+			'kody-api',
+			'kody-api-docs',
+			'kody-platform',
+			'kody-runtime',
+			'kody-jobs',
+			'kody-highlight',
+			'kody-push-queue',
+			'kody-nx-cache',
+			'kody-status',
+			'kody-backup-control-plane',
+		],
+		pulls: {},
+		branchPulls: {},
+	})
+	const result = await runPreviewPrCleanup(deps)
+	expect(result.decisions).toEqual([])
+	expect(cleaned).toEqual([])
 })
 
 type Fixture = {
@@ -148,7 +183,11 @@ function createDeps(
 				throw new Error(`unexpected GitHub GET ${path}`)
 			},
 		},
-		listScriptNames: async () => fixture.scripts,
+		listScripts: async () =>
+			fixture.scripts.map((name) => ({
+				name,
+				modifiedOn: '2026-10-09T00:00:00Z',
+			})),
 		readWorkerCommitSha: async (name) => fixture.commitShas?.[name] ?? null,
 		isDeployInProgress: async () => fixture.deployInProgress ?? false,
 		cleanup: async (name) => {
@@ -163,7 +202,7 @@ function createDeps(
 
 const sha = (char: string) => char.repeat(40)
 
-test('runPreviewPrCleanup deletes closed and merged PR previews and reports the rest', async () => {
+test('runPreviewPrCleanup deletes closed, merged, and no-PR previews and keeps open or unknown ones', async () => {
 	const { deps, cleaned } = createDeps({
 		scripts: [
 			'kody-pr-1',
@@ -210,7 +249,13 @@ test('runPreviewPrCleanup deletes closed and merged PR previews and reports the 
 		},
 	})
 	const result = await runPreviewPrCleanup(deps)
-	expect(cleaned).toEqual(['kody-pr-1', 'kody-branch-merged'])
+	expect(cleaned).toEqual([
+		'kody-pr-1',
+		'kody-pr-3',
+		'kody-branch-from-main',
+		'kody-branch-merged',
+		'kody-branch-no-pr',
+	])
 	expect(
 		Object.fromEntries(
 			result.decisions.map((decision) => [
@@ -228,8 +273,12 @@ test('runPreviewPrCleanup deletes closed and merged PR previews and reports the 
 		'kody-branch-no-pr': 'branch feat/lonely has no PR',
 		'kody-branch-titled': 'PR #12 still open',
 	})
-	expect(result.report).toContain('| `kody-pr-1` |  | #1 merged | deleted |')
-	expect(result.report).toContain('kept (no PR resolved)')
+	expect(result.report).toContain(
+		'| `kody-pr-1` | 2026-10-09 |  | #1 merged | deleted |',
+	)
+	expect(result.report).toContain(
+		'| `kody-branch-no-commit` | 2026-10-09 |  | no recorded deploy commit | kept (owner unknown) |',
+	)
 	expect(cleaned).not.toContain('kody-production')
 })
 
@@ -322,4 +371,77 @@ test('a failed cleanup is reported and does not stop later deletes', async () =>
 	expect(result.failed).toEqual(['kody-pr-1'])
 	expect(cleaned).toEqual(['kody-pr-2'])
 	expect(result.report).toContain('delete failed')
+})
+
+test('a branch preview redeployed from an open-PR branch after planning is kept', async () => {
+	let titledReads = 0
+	const { deps, cleaned } = createDeps({
+		scripts: ['kody-branch-reused'],
+		pulls: {},
+		branchPulls: {
+			'feat/open': [{ number: 20, state: 'open', merged_at: null }],
+		},
+		commitShas: { 'kody-branch-reused': sha('d') },
+		commitRuns: {
+			[sha('d')]: [{ head_branch: 'main', conclusion: 'success' }],
+		},
+	})
+	const get = deps.github.get
+	deps.github.get = async (path) => {
+		const url = new URL(`https://api.github.com${path}`)
+		if (
+			url.pathname.endsWith('/actions/workflows/preview.yml/runs') &&
+			!url.searchParams.has('head_sha') &&
+			++titledReads > 1
+		) {
+			return {
+				status: 200,
+				json: {
+					workflow_runs: [
+						{
+							display_title: 'Preview deploy (branch: reused)',
+							head_branch: 'feat/open',
+							status: 'completed',
+							conclusion: 'success',
+							updated_at: '2026-10-30T00:00:00Z',
+						},
+					],
+				},
+			}
+		}
+		return get(path)
+	}
+	const result = await runPreviewPrCleanup(deps)
+	expect(result.decisions[0]).toMatchObject({
+		action: 'delete',
+		match: 'no-pr',
+	})
+	expect(cleaned).toEqual([])
+	expect(result.skipped.get('kody-branch-reused')).toBe('PR #20 still open')
+})
+
+test('Last deployed dates each preview from its own Workers only', async () => {
+	const { deps } = createDeps(
+		{
+			scripts: [],
+			pulls: { 1: { state: 'open', merged_at: null } },
+			branchPulls: {},
+		},
+		{
+			listScripts: async () => [
+				{ name: 'kody-pr-1', modifiedOn: '2026-10-01T00:00:00Z' },
+				{ name: 'kody-pr-1-runtime', modifiedOn: '2026-10-02T00:00:00Z' },
+				{ name: 'kody-branch-live', modifiedOn: '2026-10-03T00:00:00Z' },
+				{ name: 'kody-branch-live-two', modifiedOn: '2026-10-20T00:00:00Z' },
+				{
+					name: 'kody-branch-live-two-runtime',
+					modifiedOn: '2026-10-21T00:00:00Z',
+				},
+			],
+		},
+	)
+	const { report } = await runPreviewPrCleanup({ ...deps, dryRun: true })
+	expect(report).toContain('| `kody-pr-1` | 2026-10-02 |')
+	expect(report).toContain('| `kody-branch-live` | 2026-10-03 |')
+	expect(report).toContain('| `kody-branch-live-two` | 2026-10-21 |')
 })

@@ -17,7 +17,8 @@ const credentialNeedsVersion = 1
 const credentialNeedsPrefix = 'credential-needs'
 const credentialStampVersion = 1
 const credentialStampPrefix = 'credential-stamp'
-const credentialUseVersion = 1
+// Bump when the credential-use scanner changes so stale answers are recomputed.
+const credentialUseVersion = 2
 const credentialUsePrefix = 'credential-use'
 /**
  * Authoring publish check / stamp-scanner semantics version. Bump when a

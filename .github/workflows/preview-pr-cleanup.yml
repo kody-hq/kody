@@ -3,8 +3,9 @@ name: 🧹 Preview PR Cleanup
 # Daily cleanup of preview deployments whose pull request is closed or merged,
 # decided only from GitHub PR state (never age). kody-pr-<n> belongs to PR n;
 # kody-branch-<slug> belongs to the PRs of the branch it was deployed from.
-# Previews whose PR cannot be resolved (for example deployed from main) are
-# kept and listed in the job summary. See tools/ci/preview-pr-cleanup.ts.
+# Previews tied to no PR (deployed from main, a branch without a PR) are
+# deleted too. Previews with an open PR, or whose owner cannot be determined,
+# are kept and listed in the job summary. See tools/ci/preview-pr-cleanup.ts.
 # Pull requests that touch the job run it in dry-run mode only.
 
 on:

@@ -34,13 +34,18 @@ export type InboundEmailSender =
 
 /**
  * A triggered run of one enablement (credentials plan v4, section 3.3). The
- * run acts as the enabler with the role they hold right now, and is billed
- * and audited to them. The enablement id is the run's credential id.
+ * run acts as the enabler with the role they hold right now, narrowed to the
+ * credential they turned it on with, and is billed and audited to them. The
+ * enablement id is the run's credential id.
  */
 export type EnablementRun = {
 	id: string
 	enabler: RequestPerson
 	role: OrgRole | null
+	/** Scopes of the credential that turned it on; null does not narrow. */
+	scopes?: RequestCredential['scopes']
+	/** Connection profile of the credential that turned it on. */
+	profileName?: string | null
 }
 
 /**
@@ -145,7 +150,8 @@ function automation(input: {
 				kind: input.credentialKind,
 				id: enablement.id,
 				org: input.binding.org,
-				profileName: null,
+				profileName: enablement.profileName ?? null,
+				scopes: enablement.scopes ?? null,
 			}),
 			membership: enablement.role ? { role: enablement.role } : null,
 		}

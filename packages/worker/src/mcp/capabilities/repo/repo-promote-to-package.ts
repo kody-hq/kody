@@ -310,6 +310,7 @@ export const repoPromoteToPackageCapability = defineDomainCapability(
 				baseUrl: ctx.callerContext.baseUrl,
 				userId: owner.ownerUserId,
 				actorUserId: owner.actorUserId,
+				actorCredential: ctx.callerContext.request?.credential ?? null,
 				packageId,
 				sourceId: source.id,
 				firstPublish: true,
