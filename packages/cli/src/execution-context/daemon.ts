@@ -21,6 +21,8 @@ import {
 	executionContextsPath,
 	requestConnectTicket,
 	signedFetch,
+	experimentOffError,
+	isExperimentOffError,
 } from './client.js'
 
 export type ContextRunExecutor = (input: {
@@ -614,6 +616,8 @@ export async function runDaemon(input: DaemonInput) {
 			)
 		} catch (error) {
 			if (input.signal?.aborted) return
+			// Retrying cannot help until the person turns the experiment on.
+			if (isExperimentOffError(error)) throw experimentOffError(input.apiUrl)
 			input.log(
 				`Connect failed: ${error instanceof Error ? error.message : String(error)}`,
 			)

@@ -6,38 +6,43 @@ const mocks = vi.hoisted(() => ({
 vi.mock('#worker/feature-flags/service.ts', () => ({
 	setFeatureFlagUserOverride: mocks.setFeatureFlagUserOverride,
 }))
-import { optIntoWebsiteExperiment } from './experiment-opt-in.ts'
+import { setWebsiteExperiment } from './experiment-opt-in.ts'
 
 test.each([
-	['package-skills', 'mcp-skills-extension'],
-	['mcp-events', 'mcp-events-extension'],
+	['package-skills', 'mcp-skills-extension', true],
+	['mcp-events', 'mcp-events-extension', true],
+	['execution-contexts', 'execution-contexts', true],
+	['execution-contexts', 'execution-contexts', false],
 ] as const)(
-	'opting into %s changes only the authenticated user override and records the audit',
-	async (experiment, key) => {
+	'setting %s (%s) to %s changes only the authenticated user override and records the audit',
+	async (experiment, key, enabled) => {
 		mocks.setFeatureFlagUserOverride.mockClear()
 		logAuditEventSpy.mockClear()
 		const env = { APP_DB: {} } as Env
 		expect(
-			await optIntoWebsiteExperiment({
+			await setWebsiteExperiment({
 				env,
 				request: new Request('https://kody.example/_serverFn/optin'),
 				user: { userId: 7, email: 'jane@example.com' },
 				experiment,
+				enabled,
 			}),
-		).toEqual({ ok: true })
+		).toEqual({ ok: true, enabled })
 		expect(mocks.setFeatureFlagUserOverride).toHaveBeenCalledWith(env.APP_DB, {
 			key,
 			userId: 7,
-			enabled: true,
+			enabled,
 			updatedBy: 7,
 		})
 		expect(logAuditEventSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
 				category: 'account',
-				action: 'feature_flag_self_opt_in',
+				action: enabled
+					? 'feature_flag_self_opt_in'
+					: 'feature_flag_self_opt_out',
 				result: 'success',
 				email: 'jane@example.com',
-				path: `/docs/${experiment}`,
+				path: '/account/experiments',
 				reason: `key=${key}`,
 			}),
 		)
@@ -50,11 +55,12 @@ test('failed opt-in is not audited as success', async () => {
 		new Error('database unavailable'),
 	)
 	await expect(
-		optIntoWebsiteExperiment({
+		setWebsiteExperiment({
 			env: { APP_DB: {} } as Env,
 			request: new Request('https://kody.example/_serverFn/optin'),
 			user: { userId: 7, email: 'jane@example.com' },
 			experiment: 'package-skills',
+			enabled: true,
 		}),
 	).rejects.toThrow('database unavailable')
 	expect(logAuditEventSpy).not.toHaveBeenCalled()

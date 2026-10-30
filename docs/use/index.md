@@ -76,6 +76,13 @@ The pages below are the MCP-level field contracts those guides link into.
   [`/terms`](https://kody.codes/terms))
 - [Troubleshooting](./troubleshooting.md) — `/support` and common MCP issues
 - [Memory and conversation context](./memory.md)
+- Experiments — early features you turn on for your account at
+  [`/account/experiments`](https://kody.codes/account/experiments) or with
+  `experimentList` / `experimentSet`:
+  - [Execution contexts](./execution-contexts.md) — run execute and automations
+    on your own machine; credentials stay in Kody cloud
+  - [Package skills](./package-skills.md) — serve package Agent Skills over MCP
+  - [MCP Events](./mcp-events.md) — let MCP clients subscribe to package events
 - [Community Project mark](./community-project-mark.md) — logo for unofficial
   integrations and community-built tools
 

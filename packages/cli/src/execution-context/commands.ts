@@ -10,6 +10,8 @@ import {
 	generateContextKey,
 	importContextKey,
 	registerContext,
+	experimentOffError,
+	isExperimentOffError,
 } from './client.js'
 import { runDaemon } from './daemon.js'
 import { createPackageGraphCache } from './package-graph-cache.js'
@@ -106,6 +108,17 @@ function out(
 }
 
 export async function runExecutionContextCommand(
+	input: ExecutionContextCommandInput,
+): Promise<number> {
+	try {
+		return await runCommand(input)
+	} catch (error) {
+		if (isExperimentOffError(error)) throw experimentOffError(input.apiUrl)
+		throw error
+	}
+}
+
+async function runCommand(
 	input: ExecutionContextCommandInput,
 ): Promise<number> {
 	const [sub, ...rest] = input.positionals

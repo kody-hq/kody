@@ -187,6 +187,8 @@ const capabilityProxyRoute = {
 export const apiOperations: ReadonlyArray<ApiOperation> = [
 	...capabilityRoutes('account', [
 		['GET', '/v1/me', 'metaGetCurrentUser'],
+		['GET', '/v1/account/experiments', 'experimentList'],
+		['PUT', '/v1/account/experiments/{experiment}', 'experimentSet'],
 		['GET', '/v1/account/usage', 'usageGet'],
 		['GET', '/v1/account/usage/trend', 'usageTrendGet'],
 		['GET', '/v1/account/usage/by-package', 'usageByPackageGet'],

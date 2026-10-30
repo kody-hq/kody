@@ -1,12 +1,19 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
-export const optIntoExperiment = createServerFn({ method: 'POST' })
-	.validator(z.enum(['package-skills', 'mcp-events', 'execution-contexts']))
+import { selfServeExperimentIds } from '#universal/feature-flags/experiments.ts'
+
+export const setExperiment = createServerFn({ method: 'POST' })
+	.validator(
+		z.object({
+			experiment: z.enum(selfServeExperimentIds),
+			enabled: z.boolean(),
+		}),
+	)
 	.handler(async ({ data }) => {
 		const { withWebsiteMutation } = await import('./mutation-context.ts')
-		const { optIntoWebsiteExperiment } =
+		const { setWebsiteExperiment } =
 			await import('../../src/app/experiment-opt-in.ts')
 		return withWebsiteMutation({}, (context) =>
-			optIntoWebsiteExperiment({ ...context, experiment: data }),
+			setWebsiteExperiment({ ...context, ...data }),
 		)
 	})

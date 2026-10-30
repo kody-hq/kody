@@ -91,9 +91,14 @@ test('native experiments loader requires authentication and returns persisted op
 	mockModule.loadAccountExperimentsData.mockResolvedValueOnce({
 		ok: true,
 		experimentsOptIn: false,
+		experiments: [],
 	})
 	const result = await loadExperimentsPage({ data: {} })
-	expect(result.payload).toEqual({ ok: true, experimentsOptIn: false })
+	expect(result.payload).toEqual({
+		ok: true,
+		experimentsOptIn: false,
+		experiments: [],
+	})
 	expect(mockModule.loadAccountExperimentsData).toHaveBeenCalledWith({
 		db: expect.anything(),
 		userId: 7,
