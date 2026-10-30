@@ -26,11 +26,13 @@ test('largestNonRuntimePaths lists the biggest files runtime code does not impor
 		'pkg/tools/generate.ts': 'x'.repeat(4096),
 		'pkg/fixtures/sample.json': 'y'.repeat(2048),
 		'pkg/ignored/huge.ts': 'z'.repeat(8192),
+		'pkg/assets/icon.png': '\u00ff'.repeat(1024),
 	}
 
 	expect(largestNonRuntimePaths({ files, sourceRoot: '/pkg/' })).toEqual([
 		{ path: 'tools/generate.ts', bytes: 4096 },
 		{ path: 'fixtures/sample.json', bytes: 2048 },
+		{ path: 'assets/icon.png', bytes: 1024 },
 	])
 	expect(
 		largestNonRuntimePaths({ files, sourceRoot: 'pkg', limit: 1 }),

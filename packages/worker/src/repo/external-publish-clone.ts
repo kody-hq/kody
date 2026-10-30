@@ -246,6 +246,9 @@ export async function cloneExternalPublishWorkspace(input: {
 	let fetchedDepth = 1
 	/** Fetch more history; false once the clone already has all of it. */
 	const deepen = async () => {
+		// A full-history fetch is the last round. A shallow source repo keeps
+		// advertising its own boundary, so `.git/shallow` may never empty.
+		if (fetchedDepth === fullHistoryDepth) return false
 		if (!(await isShallow())) return false
 		fetchedDepth =
 			fetchedDepth >= maxShallowDeepenDepth

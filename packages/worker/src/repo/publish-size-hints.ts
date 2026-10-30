@@ -1,3 +1,4 @@
+import { shouldStoreArtifactBlobAsLatin1 } from '#universal/package-file-media.ts'
 import { kodyIgnoreFileName, omitKodyIgnoredFiles } from './kodyignore.ts'
 
 export type LargePathHint = { path: string; bytes: number }
@@ -121,7 +122,11 @@ export function largestNonRuntimePaths(input: {
 	for (const [path, content] of Object.entries(packageFiles)) {
 		if (reachable.has(path)) continue
 		if (path === 'package.json' || path === kodyIgnoreFileName) continue
-		hints.push({ path, bytes: encoder.encode(content).byteLength })
+		// Binary snapshot files are Latin-1 strings: one char per byte.
+		const bytes = shouldStoreArtifactBlobAsLatin1(path)
+			? content.length
+			: encoder.encode(content).byteLength
+		hints.push({ path, bytes })
 	}
 	return hints
 		.sort((left, right) => right.bytes - left.bytes)
