@@ -48,6 +48,17 @@ primitives:
     docs:
       - docs/contributing/architecture/request-lifecycle.md
 
+  - id: desktop-shell
+    group: surfaces
+    name: Native desktop shell
+    summary:
+      Electron hosts the live app, hands sign-in to the system browser, and
+      supervises the CLI execution runner for the lifetime of the app.
+    code:
+      - packages/desktop/
+    docs:
+      - packages/desktop/README.md
+
   - id: mcp-server
     group: surfaces
     name: MCP endpoint (/mcp)
@@ -168,6 +179,8 @@ primitives:
     name: Browser sessions
     summary: Cookie sessions, signup/login, verification, and 2FA.
     code:
+      - packages/worker/src/app/desktop-auth-request.ts
+      - packages/worker/start/server/desktop-auth.ts
       - packages/worker/src/app/auth-session.ts
       - packages/worker/src/app/handlers/auth.ts
       - packages/worker/src/app/handlers/auth-provider.ts

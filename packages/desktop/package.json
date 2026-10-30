@@ -1,0 +1,57 @@
+{
+  "name": "@kodycodes/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kody desktop shell and local execution runner",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "test": "node --test test/*.test.cjs",
+    "validate": "npm test",
+    "test:smoke": "node test/smoke.cjs",
+    "test:explorer": "node test/explorer-smoke.cjs",
+    "test:browser-login": "node test/browser-login-smoke.cjs"
+  },
+  "dependencies": {
+    "@kodycodes/cli": "file:../cli",
+    "set-cookie-parser": "^3.1.2"
+  },
+  "devDependencies": {
+    "electron": "45.2.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "codes.kody.desktop",
+    "productName": "Kody",
+    "asar": false,
+    "npmRebuild": false,
+    "directories": {
+      "output": "../../artifacts/desktop"
+    },
+    "files": [
+      "*.cjs",
+      "package.json",
+      "assets/icon.png"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ],
+      "identity": null
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    },
+    "icon": "assets/icon.png"
+  },
+  "author": "Kody"
+}

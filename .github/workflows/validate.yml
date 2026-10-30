@@ -758,6 +758,9 @@ jobs:
       - name: 🧪 CLI validate
         run: npm run cli:validate
 
+      - name: Desktop validate
+        run: npm run desktop:validate
+
       - name: ⏱️ Job wall-clock
         if: always() && !cancelled()
         run: |

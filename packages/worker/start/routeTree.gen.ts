@@ -71,6 +71,8 @@ import { Route as ConnectOauthRouteImport } from './routes/connect.oauth'
 import { Route as ConnectSecretSetRouteImport } from './routes/connect.secret-set'
 import { Route as ConnectSecretsRouteImport } from './routes/connect.secrets'
 import { Route as ConnectWebhookApplyRouteImport } from './routes/connect.webhook-apply'
+import { Route as DesktopLoginRouteImport } from './routes/desktop.login'
+import { Route as DesktopSessionRouteImport } from './routes/desktop.session'
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
 import { Route as DocsConnectRouteImport } from './routes/docs.connect'
@@ -593,6 +595,16 @@ const ConnectSecretsRoute = ConnectSecretsRouteImport.update({
 const ConnectWebhookApplyRoute = ConnectWebhookApplyRouteImport.update({
   id: '/connect/webhook-apply',
   path: '/connect/webhook-apply',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DesktopLoginRoute = DesktopLoginRouteImport.update({
+  id: '/desktop/login',
+  path: '/desktop/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DesktopSessionRoute = DesktopSessionRouteImport.update({
+  id: '/desktop/session',
+  path: '/desktop/session',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsIndexRoute = DocsIndexRouteImport.update({
@@ -1830,6 +1842,8 @@ export interface FileRoutesByFullPath {
   '/connect/secret-set': typeof ConnectSecretSetRoute
   '/connect/secrets': typeof ConnectSecretsRoute
   '/connect/webhook-apply': typeof ConnectWebhookApplyRoute
+  '/desktop/login': typeof DesktopLoginRoute
+  '/desktop/session': typeof DesktopSessionRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/docs/connect': typeof DocsConnectRoute
   '/docs/connect.md': typeof DocsConnectDotmdRoute
@@ -2100,6 +2114,8 @@ export interface FileRoutesByTo {
   '/connect/secret-set': typeof ConnectSecretSetRoute
   '/connect/secrets': typeof ConnectSecretsRoute
   '/connect/webhook-apply': typeof ConnectWebhookApplyRoute
+  '/desktop/login': typeof DesktopLoginRoute
+  '/desktop/session': typeof DesktopSessionRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/docs/connect': typeof DocsConnectRoute
   '/docs/connect.md': typeof DocsConnectDotmdRoute
@@ -2373,6 +2389,8 @@ export interface FileRoutesById {
   '/connect/secret-set': typeof ConnectSecretSetRoute
   '/connect/secrets': typeof ConnectSecretsRoute
   '/connect/webhook-apply': typeof ConnectWebhookApplyRoute
+  '/desktop/login': typeof DesktopLoginRoute
+  '/desktop/session': typeof DesktopSessionRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/docs/connect': typeof DocsConnectRoute
   '/docs_/connect.md': typeof DocsConnectDotmdRoute
@@ -2646,6 +2664,8 @@ export interface FileRouteTypes {
     | '/connect/secret-set'
     | '/connect/secrets'
     | '/connect/webhook-apply'
+    | '/desktop/login'
+    | '/desktop/session'
     | '/docs/$slug'
     | '/docs/connect'
     | '/docs/connect.md'
@@ -2916,6 +2936,8 @@ export interface FileRouteTypes {
     | '/connect/secret-set'
     | '/connect/secrets'
     | '/connect/webhook-apply'
+    | '/desktop/login'
+    | '/desktop/session'
     | '/docs/$slug'
     | '/docs/connect'
     | '/docs/connect.md'
@@ -3188,6 +3210,8 @@ export interface FileRouteTypes {
     | '/connect/secret-set'
     | '/connect/secrets'
     | '/connect/webhook-apply'
+    | '/desktop/login'
+    | '/desktop/session'
     | '/docs/$slug'
     | '/docs/connect'
     | '/docs_/connect.md'
@@ -3459,6 +3483,8 @@ export interface RootRouteChildren {
   ConnectSecretSetRoute: typeof ConnectSecretSetRoute
   ConnectSecretsRoute: typeof ConnectSecretsRoute
   ConnectWebhookApplyRoute: typeof ConnectWebhookApplyRoute
+  DesktopLoginRoute: typeof DesktopLoginRoute
+  DesktopSessionRoute: typeof DesktopSessionRoute
   DocsSlugRoute: typeof DocsSlugRoute
   DocsConnectRoute: typeof DocsConnectRoute
   DocsConnectDotmdRoute: typeof DocsConnectDotmdRoute
@@ -3956,6 +3982,20 @@ declare module '@tanstack/react-router' {
       path: '/connect/webhook-apply'
       fullPath: '/connect/webhook-apply'
       preLoaderRoute: typeof ConnectWebhookApplyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/desktop/login': {
+      id: '/desktop/login'
+      path: '/desktop/login'
+      fullPath: '/desktop/login'
+      preLoaderRoute: typeof DesktopLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/desktop/session': {
+      id: '/desktop/session'
+      path: '/desktop/session'
+      fullPath: '/desktop/session'
+      preLoaderRoute: typeof DesktopSessionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs/': {
@@ -5884,6 +5924,8 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectSecretSetRoute: ConnectSecretSetRoute,
   ConnectSecretsRoute: ConnectSecretsRoute,
   ConnectWebhookApplyRoute: ConnectWebhookApplyRoute,
+  DesktopLoginRoute: DesktopLoginRoute,
+  DesktopSessionRoute: DesktopSessionRoute,
   DocsSlugRoute: DocsSlugRoute,
   DocsConnectRoute: DocsConnectRoute,
   DocsConnectDotmdRoute: DocsConnectDotmdRoute,

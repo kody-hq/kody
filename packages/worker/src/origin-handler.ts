@@ -144,6 +144,7 @@ const socialLoginStartPaths = new Set([
 ])
 
 const rateLimitedAuthPaths = new Set([
+	'/desktop/session',
 	'/auth',
 	...socialLoginStartPaths,
 	'/oauth/authorize',

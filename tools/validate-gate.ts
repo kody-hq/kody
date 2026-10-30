@@ -142,6 +142,7 @@ const parallelValidateLegs = [
 	},
 	{ name: 'knip', command: 'npm run knip', weight: 'build' },
 	{ name: 'cli', command: 'npm run cli:validate', weight: 'build' },
+	{ name: 'desktop', command: 'npm run desktop:validate', weight: 'check' },
 	{
 		name: 'cli-openapi',
 		command: 'npm run cli:openapi:check',
