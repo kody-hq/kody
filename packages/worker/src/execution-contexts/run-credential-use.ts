@@ -149,6 +149,21 @@ function readsCredentialedMember(parsed: AstNode, runtimeNames: Set<string>) {
 		const root = rootIdentifier(node)
 		return root != null && names.has(root)
 	}
+	// Aliases first, to a fixed point: the walk is source ordered, and a read
+	// can come before the alias it goes through (a function above `const k = rt`).
+	let grew = true
+	while (grew) {
+		grew = false
+		walkAst(parsed, (node) => {
+			if (node.type !== 'VariableDeclarator') return
+			if (node.id?.type !== 'Identifier' || !fromRuntime(node.init)) return
+			const alias = getNodeName(node.id)
+			if (alias && !names.has(alias)) {
+				names.add(alias)
+				grew = true
+			}
+		})
+	}
 	let found = false
 	walkAst(parsed, (node) => {
 		if (found) return
@@ -162,11 +177,6 @@ function readsCredentialedMember(parsed: AstNode, runtimeNames: Set<string>) {
 			return
 		}
 		if (node.type !== 'VariableDeclarator' || !fromRuntime(node.init)) return
-		if (node.id?.type === 'Identifier') {
-			const alias = getNodeName(node.id)
-			if (alias) names.add(alias)
-			return
-		}
 		if (node.id?.type !== 'ObjectPattern') return
 		for (const property of node.id.properties ?? []) {
 			const key =

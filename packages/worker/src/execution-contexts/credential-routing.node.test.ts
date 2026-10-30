@@ -511,3 +511,29 @@ test('credentialed reads through a kody:runtime namespace import count, unrelate
 		),
 	).toBe(false)
 })
+
+test('kody:runtime aliases declared after the read that uses them still count', () => {
+	const uses = (source: string) =>
+		packageFilesUseCredentials({ 'run.ts': source })
+	const ns = "import * as rt from 'kody:runtime'\n"
+	expect(
+		uses(
+			`${ns}function run() { return k.gatewayFetch('https://x.test') }\nconst k = rt.kody\nexport default () => run()\n`,
+		),
+	).toBe(true)
+	expect(
+		uses(
+			`${ns}function run() { const { authenticatedFetch } = k; return authenticatedFetch('https://x.test') }\nconst k = rt.kody\nexport default () => run()\n`,
+		),
+	).toBe(true)
+	expect(
+		uses(
+			`${ns}function run() { return b.kody.gatewayFetch('https://x.test') }\nconst b = a\nconst a = rt\nexport default () => run()\n`,
+		),
+	).toBe(true)
+	expect(
+		uses(
+			`${ns}function run() { return k.metaGetCurrentUser({}) }\nconst k = rt.kody\nexport default () => run()\n`,
+		),
+	).toBe(false)
+})
