@@ -1,7 +1,10 @@
 import { expect, test } from 'vitest'
 import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { runChainShapeError } from './chain-rules.ts'
-import { codeNeedsCredentials } from './run-credential-use.ts'
+import {
+	type RunCredentialUse,
+	codeNeedsCredentials,
+} from './run-credential-use.ts'
 import {
 	credentialRefusal,
 	describeCloudFallback,
@@ -111,7 +114,8 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant,
 			requires: ['fs'],
-			credentials: { mode: 'none' },
+			operatorUserId: 'user_operator',
+			requesterUserId: 'user_operator',
 			credentialUse: none,
 			capabilities: {},
 		}),
@@ -120,7 +124,8 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant,
 			requires: ['fs'],
-			credentials: { mode: 'none' },
+			operatorUserId: 'user_operator',
+			requesterUserId: 'user_operator',
 			credentialUse: none,
 			capabilities: { features: ['fs'] },
 		}),
@@ -129,7 +134,8 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
-			credentials: { mode: 'none' },
+			operatorUserId: 'user_operator',
+			requesterUserId: 'user_operator',
 			credentialUse: none,
 			capabilities: { features: ['fs'] },
 		}),
@@ -142,7 +148,8 @@ test('a grant refuses runs it cannot serve', () => {
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
-			credentials: { mode: 'none' },
+			operatorUserId: 'user_operator',
+			requesterUserId: 'user_operator',
 			credentialUse: none,
 		}),
 	).toBe('no_fs')
@@ -151,7 +158,8 @@ test('a grant refuses runs it cannot serve', () => {
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['lan'],
-			credentials: { mode: 'none' },
+			operatorUserId: 'user_operator',
+			requesterUserId: 'user_operator',
 			credentialUse: none,
 		}),
 	).toBe('no_lan')
@@ -160,15 +168,17 @@ test('a grant refuses runs it cannot serve', () => {
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: [],
-			credentials: { mode: 'none' },
+			operatorUserId: 'user_operator',
+			requesterUserId: 'user_other',
 			credentialUse: { kind: 'ids', ids: ['cred_gh'] },
 		}),
-	).toBe('credentials_not_allowed')
+	).toBe('credentials_operator_only')
 	expect(
 		grantRefusal({
 			grant: ecpDefaultGrant,
 			requires: [],
-			credentials: { mode: 'none' },
+			operatorUserId: 'user_operator',
+			requesterUserId: 'user_operator',
 			credentialUse: none,
 			capabilities: {},
 		}),
@@ -218,33 +228,33 @@ test('execute code that needs a credential is detected before it runs', () => {
 	).toBe(false)
 })
 
-test('a grant that allows no credentials refuses a run that can use one', () => {
-	expect(credentialRefusal({ mode: 'none' }, unknown)).toBe(
-		'credentials_not_allowed',
+test("the operator's own runs use credentials as in cloud, and anyone else's credentialed run is refused", () => {
+	const own = {
+		operatorUserId: 'user_operator',
+		requesterUserId: 'user_operator',
+	}
+	const other = {
+		operatorUserId: 'user_operator',
+		requesterUserId: 'user_other',
+	}
+	const uses: Array<RunCredentialUse> = [
+		none,
+		unknown,
+		{ kind: 'ids', ids: ['cred_1'] },
+	]
+	for (const credentialUse of uses) {
+		expect(credentialRefusal({ ...own, credentialUse })).toBeNull()
+	}
+	expect(credentialRefusal({ ...other, credentialUse: none })).toBeNull()
+	expect(credentialRefusal({ ...other, credentialUse: unknown })).toBe(
+		'credentials_operator_only',
 	)
-	expect(credentialRefusal({ mode: 'none' }, none)).toBeNull()
-})
-
-test('an explicit list must cover every credential the run can use', () => {
-	const list = { mode: 'list' as const, ids: ['cred_1', 'cred_2'] }
-	expect(credentialRefusal(list, none)).toBeNull()
-	expect(credentialRefusal(list, { kind: 'ids', ids: ['cred_1'] })).toBeNull()
 	expect(
-		credentialRefusal(list, { kind: 'ids', ids: ['cred_1', 'cred_3'] }),
-	).toBe('credentials_not_in_grant')
-	// Which credentials an imported package uses is not statically known.
-	expect(credentialRefusal(list, unknown)).toBe('credentials_unverified')
-})
-
-test('a requester grant serves any credential use only while unshared', () => {
-	expect(credentialRefusal({ mode: 'requester' }, unknown)).toBeNull()
-	expect(
-		credentialRefusal({ mode: 'requester' }, { kind: 'ids', ids: ['c'] }),
-	).toBeNull()
-	expect(credentialRefusal({ mode: 'requester_shared' }, unknown)).toBe(
-		'credentials_need_unshared_context',
-	)
-	expect(credentialRefusal({ mode: 'requester_shared' }, none)).toBeNull()
+		credentialRefusal({
+			...other,
+			credentialUse: { kind: 'ids', ids: ['cred_1'] },
+		}),
+	).toBe('credentials_operator_only')
 })
 
 test('a run chain follows the default chain shape rules', () => {
@@ -385,13 +395,13 @@ test('describeRanOn names where a run happened with friendly names only', () => 
 						target: 'ec_box',
 						name: 'build-box',
 						outcome: 'skipped',
-						reason: 'credentials_not_allowed',
+						reason: 'credentials_operator_only',
 					},
 				],
 			}),
 		),
 	).toBe(
-		'Ran on Kody cloud after build-box was skipped (credentials not allowed).',
+		'Ran on Kody cloud after build-box was skipped (credentials operator only).',
 	)
 	expect(
 		describeRanOn(

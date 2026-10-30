@@ -63,7 +63,7 @@ test('runGet adds ranOn to execute runs in the execute response shape', () => {
 				target: 'ec_box',
 				name: 'build-box',
 				outcome: 'skipped',
-				reason: 'credentials_not_allowed',
+				reason: 'credentials_operator_only',
 			},
 		],
 		fellBackToCloud: true,

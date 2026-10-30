@@ -63,7 +63,6 @@ export type ExecutionContextGrantSummary = {
 	fs: number
 	fsMode?: 'read' | 'write'
 	egress: { mode: ExecutionContextEgressMode; hosts?: number }
-	credentials: 'none' | 'requester' | { count: number }
 	runtime: 'all' | 'none' | { mode: 'allowlist'; count: number }
 	timeoutMs: number
 }
@@ -478,14 +477,6 @@ export function runtimeLabel(runtime: ExecutionContextGrantSummary['runtime']) {
 	return runtime.count === 0 ? 'none' : `${runtime.count} allowed`
 }
 
-function credentialsLabel(
-	credentials: ExecutionContextGrantSummary['credentials'],
-) {
-	if (credentials === 'none') return 'none'
-	if (credentials === 'requester') return 'yours, via Kody cloud'
-	return String(credentials.count)
-}
-
 function timeoutLabel(timeoutMs: number) {
 	return `${Math.round(timeoutMs / 1000)} s`
 }
@@ -496,16 +487,9 @@ export function grantSummaryCell(grant: ExecutionContextGrantSummary) {
 		grant.egress.mode === 'none'
 			? 'no egress'
 			: `${egressLabel(grant.egress.mode)} egress`
-	const credentials =
-		grant.credentials === 'none'
-			? 'no credentials'
-			: grant.credentials === 'requester'
-				? 'your credentials via Kody cloud'
-				: pluralize(grant.credentials.count, 'credential')
 	return [
 		pluralize(grant.fs, 'path'),
 		egress,
-		credentials,
 		`Kody APIs: ${runtimeLabel(grant.runtime)}`,
 		timeoutLabel(grant.timeoutMs),
 	].join(' · ')
@@ -516,7 +500,6 @@ export function grantSummaryDetail(grant: ExecutionContextGrantSummary) {
 	return [
 		`Filesystem: ${pluralize(grant.fs, 'path')}`,
 		`Egress: ${egressLabel(grant.egress.mode)}`,
-		`Credentials: ${credentialsLabel(grant.credentials)}`,
 		`Kody APIs: ${runtimeLabel(grant.runtime)}`,
 		`Timeout: ${timeoutLabel(grant.timeoutMs)}`,
 	].join(' · ')

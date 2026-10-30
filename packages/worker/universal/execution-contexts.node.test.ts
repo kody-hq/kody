@@ -41,7 +41,6 @@ function context(
 		grantSummary: {
 			fs: 0,
 			egress: { mode: 'public' },
-			credentials: 'none',
 			runtime: 'all',
 			timeoutMs: 90_000,
 		},
@@ -193,13 +192,10 @@ test('labels', () => {
 		grantSummaryCell({
 			fs: 2,
 			egress: { mode: 'public-and-lan' },
-			credentials: { count: 1 },
 			runtime: { mode: 'allowlist', count: 3 },
 			timeoutMs: 120_000,
 		}),
-	).toBe(
-		'2 paths · public and LAN egress · 1 credential · Kody APIs: 3 allowed · 120 s',
-	)
+	).toBe('2 paths · public and LAN egress · Kody APIs: 3 allowed · 120 s')
 	expect(
 		sharingSummary(
 			{
