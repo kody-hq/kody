@@ -92,12 +92,13 @@ allows 500. When that cap is hit, every preview deploy fails (Cloudflare code
   `kody-branch-<slug>` belongs to the PRs of the branch it was last deployed
   from, read from the `Preview deploy (branch: <name>)` run name or, for older
   runs, from the `preview.yml` dispatch runs at the Worker's `APP_COMMIT_SHA`.
-  Previews it cannot tie to a PR (deployed from `main`, a branch with no PR, an
-  ambiguous source, an unknown PR, or a branch redeployed after its PRs closed)
-  are kept and listed in the job summary with the reason. Each delete re-reads
-  the PR state first, and branch deletes wait while a branch deploy is running.
-  Manual dispatch defaults to `dry_run`, and pull requests that change the job
-  run it as a dry run only.
+  Previews tied to no PR at all (deployed from `main`, a branch with no PR, or a
+  PR number GitHub does not know) are deleted too. Previews with an open PR, or
+  whose owner cannot be determined (an ambiguous deploy branch, too many PRs, no
+  `APP_COMMIT_SHA`), are kept and listed in the job summary with the reason.
+  Each delete re-reads the PR state first, and branch deletes wait while a
+  branch deploy is running. Manual dispatch defaults to `dry_run`, and pull
+  requests that change the job run it as a dry run only.
 
 Cleanup is bounded, retry-safe, and idempotent. Transient Cloudflare 429 and 5xx
 responses (including wrangler 504 Gateway Timeout) retry with backoff inside the
