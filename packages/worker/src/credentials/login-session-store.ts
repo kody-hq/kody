@@ -285,7 +285,12 @@ export async function obtainLoginSession(
 			const storedAfterClaim = await readStoredLoginSession(input)
 			if (storedAfterClaim) {
 				await releaseLease(input.env.APP_DB, input.credentialId, leaseId)
-				return { session: storedAfterClaim, source: 'stored' }
+				return {
+					session: storedAfterClaim,
+					source: 'stored',
+					sessionId: storedAfterClaim.sessionId,
+					valueReplaced: false,
+				}
 			}
 			let session: LoginSession
 			try {
