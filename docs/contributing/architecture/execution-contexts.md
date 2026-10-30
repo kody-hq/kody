@@ -79,6 +79,11 @@ sequenceDiagram
   entry. `whenOffline: "queue"` waits for reconnect for `queueMinutes` (default
   60, max 1440), re-checks access and the grant on reconnect, and fails with
   `execution_context_queue_expired` when the time runs out.
+- A committed run that the daemon stops answering for ends `lost` 30s after its
+  deadline. A reconnecting daemon lists the committed runs it still holds
+  (`heldRuns`) and finished results (`pendingResults`) in `hello`; Kody ends the
+  rest as `lost` at once. A started run is never re-run. Daemons that omit
+  `heldRuns` keep the deadline timer.
 - Context runs are recorded in run records with `metadata.executionContext`
   (`runList` filter `execution_context_id`) and do not count toward hosted
   execute quota.
