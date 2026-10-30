@@ -137,14 +137,15 @@ export async function downloadVerifiedGzip(input: {
 		clearTimeout(idle)
 		idle = setTimeout(() => abort.abort(stalled()), idleTimeoutMs)
 	}
+	const stopIdle = () => clearTimeout(idle)
 	touch()
 	try {
-		await fetchAndWrite({ ...input, signal: abort.signal, touch })
+		await fetchAndWrite({ ...input, signal: abort.signal, touch, stopIdle })
 	} catch (error) {
 		if (abort.signal.aborted) throw abort.signal.reason
 		throw error
 	} finally {
-		clearTimeout(idle)
+		stopIdle()
 	}
 }
 
@@ -155,6 +156,7 @@ async function fetchAndWrite(input: {
 	fetchFn: typeof fetch
 	signal: AbortSignal
 	touch: () => void
+	stopIdle: () => void
 }): Promise<void> {
 	let response: Response
 	try {
@@ -188,6 +190,7 @@ async function fetchAndWrite(input: {
 			createWriteStream(gzipPath),
 			{ signal: input.signal },
 		)
+		input.stopIdle()
 		const digest = hash.digest('hex')
 		if (digest !== input.sha256) {
 			throw new Error(

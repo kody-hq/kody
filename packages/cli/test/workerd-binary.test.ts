@@ -125,6 +125,41 @@ function serveStallingThen(head: Buffer, body: Buffer | null) {
 	return { fetchFn, calls: () => calls }
 }
 
+/** Streams `body` in `parts` chunks, `gapMs` apart. */
+function serveProgressing(body: Buffer, gapMs: number, parts: number) {
+	const size = Math.ceil(body.length / parts)
+	const fetchFn = (async () =>
+		new Response(
+			new ReadableStream<Uint8Array>({
+				async start(controller) {
+					for (let offset = 0; offset < body.length; offset += size) {
+						await new Promise((resolve) => setTimeout(resolve, gapMs))
+						controller.enqueue(
+							new Uint8Array(body.subarray(offset, offset + size)),
+						)
+					}
+					controller.close()
+				},
+			}),
+		)) as typeof fetch
+	return { fetchFn }
+}
+
+test('downloadVerifiedGzip keeps going past the idle timeout while bytes keep arriving', async () => {
+	const binary = Buffer.from('#!/bin/sh\necho slow but steady\n')
+	const gz = gzipSync(binary)
+	const destination = join(mkdtempSync(join(tmpdir(), 'kody-wd-')), 'workerd')
+	const { fetchFn } = serveProgressing(gz, 30, 6)
+	await downloadVerifiedGzip({
+		url: 'https://example.com/workerd.gz',
+		sha256: createHash('sha256').update(gz).digest('hex'),
+		destination,
+		fetchFn,
+		idleTimeoutMs: 80,
+	})
+	assert.equal(readFileSync(destination, 'utf8'), binary.toString())
+})
+
 test('downloadVerifiedGzip aborts with a stall error when bytes stop arriving', async () => {
 	const destination = join(mkdtempSync(join(tmpdir(), 'kody-wd-')), 'workerd')
 	const server = serveStallingThen(Buffer.from('partial'), null)
