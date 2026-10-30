@@ -28,7 +28,8 @@ export function WorkspaceCharts({
 	billing,
 	base,
 }: {
-	charts: WorkspaceRunCharts
+	/** Null when the viewer can't read run history; only billing renders. */
+	charts: WorkspaceRunCharts | null
 	billing: WorkspaceBilling | null
 	base: string
 }) {
@@ -40,81 +41,85 @@ export function WorkspaceCharts({
 		{
 			label: 'Success',
 			color: chartColor.emerald,
-			values: charts.days.map((day) => day.success),
+			values: (charts?.days ?? []).map((day) => day.success),
 		},
 		{
 			label: 'Error',
 			color: chartColor.rose,
-			values: charts.days.map((day) => day.error),
+			values: (charts?.days ?? []).map((day) => day.error),
 		},
 		{
 			label: 'Running',
 			color: chartColor.blue,
-			values: charts.days.map((day) => day.running),
+			values: (charts?.days ?? []).map((day) => day.running),
 		},
 	]
-	const partialSince = workspaceChartsPartialSince(charts)
+	const partialSince = charts ? workspaceChartsPartialSince(charts) : null
 	const partialNote = partialSince
 		? `Showing runs since ${formatWorkspaceChartUtcDay(partialSince)}.`
 		: null
 	return (
 		<div css={gridCss}>
-			<section css={panelCss} aria-labelledby="execution-history">
-				<div css={headerCss}>
-					<h2 id="execution-history" css={headingCss}>
-						{renderIcon('chart')} Execution history
-					</h2>
-					<span css={mutedCss}>Last 7 days · UTC</span>
-				</div>
-				<div css={bodyCss}>
-					<ExecutionHistoryChart days={charts.days} />
-					<div css={legendCss}>
-						{series.map((entry) => (
-							<span key={entry.label}>
-								<i
-									aria-hidden="true"
-									css={{
-										display: 'inline-block',
-										width: 8,
-										height: 8,
-										borderRadius: 2,
-										background: entry.color,
-										marginRight: 6,
-									}}
+			{charts ? (
+				<>
+					<section css={panelCss} aria-labelledby="execution-history">
+						<div css={headerCss}>
+							<h2 id="execution-history" css={headingCss}>
+								{renderIcon('chart')} Execution history
+							</h2>
+							<span css={mutedCss}>Last 7 days · UTC</span>
+						</div>
+						<div css={bodyCss}>
+							<ExecutionHistoryChart days={charts.days} />
+							<div css={legendCss}>
+								{series.map((entry) => (
+									<span key={entry.label}>
+										<i
+											aria-hidden="true"
+											css={{
+												display: 'inline-block',
+												width: 8,
+												height: 8,
+												borderRadius: 2,
+												background: entry.color,
+												marginRight: 6,
+											}}
+										/>
+										{entry.label}
+									</span>
+								))}
+							</div>
+							{partialNote ? <p css={noteCss}>{partialNote}</p> : null}
+							<p css={noteCss}>Package exports and child runs excluded.</p>
+						</div>
+					</section>
+					<section css={panelCss} aria-labelledby="activity-source">
+						<div css={headerCss}>
+							<h2 id="activity-source" css={headingCss}>
+								{renderIcon('pie-chart')} Activity by source
+							</h2>
+							<span css={mutedCss}>Last 7 days</span>
+						</div>
+						<div css={bodyCss}>
+							{charts.sources.length ? (
+								<WorkspaceRankingChart
+									id="workspace-sources"
+									ariaLabel="Top-level execution counts by source"
+									rows={charts.sources.map((source) => ({
+										key: source.surface,
+										label: surfaceLabel(source.surface),
+										value: source.count,
+										href: `${base}/activity?view=recent&status=all&triage=all&surface=${encodeURIComponent(source.surface)}`,
+									}))}
 								/>
-								{entry.label}
-							</span>
-						))}
-					</div>
-					{partialNote ? <p css={noteCss}>{partialNote}</p> : null}
-					<p css={noteCss}>Package exports and child runs excluded.</p>
-				</div>
-			</section>
-			<section css={panelCss} aria-labelledby="activity-source">
-				<div css={headerCss}>
-					<h2 id="activity-source" css={headingCss}>
-						{renderIcon('pie-chart')} Activity by source
-					</h2>
-					<span css={mutedCss}>Last 7 days</span>
-				</div>
-				<div css={bodyCss}>
-					{charts.sources.length ? (
-						<WorkspaceRankingChart
-							id="workspace-sources"
-							ariaLabel="Top-level execution counts by source"
-							rows={charts.sources.map((source) => ({
-								key: source.surface,
-								label: surfaceLabel(source.surface),
-								value: source.count,
-								href: `${base}/activity?view=recent&status=all&triage=all&surface=${encodeURIComponent(source.surface)}`,
-							}))}
-						/>
-					) : (
-						<p css={emptyCss}>No top-level executions in this period.</p>
-					)}
-					{partialNote ? <p css={noteCss}>{partialNote}</p> : null}
-				</div>
-			</section>
+							) : (
+								<p css={emptyCss}>No top-level executions in this period.</p>
+							)}
+							{partialNote ? <p css={noteCss}>{partialNote}</p> : null}
+						</div>
+					</section>
+				</>
+			) : null}
 			{billing && spend ? (
 				<section
 					css={{ ...panelCss, gridColumn: '1 / -1' }}

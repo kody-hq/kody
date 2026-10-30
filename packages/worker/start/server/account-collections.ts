@@ -330,10 +330,12 @@ export const loadActivityPage = createServerFn({ method: 'GET' })
 		const [
 			{ loadScopedCollection },
 			{ loadAccountActivityData },
+			{ canReadOrgRunHistory },
 			{ loadDocumentHead },
 		] = await Promise.all([
 			import('./collection-context.ts'),
 			import('../../src/app/account-activity-data.ts'),
+			import('../../src/app/run-history-access.ts'),
 			import('./document-head.ts'),
 		])
 		const pathname = routes.orgActivity.href({ orgSlug: input.orgSlug })
@@ -342,6 +344,14 @@ export const loadActivityPage = createServerFn({ method: 'GET' })
 			section: 'activity',
 			returnTo: pathname,
 		})
+		if (
+			!(await canReadOrgRunHistory({ env: bindings, request: user.request }))
+		) {
+			return {
+				payload: null,
+				head: loadDocumentHead('orgActivity', pathname),
+			}
+		}
 		const data = await loadAccountActivityData({
 			env: bindings,
 			user,
