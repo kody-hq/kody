@@ -1,3 +1,4 @@
+import { isolatedCheckRunnerLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
@@ -99,6 +100,7 @@ vi.mock('./subscription-events.ts', () => ({
 
 const {
 	buildPackageCodemodRevertSnapshotKvKey,
+	operatorExcludedFinding,
 	runPackageCodemodStep,
 	unfinishedAttemptsError,
 } = await import('./engine.ts')
@@ -440,6 +442,73 @@ test('package codemod engine covers lifecycle, drift, isolation, snapshot keys, 
 		filters: { packageIds: ['pkg-ambient'] },
 	})
 	expect(gated.items[0]?.status).toBe('dry_run_new_failures')
+	expect(mocks.syncArtifactSourceSnapshot).not.toHaveBeenCalled()
+
+	// A check runner limit after the transform is inconclusive, not new.
+	mockChecksByIndex((index) =>
+		index.includes('packageStorage().get')
+			? checkResult(
+					false,
+					isolatedCheckRunnerLimitMessage('Bundle validation for "index.ts"'),
+				)
+			: checkResult(true),
+	)
+	const limited = await step(env, {
+		mode: 'dry-run',
+		filters: { packageIds: ['pkg-ambient'] },
+	})
+	expect(limited.items[0]).toMatchObject({
+		status: 'failed',
+		error: expect.stringContaining('could not be verified'),
+	})
+	expect(mocks.runRepoChecks).toHaveBeenCalledWith(
+		expect.objectContaining({ followCapabilityImports: false }),
+	)
+
+	// A real error joined beside a chunk's runner limit is still new.
+	mockChecksByIndex((index) =>
+		index.includes('packageStorage().get')
+			? checkResult(
+					false,
+					`${isolatedCheckRunnerLimitMessage('Bundle validation for "index.ts"')}\nnew failure only after transform`,
+				)
+			: checkResult(true),
+	)
+	const mixed = await step(env, {
+		mode: 'dry-run',
+		filters: { packageIds: ['pkg-ambient'] },
+	})
+	expect(mixed.items[0]?.status).toBe('dry_run_new_failures')
+
+	// Two chunks failing before, one of them hitting the limit after: not new.
+	mockChecksByIndex((index) =>
+		index.includes('packageStorage().get')
+			? checkResult(
+					false,
+					`chunk one error\n${isolatedCheckRunnerLimitMessage('Bundle validation for "index.ts"')}`,
+				)
+			: checkResult(false, 'chunk one error\nchunk two error'),
+	)
+	const chunked = await step(env, {
+		mode: 'dry-run',
+		filters: { packageIds: ['pkg-ambient'] },
+	})
+	expect(chunked.items[0]).toMatchObject({ status: 'failed' })
+
+	// An operator-excluded package is recorded, never processed.
+	mocks.runRepoChecks.mockClear()
+	const excluded = await step(env, {
+		mode: 'apply',
+		filters: {
+			packageIds: ['pkg-ambient'],
+			excludePackageIds: ['pkg-ambient'],
+		},
+	})
+	expect(excluded.items[0]).toMatchObject({
+		status: 'needs_manual',
+		findings: [operatorExcludedFinding],
+	})
+	expect(mocks.runRepoChecks).not.toHaveBeenCalled()
 	expect(mocks.syncArtifactSourceSnapshot).not.toHaveBeenCalled()
 
 	// A failure whose message changes only by line number is not new.

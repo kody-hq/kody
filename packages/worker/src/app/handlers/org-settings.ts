@@ -80,18 +80,19 @@ export async function loadOrgSettingsData(input: {
 	// Signup orgs keep identity and deletion on Account pages even when
 	// another owner somehow holds org:write on that org.
 	const teamOrg = !input.org.personal
-	const canManage =
-		teamOrg && (await orgHasPermission(input.env, input.user, 'org:write'))
+	const canWrite = await orgHasPermission(input.env, input.user, 'org:write')
+	const canManage = teamOrg && canWrite
 	return {
 		ok: true,
 		org: input.org,
 		canManage,
+		canManageDomains: canWrite,
 		canDelete:
 			teamOrg && (await orgHasPermission(input.env, input.user, 'org:delete')),
 		profileVisibility: teamOrg
 			? await loadOrgProfileVisibility(input.env.APP_DB, input.org.id)
 			: null,
-		customDomains: canManage
+		customDomains: canWrite
 			? await loadCustomDomainsView(input.env, input.org.id)
 			: null,
 	}
@@ -306,15 +307,6 @@ async function writeOrganizationDomain(
 	})
 	if (!access.ok) {
 		return operationResult({ ok: false, error: access.error }, access.status)
-	}
-	if (access.org.personal) {
-		return operationResult(
-			{
-				ok: false,
-				error: 'Custom domains are only available on team organizations.',
-			},
-			400,
-		)
 	}
 	try {
 		await write({

@@ -1,5 +1,6 @@
 import { type z } from 'zod'
 import { type ApiInvocationContext, type ApiPrincipal } from './context.ts'
+import { isCredentialedRuntimeCall } from '#worker/execution-contexts/credential-grant.ts'
 import { ApiError, invalidRequest } from './errors.ts'
 
 export type NativeApiOperationDefinition = {
@@ -84,12 +85,6 @@ export function assertContextRunRuntimePathAllowed(
 	})
 }
 
-const credentialedRuntimeNames = new Set([
-	'authenticatedFetch',
-	'gatewayFetch',
-	'oauthClientCredentials',
-])
-
 /**
  * Runtime paths with special handling on a context run: workflows never
  * start from a machine, and credentialed calls need a grant that allows
@@ -113,13 +108,23 @@ export function assertContextRunSpecialPathAllowed(
 	const credentialed =
 		root === 'kody' &&
 		typeof name === 'string' &&
-		(credentialedRuntimeNames.has(name) || name.startsWith('credentialClient'))
-	if (credentialed && ctx.principal.credentialIds.length === 0) {
+		isCredentialedRuntimeCall(name)
+	if (!credentialed) return
+	const { credentials } = ctx.principal
+	if (credentials.mode === 'none') {
 		throw new ApiError({
 			status: 403,
 			code: 'execution_context_credential_not_granted',
 			message: `This execution context's grant allows no credentials, so kody.${name} cannot run here. Its operator can allow credentials in the context's grant, or run this on Kody cloud.`,
 			details: { path: path.join('.') },
+		})
+	}
+	if (credentials.mode === 'requester_shared') {
+		throw new ApiError({
+			status: 403,
+			code: 'execution_context_credential_not_granted',
+			message: `This execution context's grant lets its operator's own credentials through only while it is not shared, and it is shared now, so kody.${name} cannot run here. Its operator can narrow the grant to an explicit credential list, or run this on Kody cloud.`,
+			details: { path: path.join('.'), reason: 'context_shared' },
 		})
 	}
 }

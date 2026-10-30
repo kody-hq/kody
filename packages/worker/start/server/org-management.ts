@@ -206,6 +206,11 @@ export const loadOrgOverview = createServerFn({ method: 'GET' })
 		])
 		const { loadSkillMetrics } = await import('#app/skill-metrics.ts')
 		const { createMcpCallerContext } = await import('#mcp/context.ts')
+		const { canReadOrgRunHistory } = await import('#app/run-history-access.ts')
+		const canReadRuns = await canReadOrgRunHistory({
+			env: input.env,
+			request: input.user.request,
+		})
 		const [skillMetrics, repositories, activity, jobs, charts, usage] =
 			await Promise.all([
 				loadSkillMetrics({
@@ -229,20 +234,24 @@ export const loadOrgOverview = createServerFn({ method: 'GET' })
 							{ query: '', limit: 5 },
 						)
 					: loadOrgRepositoriesData({ ...input, query: '', limit: 5 }),
-				loadAccountActivityData({
-					...input,
-					selectedRunId: null,
-					viewFilter: 'recent',
-					statusFilter: 'all',
-					surfaceFilter: 'all',
-					triageFilter: 'all',
-					cursor: null,
-				}),
+				canReadRuns
+					? loadAccountActivityData({
+							...input,
+							selectedRunId: null,
+							viewFilter: 'recent',
+							statusFilter: 'all',
+							surfaceFilter: 'all',
+							triageFilter: 'all',
+							cursor: null,
+						})
+					: null,
 				loadAccountJobsData({ ...input, selectedJobId: null }),
-				loadWorkspaceRunCharts({
-					env: input.env,
-					userId: input.user.request.org.id,
-				}),
+				canReadRuns
+					? loadWorkspaceRunCharts({
+							env: input.env,
+							userId: input.user.request.org.id,
+						})
+					: null,
 				loadOrgUsagePageResult({
 					...input,
 					orgSlug: slug,
@@ -256,11 +265,27 @@ export const loadOrgOverview = createServerFn({ method: 'GET' })
 		// Total runs and Running match the chart window/filters. Open errors
 		// stays Activity's untriaged count (live "is anything broken?") and is
 		// labeled separately in the UI so it does not contradict Error bars.
-		const chartTotals = overviewExecutionTotals(charts)
+		const runHistory =
+			activity && charts
+				? (() => {
+						const chartTotals = overviewExecutionTotals(charts)
+						return {
+							charts,
+							summary: {
+								...activity.summary,
+								since: charts.since,
+								total: chartTotals.total,
+								running: chartTotals.running,
+								errors: activity.summary.errors,
+							},
+							runs: activity.runs.slice(0, 6),
+						}
+					})()
+				: null
 		return {
 			slug,
 			skillMetrics,
-			charts,
+			runHistory,
 			billing:
 				usage.kind === 'data'
 					? {
@@ -270,14 +295,6 @@ export const loadOrgOverview = createServerFn({ method: 'GET' })
 						}
 					: null,
 			repositories: repositories.packages,
-			summary: {
-				...activity.summary,
-				since: charts.since,
-				total: chartTotals.total,
-				running: chartTotals.running,
-				errors: activity.summary.errors,
-			},
-			runs: activity.runs.slice(0, 6),
 			upcomingJobs: jobs.jobs
 				.filter((job) => job.enabled && !job.killSwitchEnabled && !job.expired)
 				.sort((a, b) => Date.parse(a.nextRunAt) - Date.parse(b.nextRunAt))

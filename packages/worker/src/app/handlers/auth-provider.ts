@@ -665,9 +665,11 @@ export function createAuthProviderCallbackHandler(env: Env) {
 			path: url.pathname,
 			reason: `provider=${provider}`,
 		})
-		return redirect('/signup/choose-username', [
-			pendingCookie,
-			clearStateCookie,
-		])
+		// The query copy only rebuilds a restart link if the cookie expires;
+		// completion always reads the signed cookie's redirectTo.
+		const chooseUsernamePath = redirectTo
+			? `/signup/choose-username?${new URLSearchParams({ redirectTo })}`
+			: '/signup/choose-username'
+		return redirect(chooseUsernamePath, [pendingCookie, clearStateCookie])
 	}
 }

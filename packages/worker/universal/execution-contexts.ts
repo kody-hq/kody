@@ -63,7 +63,7 @@ export type ExecutionContextGrantSummary = {
 	fs: number
 	fsMode?: 'read' | 'write'
 	egress: { mode: ExecutionContextEgressMode; hosts?: number }
-	credentials: 'none' | { count: number }
+	credentials: 'none' | 'requester' | { count: number }
 	runtime: 'all' | 'none' | { mode: 'allowlist'; count: number }
 	timeoutMs: number
 }
@@ -481,7 +481,9 @@ export function runtimeLabel(runtime: ExecutionContextGrantSummary['runtime']) {
 function credentialsLabel(
 	credentials: ExecutionContextGrantSummary['credentials'],
 ) {
-	return credentials === 'none' ? 'none' : String(credentials.count)
+	if (credentials === 'none') return 'none'
+	if (credentials === 'requester') return 'yours, via Kody cloud'
+	return String(credentials.count)
 }
 
 function timeoutLabel(timeoutMs: number) {
@@ -497,7 +499,9 @@ export function grantSummaryCell(grant: ExecutionContextGrantSummary) {
 	const credentials =
 		grant.credentials === 'none'
 			? 'no credentials'
-			: pluralize(grant.credentials.count, 'credential')
+			: grant.credentials === 'requester'
+				? 'your credentials via Kody cloud'
+				: pluralize(grant.credentials.count, 'credential')
 	return [
 		pluralize(grant.fs, 'path'),
 		egress,

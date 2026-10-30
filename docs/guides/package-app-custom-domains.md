@@ -42,9 +42,10 @@ or ALIAS records.
 ## Set it up
 
 1. **Add the hostname.** Call `packageAppCustomHostnameAdd` with `hostname`,
-   `binding_kind`, and (for app bindings) `package_id`. Org admins can also use
-   **Organization settings > Custom domains**. TXT certificate validation
-   (`ssl_method: "txt"`) lets the certificate issue before traffic moves.
+   `binding_kind`, and (for app bindings) `package_id`. Anyone with `org:write`
+   can also use **Settings > Custom domains** on a paid personal or team org.
+   TXT certificate validation (`ssl_method: "txt"`) lets the certificate issue
+   before traffic moves.
 2. **Publish the DNS records.** The result includes `setup.records`, the exact
    records to add. Each one has a `type`, a full `name`, a `relative_name` (the
    name without your domain, which most provider forms want), and a `value`.

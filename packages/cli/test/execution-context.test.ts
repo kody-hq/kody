@@ -696,6 +696,32 @@ test('hello tells Kody which runs this daemon still holds after a reconnect', as
 	assert.deepEqual(hello?.body.pendingResults, [])
 })
 
+test('a failed send ends the connection instead of leaving a sequence gap', async () => {
+	SilentSocket.instances = []
+	const { signed, serverKeys } = await serverFrames([welcome])
+	ServerSocket.frames = signed
+	class FailingSocket extends ServerSocket {
+		override send(data = '') {
+			if (data !== ecpPingFrame) throw new Error('socket write failed')
+			super.send(data)
+		}
+	}
+	const abort = new AbortController()
+	const { input } = await daemonInput({
+		serverKeys,
+		signal: abort.signal,
+		WebSocketImpl: FailingSocket as unknown as typeof WebSocket,
+	})
+	const timeout = setTimeout(() => abort.abort(), 5_000)
+	const closed = await runDaemonConnection(input)
+	clearTimeout(timeout)
+	assert.equal(closed.code, 4000)
+	assert.deepEqual(SilentSocket.instances[0]?.closed, {
+		code: 4000,
+		reason: 'send failed',
+	})
+})
+
 test('frames that arrive back to back are verified in order, not raced', async () => {
 	SilentSocket.instances = []
 	const { signed, serverKeys } = await serverFrames([
@@ -905,4 +931,120 @@ export default async function main(p) {
 		'from the daemon',
 	)
 	assert.equal(existsSync(join(outside, 'nope.txt')), false)
+})
+
+test('runs up to the grant-capped concurrency at once and report a timing breakdown', async () => {
+	SilentSocket.instances = []
+	const now = Date.now()
+	const runRequest = (runId: string) => ({
+		t: 'run.request',
+		body: {
+			runId,
+			deadline: now + 60_000,
+			acceptBy: now + 60_000,
+			requestedBy: { userId: 'u', handle: null, orgId: 'o', orgSlug: null },
+			source: { kind: 'code', code: 'export default () => 1', sha256: '' },
+			params: {},
+			credentialPicks: {},
+			limits: { timeoutMs: 60_000, maxResultBytes: 1_000_000, memoryMb: 128 },
+			grantVersion: 1,
+			apiUrl: 'https://api.kody.test',
+		},
+	})
+	const { signed, serverKeys } = await serverFrames([
+		{
+			t: 'welcome',
+			body: {
+				sid: 'sid_test',
+				grantVersion: 1,
+				grant: { limits: { maxConcurrent: 2 } },
+			},
+		},
+		runRequest('run_1'),
+		{ t: 'run.commit', body: { runId: 'run_1' } },
+		runRequest('run_2'),
+		{ t: 'run.commit', body: { runId: 'run_2' } },
+		runRequest('run_3'),
+	])
+	ServerSocket.frames = signed
+	const abort = new AbortController()
+	let inFlight = 0
+	let peak = 0
+	let releaseBoth = () => {}
+	const bothRunning = new Promise<void>((resolve) => {
+		releaseBoth = resolve
+	})
+	const { input } = await daemonInput({
+		serverKeys,
+		signal: abort.signal,
+		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
+		maxConcurrent: 4,
+		execute: async (_run: Parameters<ContextRunExecutor>[0]) => {
+			inFlight += 1
+			peak = Math.max(peak, inFlight)
+			if (inFlight === 2) releaseBoth()
+			await bothRunning
+			// Still holding both slots while run_3 arrives.
+			await new Promise((resolve) => setTimeout(resolve, 50))
+			inFlight -= 1
+			if (inFlight === 0) setTimeout(() => abort.abort(), 20)
+			return {
+				isError: false,
+				timing: {
+					setupMs: 12,
+					packageGraphMs: 0,
+					packageGraphCached: true,
+					executeMs: 3,
+				},
+			}
+		},
+	})
+	const timeout = setTimeout(() => abort.abort(), 5_000)
+	await runDaemonConnection(input)
+	clearTimeout(timeout)
+	const frames = (SilentSocket.instances[0] as unknown as ServerSocket).sent
+		.filter((data) => data !== ecpPingFrame)
+		.map((data) => {
+			const envelope = parseEnvelope(JSON.parse(data))
+			return decodeEnvelopePayload(envelope!.p) as EcpFramePayload
+		})
+	assert.equal(peak, 2)
+	assert.deepEqual(
+		frames.map((frame) => frame.seq),
+		frames.map((_frame, index) => index + 1),
+	)
+	assert.equal(
+		(
+			frames.find((frame) => frame.t === 'hello')?.body.capabilities as {
+				maxConcurrent?: unknown
+			}
+		).maxConcurrent,
+		2,
+	)
+	assert.deepEqual(frames.find((frame) => frame.t === 'hello')?.body.status, {
+		running: 0,
+		maxConcurrent: 2,
+		acceptingRuns: true,
+	})
+	assert.deepEqual(
+		frames
+			.filter((frame) => frame.t === 'run.reject')
+			.map((frame) => frame.body),
+		[{ runId: 'run_3', code: 'busy' }],
+	)
+	const results = frames.filter((frame) => frame.t === 'run.result')
+	assert.equal(results.length, 2)
+	for (const result of results) {
+		const timing = result.body.timing as Record<string, unknown>
+		assert.equal(timing.setupMs, 12)
+		assert.equal(timing.executeMs, 3)
+		assert.equal(timing.packageGraphCached, true)
+		assert.equal(typeof timing.queueMs, 'number')
+		assert.ok((timing.daemonMs as number) >= (timing.queueMs as number))
+		assert.equal(
+			(result.body.structuredContent as Record<string, unknown> | undefined)
+				?.timing,
+			undefined,
+		)
+	}
 })

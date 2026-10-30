@@ -15,7 +15,9 @@
   existing tokens unchanged); 2026-10-27 (minting is callable from the MCP `api`
   tool and Open API only; `execute` code, hosted or `--local`, is refused);
   2026-10-28 (the official CLI may use the OAuth device grant,
-  [0082](./0082-cli-oauth-device-authorization-grant.md))
+  [0082](./0082-cli-oauth-device-authorization-grant.md)); 2026-10-30
+  ([0091](./0091-auth-md-service-auth-registration.md): auth.md agent
+  registration mints default to `long`)
 - **Amends:** [0053](./0053-scoped-api-tokens-are-not-mcp-oauth-scopes.md),
   [0055](./0055-cli-mcp-oauth-local-execute-http.md)
 

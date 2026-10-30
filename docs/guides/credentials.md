@@ -279,8 +279,8 @@ a job, or another package calling it) the person running it is the executor, so
 
 To check whether the flag is on for an org, call `packageGet` on one of its
 packages: `credentials.suppliersEnabled` is `true` when it is. While it is
-`false`, `supplier` and `required` are ignored and needs resolve as they did
-before.
+`false`, `supplier` and `required` are ignored and needs resolve without a
+supplier.
 
 Executor needs default to required. Set `required: false` to make a need
 optional. Required needs cannot be skipped in consent, and the app does not

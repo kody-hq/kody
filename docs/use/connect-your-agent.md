@@ -20,9 +20,9 @@ block and MCP URL, and `/.well-known/mcp/server-card.json` for the server card.
 3. Follow that host's steps (plugin, vendor CLI, or the MCP URL). Preview and
    local origins use that deployment's MCP URL (`https://<this-host>/mcp`). On
    [kody.codes](https://kody.codes) the MCP URL is `https://kody.codes/mcp`.
-4. Complete the OAuth flow when the host opens it. Sign in to Kody if needed,
-   then approve access. Approving gives that agent full access to this Kody
-   account — not a limited permission set.
+4. Complete the OAuth flow when the host opens it. Sign in or create an account
+   if needed, then approve access. Approving gives that agent full access to
+   this Kody account — not a limited permission set.
 
 Once signed in, Account → Agents (`/@<slug>/-/agents`) is the durable home for
 this: it lists every agent that has authorized (with revoke and **View connect

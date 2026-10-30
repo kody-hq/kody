@@ -14,6 +14,12 @@ vi.mock('#worker/email/service.ts', () => ({
 	deleteEmailMessage: mocks.deleteEmailMessage,
 }))
 
+vi.mock('#worker/email/authorize-email-message.ts', () => ({
+	authorizeEmailMessageChange: async (input: { messageId: string }) => ({
+		id: input.messageId,
+	}),
+}))
+
 const { emailMessageDeleteCapability } =
 	await import('./email-message-delete.ts')
 

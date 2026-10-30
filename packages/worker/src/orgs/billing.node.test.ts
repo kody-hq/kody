@@ -46,6 +46,7 @@ async function insertOrg(
 		id: string
 		slug: string
 		plan?: string
+		stripePlan?: string | null
 		defaultUserBudgetMicroUsd?: number | null
 		automationBudgetMicroUsd?: number | null
 	},
@@ -53,14 +54,15 @@ async function insertOrg(
 	await db
 		.prepare(
 			`INSERT INTO orgs (
-				id, slug, plan, created_at, updated_at,
+				id, slug, plan, stripe_plan, created_at, updated_at,
 				default_user_budget_micro_usd, automation_budget_micro_usd
-			) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		)
 		.bind(
 			input.id,
 			input.slug,
 			input.plan ?? 'free',
+			input.stripePlan ?? null,
 			now,
 			now,
 			input.defaultUserBudgetMicroUsd ?? null,
@@ -183,7 +185,12 @@ test('assertCanAcceptFreeOrgOwnership enforces cap before new owner on free org'
 		}),
 	).rejects.toBeInstanceOf(FreeOrgLimitError)
 
-	await insertOrg(db, { id: 'paid-invite', slug: 'paid', plan: 'pro' })
+	await insertOrg(db, {
+		id: 'paid-invite',
+		slug: 'paid',
+		plan: 'free',
+		stripePlan: 'pro',
+	})
 	await assertCanAcceptFreeOrgOwnership({
 		db,
 		orgId: ownerIdFromStored('paid-invite'),
@@ -195,6 +202,56 @@ test('assertCanAcceptFreeOrgOwnership enforces cap before new owner on free org'
 		orgId: ownerIdFromStored('free-1'),
 		userId,
 	})
+})
+
+test('countLiveFreeOwnedOrgs excludes Stripe-paid organizations', async () => {
+	const db = await createDb()
+	const userId = testStableUserIdFromEmail('stripe-paid-count@example.com')
+
+	await insertOrg(db, { id: 'stripe-count-free', slug: 'stripe-count-free' })
+	await insertMembership(db, {
+		orgId: ownerIdFromStored('stripe-count-free'),
+		userId,
+		role: 'owner',
+	})
+	await insertOrg(db, {
+		id: 'stripe-count-paid',
+		slug: 'stripe-count-paid',
+		plan: 'free',
+		stripePlan: 'pro',
+	})
+	await insertMembership(db, {
+		orgId: ownerIdFromStored('stripe-count-paid'),
+		userId,
+		role: 'owner',
+	})
+
+	expect(await countLiveFreeOwnedOrgs(db, userId)).toBe(1)
+})
+
+test('another free organization is allowed when an owned org is Stripe-paid', async () => {
+	const db = await createDb()
+	const userId = testStableUserIdFromEmail('stripe-paid-cap@example.com')
+
+	await insertOrg(db, { id: 'stripe-cap-free', slug: 'stripe-cap-free' })
+	await insertMembership(db, {
+		orgId: ownerIdFromStored('stripe-cap-free'),
+		userId,
+		role: 'owner',
+	})
+	await insertOrg(db, {
+		id: 'stripe-cap-paid',
+		slug: 'stripe-cap-paid',
+		plan: 'free',
+		stripePlan: 'pro',
+	})
+	await insertMembership(db, {
+		orgId: ownerIdFromStored('stripe-cap-paid'),
+		userId,
+		role: 'owner',
+	})
+
+	await expect(assertCanOwnAnotherFreeOrg(db, userId)).resolves.toBeUndefined()
 })
 
 test('assertCanOwnAnotherFreeOrg enforces MAX_FREE_ORGS_PER_USER', async () => {

@@ -1,8 +1,9 @@
 import { expect, test } from 'vitest'
 import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { runChainShapeError } from './chain-rules.ts'
+import { codeNeedsCredentials } from './run-credential-use.ts'
 import {
-	codeNeedsCredentials,
+	credentialRefusal,
 	describeCloudFallback,
 	describeRanOn,
 	historyRanOn,
@@ -11,6 +12,7 @@ import {
 	markQueuedAttemptExpired,
 	markQueuedAttemptRan,
 	planTargets,
+	withRunTiming,
 } from './routing.ts'
 import { type ExecutionContextRow } from './store.ts'
 
@@ -97,6 +99,9 @@ test('context: cloud runs on cloud only', () => {
 	).toEqual([cloud])
 })
 
+const none = { kind: 'none' } as const
+const unknown = { kind: 'unknown' } as const
+
 test('requires fs needs both a server grant folder and an advertised local mount', () => {
 	const grant = {
 		...ecpDefaultGrant,
@@ -106,7 +111,8 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant,
 			requires: ['fs'],
-			credentials: null,
+			credentials: { mode: 'none' },
+			credentialUse: none,
 			capabilities: {},
 		}),
 	).toBe('no_local_fs')
@@ -114,7 +120,8 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant,
 			requires: ['fs'],
-			credentials: null,
+			credentials: { mode: 'none' },
+			credentialUse: none,
 			capabilities: { features: ['fs'] },
 		}),
 	).toBeNull()
@@ -122,7 +129,8 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
-			credentials: null,
+			credentials: { mode: 'none' },
+			credentialUse: none,
 			capabilities: { features: ['fs'] },
 		}),
 	).toBe('no_fs')
@@ -134,7 +142,8 @@ test('a grant refuses runs it cannot serve', () => {
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
-			credentials: null,
+			credentials: { mode: 'none' },
+			credentialUse: none,
 		}),
 	).toBe('no_fs')
 	expect(
@@ -142,7 +151,8 @@ test('a grant refuses runs it cannot serve', () => {
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['lan'],
-			credentials: null,
+			credentials: { mode: 'none' },
+			credentialUse: none,
 		}),
 	).toBe('no_lan')
 	expect(
@@ -150,15 +160,17 @@ test('a grant refuses runs it cannot serve', () => {
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: [],
-			credentials: new Map([['github', [{ name: 'gh', scope: null }]]]),
+			credentials: { mode: 'none' },
+			credentialUse: { kind: 'ids', ids: ['cred_gh'] },
 		}),
 	).toBe('credentials_not_allowed')
 	expect(
 		grantRefusal({
-			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: [],
-			credentials: null,
+			credentials: { mode: 'none' },
+			credentialUse: none,
+			capabilities: {},
 		}),
 	).toBeNull()
 })
@@ -206,39 +218,33 @@ test('execute code that needs a credential is detected before it runs', () => {
 	).toBe(false)
 })
 
-test('a grant that allows no credentials refuses code that needs one', () => {
-	const code =
-		"import { credentials } from 'kody:runtime'\nexport default () => credentials('example')"
+test('a grant that allows no credentials refuses a run that can use one', () => {
+	expect(credentialRefusal({ mode: 'none' }, unknown)).toBe(
+		'credentials_not_allowed',
+	)
+	expect(credentialRefusal({ mode: 'none' }, none)).toBeNull()
+})
+
+test('an explicit list must cover every credential the run can use', () => {
+	const list = { mode: 'list' as const, ids: ['cred_1', 'cred_2'] }
+	expect(credentialRefusal(list, none)).toBeNull()
+	expect(credentialRefusal(list, { kind: 'ids', ids: ['cred_1'] })).toBeNull()
 	expect(
-		grantRefusal({
-			capabilities: {},
-			grant: ecpDefaultGrant,
-			requires: [],
-			credentials: null,
-			code,
-		}),
-	).toBe('credentials_not_allowed')
+		credentialRefusal(list, { kind: 'ids', ids: ['cred_1', 'cred_3'] }),
+	).toBe('credentials_not_in_grant')
+	// Which credentials an imported package uses is not statically known.
+	expect(credentialRefusal(list, unknown)).toBe('credentials_unverified')
+})
+
+test('a requester grant serves any credential use only while unshared', () => {
+	expect(credentialRefusal({ mode: 'requester' }, unknown)).toBeNull()
 	expect(
-		grantRefusal({
-			capabilities: {},
-			grant: {
-				...ecpDefaultGrant,
-				credentials: { mode: 'list', ids: ['cred_1'] },
-			},
-			requires: [],
-			credentials: null,
-			code,
-		}),
+		credentialRefusal({ mode: 'requester' }, { kind: 'ids', ids: ['c'] }),
 	).toBeNull()
-	expect(
-		grantRefusal({
-			capabilities: {},
-			grant: ecpDefaultGrant,
-			requires: [],
-			credentials: null,
-			code: 'export default () => 1',
-		}),
-	).toBeNull()
+	expect(credentialRefusal({ mode: 'requester_shared' }, unknown)).toBe(
+		'credentials_need_unshared_context',
+	)
+	expect(credentialRefusal({ mode: 'requester_shared' }, none)).toBeNull()
 })
 
 test('a run chain follows the default chain shape rules', () => {
@@ -299,6 +305,24 @@ test('a queued run the context took records its queued attempt as ran', () => {
 			attempts: [{ target: 'ec_1', name: 'laptop', outcome: 'ran' }],
 		},
 	})
+})
+
+test('a finished context run keeps its timing on the run record', () => {
+	const timing = {
+		queueMs: 1,
+		setupMs: 20,
+		executeMs: 3,
+		daemonMs: 24,
+		serverMs: 40,
+		transitMs: 16,
+	}
+	const metadata = {
+		executionContext: { id: 'ec_1', name: 'laptop', attempts: [] },
+	}
+	expect(withRunTiming(metadata, timing)).toEqual({
+		executionContext: { ...metadata.executionContext, timing },
+	})
+	expect(withRunTiming({}, timing)).toEqual({})
 })
 
 test('a cloud fallback says which contexts passed on the run and why', () => {
@@ -447,4 +471,35 @@ test('a queued run that revocation ended unrun has no ranOn in history', () => {
 		attempts: [{ outcome: 'expired', reason: 'context_revoked' }],
 	})
 	expect(historyRanOn(metadata.executionContext)).toBeNull()
+})
+
+test('ranOn carries the timing a context reported, and cloud never does', () => {
+	const timing = {
+		queueMs: 1,
+		setupMs: 20,
+		packageGraphMs: 0,
+		packageGraphCached: true,
+		executeMs: 3,
+		daemonMs: 24,
+		serverMs: 40,
+		transitMs: 16,
+	}
+	expect(
+		ranOnFromMetadata({
+			id: 'ec_box',
+			name: 'build-box',
+			fellBackToCloud: false,
+			attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'ran' }],
+			timing,
+		}),
+	).toMatchObject({ kind: 'context', id: 'ec_box', timing })
+	expect(
+		ranOnFromMetadata({
+			id: 'ec_box',
+			name: 'build-box',
+			fellBackToCloud: true,
+			attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'busy' }],
+			timing,
+		}),
+	).not.toHaveProperty('timing')
 })

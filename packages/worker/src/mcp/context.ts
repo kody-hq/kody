@@ -88,6 +88,8 @@ export function createMcpCallerContext(
 		source: RequestSource
 		/** API-token scopes; null/omitted does not narrow the actor. */
 		scopes?: ReadonlyArray<OrgPermission> | null
+		/** Execution-context runs: credential ids the context's grant allows. */
+		contextCredentialIds?: ReadonlyArray<string> | null
 	},
 ): McpCallerContext {
 	const wire = createMcpCallerContextWire(input)
@@ -101,6 +103,7 @@ export function createMcpCallerContext(
 					oauthClientId: wire.oauthClientId ?? null,
 					orgBinding: wire.orgBinding ?? undefined,
 					scopes: input.scopes ?? null,
+					contextCredentialIds: input.contextCredentialIds ?? null,
 				})
 			: null,
 	}

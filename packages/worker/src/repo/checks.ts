@@ -86,7 +86,10 @@ import {
 	resolveSecretProviderSlots,
 	type ResolvedSecretProviderSlots,
 } from '#worker/credentials/secret-provider-slots.ts'
-import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
+import {
+	isRepoCheckResourceLimitMessage,
+	type RepoCheckStep,
+} from './isolated-runner-limit-message.ts'
 import { credentialNeedKeyNotes } from '#worker/credentials/credential-needs.ts'
 import { computeCredentialNeedsClosure } from '#worker/credentials/credential-needs-closure.ts'
 import { republishedNeedsNote } from '#worker/enablements/republish-needs-note.ts'
@@ -1582,6 +1585,12 @@ export async function runRepoChecks(input: {
 	 * name the step if the isolate hits its memory or CPU limit.
 	 */
 	onStep?: (step: RepoCheckStep) => Promise<void>
+	/**
+	 * When false, the warn-only capability check reads only this package's
+	 * modules. Platform codemods pass false: they compute the closure once
+	 * themselves, and its findings never fail a check.
+	 */
+	followCapabilityImports?: boolean
 }): Promise<RepoCheckRunResult> {
 	const manifestContent = await input.workspace.readFile(input.manifestPath)
 	if (manifestContent == null) {
@@ -1712,9 +1721,12 @@ export async function runRepoChecks(input: {
 	})
 	sourceFiles = credentialPatternCheck.sourceFiles
 	const enforceCredentialStamp = input.enforceCredentialStamp !== false
-	const credentialCheckOk = enforceCredentialStamp
-		? credentialPatternCheck.ok
-		: true
+	// A scan that hit the runner limit stays failed either way: it is
+	// incomplete, and codemod gates must see that.
+	const credentialCheckOk =
+		credentialPatternCheck.ok ||
+		(!enforceCredentialStamp &&
+			!isRepoCheckResourceLimitMessage(credentialPatternCheck.message))
 	const credentialCheckMessage =
 		!enforceCredentialStamp && !credentialPatternCheck.ok
 			? credentialPatternCheck.message
@@ -1757,7 +1769,10 @@ export async function runRepoChecks(input: {
 	const capabilityDeclarationCheck = await buildCapabilityDeclarationCheck({
 		manifest,
 		sourceFiles,
-		...(input.env && input.baseUrl && input.userId
+		...(input.followCapabilityImports !== false &&
+		input.env &&
+		input.baseUrl &&
+		input.userId
 			? {
 					loadPackage: createSavedPackageClosureLoader({
 						env: input.env,

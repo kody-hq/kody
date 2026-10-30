@@ -54,6 +54,7 @@ async function setup() {
 		packageId: string,
 		status: string,
 		ownerDetailJson: string | null,
+		createdAt?: string,
 	) =>
 		insertPackageCodemodRunItem(db, {
 			id,
@@ -63,6 +64,7 @@ async function setup() {
 			kodyId: `kody-${packageId}`,
 			status,
 			ownerDetailJson,
+			createdAt,
 		})
 	await item(
 		'item-1',
@@ -86,11 +88,11 @@ async function setup() {
 		detail([], { computedCalls: 2 }),
 	)
 	await item('item-4', 'user-c', 'pkg-example-helper', 'no-match', null)
-	return db
+	return { db, item }
 }
 
 test('the migration report counts apps, owners, capabilities, and unresolved apps', async () => {
-	const db = await setup()
+	const { db } = await setup()
 	expect(
 		await buildPackageAppCapabilityMigrationReport({ db, runId: 'run-1' }),
 	).toEqual({
@@ -119,7 +121,7 @@ test('the migration report counts apps, owners, capabilities, and unresolved app
 })
 
 test('the migration report returns one app list only when asked, and only for 0018 runs', async () => {
-	const db = await setup()
+	const { db } = await setup()
 	const report = await buildPackageAppCapabilityMigrationReport({
 		db,
 		runId: 'run-1',
@@ -155,4 +157,66 @@ test('the migration report returns one app list only when asked, and only for 00
 	expect(
 		await buildPackageAppCapabilityMigrationReport({ db, runId: 'missing' }),
 	).toBeNull()
+})
+
+test('the migration report counts each package once, using its latest row', async () => {
+	const { db, item } = await setup()
+	await item(
+		'item-1-repeat',
+		'user-a',
+		'pkg-example-app',
+		'dry-run-ok',
+		detail(['secretList', 'jobList']),
+		'2999-01-01T00:00:00.000Z',
+	)
+	await item(
+		'item-3-repeat',
+		'user-b',
+		'pkg-example-app-3',
+		'dry-run-ok',
+		detail(['emailSend']),
+		'2999-01-01T00:00:00.000Z',
+	)
+	const report = await buildPackageAppCapabilityMigrationReport({
+		db,
+		runId: 'run-1',
+	})
+	expect(report?.items).toEqual({
+		total: 4,
+		byStatus: { 'dry-run-ok': 3, 'no-match': 1 },
+	})
+	expect(report?.appsAffected).toBe(3)
+	expect(report?.ownersAffected).toBe(2)
+	expect(report?.capabilitiesAdded).toEqual({
+		total: 4,
+		byCapability: { emailSend: 1, jobList: 1, secretList: 2 },
+	})
+	expect(report?.unresolvedApps).toEqual({ count: 0, apps: [] })
+})
+
+test('an apply retry that comes back clean keeps the applied row', async () => {
+	const { db, item } = await setup()
+	await item(
+		'item-1-applied',
+		'user-a',
+		'pkg-example-app',
+		'applied',
+		detail(['secretList', 'jobList']),
+		'2998-01-01T00:00:00.000Z',
+	)
+	await item(
+		'item-1-retry',
+		'user-a',
+		'pkg-example-app',
+		'clean',
+		null,
+		'2999-01-01T00:00:00.000Z',
+	)
+	const report = await buildPackageAppCapabilityMigrationReport({
+		db,
+		runId: 'run-1',
+	})
+	expect(report?.items.byStatus.applied).toBe(1)
+	expect(report?.items.byStatus.clean).toBeUndefined()
+	expect(report?.capabilitiesAdded.byCapability.secretList).toBe(2)
 })

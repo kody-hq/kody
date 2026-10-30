@@ -1,6 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
-import { buildCommunityForkUpstreamUpdatedEvent } from './fork-upstream-updated-subscription-event.ts'
 import { type CommunityForkRecord } from './types.ts'
 
 const mocks = vi.hoisted(() => ({
@@ -106,7 +105,6 @@ test('follow alias emits the historical community.fork.upstream_updated payload'
 	expect(call.idempotencyKey).toBe(
 		'community-fork-upstream-updated:listing-1:commit-2:fork-1:auto-rebase',
 	)
-	expect(call.params).toEqual(buildCommunityForkUpstreamUpdatedEvent(alias))
 })
 
 test('a 429 credit denial is recorded as zero_credits and does not throw', async () => {

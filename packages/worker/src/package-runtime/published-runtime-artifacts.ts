@@ -17,6 +17,8 @@ const credentialNeedsVersion = 1
 const credentialNeedsPrefix = 'credential-needs'
 const credentialStampVersion = 1
 const credentialStampPrefix = 'credential-stamp'
+const credentialUseVersion = 1
+const credentialUsePrefix = 'credential-use'
 /**
  * Authoring publish check / stamp-scanner semantics version. Bump when a
  * same-commit republish must re-run checks (for example a stamp false-positive
@@ -324,6 +326,41 @@ export async function readPublishedCredentialStamp(input: {
 	)
 }
 
+/**
+ * Whether a package's own published modules can use a credential, plus the
+ * packages they import (execution-context routing). Cached per source
+ * and commit; a snapshot write for that commit clears it.
+ */
+export function buildPublishedCredentialUseKvKey(input: {
+	sourceId: string
+	publishedCommit: string
+}) {
+	return `${credentialUsePrefix}:v${credentialUseVersion}:${input.sourceId}:${input.publishedCommit}`
+}
+
+export async function writePublishedCredentialUse(input: {
+	env: Env
+	sourceId: string
+	publishedCommit: string
+	use: unknown
+}) {
+	await getBundleArtifactsKv(input.env).put(
+		buildPublishedCredentialUseKvKey(input),
+		JSON.stringify(input.use),
+	)
+}
+
+export async function readPublishedCredentialUse(input: {
+	env: Env
+	sourceId: string
+	publishedCommit: string
+}): Promise<unknown> {
+	return await getBundleArtifactsKv(input.env).get(
+		buildPublishedCredentialUseKvKey(input),
+		'json',
+	)
+}
+
 export function buildPublishedPublishChecksKvKey(input: {
 	sourceId: string
 	publishedCommit: string
@@ -500,6 +537,14 @@ export async function writePublishedSourceSnapshot(input: {
 			JSON.stringify(manifestSnapshot),
 		),
 	])
+	// A same-commit repair can change the files, so drop the derived
+	// credential-use answer. Isolates that memoized it keep it until evicted.
+	await getBundleArtifactsKv(input.env).delete(
+		buildPublishedCredentialUseKvKey({
+			sourceId: input.source.id,
+			publishedCommit: input.source.published_commit,
+		}),
+	)
 	return key
 }
 

@@ -6,6 +6,7 @@ import {
 } from '#mcp/capabilities/access-control.ts'
 import { type ApiTokenRecord } from '#worker/api-tokens/service.ts'
 import { type CapabilityOpenApiPrincipal } from '#mcp/capabilities/types.ts'
+import { type ContextRunCredentials } from '#worker/execution-contexts/credential-grant.ts'
 
 /**
  * Who is calling the Open API.
@@ -41,8 +42,8 @@ export type ApiPrincipal =
 			/** The requester's credential scopes; null does not narrow. */
 			scopes: Array<string> | null
 			runtime: EcpGrant['runtime']
-			/** Credential ids the context's grant allows; empty means none. */
-			credentialIds: Array<string>
+			/** What the context's grant lets this run do with credentials now. */
+			credentials: ContextRunCredentials
 	  }
 
 export function toCapabilityOpenApiPrincipal(

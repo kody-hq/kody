@@ -106,6 +106,9 @@ const mockModule = vi.hoisted(() => ({
 	claimRunRecord: vi.fn<typeof RunRecordsServiceModule.claimRunRecord>(
 		async () => null,
 	),
+	updateRunningRunRecordMetadata: vi.fn<
+		typeof RunRecordsServiceModule.updateRunningRunRecordMetadata
+	>(async () => true),
 	finishRunRecord: vi.fn(
 		async (
 			..._args: Parameters<typeof RunRecordsServiceModule.finishRunRecord>
@@ -208,6 +211,11 @@ vi.mock('#worker/run-records/service.ts', async () => {
 		claimRunRecord: (
 			...args: Parameters<typeof RunRecordsServiceModule.claimRunRecord>
 		) => mockModule.claimRunRecord(...args),
+		updateRunningRunRecordMetadata: (
+			...args: Parameters<
+				typeof RunRecordsServiceModule.updateRunningRunRecordMetadata
+			>
+		) => mockModule.updateRunningRunRecordMetadata(...args),
 		finishRunRecord: (
 			...args: Parameters<typeof RunRecordsServiceModule.finishRunRecord>
 		) => mockModule.finishRunRecord(...args),
@@ -965,6 +973,65 @@ test('execute tool shows a cloud fallback in the response when no context took t
 		type: 'text',
 		text: 'Ran on Kody cloud after build-box declined it (grant mismatch).',
 	})
+})
+
+test('execute tool persists a cloud fallback onto the running keyed row', async () => {
+	const fallback = {
+		id: 'ec_box',
+		name: 'build-box',
+		fellBackToCloud: true,
+		attempts: [
+			{
+				target: 'ec_box',
+				name: 'build-box',
+				outcome: 'rejected',
+				reason: 'busy',
+			},
+		],
+	}
+	routingMock.outcome = { kind: 'cloud', metadata: fallback }
+	onTestFinished(() => {
+		routingMock.outcome = null
+	})
+	const claimedHandle = {
+		id: 'run-claimed-fallback',
+		userId: ownerIdFromStored('user-claim-fallback'),
+		startedAt: '2026-07-28T00:00:00.000Z',
+		persistence: 'eager' as const,
+		context: {
+			surface: 'execute' as const,
+			idempotencyKey: 'claim-fallback-key',
+			metadata: { conversationId: 'conv-claim-fallback' },
+		},
+	}
+	const handler = await getExecuteHandler({
+		baseUrl: 'https://example.com',
+		user: {
+			userId: ownerIdFromStored('user-claim-fallback'),
+			email: 'claim-fallback@example.com',
+			displayName: 'Claim Fallback',
+		},
+	})
+	mockModule.claimRunRecord.mockResolvedValueOnce({
+		claimed: true,
+		handle: claimedHandle,
+	} as never)
+	moduleReturns({ ok: true }, { runId: 'run-claimed-fallback' })
+	await handler({
+		code: 'export default async () => ({ ok: true })',
+		idempotencyKey: 'claim-fallback-key',
+		conversationId: 'conv-claim-fallback',
+	})
+	expect(mockModule.updateRunningRunRecordMetadata).toHaveBeenCalledWith(
+		expect.objectContaining({
+			handle: expect.objectContaining({
+				id: 'run-claimed-fallback',
+				context: expect.objectContaining({
+					metadata: expect.objectContaining({ executionContext: fallback }),
+				}),
+			}),
+		}),
+	)
 })
 
 test('execute tool says Kody cloud ran a plain run', async () => {

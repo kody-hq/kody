@@ -766,6 +766,17 @@ export function OAuthAuthorizeRoute({
 					<Honeypot />
 					{!isLoggedIn && isSessionReady ? (
 						<>
+							{!sessionEmail ? (
+								<p css={descriptionCss} data-testid="oauth-authorize-signup">
+									New to Kody?{' '}
+									<SiteLink
+										href={buildAuthLink('/signup', readOAuthResumeTarget())}
+									>
+										Create an account
+									</SiteLink>
+									, then you'll come right back here to finish connecting.
+								</p>
+							) : null}
 							<label css={fieldCss}>
 								<span css={fieldLabelCss}>Email</span>
 								<input
