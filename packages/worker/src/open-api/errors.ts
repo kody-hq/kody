@@ -28,6 +28,7 @@ import {
 	isRetryableD1LockMessage,
 	transientDatabaseUnavailableMessage,
 } from '#worker/d1-retry.ts'
+import { isPublishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import {
 	ArtifactsGitUnavailableError,
 	artifactsGitTemporarilyUnavailableMessage,
@@ -39,6 +40,55 @@ export { artifactsGitTemporarilyUnavailableMessage }
 export { transientDatabaseUnavailableMessage }
 
 const transientDatabaseRetryAfterSeconds = '5'
+
+/**
+ * A bare Durable Object CPU or memory reset (not a D1 / DO SQLite error) is
+ * a compute limit, not a storage outage (KODY-CY).
+ */
+export const computeLimitExceededMessage =
+	'This request exceeded a Kody compute limit (CPU time or memory) and was ' +
+	'stopped before it finished. This is not a storage outage. Retry once; ' +
+	'if it fails the same way, the request is too large to finish in one run, ' +
+	'so split it into smaller pieces. For a package publish, run ' +
+	'`kody dev check` to see which step is over the limit.'
+
+/** A bare deploy-time Durable Object reset: the server restarted. */
+export const serverRestartedMessage =
+	'The Kody server handling this request restarted (usually during a ' +
+	'deploy) before it finished. Retry in a few seconds.'
+
+const storageResetPrefixPattern = /D1_ERROR|SQL query failed|SQLITE_/i
+
+// Literal platform sentences (see `sentry-options.ts`); importing that module
+// here would create an import cycle through the executor.
+const durableObjectComputeLimitResetMessages = new Set([
+	"Durable Object's isolate exceeded its memory limit and was reset.",
+	'Durable Object exceeded its CPU time limit and was reset.',
+])
+const durableObjectCodeUpdatedResetMessage =
+	'Durable Object reset because its code was updated.'
+
+function normalizePlatformResetMessage(message: string) {
+	const trimmed = message.trim().replace(/^Error:\s*/i, '')
+	return trimmed.endsWith('.') ? trimmed : `${trimmed}.`
+}
+
+function classifyBareDurableObjectReset(
+	error: unknown,
+): 'compute_limit' | 'restart' | null {
+	for (const entry of getErrorCauseChain(error)) {
+		if (entry instanceof McpCallerError) continue
+		const message = getErrorMessage(entry)
+		// D1 and DO SQLite surface the same sentences; those stay storage.
+		if (storageResetPrefixPattern.test(message)) continue
+		const normalized = normalizePlatformResetMessage(message)
+		if (durableObjectComputeLimitResetMessages.has(normalized)) {
+			return 'compute_limit'
+		}
+		if (normalized === durableObjectCodeUpdatedResetMessage) return 'restart'
+	}
+	return null
+}
 
 export const apiErrorCodes = [
 	'invalid_request',
@@ -247,6 +297,34 @@ export function toApiError(error: unknown): ApiError {
 			message: quarantinedReply.message,
 			cause: error,
 		})
+	}
+	// A publish step over its compute limit already says which step and what
+	// to do. Checked before the D1 mapping: its cause is a raw reset that
+	// would otherwise read as a storage outage (KODY-CY).
+	const publishComputeLimit = getErrorCauseChain(error).find((entry) =>
+		isPublishComputeLimitMessage(getErrorMessage(entry)),
+	)
+	if (publishComputeLimit) {
+		return invalidRequest(getErrorMessage(publishComputeLimit))
+	}
+	switch (classifyBareDurableObjectReset(error)) {
+		case 'compute_limit':
+			return new ApiError({
+				status: 503,
+				code: 'internal_error',
+				message: computeLimitExceededMessage,
+				cause: error,
+			})
+		case 'restart':
+			return new ApiError({
+				status: 503,
+				code: 'internal_error',
+				message: serverRestartedMessage,
+				headers: { 'Retry-After': transientDatabaseRetryAfterSeconds },
+				cause: error,
+			})
+		case null:
+			break
 	}
 	// Transient D1 before caller-error mapping: package prep and other hosts
 	// wrap retryable D1 failures in McpCallerError, and those must stay 503

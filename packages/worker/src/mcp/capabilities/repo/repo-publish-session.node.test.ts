@@ -185,3 +185,38 @@ test('repoPublishSession keeps the credential notice on a locked publish', async
 	expect(result.message).toMatch(/^Package "@user\/demo" is locked\./)
 	expect(result.message).toContain(`\n\n${credentialNotice}`)
 })
+
+test('repoPublishSession reports a compute-limit reset as a caller error naming the limit, never a storage outage (KODY-CY)', async () => {
+	const { McpCallerError } = await import('#mcp/caller-error.ts')
+	const { publishComputeLimitMessage } =
+		await import('#worker/repo/isolated-runner-limit-message.ts')
+	const stepMessage = publishComputeLimitMessage('credentials')
+	for (const [failure, expectedMessage] of [
+		[
+			new Error('Durable Object exceeded its CPU time limit and was reset.'),
+			publishComputeLimitMessage(),
+		],
+		[new Error(stepMessage), stepMessage],
+	] as const) {
+		resetMocks()
+		mockModule.repoSessionRpc.mockReturnValue({
+			getSessionInfo: vi.fn(async () => ({
+				entity_type: 'package',
+				source_id: 'source-1',
+			})),
+			publishSession: vi.fn(async () => {
+				throw failure
+			}),
+		})
+		const error = await repoPublishSessionCapability
+			.handler({ session_id: 'session-1' }, createCtx())
+			.catch((caught: unknown) => caught)
+		expect(error).toBeInstanceOf(McpCallerError)
+		expect((error as Error).message).toBe(expectedMessage)
+		expect((error as Error).message).toContain('compute limit')
+		expect((error as Error).message).not.toContain('storage was briefly')
+		expect(
+			mockModule.rebuildPublishedPackageArtifactsViaRepoSession,
+		).not.toHaveBeenCalled()
+	}
+})

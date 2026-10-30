@@ -1,4 +1,3 @@
-import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
 import * as Sentry from '@sentry/cloudflare'
@@ -11,16 +10,10 @@ import {
 	createPackagePublishLockedError,
 	loadLockedSavedPackage,
 } from '#worker/package-registry/package-publish-lock.ts'
-import { requireCredentialNeedsApproval } from '#worker/credentials/credential-needs-approval.ts'
-import { storePublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
-import { storePublishedCredentialStamp } from '#worker/credentials/credential-stamp-store.ts'
-import { refreshSavedPackageProjection } from '#worker/package-registry/service.ts'
 import {
 	deletePublishedSourceSnapshot,
 	hasPublishedRuntimeArtifacts,
 	publishedPublishChecksAreCurrent,
-	writePublishedPublishChecksVersion,
-	writePublishedSourceSnapshot,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { getEntitySourceById, updateEntitySource } from './entity-sources.ts'
 import { runAuthoringPublishChecks } from './authoring-publish-checks.ts'
@@ -29,8 +22,6 @@ import {
 	type EntitySourceRow,
 	type RepoExternalPublishResult,
 } from './types.ts'
-import { loadSecretMountCompatNotice } from '#worker/package-runtime/secret-mount-compat.ts'
-import { loadCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import {
@@ -38,6 +29,10 @@ import {
 	recordPackageAppPublisherUnknown,
 } from '#worker/package-runtime/package-app-authority.ts'
 import { assertPackageSourceOverwriteAllowed } from './source-safety-policy.ts'
+import {
+	createInlinePublishHeavyWork,
+	type PublishHeavyWork,
+} from './publish-work.ts'
 
 export type RepoPublishWorkspace = {
 	readFile(path: string): Promise<string | null>
@@ -49,7 +44,14 @@ export type FinalizePublishedSourceInput = {
 	env: Env
 	source: EntitySourceRow
 	publishedCommit: string
-	files: Record<string, string>
+	/** The published file set. Required unless `work` carries it. */
+	files?: Record<string, string>
+	/**
+	 * Runs the heavy steps (snapshot write, credential needs and stamp,
+	 * projection). Durable Object callers pass isolate-backed work so those
+	 * steps never run on the coordinating Durable Object.
+	 */
+	work?: PublishHeavyWork
 	baseUrl?: string
 	rebuildPackageArtifacts?: boolean
 	allowLockedPublish?: boolean
@@ -65,6 +67,7 @@ export type FinalizePublishedSourceInput = {
 export async function finalizePublishedEntitySource(
 	input: FinalizePublishedSourceInput,
 ) {
+	const work = resolveFinalizeWork(input)
 	if (
 		input.source.entity_kind === 'package' &&
 		input.allowLockedPublish !== true
@@ -92,15 +95,11 @@ export async function finalizePublishedEntitySource(
 	// require the D1 pointer to move first. Previous tip keeps serving until
 	// this write succeeds and D1 advances.
 	if (hasPublishedRuntimeArtifacts(input.env)) {
-		await writePublishedSourceSnapshot({
-			env: input.env,
-			source: {
-				...input.source,
-				published_commit: input.publishedCommit,
-			},
-			files: input.files,
+		const { written } = await work.writeSnapshot({
+			source: input.source,
+			publishedCommit: input.publishedCommit,
 		})
-		wrotePublishedSnapshot = true
+		wrotePublishedSnapshot = written
 	}
 	// Before the new code serves, so it never runs as someone the publisher
 	// could not act as.
@@ -182,50 +181,27 @@ export async function finalizePublishedEntitySource(
 	}
 	if (input.source.entity_kind !== 'package') return
 	if (wrotePublishedSnapshot) {
-		await storePublishedCredentialNeeds({
-			env: input.env,
+		await work.storeCredentialNeeds({
 			source: input.source,
 			publishedCommit: input.publishedCommit,
-			files: input.files,
 		})
-		const stamp = await storePublishedCredentialStamp({
-			env: input.env,
+		// Seals the checker version only after a successful stamp write.
+		await work.storeCredentialStamp({
 			source: input.source,
 			publishedCommit: input.publishedCommit,
-			files: input.files,
 		})
-		// Only seal the checker version after a successful stamp write so a
-		// failed store cannot leave a "current" version over a missing stamp.
-		if (stamp) {
-			await writePublishedPublishChecksVersion({
-				env: input.env,
-				sourceId: input.source.id,
-				publishedCommit: input.publishedCommit,
-			})
-		}
 	}
 	try {
-		await refreshSavedPackageProjection({
-			env: input.env,
+		await work.refreshProjection({
+			source: input.source,
 			baseUrl: input.baseUrl ?? input.source.source_root,
-			userId: input.source.user_id,
-			// No account email in this publish path; plan lookup fails open per entitlements.md.
-			packageId: input.source.entity_id,
-			sourceId: input.source.id,
 			rebuildArtifacts: input.rebuildPackageArtifacts ?? true,
-			// Always pass the published file set so skills indexing runs even
-			// when artifact rebuild is deferred (`rebuildArtifacts: false`).
-			sourceFiles: input.files,
 			firstPublish: !previousPublishedCommit,
 			creatorUserId: input.actorUserId ?? null,
 			// A same-commit finalize (a retry or a clean no-op sync) is not a
 			// new publish, so it writes no audit row.
-			audit:
-				previousPublishedCommit === input.publishedCommit
-					? null
-					: optionalOrgAuditWriter(input.env, {
-							userId: input.actorUserId ?? null,
-						}),
+			writeAudit: previousPublishedCommit !== input.publishedCommit,
+			auditUserId: input.actorUserId ?? null,
 		})
 	} catch (projectionError) {
 		try {
@@ -323,6 +299,18 @@ export async function finalizePublishedEntitySource(
 	}
 }
 
+function resolveFinalizeWork(input: FinalizePublishedSourceInput) {
+	if (input.work) return input.work
+	if (!input.files) {
+		throw new Error('finalizePublishedEntitySource needs files or work.')
+	}
+	return createInlinePublishHeavyWork({
+		env: input.env,
+		publishedFiles: input.files,
+		publishedFilesSourceRoot: input.source.source_root,
+	})
+}
+
 /** The publisher runs the app by default (ADR 0068 amendment 2026-10-24). */
 async function recordPublisherOfPackage(input: {
 	db: D1Database
@@ -356,8 +344,15 @@ export async function publishFromExternalRef(input: {
 	releaseCloneGitObjects?: () => void | Promise<void>
 	allowForce?: boolean
 	destructiveOverwriteConfirmed?: boolean
-	workspace: RepoPublishWorkspace
+	/** Inline checks only; ignored when `work` is set. */
+	workspace?: RepoPublishWorkspace
 	files?: Record<string, string>
+	/**
+	 * Heavy steps over the staged clone tree. When set, checks, notices,
+	 * approval, and finalize all run through it (throwaway isolates for
+	 * Durable Object callers) and `workspace` / `files` are not read.
+	 */
+	work?: PublishHeavyWork
 	baseUrl: string
 	manifestPath?: string
 	sourceRoot?: string
@@ -440,19 +435,38 @@ export async function publishFromExternalRef(input: {
 		input.deferBundleCheckToRebuild === true && lockedPackage == null
 	// Checks run before the locked answer and before any approval request, so
 	// no approval link is ever issued for a commit that cannot publish.
-	const checks = await runAuthoringPublishChecks({
-		workspace: input.workspace,
-		manifestPath: input.manifestPath ?? source.manifest_path,
-		sourceRoot: input.sourceRoot ?? source.source_root,
-		env: input.env,
-		baseUrl: input.baseUrl,
-		userId: input.userId,
-		sourceId: source.id,
-		expectedPackageScope: input.expectedPackageScope,
-		phaseTimings: input.phaseTimings,
-		...(input.onCheckStep ? { onStep: input.onCheckStep } : {}),
-		...(deferBundleCheckToRebuild ? { deferBundleCheckToRebuild: true } : {}),
-	})
+	const checks = input.work
+		? await input.work.runChecks({
+				mode: 'authoring',
+				manifestPath: source.manifest_path,
+				sourceRoot: source.source_root || '/',
+				baseUrl: input.baseUrl,
+				sourceId: source.id,
+				...(input.expectedPackageScope !== undefined
+					? { expectedPackageScope: input.expectedPackageScope }
+					: {}),
+				...(deferBundleCheckToRebuild
+					? { deferBundleCheckToRebuild: true }
+					: {}),
+			})
+		: await runAuthoringPublishChecks({
+				workspace: requireInlineWorkspace(input.workspace),
+				manifestPath: input.manifestPath ?? source.manifest_path,
+				sourceRoot: input.sourceRoot ?? source.source_root,
+				env: input.env,
+				baseUrl: input.baseUrl,
+				userId: input.userId,
+				sourceId: source.id,
+				expectedPackageScope: input.expectedPackageScope,
+				phaseTimings: input.phaseTimings,
+				...(input.onCheckStep ? { onStep: input.onCheckStep } : {}),
+				...(deferBundleCheckToRebuild
+					? { deferBundleCheckToRebuild: true }
+					: {}),
+			})
+	if (input.work && input.phaseTimings && 'phaseTimings' in checks) {
+		Object.assign(input.phaseTimings, checks.phaseTimings)
+	}
 	await input.onCheckStep?.('finalize')
 	const runId = input.runId ?? crypto.randomUUID()
 	if (!checks.ok) {
@@ -463,38 +477,36 @@ export async function publishFromExternalRef(input: {
 			run_id: runId,
 		}
 	}
+	const checkedManifest = checks.manifest
+	if (!checkedManifest) {
+		throw new Error('Publish checks passed without a parsed package.json.')
+	}
 	// input.files (clone collectFiles) is keyed relative to the repo, while
 	// input.sourceRoot is workspace-prefixed, so scope clone maps by the stored
 	// repo-relative root. checks.sourceFiles is already package-relative.
-	const pendingFilesSourceRoot =
-		input.files != null ? source.source_root : undefined
-	const pendingFiles = input.files
-		? omitKodyIgnoredFiles(input.files, source.source_root)
-		: checks.sourceFiles
-	const secretMountCompat =
-		source.entity_kind === 'package'
-			? await loadSecretMountCompatNotice({
-					env: input.env,
-					userId: input.userId,
-					sourceId: source.id,
-					nextCommit: input.newCommit,
-					nextFiles: pendingFiles,
-					previousCommit: source.published_commit,
-					sourceRoot: source.source_root,
-				})
-			: null
-	const allowedPackagesPublishNotice =
-		source.entity_kind === 'package'
-			? await loadCredentialAllowedPackagesPublishWarningNotice({
-					env: input.env,
-					baseUrl: input.baseUrl ?? getAppBaseUrl({ env: input.env }),
-					userId: input.userId,
-					packageId: source.entity_id,
-					files: pendingFiles,
-					sourceRoot: pendingFilesSourceRoot,
-					slots: checks.manifest?.kody?.credentials,
-				})
-			: null
+	const work =
+		input.work ??
+		createInlinePublishHeavyWork({
+			env: input.env,
+			userId: input.userId,
+			publishedFiles: input.files
+				? omitKodyIgnoredFiles(input.files, source.source_root)
+				: 'sourceFiles' in checks
+					? checks.sourceFiles
+					: {},
+			...(input.files != null
+				? { publishedFilesSourceRoot: source.source_root }
+				: {}),
+		})
+	const { secretMountCompat, allowedPackagesPublishNotice } =
+		await work.loadNotices({
+			source,
+			nextCommit: input.newCommit,
+			baseUrl: input.baseUrl ?? getAppBaseUrl({ env: input.env }),
+			...(checks.manifest?.kody?.credentials
+				? { slots: checks.manifest.kody.credentials }
+				: {}),
+		})
 	const publishNotices = {
 		...(secretMountCompat ? { secret_mount_compat: secretMountCompat } : {}),
 		...(allowedPackagesPublishNotice
@@ -510,26 +522,14 @@ export async function publishFromExternalRef(input: {
 			source.entity_kind === 'package' &&
 			hasPublishedRuntimeArtifacts(input.env)
 		) {
-			const files = pendingFiles
-			await storePublishedCredentialNeeds({
-				env: input.env,
+			await work.storeCredentialNeeds({
 				source,
 				publishedCommit: input.newCommit,
-				files,
 			})
-			const stamp = await storePublishedCredentialStamp({
-				env: input.env,
+			const { stamped: stamp } = await work.storeCredentialStamp({
 				source,
 				publishedCommit: input.newCommit,
-				files,
 			})
-			if (stamp) {
-				await writePublishedPublishChecksVersion({
-					env: input.env,
-					sourceId: source.id,
-					publishedCommit: input.newCommit,
-				})
-			}
 			return {
 				status: 'already_published',
 				published_commit: source.published_commit,
@@ -568,11 +568,9 @@ export async function publishFromExternalRef(input: {
 	const approval =
 		input.credentialNeedsApproved === true
 			? null
-			: await requireCredentialNeedsApproval({
-					env: input.env,
+			: await work.requireApproval({
 					source,
 					pendingCommit: input.newCommit,
-					files: pendingFiles,
 					requestedByUserId: input.requestedByUserId,
 					pausedExternalPublish: {
 						allowForce: input.allowForce === true,
@@ -594,7 +592,7 @@ export async function publishFromExternalRef(input: {
 		env: input.env,
 		source,
 		publishedCommit: input.newCommit,
-		files: pendingFiles,
+		work,
 		baseUrl: input.baseUrl,
 		rebuildPackageArtifacts: input.rebuildPackageArtifacts,
 		allowLockedPublish: input.allowLockedPublish,
@@ -605,8 +603,15 @@ export async function publishFromExternalRef(input: {
 		status: 'published',
 		previous_commit: source.published_commit,
 		published_commit: input.newCommit,
-		manifest: checks.manifest,
+		manifest: checkedManifest,
 		checks: checks.results,
 		...publishNotices,
 	}
+}
+
+function requireInlineWorkspace(workspace: RepoPublishWorkspace | undefined) {
+	if (!workspace) {
+		throw new Error('publishFromExternalRef needs a workspace or work.')
+	}
+	return workspace
 }
