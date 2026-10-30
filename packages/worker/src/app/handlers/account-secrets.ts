@@ -21,8 +21,6 @@ import {
 	resolveApprovalRequest,
 	toPackageOptions,
 } from '#app/account-secrets-data.ts'
-import { websiteCapabilityContext } from '#app/website-capability.ts'
-import { authorizeSecretSet } from '#mcp/capabilities/secrets/authorize-secret.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { buildConnectOauthNextSteps } from '#worker/integrations/connect-oauth-next-steps.ts'
 import { operationResult } from '#app/operation-result.ts'
@@ -1279,9 +1277,6 @@ async function refuseUnauthorized(check: () => Promise<void>) {
 }
 
 function credentialDenial(error: AuthorizationError) {
-	if (error.permission === 'secret:create') {
-		return 'You need Create on credentials in this org to add one. Ask an org Owner for it. Nothing was changed.'
-	}
 	const access = error.permission === 'secret:delete' ? 'Delete' : 'Write'
 	return `You need ${access} on this credential to do that. Ask an org Owner for ${access} on it. Nothing was changed.`
 }
@@ -1855,24 +1850,6 @@ export async function saveAccountSecret(input: {
 		)
 	}
 
-	// The same create-or-write check `secretSet` runs: changing a secret needs
-	// Write on it, adding one needs secret:create.
-	const authorizeTarget = currentSecret ?? { name, scope, packageId }
-	await requireWebsitePermission({
-		user: input.user,
-		permission: currentSecret ? 'secret:write' : 'secret:create',
-		action: currentSecret ? 'change this secret' : 'add secrets',
-		check: () =>
-			authorizeSecretSet(websiteCapabilityContext(input), {
-				name: authorizeTarget.name,
-				scope: authorizeTarget.scope,
-				storageContext: getSecretContextForAccountSecret({
-					scope: authorizeTarget.scope,
-					packageId: authorizeTarget.packageId ?? null,
-				}),
-			}),
-	})
-
 	const samePlacement =
 		currentSecret != null &&
 		currentSecret.scope === scope &&
@@ -1888,16 +1865,26 @@ export async function saveAccountSecret(input: {
 			await authorizeSecret(ctx, 'secret:write', current)
 			if (!samePlacement) await authorizeSecret(ctx, 'secret:delete', current)
 		}
-		// A same-placement rename keeps the credential id, so Write is enough.
-		if (!currentSecret || !samePlacement) {
-			await authorizeSecretSet(ctx, {
-				name,
-				scope,
-				storageContext: getSecretContextForAccountSecret({ scope, packageId }),
-			})
-		}
 	})
 	if (refused) return refused
+	// A same-placement rename keeps the credential id, so Write is enough.
+	// A new credential or a move lands at a free name, which needs Create.
+	if (!currentSecret || !samePlacement) {
+		await requireWebsitePermission({
+			user: input.user,
+			permission: 'secret:create',
+			action: 'add credentials',
+			check: () =>
+				authorizeSecretSet(websiteSecretAuthorization(input), {
+					name,
+					scope,
+					storageContext: getSecretContextForAccountSecret({
+						scope,
+						packageId,
+					}),
+				}),
+		})
+	}
 
 	const nameChanged = currentSecret != null && currentSecret.name !== name
 	// Same-scope renames (including Henry → henry) update the row in place so
