@@ -1,8 +1,9 @@
 import { expect, test } from 'vitest'
 import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { runChainShapeError } from './chain-rules.ts'
+import { codeNeedsCredentials } from './run-credential-use.ts'
 import {
-	codeNeedsCredentials,
+	credentialRefusal,
 	describeCloudFallback,
 	describeRanOn,
 	historyRanOn,
@@ -97,30 +98,41 @@ test('context: cloud runs on cloud only', () => {
 	).toEqual([cloud])
 })
 
+const none = { kind: 'none' } as const
+const unknown = { kind: 'unknown' } as const
+
 test('a grant refuses runs it cannot serve', () => {
 	expect(
 		grantRefusal({
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
-			credentials: null,
+			credentials: { mode: 'none' },
+			credentialUse: none,
 		}),
 	).toBe('no_fs')
 	expect(
 		grantRefusal({
 			grant: ecpDefaultGrant,
 			requires: ['lan'],
-			credentials: null,
+			credentials: { mode: 'none' },
+			credentialUse: none,
 		}),
 	).toBe('no_lan')
 	expect(
 		grantRefusal({
 			grant: ecpDefaultGrant,
 			requires: [],
-			credentials: new Map([['github', [{ name: 'gh', scope: null }]]]),
+			credentials: { mode: 'none' },
+			credentialUse: { kind: 'ids', ids: ['cred_gh'] },
 		}),
 	).toBe('credentials_not_allowed')
 	expect(
-		grantRefusal({ grant: ecpDefaultGrant, requires: [], credentials: null }),
+		grantRefusal({
+			grant: ecpDefaultGrant,
+			requires: [],
+			credentials: { mode: 'none' },
+			credentialUse: none,
+		}),
 	).toBeNull()
 })
 
@@ -167,36 +179,33 @@ test('execute code that needs a credential is detected before it runs', () => {
 	).toBe(false)
 })
 
-test('a grant that allows no credentials refuses code that needs one', () => {
-	const code =
-		"import { credentials } from 'kody:runtime'\nexport default () => credentials('example')"
+test('a grant that allows no credentials refuses a run that can use one', () => {
+	expect(credentialRefusal({ mode: 'none' }, unknown)).toBe(
+		'credentials_not_allowed',
+	)
+	expect(credentialRefusal({ mode: 'none' }, none)).toBeNull()
+})
+
+test('an explicit list must cover every credential the run can use', () => {
+	const list = { mode: 'list', ids: ['cred_1', 'cred_2'] } as const
+	expect(credentialRefusal(list, none)).toBeNull()
+	expect(credentialRefusal(list, { kind: 'ids', ids: ['cred_1'] })).toBeNull()
 	expect(
-		grantRefusal({
-			grant: ecpDefaultGrant,
-			requires: [],
-			credentials: null,
-			code,
-		}),
-	).toBe('credentials_not_allowed')
+		credentialRefusal(list, { kind: 'ids', ids: ['cred_1', 'cred_3'] }),
+	).toBe('credentials_not_in_grant')
+	// Which credentials an imported package uses is not statically known.
+	expect(credentialRefusal(list, unknown)).toBe('credentials_unverified')
+})
+
+test('a requester grant serves any credential use only while unshared', () => {
+	expect(credentialRefusal({ mode: 'requester' }, unknown)).toBeNull()
 	expect(
-		grantRefusal({
-			grant: {
-				...ecpDefaultGrant,
-				credentials: { mode: 'list', ids: ['cred_1'] },
-			},
-			requires: [],
-			credentials: null,
-			code,
-		}),
+		credentialRefusal({ mode: 'requester' }, { kind: 'ids', ids: ['c'] }),
 	).toBeNull()
-	expect(
-		grantRefusal({
-			grant: ecpDefaultGrant,
-			requires: [],
-			credentials: null,
-			code: 'export default () => 1',
-		}),
-	).toBeNull()
+	expect(credentialRefusal({ mode: 'requester_shared' }, unknown)).toBe(
+		'credentials_need_unshared_context',
+	)
+	expect(credentialRefusal({ mode: 'requester_shared' }, none)).toBeNull()
 })
 
 test('a run chain follows the default chain shape rules', () => {

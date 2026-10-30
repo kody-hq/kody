@@ -103,7 +103,15 @@ export type EcpGrant = {
 		hosts?: Array<string>
 		ports?: Array<number>
 	}
-	credentials: { mode: 'none' } | { mode: 'list'; ids: Array<string> }
+	/**
+	 * Which of the requester's credentials a run may use through Kody cloud
+	 * (ADR 0083). `requester` allows every credential the requester can use,
+	 * and only while the context is not shared.
+	 */
+	credentials:
+		| { mode: 'none' }
+		| { mode: 'list'; ids: Array<string> }
+		| { mode: 'requester' }
 	runtime: { mode: 'all' } | { mode: 'allowlist'; paths: Array<string> }
 	limits: { timeoutMs: number; memoryMb: number; maxConcurrent: number }
 	payload: {

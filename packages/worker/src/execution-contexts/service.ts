@@ -9,6 +9,11 @@ import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { upsertGrant, softDeleteGrant } from '#worker/orgs/access-writes.ts'
 import { chainCloudOrderError, selfShareError } from './chain-rules.ts'
+import {
+	assertGrantAllowsSharing,
+	assertRequesterCredentialsGrantable,
+	contextIsShared,
+} from './credential-grant.ts'
 import { ExecutionContextError } from './errors.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import {
@@ -141,9 +146,9 @@ export function grantSummary(grant: EcpGrant) {
 		fs: grant.fs.length,
 		egress: { mode: grant.egress.mode },
 		credentials:
-			grant.credentials.mode === 'none'
-				? ('none' as const)
-				: { count: grant.credentials.ids.length },
+			grant.credentials.mode === 'list'
+				? { count: grant.credentials.ids.length }
+				: grant.credentials.mode,
 		runtime:
 			grant.runtime.mode === 'all'
 				? ('all' as const)
@@ -632,6 +637,13 @@ export async function updateContext(
 		? mergeGrant(parseGrant(row), input.grant)
 		: parseGrant(row)
 	const name = input.name?.trim() ?? row.name
+	if (input.grant?.credentials?.mode === 'requester') {
+		assertRequesterCredentialsGrantable({
+			name: row.name,
+			isOperator: access.isOperator,
+			shared: await contextIsShared(db, row),
+		})
+	}
 	const grantVersion = input.grant ? row.grant_version + 1 : row.grant_version
 	try {
 		await db
@@ -857,6 +869,9 @@ export async function setSharing(
 			message: selfShare,
 		})
 	}
+	if ((input.add?.length ?? 0) > 0 || input.allMembers === true) {
+		assertGrantAllowsSharing({ name: row.name, grant: parseGrant(row) })
+	}
 	const db = caller.env.APP_DB
 	const audit = orgAuditWriterFromCaller(caller.env, caller.callerContext)
 	for (const share of input.add ?? []) {
@@ -945,6 +960,7 @@ export async function attachContext(
 			message: 'Only the operator can attach a context to another org.',
 		})
 	}
+	assertGrantAllowsSharing({ name: row.name, grant: parseGrant(row) })
 	const membership = await caller.env.APP_DB.prepare(
 		`SELECT role FROM org_memberships WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
 	)

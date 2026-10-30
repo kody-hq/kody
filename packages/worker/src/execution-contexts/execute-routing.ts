@@ -9,6 +9,7 @@ import {
 	executeRequirements,
 	routeExecute,
 } from './routing.ts'
+import { resolveRunCredentialUse } from './run-credential-use.ts'
 
 export { type ExecuteRoutingArgs } from './routing.ts'
 
@@ -39,7 +40,7 @@ export const executeRoutingInputFields = {
 		.max(ecpMaxChainContexts + 1)
 		.optional()
 		.describe(
-			'This run\'s own ordered chain, replacing your default chain: up to 3 context ids or names, with "cloud" allowed only last. Leaving out "cloud" means the run fails instead of falling back to Kody cloud. Entries that are offline, unusable, lack `requires`, or allow no credentials while the run needs one (a credentials map, a secret or integration placeholder, or a kody:runtime credential helper) are skipped before the code starts; if none qualifies the error lists each one and why.',
+			'This run\'s own ordered chain, replacing your default chain: up to 3 context ids or names, with "cloud" allowed only last. Leaving out "cloud" means the run fails instead of falling back to Kody cloud. Entries that are offline, unusable, lack `requires`, or whose grant cannot cover the credentials the run can use (a credentials map, a secret or integration placeholder, a kody:runtime credential helper or credentialed call, or any kody: package the code imports, directly or through other packages, that can use one) are skipped before the code starts; if none qualifies the error lists each one and why.',
 		),
 }
 
@@ -114,6 +115,14 @@ export async function routeExecuteForCaller(input: {
 		params: input.params,
 		conversationId: input.conversationId,
 		credentials: input.credentials,
+		credentialUse: () =>
+			resolveRunCredentialUse({
+				env: input.env,
+				request,
+				ownerId: request.org.id,
+				code: input.code,
+				credentials: input.credentials,
+			}),
 		apiUrl: input.callerContext.baseUrl,
 		waitMs: input.waitMs,
 		signal: input.signal,

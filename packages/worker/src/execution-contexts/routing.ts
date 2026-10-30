@@ -5,9 +5,14 @@ import {
 	sha256Base64Url,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { type CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
-import { findPlaceholderMatches } from '#worker/credentials/module-placeholder-scan.ts'
 import { type RunRecordHandle } from '#worker/run-records/types.ts'
+import {
+	type ContextRunCredentials,
+	contextIsShared,
+	contextRunCredentials,
+} from './credential-grant.ts'
 import { ExecutionContextError } from './errors.ts'
+import { type RunCredentialUse } from './run-credential-use.ts'
 import {
 	type ExecutionContextLease,
 	type ExecutionContextRunResult,
@@ -241,72 +246,57 @@ export function planTargets(input: {
 	return targets
 }
 
-const credentialRuntimeExports = new Set([
-	'credential',
-	'credentials',
-	'createAuthenticatedFetch',
-])
-const runtimeNamedImportPattern =
-	/import\s*(?:type\s+)?\{([^}]*)\}\s*from\s*['"]kody:runtime['"]/g
-const runtimeWholeImportPattern =
-	/import\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^}]*\}\s*)?from\s*['"]kody:runtime['"]/g
+/** Why a grant cannot meet the run's `requires`, or null when it can. */
+export function requirementRefusal(
+	grant: EcpGrant,
+	requires: ReadonlyArray<ExecuteRequirement>,
+): string | null {
+	if (requires.includes('fs') && grant.fs.length === 0) return 'no_fs'
+	if (requires.includes('lan') && grant.egress.mode !== 'public-and-lan') {
+		return 'no_lan'
+	}
+	return null
+}
 
 /**
- * True when execute code visibly needs a credential: a secret or
- * integration placeholder, or a credential helper from `kody:runtime`. A
- * cheap source check, so a context whose grant allows no credentials is
- * skipped before the run starts instead of failing there.
+ * Why a context's credentials cannot serve the run, or null when they can.
+ * An explicit list must cover every credential the run can use; when that
+ * is not statically known the context is skipped rather than risk a refusal
+ * after the code started.
  */
-export function codeNeedsCredentials(code: string | null) {
-	if (!code) return false
-	if (findPlaceholderMatches(code).length > 0) return true
-	for (const match of code.matchAll(runtimeNamedImportPattern)) {
-		const names = match[1]!.split(',').map((part) =>
-			part
-				.trim()
-				.replace(/^type\s+/, '')
-				.split(/\s+as\s+/)[0]!
-				.trim(),
-		)
-		if (names.some((name) => credentialRuntimeExports.has(name))) return true
-	}
-	for (const match of code.matchAll(runtimeWholeImportPattern)) {
-		const alias = match[1]!.replace(/[$]/g, '\\$')
-		if (
-			new RegExp(
-				`\\b${alias}\\s*\\.\\s*(?:credentials?|createAuthenticatedFetch)\\b`,
-			).test(code)
-		) {
-			return true
+export function credentialRefusal(
+	credentials: ContextRunCredentials,
+	use: RunCredentialUse,
+): string | null {
+	if (use.kind === 'none') return null
+	switch (credentials.mode) {
+		case 'requester':
+			return null
+		case 'none':
+			return 'credentials_not_allowed'
+		case 'requester_shared':
+			return 'credentials_need_unshared_context'
+		case 'list': {
+			if (use.kind === 'unknown') return 'credentials_unverified'
+			const allowed = new Set(credentials.ids)
+			return use.ids.every((id) => allowed.has(id))
+				? null
+				: 'credentials_not_in_grant'
 		}
 	}
-	return false
 }
 
 /** Why a grant cannot take this run, or null when it can. */
 export function grantRefusal(input: {
 	grant: EcpGrant
 	requires: ReadonlyArray<ExecuteRequirement>
-	credentials: CredentialCallMap | null
-	code?: string | null
+	credentials: ContextRunCredentials
+	credentialUse: RunCredentialUse
 }): string | null {
-	if (input.requires.includes('fs') && input.grant.fs.length === 0) {
-		return 'no_fs'
-	}
-	if (
-		input.requires.includes('lan') &&
-		input.grant.egress.mode !== 'public-and-lan'
-	) {
-		return 'no_lan'
-	}
-	if (
-		input.grant.credentials.mode === 'none' &&
-		((input.credentials && input.credentials.size > 0) ||
-			codeNeedsCredentials(input.code ?? null))
-	) {
-		return 'credentials_not_allowed'
-	}
-	return null
+	return (
+		requirementRefusal(input.grant, input.requires) ??
+		credentialRefusal(input.credentials, input.credentialUse)
+	)
 }
 
 function noContext(attempts: Array<RoutingAttempt>, message: string): never {
@@ -341,6 +331,11 @@ export async function routeExecute(input: {
 	params: unknown
 	conversationId?: string
 	credentials: CredentialCallMap | null
+	/**
+	 * What the run can do with credentials. Called at most once, and only
+	 * when a context's grant depends on it.
+	 */
+	credentialUse: () => Promise<RunCredentialUse>
 	apiUrl: string
 	waitMs: number
 	signal?: AbortSignal
@@ -421,6 +416,8 @@ export async function routeExecute(input: {
 			metadata: attempts.length > 0 ? metadata(null, true) : null,
 		}
 	}
+	let credentialUse: Promise<RunCredentialUse> | null = null
+	const credentialUseOf = () => (credentialUse ??= input.credentialUse())
 	let lastTried: ExecutionContextRow | null = null
 	let firstOffline: {
 		row: ExecutionContextRow
@@ -461,12 +458,17 @@ export async function routeExecute(input: {
 			continue
 		}
 		const grant = parseGrant(row)
-		const refusal = grantRefusal({
-			grant,
-			requires,
-			credentials: input.credentials,
-			code: input.code,
+		const credentials = contextRunCredentials(grant, {
+			shared:
+				grant.credentials.mode === 'requester' &&
+				(await contextIsShared(db, row)),
+			requesterIsOperator: row.operator_user_id === input.request.userId,
 		})
+		const refusal =
+			requirementRefusal(grant, requires) ??
+			(credentials.mode === 'requester'
+				? null
+				: credentialRefusal(credentials, await credentialUseOf()))
 		if (refusal) {
 			skip(refusal)
 			continue
@@ -486,8 +488,6 @@ export async function routeExecute(input: {
 			},
 			orgId: input.request.orgId,
 			callerScopes: input.request.scopes,
-			credentialIds:
-				grant.credentials.mode === 'list' ? grant.credentials.ids : [],
 			runtime: grant.runtime,
 			deadline,
 			sharedRun: row.operator_user_id !== input.request.userId,
@@ -544,7 +544,15 @@ export async function routeExecute(input: {
 					dispatched.outcome === 'busy') &&
 				!firstOffline
 			) {
-				firstOffline = { row, request, lease, requires }
+				firstOffline = {
+					row,
+					request,
+					// The drain re-checks the grant, which may change while queued.
+					lease: input.queue
+						? { ...lease, credentialUse: await credentialUseOf() }
+						: lease,
+					requires,
+				}
 			}
 			attempts.push({
 				target: row.id,

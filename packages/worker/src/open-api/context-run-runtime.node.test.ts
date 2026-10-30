@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import { type ContextRunCredentials } from '#worker/execution-contexts/credential-grant.ts'
 import { type ApiInvocationContext } from './context.ts'
 import {
 	assertContextRunRuntimePathAllowed,
@@ -7,7 +8,7 @@ import {
 
 function contextRun(
 	runtime: { mode: 'all' } | { mode: 'allowlist'; paths: Array<string> },
-	credentialIds: Array<string> = [],
+	credentials: ContextRunCredentials = { mode: 'none' },
 ) {
 	return {
 		principal: {
@@ -17,7 +18,7 @@ function contextRun(
 			deadline: Date.now() + 60_000,
 			scopes: null,
 			runtime,
-			credentialIds,
+			credentials,
 		},
 	} as unknown as ApiInvocationContext
 }
@@ -77,10 +78,22 @@ test('credentialed runtime calls need a grant that allows credentials', () => {
 		).toThrow(/allows no credentials/)
 		expect(() =>
 			assertContextRunSpecialPathAllowed(
-				contextRun({ mode: 'all' }, ['cred_test']),
+				contextRun({ mode: 'all' }, { mode: 'list', ids: ['cred_test'] }),
 				['kody', name],
 			),
 		).not.toThrow()
+		expect(() =>
+			assertContextRunSpecialPathAllowed(
+				contextRun({ mode: 'all' }, { mode: 'requester' }),
+				['kody', name],
+			),
+		).not.toThrow()
+		expect(() =>
+			assertContextRunSpecialPathAllowed(
+				contextRun({ mode: 'all' }, { mode: 'requester_shared' }),
+				['kody', name],
+			),
+		).toThrow(/only while it is not shared/)
 	}
 	expect(() =>
 		assertContextRunSpecialPathAllowed(contextRun({ mode: 'all' }), [

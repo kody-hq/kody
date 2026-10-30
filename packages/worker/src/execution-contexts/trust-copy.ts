@@ -6,7 +6,7 @@
 
 export const registrationTrustLines = [
 	'Code sent to this context runs on this machine, under the account that runs kody daemon.',
-	'It starts as Only me. If you share it, the people you share it with run code on this machine, and you can see their code, inputs, logs, results and the responses of credentialed requests their runs make. Their credential values stay on Kody.',
+	'It starts as Only me, and while it stays that way your runs on it may use any of your credentials: those requests leave from Kody cloud, so the values never reach this machine. Sharing it needs its credentials narrowed to an explicit list first. If you share it, the people you share it with run code on this machine, and you can see their code, inputs, logs, results and the responses of credentialed requests their runs make. Their credential values stay on Kody.',
 	'What it exposes (files, local network, internet) is set on this machine by its local policy.',
 ] as const
 
@@ -74,7 +74,7 @@ export function registrationNextSteps(input: {
 		},
 		{
 			kind: 'share',
-			text: `Optional: share ${input.name} with people, a team, or everyone in the org. Sharing lets them run code on this machine after they opt in.`,
+			text: `Optional: share ${input.name} with people, a team, or everyone in the org. Sharing lets them run code on this machine after they opt in. First narrow its credentials to an explicit list (or none) with executionContextUpdate; a context that lets all your credentials through cannot be shared.`,
 			mcp: { capability: 'executionContextShareSet' },
 			api: {
 				method: 'PUT',
