@@ -13,6 +13,7 @@ import {
 	type JobRecord,
 	type JobRepoCheckPolicy,
 } from '@kody-internal/shared/jobs/types.ts'
+import { parseScheduledLaneMessage } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { type JobsWorkerEnv } from './env.ts'
 import { jobManagerStub } from './manager.ts'
@@ -260,5 +261,22 @@ export class JobsService
 			callerContext: input.callerContext ?? null,
 			repoCheckPolicyOverride: input.repoCheckPolicyOverride ?? null,
 		})
+	}
+
+	async replayScheduledDispatchMessage(input: {
+		body: unknown
+	}): Promise<{ ok: true; lane: string }> {
+		const message = parseScheduledLaneMessage(input.body)
+		if (!message) {
+			throw new Error('The parked body is not a scheduled lane message.')
+		}
+		const queue = this.env.SCHEDULED_DISPATCH_QUEUE
+		if (!queue) {
+			throw new Error(
+				'SCHEDULED_DISPATCH_QUEUE is not bound in this environment.',
+			)
+		}
+		await queue.send(message)
+		return { ok: true as const, lane: message.lane }
 	}
 }

@@ -1,17 +1,14 @@
 import * as Sentry from '@sentry/cloudflare'
-import { scheduledDispatchDeadLetterQueueName } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import {
 	CloudflareApiError,
 	createCloudflareRestClient,
 } from '#mcp/cloudflare/cloudflare-rest-client.ts'
-import { communityActivityDispatchDeadLetterQueueName } from '#worker/community/activity-dispatch-queue-names.ts'
-import { communityListingPublishedDispatchDeadLetterQueueName } from '#worker/community/listing-published-dispatch-queue-names.ts'
-import { emailDeliveryDeadLetterQueueName } from '#worker/email/delivery-queue-names.ts'
-import { packageEventsDispatchDeadLetterQueueName } from '#worker/package-events/dispatch-queue-names.ts'
-import { platformFeedbackDispatchDeadLetterQueueName } from '#worker/platform-feedback/dispatch-queue-names.ts'
-import { artifactsRepoEventsDeadLetterQueueName } from '#worker/repo/artifacts-event-queue-names.ts'
-import { webhookDispatchDeadLetterQueueName } from '#worker/webhooks/dispatch-queue-names.ts'
+import { deadLetterQueueNames } from '#worker/dead-letter/queues.ts'
+import {
+	summarizeParkedDeadLetterMessages,
+	type ParkedDeadLetterSummary,
+} from '#worker/dead-letter/store.ts'
 
 /**
  * Pages when a production dead-letter queue still holds work after 15 minutes.
@@ -20,6 +17,11 @@ import { webhookDispatchDeadLetterQueueName } from '#worker/webhooks/dispatch-qu
  * message. A missing oldest timestamp (the API returns 0) falls back to the
  * first tick that observed a non-zero backlog. The cron runs this lane directly
  * so a stuck `kody-scheduled-dispatch` consumer cannot hide its own DLQ.
+ *
+ * The DLQ consumer parks messages in APP_DB (`dead_letter_messages`) and acks
+ * them, so parked rows count toward depth too: a message stays on this page
+ * until an admin replays, acks, or purges it
+ * (docs/contributing/dead-letter-queues.md).
  *
  * Inbound email subscription dead-letters stay off this page. Those are
  * terminal handler failures on an owner mailbox, not a platform DLQ.
@@ -33,16 +35,7 @@ export const dlqDepthAlertKvKeyPrefix = 'ops-alert:dlq-depth:v1:'
 const dlqDepthStateTtlSeconds = 7 * 24 * 60 * 60
 const queueListPageLimit = 20
 
-export const productionDeadLetterQueueNames = [
-	emailDeliveryDeadLetterQueueName,
-	artifactsRepoEventsDeadLetterQueueName,
-	platformFeedbackDispatchDeadLetterQueueName,
-	communityActivityDispatchDeadLetterQueueName,
-	communityListingPublishedDispatchDeadLetterQueueName,
-	packageEventsDispatchDeadLetterQueueName,
-	webhookDispatchDeadLetterQueueName,
-	scheduledDispatchDeadLetterQueueName,
-] as const
+export const productionDeadLetterQueueNames = deadLetterQueueNames
 
 export type DlqDepthVerdict =
 	| { kind: 'healthy' }
@@ -77,12 +70,39 @@ type DlqDepthAlertEnv = {
 	CLOUDFLARE_API_BASE_URL?: string
 	CLOUDFLARE_API_MOCK?: Fetcher
 	BUNDLE_ARTIFACTS_KV?: KVNamespace
+	APP_DB?: D1Database
 }
 
-type QueueMetrics = {
+export type QueueMetrics = {
 	backlogCount: number
 	backlogBytes: number
 	oldestMessageTimestampMs: number | null
+}
+
+type DlqDepthMetrics = QueueMetrics & {
+	parkedCount: number
+	parkedOldestEnqueuedAtMs: number | null
+}
+
+function withParked(
+	metrics: QueueMetrics,
+	parked: ParkedDeadLetterSummary | undefined,
+): DlqDepthMetrics {
+	const parkedCount = parked?.count ?? 0
+	const parkedOldest =
+		parkedCount > 0 ? (parked?.oldestEnqueuedAtMs ?? null) : null
+	const oldestCandidates = [
+		metrics.oldestMessageTimestampMs,
+		parkedOldest,
+	].filter((value): value is number => value != null)
+	return {
+		backlogCount: metrics.backlogCount + parkedCount,
+		backlogBytes: metrics.backlogBytes,
+		oldestMessageTimestampMs:
+			oldestCandidates.length > 0 ? Math.min(...oldestCandidates) : null,
+		parkedCount,
+		parkedOldestEnqueuedAtMs: parkedOldest,
+	}
 }
 
 type DlqDepthState = {
@@ -129,6 +149,17 @@ export async function checkDlqDepthAndAlert(input: {
 		CLOUDFLARE_API_MOCK: input.env.CLOUDFLARE_API_MOCK,
 	})
 	const queueIds = await listQueueIds(client, accountId)
+	const failures: Array<string> = []
+	let parkedSummaries = new Map<string, ParkedDeadLetterSummary>()
+	if (input.env.APP_DB) {
+		try {
+			parkedSummaries = await summarizeParkedDeadLetterMessages(
+				input.env.APP_DB,
+			)
+		} catch (error) {
+			failures.push(`parked dead-letter messages (${readFailureDetail(error)})`)
+		}
+	}
 	const counts = {
 		queues: productionDeadLetterQueueNames.length,
 		healthy: 0,
@@ -137,7 +168,6 @@ export async function checkDlqDepthAndAlert(input: {
 		alerted: 0,
 		cooldown: 0,
 	}
-	const failures: Array<string> = []
 	const persist = async (
 		queueName: string,
 		stored: DlqDepthState,
@@ -160,9 +190,12 @@ export async function checkDlqDepthAndAlert(input: {
 				failures.push(`${queueName} (not found)`)
 				return
 			}
-			let metrics: QueueMetrics
+			let metrics: DlqDepthMetrics
 			try {
-				metrics = await readQueueMetrics(client, accountId, queueId)
+				metrics = withParked(
+					await readQueueMetrics(client, accountId, queueId),
+					parkedSummaries.get(queueName),
+				)
 			} catch (error) {
 				failures.push(`${queueName} (${readFailureDetail(error)})`)
 				return
@@ -233,11 +266,15 @@ export async function checkDlqDepthAndAlert(input: {
 function reportDlqDepth(input: {
 	queueName: string
 	queueId: string
-	metrics: QueueMetrics
+	metrics: DlqDepthMetrics
 	verdict: Extract<DlqDepthVerdict, { kind: 'sustained' }>
 }) {
 	const minutes = Math.floor(input.verdict.ageMs / 60_000)
-	const message = `Dead-letter queue ${input.queueName} still has ${unacknowledgedLabel(input.metrics.backlogCount)} after ${String(minutes)} minutes.`
+	const parkedNote =
+		input.metrics.parkedCount > 0
+			? ` (${String(input.metrics.parkedCount)} parked for admin replay, ack, or purge)`
+			: ''
+	const message = `Dead-letter queue ${input.queueName} still has ${unacknowledgedLabel(input.metrics.backlogCount)}${parkedNote} after ${String(minutes)} minutes.`
 	console.warn('dlq-depth-alerted', {
 		queueName: input.queueName,
 		backlogCount: input.metrics.backlogCount,
@@ -254,6 +291,8 @@ function reportDlqDepth(input: {
 			queueId: input.queueId,
 			backlogCount: input.metrics.backlogCount,
 			backlogBytes: input.metrics.backlogBytes,
+			parkedCount: input.metrics.parkedCount,
+			parkedOldestEnqueuedAtMs: input.metrics.parkedOldestEnqueuedAtMs,
 			oldestMessageTimestampMs: input.metrics.oldestMessageTimestampMs,
 			ageMs: input.verdict.ageMs,
 		})
@@ -277,7 +316,7 @@ function isOnCooldown(
 	)
 }
 
-type CloudflareQueueClient = {
+export type CloudflareQueueClient = {
 	rawRequest: (input: {
 		method: 'GET'
 		path: string
@@ -285,7 +324,10 @@ type CloudflareQueueClient = {
 	}) => Promise<{ status: number; body: unknown | null }>
 }
 
-async function listQueueIds(client: CloudflareQueueClient, accountId: string) {
+export async function listQueueIds(
+	client: CloudflareQueueClient,
+	accountId: string,
+) {
 	const ids = new Map<string, string>()
 	let page = 1
 	let totalPages = 1
@@ -320,7 +362,7 @@ async function listQueueIds(client: CloudflareQueueClient, accountId: string) {
 	return ids
 }
 
-async function readQueueMetrics(
+export async function readQueueMetrics(
 	client: CloudflareQueueClient,
 	accountId: string,
 	queueId: string,

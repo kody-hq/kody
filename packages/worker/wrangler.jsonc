@@ -513,6 +513,66 @@
 						"max_concurrency": 16,
 						"dead_letter_queue": "kody-webhook-dispatch-dlq",
 					},
+					// Dead-letter queues (including the jobs worker's scheduled
+					// dispatch DLQ) are parked in APP_DB for the admin DLQ
+					// capabilities (docs/contributing/dead-letter-queues.md). A
+					// message that cannot be parked retries for ~100 minutes.
+					{
+						"queue": "kody-email-delivery-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-artifacts-repo-events-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-platform-feedback-dispatch-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-community-activity-dispatch-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-community-listing-published-dispatch-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-package-events-dispatch-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-webhook-dispatch-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-scheduled-dispatch-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
 				],
 			},
 			"kv_namespaces": [

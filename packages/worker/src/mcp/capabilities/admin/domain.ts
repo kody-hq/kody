@@ -36,6 +36,11 @@ import { adminPlatformProviderMarkSaveCapability } from './admin-platform-provid
 import { adminPlatformFeedbackGetCapability } from './admin-platform-feedback-get.ts'
 import { adminPlatformFeedbackListCapability } from './admin-platform-feedback-list.ts'
 import { adminPlatformFeedbackUpdateCapability } from './admin-platform-feedback-update.ts'
+import { adminDeadLetterQueueAckCapability } from './admin-dead-letter-queue-ack.ts'
+import { adminDeadLetterQueueListCapability } from './admin-dead-letter-queue-list.ts'
+import { adminDeadLetterQueuePeekCapability } from './admin-dead-letter-queue-peek.ts'
+import { adminDeadLetterQueuePurgeCapability } from './admin-dead-letter-queue-purge.ts'
+import { adminDeadLetterQueueReplayCapability } from './admin-dead-letter-queue-replay.ts'
 import { adminUserUsageCapability } from './admin-user-usage.ts'
 import { adminFleetErrorRateCapability } from './admin-fleet-error-rate.ts'
 import { adminOrgUsageCapability } from './admin-org-usage.ts'
@@ -109,6 +114,7 @@ export const adminDomain = defineDomain({
 		'feature flags',
 		'system email',
 		'platform feedback',
+		'dead letter queue',
 		'community activity',
 		'orphan forks',
 		'platform oauth apps',
@@ -249,6 +255,11 @@ export const adminDomain = defineDomain({
 		adminPlatformFeedbackListCapability,
 		adminPlatformFeedbackGetCapability,
 		adminPlatformFeedbackUpdateCapability,
+		adminDeadLetterQueueListCapability,
+		adminDeadLetterQueuePeekCapability,
+		adminDeadLetterQueueReplayCapability,
+		adminDeadLetterQueueAckCapability,
+		adminDeadLetterQueuePurgeCapability,
 		adminCommunityActivityListCapability,
 		adminCommunityOrphanForksCleanupCapability,
 		adminOrgResourceTransferCapability,

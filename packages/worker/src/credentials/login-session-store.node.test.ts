@@ -67,6 +67,50 @@ test('concurrent callers in different isolates run one exchange and share its se
 	})
 })
 
+test('a caller that claims the lease right after the holder publishes reuses that session', async () => {
+	const { env } = setup()
+	let exchanges = 0
+	const exchange = async () => {
+		exchanges += 1
+		return { token: `dummy-session-${exchanges}`, expiresAt: hourFromNow() }
+	}
+	// The holder publishes and releases between this caller's read and claim.
+	let raced = false
+	const db = env.APP_DB
+	const racingDb = new Proxy(db, {
+		get(target, prop, receiver) {
+			if (prop !== 'prepare') return Reflect.get(target, prop, receiver)
+			return (sql: string) => {
+				const statement = target.prepare(sql)
+				if (raced || !sql.trimStart().startsWith('SELECT')) return statement
+				return {
+					bind: (...values: Array<unknown>) => {
+						const bound = statement.bind(...values)
+						return {
+							first: async () => {
+								const row = await bound.first()
+								raced = true
+								await obtainLoginSession({ ...key, env, exchange })
+								return row
+							},
+						}
+					},
+				}
+			}
+		},
+	})
+	const result = await obtainLoginSession({
+		...key,
+		env: { ...env, APP_DB: racingDb } as unknown as Env,
+		exchange,
+	})
+	expect(exchanges).toBe(1)
+	expect(result).toMatchObject({
+		source: 'stored',
+		session: { token: 'dummy-session-1' },
+	})
+})
+
 test("a crashed holder's lease lapses and the next caller runs the exchange", async () => {
 	const { env } = setup()
 	await env.APP_DB.prepare(

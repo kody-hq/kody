@@ -281,6 +281,12 @@ export async function obtainLoginSession(
 				leaseMs,
 			})
 		) {
+			// The holder may have published between the read and the claim.
+			const storedAfterClaim = await readStoredLoginSession(input)
+			if (storedAfterClaim) {
+				await releaseLease(input.env.APP_DB, input.credentialId, leaseId)
+				return { session: storedAfterClaim, source: 'stored' }
+			}
 			let session: LoginSession
 			try {
 				session = await input.exchange()

@@ -34,6 +34,14 @@ export type JobsServiceContract = JobsStore & {
 		callerContext?: McpCallerContext | null
 		repoCheckPolicyOverride?: JobRepoCheckPolicy | null
 	}): Promise<RunJobNowResult>
+	/**
+	 * Resends a parked `kody-scheduled-dispatch-dlq` body to the scheduled
+	 * dispatch queue (the jobs worker owns that producer). Rejects bodies that
+	 * are not scheduled lane messages.
+	 */
+	replayScheduledDispatchMessage(input: {
+		body: unknown
+	}): Promise<{ ok: true; lane: string }>
 }
 
 export type RunDueJobsResult = {

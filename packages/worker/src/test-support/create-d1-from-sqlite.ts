@@ -113,9 +113,21 @@ export function createD1FromSqlite(
 		db.exec('BEGIN')
 		try {
 			for (const statement of statements) {
-				const isSelect = /^\s*select\b/i.test(statement.query ?? '')
-				if (isSelect && typeof statement.all === 'function') {
+				const query = statement.query ?? ''
+				if (
+					typeof statement.all === 'function' &&
+					/^\s*select\b/i.test(query)
+				) {
 					results.push(await statement.all())
+				} else if (
+					typeof statement.all === 'function' &&
+					/\breturning\b/i.test(query)
+				) {
+					const result = (await statement.all()) as { results: Array<unknown> }
+					results.push({
+						...result,
+						meta: { changes: result.results.length, last_row_id: 0 },
+					})
 				} else {
 					results.push(await statement.run())
 				}
