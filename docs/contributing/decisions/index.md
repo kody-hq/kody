@@ -39,6 +39,11 @@ When a later record changes a decision, mark the old one `superseded by NNNN`
 rather than editing or deleting it, and list it under
 [Historical / UI / implementation](#historical--ui--implementation).
 
+Keep the [primitives map](../architecture/primitives.yaml) `adrs` lists in sync
+in the same PR: add a new record to every primitive it defines or materially
+shapes, and replace a superseded record's path with the new one.
+`npm run primitives:check` fails on missing or superseded paths.
+
 Add new steering records to the steering list, not a catch-all numbered dump.
 
 ## Steering list
