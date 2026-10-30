@@ -96,10 +96,11 @@ test('LAN line appears only when local network access is on', () => {
 	).toContain('Local network access is on')
 })
 
-test('credential copy depends on oauthClientCredentials returning only a handle', () => {
-	// If credential values could reach a context, every "stay on Kody" line is false.
+test("opt-in copy says runs that can use the person's credentials go elsewhere", () => {
 	expect(
 		optInCopy({ name: 'x', operator: 'sam', grant: grants.locked! })
 			.paragraphs[0],
-	).toContain('Your credential values stay on Kody.')
+	).toContain(
+		'Runs that can use your credentials do not run here; they go to the next entry in your chain.',
+	)
 })
