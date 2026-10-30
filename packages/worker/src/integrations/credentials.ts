@@ -14,6 +14,7 @@ import {
 	getIntegrationCredentialId,
 	getOauthAppClientSecretCiphertext,
 	clearIntegrationAuthFailure,
+	getIntegrationRefreshTokenCiphertextForLease,
 	updateIntegrationCredentialCiphertexts,
 	updateOauthAppClientSecretCiphertext,
 } from './repo.ts'
@@ -188,6 +189,35 @@ export async function resolveIntegrationRefreshToken(input: {
 		ciphertexts.refreshTokenEncrypted,
 		userIntegrationCredentialContext(input.userId, input.name),
 	)
+}
+
+export async function resolveIntegrationRefreshTokenForLease(input: {
+	env: CredentialEnv
+	userId: OwnerId
+	name: string
+	leaseId: string
+	accessTokenEncrypted: string | null
+}): Promise<
+	| { held: true; refreshToken: string | null }
+	| { held: false; savedAt: string | null }
+> {
+	const read = await getIntegrationRefreshTokenCiphertextForLease({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		name: input.name,
+		leaseId: input.leaseId,
+		accessTokenEncrypted: input.accessTokenEncrypted,
+	})
+	if (!read.held) return read
+	if (!read.refreshTokenEncrypted) return { held: true, refreshToken: null }
+	return {
+		held: true,
+		refreshToken: await decryptUserOauthRefreshToken(
+			input.env,
+			read.refreshTokenEncrypted,
+			userIntegrationCredentialContext(input.userId, input.name),
+		),
+	}
 }
 
 export async function resolveUserOauthAppClientSecret(input: {

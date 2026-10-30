@@ -127,6 +127,10 @@ export const grantOnlyBindingSubjects = {
 		exclude:
 			'An org subject grant only reaches live members, and every caller already ORs this with live membership.',
 	},
+	profile: {
+		exclude:
+			'Profile grants narrow a profile; they never grant the person behind it.',
+	},
 } as const satisfies GrantSubjectChoices
 
 /**
@@ -214,6 +218,7 @@ export async function listOrganizationsForPerson(
 	db: D1Database,
 	personId: string,
 ): Promise<Array<ListedOrganization>> {
+	const now = new Date().toISOString()
 	const memberships = await db
 		.prepare(
 			`SELECT o.slug AS slug,
@@ -248,6 +253,7 @@ export async function listOrganizationsForPerson(
 			 FROM grants g
 			 INNER JOIN orgs o ON o.id = g.org_id
 			 WHERE g.deleted_at IS NULL
+			   AND (g.expires_at IS NULL OR g.expires_at > ?)
 			   AND g.subject_type = 'user'
 			   AND g.subject_id = ?${andActiveOrgSql('o')}
 			   AND NOT EXISTS (
@@ -268,6 +274,7 @@ export async function listOrganizationsForPerson(
 			  AND g.subject_id = t.id
 			  AND g.org_id = t.org_id
 			  AND g.deleted_at IS NULL
+			  AND (g.expires_at IS NULL OR g.expires_at > ?)
 			 INNER JOIN orgs o ON o.id = t.org_id
 			 WHERE tm.user_id = ?
 			   AND tm.deleted_at IS NULL${andActiveOrgSql('o')}
@@ -278,7 +285,7 @@ export async function listOrganizationsForPerson(
 			       AND m.deleted_at IS NULL
 			   )`,
 		)
-		.bind(personId, personId, personId, personId)
+		.bind(now, personId, personId, now, personId, personId)
 		.all<{
 			slug: string
 			display_name: string | null

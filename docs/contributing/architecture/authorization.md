@@ -46,9 +46,15 @@ synchronous, for callers that already hold the compiled permissions.
    leaves need no grant rows, only the existing epoch bumps); outside
    collaborators hold `search:read` plus grants (and `org:execute` when they
    hold `package:execute` somewhere, the ad-hoc rule). Compiled results are
-   stored in `access_cache` and keyed by `orgs.access_epoch`. Automation (no
-   actor) acts for the org that owns the job, webhook, or subscription. The
-   result is also cached per request context.
+   stored in `access_cache` and keyed by `orgs.access_epoch`. A grant with
+   `expires_at` (migration 0212; NULL never expires) stops counting at that
+   instant: every subject lookup filters it in SQL, the cached row's
+   `valid_until` holds the earliest expiry it used and is a miss from then, and
+   the per-request memo recompiles past it, so a long run loses the grant
+   mid-run. `subject_type = 'profile'` rows exist for profiles and never reach a
+   person: every lookup site excludes them. Automation (no actor) acts for the
+   org that owns the job, webhook, or subscription. The result is also cached
+   per request context.
 4. **Credential scopes.** Non-null `credential.scopes` narrow the result.
 5. **Connection profile.** A bound profile narrows package resources to the
    packages and actions it lists (`read`, `execute`, `write`). Profiles list

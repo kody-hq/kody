@@ -78,7 +78,7 @@ async function createDb() {
 			created_by_user_id TEXT,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL,
-			deleted_at TEXT
+			deleted_at TEXT, expires_at TEXT
 		);
 		CREATE TABLE IF NOT EXISTS grant_permissions (
 			grant_id TEXT NOT NULL,

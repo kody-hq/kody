@@ -166,6 +166,11 @@ async function ensureServiceKey(
 ) {
 	const wrap = storedKeyWrap(env.apiUrl, ecid)
 	if (wrap === 'file') return
+	if (wrap === 'passphrase' && keyStorage === 'keyring') {
+		throw new Error(
+			'A passphrase-protected context cannot run as a service with --key-storage keyring. Re-run with --key-storage file.',
+		)
+	}
 	if (
 		keyStorage !== undefined &&
 		keyStorage !== 'file' &&
@@ -276,7 +281,7 @@ export async function installDaemonService(
 		)
 	}
 	env.write(`${formatServiceStatus(status, name)}\n`)
-	return status
+	return { ...status, started, ok: started && status.running }
 }
 
 async function waitForStart(
@@ -363,7 +368,7 @@ export async function runDaemonServiceCommand(
 				: { maxConcurrent: input.maxConcurrent }),
 			...(input.keyStorage ? { keyStorage: input.keyStorage } : {}),
 		})
-		return status.running ? 0 : 1
+		return status.ok ? 0 : 1
 	}
 	if (input.sub === 'logs') {
 		if (!existsSync(paths.logPath)) {
@@ -483,14 +488,14 @@ export async function offerInstall(
 		)
 		return false
 	}
-	await installDaemonService(env, {
+	const status = await installDaemonService(env, {
 		ecid: input.ecid,
 		...(input.keyStorage ? { keyStorage: input.keyStorage } : {}),
 		...(input.maxConcurrent === undefined
 			? {}
 			: { maxConcurrent: input.maxConcurrent }),
 	})
-	return true
+	return status.ok
 }
 
 /** After `kody context revoke|delete`: remove this machine's service for it. */
