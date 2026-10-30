@@ -19,7 +19,7 @@ function createSeededDb() {
 		);
 		CREATE TABLE grants (
 			id TEXT PRIMARY KEY, org_id TEXT NOT NULL, subject_type TEXT NOT NULL,
-			subject_id TEXT NOT NULL, deleted_at TEXT
+			subject_id TEXT NOT NULL, deleted_at TEXT, expires_at TEXT
 		);
 		CREATE TABLE teams (id TEXT PRIMARY KEY, org_id TEXT NOT NULL, deleted_at TEXT);
 		CREATE TABLE team_members (

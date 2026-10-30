@@ -173,6 +173,10 @@ export const contextGrantSubjects = {
 		exclude:
 			'access-writes refuses org subjects on execution_context; all_members covers everyone in the org.',
 	},
+	profile: {
+		exclude:
+			'Profile grants narrow a profile; they never grant the person behind it.',
+	},
 } as const satisfies GrantSubjectChoices
 
 /**

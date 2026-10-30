@@ -153,7 +153,8 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL,
 				deleted_at TEXT,
-				origin TEXT NOT NULL DEFAULT 'manual'
+				origin TEXT NOT NULL DEFAULT 'manual',
+				expires_at TEXT
 			)`,
 		)
 		.run()
@@ -343,6 +344,7 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 				epoch INTEGER NOT NULL,
 				compiled_json TEXT NOT NULL,
 				computed_at TEXT NOT NULL,
+				valid_until TEXT,
 				PRIMARY KEY (org_id, user_id)
 			)`,
 		)
