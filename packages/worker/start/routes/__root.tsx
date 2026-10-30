@@ -285,6 +285,10 @@ function LoadedAppLayout() {
 		'/login',
 		appShell.preserveLoginReturn ? authReturnHref : null,
 	)
+	const signupHref = buildAuthLink(
+		'/signup',
+		appShell.preserveLoginReturn ? authReturnHref : null,
+	)
 	const authShell = appShell.mode === 'auth'
 	const focused = appShell.mode === 'focused'
 	const workspace = Boolean(workspaceLayoutNavigation(useMatches(), session))
@@ -324,7 +328,11 @@ function LoadedAppLayout() {
 				<Outlet />
 			</Content>
 			{authShell || focused || workspace ? null : (
-				<SiteFooter loggedIn={session !== null} loginHref={loginHref} />
+				<SiteFooter
+					loggedIn={session !== null}
+					loginHref={loginHref}
+					signupHref={signupHref}
+				/>
 			)}
 			<YouTubeWatchOverlay snapshot={youtubeWatch} location={shellLocation} />
 		</div>

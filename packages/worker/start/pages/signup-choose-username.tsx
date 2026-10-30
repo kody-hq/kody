@@ -17,6 +17,8 @@ import {
 	type CSSProperties,
 	type FormEvent,
 } from 'react'
+import { buildAuthLink } from '#client/auth-links.ts'
+import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 import {
@@ -36,8 +38,13 @@ export function SignupChooseUsernamePage(props: {
 	provider: string
 	providerUsername: string | null
 	displayName: string | null
+	redirectTo: string | null
 }) {
 	const completeSignup = useServerFn(completeOauthPendingSignup)
+	const signupRestartHref = buildAuthLink(
+		'/signup',
+		normalizeRedirectTo(props.redirectTo),
+	)
 	const hydrated = useHydrated()
 	const handleId = useId()
 	const lifecycle = useRef<AbortController | null>(null)
@@ -119,7 +126,7 @@ export function SignupChooseUsernamePage(props: {
 					payload.code === 'pending_expired' ||
 					payload.code === 'pending_csrf'
 				) {
-					window.location.assign('/signup')
+					window.location.assign(signupRestartHref)
 				}
 				return
 			}
@@ -225,7 +232,8 @@ export function SignupChooseUsernamePage(props: {
 						css={authFootCss}
 					>
 						<p>
-							Wrong account? <SiteLink href="/signup">Start over</SiteLink>.
+							Wrong account?{' '}
+							<SiteLink href={signupRestartHref}>Start over</SiteLink>.
 						</p>
 					</footer>
 				</div>

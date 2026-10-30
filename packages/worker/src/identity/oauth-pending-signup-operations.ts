@@ -253,12 +253,23 @@ export async function completeOauthPendingSignup({
 	)
 }
 
+/** Restart sign-up without dropping a pending OAuth authorization. */
+export function buildSignupRestartPath(redirectTo: string | null | undefined) {
+	const safeRedirectTo = normalizeRedirectTo(redirectTo)
+	return safeRedirectTo
+		? `/signup?${new URLSearchParams({ redirectTo: safeRedirectTo })}`
+		: '/signup'
+}
+
 export async function loadOauthPendingSignupPage({
 	env,
 	request,
+	fallbackRedirectTo = null,
 }: {
 	env: Env
 	request: Request
+	/** Unsigned query copy, used only when the pending cookie is gone. */
+	fallbackRedirectTo?: string | null
 }) {
 	setOauthPendingSignupSecret(env.COOKIE_SECRET)
 	const secure = isSecureRequest(request)
@@ -276,7 +287,7 @@ export async function loadOauthPendingSignupPage({
 		return {
 			ok: false as const,
 			code: 'pending_expired' as const,
-			redirectTo: '/signup',
+			redirectTo: buildSignupRestartPath(fallbackRedirectTo),
 			clearCookie: await destroyOauthPendingSignupCookie(secure),
 		}
 	}

@@ -5,7 +5,8 @@ export const apiTokenEnvVar = 'KODY_API_TOKEN'
 export const defaultScopes = ['openid', 'profile', 'email'] as const
 
 export const keyringService = 'kody.codes'
-export const loginTimeoutMs = 5 * 60 * 1000
+/** Long enough to create an account and verify email mid-login. */
+export const loginTimeoutMs = 15 * 60 * 1000
 export const accessTokenSkewMs = 60_000
 export const cliName = '@kodycodes/cli'
 export const cliClientUri = 'https://github.com/kody-hq/kody'
