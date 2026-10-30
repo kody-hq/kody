@@ -465,6 +465,21 @@ test('package codemod engine covers lifecycle, drift, isolation, snapshot keys, 
 		expect.objectContaining({ followCapabilityImports: false }),
 	)
 
+	// A real error joined beside a chunk's runner limit is still new.
+	mockChecksByIndex((index) =>
+		index.includes('packageStorage().get')
+			? checkResult(
+					false,
+					`${isolatedCheckRunnerLimitMessage('Bundle validation for "index.ts"')}\nnew failure only after transform`,
+				)
+			: checkResult(true),
+	)
+	const mixed = await step(env, {
+		mode: 'dry-run',
+		filters: { packageIds: ['pkg-ambient'] },
+	})
+	expect(mixed.items[0]?.status).toBe('dry_run_new_failures')
+
 	// An operator-excluded package is recorded, never processed.
 	mocks.runRepoChecks.mockClear()
 	const excluded = await step(env, {

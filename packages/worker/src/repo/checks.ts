@@ -86,7 +86,10 @@ import {
 	resolveSecretProviderSlots,
 	type ResolvedSecretProviderSlots,
 } from '#worker/credentials/secret-provider-slots.ts'
-import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
+import {
+	isRepoCheckResourceLimitMessage,
+	type RepoCheckStep,
+} from './isolated-runner-limit-message.ts'
 import { credentialNeedKeyNotes } from '#worker/credentials/credential-needs.ts'
 import { computeCredentialNeedsClosure } from '#worker/credentials/credential-needs-closure.ts'
 import { republishedNeedsNote } from '#worker/enablements/republish-needs-note.ts'
@@ -1718,9 +1721,12 @@ export async function runRepoChecks(input: {
 	})
 	sourceFiles = credentialPatternCheck.sourceFiles
 	const enforceCredentialStamp = input.enforceCredentialStamp !== false
-	const credentialCheckOk = enforceCredentialStamp
-		? credentialPatternCheck.ok
-		: true
+	// A scan that hit the runner limit stays failed either way: it is
+	// incomplete, and codemod gates must see that.
+	const credentialCheckOk =
+		credentialPatternCheck.ok ||
+		(!enforceCredentialStamp &&
+			!isRepoCheckResourceLimitMessage(credentialPatternCheck.message))
 	const credentialCheckMessage =
 		!enforceCredentialStamp && !credentialPatternCheck.ok
 			? credentialPatternCheck.message
