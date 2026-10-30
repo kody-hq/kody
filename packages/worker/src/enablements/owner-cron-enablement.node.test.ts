@@ -1,3 +1,4 @@
+import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import {
@@ -136,6 +137,49 @@ test('a job enabled through a scoped credential keeps that narrowing', async () 
 		enablerScopes: ['package:execute'],
 		enablerProfileName: 'work',
 	})
+})
+
+test('turning a job on again records the credential that turned it on', async () => {
+	const { db } = await setup()
+	const packageId = 'e0c8c4c7-25fb-4d44-9446-3ee7cf4677dd'
+	const jobName = 'inbox-refresh'
+	const jobId = buildPackageJobId(packageId, jobName)
+	const orgId = ownerIdFromStored('user-noah')
+	const enable = (input: {
+		scopes: Array<OrgPermission> | null
+		refresh: boolean
+	}) =>
+		ensureOwnerCronEnablementForJob({
+			db,
+			orgId,
+			jobId,
+			jobName,
+			packageId,
+			enablerUserId: personIdFromStored('user-noah'),
+			enablerCredential: { scopes: input.scopes, profileName: null },
+			refreshEnablerCredential: input.refresh,
+		})
+	const stored = async () =>
+		(
+			await listEnablementsForInstance({
+				db,
+				orgId: String(orgId),
+				triggerKind: 'cron',
+				instanceId: jobId,
+				triggerName: jobName,
+			})
+		).map((row) => row.enablerScopes)
+
+	// Package create writes the row (job still off) with an unscoped session.
+	expect(await enable({ scopes: null, refresh: false })).toBe('inserted')
+	// Editing an already-on job keeps the narrowing it was turned on with.
+	await enable({ scopes: ['job:write'], refresh: false })
+	expect(await stored()).toEqual([null])
+	// A scoped token turning the job on narrows the existing row.
+	expect(await enable({ scopes: ['job:write'], refresh: true })).toBe(
+		'already_present',
+	)
+	expect(await stored()).toEqual([['job:write']])
 })
 
 test('stored enabler scopes that cannot be read narrow to nothing', async () => {

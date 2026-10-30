@@ -1,3 +1,4 @@
+import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -90,7 +91,9 @@ function setup({
 	repoIsPrivate = false,
 	manifest = {},
 	publish = {},
+	scopes = null,
 }: {
+	scopes?: ReadonlyArray<OrgPermission> | null
 	repoIsPrivate?: boolean
 	manifest?: Record<string, unknown>
 	publish?: {
@@ -196,6 +199,7 @@ function setup({
 				username: 'user',
 			},
 			baseUrl: 'https://kody.test',
+			scopes,
 		}),
 	}
 	const promote = () =>
@@ -269,6 +273,21 @@ test('repoPromoteToPackage seeds published_commit from the opened session base s
 		}),
 	)
 	expect(mockModule.deleteUserRepo).toHaveBeenCalledWith(...deletedRepo)
+})
+
+test('repoPromoteToPackage hands the promoting credential to the package projection', async () => {
+	const { promote } = setup({ scopes: ['package:create', 'package:write'] })
+
+	await promote()
+
+	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
+		expect.objectContaining({
+			firstPublish: true,
+			actorCredential: expect.objectContaining({
+				scopes: ['package:create', 'package:write'],
+			}),
+		}),
+	)
 })
 
 test('repoPromoteToPackage inherits repo visibility, not package.json private', async () => {

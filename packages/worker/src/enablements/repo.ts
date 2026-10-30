@@ -166,7 +166,7 @@ export type NewEnablement = {
 	senderValue?: string | null
 }
 
-function enablerScopesJson(enablement: NewEnablement) {
+function enablerScopesJson(enablement: Pick<NewEnablement, 'enablerScopes'>) {
 	return enablement.enablerScopes == null
 		? null
 		: JSON.stringify([...enablement.enablerScopes])
@@ -525,6 +525,39 @@ export async function pauseEnablement(input: {
 		)
 		.run()
 	return (result.meta.changes ?? 0) > 0
+}
+
+/**
+ * Re-record what the enabler's credential can do on their own cron rows for a
+ * job, when they turn that job on again.
+ */
+export async function updateCronEnablerNarrowing(input: {
+	db: D1Database
+	orgId: string
+	jobId: string
+	jobName: string
+	enablerUserId: string
+	enablerScopes: ReadonlyArray<OrgPermission> | null
+	enablerProfileName: string | null
+	now?: string
+}): Promise<void> {
+	await input.db
+		.prepare(
+			`UPDATE enablements
+			 SET enabler_scopes_json = ?, enabler_profile_name = ?, updated_at = ?
+			 WHERE org_id = ? AND trigger_kind = 'cron' AND instance_id = ?
+			   AND trigger_name = ? AND enabler_user_id = ?`,
+		)
+		.bind(
+			enablerScopesJson(input),
+			input.enablerProfileName?.trim() || null,
+			input.now ?? new Date().toISOString(),
+			input.orgId,
+			input.jobId,
+			input.jobName,
+			input.enablerUserId,
+		)
+		.run()
 }
 
 /** Resume a paused enablement. Returns false when it was not paused. */

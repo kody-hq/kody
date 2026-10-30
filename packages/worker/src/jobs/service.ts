@@ -1152,6 +1152,7 @@ export async function updateJob(input: {
 					jobName: updated.name,
 					enablerUserId: callerContext.user.userId,
 					enablerCredential: input.callerContext.request?.credential ?? null,
+					refreshEnablerCredential: existing.enabled === false,
 					now: nowIso,
 					onInserted: (enablement) =>
 						recordEnablementToggle({

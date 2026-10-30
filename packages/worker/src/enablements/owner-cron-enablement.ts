@@ -14,7 +14,11 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { packageIdFromJobId } from '@kody-internal/shared/jobs/package-job-id.ts'
 import { jobsData, type JobsDataEnv } from '#worker/jobs/jobs-data.ts'
-import { insertEnablement, loadEarliestLiveOwnerId } from './repo.ts'
+import {
+	insertEnablement,
+	loadEarliestLiveOwnerId,
+	updateCronEnablerNarrowing,
+} from './repo.ts'
 import { type EnablementRecord } from './types.ts'
 
 /**
@@ -100,6 +104,11 @@ export async function ensureOwnerCronEnablementForJob(input: {
 	 * Scheduled runs never exceed it.
 	 */
 	enablerCredential?: EnablerCredential | null
+	/**
+	 * The enabler is turning the job on now: an existing row of theirs takes
+	 * `enablerCredential` as its narrowing instead of keeping the old one.
+	 */
+	refreshEnablerCredential?: boolean
 	/** Runs after a new enablement row is written (for the audit log). */
 	onInserted?: (enablement: EnablementRecord) => Promise<unknown>
 }): Promise<OwnerCronEnablementOutcome> {
@@ -120,6 +129,22 @@ export async function ensureOwnerCronEnablementForJob(input: {
 			enablerUserId: String(enablerUserId),
 		})
 	) {
+		if (
+			input.refreshEnablerCredential &&
+			input.enablerUserId &&
+			input.enablerCredential
+		) {
+			await updateCronEnablerNarrowing({
+				db: input.db,
+				orgId: String(input.orgId),
+				jobId: input.jobId,
+				jobName: input.jobName,
+				enablerUserId: String(enablerUserId),
+				enablerScopes: input.enablerCredential.scopes,
+				enablerProfileName: input.enablerCredential.profileName,
+				now: input.now,
+			})
+		}
 		return 'already_present'
 	}
 
