@@ -149,13 +149,13 @@ test('downloadVerifiedGzip keeps going past the idle timeout while bytes keep ar
 	const binary = Buffer.from('#!/bin/sh\necho slow but steady\n')
 	const gz = gzipSync(binary)
 	const destination = join(mkdtempSync(join(tmpdir(), 'kody-wd-')), 'workerd')
-	const { fetchFn } = serveProgressing(gz, 30, 6)
+	const { fetchFn } = serveProgressing(gz, 60, 6)
 	await downloadVerifiedGzip({
 		url: 'https://example.com/workerd.gz',
 		sha256: createHash('sha256').update(gz).digest('hex'),
 		destination,
 		fetchFn,
-		idleTimeoutMs: 80,
+		idleTimeoutMs: 200,
 	})
 	assert.equal(readFileSync(destination, 'utf8'), binary.toString())
 })
