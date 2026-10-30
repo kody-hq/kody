@@ -37,7 +37,12 @@ import {
 	markQueuedAttemptExpired,
 	markQueuedAttemptRan,
 } from './routing.ts'
-import { getExecutionContext, loadContextAccess, parseGrant } from './store.ts'
+import {
+	getExecutionContext,
+	loadContextAccess,
+	parseCapabilities,
+	parseGrant,
+} from './store.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import { runTiming, type ExecutionContextRunTiming } from './run-timing.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
@@ -1253,6 +1258,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			requires,
 			credentials: picks.length > 0 ? (new Map(picks) as never) : null,
 			code: request.source.code,
+			capabilities: parseCapabilities(row),
 		})
 		if (refusal) {
 			return await fail(

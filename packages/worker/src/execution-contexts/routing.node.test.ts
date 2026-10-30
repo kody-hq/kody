@@ -97,9 +97,41 @@ test('context: cloud runs on cloud only', () => {
 	).toEqual([cloud])
 })
 
+test('requires fs needs both a server grant folder and an advertised local mount', () => {
+	const grant = {
+		...ecpDefaultGrant,
+		fs: [{ path: '/Users/k/Desktop', mode: 'rw' as const }],
+	}
+	expect(
+		grantRefusal({
+			grant,
+			requires: ['fs'],
+			credentials: null,
+			capabilities: {},
+		}),
+	).toBe('no_local_fs')
+	expect(
+		grantRefusal({
+			grant,
+			requires: ['fs'],
+			credentials: null,
+			capabilities: { features: ['fs'] },
+		}),
+	).toBeNull()
+	expect(
+		grantRefusal({
+			grant: ecpDefaultGrant,
+			requires: ['fs'],
+			credentials: null,
+			capabilities: { features: ['fs'] },
+		}),
+	).toBe('no_fs')
+})
+
 test('a grant refuses runs it cannot serve', () => {
 	expect(
 		grantRefusal({
+			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
 			credentials: null,
@@ -107,6 +139,7 @@ test('a grant refuses runs it cannot serve', () => {
 	).toBe('no_fs')
 	expect(
 		grantRefusal({
+			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['lan'],
 			credentials: null,
@@ -114,13 +147,19 @@ test('a grant refuses runs it cannot serve', () => {
 	).toBe('no_lan')
 	expect(
 		grantRefusal({
+			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: [],
 			credentials: new Map([['github', [{ name: 'gh', scope: null }]]]),
 		}),
 	).toBe('credentials_not_allowed')
 	expect(
-		grantRefusal({ grant: ecpDefaultGrant, requires: [], credentials: null }),
+		grantRefusal({
+			capabilities: {},
+			grant: ecpDefaultGrant,
+			requires: [],
+			credentials: null,
+		}),
 	).toBeNull()
 })
 
@@ -172,6 +211,7 @@ test('a grant that allows no credentials refuses code that needs one', () => {
 		"import { credentials } from 'kody:runtime'\nexport default () => credentials('example')"
 	expect(
 		grantRefusal({
+			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: [],
 			credentials: null,
@@ -180,6 +220,7 @@ test('a grant that allows no credentials refuses code that needs one', () => {
 	).toBe('credentials_not_allowed')
 	expect(
 		grantRefusal({
+			capabilities: {},
 			grant: {
 				...ecpDefaultGrant,
 				credentials: { mode: 'list', ids: ['cred_1'] },
@@ -191,6 +232,7 @@ test('a grant that allows no credentials refuses code that needs one', () => {
 	).toBeNull()
 	expect(
 		grantRefusal({
+			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: [],
 			credentials: null,
