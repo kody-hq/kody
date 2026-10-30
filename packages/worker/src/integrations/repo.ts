@@ -775,6 +775,45 @@ export async function getIntegrationCredentialCiphertexts(input: {
 	}
 }
 
+/**
+ * The refresh token a lease holder may send. It reads only while the lease is
+ * still held and the access token is the one the holder saw before claiming,
+ * so a reconnect in between never has its tokens sent or replaced.
+ */
+export async function getIntegrationRefreshTokenCiphertextForLease(input: {
+	db: D1Database
+	userId: string
+	name: string
+	leaseId: string
+	accessTokenEncrypted: string | null
+}): Promise<
+	| { held: true; refreshTokenEncrypted: string | null }
+	| { held: false; savedAt: string | null }
+> {
+	const row = await input.db
+		.prepare(
+			`SELECT refresh_token_encrypted
+			FROM user_integrations
+			WHERE user_id = ? AND name = ? AND token_refresh_lease_id = ?
+				AND access_token_encrypted IS ?${andLiveDeletedAtSql()}
+			LIMIT 1`,
+		)
+		.bind(input.userId, input.name, input.leaseId, input.accessTokenEncrypted)
+		.first<{ refresh_token_encrypted: string | null }>()
+	if (row)
+		return { held: true, refreshTokenEncrypted: row.refresh_token_encrypted }
+	const current = await input.db
+		.prepare(
+			`SELECT COALESCE(token_refreshed_at, updated_at) AS saved_at
+			FROM user_integrations
+			WHERE user_id = ? AND name = ?${andLiveDeletedAtSql()}
+			LIMIT 1`,
+		)
+		.bind(input.userId, input.name)
+		.first<{ saved_at: string | null }>()
+	return { held: false, savedAt: current?.saved_at ?? null }
+}
+
 export async function updateIntegrationCredentialCiphertexts(input: {
 	db: D1Database
 	userId: string
