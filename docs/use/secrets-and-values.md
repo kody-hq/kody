@@ -394,7 +394,9 @@ approval URL shaped like
 lists every pending secret and approves them in one click. A single-secret link
 grants one package on one secret. For community forks, reviewing the source and
 sending the owner the `communityForkAdopt` adoption link is an alternative to
-sending those approval links. Agents and package runtimes cannot adopt.
+sending those approval links only when the secret's `allowed_packages` list is
+empty; a non-empty list still needs the fork approved on it. Agents and package
+runtimes cannot adopt.
 
 ## Package config vs package storage
 

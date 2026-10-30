@@ -15,11 +15,14 @@ const mockModule = vi.hoisted(() => ({
 	tryAllowedPackagesSafetyWindowGrant: vi.fn(
 		async (..._args: Array<unknown>) => false,
 	),
+	safetyWindowActive: vi.fn(async (..._args: Array<unknown>) => false),
 }))
 
 vi.mock('#worker/credentials/allowed-packages-safety-window.ts', () => ({
 	tryAllowedPackagesSafetyWindowGrant: (...args: Array<unknown>) =>
 		mockModule.tryAllowedPackagesSafetyWindowGrant(...args),
+	isAllowedPackagesSafetyWindowActive: (...args: Array<unknown>) =>
+		mockModule.safetyWindowActive(...args),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
@@ -354,13 +357,30 @@ test('package approval helpers parse structured messages and skip trusted packag
 			storageId: 'pkg-1',
 		},
 	}
+	// Self-authored and adopted packages need approval only on a non-empty list
+	// that excludes them, and not while the safety window is open (#4129).
+	const cases = [
+		{ allowedPackages: [], windowActive: false, expected: 0 },
+		{ allowedPackages: ['pkg-other'], windowActive: true, expected: 0 },
+		{ allowedPackages: ['pkg-other'], windowActive: false, expected: 1 },
+	]
 	for (const trustedFork of [null, adoptedFork]) {
-		lookups(savedPackage, trustedFork)
-		await expect(findMissingPackageApprovals(approvalsInput)).resolves.toEqual(
-			[],
-		)
+		for (const { allowedPackages, windowActive, expected } of cases) {
+			lookups(savedPackage, trustedFork)
+			mockModule.safetyWindowActive.mockResolvedValueOnce(windowActive)
+			mockModule.findSecret.mockResolvedValueOnce({
+				found: true,
+				value: 'bot-token',
+				scope: 'user',
+				allowedPackages,
+				placement: null,
+			})
+			await expect(
+				findMissingPackageApprovals(approvalsInput),
+			).resolves.toHaveLength(expected)
+		}
 	}
-	expect(mockModule.findSecret).not.toHaveBeenCalled()
+	mockModule.findSecret.mockClear()
 
 	lookups(savedPackage, communityFork)
 	mockModule.findSecret.mockResolvedValueOnce({

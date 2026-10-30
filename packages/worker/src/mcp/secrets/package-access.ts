@@ -23,7 +23,10 @@ import {
 	type LoadedPackageManifest,
 } from '#worker/package-registry/source.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
-import { tryAllowedPackagesSafetyWindowGrant } from '#worker/credentials/allowed-packages-safety-window.ts'
+import {
+	isAllowedPackagesSafetyWindowActive,
+	tryAllowedPackagesSafetyWindowGrant,
+} from '#worker/credentials/allowed-packages-safety-window.ts'
 import {
 	scheduleAllowedPackagesWouldBlock,
 	type AllowedPackagesWouldBlockAccessKind,
@@ -453,15 +456,16 @@ export async function findMissingPackageApprovals(input: {
 	if (!savedPackage) {
 		throw new Error(`Saved package "${input.packageId}" was not found.`)
 	}
-	if (
-		await savedPackageHasImplicitUserSecretReadAccess({
-			db: input.env.APP_DB,
-			userId: input.userId,
-			savedPackage,
-		})
-	) {
-		return []
-	}
+	const implicit = await savedPackageHasImplicitUserSecretReadAccess({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		savedPackage,
+	})
+	// Self-authored and adopted packages only need approval on a non-empty
+	// list, and not while the #4129 safety window allows them anyway.
+	const implicitCoversNonEmptyLists =
+		implicit &&
+		(await isAllowedPackagesSafetyWindowActive({ db: input.env.APP_DB }))
 
 	const storageContext = {
 		sessionId: input.storageContext?.sessionId ?? null,
@@ -486,6 +490,12 @@ export async function findMissingPackageApprovals(input: {
 			if (!resolved.found) return null
 			if (resolved.scope !== 'user') return null
 			if (resolved.allowedPackages.includes(savedPackage.id)) {
+				return null
+			}
+			if (
+				implicit &&
+				(resolved.allowedPackages.length === 0 || implicitCoversNonEmptyLists)
+			) {
 				return null
 			}
 			return {
