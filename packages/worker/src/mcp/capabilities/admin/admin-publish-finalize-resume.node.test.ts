@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 	readPublishGitNoteFromArtifactsRepo: vi.fn(),
 	publishFromExternalRef: vi.fn(),
 	rebuildPublishedPackageArtifactsViaRepoSession: vi.fn(),
+	countUnbuiltPublishedPackageArtifactTargets: vi.fn(),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
@@ -49,6 +50,8 @@ vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
 vi.mock('#mcp/capabilities/repo/package-artifact-rebuild.ts', () => ({
 	rebuildPublishedPackageArtifactsViaRepoSession: (...args: Array<unknown>) =>
 		mocks.rebuildPublishedPackageArtifactsViaRepoSession(...args),
+	countUnbuiltPublishedPackageArtifactTargets: (...args: Array<unknown>) =>
+		mocks.countUnbuiltPublishedPackageArtifactTargets(...args),
 }))
 
 function createContext(roles: Array<string>) {
@@ -92,6 +95,10 @@ beforeEach(() => {
 		{ source_id: 'source-other', record: { publishedCommit: 'commit-x' } },
 	])
 	mocks.readPublishGitNoteFromArtifactsRepo.mockResolvedValue({ found: false })
+	mocks.countUnbuiltPublishedPackageArtifactTargets.mockResolvedValue({
+		targetCount: 3,
+		unbuiltCount: 3,
+	})
 	mocks.publishFromExternalRef.mockResolvedValue({
 		status: 'already_published',
 		published_commit: 'commit-new',
@@ -127,6 +134,7 @@ test('requires admin and defaults to a dry-run report of the interrupted publish
 				sealed: false,
 				staleJobCount: 1,
 				publishNoteFound: false,
+				unbuiltArtifactTargetCount: 3,
 			},
 		],
 	})
@@ -178,12 +186,28 @@ test('apply skips a package whose Artifacts HEAD differs from published_commit',
 	expect(mocks.publishFromExternalRef).not.toHaveBeenCalled()
 })
 
-test('dry-run reports complete once sealed, jobs attributed, and the note exists', async () => {
+test('dry-run reports complete only once sealed, jobs attributed, note attached, and artifacts built', async () => {
 	mocks.publishedPublishChecksAreCurrent.mockResolvedValue(true)
 	mocks.listJobsForUser.mockResolvedValue([
 		{ source_id: 'source-1', record: { publishedCommit: 'commit-new' } },
 	])
 	mocks.readPublishGitNoteFromArtifactsRepo.mockResolvedValue({ found: true })
+	mocks.countUnbuiltPublishedPackageArtifactTargets.mockResolvedValue({
+		targetCount: 3,
+		unbuiltCount: 1,
+	})
+	const incomplete = await adminPublishFinalizeResumeCapability.handler(
+		{ packageIds: ['package-1'] },
+		createContext(['admin']),
+	)
+	expect(incomplete.outcomes[0]).toMatchObject({
+		outcome: 'incomplete',
+		unbuiltArtifactTargetCount: 1,
+	})
+	mocks.countUnbuiltPublishedPackageArtifactTargets.mockResolvedValue({
+		targetCount: 3,
+		unbuiltCount: 0,
+	})
 	const result = await adminPublishFinalizeResumeCapability.handler(
 		{ packageIds: ['package-1'] },
 		createContext(['admin']),

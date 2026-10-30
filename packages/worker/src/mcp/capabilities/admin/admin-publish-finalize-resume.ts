@@ -2,7 +2,10 @@ import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
-import { rebuildPublishedPackageArtifactsViaRepoSession } from '#mcp/capabilities/repo/package-artifact-rebuild.ts'
+import {
+	countUnbuiltPublishedPackageArtifactTargets,
+	rebuildPublishedPackageArtifactsViaRepoSession,
+} from '#mcp/capabilities/repo/package-artifact-rebuild.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
 import { publishedPublishChecksAreCurrent } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
@@ -32,6 +35,7 @@ const outcomeSchema = z.object({
 	sealed: z.boolean().optional(),
 	staleJobCount: z.number().int().nonnegative().optional(),
 	publishNoteFound: z.boolean().optional(),
+	unbuiltArtifactTargetCount: z.number().int().nonnegative().optional(),
 	rebuiltTargetCount: z.number().int().nonnegative().optional(),
 	error: z.string().optional(),
 })
@@ -111,17 +115,29 @@ async function resumePackage(input: {
 				commitOid: publishedCommit,
 			})
 		).found
+		const sessionId = `admin-publish-resume-${source.id}`
 		const state = { ...withCommit, sealed, staleJobCount, publishNoteFound }
 		if (input.dryRun) {
+			const { unbuiltCount } =
+				await countUnbuiltPublishedPackageArtifactTargets({
+					env: input.env,
+					rpcSessionId: sessionId,
+					sourceId: source.id,
+					userId: ownerUserId,
+					publishedCommit,
+				})
 			return {
 				...state,
+				unbuiltArtifactTargetCount: unbuiltCount,
 				outcome:
-					sealed && staleJobCount === 0 && publishNoteFound
+					sealed &&
+					staleJobCount === 0 &&
+					publishNoteFound &&
+					unbuiltCount === 0
 						? 'complete'
 						: 'incomplete',
 			}
 		}
-		const sessionId = `admin-publish-resume-${source.id}`
 		const result = await repoSessionRpc(
 			input.env,
 			sessionId,
@@ -172,7 +188,7 @@ export const adminPublishFinalizeResumeCapability = defineDomainCapability(
 		name: 'adminPublishFinalizeResume',
 		contextRuns: 'deny',
 		description:
-			'Finish an interrupted publish of the live published commit for specific saved packages: a publish that moved published_commit but died (Durable Object reset or CPU limit) before the credential stamp, package projection and job attribution, publish note, and bundle artifacts landed. Re-runs checks and those steps at the current published commit only; never moves the source or published_commit, and skips packages whose Artifacts HEAD differs. dryRun default is true (reports sealed, stale job count, and whether the publish note exists).',
+			'Finish an interrupted publish of the live published commit for specific saved packages: a publish that moved published_commit but died (Durable Object reset or CPU limit) before the credential stamp, package projection and job attribution, publish note, and bundle artifacts landed. Re-runs checks and those steps at the current published commit only; never moves the source or published_commit, and skips packages whose Artifacts HEAD differs. dryRun default is true (reports sealed, stale job count, whether the publish note exists, and unbuilt bundle artifact targets).',
 		keywords: [
 			'admin',
 			'package',

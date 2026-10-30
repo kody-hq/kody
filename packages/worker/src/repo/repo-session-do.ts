@@ -169,6 +169,7 @@ import {
 import {
 	attachPublishGitNoteBestEffort,
 	buildPublishGitNote,
+	readPublishGitNoteFromArtifactsRepo,
 	type KodyPublishGitNoteChecks,
 } from './publish-git-notes.ts'
 import { createIsomorphicGitFs } from './isomorphic-git-fs.ts'
@@ -4327,6 +4328,25 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 	}
 
+	private async publishGitNoteMissing(source: EntitySourceRow, commit: string) {
+		try {
+			const existing = await readPublishGitNoteFromArtifactsRepo({
+				env: this.env,
+				repoId: source.repo_id,
+				commitOid: commit,
+			})
+			return !existing.found
+		} catch (error) {
+			console.warn('publish_git_note read failed', {
+				scope: 'repo.publishFromExternalRef.publish-git-note-read',
+				sourceId: source.id,
+				commit,
+				error: getErrorMessage(error),
+			})
+			return false
+		}
+	}
+
 	private async attachExternalPublishGitNote(note: {
 		source: EntitySourceRow
 		commit: string
@@ -4495,9 +4515,17 @@ class RepoSessionBase extends DurableObject<Env> {
 					})
 					throw error
 				}
-				// checks_rerun means this request finished the live tip's
-				// finalize, so it also owes the publish note.
-				if (publishResult.checks_rerun && publishResult.published_commit) {
+				// checks_rerun means this request finished the live tip's finalize.
+				// An interrupted publish never attached its note; a stale-checker
+				// rerun already has one, which must not be overwritten.
+				if (
+					publishResult.checks_rerun &&
+					publishResult.published_commit &&
+					(await this.publishGitNoteMissing(
+						source,
+						publishResult.published_commit,
+					))
+				) {
 					await this.attachExternalPublishGitNote({
 						source,
 						commit: publishResult.published_commit,
