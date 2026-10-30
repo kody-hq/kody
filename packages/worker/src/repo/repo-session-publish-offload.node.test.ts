@@ -670,6 +670,13 @@ test.each([
 		mockModule.rawCommit.mockClear()
 		publishNotes.attach.mockClear()
 		publishNotes.read.mockResolvedValue({ found: noteFound })
+		// The live commit was a plain (parented) publish, so even a forced retry
+		// must leave other sessions' advertised branches alone.
+		const baselineLog = mockModule.git.log.getMockImplementation()
+		mockModule.git.log.mockImplementation(async () => [
+			{ oid: 'commit-head', parent: ['commit-base'] },
+		])
+		mockModule.listArtifactServerRefs.mockClear()
 		// A forced publish first proves a restorable snapshot of the live tip.
 		mockModule.loadPublishedSourceSnapshot.mockResolvedValue({
 			files,
@@ -679,6 +686,10 @@ test.each([
 		).resolves.toMatchObject({ status: 'ok', publishedCommit: 'commit-head' })
 		// A forced retry must not mint a new parentless commit over the live one.
 		expect(mockModule.rawCommit).not.toHaveBeenCalled()
+		expect(mockModule.listArtifactServerRefs).not.toHaveBeenCalledWith(
+			expect.objectContaining({ prefix: 'refs/heads/sessions/' }),
+		)
+		mockModule.git.log.mockImplementation(baselineLog!)
 		// The note is owed only when the interrupted run never attached one.
 		if (noteFound) expect(publishNotes.attach).not.toHaveBeenCalled()
 		else

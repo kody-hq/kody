@@ -715,6 +715,17 @@ class RepoSessionBase extends DurableObject<Env> {
 		})
 	}
 
+	/** A history-replacing publish commits with no parents. */
+	private async headCommitReplacedHistory() {
+		const [head] = await (
+			await this.ensureGit()
+		).log({
+			dir: repoSessionWorkspacePrefix,
+			depth: 1,
+		})
+		return Array.isArray(head?.parent) && head.parent.length === 0
+	}
+
 	private async getHeadCommit() {
 		const log = await (
 			await this.ensureGit()
@@ -4137,7 +4148,10 @@ class RepoSessionBase extends DurableObject<Env> {
 				publisherUnknown: input.requestedByUserId === null,
 				...(resumingLiveCommit ? { resumeInterruptedFinalize: true } : {}),
 			})
-			if (replaceHistory) {
+			if (
+				replaceHistory &&
+				(!resumingLiveCommit || (await this.headCommitReplacedHistory()))
+			) {
 				await this.deleteAdvertisedSessionBranches({
 					sessionBranch,
 					remote: sessionAccess.remote,
@@ -4337,7 +4351,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 	}
 
-	/** True unless a publish note is known to exist; an unreadable note counts as missing. */
+	/** True only when the note is known to be absent; the note write is a force push. */
 	private async publishGitNoteMissing(source: EntitySourceRow, commit: string) {
 		try {
 			const existing = await readPublishGitNoteFromArtifactsRepo({
@@ -4353,7 +4367,7 @@ class RepoSessionBase extends DurableObject<Env> {
 				commit,
 				error: getErrorMessage(error),
 			})
-			return true
+			return false
 		}
 	}
 
