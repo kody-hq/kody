@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { after, before, test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { runCli } from '../src/cli.js'
+import { egressPolicyFromGrant } from '../src/local-egress.js'
 import { reapLeftoverWorkers } from '../src/execution-context/worker-tracker.js'
 import {
 	buildLocalExecuteResult,
@@ -1260,6 +1261,99 @@ await runLocalExecute({
 		assert.deepEqual(
 			readdirSync(scratch).filter((entry) => entry.startsWith('kody-local-')),
 			[],
+		)
+	},
+)
+
+test(
+	'egress refusals are plain errors that name the mode, the host, and how to change it',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const lan = createServer((_request, response) => response.end('lan ok'))
+		await new Promise<void>((resolve) => lan.listen(0, '127.0.0.1', resolve))
+		const lanUrl = `http://127.0.0.1:${(lan.address() as AddressInfo).port}/`
+		const code = `export default async function main({ url }) {
+	try {
+		const response = await fetch(url)
+		return 'ok: ' + (await response.text())
+	} catch (error) {
+		return String(error?.message ?? error)
+	}
+}`
+		const run = async (
+			egress: Parameters<typeof egressPolicyFromGrant>[0],
+			url: string,
+		) => {
+			const result = await runLocalExecute({
+				code,
+				params: { url },
+				token: goodToken,
+				apiUrl,
+				egress: egressPolicyFromGrant(egress),
+			})
+			assert.equal(result.isError, false)
+			return String((result.structuredContent as { result: unknown }).result)
+		}
+		try {
+			const publicOnly = await run({ mode: 'public' }, 'http://192.168.1.1/')
+			assert.match(
+				publicOnly,
+				/^Blocked by this execution context's network setting: the request to 192\.168\.1\.1 was refused because this context allows public internet only \(egress mode "public"\), and 192\.168\.1\.1 is a private or local network address\./,
+			)
+			assert.match(publicOnly, /executionContextUpdate grant\.egress/)
+			assert.match(publicOnly, /an allowlist that includes 192\.168\.1\.1/)
+			assert.doesNotMatch(publicOnly, /internal error/)
+			assert.match(
+				await run({ mode: 'public' }, lanUrl),
+				/allows public internet only.*127\.0\.0\.1 is a private or local network address/,
+			)
+			assert.match(
+				await run({ mode: 'none' }, 'https://example.com/'),
+				/request to example\.com was refused because this context allows no network access \(egress mode "none"\)/,
+			)
+			assert.match(
+				await run(
+					{ mode: 'allowlist', hosts: ['api.example.com', '127.0.0.1'] },
+					'https://other.example.com/',
+				),
+				/this context only allows api\.example\.com, 127\.0\.0\.1 \(egress mode "allowlist"\), and other\.example\.com is not on the list/,
+			)
+			assert.equal(
+				await run({ mode: 'allowlist', hosts: ['127.0.0.1'] }, lanUrl),
+				'ok: lan ok',
+			)
+			assert.match(
+				await run(
+					{ mode: 'allowlist', hosts: ['127.0.0.1'], ports: [443] },
+					lanUrl,
+				),
+				/port \d+ is not one of the allowed ports \(443\)/,
+			)
+			assert.equal(await run({ mode: 'public-and-lan' }, lanUrl), 'ok: lan ok')
+		} finally {
+			await new Promise((resolve) => lan.close(resolve))
+		}
+	},
+)
+
+test(
+	'kody execute --local names --allow-private-network when a LAN fetch is refused',
+	{
+		timeout: 180_000,
+	},
+	async () => {
+		reset()
+		const result = await runLocalExecute({
+			code: `export default async () => {
+	try { await fetch('http://10.0.0.1/'); return 'ok' } catch (error) { return error.message }
+}`,
+			token: goodToken,
+			apiUrl,
+		})
+		assert.match(
+			String((result.structuredContent as { result: unknown }).result),
+			/^Blocked by kody execute --local's network setting: .*10\.0\.0\.1 is a private or local network address\. Re-run with --allow-private-network/,
 		)
 	},
 )

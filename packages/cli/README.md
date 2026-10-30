@@ -469,7 +469,13 @@ npx @kodycodes/cli execute --local --invoke kody:@scope/pkg/export --params '{"n
   cloud execute unless the downloaded package modules carry stamps. Outbound
   `fetch` is public-network-only by default. Pass `--allow-private-network` with
   `execute --local` to also allow private and local addresses; the loopback
-  bridge used for CapabilityProxy calls remains available either way.
+  bridge used for CapabilityProxy calls remains available either way. A refused
+  `fetch` throws a plain `TypeError` that names the setting, the blocked host,
+  and how to change it (for example
+  `Blocked by kody execute --local's network setting: the request to 10.0.0.1 was refused because this context allows public internet only … Re-run with --allow-private-network …`).
+  Execution context daemon runs apply the context grant's `egress` the same way
+  (`public`, `public-and-lan`, `allowlist` hosts and ports, or `none`), and the
+  message points the machine owner at `executionContextUpdate` `grant.egress`.
 
 ## Token storage
 

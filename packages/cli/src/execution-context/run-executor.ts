@@ -1,4 +1,8 @@
-import { type EcpRunRequestBody } from '@kody-internal/shared/execution-context-protocol/index.ts'
+import {
+	type EcpGrant,
+	type EcpRunRequestBody,
+} from '@kody-internal/shared/execution-context-protocol/index.ts'
+import { egressPolicyFromGrant } from '../local-egress.js'
 import { type LocalWorkerTracker } from './worker-tracker.js'
 
 /**
@@ -12,6 +16,8 @@ export async function runContextRun(input: {
 	signal: AbortSignal
 	apiUrl: string
 	workerTracker?: LocalWorkerTracker
+	/** The context grant's egress; absent means the default (public only). */
+	egress?: EcpGrant['egress']
 }) {
 	const { runLocalExecute } = await import('../local-execute.js')
 	const result = await runLocalExecute({
@@ -25,6 +31,7 @@ export async function runContextRun(input: {
 		fetchFn: input.fetchFn,
 		signal: input.signal,
 		...(input.workerTracker ? { workerTracker: input.workerTracker } : {}),
+		egress: egressPolicyFromGrant(input.egress ?? { mode: 'public' }),
 	})
 	return {
 		isError: result.isError === true,

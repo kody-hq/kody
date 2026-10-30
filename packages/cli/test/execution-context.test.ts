@@ -26,6 +26,7 @@ import {
 	heartbeatTimeoutCloseCode,
 	runDaemon,
 	runDaemonConnection,
+	type ContextRunExecutor,
 	runRequestRefusal,
 	runScopedFetch,
 	welcomeTimeoutCloseCode,
@@ -661,4 +662,66 @@ test('a frame that fails verification closes with a valid code instead of throwi
 	})
 	assert.match(lines.join('\n'), /failed verification \(unknown_server_key\)/)
 	assert.ok(!lines.some((line) => line.startsWith('Frame error')))
+})
+
+test('runs get the grant egress from welcome, re-applied on grant.update', async () => {
+	SilentSocket.instances = []
+	const now = Date.now()
+	const runRequest = (runId: string) => ({
+		t: 'run.request',
+		body: {
+			runId,
+			deadline: now + 60_000,
+			acceptBy: now + 60_000,
+			requestedBy: { userId: 'u', handle: null, orgId: 'o', orgSlug: null },
+			source: { kind: 'code', code: 'export default () => 1', sha256: '' },
+			params: {},
+			credentialPicks: {},
+			limits: { timeoutMs: 60_000, maxResultBytes: 1_000_000, memoryMb: 128 },
+			grantVersion: 1,
+			apiUrl: 'https://api.kody.test',
+		},
+	})
+	const { signed, serverKeys } = await serverFrames([
+		{
+			t: 'welcome',
+			body: {
+				sid: 'sid_test',
+				grantVersion: 1,
+				grant: { egress: { mode: 'public' } },
+			},
+		},
+		runRequest('run_1'),
+		{ t: 'run.commit', body: { runId: 'run_1' } },
+		{
+			t: 'grant.update',
+			body: {
+				grantVersion: 2,
+				grant: { egress: { mode: 'allowlist', hosts: ['api.example.com'] } },
+			},
+		},
+		runRequest('run_2'),
+		{ t: 'run.commit', body: { runId: 'run_2' } },
+	])
+	ServerSocket.frames = signed
+	const abort = new AbortController()
+	const seen: Array<unknown> = []
+	const { input } = await daemonInput({
+		serverKeys,
+		signal: abort.signal,
+		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
+		maxConcurrent: 2,
+		execute: async (run: Parameters<ContextRunExecutor>[0]) => {
+			seen.push(run.egress)
+			if (seen.length === 2) setTimeout(() => abort.abort(), 20)
+			return { isError: false }
+		},
+	})
+	const timeout = setTimeout(() => abort.abort(), 5_000)
+	await runDaemonConnection(input)
+	clearTimeout(timeout)
+	assert.deepEqual(seen, [
+		{ mode: 'public' },
+		{ mode: 'allowlist', hosts: ['api.example.com'] },
+	])
 })
