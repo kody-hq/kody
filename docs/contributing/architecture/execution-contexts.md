@@ -45,6 +45,27 @@ sequenceDiagram
   CLI-->>DO: run.result
 ```
 
+## Revoke, then delete
+
+- `executionContextRevoke` (`DELETE /v1/execution-contexts/{id}`,
+  `kody context revoke <name>`) kills the key, disconnects the daemon, cancels
+  in-flight runs and releases the name. The row stays and still lists as revoked
+  for 30 days.
+- `executionContextDelete` (`POST /v1/execution-contexts/{id}/delete`,
+  `kody context delete <name>`, the Delete button on a revoked context's detail
+  pane) permanently removes a revoked context. It needs
+  `execution_context:delete` plus Manage on the context, only runs in the owner
+  org, and refuses a context that is not revoked with `context_not_revoked`.
+- `deleteContext` in `service.ts` drops the context from every chain (cloud
+  stays last, an emptied chain falls back to cloud), soft-deletes its
+  `execution_context` grants and bumps each affected org's access epoch, then
+  deletes its opt-ins, org attachments, chain entries and row. There are no
+  foreign keys on these tables, so add any new dependent table to that batch.
+- Run records keep their own copy of the context id and name in
+  `metadata.executionContext`, so `ranOn` still renders the deleted machine. The
+  context's session Durable Object history is unreachable once the row is gone;
+  its storage is left to expire with the object.
+
 ## Rules that matter
 
 - The private key is generated on the machine and never leaves it. The CLI

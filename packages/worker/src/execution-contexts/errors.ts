@@ -15,6 +15,7 @@ export const executionContextErrorCodes = [
 	'execution_context_lease_invalid',
 	'execution_context_access_lost',
 	'execution_context_credential_not_granted',
+	'context_not_revoked',
 ] as const
 
 export type ExecutionContextErrorCode =

@@ -101,6 +101,6 @@ test("opt-in copy says runs that can use the person's credentials go elsewhere",
 		optInCopy({ name: 'x', operator: 'sam', grant: grants.locked! })
 			.paragraphs[0],
 	).toContain(
-		'Runs that can use your credentials do not run here; they go to the next entry in your chain.',
+		'Runs that use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.',
 	)
 })

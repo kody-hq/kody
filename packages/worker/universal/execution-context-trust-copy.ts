@@ -70,7 +70,7 @@ export function optInCopy(input: {
 	return {
 		title: `Opt into ${input.name}?`,
 		paragraphs: [
-			`Your runs will execute on ${input.name}, a machine operated by ${op}. ${op} can see the code, inputs, logs and results of your runs. Runs that can use your credentials do not run here; they go to the next entry in your chain.`,
+			`Your runs will execute on ${input.name}, a machine operated by ${op}. ${op} can see the code, inputs, logs and results of your runs. Runs that use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.`,
 			`Your runs get this machine's network position and access: ${accessLine(input.grant)}.`,
 			`While your run is active, ${op}'s machine can make Kody API calls as you, within that Kody API access, and can change the results your run returns.`,
 		],
@@ -141,7 +141,7 @@ export function shareCopy(input: {
 	return {
 		title: `Share ${input.name}`,
 		paragraphs: [
-			`Anyone you share with can run code on this machine (operated by ${op}) after they opt in. ${who} be able to see their code, inputs, logs and results. Their runs cannot use their credentials here, so those runs go to the next entry in their chain.`,
+			`Anyone you share with can run code on this machine (operated by ${op}) after they opt in. ${who} be able to see their code, inputs, logs and results. Their runs that use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.`,
 			`Their runs get: ${accessLine(input.grant)}.`,
 			'While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.',
 		],
@@ -181,7 +181,7 @@ export function registerCopy(input: { orgSlug: string | null }): RegisterCopy {
 		],
 		trust: [
 			'Code sent to this context runs on that machine, under the account that runs kody daemon.',
-			'It starts as Only me. Your runs on it have the same access as in Kody cloud, including your credentials: those requests leave from Kody cloud, so the values never reach that machine. If you share it, the people you share it with run code on that machine and you can see their code, inputs, logs and results. Their runs cannot use their credentials there.',
+			'It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach that machine. Its Kody API allowlist can narrow what runs there may call, and runs there cannot start workflows. If you share it, the people you share it with run code on that machine and you can see their code, inputs, logs and results. Their runs cannot use their credentials there.',
 			'What it exposes (files, local network, internet) is set on the machine; the CLI prints it.',
 		],
 		after:

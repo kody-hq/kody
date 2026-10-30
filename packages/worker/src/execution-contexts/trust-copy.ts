@@ -6,7 +6,7 @@
 
 export const registrationTrustLines = [
 	'Code sent to this context runs on this machine, under the account that runs kody daemon.',
-	'It starts as Only me. Your runs on it have the same access as in Kody cloud, including your credentials: those requests leave from Kody cloud, so the values never reach this machine. If you share it, the people you share it with run code on this machine and you can see their code, inputs, logs and results. Their runs cannot use their credentials here, so those runs go to the next entry in their chain.',
+	'It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach this machine. Its Kody API allowlist can narrow what runs here may call, and runs here cannot start workflows. If you share it, the people you share it with run code on this machine and you can see their code, inputs, logs and results. Their runs cannot use their credentials here, so those runs go to the next entry in their chain.',
 	'What it exposes (files, local network, internet) is set on this machine by its local policy.',
 ] as const
 
@@ -22,7 +22,7 @@ export function sharingTrustNotice(input: {
 		? `@${input.operatorHandle}`
 		: 'its operator'
 	const lines = [
-		`Anyone you share with can run code on this machine (operated by ${operator}) after they opt in. ${operator} can see their code, inputs, logs and results. Their runs cannot use their credentials here, so those runs go to the next entry in their chain.`,
+		`Anyone you share with can run code on this machine (operated by ${operator}) after they opt in. ${operator} can see their code, inputs, logs and results. Their runs that use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.`,
 		'While their run is active, this machine can make Kody API calls as them (within the Kody API access the grant allows) and can change their results.',
 	]
 	if (input.localNetwork) {
@@ -42,7 +42,7 @@ export function optInTrustNotice(input: {
 		? `@${input.operatorHandle}`
 		: 'its operator'
 	const lines = [
-		`Your runs will execute on ${input.name}, a machine operated by ${operator}. ${operator} can see the code, inputs, logs and results of your runs. Runs that can use your credentials do not run here; they go to the next entry in your chain.`,
+		`Your runs will execute on ${input.name}, a machine operated by ${operator}. ${operator} can see the code, inputs, logs and results of your runs. Runs that use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.`,
 		`While your run is active, ${operator}'s machine can make Kody API calls as you, within the Kody API access its grant allows, and can change the results your run returns.`,
 	]
 	if (input.localNetwork) {
