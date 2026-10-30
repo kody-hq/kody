@@ -1,4 +1,13 @@
 import assert from 'node:assert/strict'
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import {
 	ecpPingFrame,
@@ -20,6 +29,8 @@ import {
 	registerContext,
 } from '../src/execution-context/client.js'
 import { runExecutionContextCommand } from '../src/execution-context/commands.js'
+import { effectiveFs } from '../src/execution-context/fs-access.js'
+import { runContextRun } from '../src/execution-context/run-executor.js'
 import {
 	abortableDelay,
 	frameRejectedCloseCode,
@@ -724,4 +735,106 @@ test('runs get the grant egress from welcome, re-applied on grant.update', async
 		{ mode: 'public' },
 		{ mode: 'allowlist', hosts: ['api.example.com'] },
 	])
+})
+
+test('grant.update re-applies host folders: capabilities follow the effective mounts and a run writes inside them only', async () => {
+	SilentSocket.instances = []
+	const root = realpathSync(mkdtempSync(join(tmpdir(), 'kody-daemon-fs-')))
+	const granted = join(root, 'granted')
+	const outside = join(root, 'outside')
+	mkdirSync(granted)
+	mkdirSync(outside)
+	const code = `import { writeFile } from 'node:fs/promises'
+export default async function main(p) {
+	await writeFile(p.granted + '/hello.txt', 'from the daemon')
+	try { await writeFile(p.outside + '/nope.txt', 'x'); return 'escaped' } catch (error) { return error.code }
+}`
+	const now = Date.now()
+	const { signed, serverKeys } = await serverFrames([
+		{
+			t: 'welcome',
+			body: { sid: 'sid_test', grantVersion: 1, grant: { fs: [] } },
+		},
+		{
+			t: 'grant.update',
+			body: { grantVersion: 2, grant: { fs: [{ path: granted, mode: 'rw' }] } },
+		},
+		{
+			t: 'run.request',
+			body: {
+				runId: 'run_fs',
+				deadline: now + 120_000,
+				acceptBy: now + 120_000,
+				requestedBy: { userId: 'u', handle: null, orgId: 'o', orgSlug: null },
+				source: { kind: 'code', code, sha256: '' },
+				params: { granted, outside },
+				credentialPicks: {},
+				limits: { timeoutMs: 60_000, maxResultBytes: 1_000_000, memoryMb: 128 },
+				grantVersion: 2,
+				apiUrl: 'https://api.kody.test',
+			},
+		},
+		{ t: 'run.commit', body: { runId: 'run_fs' } },
+	])
+	ServerSocket.frames = signed
+	const abort = new AbortController()
+	const { input } = await daemonInput({
+		serverKeys,
+		signal: abort.signal,
+		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
+		fs: {
+			effective: async (grantFs: Array<{ path: string; mode: string }>) =>
+				await effectiveFs(grantFs, [
+					{ path: granted, mode: 'rw' },
+					{ path: outside, mode: 'rw' },
+				]),
+		},
+		fetchFn: (async (url: string | URL | Request) =>
+			String(url).includes('package-graph')
+				? Response.json({ modules: [] })
+				: Response.json({
+						ticket: 'ticket_1',
+						expiresAt: '2099-01-01T00:00:00.000Z',
+					})) as typeof fetch,
+		execute: (run: Parameters<ContextRunExecutor>[0]) =>
+			runContextRun({ ...run, apiUrl: 'https://api.kody.test' }),
+	})
+	const decoded = () =>
+		(SilentSocket.instances[0] as unknown as ServerSocket | undefined)?.sent
+			.filter((data) => data !== ecpPingFrame)
+			.map((data) => {
+				const envelope = parseEnvelope(JSON.parse(data))
+				return decodeEnvelopePayload(envelope!.p) as EcpFramePayload
+			}) ?? []
+	const watcher = setInterval(() => {
+		if (decoded().some((frame) => frame.t === 'run.result')) abort.abort()
+	}, 50)
+	const timeout = setTimeout(() => abort.abort(), 120_000)
+	await runDaemonConnection(input)
+	clearInterval(watcher)
+	clearTimeout(timeout)
+	const frames = decoded()
+	const hello = frames.find((frame) => frame.t === 'hello')
+	assert.deepEqual(
+		(hello?.body.capabilities as { features?: unknown }).features,
+		[],
+	)
+	const update = frames.find((frame) => frame.t === 'capabilities.update')
+	assert.deepEqual(
+		(update?.body.capabilities as { features?: unknown }).features,
+		['fs'],
+	)
+	const result = frames.find((frame) => frame.t === 'run.result')
+	assert.equal(result?.body.isError, false, JSON.stringify(result?.body))
+	// Outside the mounts the host is unreachable: EACCES from the bridge, or
+	// ENOENT when the path falls in workerd's own virtual /tmp (Linux tmpdir).
+	assert.match(
+		String((result?.body.structuredContent as { result?: unknown }).result),
+		/^(EACCES|ENOENT)$/,
+	)
+	assert.equal(
+		readFileSync(join(granted, 'hello.txt'), 'utf8'),
+		'from the daemon',
+	)
+	assert.equal(existsSync(join(outside, 'nope.txt')), false)
 })

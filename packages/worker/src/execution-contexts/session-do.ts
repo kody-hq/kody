@@ -39,7 +39,12 @@ import {
 } from './routing.ts'
 import { contextIsShared, contextRunCredentials } from './credential-grant.ts'
 import { type RunCredentialUse } from './run-credential-use.ts'
-import { getExecutionContext, loadContextAccess, parseGrant } from './store.ts'
+import {
+	getExecutionContext,
+	loadContextAccess,
+	parseCapabilities,
+	parseGrant,
+} from './store.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
 import { type RunRecordHandle } from '#worker/run-records/types.ts'
@@ -1261,6 +1266,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				requesterIsOperator: row.operator_user_id === lease.requester.userId,
 			}),
 			credentialUse: lease.credentialUse ?? { kind: 'unknown' },
+			capabilities: parseCapabilities(row),
 		})
 		if (refusal) {
 			return await fail(

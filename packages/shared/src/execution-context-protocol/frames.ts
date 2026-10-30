@@ -92,7 +92,7 @@ export const ecpErrorCodes = [
 ] as const
 export type EcpErrorCode = (typeof ecpErrorCodes)[number]
 
-export type EcpFsGrant = { path: string; mode: 'read' | 'write' }
+export type EcpFsGrant = { path: string; mode: 'ro' | 'rw' }
 export type EcpEgressMode = 'public' | 'public-and-lan' | 'allowlist' | 'none'
 
 /** The local access grant a context exposes to runs (ECP 8.1). */

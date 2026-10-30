@@ -101,9 +101,44 @@ test('context: cloud runs on cloud only', () => {
 const none = { kind: 'none' } as const
 const unknown = { kind: 'unknown' } as const
 
+test('requires fs needs both a server grant folder and an advertised local mount', () => {
+	const grant = {
+		...ecpDefaultGrant,
+		fs: [{ path: '/Users/k/Desktop', mode: 'rw' as const }],
+	}
+	expect(
+		grantRefusal({
+			grant,
+			requires: ['fs'],
+			credentials: { mode: 'none' },
+			credentialUse: none,
+			capabilities: {},
+		}),
+	).toBe('no_local_fs')
+	expect(
+		grantRefusal({
+			grant,
+			requires: ['fs'],
+			credentials: { mode: 'none' },
+			credentialUse: none,
+			capabilities: { features: ['fs'] },
+		}),
+	).toBeNull()
+	expect(
+		grantRefusal({
+			grant: ecpDefaultGrant,
+			requires: ['fs'],
+			credentials: { mode: 'none' },
+			credentialUse: none,
+			capabilities: { features: ['fs'] },
+		}),
+	).toBe('no_fs')
+})
+
 test('a grant refuses runs it cannot serve', () => {
 	expect(
 		grantRefusal({
+			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
 			credentials: { mode: 'none' },
@@ -112,6 +147,7 @@ test('a grant refuses runs it cannot serve', () => {
 	).toBe('no_fs')
 	expect(
 		grantRefusal({
+			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['lan'],
 			credentials: { mode: 'none' },
@@ -120,6 +156,7 @@ test('a grant refuses runs it cannot serve', () => {
 	).toBe('no_lan')
 	expect(
 		grantRefusal({
+			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: [],
 			credentials: { mode: 'none' },
@@ -132,6 +169,7 @@ test('a grant refuses runs it cannot serve', () => {
 			requires: [],
 			credentials: { mode: 'none' },
 			credentialUse: none,
+			capabilities: {},
 		}),
 	).toBeNull()
 })

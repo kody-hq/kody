@@ -1,5 +1,6 @@
 import {
 	type EcpCancelReason,
+	type EcpCapabilities,
 	type EcpGrant,
 	type EcpRunRequestBody,
 	sha256Base64Url,
@@ -25,6 +26,7 @@ import {
 	getChain,
 	getExecutionContext,
 	loadContextAccess,
+	parseCapabilities,
 	parseGrant,
 	resolveExecutionContextRef,
 	sessionStub,
@@ -250,8 +252,12 @@ export function planTargets(input: {
 export function requirementRefusal(
 	grant: EcpGrant,
 	requires: ReadonlyArray<ExecuteRequirement>,
+	capabilities: EcpCapabilities,
 ): string | null {
-	if (requires.includes('fs') && grant.fs.length === 0) return 'no_fs'
+	if (requires.includes('fs')) {
+		if (grant.fs.length === 0) return 'no_fs'
+		if (!(capabilities.features ?? []).includes('fs')) return 'no_local_fs'
+	}
 	if (requires.includes('lan') && grant.egress.mode !== 'public-and-lan') {
 		return 'no_lan'
 	}
@@ -292,9 +298,11 @@ export function grantRefusal(input: {
 	requires: ReadonlyArray<ExecuteRequirement>
 	credentials: ContextRunCredentials
 	credentialUse: RunCredentialUse
+	/** What the daemon advertised; `fs` means its effective mount set is non-empty. */
+	capabilities: EcpCapabilities
 }): string | null {
 	return (
-		requirementRefusal(input.grant, input.requires) ??
+		requirementRefusal(input.grant, input.requires, input.capabilities) ??
 		credentialRefusal(input.credentials, input.credentialUse)
 	)
 }
@@ -465,7 +473,7 @@ export async function routeExecute(input: {
 			requesterIsOperator: row.operator_user_id === input.request.userId,
 		})
 		const refusal =
-			requirementRefusal(grant, requires) ??
+			requirementRefusal(grant, requires, parseCapabilities(row)) ??
 			(credentials.mode === 'requester'
 				? null
 				: credentialRefusal(credentials, await credentialUseOf()))
@@ -677,12 +685,21 @@ function hasContextScope(input: { request: { scopes: Array<string> | null } }) {
 	return scopes === null || scopes.includes('execution_context:execute')
 }
 
+const contextReasonText: Record<string, string> = {
+	no_fs: 'no_fs: its server grant lists no host folders (grant.fs)',
+	no_local_fs:
+		"no_local_fs: its server grant lists host folders, but the machine's local policy allows none of them (`kody context policy allow <folder>`)",
+}
+
 function describeAttempts(attempts: ReadonlyArray<RoutingAttempt>) {
 	return attempts
-		.map(
-			(a) =>
-				`${a.name ?? a.target}: ${a.outcome}${a.reason ? ` (${a.reason})` : ''}`,
-		)
+		.map((a) => {
+			const reason =
+				a.reason && a.target !== 'cloud'
+					? (contextReasonText[a.reason] ?? a.reason)
+					: a.reason
+			return `${a.name ?? a.target}: ${a.outcome}${reason ? ` (${reason})` : ''}`
+		})
 		.join('; ')
 }
 

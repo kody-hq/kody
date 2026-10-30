@@ -1,3 +1,4 @@
+import { type EffectiveFs, emptyEffectiveFs, fsFeatures } from './fs-access.js'
 import {
 	classifyFrameText,
 	decodeEnvelopePayload,
@@ -27,6 +28,8 @@ export type ContextRunExecutor = (input: {
 	signal: AbortSignal
 	/** Current grant egress (welcome / grant.update); the run enforces it. */
 	egress: EcpGrant['egress']
+	/** Host folders this run may use right now (server grant ∩ local policy). */
+	hostFs?: () => EffectiveFs
 }) => Promise<{
 	content?: Array<unknown>
 	structuredContent?: Record<string, unknown>
@@ -104,9 +107,33 @@ type DaemonInput = {
 	WebSocketImpl?: typeof WebSocket
 	signal?: AbortSignal
 	welcomeTimeoutMs?: number
+	/** Host-folder access: the server grant.fs intersected with local policy. */
+	fs?: DaemonFsAccess
 	closeSettleMs?: number
 	pingMs?: number
 	pongTimeoutMs?: number
+}
+
+export type DaemonFsAccess = {
+	effective: (
+		grantFs: Array<{ path: string; mode: string }>,
+	) => Promise<EffectiveFs>
+	/** Subscribes to local policy edits; returns an unsubscribe. */
+	onChange?: (listener: () => void) => () => void
+}
+
+function grantFsOf(grant: unknown) {
+	const fs = (grant as { fs?: unknown } | null)?.fs
+	if (!Array.isArray(fs)) return []
+	return fs.filter(
+		(entry): entry is { path: string; mode: string } =>
+			typeof entry?.path === 'string' && typeof entry?.mode === 'string',
+	)
+}
+
+const layerLabel = {
+	server_grant: 'server grant',
+	local_policy: 'local policy',
 }
 
 export const welcomeTimeoutMs = 15_000
@@ -147,6 +174,57 @@ export async function runDaemonConnection(input: DaemonInput) {
 	url.protocol = url.protocol === 'http:' ? 'ws:' : 'wss:'
 	url.searchParams.set('ticket', ticket)
 	const ws = new Socket(url.toString())
+	let welcomed = false
+	let grantFs: Array<{ path: string; mode: string }> = []
+	let hostFs: EffectiveFs = emptyEffectiveFs
+	const effectiveFsNow = async () => {
+		if (!input.fs) return emptyEffectiveFs
+		try {
+			return await input.fs.effective(grantFs)
+		} catch (error) {
+			input.log(
+				`Host folders are off: ${error instanceof Error ? error.message : String(error)}`,
+			)
+			return emptyEffectiveFs
+		}
+	}
+	const capabilities = () => {
+		const base = Array.isArray(input.capabilities.features)
+			? (input.capabilities.features as Array<string>)
+			: []
+		return {
+			...input.capabilities,
+			features: [
+				...base.filter((feature) => feature !== 'fs'),
+				...fsFeatures(hostFs),
+			],
+		}
+	}
+	const applyFs = async () => {
+		if (!input.fs) return
+		hostFs = await effectiveFsNow()
+		for (const mount of hostFs.mounts) {
+			input.log(
+				`Host folder ${mount.path} is available to runs (${mount.mode}).`,
+			)
+		}
+		for (const refusal of hostFs.refused) {
+			input.log(
+				`Host folder ${refusal.path} is not available: ${refusal.reason} (${layerLabel[refusal.layer]}).`,
+			)
+		}
+	}
+	const refreshFs = async () => {
+		const before = JSON.stringify(capabilities())
+		await applyFs()
+		const next = capabilities()
+		if (welcomed && JSON.stringify(next) !== before) {
+			await send('capabilities.update', { capabilities: next })
+		}
+	}
+	const unsubscribeFs = input.fs?.onChange?.(() => {
+		if (welcomed) void refreshFs().catch(() => {})
+	})
 	const serverKeys = new Map(input.serverKeys.map((key) => [key.kid, key]))
 	let sid = ''
 	let inSeq = 0
@@ -206,8 +284,11 @@ export async function runDaemonConnection(input: DaemonInput) {
 		)
 		let result: Awaited<ReturnType<ContextRunExecutor>>
 		try {
+			if (input.fs) hostFs = await effectiveFsNow()
 			result = await input.execute({
 				request: run.request,
+				// A getter, so a grant.update or policy change narrows runs already in flight.
+				...(input.fs ? { hostFs: () => hostFs } : {}),
 				signal: run.abort.signal,
 				egress: grantEgress,
 				fetchFn: runScopedFetch({
@@ -259,10 +340,13 @@ export async function runDaemonConnection(input: DaemonInput) {
 						heartbeatSetting(body.pongTimeoutMs, defaultPongTimeoutMs),
 					)
 				}
+				grantFs = grantFsOf(body.grant)
+				await applyFs()
+				welcomed = true
 				await send('hello', {
 					protocol: { min: ecpProtocolVersion, max: ecpProtocolVersion },
 					client: input.client,
-					capabilities: input.capabilities,
+					capabilities: capabilities(),
 					grantVersion: body.grantVersion,
 					status: status(),
 					// Kody ends committed runs this daemon no longer holds right away.
@@ -313,6 +397,8 @@ export async function runDaemonConnection(input: DaemonInput) {
 			}
 			case 'grant.update':
 				applyGrant(body.grant)
+				grantFs = grantFsOf(body.grant)
+				await refreshFs()
 				await send('grant.ack', { grantVersion: body.grantVersion }, frame.seq)
 				return
 			case 'revoke':
@@ -368,6 +454,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 			clearTimeout(pongTimer)
 			clearTimeout(welcomeTimer)
 			clearTimeout(settleTimer)
+			unsubscribeFs?.()
 			input.signal?.removeEventListener('abort', shutdown)
 			for (const run of runs.values()) run.abort.abort()
 			resolve({ code, reason })
