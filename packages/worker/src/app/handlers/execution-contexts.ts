@@ -281,6 +281,11 @@ export function normalizeContext(
 				? {
 						name: text(client.name, 'unknown'),
 						version: text(client.version, ''),
+						latestVersion:
+							typeof client.latestVersion === 'string'
+								? client.latestVersion
+								: null,
+						outdated: client.outdated === true,
 					}
 				: null,
 	} as ExecutionContextListItem

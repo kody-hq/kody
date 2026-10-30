@@ -35,6 +35,7 @@ import {
 	chainIsFull,
 	chainPosition,
 	contextDisplayStatus,
+	daemonRunsAsLabel,
 	displayStatusLabel,
 	durationLabel,
 	grantSummaryDetail,
@@ -161,11 +162,29 @@ export function ExecutionContextDetail(props: {
 				</dd>
 				<dt>Exposes</dt>
 				<dd>{grantSummaryDetail(context.grantSummary)}</dd>
-				{context.client ? (
+				{context.client?.version ? (
 					<>
-						<dt>Client</dt>
-						<dd>
+						<dt>Daemon</dt>
+						<dd data-testid="context-daemon-version">
 							{context.client.name} {context.client.version}
+							{context.client.outdated && context.client.latestVersion ? (
+								<span css={outdatedCss} data-testid="context-daemon-outdated">
+									Outdated, {context.client.latestVersion} is out. On the
+									machine, run <code>kody update</code>
+								</span>
+							) : null}
+						</dd>
+						<dt>Runs as</dt>
+						<dd data-testid="context-daemon-service">
+							{daemonRunsAsLabel(context.capabilities?.service)}
+							{context.isOperator &&
+							!context.capabilities?.service &&
+							context.status !== 'revoked' ? (
+								<span css={hintCss}>
+									Keep it running after reboots: run{' '}
+									<code>kody daemon install</code> on the machine
+								</span>
+							) : null}
 						</dd>
 					</>
 				) : null}
@@ -1013,3 +1032,16 @@ function AuditLog(props: {
 		</section>
 	)
 }
+
+const outdatedCss = css({
+	display: 'block',
+	marginTop: spacing.xs,
+	color: colors.warningText,
+	fontWeight: 600,
+})
+
+const hintCss = css({
+	display: 'block',
+	marginTop: spacing.xs,
+	color: colors.textMuted,
+})

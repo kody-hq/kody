@@ -54,7 +54,7 @@ test('list shows chain, statuses, unutilized note and register card', async () =
 	expect(body).toContain('1st in your chain')
 	expect(body).toContain('Shared with you, opt in to use')
 	expect(body).toContain('buildbox (needs opt-in)')
-	expect(body).toContain('kody context register --name my-machine')
+	expect(body).toContain('kody connect --name my-machine')
 	expect(body).toContain('run `kody login` again first')
 	expect(html).toContain('href="/@jane/-/execution-contexts/ec_buildbox"')
 })
@@ -180,4 +180,50 @@ test('a missing context id shows a not-found message, not a crash', async () => 
 		`${href}/ec_gone`,
 	)
 	expect(text(html)).toContain('does not exist or is not visible to you')
+})
+
+test('operator detail shows daemon version, outdated flag and background service', async () => {
+	const outdated = contextFixture({
+		client: {
+			name: 'kody-cli',
+			version: '1.40.0',
+			latestVersion: '1.52.0',
+			outdated: true,
+		},
+		capabilities: { os: 'linux', features: [], service: 'systemd' },
+	})
+	const html = await renderStartPage(
+		route(
+			pageFixture({ selected: outdated }),
+			'ec_laptop',
+			`${href}/ec_laptop`,
+		),
+		`${href}/ec_laptop`,
+	)
+	const body = text(html)
+	expect(body).toContain('kody-cli 1.40.0')
+	expect(body).toContain(
+		'Outdated, 1.52.0 is out. On the machine, run kody update',
+	)
+	expect(body).toContain('Background service (systemd)')
+	expect(body).not.toContain('kody daemon install')
+
+	const foreground = contextFixture({
+		capabilities: { os: 'darwin', features: [], service: null },
+	})
+	const plain = text(
+		await renderStartPage(
+			route(
+				pageFixture({ selected: foreground }),
+				'ec_laptop',
+				`${href}/ec_laptop`,
+			),
+			`${href}/ec_laptop`,
+		),
+	)
+	expect(plain).toContain('Terminal (not a background service)')
+	expect(plain).toContain(
+		'Keep it running after reboots: run kody daemon install',
+	)
+	expect(plain).not.toContain('Outdated')
 })
