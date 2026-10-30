@@ -255,9 +255,9 @@ test('the DLQ consumer reports park failures to Sentry with queue, message id, a
 		definition,
 	)
 	expect(ack).not.toHaveBeenCalled()
-	expect(retry).toHaveBeenCalledWith({ delaySeconds: 43_200 })
+	expect(retry).toHaveBeenCalledWith({ delaySeconds: 2_700 })
 	expect([1, 2, 3, 10, 11, 100].map(deadLetterParkRetryDelaySeconds)).toEqual([
-		60, 120, 240, 30_720, 43_200, 43_200,
+		60, 120, 240, 2_700, 2_700, 2_700,
 	])
 	expect(sentry.captureException).toHaveBeenCalledTimes(1)
 	expect(sentry.contexts.at(-1)).toEqual({

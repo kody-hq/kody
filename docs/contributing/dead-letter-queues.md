@@ -84,10 +84,12 @@ export default async function main() {
   the row cannot be removed, the error says so: ack the message so it is not
   replayed twice.
 - Parking failures report to Sentry (`dead_letter.stage: park`, queue, message
-  id, attempts) and retry with exponential backoff (60 seconds doubling to the
-  12-hour Cloudflare cap) for up to 100 attempts, about six weeks of APP_DB
-  outage. The DLQ consumers have no further DLQ, so a message that exhausts them
-  is deleted; the last attempt reports at `fatal` level.
+  id, attempts) and retry with exponential backoff (60 seconds doubling to a
+  45-minute cap) for up to 100 attempts, about 71 hours of APP_DB outage. That
+  stays inside the DLQs' default 4-day Cloudflare message retention, so the
+  final attempt runs (and reports) before the queue could expire the message.
+  The DLQ consumers have no further DLQ, so a message that exhausts them is
+  deleted; the last attempt reports at `fatal` level.
 - Alerting is unchanged in spirit: the DLQ depth alert counts parked rows, so a
   DLQ keeps paging (`dlq-depth` fingerprint) until an admin replays, acks, or
   purges its messages.

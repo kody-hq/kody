@@ -6,13 +6,18 @@ import { parkDeadLetterMessage } from './store.ts'
 /** Matches max_retries on the DLQ consumers in packages/worker/wrangler.jsonc. */
 export const deadLetterConsumerMaxRetries = 100
 export const deadLetterConsumerRetryDelaySeconds = 60
-/** Cloudflare Queues caps a per-message retry delay at 12 hours. */
-export const deadLetterConsumerMaxRetryDelaySeconds = 12 * 60 * 60
+/**
+ * The DLQs use Cloudflare's default 4-day message retention, so the whole
+ * retry schedule has to finish inside it or the queue expires the message
+ * before the final (fatal) attempt can report.
+ */
+export const deadLetterConsumerMaxRetryDelaySeconds = 45 * 60
 
 /**
- * Exponential backoff from 60s to the 12h cap. A message that exhausts its
- * retries is deleted (DLQ consumers have no further DLQ), so the 100 attempts
- * span ~6 weeks of APP_DB outage instead of ~100 minutes.
+ * Exponential backoff from 60s to a 45-minute cap: the 100 attempts span about
+ * 71 hours of APP_DB outage (inside the 4-day retention) instead of ~100
+ * minutes. A message that exhausts its retries is deleted (DLQ consumers have
+ * no further DLQ).
  */
 export function deadLetterParkRetryDelaySeconds(attempts: number) {
 	const exponent = Math.min(Math.max(attempts - 1, 0), 20)
