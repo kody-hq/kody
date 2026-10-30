@@ -491,13 +491,12 @@ test('Members add team secrets and OAuth connections unless an Owner turns membe
 		scope: 'user',
 		packageId: null,
 	})
-	const deniedUpdate = await saveSecret(
-		nextMember,
-		'ownerKey',
-		ownerSecretId,
-	).catch((error: unknown) => error)
+	const deniedUpdate = await saveSecret(nextMember, 'ownerKey', ownerSecretId)
 	expect(deniedUpdate).toMatchObject({
 		status: 403,
-		permission: 'secret:write',
+		data: {
+			ok: false,
+			error: expect.stringContaining('You need Write on this credential'),
+		},
 	})
 })

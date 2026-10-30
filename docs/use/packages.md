@@ -1171,6 +1171,62 @@ search, and `package:{package-name}` entity detail surface a **Fork outdated** /
 absorb next step. Full workflow:
 [Public packages → Forking a listing](./community-packages.md#forking-a-listing).
 
+## Package size limits and `.kodyignore`
+
+Publish and `kody dev check` run the same checks (including lint, bundle
+validation, and typecheck) in the same kind of throwaway isolate with the same
+limits, so a dev check result is the best predictor of a publish:
+
+| Limit                                     | Value                       |
+| ----------------------------------------- | --------------------------- |
+| Files under the source root               | 2,000                       |
+| Total bytes under the source root         | 15 MiB                      |
+| Any single file                           | 10 MiB                      |
+| Checked-out tree for `git push` publishes | 32 MiB                      |
+| JS/TS source scanned in the main isolate  | 256 KiB (more gets its own) |
+
+Each check isolate also has a fixed memory and CPU budget. When a step runs out,
+the error names the step (cloning, reading the source tree, the credential stamp
+scan, package checks, lint, bundle validation, typecheck, finalizing, or the
+artifact rebuild), what to shrink, and the largest files under the source root
+that runtime code does not import. Memory and CPU use vary a little between runs
+(garbage collection timing and other work sharing the isolate), so a tree close
+to the limit can pass one attempt and fail the next. Shrink what the checks read
+rather than retrying. A `git push` publish clones only the commit it publishes
+(plus the history it needs to confirm a fast-forward), so a long history does
+not count against the check budget.
+
+To keep fixtures, generated data, notes, or other non-runtime files in the repo
+without paying for them at publish, list them in a `.kodyignore` file at the
+package source root (next to `package.json`). It uses `.gitignore` syntax:
+
+```gitignore
+fixtures/
+docs/drafts/
+*.generated.ts
+!src/schema.generated.ts
+**/__tests__/
+!types/__tests__/
+```
+
+Matching files are never read by the publish checks (credential scan, lint,
+typecheck, bundle validation), do not count toward the source limits above, and
+are left out of the published snapshot. They are still part of the git tree, so
+they still count toward the 32 MiB checked-out tree cap for `git push`
+publishes; move very large files out of the repo instead. `package.json` and
+`.kodyignore` itself are always kept. Ignoring a file that runtime code imports
+fails bundle validation, so `.kodyignore` cannot hide code that runs. Kody does
+not read `package.json` `files`, because that field usually describes an npm
+build output that Kody does not publish.
+
+Broad patterns also match declaration files: `**/__tests__/` hides
+`types/__tests__/*.d.ts` too, and the typecheck then runs without those types.
+The typecheck result warns when `.kodyignore` hides `.d.ts` files that
+`tsconfig.json` or a `/// <reference>` may rely on. Re-include them with a
+negation after the broader pattern, as in the last line above. As in
+`.gitignore`, a file inside an excluded directory cannot be re-included on its
+own, so negate the directory (`!types/__tests__/`), not just the file.
+
 ## Author a saved package via direct git push
 
 Saved package source is backed by a Cloudflare Artifacts git repository. You can
@@ -1189,45 +1245,6 @@ into pointers for you. The Artifacts remote itself also fails pushes above
 roughly 32 MiB of pack content with a raw HTTP 413 before Kody is involved, so
 oversized files can fail at `git push` with an unhelpful error even before
 publish checks run.
-
-### Package size limits and `.kodyignore`
-
-Publish and `kody dev check` run the same checks under the same limits, so a dev
-check pass predicts the publish checks:
-
-| Limit                                     | Value                       |
-| ----------------------------------------- | --------------------------- |
-| Files under the source root               | 2,000                       |
-| Total bytes under the source root         | 15 MiB                      |
-| Any single file                           | 10 MiB                      |
-| Checked-out tree for `git push` publishes | 32 MiB                      |
-| JS/TS source scanned in the main isolate  | 256 KiB (more gets its own) |
-
-Each check isolate also has a fixed memory and CPU budget. When a step runs out,
-the error names the step (cloning, reading the source tree, the credential stamp
-scan, package checks, lint, bundle validation, typecheck, finalizing, or the
-artifact rebuild) and what to shrink.
-
-To keep fixtures, generated data, notes, or other non-runtime files in the repo
-without paying for them at publish, list them in a `.kodyignore` file at the
-package source root (next to `package.json`). It uses `.gitignore` syntax:
-
-```gitignore
-fixtures/
-docs/drafts/
-*.generated.ts
-!src/schema.generated.ts
-```
-
-Matching files are never read by the publish checks (credential scan, lint,
-typecheck, bundle validation), do not count toward the source limits above, and
-are left out of the published snapshot. They are still part of the git tree, so
-they still count toward the 32 MiB checked-out tree cap for `git push`
-publishes; move very large files out of the repo instead. `package.json` and
-`.kodyignore` itself are always kept. Ignoring a file that runtime code imports
-fails bundle validation, so `.kodyignore` cannot hide code that runs. Kody does
-not read `package.json` `files`, because that field usually describes an npm
-build output that Kody does not publish.
 
 1. Mint a short-lived remote credential:
 

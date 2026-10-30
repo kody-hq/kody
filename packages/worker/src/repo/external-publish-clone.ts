@@ -24,6 +24,11 @@ import { unknownRequestedCommitError } from './requested-commit-error.ts'
  */
 export const externalPublishWorkspaceDir = '/repo'
 
+/** Deepen x16 per round up to this, then fetch the rest of the history. */
+const maxShallowDeepenDepth = 4096
+/** git's "infinite" depth. */
+const fullHistoryDepth = 2_147_483_647
+
 /**
  * Published-source snapshot collected from the ephemeral clone. Matches the
  * Artifacts pack ceiling so collectFiles fails closed with an actionable
@@ -213,6 +218,9 @@ export async function cloneExternalPublishWorkspace(input: {
 				url: authenticatedRemote,
 				ref: input.branch,
 				singleBranch: true,
+				// Only the tip's tree is published. History is fetched on demand
+				// (see `deepen`) so memory does not grow with the repo's age.
+				depth: 1,
 				onAuth() {
 					return auth
 				},
@@ -225,6 +233,59 @@ export async function cloneExternalPublishWorkspace(input: {
 			remote: input.remote,
 			error,
 		})
+	}
+
+	const shallowFile = `${dir}/.git/shallow`
+	const isShallow = async () => {
+		try {
+			return (await workspace.filesystem.readFile(shallowFile)).trim() !== ''
+		} catch {
+			return false
+		}
+	}
+	let fetchedDepth = 1
+	/** Fetch more history; false once the clone already has all of it. */
+	const deepen = async () => {
+		// A full-history fetch is the last round. A shallow source repo keeps
+		// advertising its own boundary, so `.git/shallow` may never empty.
+		if (fetchedDepth === fullHistoryDepth) return false
+		if (!(await isShallow())) return false
+		fetchedDepth =
+			fetchedDepth >= maxShallowDeepenDepth
+				? fullHistoryDepth
+				: Math.min(fetchedDepth * 16, maxShallowDeepenDepth)
+		try {
+			await runArtifactsGitWithRetry(
+				async () =>
+					await git.fetch({
+						fs: workspace.fs,
+						http,
+						dir,
+						url: authenticatedRemote,
+						ref: input.branch,
+						singleBranch: true,
+						depth: fetchedDepth,
+						onAuth() {
+							return auth
+						},
+					}),
+			)
+		} catch (error) {
+			throw wrapArtifactsGitHttpError({
+				operation: 'git fetch',
+				remote: input.remote,
+				error,
+			})
+		}
+		return true
+	}
+	const hasCommit = async (oid: string) => {
+		try {
+			await git.readCommit({ fs: workspace.fs, dir, oid })
+			return true
+		} catch {
+			return false
+		}
 	}
 
 	let headCommit: string | null = null
@@ -240,6 +301,12 @@ export async function cloneExternalPublishWorkspace(input: {
 			`Failed to resolve cloned HEAD after Artifacts clone: ${getErrorMessage(error)}`,
 			{ cause: error },
 		)
+	}
+
+	if (input.checkoutCommit !== headCommit) {
+		while (!(await hasCommit(input.checkoutCommit)) && (await deepen())) {
+			// Deepen until the requested commit arrives or history runs out.
+		}
 	}
 
 	try {
@@ -307,12 +374,16 @@ export async function cloneExternalPublishWorkspace(input: {
 			if (ancestor === descendant) return true
 			// Walk parents via isDescendent instead of materializing the full
 			// `git.log` array for long histories (peak memory during publish).
-			return await git.isDescendent({
-				fs: workspace.fs,
-				dir,
-				oid: descendant,
-				ancestor,
-			})
+			// A shallow walk stops at the boundary, so deepen and walk again.
+			for (;;) {
+				const found = await git.isDescendent({
+					fs: workspace.fs,
+					dir,
+					oid: descendant,
+					ancestor,
+				})
+				if (found || !(await deepen())) return found
+			}
 		},
 	}
 }

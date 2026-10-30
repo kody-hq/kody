@@ -3142,11 +3142,6 @@ class RepoSessionBase extends DurableObject<Env> {
 			expectedHead: request.expectedHead,
 			phaseTimings,
 		})
-		// Always collect a binary-safe snapshot. Do not skip this based on the
-		// pre-clone D1 row: a concurrent snapshot-failure revert can clear
-		// published_commit so publish still finalizes, and UTF-8 check source
-		// files would corrupt PNG magic.
-		const files = await publishClone.collectFiles()
 		const isFastForward =
 			request.previousCommit && request.previousCommit !== request.commit
 				? await publishClone.isAncestorCommit({
@@ -3154,7 +3149,13 @@ class RepoSessionBase extends DurableObject<Env> {
 						descendant: request.commit,
 					})
 				: null
+		// Drop the pack before flattening the tree so both are never resident.
 		await publishClone.releaseGitObjects()
+		// Always collect a binary-safe snapshot. Do not skip this based on the
+		// pre-clone D1 row: a concurrent snapshot-failure revert can clear
+		// published_commit so publish still finalizes, and UTF-8 check source
+		// files would corrupt PNG magic.
+		const files = await publishClone.collectFiles()
 		return {
 			files,
 			headCommit: publishClone.headCommit,

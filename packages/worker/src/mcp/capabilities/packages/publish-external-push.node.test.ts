@@ -805,8 +805,8 @@ test('publishExternalPush recovers from transient Durable Object resets', async 
 	expect(consoleWarn).toHaveBeenCalledTimes(3)
 
 	const { McpCallerError } = await import('#mcp/caller-error.ts')
-	// Memory/CPU isolate resets are deterministic for a package tip — fail
-	// fast with an actionable caller error instead of burning ~35s of retries.
+	// A tree near the memory/CPU limit fails most attempts: fail fast with an
+	// actionable caller error instead of burning ~35s of retries.
 	for (const message of [
 		"Durable Object's isolate exceeded its memory limit and was reset",
 		'Durable Object exceeded its CPU time limit and was reset',

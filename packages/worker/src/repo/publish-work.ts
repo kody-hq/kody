@@ -44,6 +44,10 @@ import {
 	type RepoCheckStep,
 } from './isolated-runner-limit-message.ts'
 import { omitKodyIgnoredFiles } from './kodyignore.ts'
+import {
+	largestNonRuntimePaths,
+	type LargePathHint,
+} from './publish-size-hints.ts'
 import { type PublishPhaseTimings } from './publish-phase-timing.ts'
 import { type EntitySourceRow } from './types.ts'
 
@@ -692,6 +696,36 @@ function repoCheckKindForStep(step: RepoCheckStep | null): RepoCheckKind {
 }
 
 /**
+ * Best effort: names the biggest non-runtime files in a staged tree after a
+ * step hit the memory/CPU limit, so the error can suggest `.kodyignore`.
+ */
+async function stagedLargestNonRuntimePaths(input: {
+	kv: KVNamespace
+	request: PublishWorkRequest
+}): Promise<Array<LargePathHint>> {
+	try {
+		const files = await loadStagedPublishWorkFiles({
+			kv: input.kv,
+			stagingKey: input.request.stagingKey,
+		})
+		if (!files) return []
+		const requestInput = input.request.input as {
+			sourceRoot?: unknown
+			source?: { source_root?: unknown }
+		}
+		const sourceRoot =
+			typeof requestInput.sourceRoot === 'string'
+				? requestInput.sourceRoot
+				: typeof requestInput.source?.source_root === 'string'
+					? requestInput.source.source_root
+					: ''
+		return largestNonRuntimePaths({ files, sourceRoot })
+	} catch {
+		return []
+	}
+}
+
+/**
  * Runs each publish step on a fresh `REPO_SESSION` id. A step that still hits
  * the memory/CPU limit on its own becomes an actionable compute-limit error
  * (or a failed check for `checks`) naming the step, never a raw reset that
@@ -732,6 +766,10 @@ export function createIsolatedPublishWorkRunner(
 				if (!isResourceLimitReset(error)) throw error
 				const step =
 					(await readLastCheckStep(stub)) ?? publishWorkOpSteps[request.op]
+				const largestPaths = await stagedLargestNonRuntimePaths({
+					kv,
+					request,
+				})
 				if (request.op === 'checks') {
 					return {
 						ok: false,
@@ -739,7 +777,10 @@ export function createIsolatedPublishWorkRunner(
 							{
 								kind: repoCheckKindForStep(step),
 								ok: false,
-								message: authoringChecksResourceLimitMessage(step),
+								message: authoringChecksResourceLimitMessage(
+									step,
+									largestPaths,
+								),
 							},
 						],
 						manifest: null,
@@ -747,7 +788,9 @@ export function createIsolatedPublishWorkRunner(
 						typeof request.op
 					>
 				}
-				throw new Error(publishComputeLimitMessage(step), { cause: error })
+				throw new Error(publishComputeLimitMessage(step, largestPaths), {
+					cause: error,
+				})
 			}
 		},
 		async cloneExternalRef(request) {

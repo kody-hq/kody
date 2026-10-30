@@ -17,6 +17,14 @@ const gitMocks = vi.hoisted(() => ({
 		'package.json',
 		'src/index.ts',
 	]),
+	fetch: vi.fn(async (..._args: Parameters<typeof git.fetch>) => undefined),
+	readCommit: vi.fn(
+		async (
+			..._args: Parameters<typeof git.readCommit>
+		): Promise<Awaited<ReturnType<typeof git.readCommit>>> => {
+			throw new Error('not found')
+		},
+	),
 }))
 
 vi.mock('./isomorphic-git-lazy.ts', () => ({
@@ -30,6 +38,9 @@ vi.mock('./isomorphic-git-lazy.ts', () => ({
 				gitMocks.checkout(...args),
 			listFiles: (...args: Parameters<typeof git.listFiles>) =>
 				gitMocks.listFiles(...args),
+			fetch: (...args: Parameters<typeof git.fetch>) => gitMocks.fetch(...args),
+			readCommit: (...args: Parameters<typeof git.readCommit>) =>
+				gitMocks.readCommit(...args),
 		},
 		http: {},
 	}),
@@ -83,6 +94,7 @@ test('cloneExternalPublishWorkspace clones into ephemeral FS and exposes publish
 			dir: '/repo',
 			ref: 'main',
 			singleBranch: true,
+			depth: 1,
 		}),
 	)
 	expect(gitMocks.checkout).toHaveBeenCalledWith(
@@ -292,4 +304,65 @@ test('checkout keeps a storage failure distinct from a clone failure', async () 
 			checkoutCommit: '0123456789abcdef0123456789abcdef01234567',
 		}),
 	).rejects.toThrow(/Artifacts git clone failed/)
+})
+
+test('a shallow clone deepens until it reaches the requested commit and the ancestor', async () => {
+	gitMocks.fetch.mockClear()
+	gitMocks.isDescendent.mockClear()
+	type PromiseFs = {
+		promises: {
+			mkdir(path: string, options?: { recursive?: boolean }): Promise<unknown>
+			writeFile(path: string, data: string): Promise<unknown>
+			unlink(path: string): Promise<unknown>
+		}
+	}
+	const promiseFs = (fs: unknown) => (fs as PromiseFs).promises
+	gitMocks.clone.mockImplementationOnce(async (args) => {
+		await promiseFs(args.fs).mkdir('/repo/.git', { recursive: true })
+		await promiseFs(args.fs).writeFile('/repo/.git/shallow', 'commit-head\n')
+	})
+	let fetches = 0
+	gitMocks.fetch.mockImplementation(async (args) => {
+		fetches += 1
+		if (fetches >= 2) await promiseFs(args.fs).unlink('/repo/.git/shallow')
+	})
+	gitMocks.readCommit.mockImplementation(async () => {
+		if (fetches === 0) throw new Error('not found')
+		return {} as Awaited<ReturnType<typeof git.readCommit>>
+	})
+	gitMocks.isDescendent.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+
+	const cloned = await cloneExternalPublishWorkspace({
+		remote: 'https://acct.artifacts.cloudflare.net/git/default/source-repo.git',
+		token: 'art_token',
+		branch: 'main',
+		checkoutCommit: 'commit-older',
+	})
+	expect(gitMocks.fetch).toHaveBeenCalledTimes(1)
+	expect(gitMocks.fetch).toHaveBeenLastCalledWith(
+		expect.objectContaining({ ref: 'main', singleBranch: true, depth: 16 }),
+	)
+	await expect(
+		cloned.isAncestorCommit({
+			ancestor: 'commit-old',
+			descendant: 'commit-older',
+		}),
+	).resolves.toBe(true)
+	expect(gitMocks.fetch).toHaveBeenCalledTimes(2)
+	expect(gitMocks.fetch).toHaveBeenLastCalledWith(
+		expect.objectContaining({ depth: 256 }),
+	)
+
+	// Full history and still no ancestor: not a fast-forward, no more fetches.
+	gitMocks.isDescendent.mockResolvedValueOnce(false)
+	await expect(
+		cloned.isAncestorCommit({
+			ancestor: 'commit-other',
+			descendant: 'commit-older',
+		}),
+	).resolves.toBe(false)
+	expect(gitMocks.fetch).toHaveBeenCalledTimes(2)
+	gitMocks.fetch.mockReset()
+	gitMocks.readCommit.mockReset()
+	gitMocks.readCommit.mockRejectedValue(new Error('not found'))
 })
