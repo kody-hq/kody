@@ -146,6 +146,12 @@ Audience values: `everyone` (default) | `experiments_opt_in`.
   `request-feature-flags-cache.ts`) and shipped as `session.featureFlags`; gate
   UI with `isFeatureFlagEnabled(session, key)` from
   `packages/worker/client/feature-flags.ts`.
+- **Execute fetch gateway**: each `KodyFetchGateway` call gets freshly
+  deserialized props, so request-keyed memos miss across one execution's
+  fetches. The host sets `executionId` on the run's gateway props, and
+  `feature-flags/execution-scope.ts` reuses `evaluateFeatureFlag`,
+  `isFeatureGloballyEnabled`, and the supplier flag's org-owner lookup for that
+  id (KODY-CS). The next execution gets a new id and reads D1 again.
 - **Capability gating**: a capability definition may declare
   `featureFlag: <key>`; `access-control.ts` hides it from search and denies
   execution when the flag evaluates off for the caller. Flag-gated capabilities

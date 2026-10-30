@@ -1571,6 +1571,7 @@ export async function runBundledModuleWithRegistry(
 				},
 				grantedSecretAuthorityPackageIds: [...grantedPackageStorageIds],
 				packageSecretRefKey,
+				executionId: crypto.randomUUID(),
 				credentialClientBinding: credentialClientTools
 					? credentialClientBinding
 					: null,

@@ -969,6 +969,31 @@ export default async function main(params) { return { other: true, ...params } }
 	expect(ids[3]).not.toBe(ids[0])
 })
 
+test('runModuleWithRegistry gives each run its own gateway executionId', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const env = {} as Env
+	const callerContext = meCaller()
+	vi.spyOn(registryModule, 'getCapabilityRegistryForContext').mockResolvedValue(
+		emptyRegistry,
+	)
+	const executor = mockExecutor()
+	vi.mocked(moduleGraph.buildKodyModuleBundle).mockResolvedValue({
+		mainModule: 'entry.js',
+		modules: { 'entry.js': 'export default async function main() {}' },
+		dependencies: [],
+	})
+	const code = 'export default async function main() { return null }'
+	await runModuleWithRegistry(env, callerContext, code)
+	await runModuleWithRegistry(env, callerContext, code)
+
+	const [first, second] = executor.calls.map(
+		(call) => call.input.gatewayProps.executionId,
+	)
+	expect(first).toEqual(expect.any(String))
+	expect(second).toEqual(expect.any(String))
+	expect(second).not.toBe(first)
+})
+
 test('runModuleWithRegistry begins a run before bundling and records a clear timeout when bundling hangs', async () => {
 	silenceIncidentalRuntimeWarnings()
 	vi.useFakeTimers()

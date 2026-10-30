@@ -79,6 +79,7 @@ import {
 	resolveCredential,
 } from '#worker/credentials/resolve-credential.ts'
 import { assertCredentialUsesDeclared } from '#worker/credentials/credential-need-enforcement.ts'
+import { runInFeatureFlagExecution } from '#worker/feature-flags/execution-scope.ts'
 import { credentialClientHeaderName } from '#worker/credentials/credential-client-header.ts'
 import {
 	isSealedTokenName,
@@ -191,6 +192,11 @@ type FetchGatewayProps = {
 	 * (GHSA-5fv3). Omitted outside bundled sandbox runs.
 	 */
 	packageSecretRefKey?: string | null
+	/**
+	 * One id per execution: its gateway calls reuse feature-flag reads (see
+	 * `runInFeatureFlagExecution`), and the next execution reads again.
+	 */
+	executionId?: string | null
 	/**
 	 * Package-app runs only: audience used to verify a per-request visit
 	 * ticket. Omitted outside package-app serving.
@@ -320,6 +326,14 @@ export async function executeGatewayFetch(input: {
 	/** Override {@link outboundFetchIdleTimeoutMs}. Tests use short values. */
 	idleTimeoutMs?: number
 }): Promise<Response> {
+	return await runInFeatureFlagExecution(input.props.executionId, () =>
+		fetchThroughGateway(input),
+	)
+}
+
+async function fetchThroughGateway(
+	input: Parameters<typeof executeGatewayFetch>[0],
+): Promise<Response> {
 	const resolved = await applyPackageAppVisitTicketToGateway(input)
 	const globalFetch = resolved.globalFetch ?? fetch
 	const startedAtMs = Date.now()

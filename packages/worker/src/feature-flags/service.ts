@@ -13,6 +13,7 @@ import {
 	type FeatureFlagKey,
 } from '#universal/feature-flags/registry.ts'
 import { type AdminFeatureFlag } from '#universal/feature-flags/types.ts'
+import { memoizeForFeatureFlagExecution } from '#worker/feature-flags/execution-scope.ts'
 import {
 	andActiveOrgSql,
 	andLiveDeletedAtSql,
@@ -277,6 +278,18 @@ export async function evaluateFeatureFlag(
 	userId: number | null,
 	orgContext: FeatureFlagOrgContext = null,
 ): Promise<FeatureFlagEvaluation> {
+	return await memoizeForFeatureFlagExecution(
+		`evaluate:${key}:${userId ?? ''}:${orgContext?.orgId ?? ''}`,
+		() => readFeatureFlagEvaluation(db, key, userId, orgContext),
+	)
+}
+
+async function readFeatureFlagEvaluation(
+	db: D1Database,
+	key: FeatureFlagKey,
+	userId: number | null,
+	orgContext: FeatureFlagOrgContext,
+): Promise<FeatureFlagEvaluation> {
 	const experimentsOptIn = await readExperimentsOptInForUser(db, userId)
 
 	if (userId !== null) {
@@ -357,16 +370,18 @@ export async function isFeatureGloballyEnabled(
 	db: D1Database,
 	key: FeatureFlagKey,
 ): Promise<boolean> {
-	const global = await db
-		.prepare(
-			`SELECT enabled
-			 FROM feature_flags
-			 WHERE key = ?`,
-		)
-		.bind(key)
-		.first<{ enabled: number }>()
-	if (!global) return getFeatureFlagDefinition(key).defaultEnabled
-	return global.enabled === 1
+	return await memoizeForFeatureFlagExecution(`global:${key}`, async () => {
+		const global = await db
+			.prepare(
+				`SELECT enabled
+				 FROM feature_flags
+				 WHERE key = ?`,
+			)
+			.bind(key)
+			.first<{ enabled: number }>()
+		if (!global) return getFeatureFlagDefinition(key).defaultEnabled
+		return global.enabled === 1
+	})
 }
 
 type GlobalEvaluationRow = {
