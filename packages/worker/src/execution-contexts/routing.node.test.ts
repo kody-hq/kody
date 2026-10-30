@@ -386,3 +386,23 @@ test('run history reports no ranOn for a queued run that expired unrun', () => {
 		}),
 	).toMatchObject({ kind: 'context', id: 'ec_queue1', name: 'build-box' })
 })
+
+test('a queued run that revocation ended unrun has no ranOn in history', () => {
+	const metadata = markQueuedAttemptExpired(
+		{
+			executionContext: {
+				id: 'ec_queue1',
+				name: 'build-box',
+				fellBackToCloud: false,
+				attempts: [
+					{ target: 'ec_queue1', name: 'build-box', outcome: 'queued' },
+				],
+			},
+		},
+		'context_revoked',
+	)
+	expect(metadata.executionContext).toMatchObject({
+		attempts: [{ outcome: 'expired', reason: 'context_revoked' }],
+	})
+	expect(historyRanOn(metadata.executionContext)).toBeNull()
+})

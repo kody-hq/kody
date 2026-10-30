@@ -1133,7 +1133,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 	}
 
-	async #failAllQueued(message: string, name: string) {
+	async #failAllQueued(message: string, name: string, reason: string) {
 		const rows = this.ctx.storage.sql
 			.exec<{ run_id: string; run_record_json: string | null }>(
 				`SELECT run_id, run_record_json FROM queued`,
@@ -1141,9 +1141,14 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			.toArray()
 		for (const row of rows) {
 			if (row.run_record_json) {
+				const handle = JSON.parse(row.run_record_json) as RunRecordHandle
+				handle.context.metadata = markQueuedAttemptExpired(
+					handle.context.metadata ?? {},
+					reason,
+				)
 				await finishRunRecord({
 					env: this.env,
-					handle: JSON.parse(row.run_record_json) as RunRecordHandle,
+					handle,
 					status: 'error',
 					error: Object.assign(new Error(message), { name }),
 				})
@@ -1598,6 +1603,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		await this.#failAllQueued(
 			'The execution context this run was queued for was revoked, so it did not run (execution_context_unavailable).',
 			'ExecutionContextUnavailable',
+			'context_revoked',
 		)
 		for (const ws of this.ctx.getWebSockets()) {
 			await this.#send(ws, 'revoke', { reason: input.reason })

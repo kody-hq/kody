@@ -748,14 +748,12 @@ export async function resolveRunChain(
 	}
 }
 
-/** A queued run that expired never ran: mark its queued attempt `expired`. */
+/** A queued run that ended unrun (expiry, revocation): mark it `expired`. */
 export function markQueuedAttemptExpired(
 	metadata: Record<string, unknown>,
+	reason = 'queue_expired',
 ): Record<string, unknown> {
-	return markQueuedAttempt(metadata, {
-		outcome: 'expired',
-		reason: 'queue_expired',
-	})
+	return markQueuedAttempt(metadata, { outcome: 'expired', reason })
 }
 
 /** A queued run that the context took after reconnecting ran there. */
