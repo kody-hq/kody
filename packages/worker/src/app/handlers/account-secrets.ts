@@ -1417,7 +1417,7 @@ async function handleApprovalAction(input: {
 				const refused = await refuseApprovalWithoutWrite({
 					env: input.env,
 					user: input.user,
-					names: approval.names.filter((name) => byName.has(name)),
+					names: updates.map((update) => update.name),
 					scope: 'user',
 					storageContext: null,
 				})
