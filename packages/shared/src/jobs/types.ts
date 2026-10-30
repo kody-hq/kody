@@ -1,3 +1,4 @@
+import { type OrgPermission } from '../org-permissions.ts'
 import { type McpCallerContext, type McpUserContext } from '../chat.ts'
 import { type OwnerId } from '../owner-person-ids.ts'
 
@@ -97,9 +98,15 @@ export type JobExecutionOutcome = {
 
 export type PersistedJobCallerContext = Pick<
 	McpCallerContext,
-	'baseUrl' | 'executionOrigin' | 'storageContext' | 'repoContext'
+	| 'baseUrl'
+	| 'executionOrigin'
+	| 'storageContext'
+	| 'repoContext'
+	| 'connectionProfileName'
 > & {
 	user: McpUserContext
+	/** Scopes of the credential that saved the job; absent does not narrow. */
+	scopes?: ReadonlyArray<OrgPermission> | null
 }
 
 export type JobUpdateInput = {

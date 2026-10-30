@@ -751,6 +751,10 @@
 		{
 			"filename": "0207-execution-contexts-release-revoked-names.sql",
 			"sha256": "187cbb834aa580cb02572f501b3fc8672ccd0a7fe26af94a609c435038a4778d"
+		},
+		{
+			"filename": "0209-enablement-enabler-narrowing.sql",
+			"sha256": "611d6838231313539698f202913361e2c928978f3ae4394f2037426c51967cad"
 		}
 	]
 }

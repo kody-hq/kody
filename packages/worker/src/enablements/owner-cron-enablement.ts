@@ -1,3 +1,4 @@
+import { type RequestCredential } from '@kody-internal/shared/request-context.ts'
 /**
  * Owner cron enablement for scheduled package jobs.
  *
@@ -38,6 +39,9 @@ async function ownerHasCronEnablementRow(input: {
 		.first<{ id: string }>()
 	return row != null
 }
+
+/** What the person turning a trigger on could do with their credential. */
+export type EnablerCredential = Pick<RequestCredential, 'scopes' | 'profileName'>
 
 export type OwnerCronEnablementOutcome =
 	| 'inserted'
@@ -89,6 +93,11 @@ export async function ensureOwnerCronEnablementForJob(input: {
 	enablerUserId?: PersonId | string | null
 	now?: string
 	/** Runs after a new enablement row is written (for the audit log). */
+	/**
+	 * The credential the enabler used, when they are the person acting now.
+	 * Scheduled runs never exceed it.
+	 */
+	enablerCredential?: EnablerCredential | null
 	onInserted?: (enablement: EnablementRecord) => Promise<unknown>
 }): Promise<OwnerCronEnablementOutcome> {
 	const packageId = input.packageId ?? packageIdFromJobId(input.jobId) ?? null
@@ -120,6 +129,12 @@ export async function ensureOwnerCronEnablementForJob(input: {
 			triggerName: input.jobName,
 			instanceId: input.jobId,
 			enablerUserId: String(enablerUserId),
+			...(input.enablerUserId && input.enablerCredential
+				? {
+						enablerScopes: input.enablerCredential.scopes,
+						enablerProfileName: input.enablerCredential.profileName,
+					}
+				: {}),
 			origin: 'enabled',
 		},
 		now: input.now,
