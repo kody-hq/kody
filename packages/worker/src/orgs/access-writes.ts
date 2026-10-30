@@ -129,6 +129,14 @@ function changesOf(result: unknown) {
  * Resource types a grant may target. `org` is organization-level permissions.
  * `credential` grants are keyed by stable credential id.
  */
+/**
+ * Where a grant came from. `created` is the creator's own grant on a
+ * resource they made; org transfer re-points or drops it.
+ */
+export const grantOrigins = ['manual', 'created'] as const
+
+export type GrantOrigin = (typeof grantOrigins)[number]
+
 export const grantResourceTypes = [
 	'package',
 	'app',
@@ -348,9 +356,12 @@ export async function upsertGrant(input: {
 	preset: GrantPreset | null
 	permissions: ReadonlyArray<OrgPermission> | null
 	createdByUserId: string
+	/** Defaults to `manual`; a manual write over a `created` grant claims it. */
+	origin?: GrantOrigin
 	audit: OrgAuditWriter
 }) {
 	assertGrantSubjectInOrg(input)
+	const origin = input.origin ?? 'manual'
 	const family = input.family ?? grantFamilyOf(input.resourceType)
 	const permissions = resolveGrantPermissions({
 		family,
@@ -386,10 +397,17 @@ export async function upsertGrant(input: {
 			input.db
 				.prepare(
 					`UPDATE grants
-					 SET preset = ?, updated_at = ?, created_by_user_id = ?
+					 SET preset = ?, updated_at = ?, created_by_user_id = ?, origin = ?
 					 WHERE id = ? AND org_id = ?${andLiveDeletedAtSql()}`,
 				)
-				.bind(input.preset, now, input.createdByUserId, grantId, input.orgId),
+				.bind(
+					input.preset,
+					now,
+					input.createdByUserId,
+					origin,
+					grantId,
+					input.orgId,
+				),
 			input.db
 				.prepare(`DELETE FROM grant_permissions WHERE grant_id = ?`)
 				.bind(grantId),
@@ -400,8 +418,8 @@ export async function upsertGrant(input: {
 				.prepare(
 					`INSERT INTO grants (
 						id, org_id, resource_type, resource_id, subject_type, subject_id,
-						preset, created_by_user_id, created_at, updated_at
-					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+						preset, created_by_user_id, created_at, updated_at, origin
+					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				)
 				.bind(
 					grantId,
@@ -414,6 +432,7 @@ export async function upsertGrant(input: {
 					input.createdByUserId,
 					now,
 					now,
+					origin,
 				),
 		)
 	}
@@ -443,6 +462,7 @@ export async function upsertGrant(input: {
 				subjectId: input.subject.id,
 				preset: input.preset,
 				permissions,
+				origin,
 			},
 		},
 	})

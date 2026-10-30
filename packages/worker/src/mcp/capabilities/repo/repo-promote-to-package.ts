@@ -313,6 +313,7 @@ export const repoPromoteToPackageCapability = defineDomainCapability(
 				packageId,
 				sourceId: source.id,
 				firstPublish: true,
+				creatorUserId: owner.actorUserId,
 				audit: optionalOrgAuditWriter(
 					ctx.env,
 					ctx.callerContext.request ?? null,

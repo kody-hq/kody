@@ -66,8 +66,19 @@ synchronous, for callers that already hold the compiled permissions.
    the org, unlike `package:write`) and refuses a profile-bound credential,
    because a profile names existing packages only. `packageGetGitRemote` create
    mode mints a write remote for the package it just created on that check
-   alone; it grants nothing on other packages and stores no grant on the new
-   one. Plain repo create stays an org-level `package:create` check.
+   alone; it grants nothing on other packages. Plain repo create stays an
+   org-level `package:create` check.
+
+**Creator grants.** A non-owner member who creates a package (on its first
+publish) or a team-org credential (on its `credential.created` audit) gets a
+`manage` user grant on it, and on the package's app, with
+`grants.origin = 'created'` (`grantCreatorAccess` in
+`packages/worker/src/orgs/creator-access.ts`). Owners get none; they already
+hold everything. Owners can revoke the grant like any other. Org transfer
+re-points a creator grant when its person is a target member and drops it
+otherwise; a `manual` grant still blocks the move. `adminCreatorAccessBackfill`
+writes the same grants for older creations from the audit log, skipping anyone
+whose grant was ever revoked.
 
 **Org-wide read grants.** An `org` grant may carry the read-only resource
 permissions in `orgWideReadPermissions`

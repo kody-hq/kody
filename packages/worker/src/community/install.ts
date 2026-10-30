@@ -329,6 +329,7 @@ async function createCommunityInstall(
 		sourceId: fork.sourceId,
 		sourceFiles: fork.files,
 		waitUntil: input.waitUntil,
+		creatorUserId: input.creatorUserId ?? null,
 		audit: optionalOrgAuditWriter(input.env, {
 			userId: input.creatorUserId ?? null,
 		}),

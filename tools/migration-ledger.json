@@ -751,6 +751,10 @@
 		{
 			"filename": "0207-execution-contexts-release-revoked-names.sql",
 			"sha256": "187cbb834aa580cb02572f501b3fc8672ccd0a7fe26af94a609c435038a4778d"
+		},
+		{
+			"filename": "0208-grants-origin.sql",
+			"sha256": "9cf506b9f0b61b52484698f834c6a48e83c8a5509fa86244053506cf935a859e"
 		}
 	]
 }

@@ -1559,3 +1559,102 @@ test('a source credential granted to another org as a personal credential blocks
 		},
 	])
 })
+
+function insertGrant(
+	sqlite: DatabaseSync,
+	input: { id: string; resourceId: string; subjectId: string; origin: string },
+) {
+	sqlite
+		.prepare(
+			`INSERT INTO grants (
+				id, org_id, resource_type, resource_id, subject_type, subject_id,
+				preset, created_by_user_id, created_at, updated_at, origin
+			) VALUES (?, ?, 'package', ?, 'user', ?, 'manage', ?, ?, ?, ?)`,
+		)
+		.run(
+			input.id,
+			src,
+			input.resourceId,
+			input.subjectId,
+			input.subjectId,
+			now,
+			now,
+			input.origin,
+		)
+}
+
+test('a manually made package grant still blocks the transfer', async () => {
+	const { sqlite, db } = await seed()
+	insertGrant(sqlite, {
+		id: 'grant-manual',
+		resourceId: pkgA,
+		subjectId: 'person-brad',
+		origin: 'manual',
+	})
+	const result = await runOrgResourceTransfer({
+		db,
+		effects: createEffects({ db, calls: [], backups: [] }),
+		actorUserId: 'person-admin',
+		fromOrgId: src,
+		toOrgId: dst,
+		mode: 'dry-run',
+		skipOrphans: true,
+	})
+	expect(result.refusals).toEqual([
+		expect.objectContaining({
+			code: 'grant_names_source_subjects',
+			subject: 'grant-manual',
+		}),
+	])
+})
+
+test('creator grants never block: kept for target members, dropped otherwise', async () => {
+	const { sqlite, db } = await seed()
+	insertGrant(sqlite, {
+		id: 'grant-creator-member',
+		resourceId: pkgA,
+		subjectId: 'person-brad',
+		origin: 'created',
+	})
+	insertGrant(sqlite, {
+		id: 'grant-creator-outsider',
+		resourceId: pkgB,
+		subjectId: 'person-outsider',
+		origin: 'created',
+	})
+	const dryRun = await runOrgResourceTransfer({
+		db,
+		effects: createEffects({ db, calls: [], backups: [] }),
+		actorUserId: 'person-admin',
+		fromOrgId: src,
+		toOrgId: dst,
+		mode: 'dry-run',
+		skipOrphans: true,
+	})
+	expect(dryRun.refusals).toEqual([])
+	expect(dryRun.summary.warnings).toContainEqual(
+		expect.objectContaining({
+			code: 'creator_grant_dropped',
+			subject: 'grant-creator-outsider',
+		}),
+	)
+	const result = await runOrgResourceTransfer({
+		db,
+		effects: createEffects({ db, calls: [], backups: [] }),
+		actorUserId: 'person-admin',
+		fromOrgId: src,
+		toOrgId: dst,
+		mode: 'apply',
+		skipOrphans: true,
+	})
+	expect(result.outcome).toBe('applied')
+	const rows = sqlite
+		.prepare(
+			`SELECT id, org_id, deleted_at IS NOT NULL AS deleted FROM grants ORDER BY id`,
+		)
+		.all()
+	expect(rows).toEqual([
+		{ id: 'grant-creator-member', org_id: dst, deleted: 0 },
+		{ id: 'grant-creator-outsider', org_id: src, deleted: 1 },
+	])
+})

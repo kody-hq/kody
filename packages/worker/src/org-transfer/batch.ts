@@ -37,6 +37,8 @@ export const orgTransferRepointedTables = [
 	'package_kody_id_redirects',
 	'package_slug_redirects',
 	'enablements',
+	// Only creator grants whose person is a target member (plan.ts).
+	'grants',
 ] as const satisfies ReadonlyArray<OrgTransferMovedTable>
 
 /** Tables rewritten row by row (owner plus rewritten columns). */
@@ -340,6 +342,18 @@ export function buildOrgTransferStatements(input: {
 					.bind(fromId, JSON.stringify(ids)),
 			)
 		}
+	}
+
+	for (const ids of chunks(rowids(plan.droppedCreatorGrants), rowidChunkSize)) {
+		statements.push(
+			db
+				.prepare(
+					`UPDATE grants SET deleted_at = ?
+					 WHERE org_id = ? AND deleted_at IS NULL
+					   AND rowid IN (SELECT value FROM json_each(?))`,
+				)
+				.bind(now, fromId, JSON.stringify(ids)),
+		)
 	}
 
 	if (input.cleanupOrphans) {
