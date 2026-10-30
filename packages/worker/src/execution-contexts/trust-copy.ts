@@ -22,7 +22,7 @@ export function sharingTrustNotice(input: {
 		? `@${input.operatorHandle}`
 		: 'its operator'
 	const lines = [
-		`Anyone you share with can run code on this machine (operated by ${operator}) after they opt in. ${operator} can see their code, inputs, logs and results. Their runs that use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.`,
+		`Anyone you share with can run code on this machine (operated by ${operator}) after they opt in. ${operator} can see their code, inputs, logs and results. Their runs that can use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.`,
 		'While their run is active, this machine can make Kody API calls as them (within the Kody API access the grant allows) and can change their results.',
 	]
 	if (input.localNetwork) {
@@ -42,7 +42,7 @@ export function optInTrustNotice(input: {
 		? `@${input.operatorHandle}`
 		: 'its operator'
 	const lines = [
-		`Your runs will execute on ${input.name}, a machine operated by ${operator}. ${operator} can see the code, inputs, logs and results of your runs. Runs that use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.`,
+		`Your runs will execute on ${input.name}, a machine operated by ${operator}. ${operator} can see the code, inputs, logs and results of your runs. Runs that can use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.`,
 		`While your run is active, ${operator}'s machine can make Kody API calls as you, within the Kody API access its grant allows, and can change the results your run returns.`,
 	]
 	if (input.localNetwork) {

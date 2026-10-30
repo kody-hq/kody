@@ -70,7 +70,7 @@ export function optInCopy(input: {
 	return {
 		title: `Opt into ${input.name}?`,
 		paragraphs: [
-			`Your runs will execute on ${input.name}, a machine operated by ${op}. ${op} can see the code, inputs, logs and results of your runs. Runs that use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.`,
+			`Your runs will execute on ${input.name}, a machine operated by ${op}. ${op} can see the code, inputs, logs and results of your runs. Runs that can use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.`,
 			`Your runs get this machine's network position and access: ${accessLine(input.grant)}.`,
 			`While your run is active, ${op}'s machine can make Kody API calls as you, within that Kody API access, and can change the results your run returns.`,
 		],
@@ -141,7 +141,7 @@ export function shareCopy(input: {
 	return {
 		title: `Share ${input.name}`,
 		paragraphs: [
-			`Anyone you share with can run code on this machine (operated by ${op}) after they opt in. ${who} be able to see their code, inputs, logs and results. Their runs that use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.`,
+			`Anyone you share with can run code on this machine (operated by ${op}) after they opt in. ${who} be able to see their code, inputs, logs and results. Their runs that can use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.`,
 			`Their runs get: ${accessLine(input.grant)}.`,
 			'While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.',
 		],
