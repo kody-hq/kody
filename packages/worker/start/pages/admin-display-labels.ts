@@ -20,3 +20,7 @@ export function formatAdminOrganizationRole(
 ) {
 	return role === 'owner' ? 'Owner' : role === 'billing' ? 'Billing' : 'Member'
 }
+
+export function formatAdminPlanLabel(plan: string) {
+	return plan.charAt(0).toUpperCase() + plan.slice(1)
+}

@@ -51,11 +51,16 @@ Kent decided on 2026-10-29:
 5. **Credential.** The claim grant's success response is a standard token
    response whose `access_token` is a user-owned `kody_at_` (`created_via`
    `agent-registration`) with the 0056 default scopes, bound to the chosen org.
-   auth.md agents send no lifetime, so this mint defaults to `long`, the same
-   default as `kody login`; the body may ask for `short` or explicit seconds.
-6. **No `identity_assertion` and no JWT-bearer grant.** The token slides on use.
-   When it expires or is revoked, the agent registers again. 0076 removed
-   refresh tokens from the CLI, and a long-lived assertion would bring one back.
+   auth.md agents send no lifetime, so this mint defaults to `long`; the body
+   may ask for `short` or explicit seconds with the
+   [0056](./0056-cli-credential-bootstrap.md) lifetime fields.
+6. **A Kody profile of auth.md: no `identity_assertion` and no JWT-bearer
+   grant.** The spec's claim grant success response adds `identity_assertion`
+   and `assertion_expires` so the agent can mint new access tokens with the
+   JWT-bearer grant. Kody's response omits both, and its metadata does not list
+   the JWT-bearer grant. The token slides on use. When it expires or is revoked,
+   the agent registers again with `POST /agent/identity`. 0076 removed refresh
+   tokens from the CLI, and a long-lived assertion would bring one back.
 7. **Rate limits.** `/agent/identity` is limited per IP and per `login_hint`.
    Code entry is limited per person and per IP, and only misses count.
 

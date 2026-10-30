@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { expect, test } from 'vitest'
 import { renderStartPage } from './test-support/render-start-page.ts'
 import { AdminOrgDetailPage } from './pages/admin-orgs.tsx'
+import { type AdminOrgDetail } from '../src/admin/orgs-data.ts'
 
 const orgId = 'a'.repeat(64)
 const memberId = 'b'.repeat(64)
@@ -103,7 +104,63 @@ test('organization detail SSR uses admin labels and hides raw ids', async () => 
 		'2 seats (owners and members) · 1 billing-only member',
 	)
 	expect(visibleText).toContain('This organization is deleted.')
+	expect(html).not.toContain('aria-label="Set organization manual plan"')
+	expect(html).not.toContain('aria-label="Grant organization credits"')
 	expect(visibleText).not.toContain(orgId)
 	expect(visibleText).not.toContain(memberId)
 	expect(visibleText).not.toContain(billingMemberId)
+})
+
+test('live organization detail SSR renders billing mutation forms', async () => {
+	const payload: AdminOrgDetail = {
+		org: {
+			id: orgId,
+			slug: 'blue-team',
+			displayName: 'Blue Team',
+			kind: 'team',
+			createdAt: '2026-01-01T00:00:00.000Z',
+			updatedAt: '2026-01-01T00:00:00.000Z',
+			suspendedAt: null,
+		},
+		softDelete: null,
+		plan: {
+			manualPlan: 'pro',
+			stripePlan: null,
+			effectivePlan: 'pro',
+			entitlementLadder: 'public',
+			stripeCustomerLinked: false,
+			adminCreditsEligible: false,
+			stripeCreditsEligible: false,
+			creditsEligible: false,
+		},
+		seats: { live: 0, billingOnly: 0 },
+		members: [],
+		budgets: {
+			defaultUserBudgetMicroUsd: null,
+			automationBudgetMicroUsd: null,
+		},
+		wallet: {
+			plan: 'pro',
+			eligible: false,
+			adminCreditsEligible: false,
+			unlocked: false,
+			balanceMicroUsd: 0,
+			recent: [],
+		},
+		teamsCount: 0,
+	}
+	const html = await renderStartPage(
+		createElement(AdminOrgDetailPage, {
+			currentHref: '/admin/orgs/blue-team',
+			payload,
+		}),
+		'/admin/orgs/blue-team',
+	)
+	expect(html).toContain('aria-label="Set organization manual plan"')
+	expect(html).toContain('aria-label="Grant organization credits"')
+	expect(html).toContain('aria-label="Set organization credit eligibility"')
+	expect(html).toContain('Pro</option>')
+	expect(
+		html.indexOf('aria-label="Grant organization credits"'),
+	).toBeGreaterThan(html.indexOf('aria-label="Recent credit ledger"'))
 })

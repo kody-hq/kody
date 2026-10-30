@@ -139,6 +139,12 @@ export const packageCodemodFiltersSchema = z
 			.array(z.string().min(1))
 			.optional()
 			.describe('Optional saved package ids to limit a fleet run.'),
+		excludePackageIds: z
+			.array(z.string().min(1))
+			.optional()
+			.describe(
+				'Optional saved package ids to record as needs_manual (operator excluded) instead of processing.',
+			),
 		scope: z
 			.literal(credentialNeedEnforcementScope)
 			.optional()
@@ -202,13 +208,18 @@ export async function runFleetPackageCodemodStep(
 	const user = requireMcpUser(ctx.callerContext)
 	const packageIds = input.filters?.packageIds ?? input.packageIds
 	const scope = input.filters?.scope
+	const excludePackageIds = input.filters?.excludePackageIds
 	const filters =
-		input.filters?.userIds != null || packageIds != null || scope != null
+		input.filters?.userIds != null ||
+		packageIds != null ||
+		excludePackageIds != null ||
+		scope != null
 			? {
 					...(input.filters?.userIds != null
 						? { userIds: input.filters.userIds }
 						: {}),
 					...(packageIds != null ? { packageIds } : {}),
+					...(excludePackageIds != null ? { excludePackageIds } : {}),
 					...(scope != null ? { scope } : {}),
 				}
 			: undefined

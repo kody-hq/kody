@@ -86,7 +86,10 @@ request so cookie signing and verification are available to handlers.
 
 ### Signup posture
 
-Anyone can create an account from `/signup` (password or social). Every
+Anyone can create an account from `/signup` (password or social), including from
+`/oauth/authorize` via **New to Kody? Create an account** (and the footer signup
+link), which keeps the full authorize URL in `redirectTo` so signup, username
+choice, and email verification return to the same consent request. Every
 self-serve path requires choosing a permanent username before the account
 exists:
 
@@ -295,23 +298,25 @@ assistant features:
   grant/token when the account email is unverified
   (`403 email_verification_required`). The authorize HTML is server-rendered
   with client/scopes from `/oauth/authorize-info` and the signed-in app session
-  from the SSR shell, so first paint already shows approve, inline login, or
-  verify-email instead of a client `/session` loading state. Approve stays
-  disabled until client hydration so a native GET cannot replace the OAuth query
-  with the honeypot field; the consent form POSTs to the current pathname+search
-  with a hidden `decision=approve` if it is submitted before handlers bind. A
-  `/oauth/authorize` request that has no `client_id` but includes `kody_hp` is
-  treated as that interrupted resubmit and returns a recoverable "start the
-  connection again" message instead of `client_id is required`. The authorize UI
-  keeps inline verification/resend controls and the original OAuth query so
-  verification in another tab can resume without restarting the host connection.
-  Consent binds the grant to one org
-  ([0064](../decisions/0064-oauth-org-binding.md)): `?org=<slug>` on the
+  from the SSR shell, so first paint already shows approve, inline login,
+  create-account, or verify-email instead of a client `/session` loading state.
+  Approve stays disabled until client hydration so a native GET cannot replace
+  the OAuth query with the honeypot field; the consent form POSTs to the current
+  pathname+search with a hidden `decision=approve` if it is submitted before
+  handlers bind. A `/oauth/authorize` request that has no `client_id` but
+  includes `kody_hp` is treated as that interrupted resubmit and returns a
+  recoverable "start the connection again" message instead of
+  `client_id is required`. The authorize UI keeps inline verification/resend
+  controls and the original OAuth query so verification in another tab can
+  resume without restarting the host connection. Consent binds the grant to one
+  org ([0064](../decisions/0064-oauth-org-binding.md)): `?org=<slug>` on the
   authorize URL or `/mcp` resource, a hidden field when the user has exactly one
   org, or a required picker when they have several. Approval stamps `orgId` and
-  `personId` on grant props and metadata (`grantBindingFields`). Nothing reads
-  `personId` yet; credential resolution will require it for new grants. Grants
-  minted before the stamp have only `userId`. There is no feature flag.
+  `personId` on grant props and metadata (`grantBindingFields`). Org binding
+  reads `orgId` (with a `userId` fallback for older grants). `personId` names
+  the person the grant acts as; credential resolution still uses the grant
+  subject `userId`. Grants minted before the stamp have only `userId`. There is
+  no feature flag.
 - **MCP requests**: `handleMcpRequest` in `packages/worker/src/mcp-auth.ts` is
   the single chokepoint for `/mcp`. After token validation it checks
   `users.email_verified_at` (via `isAccountEmailVerified`) and rejects
@@ -866,14 +871,16 @@ routed from `packages/worker/src/index.ts`.
   UserInfo endpoint.
 - On `/oauth/authorize`, unauthenticated users can log in with the same methods
   as `/login` (password, social providers including GitHub, and passkey) inline,
-  or via top-nav / “full sign-in page” links. Those flows preserve the full
-  authorize URL in `redirectTo` so successful login returns to the original
-  OAuth request (client_id, redirect_uri, PKCE, state, scope, org). After auth,
-  `prompt=login` is stripped from that resume target so the new session is not
-  treated as signed-out on the consent screen. Password signup lands on
-  `/pending-verification` with that safe `redirectTo` preserved for
-  continue-after-verify. The authorize tab itself should stay open when the
+  or via top-nav / “full sign-in page” links, or create an account from **New to
+  Kody? Create an account** (and the footer signup link). Those flows preserve
+  the full authorize URL in `redirectTo` so successful login or signup returns
+  to the original OAuth request (client_id, redirect_uri, PKCE, state, scope,
+  org). After auth, `prompt=login` is stripped from that resume target so the
+  new session is not treated as signed-out on the consent screen. Password
+  signup lands on `/pending-verification` with that safe `redirectTo` preserved
+  for continue-after-verify. The authorize tab itself should stay open when the
   email link is opened elsewhere, so the original OAuth query remains resumable.
+  Signup never auto-approves; the person clicks Approve after they return.
   Signed-in vs signed-out chrome on that page comes from the SSR-embedded app
   session; the route does not wait on a separate browser `/session` fetch before
   rendering approve or login. Social buttons use the same SSR-embedded provider

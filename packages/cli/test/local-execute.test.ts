@@ -1479,3 +1479,42 @@ export default async function main(p) {
 		assert.equal(existsSync(join(root, 'second.txt')), false)
 	},
 )
+
+test('runLocalExecute only reuses cached package graphs for code without saved package imports', async () => {
+	const { runLocalExecute } = await import('../src/local-execute.js')
+	const failingFetch = (async () =>
+		new Response('nope', { status: 500 })) as unknown as typeof fetch
+	const slot = () => {
+		const counts = { gets: 0, sets: 0 }
+		return {
+			counts,
+			slot: {
+				get: () => {
+					counts.gets += 1
+					return undefined
+				},
+				set: () => {
+					counts.sets += 1
+				},
+			},
+		}
+	}
+	const withImport = slot()
+	await runLocalExecute({
+		code: `import run from 'kody:@nobody/pkg'\nexport default () => run()`,
+		token: goodToken,
+		apiUrl: 'https://api.kody.test',
+		fetchFn: failingFetch,
+		packageGraphCache: withImport.slot,
+	}).catch(() => {})
+	assert.deepEqual(withImport.counts, { gets: 0, sets: 0 })
+	const plain = slot()
+	await runLocalExecute({
+		code: 'export default () => 1',
+		token: goodToken,
+		apiUrl: 'https://api.kody.test',
+		fetchFn: failingFetch,
+		packageGraphCache: plain.slot,
+	}).catch(() => {})
+	assert.equal(plain.counts.gets, 1)
+})

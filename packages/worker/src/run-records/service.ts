@@ -412,6 +412,32 @@ export async function ensureRunRecordStarted(input: {
 }
 
 /**
+ * Persist the handle's current metadata onto its still-running row, so keyed
+ * retries that land mid-run see it. A finished row is left alone. Never throws.
+ */
+export async function updateRunningRunRecordMetadata(input: {
+	env: Env
+	handle: RunRecordHandle | null
+}): Promise<boolean> {
+	const handle = input.handle
+	if (!handle || handle.persistence !== 'eager') return false
+	if (!runLogBinding(input.env)) return false
+	try {
+		const { updated } = await runLogRpc({
+			env: input.env,
+			userId: handle.userId,
+		}).updateRunningMetadata({
+			runId: handle.id,
+			metadataJson: serializeJson(handle.context.metadata ?? {}),
+		})
+		return updated
+	} catch (error) {
+		console.warn('run-record-update-metadata-failed', error)
+		return false
+	}
+}
+
+/**
  * Awaited claim for keyed runs (execute with `idempotencyKey`). Returns the
  * existing owner when the key is already taken so callers can replay or report
  * in-progress without starting a duplicate sandbox.

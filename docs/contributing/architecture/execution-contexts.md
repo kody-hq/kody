@@ -66,6 +66,24 @@ sequenceDiagram
   `gatewayFetch`, `oauthClientCredentials`, `credentialClient*`) need a grant
   that allows credentials and run from Kody cloud, so credential values never
   reach the machine.
+- Grant credentials are `none`, a `list` of credential ids, or `requester`
+  (every credential the requester can use). `requester` is the default for new
+  contexts and works only while the context is unshared: only the operator sets
+  it, sharing or attaching is refused until it is narrowed, and each hop
+  re-checks sharing (`credential-grant.ts`).
+- The credential door enforces the grant per credential: each hop puts the
+  grant's allowed ids on the request (`credential.contextCredentialIds`) and
+  `resolveCredential` refuses any other credential before reading it
+  (`context-credential-grant.ts`). The streaming gateway-fetch hop uses the same
+  grant check as `gatewayFetch`.
+- Before a run starts, routing works out which credentials it can use
+  (`run-credential-use.ts`): the entry module and every `kody:` package its
+  static imports reach, read from publish metadata (needs closure, credential
+  stamp) or, once per source and commit, from the published files (KV
+  `credential-use:v1`). A context whose grant cannot serve that is skipped
+  (`credentials_not_allowed`, `credentials_not_in_grant`,
+  `credentials_unverified`, `credentials_need_unshared_context`), so the chain
+  falls through to the next entry or cloud.
 - The daemon enforces the grant's `egress` (from `welcome`, re-applied on
   `grant.update`) inside local workerd: outbound `fetch` goes through an
   egress-gate worker (`packages/cli/src/local-egress.ts`) set as
@@ -113,6 +131,22 @@ sequenceDiagram
   (`heldRuns`) and finished results (`pendingResults`) in `hello`; Kody ends the
   rest as `lost` at once. A started run is never re-run. Daemons that omit
   `heldRuns` keep the deadline timer.
+- A daemon runs up to `--max-concurrent` runs at once (or
+  `KODY_CONTEXT_MAX_CONCURRENT`; default 2, max 8), capped by the grant's
+  `limits.maxConcurrent`. It advertises that number in `capabilities` and in
+  every `status` frame, and Kody only dispatches while a slot is free, so
+  routing and chain skipping see `busy` only when every slot is taken. Each run
+  still gets its own workerd process and temp dir; nothing is shared between
+  runs except granted host folders (concurrent runs with the same `rw` folder
+  write the same host files) and the daemon's package-graph cache (bounded LRU,
+  32 entries, 60s, keyed by requester, org, conversation and module source).
+  Code that imports saved packages is never cached, so package access is
+  re-checked every run.
+- `run.result` carries `timing` on the daemon's clock (`queueMs`, `setupMs`,
+  `packageGraphMs`, `packageGraphCached`, `executeMs`, `daemonMs`). Kody adds
+  `serverMs` (commit to result on its clock) and `transitMs`
+  (`serverMs - daemonMs`: dispatch plus return) and returns it as
+  `structuredContent.ranOn.timing` on `execute`.
 - Context runs are recorded in run records with `metadata.executionContext`
   (`runList` filter `execution_context_id`) and do not count toward hosted
   execute quota.

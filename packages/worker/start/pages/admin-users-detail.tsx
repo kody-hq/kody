@@ -42,6 +42,7 @@ import { AdminUserCreditsPanel } from './admin-users-credits.tsx'
 import {
 	formatAdminEntitlementLadder,
 	formatAdminOrganizationRole,
+	formatAdminPlanLabel,
 } from './admin-display-labels.ts'
 import { AdminUserAccountModeration } from './admin-account-delete-dialog.tsx'
 import {
@@ -535,7 +536,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 						>
 							{props.availablePlans.map((plan) => (
 								<option key={plan} value={plan}>
-									{plan}
+									{formatAdminPlanLabel(plan)}
 								</option>
 							))}
 						</select>

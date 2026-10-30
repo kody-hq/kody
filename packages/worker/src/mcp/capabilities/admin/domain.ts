@@ -6,6 +6,9 @@ import { adminCreditEligibilitySetCapability } from './admin-credit-eligibility-
 import { adminCreditGrantCapability } from './admin-credit-grant.ts'
 import { adminCreditWalletGetCapability } from './admin-credit-wallet-get.ts'
 import { adminOrgLimitOverridesSetCapability } from './admin-org-limit-overrides-set.ts'
+import { adminOrgPlanSetCapability } from './admin-org-plan-set.ts'
+import { adminOrgCreditGrantCapability } from './admin-org-credit-grant.ts'
+import { adminOrgCreditEligibilitySetCapability } from './admin-org-credit-eligibility-set.ts'
 import { adminOrgLimitsGetCapability } from './admin-org-limits-get.ts'
 import { adminOrgGetCapability } from './admin-org-get.ts'
 import { adminOrgResourceTransferCapability } from './admin-org-resource-transfer.ts'
@@ -85,6 +88,7 @@ import { adminCredentialInventoryScanCapability } from './admin-credential-inven
 import { adminCredentialPathSegmentImpactCapability } from './admin-credential-path-segment-impact.ts'
 import { adminCredentialAllowedPackagesWouldBlockReportCapability } from './admin-credential-allowed-packages-would-block-report.ts'
 import { adminCredentialAllowedPackagesGrandfatherCapability } from './admin-credential-allowed-packages-grandfather.ts'
+import { adminCreatorAccessBackfillCapability } from './admin-creator-access-backfill.ts'
 import { adminPreBindingArtifactRebuildCapability } from './admin-pre-binding-artifact-rebuild.ts'
 import { adminPackageAppAuthorityFallbackReportCapability } from './admin-package-app-authority-fallback-report.ts'
 import { adminPackageAppCapabilityMigrationReportCapability } from './admin-package-app-capability-migration-report.ts'
@@ -212,6 +216,7 @@ export const adminDomain = defineDomain({
 		adminCredentialPathSegmentImpactCapability,
 		adminCredentialAllowedPackagesWouldBlockReportCapability,
 		adminCredentialAllowedPackagesGrandfatherCapability,
+		adminCreatorAccessBackfillCapability,
 		adminPackageAppAuthorityFallbackReportCapability,
 		adminPackageAppCapabilityMigrationReportCapability,
 		adminPackageCredentialSupplierReportCapability,
@@ -234,6 +239,9 @@ export const adminDomain = defineDomain({
 		adminOrgLimitsGetCapability,
 		adminOrgGetCapability,
 		adminOrgLimitOverridesSetCapability,
+		adminOrgPlanSetCapability,
+		adminOrgCreditGrantCapability,
+		adminOrgCreditEligibilitySetCapability,
 		adminFeatureFlagListCapability,
 		adminFeatureFlagSetCapability,
 		adminFeatureFlagOverrideCapability,

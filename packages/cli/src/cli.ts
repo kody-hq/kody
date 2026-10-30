@@ -152,6 +152,7 @@ const cliFlagOptions = {
 	name: { type: 'string' },
 	context: { type: 'string' },
 	mode: { type: 'string' },
+	'max-concurrent': { type: 'string' },
 	fallback: { type: 'string' },
 	requires: { type: 'string' },
 	chain: { type: 'string' },
@@ -480,6 +481,9 @@ async function dispatch(
 						: {}),
 					...(typeof parsed.values.mode === 'string'
 						? { mode: parsed.values.mode }
+						: {}),
+					...(parsed.values['max-concurrent'] !== undefined
+						? { maxConcurrent: String(parsed.values['max-concurrent']) }
 						: {}),
 					json,
 				},

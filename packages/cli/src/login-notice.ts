@@ -10,7 +10,7 @@ export function formatLoginUrlNotice(input: {
 	const lead = input.openBrowser
 		? 'Opening the Kody sign-in page in your browser.\nIf no browser window appears, copy this link into your browser:'
 		: 'Open this link in your browser to sign in to Kody:'
-	return `${lead}\n\n  ${input.url.href}\n\nWaiting for you to finish signing in…\n`
+	return `${lead}\n\n  ${input.url.href}\n\nNew to Kody? Create an account on that page; this login picks up where you left off.\nWaiting for you to finish signing in…\n`
 }
 
 export const loginBrowserOpenFailedNotice =

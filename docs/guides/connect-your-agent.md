@@ -31,11 +31,11 @@ Also watch:
 
 ## Before you start
 
-- **A Kody account with a verified email.** Authorize cannot finish, and MCP
-  cannot run, until the address on your account is verified. If authorize asks
-  you to verify, keep that tab open, finish from the email link (or
-  `/pending-verification`), then continue — you do not need to restart the host
-  connection.
+- **A verified email.** You can create a Kody account from the authorize page if
+  you do not have one. Authorize cannot finish, and MCP cannot run, until that
+  address is verified. If authorize asks you to verify, keep that tab open,
+  finish from the email link (or `/pending-verification`), then continue — you
+  do not need to restart the host connection.
 - **One agent you already use.** You do not need every host on day one. A second
   agent is Step 3, and it is worth it precisely because the first one has
   already furnished the home.
@@ -53,8 +53,8 @@ Also watch:
    the Kody plugin, sets up the Kody CLI and git on its own, and walks you
    through a first chat. Adding the Kody plugin to a Grok Bot you already use is
    the manual alternative.
-3. Complete the OAuth flow when the host opens it. Sign in to Kody if needed,
-   then approve access.
+3. Complete the OAuth flow when the host opens it. Sign in or create an account
+   if needed, then approve access.
 
 **Approving gives that agent full access to this Kody account** — not a limited
 permission set. Kody does not control or supervise what your agent does with the

@@ -53,6 +53,11 @@ export type RequestCredential = {
 	scopes: ReadonlyArray<OrgPermission> | null
 	/** Connection profile that narrows this credential to listed resources. */
 	profileName: string | null
+	/**
+	 * Execution-context runs only: the stable credential ids the context's
+	 * grant lets through. Absent or null does not narrow; empty allows none.
+	 */
+	contextCredentialIds?: ReadonlyArray<string> | null
 }
 
 export type RequestContext = {

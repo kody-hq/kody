@@ -366,6 +366,17 @@ async function serveHelloWorld(input?: {
 	init?: RequestInit
 	dispatch?: { synthetic: true }
 	mount?: 'username-path' | 'user-subdomain'
+	/** Serve as an internet-visible outsider instead of the owner. */
+	outsider?: {
+		identity?: {
+			userId: ReturnType<typeof personIdFromStored>
+			username: string
+		} | null
+		consentPrincipal?: {
+			userId: ReturnType<typeof personIdFromStored>
+			username: string
+		} | null
+	}
 }) {
 	const kodyId = input?.kodyId ?? 'perf-app'
 	const restPath = input?.restPath ?? '/'
@@ -390,11 +401,20 @@ async function serveHelloWorld(input?: {
 			email: 'demo-user@example.com',
 			displayName: 'Demo User',
 		},
-		visitor: {
-			userId: personIdFromStored('user-1'),
-			username: 'demo-user',
-			role: 'owner',
-		},
+		visitor: input?.outsider
+			? null
+			: {
+					userId: personIdFromStored('user-1'),
+					username: 'demo-user',
+					role: 'owner',
+				},
+		...(input?.outsider
+			? {
+					identity: input.outsider.identity ?? null,
+					consentPrincipal: input.outsider.consentPrincipal ?? null,
+					approvedPublishedCommit: 'commit-1',
+				}
+			: {}),
 		packagePath: {
 			username: 'demo-user',
 			kodyId,
@@ -403,6 +423,41 @@ async function serveHelloWorld(input?: {
 		},
 		dispatch: input?.dispatch,
 	})
+}
+
+function optionalOnlyExecutorNeeds() {
+	seedFixture()
+	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(true)
+	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([
+		{
+			key: 'calendar',
+			kind: 'oauth',
+			provider: 'google',
+			description: 'Read the calendar',
+			supplier: 'executor',
+			required: false,
+			multiple: false,
+		},
+	])
+	const appRequests: Array<Request> = []
+	mockModule.buildPackageAppWorker.mockResolvedValue({
+		entrypointName: 'PackageAppWorker',
+		visit: { ticket: null, nonce: null },
+		stub: {
+			getEntrypoint: () => ({
+				async fetch(request: Request) {
+					appRequests.push(request)
+					return new Response('ok')
+				},
+			}),
+		},
+	})
+	return appRequests
+}
+
+const outsiderPerson = {
+	userId: personIdFromStored('user-outsider'),
+	username: 'outsider',
 }
 
 test('required executor credentials redirect visitors to consent before serving app content', async () => {
@@ -473,7 +528,7 @@ test('required executor consent redirect identifies the app on a user-subdomain 
 	expect(loginUrl.searchParams.get('app')).toBe('perf-app')
 })
 
-test('optional-only executor needs send a visitor without a grant to consent once', async () => {
+test('optional-only executor needs send a member without a grant to consent once', async () => {
 	seedFixture()
 	mockModule.isPackageCredentialSuppliersEnabled.mockResolvedValue(true)
 	mockModule.loadPublishedCredentialNeeds.mockResolvedValue([
@@ -500,6 +555,68 @@ test('optional-only executor needs send a visitor without a grant to consent onc
 	})
 	const afterDecline = await serveHelloWorld()
 	expect(afterDecline.status).toBe(200)
+})
+
+test('optional-only executor needs send a signed-in outsider without a grant to consent, without exposing them to the app', async () => {
+	const appRequests = optionalOnlyExecutorNeeds()
+	mockModule.findLivePackageAppOauthGrant.mockResolvedValue(null)
+
+	const response = await serveHelloWorld({
+		outsider: { consentPrincipal: outsiderPerson },
+	})
+	expect(response.status).toBe(302)
+	const loginUrl = new URL(response.headers.get('location')!)
+	expect(loginUrl.searchParams.get('scope')).toBe('profile need:calendar')
+	expect(loginUrl.searchParams.get('prompt')).toBe('consent')
+	expect(mockModule.findLivePackageAppOauthGrant).toHaveBeenCalledWith(
+		expect.objectContaining({ personId: outsiderPerson.userId }),
+	)
+	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
+	expect(appRequests).toEqual([])
+})
+
+test('a consented outsider with optional-only executor needs is served with identity', async () => {
+	const appRequests = optionalOnlyExecutorNeeds()
+	mockModule.findLivePackageAppOauthGrant.mockResolvedValue({
+		id: 'grant-outsider',
+		scopes: ['profile'],
+		lastUsedAt: new Date().toISOString(),
+	})
+
+	const response = await serveHelloWorld({
+		outsider: { identity: outsiderPerson },
+	})
+	expect(response.status).toBe(200)
+	expect(appRequests).toHaveLength(1)
+	expect(appRequests[0]!.headers.get('X-Kody-Visitor')).toContain('outsider')
+})
+
+test('a consent principal never reaches the app when an anonymous serve goes through', async () => {
+	const appRequests = optionalOnlyExecutorNeeds()
+	// A grant with no identity resolved still serves anonymously.
+	mockModule.findLivePackageAppOauthGrant.mockResolvedValue({
+		id: 'grant-outsider',
+		scopes: ['profile'],
+	})
+
+	const response = await serveHelloWorld({
+		outsider: { consentPrincipal: outsiderPerson },
+	})
+	expect(response.status).toBe(200)
+	expect(appRequests).toHaveLength(1)
+	expect(appRequests[0]!.headers.get('X-Kody-Visitor')).toBeNull()
+	const runtime = mockModule.buildPackageAppWorker.mock.calls[0]?.[0]?.runtime
+	expect(runtime?.executorVisit).toBeNull()
+	expect(JSON.stringify(runtime ?? {})).not.toContain('user-outsider')
+})
+
+test('a signed-out visitor with optional-only executor needs is served without consent', async () => {
+	const appRequests = optionalOnlyExecutorNeeds()
+	mockModule.findLivePackageAppOauthGrant.mockResolvedValue(null)
+
+	const response = await serveHelloWorld({ outsider: {} })
+	expect(response.status).toBe(200)
+	expect(appRequests).toHaveLength(1)
 })
 
 test('required executor credential failures do not redirect non-GET requests', async () => {

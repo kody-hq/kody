@@ -13,7 +13,7 @@ export function activityQuery(actorKey: string | null, input: ActivityInput) {
 				data: { ...input, cursor: pageParam ?? input.cursor },
 				signal,
 			}),
-		getNextPageParam: (lastPage) => lastPage.payload.nextCursor ?? undefined,
+		getNextPageParam: (lastPage) => lastPage.payload?.nextCursor ?? undefined,
 		staleTime: 10_000,
 	})
 }

@@ -1,3 +1,4 @@
+import { isolatedCheckRunnerLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
@@ -11,6 +12,7 @@ import {
 	getPackageCodemodRunItemById,
 	insertPackageCodemodRunItem,
 	listPackageCodemodRuns,
+	updatePackageCodemodRunFilters,
 } from './ledger.ts'
 import type * as Registry from './registry.ts'
 import { type PackageCodemod } from './types.ts'
@@ -99,6 +101,7 @@ vi.mock('./subscription-events.ts', () => ({
 
 const {
 	buildPackageCodemodRevertSnapshotKvKey,
+	operatorExcludedFinding,
 	runPackageCodemodStep,
 	unfinishedAttemptsError,
 } = await import('./engine.ts')
@@ -442,6 +445,73 @@ test('package codemod engine covers lifecycle, drift, isolation, snapshot keys, 
 	expect(gated.items[0]?.status).toBe('dry_run_new_failures')
 	expect(mocks.syncArtifactSourceSnapshot).not.toHaveBeenCalled()
 
+	// A check runner limit after the transform is inconclusive, not new.
+	mockChecksByIndex((index) =>
+		index.includes('packageStorage().get')
+			? checkResult(
+					false,
+					isolatedCheckRunnerLimitMessage('Bundle validation for "index.ts"'),
+				)
+			: checkResult(true),
+	)
+	const limited = await step(env, {
+		mode: 'dry-run',
+		filters: { packageIds: ['pkg-ambient'] },
+	})
+	expect(limited.items[0]).toMatchObject({
+		status: 'failed',
+		error: expect.stringContaining('could not be verified'),
+	})
+	expect(mocks.runRepoChecks).toHaveBeenCalledWith(
+		expect.objectContaining({ followCapabilityImports: false }),
+	)
+
+	// A real error joined beside a chunk's runner limit is still new.
+	mockChecksByIndex((index) =>
+		index.includes('packageStorage().get')
+			? checkResult(
+					false,
+					`${isolatedCheckRunnerLimitMessage('Bundle validation for "index.ts"')}\nnew failure only after transform`,
+				)
+			: checkResult(true),
+	)
+	const mixed = await step(env, {
+		mode: 'dry-run',
+		filters: { packageIds: ['pkg-ambient'] },
+	})
+	expect(mixed.items[0]?.status).toBe('dry_run_new_failures')
+
+	// Two chunks failing before, one of them hitting the limit after: not new.
+	mockChecksByIndex((index) =>
+		index.includes('packageStorage().get')
+			? checkResult(
+					false,
+					`chunk one error\n${isolatedCheckRunnerLimitMessage('Bundle validation for "index.ts"')}`,
+				)
+			: checkResult(false, 'chunk one error\nchunk two error'),
+	)
+	const chunked = await step(env, {
+		mode: 'dry-run',
+		filters: { packageIds: ['pkg-ambient'] },
+	})
+	expect(chunked.items[0]).toMatchObject({ status: 'failed' })
+
+	// An operator-excluded package is recorded, never processed.
+	mocks.runRepoChecks.mockClear()
+	const excluded = await step(env, {
+		mode: 'apply',
+		filters: {
+			packageIds: ['pkg-ambient'],
+			excludePackageIds: ['pkg-ambient'],
+		},
+	})
+	expect(excluded.items[0]).toMatchObject({
+		status: 'needs_manual',
+		findings: [operatorExcludedFinding],
+	})
+	expect(mocks.runRepoChecks).not.toHaveBeenCalled()
+	expect(mocks.syncArtifactSourceSnapshot).not.toHaveBeenCalled()
+
 	// A failure whose message changes only by line number is not new.
 	mockChecksByIndex((index) =>
 		/import\s*\{[^}]*\bstorage\b/.test(index) &&
@@ -700,6 +770,80 @@ test('package codemod engine rejects resume steps with mismatched filters or a c
 		).runId,
 	).toBe(first.runId)
 	expect((await step(env, resume)).runId).toBe(first.runId)
+})
+
+test('a continuation step may widen excludePackageIds to step past a package', async () => {
+	setupMocks()
+	const { env } = createEnv()
+	const fleet = [
+		savedPackage('pkg-a'),
+		savedPackage('pkg-b'),
+		savedPackage('pkg-c'),
+	]
+	mocks.listSavedPackagesPage.mockImplementation(
+		async (_db: D1Database, input: { afterId: string | null }) =>
+			fleet.filter(
+				(pkg) =>
+					input.afterId == null || pkg.id.localeCompare(input.afterId) > 0,
+			),
+	)
+	mockSourcesByIdWith(cleanFiles)
+	const fleetStep = {
+		mode: 'apply' as const,
+		initiatedByUserId: 'admin-1',
+		scope: fleetScope,
+		limit: 1,
+	}
+
+	const first = await step(env, {
+		...fleetStep,
+		filters: { excludePackageIds: ['pkg-c'] },
+	})
+	expect(first.items.map((item) => item.packageId)).toEqual(['pkg-a'])
+	const resume = { ...fleetStep, runId: first.runId, cursor: first.nextCursor }
+
+	await expect(
+		step(env, { ...resume, filters: { excludePackageIds: ['pkg-b'] } }),
+	).rejects.toThrow(/filters do not match/i)
+	await expect(
+		step(env, {
+			...resume,
+			filters: { excludePackageIds: ['pkg-b', 'pkg-c'], packageIds: ['pkg-b'] },
+		}),
+	).rejects.toThrow(/filters do not match/i)
+
+	const widened = await step(env, {
+		...resume,
+		limit: 5,
+		filters: { excludePackageIds: ['pkg-b', 'pkg-c'] },
+	})
+	expect(widened.runId).toBe(first.runId)
+	expect(widened.items).toEqual([
+		expect.objectContaining({
+			packageId: 'pkg-b',
+			status: 'needs_manual',
+			findings: [operatorExcludedFinding],
+		}),
+		expect.objectContaining({
+			packageId: 'pkg-c',
+			status: 'needs_manual',
+			findings: [operatorExcludedFinding],
+		}),
+	])
+	const run = await getPackageCodemodRunById(env.APP_DB, first.runId)
+	expect(JSON.parse(run!.filtersJson)).toEqual({
+		excludePackageIds: ['pkg-b', 'pkg-c'],
+	})
+
+	// A continuation that read the run before the widening must not win.
+	const staleWrite = await updatePackageCodemodRunFilters(env.APP_DB, {
+		id: first.runId,
+		expectedFiltersJson: JSON.stringify({ excludePackageIds: ['pkg-c'] }),
+		filtersJson: JSON.stringify({ excludePackageIds: ['pkg-a', 'pkg-c'] }),
+	})
+	expect(staleWrite).toBe(0)
+	const unchanged = await getPackageCodemodRunById(env.APP_DB, first.runId)
+	expect(unchanged!.filtersJson).toBe(run!.filtersJson)
 })
 
 test('omitted continuation filters keep a canary fleet apply on the stored package set', async () => {

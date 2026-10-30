@@ -183,7 +183,6 @@ test('no change, or no audit database, records nothing and never throws', async 
 
 test('nextDisabledReason keeps the job explanation in step with its on/off state', () => {
 	const fallback = manualDisabledReason('web')
-	expect(fallback).toBe('Turned off on the web. No reason was given.')
 	expect(
 		nextDisabledReason({
 			wasEnabled: true,

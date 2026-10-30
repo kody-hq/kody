@@ -169,20 +169,27 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 				</AccountManagementMessage>
 			) : null}
 			{data.org.personal ? (
-				<AccountManagementPanel title="Identity">
-					<p css={mutedCopyCss}>
-						This is your personal organization. Your name, photo, and handle
-						come from your{' '}
-						<SiteLink href={routes.account.href()} css={inlineLinkCss}>
-							account profile
-						</SiteLink>
-						. To delete your account, use{' '}
-						<SiteLink href={routes.accountData.href()} css={inlineLinkCss}>
-							Account → Data &amp; deletion
-						</SiteLink>
-						.
-					</p>
-				</AccountManagementPanel>
+				<>
+					<AccountManagementPanel title="Identity">
+						<p css={mutedCopyCss}>
+							This is your personal organization. Your name, photo, and handle
+							come from your{' '}
+							<SiteLink href={routes.account.href()} css={inlineLinkCss}>
+								account profile
+							</SiteLink>
+							. To delete your account, use{' '}
+							<SiteLink href={routes.accountData.href()} css={inlineLinkCss}>
+								Account → Data &amp; deletion
+							</SiteLink>
+							.
+						</p>
+					</AccountManagementPanel>
+					<OrgSettingsCustomDomains
+						key={data.org.slug}
+						data={data}
+						queryKey={queryKey}
+					/>
+				</>
 			) : (
 				<>
 					<AccountManagementPanel title="Profile">

@@ -72,6 +72,11 @@ export type OrgTransferPlan = {
 	storageCopies: Array<OrgTransferStorageCopy>
 	logoCopies: Array<OrgTransferLogoCopy>
 	orphans: Array<OrgTransferOrphan>
+	/**
+	 * Creator grants (`origin = 'created'`) whose person is not a target
+	 * member. Soft-deleted in the batch; they never block the move.
+	 */
+	droppedCreatorGrants: Array<OrgTransferRow>
 	/** Person ids with a live membership in the target org. */
 	targetMemberIds: ReadonlySet<string>
 	clashes: Array<OrgTransferFinding>
@@ -117,6 +122,7 @@ const movedTables: ReadonlyArray<OrgTransferMovedTable> = [
 	'package_kody_id_redirects',
 	'package_slug_redirects',
 	'enablements',
+	'grants',
 ]
 
 export function isLiveRow(row: OrgTransferRow) {
@@ -159,6 +165,7 @@ export function planOrgTransfer(
 		movedTables.map((table) => [table, [] as Array<OrgTransferRow>]),
 	) as OrgTransferPlan['moves']
 	const orphans: Array<OrgTransferOrphan> = []
+	const droppedCreatorGrants: Array<OrgTransferRow> = []
 	const clashes: Array<OrgTransferFinding> = []
 	const blockers: Array<OrgTransferFinding> = []
 	const warnings: Array<OrgTransferFinding> = []
@@ -692,6 +699,22 @@ export function planOrgTransfer(
 	}
 	for (const row of source.grants.filter(isLiveRow)) {
 		if (text(row, 'resource_type') === 'org') continue
+		// A creator's own grant follows them into the target when they are a
+		// member there; otherwise the target's grants decide who reaches it.
+		if (row['origin'] === 'created' && text(row, 'subject_type') === 'user') {
+			if (snapshot.targetMembers.has(text(row, 'subject_id'))) {
+				moves.grants.push(row)
+			} else {
+				droppedCreatorGrants.push(row)
+				warnings.push({
+					code: 'creator_grant_dropped',
+					message: `Creator grant ${text(row, 'id')} on ${text(row, 'resource_type')} ${text(row, 'resource_id')} is dropped: its person is not a member of @${to.slug}.`,
+					table: 'grants',
+					subject: text(row, 'id'),
+				})
+			}
+			continue
+		}
 		blockers.push({
 			code: 'grant_names_source_subjects',
 			message: `Grant ${text(row, 'id')} on ${text(row, 'resource_type')} ${text(row, 'resource_id')} names @${from.slug} subjects; remove it before transferring.`,
@@ -759,6 +782,7 @@ export function planOrgTransfer(
 		storageCopies,
 		logoCopies,
 		orphans,
+		droppedCreatorGrants,
 		targetMemberIds: new Set(snapshot.targetMembers.keys()),
 		clashes,
 		blockers,

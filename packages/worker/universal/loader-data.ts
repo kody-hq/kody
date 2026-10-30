@@ -1358,10 +1358,12 @@ export type OrgSettingsLoaderData = {
 	ok: true
 	org: OrgManagementOrg
 	canManage: boolean
+	/** `org:write` on this org, personal orgs included (custom domains). */
+	canManageDomains: boolean
 	canDelete: boolean
 	/** Who sees `/@slug`; null for personal orgs (they follow the account profile). */
 	profileVisibility: 'public' | 'private' | null
-	/** Null for personal orgs and for viewers who cannot manage the org. */
+	/** Null for viewers who cannot manage the org's domains. */
 	customDomains: OrgSettingsCustomDomainsView | null
 }
 

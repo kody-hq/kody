@@ -2507,6 +2507,26 @@ class RunLogBase extends DurableObject<Env> {
 		return { claimed: true, run: inserted }
 	}
 
+	/**
+	 * Replace a still-`running` row's metadata so keyed retries see details
+	 * learned after the claim (for example the execute routing outcome).
+	 */
+	async updateRunningMetadata(input: {
+		runId: string
+		metadataJson: string
+	}): Promise<{ updated: boolean }> {
+		const cursor = this.ctx.storage.sql.exec(
+			`UPDATE runs SET metadata_json = ?, updated_at = ?
+			WHERE id = ? AND status = 'running'`,
+			clampMetadataJson(input.metadataJson || '{}'),
+			new Date().toISOString(),
+			input.runId,
+		)
+		const updated = cursor.rowsWritten > 0
+		if (updated) this.invalidateReadMemos()
+		return { updated }
+	}
+
 	async getRunByIdempotencyKey(input: {
 		idempotencyKey: string
 		surface?: RunSurface | null
@@ -4920,6 +4940,10 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	deleteRunIfRunning: (input: {
 		runId: string
 	}) => Promise<{ deleted: boolean }>
+	updateRunningMetadata: (input: {
+		runId: string
+		metadataJson: string
+	}) => Promise<{ updated: boolean }>
 	claimPackageInvocation: (input: {
 		invocation: PackageInvocationClaimInput
 		staleBefore: string

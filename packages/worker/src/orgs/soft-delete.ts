@@ -38,10 +38,12 @@ import {
 	orgOwnedUserIdSoftDeleteTables,
 } from '#worker/orgs/data-targets.ts'
 import { cancelKodySubscriptionsForSoftDelete } from '#worker/billing/soft-delete-billing.ts'
+import { refreshStripePlanForOrg } from '#worker/billing/subscription-sync.ts'
 import {
 	FreeOrgLimitError,
 	MAX_FREE_ORGS_PER_USER,
 	countLiveFreeOwnedOrgs,
+	effectiveFreeOrgSql,
 	isPaidOrg,
 } from '#worker/orgs/billing.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
@@ -635,7 +637,7 @@ const freeOrgCapRestoreGuardSql = `
 		     AND m2.user_id = m.user_id
 		     AND m2.role = 'owner'
 		     AND m2.deleted_at IS NULL
-		    WHERE o2.plan = 'free' AND o2.deleted_at IS NULL
+		    WHERE ${effectiveFreeOrgSql('o2')} AND o2.deleted_at IS NULL
 		  ) >= ?
 	)`
 
@@ -649,9 +651,18 @@ export async function restoreOrg(input: {
 	const now = input.now ?? new Date()
 	const appDb = input.env.APP_DB
 	const row = await appDb
-		.prepare(`SELECT deleted_at, plan, slug FROM orgs WHERE id = ?`)
+		.prepare(
+			`SELECT deleted_at, plan, stripe_plan, stripe_customer_id, slug
+			 FROM orgs WHERE id = ?`,
+		)
 		.bind(input.orgId)
-		.first<{ deleted_at: string | null; plan: string; slug: string }>()
+		.first<{
+			deleted_at: string | null
+			plan: string
+			stripe_plan: string | null
+			stripe_customer_id: string | null
+			slug: string
+		}>()
 	if (!row?.deleted_at) {
 		throw new Error('org_not_deleted')
 	}
@@ -661,6 +672,7 @@ export async function restoreOrg(input: {
 	if (!isWithinSoftDeleteRestoreWindow(row.deleted_at, now)) {
 		throw new OrgRestoreWindowExpiredError()
 	}
+	// Soft-delete cancels Kody subscriptions, so a tombstone's Stripe plan is stale.
 	const freeOrg = !isPaidOrg(row.plan)
 	const deletedAt = row.deleted_at
 	const assertUnderCap = () =>
@@ -751,6 +763,22 @@ export async function restoreOrg(input: {
 		}),
 		createdAt: restoredAt,
 	})
+
+	if (row.stripe_customer_id) {
+		try {
+			await refreshStripePlanForOrg({
+				env: input.env,
+				orgId: input.orgId,
+				customerId: row.stripe_customer_id,
+				now,
+			})
+		} catch (error) {
+			console.warn('org-restore-stripe-refresh-failed', {
+				orgId: input.orgId,
+				error,
+			})
+		}
+	}
 
 	return {
 		orgId: input.orgId,

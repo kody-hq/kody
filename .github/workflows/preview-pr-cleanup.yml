@@ -1,0 +1,80 @@
+name: 🧹 Preview PR Cleanup
+
+# Daily cleanup of preview deployments whose pull request is closed or merged,
+# decided only from GitHub PR state (never age). kody-pr-<n> belongs to PR n;
+# kody-branch-<slug> belongs to the PRs of the branch it was deployed from.
+# Previews whose PR cannot be resolved (for example deployed from main) are
+# kept and listed in the job summary. See tools/ci/preview-pr-cleanup.ts.
+# Pull requests that touch the job run it in dry-run mode only.
+
+on:
+  schedule:
+    - cron: '41 9 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List what would be deleted without deleting anything
+        required: false
+        type: boolean
+        default: true
+      max:
+        description: Most previews to delete in this run
+        required: false
+        type: string
+        default: '10'
+  pull_request:
+    paths:
+      - .github/workflows/preview-pr-cleanup.yml
+      - tools/ci/preview-pr-cleanup.ts
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  # Real runs share the hourly sweep's lock so two jobs never delete at once.
+  group: >-
+    ${{ github.event_name == 'pull_request' &&
+    format('preview-pr-cleanup-dry-run-{0}', github.event.pull_request.number)
+    || 'preview-sweep' }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
+    name: 🧹 Delete previews of closed PRs
+    timeout-minutes: 40
+    if: >-
+      github.repository == 'kody-hq/kody' && (github.event_name !=
+      'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository)
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: 🟢 Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: 📥 Install Dependencies
+        run: npm ci
+
+      - name: 🧹 Delete previews whose PR is closed or merged
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAX_PREVIEWS: ${{ inputs.max || '10' }}
+          DRY_RUN: >-
+            ${{ (github.event_name == 'pull_request' || (github.event_name ==
+            'workflow_dispatch' && inputs.dry_run)) && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          args=(--max "$MAX_PREVIEWS")
+          if [ "$DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          node tools/ci/preview-pr-cleanup.ts "${args[@]}"
