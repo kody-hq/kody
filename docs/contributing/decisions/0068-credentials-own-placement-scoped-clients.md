@@ -1212,3 +1212,17 @@ but never use it or read its tokens.**
   token, else the access token. Otherwise nothing upstream is revoked and the
   outcome says so. An upstream failure never blocks the local wipe; it is logged
   and audited without token material.
+
+## Amendment 2026-10-29: `login` is Kody-managed OAuth refresh
+
+Kent decided on 2026-10-29 that the `login` kind becomes Kody's platform-managed
+OAuth refresh, and that #4457 folds into it. Kody holds the refresh token, runs
+the token request on the host, keeps the access token encrypted on its side, and
+fills it on the credential's hosts; code never holds either token, and there is
+no package-scoped storage for sealed tokens. The full record (persisted
+sessions, single-flight, 401 retry, rotated refresh tokens, and saving a sealed
+refresh token as a login credential) is
+[ADR 0090](./0090-login-credentials-are-kody-managed-oauth-refresh.md). A sealed
+refresh token saved that way goes only to the sealed token's save hosts, like a
+sealed token saved as a Key (2026-10-28), and package code still cannot save
+one.

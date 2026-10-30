@@ -490,6 +490,26 @@ Kody drops the session, runs the exchange once more, and retries the request
 once (with the same host and placement checks). A request with a body is
 returned as is.
 
+A refresh token that a token request in an execute run returned sealed
+(`kody-sealed.…`) can become a login credential without code reading it: pass it
+as `sealed_token` together with `login_exchange`, as in
+`secretSet({ name: 'token-demo', scope: 'user', sealed_token: tokens.refresh_token, login_exchange })`.
+Kody opens it on the host and stores it as the login field the body sends
+(`refreshToken.field`, or `refresh_token`). The credential's hosts are the
+sealed token's save hosts, and the exchange URL must be one of them. This works
+from execute in the run that minted the token, not from package code.
+
+Moving a package off a package-scoped refresh secret and a stored access token:
+
+1. Declare the need in `kody.credentials` with `"kind": "login"`, and replace
+   the package's token handling with `credential('<key>').fetch(...)`.
+2. The owner creates the login credential on the website, or with `secretSet`
+   outside a package (`value` holding the refresh token field, or a
+   `sealed_token` from a token request in the same execute run, so no code reads
+   the value), and maps it to the need.
+3. Publish, check a request works, then delete the old package secrets (the
+   refresh token and the stored access token) with `secretDelete`.
+
 Limits: the exchange sends only `content-type` and `accept` headers. Package
 code cannot save the sealed `access_token` from its own token request as a Key
 (`sealed_token` saving works from execute only); without a login credential, use

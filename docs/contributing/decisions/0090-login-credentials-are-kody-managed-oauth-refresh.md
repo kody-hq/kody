@@ -59,6 +59,15 @@ This is built in steps, each recorded here as it lands:
   outside a package, together with a value. It is not website-only because it
   never widens where a value goes: the rotated token returns to the same
   credential, with the same hosts and inject.
+- **Sealed refresh token (#4457).**
+  `secretSet({ name, scope: "user", sealed_token, login_exchange })` from
+  execute saves a sealed `refresh_token` as a login credential: the host opens
+  it and stores it as the login field the exchange sends (`refreshToken.field`,
+  default `refresh_token`). The same run, org, and expiry checks as a sealed Key
+  apply. Hosts are the sealed token's save hosts (narrowed to an existing
+  login's), the exchange must go to one of them, and an existing login keeps its
+  inject and placement. It never replaces another kind. Package code still gets
+  the existing refusal.
 
 ## Consequences
 

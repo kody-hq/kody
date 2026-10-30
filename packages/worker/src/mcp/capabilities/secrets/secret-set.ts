@@ -47,7 +47,7 @@ const secretSetInputSchema = z
 			.min(1)
 			.optional()
 			.describe(
-				'A sealed token this run received, e.g. the {{integration-token:kody-sealed.…}} access_token a token exchange returned. Kody opens it and saves the real token as this user-scope Key, which code never sees. The Key goes only to the hosts the token was minted for (the token endpoint host plus the filling credentials\' exact approved hosts), in a header or the body. Use instead of value; scope must be "user". Not available to package code. Refuses a token from another run, an expired one, and a signed JWT.',
+				'A sealed token this run received, e.g. the {{integration-token:kody-sealed.…}} access_token a token exchange returned. Kody opens it and saves the real token as this user-scope Key, which code never sees. The Key goes only to the hosts the token was minted for (the token endpoint host plus the filling credentials\' exact approved hosts), in a header or the body. Use instead of value; scope must be "user". With login_exchange, a sealed refresh_token is saved as a login credential instead, refreshed by Kody across runs. Not available to package code. Refuses a token from another run, an expired one, and a signed JWT.',
 			),
 		description: z
 			.string()
@@ -68,15 +68,7 @@ const secretSetInputSchema = z
 	.superRefine((value, ctx) => {
 		if (value.sealed_token !== undefined) {
 			const conflicting = (
-				[
-					'value',
-					'provider',
-					'inject',
-					'placement',
-					'kind',
-					'hosts',
-					'login_exchange',
-				] as const
+				['value', 'provider', 'inject', 'placement', 'kind', 'hosts'] as const
 			).filter((field) => value[field] !== undefined)
 			if (conflicting.length > 0) {
 				ctx.addIssue({
@@ -165,6 +157,7 @@ export const secretSetCapability = defineDomainCapability(
 				const { saved, report } = await saveSealedTokenSecret(ctx, {
 					name: parsed.name,
 					sealedToken: parsed.sealed_token,
+					loginExchange: parsed.login_exchange,
 					description: parsed.description,
 					expiresAt: parsed.expires_at,
 					userEmail: user.email,
