@@ -426,3 +426,74 @@ test('refreshToken is strict and must name a field the exchange body sends', () 
 		}).success,
 	).toBe(false)
 })
+
+test('concurrent callers sharing one rotating exchange write one value audit row', async () => {
+	const t = await setup()
+	const sent = stubRotatingProvider()
+	const actor = t.requestAs('bea', 'owner')
+	const id = await t.storeCredential({
+		name: 'token-demo-login',
+		value: refreshFields,
+		hosts: ['auth.example.com', 'api.example.com'],
+		exchange: rotatingExchange,
+	})
+	const [a, b] = await Promise.all([
+		t.signIn({ actor, credentialId: id }),
+		t.signIn({ actor, credentialId: id }),
+	])
+	expect(a.placement).toMatchObject({ value: 'Bearer dummy-access-1' })
+	expect(b.placement).toMatchObject({ value: 'Bearer dummy-access-1' })
+	expect(sent).toEqual(['dummy-refresh-1'])
+	expect(await valueAuditRows(t.env)).toHaveLength(1)
+})
+
+test('a caller that read the value before another isolate rotated it reuses the new session', async () => {
+	const t = await setup()
+	const sent: Array<string> = []
+	let release!: () => void
+	const gate = new Promise<void>((resolve) => {
+		release = resolve
+	})
+	let started!: () => void
+	const exchangeStarted = new Promise<void>((resolve) => {
+		started = resolve
+	})
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (_url: string, init: RequestInit) => {
+			sent.push(new URLSearchParams(String(init.body)).get('refresh_token')!)
+			const n = sent.length
+			if (n === 1) {
+				started()
+				await gate
+			}
+			return Response.json({
+				access_token: `dummy-access-${n}`,
+				expires_in: 3600,
+				refresh_token: `dummy-refresh-${n + 1}`,
+			})
+		}),
+	)
+	const actor = t.requestAs('bea', 'owner')
+	const id = await t.storeCredential({
+		name: 'token-demo-login',
+		value: refreshFields,
+		hosts: ['auth.example.com', 'api.example.com'],
+		exchange: rotatingExchange,
+	})
+	const first = t.signIn({ actor, credentialId: id })
+	await exchangeStarted
+	// A second isolate reads the pre-rotation value while the first holds the lease.
+	clearLoginSessionsForTests()
+	const second = t.signIn({ actor, credentialId: id })
+	await new Promise((resolve) => setTimeout(resolve, 50))
+	release()
+	expect((await first).placement).toMatchObject({
+		value: 'Bearer dummy-access-1',
+	})
+	expect((await second).placement).toMatchObject({
+		value: 'Bearer dummy-access-1',
+	})
+	expect(sent).toEqual(['dummy-refresh-1'])
+	expect(await valueAuditRows(t.env)).toHaveLength(1)
+})

@@ -27,6 +27,7 @@ import {
 	type LoginSession,
 	type ObtainedLoginSession,
 	obtainLoginSession,
+	StaleLoginCredentialError,
 } from './login-session-store.ts'
 import {
 	authorizeStoredCredential,
@@ -354,114 +355,150 @@ export const loginCredentialResolver: CredentialResolver<'login'> = {
 	}),
 	async resolve(call) {
 		const { credential } = call
-		const lookup = await findStoredCredential(call, credential.credentialId)
+		let lookup = await findStoredCredential(call, credential.credentialId)
 		let exchange: ReturnType<typeof readExchange> | null = null
 		let inject: ReturnType<typeof readInject> | null = null
-		return {
-			async authorize() {
-				const found = await authorizeStoredCredential(
-					call,
-					credential.credentialId,
-					lookup,
-					'login',
+		const authorize = async () => {
+			const found = await authorizeStoredCredential(
+				call,
+				credential.credentialId,
+				lookup,
+				'login',
+			)
+			assertHttpsUrl(credential.requestUrl)
+			if (
+				!credentialHostsAllow(
+					found.allowedHosts,
+					credential.requestUrl.hostname,
 				)
-				assertHttpsUrl(credential.requestUrl)
-				if (
-					!credentialHostsAllow(
-						found.allowedHosts,
-						credential.requestUrl.hostname,
-					)
-				) {
-					throw new CredentialRequestRefusedError(
-						'host_not_allowed',
-						'This login credential does not sign in to requests for that host.',
-					)
-				}
-				exchange = readExchange(found.configJson, found.allowedHosts)
-				inject = readInject(found.injectJson)
-			},
-			async apply(): Promise<ResolvedLoginSession> {
-				// `authorize` returned, so the lookup, exchange, and inject are set.
-				const { found, readValue } = lookup!
-				const env = call.input.env
-				const key = `${found.credentialId}|${found.revision}`
-				const rejected = credential.rejectedSessionId ?? null
-				const cached = sessions.get(key)
-				if (rejected) {
-					if (cached?.sessionId === rejected) sessions.delete(key)
-				} else if (cached?.expiresAt && cached.expiresAt > Date.now()) {
-					call.subject.details = { ...call.subject.details, session: 'cached' }
-					return placeSession(inject!, cached.token, cached.sessionId)
-				}
-				const obtain = () =>
-					obtainLoginSession({
-						env,
-						ownerId: found.ownerId,
-						credentialId: found.credentialId,
-						revision: found.revision,
-						rejectedSessionId: rejected,
-						exchange: async (): Promise<LoginSession> => {
-							const { fields, object } = readLoginFields(await readValue())
-							const result = await runExchange(exchange!, fields)
-							const session = {
-								token: result.token,
-								expiresAt: result.expiresAt,
-							}
-							if (!result.rotatedRefreshToken) return session
-							const encryptedValue = await encryptSecretValue(
-								env,
-								JSON.stringify({
-									...object,
-									[exchange!.refreshToken!.field]: result.rotatedRefreshToken,
-								}),
-								userSecretContext(found.ownerId),
+			) {
+				throw new CredentialRequestRefusedError(
+					'host_not_allowed',
+					'This login credential does not sign in to requests for that host.',
+				)
+			}
+			exchange = readExchange(found.configJson, found.allowedHosts)
+			inject = readInject(found.injectJson)
+		}
+		const applyOnce = async (): Promise<ResolvedLoginSession> => {
+			// `authorize` returned, so the lookup, exchange, and inject are set.
+			const { found, readValue } = lookup!
+			const env = call.input.env
+			const key = `${found.credentialId}|${found.revision}`
+			const rejected = credential.rejectedSessionId ?? null
+			const cached = sessions.get(key)
+			if (rejected) {
+				if (cached?.sessionId === rejected) sessions.delete(key)
+			} else if (cached?.expiresAt && cached.expiresAt > Date.now()) {
+				call.subject.details = { ...call.subject.details, session: 'cached' }
+				return placeSession(inject!, cached.token, cached.sessionId)
+			}
+			const before = found.revisionFields
+			const obtain = async () => {
+				const obtained = await obtainLoginSession({
+					env,
+					ownerId: found.ownerId,
+					credentialId: found.credentialId,
+					revision: found.revision,
+					rejectedSessionId: rejected,
+					isCurrent: async () =>
+						(await env.APP_DB.prepare(
+							`SELECT 1 FROM secret_entries
+							WHERE id = ? AND encrypted_value = ? AND config_json IS ?
+								AND allowed_hosts = ? AND inject_json = ?
+								AND deleted_at IS NULL`,
+						)
+							.bind(
+								found.credentialId,
+								before.encryptedValue,
+								before.configJson,
+								before.allowedHostsJson,
+								before.injectJson,
 							)
-							const before = found.revisionFields
-							return {
-								...session,
-								replacement: {
-									credentialId: found.credentialId,
+							.first()) !== null,
+					exchange: async (): Promise<LoginSession> => {
+						const { fields, object } = readLoginFields(await readValue())
+						const result = await runExchange(exchange!, fields)
+						const session = {
+							token: result.token,
+							expiresAt: result.expiresAt,
+						}
+						if (!result.rotatedRefreshToken) return session
+						const encryptedValue = await encryptSecretValue(
+							env,
+							JSON.stringify({
+								...object,
+								[exchange!.refreshToken!.field]: result.rotatedRefreshToken,
+							}),
+							userSecretContext(found.ownerId),
+						)
+						return {
+							...session,
+							replacement: {
+								credentialId: found.credentialId,
+								encryptedValue,
+								revision: await storedCredentialRevision({
+									...before,
 									encryptedValue,
-									revision: await storedCredentialRevision({
-										...before,
-										encryptedValue,
-									}),
-									valueStatement: env.APP_DB.prepare(
-										`UPDATE secret_entries SET encrypted_value = ?, updated_at = ?
-										WHERE id = ? AND encrypted_value = ? AND config_json IS ?
-											AND allowed_hosts = ? AND inject_json = ?
-											AND deleted_at IS NULL`,
-									).bind(
-										encryptedValue,
-										new Date().toISOString(),
-										found.credentialId,
-										before.encryptedValue,
-										before.configJson,
-										before.allowedHostsJson,
-										before.injectJson,
-									),
-								},
-							}
-						},
-					})
-				let pending = rejected ? undefined : pendingSessions.get(key)
-				if (!pending) {
-					pending = obtain()
-					if (!rejected) pendingSessions.set(key, pending)
+								}),
+								valueStatement: env.APP_DB.prepare(
+									`UPDATE secret_entries SET encrypted_value = ?, updated_at = ?
+									WHERE id = ? AND encrypted_value = ? AND config_json IS ?
+										AND allowed_hosts = ? AND inject_json = ?
+										AND deleted_at IS NULL`,
+								).bind(
+									encryptedValue,
+									new Date().toISOString(),
+									found.credentialId,
+									before.encryptedValue,
+									before.configJson,
+									before.allowedHostsJson,
+									before.injectJson,
+								),
+							},
+						}
+					},
+				})
+				if (obtained.valueReplaced && obtained.source === 'new') {
+					await auditRotatedValue(call.input, found)
 				}
+				return obtained
+			}
+			let pending = rejected ? undefined : pendingSessions.get(key)
+			if (!pending) {
+				pending = obtain()
+				if (!rejected) pendingSessions.set(key, pending)
+			}
+			try {
+				const { session, source, sessionId } = await pending
+				remember(key, { ...session, sessionId })
+				call.subject.details = {
+					...call.subject.details,
+					session: rejected ? `${source}-after-401` : source,
+				}
+				return placeSession(inject!, session.token, sessionId)
+			} finally {
+				if (!rejected) pendingSessions.delete(key)
+			}
+		}
+		return {
+			authorize,
+			async apply(): Promise<ResolvedLoginSession> {
 				try {
-					const { session, source, sessionId, valueReplaced } = await pending
-					if (valueReplaced && source === 'new') {
-						await auditRotatedValue(call.input, found)
+					return await applyOnce()
+				} catch (error) {
+					if (!(error instanceof StaleLoginCredentialError)) throw error
+				}
+				// Another caller rotated the value; its session is under the new revision.
+				lookup = await findStoredCredential(call, credential.credentialId)
+				await authorize()
+				try {
+					return await applyOnce()
+				} catch (error) {
+					if (error instanceof StaleLoginCredentialError) {
+						throw new CredentialLoginFailedError(null)
 					}
-					remember(key, { ...session, sessionId })
-					call.subject.details = {
-						...call.subject.details,
-						session: rejected ? `${source}-after-401` : source,
-					}
-					return placeSession(inject!, session.token, sessionId)
-				} finally {
-					if (!rejected) pendingSessions.delete(key)
+					throw error
 				}
 			},
 		}
