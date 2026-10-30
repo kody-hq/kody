@@ -440,7 +440,7 @@ test('MCP servers API lists, adds, reconnects, disables, and deletes with user s
 	})
 	const hungReconnect = await post({ action: 'reconnect', id: 'server-1' })
 	expect(hungReconnect.status).toBe(200)
-	expect(mockModule.setMcpServerLastError).toHaveBeenCalledWith(
+	expect(mockModule.persistMcpServerLastErrorIfChanged).toHaveBeenCalledWith(
 		expect.objectContaining({
 			...userScope,
 			lastError: expect.objectContaining({

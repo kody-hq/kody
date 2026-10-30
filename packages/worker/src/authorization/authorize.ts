@@ -25,6 +25,7 @@ import {
 	resourceGrantKey,
 	type CompiledAccess,
 } from './access-compile.ts'
+import { memberCreationKindFor } from './member-creation-permissions.ts'
 
 /** A concrete org resource a permission is checked on. */
 export type OrgResource = {
@@ -289,6 +290,14 @@ function ownerCanGrant(
 	resource: OrgResource | undefined,
 ) {
 	if (resource) return 'An org Owner can grant it.'
+	const creationKind = memberCreationKindFor(permission)
+	if (creationKind) {
+		const setting =
+			creationKind === 'packages'
+				? 'Members can create packages and apps'
+				: 'Members can create credentials'
+		return `An org Owner controls this: they can turn on "${setting}" in organization settings, or grant ${permission} to you or your team on the Grants page.`
+	}
 	if (isOrgWideReadPermission(permission)) {
 		return 'An org Owner can grant it org-wide on the Grants page or with accessGrant resource_type org.'
 	}

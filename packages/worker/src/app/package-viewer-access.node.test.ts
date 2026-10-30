@@ -162,7 +162,7 @@ function countAccessReads(env: Env) {
 	const counts = { epoch: 0, cache: 0 }
 	const prepare = db.prepare.bind(db)
 	db.prepare = (sql: string) => {
-		if (/SELECT access_epoch FROM orgs/.test(sql)) counts.epoch += 1
+		if (/SELECT access_epoch\b[^;]*FROM orgs/.test(sql)) counts.epoch += 1
 		if (/FROM access_cache/.test(sql)) counts.cache += 1
 		return prepare(sql)
 	}

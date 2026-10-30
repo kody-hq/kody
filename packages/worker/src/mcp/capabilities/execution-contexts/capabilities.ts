@@ -10,6 +10,7 @@ import {
 	attachContext,
 	chainResponse,
 	detachContext,
+	deleteContext,
 	getContextDetail,
 	getSharing,
 	listAudit,
@@ -170,6 +171,28 @@ export const executionContextRevokeCapability = defineDomainCapability(domain, {
 	inputSchema: z.object({ id: idSchema }),
 	async handler(args, ctx) {
 		return await revokeContext(await caller(ctx), args.id)
+	},
+})
+
+export const executionContextDeleteCapability = defineDomainCapability(domain, {
+	name: 'executionContextDelete',
+	contextRuns: 'deny',
+	orgPermission: 'execution_context:delete',
+	description:
+		'Permanently delete a revoked execution context so it no longer appears in executionContextList. Only works after executionContextRevoke; a context that is not revoked is refused. Removes its shares, opt-ins, org attachments and chain entries. Past runs keep the machine name in their run history. Pass the ec_ id, or the name when one revoked context has it.',
+	keywords: [
+		'execution context',
+		'delete',
+		'remove',
+		'permanently delete',
+		'clean up revoked machine',
+	],
+	readOnly: false,
+	idempotent: false,
+	destructive: true,
+	inputSchema: z.object({ id: idSchema }),
+	async handler(args, ctx) {
+		return await deleteContext(await caller(ctx), args.id)
 	},
 })
 

@@ -225,7 +225,8 @@ test('owners the viewer is not in, or lacks package:create for, are refused', as
 	})
 	expect(denied).toEqual({
 		ok: false,
-		error: "You can't create repositories in that account.",
+		error:
+			"You can't create repositories in that account. You need package:create in @acme.",
 		field: 'owner',
 	})
 })

@@ -599,7 +599,8 @@ still cannot read that secret, including by passing the declaring package's id
 to `kody.packageSecretGet` / `Has`. See
 [Package approval](./secrets-and-values.md#package-approval). Publish and save
 warn when a package fills a user credential whose `allowed_packages` list is
-non-empty and does not include that package.
+non-empty and does not include that package, because Kody denies that use at
+runtime for every package, including ones you authored or adopted.
 
 ### Ambient `storage` is not a `kody:runtime` export
 

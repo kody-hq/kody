@@ -1365,6 +1365,8 @@ export type OrgSettingsLoaderData = {
 	profileVisibility: 'public' | 'private' | null
 	/** Null for viewers who cannot manage the org's domains. */
 	customDomains: OrgSettingsCustomDomainsView | null
+	/** What every Member may create without a grant; null for personal orgs. */
+	memberCreation: { packages: boolean; credentials: boolean } | null
 }
 
 export type OrgMemberView = {
@@ -1574,6 +1576,8 @@ export type OrgWideReadSubjectView = {
 	label: string
 	/** Read-only permissions this subject already holds on the organization. */
 	reads: Array<string>
+	/** Create permissions this subject's own organization grant holds. */
+	creates: Array<string>
 }
 
 export type OrgCollaboratorView = {

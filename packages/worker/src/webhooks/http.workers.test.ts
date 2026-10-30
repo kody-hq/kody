@@ -75,6 +75,14 @@ vi.mock('#mcp/secrets/service.ts', () => ({
 	},
 }))
 
+// Assert the strict rule regardless of the #4129 safety-window flag.
+vi.mock('#worker/credentials/allowed-packages-safety-window.ts', async () => {
+	const actual = await vi.importActual<
+		typeof import('#worker/credentials/allowed-packages-safety-window.ts')
+	>('#worker/credentials/allowed-packages-safety-window.ts')
+	return { ...actual, tryAllowedPackagesSafetyWindowGrant: async () => false }
+})
+
 vi.mock('./dispatch-queue-producer.ts', async () => {
 	const actual = await vi.importActual<typeof DispatchQueueProducerModule>(
 		'./dispatch-queue-producer.ts',
@@ -665,6 +673,13 @@ test('a webhook cannot verify with a secret its package may not read (#3245)', a
 	)
 		.bind(new Date().toISOString())
 		.run()
+	expect(await statusOf('sentry', signed)).toBe(401)
+	expect(mocks.enqueueWebhookDispatch).not.toHaveBeenCalled()
+
+	mocks.resolveSecret.mockResolvedValue({
+		...secretLookup(hmacSecret),
+		allowedPackages: ['pkg-other', 'pkg-1'],
+	})
 	expect(await statusOf('sentry', signed)).toBe(202)
 	expect(mocks.enqueueWebhookDispatch).toHaveBeenCalledTimes(1)
 })

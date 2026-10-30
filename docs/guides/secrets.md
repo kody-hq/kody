@@ -118,10 +118,12 @@ Saving a secret does not by itself let anything use it.
   user-scoped secret. Approval is checked against the stamped package — the
   module that originated the call — so dependents statically import the owning
   export instead of needing their own grant. Packages you authored and community
-  forks you adopted after reviewing the source get read/use automatically.
-  Unadopted forks need an explicit grant. Updating, disconnecting, or deleting a
-  user secret from package code always needs the grant. Only the account owner
-  can add a package to that grant on `/@<slug>/-/secrets/user/:name` or
+  forks you adopted after reviewing the source get read/use automatically while
+  the secret's `allowed_packages` list is empty. A non-empty list is enforced
+  for every package, including ones you authored or adopted. Unadopted forks
+  need an explicit grant. Updating, disconnecting, or deleting a user secret
+  from package code always needs the grant. Only the account owner can add a
+  package to that grant on `/@<slug>/-/secrets/user/:name` or
   `/@<slug>/-/secrets/approve` — a focused Allow page, the same spirit as host
   approval on `/connect/secrets`.
   `resourceLock({ kind: 'secret', name, package_id })` returns that approval URL
@@ -132,8 +134,9 @@ Bulk approval URLs (`/@<slug>/-/secrets/approve?package_id=…&names=a,b`) let y
 approve several pending secrets for one package in a click.
 
 Publish and save warn when a package fills a user credential whose
-`allowed_packages` list is non-empty and does not include that package. Approve
-the package or move the use into an already-allowed package.
+`allowed_packages` list is non-empty and does not include that package, because
+that use is denied at runtime. Approve the package or move the use into an
+already-allowed package.
 
 ## Scopes
 

@@ -763,6 +763,10 @@
 		{
 			"filename": "0210-enablement-enabler-narrowing.sql",
 			"sha256": "611d6838231313539698f202913361e2c928978f3ae4394f2037426c51967cad"
+		},
+		{
+			"filename": "0211-org-member-creation.sql",
+			"sha256": "191710d9f0786fdee465d000fb63e0680903ebb88217871d884afc3ed4e7b52e"
 		}
 	]
 }

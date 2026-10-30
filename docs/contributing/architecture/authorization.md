@@ -69,6 +69,24 @@ synchronous, for callers that already hold the compiled permissions.
    alone; it grants nothing on other packages. Plain repo create stays an
    org-level `package:create` check.
 
+**Member permissions.** A team org's `members_can_create_packages` (default off)
+and `members_can_create_credentials` (default on) columns on `orgs` add
+`package:create` + `app:create` and `secret:create` + `integration:create` to
+every Member's compiled org permissions (`memberCreationGrants` in
+`authorization/member-creation-permissions.ts`, applied in
+`compileFromRoleAndGrants`). `updateOrgMemberCreation`
+(`orgs/member-creation.ts`) writes them with the `org.member_creation_changed`
+audit row and an `access_epoch` bump in one batch. Create checks therefore stay
+plain
+`authorize(..., 'package:create' | 'secret:create' | 'integration:create')`
+calls; the denial text for those permissions names the setting and the Grants
+page. Website credential writes run the shared capabilities through
+`callCapabilityAsWebsite` (`packages/worker/src/app/website-capability.ts`): MCP
+server add, reconnect, enable, and remove call the `mcpServer*` capabilities,
+and saving a secret runs `authorizeSecretSet` (Write on an existing secret,
+`secret:create` for a new one). The remaining website OAuth connect paths check
+through `requireWebsiteCreatePermission`.
+
 **Creator grants.** A non-owner member who creates a package (on its first
 publish) or a team-org credential (on its `credential.created` audit) gets a
 `manage` user grant on it, and on the package's app, with

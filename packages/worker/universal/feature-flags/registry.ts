@@ -169,6 +169,14 @@ export const featureFlagDefinitions = [
 		// Intentionally no successMetric: a security boundary, not a product
 		// metric; the readout is the codemod rescan and credential_need_undeclared errors.
 	},
+	{
+		key: 'credential-allowed-packages-safety-window',
+		defaultEnabled: true,
+		description:
+			"Global switch (audience and rollout are ignored) for the issue #4129 30-day safety window before allowed-packages enforcement cutover. While on and inside the window, nothing is refused for a self-authored or adopted package that a user credential's non-empty allowed-packages list leaves out. A pair whose package and credential both existed before the window started is added to the list on first use (credential.allowed_packages_updated audit row, reason grandfathered for #4129, source safety_window, plus a log line); any other pair is quietly allowed with a log line and keeps its would-block marker. The owner is never notified. From cutover the rule is strict whether or not this flag is on. Delete the flag and gate sites once the window has closed.",
+		// Intentionally no successMetric: a credential authority boundary, not
+		// a product experiment; the readout is the safety_window audit rows.
+	},
 ] as const satisfies ReadonlyArray<FeatureFlagDefinition>
 
 export type FeatureFlagKey = (typeof featureFlagDefinitions)[number]['key']
@@ -192,6 +200,9 @@ export const executionContextsFlagKey =
 
 export const credentialNeedEnforcementFlagKey =
 	'credential-need-enforcement' satisfies FeatureFlagKey
+
+export const credentialAllowedPackagesSafetyWindowFlagKey =
+	'credential-allowed-packages-safety-window' satisfies FeatureFlagKey
 
 export const featureFlagKeys: ReadonlyArray<FeatureFlagKey> =
 	featureFlagDefinitions.map((definition) => definition.key)

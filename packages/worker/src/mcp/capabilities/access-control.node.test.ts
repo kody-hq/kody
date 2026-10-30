@@ -60,6 +60,7 @@ function createFlagMap(enabled: boolean): CallerFeatureFlags {
 		'repo-push-queue': false,
 		'execution-contexts': false,
 		'credential-need-enforcement': false,
+		'credential-allowed-packages-safety-window': false,
 	}
 }
 

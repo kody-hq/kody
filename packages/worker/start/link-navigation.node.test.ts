@@ -21,6 +21,15 @@ test.each([
 	['/auth', true],
 	['/auth/github/callback', true],
 	['/llms.txt', true],
+	['/docs.md', true],
+	['/docs/llms.txt', true],
+	['/docs/connect.md', true],
+	['/docs/local-execute.md', true],
+	['/docs/local-execute', false],
+	['/blog/rss.xml', true],
+	['/blog/some-post.md', true],
+	['/blog/some-post', false],
+	['/health', true],
 	['/account/export.json', true],
 	['/account/memories-export.json', true],
 	['/account/connections', false],
@@ -75,4 +84,24 @@ test('redirect-only native routes leave the document', () => {
 			reloadDocument: linkNavigation(router, pathname).reloadDocument,
 		}).toEqual({ pathname, reloadDocument: true })
 	}
+})
+
+// Start's client build drops routes whose only option is `server`
+// (pruneServerOnlySubtrees), so links to them match an app route such as
+// `/docs/$slug` in the browser and render a client-side 404.
+test('server-only routes stay in the client route tree as document links', () => {
+	const serverOnly = Object.values(router.routesById).filter(
+		(route) =>
+			route.id !== '__root__' &&
+			route.options.server &&
+			!route.options.component &&
+			!route.options.loader &&
+			!route.options.beforeLoad,
+	)
+	expect(serverOnly.length).toBeGreaterThan(0)
+	expect(
+		serverOnly
+			.filter((route) => !route.options.staticData?.documentNavigation)
+			.map((route) => route.id),
+	).toEqual([])
 })

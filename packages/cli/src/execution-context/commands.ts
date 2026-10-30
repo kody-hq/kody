@@ -192,6 +192,26 @@ export async function runExecutionContextCommand(
 		)
 		return 0
 	}
+	if (input.command === 'context' && (sub === 'revoke' || sub === 'delete')) {
+		const ref = rest[0]
+		if (!ref) throw new Error(`Usage: kody context ${sub} <name|ec id>`)
+		const id = encodeURIComponent(ref)
+		const body = await apiJson({
+			...base,
+			token: await input.token(),
+			...(sub === 'revoke'
+				? { method: 'DELETE', path: `/v1/execution-contexts/${id}` }
+				: { method: 'POST', path: `/v1/execution-contexts/${id}/delete` }),
+		})
+		out(
+			input,
+			body,
+			sub === 'revoke'
+				? `Revoked ${ref}. Delete it for good with: kody context delete ${ref}`
+				: `Deleted ${ref}.`,
+		)
+		return 0
+	}
 	if (input.command === 'chain') {
 		const token = await input.token()
 		const read = await apiJson({
@@ -341,7 +361,7 @@ export async function runExecutionContextCommand(
 		return 0
 	}
 	throw new Error(
-		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody chain show | add <name> | remove <name> | kody daemon [--context <ec id>] [--max-concurrent <n>]',
+		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody chain show | add <name> | remove <name> | kody daemon [--context <ec id>] [--max-concurrent <n>]',
 	)
 }
 

@@ -44,6 +44,7 @@ import {
 	type OrgProfileVisibilityChoice,
 } from '../components/org-visibility-fieldset.tsx'
 import { OrgSettingsCustomDomains } from './org-settings-custom-domains.tsx'
+import { OrgSettingsMemberCreation } from './org-settings-member-creation.tsx'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
@@ -327,6 +328,11 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 							</>
 						)}
 					</AccountManagementPanel>
+					<OrgSettingsMemberCreation
+						key={`member-creation:${data.org.slug}`}
+						data={data}
+						queryKey={queryKey}
+					/>
 					<OrgSettingsCustomDomains
 						key={data.org.slug}
 						data={data}

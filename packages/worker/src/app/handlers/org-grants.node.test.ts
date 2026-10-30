@@ -33,6 +33,7 @@ vi.mock('#app/page-auth.ts', () => ({
 
 const { loadOrgCollaboratorsData } = await import('./org-collaborators.ts')
 const {
+	grantOrganizationCreateAccess,
 	grantOrganizationReadAccess,
 	testOrgGrantsApiHandler,
 	testOrgGrantsRevokePostHandler,
@@ -435,6 +436,7 @@ test('an owner grants a member org-wide read access; no write comes with it', as
 			kind: 'user',
 			label: '@bob',
 			reads: [],
+			creates: [],
 		},
 	])
 	expect(await bobOrgPermissions()).not.toContain('job:read')
@@ -550,4 +552,87 @@ test('only a member:write holder can grant read access, and only to members or t
 		})
 		expect(refused.status).toBe(400)
 	}
+})
+
+async function grantCreates(
+	env: Env,
+	person: Person,
+	fields: { subject: string; permissions: Array<string> },
+) {
+	const request = new Request('https://kody.test/@zeta-co/-/grants', {
+		method: 'POST',
+	})
+	await signIn(person, request)
+	const user = await mocks.readAuthenticatedAppUser(request, env)
+	return await grantOrganizationCreateAccess({
+		request,
+		env,
+		user,
+		orgSlug: 'zeta-co',
+		...fields,
+	})
+}
+
+test('an owner grants and revokes create access without touching read access', async () => {
+	const env = createEnv()
+	const subject = `user:${people.bob.personId}`
+	expect(
+		(await grantReads(env, 'ada', { subject, permissions: ['job:read'] }))
+			.status,
+	).toBe(200)
+	expect((await bobOrgPermissions()).has('package:create')).toBe(false)
+
+	const saved = await grantCreates(env, 'ada', {
+		subject,
+		permissions: ['package:create'],
+	})
+	expect(saved.status).toBe(200)
+	let permissions = await bobOrgPermissions()
+	expect(permissions.has('package:create')).toBe(true)
+	expect(permissions.has('job:read')).toBe(true)
+	expect(permissions.has('package:write')).toBe(false)
+
+	const listReq = new Request('https://kody.test/@zeta-co/-/grants')
+	await signIn('ada', listReq)
+	const listed = (
+		await testOrgGrantsApiHandler(env).execute({ request: listReq } as never)
+	).data as {
+		orgWideRead: {
+			subjects: Array<{ reads: Array<string>; creates: Array<string> }>
+		}
+	}
+	expect(listed.orgWideRead.subjects[0]).toMatchObject({
+		reads: ['job:read'],
+		creates: ['package:create'],
+	})
+
+	// Saving reads keeps the create grant, and clearing creates keeps reads.
+	expect(
+		(await grantReads(env, 'ada', { subject, permissions: ['app:read'] }))
+			.status,
+	).toBe(200)
+	expect((await bobOrgPermissions()).has('package:create')).toBe(true)
+	expect(
+		(await grantCreates(env, 'ada', { subject, permissions: [] })).status,
+	).toBe(200)
+	permissions = await bobOrgPermissions()
+	expect(permissions.has('package:create')).toBe(false)
+	expect(permissions.has('app:read')).toBe(true)
+
+	for (const refused of [['job:read'], ['package:write'], ['secret:write']]) {
+		const result = await grantCreates(env, 'ada', {
+			subject,
+			permissions: refused,
+		})
+		expect(result.status).toBe(400)
+	}
+	expect(
+		(
+			await grantCreates(env, 'bob', {
+				subject,
+				permissions: ['package:create'],
+			})
+		).status,
+	).toBe(403)
+	expect((await bobOrgPermissions()).has('package:create')).toBe(false)
 })

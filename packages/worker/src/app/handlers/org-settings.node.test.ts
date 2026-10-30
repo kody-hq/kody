@@ -72,6 +72,7 @@ const {
 	updateOrganizationProfile,
 	addOrganizationDomain,
 	deleteOrganizationDomain,
+	updateOrganizationMemberCreation,
 } = await import('./org-settings.ts')
 
 const people = {
@@ -714,4 +715,60 @@ test('owners toggle page visibility in settings with an audit event; members can
 	expect(
 		(await readSettings(env, { request: personalGet } as never)).data,
 	).toMatchObject({ profileVisibility: null })
+})
+
+test('owners set member permissions on a team org; members and personal orgs cannot', async () => {
+	const auditDb = createAuditTestDb()
+	const env = { ...createEnv(), AUDIT_DB: auditDb } as Env
+	const writeAs = async (
+		person: Person,
+		orgSlug: string,
+		fields: { packages?: boolean; credentials?: boolean },
+	) => {
+		const request = new Request(
+			`https://kody.test/@${orgSlug}/-/settings.json`,
+			{ method: 'POST' },
+		)
+		await signIn(person, request)
+		const user = await mocks.readAuthenticatedAppUser(request, env)
+		return updateOrganizationMemberCreation({
+			env,
+			request,
+			user,
+			orgSlug,
+			...fields,
+		})
+	}
+	const get = new Request('https://kody.test/@zeta-co/-/settings.json')
+	await signIn('ada', get)
+	expect(
+		(await readSettings(env, { request: get } as never)).data,
+	).toMatchObject({
+		memberCreation: { packages: false, credentials: true },
+	})
+
+	expect((await writeAs('ada', 'zeta-co', { packages: true })).status).toBe(200)
+	await signIn('ada', get)
+	expect(
+		(await readSettings(env, { request: get } as never)).data,
+	).toMatchObject({
+		memberCreation: { packages: true, credentials: true },
+	})
+	const { results } = await auditDb
+		.prepare(
+			`SELECT details_json FROM org_audit_events
+			 WHERE action = 'org.member_creation_changed'`,
+		)
+		.all<{ details_json: string }>()
+	expect(results).toHaveLength(1)
+
+	expect((await writeAs('bob', 'zeta-co', { credentials: false })).status).toBe(
+		403,
+	)
+	expect((await writeAs('ada', 'ada', { packages: true })).status).toBe(400)
+	const personalGet = new Request('https://kody.test/@ada/-/settings.json')
+	await signIn('ada', personalGet)
+	expect(
+		(await readSettings(env, { request: personalGet } as never)).data,
+	).toMatchObject({ memberCreation: null })
 })

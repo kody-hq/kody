@@ -29,6 +29,14 @@ import {
 	type RepoSessionTreeResult,
 } from './types.ts'
 import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
+// Type-only: an inline `type` specifier keeps a runtime import of
+// publish-work.ts and creates an import cycle through checks.ts.
+// oxlint-disable-next-line import/consistent-type-specifier-style
+import type {
+	ExternalRefCloneRequest,
+	ExternalRefCloneResult,
+	PublishWorkRequest,
+} from './publish-work.ts'
 
 export type RepoSessionRpc = {
 	restorePublishedSkill: (payload: {
@@ -159,6 +167,12 @@ export type RepoSessionRpc = {
 	runIsolatedAuthoringChecks: (
 		payload: IsolatedAuthoringChecksRequest,
 	) => Promise<IsolatedAuthoringChecksOutcome>
+	/** One heavy publish step on a throwaway isolate (`publish-work.ts`). */
+	runIsolatedPublishWork: (payload: PublishWorkRequest) => Promise<unknown>
+	/** Clone + stage one external ref on a throwaway isolate. */
+	runIsolatedExternalRefClone: (
+		payload: ExternalRefCloneRequest,
+	) => Promise<ExternalRefCloneResult>
 	/** Step that was running when this instance last hit a resource reset. */
 	takeLastCheckStep: () => Promise<RepoCheckStep | null>
 	getCheckStatus: (payload: {

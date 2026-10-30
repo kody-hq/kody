@@ -1,7 +1,10 @@
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import {
+	callCapabilityAsWebsite,
+	websiteCapabilityContext,
+} from '#app/website-capability.ts'
 import { isMcpCallerError } from '#mcp/caller-error.ts'
 import { repoCreateCapability } from '#mcp/capabilities/repo/repo-create.ts'
-import { createMcpCallerContext } from '#mcp/context.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	AuthorizationError,
@@ -33,13 +36,8 @@ type RepositoryCreateInput = {
 }
 
 function callerContextFor(input: RepositoryCreateInput, binding: OrgBinding) {
-	return createMcpCallerContext({
-		baseUrl: getAppBaseUrl({ env: input.env, requestUrl: input.request.url }),
-		source: { kind: 'session' },
-		executionOrigin: 'interactive',
-		user: input.user.mcpUser,
-		orgBinding: binding,
-	})
+	return websiteCapabilityContext({ ...input, orgBinding: binding })
+		.callerContext
 }
 
 async function canCreateIn(input: RepositoryCreateInput, binding: OrgBinding) {
@@ -112,15 +110,19 @@ export async function createWebsiteRepository(
 		field: 'owner' as const,
 	}
 	if (!binding?.org.slug) return ownerRefused
-	const callerContext = callerContextFor(input, binding)
 	let created: Awaited<ReturnType<typeof repoCreateCapability.handler>>
 	try {
-		created = await repoCreateCapability.handler(
+		created = await callCapabilityAsWebsite(
+			{ ...input, orgBinding: binding },
+			repoCreateCapability,
 			{ name: input.name },
-			{ env: input.env, callerContext },
 		)
 	} catch (error) {
-		if (error instanceof AuthorizationError) return ownerRefused
+		if (error instanceof AuthorizationError)
+			return {
+				...ownerRefused,
+				error: `${ownerRefused.error} ${error.message}`,
+			}
 		if (isEntitlementLimitError(error) && error instanceof Error)
 			return { ok: false, error: error.message, field: null }
 		if (isMcpCallerError(error) && error instanceof Error)
