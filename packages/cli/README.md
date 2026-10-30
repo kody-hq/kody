@@ -541,11 +541,12 @@ only reads `--token` / `KODY_API_TOKEN`.
 `kody daemon` runs up to 2 context runs at once by default. Change it with
 `kody daemon --max-concurrent <n>` or `KODY_CONTEXT_MAX_CONCURRENT` (1 to 8).
 The context's grant `limits.maxConcurrent` can only lower it. Each run still
-gets its own workerd process and temp dir, so runs share no globals or files.
-The daemon caches package graphs (32 entries, 60 seconds, per requester, org,
-conversation and module source) so repeat runs skip that API round trip. Code
-that imports saved packages (`kody:@…`) is never cached, so package access is
-re-checked on every run.
+gets its own workerd process and temp dir, so runs share no globals or virtual
+files. Granted host folders are the real folders, so concurrent runs with the
+same `rw` folder can write the same host files. The daemon caches package graphs
+(32 entries, 60 seconds, per requester, org, conversation and module source) so
+repeat runs skip that API round trip. Code that imports saved packages
+(`kody:@…`) is never cached, so package access is re-checked on every run.
 
 Every context run reports where its time went in
 `structuredContent.ranOn.timing` on `execute`: `queueMs`, `setupMs` (including

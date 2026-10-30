@@ -983,6 +983,18 @@ test('runs up to the grant-capped concurrency at once and report a timing breakd
 			return decodeEnvelopePayload(envelope!.p) as EcpFramePayload
 		})
 	assert.equal(peak, 2)
+	assert.deepEqual(
+		frames.map((frame) => frame.seq),
+		frames.map((_frame, index) => index + 1),
+	)
+	assert.equal(
+		(
+			frames.find((frame) => frame.t === 'hello')?.body.capabilities as {
+				maxConcurrent?: unknown
+			}
+		).maxConcurrent,
+		2,
+	)
 	assert.deepEqual(frames.find((frame) => frame.t === 'hello')?.body.status, {
 		running: 0,
 		maxConcurrent: 2,

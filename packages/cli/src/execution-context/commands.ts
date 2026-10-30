@@ -270,6 +270,9 @@ export async function runExecutionContextCommand(
 		return 0
 	}
 	if (input.command === 'daemon') {
+		if (input.values.maxConcurrent === '') {
+			throw new Error('--max-concurrent needs a value.')
+		}
 		const maxConcurrent = maxConcurrentRuns(input.values.maxConcurrent)
 		const ids = input.values.context
 			? [input.values.context]

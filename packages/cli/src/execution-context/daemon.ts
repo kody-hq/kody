@@ -196,6 +196,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 			: []
 		return {
 			...input.capabilities,
+			maxConcurrent,
 			features: [
 				...base.filter((feature) => feature !== 'fs'),
 				...fsFeatures(hostFs),
@@ -253,29 +254,32 @@ export async function runDaemonConnection(input: DaemonInput) {
 		return maxConcurrent !== previous
 	}
 
-	const send = async (
-		t: string,
-		body: Record<string, unknown>,
-		re?: number,
-	) => {
-		outSeq += 1
-		const payload: EcpFramePayload = {
-			v: 1,
-			t,
-			ec: input.ecid,
-			sid,
-			seq: outSeq,
-			ts: Date.now(),
-			...(re === undefined ? {} : { re }),
-			body,
-		}
-		ws.send(
-			await signFrame({
-				privateKey: input.privateKey,
-				kid: ecpContextKeyId,
-				payload,
-			}),
-		)
+	let outbound: Promise<void> = Promise.resolve()
+	const send = (t: string, body: Record<string, unknown>, re?: number) => {
+		// Signing is async; chain it so concurrent runs' frames reach the
+		// socket in sequence order (the server rejects an out-of-order seq).
+		const sent = outbound.then(async () => {
+			outSeq += 1
+			const payload: EcpFramePayload = {
+				v: 1,
+				t,
+				ec: input.ecid,
+				sid,
+				seq: outSeq,
+				ts: Date.now(),
+				...(re === undefined ? {} : { re }),
+				body,
+			}
+			ws.send(
+				await signFrame({
+					privateKey: input.privateKey,
+					kid: ecpContextKeyId,
+					payload,
+				}),
+			)
+		})
+		outbound = sent.catch(() => {})
+		return sent
 	}
 	let grantEgress: EcpGrant['egress'] = ecpDefaultGrant.egress
 	const applyGrant = (grant: unknown) => {
@@ -441,8 +445,8 @@ export async function runDaemonConnection(input: DaemonInput) {
 			case 'grant.update': {
 				applyGrant(body.grant)
 				grantFs = grantFsOf(body.grant)
-				await refreshFs()
 				const limitsChanged = applyLimits(body.grant)
+				await refreshFs()
 				await send('grant.ack', { grantVersion: body.grantVersion }, frame.seq)
 				if (limitsChanged) await send('status', status())
 				return
