@@ -12,6 +12,9 @@ test('isOlderCliVersion compares x.y.z numerically', () => {
 	expect(isOlderCliVersion('1.10.0', '1.10.0')).toBe(false)
 	expect(isOlderCliVersion('2.0.0', '1.99.9')).toBe(false)
 	expect(isOlderCliVersion('0.0.0-semantically-released', '1.0.0')).toBe(true)
+	expect(isOlderCliVersion('1.52.0-rc.1', '1.52.0')).toBe(true)
+	expect(isOlderCliVersion('1.52.0', '1.52.0-rc.1')).toBe(false)
+	expect(isOlderCliVersion('1.52.0+build.5', '1.52.0')).toBe(false)
 })
 
 test('latestCliVersion caches the registry answer and survives failures', async () => {

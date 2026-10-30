@@ -240,6 +240,8 @@ export async function formatContexts(
 					version: row.client_version,
 					latestVersion: latestCli,
 					outdated: Boolean(
+						(row.client_name === 'kody-cli' ||
+							row.client_name === '@kodycodes/cli') &&
 						latestCli &&
 						row.client_version &&
 						isOlderCliVersion(row.client_version, latestCli),

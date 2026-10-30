@@ -189,7 +189,7 @@ export type ExecutionContextAuditPage = {
 	nextCursor: string | null
 }
 
-/** Numeric x.y.z compare; prerelease and build tags are ignored. */
+/** Numeric x.y.z compare; a prerelease sorts before its stable release. Build tags are ignored. */
 export function isOlderCliVersion(version: string, latest: string) {
 	const parts = (value: string) =>
 		value
@@ -203,14 +203,17 @@ export function isOlderCliVersion(version: string, latest: string) {
 		const right = b[index] ?? 0
 		if (left !== right) return left < right
 	}
-	return false
+	const prerelease = (value: string) => value.split('+')[0]!.includes('-')
+	return prerelease(version) && !prerelease(latest)
 }
 
 export function daemonRunsAsLabel(
 	service: 'systemd' | 'launchd' | null | undefined,
+	status: ExecutionContextStatus,
 ) {
 	if (service === 'systemd') return 'Background service (systemd)'
 	if (service === 'launchd') return 'Background service (launchd)'
+	if (status !== 'online') return 'Not running'
 	return 'Terminal (not a background service)'
 }
 

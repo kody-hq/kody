@@ -176,12 +176,21 @@ export function ExecutionContextDetail(props: {
 						</dd>
 						<dt>Runs as</dt>
 						<dd data-testid="context-daemon-service">
-							{daemonRunsAsLabel(context.capabilities?.service)}
+							{daemonRunsAsLabel(context.capabilities?.service, context.status)}
 							{context.isOperator &&
 							!context.capabilities?.service &&
 							context.status !== 'revoked' ? (
 								<span css={hintCss}>
-									Run <code>kody daemon install</code> to keep it running
+									{context.capabilities?.os === 'win32' ? (
+										<>
+											Keep <code>kody daemon</code> running in a terminal.
+											Background services are not supported on Windows yet
+										</>
+									) : (
+										<>
+											Run <code>kody daemon install</code> to keep it running
+										</>
+									)}
 								</span>
 							) : null}
 						</dd>

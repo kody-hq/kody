@@ -206,7 +206,7 @@ test('operator detail shows daemon version, outdated flag and background service
 		'Outdated: 1.52.0 is out. Run kody update on the machine',
 	)
 	expect(body).toContain('Background service (systemd)')
-	expect(body).not.toContain('kody daemon install')
+	expect(body).not.toContain('Run kody daemon install to keep it running')
 
 	const foreground = contextFixture({
 		capabilities: { os: 'darwin', features: [], service: null },
@@ -224,4 +224,23 @@ test('operator detail shows daemon version, outdated flag and background service
 	expect(plain).toContain('Terminal (not a background service)')
 	expect(plain).toContain('Run kody daemon install to keep it running')
 	expect(plain).not.toContain('Outdated')
+
+	const offline = contextFixture({
+		status: 'offline',
+		capabilities: { os: 'win32', features: [], service: null },
+	})
+	const idle = text(
+		await renderStartPage(
+			route(
+				pageFixture({ selected: offline }),
+				'ec_laptop',
+				`${href}/ec_laptop`,
+			),
+			`${href}/ec_laptop`,
+		),
+	)
+	expect(idle).toContain('Not running')
+	expect(idle).not.toContain('Terminal (not a background service)')
+	expect(idle).toContain('Keep kody daemon running in a terminal')
+	expect(idle).not.toContain('Run kody daemon install to keep it running')
 })
