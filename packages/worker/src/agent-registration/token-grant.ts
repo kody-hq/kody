@@ -1,6 +1,7 @@
 import * as Sentry from '@sentry/cloudflare'
 import { cliCredentialBootstrapDefaultScopes } from '#worker/api-tokens/cli-credential-bootstrap.ts'
 import { mintApiToken } from '#worker/api-tokens/service.ts'
+import { loadLiveOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
@@ -84,6 +85,12 @@ export async function handleAgentClaimTokenRequest(input: {
 	}
 	if (!row.user_id || !row.org_id) {
 		return oauthErrorResponse('invalid_grant', 'This claim is incomplete.')
+	}
+	if (!(await loadLiveOrgBindingForOrg(env.APP_DB, row.user_id, row.org_id))) {
+		return oauthErrorResponse(
+			'access_denied',
+			'The person no longer has access to the selected organization.',
+		)
 	}
 	const consumed = await consumeClaimedAgentRegistration(
 		env.APP_DB,
