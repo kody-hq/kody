@@ -1,4 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process'
+import {
+	createEgressGateSource,
+	egressGateModuleName,
+	egressNeedsPrivateNetwork,
+	localExecuteEgressPolicy,
+	type LocalEgressPolicy,
+} from './local-egress.js'
 import { randomBytes } from 'node:crypto'
 import { rmSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -95,6 +102,11 @@ export type LocalExecuteInput = {
 	/** Skip the pinned download and run this workerd binary. */
 	workerdPath?: string
 	allowPrivateNetwork?: boolean
+	/**
+	 * Outbound network policy (execution-context runs pass the grant's egress).
+	 * Defaults to public-only, or public + LAN with `allowPrivateNetwork`.
+	 */
+	egress?: LocalEgressPolicy
 	/**
 	 * Hosts that may hit the real network under --target mock when
 	 * `.kody/mocks.ts` is active (never carries real secrets).
@@ -324,6 +336,12 @@ export async function runLocalExecute(
 			join(workDir, localWorkerModuleNames.runtimeFlatAlias),
 			createRuntimeFlatAliasSource(),
 		)
+		const egressPolicy =
+			input.egress ?? localExecuteEgressPolicy(input.allowPrivateNetwork)
+		await writeFile(
+			join(workDir, egressGateModuleName),
+			createEgressGateSource(),
+		)
 		const configPath = join(workDir, 'config.capnp')
 		await writeFile(
 			configPath,
@@ -331,7 +349,8 @@ export async function runLocalExecute(
 				bridgePort: bridge.port,
 				files,
 				packageModules,
-				allowPrivateNetwork: input.allowPrivateNetwork,
+				allowPrivateNetwork: egressNeedsPrivateNetwork(egressPolicy),
+				egress: { policy: egressPolicy, gateFile: egressGateModuleName },
 			}),
 		)
 

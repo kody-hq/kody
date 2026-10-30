@@ -79,6 +79,13 @@ sequenceDiagram
   (`credentials_not_allowed`, `credentials_not_in_grant`,
   `credentials_unverified`, `credentials_need_unshared_context`), so the chain
   falls through to the next entry or cloud.
+- The daemon enforces the grant's `egress` (from `welcome`, re-applied on
+  `grant.update`) inside local workerd: outbound `fetch` goes through an
+  egress-gate worker (`packages/cli/src/local-egress.ts`) set as
+  `globalOutbound`. A refusal reaches the run as a plain error naming the mode,
+  the blocked host (and port), and that the machine owner can change it with
+  `executionContextUpdate` `grant.egress`, instead of workerd's
+  `internal error; reference = …`.
 - Chains are per user per org, hold up to 3 contexts, and Kody cloud is always
   the last entry when present. A chain PUT with anything after cloud is a 400.
   Leaving cloud out makes the chain strict.
