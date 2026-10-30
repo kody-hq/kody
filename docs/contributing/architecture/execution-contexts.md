@@ -110,7 +110,8 @@ sequenceDiagram
   routing and chain skipping see `busy` only when every slot is taken. Each run
   still gets its own workerd process and temp dir; nothing is shared between
   runs except the daemon's package-graph cache (bounded LRU, 32 entries, 60s,
-  keyed by requester, org, conversation and module source).
+  keyed by requester, org, conversation and module source). Code that imports
+  saved packages is never cached, so package access is re-checked every run.
 - `run.result` carries `timing` on the daemon's clock (`queueMs`, `setupMs`,
   `packageGraphMs`, `packageGraphCached`, `executeMs`, `daemonMs`). Kody adds
   `serverMs` (commit to result on its clock) and `transitMs`

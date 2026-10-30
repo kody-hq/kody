@@ -241,14 +241,17 @@ export async function runLocalExecute(
 	// Always fetch package-graph: origin returns the gateway-fetch shim even
 	// when there are no `kody:@` imports so ambient `{{secret:…}}` fetch hops
 	// (or fails closed) instead of sending a raw placeholder (kody#3020).
+	const importsSavedPackages = await hasSavedPackageImports(code)
 	input.onStatus?.(
-		(await hasSavedPackageImports(code))
+		importsSavedPackages
 			? savedPackageImportLocalResolveStatus
 			: localExecutePackageGraphResolveStatus,
 	)
 	if (input.signal?.aborted) return cancelledDuringSetup()
 	const graphStartedMs = performance.now()
-	const cachedGraph = input.packageGraphCache?.get()
+	// Saved package code is re-fetched every run so package access is re-checked.
+	const graphCache = importsSavedPackages ? undefined : input.packageGraphCache
+	const cachedGraph = graphCache?.get()
 	const packageGraph =
 		cachedGraph ??
 		(await untilAborted(
@@ -263,7 +266,7 @@ export async function runLocalExecute(
 			input.signal,
 		))
 	if (packageGraph === setupCancelled) return cancelledDuringSetup()
-	if (!cachedGraph) input.packageGraphCache?.set(packageGraph)
+	if (!cachedGraph) graphCache?.set(packageGraph)
 	const packageGraphMs = performance.now() - graphStartedMs
 
 	const workerdPath =
