@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
 	resolveArtifactSourceHead: vi.fn(),
 	publishedPublishChecksAreCurrent: vi.fn(),
 	listJobsForUser: vi.fn(),
+	readPublishGitNoteFromArtifactsRepo: vi.fn(),
 	publishFromExternalRef: vi.fn(),
 	rebuildPublishedPackageArtifactsViaRepoSession: vi.fn(),
 }))
@@ -34,6 +35,10 @@ vi.mock('#worker/jobs/jobs-data.ts', () => ({
 		listJobsForUser: (...args: Array<unknown>) =>
 			mocks.listJobsForUser(...args),
 	}),
+}))
+vi.mock('#worker/repo/publish-git-notes.ts', () => ({
+	readPublishGitNoteFromArtifactsRepo: (...args: Array<unknown>) =>
+		mocks.readPublishGitNoteFromArtifactsRepo(...args),
 }))
 vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
 	repoSessionRpc: () => ({
@@ -86,6 +91,7 @@ beforeEach(() => {
 		{ source_id: 'source-1', record: { publishedCommit: 'commit-old' } },
 		{ source_id: 'source-other', record: { publishedCommit: 'commit-x' } },
 	])
+	mocks.readPublishGitNoteFromArtifactsRepo.mockResolvedValue({ found: false })
 	mocks.publishFromExternalRef.mockResolvedValue({
 		status: 'already_published',
 		published_commit: 'commit-new',
@@ -120,6 +126,7 @@ test('requires admin and defaults to a dry-run report of the interrupted publish
 				outcome: 'incomplete',
 				sealed: false,
 				staleJobCount: 1,
+				publishNoteFound: false,
 			},
 		],
 	})
@@ -169,4 +176,22 @@ test('apply skips a package whose Artifacts HEAD differs from published_commit',
 	)
 	expect(result.outcomes[0]).toMatchObject({ outcome: 'skipped_head_differs' })
 	expect(mocks.publishFromExternalRef).not.toHaveBeenCalled()
+})
+
+test('dry-run reports complete once sealed, jobs attributed, and the note exists', async () => {
+	mocks.publishedPublishChecksAreCurrent.mockResolvedValue(true)
+	mocks.listJobsForUser.mockResolvedValue([
+		{ source_id: 'source-1', record: { publishedCommit: 'commit-new' } },
+	])
+	mocks.readPublishGitNoteFromArtifactsRepo.mockResolvedValue({ found: true })
+	const result = await adminPublishFinalizeResumeCapability.handler(
+		{ packageIds: ['package-1'] },
+		createContext(['admin']),
+	)
+	expect(result.outcomes[0]).toMatchObject({
+		outcome: 'complete',
+		sealed: true,
+		staleJobCount: 0,
+		publishNoteFound: true,
+	})
 })

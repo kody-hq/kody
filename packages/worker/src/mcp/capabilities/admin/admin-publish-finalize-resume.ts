@@ -8,6 +8,7 @@ import { publishedPublishChecksAreCurrent } from '#worker/package-runtime/publis
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import { readPublishGitNoteFromArtifactsRepo } from '#worker/repo/publish-git-notes.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import {
 	adminMutationCapabilityAccess,
@@ -30,6 +31,7 @@ const outcomeSchema = z.object({
 	]),
 	sealed: z.boolean().optional(),
 	staleJobCount: z.number().int().nonnegative().optional(),
+	publishNoteFound: z.boolean().optional(),
 	rebuiltTargetCount: z.number().int().nonnegative().optional(),
 	error: z.string().optional(),
 })
@@ -102,11 +104,21 @@ async function resumePackage(input: {
 				row.source_id === source.id &&
 				row.record.publishedCommit !== publishedCommit,
 		).length
-		const state = { ...withCommit, sealed, staleJobCount }
+		const publishNoteFound = (
+			await readPublishGitNoteFromArtifactsRepo({
+				env: input.env,
+				repoId: source.repo_id,
+				commitOid: publishedCommit,
+			})
+		).found
+		const state = { ...withCommit, sealed, staleJobCount, publishNoteFound }
 		if (input.dryRun) {
 			return {
 				...state,
-				outcome: sealed && staleJobCount === 0 ? 'complete' : 'incomplete',
+				outcome:
+					sealed && staleJobCount === 0 && publishNoteFound
+						? 'complete'
+						: 'incomplete',
 			}
 		}
 		const sessionId = `admin-publish-resume-${source.id}`
@@ -160,7 +172,7 @@ export const adminPublishFinalizeResumeCapability = defineDomainCapability(
 		name: 'adminPublishFinalizeResume',
 		contextRuns: 'deny',
 		description:
-			'Finish an interrupted publish of the live published commit for specific saved packages: a publish that moved published_commit but died (Durable Object reset or CPU limit) before the credential stamp, package projection and job attribution, publish note, and bundle artifacts landed. Re-runs checks and those steps at the current published commit only; never moves the source or published_commit, and skips packages whose Artifacts HEAD differs. dryRun default is true (reports sealed + stale job count).',
+			'Finish an interrupted publish of the live published commit for specific saved packages: a publish that moved published_commit but died (Durable Object reset or CPU limit) before the credential stamp, package projection and job attribution, publish note, and bundle artifacts landed. Re-runs checks and those steps at the current published commit only; never moves the source or published_commit, and skips packages whose Artifacts HEAD differs. dryRun default is true (reports sealed, stale job count, and whether the publish note exists).',
 		keywords: [
 			'admin',
 			'package',
