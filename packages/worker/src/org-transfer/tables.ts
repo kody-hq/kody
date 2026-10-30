@@ -195,6 +195,7 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	),
 	oauth_connections: keep(personOwned),
 	oauth_device_authorizations: keep(personOwned),
+	agent_registrations: keep(personOwned),
 	org_invite_link_pending: keep(orgMembershipShape),
 	org_invite_link_redemptions: keep(orgMembershipShape),
 	org_invite_links: keep(orgMembershipShape),

@@ -751,6 +751,10 @@
 		{
 			"filename": "0207-execution-contexts-release-revoked-names.sql",
 			"sha256": "187cbb834aa580cb02572f501b3fc8672ccd0a7fe26af94a609c435038a4778d"
+		},
+		{
+			"filename": "0209-agent-registrations.sql",
+			"sha256": "0713cbe4e214d27fa90062dadda1c18ee0aeb6e030d24a94179f4e7d1431fb4c"
 		}
 	]
 }
