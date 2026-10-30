@@ -221,7 +221,6 @@ export async function runDaemonConnection(input: DaemonInput) {
 	const unsubscribeFs = input.fs?.onChange?.(() => {
 		if (welcomed) void refreshFs().catch(() => {})
 	})
-	if (unsubscribeFs) ws.addEventListener('close', unsubscribeFs)
 	const serverKeys = new Map(input.serverKeys.map((key) => [key.kid, key]))
 	let sid = ''
 	let inSeq = 0
@@ -440,6 +439,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 			clearTimeout(pongTimer)
 			clearTimeout(welcomeTimer)
 			clearTimeout(settleTimer)
+			unsubscribeFs?.()
 			input.signal?.removeEventListener('abort', shutdown)
 			for (const run of runs.values()) run.abort.abort()
 			resolve({ code, reason })
