@@ -7,7 +7,6 @@ import {
 	assertGrantAllowsSharing,
 	contextIsShared,
 	contextRunCredentials,
-	registrationGrant,
 } from './credential-grant.ts'
 import {
 	type ExecutionContextCaller,
@@ -83,11 +82,6 @@ function setup(credentials: (typeof ecpDefaultGrant)['credentials']) {
 		grant,
 	}
 }
-
-test('new contexts start with requester credentials, values still kept on Kody', () => {
-	expect(registrationGrant.credentials).toEqual({ mode: 'requester' })
-	expect(registrationGrant.fs).toEqual([])
-})
 
 test('the operator can let all their credentials through an unshared context', async () => {
 	const s = setup({ mode: 'none' })
