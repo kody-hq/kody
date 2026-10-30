@@ -65,7 +65,7 @@ export function maxConcurrentRuns(
 		parsed > ecpMaxConcurrentRunsCap
 	) {
 		throw new Error(
-			`--max-concurrent must be a whole number from 1 to ${ecpMaxConcurrentRunsCap}; got ${value}.`,
+			`--max-concurrent (or KODY_CONTEXT_MAX_CONCURRENT) must be a whole number from 1 to ${ecpMaxConcurrentRunsCap}; got ${value}.`,
 		)
 	}
 	return parsed

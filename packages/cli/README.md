@@ -543,7 +543,9 @@ only reads `--token` / `KODY_API_TOKEN`.
 The context's grant `limits.maxConcurrent` can only lower it. Each run still
 gets its own workerd process and temp dir, so runs share no globals or files.
 The daemon caches package graphs (32 entries, 60 seconds, per requester, org,
-conversation and module source) so repeat runs skip that API round trip.
+conversation and module source) so repeat runs skip that API round trip. Code
+that imports saved packages (`kody:@…`) is never cached, so package access is
+re-checked on every run.
 
 Every context run reports where its time went in
 `structuredContent.ranOn.timing` on `execute`: `queueMs`, `setupMs` (including

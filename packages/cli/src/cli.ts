@@ -482,8 +482,8 @@ async function dispatch(
 					...(typeof parsed.values.mode === 'string'
 						? { mode: parsed.values.mode }
 						: {}),
-					...(typeof parsed.values['max-concurrent'] === 'string'
-						? { maxConcurrent: parsed.values['max-concurrent'] }
+					...(parsed.values['max-concurrent'] !== undefined
+						? { maxConcurrent: String(parsed.values['max-concurrent']) }
 						: {}),
 					json,
 				},
