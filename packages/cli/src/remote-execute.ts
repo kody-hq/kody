@@ -175,9 +175,14 @@ export function formatExecuteCapabilityResult(
 		'errorDetails',
 		'entitlement',
 		'serverTiming',
+		'ranOn',
+		'executionContext',
 	] as const) {
 		if (record[key] !== undefined) base[key] = record[key]
 	}
+
+	const ranOnLine = describeRanOnTarget(record.ranOn)
+	const ranOnContent = ranOnLine ? [{ type: 'text', text: ranOnLine }] : []
 
 	if (!ok) {
 		const error =
@@ -185,7 +190,7 @@ export function formatExecuteCapabilityResult(
 				? record.error
 				: 'Execute failed without an error message.'
 		return {
-			content: [{ type: 'text', text: `Error: ${error}` }],
+			content: [{ type: 'text', text: `Error: ${error}` }, ...ranOnContent],
 			structuredContent: { ...base, error, result: record.result },
 			isError: true,
 		}
@@ -197,10 +202,20 @@ export function formatExecuteCapabilityResult(
 			? result
 			: (JSON.stringify(result, null, 2) ?? 'undefined')
 	return {
-		content: [{ type: 'text', text }],
+		content: [{ type: 'text', text }, ...ranOnContent],
 		structuredContent: { ...base, result },
 		isError: false,
 	}
+}
+
+/** A short "Ran on …" line from `ranOn`, friendly name only. */
+function describeRanOnTarget(value: unknown) {
+	if (!isRecord(value) || typeof value.name !== 'string') return null
+	const where =
+		value.kind === 'context'
+			? `${value.name} (${value.yours === true ? 'your machine' : 'an execution context'})`
+			: value.name
+	return `Ran on ${where}.`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

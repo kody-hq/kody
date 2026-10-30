@@ -6,10 +6,12 @@ import {
 	ecpPingFrame,
 	ecpProtocolVersion,
 	importEd25519PublicKey,
+	ecpDefaultGrant,
 	publishedKeyJwk,
 	signFrame,
 	verifyFrame,
 	type EcpFramePayload,
+	type EcpGrant,
 	type EcpPublishedKey,
 	type EcpRunRequestBody,
 	type EcpCryptoKey,
@@ -24,6 +26,8 @@ export type ContextRunExecutor = (input: {
 	request: EcpRunRequestBody
 	fetchFn: typeof fetch
 	signal: AbortSignal
+	/** Current grant egress (welcome / grant.update); the run enforces it. */
+	egress: EcpGrant['egress']
 	/** Host folders this run may use (server grant ∩ local policy). */
 	hostFs?: EffectiveFs
 }) => Promise<{
@@ -254,6 +258,13 @@ export async function runDaemonConnection(input: DaemonInput) {
 			}),
 		)
 	}
+	let grantEgress: EcpGrant['egress'] = ecpDefaultGrant.egress
+	const applyGrant = (grant: unknown) => {
+		const egress = (grant as { egress?: unknown } | null)?.egress as
+			| EcpGrant['egress']
+			| undefined
+		if (egress && typeof egress.mode === 'string') grantEgress = egress
+	}
 	let rearmHeartbeat: ((pingMs: number, pongTimeoutMs: number) => void) | null =
 		null
 	const status = () => ({
@@ -278,6 +289,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 				request: run.request,
 				...(runFs ? { hostFs: runFs } : {}),
 				signal: run.abort.signal,
+				egress: grantEgress,
 				fetchFn: runScopedFetch({
 					apiUrl: input.apiUrl,
 					ecid: input.ecid,
@@ -320,6 +332,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 		switch (frame.t) {
 			case 'welcome':
 				clearTimeout(welcomeTimer)
+				applyGrant(body.grant)
 				if (input.pingMs === undefined && input.pongTimeoutMs === undefined) {
 					rearmHeartbeat?.(
 						heartbeatSetting(body.pingMs, defaultPingMs),
@@ -382,6 +395,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 				return
 			}
 			case 'grant.update':
+				applyGrant(body.grant)
 				grantFs = grantFsOf(body.grant)
 				await refreshFs()
 				await send('grant.ack', { grantVersion: body.grantVersion }, frame.seq)

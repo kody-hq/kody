@@ -6,7 +6,8 @@ import {
 	routeExecuteForCaller,
 } from '#worker/execution-contexts/execute-routing.ts'
 import {
-	describeCloudFallback,
+	describeRanOn,
+	ranOnFromMetadata,
 	type ExecutionContextRunMetadata,
 } from '#worker/execution-contexts/routing.ts'
 import * as Sentry from '@sentry/cloudflare'
@@ -246,11 +247,17 @@ export const executeToolOutputSchema = {
 		.unknown()
 		.optional()
 		.describe('Relevant stored memories surfaced for this call.'),
+	ranOn: z
+		.unknown()
+		.optional()
+		.describe(
+			'Where the run happened, on every routed response (input errors before routing may omit it): { kind: "cloud" | "context", id: "cloud" | context id, name: "Kody cloud" | context name, yours?, attempts, fellBackToCloud }. attempts lists contexts that passed on it (offline, busy, skipped) with reasons.',
+		),
 	executionContext: z
 		.unknown()
 		.optional()
 		.describe(
-			'Where an execution-context run went: the context, every attempt, and fellBackToCloud when it ran on Kody cloud instead.',
+			'Legacy detail for runs that involved an execution context (same attempts and fellBackToCloud as ranOn). Prefer ranOn.',
 		),
 }
 
@@ -783,7 +790,7 @@ export async function runExecuteToolCall(input: {
 				}
 			}
 		}
-		const { cloudFallbackContent, cloudFallbackFields } = cloudFallbackParts(
+		const { ranOnContent, ranOnFields } = ranOnParts(
 			routed?.kind === 'cloud' ? routed.metadata : null,
 		)
 		if (routed?.kind === 'pending' || routed?.kind === 'queued') {
@@ -797,22 +804,24 @@ export async function runExecuteToolCall(input: {
 					? (claimedRunHandle?.context.idempotencyKey?.trim() ?? '')
 					: '',
 				memories: null,
+				executionContext: routed.metadata,
 			})
 		}
 		if (routed?.kind === 'ran') {
 			transportDetached = true
 			const timing = finishToolTiming(timingStart)
+			const ranOnContext = ranOnParts(routed.metadata)
 			return {
-				content: prependToolMetadataContent(
-					resolvedConversationId,
-					routed.result.content as Array<ContentBlock>,
-				),
+				content: prependToolMetadataContent(resolvedConversationId, [
+					...(routed.result.content as Array<ContentBlock>),
+					...ranOnContext.ranOnContent,
+				]),
 				structuredContent: {
 					...routed.result.structuredContent,
 					conversationId: resolvedConversationId,
 					timing,
 					...(claimedRunHandle ? { runId: claimedRunHandle.id } : {}),
-					executionContext: routed.metadata,
+					...ranOnContext.ranOnFields,
 				},
 				isError: routed.result.isError,
 			}
@@ -1119,7 +1128,7 @@ export async function runExecuteToolCall(input: {
 						type: 'text',
 						text: formatExecutionOutput(result),
 					},
-					...cloudFallbackContent,
+					...ranOnContent,
 					...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 					...formatSurfacedMemoriesMarkdown(surfacedMemories),
 				]),
@@ -1132,12 +1141,11 @@ export async function runExecuteToolCall(input: {
 					errorDetails,
 					...entitlementStructuredContent(result.error),
 					logs: result.logs ?? [],
-					...cloudFallbackFields,
 					...(rawFetchHostNudges.length > 0
 						? { warnings: rawFetchHostNudges }
 						: {}),
 					...buildMemoryStructuredContent(surfacedMemories),
-					...cloudFallbackFields,
+					...ranOnFields,
 				},
 				isError: true,
 			}
@@ -1175,7 +1183,7 @@ export async function runExecuteToolCall(input: {
 							text: `Error: ${message}`,
 						},
 						...formatSurfacedMemoriesMarkdown(surfacedMemories),
-						...cloudFallbackContent,
+						...ranOnContent,
 					]),
 					structuredContent: {
 						conversationId: resolvedConversationId,
@@ -1186,7 +1194,7 @@ export async function runExecuteToolCall(input: {
 						result: passthrough?.structuredResult ?? null,
 						logs: result.logs ?? [],
 						...buildMemoryStructuredContent(surfacedMemories),
-						...cloudFallbackFields,
+						...ranOnFields,
 					},
 					isError: true,
 				}
@@ -1204,7 +1212,7 @@ export async function runExecuteToolCall(input: {
 							text: `Error: ${contentLimited.note}`,
 						},
 						...formatSurfacedMemoriesMarkdown(surfacedMemories),
-						...cloudFallbackContent,
+						...ranOnContent,
 					]),
 					structuredContent: {
 						conversationId: resolvedConversationId,
@@ -1216,7 +1224,7 @@ export async function runExecuteToolCall(input: {
 						result: passthrough?.structuredResult ?? null,
 						logs: result.logs ?? [],
 						...buildMemoryStructuredContent(surfacedMemories),
-						...cloudFallbackFields,
+						...ranOnFields,
 					},
 					isError: true,
 				}
@@ -1251,7 +1259,7 @@ export async function runExecuteToolCall(input: {
 					...contentLimited.blocks,
 					...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 					...formatSurfacedMemoriesMarkdown(surfacedMemories),
-					...cloudFallbackContent,
+					...ranOnContent,
 				]),
 				structuredContent: {
 					conversationId: resolvedConversationId,
@@ -1274,7 +1282,7 @@ export async function runExecuteToolCall(input: {
 						? { warnings: rawFetchHostNudges }
 						: {}),
 					...buildMemoryStructuredContent(surfacedMemories),
-					...cloudFallbackFields,
+					...ranOnFields,
 				},
 				isError,
 			}
@@ -1314,7 +1322,7 @@ export async function runExecuteToolCall(input: {
 						displayText: structuredResultValue.displayText,
 					}),
 				},
-				...cloudFallbackContent,
+				...ranOnContent,
 				...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 				...formatSurfacedMemoriesMarkdown(surfacedMemories),
 			]),
@@ -1331,7 +1339,7 @@ export async function runExecuteToolCall(input: {
 					: {}),
 				result: structuredResultValue.value,
 				logs: result.logs ?? [],
-				...cloudFallbackFields,
+				...ranOnFields,
 				...(rawFetchHostNudges.length > 0
 					? { warnings: rawFetchHostNudges }
 					: {}),
@@ -1362,16 +1370,16 @@ function buildTransportBudgetFollowResponse(input: {
 	memories: Parameters<typeof formatSurfacedMemoriesMarkdown>[0]
 	executionContext?: unknown
 }) {
-	const { cloudFallbackContent, cloudFallbackFields } = cloudFallbackParts(
-		input.executionContext,
-	)
+	const { ranOnContent, ranOnFields } = ranOnParts(input.executionContext, {
+		running: true,
+	})
 	const text = input.idempotencyKey
 		? `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Retrying execute with idempotencyKey "${input.idempotencyKey}" reads this run instead of starting another mutation.`
 		: `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Do not start another mutation for this call.`
 	return {
 		content: prependToolMetadataContent(input.conversationId, [
 			{ type: 'text' as const, text },
-			...cloudFallbackContent,
+			...ranOnContent,
 			...formatSurfacedMemoriesMarkdown(input.memories),
 		]),
 		structuredContent: {
@@ -1382,7 +1390,7 @@ function buildTransportBudgetFollowResponse(input: {
 			inProgress: true as const,
 			status: 'running' as const,
 			...buildMemoryStructuredContent(input.memories),
-			...cloudFallbackFields,
+			...ranOnFields,
 		},
 		isError: false,
 	}
@@ -1398,12 +1406,16 @@ function buildKeyedExecuteLookupResponse(input: {
 	}
 }) {
 	if (input.run.status === 'running') {
+		const running = ranOnParts(input.run.metadata['executionContext'], {
+			running: true,
+		})
 		return {
 			content: prependToolMetadataContent(input.conversationId, [
 				{
 					type: 'text',
 					text: `Execute still in progress (runId: ${input.run.id}). Poll runGet with that id, or retry with the same idempotencyKey.`,
 				},
+				...running.ranOnContent,
 			]),
 			structuredContent: {
 				conversationId: input.conversationId,
@@ -1414,13 +1426,14 @@ function buildKeyedExecuteLookupResponse(input: {
 					: {}),
 				inProgress: true,
 				status: 'running' as const,
+				...running.ranOnFields,
 			},
 			isError: false,
 		}
 	}
 
 	const retainedResult = input.run.metadata['result']
-	const { cloudFallbackContent, cloudFallbackFields } = cloudFallbackParts(
+	const { ranOnContent, ranOnFields } = ranOnParts(
 		input.run.metadata['executionContext'],
 	)
 	if (input.run.status === 'error') {
@@ -1434,7 +1447,7 @@ function buildKeyedExecuteLookupResponse(input: {
 					type: 'text',
 					text: `Error: ${errorMessage}`,
 				},
-				...cloudFallbackContent,
+				...ranOnContent,
 			]),
 			structuredContent: {
 				conversationId: input.conversationId,
@@ -1450,7 +1463,7 @@ function buildKeyedExecuteLookupResponse(input: {
 				...entitlementStructuredContent(replayedError),
 				...(retainedResult !== undefined ? { result: retainedResult } : {}),
 				logs: [] as Array<unknown>,
-				...cloudFallbackFields,
+				...ranOnFields,
 			},
 			isError: true,
 		}
@@ -1467,7 +1480,7 @@ function buildKeyedExecuteLookupResponse(input: {
 					displayText: undefined,
 				}),
 			},
-			...cloudFallbackContent,
+			...ranOnContent,
 		]),
 		structuredContent: {
 			conversationId: input.conversationId,
@@ -1480,25 +1493,28 @@ function buildKeyedExecuteLookupResponse(input: {
 			returnedBytes: 0,
 			result: retainedResult,
 			logs: [] as Array<unknown>,
-			...cloudFallbackFields,
+			...ranOnFields,
 		},
 		isError: false,
 	}
 }
 
-function isCloudFallback(value: unknown): value is ExecutionContextRunMetadata {
+function isRunMetadata(value: unknown): value is ExecutionContextRunMetadata {
 	if (typeof value !== 'object' || value === null) return false
-	const candidate = value as Partial<ExecutionContextRunMetadata>
-	return candidate.fellBackToCloud === true && Array.isArray(candidate.attempts)
+	return Array.isArray((value as Partial<ExecutionContextRunMetadata>).attempts)
 }
 
-function cloudFallbackParts(metadata: unknown) {
-	const fallback = isCloudFallback(metadata) ? metadata : null
+/** `ranOn` (and the legacy `executionContext`) plus its human line. */
+function ranOnParts(metadata: unknown, options: { running?: boolean } = {}) {
+	const ranOn = ranOnFromMetadata(metadata)
 	return {
-		cloudFallbackContent: fallback
-			? [{ type: 'text' as const, text: describeCloudFallback(fallback) }]
-			: [],
-		cloudFallbackFields: fallback ? { executionContext: fallback } : {},
+		ranOnContent: [
+			{ type: 'text' as const, text: describeRanOn(ranOn, options) },
+		],
+		ranOnFields: {
+			ranOn,
+			...(isRunMetadata(metadata) ? { executionContext: metadata } : {}),
+		},
 	}
 }
 
