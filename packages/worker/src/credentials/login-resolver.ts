@@ -429,7 +429,8 @@ export const loginCredentialResolver: CredentialResolver<'login'> = {
 									valueStatement: env.APP_DB.prepare(
 										`UPDATE secret_entries SET encrypted_value = ?, updated_at = ?
 										WHERE id = ? AND encrypted_value = ? AND config_json IS ?
-											AND allowed_hosts = ? AND inject_json = ?`,
+											AND allowed_hosts = ? AND inject_json = ?
+											AND deleted_at IS NULL`,
 									).bind(
 										encryptedValue,
 										new Date().toISOString(),
