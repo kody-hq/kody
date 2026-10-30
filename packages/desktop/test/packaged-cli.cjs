@@ -101,7 +101,8 @@ const sourceDirty =
 		encoding: 'utf8',
 	}).trim().length > 0
 const files = extensions.map((extension) => {
-	const name = `Kody-${version}-${os}-${arch}.${extension}`
+	const artifactArch = platform === 'linux' && arch === 'x64' ? 'x86_64' : arch
+	const name = `Kody-${version}-${os}-${artifactArch}.${extension}`
 	const bytes = readFileSync(join(output, name))
 	return {
 		name,
