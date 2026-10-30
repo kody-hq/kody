@@ -390,6 +390,15 @@ const timing = (durationMs: number) => ({
 const truncationNote = (bytes: number, limit: number) =>
 	`Returned value was ${String(bytes)} bytes, exceeding responseLimit ${String(limit)} bytes; output was truncated. Project fields before returning.`
 
+const cloudRanOn = {
+	kind: 'cloud',
+	id: 'cloud',
+	name: 'Kody cloud',
+	attempts: [],
+	fellBackToCloud: false,
+}
+const cloudLine = { type: 'text', text: 'Ran on Kody cloud.' }
+
 test('execute tool serializes successes and errors, binds no packages helper tools, and truncates oversized returns', async () => {
 	const handler = await getExecuteHandler()
 	const rawContent: Array<ContentBlock> = [
@@ -425,6 +434,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 	expect(mcpContentResponse.content).toEqual([
 		{ type: 'text', text: 'conversationId: conv-123' },
 		...rawContent,
+		cloudLine,
 	])
 	expect(mcpContentResponse.structuredContent).toEqual({
 		conversationId: 'conv-123',
@@ -433,6 +443,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 			.byteLength,
 		result: null,
 		logs: [{ level: 'info', message: 'captured screenshot' }],
+		ranOn: cloudRanOn,
 	})
 
 	const serverTiming = [
@@ -450,6 +461,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 	expect(jsonResponse.content).toEqual([
 		{ type: 'text', text: 'conversationId: conv-456' },
 		{ type: 'text', text: '{\n  "ok": true\n}' },
+		cloudLine,
 	])
 	expect(jsonResponse.structuredContent).toEqual({
 		conversationId: 'conv-456',
@@ -457,6 +469,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 		returnedBytes: 11,
 		result: { ok: true },
 		logs: [],
+		ranOn: cloudRanOn,
 	})
 
 	const callerContext = {
@@ -505,6 +518,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 			type: 'text',
 			text: `hello\n\n--- TRUNCATED ---\n${truncationNote(11, 5)}`,
 		},
+		cloudLine,
 	])
 	expect(truncatedStringResponse.structuredContent).toEqual({
 		conversationId: 'conv-truncated-string',
@@ -514,6 +528,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 		note: truncationNote(11, 5),
 		result: 'hello',
 		logs: [],
+		ranOn: cloudRanOn,
 	})
 
 	mockPerformanceSequence(30, 40)
@@ -536,6 +551,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 		note: truncationNote(48, 10),
 		result: { truncated: true, type: 'object' },
 		logs: [],
+		ranOn: cloudRanOn,
 	})
 
 	mockPerformanceSequence(50, 65)
@@ -582,6 +598,7 @@ test('execute passes through downstream MCP image content with structured data a
 	expect(passthroughResponse.content).toEqual([
 		conversationLine('conv-passthrough'),
 		webpBlock,
+		cloudLine,
 	])
 	expect(passthroughResponse.structuredContent.result).toEqual({
 		shotId: 's1',
@@ -602,6 +619,7 @@ test('execute passes through downstream MCP image content with structured data a
 	expect(largeResponse.content).toEqual([
 		conversationLine('conv-large-image'),
 		largeBlock,
+		cloudLine,
 	])
 
 	moduleReturns({
@@ -662,6 +680,7 @@ test('execute passes through downstream MCP image content with structured data a
 			type: 'text',
 			text: JSON.stringify({ content: [webpBlock], ok: true }, null, 2),
 		},
+		cloudLine,
 	])
 
 	// Malformed user-authored __mcpContent becomes an isError result (no throw).
@@ -775,7 +794,7 @@ test('execute tool replays finished keyed runs and reports in-progress without r
 	})
 	expect(fallbackReplayed.content).toContainEqual({
 		type: 'text',
-		text: 'Ran on Kody cloud: no execution context in your chain took this run (build-box (ec_box): rejected busy).',
+		text: 'Ran on Kody cloud after build-box declined it (busy).',
 	})
 
 	const inProgress = await replay('conv-running', {
@@ -934,11 +953,107 @@ test('execute tool shows a cloud fallback in the response when no context took t
 	expect(response.structuredContent).toMatchObject({
 		result: { ok: true },
 		executionContext: fallback,
+		ranOn: {
+			kind: 'cloud',
+			id: 'cloud',
+			name: 'Kody cloud',
+			fellBackToCloud: true,
+			attempts: fallback.attempts,
+		},
 	})
 	expect(response.content).toContainEqual({
 		type: 'text',
-		text: 'Ran on Kody cloud: no execution context in your chain took this run (build-box (ec_box): rejected grant_mismatch).',
+		text: 'Ran on Kody cloud after build-box declined it (grant mismatch).',
 	})
+})
+
+test('execute tool says Kody cloud ran a plain run', async () => {
+	const handler = await getExecuteHandler({
+		baseUrl: 'https://example.com',
+		user: {
+			userId: ownerIdFromStored('user-cloud-execute'),
+			email: 'cloud@example.com',
+			displayName: 'Cloud',
+		},
+	})
+	moduleReturns({ ok: true })
+	const response = await handler({
+		code: 'export default async () => ({ ok: true })',
+		conversationId: 'conv-cloud',
+	})
+	expect(response.structuredContent).toMatchObject({
+		result: { ok: true },
+		ranOn: {
+			kind: 'cloud',
+			id: 'cloud',
+			name: 'Kody cloud',
+			attempts: [],
+			fellBackToCloud: false,
+		},
+	})
+	expect(response.structuredContent).not.toHaveProperty('executionContext')
+	expect(response.content).toContainEqual({
+		type: 'text',
+		text: 'Ran on Kody cloud.',
+	})
+})
+
+test('execute tool names the context a run ran on without raw ids', async () => {
+	const metadata = {
+		id: 'ec_box',
+		name: 'build-box',
+		yours: true,
+		fellBackToCloud: false,
+		attempts: [
+			{
+				target: 'ec_old',
+				name: 'old-box',
+				outcome: 'skipped' as const,
+				reason: 'credentials_not_allowed',
+			},
+			{ target: 'ec_box', name: 'build-box', outcome: 'ran' as const },
+		],
+	}
+	routingMock.outcome = {
+		kind: 'ran',
+		result: {
+			content: [{ type: 'text', text: '{ "ok": true }' }],
+			structuredContent: { result: { ok: true } },
+			isError: false,
+		},
+		metadata,
+	}
+	onTestFinished(() => {
+		routingMock.outcome = null
+	})
+	const handler = await getExecuteHandler({
+		baseUrl: 'https://example.com',
+		user: {
+			userId: ownerIdFromStored('user-context-execute'),
+			email: 'context@example.com',
+			displayName: 'Context',
+		},
+	})
+	const response = await handler({
+		code: 'export default async () => ({ ok: true })',
+		conversationId: 'conv-context',
+	})
+	expect(response.structuredContent).toMatchObject({
+		result: { ok: true },
+		executionContext: metadata,
+		ranOn: {
+			kind: 'context',
+			id: 'ec_box',
+			name: 'build-box',
+			yours: true,
+			fellBackToCloud: false,
+			attempts: metadata.attempts,
+		},
+	})
+	const line =
+		'Ran on build-box (your machine) after old-box was skipped (credentials not allowed).'
+	expect(response.content).toContainEqual({ type: 'text', text: line })
+	expect(JSON.stringify(response.content)).not.toContain('ec_')
 })
 
 test('execute tool releases a keyed claim when a usage denial stops the load', async () => {
@@ -1021,6 +1136,7 @@ test('execute tool attaches entitlement metadata on denials and quota, not on su
 		returnedBytes: expect.any(Number),
 		result: { ok: true },
 		logs: [],
+		ranOn: cloudRanOn,
 	})
 	expect(success.structuredContent).not.toHaveProperty('entitlement')
 	expect(heartbeatMock.scheduleFleetExecuteLastSuccess).toHaveBeenCalledTimes(1)
@@ -1446,9 +1562,7 @@ test('execute returns runId when the transport budget hits and keeps the sandbox
 	expect(text).toContain('Poll runGet')
 	expect(text).toContain('execute:budget-key')
 	expect(text).not.toContain('Error:')
-	expect(text).toContain(
-		'Ran on Kody cloud: no execution context in your chain took this run (build-box (ec_box): offline).',
-	)
+	expect(text).toContain('Running on Kody cloud after build-box was offline.')
 	expect(mockModule.ensureRunRecordStarted).toHaveBeenCalledWith(
 		expect.objectContaining({ handle }),
 	)

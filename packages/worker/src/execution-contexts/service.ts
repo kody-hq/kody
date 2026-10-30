@@ -37,6 +37,7 @@ import {
 } from './store.ts'
 import { optInTrustNotice, sharingTrustNotice } from './trust-copy.ts'
 import { type RunHistoryRow } from './session-do.ts'
+import { kodyCloudTarget } from './routing.ts'
 import { type RunRecord } from '#worker/run-records/types.ts'
 
 /** Shared logic behind the execution-context MCP capabilities and routes. */
@@ -632,12 +633,21 @@ export async function updateContext(
 		: parseGrant(row)
 	const name = input.name?.trim() ?? row.name
 	const grantVersion = input.grant ? row.grant_version + 1 : row.grant_version
-	await db
-		.prepare(
-			`UPDATE execution_contexts SET name = ?, grant_json = ?, grant_version = ? WHERE id = ?`,
-		)
-		.bind(name, JSON.stringify(grant), grantVersion, row.id)
-		.run()
+	try {
+		await db
+			.prepare(
+				`UPDATE execution_contexts SET name = ?, grant_json = ?, grant_version = ? WHERE id = ?`,
+			)
+			.bind(name, JSON.stringify(grant), grantVersion, row.id)
+			.run()
+	} catch (error) {
+		if (!String(error).includes('UNIQUE')) throw error
+		throw new ExecutionContextError({
+			status: 409,
+			code: 'invalid_request',
+			message: `Another context in this org is already named ${name}. Pick another name.`,
+		})
+	}
 	if (input.grant) {
 		await sessionStub(caller.env, row.id).updateGrant({
 			snapshot: {
@@ -1026,7 +1036,20 @@ export async function listRuns(
 	return {
 		id: row.id,
 		scope: manager ? ('all' as const) : ('own' as const),
-		runs: page.rows,
+		runs: page.rows.map((run) => ({
+			...run,
+			ranOn:
+				run.fallback.ranOn === row.id
+					? {
+							kind: 'context' as const,
+							id: row.id,
+							name: row.name,
+							yours: row.operator_user_id === caller.userId,
+						}
+					: run.fallback.ranOn === 'cloud'
+						? kodyCloudTarget
+						: null,
+		})),
 		nextCursor: page.nextCursor,
 	}
 }

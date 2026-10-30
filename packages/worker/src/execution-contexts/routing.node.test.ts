@@ -4,6 +4,9 @@ import { runChainShapeError } from './chain-rules.ts'
 import {
 	codeNeedsCredentials,
 	describeCloudFallback,
+	describeRanOn,
+	historyRanOn,
+	ranOnFromMetadata,
 	grantRefusal,
 	markQueuedAttemptExpired,
 	markQueuedAttemptRan,
@@ -273,6 +276,133 @@ test('a cloud fallback says which contexts passed on the run and why', () => {
 			],
 		}),
 	).toBe(
-		'Ran on Kody cloud: no execution context in your chain took this run (build-box (ec_box): rejected grant_mismatch; ec_gone: skipped gone).',
+		'Ran on Kody cloud after build-box declined it (grant mismatch) and a context that no longer exists was skipped.',
 	)
+})
+
+test('describeRanOn names where a run happened with friendly names only', () => {
+	expect(describeRanOn(ranOnFromMetadata(null))).toBe('Ran on Kody cloud.')
+	expect(
+		describeRanOn(
+			ranOnFromMetadata({
+				id: 'ec_box',
+				name: 'build-box',
+				yours: true,
+				fellBackToCloud: false,
+				attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'ran' }],
+			}),
+		),
+	).toBe('Ran on build-box (your machine).')
+	expect(
+		describeRanOn(
+			ranOnFromMetadata({
+				id: 'ec_team',
+				name: 'team-box',
+				yours: false,
+				fellBackToCloud: false,
+				attempts: [
+					{ target: 'ec_box', name: 'build-box', outcome: 'busy' },
+					{ target: 'ec_team', name: 'team-box', outcome: 'ran' },
+				],
+			}),
+			{ running: true },
+		),
+	).toBe('Running on team-box (an execution context) after build-box was busy.')
+	expect(
+		describeRanOn(
+			ranOnFromMetadata({
+				id: null,
+				name: null,
+				fellBackToCloud: true,
+				attempts: [
+					{
+						target: 'ec_box',
+						name: 'build-box',
+						outcome: 'skipped',
+						reason: 'credentials_not_allowed',
+					},
+				],
+			}),
+		),
+	).toBe(
+		'Ran on Kody cloud after build-box was skipped (credentials not allowed).',
+	)
+	expect(
+		describeRanOn(
+			ranOnFromMetadata({
+				id: 'ec_box',
+				name: 'build-box',
+				yours: true,
+				fellBackToCloud: false,
+				attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'queued' }],
+			}),
+		),
+	).toBe('Waiting for build-box (your machine) to take this run.')
+	expect(ranOnFromMetadata({ id: 'ec_box', name: 'build-box' })).toEqual({
+		kind: 'context',
+		id: 'ec_box',
+		name: 'build-box',
+		attempts: [],
+		fellBackToCloud: false,
+	})
+})
+
+test('a missing chain ref that is a raw context id never reaches the text', () => {
+	expect(
+		describeRanOn(
+			ranOnFromMetadata({
+				id: 'cloud',
+				name: 'Kody cloud',
+				fellBackToCloud: true,
+				attempts: [
+					{
+						target: 'ec_missing1',
+						name: 'ec_missing1',
+						outcome: 'skipped',
+						reason: 'not_found',
+					},
+					{ target: 'unknown-box', name: 'old-box', outcome: 'skipped' },
+					{ target: 'cloud', name: 'Kody cloud', outcome: 'ran' },
+				],
+			}),
+		),
+	).toBe(
+		'Ran on Kody cloud after an execution context was skipped (not found) and old-box was skipped.',
+	)
+})
+
+test('run history reports no ranOn for a queued run that expired unrun', () => {
+	const expired = {
+		id: 'ec_queue1',
+		name: 'build-box',
+		fellBackToCloud: false,
+		attempts: [{ target: 'ec_queue1', name: 'build-box', outcome: 'expired' }],
+	}
+	expect(historyRanOn(expired)).toBeNull()
+	expect(
+		historyRanOn({
+			...expired,
+			attempts: [{ target: 'ec_queue1', name: 'build-box', outcome: 'ran' }],
+		}),
+	).toMatchObject({ kind: 'context', id: 'ec_queue1', name: 'build-box' })
+})
+
+test('a queued run that revocation ended unrun has no ranOn in history', () => {
+	const metadata = markQueuedAttemptExpired(
+		{
+			executionContext: {
+				id: 'ec_queue1',
+				name: 'build-box',
+				fellBackToCloud: false,
+				attempts: [
+					{ target: 'ec_queue1', name: 'build-box', outcome: 'queued' },
+				],
+			},
+		},
+		'context_revoked',
+	)
+	expect(metadata.executionContext).toMatchObject({
+		attempts: [{ outcome: 'expired', reason: 'context_revoked' }],
+	})
+	expect(historyRanOn(metadata.executionContext)).toBeNull()
 })

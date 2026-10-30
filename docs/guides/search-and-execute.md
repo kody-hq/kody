@@ -123,6 +123,15 @@ export default async function main(params) {
 `html`). See [Execute and workflows](../use/execute.md) for `kody:runtime`
 helpers, workflows, and timeouts.
 
+### Where it ran
+
+Every execute response says where the run happened. `structuredContent.ranOn`
+(also in CLI `--json` and `POST /v1/execute`) is
+`{ kind: "cloud" | "context", id: "cloud" | "ec_…", name: "Kody cloud" | context name, attempts, fellBackToCloud }`,
+and a text line names it with friendly names only, such as `Ran on Kody cloud.`
+or `Ran on build-box (your machine).` `runGet` shows the same `metadata.ranOn`.
+See [execution contexts](../contributing/architecture/execution-contexts.md).
+
 ## Search first, then execute
 
 1. **Search** for the outcome — a query, a domain list, or a known entity ref.

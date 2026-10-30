@@ -747,6 +747,10 @@
 		{
 			"filename": "0206-login-credential-sessions.sql",
 			"sha256": "4f8025d5208873d7761c2f4e78233de172aa547f73b5572e606a645a8d927d6e"
+		},
+		{
+			"filename": "0207-execution-contexts-release-revoked-names.sql",
+			"sha256": "187cbb834aa580cb02572f501b3fc8672ccd0a7fe26af94a609c435038a4778d"
 		}
 	]
 }

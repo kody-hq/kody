@@ -61,22 +61,136 @@ export type ExecutionContextRunMetadata = {
 	name: string | null
 	attempts: Array<RoutingAttempt>
 	fellBackToCloud: boolean
+	/** The requester runs this context's daemon (their own machine). */
+	yours?: boolean
+}
+
+/** Where a run happened: Kody cloud or one execution context. */
+export type RanOnTarget =
+	| { kind: 'cloud'; id: 'cloud'; name: 'Kody cloud' }
+	| { kind: 'context'; id: string; name: string; yours?: boolean }
+
+/** `ranOn` on every execute response: the target plus how it got there. */
+export type ExecuteRanOn = RanOnTarget & {
+	attempts: Array<RoutingAttempt>
+	fellBackToCloud: boolean
+}
+
+export const kodyCloudTarget = {
+	kind: 'cloud',
+	id: 'cloud',
+	name: 'Kody cloud',
+} as const satisfies RanOnTarget
+
+/** Run-history `ranOn`: null when a queued run expired before anything ran it. */
+export function historyRanOn(value: unknown): ExecuteRanOn | null {
+	const attempts =
+		isRecord(value) && Array.isArray(value.attempts)
+			? (value.attempts as Array<RoutingAttempt>)
+			: []
+	return attempts.at(-1)?.outcome === 'expired'
+		? null
+		: ranOnFromMetadata(value)
+}
+
+/** Reads run metadata (`executionContext`) as `ranOn`; anything else is cloud. */
+export function ranOnFromMetadata(value: unknown): ExecuteRanOn {
+	const metadata = isRecord(value) ? value : null
+	const attempts = Array.isArray(metadata?.attempts)
+		? (metadata.attempts as Array<RoutingAttempt>)
+		: []
+	const fellBackToCloud = metadata?.fellBackToCloud === true
+	if (
+		!fellBackToCloud &&
+		typeof metadata?.id === 'string' &&
+		metadata.id !== 'cloud'
+	) {
+		return {
+			kind: 'context',
+			id: metadata.id,
+			name: typeof metadata.name === 'string' ? metadata.name : metadata.id,
+			...(typeof metadata.yours === 'boolean' ? { yours: metadata.yours } : {}),
+			attempts,
+			fellBackToCloud: false,
+		}
+	}
+	return {
+		...kodyCloudTarget,
+		attempts: attempts.filter((attempt) => attempt.outcome !== 'ran'),
+		fellBackToCloud,
+	}
 }
 
 /**
- * One line telling the caller that a run meant for an execution context
- * ran on Kody cloud instead, and why each context passed on it.
+ * One line saying where a run happened, with friendly names only, e.g.
+ * "Ran on Kody cloud after build-box was offline."
  */
+export function describeRanOn(
+	ranOn: ExecuteRanOn,
+	options: { running?: boolean } = {},
+) {
+	const passed = ranOn.attempts.filter(
+		(attempt) =>
+			attempt.outcome !== 'ran' &&
+			!(ranOn.kind === 'context' && attempt.target === ranOn.id),
+	)
+	const after =
+		passed.length > 0 ? ` after ${joinList(passed.map(describePass))}` : ''
+	const where =
+		ranOn.kind === 'cloud'
+			? ranOn.name
+			: `${ranOn.name} (${ranOn.yours ? 'your machine' : 'an execution context'})`
+	const last = ranOn.attempts.at(-1)
+	if (ranOn.kind === 'context' && last?.outcome === 'queued') {
+		return `Waiting for ${where} to take this run${after}.`
+	}
+	return `${options.running ? 'Running' : 'Ran'} on ${where}${after}.`
+}
+
+/** The cloud-fallback line (kept for callers that only have metadata). */
 export function describeCloudFallback(metadata: ExecutionContextRunMetadata) {
-	const tried = metadata.attempts
-		.map((attempt) => {
-			const label = attempt.name
-				? `${attempt.name} (${attempt.target})`
-				: attempt.target
-			return `${label}: ${attempt.outcome}${attempt.reason ? ` ${attempt.reason}` : ''}`
-		})
-		.join('; ')
-	return `Ran on Kody cloud: no execution context in your chain took this run${tried ? ` (${tried})` : ''}.`
+	return describeRanOn(ranOnFromMetadata(metadata))
+}
+
+const passPhrases: Record<RoutingAttempt['outcome'], string> = {
+	ran: 'ran it',
+	offline: 'was offline',
+	busy: 'was busy',
+	rejected: 'declined it',
+	aborted: 'stopped it before it started',
+	timeout: 'did not answer in time',
+	skipped: 'was skipped',
+	queued: 'was queued',
+	expired: 'did not take it before the queue expired',
+}
+
+function describePass(attempt: RoutingAttempt) {
+	const who =
+		(attempt.name && !looksLikeContextId(attempt.name, attempt.target)
+			? attempt.name
+			: null) ??
+		(attempt.reason === 'gone'
+			? 'a context that no longer exists'
+			: 'an execution context')
+	const reason =
+		attempt.reason && attempt.reason !== 'gone'
+			? ` (${attempt.reason.replaceAll('_', ' ')})`
+			: ''
+	return `${who} ${passPhrases[attempt.outcome] ?? attempt.outcome}${reason}`
+}
+
+/** A missing chain ref keeps the raw ref as its name; never print an id. */
+function looksLikeContextId(name: string, target: string) {
+	return name === target || /^ec_[a-z0-9]+$/i.test(name)
+}
+
+function joinList(items: Array<string>) {
+	if (items.length <= 1) return items.join('')
+	return `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 export type RoutingOutcome =
@@ -296,6 +410,7 @@ export async function routeExecute(input: {
 	): ExecutionContextRunMetadata => ({
 		id: row?.id ?? null,
 		name: row?.name ?? null,
+		...(row ? { yours: row.operator_user_id === input.request.userId } : {}),
 		attempts,
 		fellBackToCloud,
 	})
@@ -490,6 +605,7 @@ export async function routeExecute(input: {
 		const queuedMetadata: ExecutionContextRunMetadata = {
 			id: row.id,
 			name: row.name,
+			yours: row.operator_user_id === input.request.userId,
 			attempts: [
 				...attempts,
 				{ target: row.id, name: row.name, outcome: 'queued' },
@@ -632,14 +748,12 @@ export async function resolveRunChain(
 	}
 }
 
-/** A queued run that expired never ran: mark its queued attempt `expired`. */
+/** A queued run that ended unrun (expiry, revocation): mark it `expired`. */
 export function markQueuedAttemptExpired(
 	metadata: Record<string, unknown>,
+	reason = 'queue_expired',
 ): Record<string, unknown> {
-	return markQueuedAttempt(metadata, {
-		outcome: 'expired',
-		reason: 'queue_expired',
-	})
+	return markQueuedAttempt(metadata, { outcome: 'expired', reason })
 }
 
 /** A queued run that the context took after reconnecting ran there. */

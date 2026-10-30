@@ -69,6 +69,18 @@ sequenceDiagram
 - Chains are per user per org, hold up to 3 contexts, and Kody cloud is always
   the last entry when present. A chain PUT with anything after cloud is a 400.
   Leaving cloud out makes the chain strict.
+- Every routed execute response carries `ranOn` (MCP `structuredContent`, CLI
+  `--json`, `POST /v1/execute`); input or setup errors before routing may omit
+  it:
+  `{ kind: "cloud" | "context", id: "cloud" | "ec_…", name: "Kody cloud" | context name, yours?, attempts, fellBackToCloud }`.
+  `attempts` lists contexts that passed on the run with reasons. A short text
+  line says the same with friendly names only, e.g.
+  `Ran on build-box (your machine).` or
+  `Ran on Kody cloud after build-box was skipped (credentials not allowed).`
+  `executionContext` stays for runs that involved a context. `runGet` adds the
+  same `metadata.ranOn` to execute runs, and `executionContextRunList` rows
+  carry `ranOn` (`{ kind, id, name }`, or null when the run did not start
+  there).
 - A named context never falls back unless the run passes `fallback: "chain"`.
   `requires: ["fs" | "lan"]` skips Kody cloud.
 - A run (`execute` `chain`) or automation (`execution` on jobs, webhooks,
