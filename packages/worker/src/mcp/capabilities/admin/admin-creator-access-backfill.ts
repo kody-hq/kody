@@ -66,7 +66,7 @@ export const adminCreatorAccessBackfillCapability = defineDomainCapability(
 		name: 'adminCreatorAccessBackfill',
 		contextRuns: 'deny',
 		description:
-			"Creator grants for packages, package apps, and team credentials that non-owner members created before creators got a grant on create. The creator is the actor of the first-publish (`package.published` firstPublish) or `credential.created` audit row. Skips owners, ex-members, deleted resources, and anyone whose grant on the resource exists or was ever revoked. dryRun (default true) reports counts only. Apply writes `manage` grants with origin 'created'. Idempotent. Internal admin output: share counts only. One page of orgs per execute; resume with nextCursor until null.",
+			"Creator grants for packages, package apps, and team credentials that non-owner members created before creators got a grant on create. The creator is the actor of the first-publish (`package.published` firstPublish) or `credential.created` audit row. Skips owners, ex-members, deleted resources, and anyone whose grant on the resource exists or was ever revoked. dryRun (default true) writes nothing. Both modes return counts plus per-resource details (org, resource, and creator ids); apply writes `manage` grants with origin 'created'. Idempotent. Internal admin output: share counts only, not the details. One page of orgs per execute; resume with nextCursor until null.",
 		keywords: [
 			'admin',
 			'creator',
