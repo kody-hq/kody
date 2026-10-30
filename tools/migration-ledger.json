@@ -767,6 +767,10 @@
 		{
 			"filename": "0211-org-member-creation.sql",
 			"sha256": "191710d9f0786fdee465d000fb63e0680903ebb88217871d884afc3ed4e7b52e"
+		},
+		{
+			"filename": "0213-execution-context-grant-credentials-removed.sql",
+			"sha256": "026cc10018f6e1ea63788f975d3ef4a4c5132d388c8ea2420e076326477165b6"
 		}
 	]
 }

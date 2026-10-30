@@ -42,7 +42,7 @@ export type ApiPrincipal =
 			/** The requester's credential scopes; null does not narrow. */
 			scopes: Array<string> | null
 			runtime: EcpGrant['runtime']
-			/** What the context's grant lets this run do with credentials now. */
+			/** `requester` on the operator's own runs, `none` on anyone else's. */
 			credentials: ContextRunCredentials
 	  }
 

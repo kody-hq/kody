@@ -4,8 +4,7 @@ import { expect, test } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
-	assertGrantAllowsSharing,
-	contextIsShared,
+	contextCredentialIds,
 	contextRunCredentials,
 } from './credential-grant.ts'
 import {
@@ -20,7 +19,7 @@ const orgId = 'org_acme'
 const operator = 'user_operator'
 const now = '2026-10-30T00:00:00.000Z'
 
-function setup(credentials: (typeof ecpDefaultGrant)['credentials']) {
+function setup() {
 	const sqlite = new DatabaseSync(':memory:', {
 		enableForeignKeyConstraints: false,
 	})
@@ -31,12 +30,7 @@ function setup(credentials: (typeof ecpDefaultGrant)['credentials']) {
 				public_key_jwk, thumbprint, created_at, grant_json, grant_version)
 			 VALUES ('ec_mac', ?, ?, 0, 'mac', '{}', 'thumb', ?, ?, 1)`,
 		)
-		.run(
-			orgId,
-			operator,
-			now,
-			JSON.stringify({ ...ecpDefaultGrant, credentials }),
-		)
+		.run(orgId, operator, now, JSON.stringify(ecpDefaultGrant))
 	const db = createD1FromSqlite(sqlite)
 	const session = {
 		updateGrant: async () => {},
@@ -46,23 +40,27 @@ function setup(credentials: (typeof ecpDefaultGrant)['credentials']) {
 	}
 	const env = {
 		APP_DB: db,
+		AUDIT_DB: db,
 		EXECUTION_CONTEXT_SESSION: {
 			idFromName: (n: string) => n,
 			get: () => session,
 		},
 	} as unknown as Env
-	const callerFor = (userId: string) =>
-		({
+	const callerFor = (userId: string) => {
+		const request = {
+			actor: { userId, username: userId },
+			org: { id: orgId, slug: 'acme' },
+			membership: { role: 'member' },
+			credential: { kind: 'session', id: null },
+		}
+		return {
 			env,
-			callerContext: { baseUrl: 'https://kody.test' },
-			request: {
-				actor: { userId, username: userId },
-				org: { id: orgId, slug: 'acme' },
-				membership: { role: 'member' },
-			},
+			callerContext: { baseUrl: 'https://kody.test', request },
+			request,
 			userId,
 			orgId,
-		}) as unknown as ExecutionContextCaller
+		} as unknown as ExecutionContextCaller
+	}
 	const shareWith = (userId: string) =>
 		sqlite
 			.prepare(
@@ -83,103 +81,40 @@ function setup(credentials: (typeof ecpDefaultGrant)['credentials']) {
 	}
 }
 
-test('the operator can let all their credentials through an unshared context', async () => {
-	const s = setup({ mode: 'none' })
-	await updateContext(s.caller, 'ec_mac', {
-		grant: { credentials: { mode: 'requester' } },
+test("the operator's own runs use their credentials as in cloud, and anyone else's use none", () => {
+	const own = contextRunCredentials({
+		operatorUserId: operator,
+		requesterUserId: operator,
 	})
-	expect((await s.grant()).credentials).toEqual({ mode: 'requester' })
+	expect(own).toBe('requester')
+	expect(contextCredentialIds(own)).toBeNull()
+	const other = contextRunCredentials({
+		operatorUserId: operator,
+		requesterUserId: 'user_friend',
+	})
+	expect(other).toBe('none')
+	expect(contextCredentialIds(other)).toEqual([])
 })
 
-test('a shared context cannot be switched to requester credentials', async () => {
-	const s = setup({ mode: 'none' })
-	s.shareWith('user_friend')
-	await expect(
-		updateContext(s.caller, 'ec_mac', {
-			grant: { credentials: { mode: 'requester' } },
-		}),
-	).rejects.toThrow(
-		/is shared, so its grant cannot let every credential through/,
-	)
-	expect((await s.grant()).credentials).toEqual({ mode: 'none' })
+test('a context can be shared and attached with no credential narrowing first', async () => {
+	const s = setup()
+	await setSharing(s.caller, 'ec_mac', {
+		add: [{ subject: { type: 'user', id: 'user_friend' }, preset: 'use' }],
+	})
+	await setSharing(s.caller, 'ec_mac', { allMembers: true })
+	await attachContext(s.caller, 'ec_mac', 'org_other').catch((error) => {
+		expect(String(error)).not.toMatch(/credential/i)
+	})
+	expect(await s.grant()).not.toHaveProperty('credentials')
 })
 
-test('only the operator can set requester credentials', async () => {
-	const s = setup({ mode: 'none' })
-	s.shareWith('user_friend')
-	await expect(
-		updateContext(s.callerFor('user_friend'), 'ec_mac', {
-			grant: { credentials: { mode: 'requester' } },
-		}),
-	).rejects.toThrow(/Only mac's operator/)
-})
-
-test('sharing or attaching is refused while the grant lets every credential through', async () => {
-	const s = setup({ mode: 'requester' })
-	await expect(
-		setSharing(s.caller, 'ec_mac', {
-			add: [{ subject: { type: 'user', id: 'user_friend' }, preset: 'use' }],
-		}),
-	).rejects.toThrow(/Narrow its credentials to an explicit list/)
-	await expect(
-		setSharing(s.caller, 'ec_mac', { allMembers: true }),
-	).rejects.toThrow(/credentials_need_unshared_context/)
-	await expect(attachContext(s.caller, 'ec_mac', 'org_other')).rejects.toThrow(
-		/allowed only while it is not shared/,
-	)
-	expect(
-		await contextIsShared(s.db, (await getExecutionContext(s.db, 'ec_mac'))!),
-	).toBe(false)
-	expect((await s.grant()).credentials).toEqual({ mode: 'requester' })
-})
-
-test('list and none grants can still be shared', () => {
-	const grants: Array<(typeof ecpDefaultGrant)['credentials']> = [
-		{ mode: 'list', ids: ['cred_1'] },
-		{ mode: 'none' },
-	]
-	for (const credentials of grants) {
-		expect(() =>
-			assertGrantAllowsSharing({ name: 'mac', grant: { credentials } }),
-		).not.toThrow()
-	}
-})
-
-test('a requester grant allows no credentials at run time once shared, or for anyone but the operator', async () => {
-	const s = setup({ mode: 'requester' })
-	const requester = { credentials: { mode: 'requester' } } as const
-	expect(
-		contextRunCredentials(requester, {
-			shared: false,
-			requesterIsOperator: true,
-		}),
-	).toEqual({ mode: 'requester' })
-	s.shareWith('user_friend')
-	const row = (await getExecutionContext(s.db, 'ec_mac'))!
-	expect(await contextIsShared(s.db, row)).toBe(true)
-	expect(
-		contextRunCredentials(requester, {
-			shared: await contextIsShared(s.db, row),
-			requesterIsOperator: true,
-		}),
-	).toEqual({ mode: 'requester_shared' })
-	expect(
-		contextRunCredentials(requester, {
-			shared: false,
-			requesterIsOperator: false,
-		}),
-	).toEqual({ mode: 'requester_shared' })
-})
-
-test('list and none credentials are unchanged at run time', () => {
-	const input = { shared: true, requesterIsOperator: false }
-	expect(
-		contextRunCredentials({ credentials: { mode: 'list', ids: ['c'] } }, input),
-	).toEqual({ mode: 'list', ids: ['c'] })
-	expect(
-		contextRunCredentials({ credentials: { mode: 'list', ids: [] } }, input),
-	).toEqual({ mode: 'none' })
-	expect(
-		contextRunCredentials({ credentials: { mode: 'none' } }, input),
-	).toEqual({ mode: 'none' })
+test('a grant update keeps the grant free of credential settings', async () => {
+	const s = setup()
+	await updateContext(s.caller, 'ec_mac', {
+		grant: { egress: { mode: 'none' } },
+	})
+	expect(await s.grant()).toEqual({
+		...ecpDefaultGrant,
+		egress: { ...ecpDefaultGrant.egress, mode: 'none' },
+	})
 })

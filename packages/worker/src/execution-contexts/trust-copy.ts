@@ -6,7 +6,7 @@
 
 export const registrationTrustLines = [
 	'Code sent to this context runs on this machine, under the account that runs kody daemon.',
-	'It starts as Only me, and while it stays that way your runs on it may use any of your credentials: those requests leave from Kody cloud, so the values never reach this machine. Sharing it needs its credentials narrowed to an explicit list first. If you share it, the people you share it with run code on this machine, and you can see their code, inputs, logs, results and the responses of credentialed requests their runs make. Their credential values stay on Kody.',
+	'It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach this machine. Its Kody API allowlist can narrow what runs here may call, and runs here cannot start workflows. If you share it, the people you share it with run code on this machine and you can see their code, inputs, logs and results. Their runs cannot use their credentials here, so those runs go to the next entry in their chain.',
 	'What it exposes (files, local network, internet) is set on this machine by its local policy.',
 ] as const
 
@@ -22,12 +22,12 @@ export function sharingTrustNotice(input: {
 		? `@${input.operatorHandle}`
 		: 'its operator'
 	const lines = [
-		`Anyone you share with can run code on this machine (operated by ${operator}) after they opt in. ${operator} can see their code, inputs, logs, results and the responses of credentialed requests their runs make; their credential values stay on Kody.`,
+		`Anyone you share with can run code on this machine (operated by ${operator}) after they opt in. ${operator} can see their code, inputs, logs and results. Their runs that can use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.`,
 		'While their run is active, this machine can make Kody API calls as them (within the Kody API access the grant allows) and can change their results.',
 	]
 	if (input.localNetwork) {
 		lines.push(
-			"Local network access is on: their runs can reach devices and services on this machine's local network. Requests that use their credentials still leave from Kody cloud.",
+			"Local network access is on: their runs can reach devices and services on this machine's local network.",
 		)
 	}
 	return lines.join(' ')
@@ -42,12 +42,12 @@ export function optInTrustNotice(input: {
 		? `@${input.operatorHandle}`
 		: 'its operator'
 	const lines = [
-		`Your runs will execute on ${input.name}, a machine operated by ${operator}. ${operator} can see the code, inputs, logs and results of your runs and the responses of credentialed requests they make. Your credential values stay on Kody.`,
+		`Your runs will execute on ${input.name}, a machine operated by ${operator}. ${operator} can see the code, inputs, logs and results of your runs. Runs that can use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.`,
 		`While your run is active, ${operator}'s machine can make Kody API calls as you, within the Kody API access its grant allows, and can change the results your run returns.`,
 	]
 	if (input.localNetwork) {
 		lines.push(
-			`Local network access is on: your runs can reach devices and services on ${operator}'s local network. Requests that use your credentials still leave from Kody cloud, so ${operator}'s machine never sees your credential values.`,
+			`Local network access is on: your runs can reach devices and services on ${operator}'s local network.`,
 		)
 	}
 	return lines.join(' ')
@@ -74,7 +74,7 @@ export function registrationNextSteps(input: {
 		},
 		{
 			kind: 'share',
-			text: `Optional: share ${input.name} with people, a team, or everyone in the org. Sharing lets them run code on this machine after they opt in. First narrow its credentials to an explicit list (or none) with executionContextUpdate; a context that lets all your credentials through cannot be shared.`,
+			text: `Optional: share ${input.name} with people, a team, or everyone in the org. Sharing lets them run code on this machine after they opt in; their runs that can use credentials go to the next entry in their chain instead.`,
 			mcp: { capability: 'executionContextShareSet' },
 			api: {
 				method: 'PUT',

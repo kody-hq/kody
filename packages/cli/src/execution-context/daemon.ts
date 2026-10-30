@@ -22,6 +22,8 @@ import {
 	isPermanentContextRefusal,
 	requestConnectTicket,
 	signedFetch,
+	experimentOffError,
+	isExperimentOffError,
 } from './client.js'
 
 export type ContextRunExecutor = (input: {
@@ -647,6 +649,8 @@ export async function runDaemon(input: DaemonInput): Promise<DaemonStop> {
 			)
 		} catch (error) {
 			if (stopping()) return 'shutdown'
+			// Retrying cannot help until the person turns the experiment on.
+			if (isExperimentOffError(error)) throw experimentOffError(input.apiUrl)
 			if (isPermanentContextRefusal(error)) {
 				input.log(
 					`Kody refused this context: ${error instanceof Error ? error.message : String(error)} Stopping for good.`,

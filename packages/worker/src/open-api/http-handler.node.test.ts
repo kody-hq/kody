@@ -259,7 +259,9 @@ test('token minting enforces parent scopes for local-execute', async () => {
 	expect(JSON.stringify(listed.body)).not.toContain(childOk.body['token'])
 
 	const noTokenRead = await api.mint(['package:read'])
-	const listDenied = await api.call('GET', '/v1/tokens', { token: noTokenRead })
+	const listDenied = await api.call('GET', '/v1/tokens', {
+		token: noTokenRead,
+	})
 	expect(listDenied.status).toBe(403)
 	expect(listDenied.body.error?.code).toMatch(/insufficient_scope|forbidden/)
 })
@@ -604,7 +606,9 @@ test('mirrors the /mcp account gates', async () => {
 	reset.sqlite
 		.prepare(`UPDATE users SET password_changed_at = ? WHERE id = 1`)
 		.run(new Date(Date.now() + 1000).toISOString())
-	const resetResponse = await reset.call('GET', '/v1/me', { token: resetToken })
+	const resetResponse = await reset.call('GET', '/v1/me', {
+		token: resetToken,
+	})
 	expect(resetResponse.status).toBe(401)
 
 	const deleting = await createApi()

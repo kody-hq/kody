@@ -1049,6 +1049,41 @@ test('runs up to the grant-capped concurrency at once and report a timing breakd
 	}
 })
 
+test('a flag-off account gets the opt-in link instead of a bare 403', async () => {
+	const fetchFn = (async () =>
+		Response.json(
+			{
+				error: {
+					code: 'feature_disabled',
+					message: 'Execution contexts are an experiment that is off.',
+				},
+			},
+			{ status: 403 },
+		)) as typeof fetch
+	await assert.rejects(
+		runExecutionContextCommand({
+			command: 'chain',
+			positionals: ['show'],
+			values: {},
+			apiUrl: 'https://kody.test/',
+			token: async () => 'kody_at_test',
+			clientVersion: '0.0.0',
+			write: () => {},
+			fetchFn,
+		}),
+		(error: Error) => {
+			assert.match(error.message, /experiment that is off for this account/)
+			assert.match(error.message, /https:\/\/kody\.test\/account\/experiments/)
+			assert.match(error.message, /experimentSet/)
+			assert.match(
+				error.message,
+				/https:\/\/kody\.test\/docs\/execution-contexts/,
+			)
+			return true
+		},
+	)
+})
+
 test('kody context revoke and delete call the revoke and delete routes', async () => {
 	const calls: Array<string> = []
 	const fetchFn = (async (url: URL | string, init?: RequestInit) => {

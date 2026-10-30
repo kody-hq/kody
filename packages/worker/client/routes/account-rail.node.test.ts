@@ -161,12 +161,16 @@ test('leaving an owner page opens that workspace Overview by org slug', () => {
 	).toBe('/@acme-public')
 })
 
-test('Execution contexts sits right after Jobs in Build only when the flag is on', () => {
+test('Execution contexts sits right after Jobs in Build, marked as an experiment while the flag is off', () => {
 	const build = (groups: Array<AccountRailGroup>) =>
 		groups
 			.find((group) => group.label === 'Build')
 			?.items.map((item) => item.id)
-	expect(build(rails.team)).not.toContain('execution-contexts')
+	const offIds = build(rails.team) ?? []
+	expect(offIds[offIds.indexOf('jobs') + 1]).toBe('execution-contexts')
+	expect(
+		items(rails.team).find((item) => item.id === 'execution-contexts'),
+	).toMatchObject({ badge: 'Experiment' })
 	const flagged = workspaceRailGroups({
 		orgSlug: 'acme',
 		personal: false,
@@ -181,6 +185,9 @@ test('Execution contexts sits right after Jobs in Build only when the flag is on
 		href: '/@acme/-/execution-contexts',
 		icon: 'server',
 	})
+	expect(
+		items(flagged).find((item) => item.id === 'execution-contexts')?.badge,
+	).toBeUndefined()
 	const collaborator = workspaceRailGroups({
 		orgSlug: 'acme',
 		personal: false,

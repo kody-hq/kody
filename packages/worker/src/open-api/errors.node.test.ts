@@ -63,7 +63,9 @@ test('toApiError maps a quarantined inbound reply refusal to 409 quarantined_inb
 		code: 'quarantined_inbound_reply',
 		message: refused.message,
 	})
-	const wrapped = new Error('Capability invocation failed.', { cause: refused })
+	const wrapped = new Error('Capability invocation failed.', {
+		cause: refused,
+	})
 	expect(toApiError(wrapped)).toMatchObject({
 		status: 409,
 		code: 'quarantined_inbound_reply',

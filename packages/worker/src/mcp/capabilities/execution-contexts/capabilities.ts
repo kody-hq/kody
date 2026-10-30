@@ -80,7 +80,7 @@ export const executionContextGetCapability = defineDomainCapability(domain, {
 	},
 })
 
-const grantPatchSchema = z
+export const grantPatchSchema = z
 	.object({
 		fs: z
 			.array(z.object({ path: z.string().min(1), mode: z.enum(['ro', 'rw']) }))
@@ -93,19 +93,6 @@ const grantPatchSchema = z
 				ports: z.array(z.number().int().min(1).max(65535)).max(32).optional(),
 			})
 			.optional(),
-		credentials: z
-			.union([
-				z.object({ mode: z.literal('none') }),
-				z.object({
-					mode: z.literal('list'),
-					ids: z.array(z.string().min(1)).max(64),
-				}),
-				z.object({ mode: z.literal('requester') }),
-			])
-			.optional()
-			.describe(
-				'Which credentials runs may use. Credentialed requests always leave from Kody cloud and values never reach the machine. "none" allows none; "list" allows the listed credential ids; "requester" allows every credential the person running the code can use, and only while the context is not shared (operator only; sharing is refused until it is narrowed to a list or none). New contexts start as "requester".',
-			),
 		runtime: z
 			.union([
 				z.object({ mode: z.literal('all') }),
@@ -128,6 +115,11 @@ const grantPatchSchema = z
 			})
 			.optional(),
 	})
+	.loose()
+	.refine((grant) => !('credentials' in grant), {
+		message:
+			'grant.credentials was removed: runs on a context use credentials as they would in Kody cloud for the operator, and runs by anyone else use none. Drop the credentials field.',
+	})
 	.describe(
 		'Server-side grant. The daemon intersects it with the machine local policy (`kody context policy` on that machine), so it can only narrow what the machine allows. fs entries are absolute host folders with mode ro or rw; a folder is mounted at its real path only where both layers allow it, with the narrower mode, and the context offers `requires: ["fs"]` only while at least one folder is mounted.',
 	)
@@ -137,7 +129,7 @@ export const executionContextUpdateCapability = defineDomainCapability(domain, {
 	contextRuns: 'deny',
 	orgPermission: 'execution_context:write',
 	description:
-		'Rename an execution context or change its grant (files, egress, credentials: none, an id list, or every credential you can use while unshared, Kody API runtime allowlist, limits). Needs Contribute or Manage on it.',
+		'Rename an execution context or change its grant (files, egress, Kody API runtime allowlist, limits). Runs on a context use credentials exactly as they would in Kody cloud for the operator (requests leave from Kody cloud, so values never reach the machine); runs by anyone else use none. Needs Contribute or Manage on it.',
 	keywords: ['execution context', 'grant', 'rename'],
 	readOnly: false,
 	idempotent: true,

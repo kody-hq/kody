@@ -13,14 +13,12 @@ const grants: Record<string, ExecutionContextGrantSummary> = {
 	locked: {
 		fs: 0,
 		egress: { mode: 'none' },
-		credentials: 'none',
 		runtime: 'none',
 		timeoutMs: 90_000,
 	},
 	publicDefault: {
 		fs: 0,
 		egress: { mode: 'public' },
-		credentials: 'none',
 		runtime: 'all',
 		timeoutMs: 90_000,
 	},
@@ -28,7 +26,6 @@ const grants: Record<string, ExecutionContextGrantSummary> = {
 		fs: 2,
 		fsMode: 'write',
 		egress: { mode: 'public-and-lan' },
-		credentials: { count: 1 },
 		runtime: { mode: 'allowlist', count: 3 },
 		timeoutMs: 300_000,
 	},
@@ -36,7 +33,6 @@ const grants: Record<string, ExecutionContextGrantSummary> = {
 		fs: 1,
 		fsMode: 'read',
 		egress: { mode: 'allowlist', hosts: 4 },
-		credentials: 'none',
 		runtime: { mode: 'allowlist', count: 0 },
 		timeoutMs: 60_000,
 	},
@@ -100,10 +96,11 @@ test('LAN line appears only when local network access is on', () => {
 	).toContain('Local network access is on')
 })
 
-test('credential copy depends on oauthClientCredentials returning only a handle', () => {
-	// If credential values could reach a context, every "stay on Kody" line is false.
+test("opt-in copy says runs that can use the person's credentials go elsewhere", () => {
 	expect(
 		optInCopy({ name: 'x', operator: 'sam', grant: grants.locked! })
 			.paragraphs[0],
-	).toContain('Your credential values stay on Kody.')
+	).toContain(
+		'Runs that can use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.',
+	)
 })

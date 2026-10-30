@@ -64,3 +64,25 @@ found credential the list does not name is refused before its value is read
 (`execution_context_credential_not_granted`) and audited as denied. The
 streaming `/v1/capability-proxy/gateway-fetch` hop applies the same grant check
 as the JSON `gatewayFetch` hop before it starts.
+
+## Amendment 2026-10-30: cloud parity replaces the credential grant
+
+Kent's decision: a run on a machine behaves as close to identical to the same
+run in Kody cloud as possible; the machine adds only its filesystem and LAN
+access. This supersedes the `none` / `list` / `requester` grant setting in the
+two amendments above.
+
+- Context grants no longer carry credentials. Migration `0213` drops
+  `grant_json.credentials` from every stored grant, so nobody has anything to
+  do.
+- The operator's own runs on their context use credentials exactly as in Kody
+  cloud: the same token-scope narrowing, credential picks and grants, package
+  capabilities and org grants, with no context-level narrowing.
+- Anyone else's run on a shared context uses no credentials, as before. Routing
+  skips the context for such a run when it can use a credential
+  (`credentials_operator_only`) and the chain falls through; the door refuses
+  any credential such a run resolves anyway. Whether other people's runs get
+  full parity is an open product decision.
+- Sharing and attaching no longer depend on the grant's credentials.
+- Credentialed requests still leave from Kody cloud, so credential values never
+  reach the machine.

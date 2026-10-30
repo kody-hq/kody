@@ -15,11 +15,15 @@ import { metaListCapabilitiesCapability } from './meta-list-capabilities.ts'
 import { metaSetMcpServerInstructionsCapability } from './meta-set-mcp-server-instructions.ts'
 import { searchCapability } from './search.ts'
 import { cliCredentialBootstrapCapability } from './cli-credential-bootstrap.ts'
+import {
+	experimentListCapability,
+	experimentSetCapability,
+} from './experiments.ts'
 
 export const metaDomain = defineDomain({
 	name: capabilityDomainNames.meta,
 	description:
-		'Registry inspection, memories, search/execute workflows, and feedback.',
+		'Registry inspection, memories, search/execute workflows, feedback, and self-serve experiments.',
 	keywords: [
 		'meta',
 		'kody',
@@ -33,6 +37,9 @@ export const metaDomain = defineDomain({
 		'feedback status',
 		'cli',
 		'bootstrap',
+		'experiments',
+		'feature flag',
+		'opt in',
 	],
 	capabilities: [
 		searchCapability,
@@ -50,5 +57,7 @@ export const metaDomain = defineDomain({
 		metaPlatformFeedbackGetCapability,
 		metaPlatformFeedbackListCapability,
 		cliCredentialBootstrapCapability,
+		experimentListCapability,
+		experimentSetCapability,
 	],
 })

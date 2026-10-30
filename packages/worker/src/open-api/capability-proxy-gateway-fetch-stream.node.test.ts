@@ -267,23 +267,16 @@ function contextRunStream(credentials: unknown) {
 	})
 }
 
-test('runCapabilityProxyGatewayFetchStream applies the context credential grant to context runs', async () => {
+test("runCapabilityProxyGatewayFetchStream lets only the operator's own context runs use credentials", async () => {
 	executeGatewayFetch.mockReset()
-	for (const credentials of [{ mode: 'none' }, { mode: 'requester_shared' }]) {
-		await expect(contextRunStream(credentials)).rejects.toMatchObject({
-			status: 403,
-			code: 'execution_context_credential_not_granted',
-		})
-	}
+	await expect(contextRunStream('none')).rejects.toMatchObject({
+		status: 403,
+		code: 'execution_context_credential_not_granted',
+	})
 	expect(executeGatewayFetch).not.toHaveBeenCalled()
 
 	executeGatewayFetch.mockImplementation(async () => new Response('ok'))
-	for (const credentials of [
-		{ mode: 'list', ids: ['cred-1'] },
-		{ mode: 'requester' },
-	]) {
-		const response = await contextRunStream(credentials)
-		expect(await response.text()).toBe('ok')
-	}
-	expect(executeGatewayFetch).toHaveBeenCalledTimes(2)
+	const response = await contextRunStream('requester')
+	expect(await response.text()).toBe('ok')
+	expect(executeGatewayFetch).toHaveBeenCalledTimes(1)
 })
