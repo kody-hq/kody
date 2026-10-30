@@ -32,7 +32,7 @@ export function BlogRoute({ data }: { data: BlogLoaderData }) {
 					data-rise
 					style={{ '--rise': '2' } as CSSProperties}
 					href={routes.blogRss.href()}
-					data-rmx-document
+					reloadDocument
 					css={rssLinkCss}
 				>
 					Subscribe via RSS

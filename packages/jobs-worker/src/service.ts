@@ -126,6 +126,19 @@ export class JobsService
 		return jobsStore(this.env).refreshPackageJobIdentity(input)
 	}
 
+	async recordJobRunNowOutcome(input: {
+		userId: string
+		jobId: string
+		lastRunAt: string
+		lastRunStatus: JobRecord['lastRunStatus']
+		updatedAt: string
+		nextRunAt: string
+		scheduleJson: string
+		timezone: string
+	}): Promise<boolean> {
+		return jobsStore(this.env).recordJobRunNowOutcome(input)
+	}
+
 	async updateJobCallerContextJson(input: {
 		userId: string
 		jobId: string

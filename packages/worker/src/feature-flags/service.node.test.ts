@@ -318,6 +318,7 @@ const registryKeys = [
 	'repo-push-queue',
 	'execution-contexts',
 	'credential-need-enforcement',
+	'credential-allowed-packages-safety-window',
 ] as const
 
 function everyFlag<T>(value: T, overrides: Partial<Record<FlagKey, T>> = {}) {
@@ -371,7 +372,9 @@ async function userInBucket(db: TestDb, inRollout: boolean) {
 test('isFeatureEnabled falls back to registry default when no DB state exists', async () => {
 	const db = createFeatureFlagsTestDb()
 	expect(await enabledFor(db, [1, null])).toEqual([false, false])
-	await expect(getFeatureFlagsForUser(db, 1)).resolves.toEqual(everyFlag(false))
+	await expect(getFeatureFlagsForUser(db, 1)).resolves.toEqual(
+		everyFlag(false, { 'credential-allowed-packages-safety-window': true }),
+	)
 })
 
 test('global on/off and percentage rollout evaluation', async () => {
@@ -441,7 +444,10 @@ test('user override wins over global off and global on; clear restores evaluatio
 	await setOverride(db, 7, true)
 	expect(await enabledFor(db, [7, 8])).toEqual([true, false])
 	await expect(getFeatureFlagsForUser(db, 7)).resolves.toEqual(
-		everyFlag(false, { 'demo-indicator': true }),
+		everyFlag(false, {
+			'demo-indicator': true,
+			'credential-allowed-packages-safety-window': true,
+		}),
 	)
 
 	await setGlobal(db, true)
@@ -524,7 +530,15 @@ test('getFeatureFlagEvaluationsForUser reports assignment sources', async () => 
 		(await getFeatureFlagEvaluationsForUser(db, userId))['demo-indicator']
 
 	await expect(getFeatureFlagEvaluationsForUser(db, 7)).resolves.toEqual(
-		everyFlag({ enabled: false, source: 'default' }),
+		everyFlag(
+			{ enabled: false, source: 'default' },
+			{
+				'credential-allowed-packages-safety-window': {
+					enabled: true,
+					source: 'default',
+				},
+			},
+		),
 	)
 
 	await setGlobal(db, true)

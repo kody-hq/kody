@@ -11,6 +11,7 @@ import {
 	jobExecutionLeaseMs,
 	listDueJobRows,
 	maxDueJobsPerAlarm,
+	recordJobRunNowOutcomeRow,
 	refreshPackageJobRowIdentity,
 	renewClaimedJobRow,
 	retryClaimedJobRow,
@@ -455,5 +456,109 @@ test('expired jobs are skipped by due/claim/next-runnable, wake the scheduler at
 	).toMatchObject({
 		id: 'expires-before-run',
 		schedulerWakeAt: '2026-04-20T18:00:00.000Z',
+	})
+})
+
+test('Run now outcomes keep settings edited during the run and move next_run_at only on the same schedule', async () => {
+	await ensureJobsSchema()
+	const userId = ownerIdFromStored('user-run-now-outcome')
+	await insertJob({
+		id: 'run-now-outcome',
+		userId,
+		nextRunAt: '2026-04-20T12:00:00.000Z',
+	})
+	const before = await getJobRowById(env.APP_DB, userId, 'run-now-outcome')
+	if (!before) throw new Error('Expected job.')
+	const ranUnder = {
+		scheduleJson: before.schedule_json,
+		timezone: before.timezone,
+	}
+	await updateJobRow({
+		db: env.APP_DB,
+		userId,
+		job: { ...before.record, enabled: false, name: 'Turned off mid-run' },
+		callerContextJson: before.callerContextJson,
+	})
+
+	expect(
+		await recordJobRunNowOutcomeRow({
+			db: env.APP_DB,
+			userId,
+			jobId: 'run-now-outcome',
+			lastRunAt: '2026-04-20T11:05:00.000Z',
+			lastRunStatus: 'success',
+			updatedAt: '2026-04-20T11:05:00.000Z',
+			nextRunAt: '2026-04-20T11:20:00.000Z',
+			...ranUnder,
+		}),
+	).toBe(true)
+	expect(
+		await getJobRowById(env.APP_DB, userId, 'run-now-outcome'),
+	).toMatchObject({
+		name: 'Turned off mid-run',
+		enabled: 0,
+		last_run_at: '2026-04-20T11:05:00.000Z',
+		last_run_status: 'success',
+		next_run_at: '2026-04-20T11:20:00.000Z',
+	})
+
+	await env.APP_DB.prepare(
+		`UPDATE jobs SET schedule_json = ? WHERE id = ? AND user_id = ?`,
+	)
+		.bind('{"type":"interval","every":"2h"}', 'run-now-outcome', userId)
+		.run()
+	await recordJobRunNowOutcomeRow({
+		db: env.APP_DB,
+		userId,
+		jobId: 'run-now-outcome',
+		lastRunAt: '2026-04-20T11:10:00.000Z',
+		lastRunStatus: 'error',
+		updatedAt: '2026-04-20T11:10:00.000Z',
+		nextRunAt: '2026-04-20T11:25:00.000Z',
+		...ranUnder,
+	})
+	expect(
+		await getJobRowById(env.APP_DB, userId, 'run-now-outcome'),
+	).toMatchObject({
+		last_run_status: 'error',
+		next_run_at: '2026-04-20T11:20:00.000Z',
+	})
+})
+
+test('a Run now outcome leaves a scheduled claim taken during the run in place', async () => {
+	await ensureJobsSchema()
+	const userId = ownerIdFromStored('user-run-now-claim')
+	await insertJob({
+		id: 'run-now-claim',
+		userId,
+		nextRunAt: '2026-04-20T11:00:00.000Z',
+	})
+	const before = await getJobRowById(env.APP_DB, userId, 'run-now-claim')
+	if (!before) throw new Error('Expected job.')
+	const claimed = await claim(
+		userId,
+		'run-now-claim',
+		new Date('2026-04-20T11:01:00.000Z'),
+		'claim-scheduled',
+	)
+	expect(claimed?.claim_token).toBe('claim-scheduled')
+
+	await recordJobRunNowOutcomeRow({
+		db: env.APP_DB,
+		userId,
+		jobId: 'run-now-claim',
+		lastRunAt: '2026-04-20T11:02:00.000Z',
+		lastRunStatus: 'success',
+		updatedAt: '2026-04-20T11:02:00.000Z',
+		nextRunAt: '2026-04-20T11:17:00.000Z',
+		scheduleJson: before.schedule_json,
+		timezone: before.timezone,
+	})
+	expect(
+		await getJobRowById(env.APP_DB, userId, 'run-now-claim'),
+	).toMatchObject({
+		claim_token: 'claim-scheduled',
+		claimed_scheduled_for: claimed?.claimed_scheduled_for,
+		last_run_status: 'success',
 	})
 })

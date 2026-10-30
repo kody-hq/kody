@@ -277,6 +277,7 @@ test('native account and session reads batch user/role and flag reads into two r
 		'repo-push-queue': false,
 		'execution-contexts': false,
 		'credential-need-enforcement': false,
+		'credential-allowed-packages-safety-window': true,
 	})
 	expect(Object.keys(response.payloads).sort()).toEqual([
 		'accountConnections',

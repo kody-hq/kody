@@ -84,27 +84,30 @@ sequenceDiagram
   a share also end in-flight leases right away.
 - Context runs never start workflows, never run `execute`, and call only the
   runtime APIs the grant allows. Credentialed calls (`authenticatedFetch`,
-  `gatewayFetch`, `oauthClientCredentials`, `credentialClient*`) need a grant
-  that allows credentials and run from Kody cloud, so credential values never
-  reach the machine.
-- Grant credentials are `none`, a `list` of credential ids, or `requester`
-  (every credential the requester can use). `requester` is the default for new
-  contexts and works only while the context is unshared: only the operator sets
-  it, sharing or attaching is refused until it is narrowed, and each hop
-  re-checks sharing (`credential-grant.ts`).
-- The credential door enforces the grant per credential: each hop puts the
-  grant's allowed ids on the request (`credential.contextCredentialIds`) and
-  `resolveCredential` refuses any other credential before reading it
+  `gatewayFetch`, `oauthClientCredentials`, `credentialClient*`) run from Kody
+  cloud, so credential values never reach the machine.
+- Grants have no credential setting. The operator's own runs on their context
+  use credentials exactly as the same run in Kody cloud (token scopes,
+  credential picks and grants, package capabilities, org grants). Anyone else's
+  run on a shared context uses no credentials (`credential-grant.ts`). Each hop
+  derives this from operator and requester and puts it on the request
+  (`credential.contextCredentialIds`: `null` for the operator, empty for anyone
+  else), and `resolveCredential` refuses before reading a value
   (`context-credential-grant.ts`). The streaming gateway-fetch hop uses the same
-  grant check as `gatewayFetch`.
+  check as `gatewayFetch`.
 - Before a run starts, routing works out which credentials it can use
   (`run-credential-use.ts`): the entry module and every `kody:` package its
   static imports reach, read from publish metadata (needs closure, credential
   stamp) or, once per source and commit, from the published files (KV
-  `credential-use:v2`). A context whose grant cannot serve that is skipped
-  (`credentials_not_allowed`, `credentials_not_in_grant`,
-  `credentials_unverified`, `credentials_need_unshared_context`), so the chain
-  falls through to the next entry or cloud.
+  `credential-use:v2`). Only a run on someone else's context needs this: when it
+  can use a credential the context is skipped (`credentials_operator_only`), so
+  the chain falls through to the next entry or cloud.
+- A busy context (daemon not accepting, or every slot taken) is skipped like an
+  offline one and the chain falls through; `ranOn.attempts` records
+  `outcome: "busy"`. The session counts runs dispatched but not yet accepted
+  toward `maxConcurrent`, so concurrent dispatches cannot overshoot it, and a
+  daemon `run.reject` with `code: "busy"` is a busy attempt too. A named context
+  without `fallback: "chain"` fails with an error that says it was busy.
 - The daemon enforces the grant's `egress` (from `welcome`, re-applied on
   `grant.update`) inside local workerd: outbound `fetch` goes through an
   egress-gate worker (`packages/cli/src/local-egress.ts`) set as
@@ -122,11 +125,10 @@ sequenceDiagram
   `attempts` lists contexts that passed on the run with reasons. A short text
   line says the same with friendly names only, e.g.
   `Ran on build-box (your machine).` or
-  `Ran on Kody cloud after build-box was skipped (credentials not allowed).`
-  `executionContext` stays for runs that involved a context. `runGet` adds the
-  same `metadata.ranOn` to execute runs, and `executionContextRunList` rows
-  carry `ranOn` (`{ kind, id, name }`, or null when the run did not start
-  there).
+  `Ran on Kody cloud after build-box was busy.` `executionContext` stays for
+  runs that involved a context. `runGet` adds the same `metadata.ranOn` to
+  execute runs, and `executionContextRunList` rows carry `ranOn`
+  (`{ kind, id, name }`, or null when the run did not start there).
 - A named context never falls back unless the run passes `fallback: "chain"`.
   `requires: ["fs" | "lan"]` skips Kody cloud.
 - Host folders: the daemon mounts `grant.fs` intersected with the machine's

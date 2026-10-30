@@ -660,6 +660,47 @@ export async function retryClaimedJobRow(input: {
  * Refresh package-owned execution identity without disturbing an in-flight
  * scheduler claim or recomputing the next occurrence.
  */
+/**
+ * Records a Run now outcome without rewriting the job's settings. Run now can
+ * execute for minutes, so it must not save the row it read before running:
+ * that would undo a turn-off, an edit, or a publish that landed meanwhile.
+ * `next_run_at` moves only when the schedule is still the one it ran under.
+ */
+export async function recordJobRunNowOutcomeRow(input: {
+	db: D1Database
+	userId: string
+	jobId: string
+	lastRunAt: string
+	lastRunStatus: JobRecord['lastRunStatus']
+	updatedAt: string
+	nextRunAt: string
+	scheduleJson: string
+	timezone: string
+}) {
+	const result = await input.db
+		.prepare(
+			`UPDATE jobs SET
+				last_run_at = ?, last_run_status = ?, updated_at = ?,
+				next_run_at = CASE
+					WHEN schedule_json = ? AND timezone = ? THEN ?
+					ELSE next_run_at
+				END
+			WHERE id = ? AND user_id = ?`,
+		)
+		.bind(
+			input.lastRunAt,
+			input.lastRunStatus ?? null,
+			input.updatedAt,
+			input.scheduleJson,
+			input.timezone,
+			input.nextRunAt,
+			input.jobId,
+			input.userId,
+		)
+		.run()
+	return (result.meta.changes ?? 0) > 0
+}
+
 export async function refreshPackageJobRowIdentity(input: {
 	db: D1Database
 	userId: string

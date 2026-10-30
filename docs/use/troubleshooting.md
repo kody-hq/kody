@@ -221,11 +221,10 @@ signed in, user-scoped package results are empty.
   read and use user secrets; unadopted community forks need an
   `allowed_packages` grant (or adoption after review). When a credential's
   `allowed_packages` list is non-empty and leaves a package out, that package is
-  denied when it is reached through another package or imported in a one-off
-  execute run, even if you authored or adopted it. A self-authored or adopted
-  package that runs on its own still uses the credential; publish and save warn
-  about it. Approve the package on the secret's page or move the use into a
-  package already on the list. See
+  denied, even if you authored or adopted it, and publish and save warn about
+  it. The error names the credential and the package. Approve the package on the
+  secret's page (the approval link in the error) or move the use into a package
+  already on the list. See
   [Secrets and host approval](./secrets-and-values.md#package-approval).
 
 ## MCP servers

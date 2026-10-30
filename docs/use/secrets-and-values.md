@@ -358,14 +358,25 @@ fetch even when package read/use is automatic.
 
 ## Package approval
 
+> **Rollout window (#4129), until 2026-11-30T00:00:00Z.** While the
+> `credential-allowed-packages-safety-window` flag is on, a package you authored
+> or adopted that a non-empty list leaves out is still allowed when it uses the
+> credential directly, and the use is logged. If both the package and the
+> credential existed before 2026-10-31, the first use adds the package to the
+> list. Nested use and unadopted forks are refused as described below. After the
+> window, the rules below apply with no exception.
+
 User-scoped secrets are available automatically for **reading and using**
 (mounts, fetch placeholders, named capability lookups including `secretList`) to
-packages the user authored themselves and adopted community forks. Only the
-account owner can adopt, on the package settings page after a real source
-review; `communityForkAdopt` returns that link and agents cannot adopt.
-Unadopted community-forked packages need explicit **package** approval
-(`allowed_packages`) before those read/use paths. Approval is checked against
-the **stamped** package — the module that originated the call — not the
+packages the user authored themselves and adopted community forks, as long as
+the secret's `allowed_packages` list is empty. A non-empty list is enforced for
+every package: a package that is not on it is denied, including packages you
+authored or adopted, and the error names the credential and the package with an
+approval link. Only the account owner can adopt, on the package settings page
+after a real source review; `communityForkAdopt` returns that link and agents
+cannot adopt. Unadopted community-forked packages need explicit **package**
+approval (`allowed_packages`) before those read/use paths. Approval is checked
+against the **stamped** package — the module that originated the call — not the
 importing run. Dependents statically import the owning export; they do not need
 their own grant for secrets locked to that owner. Updating, disconnecting, or
 deleting a user secret from package code (`secretSet`, `secretDisconnect`,
@@ -383,10 +394,10 @@ token rotation (`createAuthenticatedFetch` 401 retry via
 grant.
 
 Publish and save warn when a package fills a user credential whose
-`allowed_packages` list is non-empty and does not include that package;
-publishing and saving still succeed. Approve the package on the secret's page
-(or via the approval link in the warning), or move the credential use into a
-package that is already on the list.
+`allowed_packages` list is non-empty and does not include that package, because
+that use is denied at runtime; publishing and saving still succeed. Approve the
+package on the secret's page (or via the approval link in the warning), or move
+the credential use into a package that is already on the list.
 
 **Host approval is separate and is never automatic**, including for
 self-authored and adopted packages. An empty host allowlist blocks
@@ -400,7 +411,9 @@ approval URL shaped like
 lists every pending secret and approves them in one click. A single-secret link
 grants one package on one secret. For community forks, reviewing the source and
 sending the owner the `communityForkAdopt` adoption link is an alternative to
-sending those approval links. Agents and package runtimes cannot adopt.
+sending those approval links only when the secret's `allowed_packages` list is
+empty; a non-empty list still needs the fork approved on it. Agents and package
+runtimes cannot adopt.
 
 ## Package config vs package storage
 

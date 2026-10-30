@@ -320,3 +320,37 @@ test('revoking a context releases its name while live names stay unique', () => 
 		/UNIQUE/,
 	)
 })
+
+test('stored grants lose their credential mode and keep everything else', () => {
+	const migration = '0213-execution-context-grant-credentials-removed.sql'
+	const sqlite = databaseBefore(migration)
+	const insert = sqlite.prepare(
+		`INSERT INTO execution_contexts (id, org_id, operator_user_id, all_members, name,
+			public_key_jwk, thumbprint, created_at, grant_json, grant_version)
+		 VALUES (?, 'org_acme', 'user_op', 0, ?, '{}', ?, '2026-10-01', ?, 3)`,
+	)
+	const egress = { mode: 'public-and-lan' }
+	const grants = {
+		ec_list: { credentials: { mode: 'list', ids: ['cred_1'] }, egress },
+		ec_none: { credentials: { mode: 'none' }, egress },
+		ec_requester: { credentials: { mode: 'requester' }, egress },
+		ec_plain: { egress },
+	}
+	for (const [id, grant] of Object.entries(grants)) {
+		insert.run(id, id, `thumb_${id}`, JSON.stringify(grant))
+	}
+	sqlite.exec(readFileSync(new URL(migration, migrationsDirectory), 'utf8'))
+	const rows = sqlite
+		.prepare(
+			`SELECT id, grant_json, grant_version FROM execution_contexts ORDER BY id`,
+		)
+		.all() as Array<{ id: string; grant_json: string; grant_version: number }>
+	expect(
+		rows.map((row) => [row.id, JSON.parse(row.grant_json), row.grant_version]),
+	).toEqual([
+		['ec_list', { egress }, 3],
+		['ec_none', { egress }, 3],
+		['ec_plain', { egress }, 3],
+		['ec_requester', { egress }, 3],
+	])
+})

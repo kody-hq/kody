@@ -15,41 +15,31 @@
  * Granting writes one `credential.allowed_packages_updated` audit row with the
  * reason and source. It never notifies the owner.
  */
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { scanPackageCredentials } from '#worker/credentials/credential-inventory-scan.ts'
 import {
 	collectLiteralUserSecretNames,
 	readDeclaredCredentialSlots,
 } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
 import { packageSourceFiles } from '#worker/credentials/credential-needs-closure.ts'
-import {
-	credentialAuditActions,
-	credentialAuditEvent,
-	listDelta,
-} from '#worker/credentials/credential-audit.ts'
 import { type AllowedPackagesWouldBlockAccessKind } from '#worker/credentials/allowed-packages-would-block.ts'
 import { savedPackageImplicitUserSecretReadAccessKind } from '#mcp/secrets/package-access.ts'
-import {
-	parseAllowedPackages,
-	stringifyAllowedPackages,
-} from '#mcp/secrets/allowed-packages.ts'
-import {
-	type OrgAuditWriter,
-	runAppDbBatchWithOrgAudit,
-} from '#worker/orgs/org-audit.ts'
+import { parseAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
+import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { listCandidatePackages } from '#worker/package-runtime/published-importable-artifact-backfill.ts'
 import { readPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { loadPackageSourceRowForUser } from '#worker/package-registry/source.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import {
+	grantGrandfatheredPackageAccess,
+	type AllowedPackagesGrandfatherSource,
+} from './allowed-packages-grant.ts'
 
-export const allowedPackagesGrandfatherReason = 'grandfathered for #4129'
-
-export type AllowedPackagesGrandfatherSource =
-	| 'static'
-	| 'log'
-	| 'static+log'
-	| 'safety_window'
+export {
+	allowedPackagesGrandfatherReason,
+	grantGrandfatheredPackageAccess,
+	type AllowedPackagesGrandfatherSource,
+} from './allowed-packages-grant.ts'
 
 export const allowedPackagesGrandfatherScanLimitDefault = 50
 export const allowedPackagesGrandfatherScanLimitMax = 200
@@ -240,72 +230,6 @@ async function listLogPairsForPackages(input: {
 	)
 }
 
-type GrantOutcome = 'granted' | 'already_allowed' | 'missing' | 'conflict'
-
-/**
- * Add one package to a user credential's non-empty allowed list, guarded on
- * the list read so a concurrent edit is never overwritten. Audits with the
- * #4129 reason and source. Never notifies the owner.
- */
-export async function grantGrandfatheredPackageAccess(input: {
-	db: D1Database
-	audit: OrgAuditWriter | null
-	ownerId: string
-	credentialId: string
-	packageId: string
-	source: AllowedPackagesGrandfatherSource
-}): Promise<GrantOutcome> {
-	const row = await input.db
-		.prepare(
-			`SELECT e.id AS id, e.name AS name, e.allowed_packages AS allowed_packages
-			 FROM secret_entries e
-			 JOIN secret_buckets b ON b.id = e.bucket_id
-			 WHERE e.id = ? AND b.user_id = ? AND b.scope = 'user'${andLiveDeletedAtSql('e')}${andLiveDeletedAtSql('b')}`,
-		)
-		.bind(input.credentialId, input.ownerId)
-		.first<{ id: string; name: string; allowed_packages: string }>()
-	if (!row) return 'missing'
-	const before = parseAllowedPackages(row.allowed_packages)
-	if (before.length === 0 || before.includes(input.packageId)) {
-		return 'already_allowed'
-	}
-	const after = parseAllowedPackages(
-		stringifyAllowedPackages([...before, input.packageId]),
-	)
-	const now = new Date().toISOString()
-	const update = input.db
-		.prepare(
-			`UPDATE secret_entries SET allowed_packages = ?, updated_at = ?
-			 WHERE id = ? AND allowed_packages = ? AND deleted_at IS NULL`,
-		)
-		.bind(stringifyAllowedPackages(after), now, row.id, row.allowed_packages)
-	if (!input.audit) {
-		const result = await update.run()
-		return result.meta?.changes ? 'granted' : 'conflict'
-	}
-	// The guarded UPDATE and its audit outbox row commit together, so a grant
-	// is never left without its audit row.
-	const { changed } = await runAppDbBatchWithOrgAudit({
-		appDb: input.db,
-		audit: input.audit,
-		statements: [update],
-		onlyIfChanged: true,
-		event: credentialAuditEvent({
-			orgId: ownerIdFromStored(input.ownerId),
-			credential: { id: row.id, kind: 'secret', name: row.name },
-			action: credentialAuditActions.allowedPackagesUpdated,
-			details: {
-				packages: listDelta(before, after),
-				fields: ['allowed_packages'],
-				reason: allowedPackagesGrandfatherReason,
-				source: input.source,
-			},
-		}),
-	})
-	if (!changed) return 'conflict'
-	return 'granted'
-}
-
 /**
  * One page of the static join plus log cross-check, and (apply only) the
  * grants. dryRun (default) changes nothing.
@@ -486,7 +410,7 @@ export async function runAllowedPackagesGrandfather(input: {
 			}
 		}
 		if (!dryRun && pair.outcome === 'would_grant') {
-			pair.outcome = await grantGrandfatheredPackageAccess({
+			const granted = await grantGrandfatheredPackageAccess({
 				db: input.env.APP_DB,
 				audit: input.audit,
 				ownerId: pair.ownerId,
@@ -494,6 +418,8 @@ export async function runAllowedPackagesGrandfather(input: {
 				packageId: pair.packageId,
 				source: pair.source,
 			})
+			// No `credentialCreatedBefore` here, so `not_eligible` cannot happen.
+			pair.outcome = granted === 'not_eligible' ? 'missing' : granted
 		}
 		switch (pair.outcome) {
 			case 'would_grant':

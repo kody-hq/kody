@@ -30,7 +30,6 @@ export function contextFixture(
 			fs: 1,
 			fsMode: 'read',
 			egress: { mode: 'public' },
-			credentials: 'none',
 			runtime: 'all',
 			timeoutMs: 90_000,
 		},
@@ -52,7 +51,6 @@ export const sharedBuildbox = contextFixture({
 	grantSummary: {
 		fs: 0,
 		egress: { mode: 'public-and-lan' },
-		credentials: 'none',
 		runtime: { mode: 'allowlist', count: 2 },
 		timeoutMs: 300_000,
 	},

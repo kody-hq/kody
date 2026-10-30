@@ -2,7 +2,12 @@ import { type AnyRouter } from '@tanstack/react-router'
 
 declare module '@tanstack/router-core' {
 	interface StaticDataRouteOption {
-		/** A browser document is required to complete this protocol handshake. */
+		/**
+		 * Links here load a browser document: protocol handshakes and
+		 * server-only resources (.md, .txt, .xml, images, redirects). Start
+		 * prunes routes whose only option is `server` from the client route
+		 * tree, so server-only routes declare this to stay matchable there.
+		 */
 		documentNavigation?: true
 	}
 }
@@ -23,7 +28,6 @@ export function linkNavigation(
 		reloadDocument:
 			!exact ||
 			matches.some((match) => match.options.staticData?.documentNavigation) ||
-			Boolean(route?.options.server?.handlers && !route.options.component) ||
 			redirectOnly,
 	}
 }

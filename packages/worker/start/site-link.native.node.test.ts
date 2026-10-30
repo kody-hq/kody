@@ -86,6 +86,19 @@ test('download links retain browser download semantics without Router intercepti
 	expect(html).not.toContain('data-status=')
 })
 
+test('reloadDocument opts an app route out of Router navigation', async () => {
+	const html = await renderStartPage(
+		createElement(
+			SiteLink,
+			{ href: '/docs/connect', reloadDocument: true },
+			'Docs',
+		),
+	)
+	expect(html).toContain('href="/docs/connect"')
+	expect(html).not.toContain('data-status=')
+	expect(html).not.toMatch(/reloaddocument/i)
+})
+
 async function renderMemoryLink(href: string, documentNavigation = false) {
 	const root = createRootRoute()
 	const route = createRoute({

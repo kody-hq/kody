@@ -20,22 +20,28 @@ const RouterAnchor = createLink(
 	}),
 )
 
-/** Protocol handshakes and non-page endpoints use document navigation. */
+/**
+ * Protocol handshakes and non-page endpoints use document navigation, as does
+ * any link that passes `reloadDocument`.
+ */
 export function SiteLink({
 	href,
 	children,
 	preload,
 	resetScroll,
+	reloadDocument,
 	...props
 }: ComponentProps<'a'> & {
 	preload?: false | 'intent' | 'viewport' | 'render'
 	resetScroll?: boolean
+	reloadDocument?: boolean
 }) {
 	const router = useRouter()
 	const location = useRouterState({
 		select: (state) => state.resolvedLocation ?? state.location,
 	})
 	if (
+		reloadDocument ||
 		!href?.startsWith('/') ||
 		href.startsWith('//') ||
 		(props.download !== undefined && props.download !== false)

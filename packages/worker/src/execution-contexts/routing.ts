@@ -7,11 +7,7 @@ import {
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { type CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
 import { type RunRecordHandle } from '#worker/run-records/types.ts'
-import {
-	type ContextRunCredentials,
-	contextIsShared,
-	contextRunCredentials,
-} from './credential-grant.ts'
+import { contextRunCredentials } from './credential-grant.ts'
 import { ExecutionContextError } from './errors.ts'
 import { type RunCredentialUse } from './run-credential-use.ts'
 import {
@@ -278,45 +274,34 @@ export function requirementRefusal(
 }
 
 /**
- * Why a context's credentials cannot serve the run, or null when they can.
- * An explicit list must cover every credential the run can use; when that
- * is not statically known the context is skipped rather than risk a refusal
- * after the code started.
+ * Why a context cannot serve the run's credentials, or null when it can. The
+ * operator's own runs use credentials as they would in Kody cloud; a run by
+ * anyone else that can use one is skipped before the code starts.
  */
-export function credentialRefusal(
-	credentials: ContextRunCredentials,
-	use: RunCredentialUse,
-): string | null {
-	if (use.kind === 'none') return null
-	switch (credentials.mode) {
-		case 'requester':
-			return null
-		case 'none':
-			return 'credentials_not_allowed'
-		case 'requester_shared':
-			return 'credentials_need_unshared_context'
-		case 'list': {
-			if (use.kind === 'unknown') return 'credentials_unverified'
-			const allowed = new Set(credentials.ids)
-			return use.ids.every((id) => allowed.has(id))
-				? null
-				: 'credentials_not_in_grant'
-		}
-	}
+export function credentialRefusal(input: {
+	operatorUserId: string
+	requesterUserId: string
+	credentialUse: RunCredentialUse
+}): string | null {
+	if (contextRunCredentials(input) === 'requester') return null
+	return input.credentialUse.kind === 'none'
+		? null
+		: 'credentials_operator_only'
 }
 
-/** Why a grant cannot take this run, or null when it can. */
+/** Why a context cannot take this run, or null when it can. */
 export function grantRefusal(input: {
 	grant: EcpGrant
 	requires: ReadonlyArray<ExecuteRequirement>
-	credentials: ContextRunCredentials
+	operatorUserId: string
+	requesterUserId: string
 	credentialUse: RunCredentialUse
 	/** What the daemon advertised; `fs` means its effective mount set is non-empty. */
 	capabilities: EcpCapabilities
 }): string | null {
 	return (
 		requirementRefusal(input.grant, input.requires, input.capabilities) ??
-		credentialRefusal(input.credentials, input.credentialUse)
+		credentialRefusal(input)
 	)
 }
 
@@ -354,15 +339,16 @@ export async function routeExecute(input: {
 	credentials: CredentialCallMap | null
 	/**
 	 * What the run can do with credentials. Called at most once, and only
-	 * when a context's grant depends on it.
+	 * when the run would land on someone else's context.
 	 */
 	credentialUse: () => Promise<RunCredentialUse>
 	apiUrl: string
 	waitMs: number
 	signal?: AbortSignal
 	/**
-	 * Queue on the first offline context until it reconnects, instead of
-	 * failing, when nothing else can take the run (automations only).
+	 * Queue on the first offline or busy context until it can take the run,
+	 * instead of failing, when no later target can (automations only). A
+	 * cloud entry in the targets always wins over queueing.
 	 */
 	queue?: { expiresAt: number } | null
 	/** `skip` records an unknown chain entry as skipped instead of a 404. */
@@ -479,17 +465,16 @@ export async function routeExecute(input: {
 			continue
 		}
 		const grant = parseGrant(row)
-		const credentials = contextRunCredentials(grant, {
-			shared:
-				grant.credentials.mode === 'requester' &&
-				(await contextIsShared(db, row)),
-			requesterIsOperator: row.operator_user_id === input.request.userId,
-		})
+		const sharedRun = row.operator_user_id !== input.request.userId
 		const refusal =
 			requirementRefusal(grant, requires, parseCapabilities(row)) ??
-			(credentials.mode === 'requester'
-				? null
-				: credentialRefusal(credentials, await credentialUseOf()))
+			(sharedRun
+				? credentialRefusal({
+						operatorUserId: row.operator_user_id,
+						requesterUserId: input.request.userId,
+						credentialUse: await credentialUseOf(),
+					})
+				: null)
 		if (refusal) {
 			skip(refusal)
 			continue
@@ -511,7 +496,7 @@ export async function routeExecute(input: {
 			callerScopes: input.request.scopes,
 			runtime: grant.runtime,
 			deadline,
-			sharedRun: row.operator_user_id !== input.request.userId,
+			sharedRun,
 		}
 		const request: EcpRunRequestBody = {
 			runId: input.runId,
@@ -569,9 +554,10 @@ export async function routeExecute(input: {
 					row,
 					request,
 					// The drain re-checks the grant, which may change while queued.
-					lease: input.queue
-						? { ...lease, credentialUse: await credentialUseOf() }
-						: lease,
+					lease:
+						input.queue && sharedRun
+							? { ...lease, credentialUse: await credentialUseOf() }
+							: lease,
 					requires,
 				}
 			}
@@ -680,9 +666,12 @@ export async function routeExecute(input: {
 		})
 	}
 	if (named && named !== 'cloud' && input.args.fallback !== 'chain') {
+		const namedAttempt = attempts.find((a) => a.target === named.id)
 		noContext(
 			attempts,
-			`${named.name} could not take this run (${describeAttempts(attempts)}). A named context never falls back; pass fallback: "chain" to use your chain instead.`,
+			namedAttempt?.outcome === 'busy'
+				? `${named.name} is busy: it is already running as many runs as it allows at once, so it could not take this run. A named context never falls back; try again when one of its runs finishes, or pass fallback: "chain" to use your chain instead.`
+				: `${named.name} could not take this run (${describeAttempts(attempts)}). A named context never falls back; pass fallback: "chain" to use your chain instead.`,
 		)
 	}
 	noContext(

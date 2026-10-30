@@ -1182,3 +1182,69 @@ test("a team-org job runs for an active member and a run-now uses the member's c
 	const updated = await getJobRowById(db, teamOrgId, jobView.id)
 	expect(updated?.record.enabled).toBe(false)
 })
+
+test('runJobNow keeps a turn-off and a publish that land while it runs', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const { db, env } = createExecuteEnv()
+	mockRepoPersistence()
+	const callerContext = createBaseCallerContext()
+	const ownerId = personalOrgId(callerContext.user.userId)
+	const jobView = await insertPackageJob({
+		env,
+		callerContext,
+		body: {
+			name: 'run-now-concurrent-edits',
+			schedule: { type: 'interval', every: '15m' },
+			code: 'export default async () => ({ ok: true })',
+		},
+	})
+	const before = await getJobRowById(db, ownerId, jobView.id)
+	if (!before) throw new Error('expected inserted job')
+	const publishedCallerContextJson = JSON.stringify({
+		...before.callerContext,
+		executionOrigin: 'background',
+	})
+
+	vi.spyOn(registry, 'runBundledModuleWithRegistry').mockImplementation(
+		async () => {
+			// Another request turns the job off and a publish refreshes its
+			// package identity while Run now is still executing.
+			const current = await getJobRowById(db, ownerId, jobView.id)
+			if (!current) throw new Error('expected job during run')
+			await jobsData(env).updateJob({
+				userId: ownerId,
+				job: {
+					...current.record,
+					enabled: false,
+					disabledReason: 'Turned off by the owner.',
+				},
+				callerContextJson: current.callerContextJson,
+			})
+			await jobsData(env).refreshPackageJobIdentity({
+				userId: ownerId,
+				jobId: jobView.id,
+				sourceId: current.record.sourceId,
+				publishedCommit: 'published-during-run',
+				callerContextJson: publishedCallerContextJson,
+				updatedAt: new Date().toISOString(),
+			})
+			return { result: { ok: true }, logs: [] }
+		},
+	)
+
+	const result = await runJobNow({
+		env,
+		userId: ownerId,
+		jobId: jobView.id,
+		callerContext,
+	})
+	expect(result.execution.ok).toBe(true)
+
+	const after = await getJobRowById(db, ownerId, jobView.id)
+	expect(after?.record.enabled).toBe(false)
+	expect(after?.record.disabledReason).toBe('Turned off by the owner.')
+	expect(after?.record.publishedCommit).toBe('published-during-run')
+	expect(after?.callerContextJson).toBe(publishedCallerContextJson)
+	expect(after?.record.lastRunStatus).toBe('success')
+	expect(result.job.enabled).toBe(false)
+})

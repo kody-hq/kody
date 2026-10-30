@@ -24,6 +24,10 @@ import {
 } from '#worker/package-registry/source.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
+	isAllowedPackagesSafetyWindowActive,
+	tryAllowedPackagesSafetyWindowGrant,
+} from '#worker/credentials/allowed-packages-safety-window.ts'
+import {
 	scheduleAllowedPackagesWouldBlock,
 	type AllowedPackagesWouldBlockAccessKind,
 } from '#worker/credentials/allowed-packages-would-block.ts'
@@ -79,7 +83,8 @@ const inflightImplicitUserSecretAccess = new WeakMap<
 /**
  * Self-authored packages (no `community_forks` row) and adopted community
  * forks may read/use user secrets without an explicit `allowed_packages`
- * grant. Missing packages and unadopted forks do not. Host allowlists are
+ * grant, but only while that secret's list is empty. A non-empty list is
+ * enforced for every package (issue #4129); callers check the list first. Missing packages and unadopted forks do not. Host allowlists are
  * a separate gate and are never implied by this check.
  */
 export async function packageHasImplicitUserSecretReadAccess(input: {
@@ -229,36 +234,51 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 	// fetch auth shares one package + fork load (KODY-9K). Missing packages
 	// still fall through to the explicit not-found error below. Nested use
 	// must apply the GHSA-5fv3 hybrid rule below, so it never short-circuits.
+	let savedPackage: SavedPackageRecord | null = null
 	if (intent === 'use' && !nested) {
 		const implicitKind = await implicitUserSecretReadAccessKind({
 			env: input.env,
 			userId: input.userId,
 			packageId,
 		})
+		if (implicitKind && input.resolved.allowedPackages.length === 0) return
 		if (implicitKind) {
-			// Warn-only exception (#4129): the list is non-empty and leaves this
-			// package out, but self-authored/adopted access is still allowed.
-			// Record a deduped would-block marker off the hot path so we can
-			// size enforcement. Never blocks, never awaits D1, never logs values.
-			if (input.resolved.allowedPackages.length > 0) {
-				const credentialId = input.resolved.credentialId?.trim()
-				if (credentialId) {
-					scheduleAllowedPackagesWouldBlock({
+			// A non-empty list is enforced for self-authored and adopted
+			// packages too (#4129). Keep the deduped marker (now a refusal or a
+			// safety-window grant) off the hot path; it never logs values.
+			const credentialId = input.resolved.credentialId?.trim()
+			if (credentialId) {
+				scheduleAllowedPackagesWouldBlock({
+					env: input.env,
+					marker: {
+						ownerId: String(input.userId),
+						credentialId,
+						packageId,
+						accessKind: implicitKind,
+					},
+				})
+				savedPackage = await getSavedPackageById(input.env.APP_DB, {
+					userId: input.userId,
+					packageId,
+				})
+				if (
+					savedPackage &&
+					(await tryAllowedPackagesSafetyWindowGrant({
 						env: input.env,
-						marker: {
-							ownerId: String(input.userId),
-							credentialId,
-							packageId,
-							accessKind: implicitKind,
-						},
-					})
+						ownerId: String(input.userId),
+						credentialId,
+						packageId,
+						packageCreatedAt: savedPackage.createdAt,
+						accessKind: implicitKind,
+					}))
+				) {
+					return
 				}
 			}
-			return
 		}
 	}
 
-	const savedPackage = await getSavedPackageById(input.env.APP_DB, {
+	savedPackage ??= await getSavedPackageById(input.env.APP_DB, {
 		userId: input.userId,
 		packageId,
 	})
@@ -314,6 +334,7 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 			secretName: input.secretName,
 			packageName: savedPackage.kodyId,
 			approvalUrl,
+			notOnAllowedList: input.resolved.allowedPackages.length > 0,
 		}),
 	)
 }
@@ -435,15 +456,16 @@ export async function findMissingPackageApprovals(input: {
 	if (!savedPackage) {
 		throw new Error(`Saved package "${input.packageId}" was not found.`)
 	}
-	if (
-		await savedPackageHasImplicitUserSecretReadAccess({
-			db: input.env.APP_DB,
-			userId: input.userId,
-			savedPackage,
-		})
-	) {
-		return []
-	}
+	const implicit = await savedPackageHasImplicitUserSecretReadAccess({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		savedPackage,
+	})
+	// Self-authored and adopted packages only need approval on a non-empty
+	// list, and not while the #4129 safety window allows them anyway.
+	const implicitCoversNonEmptyLists =
+		implicit &&
+		(await isAllowedPackagesSafetyWindowActive({ db: input.env.APP_DB }))
 
 	const storageContext = {
 		sessionId: input.storageContext?.sessionId ?? null,
@@ -468,6 +490,12 @@ export async function findMissingPackageApprovals(input: {
 			if (!resolved.found) return null
 			if (resolved.scope !== 'user') return null
 			if (resolved.allowedPackages.includes(savedPackage.id)) {
+				return null
+			}
+			if (
+				implicit &&
+				(resolved.allowedPackages.length === 0 || implicitCoversNonEmptyLists)
+			) {
 				return null
 			}
 			return {
