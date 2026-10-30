@@ -11,6 +11,7 @@ import { type OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { orgGrantsPath } from '#universal/org-pages.ts'
 import {
 	getPillButtonCss,
+	primaryLinkCss,
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
 import {
@@ -142,7 +143,10 @@ export function OrgSettingsMemberCreation({
 					<p css={accountFieldNoteCss}>
 						To let only some people or teams create, leave a setting off and add
 						create access on{' '}
-						<SiteLink href={orgGrantsPath(data.org.slug)}>Grants</SiteLink>.
+						<SiteLink css={primaryLinkCss} href={orgGrantsPath(data.org.slug)}>
+							Grants
+						</SiteLink>
+						.
 					</p>
 					{message ? (
 						<AccountManagementMessage tone={message.tone}>

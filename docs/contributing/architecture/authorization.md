@@ -69,15 +69,16 @@ synchronous, for callers that already hold the compiled permissions.
    alone; it grants nothing on other packages. Plain repo create stays an
    org-level `package:create` check.
 
-**Member permissions.** A team org's `members_can_create_packages` (default
-off) and `members_can_create_credentials` (default on) columns on `orgs` add
+**Member permissions.** A team org's `members_can_create_packages` (default off)
+and `members_can_create_credentials` (default on) columns on `orgs` add
 `package:create` + `app:create` and `secret:create` + `integration:create` to
 every Member's compiled org permissions (`memberCreationGrants` in
 `authorization/member-creation-permissions.ts`, applied in
 `compileFromRoleAndGrants`). `updateOrgMemberCreation`
 (`orgs/member-creation.ts`) writes them with the `org.member_creation_changed`
 audit row and an `access_epoch` bump in one batch. Create checks therefore stay
-plain `authorize(..., 'package:create' | 'secret:create' | 'integration:create')`
+plain
+`authorize(..., 'package:create' | 'secret:create' | 'integration:create')`
 calls; the denial text for those permissions names the setting and the Grants
 page. The website credential paths check the same permissions through
 `requireWebsiteCreatePermission`.
