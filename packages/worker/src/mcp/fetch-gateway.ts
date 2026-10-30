@@ -487,10 +487,14 @@ async function fetchThroughGateway(
 					)
 					const retriedSessionId = retried.login?.sessionId
 					if (retriedSessionId) {
-						await recordRetriedLoginSession(input.env, {
-							sessionId: retriedSessionId,
-							rejected: upstream.status === 401,
-						})
+						try {
+							await recordRetriedLoginSession(input.env, {
+								sessionId: retriedSessionId,
+								rejected: upstream.status === 401,
+							})
+						} catch {
+							// Backoff bookkeeping only; never fail a completed retry.
+						}
 					}
 				}
 			}

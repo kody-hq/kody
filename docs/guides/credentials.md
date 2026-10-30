@@ -539,16 +539,18 @@ returned as is.
 When the exchange fails, Kody records the failure for the credential's current
 revision and does not run the exchange again until a cooldown passes, so apps
 and jobs sharing one credential never hammer the provider's token endpoint. The
-caller that ran the exchange gets `login_failed`; every other caller, in any
-isolate, fails fast with `login_retry_later` without contacting the provider.
-Both carry `retryAfterSeconds`: wait that long, then retry. The cooldown is 30
-seconds after the first failure and doubles for each failure in a row, up to 15
-minutes (or longer when the provider's `Retry-After` asks for it, up to an
-hour). Network errors, timeouts, 5xx, and 429 recover on their own: after the
-cooldown the next request runs the exchange again, and a success clears the
-failure. While a cooldown is running, the 401 retry is skipped and the host's
-401 is returned; a freshly exchanged session that the host refuses again also
-backs off the next 401 retry the same way.
+caller that ran the exchange gets `login_failed`, and so does any caller in the
+same isolate that was sharing that pending exchange. Callers that arrive during
+the recorded cooldown, in any isolate (including ones that were waiting on the
+exchange's lease), fail fast with `login_retry_later` without contacting the
+provider. Both carry `retryAfterSeconds`: wait that long, then retry. The
+cooldown is 30 seconds after the first failure and doubles for each failure in a
+row, up to 15 minutes (or longer when the provider's `Retry-After` asks for it,
+up to an hour). Network errors, timeouts, 5xx, and 429 recover on their own:
+after the cooldown the next request runs the exchange again, and a success
+clears the failure. While a cooldown is running, the 401 retry is skipped and
+the host's 401 is returned; a freshly exchanged session that the host refuses
+again also backs off the next 401 retry the same way.
 
 When the token endpoint answers `invalid_grant` (the refresh token was revoked
 or is invalid), retrying cannot help: requests fail with
