@@ -254,12 +254,15 @@ ${orgBlock}
              with \`--json\`.
 
   --token / ${apiTokenEnvVar}
-             Scoped API token (preferred via env). With no \`kody login\`
-             session, search / whoami / api / execute use the Open API and
-             CapabilityProxy — including cloud execute without --local.
-             Auth priority matches \`execute --local\`: \`--token\` /
-             ${apiTokenEnvVar}; stored bootstrap/API token from
-             \`auth bootstrap\`; then \`kody login\` where applicable.
+             Scoped API token (preferred via env). One resolver picks the
+             credential, and \`kody whoami\` reports that pick:
+             whoami, api, package, execute --local, context, daemon, dev:
+               --token, ${apiTokenEnvVar}, stored API token, kody login.
+             search and cloud execute: --token, kody login (MCP),
+               ${apiTokenEnvVar}, stored API token.
+             \`kody login\` does not replace a stored API token; replace it
+             with \`kody auth bootstrap --lifetime short --scopes <list>\`
+             or clear it with \`kody logout\`.
              Prefer \`cliCredentialBootstrap\` then \`auth bootstrap\`
              (\`--lifetime short|long\`). CI/headless: \`tokenCreate\` with
              \`org:execute\` plus the capability scopes you need.

@@ -1,4 +1,9 @@
 import { loadStoredApiToken, type StoredApiToken } from './api-token-store.js'
+import {
+	activeCliCredential,
+	credentialUsedNote,
+	type CliCredential,
+} from './cli-credential.js'
 import { apiTokenEnvVar, defaultApiUrl, defaultMcpUrl } from './defaults.js'
 import { type SecretBackend, type StoreResolution } from './store.js'
 
@@ -299,7 +304,41 @@ export function insufficientScopeMessage(
 		 * when unknown — pass the current token's inferred alias when available.
 		 */
 		currentLifetime?: CliTokenLifetimeAlias | null
+		/** Credential that was sent; defaults to the one this process resolved. */
+		credential?: CliCredential | null
 	},
+): string {
+	const message = baseInsufficientScopeMessage(input)
+	if (input.denial === 'missing_permission') return message
+	const note = credentialUsedNote({
+		credential:
+			input.credential === undefined ? activeCliCredential() : input.credential,
+		mintScopes: insufficientScopeMintScopes(input),
+		lifetime: input.currentLifetime === 'long' ? 'long' : 'short',
+	})
+	return note ? `${message} ${note}` : message
+}
+
+function insufficientScopeMintScopes(
+	input: Partial<InsufficientScopeDetails> & {
+		currentScopes?: ReadonlyArray<string> | null
+	},
+): Array<string> | null {
+	const required = input.requiredScope ?? null
+	if (!required) return null
+	if (input.mintScopes && input.mintScopes.length > 0) {
+		return [...input.mintScopes]
+	}
+	if (input.currentScopes && input.currentScopes.length > 0) {
+		return [
+			...new Set([...input.currentScopes, ...required.split(/,\s*/)]),
+		].sort()
+	}
+	return null
+}
+
+function baseInsufficientScopeMessage(
+	input: Parameters<typeof insufficientScopeMessage>[0],
 ): string {
 	const required = input.requiredScope ?? null
 	const lifetime: CliTokenLifetimeAlias =
@@ -316,14 +355,7 @@ export function insufficientScopeMessage(
 	if (!required) {
 		return `Kody returned insufficient_scope. Mint a token that includes the missing scope: run \`${cliBootstrapScopesCommand(['<scope>', '…'], lifetimeFlags)}\` after \`kody login\`, or from Kody MCP call \`${cliBootstrapMintCall(['<scope>', '…'], lifetimeMint)}\` and run its cli_command. Scopes replace the defaults, so list every scope you need. For CI/headless, mint with tokenCreate and pass --token or set ${apiTokenEnvVar}.`
 	}
-	const mintScopes =
-		input.mintScopes && input.mintScopes.length > 0
-			? input.mintScopes
-			: input.currentScopes && input.currentScopes.length > 0
-				? [
-						...new Set([...input.currentScopes, ...required.split(/,\s*/)]),
-					].sort()
-				: null
+	const mintScopes = insufficientScopeMintScopes(input)
 	if (!mintScopes) {
 		return `Kody returned insufficient_scope: this token is missing "${required}". Mint a token whose scopes include "${required}" plus the ones you already use (scopes replace the defaults): run \`${cliBootstrapScopesCommand(['<current scopes>', required], lifetimeFlags)}\` after \`kody login\`, or from Kody MCP call \`${cliBootstrapMintCall(['<current scopes>', required], lifetimeMint)}\` and run its cli_command. For CI/headless, mint with tokenCreate including "${required}" and pass --token or set ${apiTokenEnvVar}.`
 	}

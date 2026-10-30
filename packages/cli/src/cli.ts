@@ -1,12 +1,14 @@
 import { parseArgs } from 'node:util'
 import { readFile } from 'node:fs/promises'
-import {
-	cliBootstrapMintCall,
-	hasExplicitTokenFlag,
-	requireApiToken,
-	resolveScopedApiToken,
-} from './api-token.js'
+import { cliBootstrapMintCall } from './api-token.js'
 import { deleteStoredApiToken, loadStoredApiToken } from './api-token-store.js'
+import {
+	describeCliCredential,
+	noteActiveLoginCredential,
+	replaceStoredTokenCommand,
+	resetActiveCliCredential,
+	resolveCliCredential,
+} from './cli-credential.js'
 import {
 	authBootstrap,
 	authBootstrapWithScopes,
@@ -310,6 +312,7 @@ export async function runCli(
 			})
 	}
 	const jsonFlag = argvIncludesJsonFlag(argv)
+	resetActiveCliCredential()
 	try {
 		const parsed = resolveCommand(argv)
 		const helpMcpUrl = mcpUrlFrom({
@@ -559,6 +562,7 @@ async function dispatch(
 					onDeviceCode: (prompt) => write(formatDeviceLoginNotice(prompt)),
 				})
 				write(formatLoginSuccess(result))
+				write(storedApiTokenAfterLoginNotice(loginApiUrl))
 				return 0
 			}
 			const headlessReason = openBrowser ? detectHeadlessLoginReason() : null
@@ -577,6 +581,7 @@ async function dispatch(
 				},
 			})
 			write(formatLoginSuccess(result))
+			write(storedApiTokenAfterLoginNotice(loginApiUrl))
 			return 0
 		}
 		case 'logout': {
@@ -690,6 +695,12 @@ async function dispatch(
 				)
 			} else {
 				lines.push(`api: ${apiUrl}`, `stored API token: no`)
+			}
+			const inUse = resolveCliCredential({ mcpUrl, apiUrl })
+			if (inUse) {
+				lines.push(
+					`credential in use (api, whoami, package): ${describeCliCredential(inUse)}`,
+				)
 			}
 			lines.push('')
 			write(lines.join('\n'))
@@ -877,79 +888,15 @@ async function dispatch(
 					if (mock.started) await mock.server.close()
 				}
 			}
-			if (
-				shouldUseApiToken({
-					tokenValues,
-					mcpUrl,
-					apiUrl,
-					allowEnvWithoutLogin: true,
-					...(org ? { org } : {}),
-				})
-			) {
-				const { whoamiWithApiToken } = await import('./open-api-client.js')
-				const identity = await whoamiWithApiToken({
-					token: requireApiToken(tokenValues, process.env, 'whoami', {
-						apiUrl,
-					}),
-					apiUrl,
-					...(org ? { org } : {}),
-				})
-				if (json) {
-					write(`${JSON.stringify(identity, null, 2)}\n`)
-					return 0
-				}
-				const scopeLine = identity.token.scopes.join(', ') || '(none)'
-				const userLine = identity.user
-					? `${identity.user.displayName} <${identity.user.email}>`
-					: '(account:read not on this token)'
-				write(
-					[
-						`api: ${identity.apiUrl}`,
-						`auth: API token (${identity.token.id})`,
-						`user: ${userLine}`,
-						`scopes: ${scopeLine}`,
-						`expires: ${identity.token.expiresAt ?? 'unknown'}`,
-						'',
-					].join('\n'),
-				)
-				return 0
-			}
-			const { ensureOpenApiCredentials } = await import('./auth.js')
-			const credentials = await ensureOpenApiCredentials({
+			const { runWhoami } = await import('./whoami.js')
+			return await runWhoami({
+				tokenValues,
 				mcpUrl,
-				org,
 				apiUrl,
-			})
-			const { whoamiWithApiToken } = await import('./open-api-client.js')
-			const identity = await whoamiWithApiToken({
-				token: credentials.accessToken,
-				apiUrl,
+				json,
+				write,
 				...(org ? { org } : {}),
 			})
-			if (json) {
-				write(
-					`${JSON.stringify(
-						{
-							apiUrl: identity.apiUrl,
-							org: credentials.org ?? null,
-							scope: identity.token.scopes,
-							token: identity.token,
-							user: identity.user,
-						},
-						null,
-						2,
-					)}\n`,
-				)
-				return 0
-			}
-			const orgLine = credentials.org ? `\norg: ${credentials.org}` : ''
-			const userLine = identity.user
-				? `${identity.user.displayName} <${identity.user.email}>`
-				: '(no profile)'
-			write(
-				`Logged in at ${identity.apiUrl}${orgLine}\nuser: ${userLine}\nscopes: ${identity.token.scopes.join(', ') || '(none)'}\n`,
-			)
-			return 0
 		}
 		case 'search': {
 			const { resolveTarget } = await import('./target.js')
@@ -998,20 +945,17 @@ async function dispatch(
 					write(formatToolResult(result, json))
 					return result.isError ? 1 : 0
 				}
-				if (
-					shouldUseApiToken({
-						tokenValues,
-						mcpUrl,
-						apiUrl,
-						allowEnvWithoutLogin: true,
-						...(org ? { org } : {}),
-					})
-				) {
+				const searchCredential = resolveCliCredential({
+					tokenValues,
+					mcpUrl,
+					apiUrl,
+					purpose: 'session',
+					...(org ? { org } : {}),
+				})
+				if (searchCredential?.token) {
 					const { searchWithApiToken } = await import('./open-api-client.js')
 					const result = await searchWithApiToken({
-						token: requireApiToken(tokenValues, process.env, 'search', {
-							apiUrl,
-						}),
+						token: searchCredential.token,
 						apiUrl,
 						...(org ? { org } : {}),
 						query: query || undefined,
@@ -1037,6 +981,7 @@ async function dispatch(
 					org,
 					apiUrl,
 				})
+				noteActiveLoginCredential({ login: credentials, purpose: 'session' })
 				const { searchWithApiToken } = await import('./open-api-client.js')
 				const result = await searchWithApiToken({
 					token: credentials.accessToken,
@@ -1270,15 +1215,16 @@ async function dispatch(
 					write(formatToolResult(result, json))
 					return result.isError ? 1 : 0
 				}
-				const useToken =
-					local ||
-					shouldUseApiToken({
-						tokenValues,
-						mcpUrl,
-						apiUrl,
-						allowEnvWithoutLogin: true,
-						...(org ? { org } : {}),
-					})
+				const cloudCredential = local
+					? null
+					: resolveCliCredential({
+							tokenValues,
+							mcpUrl,
+							apiUrl,
+							purpose: 'session',
+							...(org ? { org } : {}),
+						})
+				const cloudToken = cloudCredential?.token ?? null
 				let packageRootForMocks: string | undefined
 				if (target === 'mock') {
 					try {
@@ -1320,7 +1266,7 @@ async function dispatch(
 								parsed.values['allow-private-network'] === true,
 							onStatus: (message) => writeErr(`${message}\n`),
 						})
-					: useToken
+					: cloudToken
 						? await (
 								await import('./remote-execute.js')
 							).runRemoteExecuteWithToken({
@@ -1329,12 +1275,7 @@ async function dispatch(
 								conversationId: args.conversationId as string | undefined,
 								...(credentials !== undefined ? { credentials } : {}),
 								...(executeRouting ? { routing: executeRouting } : {}),
-								token: requireApiToken(
-									tokenValues,
-									process.env,
-									'execute with an API token',
-									{ apiUrl },
-								),
+								token: cloudToken,
 								apiUrl,
 								...(org ? { org } : {}),
 							})
@@ -1344,6 +1285,10 @@ async function dispatch(
 									mcpUrl,
 									org,
 									apiUrl,
+								})
+								noteActiveLoginCredential({
+									login: session,
+									purpose: 'session',
 								})
 								return (
 									await import('./remote-execute.js')
@@ -2108,23 +2053,15 @@ function bootstrapMinter(input: {
 	// Resolve credentials lazily so `auth setup-git` can validate login/token
 	// presence (and print its own guidance) before mint runs.
 	return async (params) => {
-		if (
-			shouldUseApiToken({
-				tokenValues: input.tokenValues,
-				mcpUrl: input.mcpUrl,
-				apiUrl: input.apiUrl,
-				allowEnvWithoutLogin: true,
-				...(input.org ? { org: input.org } : {}),
-			})
-		) {
-			const token = requireApiToken(
-				input.tokenValues,
-				process.env,
-				'auth bootstrap --scopes',
-				{
-					apiUrl: input.apiUrl,
-				},
-			)
+		const minter = resolveCliCredential({
+			tokenValues: input.tokenValues,
+			mcpUrl: input.mcpUrl,
+			apiUrl: input.apiUrl,
+			purpose: 'mint',
+			...(input.org ? { org: input.org } : {}),
+		})
+		if (minter?.token) {
+			const token = minter.token
 			const { callOpenApiOperation } = await import('./open-api-client.js')
 			try {
 				return await callOpenApiOperation({
@@ -2146,11 +2083,7 @@ function bootstrapMinter(input: {
 				throw error
 			}
 		}
-		if (
-			loadCredentials(input.mcpUrl, undefined, undefined, {
-				org: input.org,
-			})
-		) {
+		if (minter) {
 			const { ensureOpenApiCredentials } = await import('./auth.js')
 			const session = await ensureOpenApiCredentials({
 				mcpUrl: input.mcpUrl,
@@ -2180,25 +2113,30 @@ function tokenFlagValues(values: ReturnType<typeof parseKnown>['values']): {
 	}
 }
 
-/** Explicit token, else the login device token (exchanging OAuth when needed). */
+/**
+ * Bearer for Open API commands: `--token`, `KODY_API_TOKEN`, the stored API
+ * token, else the login device token (see `resolveCliCredential`).
+ */
 async function accessTokenForOpenApi(input: {
 	tokenValues: { token?: string }
 	apiUrl: string
 	mcpUrl: string
 	org?: string
 }): Promise<string> {
-	const explicit = resolveScopedApiToken({
+	const credential = resolveCliCredential({
 		tokenValues: input.tokenValues,
-		env: process.env,
 		apiUrl: input.apiUrl,
+		mcpUrl: input.mcpUrl,
+		...(input.org ? { org: input.org } : {}),
 	})
-	if (explicit) return explicit
+	if (credential?.token) return credential.token
 	const { ensureOpenApiCredentials } = await import('./auth.js')
 	const session = await ensureOpenApiCredentials({
 		mcpUrl: input.mcpUrl,
 		apiUrl: input.apiUrl,
 		...(input.org ? { org: input.org } : {}),
 	})
+	noteActiveLoginCredential({ login: session })
 	return session.accessToken
 }
 
@@ -2286,44 +2224,22 @@ export async function resolvePackagePublishTarget(
 	return { ...rest, package_id: matches[0]!.package_id }
 }
 
-/**
- * Prefer a scoped API token when the user passed `--token`, or when
- * `KODY_API_TOKEN` / a stored bootstrap token is available and there is no
- * stored `kody login` session. Logged-in MCP OAuth still wins over an
- * env-only or stored token so a leftover token does not hijack cloud MCP
- * commands.
- */
-export function shouldUseApiToken(input: {
-	tokenValues: { token?: string }
-	mcpUrl: string
-	allowEnvWithoutLogin: boolean
-	env?: NodeJS.ProcessEnv
-	apiUrl?: string
-	/** When set, only a login for this org counts as a session. */
-	org?: string
-	/** Override session detection (tests). */
-	hasSession?: boolean
-	/** Test seam for stored bootstrap/API token lookup. */
-	loadApiToken?: NonNullable<
-		Parameters<typeof resolveScopedApiToken>[0]
-	>['loadApiToken']
-}): boolean {
-	if (hasExplicitTokenFlag(input.tokenValues)) return true
-	if (!input.allowEnvWithoutLogin) return false
-	if (
-		!resolveScopedApiToken({
-			tokenValues: input.tokenValues,
-			env: input.env,
-			apiUrl: input.apiUrl,
-			loadApiToken: input.loadApiToken,
-		})
-	) {
-		return false
+/** After `kody login`: warn when a stored API token still outranks the login. */
+export function storedApiTokenAfterLoginNotice(
+	apiUrl: string,
+	loadApiToken: typeof loadStoredApiToken = loadStoredApiToken,
+): string {
+	let stored: ReturnType<typeof loadStoredApiToken>
+	try {
+		stored = loadApiToken(apiUrl)
+	} catch {
+		return ''
 	}
-	const loggedIn =
-		input.hasSession ??
-		loadCredentials(input.mcpUrl, undefined, undefined, {
-			org: input.org,
-		}) != null
-	return !loggedIn
+	if (!stored) return ''
+	const label = describeCliCredential({
+		source: 'stored-api-token',
+		token: stored.token,
+		stored,
+	})
+	return `Note: a ${label} is still stored and \`kody login\` does not replace it. api, package, execute --local, context, daemon, and dev keep using it (scopes: ${stored.scopes?.join(', ') || 'unknown'}). To change its scopes run \`${replaceStoredTokenCommand(stored.scopes)}\`, or \`kody logout\` to clear it. Check with \`kody whoami\`.\n`
 }

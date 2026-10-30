@@ -3,9 +3,12 @@ import {
 	notAuthenticatedMessage,
 	expectedPairedApiOrigin,
 	isPairedApiUrl,
-	resolveScopedApiToken,
 	type ResolveScopedApiTokenInput,
 } from './api-token.js'
+import {
+	noteActiveLoginCredential,
+	resolveCliCredential,
+} from './cli-credential.js'
 import { defaultApiUrl, defaultMcpUrl } from './defaults.js'
 import { type SecretBackend } from './store.js'
 
@@ -40,8 +43,22 @@ export async function resolveLocalExecuteBearer(
 		ensureCredentials?: typeof ensureFreshCredentials
 	},
 ): Promise<string> {
-	const token = resolveScopedApiToken(input)
-	if (token) return token
+	const credential = resolveCliCredential({
+		tokenValues: input.tokenValues,
+		env: input.env,
+		apiUrl: input.apiUrl,
+		mcpUrl: input.mcpUrl,
+		...(input.org ? { org: input.org } : {}),
+		...(input.loadApiToken ? { loadApiToken: input.loadApiToken } : {}),
+		...(input.apiTokenBackend
+			? { apiTokenBackend: input.apiTokenBackend }
+			: {}),
+		...(input.apiTokenResolution
+			? { apiTokenResolution: input.apiTokenResolution }
+			: {}),
+		...(input.backend ? { loginBackend: input.backend } : {}),
+	})
+	if (credential?.token) return credential.token
 
 	const apiUrl = input.apiUrl ?? defaultApiUrl
 	const mcpUrl = input.mcpUrl ?? defaultMcpUrl
@@ -64,6 +81,7 @@ export async function resolveLocalExecuteBearer(
 			fetchFn: input.fetchFn,
 			now: input.now,
 		})
+		noteActiveLoginCredential({ login: credentials })
 		return credentials.accessToken
 	} catch (error) {
 		// Preserve org-specific guidance from ensureFreshCredentials.
