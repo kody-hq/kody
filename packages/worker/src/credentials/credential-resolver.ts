@@ -188,7 +188,13 @@ export type CredentialTarget =
 	 * request. Not reachable from package code until the credential clients
 	 * ship (T).
 	 */
-	| { use: 'login'; credentialId: string; requestUrl: URL }
+	| {
+			use: 'login'
+			credentialId: string
+			requestUrl: URL
+			/** The session a host just answered 401 to; it is dropped first. */
+			rejectedSessionId?: string | null
+	  }
 	/**
 	 * A `signing` credential picked by id: a JWT or HMAC signature made with
 	 * its key, for a request to `requestHost`, which must be one of the

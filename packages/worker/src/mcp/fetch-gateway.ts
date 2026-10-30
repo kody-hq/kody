@@ -360,7 +360,7 @@ export async function executeGatewayFetch(input: {
 		const credentialClientToken = input.request.headers.get(
 			credentialClientHeaderName,
 		)
-		const credentialClient =
+		let credentialClient =
 			credentialClientToken === null
 				? null
 				: await resolveCredentialClientPlacement({
@@ -417,6 +417,34 @@ export async function executeGatewayFetch(input: {
 					...expanded.substitutedValues,
 					...credentialClient.substitutedValues,
 				]
+			}
+			// A login session a host refused gets one fresh session and one
+			// retry, through the same door (host and placement re-checked).
+			// Only a request with no body can be replayed.
+			if (
+				upstream.status === 401 &&
+				credentialClient?.login &&
+				credentialClientToken !== null &&
+				input.request.body === null
+			) {
+				await upstream.body?.cancel()
+				const retried = await resolveCredentialClientPlacement({
+					env: input.env,
+					props: input.props,
+					token: credentialClientToken,
+					request: input.request,
+					rejectedLoginSessionId: credentialClient.login.sessionId,
+				})
+				substitutedValues = [...substitutedValues, ...retried.substitutedValues]
+				credentialClient = retried
+				transformed = applyCredentialClientPlacement(
+					expanded.request,
+					retried.placement,
+					codeRequest,
+				)
+				upstream = await globalFetch(
+					new Request(transformed, { signal: deadline.signal }),
+				)
 			}
 			// Credential-bearing requests stay on redirect=manual (fail closed).
 			// Ordinary bodies that used manual only so mid-stream fills could be

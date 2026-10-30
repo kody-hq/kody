@@ -1530,6 +1530,28 @@ export async function findSecretForUse(input: ResolveSecretInput): Promise<{
 	}
 }
 
+/** The stored columns a credential revision digests; ciphertext, never a value. */
+export type StoredCredentialRevisionFields = {
+	encryptedValue: string
+	configJson: string | null
+	allowedHostsJson: string
+	injectJson: string
+}
+
+/** A change to the value, exchange, hosts, or inject changes the revision. */
+export async function storedCredentialRevision(
+	fields: StoredCredentialRevisionFields,
+) {
+	return await sha256Hex(
+		JSON.stringify([
+			fields.encryptedValue,
+			fields.configJson,
+			fields.allowedHostsJson,
+			fields.injectJson,
+		]),
+	)
+}
+
 export type StoredCredential = {
 	credentialId: string
 	/** The org that owns the row (the personal org for a personal credential). */
@@ -1549,6 +1571,7 @@ export type StoredCredential = {
 	 * change to the value, exchange, hosts, or inject changes it.
 	 */
 	revision: string
+	revisionFields: StoredCredentialRevisionFields
 }
 
 /**
@@ -1573,6 +1596,12 @@ export async function findStoredCredentialForUse(input: {
 	if (!row || isDisconnectedSecretEncryptedValue(row.encrypted_value)) {
 		return null
 	}
+	const revisionFields: StoredCredentialRevisionFields = {
+		encryptedValue: row.encrypted_value,
+		configJson: row.config_json,
+		allowedHostsJson: row.allowed_hosts,
+		injectJson: row.inject_json,
+	}
 	return {
 		found: {
 			credentialId: row.id,
@@ -1583,14 +1612,8 @@ export async function findStoredCredentialForUse(input: {
 			injectJson: row.inject_json,
 			configJson: row.config_json,
 			placement: readCredentialFillPlacement(row.placement_json),
-			revision: await sha256Hex(
-				JSON.stringify([
-					row.encrypted_value,
-					row.config_json,
-					row.allowed_hosts,
-					row.inject_json,
-				]),
-			),
+			revision: await storedCredentialRevision(revisionFields),
+			revisionFields,
 		},
 		readValue: () =>
 			decryptSecretValue(

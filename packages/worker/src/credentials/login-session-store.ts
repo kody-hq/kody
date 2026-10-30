@@ -17,8 +17,33 @@ import {
 } from '#mcp/secrets/crypto.ts'
 import { CredentialLoginFailedError } from './credential-request.ts'
 
+/**
+ * A replacement login value the exchange returned (a rotated refresh token):
+ * `valueStatement` writes it only while the credential is unchanged, and the
+ * session is stored under `revision` only when that write landed.
+ */
+export type LoginValueReplacement = {
+	valueStatement: D1PreparedStatement
+	credentialId: string
+	encryptedValue: string
+	revision: string
+}
+
 /** `expiresAt` is null when the response says the token is already expired. */
-export type LoginSession = { token: string; expiresAt: number | null }
+export type LoginSession = {
+	token: string
+	expiresAt: number | null
+	replacement?: LoginValueReplacement
+}
+
+export type ObtainedLoginSession = {
+	session: LoginSession
+	source: 'stored' | 'new'
+	/** Null when the session was not stored (already expired). */
+	sessionId: string | null
+	/** Whether a replacement login value from the exchange was saved. */
+	valueReplaced: boolean
+}
 
 export type StoredLoginSession = {
 	sessionId: string
@@ -123,58 +148,129 @@ async function releaseLease(
 		.run()
 }
 
-/** Writes the session only while `leaseId` still holds the lease. */
+/**
+ * Writes the session only while `leaseId` still holds the lease. With a
+ * replacement value, the value write and the session write run in one batch,
+ * and the session lands only when the value write did.
+ */
 async function writeSessionUnderLease(
 	input: SessionKey & {
 		env: SessionEnv
 		leaseId: string
-		session: { token: string; expiresAt: number }
+		session: LoginSession
 	},
-) {
-	const encrypted = await encryptLoginCredentialSession(
-		input.env,
-		input.session.token,
-		loginCredentialSessionContext(input),
-	)
-	await input.env.APP_DB.prepare(
-		`UPDATE login_credential_sessions
-		SET revision = ?, session_id = ?, session_encrypted = ?, expires_at = ?,
-			lease_id = NULL, lease_expires_at = NULL, updated_at = ?
-		WHERE credential_id = ? AND user_id = ? AND lease_id = ?`,
-	)
+): Promise<{ sessionId: string | null; valueReplaced: boolean }> {
+	const db = input.env.APP_DB
+	const { replacement, expiresAt } = input.session
+	const revision = replacement?.revision ?? input.revision
+	const sessionId = expiresAt === null ? null : crypto.randomUUID()
+	const encrypted =
+		expiresAt === null
+			? null
+			: await encryptLoginCredentialSession(
+					input.env,
+					input.session.token,
+					loginCredentialSessionContext({ ...input, revision }),
+				)
+	const guard = replacement
+		? `AND EXISTS (SELECT 1 FROM secret_entries WHERE id = ? AND encrypted_value = ?)`
+		: ''
+	const guardBindings = replacement
+		? [replacement.credentialId, replacement.encryptedValue]
+		: []
+	const sessionWrite = db
+		.prepare(
+			`UPDATE login_credential_sessions
+			SET revision = ?, session_id = ?, session_encrypted = ?, expires_at = ?,
+				lease_id = NULL, lease_expires_at = NULL, updated_at = ?
+			WHERE credential_id = ? AND user_id = ? AND lease_id = ? ${guard}`,
+		)
 		.bind(
-			input.revision,
-			crypto.randomUUID(),
+			revision,
+			sessionId,
 			encrypted,
-			input.session.expiresAt,
+			expiresAt,
 			new Date().toISOString(),
 			input.credentialId,
 			input.ownerId,
 			input.leaseId,
+			...guardBindings,
 		)
+	if (!replacement) {
+		const result = await sessionWrite.run()
+		return {
+			sessionId: (result.meta.changes ?? 0) > 0 ? sessionId : null,
+			valueReplaced: false,
+		}
+	}
+	const [valueResult, sessionResult] = await db.batch([
+		replacement.valueStatement,
+		sessionWrite,
+	])
+	const valueReplaced = (valueResult?.meta.changes ?? 0) > 0
+	if (!valueReplaced) await releaseLease(db, input.credentialId, input.leaseId)
+	return {
+		sessionId:
+			valueReplaced && (sessionResult?.meta.changes ?? 0) > 0
+				? sessionId
+				: null,
+		valueReplaced,
+	}
+}
+
+/** Drops the stored session only if it is still the one a host rejected. */
+async function dropRejectedSession(
+	db: D1Database,
+	credentialId: string,
+	sessionId: string,
+) {
+	await db
+		.prepare(
+			`UPDATE login_credential_sessions
+			SET session_id = NULL, session_encrypted = NULL, expires_at = NULL
+			WHERE credential_id = ? AND session_id = ?`,
+		)
+		.bind(credentialId, sessionId)
 		.run()
 }
 
 /**
  * The credential's live session: a stored one for this revision, or one
  * `exchange` mints while this caller holds the lease. Callers that lose the
- * lease wait (up to twice the lease) for the holder's session.
+ * lease wait (up to twice the lease) for the holder's session. A
+ * `rejectedSessionId` (a host answered 401 to it) is dropped first, unless
+ * another caller already replaced it, in which case its session is reused.
  */
 export async function obtainLoginSession(
 	input: SessionKey & {
 		env: SessionEnv
 		exchange: () => Promise<LoginSession>
+		rejectedSessionId?: string | null
 		leaseMs?: number
 		pollMs?: number
 	},
-): Promise<{ session: LoginSession; source: 'stored' | 'new' }> {
+): Promise<ObtainedLoginSession> {
 	const leaseMs = input.leaseMs ?? defaultLeaseMs
 	const pollMs = input.pollMs ?? defaultPollMs
 	const deadline = Date.now() + leaseMs * 2
 	const leaseId = crypto.randomUUID()
+	if (input.rejectedSessionId) {
+		await dropRejectedSession(
+			input.env.APP_DB,
+			input.credentialId,
+			input.rejectedSessionId,
+		)
+	}
 	for (;;) {
 		const stored = await readStoredLoginSession(input)
-		if (stored) return { session: stored, source: 'stored' }
+		if (stored) {
+			return {
+				session: stored,
+				source: 'stored',
+				sessionId: stored.sessionId,
+				valueReplaced: false,
+			}
+		}
 		const now = Date.now()
 		if (
 			await claimLease({
@@ -192,16 +288,16 @@ export async function obtainLoginSession(
 				await releaseLease(input.env.APP_DB, input.credentialId, leaseId)
 				throw error
 			}
-			if (session.expiresAt === null) {
+			if (session.expiresAt === null && !session.replacement) {
 				await releaseLease(input.env.APP_DB, input.credentialId, leaseId)
-			} else {
-				await writeSessionUnderLease({
-					...input,
-					leaseId,
-					session: { token: session.token, expiresAt: session.expiresAt },
-				})
+				return { session, source: 'new', sessionId: null, valueReplaced: false }
 			}
-			return { session, source: 'new' }
+			const written = await writeSessionUnderLease({
+				...input,
+				leaseId,
+				session,
+			})
+			return { session, source: 'new', ...written }
 		}
 		if (Date.now() + pollMs > deadline)
 			throw new CredentialLoginFailedError(null)

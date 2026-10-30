@@ -1481,6 +1481,8 @@ export type AppliedCredentialClient = {
 	substitutedValues: ReadonlyArray<string>
 	/** The inject shape with no value, for a 401 / 403 hint. */
 	shape: string
+	/** A login credential's session id (never the session), for a 401 retry. */
+	login?: { sessionId: string | null }
 }
 
 function fromResolved(
@@ -1512,6 +1514,8 @@ export async function applyCredentialClient(input: {
 	packageAppAuthority?: PackageAppCredentialAuthority | null
 	token: string
 	requestUrl: URL
+	/** A login session a host answered 401 to; the door drops it and re-mints. */
+	rejectedLoginSessionId?: string | null
 }): Promise<AppliedCredentialClient> {
 	return await withClientErrors(input, async () => {
 		const ctx = {
@@ -1574,12 +1578,14 @@ export async function applyCredentialClient(input: {
 						use: 'login',
 						credentialId: handle.id,
 						requestUrl,
+						rejectedSessionId: input.rejectedLoginSessionId ?? null,
 					}),
 				)
 				const { placement } = session
 				return {
 					placement,
 					substitutedValues: session.substitutedValues,
+					login: { sessionId: session.sessionId },
 					shape:
 						placement.kind === 'header'
 							? `login session in header ${placement.name}`
