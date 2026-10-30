@@ -51,7 +51,7 @@ export const adminCreditGrantCapability = defineDomainCapability(
 		name: 'adminCreditGrant',
 		contextRuns: 'deny',
 		description:
-			'Grant (add) prepaid credits to one account by stable user id, email, or username, including the calling admin. House-funded: no Stripe charge. Writes an audited ledger entry with the granting admin, amount, recipient, time, and optional note. Credits are only spent (on usage past the Pro include) by credit-eligible Pro accounts; otherwise the balance is held.',
+			'Grant (add) prepaid credits to one account by stable user id, email, or username, including the calling admin. House-funded: no Stripe charge. Writes an audited ledger entry with the granting admin, amount, recipient, time, and optional note. Credits are only spent (on usage past the Pro include) by credit-eligible Pro accounts; otherwise the balance is held. Use adminOrgCreditGrant to grant credits to any organization wallet.',
 		keywords: ['admin', 'credits', 'wallet', 'grant', 'balance', 'top up'],
 		inputSchema,
 		outputSchema,

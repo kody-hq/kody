@@ -946,6 +946,13 @@ binds on the next counted check everywhere, with no TTL that can hide it.
   addressed by `orgId` or `org` handle (`@kody` or `kody`).
 - `adminOrgLimitOverridesSet` — set, change, or remove (`value: null`) any
   number of keys with one reason. Unchanged keys are skipped.
+- `adminOrgPlanSet` — change the manual plan grant for one organization with a
+  required reason; a downgrade to free is blocked when it exceeds an owner's
+  two-free-organization cap.
+- `adminOrgCreditGrant` — add positive house-funded credit to one organization
+  wallet with a required reason; clawbacks are not supported.
+- `adminOrgCreditEligibilitySet` — change one organization's admin credit
+  eligibility with a required reason.
 - `GET` / `POST /admin/orgs/limits.json` and the "Limit overrides" panel on
   `/admin/users` (personal orgs).
 
@@ -953,6 +960,12 @@ Every set, change, or remove writes an org audit event (`limit_override.set` /
 `.changed` / `.removed`, `resource_type` `limit_override`, `resource_id` the
 key) with the acting admin, `previous` and `next` (`value`, `expiresAt`,
 `reason`, `setByUserId`), and the reason.
+
+Organization plan, credit grant, and credit-eligibility changes each write a
+platform admin audit event and an org audit event (`admin_plan_set`,
+`admin_credits_granted`, and `admin_credit_eligibility_set`). The legacy
+user-targeted `adminUserUpdate`, `adminCreditGrant`, and
+`adminCreditEligibilitySet` tools remain personal-organization operations.
 
 **What users see:** the usage page, email usage, admin consumption views, and
 execute `entitlement` metadata (`limit`, `remaining`) report the effective

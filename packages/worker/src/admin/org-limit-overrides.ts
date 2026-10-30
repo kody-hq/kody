@@ -119,15 +119,18 @@ export type AdminOrgLimitOverrideChange = {
 	expiresAt?: string | null
 }
 
-function normalizeReason(reason: unknown): string {
+export function normalizeOrgLimitOverrideReason(
+	reason: unknown,
+	maxLength = orgLimitOverrideReasonMaxLength,
+): string {
 	const trimmed = typeof reason === 'string' ? reason.trim() : ''
 	if (!trimmed) {
 		throw new AdminOrgLimitOverrideError(400, 'A reason is required.')
 	}
-	if (trimmed.length > orgLimitOverrideReasonMaxLength) {
+	if (trimmed.length > maxLength) {
 		throw new AdminOrgLimitOverrideError(
 			400,
-			`Keep the reason under ${orgLimitOverrideReasonMaxLength} characters.`,
+			`Keep the reason under ${maxLength} characters.`,
 		)
 	}
 	return trimmed
@@ -210,7 +213,7 @@ export async function applyAdminOrgLimitOverrideChanges(input: {
 		}
 		seen.add(change.key)
 	}
-	const reason = normalizeReason(input.reason)
+	const reason = normalizeOrgLimitOverrideReason(input.reason)
 	const normalized = input.changes.map((change) => ({
 		key: change.key,
 		value:

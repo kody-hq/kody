@@ -19,7 +19,6 @@ import {
 	parseStoredPlanName,
 	parseStripePlanName,
 	planNames,
-	resolveEntitlementLadderAfterPaidAccessChange,
 	resolvePlanWrite,
 	type EntitlementLadder,
 	type PlanName,
@@ -43,17 +42,13 @@ import {
 	emailVerificationStallCutoffIso,
 	emailVerificationStallSqlConditions,
 } from '#worker/identity/email-verification-stall.ts'
-import { forgiveCreditUsageBeforeUnlock } from '#worker/billing/credit-wallet.ts'
-import {
-	userEntitlementColumnsSql,
-	type UserEntitlementRow,
-} from '#worker/entitlements/service.ts'
 import {
 	parsePersonId,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { listAdminUserOrgMemberships } from '#worker/admin/orgs-data.ts'
+import { writeOrgManualPlan } from './org-billing-mutations.ts'
 
 export const adminUserRowSelectSql = `u.id, u.stable_user_id, o.id AS org_id, u.username, u.email, u.email_verified_at, COALESCE(o.plan, 'free') AS plan, o.stripe_plan, COALESCE(o.entitlement_ladder, 'public') AS entitlement_ladder, o.stripe_customer_id, u.suspended_at, u.deleted_at, u.deleting_at,
 				o.email_outbound_paused_at, u.email_verification_delivery_status, u.email_verification_delivery_at, u.email_verification_delivery_detail, u.email_verification_delivery_class,
@@ -465,44 +460,12 @@ export async function updateAdminUserPlan(
 	}
 	const now = input.now ?? new Date()
 	const nextPlan = resolvePlanWrite(input.plan)
-	const stripePlan = parseStripePlanName(existingRow.stripe_plan)
-	const nextLadder = resolveEntitlementLadderAfterPaidAccessChange({
-		currentLadder: parseEntitlementLadder(existingRow.entitlement_ladder),
-		manualPlan: nextPlan,
-		previousStripePlan: stripePlan,
-		nextStripePlan: stripePlan,
-	})
-	const entitlementRow = await db
-		.prepare(
-			`SELECT ${userEntitlementColumnsSql()} FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(orgId)
-		.first<UserEntitlementRow>()
-	if (entitlementRow) {
-		await forgiveCreditUsageBeforeUnlock({
-			db,
-			userId: orgId,
-			current: entitlementRow,
-			next: {
-				...entitlementRow,
-				plan: nextPlan,
-				entitlement_ladder: nextLadder,
-			},
-			now,
-		})
-	}
-	const updatedAt = utcSqliteTimestamp(now)
-	const planWrite = await updateOrgBillingColumns({
+	await writeOrgManualPlan({
 		db,
 		orgId,
-		setClause: 'plan = ?, entitlement_ladder = ?, updated_at = ?',
-		values: [nextPlan, nextLadder, updatedAt],
+		plan: nextPlan,
+		now,
 	})
-	if ((planWrite.meta.changes ?? 0) === 0) {
-		throw new Error(
-			`Cannot update billing: missing personal org ${existing.stableUserId}.`,
-		)
-	}
 
 	return loadAdminUserByTarget(db, { stableUserId: existing.stableUserId })
 }

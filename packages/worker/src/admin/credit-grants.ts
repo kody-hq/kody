@@ -15,16 +15,13 @@ import {
 	type AdminCreditLedgerItem,
 	type AdminCreditWalletSummary,
 } from '#universal/loader-data.ts'
-import { updateOrgBillingColumns } from '#worker/orgs/org-billing-columns.ts'
 import {
 	creditAdminGrantNoteMaxLength,
 	validateCreditAdminGrantCents,
 } from '#universal/credits.ts'
-import { utcSqliteTimestamp } from '@kody-internal/shared/date-keys.ts'
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
 import {
 	ensureCreditWallet,
-	forgiveCreditUsageBeforeUnlock,
 	grantAdminCredits,
 	listCreditLedgerEntries,
 	readCreditWallet,
@@ -39,6 +36,7 @@ import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { parseOwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type AdminUserTarget } from './users-data.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { writeOrgCreditEligibility } from './org-billing-mutations.ts'
 
 const adminCreditLedgerLimit = 20
 
@@ -293,22 +291,12 @@ export async function setAdminCreditEligibility(input: {
 	const now = input.now ?? new Date()
 	const row = await loadCreditGrantTarget(db, input.target)
 	if (!row) throw new AdminCreditGrantError(404, 'User not found.')
-	const previousAdminCreditsEligible = Number(row.admin_credits_eligible) === 1
 	const orgId = row.org_id
-	await forgiveCreditUsageBeforeUnlock({
-		db,
-		userId: orgId,
-		current: row,
-		next: { ...row, admin_credits_eligible: input.creditsEligible ? 1 : 0 },
-		now,
-	})
-	const updatedAt = utcSqliteTimestamp(now)
-	const adminCreditsEligible = input.creditsEligible ? 1 : 0
-	await updateOrgBillingColumns({
+	const previousAdminCreditsEligible = await writeOrgCreditEligibility({
 		db,
 		orgId,
-		setClause: 'admin_credits_eligible = ?, updated_at = ?',
-		values: [adminCreditsEligible, updatedAt],
+		creditsEligible: input.creditsEligible,
+		now,
 	})
 	const wallet = await loadAdminCreditWallet(input.env, {
 		stableUserId: row.stable_user_id,

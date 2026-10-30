@@ -22,6 +22,51 @@ import { resolveAdminPlanOverlay } from '#universal/referral-program.ts'
 import { resolveEffectivePlanWithSecondAgentGift } from '#universal/second-agent-standard-gift.ts'
 import { resolveUserPlanFromRow } from '#worker/entitlements/service.ts'
 import { parseOwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { type AppEnv } from '#worker/env-schema.ts'
+
+type AdminOrgDb = AppEnv['APP_DB']
+
+type AdminOrgListRow = {
+	id: string
+	slug: string
+	display_name: string | null
+	plan: string
+	stripe_plan: string | null
+	second_agent_standard_gift_expires_at: string | null
+	referral_standard_credit_expires_at: string | null
+	suspended_at: string | null
+	deleted_at: string | null
+	deleting_at: string | null
+	created_at: string
+	is_personal: number
+	seats: number
+	credit_balance_micro_usd: number | null
+}
+
+type AdminOrgMembershipRow = {
+	org_id: string
+	slug: string
+	display_name: string | null
+	plan: string
+	stripe_plan: string | null
+	second_agent_standard_gift_expires_at: string | null
+	referral_standard_credit_expires_at: string | null
+	org_deleted_at: string | null
+	role: string
+	membership_deleted_at: string | null
+	is_personal: number
+	seats: number
+}
+
+type AdminOrgMemberRow = {
+	user_id: string
+	username: string
+	role: string
+	joined_at: string
+	membership_deleted_at: string | null
+	user_deleted_at: string | null
+	monthly_budget_micro_usd: number | null
+}
 
 export type AdminOrgKind = 'personal' | 'team'
 export type AdminOrgRole = 'owner' | 'member' | 'billing'
@@ -185,7 +230,7 @@ function storedPlan(
 }
 
 export async function readAdminOrgsData(
-	db: D1Database,
+	db: AdminOrgDb,
 	input: {
 		query?: string
 		status: AdminOrgStatus
@@ -236,25 +281,10 @@ export async function readAdminOrgsData(
 				 LIMIT ? OFFSET ?`,
 			)
 			.bind(...params, pageSize, offset)
-			.all<{
-				id: string
-				slug: string
-				display_name: string | null
-				plan: string
-				stripe_plan: string | null
-				second_agent_standard_gift_expires_at: string | null
-				referral_standard_credit_expires_at: string | null
-				suspended_at: string | null
-				deleted_at: string | null
-				deleting_at: string | null
-				created_at: string
-				is_personal: number
-				seats: number
-				credit_balance_micro_usd: number | null
-			}>(),
+			.all<AdminOrgListRow>(),
 	])
 	return {
-		items: (rows.results ?? []).map((row) => ({
+		items: (rows.results ?? []).map((row: AdminOrgListRow) => ({
 			id: row.id,
 			slug: row.slug,
 			displayName: row.display_name,
@@ -279,7 +309,7 @@ export async function readAdminOrgsData(
 }
 
 export async function listAdminUserOrgMemberships(
-	db: D1Database,
+	db: AdminOrgDb,
 	stableUserId: string,
 ): Promise<Array<AdminOrgMembershipItem>> {
 	const rows = await db
@@ -296,21 +326,8 @@ export async function listAdminUserOrgMemberships(
 			 ORDER BY is_personal DESC, (m.deleted_at IS NULL) DESC, o.slug COLLATE NOCASE ASC`,
 		)
 		.bind(stableUserId)
-		.all<{
-			org_id: string
-			slug: string
-			display_name: string | null
-			plan: string
-			stripe_plan: string | null
-			second_agent_standard_gift_expires_at: string | null
-			referral_standard_credit_expires_at: string | null
-			org_deleted_at: string | null
-			role: string
-			membership_deleted_at: string | null
-			is_personal: number
-			seats: number
-		}>()
-	return (rows.results ?? []).flatMap((row) => {
+		.all<AdminOrgMembershipRow>()
+	return (rows.results ?? []).flatMap((row: AdminOrgMembershipRow) => {
 		if (row.role !== 'owner' && row.role !== 'member' && row.role !== 'billing')
 			return []
 		return [
@@ -360,7 +377,7 @@ type OrgDetailRow = {
 }
 
 export async function loadAdminOrgDetail(
-	envOrDb: Env | D1Database,
+	envOrDb: AppEnv | AdminOrgDb,
 	input: { slug?: string; orgId?: string },
 ): Promise<AdminOrgDetail | null> {
 	const db = 'APP_DB' in envOrDb ? envOrDb.APP_DB : envOrDb
@@ -398,15 +415,7 @@ export async function loadAdminOrgDetail(
 			 ORDER BY (m.deleted_at IS NULL) DESC, username COLLATE NOCASE ASC`,
 		)
 		.bind(row.id)
-		.all<{
-			user_id: string
-			username: string
-			role: string
-			joined_at: string
-			membership_deleted_at: string | null
-			user_deleted_at: string | null
-			monthly_budget_micro_usd: number | null
-		}>()
+		.all<AdminOrgMemberRow>()
 	const { manualPlan, stripePlan, effectivePlan } = storedPlan(
 		row.plan,
 		row.stripe_plan,
@@ -456,7 +465,7 @@ export async function loadAdminOrgDetail(
 			creditsEligible: entitlement.creditsEligible,
 		},
 		seats: { live: row.live_seats, billingOnly: row.billing_only },
-		members: (members.results ?? []).flatMap((member) => {
+		members: (members.results ?? []).flatMap((member: AdminOrgMemberRow) => {
 			if (
 				member.role !== 'owner' &&
 				member.role !== 'member' &&
