@@ -501,6 +501,7 @@ test('a narrowed visitor credential stays narrowed through the visit ticket', as
 		ticket: visit.ticket!,
 		audience,
 	})
+	if (!claims.visitor) throw new Error('expected a visitor ticket')
 	expect(requestContextFromVisitClaims(claims).credential).toEqual({
 		kind: 'package-app',
 		id: null,
@@ -515,6 +516,7 @@ test('a narrowed visitor credential stays narrowed through the visit ticket', as
 		ticket: unscoped.ticket,
 		audience,
 	})
+	if (!unscopedClaims.visitor) throw new Error('expected a visitor ticket')
 	expect(
 		requestContextFromVisitClaims(unscopedClaims).credential,
 	).toMatchObject({ scopes: null, profileName: null })
