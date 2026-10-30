@@ -50,7 +50,7 @@ function insertUser(
 			) VALUES (?, ?, 'hash', ?, ?, ?, '2026-01-01', '2026-01-01')`,
 		)
 		.run(
-			input.username ?? input.email.split('@')[0],
+			input.username ?? input.email.split('@')[0] ?? input.email,
 			input.email,
 			stableUserId,
 			stableUserId,
