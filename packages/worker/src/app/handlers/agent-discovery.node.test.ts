@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	agentSkills,
 	buildAgentSkillsIndex,
+	buildAuthMarkdown,
 	getAgentSkill,
 	sha256Hex,
 } from '#app/agent-discovery.ts'
@@ -98,4 +99,14 @@ test('agent-skills index includes kody-cli with a matching body digest', async (
 		{ skillId: 'missing' },
 	)
 	expect(missing.status).toBe(404)
+})
+
+test('auth.md does not advertise an auth.md agent_auth registration block', () => {
+	const markdown = buildAuthMarkdown('https://kody.example')
+	expect(markdown).toContain('https://kody.example/mcp')
+	expect(markdown).toContain(
+		'https://kody.example/.well-known/oauth-authorization-server',
+	)
+	expect(markdown).not.toContain('agent_auth')
+	expect(markdown).not.toContain('register_uri')
 })
