@@ -484,4 +484,20 @@ test('Members add team secrets and OAuth connections unless an Owner turns membe
 		ok: true,
 	})
 	expect((await connect(teamOwner, 'github')).status).toBe(200)
+
+	// Changing a secret someone else made needs Write on it, as in secretSet.
+	const ownerSecretId = buildAccountSecretId({
+		name: 'ownerKey',
+		scope: 'user',
+		packageId: null,
+	})
+	const deniedUpdate = await saveSecret(
+		nextMember,
+		'ownerKey',
+		ownerSecretId,
+	).catch((error: unknown) => error)
+	expect(deniedUpdate).toMatchObject({
+		status: 403,
+		permission: 'secret:write',
+	})
 })

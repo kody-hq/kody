@@ -146,9 +146,27 @@ export async function requireWebsiteCreatePermission(input: {
 	/** Verb phrase for the denial, e.g. "add secrets". */
 	action: string
 }) {
+	await requireWebsitePermission({
+		...input,
+		check: () =>
+			authorize(
+				{ env: input.env, request: input.user.request },
+				input.permission,
+			),
+	})
+}
+
+/** Runs `check` and turns an authorization denial into a website 403. */
+export async function requireWebsitePermission(input: {
+	user: WebsiteUser
+	permission: OrgPermission
+	/** Verb phrase for the denial, e.g. "add secrets". */
+	action: string
+	check: () => Promise<unknown>
+}) {
 	const request = input.user.request
 	try {
-		await authorize({ env: input.env, request }, input.permission)
+		await input.check()
 	} catch (error) {
 		if (!(error instanceof AuthorizationError)) throw error
 		const org = request?.org.slug

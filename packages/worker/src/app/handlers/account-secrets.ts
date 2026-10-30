@@ -21,6 +21,8 @@ import {
 	resolveApprovalRequest,
 	toPackageOptions,
 } from '#app/account-secrets-data.ts'
+import { websiteCapabilityContext } from '#app/website-capability.ts'
+import { authorizeSecretSet } from '#mcp/capabilities/secrets/authorize-secret.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { buildConnectOauthNextSteps } from '#worker/integrations/connect-oauth-next-steps.ts'
 import { operationResult } from '#app/operation-result.ts'
@@ -117,7 +119,7 @@ import {
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
-	requireWebsiteCreatePermission,
+	requireWebsitePermission,
 	requireWebsiteIntegrationPermission,
 	requireWebsiteOauthAppConnectAccess,
 } from '#app/handlers/website-integration-access.ts'
@@ -1741,14 +1743,23 @@ export async function saveAccountSecret(input: {
 		)
 	}
 
-	if (!currentSecret) {
-		await requireWebsiteCreatePermission({
-			env: input.env,
-			user: input.user,
-			permission: 'secret:create',
-			action: 'add secrets',
-		})
-	}
+	// The same create-or-write check `secretSet` runs: changing a secret needs
+	// Write on it, adding one needs secret:create.
+	const authorizeTarget = currentSecret ?? { name, scope, packageId }
+	await requireWebsitePermission({
+		user: input.user,
+		permission: currentSecret ? 'secret:write' : 'secret:create',
+		action: currentSecret ? 'change this secret' : 'add secrets',
+		check: () =>
+			authorizeSecretSet(websiteCapabilityContext(input), {
+				name: authorizeTarget.name,
+				scope: authorizeTarget.scope,
+				storageContext: getSecretContextForAccountSecret({
+					scope: authorizeTarget.scope,
+					packageId: authorizeTarget.packageId ?? null,
+				}),
+			}),
+	})
 
 	const samePlacement =
 		currentSecret != null &&

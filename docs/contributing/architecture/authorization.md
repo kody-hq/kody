@@ -80,8 +80,12 @@ audit row and an `access_epoch` bump in one batch. Create checks therefore stay
 plain
 `authorize(..., 'package:create' | 'secret:create' | 'integration:create')`
 calls; the denial text for those permissions names the setting and the Grants
-page. The website credential paths check the same permissions through
-`requireWebsiteCreatePermission`.
+page. Website credential writes run the shared capabilities through
+`callCapabilityAsWebsite` (`packages/worker/src/app/website-capability.ts`): MCP
+server add, reconnect, enable, and remove call the `mcpServer*` capabilities,
+and saving a secret runs `authorizeSecretSet` (Write on an existing secret,
+`secret:create` for a new one). The remaining website OAuth connect paths check
+through `requireWebsiteCreatePermission`.
 
 **Creator grants.** A non-owner member who creates a package (on its first
 publish) or a team-org credential (on its `credential.created` audit) gets a
