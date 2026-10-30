@@ -874,7 +874,11 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 
 	// ---------- status and dispatch ----------
 
-	#liveSocket(): { ws: WebSocket; attachment: SocketAttachment } | null {
+	#liveSocket(): {
+		ws: WebSocket
+		attachment: SocketAttachment
+		heardAt: number
+	} | null {
 		const ws = this.#socket()
 		if (!ws) return null
 		const attachment = ws.deserializeAttachment() as SocketAttachment
