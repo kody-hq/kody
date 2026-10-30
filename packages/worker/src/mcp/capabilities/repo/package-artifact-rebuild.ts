@@ -314,6 +314,49 @@ async function listTargetsOrThrow(input: {
 	}
 }
 
+/**
+ * Read-only: how many of the package's artifact targets are not built for
+ * `publishedCommit`. Unlike the rebuild filter it never reuses or writes.
+ */
+export async function countUnbuiltPublishedPackageArtifactTargets(input: {
+	env: Env
+	rpcSessionId: string
+	sourceId: string
+	userId: OwnerId
+	publishedCommit: string
+}) {
+	const targets = await repoSessionRpc(
+		input.env,
+		input.rpcSessionId,
+	).listPublishedPackageArtifactTargets({
+		sourceId: input.sourceId,
+		userId: input.userId,
+	})
+	const loadedByIdentity = await loadPublishedBundleArtifactsForPackageTargets({
+		env: input.env,
+		userId: input.userId,
+		sourceId: input.sourceId,
+		targets,
+	})
+	let unbuilt = 0
+	for (const target of targets) {
+		const built = await isPublishedPackageArtifactBuiltForCommit({
+			env: input.env,
+			userId: input.userId,
+			sourceId: input.sourceId,
+			publishedCommit: input.publishedCommit,
+			target,
+			preloaded: publishedBundleArtifactForPackageTarget({
+				sourceId: input.sourceId,
+				target,
+				loadedByIdentity,
+			}),
+		})
+		if (!built) unbuilt += 1
+	}
+	return { targetCount: targets.length, unbuiltCount: unbuilt }
+}
+
 export type RebuildPublishedPackageArtifactsResult = {
 	/**
 	 * Targets that were not already built for this commit and therefore ran

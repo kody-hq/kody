@@ -68,6 +68,7 @@ if (jsonOut) {
 					name: entry.primitive.name,
 					group: entry.primitive.group ?? null,
 					root: entry.root,
+					adrs: entry.primitive.adrs ?? [],
 					files: entry.files,
 				})),
 				unmatched,
@@ -94,6 +95,9 @@ for (const entry of matched) {
 	console.log(
 		`- ${entry.primitive.id} (${entry.primitive.group ?? 'ungrouped'}) via ${entry.root}`,
 	)
+	for (const adr of entry.primitive.adrs ?? []) {
+		console.log(`    adr: ${adr}`)
+	}
 	for (const file of entry.files.slice(0, 8)) {
 		console.log(`    ${file}`)
 	}

@@ -17,7 +17,6 @@ import {
 	hasPublishedRuntimeArtifacts,
 	loadPublishedSourceSnapshot,
 	publishedSourceSnapshotFilesMatch,
-	writePublishedPublishChecksVersion,
 	writePublishedSourceSnapshot,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { refreshSavedPackageProjection } from '#worker/package-registry/service.ts'
@@ -481,15 +480,8 @@ export function createInlinePublishHeavyWork(input: {
 				publishedCommit: stampInput.publishedCommit,
 				files: publishedFiles,
 			})
-			// Only seal the checker version after a successful stamp write so a
-			// failed store cannot leave a "current" version over a missing stamp.
-			if (stamp) {
-				await writePublishedPublishChecksVersion({
-					env,
-					sourceId: stampInput.source.id,
-					publishedCommit: stampInput.publishedCommit,
-				})
-			}
+			// The checker version is sealed by finalize once the whole publish is
+			// durable, so an interrupted finalize stays resumable.
 			return { stamped: Boolean(stamp) }
 		},
 		async refreshProjection(projectionInput) {

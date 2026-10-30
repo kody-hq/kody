@@ -249,6 +249,7 @@ export type RepoSessionRpc = {
 		credentialNeedsApproved?: boolean
 		requestedByUserId?: string | null
 		deferBundleCheckToRebuild?: boolean
+		resumeFinalize?: boolean
 	}) => Promise<RepoExternalPublishResult>
 	checkExternalRef: (payload: {
 		sourceId: string

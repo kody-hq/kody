@@ -17,6 +17,13 @@
 # `code` entries are coarse ownership roots for
 # `classify-primitives.mjs` (longest-prefix match). Prefer directories over
 # file lists. Keep the map small.
+#
+# `adrs` lists the decision records (docs/contributing/decisions/) that define
+# or materially shape the primitive; `adrs: []` when none does. Every primitive
+# declares it. Link the current record, never a superseded one. Decision
+# records go in `adrs`, not `docs`. When you add or supersede a record, update
+# the matching entries in the same PR. `npm run primitives:check` fails on
+# missing, superseded, or misplaced paths.
 
 version: 1
 
@@ -47,6 +54,9 @@ primitives:
       - packages/worker/universal/
     docs:
       - docs/contributing/architecture/request-lifecycle.md
+    adrs:
+      - docs/contributing/decisions/0012-universal-layer.md
+      - docs/contributing/decisions/0028-list-detail-expand.md
 
   - id: mcp-server
     group: surfaces
@@ -57,6 +67,14 @@ primitives:
     docs:
       - docs/contributing/project-intent.md
       - docs/contributing/adding-capabilities.md
+    adrs:
+      - docs/contributing/decisions/0005-mcp-dual-lane-stateless-migration.md
+      - docs/contributing/decisions/0023-progressive-search-disclosure.md
+      - docs/contributing/decisions/0045-guides-load-through-search.md
+      - docs/contributing/decisions/0058-skills-over-mcp-progressive-enhancement.md
+      - docs/contributing/decisions/0059-mcp-events-extension-behind-flag.md
+      - docs/contributing/decisions/0085-execute-takes-code-only.md
+      - docs/contributing/decisions/0087-mcp-events-no-client-declaration.md
 
   - id: status-page
     group: surfaces
@@ -69,6 +87,7 @@ primitives:
       - packages/status/
     docs:
       - docs/contributing/setup-manifest.md
+    adrs:
       - docs/contributing/decisions/0004-status-page-separate-worker.md
 
   - id: platform-worker
@@ -86,8 +105,9 @@ primitives:
       - tools/ci/platform-worker-config.ts
       - tools/local-sibling-dev-config.ts
     docs:
-      - docs/contributing/decisions/0034-origin-owns-no-durable-objects.md
       - docs/contributing/architecture/platform-worker-migration-runbook.md
+    adrs:
+      - docs/contributing/decisions/0034-origin-owns-no-durable-objects.md
 
   - id: jobs-worker
     group: surfaces
@@ -99,8 +119,9 @@ primitives:
     code:
       - packages/jobs-worker/
     docs:
-      - docs/contributing/decisions/0016-mono-worker-extraction.md
       - docs/contributing/architecture/jobs-worker-migration-runbook.md
+    adrs:
+      - docs/contributing/decisions/0016-mono-worker-extraction.md
 
   - id: highlight-worker
     group: surfaces
@@ -113,6 +134,7 @@ primitives:
       - packages/highlight-worker/
     docs:
       - docs/contributing/architecture/request-lifecycle.md
+    adrs: []
 
   - id: push-queue-worker
     group: surfaces
@@ -123,7 +145,7 @@ primitives:
       Artifacts one at a time in FIFO order for repo-push-queue flagged repos.
     code:
       - packages/push-queue-worker/
-    docs:
+    adrs:
       - docs/contributing/decisions/0075-repo-push-queue-worker.md
 
   - id: open-api
@@ -142,6 +164,10 @@ primitives:
       - tools/ci/api-worker-config.ts
     docs:
       - docs/contributing/architecture/open-api.md
+    adrs:
+      - docs/contributing/decisions/0055-cli-mcp-oauth-local-execute-http.md
+      - docs/contributing/decisions/0062-one-access-check.md
+      - docs/contributing/decisions/0076-cli-login-device-token.md
 
   - id: scheduled-cron
     group: surfaces
@@ -161,6 +187,8 @@ primitives:
       - packages/worker/src/usage/aggregate-rollups.ts
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs:
+      - docs/contributing/decisions/0016-mono-worker-extraction.md
 
   # --- Identity & auth ----------------------------------------------------
   - id: app-sessions
@@ -192,6 +220,8 @@ primitives:
     docs:
       - docs/contributing/architecture/authentication.md
       - docs/contributing/social-login.md
+    adrs:
+      - docs/contributing/decisions/0030-discord-guilds-join-on-social-login.md
 
   - id: mcp-oauth
     group: auth
@@ -204,6 +234,11 @@ primitives:
       - packages/worker/src/oidc/
     docs:
       - docs/contributing/architecture/authentication.md
+    adrs:
+      - docs/contributing/decisions/0049-no-mcp-capability-oauth-scopes.md
+      - docs/contributing/decisions/0053-scoped-api-tokens-are-not-mcp-oauth-scopes.md
+      - docs/contributing/decisions/0064-oauth-org-binding.md
+      - docs/contributing/decisions/0082-cli-oauth-device-authorization-grant.md
 
   - id: api-tokens
     group: auth
@@ -220,9 +255,13 @@ primitives:
     docs:
       - docs/contributing/architecture/open-api.md
       - docs/guides/auth-setup-git.md
+    adrs:
       - docs/contributing/decisions/0053-scoped-api-tokens-are-not-mcp-oauth-scopes.md
       - docs/contributing/decisions/0055-cli-mcp-oauth-local-execute-http.md
+      - docs/contributing/decisions/0056-cli-credential-bootstrap.md
       - docs/contributing/decisions/0070-user-owned-api-tokens-and-git-credentials.md
+      - docs/contributing/decisions/0076-cli-login-device-token.md
+      - docs/contributing/decisions/0091-auth-md-service-auth-registration.md
 
   - id: rbac
     group: auth
@@ -236,6 +275,8 @@ primitives:
       - packages/worker/src/mcp/capabilities/meta/require-permission.ts
     docs:
       - docs/contributing/architecture/authorization.md
+    adrs:
+      - docs/contributing/decisions/0062-one-access-check.md
 
   - id: org-access-grants
     group: auth
@@ -249,7 +290,13 @@ primitives:
     docs:
       - docs/guides/package-sharing.md
       - docs/contributing/architecture/authorization.md
+    adrs:
+      - docs/contributing/decisions/0060-owner-and-person-ids.md
+      - docs/contributing/decisions/0061-one-request-context.md
+      - docs/contributing/decisions/0062-one-access-check.md
+      - docs/contributing/decisions/0063-teams-expand-orgs.md
       - docs/contributing/decisions/0067-cross-org-grants-replace-shares-and-platform-accounts.md
+      - docs/contributing/decisions/0088-public-team-org-pages.md
 
   - id: entitlements
     group: auth
@@ -260,6 +307,9 @@ primitives:
       - packages/worker/universal/plans.ts
     docs:
       - docs/contributing/architecture/entitlements.md
+    adrs:
+      - docs/contributing/decisions/0051-include-credits-stop.md
+      - docs/contributing/decisions/0065-org-seats-and-prepaid-credits.md
 
   - id: billing
     group: auth
@@ -272,6 +322,9 @@ primitives:
       - packages/worker/src/app/handlers/stripe-webhook.ts
     docs:
       - docs/contributing/architecture/entitlements.md
+    adrs:
+      - docs/contributing/decisions/0051-include-credits-stop.md
+      - docs/contributing/decisions/0065-org-seats-and-prepaid-credits.md
 
   - id: feature-flags
     group: auth
@@ -282,6 +335,9 @@ primitives:
       - packages/worker/universal/feature-flags/
     docs:
       - docs/contributing/architecture/feature-flags.md
+    adrs:
+      - docs/contributing/decisions/0007-keep-in-house-feature-flags.md
+      - docs/contributing/decisions/0084-org-feature-flag-rows.md
 
   # --- User-facing assistant primitives -----------------------------------
   - id: capability-registry
@@ -292,6 +348,10 @@ primitives:
       - packages/worker/src/mcp/capabilities/
     docs:
       - docs/contributing/adding-capabilities.md
+    adrs:
+      - docs/contributing/decisions/0042-no-capability-input-secrets.md
+      - docs/contributing/decisions/0054-no-vendor-specific-platform-logic.md
+      - docs/contributing/decisions/0062-one-access-check.md
 
   - id: repos
     group: assistant
@@ -309,6 +369,10 @@ primitives:
       - packages/worker/src/mcp/capabilities/repo/repo-update.ts
     docs:
       - docs/use/repos.md
+    adrs:
+      - docs/contributing/decisions/0003-repos-as-base-primitive.md
+      - docs/contributing/decisions/0006-no-repo-ci-primitive.md
+      - docs/contributing/decisions/0043-repo-visibility-no-community-kind.md
 
   - id: saved-packages
     group: assistant
@@ -319,6 +383,16 @@ primitives:
       - packages/worker/src/package-registry/
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs:
+      - docs/contributing/decisions/0001-no-package-versioning.md
+      - docs/contributing/decisions/0003-repos-as-base-primitive.md
+      - docs/contributing/decisions/0013-synthetic-package-requests.md
+      - docs/contributing/decisions/0021-publish-gated-package-composition.md
+      - docs/contributing/decisions/0025-no-package-services-primitive.md
+      - docs/contributing/decisions/0031-kody-dependencies-wildcard-map.md
+      - docs/contributing/decisions/0037-no-author-packages-invoke.md
+      - docs/contributing/decisions/0079-remove-package-retrievers.md
+      - docs/contributing/decisions/0089-packages-declare-capabilities.md
 
   - id: package-codemods
     group: assistant
@@ -330,6 +404,7 @@ primitives:
       - packages/worker/src/package-codemods/
     docs:
       - docs/contributing/package-codemods.md
+    adrs: []
 
   - id: community-listings
     group: assistant
@@ -344,6 +419,10 @@ primitives:
     docs:
       - docs/use/community-packages.md
       - docs/contributing/community-packages.md
+    adrs:
+      - docs/contributing/decisions/0043-repo-visibility-no-community-kind.md
+      - docs/contributing/decisions/0046-community-is-the-catalog.md
+      - docs/contributing/decisions/0073-community-listing-follows-promote.md
 
   - id: package-apps
     group: assistant
@@ -361,6 +440,12 @@ primitives:
     docs:
       - docs/use/packages.md
       - docs/guides/package-apps.md
+    adrs:
+      - docs/contributing/decisions/0017-per-user-package-app-subdomains.md
+      - docs/contributing/decisions/0057-no-framework-platform-affordance.md
+      - docs/contributing/decisions/0069-internet-visible-capability-pinning.md
+      - docs/contributing/decisions/0071-package-app-custom-domains.md
+      - docs/contributing/decisions/0089-packages-declare-capabilities.md
 
   - id: jobs
     group: assistant
@@ -370,6 +455,9 @@ primitives:
       - packages/worker/src/jobs/
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs:
+      - docs/contributing/decisions/0032-no-unattached-jobs.md
+      - docs/contributing/decisions/0086-automation-execution-contexts.md
 
   - id: enablements
     group: auth
@@ -382,6 +470,9 @@ primitives:
       - packages/worker/src/enablements/
     docs:
       - docs/contributing/architecture/authorization.md
+    adrs:
+      - docs/contributing/decisions/0074-org-email-address-and-per-sender-enablement.md
+      - docs/contributing/decisions/0078-webhook-on-off-is-its-enablement.md
 
   - id: workflows
     group: assistant
@@ -391,6 +482,8 @@ primitives:
       - packages/worker/src/package-runtime/package-workflows.ts
     docs:
       - docs/contributing/architecture/request-lifecycle.md
+    adrs:
+      - docs/contributing/decisions/0032-no-unattached-jobs.md
 
   - id: secrets
     group: assistant
@@ -404,6 +497,12 @@ primitives:
       - packages/worker/src/security/
     docs:
       - docs/contributing/architecture/authorization.md
+    adrs:
+      - docs/contributing/decisions/0042-no-capability-input-secrets.md
+      - docs/contributing/decisions/0068-credentials-own-placement-scoped-clients.md
+      - docs/contributing/decisions/0080-one-resource-lock-capability.md
+      - docs/contributing/decisions/0083-context-runs-never-see-credential-values.md
+      - docs/contributing/decisions/0090-login-credentials-are-kody-managed-oauth-refresh.md
 
   - id: integrations
     group: assistant
@@ -417,6 +516,10 @@ primitives:
       - packages/worker/src/mcp/capabilities/integrations/
     docs:
       - docs/contributing/architecture/integrations.md
+    adrs:
+      - docs/contributing/decisions/0052-oauth-refresh-policy-from-token-response.md
+      - docs/contributing/decisions/0068-credentials-own-placement-scoped-clients.md
+      - docs/contributing/decisions/0077-oauth-device-authorization-grant.md
 
   - id: memories
     group: assistant
@@ -427,6 +530,9 @@ primitives:
     docs:
       - docs/guides/memory.md
       - docs/use/memory.md
+    adrs:
+      - docs/contributing/decisions/0033-no-user-as-conversation.md
+      - docs/contributing/decisions/0072-memory-is-personal-only.md
 
   - id: platform-feedback
     group: assistant
@@ -440,6 +546,7 @@ primitives:
     docs:
       - docs/contributing/architecture/authorization.md
       - docs/contributing/architecture/data-storage.md
+    adrs: []
 
   - id: account-export
     group: assistant
@@ -451,6 +558,7 @@ primitives:
       - packages/worker/src/mcp/capabilities/account/
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs: []
 
   - id: email
     group: assistant
@@ -461,6 +569,9 @@ primitives:
       - packages/worker/src/mcp/capabilities/email/
     docs:
       - docs/use/email-primitives.md
+    adrs:
+      - docs/contributing/decisions/0041-no-hardcoded-operator-correspondence.md
+      - docs/contributing/decisions/0074-org-email-address-and-per-sender-enablement.md
 
   - id: webhooks
     group: assistant
@@ -481,6 +592,9 @@ primitives:
     docs:
       - docs/use/webhooks.md
       - docs/contributing/architecture/webhooks.md
+    adrs:
+      - docs/contributing/decisions/0048-webhooks-replace-invocation-tokens.md
+      - docs/contributing/decisions/0078-webhook-on-off-is-its-enablement.md
 
   - id: mcp-client-servers
     group: assistant
@@ -493,6 +607,8 @@ primitives:
       - packages/worker/src/app/handlers/account-mcp-servers.ts
     docs:
       - docs/contributing/architecture/mcp-client-servers.md
+    adrs:
+      - docs/contributing/decisions/0024-packages-outrank-synthesized-providers.md
 
   - id: realtime-sessions
     group: assistant
@@ -500,6 +616,7 @@ primitives:
     summary: Package-app websocket sessions in PackageRealtimeSession.
     code:
       - packages/worker/src/package-runtime/realtime-session.ts
+    adrs: []
 
   - id: durable-storage
     group: assistant
@@ -508,6 +625,7 @@ primitives:
     code:
       - packages/worker/src/storage-runner.ts
       - packages/worker/src/mcp/capabilities/storage/
+    adrs: []
 
   # --- Execution runtimes --------------------------------------------------
   - id: capabilities-execute
@@ -519,6 +637,8 @@ primitives:
       - packages/worker/src/mcp/run-kody-registry.ts
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs:
+      - docs/contributing/decisions/0085-execute-takes-code-only.md
 
   - id: package-runtime
     group: runtime
@@ -528,6 +648,11 @@ primitives:
       - packages/worker/src/package-runtime/
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs:
+      - docs/contributing/decisions/0016-mono-worker-extraction.md
+      - docs/contributing/decisions/0021-publish-gated-package-composition.md
+      - docs/contributing/decisions/0037-no-author-packages-invoke.md
+      - docs/contributing/decisions/0057-no-framework-platform-affordance.md
 
   - id: repo-sessions
     group: runtime
@@ -537,6 +662,8 @@ primitives:
       - packages/worker/src/repo/
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs:
+      - docs/contributing/decisions/0020-repo-session-workspace-r2-not-computer.md
 
   # --- Storage & infrastructure --------------------------------------------
   - id: d1-app-db
@@ -548,6 +675,9 @@ primitives:
       - packages/worker/src/db.ts
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs:
+      - docs/contributing/decisions/0002-data-placement.md
+      - docs/contributing/decisions/0066-soft-delete-and-purge.md
 
   - id: audit-d1
     group: storage
@@ -559,6 +689,8 @@ primitives:
       - packages/worker/src/audit-log.ts
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs:
+      - docs/contributing/decisions/0002-data-placement.md
 
   - id: email-reporting
     group: storage
@@ -570,6 +702,8 @@ primitives:
       - packages/worker/src/app/admin-insights-data.ts
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs:
+      - docs/contributing/decisions/0002-data-placement.md
 
   - id: backup-control-plane
     group: storage
@@ -587,6 +721,7 @@ primitives:
     docs:
       - docs/contributing/disaster-recovery.md
       - docs/contributing/setup-manifest.md
+    adrs: []
 
   - id: artifacts-repos
     group: storage
@@ -602,6 +737,8 @@ primitives:
       - docs/contributing/architecture/data-storage.md
       - docs/use/community-packages.md
       - docs/contributing/community-packages.md
+    adrs:
+      - docs/contributing/decisions/0003-repos-as-base-primitive.md
 
   - id: bundle-artifacts-kv
     group: storage
@@ -611,6 +748,7 @@ primitives:
       - packages/worker/src/package-runtime/published-bundle-artifacts.ts
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs: []
 
   - id: vectorize-search
     group: storage
@@ -621,6 +759,10 @@ primitives:
       - packages/worker/src/mcp/capabilities/capability-search.ts
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs:
+      - docs/contributing/decisions/0023-progressive-search-disclosure.md
+      - docs/contributing/decisions/0024-packages-outrank-synthesized-providers.md
+      - docs/contributing/decisions/0047-vectorize-per-user-namespaces-until-5k-users.md
 
   - id: usage-metering
     group: storage
@@ -631,6 +773,8 @@ primitives:
       - packages/worker/universal/usage-event-types.ts
     docs:
       - docs/contributing/architecture/usage-metering.md
+    adrs:
+      - docs/contributing/decisions/0002-data-placement.md
 
   - id: execution-contexts
     group: runtime
@@ -645,6 +789,9 @@ primitives:
       - packages/worker/src/mcp/capabilities/execution-contexts/
     docs:
       - docs/contributing/architecture/execution-contexts.md
+    adrs:
+      - docs/contributing/decisions/0083-context-runs-never-see-credential-values.md
+      - docs/contributing/decisions/0086-automation-execution-contexts.md
 
   - id: run-records
     group: storage
@@ -655,6 +802,9 @@ primitives:
       - packages/worker/src/mcp/capabilities/runs/
     docs:
       - docs/contributing/architecture/run-records.md
+    adrs:
+      - docs/contributing/decisions/0002-data-placement.md
+      - docs/contributing/decisions/0008-declined-adlc-primitives.md
 
   - id: user-meter
     group: storage
@@ -671,6 +821,8 @@ primitives:
     docs:
       - docs/contributing/architecture/data-storage.md
       - docs/contributing/architecture/entitlements.md
+    adrs:
+      - docs/contributing/decisions/0002-data-placement.md
 
   - id: mailbox
     group: storage
@@ -680,6 +832,9 @@ primitives:
       - packages/worker/src/email/mailbox-
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs:
+      - docs/contributing/decisions/0002-data-placement.md
+      - docs/contributing/decisions/0074-org-email-address-and-per-sender-enablement.md
 
   - id: email-blobs-r2
     group: storage
@@ -690,6 +845,7 @@ primitives:
       - packages/worker/src/email/repo.ts
     docs:
       - docs/contributing/architecture/data-storage.md
+    adrs: []
 
   - id: email-delivery-queue
     group: storage
@@ -702,6 +858,7 @@ primitives:
     docs:
       - docs/use/email-primitives.md
       - docs/contributing/setup-manifest.md
+    adrs: []
 
   - id: platform-feedback-dispatch-queue
     group: storage
@@ -716,6 +873,8 @@ primitives:
       - docs/contributing/setup-manifest.md
       - docs/contributing/architecture/authorization.md
       - docs/guides/package-subscriptions.md
+    adrs:
+      - docs/contributing/decisions/0041-no-hardcoded-operator-correspondence.md
 
   - id: community-activity-dispatch-queue
     group: storage
@@ -731,6 +890,8 @@ primitives:
       - docs/contributing/setup-manifest.md
       - docs/contributing/architecture/authorization.md
       - docs/guides/package-subscriptions.md
+    adrs:
+      - docs/contributing/decisions/0041-no-hardcoded-operator-correspondence.md
 
   - id: community-listing-published-dispatch-queue
     group: storage
@@ -747,6 +908,8 @@ primitives:
       - docs/contributing/setup-manifest.md
       - docs/contributing/architecture/authorization.md
       - docs/guides/package-subscriptions.md
+    adrs:
+      - docs/contributing/decisions/0041-no-hardcoded-operator-correspondence.md
 
   - id: follows
     group: assistant
@@ -769,6 +932,8 @@ primitives:
       - docs/guides/package-subscriptions.md
       - docs/contributing/contracts/follow-cli.md
       - docs/contributing/architecture/authorization.md
+    adrs:
+      - docs/contributing/decisions/0081-follow-recent-updates-default-delivery.md
 
   - id: package-events-dispatch-queue
     group: storage
@@ -782,6 +947,7 @@ primitives:
     docs:
       - docs/contributing/setup-manifest.md
       - docs/guides/package-subscriptions.md
+    adrs: []
 
   - id: community-assets-r2
     group: storage
@@ -798,6 +964,7 @@ primitives:
     docs:
       - docs/contributing/community-packages.md
       - docs/contributing/architecture/data-storage.md
+    adrs: []
 
 invariants:
   - id: per-org-isolation
@@ -827,6 +994,7 @@ invariants:
     summary: Default discovery is a bounded index; expensive detail is explicit.
     docs:
       - docs/use/search.md
+    adrs:
       - docs/contributing/decisions/0023-progressive-search-disclosure.md
 
   - id: package-over-synthesized-provider
@@ -834,6 +1002,7 @@ invariants:
       Rank wrapping packages before matching synthesized MCP provider ops.
     docs:
       - docs/use/search.md
+    adrs:
       - docs/contributing/decisions/0024-packages-outrank-synthesized-providers.md
 
   - id: bounded-always-on-mcp-text
@@ -880,7 +1049,8 @@ invariants:
       Platform capabilities stay generic; third parties configure via params,
       not vendor-named type forks.
     docs:
-      - docs/contributing/decisions/0054-no-vendor-specific-platform-logic.md
       - docs/contributing/project-intent.md
       - docs/contributing/architecture/webhooks.md
       - docs/use/webhooks.md
+    adrs:
+      - docs/contributing/decisions/0054-no-vendor-specific-platform-logic.md

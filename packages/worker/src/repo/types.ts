@@ -311,8 +311,10 @@ export type RepoExternalPublishResult =
 			force_artifact_rebuild?: boolean
 			/**
 			 * True when tip already matched HEAD but publish checks were re-run
-			 * because the stored check/stamp version was missing or older than
-			 * the current checker. Omit / false on a true no-op.
+			 * because the stored check/stamp version was missing (an earlier
+			 * finalize was interrupted after the pointer moved) or older than the
+			 * current checker; the live tip's finalize was then finished. Omit /
+			 * false on a true no-op.
 			 */
 			checks_rerun?: boolean
 			/** Present when checks_rerun explains the same-commit revalidation. */
