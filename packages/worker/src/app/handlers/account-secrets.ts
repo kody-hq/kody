@@ -1857,15 +1857,10 @@ export async function saveAccountSecret(input: {
 				storageContext: getSecretContextForAccountSecret(currentSecret),
 			}
 			await authorizeSecret(ctx, 'secret:write', current)
-			if (currentId !== nextId) {
-				await authorizeSecret(
-					ctx,
-					samePlacement ? 'secret:write' : 'secret:delete',
-					current,
-				)
-			}
+			if (!samePlacement) await authorizeSecret(ctx, 'secret:delete', current)
 		}
-		if (!currentSecret || currentId !== nextId) {
+		// A same-placement rename keeps the credential id, so Write is enough.
+		if (!currentSecret || !samePlacement) {
 			await authorizeSecretSet(ctx, {
 				name,
 				scope,

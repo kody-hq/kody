@@ -339,6 +339,18 @@ test('a member with only Use cannot overwrite, delete, or disconnect an org cred
 	})
 	expect(allowed.data).toMatchObject({ ok: true })
 	expect(hostsOf(await t.entry('orgApiKey'))).toEqual(['api.example.com'])
+
+	const renamed = await saveAccountSecret({
+		...t.website(t.member()),
+		fields: {
+			currentId: 'user::::orgApiKey',
+			name: 'renamedApiKey',
+			scope: 'user',
+			allowedHosts: ['api.example.com'],
+		},
+	})
+	expect(renamed.data).toMatchObject({ ok: true })
+	expect(await t.entry('renamedApiKey')).not.toBeNull()
 })
 
 test('the owner still saves and deletes their own credentials on the website', async () => {
