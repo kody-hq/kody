@@ -1271,8 +1271,16 @@ async function refuseUnauthorized(check: () => Promise<void>) {
 		return null
 	} catch (error) {
 		if (!(error instanceof AuthorizationError)) throw error
-		return operationResult({ ok: false, error: error.message }, 403)
+		return operationResult({ ok: false, error: credentialDenial(error) }, 403)
 	}
+}
+
+function credentialDenial(error: AuthorizationError) {
+	if (error.permission === 'secret:create') {
+		return 'You need Create on credentials in this org to add one. Ask an org Owner for it. Nothing was changed.'
+	}
+	const access = error.permission === 'secret:delete' ? 'Delete' : 'Write'
+	return `You need ${access} on this credential to do that. Ask an org Owner for ${access} on it. Nothing was changed.`
 }
 
 /**

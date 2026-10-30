@@ -313,17 +313,26 @@ test('a member with only Use cannot overwrite, delete, or disconnect an org cred
 		},
 	})
 	expect(saved.status).toBe(403)
+	expect(saved.data).toMatchObject({
+		error: expect.stringContaining('You need Write on this credential'),
+	})
 	expect(hostsOf(await t.entry('orgApiKey'))).toEqual([])
 	const deleted = await deleteAccountSecret({
 		...t.website(t.member()),
 		fields: { currentId: 'user::::orgApiKey' },
 	})
 	expect(deleted.status).toBe(403)
+	expect(deleted.data).toMatchObject({
+		error: expect.stringContaining('You need Delete on this credential'),
+	})
 	const disconnected = await disconnectAccountSecret({
 		...t.website(t.member()),
 		fields: { currentId: 'user::::orgApiKey' },
 	})
 	expect(disconnected.status).toBe(403)
+	expect(disconnected.data).toMatchObject({
+		error: expect.stringContaining('You need Write on this credential'),
+	})
 	expect(await t.entry('orgApiKey')).not.toBeNull()
 
 	await t.grantMember(id, ['secret:use', 'secret:write'])
