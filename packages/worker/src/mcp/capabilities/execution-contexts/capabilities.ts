@@ -79,7 +79,7 @@ export const executionContextGetCapability = defineDomainCapability(domain, {
 	},
 })
 
-const grantPatchSchema = z
+export const grantPatchSchema = z
 	.object({
 		fs: z
 			.array(z.object({ path: z.string().min(1), mode: z.enum(['ro', 'rw']) }))
@@ -113,6 +113,11 @@ const grantPatchSchema = z
 				maxConcurrent: z.number().int().min(1).max(16).optional(),
 			})
 			.optional(),
+	})
+	.loose()
+	.refine((grant) => !('credentials' in grant), {
+		message:
+			'grant.credentials was removed: runs on a context use credentials as they would in Kody cloud for the operator, and runs by anyone else use none. Drop the credentials field.',
 	})
 	.describe(
 		'Server-side grant. The daemon intersects it with the machine local policy (`kody context policy` on that machine), so it can only narrow what the machine allows. fs entries are absolute host folders with mode ro or rw; a folder is mounted at its real path only where both layers allow it, with the narrower mode, and the context offers `requires: ["fs"]` only while at least one folder is mounted.',
