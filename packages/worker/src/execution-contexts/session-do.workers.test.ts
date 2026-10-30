@@ -65,16 +65,23 @@ async function connect(ecid: string, hello: Record<string, unknown> = {}) {
 			inbox.push(decodeEnvelopePayload(envelope.p) as EcpFramePayload)
 		for (const wake of waiters.splice(0)) wake()
 	})
+	// 100 × 50ms (~5s) timed out under full validate / CI workerd load while
+	// isolation stayed green (#4469, #4477, #4484). Stay under the workers-unit
+	// 40s test budget so a slow first `run.request` is not a false flake.
+	const frameWaitMs = 30_000
 	const next = async (type: string) => {
-		for (let i = 0; i < 100; i++) {
+		const deadline = Date.now() + frameWaitMs
+		for (;;) {
 			const found = inbox.findIndex((frame) => frame.t === type)
 			if (found >= 0) return inbox.splice(found, 1)[0]!
+			if (Date.now() >= deadline) {
+				throw new Error(`no ${type} frame`)
+			}
 			await new Promise<void>((resolve) => {
 				waiters.push(resolve)
 				setTimeout(resolve, 50)
 			})
 		}
-		throw new Error(`no ${type} frame`)
 	}
 	const welcome = await next('welcome')
 	const key = await importEd25519PrivateKey(contextJwk)
@@ -110,7 +117,7 @@ async function connect(ecid: string, hello: Record<string, unknown> = {}) {
 	// Sending a WebSocket frame does not wait for its async signature check.
 	// Dispatch only after the session has processed hello and accepts runs.
 	await expect
-		.poll(() => stub.getStatus())
+		.poll(() => stub.getStatus(), { timeout: frameWaitMs })
 		.toMatchObject({
 			online: true,
 			acceptingRuns: true,
@@ -277,7 +284,7 @@ test('two-phase dispatch: accept, commit, result, then per-hop authorization end
 		outcome: 'succeeded',
 	})
 	expect(JSON.stringify(history)).not.toContain('export default')
-})
+}, 60_000)
 
 test('API-token and MCP runs carry the API origin the daemon connected through, not the app origin', async () => {
 	const ecid = 'ec_api_origin'
@@ -381,7 +388,7 @@ test('a reject falls through, and cancel and revocation end leases', async () =>
 		).ok,
 	).toBe(false)
 	ws.close()
-})
+}, 60_000)
 
 test('a replayed or out-of-order frame closes the socket, and an unsigned ping with a payload is refused', async () => {
 	const { ws, next, send } = await connect('ec_replay')
