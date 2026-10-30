@@ -12,6 +12,7 @@ import type * as Artifacts from './artifacts.ts'
 import type * as Checks from './checks.ts'
 import type * as EntitySources from './entity-sources.ts'
 import type * as ExternalPublishClone from './external-publish-clone.ts'
+import type * as PublishGitNotes from './publish-git-notes.ts'
 import type * as RepoSessions from './repo-sessions.ts'
 import type * as PublishedRuntimeArtifacts from '#worker/package-runtime/published-runtime-artifacts.ts'
 import type * as PublishedBundleArtifactsModule from '#worker/package-runtime/published-bundle-artifacts.ts'
@@ -132,6 +133,17 @@ vi.mock('./isomorphic-git-lazy.ts', () => ({
 		http: {},
 		createGit: () => mockModule.git,
 	}),
+}))
+
+const publishNotes = vi.hoisted(() => ({
+	attach: vi.fn(async () => undefined),
+	read: vi.fn(),
+}))
+
+vi.mock('./publish-git-notes.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof PublishGitNotes>()),
+	attachPublishGitNoteBestEffort: publishNotes.attach,
+	readPublishGitNoteFromArtifactsRepo: publishNotes.read,
 }))
 
 vi.mock('./repo-sessions.ts', () => ({
@@ -609,14 +621,16 @@ test('a publish step over the CPU limit names the compute limit, and the retry s
 })
 
 test.each([
-	{ retry: 'plain', retryInput: {} },
+	{ retry: 'plain', retryInput: {}, noteFound: false },
+	{ retry: 'plain (note already attached)', retryInput: {}, noteFound: true },
 	{
 		retry: 'forced',
 		retryInput: { force: true, destructiveOverwriteConfirmed: true },
+		noteFound: false,
 	},
 ])(
 	'a reset after published_commit moved leaves the publish unsealed, and a $retry retry at base == head finishes it',
-	async ({ retryInput }) => {
+	async ({ retryInput, noteFound }) => {
 		consoleWarn.mockImplementation(() => {})
 		setCommonSessionFixtures()
 		const files = largePackageFiles()
@@ -654,6 +668,8 @@ test.each([
 		// retry must finish the publish rather than report base_moved or no-op.
 		isolateRuns.length = 0
 		mockModule.rawCommit.mockClear()
+		publishNotes.attach.mockClear()
+		publishNotes.read.mockResolvedValue({ found: noteFound })
 		// A forced publish first proves a restorable snapshot of the live tip.
 		mockModule.loadPublishedSourceSnapshot.mockResolvedValue({
 			files,
@@ -663,6 +679,12 @@ test.each([
 		).resolves.toMatchObject({ status: 'ok', publishedCommit: 'commit-head' })
 		// A forced retry must not mint a new parentless commit over the live one.
 		expect(mockModule.rawCommit).not.toHaveBeenCalled()
+		// The note is owed only when the interrupted run never attached one.
+		if (noteFound) expect(publishNotes.attach).not.toHaveBeenCalled()
+		else
+			expect(publishNotes.attach).toHaveBeenCalledWith(
+				expect.objectContaining({ commitOid: 'commit-head' }),
+			)
 		expect(isolateRuns.map((run) => run.op)).toContain('refresh-projection')
 		expect(sealKeys()).toEqual([expect.stringContaining(':commit-head')])
 		expect(mockModule.updateRepoSession).toHaveBeenCalledWith(

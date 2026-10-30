@@ -3993,6 +3993,10 @@ class RepoSessionBase extends DurableObject<Env> {
 		// isolate over the `.kodyignore`-filtered set that checks ran on, so
 		// this Durable Object stays coordination-only (kody-hq/kody#4078).
 		const publishedCommit = sessionHeadCommit ?? sessionRow.base_commit
+		// Edits made after the interrupted publish (and checked) publish as a
+		// normal fast-forward on top of the live commit instead.
+		const resumingLiveCommit =
+			resumingPublishedHead && publishedCommit === source.published_commit
 		const publishWork = this.publishWorkRunner()
 		const publishStagingKey = await publishWork.stage({
 			userId: input.userId,
@@ -4131,9 +4135,7 @@ class RepoSessionBase extends DurableObject<Env> {
 				actorUserId: input.requestedByUserId ?? undefined,
 				// Omitted: a platform rewrite of code a person already published.
 				publisherUnknown: input.requestedByUserId === null,
-				...(resumingPublishedHead && publishedCommit === source.published_commit
-					? { resumeInterruptedFinalize: true }
-					: {}),
+				...(resumingLiveCommit ? { resumeInterruptedFinalize: true } : {}),
 			})
 			if (replaceHistory) {
 				await this.deleteAdvertisedSessionBranches({
@@ -4142,22 +4144,27 @@ class RepoSessionBase extends DurableObject<Env> {
 					token: sessionAccess.token,
 				})
 			}
-			await this.attachSourcePublishGitNote({
-				source,
-				commitOid: publishedCommit,
-				remote: sessionAccess.remote,
-				token: sessionAccess.token,
-				remoteName: 'origin',
-				publishedBy: 'repo_session',
-				sessionId: sessionRow.id,
-				conversationId: sessionRow.conversation_id,
-				baseCommit: sessionRow.base_commit,
-				previousPublishedCommit: resumingPublishedHead
-					? sessionRow.base_commit
-					: source.published_commit,
-				checks: this.buildPublishGitNoteChecks(checkStatus),
-				scope: 'repo.publishSession.publish-git-note',
-			})
+			if (
+				!resumingLiveCommit ||
+				(await this.publishGitNoteMissing(source, publishedCommit))
+			) {
+				await this.attachSourcePublishGitNote({
+					source,
+					commitOid: publishedCommit,
+					remote: sessionAccess.remote,
+					token: sessionAccess.token,
+					remoteName: 'origin',
+					publishedBy: 'repo_session',
+					sessionId: sessionRow.id,
+					conversationId: sessionRow.conversation_id,
+					baseCommit: sessionRow.base_commit,
+					previousPublishedCommit: resumingLiveCommit
+						? sessionRow.base_commit
+						: source.published_commit,
+					checks: this.buildPublishGitNoteChecks(checkStatus),
+					scope: 'repo.publishSession.publish-git-note',
+				})
+			}
 			await updateRepoSession(this.env, {
 				id: sessionRow.id,
 				userId: sessionRow.user_id,
@@ -4330,6 +4337,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 	}
 
+	/** True unless a publish note is known to exist; an unreadable note counts as missing. */
 	private async publishGitNoteMissing(source: EntitySourceRow, commit: string) {
 		try {
 			const existing = await readPublishGitNoteFromArtifactsRepo({
@@ -4340,12 +4348,12 @@ class RepoSessionBase extends DurableObject<Env> {
 			return !existing.found
 		} catch (error) {
 			console.warn('publish_git_note read failed', {
-				scope: 'repo.publishFromExternalRef.publish-git-note-read',
+				scope: 'repo.publish-git-note-read',
 				sourceId: source.id,
 				commit,
 				error: getErrorMessage(error),
 			})
-			return false
+			return true
 		}
 	}
 
