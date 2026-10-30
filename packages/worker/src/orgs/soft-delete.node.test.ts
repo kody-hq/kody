@@ -1078,6 +1078,58 @@ test('restoring a free org refuses when an Owner is already at the free-org cap'
 	expect(await countLiveFreeOwnedOrgs(appDb, ownerId)).toBe(1)
 })
 
+test('restoring a Stripe-paid org is allowed when its owner has two free orgs', async () => {
+	const { env, appDb } = await createHarness()
+	const ownerId = testStableUserIdFromEmail('stripe-paid-restore@example.com')
+	const ts = '2026-01-01T00:00:00.000Z'
+	await appDb
+		.prepare(
+			`INSERT INTO users (id, email, username, password_hash, created_at, updated_at, stable_user_id)
+			 VALUES (45, 'stripe-paid-restore@example.com', 'stripepaidrestore', 'x', ?, ?, ?)`,
+		)
+		.bind(ts, ts, ownerId)
+		.run()
+	for (const [orgId, slug] of [
+		['org-stripe-cap-free-a', 'stripe-cap-free-a'],
+		['org-stripe-cap-free-b', 'stripe-cap-free-b'],
+		['org-stripe-cap-paid', 'stripe-cap-paid'],
+	] as const) {
+		await seedOrg(appDb, orgId, slug)
+		await appDb
+			.prepare(
+				`INSERT INTO org_memberships (org_id, user_id, role, created_at)
+				 VALUES (?, ?, 'owner', ?)`,
+			)
+			.bind(orgId, ownerId, ts)
+			.run()
+	}
+	await appDb
+		.prepare(`UPDATE orgs SET stripe_plan = 'pro' WHERE id = ?`)
+		.bind('org-stripe-cap-paid')
+		.run()
+	await softDeleteOrg({
+		env,
+		orgId: ownerIdFromStored('org-stripe-cap-paid'),
+		actorUserId: ownerId,
+		now,
+	})
+
+	await expect(
+		restoreOrg({
+			env,
+			orgId: ownerIdFromStored('org-stripe-cap-paid'),
+			actorUserId: ownerId,
+			now: new Date(now.getTime() + 60_000),
+		}),
+	).resolves.toBeDefined()
+	const restored = await appDb
+		.prepare(`SELECT deleted_at FROM orgs WHERE id = ?`)
+		.bind('org-stripe-cap-paid')
+		.first<{ deleted_at: string | null }>()
+	expect(restored?.deleted_at).toBeNull()
+	expect(await countLiveFreeOwnedOrgs(appDb, ownerId)).toBe(2)
+})
+
 test('the restore UPDATE refuses when a concurrent restore filled the free-org cap first', async () => {
 	const { env, appDb } = await createHarness()
 	const ownerId = 'owner-racing'
