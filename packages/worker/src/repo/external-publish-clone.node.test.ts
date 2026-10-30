@@ -18,9 +18,13 @@ const gitMocks = vi.hoisted(() => ({
 		'src/index.ts',
 	]),
 	fetch: vi.fn(async (..._args: Parameters<typeof git.fetch>) => undefined),
-	readCommit: vi.fn(async (..._args: Parameters<typeof git.readCommit>) => {
-		throw new Error('not found')
-	}),
+	readCommit: vi.fn(
+		async (
+			..._args: Parameters<typeof git.readCommit>
+		): Promise<Awaited<ReturnType<typeof git.readCommit>>> => {
+			throw new Error('not found')
+		},
+	),
 }))
 
 vi.mock('./isomorphic-git-lazy.ts', () => ({
@@ -305,15 +309,22 @@ test('checkout keeps a storage failure distinct from a clone failure', async () 
 test('a shallow clone deepens until it reaches the requested commit and the ancestor', async () => {
 	gitMocks.fetch.mockClear()
 	gitMocks.isDescendent.mockClear()
-	type CloneArgs = Parameters<typeof git.clone>[0]
-	gitMocks.clone.mockImplementationOnce(async (args: CloneArgs) => {
-		await args.fs.promises.mkdir('/repo/.git', { recursive: true })
-		await args.fs.promises.writeFile('/repo/.git/shallow', 'commit-head\n')
+	type PromiseFs = {
+		promises: {
+			mkdir(path: string, options?: { recursive?: boolean }): Promise<unknown>
+			writeFile(path: string, data: string): Promise<unknown>
+			unlink(path: string): Promise<unknown>
+		}
+	}
+	const promiseFs = (fs: unknown) => (fs as PromiseFs).promises
+	gitMocks.clone.mockImplementationOnce(async (args) => {
+		await promiseFs(args.fs).mkdir('/repo/.git', { recursive: true })
+		await promiseFs(args.fs).writeFile('/repo/.git/shallow', 'commit-head\n')
 	})
 	let fetches = 0
 	gitMocks.fetch.mockImplementation(async (args) => {
 		fetches += 1
-		if (fetches >= 2) await args.fs.promises.unlink('/repo/.git/shallow')
+		if (fetches >= 2) await promiseFs(args.fs).unlink('/repo/.git/shallow')
 	})
 	gitMocks.readCommit.mockImplementation(async () => {
 		if (fetches === 0) throw new Error('not found')
