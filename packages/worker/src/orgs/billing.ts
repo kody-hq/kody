@@ -35,10 +35,7 @@ const paidStripePlanNames = planNames.filter(
 	(name) => name !== 'free' && parseStripePlanName(name) !== null,
 )
 
-/**
- * Effective plan is the higher of the manual grant and Stripe plan; temporary
- * promo/gift overlays are deliberately excluded because they are not subscriptions.
- */
+/** See {@link isPaidOrgBilling} for effective-plan semantics. */
 export function effectiveFreeOrgSql(alias: string): string {
 	const paidStripePlans = paidStripePlanNames
 		.map((name) => `'${name}'`)
