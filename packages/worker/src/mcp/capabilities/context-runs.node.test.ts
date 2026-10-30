@@ -18,6 +18,7 @@ test('contextRuns allow list snapshot', async () => {
 		'execute',
 		'jobRunNow',
 		'cliCredentialBootstrap',
+		'experimentSet',
 		'accessGrant',
 		'inviteLinkCreate',
 		'packageCollaboratorSet',

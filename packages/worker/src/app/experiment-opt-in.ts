@@ -4,41 +4,31 @@ import {
 	getRequestIp,
 	logAuditEvent,
 } from '#worker/audit-log.ts'
-import { setFeatureFlagUserOverride } from '#worker/feature-flags/service.ts'
-import {
-	mcpSkillsExtensionFlagKey,
-	mcpEventsExtensionFlagKey,
-	executionContextsFlagKey,
-} from '#universal/feature-flags/registry.ts'
+import { setSelfServeExperimentForUser } from '#worker/feature-flags/self-serve-experiments.ts'
+import { type SelfServeExperimentId } from '#universal/feature-flags/experiments.ts'
 
-export async function optIntoWebsiteExperiment(input: {
+export async function setWebsiteExperiment(input: {
 	env: Env
 	request: Request
 	user: Pick<AuthenticatedAppUser, 'userId' | 'email'>
-	experiment: 'package-skills' | 'mcp-events' | 'execution-contexts'
+	experiment: SelfServeExperimentId
+	enabled: boolean
 }) {
-	const { env, request, user, experiment } = input
-	const key =
-		experiment === 'package-skills'
-			? mcpSkillsExtensionFlagKey
-			: experiment === 'execution-contexts'
-				? executionContextsFlagKey
-				: mcpEventsExtensionFlagKey
-	await setFeatureFlagUserOverride(env.APP_DB, {
-		key,
+	const { env, request, user, experiment, enabled } = input
+	const definition = await setSelfServeExperimentForUser(env.APP_DB, {
 		userId: user.userId,
-		enabled: true,
-		updatedBy: user.userId,
+		id: experiment,
+		enabled,
 	})
 	void logAuditEvent({
 		db: auditDatabaseFromEnv(env),
 		category: 'account',
-		action: 'feature_flag_self_opt_in',
+		action: enabled ? 'feature_flag_self_opt_in' : 'feature_flag_self_opt_out',
 		result: 'success',
 		email: user.email,
 		ip: getRequestIp(request) ?? undefined,
-		path: `/docs/${experiment}`,
-		reason: `key=${key}`,
+		path: '/account/experiments',
+		reason: `key=${definition.flagKey}`,
 	})
-	return { ok: true as const }
+	return { ok: true as const, enabled }
 }

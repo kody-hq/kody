@@ -1,3 +1,4 @@
+import { experimentOffMessage } from '#universal/feature-flags/experiments.ts'
 import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
 import {
 	ecpMaxChainContexts,
@@ -72,8 +73,7 @@ export async function requireExecutionContextsCaller(input: {
 		throw new ExecutionContextError({
 			status: 403,
 			code: 'feature_disabled',
-			message:
-				'Execution contexts are behind the execution-contexts feature flag, which is off for this account.',
+			message: experimentOffMessage('execution-contexts'),
 		})
 	}
 	return {

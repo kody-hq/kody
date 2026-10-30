@@ -1,3 +1,4 @@
+import { experimentOffMessage } from '#universal/feature-flags/experiments.ts'
 import {
 	ecpSignatureHeader,
 	ed25519JwkThumbprint,
@@ -51,8 +52,7 @@ export function featureDisabled() {
 	return new ApiError({
 		status: 403,
 		code: 'feature_disabled',
-		message:
-			'Execution contexts are behind the execution-contexts feature flag, which is off for this account.',
+		message: experimentOffMessage('execution-contexts'),
 	})
 }
 

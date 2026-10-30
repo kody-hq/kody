@@ -421,6 +421,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['id'],
 	},
 	{
+		operationId: 'experimentList',
+		method: 'GET',
+		pathTemplate: '/v1/account/experiments',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'experimentSet',
+		method: 'PUT',
+		pathTemplate: '/v1/account/experiments/{experiment}',
+		pathParamNames: ['experiment'],
+	},
+	{
 		operationId: 'followAdd',
 		method: 'POST',
 		pathTemplate: '/v1/follows',

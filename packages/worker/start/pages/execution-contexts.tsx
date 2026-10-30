@@ -17,6 +17,9 @@ import { orgResourcePath } from '#universal/org-pages.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { ExperimentOptIn } from '../components/experiment-opt-in.tsx'
+import { SiteLink } from '../components/site-link.tsx'
+import { routes } from '#universal/routes.ts'
+import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import {
 	AccountManagementMessage,
@@ -100,8 +103,29 @@ export function ExecutionContextsRoute(props: {
 						data-flag="execution-contexts"
 					>
 						<p css={{ margin: 0 }}>
-							Execution contexts are behind a feature flag while they are new,
-							so they may change. Turn them on for your account to try them.
+							Execution contexts are an experiment. Turn them on and run{' '}
+							<code>kody daemon</code> on a laptop or build server, and{' '}
+							<code>execute</code> and automations can run there with the
+							folders and local network you allow. Credentials stay in Kody
+							cloud and never reach the machine. When the machine is offline or
+							busy, runs fall back to Kody cloud.
+						</p>
+						<p css={{ margin: '0.5rem 0 0', color: colors.textMuted }}>
+							Read the{' '}
+							<SiteLink
+								href={routes.docDetail.href({ slug: 'execution-contexts' })}
+								css={primaryLinkCss}
+							>
+								execution contexts guide
+							</SiteLink>
+							, or manage every experiment on{' '}
+							<SiteLink
+								href={routes.accountExperiments.href()}
+								css={primaryLinkCss}
+							>
+								Experiments
+							</SiteLink>
+							.
 						</p>
 						<ExperimentOptIn experiment="execution-contexts">
 							Try execution contexts

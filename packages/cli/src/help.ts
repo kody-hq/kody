@@ -88,6 +88,10 @@ Usage:
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
 
+  kody context, chain, and daemon need execution contexts, an experiment.
+  Turn it on at https://kody.codes/account/experiments (guide:
+  https://kody.codes/docs/execution-contexts).
+
   kody install configures running local MCP clients (Cursor, Claude Desktop,
   VS Code, Goose, and others). For web-based clients (ChatGPT, Claude.ai, Grok),
   see ${onboardingUrl(defaultMcpUrl)}

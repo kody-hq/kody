@@ -26,6 +26,30 @@ export class ExecutionContextApiError extends Error {
 	}
 }
 
+/**
+ * The execution-contexts experiment is off for this account: say how to turn
+ * it on instead of retrying or echoing a bare 403.
+ */
+export function experimentOffError(apiUrl: string) {
+	const origin = new URL(apiUrl).origin
+	return new ExecutionContextApiError(
+		[
+			'Execution contexts are an experiment that is off for this account.',
+			`Turn them on at ${origin}/account/experiments, or ask your agent to call experimentSet with { "experiment": "execution-contexts", "enabled": true }.`,
+			`Then run this command again. Guide: ${origin}/docs/execution-contexts`,
+		].join('\n'),
+		403,
+		'feature_disabled',
+	)
+}
+
+export function isExperimentOffError(error: unknown) {
+	return (
+		error instanceof ExecutionContextApiError &&
+		error.code === 'feature_disabled'
+	)
+}
+
 async function readError(response: Response) {
 	const text = await response.text()
 	let code: string | null = null
