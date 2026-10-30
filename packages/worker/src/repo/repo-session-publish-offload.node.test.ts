@@ -629,7 +629,7 @@ test('a reset after published_commit moved leaves the publish unsealed, and the 
 			...liveSource,
 			published_commit: update.publishedCommit,
 		})
-		return true
+		return undefined
 	})
 	const sealKeys = () =>
 		[...kv.store.keys()].filter((key) => key.startsWith('publish-checks:'))
