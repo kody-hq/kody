@@ -30,6 +30,7 @@ import {
 	summarizeRunRecords,
 	loadWorkspaceRunCharts,
 	updateRunErrorTriage,
+	updateRunningRunRecordMetadata,
 } from './service.ts'
 import {
 	runRecordMaxLogEntriesPerRun,
@@ -1629,6 +1630,23 @@ test('keyed execute claims eagerly, retains bounded result, and replays without 
 		}),
 	})
 
+	// Routing details learned after the claim reach keyed retries mid-run.
+	const fallback = { id: 'ec_box', fellBackToCloud: true, attempts: [] }
+	first.handle.context.metadata = {
+		...first.handle.context.metadata,
+		executionContext: fallback,
+	}
+	expect(
+		await updateRunningRunRecordMetadata({ env, handle: first.handle }),
+	).toBe(true)
+	expect(await claimExecute()).toEqual({
+		claimed: false,
+		run: expect.objectContaining({
+			status: 'running',
+			metadata: { conversationId: 'conv-keyed', executionContext: fallback },
+		}),
+	})
+
 	const oversized = { blob: 'x'.repeat(runRecordMaxResultSnapshotBytes + 512) }
 	await finishRunRecord({
 		env,
@@ -1656,6 +1674,9 @@ test('keyed execute claims eagerly, retains bounded result, and replays without 
 		claimed: false,
 		run: expect.objectContaining({ id: first.handle.id, status: 'success' }),
 	})
+	expect(
+		await updateRunningRunRecordMetadata({ env, handle: first.handle }),
+	).toBe(false)
 
 	// Key-less execute success is retained the same way, without a replay key.
 	const keyless = beginRunRecord({

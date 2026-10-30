@@ -114,6 +114,7 @@ import {
 	beginRunRecord,
 	claimRunRecord,
 	ensureRunRecordStarted,
+	updateRunningRunRecordMetadata,
 	finishRunRecord,
 	getRunRecord,
 	getRunRecordByIdempotencyKey,
@@ -791,6 +792,10 @@ export async function runExecuteToolCall(input: {
 					...claimedRunHandle.context.metadata,
 					executionContext: routed.metadata,
 				}
+				await updateRunningRunRecordMetadata({
+					env,
+					handle: claimedRunHandle,
+				})
 			}
 		}
 		const { ranOnContent, ranOnFields } = ranOnParts(
