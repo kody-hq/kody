@@ -28,8 +28,15 @@ import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { type OrgAuditWriter } from '#worker/orgs/org-audit-outbox.ts'
 import { runAppDbBatchWithOrgAudit } from '#worker/orgs/org-audit.ts'
-import { isOrgActive, loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
-import { integrationConnectedSql } from '#worker/integrations/connected.ts'
+import {
+	isOrgActive,
+	loadLiveOrgBindingForOrg,
+	loadOrgBindingForOrg,
+} from '#worker/orgs/repo.ts'
+import {
+	integrationConnectedSql,
+	integrationUsableInOrgSql,
+} from '#worker/integrations/connected.ts'
 import { bumpUsableCredentialsGeneration } from './credential-read-generation.ts'
 import {
 	credentialPermissionFamily,
@@ -44,6 +51,30 @@ export type PersonalCredential = OrgCredential & {
 	ownerPersonId: PersonId
 }
 
+export const pinnedGrantRefusedMessage =
+	"This OAuth connection was made through another org's OAuth app, so it is pinned to that org and cannot be granted to any other org. Connect your account through this org's app, or with your own app, instead."
+
+/**
+ * The org a personal OAuth connection is pinned to: the org that owns the
+ * app it was made through, when that is not the connection's own org.
+ */
+export async function loadPinnedOrgId(
+	db: D1Database,
+	ownerOrgId: OwnerId,
+	credentialId: string,
+): Promise<OwnerId | null> {
+	const row = await db
+		.prepare(
+			`SELECT app_owner_id FROM user_integrations
+			WHERE user_id = ? AND id = ? AND app_slug IS NOT NULL
+				AND app_owner_id IS NOT NULL AND app_owner_id <> user_id
+				AND deleted_at IS NULL`,
+		)
+		.bind(ownerOrgId, credentialId)
+		.first<{ app_owner_id: string }>()
+	return row ? ownerIdFromStored(row.app_owner_id) : null
+}
+
 const notFoundMessage =
 	'No personal credential with that id. Pass the credential_id of a secret, integration, or MCP server in your personal org.'
 
@@ -56,7 +87,7 @@ const usableQueries: Record<
 	Exclude<OrgCredential['kind'], 'vault'>,
 	(placeholders: string) => {
 		sql: string
-		binds: (now: string) => Array<string>
+		binds: (now: string, orgId: OwnerId) => Array<string>
 	}
 > = {
 	secret: (placeholders) => ({
@@ -73,8 +104,9 @@ const usableQueries: Record<
 	integration: (placeholders) => ({
 		sql: `SELECT id FROM user_integrations
 			WHERE user_id = ? AND deleted_at IS NULL AND ${integrationConnectedSql()}
+				AND ${integrationUsableInOrgSql('?')}
 				AND id IN (${placeholders})`,
-		binds: () => [],
+		binds: (_now, orgId) => [orgId],
 	}),
 	'mcp-server': (placeholders) => ({
 		sql: `SELECT id FROM mcp_server_settings
@@ -85,16 +117,18 @@ const usableQueries: Record<
 }
 
 /**
- * The owner's credentials among `ids` that can be personal credentials now:
- * live, in an active personal org, not a vault binding, and usable the way
- * scoped clients require (`usableQueries`). Package and session secrets stay
- * with their package or session.
+ * The owner's credentials among `ids` that can be personal credentials in
+ * `orgId` now: live, in an active personal org, not a vault binding, and
+ * usable the way scoped clients require (`usableQueries`). Package and
+ * session secrets stay with their package or session. An OAuth connection
+ * made through another org's app counts only for that org (pinned).
  */
 async function loadPersonalCredentials(
 	db: D1Database,
 	ownerPersonId: PersonId,
 	ids: ReadonlyArray<string>,
 	now: Date,
+	orgId: OwnerId,
 ): Promise<Map<string, OrgCredential>> {
 	const ownerOrgId = await loadPersonalOrgIdForPerson(db, ownerPersonId)
 	if (ids.length === 0 || !(await isOrgActive(db, ownerOrgId))) {
@@ -111,7 +145,7 @@ async function loadPersonalCredentials(
 			const { sql, binds } = query(chunk.map(() => '?').join(', '))
 			const result = await db
 				.prepare(sql)
-				.bind(ownerOrgId, ...binds(nowIso), ...chunk)
+				.bind(ownerOrgId, ...binds(nowIso, orgId), ...chunk)
 				.all<{ id: string }>()
 			for (const row of result.results ?? []) usableIds.add(row.id)
 		}
@@ -143,16 +177,25 @@ export async function grantPersonalCredentialToOrg(input: {
 		)
 	}
 	const now = input.now ?? new Date()
+	const pinnedOrgId = await loadPinnedOrgId(
+		input.db,
+		ownerOrgId,
+		input.credentialId,
+	)
+	if (pinnedOrgId && pinnedOrgId !== input.orgId) {
+		throw new McpCallerError(pinnedGrantRefusedMessage)
+	}
 	const credential = (
 		await loadPersonalCredentials(
 			input.db,
 			input.ownerPersonId,
 			[input.credentialId],
 			now,
+			input.orgId,
 		)
 	).get(input.credentialId)
 	if (!credential) throw new McpCallerError(notFoundMessage)
-	const binding = await loadOrgBindingForOrg(
+	const binding = await loadLiveOrgBindingForOrg(
 		input.db,
 		input.ownerPersonId,
 		input.orgId,
@@ -309,17 +352,27 @@ export async function listPersonalCredentialOrgGrants(input: {
 		}>()
 	const grants = rows.results ?? []
 	const ids = [...new Set(grants.map((row) => row.credential_id))]
-	const [credentials, usable] = await Promise.all([
+	const grantedOrgIds = [...new Set(grants.map((row) => row.org_id))]
+	const [credentials, usableByOrg] = await Promise.all([
 		listOrgCredentialsByIds(input.db, ownerOrgId, ids),
-		loadPersonalCredentials(
-			input.db,
-			input.ownerPersonId,
-			ids,
-			input.now ?? new Date(),
-		),
+		Promise.all(
+			grantedOrgIds.map(async (orgId) => {
+				const orgIds = grants
+					.filter((row) => row.org_id === orgId)
+					.map((row) => row.credential_id)
+				const usable = await loadPersonalCredentials(
+					input.db,
+					input.ownerPersonId,
+					orgIds,
+					input.now ?? new Date(),
+					ownerIdFromStored(orgId),
+				)
+				return [orgId, usable] as const
+			}),
+		).then((entries) => new Map(entries)),
 	])
 	const bound = new Map<string, boolean>()
-	for (const orgId of new Set(grants.map((row) => row.org_id))) {
+	for (const orgId of grantedOrgIds) {
 		bound.set(
 			orgId,
 			Boolean(await loadOrgBindingForOrg(input.db, input.ownerPersonId, orgId)),
@@ -338,7 +391,8 @@ export async function listPersonalCredentialOrgGrants(input: {
 				},
 				createdAt: row.created_at,
 				active:
-					usable.has(row.credential_id) && (bound.get(row.org_id) ?? false),
+					(usableByOrg.get(row.org_id)?.has(row.credential_id) ?? false) &&
+					(bound.get(row.org_id) ?? false),
 			},
 		]
 	})
@@ -389,6 +443,7 @@ export async function listPersonalCredentialCandidates(input: {
 		actor,
 		ids,
 		input.now ?? new Date(),
+		input.orgId,
 	)
 	return ids.flatMap((id) => {
 		const credential = credentials.get(id)

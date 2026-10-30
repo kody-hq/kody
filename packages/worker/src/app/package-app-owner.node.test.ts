@@ -122,7 +122,10 @@ test('applyPasswordChange invalidates sessions issued before the stamp', async (
 		stableUserId: ownerIdFromStored(stableUserId),
 		password: 'new-password-ok',
 	})
-	expect(result.ok).toBe(true)
+	if (!result.ok)
+		throw new Error(
+			'Password change must succeed before checking session invalidation',
+		)
 
 	expect(
 		await resolvePackageAppOwnerByStableUserId({
@@ -135,7 +138,7 @@ test('applyPasswordChange invalidates sessions issued before the stamp', async (
 		await resolvePackageAppOwnerByStableUserId({
 			env,
 			stableUserId,
-			issuedAt: Date.now(),
+			issuedAt: result.changedAtMs + 1,
 		}),
 	).toMatchObject({ userId: stableUserId })
 })

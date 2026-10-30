@@ -88,6 +88,7 @@ import {
 import { requestSkipsAssetProbe } from './static-asset-probe.ts'
 import { handleOpenIdConfigurationRequest } from '#worker/oidc/discovery.ts'
 import { deviceCodeGrantType } from '#worker/oauth-device/device-grant.ts'
+import { agentClaimGrantType } from '#worker/agent-registration/grant-type.ts'
 import { handleOidcJwksRequest } from '#worker/oidc/jwks.ts'
 import { handleOidcUserinfoRequest } from '#worker/oidc/userinfo.ts'
 import { handleOidcLogoutRequest } from '#worker/oidc/logout.ts'
@@ -480,21 +481,36 @@ function isMcpResourceOwnedPath(pathname: string) {
 	)
 }
 
-/** The parsed form when `/oauth/token` carries the RFC 8628 device grant. */
-async function readDeviceCodeTokenForm(request: Request) {
+const internalTokenGrantTypes = new Set([
+	deviceCodeGrantType,
+	agentClaimGrantType,
+])
+
+/**
+ * The parsed form when `/oauth/token` carries a grant Kody handles itself: the
+ * RFC 8628 device grant or the auth.md claim grant (ADR 0091).
+ */
+async function readInternalTokenGrantForm(request: Request) {
 	const contentType = request.headers.get('Content-Type') ?? ''
 	if (!contentType.includes('application/x-www-form-urlencoded')) return null
 	const form = await request
 		.clone()
 		.formData()
 		.catch(() => null)
-	return form?.get('grant_type') === deviceCodeGrantType ? form : null
+	const grantType = form?.get('grant_type')
+	return form &&
+		typeof grantType === 'string' &&
+		internalTokenGrantTypes.has(grantType)
+		? { form, grantType }
+		: null
 }
 
 function isOAuthProviderOwnedPath(pathname: string) {
 	return (
 		pathname === oauthPaths.token ||
 		pathname === oauthPaths.deviceAuthorization ||
+		pathname === oauthPaths.agentIdentity ||
+		pathname === oauthPaths.agentIdentityClaim ||
 		pathname === oauthPaths.register ||
 		pathname === oauthPaths.discovery ||
 		pathname === protectedResourceMetadataPath ||
@@ -1004,6 +1020,16 @@ async function handleOriginAppFetch(
 	let mcpPeek: McpJsonRpcPeek = { kind: 'unknown' }
 	let mcpPeekCloned = false
 	try {
+		if (url.pathname === oauthPaths.agentIdentity) {
+			const { handleAgentIdentityRequest } =
+				await import('#worker/agent-registration/identity-endpoint.ts')
+			return await handleAgentIdentityRequest(request, env)
+		}
+		if (url.pathname === oauthPaths.agentIdentityClaim) {
+			const { handleAgentClaimRestartRequest } =
+				await import('#worker/agent-registration/identity-endpoint.ts')
+			return await handleAgentClaimRestartRequest(request, env)
+		}
 		if (url.pathname === oauthPaths.deviceAuthorization) {
 			const { handleDeviceAuthorizationRequest } =
 				await import('#worker/oauth-device/authorization-endpoint.ts')
@@ -1019,7 +1045,18 @@ async function handleOriginAppFetch(
 			)
 		}
 		if (url.pathname === oauthPaths.token && request.method === 'POST') {
-			const deviceForm = await readDeviceCodeTokenForm(request)
+			const internalGrant = await readInternalTokenGrantForm(request)
+			if (internalGrant?.grantType === agentClaimGrantType) {
+				await discardUnreadRequestBody(request)
+				const { handleAgentClaimTokenRequest } =
+					await import('#worker/agent-registration/token-grant.ts')
+				return await handleAgentClaimTokenRequest({
+					request,
+					env,
+					form: internalGrant.form,
+				})
+			}
+			const deviceForm = internalGrant?.form ?? null
 			if (deviceForm) {
 				await discardUnreadRequestBody(request)
 				const { handleDeviceCodeTokenRequest } =

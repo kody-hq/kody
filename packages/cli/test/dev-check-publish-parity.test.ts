@@ -109,6 +109,85 @@ test('kody dev check fails the stamped |scope=package case that publish refuses'
 	})
 })
 
+test('kody dev check passes a data-only app package with no exports field', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'kody-check-no-exports-'))
+	try {
+		await writeFile(
+			join(root, 'package.json'),
+			JSON.stringify({
+				name: '@local/board',
+				type: 'module',
+				kody: {
+					id: 'board',
+					description: 'Data-only package with an app.',
+					app: { entry: './src/app.ts' },
+				},
+			}),
+		)
+		await writeFile(join(root, 'README.md'), '# board\n')
+		await writeFile(join(root, 'AGENTS.md'), '# Agents\n')
+		await mkdir(join(root, 'src'), { recursive: true })
+		await writeFile(
+			join(root, 'src/app.ts'),
+			'export default { async fetch() { return new Response("ok") } }\n',
+		)
+		let sentManifest: Record<string, unknown> = {}
+		const out = capture()
+		const code = await runDevCheck({
+			target: 'mock',
+			cwd: root,
+			io: out.io,
+			runPublishChecks: async (files) => {
+				sentManifest = JSON.parse(files['package.json'] ?? '{}')
+				return {
+					ok: true,
+					checks: [
+						{ kind: 'manifest', ok: true, message: 'Validated package.json.' },
+					],
+				}
+			},
+		})
+		assert.equal(code, 0, out.stdout)
+		assert.equal('exports' in sentManifest, false)
+		assert.match(out.stdout, /^ok\s+app\.entry bundle/m)
+		assert.match(out.stdout, /^ok\s+publish:manifest/m)
+		assert.doesNotMatch(out.stdout, /export:/)
+	} finally {
+		await rm(root, { recursive: true, force: true })
+	}
+})
+
+test('kody dev check sends binary files by path and size so binary-only app assets count', async () => {
+	await withPackage(async (root) => {
+		const png = Buffer.from([
+			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff,
+		])
+		await mkdir(join(root, 'icons'), { recursive: true })
+		await writeFile(join(root, 'icons/icon-192.png'), png)
+		await writeFile(join(root, 'icons/icon-512.png'), Buffer.concat([png, png]))
+		let sentFiles: Record<string, string> = {}
+		let sentBinary: Record<string, number> = {}
+		const out = capture()
+		const code = await runDevCheck({
+			target: 'mock',
+			cwd: root,
+			io: out.io,
+			runPublishChecks: async (files, binaryFiles) => {
+				sentFiles = files
+				sentBinary = binaryFiles
+				return { ok: true, checks: [{ kind: 'bundle', ok: true, message: '' }] }
+			},
+		})
+		assert.equal(code, 0, out.stdout)
+		assert.deepEqual(sentBinary, {
+			'icons/icon-192.png': png.byteLength,
+			'icons/icon-512.png': png.byteLength * 2,
+		})
+		assert.ok(!Object.keys(sentFiles).some((path) => path.startsWith('icons/')))
+		assert.match(out.stdout, /sent 2 binary file\(s\) by path and size only/)
+	})
+})
+
 test('kody dev check --json reports publish check results', async () => {
 	await withPackage(async (root) => {
 		const out = capture()

@@ -126,3 +126,55 @@ test('defaults to dropping only the ai always-remote binding', async () => {
 		await rm(dir, { recursive: true, force: true })
 	}
 })
+
+test('forwards mock Artifacts settings to the RepoSession worker without copying live tokens', async () => {
+	const dir = await mkdtemp(path.join(tmpdir(), 'sibling-dev-mock-'))
+	const keys = [
+		'CLOUDFLARE_API_BASE_URL',
+		'CLOUDFLARE_API_TOKEN',
+		'CLOUDFLARE_ACCOUNT_ID',
+		'CLOUDFLARE_API_SOURCE_SNAPSHOTS',
+		'SKIP_CLOUDFLARE_MOCK',
+	] as const
+	const previous = Object.fromEntries(
+		keys.map((key) => [key, process.env[key]]),
+	)
+	try {
+		Object.assign(process.env, {
+			CLOUDFLARE_API_BASE_URL: 'http://127.0.0.1:9043',
+			CLOUDFLARE_API_TOKEN: 'mock-test',
+			CLOUDFLARE_ACCOUNT_ID: 'mock-account',
+			CLOUDFLARE_API_SOURCE_SNAPSHOTS: 'true',
+		})
+		delete process.env.SKIP_CLOUDFLARE_MOCK
+		const configPath = await writeSiblingFixture(dir, {
+			name: 'kody-platform',
+			env: { production: { vars: {} } },
+		})
+		const options = {
+			configPath,
+			envName: 'production',
+			mainWorkerDevName: 'kody-production',
+			port: '3743',
+		}
+		const output = await writeLocalSiblingDevConfig(options)
+		const readVars = async () =>
+			JSON.parse(await readFile(output, 'utf8')).env.production.vars
+		expect(await readVars()).toMatchObject({
+			CLOUDFLARE_API_BASE_URL: 'http://127.0.0.1:9043',
+			CLOUDFLARE_API_TOKEN: 'mock-test',
+			CLOUDFLARE_ACCOUNT_ID: 'mock-account',
+			CLOUDFLARE_API_SOURCE_SNAPSHOTS: 'true',
+		})
+		process.env.SKIP_CLOUDFLARE_MOCK = '1'
+		process.env.CLOUDFLARE_API_TOKEN = 'live-token-must-not-be-written'
+		await writeLocalSiblingDevConfig(options)
+		expect((await readVars()).CLOUDFLARE_API_TOKEN).toBeUndefined()
+	} finally {
+		for (const key of keys) {
+			if (previous[key] === undefined) delete process.env[key]
+			else process.env[key] = previous[key]
+		}
+		await rm(dir, { recursive: true, force: true })
+	}
+})

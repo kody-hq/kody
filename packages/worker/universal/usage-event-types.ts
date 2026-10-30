@@ -24,6 +24,7 @@ export const usageEventTypes = [
 	'durable_object_rows_read',
 	'durable_object_platform_rows_read',
 	'api_call',
+	'git_push',
 ] as const
 
 export type UsageEventType = (typeof usageEventTypes)[number]
@@ -42,6 +43,7 @@ export const observeOnlyUsageEventTypes = [
 	'durable_object_rows_read',
 	'durable_object_platform_rows_read',
 	'api_call',
+	'git_push',
 ] as const satisfies ReadonlyArray<UsageEventType>
 
 /**

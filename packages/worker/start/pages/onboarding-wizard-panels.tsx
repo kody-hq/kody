@@ -379,7 +379,7 @@ function renderAgentPanelHead(props: {
 							<SiteLink
 								href={props.changeHref}
 								data-testid="onboarding-agent-change"
-								data-prevent-scroll-reset=""
+								resetScroll={false}
 								css={changeSelectionCss}
 							>
 								Change selection

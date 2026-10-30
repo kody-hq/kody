@@ -1,4 +1,5 @@
 import { createServerFn } from '@tanstack/react-start'
+import { PermissionDeniedError } from '#universal/permission-denied.ts'
 import { notFound, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
@@ -37,7 +38,7 @@ export const loadOrgFollows = createServerFn({ method: 'GET' })
 		})
 		if (!access.ok) {
 			if (access.status === 404) throw notFound()
-			throw new Error(access.error)
+			throw new PermissionDeniedError(access.error)
 		}
 		return loadOrgFollowsData({ env: context.bindings, org: access.org })
 	})
@@ -105,7 +106,9 @@ async function write(
 		})
 		if (!access.ok) {
 			setResponseStatus(access.status)
-			throw new Error(access.error)
+			throw access.status === 403
+				? new PermissionDeniedError(access.error)
+				: new Error(access.error)
 		}
 		const result = await operation({ ...context, org: access.org })
 		if (!result.ok) {

@@ -90,6 +90,8 @@ export function PackageCollaboratorsRoute({
 	const [teamId, setTeamId] = useState('')
 	const [memberId, setMemberId] = useState('')
 	const [teamPreset, setTeamPreset] = useState<PackageCollaboratorPreset>('use')
+	const [everyonePreset, setEveryonePreset] =
+		useState<PackageCollaboratorPreset>('use')
 	const [memberPreset, setMemberPreset] =
 		useState<PackageCollaboratorPreset>('use')
 	const inFlight = useRef(false)
@@ -181,6 +183,25 @@ export function PackageCollaboratorsRoute({
 		void select
 	}
 
+	async function addEveryone(
+		event: FormEvent<HTMLFormElement>,
+		view: PackageCollaboratorsView,
+	) {
+		event.preventDefault()
+		const everyone = view.options.everyone
+		if (!everyone) return
+		await postChange(
+			'add-everyone',
+			{
+				intent: 'grant',
+				subjectType: 'org',
+				subjectId: everyone.orgId,
+				preset: everyonePreset,
+			},
+			'Added everyone in this organization.',
+		)
+	}
+
 	async function addTeam(
 		event: FormEvent<HTMLFormElement>,
 		view: PackageCollaboratorsView,
@@ -233,9 +254,14 @@ export function PackageCollaboratorsRoute({
 				data-subject={collaborator.subjectId}
 				css={rowCss}
 			>
-				{collaborator.subjectType === 'team' ? (
+				{collaborator.subjectType !== 'user' ? (
 					<span aria-hidden="true" css={iconWellCss}>
-						{renderIcon('users', { size: '1.25rem' })}
+						{renderIcon(
+							collaborator.subjectType === 'org' ? 'globe' : 'users',
+							{
+								size: '1.25rem',
+							},
+						)}
 					</span>
 				) : (
 					<UserAvatar
@@ -330,6 +356,49 @@ export function PackageCollaboratorsRoute({
 					{packageCollaboratorPresetDescription(input.value)}.
 				</p>
 			</label>
+		)
+	}
+
+	function renderAddEveryone(view: PackageCollaboratorsView) {
+		const everyone = view.options.everyone
+		return (
+			<AccountManagementPanel
+				title="Everyone in this organization"
+				description="Every current member, and anyone who joins later. Someone who leaves the organization loses access right away. The package stays private to everyone else."
+			>
+				{everyone === null ? (
+					<p css={mutedCopyCss}>
+						Everyone in this organization already has access. Change or remove
+						it under Who has access.
+					</p>
+				) : (
+					<form
+						data-testid="package-collaborators-add-everyone"
+						css={formCss}
+						onSubmit={(event) => void addEveryone(event, view)}
+					>
+						{renderPresetField({
+							label: 'Access for everyone in this organization',
+							value: everyonePreset,
+							onChange: (preset) => {
+								setEveryonePreset(preset)
+							},
+						})}
+						<div css={accountActionsCss}>
+							<button
+								type="submit"
+								disabled={busy !== null}
+								css={getPillButtonCss({ size: 'sm' })}
+							>
+								{renderIcon('plus', { size: '1.05rem' })}
+								{busy === 'add-everyone'
+									? 'Adding…'
+									: `Add everyone (${everyone.memberCount} ${everyone.memberCount === 1 ? 'member' : 'members'})`}
+							</button>
+						</div>
+					</form>
+				)}
+			</AccountManagementPanel>
 		)
 	}
 
@@ -507,6 +576,7 @@ export function PackageCollaboratorsRoute({
 								</ul>
 							)}
 						</AccountManagementPanel>
+						{view.org.personal ? null : renderAddEveryone(view)}
 						{view.org.personal ? null : renderAddTeam(view)}
 						{view.org.personal ? null : renderAddMember(view)}
 						{view.org.personal ? (

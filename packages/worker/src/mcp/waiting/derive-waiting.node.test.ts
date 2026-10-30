@@ -523,6 +523,8 @@ test('waiting shows missing_refresh_token only for connections whose refresh is 
 	expect(
 		buildWaitingItems(signals, 'ada')
 			.filter((item) => item.kind === 'integration-auth')
-			.map((item) => item.id),
-	).toEqual(['integration-auth:google'])
+			.map((item) => [item.id, item.href]),
+	).toEqual([
+		['integration-auth:google', '/connect/oauth?provider=google&org=ada'],
+	])
 })

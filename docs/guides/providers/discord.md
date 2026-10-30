@@ -72,6 +72,10 @@ Confidential (default) shape:
 https://kody.codes/connect/oauth?provider=discord&authorizeUrl=https%3A%2F%2Fdiscord.com%2Foauth2%2Fauthorize&tokenUrl=https%3A%2F%2Fdiscord.com%2Fapi%2Foauth2%2Ftoken&flow=confidential&scopes=identify%20guilds
 ```
 
+For a team organization, add `&org=<team-slug>` so the app and connection are
+saved there; without it they go to the personal organization (see
+`guide:oauth`).
+
 Decoded: authorize URL `https://discord.com/oauth2/authorize`, token URL
 `https://discord.com/api/oauth2/token`, `flow=confidential`, and scopes
 `identify guilds` (space-separated). The token host `discord.com` doubles as the

@@ -67,6 +67,7 @@ import {
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { getPackageAppClientReadableCookieNames } from '#worker/package-registry/manifest.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
+import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { savedCredentialNeeds } from '#worker/credentials/credential-needs.ts'
 import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
@@ -784,6 +785,8 @@ export async function servePackageAppRequest(input: {
 	visitor: RuntimePackageAppVisitor | null
 	/** See `RuntimePackageAppServeInput.identity`. Ignored with a visitor. */
 	identity?: RuntimePackageAppIdentity | null
+	/** See `RuntimePackageAppServeInput.consentPrincipal`. Never reaches the app. */
+	consentPrincipal?: RuntimePackageAppIdentity | null
 	/** See `RuntimePackageAppServeInput.approvedPublishedCommit`. */
 	approvedPublishedCommit?: string | null
 	packagePath: PackageAppPath
@@ -817,6 +820,7 @@ export async function servePackageAppRequest(input: {
 			owner: input.owner,
 			visitor: input.visitor,
 			identity: input.identity ?? null,
+			consentPrincipal: input.consentPrincipal ?? null,
 			approvedPublishedCommit: input.approvedPublishedCommit,
 			packagePath: input.packagePath,
 			dispatch: input.dispatch,
@@ -827,6 +831,8 @@ export async function servePackageAppRequest(input: {
 	// Identity rides only on an otherwise anonymous request; a visitor already
 	// names the person.
 	const identity = visitor ? null : (input.identity ?? null)
+	// Only decides whether to offer consent; it is never handed to the app.
+	const consentPerson = visitor ?? identity ?? input.consentPrincipal ?? null
 	const serverTiming = input.serverTiming ?? []
 	const requestUrl = new URL(request.url)
 	const { kodyId } = packagePath
@@ -1212,7 +1218,8 @@ export async function servePackageAppRequest(input: {
 					{
 						env,
 						callerContext,
-						binding: '',
+						// Only checks the need can open; the handle is discarded.
+						binding: newRunCredentialClientBinding(),
 						packageId: savedPackage.id,
 						runNeeds: async () =>
 							new Map(visitorNeeds.map((item) => [item.key, item])),
@@ -1248,13 +1255,13 @@ export async function servePackageAppRequest(input: {
 		// no grant for this app yet goes to consent, and any grant (even one
 		// that declined every optional need) serves the app after that.
 		if (
-			(visitor ?? identity) &&
+			consentPerson &&
 			(request.method === 'GET' || request.method === 'HEAD') &&
 			executorNeeds.some((need) => need.required === false) &&
 			!executorGrant &&
 			!(await findLivePackageAppOauthGrant({
 				db: env.APP_DB,
-				personId: (visitor ?? identity)!.userId,
+				personId: consentPerson.userId,
 				orgUsername: packagePath.username.toLowerCase(),
 				kodyId: savedPackage.kodyId,
 			}))

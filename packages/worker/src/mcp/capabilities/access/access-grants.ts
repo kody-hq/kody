@@ -9,13 +9,16 @@ import {
 import { findCredentialIdsByLegacyName } from '#worker/credentials/credential-ids.ts'
 import {
 	getGrantById,
+	grantSubjectTypes,
 	isGrantResourceType,
 	listGrants,
 	softDeleteGrant,
 	upsertGrant,
 	type GrantResourceType,
 	type GrantSubject,
+	type GrantSubjectType,
 } from '#worker/orgs/access-writes.ts'
+import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import {
 	accessGrantSchema,
@@ -39,7 +42,7 @@ async function resolveGrantSubject(
 	db: D1Database,
 	orgId: string,
 	input: {
-		subject_type: 'user' | 'team'
+		subject_type: GrantSubjectType
 		subject_id?: string
 		username?: string
 		team_slug?: string
@@ -69,6 +72,23 @@ async function resolveGrantSubject(
 					teamSlug: input.team_slug,
 				}),
 			}
+		case 'org':
+			if (input.username || input.team_slug) {
+				throw new McpCallerError(
+					'An org subject is everyone in this organization; omit username and team_slug.',
+				)
+			}
+			if (input.subject_id && input.subject_id !== orgId) {
+				throw new McpCallerError(
+					'An org subject can only be the organization this request is bound to. Omit subject_id or pass this organization id.',
+				)
+			}
+			if (await isPersonalOrg(db, orgId)) {
+				throw new McpCallerError(
+					'A personal organization has no other members. Grant a user instead.',
+				)
+			}
+			return { type: 'org', id: orgId }
 		default: {
 			const exhaustive: never = subjectType
 			throw new Error(`Unknown grant subject: ${String(exhaustive)}`)
@@ -119,7 +139,7 @@ export const accessGrantCapability = defineDomainCapability(
 			return existing.some(grantChangesMemberOrBilling)
 		},
 		description:
-			'Grant a user or team Use, Contribute, or Manage on a resource in the organization this request is bound to, or pass an explicit permission list instead of a preset. Secrets, integrations, MCP servers, and vault bindings use resource_type credential with the credential_id from secretList, integrationList, mcpServerList, or secretProviderList; the grant follows the credential, not its name. resource_type secret or integration with a name still works: the name resolves to its credential once, when the grant is made. Organization grants use resource_type org and this organization id; besides org-level permissions they may carry the read-only package:read, app:read, job:read, integration:read, or email:read for org-wide reads (no write, execute, or use). You need manage access on that resource (or member:write for an organization grant). Only an Owner can put org:write, org:delete, member:write, or member:delete on an organization grant.',
+			'Grant a user, a team, or everyone in this organization (subject_type org) Use, Contribute, or Manage on a resource in the organization this request is bound to, or pass an explicit permission list instead of a preset. Secrets, integrations, MCP servers, and vault bindings use resource_type credential with the credential_id from secretList, integrationList, mcpServerList, or secretProviderList; the grant follows the credential, not its name. resource_type secret or integration with a name still works: the name resolves to its credential once, when the grant is made. Organization grants use resource_type org and this organization id; besides org-level permissions they may carry the read-only package:read, app:read, job:read, integration:read, or email:read for org-wide reads (no write, execute, or use). You need manage access on that resource (or member:write for an organization grant). Only an Owner can put org:write, org:delete, member:write, or member:delete on an organization grant.',
 		keywords: ['grant', 'access', 'permission', 'share', 'preset'],
 		readOnly: false,
 		idempotent: true,
@@ -129,13 +149,17 @@ export const accessGrantCapability = defineDomainCapability(
 				'package, app, job, credential, memory, email, or org. secret or integration take a name instead of a credential id.',
 			),
 			resource_id: z.string().min(1),
-			subject_type: z.enum(['user', 'team']),
+			subject_type: z
+				.enum(grantSubjectTypes)
+				.describe(
+					'user, team, or org. org means everyone in this organization: every current and future member, resolved live, so someone who leaves loses it at once. It covers only this one resource and is not available on resource_type org.',
+				),
 			subject_id: z
 				.string()
 				.min(1)
 				.optional()
 				.describe(
-					'Person id or team id. Omit when passing username or team_slug.',
+					'Person id or team id. Omit when passing username or team_slug, and for an org subject.',
 				),
 			username: z.string().min(1).optional(),
 			team_slug: z.string().min(1).optional(),
@@ -281,7 +305,7 @@ export const accessListCapability = defineDomainCapability(
 					'secret or integration with a resource_id filter by that credential name.',
 				),
 			resource_id: z.string().min(1).optional(),
-			subject_type: z.enum(['user', 'team']).optional(),
+			subject_type: z.enum(grantSubjectTypes).optional(),
 			subject_id: z.string().min(1).optional(),
 		}),
 		outputSchema: z.object({

@@ -17,7 +17,8 @@ Use `package.json` as the canonical source of truth for saved package metadata.
   saved-package UUID `package_id` only when the name is not known, or for a
   stable ref. Never pass both. The leaf after `/` is the URL slug. Create flows
   pass the `@owner/leaf` name or the name leaf.
-- `exports` — authoritative import/export map
+- `exports` — authoritative import/export map. Optional: omitting it means no
+  exports, the same as `"exports": {}` (e.g. a data-only package with an app)
 - `private` — leftover npm-style field; ignored for catalog listing. Visibility
   is a repo setting (`packageUpdate` `changes.visibility`), default private
 - `kody.description` — short public tagline for search/detail (max 200)

@@ -1000,6 +1000,11 @@ async function serveInternetVisiblePackageApp(input: {
 	resolveIdentity?: (
 		kodyId: string,
 	) => Promise<RuntimePackageAppIdentity | null>
+	/**
+	 * The signed-in person without identity, so serve can offer consent for
+	 * optional executor needs. Never reaches package code.
+	 */
+	consentPrincipal?: RuntimePackageAppIdentity | null
 }): Promise<Response | null> {
 	const org = await resolvePackageAppOrgOwnerByHandle({
 		env: input.env,
@@ -1039,6 +1044,7 @@ async function serveInternetVisiblePackageApp(input: {
 		},
 		visitor: null,
 		identity,
+		consentPrincipal: identity ? null : (input.consentPrincipal ?? null),
 		approvedPublishedCommit,
 		packagePath: input.packagePath,
 		serverTiming: input.serverTiming,
@@ -1238,6 +1244,8 @@ async function servePackageAppForSession(input: {
 				packagePath,
 				kodyId,
 			}),
+		consentPrincipal:
+			authorized.kind === 'forbidden' ? authorized.person : null,
 	})
 	if (anonymous) return anonymous
 

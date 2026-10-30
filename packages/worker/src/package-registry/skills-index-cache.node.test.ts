@@ -190,3 +190,32 @@ test('missing KV binding: write throws, read and remove no-op', async () => {
 		}),
 	).resolves.toBe(0)
 })
+
+test('retains publication attribution when a same-commit index is rebuilt', async () => {
+	const { kv } = createMemoryKvNamespace()
+	const env = createEnv(kv)
+	const input = {
+		env,
+		userId: 'user-1',
+		index: emptyIndex({
+			publishedBy: 'casey',
+			publishedAt: '2026-10-28T12:00:00Z',
+		}),
+	}
+	await writePackageSkillsIndex(input)
+	await writePackageSkillsIndex({
+		...input,
+		index: emptyIndex({
+			publishedBy: 'rebuilder',
+			publishedAt: '2026-10-29T12:00:00Z',
+		}),
+	})
+	expect(
+		await readPackageSkillsIndex({
+			env,
+			userId: 'user-1',
+			packageId: 'pkg-1',
+			publishedCommit: 'commit-1',
+		}),
+	).toMatchObject({ publishedBy: 'casey', publishedAt: '2026-10-28T12:00:00Z' })
+})

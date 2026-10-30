@@ -57,7 +57,10 @@ async function setup() {
 		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
 	} as unknown as Env
 	const org = ownerIdFromStored(ownerId)
-	const ctx = (binding: string | undefined = 'run:1') => ({
+	const ctx = (
+		binding: string | undefined = 'run:1',
+		packageId: string | null = null,
+	) => ({
 		env,
 		openApiPrincipal: { kind: 'mcp' } as const,
 		...(binding ? { credentialClientBinding: binding } : {}),
@@ -71,6 +74,16 @@ async function setup() {
 				username: 'owneruser',
 			},
 			orgBinding: { org: { id: org, slug: 'owneruser' }, role: 'owner' },
+			...(packageId
+				? {
+						storageContext: {
+							sessionId: null,
+							appId: null,
+							packageId,
+							storageId: null,
+						},
+					}
+				: {}),
 		}),
 	})
 	const entry = async (name: string) =>
@@ -338,5 +351,71 @@ test('sealed_token brings its own hosts and placement and saves only user scope'
 	})
 	await expect(t.set({ name: 'hook', sealed_token: sealed })).rejects.toThrow(
 		/"hook" is a url credential/,
+	)
+})
+
+test('package code that tries to keep a sealed token is pointed at a login credential', async () => {
+	const t = await setup()
+	const response = await sealTokenResponse({
+		env: t.env,
+		response: Response.json({ access_token: 'token-demo-access-token' }),
+		requestUrl: 'https://auth.example.com/oauth/token',
+		approvedHosts: ['auth.example.com', 'api.example.com'],
+		filledValues: ['token-demo-refresh-token'],
+		org: t.org,
+		binding: 'run:1',
+	})
+	const sealed = ((await response.json()) as { access_token: string })
+		.access_token
+	// A package run of @example/token-demo.
+	const pkg = t.ctx('run:1', 'pkg-token-demo')
+	const attempts = [
+		() => t.set({ name: 'k', scope: 'package', value: sealed }, pkg),
+		() => t.set({ name: 'k', scope: 'user', value: sealed }, pkg),
+		() => t.set({ name: 'k', scope: 'package', sealed_token: sealed }, pkg),
+		() => t.set({ name: 'k', scope: 'user', sealed_token: sealed }, pkg),
+		() =>
+			secretSetManyCapability.handler(
+				{ secrets: [{ name: 'k', scope: 'package', value: sealed }] } as never,
+				pkg,
+			),
+		() =>
+			secretSetManyCapability.handler(
+				{ secrets: [{ name: 'k', scope: 'user', value: sealed }] } as never,
+				pkg,
+			),
+	]
+	for (const attempt of attempts) {
+		const error = await attempt().catch((caught: unknown) => caught)
+		expect(error).toBeInstanceOf(Error)
+		const message = (error as Error).message
+		expect(message).toMatch(/login credential/)
+		expect(message).toContain('credential(key)')
+		expect(message).toContain('https://kody.codes/docs/credentials#login')
+		expect(message).not.toContain('scope: "user"')
+		expect(message).not.toMatch(/execute/i)
+		expect(message).not.toContain(sealed)
+	}
+	expect(await t.entry('k')).toBeNull()
+	// assertOnly never writes the value, so it gets no sealed-token refusal.
+	const assertOnlyResult = await secretSetManyCapability
+		.handler(
+			{
+				secrets: [{ name: 'k', scope: 'package', value: sealed }],
+				assertOnly: true,
+			} as never,
+			pkg,
+		)
+		.catch((caught: unknown) => caught)
+	expect(String((assertOnlyResult as Error)?.message)).not.toMatch(
+		/login credential/,
+	)
+
+	// Outside a package the same calls keep today's messages.
+	await expect(
+		t.set({ name: 'k', scope: 'package', sealed_token: sealed }),
+	).rejects.toThrow('sealed_token saves a user-scope Key; set scope to "user".')
+	await expect(t.set({ name: 'k', value: sealed })).rejects.toThrow(
+		/Pass it as secretSet\(\{ name, scope: "user", sealed_token \}\)/,
 	)
 })

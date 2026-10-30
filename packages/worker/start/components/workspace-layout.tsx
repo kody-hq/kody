@@ -115,6 +115,8 @@ export function WorkspaceLayout() {
 						boxSizing: 'border-box',
 						display: 'flex',
 						flexDirection: 'column',
+						fontSize: '0.9375rem',
+						lineHeight: 1.5,
 						background: `color-mix(in srgb, ${colors.background} 60%, ${colors.surface})`,
 						boxShadow: `4px 0 18px color-mix(in srgb, ${colors.text} 3%, transparent)`,
 						'@media (prefers-color-scheme: dark)': {

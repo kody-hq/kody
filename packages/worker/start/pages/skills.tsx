@@ -12,6 +12,7 @@ import { SiteLink } from '../components/site-link.tsx'
 import { AccountSectionTabs } from './account-section-tabs.tsx'
 import { PackageFilesExplorer } from '../components/package-files-explorer.tsx'
 import { renderIcon } from '../components/icon.tsx'
+import { SkillHistory } from './skill-history.tsx'
 
 type SkillsData = Awaited<ReturnType<typeof loadSkillsPage>>
 import {
@@ -66,6 +67,7 @@ export function SkillsPage({
 	onFilter: (patch: Partial<SkillsSearch>) => void
 }) {
 	const [filesOpen, setFilesOpen] = useState(false)
+	const [historySkill, setHistorySkill] = useState<string | null>(null)
 	const [draft, setDraft] = useState({ source: search.q, value: search.q })
 	if (draft.source !== search.q) setDraft({ source: search.q, value: search.q })
 	const query = draft.source === search.q ? draft.value : search.q
@@ -210,7 +212,7 @@ export function SkillsPage({
 								{selected.description}
 							</p>
 						</div>
-						{selected.files.length > 1 ? (
+						{selected.files.length > 1 && historySkill !== selected.uri ? (
 							<button
 								type="button"
 								aria-label="Toggle skill files"
@@ -237,48 +239,78 @@ export function SkillsPage({
 								{selected.files.length})
 							</button>
 						) : null}
+						<button
+							type="button"
+							aria-expanded={historySkill === selected.uri}
+							onClick={() =>
+								setHistorySkill(
+									historySkill === selected.uri ? null : selected.uri,
+								)
+							}
+							css={{
+								padding: '0.3rem 0.5rem',
+								border: `1px solid ${colors.border}`,
+								borderRadius: '0.35rem',
+								color: colors.text,
+								background: colors.surface,
+								cursor: 'pointer',
+							}}
+						>
+							History
+						</button>
 					</header>
-					<SkillReadAcknowledgement
-						identity={`${file.uri}:${selected.commit}`}
-						orgSlug={data.orgSlug}
-						receipt={data.readReceipt}
-					/>
-					<PackageFilesExplorer
-						hideExplorer={!filesOpen || selected.files.length <= 1}
-						embedded
-						fillHeight
-						fileHref={(path) => {
-							const target = selected.files.find((file) => file.path === path)
-							return target ? href({ file: target.uri }) : '#'
-						}}
-						data={{
-							ok: true,
-							title: selected.name,
-							backHref: href({ skill: undefined, file: undefined }),
-							backLabel: 'Skills',
-							filesBasePath: '',
-							selectedPath: file.path,
-							kind: 'file',
-							paths: selected.files.map((file) => file.path),
-							children: [],
-							content: text,
-							contentPath: file.path,
-							contentKind:
-								text !== null
-									? /\.md$/i.test(file.path)
-										? 'markdown'
-										: 'code'
-									: image
-										? 'image'
-										: 'binary',
-							language: data.highlighted?.lang ?? null,
-							contentHighlighted: data.highlighted,
-							contentFences: data.fences,
-							contentByteLength: file.size,
-							mediaHref,
-							rawHref,
-						}}
-					/>
+					{historySkill !== selected.uri ? (
+						<SkillReadAcknowledgement
+							identity={`${file.uri}:${selected.commit}`}
+							orgSlug={data.orgSlug}
+							receipt={data.readReceipt}
+						/>
+					) : null}
+					{historySkill === selected.uri ? (
+						<SkillHistory
+							key={selected.uri}
+							orgSlug={data.orgSlug}
+							skill={selected.uri}
+							onRestored={() => setHistorySkill(null)}
+						/>
+					) : (
+						<PackageFilesExplorer
+							hideExplorer={!filesOpen || selected.files.length <= 1}
+							embedded
+							fillHeight
+							fileHref={(path) => {
+								const target = selected.files.find((file) => file.path === path)
+								return target ? href({ file: target.uri }) : '#'
+							}}
+							data={{
+								ok: true,
+								title: selected.name,
+								backHref: href({ skill: undefined, file: undefined }),
+								backLabel: 'Skills',
+								filesBasePath: '',
+								selectedPath: file.path,
+								kind: 'file',
+								paths: selected.files.map((file) => file.path),
+								children: [],
+								content: text,
+								contentPath: file.path,
+								contentKind:
+									text !== null
+										? /\.md$/i.test(file.path)
+											? 'markdown'
+											: 'code'
+										: image
+											? 'image'
+											: 'binary',
+								language: data.highlighted?.lang ?? null,
+								contentHighlighted: data.highlighted,
+								contentFences: data.fences,
+								contentByteLength: file.size,
+								mediaHref,
+								rawHref,
+							}}
+						/>
+					)}
 				</div>
 			</AccountManagementShell>
 		)

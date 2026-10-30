@@ -214,6 +214,7 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{ kind: 'user_id', table: 'mcp_event_subscriptions' },
 	{ kind: 'user_id', table: 'cli_credential_bootstrap_codes' },
 	{ kind: 'user_id', table: 'oauth_device_authorizations' },
+	{ kind: 'user_id', table: 'agent_registrations' },
 	{ kind: 'user_id', table: 'user_storage_buckets' },
 	{ kind: 'user_id', table: 'usage_rollups' },
 	{
@@ -331,6 +332,15 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		columns: ['attached_by_user_id'],
 	},
 	{ kind: 'user_id', table: 'execution_context_chains' },
+	// Org automation settings outlive the member who last edited them; only
+	// the editor id is anonymized.
+	{
+		kind: 'replace_user_column',
+		table: 'automation_execution_settings',
+		matchColumn: 'updated_by_user_id',
+		setColumn: 'updated_by_user_id',
+		value: 'deleted-user',
+	},
 	{ kind: 'user_id', table: 'execution_context_chain_entries' },
 	{
 		kind: 'user_id',
@@ -374,6 +384,14 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		parentTable: 'secret_buckets',
 	},
 	{ kind: 'user_id', table: 'secret_buckets' },
+	{
+		kind: 'user_id',
+		table: 'login_credential_sessions',
+		includeInExport: false,
+		surface: 'login_credential_sessions',
+		reason:
+			'Encrypted login sessions Kody minted from a login credential; operational cache that is re-minted from the credential, never user-readable.',
+	},
 	{ kind: 'user_id', table: 'secret_provider_grants' },
 	{ kind: 'user_id', table: 'secret_provider_bindings' },
 	// Connections reference OAuth apps with ON DELETE RESTRICT, so delete
@@ -386,6 +404,16 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		matchColumn: 'connected_by_user_id',
 		setColumn: 'connected_by_user_id',
 		value: 'deleted-user',
+	},
+	// Members' personal connections pinned to this org's apps (ADR 0068)
+	// live in their personal orgs and end with the app.
+	{
+		kind: 'user_columns',
+		table: 'user_integrations',
+		columns: ['app_owner_id'],
+		includeInExport: false,
+		surface: 'user_integrations_pinned_to_org_apps',
+		reason: "members' personal connections pinned to the org's OAuth apps",
 	},
 	{ kind: 'user_id', table: 'user_oauth_apps' },
 	{ kind: 'user_id', table: 'mcp_server_settings' },
@@ -1221,6 +1249,11 @@ export const accountExportRedactedColumnsByTable: Readonly<
 	api_tokens: ['token_hash'],
 	cli_credential_bootstrap_codes: ['code_hash'],
 	oauth_device_authorizations: ['device_code_hash', 'user_code'],
+	agent_registrations: [
+		'claim_token_hash',
+		'attempt_token_hash',
+		'user_code_hash',
+	],
 	email_verifications: ['token_hash'],
 	org_invite_links: ['token_hash'],
 	mcp_event_subscriptions: ['secret_encrypted', 'previous_secret_encrypted'],

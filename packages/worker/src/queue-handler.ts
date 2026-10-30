@@ -1,3 +1,5 @@
+import { handleDeadLetterQueueBatch } from '#worker/dead-letter/consumer.ts'
+import { resolveDeadLetterQueue } from '#worker/dead-letter/queues.ts'
 import {
 	emailDeliveryQueueName,
 	handleEmailDeliveryQueue,
@@ -76,6 +78,11 @@ export async function handleQueueBatch(
 	env: Env,
 	ctx: ExecutionContext,
 ) {
+	const deadLetterQueue = resolveDeadLetterQueue(batch.queue)
+	if (deadLetterQueue) {
+		await handleDeadLetterQueueBatch(batch, env, deadLetterQueue)
+		return
+	}
 	const kind = resolveWorkerQueue(batch.queue)
 	switch (kind) {
 		case 'email-delivery':

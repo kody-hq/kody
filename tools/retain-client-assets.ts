@@ -11,6 +11,13 @@ import {
 import path from 'node:path'
 
 const retentionMs = 7 * 24 * 60 * 60 * 1_000
+/**
+ * Retained builds younger than this are never evicted for the asset budget:
+ * open tabs and the deploys just before this one keep every chunk they load.
+ */
+const minRetentionMs = 24 * 60 * 60 * 1_000
+/** Headroom under the Workers static asset file limit for non-hashed files. */
+const maxRetainedAssets = 19_000
 const hashedAsset =
 	/^.+-[\w-]{8,}\.(?:js|css|woff2?|ttf|otf|png|jpe?g|webp|avif|gif|svg|ico)$/
 
@@ -20,11 +27,14 @@ export function retainClientAssets({
 	previousDirectory,
 	archiveDirectory,
 	now = Date.now(),
+	maxAssets = maxRetainedAssets,
 }: {
 	clientDirectory: string
 	previousDirectory: string
 	archiveDirectory: string
 	now?: number
+	/** Most hashed files one deploy may carry (current build plus retained). */
+	maxAssets?: number
 }) {
 	const current = path.join(clientDirectory, 'assets')
 	const previous = path.join(previousDirectory, 'assets')
@@ -55,8 +65,44 @@ export function retainClientAssets({
 		readdirSync(current).filter((name) => hashedAsset.test(name)),
 	)
 	for (const name of fresh) timestamps[name] = now
-	if (Object.keys(timestamps).length > 19_000) {
+	if (fresh.size > maxAssets) {
 		throw new Error('Retained assets approach the Workers static asset limit')
+	}
+	// Frequent deploys can retain more than the asset budget within the
+	// retention window. Drop the oldest builds first, a whole build at a time
+	// (its files share one timestamp), so a kept chunk never loses a
+	// dependency from its own build. The current build always ships in full,
+	// and builds inside the minimum retention window are never dropped: if
+	// they do not fit, fail the deploy instead of breaking recent pages.
+	const builds = new Map<number, Array<string>>()
+	for (const [name, timestamp] of Object.entries(timestamps)) {
+		if (fresh.has(name)) continue
+		builds.set(timestamp, [...(builds.get(timestamp) ?? []), name])
+	}
+	let budget = maxAssets - fresh.size
+	let evicting = false
+	let evictedBuilds = 0
+	let evictedAssets = 0
+	for (const timestamp of [...builds.keys()].sort((a, b) => b - a)) {
+		const names = builds.get(timestamp) ?? []
+		if (!evicting && names.length <= budget) {
+			budget -= names.length
+			continue
+		}
+		if (now - timestamp < minRetentionMs) {
+			throw new Error(
+				'Retained assets approach the Workers static asset limit within the minimum retention window',
+			)
+		}
+		evicting = true
+		evictedBuilds += 1
+		evictedAssets += names.length
+		for (const name of names) delete timestamps[name]
+	}
+	if (evictedAssets > 0) {
+		console.info(
+			`Dropped ${evictedAssets} retained client assets from ${evictedBuilds} build(s) older than ${minRetentionMs / 3_600_000}h to stay under the asset budget.`,
+		)
 	}
 	for (const name of Object.keys(timestamps)) {
 		const destination = path.join(current, name)

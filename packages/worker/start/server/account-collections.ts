@@ -1,4 +1,5 @@
 import { buildCredentialCreateHref } from '#universal/credential-contracts.ts'
+import { PermissionDeniedError } from '#universal/permission-denied.ts'
 import { z } from 'zod'
 import { routes } from '#universal/routes.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
@@ -329,10 +330,12 @@ export const loadActivityPage = createServerFn({ method: 'GET' })
 		const [
 			{ loadScopedCollection },
 			{ loadAccountActivityData },
+			{ canReadOrgRunHistory },
 			{ loadDocumentHead },
 		] = await Promise.all([
 			import('./collection-context.ts'),
 			import('../../src/app/account-activity-data.ts'),
+			import('../../src/app/run-history-access.ts'),
 			import('./document-head.ts'),
 		])
 		const pathname = routes.orgActivity.href({ orgSlug: input.orgSlug })
@@ -341,6 +344,14 @@ export const loadActivityPage = createServerFn({ method: 'GET' })
 			section: 'activity',
 			returnTo: pathname,
 		})
+		if (
+			!(await canReadOrgRunHistory({ env: bindings, request: user.request }))
+		) {
+			return {
+				payload: null,
+				head: loadDocumentHead('orgActivity', pathname),
+			}
+		}
 		const data = await loadAccountActivityData({
 			env: bindings,
 			user,
@@ -409,7 +420,7 @@ export const loadBillingPage = createServerFn({ method: 'GET' })
 			if (access.status === 404) throw notFound()
 			const { setResponseStatus } = await import('@tanstack/react-start/server')
 			setResponseStatus(access.status)
-			throw new Error(access.error)
+			throw new PermissionDeniedError(access.error)
 		}
 		const payload = await loadOrgBillingPageData({
 			env: bindings,
@@ -505,7 +516,7 @@ export const loadUsagePage = createServerFn({ method: 'GET' })
 			if (result.status === 404) throw notFound()
 			const { setResponseStatus } = await import('@tanstack/react-start/server')
 			setResponseStatus(result.status)
-			throw new Error(result.error)
+			throw new PermissionDeniedError(result.error)
 		}
 		return {
 			payload: result.payload,

@@ -151,10 +151,19 @@ The fetch gateway enforces placement: a fill into a part the credential does not
 allow is refused with a message naming the credential, the refused part, and the
 allowed parts. Query, URL path, and body also need the owner's opt-in, given by
 saving them on the credential page, which warns that the host may store a value
-sent there. A credential already seen filling a query, path, or body before
-enforcement keeps those parts without a new save: migration 0195 records them as
-opted in, so nobody has to migrate anything by hand. Older credentials with no
-placement set fill headers plus those parts.
+sent there. A credential that already filled query, path, or body keeps those
+parts without a new save. Older credentials with no placement set fill headers
+plus those parts.
+
+Agents cannot widen placement, but they can ask the owner to. A refused query,
+path, or body fill of a user Key carries a ready approval link,
+`/connect/secrets?name=<key>&placement=body` (add `&hosts=<host>` to approve the
+host in the same click). The owner sees the credential, the requested part, and
+the "host may store this" warning, then approves or declines. Agents can build
+the same link with `credentialPlacementApprovalLink` (MCP `api`, or
+`kody api credentialPlacementApprovalLink --params '{"name":"plaidSecret","parts":["body"],"hosts":["production.plaid.com"]}'`),
+which never changes placement itself. Other refusals link to the credential's
+fill placement setting (`/@<org>/-/credentials/<credential>#fill-placement`).
 
 Full placeholder rules (encodings, multipart, the inert `{{secret:<name>}}`
 mention form):
@@ -270,8 +279,8 @@ a job, or another package calling it) the person running it is the executor, so
 
 To check whether the flag is on for an org, call `packageGet` on one of its
 packages: `credentials.suppliersEnabled` is `true` when it is. While it is
-`false`, `supplier` and `required` are ignored and needs resolve as they did
-before.
+`false`, `supplier` and `required` are ignored and needs resolve without a
+supplier.
 
 Executor needs default to required. Set `required: false` to make a need
 optional. Required needs cannot be skipped in consent, and the app does not
@@ -365,8 +374,9 @@ placeholders; inject and provider only affect clients.
 
 ### OAuth
 
-Connect the service once (your agent sends a `/connect/oauth` link). Kody keeps
-the token fresh. Code looks exactly like the Key example:
+Connect the service once (your agent sends a `/connect/oauth` link, with
+`org=<slug>` for a team organization). Kody keeps the token fresh. Code looks
+exactly like the Key example:
 
 ```ts
 const github = await credential('github')
@@ -427,6 +437,83 @@ The credential's `login_exchange` says how to log in: the exchange `url` (on one
 of the credential's hosts), `bodyFormat` (`json` or `form`), a `body` template
 where `{field}` is replaced by a login field, and `tokenPath`, the dot path to
 the token in the JSON response.
+
+A login also keeps a refresh token. The value holds the token as a field, and
+the exchange is the token request:
+
+```ts
+await kody.secretSet({
+	name: 'token-demo',
+	scope: 'user',
+	kind: 'login',
+	hosts: ['auth.example.com', 'api.example.com'],
+	value: JSON.stringify({ refresh_token: '<refresh token>' }),
+	login_exchange: {
+		url: 'https://auth.example.com/oauth/token',
+		bodyFormat: 'form',
+		body: {
+			grant_type: 'refresh_token',
+			client_id: '<client id>',
+			refresh_token: '{refresh_token}',
+		},
+		tokenPath: 'access_token',
+		expiresInPath: 'expires_in',
+		refreshToken: { path: 'refresh_token', field: 'refresh_token' },
+	},
+})
+```
+
+Body values without a `{field}` token (`grant_type`, `client_id`) are sent as
+written. Without `expiresInPath`, a session lasts `ttlSeconds` (default 3600, at
+most 24 hours). The session goes in an `Authorization: Bearer` header unless the
+credential's `inject` says otherwise. The package declares the need with
+`"kind": "login"` in `kody.credentials` and calls
+`(await credential('token-demo')).fetch('https://api.example.com/v1/items')`; it
+never sees the refresh token or the access token. The owner creates or rotates
+the credential on the website or with `secretSet` outside a package: package
+code cannot set `kind`, `hosts`, or `login_exchange`.
+
+`refreshToken` is for providers that rotate refresh tokens: `path` is where the
+response carries the new one, and `field` is the login field it replaces (a
+field the body sends). When the response has a new one, Kody saves it in place
+of the old one together with the new session, only if the credential did not
+change meanwhile, and records a value replacement in the audit log without the
+value.
+
+What Kody keeps: the session, encrypted, for this credential and its current
+value, exchange, hosts, and inject, until it expires (the 30 second early margin
+included). Every isolate reuses it, and only one exchange runs at a time per
+credential, so a rotating provider never sees the same refresh token twice.
+Editing the value, exchange, hosts, or inject, or deleting the credential, drops
+it. When one of the credential's hosts answers 401 to a request without a body,
+Kody drops the session, runs the exchange once more, and retries the request
+once (with the same host and placement checks). A request with a body is
+returned as is.
+
+A refresh token that a token request in an execute run returned sealed
+(`kody-sealed.…`) can become a login credential without code reading it: pass it
+as `sealed_token` together with `login_exchange`, as in
+`secretSet({ name: 'token-demo', scope: 'user', sealed_token: tokens.refresh_token, login_exchange })`.
+Kody opens it on the host and stores it as the login field the body sends
+(`refreshToken.field`, or `refresh_token`). The credential's hosts are the
+sealed token's save hosts, and the exchange URL must be one of them. This works
+from execute in the run that minted the token, not from package code.
+
+Moving a package off a package-scoped refresh secret and a stored access token:
+
+1. Declare the need in `kody.credentials` with `"kind": "login"`, and replace
+   the package's token handling with `credential('<key>').fetch(...)`.
+2. The owner creates the login credential on the website, or with `secretSet`
+   outside a package (`value` holding the refresh token field, or a
+   `sealed_token` from a token request in the same execute run, so no code reads
+   the value), and maps it to the need.
+3. Publish, check a request works, then delete the old package secrets (the
+   refresh token and the stored access token) with `secretDelete`.
+
+Limits: the exchange sends only `content-type` and `accept` headers. Package
+code cannot save the sealed `access_token` from its own token request as a Key
+(`sealed_token` saving works from execute only); without a login credential, use
+the sealed token in the run that minted it and mint it again next run.
 
 ### Signing
 
@@ -624,9 +711,22 @@ Treat a minted webhook URL like any other credential. Details:
 
 A Key, OAuth connection, or MCP server in your personal org is a personal
 credential. Grant it to a team org with `credentialOrgGrant`. It then works in
-that org only in your own runs, through `credential(key)`; nobody else there can
-use it, Owners included, and `{{secret:name}}` placeholders never resolve it.
+that org only in your own runs: through `credential(key)`, through
+`{{secret:name}}` and `{{integration-token:name}}` placeholders, and through
+`createAuthenticatedFetch(name)`. An org credential with the same name wins
+first. Nobody else there can use it, Owners and Automation included.
 `credentialOrgRevoke` removes the grant.
+
+When a team org has registered an OAuth app, each Member can connect their own
+account through it (**Connect your own account** on the app's page, or
+`/connect/oauth?org=<org>&app=<app>&mode=personal`). The connection is yours and
+lives in your personal org, but it is pinned to that org: it is granted there
+automatically, can never be granted anywhere else, and works only in your own
+runs in that org. The org's client secret stays with the org. Org Owners can see
+who connected (member, account label, date) and revoke a connection, but never
+use it or read its tokens. Revoking, leaving the org, or deleting the app wipes
+it and revokes it with the provider where the provider supports that. See
+[OAuth](./oauth.md#connect-your-own-account-through-an-orgs-app).
 
 ## Limits
 

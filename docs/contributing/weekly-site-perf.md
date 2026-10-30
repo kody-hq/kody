@@ -27,8 +27,8 @@ also probes `/onboarding` and `/docs/how-kody-works` for the same timing
 snapshot. Those extra pages are observational and do not change the verdict. A
 failed extra probe is omitted so homepage classify still runs. Homepage HTML
 that lacks an app `ssr` phase is a finding. A `syntax-highlight` modulepreload
-on `/` is a finding (Shiki belongs on guides and onboarding, not the landing
-entry). The collector then classifies against
+on `/` is a finding (TanStack Highlight belongs on guides and onboarding, not
+the landing entry). The collector then classifies against
 [`tools/site-perf/budget.json`](../../tools/site-perf/budget.json).
 
 [`.github/workflows/weekly-site-perf.yml`](../../.github/workflows/weekly-site-perf.yml)

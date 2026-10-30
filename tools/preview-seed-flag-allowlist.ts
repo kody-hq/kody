@@ -12,6 +12,7 @@ export const previewSeedFlagAllowlist = [
 	'demo-indicator',
 	'execution-contexts',
 	'package-credential-suppliers',
+	'repo-push-queue',
 ] as const satisfies ReadonlyArray<FeatureFlagKey>
 
 export type PreviewSeedFlagKey = (typeof previewSeedFlagAllowlist)[number]

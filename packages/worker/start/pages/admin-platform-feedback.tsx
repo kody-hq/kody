@@ -114,7 +114,7 @@ export function AdminPlatformFeedbackPage({
 	const status: string = 'ready'
 	const router = useRouter()
 	const replaceLocation = (href: string) =>
-		void router.navigate({ href, replace: true })
+		void router.navigate({ href, replace: true, resetScroll: false })
 	const selectedFeedback = data.selectedFeedback
 	const selectedFeedbackId = readSelectedFeedbackId(currentHref)
 	const filters = readFilterState(currentHref)

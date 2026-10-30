@@ -9,7 +9,9 @@ import {
 	endPackageAppVisit,
 	endPackageAppVisitWithResponse,
 	forgetPackageAppVisitLiveForTests,
+	mintPackageAppAnonymousVisitTicket,
 	mintPackageAppVisitTicket,
+	packageAppAnonymousVisitTicketPrefix,
 	packageAppVisitTicketPrefix,
 	packageAppVisitTicketTtlMs,
 	PackageAppVisitTicketError,
@@ -82,7 +84,7 @@ test('a visit ticket names only its visitor and refuses another visitor, app, co
 	expect(claimsA.credentialClientBinding).toBe('run:person-a')
 	expect(claimsB.visitor).toEqual(visitorB)
 	expect(claimsB.credentialClientBinding).toBe('run:person-b')
-	expect(claimsA.visitor.userId).not.toBe(claimsB.visitor.userId)
+	expect(claimsA.visitor?.userId).not.toBe(claimsB.visitor?.userId)
 	expect(claimsA.nonce).not.toBe(claimsB.nonce)
 
 	await expect(
@@ -119,8 +121,10 @@ test('a package app visit ticket binds the live consent grant scopes', async () 
 		ticket: minted.ticket,
 		audience,
 	})
-	expect(claims.grantId).toBe('grant-live')
-	expect(claims.scopes).toEqual(['profile', 'email', 'need:calendar'])
+	expect(claims).toMatchObject({
+		grantId: 'grant-live',
+		scopes: ['profile', 'email', 'need:calendar'],
+	})
 })
 
 test('a replayed, expired, or forged visit ticket is refused', async () => {
@@ -269,13 +273,109 @@ test('createPackageAppRequestVisit mints a ticket only when the visitor is the a
 		audience,
 		request: null,
 	})
-	expect(anonymous.ticket).toBeNull()
+	expect(anonymous.ticket).toMatch(/^kva1\./)
+	expect(anonymous.nonce).toBeTruthy()
 	expect(anonymous.visitor).toBeNull()
 	expect(anonymous.request).toBeNull()
+	expect(anonymous.claims).toBeNull()
 	expect(anonymous.credentialClientBinding).toMatch(/^run:/)
 	expect(anonymous.credentialClientBinding).not.toBe(
 		acting.credentialClientBinding,
 	)
+	await expect(
+		verifyPackageAppVisitTicket({
+			env: secretEnv,
+			ticket: anonymous.ticket!,
+			audience,
+		}),
+	).resolves.toEqual({
+		visitor: null,
+		audience,
+		nonce: anonymous.nonce,
+		credentialClientBinding: anonymous.credentialClientBinding,
+		exp: expect.any(Number),
+	})
+})
+
+test('an anonymous ticket names nobody, binds one request, and follows the ticket rules', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const first = await createPackageAppRequestVisit({
+		env: secretEnv,
+		visitor: null,
+		owner,
+		audience,
+		request: null,
+	})
+	const second = await createPackageAppRequestVisit({
+		env: secretEnv,
+		visitor: null,
+		owner,
+		audience,
+		request: null,
+	})
+	expect(first.credentialClientBinding).not.toBe(second.credentialClientBinding)
+	expect(first.nonce).not.toBe(second.nonce)
+	const verify = (ticket: string, against = audience) =>
+		verifyPackageAppVisitTicket({ env: secretEnv, ticket, audience: against })
+	const firstClaims = await verify(first.ticket!)
+	expect(firstClaims.visitor).toBeNull()
+	expect(firstClaims).not.toHaveProperty('owner')
+	expect(firstClaims.credentialClientBinding).toBe(
+		first.credentialClientBinding,
+	)
+	expect(JSON.stringify(firstClaims)).not.toContain(owner.email)
+
+	// Another app or commit, a forged signature, or a prefix swap is refused.
+	await expect(
+		verify(first.ticket!, { ...audience, packageId: 'pkg-other' }),
+	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+	await expect(
+		verify(first.ticket!, { ...audience, publishedCommit: 'commit-other' }),
+	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+	await expect(
+		verify(`${first.ticket!.slice(0, -2)}xx`),
+	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+	await expect(
+		verify(
+			first.ticket!.replace(
+				packageAppAnonymousVisitTicketPrefix,
+				packageAppVisitTicketPrefix,
+			),
+		),
+	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+	const acting = await mintFor(visitorA)
+	await expect(
+		verify(
+			acting.ticket.replace(
+				packageAppVisitTicketPrefix,
+				packageAppAnonymousVisitTicketPrefix,
+			),
+		),
+	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+
+	// The request's end burns it; the other request is unaffected.
+	endPackageAppVisit(first.nonce)
+	await expect(verify(first.ticket!)).rejects.toBeInstanceOf(
+		PackageAppVisitTicketError,
+	)
+	await expect(verify(second.ticket!)).resolves.toMatchObject({
+		visitor: null,
+		credentialClientBinding: second.credentialClientBinding,
+	})
+})
+
+test('a visit ticket is never minted without a credential client binding', async () => {
+	resetPackageAppVisitNoncesForTests()
+	await expect(
+		mintPackageAppAnonymousVisitTicket({
+			env: secretEnv,
+			audience,
+			credentialClientBinding: ' ',
+		}),
+	).rejects.toThrow('credential client binding')
+	await expect(
+		mintFor(visitorA, { credentialClientBinding: '' }),
+	).rejects.toThrow('credential client binding')
 })
 
 test('endPackageAppVisitWithResponse keeps the ticket live until the body ends', async () => {

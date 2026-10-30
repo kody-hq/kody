@@ -37,6 +37,8 @@ export const orgTransferRepointedTables = [
 	'package_kody_id_redirects',
 	'package_slug_redirects',
 	'enablements',
+	// Only creator grants whose person is a target member (plan.ts).
+	'grants',
 ] as const satisfies ReadonlyArray<OrgTransferMovedTable>
 
 /** Tables rewritten row by row (owner plus rewritten columns). */
@@ -135,6 +137,8 @@ export function buildOrgTransferStatements(input: {
 	cleanupOrphans: boolean
 	now: string
 	auditStatements: Array<D1PreparedStatement>
+	/** Deletes of members' connections pinned to the moving apps. */
+	pinnedWipeStatements?: Array<D1PreparedStatement>
 }): Array<D1PreparedStatement> {
 	const { db, plan, sealed, now } = input
 	const fromId = plan.from.id
@@ -160,6 +164,28 @@ export function buildOrgTransferStatements(input: {
 			)
 		}
 	}
+
+	// The org's own connections follow its moving apps. Members' pinned
+	// personal connections are deleted in this batch (`pinnedWipeStatements`);
+	// one made since they were listed fails the deferred app FK, so the
+	// transfer does not commit.
+	statements.push(
+		db
+			.prepare(
+				`UPDATE user_integrations SET app_owner_id = ?
+				 WHERE app_owner_id = ? AND user_id IN (?, ?)
+					AND app_slug IN (SELECT value FROM json_each(?))`,
+			)
+			.bind(
+				toId,
+				fromId,
+				fromId,
+				toId,
+				JSON.stringify(
+					plan.moves.user_oauth_apps.map((row) => cell(row, 'slug')),
+				),
+			),
+	)
 
 	for (const row of plan.moves.saved_packages) {
 		const packageId = cell(row, 'id')
@@ -285,6 +311,20 @@ export function buildOrgTransferStatements(input: {
 		}
 	}
 
+	const movedCredentialIds = plan.moves.secret_entries.map((row) =>
+		cell(row, 'id'),
+	)
+	for (const ids of chunks(movedCredentialIds, rowidChunkSize)) {
+		statements.push(
+			db
+				.prepare(
+					`DELETE FROM login_credential_sessions
+					 WHERE user_id = ? AND credential_id IN (SELECT value FROM json_each(?))`,
+				)
+				.bind(fromId, JSON.stringify(ids)),
+		)
+	}
+
 	for (const table of [
 		'saved_package_search_index_debt',
 		'vector_embed_fingerprints',
@@ -304,12 +344,25 @@ export function buildOrgTransferStatements(input: {
 		}
 	}
 
+	for (const ids of chunks(rowids(plan.droppedCreatorGrants), rowidChunkSize)) {
+		statements.push(
+			db
+				.prepare(
+					`UPDATE grants SET deleted_at = ?
+					 WHERE org_id = ? AND deleted_at IS NULL
+					   AND rowid IN (SELECT value FROM json_each(?))`,
+				)
+				.bind(now, fromId, JSON.stringify(ids)),
+		)
+	}
+
 	if (input.cleanupOrphans) {
 		statements.push(...buildOrphanCleanupStatements({ db, plan, now }))
 	}
 
 	statements.push(bumpAccessEpochStatement(db, fromId))
 	statements.push(bumpAccessEpochStatement(db, toId))
+	statements.push(...(input.pinnedWipeStatements ?? []))
 	statements.push(...input.auditStatements)
 	return statements
 }

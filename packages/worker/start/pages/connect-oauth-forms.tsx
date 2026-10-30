@@ -43,6 +43,7 @@ function renderScopePicker(input: {
 	currentStep: 'setup' | 'connect' | 'device' | 'callback' | 'success'
 	offeredScopeMenu: Array<string>
 	onToggleScope: (scope: string) => void
+	orgSlug?: string | null
 }) {
 	if (input.currentStep !== 'connect') return null
 	const currentConfig = input.config
@@ -109,6 +110,7 @@ function renderScopePicker(input: {
 								platform: Boolean(currentConfig.platformAppSlug),
 								currentScopes: currentConfig.scopes,
 								allowedScopes: currentConfig.platformAllowedScopes,
+								orgSlug: input.orgSlug,
 							})}
 							idleLabel="Copy scope prompt"
 							variant="secondary"
@@ -232,6 +234,9 @@ export function renderConnectStep(input: {
 	onConnect: () => void
 	onToggleScope: (scope: string) => void
 	wouldReplace: boolean
+	/** Explicit `?org=` target, carried into the copied scope prompt. */
+	orgSlug?: string | null
+	onEditCredentials?: () => void
 }) {
 	return (
 		<section css={cardCss}>
@@ -266,6 +271,16 @@ export function renderConnectStep(input: {
 						: `Continue to ${input.config.provider}`}
 				</button>
 			)}
+			{input.onEditCredentials ? (
+				<button
+					type="button"
+					disabled={input.submitting}
+					css={connectOauthSecondaryButtonCss}
+					onClick={input.onEditCredentials}
+				>
+					Edit app credentials
+				</button>
+			) : null}
 			{input.wouldReplace && !input.replaceConfirmed
 				? null
 				: renderScopePicker({
@@ -273,6 +288,7 @@ export function renderConnectStep(input: {
 						currentStep: 'connect',
 						offeredScopeMenu: input.offeredScopeMenu,
 						onToggleScope: input.onToggleScope,
+						orgSlug: input.orgSlug,
 					})}
 		</section>
 	)

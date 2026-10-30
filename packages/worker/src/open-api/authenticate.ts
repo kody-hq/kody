@@ -43,8 +43,14 @@ import {
 import {
 	getExecutionContext,
 	loadContextAccess,
+	parseGrant,
 	sessionStub,
 } from '#worker/execution-contexts/store.ts'
+import {
+	contextIsShared,
+	contextCredentialIds,
+	contextRunCredentials,
+} from '#worker/execution-contexts/credential-grant.ts'
 
 type McpOauthGrantProps = {
 	userId?: unknown
@@ -445,6 +451,15 @@ async function authenticateWithExecutionContextLease(input: {
 		)
 	}
 	const scopes = lease.callerScopes as ReadonlyArray<OrgPermission> | null
+	// The grant and sharing are read fresh on every hop, so narrowing the
+	// grant or sharing the context applies to runs already in flight.
+	const grant = parseGrant(context)
+	const credentials = contextRunCredentials(grant, {
+		shared:
+			grant.credentials.mode === 'requester' &&
+			(await contextIsShared(input.env.APP_DB, context)),
+		requesterIsOperator: context.operator_user_id === authContext.user.userId,
+	})
 	return createApiInvocationContext({
 		env: input.env,
 		callerContext: {
@@ -460,6 +475,7 @@ async function authenticateWithExecutionContextLease(input: {
 				connectionProfileName: null,
 				orgBinding,
 				scopes,
+				contextCredentialIds: contextCredentialIds(credentials),
 			}),
 			user: authContext.user,
 		},
@@ -470,7 +486,7 @@ async function authenticateWithExecutionContextLease(input: {
 			deadline: lease.deadline,
 			scopes: lease.callerScopes,
 			runtime: lease.runtime,
-			credentialIds: lease.credentialIds,
+			credentials,
 		},
 		waitUntil: input.waitUntil,
 	})

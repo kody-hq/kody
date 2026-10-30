@@ -56,6 +56,21 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 	}
 	await db
 		.prepare(
+			`CREATE TABLE IF NOT EXISTS login_credential_sessions (
+				credential_id TEXT PRIMARY KEY,
+				user_id TEXT NOT NULL,
+				revision TEXT,
+				session_id TEXT,
+				session_encrypted TEXT,
+				expires_at INTEGER,
+				lease_id TEXT,
+				lease_expires_at INTEGER,
+				updated_at TEXT NOT NULL
+			)`,
+		)
+		.run()
+	await db
+		.prepare(
 			`CREATE TABLE IF NOT EXISTS credential_fill_placement_observations (
 				credential_id TEXT PRIMARY KEY NOT NULL,
 				filled_last_seen_json TEXT NOT NULL,
@@ -136,6 +151,22 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 	await db
 		.prepare(
 			`CREATE TABLE IF NOT EXISTS package_app_authority_fallbacks (
+				day TEXT NOT NULL,
+				owner_id TEXT NOT NULL,
+				package_id TEXT NOT NULL,
+				call_name TEXT NOT NULL,
+				difference_kind TEXT NOT NULL,
+				visitor_hash TEXT NOT NULL,
+				first_seen_at TEXT NOT NULL,
+				last_seen_at TEXT NOT NULL,
+				observations INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (day, package_id, call_name, difference_kind, visitor_hash)
+			)`,
+		)
+		.run()
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS package_app_authority_rejections (
 				day TEXT NOT NULL,
 				owner_id TEXT NOT NULL,
 				package_id TEXT NOT NULL,

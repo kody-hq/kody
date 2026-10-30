@@ -102,6 +102,11 @@ export async function signCredentialClientHandle(input: {
 	handle: Omit<CredentialClientHandle, 'exp'>
 	now?: number
 }) {
+	// Verify refuses an empty binding, so a handle signed with one could
+	// never be used. Refuse to issue it instead.
+	if (!input.handle.binding.trim()) {
+		throw new Error('A credential client handle needs a run binding.')
+	}
 	const payload: CredentialClientHandle = {
 		...input.handle,
 		exp: (input.now ?? Date.now()) + handleLifetimeMs,

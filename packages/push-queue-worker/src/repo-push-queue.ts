@@ -11,6 +11,7 @@ import {
 	repoPushQueueAttemptsHeader,
 	repoPushQueueBudgetMs,
 	repoPushQueueChunkBytes,
+	repoPushQueueDepthHeader,
 	repoPushQueueInMemorySendBytes,
 	repoPushQueueMaxEntries,
 	repoPushQueueMaxQueuedBytes,
@@ -21,6 +22,7 @@ import {
 	repoPushQueueRetryAfterSeconds,
 	repoPushQueueUpstreamHeader,
 	repoPushQueueWaitMsHeader,
+	repoPushQueueWallMsHeader,
 } from '@kody-internal/shared/repo-push-queue-protocol.ts'
 import {
 	allReceivePackCommandsKnownStale,
@@ -206,9 +208,13 @@ export class RepoPushQueue {
 		return this.#landingCount + this.#waiting.length + (this.#running ? 1 : 0)
 	}
 
+	/**
+	 * Every response from an accepted request carries the queue depth this
+	 * push saw on arrival and its Durable Object wall time, so origin can
+	 * record per-push queue cost without a second round trip.
+	 */
 	async handle(request: Request): Promise<Response> {
 		const arrivedAt = this.#now()
-		const deadlineMs = arrivedAt + this.#limits.budgetMs
 		const upstream = request.headers.get(repoPushQueueUpstreamHeader)
 		if (
 			!upstream ||
@@ -216,6 +222,22 @@ export class RepoPushQueue {
 		) {
 			return textResponse(400, 'Invalid push queue upstream.')
 		}
+		const depthOnArrival = this.depth
+		const response = await this.#handleAccepted(request, upstream, arrivedAt)
+		response.headers.set(repoPushQueueDepthHeader, String(depthOnArrival))
+		response.headers.set(
+			repoPushQueueWallMsHeader,
+			String(Math.max(0, this.#now() - arrivedAt)),
+		)
+		return response
+	}
+
+	async #handleAccepted(
+		request: Request,
+		upstream: string,
+		arrivedAt: number,
+	): Promise<Response> {
+		const deadlineMs = arrivedAt + this.#limits.budgetMs
 		if (this.depth >= this.#limits.maxEntries) {
 			return this.#reject('full', { waitMs: 0 })
 		}

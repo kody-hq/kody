@@ -79,6 +79,7 @@ import {
 	resolveCredential,
 } from '#worker/credentials/resolve-credential.ts'
 import { assertCredentialUsesDeclared } from '#worker/credentials/credential-need-enforcement.ts'
+import { runInFeatureFlagExecution } from '#worker/feature-flags/execution-scope.ts'
 import { credentialClientHeaderName } from '#worker/credentials/credential-client-header.ts'
 import {
 	isSealedTokenName,
@@ -192,6 +193,11 @@ type FetchGatewayProps = {
 	 */
 	packageSecretRefKey?: string | null
 	/**
+	 * One id per execution: its gateway calls reuse feature-flag reads (see
+	 * `runInFeatureFlagExecution`), and the next execution reads again.
+	 */
+	executionId?: string | null
+	/**
 	 * Package-app runs only: audience used to verify a per-request visit
 	 * ticket. Omitted outside package-app serving.
 	 */
@@ -278,6 +284,20 @@ async function applyPackageAppVisitTicketToGateway(input: {
 	})
 	const headers = new Headers(input.request.headers)
 	headers.delete(packageAppVisitTicketHeaderName)
+	if (!claims.visitor) {
+		// An anonymous ticket names nobody: the fetch stays anonymous and only
+		// gains this request's credential-client binding.
+		return {
+			...input,
+			request: new Request(input.request, { headers }),
+			props: {
+				...input.props,
+				request: null,
+				executorVisitorRequest: null,
+				credentialClientBinding: claims.credentialClientBinding,
+			},
+		}
+	}
 	return {
 		...input,
 		request: new Request(input.request, { headers }),
@@ -320,6 +340,14 @@ export async function executeGatewayFetch(input: {
 	/** Override {@link outboundFetchIdleTimeoutMs}. Tests use short values. */
 	idleTimeoutMs?: number
 }): Promise<Response> {
+	return await runInFeatureFlagExecution(input.props.executionId, () =>
+		fetchThroughGateway(input),
+	)
+}
+
+async function fetchThroughGateway(
+	input: Parameters<typeof executeGatewayFetch>[0],
+): Promise<Response> {
 	const resolved = await applyPackageAppVisitTicketToGateway(input)
 	const globalFetch = resolved.globalFetch ?? fetch
 	const startedAtMs = Date.now()
@@ -360,7 +388,7 @@ export async function executeGatewayFetch(input: {
 		const credentialClientToken = input.request.headers.get(
 			credentialClientHeaderName,
 		)
-		const credentialClient =
+		let credentialClient =
 			credentialClientToken === null
 				? null
 				: await resolveCredentialClientPlacement({
@@ -417,6 +445,34 @@ export async function executeGatewayFetch(input: {
 					...expanded.substitutedValues,
 					...credentialClient.substitutedValues,
 				]
+			}
+			// A login session a host refused gets one fresh session and one
+			// retry, through the same door (host and placement re-checked).
+			// Only a request with no body can be replayed.
+			if (
+				upstream.status === 401 &&
+				credentialClient?.login &&
+				credentialClientToken !== null &&
+				input.request.body === null
+			) {
+				await upstream.body?.cancel()
+				const retried = await resolveCredentialClientPlacement({
+					env: input.env,
+					props: input.props,
+					token: credentialClientToken,
+					request: input.request,
+					rejectedLoginSessionId: credentialClient.login.sessionId,
+				})
+				substitutedValues = [...substitutedValues, ...retried.substitutedValues]
+				credentialClient = retried
+				transformed = applyCredentialClientPlacement(
+					expanded.request,
+					retried.placement,
+					codeRequest,
+				)
+				upstream = await globalFetch(
+					new Request(transformed, { signal: deadline.signal }),
+				)
 			}
 			// Credential-bearing requests stay on redirect=manual (fail closed).
 			// Ordinary bodies that used manual only so mid-stream fills could be

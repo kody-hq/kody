@@ -5,6 +5,7 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 
 const mocks = vi.hoisted(() => ({
 	repoSessionRpc: vi.fn(),
+	authorizeRead: vi.fn(async (): Promise<unknown> => undefined),
 }))
 
 vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
@@ -12,7 +13,7 @@ vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
 }))
 
 vi.mock('./authorize-repo-session-package.ts', () => ({
-	authorizeRepoSessionPackageRead: async () => undefined,
+	authorizeRepoSessionPackageRead: () => mocks.authorizeRead(),
 }))
 
 const { repoReadFileCapability } = await import('./repo-read-file.ts')
@@ -97,4 +98,83 @@ test('repoReadFile focuses # line and heading anchors and rejects missing ones',
 		)
 	expect(missingLine).toBeInstanceOf(McpCallerError)
 	expect((missingLine as Error).message).toMatch(/past the end/)
+})
+
+test('repoReadFile rewraps a folder path as a caller error (KODY-CA)', async () => {
+	const directoryMessage =
+		'repo session read target "src" is a directory. Pass a file path (for example src/index.ts), or use repoTree to list the folder.'
+	mocks.repoSessionRpc.mockReturnValue({
+		readFile: vi.fn(async () => {
+			throw new Error(directoryMessage)
+		}),
+	})
+
+	const error = await repoReadFileCapability
+		.handler({ session_id: 'session-1', path: 'src' }, createContext())
+		.then(
+			() => null,
+			(caught: unknown) => caught,
+		)
+	expect(error).toBeInstanceOf(McpCallerError)
+	expect((error as Error).message).toBe(directoryMessage)
+})
+
+test('repoReadFile rewraps a nested directory-target cause as a caller error', async () => {
+	const directoryMessage =
+		'repo session read target "src" is a directory. Pass a file path (for example src/index.ts), or use repoTree to list the folder.'
+	mocks.repoSessionRpc.mockReturnValue({
+		readFile: vi.fn(async () => {
+			throw new Error('Repo session read failed.', {
+				cause: new Error(directoryMessage),
+			})
+		}),
+	})
+
+	const error = await repoReadFileCapability
+		.handler({ session_id: 'session-1', path: 'src' }, createContext())
+		.then(
+			() => null,
+			(caught: unknown) => caught,
+		)
+	expect(error).toBeInstanceOf(McpCallerError)
+	expect((error as Error).message).toBe(directoryMessage)
+})
+
+test('repoReadFile leaves other read failures platform-visible', async () => {
+	mocks.repoSessionRpc.mockReturnValue({
+		readFile: vi.fn(async () => {
+			throw new Error('SQLITE_BUSY: database is locked')
+		}),
+	})
+
+	const error = await repoReadFileCapability
+		.handler({ session_id: 'session-1', path: 'src/index.ts' }, createContext())
+		.then(
+			() => null,
+			(caught: unknown) => caught,
+		)
+	expect(error).toBeInstanceOf(Error)
+	expect(error).not.toBeInstanceOf(McpCallerError)
+})
+
+test('repoReadFile still returns the file when skill-read analytics fail', async () => {
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+	mocks.authorizeRead.mockResolvedValueOnce({ entity_id: 'pkg-1' })
+	const readFile = vi.fn(async ({ path }: { path: string }) => {
+		if (path.endsWith('/notes.md')) return { path, content: 'notes' }
+		throw new Error('manifest lookup failed')
+	})
+	mocks.repoSessionRpc.mockReturnValue({ readFile })
+
+	await expect(
+		repoReadFileCapability.handler(
+			{ session_id: 'session-1', path: './skills/example/notes.md' },
+			createContext(),
+		),
+	).resolves.toMatchObject({ content: 'notes' })
+	expect(warn).toHaveBeenCalledWith(
+		'skill-read-record-failed',
+		expect.any(Error),
+	)
+	warn.mockRestore()
 })

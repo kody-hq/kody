@@ -82,7 +82,10 @@ import {
 	runAuthoringPublishChecks,
 	runAuthoringPublishChecksOnFiles,
 } from './authoring-publish-checks.ts'
-import { credentialPatternNoticeForFiles } from './credential-pattern-check.ts'
+import {
+	buildCredentialPatternCheck,
+	credentialPatternNoticeForFiles,
+} from './credential-pattern-check.ts'
 import { loadSecretMountCompatNotice } from '#worker/package-runtime/secret-mount-compat.ts'
 import { loadCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
@@ -105,6 +108,10 @@ import {
 	type IsolatedCheckPhaseOutcome,
 	type IsolatedCheckPhaseRequest,
 } from './isolated-check-phases.ts'
+import {
+	isRepoCheckStep,
+	type RepoCheckStep,
+} from './isolated-runner-limit-message.ts'
 import {
 	type EntitySourceRow,
 	type RepoSearchMode,
@@ -183,6 +190,7 @@ import {
 	measureRepoSourceFileBytes,
 	measureRepoSourceFileLines,
 } from './large-file-policy.ts'
+import { omitKodyIgnoredFiles } from './kodyignore.ts'
 import {
 	deleteStorageBucketInventory,
 	maybeRefreshStorageBucketEstimate,
@@ -197,6 +205,7 @@ import {
 
 const repoSessionWorkspacePrefix = '/session'
 const lastCheckStatusStorageKey = 'repo-session:last-check-status'
+const lastCheckStepStorageKey = 'repo-session:last-check-step'
 const cachedSessionStateStorageKeyPrefix = 'repo-session:state:'
 const defaultSessionBranch = 'main'
 const publishedSessionRetentionMs = 14 * 24 * 60 * 60 * 1000
@@ -2308,12 +2317,19 @@ class RepoSessionBase extends DurableObject<Env> {
 			input.userId,
 		)
 		await this.touchRepoSession(sessionRow)
-		return {
-			path: input.path,
-			content: await this.workspace.readFile(
-				resolveRepoWorkspacePath(input.path, repoSessionWorkspacePrefix),
-			),
+		const workspacePath = resolveRepoWorkspacePath(
+			input.path,
+			repoSessionWorkspacePrefix,
+		)
+		let content: string | null
+		try {
+			content = await this.workspace.readFile(workspacePath)
+		} catch (error) {
+			// Agents pass a folder from repoTree (`src`); the shell throws raw
+			// EISDIR. KODY-CA.
+			this.remapWorkspaceEisdirError(error, 'read', input.path)
 		}
+		return { path: input.path, content }
 	}
 
 	async writeFile(input: {
@@ -2626,6 +2642,53 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 	}
 
+	async restorePublishedSkill(input: {
+		sessionId: string
+		userId: OwnerId
+		commit: string
+		name: string
+	}) {
+		const { sessionRow } = await this.getSessionState(
+			input.sessionId,
+			input.userId,
+		)
+		const { readPublishedSourceSnapshot } =
+			await import('#worker/package-runtime/published-runtime-artifacts.ts')
+		const { planSkillRestore } =
+			await import('#worker/package-registry/skill-history.ts')
+		const { snapshotStringToBytes } =
+			await import('#universal/package-file-media.ts')
+		const snapshot = await readPublishedSourceSnapshot({
+			env: this.env,
+			sourceId: sessionRow.source_id,
+			publishedCommit: input.commit,
+		})
+		if (!snapshot) throw new Error('This published snapshot is unavailable.')
+		const plan = planSkillRestore({
+			name: input.name,
+			current: await this.collectWorkspaceFiles(),
+			previous: snapshot.files,
+		})
+		for (const [path, content] of plan.writes) {
+			await this.workspace.writeFileBytes(
+				resolveRepoWorkspacePath(path, repoSessionWorkspacePrefix),
+				snapshotStringToBytes(content, path),
+			)
+		}
+		for (const path of plan.deletes)
+			await this.workspace.rm(
+				resolveRepoWorkspacePath(path, repoSessionWorkspacePrefix),
+				{ force: true },
+			)
+		await updateRepoSession(this.env, {
+			id: input.sessionId,
+			userId: sessionRow.user_id,
+			lastCheckpointAt: nowIso(),
+		})
+		this.refreshStoredEstimate(input.sessionId, sessionRow.user_id)
+		return { changed: plan.writes.length > 0 || plan.deletes.length > 0 }
+	}
+
 	async restoreFiles(input: {
 		sessionId: string
 		userId: OwnerId
@@ -2893,6 +2956,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
 			sourceFiles?: Record<string, string>
+			binaryFileSizes?: Record<string, number>
 		}>(input.stagingKey, 'json')
 		const sourceFiles = staged?.sourceFiles
 		if (!sourceFiles) {
@@ -2917,6 +2981,22 @@ class RepoSessionBase extends DurableObject<Env> {
 				targets: input.typecheckTargets,
 			})
 		}
+		if (input.phase === 'credentials') {
+			const check = buildCredentialPatternCheck(
+				sourceFiles,
+				input.secretProviders ? { secretProviders: input.secretProviders } : {},
+			)
+			const changedFiles: Record<string, string> = {}
+			for (const [path, content] of Object.entries(check.sourceFiles)) {
+				if (sourceFiles[path] !== content) changedFiles[path] = content
+			}
+			return {
+				ok: check.ok,
+				message: check.message,
+				changedFiles,
+				stampKeys: check.stampKeys,
+			}
+		}
 		const exhaustive: never = input
 		throw new Error(
 			`Unsupported isolated check phase: ${JSON.stringify(exhaustive)}`,
@@ -2927,9 +3007,11 @@ class RepoSessionBase extends DurableObject<Env> {
 	 * The full authoring publish checks for a staged in-memory tree
 	 * (`packageCheck`, which `kody dev check` calls), invoked on a throwaway
 	 * Durable Object id so the run never shares the origin request isolate's
-	 * memory or CPU (see `runAuthoringChecksInIsolate`). No session and no
-	 * storage on this instance; heavy phases still fan out to their own
-	 * throwaway isolates from inside `runRepoChecks`.
+	 * memory or CPU (see `runAuthoringChecksInIsolate`). No session; the
+	 * only storage is the current check step marker, which the caller reads
+	 * and clears with `takeLastCheckStep` after a memory or CPU reset. Heavy
+	 * phases still fan out to their own throwaway isolates from inside
+	 * `runRepoChecks`.
 	 */
 	async runIsolatedAuthoringChecks(
 		input: IsolatedAuthoringChecksRequest,
@@ -2954,6 +3036,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
 			sourceFiles?: Record<string, string>
+			binaryFileSizes?: Record<string, number>
 		}>(input.stagingKey, 'json')
 		const sourceFiles = staged?.sourceFiles
 		if (!sourceFiles) {
@@ -2969,8 +3052,15 @@ class RepoSessionBase extends DurableObject<Env> {
 				],
 			}
 		}
+		const recordCheckStep = this.checkStepRecorder()
+		// A memory or CPU reset kills this isolate before `finally`, leaving the
+		// step for `takeLastCheckStep`; any other ending clears it.
 		const checks = await runAuthoringPublishChecksOnFiles({
+			onStep: recordCheckStep,
 			files: sourceFiles,
+			...(staged?.binaryFileSizes
+				? { binaryFileSizes: staged.binaryFileSizes }
+				: {}),
 			env: this.env,
 			baseUrl: input.baseUrl,
 			userId: input.userId,
@@ -2978,7 +3068,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			...(input.expectedPackageScope !== undefined
 				? { expectedPackageScope: input.expectedPackageScope }
 				: {}),
-		})
+		}).finally(() => this.clearCheckStep())
 		return {
 			ok: checks.ok,
 			results: checks.results.map((result) => ({
@@ -2987,6 +3077,28 @@ class RepoSessionBase extends DurableObject<Env> {
 				message: result.message,
 			})),
 		}
+	}
+
+	/**
+	 * Durably records the authoring-check step about to run, so a memory or
+	 * CPU reset of this isolate can still be reported against that step.
+	 */
+	private checkStepRecorder() {
+		return async (step: RepoCheckStep) => {
+			await this.ctx.storage.put(lastCheckStepStorageKey, step)
+			await this.ctx.storage.sync()
+		}
+	}
+
+	private async clearCheckStep() {
+		await this.ctx.storage.delete(lastCheckStepStorageKey)
+	}
+
+	/** Reads and clears the step recorded by `checkStepRecorder`. */
+	async takeLastCheckStep(): Promise<RepoCheckStep | null> {
+		const step = await this.ctx.storage.get(lastCheckStepStorageKey)
+		await this.ctx.storage.delete(lastCheckStepStorageKey)
+		return isRepoCheckStep(step) ? step : null
 	}
 
 	async listPublishedPackageArtifactTargets(input: {
@@ -3753,7 +3865,13 @@ class RepoSessionBase extends DurableObject<Env> {
 		})
 		// Commit/push do not rewrite workspace file bytes, so reuse the
 		// snapshot collected once above for the published source KV write.
-		const snapshotFiles = workspaceSnapshot.files
+		// The tree hash covers the whole workspace; credential scans, the
+		// published snapshot, and finalize use the `.kodyignore`-filtered set
+		// that checks ran on.
+		const snapshotFiles = omitKodyIgnoredFiles(
+			workspaceSnapshot.files,
+			source.source_root,
+		)
 		const publishedCommit = sessionHeadCommit ?? sessionRow.base_commit
 		const patternNotice =
 			source.entity_kind === 'package'
@@ -4113,6 +4231,8 @@ class RepoSessionBase extends DurableObject<Env> {
 			throw new Error('Repo source was not found for this user.')
 		}
 		const phaseTimings: PublishPhaseTimings = {}
+		const recordCheckStep = this.checkStepRecorder()
+		await recordCheckStep('clone')
 		const { sourceRepo, publishClone } = await this.cloneExternalRefForPublish({
 			source,
 			commit: input.newCommit,
@@ -4155,10 +4275,11 @@ class RepoSessionBase extends DurableObject<Env> {
 			credentialNeedsApproved: input.credentialNeedsApproved,
 			requestedByUserId: input.requestedByUserId,
 			phaseTimings,
+			onCheckStep: recordCheckStep,
 			...(input.deferBundleCheckToRebuild
 				? { deferBundleCheckToRebuild: true }
 				: {}),
-		})
+		}).finally(() => this.clearCheckStep())
 		if (publishResult.status === 'already_published') {
 			// D1 stays a no-op (overlapping inline + durable escalation). Rewrite
 			// the KV snapshot only when it is missing or the cloned HEAD files
@@ -4170,7 +4291,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					publishResult.published_commit &&
 					hasPublishedRuntimeArtifacts(this.env)
 				) {
-					const files = snapshotFiles
+					const files = omitKodyIgnoredFiles(snapshotFiles, source.source_root)
 					if (typeof files[source.manifest_path] === 'string') {
 						const existingSnapshot = await loadPublishedSourceSnapshot({
 							env: this.env,

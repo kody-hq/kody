@@ -200,6 +200,7 @@ export async function createSavedPackageFromFiles(input: {
 		packageId,
 		sourceId: ensuredSource.id,
 		firstPublish: true,
+		creatorUserId: input.owner.actorUserId,
 		audit: optionalOrgAuditWriter(input.env, {
 			userId: input.owner.actorUserId,
 		}),

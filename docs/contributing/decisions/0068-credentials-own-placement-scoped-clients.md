@@ -40,7 +40,10 @@
   [Amendment 2026-10-24](#amendment-2026-10-24-package-apps-run-as-their-publisher));
   2026-10-27 (Kent: saved packages declare the secret provider package they use
   with a `kind: "secret-provider"` slot; see
-  [Amendment 2026-10-27](#amendment-2026-10-27-secret-provider-slots))
+  [Amendment 2026-10-27](#amendment-2026-10-27-secret-provider-slots));
+  2026-10-29 (Kent: placeholders and `createAuthenticatedFetch` resolve the
+  actor's own granted personal credentials, the set scoped clients resolve; see
+  [Amendment 2026-10-29](#amendment-2026-10-29-placeholders-and-createauthenticatedfetch-resolve-granted-personal-credentials))
 - **Supersedes in part:** [0021](./0021-publish-gated-package-composition.md)
   (credential authority for the opt-in types used through scoped clients), and
   credentials plan v4 section 3.3 (assignments) and section 3.4 (placeholder
@@ -893,8 +896,15 @@ credentials fill its needs. Visitors bring only verified identity.
 - **Fallback.** A call that would fail as the runs-as person but worked as the
   visitor still runs as the visitor and records a would-break row (app, call
   name, kind, hashed visitor), counted with
-  `adminPackageAppAuthorityFallbackReport`. The visitor path and
-  `ownerCredentialForVisitors` are removed only after those stay at zero.
+  `adminPackageAppAuthorityFallbackReport`. A call refused as not declared
+  (including `credential.named`) that also fails as the visitor is a hard
+  rejection: the app sees the error, and a row with the same key lands in
+  `package_app_authority_rejections`, reported as `hardRejections` in the same
+  report. The visitor path and `ownerCredentialForVisitors` are removed only
+  after both stay at zero.
+- **Declarations.** How declarations cover imported packages, the publish check,
+  and the cleanup schedule are in
+  [0089](./0089-packages-declare-capabilities.md).
 
 ## Amendment 2026-10-27: dependency needs use the entry package's mappings
 
@@ -1106,3 +1116,113 @@ sanctioned path:
   runtimes, which cannot create user secrets. A `value` (or `secretSetMany`
   value) that contains `kody-sealed.` is refused with a pointer to
   `sealed_token`.
+- **2026-10-29: package refusals point to `login`.** No decision change: package
+  runtimes are still refused. A package caller that passes a sealed token as
+  `value` (either scope, `secretSet` or `secretSetMany`) or as `sealed_token`
+  (any scope) now gets one message that points to a `login` credential holding
+  the refresh token (Kody runs the token request and caches the session) or to
+  using the sealed token only in its run, instead of the `scope: 'user'` and
+  "save it from execute" advice that sent package authors in a circle. Persisted
+  package-held tokens remain open
+  ([kody-hq/kody#4457](https://github.com/kody-hq/kody/issues/4457)).
+
+## Amendment 2026-10-28: owner placement approval links
+
+- **Context.** A new user Key for a body-auth API (Plaid) was approved for its
+  host through `/connect/secrets` but kept the headers-only default, so every
+  fill failed with `credential_placement_refused` and the owner had to find the
+  placement setting by hand. Agents correctly cannot widen placement.
+- **Decision.** Agents can ask, never approve. `/connect/secrets` takes
+  `placement=query,path,body` (with or without `hosts`); the owner sees the
+  credential, the parts, the hosts, and the "host may store this" warning, and
+  one approval allows the hosts and widens the stored placement. The opt-in it
+  records is `owner` and covers exactly the requested parts plus parts already
+  opted in; parts set from code that the owner never saw stay un-opted. A legacy
+  (null) placement becomes explicit: what it already fills, plus the requested
+  parts.
+- **Errors carry the link.** A query, path, or body refusal of a user Key the
+  run org owns carries its approval link (with the request host). Other refusals
+  link to the credential's fill placement setting,
+  `/@<org>/-/credentials/<credential>#fill-placement`, which opens the editor.
+- **Agent surface.** `credentialPlacementApprovalLink` (MCP `api`, Open API
+  `POST /v1/credential-placement-approvals`, `kody api`) returns the link and
+  whether anything is pending. It is read-only.
+
+## Amendment 2026-10-29: placeholders and createAuthenticatedFetch resolve granted personal credentials
+
+- **Context.** #3727 made placeholders and scoped `credential()` clients share
+  one personal-grant rule, but user docs still said `{{secret:NAME}}`
+  placeholders never resolve a personal credential, and name-based
+  `createAuthenticatedFetch(name)` pre-read its config through the org-only
+  `integrationGet`, so a granted personal OAuth connection failed with "not
+  found" even though the token gateway would have filled it.
+- **Decision.** In a run org, `{{secret:NAME}}` and `{{integration-token:NAME}}`
+  placeholders resolve the same set scoped clients do: the org credential of
+  that name first, else the actor's own personal credential of that name granted
+  to the run org (live grant, actor is the owner, live org binding,
+  `integration:use` / token scope, package allowlist on the owning org). Nobody
+  else can use it, Owners and Automation included.
+- **createAuthenticatedFetch.** Its config read follows the same rule through a
+  host-only runtime helper that shares the gateway's lookup
+  (`findIntegrationLookupByName`) and checks. It returns only `name`,
+  `apiBaseUrl`, and `requiredHosts`; tokens and refresh stay host-side. The
+  public `integrationGet` capability stays run-org-only.
+
+## Amendment 2026-10-29: personal connections through an org's OAuth app
+
+Builds the rule in [Credential fields](#credential-fields) that "a personal
+OAuth credential minted through an org's OAuth app is pinned to that org", and
+the [Lifecycle](#lifecycle) rule that pinned credentials are wiped and revoked
+upstream when org access ends. Kent's decision: **the person owns a personal
+connection made through an org's OAuth app. Org admins can list and revoke it,
+but never use it or read its tokens.**
+
+- **Storage.** `user_integrations.app_owner_id` names the org whose OAuth app
+  (client id and secret) the connection uses. `NULL` means the connection's own
+  org, so every earlier row keeps its meaning. The connection, its tokens, and
+  its audit trail live in the person's personal org; the client secret stays in
+  the org's app and is read host-side for exchange, refresh, and revoke only.
+- **Connecting.** `/connect/oauth?org=<org>&app=<app>&mode=personal`. It needs a
+  live binding to that team org with the Member or Owner role. It is not
+  `integration:use`, which is a per-credential grant: the member uses their own
+  account, not an org credential. Billing members and outside collaborators are
+  refused. The member never sees, edits, or copies the client secret.
+- **Pinning.** Saving it grants it to the app's org automatically.
+  `credentialOrgGrant` refuses every other org. It resolves (placeholders,
+  `credential()` clients, `createAuthenticatedFetch`, refresh) only in runs of
+  the pinned org whose actor is its owner: never in the owner's personal org,
+  another org, another member's runs, or for Owners or Automation on the owner's
+  behalf.
+- **Admins.** `integrationMemberConnectionList` and
+  `integrationMemberConnectionRevoke` (Open API
+  `/v1/oauth-apps/member-connections`, website app page) need
+  `integration:manage_access` org-wide, which only Owners hold; a grant on one
+  integration does not reach members' connections. The list shows member, app,
+  account label, and dates, never tokens or scopes. Revoke wipes the connection
+  and its grant, then revokes upstream; it is audited in the org
+  (`credential.pinned_connection_revoked`) and in the owner's personal org
+  (`credential.pinned_connection_wiped`). Revoking never gives the admin the
+  token.
+- **Cut-off.** Leaving or removal (`offboardOrgMember`) and deleting the org's
+  app wipe every connection pinned to it and revoke upstream first, so deleting
+  the app is never blocked by members' connections.
+- **Upstream revoke.** GitHub OAuth Apps:
+  `DELETE /applications/{client_id}/token` with the app's client credentials.
+  Providers with an RFC 7009 endpoint: a revocation request for the refresh
+  token, else the access token. Otherwise nothing upstream is revoked and the
+  outcome says so. An upstream failure never blocks the local wipe; it is logged
+  and audited without token material.
+
+## Amendment 2026-10-29: `login` is Kody-managed OAuth refresh
+
+Kent decided on 2026-10-29 that the `login` kind becomes Kody's platform-managed
+OAuth refresh, and that #4457 folds into it. Kody holds the refresh token, runs
+the token request on the host, keeps the access token encrypted on its side, and
+fills it on the credential's hosts; code never holds either token, and there is
+no package-scoped storage for sealed tokens. The full record (persisted
+sessions, single-flight, 401 retry, rotated refresh tokens, and saving a sealed
+refresh token as a login credential) is
+[ADR 0090](./0090-login-credentials-are-kody-managed-oauth-refresh.md). A sealed
+refresh token saved that way goes only to the sealed token's save hosts, like a
+sealed token saved as a Key (2026-10-28), and package code still cannot save
+one.

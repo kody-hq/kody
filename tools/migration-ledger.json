@@ -719,6 +719,46 @@
 		{
 			"filename": "0199-sealed-token-fill-placement-opt-in-source.sql",
 			"sha256": "74d251b6ff979b4c4bd444a1ef6609987356df3f9e7ac7ca69362fa931f97830"
+		},
+		{
+			"filename": "0200-automation-execution-settings.sql",
+			"sha256": "c66865bd1eafbe8c363a64390e1d45096f54a374a644be5c56c32f3e55ec6d6f"
+		},
+		{
+			"filename": "0201-grants-org-everyone-subject.sql",
+			"sha256": "ea9af01477cc26dcec8d4b64a517686550bd78eb19c5843163f63aae8be830ca"
+		},
+		{
+			"filename": "0202-integration-app-owner.sql",
+			"sha256": "1e979e460810d54c91b3288e4e4a0b2cf838e320541613c009b0051814b14bb8"
+		},
+		{
+			"filename": "0203-package-app-authority-rejections.sql",
+			"sha256": "651d06f8cef558e6f830407647be3e83bc54edfd9edb620c33fd12f9eedc2f74"
+		},
+		{
+			"filename": "0204-package-codemod-run-item-owner-detail.sql",
+			"sha256": "3c8aa596e5dbf9460ce3a8051325286f0867fbdcbe394854b361aedb1f4d3d71"
+		},
+		{
+			"filename": "0205-dead-letter-messages.sql",
+			"sha256": "70844e2b9878460431cf3ded00132b20e5d03fbaeb96f98ef7e6bd91f9e20eb7"
+		},
+		{
+			"filename": "0206-login-credential-sessions.sql",
+			"sha256": "4f8025d5208873d7761c2f4e78233de172aa547f73b5572e606a645a8d927d6e"
+		},
+		{
+			"filename": "0207-execution-contexts-release-revoked-names.sql",
+			"sha256": "187cbb834aa580cb02572f501b3fc8672ccd0a7fe26af94a609c435038a4778d"
+		},
+		{
+			"filename": "0208-grants-origin.sql",
+			"sha256": "9cf506b9f0b61b52484698f834c6a48e83c8a5509fa86244053506cf935a859e"
+		},
+		{
+			"filename": "0209-agent-registrations.sql",
+			"sha256": "0713cbe4e214d27fa90062dadda1c18ee0aeb6e030d24a94179f4e7d1431fb4c"
 		}
 	]
 }

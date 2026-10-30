@@ -3,6 +3,8 @@ import {
 	emailListHref,
 	emailSearch,
 	type EmailListInput,
+	type EmailListResult,
+	type EmailMissingGrant,
 } from '../pages/email-resources.ts'
 import { readJsonRecord } from './json-value.ts'
 
@@ -31,19 +33,22 @@ function validateList(input: EmailListInput): EmailListInput {
 }
 export const loadEmailList = createServerFn({ method: 'GET' })
 	.validator(validateList)
-	.handler(async ({ data }) => {
+	.handler(async ({ data }): Promise<EmailListResult> => {
 		const { bindings, user } = await emailContext(data.org, emailListHref(data))
 		const { readAccountEmailData } =
 			await import('../../src/app/account-email-data.ts')
-		const { selectedMessage: _selectedMessage, ...list } =
-			await readAccountEmailData({
+		const result = await unlessEmailReadMissing(() =>
+			readAccountEmailData({
 				env: bindings,
 				user,
 				query: data.query,
 				view: data.view,
 				page: data.page,
 				pageSize: data.pageSize,
-			})
+			}),
+		)
+		if ('missingGrant' in result) return result
+		const { selectedMessage: _selectedMessage, ...list } = result
 		return list
 	})
 export const loadEmailDetail = createServerFn({ method: 'GET' })
@@ -72,11 +77,15 @@ export const loadEmailDetail = createServerFn({ method: 'GET' })
 		)
 		const { loadAccountEmailDetail } =
 			await import('../../src/app/account-email-data.ts')
-		const detail = await loadAccountEmailDetail({
-			env: bindings,
-			user,
-			messageId: data.messageId,
-		})
+		const detail = await unlessEmailReadMissing(() =>
+			loadAccountEmailDetail({
+				env: bindings,
+				user,
+				messageId: data.messageId,
+			}),
+		)
+		// The list result carries the missing-grant state for the page.
+		if (detail && 'missingGrant' in detail) return null
 		return detail
 			? {
 					...detail,
@@ -109,4 +118,27 @@ async function emailContext(org: string | null, returnTo: string) {
 	return org
 		? loadScopedCollection({ orgSlug: org, section: 'email', returnTo })
 		: loadPersonalCollection(returnTo)
+}
+
+/**
+ * Members open the Email section by role but read it only with `email:read`.
+ * Return that denial as data so the page can explain the grant instead of
+ * failing the route. Every other failure still throws.
+ */
+async function unlessEmailReadMissing<T>(
+	read: () => Promise<T>,
+): Promise<T | EmailMissingGrant> {
+	const { AuthorizationError } =
+		await import('#worker/authorization/authorize.ts')
+	try {
+		return await read()
+	} catch (error) {
+		if (
+			error instanceof AuthorizationError &&
+			error.code === 'missing_permission' &&
+			error.permission === 'email:read'
+		)
+			return { missingGrant: 'email:read' }
+		throw error
+	}
 }

@@ -1,3 +1,4 @@
+import { registerSkillRestoreTests } from '#worker/test-support/repo-session-skill-restore.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { createWorkspaceStateBackend, type Workspace } from '@cloudflare/shell'
@@ -233,12 +234,15 @@ vi.mock('./external-publish-clone.ts', () => ({
 	) => mockModule.cloneExternalPublishWorkspace(...args),
 }))
 
+const skillSnapshot = vi.hoisted(() => vi.fn())
+
 vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', async () => {
 	const actual = await vi.importActual<typeof PublishedRuntimeArtifacts>(
 		'#worker/package-runtime/published-runtime-artifacts.ts',
 	)
 	return {
 		...actual,
+		readPublishedSourceSnapshot: skillSnapshot,
 		writePublishedSourceSnapshot: (
 			...args: Parameters<
 				typeof PublishedRuntimeArtifacts.writePublishedSourceSnapshot
@@ -938,6 +942,8 @@ test('restoreFiles restores modified files to the session base commit', async ()
 	)
 	expect(result).toEqual({ commit: 'commit-base', restored: ['src/index.ts'] })
 })
+
+registerSkillRestoreTests({ repoSession, seedWorkspace, skillSnapshot })
 
 test('sessionCommit rejects empty commit messages', async () => {
 	setCommonSessionFixtures()

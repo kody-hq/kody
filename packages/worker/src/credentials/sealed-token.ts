@@ -553,6 +553,10 @@ export function containsSealedToken(value: string) {
 export const sealedTokenValueRefusal =
 	'This value is a sealed token (kody-sealed.…), not the token itself, so saving it as text would store a placeholder that only works in this run. Pass it as secretSet({ name, scope: "user", sealed_token }) instead: Kody opens it and saves the real token, which code never sees.'
 
+/** Package runtimes cannot create user secrets, so they get no `sealed_token` path. */
+export const packageSealedTokenRefusal =
+	'Package code cannot keep a sealed token (kody-sealed.…) across runs. To reuse an access token minted from a refresh token, the owner stores the refresh token as a login credential (kind "login" with login_exchange) and the package uses it through credential(key), declared in kody.credentials: Kody runs the token request and caches the access token. Otherwise, use the sealed token only in this run. See https://kody.codes/docs/credentials#login'
+
 function refuseSave(message: string): never {
 	throw new McpCallerError(message)
 }

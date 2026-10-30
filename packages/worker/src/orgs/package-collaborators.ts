@@ -4,6 +4,7 @@ import { listOrgMembers } from '#worker/orgs/org-members-list.ts'
 import { listTeams } from '#worker/orgs/org-teams-list.ts'
 import {
 	isPackageCollaboratorPreset,
+	type PackageCollaboratorEveryoneOption,
 	type PackageCollaboratorInviteView,
 	type PackageCollaboratorKind,
 	type PackageCollaboratorMemberOption,
@@ -14,6 +15,7 @@ import {
 export type PackageCollaborators = {
 	collaborators: Array<PackageCollaboratorView>
 	options: {
+		everyone: PackageCollaboratorEveryoneOption | null
 		teams: Array<PackageCollaboratorTeamOption>
 		members: Array<PackageCollaboratorMemberOption>
 	}
@@ -31,10 +33,13 @@ function readPreset(value: string | null) {
 }
 
 const kindOrder: Record<PackageCollaboratorKind, number> = {
-	team: 0,
-	member: 1,
-	outside: 2,
+	org: 0,
+	team: 1,
+	member: 2,
+	outside: 3,
 }
+
+export const everyoneInOrgLabel = 'Everyone in this organization'
 
 async function loadUsers(db: D1Database, userIds: ReadonlyArray<string>) {
 	if (userIds.length === 0) return new Map<string, UserRow>()
@@ -89,9 +94,9 @@ export async function listPendingPackageInvites(input: {
 }
 
 /**
- * Everyone who holds a live grant on one package in its owning org (teams,
- * members, and outside collaborators) and the teams and members a manager can
- * still add. Callers authorize first.
+ * Everyone who holds a live grant on one package in its owning org (everyone
+ * in the org, teams, members, and outside collaborators) and the subjects a
+ * manager can still add. Callers authorize first.
  */
 export async function listPackageCollaborators(input: {
 	db: D1Database
@@ -122,6 +127,23 @@ export async function listPackageCollaborators(input: {
 				preset: readPreset(grant.preset),
 				permissions: grant.permissions,
 				createdAt: grant.createdAt,
+			}
+			if (grant.subjectType === 'org') {
+				// The subject is only ever this org; anything else grants nobody.
+				if (grant.subjectId !== orgId) return []
+				return [
+					{
+						...base,
+						subjectType: 'org',
+						kind: 'org',
+						label: everyoneInOrgLabel,
+						username: null,
+						displayName: null,
+						avatarUrl: null,
+						teamSlug: null,
+						teamMemberCount: members.length,
+					},
+				]
 			}
 			if (grant.subjectType === 'team') {
 				const team = teamsById.get(grant.subjectId)
@@ -177,9 +199,13 @@ export async function listPackageCollaborators(input: {
 	const grantedUsers = new Set(
 		grants.filter((g) => g.subjectType === 'user').map((g) => g.subjectId),
 	)
+	const everyoneGranted = grants.some(
+		(g) => g.subjectType === 'org' && g.subjectId === orgId,
+	)
 	return {
 		collaborators,
 		options: {
+			everyone: everyoneGranted ? null : { orgId, memberCount: members.length },
 			teams: teams
 				.filter((team) => !grantedTeams.has(team.id))
 				.map((team) => ({

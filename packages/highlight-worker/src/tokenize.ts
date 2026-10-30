@@ -1,26 +1,26 @@
-import cssLang from '@shikijs/langs/css'
-import diffLang from '@shikijs/langs/diff'
-import dockerfileLang from '@shikijs/langs/dockerfile'
-import dotenvLang from '@shikijs/langs/dotenv'
-import goLang from '@shikijs/langs/go'
-import graphqlLang from '@shikijs/langs/graphql'
-import htmlLang from '@shikijs/langs/html'
-import iniLang from '@shikijs/langs/ini'
-import jsonLang from '@shikijs/langs/json'
-import markdownLang from '@shikijs/langs/markdown'
-import pythonLang from '@shikijs/langs/python'
-import rustLang from '@shikijs/langs/rust'
-import shellscriptLang from '@shikijs/langs/shellscript'
-import sqlLang from '@shikijs/langs/sql'
-import tomlLang from '@shikijs/langs/toml'
-import tsxLang from '@shikijs/langs/tsx'
-import typescriptLang from '@shikijs/langs/typescript'
-import xmlLang from '@shikijs/langs/xml'
-import yamlLang from '@shikijs/langs/yaml'
-import githubDark from '@shikijs/themes/github-dark'
-import githubLight from '@shikijs/themes/github-light'
-import { createHighlighterCoreSync } from 'shiki/core'
-import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
+import { createHighlighter } from '@tanstack/highlight/core'
+import { css } from '@tanstack/highlight/languages/css'
+import { diff } from '@tanstack/highlight/languages/diff'
+import { dockerfile } from '@tanstack/highlight/languages/dockerfile'
+import { env } from '@tanstack/highlight/languages/env'
+import { go } from '@tanstack/highlight/languages/go'
+import { graphql } from '@tanstack/highlight/languages/graphql'
+import { html } from '@tanstack/highlight/languages/html'
+import { ini } from '@tanstack/highlight/languages/ini'
+import { json } from '@tanstack/highlight/languages/json'
+import { markdown } from '@tanstack/highlight/languages/markdown'
+import { python } from '@tanstack/highlight/languages/python'
+import { rust } from '@tanstack/highlight/languages/rust'
+import { shell } from '@tanstack/highlight/languages/shell'
+import { sql } from '@tanstack/highlight/languages/sql'
+import { toml } from '@tanstack/highlight/languages/toml'
+import { tsx } from '@tanstack/highlight/languages/tsx'
+import { ts } from '@tanstack/highlight/languages/ts'
+import { js } from '@tanstack/highlight/languages/js'
+import { jsx } from '@tanstack/highlight/languages/jsx'
+import { yaml } from '@tanstack/highlight/languages/yaml'
+import { githubDarkTheme } from '@tanstack/highlight/themes/github-dark'
+import { githubLightTheme } from '@tanstack/highlight/themes/github-light'
 import {
 	plainHighlightedCode,
 	type HighlightedCode,
@@ -28,147 +28,91 @@ import {
 	type HighlightSnippet,
 } from '../../worker/universal/highlighted-code.ts'
 
-/**
- * Fine-grained Shiki bundle for first-party pages and markdown code fences.
- *
- * Worker constraints:
- * - JavaScript regex engine (no Oniguruma WASM)
- * - Explicit langs/themes only
- * - Tokens are serializable data (never HTML strings)
- */
-let highlighter: ReturnType<typeof createHighlighterCoreSync> | null = null
-
-function getHighlighter() {
-	if (!highlighter) {
-		highlighter = createHighlighterCoreSync({
-			themes: [githubLight, githubDark],
-			langs: [
-				typescriptLang,
-				tsxLang,
-				jsonLang,
-				yamlLang,
-				tomlLang,
-				markdownLang,
-				htmlLang,
-				cssLang,
-				shellscriptLang,
-				diffLang,
-				pythonLang,
-				dockerfileLang,
-				dotenvLang,
-				iniLang,
-				graphqlLang,
-				sqlLang,
-				xmlLang,
-				goLang,
-				rustLang,
-			],
-			engine: createJavaScriptRegexEngine({ forgiving: true }),
-		})
-	}
-	return highlighter
-}
-
+// Reuse a selective registry, including HTML's embedded JavaScript and CSS.
+const highlighter = createHighlighter({
+	languages: [
+		css,
+		diff,
+		dockerfile,
+		env,
+		go,
+		graphql,
+		html,
+		ini,
+		json,
+		markdown,
+		python,
+		rust,
+		shell,
+		sql,
+		toml,
+		tsx,
+		ts,
+		js,
+		jsx,
+		yaml,
+	],
+})
 const maxHighlightChars = 50_000
 const maxLineLength = 2_000
-
-function normalizeLang(lang: string | null | undefined): string {
-	const trimmed = lang?.trim().toLowerCase() ?? ''
-	if (!trimmed) return 'plaintext'
-	const primary = trimmed.split(/[\s{,]+/, 1)[0] ?? 'plaintext'
-	return primary || 'plaintext'
-}
-
-const langAliases: Record<string, string> = {
-	js: 'ts',
-	javascript: 'ts',
-	cjs: 'ts',
-	mjs: 'ts',
-	jsx: 'tsx',
-	sh: 'shellscript',
-	bash: 'shellscript',
-	shell: 'shellscript',
-	zsh: 'shellscript',
-	console: 'shellscript',
-	golang: 'go',
-	env: 'dotenv',
-}
-
-function resolveLang(lang: string | null | undefined): string {
-	const normalized = normalizeLang(lang)
-	if (
-		normalized === 'plaintext' ||
-		normalized === 'text' ||
-		normalized === 'txt'
-	) {
-		return 'plaintext'
-	}
-	const aliased = langAliases[normalized] ?? normalized
-	return getHighlighter().getLoadedLanguages().includes(aliased)
-		? aliased
-		: 'plaintext'
-}
-
-function tokenStyle(token: {
-	htmlStyle?: string | Record<string, string>
-	color?: string
-}): Record<string, string> | undefined {
-	if (token.htmlStyle && typeof token.htmlStyle === 'object') {
-		return token.htmlStyle
-	}
-	if (typeof token.htmlStyle === 'string' && token.htmlStyle.trim()) {
-		const style: Record<string, string> = {}
-		for (const part of token.htmlStyle.split(';')) {
-			const separator = part.indexOf(':')
-			if (separator <= 0) continue
-			style[part.slice(0, separator).trim()] = part.slice(separator + 1).trim()
-		}
-		if (Object.keys(style).length > 0) return style
-	}
-	if (token.color) return { color: token.color }
-	return undefined
+const aliases: Record<string, string> = {
+	cjs: 'js',
+	mjs: 'js',
+	zsh: 'shell',
+	console: 'shell',
+	shellscript: 'shell',
+	dotenv: 'env',
+	xml: 'html',
 }
 
 export function tokenizeSnippet(snippet: HighlightSnippet): HighlightedCode {
 	const code = snippet.code
-	if (code.length > maxHighlightChars) {
+	if (
+		code.length > maxHighlightChars ||
+		code.split('\n').some((line) => line.length > maxLineLength)
+	)
 		return plainHighlightedCode(code, snippet.lang)
-	}
-	const resolvedLang = resolveLang(snippet.lang)
-	if (resolvedLang === 'plaintext') {
-		return plainHighlightedCode(code, snippet.lang)
-	}
+	const primary =
+		snippet.lang
+			?.trim()
+			.toLowerCase()
+			.split(/[\s{,]+/, 1)[0] ?? ''
+	const alias = Object.hasOwn(aliases, primary) ? aliases[primary] : undefined
+	const lang = highlighter.normalizeLanguage(alias ?? primary)
+	if (lang === 'plaintext') return plainHighlightedCode(code, snippet.lang)
+	let result: ReturnType<typeof highlighter.tokenize>
 	try {
-		const result = getHighlighter().codeToTokens(code, {
-			lang: resolvedLang,
-			themes: {
-				light: 'github-light',
-				dark: 'github-dark',
-			},
-			tokenizeMaxLineLength: maxLineLength,
-		})
-		return {
-			code,
-			lang: resolvedLang,
-			plain: false,
-			fg: result.fg,
-			bg: result.bg,
-			lines: result.tokens.map((line) =>
-				line.map((token) => {
-					const span: HighlightedSpan = { content: token.content }
-					const style = tokenStyle(token)
-					if (style) span.style = style
-					return span
-				}),
-			),
-		}
+		result = highlighter.tokenize(code, { lang })
 	} catch {
 		return plainHighlightedCode(code, snippet.lang)
+	}
+	const lines: Array<Array<HighlightedSpan>> = [[]]
+	for (const token of result.tokens) {
+		const parts = token.value.split('\n')
+		for (const [index, content] of parts.entries()) {
+			if (index > 0) lines.push([])
+			if (!content) continue
+			const style = token.className
+				? {
+						color: githubLightTheme.tokens[token.className],
+						'--highlight-dark': githubDarkTheme.tokens[token.className],
+					}
+				: undefined
+			lines[lines.length - 1]?.push({ content, ...(style ? { style } : {}) })
+		}
+	}
+	return {
+		code,
+		lang,
+		plain: false,
+		fg: `${githubLightTheme.foreground};--highlight-dark:${githubDarkTheme.foreground}`,
+		bg: `${githubLightTheme.background};--highlight-dark-bg:${githubDarkTheme.background}`,
+		lines,
 	}
 }
 
 export function tokenizeSnippets(
 	snippets: Array<HighlightSnippet>,
 ): Array<HighlightedCode> {
-	return snippets.map((snippet) => tokenizeSnippet(snippet))
+	return snippets.map(tokenizeSnippet)
 }

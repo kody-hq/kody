@@ -1,6 +1,10 @@
 import { defineDomain } from '#mcp/capabilities/define-domain.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { integrationDeleteCapability } from './integration-delete.ts'
+import {
+	integrationMemberConnectionListCapability,
+	integrationMemberConnectionRevokeCapability,
+} from './integration-member-connections.ts'
 import { integrationGetCapability } from './integration-get.ts'
 import { integrationListCapability } from './integration-list.ts'
 import { integrationOauthAppDeleteCapability } from './integration-oauth-app-delete.ts'
@@ -34,6 +38,8 @@ export const integrationsDomain = defineDomain({
 		integrationGetCapability,
 		integrationListCapability,
 		integrationDeleteCapability,
+		integrationMemberConnectionListCapability,
+		integrationMemberConnectionRevokeCapability,
 		integrationOauthAppListCapability,
 		integrationOauthAppDeleteCapability,
 		integrationOauthAppRotateCredentialsCapability,

@@ -71,6 +71,10 @@ on `https://kody.codes/connect/oauth`:
 https://kody.codes/connect/oauth?provider=salesforce&authorizeUrl=https%3A%2F%2Flogin.salesforce.com%2Fservices%2Foauth2%2Fauthorize&tokenUrl=https%3A%2F%2Flogin.salesforce.com%2Fservices%2Foauth2%2Ftoken&apiBaseUrl=https%3A%2F%2Flogin.salesforce.com&scopes=api%20refresh_token%20offline_access&flow=confidential&allowedHosts=login.salesforce.com%2C*.salesforce.com%2C*.force.com%2C*.my.salesforce.com
 ```
 
+For a team organization, add `&org=<team-slug>` so the app and connection are
+saved there; without it they go to the personal organization (see
+`guide:oauth`).
+
 Decoded: authorize URL `https://login.salesforce.com/services/oauth2/authorize`,
 token URL `https://login.salesforce.com/services/oauth2/token`, `apiBaseUrl`
 `https://login.salesforce.com`, `flow=confidential`, scopes

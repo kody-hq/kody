@@ -75,6 +75,44 @@ test('formatExecuteCapabilityResult maps ok/error envelopes', () => {
 	assert.equal(failed.content[0]?.text, 'Error: boom')
 })
 
+test('formatExecuteCapabilityResult keeps ranOn and names where it ran', () => {
+	const ranOn = {
+		kind: 'context',
+		id: 'ec_box',
+		name: 'build-box',
+		yours: true,
+		attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'ran' }],
+		fellBackToCloud: false,
+	}
+	const ran = formatExecuteCapabilityResult({
+		ok: true,
+		result: 1,
+		logs: [],
+		ranOn,
+		executionContext: { id: 'ec_box', name: 'build-box' },
+	})
+	assert.deepEqual(
+		(ran.structuredContent as Record<string, unknown>).ranOn,
+		ranOn,
+	)
+	assert.deepEqual(
+		(ran.structuredContent as Record<string, unknown>).executionContext,
+		{
+			id: 'ec_box',
+			name: 'build-box',
+		},
+	)
+	assert.equal(ran.content.at(-1)?.text, 'Ran on build-box (your machine).')
+	const cloud = formatExecuteCapabilityResult({
+		ok: false,
+		error: 'boom',
+		logs: [],
+		ranOn: { kind: 'cloud', id: 'cloud', name: 'Kody cloud' },
+	})
+	assert.equal(cloud.content.at(-1)?.text, 'Ran on Kody cloud.')
+	assert.ok(!JSON.stringify(ran.content).includes('ec_box'))
+})
+
 test('runRemoteExecuteWithToken posts /v1/execute', async () => {
 	const calls: Array<{ method: string; url: string; body: unknown }> = []
 	const fetchFn = (async (

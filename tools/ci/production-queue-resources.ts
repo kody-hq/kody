@@ -33,7 +33,11 @@ const emailDeliveryDeadLetterQueueName = 'kody-email-delivery-dlq'
 const expectedMaxBatchSize = 10
 const expectedMaxBatchTimeout = 5
 const expectedMaxRetries = 3
-const expectedConsumerCount = 7
+const expectedSourceConsumerCount = 7
+const scheduledDispatchDeadLetterQueueName = 'kody-scheduled-dispatch-dlq'
+/** packages/worker/src/dead-letter/consumer.ts deadLetterConsumerMaxRetries */
+const expectedDeadLetterConsumerMaxRetries = 100
+const expectedDeadLetterConsumerRetryDelay = 60
 
 function readQueueConsumer(input: {
 	consumers: Array<unknown>
@@ -75,6 +79,40 @@ function readQueueConsumer(input: {
 	}
 }
 
+/**
+ * The origin worker parks every production dead-letter queue in APP_DB
+ * (packages/worker/src/dead-letter/consumer.ts), including the jobs worker's
+ * scheduled-dispatch DLQ. A DLQ consumer has no DLQ of its own.
+ */
+function readDeadLetterQueueConsumer(input: {
+	consumers: Array<unknown>
+	queueName: string
+	configPath: string
+}) {
+	const value = input.consumers.find((entry) => {
+		if (!entry || typeof entry !== 'object' || Array.isArray(entry))
+			return false
+		return (entry as Record<string, unknown>).queue === input.queueName
+	})
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		throw new Error(
+			`wrangler config "${input.configPath}" must define the production dead-letter Queue consumer "${input.queueName}".`,
+		)
+	}
+	const consumer = value as Record<string, unknown>
+	if (
+		consumer.dead_letter_queue !== undefined ||
+		consumer.max_batch_size !== expectedMaxBatchSize ||
+		consumer.max_batch_timeout !== expectedMaxBatchTimeout ||
+		consumer.max_retries !== expectedDeadLetterConsumerMaxRetries ||
+		consumer.retry_delay !== expectedDeadLetterConsumerRetryDelay
+	) {
+		throw new Error(
+			`wrangler config "${input.configPath}" has invalid production dead-letter consumer settings for "${input.queueName}".`,
+		)
+	}
+}
+
 function readQueueProducer(input: {
 	producers: Array<unknown>
 	binding: string
@@ -110,10 +148,29 @@ export function parseProductionQueueResources(input: {
 	}
 	const queueConfig = queues as Record<string, unknown>
 	const consumers = queueConfig.consumers
+	const deadLetterQueueNames = [
+		emailDeliveryDeadLetterQueueName,
+		artifactsRepoEventsDeadLetterQueueName,
+		platformFeedbackDispatchDeadLetterQueueName,
+		communityActivityDispatchDeadLetterQueueName,
+		communityListingPublishedDispatchDeadLetterQueueName,
+		packageEventsDispatchDeadLetterQueueName,
+		webhookDispatchDeadLetterQueueName,
+		scheduledDispatchDeadLetterQueueName,
+	]
+	const expectedConsumerCount =
+		expectedSourceConsumerCount + deadLetterQueueNames.length
 	if (!Array.isArray(consumers) || consumers.length !== expectedConsumerCount) {
 		throw new Error(
 			`wrangler config "${input.configPath}" must define exactly ${expectedConsumerCount} production Queue consumers.`,
 		)
+	}
+	for (const queueName of deadLetterQueueNames) {
+		readDeadLetterQueueConsumer({
+			consumers,
+			queueName,
+			configPath: input.configPath,
+		})
 	}
 	const emailDelivery = readQueueConsumer({
 		consumers,

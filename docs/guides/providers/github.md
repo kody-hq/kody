@@ -161,6 +161,10 @@ Kody picks up the refresh token.
 https://kody.codes/connect/oauth?provider=github&authorizeUrl=https%3A%2F%2Fgithub.com%2Flogin%2Foauth%2Fauthorize&tokenUrl=https%3A%2F%2Fgithub.com%2Flogin%2Foauth%2Faccess_token&flow=confidential&scopes=read%3Auser%20notifications&allowedHosts=api.github.com
 ```
 
+For a team organization, add `&org=<team-slug>` so the app and connection are
+saved there; without it they go to the personal organization (see
+`guide:oauth`).
+
 Decoded: authorize URL `https://github.com/login/oauth/authorize`, token URL
 `https://github.com/login/oauth/access_token`, `flow=confidential`, scopes
 `read:user notifications` (space-separated; adjust per the Scopes section), and

@@ -148,7 +148,12 @@ export function createCommunityPackageRawHandler(env: Env) {
 				allowSession: viewer.kind !== 'token',
 				tokenOrgId: viewer.kind === 'token' ? viewer.orgId : undefined,
 				callerContext:
-					viewer.kind === 'token' ? viewer.callerContext : undefined,
+					viewer.kind === 'token' && viewer.user
+						? viewer.callerContext
+						: undefined,
+			}).catch((error: unknown) => {
+				// Analytics only: never fail a read the caller is authorized for.
+				console.warn('skill-read-record-failed', error)
 			})
 		return respondRaw({ request, result })
 	}

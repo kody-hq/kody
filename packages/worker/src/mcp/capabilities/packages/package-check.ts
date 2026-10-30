@@ -37,18 +37,22 @@ function readManifestName(files: Record<string, string>): string | null {
 	return null
 }
 
-function normalizePackageCheckFiles(
-	files: Record<string, string>,
-): Record<string, string> {
-	const normalized: Record<string, string> = {}
-	for (const [path, content] of Object.entries(files)) {
-		const key = normalizeRepoWorkspacePath(path).replace(/^(\.\/)+/, '')
-		if (!key || key.split('/').includes('..')) {
-			throw new McpCallerError(
-				`File path ${JSON.stringify(path)} must be relative to the package root.`,
-			)
-		}
-		normalized[key] = content
+function normalizePackageCheckPath(path: string) {
+	const key = normalizeRepoWorkspacePath(path).replace(/^(\.\/)+/, '')
+	if (!key || key.split('/').includes('..')) {
+		throw new McpCallerError(
+			`File path ${JSON.stringify(path)} must be relative to the package root.`,
+		)
+	}
+	return key
+}
+
+function normalizePackageCheckFiles<Value>(
+	files: Record<string, Value>,
+): Record<string, Value> {
+	const normalized: Record<string, Value> = Object.create(null)
+	for (const [path, value] of Object.entries(files)) {
+		normalized[normalizePackageCheckPath(path)] = value
 	}
 	return normalized
 }
@@ -60,7 +64,7 @@ export const packageCheckCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
-			'Dry-run the publish checks on a package tree without saving, pushing, or publishing anything. Pass `files` (paths relative to the package root, where package.json lives, mapped to UTF-8 contents). Runs the same checks, with the same options, that `kody package publish`, git-push publish, and Promote run before they publish or hand out an approval link: manifest, credential stamp gate, docs, skills, dependencies, bundle, typecheck, and lint. `ok: false` means publish would refuse this tree with the same messages in `checks`. `kody dev check` calls this. Binary files can be left out; they only count toward size limits.',
+			'Dry-run the publish checks on a package tree without saving, pushing, or publishing anything. Pass `files` (paths relative to the package root, where package.json lives, mapped to UTF-8 contents) and, for binary files such as PNG app assets, `binary_files` (path mapped to byte size; contents are not uploaded). Runs the same checks, with the same options, that `kody package publish`, git-push publish, and Promote run before they publish or hand out an approval link: manifest, credential stamp gate, docs, skills, dependencies, bundle, typecheck, and lint. `ok: false` means publish would refuse this tree with the same messages in `checks`. `kody dev check` calls this. List every binary file in `binary_files`: publish counts them toward size limits and toward `kody.app.assets`, so a binary-only assets directory left out of the request fails the assets check.',
 		keywords: [
 			'package',
 			'check',
@@ -75,19 +79,38 @@ export const packageCheckCapability = defineDomainCapability(
 		readOnly: true,
 		idempotent: true,
 		destructive: false,
-		inputSchema: z.object({
-			files: z
-				.record(z.string(), z.string())
-				.refine((files) => Object.keys(files).length > 0, {
-					message: 'Provide at least package.json.',
-				})
-				.refine((files) => Object.keys(files).length <= packageCheckMaxFiles, {
-					message: `At most ${packageCheckMaxFiles} files (the publish check limit).`,
-				})
-				.describe(
-					'Package tree: path relative to the package root (for example `package.json`, `src/index.ts`) mapped to UTF-8 file contents.',
-				),
-		}),
+		inputSchema: z
+			.object({
+				files: z
+					.record(z.string(), z.string())
+					.refine((files) => Object.keys(files).length > 0, {
+						message: 'Provide at least package.json.',
+					})
+					.refine(
+						(files) => Object.keys(files).length <= packageCheckMaxFiles,
+						{
+							message: `At most ${packageCheckMaxFiles} files (the publish check limit).`,
+						},
+					)
+					.describe(
+						'Package tree: path relative to the package root (for example `package.json`, `src/index.ts`) mapped to UTF-8 file contents.',
+					),
+				binary_files: z
+					.record(z.string(), z.number().int().nonnegative())
+					.optional()
+					.describe(
+						'Binary files (not UTF-8 text, for example `icons/icon-192.png`): path relative to the package root mapped to its size in bytes. They count toward size limits and `kody.app.assets` like the published files; their contents are not checked.',
+					),
+			})
+			.refine(
+				(input) =>
+					Object.keys(input.files).length +
+						Object.keys(input.binary_files ?? {}).length <=
+					packageCheckMaxFiles,
+				{
+					message: `At most ${packageCheckMaxFiles} files (the publish check limit), counting binary_files.`,
+				},
+			),
 		outputSchema: z.object({
 			ok: z.boolean().describe('True when publish checks pass for this tree.'),
 			package_name: z
@@ -107,6 +130,16 @@ export const packageCheckCapability = defineDomainCapability(
 				request: requireMcpRequest(ctx.callerContext),
 			})
 			const files = normalizePackageCheckFiles(args.files)
+			const binaryFileSizes = normalizePackageCheckFiles(
+				args.binary_files ?? {},
+			)
+			for (const path of Object.keys(binaryFileSizes)) {
+				if (path in files) {
+					throw new McpCallerError(
+						`File path ${JSON.stringify(path)} is in both files and binary_files.`,
+					)
+				}
+			}
 			const packageName = readManifestName(files)
 			// An existing package lets the checks compare credential needs with
 			// its published version, exactly as a publish of it would.
@@ -126,6 +159,7 @@ export const packageCheckCapability = defineDomainCapability(
 			}
 			const checkInput = {
 				files,
+				...(Object.keys(binaryFileSizes).length > 0 ? { binaryFileSizes } : {}),
 				env: ctx.env,
 				baseUrl: ctx.callerContext.baseUrl,
 				userId: owner.ownerUserId,

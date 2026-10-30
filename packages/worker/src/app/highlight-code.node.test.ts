@@ -22,7 +22,7 @@ function highlightedFixture(
 		lang,
 		plain: false,
 		lines: [
-			[{ content: code, style: { color: '#111', '--shiki-dark': '#eee' } }],
+			[{ content: code, style: { color: '#111', '--highlight-dark': '#eee' } }],
 		],
 	}
 }
@@ -106,4 +106,16 @@ test('highlightSnippets covers fallback, worker timings, key mapping, and worker
 	expect(
 		await highlightSnippets(errorEnv, [{ code: 'const x = 1', lang: 'ts' }]),
 	).toEqual([plainHighlightedCode('const x = 1', 'ts')])
+})
+
+test('collectMarkdownFences includes disclosure fences in render order', () => {
+	expect(
+		collectMarkdownFences(
+			'<details>\n<summary>Example</summary>\n\n```ts\nconst x = 1\n```\n\n</details>\n\n```json\n{}\n```',
+			true,
+		),
+	).toEqual([
+		{ code: 'const x = 1', lang: 'ts' },
+		{ code: '{}', lang: 'json' },
+	])
 })

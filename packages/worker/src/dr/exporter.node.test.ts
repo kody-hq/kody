@@ -1,6 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { createD1JobsStore } from '@kody-internal/shared/jobs/store.ts'
 import { expect, test, vi } from 'vitest'
+import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	backupStagingLegacySchemaVersion,
 	backupStagingSchemaVersion,
@@ -20,6 +21,8 @@ import {
 import { sha256Hex } from '#worker/dr/sha256.ts'
 import {
 	drExportMaxStorageDumpBufferBytes,
+	drExportStoragePageMaxBytes,
+	drExportStorageSuspectAttempts,
 	__testOnlyCreateInitialProgress,
 	__testOnlyParseProgress,
 	runDrExportTick,
@@ -494,7 +497,9 @@ test('exporter resumes from progress cursor across ticks when budget is exhauste
 		s3: client,
 	})
 	expect(tick2.summaryWritten).toBe(true)
-	expect(storageMocks.exportStorage).toHaveBeenCalledTimes(2)
+	// Tick 1 fetched both first pages in one wave but committed one before the
+	// budget ran out; the uncommitted page is refetched, never re-dumped.
+	expect(storageMocks.exportStorage).toHaveBeenCalledTimes(3)
 	expect(
 		[...objects.keys()].some((key) =>
 			key.startsWith(`staging/${day}/exporter/chunks/storage-index/`),
@@ -1076,7 +1081,80 @@ test('inventory drift between ticks neither duplicates nor skips storage dumps',
 		encodeStorageIdentity('user-a', 'job:2'),
 		encodeStorageIdentity('user-a', 'job:3'),
 	])
-	expect(storageMocks.exportStorage).toHaveBeenCalledTimes(3)
+	// One wave page from tick 1 is refetched after the budget cut-off.
+	expect(storageMocks.exportStorage).toHaveBeenCalledTimes(4)
+})
+
+test('storage pages are byte-bounded and a single-page dump skips the chunk round trip', async () => {
+	mockStorageEntries([{ key: 'k', value: 1 }])
+	const { client, objects } = createMemoryS3()
+	const env = createEnv({
+		APP_DB: createDb({
+			jobs: [{ userId: ownerIdFromStored('user-a'), storageId: 'job:1' }],
+		}),
+	})
+	const result = await runDrExportTick({
+		env,
+		now: at('01:00'),
+		timeBudgetMs: 60_000,
+		s3: client,
+	})
+	expect(result.summaryWritten).toBe(true)
+	expect(storageMocks.exportStorage).toHaveBeenCalledWith(
+		expect.objectContaining({ maxBytes: drExportStoragePageMaxBytes }),
+	)
+	expect(
+		[...objects.keys()].some((key) => key.includes('/chunks/storage-dump/')),
+	).toBe(false)
+})
+
+test('a storage identity whose serial attempts keep aborting is skipped', async () => {
+	const bad = encodeStorageIdentity('user-a', 'job:1')
+	consoleError.mockImplementation(() => {})
+	storageMocks.exportStorage.mockReset()
+	storageMocks.exportStorage.mockImplementation(async () => {
+		throw new Error('page too large')
+	})
+	const { client, readText } = createMemoryS3()
+	const env = createEnv({
+		APP_DB: createDb({
+			jobs: [{ userId: ownerIdFromStored('user-a'), storageId: 'job:1' }],
+		}),
+	})
+	const tick = (minute: string) =>
+		runDrExportTick({ env, now: at(minute), timeBudgetMs: 60_000, s3: client })
+	await expect(tick('01:00')).rejects.toThrow('page too large')
+	const afterFirst = JSON.parse(await readText(progressKey))
+	const advancedAt = afterFirst.advancedAt
+	// Tick 1 entered storage from the owner phases; stall counting starts on
+	// the next tick that begins in storage.
+	// Then one plain stalled tick plus one aborted serial attempt per suspect
+	// attempt before the skip.
+	for (
+		let attempt = 0;
+		attempt < drExportStorageSuspectAttempts + 1;
+		attempt += 1
+	) {
+		// Expire the lease left by the failed tick.
+		const stored = JSON.parse(await readText(progressKey))
+		stored.leaseExpiresAt = new Date(0).toISOString()
+		await client.put(progressKey, JSON.stringify(stored))
+		await expect(tick('01:05')).rejects.toThrow('page too large')
+		// Lease-only persists do not count as the cursor advancing.
+		expect(JSON.parse(await readText(progressKey)).advancedAt).toBe(advancedAt)
+	}
+	const stored = JSON.parse(await readText(progressKey))
+	stored.leaseExpiresAt = new Date(0).toISOString()
+	await client.put(progressKey, JSON.stringify(stored))
+	const skipped = await tick('01:10')
+	expect(skipped.summaryWritten).toBe(true)
+	expect(JSON.parse(await readText(stagingSummaryKey(day))).warnings).toContain(
+		`storage dump failed: ${bad}`,
+	)
+	expect(consoleError).toHaveBeenCalledWith(
+		'dr_export_storage_identity_skipped',
+		expect.stringContaining(bad),
+	)
 })
 
 test('exporter skips oversized storage dumps with a summary warning', async () => {

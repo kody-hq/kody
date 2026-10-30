@@ -40,11 +40,15 @@ synchronous, for callers that already hold the compiled permissions.
 3. **Effective permissions.** `computeEffectivePermissions` compiles
    memberships, team memberships, and grants (`access-compile.ts`): Owner holds
    every permission; Member and Billing hold their org-level basics plus any
-   direct or team grants; outside collaborators hold `search:read` plus grants
-   (and `org:execute` when they hold `package:execute` somewhere, the ad-hoc
-   rule). Compiled results are stored in `access_cache` and keyed by
-   `orgs.access_epoch`. Automation (no actor) acts for the org that owns the
-   job, webhook, or subscription. The result is also cached per request context.
+   direct, team, or everyone-in-org grants (`subject_type = 'org'`, whose
+   `subject_id` must equal the grant's `org_id`, a CHECK since migration 0201;
+   it matches any live `org_memberships` row at compile time, so joins and
+   leaves need no grant rows, only the existing epoch bumps); outside
+   collaborators hold `search:read` plus grants (and `org:execute` when they
+   hold `package:execute` somewhere, the ad-hoc rule). Compiled results are
+   stored in `access_cache` and keyed by `orgs.access_epoch`. Automation (no
+   actor) acts for the org that owns the job, webhook, or subscription. The
+   result is also cached per request context.
 4. **Credential scopes.** Non-null `credential.scopes` narrow the result.
 5. **Connection profile.** A bound profile narrows package resources to the
    packages and actions it lists (`read`, `execute`, `write`). Profiles list
@@ -62,8 +66,19 @@ synchronous, for callers that already hold the compiled permissions.
    the org, unlike `package:write`) and refuses a profile-bound credential,
    because a profile names existing packages only. `packageGetGitRemote` create
    mode mints a write remote for the package it just created on that check
-   alone; it grants nothing on other packages and stores no grant on the new
-   one. Plain repo create stays an org-level `package:create` check.
+   alone; it grants nothing on other packages. Plain repo create stays an
+   org-level `package:create` check.
+
+**Creator grants.** A non-owner member who creates a package (on its first
+publish) or a team-org credential (on its `credential.created` audit) gets a
+`manage` user grant on it, and on the package's app, with
+`grants.origin = 'created'` (`grantCreatorAccess` in
+`packages/worker/src/orgs/creator-access.ts`). Owners get none; they already
+hold everything. Owners can revoke the grant like any other. Org transfer
+re-points a creator grant when its person is a target member and drops it
+otherwise; a `manual` grant still blocks the move. `adminCreatorAccessBackfill`
+writes the same grants for older creations from the audit log, skipping anyone
+whose grant was ever revoked.
 
 **Org-wide read grants.** An `org` grant may carry the read-only resource
 permissions in `orgWideReadPermissions`
@@ -71,22 +86,30 @@ permissions in `orgWideReadPermissions`
 `job:read`, `integration:read`, and `email:read`. They compile into org-level
 permissions, so a Member holding `job:read` on the org passes `authorizeOrgWide`
 and lists every run (`runList`, `runGet`, `runSummary`, `workflowList`,
-`jobList`, `jobGet`). Nothing else rides along: `use`, `execute`, `write`,
-`delete`, `publish`, and `manage_access` are never grantable on the org, so
-triage (`runUpdate`), edits, and runs still need their own permission.
-`secret:read` (reveals values), `memory:read` (memories are personal, ADR 0072),
-and `execution_context:read` (machines are listed per share) are left out.
-Owners set these from the Grants page or with `accessGrant`
-(`resource_type: "org"`); a denial for one of them says so.
+`jobList`, `jobGet`). The website's org-wide run history uses the same org-wide
+check (`canReadOrgRunHistory`): the Activity page and the Overview's run
+summary, charts, and recent runs need org-wide `job:read`, and without it they
+show a permission state that links to Grants. A job-scoped grant still reads
+that one job's runs (`runList` with `job_id`, the job's page). Nothing else
+rides along: `use`, `execute`, `write`, `delete`, `publish`, and `manage_access`
+are never grantable on the org, so triage (`runUpdate`), edits, and runs still
+need their own permission. `secret:read` (reveals values), `memory:read`
+(memories are personal, ADR 0072), and `execution_context:read` (machines are
+listed per share) are left out. Owners set these from the Grants page or with
+`accessGrant` (`resource_type: "org"`); a denial for one of them says so.
 
 A surface check without a resource (capability `orgPermission`, Open API
 `x-kody-permission`) passes when the permission is held at org level **or on any
 resource grant** in the org. A surface that both creates and updates declares a
 list (`packageSave`: `package:write` or `package:create`) and passes on any one;
 the handler then checks the one the call needs. A check with a resource requires
-that resource. Personal-org Owners hold every permission, so steps 2 to 4 never
-deny for them. Profiles and the signed-in step are the other denials that can
-fire.
+that resource. Email Delete and Classify/Archive (MCP `emailMessageDelete` /
+`emailMessageClassify` and the website inbox) load the message first and check
+`email:delete` / `email:write` on its own inbox (`authorizeEmailMessageChange`),
+so a Manage grant on one inbox cannot touch another; a message with no inbox
+needs the permission org-wide. Personal-org Owners hold every permission, so
+steps 2 to 4 never deny for them. Profiles and the signed-in step are the other
+denials that can fire.
 
 **Credential resolution** goes through one door,
 `resolveCredential({ orgId, actor, packageStamp, credential })`
@@ -157,10 +180,27 @@ credentials of an active personal org qualify: a user-scope secret that has not
 expired, an integration, or an MCP server. Vault bindings and package or session
 secrets never do. Leaving the org hard-deletes the person's rows for it, and an
 org transfer out of the personal org is blocked while a moved credential still
-has grants. Placeholders and scoped `credential()` clients resolve the same set
-(org credentials the actor can Use, plus the actor's own personal credentials
-granted into the org). See
+has grants. Placeholders, scoped `credential()` clients, and name-based
+`createAuthenticatedFetch` resolve the same set (org credentials the actor can
+Use, plus the actor's own personal credentials granted into the org, org first
+by name). See
 ([ADR 0068](../decisions/0068-credentials-own-placement-scoped-clients.md)).
+
+**Pinned connections** (`integrations/pinned-connect.ts`,
+`integrations/pinned-connections.ts`) are personal OAuth connections whose
+`app_owner_id` is a team org: the member connected their own account through
+that org's app. Connecting needs a live binding with the Member or Owner role,
+not `integration:use` (a per-credential grant for org credentials, which this is
+not); Billing and outside collaborators are refused. Saving grants it to that
+org; `credentialOrgGrant` refuses any other org. Every candidate query filters
+with `integrationUsableInOrgSql` (`integrations/connected.ts`), so it resolves
+only in its pinned org and, as a personal credential, only for its owner.
+Listing and revoking members' connections (`integrationMemberConnectionList` /
+`Revoke`) calls `authorizeOrgWide('integration:manage_access')`: only Owners
+hold it org-wide, and a grant on one integration does not reach members'
+connections. Revoke, `offboardOrgMember`, and app deletion wipe locally first
+and then revoke upstream (`integrations/upstream-revoke.ts`); an upstream
+failure never keeps the connection.
 
 `credential-storage-boundary.node.test.ts` fails if credential storage is read
 outside the door and its resolvers. Credential storage keys use

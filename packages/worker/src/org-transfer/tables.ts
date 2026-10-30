@@ -90,6 +90,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	secret_entries: move(
 		'Values re-sealed under the target key context; bucket_id follows a merge.',
 	),
+	login_credential_sessions: keep(
+		"Encrypted login sessions are a cache bound to the source owner and the credential revision. The transfer batch deletes the moved credentials' source-owned sessions, and the next use mints a session under the target owner.",
+	),
 	secret_provider_bindings: move(
 		'user_id re-pointed for bindings of moved packages.',
 	),
@@ -116,8 +119,8 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	),
 	enablements: move('org_id re-pointed for triggers of moved packages.'),
 
-	grants: keep(
-		'Resource grants name source-org subjects; transfer refuses while any exist on moved resources.',
+	grants: move(
+		"Creator grants (origin 'created') re-pointed when their person is a target member, else soft-deleted; any other resource grant names source-org subjects, so transfer refuses while one exists.",
 	),
 	access_cache: keep('Compiled access; both orgs bump access_epoch.'),
 	account_write_lease_repairs: keep(personOwned),
@@ -154,6 +157,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	execution_contexts: keep(
 		'Execution contexts are machines their operator controls; they stay in the owning org and are not moved by a resource transfer.',
 	),
+	automation_execution_settings: keep(
+		'Org overrides of where an automation runs; the manifest declaration travels with the package and the target org sets its own override.',
+	),
 	execution_context_opt_ins: keep(personOwned),
 	execution_context_org_attachments: keep(
 		'Attachments link a context to an org by its operator; they are not resources of the transferred packages.',
@@ -189,6 +195,7 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	),
 	oauth_connections: keep(personOwned),
 	oauth_device_authorizations: keep(personOwned),
+	agent_registrations: keep(personOwned),
 	org_invite_link_pending: keep(orgMembershipShape),
 	org_invite_link_redemptions: keep(orgMembershipShape),
 	org_invite_links: keep(orgMembershipShape),

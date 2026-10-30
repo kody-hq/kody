@@ -2,9 +2,9 @@
  * Dedicated exposure writes for flags with
  * `exposureRecording: 'mcp-events-clients'` (currently `mcp-events-extension`).
  *
- * The experiment frame is callers whose modern MCP request declares events
- * support and who reach `registerMcpEvents`. Execute and other non-events
- * clients stay outside the on/off cohorts.
+ * The experiment frame is OAuth callers whose modern MCP client calls an
+ * `events/*` method served by `registerMcpEvents`. Execute and other
+ * non-events clients stay outside the on/off cohorts.
  */
 
 import {

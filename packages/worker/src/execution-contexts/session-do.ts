@@ -8,6 +8,7 @@ import {
 	ecpHttpNonceWindowMs,
 	ecpHttpSignaturePrefix,
 	ecpLivenessFreshMs,
+	ecpDeadlineCancelGraceMs,
 	ecpLostAfterDeadlineMs,
 	ecpMaxConcurrentRunsCap,
 	ecpMaxRunLogLines,
@@ -31,6 +32,23 @@ import {
 	type Ed25519PublicJwk,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { finishRunRecord } from '#worker/run-records/service.ts'
+import {
+	type ExecuteRequirement,
+	grantRefusal,
+	markQueuedAttemptExpired,
+	markQueuedAttemptRan,
+	withRunTiming,
+} from './routing.ts'
+import { contextIsShared, contextRunCredentials } from './credential-grant.ts'
+import { type RunCredentialUse } from './run-credential-use.ts'
+import {
+	getExecutionContext,
+	loadContextAccess,
+	parseCapabilities,
+	parseGrant,
+} from './store.ts'
+import { isExecutionContextsEnabledFor } from './flag.ts'
+import { runTiming, type ExecutionContextRunTiming } from './run-timing.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
 import { type RunRecordHandle } from '#worker/run-records/types.ts'
 
@@ -40,6 +58,18 @@ const ticketLifetimeMs = 30_000
 const historyRetentionMs = 30 * 24 * 60 * 60 * 1000
 const historyMaxRows = 1_000
 const maxRunResultBytes = 1024 * 1024
+const queuedRetryMs = 30_000
+const queuedAcceptWindowMs = 10_000
+
+type QueuedRow = {
+	run_id: string
+	request_json: string
+	lease_json: string
+	run_record_json: string | null
+	requires_json: string
+	position: number
+	expires_at: number
+}
 
 /** What origin hands the session about the registered context. */
 export type ExecutionContextSnapshot = {
@@ -59,8 +89,12 @@ export type ExecutionContextLease = {
 	orgId: string
 	/** The requester's caller credential scopes (null does not narrow). */
 	callerScopes: Array<string> | null
-	credentialIds: Array<string>
 	runtime: EcpGrant['runtime']
+	/**
+	 * Set on queued runs: what the run can do with credentials, so the drain
+	 * re-checks a grant that changed while it waited. Absent means unknown.
+	 */
+	credentialUse?: RunCredentialUse
 	deadline: number
 	sharedRun: boolean
 }
@@ -77,6 +111,7 @@ export type ExecutionContextRunResult = {
 	isError: boolean
 	content: Array<unknown>
 	structuredContent: Record<string, unknown>
+	timing?: ExecutionContextRunTiming
 }
 
 export type RunHistoryOutcome =
@@ -117,6 +152,10 @@ export type RunHistoryRow = {
 	durationMs: number | null
 	outcome: RunHistoryOutcome | null
 	cancelReason: string | null
+	/** Why a run that started here ended badly (failed, lost, cancelled). */
+	failureReason: string | null
+	/** Short, bounded error text for that failure. */
+	errorSummary: string | null
 	fallback: { position: number; ranOn?: string }
 }
 
@@ -130,6 +169,8 @@ type SocketAttachment = {
 	maxConcurrent: number
 	helloed: boolean
 	welcomed?: boolean
+	/** When getStatus last wrote last_seen_at; survives hibernation. */
+	lastSeenWrittenAt?: number
 	/** Open API origin the daemon connected through; run requests name it. */
 	apiOrigin?: string
 }
@@ -164,6 +205,96 @@ async function sha256Hex(text: string) {
 	).join('')
 }
 
+const maxErrorSummaryChars = 500
+const maxFailureReasonChars = 100
+
+type HistorySqlRow = {
+	run_id: string
+	requester_user_id: string
+	requester_handle: string | null
+	run_org_id: string
+	dispatched_at: number
+	started_at: number | null
+	ended_at: number | null
+	outcome: string | null
+	cancel_reason: string | null
+	failure_reason: string | null
+	error_summary: string | null
+	position: number
+	ran_on: string | null
+}
+
+function historyRowFromSql(
+	row: HistorySqlRow,
+	ecid: string | null,
+): RunHistoryRow {
+	const ranOn = row.ran_on === 'here' ? (ecid ?? 'here') : row.ran_on
+	return {
+		runId: row.run_id,
+		requester: {
+			userId: row.requester_user_id,
+			handle: row.requester_handle,
+		},
+		runOrgId: row.run_org_id,
+		dispatchedAt: new Date(row.dispatched_at).toISOString(),
+		startedAt: row.started_at ? new Date(row.started_at).toISOString() : null,
+		endedAt: row.ended_at ? new Date(row.ended_at).toISOString() : null,
+		durationMs:
+			row.started_at && row.ended_at ? row.ended_at - row.started_at : null,
+		outcome: (row.outcome ?? terminalOutcome('')) as RunHistoryOutcome | null,
+		cancelReason: row.cancel_reason,
+		failureReason: row.failure_reason ?? null,
+		errorSummary: row.error_summary ?? null,
+		fallback: { position: row.position, ...(ranOn ? { ranOn } : {}) },
+	}
+}
+
+function boundedSummary(text: string) {
+	const trimmed = text.trim()
+	return trimmed.length > maxErrorSummaryChars
+		? `${trimmed.slice(0, maxErrorSummaryChars - 1)}…`
+		: trimmed
+}
+
+/** Failure reason code and bounded summary for a failed run's result. */
+export function summarizeRunFailure(result: ExecutionContextRunResult): {
+	failureReason: string
+	errorSummary: string
+} {
+	const structured = result.structuredContent
+	const error = structured.error
+	const errorText =
+		typeof error === 'string'
+			? error
+			: error && typeof error === 'object' && 'message' in error
+				? String((error as { message: unknown }).message)
+				: ''
+	const firstText = result.content
+		.map((block) =>
+			block &&
+			typeof block === 'object' &&
+			typeof (block as { text?: unknown }).text === 'string'
+				? (block as { text: string }).text
+				: '',
+		)
+		.find((text) => text.trim())
+	const code = structured.errorCode
+	return {
+		failureReason:
+			typeof code === 'string' && code.trim()
+				? code.trim().slice(0, maxFailureReasonChars)
+				: 'run_error',
+		errorSummary: boundedSummary(errorText || firstText || 'Run failed.'),
+	}
+}
+
+const lostSummary =
+	'The execution context disconnected after the run started and did not report a result (execution_context_lost).'
+
+function cancelledSummary(reason: string) {
+	return `The run was cancelled (${reason}).`
+}
+
 function terminalOutcome(state: string): RunHistoryOutcome | null {
 	switch (state) {
 		case 'succeeded':
@@ -186,6 +317,9 @@ function terminalOutcome(state: string): RunHistoryOutcome | null {
  * authorizes each CapabilityProxy hop against the run's lease, and keeps a
  * bounded per-context run history (30 days, 1,000 rows, metadata only).
  */
+/** How often a live session refreshes execution_contexts.last_seen_at. */
+const lastSeenWriteEveryMs = 60_000
+
 export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	#acceptWaiters = new Map<
 		string,
@@ -195,6 +329,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	#frameBudget = new Map<string, { windowStart: number; count: number }>()
 	#signer: Promise<{ kid: string; key: CryptoKey } | null> | null = null
 	#contextKey: Promise<CryptoKey> | null = null
+	#lastSeenWrittenAt = 0
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
@@ -243,11 +378,30 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			cancel_reason TEXT,
 			position INTEGER NOT NULL,
 			ran_on TEXT,
+			failure_reason TEXT,
+			error_summary TEXT,
 			PRIMARY KEY (run_id, attempt)
 		)`)
+		for (const column of ['failure_reason', 'error_summary'] as const) {
+			try {
+				sql.exec(`ALTER TABLE history ADD COLUMN ${column} TEXT`)
+			} catch {
+				// Column already present.
+			}
+		}
 		sql.exec(
 			`CREATE INDEX IF NOT EXISTS history_dispatched ON history (dispatched_at)`,
 		)
+		sql.exec(`CREATE TABLE IF NOT EXISTS queued (
+			run_id TEXT PRIMARY KEY,
+			request_json TEXT NOT NULL,
+			lease_json TEXT NOT NULL,
+			run_record_json TEXT,
+			requires_json TEXT NOT NULL,
+			position INTEGER NOT NULL,
+			expires_at INTEGER NOT NULL,
+			created_at INTEGER NOT NULL
+		)`)
 		sql.exec(`CREATE TABLE IF NOT EXISTS audit (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			at INTEGER NOT NULL,
@@ -442,12 +596,13 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		await this.#touchLastSeen(snapshot.ecid)
 	}
 
-	async #touchLastSeen(ecid: string) {
+	async #touchLastSeen(ecid: string, at = Date.now()) {
+		this.#lastSeenWrittenAt = at
 		try {
 			await this.env.APP_DB.prepare(
 				`UPDATE execution_contexts SET last_seen_at = ? WHERE id = ?`,
 			)
-				.bind(new Date().toISOString(), ecid)
+				.bind(new Date(at).toISOString(), ecid)
 				.run()
 		} catch {
 			// Best effort: liveness lives in this session, last_seen_at is display only.
@@ -630,11 +785,14 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				attachment.helloed = true
 				ws.serializeAttachment(attachment)
 				this.#updateStatus(ws, body.status)
+				await this.#reconcileHeldRuns(body)
 				await this.#recordCapabilities(body)
+				this.ctx.waitUntil(this.#drainQueue())
 				return
 			}
 			case 'status':
 				this.#updateStatus(ws, body)
+				this.ctx.waitUntil(this.#drainQueue())
 				return
 			case 'capabilities.update':
 				await this.#recordCapabilities(body)
@@ -733,7 +891,11 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 
 	// ---------- status and dispatch ----------
 
-	#liveSocket(): { ws: WebSocket; attachment: SocketAttachment } | null {
+	#liveSocket(): {
+		ws: WebSocket
+		attachment: SocketAttachment
+		heardAt: number
+	} | null {
 		const ws = this.#socket()
 		if (!ws) return null
 		const attachment = ws.deserializeAttachment() as SocketAttachment
@@ -741,7 +903,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		const lastProbe = this.ctx.getWebSocketAutoResponseTimestamp(ws)
 		const freshAt = lastProbe ? lastProbe.getTime() : attachment.connectedAt
 		if (Date.now() - freshAt > ecpLivenessFreshMs) return null
-		return { ws, attachment }
+		return { ws, attachment, heardAt: freshAt }
 	}
 
 	#committedCount() {
@@ -756,8 +918,25 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		online: boolean
 		acceptingRuns: boolean
 		revoked: boolean
+		lastSeenAt: string | null
 	}> {
 		const live = this.#liveSocket()
+		// Heartbeat pings are auto-responses that never wake this object, so
+		// last_seen_at catches up here, at most once a minute.
+		const snapshot = live ? this.#snapshot() : null
+		const writtenAt = live
+			? Math.max(
+					this.#lastSeenWrittenAt,
+					live.attachment.lastSeenWrittenAt ?? live.attachment.connectedAt,
+				)
+			: 0
+		if (live && snapshot && live.heardAt - writtenAt >= lastSeenWriteEveryMs) {
+			live.ws.serializeAttachment({
+				...live.attachment,
+				lastSeenWrittenAt: live.heardAt,
+			})
+			await this.#touchLastSeen(snapshot.ecid, live.heardAt)
+		}
 		return {
 			online: Boolean(live),
 			acceptingRuns: Boolean(
@@ -766,6 +945,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				this.#committedCount() < live.attachment.maxConcurrent,
 			),
 			revoked: Boolean(this.#revokedReason()),
+			lastSeenAt: live ? new Date(live.heardAt).toISOString() : null,
 		}
 	}
 
@@ -840,7 +1020,11 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			`INSERT INTO runs (run_id, state, lease_json, deadline, accept_by,
 			   run_record_json, created_at)
 			 VALUES (?, 'dispatched', ?, ?, ?, ?, ?)
-			 ON CONFLICT(run_id) DO NOTHING`,
+			 ON CONFLICT(run_id) DO UPDATE SET state = 'dispatched',
+			   lease_json = excluded.lease_json, deadline = excluded.deadline,
+			   accept_by = excluded.accept_by,
+			   run_record_json = excluded.run_record_json
+			 WHERE runs.state IN ('aborted', 'rejected')`,
 			lease.runId,
 			JSON.stringify(lease),
 			input.request.deadline,
@@ -893,21 +1077,282 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			await this.#send(live.ws, 'run.abort', { runId: lease.runId })
 			return { outcome: 'aborted' }
 		}
-		this.ctx.storage.sql.exec(
+		const committed = this.ctx.storage.sql.exec(
 			`UPDATE runs SET state = 'committed', started_at = ? WHERE run_id = ? AND state = 'dispatched'`,
 			Date.now(),
 			lease.runId,
-		)
+		).rowsWritten
+		if (committed === 0) {
+			record('aborted')
+			await this.#send(live.ws, 'run.abort', { runId: lease.runId })
+			return { outcome: 'aborted' }
+		}
 		record(null)
 		this.ctx.storage.sql.exec(
-			`UPDATE history SET started_at = ? WHERE run_id = ? AND attempt = ?`,
+			`UPDATE history SET started_at = ?, ran_on = 'here' WHERE run_id = ? AND attempt = ?`,
 			Date.now(),
 			lease.runId,
 			attempt,
 		)
 		await this.#send(live.ws, 'run.commit', { runId: lease.runId })
-		await this.#ensureAlarm(input.request.deadline + ecpLostAfterDeadlineMs)
+		await this.#ensureAlarm(input.request.deadline + ecpDeadlineCancelGraceMs)
 		return { outcome: 'committed' }
+	}
+
+	/**
+	 * Holds a run that found this context offline until it reconnects, up to
+	 * `expiresAt`. Dispatch on reconnect re-checks access and the grant.
+	 */
+	async enqueue(input: {
+		request: EcpRunRequestBody
+		lease: ExecutionContextLease
+		runRecord: RunRecordHandle | null
+		requires: Array<ExecuteRequirement>
+		position: number
+		expiresAt: number
+	}) {
+		this.ctx.storage.sql.exec(
+			`INSERT INTO queued (run_id, request_json, lease_json, run_record_json,
+			   requires_json, position, expires_at, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			 ON CONFLICT(run_id) DO NOTHING`,
+			input.lease.runId,
+			JSON.stringify(input.request),
+			JSON.stringify(input.lease),
+			input.runRecord ? JSON.stringify(input.runRecord) : null,
+			JSON.stringify(input.requires),
+			input.position,
+			input.expiresAt,
+			Date.now(),
+		)
+		await this.#ensureAlarm(input.expiresAt)
+		// It may have come back between the offline probe and now.
+		if (this.#liveSocket()) this.ctx.waitUntil(this.#drainQueue())
+		return { queued: true }
+	}
+
+	/** Queued runs waiting for this context, oldest first. */
+	listQueued(): Array<{ runId: string; expiresAt: number; queuedAt: number }> {
+		return this.ctx.storage.sql
+			.exec<{ run_id: string; expires_at: number; created_at: number }>(
+				`SELECT run_id, expires_at, created_at FROM queued ORDER BY created_at`,
+			)
+			.toArray()
+			.map((row) => ({
+				runId: row.run_id,
+				expiresAt: row.expires_at,
+				queuedAt: row.created_at,
+			}))
+	}
+
+	#draining = false
+
+	async #drainQueue() {
+		if (this.#draining) return
+		this.#draining = true
+		try {
+			const now = Date.now()
+			await this.#expireQueued(now)
+			const rows = this.ctx.storage.sql
+				.exec<QueuedRow>(
+					`SELECT run_id, request_json, lease_json, run_record_json,
+					   requires_json, position, expires_at
+					 FROM queued ORDER BY created_at`,
+				)
+				.toArray()
+			for (const queued of rows) {
+				if (!this.#liveSocket()) return
+				const outcome = await this.#dispatchQueued(queued)
+				if (outcome === 'keep') {
+					await this.#ensureAlarm(Date.now() + queuedRetryMs)
+					return
+				}
+				this.ctx.storage.sql.exec(
+					`DELETE FROM queued WHERE run_id = ?`,
+					queued.run_id,
+				)
+			}
+		} finally {
+			this.#draining = false
+		}
+	}
+
+	async #failAllQueued(message: string, name: string, reason: string) {
+		const rows = this.ctx.storage.sql
+			.exec<{ run_id: string; run_record_json: string | null }>(
+				`SELECT run_id, run_record_json FROM queued`,
+			)
+			.toArray()
+		for (const row of rows) {
+			if (row.run_record_json) {
+				const handle = JSON.parse(row.run_record_json) as RunRecordHandle
+				handle.context.metadata = markQueuedAttemptExpired(
+					handle.context.metadata ?? {},
+					reason,
+				)
+				await finishRunRecord({
+					env: this.env,
+					handle,
+					status: 'error',
+					error: Object.assign(new Error(message), { name }),
+				})
+			}
+			this.ctx.storage.sql.exec(
+				`DELETE FROM queued WHERE run_id = ?`,
+				row.run_id,
+			)
+		}
+	}
+
+	async #dispatchQueued(queued: QueuedRow): Promise<'done' | 'keep'> {
+		const lease = JSON.parse(queued.lease_json) as ExecutionContextLease
+		const request = JSON.parse(queued.request_json) as EcpRunRequestBody
+		const requires = JSON.parse(
+			queued.requires_json,
+		) as Array<ExecuteRequirement>
+		const handle = queued.run_record_json
+			? (JSON.parse(queued.run_record_json) as RunRecordHandle)
+			: null
+		const fail = async (message: string, name: string) => {
+			if (handle) {
+				await finishRunRecord({
+					env: this.env,
+					handle,
+					status: 'error',
+					error: Object.assign(new Error(message), { name }),
+				})
+			}
+			return 'done' as const
+		}
+		const row = await getExecutionContext(this.env.APP_DB, lease.ecid)
+		if (!row || row.revoked_at) {
+			return await fail(
+				'The execution context this run was queued for was removed before it reconnected (execution_context_unavailable).',
+				'ExecutionContextUnavailable',
+			)
+		}
+		const [member, enabled] = await Promise.all([
+			this.env.APP_DB.prepare(
+				`SELECT 1 AS ok FROM org_memberships WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+			)
+				.bind(lease.orgId, lease.requester.userId)
+				.first(),
+			isExecutionContextsEnabledFor(
+				this.env.APP_DB,
+				lease.requester.userId,
+				lease.orgId,
+			),
+		])
+		if (!member || !enabled) {
+			return await fail(
+				`${row.name} reconnected, but the person this run acts as is no longer in the org or no longer has execution contexts, so it did not run (execution_context_access_lost).`,
+				'ExecutionContextAccessLost',
+			)
+		}
+		const access = await loadContextAccess(this.env.APP_DB, row, {
+			userId: lease.requester.userId,
+			orgId: lease.orgId,
+		})
+		if (!access.usable) {
+			return await fail(
+				`${row.name} reconnected, but the person this run acts as can no longer use it (${access.unusableReason ?? 'not_granted'}), so it did not run (execution_context_access_lost).`,
+				'ExecutionContextAccessLost',
+			)
+		}
+		const grant = parseGrant(row)
+		const refusal = grantRefusal({
+			grant,
+			requires,
+			credentials: contextRunCredentials(grant, {
+				shared:
+					grant.credentials.mode === 'requester' &&
+					(await contextIsShared(this.env.APP_DB, row)),
+				requesterIsOperator: row.operator_user_id === lease.requester.userId,
+			}),
+			credentialUse: lease.credentialUse ?? { kind: 'unknown' },
+			capabilities: parseCapabilities(row),
+		})
+		if (refusal) {
+			return await fail(
+				`${row.name} reconnected, but its grant no longer allows this run (${refusal}), so it did not run (context_not_usable).`,
+				'ExecutionContextNotUsable',
+			)
+		}
+		const now = Date.now()
+		const deadline = now + grant.limits.timeoutMs
+		const dispatched = await this.dispatch({
+			request: {
+				...request,
+				deadline,
+				acceptBy: now + queuedAcceptWindowMs,
+				grantVersion: row.grant_version,
+				limits: {
+					timeoutMs: grant.limits.timeoutMs,
+					maxResultBytes: grant.payload.maxResultBytes,
+					memoryMb: grant.limits.memoryMb,
+				},
+			},
+			lease: {
+				...lease,
+				deadline,
+				runtime: grant.runtime,
+			},
+			runRecord: handle
+				? {
+						...handle,
+						context: {
+							...handle.context,
+							metadata: markQueuedAttemptRan(handle.context.metadata ?? {}),
+						},
+					}
+				: null,
+			position: queued.position,
+		})
+		switch (dispatched.outcome) {
+			case 'committed':
+				return 'done'
+			case 'rejected':
+				return await fail(
+					`${row.name} reconnected and refused this run (${dispatched.code ?? 'rejected'}).`,
+					'ExecutionContextRejected',
+				)
+			default:
+				return 'keep'
+		}
+	}
+
+	async #expireQueued(now: number) {
+		const expired = this.ctx.storage.sql
+			.exec<{
+				run_id: string
+				run_record_json: string | null
+				created_at: number
+			}>(
+				`DELETE FROM queued WHERE expires_at <= ?
+				 RETURNING run_id, run_record_json, created_at`,
+				now,
+			)
+			.toArray()
+		const name = this.#snapshot()?.name ?? 'The execution context'
+		for (const row of expired) {
+			if (!row.run_record_json) continue
+			const minutes = Math.round((now - row.created_at) / 60_000)
+			const handle = JSON.parse(row.run_record_json) as RunRecordHandle
+			handle.context.metadata = markQueuedAttemptExpired(
+				handle.context.metadata ?? {},
+			)
+			await finishRunRecord({
+				env: this.env,
+				handle,
+				status: 'error',
+				error: Object.assign(
+					new Error(
+						`${name} did not take the queued run within ${minutes} minutes (offline or busy), so it expired without running (execution_context_queue_expired).`,
+					),
+					{ name: 'ExecutionContextQueueExpired' },
+				),
+			})
+		}
 	}
 
 	#setRunState(runId: string, state: string) {
@@ -936,7 +1381,12 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	#finishRun(
 		runId: string,
 		state: 'succeeded' | 'failed' | 'cancelled' | 'lost',
-		extra: { resultJson?: string; cancelReason?: string } = {},
+		extra: {
+			resultJson?: string
+			cancelReason?: string
+			failureReason?: string
+			errorSummary?: string
+		} = {},
 	) {
 		const now = Date.now()
 		const changed = this.ctx.storage.sql
@@ -955,11 +1405,13 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		if (!changed) return false
 		this.ctx.storage.sql.exec(
 			`UPDATE history SET outcome = ?, ended_at = ?, cancel_reason = ?,
-			   ran_on = 'here'
+			   failure_reason = ?, error_summary = ?, ran_on = 'here'
 			 WHERE run_id = ? AND started_at IS NOT NULL AND outcome IS NULL`,
 			state,
 			now,
 			extra.cancelReason ?? null,
+			extra.failureReason ?? null,
+			extra.errorSummary ?? null,
 			runId,
 		)
 		for (const waiter of this.#resultWaiters.get(runId) ?? []) {
@@ -970,12 +1422,61 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	}
 
 	async #onRunResult(ws: WebSocket, frame: EcpFramePayload) {
-		const body = frame.body
+		const runId = typeof frame.body.runId === 'string' ? frame.body.runId : ''
+		const receivedAt = Date.now()
+		await this.#send(ws, 'run.result.ack', { runId }, frame.seq)
+		await this.#applyRunResult(frame.body, receivedAt)
+	}
+
+	/**
+	 * A daemon that lists the committed runs it still holds in hello lets the
+	 * rest end now instead of at deadline + grace. Older daemons omit
+	 * `heldRuns`, so the alarm still decides for them. A run is never re-run.
+	 */
+	async #reconcileHeldRuns(body: Record<string, unknown>) {
+		if (!Array.isArray(body.heldRuns)) return
+		const held = new Set(
+			body.heldRuns.filter((id): id is string => typeof id === 'string'),
+		)
+		// Snapshot first: a run committed while results apply is not stale.
+		const committed = this.ctx.storage.sql
+			.exec<RunRow>(
+				`SELECT run_id, state, lease_json, deadline, accept_by, run_record_json,
+				   result_json, cancel_reason, started_at
+				 FROM runs WHERE state = 'committed'`,
+			)
+			.toArray()
+		const pending = Array.isArray(body.pendingResults)
+			? body.pendingResults
+			: []
+		const receivedAt = Date.now()
+		for (const result of pending) {
+			if (result && typeof result === 'object') {
+				await this.#applyRunResult(
+					result as Record<string, unknown>,
+					receivedAt,
+				)
+			}
+		}
+		for (const run of committed) {
+			if (held.has(run.run_id)) continue
+			if (
+				this.#finishRun(run.run_id, 'lost', {
+					failureReason: 'execution_context_lost',
+					errorSummary: lostSummary,
+				})
+			) {
+				await this.#finishRunRecord(run, { lost: true })
+			}
+		}
+	}
+
+	async #applyRunResult(body: Record<string, unknown>, receivedAt: number) {
 		const runId = typeof body.runId === 'string' ? body.runId : ''
 		const run = this.#run(runId)
-		await this.#send(ws, 'run.result.ack', { runId }, frame.seq)
 		if (!run || run.state !== 'committed') return
 		const lease = JSON.parse(run.lease_json) as ExecutionContextLease
+		const timing = runTiming(body.timing, run.started_at, receivedAt)
 		const result: ExecutionContextRunResult = {
 			isError: body.isError === true,
 			content: Array.isArray(body.content) ? body.content : [],
@@ -983,6 +1484,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				body.structuredContent && typeof body.structuredContent === 'object'
 					? (body.structuredContent as Record<string, unknown>)
 					: {},
+			...(timing ? { timing } : {}),
 		}
 		let resultJson = JSON.stringify(result)
 		const resultBytes = new TextEncoder().encode(resultJson).byteLength
@@ -1001,10 +1503,23 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			} satisfies ExecutionContextRunResult)
 		}
 		const finalResult = JSON.parse(resultJson) as ExecutionContextRunResult
+		if (finalResult.isError && body.cancelReason === 'deadline') {
+			const ended = this.#finishRun(runId, 'cancelled', {
+				resultJson,
+				cancelReason: 'deadline',
+				failureReason: 'deadline',
+				errorSummary: cancelledSummary('deadline'),
+			})
+			if (ended) await this.#finishRunRecord(run, { cancelled: 'deadline' })
+			return
+		}
 		const finished = this.#finishRun(
 			runId,
 			finalResult.isError ? 'failed' : 'succeeded',
-			{ resultJson },
+			{
+				resultJson,
+				...(finalResult.isError ? summarizeRunFailure(finalResult) : {}),
+			},
 		)
 		if (finished) await this.#finishRunRecord(run, finalResult)
 	}
@@ -1016,40 +1531,55 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		if (!run.run_record_json) return
 		const handle = JSON.parse(run.run_record_json) as RunRecordHandle
 		if ('lost' in result) {
-			await finishRunRecord({
-				env: this.env,
-				handle,
+			await this.#writeRunRecord(handle, {
 				status: 'error',
-				error: Object.assign(
-					new Error(
-						'The execution context disconnected after the run started and did not report a result (execution_context_lost).',
-					),
-					{ name: 'ExecutionContextLost' },
-				),
+				error: Object.assign(new Error(lostSummary), {
+					name: 'ExecutionContextLost',
+				}),
 			})
 			return
 		}
 		if ('cancelled' in result) {
-			await finishRunRecord({
-				env: this.env,
-				handle,
+			await this.#writeRunRecord(handle, {
 				status: 'error',
-				error: Object.assign(
-					new Error(`The run was cancelled (${result.cancelled}).`),
-					{ name: 'ExecutionContextRunCancelled' },
-				),
+				error: Object.assign(new Error(cancelledSummary(result.cancelled)), {
+					name: 'ExecutionContextRunCancelled',
+				}),
 			})
 			return
 		}
+		if (result.timing) {
+			handle.context.metadata = withRunTiming(
+				handle.context.metadata ?? {},
+				result.timing,
+			)
+		}
 		const structured = result.structuredContent
-		await finishRunRecord({
-			env: this.env,
-			handle,
-			status: result.isError ? 'error' : 'success',
-			...(result.isError
-				? { error: new Error(String(structured.error ?? 'Run failed.')) }
+		const failure = result.isError ? summarizeRunFailure(result) : null
+		await this.#writeRunRecord(handle, {
+			status: failure ? 'error' : 'success',
+			...(failure
+				? {
+						error: Object.assign(new Error(failure.errorSummary), {
+							name: 'ExecutionContextRunFailed',
+						}),
+					}
 				: { result: structured.result }),
 		})
+	}
+
+	/** Completes the caller's main run record; a missed write is logged. */
+	async #writeRunRecord(
+		handle: RunRecordHandle,
+		input: Omit<Parameters<typeof finishRunRecord>[0], 'env' | 'handle'>,
+	) {
+		const wrote = await finishRunRecord({ env: this.env, handle, ...input })
+		if (!wrote) {
+			console.warn('execution-context-run-record-finish-missed', {
+				runId: handle.id,
+				status: input.status,
+			})
+		}
 	}
 
 	/** Wait up to `waitMs` for a committed run's terminal state. */
@@ -1097,15 +1627,28 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 
 	/** End the lease now, so the next hop fails even if the kill is slow. */
 	async cancel(input: { runId: string; reason: EcpCancelReason }) {
+		const { ended, finishRecord } = await this.#cancelRun(input)
+		await finishRecord()
+		return { cancelled: ended }
+	}
+
+	/** Ends the run and tells the daemon; the run record is left to the caller. */
+	async #cancelRun(input: { runId: string; reason: EcpCancelReason }) {
 		const run = this.#run(input.runId)
-		if (!run) return { cancelled: false }
+		if (!run) return { ended: false, finishRecord: async () => {} }
 		const ended = this.#finishRun(input.runId, 'cancelled', {
 			cancelReason: input.reason,
+			failureReason: input.reason,
+			errorSummary: cancelledSummary(input.reason),
 		})
 		const ws = this.#socket()
 		if (ws) await this.#send(ws, 'run.cancel', input)
-		if (ended) await this.#finishRunRecord(run, { cancelled: input.reason })
-		return { cancelled: ended }
+		return {
+			ended,
+			finishRecord: async () => {
+				if (ended) await this.#finishRunRecord(run, { cancelled: input.reason })
+			},
+		}
 	}
 
 	/**
@@ -1146,6 +1689,11 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			input.reason,
 		)
 		await this.endLeases({ reason: 'revoked' })
+		await this.#failAllQueued(
+			'The execution context this run was queued for was revoked, so it did not run (execution_context_unavailable).',
+			'ExecutionContextUnavailable',
+			'context_revoked',
+		)
 		for (const ws of this.ctx.getWebSockets()) {
 			await this.#send(ws, 'revoke', { reason: input.reason })
 			ws.close(1008, 'revoked')
@@ -1275,19 +1823,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			binds.push(input.cursor)
 		}
 		const rows = this.ctx.storage.sql
-			.exec<{
-				run_id: string
-				requester_user_id: string
-				requester_handle: string | null
-				run_org_id: string
-				dispatched_at: number
-				started_at: number | null
-				ended_at: number | null
-				outcome: string | null
-				cancel_reason: string | null
-				position: number
-				ran_on: string | null
-			}>(
+			.exec<HistorySqlRow>(
 				`SELECT * FROM history WHERE ${clauses.join(' AND ')}
 				 ORDER BY dispatched_at DESC, attempt DESC LIMIT ?`,
 				...binds,
@@ -1295,33 +1831,47 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			)
 			.toArray()
 		const snapshot = this.#snapshot()
-		const page = rows.slice(0, limit).map((row) => {
-			const ranOn =
-				row.ran_on === 'here' ? (snapshot?.ecid ?? 'here') : row.ran_on
-			return {
-				runId: row.run_id,
-				requester: {
-					userId: row.requester_user_id,
-					handle: row.requester_handle,
-				},
-				runOrgId: row.run_org_id,
-				dispatchedAt: new Date(row.dispatched_at).toISOString(),
-				startedAt: row.started_at
-					? new Date(row.started_at).toISOString()
-					: null,
-				endedAt: row.ended_at ? new Date(row.ended_at).toISOString() : null,
-				durationMs:
-					row.started_at && row.ended_at ? row.ended_at - row.started_at : null,
-				outcome: (row.outcome ??
-					terminalOutcome('')) as RunHistoryOutcome | null,
-				cancelReason: row.cancel_reason,
-				fallback: { position: row.position, ...(ranOn ? { ranOn } : {}) },
-			}
-		})
+		const page = rows
+			.slice(0, limit)
+			.map((row) => historyRowFromSql(row, snapshot?.ecid ?? null))
 		const last = rows[limit - 1]
 		return {
 			rows: page,
 			nextCursor: rows.length > limit && last ? last.dispatched_at : null,
+		}
+	}
+
+	/**
+	 * The attempt of one requester's run that started here, so `runGet` can
+	 * still answer after the general run record was pruned.
+	 */
+	async getStartedRun(input: {
+		runId: string
+		requesterUserId: string
+		orgId: string
+	}): Promise<{
+		ecid: string | null
+		name: string | null
+		row: RunHistoryRow
+	} | null> {
+		this.#pruneHistory(Date.now())
+		const found = this.ctx.storage.sql
+			.exec<HistorySqlRow>(
+				`SELECT * FROM history
+				 WHERE run_id = ? AND requester_user_id = ? AND run_org_id = ?
+				   AND started_at IS NOT NULL
+				 ORDER BY attempt DESC LIMIT 1`,
+				input.runId,
+				input.requesterUserId,
+				input.orgId,
+			)
+			.toArray()[0]
+		if (!found) return null
+		const snapshot = this.#snapshot()
+		return {
+			ecid: snapshot?.ecid ?? null,
+			name: snapshot?.name ?? null,
+			row: historyRowFromSql(found, snapshot?.ecid ?? null),
 		}
 	}
 
@@ -1445,8 +1995,34 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				now,
 			)
 			.toArray()
+		const overdue = this.ctx.storage.sql
+			.exec<{ run_id: string }>(
+				`SELECT run_id FROM runs WHERE state = 'committed' AND deadline + ? <= ?`,
+				ecpDeadlineCancelGraceMs,
+				now,
+			)
+			.toArray()
+		if (this.#liveSocket()) {
+			// The daemon is still connected but missed its own deadline stop.
+			// A late alarm still cancels; only runs with no live daemon are lost.
+			// Frames go out in order; record writes don't hold up the next cancel.
+			const records: Array<Promise<void>> = []
+			for (const { run_id } of overdue) {
+				const { finishRecord } = await this.#cancelRun({
+					runId: run_id,
+					reason: 'deadline',
+				})
+				records.push(finishRecord())
+			}
+			await Promise.all(records)
+		}
 		for (const run of stale) {
-			if (this.#finishRun(run.run_id, 'lost')) {
+			if (
+				this.#finishRun(run.run_id, 'lost', {
+					failureReason: 'execution_context_lost',
+					errorSummary: lostSummary,
+				})
+			) {
 				await this.#finishRunRecord(run, { lost: true })
 			}
 		}
@@ -1458,15 +2034,29 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			now,
 		)
 		this.#pruneHistory(now)
+		await this.#expireQueued(now)
+		if (this.#liveSocket()) await this.#drainQueue()
+		const queuedNext = this.ctx.storage.sql
+			.exec<{ at: number | null }>(`SELECT MIN(expires_at) AS at FROM queued`)
+			.one().at
+		if (queuedNext !== null)
+			await this.#ensureAlarm(Math.max(now + 1000, queuedNext))
 		const next = this.ctx.storage.sql
 			.exec<{ deadline: number | null }>(
 				`SELECT MIN(deadline) AS deadline FROM runs WHERE state = 'committed'`,
 			)
 			.one().deadline
 		if (next !== null) {
-			await this.ctx.storage.setAlarm(
-				Math.max(now + 1000, next + ecpLostAfterDeadlineMs),
-			)
+			const cancelAt = next + ecpDeadlineCancelGraceMs
+			// An overdue run waiting on a reconnect is rechecked before it is lost.
+			const recheckAt =
+				cancelAt > now
+					? cancelAt
+					: Math.min(
+							now + ecpDeadlineCancelGraceMs,
+							next + ecpLostAfterDeadlineMs,
+						)
+			await this.#ensureAlarm(Math.max(now + 1000, recheckAt))
 		}
 	}
 }

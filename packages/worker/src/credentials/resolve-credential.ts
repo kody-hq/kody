@@ -39,6 +39,7 @@ import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { pauseEnablementOnDenial } from '#worker/enablements/pause-on-denial.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
+import { assertContextGrantAllowsCredential } from './context-credential-grant.ts'
 import { enablementIdOf } from '#worker/request-context/request-context.ts'
 import {
 	credentialResolutionOutcomeForError,
@@ -65,6 +66,7 @@ import {
 import {
 	readFetchFillPlacement,
 	readFetchFillPlacementCredentialId,
+	readFetchFillPlacementRefusalLinks,
 } from './fetch-fill-placement-cache.ts'
 import { enforceFillPlacement } from './fill-placement-enforcement.ts'
 import { type CredentialFillSite } from './fill-placement.ts'
@@ -215,7 +217,17 @@ async function resolveWith<U extends CredentialUse>(
 		}
 		const handle = await resolver.resolve({ input, credential, subject })
 		await handle.authorize()
+		const contextGrant = (credentialId: string | null) =>
+			assertContextGrantAllowsCredential({
+				actor: input.actor,
+				credentialId,
+				label: subject.name,
+			})
+		if (subject.credentialId) contextGrant(subject.credentialId)
 		result = await handle.apply()
+		// A resolver that found a credential without a stable id cannot be
+		// matched to a context's list; the value is dropped, never returned.
+		if (!subject.credentialId && resolver.isFound(result)) contextGrant(null)
 	} catch (error) {
 		audit(credentialResolutionOutcomeForError(error))
 		const enablementId = enablementIdOf(input.actor)
@@ -493,6 +505,7 @@ export function auditResolvedFetchPlacements(
 					input.credential.use === 'integration-token'
 						? input.credential.name
 						: null,
+				links: readFetchFillPlacementRefusalLinks(input),
 			})
 		}
 	}

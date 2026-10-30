@@ -1,4 +1,7 @@
+import { type RunRecordHandle } from '#worker/run-records/types.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
+import { type AutomationExecutionTarget } from '#worker/execution-contexts/automation-settings.ts'
 import {
 	buildSavedPackageNotFoundMessage,
 	normalizeExportName,
@@ -56,6 +59,12 @@ export async function invokePackageExportWithToolFactories(input: {
 	signal?: AbortSignal
 	/** Report, and optionally pin, the commit the invoke resolves. */
 	sourceRevision?: PackageSourceRevisionOptions | null
+	/** Where an automation asked to run (execution contexts). */
+	executionRouting?: AutomationRouting | null
+	/** Caller-owned record (workflow step) that a context run hangs under. */
+	parentRunHandle?: RunRecordHandle | null
+	/** Declared automation whose execution setting applies. */
+	executionTarget?: AutomationExecutionTarget | null
 }): Promise<PackageInvocationResponse> {
 	const packageIdOrKodyId = input.request.packageIdOrKodyId.trim()
 	if (!packageIdOrKodyId) {
@@ -138,6 +147,9 @@ export async function invokePackageExportWithToolFactories(input: {
 		executorTimeoutMs: input.executorTimeoutMs,
 		signal: input.signal,
 		sourceRevision: input.sourceRevision,
+		executionRouting: input.executionRouting ?? null,
+		parentRunHandle: input.parentRunHandle ?? null,
+		executionTarget: input.executionTarget ?? null,
 	}
 
 	if (!idempotencyKey) {

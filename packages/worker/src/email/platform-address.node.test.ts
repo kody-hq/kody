@@ -7,6 +7,7 @@ import {
 	getAcceptedUserEmailDomains,
 	getPlatformEmailDomain,
 	getSystemEmailDomain,
+	resolveOwnedSenderAddress,
 	resolveUserPlatformSender,
 } from './platform-address.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
@@ -140,4 +141,35 @@ test('resolveUserPlatformSender sends from an unreserved built-in username and b
 	await expect(resolveUserPlatformSender({ db, env, ...kody })).rejects.toThrow(
 		'Reserved usernames cannot send email',
 	)
+})
+
+test('resolveOwnedSenderAddress accepts only the sender base address and its plus aliases', () => {
+	const sender = { username: 'examplebot', domain: 'inbox.kody.example.com' }
+	const acceptedDomains = ['inbox.kody.example.com', 'inbox.legacy.example.com']
+	const resolve = (address: string) =>
+		resolveOwnedSenderAddress({ address, sender, acceptedDomains })
+
+	expect(resolve('examplebot@inbox.kody.example.com')).toBe(
+		'examplebot@inbox.kody.example.com',
+	)
+	expect(resolve('Bot <ExampleBot+Support@Inbox.Kody.Example.com>')).toBe(
+		'examplebot+support@inbox.kody.example.com',
+	)
+	expect(resolve('examplebot+a.b_c-1@inbox.legacy.example.com')).toBe(
+		'examplebot+a.b_c-1@inbox.kody.example.com',
+	)
+	for (const address of [
+		'otherbot+support@inbox.kody.example.com',
+		'examplebotx@inbox.kody.example.com',
+		'examplebot+support@example.com',
+		'examplebot+support@kody.example.com',
+		'examplebot+@inbox.kody.example.com',
+		'examplebot+a+b@inbox.kody.example.com',
+		'examplebot+-a@inbox.kody.example.com',
+		'examplebot+a%b@inbox.kody.example.com',
+		`examplebot+${'t'.repeat(64)}@inbox.kody.example.com`,
+		'not an address',
+	]) {
+		expect(resolve(address), address).toBeNull()
+	}
 })

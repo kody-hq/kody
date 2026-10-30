@@ -1,6 +1,8 @@
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
 import * as Sentry from '@sentry/cloudflare'
+import { omitKodyIgnoredFiles } from './kodyignore.ts'
 import { refreshCommunityIconForPackagePublish } from '#worker/community/community-icon.ts'
 import { syncActiveCommunityListingToPublishedCommit } from '#worker/community/sync-active-community-listing.ts'
 import { notifyFollowsOfPublishedPackage } from '#worker/follow/notify.ts'
@@ -39,6 +41,7 @@ import { assertPackageSourceOverwriteAllowed } from './source-safety-policy.ts'
 
 export type RepoPublishWorkspace = {
 	readFile(path: string): Promise<string | null>
+	stat?(path: string): Promise<{ size: number } | null>
 	glob(pattern: string): Promise<Array<{ path: string; type: string }>>
 }
 
@@ -214,6 +217,7 @@ export async function finalizePublishedEntitySource(
 			// when artifact rebuild is deferred (`rebuildArtifacts: false`).
 			sourceFiles: input.files,
 			firstPublish: !previousPublishedCommit,
+			creatorUserId: input.actorUserId ?? null,
 			// A same-commit finalize (a retry or a clean no-op sync) is not a
 			// new publish, so it writes no audit row.
 			audit:
@@ -365,6 +369,8 @@ export async function publishFromExternalRef(input: {
 	credentialNeedsApproved?: boolean
 	requestedByUserId?: string | null
 	phaseTimings?: PublishPhaseTimings
+	/** Records each check step so a resource reset can name it. */
+	onCheckStep?: (step: RepoCheckStep) => Promise<void>
 	deferBundleCheckToRebuild?: boolean
 }): Promise<RepoExternalPublishResult> {
 	const source = await getEntitySourceById(input.env.APP_DB, input.sourceId)
@@ -444,8 +450,10 @@ export async function publishFromExternalRef(input: {
 		sourceId: source.id,
 		expectedPackageScope: input.expectedPackageScope,
 		phaseTimings: input.phaseTimings,
+		...(input.onCheckStep ? { onStep: input.onCheckStep } : {}),
 		...(deferBundleCheckToRebuild ? { deferBundleCheckToRebuild: true } : {}),
 	})
+	await input.onCheckStep?.('finalize')
 	const runId = input.runId ?? crypto.randomUUID()
 	if (!checks.ok) {
 		return {
@@ -455,11 +463,14 @@ export async function publishFromExternalRef(input: {
 			run_id: runId,
 		}
 	}
-	const pendingFiles = input.files ?? checks.sourceFiles
-	// input.files (clone collectFiles) is repo-rooted; checks.sourceFiles is
-	// already package-relative. Pass sourceRoot only for the repo-rooted shape.
+	// input.files (clone collectFiles) is keyed relative to the repo, while
+	// input.sourceRoot is workspace-prefixed, so scope clone maps by the stored
+	// repo-relative root. checks.sourceFiles is already package-relative.
 	const pendingFilesSourceRoot =
-		input.files != null ? (input.sourceRoot ?? source.source_root) : undefined
+		input.files != null ? source.source_root : undefined
+	const pendingFiles = input.files
+		? omitKodyIgnoredFiles(input.files, source.source_root)
+		: checks.sourceFiles
 	const secretMountCompat =
 		source.entity_kind === 'package'
 			? await loadSecretMountCompatNotice({
@@ -499,7 +510,7 @@ export async function publishFromExternalRef(input: {
 			source.entity_kind === 'package' &&
 			hasPublishedRuntimeArtifacts(input.env)
 		) {
-			const files = input.files ?? checks.sourceFiles
+			const files = pendingFiles
 			await storePublishedCredentialNeeds({
 				env: input.env,
 				source,
@@ -583,7 +594,7 @@ export async function publishFromExternalRef(input: {
 		env: input.env,
 		source,
 		publishedCommit: input.newCommit,
-		files: input.files ?? checks.sourceFiles,
+		files: pendingFiles,
 		baseUrl: input.baseUrl,
 		rebuildPackageArtifacts: input.rebuildPackageArtifacts,
 		allowLockedPublish: input.allowLockedPublish,

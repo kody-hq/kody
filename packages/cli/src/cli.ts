@@ -151,6 +151,11 @@ const cliFlagOptions = {
 	org: { type: 'string' },
 	name: { type: 'string' },
 	context: { type: 'string' },
+	mode: { type: 'string' },
+	'max-concurrent': { type: 'string' },
+	fallback: { type: 'string' },
+	requires: { type: 'string' },
+	chain: { type: 'string' },
 	target: { type: 'string' },
 	'reset-storage': { type: 'boolean' },
 	'dry-run': { type: 'boolean' },
@@ -473,6 +478,12 @@ async function dispatch(
 						: {}),
 					...(typeof parsed.values.context === 'string'
 						? { context: parsed.values.context }
+						: {}),
+					...(typeof parsed.values.mode === 'string'
+						? { mode: parsed.values.mode }
+						: {}),
+					...(parsed.values['max-concurrent'] !== undefined
+						? { maxConcurrent: String(parsed.values['max-concurrent']) }
 						: {}),
 					json,
 				},
@@ -1101,6 +1112,15 @@ async function dispatch(
 						? [parsed.values.credential]
 						: undefined,
 			)
+			const executeRouting = (
+				await import('./remote-execute.js')
+			).executeRoutingFromFlags(parsed.values)
+			if (executeRouting && local) {
+				writeErr(
+					'--context, --fallback, --requires, and --chain route cloud execute; drop --local.\n',
+				)
+				return 1
+			}
 			const args = buildExecuteToolArgs({
 				// Already minted into `code` for local runs.
 				invoke:
@@ -1276,6 +1296,7 @@ async function dispatch(
 								params: args.params,
 								conversationId: args.conversationId as string | undefined,
 								...(credentials !== undefined ? { credentials } : {}),
+								...(executeRouting ? { routing: executeRouting } : {}),
 								token: requireApiToken(
 									tokenValues,
 									process.env,
@@ -1299,6 +1320,7 @@ async function dispatch(
 									params: args.params,
 									conversationId: args.conversationId as string | undefined,
 									...(credentials !== undefined ? { credentials } : {}),
+									...(executeRouting ? { routing: executeRouting } : {}),
 									token: session.accessToken,
 									apiUrl,
 									...(org ? { org } : {}),
@@ -1376,7 +1398,7 @@ async function dispatch(
 					...(offline
 						? {}
 						: {
-								runPublishChecks: async (files) => {
+								runPublishChecks: async (files, binaryFiles) => {
 									const [
 										{ callOpenApiOperation, formatOpenApiHttpDebugLine },
 										{ parsePackageCheckResult, PublishChecksAuthError },
@@ -1401,7 +1423,12 @@ async function dispatch(
 									return parsePackageCheckResult(
 										await callOpenApiOperation({
 											operationId: 'packageCheck',
-											params: { files },
+											params: {
+												files,
+												...(Object.keys(binaryFiles).length > 0
+													? { binary_files: binaryFiles }
+													: {}),
+											},
 											token,
 											apiUrl: prodApiUrl,
 											...(org ? { org } : {}),

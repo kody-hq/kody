@@ -94,8 +94,8 @@ export function classifySitePerf(input: {
 
 	if (new URL(input.url).pathname === '/' && /syntax-highlight/.test(html)) {
 		findings.push({
-			id: 'shiki-on-home',
-			message: 'Homepage HTML preloads a syntax-highlight chunk (Shiki on /).',
+			id: 'syntax-highlight-on-home',
+			message: 'Homepage HTML preloads a syntax-highlight chunk on /.',
 		})
 	}
 

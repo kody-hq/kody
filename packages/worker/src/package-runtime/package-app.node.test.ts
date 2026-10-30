@@ -56,7 +56,7 @@ function createKodyProxyForTest(
 		'runtimeBridge',
 		'mcpServerNamesOrLoader',
 		'identity',
-		`function __kodyCurrentVisitTicket() { return null; }\n${identityOnlyAnswerSource}\n${kodyProxySource}; return createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity);`,
+		`function __kodyCurrentVisitTicket() { return null; }\nfunction __kodyTicketNamesVisitor() { return false; }\n${identityOnlyAnswerSource}\n${kodyProxySource}; return createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity);`,
 	)(runtimeBridge, mcpServerNames, identity) as Record<string, unknown>
 }
 

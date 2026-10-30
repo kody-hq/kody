@@ -132,6 +132,7 @@ export default {
 		const out = {
 			header: request.headers.get('X-Kody-Visitor'),
 			cookie: request.headers.get('Cookie'),
+			ticketKind: (request.headers.get('X-Kody-Visit-Ticket') ?? '').slice(0, 5),
 		}
 		out.scopes = {
 			profile: hasScope(request, 'profile'),
@@ -285,7 +286,7 @@ async function setup(input: { capabilities?: Array<string> } = {}) {
 		return JSON.parse(text) as Record<string, unknown>
 	}
 
-	return { ownerId, username, serve }
+	return { ownerId, username, packageId: savedPackage.id, serve }
 }
 
 test(
@@ -375,6 +376,33 @@ test(
 		expect(String(body.secretsError)).toMatch(notDeclared)
 		expect(body.packages).toBeUndefined()
 		expect(String(body.packagesError)).toMatch(notDeclared)
+		// Both refusals reached the app, so both count as hard rejections.
+		await expect
+			.poll(
+				async () =>
+					(
+						await env.APP_DB.prepare(
+							`SELECT call_name, difference_kind, visitor_hash
+							 FROM package_app_authority_rejections
+							 WHERE package_id = ? ORDER BY call_name`,
+						)
+							.bind(t.packageId)
+							.all()
+					).results,
+				{ timeout: 15_000 },
+			)
+			.toEqual([
+				{
+					call_name: 'packageList',
+					difference_kind: 'capability_not_declared',
+					visitor_hash: 'anonymous',
+				},
+				{
+					call_name: 'secretList',
+					difference_kind: 'capability_not_declared',
+					visitor_hash: 'anonymous',
+				},
+			])
 	},
 )
 
@@ -393,6 +421,9 @@ test(
 			{ [packageAppVisitorHeaderName]: forged },
 		]) {
 			const body = await t.serve({ visitor: null, inboundHeaders })
+			// An anonymous ticket scopes credential clients to this request
+			// and names nobody.
+			expect(body.ticketKind).toBe('kva1.')
 			expect(body.header).toBeNull()
 			expect(body.me).toBeUndefined()
 			expect(String(body.meError)).toMatch(/Authenticated MCP user is required/)

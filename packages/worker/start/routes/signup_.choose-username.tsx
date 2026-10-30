@@ -6,8 +6,14 @@ import { SignupChooseUsernamePage } from '../pages/signup-choose-username.tsx'
 export const Route = createFileRoute('/signup_/choose-username')({
 	// Personalized: email, provider identity, and CSRF must not be publicly cached.
 	staticData: { shell: { mode: 'auth' } },
-	loader: ({ abortController }) =>
-		loadSignupChooseUsernamePage({ signal: abortController.signal }),
+	loaderDeps: ({ search }) => search,
+	loader: ({ abortController, location }) =>
+		loadSignupChooseUsernamePage({
+			signal: abortController.signal,
+			data: {
+				redirectTo: new URLSearchParams(location.searchStr).get('redirectTo'),
+			},
+		}),
 	head: () => ({ meta: [{ title: 'Choose your username' }] }),
 	component: ChooseUsernameRoute,
 })
@@ -22,6 +28,7 @@ function ChooseUsernameRoute() {
 			provider={data.provider}
 			providerUsername={data.providerUsername}
 			displayName={data.displayName}
+			redirectTo={data.redirectTo}
 		/>
 	)
 }

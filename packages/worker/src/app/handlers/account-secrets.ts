@@ -1,4 +1,9 @@
 import {
+	resolvePinnedConnectClientSecret,
+	resolvePinnedConnectTarget,
+	savePinnedConnection,
+} from '#worker/integrations/pinned-connect.ts'
+import {
 	type SaveSecretInput,
 	type SaveOAuthAppInput,
 	type ConnectOAuthInput,
@@ -93,7 +98,10 @@ import {
 	assertScopesAllowedForPlatformApp,
 	findOauthAppForProviderSetup,
 	getAvailablePlatformApp,
+	assertOauthAppReplaceConfirmed,
 	getJoinedIntegration,
+	LiveOauthAppReplaceError,
+	type LiveConnectionGuard,
 	upsertIntegration,
 	upsertOauthAppWithoutConnection,
 	upsertPlatformIntegration,
@@ -108,6 +116,10 @@ import {
 } from '#worker/credentials/credential-audit.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	requireWebsiteIntegrationPermission,
+	requireWebsiteOauthAppConnectAccess,
+} from '#app/handlers/website-integration-access.ts'
 import {
 	buildAccountSecretId,
 	parseAccountSecretId,
@@ -199,9 +211,19 @@ export async function saveAccountOAuthApp(input: {
 		}
 	}
 
+	await requireWebsiteIntegrationPermission({
+		env: input.env,
+		user: input.user,
+		permission: 'integration:write',
+		action: 'save OAuth apps',
+	})
 	try {
 		const app = await upsertOauthAppWithoutConnection({
 			env: input.env,
+			liveConnectionGuard: {
+				confirmed: input.fields.replaceLiveConnection === true,
+				newConnection: input.fields.newConnection === true,
+			},
 			userId: ownerIdFromCaller({
 				request: input.user.request,
 				user: input.user.mcpUser,
@@ -273,6 +295,9 @@ export async function saveAccountOAuthApp(input: {
 					error instanceof Error
 						? error.message
 						: 'Unable to save OAuth app configuration.',
+				...(error instanceof LiveOauthAppReplaceError
+					? { code: error.code }
+					: {}),
 			},
 			400,
 		)
@@ -286,6 +311,44 @@ export async function connectAccountOAuth(input: {
 	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 	fields: ConnectOAuthInput
 }) {
+	const pinnedAppSlug = input.fields.pinnedAppSlug?.trim() ?? null
+	if (pinnedAppSlug) {
+		const target = await resolvePinnedConnectTarget({
+			env: input.env,
+			request: input.user.request,
+			mcpUser: input.user.mcpUser,
+			appSlug: pinnedAppSlug,
+		})
+		if (!target.ok) {
+			return operationResult({ ok: false, error: target.error }, target.status)
+		}
+		const tokenPayload = input.fields.tokenPayload
+		if (!tokenPayload || typeof tokenPayload !== 'object') {
+			return operationResult(
+				{ ok: false, error: 'Token payload is required.' },
+				400,
+			)
+		}
+		const saved = await savePinnedConnection({
+			env: input.env,
+			request: input.user.request,
+			target,
+			scopes: input.fields.scopes ?? [],
+			allowedHosts: input.fields.allowedHosts ?? [],
+			tokenRecord: tokenPayload as Record<string, unknown>,
+		})
+		if (!saved.ok) {
+			return operationResult({ ok: false, error: saved.error }, saved.status)
+		}
+		return operationResult({
+			ok: true,
+			accessTokenSaved: true,
+			refreshTokenSaved: saved.refreshTokenSaved,
+			allowedHosts: saved.allowedHosts,
+			integrationName: saved.integrationName,
+			nextSteps: null,
+		})
+	}
 	const provider = input.fields.provider?.trim() || null
 	const platformAppSlug = input.fields.platformAppSlug?.trim() ?? null
 	const platformApp = platformAppSlug
@@ -365,6 +428,29 @@ export async function connectAccountOAuth(input: {
 			400,
 		)
 	}
+	if (!platformApp) {
+		await requireWebsiteOauthAppConnectAccess({
+			env: input.env,
+			user: input.user,
+			clientSecret: input.fields.clientSecret,
+			config: {
+				name: provider,
+				tokenUrl,
+				apiBaseUrl,
+				flow: flow === 'confidential' || flow === 'device' ? flow : 'pkce',
+				usePkce,
+				clientId,
+				tokenExchangeStyle: resolveTokenExchangeStyle({
+					tokenUrl,
+					tokenExchangeStyle: input.fields.tokenExchangeStyle?.trim() ?? null,
+				}),
+				deviceAuthorizationUrl,
+				authorization: authorizeUrl
+					? { authorizeUrl, scopes, scopeSeparator, extraAuthorizeParams }
+					: null,
+			},
+		})
+	}
 	const tokenRecord = tokenPayload as Record<string, unknown>
 	const accessToken = readTokenField(tokenRecord, 'access_token')
 	const refreshToken = readTokenField(tokenRecord, 'refresh_token')
@@ -408,6 +494,9 @@ export async function connectAccountOAuth(input: {
 			).name
 		: await saveIntegrationConfig({
 				env: input.env,
+				liveConnectionGuard: {
+					confirmed: input.fields.replaceLiveConnection === true,
+				},
 				userId: ownerIdFromCaller({
 					request: input.user.request,
 					user: input.user.mcpUser,
@@ -546,6 +635,49 @@ async function emitConnectOauthAuthSucceeded(input: {
 	}
 }
 
+/**
+ * Device connects persist after the poll, so refuse to start one that would
+ * swap a live connection's app before the user confirmed it.
+ */
+async function refuseUnconfirmedDeviceReplace(input: {
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	fields: Parameters<typeof startAccountDeviceConnect>[0]['fields']
+}) {
+	const { fields } = input
+	const tokenUrl = fields.tokenUrl?.trim()
+	const clientId = fields.clientId?.trim()
+	if (fields.platformAppSlug?.trim() || !tokenUrl || !clientId) return null
+	try {
+		await assertOauthAppReplaceConfirmed({
+			env: input.env,
+			userId: ownerIdFromCaller({
+				request: input.user.request,
+				user: input.user.mcpUser,
+			}),
+			guard: { confirmed: fields.replaceLiveConnection === true },
+			config: {
+				name: fields.provider,
+				tokenUrl,
+				apiBaseUrl: fields.apiBaseUrl?.trim() || null,
+				flow: 'device',
+				clientId,
+				deviceAuthorizationUrl: fields.deviceAuthorizationUrl?.trim() || null,
+				authorization: fields.authorizeUrl?.trim()
+					? { authorizeUrl: fields.authorizeUrl.trim() }
+					: null,
+			},
+		})
+		return null
+	} catch (error) {
+		if (!(error instanceof LiveOauthAppReplaceError)) return null
+		return operationResult(
+			{ ok: false, error: error.message, code: error.code },
+			400,
+		)
+	}
+}
+
 export async function startAccountDeviceConnect(input: {
 	env: Env
 	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
@@ -564,12 +696,54 @@ export async function startAccountDeviceConnect(input: {
 		extraAuthorizeParams?: Record<string, string>
 		allowedHosts?: Array<string>
 		tokenExchangeStyle?: string | null
+		replaceLiveConnection?: boolean
 	}
 }) {
+	const deviceTokenUrl = input.fields.tokenUrl?.trim()
+	const deviceClientId = input.fields.clientId?.trim()
+	if (
+		!input.fields.platformAppSlug?.trim() &&
+		deviceTokenUrl &&
+		deviceClientId
+	) {
+		const authorizeUrl = input.fields.authorizeUrl?.trim() || null
+		await requireWebsiteOauthAppConnectAccess({
+			env: input.env,
+			user: input.user,
+			clientSecret: input.fields.clientSecret,
+			config: {
+				name: input.fields.provider,
+				tokenUrl: deviceTokenUrl,
+				apiBaseUrl: input.fields.apiBaseUrl?.trim() || null,
+				flow: 'device',
+				usePkce: input.fields.usePkce ?? null,
+				clientId: deviceClientId,
+				tokenExchangeStyle: resolveTokenExchangeStyle({
+					tokenUrl: deviceTokenUrl,
+					tokenExchangeStyle: input.fields.tokenExchangeStyle ?? null,
+				}),
+				deviceAuthorizationUrl:
+					input.fields.deviceAuthorizationUrl?.trim() || null,
+				authorization: authorizeUrl
+					? {
+							authorizeUrl,
+							scopes: input.fields.scopes ?? [],
+							scopeSeparator: input.fields.scopeSeparator ?? null,
+							extraAuthorizeParams: input.fields.extraAuthorizeParams ?? {},
+						}
+					: null,
+			},
+		})
+	}
+	const guardFailure = await refuseUnconfirmedDeviceReplace(input)
+	if (guardFailure) return guardFailure
 	const started = await startIntegrationDeviceConnect({
 		env: input.env,
 		request: input.user.request,
 		mcpUser: input.user.mcpUser,
+		liveConnectionGuard: {
+			confirmed: input.fields.replaceLiveConnection === true,
+		},
 		provider: input.fields.provider ?? '',
 		platformAppSlug: input.fields.platformAppSlug,
 		tokenUrl: input.fields.tokenUrl,
@@ -623,6 +797,32 @@ export async function pollAccountDeviceConnect(input: {
 		request: input.user.request,
 		mcpUser: input.user.mcpUser,
 		sessionId,
+		authorizePersist: (session) =>
+			requireWebsiteOauthAppConnectAccess({
+				env: input.env,
+				user: input.user,
+				config: {
+					name: session.provider,
+					tokenUrl: session.tokenUrl,
+					apiBaseUrl: session.apiBaseUrl,
+					flow: 'device',
+					usePkce: session.usePkce,
+					clientId: session.clientId,
+					tokenExchangeStyle: resolveTokenExchangeStyle({
+						tokenUrl: session.tokenUrl,
+						tokenExchangeStyle: session.tokenExchangeStyle,
+					}),
+					deviceAuthorizationUrl: session.deviceAuthorizationUrl,
+					authorization: session.authorizeUrl
+						? {
+								authorizeUrl: session.authorizeUrl,
+								scopes: session.scopes,
+								scopeSeparator: session.scopeSeparator,
+								extraAuthorizeParams: session.extraAuthorizeParams,
+							}
+						: null,
+				},
+			}),
 	})
 	if (!polled.ok) {
 		return operationResult(
@@ -665,6 +865,15 @@ export async function exchangeAccountOAuthToken(input: {
 			{ ok: false, error: 'Token params are required.' },
 			400,
 		)
+	}
+	const pinnedAppSlug = input.fields.pinnedAppSlug?.trim() ?? null
+	if (pinnedAppSlug) {
+		return handlePinnedOAuthExchange({
+			env: input.env,
+			user: input.user,
+			paramsRaw,
+			appSlug: pinnedAppSlug,
+		})
 	}
 	const platformAppSlug = input.fields.platformAppSlug?.trim() ?? null
 	if (platformAppSlug) {
@@ -730,6 +939,58 @@ export async function exchangeAccountOAuthToken(input: {
 }
 
 /**
+ * A member connecting their own account through the scoped org's app: the
+ * token URL, client id, and client secret come from the org's app row, never
+ * from the request body (ADR 0068 amendment 2026-10-29).
+ */
+async function handlePinnedOAuthExchange(input: {
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	paramsRaw: string
+	appSlug: string
+}) {
+	const target = await resolvePinnedConnectTarget({
+		env: input.env,
+		request: input.user.request,
+		mcpUser: input.user.mcpUser,
+		appSlug: input.appSlug,
+	})
+	if (!target.ok) {
+		return operationResult({ ok: false, error: target.error }, target.status)
+	}
+	const clientSecret = await resolvePinnedConnectClientSecret({
+		env: input.env,
+		target,
+	})
+	if (target.app.flow === 'confidential' && !clientSecret) {
+		return operationResult(
+			{ ok: false, error: "The org's OAuth app has no client secret saved." },
+			400,
+		)
+	}
+	const params = new URLSearchParams(input.paramsRaw)
+	// Host-side client credentials only ever back the browser code exchange.
+	if (params.get('grant_type') !== 'authorization_code') {
+		return operationResult(
+			{ ok: false, error: 'Only the authorization_code grant is allowed.' },
+			400,
+		)
+	}
+	params.set('client_id', target.app.clientId)
+	params.delete('client_secret')
+	return exchangeOAuthToken({
+		tokenUrl: target.app.tokenUrl,
+		params,
+		flow: target.app.flow === 'confidential' ? 'confidential' : 'pkce',
+		clientSecret,
+		style: resolveTokenExchangeStyle({
+			tokenUrl: target.app.tokenUrl,
+			tokenExchangeStyle: target.app.tokenExchangeStyle,
+		}),
+	})
+}
+
+/**
  * Every exchange input comes from the operator-provisioned app row, never
  * from the request body, so a caller cannot point the decrypted shared client
  * secret at an arbitrary token URL. Only discoverable (enabled + published)
@@ -774,6 +1035,13 @@ async function handlePlatformOAuthExchange(input: {
 		)
 	}
 	const params = new URLSearchParams(input.paramsRaw)
+	// Host-side client credentials only ever back the browser code exchange.
+	if (params.get('grant_type') !== 'authorization_code') {
+		return operationResult(
+			{ ok: false, error: 'Only the authorization_code grant is allowed.' },
+			400,
+		)
+	}
 	params.set('client_id', platformApp.clientId)
 	params.delete('client_secret')
 	return exchangeOAuthToken({
@@ -869,6 +1137,7 @@ async function exchangeOAuthToken(input: {
 
 async function saveIntegrationConfig(input: {
 	env: Env
+	liveConnectionGuard: LiveConnectionGuard
 	userId: OwnerId
 	provider: string
 	tokenUrl: string
@@ -914,6 +1183,7 @@ async function saveIntegrationConfig(input: {
 		env: input.env,
 		userId: input.userId,
 		config: normalizeIntegrationConfig(parsed.data),
+		liveConnectionGuard: input.liveConnectionGuard,
 		waitUntil,
 		audit: input.audit,
 	})

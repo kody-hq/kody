@@ -24,6 +24,7 @@ import { type CommunityListingSort } from '#universal/community-search.ts'
 import { type AccountCredentialsResponse } from '#universal/credentials-list.ts'
 import { type CredentialFillPlacementView } from '#universal/credential-fill-placement.ts'
 import { type ApprovalBundleLoaderData } from '#universal/approval-bundles.ts'
+import { type CredentialPlacementApprovalView } from '#universal/credential-placement-approval.ts'
 import { type PackageCredentialApprovalLoaderData } from '#universal/package-credential-approval-page.ts'
 import { type PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
 import { type PackageAppConnectedPeopleLoaderData } from '#universal/package-app-connected-people.ts'
@@ -321,6 +322,8 @@ type CommunityPackageNoAccessLoaderData = {
 
 export type ProfileLoaderData = {
 	ok: true
+	/** `org` for a public team org page; absent for a person's profile. */
+	ownerKind?: 'org'
 	profile: PublicCommunityProfile
 	packages: Array<PublicProfilePackageItem>
 	/** Null when the profile has no activity source (e.g. team org repositories). */
@@ -348,6 +351,7 @@ export type ProfileShellLoaderData = {
 	isSelf: boolean
 	loggedIn: boolean
 	visibility: ProfileVisibility
+	ownerKind?: 'org'
 }
 
 export function toProfileShellLoaderData(
@@ -363,6 +367,7 @@ export function toProfileShellLoaderData(
 		isSelf: data.isSelf,
 		loggedIn: data.loggedIn,
 		visibility: data.profile.visibility,
+		...(data.ownerKind ? { ownerKind: data.ownerKind } : {}),
 	}
 }
 
@@ -439,6 +444,8 @@ export type AdminUserListItem = {
 	last_active_at: string | null
 	created_at: string
 	updated_at: string
+	deleted_at: string | null
+	deleting_at: string | null
 	roles: Array<RoleName>
 }
 
@@ -450,11 +457,25 @@ export type AdminUsersLoaderData = {
 	 * (or a selected user outside the current page) still has detail data.
 	 */
 	selectedUser: AdminUserListItem | null
+	selectedUserOrgs: Array<AdminUserOrgMembership>
 	page: number
 	pageSize: number
 	total: number
+	statusFilter: 'live' | 'deleted'
 	availableRoles: Array<RoleName>
 	availablePlans: Array<AdminPlanName>
+}
+
+export type AdminUserOrgMembership = {
+	orgId: string
+	slug: string
+	displayName: string | null
+	kind: 'personal' | 'team'
+	role: 'owner' | 'member' | 'billing'
+	effectivePlan: AdminPlanName
+	seats: number
+	membershipDeletedAt: string | null
+	orgDeletedAt: string | null
 }
 
 export type AdminCreditLedgerItem = AccountCreditsLedgerItem & {
@@ -1337,8 +1358,12 @@ export type OrgSettingsLoaderData = {
 	ok: true
 	org: OrgManagementOrg
 	canManage: boolean
+	/** `org:write` on this org, personal orgs included (custom domains). */
+	canManageDomains: boolean
 	canDelete: boolean
-	/** Null for personal orgs and for viewers who cannot manage the org. */
+	/** Who sees `/@slug`; null for personal orgs (they follow the account profile). */
+	profileVisibility: 'public' | 'private' | null
+	/** Null for viewers who cannot manage the org's domains. */
 	customDomains: OrgSettingsCustomDomainsView | null
 }
 
@@ -1507,7 +1532,8 @@ export type OrgGrantView = {
 	resourceType: string
 	resourceId: string
 	resourceLabel: string
-	subjectType: 'user' | 'team'
+	/** `org` is everyone in this organization, resolved live. */
+	subjectType: 'user' | 'team' | 'org'
 	subjectId: string
 	subjectLabel: string
 	preset: string | null
@@ -1904,6 +1930,8 @@ export type PendingVerificationLoaderData = {
 }
 
 export type AccountIntegrationListItem = {
+	/** Org OAuth app a member connects their own account through (ADR 0068). */
+	pinnedAppSlug?: string | null
 	name: string
 	appSlug: string
 	provider: string
@@ -2026,6 +2054,24 @@ export type AccountIntegrationsLoaderData = {
 export type ConnectOauthExistingConnection = {
 	lane: 'user' | 'platform'
 	appSlug: string
+	/** Display name of the app behind the connection (label, else slug). */
+	appName: string
+	/** True once the connection holds tokens (`connected_at` is set). */
+	connected: boolean
+	/**
+	 * The user-lane app's identity fields (non-secret). A save that changes
+	 * any of them rewrites the app this connection depends on. Null for
+	 * platform connections.
+	 */
+	identity: ConnectOauthAppIdentity | null
+}
+
+type ConnectOauthAppIdentity = {
+	clientId: string
+	tokenUrl: string
+	authorizeUrl: string | null
+	deviceAuthorizationUrl: string | null
+	flow: 'pkce' | 'confidential' | 'device'
 }
 
 /**
@@ -2038,6 +2084,20 @@ export type ConnectOauthLoaderData = {
 	ok: true
 	provider: string | null
 	integration: AccountIntegrationListItem | null
+	/**
+	 * `mode=personal`: the member connects their own account through this
+	 * org app (ADR 0068). Never carries a client secret.
+	 */
+	pinnedConnect?: {
+		orgSlug: string
+		appSlug: string
+		appLabel: string | null
+		connectionName: string
+	}
+	/** Why `mode=personal` cannot connect here (not a member, no app, ...). */
+	pinnedConnectError?: string
+	/** The connection is pinned to an org app: reconnect through it here. */
+	pinnedReconnectHref?: string
 	/** Built-in connections use platform discovery links instead. */
 	builtInAvailable?: boolean
 	/** See {@link ConnectOauthExistingConnection}. */
@@ -2533,6 +2593,9 @@ export type AccountSecretsLoaderData = {
 		currentAllowedPackages: Array<string>
 	} | null
 	approvalError: string | null
+	/** `/connect/secrets?placement=`: the fill placement the owner is asked to allow. */
+	placementApproval?: CredentialPlacementApprovalView | null
+	placementApprovalError?: string | null
 	/**
 	 * Set when the secret value/access writes committed but linking the Key to
 	 * a credential provider failed. Callers must not treat this as a failed
@@ -3445,4 +3508,23 @@ export type AccountConnectedAppsLoaderData = {
 	agents: Array<ConnectedMcpAgent>
 	/** True when the agent list could not load; apps still show. */
 	agentsUnavailable: boolean
+}
+
+/** A member's own connection through an org OAuth app (ADR 0068). */
+export type OrgAppMemberConnection = {
+	credentialId: string
+	memberUsername: string | null
+	memberDisplayName: string | null
+	accountLabel: string | null
+	connectedAt: string
+	yours: boolean
+}
+
+export type OrgAppMemberConnectionsData = {
+	teamOrg: boolean
+	canConnectOwn: boolean
+	canManage: boolean
+	own: OrgAppMemberConnection | null
+	/** Every member's connection; empty unless `canManage`. */
+	connections: Array<OrgAppMemberConnection>
 }

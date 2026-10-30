@@ -19,7 +19,10 @@ import {
 } from '#worker/authorization/authorize.ts'
 import { getIntegrationAllowedHosts } from '#mcp/execute-modules/integration-host-allowlist.ts'
 import { isReservedSecretName } from '#mcp/secrets/name-guards.ts'
-import { oauthCredentialListStatus } from '#worker/integrations/connected.ts'
+import {
+	integrationUsableInOrgSql,
+	oauthCredentialListStatus,
+} from '#worker/integrations/connected.ts'
 import {
 	type CredentialInjectView,
 	type CredentialKind,
@@ -214,8 +217,9 @@ async function loadIntegrationRows(input: {
 	db: D1Database
 	ownerId: string
 	ids: ReadonlyArray<string> | null
+	runOrgId?: string
 }): Promise<Array<ListedRow>> {
-	const rows = await queryByIds('i.id', input.ids, 1, async (filter) => {
+	const rows = await queryByIds('i.id', input.ids, 2, async (filter) => {
 		const result = await input.db
 			.prepare(
 				`SELECT i.id, i.name, COALESCE(i.provider, p.provider, a.provider) AS provider,
@@ -227,12 +231,12 @@ async function loadIntegrationRows(input: {
 				i.auth_failed_at, i.auth_failed_reason, i.created_at, i.updated_at
 			FROM user_integrations i
 			LEFT JOIN user_oauth_apps a
-				ON a.user_id = i.user_id AND a.slug = i.app_slug AND a.deleted_at IS NULL
+				ON a.user_id = COALESCE(i.app_owner_id, i.user_id) AND a.slug = i.app_slug AND a.deleted_at IS NULL
 			LEFT JOIN platform_oauth_apps p ON p.slug = i.platform_app_slug
-			WHERE i.user_id = ? AND i.deleted_at IS NULL
-				AND i.id IS NOT NULL${filter.sql}`,
+			WHERE i.user_id = ? AND ${integrationUsableInOrgSql('?', 'i')}
+				AND i.deleted_at IS NULL AND i.id IS NOT NULL${filter.sql}`,
 			)
-			.bind(input.ownerId, ...filter.binds)
+			.bind(input.ownerId, input.runOrgId ?? input.ownerId, ...filter.binds)
 			.all<IntegrationRow>()
 		return result.results ?? []
 	})
@@ -341,6 +345,8 @@ async function loadOwnerRows(input: {
 	ownerId: string
 	ids: ReadonlyArray<string> | null
 	now: string
+	/** Org of the list, when it is not `ownerId` (personal rows). */
+	runOrgId?: string
 }) {
 	if (input.ids?.length === 0) return []
 	const groups = await Promise.all([
@@ -410,6 +416,7 @@ export async function listCredentialsForViewer(input: {
 			ownerId: await loadPersonalOrgIdForPerson(db, actor),
 			ids: personal.map((credential) => credential.id),
 			now,
+			runOrgId: orgId,
 		})
 		items.push(
 			...personalRows

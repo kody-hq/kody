@@ -12,6 +12,7 @@ const mockModule = vi.hoisted(() => ({
 	getEntitySourceByIdForUser: vi.fn(),
 	resolveArtifactSourceHead: vi.fn(),
 	publishFromExternalRef: vi.fn(),
+	takeLastCheckStep: vi.fn(async (): Promise<unknown> => null),
 	listPublishedPackageArtifactTargets: vi.fn(),
 	rebuildPublishedPackageArtifact: vi.fn(),
 	isPublishedPackageArtifactBuiltForCommit: vi.fn(),
@@ -51,6 +52,7 @@ vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
 			mockModule.listPublishedPackageArtifactTargets(...args),
 		rebuildPublishedPackageArtifact: (...args: Array<unknown>) =>
 			mockModule.rebuildPublishedPackageArtifact(...args),
+		takeLastCheckStep: () => mockModule.takeLastCheckStep(),
 	}),
 }))
 
@@ -822,6 +824,22 @@ test('publishExternalPush recovers from transient Durable Object resets', async 
 		expect(mockModule.publishFromExternalRef).toHaveBeenCalledTimes(1)
 		expect(consoleWarn).not.toHaveBeenCalled()
 	}
+
+	// The reset isolate recorded which step it was on; the error names it.
+	setupDefaultMocks()
+	mockModule.publishFromExternalRef.mockRejectedValue(
+		new Error(
+			"Durable Object's isolate exceeded its memory limit and was reset",
+		),
+	)
+	mockModule.takeLastCheckStep.mockResolvedValueOnce('credentials')
+	await expect(publish()).rejects.toSatisfy((error: unknown) => {
+		expect(error).toBeInstanceOf(McpCallerError)
+		const message = (error as Error).message
+		expect(message).toContain('during the credential stamp scan')
+		expect(message).toContain('kody dev check')
+		return true
+	})
 
 	// Deploy-time DO resets use "Durable Object reset because…" (no "was").
 	// The old substring matcher missed that form and skipped retries entirely.

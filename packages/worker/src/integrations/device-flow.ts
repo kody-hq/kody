@@ -95,6 +95,14 @@ export type DevicePendingSession = {
 	extraAuthorizeParams: Record<string, string>
 	/** BYO confidential secret captured at start; never returned to callers. */
 	clientSecret: string | null
+	/** Website starts: re-check the live-app replace guard at completion. */
+	liveConnectionGuard?: { confirmed: boolean }
+	/**
+	 * False when `clientSecret` was resolved from the saved app rather than
+	 * typed at start, so a poll must not write it back over a rotated secret.
+	 * Missing on sessions stored before this field existed.
+	 */
+	clientSecretFromInput?: boolean
 	/**
 	 * Set once the provider returns tokens. Later polls return this payload
 	 * without re-using `device_code` at the provider. Cleared when
@@ -370,6 +378,7 @@ export async function startDeviceAuthorization(input: {
 	authorizeUrl: string | null
 	clientId: string
 	clientSecret: string | null
+	clientSecretFromInput?: boolean
 	scopes: Array<string>
 	scopeSeparator: string | null
 	extraAuthorizeParams: Record<string, string>
@@ -378,6 +387,7 @@ export async function startDeviceAuthorization(input: {
 	platformAppSlug: string | null
 	usePkce: boolean | null
 	tokenExchangeStyle: TokenExchangeStyle | null
+	liveConnectionGuard?: { confirmed: boolean }
 	fetchImpl?: typeof fetch
 }): Promise<DeviceStartSuccess | DeviceStartFailure> {
 	const urlError = assertSafeDeviceAuthorizationUrl(
@@ -560,6 +570,10 @@ export async function startDeviceAuthorization(input: {
 		scopeSeparator: input.scopeSeparator,
 		extraAuthorizeParams: input.extraAuthorizeParams,
 		clientSecret: input.clientSecret,
+		clientSecretFromInput: input.clientSecretFromInput,
+		...(input.liveConnectionGuard
+			? { liveConnectionGuard: input.liveConnectionGuard }
+			: {}),
 	}
 	await storeDevicePendingSession({
 		env: input.env,

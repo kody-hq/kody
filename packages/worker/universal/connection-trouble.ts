@@ -73,12 +73,16 @@ function integrationTroubleTitle(
 export function buildIntegrationReconnectHref(input: {
 	name: string
 	accountLabel?: string | null
+	/** Team org that owns the connection; omit for the personal org. */
+	orgSlug?: string | null
 }) {
 	const params = new URLSearchParams({ provider: input.name })
 	const label = input.accountLabel?.trim() ?? ''
 	if (label.includes('@') && label.includes('.')) {
 		params.set('loginHint', label)
 	}
+	const orgSlug = input.orgSlug?.trim()
+	if (orgSlug) params.set('org', orgSlug)
 	return `/connect/oauth?${params.toString()}`
 }
 
@@ -98,11 +102,14 @@ export function integrationAuthFailureCopy(input: {
 	providerError?: string | null
 	providerErrorDescription?: string | null
 	httpStatus?: number | null
+	/** Team org that owns the connection; omit for the personal org. */
+	orgSlug?: string | null
 }): ConnectionTroubleCopy {
 	const title = integrationTroubleTitle(input.name, input.accountLabel)
 	const reconnectHref = buildIntegrationReconnectHref({
 		name: input.name,
 		accountLabel: input.accountLabel,
+		orgSlug: input.orgSlug,
 	})
 	const accountHref = buildIntegrationAccountHref(input.name)
 	const providerDetail = formatProviderDetail(
@@ -154,6 +161,8 @@ export function toIntegrationAuthFailureView(input: {
 	providerError?: string | null
 	providerErrorDescription?: string | null
 	httpStatus?: number | null
+	/** Team org that owns the connection; omit for the personal org. */
+	orgSlug?: string | null
 }): IntegrationAuthFailureView {
 	const copy = integrationAuthFailureCopy(input)
 	return {
@@ -170,6 +179,7 @@ export function toIntegrationAuthFailureView(input: {
 		reconnectHref: buildIntegrationReconnectHref({
 			name: input.name,
 			accountLabel: input.accountLabel,
+			orgSlug: input.orgSlug,
 		}),
 		accountHref: buildIntegrationAccountHref(input.name),
 	}

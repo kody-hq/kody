@@ -117,8 +117,25 @@ function toneColor(tone: MappingStatusTone) {
 		}
 	}
 }
+function effectiveSourceLabel(mapping: EffectiveCredentialMapping) {
+	return mappingSourceLabel(
+		mapping.status === 'unbound' ? 'none' : mapping.source,
+	)
+}
+/** Publisher mappings are org defaults, so only package managers can link them. */
+function canLinkNeed(
+	view: PackageCredentialsView,
+	need: Pick<PackageCredentialNeedView, 'supplier'> | undefined,
+) {
+	return view.package.canManage || need?.supplier !== 'publisher'
+}
+function hasPossibleMatch(mapping: EffectiveCredentialMapping) {
+	return mapping.status === 'unbound' && mapping.candidates.length > 0
+}
 export function renderStatus(mapping: EffectiveCredentialMapping) {
-	const { label, tone } = mappingStatusLabel(mapping.status)
+	const { label, tone } = mappingStatusLabel(mapping.status, {
+		hasPossibleMatch: hasPossibleMatch(mapping),
+	})
 	return renderStatusBadge(label, tone, { mappingStatus: mapping.status })
 }
 function renderExecutorStatus() {
@@ -167,6 +184,11 @@ function renderRefs(orgSlug: string, refs: ReadonlyArray<CredentialRef>) {
 export function renderEffective(
 	orgSlug: string,
 	mapping: EffectiveCredentialMapping,
+	/**
+	 * Where to link a possible match; omit when the picker is on this page,
+	 * null when this viewer cannot link it.
+	 */
+	pickHref?: string | null,
 ) {
 	switch (mapping.status) {
 		case 'ready':
@@ -186,6 +208,22 @@ export function renderEffective(
 		case 'none':
 			return <span css={mutedCss}>Nothing, on purpose</span>
 		case 'unbound':
+			if (mapping.candidates.length > 0) {
+				return (
+					<span data-testid="mapping-possible-match">
+						Not linked yet. Possible match:{' '}
+						{renderRefs(orgSlug, mapping.candidates)}
+						{pickHref ? (
+							<>
+								{' '}
+								<SiteLink href={pickHref}>Link it in Mappings</SiteLink>
+							</>
+						) : pickHref === null ? (
+							<span css={mutedCss}> A package manager can link it.</span>
+						) : null}
+					</span>
+				)
+			}
 			return <span css={mutedCss}>No matching credential</span>
 		case 'ambiguous':
 			return <span>One of: {renderRefs(orgSlug, mapping.candidates)}</span>
@@ -245,7 +283,9 @@ export function renderIncomplete(
 		currentTab === 'credentials'
 			? view.incomplete
 			: view.incomplete.filter(
-					(item) => incompleteMappingTab(item) === currentTab,
+					(item) =>
+						incompleteMappingTab(item, needs.get(item.needKey)?.supplier) ===
+						currentTab,
 				)
 	const actionableItems = items.filter(
 		(item) => needs.get(item.needKey)?.supplier !== 'executor',
@@ -268,12 +308,19 @@ export function renderIncomplete(
 			</h2>
 			<ul css={listCss}>
 				{actionableItems.map((item) => {
-					const tab = incompleteMappingTab(item)
-					const createUrl = needs.get(item.needKey)?.createUrl
+					const need = needs.get(item.needKey)
+					const tab = incompleteMappingTab(item, need?.supplier)
+					const createUrl = need?.createUrl
+					const canLink = canLinkNeed(view, need)
 					const key = `${item.needKey}:${item.where.type === 'trigger' ? `${item.where.trigger.kind}:${item.where.trigger.name}` : 'default'}`
 					return (
 						<li key={key} css={{ display: 'grid', gap: spacing.xs }}>
-							<span>{describeIncompleteMapping(item)}</span>
+							<span>
+								{describeIncompleteMapping(item, {
+									canLink,
+									supplier: need?.supplier,
+								})}
+							</span>
 							<span css={rowCss}>
 								{tab === currentTab ? null : (
 									<SiteLink
@@ -286,7 +333,9 @@ export function renderIncomplete(
 										Open {packageCredentialsTabLabel(tab)}
 									</SiteLink>
 								)}
-								{item.status === 'unbound' && createUrl ? (
+								{item.status === 'unbound' &&
+								createUrl &&
+								(!canLink || (item.possibleMatches?.length ?? 0) === 0) ? (
 									<SiteLink href={createUrl}>Add a credential</SiteLink>
 								) : null}
 							</span>
@@ -349,10 +398,20 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 													Each person who runs it supplies their own
 												</span>
 											) : (
-												renderEffective(orgSlug, need.effective)
+												renderEffective(
+													orgSlug,
+													need.effective,
+													canLinkNeed(view, need)
+														? `${packageCredentialsTabHref({
+																username: context.username,
+																kodyId: context.kodyId,
+																tab: 'mappings',
+															})}#package-mapping-${need.key}`
+														: null,
+												)
 											)}
 										</td>
-										<td>{mappingSourceLabel(need.effective.source)}</td>
+										<td>{effectiveSourceLabel(need.effective)}</td>
 										<td>
 											{need.supplier === 'executor'
 												? renderExecutorStatus()
@@ -504,15 +563,17 @@ export function renderMappingsTab(context: PackageTabContext): ReactNode {
 							<dd css={{ ...rowCss, margin: 0 }}>
 								{renderEffective(orgSlug, need.effective)}
 								<span css={mutedCss}>
-									{mappingSourceLabel(need.effective.source)}
+									{effectiveSourceLabel(need.effective)}
 								</span>
 								{renderStatus(need.effective)}
 							</dd>
 						</div>
 					</dl>
-					<SiteLink href={need.createUrl}>
-						Add a credential for {need.key}
-					</SiteLink>
+					{hasPossibleMatch(need.effective) ? null : (
+						<SiteLink href={need.createUrl}>
+							Add a credential for {need.key}
+						</SiteLink>
+					)}
 				</section>
 			))}
 		</>

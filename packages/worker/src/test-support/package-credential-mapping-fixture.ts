@@ -136,13 +136,18 @@ export async function setupPackageCredentialMappingFixture(input: {
 			.bind(acmeId)
 			.run()
 	}
-	const storeKey = async (name: string, provider: string) => {
+	const storeKey = async (
+		name: string,
+		provider: string | null,
+		options: { expiresAt?: string } = {},
+	) => {
 		await saveSecret({
 			env,
 			userId: acmeId,
 			scope: 'user',
 			name,
 			value: 'v',
+			...(options.expiresAt ? { expiresAt: options.expiresAt } : {}),
 			audit: null,
 		})
 		const row = await db

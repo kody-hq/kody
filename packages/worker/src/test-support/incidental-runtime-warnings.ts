@@ -30,9 +30,11 @@ const incidentalRuntimeWarnings = [
 	// Inbound fixtures often have no Authentication-Results. Classification
 	// then runs nothing and logs; the mailbox write under test still finishes.
 	'inbound-email-sender-unverified',
-	// Package app calls that run the legacy way log a would-break line. The
-	// authority suites assert it; other app suites hit it incidentally.
+	// Package app calls that run the legacy way log a would-break line, and
+	// calls refused both ways log a hard-rejection line. The authority suites
+	// assert them; other app suites hit them incidentally.
 	/^\{"event":"package_app_authority_fallback"/,
+	/^\{"event":"package_app_authority_rejection"/,
 ]
 
 export function silenceIncidentalRuntimeWarnings(

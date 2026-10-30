@@ -79,7 +79,7 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 							const query = new URLSearchParams()
 							for (const [key, value] of values)
 								if (typeof value === 'string') query.append(key, value)
-							void navigate({ to: `/community?${query}` })
+							void navigate({ to: `/community?${query}`, resetScroll: false })
 						}}
 						css={searchPillCss}
 					>

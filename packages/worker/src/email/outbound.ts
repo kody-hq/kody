@@ -45,7 +45,12 @@ import {
 	emailOutboundProviderCloudflare,
 	upsertOutboundProviderIndexRow,
 } from './outbound-provider-index.ts'
-import { resolveUserPlatformSender } from './platform-address.ts'
+import {
+	getAcceptedUserEmailDomains,
+	resolveOwnedSenderAddress,
+	resolveUserPlatformSender,
+	type ResolvedPlatformSender,
+} from './platform-address.ts'
 import { assertUserEmailGraphAuthority } from './user-email-graph-authority.ts'
 import {
 	recordEmailReportingEvent,
@@ -63,6 +68,7 @@ type SendEmailEnv = Pick<
 	| 'USAGE_EVENTS'
 	| 'APP_BASE_URL'
 	| 'USER_EMAIL_DOMAIN'
+	| 'LEGACY_USER_EMAIL_DOMAINS'
 	| 'CLOUDFLARE_ACCOUNT_ID'
 	| 'CLOUDFLARE_API_BASE_URL'
 	| 'CLOUDFLARE_API_TOKEN'
@@ -120,6 +126,17 @@ export type EmailSendInput = {
 	subject: string
 	text?: string | null
 	html?: string | null
+	/**
+	 * Caller-chosen From: the acting person's platform address or a plus
+	 * alias of it (`{username}+{tag}@<platform domain>`). Anything else is
+	 * refused. Omitted: replies use the owned address the original was sent
+	 * to, other sends use the base platform address.
+	 */
+	from?: string | null
+	/**
+	 * Defaults to the From address when From is a plus alias, so replies
+	 * and reply-all stay on the alias.
+	 */
 	replyTo?: string | null
 	inReplyToHeader?: string | null
 	references?: Array<string>
@@ -218,6 +235,51 @@ async function resolveSelfRecipients(input: {
 		)
 	}
 	return unique
+}
+
+function resolveRequestedSender(input: {
+	requested: string
+	sender: ResolvedPlatformSender
+	acceptedDomains: ReadonlyArray<string>
+}) {
+	const owned = resolveOwnedSenderAddress({
+		address: input.requested,
+		sender: input.sender,
+		acceptedDomains: input.acceptedDomains,
+	})
+	if (!owned) {
+		// A caller asking for an address it does not own is a routine
+		// correction, not a platform defect; keep it off Sentry.
+		throw new McpCallerError(
+			`Cannot send from ${input.requested}. Email can only be sent from your platform address ${input.sender.from} or a plus alias of it such as ${input.sender.username}+tag@${input.sender.domain} (tag: letters, digits, ".", "_", "-").`,
+		)
+	}
+	return owned
+}
+
+/**
+ * The owned address the original was delivered to, so a reply to
+ * `{username}+tag@` comes back from `{username}+tag@` and the thread stays
+ * on the alias. The envelope recipient is stored first in `toAddresses`.
+ */
+function deriveReplySender(input: {
+	original: EmailMessageRecord
+	sender: ResolvedPlatformSender
+	acceptedDomains: ReadonlyArray<string>
+}) {
+	for (const candidate of [
+		...input.original.toAddresses,
+		...input.original.ccAddresses,
+	]) {
+		if (typeof candidate !== 'string') continue
+		const owned = resolveOwnedSenderAddress({
+			address: candidate,
+			sender: input.sender,
+			acceptedDomains: input.acceptedDomains,
+		})
+		if (owned) return owned
+	}
+	return input.sender.from
 }
 
 function deriveReplyRecipient(original: EmailMessageRecord) {
@@ -495,7 +557,8 @@ export async function sendOutboundEmail(
 		})
 		const mailbox = mailboxRpc({ env: input.env, userId: input.userId })
 		// The from address is always platform-assigned: {username}@<platform
-		// domain>. There is no self-service sender verification. The resolved
+		// domain> or a plus alias of it. There is no self-service sender
+		// verification and no sending as another handle. The resolved
 		// account email (recovered from the person stable id when the caller
 		// context carried none, e.g. package subscription handlers) backs the
 		// verified-account gate and the entitlement plan lookup so plan limits
@@ -506,7 +569,15 @@ export async function sendOutboundEmail(
 			accountEmail: input.accountEmail,
 			userId: actorPersonId,
 		})
-		const from = sender.from
+		const acceptedSenderDomains = getAcceptedUserEmailDomains(input.env)
+		const requestedFrom =
+			input.from == null
+				? null
+				: resolveRequestedSender({
+						requested: input.from.trim(),
+						sender,
+						acceptedDomains: acceptedSenderDomains,
+					})
 		const accountEmailVerified = await isAccountEmailVerified({
 			db: input.env.APP_DB,
 			email: sender.accountEmail,
@@ -563,6 +634,7 @@ export async function sendOutboundEmail(
 
 		let original: EmailMessageRecord | null = null
 		let to: Array<string>
+		let from = requestedFrom ?? sender.from
 		if (input.recipientPolicy === 'reply') {
 			// The recipient is derived from the stored inbound message — callers
 			// can never turn a reply into outreach.
@@ -592,6 +664,13 @@ export async function sendOutboundEmail(
 			}
 			original = replyOriginal
 			to = [deriveReplyRecipient(replyOriginal)]
+			from =
+				requestedFrom ??
+				deriveReplySender({
+					original: replyOriginal,
+					sender,
+					acceptedDomains: acceptedSenderDomains,
+				})
 		} else {
 			if (input.inReplyToHeader) {
 				const originalRecord = await mailbox.getMessageByMessageIdHeader({
@@ -613,6 +692,11 @@ export async function sendOutboundEmail(
 				accountEmail: sender.accountEmail,
 			})
 		}
+		const replyTo = input.replyTo?.trim()
+			? input.replyTo
+			: from !== sender.from
+				? from
+				: null
 		const subject = input.subject.trim()
 		if (!subject) throw new Error('Email subject is required.')
 		const text = input.text?.trim() || null
@@ -655,7 +739,7 @@ export async function sendOutboundEmail(
 						from,
 						to,
 						subject,
-						replyTo: input.replyTo,
+						replyTo,
 						text,
 						html,
 						headers: storedHeaders,
@@ -721,8 +805,8 @@ export async function sendOutboundEmail(
 				toAddresses: to,
 				ccAddresses: [],
 				bccAddresses: [],
-				replyToAddresses: input.replyTo
-					? [normalizeEmailAddress(input.replyTo)].filter(
+				replyToAddresses: replyTo
+					? [normalizeEmailAddress(replyTo)].filter(
 							(value): value is string => typeof value === 'string',
 						)
 					: [],
@@ -827,8 +911,8 @@ export async function sendOutboundEmail(
 					subject,
 					text,
 					html,
-					replyTo: input.replyTo
-						? (normalizeEmailAddress(input.replyTo) ?? undefined)
+					replyTo: replyTo
+						? (normalizeEmailAddress(replyTo) ?? undefined)
 						: undefined,
 					headers: providerHeaders,
 					attachments,

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 	handlePackageEventsDispatchQueue: vi.fn(),
 	handlePlatformFeedbackDispatchQueue: vi.fn(),
 	handleWebhookDispatchQueue: vi.fn(),
+	handleDeadLetterQueueBatch: vi.fn(),
 }))
 
 vi.mock('#worker/community/activity-dispatch-queue.ts', () => ({
@@ -18,18 +19,31 @@ vi.mock('#worker/community/activity-dispatch-queue.ts', () => ({
 		mocks.handleCommunityActivityDispatchQueue,
 }))
 
-vi.mock('#worker/community/activity-dispatch-queue-names.ts', () => ({
-	communityActivityDispatchQueueName: 'kody-community-activity-dispatch',
-}))
+vi.mock(
+	import('#worker/community/activity-dispatch-queue-names.ts'),
+	async (importOriginal) => ({
+		...(await importOriginal()),
+		communityActivityDispatchQueueName:
+			'kody-community-activity-dispatch' as const,
+	}),
+)
 
 vi.mock('#worker/community/listing-published-dispatch-queue.ts', () => ({
 	handleCommunityListingPublishedDispatchQueue:
 		mocks.handleCommunityListingPublishedDispatchQueue,
 }))
 
-vi.mock('#worker/community/listing-published-dispatch-queue-names.ts', () => ({
-	communityListingPublishedDispatchQueueName:
-		'kody-community-listing-published-dispatch',
+vi.mock(
+	import('#worker/community/listing-published-dispatch-queue-names.ts'),
+	async (importOriginal) => ({
+		...(await importOriginal()),
+		communityListingPublishedDispatchQueueName:
+			'kody-community-listing-published-dispatch' as const,
+	}),
+)
+
+vi.mock('#worker/dead-letter/consumer.ts', () => ({
+	handleDeadLetterQueueBatch: mocks.handleDeadLetterQueueBatch,
 }))
 
 vi.mock('#worker/email/delivery-queue.ts', () => ({
@@ -127,6 +141,14 @@ test('worker queue routing isolates known queues and retries unknown queues', as
 		'kody-pr-3155-platform-feedback-dispatch-dlq',
 	)
 	await handleQueueBatch(deadLetterBatch, env, ctx)
-	expect(deadLetterBatch.retryAll).toHaveBeenCalledWith({ delaySeconds: 30 })
+	expect(deadLetterBatch.retryAll).not.toHaveBeenCalled()
 	expect(mocks.handlePlatformFeedbackDispatchQueue).toHaveBeenCalledTimes(2)
+	expect(mocks.handleDeadLetterQueueBatch).toHaveBeenCalledWith(
+		deadLetterBatch,
+		env,
+		expect.objectContaining({
+			name: 'kody-platform-feedback-dispatch-dlq',
+			sourceQueue: 'kody-platform-feedback-dispatch',
+		}),
+	)
 })

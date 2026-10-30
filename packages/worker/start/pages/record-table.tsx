@@ -188,6 +188,8 @@ type RecordTableProps = {
 	 */
 	recordLoading?: boolean
 	emptyLabel?: string
+	/** Actions under the empty copy, e.g. the screen's create link. */
+	emptyAction?: Slot
 	/** Below the table, inside its pane: the infinite-list "Load more" control. */
 	footer?: Slot
 	/**
@@ -246,6 +248,14 @@ const toolbarCss: CSSObject = {
 	flexWrap: 'wrap' as const,
 	padding: `0.7rem ${spacing.md}`,
 	borderBottom: `1px solid ${colors.borderSubtle}`,
+	// Conditional actions share field sizing so appearing buttons do not grow the row.
+	'& > button': {
+		borderWidth: '1px',
+		fontSize: 'var(--control-font-size, 1rem)',
+		lineHeight: 'var(--control-line-height, 1.2)',
+		paddingBlock: 'var(--control-padding-y, 0.85rem)',
+		minHeight: 'var(--control-min-height, auto)',
+	},
 	'@container (max-width: 620px)': {
 		gap: spacing.xs,
 	},
@@ -391,6 +401,19 @@ const emptyCss: CSSObject = {
 	padding: spacing.lg,
 	color: colors.textMuted,
 	fontSize: typography.fontSize.sm,
+}
+
+const emptyStateCss: CSSObject = {
+	...emptyCss,
+	display: 'grid',
+	gap: spacing.md,
+	justifyItems: 'start',
+}
+
+const emptyActionsCss: CSSObject = {
+	display: 'flex',
+	flexWrap: 'wrap',
+	gap: spacing.sm,
 }
 
 /** Padding and rhythm for whatever a screen renders as its record. */
@@ -584,7 +607,7 @@ export function RecordTable(props: RecordTableProps) {
 										column.primary && rowHref ? (
 											<SiteLink
 												href={rowHref}
-												data-prevent-scroll-reset
+												resetScroll={false}
 												aria-current={selected ? 'true' : undefined}
 												aria-expanded={
 													mode === 'expand'
@@ -752,7 +775,18 @@ export function RecordTable(props: RecordTableProps) {
 					 */}
 					<div key="record-table-collection">
 						{rows.length === 0 ? (
-							<p css={emptyCss}>{props.emptyLabel ?? 'Nothing to show yet.'}</p>
+							props.emptyAction ? (
+								<div css={emptyStateCss} data-testid="record-table-empty">
+									<p css={{ margin: 0 }}>
+										{props.emptyLabel ?? 'Nothing to show yet.'}
+									</p>
+									<div css={emptyActionsCss}>{props.emptyAction}</div>
+								</div>
+							) : (
+								<p css={emptyCss}>
+									{props.emptyLabel ?? 'Nothing to show yet.'}
+								</p>
+							)
 						) : (
 							<div
 								role="region"

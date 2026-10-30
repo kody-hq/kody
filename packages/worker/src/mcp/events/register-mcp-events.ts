@@ -1,5 +1,4 @@
 import {
-	CLIENT_CAPABILITIES_META_KEY,
 	type McpServer,
 	type ServerCapabilities,
 } from '@modelcontextprotocol/server'
@@ -9,7 +8,6 @@ import { mcpEventsExtensionFlagKey } from '#universal/feature-flags/registry.ts'
 import { resolveCallerFeatureFlagEvaluations } from '#mcp/capabilities/access-control.ts'
 import { recordMcpEventsClientsFlagExposure } from '#worker/feature-flags/mcp-events-clients-exposure.ts'
 import {
-	mcpEventsExtensionId,
 	mcpEventsListMethod,
 	mcpEventsSubscribeMethod,
 	mcpEventsUnsubscribeMethod,
@@ -43,52 +41,14 @@ const mcpEventsListResultSchema = z.object({
 	),
 })
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
-
 /**
- * Client capabilities for one modern (2026-07-28) request ride in the
- * per-request envelope: `params._meta["io.modelcontextprotocol/clientCapabilities"]`.
- * Every modern request carries it, including `server/discover`.
- */
-export function readMcpRequestClientCapabilities(
-	parsedBody: unknown,
-): Record<string, unknown> | null {
-	const message = Array.isArray(parsedBody)
-		? parsedBody.find(isRecord)
-		: parsedBody
-	if (!isRecord(message)) return null
-	const params = message['params']
-	if (!isRecord(params)) return null
-	const meta = params['_meta']
-	if (!isRecord(meta)) return null
-	const capabilities = meta[CLIENT_CAPABILITIES_META_KEY]
-	return isRecord(capabilities) ? capabilities : null
-}
-
-/**
- * The draft has no settled client-side declaration yet, so accept each shape
- * in circulation: top-level `events`, `experimental.events`, or the
- * extension id under `extensions`.
- */
-export function clientSupportsMcpEvents(
-	capabilities: Record<string, unknown> | null,
-): boolean {
-	if (!capabilities) return false
-	if (isRecord(capabilities['events'])) return true
-	const experimental = capabilities['experimental']
-	if (isRecord(experimental) && isRecord(experimental['events'])) return true
-	const extensions = capabilities['extensions']
-	return isRecord(extensions) && isRecord(extensions[mcpEventsExtensionId])
-}
-
-/**
- * Progressive enhancement on the stateless lane: advertise `events` and
- * serve `events/list|subscribe|unsubscribe` only when the request's client
- * declares events support, the caller is an OAuth principal, and the
- * `mcp-events-extension` flag is on for the user. Otherwise nothing is
- * registered and the methods answer MethodNotFound.
+ * Progressive enhancement on the stateless lane, following the OpenAI MCP
+ * Events profile: the server advertises `events` and clients declare
+ * nothing. Kody advertises `events` and serves
+ * `events/list|subscribe|unsubscribe` only when the caller is an OAuth
+ * principal and the `mcp-events-extension` flag is on for the user.
+ * Otherwise nothing is registered and the methods answer MethodNotFound.
+ * See ADR 0087.
  *
  * SDK workaround: `ServerCapabilitiesSchema` has no `events` key, so the
  * typed capability object cannot name it; the SDK spreads capabilities into
@@ -100,23 +60,28 @@ export async function registerMcpEvents(input: {
 	env: Env
 	callerContext: McpCallerContext
 	oauthClientId: string | null
-	clientCapabilities: Record<string, unknown> | null
 }): Promise<boolean> {
-	if (!clientSupportsMcpEvents(input.clientCapabilities)) return false
 	if (!input.callerContext.user?.userId || !input.oauthClientId) return false
 	// Dedicated exposure site: do not use resolveCallerFeatureFlags (evaluation
 	// chokepoint) so execute and other non-events clients stay out of cohorts.
+	// Clients no longer declare events support, so the exposure is written
+	// when the client calls an `events/*` method, not on every request.
 	const evaluations = await resolveCallerFeatureFlagEvaluations(
 		input.env,
 		input.callerContext,
 	)
 	const evaluation = evaluations?.[mcpEventsExtensionFlagKey]
 	if (!evaluation?.enabled) return false
-	await recordMcpEventsClientsFlagExposure({
-		env: input.env,
-		stableUserId: input.callerContext.user.userId,
-		evaluation,
-	})
+	const stableUserId = input.callerContext.user.userId
+	let exposure: Promise<void> | null = null
+	const recordExposure = async () => {
+		exposure ??= recordMcpEventsClientsFlagExposure({
+			env: input.env,
+			stableUserId,
+			evaluation,
+		})
+		await exposure
+	}
 
 	const principal: McpEventsPrincipal = {
 		env: input.env,
@@ -131,6 +96,7 @@ export async function registerMcpEvents(input: {
 		mcpEventsListMethod,
 		{ params: mcpEventsListParamsSchema, result: mcpEventsListResultSchema },
 		async () => {
+			await recordExposure()
 			const sources = await listMcpEventSources({
 				env: input.env,
 				callerContext: input.callerContext,
@@ -149,7 +115,10 @@ export async function registerMcpEvents(input: {
 			params: mcpEventsSubscribeParamsSchema,
 			result: mcpEventsSubscribeResultSchema,
 		},
-		async (params) => await subscribeMcpEvent(principal, params),
+		async (params) => {
+			await recordExposure()
+			return await subscribeMcpEvent(principal, params)
+		},
 	)
 	input.server.server.setRequestHandler(
 		mcpEventsUnsubscribeMethod,
@@ -157,7 +126,10 @@ export async function registerMcpEvents(input: {
 			params: mcpEventsUnsubscribeParamsSchema,
 			result: mcpEventsUnsubscribeResultSchema,
 		},
-		async (params) => await unsubscribeMcpEvent(principal, params),
+		async (params) => {
+			await recordExposure()
+			return await unsubscribeMcpEvent(principal, params)
+		},
 	)
 	return true
 }

@@ -24,9 +24,15 @@ const profilePagePath = (username: string) => routes.profile.href({ username })
 
 export function renderProfileIdentity(
 	shell: ProfileShellLoaderData,
-	options?: { workspaceOrgSlug?: string | null },
+	options?: {
+		workspaceOrgSlug?: string | null
+		/** Members of a public team org get a way back to its home. */
+		orgHomeHref?: string | null
+	},
 ) {
 	const workspaceSlug = options?.workspaceOrgSlug?.trim() || shell.username
+	const isOrg = shell.ownerKind === 'org'
+	const orgHomeHref = isOrg ? options?.orgHomeHref : null
 	return (
 		<header css={identityCss} data-testid="profile-identity">
 			<div css={avatarWrapCss}>
@@ -48,6 +54,11 @@ export function renderProfileIdentity(
 							Private
 						</span>
 					) : null}
+					{isOrg ? (
+						<span css={badgeCss} data-testid="profile-org-badge">
+							Organization
+						</span>
+					) : null}
 				</div>
 				<p css={usernameCss} data-testid="profile-username">
 					@{shell.username}
@@ -58,8 +69,29 @@ export function renderProfileIdentity(
 					</p>
 				) : null}
 				<p css={joinedCss} data-testid="profile-joined">
-					Joined {formatCommunityPublishedDate(shell.joinedAt)}
+					{isOrg ? 'Created' : 'Joined'}{' '}
+					{formatCommunityPublishedDate(shell.joinedAt)}
 				</p>
+				{orgHomeHref ? (
+					<div css={actionsCss} data-testid="profile-org-member-actions">
+						<p css={guestCtaCopyCss}>
+							You're a member. Everyone sees this public page.
+						</p>
+						<SiteLink
+							href={orgHomeHref}
+							data-testid="profile-org-home"
+							css={getGhostButtonCss()}
+						>
+							Organization home
+						</SiteLink>
+						<SiteLink
+							href={workspaceLandingItem(shell.username).href}
+							css={getGhostButtonCss()}
+						>
+							Workspace
+						</SiteLink>
+					</div>
+				) : null}
 				{shell.isSelf ? (
 					<div css={actionsCss} data-testid="profile-actions">
 						<SiteLink
@@ -86,14 +118,17 @@ export function renderOrgIdentity(input: {
 	name: string
 	handle: string
 	avatarName: string
+	avatarUrl?: string | null
 	role: string
+	/** Set when the org's page at `/@slug` is public. */
+	publicPageHref?: string | null
 }) {
 	return (
 		<header css={identityCss} data-testid="org-identity">
 			<div css={avatarWrapCss}>
 				<UserAvatar
 					displayName={input.avatarName}
-					avatarUrl={null}
+					avatarUrl={input.avatarUrl ?? null}
 					size={{ narrow: 72, wide: 160 }}
 					variant="well"
 				/>
@@ -106,6 +141,17 @@ export function renderOrgIdentity(input: {
 					</span>
 				</div>
 				<p css={usernameCss}>{input.handle}</p>
+				{input.publicPageHref ? (
+					<div css={actionsCss}>
+						<SiteLink
+							href={input.publicPageHref}
+							data-testid="org-public-page"
+							css={getGhostButtonCss()}
+						>
+							View public page
+						</SiteLink>
+					</div>
+				) : null}
 			</div>
 		</header>
 	)

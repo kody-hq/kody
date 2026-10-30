@@ -6,6 +6,11 @@
 	"compatibility_flags": ["nodejs_compat"],
 	"observability": {
 		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1,
+			"invocation_logs": true,
+		},
 	},
 	// Contributor CI cache, not a product surface. Custom domain so agents
 	// and GitHub Actions share one URL without a workers.dev account slug.

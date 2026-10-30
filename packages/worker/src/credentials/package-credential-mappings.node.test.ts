@@ -136,6 +136,40 @@ test('the view shows needs, options, triggers, and what is incomplete', async ()
 	])
 })
 
+test('an unbound need lists provider-less keys of its kind as possible matches', async () => {
+	const t = await setup()
+	await t.storeKey('team-token', null)
+	const view = await buildPackageCredentialsView(
+		await t.scopeFor('bea', 'owner'),
+	)
+	const chat = view.needs.find((need) => need.key === 'chat')!
+	expect(chat.effective).toMatchObject({ status: 'unbound', source: 'auto' })
+	expect(chat.effective.candidates.map((ref) => ref.name)).toEqual([
+		'team-token',
+	])
+	expect(view.incomplete.find((item) => item.needKey === 'chat')).toMatchObject(
+		{
+			status: 'unbound',
+			possibleMatches: [{ name: 'team-token', kind: 'secret' }],
+		},
+	)
+})
+
+test('an expired provider-less key is not offered as a possible match', async () => {
+	const t = await setup()
+	await t.storeKey('old-team-token', null, {
+		expiresAt: '2020-01-01T00:00:00.000Z',
+	})
+	const view = await buildPackageCredentialsView(
+		await t.scopeFor('bea', 'owner'),
+	)
+	const chat = view.needs.find((need) => need.key === 'chat')!
+	expect(chat.effective).toMatchObject({ status: 'unbound', candidates: [] })
+	expect(
+		view.incomplete.find((item) => item.needKey === 'chat'),
+	).not.toHaveProperty('possibleMatches')
+})
+
 test('publisher needs offer and auto-resolve only org credentials', async () => {
 	const t = await setup()
 	await t.storeKey('org-mail', 'resend')

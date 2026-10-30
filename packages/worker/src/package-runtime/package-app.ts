@@ -2,6 +2,7 @@ import {
 	isUnrepairablePreBindingArtifact,
 	publishedArtifactNeedsPackageBindingRebuild,
 } from './pre-binding-artifact-repair.ts'
+import { effectivePackageAppCapabilities } from './package-app-effective-capabilities.ts'
 import { type PublishedBundleArtifact } from './published-runtime-artifacts.ts'
 import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
@@ -140,10 +141,11 @@ import {
 import { packageAppVisitorHeaderName } from './package-app-visitor-header.ts'
 import {
 	createPackageAppRequestVisit,
+	packageAppAnonymousVisitTicketPrefix,
 	packageAppVisitTicketHeaderName,
 	type PackageAppRequestVisit,
 	type PackageAppVisitAudience,
-	type PackageAppVisitClaims,
+	type PackageAppVerifiedVisit,
 	verifyPackageAppVisitTicket,
 	withPackageAppVisitTicket,
 } from './package-app-visit-ticket.ts'
@@ -168,6 +170,7 @@ import {
 	packageAppAuthorityFallbackKindOf,
 	packageAppAuthorityFallbackKindOfResult,
 	schedulePackageAppAuthorityFallback,
+	schedulePackageAppAuthorityRejection,
 	type PackageAppAuthorityDifferenceKind,
 } from './package-app-authority-fallback.ts'
 import {
@@ -270,6 +273,8 @@ const __kodyPackageBindingIds = __kodyObjectFreezeCaptured(${JSON.stringify(inpu
 const __kodyIdentityOnlyOrgSlug = ${JSON.stringify(input.identityOnlyOrgSlug)};
 const __kodyJsonParseCaptured = JSON.parse;
 const __kodyVisitTicketHeaderName = ${JSON.stringify(packageAppVisitTicketHeaderName)};
+const __kodyAnonymousVisitTicketPrefix = ${JSON.stringify(packageAppAnonymousVisitTicketPrefix)};
+const __kodyStringStartsWithCaptured = String.prototype.startsWith;
 const __kodyVisitStorage = new AsyncLocalStorage();
 
 function __kodyCurrentVisitTicket() {
@@ -277,6 +282,18 @@ function __kodyCurrentVisitTicket() {
 		return __kodyVisitStorage.getStore()?.ticket ?? null;
 	} catch {
 		return null;
+	}
+}
+// An anonymous ticket only scopes credential clients to this request; it
+// names nobody, so the identity-only shortcut below still applies.
+function __kodyTicketNamesVisitor(ticket) {
+	if (typeof ticket !== 'string' || !ticket) return false;
+	try {
+		return !__kodyReflectApplyCaptured(__kodyStringStartsWithCaptured, ticket, [
+			__kodyAnonymousVisitTicketPrefix,
+		]);
+	} catch {
+		return true;
 	}
 }
 function __kodyReadVisitTicket(request) {
@@ -293,7 +310,8 @@ function __kodyReadVisitTicket(request) {
 // (inbound X-Kody-* headers are stripped before it is set), so
 // metaGetCurrentUser can say who is visiting. That answer is the only thing
 // the header changes: it grants no storage, credentials, or capability.
-// A visit ticket means the visitor acts as themselves; skip this shortcut.
+// A ticket that names a visitor means they act as themselves; skip this
+// shortcut.
 function __kodyReadIdentityOnlyVisitor(request) {
 	if (__kodyIdentityOnlyOrgSlug === null) return null;
 	let raw = null;
@@ -372,7 +390,7 @@ function __kodyCreateAppPackageBindings(bridge, identity) {
 		const token = __kodyPackageBindingToken;
 		const boundCapability = async (callInput) => {
 			const visitTicket = __kodyCurrentVisitTicket();
-			const identityAnswer = visitTicket
+			const identityAnswer = __kodyTicketNamesVisitor(visitTicket)
 				? null
 				: __kodyIdentityOnlyAnswer(identity, callInput?.name);
 			if (identityAnswer) return identityAnswer;
@@ -636,7 +654,7 @@ function createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity = null)
 			}
 			return async (args = {}) => {
 				const visitTicket = __kodyCurrentVisitTicket();
-				const identityAnswer = visitTicket
+				const identityAnswer = __kodyTicketNamesVisitor(visitTicket)
 					? null
 					: __kodyIdentityOnlyAnswer(identity, property);
 				if (identityAnswer) return identityAnswer;
@@ -788,6 +806,7 @@ function createWorkflowsProxy(runtimeBridge) {
 				...(packageId ? { packageId } : {}),
 				...(exportName ? { exportName } : {}),
 				...(code ? { code } : {}),
+				...(input.execution === undefined ? {} : { execution: input.execution }),
 			};
 			return await runtimeBridge.workflowCreate(
 				payload,
@@ -1216,7 +1235,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 		// Read before any package code runs. Ticket and visitor stay in ALS
 		// for this request only; they never enter module scope.
 		const visitTicket = __kodyReadVisitTicket(request);
-		const identityOnlyVisitor = visitTicket
+		const identityOnlyVisitor = __kodyTicketNamesVisitor(visitTicket)
 			? null
 			: __kodyReadIdentityOnlyVisitor(request);
 		const runtimeRun = startRuntimeRun(runtimeBridge, {
@@ -1442,6 +1461,13 @@ type PackageAppRuntimeBridgeProps = {
 	 * app's runs-as person.
 	 */
 	declaredCapabilities: Array<string>
+	/** The app's package.json name and version, for not-declared errors. */
+	appPackage?: { name: string; version: string | null }
+	/**
+	 * Imported package names by saved-package UUID (bundle metadata), so a
+	 * not-declared error can name the package that made the call.
+	 */
+	dependencyPackageNames?: Record<string, string>
 	/** `kody.app.visitorNeeds`, by key: each is its own consent scope. */
 	visitorNeeds: Record<string, PackageAppVisitorNeed>
 }
@@ -1531,6 +1557,28 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
+	/** Never throws: an unreadable visit ticket counts as anonymous. */
+	private async noteHardRejection(
+		callName: string,
+		visitTicket: string | null | undefined,
+	) {
+		let visitor: RuntimePackageAppVisitor | null = null
+		try {
+			visitor = await this.visitorFor(visitTicket)
+		} catch {}
+		schedulePackageAppAuthorityRejection({
+			env: this.env,
+			event: {
+				ownerId: this.ctx.props.userId,
+				packageId: this.ctx.props.packageId,
+				callName,
+				kind: 'capability_not_declared',
+				visitorId: visitor?.userId ?? null,
+			},
+			waitUntil: (promise) => this.ctx.waitUntil(promise),
+		})
+	}
+
 	/** A lookup failure runs the call the legacy way, never fails it. */
 	private async loadRunsAs(): Promise<PackageAppRunsAs> {
 		try {
@@ -1559,7 +1607,8 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	 * 2026-10-24). When that fails for an authority reason, the call runs the
 	 * legacy way (as the visitor, or anonymously) and, when that works,
 	 * leaves a would-break row. A call that fails both ways throws the
-	 * runs-as error. Never retries a failure that is not about authority.
+	 * runs-as error; when that error is "not declared", it also leaves a
+	 * hard-rejection row. Never retries a failure that is not about authority.
 	 */
 	private async runWithAuthority<T>(input: {
 		callName: string
@@ -1622,17 +1671,22 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			refusedKind = kind
 			refused = { error }
 		}
-		const giveUp = () => {
-			if ('error' in refused) throw refused.error
+		const giveUp = async () => {
+			if ('error' in refused) {
+				if (refused.error instanceof PackageAppCapabilityNotDeclaredError) {
+					await this.noteHardRejection(input.callName, input.visitTicket)
+				}
+				throw refused.error
+			}
 			return refused.result
 		}
 		let legacyResult: T
 		try {
 			legacyResult = await runLegacy()
 		} catch {
-			return giveUp()
+			return await giveUp()
 		}
-		if (input.refusedResultKind?.(legacyResult)) return giveUp()
+		if (input.refusedResultKind?.(legacyResult)) return await giveUp()
 		await noteFallback(refusedKind)
 		return legacyResult
 	}
@@ -1652,12 +1706,13 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 
 	/**
 	 * The visit every path except executor credentials acts on. An
-	 * executor-only ticket (an outside-org visitor) counts as no visit, so
-	 * storage, capabilities and identity stay anonymous plus identity.
+	 * executor-only ticket (an outside-org visitor) or an anonymous ticket
+	 * counts as no visit, so storage, capabilities and identity stay
+	 * anonymous (plus identity).
 	 */
 	private async requireActingVisit(ticket: string | null | undefined) {
 		const visit = await this.requireVisit(ticket)
-		return visit?.executorOnly ? null : visit
+		return visit?.visitor && !visit.executorOnly ? visit : null
 	}
 
 	/** Who this call acts for the legacy way: the ticket's visitor, if any. */
@@ -1704,7 +1759,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
-	private credentialBindingFor(visit: PackageAppVisitClaims | null) {
+	/**
+	 * Every ticket, anonymous included, carries this request's binding. With
+	 * no ticket there is no binding, and opening a client fails closed.
+	 */
+	private credentialBindingFor(visit: PackageAppVerifiedVisit | null) {
 		return visit?.credentialClientBinding ?? ''
 	}
 
@@ -2038,6 +2097,23 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return this.assertPackageStorageGranted(normalized)
 	}
 
+	/**
+	 * Names the app manifest that was checked and, for a call bound to an
+	 * imported package, that package. Read from bridge props only.
+	 */
+	private capabilityNotDeclared(name: string, boundPackageId: string | null) {
+		const { appPackage, dependencyPackageNames, packageId } = this.ctx.props
+		const bound = boundPackageId?.trim() || null
+		const callingPackage =
+			bound && bound !== packageId.trim()
+				? (dependencyPackageNames?.[bound] ?? null)
+				: null
+		return new PackageAppCapabilityNotDeclaredError(name, {
+			app: appPackage ?? null,
+			callingPackage,
+		})
+	}
+
 	private async callCapabilityAs(
 		boundPackageId: string | null,
 		input: { name: string; args?: unknown },
@@ -2068,7 +2144,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			visitTicket,
 			run: async (callerContext, mode) => {
 				if (mode === 'runs-as' && !declared.has(name)) {
-					throw new PackageAppCapabilityNotDeclaredError(name)
+					throw this.capabilityNotDeclared(name, boundPackageId)
 				}
 				return await this.invokeCapability(boundPackageId, callerContext, {
 					name,
@@ -3034,7 +3110,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				}
 				if (args.name !== undefined && args.name !== null) {
 					// The runs-as person's credentials are capped to declared needs.
-					throw new PackageAppCapabilityNotDeclaredError('credential.named')
+					throw this.capabilityNotDeclared('credential.named', boundPackageId)
 				}
 				return await callTool(
 					await this.getCredentialClientTools(
@@ -3708,13 +3784,16 @@ async function buildPackageAppWorkerOptionsUncached(
 			: null,
 	}
 	const mainModule = 'package-app-entry.js'
-	const { modules: hydratedModules, dynamicDependencyPackageIds } =
-		await hydrateKodyRuntimeModules({
-			env: input.env,
-			baseUrl: input.baseUrl,
-			userId: input.userId,
-			modules: bundled.modules,
-		})
+	const {
+		modules: hydratedModules,
+		dynamicDependencyPackageIds,
+		dynamicDependencyPackageNames,
+	} = await hydrateKodyRuntimeModules({
+		env: input.env,
+		baseUrl: input.baseUrl,
+		userId: input.userId,
+		modules: bundled.modules,
+	})
 	const packageStorageGrantIds = [
 		...collectPackageStorageGrantIds({
 			packageContext: {
@@ -3835,11 +3914,40 @@ async function buildPackageAppWorkerOptionsUncached(
 			gatewayProps,
 			visitTicket: null,
 			visitAudience,
-			declaredCapabilities: [...(manifest.kody.app?.capabilities ?? [])],
+			declaredCapabilities: effectivePackageAppCapabilities({
+				manifest,
+				dependencies: bundled.dependencies,
+			}),
+			appPackage: { name: manifest.name, version: manifest.version ?? null },
+			dependencyPackageNames: collectDependencyPackageNames({
+				dependencies: bundled.dependencies,
+				dynamicDependencyPackageNames,
+			}),
 			visitorNeeds: { ...manifest.kody.app?.visitorNeeds },
 		},
 		gatewayProps,
 	}
+}
+
+function collectDependencyPackageNames(input: {
+	dependencies: Array<{
+		packageId?: string
+		packageName?: string
+		kodyId: string
+	}>
+	dynamicDependencyPackageNames: Record<string, string> | undefined
+}) {
+	const names: Record<string, string> = {
+		...input.dynamicDependencyPackageNames,
+	}
+	for (const dependency of input.dependencies) {
+		if (!dependency.packageId) continue
+		names[dependency.packageId] =
+			dependency.packageName?.trim() ||
+			names[dependency.packageId] ||
+			dependency.kodyId
+	}
+	return names
 }
 
 function visitHostOf(hostedUrl: string, baseUrl: string) {

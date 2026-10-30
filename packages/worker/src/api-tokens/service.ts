@@ -154,6 +154,7 @@ export const apiTokenCreatedVia = [
 	'mcp-api',
 	'cli-bootstrap',
 	'cli-login',
+	'agent-registration',
 ] as const
 export type ApiTokenCreatedVia = (typeof apiTokenCreatedVia)[number]
 

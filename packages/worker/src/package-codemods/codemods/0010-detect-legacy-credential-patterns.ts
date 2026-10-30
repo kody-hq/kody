@@ -1,14 +1,12 @@
 import {
 	type AstNode,
 	constantsWithoutShadows,
-	createModuleConstantsReader,
 	findPlaceholders,
+	forEachScannableModule,
 	getCalleeName,
 	getCalleeObjectName,
 	getNodeName,
-	listScannableModulePaths,
 	type NameKind,
-	parseModule,
 	resolveStringExpression,
 	templateElementText,
 	transparentExpressionTypes,
@@ -633,28 +631,19 @@ function readDeclaredSlotKinds(manifestSource: string | undefined) {
  */
 export function scanModuleCredentialReferences(
 	files: Record<string, string>,
-	handlersFor: (path: string) => CredentialReferenceHandlers,
+	handlersFor: (path: string, parsed: boolean) => CredentialReferenceHandlers,
 ) {
-	const modulePaths = listScannableModulePaths(files)
-	const parsedModules = new Map(
-		modulePaths.map((path) => [path, parseModule(files[path]!)]),
-	)
-	const moduleConstants = createModuleConstantsReader(parsedModules)
-	for (const path of modulePaths) {
-		const handlers = handlersFor(path)
-		const parsed = parsedModules.get(path)
+	forEachScannableModule(files, (path, parsed, constants) => {
+		const handlers = handlersFor(path, parsed != null)
 		if (parsed) {
-			detectInParsedModule(parsed, {
-				...handlers,
-				constants: moduleConstants(path),
-			})
+			detectInParsedModule(parsed, { ...handlers, constants })
 		} else {
 			detectInUnparsedModule(files[path]!, {
 				...handlers,
 				constants: new Map(),
 			})
 		}
-	}
+	})
 }
 
 function detectLegacyCredentialPatterns(

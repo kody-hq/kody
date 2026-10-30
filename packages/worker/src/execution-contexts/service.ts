@@ -8,7 +8,12 @@ import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { upsertGrant, softDeleteGrant } from '#worker/orgs/access-writes.ts'
-import { chainCloudOrderError } from './chain-rules.ts'
+import { chainCloudOrderError, selfShareError } from './chain-rules.ts'
+import {
+	assertGrantAllowsSharing,
+	assertRequesterCredentialsGrantable,
+	contextIsShared,
+} from './credential-grant.ts'
 import { ExecutionContextError } from './errors.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import {
@@ -36,6 +41,9 @@ import {
 	type UnusableReason,
 } from './store.ts'
 import { optInTrustNotice, sharingTrustNotice } from './trust-copy.ts'
+import { type RunHistoryRow } from './session-do.ts'
+import { kodyCloudTarget } from './routing.ts'
+import { type RunRecord } from '#worker/run-records/types.ts'
 
 /** Shared logic behind the execution-context MCP capabilities and routes. */
 
@@ -138,9 +146,9 @@ export function grantSummary(grant: EcpGrant) {
 		fs: grant.fs.length,
 		egress: { mode: grant.egress.mode },
 		credentials:
-			grant.credentials.mode === 'none'
-				? ('none' as const)
-				: { count: grant.credentials.ids.length },
+			grant.credentials.mode === 'list'
+				? { count: grant.credentials.ids.length }
+				: grant.credentials.mode,
 		runtime:
 			grant.runtime.mode === 'all'
 				? ('all' as const)
@@ -161,7 +169,11 @@ function myPermissions(access: ContextAccess) {
 
 async function liveStatus(env: Env, row: ExecutionContextRow) {
 	if (row.revoked_at)
-		return { status: 'revoked' as const, acceptingRuns: false }
+		return {
+			status: 'revoked' as const,
+			acceptingRuns: false,
+			lastSeenAt: null,
+		}
 	try {
 		const status = await sessionStub(env, row.id).getStatus()
 		return {
@@ -171,9 +183,14 @@ async function liveStatus(env: Env, row: ExecutionContextRow) {
 					? ('online' as const)
 					: ('offline' as const),
 			acceptingRuns: status.acceptingRuns,
+			lastSeenAt: status.lastSeenAt ?? null,
 		}
 	} catch {
-		return { status: 'offline' as const, acceptingRuns: false }
+		return {
+			status: 'offline' as const,
+			acceptingRuns: false,
+			lastSeenAt: null,
+		}
 	}
 }
 
@@ -220,7 +237,7 @@ export async function formatContexts(
 				myPermissions: myPermissions(access),
 				status: live.status,
 				acceptingRuns: live.acceptingRuns,
-				lastSeenAt: row.last_seen_at,
+				lastSeenAt: live.lastSeenAt ?? row.last_seen_at,
 				revokedAt: row.revoked_at,
 				client: { name: row.client_name, version: row.client_version },
 				capabilities: {
@@ -620,13 +637,29 @@ export async function updateContext(
 		? mergeGrant(parseGrant(row), input.grant)
 		: parseGrant(row)
 	const name = input.name?.trim() ?? row.name
+	if (input.grant?.credentials?.mode === 'requester') {
+		assertRequesterCredentialsGrantable({
+			name: row.name,
+			isOperator: access.isOperator,
+			shared: await contextIsShared(db, row),
+		})
+	}
 	const grantVersion = input.grant ? row.grant_version + 1 : row.grant_version
-	await db
-		.prepare(
-			`UPDATE execution_contexts SET name = ?, grant_json = ?, grant_version = ? WHERE id = ?`,
-		)
-		.bind(name, JSON.stringify(grant), grantVersion, row.id)
-		.run()
+	try {
+		await db
+			.prepare(
+				`UPDATE execution_contexts SET name = ?, grant_json = ?, grant_version = ? WHERE id = ?`,
+			)
+			.bind(name, JSON.stringify(grant), grantVersion, row.id)
+			.run()
+	} catch (error) {
+		if (!String(error).includes('UNIQUE')) throw error
+		throw new ExecutionContextError({
+			status: 409,
+			code: 'invalid_request',
+			message: `Another context in this org is already named ${name}. Pick another name.`,
+		})
+	}
 	if (input.grant) {
 		await sessionStub(caller.env, row.id).updateGrant({
 			snapshot: {
@@ -825,6 +858,20 @@ export async function setSharing(
 				'Only the operator or someone with Manage on this context can share it.',
 		})
 	}
+	const selfShare = selfShareError(
+		row.operator_user_id,
+		(input.add ?? []).map((share) => share.subject),
+	)
+	if (selfShare) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'invalid_request',
+			message: selfShare,
+		})
+	}
+	if ((input.add?.length ?? 0) > 0 || input.allMembers === true) {
+		assertGrantAllowsSharing({ name: row.name, grant: parseGrant(row) })
+	}
 	const db = caller.env.APP_DB
 	const audit = orgAuditWriterFromCaller(caller.env, caller.callerContext)
 	for (const share of input.add ?? []) {
@@ -913,6 +960,7 @@ export async function attachContext(
 			message: 'Only the operator can attach a context to another org.',
 		})
 	}
+	assertGrantAllowsSharing({ name: row.name, grant: parseGrant(row) })
 	const membership = await caller.env.APP_DB.prepare(
 		`SELECT role FROM org_memberships WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
 	)
@@ -1004,8 +1052,118 @@ export async function listRuns(
 	return {
 		id: row.id,
 		scope: manager ? ('all' as const) : ('own' as const),
-		runs: page.rows,
+		runs: page.rows.map((run) => ({
+			...run,
+			ranOn:
+				run.fallback.ranOn === row.id
+					? {
+							kind: 'context' as const,
+							id: row.id,
+							name: row.name,
+							yours: row.operator_user_id === caller.userId,
+						}
+					: run.fallback.ranOn === 'cloud'
+						? kodyCloudTarget
+						: null,
+		})),
 		nextCursor: page.nextCursor,
+	}
+}
+
+const historyErrorNames: Partial<Record<string, string>> = {
+	failed: 'ExecutionContextRunFailed',
+	lost: 'ExecutionContextLost',
+	cancelled: 'ExecutionContextRunCancelled',
+}
+
+/**
+ * A run record built from an execution context's own history row, for
+ * `runGet` after the general run record was pruned (it is capped per
+ * account; context history keeps 30 days). Metadata only: no logs or result.
+ */
+export function contextRunRecordFromHistory(input: {
+	ecid: string | null
+	name: string | null
+	row: RunHistoryRow
+}): RunRecord {
+	const { row } = input
+	const status =
+		row.outcome === 'succeeded'
+			? 'success'
+			: row.outcome === null
+				? 'running'
+				: 'error'
+	return {
+		id: row.runId,
+		surface: 'execute',
+		status,
+		name: null,
+		packageId: null,
+		kodyId: null,
+		sourceId: null,
+		publishedCommit: null,
+		storageId: null,
+		jobId: null,
+		workflowId: null,
+		invocationId: null,
+		sessionId: null,
+		idempotencyKey: null,
+		parentRunId: null,
+		startedAt: row.startedAt ?? row.dispatchedAt,
+		finishedAt: row.endedAt,
+		durationMs: row.durationMs,
+		errorName:
+			status === 'error'
+				? (historyErrorNames[row.outcome ?? ''] ?? 'ExecutionContextRunFailed')
+				: null,
+		errorMessage: status === 'error' ? row.errorSummary : null,
+		errorTriage: null,
+		triageNote: null,
+		triagedAt: null,
+		triagedBy: null,
+		startedBy: null,
+		metadata: {
+			executionContext: {
+				id: input.ecid,
+				name: input.name,
+				outcome: row.outcome,
+				failureReason: row.failureReason,
+				cancelReason: row.cancelReason,
+				position: row.fallback.position,
+			},
+			recordSource: 'execution_context_history',
+		},
+		logCount: 0,
+	}
+}
+
+/**
+ * Finds a person's run that started on one of the org's execution contexts.
+ * Never throws: runGet only reaches this after a miss.
+ */
+export async function findStartedContextRun(
+	env: Env,
+	input: { orgId: string; userId: string; runId: string },
+): Promise<RunRecord | null> {
+	try {
+		const rows = await listOrgExecutionContexts(env.APP_DB, input.orgId)
+		if (rows.length === 0) return null
+		const found = await Promise.all(
+			rows.map((row) =>
+				sessionStub(env, row.id)
+					.getStartedRun({
+						runId: input.runId,
+						requesterUserId: input.userId,
+						orgId: input.orgId,
+					})
+					.catch(() => null),
+			),
+		)
+		const hit = found.find((entry) => entry !== null)
+		return hit ? contextRunRecordFromHistory(hit) : null
+	} catch (error) {
+		console.warn('execution-context-run-lookup-failed', error)
+		return null
 	}
 }
 

@@ -65,6 +65,7 @@ import {
 	buildRepoLargeFileMessage,
 	maxRepoSourceFileBytes,
 } from './large-file-policy.ts'
+import { createKodyIgnoreMatcher, kodyIgnoreFileName } from './kodyignore.ts'
 import { normalizeRepoWorkspacePath } from './manifest.ts'
 import {
 	timePublishExternalPushPhase,
@@ -77,11 +78,23 @@ import {
 	findFetchBodiesMissingSecretResolution,
 	formatFetchBodySecretResolutionWarning,
 } from '#worker/credentials/fetch-body-secret-resolution.ts'
-import { buildCredentialPatternCheck } from './credential-pattern-check.ts'
-import { resolveSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
+import {
+	buildCredentialPatternCheck,
+	type CredentialPatternCheckResult,
+} from './credential-pattern-check.ts'
+import {
+	resolveSecretProviderSlots,
+	type ResolvedSecretProviderSlots,
+} from '#worker/credentials/secret-provider-slots.ts'
+import {
+	isRepoCheckResourceLimitMessage,
+	type RepoCheckStep,
+} from './isolated-runner-limit-message.ts'
 import { credentialNeedKeyNotes } from '#worker/credentials/credential-needs.ts'
 import { computeCredentialNeedsClosure } from '#worker/credentials/credential-needs-closure.ts'
 import { republishedNeedsNote } from '#worker/enablements/republish-needs-note.ts'
+import { createSavedPackageClosureLoader } from '#worker/package-codemods/package-app-capability-closure.ts'
+import { buildCapabilityDeclarationCheck } from './capability-declaration-check.ts'
 
 export const repoCheckKinds = [
 	'manifest',
@@ -92,6 +105,7 @@ export const repoCheckKinds = [
 	'typecheck',
 	'lint',
 	'credentials',
+	'capabilities',
 	'smoke',
 ] as const
 
@@ -142,13 +156,35 @@ export function formatFailedRepoCheckMessages(
  * In-memory workspace over a path→content map for the same `runRepoChecks`
  * surface used by external publish and community install.
  */
-export function createSnapshotFilesWorkspace(files: Record<string, string>) {
+/**
+ * Presents an in-memory package tree to {@link runRepoChecks}.
+ * `binaryFileSizes` lists binary files sent by path and byte size only (the
+ * `kody dev check` upload): they exist for checks such as
+ * `kody.app.assets`, count toward size limits, and read as empty text.
+ */
+export function createSnapshotFilesWorkspace(
+	files: Record<string, string>,
+	options: { binaryFileSizes?: Record<string, number> } = {},
+) {
+	const binaryFileSizes = options.binaryFileSizes ?? {}
 	return {
 		async readFile(path: string) {
-			return files[normalizeRepoWorkspacePath(path)] ?? null
+			const normalized = normalizeRepoWorkspacePath(path)
+			if (Object.hasOwn(files, normalized)) return files[normalized] ?? null
+			return Object.hasOwn(binaryFileSizes, normalized) ? '' : null
+		},
+		async stat(path: string) {
+			const normalized = normalizeRepoWorkspacePath(path)
+			if (!Object.hasOwn(binaryFileSizes, normalized)) return null
+			return { size: binaryFileSizes[normalized] ?? 0 }
 		},
 		async glob() {
-			return Object.keys(files).map((path) => ({
+			return [
+				...Object.keys(files),
+				...Object.keys(binaryFileSizes).filter(
+					(path) => !Object.hasOwn(files, path),
+				),
+			].map((path) => ({
 				path,
 				type: 'file' as const,
 			}))
@@ -298,6 +334,7 @@ async function* workspaceFilesForSnapshot(input: {
 		stat?(path: string): Promise<{ size: number } | null>
 	}
 	root: string
+	applyKodyIgnore?: boolean
 }) {
 	const encoder = new TextEncoder()
 	const normalizedRoot = normalizeRepoWorkspacePath(input.root).replace(
@@ -305,17 +342,30 @@ async function* workspaceFilesForSnapshot(input: {
 		'',
 	)
 	const pattern = normalizedRoot === '' ? '**/*' : `${normalizedRoot}/**/*`
+	const isKodyIgnored =
+		input.applyKodyIgnore === false
+			? null
+			: createKodyIgnoreMatcher(
+					await input.workspace.readFile(
+						normalizedRoot === ''
+							? kodyIgnoreFileName
+							: `${normalizedRoot}/${kodyIgnoreFileName}`,
+					),
+				)
 	const files = await input.workspace.glob(pattern)
 	for (const file of files) {
 		if (file.type !== 'file') continue
 		const normalizedPath = normalizeRepoWorkspacePath(file.path)
 		if (normalizedPath.split('/').includes('.git')) continue
-		const content = await input.workspace.readFile(file.path)
-		if (content == null) continue
 		const relativePath =
 			normalizedRoot && normalizedPath.startsWith(`${normalizedRoot}/`)
 				? normalizedPath.slice(normalizedRoot.length + 1)
 				: normalizedPath
+		// Skipped before reading or counting, so ignored files never reach a
+		// check and never count toward the publish check caps.
+		if (isKodyIgnored?.(relativePath)) continue
+		const content = await input.workspace.readFile(file.path)
+		if (content == null) continue
 		// Prefer the filesystem's byte size: readFile UTF-8-decodes binary
 		// blobs lossily, so re-encoding the string can overstate a binary
 		// file's size by up to 3x.
@@ -1422,6 +1472,74 @@ async function buildCredentialNeedsCheck(input: {
 	}
 }
 
+/**
+ * Above this much JS/TS source, the credential stamp scan runs in its own
+ * throwaway isolate (like bundle chunks and typecheck) so its parse heap
+ * never stacks on the caller's. Publish and `kody dev check` both take the
+ * same branch for the same tree, so a dev check pass predicts publish.
+ */
+export const isolatedCredentialScanMinSourceBytes = 256 * 1024
+
+const credentialScanSourcePattern = /\.(?:[cm]?[jt]sx?)$/i
+const credentialScanTextEncoder = new TextEncoder()
+
+function credentialScanSourceBytes(sourceFiles: Record<string, string>) {
+	let bytes = 0
+	for (const [path, content] of Object.entries(sourceFiles)) {
+		if (credentialScanSourcePattern.test(path)) {
+			bytes += credentialScanTextEncoder.encode(content).byteLength
+		}
+	}
+	return bytes
+}
+
+async function runCredentialPatternCheck(input: {
+	sourceFiles: Record<string, string>
+	env?: Env
+	userId?: string
+	secretProviders?: ResolvedSecretProviderSlots
+}): Promise<CredentialPatternCheckResult> {
+	const runner =
+		input.env &&
+		input.userId &&
+		credentialScanSourceBytes(input.sourceFiles) >=
+			isolatedCredentialScanMinSourceBytes
+			? createIsolatedCheckPhaseRunner(input.env)
+			: null
+	if (!runner || !input.userId) {
+		return buildCredentialPatternCheck(
+			input.sourceFiles,
+			input.secretProviders ? { secretProviders: input.secretProviders } : {},
+		)
+	}
+	const stagingKey = await runner.stage({
+		userId: input.userId,
+		sourceFiles: input.sourceFiles,
+	})
+	try {
+		const outcome = await runner.run({
+			phase: 'credentials',
+			stagingKey,
+			userId: input.userId,
+			...(input.secretProviders
+				? { secretProviders: input.secretProviders }
+				: {}),
+		})
+		return {
+			kind: 'credentials',
+			ok: outcome.ok,
+			message: outcome.message,
+			sourceFiles:
+				outcome.changedFiles && Object.keys(outcome.changedFiles).length > 0
+					? { ...input.sourceFiles, ...outcome.changedFiles }
+					: input.sourceFiles,
+			stampKeys: outcome.stampKeys ?? [],
+		}
+	} finally {
+		await runner.discard(stagingKey)
+	}
+}
+
 export async function runRepoChecks(input: {
 	workspace: {
 		readFile(path: string): Promise<string | null>
@@ -1462,6 +1580,17 @@ export async function runRepoChecks(input: {
 	 * until phase 2/3 of #3836. Omit (default true) for authoring publish.
 	 */
 	enforceCredentialStamp?: boolean
+	/**
+	 * Called before each coarse step so the caller can record it durably and
+	 * name the step if the isolate hits its memory or CPU limit.
+	 */
+	onStep?: (step: RepoCheckStep) => Promise<void>
+	/**
+	 * When false, the warn-only capability check reads only this package's
+	 * modules. Platform codemods pass false: they compute the closure once
+	 * themselves, and its findings never fail a check.
+	 */
+	followCapabilityImports?: boolean
 }): Promise<RepoCheckRunResult> {
 	const manifestContent = await input.workspace.readFile(input.manifestPath)
 	if (manifestContent == null) {
@@ -1518,6 +1647,7 @@ export async function runRepoChecks(input: {
 		/\/+$/,
 		'',
 	)
+	await input.onStep?.('source-walk')
 	const sourceWalk = await (async () => {
 		const collected: Record<string, string> = {}
 		let fileCount = 0
@@ -1574,21 +1704,29 @@ export async function runRepoChecks(input: {
 	// overwrites descriptions). Hard-fails on unstampable patterns / server eval
 	// / missing descriptions (issue #3836 phase 1) unless the caller opts out
 	// (community install / platform codemods).
-	const credentialPatternCheck = buildCredentialPatternCheck(sourceFiles, {
-		secretProviders:
-			input.env && input.userId
-				? await resolveSecretProviderSlots({
-						env: input.env,
-						userId: input.userId,
-						files: sourceFiles,
-					})
-				: undefined,
+	await input.onStep?.('credentials')
+	const secretProviders =
+		input.env && input.userId
+			? await resolveSecretProviderSlots({
+					env: input.env,
+					userId: input.userId,
+					files: sourceFiles,
+				})
+			: undefined
+	const credentialPatternCheck = await runCredentialPatternCheck({
+		sourceFiles,
+		env: input.env,
+		userId: input.userId,
+		secretProviders,
 	})
 	sourceFiles = credentialPatternCheck.sourceFiles
 	const enforceCredentialStamp = input.enforceCredentialStamp !== false
-	const credentialCheckOk = enforceCredentialStamp
-		? credentialPatternCheck.ok
-		: true
+	// A scan that hit the runner limit stays failed either way: it is
+	// incomplete, and codemod gates must see that.
+	const credentialCheckOk =
+		credentialPatternCheck.ok ||
+		(!enforceCredentialStamp &&
+			!isRepoCheckResourceLimitMessage(credentialPatternCheck.message))
 	const credentialCheckMessage =
 		!enforceCredentialStamp && !credentialPatternCheck.ok
 			? credentialPatternCheck.message
@@ -1614,6 +1752,7 @@ export async function runRepoChecks(input: {
 	if (enforceCredentialStamp && !credentialPatternCheck.ok) {
 		return toRepoCheckRunResult({ results, manifest, sourceFiles })
 	}
+	await input.onStep?.('package-checks')
 	const credentialNeedsCheck = await buildCredentialNeedsCheck({
 		env: input.env,
 		userId: input.userId,
@@ -1627,6 +1766,23 @@ export async function runRepoChecks(input: {
 			return toRepoCheckRunResult({ results, manifest, sourceFiles })
 		}
 	}
+	const capabilityDeclarationCheck = await buildCapabilityDeclarationCheck({
+		manifest,
+		sourceFiles,
+		...(input.followCapabilityImports !== false &&
+		input.env &&
+		input.baseUrl &&
+		input.userId
+			? {
+					loadPackage: createSavedPackageClosureLoader({
+						env: input.env,
+						baseUrl: input.baseUrl,
+						userId: input.userId,
+					}),
+				}
+			: {}),
+	})
+	if (capabilityDeclarationCheck) results.push(capabilityDeclarationCheck)
 	// Cheap static gates for the package-app browser surface run before the
 	// heavy phases so a misconfigured manifest fails fast with one message.
 	const packageAppSurfaceChecks = [
@@ -1683,7 +1839,9 @@ export async function runRepoChecks(input: {
 			sourceFiles,
 		})
 	}
+	await input.onStep?.('lint')
 	const lintCheck = buildLintCheck(sourceFiles)
+	await input.onStep?.('bundle')
 	const { createFileSystemSnapshot } = await loadWorkerBundlerSnapshotTools()
 	const snapshot = await createFileSystemSnapshot(
 		(async function* () {
@@ -2005,9 +2163,12 @@ export async function runRepoSourceWalkChecks(input: {
 	const collected: Record<string, string> = {}
 	let fileCount = 0
 	let totalBytes = 0
+	// Plain repos push the whole tree, so `.kodyignore` must not shrink
+	// what this size gate counts.
 	for await (const [path, content, fileBytes] of workspaceFilesForSnapshot({
 		workspace: input.workspace,
 		root: sourceRoot,
+		applyKodyIgnore: false,
 	})) {
 		fileCount += 1
 		if (fileCount > repoChecksSourceMaxFiles) {

@@ -23,10 +23,7 @@ import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { assembleMcpServerInstructionsForCaller } from './assemble-mcp-server-instructions.ts'
 import { registerTools } from './register-tools.ts'
 import { registerPackageSkillsExtensionWhenEnabled } from './skills/register-package-skills.ts'
-import {
-	readMcpRequestClientCapabilities,
-	registerMcpEvents,
-} from './events/register-mcp-events.ts'
+import { registerMcpEvents } from './events/register-mcp-events.ts'
 import {
 	asMcpToolServer,
 	type McpRegistrationAgent,
@@ -82,7 +79,6 @@ export async function handleStatelessMcpRequest(input: {
 				env,
 				callerContext,
 				oauthClientId: input.oauthClientId ?? null,
-				clientCapabilities: readMcpRequestClientCapabilities(input.parsedBody),
 			})
 			return server
 		},

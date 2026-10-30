@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import {
 	mkdir,
 	mkdtemp,
@@ -267,6 +268,22 @@ test('process reaper kills tracked pids and removes the work dir when its pipe c
 	)
 })
 
+// The grandchild is reparented to PID 1, which may not reap it in a container
+// without an init process; a zombie still answers kill(pid, 0).
+function isLiveNonZombie(pid: number) {
+	if (!isProcessAlive(pid)) return false
+	if (process.platform !== 'linux') return true
+	try {
+		const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+		return (
+			stat.slice(stat.lastIndexOf(')') + 2, stat.lastIndexOf(')') + 3) !== 'Z'
+		)
+	} catch {
+		// Exited between the probes, or /proc is unreadable: trust kill(pid, 0).
+		return isProcessAlive(pid)
+	}
+}
+
 test('process reaper kills a detached process group on pipe close', async () => {
 	const workDir = await mkdtemp(join(tmpdir(), 'kody-dev-reaper-group-'))
 	// Nested sleep under detached sh — killing only the shell would leave the child.
@@ -287,7 +304,8 @@ test('process reaper kills a detached process group on pipe close', async () => 
 	reaper.trackGroup(shell.pid)
 	reaper.close()
 	await waitFor(async () => {
-		if (isProcessAlive(shell.pid!) || isProcessAlive(childPid)) return undefined
+		if (isLiveNonZombie(shell.pid!) || isLiveNonZombie(childPid))
+			return undefined
 		return true
 	}, 'detached process group death')
 	await waitFor(

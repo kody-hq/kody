@@ -12,6 +12,13 @@ function createProductionEnv() {
 		...settings,
 		dead_letter_queue: `${queue}-dlq`,
 	})
+	const deadLetterConsumer = (queue: string) => ({
+		queue,
+		max_batch_size: 10,
+		max_batch_timeout: 5,
+		max_retries: 100,
+		retry_delay: 60,
+	})
 	return {
 		queues: {
 			producers: [
@@ -36,6 +43,16 @@ function createProductionEnv() {
 					max_retries: 10,
 					max_concurrency: 16,
 				}),
+				...[
+					'kody-email-delivery-dlq',
+					'kody-artifacts-repo-events-dlq',
+					'kody-platform-feedback-dispatch-dlq',
+					'kody-community-activity-dispatch-dlq',
+					'kody-community-listing-published-dispatch-dlq',
+					'kody-package-events-dispatch-dlq',
+					'kody-webhook-dispatch-dlq',
+					'kody-scheduled-dispatch-dlq',
+				].map(deadLetterConsumer),
 			],
 		},
 	}
@@ -94,7 +111,29 @@ test('production queue config requires all consumers and consistent producers', 
 		parseEnv((env) => {
 			env.queues.consumers.pop()
 		}),
-	).toThrow('exactly 7 production Queue consumers')
+	).toThrow('exactly 15 production Queue consumers')
+	expect(
+		parseEnv((env) => {
+			env.queues.consumers = env.queues.consumers.map((consumer) =>
+				consumer.queue === 'kody-scheduled-dispatch-dlq'
+					? { ...consumer, queue: 'kody-unrelated-queue' }
+					: consumer,
+			)
+		}),
+	).toThrow(
+		'must define the production dead-letter Queue consumer "kody-scheduled-dispatch-dlq"',
+	)
+	expect(
+		parseEnv((env) => {
+			const consumer = env.queues.consumers.find(
+				(candidate) =>
+					candidate.queue === 'kody-platform-feedback-dispatch-dlq',
+			)
+			Object.assign(consumer ?? {}, { max_retries: 3 })
+		}),
+	).toThrow(
+		'invalid production dead-letter consumer settings for "kody-platform-feedback-dispatch-dlq"',
+	)
 	expect(
 		parseEnv((env) => {
 			env.queues.producers[0] = {

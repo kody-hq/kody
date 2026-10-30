@@ -16,7 +16,7 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/agents')({
 		navigation: { rail: 'workspace', item: 'agents' },
 		orgScope: { section: 'agents' },
 	},
-	context: ({ location, params }) => ({
+	beforeLoad: ({ location, params }) => ({
 		queryInput: { orgSlug: params.orgSlug, view: 'list' as const },
 		pageQueryInput: location.pathname + location.searchStr,
 	}),

@@ -70,6 +70,7 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Testing principles](./testing-principles.md)
 - [End-to-end testing](./end-to-end-testing.md)
 - [Weekly site performance](./weekly-site-perf.md)
+- [Markdown and highlighting migration measurements](./performance/markdown-migration-2026-10-28.md)
 - [MCP latency bench](./latency-bench.md)
 - [Mock API servers](./mock-api-servers.md)
 - [Package discovery routing evaluation](./package-discovery-evaluation.md)
@@ -104,6 +105,8 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Operator accounts](./operator-accounts.md) (third-party services, secret
   names, recovery)
 - [Production backup and disaster recovery](./disaster-recovery.md)
+- [Dead-letter queues](./dead-letter-queues.md) (admin list, peek, replay, ack,
+  and purge; safety rules)
 - [Production rollback](./rollback.md)
 - Ops runbook: [account write-lease repair](./account-write-lease-repair.md)
 - Ops runbook: [org resource transfer](./org-resource-transfer.md)

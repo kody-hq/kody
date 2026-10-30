@@ -89,8 +89,20 @@ group them. Search matches skill names, descriptions, and package names.
 
 Select a skill to read its instructions and supporting files. Markdown has
 rendered and raw views; other text files show their source, and binary files can
-be downloaded. The viewer is read-only. Update skills through the normal package
-publish flow.
+be downloaded. Open **History** to read archived published versions of a skill
+and its supporting files. **Show changes** compares the selected file with
+another version, including added and removed files. Version choices show the
+package commit and publication time, plus the publisher when recorded, not
+mutable drafts.
+
+People with package write access can choose **Restore this version**, then
+**Restore and publish**. This restores only that skill directory, including
+supporting files and binary assets, as a new revision. Other skills and package
+files stay unchanged. Normal publish checks and approval rules still apply. If
+the package changes while history is open, reload before restoring. Read-only
+collaborators can browse and compare versions but cannot restore. History
+includes versions whose skill indexes and source snapshots are still available.
+It does not reconstruct versions from before skills were indexed.
 
 Browsing does not require the Skills-over-MCP feature flag or a connected agent.
 Package read permissions still apply.
@@ -178,5 +190,4 @@ the underlying events. Metrics are filtered by package read permission.
 A read is evidence that Kody delivered or displayed a file, not proof that an
 agent followed its instructions or completed a task. Anonymous visitors, local
 Git file reads, and cached or offline agent reads cannot be attributed to an
-organization and are not counted. Collection starts when this feature is
-deployed, with no historical backfill.
+organization and are not counted. There is no historical backfill.

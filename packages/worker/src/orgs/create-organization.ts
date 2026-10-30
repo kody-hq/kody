@@ -5,6 +5,7 @@ import {
 	OrgSlugValidationError,
 } from '#worker/orgs/access-writes.ts'
 import { FreeOrgLimitError } from '#worker/orgs/billing.ts'
+import { type OrgProfileVisibility } from '#worker/orgs/org-public-profile.ts'
 import { type OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import {
 	orgHandleRestorableError,
@@ -17,6 +18,7 @@ export type CreateOrganizationInput = {
 	personId: string
 	slug: string
 	displayName: string
+	profileVisibility?: OrgProfileVisibility
 }
 
 export type CreateOrganizationResult =
@@ -83,6 +85,7 @@ export async function createOrganization(
 			env,
 			slug,
 			displayName,
+			profileVisibility: input.profileVisibility,
 			createdByUserId: input.personId,
 			audit: input.audit,
 		})

@@ -14,6 +14,7 @@ import {
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import { requireWebsiteIntegrationPermission } from '#app/handlers/website-integration-access.ts'
 import { type z } from 'zod'
 import {
 	type rotateOauthAppCredentialsSchema,
@@ -27,6 +28,13 @@ export async function setAccountIntegrationUsage(
 		user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 	} & z.infer<typeof setUsageSchema>,
 ) {
+	await requireWebsiteIntegrationPermission({
+		env: input.env,
+		user: input.user,
+		permission: 'integration:write',
+		action: 'change connection access',
+		connectionName: input.name,
+	})
 	const allowedPackageIds =
 		input.usageMode === 'packages' ? (input.allowedPackageIds ?? []) : []
 	const updated = await setIntegrationUsage({
@@ -56,6 +64,13 @@ export async function approveAccountIntegrationPackage(
 		user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 	} & z.infer<typeof approvePackageSchema>,
 ) {
+	await requireWebsiteIntegrationPermission({
+		env: input.env,
+		user: input.user,
+		permission: 'integration:write',
+		action: 'change connection access',
+		connectionName: input.name,
+	})
 	const userId = ownerIdFromCaller({
 		request: input.user.request,
 		user: input.user.mcpUser,
@@ -96,6 +111,13 @@ export async function disconnectAccountIntegration(input: {
 	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 	name: string
 }) {
+	await requireWebsiteIntegrationPermission({
+		env: input.env,
+		user: input.user,
+		permission: 'integration:delete',
+		action: 'disconnect connections',
+		connectionName: input.name,
+	})
 	const deleted = await deleteIntegration({
 		env: input.env,
 		userId: ownerIdFromCaller({
@@ -116,6 +138,12 @@ export async function deleteAccountOauthApp(input: {
 	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 	appSlug: string
 }) {
+	await requireWebsiteIntegrationPermission({
+		env: input.env,
+		user: input.user,
+		permission: 'integration:delete',
+		action: 'delete OAuth apps',
+	})
 	const userId = ownerIdFromCaller({
 		request: input.user.request,
 		user: input.user.mcpUser,
@@ -150,6 +178,12 @@ export async function rotateAccountOauthAppCredentials(
 		user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 	} & z.infer<typeof rotateOauthAppCredentialsSchema>,
 ) {
+	await requireWebsiteIntegrationPermission({
+		env: input.env,
+		user: input.user,
+		permission: 'integration:write',
+		action: 'rotate OAuth app credentials',
+	})
 	const userId = ownerIdFromCaller({
 		request: input.user.request,
 		user: input.user.mcpUser,

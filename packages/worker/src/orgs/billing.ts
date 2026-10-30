@@ -1,5 +1,12 @@
 /** Teams P6 org billing helpers (seats, free-org cap, budgets). */
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import {
+	isPaidPlan,
+	parsePlanName,
+	parseStripePlanName,
+	planNames,
+	resolveEffectivePlan,
+} from '#universal/plans.ts'
 
 export const MAX_FREE_ORGS_PER_USER = 2
 
@@ -9,6 +16,31 @@ export type OrgSeatRole = (typeof SEAT_ROLES)[number]
 
 export function isPaidOrg(plan: string): boolean {
 	return plan !== 'free'
+}
+
+/**
+ * Effective plan is the higher of the manual grant and Stripe plan; temporary
+ * promo/gift overlays are deliberately excluded because they are not subscriptions.
+ */
+export function isPaidOrgBilling(row: {
+	plan: string | null
+	stripe_plan: string | null
+}): boolean {
+	return isPaidPlan(
+		resolveEffectivePlan(parsePlanName(row.plan) ?? 'free', row.stripe_plan),
+	)
+}
+
+const paidStripePlanNames = planNames.filter(
+	(name) => name !== 'free' && parseStripePlanName(name) !== null,
+)
+
+/** See {@link isPaidOrgBilling} for effective-plan semantics. */
+export function effectiveFreeOrgSql(alias: string): string {
+	const paidStripePlans = paidStripePlanNames
+		.map((name) => `'${name}'`)
+		.join(', ')
+	return `(${alias}.plan = 'free' AND (${alias}.stripe_plan IS NULL OR ${alias}.stripe_plan NOT IN (${paidStripePlans})))`
 }
 
 /** Stripe customer for org-scoped checkout (team org row, else personal user). */
@@ -102,7 +134,7 @@ export const liveFreeOwnedOrgCountSql = `SELECT COUNT(*)
 	  AND m.user_id = ?
 	  AND m.role = 'owner'
 	  AND m.deleted_at IS NULL
-	 WHERE o.plan = 'free'
+	 WHERE ${effectiveFreeOrgSql('o')}
 	   AND o.deleted_at IS NULL`
 
 export async function assertCanOwnAnotherFreeOrg(
@@ -125,10 +157,12 @@ export async function assertCanAcceptFreeOrgOwnership(input: {
 	userId: string
 }): Promise<void> {
 	const org = await input.db
-		.prepare(`SELECT plan FROM orgs WHERE id = ? AND deleted_at IS NULL`)
+		.prepare(
+			`SELECT plan, stripe_plan FROM orgs WHERE id = ? AND deleted_at IS NULL`,
+		)
 		.bind(input.orgId)
-		.first<{ plan: string }>()
-	if (!org || isPaidOrg(org.plan)) {
+		.first<{ plan: string; stripe_plan: string | null }>()
+	if (!org || isPaidOrgBilling(org)) {
 		return
 	}
 	const existingOwner = await input.db

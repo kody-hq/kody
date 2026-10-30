@@ -1,6 +1,7 @@
 # 0059 — MCP Events extension (webhook profile) behind a flag
 
-- **Status:** accepted
+- **Status:** accepted; the client-declaration gate is superseded by
+  [0087](./0087-mcp-events-no-client-declaration.md)
 - **Date:** 2026-10-07
 
 ## Context

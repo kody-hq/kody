@@ -19,12 +19,10 @@ import {
 } from '#worker/package-registry/types.ts'
 import {
 	type AstNode,
-	createModuleConstantsReader,
 	findPlaceholderMatches,
+	forEachScannableModule,
 	getCalleeName,
 	getNodeName,
-	listScannableModulePaths,
-	parseModule,
 	type PlaceholderMatch,
 	type PlaceholderMatchKind,
 	resolveStringExpression,
@@ -339,24 +337,22 @@ export function scanPackageCredentials(input: {
 		})),
 		unparsedModules: 0,
 	}
-	const modulePaths = listScannableModulePaths(input.files).sort()
-	const parsedModules = new Map(
-		modulePaths.map((path) => [path, parseModule(input.files[path]!)]),
+	forEachScannableModule(
+		input.files,
+		(path, parsed, constants) => {
+			if (parsed) {
+				scanParsedModule(parsed, constants, scan)
+			} else {
+				scan.unparsedModules += 1
+				recordPlaceholders(
+					input.files[path]!,
+					() => otherPlacement('unparsed'),
+					scan,
+				)
+			}
+		},
+		{ sorted: true },
 	)
-	const readConstants = createModuleConstantsReader(parsedModules)
-	for (const path of modulePaths) {
-		const parsed = parsedModules.get(path)
-		if (parsed) {
-			scanParsedModule(parsed, readConstants(path), scan)
-		} else {
-			scan.unparsedModules += 1
-			recordPlaceholders(
-				input.files[path]!,
-				() => otherPlacement('unparsed'),
-				scan,
-			)
-		}
-	}
 	return scan
 }
 

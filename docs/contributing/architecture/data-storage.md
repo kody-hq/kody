@@ -426,7 +426,11 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   org. Personal orgs reuse `users.stable_user_id` as `orgs.id`. Billing,
   profile, gift, and budget columns live on the org row. Soft-delete and actor
   columns exist on the row. See
-  [decision 0063](../decisions/0063-teams-expand-orgs.md).
+  [decision 0063](../decisions/0063-teams-expand-orgs.md). `profile_visibility`
+  (`public` default | `private`) decides whether a team org's `/@slug` page and
+  avatar are visible outside the org (set at create and in org Settings /
+  `orgUpdate`); personal orgs follow `users.profile_visibility` instead
+  ([decision 0088](../decisions/0088-public-team-org-pages.md)).
 - `handles` (0086): the username namespace. Handles are permanent (no username
   or org slug renames); rows left by pre-rule renames stay reserved.
 - `org_memberships` (0086): `(org_id, user_id)` with role `owner`, `member`, or
@@ -469,8 +473,9 @@ The schema is defined by migrations in `packages/worker/migrations/`:
 - `mcp_event_subscriptions` (`0083-mcp-event-subscriptions.sql`): user-owned MCP
   Events webhook subscriptions (event name, callback URL, encrypted `whsec_`
   secrets). Deleted and exported with the account; secret columns are redacted
-  from export. See [MCP Events](../../guides/mcp-events.md) and
-  [0059](../decisions/0059-mcp-events-extension-behind-flag.md).
+  from export. See [MCP Events](../../guides/mcp-events.md),
+  [0059](../decisions/0059-mcp-events-extension-behind-flag.md), and
+  [0087](../decisions/0087-mcp-events-no-client-declaration.md).
 - `community_listings`, `community_forks`, `community_ratings`,
   `community_reports`, `community_bans`: public package listings and moderation
   (see [Public packages](../community-packages.md)). `community_forks` rows for
@@ -536,7 +541,15 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   `CHECK` constraint; both FKs use `ON DELETE RESTRICT`. Holds `scopes_json`,
   `required_hosts_json`, `usage_mode` / `allowed_packages_json`, and access /
   refresh token ciphertext. The non-secret `client_id` is stored inline on the
-  owning app row.
+  owning app row. `0202-integration-app-owner.sql` rebuilds the table to add
+  nullable `app_owner_id`, the org whose app the connection uses; the app FK is
+  now `(app_owner_id, app_slug) → user_oauth_apps(user_id, slug)`, and user-lane
+  rows were backfilled with `app_owner_id = user_id`. A row whose `app_owner_id`
+  differs from `user_id` is a member's personal connection pinned to that org
+  (ADR 0068 amendment 2026-10-29): tokens live with the member's personal org,
+  the client secret with the org's app. Deleting the org's app, the member
+  leaving, or org purge (`account/data-targets.ts`) wipes those rows; org
+  transfer rewrites `app_owner_id` with the apps.
 
 App access pattern:
 
@@ -1400,6 +1413,11 @@ runtimes skip the read. A failed metrics read fails the lane instead of
 reporting the queue as empty. Inbound email subscription dead-letters are
 terminal handler failures and are not part of this page.
 
+The origin worker consumes every production DLQ and parks each message in APP_DB
+`dead_letter_messages`; the alert counts those parked rows too, so a DLQ keeps
+paging until an admin replays, acks, or purges its messages with the admin DLQ
+capabilities ([dead-letter queues](../dead-letter-queues.md)).
+
 Production note:
 
 - Production deploys warn that the documented Artifacts Worker binding config is
@@ -1540,8 +1558,20 @@ on write unless a migration backfills existing rows.
   credential's exchange: an HTTPS URL on one of the row's `allowed_hosts`, the
   body template, and where the session token is in the response. Other kinds
   leave it NULL. The value holds the login fields as one JSON object, and
-  `inject_json` places the session token. Sessions are kept per isolate, never
-  in storage.
+  `inject_json` places the session token. Kody keeps the session in
+  `login_credential_sessions`, never in `secret_entries`.
+- `login_credential_sessions` (`0206-login-credential-sessions.sql`,
+  `packages/worker/src/credentials/login-session-store.ts`) holds one row per
+  `login` credential: the session token its exchange returned, encrypted with
+  the `login-credential-session` purpose and bound (AAD) to the owner,
+  credential id, and revision, plus `expires_at`. The revision is a digest of
+  the credential's ciphertext, `config_json`, `allowed_hosts`, and
+  `inject_json`, so an edit to any of them strands the session; deleting the
+  credential deletes the row. `lease_id` / `lease_expires_at` are a 60-second D1
+  lease so one exchange runs at a time per credential across isolates. The
+  session is never code-readable and never in capability output, logs, errors,
+  or audit details. Account and org deletion delete rows by `user_id` (the
+  owning org); account export omits the table.
 - `credential_inventory_runs` and `credential_inventory_items`
   (`0112-credential-inventory.sql`,
   `packages/worker/src/credentials/credential-inventory.ts`) hold the admin

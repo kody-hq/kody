@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from '../components/site-link.tsx'
+import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
 import { formatTimestamp } from '#client/format-timestamp.ts'
 import {
 	AccountManagementMessage,
@@ -79,6 +80,7 @@ export function renderJobDetailPlaceholder(title: string, body: string) {
 }
 export function renderAccountJobDetail(input: {
 	username: string
+	orgSlug?: string | null
 	currentHref: string
 	detail: AccountJobDetail
 	isMutating: boolean
@@ -190,6 +192,13 @@ export function renderAccountJobDetail(input: {
 					},
 				]}
 			/>
+
+			{input.orgSlug ? (
+				<AutomationExecutionSettings
+					orgSlug={input.orgSlug}
+					target={{ kind: 'job', jobId: detail.id }}
+				/>
+			) : null}
 
 			{detail.lastRunError ? (
 				<AccountManagementMessage tone="error">

@@ -1,3 +1,4 @@
+import { authorizeEmailMessageChange } from '#worker/email/authorize-email-message.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -82,21 +83,30 @@ export const emailMessageClassifyCapability = defineDomainCapability(
 				classification: args.classification,
 				archived: args.archived,
 			}
-			const updated = await setEmailMessageClassification({
+			const message = await authorizeEmailMessageChange({
 				env: ctx.env,
-				db: ctx.env.APP_DB,
-				userId: ownerId,
+				request: ctx.callerContext.request,
+				ownerId,
 				messageId: args.message_id,
-				...(args.classification === undefined
-					? {}
-					: {
-							classification: args.classification,
-							classificationReason: manualEmailClassificationReason(
-								args.classification,
-							),
-						}),
-				archived: args.archived,
+				permission: 'email:write',
 			})
+			const updated = message
+				? await setEmailMessageClassification({
+						env: ctx.env,
+						db: ctx.env.APP_DB,
+						userId: ownerId,
+						messageId: args.message_id,
+						...(args.classification === undefined
+							? {}
+							: {
+									classification: args.classification,
+									classificationReason: manualEmailClassificationReason(
+										args.classification,
+									),
+								}),
+						archived: args.archived,
+					})
+				: false
 			await auditUserEmailMessageTriage({
 				env: ctx.env,
 				actorEmail: user.email,

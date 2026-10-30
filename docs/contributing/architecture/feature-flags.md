@@ -146,6 +146,12 @@ Audience values: `everyone` (default) | `experiments_opt_in`.
   `request-feature-flags-cache.ts`) and shipped as `session.featureFlags`; gate
   UI with `isFeatureFlagEnabled(session, key)` from
   `packages/worker/client/feature-flags.ts`.
+- **Execute fetch gateway**: each `KodyFetchGateway` call gets freshly
+  deserialized props, so request-keyed memos miss across one execution's
+  fetches. The host sets `executionId` on the run's gateway props, and
+  `feature-flags/execution-scope.ts` reuses `evaluateFeatureFlag`,
+  `isFeatureGloballyEnabled`, and the supplier flag's org-owner lookup for that
+  id (KODY-CS). The next execution gets a new id and reads D1 again.
 - **Capability gating**: a capability definition may declare
   `featureFlag: <key>`; `access-control.ts` hides it from search and denies
   execution when the flag evaluates off for the caller. Flag-gated capabilities
@@ -189,20 +195,46 @@ Remove the flag and gate sites when the experiment ends.
 `mcp-events-extension` is an experiment (default **off**, registry
 `defaultAudience: experiments_opt_in`) for the draft MCP Events extension
 (webhook delivery only; see
-[ADR 0059](../decisions/0059-mcp-events-extension-behind-flag.md)). When on for
-a caller whose stateless-lane request declares events support in its client
-capabilities, `server/discover` advertises `capabilities.events` and the server
-answers `events/list`, `events/subscribe`, and `events/unsubscribe`. Only
-`kody.emits` topics declared with `mcp: true` are listed. When off (or the
-client does not declare events), none of that is registered, and existing
-subscriptions stop receiving deliveries. Signed-in users can also turn it on
-from `/docs/mcp-events` (a per-user on override). The declared `successMetric`
-is `execute` event count, goal increase: event-driven clients follow deliveries
+[ADR 0059](../decisions/0059-mcp-events-extension-behind-flag.md) and
+[ADR 0087](../decisions/0087-mcp-events-no-client-declaration.md)). When on for
+an OAuth caller on the stateless lane, `server/discover` advertises
+`capabilities.events` and the server answers `events/list`, `events/subscribe`,
+and `events/unsubscribe`. Clients declare nothing. Only `kody.emits` topics
+declared with `mcp: true` are listed. When off (or the caller is not an OAuth
+principal), none of that is registered, and existing subscriptions stop
+receiving deliveries. Signed-in users can also turn it on from
+`/docs/mcp-events` (a per-user on override). The declared `successMetric` is
+`execute` event count, goal increase: event-driven clients follow deliveries
 with execute calls. Exposures use `exposureRecording: mcp-events-clients`
-(dedicated write from `registerMcpEvents` only), so execute and other non-events
-MCP callers stay out of the on/off cohorts. Enable for experiment members with
+(dedicated write from the `registerMcpEvents` `events/*` handlers only), so
+execute and other non-events MCP callers stay out of the on/off cohorts. Enable
+for experiment members with
 `adminFeatureFlagSet({ key: "mcp-events-extension", enabled: true, audience: "experiments_opt_in" })`.
 Remove the flag and gate sites when the experiment ends.
+
+`repo-push-queue` is the repo-scoped kill switch for the per-repo push queue
+([ADR 0075](../decisions/0075-repo-push-queue-worker.md)); it stays in the
+registry after the global rollout so operators can turn the queue off. Its
+`successMetric` is the observe-only `git_push` event, `error_rate`, goal
+decrease: pushes should stop failing with busy (`503` + `Retry-After`), timeout
+(the queue's 90s budget), or other errors. Every receive-pack through the
+plain-repo git proxy records one `git_push` event for the repo owner
+(`entity_sources.user_id`, a person's stable id or an org id) with entity id
+`queued` or `direct`, the outcome and error name, wall time (the Durable
+Object's own wall time for queued pushes), wait before the first Artifacts send,
+queue depth on arrival, and Artifacts attempts. Exposures use
+`exposureRecording: 'repo-push-owners'`: the proxy writes one per push for the
+repo owner with the same evaluation that routed it, so the readout joins
+exposures and pushes on the owner id. An owner whose repos saw both values in
+the window counts as mixed, and owners with an allowlisted repo
+(`adminFeatureFlagRepoOverride`, source `override`) or an owner override land in
+the override cohort. Pushes on a deploy without the `REPO_PUSH_QUEUE` binding
+(local dev) or where flag evaluation failed record `git_push` but no exposure.
+Queue cost numbers (per path: ok/busy/timeout/error counts and rates, average
+and max wall time, total wall seconds, wait, attempts and busy retries, queue
+depth) come from `adminRepoPushQueueCost({ days })`, which returns aggregates
+only (never owners, usernames, or repo ids). Production writes go only to
+Analytics Engine; there is no per-push D1 write.
 
 ## Success metrics
 
@@ -241,12 +273,14 @@ each stateless request inside the window. A kill switch or override can be stale
 until the TTL expires. Evaluation failures are not cached and fail closed (every
 flag off) without an exposure write, and execute refuses before loading a
 worker, so the failure never spends daily quota. Flags with
-`exposureRecording: 'mcp-events-clients'` write only after an events-capable MCP
-client registers, so other MCP callers stay outside that experiment frame. The
-write path mirrors usage metering — the `FLAG_EXPOSURES` Analytics Engine
-dataset in production/preview, the D1 `feature_flag_exposure_rollups` table
-(migration `0001-squashed-init.sql`, 90-day retention) in local dev and tests —
-and never throws.
+`exposureRecording: 'mcp-events-clients'` write only when an MCP client calls an
+`events/*` method, so other MCP callers stay outside that experiment frame.
+Flags with `exposureRecording: 'repo-push-owners'` (`repo-push-queue`) write
+only from the plain-repo git proxy, once per push, for the repo owner. The write
+path mirrors usage metering — the `FLAG_EXPOSURES` Analytics Engine dataset in
+production/preview, the D1 `feature_flag_exposure_rollups` table (migration
+`0001-squashed-init.sql`, 90-day retention) in local dev and tests — and never
+throws.
 
 The assignment source (`default` / `global` / `rollout` / `override` / `org`) is
 what keeps the readout honest: `override` and `org` users are hand-picked and

@@ -274,6 +274,11 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['DELETE', '/v1/secrets/{scope}/{name}', 'secretDelete'],
 		['GET', '/v1/credentials', 'credentialList'],
 		['PATCH', '/v1/credentials/{credential_id}', 'credentialUpdate'],
+		[
+			'POST',
+			'/v1/credential-placement-approvals',
+			'credentialPlacementApprovalLink',
+		],
 		['POST', '/v1/credential-proposals', 'credentialMappingPropose'],
 		['GET', '/v1/personal-credential-grants', 'credentialOrgGrantList'],
 		[
@@ -473,6 +478,16 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		],
 		['POST', '/v1/integrations/{name}/refresh', 'integrationTokenRefresh'],
 		['GET', '/v1/oauth-apps', 'integrationOauthAppList'],
+		[
+			'GET',
+			'/v1/oauth-apps/member-connections',
+			'integrationMemberConnectionList',
+		],
+		[
+			'DELETE',
+			'/v1/oauth-apps/member-connections/{credential_id}',
+			'integrationMemberConnectionRevoke',
+		],
 		['DELETE', '/v1/oauth-apps/{slug}', 'integrationOauthAppDelete'],
 		[
 			'POST',
@@ -497,6 +512,8 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 	]),
 	...capabilityRoutes('execution-contexts', [
 		['GET', '/v1/execution-contexts', 'executionContextList'],
+		['GET', '/v1/automation-execution', 'automationExecutionGet'],
+		['PUT', '/v1/automation-execution', 'automationExecutionSet'],
 		['GET', '/v1/execution-contexts/{id}', 'executionContextGet'],
 		['PATCH', '/v1/execution-contexts/{id}', 'executionContextUpdate'],
 		['DELETE', '/v1/execution-contexts/{id}', 'executionContextRevoke'],

@@ -305,7 +305,7 @@ test('github first sign-in parks pending signup until username is chosen', async
 	expect(start.state.length).toBeGreaterThan(0)
 	expect(callbackResponse.status).toBe(302)
 	expect(new Headers(callbackResponse.headers).get('Location')).toBe(
-		'/signup/choose-username',
+		'/signup/choose-username?redirectTo=%2Fcommunity',
 	)
 	expect(setsCookie(callbackResponse, 'kody_oauth_pending=')).toBe(true)
 	expect(setsCookie(callbackResponse, 'kody_session=')).toBe(false)
@@ -435,9 +435,32 @@ test('github sign-in to MCP authorize resumes after username choice', async () =
 		startUrl: `http://example.com/auth/github?redirectTo=${encodeURIComponent(authorizeResume)}`,
 	})
 	expect(response.status).toBe(302)
-	expect(new Headers(response.headers).get('Location')).toBe(
-		'/signup/choose-username',
+	const chooseLocation = new Headers(response.headers).get('Location')
+	expect(chooseLocation).toBe(
+		`/signup/choose-username?${new URLSearchParams({ redirectTo: authorizeResume })}`,
 	)
+	// An expired pending cookie restarts sign-up with the authorize URL intact.
+	const { loadOauthPendingSignupPage } =
+		await import('#worker/identity/oauth-pending-signup-operations.ts')
+	const expired = await loadOauthPendingSignupPage({
+		env,
+		request: new Request(`http://example.com${chooseLocation}`),
+		fallbackRedirectTo: new URL(
+			chooseLocation ?? '',
+			'http://example.com',
+		).searchParams.get('redirectTo'),
+	})
+	expect(expired).toMatchObject({
+		ok: false,
+		code: 'pending_expired',
+		redirectTo: `/signup?${new URLSearchParams({ redirectTo: authorizeResume })}`,
+	})
+	const unsafe = await loadOauthPendingSignupPage({
+		env,
+		request: new Request('http://example.com/signup/choose-username'),
+		fallbackRedirectTo: '//evil.example/oauth/authorize',
+	})
+	expect(unsafe).toMatchObject({ ok: false, redirectTo: '/signup' })
 	const completed = await completePendingFromCallback(
 		env,
 		response,

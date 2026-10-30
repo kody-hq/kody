@@ -86,13 +86,16 @@ export function fileStorePath(
 	home: string = homedir(),
 ): string {
 	const origin = new URL(mcpUrl).host.replace(/[^a-zA-Z0-9.-]/g, '_')
-	const base =
-		process.platform === 'win32'
-			? join(process.env.APPDATA || join(home, 'AppData', 'Roaming'), 'kody')
-			: process.platform === 'darwin'
-				? join(home, 'Library', 'Application Support', 'kody')
-				: join(process.env.XDG_CONFIG_HOME || join(home, '.config'), 'kody')
-	return join(base, `credentials-${origin}.json`)
+	return join(cliConfigDir(home), `credentials-${origin}.json`)
+}
+
+/** The CLI's per-user config directory (credentials, execution-context policy). */
+export function cliConfigDir(home: string = homedir()): string {
+	return process.platform === 'win32'
+		? join(process.env.APPDATA || join(home, 'AppData', 'Roaming'), 'kody')
+		: process.platform === 'darwin'
+			? join(home, 'Library', 'Application Support', 'kody')
+			: join(process.env.XDG_CONFIG_HOME || join(home, '.config'), 'kody')
 }
 
 export function createFileBackend(path: string): SecretBackend {

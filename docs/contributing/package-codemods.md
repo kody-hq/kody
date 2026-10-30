@@ -590,7 +590,9 @@ authority only through the logged would-break fallback. This scan finds package
 apps that would lean on that fallback:
 
 - `undeclared capability` / `computed capability`: a `kody.<name>()` call
-  missing from `kody.app.capabilities`, or a name picked at run time.
+  missing from `kody.app.capabilities`, or a name picked at run time. The scan
+  reads the app's own source only; calls made by imported packages also count
+  against the app's list at run time but are not reported here.
 - `kody.mcp`: an MCP server tool call from the app.
 - `visitor credential`: the app uses credentials, declares no
   `kody.app.visitorNeeds`, and opts no need into `ownerCredentialForVisitors`,
@@ -601,7 +603,39 @@ apps that would lean on that fallback:
 Findings carry fixed messages only. Count flagged apps with
 `adminPackageCodemodScan` (`codemodId`
 `0017-detect-package-app-visitor-authority`) and compare with the live fallback
-count from `adminPackageAppAuthorityFallbackReport`.
+count from `adminPackageAppAuthorityFallbackReport` (fallbacks, plus
+`hardRejections` for calls that failed both ways).
+
+### `0018-declare-package-app-capabilities`
+
+One-time Phase 1 migration for apps that run as their publisher (ADR 0068).
+`applyMode: 'published-only'`, so drifted apps are fixed on their published
+tree. Adds to `package.json#kody.app.capabilities` every platform capability the
+app calls by a static name:
+
+- directly, in its own modules (the `0017` scanner, `collectModuleKodyCalls`);
+- through its import closure: each `kody:@scope/name/export` the app imports is
+  followed from that export's entry module along relative imports and into the
+  packages those modules import (only what an import reaches counts);
+- from the runtime logs: `capability_not_declared` call names in
+  `package_app_authority_fallbacks` and `package_app_authority_rejections` for
+  this app (gap filling for computed names the scan cannot see).
+
+Codemods stay pure. The codemod sets `hostFacts: ['package-app-capabilities']`,
+and the engine computes those facts with I/O before calling it
+(`computePackageAppCapabilityHostFacts` in
+`package-codemods/package-app-capability-closure.ts`) and passes them in as
+`PackageCodemodContext.packageAppCapabilities`. Only names in the builtin
+capability registry are ever added.
+
+Findings stay fixed strings. The exact names added, and per-app counts of what
+stays unresolved (computed names, `kody.mcp`, imports that cannot be followed,
+non-platform names, observed `credential.named` refusals), go in the transform's
+`ownerDetail`, stored on the run item as `owner_detail_json` (admin-only, never
+in step results). Read a run with `adminPackageAppCapabilityMigrationReport`
+(`runId`): apps and owners affected, capabilities added (total and per
+capability), and unresolved apps by package id with counts. Pass `packageId` to
+read one app's private list for its owner.
 
 ## Engine
 
@@ -779,10 +813,15 @@ Admin-gated operator fleet runs:
 - `adminPackageCodemodApply`
 - `adminPackageCodemodRevert`
 - `adminPackageCodemodOwnerNotice` (see [Owner notice](#owner-notice))
+- `adminPackageAppCapabilityMigrationReport` (counts for a
+  [`0018-declare-package-app-capabilities`](#0018-declare-package-app-capabilities)
+  run)
 
-Their `filters` take `userIds`, `packageIds`, and `scope`. Setting
-`scope: 'credential-need-enforcement'` keeps a run to packages someone other
-than their author may run (see
+Their `filters` take `userIds`, `packageIds`, `excludePackageIds`, and `scope`.
+`excludePackageIds` records each listed package as `needs_manual` with a fixed
+"excluded by the operator" finding instead of processing it, for packages a
+fleet apply must step around. Setting `scope: 'credential-need-enforcement'`
+keeps a run to packages someone other than their author may run (see
 [`0013-declare-credential-needs`](#0013-declare-credential-needs)). Reverts
 ignore `scope`; they only touch items an earlier run applied.
 

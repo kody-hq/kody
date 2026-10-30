@@ -12,9 +12,12 @@ function jsonResponse(body: unknown, status = 200) {
 	})
 }
 
-function stubStripeFetch(handler: (url: string) => Response) {
-	const fetchStub = vi.fn(async (request: RequestInfo | URL) =>
-		handler(String(request)),
+function stubStripeFetch(
+	handler: (url: string, init?: RequestInit) => Response,
+) {
+	const fetchStub = vi.fn(
+		async (request: RequestInfo | URL, init?: RequestInit) =>
+			handler(String(request), init),
 	)
 	vi.stubGlobal('fetch', fetchStub)
 	return Object.assign(fetchStub, {
@@ -26,18 +29,22 @@ async function seedPaidOrg(input: {
 	orgId: string
 	stripeCustomerId: string
 	seatRoles: Array<'owner' | 'member' | 'billing'>
+	plan?: string
+	stripePlan?: string | null
 }) {
 	await ensureCreditWalletTestSchema(env.APP_DB)
 	await ensureOrgsTestSchema(env.APP_DB)
 	const now = new Date().toISOString()
 	await env.APP_DB.prepare(
 		`INSERT INTO orgs (
-			id, slug, plan, stripe_customer_id, created_at, updated_at
-		) VALUES (?, ?, 'pro', ?, ?, ?)`,
+			id, slug, plan, stripe_plan, stripe_customer_id, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 	)
 		.bind(
 			input.orgId,
 			`org-${input.orgId.slice(0, 8)}`,
+			input.plan ?? 'pro',
+			input.stripePlan ?? null,
 			input.stripeCustomerId,
 			now,
 			now,
@@ -63,6 +70,63 @@ async function seedPaidOrg(input: {
 			.run()
 	}
 }
+
+test('syncOrgSeatQuantity updates seats for Stripe-paid orgs with a free manual plan', async () => {
+	const orgId = testStableUserIdFromEmail('stripe-paid-seat-sync@example.com')
+	await seedPaidOrg({
+		orgId,
+		stripeCustomerId: 'cus_stripe_paid_seats',
+		seatRoles: ['owner', 'member', 'member'],
+		plan: 'free',
+		stripePlan: 'pro',
+	})
+	using fetchStub = stubStripeFetch((url) => {
+		if (url.includes('/v1/subscriptions')) {
+			return jsonResponse({
+				data: [
+					{
+						id: 'sub_stripe_paid',
+						status: 'active',
+						cancel_at: null,
+						items: {
+							data: [
+								{
+									id: 'si_stripe_paid',
+									quantity: 1,
+									price: { id: 'price_pro' },
+								},
+							],
+						},
+					},
+				],
+			})
+		}
+		if (url.includes('/v1/subscription_items/si_stripe_paid')) {
+			return jsonResponse({ id: 'si_stripe_paid', quantity: 3 })
+		}
+		return jsonResponse({ error: 'unexpected path' }, 500)
+	})
+	const result = await syncOrgSeatQuantity({
+		db: env.APP_DB,
+		env: {
+			STRIPE_SECRET_KEY: 'sk_test',
+			STRIPE_API_BASE_URL: 'https://stripe.mock',
+			STRIPE_PRO_PRICE_ID: 'price_pro',
+			STRIPE_PRO_YEARLY_PRICE_ID: 'price_pro_yearly',
+		},
+		orgId,
+	})
+	expect(result).toEqual({ previousQuantity: 1, nextQuantity: 3 })
+	const mutation = fetchStub.mock.calls.find(
+		([request, init]) =>
+			String(request).includes('/v1/subscription_items/si_stripe_paid') &&
+			init?.method === 'POST',
+	)
+	expect(mutation?.[1]).toMatchObject({
+		method: 'POST',
+		body: 'quantity=3',
+	})
+})
 
 test('syncOrgSeatQuantity no-ops for free orgs', async () => {
 	const orgId = testStableUserIdFromEmail('free-org@example.com')

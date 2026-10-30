@@ -5,6 +5,7 @@ import { useInfiniteQuery, hashKey } from '@tanstack/react-query'
 import { activityQuery } from '../activity-query.ts'
 import { useRouter } from '@tanstack/react-router'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
+import { RunHistoryAccessNotice } from '../components/run-history-access-notice.tsx'
 import { renderActivityRunDetail } from './account-activity-detail.tsx'
 import { AccountActivityToggleChanges } from './account-activity-toggle-changes.tsx'
 import {
@@ -76,10 +77,24 @@ export function AccountActivityPage({
 	const router = useRouter()
 	if (!query.data) return null
 	const first = query.data.pages[0]!.payload
+	// Access can be revoked between pages; any denied page means no history.
+	if (!first || query.data.pages.some((page) => !page.payload)) {
+		return (
+			<AccountManagementShell layout="list" currentHref={currentHref}>
+				<AccountPageHeader
+					entity="activity"
+					title="Activity"
+					description="Open failures first, plus a Recent runs week of jobs, executes, package apps, webhooks, and workflows — with the logs you need to diagnose them."
+					currentHref={currentHref}
+				/>
+				<RunHistoryAccessNotice orgSlug={pageQueryInput.orgSlug} />
+			</AccountManagementShell>
+		)
+	}
 	const { selectedRun, summary, retentionDays, toggleChanges } = first
 	const seen = new Set<string>()
 	const runs = query.data.pages
-		.flatMap((page) => page.payload.runs)
+		.flatMap((page) => page.payload?.runs ?? [])
 		.filter((run) => {
 			if (seen.has(run.id)) return false
 			seen.add(run.id)

@@ -3,6 +3,7 @@ import { writeGeneratedConfig } from './write-generated-config.ts'
 import path from 'node:path'
 import { parseJsonc } from './ci/resource-utils.ts'
 import { localizeMigrations } from './local-dev-migrations.ts'
+import { collectLocalOriginDevVars } from './local-origin-dev-config.ts'
 
 type JsonRecord = Record<string, unknown>
 
@@ -81,6 +82,9 @@ export async function writeLocalSiblingDevConfig({
 			? (envRecord.vars as JsonRecord)
 			: {}
 	envRecord.vars = vars
+	// RepoSession and local execute run in sibling workers. Give them the same
+	// mock Artifacts endpoint and auth as the origin, including token guards.
+	Object.assign(vars, collectLocalOriginDevVars(process.env, port))
 	vars.WRANGLER_IS_LOCAL_DEV = 'true'
 	if (port) {
 		vars.APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${port}`

@@ -190,11 +190,11 @@ function isCallerFailure(payload: McpObservabilityPayload, cause?: unknown) {
 	// Published / inactive / missing repo sessions, invalid repoSearch
 	// regexes, blank/whitespace-only repoSearch patterns (KODY-BA),
 	// disallowed repo paths, structural delete/move validation, directory
-	// edit targets (KODY-A6), and malformed / non-applying repoApplyPatch
+	// read/edit targets (KODY-A6, KODY-CA), and malformed / non-applying repoApplyPatch
 	// diffs are thrown inside the RepoSession Durable Object as plain
 	// Errors. Match the stable phrases so they stay out of Sentry even when
 	// a capability forgets to re-wrap as McpCallerError.
-	// KODY-9B, KODY-A3, KODY-A6, KODY-BA.
+	// KODY-9B, KODY-A3, KODY-A6, KODY-BA, KODY-CA.
 	if (
 		getErrorCauseChain(cause).some(
 			(entry) =>
@@ -213,7 +213,8 @@ function isCallerFailure(payload: McpObservabilityPayload, cause?: unknown) {
 	}
 	// Raw shell EISDIR that escaped the DO remap. Only edit/patch/restore
 	// capabilities can raise it from a caller-supplied path; other EISDIR
-	// (git commit, clone, publish snapshot, bundle) must still reach Sentry.
+	// (git commit, clone, publish snapshot, bundle, repoReadFile session
+	// init) must still reach Sentry. repoReadFile remaps its own read.
 	if (
 		(payload.capabilityName === 'repoEditFiles' ||
 			payload.capabilityName === 'repoApplyPatch' ||

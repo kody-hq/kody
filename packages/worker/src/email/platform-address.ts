@@ -1,4 +1,5 @@
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
+import { normalizeEmailAddress, splitEmailLocalPart } from './address.ts'
 import { isPermanentlyReservedUsername } from '#worker/identity/reserved-usernames.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
@@ -244,4 +245,44 @@ export async function resolveUserPlatformSender(input: {
 		username: account.username,
 		domain,
 	}
+}
+
+const senderAliasTagPattern = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/
+const maxEmailLocalPartLength = 64
+
+/**
+ * The canonical sender address for `address` when it is the sender's own
+ * platform address or an RFC 5233 plus alias of it (`{username}+{tag}@`)
+ * on an accepted user email domain. Legacy domains map to the canonical
+ * domain. Returns null for anything the sender does not own: another
+ * handle, another domain, an empty or malformed tag.
+ */
+export function resolveOwnedSenderAddress(input: {
+	address: string
+	sender: Pick<ResolvedPlatformSender, 'username' | 'domain'>
+	acceptedDomains: ReadonlyArray<string>
+}): string | null {
+	const normalized = normalizeEmailAddress(input.address)
+	if (!normalized) return null
+	const atIndex = normalized.lastIndexOf('@')
+	const localPart = normalized.slice(0, atIndex)
+	const domain = normalized.slice(atIndex + 1)
+	if (domain !== input.sender.domain && !input.acceptedDomains.includes(domain))
+		return null
+	const { base, subaddress } = splitEmailLocalPart(localPart)
+	if (base !== input.sender.username) return null
+	if (localPart === base) {
+		return buildPlatformEmailAddress({
+			username: input.sender.username,
+			domain: input.sender.domain,
+		})
+	}
+	if (
+		!subaddress ||
+		localPart.length > maxEmailLocalPartLength ||
+		!senderAliasTagPattern.test(subaddress)
+	) {
+		return null
+	}
+	return `${input.sender.username}+${subaddress}@${input.sender.domain}`
 }

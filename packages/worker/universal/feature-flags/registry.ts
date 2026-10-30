@@ -10,7 +10,8 @@
  * with one get exposure recording and an on/off cohort readout on the admin
  * surfaces (see `docs/contributing/architecture/feature-flags.md`). Optional
  * `exposureRecording` selects the write site (`evaluation` chokepoints by
- * default, or `mcp-events-clients` for events-capable MCP clients only). The
+ * default, `mcp-events-clients` for MCP clients that call `events/*` only,
+ * or `repo-push-owners` for repo owners on each git push). The
  * `successMetric` field stays optional for flags that are genuinely
  * unmeasurable (such as the permanent `demo-indicator`), and the admin UI and
  * MCP list surface a notice strongly recommending one everywhere else.
@@ -42,10 +43,15 @@ export type FeatureFlagSuccessMetric = {
  * Where success-metric exposures are written for a measured flag.
  *
  * - `evaluation` (default): app session cache + MCP caller flag resolver.
- * - `mcp-events-clients`: only from `registerMcpEvents` after the client
- *   declares events support; execute and other MCP callers stay out.
+ * - `mcp-events-clients`: only from the `registerMcpEvents` `events/*`
+ *   handlers; execute and other MCP callers stay out.
+ * - `repo-push-owners`: only from the plain-repo git proxy on each
+ *   receive-pack, attributed to the repo owner (repo-scoped flags).
  */
-export type FeatureFlagExposureRecording = 'evaluation' | 'mcp-events-clients'
+export type FeatureFlagExposureRecording =
+	| 'evaluation'
+	| 'mcp-events-clients'
+	| 'repo-push-owners'
 
 export type FeatureFlagDefinition = {
 	key: string
@@ -108,7 +114,7 @@ export const featureFlagDefinitions = [
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
-			'MCP Events extension (draft, webhook delivery only) on the stateless /mcp lane: advertise the events capability and serve events/list, events/subscribe, and events/unsubscribe for package kody.emits topics that opt in with mcp: true. Only for clients that declare events support. Off by default; enable with audience experiments_opt_in. Signed-in users can also turn it on from /docs/mcp-events. Delete the flag and gate sites when the experiment ends.',
+			'MCP Events extension (draft, webhook delivery only) on the stateless /mcp lane: advertise the events capability and serve events/list, events/subscribe, and events/unsubscribe for package kody.emits topics that opt in with mcp: true. OAuth callers only; clients declare nothing. Off by default; enable with audience experiments_opt_in. Signed-in users can also turn it on from /docs/mcp-events. Delete the flag and gate sites when the experiment ends.',
 		exposureRecording: 'mcp-events-clients',
 		successMetric: {
 			eventType: 'execute',
@@ -131,9 +137,15 @@ export const featureFlagDefinitions = [
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
-			'Per-repo Durable Object write queue for plain-repo git pushes (git-receive-pack): pushes land in the kody-push-queue Worker (RepoPushQueueV1) and reach Artifacts one at a time in FIFO order, with a 90s per-push budget and a clean 503 + Retry-After instead of a raw busy error. Evaluated per repo: repo allowlist (adminFeatureFlagRepoOverride), then the repo owner override, then the global switch with percentage rollout bucketed by repo, then the audience gate on the repo owner. Off repos keep the isolate-local wait-and-retry proxy. Delete the flag and gate sites when the queue ships to everyone.',
-		// Intentionally no successMetric: git pushes are not a metered usage
-		// event, so exposures would not join any readout.
+			'Per-repo Durable Object write queue for plain-repo git pushes (git-receive-pack): pushes land in the kody-push-queue Worker (RepoPushQueueV1) and reach Artifacts one at a time in FIFO order, with a 90s per-push budget and a clean 503 + Retry-After instead of a raw busy error. Evaluated per repo: repo allowlist (adminFeatureFlagRepoOverride), then the repo owner override, then the global switch with percentage rollout bucketed by repo, then the audience gate on the repo owner. Off repos keep the isolate-local wait-and-retry proxy. Kept as a kill switch after the global rollout. Every push records an observe-only git_push usage event (path, outcome, Durable Object wall time, wait, queue depth, attempts) and an exposure for the repo owner; read queue cost with adminRepoPushQueueCost.',
+		exposureRecording: 'repo-push-owners',
+		successMetric: {
+			eventType: 'git_push',
+			measure: 'error_rate',
+			goal: 'decrease',
+			hypothesis:
+				'Pushes to repos on the per-repo push queue fail with busy, timeout, or other errors less often than pushes through the isolate-local wait-and-retry proxy.',
+		},
 	},
 	{
 		key: 'execution-contexts',

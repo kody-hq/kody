@@ -52,10 +52,10 @@ package-app surfaces:
 8. **Untrusted markdown renders through the safe renderer only.** Community
    READMEs (and any future third-party-authored markdown shown on first-party
    pages) must go through `packages/worker/start/components/markdown-view.tsx`,
-   which builds JSX from an allowlist of `marked` lexer tokens: raw HTML renders
-   as escaped text (first-party guides may additionally emit allowlisted
-   `<details>`/`<summary>` and GitHub-style `> [!TIP]` callouts; untrusted
-   markdown never does), and links are restricted to absolute
+   which builds JSX from an allowlist of TanStack Markdown document nodes: raw
+   HTML renders as escaped text (first-party guides may additionally emit
+   allowlisted `<details>`/`<summary>` and GitHub-style `> [!TIP]` callouts;
+   untrusted markdown never does), and links are restricted to absolute
    `http:`/`https:`/`mailto:` URLs with `/@...` user-scope paths and
    `/packages/...` package-app mount paths refused on any host so a README can
    never point viewers at hosted package endpoints. `<img>` is emitted only for

@@ -283,7 +283,7 @@ test('packageSave logs parse failures, rejects invalid manifests, and logs succe
 						name: 'pkg',
 						kody: {
 							id: 'pkg',
-							description: 'missing exports',
+							description: 'unscoped name',
 						},
 					}),
 				},

@@ -6,26 +6,29 @@
  * same audit event. `adminCreditEligibilitySet` owns the admin half of
  * wallet eligibility (`orgs.admin_credits_eligible`).
  */
+/**
+ * soft-delete-read-filter: opt-out
+ *
+ * The admin wallet reader can inspect wallets owned by deleted organizations.
+ */
 import {
 	type AdminCreditLedgerItem,
 	type AdminCreditWalletSummary,
 } from '#universal/loader-data.ts'
-import { updateOrgBillingColumns } from '#worker/orgs/org-billing-columns.ts'
 import {
 	creditAdminGrantNoteMaxLength,
 	validateCreditAdminGrantCents,
 } from '#universal/credits.ts'
-import { utcSqliteTimestamp } from '@kody-internal/shared/date-keys.ts'
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
 import {
 	ensureCreditWallet,
-	forgiveCreditUsageBeforeUnlock,
 	grantAdminCredits,
 	listCreditLedgerEntries,
 	readCreditWallet,
 	toAccountCreditsLedgerItem,
 } from '#worker/billing/credit-wallet.ts'
 import {
+	invalidateCachedUserEntitlement,
 	resolveUserEntitlementFromRow,
 	userEntitlementColumnsSql,
 	type UserEntitlementRow,
@@ -34,6 +37,7 @@ import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { parseOwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type AdminUserTarget } from './users-data.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { writeOrgCreditEligibility } from './org-billing-mutations.ts'
 
 const adminCreditLedgerLimit = 20
 
@@ -113,7 +117,15 @@ export async function loadAdminCreditWallet(
 	const db = env.APP_DB
 	const row = await loadCreditGrantTarget(db, target)
 	if (!row) return null
-	const stableUserId = row.stable_user_id
+	return readAdminCreditWallet(db, row, row.stable_user_id, row.username)
+}
+
+async function readAdminCreditWallet(
+	db: D1Database,
+	row: UserEntitlementRow & { org_id: string; username: string },
+	stableUserId: string,
+	username: string,
+): Promise<AdminCreditWalletSummary> {
 	const orgId = row.org_id
 	const [entitlement, wallet, entries] = await Promise.all([
 		resolveUserEntitlementFromRow({ db, stableUserId: orgId, row }),
@@ -140,7 +152,7 @@ export async function loadAdminCreditWallet(
 	return {
 		ok: true,
 		stableUserId,
-		username: row.username,
+		username,
 		plan: entitlement.plan,
 		eligible: entitlement.creditWallet !== 'none',
 		adminCreditsEligible: Number(row.admin_credits_eligible) === 1,
@@ -148,6 +160,22 @@ export async function loadAdminCreditWallet(
 		balanceMicroUsd: wallet.balanceMicroUsd,
 		recent,
 	}
+}
+
+/** Read a wallet by its owning organization, including deleted organizations. */
+export async function loadAdminCreditWalletByOrgId(
+	db: D1Database,
+	orgId: string,
+): Promise<AdminCreditWalletSummary | null> {
+	const row = await db
+		.prepare(
+			`SELECT o.id AS org_id, o.slug AS username, ${userEntitlementColumnsSql('o')}
+			 FROM orgs o WHERE o.id = ?`,
+		)
+		.bind(orgId)
+		.first<UserEntitlementRow & { org_id: string; username: string }>()
+	if (!row) return null
+	return readAdminCreditWallet(db, row, row.org_id, row.username)
 }
 
 export function parseAdminCreditGrantNote(value: unknown): string | null {
@@ -208,6 +236,7 @@ export async function grantAdminCreditsToUser(input: {
 		note,
 		now,
 	})
+	invalidateCachedUserEntitlement(db, orgId)
 	if (input.audit !== false) {
 		void logAuditEvent({
 			db: auditDatabaseFromEnv(input.env),
@@ -264,22 +293,12 @@ export async function setAdminCreditEligibility(input: {
 	const now = input.now ?? new Date()
 	const row = await loadCreditGrantTarget(db, input.target)
 	if (!row) throw new AdminCreditGrantError(404, 'User not found.')
-	const previousAdminCreditsEligible = Number(row.admin_credits_eligible) === 1
 	const orgId = row.org_id
-	await forgiveCreditUsageBeforeUnlock({
-		db,
-		userId: orgId,
-		current: row,
-		next: { ...row, admin_credits_eligible: input.creditsEligible ? 1 : 0 },
-		now,
-	})
-	const updatedAt = utcSqliteTimestamp(now)
-	const adminCreditsEligible = input.creditsEligible ? 1 : 0
-	await updateOrgBillingColumns({
+	const previousAdminCreditsEligible = await writeOrgCreditEligibility({
 		db,
 		orgId,
-		setClause: 'admin_credits_eligible = ?, updated_at = ?',
-		values: [adminCreditsEligible, updatedAt],
+		creditsEligible: input.creditsEligible,
+		now,
 	})
 	const wallet = await loadAdminCreditWallet(input.env, {
 		stableUserId: row.stable_user_id,

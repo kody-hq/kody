@@ -4,6 +4,7 @@
  */
 
 import { isBrowserRetryableD1LockSentryEvent } from '@kody-internal/shared/d1-retry.ts'
+import { isPermissionDeniedError } from '#universal/permission-denied.ts'
 import {
 	isBrowserFetchNetworkError,
 	isBrowserFetchNetworkErrorMessage,
@@ -1898,6 +1899,17 @@ export function filterRetryableD1LockSentryEvent<
 }
 
 /** Combined browser beforeSend / capture gate used by the client SDK. */
+/**
+ * Route boundaries render a 403 explainer for expected permission denials
+ * (`PermissionDeniedError`, rebuilt from the Start serialization adapter).
+ */
+function filterPermissionDeniedSentryEvent<T>(
+	event: T,
+	originalException?: unknown,
+): T | null {
+	return isPermissionDeniedError(originalException) ? null : event
+}
+
 export function filterBrowserSentryEvent<T extends SentryErrorEventLike>(
 	event: T,
 	originalException?: unknown,
@@ -2060,6 +2072,9 @@ export function filterBrowserSentryEvent<T extends SentryErrorEventLike>(
 		return null
 	}
 	if (filterRetryableD1LockSentryEvent(event, originalException) === null) {
+		return null
+	}
+	if (filterPermissionDeniedSentryEvent(event, originalException) === null) {
 		return null
 	}
 	return event

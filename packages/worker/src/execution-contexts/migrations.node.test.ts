@@ -294,3 +294,29 @@ test('execution context tables exist with their columns and unique rules', () =>
 		'execution_contexts_thumbprint',
 	])
 })
+
+test('revoking a context releases its name while live names stay unique', () => {
+	const sqlite = new DatabaseSync(':memory:', {
+		enableForeignKeyConstraints: false,
+	})
+	applyMigrations(sqlite, () => true)
+	const insert = sqlite.prepare(
+		`INSERT INTO execution_contexts (
+			id, org_id, operator_user_id, name, public_key_jwk, thumbprint, created_at, revoked_at
+		) VALUES (?, 'org_acme', 'user_1', ?, '{}', ?, '2026-10-29', ?)`,
+	)
+	insert.run('ec_old', 'coles-computer', 'thumb_old', '2026-10-29')
+	insert.run('ec_new', 'coles-computer-2', 'thumb_new', null)
+	sqlite
+		.prepare(`UPDATE execution_contexts SET name = ? WHERE id = ?`)
+		.run('coles-computer', 'ec_new')
+	insert.run('ec_live', 'laptop', 'thumb_live', null)
+	expect(() =>
+		sqlite
+			.prepare(`UPDATE execution_contexts SET name = ? WHERE id = ?`)
+			.run('laptop', 'ec_new'),
+	).toThrow(/UNIQUE/)
+	expect(() => insert.run('ec_dupe', 'laptop', 'thumb_dupe', null)).toThrow(
+		/UNIQUE/,
+	)
+})

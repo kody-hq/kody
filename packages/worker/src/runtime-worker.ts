@@ -88,6 +88,7 @@ export class RuntimeWorkerService
 					owner: input.owner,
 					visitor: input.visitor,
 					identity: input.identity ?? null,
+					consentPrincipal: input.consentPrincipal ?? null,
 					approvedPublishedCommit: input.approvedPublishedCommit,
 					packagePath: input.packagePath,
 					dispatch: input.dispatch,

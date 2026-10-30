@@ -12,6 +12,7 @@ import {
 	memoriesSearch,
 	secretsSearch,
 	textSearch,
+	withoutTextSearch,
 } from './filter-search.ts'
 import { adminUsersFilters, adminUsersSearch } from './admin-users-input.ts'
 import { memoriesInput } from './memories-input.ts'
@@ -152,4 +153,21 @@ test('text presentation validation leaves resource selection and protocol inputs
 	expect(textSearch(search)).toHaveProperty('selected', selected)
 	expect(textSearch({ q: null }).q).toBe('null')
 	expect(textSearch({}).q).toBeUndefined()
+})
+
+test('text filter dependencies preserve resource and authorization inputs', () => {
+	const search = {
+		q: 'find',
+		selected: 'one',
+		package_id: 'pkg',
+		scope: 'package',
+		auth: 'result',
+	}
+	expect(withoutTextSearch(search)).toEqual({
+		selected: 'one',
+		package_id: 'pkg',
+		scope: 'package',
+		auth: 'result',
+	})
+	expect(search.q).toBe('find')
 })

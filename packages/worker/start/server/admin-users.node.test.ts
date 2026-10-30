@@ -51,6 +51,7 @@ test('user read uses typed selection and filters, not the auth return URL', asyn
 			query: input.query,
 			role: input.role,
 			verification: input.verification,
+			status: 'live',
 			pageSize: input.pageSize,
 			selectedStableUserId: input.selectedStableUserId,
 			page: 1,
@@ -72,7 +73,7 @@ test('rejects external or non-admin return destinations before authorization', a
 	]) {
 		await expect(async () =>
 			loadAdminUsers({ data: { ...input, returnTo } }),
-		).rejects.toThrow()
+		).rejects.toThrow('Invalid string')
 	}
 	expect(state.authorize).not.toHaveBeenCalled()
 })

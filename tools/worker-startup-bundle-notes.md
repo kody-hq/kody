@@ -432,3 +432,9 @@ raised again.
   `wrangler check startup` best-of-3 active CPU drops from about 116 to about
   104–112 ms on platform and from about 63 to about 57–58 ms on runtime.
   Ceilings unchanged.
+
+- Marked/Shiki → TanStack Markdown/Highlight (October 28, 2026). The slim origin
+  entry remains 773,302 bytes. The highlighting Worker falls from 1,353,119 to
+  31,572 bytes. Browser Markdown chunk falls from 61,225 to 29,186 bytes.
+  [Before/after measurements, raw samples, and repeatable runner](../docs/contributing/performance/markdown-migration-2026-10-28.md).
+  Existing byte and CPU ceilings are unchanged.

@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { useRouter } from '@tanstack/react-router'
+import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import { createOAuthCallbackNavigationScope } from '../oauth-callback-navigation.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import {
@@ -20,6 +21,7 @@ import {
 	uniqueOauthScopes,
 } from '#universal/oauth-scopes.ts'
 import { isConnectOauthCallbackUrl } from '#universal/oauth-connect.ts'
+import { useHydrated } from '../components/use-hydrated.ts'
 
 import { readOrgSlugFromUrl } from '#universal/org-binding/url.ts'
 import { useShellData } from '../routes/__root.tsx'
@@ -27,6 +29,12 @@ import { orgSectionRestPath } from '#universal/org-section-hrefs.ts'
 import { organizationsWithSignupFallback } from '#universal/org-pages.ts'
 
 import { ProviderMark } from '../components/provider-icons.tsx'
+import {
+	ConnectOauthOrgPicker,
+	ConnectOauthOrgTarget,
+	connectOauthTargetOrg,
+	shouldPickConnectOauthOrg,
+} from './connect-oauth-org.tsx'
 import {
 	pageDescriptionCss,
 	pageTitleCss,
@@ -49,13 +57,21 @@ import {
 	renderChooser,
 	renderIncompleteConfig,
 	renderStatusCallout,
+	renderPinnedConnectNotice,
+	renderPinnedConnectError,
+	renderLiveAppReplaceWarning,
+	type LiveReplaceState,
+	newConnectionNameError,
+	suggestNewConnectionName,
 	wouldReplaceDifferentApp,
+	wouldReplaceLiveApp,
 } from './connect-oauth-sections.tsx'
 import {
 	type ConnectOauthChooserOption,
 	type ConnectOauthStatusTone,
 	type ConnectOauthStep,
 	persistConnectOauthOrgSlug,
+	persistConnectOauthReplaceLive,
 	readConnectOauthOrgSlug,
 	useConnectOauthOperations,
 	connectOauthCallbackHref,
@@ -95,6 +111,8 @@ type OauthState = {
 	hasConfigError: boolean
 	existingConnection: ConnectOauthExistingConnection | null
 	replaceConfirmed: boolean
+	/** Set while the setup save waits on the live-app replace choice. */
+	liveReplace: LiveReplaceState | null
 	chooserOptions: Array<ConnectOauthChooserOption>
 	chooserFilter: string
 	requestedProvider: string | null
@@ -124,6 +142,7 @@ function initialOauthState(
 	let existingConnection: ConnectOauthExistingConnection | null = null
 	/** The user explicitly confirmed replacing a different-app connection. */
 	let replaceConfirmed = false
+	let liveReplace: LiveReplaceState | null = null
 	let chooserOptions: Array<ConnectOauthChooserOption> = []
 	let chooserFilter = ''
 	let requestedProvider: string | null = null
@@ -188,6 +207,14 @@ function initialOauthState(
 		if (url.searchParams.get('code') || url.searchParams.get('error')) {
 			return
 		}
+		// `?org=&app=&mode=personal` may omit `provider`; the loader names it.
+		if (
+			!url.searchParams.get('provider')?.trim() &&
+			routeData.pinnedConnect &&
+			routeData.provider
+		) {
+			url.searchParams.set('provider', routeData.provider)
+		}
 		requestedProvider =
 			url.searchParams.get('provider')?.trim() || routeData.provider
 		if (!requestedProvider) {
@@ -234,6 +261,7 @@ function initialOauthState(
 		hasConfigError,
 		existingConnection,
 		replaceConfirmed,
+		liveReplace,
 		chooserOptions,
 		chooserFilter,
 		requestedProvider,
@@ -285,6 +313,16 @@ export function ConnectOauthRoute({
 		organizations.find((org) => org.slug === flowOrg)?.slug ??
 		organizations.find((org) => org.personal)?.slug ??
 		organizations[0]?.slug
+	const hydrated = useHydrated()
+	const pickOrg = shouldPickConnectOauthOrg({
+		organizations,
+		flowOrg,
+		href: currentHref,
+	})
+	const viewer = {
+		displayName: session?.username ?? '',
+		avatarUrl: session?.avatarUrl ?? null,
+	}
 	const invalidatePages = usePageInvalidation(mutationResources)
 	const [state, setState] = useState(() =>
 		initialOauthState(
@@ -313,6 +351,7 @@ export function ConnectOauthRoute({
 		hasConfigError,
 		existingConnection,
 		replaceConfirmed,
+		liveReplace,
 		chooserOptions,
 		chooserFilter,
 		requestedProvider,
@@ -326,6 +365,22 @@ export function ConnectOauthRoute({
 		hasStoredClientSecret,
 		revealStoredClientSecretField,
 	} = state
+	// `mode=personal` saves to the member's personal org, pinned to `?org=`;
+	// the callback only knows that from the restored config.
+	const pinnedAppSlug = config?.pinnedAppSlug ?? null
+	// The provider callback restores the org and `mode=personal` from
+	// sessionStorage, which SSR cannot read; wait for the restored config.
+	const orgKnown =
+		(hydrated && config !== null) ||
+		!isConnectOauthCallbackUrl(new URL(currentHref, 'https://kody.local'))
+	const targetOrg =
+		initialData.pinnedConnect || pinnedAppSlug
+			? (organizations.find((org) => org.personal) ?? null)
+			: connectOauthTargetOrg({ organizations, flowOrg })
+	const orgTarget =
+		targetOrg && !pickOrg && orgKnown ? (
+			<ConnectOauthOrgTarget org={targetOrg} viewer={viewer} />
+		) : null
 	const mounted = useRef(false),
 		inFlight = useRef(false),
 		callbackStarted = useRef(false)
@@ -394,6 +449,14 @@ export function ConnectOauthRoute({
 	}, [router, navigationScope])
 	async function handleSetupSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
+		await submitSetup({})
+	}
+	/**
+	 * `replace` and `newName` are the two explicit answers to the live-app
+	 * warning; without either, a save that would rewrite the app behind a
+	 * live connection stops and asks first.
+	 */
+	async function submitSetup(choice: { replace?: boolean; newName?: string }) {
 		if (!config || inFlight.current) return
 		inFlight.current = true
 		update({ submitting: true })
@@ -412,18 +475,49 @@ export function ConnectOauthRoute({
 				setStatus('Client secret is required for confidential flow.', 'error')
 				return
 			}
-			const nextConfig = {
+			const sameNameConfig = {
 				...config,
 				clientId,
 				hasClientSecret:
 					hasStoredClientSecret ||
 					(config.flow === 'confidential' && Boolean(clientSecret)),
 			}
+			if (
+				!choice.replace &&
+				!choice.newName &&
+				wouldReplaceLiveApp({ next: sameNameConfig, existingConnection })
+			) {
+				update({
+					liveReplace: {
+						mode: 'choose',
+						newName: suggestNewConnectionName(config.providerKey),
+						nameError: null,
+					},
+				})
+				return
+			}
+			if (choice.newName && config.flow === 'confidential' && !clientSecret) {
+				setStatus('Enter the client secret for the new app.', 'error')
+				return
+			}
+			const nextConfig = choice.newName
+				? {
+						...sameNameConfig,
+						provider: choice.newName,
+						providerKey: choice.newName,
+						hasClientSecret: config.flow === 'confidential',
+					}
+				: sameNameConfig
 			persistConnectOauthOrgSlug(flowOrg)
+			persistConnectOauthReplaceLive(choice.replace ? config.providerKey : null)
 			const result = await saveApp(
 				nextConfig,
 				clientSecret || undefined,
 				flowOrg,
+				{
+					replaceLiveConnection: choice.replace === true,
+					newConnection: Boolean(choice.newName),
+				},
 			)
 			if (!result || !isFlowActive()) return
 			if (!result.ok) {
@@ -434,6 +528,8 @@ export function ConnectOauthRoute({
 			persistConnectOauthConfig(saved)
 			update({
 				config: saved,
+				liveReplace: null,
+				...(choice.newName ? { existingConnection: null } : {}),
 				hasStoredClientId: true,
 				hasStoredClientSecret: saved.hasClientSecret,
 				revealStoredClientSecretField: false,
@@ -677,6 +773,22 @@ export function ConnectOauthRoute({
 	}
 	const description = connectOauthHeaderDescription(headerInput)
 	const title = connectOauthHeaderTitle(headerInput)
+	if (pickOrg) {
+		return (
+			<section css={connectOauthPageCss}>
+				<header css={connectOauthHeaderCss}>
+					<span css={connectOauthEyebrowCss}>Connect an account</span>
+					<h1 css={pageTitleCss}>{title}</h1>
+					{description ? <p css={pageDescriptionCss}>{description}</p> : null}
+				</header>
+				<ConnectOauthOrgPicker
+					organizations={organizations}
+					viewer={viewer}
+					href={currentHref}
+				/>
+			</section>
+		)
+	}
 	if (!config) {
 		return (
 			<section css={connectOauthPageCss}>
@@ -685,6 +797,10 @@ export function ConnectOauthRoute({
 					<h1 css={pageTitleCss}>{title}</h1>
 					{description ? <p css={pageDescriptionCss}>{description}</p> : null}
 				</header>
+				{orgTarget}
+				{initialData.pinnedConnectError
+					? renderPinnedConnectError(initialData.pinnedConnectError)
+					: null}
 				{renderStatusCallout({
 					statusTone,
 					statusMessage,
@@ -724,6 +840,17 @@ export function ConnectOauthRoute({
 				<h1 css={pageTitleCss}>{title}</h1>
 				{description ? <p css={pageDescriptionCss}>{description}</p> : null}
 			</header>
+			{orgTarget}
+			{currentConfig.pinnedAppSlug && (initialData.pinnedConnect || flowOrg)
+				? renderPinnedConnectNotice({
+						pinnedConnect: initialData.pinnedConnect ?? {
+							orgSlug: flowOrg ?? '',
+							appSlug: currentConfig.pinnedAppSlug,
+							appLabel: null,
+							connectionName: currentConfig.providerKey,
+						},
+					})
+				: null}
 			{renderStatusCallout({
 				statusTone,
 				statusMessage,
@@ -748,7 +875,7 @@ export function ConnectOauthRoute({
 					clientSecretInput={clientSecretInput}
 					submitting={submitting}
 					onClientIdInput={(value) => {
-						update({ clientIdInput: value })
+						update({ clientIdInput: value, liveReplace: null })
 					}}
 					onClientSecretInput={(value) => {
 						update({ clientSecretInput: value })
@@ -761,6 +888,51 @@ export function ConnectOauthRoute({
 					}}
 				/>
 			) : null}
+			{currentStep === 'setup' && liveReplace && existingConnection
+				? renderLiveAppReplaceWarning({
+						connectionName: currentConfig.providerKey,
+						existingConnection,
+						state: liveReplace,
+						submitting,
+						onReplace: () => {
+							void submitSetup({ replace: true })
+						},
+						onChooseNewName: () => {
+							update({
+								liveReplace: { ...liveReplace, mode: 'new-name' },
+								...(currentConfig?.flow === 'confidential'
+									? { revealStoredClientSecretField: true }
+									: {}),
+							})
+						},
+						onNewNameInput: (value) => {
+							update({
+								liveReplace: {
+									...liveReplace,
+									newName: value,
+									nameError: null,
+								},
+							})
+						},
+						onSaveAsNew: (event) => {
+							event.preventDefault()
+							const nameError = newConnectionNameError(
+								liveReplace.newName,
+								currentConfig.providerKey,
+							)
+							if (nameError) {
+								update({ liveReplace: { ...liveReplace, nameError } })
+								return
+							}
+							void submitSetup({
+								newName: normalizeProviderKey(liveReplace.newName),
+							})
+						},
+						onCancel: () => {
+							update({ liveReplace: null })
+						},
+					})
+				: null}
 			{currentStep === 'connect' ? (
 				<ConnectStep
 					{...{
@@ -776,10 +948,22 @@ export function ConnectOauthRoute({
 							void handleConnect()
 						},
 						onToggleScope: toggleRequestedScope,
+						orgSlug: flowOrg,
 						wouldReplace: wouldReplaceDifferentApp({
 							config: currentConfig,
 							existingConnection,
 						}),
+						...(currentConfig && !currentConfig.platformAppSlug
+							? {
+									onEditCredentials: () => {
+										update({
+											currentStep: 'setup',
+											statusMessage: 'Edit the app credentials, then save.',
+											statusTone: 'info',
+										})
+									},
+								}
+							: {}),
 					}}
 				/>
 			) : null}
@@ -791,7 +975,7 @@ export function ConnectOauthRoute({
 							? orgSectionRestPath(
 									destinationOrg,
 									'integrations',
-									config.providerKey,
+									pinnedAppSlug ? `apps/${pinnedAppSlug}` : config.providerKey,
 								)
 							: '/account'
 					}

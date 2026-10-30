@@ -17,6 +17,10 @@ import {
 	executionContextShareSetCapability,
 	executionContextUpdateCapability,
 } from './capabilities.ts'
+import {
+	automationExecutionGetCapability,
+	automationExecutionSetCapability,
+} from './automation-execution.ts'
 
 export const executionContextsDomain = defineDomain({
 	name: capabilityDomainNames.executionContexts,
@@ -48,5 +52,7 @@ export const executionContextsDomain = defineDomain({
 		executionContextAuditListCapability,
 		executionChainGetCapability,
 		executionChainSetCapability,
+		automationExecutionGetCapability,
+		automationExecutionSetCapability,
 	],
 })

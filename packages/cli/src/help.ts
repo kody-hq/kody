@@ -74,9 +74,10 @@ Usage:
   kody package revoke <package> (--team <slug> | --user <username> | --grant <grant_id>) [--org <slug>] [--json]
   kody execute [--org <slug>] [--invoke <ref> | --code <esm> | --file <path>] [--params <json>] [--conversation-id <id>] [--json]
   kody context register --name <name> [--org <slug>] | kody context list [--json]
+  kody context policy [show] | allow <path> [--mode ro|rw] | remove <path> [--json]
   kody chain show | add <name> | remove <name> [--org <slug>] [--json]
-  kody daemon [--context <ec id>]
-               [--credential <key=name>]… [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
+  kody daemon [--context <ec id>] [--max-concurrent <n>]
+               [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
   kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]
   kody dev fetch <path> [--method <verb>] [--body <file>] [--target prod|mock] [--json] [--no-attach]
   kody dev job <name> [--target prod|mock] [--dry-run] [--json]
@@ -272,6 +273,20 @@ ${orgBlock}
              trust a client package id) — use hosted package execute or
              \`/connect/secret-set\` / Open API with a user scope.
 
+  --context <id|name>
+             Run on one execution context (no fallback unless
+             \`--fallback chain\`). Behind the execution-contexts flag; cloud
+             execute only (not \`--local\`).
+  --requires fs,lan
+             Skip targets that lack local files (fs) or the local network
+             (lan); Kody cloud never satisfies either.
+  --chain <a,b,cloud>
+             This run's own ordered chain (up to 3 contexts, \`cloud\` only
+             last), replacing your default chain. Skipped entries are listed
+             with a reason when nothing qualifies.
+             Automations set theirs with
+             \`kody api automationExecutionSet --params '{"kind":"job","jobId":"…","execution":{"context":"laptop"}}'\`
+             (read with \`automationExecutionGet\`).
   --credential <key=name>
              ADR 0068 call map: pick which credential each \`credential(key)\`
              / \`credentials(key)\` call gets. Repeatable.

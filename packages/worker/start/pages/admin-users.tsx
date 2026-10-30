@@ -208,6 +208,7 @@ export function AdminUsersPage(props: {
 		return router.navigate({
 			to: pathname,
 			replace: true,
+			resetScroll: false,
 			search: (previous: Record<string, unknown>) => {
 				const search: Record<string, unknown> = samePage
 					? { ...previous }
@@ -216,6 +217,7 @@ export function AdminUsersPage(props: {
 					['search', 'q'],
 					['role', 'role'],
 					['verification', 'verification'],
+					['status', 'status'],
 				] as const) {
 					const value = next[filter]
 					if (value === undefined) continue
@@ -449,9 +451,13 @@ export function AdminUsersPage(props: {
 		verification: isAdminUserVerificationFilter(listFilters.verification)
 			? listFilters.verification
 			: '',
+		status: listFilters.status,
 	}
 	const hasActiveFilters = Boolean(
-		filters.search || filters.role || filters.verification,
+		filters.search ||
+		filters.role ||
+		filters.verification ||
+		filters.status === 'deleted',
 	)
 	const selectedStableUserId = props.selectedStableUserId
 	const selectedUser = resolveSelectedUser()
@@ -460,7 +466,7 @@ export function AdminUsersPage(props: {
 	const usageQuery = useQuery({
 		meta: { actorKey },
 		queryKey: ['admin-user', actorKey, selectedUsageId, 'usage'],
-		enabled: selectedUsageId !== null,
+		enabled: selectedUsageId !== null && !selectedUser?.deleted_at,
 		queryFn: ({ signal }) =>
 			readAdminUserUsage({ data: { stableUserId: selectedUsageId! }, signal }),
 	})
@@ -542,6 +548,18 @@ export function AdminUsersPage(props: {
 							}}
 						/>
 						<RecordTableSelect
+							label="Filter users by status"
+							value={filters.status}
+							onChange={(value) => {
+								updateFilters({
+									status: value === 'deleted' ? 'deleted' : 'live',
+								})
+							}}
+						>
+							<option value="live">Live</option>
+							<option value="deleted">Deleted</option>
+						</RecordTableSelect>
+						<RecordTableSelect
 							label="Filter users by role"
 							value={filters.role}
 							onChange={(value) => {
@@ -605,6 +623,7 @@ export function AdminUsersPage(props: {
 							key={selectedUser.stableUserId}
 							{...{
 								selectedUser,
+								orgs: props.payload.selectedUserOrgs,
 								availableRoles,
 								availablePlans,
 								actionState,
@@ -645,6 +664,7 @@ export function AdminUsersPage(props: {
 											q: undefined,
 											role: undefined,
 											verification: undefined,
+											status: 'live',
 											selected: undefined,
 											pageSize: 20,
 										},

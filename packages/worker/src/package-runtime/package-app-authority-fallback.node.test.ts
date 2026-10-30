@@ -31,6 +31,7 @@ const {
 	packageAppAuthorityFallbackKindOf,
 	packageAppAuthorityFallbackKindOfResult,
 	schedulePackageAppAuthorityFallback,
+	schedulePackageAppAuthorityRejection,
 } = await import('./package-app-authority-fallback.ts')
 
 function createDb() {
@@ -210,4 +211,126 @@ test('the fallback fires a structured would-break log and a queryable count, wit
 			})
 		).totals.observations,
 	).toBe(0)
+})
+
+test('hard rejections land in their own log, keyed like fallbacks, and the report reads both', async () => {
+	const { sqlite, db } = createDb()
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+	const visitorId = 'user-visitor-secret-handle'
+	const event = {
+		ownerId: 'org-1',
+		packageId: 'pkg-1',
+		callName: 'secretList',
+		kind: 'capability_not_declared' as const,
+		visitorId,
+	}
+	// Same key as a fallback: the two logs must not coalesce into each other.
+	schedulePackageAppAuthorityFallback({
+		env: { APP_DB: db },
+		event,
+		now: '2026-10-24T08:00:00.000Z',
+		flushDelayMs: 0,
+	})
+	for (let index = 0; index < 2; index++) {
+		schedulePackageAppAuthorityRejection({
+			env: { APP_DB: db },
+			event,
+			now: `2026-10-24T08:00:0${index + 1}.000Z`,
+			flushDelayMs: 0,
+		})
+	}
+	schedulePackageAppAuthorityRejection({
+		env: { APP_DB: db },
+		event: {
+			...event,
+			packageId: 'pkg-2',
+			callName: 'credential:credentialClientOpen',
+			visitorId: null,
+		},
+		now: '2026-10-24T08:00:05.000Z',
+		flushDelayMs: 0,
+	})
+	await drain()
+
+	const logged = warn.mock.calls.map((call) => JSON.parse(String(call[0])))
+	expect(logged.map((line) => line.event)).toEqual([
+		'package_app_authority_fallback',
+		'package_app_authority_rejection',
+		'package_app_authority_rejection',
+		'package_app_authority_rejection',
+	])
+	for (const call of warn.mock.calls) {
+		expect(String(call[0])).not.toContain(visitorId)
+	}
+	warn.mockRestore()
+
+	const rejectionRows = sqlite
+		.prepare(
+			`SELECT package_id, call_name, difference_kind, visitor_hash, observations
+			 FROM package_app_authority_rejections ORDER BY package_id`,
+		)
+		.all() as Array<Record<string, unknown>>
+	expect(rejectionRows).toEqual([
+		{
+			package_id: 'pkg-1',
+			call_name: 'secretList',
+			difference_kind: 'capability_not_declared',
+			visitor_hash: await hashPackageAppVisitorId(visitorId),
+			observations: 2,
+		},
+		{
+			package_id: 'pkg-2',
+			call_name: 'credential:credentialClientOpen',
+			difference_kind: 'capability_not_declared',
+			visitor_hash: 'anonymous',
+			observations: 1,
+		},
+	])
+	expect(
+		sqlite
+			.prepare('SELECT observations FROM package_app_authority_fallbacks')
+			.all(),
+	).toEqual([{ observations: 1 }])
+
+	const report = await buildPackageAppAuthorityFallbackReport({
+		db,
+		since: '2026-10-24',
+	})
+	expect(report.totals).toEqual({
+		apps: 1,
+		owners: 1,
+		visitors: 1,
+		observations: 1,
+	})
+	expect(report.hardRejections.totals).toEqual({
+		apps: 2,
+		owners: 1,
+		visitors: 2,
+		observations: 3,
+	})
+	expect(report.hardRejections.packagesTruncated).toBe(false)
+	expect(report.hardRejections.packages).toEqual([
+		expect.objectContaining({
+			packageId: 'pkg-1',
+			observations: 2,
+			calls: [
+				{
+					callName: 'secretList',
+					kind: 'capability_not_declared',
+					observations: 2,
+				},
+			],
+		}),
+		expect.objectContaining({
+			packageId: 'pkg-2',
+			observations: 1,
+		}),
+	])
+	const onlyPkg2 = await buildPackageAppAuthorityFallbackReport({
+		db,
+		since: '2026-10-24',
+		packageId: 'pkg-2',
+	})
+	expect(onlyPkg2.totals.observations).toBe(0)
+	expect(onlyPkg2.hardRejections.totals.observations).toBe(1)
 })

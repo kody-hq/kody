@@ -6,7 +6,15 @@ import {
 import { expect, test } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { viewerCanExecutePackageApp } from './package-viewer-access.ts'
+import { runWithRequestContext } from '#worker/request-context.ts'
+import {
+	viewerCanDeleteSavedPackage,
+	viewerCanExecutePackageApp,
+	viewerCanManageSavedPackage,
+	viewerCanManageSavedPackageAccess,
+	viewerCanPublishSavedPackage,
+	viewerIsSavedPackageOrgOwner,
+} from './package-viewer-access.ts'
 
 const ownerId = personIdFromStored('person-owner')
 const memberId = personIdFromStored('person-member')
@@ -147,4 +155,47 @@ test('viewerCanExecutePackageApp scopes app:execute to the requested app resourc
 			appId: 'app-b',
 		}),
 	).resolves.toBe(false)
+})
+
+function countAccessReads(env: Env) {
+	const db = env.APP_DB
+	const counts = { epoch: 0, cache: 0 }
+	const prepare = db.prepare.bind(db)
+	db.prepare = (sql: string) => {
+		if (/SELECT access_epoch FROM orgs/.test(sql)) counts.epoch += 1
+		if (/FROM access_cache/.test(sql)) counts.cache += 1
+		return prepare(sql)
+	}
+	return counts
+}
+
+test('the package page viewer checks compile access once per request', async () => {
+	const env = createEnv()
+	const counts = countAccessReads(env)
+	const input = {
+		env,
+		viewer: viewer(memberId),
+		ownerId: teamId,
+		packageId: 'pkg-1',
+	}
+	const checks = () =>
+		Promise.all([
+			viewerCanManageSavedPackage(input),
+			viewerCanPublishSavedPackage(input),
+			viewerCanDeleteSavedPackage(input),
+			viewerCanManageSavedPackageAccess(input),
+			viewerIsSavedPackageOrgOwner(input),
+			viewerCanExecutePackageApp({ ...input, appId: input.packageId }),
+		])
+
+	const results = await runWithRequestContext(
+		new Request('https://kody.test/acme/pkg'),
+		checks,
+	)
+	expect(results).toEqual([false, false, false, false, false, true])
+	expect(counts).toEqual({ epoch: 1, cache: 1 })
+
+	// A new request re-reads the epoch, so a bump is never hidden across requests.
+	await runWithRequestContext(new Request('https://kody.test/acme/pkg'), checks)
+	expect(counts).toEqual({ epoch: 2, cache: 2 })
 })

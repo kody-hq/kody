@@ -1,3 +1,4 @@
+import { memoizeForFeatureFlagExecution } from '#worker/feature-flags/execution-scope.ts'
 import {
 	isFeatureEnabled,
 	isMissingFeatureFlagsTable,
@@ -10,18 +11,22 @@ async function evaluateForOrg(input: {
 	db: D1Database
 	orgId: string
 }): Promise<boolean> {
-	const owner = await input.db
-		.prepare(
-			`SELECT u.id
-			 FROM org_memberships m
-			 INNER JOIN users u ON u.stable_user_id = m.user_id
-			 WHERE m.org_id = ? AND m.role = 'owner'
-			   AND m.deleted_at IS NULL AND u.deleted_at IS NULL
-			 ORDER BY u.id
-			 LIMIT 1`,
-		)
-		.bind(input.orgId)
-		.first<{ id: number }>()
+	const owner = await memoizeForFeatureFlagExecution(
+		`org-owner:${input.orgId}`,
+		() =>
+			input.db
+				.prepare(
+					`SELECT u.id
+					 FROM org_memberships m
+					 INNER JOIN users u ON u.stable_user_id = m.user_id
+					 WHERE m.org_id = ? AND m.role = 'owner'
+					   AND m.deleted_at IS NULL AND u.deleted_at IS NULL
+					 ORDER BY u.id
+					 LIMIT 1`,
+				)
+				.bind(input.orgId)
+				.first<{ id: number }>(),
+	)
 	try {
 		return await isFeatureEnabled(
 			input.db,

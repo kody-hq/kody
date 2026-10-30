@@ -8,6 +8,7 @@ import { PackageAppRuntimeBridge } from './package-app.ts'
 import type * as PackageAppAuthority from './package-app-authority.ts'
 import type * as PackageAppAuthorityFallback from './package-app-authority-fallback.ts'
 import {
+	createPackageAppRequestVisit,
 	mintPackageAppVisitTicket,
 	resetPackageAppVisitNoncesForTests,
 } from './package-app-visit-ticket.ts'
@@ -245,4 +246,144 @@ test('an executor-only ticket answers identity only and acts as no visitor elsew
 		org: { slug: 'org' },
 		scopes: ['profile', 'need:github'],
 	})
+})
+
+test('an anonymous request carries its own binding across RPC instances and stays anonymous', async () => {
+	resetPackageAppVisitNoncesForTests()
+	seenBindings.length = 0
+	const visitAudience = {
+		host: 'https://example.com',
+		packageId: 'package-1',
+		kodyId: 'rooms',
+		sourceId: 'source-1',
+		publishedCommit: 'commit-1',
+	}
+	const owner = {
+		userId: ownerIdFromStored('org-1'),
+		orgSlug: 'example',
+		email: '',
+		displayName: 'Example',
+	}
+	const visit = () =>
+		createPackageAppRequestVisit({
+			env: {} as Pick<Env, 'SECRET_STORE_KEY'>,
+			visitor: null,
+			owner,
+			audience: visitAudience,
+			request: null,
+		})
+	const first = await visit()
+	const second = await visit()
+	expect(first.credentialClientBinding).not.toBe(second.credentialClientBinding)
+	// One shared worker per commit: props are frozen from some other request.
+	const bridge = () => {
+		const instance = new PackageAppRuntimeBridge(
+			{
+				props: {
+					baseUrl: 'https://example.com',
+					userId: owner.userId,
+					orgSlug: 'example',
+					visitor: null,
+					packageId: 'package-1',
+					kodyId: 'rooms',
+					sourceId: 'source-1',
+					publishedCommit: 'commit-1',
+					packageStorageGrantIds: ['package-1'],
+					credentialClientBinding: 'run:frozen-in-props',
+					packageSecretRefKey: '',
+					packageBindingToken: 'binding-token-for-test',
+					gatewayProps: null,
+					visitAudience,
+				},
+				waitUntil() {},
+			} as never,
+			{} as Env,
+		)
+		vi.spyOn(
+			instance as unknown as {
+				publishedCredentialSupplier: () => Promise<null>
+			},
+			'publishedCredentialSupplier',
+		).mockResolvedValue(null)
+		return instance
+	}
+	const opener = bridge()
+	const signer = bridge()
+	await opener.credentialClientCall({
+		name: credentialClientToolNames.open,
+		args: { key: 'webhook' },
+		visitTicket: first.ticket,
+	})
+	await signer.credentialClientCall({
+		name: credentialClientToolNames.sign,
+		args: { handle: 'h', host: 'hooks.example.com', operation: {} },
+		visitTicket: first.ticket,
+	})
+	await signer.credentialClientCall({
+		name: credentialClientToolNames.sign,
+		args: { handle: 'h', host: 'hooks.example.com', operation: {} },
+		visitTicket: second.ticket,
+	})
+	expect(seenBindings).toEqual([
+		first.credentialClientBinding,
+		first.credentialClientBinding,
+		second.credentialClientBinding,
+	])
+
+	// The ticket names nobody: no visitor, no acting person, no storage owner.
+	const internals = opener as unknown as {
+		visitorFor: (ticket: string) => Promise<unknown>
+		createCallerContext: (
+			storageId: string | null,
+			ticket: string,
+		) => Promise<{ request: unknown; user: unknown }>
+	}
+	expect(await internals.visitorFor(first.ticket!)).toBeNull()
+	const context = await internals.createCallerContext(
+		'package-1',
+		first.ticket!,
+	)
+	expect(context.user).toBeNull()
+	expect(context.request).toBeNull()
+})
+
+test('a ticketless call still fails closed with no binding instead of reusing props', async () => {
+	seenBindings.length = 0
+	const bridge = new PackageAppRuntimeBridge(
+		{
+			props: {
+				baseUrl: 'https://example.com',
+				userId: ownerIdFromStored('org-1'),
+				orgSlug: 'example',
+				visitor: null,
+				packageId: 'package-1',
+				kodyId: 'rooms',
+				sourceId: 'source-1',
+				publishedCommit: 'commit-1',
+				packageStorageGrantIds: ['package-1'],
+				credentialClientBinding: 'run:frozen-in-props',
+				packageSecretRefKey: '',
+				packageBindingToken: 'binding-token-for-test',
+				gatewayProps: null,
+				visitAudience: {
+					host: 'https://example.com',
+					packageId: 'package-1',
+					kodyId: 'rooms',
+					sourceId: 'source-1',
+					publishedCommit: 'commit-1',
+				},
+			},
+			waitUntil() {},
+		} as never,
+		{} as Env,
+	)
+	vi.spyOn(
+		bridge as unknown as { publishedCredentialSupplier: () => Promise<null> },
+		'publishedCredentialSupplier',
+	).mockResolvedValue(null)
+	await bridge.credentialClientCall({
+		name: credentialClientToolNames.open,
+		args: { key: 'webhook' },
+	})
+	expect(seenBindings).toEqual([''])
 })

@@ -52,3 +52,16 @@ limitations.
   the same selection. Repeat at a narrow viewport.
 - Verify with the MCP skills flag off. A caller without package read access must
   not see the skill or read its files through a direct selection URL.
+
+## Skill history
+
+- Open a skill, then **History**. Choose a published version and supporting
+  file.
+- Turn on **Show changes** and compare two versions. Added and removed lines and
+  files must be distinguishable without relying on color alone.
+- A reader can compare history but cannot restore. With package write access,
+  **Restore this version**, then **Restore and publish**, creates a new checked
+  revision of only that skill directory. Verify binary assets, deleted later
+  files, and unchanged neighboring skills. Publish locks still need approval.
+- Publish another change after opening history. A stale restore must fail.
+  Refresh after restoring to verify the revision persisted.

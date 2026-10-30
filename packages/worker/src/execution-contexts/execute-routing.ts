@@ -1,3 +1,4 @@
+import { ecpMaxChainContexts } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { z } from 'zod'
 import { type CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
 import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
@@ -8,6 +9,7 @@ import {
 	executeRequirements,
 	routeExecute,
 } from './routing.ts'
+import { resolveRunCredentialUse } from './run-credential-use.ts'
 
 export { type ExecuteRoutingArgs } from './routing.ts'
 
@@ -32,11 +34,22 @@ export const executeRoutingInputFields = {
 		.describe(
 			'Local access the run needs ("fs", "lan"). Kody cloud is skipped when this is set.',
 		),
+	chain: z
+		.array(z.string().trim().min(1))
+		.min(1)
+		.max(ecpMaxChainContexts + 1)
+		.optional()
+		.describe(
+			'This run\'s own ordered chain, replacing your default chain: up to 3 context ids or names, with "cloud" allowed only last. Leaving out "cloud" means the run fails instead of falling back to Kody cloud. Entries that are offline, unusable, lack `requires`, or whose grant cannot cover the credentials the run can use (a credentials map, a secret or integration placeholder, a kody:runtime credential helper or credentialed call, or any kody: package the code imports, directly or through other packages, that can use one) are skipped before the code starts; if none qualifies the error lists each one and why.',
+		),
 }
 
 function asksForRouting(args: ExecuteRoutingArgs) {
 	return Boolean(
-		args.context?.trim() || args.fallback || (args.requires?.length ?? 0) > 0,
+		args.context?.trim() ||
+		args.fallback ||
+		(args.requires?.length ?? 0) > 0 ||
+		(args.chain?.length ?? 0) > 0,
 	)
 }
 
@@ -64,7 +77,7 @@ export async function routeExecuteForCaller(input: {
 				status: 403,
 				code: 'feature_disabled',
 				message:
-					'context, fallback and requires need the execution-contexts feature flag, which is off for this account. Remove them to run on Kody cloud.',
+					'context, chain, fallback and requires need the execution-contexts feature flag, which is off for this account. Remove them to run on Kody cloud.',
 			})
 		}
 		return null
@@ -102,6 +115,14 @@ export async function routeExecuteForCaller(input: {
 		params: input.params,
 		conversationId: input.conversationId,
 		credentials: input.credentials,
+		credentialUse: () =>
+			resolveRunCredentialUse({
+				env: input.env,
+				request,
+				ownerId: request.org.id,
+				code: input.code,
+				credentials: input.credentials,
+			}),
 		apiUrl: input.callerContext.baseUrl,
 		waitMs: input.waitMs,
 		signal: input.signal,

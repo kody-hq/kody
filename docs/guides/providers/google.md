@@ -88,6 +88,10 @@ client (the client secret is sent form-encoded to the token endpoint), and
 https://kody.codes/connect/oauth?provider=google&authorizeUrl=https%3A%2F%2Faccounts.google.com%2Fo%2Foauth2%2Fv2%2Fauth&tokenUrl=https%3A%2F%2Foauth2.googleapis.com%2Ftoken&flow=confidential&scopes=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcalendar.readonly&allowedHosts=www.googleapis.com&extraAuthorizeParams=%7B%22access_type%22%3A%22offline%22%2C%22prompt%22%3A%22consent%22%7D
 ```
 
+For a team organization, add `&org=<team-slug>` so the app and connection are
+saved there; without it they go to the personal organization (see
+`guide:oauth`).
+
 Decoded, that is authorize URL `https://accounts.google.com/o/oauth2/v2/auth`,
 token URL `https://oauth2.googleapis.com/token`, `flow=confidential`, the
 `calendar.readonly` scope, `allowedHosts=www.googleapis.com`, and

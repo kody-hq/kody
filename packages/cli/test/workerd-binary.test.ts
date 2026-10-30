@@ -16,6 +16,7 @@ import {
 	downloadVerifiedGzip,
 	ensureWorkerdBinary,
 	userCacheDir,
+	WorkerdDownloadStalledError,
 	workerdAssetUrl,
 	workerdTargetFor,
 } from '../src/workerd-binary.js'
@@ -100,4 +101,119 @@ test('downloadVerifiedGzip writes an executable binary when the digest matches',
 	assert.deepEqual(readFileSync(destination), binary)
 	assert.equal(statSync(destination).mode & 0o111, 0o111)
 	assert.deepEqual(readdirSync(dirname(destination)), ['workerd'])
+})
+
+/** Sends `head` then stalls until the request is aborted; later calls get `body`. */
+function serveStallingThen(head: Buffer, body: Buffer | null) {
+	let calls = 0
+	const fetchFn = (async (
+		_input: Parameters<typeof fetch>[0],
+		init?: RequestInit,
+	) => {
+		calls += 1
+		if (calls > 1 && body) return new Response(new Uint8Array(body))
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new Uint8Array(head))
+				init?.signal?.addEventListener('abort', () =>
+					controller.error(init.signal?.reason),
+				)
+			},
+		})
+		return new Response(stream)
+	}) as typeof fetch
+	return { fetchFn, calls: () => calls }
+}
+
+/** Streams `body` in `parts` chunks, `gapMs` apart. */
+function serveProgressing(body: Buffer, gapMs: number, parts: number) {
+	const size = Math.ceil(body.length / parts)
+	const fetchFn = (async () =>
+		new Response(
+			new ReadableStream<Uint8Array>({
+				async start(controller) {
+					for (let offset = 0; offset < body.length; offset += size) {
+						await new Promise((resolve) => setTimeout(resolve, gapMs))
+						controller.enqueue(
+							new Uint8Array(body.subarray(offset, offset + size)),
+						)
+					}
+					controller.close()
+				},
+			}),
+		)) as typeof fetch
+	return { fetchFn }
+}
+
+test('downloadVerifiedGzip keeps going past the idle timeout while bytes keep arriving', async () => {
+	const binary = Buffer.from('#!/bin/sh\necho slow but steady\n')
+	const gz = gzipSync(binary)
+	const destination = join(mkdtempSync(join(tmpdir(), 'kody-wd-')), 'workerd')
+	const { fetchFn } = serveProgressing(gz, 60, 6)
+	await downloadVerifiedGzip({
+		url: 'https://example.com/workerd.gz',
+		sha256: createHash('sha256').update(gz).digest('hex'),
+		destination,
+		fetchFn,
+		idleTimeoutMs: 200,
+	})
+	assert.equal(readFileSync(destination, 'utf8'), binary.toString())
+})
+
+test('downloadVerifiedGzip aborts with a stall error when bytes stop arriving', async () => {
+	const destination = join(mkdtempSync(join(tmpdir(), 'kody-wd-')), 'workerd')
+	const server = serveStallingThen(Buffer.from('partial'), null)
+	await assert.rejects(
+		downloadVerifiedGzip({
+			url: 'https://example.com/workerd.gz',
+			sha256: 'unused',
+			destination,
+			fetchFn: server.fetchFn,
+			idleTimeoutMs: 50,
+		}),
+		(error: unknown) =>
+			error instanceof WorkerdDownloadStalledError &&
+			/no bytes arrived from https:\/\/example\.com\/workerd\.gz/.test(
+				error.message,
+			),
+	)
+	assert.deepEqual(readdirSync(dirname(destination)), [])
+})
+
+test('ensureWorkerdBinary retries a stalled download once', async () => {
+	const cacheDir = mkdtempSync(join(tmpdir(), 'kody-wd-'))
+	const server = serveStallingThen(
+		Buffer.from('x'),
+		gzipSync(Buffer.from('#!/bin/sh\necho retried\n')),
+	)
+	const downloads: Array<string> = []
+	await assert.rejects(
+		ensureWorkerdBinary({
+			env: {},
+			cacheDir,
+			target: 'linux-64',
+			fetchFn: server.fetchFn,
+			idleTimeoutMs: 50,
+			onDownload: (url) => downloads.push(url),
+		}),
+		/failed verification/,
+	)
+	assert.equal(server.calls(), 2)
+	assert.equal(downloads.length, 2)
+})
+
+test('ensureWorkerdBinary names the download step when both attempts stall', async () => {
+	const cacheDir = mkdtempSync(join(tmpdir(), 'kody-wd-'))
+	const server = serveStallingThen(Buffer.from('x'), null)
+	await assert.rejects(
+		ensureWorkerdBinary({
+			env: {},
+			cacheDir,
+			target: 'linux-64',
+			fetchFn: server.fetchFn,
+			idleTimeoutMs: 50,
+		}),
+		/Downloading workerd for local execute stalled twice: no bytes arrived/,
+	)
+	assert.equal(server.calls(), 2)
 })

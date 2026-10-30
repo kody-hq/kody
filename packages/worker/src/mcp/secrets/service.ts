@@ -1530,8 +1530,32 @@ export async function findSecretForUse(input: ResolveSecretInput): Promise<{
 	}
 }
 
+/** The stored columns a credential revision digests; ciphertext, never a value. */
+export type StoredCredentialRevisionFields = {
+	encryptedValue: string
+	configJson: string | null
+	allowedHostsJson: string
+	injectJson: string
+}
+
+/** A change to the value, exchange, hosts, or inject changes the revision. */
+export async function storedCredentialRevision(
+	fields: StoredCredentialRevisionFields,
+) {
+	return await sha256Hex(
+		JSON.stringify([
+			fields.encryptedValue,
+			fields.configJson,
+			fields.allowedHostsJson,
+			fields.injectJson,
+		]),
+	)
+}
+
 export type StoredCredential = {
 	credentialId: string
+	/** The org that owns the row (the personal org for a personal credential). */
+	ownerId: OwnerId
 	name: string
 	kind: StoredCredentialKind
 	allowedHosts: Array<string>
@@ -1542,11 +1566,12 @@ export type StoredCredential = {
 	/** Null means anywhere (placeholders / credential() may fill any part). */
 	placement: CredentialFillPlacement | null
 	/**
-	 * Digest of the stored ciphertext and `config_json`. Every value write
-	 * re-encrypts with a fresh IV, so any change to the value or exchange
-	 * changes it.
+	 * Digest of the stored ciphertext, `config_json`, `allowed_hosts`, and
+	 * `inject_json`. Every value write re-encrypts with a fresh IV, so any
+	 * change to the value, exchange, hosts, or inject changes it.
 	 */
 	revision: string
+	revisionFields: StoredCredentialRevisionFields
 }
 
 /**
@@ -1571,18 +1596,24 @@ export async function findStoredCredentialForUse(input: {
 	if (!row || isDisconnectedSecretEncryptedValue(row.encrypted_value)) {
 		return null
 	}
+	const revisionFields: StoredCredentialRevisionFields = {
+		encryptedValue: row.encrypted_value,
+		configJson: row.config_json,
+		allowedHostsJson: row.allowed_hosts,
+		injectJson: row.inject_json,
+	}
 	return {
 		found: {
 			credentialId: row.id,
+			ownerId: input.ownerId,
 			name: row.name,
 			kind: row.kind,
 			allowedHosts: parseAllowedHosts(row.allowed_hosts),
 			injectJson: row.inject_json,
 			configJson: row.config_json,
 			placement: readCredentialFillPlacement(row.placement_json),
-			revision: await sha256Hex(
-				JSON.stringify([row.encrypted_value, row.config_json]),
-			),
+			revision: await storedCredentialRevision(revisionFields),
+			revisionFields,
 		},
 		readValue: () =>
 			decryptSecretValue(

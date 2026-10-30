@@ -138,7 +138,8 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0059 — MCP Events extension (webhook profile) behind a flag](./0059-mcp-events-extension-behind-flag.md)
   — `kody.emits` topics with `mcp: true` reach ChatGPT-style webhook subscribers
   through the existing package events consumer; flag plus client capability
-  gate; Workers-limited SSRF guard documented
+  gate; Workers-limited SSRF guard documented (client-declaration gate
+  superseded by 0087)
 - [0060 — Owner ids and person ids are separate types; storage stays keyed as-is](./0060-owner-and-person-ids.md)
   — `OwnerId` (owning org) vs `PersonId` (actor), `personalOrgId` is the only
   conversion; no `orgs` tables, column renames, or storage re-keying yet
@@ -236,6 +237,27 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0085: Execute takes code only](./0085-execute-takes-code-only.md) The
   server-side execute `invoke` shortcut and its flag are removed; one export is
   a two-line `code` passthrough, and CLI `--invoke` stays client-side
+- [0086 — Automations choose an execution context](./0086-automation-execution-contexts.md)
+  — per-automation `execution` (context or own chain), offline fails or queues
+  (default 60 min, max 24 h), runs use the automation actor's access
+- [0087: MCP Events need no client declaration](./0087-mcp-events-no-client-declaration.md)
+  The OAuth gate and the `mcp-events-extension` flag gate advertising and
+  subscribing; clients declare nothing, matching the OpenAI profile (supersedes
+  0059's client-declaration gate)
+- [0088: Team orgs have a public page at `/@slug`](./0088-public-team-org-pages.md)
+  Public by default with a create-time choice; owners toggle it; lists only
+  public packages, never members; private orgs 404 like unknown handles
+- [0089: Every package declares its capabilities; publish checks the import closure](./0089-packages-declare-capabilities.md)
+  `kody.capabilities` on every package; an app's effective set is its closure;
+  publish and `kody dev check` warn (then fail) on unverifiable calls; runtime
+  is a backstop
+- [0090: `login` credentials are Kody-managed OAuth refresh](./0090-login-credentials-are-kody-managed-oauth-refresh.md)
+  Kody holds the refresh token, runs the exchange on the host, and keeps the
+  session encrypted; code never holds a refresh or access token
+- [0091: Agents register people with auth.md `service_auth`](./0091-auth-md-service-auth-registration.md)
+  `POST /agent/identity` takes `service_auth` only; the claim mints a user-owned
+  `kody_at_` (default `long`, amends 0056); no identity assertion or JWT-bearer
+  refresh; anonymous stays behind a flag that is off
 
 ## Historical / UI / implementation
 

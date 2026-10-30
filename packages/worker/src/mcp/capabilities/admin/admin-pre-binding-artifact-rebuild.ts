@@ -55,10 +55,12 @@ const outcomeSchema = z.object({
 	publishedCommit: z.string().nullable(),
 	staleTargets: z.number().int().nonnegative(),
 	staleMultiPackageTargets: z.number().int().nonnegative(),
+	otherCommitTargets: z.number().int().nonnegative().optional(),
 	outcome: z.enum([
 		'would_rebuild',
 		'rebuilt',
 		'current',
+		'other_commit_artifacts',
 		'skipped_unpublished',
 		'skipped_no_artifacts',
 		'failed',
@@ -81,6 +83,9 @@ const outputSchema = z.object({
 	stillStaleAfterRebuild: count,
 	failedPackages: count,
 	currentPackages: count,
+	otherCommitPackages: count.describe(
+		'Packages with no pre-binding target but a stored target built from another commit than the published one (not rebuilt here).',
+	),
 	skippedUnpublished: count,
 	skippedNoArtifacts: count,
 	nextCursor: z.string().nullable(),

@@ -17,6 +17,8 @@ import {
 	listIntegrations,
 	listOauthApps,
 	listJoinedIntegrations,
+	LiveOauthAppReplaceError,
+	OauthConnectionNameTakenError,
 	rotateOauthAppClientCredentials,
 	upsertIntegration,
 	upsertOauthAppWithoutConnection,
@@ -557,6 +559,132 @@ test('upsertOauthAppWithoutConnection covers setup, client-id reuse, and connect
 	})
 	expect(secondSetup.slug).toBe('google')
 	expect(googleAppIdentity(preserveUserId)).toEqual(before)
+})
+
+test('website saves refuse to swap the app behind a live connection unless confirmed', async () => {
+	const { sqlite, env, googleAppIdentity, save } = createEnv()
+	const userId = 'user-live-guard'
+	const setup = (clientId: string, name = 'google') => ({
+		name,
+		tokenUrl: baseGoogleConfig.tokenUrl,
+		apiBaseUrl: baseGoogleConfig.apiBaseUrl,
+		flow: 'pkce' as const,
+		clientId,
+		authorization: { ...baseGoogleConfig.authorization, scopes: [] },
+	})
+	const refuse = { confirmed: false }
+
+	// An unfinished setup (no connection yet) keeps reusing its slug.
+	await upsertOauthAppWithoutConnection({
+		env,
+		userId,
+		config: setup('client-draft'),
+		liveConnectionGuard: refuse,
+	})
+	await upsertOauthAppWithoutConnection({
+		env,
+		userId,
+		config: setup('client-a'),
+		liveConnectionGuard: refuse,
+	})
+	await save(userId, google({ clientId: 'client-a' }))
+	// A saved but never-connected connection is not live either.
+	await upsertIntegration({
+		env,
+		userId,
+		config: google({ clientId: 'client-a' }),
+		audit: null,
+		liveConnectionGuard: refuse,
+	})
+	sqlite
+		.prepare(
+			`UPDATE user_integrations SET connected_at = ? WHERE user_id = ? AND name = 'google'`,
+		)
+		.run('2026-10-01T00:00:00.000Z', userId)
+	const before = googleAppIdentity(userId)
+
+	// Same identity: fine. Changed client ID: refused on setup and on save.
+	await upsertOauthAppWithoutConnection({
+		env,
+		userId,
+		config: setup('client-a'),
+		liveConnectionGuard: refuse,
+	})
+	await expect(
+		upsertOauthAppWithoutConnection({
+			env,
+			userId,
+			config: setup('client-b'),
+			liveConnectionGuard: refuse,
+		}),
+	).rejects.toBeInstanceOf(LiveOauthAppReplaceError)
+	await expect(
+		upsertIntegration({
+			env,
+			userId,
+			config: google({ clientId: 'client-b' }),
+			audit: null,
+			liveConnectionGuard: refuse,
+		}),
+	).rejects.toThrow(/Confirm the replacement, or save it as a new connection/)
+	await expect(
+		upsertIntegration({
+			env,
+			userId,
+			config: google({ tokenUrl: 'https://auth.example.com/token' }),
+			audit: null,
+			liveConnectionGuard: refuse,
+		}),
+	).rejects.toBeInstanceOf(LiveOauthAppReplaceError)
+	expect(googleAppIdentity(userId)).toEqual(before)
+	expect(await getIntegration({ env, userId, name: 'google' })).toMatchObject({
+		clientId: 'client-a',
+	})
+
+	// Save as a new connection refuses a name that already exists.
+	await expect(
+		upsertOauthAppWithoutConnection({
+			env,
+			userId,
+			config: setup('client-b'),
+			liveConnectionGuard: { confirmed: false, newConnection: true },
+		}),
+	).rejects.toBeInstanceOf(OauthConnectionNameTakenError)
+
+	// Save as a new connection: a separate app + name, the live one untouched.
+	const saveAsNew = await upsertOauthAppWithoutConnection({
+		env,
+		userId,
+		config: setup('client-b', 'google-2'),
+		liveConnectionGuard: { confirmed: false, newConnection: true },
+	})
+	expect(saveAsNew).toMatchObject({ slug: 'google-2', clientId: 'client-b' })
+	await upsertIntegration({
+		env,
+		userId,
+		config: google({ name: 'google-2', clientId: 'client-b' }),
+		audit: null,
+		liveConnectionGuard: refuse,
+	})
+	expect(googleAppIdentity(userId)).toEqual(before)
+	expect(await getIntegration({ env, userId, name: 'google' })).toMatchObject({
+		clientId: 'client-a',
+	})
+	expect(await getIntegration({ env, userId, name: 'google-2' })).toMatchObject(
+		{ clientId: 'client-b' },
+	)
+
+	// Explicit replace confirmation keeps today's behavior.
+	await upsertIntegration({
+		env,
+		userId,
+		config: google({ clientId: 'client-b' }),
+		audit: null,
+		liveConnectionGuard: { confirmed: true },
+	})
+	expect(await getIntegration({ env, userId, name: 'google' })).toMatchObject({
+		clientId: 'client-b',
+	})
 })
 
 test('upsertOauthAppWithoutConnection persists deviceAuthorizationUrl on user apps', async () => {

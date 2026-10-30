@@ -11,7 +11,12 @@ import {
 	deleteOrgAvatar,
 	saveOrgAvatar,
 } from '#worker/orgs/org-avatar.ts'
+import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import { updateOrgProfile } from '#worker/orgs/org-profile.ts'
+import {
+	loadOrgProfileVisibility,
+	type OrgProfileVisibility,
+} from '#worker/orgs/org-public-profile.ts'
 import { softDeleteOrg } from '#worker/orgs/soft-delete.ts'
 import { type OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
@@ -75,15 +80,19 @@ export async function loadOrgSettingsData(input: {
 	// Signup orgs keep identity and deletion on Account pages even when
 	// another owner somehow holds org:write on that org.
 	const teamOrg = !input.org.personal
-	const canManage =
-		teamOrg && (await orgHasPermission(input.env, input.user, 'org:write'))
+	const canWrite = await orgHasPermission(input.env, input.user, 'org:write')
+	const canManage = teamOrg && canWrite
 	return {
 		ok: true,
 		org: input.org,
 		canManage,
+		canManageDomains: canWrite,
 		canDelete:
 			teamOrg && (await orgHasPermission(input.env, input.user, 'org:delete')),
-		customDomains: canManage
+		profileVisibility: teamOrg
+			? await loadOrgProfileVisibility(input.env.APP_DB, input.org.id)
+			: null,
+		customDomains: canWrite
 			? await loadCustomDomainsView(input.env, input.org.id)
 			: null,
 	}
@@ -101,7 +110,11 @@ type OrganizationWriteContext = {
 }
 
 export async function updateOrganizationProfile(
-	input: OrganizationWriteContext & { displayName?: string; slug?: string },
+	input: OrganizationWriteContext & {
+		displayName?: string
+		slug?: string
+		profileVisibility?: OrgProfileVisibility
+	},
 ) {
 	const { env, request, user } = input
 	const access = await resolveOrgManagementAccess({
@@ -127,6 +140,10 @@ export async function updateOrganizationProfile(
 		orgId: access.org.id,
 		displayName: input.displayName,
 		slug: input.slug,
+		profileVisibility: input.profileVisibility,
+		...(input.profileVisibility === undefined
+			? {}
+			: { audit: orgAuditWriterFromRequest(env, user.request) }),
 	})
 	if (!updated.ok) {
 		return operationResult({ ok: false, error: updated.error }, 400)
@@ -290,15 +307,6 @@ async function writeOrganizationDomain(
 	})
 	if (!access.ok) {
 		return operationResult({ ok: false, error: access.error }, access.status)
-	}
-	if (access.org.personal) {
-		return operationResult(
-			{
-				ok: false,
-				error: 'Custom domains are only available on team organizations.',
-			},
-			400,
-		)
 	}
 	try {
 		await write({

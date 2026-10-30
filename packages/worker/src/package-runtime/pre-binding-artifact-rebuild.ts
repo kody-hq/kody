@@ -45,10 +45,13 @@ export type PreBindingArtifactRebuildOutcome = {
 	publishedCommit: string | null
 	staleTargets: number
 	staleMultiPackageTargets: number
+	/** Stored targets built from another commit than the published one. */
+	otherCommitTargets?: number
 	outcome:
 		| 'would_rebuild'
 		| 'rebuilt'
 		| 'current'
+		| 'other_commit_artifacts'
 		| 'skipped_unpublished'
 		| 'skipped_no_artifacts'
 		| 'failed'
@@ -66,6 +69,8 @@ export type PreBindingArtifactRebuildResult = {
 	stillStaleAfterRebuild: number
 	failedPackages: number
 	currentPackages: number
+	/** No pre-binding target, but a stored target is from another commit. */
+	otherCommitPackages: number
 	skippedUnpublished: number
 	skippedNoArtifacts: number
 	nextCursor: string | null
@@ -102,8 +107,9 @@ async function findStaleTargets(input: {
 	const notCurrent: Array<PublishedPackageArtifactBuildTarget> = []
 	let multiPackage = 0
 	let stored = 0
+	let otherCommit = 0
 	if (candidates.length === 0) {
-		return { stale, notCurrent, multiPackage, stored }
+		return { stale, notCurrent, multiPackage, stored, otherCommit }
 	}
 	const loadedByIdentity = await loadPublishedBundleArtifactsForPackageTargets({
 		env: input.env,
@@ -125,13 +131,14 @@ async function findStaleTargets(input: {
 		stored += 1
 		if (artifact.publishedCommit !== input.publishedCommit) {
 			notCurrent.push(target)
+			otherCommit += 1
 			continue
 		}
 		if (!isStalePreBindingArtifact(artifact)) continue
 		stale.push(target)
 		if (publishedArtifactInlinesOtherPackages(artifact)) multiPackage += 1
 	}
-	return { stale, notCurrent, multiPackage, stored }
+	return { stale, notCurrent, multiPackage, stored, otherCommit }
 }
 
 export async function runPreBindingArtifactRebuild(input: {
@@ -178,6 +185,7 @@ export async function runPreBindingArtifactRebuild(input: {
 		stillStaleAfterRebuild: 0,
 		failedPackages: 0,
 		currentPackages: 0,
+		otherCommitPackages: 0,
 		skippedUnpublished: 0,
 		skippedNoArtifacts: 0,
 		nextCursor,
@@ -240,6 +248,20 @@ export async function runPreBindingArtifactRebuild(input: {
 				})
 				continue
 			}
+			if (staleCount === 0 && scan.otherCommit > 0) {
+				// Not pre-binding, but not current for the published commit either:
+				// report the gap instead of calling the package current.
+				result.otherCommitPackages += 1
+				result.outcomes.push({
+					...base,
+					publishedCommit,
+					staleTargets: 0,
+					staleMultiPackageTargets: 0,
+					otherCommitTargets: scan.otherCommit,
+					outcome: 'other_commit_artifacts',
+				})
+				continue
+			}
 			if (staleCount === 0) {
 				result.currentPackages += 1
 				result.outcomes.push({
@@ -285,6 +307,16 @@ export async function runPreBindingArtifactRebuild(input: {
 				targets: scan.stale,
 				force: true,
 			})
+			const afterRebuild = await loadPackageSourceRowForUser({
+				env: input.env,
+				userId: savedPackage.userId,
+				sourceId: savedPackage.sourceId,
+			})
+			if ((afterRebuild.published_commit?.trim() || null) !== publishedCommit) {
+				throw new Error(
+					'Published commit changed during the pre-binding rebuild; retry this package.',
+				)
+			}
 			const after = await findStaleTargets({
 				env: input.env,
 				userId: savedPackage.userId,

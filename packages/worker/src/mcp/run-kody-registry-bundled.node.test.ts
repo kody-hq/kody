@@ -360,7 +360,7 @@ test('runBundledModuleWithRegistry injects OAuth helper prelude only when execut
 	await expect(
 		runOk({
 			additionalTools: {
-				integrationGet: async () => ({}),
+				__kodyIntegrationRuntimeConfig: async () => ({}),
 				integrationTokenRefresh: async () => ({}),
 				valueGet: async () => ({}),
 			},

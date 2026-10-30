@@ -39,6 +39,10 @@ import { SiteLink } from '../components/site-link.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { AccountAvatarEditor } from './account-avatar-editor.tsx'
+import {
+	OrgVisibilityFieldset,
+	type OrgProfileVisibilityChoice,
+} from '../components/org-visibility-fieldset.tsx'
 import { OrgSettingsCustomDomains } from './org-settings-custom-domains.tsx'
 import {
 	AccountManagementMessage,
@@ -67,6 +71,9 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 	const { actorKey } = useRouteContext({ from: '__root__' })
 	const capture = useSubmitterScope()
 	const [draftName, setDraftName] = useState(data.org.displayName ?? '')
+	const savedVisibility = data.profileVisibility ?? 'public'
+	const [draftVisibility, setDraftVisibility] =
+		useState<OrgProfileVisibilityChoice>(savedVisibility)
 	const [avatarFile, setAvatarFile] = useState<File | null>(null)
 	const [confirmation, setConfirmation] = useState('')
 	const [message, setMessage] = useState<{
@@ -153,7 +160,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 			<AccountPageHeader
 				entity="settings"
 				title="Settings"
-				description="The organization's name, handle, and photo."
+				description="The organization's name, handle, photo, and who can see its page."
 				currentHref={`/@${data.org.slug}/-/settings`}
 			/>
 			{message ? (
@@ -162,20 +169,27 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 				</AccountManagementMessage>
 			) : null}
 			{data.org.personal ? (
-				<AccountManagementPanel title="Identity">
-					<p css={mutedCopyCss}>
-						This is your personal organization. Your name, photo, and handle
-						come from your{' '}
-						<SiteLink href={routes.account.href()} css={inlineLinkCss}>
-							account profile
-						</SiteLink>
-						. To delete your account, use{' '}
-						<SiteLink href={routes.accountData.href()} css={inlineLinkCss}>
-							Account → Data &amp; deletion
-						</SiteLink>
-						.
-					</p>
-				</AccountManagementPanel>
+				<>
+					<AccountManagementPanel title="Identity">
+						<p css={mutedCopyCss}>
+							This is your personal organization. Your name, photo, and handle
+							come from your{' '}
+							<SiteLink href={routes.account.href()} css={inlineLinkCss}>
+								account profile
+							</SiteLink>
+							. To delete your account, use{' '}
+							<SiteLink href={routes.accountData.href()} css={inlineLinkCss}>
+								Account → Data &amp; deletion
+							</SiteLink>
+							.
+						</p>
+					</AccountManagementPanel>
+					<OrgSettingsCustomDomains
+						key={data.org.slug}
+						data={data}
+						queryKey={queryKey}
+					/>
+				</>
 			) : (
 				<>
 					<AccountManagementPanel title="Profile">
@@ -244,6 +258,9 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 											profile.mutateAsync({
 												orgSlug: data.org.slug,
 												displayName: draftName,
+												...(draftVisibility === savedVisibility
+													? {}
+													: { profileVisibility: draftVisibility }),
 											}),
 										() => saved('Settings saved.'),
 									)
@@ -276,6 +293,13 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 										the organization appears.
 									</p>
 								</div>
+								<OrgVisibilityFieldset
+									value={draftVisibility}
+									onChange={setDraftVisibility}
+									handle={data.org.slug}
+									disabled={isPending}
+									testId="org-settings-visibility"
+								/>
 								<div css={accountActionsCss}>
 									<button
 										type="submit"
@@ -287,9 +311,20 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 								</div>
 							</form>
 						) : (
-							<p css={mutedCopyCss}>
-								Only an owner can change this organization's profile.
-							</p>
+							<>
+								<p
+									css={mutedCopyCss}
+									data-testid="org-settings-visibility-value"
+								>
+									Page visibility:{' '}
+									{savedVisibility === 'public'
+										? 'Public. Anyone can open its page.'
+										: 'Private. Only members can open its page.'}
+								</p>
+								<p css={mutedCopyCss}>
+									Only an owner can change this organization's profile.
+								</p>
+							</>
 						)}
 					</AccountManagementPanel>
 					<OrgSettingsCustomDomains

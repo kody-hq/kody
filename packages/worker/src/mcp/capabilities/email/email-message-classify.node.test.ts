@@ -16,6 +16,12 @@ vi.mock('#worker/email/service.ts', () => ({
 	setEmailMessageClassification: mocks.setEmailMessageClassification,
 }))
 
+vi.mock('#worker/email/authorize-email-message.ts', () => ({
+	authorizeEmailMessageChange: async (input: { messageId: string }) => ({
+		id: input.messageId,
+	}),
+}))
+
 const { emailMessageClassifyCapability, emailMessageTriageInputSchema } =
 	await import('./email-message-classify.ts')
 

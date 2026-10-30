@@ -141,7 +141,11 @@ export async function planOptInCredentialFields(
 	})
 	if (touchesSecurityFields && plan.mode !== 'none') {
 		assertCredentialSecurityEditAllowed(ctx, {
-			credential: { kind: 'secret', name: input.input.name.trim() },
+			credential: {
+				kind: 'secret',
+				name: input.input.name.trim(),
+				...(existing ? { id: existing.id } : {}),
+			},
 			before: existing ?? {
 				inject: defaultCredentialInject,
 				placement: defaultNewCredentialFillPlacement,

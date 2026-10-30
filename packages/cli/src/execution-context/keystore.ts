@@ -43,6 +43,11 @@ function contextDir(apiUrl: string, ecid: string) {
 	return join(contextsDir(apiUrl), ecid)
 }
 
+/** Where the daemon records the workerd processes its runs start. */
+export function contextWorkersDir(apiUrl: string, ecid: string) {
+	return join(contextDir(apiUrl, ecid), 'workers')
+}
+
 export type WrappingKeySource = {
 	kind: 'keyring' | 'passphrase'
 	key(salt: Buffer | null): Buffer

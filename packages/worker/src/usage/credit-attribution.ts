@@ -52,7 +52,9 @@ ON CONFLICT (user_id, day, package_id, visitor_user_id, meter) DO UPDATE SET
  * Analytics Engine SQL for billable units this UTC month, grouped by day and
  * package id (blob9). Empty blob9 is Ad hoc / historical unattributed.
  * `blob1` is the org billing id. When multiple actors share a rollup key,
- * `any(blob10)` and `any(blob11)` pick one representative row.
+ * `argMax(blobN, timestamp)` keeps the actor (blob10) and automation source
+ * (blob11) of the latest unit. Analytics Engine SQL has no `any()` and
+ * rejects `max()` over String columns (HTTP 422).
  */
 export function buildCreditAttributionDailyQuery(
 	dataset: string,
@@ -67,8 +69,8 @@ SELECT
 	toDate(timestamp) AS day,
 	blob9 AS package_id,
 	blob2 AS event_type,
-	any(blob10) AS actor_user_id,
-	any(blob11) AS automation_source,
+	argMax(blob10, timestamp) AS actor_user_id,
+	argMax(blob11, timestamp) AS automation_source,
 	sum(
 		if(blob2 = 'durable_object_rows_read' AND double3 > 0, double3, 1.0) * _sample_interval
 	) AS units

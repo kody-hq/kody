@@ -7,6 +7,7 @@ function createLoadedPackage(input: {
 	kodyId: string
 	exports: Record<string, string>
 	files: Record<string, string>
+	capabilities?: Array<string>
 }) {
 	const ownerUserId = ownerIdFromStored('user-1')
 	const name = `@kentcdodds/${input.kodyId}`
@@ -50,7 +51,11 @@ function createLoadedPackage(input: {
 			content: JSON.stringify({
 				name,
 				exports: input.exports,
-				kody: { id: input.kodyId, description: `${input.kodyId} package` },
+				kody: {
+					id: input.kodyId,
+					description: `${input.kodyId} package`,
+					...(input.capabilities ? { capabilities: input.capabilities } : {}),
+				},
 			}),
 		}),
 		files: input.files,
@@ -129,4 +134,52 @@ export default async function main() { return [await run(), await whoami()] }`,
 		wake.row.id,
 	])
 	expect(dependencies.some((dependency) => dependency.transitive)).toBe(false)
+})
+
+test('dependencies record their own capability declarations', async () => {
+	const relay = createLoadedPackage({
+		kodyId: 'relay',
+		exports: { './run': './src/run.ts' },
+		files: {
+			'src/run.ts': `import whoami from 'kody:@kentcdodds/wake/whoami'
+export default async function run() { return await whoami() }`,
+		},
+		capabilities: ['secretList'],
+	})
+	const declaringWake = createLoadedPackage({
+		kodyId: 'wake',
+		exports: { './whoami': './src/whoami.ts' },
+		files: {
+			'src/whoami.ts': 'export default async function whoami() { return 1 }',
+		},
+		capabilities: ['jobList'],
+	})
+	const dependencies = await resolveDependencies({
+		entrySource: `import run from 'kody:@kentcdodds/relay/run'
+export default async function main() { return await run() }`,
+		loadedPackages: new Map([
+			['@kentcdodds/relay', relay],
+			['@kentcdodds/wake', declaringWake],
+		]),
+	})
+	expect(dependencies).toEqual([
+		expect.objectContaining({
+			packageId: relay.row.id,
+			capabilities: ['secretList'],
+		}),
+		expect.objectContaining({
+			packageId: declaringWake.row.id,
+			transitive: true,
+			capabilities: ['jobList'],
+		}),
+	])
+})
+
+test('a dependency without declarations records no capabilities field', async () => {
+	const dependencies = await resolveDependencies({
+		entrySource: `import whoami from 'kody:@kentcdodds/wake/whoami'
+export default async function main() { return await whoami() }`,
+		loadedPackages: new Map([['@kentcdodds/wake', wake]]),
+	})
+	expect(dependencies[0]).not.toHaveProperty('capabilities')
 })

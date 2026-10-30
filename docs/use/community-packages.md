@@ -1,7 +1,7 @@
 # Public packages
 
 **Public / private** is repo visibility. **Community** is the catalog
-(`/community`, `/@username`) and the official Discord server — not a second kind
+(`/community`, `/@handle`) and the official Discord server — not a second kind
 of package. A listing is the catalog row for a public package. Your own packages
 live on the workspace **Repositories** page with plain repos; this catalog is
 only published public listings (see
@@ -9,19 +9,20 @@ only published public listings (see
 
 Public **packages** appear in that catalog. Visibility lives on the **repo
 record in D1** (default private), not `package.json#private`. Making a package
-public lists it on `/community` and `/@username/:name` with full source and
-fork. Public plain repos store the same visibility flag and inherit it on
-promote; they do not appear on `/community`. Package **runtime** uses
-`published_commit`; pushing to a public default branch is world-readable at HEAD
-even before the next package publish.
+public lists it on `/community` and `/@handle/:name` with full source and fork.
+Public plain repos store the same visibility flag and inherit it on promote;
+they do not appear on `/community`. Package **runtime** uses `published_commit`;
+pushing to a public default branch is world-readable at HEAD even before the
+next package publish.
 
 One-click install forks the listing into your account and publishes it when
 checks pass. If checks fail, the fork stays inert until you adapt and publish.
 `communityFork` always leaves an inert source.
 
 Public pages work without a Kody account: `/community` (searchable index),
-`/@username` (public catalog), and `/@username/:name` (detail). Forking, rating,
-and reporting require a signed-in MCP user.
+`/@handle` (a person's public catalog, or a public team org's page), and
+`/@handle/:name` (detail). Forking, rating, and reporting require a signed-in
+MCP user.
 
 ### Clone a public package (read-only Git)
 
@@ -109,16 +110,16 @@ package name.
 
 ## Browsing listings
 
-Anyone can browse `/community`, a public catalog at `/@username`, and a package
-at `/@username/:name` — for example `/@kentcdodds/devin`.
-`/community/:listingId` redirects to that canonical URL. The package page tabs
-are **Repo** (details), **Files**, and **Settings** (owner). Files live at
-`/@username/:name/tree/:ref/...` where `:ref` is the repo's **default branch
-name** (usually `main`, whatever git reports — not hardcoded `master`), a SHA,
-or another branch. `HEAD` and leftover `/files` URLs 301 to
+Anyone can browse `/community`, a public catalog at `/@handle` (a person or a
+public team org), and a package at `/@handle/:name` — for example
+`/@kentcdodds/devin`. `/community/:listingId` redirects to that canonical URL.
+The package page tabs are **Repo** (details), **Files**, and **Settings**
+(owner). Files live at `/@handle/:name/tree/:ref/...` where `:ref` is the repo's
+**default branch name** (usually `main`, whatever git reports — not hardcoded
+`master`), a SHA, or another branch. `HEAD` and leftover `/files` URLs 301 to
 `/tree/{defaultBranch}` (`main` when lookup misses). Private packages use the
 same tree URL; unauthenticated visitors get 404. Owner settings are
-`/@username/:name/settings`. The package home (Repo tab) renders the README.
+`/@handle/:name/settings`. The package home (Repo tab) renders the README.
 
 The catalog defaults to **Best**. **Newest** orders by last community publish.
 **Featured** is editorial placement only — not a safety badge. There is no
@@ -191,7 +192,7 @@ If the listing owner later pushes to a public default branch, your fork keeps
 the snapshot you copied. `packageGet` / `packageList` / search set
 `listing_ahead` / `listingAhead` only when the listing pin is not an ancestor of
 your fork tip (the fork is behind or diverged). SHA inequality alone is not
-enough. Your `/@username` profile and catalog cards replace Installed / Forked
+enough. Your `/@handle` profile and catalog cards replace Installed / Forked
 with a yellow **Fork outdated** control when the fork is behind (click copies an
 absorb prompt and links to the listing files at the pin) or a calm **Fork
 ahead** badge linking to those files when the pin is already in the fork's
@@ -298,9 +299,11 @@ Each account has profile fields:
 - **Avatar** — optional profile image (PNG, JPEG, or WebP)
 - **Profile visibility** — `public` by default, or `private`
 
-Public profiles are at `/@username`. A public profile shows display name, bio,
+Public profiles are at `/@handle`. A public profile shows display name, bio,
 avatar, join date, the user's **public packages** (metadata only), and recent
-public activity (publishes, republishes, and public forks).
+public activity (publishes, republishes, and public forks). A public team org's
+page is at `/@handle` — see
+[Organizations](../guides/organizations.md#public-org-page).
 
 ### Avatars
 
@@ -332,7 +335,7 @@ not `package.json#private`:
 
 When visibility is `private`:
 
-- `/@username` returns not found (404)
+- `/@handle` returns not found (404)
 - `communityProfileGet` for another user’s private profile returns
   `user_found: false` with empty fields (it does not leak existence via
   HTTP 404)

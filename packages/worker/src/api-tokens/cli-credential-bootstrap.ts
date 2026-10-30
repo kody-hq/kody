@@ -29,7 +29,7 @@ import {
  * plain-repo push (`package:write`) + stub package create via
  * `packageGetGitRemote` (`package:create`) + self-revoke (`token:delete`).
  */
-const cliCredentialBootstrapDefaultScopes = normalizeApiTokenScopes([
+export const cliCredentialBootstrapDefaultScopes = normalizeApiTokenScopes([
 	...localExecuteOrgPermissions,
 	'org:read',
 	'package:write',

@@ -1,4 +1,7 @@
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	type OwnerId,
+} from '@kody-internal/shared/owner-person-ids.ts'
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
 import {
 	integrationAuthFailureCopy,
@@ -623,9 +626,10 @@ async function exchangeRefreshTokenWithLease({
 				break
 			}
 			case 'user': {
+				// The app's owner: an org for a connection pinned to its app.
 				clientSecret = await resolveUserOauthAppClientSecret({
 					env: input.env,
-					userId: input.userId,
+					userId: ownerIdFromStored(joined.app.userId),
 					slug: joined.app.slug,
 				})
 				break

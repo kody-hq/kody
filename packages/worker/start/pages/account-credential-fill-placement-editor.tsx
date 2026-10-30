@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { css } from '@emotion/react'
-import { useState, type FormEvent } from 'react'
+import { useState, useSyncExternalStore, type FormEvent } from 'react'
 import {
 	defaultFillPlacementDraft,
 	type FillPlacementDraft,
@@ -9,6 +9,7 @@ import {
 	formatFillPlacementSummary,
 	type CredentialFillPlacementView,
 } from '#universal/credential-fill-placement.ts'
+import { fillPlacementAnchor } from '#universal/credential-placement-approval.ts'
 import { saveCredentialPlacement } from '#start/server/credential-placement'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import { CredentialFillPlacementFields } from './credential-fill-placement-fields.tsx'
@@ -42,11 +43,24 @@ const errorCss = css({
 	fontSize: typography.fontSize.sm,
 })
 
-export function CredentialFillPlacementEditor(props: Props) {
-	const [editing, setEditing] = useState(false)
-	const [draft, setDraft] = useState<FillPlacementDraft>(
-		defaultFillPlacementDraft(),
+function subscribeToHash(onChange: () => void) {
+	window.addEventListener('hashchange', onChange)
+	return () => window.removeEventListener('hashchange', onChange)
+}
+
+/** True when a `#fill-placement` deep link (refusal errors) opened this page. */
+function useFillPlacementAnchor() {
+	return useSyncExternalStore(
+		subscribeToHash,
+		() => window.location.hash === `#${fillPlacementAnchor}`,
+		() => false,
 	)
+}
+
+export function CredentialFillPlacementEditor(props: Props) {
+	const anchored = useFillPlacementAnchor()
+	const [editingState, setEditing] = useState<boolean | null>(null)
+	const [draftState, setDraft] = useState<FillPlacementDraft | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [saved, setSaved] = useState<{
 		placement: CredentialFillPlacementView | null
@@ -56,6 +70,12 @@ export function CredentialFillPlacementEditor(props: Props) {
 		saved && JSON.stringify(saved.from) === JSON.stringify(props.placement)
 			? saved.placement
 			: props.placement
+	const editing = editingState ?? anchored
+	const draft =
+		draftState ??
+		(editing
+			? fillPlacementDraftFromView(placement)
+			: defaultFillPlacementDraft())
 	const mutation = useCredentialMutation(
 		{ orgSlug: props.orgSlug },
 		(next: CredentialFillPlacementView | null) =>

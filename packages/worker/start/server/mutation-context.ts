@@ -3,6 +3,7 @@ import { getStartRequestEnv } from './request-env.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { loadResolvedRequestAuth } from '#app/request-auth-cache.ts'
+import { loadRequestOrgResolution } from '#app/org-request-binding.ts'
 import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
@@ -29,7 +30,25 @@ async function websiteContext(options: WebsiteScope): Promise<WebsiteContext> {
 	const authenticated = await readAuthenticatedAppUser(request, env)
 	const resolved = await loadResolvedRequestAuth(request, env)
 	if (resolved.setCookie) setResponseHeader('Set-Cookie', resolved.setCookie)
-	if (!authenticated) throw new WebsiteAuthenticationError()
+	if (!authenticated) {
+		// A live session denied only by an explicit `?org=` is a missing org, not a
+		// sign-out; redirecting to /login would bounce straight back here.
+		const sessionUser = resolved.user
+		if (
+			options.scope &&
+			sessionUser &&
+			resolved.sessionUserId &&
+			!sessionUser.accountSuspended &&
+			!sessionUser.accountDeleting &&
+			(await loadRequestOrgResolution(
+				request,
+				env,
+				sessionUser.mcpUser.userId,
+			)) === 'denied'
+		)
+			throw new Error('Organization not found.')
+		throw new WebsiteAuthenticationError()
+	}
 	// Request auth is cached. Never mutate it while binding an independent operation.
 	const user = { ...authenticated }
 	if (options.scope) {

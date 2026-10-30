@@ -15,6 +15,11 @@ import {
 	type OrgRole,
 	type RequestContext,
 } from '@kody-internal/shared/request-context.ts'
+import {
+	type GrantSubjectChoices,
+	grantSubjectMatchSql,
+} from '#worker/authorization/grant-subjects.ts'
+import { memoizePerRequest } from '#worker/request-context.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 const allOrgPermissions: ReadonlySet<OrgPermission> = new Set(orgPermissions)
@@ -168,11 +173,23 @@ function applyAdHocRule(
 	}
 }
 
+/** Compiled access honors every subject type a grant can name. */
+export const liveGrantRowSubjects = {
+	user: 'include',
+	team: 'include',
+	org: 'include',
+} as const satisfies GrantSubjectChoices
+
 async function loadLiveGrantRows(
 	db: D1Database,
 	orgId: string,
 	userId: string,
 ): Promise<Array<GrantRow>> {
+	const subjectMatch = grantSubjectMatchSql({
+		subjects: liveGrantRowSubjects,
+		personId: userId,
+		boundOrgId: orgId,
+	})
 	const result = await db
 		.prepare(
 			`SELECT g.resource_type AS resource_type,
@@ -182,23 +199,9 @@ async function loadLiveGrantRows(
 			 INNER JOIN grant_permissions gp ON gp.grant_id = g.id
 			 WHERE g.org_id = ?
 			   AND g.deleted_at IS NULL
-			   AND (
-			     (g.subject_type = 'user' AND g.subject_id = ?)
-			     OR (
-			       g.subject_type = 'team'
-			       AND g.subject_id IN (
-			         SELECT tm.team_id
-			         FROM team_members tm
-			         INNER JOIN teams t ON t.id = tm.team_id
-			         WHERE tm.user_id = ?
-			           AND tm.deleted_at IS NULL
-			           AND t.org_id = ?
-			           AND t.deleted_at IS NULL
-			       )
-			     )
-			   )`,
+			   AND ${subjectMatch.sql}`,
 		)
-		.bind(orgId, userId, userId, orgId)
+		.bind(orgId, ...subjectMatch.binds)
 		.all<GrantRow>()
 	return result.results ?? []
 }
@@ -376,16 +379,31 @@ export async function compileAccessForActor(input: {
 	const { orgId, userId, role } = input
 	if (role === 'owner') return ownerCompiledAccess(orgId, 0)
 
-	const epochOrNull = await readOrgEpoch(input.db, orgId)
+	// One HTTP request can derive many request contexts for the same person
+	// (a page checking several package permissions), so share the compile
+	// across the request. Every new request still reads access_epoch.
+	return await memoizePerRequest({
+		key: `compiled-access:${orgId}:${userId}:${role ?? 'none'}`,
+		load: () => compileUncached(input.db, orgId, userId, role),
+	})
+}
+
+async function compileUncached(
+	db: D1Database,
+	orgId: OwnerId,
+	userId: string,
+	role: OrgRole | null,
+): Promise<CompiledAccess> {
+	const epochOrNull = await readOrgEpoch(db, orgId)
 	if (epochOrNull === null) {
 		throw new Error(`Org ${orgId} was not found while compiling access.`)
 	}
 	const epoch = epochOrNull
 
-	const cached = await readAccessCache(input.db, orgId, userId, epoch)
+	const cached = await readAccessCache(db, orgId, userId, epoch)
 	if (cached) return cached
 
-	const grantRows = await loadLiveGrantRows(input.db, orgId, userId)
+	const grantRows = await loadLiveGrantRows(db, orgId, userId)
 	const compiled = compileFromRoleAndGrants({
 		orgId,
 		epoch,
@@ -393,7 +411,7 @@ export async function compileAccessForActor(input: {
 		grantRows,
 	})
 	try {
-		await writeAccessCache(input.db, compiled, userId)
+		await writeAccessCache(db, compiled, userId)
 	} catch {
 		// Cache is derived; a write failure must not block the request.
 	}

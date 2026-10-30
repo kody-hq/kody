@@ -241,9 +241,11 @@ forged, and it is absent for anonymous visitors. Visitors of one app share one
 worker isolate per commit per mount; identity and authority travel per request
 (the visitor header plus a short-lived host-signed visit ticket on every bridge
 and gateway call; a warm isolate does not reuse another visitor's ticket), never
-inside the cached worker. The OAuth helper's `getUser`, `requireUser`, and
-`resolveUser` read the visitor header in server code; `/-/auth/me` stays the
-browser's way to ask (it adds avatar and consented email).
+inside the cached worker. An anonymous visitor's ticket names nobody; it only
+ties that request's `credential()` clients to the request. The OAuth helper's
+`getUser`, `requireUser`, and `resolveUser` read the visitor header in server
+code; `/-/auth/me` stays the browser's way to ask (it adds avatar and consented
+email).
 
 Responses to a request that names a visitor are forced `private` so no shared
 cache can mix visitors.
@@ -276,6 +278,16 @@ run as anyone.
 - Authority is capped twice: only the capabilities the app lists in
   `kody.app.capabilities` run as that person, and only within what that person
   may do in the org right now.
+- The cap covers every Kody capability call made while the app runs, including
+  calls made by packages the app imports. Publish is moving to compute an app's
+  effective requirement from its own declarations plus its whole import closure,
+  and to enforce it. Until then the running app's manifest is the one checked,
+  so today the fix is to list the capabilities its dependencies call in the
+  app's own `kody.app.capabilities`. Imported packages declare their own calls
+  in `kody.capabilities`; publish and `kody dev check` warn when a package's
+  modules, or the packages they import, call a capability its list does not
+  cover
+  ([ADR 0089](../contributing/decisions/0089-packages-declare-capabilities.md)).
 
 ```json
 {
@@ -293,6 +305,31 @@ run as anyone.
 	}
 }
 ```
+
+For example, `@example/app` imports `kody:@example/helper/save-token`, and that
+helper export calls `kody.secretList(...)` and `kody.secretSet(...)`. Those
+calls run while `@example/app` runs, so today `@example/app` lists both, even
+though its own code never calls them:
+
+```json
+{
+	"name": "@example/app",
+	"kody": {
+		"dependencies": { "@example/helper": "*" },
+		"app": {
+			"entry": "src/index.ts",
+			"capabilities": ["secretList", "secretSet"]
+		}
+	}
+}
+```
+
+Without them the call cannot run as the runs-as person. For now it may still run
+under the visitor's authority (see the temporary fallback below); when that also
+fails, the app gets `PackageAppCapabilityNotDeclaredError`, which names the app
+(package name and version), the imported package that made the call, and the
+capability to add. Add it to the importing app's `kody.app.capabilities` and
+republish the app.
 
 `kody.app.visitorNeeds` is how an app works on a signed-in visitor's own data.
 Each key is its own Sign in with Kody consent scope, `need:<key>`, and the
@@ -354,11 +391,18 @@ visitor defaults, org mappings, or automatic matching. A missing mapping is
 reported as `credential_unbound`. Keep publisher-supplied needs on
 `credential(key)`.
 
-If a bridge call cannot run as the runs-as person (a capability missing from
-`kody.app.capabilities`, for example), the platform may still execute it as the
-visitor and log a `package_app_authority_fallback` event with the app, the call
-name, and the kind of difference. Add what the logs name to the manifest. Admins
-count these per app with `adminPackageAppAuthorityFallbackReport`, and the
+If a bridge call fails as the runs-as person for an authority reason (a
+capability missing from `kody.app.capabilities`, an unavailable runs-as person,
+a permission or credential refusal), the platform retries it the legacy way: as
+the visitor, or anonymously when there is none. When that works, it logs a
+`package_app_authority_fallback` event with the app, the call name, and the kind
+of difference. Any other failure throws as is, with no retry. Add what the logs
+name to the manifest; do not rely on the fallback. When the legacy retry also
+fails, the app gets the runs-as error. Only when that error is the "not listed
+in `kody.app.capabilities`" one (`PackageAppCapabilityNotDeclaredError`) does
+the platform also log a `package_app_authority_rejection` event. Admins count
+both per app with `adminPackageAppAuthorityFallbackReport` (`hardRejections`
+holds the second), and the
 [0017 scan](../contributing/package-codemods.md#0017-detect-package-app-visitor-authority)
 lists published apps that will hit them.
 

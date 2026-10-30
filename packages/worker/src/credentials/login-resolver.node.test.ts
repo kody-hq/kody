@@ -18,7 +18,7 @@ import {
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
-import { saveSecret } from '#mcp/secrets/service.ts'
+import { deleteSecret, saveSecret } from '#mcp/secrets/service.ts'
 import {
 	CredentialLoginFailedError,
 	CredentialNotFoundError,
@@ -230,7 +230,16 @@ async function setup() {
 	valueReads.count = 0
 	scheduledAudits.length = 0
 	clearLoginSessionsForTests()
-	return { db, storeCredential, requestAs, signIn, grantUse, audits }
+	return {
+		env,
+		db,
+		acmeId,
+		storeCredential,
+		requestAs,
+		signIn,
+		grantUse,
+		audits,
+	}
 }
 
 test('a login credential runs its exchange and places the session, reusing it until it expires', async () => {
@@ -477,4 +486,101 @@ test('a form exchange can place its session in a query parameter, and a changed 
 			password,
 		}).toString(),
 	)
+})
+
+test('a session persists encrypted across isolates and is reused until the credential changes', async () => {
+	const t = await setup()
+	const exchanges = stubLoginEndpoint()
+	const id = await t.storeCredential({ name: 'portal-login' })
+	const actor = t.requestAs('bea', 'owner')
+
+	await t.signIn({ actor, credentialId: id })
+	const stored = await t.db
+		.prepare(`SELECT * FROM login_credential_sessions WHERE credential_id = ?`)
+		.bind(id)
+		.first<Record<string, unknown>>()
+	expect(stored).toMatchObject({ user_id: t.acmeId, lease_id: null })
+	expect(JSON.stringify(stored)).not.toContain('session-1')
+	expect(JSON.stringify(stored)).not.toContain(password)
+
+	// A fresh isolate has an empty front cache and reuses the stored session.
+	clearLoginSessionsForTests()
+	const again = await t.signIn({ actor, credentialId: id })
+	expect(again.placement.value).toBe('Bearer session-1')
+	expect(exchanges).toHaveLength(1)
+	expect(valueReads.count).toBe(1)
+
+	// Hosts, inject, and value edits each start a new session. Hosts and inject
+	// change only their own columns, so the ciphertext stays the same.
+	const setColumn = async (
+		column: 'allowed_hosts' | 'inject_json',
+		value: unknown,
+	) =>
+		await t.db
+			.prepare(`UPDATE secret_entries SET ${column} = ? WHERE id = ?`)
+			.bind(JSON.stringify(value), id)
+			.run()
+	await setColumn('allowed_hosts', ['api.example.com', 'auth.example.com'])
+	clearLoginSessionsForTests()
+	expect((await t.signIn({ actor, credentialId: id })).placement.value).toBe(
+		'Bearer session-2',
+	)
+	await setColumn('inject_json', {
+		kind: 'header',
+		name: 'X-Session',
+		format: '{value}',
+	})
+	expect((await t.signIn({ actor, credentialId: id })).placement).toEqual({
+		kind: 'header',
+		name: 'X-Session',
+		value: 'session-3',
+	})
+	await t.storeCredential({
+		name: 'portal-login',
+		value: JSON.stringify({ username: 'bea@example.com', password: 'rotated' }),
+		hosts: ['api.example.com', 'auth.example.com'],
+		inject: { kind: 'header', name: 'X-Session', format: '{value}' },
+	})
+	expect((await t.signIn({ actor, credentialId: id })).placement.value).toBe(
+		'session-4',
+	)
+	expect(exchanges).toHaveLength(4)
+
+	const rows = await t.audits()
+	expect(rows.map((row) => JSON.parse(row.details_json).session)).toEqual([
+		'new',
+		'stored',
+		'new',
+		'new',
+		'new',
+	])
+	expect(JSON.stringify(rows)).not.toMatch(/session-\d/)
+})
+
+test('deleting a login credential deletes its stored session', async () => {
+	const t = await setup()
+	stubLoginEndpoint()
+	const id = await t.storeCredential({ name: 'portal-login' })
+	await t.signIn({ actor: t.requestAs('bea', 'owner'), credentialId: id })
+	const count = () =>
+		t.db
+			.prepare(
+				`SELECT COUNT(*) AS n FROM login_credential_sessions WHERE credential_id = ?`,
+			)
+			.bind(id)
+			.first<{ n: number }>()
+	expect(await count()).toEqual({ n: 1 })
+
+	await deleteSecret({
+		env: t.env,
+		userId: t.acmeId,
+		scope: 'user',
+		name: 'portal-login',
+		audit: null,
+	})
+	expect(await count()).toEqual({ n: 0 })
+	clearLoginSessionsForTests()
+	await expect(
+		t.signIn({ actor: t.requestAs('bea', 'owner'), credentialId: id }),
+	).rejects.toBeInstanceOf(CredentialNotFoundError)
 })

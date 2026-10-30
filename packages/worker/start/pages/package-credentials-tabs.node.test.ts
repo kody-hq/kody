@@ -181,3 +181,104 @@ test('grandfathered publisher personal defaults offer only a clear action when m
 		'aria-label="Clear your default for publisher-empty"',
 	)
 })
+
+test('unbound needs with a possible match point at Mappings instead of add', async () => {
+	const match = {
+		id: 'cred-raw-id-123',
+		name: 'Work calendar',
+		kind: 'oauth' as const,
+		scope: 'org' as const,
+	}
+	const calendar = need('calendar')
+	calendar.effective = { ...calendar.effective, candidates: [match] }
+	calendar.createUrl = '/credentials/new?need=calendar'
+	const view: PackageCredentialsView = {
+		ok: true,
+		package: { id: 'package-a', kodyId: 'repo', canManage: true },
+		needs: [calendar],
+		triggers: [],
+		locked: [],
+		incomplete: [{ ...incomplete('calendar'), possibleMatches: [match] }],
+	}
+	const context = { orgSlug: 'team', username: 'team', kodyId: 'repo', view }
+
+	const credentialsHtml = await renderStartPage(renderCredentialsTab(context))
+	expect(credentialsHtml).toContain('Not linked yet')
+	expect(credentialsHtml).toContain('Work calendar')
+	expect(credentialsHtml).toContain('looks like a match')
+	expect(credentialsHtml).toContain('Link it in Mappings')
+	expect(credentialsHtml).toContain('#package-mapping-calendar')
+	expect(credentialsHtml).not.toContain('No matching credential')
+	expect(credentialsHtml).not.toContain('>No credential<')
+	expect(credentialsHtml).not.toContain('Add a credential')
+	expect(credentialsHtml).not.toContain('cred-raw-id-123<')
+
+	const mappingsHtml = await renderStartPage(renderMappingsTab(context))
+	expect(mappingsHtml).toContain('Not linked yet')
+	expect(mappingsHtml).not.toContain('Add a credential for')
+	expect(mappingsHtml).not.toContain('Link it in Mappings')
+})
+
+test('a publisher possible match sends non-managers to a package manager', async () => {
+	const match = {
+		id: 'cred-raw-id-456',
+		name: 'Team calendar',
+		kind: 'oauth' as const,
+		scope: 'org' as const,
+	}
+	const calendar = need('calendar', 'publisher')
+	calendar.effective = { ...calendar.effective, candidates: [match] }
+	calendar.createUrl = '/credentials/new?need=calendar'
+	const view: PackageCredentialsView = {
+		ok: true,
+		package: { id: 'package-a', kodyId: 'repo', canManage: false },
+		needs: [calendar],
+		triggers: [],
+		locked: [],
+		incomplete: [{ ...incomplete('calendar'), possibleMatches: [match] }],
+	}
+	const context = { orgSlug: 'team', username: 'team', kodyId: 'repo', view }
+
+	const html = await renderStartPage(renderCredentialsTab(context))
+	expect(html).toContain('Possible match')
+	expect(html).toContain('Team calendar')
+	expect(html).toContain('ask a package manager to link it')
+	expect(html).toContain('A package manager can link it.')
+	expect(html).not.toContain('Link it in Mappings')
+	expect(html).not.toContain('pick it in')
+	expect(html).toContain('Add a credential')
+	expect(html).not.toContain('cred-raw-id-456<')
+})
+
+test('a publisher trigger possible match routes managers to Mappings', async () => {
+	const match = {
+		id: 'cred-raw-id-789',
+		name: 'Team calendar',
+		kind: 'oauth' as const,
+		scope: 'org' as const,
+	}
+	const view: PackageCredentialsView = {
+		ok: true,
+		package: { id: 'package-a', kodyId: 'repo', canManage: true },
+		needs: [need('calendar', 'publisher')],
+		triggers: [],
+		locked: [],
+		incomplete: [
+			{
+				needKey: 'calendar',
+				where: { type: 'trigger', trigger: { kind: 'cron', name: 'nightly' } },
+				status: 'unbound',
+				possibleMatches: [match],
+			},
+		],
+	}
+	const context = { orgSlug: 'team', username: 'team', kodyId: 'repo', view }
+
+	const html = await renderStartPage(renderCredentialsTab(context))
+	expect(html).toContain('looks like a match; pick it in Default mappings.')
+	expect(html).toContain('href="/@team/repo/mappings"')
+	expect(html).not.toContain('href="/@team/repo/triggers"')
+	expect(await renderStartPage(renderMappingsTab(context))).toContain(
+		'1 mapping needs attention',
+	)
+})

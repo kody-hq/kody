@@ -66,16 +66,93 @@ sequenceDiagram
   `gatewayFetch`, `oauthClientCredentials`, `credentialClient*`) need a grant
   that allows credentials and run from Kody cloud, so credential values never
   reach the machine.
+- Grant credentials are `none`, a `list` of credential ids, or `requester`
+  (every credential the requester can use). `requester` is the default for new
+  contexts and works only while the context is unshared: only the operator sets
+  it, sharing or attaching is refused until it is narrowed, and each hop
+  re-checks sharing (`credential-grant.ts`).
+- The credential door enforces the grant per credential: each hop puts the
+  grant's allowed ids on the request (`credential.contextCredentialIds`) and
+  `resolveCredential` refuses any other credential before reading it
+  (`context-credential-grant.ts`). The streaming gateway-fetch hop uses the same
+  grant check as `gatewayFetch`.
+- Before a run starts, routing works out which credentials it can use
+  (`run-credential-use.ts`): the entry module and every `kody:` package its
+  static imports reach, read from publish metadata (needs closure, credential
+  stamp) or, once per source and commit, from the published files (KV
+  `credential-use:v2`). A context whose grant cannot serve that is skipped
+  (`credentials_not_allowed`, `credentials_not_in_grant`,
+  `credentials_unverified`, `credentials_need_unshared_context`), so the chain
+  falls through to the next entry or cloud.
+- The daemon enforces the grant's `egress` (from `welcome`, re-applied on
+  `grant.update`) inside local workerd: outbound `fetch` goes through an
+  egress-gate worker (`packages/cli/src/local-egress.ts`) set as
+  `globalOutbound`. A refusal reaches the run as a plain error naming the mode,
+  the blocked host (and port), and that the machine owner can change it with
+  `executionContextUpdate` `grant.egress`, instead of workerd's
+  `internal error; reference = …`.
 - Chains are per user per org, hold up to 3 contexts, and Kody cloud is always
   the last entry when present. A chain PUT with anything after cloud is a 400.
   Leaving cloud out makes the chain strict.
+- Every routed execute response carries `ranOn` (MCP `structuredContent`, CLI
+  `--json`, `POST /v1/execute`); input or setup errors before routing may omit
+  it:
+  `{ kind: "cloud" | "context", id: "cloud" | "ec_…", name: "Kody cloud" | context name, yours?, attempts, fellBackToCloud }`.
+  `attempts` lists contexts that passed on the run with reasons. A short text
+  line says the same with friendly names only, e.g.
+  `Ran on build-box (your machine).` or
+  `Ran on Kody cloud after build-box was skipped (credentials not allowed).`
+  `executionContext` stays for runs that involved a context. `runGet` adds the
+  same `metadata.ranOn` to execute runs, and `executionContextRunList` rows
+  carry `ranOn` (`{ kind, id, name }`, or null when the run did not start
+  there).
 - A named context never falls back unless the run passes `fallback: "chain"`.
   `requires: ["fs" | "lan"]` skips Kody cloud.
+- Host folders: the daemon mounts `grant.fs` intersected with the machine's
+  local policy (`kody context policy`, stored as `execution-context-policy.json`
+  in the CLI config dir; absent means none), canonicalized with `realpath`,
+  narrower mode wins. Mounts are re-applied on `grant.update` and policy edits.
+  The daemon advertises `features: ["fs"]` in `hello` / `capabilities.update`
+  only while a folder is mounted, and routing refuses `requires: ["fs"]` with
+  `no_fs` (grant lists none) or `no_local_fs` (local policy allows none). In the
+  run, a `node:fs` shim sends host paths over the run-secret loopback bridge,
+  which enforces the mounts on the Node side; see
+  [CLI README](../../../packages/cli/README.md#execution-context-host-folders).
+- A run (`execute` `chain`) or automation (`execution` on jobs, webhooks,
+  subscriptions and workflow steps) can set its own `context` or `chain`, which
+  overrides the default chain. API/MCP/UI overrides beat the manifest.
+  Automation context runs use the access of the person the automation runs as.
+- Offline or unusable targets fail the run by default, listing each skipped
+  entry. `whenOffline: "queue"` waits for reconnect for `queueMinutes` (default
+  60, max 1440), re-checks access and the grant on reconnect, and fails with
+  `execution_context_queue_expired` when the time runs out.
+- A committed run that the daemon stops answering for ends `lost` 30s after its
+  deadline. A reconnecting daemon lists the committed runs it still holds
+  (`heldRuns`) and finished results (`pendingResults`) in `hello`; Kody ends the
+  rest as `lost` at once. A started run is never re-run. Daemons that omit
+  `heldRuns` keep the deadline timer.
+- A daemon runs up to `--max-concurrent` runs at once (or
+  `KODY_CONTEXT_MAX_CONCURRENT`; default 2, max 8), capped by the grant's
+  `limits.maxConcurrent`. It advertises that number in `capabilities` and in
+  every `status` frame, and Kody only dispatches while a slot is free, so
+  routing and chain skipping see `busy` only when every slot is taken. Each run
+  still gets its own workerd process and temp dir; nothing is shared between
+  runs except granted host folders (concurrent runs with the same `rw` folder
+  write the same host files) and the daemon's package-graph cache (bounded LRU,
+  32 entries, 60s, keyed by requester, org, conversation and module source).
+  Code that imports saved packages is never cached, so package access is
+  re-checked every run.
+- `run.result` carries `timing` on the daemon's clock (`queueMs`, `setupMs`,
+  `packageGraphMs`, `packageGraphCached`, `executeMs`, `daemonMs`). Kody adds
+  `serverMs` (commit to result on its clock) and `transitMs`
+  (`serverMs - daemonMs`: dispatch plus return) and returns it as
+  `structuredContent.ranOn.timing` on `execute`.
 - Context runs are recorded in run records with `metadata.executionContext`
   (`runList` filter `execution_context_id`) and do not count toward hosted
   execute quota.
 - The connect ticket is a bearer secret in a query parameter: the edge never
   logs it and Sentry request URLs redact it.
 
-Decision record:
-[0083](../decisions/0083-context-runs-never-see-credential-values.md).
+Decision records:
+[0083](../decisions/0083-context-runs-never-see-credential-values.md),
+[0086](../decisions/0086-automation-execution-contexts.md).

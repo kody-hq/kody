@@ -1,4 +1,5 @@
 import {
+	existsSync,
 	mkdtempSync,
 	mkdirSync,
 	readFileSync,
@@ -120,4 +121,133 @@ test('fails instead of serving changed bytes under an existing immutable URL', (
 			now: 2,
 		}),
 	).toThrow('Immutable client asset changed')
+})
+
+test('drops the oldest retained assets when deploys outgrow the asset budget', () => {
+	const root = mkdtempSync(path.join(tmpdir(), 'retained-assets-'))
+	directories.push(root)
+	const day = 24 * 60 * 60 * 1_000
+	const now = 10 * day
+	const previous = path.join(root, 'previous')
+	mkdirSync(path.join(previous, 'assets'), { recursive: true })
+	const manifest: Record<string, number> = {
+		'oldest-aaaaaaaa.js': now - 3 * day,
+		'older-bbbbbbbb.js': now - 2 * day,
+		'newer-cccccccc.js': now - day,
+	}
+	for (const name of Object.keys(manifest)) {
+		writeFileSync(path.join(previous, 'assets', name), name)
+	}
+	writeFileSync(path.join(previous, 'manifest.json'), JSON.stringify(manifest))
+	const client = path.join(root, 'client')
+	mkdirSync(path.join(client, 'assets'), { recursive: true })
+	writeFileSync(path.join(client, 'assets', 'fresh-dddddddd.js'), 'fresh')
+	writeFileSync(path.join(client, 'assets', 'fresh-eeeeeeee.css'), 'fresh')
+	const archive = path.join(root, 'archive')
+	retainClientAssets({
+		clientDirectory: client,
+		previousDirectory: previous,
+		archiveDirectory: archive,
+		now,
+		maxAssets: 3,
+	})
+	expect(
+		Object.keys(
+			JSON.parse(readFileSync(path.join(archive, 'manifest.json'), 'utf8')),
+		).sort(),
+	).toEqual(['fresh-dddddddd.js', 'fresh-eeeeeeee.css', 'newer-cccccccc.js'])
+	expect(
+		readFileSync(path.join(client, 'assets/newer-cccccccc.js'), 'utf8'),
+	).toBe('newer-cccccccc.js')
+	expect(() =>
+		readFileSync(path.join(client, 'assets/oldest-aaaaaaaa.js')),
+	).toThrow(/ENOENT/)
+	expect(() =>
+		retainClientAssets({
+			clientDirectory: client,
+			previousDirectory: archive,
+			archiveDirectory: path.join(root, 'too-big'),
+			now,
+			maxAssets: 1,
+		}),
+	).toThrow('Retained assets approach the Workers static asset limit')
+})
+
+test('evicts a whole retained build instead of splitting a chunk from its dependency', () => {
+	const root = mkdtempSync(path.join(tmpdir(), 'retained-assets-'))
+	directories.push(root)
+	const day = 24 * 60 * 60 * 1_000
+	const now = 10 * day
+	const previous = path.join(root, 'previous')
+	mkdirSync(path.join(previous, 'assets'), { recursive: true })
+	const manifest: Record<string, number> = {
+		'lazy-aaaaaaaa.js': now - day,
+		'shared-bbbbbbbb.js': now - day,
+	}
+	for (const name of Object.keys(manifest)) {
+		writeFileSync(path.join(previous, 'assets', name), name)
+	}
+	writeFileSync(path.join(previous, 'manifest.json'), JSON.stringify(manifest))
+	const client = path.join(root, 'client')
+	mkdirSync(path.join(client, 'assets'), { recursive: true })
+	writeFileSync(path.join(client, 'assets', 'fresh-cccccccc.js'), 'fresh')
+	const archive = path.join(root, 'archive')
+	retainClientAssets({
+		clientDirectory: client,
+		previousDirectory: previous,
+		archiveDirectory: archive,
+		now,
+		maxAssets: 2,
+	})
+	expect(
+		Object.keys(
+			JSON.parse(readFileSync(path.join(archive, 'manifest.json'), 'utf8')),
+		),
+	).toEqual(['fresh-cccccccc.js'])
+})
+
+test('never drops a retained build inside the minimum retention window', () => {
+	const root = mkdtempSync(path.join(tmpdir(), 'retained-assets-'))
+	directories.push(root)
+	const hour = 60 * 60 * 1_000
+	const now = 240 * hour
+	const previous = path.join(root, 'previous')
+	mkdirSync(path.join(previous, 'assets'), { recursive: true })
+	const manifest: Record<string, number> = {
+		'recent-aaaaaaaa.js': now - 23 * hour,
+		'stale-bbbbbbbb.js': now - 25 * hour,
+	}
+	for (const name of Object.keys(manifest)) {
+		writeFileSync(path.join(previous, 'assets', name), name)
+	}
+	writeFileSync(path.join(previous, 'manifest.json'), JSON.stringify(manifest))
+	const client = path.join(root, 'client')
+	mkdirSync(path.join(client, 'assets'), { recursive: true })
+	writeFileSync(path.join(client, 'assets', 'fresh-cccccccc.js'), 'fresh')
+	const archive = path.join(root, 'archive')
+	retainClientAssets({
+		clientDirectory: client,
+		previousDirectory: previous,
+		archiveDirectory: archive,
+		now,
+		maxAssets: 2,
+	})
+	expect(
+		Object.keys(
+			JSON.parse(readFileSync(path.join(archive, 'manifest.json'), 'utf8')),
+		).sort(),
+	).toEqual(['fresh-cccccccc.js', 'recent-aaaaaaaa.js'])
+	const tight = path.join(root, 'tight-client')
+	mkdirSync(path.join(tight, 'assets'), { recursive: true })
+	writeFileSync(path.join(tight, 'assets', 'fresh-dddddddd.js'), 'fresh')
+	expect(() =>
+		retainClientAssets({
+			clientDirectory: tight,
+			previousDirectory: previous,
+			archiveDirectory: path.join(root, 'tight-archive'),
+			now,
+			maxAssets: 1,
+		}),
+	).toThrow('within the minimum retention window')
+	expect(existsSync(path.join(root, 'tight-archive'))).toBe(false)
 })

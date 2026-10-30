@@ -243,8 +243,9 @@ function creditsRailItem(orgSlug: string): AccountRailItem {
 }
 
 /**
- * The public face of a workspace: a person's profile or a team org's home at
- * `/@slug`. Listed under Overview so that page has its own rail item instead
+ * The public face of a workspace at `/@slug`: a person's profile, or a team
+ * org's public page (members open its home from there; private orgs show the
+ * home only). Listed under Overview so that page has its own rail item instead
  * of borrowing Overview's highlight.
  */
 function publicProfileRailItem(

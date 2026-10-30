@@ -148,6 +148,37 @@ const reservedAuthorizeParams = new Set([
  * creation handoff mirrors `org` in sessionStorage only for the in-flight
  * provider round-trip. Fresh visits use the URL alone (or the signup org).
  */
+const connectOauthReplaceLiveStorageKey = 'connect-oauth:replace-live'
+
+/**
+ * Remember that the user explicitly chose "Replace this app" for a
+ * connection name, so the post-OAuth save (after the provider redirect)
+ * carries the confirmation the server requires.
+ */
+export function persistConnectOauthReplaceLive(providerKey: string | null) {
+	if (typeof window === 'undefined') return
+	try {
+		if (!providerKey) {
+			sessionStorage.removeItem(connectOauthReplaceLiveStorageKey)
+			return
+		}
+		sessionStorage.setItem(connectOauthReplaceLiveStorageKey, providerKey)
+	} catch {
+		// Best-effort; the server refuses the replace and the page says why.
+	}
+}
+
+function readConnectOauthReplaceLive(providerKey: string) {
+	if (typeof window === 'undefined') return false
+	try {
+		return (
+			sessionStorage.getItem(connectOauthReplaceLiveStorageKey) === providerKey
+		)
+	} catch {
+		return false
+	}
+}
+
 export function persistConnectOauthOrgSlug(orgSlug: string | null) {
 	if (typeof window === 'undefined') return
 	try {
@@ -236,6 +267,12 @@ async function saveConnectOauthConnection(input: {
 				clientId: config.clientId,
 				allowedHosts: config.allowedHosts,
 				tokenPayload: input.tokenPayload,
+				...(config.pinnedAppSlug
+					? { pinnedAppSlug: config.pinnedAppSlug }
+					: {}),
+				...(readConnectOauthReplaceLive(config.providerKey)
+					? { replaceLiveConnection: true }
+					: {}),
 			},
 		},
 	})) as Record<string, unknown>
@@ -519,6 +556,9 @@ async function exchangeConnectOauthCode(
 				...(nextConfig.platformAppSlug
 					? { platformAppSlug: nextConfig.platformAppSlug }
 					: {}),
+				...(nextConfig.pinnedAppSlug
+					? { pinnedAppSlug: nextConfig.pinnedAppSlug }
+					: {}),
 			},
 		},
 	})) as Record<string, unknown>
@@ -529,6 +569,7 @@ async function saveConnectOauthApp(
 	nextConfig: ConnectOauthConfig,
 	clientSecret?: string,
 	orgSlug: string | null = null,
+	options: { replaceLiveConnection?: boolean; newConnection?: boolean } = {},
 ): Promise<SaveOauthAppResult> {
 	const payload = (await saveOAuthApp({
 		data: {
@@ -548,6 +589,10 @@ async function saveConnectOauthApp(
 				...(clientSecret ? { clientSecret } : {}),
 				scopeSeparator: nextConfig.scopeSeparator,
 				extraAuthorizeParams: nextConfig.extraAuthorizeParams,
+				...(options.replaceLiveConnection
+					? { replaceLiveConnection: true }
+					: {}),
+				...(options.newConnection ? { newConnection: true } : {}),
 			},
 		},
 	})) as Record<string, unknown>
@@ -593,6 +638,9 @@ export async function startConnectOauthDevice(input: {
 					tokenExchangeStyle: config.tokenExchangeStyle,
 					clientId: config.clientId,
 					allowedHosts: config.allowedHosts,
+					...(readConnectOauthReplaceLive(config.providerKey)
+						? { replaceLiveConnection: true }
+						: {}),
 				},
 			},
 		})) as Record<string, unknown>

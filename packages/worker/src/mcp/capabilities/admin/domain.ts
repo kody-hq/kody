@@ -6,7 +6,11 @@ import { adminCreditEligibilitySetCapability } from './admin-credit-eligibility-
 import { adminCreditGrantCapability } from './admin-credit-grant.ts'
 import { adminCreditWalletGetCapability } from './admin-credit-wallet-get.ts'
 import { adminOrgLimitOverridesSetCapability } from './admin-org-limit-overrides-set.ts'
+import { adminOrgPlanSetCapability } from './admin-org-plan-set.ts'
+import { adminOrgCreditGrantCapability } from './admin-org-credit-grant.ts'
+import { adminOrgCreditEligibilitySetCapability } from './admin-org-credit-eligibility-set.ts'
 import { adminOrgLimitsGetCapability } from './admin-org-limits-get.ts'
+import { adminOrgGetCapability } from './admin-org-get.ts'
 import { adminOrgResourceTransferCapability } from './admin-org-resource-transfer.ts'
 import { adminOrgRestoreCapability } from './admin-org-restore.ts'
 import { adminPackageAppCustomHostnameRemoveCapability } from './admin-package-app-custom-hostname-remove.ts'
@@ -19,6 +23,7 @@ import {
 	adminFeatureFlagRepoOverrideCapability,
 } from './admin-feature-flag-repo-override.ts'
 import { adminFeatureFlagSetCapability } from './admin-feature-flag-set.ts'
+import { adminRepoPushQueueCostCapability } from './admin-repo-push-queue-cost.ts'
 import { adminPackageCodemodApplyCapability } from './admin-package-codemod-apply.ts'
 import { adminPackageCodemodDryRunCapability } from './admin-package-codemod-dry-run.ts'
 import { adminPackageCodemodOwnerNoticeCapability } from './admin-package-codemod-owner-notice.ts'
@@ -34,6 +39,11 @@ import { adminPlatformProviderMarkSaveCapability } from './admin-platform-provid
 import { adminPlatformFeedbackGetCapability } from './admin-platform-feedback-get.ts'
 import { adminPlatformFeedbackListCapability } from './admin-platform-feedback-list.ts'
 import { adminPlatformFeedbackUpdateCapability } from './admin-platform-feedback-update.ts'
+import { adminDeadLetterQueueAckCapability } from './admin-dead-letter-queue-ack.ts'
+import { adminDeadLetterQueueListCapability } from './admin-dead-letter-queue-list.ts'
+import { adminDeadLetterQueuePeekCapability } from './admin-dead-letter-queue-peek.ts'
+import { adminDeadLetterQueuePurgeCapability } from './admin-dead-letter-queue-purge.ts'
+import { adminDeadLetterQueueReplayCapability } from './admin-dead-letter-queue-replay.ts'
 import { adminUserUsageCapability } from './admin-user-usage.ts'
 import { adminFleetErrorRateCapability } from './admin-fleet-error-rate.ts'
 import { adminOrgUsageCapability } from './admin-org-usage.ts'
@@ -78,8 +88,10 @@ import { adminCredentialInventoryScanCapability } from './admin-credential-inven
 import { adminCredentialPathSegmentImpactCapability } from './admin-credential-path-segment-impact.ts'
 import { adminCredentialAllowedPackagesWouldBlockReportCapability } from './admin-credential-allowed-packages-would-block-report.ts'
 import { adminCredentialAllowedPackagesGrandfatherCapability } from './admin-credential-allowed-packages-grandfather.ts'
+import { adminCreatorAccessBackfillCapability } from './admin-creator-access-backfill.ts'
 import { adminPreBindingArtifactRebuildCapability } from './admin-pre-binding-artifact-rebuild.ts'
 import { adminPackageAppAuthorityFallbackReportCapability } from './admin-package-app-authority-fallback-report.ts'
+import { adminPackageAppCapabilityMigrationReportCapability } from './admin-package-app-capability-migration-report.ts'
 import { adminPackageCredentialSupplierReportCapability } from './admin-package-credential-supplier-report.ts'
 import { adminCredentialBackfillCapability } from './admin-credential-backfill.ts'
 import { adminCredentialStampBackfillCapability } from './admin-credential-stamp-backfill.ts'
@@ -106,6 +118,7 @@ export const adminDomain = defineDomain({
 		'feature flags',
 		'system email',
 		'platform feedback',
+		'dead letter queue',
 		'community activity',
 		'orphan forks',
 		'platform oauth apps',
@@ -203,7 +216,9 @@ export const adminDomain = defineDomain({
 		adminCredentialPathSegmentImpactCapability,
 		adminCredentialAllowedPackagesWouldBlockReportCapability,
 		adminCredentialAllowedPackagesGrandfatherCapability,
+		adminCreatorAccessBackfillCapability,
 		adminPackageAppAuthorityFallbackReportCapability,
+		adminPackageAppCapabilityMigrationReportCapability,
 		adminPackageCredentialSupplierReportCapability,
 		adminCredentialBackfillCapability,
 		adminCredentialStampBackfillCapability,
@@ -222,13 +237,18 @@ export const adminDomain = defineDomain({
 		adminCreditGrantCapability,
 		adminCreditEligibilitySetCapability,
 		adminOrgLimitsGetCapability,
+		adminOrgGetCapability,
 		adminOrgLimitOverridesSetCapability,
+		adminOrgPlanSetCapability,
+		adminOrgCreditGrantCapability,
+		adminOrgCreditEligibilitySetCapability,
 		adminFeatureFlagListCapability,
 		adminFeatureFlagSetCapability,
 		adminFeatureFlagOverrideCapability,
 		adminFeatureFlagOrgOverrideCapability,
 		adminFeatureFlagRepoOverrideCapability,
 		adminFeatureFlagRepoCheckCapability,
+		adminRepoPushQueueCostCapability,
 		adminReservedUsernameListCapability,
 		adminReservedUsernameAddCapability,
 		adminReservedUsernameRemoveCapability,
@@ -243,6 +263,11 @@ export const adminDomain = defineDomain({
 		adminPlatformFeedbackListCapability,
 		adminPlatformFeedbackGetCapability,
 		adminPlatformFeedbackUpdateCapability,
+		adminDeadLetterQueueListCapability,
+		adminDeadLetterQueuePeekCapability,
+		adminDeadLetterQueueReplayCapability,
+		adminDeadLetterQueueAckCapability,
+		adminDeadLetterQueuePurgeCapability,
 		adminCommunityActivityListCapability,
 		adminCommunityOrphanForksCleanupCapability,
 		adminOrgResourceTransferCapability,

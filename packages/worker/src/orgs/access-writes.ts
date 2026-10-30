@@ -24,6 +24,7 @@ import {
 	liveFreeOwnedOrgCountSql,
 } from '#worker/orgs/billing.ts'
 import { getOrgHandleClaimError } from '#worker/orgs/org-handle-claim.ts'
+import { type OrgProfileVisibility } from '#worker/orgs/org-public-profile.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	recordOrgAuditEvent,
@@ -46,9 +47,55 @@ async function runAccessBatchWithAudit(input: {
 	})
 }
 
+/**
+ * Who a grant applies to. `org` is everyone in the grant's own org (any live
+ * membership); its id is always the grant's org id, and access checks resolve
+ * it against org_memberships at check time.
+ */
 export type GrantSubject =
 	| { type: 'user'; id: string }
 	| { type: 'team'; id: string }
+	| { type: 'org'; id: string }
+
+export type GrantSubjectType = GrantSubject['type']
+
+export const grantSubjectTypes = [
+	'user',
+	'team',
+	'org',
+] as const satisfies ReadonlyArray<GrantSubjectType>
+
+export function isGrantSubjectType(value: string): value is GrantSubjectType {
+	return (grantSubjectTypes as ReadonlyArray<string>).includes(value)
+}
+
+/**
+ * Refuses an "everyone in this organization" grant that names another org or
+ * sits on the org itself (org-level permissions come from roles and org
+ * grants to a person or team, never to everyone).
+ */
+export class GrantSubjectScopeError extends Error {}
+
+export function assertGrantSubjectInOrg(input: {
+	orgId: string
+	resourceType: string
+	subject: GrantSubject
+}) {
+	if (input.subject.type !== 'org') return
+	if (input.subject.id !== input.orgId) {
+		throw new GrantSubjectScopeError(
+			'An everyone-in-this-organization grant must name the organization it is made in.',
+		)
+	}
+	if (
+		input.resourceType === 'org' ||
+		input.resourceType === 'execution_context'
+	) {
+		throw new GrantSubjectScopeError(
+			`An everyone-in-this-organization grant cannot target resource_type ${input.resourceType}.`,
+		)
+	}
+}
 
 async function runBatch(
 	db: D1Database,
@@ -82,6 +129,14 @@ function changesOf(result: unknown) {
  * Resource types a grant may target. `org` is organization-level permissions.
  * `credential` grants are keyed by stable credential id.
  */
+/**
+ * Where a grant came from. `created` is the creator's own grant on a
+ * resource they made; org transfer re-points or drops it.
+ */
+export const grantOrigins = ['manual', 'created'] as const
+
+export type GrantOrigin = (typeof grantOrigins)[number]
+
 export const grantResourceTypes = [
 	'package',
 	'app',
@@ -301,8 +356,12 @@ export async function upsertGrant(input: {
 	preset: GrantPreset | null
 	permissions: ReadonlyArray<OrgPermission> | null
 	createdByUserId: string
+	/** Defaults to `manual`; a manual write over a `created` grant claims it. */
+	origin?: GrantOrigin
 	audit: OrgAuditWriter
 }) {
+	assertGrantSubjectInOrg(input)
+	const origin = input.origin ?? 'manual'
 	const family = input.family ?? grantFamilyOf(input.resourceType)
 	const permissions = resolveGrantPermissions({
 		family,
@@ -338,10 +397,17 @@ export async function upsertGrant(input: {
 			input.db
 				.prepare(
 					`UPDATE grants
-					 SET preset = ?, updated_at = ?, created_by_user_id = ?
+					 SET preset = ?, updated_at = ?, created_by_user_id = ?, origin = ?
 					 WHERE id = ? AND org_id = ?${andLiveDeletedAtSql()}`,
 				)
-				.bind(input.preset, now, input.createdByUserId, grantId, input.orgId),
+				.bind(
+					input.preset,
+					now,
+					input.createdByUserId,
+					origin,
+					grantId,
+					input.orgId,
+				),
 			input.db
 				.prepare(`DELETE FROM grant_permissions WHERE grant_id = ?`)
 				.bind(grantId),
@@ -352,8 +418,8 @@ export async function upsertGrant(input: {
 				.prepare(
 					`INSERT INTO grants (
 						id, org_id, resource_type, resource_id, subject_type, subject_id,
-						preset, created_by_user_id, created_at, updated_at
-					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+						preset, created_by_user_id, created_at, updated_at, origin
+					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				)
 				.bind(
 					grantId,
@@ -366,6 +432,7 @@ export async function upsertGrant(input: {
 					input.createdByUserId,
 					now,
 					now,
+					origin,
 				),
 		)
 	}
@@ -395,6 +462,7 @@ export async function upsertGrant(input: {
 				subjectId: input.subject.id,
 				preset: input.preset,
 				permissions,
+				origin,
 			},
 		},
 	})
@@ -522,10 +590,13 @@ export async function createOrg(input: {
 	env: Pick<Env, 'BUNDLE_ARTIFACTS_KV'>
 	slug: string
 	displayName?: string | null
+	/** Who sees `/@slug`. Team orgs default to public. */
+	profileVisibility?: OrgProfileVisibility
 	createdByUserId: string
 	audit: OrgAuditWriter
 }) {
 	const slug = normalizeUsername(input.slug)
+	const profileVisibility = input.profileVisibility ?? 'public'
 	const slugError = await getOrgHandleClaimError(slug, input.db, input.env)
 	if (slugError) throw new OrgSlugValidationError(slugError)
 	const orgId = mintPersonId()
@@ -542,13 +613,14 @@ export async function createOrg(input: {
 					signup_welcome_credits_pending, access_epoch,
 					created_by_user_id, created_at, updated_at
 				)
-				SELECT ?, ?, ?, 'public', 'free', 'public', 0, 0, 0, 0, ?, ?, ?
+				SELECT ?, ?, ?, ?, 'free', 'public', 0, 0, 0, 0, ?, ?, ?
 				WHERE (${liveFreeOwnedOrgCountSql}) < ?`,
 			)
 			.bind(
 				orgId,
 				slug,
 				input.displayName?.trim() || slug,
+				profileVisibility,
 				input.createdByUserId,
 				now,
 				now,
@@ -576,9 +648,9 @@ export async function createOrg(input: {
 	await recordOrgAuditEvent(input.audit, {
 		orgId,
 		action: 'org.created',
-		details: { slug },
+		details: { slug, profile_visibility: profileVisibility },
 	})
-	return { id: orgId, slug }
+	return { id: orgId, slug, profileVisibility }
 }
 
 export type InviteKind = 'membership' | 'grant'
@@ -663,7 +735,7 @@ export type GrantView = {
 	orgId: string
 	resourceType: string
 	resourceId: string
-	subjectType: 'user' | 'team'
+	subjectType: GrantSubjectType
 	subjectId: string
 	preset: string | null
 	permissions: Array<string>
@@ -691,10 +763,9 @@ function groupGrantRows(rows: ReadonlyArray<GrantJoinRow>): Array<GrantView> {
 	for (const row of rows) {
 		let grant = byId.get(row.id)
 		if (!grant) {
-			const subjectType =
-				row.subject_type === 'user' || row.subject_type === 'team'
-					? row.subject_type
-					: null
+			const subjectType = isGrantSubjectType(row.subject_type)
+				? row.subject_type
+				: null
 			if (!subjectType) {
 				throw new Error(`Grant ${row.id} has subject type ${row.subject_type}.`)
 			}
@@ -727,7 +798,7 @@ export async function listGrants(input: {
 	grantId?: string | null
 	resourceType?: string | null
 	resourceId?: string | null
-	subjectType?: 'user' | 'team' | null
+	subjectType?: GrantSubjectType | null
 	subjectId?: string | null
 }): Promise<Array<GrantView>> {
 	const where = ['g.org_id = ?']

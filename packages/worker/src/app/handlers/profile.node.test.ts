@@ -14,6 +14,7 @@ const aliceOrgId = 'org-alice-personal'
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn(),
 	getCommunityProfileByUsername: vi.fn(),
+	getCommunityTeamOrgProfileBySlug: vi.fn(),
 	getProfileActivity: vi.fn(),
 	listProfileRepositories: vi.fn(),
 	listOrganizationsForPerson: vi.fn(),
@@ -59,6 +60,8 @@ vi.mock('#app/authenticated-user.ts', () => ({
 vi.mock('#worker/community/profile-service.ts', () => ({
 	getCommunityProfileByUsername: (...args: Array<unknown>) =>
 		mockModule.getCommunityProfileByUsername(...args),
+	getCommunityTeamOrgProfileBySlug: (...args: Array<unknown>) =>
+		mockModule.getCommunityTeamOrgProfileBySlug(...args),
 	getProfileActivity: (...args: Array<unknown>) =>
 		mockModule.getProfileActivity(...args),
 	listProfileRepositories: (...args: Array<unknown>) =>
@@ -178,6 +181,7 @@ const env = {} as Env
 function setupPublicProfileMocks() {
 	mockModule.readAuthenticatedAppUser.mockResolvedValue(null)
 	mockModule.getCommunityProfileByUsername.mockResolvedValue(publicProfile)
+	mockModule.getCommunityTeamOrgProfileBySlug.mockResolvedValue(null)
 	mockModule.listProfileRepositories.mockResolvedValue(packageFixture)
 	mockModule.getProfileActivity.mockResolvedValue(activityFixture)
 	mockModule.findPublicOwnerIdentityByHandle.mockResolvedValue({
@@ -423,4 +427,193 @@ test('explicit repository filters ignore RPC URL state and remain distinct in th
 		env,
 		undefined,
 	)
+})
+
+const acmeOrgId = 'org-acme-team'
+
+function teamOrgProfile(visibility: 'public' | 'private') {
+	return {
+		orgId: ownerIdFromStored(acmeOrgId),
+		slug: 'acme-team',
+		displayName: 'Acme Team',
+		bio: 'We build helpers.',
+		avatarKey: null,
+		visibility,
+		joinedAt: '2026-02-01T00:00:00.000Z',
+		publicPackageCount: 1,
+		listingCount: 1,
+	}
+}
+
+const teamOrgPackages = [
+	{
+		...packageFixture[0]!,
+		packageId: 'pkg-public',
+		name: '@acme-team/open-helper',
+		kodyId: 'open-helper',
+	},
+	// The public-only SQL path already drops these; the page filters again.
+	{
+		...packageFixture[0]!,
+		packageId: 'pkg-private',
+		name: '@acme-team/secret-plans',
+		kodyId: 'secret-plans',
+		isPrivate: true,
+	},
+	{
+		...packageFixture[0]!,
+		packageId: 'pkg-hidden',
+		name: '@acme-team/hidden-tool',
+		kodyId: 'hidden-tool',
+		hidden: true,
+	},
+]
+
+function setupTeamOrgMocks(visibility: 'public' | 'private') {
+	setupPublicProfileMocks()
+	mockModule.getCommunityProfileByUsername.mockResolvedValue(null)
+	mockModule.getCommunityTeamOrgProfileBySlug.mockResolvedValue(
+		teamOrgProfile(visibility),
+	)
+	mockModule.listProfileRepositories.mockResolvedValue(teamOrgPackages)
+	mockModule.getProfileActivity.mockClear()
+	mockModule.listOrganizationsForPerson.mockResolvedValue([])
+	native.setResponseHeader.mockClear()
+}
+
+function signIn(organizations: Array<Record<string, unknown>>) {
+	mockModule.readAuthenticatedAppUser.mockResolvedValue({
+		userId: 1,
+		mcpUser: { userId: ownerIdFromStored('stable-alice') },
+	})
+	mockModule.listOrganizationsForPerson.mockResolvedValue([
+		{ slug: 'alice', displayName: null, role: 'owner', personal: true },
+		...organizations,
+	])
+}
+
+test('a public team org page shows only public, non-hidden packages and no members or activity to a signed-out visitor', async () => {
+	setupTeamOrgMocks('public')
+	const page = await nativeProfile('acme-team')
+	expect(page.orgHome).toBeNull()
+	expect(page.data).toMatchObject({
+		ownerKind: 'org',
+		isSelf: false,
+		loggedIn: false,
+		activity: null,
+		profile: {
+			username: 'acme-team',
+			displayName: 'Acme Team',
+			bio: 'We build helpers.',
+			visibility: 'public',
+		},
+	})
+	expect(page.data?.packages.map((pkg) => pkg.name)).toEqual([
+		'@acme-team/open-helper',
+	])
+	expect(lastPackagesQuery()).toMatchObject({
+		ownerStableUserId: acmeOrgId,
+		ownerUsername: 'acme-team',
+		includePrivate: false,
+	})
+	expect(mockModule.getProfileActivity).not.toHaveBeenCalled()
+	const serialized = JSON.stringify(page)
+	expect(serialized).not.toContain('secret-plans')
+	expect(serialized).not.toContain('hidden-tool')
+	expect(serialized).not.toMatch(/members|"role"/)
+	expect(native.setResponseHeader).not.toHaveBeenCalledWith(
+		'Cache-Control',
+		'no-store',
+	)
+	expect(native.setResponseHeader).not.toHaveBeenCalledWith(
+		'Set-Cookie',
+		expect.anything(),
+	)
+})
+
+test('a private team org 404s exactly like an unknown handle for visitors and non-members', async () => {
+	setupTeamOrgMocks('private')
+	const privateError = await nativeProfile('acme-team').catch(
+		(error: unknown) => error,
+	)
+	mockModule.getCommunityTeamOrgProfileBySlug.mockResolvedValue(null)
+	const missingError = await nativeProfile('nobody-here').catch(
+		(error: unknown) => error,
+	)
+	expect(privateError).toMatchObject({ isNotFound: true })
+	expect(Object.keys(privateError as object).sort()).toEqual(
+		Object.keys(missingError as object).sort(),
+	)
+	expect(mockModule.listProfileRepositories).not.toHaveBeenCalledWith(
+		expect.objectContaining({ ownerUsername: 'acme-team' }),
+	)
+
+	setupTeamOrgMocks('private')
+	signIn([
+		{ slug: 'globex', displayName: 'Globex', role: 'member', personal: false },
+	])
+	await expect(nativeProfile('acme-team')).rejects.toMatchObject({
+		isNotFound: true,
+	})
+})
+
+test('members of a private team org still get the org home', async () => {
+	setupTeamOrgMocks('private')
+	signIn([
+		{
+			slug: 'acme-team',
+			displayName: 'Acme Team',
+			role: 'member',
+			personal: false,
+		},
+	])
+	const page = await nativeProfile('acme-team')
+	expect(page).toMatchObject({
+		data: null,
+		orgHome: { slug: 'acme-team', role: 'member' },
+	})
+	expect(native.setResponseHeader).toHaveBeenCalledWith(
+		'Cache-Control',
+		'no-store',
+	)
+})
+
+test('members of a public team org get the public page plus their org home; other signed-in people get only the public page', async () => {
+	setupTeamOrgMocks('public')
+	signIn([
+		{
+			slug: 'acme-team',
+			displayName: 'Acme Team',
+			role: 'owner',
+			personal: false,
+		},
+	])
+	const member = await nativeProfile('acme-team')
+	expect(member.orgHome).toMatchObject({ slug: 'acme-team', role: 'owner' })
+	expect(member.data).toMatchObject({ ownerKind: 'org', loggedIn: true })
+	expect(member.data?.packages.map((pkg) => pkg.name)).toEqual([
+		'@acme-team/open-helper',
+	])
+	expect(lastPackagesQuery()).toMatchObject({ includePrivate: false })
+	expect(native.setResponseHeader).toHaveBeenCalledWith(
+		'Cache-Control',
+		'no-store',
+	)
+
+	setupTeamOrgMocks('public')
+	signIn([])
+	const outsider = await nativeProfile('acme-team')
+	expect(outsider.orgHome).toBeNull()
+	expect(outsider.data).toMatchObject({ ownerKind: 'org', loggedIn: true })
+	expect(outsider.data?.packages.map((pkg) => pkg.name)).toEqual([
+		'@acme-team/open-helper',
+	])
+})
+
+test('a person handle never falls through to the team org lookup', async () => {
+	setupPublicProfileMocks()
+	mockModule.getCommunityTeamOrgProfileBySlug.mockClear()
+	const page = await nativeProfile('alice')
+	expect(page.data?.ownerKind).toBeUndefined()
+	expect(mockModule.getCommunityTeamOrgProfileBySlug).not.toHaveBeenCalled()
 })

@@ -25,6 +25,7 @@ import {
 import { jobAuditActions, recordJobAudit } from '#worker/jobs/job-audit.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
+import { wipePinnedConnectionsForMember } from '#worker/integrations/pinned-connections.ts'
 import { syncJobManagerAlarm } from '#worker/jobs/manager-client.ts'
 
 export type OffboardingJobDisposition = 'cancel' | 'delete' | 'keep_running'
@@ -526,6 +527,20 @@ export async function offboardOrgMember(input: {
 		resumeDeletedAt: input.resumeDeletedAt,
 	})
 
+	// Connections pinned to this org's OAuth apps end with the binding. A
+	// failure here must not skip the token revocations below; it is rethrown
+	// once they ran so the removal can be retried.
+	let pinnedWipeError: unknown = null
+	try {
+		await wipePinnedConnectionsForMember({
+			env: input.env,
+			orgId: input.orgId,
+			personId: input.memberUserId,
+			audit: optionalOrgAuditWriter(input.env, null),
+		})
+	} catch (error) {
+		pinnedWipeError = error
+	}
 	await deletePersonalCredentialOrgGrantsForMember({
 		db: input.appDb,
 		orgId: input.orgId,
@@ -570,6 +585,7 @@ export async function offboardOrgMember(input: {
 		nowIso,
 		memberLeftVoluntarily: input.memberLeftVoluntarily,
 	})
+	if (pinnedWipeError) throw pinnedWipeError
 
 	return {
 		...graph,

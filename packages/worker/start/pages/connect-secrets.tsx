@@ -17,6 +17,7 @@ import { useRouteContext } from '@tanstack/react-router'
 import { connectSecretsQuery } from '../connect-approval-queries.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { type AccountSecretsLoaderData } from '#universal/loader-data.ts'
+import { ConnectSecretsPlacementApproval } from './connect-secrets-placement.tsx'
 
 import {
 	type ApprovalAction,
@@ -157,6 +158,10 @@ export function ConnectSecretsRoute({
 		alreadyAllowed,
 	})
 	const { onlyInvalid, fullyAllowed, leftoverInvalid, showBackToSecrets } = view
+
+	if (data.placementApproval || data.placementApprovalError) {
+		return <ConnectSecretsPlacementApproval data={data} href={href} />
+	}
 
 	return (
 		<section css={connectSecretsPageCss} data-testid="connect-secrets">

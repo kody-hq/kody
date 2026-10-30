@@ -200,6 +200,13 @@ export function parseOrgOverviewPath(
 	return isOrganizationSlug(slug) ? { slug } : null
 }
 
+/** `/@slug?view=home`: a member's org home when the org's page is public. */
+export const orgHomeView = 'home'
+
+export function orgHomeHref(slug: string) {
+	return `/@${slug}?view=${orgHomeView}`
+}
+
 export function orgOverviewPath(slug: string) {
 	return `/@${slug}/${orgPageSeparator}/overview`
 }
