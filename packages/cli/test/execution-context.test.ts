@@ -41,7 +41,6 @@ import {
 	runRequestRefusal,
 	runScopedFetch,
 	welcomeTimeoutCloseCode,
-	type ContextRunExecutor,
 } from '../src/execution-context/daemon.js'
 import {
 	decryptPrivateKey,
