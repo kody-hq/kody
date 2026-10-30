@@ -883,7 +883,10 @@ test('an overdue run with no daemon connected is rechecked before it would be lo
 
 test('dispatching a run that is already committed leaves the live run alone', async () => {
 	const ecid = 'ec_redispatch_committed'
-	const { stub, next, send } = await connect(ecid)
+	// One slot, so the live run fills the context.
+	const { stub, next, send } = await connect(ecid, {
+		status: { acceptingRuns: true, running: 0, maxConcurrent: 1 },
+	})
 	const first = stub.dispatch({
 		request: runRequest('run_dup'),
 		lease: lease(ecid, 'run_dup'),

@@ -1000,6 +1000,24 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				outcome,
 				dispatchedAt: now,
 			})
+		// The run is already offered, committed, or ended here (a queue drain
+		// that restarted before deleting its row). Re-offering it would abort
+		// or overwrite the live run, and a full context must not read as busy.
+		const existing = this.ctx.storage.sql
+			.exec<{ state: string }>(
+				`SELECT state FROM runs WHERE run_id = ?`,
+				lease.runId,
+			)
+			.toArray()[0]
+		if (
+			existing &&
+			existing.state !== 'aborted' &&
+			existing.state !== 'rejected'
+		) {
+			return {
+				outcome: existing.state === 'dispatched' ? 'busy' : 'committed',
+			}
+		}
 		if (this.#revokedReason()) {
 			record('offline')
 			return { outcome: 'offline', code: 'revoked' }
@@ -1016,7 +1034,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			record('busy')
 			return { outcome: 'busy' }
 		}
-		const inserted = this.ctx.storage.sql.exec(
+		this.ctx.storage.sql.exec(
 			`INSERT INTO runs (run_id, state, lease_json, deadline, accept_by,
 			   run_record_json, created_at)
 			 VALUES (?, 'dispatched', ?, ?, ?, ?, ?)
@@ -1031,21 +1049,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			input.request.acceptBy,
 			input.runRecord ? JSON.stringify(input.runRecord) : null,
 			now,
-		).rowsWritten
-		if (!inserted) {
-			// The run is already offered, committed, or ended here (a queue drain
-			// that restarted before deleting its row). Re-offering it would abort
-			// or overwrite the live run.
-			const existing = this.ctx.storage.sql
-				.exec<{ state: string }>(
-					`SELECT state FROM runs WHERE run_id = ?`,
-					lease.runId,
-				)
-				.toArray()[0]
-			return {
-				outcome: existing?.state === 'dispatched' ? 'busy' : 'committed',
-			}
-		}
+		)
 		const accepted = new Promise<{ accepted: boolean; code?: string }>(
 			(resolve) => {
 				this.#acceptWaiters.set(lease.runId, { resolve })
