@@ -2316,7 +2316,12 @@ export async function deleteAccountSecret(input: {
 	}
 
 	const secret = parseAccountSecretId(currentId)
-	if (!secret || secret.scope === 'session') {
+	// Authorization trims names, so a padded id must not reach the exact-name write.
+	if (
+		!secret ||
+		secret.scope === 'session' ||
+		secret.name !== secret.name.trim()
+	) {
 		return operationResult({ ok: false, error: 'Invalid secret id.' }, 400)
 	}
 
@@ -2359,7 +2364,12 @@ export async function disconnectAccountSecret(input: {
 	}
 
 	const secret = parseAccountSecretId(currentId)
-	if (!secret || secret.scope === 'session') {
+	// Authorization trims names, so a padded id must not reach the exact-name write.
+	if (
+		!secret ||
+		secret.scope === 'session' ||
+		secret.name !== secret.name.trim()
+	) {
 		return operationResult({ ok: false, error: 'Invalid secret id.' }, 400)
 	}
 

@@ -363,6 +363,43 @@ test('a member with only Use cannot overwrite, delete, or disconnect an org cred
 	expect(await t.entry('renamedApiKey')).not.toBeNull()
 })
 
+test('moving an org credential to a package needs Delete on the source', async () => {
+	const t = await setup()
+	const id = await t.set('movableKey')
+	await t.grantMember(id, ['secret:use', 'secret:write'])
+	const moved = await saveAccountSecret({
+		...t.website(t.member()),
+		fields: {
+			currentId: 'user::::movableKey',
+			name: 'movableKey',
+			scope: 'package',
+			packageId,
+			value: 'moved',
+		},
+	})
+	expect(moved.status).toBe(403)
+	expect(moved.data).toMatchObject({
+		error: expect.stringContaining('You need Delete on this credential'),
+	})
+	expect(await t.entry('movableKey')).not.toBeNull()
+})
+
+test('a padded credential id is rejected before delete or disconnect', async () => {
+	const t = await setup()
+	await t.set('paddedKey')
+	const deleted = await deleteAccountSecret({
+		...t.website(t.owner),
+		fields: { currentId: 'user::::paddedKey%20' },
+	})
+	expect(deleted.status).toBe(400)
+	const disconnected = await disconnectAccountSecret({
+		...t.website(t.owner),
+		fields: { currentId: 'user::::%20paddedKey' },
+	})
+	expect(disconnected.status).toBe(400)
+	expect(await t.entry('paddedKey')).not.toBeNull()
+})
+
 test('the owner still saves and deletes their own credentials on the website', async () => {
 	const t = await setup()
 	await t.set('ownKey')
