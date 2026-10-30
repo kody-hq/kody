@@ -346,6 +346,7 @@ test('a member with only Use cannot overwrite, delete, or disconnect an org cred
 			currentId: 'user::::orgApiKey',
 			name: 'renamedApiKey',
 			scope: 'user',
+			value: 'renamed',
 			allowedHosts: ['api.example.com'],
 		},
 	})
