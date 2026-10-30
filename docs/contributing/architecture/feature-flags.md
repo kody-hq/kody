@@ -151,7 +151,9 @@ Audience values: `everyone` (default) | `experiments_opt_in`.
   fetches. The host sets `executionId` on the run's gateway props, and
   `feature-flags/execution-scope.ts` reuses `evaluateFeatureFlag`,
   `isFeatureGloballyEnabled`, and the supplier flag's org-owner lookup for that
-  id (KODY-CS). The next execution gets a new id and reads D1 again.
+  id (KODY-CS). The next execution gets a new id and reads D1 again. Only
+  settled reads cross gateway calls: each call is its own Workers request, and
+  one awaiting another's in-flight read is cancelled as hung.
 - **Capability gating**: a capability definition may declare
   `featureFlag: <key>`; `access-control.ts` hides it from search and denies
   execution when the flag evaluates off for the caller. Flag-gated capabilities

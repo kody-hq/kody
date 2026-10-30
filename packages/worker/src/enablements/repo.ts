@@ -1,4 +1,8 @@
 import {
+	isOrgPermission,
+	type OrgPermission,
+} from '@kody-internal/shared/org-permissions.ts'
+import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
@@ -27,6 +31,8 @@ type EnablementRow = {
 	trigger_name: string
 	instance_id: string
 	enabler_user_id: string
+	enabler_scopes_json: string | null
+	enabler_profile_name: string | null
 	state: string
 	paused_reason: string | null
 	paused_permission: string | null
@@ -43,7 +49,8 @@ type EnablementRow = {
 }
 
 const enablementColumns = `id, org_id, package_id, trigger_kind, trigger_name,
-	instance_id, enabler_user_id, state, paused_reason, paused_permission,
+	instance_id, enabler_user_id, enabler_scopes_json, enabler_profile_name,
+	state, paused_reason, paused_permission,
 	paused_resource_type, paused_resource_id, paused_credential_id, paused_at,
 	origin, sender_kind, sender_value, enabled_at, disabled_at, updated_at`
 
@@ -104,6 +111,18 @@ function toPause(row: EnablementRow): EnablementPause | null {
 	}
 }
 
+/** Unreadable scope JSON narrows to nothing rather than widening. */
+function parseEnablerScopes(
+	value: string | null,
+): ReadonlyArray<OrgPermission> | null {
+	if (value == null) return null
+	try {
+		const parsed: unknown = JSON.parse(value)
+		if (Array.isArray(parsed)) return parsed.filter(isOrgPermission)
+	} catch {}
+	return []
+}
+
 function toRecord(row: EnablementRow): EnablementRecord {
 	if (!isTriggerKind(row.trigger_kind)) {
 		throw new Error(`Unknown enablement trigger kind: ${row.trigger_kind}`)
@@ -116,6 +135,8 @@ function toRecord(row: EnablementRow): EnablementRecord {
 		triggerName: row.trigger_name,
 		instanceId: row.instance_id,
 		enablerUserId: personIdFromStored(row.enabler_user_id),
+		enablerScopes: parseEnablerScopes(row.enabler_scopes_json),
+		enablerProfileName: row.enabler_profile_name?.trim() || null,
 		state: toState(row.state),
 		pause: toPause(row),
 		origin: row.origin === 'migrated' ? 'migrated' : 'enabled',
@@ -135,10 +156,20 @@ export type NewEnablement = {
 	triggerName: string
 	instanceId: string
 	enablerUserId: string
+	/** The enabling credential's scopes; null or omitted does not narrow. */
+	enablerScopes?: ReadonlyArray<OrgPermission> | null
+	/** The enabling credential's connection profile. */
+	enablerProfileName?: string | null
 	origin: EnablementOrigin
 	/** Inbound-email sender rule. Omit for triggers that are not email. */
 	senderKind?: EnablementSenderKind | null
 	senderValue?: string | null
+}
+
+function enablerScopesJson(enablement: Pick<NewEnablement, 'enablerScopes'>) {
+	return enablement.enablerScopes == null
+		? null
+		: JSON.stringify([...enablement.enablerScopes])
 }
 
 export function buildInsertEnablementStatement(input: {
@@ -161,9 +192,9 @@ export function buildInsertEnablementStatement(input: {
 		.prepare(
 			`INSERT INTO enablements (
 				id, org_id, package_id, trigger_kind, trigger_name, instance_id,
-				enabler_user_id, state, origin, enabled_at, updated_at,
-				sender_kind, sender_value
-			) VALUES (?, ?, ?, ?, ?, ?, ?, 'on', ?, ?, ?, ?, ?)`,
+				enabler_user_id, enabler_scopes_json, enabler_profile_name,
+				state, origin, enabled_at, updated_at, sender_kind, sender_value
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'on', ?, ?, ?, ?, ?)`,
 		)
 		.bind(
 			id,
@@ -173,6 +204,8 @@ export function buildInsertEnablementStatement(input: {
 			input.enablement.triggerName,
 			input.enablement.instanceId,
 			input.enablement.enablerUserId,
+			enablerScopesJson(input.enablement),
+			input.enablement.enablerProfileName?.trim() || null,
 			input.enablement.origin,
 			input.now,
 			input.now,
@@ -205,10 +238,10 @@ export function buildInsertWebhookEnablementStatement(input: {
 		.prepare(
 			`INSERT INTO enablements (
 				id, org_id, package_id, trigger_kind, trigger_name, instance_id,
-				enabler_user_id, state, origin, enabled_at, updated_at,
-				sender_kind, sender_value
+				enabler_user_id, enabler_scopes_json, enabler_profile_name,
+				state, origin, enabled_at, updated_at, sender_kind, sender_value
 			)
-			SELECT ?, ?, ?, 'webhook', ?, ?, ?, 'on', ?, ?, ?, ?, ?
+			SELECT ?, ?, ?, 'webhook', ?, ?, ?, ?, ?, 'on', ?, ?, ?, ?, ?
 			WHERE NOT EXISTS (
 				SELECT 1 FROM enablements
 				WHERE org_id = ? AND trigger_kind = 'webhook'
@@ -222,6 +255,8 @@ export function buildInsertWebhookEnablementStatement(input: {
 			input.enablement.triggerName,
 			input.enablement.instanceId,
 			input.enablement.enablerUserId,
+			enablerScopesJson(input.enablement),
+			input.enablement.enablerProfileName?.trim() || null,
 			input.enablement.origin,
 			input.now,
 			input.now,
@@ -490,6 +525,39 @@ export async function pauseEnablement(input: {
 		)
 		.run()
 	return (result.meta.changes ?? 0) > 0
+}
+
+/**
+ * Re-record what the enabler's credential can do on their own cron rows for a
+ * job, when they turn that job on again.
+ */
+export async function updateCronEnablerNarrowing(input: {
+	db: D1Database
+	orgId: string
+	jobId: string
+	jobName: string
+	enablerUserId: string
+	enablerScopes: ReadonlyArray<OrgPermission> | null
+	enablerProfileName: string | null
+	now?: string
+}): Promise<void> {
+	await input.db
+		.prepare(
+			`UPDATE enablements
+			 SET enabler_scopes_json = ?, enabler_profile_name = ?, updated_at = ?
+			 WHERE org_id = ? AND trigger_kind = 'cron' AND instance_id = ?
+			   AND trigger_name = ? AND enabler_user_id = ?`,
+		)
+		.bind(
+			enablerScopesJson(input),
+			input.enablerProfileName?.trim() || null,
+			input.now ?? new Date().toISOString(),
+			input.orgId,
+			input.jobId,
+			input.jobName,
+			input.enablerUserId,
+		)
+		.run()
 }
 
 /** Resume a paused enablement. Returns false when it was not paused. */

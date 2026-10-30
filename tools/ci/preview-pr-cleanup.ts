@@ -26,8 +26,10 @@ import { cloudflareApiRequest, fail } from './resource-utils.ts'
  *   for runs older than that title format, from the dispatch runs of the
  *   commit the Worker serves (`APP_COMMIT_SHA`).
  *
- * Anything that cannot be tied to a PR (deployed from the default branch, a
- * branch with no PR, an ambiguous source, or a PR GitHub does not know) is
+ * A preview tied to no PR at all (deployed from the default branch, a branch
+ * that never had a PR, or a PR number GitHub does not know) is deleted too.
+ * Only previews with an open PR, or whose owner cannot be determined (an
+ * ambiguous deploy branch, too many PRs, no recorded deploy commit), are
  * kept and reported. Deletes go through `cleanupPreviewResources`, which
  * applies the preview naming guard.
  */
@@ -48,6 +50,7 @@ export type PreviewOwnership =
 			branch?: string
 			deployedAt?: string
 	  }
+	| { kind: 'none'; reason: string; branch?: string }
 	| { kind: 'unresolved'; reason: string; branch?: string }
 
 export type PreviewCleanupDecision = {
@@ -55,6 +58,7 @@ export type PreviewCleanupDecision = {
 	action: 'delete' | 'keep-open' | 'keep-unresolved'
 	pullRequests: ReadonlyArray<PreviewPullRequest>
 	branch?: string
+	match?: 'closed-pr' | 'no-pr'
 	reason: string
 }
 
@@ -62,6 +66,16 @@ export function decidePreviewCleanup(
 	workerName: string,
 	ownership: PreviewOwnership,
 ): PreviewCleanupDecision {
+	if (ownership.kind === 'none') {
+		return {
+			workerName,
+			action: 'delete',
+			match: 'no-pr',
+			pullRequests: [],
+			...(ownership.branch ? { branch: ownership.branch } : {}),
+			reason: ownership.reason,
+		}
+	}
 	if (ownership.kind === 'unresolved') {
 		return {
 			workerName,
@@ -71,11 +85,12 @@ export function decidePreviewCleanup(
 			reason: ownership.reason,
 		}
 	}
-	const { pullRequests, branch, deployedAt } = ownership
+	const { pullRequests, branch } = ownership
 	if (pullRequests.length === 0) {
 		return {
 			workerName,
-			action: 'keep-unresolved',
+			action: 'delete',
+			match: 'no-pr',
 			pullRequests,
 			branch,
 			reason: branch ? `branch ${branch} has no PR` : 'no PR found',
@@ -91,25 +106,10 @@ export function decidePreviewCleanup(
 			reason: `PR ${open.map((pull) => `#${String(pull.number)}`).join(', ')} still open`,
 		}
 	}
-	// A branch redeployed after its PRs closed is new work, not a leftover.
-	const deployedAtMs = deployedAt ? Date.parse(deployedAt) : Number.NaN
-	if (
-		Number.isFinite(deployedAtMs) &&
-		pullRequests.every(
-			(pull) => !pull.closedAt || Date.parse(pull.closedAt) < deployedAtMs,
-		)
-	) {
-		return {
-			workerName,
-			action: 'keep-unresolved',
-			pullRequests,
-			branch,
-			reason: `branch ${branch ?? ''} redeployed after its PRs closed`,
-		}
-	}
 	return {
 		workerName,
 		action: 'delete',
+		match: 'closed-pr',
 		pullRequests,
 		branch,
 		reason: pullRequests
@@ -155,11 +155,12 @@ export function formatPreviewCleanupReport(input: {
 	skipped: ReadonlyMap<string, string>
 	failed: ReadonlyArray<string>
 	dryRun: boolean
+	lastDeployed?: ReadonlyMap<string, string>
 }) {
 	const status = (decision: PreviewCleanupDecision) => {
 		const name = decision.workerName
 		if (decision.action === 'keep-open') return 'kept (PR open)'
-		if (decision.action === 'keep-unresolved') return 'kept (no PR resolved)'
+		if (decision.action === 'keep-unresolved') return 'kept (owner unknown)'
 		if (input.failed.includes(name)) return 'delete failed'
 		if (input.skipped.has(name))
 			return `skipped (${input.skipped.get(name) ?? ''})`
@@ -171,13 +172,13 @@ export function formatPreviewCleanupReport(input: {
 	}
 	const rows = input.decisions.map(
 		(decision) =>
-			`| \`${decision.workerName}\` | ${decision.branch ? `\`${decision.branch}\`` : ''} | ${decision.reason} | ${status(decision)} |`,
+			`| \`${decision.workerName}\` | ${input.lastDeployed?.get(decision.workerName)?.slice(0, 10) ?? ''} | ${decision.branch ? `\`${decision.branch}\`` : ''} | ${decision.reason} | ${status(decision)} |`,
 	)
 	return [
 		`## Preview PR cleanup${input.dryRun ? ' (dry run)' : ''}`,
 		'',
-		'| Preview | Source branch | PR state | Result |',
-		'| --- | --- | --- | --- |',
+		'| Preview | Last deployed | Source branch | PR state | Result |',
+		'| --- | --- | --- | --- | --- |',
 		...rows,
 		'',
 	].join('\n')
@@ -250,7 +251,7 @@ export type PreviewPrCleanupDeps = {
 	dryRun: boolean
 	maxPerRun: number
 	github: GithubClient
-	listScriptNames: () => Promise<Array<string>>
+	listScripts: () => Promise<Array<{ name: string; modifiedOn?: string }>>
 	readWorkerCommitSha: (workerName: string) => Promise<string | null>
 	isDeployInProgress: () => Promise<boolean>
 	cleanup: (workerName: string) => Promise<void>
@@ -287,7 +288,7 @@ async function resolveBranchOwnership(
 	const { branch, deployedAt } = source
 	if (branch === deps.defaultBranch) {
 		return {
-			kind: 'unresolved',
+			kind: 'none',
 			branch,
 			reason: `deployed from ${deps.defaultBranch}, which has no PR`,
 		}
@@ -333,7 +334,7 @@ export async function resolvePreviewOwnership(
 		)
 		return pull
 			? { kind: 'pr', pullRequests: [pull] }
-			: { kind: 'unresolved', reason: `PR #${String(prNumber)} not found` }
+			: { kind: 'none', reason: `PR #${String(prNumber)} not found` }
 	}
 	return resolveBranchOwnership(deps, workerName, titledSources)
 }
@@ -351,13 +352,34 @@ export function listPreviewWorkerNames(scriptNames: ReadonlyArray<string>) {
 		// A sibling like `kody-branch-x-mock-cloudflare` belongs to
 		// `kody-branch-x`, whose cleanup already removes it.
 		...branchNames.filter(
-			(name) => !branchNames.some((base) => name.startsWith(`${base}-`)),
+			(name) => !branchNames.some((base) => name === `${base}-mock-cloudflare`),
 		),
 	]
 }
 
 export async function runPreviewPrCleanup(deps: PreviewPrCleanupDeps) {
-	const workerNames = listPreviewWorkerNames(await deps.listScriptNames())
+	const scripts = await deps.listScripts()
+	const workerNames = listPreviewWorkerNames(
+		scripts.map((script) => script.name),
+	)
+	const lastDeployed = new Map<string, string>()
+	for (const script of scripts) {
+		// Attribute each script to the longest preview name that owns it, so
+		// `kody-branch-a-b-runtime` never dates `kody-branch-a`.
+		const owner = workerNames
+			.filter(
+				(name) => script.name === name || script.name.startsWith(`${name}-`),
+			)
+			.sort((left, right) => right.length - left.length)[0]
+		const previous = owner ? lastDeployed.get(owner) : undefined
+		if (
+			owner &&
+			script.modifiedOn &&
+			(!previous || script.modifiedOn > previous)
+		) {
+			lastDeployed.set(owner, script.modifiedOn)
+		}
+	}
 	const titledSources = workerNames.some((name) =>
 		name.startsWith('kody-branch-'),
 	)
@@ -395,9 +417,17 @@ export async function runPreviewPrCleanup(deps: PreviewPrCleanupDeps) {
 				skipped.set(workerName, 'a branch deploy is running')
 				continue
 			}
+			// Branch previews also re-read their deploy source: a redeploy from a
+			// branch with an open PR may have finished since planning.
 			const fresh = decidePreviewCleanup(
 				workerName,
-				await resolvePreviewOwnership(deps, workerName, titledSources),
+				await resolvePreviewOwnership(
+					deps,
+					workerName,
+					workerName.startsWith('kody-branch-')
+						? await listTitledBranchSources(deps)
+						: titledSources,
+				),
 			)
 			if (fresh.action !== 'delete') {
 				skipped.set(workerName, fresh.reason)
@@ -421,6 +451,7 @@ export async function runPreviewPrCleanup(deps: PreviewPrCleanupDeps) {
 		skipped,
 		failed,
 		dryRun: deps.dryRun,
+		lastDeployed,
 	})
 	deps.log(report)
 	return { decisions, deleted, deferred, skipped, failed, report }
@@ -493,14 +524,22 @@ async function main() {
 		dryRun,
 		maxPerRun,
 		github,
-		async listScriptNames() {
-			const scripts = await cloudflareApiRequest<Array<{ id?: string }>>({
+		async listScripts() {
+			const scripts = await cloudflareApiRequest<
+				Array<{ id?: string; modified_on?: string }>
+			>({
 				...client,
 				pathname: '/workers/scripts',
 			})
-			return (scripts.result ?? [])
-				.map((script) => script.id)
-				.filter((id): id is string => typeof id === 'string')
+			return (scripts.result ?? []).flatMap((script) =>
+				typeof script.id === 'string'
+					? [
+							typeof script.modified_on === 'string'
+								? { name: script.id, modifiedOn: script.modified_on }
+								: { name: script.id },
+						]
+					: [],
+			)
 		},
 		async readWorkerCommitSha(workerName) {
 			const settings = await cloudflareApiRequest<{

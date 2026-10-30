@@ -1,3 +1,4 @@
+import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 /**
  * Enablement leak tests (credentials plan v4, PR 7b). Real boundaries: a
  * migrated APP_DB and AUDIT_DB, a real team org moved to enablements, real
@@ -401,7 +402,10 @@ async function setup() {
 	} as const
 	type Person = keyof typeof people
 
-	const sessionFor = async (person: Person) => {
+	const sessionFor = async (
+		person: Person,
+		scopes: ReadonlyArray<OrgPermission> | null = null,
+	) => {
 		const row = await db
 			.prepare(
 				`SELECT role FROM org_memberships
@@ -416,6 +420,7 @@ async function setup() {
 				org: { id: orgId, slug: 'quillworks' },
 				role: row?.role ?? null,
 			},
+			scopes,
 		})
 	}
 
@@ -423,6 +428,7 @@ async function setup() {
 		person: Person,
 		kind: 'subscription' | 'cron' | 'webhook',
 		name: string,
+		scopes: ReadonlyArray<OrgPermission> | null = null,
 	) => {
 		// Email subscriptions are not turned on by enablementEnable. These tests
 		// insert the member sender rule the enabler would approve.
@@ -445,7 +451,7 @@ async function setup() {
 		return enableTriggerForCaller({
 			env,
 			baseUrl: 'https://kody.example',
-			request: await sessionFor(person),
+			request: await sessionFor(person, scopes),
 			packageIdOrKodyId: 'pkg-shared',
 			kind,
 			name,
@@ -1067,6 +1073,71 @@ test("a member's cron job runs as its enabler and cannot use an org credential t
 	// Next tick: only Cy runs; Bea's stays paused while she still lacks Use.
 	const next = await runTick()
 	expect(next.map((outcome) => outcome.enabler)).toEqual([t.people.cy.userId])
+})
+
+test('a cron job turned on through a scoped credential never exceeds those scopes', async () => {
+	const t = await setup()
+	consoleInfo.mockImplementation(() => {})
+	const cys = await t.enable('cy', 'cron', jobName, ['package:execute'])
+	expect(cys.enablerScopes).toEqual(['package:execute'])
+	const jobId = buildPackageJobId('pkg-shared', jobName)
+	const plan = await planEnablementRuns({
+		env: t.env,
+		orgId: t.orgId,
+		packageId: 'pkg-shared',
+		trigger: { kind: 'cron', instanceId: jobId },
+	})
+	expect(plan.runs.map((run) => run.scopes)).toEqual([['package:execute']])
+	const [run] = plan.runs
+	const request = deriveRequestContext({
+		user: run!.enabler,
+		source: { kind: 'schedule', jobId, enablement: run },
+		orgBinding: {
+			org: { id: t.orgId, slug: 'quillworks' },
+			role: run!.role,
+		},
+	})
+	expect(request.credential.scopes).toEqual(['package:execute'])
+	// Cy holds Use on the team secret; the credential that enabled it does not.
+	await expect(t.resolveTeamToken(request, 'pkg-shared')).rejects.toMatchObject(
+		{ name: 'AuthorizationError', permission: 'secret:use' },
+	)
+})
+
+test('a credential without package:execute cannot turn a trigger on, and a stored one pauses before it runs', async () => {
+	const t = await setup()
+	consoleInfo.mockImplementation(() => {})
+	await expect(
+		t.enable('cy', 'cron', jobName, ['secret:use']),
+	).rejects.toMatchObject({
+		name: 'AuthorizationError',
+		permission: 'package:execute',
+	})
+	const jobId = buildPackageJobId('pkg-shared', jobName)
+	const stored = await insertEnablement({
+		db: t.db,
+		enablement: {
+			orgId: t.orgId,
+			packageId: 'pkg-shared',
+			triggerKind: 'cron',
+			triggerName: jobName,
+			instanceId: jobId,
+			enablerUserId: t.people.cy.userId,
+			enablerScopes: ['secret:use'],
+			origin: 'enabled',
+		},
+	})
+	const plan = await planEnablementRuns({
+		env: t.env,
+		orgId: t.orgId,
+		packageId: 'pkg-shared',
+		trigger: { kind: 'cron', instanceId: jobId },
+	})
+	expect(plan.runs).toEqual([])
+	await expect(t.enablement(stored.id)).resolves.toMatchObject({
+		state: 'paused',
+		pause: { reason: 'package_access', permission: 'package:execute' },
+	})
 })
 
 test("a just-removed member's enablements pause on the next run and resume when they are back", async () => {

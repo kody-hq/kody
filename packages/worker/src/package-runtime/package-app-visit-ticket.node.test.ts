@@ -15,6 +15,7 @@ import {
 	packageAppVisitTicketPrefix,
 	packageAppVisitTicketTtlMs,
 	PackageAppVisitTicketError,
+	requestContextFromVisitClaims,
 	resetPackageAppVisitNoncesForTests,
 	verifyPackageAppVisitTicket,
 	verifyPackageAppVisitTicketFromRequest,
@@ -467,4 +468,56 @@ test('an outside-org visitor gets an executor-only ticket that names them withou
 			})
 		).executorOnly,
 	).toBeUndefined()
+})
+
+test('a narrowed visitor credential stays narrowed through the visit ticket', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const request = {
+		org: { id: owner.userId, slug: owner.orgSlug },
+		actor: { userId: visitorB.userId, username: visitorB.username },
+		attribution: { kind: 'user' as const, userId: visitorB.userId },
+		credential: {
+			kind: 'package-app' as const,
+			id: null,
+			orgId: owner.userId,
+			scopes: ['package:execute' as const, 'secret:use' as const],
+			profileName: 'work',
+		},
+		membership: { role: 'member' as const },
+	}
+	const visit = await createPackageAppRequestVisit({
+		env: secretEnv,
+		visitor: visitorB,
+		owner,
+		audience,
+		request,
+	})
+	expect(visit.request?.credential).toMatchObject({
+		scopes: ['package:execute', 'secret:use'],
+		profileName: 'work',
+	})
+	const claims = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: visit.ticket!,
+		audience,
+	})
+	if (!claims.visitor) throw new Error('expected a visitor ticket')
+	expect(requestContextFromVisitClaims(claims).credential).toEqual({
+		kind: 'package-app',
+		id: null,
+		orgId: owner.userId,
+		scopes: ['package:execute', 'secret:use'],
+		profileName: 'work',
+	})
+
+	const unscoped = await mintFor(visitorA)
+	const unscopedClaims = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: unscoped.ticket,
+		audience,
+	})
+	if (!unscopedClaims.visitor) throw new Error('expected a visitor ticket')
+	expect(
+		requestContextFromVisitClaims(unscopedClaims).credential,
+	).toMatchObject({ scopes: null, profileName: null })
 })

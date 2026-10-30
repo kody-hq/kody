@@ -85,7 +85,7 @@ export async function routeAutomationRun(input: {
 			handle: actor.username ?? null,
 			orgId: request.org.id,
 			orgSlug: request.org.slug ?? null,
-			scopes: null,
+			scopes: (request.credential.scopes as Array<string> | null) ?? null,
 			credentialKind: request.credential.kind,
 		},
 		args: {

@@ -25,6 +25,8 @@ function emailRow(input: {
 		triggerName: 'email.message.received',
 		instanceId: 'pkg',
 		enablerUserId: actorId,
+		enablerScopes: null,
+		enablerProfileName: null,
 		state: 'on',
 		pause: null,
 		origin: 'enabled',

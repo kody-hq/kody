@@ -35,3 +35,41 @@ test('a failed read is not kept for the execution', async () => {
 	await expect(read()).resolves.toBe(true)
 	expect(load).toHaveBeenCalledTimes(2)
 })
+
+test('a gateway call never awaits a read another call still has in flight', async () => {
+	let resolveFirst!: (value: boolean) => void
+	const load = vi
+		.fn<() => Promise<boolean>>()
+		.mockImplementationOnce(
+			() => new Promise<boolean>((resolve) => (resolveFirst = resolve)),
+		)
+		.mockResolvedValue(false)
+	const gatewayCall = () =>
+		runInFeatureFlagExecution('execution-concurrent', () =>
+			memoizeForFeatureFlagExecution('global:z', load),
+		)
+
+	const first = gatewayCall()
+	const second = gatewayCall()
+	expect(second).not.toBe(first)
+	expect(load).toHaveBeenCalledTimes(2)
+	await expect(second).resolves.toBe(false)
+
+	resolveFirst(true)
+	await expect(first).resolves.toBe(true)
+	// The latest settled value is shared with later calls in the execution.
+	await expect(gatewayCall()).resolves.toBe(true)
+	expect(load).toHaveBeenCalledTimes(2)
+})
+
+test('reads within one gateway call share the in-flight load', async () => {
+	const load = vi.fn(async () => true)
+	await runInFeatureFlagExecution('execution-one-call', async () => {
+		const [a, b] = await Promise.all([
+			memoizeForFeatureFlagExecution('global:w', load),
+			memoizeForFeatureFlagExecution('global:w', load),
+		])
+		expect([a, b]).toEqual([true, true])
+	})
+	expect(load).toHaveBeenCalledTimes(1)
+})

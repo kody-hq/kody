@@ -29,6 +29,10 @@ import {
 } from '@kody-internal/shared/base64.ts'
 import { toHex } from '@kody-internal/shared/hex.ts'
 import {
+	isOrgPermission,
+	type OrgPermission,
+} from '@kody-internal/shared/org-permissions.ts'
+import {
 	ownerIdFromStored,
 	personIdFromStored,
 	type OwnerId,
@@ -36,6 +40,7 @@ import {
 import {
 	type OrgRole,
 	type RequestContext,
+	type RequestCredential,
 } from '@kody-internal/shared/request-context.ts'
 import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
@@ -79,6 +84,12 @@ export type PackageAppVisitClaims = {
 	grantId: string | null
 	/** Scopes the visitor granted when this request began. */
 	scopes: ReadonlyArray<string>
+	/**
+	 * The visitor's request credential narrowing (token scopes and connection
+	 * profile). Rebuilt requests keep it; null does not narrow.
+	 */
+	credentialScopes?: ReadonlyArray<OrgPermission> | null
+	credentialProfileName?: string | null
 	/**
 	 * A visitor from outside the owning org: the ticket only opens the
 	 * executor credentials they approved. Every other path treats the request
@@ -132,6 +143,8 @@ type StoredVisitTicket = {
 	binding: string
 	grantId: string | null
 	scopes: Array<string>
+	cs?: Array<string> | null
+	cp?: string | null
 	xo?: true
 }
 
@@ -267,6 +280,10 @@ function isStoredVisitTicket(value: unknown): value is StoredVisitTicket {
 		(record.grantId === null || isText(record.grantId)) &&
 		Array.isArray(record.scopes) &&
 		record.scopes.every((scope) => typeof scope === 'string') &&
+		(record.cs === undefined ||
+			record.cs === null ||
+			(Array.isArray(record.cs) && record.cs.every(isOrgPermission))) &&
+		(record.cp === undefined || record.cp === null || isText(record.cp)) &&
 		(record.xo === undefined || record.xo === true)
 	)
 }
@@ -295,6 +312,8 @@ function claimsFromStored(stored: StoredVisitTicket): PackageAppVisitClaims {
 		credentialClientBinding: stored.binding,
 		grantId: stored.grantId,
 		scopes: stored.scopes,
+		credentialScopes: (stored.cs as Array<OrgPermission> | undefined) ?? null,
+		credentialProfileName: stored.cp ?? null,
 		...(stored.xo ? { executorOnly: true } : {}),
 		exp: stored.exp,
 	}
@@ -444,6 +463,7 @@ export async function mintPackageAppVisitTicket(input: {
 	credentialClientBinding: string
 	grantId?: string | null
 	scopes?: ReadonlyArray<string>
+	credential?: Pick<RequestCredential, 'scopes' | 'profileName'> | null
 	executorOnly?: boolean
 	nonce?: string
 	now?: number
@@ -475,6 +495,8 @@ export async function mintPackageAppVisitTicket(input: {
 			binding: input.credentialClientBinding,
 			grantId: input.grantId ?? null,
 			scopes: [...(input.scopes ?? [])],
+			cs: input.credential?.scopes ? [...input.credential.scopes] : null,
+			cp: input.credential?.profileName ?? null,
 			...(input.executorOnly ? { xo: true as const } : {}),
 		},
 	})
@@ -630,8 +652,8 @@ export function requestContextFromVisitClaims(
 			kind: 'package-app',
 			id: null,
 			orgId: claims.owner.userId,
-			scopes: null,
-			profileName: null,
+			scopes: claims.credentialScopes ?? null,
+			profileName: claims.credentialProfileName ?? null,
 		},
 		membership: claims.visitor.role ? { role: claims.visitor.role } : null,
 	}
@@ -714,6 +736,7 @@ export async function createPackageAppRequestVisit(input: {
 		credentialClientBinding,
 		grantId: input.grantId,
 		scopes: input.scopes,
+		credential: input.request.credential,
 		now: input.now,
 	})
 	const claims: PackageAppVisitClaims = {
@@ -724,6 +747,8 @@ export async function createPackageAppRequestVisit(input: {
 		credentialClientBinding,
 		grantId: input.grantId ?? null,
 		scopes: [...(input.scopes ?? [])],
+		credentialScopes: input.request.credential.scopes,
+		credentialProfileName: input.request.credential.profileName,
 		exp: minted.exp,
 	}
 	return {

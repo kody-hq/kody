@@ -658,6 +658,8 @@ export async function planTriggerEnablementForCaller(input: {
 			triggerName: trigger.triggerName,
 			instanceId: trigger.instanceId,
 			enablerUserId: actor.userId,
+			enablerScopes: input.request.credential.scopes,
+			enablerProfileName: input.request.credential.profileName,
 			origin: 'enabled',
 			senderKind: storedSender?.kind ?? null,
 			senderValue: storedSender?.value ?? null,
