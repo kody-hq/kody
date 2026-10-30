@@ -1385,6 +1385,14 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		const held = new Set(
 			body.heldRuns.filter((id): id is string => typeof id === 'string'),
 		)
+		// Snapshot first: a run committed while results apply is not stale.
+		const committed = this.ctx.storage.sql
+			.exec<RunRow>(
+				`SELECT run_id, state, lease_json, deadline, accept_by, run_record_json,
+				   result_json, cancel_reason, started_at
+				 FROM runs WHERE state = 'committed'`,
+			)
+			.toArray()
 		const pending = Array.isArray(body.pendingResults)
 			? body.pendingResults
 			: []
@@ -1393,13 +1401,6 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				await this.#applyRunResult(result as Record<string, unknown>)
 			}
 		}
-		const committed = this.ctx.storage.sql
-			.exec<RunRow>(
-				`SELECT run_id, state, lease_json, deadline, accept_by, run_record_json,
-				   result_json, cancel_reason, started_at
-				 FROM runs WHERE state = 'committed'`,
-			)
-			.toArray()
 		for (const run of committed) {
 			if (held.has(run.run_id)) continue
 			if (
