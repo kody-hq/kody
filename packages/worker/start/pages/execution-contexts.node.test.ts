@@ -223,7 +223,7 @@ test('operator detail shows daemon version, outdated flag and background service
 	)
 	expect(plain).toContain('Terminal (not a background service)')
 	expect(plain).toContain(
-		'stop the terminal daemon (Ctrl+C, it drains in-flight runs), then run kody daemon install --context ec_laptop',
+		'stop the terminal daemon (Ctrl+C, it drains in-flight runs), then run: kody daemon install --context ec_laptop',
 	)
 	expect(plain).not.toContain('Outdated')
 

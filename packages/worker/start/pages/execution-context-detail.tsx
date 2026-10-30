@@ -196,7 +196,8 @@ export function ExecutionContextDetail(props: {
 									) : (
 										<>
 											To keep it running, stop the terminal daemon (Ctrl+C, it
-											drains in-flight runs), then run{' '}
+											drains in-flight runs), then run:
+											<br />
 											<code>kody daemon install --context {context.id}</code>
 										</>
 									)}
