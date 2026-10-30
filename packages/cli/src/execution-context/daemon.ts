@@ -254,10 +254,12 @@ export async function runDaemonConnection(input: DaemonInput) {
 	}
 
 	let outbound: Promise<void> = Promise.resolve()
+	let outboundFailed = false
 	const send = (t: string, body: Record<string, unknown>, re?: number) => {
 		// Signing is async; chain it so concurrent runs' frames reach the
 		// socket in sequence order (the server rejects an out-of-order seq).
 		const sent = outbound.then(async () => {
+			if (outboundFailed) throw new Error('This connection already failed.')
 			outSeq += 1
 			const payload: EcpFramePayload = {
 				v: 1,
@@ -277,7 +279,17 @@ export async function runDaemonConnection(input: DaemonInput) {
 				}),
 			)
 		})
-		outbound = sent.catch(() => {})
+		// A failed send would leave a sequence gap the server rejects, so it
+		// ends this connection; the reconnect starts a fresh sequence.
+		outbound = sent.catch(() => {
+			if (outboundFailed) return
+			outboundFailed = true
+			try {
+				ws.close(4000, 'send failed')
+			} catch {
+				// Already closing.
+			}
+		})
 		return sent
 	}
 	let grantEgress: EcpGrant['egress'] = ecpDefaultGrant.egress

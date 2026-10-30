@@ -696,6 +696,32 @@ test('hello tells Kody which runs this daemon still holds after a reconnect', as
 	assert.deepEqual(hello?.body.pendingResults, [])
 })
 
+test('a failed send ends the connection instead of leaving a sequence gap', async () => {
+	SilentSocket.instances = []
+	const { signed, serverKeys } = await serverFrames([welcome])
+	ServerSocket.frames = signed
+	class FailingSocket extends ServerSocket {
+		override send(data = '') {
+			if (data !== ecpPingFrame) throw new Error('socket write failed')
+			super.send(data)
+		}
+	}
+	const abort = new AbortController()
+	const { input } = await daemonInput({
+		serverKeys,
+		signal: abort.signal,
+		WebSocketImpl: FailingSocket as unknown as typeof WebSocket,
+	})
+	const timeout = setTimeout(() => abort.abort(), 5_000)
+	const closed = await runDaemonConnection(input)
+	clearTimeout(timeout)
+	assert.equal(closed.code, 4000)
+	assert.deepEqual(SilentSocket.instances[0]?.closed, {
+		code: 4000,
+		reason: 'send failed',
+	})
+})
+
 test('frames that arrive back to back are verified in order, not raced', async () => {
 	SilentSocket.instances = []
 	const { signed, serverKeys } = await serverFrames([
