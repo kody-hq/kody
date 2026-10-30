@@ -2,7 +2,10 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { afterEach, expect, test, vi } from 'vitest'
-import { compileAccessForActor } from '#worker/authorization/access-compile.ts'
+import {
+	compileAccessForActor,
+	type CompiledAccess,
+} from '#worker/authorization/access-compile.ts'
 import {
 	createOrg,
 	listGrants,
@@ -80,7 +83,7 @@ async function seed() {
 	const compile = () =>
 		compileAccessForActor({
 			db,
-			orgId: ownerIdFromStored(org.id),
+			orgId: ownerIdFromStored(String(org.id)),
 			userId: memberId,
 			role: 'member',
 		})
@@ -88,7 +91,7 @@ async function seed() {
 }
 
 function readable(
-	compiled: Awaited<ReturnType<ReturnType<typeof compileAccessForActor>>>,
+	compiled: CompiledAccess,
 	packageId: string,
 ) {
 	return (
