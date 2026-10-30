@@ -80,7 +80,7 @@ sequenceDiagram
   (`run-credential-use.ts`): the entry module and every `kody:` package its
   static imports reach, read from publish metadata (needs closure, credential
   stamp) or, once per source and commit, from the published files (KV
-  `credential-use:v1`). A context whose grant cannot serve that is skipped
+  `credential-use:v2`). A context whose grant cannot serve that is skipped
   (`credentials_not_allowed`, `credentials_not_in_grant`,
   `credentials_unverified`, `credentials_need_unshared_context`), so the chain
   falls through to the next entry or cloud.
