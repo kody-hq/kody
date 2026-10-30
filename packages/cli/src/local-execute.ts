@@ -53,6 +53,7 @@ import {
 import { redact } from './redact.js'
 import { type ToolCallResult } from './tool-result.js'
 import { ensureWorkerdBinary } from './workerd-binary.js'
+import { type LocalWorkerTracker } from './execution-context/worker-tracker.js'
 
 export {
 	hasSavedPackageImports,
@@ -106,6 +107,8 @@ export type LocalExecuteInput = {
 	onStatus?: (message: string) => void
 	/** Aborting kills workerd and ends the run with a cancelled error. */
 	signal?: AbortSignal
+	/** Told about the workerd process so a daemon can reap it after a crash. */
+	workerTracker?: LocalWorkerTracker
 }
 
 type SandboxResponse = {
@@ -343,6 +346,12 @@ export async function runLocalExecute(
 			env,
 			stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
 		})
+		const workerdPid = child.pid
+		if (workerdPid !== undefined && input.workerTracker) {
+			const tracker = input.workerTracker
+			tracker.started({ pid: workerdPid, configPath })
+			child.once('exit', () => tracker.exited(workerdPid))
+		}
 		const workerd = watchWorkerd(child)
 		const started = await workerd.listening
 		if (input.signal?.aborted) return cancelled()

@@ -10,11 +10,16 @@ import {
 } from './client.js'
 import { runDaemon } from './daemon.js'
 import {
+	contextWorkersDir,
 	contextsDir,
 	loadContext,
 	resolveWrappingKey,
 	saveContext,
 } from './keystore.js'
+import {
+	createLocalWorkerTracker,
+	reapLeftoverWorkers,
+} from './worker-tracker.js'
 
 export type ExecutionContextCommandInput = {
 	command: 'context' | 'chain' | 'daemon'
@@ -245,18 +250,32 @@ export async function runExecutionContextCommand(
 		input.write(
 			`Starting ${context.name} (${context.ecid}) against ${input.apiUrl}.\n`,
 		)
-		await runDaemon({
-			apiUrl: input.apiUrl,
-			ecid: context.ecid,
-			privateKey,
-			serverKeys,
-			maxConcurrent: 1,
-			client: { name: 'kody-cli', version: input.clientVersion },
-			capabilities: localCapabilities(),
-			execute: (run) => runContextRun({ ...run, apiUrl: input.apiUrl }),
-			log: (line) => input.write(`${line}\n`),
-			signal: abort.signal,
-		})
+		const workersDir = contextWorkersDir(input.apiUrl, context.ecid)
+		const reaped = reapLeftoverWorkers(workersDir)
+		if (reaped.length > 0) {
+			input.write(
+				`Stopped ${reaped.length} local worker(s) left running by an earlier daemon for this context.\n`,
+			)
+		}
+		const workerTracker = createLocalWorkerTracker(workersDir)
+		try {
+			await runDaemon({
+				apiUrl: input.apiUrl,
+				ecid: context.ecid,
+				privateKey,
+				serverKeys,
+				maxConcurrent: 1,
+				client: { name: 'kody-cli', version: input.clientVersion },
+				capabilities: localCapabilities(),
+				execute: (run) =>
+					runContextRun({ ...run, apiUrl: input.apiUrl, workerTracker }),
+				log: (line) => input.write(`${line}\n`),
+				signal: abort.signal,
+			})
+		} finally {
+			workerTracker.killAll()
+			workerTracker.dispose()
+		}
 		return 0
 	}
 	throw new Error(

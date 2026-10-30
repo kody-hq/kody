@@ -1,4 +1,5 @@
 import { type EcpRunRequestBody } from '@kody-internal/shared/execution-context-protocol/index.ts'
+import { type LocalWorkerTracker } from './worker-tracker.js'
 
 /**
  * Runs a context run in local workerd through the same path as
@@ -10,6 +11,7 @@ export async function runContextRun(input: {
 	fetchFn: typeof fetch
 	signal: AbortSignal
 	apiUrl: string
+	workerTracker?: LocalWorkerTracker
 }) {
 	const { runLocalExecute } = await import('../local-execute.js')
 	const result = await runLocalExecute({
@@ -22,6 +24,7 @@ export async function runContextRun(input: {
 		apiUrl: input.apiUrl,
 		fetchFn: input.fetchFn,
 		signal: input.signal,
+		...(input.workerTracker ? { workerTracker: input.workerTracker } : {}),
 	})
 	return {
 		isError: result.isError === true,

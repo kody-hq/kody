@@ -5,9 +5,11 @@ import { createServer, type Server } from 'node:http'
 import { type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { after, before, test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { runCli } from '../src/cli.js'
+import { reapLeftoverWorkers } from '../src/execution-context/worker-tracker.js'
 import {
 	buildLocalExecuteResult,
 	hasSavedPackageImports,
@@ -1204,6 +1206,57 @@ test(
 		await waitFor('workerd to stop', () =>
 			isRunning(workerdPid) ? null : true,
 		)
+		assert.deepEqual(
+			readdirSync(scratch).filter((entry) => entry.startsWith('kody-local-')),
+			[],
+		)
+	},
+)
+
+test(
+	'a SIGKILLed daemon leaves a tracked workerd that the next daemon reaps',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const scratch = mkdtempSync(join(tmpdir(), 'kody-daemon-kill-'))
+		const workersDir = join(scratch, 'workers')
+		const src = (path: string) =>
+			JSON.stringify(fileURLToPath(new URL(`../src/${path}`, import.meta.url)))
+		const script = `
+import { runLocalExecute } from ${src('local-execute.ts')}
+import { createLocalWorkerTracker } from ${src('execution-context/worker-tracker.ts')}
+await runLocalExecute({
+	code: ${JSON.stringify(hangAfterPing)},
+	token: ${JSON.stringify(goodToken)},
+	apiUrl: ${JSON.stringify(apiUrl)},
+	workerTracker: createLocalWorkerTracker(${JSON.stringify(workersDir)}),
+})
+`
+		const daemon = spawn(
+			process.execPath,
+			['--import', 'tsx', '--input-type=module', '-e', script],
+			{ env: { ...process.env, TMPDIR: scratch }, stdio: 'ignore' },
+		)
+		const exited = new Promise((resolve) => daemon.once('exit', resolve))
+		await waitFor('the module to start', () =>
+			proxyRequests.some(
+				(request) => request.url === '/v1/capability-proxy/call',
+			)
+				? true
+				: null,
+		)
+		const workerdPid = await waitFor('workerd', () => workerdPidUnder(scratch))
+		daemon.kill('SIGKILL')
+		await exited
+		await delay(500)
+		assert.ok(isRunning(workerdPid), 'SIGKILL skips every exit handler')
+		assert.deepEqual(readdirSync(workersDir), [`${workerdPid}.json`])
+
+		assert.deepEqual(reapLeftoverWorkers(workersDir), [workerdPid])
+		await waitFor('workerd to stop', () =>
+			isRunning(workerdPid) ? null : true,
+		)
+		assert.deepEqual(readdirSync(workersDir), [])
 		assert.deepEqual(
 			readdirSync(scratch).filter((entry) => entry.startsWith('kody-local-')),
 			[],
