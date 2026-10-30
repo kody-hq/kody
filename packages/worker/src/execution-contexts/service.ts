@@ -632,12 +632,21 @@ export async function updateContext(
 		: parseGrant(row)
 	const name = input.name?.trim() ?? row.name
 	const grantVersion = input.grant ? row.grant_version + 1 : row.grant_version
-	await db
-		.prepare(
-			`UPDATE execution_contexts SET name = ?, grant_json = ?, grant_version = ? WHERE id = ?`,
-		)
-		.bind(name, JSON.stringify(grant), grantVersion, row.id)
-		.run()
+	try {
+		await db
+			.prepare(
+				`UPDATE execution_contexts SET name = ?, grant_json = ?, grant_version = ? WHERE id = ?`,
+			)
+			.bind(name, JSON.stringify(grant), grantVersion, row.id)
+			.run()
+	} catch (error) {
+		if (!String(error).includes('UNIQUE')) throw error
+		throw new ExecutionContextError({
+			status: 409,
+			code: 'invalid_request',
+			message: `Another context in this org is already named ${name}. Pick another name.`,
+		})
+	}
 	if (input.grant) {
 		await sessionStub(caller.env, row.id).updateGrant({
 			snapshot: {
