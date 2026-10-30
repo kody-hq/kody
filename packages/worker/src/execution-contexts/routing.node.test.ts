@@ -4,6 +4,8 @@ import { runChainShapeError } from './chain-rules.ts'
 import {
 	codeNeedsCredentials,
 	describeCloudFallback,
+	describeRanOn,
+	ranOnFromMetadata,
 	grantRefusal,
 	markQueuedAttemptExpired,
 	markQueuedAttemptRan,
@@ -273,6 +275,73 @@ test('a cloud fallback says which contexts passed on the run and why', () => {
 			],
 		}),
 	).toBe(
-		'Ran on Kody cloud: no execution context in your chain took this run (build-box (ec_box): rejected grant_mismatch; ec_gone: skipped gone).',
+		'Ran on Kody cloud after build-box declined it (grant mismatch) and a context that no longer exists was skipped.',
 	)
+})
+
+test('describeRanOn names where a run happened with friendly names only', () => {
+	expect(describeRanOn(ranOnFromMetadata(null))).toBe('Ran on Kody cloud.')
+	expect(
+		describeRanOn(
+			ranOnFromMetadata({
+				id: 'ec_box',
+				name: 'build-box',
+				yours: true,
+				fellBackToCloud: false,
+				attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'ran' }],
+			}),
+		),
+	).toBe('Ran on build-box (your machine).')
+	expect(
+		describeRanOn(
+			ranOnFromMetadata({
+				id: 'ec_team',
+				name: 'team-box',
+				yours: false,
+				fellBackToCloud: false,
+				attempts: [
+					{ target: 'ec_box', name: 'build-box', outcome: 'busy' },
+					{ target: 'ec_team', name: 'team-box', outcome: 'ran' },
+				],
+			}),
+			{ running: true },
+		),
+	).toBe('Running on team-box (an execution context) after build-box was busy.')
+	expect(
+		describeRanOn(
+			ranOnFromMetadata({
+				id: null,
+				name: null,
+				fellBackToCloud: true,
+				attempts: [
+					{
+						target: 'ec_box',
+						name: 'build-box',
+						outcome: 'skipped',
+						reason: 'credentials_not_allowed',
+					},
+				],
+			}),
+		),
+	).toBe(
+		'Ran on Kody cloud after build-box was skipped (credentials not allowed).',
+	)
+	expect(
+		describeRanOn(
+			ranOnFromMetadata({
+				id: 'ec_box',
+				name: 'build-box',
+				yours: true,
+				fellBackToCloud: false,
+				attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'queued' }],
+			}),
+		),
+	).toBe('Waiting for build-box (your machine) to take this run.')
+	expect(ranOnFromMetadata({ id: 'ec_box', name: 'build-box' })).toEqual({
+		kind: 'context',
+		id: 'ec_box',
+		name: 'build-box',
+		attempts: [],
+		fellBackToCloud: false,
+	})
 })
