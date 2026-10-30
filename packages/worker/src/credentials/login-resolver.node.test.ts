@@ -510,19 +510,25 @@ test('a session persists encrypted across isolates and is reused until the crede
 	expect(exchanges).toHaveLength(1)
 	expect(valueReads.count).toBe(1)
 
-	// Hosts, inject, and value edits each start a new session.
-	await t.storeCredential({
-		name: 'portal-login',
-		hosts: ['api.example.com', 'auth.example.com'],
-	})
+	// Hosts, inject, and value edits each start a new session. Hosts and inject
+	// change only their own columns, so the ciphertext stays the same.
+	const setColumn = async (
+		column: 'allowed_hosts' | 'inject_json',
+		value: unknown,
+	) =>
+		await t.db
+			.prepare(`UPDATE secret_entries SET ${column} = ? WHERE id = ?`)
+			.bind(JSON.stringify(value), id)
+			.run()
+	await setColumn('allowed_hosts', ['api.example.com', 'auth.example.com'])
 	clearLoginSessionsForTests()
 	expect((await t.signIn({ actor, credentialId: id })).placement.value).toBe(
 		'Bearer session-2',
 	)
-	await t.storeCredential({
-		name: 'portal-login',
-		hosts: ['api.example.com', 'auth.example.com'],
-		inject: { kind: 'header', name: 'X-Session', format: '{value}' },
+	await setColumn('inject_json', {
+		kind: 'header',
+		name: 'X-Session',
+		format: '{value}',
 	})
 	expect((await t.signIn({ actor, credentialId: id })).placement).toEqual({
 		kind: 'header',
