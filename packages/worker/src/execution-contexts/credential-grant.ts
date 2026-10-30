@@ -44,6 +44,25 @@ export function contextRunCredentials(
 }
 
 /**
+ * The stable credential ids a run may resolve, enforced by the credential
+ * door on every resolution. Null lets every credential the requester can use
+ * through; empty lets none through.
+ */
+export function contextCredentialIds(
+	credentials: ContextRunCredentials,
+): ReadonlyArray<string> | null {
+	switch (credentials.mode) {
+		case 'requester':
+			return null
+		case 'list':
+			return credentials.ids
+		case 'none':
+		case 'requester_shared':
+			return []
+	}
+}
+
+/**
  * True when anyone besides the operator can reach the context: a share to a
  * person or team in any org, everyone in its org, or an attached org.
  */

@@ -228,3 +228,62 @@ test('runCapabilityProxyGatewayFetchStream propagates missing-secret caller erro
 		message: 'Secret "demoToken" was not found.',
 	})
 })
+
+function contextRunStream(credentials: unknown) {
+	return runCapabilityProxyGatewayFetchStream({
+		ctx: {
+			env: { APP_DB: {} },
+			principal: {
+				kind: 'execution-context-run',
+				ecid: 'ec-1',
+				runId: 'run-1',
+				deadline: Date.now() + 60_000,
+				scopes: null,
+				runtime: { mode: 'all' },
+				credentials,
+			},
+			callerContext: {
+				baseUrl: 'https://heykody.dev',
+				user: {
+					userId: ownerIdFromStored('user-1'),
+					email: 'user@example.com',
+				},
+				storageContext: null,
+			},
+		} as never,
+		request: new Request(
+			'https://api.kody.test/v1/capability-proxy/gateway-fetch',
+			{
+				method: 'POST',
+				headers: {
+					[gatewayFetchUrlHeaderName]: 'https://example.com/upload',
+					[gatewayFetchHeadersHeaderName]: JSON.stringify({
+						authorization: 'Bearer {{secret:demoToken}}',
+					}),
+				},
+				body: 'raw-bytes',
+			},
+		),
+	})
+}
+
+test('runCapabilityProxyGatewayFetchStream applies the context credential grant to context runs', async () => {
+	executeGatewayFetch.mockReset()
+	for (const credentials of [{ mode: 'none' }, { mode: 'requester_shared' }]) {
+		await expect(contextRunStream(credentials)).rejects.toMatchObject({
+			status: 403,
+			code: 'execution_context_credential_not_granted',
+		})
+	}
+	expect(executeGatewayFetch).not.toHaveBeenCalled()
+
+	executeGatewayFetch.mockImplementation(async () => new Response('ok'))
+	for (const credentials of [
+		{ mode: 'list', ids: ['cred-1'] },
+		{ mode: 'requester' },
+	]) {
+		const response = await contextRunStream(credentials)
+		expect(await response.text()).toBe('ok')
+	}
+	expect(executeGatewayFetch).toHaveBeenCalledTimes(2)
+})

@@ -71,6 +71,11 @@ sequenceDiagram
   contexts and works only while the context is unshared: only the operator sets
   it, sharing or attaching is refused until it is narrowed, and each hop
   re-checks sharing (`credential-grant.ts`).
+- The credential door enforces the grant per credential: each hop puts the
+  grant's allowed ids on the request (`credential.contextCredentialIds`) and
+  `resolveCredential` refuses any other credential before reading it
+  (`context-credential-grant.ts`). The streaming gateway-fetch hop uses the same
+  grant check as `gatewayFetch`.
 - Before a run starts, routing works out which credentials it can use
   (`run-credential-use.ts`): the entry module and every `kody:` package its
   static imports reach, read from publish metadata (needs closure, credential

@@ -52,3 +52,15 @@ still never reach the machine; only which credentials may be used changes.
   grant must cover every credential the run names; when the run uses a
   credential it does not name (an imported package), a `list` context is
   skipped.
+
+## Amendment 2026-10-30: per-credential enforcement at the door
+
+Every credential a context run resolves is checked against its grant by the
+credential door (`resolveCredential`), on every path (secrets, integrations,
+OAuth, Keys, MCP connections, gateway placeholder fills, nested invokes): a
+`list` lets through only the credential ids it names, `none` and a shared
+`requester` let none through, and an unshared `requester` does not narrow. A
+found credential the list does not name is refused before its value is read
+(`execution_context_credential_not_granted`) and audited as denied. The
+streaming `/v1/capability-proxy/gateway-fetch` hop applies the same grant check
+as the JSON `gatewayFetch` hop before it starts.

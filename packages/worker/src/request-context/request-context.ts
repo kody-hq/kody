@@ -112,6 +112,7 @@ function credentialFor(input: {
 	org: RequestOrg
 	profileName: string | null
 	scopes?: RequestCredential['scopes']
+	contextCredentialIds?: RequestCredential['contextCredentialIds']
 }): RequestCredential {
 	return {
 		kind: input.kind,
@@ -119,6 +120,9 @@ function credentialFor(input: {
 		orgId: input.org.id,
 		scopes: input.scopes ?? null,
 		profileName: input.profileName,
+		...(input.contextCredentialIds
+			? { contextCredentialIds: input.contextCredentialIds }
+			: {}),
 	}
 }
 
@@ -213,6 +217,8 @@ export function deriveRequestContext(input: {
 	orgBinding?: RequestOrgBinding
 	/** Credential scopes. Populated for API tokens; null does not narrow. */
 	scopes?: RequestCredential['scopes']
+	/** Execution-context runs: credential ids the context's grant allows. */
+	contextCredentialIds?: RequestCredential['contextCredentialIds']
 }): RequestContext {
 	const binding = input.orgBinding ?? resolveOrgBinding(input.user)
 	const { source } = input
@@ -235,6 +241,10 @@ export function deriveRequestContext(input: {
 					org: binding.org,
 					profileName,
 					scopes: input.scopes ?? null,
+					contextCredentialIds:
+						source.kind === 'execution-context-run'
+							? input.contextCredentialIds
+							: null,
 				}),
 				membership: binding.role ? { role: binding.role } : null,
 			}

@@ -48,6 +48,7 @@ import {
 } from '#worker/execution-contexts/store.ts'
 import {
 	contextIsShared,
+	contextCredentialIds,
 	contextRunCredentials,
 } from '#worker/execution-contexts/credential-grant.ts'
 
@@ -474,6 +475,7 @@ async function authenticateWithExecutionContextLease(input: {
 				connectionProfileName: null,
 				orgBinding,
 				scopes,
+				contextCredentialIds: contextCredentialIds(credentials),
 			}),
 			user: authContext.user,
 		},
