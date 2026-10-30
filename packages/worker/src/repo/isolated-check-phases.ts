@@ -14,8 +14,14 @@ import {
 	repoCheckStepResourceLimitAdvice,
 	isolatedCheckRunnerLimitMessage,
 	authoringCheckRunnerLimitLead,
+	resourceLimitVarianceNote,
 	type RepoCheckStep,
 } from './isolated-runner-limit-message.ts'
+import {
+	formatLargestNonRuntimePaths,
+	largestNonRuntimePaths,
+	type LargePathHint,
+} from './publish-size-hints.ts'
 
 /**
  * Heavy repo-check phases (esbuild-wasm bundle validation, TypeScript
@@ -245,15 +251,19 @@ export function createIsolatedCheckPhaseRunner(
  */
 export function authoringChecksResourceLimitMessage(
 	step: RepoCheckStep | null = null,
+	largestPaths: Array<LargePathHint> = [],
 ) {
 	const where = step ? ` during ${repoCheckStepLabel(step)}` : ''
-	return (
-		`${authoringCheckRunnerLimitLead(where)} ` +
-		'This is a server limit, not a login or network ' +
-		'problem, and publish runs the same checks under the same limits, so ' +
-		'it would fail the same way. ' +
-		repoCheckStepResourceLimitAdvice(step)
-	)
+	return [
+		`${authoringCheckRunnerLimitLead(where)} This is a server limit, not a ` +
+			'login or network problem, and publish runs the same checks under ' +
+			'the same limits, so it is likely to fail the same way. ' +
+			resourceLimitVarianceNote,
+		repoCheckStepResourceLimitAdvice(step),
+		formatLargestNonRuntimePaths(largestPaths),
+	]
+		.filter(Boolean)
+		.join(' ')
 }
 
 /**
@@ -350,7 +360,10 @@ export async function runAuthoringChecksInIsolate(input: {
 						{
 							kind: repoCheckKindForStep(step),
 							ok: false,
-							message: authoringChecksResourceLimitMessage(step),
+							message: authoringChecksResourceLimitMessage(
+								step,
+								largestNonRuntimePaths({ files: input.files }),
+							),
 						},
 					],
 				}

@@ -18,12 +18,21 @@ import { type StorageContext } from '#mcp/storage.ts'
 type SecretPermission = Extract<OrgPermission, `secret:${string}`>
 
 /**
+ * What the secret checks read from a capability context. The website passes
+ * its signed-in session here so its approvals run the same checks.
+ */
+export type SecretAuthorizationContext = {
+	env: CapabilityContext['env']
+	callerContext: Pick<CapabilityContext['callerContext'], 'request' | 'user'>
+}
+
+/**
  * Secrets are checked as the `credential` resource of the entry `name`
  * resolves to (the key `resolveCredential` checks). A missing secret is
  * checked against a target no grant names, so only org-wide holders pass.
  */
 export async function authorizeSecret(
-	ctx: CapabilityContext,
+	ctx: SecretAuthorizationContext,
 	permission: SecretPermission,
 	input: {
 		name: string
@@ -52,7 +61,7 @@ export async function authorizeSecret(
 
 /** Updating a secret needs Write on it; creating one needs org-level Create. */
 export async function authorizeSecretSet(
-	ctx: CapabilityContext,
+	ctx: SecretAuthorizationContext,
 	input: {
 		name: string
 		scope: SecretScope

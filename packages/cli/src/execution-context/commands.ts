@@ -262,6 +262,20 @@ async function runCommand(
 			capabilities: localCapabilities(),
 			client: { name: 'kody-cli', version: input.clientVersion },
 		})
+		let wrapping: Awaited<ReturnType<typeof wrappingFor>>
+		try {
+			wrapping = await wrappingFor(registered.ecid)
+		} catch (error) {
+			// Best effort: never leave a server-side context with no local key.
+			const path = `/v1/execution-contexts/${encodeURIComponent(registered.ecid)}`
+			const token = await input.token()
+			await apiJson({ ...base, token, method: 'DELETE', path })
+				.then(() =>
+					apiJson({ ...base, token, method: 'POST', path: `${path}/delete` }),
+				)
+				.catch(() => {})
+			throw error
+		}
 		saveContext({
 			context: {
 				version: 1,
@@ -272,7 +286,7 @@ async function runCommand(
 				publicKeyJwk,
 			},
 			privateJwk: privateKeyJwk,
-			wrapping: await wrappingFor(registered.ecid),
+			wrapping,
 		})
 		const steps = (registered.nextSteps ?? [])
 			.map(
