@@ -37,6 +37,7 @@ import {
 	grantRefusal,
 	markQueuedAttemptExpired,
 	markQueuedAttemptRan,
+	withRunTiming,
 } from './routing.ts'
 import {
 	getExecutionContext,
@@ -1414,8 +1415,9 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 
 	async #onRunResult(ws: WebSocket, frame: EcpFramePayload) {
 		const runId = typeof frame.body.runId === 'string' ? frame.body.runId : ''
+		const receivedAt = Date.now()
 		await this.#send(ws, 'run.result.ack', { runId }, frame.seq)
-		await this.#applyRunResult(frame.body)
+		await this.#applyRunResult(frame.body, receivedAt)
 	}
 
 	/**
@@ -1439,9 +1441,13 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		const pending = Array.isArray(body.pendingResults)
 			? body.pendingResults
 			: []
+		const receivedAt = Date.now()
 		for (const result of pending) {
 			if (result && typeof result === 'object') {
-				await this.#applyRunResult(result as Record<string, unknown>)
+				await this.#applyRunResult(
+					result as Record<string, unknown>,
+					receivedAt,
+				)
 			}
 		}
 		for (const run of committed) {
@@ -1457,12 +1463,12 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 	}
 
-	async #applyRunResult(body: Record<string, unknown>) {
+	async #applyRunResult(body: Record<string, unknown>, receivedAt: number) {
 		const runId = typeof body.runId === 'string' ? body.runId : ''
 		const run = this.#run(runId)
 		if (!run || run.state !== 'committed') return
 		const lease = JSON.parse(run.lease_json) as ExecutionContextLease
-		const timing = runTiming(body.timing, run.started_at, Date.now())
+		const timing = runTiming(body.timing, run.started_at, receivedAt)
 		const result: ExecutionContextRunResult = {
 			isError: body.isError === true,
 			content: Array.isArray(body.content) ? body.content : [],
@@ -1533,6 +1539,12 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				}),
 			})
 			return
+		}
+		if (result.timing) {
+			handle.context.metadata = withRunTiming(
+				handle.context.metadata ?? {},
+				result.timing,
+			)
 		}
 		const structured = result.structuredContent
 		const failure = result.isError ? summarizeRunFailure(result) : null

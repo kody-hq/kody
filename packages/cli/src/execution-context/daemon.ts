@@ -217,8 +217,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 			)
 		}
 	}
-	const refreshFs = async () => {
-		const before = JSON.stringify(capabilities())
+	const refreshFs = async (before = JSON.stringify(capabilities())) => {
 		await applyFs()
 		const next = capabilities()
 		if (welcomed && JSON.stringify(next) !== before) {
@@ -445,8 +444,9 @@ export async function runDaemonConnection(input: DaemonInput) {
 			case 'grant.update': {
 				applyGrant(body.grant)
 				grantFs = grantFsOf(body.grant)
+				const before = JSON.stringify(capabilities())
 				const limitsChanged = applyLimits(body.grant)
-				await refreshFs()
+				await refreshFs(before)
 				await send('grant.ack', { grantVersion: body.grantVersion }, frame.seq)
 				if (limitsChanged) await send('status', status())
 				return

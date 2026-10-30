@@ -11,6 +11,7 @@ import {
 	markQueuedAttemptExpired,
 	markQueuedAttemptRan,
 	planTargets,
+	withRunTiming,
 } from './routing.ts'
 import { type ExecutionContextRow } from './store.ts'
 
@@ -299,6 +300,24 @@ test('a queued run the context took records its queued attempt as ran', () => {
 			attempts: [{ target: 'ec_1', name: 'laptop', outcome: 'ran' }],
 		},
 	})
+})
+
+test('a finished context run keeps its timing on the run record', () => {
+	const timing = {
+		queueMs: 1,
+		setupMs: 20,
+		executeMs: 3,
+		daemonMs: 24,
+		serverMs: 40,
+		transitMs: 16,
+	}
+	const metadata = {
+		executionContext: { id: 'ec_1', name: 'laptop', attempts: [] },
+	}
+	expect(withRunTiming(metadata, timing)).toEqual({
+		executionContext: { ...metadata.executionContext, timing },
+	})
+	expect(withRunTiming({}, timing)).toEqual({})
 })
 
 test('a cloud fallback says which contexts passed on the run and why', () => {

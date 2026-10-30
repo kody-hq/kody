@@ -795,6 +795,18 @@ export function markQueuedAttemptRan(
 	return markQueuedAttempt(metadata, { outcome: 'ran' })
 }
 
+/** Records a finished context run's timing on its run-record metadata. */
+export function withRunTiming(
+	metadata: Record<string, unknown>,
+	timing: ExecutionContextRunTiming,
+): Record<string, unknown> {
+	const context = metadata.executionContext as
+		| ExecutionContextRunMetadata
+		| undefined
+	if (!context) return metadata
+	return { ...metadata, executionContext: { ...context, timing } }
+}
+
 function markQueuedAttempt(
 	metadata: Record<string, unknown>,
 	update: Pick<RoutingAttempt, 'outcome' | 'reason'>,
