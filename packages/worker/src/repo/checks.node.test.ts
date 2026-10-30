@@ -274,6 +274,26 @@ test('runRepoChecks skips .kodyignore matches before checks and publish caps', a
 	).toBe(false)
 })
 
+test('runRepoChecks warns when .kodyignore hides declaration files tsconfig may need', async () => {
+	const files = packageFiles(manifest('ignored-declarations'), {
+		'.kodyignore': '**/__tests__/\n',
+		'tsconfig.json': '{"include":["src","types"]}',
+		'types/__tests__/runtime.d.ts': 'declare const example: string\n',
+		'src/__tests__/case.ts': 'export const value = 1\n',
+	})
+	const { result } = await runChecks(files)
+	const typecheck = findCheck(result, 'typecheck')
+
+	expect(typecheck?.message).toContain('`types/__tests__/runtime.d.ts`')
+	expect(typecheck?.message).toContain('`!types/__tests__/`')
+	expect(typecheck?.message).not.toContain('case.ts')
+
+	files.set('.kodyignore', '**/__tests__/\n!types/__tests__/\n')
+	const { result: kept } = await runChecks(files)
+	expect(findCheck(kept, 'typecheck')?.message).not.toContain('.kodyignore')
+	expect(findCheck(kept, 'lint')?.message).not.toContain('placeholder')
+})
+
 test('runRepoSourceWalkChecks counts .kodyignore matches for plain repos', async () => {
 	const files = new Map<string, string>([
 		['.kodyignore', 'fixtures/\n'],

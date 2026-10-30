@@ -9,13 +9,14 @@ import {
 } from '#universal/connection-trouble.ts'
 import {
 	persistIntegrationTokens,
-	resolveIntegrationRefreshToken,
+	resolveIntegrationRefreshTokenForLease,
 	resolveUserOauthAppClientSecret,
 } from './credentials.ts'
 import {
 	claimIntegrationTokenRefreshLease,
 	releaseIntegrationTokenRefreshLease,
 	writeIntegrationAuthFailure,
+	getIntegrationCredentialCiphertexts,
 } from './repo.ts'
 import { resolveDeviceClientAuthFlow } from './device-flow.ts'
 import {
@@ -419,6 +420,13 @@ async function refreshIntegrationTokensOrThrow(input: {
 	name: string
 	waitUntil?: (promise: Promise<unknown>) => void
 }): Promise<IntegrationTokenRefreshResult> {
+	// Read before the connection: a reconnect after this point changes the
+	// access token, which the lease-fenced refresh-token read then refuses.
+	const observedGrant = await getIntegrationCredentialCiphertexts({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		name: input.name,
+	})
 	const joined = await getJoinedIntegration({
 		env: input.env,
 		userId: input.userId,
@@ -496,6 +504,7 @@ async function refreshIntegrationTokensOrThrow(input: {
 			clientId,
 			reconnectPath,
 			leaseId: lease.leaseId,
+			observedAccessTokenEncrypted: observedGrant?.accessTokenEncrypted ?? null,
 		})
 	} finally {
 		await releaseIntegrationTokenRefreshLease({
@@ -577,6 +586,7 @@ async function exchangeRefreshTokenWithLease({
 	clientId,
 	reconnectPath,
 	leaseId,
+	observedAccessTokenEncrypted,
 }: {
 	input: {
 		env: Env
@@ -598,13 +608,26 @@ async function exchangeRefreshTokenWithLease({
 	clientId: string
 	reconnectPath: string
 	leaseId: string
+	observedAccessTokenEncrypted: string | null
 }): Promise<IntegrationTokenRefreshResult> {
 	const { app, connection } = joined
-	const refreshToken = await resolveIntegrationRefreshToken({
+	const leased = await resolveIntegrationRefreshTokenForLease({
 		env: input.env,
 		userId: input.userId,
 		name: connection.name,
+		leaseId,
+		accessTokenEncrypted: observedAccessTokenEncrypted,
 	})
+	if (!leased.held) {
+		// Reconnected since this refresh read the connection: the stored tokens
+		// are newer than anything refreshing the old grant would return.
+		return {
+			refreshed: true,
+			refreshedAt: leased.savedAt ?? new Date().toISOString(),
+			refreshTokenRotated: false,
+		}
+	}
+	const refreshToken = leased.refreshToken
 	if (!refreshToken) {
 		throw fail(
 			`Integration "${connection.name}" does not have a stored refresh token, but its sign-in expires. Reconnect at ${reconnectPath} so the provider issues a refresh token.`,

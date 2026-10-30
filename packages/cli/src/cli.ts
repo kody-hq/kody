@@ -97,9 +97,12 @@ export type CommandName =
 	| 'context'
 	| 'chain'
 	| 'daemon'
+	| 'connect'
+	| 'update'
 
 const orgScopedCommands = new Set<CommandName>([
 	'context',
+	'connect',
 	'chain',
 	'login',
 	'logout',
@@ -153,6 +156,13 @@ const cliFlagOptions = {
 	context: { type: 'string' },
 	mode: { type: 'string' },
 	'max-concurrent': { type: 'string' },
+	install: { type: 'boolean' },
+	'no-install': { type: 'boolean' },
+	'key-storage': { type: 'string' },
+	lines: { type: 'string' },
+	follow: { type: 'boolean', short: 'f' },
+	unregister: { type: 'boolean' },
+	'no-unregister': { type: 'boolean' },
 	fallback: { type: 'string' },
 	requires: { type: 'string' },
 	chain: { type: 'string' },
@@ -225,6 +235,8 @@ export function resolveCommand(argv: Array<string>): {
 		case 'context':
 		case 'chain':
 		case 'daemon':
+		case 'connect':
+		case 'update':
 			return { command: raw, positionals: positionals.slice(1), values }
 		default:
 			// Never embed full usage here: git credential helpers treat any
@@ -460,7 +472,9 @@ async function dispatch(
 			return 0
 		case 'context':
 		case 'chain':
-		case 'daemon': {
+		case 'daemon':
+		case 'connect':
+		case 'update': {
 			const apiUrl = apiUrlFrom({
 				apiUrl:
 					typeof parsed.values['api-url'] === 'string'
@@ -485,6 +499,24 @@ async function dispatch(
 					...(parsed.values['max-concurrent'] !== undefined
 						? { maxConcurrent: String(parsed.values['max-concurrent']) }
 						: {}),
+					...(parsed.values.yes === true ? { yes: true } : {}),
+					...(parsed.values['no-install'] === true
+						? { install: false }
+						: parsed.values.install === true
+							? { install: true }
+							: {}),
+					...(typeof parsed.values['key-storage'] === 'string'
+						? { keyStorage: parsed.values['key-storage'] }
+						: {}),
+					...(typeof parsed.values.lines === 'string'
+						? { lines: parsed.values.lines }
+						: {}),
+					...(parsed.values.follow === true ? { follow: true } : {}),
+					...(parsed.values['no-unregister'] === true
+						? { unregister: false }
+						: parsed.values.unregister === true
+							? { unregister: true }
+							: {}),
 					json,
 				},
 				apiUrl,

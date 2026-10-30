@@ -21,9 +21,19 @@ export class ExecutionContextApiError extends Error {
 		message: string,
 		readonly status: number,
 		readonly code: string | null,
+		readonly reason: string | null = null,
 	) {
 		super(message)
 	}
+}
+
+/** Kody will never accept this context's key again: stop, do not retry. */
+export function isPermanentContextRefusal(error: unknown) {
+	return (
+		error instanceof ExecutionContextApiError &&
+		(error.status === 401 || error.status === 403) &&
+		(error.reason === 'revoked' || error.reason === 'unknown_context')
+	)
 }
 
 /**
@@ -53,10 +63,13 @@ export function isExperimentOffError(error: unknown) {
 async function readError(response: Response) {
 	const text = await response.text()
 	let code: string | null = null
+	let reason: string | null = null
 	let message = text || `HTTP ${response.status}`
 	try {
 		const body = JSON.parse(text) as {
-			error?: { code?: string; message?: string } | string
+			error?:
+				| { code?: string; message?: string; details?: { reason?: unknown } }
+				| string
 			message?: string
 		}
 		if (typeof body.error === 'string') {
@@ -65,9 +78,12 @@ async function readError(response: Response) {
 		} else if (body.error) {
 			code = body.error.code ?? null
 			message = body.error.message ?? message
+			if (typeof body.error.details?.reason === 'string') {
+				reason = body.error.details.reason
+			}
 		}
 	} catch {}
-	return new ExecutionContextApiError(message, response.status, code)
+	return new ExecutionContextApiError(message, response.status, code, reason)
 }
 
 /** Fetch with the context's Ed25519 HTTP signature (no bearer token). */

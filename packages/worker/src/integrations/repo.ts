@@ -775,6 +775,45 @@ export async function getIntegrationCredentialCiphertexts(input: {
 	}
 }
 
+/**
+ * The refresh token a lease holder may send. It reads only while the lease is
+ * still held and the access token is the one the holder saw before claiming,
+ * so a reconnect in between never has its tokens sent or replaced.
+ */
+export async function getIntegrationRefreshTokenCiphertextForLease(input: {
+	db: D1Database
+	userId: string
+	name: string
+	leaseId: string
+	accessTokenEncrypted: string | null
+}): Promise<
+	| { held: true; refreshTokenEncrypted: string | null }
+	| { held: false; savedAt: string | null }
+> {
+	const row = await input.db
+		.prepare(
+			`SELECT refresh_token_encrypted
+			FROM user_integrations
+			WHERE user_id = ? AND name = ? AND token_refresh_lease_id = ?
+				AND access_token_encrypted IS ?${andLiveDeletedAtSql()}
+			LIMIT 1`,
+		)
+		.bind(input.userId, input.name, input.leaseId, input.accessTokenEncrypted)
+		.first<{ refresh_token_encrypted: string | null }>()
+	if (row)
+		return { held: true, refreshTokenEncrypted: row.refresh_token_encrypted }
+	const current = await input.db
+		.prepare(
+			`SELECT COALESCE(token_refreshed_at, updated_at) AS saved_at
+			FROM user_integrations
+			WHERE user_id = ? AND name = ?${andLiveDeletedAtSql()}
+			LIMIT 1`,
+		)
+		.bind(input.userId, input.name)
+		.first<{ saved_at: string | null }>()
+	return { held: false, savedAt: current?.saved_at ?? null }
+}
+
 export async function updateIntegrationCredentialCiphertexts(input: {
 	db: D1Database
 	userId: string
@@ -788,6 +827,15 @@ export async function updateIntegrationCredentialCiphertexts(input: {
 	const now = new Date().toISOString()
 	const leaseFence =
 		input.refreshLeaseId === undefined ? '' : ' AND token_refresh_lease_id = ?'
+	// A connect or manual token save replaces the grant, so it ends any
+	// in-flight refresh: that refresher's lease-fenced write must not put the
+	// old grant's tokens back over these.
+	const leaseRelease =
+		input.refreshLeaseId === undefined
+			? `,
+				token_refresh_lease_id = NULL,
+				token_refresh_lease_expires_at = NULL`
+			: ''
 	// Stamp connected_at on first successful token write (user-lane OAuth
 	// connect used to leave it null). COALESCE keeps the original connect
 	// time across refreshes and reconnect token rotates.
@@ -798,7 +846,7 @@ export async function updateIntegrationCredentialCiphertexts(input: {
 				refresh_token_encrypted = COALESCE(?, refresh_token_encrypted),
 				refresh_policy = ?,
 				connected_at = COALESCE(connected_at, ?),
-				updated_at = ?
+				updated_at = ?${leaseRelease}
 			WHERE user_id = ? AND name = ?${leaseFence}${andLiveDeletedAtSql()}`,
 		)
 		.bind(

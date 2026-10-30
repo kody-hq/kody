@@ -77,7 +77,12 @@ Usage:
   kody context revoke <name|ec id> | kody context delete <name|ec id> [--org <slug>] [--json]
   kody context policy [show] | allow <path> [--mode ro|rw] | remove <path> [--json]
   kody chain show | add <name> | remove <name> [--org <slug>] [--json]
+  kody connect --name <name> [--org <slug>] [--no-install] [--key-storage keyring|file] [--yes]
   kody daemon [--context <ec id>] [--max-concurrent <n>]
+  kody daemon install [--context <ec id>] [--max-concurrent <n>] [--key-storage keyring|file] [--yes]
+  kody daemon status [--context <ec id>] [--json] | logs [--lines <n>] [--follow] | restart
+  kody daemon uninstall [--context <ec id>] [--unregister | --no-unregister]
+  kody update
                [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
   kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]
   kody dev fetch <path> [--method <verb>] [--body <file>] [--target prod|mock] [--json] [--no-attach]
@@ -87,6 +92,14 @@ Usage:
   kody dev check [--target prod|mock] [--offline] [--debug] [--json]
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
+
+  kody connect registers this machine as an execution context and installs
+  \`kody daemon\` as a per-user background service (systemd --user on Linux,
+  a LaunchAgent on macOS) so it starts at boot and restarts after crashes.
+  \`kody daemon status\` names each problem with the command that fixes it;
+  re-running \`kody daemon install\` repairs the service. Windows is not
+  supported yet: keep \`kody daemon\` running in a terminal. \`kody update\`
+  installs the latest CLI and restarts services after runs in flight finish.
 
   kody context, chain, and daemon need execution contexts, an experiment.
   Turn it on at https://kody.codes/account/experiments (guide:

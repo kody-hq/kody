@@ -443,7 +443,110 @@ test('same-commit republish re-runs checks when stored checker version is stale'
 			publishedCommit: 'commit-old',
 		}),
 	)
-	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
+	// Finishes the live tip's finalize without re-recording its publisher.
+	expect(mockModule.updateEntitySource).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ publishedCommit: 'commit-old' }),
+	)
+	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalled()
+	expect(mockModule.recordPackageAppPublisher).not.toHaveBeenCalled()
+})
+
+test('storage failure after the pointer advances leaves the commit unsealed and a same-commit retry finishes it', async () => {
+	setupPublish()
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.storePublishedCredentialStamp.mockResolvedValue({
+		stamp: { version: 1, keys: [], depStamps: [], stampHash: 'hash' },
+		files: { 'package.json': JSON.stringify(manifest) },
+	})
+	mockModule.runRepoChecks.mockResolvedValue({
+		...passingChecks,
+		sourceFiles: { 'package.json': JSON.stringify(manifest) },
+	})
+	// The pointer write lands, then the isolate dies: projection fails and the
+	// revert cannot run, so published_commit stays on the new commit.
+	mockModule.updateEntitySource
+		.mockResolvedValueOnce(true)
+		.mockRejectedValueOnce(new Error('storage unavailable'))
+	mockModule.refreshSavedPackageProjection.mockRejectedValueOnce(
+		new Error('storage unavailable'),
+	)
+
+	await expect(
+		publish({
+			newCommit: 'commit-new',
+			files: { 'package.json': JSON.stringify(manifest) },
+		}),
+	).rejects.toThrow('storage unavailable')
+	expect(mockModule.updateEntitySource).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ publishedCommit: 'commit-new' }),
+	)
+	expect(mockModule.writePublishedPublishChecksVersion).not.toHaveBeenCalled()
+
+	vi.clearAllMocks()
+	setupPublish({ published_commit: 'commit-new' })
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.publishedPublishChecksAreCurrent.mockResolvedValue(false)
+	mockModule.storePublishedCredentialStamp.mockResolvedValue({
+		stamp: { version: 1, keys: [], depStamps: [], stampHash: 'hash' },
+		files: { 'package.json': JSON.stringify(manifest) },
+	})
+	mockModule.runRepoChecks.mockResolvedValue({
+		...passingChecks,
+		sourceFiles: { 'package.json': JSON.stringify(manifest) },
+	})
+	mockModule.updateEntitySource.mockResolvedValue(true)
+	mockModule.refreshSavedPackageProjection.mockResolvedValue(undefined)
+
+	await expect(
+		publish({
+			newCommit: 'commit-new',
+			files: { 'package.json': JSON.stringify(manifest) },
+		}),
+	).resolves.toMatchObject({
+		status: 'already_published',
+		published_commit: 'commit-new',
+		checks_rerun: true,
+	})
+	expect(mockModule.storePublishedCredentialStamp).toHaveBeenCalled()
+	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalled()
+	expect(mockModule.writePublishedPublishChecksVersion).toHaveBeenCalledWith(
+		expect.objectContaining({
+			sourceId: 'source-1',
+			publishedCommit: 'commit-new',
+		}),
+	)
+})
+
+test('finalize seals the checker version only after projection succeeds', async () => {
+	const callOrder: Array<string> = []
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.writePublishedSourceSnapshot.mockResolvedValue('snapshot-key')
+	mockModule.updateEntitySource.mockResolvedValue(true)
+	mockModule.storePublishedCredentialStamp.mockResolvedValue({
+		stamp: { version: 1, keys: [], depStamps: [], stampHash: 'hash' },
+		files: { 'package.json': '{}' },
+	})
+	mockModule.refreshSavedPackageProjection.mockImplementation(async () => {
+		callOrder.push('refreshSavedPackageProjection')
+	})
+	mockModule.writePublishedPublishChecksVersion.mockImplementation(async () => {
+		callOrder.push('writePublishedPublishChecksVersion')
+	})
+
+	await finalizePublishedEntitySource({
+		env: kvEnv,
+		source: source() as ReturnType<typeof source> & { entity_kind: 'package' },
+		publishedCommit: 'commit-new',
+		files: { 'package.json': '{}' },
+		baseUrl: 'https://kody.test',
+	})
+
+	expect(callOrder).toEqual([
+		'refreshSavedPackageProjection',
+		'writePublishedPublishChecksVersion',
+	])
 })
 
 test('same-commit republish with stale checker returns checks_failed when checks fail', async () => {

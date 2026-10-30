@@ -773,6 +773,10 @@
 			"sha256": "026cc10018f6e1ea63788f975d3ef4a4c5132d388c8ea2420e076326477165b6"
 		},
 		{
+			"filename": "0214-grants-expiry-and-profile-subject.sql",
+			"sha256": "418ac9f8e5352de6a754fece077b91f8d85b6abb04c3c028f1f5a2e3d2421c84"
+		},
+		{
 			"filename": "0215-desktop-browser-login.sql",
 			"sha256": "e78b3f061da49bd219bc3dfe4080e9abb18f33a44688577a2da893b5189820ae"
 		}

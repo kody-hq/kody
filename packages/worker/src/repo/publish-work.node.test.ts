@@ -167,6 +167,44 @@ test('every publish work step runs on its own fresh throwaway isolate', async ()
 	).toBeNull()
 })
 
+test('a compute-limit error lists the largest staged files runtime code does not import', async () => {
+	const fake = createFakeNamespace(async () => {
+		throw new Error(
+			"Durable Object's isolate exceeded its memory limit and was reset.",
+		)
+	}, 'credentials')
+	const runner = createIsolatedPublishWorkRunner({
+		REPO_SESSION: fake.namespace,
+		BUNDLE_ARTIFACTS_KV: createFakeKv(),
+	} as unknown as Env)!
+	const stagingKey = await runner.stage({
+		userId,
+		files: {
+			'package.json': JSON.stringify({
+				name: '@example/demo',
+				exports: { '.': './src/index.ts' },
+			}),
+			'src/index.ts': 'export default async () => null',
+			'scripts/generate.ts': 'x'.repeat(4096),
+		},
+	})
+	const error = await runner
+		.run({
+			op: 'store-credential-stamp',
+			stagingKey,
+			userId,
+			input: { source, publishedCommit: 'commit-2' },
+		})
+		.catch((caught: unknown) => caught as Error)
+	expect((error as Error).message).toBe(
+		publishComputeLimitMessage('credentials', [
+			{ path: 'scripts/generate.ts', bytes: 4096 },
+		]),
+	)
+	expect((error as Error).message).toContain('`.kodyignore`')
+	expect((error as Error).message).not.toContain('deterministic')
+})
+
 test('a step that still hits the CPU limit on its own fails with a compute-limit message naming the step', async () => {
 	const cpuReset = new Error(
 		'Durable Object exceeded its CPU time limit and was reset.',

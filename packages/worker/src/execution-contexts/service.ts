@@ -871,6 +871,7 @@ export async function loadSharing(
 	row: ExecutionContextRow,
 ) {
 	const db = caller.env.APP_DB
+	const now = new Date().toISOString()
 	const grants = await db
 		.prepare(
 			`SELECT g.id, g.subject_type, g.subject_id, g.preset, u.username,
@@ -883,9 +884,11 @@ export async function loadSharing(
 				AND m.org_id = g.org_id AND m.deleted_at IS NULL
 			 WHERE g.resource_type = 'execution_context' AND g.resource_id = ?
 			   AND g.org_id = ? AND g.deleted_at IS NULL
+			   AND (g.expires_at IS NULL OR g.expires_at > ?)
+			   AND g.subject_type IN ('user', 'team')
 			 ORDER BY g.created_at`,
 		)
-		.bind(row.id, caller.orgId)
+		.bind(row.id, caller.orgId, now)
 		.all<ShareRow>()
 	const attachments = await db
 		.prepare(

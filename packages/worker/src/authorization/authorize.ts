@@ -21,6 +21,7 @@ import {
 import { resolveConnectionProfileGrants } from '#worker/connection-profiles/repo.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
+	compiledAccessExpired,
 	compileAccessForRequest,
 	resourceGrantKey,
 	type CompiledAccess,
@@ -51,6 +52,8 @@ export type EffectivePermissions = {
 	credentialScopes: ReadonlySet<OrgPermission> | null
 	/** Null when no connection profile is bound to the credential. */
 	profileGrants: ReadonlyArray<ConnectionProfileGrant> | null
+	/** Earliest grant expiry the compile used; stale from then on. */
+	validUntil?: string | null
 }
 
 export type AuthorizationDenialCode =
@@ -127,6 +130,7 @@ function toEffective(
 			? new Set(request.credential.scopes)
 			: null,
 		profileGrants,
+		validUntil: compiled.validUntil,
 	}
 }
 
@@ -137,25 +141,40 @@ const effectivePermissionsByRequest = new WeakMap<
 
 /**
  * Compile what `request` may do in its org. Cached per request context, so a
- * request that checks many permissions loads its grants once.
+ * request that checks many permissions loads its grants once, until a grant
+ * the compile used expires.
  */
 export function computeEffectivePermissions(input: {
 	env: Env
 	request: RequestContext
 }): Promise<EffectivePermissions> {
-	let promise = effectivePermissionsByRequest.get(input.request)
-	if (!promise) {
-		promise = (async () => {
-			const compiled = await compileAccessForRequest({
-				db: input.env.APP_DB,
-				request: input.request,
-			})
-			const profileGrants = await loadProfileGrants(input.env, input.request)
-			return toEffective(compiled, input.request, profileGrants)
-		})()
-		effectivePermissionsByRequest.set(input.request, promise)
-		promise.catch(() => effectivePermissionsByRequest.delete(input.request))
-	}
+	const cached = effectivePermissionsByRequest.get(input.request)
+	if (!cached) return loadEffectivePermissions(input)
+	return cached.then((effective) =>
+		compiledAccessExpired({ validUntil: effective.validUntil ?? null })
+			? loadEffectivePermissions(input)
+			: effective,
+	)
+}
+
+function loadEffectivePermissions(input: {
+	env: Env
+	request: RequestContext
+}): Promise<EffectivePermissions> {
+	const promise = (async () => {
+		const compiled = await compileAccessForRequest({
+			db: input.env.APP_DB,
+			request: input.request,
+		})
+		const profileGrants = await loadProfileGrants(input.env, input.request)
+		return toEffective(compiled, input.request, profileGrants)
+	})()
+	effectivePermissionsByRequest.set(input.request, promise)
+	promise.catch(() => {
+		if (effectivePermissionsByRequest.get(input.request) === promise) {
+			effectivePermissionsByRequest.delete(input.request)
+		}
+	})
 	return promise
 }
 

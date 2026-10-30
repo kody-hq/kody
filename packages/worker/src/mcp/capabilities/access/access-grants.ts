@@ -96,6 +96,17 @@ async function resolveGrantSubject(
 	}
 }
 
+function readGrantExpiry(value: string | null | undefined) {
+	if (value == null) return value
+	const expiresAt = new Date(value)
+	if (expiresAt.getTime() <= Date.now()) {
+		throw new McpCallerError(
+			'expires_at must be in the future. Revoke the grant with accessRevoke to end it now.',
+		)
+	}
+	return expiresAt.toISOString()
+}
+
 export const accessGrantCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
@@ -168,11 +179,20 @@ export const accessGrantCapability = defineDomainCapability(
 				.array(z.string().min(1))
 				.optional()
 				.describe('Advanced grant. Do not combine with preset.'),
+			expires_at: z
+				.string()
+				.datetime({ offset: true })
+				.nullable()
+				.optional()
+				.describe(
+					"When the grant stops counting (ISO 8601, in the future). null never expires. Omit to keep an existing grant's expiry (a new grant never expires).",
+				),
 		}),
 		outputSchema: z.object({ grant: accessGrantSchema }),
 		async handler(args, ctx) {
 			try {
 				const permissions = readPermissionList(args.permissions)
+				const expiresAt = readGrantExpiry(args.expires_at)
 				requirePresetOrPermissions({
 					preset: args.preset,
 					permissions,
@@ -211,6 +231,7 @@ export const accessGrantCapability = defineDomainCapability(
 					preset: args.preset ?? null,
 					permissions: args.preset ? null : [...resolved],
 					createdByUserId: scoped.user.userId,
+					...(expiresAt === undefined ? {} : { expiresAt }),
 					audit: orgAuditWriterFromRequest(ctx.env, scoped.request),
 				})
 				const grant = await getGrantById({
@@ -293,7 +314,7 @@ export const accessListCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'member:read',
 		description:
-			'List live grants in the organization this request is bound to. Filter by resource or subject when you already know which one you want.',
+			'List live grants in the organization this request is bound to. Filter by resource or subject when you already know which one you want. A grant whose expires_at has passed is still listed (until it is rewritten or revoked) but grants no access.',
 		keywords: ['grant', 'list', 'access', 'who has access'],
 		readOnly: true,
 		idempotent: true,

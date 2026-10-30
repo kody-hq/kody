@@ -105,6 +105,10 @@ export const accessGrantSchema = z.object({
 	subject_id: z.string(),
 	preset: grantPresetSchema.nullable(),
 	permissions: z.array(z.string()),
+	expires_at: z
+		.string()
+		.nullable()
+		.describe('When the grant stops counting (ISO). Null never expires.'),
 })
 
 export const inviteSchema = z.object({
@@ -150,6 +154,7 @@ export function toAccessGrantPayload(grant: GrantView) {
 		subject_id: grant.subjectId,
 		preset,
 		permissions: grant.permissions,
+		expires_at: grant.expiresAt,
 	}
 }
 

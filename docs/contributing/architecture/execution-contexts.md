@@ -45,6 +45,39 @@ sequenceDiagram
   CLI-->>DO: run.result
 ```
 
+## Background service
+
+`kody daemon install` (or `kody connect`, which registers then installs) runs
+the daemon as a per-user service so it survives reboots and crashes. Code:
+`packages/cli/src/execution-context/service.ts` (unit/plist generation, status
+diagnostics) and `service-commands.ts` (install, status, logs, restart,
+uninstall, `kody update`).
+
+- Linux: a `systemd --user` unit `kody-daemon-<ecid>.service` with
+  `Restart=always`, `RestartPreventExitStatus=0`, a start limit, and
+  `WantedBy=default.target`. Install checks linger and prints
+  `sudo loginctl enable-linger <user>` instead of running it.
+- macOS: a LaunchAgent `codes.kody.daemon.<ecid>` loaded with
+  `launchctl bootstrap gui/<uid>`, `RunAtLoad`, `KeepAlive` on unsuccessful
+  exit, `ThrottleInterval`.
+- Windows is not supported; install says so.
+- Units hold only paths, the context id, `PATH`, and `KODY_DAEMON_SERVICE`. No
+  API token or passphrase. Install refuses root and refuses an npx, pnpm dlx,
+  bunx or temp-dir CLI (the path would vanish); it points at
+  `npm install -g @kodycodes/cli`.
+- Key unwrap without a prompt: a background service has no TTY, so a
+  passphrase-wrapped key cannot be used. Install offers to rewrap it with a file
+  key (`wrapping-key`, mode 600, next to `key.enc`). The machine key stays
+  Ed25519 and signs every request.
+- Revoke or delete stops it for good: a `revoked` frame or a 401/403 `revoked` /
+  `unknown_context` refusal makes `runDaemon` return instead of reconnecting.
+  The daemon writes `stopped.json`, disables its own service, and exits 0, which
+  neither manager restarts. Foreground and service share this path.
+- `daemon.json` records pid, CLI version, and manager; `kody daemon status`
+  reads it to flag a service still on an older CLI. SIGTERM drains in-flight
+  runs before exit, so `kody daemon restart` and `kody update` finish runs
+  first. Re-running install repairs the unit.
+
 ## Revoke, then delete
 
 - `executionContextRevoke` (`DELETE /v1/execution-contexts/{id}`,
