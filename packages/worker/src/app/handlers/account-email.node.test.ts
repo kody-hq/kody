@@ -291,6 +291,7 @@ vi.mock('#worker/email/repo.ts', () => ({
 	listEmailInboxAddressesForUser: (
 		...args: Parameters<typeof emailRepo.listEmailInboxAddressesForUser>
 	) => mockModule.listEmailInboxAddressesForUser(...args),
+	getEmailInboxById: async () => null,
 }))
 
 vi.mock('#worker/email/inbound-sender.ts', () => ({
@@ -762,7 +763,8 @@ test('accepted email writes do not depend on an available page read', async () =
 			(await post({ action: 'delete', message_id: 'msg-1' })).data,
 		).toEqual({ ok: true, messageId: 'msg-1' })
 		expect(read).not.toHaveBeenCalled()
-		expect(mockModule.getOwnerEmailMessageById).not.toHaveBeenCalled()
+		// Each write reads only its own message, to check that message's inbox.
+		expect(mockModule.getOwnerEmailMessageById).toHaveBeenCalledTimes(2)
 	} finally {
 		read.mockImplementation(original)
 	}

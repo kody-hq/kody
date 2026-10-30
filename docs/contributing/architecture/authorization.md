@@ -88,9 +88,13 @@ A surface check without a resource (capability `orgPermission`, Open API
 resource grant** in the org. A surface that both creates and updates declares a
 list (`packageSave`: `package:write` or `package:create`) and passes on any one;
 the handler then checks the one the call needs. A check with a resource requires
-that resource. Personal-org Owners hold every permission, so steps 2 to 4 never
-deny for them. Profiles and the signed-in step are the other denials that can
-fire.
+that resource. Email Delete and Classify/Archive (MCP `emailMessageDelete` /
+`emailMessageClassify` and the website inbox) load the message first and check
+`email:delete` / `email:write` on its own inbox (`authorizeEmailMessageChange`),
+so a Manage grant on one inbox cannot touch another; a message with no inbox
+needs the permission org-wide. Personal-org Owners hold every permission, so
+steps 2 to 4 never deny for them. Profiles and the signed-in step are the other
+denials that can fire.
 
 **Credential resolution** goes through one door,
 `resolveCredential({ orgId, actor, packageStamp, credential })`
