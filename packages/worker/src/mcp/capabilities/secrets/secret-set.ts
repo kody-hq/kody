@@ -62,7 +62,9 @@ const secretSetInputSchema = z
 			),
 		scope: z
 			.enum(secretScopeValues)
-			.describe('Storage scope that owns the secret.'),
+			.describe(
+				"Storage scope that owns the secret: 'user' (owner-level Key of this org), 'package' (bound to one package), or 'session'. A 'user' or 'package' Key reads scope 'org' in credentialList and credential(key).scope; 'personal' there means a personal credential granted to the org.",
+			),
 		...optInCredentialInputFields,
 	})
 	.superRefine((value, ctx) => {

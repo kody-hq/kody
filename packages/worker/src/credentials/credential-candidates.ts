@@ -59,6 +59,12 @@ export type UsableCredential = {
 	kind: PackageCredentialKind
 	provider: string | null
 	hosts: Array<string>
+	/**
+	 * Owner seen from the run org, surfaced as `client.scope`: `org` for every
+	 * row the run org owns (user- and package-scope Keys included), `personal`
+	 * for the actor's own personal credential granted to the run org. Not the
+	 * secret bucket storage scope (`user` | `package` | `session`).
+	 */
 	scope: 'org' | 'personal'
 	/** Set when the Key lives in a package-scope bucket bound to that package. */
 	packageId: string | null

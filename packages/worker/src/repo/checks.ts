@@ -627,6 +627,12 @@ declare module "kody:runtime" {
    */
   export type KodyCredentialClient = {
     readonly name: string;
+    /**
+     * Owner, seen from the run's org: \`org\` for anything stored in the run's
+     * org (including \`secretSet({ scope: 'user' })\` and package-scope Keys),
+     * \`personal\` for the caller's own personal credential granted to it.
+     * Not the \`secretList\` storage scope.
+     */
     readonly scope: "org" | "personal";
     readonly kind: "secret" | "oauth" | "url" | "login" | "mcp" | "signing";
     readonly hosts: ReadonlyArray<string>;
