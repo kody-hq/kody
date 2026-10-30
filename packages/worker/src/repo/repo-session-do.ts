@@ -3898,7 +3898,18 @@ class RepoSessionBase extends DurableObject<Env> {
 					'Run repoRunChecks on the current session state before publishing.',
 			}
 		}
-		if ((source.published_commit ?? '') !== sessionRow.base_commit) {
+		// An earlier publish of this session can die (Durable Object reset or
+		// CPU limit) after moving published_commit to the session HEAD but before
+		// the session row records it. That is not a moved base: retrying must
+		// finish the publish of the already-live commit.
+		const resumingPublishedHead =
+			source.published_commit != null &&
+			source.published_commit !== sessionRow.base_commit &&
+			source.published_commit === (await this.getHeadCommit())
+		if (
+			!resumingPublishedHead &&
+			(source.published_commit ?? '') !== sessionRow.base_commit
+		) {
 			return {
 				status: 'base_moved',
 				sessionId: input.sessionId,
@@ -4117,6 +4128,9 @@ class RepoSessionBase extends DurableObject<Env> {
 				actorUserId: input.requestedByUserId ?? undefined,
 				// Omitted: a platform rewrite of code a person already published.
 				publisherUnknown: input.requestedByUserId === null,
+				...(resumingPublishedHead && publishedCommit === source.published_commit
+					? { resumeInterruptedFinalize: true }
+					: {}),
 			})
 			if (replaceHistory) {
 				await this.deleteAdvertisedSessionBranches({
@@ -4135,7 +4149,9 @@ class RepoSessionBase extends DurableObject<Env> {
 				sessionId: sessionRow.id,
 				conversationId: sessionRow.conversation_id,
 				baseCommit: sessionRow.base_commit,
-				previousPublishedCommit: source.published_commit,
+				previousPublishedCommit: resumingPublishedHead
+					? sessionRow.base_commit
+					: source.published_commit,
 				checks: this.buildPublishGitNoteChecks(checkStatus),
 				scope: 'repo.publishSession.publish-git-note',
 			})
@@ -4311,6 +4327,65 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 	}
 
+	private async attachExternalPublishGitNote(note: {
+		source: EntitySourceRow
+		commit: string
+		sessionId: string
+		previousPublishedCommit: string | null
+		checks: KodyPublishGitNoteChecks | null
+	}) {
+		const { source } = note
+		try {
+			const sourceRepo = await resolveArtifactSourceRepo(
+				this.env,
+				source.repo_id,
+			)
+			const sourceWriteAccess = await ensureArtifactRepoRemote({
+				repo: sourceRepo,
+				scope: 'write',
+				pendingReconcile: buildPendingExternalReconcile(
+					this.env.APP_DB,
+					source,
+				),
+			})
+			// Fresh workspace: the clone lived in a throwaway isolate.
+			const noteWorkspace = createEphemeralGitWorkspace()
+			await attachPublishGitNoteBestEffort({
+				filesystem: noteWorkspace.filesystem,
+				dir: noteWorkspace.dir,
+				commitOid: note.commit,
+				remote: sourceWriteAccess.remote,
+				token: sourceWriteAccess.token,
+				remoteName: 'origin',
+				note: buildPublishGitNote({
+					publishedBy: 'external_push',
+					source,
+					commit: note.commit,
+					sessionId: note.sessionId,
+					previousPublishedCommit: note.previousPublishedCommit,
+					checks: note.checks,
+				}),
+				scope: 'repo.publishFromExternalRef.publish-git-note',
+			})
+		} catch (error) {
+			Sentry.captureException(error, {
+				tags: {
+					scope: 'repo.publishFromExternalRef.publish-git-note-setup',
+				},
+				extra: {
+					sourceId: source.id,
+					commit: note.commit,
+				},
+			})
+			console.warn('publish_git_note setup failed', {
+				scope: 'repo.publishFromExternalRef.publish-git-note-setup',
+				sourceId: source.id,
+				commit: note.commit,
+				error: getErrorMessage(error),
+			})
+		}
+	}
+
 	async publishFromExternalRef(input: {
 		sessionId: string
 		sourceId: string
@@ -4326,6 +4401,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		credentialNeedsApproved?: boolean
 		requestedByUserId?: string | null
 		deferBundleCheckToRebuild?: boolean
+		resumeFinalize?: boolean
 	}): Promise<RepoExternalPublishResult> {
 		const source = await getEntitySourceById(this.env.APP_DB, input.sourceId)
 		if (!source || source.user_id !== input.userId) {
@@ -4385,6 +4461,7 @@ class RepoSessionBase extends DurableObject<Env> {
 				...(input.deferBundleCheckToRebuild
 					? { deferBundleCheckToRebuild: true }
 					: {}),
+				...(input.resumeFinalize ? { resumeFinalize: true } : {}),
 			}).finally(() => this.clearCheckStep())
 			if (publishResult.status === 'already_published') {
 				// D1 stays a no-op (overlapping inline + durable escalation). The
@@ -4418,6 +4495,23 @@ class RepoSessionBase extends DurableObject<Env> {
 					})
 					throw error
 				}
+				// checks_rerun means this request finished the live tip's
+				// finalize, so it also owes the publish note.
+				if (publishResult.checks_rerun && publishResult.published_commit) {
+					await this.attachExternalPublishGitNote({
+						source,
+						commit: publishResult.published_commit,
+						sessionId: input.sessionId,
+						previousPublishedCommit: null,
+						checks: {
+							runId,
+							treeHash: null,
+							checkedAt: new Date().toISOString(),
+							ok: true,
+							results: [],
+						},
+					})
+				}
 				return attachPublishPhaseTimings(
 					{
 						...publishResult,
@@ -4426,65 +4520,23 @@ class RepoSessionBase extends DurableObject<Env> {
 					phaseTimings,
 				)
 			} else if (publishResult.status === 'published') {
-				try {
-					const sourceRepo = await resolveArtifactSourceRepo(
-						this.env,
-						source.repo_id,
-					)
-					const sourceWriteAccess = await ensureArtifactRepoRemote({
-						repo: sourceRepo,
-						scope: 'write',
-						pendingReconcile: buildPendingExternalReconcile(
-							this.env.APP_DB,
-							source,
-						),
-					})
-					// Fresh workspace: the clone lived in a throwaway isolate.
-					const noteWorkspace = createEphemeralGitWorkspace()
-					await attachPublishGitNoteBestEffort({
-						filesystem: noteWorkspace.filesystem,
-						dir: noteWorkspace.dir,
-						commitOid: input.newCommit,
-						remote: sourceWriteAccess.remote,
-						token: sourceWriteAccess.token,
-						remoteName: 'origin',
-						note: buildPublishGitNote({
-							publishedBy: 'external_push',
-							source,
-							commit: input.newCommit,
-							sessionId: input.sessionId,
-							previousPublishedCommit: publishResult.previous_commit,
-							checks: {
-								runId,
-								treeHash: null,
-								checkedAt: new Date().toISOString(),
-								ok: true,
-								results: publishResult.checks.map((entry) => ({
-									kind: entry.kind,
-									ok: entry.ok,
-									message: entry.message,
-								})),
-							},
-						}),
-						scope: 'repo.publishFromExternalRef.publish-git-note',
-					})
-				} catch (error) {
-					Sentry.captureException(error, {
-						tags: {
-							scope: 'repo.publishFromExternalRef.publish-git-note-setup',
-						},
-						extra: {
-							sourceId: source.id,
-							commit: input.newCommit,
-						},
-					})
-					console.warn('publish_git_note setup failed', {
-						scope: 'repo.publishFromExternalRef.publish-git-note-setup',
-						sourceId: source.id,
-						commit: input.newCommit,
-						error: getErrorMessage(error),
-					})
-				}
+				await this.attachExternalPublishGitNote({
+					source,
+					commit: input.newCommit,
+					sessionId: input.sessionId,
+					previousPublishedCommit: publishResult.previous_commit,
+					checks: {
+						runId,
+						treeHash: null,
+						checkedAt: new Date().toISOString(),
+						ok: true,
+						results: publishResult.checks.map((entry) => ({
+							kind: entry.kind,
+							ok: entry.ok,
+							message: entry.message,
+						})),
+					},
+				})
 			}
 			return attachPublishPhaseTimings(publishResult, phaseTimings)
 		} finally {

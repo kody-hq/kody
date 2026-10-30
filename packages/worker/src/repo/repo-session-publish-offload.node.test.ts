@@ -608,6 +608,54 @@ test('a publish step over the CPU limit names the compute limit, and the retry s
 	expectStagingCleared(kv)
 })
 
+test('a reset after published_commit moved leaves the publish unsealed, and the retry at base == head finishes it', async () => {
+	consoleWarn.mockImplementation(() => {})
+	setCommonSessionFixtures()
+	const files = largePackageFiles()
+	seedSessionWorkspace(files)
+	recordHeavyMocks()
+	const state = await checkedPublishState(files)
+	const { env, kv, isolateRuns } = createIsolateEnv({
+		failOnce: {
+			op: 'refresh-projection',
+			error: new Error('Durable Object reset because its code was updated.'),
+		},
+	})
+	// The pointer write is durable; the reset kills the revert with it.
+	const liveSource = await mockModule.getEntitySourceById()
+	mockModule.updateEntitySource.mockImplementation(async (_db, update) => {
+		if (update.publishedCommit === 'commit-base') throw new Error('reset')
+		mockModule.getEntitySourceById.mockResolvedValue({
+			...liveSource,
+			published_commit: update.publishedCommit,
+		})
+		return true
+	})
+	const sealKeys = () =>
+		[...kv.store.keys()].filter((key) => key.startsWith('publish-checks:'))
+
+	await expect(
+		repoSession(env, state).publishSession(session),
+	).rejects.toThrow()
+	expect(await mockModule.getEntitySourceById()).toMatchObject({
+		published_commit: 'commit-head',
+	})
+	expect(sealKeys()).toEqual([])
+
+	// Session base is still the old tip while the live tip is its HEAD: the
+	// retry must finish the publish rather than report base_moved or no-op.
+	isolateRuns.length = 0
+	await expect(
+		repoSession(env, state).publishSession(session),
+	).resolves.toMatchObject({ status: 'ok', publishedCommit: 'commit-head' })
+	expect(isolateRuns.map((run) => run.op)).toContain('refresh-projection')
+	expect(sealKeys()).toEqual([expect.stringContaining(':commit-head')])
+	expect(mockModule.updateRepoSession).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ status: 'published', baseCommit: 'commit-head' }),
+	)
+})
+
 test('repoRunChecks runs the publish checks on a throwaway isolate over the staged session tree', async () => {
 	setCommonSessionFixtures()
 	const files = largePackageFiles()
