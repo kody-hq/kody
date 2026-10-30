@@ -16,7 +16,7 @@ import {
 	createCredentialClientFixtures,
 	rejection,
 	resendKey,
-} from './credential-client.test-support.ts'
+} from '#worker/test-support/credential-client-fixtures.ts'
 
 // These cases cover fills the owner has opted in to; enforcement of the
 // opt-in itself is covered in fill-placement-enforcement.node.test.ts.

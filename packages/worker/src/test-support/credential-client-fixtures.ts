@@ -24,14 +24,14 @@ import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import {
 	normalizeCredentialCallMap,
 	type CredentialCallMapInput,
-} from './credential-call-map.ts'
+} from '#worker/credentials/credential-call-map.ts'
 import {
 	applyCredentialClient,
 	loadRunCredentialNeeds,
 	type CredentialClientContext,
-} from './credential-client.ts'
-import * as needsClosure from './credential-needs-closure.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+} from '#worker/credentials/credential-client.ts'
+import * as needsClosure from '#worker/credentials/credential-needs-closure.ts'
+import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import { insertPackageCapabilityApproval } from '#worker/package-capabilities/capability-approvals-repo.ts'
 
 export const now = '2026-10-12T00:00:00.000Z'
