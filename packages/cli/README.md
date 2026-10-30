@@ -61,14 +61,16 @@ kody execute --org acme …  # one-shot org override (also: KODY_ORG=acme)
 
 Or run via `npx @kodycodes/cli` without a global install.
 
-Each `kody login` adds an org (chosen in the browser, or via `--org`).
-Re-logging into an org that is already stored replaces only that org's
-credential. Org-scoped commands (`execute`, `search`, `whoami`, `api`, …) take
-`--org <slug>` or `KODY_ORG` (flag wins, then env, then the active org).
-`kody logout` removes the active org; `kody logout --org <slug>` removes one
-org. Git auth stays user-wide (`kody auth setup-git` once covers every repo
-across orgs). Existing single-org keychain credentials migrate silently into the
-multi-org store as the active org (no re-login).
+Each `kody login` adds an org (chosen in the browser, or via `--org`). If you do
+not have an account yet, create one on that page; login resumes the same
+authorization after signup and email verification. Re-logging into an org that
+is already stored replaces only that org's credential. Org-scoped commands
+(`execute`, `search`, `whoami`, `api`, …) take `--org <slug>` or `KODY_ORG`
+(flag wins, then env, then the active org). `kody logout` removes the active
+org; `kody logout --org <slug>` removes one org. Git auth stays user-wide
+(`kody auth setup-git` once covers every repo across orgs). Existing single-org
+keychain credentials migrate silently into the multi-org store as the active org
+(no re-login).
 
 ## Remote or headless machines
 

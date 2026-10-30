@@ -44,7 +44,7 @@ The pages below are the MCP-level field contracts those guides link into.
 - [Workflows](./workflows.md)
 - [Packages](./packages.md)
 - [Public packages](./community-packages.md) — share, browse, and fork published
-  packages on the same deployment; public catalogs live at `/@username`
+  packages on the same deployment; public catalogs live at `/@handle`
 - [Plain repos](./repos.md) — Artifacts-backed live-at-HEAD storage; promote
   with `repoPromoteToPackage` when you want runtime surfaces
 - [Repo-backed editing sessions](./repo-sessions.md)
