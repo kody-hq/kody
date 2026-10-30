@@ -93,8 +93,13 @@ export function OrgSettingsMemberCreation({
 						if (mutation.isPending || unchanged) return
 						const isCurrent = capture()
 						setMessage(null)
+						const changes: Partial<MemberCreation> = {}
+						for (const option of memberCreationOptions) {
+							if (draft[option.key] !== saved[option.key])
+								changes[option.key] = draft[option.key]
+						}
 						mutation.mutate(
-							{ orgSlug: data.org.slug, ...draft },
+							{ orgSlug: data.org.slug, ...changes },
 							{
 								onSuccess: () => {
 									if (isCurrent())

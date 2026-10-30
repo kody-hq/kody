@@ -23,7 +23,7 @@ they are granted. An outside collaborator holds catalog search (`search:read`)
 plus their grants. See [Share a package](/docs/package-sharing) for presets and
 grants.
 
-### Member permissions
+## Member permissions
 
 Like a code host's "members can create repositories" setting, an Owner chooses
 what every Member of a team org can create without a grant: **Organization
@@ -50,7 +50,7 @@ To let only some people or teams create, leave a setting off and use **Grants**,
 `permissions: ["package:create"]`, `["secret:create"]`, or
 `["integration:create"]`). Those grants still apply when a setting is off.
 
-### Org-wide read access
+## Org-wide read access
 
 To let a Member read everything of one kind without making them an Owner, an
 Owner grants read access on the organization: **Grants** page,
