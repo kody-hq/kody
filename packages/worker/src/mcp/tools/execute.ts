@@ -792,10 +792,14 @@ export async function runExecuteToolCall(input: {
 					...claimedRunHandle.context.metadata,
 					executionContext: routed.metadata,
 				}
-				await updateRunningRunRecordMetadata({
+				// Best-effort and never throws; routing must not wait on it. The
+				// running-row check keeps a late write off a finished run.
+				const metadataWrite = updateRunningRunRecordMetadata({
 					env,
 					handle: claimedRunHandle,
 				})
+				if (waitUntil) waitUntil(metadataWrite)
+				else void metadataWrite
 			}
 		}
 		const { ranOnContent, ranOnFields } = ranOnParts(
