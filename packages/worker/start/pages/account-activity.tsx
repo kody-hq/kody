@@ -77,7 +77,8 @@ export function AccountActivityPage({
 	const router = useRouter()
 	if (!query.data) return null
 	const first = query.data.pages[0]!.payload
-	if (!first) {
+	// Access can be revoked between pages; any denied page means no history.
+	if (!first || query.data.pages.some((page) => !page.payload)) {
 		return (
 			<AccountManagementShell layout="list" currentHref={currentHref}>
 				<AccountPageHeader
