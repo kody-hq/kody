@@ -118,7 +118,11 @@ export async function createWebsiteRepository(
 			{ name: input.name },
 		)
 	} catch (error) {
-		if (error instanceof AuthorizationError) return ownerRefused
+		if (error instanceof AuthorizationError)
+			return {
+				...ownerRefused,
+				error: `${ownerRefused.error} ${error.message}`,
+			}
 		if (isEntitlementLimitError(error) && error instanceof Error)
 			return { ok: false, error: error.message, field: null }
 		if (isMcpCallerError(error) && error instanceof Error)
