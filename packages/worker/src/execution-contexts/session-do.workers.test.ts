@@ -13,6 +13,9 @@ import {
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import testKeys from '@kody-internal/shared/execution-context-protocol/vectors/test-keys.json'
 import { consoleError } from '#worker/test-support/console-spies.ts'
+import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { beginRunRecord, getRunRecord } from '#worker/run-records/service.ts'
+import { type RunRecordHandle } from '#worker/run-records/types.ts'
 import {
 	ExecutionContextSessionV1,
 	type ExecutionContextLease,
@@ -555,6 +558,9 @@ test('history keeps a failure reason and error summary for failed, cancelled and
 	await commit('run_cancelled')
 	await stub.cancel({ runId: 'run_cancelled', reason: 'caller_cancelled' })
 	await commit('run_lost')
+	// With the daemon still connected a late alarm cancels; gone, it is lost.
+	ws.close()
+	await expect.poll(() => stub.getStatus()).toMatchObject({ online: false })
 	await runInDurableObject(stub, async (instance, state) => {
 		state.storage.sql.exec(
 			`UPDATE runs SET deadline = ? WHERE run_id = 'run_lost'`,
@@ -603,7 +609,6 @@ test('history keeps a failure reason and error summary for failed, cancelled and
 			orgId: 'org_test',
 		}),
 	).toBeNull()
-	ws.close()
 }, 60_000)
 
 test('a run that never started here is not returned as a started run', async () => {
@@ -628,6 +633,110 @@ test('a run that never started here is not returned as a started run', async () 
 		}),
 	).toBeNull()
 })
+
+test('a deadline stop is a cancel with cancelReason deadline and completes the main run record', async () => {
+	const ecid = 'ec_deadline'
+	const { stub, next, send } = await connect(ecid)
+	const userId = 'user_requester'
+	const pending: Array<Promise<unknown>> = []
+	const handleFor = () =>
+		beginRunRecord({
+			env,
+			userId: ownerIdFromStored(userId),
+			context: {
+				surface: 'execute',
+				name: null,
+				idempotencyKey: `key-${crypto.randomUUID()}`,
+				startedBy: {
+					userId,
+					username: 'requester',
+					client: 'cli',
+					label: 'example-token',
+				},
+			},
+			waitUntil: (promise) => {
+				pending.push(promise)
+			},
+		})
+	const commit = async (runId: string, handle: RunRecordHandle | null) => {
+		const dispatching = stub.dispatch({
+			request: runRequest(runId),
+			lease: lease(ecid, runId),
+			runRecord: handle,
+			position: 1,
+		})
+		const request = await next('run.request')
+		await send('run.accept', { runId }, { re: request.seq })
+		expect((await dispatching).outcome).toBe('committed')
+		await next('run.commit')
+	}
+
+	const local = handleFor()
+	await commit('run_local_deadline', local)
+	await send('run.result', {
+		runId: 'run_local_deadline',
+		isError: true,
+		content: [
+			{ type: 'text', text: 'Local execute was cancelled before it finished.' },
+		],
+		structuredContent: {
+			error: 'Local execute was cancelled before it finished.',
+		},
+		cancelReason: 'deadline',
+	})
+	await next('run.result.ack')
+
+	const server = handleFor()
+	await commit('run_server_deadline', server)
+	await runInDurableObject(stub, async (instance, state) => {
+		state.storage.sql.exec(
+			`UPDATE runs SET deadline = ? WHERE run_id = 'run_server_deadline'`,
+			Date.now() - 10_000,
+		)
+		await instance.alarm()
+	})
+	expect((await next('run.cancel')).body).toMatchObject({
+		runId: 'run_server_deadline',
+		reason: 'deadline',
+	})
+	await drainWaitUntil(pending)
+
+	const rows = new Map(
+		(await stub.listHistory({})).rows.map((row) => [row.runId, row]),
+	)
+	for (const runId of ['run_local_deadline', 'run_server_deadline']) {
+		expect(rows.get(runId)).toMatchObject({
+			outcome: 'cancelled',
+			cancelReason: 'deadline',
+			failureReason: 'deadline',
+			errorSummary: 'The run was cancelled (deadline).',
+		})
+	}
+	expect(
+		await stub.awaitResult({ runId: 'run_local_deadline', waitMs: 0 }),
+	).toEqual({ state: 'cancelled', reason: 'deadline' })
+
+	for (const handle of [local, server]) {
+		if (!handle) throw new Error('run record handle')
+		const record = await getRunRecord({
+			env,
+			userId: ownerIdFromStored(userId),
+			runId: handle.id,
+		})
+		expect(record?.run).toMatchObject({
+			id: handle.id,
+			status: 'error',
+			idempotencyKey: handle.context.idempotencyKey,
+			startedBy: { userId, username: 'requester', client: 'cli' },
+			errorMessage: 'The run was cancelled (deadline).',
+		})
+		expect(record?.run.finishedAt).toEqual(expect.any(String))
+	}
+})
+
+async function drainWaitUntil(pending: Array<Promise<unknown>>) {
+	while (pending.length > 0) await pending.shift()
+}
 
 test('a live session reports when it last heard from the daemon', async () => {
 	const before = Date.now()
@@ -730,3 +839,38 @@ test('an older daemon that omits heldRuns leaves committed runs to the alarm', a
 	).toEqual({ state: 'pending' })
 	second.ws.close()
 }, 60_000)
+
+test('an overdue run with no daemon connected is rechecked before it would be lost', async () => {
+	const ecid = 'ec_overdue_recheck'
+	const { stub, next, send, ws } = await connect(ecid)
+	const dispatching = stub.dispatch({
+		request: runRequest('run_overdue'),
+		lease: lease(ecid, 'run_overdue'),
+		runRecord: null,
+		position: 1,
+	})
+	const request = await next('run.request')
+	await send('run.accept', { runId: 'run_overdue' }, { re: request.seq })
+	expect((await dispatching).outcome).toBe('committed')
+	await next('run.commit')
+	ws.close()
+	await expect.poll(() => stub.getStatus()).toMatchObject({ online: false })
+
+	await runInDurableObject(stub, async (instance, state) => {
+		state.storage.sql.exec(
+			`UPDATE runs SET deadline = ? WHERE run_id = 'run_overdue'`,
+			Date.now() - 10_000,
+		)
+		const before = Date.now()
+		await instance.alarm()
+		const row = state.storage.sql
+			.exec<{
+				state: string
+			}>(`SELECT state FROM runs WHERE run_id = 'run_overdue'`)
+			.one()
+		expect(row.state).toBe('committed')
+		const alarm = await state.storage.getAlarm()
+		expect(alarm).not.toBeNull()
+		expect(alarm ?? 0).toBeLessThanOrEqual(before + 6_000)
+	})
+})

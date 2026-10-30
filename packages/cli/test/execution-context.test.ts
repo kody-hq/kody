@@ -605,6 +605,74 @@ test('a socket that answers pings stays connected until shutdown', async () => {
 	ServerSocket.answerPings = false
 })
 
+test('a run the local deadline stops reports cancelReason deadline, not a code error', async () => {
+	SilentSocket.instances = []
+	const runId = 'run_deadline'
+	const { signed, serverKeys } = await serverFrames([
+		welcome,
+		{
+			t: 'run.request',
+			body: {
+				runId,
+				deadline: Date.now() + 50,
+				acceptBy: Date.now() + 5_000,
+				requestedBy: { userId: 'user_requester', handle: 'requester' },
+				source: { kind: 'code', code: 'export default () => 1', sha256: 'x' },
+				params: {},
+				credentialPicks: {},
+				limits: { timeoutMs: 50, maxResultBytes: 102_400, memoryMb: 512 },
+				grantVersion: 1,
+				apiUrl: 'https://api.kody.test',
+			},
+		},
+		{ t: 'run.commit', body: { runId } },
+	])
+	ServerSocket.frames = signed
+	const abort = new AbortController()
+	const { input } = await daemonInput({
+		serverKeys,
+		signal: abort.signal,
+		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
+		execute: ({ signal }: { signal: AbortSignal }) =>
+			new Promise((resolve) =>
+				signal.addEventListener('abort', () =>
+					resolve({
+						isError: true,
+						content: [{ type: 'text', text: 'Local execute was cancelled.' }],
+					}),
+				),
+			),
+	})
+	const sentResult = () =>
+		(SilentSocket.instances[0] as unknown as ServerSocket | undefined)?.sent
+			.filter((data) => data !== ecpPingFrame)
+			.some(
+				(data) =>
+					(
+						decodeEnvelopePayload(
+							parseEnvelope(JSON.parse(data))!.p,
+						) as EcpFramePayload
+					).t === 'run.result',
+			)
+	const poll = setInterval(() => {
+		if (sentResult()) abort.abort()
+	}, 10)
+	const giveUp = setTimeout(() => abort.abort(), 10_000)
+	await runDaemonConnection(input)
+	clearInterval(poll)
+	clearTimeout(giveUp)
+	const result = (SilentSocket.instances[0] as unknown as ServerSocket).sent
+		.filter((data) => data !== ecpPingFrame)
+		.map((data) => {
+			const envelope = parseEnvelope(JSON.parse(data))
+			return decodeEnvelopePayload(envelope!.p) as EcpFramePayload
+		})
+		.find((frame) => frame.t === 'run.result')
+	assert.equal(result?.body.runId, runId)
+	assert.equal(result?.body.isError, true)
+	assert.equal(result?.body.cancelReason, 'deadline')
+})
+
 test('hello tells Kody which runs this daemon still holds after a reconnect', async () => {
 	SilentSocket.instances = []
 	const { signed, serverKeys } = await serverFrames([welcome])
