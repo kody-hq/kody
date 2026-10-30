@@ -196,9 +196,7 @@ function requirePersistableJobCallerContext(
 	if (!wire.user) {
 		throw new Error('Authenticated MCP user is required for job operations.')
 	}
-	// The wire form drops scopes; keep them so later runs stay narrowed.
-	const scopes = callerContext.request?.credential.scopes ?? null
-	return { ...wire, user: wire.user, ...(scopes ? { scopes: [...scopes] } : {}) }
+	return { ...wire, user: wire.user }
 }
 
 /**
@@ -1153,10 +1151,7 @@ export async function updateJob(input: {
 					jobId: updated.id,
 					jobName: updated.name,
 					enablerUserId: callerContext.user.userId,
-					enablerCredential: {
-						scopes: callerContext.scopes ?? null,
-						profileName: callerContext.connectionProfileName ?? null,
-					},
+					enablerCredential: input.callerContext.request?.credential ?? null,
 					now: nowIso,
 					onInserted: (enablement) =>
 						recordEnablementToggle({

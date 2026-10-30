@@ -389,3 +389,45 @@ test('OAuth and CLI bearer grants carry their client id as the credential id', (
 		),
 	).not.toHaveProperty('oauthClientId')
 })
+
+test('a triggered run never exceeds the credential that turned it on', () => {
+	const enablerId = personIdFromStored('c'.repeat(64))
+	const enablement = {
+		id: 'enablement-1',
+		enabler: { userId: enablerId, username: 'cy' },
+		role: 'member' as const,
+		scopes: ['package:execute' as const],
+		profileName: 'work',
+	}
+	for (const source of [
+		{ kind: 'schedule', jobId: 'job-1', enablement },
+		{ kind: 'webhook', sourceId: 'hook-1', enablement },
+		{ kind: 'platform-event', sourceId: 'event-1', enablement },
+		{
+			kind: 'inbound-email',
+			sourceId: 'inbox-1',
+			sender: { kind: 'inbox-owner' },
+			enablement,
+		},
+	] as const) {
+		const request = deriveRequestContext({ user, source })
+		expect(request.actor).toEqual({ userId: enablerId, username: 'cy' })
+		expect(request.credential).toMatchObject({
+			id: 'enablement-1',
+			scopes: ['package:execute'],
+			profileName: 'work',
+		})
+	}
+	const unnarrowed = deriveRequestContext({
+		user,
+		source: {
+			kind: 'schedule',
+			jobId: 'job-1',
+			enablement: { ...enablement, scopes: null, profileName: null },
+		},
+	})
+	expect(unnarrowed.credential).toMatchObject({
+		scopes: null,
+		profileName: null,
+	})
+})

@@ -41,7 +41,10 @@ async function ownerHasCronEnablementRow(input: {
 }
 
 /** What the person turning a trigger on could do with their credential. */
-export type EnablerCredential = Pick<RequestCredential, 'scopes' | 'profileName'>
+export type EnablerCredential = Pick<
+	RequestCredential,
+	'scopes' | 'profileName'
+>
 
 export type OwnerCronEnablementOutcome =
 	| 'inserted'
@@ -92,12 +95,12 @@ export async function ensureOwnerCronEnablementForJob(input: {
 	packageId?: string | null
 	enablerUserId?: PersonId | string | null
 	now?: string
-	/** Runs after a new enablement row is written (for the audit log). */
 	/**
 	 * The credential the enabler used, when they are the person acting now.
 	 * Scheduled runs never exceed it.
 	 */
 	enablerCredential?: EnablerCredential | null
+	/** Runs after a new enablement row is written (for the audit log). */
 	onInserted?: (enablement: EnablementRecord) => Promise<unknown>
 }): Promise<OwnerCronEnablementOutcome> {
 	const packageId = input.packageId ?? packageIdFromJobId(input.jobId) ?? null
