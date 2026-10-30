@@ -90,7 +90,7 @@ it('reuses loader data and preserves org and filters across cursor pages', async
 	expect(
 		observer
 			.getCurrentResult()
-			.data?.pages.map((page) => page.payload.runs[0]?.id),
+			.data?.pages.map((page) => page.payload?.runs[0]?.id),
 	).toEqual(['first', 'second'])
 	expect(observer.getCurrentResult().hasNextPage).toBe(false)
 	await loadActivityQuery(
