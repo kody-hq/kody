@@ -4,10 +4,12 @@ import {
 	ecpPingFrame,
 	ecpPongFrame,
 	ecpRunHeader,
+	decodeEnvelopePayload,
 	ecpSignatureHeader,
 	ed25519JwkThumbprint,
 	importEd25519PublicKey,
 	parseEcpSignatureHeader,
+	parseEnvelope,
 	signFrame,
 	verifyEcpHttpSignature,
 	type EcpFramePayload,
@@ -589,6 +591,58 @@ test('a socket that answers pings stays connected until shutdown', async () => {
 	assert.ok(lines.includes('Connected. Waiting for runs.'))
 	assert.ok(!lines.some((line) => /ping|Frame error/.test(line)))
 	ServerSocket.answerPings = false
+})
+
+test('a run the local deadline stops reports cancelReason deadline, not a code error', async () => {
+	SilentSocket.instances = []
+	const runId = 'run_deadline'
+	const { signed, serverKeys } = await serverFrames([
+		welcome,
+		{
+			t: 'run.request',
+			body: {
+				runId,
+				deadline: Date.now() + 50,
+				acceptBy: Date.now() + 5_000,
+				requestedBy: { userId: 'user_requester', handle: 'requester' },
+				source: { kind: 'code', code: 'export default () => 1', sha256: 'x' },
+				params: {},
+				credentialPicks: {},
+				limits: { timeoutMs: 50, maxResultBytes: 102_400, memoryMb: 512 },
+				grantVersion: 1,
+				apiUrl: 'https://api.kody.test',
+			},
+		},
+		{ t: 'run.commit', body: { runId } },
+	])
+	ServerSocket.frames = signed
+	const abort = new AbortController()
+	const { input } = await daemonInput({
+		serverKeys,
+		signal: abort.signal,
+		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
+		execute: ({ signal }: { signal: AbortSignal }) =>
+			new Promise((resolve) =>
+				signal.addEventListener('abort', () =>
+					resolve({
+						isError: true,
+						content: [{ type: 'text', text: 'Local execute was cancelled.' }],
+					}),
+				),
+			),
+	})
+	setTimeout(() => abort.abort(), 300)
+	await runDaemonConnection(input)
+	const result = (SilentSocket.instances[0] as unknown as ServerSocket).sent
+		.filter((data) => data !== ecpPingFrame)
+		.map((data) => {
+			const envelope = parseEnvelope(JSON.parse(data))
+			return decodeEnvelopePayload(envelope!.p) as EcpFramePayload
+		})
+		.find((frame) => frame.t === 'run.result')
+	assert.equal(result?.body.runId, runId)
+	assert.equal(result?.body.isError, true)
+	assert.equal(result?.body.cancelReason, 'deadline')
 })
 
 test('frames that arrive back to back are verified in order, not raced', async () => {

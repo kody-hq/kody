@@ -788,14 +788,25 @@ export async function runExecuteToolCall(input: {
 		)
 		if (routed?.kind === 'pending' || routed?.kind === 'queued') {
 			transportDetached = true
+			// The context finishes this row later; make sure the running row
+			// (idempotency key, started_by) is readable before the caller polls.
+			const started = claimedRunHandle
+				? await ensureRunRecordStarted({ env, handle: claimedRunHandle }).catch(
+						(error: unknown) => {
+							console.warn('execute-context-run-start-failed', error)
+							return false
+						},
+					)
+				: false
 			const timing = finishToolTiming(timingStart)
 			return buildTransportBudgetFollowResponse({
 				conversationId: resolvedConversationId,
 				timing,
 				runId: routed.runId,
-				idempotencyKey: runRowOwned
-					? (claimedRunHandle?.context.idempotencyKey?.trim() ?? '')
-					: '',
+				idempotencyKey:
+					runRowOwned || started
+						? (claimedRunHandle?.context.idempotencyKey?.trim() ?? '')
+						: '',
 				memories: null,
 			})
 		}

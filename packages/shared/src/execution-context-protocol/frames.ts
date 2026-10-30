@@ -25,6 +25,8 @@ export const ecpLivenessFreshMs = 45_000
 export const ecpDefaultAcceptWindowMs = 3_000
 /** The context discards an uncommitted request this long after `acceptBy`. */
 export const ecpCommitGraceMs = 2_000
+/** Kody cancels a committed run this long after its deadline (`deadline`). */
+export const ecpDeadlineCancelGraceMs = 5_000
 export const ecpLostAfterDeadlineMs = 30_000
 export const ecpMaxRunLogLines = 200
 export const ecpMaxConcurrentRunsCap = 8
