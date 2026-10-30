@@ -278,8 +278,12 @@ export async function runDaemonConnection(input: DaemonInput) {
 		abort: AbortController
 	}) => {
 		const startedAt = Date.now()
+		let deadlineHit = false
 		const timer = setTimeout(
-			() => run.abort.abort(),
+			() => {
+				deadlineHit = true
+				run.abort.abort()
+			},
 			Math.max(0, run.request.deadline - Date.now()),
 		)
 		let result: Awaited<ReturnType<ContextRunExecutor>>
@@ -320,6 +324,8 @@ export async function runDaemonConnection(input: DaemonInput) {
 		await send('run.result', {
 			runId: run.request.runId,
 			...result,
+			// The local deadline stopped it: a cancel, not a code error.
+			...(deadlineHit && result.isError ? { cancelReason: 'deadline' } : {}),
 			startedAt,
 			endedAt,
 			resultBytes,

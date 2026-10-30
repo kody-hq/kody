@@ -8,6 +8,7 @@ import {
 	ecpHttpNonceWindowMs,
 	ecpHttpSignaturePrefix,
 	ecpLivenessFreshMs,
+	ecpDeadlineCancelGraceMs,
 	ecpLostAfterDeadlineMs,
 	ecpMaxConcurrentRunsCap,
 	ecpMaxRunLogLines,
@@ -1091,7 +1092,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			attempt,
 		)
 		await this.#send(live.ws, 'run.commit', { runId: lease.runId })
-		await this.#ensureAlarm(input.request.deadline + ecpLostAfterDeadlineMs)
+		await this.#ensureAlarm(input.request.deadline + ecpDeadlineCancelGraceMs)
 		return { outcome: 'committed' }
 	}
 
@@ -1492,6 +1493,16 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			} satisfies ExecutionContextRunResult)
 		}
 		const finalResult = JSON.parse(resultJson) as ExecutionContextRunResult
+		if (finalResult.isError && body.cancelReason === 'deadline') {
+			const ended = this.#finishRun(runId, 'cancelled', {
+				resultJson,
+				cancelReason: 'deadline',
+				failureReason: 'deadline',
+				errorSummary: cancelledSummary('deadline'),
+			})
+			if (ended) await this.#finishRunRecord(run, { cancelled: 'deadline' })
+			return
+		}
 		const finished = this.#finishRun(
 			runId,
 			finalResult.isError ? 'failed' : 'succeeded',
@@ -1510,9 +1521,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		if (!run.run_record_json) return
 		const handle = JSON.parse(run.run_record_json) as RunRecordHandle
 		if ('lost' in result) {
-			await finishRunRecord({
-				env: this.env,
-				handle,
+			await this.#writeRunRecord(handle, {
 				status: 'error',
 				error: Object.assign(new Error(lostSummary), {
 					name: 'ExecutionContextLost',
@@ -1521,9 +1530,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			return
 		}
 		if ('cancelled' in result) {
-			await finishRunRecord({
-				env: this.env,
-				handle,
+			await this.#writeRunRecord(handle, {
 				status: 'error',
 				error: Object.assign(new Error(cancelledSummary(result.cancelled)), {
 					name: 'ExecutionContextRunCancelled',
@@ -1533,9 +1540,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 		const structured = result.structuredContent
 		const failure = result.isError ? summarizeRunFailure(result) : null
-		await finishRunRecord({
-			env: this.env,
-			handle,
+		await this.#writeRunRecord(handle, {
 			status: failure ? 'error' : 'success',
 			...(failure
 				? {
@@ -1545,6 +1550,20 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 					}
 				: { result: structured.result }),
 		})
+	}
+
+	/** Completes the caller's main run record; a missed write is logged. */
+	async #writeRunRecord(
+		handle: RunRecordHandle,
+		input: Omit<Parameters<typeof finishRunRecord>[0], 'env' | 'handle'>,
+	) {
+		const wrote = await finishRunRecord({ env: this.env, handle, ...input })
+		if (!wrote) {
+			console.warn('execution-context-run-record-finish-missed', {
+				runId: handle.id,
+				status: input.status,
+			})
+		}
 	}
 
 	/** Wait up to `waitMs` for a committed run's terminal state. */
@@ -1592,8 +1611,15 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 
 	/** End the lease now, so the next hop fails even if the kill is slow. */
 	async cancel(input: { runId: string; reason: EcpCancelReason }) {
+		const { ended, finishRecord } = await this.#cancelRun(input)
+		await finishRecord()
+		return { cancelled: ended }
+	}
+
+	/** Ends the run and tells the daemon; the run record is left to the caller. */
+	async #cancelRun(input: { runId: string; reason: EcpCancelReason }) {
 		const run = this.#run(input.runId)
-		if (!run) return { cancelled: false }
+		if (!run) return { ended: false, finishRecord: async () => {} }
 		const ended = this.#finishRun(input.runId, 'cancelled', {
 			cancelReason: input.reason,
 			failureReason: input.reason,
@@ -1601,8 +1627,12 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		})
 		const ws = this.#socket()
 		if (ws) await this.#send(ws, 'run.cancel', input)
-		if (ended) await this.#finishRunRecord(run, { cancelled: input.reason })
-		return { cancelled: ended }
+		return {
+			ended,
+			finishRecord: async () => {
+				if (ended) await this.#finishRunRecord(run, { cancelled: input.reason })
+			},
+		}
 	}
 
 	/**
@@ -1949,6 +1979,27 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				now,
 			)
 			.toArray()
+		const overdue = this.ctx.storage.sql
+			.exec<{ run_id: string }>(
+				`SELECT run_id FROM runs WHERE state = 'committed' AND deadline + ? <= ?`,
+				ecpDeadlineCancelGraceMs,
+				now,
+			)
+			.toArray()
+		if (this.#liveSocket()) {
+			// The daemon is still connected but missed its own deadline stop.
+			// A late alarm still cancels; only runs with no live daemon are lost.
+			// Frames go out in order; record writes don't hold up the next cancel.
+			const records: Array<Promise<void>> = []
+			for (const { run_id } of overdue) {
+				const { finishRecord } = await this.#cancelRun({
+					runId: run_id,
+					reason: 'deadline',
+				})
+				records.push(finishRecord())
+			}
+			await Promise.all(records)
+		}
 		for (const run of stale) {
 			if (
 				this.#finishRun(run.run_id, 'lost', {
@@ -1980,9 +2031,16 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			)
 			.one().deadline
 		if (next !== null) {
-			await this.#ensureAlarm(
-				Math.max(now + 1000, next + ecpLostAfterDeadlineMs),
-			)
+			const cancelAt = next + ecpDeadlineCancelGraceMs
+			// An overdue run waiting on a reconnect is rechecked before it is lost.
+			const recheckAt =
+				cancelAt > now
+					? cancelAt
+					: Math.min(
+							now + ecpDeadlineCancelGraceMs,
+							next + ecpLostAfterDeadlineMs,
+						)
+			await this.#ensureAlarm(Math.max(now + 1000, recheckAt))
 		}
 	}
 }
