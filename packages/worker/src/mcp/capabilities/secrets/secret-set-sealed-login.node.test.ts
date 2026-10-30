@@ -1,6 +1,7 @@
 /**
- * secretSet `sealed_token` (ADR 0068, 2026-10-28): a sealed token from this
- * run is saved as a Key the host opened, against a fully migrated APP_DB.
+ * secretSet `sealed_token` with `login_exchange` (ADR 0090): a sealed refresh
+ * token from this run is saved as a login credential the host opened, against
+ * a fully migrated APP_DB.
  */
 import { DatabaseSync } from 'node:sqlite'
 import {
@@ -8,13 +9,7 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
-import { effectiveFillPlacement } from '#worker/credentials/fill-placement-enforcement.ts'
-import { readCredentialFillPlacement } from '#worker/credentials/fill-placement.ts'
-import { readFillPlacementOptIn } from '#worker/credentials/fill-placement-opt-ins.ts'
-import {
-	sealToken,
-	sealTokenResponse,
-} from '#worker/credentials/sealed-token.ts'
+import { sealTokenResponse } from '#worker/credentials/sealed-token.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -23,7 +18,6 @@ import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { decryptSecretValue, userSecretContext } from '#mcp/secrets/crypto.ts'
-import { secretSetManyCapability } from './secret-set-many.ts'
 import { secretSetCapability } from './secret-set.ts'
 
 const now = '2026-10-28T00:00:00.000Z'
@@ -203,7 +197,9 @@ test('the exchange must go to a save host and send the sealed token as a login f
 				url: 'https://other.example.com/token',
 			},
 		}),
-	).rejects.toThrow()
+	).rejects.toThrow(
+		"The login exchange url's host must be one of the credential's hosts.",
+	)
 	await expect(
 		t.set({
 			name: 'token-demo',
@@ -214,6 +210,19 @@ test('the exchange must go to a save host and send the sealed token as a login f
 			},
 		}),
 	).rejects.toThrow('login_exchange.body must send the sealed refresh token')
+	await expect(
+		t.set({
+			name: 'token-demo',
+			sealed_token: await t.exchange(),
+			login_exchange: {
+				...loginExchange,
+				body: {
+					...loginExchange.body,
+					client_secret: '{client_secret}',
+				},
+			},
+		}),
+	).rejects.toThrow('no other login field')
 	expect(await t.entry('token-demo')).toBeNull()
 })
 
@@ -262,7 +271,7 @@ test('another run, package code, and explicit hosts or kind are still refused', 
 			},
 			t.ctx('run:2'),
 		),
-	).rejects.toThrow()
+	).rejects.toThrow('This sealed token belongs to another run.')
 	await expect(
 		t.set(
 			{
@@ -280,6 +289,8 @@ test('another run, package code, and explicit hosts or kind are still refused', 
 			login_exchange: loginExchange,
 			hosts: ['api.example.com'],
 		}),
-	).rejects.toThrow()
+	).rejects.toThrow(
+		'sealed_token sets the value, hosts, and placement from the sealed token',
+	)
 	expect(await t.entry('token-demo')).toBeNull()
 })

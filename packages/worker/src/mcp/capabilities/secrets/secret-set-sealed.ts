@@ -216,13 +216,14 @@ async function saveSealedRefreshTokenLogin(
 	}
 	assertLoginExchangeOnHosts({ exchangeUrl: loginExchange.url, hosts })
 	const field = loginExchange.refreshToken?.field ?? 'refresh_token'
-	if (
-		!Object.values(loginExchange.body).some((template) =>
-			template.includes(`{${field}}`),
-		)
-	) {
+	const sentFields = new Set(
+		Object.values(loginExchange.body).flatMap((template) =>
+			Array.from(template.matchAll(/\{([A-Za-z0-9_.-]+)\}/g), (m) => m[1]),
+		),
+	)
+	if (!sentFields.has(field) || sentFields.size !== 1) {
 		throw new McpCallerError(
-			`login_exchange.body must send the sealed refresh token as {${field}}.`,
+			`login_exchange.body must send the sealed refresh token as {${field}} and no other login field; the saved login holds only that field.`,
 		)
 	}
 	const inject = existing?.inject ?? defaultCredentialInject
