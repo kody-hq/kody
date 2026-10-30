@@ -76,7 +76,7 @@ Usage:
   kody context register --name <name> [--org <slug>] | kody context list [--json]
   kody context policy [show] | allow <path> [--mode ro|rw] | remove <path> [--json]
   kody chain show | add <name> | remove <name> [--org <slug>] [--json]
-  kody daemon [--context <ec id>]
+  kody daemon [--context <ec id>] [--max-concurrent <n>]
                [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
   kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]
   kody dev fetch <path> [--method <verb>] [--body <file>] [--target prod|mock] [--json] [--no-attach]

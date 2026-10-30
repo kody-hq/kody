@@ -176,6 +176,20 @@ export type EcpRunResultBody = {
 	resultBytes: number
 	sha256?: string
 	enforced?: { memory?: 'cgroup' | 'advisory'; cpu?: string }
+	timing?: EcpRunTiming
+}
+
+/** Where a run's time went on the daemon, in ms on the daemon's clock. */
+export type EcpRunTiming = {
+	/** run.commit received until the run started. */
+	queueMs: number
+	/** Start until the module was ready (package graph + workerd start). */
+	setupMs: number
+	packageGraphMs?: number
+	packageGraphCached?: boolean
+	executeMs: number
+	/** run.commit received until the result was sent. */
+	daemonMs: number
 }
 
 export type EcpFramePayload = {

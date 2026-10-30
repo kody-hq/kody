@@ -44,6 +44,7 @@ import {
 	parseGrant,
 } from './store.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
+import { runTiming, type ExecutionContextRunTiming } from './run-timing.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
 import { type RunRecordHandle } from '#worker/run-records/types.ts'
 
@@ -102,6 +103,7 @@ export type ExecutionContextRunResult = {
 	isError: boolean
 	content: Array<unknown>
 	structuredContent: Record<string, unknown>
+	timing?: ExecutionContextRunTiming
 }
 
 export type RunHistoryOutcome =
@@ -1459,6 +1461,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		const run = this.#run(runId)
 		if (!run || run.state !== 'committed') return
 		const lease = JSON.parse(run.lease_json) as ExecutionContextLease
+		const timing = runTiming(body.timing, run.started_at, Date.now())
 		const result: ExecutionContextRunResult = {
 			isError: body.isError === true,
 			content: Array.isArray(body.content) ? body.content : [],
@@ -1466,6 +1469,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				body.structuredContent && typeof body.structuredContent === 'object'
 					? (body.structuredContent as Record<string, unknown>)
 					: {},
+			...(timing ? { timing } : {}),
 		}
 		let resultJson = JSON.stringify(result)
 		const resultBytes = new TextEncoder().encode(resultJson).byteLength

@@ -113,6 +113,19 @@ sequenceDiagram
   (`heldRuns`) and finished results (`pendingResults`) in `hello`; Kody ends the
   rest as `lost` at once. A started run is never re-run. Daemons that omit
   `heldRuns` keep the deadline timer.
+- A daemon runs up to `--max-concurrent` runs at once (or
+  `KODY_CONTEXT_MAX_CONCURRENT`; default 2, max 8), capped by the grant's
+  `limits.maxConcurrent`. It advertises that number in `capabilities` and in
+  every `status` frame, and Kody only dispatches while a slot is free, so
+  routing and chain skipping see `busy` only when every slot is taken. Each run
+  still gets its own workerd process and temp dir; nothing is shared between
+  runs except the daemon's package-graph cache (bounded LRU, 32 entries, 60s,
+  keyed by requester, org, conversation and module source).
+- `run.result` carries `timing` on the daemon's clock (`queueMs`, `setupMs`,
+  `packageGraphMs`, `packageGraphCached`, `executeMs`, `daemonMs`). Kody adds
+  `serverMs` (commit to result on its clock) and `transitMs`
+  (`serverMs - daemonMs`: dispatch plus return) and returns it as
+  `structuredContent.ranOn.timing` on `execute`.
 - Context runs are recorded in run records with `metadata.executionContext`
   (`runList` filter `execution_context_id`) and do not count toward hosted
   execute quota.

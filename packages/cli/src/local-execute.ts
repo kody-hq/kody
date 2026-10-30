@@ -70,6 +70,7 @@ import {
 import { redact } from './redact.js'
 import { type ToolCallResult } from './tool-result.js'
 import { ensureWorkerdBinary } from './workerd-binary.js'
+import { type PackageGraphCacheSlot } from './execution-context/package-graph-cache.js'
 import { type LocalWorkerTracker } from './execution-context/worker-tracker.js'
 
 export {
@@ -78,8 +79,20 @@ export {
 	localPackageGraphPlatformIssueUrl,
 } from './local-package-graph.js'
 
+export type LocalExecuteTiming = {
+	/** Package-graph fetch (0 when served from the daemon's cache). */
+	packageGraphMs: number
+	packageGraphCached: boolean
+	/** From the start of the run until the module was ready in workerd. */
+	setupMs: number
+	executeMs: number
+}
+
 export type LocalExecuteInput = {
 	code: string
+	/** Daemon-scoped package-graph cache slot for this module and requester. */
+	packageGraphCache?: PackageGraphCacheSlot
+	onTiming?: (timing: LocalExecuteTiming) => void
 	/**
 	 * `--file` path when that file supplied `code`.
 	 * Bundled (relative + npm imports; `kody:*` external) before `main.js` is
@@ -198,6 +211,7 @@ export async function runLocalExecute(
 	assertLocalExecuteNodeEngine()
 	assertTokenSafeApiUrl(input.apiUrl)
 	const setupStartedAt = new Date()
+	const setupStartedMs = performance.now()
 	const cancelledDuringSetup = () =>
 		buildLocalExecuteResult({
 			sandbox: { error: cancelledError },
@@ -249,18 +263,24 @@ export async function runLocalExecute(
 			: localExecutePackageGraphResolveStatus,
 	)
 	if (input.signal?.aborted) return cancelledDuringSetup()
-	const packageGraph = await untilAborted(
-		resolveLocalPackageGraph({
-			...client,
-			code,
-			conversationId: input.conversationId,
-			...(input.depResolve ? { depResolve: input.depResolve } : {}),
-			...(input.packageRoot ? { packageRoot: input.packageRoot } : {}),
-			onStatus: input.onStatus,
-		}),
-		input.signal,
-	)
+	const graphStartedMs = performance.now()
+	const cachedGraph = input.packageGraphCache?.get()
+	const packageGraph =
+		cachedGraph ??
+		(await untilAborted(
+			resolveLocalPackageGraph({
+				...client,
+				code,
+				conversationId: input.conversationId,
+				...(input.depResolve ? { depResolve: input.depResolve } : {}),
+				...(input.packageRoot ? { packageRoot: input.packageRoot } : {}),
+				onStatus: input.onStatus,
+			}),
+			input.signal,
+		))
 	if (packageGraph === setupCancelled) return cancelledDuringSetup()
+	if (!cachedGraph) input.packageGraphCache?.set(packageGraph)
+	const packageGraphMs = performance.now() - graphStartedMs
 
 	const workerdPath =
 		input.workerdPath ??
@@ -426,6 +446,7 @@ export async function runLocalExecute(
 			})
 		}
 		let response: { status: number; body: string }
+		const executeStartedMs = performance.now()
 		try {
 			response = await postToWorkerd({
 				port: started.port,
@@ -445,6 +466,12 @@ export async function runLocalExecute(
 				`Local execute run failed (${reason}).${workerd.stderr()}`,
 			)
 		}
+		input.onTiming?.({
+			packageGraphMs: Math.round(packageGraphMs),
+			packageGraphCached: cachedGraph !== undefined,
+			setupMs: Math.round(executeStartedMs - setupStartedMs),
+			executeMs: Math.round(performance.now() - executeStartedMs),
+		})
 		if (response.status !== 200) {
 			throw new Error(
 				`Local execute runtime returned HTTP ${response.status}.${workerd.stderr()}`,
