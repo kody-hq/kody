@@ -193,7 +193,7 @@ export const executionContextOptInCapability = defineDomainCapability(domain, {
 	contextRuns: 'deny',
 	orgPermission: 'execution_context:execute',
 	description:
-		'Opt into an execution context shared with you so your runs may execute on it. Read the returned notice: the operator can see the code, inputs, logs and results of your runs. Opting in does not add it to your chain. To turn the execution contexts experiment on for your account, use experimentSet instead.',
+		'Join an execution context someone shared with you (to turn the execution contexts experiment on for your account, use experimentSet instead). Read the returned notice: the operator can see the code, inputs, logs and results of your runs. Opting in does not add it to your chain.',
 	keywords: ['execution context', 'opt in', 'join'],
 	readOnly: false,
 	idempotent: true,
