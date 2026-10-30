@@ -322,7 +322,7 @@ test('revoking a context releases its name while live names stay unique', () => 
 })
 
 test('stored grants lose their credential mode and keep everything else', () => {
-	const migration = '0211-execution-context-grant-credentials-removed.sql'
+	const migration = '0213-execution-context-grant-credentials-removed.sql'
 	const sqlite = databaseBefore(migration)
 	const insert = sqlite.prepare(
 		`INSERT INTO execution_contexts (id, org_id, operator_user_id, all_members, name,

@@ -72,7 +72,7 @@ run in Kody cloud as possible; the machine adds only its filesystem and LAN
 access. This supersedes the `none` / `list` / `requester` grant setting in the
 two amendments above.
 
-- Context grants no longer carry credentials. Migration `0211` drops
+- Context grants no longer carry credentials. Migration `0213` drops
   `grant_json.credentials` from every stored grant, so nobody has anything to
   do.
 - The operator's own runs on their context use credentials exactly as in Kody
