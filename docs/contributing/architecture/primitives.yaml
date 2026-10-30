@@ -68,6 +68,7 @@ primitives:
       - packages/desktop/
     docs:
       - packages/desktop/README.md
+    adrs: []
 
   - id: mcp-server
     group: surfaces
