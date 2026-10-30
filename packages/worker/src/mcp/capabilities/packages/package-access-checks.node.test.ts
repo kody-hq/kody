@@ -19,6 +19,7 @@ import {
 	addTeamMember,
 	upsertGrant,
 } from '#worker/orgs/access-writes.ts'
+import { updateOrgMemberCreation } from '#worker/orgs/member-creation.ts'
 import { insertSavedPackage } from '#worker/package-registry/repo.ts'
 import { insertEntitySource } from '#worker/repo/entity-sources.ts'
 import { buildPackageStorageId } from '#worker/storage-ids.ts'
@@ -360,7 +361,13 @@ for (const [label, arrange] of [
  * `maintainers`, whose org grant holds `package:create` when `canCreate`, and
  * who has a `use` grant (read, no write) on alpha.
  */
-async function maintainerInRocketCo({ canCreate }: { canCreate: boolean }) {
+async function maintainerInRocketCo({
+	canCreate,
+	membersCanCreatePackages = false,
+}: {
+	canCreate: boolean
+	membersCanCreatePackages?: boolean
+}) {
 	const { db, env, kentId, memberId } = await setup()
 	const audit = createTestOrgAuditWriter({ actorUserId: kentId })
 	const teamOrg = await createOrg({
@@ -424,6 +431,14 @@ async function maintainerInRocketCo({ canCreate }: { canCreate: boolean }) {
 		createdByUserId: kentId,
 		audit,
 	})
+	if (membersCanCreatePackages) {
+		const updated = await updateOrgMemberCreation(db, {
+			orgId: teamOrgId,
+			packages: true,
+			audit,
+		})
+		if (!updated.ok) throw new Error(updated.error)
+	}
 	stubWriter.create.mockReset()
 	stubWriter.create.mockImplementation(async (input) => {
 		await insertPackage(db, {
@@ -473,6 +488,37 @@ test('a member without package:create is refused and no package is created', asy
 	expect(error).toBeInstanceOf(AuthorizationError)
 	expect(error).toMatchObject({ permission: 'package:create' })
 	expect(stubWriter.create).not.toHaveBeenCalled()
+})
+
+test('"Members can create packages and apps" lets a member with no grant create (git remote create: CLI first publish and repo push)', async () => {
+	const { ctx } = await maintainerInRocketCo({
+		canCreate: false,
+		membersCanCreatePackages: true,
+	})
+
+	await expect(
+		getGitRemoteCapability.handler(
+			{ name: '@rocket-co/fresh', create: true, scope: 'write' },
+			ctx,
+		),
+	).resolves.toMatchObject({ created: true, scope: 'write' })
+	expect(stubWriter.create).toHaveBeenCalledTimes(1)
+})
+
+test('with the setting off, the refusal tells the member an Owner controls it', async () => {
+	const { ctx } = await maintainerInRocketCo({ canCreate: false })
+
+	const error = await rejection(
+		getGitRemoteCapability.handler(
+			{ name: '@rocket-co/fresh', create: true, scope: 'write' },
+			ctx,
+		),
+	)
+	expect(error).toBeInstanceOf(Error)
+	expect((error as Error).message).toContain(
+		'Members can create packages and apps',
+	)
+	expect((error as Error).message).toContain('Grants page')
 })
 
 test('org package:create does not grant write on an existing package', async () => {

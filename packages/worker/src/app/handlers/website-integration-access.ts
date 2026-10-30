@@ -17,6 +17,7 @@ import {
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { PermissionDeniedError } from '#universal/permission-denied.ts'
 import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import { type MemberCreationPermission } from '#worker/authorization/member-creation-permissions.ts'
 
 type WebsiteUser = NonNullable<
 	Awaited<ReturnType<typeof readAuthenticatedAppUser>>
@@ -106,7 +107,15 @@ export async function requireWebsiteOauthAppConnectAccess(input: {
 				}),
 				name: connectionName,
 			})
-			if (!existing) return
+			if (!existing) {
+				await requireWebsiteCreatePermission({
+					env: input.env,
+					user: input.user,
+					permission: 'integration:create',
+					action: 'add connections',
+				})
+				return
+			}
 			await requireWebsiteIntegrationPermission({
 				env: input.env,
 				user: input.user,
@@ -123,4 +132,31 @@ export async function requireWebsiteOauthAppConnectAccess(input: {
 		permission: 'integration:write',
 		action: 'add or change OAuth apps',
 	})
+}
+
+/**
+ * Website twin of the MCP create checks: a new team credential needs
+ * `secret:create` or `integration:create`, which Members hold unless an Owner
+ * turned "Members can create credentials" off. Personal-org owners always pass.
+ */
+export async function requireWebsiteCreatePermission(input: {
+	env: Env
+	user: WebsiteUser
+	permission: MemberCreationPermission
+	/** Verb phrase for the denial, e.g. "add secrets". */
+	action: string
+}) {
+	const request = input.user.request
+	try {
+		await authorize({ env: input.env, request }, input.permission)
+	} catch (error) {
+		if (!(error instanceof AuthorizationError)) throw error
+		const org = request?.org.slug
+			? `the ${request.org.slug} organization`
+			: 'this organization'
+		throw new PermissionDeniedError(
+			`You can't ${input.action} in ${org}. ${error.message}`,
+			{ permission: input.permission, cause: error },
+		)
+	}
 }

@@ -43,6 +43,9 @@ export const grantOrganizationReadAccessSchema = z.object({
 	permissions: z.array(z.string()).max(20),
 })
 
+export const grantOrganizationCreateAccessSchema =
+	grantOrganizationReadAccessSchema
+
 export const revokeOrganizationMemberInviteSchema = z.object({
 	inviteId: z.string().trim().min(1),
 })

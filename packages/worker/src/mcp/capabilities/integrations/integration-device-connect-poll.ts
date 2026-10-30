@@ -6,6 +6,8 @@ import {
 	requireMcpUser,
 } from '#mcp/capabilities/meta/require-user.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import { authorizeIntegrationConnect } from './authorize-integration.ts'
+import { canonicalIntegrationName } from './integration-shared.ts'
 import { pollIntegrationDeviceConnect } from '#worker/integrations/device-connect.ts'
 
 const inputSchema = z.object({
@@ -55,7 +57,7 @@ export const integrationDeviceConnectPollCapability = defineDomainCapability(
 	{
 		name: 'integrationDeviceConnectPoll',
 		contextRuns: 'deny',
-		orgPermission: 'integration:write',
+		orgPermission: ['integration:write', 'integration:create'],
 		description:
 			'Poll an in-flight RFC 8628 device authorization started with integrationDeviceConnectStart. Returns authorization_pending or slow_down until the user approves, then approved with the integration name (credentials are persisted server-side; token values never appear). access_denied and expired_token are terminal failures. Respect the returned interval before polling again.',
 		keywords: [
@@ -79,6 +81,11 @@ export const integrationDeviceConnectPollCapability = defineDomainCapability(
 				request,
 				mcpUser: user,
 				sessionId: args.sessionId,
+				authorizePersist: (session) =>
+					authorizeIntegrationConnect(
+						ctx,
+						canonicalIntegrationName(session.provider),
+					),
 			})
 			if (!polled.ok) {
 				return {

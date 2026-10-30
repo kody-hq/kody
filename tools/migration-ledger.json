@@ -759,6 +759,10 @@
 		{
 			"filename": "0209-agent-registrations.sql",
 			"sha256": "0713cbe4e214d27fa90062dadda1c18ee0aeb6e030d24a94179f4e7d1431fb4c"
+		},
+		{
+			"filename": "0211-org-member-creation.sql",
+			"sha256": "191710d9f0786fdee465d000fb63e0680903ebb88217871d884afc3ed4e7b52e"
 		}
 	]
 }

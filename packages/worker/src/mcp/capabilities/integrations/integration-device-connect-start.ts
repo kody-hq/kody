@@ -6,9 +6,13 @@ import {
 	requireMcpUser,
 } from '#mcp/capabilities/meta/require-user.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import { authorizeIntegrationConnect } from './authorize-integration.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { startIntegrationDeviceConnect } from '#worker/integrations/device-connect.ts'
-import { tokenExchangeStyleValues } from './integration-shared.ts'
+import {
+	canonicalIntegrationName,
+	tokenExchangeStyleValues,
+} from './integration-shared.ts'
 
 const inputSchema = z.object({
 	provider: z
@@ -61,7 +65,7 @@ export const integrationDeviceConnectStartCapability = defineDomainCapability(
 	{
 		name: 'integrationDeviceConnectStart',
 		contextRuns: 'deny',
-		orgPermission: 'integration:write',
+		orgPermission: ['integration:write', 'integration:create'],
 		description:
 			'Start RFC 8628 OAuth device authorization for an integration. Returns a user_code and verification URI for the signed-in user to approve at the provider. The provider device_code and any client secret stay server-side and never appear in the output. Poll with integrationDeviceConnectPoll until approved or failed. Prefer /connect/oauth?flow=device for interactive browser flows; use this capability when an agent must drive device connect without a browser redirect.',
 		keywords: [
@@ -81,6 +85,10 @@ export const integrationDeviceConnectStartCapability = defineDomainCapability(
 		async handler(args, ctx: CapabilityContext) {
 			const user = requireMcpUser(ctx.callerContext)
 			const request = requireMcpRequest(ctx.callerContext)
+			await authorizeIntegrationConnect(
+				ctx,
+				canonicalIntegrationName(args.provider),
+			)
 			const started = await startIntegrationDeviceConnect({
 				env: ctx.env,
 				request,

@@ -2,6 +2,7 @@ import { buildMcpServerAuthorizeUrl } from '#worker/mcp-client/authorize-consent
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import { requireAuthenticatedPageUser } from '#app/page-auth.ts'
+import { requireWebsiteCreatePermission } from '#app/handlers/website-integration-access.ts'
 import {
 	mcpOAuthReturnCookie,
 	readMcpOAuthReturnCookie,
@@ -207,6 +208,12 @@ async function handleAddAction(input: {
 	bearerToken?: string
 	request: Request
 }) {
+	await requireWebsiteCreatePermission({
+		env: input.env,
+		user: input.user,
+		permission: 'integration:create',
+		action: 'add MCP servers',
+	})
 	const oauth = resolveMcpServerOAuthClientUrls({
 		env: input.env,
 		requestUrl: input.request.url,

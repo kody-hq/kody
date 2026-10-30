@@ -117,6 +117,7 @@ import {
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
+	requireWebsiteCreatePermission,
 	requireWebsiteIntegrationPermission,
 	requireWebsiteOauthAppConnectAccess,
 } from '#app/handlers/website-integration-access.ts'
@@ -1738,6 +1739,15 @@ export async function saveAccountSecret(input: {
 			},
 			409,
 		)
+	}
+
+	if (!currentSecret) {
+		await requireWebsiteCreatePermission({
+			env: input.env,
+			user: input.user,
+			permission: 'secret:create',
+			action: 'add secrets',
+		})
 	}
 
 	const samePlacement =

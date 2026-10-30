@@ -39,6 +39,10 @@ import {
 	orgWideReadPermissions,
 } from '@kody-internal/shared/grant-presets.ts'
 import {
+	isOrgCreatePermission,
+	orgCreateAccessOptions,
+} from '#universal/org-create-access.ts'
+import {
 	isOrgPermission,
 	type OrgPermission,
 } from '@kody-internal/shared/org-permissions.ts'
@@ -205,12 +209,17 @@ async function listOrgWideReadSubjects(
 	grants: ReadonlyArray<ListedOrgGrant>,
 ): Promise<Array<OrgWideReadSubjectView>> {
 	const readsBySubject = new Map<string, Array<string>>()
+	const createsBySubject = new Map<string, Array<string>>()
 	for (const grant of grants) {
 		if (grant.resourceType !== 'org' || grant.resourceId !== orgId) continue
 		const key = subjectKey({ type: grant.subjectType, id: grant.subjectId })
 		readsBySubject.set(key, [
 			...(readsBySubject.get(key) ?? []),
 			...grant.permissions.filter(isOrgWideReadPermission),
+		])
+		createsBySubject.set(key, [
+			...(createsBySubject.get(key) ?? []),
+			...grant.permissions.filter(isOrgCreatePermission),
 		])
 	}
 	const [members, teams] = await Promise.all([
@@ -226,6 +235,7 @@ async function listOrgWideReadSubjects(
 			kind: 'user',
 			label: memberLabel(member),
 			reads: readsBySubject.get(key) ?? [],
+			creates: createsBySubject.get(key) ?? [],
 		})
 	}
 	for (const team of teams) {
@@ -235,6 +245,7 @@ async function listOrgWideReadSubjects(
 			kind: 'team',
 			label: `${team.name} (@${team.slug})`,
 			reads: readsBySubject.get(key) ?? [],
+			creates: createsBySubject.get(key) ?? [],
 		})
 	}
 	return subjects
@@ -270,25 +281,70 @@ async function resolveOrgWideReadSubject(
 	return null
 }
 
+type OrganizationAccessKind = 'read' | 'create'
+
+const organizationAccessKinds = {
+	read: {
+		allows: isOrgWideReadPermission,
+		onlyError: `Only read access can be granted here: ${orgWideReadPermissions.join(', ')}.`,
+		personalError:
+			'A personal organization has no members to grant org-wide read access to.',
+		emptyError: 'Pick at least one kind of read access.',
+	},
+	create: {
+		allows: isOrgCreatePermission,
+		onlyError: `Only create access can be granted here: ${orgCreateAccessOptions.map((option) => option.permission).join(', ')}.`,
+		personalError:
+			'A personal organization has no members to grant create access to.',
+		emptyError: 'Pick at least one kind of create access.',
+	},
+} satisfies Record<
+	OrganizationAccessKind,
+	{
+		allows: (permission: unknown) => boolean
+		onlyError: string
+		personalError: string
+		emptyError: string
+	}
+>
+
 /**
  * Set which read-only resource permissions a member or team holds on the
  * organization. Other permissions on that subject's organization grant are
  * kept as they are; nothing here can add a write.
  */
-export async function grantOrganizationReadAccess({
-	request,
-	env,
-	user,
-	orgSlug,
-	...fields
-}: {
+export async function grantOrganizationReadAccess(
+	input: OrganizationAccessInput,
+) {
+	return setOrganizationAccess(input, 'read')
+}
+
+/**
+ * Set which create permissions (`package:create`, `secret:create`,
+ * `integration:create`) a member or team holds on the organization, on top of
+ * what the org's member settings give every Member. Other permissions on that
+ * subject's organization grant are kept as they are.
+ */
+export async function grantOrganizationCreateAccess(
+	input: OrganizationAccessInput,
+) {
+	return setOrganizationAccess(input, 'create')
+}
+
+type OrganizationAccessInput = {
 	request: Request
 	env: Env
 	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 	subject?: unknown
 	permissions?: unknown
 	orgSlug?: string
-}) {
+}
+
+async function setOrganizationAccess(
+	{ request, env, user, orgSlug, ...fields }: OrganizationAccessInput,
+	kind: OrganizationAccessKind,
+) {
+	const config = organizationAccessKinds[kind]
 	const access = await resolveOrgManagementAccess({
 		request,
 		orgSlug,
@@ -303,25 +359,18 @@ export async function grantOrganizationReadAccess({
 		return operationResult(
 			{
 				ok: false,
-				error:
-					'A personal organization has no members to grant org-wide read access to.',
+				error: config.personalError,
 			},
 			400,
 		)
 	}
 	const requested = Array.isArray(fields.permissions) ? fields.permissions : []
-	const reads: Array<OrgPermission> = []
+	const chosen: Array<OrgPermission> = []
 	for (const permission of requested) {
-		if (!isOrgWideReadPermission(permission)) {
-			return operationResult(
-				{
-					ok: false,
-					error: `Only read access can be granted here: ${orgWideReadPermissions.join(', ')}.`,
-				},
-				400,
-			)
+		if (!isOrgPermission(permission) || !config.allows(permission)) {
+			return operationResult({ ok: false, error: config.onlyError }, 400)
 		}
-		if (!reads.includes(permission)) reads.push(permission)
+		if (!chosen.includes(permission)) chosen.push(permission)
 	}
 	const subject = await resolveOrgWideReadSubject(
 		env.APP_DB,
@@ -350,19 +399,16 @@ export async function grantOrganizationReadAccess({
 		.flatMap((grant) => grant.permissions)
 		.filter(
 			(permission): permission is OrgPermission =>
-				isOrgPermission(permission) && !isOrgWideReadPermission(permission),
+				isOrgPermission(permission) && !config.allows(permission),
 		)
-	const permissions = [...new Set([...kept, ...reads])]
+	const permissions = [...new Set([...kept, ...chosen])]
 	if (permissions.length === 0 && existing.length === 0) {
-		return operationResult(
-			{ ok: false, error: 'Pick at least one kind of read access.' },
-			400,
-		)
+		return operationResult({ ok: false, error: config.emptyError }, 400)
 	}
 	try {
 		await authorizeGrantTarget(ctx, 'org', access.org.id)
 		if (permissions.length === 0) {
-			// Unchecking the last read clears a grant that held only reads.
+			// Unchecking the last box clears a grant that held only these.
 			for (const grant of existing) {
 				await softDeleteGrant({
 					db: env.APP_DB,
@@ -371,7 +417,7 @@ export async function grantOrganizationReadAccess({
 					audit: orgAuditWriterFromRequest(env, user.request),
 				})
 			}
-			return operationResult({ ok: true as const, reads })
+			return operationResult({ ok: true as const, permissions: chosen })
 		}
 		const resolved = await resolveAuthorizedGrantPermissions(ctx, {
 			family: 'org',
@@ -398,5 +444,5 @@ export async function grantOrganizationReadAccess({
 		}
 		throw error
 	}
-	return operationResult({ ok: true as const, reads })
+	return operationResult({ ok: true as const, permissions: chosen })
 }

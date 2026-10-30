@@ -378,9 +378,15 @@ test('a member without package:create cannot create a saved package', async () =
 		},
 	})
 	stubCompile(member)
-	await expect(
-		authorizePackageCreate({ env, request: member }),
-	).rejects.toMatchObject({ permission: 'package:create' })
+	const error = await authorizePackageCreate({ env, request: member }).catch(
+		(caught: unknown) => caught,
+	)
+	expect(error).toMatchObject({ permission: 'package:create' })
+	// The denial says who controls it and where.
+	expect((error as Error).message).toContain(
+		'Members can create packages and apps',
+	)
+	expect((error as Error).message).toContain('Grants page')
 })
 
 test('a surface permission list passes when any one permission is held', async () => {
