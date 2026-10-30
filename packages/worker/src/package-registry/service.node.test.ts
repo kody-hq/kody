@@ -385,6 +385,7 @@ test('refreshSavedPackageProjection syncs the job manager only when package jobs
 		sourceId: 'source-1',
 		manifest,
 		actorUserId: undefined,
+		actorCredential: null,
 	})
 	expect(mockModule.buildPublishedPackageArtifacts).toHaveBeenCalledWith({
 		env,
@@ -523,6 +524,7 @@ test('refreshSavedPackageProjection continues best-effort cleanup when dependent
 		sourceId: 'source-1',
 		manifest,
 		actorUserId: undefined,
+		actorCredential: null,
 	})
 	expect(mockModule.syncJobManagerAlarm).not.toHaveBeenCalled()
 	// The swallowed skills-index failure is still logged for operators.
