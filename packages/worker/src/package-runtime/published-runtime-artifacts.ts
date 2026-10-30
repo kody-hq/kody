@@ -64,6 +64,12 @@ export type BundleArtifactDependency = {
 	 * recorded direct imports only.
 	 */
 	transitive?: true
+	/**
+	 * The dependency's own capability declaration at `publishedCommit`,
+	 * recorded at bundle time. The app's effective capabilities include it
+	 * (ADR 0089). Absent on artifacts persisted before the field existed.
+	 */
+	capabilities?: Array<string>
 }
 
 export function isDirectBundleDependency(

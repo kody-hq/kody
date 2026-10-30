@@ -2,6 +2,7 @@ import {
 	isUnrepairablePreBindingArtifact,
 	publishedArtifactNeedsPackageBindingRebuild,
 } from './pre-binding-artifact-repair.ts'
+import { effectivePackageAppCapabilities } from './package-app-effective-capabilities.ts'
 import { type PublishedBundleArtifact } from './published-runtime-artifacts.ts'
 import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
@@ -3913,7 +3914,10 @@ async function buildPackageAppWorkerOptionsUncached(
 			gatewayProps,
 			visitTicket: null,
 			visitAudience,
-			declaredCapabilities: [...(manifest.kody.app?.capabilities ?? [])],
+			declaredCapabilities: effectivePackageAppCapabilities({
+				manifest,
+				dependencies: bundled.dependencies,
+			}),
 			appPackage: { name: manifest.name, version: manifest.version ?? null },
 			dependencyPackageNames: collectDependencyPackageNames({
 				dependencies: bundled.dependencies,

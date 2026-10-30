@@ -17,6 +17,7 @@ import {
 	scanPackageAppImportClosure,
 } from '#worker/package-codemods/package-app-capability-closure.ts'
 import { type AuthoredPackageJson } from '#worker/package-registry/types.ts'
+import { declaredCapabilitiesOf } from '#worker/package-runtime/package-app-effective-capabilities.ts'
 
 type CapabilityDeclarationFinding =
 	| { kind: 'undeclared'; path: string; names: Array<string> }
@@ -35,10 +36,7 @@ export function declaredPackageCapabilities(
 ) {
 	// Package-app authority checks only `kody.app.capabilities`, so an app's
 	// own calls count as declared only there.
-	const app = manifest.kody.app
-	return new Set(
-		app ? (app.capabilities ?? []) : (manifest.kody.capabilities ?? []),
-	)
+	return new Set(declaredCapabilitiesOf(manifest))
 }
 
 export function findCapabilityDeclarationGaps(input: {
