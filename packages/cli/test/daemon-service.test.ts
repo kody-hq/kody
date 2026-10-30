@@ -548,3 +548,14 @@ test('a drained daemon does not connect again', async () => {
 	)
 	assert.equal(calls, 0)
 })
+
+test('repair keeps --max-concurrent from both a systemd unit and a LaunchAgent plist', () => {
+	for (const manager of ['systemd', 'launchd'] as const) {
+		const text =
+			manager === 'systemd'
+				? service.systemdUnit(unitInput(manager))
+				: service.launchdPlist(unitInput(manager))
+		assert.equal(serviceCommands.maxConcurrentInUnit(text), 3, manager)
+	}
+	assert.equal(serviceCommands.maxConcurrentInUnit(null), undefined)
+})
