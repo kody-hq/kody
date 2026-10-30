@@ -328,8 +328,8 @@ export async function readPublishedCredentialStamp(input: {
 
 /**
  * Whether a package's own published modules can use a credential, plus the
- * packages they import (execution-context routing). Derived from the
- * immutable publish, so it is written once per source and commit.
+ * packages they import (execution-context routing). Cached per source
+ * and commit; a snapshot write for that commit clears it.
  */
 export function buildPublishedCredentialUseKvKey(input: {
 	sourceId: string
@@ -537,6 +537,14 @@ export async function writePublishedSourceSnapshot(input: {
 			JSON.stringify(manifestSnapshot),
 		),
 	])
+	// A same-commit repair can change the files, so drop the derived
+	// credential-use answer. Isolates that memoized it keep it until evicted.
+	await getBundleArtifactsKv(input.env).delete(
+		buildPublishedCredentialUseKvKey({
+			sourceId: input.source.id,
+			publishedCommit: input.source.published_commit,
+		}),
+	)
 	return key
 }
 

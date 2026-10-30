@@ -2,7 +2,11 @@ import { DatabaseSync } from 'node:sqlite'
 import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
-import { buildPublishedSourceSnapshotKvKey } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import {
+	buildPublishedCredentialUseKvKey,
+	buildPublishedSourceSnapshotKvKey,
+	writePublishedSourceSnapshot,
+} from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
@@ -407,4 +411,81 @@ test('package files that call credentialed runtime APIs or declare credentials u
 				"import { kody } from 'kody:runtime'\nexport default () => kody.metaGetCurrentUser({})\n",
 		}),
 	).toBe(false)
+})
+
+const importPlain =
+	"import plain from 'kody:@acme/plain/run'\nexport default () => plain()\n"
+
+function resolvePlain(s: Setup) {
+	return resolveRunCredentialUse({
+		env: s.env,
+		request: requestContext,
+		ownerId: orgId,
+		code: importPlain,
+		credentials: null,
+	})
+}
+
+test('a package whose snapshot cannot be read yet is not cached as using credentials', async () => {
+	const s = setup()
+	await publishPackage(s, {
+		id: 'pkg_late',
+		name: '@acme/plain',
+		files: plainFiles,
+	})
+	const snapshotKey = buildPublishedSourceSnapshotKvKey({
+		sourceId: 'src_pkg_late',
+		publishedCommit: 'commit-1',
+	})
+	const snapshot = await s.kv.get(snapshotKey)
+	await s.kv.delete(snapshotKey)
+	expect(await resolvePlain(s)).toEqual({ kind: 'unknown' })
+	expect(
+		await s.kv.get(
+			buildPublishedCredentialUseKvKey({
+				sourceId: 'src_pkg_late',
+				publishedCommit: 'commit-1',
+			}),
+		),
+	).toBeNull()
+	await s.kv.put(snapshotKey, snapshot as string)
+	expect(await resolvePlain(s)).toEqual({ kind: 'none' })
+})
+
+test('a failed credential-use cache write does not change the answer', async () => {
+	const s = setup()
+	await publishPackage(s, {
+		id: 'pkg_nowrite',
+		name: '@acme/plain',
+		files: plainFiles,
+	})
+	const put = s.kv.put.bind(s.kv)
+	s.kv.put = (async (key: string, value: string) => {
+		if (key.startsWith('credential-use:')) throw new Error('KV write failed')
+		return await put(key, value)
+	}) as typeof s.kv.put
+	expect(await resolvePlain(s)).toEqual({ kind: 'none' })
+})
+
+test('a same-commit snapshot write clears the cached credential-use answer', async () => {
+	const s = setup()
+	const useKey = buildPublishedCredentialUseKvKey({
+		sourceId: 'src_pkg_fix',
+		publishedCommit: 'commit-1',
+	})
+	await s.kv.put(useKey, JSON.stringify({ version: 1, uses: false, deps: [] }))
+	await writePublishedSourceSnapshot({
+		env: s.env,
+		source: {
+			id: 'src_pkg_fix',
+			repo_id: 'repo_pkg_fix',
+			entity_kind: 'package',
+			entity_id: 'pkg_fix',
+			published_commit: 'commit-1',
+			manifest_path: 'package.json',
+			source_root: '/',
+		} as never,
+		files: { 'package.json': '{}', ...wakeFiles },
+	})
+	expect(await s.kv.get(useKey)).toBeNull()
 })
