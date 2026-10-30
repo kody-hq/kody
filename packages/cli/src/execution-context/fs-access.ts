@@ -2,6 +2,7 @@ import {
 	lstat,
 	mkdir,
 	readFile,
+	readlink,
 	realpath,
 	rename,
 	writeFile,
@@ -236,6 +237,7 @@ export async function effectiveFs(
 async function resolveExisting(
 	path: string,
 	followFinal: boolean,
+	depth = 0,
 ): Promise<string> {
 	if (!followFinal) {
 		const parent = dirname(path)
@@ -248,7 +250,22 @@ async function resolveExisting(
 		if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
 		const parent = dirname(path)
 		if (parent === path) return path
-		return join(await resolveExisting(parent, true), basename(path))
+		const resolvedParent = await resolveExisting(parent, true)
+		const entry = join(resolvedParent, basename(path))
+		// A dangling symlink: writes would follow it, so resolve where it points.
+		const link = await lstat(entry).catch(() => null)
+		if (link?.isSymbolicLink()) {
+			if (depth >= 40) {
+				throw new FsAccessError('EACCES', `Too many symlinks at ${path}.`)
+			}
+			const target = await readlink(entry)
+			return await resolveExisting(
+				isAbsolute(target) ? target : join(resolvedParent, target),
+				true,
+				depth + 1,
+			)
+		}
+		return entry
 	}
 }
 

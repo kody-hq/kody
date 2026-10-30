@@ -131,6 +131,11 @@ test('prefix tricks, .. segments, and symlinks cannot escape a mount', async () 
 		resolveHostPath(effective, join(root, 'granted-link', 'key.txt'), 'read'),
 		{ code: 'EACCES', message: /local policy does not allow it/ },
 	)
+	symlinkSync(join(secret, 'planted.txt'), join(desktop, 'dangling'))
+	await assert.rejects(
+		resolveHostPath(effective, join(desktop, 'dangling'), 'write'),
+		{ code: 'EACCES' },
+	)
 	assert.equal(
 		await resolveHostPath(effective, join(desktop, 'new', 'a.txt'), 'write'),
 		join(desktop, 'new', 'a.txt'),
@@ -201,7 +206,11 @@ test('kody context policy show, allow, and remove edit the file under the CLI co
 	const { root, dir } = sandbox()
 	const desktop = dir('Desktop')
 	const previous = process.env.XDG_CONFIG_HOME
+	const previousHome = process.env.HOME
+	const previousAppData = process.env.APPDATA
 	process.env.XDG_CONFIG_HOME = join(root, 'xdg')
+	process.env.HOME = join(root, 'home')
+	process.env.APPDATA = join(root, 'appdata')
 	try {
 		const run = async (positionals: Array<string>, values = {}) => {
 			let text = ''
@@ -244,7 +253,13 @@ test('kody context policy show, allow, and remove edit the file under the CLI co
 		)
 		assert.match(await run(['remove', desktop]), /Removed/)
 	} finally {
-		if (previous === undefined) delete process.env.XDG_CONFIG_HOME
-		else process.env.XDG_CONFIG_HOME = previous
+		for (const [key, value] of [
+			['XDG_CONFIG_HOME', previous],
+			['HOME', previousHome],
+			['APPDATA', previousAppData],
+		] as const) {
+			if (value === undefined) delete process.env[key]
+			else process.env[key] = value
+		}
 	}
 })
