@@ -3960,7 +3960,9 @@ class RepoSessionBase extends DurableObject<Env> {
 			(await this.commitIfDirty(
 				input.commitMessage?.trim() ||
 					`Publish repo session ${input.sessionId}`,
-				replaceHistory && input.expectedHeadCommit === undefined
+				replaceHistory &&
+					!resumingPublishedHead &&
+					input.expectedHeadCommit === undefined
 					? { replaceHistory: true }
 					: undefined,
 			)) ?? (await this.getHeadCommit())
