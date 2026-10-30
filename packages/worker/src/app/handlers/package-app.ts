@@ -111,6 +111,7 @@ async function handleTaggedPackageAppRequest(
 					identity: Awaited<
 						ReturnType<typeof resolvePackageAppIdentityOnlyVisitor>
 					> = null,
+					consentPrincipal: typeof identity = null,
 				) =>
 					applyPackageAppCacheHeaders(
 						await servePackageAppRequest({
@@ -125,6 +126,7 @@ async function handleTaggedPackageAppRequest(
 							},
 							visitor: null,
 							identity,
+							consentPrincipal: identity ? null : consentPrincipal,
 							approvedPublishedCommit,
 						}),
 						identity ? 'signed-in' : 'anonymous',
@@ -164,7 +166,10 @@ async function handleTaggedPackageAppRequest(
 				console.warn('package-app-identity-lookup-failed', error)
 				return null
 			})
-			return await serveAnonymously(identity)
+			return await serveAnonymously(
+				identity,
+				authorized.kind === 'forbidden' ? authorized.person : null,
+			)
 		}
 		if (authorized.kind === 'forbidden') {
 			return new Response(null, {
@@ -220,7 +225,10 @@ async function handleTaggedPackageAppRequest(
 						return null
 					})
 				: null
-			return await serveAnonymously(identity)
+			return await serveAnonymously(
+				identity,
+				username ? { userId: user.mcpUser.userId, username } : null,
+			)
 		}
 		return new Response(null, {
 			status: 302,
