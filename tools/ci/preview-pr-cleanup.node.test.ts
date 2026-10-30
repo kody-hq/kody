@@ -372,3 +372,76 @@ test('a failed cleanup is reported and does not stop later deletes', async () =>
 	expect(cleaned).toEqual(['kody-pr-2'])
 	expect(result.report).toContain('delete failed')
 })
+
+test('a branch preview redeployed from an open-PR branch after planning is kept', async () => {
+	let titledReads = 0
+	const { deps, cleaned } = createDeps({
+		scripts: ['kody-branch-reused'],
+		pulls: {},
+		branchPulls: {
+			'feat/open': [{ number: 20, state: 'open', merged_at: null }],
+		},
+		commitShas: { 'kody-branch-reused': sha('d') },
+		commitRuns: {
+			[sha('d')]: [{ head_branch: 'main', conclusion: 'success' }],
+		},
+	})
+	const get = deps.github.get
+	deps.github.get = async (path) => {
+		const url = new URL(`https://api.github.com${path}`)
+		if (
+			url.pathname.endsWith('/actions/workflows/preview.yml/runs') &&
+			!url.searchParams.has('head_sha') &&
+			++titledReads > 1
+		) {
+			return {
+				status: 200,
+				json: {
+					workflow_runs: [
+						{
+							display_title: 'Preview deploy (branch: reused)',
+							head_branch: 'feat/open',
+							status: 'completed',
+							conclusion: 'success',
+							updated_at: '2026-10-30T00:00:00Z',
+						},
+					],
+				},
+			}
+		}
+		return get(path)
+	}
+	const result = await runPreviewPrCleanup(deps)
+	expect(result.decisions[0]).toMatchObject({
+		action: 'delete',
+		match: 'no-pr',
+	})
+	expect(cleaned).toEqual([])
+	expect(result.skipped.get('kody-branch-reused')).toBe('PR #20 still open')
+})
+
+test('Last deployed dates each preview from its own Workers only', async () => {
+	const { deps } = createDeps(
+		{
+			scripts: [],
+			pulls: { 1: { state: 'open', merged_at: null } },
+			branchPulls: {},
+		},
+		{
+			listScripts: async () => [
+				{ name: 'kody-pr-1', modifiedOn: '2026-10-01T00:00:00Z' },
+				{ name: 'kody-pr-1-runtime', modifiedOn: '2026-10-02T00:00:00Z' },
+				{ name: 'kody-branch-live', modifiedOn: '2026-10-03T00:00:00Z' },
+				{ name: 'kody-branch-live-two', modifiedOn: '2026-10-20T00:00:00Z' },
+				{
+					name: 'kody-branch-live-two-runtime',
+					modifiedOn: '2026-10-21T00:00:00Z',
+				},
+			],
+		},
+	)
+	const { report } = await runPreviewPrCleanup({ ...deps, dryRun: true })
+	expect(report).toContain('| `kody-pr-1` | 2026-10-02 |')
+	expect(report).toContain('| `kody-branch-live` | 2026-10-03 |')
+	expect(report).toContain('| `kody-branch-live-two` | 2026-10-21 |')
+})

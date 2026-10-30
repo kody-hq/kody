@@ -363,18 +363,22 @@ export async function runPreviewPrCleanup(deps: PreviewPrCleanupDeps) {
 		scripts.map((script) => script.name),
 	)
 	const lastDeployed = new Map<string, string>()
-	for (const workerName of workerNames) {
-		const newest = scripts
+	for (const script of scripts) {
+		// Attribute each script to the longest preview name that owns it, so
+		// `kody-branch-a-b-runtime` never dates `kody-branch-a`.
+		const owner = workerNames
 			.filter(
-				(script) =>
-					script.name === workerName ||
-					script.name.startsWith(`${workerName}-`),
+				(name) => script.name === name || script.name.startsWith(`${name}-`),
 			)
-			.map((script) => script.modifiedOn)
-			.filter((value): value is string => typeof value === 'string')
-			.sort()
-			.at(-1)
-		if (newest) lastDeployed.set(workerName, newest)
+			.sort((left, right) => right.length - left.length)[0]
+		const previous = owner ? lastDeployed.get(owner) : undefined
+		if (
+			owner &&
+			script.modifiedOn &&
+			(!previous || script.modifiedOn > previous)
+		) {
+			lastDeployed.set(owner, script.modifiedOn)
+		}
 	}
 	const titledSources = workerNames.some((name) =>
 		name.startsWith('kody-branch-'),
@@ -413,9 +417,17 @@ export async function runPreviewPrCleanup(deps: PreviewPrCleanupDeps) {
 				skipped.set(workerName, 'a branch deploy is running')
 				continue
 			}
+			// Branch previews also re-read their deploy source: a redeploy from a
+			// branch with an open PR may have finished since planning.
 			const fresh = decidePreviewCleanup(
 				workerName,
-				await resolvePreviewOwnership(deps, workerName, titledSources),
+				await resolvePreviewOwnership(
+					deps,
+					workerName,
+					workerName.startsWith('kody-branch-')
+						? await listTitledBranchSources(deps)
+						: titledSources,
+				),
 			)
 			if (fresh.action !== 'delete') {
 				skipped.set(workerName, fresh.reason)
