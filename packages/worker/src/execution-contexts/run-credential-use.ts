@@ -23,6 +23,7 @@ import {
 	getNodeName,
 	listScannableModulePaths,
 	parseModule,
+	walkAst,
 } from '#worker/credentials/module-placeholder-scan.ts'
 import { collectModuleKodyCalls } from '#worker/package-codemods/codemods/0017-detect-package-app-visitor-authority.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
@@ -120,12 +121,36 @@ export function moduleUsesCredentials(parsed: AstNode) {
 		if (node.type !== 'ImportDeclaration') continue
 		if (getNodeName(node.source) !== 'kody:runtime') continue
 		for (const specifier of node.specifiers ?? []) {
+			if (
+				specifier.type === 'ImportNamespaceSpecifier' ||
+				specifier.type === 'ImportDefaultSpecifier'
+			) {
+				if (readsCredentialedMember(parsed)) return true
+				continue
+			}
 			if (specifier.type !== 'ImportSpecifier') continue
 			const imported = getNodeName(specifier.imported)
 			if (imported && credentialRuntimeExports.has(imported)) return true
 		}
 	}
 	return false
+}
+
+/** `rt.kody.authenticatedFetch` and the like, through a namespace import. */
+function readsCredentialedMember(parsed: AstNode) {
+	let found = false
+	walkAst(parsed, (node) => {
+		if (found) return
+		if (
+			node.type !== 'MemberExpression' &&
+			node.type !== 'OptionalMemberExpression'
+		) {
+			return
+		}
+		const name = getNodeName(node.property)
+		if (name && runtimeCallUsesCredentials(name)) found = true
+	})
+	return found
 }
 
 function recordHasEntries(value: unknown) {

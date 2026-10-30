@@ -388,6 +388,12 @@ test('package files that call credentialed runtime APIs or declare credentials u
 	).toBe(true)
 	expect(
 		packageFilesUseCredentials({
+			'run.ts':
+				"import * as rt from 'kody:runtime'\nexport default () => rt.kody.authenticatedFetch('https://api.example.com')\n",
+		}),
+	).toBe(true)
+	expect(
+		packageFilesUseCredentials({
 			'package.json': JSON.stringify({
 				name: '@acme/declared',
 				kody: { credentials: { github: { description: 'GitHub' } } },
