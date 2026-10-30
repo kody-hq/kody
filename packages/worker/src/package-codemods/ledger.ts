@@ -266,20 +266,33 @@ export async function updatePackageCodemodRunStatus(
 	return result.meta.changes ?? 0
 }
 
+/**
+ * Compare-and-swap on `filters_json`: writes only when the stored value still
+ * equals `expectedFiltersJson`. Returns the number of rows changed (0 on a
+ * concurrent change).
+ */
 export async function updatePackageCodemodRunFilters(
 	db: D1Database,
-	input: { id: string; filtersJson: string; updatedAt?: string },
+	input: {
+		id: string
+		expectedFiltersJson: string
+		filtersJson: string
+		updatedAt?: string
+	},
 ) {
-	await db
+	const result = await db
 		.prepare(
-			`UPDATE package_codemod_runs SET filters_json = ?, updated_at = ? WHERE id = ?`,
+			`UPDATE package_codemod_runs SET filters_json = ?, updated_at = ?
+			WHERE id = ? AND filters_json = ?`,
 		)
 		.bind(
 			input.filtersJson,
 			input.updatedAt ?? new Date().toISOString(),
 			input.id,
+			input.expectedFiltersJson,
 		)
 		.run()
+	return result.meta.changes ?? 0
 }
 
 /**

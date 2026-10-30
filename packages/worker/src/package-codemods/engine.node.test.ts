@@ -12,6 +12,7 @@ import {
 	getPackageCodemodRunItemById,
 	insertPackageCodemodRunItem,
 	listPackageCodemodRuns,
+	updatePackageCodemodRunFilters,
 } from './ledger.ts'
 import type * as Registry from './registry.ts'
 import { type PackageCodemod } from './types.ts'
@@ -833,6 +834,16 @@ test('a continuation step may widen excludePackageIds to step past a package', a
 	expect(JSON.parse(run!.filtersJson)).toEqual({
 		excludePackageIds: ['pkg-b', 'pkg-c'],
 	})
+
+	// A continuation that read the run before the widening must not win.
+	const staleWrite = await updatePackageCodemodRunFilters(env.APP_DB, {
+		id: first.runId,
+		expectedFiltersJson: JSON.stringify({ excludePackageIds: ['pkg-c'] }),
+		filtersJson: JSON.stringify({ excludePackageIds: ['pkg-a', 'pkg-c'] }),
+	})
+	expect(staleWrite).toBe(0)
+	const unchanged = await getPackageCodemodRunById(env.APP_DB, first.runId)
+	expect(unchanged!.filtersJson).toBe(run!.filtersJson)
 })
 
 test('omitted continuation filters keep a canary fleet apply on the stored package set', async () => {
