@@ -49,9 +49,12 @@ keeps its full include and is never downgraded.
   retired price and does not change quantity on retired-price subscriptions.
   Seat quantity sync applies only to purchasable Pro (current seat) prices. Any
   retired-plan price migration is a separate customer-facing decision.
-- **Free org cap:** Each user may own at most **two** orgs on `plan = free`.
-  Creating or accepting ownership of another free org requires upgrading or
-  deleting an existing free org.
+- **Free org cap:** Each user may own at most **two** organizations whose
+  effective plan is free. Creating or accepting ownership of another free org
+  requires upgrading or deleting an existing free org.
+- **Plan resolution for seat sync and the free-org cap:** use the effective
+  plan, the higher of the manual grant and Stripe plan; temporary promo/gift
+  overlays are excluded because they are not subscriptions.
 - **Stripe metadata:** New checkout, subscription, and customer objects set
   `kody_org_id`. During personal-org dual-resolve, also set
   `kody_stable_user_id` to the same org id; migrated orgs continue to rely on

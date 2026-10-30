@@ -42,7 +42,8 @@ import {
 	FreeOrgLimitError,
 	MAX_FREE_ORGS_PER_USER,
 	countLiveFreeOwnedOrgs,
-	isPaidOrg,
+	effectiveFreeOrgSql,
+	isPaidOrgBilling,
 } from '#worker/orgs/billing.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { onMemberSoftRemoved } from '#worker/orgs/member-offboarding.ts'
@@ -635,7 +636,7 @@ const freeOrgCapRestoreGuardSql = `
 		     AND m2.user_id = m.user_id
 		     AND m2.role = 'owner'
 		     AND m2.deleted_at IS NULL
-		    WHERE o2.plan = 'free' AND o2.deleted_at IS NULL
+		    WHERE ${effectiveFreeOrgSql('o2')} AND o2.deleted_at IS NULL
 		  ) >= ?
 	)`
 
@@ -649,9 +650,16 @@ export async function restoreOrg(input: {
 	const now = input.now ?? new Date()
 	const appDb = input.env.APP_DB
 	const row = await appDb
-		.prepare(`SELECT deleted_at, plan, slug FROM orgs WHERE id = ?`)
+		.prepare(
+			`SELECT deleted_at, plan, stripe_plan, slug FROM orgs WHERE id = ?`,
+		)
 		.bind(input.orgId)
-		.first<{ deleted_at: string | null; plan: string; slug: string }>()
+		.first<{
+			deleted_at: string | null
+			plan: string
+			stripe_plan: string | null
+			slug: string
+		}>()
 	if (!row?.deleted_at) {
 		throw new Error('org_not_deleted')
 	}
@@ -661,7 +669,7 @@ export async function restoreOrg(input: {
 	if (!isWithinSoftDeleteRestoreWindow(row.deleted_at, now)) {
 		throw new OrgRestoreWindowExpiredError()
 	}
-	const freeOrg = !isPaidOrg(row.plan)
+	const freeOrg = !isPaidOrgBilling(row)
 	const deletedAt = row.deleted_at
 	const assertUnderCap = () =>
 		assertRestoreKeepsOwnersUnderFreeOrgCap({
