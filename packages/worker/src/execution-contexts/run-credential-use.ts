@@ -246,17 +246,25 @@ async function loadPublishedNode(
 		rememberNode(key, cached)
 		return cached
 	}
-	const node = await computePublishedNode(ref, source)
+	const { node, durable } = await computePublishedNode(ref, source)
+	if (!durable) return node
 	rememberNode(key, node)
-	await writePublishedCredentialUse({ ...ref, use: node })
+	try {
+		await writePublishedCredentialUse({ ...ref, use: node })
+	} catch {
+		// Only a cache: a failed write must not change the routing answer.
+	}
 	return node
 }
 
 async function computePublishedNode(
 	ref: { env: Env; sourceId: string; publishedCommit: string },
 	source: EntitySourceRow,
-): Promise<StoredNode> {
-	const uses: StoredNode = { version: 1, uses: true, deps: [] }
+): Promise<{ node: StoredNode; durable: boolean }> {
+	const uses: { node: StoredNode; durable: boolean } = {
+		node: { version: 1, uses: true, deps: [] },
+		durable: true,
+	}
 	const [needs, stamp, snapshot] = await Promise.all([
 		readPublishedCredentialNeeds(ref),
 		readPublishedCredentialStamp(ref),
@@ -265,7 +273,8 @@ async function computePublishedNode(
 	if ((readStoredCredentialNeeds(needs)?.length ?? 0) > 0) return uses
 	const stored = isStoredCredentialStamp(stamp) ? stamp : null
 	if (stored && stored.keys.length > 0) return uses
-	if (!snapshot) return uses
+	// A missing snapshot may only be mid-publish, so do not cache that answer.
+	if (!snapshot) return { ...uses, durable: false }
 	const { files } = packageSourceFiles({ source, files: snapshot.files })
 	if (packageFilesUseCredentials(files)) return uses
 	const deps: Array<DependencyRef> = stored
@@ -280,7 +289,7 @@ async function computePublishedNode(
 					),
 				),
 			].map((packageName) => ({ packageName }))
-	return { version: 1, uses: false, deps }
+	return { node: { version: 1, uses: false, deps }, durable: true }
 }
 
 const maxGraphPackages = 64
