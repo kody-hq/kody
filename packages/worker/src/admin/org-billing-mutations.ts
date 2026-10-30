@@ -13,8 +13,8 @@ import {
 import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
 import {
 	ensureCreditWallet,
+	buildAdminCreditGrantStatements,
 	forgiveCreditUsageBeforeUnlock,
-	grantAdminCredits,
 } from '#worker/billing/credit-wallet.ts'
 import {
 	getUserEntitlement,
@@ -79,21 +79,20 @@ export async function writeOrgManualPlan(input: {
 		)
 		.bind(input.orgId)
 		.first<UserEntitlementRow>()
+	if (!row) throw new AdminOrgBillingMutationError(404, 'Org not found.')
 	const nextLadder = resolveEntitlementLadderAfterPaidAccessChange({
-		currentLadder: parseEntitlementLadder(row?.entitlement_ladder),
+		currentLadder: parseEntitlementLadder(row.entitlement_ladder),
 		manualPlan: input.plan,
-		previousStripePlan: parseStripePlanName(row?.stripe_plan),
-		nextStripePlan: parseStripePlanName(row?.stripe_plan),
+		previousStripePlan: parseStripePlanName(row.stripe_plan),
+		nextStripePlan: parseStripePlanName(row.stripe_plan),
 	})
-	if (row) {
-		await forgiveCreditUsageBeforeUnlock({
-			db: input.db,
-			userId: input.orgId,
-			current: row,
-			next: { ...row, plan: input.plan, entitlement_ladder: nextLadder },
-			now: input.now,
-		})
-	}
+	await forgiveCreditUsageBeforeUnlock({
+		db: input.db,
+		userId: input.orgId,
+		current: row,
+		next: { ...row, plan: input.plan, entitlement_ladder: nextLadder },
+		now: input.now,
+	})
 	const updatedAt = utcSqliteTimestamp(input.now)
 	const setClause = 'plan = ?, entitlement_ladder = ?, updated_at = ?'
 	const values = [input.plan, nextLadder, updatedAt]
@@ -114,7 +113,7 @@ export async function writeOrgManualPlan(input: {
 			},
 		})
 		if (!result.changed) {
-			throw new Error(`Cannot update billing: missing organization.`)
+			throw new AdminOrgBillingMutationError(404, 'Org not found.')
 		}
 		return
 	}
@@ -125,7 +124,7 @@ export async function writeOrgManualPlan(input: {
 		values,
 	})
 	if ((result.meta.changes ?? 0) === 0) {
-		throw new Error('Cannot update billing: missing organization.')
+		throw new AdminOrgBillingMutationError(404, 'Org not found.')
 	}
 }
 
@@ -239,7 +238,7 @@ export async function setAdminOrgPlan(input: {
 		.prepare(`SELECT plan FROM orgs WHERE id = ? AND deleted_at IS NULL`)
 		.bind(org.id)
 		.first<{ plan: string | null }>()
-	if (!current) throw new Error('Org not found.')
+	if (!current) throw new AdminOrgBillingMutationError(404, 'Org not found.')
 	const previous = parseStoredPlanName(current.plan)
 	if (previous === input.plan) {
 		return { orgId: org.id, previous, next: input.plan, changed: false }
@@ -305,7 +304,7 @@ export async function grantAdminCreditsToOrg(input: {
 		email: null,
 	})
 	await ensureCreditWallet({ db, userId: org.id, entitlement, now })
-	const grant = await grantAdminCredits({
+	const grant = await buildAdminCreditGrantStatements({
 		db,
 		recipientUserId: org.id,
 		grantedByUserId: input.grantedBy.stableUserId,
@@ -316,7 +315,7 @@ export async function grantAdminCreditsToOrg(input: {
 	await runAppDbBatchWithOrgAudit({
 		appDb: db,
 		audit: input.audit,
-		statements: [],
+		statements: grant.statements,
 		event: {
 			orgId: org.id,
 			action: orgBillingAuditActions.creditsGranted,

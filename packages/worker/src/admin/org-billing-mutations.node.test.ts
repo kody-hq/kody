@@ -365,6 +365,44 @@ test('org credit grants are positive, reasoned, and written to both audit logs',
 	).rejects.toThrow('A reason is required.')
 })
 
+test('org credit grant and audit outbox roll back together when the audit batch fails', async () => {
+	const { sqlite, auditSqlite, env, audit } = createDb()
+	const orgId = testStableUserIdFromEmail('credit-atomic-team@example.com')
+	insertOrg(sqlite, { id: orgId, slug: 'credit-atomic-team', plan: 'pro' })
+	sqlite.exec(`
+		CREATE TRIGGER reject_org_audit_outbox
+		BEFORE INSERT ON org_audit_outbox
+		BEGIN
+			SELECT RAISE(ABORT, 'test org audit failure');
+		END;
+	`)
+	await expect(
+		grantAdminCreditsToOrg({
+			...auditInput(env, audit),
+			target: { orgId },
+			grantedBy: { stableUserId: adminId, email: 'admin@example.com' },
+			amountCents: 500,
+			reason: 'Approved one-time team credit.',
+		}),
+	).rejects.toThrow('test org audit failure')
+	expect(
+		sqlite
+			.prepare(
+				`SELECT COUNT(*) AS count FROM credit_ledger_entries
+				 WHERE user_id = ? AND kind = 'admin_grant'`,
+			)
+			.get(orgId),
+	).toMatchObject({ count: 0 })
+	expect(
+		auditSqlite
+			.prepare(
+				`SELECT COUNT(*) AS count FROM org_audit_events
+				 WHERE org_id = ? AND action = 'admin_credits_granted'`,
+			)
+			.get(orgId),
+	).toMatchObject({ count: 0 })
+})
+
 test('org credit eligibility changes update the org and write both audits', async () => {
 	const { sqlite, auditSqlite, env, audit } = createDb()
 	const orgId = testStableUserIdFromEmail('eligible-team@example.com')

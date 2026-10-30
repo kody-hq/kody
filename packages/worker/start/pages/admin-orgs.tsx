@@ -580,7 +580,11 @@ export function AdminOrgDetailPage(props: {
 				{isDeleted ? (
 					<p>Billing changes are unavailable for a deleted organization.</p>
 				) : (
-					<AdminOrgPlanForm orgId={org.id} manualPlan={data.plan.manualPlan} />
+					<AdminOrgPlanForm
+						key={org.id}
+						orgId={org.id}
+						manualPlan={data.plan.manualPlan}
+					/>
 				)}
 			</AccountManagementPanel>
 			<AccountManagementPanel title="Seats & members">
@@ -694,6 +698,7 @@ export function AdminOrgDetailPage(props: {
 				/>
 				{isDeleted ? null : (
 					<AdminOrgCreditsForms
+						key={org.id}
 						orgId={org.id}
 						creditsEligible={data.plan.adminCreditsEligible}
 					/>
