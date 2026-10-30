@@ -554,6 +554,7 @@ export async function runUpdate(env: ServiceCommandEnv) {
 				),
 			)
 		: []
+	let restarted = 0
 	for (const ecid of services) {
 		const repaired = spawnSync(
 			process.execPath,
@@ -569,7 +570,8 @@ export async function runUpdate(env: ServiceCommandEnv) {
 			],
 			{ stdio: 'inherit' },
 		)
-		if (repaired.status !== 0)
+		if (repaired.status === 0) restarted++
+		else
 			env.write(
 				`Could not restart the service for ${ecid}. Check it with: kody daemon status --context ${ecid}\n`,
 			)
@@ -578,9 +580,9 @@ export async function runUpdate(env: ServiceCommandEnv) {
 		encoding: 'utf8',
 	}).stdout.trim()
 	env.write(
-		`kody is now ${version || 'up to date'}.${services.length === 0 ? '' : ` Restarted ${services.length} service(s) onto it.`}\n`,
+		`kody is now ${version || 'up to date'}.${restarted === 0 ? '' : ` Restarted ${restarted} service(s) onto it.`}\n`,
 	)
-	return 0
+	return restarted === services.length ? 0 : 1
 }
 
 export { lingerCommand, runCommand }
