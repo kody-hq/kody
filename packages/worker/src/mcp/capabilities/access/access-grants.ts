@@ -314,7 +314,7 @@ export const accessListCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'member:read',
 		description:
-			'List live grants in the organization this request is bound to. Filter by resource or subject when you already know which one you want.',
+			'List live grants in the organization this request is bound to. Filter by resource or subject when you already know which one you want. A grant whose expires_at has passed is still listed (until it is rewritten or revoked) but grants no access.',
 		keywords: ['grant', 'list', 'access', 'who has access'],
 		readOnly: true,
 		idempotent: true,
