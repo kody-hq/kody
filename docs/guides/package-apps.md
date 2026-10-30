@@ -391,15 +391,18 @@ visitor defaults, org mappings, or automatic matching. A missing mapping is
 reported as `credential_unbound`. Keep publisher-supplied needs on
 `credential(key)`.
 
-If a bridge call cannot run as the runs-as person (a capability missing from
-`kody.app.capabilities`, for example), the platform executes it as the visitor
-and logs a `package_app_authority_fallback` event with the app, the call name,
-and the kind of difference. Add what the logs name to the manifest; do not rely
-on the fallback. A call that fails both ways throws the "not listed in
-`kody.app.capabilities`" error and logs a `package_app_authority_rejection`
-event instead. Admins count both per app with
-`adminPackageAppAuthorityFallbackReport` (`hardRejections` holds the second),
-and the
+If a bridge call fails as the runs-as person for an authority reason (a
+capability missing from `kody.app.capabilities`, an unavailable runs-as person,
+a permission or credential refusal), the platform retries it the legacy way: as
+the visitor, or anonymously when there is none. When that works, it logs a
+`package_app_authority_fallback` event with the app, the call name, and the kind
+of difference. Any other failure throws as is, with no retry. Add what the logs
+name to the manifest; do not rely on the fallback. When the legacy retry also
+fails, the app gets the runs-as error. Only when that error is the "not listed
+in `kody.app.capabilities`" one (`PackageAppCapabilityNotDeclaredError`) does
+the platform also log a `package_app_authority_rejection` event. Admins count
+both per app with `adminPackageAppAuthorityFallbackReport` (`hardRejections`
+holds the second), and the
 [0017 scan](../contributing/package-codemods.md#0017-detect-package-app-visitor-authority)
 lists published apps that will hit them.
 

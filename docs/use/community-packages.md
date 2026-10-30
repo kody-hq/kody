@@ -192,7 +192,7 @@ If the listing owner later pushes to a public default branch, your fork keeps
 the snapshot you copied. `packageGet` / `packageList` / search set
 `listing_ahead` / `listingAhead` only when the listing pin is not an ancestor of
 your fork tip (the fork is behind or diverged). SHA inequality alone is not
-enough. Your `/@username` profile and catalog cards replace Installed / Forked
+enough. Your `/@handle` profile and catalog cards replace Installed / Forked
 with a yellow **Fork outdated** control when the fork is behind (click copies an
 absorb prompt and links to the listing files at the pin) or a calm **Fork
 ahead** badge linking to those files when the pin is already in the fork's
@@ -299,10 +299,10 @@ Each account has profile fields:
 - **Avatar** — optional profile image (PNG, JPEG, or WebP)
 - **Profile visibility** — `public` by default, or `private`
 
-Public profiles are at `/@username`. A public profile shows display name, bio,
+Public profiles are at `/@handle`. A public profile shows display name, bio,
 avatar, join date, the user's **public packages** (metadata only), and recent
 public activity (publishes, republishes, and public forks). A public team org's
-page is at `/@slug` — see
+page is at `/@handle` — see
 [Organizations](../guides/organizations.md#public-org-page).
 
 ### Avatars
@@ -335,7 +335,7 @@ not `package.json#private`:
 
 When visibility is `private`:
 
-- `/@username` returns not found (404)
+- `/@handle` returns not found (404)
 - `communityProfileGet` for another user’s private profile returns
   `user_found: false` with empty fields (it does not leak existence via
   HTTP 404)
