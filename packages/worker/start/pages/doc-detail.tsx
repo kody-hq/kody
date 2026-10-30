@@ -173,7 +173,7 @@ export function DocDetailRoute({
 						Working with an agent? This page is also plain markdown at{' '}
 						<SiteLink
 							href={routes.docDetailMarkdown.href({ slug: doc.slug })}
-							data-rmx-document
+							reloadDocument
 						>
 							/docs/{doc.slug}.md
 						</SiteLink>
