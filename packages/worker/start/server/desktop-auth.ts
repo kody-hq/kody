@@ -154,7 +154,7 @@ export async function desktopSessionHttp({ request }: { request: Request }) {
 		},
 		isSecureRequest(request),
 	)
-	void logAuditEvent({
+	await logAuditEvent({
 		db: auditDatabaseFromEnv(env),
 		category: 'auth',
 		action: 'login',

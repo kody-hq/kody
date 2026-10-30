@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { readFileSync } from 'node:fs'
 import { test, expect, vi, beforeEach } from 'vitest'
 import { desktopAuthHash } from '#app/desktop-auth-request.ts'
-const state = vi.hoisted(() => ({ env: {} as Env }))
+const state = vi.hoisted(() => ({ env: {} as Env, audit: vi.fn() }))
 vi.mock('./request-env.ts', () => ({ getStartRequestEnv: () => state.env }))
 vi.mock('./mutation-context.ts', () => ({
 	withWebsiteRead: vi.fn(),
@@ -15,13 +15,14 @@ vi.mock('#app/authenticated-user.ts', () => ({
 vi.mock('#worker/audit-log.ts', () => ({
 	auditDatabaseFromEnv: vi.fn(),
 	getRequestIp: () => undefined,
-	logAuditEvent: vi.fn(),
+	logAuditEvent: state.audit,
 }))
 import { desktopSessionHttp } from './desktop-auth.ts'
 let db: DatabaseSync
 const code = 'c'.repeat(43)
 const verifier = 'v'.repeat(43)
 beforeEach(async () => {
+	state.audit.mockReset().mockResolvedValue(undefined)
 	db = new DatabaseSync(':memory:')
 	db.exec(
 		readFileSync(
@@ -108,5 +109,25 @@ test('cross-origin and non-JSON redemption fail before consuming a grant', async
 		(await redeem(undefined, { 'Content-Type': 'text/plain' })).status,
 	).toBe(400)
 	expect((await redeem()).status).toBe(204)
+	db.close()
+})
+
+test('the login response waits for its audit write', async () => {
+	let finishAudit: (() => void) | undefined
+	state.audit.mockImplementation(
+		() =>
+			new Promise<void>((resolve) => {
+				finishAudit = resolve
+			}),
+	)
+	let completed = false
+	const response = redeem().then((response) => {
+		completed = true
+		return response
+	})
+	await vi.waitFor(() => expect(state.audit).toHaveBeenCalledOnce())
+	expect(completed).toBe(false)
+	finishAudit!()
+	expect((await response).status).toBe(204)
 	db.close()
 })
