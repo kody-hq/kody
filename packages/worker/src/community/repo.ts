@@ -1354,6 +1354,7 @@ export async function listPrivateCommunityForkCandidatesForPerson(
 	db: D1Database,
 	input: { listingId: string; personId: string },
 ): Promise<Array<CommunityForkListRow>> {
+	const liveGrant = liveGrantForPersonSql('sp.user_id', input.personId)
 	const rows = await db
 		.prepare(
 			`${communityForkListSelectSql}
@@ -1366,11 +1367,11 @@ export async function listPrivateCommunityForkCandidatesForPerson(
 							AND m.user_id = ?
 							AND m.deleted_at IS NULL
 					)
-					OR EXISTS (${liveGrantForPersonSql('sp.user_id')})
+					OR EXISTS (${liveGrant.sql})
 				)
 			ORDER BY f.created_at DESC, f.id ASC`,
 		)
-		.bind(input.listingId, input.personId, input.personId, input.personId)
+		.bind(input.listingId, input.personId, ...liveGrant.binds)
 		.all<Record<string, unknown>>()
 	return (rows.results ?? []).map(mapCommunityForkListRow)
 }
