@@ -26,7 +26,7 @@ import {
 export const executionContextsDomain = defineDomain({
 	name: capabilityDomainNames.executionContexts,
 	description:
-		'Execution contexts: machines running `kody daemon` that execute runs instead of Kody cloud, their sharing, and your per-org fallback chain. Run code on your own laptop, home server, or build box with its folders and LAN. An experiment: turn it on with `experimentSet` ({ experiment: "execution-contexts", enabled: true }) or at /account/experiments; guide:execution_contexts.',
+		'Execution contexts (an experiment: turn it on with experimentSet or at /account/experiments): run code on your own laptop, home server, or build box running `kody daemon` instead of Kody cloud, with its folders and LAN. Also sharing and your per-org fallback chain. Guide: guide:execution_contexts.',
 	keywords: [
 		'execution context',
 		'machine',
