@@ -153,6 +153,8 @@ export type EcpCapabilities = {
 	cpuCount?: number
 	memoryMb?: number
 	enforcement?: { memory?: string; cpu?: string }
+	/** Set when the daemon runs as a background service. */
+	service?: 'systemd' | 'launchd'
 }
 
 export type EcpRunRequestBody = {

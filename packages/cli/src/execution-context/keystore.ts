@@ -4,7 +4,14 @@ import {
 	randomBytes,
 	scryptSync,
 } from 'node:crypto'
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	writeFileSync,
+} from 'node:fs'
 import { dirname, join } from 'node:path'
 import { Entry } from '@napi-rs/keyring'
 import { apiTokenFileStorePath } from '../api-token-store.js'
@@ -24,7 +31,7 @@ export type StoredContext = {
 
 type KeyFile = {
 	version: 1
-	wrap: 'keyring' | 'passphrase'
+	wrap: 'keyring' | 'passphrase' | 'file'
 	salt?: string
 	iv: string
 	tag: string
@@ -36,7 +43,7 @@ export function contextsDir(apiUrl: string) {
 	return join(dirname(apiTokenFileStorePath(apiUrl)), 'contexts')
 }
 
-function contextDir(apiUrl: string, ecid: string) {
+export function contextDir(apiUrl: string, ecid: string) {
 	if (!/^ec_[A-Za-z0-9_-]+$/.test(ecid)) {
 		throw new Error(`Not an execution context id: ${ecid}`)
 	}
@@ -49,7 +56,7 @@ export function contextWorkersDir(apiUrl: string, ecid: string) {
 }
 
 export type WrappingKeySource = {
-	kind: 'keyring' | 'passphrase'
+	kind: 'keyring' | 'passphrase' | 'file'
 	key(salt: Buffer | null): Buffer
 	salt?: Buffer
 }
@@ -117,6 +124,88 @@ export function resolveWrappingKey(input: {
 	}
 }
 
+/**
+ * A wrapping key kept in a 600-permission file next to the encrypted key.
+ * Only the file permissions of this user account protect it. It exists for
+ * background services on machines where no OS keyring is unlocked (a Linux
+ * server after reboot), so the service never needs a passphrase.
+ */
+export function fileWrappingKeyPath(apiUrl: string, ecid: string) {
+	return join(contextDir(apiUrl, ecid), 'wrapping-key')
+}
+
+export function fileWrappingKey(input: {
+	apiUrl: string
+	ecid: string
+	create: boolean
+}): WrappingKeySource {
+	const path = fileWrappingKeyPath(input.apiUrl, input.ecid)
+	return {
+		kind: 'file',
+		key: () => {
+			if (existsSync(path)) {
+				return Buffer.from(readFileSync(path, 'utf8').trim(), 'base64url')
+			}
+			if (!input.create) {
+				throw new Error(
+					`The file key for this execution context is missing (${path}). Re-register the machine with \`kody connect\`.`,
+				)
+			}
+			const fresh = randomBytes(32)
+			mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+			writeFileSync(path, `${fresh.toString('base64url')}\n`, { mode: 0o600 })
+			chmodSync(path, 0o600)
+			return fresh
+		},
+	}
+}
+
+/** How the stored private key is wrapped, without decrypting it. */
+export function storedKeyWrap(apiUrl: string, ecid: string) {
+	try {
+		const file = JSON.parse(
+			readFileSync(join(contextDir(apiUrl, ecid), 'key.enc'), 'utf8'),
+		) as KeyFile
+		return file.wrap
+	} catch {
+		return null
+	}
+}
+
+/** The wrapping key that opens this context's stored key. */
+export function wrappingKeyForStoredContext(input: {
+	apiUrl: string
+	ecid: string
+	env?: NodeJS.ProcessEnv
+}) {
+	return storedKeyWrap(input.apiUrl, input.ecid) === 'file'
+		? fileWrappingKey({ ...input, create: false })
+		: resolveWrappingKey({
+				ecid: input.ecid,
+				create: false,
+				...(input.env ? { env: input.env } : {}),
+			})
+}
+
+/** Re-encrypts the stored private key under another wrapping key. */
+export function rewrapContextKey(input: {
+	apiUrl: string
+	ecid: string
+	from: WrappingKeySource
+	to: WrappingKeySource
+}) {
+	const dir = contextDir(input.apiUrl, input.ecid)
+	const keyPath = join(dir, 'key.enc')
+	const file = JSON.parse(readFileSync(keyPath, 'utf8')) as KeyFile
+	const privateJwk = decryptPrivateKey(file, input.from)
+	const next = `${keyPath}.next`
+	writeFileSync(next, JSON.stringify(encryptPrivateKey(privateJwk, input.to)), {
+		mode: 0o600,
+	})
+	chmodSync(next, 0o600)
+	renameSync(next, keyPath)
+}
+
 function noWrappingKeyError() {
 	return new Error(
 		`No OS keyring is available to protect this machine's execution context key. Set ${contextKeyPassphraseEnvVar} to a strong passphrase and retry.`,
@@ -153,7 +242,9 @@ export function decryptPrivateKey(
 		throw new Error(
 			file.wrap === 'passphrase'
 				? `This context key is protected by a passphrase. Set ${contextKeyPassphraseEnvVar}.`
-				: `This context key is protected by the OS keyring. Unset ${contextKeyPassphraseEnvVar}.`,
+				: file.wrap === 'file'
+					? 'This context key is protected by a file key.'
+					: `This context key is protected by the OS keyring. Unset ${contextKeyPassphraseEnvVar}.`,
 		)
 	}
 	const key = wrapping.key(
@@ -173,7 +264,7 @@ export function decryptPrivateKey(
 		return JSON.parse(plain.toString('utf8'))
 	} catch {
 		throw new Error(
-			'Could not decrypt the execution context key. The passphrase or keyring entry does not match.',
+			'Could not decrypt the execution context key. The passphrase, keyring entry, or file key does not match.',
 		)
 	}
 }
@@ -197,6 +288,17 @@ export function saveContext(input: {
 		`${JSON.stringify(input.context, null, 2)}\n`,
 		{ mode: 0o600 },
 	)
+}
+
+/** The stored context metadata, without touching its key. */
+export function readStoredContext(apiUrl: string, ecid: string) {
+	try {
+		return JSON.parse(
+			readFileSync(join(contextDir(apiUrl, ecid), 'context.json'), 'utf8'),
+		) as StoredContext
+	} catch {
+		return null
+	}
 }
 
 export function loadContext(input: {

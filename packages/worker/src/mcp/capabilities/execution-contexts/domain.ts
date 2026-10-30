@@ -26,11 +26,13 @@ import {
 export const executionContextsDomain = defineDomain({
 	name: capabilityDomainNames.executionContexts,
 	description:
-		'Execution contexts: machines running `kody daemon` that execute runs instead of Kody cloud, their sharing, and your per-org fallback chain. Behind the execution-contexts feature flag.',
+		'Execution contexts: machines running `kody daemon` that execute runs instead of Kody cloud, their sharing, and your per-org fallback chain. `kody connect` registers a machine and installs the daemon as a background service (`kody daemon install`, Linux and macOS) so it survives reboots. Behind the execution-contexts feature flag.',
 	keywords: [
 		'execution context',
 		'machine',
 		'daemon',
+		'background service',
+		'connect',
 		'chain',
 		'fallback',
 		'local',
