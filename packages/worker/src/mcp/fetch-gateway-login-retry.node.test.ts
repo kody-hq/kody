@@ -288,3 +288,21 @@ test('the retried session records whether the host refused it again', async () =
 		})
 	}
 })
+
+test('a failed backoff record never fails a completed retry', async () => {
+	resolvePlacement.mockReset()
+	recordRetried.mockClear()
+	recordRetried.mockRejectedValueOnce(new Error('D1 unavailable'))
+	resolvePlacement
+		.mockResolvedValueOnce(loginPlacement('dummy-access-1', 'session-1'))
+		.mockResolvedValueOnce(loginPlacement('dummy-access-2', 'session-2'))
+	const { fetchStub } = upstream([401, 200])
+	const response = await executeGatewayFetch({
+		env,
+		props,
+		request: clientRequest(),
+		globalFetch: fetchStub as unknown as typeof fetch,
+	})
+	expect(response.status).toBe(200)
+	expect(recordRetried).toHaveBeenCalledTimes(1)
+})
