@@ -47,7 +47,7 @@ synchronous, for callers that already hold the compiled permissions.
    collaborators hold `search:read` plus grants (and `org:execute` when they
    hold `package:execute` somewhere, the ad-hoc rule). Compiled results are
    stored in `access_cache` and keyed by `orgs.access_epoch`. A grant with
-   `expires_at` (migration 0211; NULL never expires) stops counting at that
+   `expires_at` (migration 0212; NULL never expires) stops counting at that
    instant: every subject lookup filters it in SQL, the cached row's
    `valid_until` holds the earliest expiry it used and is a miss from then, and
    the per-request memo recompiles past it, so a long run loses the grant

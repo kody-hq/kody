@@ -20,7 +20,7 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
 const migrationsDirectory = new URL('../../migrations/', import.meta.url)
-const expiryMigration = '0211-grants-expiry-and-profile-subject.sql'
+const expiryMigration = '0212-grants-expiry-and-profile-subject.sql'
 const start = new Date('2026-11-01T12:00:00.000Z')
 const later = '2026-11-01T13:00:00.000Z'
 
@@ -90,10 +90,7 @@ async function seed() {
 	return { sqlite, db, org, memberId, grant, compile }
 }
 
-function readable(
-	compiled: CompiledAccess,
-	packageId: string,
-) {
+function readable(compiled: CompiledAccess, packageId: string) {
 	return (
 		compiled.resourcePermissions
 			.get(`package:${packageId}`)
@@ -178,7 +175,7 @@ test('rewriting a grant keeps a live expiry, clears on null, and restarts an exp
 	expect(listed?.expiresAt).toBeNull()
 })
 
-test('the 0211 rebuild keeps every grant and admits expiry and profile subjects', () => {
+test('the 0212 rebuild keeps every grant and admits expiry and profile subjects', () => {
 	const sqlite = new DatabaseSync(':memory:', {
 		enableForeignKeyConstraints: false,
 	})
