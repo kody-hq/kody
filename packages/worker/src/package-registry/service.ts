@@ -665,12 +665,18 @@ export async function refreshSavedPackageProjection(input: {
 				details: { firstPublish: published.first, fields: published.fields },
 			})
 			if (published.first) {
+				// The publish is stored; a missed grant is repaired by
+				// adminCreatorAccessBackfill, so it must not fail the publish.
 				await grantCreatorAccess({
 					env: input.env,
 					orgId: input.userId,
 					creatorUserId: input.creatorUserId,
 					audit: input.audit,
 					resources: createdPackageResources(input.packageId),
+				}).catch((error: unknown) => {
+					Sentry.captureException(error, {
+						tags: { context: 'package-creator-grant' },
+					})
 				})
 			}
 		}

@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare'
 /**
  * Org audit rows for credential writes that had none: create, value replace,
  * delete, disconnect, rename, allowed packages, and plain detail edits, for
@@ -90,6 +91,8 @@ export async function recordCredentialAudit(
 	for (const change of list) {
 		if (change.action !== credentialAuditActions.created) continue
 		if (change.credential.kind === 'vault' || !writer.env) continue
+		// The credential is stored; adminCreatorAccessBackfill repairs a
+		// missed grant, so it must not fail the create.
 		await grantCreatorAccess({
 			env: writer.env,
 			orgId: change.orgId,
@@ -102,6 +105,10 @@ export async function recordCredentialAudit(
 					family: credentialPermissionFamily(change.credential.kind),
 				},
 			],
+		}).catch((error: unknown) => {
+			Sentry.captureException(error, {
+				tags: { context: 'credential-creator-grant' },
+			})
 		})
 	}
 }
