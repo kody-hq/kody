@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { insufficientScopeMessage } from '../src/api-token.js'
 import {
+	deleteStoredApiToken,
 	saveStoredApiToken,
 	type StoredApiToken,
 } from '../src/api-token-store.js'
@@ -16,13 +17,15 @@ import {
 import { clearOpenApiRouteCache } from '../src/open-api-client.js'
 import {
 	createFileBackend,
+	deleteCredentials,
 	fileStorePath,
 	saveCredentials,
 	type StoredCredentials,
 } from '../src/store.js'
 
-const apiUrl = 'https://api.kody.codes'
-const mcpUrl = 'https://kody.codes/mcp'
+// Test-only hosts so stored entries never touch a real kody.codes keyring item.
+const apiUrl = 'https://api.cli-credential.test'
+const mcpUrl = 'https://cli-credential.test/mcp'
 
 const stored: StoredApiToken = {
 	version: 1,
@@ -37,7 +40,7 @@ const login: StoredCredentials = {
 	version: 1,
 	mcpUrl,
 	resource: mcpUrl,
-	authorizationServerUrl: 'https://kody.codes',
+	authorizationServerUrl: 'https://cli-credential.test',
 	clientId: 'client-1',
 	accessToken: 'login-access',
 	tokenType: 'bearer',
@@ -148,6 +151,24 @@ test('insufficientScopeMessage names a stored token and says login does not repl
 	)
 	assert.doesNotMatch(message, /kody_at_/)
 	assert.doesNotMatch(message, /\u2014/)
+})
+
+test('insufficientScopeMessage for search with only a stored token suggests kody login', () => {
+	const message = insufficientScopeMessage({
+		requiredScope: 'search:read',
+		currentScopes: stored.scopes,
+		credential: resolveCliCredential({
+			env: {},
+			apiUrl,
+			mcpUrl,
+			purpose: 'session',
+			loadApiToken: () => stored,
+			loadLogin: () => null,
+		}),
+	})
+	assert.match(message, /Credential used: stored API token tok_stored_old/)
+	assert.match(message, /Run `kody login` \(search and cloud execute/)
+	assert.doesNotMatch(message, /does not replace/)
 })
 
 test('insufficientScopeMessage names KODY_API_TOKEN and the login session', () => {
@@ -283,6 +304,8 @@ async function withStoredTokenAndLogin(
 	} finally {
 		globalThis.fetch = previousFetch
 		clearOpenApiRouteCache()
+		deleteStoredApiToken(apiUrl)
+		deleteCredentials(mcpUrl)
 		for (const [key, value] of Object.entries(saved)) {
 			if (value === undefined) delete process.env[key]
 			else process.env[key] = value

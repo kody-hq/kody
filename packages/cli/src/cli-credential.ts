@@ -226,6 +226,12 @@ export function credentialUsedNote(input: {
 		input.mintScopes ?? ['<current scopes>', '<missing scope>'],
 		input.lifetime,
 	)
+	if (
+		credential.source === 'stored-api-token' &&
+		credential.purpose === 'session'
+	) {
+		return `${used} Run \`kody login\` (search and cloud execute then use the login session before the stored token), or replace the stored token with \`${fix}\`.`
+	}
 	if (credential.source === 'stored-api-token') {
 		return `${used} \`kody login\` does not replace a stored API token, so logging in again will not fix this. Replace the stored token with \`${fix}\`.`
 	}
