@@ -200,9 +200,16 @@ async function directUserGrant(
 			   AND subject_type = 'user'
 			   AND subject_id = ?
 			   AND deleted_at IS NULL
+			   AND (expires_at IS NULL OR expires_at > ?)
 			 LIMIT 1`,
 		)
-		.bind(orgId, target.resourceType, target.resourceId, userId)
+		.bind(
+			orgId,
+			target.resourceType,
+			target.resourceId,
+			userId,
+			new Date().toISOString(),
+		)
 		.first<{ id: string }>()
 	if (!grant) return null
 	const permissions = await db

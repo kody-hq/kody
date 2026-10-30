@@ -144,6 +144,10 @@ export const outsideInviterGrantSubjects = {
 		exclude:
 			'An org subject grant only reaches live members, and members pass before this check.',
 	},
+	profile: {
+		exclude:
+			'Profile grants narrow a profile; they never grant the person behind it.',
+	},
 } as const satisfies GrantSubjectChoices
 
 async function assertInviterStillValid(db: D1Database, invite: StoredInvite) {

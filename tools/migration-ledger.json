@@ -759,6 +759,10 @@
 		{
 			"filename": "0209-agent-registrations.sql",
 			"sha256": "0713cbe4e214d27fa90062dadda1c18ee0aeb6e030d24a94179f4e7d1431fb4c"
+		},
+		{
+			"filename": "0211-grants-expiry-and-profile-subject.sql",
+			"sha256": "418ac9f8e5352de6a754fece077b91f8d85b6abb04c3c028f1f5a2e3d2421c84"
 		}
 	]
 }

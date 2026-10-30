@@ -755,6 +755,7 @@ export async function loadSharing(
 				AND m.org_id = g.org_id AND m.deleted_at IS NULL
 			 WHERE g.resource_type = 'execution_context' AND g.resource_id = ?
 			   AND g.org_id = ? AND g.deleted_at IS NULL
+			   AND g.subject_type IN ('user', 'team')
 			 ORDER BY g.created_at`,
 		)
 		.bind(row.id, caller.orgId)

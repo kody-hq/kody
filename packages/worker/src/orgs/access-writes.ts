@@ -358,6 +358,12 @@ export async function upsertGrant(input: {
 	createdByUserId: string
 	/** Defaults to `manual`; a manual write over a `created` grant claims it. */
 	origin?: GrantOrigin
+	/**
+	 * When the grant stops counting (ISO). Null never expires. Omitted keeps
+	 * an existing grant's unexpired expiry; rewriting an expired grant starts
+	 * it fresh with none.
+	 */
+	expiresAt?: string | null
 	audit: OrgAuditWriter
 }) {
 	assertGrantSubjectInOrg(input)
@@ -374,7 +380,7 @@ export async function upsertGrant(input: {
 	const now = new Date().toISOString()
 	const existing = await input.db
 		.prepare(
-			`SELECT id FROM grants
+			`SELECT id, expires_at FROM grants
 			 WHERE org_id = ?
 			   AND resource_type = ?
 			   AND resource_id = ?
@@ -389,15 +395,21 @@ export async function upsertGrant(input: {
 			input.subject.type,
 			input.subject.id,
 		)
-		.first<{ id: string }>()
+		.first<{ id: string; expires_at: string | null }>()
 	const grantId = existing?.id ?? crypto.randomUUID()
+	const keptExpiry =
+		existing?.expires_at && existing.expires_at > now
+			? existing.expires_at
+			: null
+	const expiresAt = input.expiresAt === undefined ? keptExpiry : input.expiresAt
 	const statements: Array<{ run(): Promise<unknown> }> = []
 	if (existing) {
 		statements.push(
 			input.db
 				.prepare(
 					`UPDATE grants
-					 SET preset = ?, updated_at = ?, created_by_user_id = ?, origin = ?
+					 SET preset = ?, updated_at = ?, created_by_user_id = ?, origin = ?,
+					     expires_at = ?
 					 WHERE id = ? AND org_id = ?${andLiveDeletedAtSql()}`,
 				)
 				.bind(
@@ -405,6 +417,7 @@ export async function upsertGrant(input: {
 					now,
 					input.createdByUserId,
 					origin,
+					expiresAt,
 					grantId,
 					input.orgId,
 				),
@@ -418,8 +431,8 @@ export async function upsertGrant(input: {
 				.prepare(
 					`INSERT INTO grants (
 						id, org_id, resource_type, resource_id, subject_type, subject_id,
-						preset, created_by_user_id, created_at, updated_at, origin
-					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+						preset, created_by_user_id, created_at, updated_at, origin, expires_at
+					) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				)
 				.bind(
 					grantId,
@@ -433,6 +446,7 @@ export async function upsertGrant(input: {
 					now,
 					now,
 					origin,
+					expiresAt,
 				),
 		)
 	}
@@ -463,10 +477,11 @@ export async function upsertGrant(input: {
 				preset: input.preset,
 				permissions,
 				origin,
+				expiresAt,
 			},
 		},
 	})
-	return { id: grantId, permissions }
+	return { id: grantId, permissions, expiresAt }
 }
 
 export async function softDeleteGrant(input: {
@@ -742,6 +757,8 @@ export type GrantView = {
 	createdByUserId: string
 	createdAt: string
 	updatedAt: string
+	/** Null never expires. Listings include expired grants until revoked. */
+	expiresAt: string | null
 }
 
 type GrantJoinRow = {
@@ -755,6 +772,7 @@ type GrantJoinRow = {
 	created_by_user_id: string
 	created_at: string
 	updated_at: string
+	expires_at: string | null
 	permission: string | null
 }
 
@@ -781,6 +799,7 @@ function groupGrantRows(rows: ReadonlyArray<GrantJoinRow>): Array<GrantView> {
 				createdByUserId: row.created_by_user_id,
 				createdAt: row.created_at,
 				updatedAt: row.updated_at,
+				expiresAt: row.expires_at ?? null,
 			}
 			byId.set(row.id, grant)
 		}
@@ -801,7 +820,11 @@ export async function listGrants(input: {
 	subjectType?: GrantSubjectType | null
 	subjectId?: string | null
 }): Promise<Array<GrantView>> {
-	const where = ['g.org_id = ?']
+	// Profile grants (subject_type 'profile') are not listed with person grants.
+	const where = [
+		'g.org_id = ?',
+		`g.subject_type IN (${grantSubjectTypes.map((type) => `'${type}'`).join(', ')})`,
+	]
 	const params: Array<string> = [input.orgId]
 	if (input.grantId) {
 		where.push('g.id = ?')
@@ -835,6 +858,7 @@ export async function listGrants(input: {
 			        g.created_by_user_id AS created_by_user_id,
 			        g.created_at AS created_at,
 			        g.updated_at AS updated_at,
+			        g.expires_at AS expires_at,
 			        gp.permission AS permission
 			 FROM grants g
 			 LEFT JOIN grant_permissions gp ON gp.grant_id = g.id

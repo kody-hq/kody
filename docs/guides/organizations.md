@@ -38,7 +38,9 @@ Owner grants read access on the organization: **Grants** page,
 }
 ```
 
-From the CLI: `kody api accessGrant --org <slug> --params '<that JSON>'`.
+From the CLI: `kody api accessGrant --org <slug> --params '<that JSON>'`. Add
+`"expires_at": "<ISO time>"` for temporary access: the grant stops counting at
+that time (omit it or pass `null` for access that never expires).
 
 | Permission         | Reads                                                                                       |
 | ------------------ | ------------------------------------------------------------------------------------------- |

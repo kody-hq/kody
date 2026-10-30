@@ -56,9 +56,9 @@ const handWrittenSubjectMatches: Record<
 	{ count: number; reason: string }
 > = {
 	'orgs/access-writes.ts': {
-		count: 2,
+		count: 3,
 		reason:
-			'Exact subject identity: upsert dedupe and the list filter bind one subject type.',
+			'Exact subject identity: upsert dedupe and the list filter bind one subject type; listGrants keeps profile grants out of person listings.',
 	},
 	'orgs/offboarding.ts': {
 		count: 1,
@@ -75,9 +75,9 @@ const handWrittenSubjectMatches: Record<
 			"Reads the person's own direct grant row to merge the link preset into.",
 	},
 	'execution-contexts/service.ts': {
-		count: 3,
+		count: 4,
 		reason:
-			'loadSharing joins user and team labels for display, after the grant rows are chosen.',
+			'loadSharing keeps only user and team rows and joins their labels for display.',
 	},
 	'orgs/repo.ts': {
 		count: 2,
@@ -106,15 +106,17 @@ test('every grant subject lookup decides every subject type', () => {
 	const decisions = Object.entries(lookupSites).map(([site, subjects]) => ({
 		site,
 		types: Object.keys(subjects).sort(),
-		undocumentedExclusions: grantSubjectTypes.filter((type) => {
-			const choice = subjects[type]
-			return choice !== 'include' && !choice?.exclude.trim()
-		}),
+		undocumentedExclusions: [...grantSubjectTypes, 'profile' as const].filter(
+			(type) => {
+				const choice = subjects[type]
+				return choice !== 'include' && !choice?.exclude.trim()
+			},
+		),
 	}))
 	expect(decisions).toEqual(
 		Object.keys(lookupSites).map((site) => ({
 			site,
-			types: [...grantSubjectTypes].sort(),
+			types: [...grantSubjectTypes, 'profile'].sort(),
 			undocumentedExclusions: [],
 		})),
 	)
