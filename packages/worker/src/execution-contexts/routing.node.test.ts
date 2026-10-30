@@ -406,3 +406,34 @@ test('a queued run that revocation ended unrun has no ranOn in history', () => {
 	})
 	expect(historyRanOn(metadata.executionContext)).toBeNull()
 })
+
+test('ranOn carries the timing a context reported, and cloud never does', () => {
+	const timing = {
+		queueMs: 1,
+		setupMs: 20,
+		packageGraphMs: 0,
+		packageGraphCached: true,
+		executeMs: 3,
+		daemonMs: 24,
+		serverMs: 40,
+		transitMs: 16,
+	}
+	expect(
+		ranOnFromMetadata({
+			id: 'ec_box',
+			name: 'build-box',
+			fellBackToCloud: false,
+			attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'ran' }],
+			timing,
+		}),
+	).toMatchObject({ kind: 'context', id: 'ec_box', timing })
+	expect(
+		ranOnFromMetadata({
+			id: 'ec_box',
+			name: 'build-box',
+			fellBackToCloud: true,
+			attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'busy' }],
+			timing,
+		}),
+	).not.toHaveProperty('timing')
+})

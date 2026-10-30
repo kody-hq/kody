@@ -20,7 +20,6 @@ import {
 	registerContext,
 } from '../src/execution-context/client.js'
 import { runExecutionContextCommand } from '../src/execution-context/commands.js'
-import { type ContextRunExecutor } from '../src/execution-context/daemon.js'
 import {
 	abortableDelay,
 	frameRejectedCloseCode,
@@ -773,7 +772,7 @@ test('runs up to the grant-capped concurrency at once and report a timing breakd
 		signal: abort.signal,
 		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
 		maxConcurrent: 4,
-		execute: async (run: Parameters<ContextRunExecutor>[0]) => {
+		execute: async (_run: Parameters<ContextRunExecutor>[0]) => {
 			inFlight += 1
 			peak = Math.max(peak, inFlight)
 			if (inFlight === 2) releaseBoth()
