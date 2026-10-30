@@ -154,6 +154,8 @@ type SocketAttachment = {
 	maxConcurrent: number
 	helloed: boolean
 	welcomed?: boolean
+	/** When getStatus last wrote last_seen_at; survives hibernation. */
+	lastSeenWrittenAt?: number
 	/** Open API origin the daemon connected through; run requests name it. */
 	apiOrigin?: string
 }
@@ -907,11 +909,17 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		// Heartbeat pings are auto-responses that never wake this object, so
 		// last_seen_at catches up here, at most once a minute.
 		const snapshot = live ? this.#snapshot() : null
-		if (
-			live &&
-			snapshot &&
-			live.heardAt - this.#lastSeenWrittenAt >= lastSeenWriteEveryMs
-		) {
+		const writtenAt = live
+			? Math.max(
+					this.#lastSeenWrittenAt,
+					live.attachment.lastSeenWrittenAt ?? live.attachment.connectedAt,
+				)
+			: 0
+		if (live && snapshot && live.heardAt - writtenAt >= lastSeenWriteEveryMs) {
+			live.ws.serializeAttachment({
+				...live.attachment,
+				lastSeenWrittenAt: live.heardAt,
+			})
 			await this.#touchLastSeen(snapshot.ecid, live.heardAt)
 		}
 		return {
