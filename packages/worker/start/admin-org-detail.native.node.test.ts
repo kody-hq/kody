@@ -159,4 +159,8 @@ test('live organization detail SSR renders billing mutation forms', async () => 
 	expect(html).toContain('aria-label="Set organization manual plan"')
 	expect(html).toContain('aria-label="Grant organization credits"')
 	expect(html).toContain('aria-label="Set organization credit eligibility"')
+	expect(html).toContain('Pro</option>')
+	expect(
+		html.indexOf('aria-label="Grant organization credits"'),
+	).toBeGreaterThan(html.indexOf('aria-label="Recent credit ledger"'))
 })

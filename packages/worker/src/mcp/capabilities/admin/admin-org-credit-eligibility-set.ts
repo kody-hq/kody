@@ -33,6 +33,7 @@ const outputSchema = z.object({
 	orgId: z.string(),
 	previous: z.boolean(),
 	next: z.boolean(),
+	changed: z.boolean(),
 })
 
 export const adminOrgCreditEligibilitySetCapability = defineDomainCapability(
@@ -82,7 +83,8 @@ export const adminOrgCreditEligibilitySetCapability = defineDomainCapability(
 				},
 				{
 					successReason: (result) =>
-						`org_id=${result.orgId};credits_eligible=${result.next};previous=${result.previous}`,
+						`org_id=${result.orgId};credits_eligible=${result.next};previous=${result.previous};changed=${result.changed};reason=${args.reason}`,
+					skipSuccessAudit: (result) => !result.changed,
 				},
 			)
 		},

@@ -103,7 +103,7 @@ export const adminOrgCreditGrantCapability = defineDomainCapability(
 				},
 				{
 					successReason: (result) =>
-						`org_id=${result.orgId};amount_cents=${result.amountCents};entry_id=${result.entryId}`,
+						`org_id=${result.orgId};amount_cents=${result.amountCents};entry_id=${result.entryId};reason=${args.reason}`,
 				},
 			)
 		},

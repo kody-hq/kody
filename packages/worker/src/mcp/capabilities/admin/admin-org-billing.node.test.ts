@@ -150,7 +150,7 @@ test('org billing capabilities deny non-admins, audit successful mutations, and 
 		},
 		ctx,
 	)
-	await adminOrgCreditEligibilitySetCapability.handler(
+	const eligibility = await adminOrgCreditEligibilitySetCapability.handler(
 		{
 			orgId: target,
 			creditsEligible: true,
@@ -159,19 +159,70 @@ test('org billing capabilities deny non-admins, audit successful mutations, and 
 		ctx,
 	)
 	expect(grant).toMatchObject({ orgId: target, amountCents: 100 })
+	expect(eligibility).toMatchObject({
+		orgId: target,
+		previous: false,
+		next: true,
+		changed: true,
+	})
+	const unchangedPlan = await adminOrgPlanSetCapability.handler(
+		{ orgId: target, plan: 'pro', reason: 'MCP unchanged plan request.' },
+		ctx,
+	)
+	const unchangedEligibility =
+		await adminOrgCreditEligibilitySetCapability.handler(
+			{
+				orgId: target,
+				creditsEligible: true,
+				reason: 'MCP unchanged eligibility request.',
+			},
+			ctx,
+		)
+	expect(unchangedPlan).toMatchObject({ changed: false })
+	expect(unchangedEligibility).toMatchObject({ changed: false })
 	expect(
 		auditSqlite
 			.prepare(
-				`SELECT action, result FROM audit_events WHERE action IN (
+				`SELECT COUNT(*) AS count FROM audit_events WHERE action IN (
+					'adminOrgPlanSet', 'adminOrgCreditEligibilitySet'
+				) AND result = 'success'`,
+			)
+			.get(),
+	).toEqual({ count: 2 })
+	expect(
+		auditSqlite
+			.prepare(
+				`SELECT COUNT(*) AS count FROM org_audit_events WHERE org_id = ? AND action IN (
+					'admin_plan_set', 'admin_credit_eligibility_set'
+				)`,
+			)
+			.get(target),
+	).toEqual({ count: 2 })
+	expect(
+		auditSqlite
+			.prepare(
+				`SELECT action, result, reason FROM audit_events WHERE action IN (
 					'adminOrgPlanSet', 'adminOrgCreditGrant', 'adminOrgCreditEligibilitySet'
 				) ORDER BY rowid DESC LIMIT 3`,
 			)
 			.all(),
 	).toEqual(
 		expect.arrayContaining([
-			{ action: 'adminOrgPlanSet', result: 'success' },
-			{ action: 'adminOrgCreditGrant', result: 'success' },
-			{ action: 'adminOrgCreditEligibilitySet', result: 'success' },
+			expect.objectContaining({
+				action: 'adminOrgPlanSet',
+				result: 'success',
+				reason: expect.stringContaining(';reason=MCP plan request.'),
+			}),
+			expect.objectContaining({
+				action: 'adminOrgCreditGrant',
+				result: 'success',
+				reason: expect.stringContaining(';reason=MCP credit request.'),
+			}),
+			expect.objectContaining({
+				action: 'adminOrgCreditEligibilitySet',
+				result: 'success',
+				reason: expect.stringContaining(';reason=MCP eligibility request.'),
+			}),
 		]),
 	)
 	expect(

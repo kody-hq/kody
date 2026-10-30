@@ -41,6 +41,7 @@ import {
 	formatAdminCreditLedgerKind,
 	formatAdminEntitlementLadder,
 	formatAdminOrganizationRole,
+	formatAdminPlanLabel,
 } from './admin-display-labels.ts'
 import {
 	RecordTable,
@@ -103,7 +104,7 @@ function AdminOrgPlanForm(props: { orgId: string; manualPlan: PlanName }) {
 				>
 					{planNames.map((name) => (
 						<option key={name} value={name}>
-							{name}
+							{formatAdminPlanLabel(name)}
 						</option>
 					))}
 				</select>
@@ -165,8 +166,12 @@ function AdminOrgCreditsForms(props: {
 			setAdminOrgCreditEligibility({
 				data: { orgId: props.orgId, ...input },
 			}),
-		onSuccess: async () => {
-			setEligibilityMessage('Credit eligibility updated.')
+		onSuccess: async (result) => {
+			setEligibilityMessage(
+				result.changed
+					? 'Credit eligibility updated.'
+					: 'Credit eligibility is already set that way.',
+			)
 			setEligibilityReason('')
 			await router.invalidate()
 		},
@@ -613,12 +618,6 @@ export function AdminOrgDetailPage(props: {
 						},
 					}))}
 				/>
-				{isDeleted ? null : (
-					<AdminOrgCreditsForms
-						orgId={org.id}
-						creditsEligible={data.plan.adminCreditsEligible}
-					/>
-				)}
 			</AccountManagementPanel>
 			<AccountManagementPanel title="Budgets">
 				<MetadataGrid
@@ -693,6 +692,12 @@ export function AdminOrgDetailPage(props: {
 						},
 					}))}
 				/>
+				{isDeleted ? null : (
+					<AdminOrgCreditsForms
+						orgId={org.id}
+						creditsEligible={data.plan.adminCreditsEligible}
+					/>
+				)}
 			</AccountManagementPanel>
 			{data.softDelete?.deletedAt ? (
 				<AccountManagementPanel title="Limits">

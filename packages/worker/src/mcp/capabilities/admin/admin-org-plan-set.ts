@@ -86,7 +86,8 @@ export const adminOrgPlanSetCapability = defineDomainCapability(
 				},
 				{
 					successReason: (result) =>
-						`org_id=${result.orgId};plan=${result.next};previous=${result.previous};changed=${result.changed}`,
+						`org_id=${result.orgId};plan=${result.next};previous=${result.previous};changed=${result.changed};reason=${args.reason}`,
+					skipSuccessAudit: (result) => !result.changed,
 				},
 			)
 		},

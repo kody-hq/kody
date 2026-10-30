@@ -206,7 +206,7 @@ async function writePlatformAudit(input: {
 async function liveOwners(db: D1Database, orgId: string) {
 	const owners = await db
 		.prepare(
-			`SELECT DISTINCT m.user_id, h.handle
+			`SELECT DISTINCT m.user_id, COALESCE(h.handle, u.username) AS handle
 			 FROM org_memberships m
 			 INNER JOIN users u
 			   ON u.stable_user_id = m.user_id AND u.deleted_at IS NULL
@@ -350,7 +350,12 @@ export async function setAdminOrgCreditEligibility(input: {
 	reason: unknown
 	platformAudit?: AdminOrgPlatformAudit
 	now?: Date
-}): Promise<{ orgId: string; previous: boolean; next: boolean }> {
+}): Promise<{
+	orgId: string
+	previous: boolean
+	next: boolean
+	changed: boolean
+}> {
 	const reason = normalizeOrgLimitOverrideReason(input.reason)
 	const db = input.env.APP_DB
 	const org = await resolveAdminOrgTarget(db, input.target)
@@ -363,6 +368,9 @@ export async function setAdminOrgCreditEligibility(input: {
 		.first<{ admin_credits_eligible: number | null }>()
 	if (!current) throw new AdminOrgBillingMutationError(404, 'Org not found.')
 	const previous = Number(current.admin_credits_eligible) === 1
+	if (previous === next) {
+		return { orgId: org.id, previous, next, changed: false }
+	}
 	await writeOrgCreditEligibility({
 		db,
 		orgId: org.id,
@@ -381,5 +389,5 @@ export async function setAdminOrgCreditEligibility(input: {
 		action: 'adminOrgCreditEligibilitySet',
 		reason: `org_id=${org.id};credits_eligible=${next};previous=${previous};reason=${reason}`,
 	})
-	return { orgId: org.id, previous, next }
+	return { orgId: org.id, previous, next, changed: true }
 }

@@ -207,7 +207,7 @@ test('paid-to-free downgrade blocks owners at the cap but allows one free org', 
 			reason: 'Downgrade requested.',
 		}),
 	).rejects.toThrow(
-		'Downgrading this organization to free would give an Owner more than 2 free organizations. Make one of their organizations paid or delete one first.',
+		'Downgrading this organization to free would give @cap-owner more than 2 free organizations. Make one of their organizations paid or delete one first.',
 	)
 
 	const underCapOwner = insertUser(sqlite, { email: 'under-cap@example.com' })
@@ -375,7 +375,11 @@ test('org credit eligibility changes update the org and write both audits', asyn
 		creditsEligible: true,
 		reason: 'Enable the approved team wallet.',
 	})
-	expect(result).toMatchObject({ previous: false, next: true })
+	expect(result).toMatchObject({
+		previous: false,
+		next: true,
+		changed: true,
+	})
 	expect(
 		sqlite
 			.prepare(`SELECT admin_credits_eligible FROM orgs WHERE id = ?`)
@@ -405,5 +409,34 @@ test('org credit eligibility changes update the org and write both audits', asyn
 		creditsEligible: false,
 		reason: 'Hold the team wallet.',
 	})
-	expect(cleared).toMatchObject({ previous: true, next: false })
+	expect(cleared).toMatchObject({
+		previous: true,
+		next: false,
+		changed: true,
+	})
+	const sameValue = await setAdminOrgCreditEligibility({
+		...auditInput(env, audit),
+		target: { orgId },
+		creditsEligible: false,
+		reason: 'Eligibility is already disabled.',
+	})
+	expect(sameValue).toMatchObject({
+		previous: false,
+		next: false,
+		changed: false,
+	})
+	expect(
+		auditSqlite
+			.prepare(
+				`SELECT COUNT(*) AS count FROM org_audit_events WHERE org_id = ? AND action = 'admin_credit_eligibility_set'`,
+			)
+			.get(orgId),
+	).toMatchObject({ count: 2 })
+	expect(
+		auditSqlite
+			.prepare(
+				`SELECT COUNT(*) AS count FROM audit_events WHERE action = 'adminOrgCreditEligibilitySet'`,
+			)
+			.get(),
+	).toMatchObject({ count: 2 })
 })
