@@ -71,12 +71,13 @@ export async function contextIsShared(
 	row: Pick<ExecutionContextRow, 'id' | 'all_members'>,
 ) {
 	if (row.all_members === 1) return true
+	const now = new Date().toISOString()
 	const [grants, attachments] = await db.batch<{ ok: number }>([
 		db
 			.prepare(
-				`SELECT 1 AS ok FROM grants WHERE resource_type = 'execution_context' AND resource_id = ? AND deleted_at IS NULL LIMIT 1`,
+				`SELECT 1 AS ok FROM grants WHERE resource_type = 'execution_context' AND resource_id = ? AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > ?) LIMIT 1`,
 			)
-			.bind(row.id),
+			.bind(row.id, now),
 		db
 			.prepare(
 				`SELECT 1 AS ok FROM execution_context_org_attachments WHERE context_id = ? LIMIT 1`,

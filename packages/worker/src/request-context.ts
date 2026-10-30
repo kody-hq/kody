@@ -67,17 +67,21 @@ export function memoizePerRequest<Value>(input: {
 	/** Reload instead of reusing a settled value this rejects. */
 	isFresh?: (value: Value) => boolean
 }): Promise<Value> {
+	const { isFresh } = input
+	const load = isFresh
+		? () =>
+				input.load().then((value) => (isFresh(value) ? value : input.load()))
+		: input.load
 	const context = getRequestContext(input.request)
-	if (!context) return input.load()
+	if (!context) return load()
 	const pending = context.memo.get(input.key) as Promise<Value> | undefined
 	if (pending) {
-		const isFresh = input.isFresh
 		if (!isFresh) return pending
 		return pending.then((value) =>
-			isFresh(value) ? value : reloadMemo(context.memo, input.key, input.load),
+			isFresh(value) ? value : reloadMemo(context.memo, input.key, load),
 		)
 	}
-	return reloadMemo(context.memo, input.key, input.load)
+	return reloadMemo(context.memo, input.key, load)
 }
 
 function reloadMemo<Value>(

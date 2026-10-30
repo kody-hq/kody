@@ -1,18 +1,23 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { type RequestContext as AuthRequestContext } from '@kody-internal/shared/request-context.ts'
 import { afterEach, expect, test, vi } from 'vitest'
 import {
 	compileAccessForActor,
 	type CompiledAccess,
 } from '#worker/authorization/access-compile.ts'
+import { computeEffectivePermissions } from '#worker/authorization/authorize.ts'
 import {
 	createOrg,
 	listGrants,
 	upsertGrant,
 	type GrantSubject,
 } from '#worker/orgs/access-writes.ts'
-import { runWithRequestContext } from '#worker/request-context.ts'
+import {
+	memoizePerRequest,
+	runWithRequestContext,
+} from '#worker/request-context.ts'
 import { withAccessEpochWriteGuard } from '#worker/test-support/access-epoch-write-guard.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createTestOrgAuditWriter } from '#worker/test-support/create-audit-db.ts'
@@ -140,6 +145,38 @@ test('a long run stops honoring a grant that expires mid-run', async () => {
 			expect(readable(await compile(), 'p-run')).toBe(false)
 		},
 	)
+})
+
+test('a request context recompiles its permissions once a grant expires', async () => {
+	const { db, org, memberId, grant } = await seed()
+	await grant({ type: 'user', id: memberId }, 'p-ctx', later)
+	const env = { APP_DB: db } as unknown as Env
+	const request = {
+		actor: { userId: memberId, username: 'member' },
+		org: { id: ownerIdFromStored(String(org.id)), slug: 'acme' },
+		membership: { role: 'member' },
+		credential: { profileName: null },
+	} as unknown as AuthRequestContext
+	const canRead = async () =>
+		(await computeEffectivePermissions({ env, request })).resourcePermissions
+			.get('package:p-ctx')
+			?.has('package:read') ?? false
+	expect(await canRead()).toBe(true)
+	vi.setSystemTime(new Date(later))
+	expect(await canRead()).toBe(false)
+})
+
+test('a per-request load that is already stale when it settles reloads', async () => {
+	let loads = 0
+	const load = async () => ++loads
+	const isFresh = (value: number) => value > 1
+	expect(await memoizePerRequest({ key: 'k', load, isFresh })).toBe(2)
+	loads = 0
+	await runWithRequestContext(new Request('https://kody.test/x'), async () => {
+		expect(await memoizePerRequest({ key: 'k', load, isFresh })).toBe(2)
+		expect(await memoizePerRequest({ key: 'k', load, isFresh })).toBe(2)
+	})
+	expect(loads).toBe(2)
 })
 
 test('profile subject rows never reach a person and are not listed', async () => {

@@ -183,3 +183,17 @@ test('list and none credentials are unchanged at run time', () => {
 		contextRunCredentials({ credentials: { mode: 'none' } }, input),
 	).toEqual({ mode: 'none' })
 })
+
+test('an expired share no longer makes the context shared', async () => {
+	const s = setup({ mode: 'none' })
+	s.shareWith('user_friend')
+	s.sqlite
+		.prepare(`UPDATE grants SET expires_at = ? WHERE id = 'grant_user_friend'`)
+		.run(new Date(Date.now() - 1000).toISOString())
+	const row = (await getExecutionContext(s.db, 'ec_mac'))!
+	expect(await contextIsShared(s.db, row)).toBe(false)
+	await updateContext(s.caller, 'ec_mac', {
+		grant: { credentials: { mode: 'requester' } },
+	})
+	expect((await s.grant()).credentials).toEqual({ mode: 'requester' })
+})
