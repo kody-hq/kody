@@ -206,7 +206,7 @@ export async function writeOrgCreditEligibility(input: {
 		)
 		.bind(input.orgId)
 		.first<UserEntitlementRow>()
-	if (!row) throw new Error('Organization not found.')
+	if (!row) throw new AdminOrgBillingMutationError(404, 'Org not found.')
 	const previous = Number(row.admin_credits_eligible) === 1
 	const next = input.creditsEligible ? 1 : 0
 	await forgiveCreditUsageBeforeUnlock({
@@ -237,7 +237,7 @@ export async function writeOrgCreditEligibility(input: {
 			},
 		})
 		if (!result.changed)
-			throw new Error('Organization billing was not updated.')
+			throw new AdminOrgBillingMutationError(404, 'Org not found.')
 	} else {
 		await statement.run()
 	}
