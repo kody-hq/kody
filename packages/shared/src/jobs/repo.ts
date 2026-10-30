@@ -684,10 +684,7 @@ export async function recordJobRunNowOutcomeRow(input: {
 				next_run_at = CASE
 					WHEN schedule_json = ? AND timezone = ? THEN ?
 					ELSE next_run_at
-				END,
-				claim_token = NULL, running_since = NULL, lease_expires_at = NULL,
-				claimed_scheduled_for = NULL, retry_scheduled_for = NULL,
-				retry_count = 0
+				END
 			WHERE id = ? AND user_id = ?`,
 		)
 		.bind(

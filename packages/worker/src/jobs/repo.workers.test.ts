@@ -524,3 +524,41 @@ test('Run now outcomes keep settings edited during the run and move next_run_at 
 		next_run_at: '2026-04-20T11:20:00.000Z',
 	})
 })
+
+test('a Run now outcome leaves a scheduled claim taken during the run in place', async () => {
+	await ensureJobsSchema()
+	const userId = ownerIdFromStored('user-run-now-claim')
+	await insertJob({
+		id: 'run-now-claim',
+		userId,
+		nextRunAt: '2026-04-20T11:00:00.000Z',
+	})
+	const before = await getJobRowById(env.APP_DB, userId, 'run-now-claim')
+	if (!before) throw new Error('Expected job.')
+	const claimed = await claim(
+		userId,
+		'run-now-claim',
+		new Date('2026-04-20T11:01:00.000Z'),
+		'claim-scheduled',
+	)
+	expect(claimed?.claim_token).toBe('claim-scheduled')
+
+	await recordJobRunNowOutcomeRow({
+		db: env.APP_DB,
+		userId,
+		jobId: 'run-now-claim',
+		lastRunAt: '2026-04-20T11:02:00.000Z',
+		lastRunStatus: 'success',
+		updatedAt: '2026-04-20T11:02:00.000Z',
+		nextRunAt: '2026-04-20T11:17:00.000Z',
+		scheduleJson: before.schedule_json,
+		timezone: before.timezone,
+	})
+	expect(
+		await getJobRowById(env.APP_DB, userId, 'run-now-claim'),
+	).toMatchObject({
+		claim_token: 'claim-scheduled',
+		claimed_scheduled_for: claimed?.claimed_scheduled_for,
+		last_run_status: 'success',
+	})
+})
