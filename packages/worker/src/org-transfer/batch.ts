@@ -309,6 +309,20 @@ export function buildOrgTransferStatements(input: {
 		}
 	}
 
+	const movedCredentialIds = plan.moves.secret_entries.map((row) =>
+		cell(row, 'id'),
+	)
+	for (const ids of chunks(movedCredentialIds, rowidChunkSize)) {
+		statements.push(
+			db
+				.prepare(
+					`DELETE FROM login_credential_sessions
+					 WHERE user_id = ? AND credential_id IN (SELECT value FROM json_each(?))`,
+				)
+				.bind(fromId, JSON.stringify(ids)),
+		)
+	}
+
 	for (const table of [
 		'saved_package_search_index_debt',
 		'vector_embed_fingerprints',
