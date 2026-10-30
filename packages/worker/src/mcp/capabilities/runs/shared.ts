@@ -1,4 +1,4 @@
-import { ranOnFromMetadata } from '#worker/execution-contexts/routing.ts'
+import { historyRanOn } from '#worker/execution-contexts/routing.ts'
 import { z } from 'zod'
 import {
 	type RunRecord,
@@ -179,7 +179,7 @@ export function formatRunRecord(
 			run.surface === 'execute'
 				? {
 						...run.metadata,
-						ranOn: ranOnFromMetadata(run.metadata['executionContext']),
+						ranOn: historyRanOn(run.metadata['executionContext']),
 					}
 				: run.metadata,
 		log_count: run.logCount,

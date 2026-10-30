@@ -82,6 +82,17 @@ export const kodyCloudTarget = {
 	name: 'Kody cloud',
 } as const satisfies RanOnTarget
 
+/** Run-history `ranOn`: null when a queued run expired before anything ran it. */
+export function historyRanOn(value: unknown): ExecuteRanOn | null {
+	const attempts =
+		isRecord(value) && Array.isArray(value.attempts)
+			? (value.attempts as Array<RoutingAttempt>)
+			: []
+	return attempts.at(-1)?.outcome === 'expired'
+		? null
+		: ranOnFromMetadata(value)
+}
+
 /** Reads run metadata (`executionContext`) as `ranOn`; anything else is cloud. */
 export function ranOnFromMetadata(value: unknown): ExecuteRanOn {
 	const metadata = isRecord(value) ? value : null

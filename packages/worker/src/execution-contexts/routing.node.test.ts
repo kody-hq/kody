@@ -5,6 +5,7 @@ import {
 	codeNeedsCredentials,
 	describeCloudFallback,
 	describeRanOn,
+	historyRanOn,
 	ranOnFromMetadata,
 	grantRefusal,
 	markQueuedAttemptExpired,
@@ -368,4 +369,20 @@ test('a missing chain ref that is a raw context id never reaches the text', () =
 	).toBe(
 		'Ran on Kody cloud after an execution context was skipped (not found) and old-box was skipped.',
 	)
+})
+
+test('run history reports no ranOn for a queued run that expired unrun', () => {
+	const expired = {
+		id: 'ec_queue1',
+		name: 'build-box',
+		fellBackToCloud: false,
+		attempts: [{ target: 'ec_queue1', name: 'build-box', outcome: 'expired' }],
+	}
+	expect(historyRanOn(expired)).toBeNull()
+	expect(
+		historyRanOn({
+			...expired,
+			attempts: [{ target: 'ec_queue1', name: 'build-box', outcome: 'ran' }],
+		}),
+	).toMatchObject({ kind: 'context', id: 'ec_queue1', name: 'build-box' })
 })
