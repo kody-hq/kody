@@ -155,7 +155,9 @@ const passPhrases: Record<RoutingAttempt['outcome'], string> = {
 
 function describePass(attempt: RoutingAttempt) {
 	const who =
-		attempt.name ??
+		(attempt.name && !looksLikeContextId(attempt.name, attempt.target)
+			? attempt.name
+			: null) ??
 		(attempt.reason === 'gone'
 			? 'a context that no longer exists'
 			: 'an execution context')
@@ -164,6 +166,11 @@ function describePass(attempt: RoutingAttempt) {
 			? ` (${attempt.reason.replaceAll('_', ' ')})`
 			: ''
 	return `${who} ${passPhrases[attempt.outcome] ?? attempt.outcome}${reason}`
+}
+
+/** A missing chain ref keeps the raw ref as its name; never print an id. */
+function looksLikeContextId(name: string, target: string) {
+	return name === target || /^ec_[a-z0-9]+$/i.test(name)
 }
 
 function joinList(items: Array<string>) {

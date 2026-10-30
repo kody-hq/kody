@@ -69,8 +69,9 @@ sequenceDiagram
 - Chains are per user per org, hold up to 3 contexts, and Kody cloud is always
   the last entry when present. A chain PUT with anything after cloud is a 400.
   Leaving cloud out makes the chain strict.
-- Every execute response carries `ranOn` (MCP `structuredContent`, CLI `--json`,
-  `POST /v1/execute`):
+- Every routed execute response carries `ranOn` (MCP `structuredContent`, CLI
+  `--json`, `POST /v1/execute`); input or setup errors before routing may omit
+  it:
   `{ kind: "cloud" | "context", id: "cloud" | "ec_…", name: "Kody cloud" | context name, yours?, attempts, fellBackToCloud }`.
   `attempts` lists contexts that passed on the run with reasons. A short text
   line says the same with friendly names only, e.g.

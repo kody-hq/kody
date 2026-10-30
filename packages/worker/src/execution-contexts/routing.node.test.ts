@@ -345,3 +345,27 @@ test('describeRanOn names where a run happened with friendly names only', () => 
 		fellBackToCloud: false,
 	})
 })
+
+test('a missing chain ref that is a raw context id never reaches the text', () => {
+	expect(
+		describeRanOn(
+			ranOnFromMetadata({
+				id: 'cloud',
+				name: 'Kody cloud',
+				fellBackToCloud: true,
+				attempts: [
+					{
+						target: 'ec_missing1',
+						name: 'ec_missing1',
+						outcome: 'skipped',
+						reason: 'not_found',
+					},
+					{ target: 'unknown-box', name: 'old-box', outcome: 'skipped' },
+					{ target: 'cloud', name: 'Kody cloud', outcome: 'ran' },
+				],
+			}),
+		),
+	).toBe(
+		'Ran on Kody cloud after an execution context was skipped (not found) and old-box was skipped.',
+	)
+})

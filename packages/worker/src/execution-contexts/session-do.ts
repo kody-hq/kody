@@ -1044,7 +1044,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 		record(null)
 		this.ctx.storage.sql.exec(
-			`UPDATE history SET started_at = ? WHERE run_id = ? AND attempt = ?`,
+			`UPDATE history SET started_at = ?, ran_on = 'here' WHERE run_id = ? AND attempt = ?`,
 			Date.now(),
 			lease.runId,
 			attempt,
