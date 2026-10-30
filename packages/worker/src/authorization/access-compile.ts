@@ -15,6 +15,10 @@ import {
 	type OrgRole,
 	type RequestContext,
 } from '@kody-internal/shared/request-context.ts'
+import {
+	type GrantSubjectChoices,
+	grantSubjectMatchSql,
+} from '#worker/authorization/grant-subjects.ts'
 import { memoizePerRequest } from '#worker/request-context.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
@@ -169,11 +173,23 @@ function applyAdHocRule(
 	}
 }
 
+/** Compiled access honors every subject type a grant can name. */
+export const liveGrantRowSubjects = {
+	user: 'include',
+	team: 'include',
+	org: 'include',
+} as const satisfies GrantSubjectChoices
+
 async function loadLiveGrantRows(
 	db: D1Database,
 	orgId: string,
 	userId: string,
 ): Promise<Array<GrantRow>> {
+	const subjectMatch = grantSubjectMatchSql({
+		subjects: liveGrantRowSubjects,
+		personId: userId,
+		boundOrgId: orgId,
+	})
 	const result = await db
 		.prepare(
 			`SELECT g.resource_type AS resource_type,
@@ -183,33 +199,9 @@ async function loadLiveGrantRows(
 			 INNER JOIN grant_permissions gp ON gp.grant_id = g.id
 			 WHERE g.org_id = ?
 			   AND g.deleted_at IS NULL
-			   AND (
-			     (g.subject_type = 'user' AND g.subject_id = ?)
-			     OR (
-			       g.subject_type = 'team'
-			       AND g.subject_id IN (
-			         SELECT tm.team_id
-			         FROM team_members tm
-			         INNER JOIN teams t ON t.id = tm.team_id
-			         WHERE tm.user_id = ?
-			           AND tm.deleted_at IS NULL
-			           AND t.org_id = ?
-			           AND t.deleted_at IS NULL
-			       )
-			     )
-			     OR (
-			       g.subject_type = 'org'
-			       AND g.subject_id = g.org_id
-			       AND EXISTS (
-			         SELECT 1 FROM org_memberships m
-			         WHERE m.org_id = g.org_id
-			           AND m.user_id = ?
-			           AND m.deleted_at IS NULL
-			       )
-			     )
-			   )`,
+			   AND ${subjectMatch.sql}`,
 		)
-		.bind(orgId, userId, userId, orgId, userId)
+		.bind(orgId, ...subjectMatch.binds)
 		.all<GrantRow>()
 	return result.results ?? []
 }

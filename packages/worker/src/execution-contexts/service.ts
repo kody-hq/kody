@@ -8,7 +8,7 @@ import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { upsertGrant, softDeleteGrant } from '#worker/orgs/access-writes.ts'
-import { chainCloudOrderError } from './chain-rules.ts'
+import { chainCloudOrderError, selfShareError } from './chain-rules.ts'
 import { ExecutionContextError } from './errors.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import {
@@ -163,7 +163,11 @@ function myPermissions(access: ContextAccess) {
 
 async function liveStatus(env: Env, row: ExecutionContextRow) {
 	if (row.revoked_at)
-		return { status: 'revoked' as const, acceptingRuns: false }
+		return {
+			status: 'revoked' as const,
+			acceptingRuns: false,
+			lastSeenAt: null,
+		}
 	try {
 		const status = await sessionStub(env, row.id).getStatus()
 		return {
@@ -173,9 +177,14 @@ async function liveStatus(env: Env, row: ExecutionContextRow) {
 					? ('online' as const)
 					: ('offline' as const),
 			acceptingRuns: status.acceptingRuns,
+			lastSeenAt: status.lastSeenAt ?? null,
 		}
 	} catch {
-		return { status: 'offline' as const, acceptingRuns: false }
+		return {
+			status: 'offline' as const,
+			acceptingRuns: false,
+			lastSeenAt: null,
+		}
 	}
 }
 
@@ -222,7 +231,7 @@ export async function formatContexts(
 				myPermissions: myPermissions(access),
 				status: live.status,
 				acceptingRuns: live.acceptingRuns,
-				lastSeenAt: row.last_seen_at,
+				lastSeenAt: live.lastSeenAt ?? row.last_seen_at,
 				revokedAt: row.revoked_at,
 				client: { name: row.client_name, version: row.client_version },
 				capabilities: {
@@ -825,6 +834,17 @@ export async function setSharing(
 			code: 'not_granted',
 			message:
 				'Only the operator or someone with Manage on this context can share it.',
+		})
+	}
+	const selfShare = selfShareError(
+		row.operator_user_id,
+		(input.add ?? []).map((share) => share.subject),
+	)
+	if (selfShare) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'invalid_request',
+			message: selfShare,
 		})
 	}
 	const db = caller.env.APP_DB
