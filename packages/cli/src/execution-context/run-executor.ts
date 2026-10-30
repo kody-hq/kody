@@ -1,4 +1,5 @@
 import { type EcpRunRequestBody } from '@kody-internal/shared/execution-context-protocol/index.ts'
+import { type EffectiveFs } from './fs-access.js'
 import { type LocalWorkerTracker } from './worker-tracker.js'
 
 /**
@@ -12,6 +13,7 @@ export async function runContextRun(input: {
 	signal: AbortSignal
 	apiUrl: string
 	workerTracker?: LocalWorkerTracker
+	hostFs?: EffectiveFs
 }) {
 	const { runLocalExecute } = await import('../local-execute.js')
 	const result = await runLocalExecute({
@@ -25,6 +27,7 @@ export async function runContextRun(input: {
 		fetchFn: input.fetchFn,
 		signal: input.signal,
 		...(input.workerTracker ? { workerTracker: input.workerTracker } : {}),
+		...(input.hostFs ? { hostFs: input.hostFs } : {}),
 	})
 	return {
 		isError: result.isError === true,

@@ -124,7 +124,7 @@ const grantPatchSchema = z
 			.optional(),
 	})
 	.describe(
-		'Server-side grant. The daemon intersects it with the machine local policy, so it can only narrow what the machine allows.',
+		'Server-side grant. The daemon intersects it with the machine local policy (`kody context policy` on that machine), so it can only narrow what the machine allows. fs entries are absolute host folders with mode ro or rw; a folder is mounted at its real path only where both layers allow it, with the narrower mode, and the context offers `requires: ["fs"]` only while at least one folder is mounted.',
 	)
 
 export const executionContextUpdateCapability = defineDomainCapability(domain, {

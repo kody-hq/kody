@@ -74,6 +74,7 @@ Usage:
   kody package revoke <package> (--team <slug> | --user <username> | --grant <grant_id>) [--org <slug>] [--json]
   kody execute [--org <slug>] [--invoke <ref> | --code <esm> | --file <path>] [--params <json>] [--conversation-id <id>] [--json]
   kody context register --name <name> [--org <slug>] | kody context list [--json]
+  kody context policy [show] | allow <path> [--mode ro|rw] | remove <path> [--json]
   kody chain show | add <name> | remove <name> [--org <slug>] [--json]
   kody daemon [--context <ec id>]
                [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
