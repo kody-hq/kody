@@ -162,24 +162,24 @@ function failureKeys(result: RepoCheckRunResult): Set<string> {
 	const keys = new Set<string>()
 	for (const check of result.results) {
 		if (check.ok) continue
-		const message = withoutRunnerLimitLines(check.message)
-		if (!message) continue
-		keys.add(`${check.kind}:${normalizeFailureMessage(message)}`)
+		for (const line of failureLines(check.message)) {
+			keys.add(`${check.kind}:${normalizeFailureMessage(line)}`)
+		}
 	}
 	return keys
 }
 
 /**
- * Chunked checks join one line per failed chunk, so drop only the lines that
- * say a chunk hit the runner limit and keep any real error beside them.
+ * Chunked checks join one line per failed chunk, so compare failures line by
+ * line and drop lines that only say a chunk hit the runner limit.
  */
-function withoutRunnerLimitLines(message: string) {
-	if (!isRepoCheckResourceLimitMessage(message)) return message
-	return message
+function failureLines(message: string) {
+	const lines = message
 		.split('\n')
-		.filter((line) => !isRepoCheckResourceLimitMessage(line))
-		.join('\n')
-		.trim()
+		.map((line) => line.trim())
+		.filter((line) => line && !isRepoCheckResourceLimitMessage(line))
+	if (lines.length > 0 || isRepoCheckResourceLimitMessage(message)) return lines
+	return [message]
 }
 
 /**
