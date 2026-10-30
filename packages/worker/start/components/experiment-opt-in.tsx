@@ -1,21 +1,25 @@
 /** @jsxImportSource @emotion/react */
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import { optIntoExperiment } from '#start/server/experiment-opt-in'
+import { setExperiment } from '#start/server/experiment-opt-in'
+import { type SelfServeExperimentId } from '#universal/feature-flags/experiments.ts'
 import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
+
+/** Turns one self-serve experiment on for the signed-in person. */
 export function ExperimentOptIn({
 	experiment,
 	children,
 }: {
-	experiment: 'package-skills' | 'mcp-events' | 'execution-contexts'
+	experiment: SelfServeExperimentId
 	children: string
 }) {
 	const router = useRouter()
 	const client = useQueryClient()
 	const mutation = useMutation({
-		mutationFn: () => optIntoExperiment({ data: experiment }),
+		mutationFn: () => setExperiment({ data: { experiment, enabled: true } }),
 		onSettled: async () => {
 			await client.invalidateQueries({ queryKey: ['shell'] })
+			await client.invalidateQueries({ queryKey: ['page'] })
 			await router.invalidate()
 		},
 	})
@@ -28,7 +32,7 @@ export function ExperimentOptIn({
 				disabled={mutation.isPending}
 				onClick={() => mutation.mutate()}
 			>
-				{children}
+				{mutation.isPending ? 'Turning on…' : children}
 			</button>
 			{mutation.error ? <p role="alert">{mutation.error.message}</p> : null}
 		</div>

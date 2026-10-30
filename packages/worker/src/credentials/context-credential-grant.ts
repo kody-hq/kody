@@ -2,22 +2,22 @@ import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 
 /**
- * A run on an execution context tried to use a credential its context's
- * grant does not let through (ADR 0083). The value was never read.
+ * A run on someone else's execution context tried to use a credential
+ * (ADR 0083). The value was never read.
  */
 export class ContextCredentialNotGrantedError extends McpCallerError {
 	readonly code = 'execution_context_credential_not_granted'
 	constructor(label: string) {
 		super(
-			`This execution context's grant does not let the credential "${label}" through. Its operator can add it to the context's credential list, or run this on Kody cloud.`,
+			`Only this execution context's operator can use credentials in runs on it, so the credential "${label}" cannot be used here. Run this on Kody cloud, or on a context you operate.`,
 		)
 		this.name = 'ContextCredentialNotGrantedError'
 	}
 }
 
 /**
- * Checks a found credential against the run's context grant. A credential
- * with no stable id cannot be matched to the list, so it is refused too.
+ * Checks a found credential against the ids the run's context lets through
+ * (`contextCredentialIds`; null does not narrow).
  */
 export function assertContextGrantAllowsCredential(input: {
 	actor: RequestContext | null

@@ -239,6 +239,8 @@ export const legacyGuideIdAliases: Readonly<
  */
 export const useDocGuideTwins: Readonly<Record<string, string>> = {
 	'what-can-kody-do': 'what-is-kody',
+	'package-skills': 'package-skills',
+	'mcp-events': 'mcp-events',
 }
 
 export function isReservedDocsIndexSlug(slug: string): boolean {

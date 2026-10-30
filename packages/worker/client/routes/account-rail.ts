@@ -64,6 +64,8 @@ export type AccountRailItem = {
 	icon: IconName
 	/** One line for the workspace overview card. */
 	description?: string
+	/** Short marker beside the label, such as `Experiment` for a flag-off feature. */
+	badge?: string
 	/**
 	 * Sibling pages shown as tabs under the page title. Each tab page also
 	 * marks this item current, so the rail lists the group once.
@@ -364,10 +366,17 @@ function jobsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 	}
 }
 
+/**
+ * Shown whether or not the flag is on, so people can find the feature. Off,
+ * it is marked as an experiment and the page explains it and offers the
+ * opt-in.
+ */
 function executionContextsRailItem(
 	orgSlug: string | null | undefined,
+	enabled: boolean,
 ): AccountRailItem {
 	return {
+		...(enabled ? {} : { badge: 'Experiment' }),
 		href: orgSectionHref(orgSlug, 'execution-contexts'),
 		id: 'execution-contexts',
 		label: 'Execution contexts',
@@ -498,7 +507,7 @@ function workspaceResourceGroups(
 			items: [
 				repositoriesRailItem(orgSlug),
 				jobsRailItem(orgSlug),
-				...(executionContexts ? [executionContextsRailItem(orgSlug)] : []),
+				executionContextsRailItem(orgSlug, executionContexts),
 				{
 					href: orgSectionHref(orgSlug, 'webhooks'),
 					id: 'webhooks',

@@ -101,6 +101,10 @@ Usage:
   supported yet: keep \`kody daemon\` running in a terminal. \`kody update\`
   installs the latest CLI and restarts services after runs in flight finish.
 
+  kody context, chain, and daemon need execution contexts, an experiment.
+  Turn it on at https://kody.codes/account/experiments (guide:
+  https://kody.codes/docs/execution-contexts).
+
   kody install configures running local MCP clients (Cursor, Claude Desktop,
   VS Code, Goose, and others). For web-based clients (ChatGPT, Claude.ai, Grok),
   see ${onboardingUrl(defaultMcpUrl)}

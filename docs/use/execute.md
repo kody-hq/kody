@@ -241,6 +241,18 @@ inspect the relevant saved package with **`entity: "package:{package-name}"`**.
 Capability detail includes a complete **execute** module snippet; the runtime
 call itself is always through the imported `kody` object.
 
+## Execution contexts
+
+By default execute runs on Kody cloud. With the execution contexts experiment
+on, it can run on your own machine instead: pass `context` (with optional
+`fallback: "chain"`), a per-run `chain`, or `requires: ["fs" | "lan"]`, or let
+your default chain decide. Every routed result carries `ranOn`. Credentials stay
+in Kody cloud. See the
+[Execution contexts guide](../guides/execution-contexts.md) and the
+[field reference](./execution-contexts.md); turn the experiment on at
+[`/account/experiments`](https://kody.codes/account/experiments) or with
+`experimentSet`.
+
 ## Saved packages
 
 Saved packages, package jobs, and one-off **execute** code share the same

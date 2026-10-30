@@ -1,3 +1,4 @@
+import { type SelfServeExperimentState } from '#universal/feature-flags/experiments.ts'
 import { type OAuthAuthorizeClientFailure } from '#universal/oauth-authorize-client-failure.ts'
 import {
 	type OnboardingFeaturedListing,
@@ -3486,6 +3487,8 @@ export type AccountWaitingLoaderData = {
 export type AccountExperimentsLoaderData = {
 	ok: true
 	experimentsOptIn: boolean
+	/** Every self-serve experiment, from `selfServeExperiments`. */
+	experiments: Array<SelfServeExperimentState>
 }
 
 /** One package app the person signed in to with Kody. */

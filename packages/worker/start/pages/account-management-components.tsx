@@ -524,6 +524,7 @@ function railLinkGroups(
 			href: item.href,
 			label: item.label,
 			icon: item.icon,
+			...(item.badge ? { badge: item.badge } : {}),
 			active: isAccountNavItemSelected(item, itemId),
 		})),
 	}))

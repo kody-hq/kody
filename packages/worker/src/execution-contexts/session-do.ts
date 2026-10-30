@@ -39,7 +39,6 @@ import {
 	markQueuedAttemptRan,
 	withRunTiming,
 } from './routing.ts'
-import { contextIsShared, contextRunCredentials } from './credential-grant.ts'
 import { type RunCredentialUse } from './run-credential-use.ts'
 import {
 	getExecutionContext,
@@ -906,10 +905,14 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		return { ws, attachment, heardAt: freshAt }
 	}
 
-	#committedCount() {
+	/**
+	 * Runs holding a slot: committed ones plus those dispatched and awaiting
+	 * the daemon's accept, so concurrent dispatches cannot overshoot the cap.
+	 */
+	#activeRunCount() {
 		return this.ctx.storage.sql
 			.exec<{ n: number }>(
-				`SELECT COUNT(*) AS n FROM runs WHERE state = 'committed'`,
+				`SELECT COUNT(*) AS n FROM runs WHERE state IN ('dispatched', 'committed')`,
 			)
 			.one().n
 	}
@@ -942,7 +945,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			acceptingRuns: Boolean(
 				live &&
 				live.attachment.accepting &&
-				this.#committedCount() < live.attachment.maxConcurrent,
+				this.#activeRunCount() < live.attachment.maxConcurrent,
 			),
 			revoked: Boolean(this.#revokedReason()),
 			lastSeenAt: live ? new Date(live.heardAt).toISOString() : null,
@@ -1029,7 +1032,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 		if (
 			!live.attachment.accepting ||
-			this.#committedCount() >= live.attachment.maxConcurrent
+			this.#activeRunCount() >= live.attachment.maxConcurrent
 		) {
 			record('busy')
 			return { outcome: 'busy' }
@@ -1078,6 +1081,11 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 		const answer = await accepted
 		if (!answer.accepted) {
+			if (answer.code === 'busy') {
+				this.#setRunState(lease.runId, 'rejected')
+				record('busy')
+				return { outcome: 'busy' }
+			}
 			const timedOut = answer.code === 'timeout'
 			this.#setRunState(lease.runId, timedOut ? 'aborted' : 'rejected')
 			record(timedOut ? 'timeout' : 'rejected')
@@ -1281,12 +1289,8 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		const refusal = grantRefusal({
 			grant,
 			requires,
-			credentials: contextRunCredentials(grant, {
-				shared:
-					grant.credentials.mode === 'requester' &&
-					(await contextIsShared(this.env.APP_DB, row)),
-				requesterIsOperator: row.operator_user_id === lease.requester.userId,
-			}),
+			operatorUserId: row.operator_user_id,
+			requesterUserId: lease.requester.userId,
 			credentialUse: lease.credentialUse ?? { kind: 'unknown' },
 			capabilities: parseCapabilities(row),
 		})

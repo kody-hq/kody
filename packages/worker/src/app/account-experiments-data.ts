@@ -1,3 +1,4 @@
+import { listSelfServeExperimentsForUser } from '#worker/feature-flags/self-serve-experiments.ts'
 import { type AccountExperimentsLoaderData } from '#universal/loader-data.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
@@ -32,8 +33,9 @@ export async function loadAccountExperimentsData(input: {
 	db: D1Database
 	userId: number
 }): Promise<AccountExperimentsLoaderData> {
-	return {
-		ok: true,
-		experimentsOptIn: await readExperimentsOptIn(input.db, input.userId),
-	}
+	const [experimentsOptIn, experiments] = await Promise.all([
+		readExperimentsOptIn(input.db, input.userId),
+		listSelfServeExperimentsForUser(input.db, input.userId),
+	])
+	return { ok: true, experimentsOptIn, experiments }
 }

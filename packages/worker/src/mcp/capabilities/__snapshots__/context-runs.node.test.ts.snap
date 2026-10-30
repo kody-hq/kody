@@ -41,6 +41,7 @@ exports[`contextRuns allow list snapshot 1`] = `
   "executionContextList",
   "executionContextRunList",
   "executionContextShareList",
+  "experimentList",
   "followAdd",
   "followList",
   "followRemove",

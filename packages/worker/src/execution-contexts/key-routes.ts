@@ -1,3 +1,4 @@
+import { experimentOffMessage } from '#universal/feature-flags/experiments.ts'
 import {
 	ecpSignatureHeader,
 	ed25519JwkThumbprint,
@@ -8,8 +9,8 @@ import {
 	sha256Base64Url,
 	verifyEcpHttpSignature,
 	type Ed25519PublicJwk,
+	ecpDefaultGrant,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
-import { registrationGrant } from './credential-grant.ts'
 import { authorizeOrgWide } from '#worker/authorization/authorize.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import { authenticateApiRequest } from '#worker/open-api/authenticate.ts'
@@ -51,8 +52,7 @@ export function featureDisabled() {
 	return new ApiError({
 		status: 403,
 		code: 'feature_disabled',
-		message:
-			'Execution contexts are behind the execution-contexts feature flag, which is off for this account.',
+		message: experimentOffMessage('execution-contexts'),
 	})
 }
 
@@ -314,7 +314,7 @@ export async function handleExecutionContextKeyRoute(input: {
 		})
 	}
 	const id = newExecutionContextId()
-	const grant = registrationGrant
+	const grant = ecpDefaultGrant
 	const row = {
 		id,
 		org_id: caller.org.id,

@@ -25,6 +25,8 @@ type AccountManagementLinkNavItem = {
 	label: string
 	active: boolean
 	icon?: IconName
+	/** Short marker after the label, e.g. `Experiment`. */
+	badge?: string
 }
 
 type AccountManagementLinkNavGroup = {
@@ -225,6 +227,7 @@ function renderAccountNavLinks(
 		>
 			{item.icon ? renderIcon(item.icon, { size: '1.05em' }) : null}
 			{item.label}
+			{item.badge ? <NavItemBadge label={item.badge} /> : null}
 		</SiteLink>
 	))
 }
@@ -347,8 +350,30 @@ export function AccountManagementInlineLinkNav(
 					css={accountMobileNavLinkCss}
 				>
 					{item.label}
+					{item.badge ? <NavItemBadge label={item.badge} /> : null}
 				</SiteLink>
 			))}
 		</nav>
 	)
+}
+
+function NavItemBadge({ label }: { label: string }) {
+	return (
+		<span data-nav-badge css={navItemBadgeCss}>
+			{label}
+		</span>
+	)
+}
+
+const navItemBadgeCss: CSSObject = {
+	marginLeft: 'auto',
+	padding: '0.05rem 0.45rem',
+	borderRadius: '999px',
+	border: `1px solid ${colors.border}`,
+	color: colors.textMuted,
+	fontSize: '0.7rem',
+	fontWeight: 500,
+	lineHeight: 1.5,
+	letterSpacing: '0.01em',
+	whiteSpace: 'nowrap',
 }

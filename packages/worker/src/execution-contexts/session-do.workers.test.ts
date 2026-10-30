@@ -334,7 +334,7 @@ test('a reject falls through, and cancel and revocation end leases', async () =>
 		{ runId: 'run_r', code: 'busy' },
 		{ re: request.seq },
 	)
-	expect(await rejected).toEqual({ outcome: 'rejected', code: 'busy' })
+	expect(await rejected).toEqual({ outcome: 'busy' })
 
 	const committed = stub.dispatch({
 		request: runRequest('run_c'),
@@ -390,6 +390,35 @@ test('a reject falls through, and cancel and revocation end leases', async () =>
 	ws.close()
 }, 60_000)
 
+test('runs awaiting the daemon hold a slot, so a third concurrent dispatch at maxConcurrent 2 is busy', async () => {
+	const ecid = 'ec_slots'
+	const { stub, next, send } = await connect(ecid)
+	const dispatch = (runId: string) =>
+		stub.dispatch({
+			request: runRequest(runId),
+			lease: lease(ecid, runId),
+			runRecord: null,
+			position: 1,
+		})
+	const first = dispatch('run_1')
+	const second = dispatch('run_2')
+	const firstRequest = await next('run.request')
+	const secondRequest = await next('run.request')
+	expect(await dispatch('run_3')).toEqual({ outcome: 'busy' })
+	await send(
+		'run.reject',
+		{ runId: 'run_1', code: 'busy' },
+		{ re: firstRequest.seq },
+	)
+	await send(
+		'run.reject',
+		{ runId: 'run_2', code: 'busy' },
+		{ re: secondRequest.seq },
+	)
+	expect(await first).toEqual({ outcome: 'busy' })
+	expect(await second).toEqual({ outcome: 'busy' })
+})
+
 test('a replayed or out-of-order frame closes the socket, and an unsigned ping with a payload is refused', async () => {
 	const { ws, next, send } = await connect('ec_replay')
 	const closed = new Promise<number>((resolve) =>
@@ -405,7 +434,10 @@ test('history purges a requester and keeps nothing but metadata', async () => {
 	const stub = env.EXECUTION_CONTEXT_SESSION.get(
 		env.EXECUTION_CONTEXT_SESSION.idFromName('ec_purge'),
 	)
-	await stub.issueConnectTicket({ snapshot: snapshot('ec_purge'), nonce: 'p1' })
+	await stub.issueConnectTicket({
+		snapshot: snapshot('ec_purge'),
+		nonce: 'p1',
+	})
 	await stub.dispatch({
 		request: runRequest('run_p'),
 		lease: lease('ec_purge', 'run_p'),

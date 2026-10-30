@@ -87,8 +87,8 @@ export function assertContextRunRuntimePathAllowed(
 
 /**
  * Runtime paths with special handling on a context run: workflows never
- * start from a machine, and credentialed calls need a grant that allows
- * credentials. Credential values still never leave Kody cloud.
+ * start from a machine, and only the operator's own runs use credentials.
+ * Credential values still never leave Kody cloud.
  */
 export function assertContextRunSpecialPathAllowed(
 	ctx: ApiInvocationContext,
@@ -110,21 +110,11 @@ export function assertContextRunSpecialPathAllowed(
 		typeof name === 'string' &&
 		isCredentialedRuntimeCall(name)
 	if (!credentialed) return
-	const { credentials } = ctx.principal
-	if (credentials.mode === 'none') {
-		throw new ApiError({
-			status: 403,
-			code: 'execution_context_credential_not_granted',
-			message: `This execution context's grant allows no credentials, so kody.${name} cannot run here. Its operator can allow credentials in the context's grant, or run this on Kody cloud.`,
-			details: { path: path.join('.') },
-		})
-	}
-	if (credentials.mode === 'requester_shared') {
-		throw new ApiError({
-			status: 403,
-			code: 'execution_context_credential_not_granted',
-			message: `This execution context's grant lets its operator's own credentials through only while it is not shared, and it is shared now, so kody.${name} cannot run here. Its operator can narrow the grant to an explicit credential list, or run this on Kody cloud.`,
-			details: { path: path.join('.'), reason: 'context_shared' },
-		})
-	}
+	if (ctx.principal.credentials === 'requester') return
+	throw new ApiError({
+		status: 403,
+		code: 'execution_context_credential_not_granted',
+		message: `Only this execution context's operator can use credentials in runs on it, so kody.${name} cannot run here. Run this on Kody cloud, or on a context you operate.`,
+		details: { path: path.join('.'), reason: 'context_operator_only' },
+	})
 }

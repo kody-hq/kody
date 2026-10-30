@@ -8,7 +8,7 @@ import {
 
 function contextRun(
 	runtime: { mode: 'all' } | { mode: 'allowlist'; paths: Array<string> },
-	credentials: ContextRunCredentials = { mode: 'none' },
+	credentials: ContextRunCredentials = 'none',
 ) {
 	return {
 		principal: {
@@ -75,25 +75,19 @@ test('credentialed runtime calls need a grant that allows credentials', () => {
 				'kody',
 				name,
 			]),
-		).toThrow(/allows no credentials/)
+		).toThrow(/Only this execution context.s operator can use credentials/)
 		expect(() =>
 			assertContextRunSpecialPathAllowed(
-				contextRun({ mode: 'all' }, { mode: 'list', ids: ['cred_test'] }),
+				contextRun({ mode: 'all' }, 'requester'),
 				['kody', name],
 			),
 		).not.toThrow()
 		expect(() =>
-			assertContextRunSpecialPathAllowed(
-				contextRun({ mode: 'all' }, { mode: 'requester' }),
-				['kody', name],
-			),
-		).not.toThrow()
-		expect(() =>
-			assertContextRunSpecialPathAllowed(
-				contextRun({ mode: 'all' }, { mode: 'requester_shared' }),
-				['kody', name],
-			),
-		).toThrow(/only while it is not shared/)
+			assertContextRunSpecialPathAllowed(contextRun({ mode: 'all' }, 'none'), [
+				'kody',
+				name,
+			]),
+		).toThrow(/Only this execution context's operator can use credentials/)
 	}
 	expect(() =>
 		assertContextRunSpecialPathAllowed(contextRun({ mode: 'all' }), [
