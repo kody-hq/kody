@@ -179,7 +179,10 @@ export function createPackageSecretAccessDeniedMessage(input: {
 		? ` Approval link: ${input.approvalUrl}`
 		: ''
 	if (input.notOnAllowedList) {
-		return `Secret "${input.secretName}" is not allowed for package "${input.packageName}": the credential's allowed-packages list does not include this package, and Kody enforces that list for every package, including ones you authored or adopted. The account owner can add "${input.packageName}" to the list on the secret's page (the approval link below), or move this credential use into a package that is already on the list. Ask the user before approving, then retry.${approvalSuffix}`
+		const where = input.approvalUrl
+			? "on the secret's page (see the approval link)"
+			: "on the secret's page in the account secrets UI"
+		return `Secret "${input.secretName}" is not allowed for package "${input.packageName}": the credential's allowed-packages list does not include this package, and Kody enforces that list for every package, including ones you authored or adopted. The account owner can add "${input.packageName}" to the list ${where}, or move this credential use into a package that is already on the list. Ask the user before approving, then retry.${approvalSuffix}`
 	}
 	return `Secret "${input.secretName}" is not allowed for package "${input.packageName}". If this package should be able to use the secret, ask the user whether to approve that package in the account secrets UI, then retry after they approve that policy change.${approvalSuffix}`
 }

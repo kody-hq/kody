@@ -5,13 +5,14 @@ import { setFeatureFlagGlobalState } from '#worker/feature-flags/service.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 
-const mocks = vi.hoisted(() => ({ auditBatch: vi.fn() }))
+const mocks = vi.hoisted(() => ({ auditBatch: vi.fn(), failBatch: false }))
 vi.mock('#worker/orgs/org-audit.ts', async (importOriginal) => ({
 	...(await importOriginal<typeof import('#worker/orgs/org-audit.ts')>()),
 	runAppDbBatchWithOrgAudit: async (input: {
 		statements: Array<{ run(): Promise<{ meta?: { changes?: number } }> }>
 		onlyIfChanged?: boolean
 	}) => {
+		if (mocks.failBatch) throw new Error('audit batch failed')
 		let changes = 0
 		for (const statement of input.statements) {
 			changes = (await statement.run()).meta?.changes ?? 0
@@ -65,7 +66,10 @@ function grant(
 	})
 }
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+	vi.clearAllMocks()
+	mocks.failBatch = false
+})
 
 async function setFlag(db: D1Database, enabled: boolean) {
 	await setFeatureFlagGlobalState(db, {
@@ -144,4 +148,23 @@ test('flag on in the window: pre-cutover pair is added, audited and logged, once
 		isAllowedPackagesSafetyWindowActive({ db, now: inWindow, cutoverAt }),
 	).resolves.toBe(true)
 	expect(mocks.auditBatch).toHaveBeenCalledTimes(1)
+})
+
+test('flag on in the window: a failed grant still allows access', async () => {
+	const { env, sqlite } = setup()
+	sqlite.exec('PRAGMA foreign_keys = OFF')
+	mocks.failBatch = true
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+	const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+	await expect(grant(env)).resolves.toBe(true)
+	expect(warn).toHaveBeenCalledWith(
+		expect.stringContaining(
+			'credential_allowed_packages_safety_window_grant_failed',
+		),
+	)
+	expect(info).toHaveBeenCalledWith(
+		expect.stringContaining('credential_allowed_packages_safety_window_allow'),
+	)
+	warn.mockRestore()
+	info.mockRestore()
 })

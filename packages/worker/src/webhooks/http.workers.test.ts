@@ -75,6 +75,14 @@ vi.mock('#mcp/secrets/service.ts', () => ({
 	},
 }))
 
+// Assert the strict rule regardless of the #4129 safety-window flag.
+vi.mock('#worker/credentials/allowed-packages-safety-window.ts', async () => {
+	const actual = await vi.importActual<
+		typeof import('#worker/credentials/allowed-packages-safety-window.ts')
+	>('#worker/credentials/allowed-packages-safety-window.ts')
+	return { ...actual, tryAllowedPackagesSafetyWindowGrant: async () => false }
+})
+
 vi.mock('./dispatch-queue-producer.ts', async () => {
 	const actual = await vi.importActual<typeof DispatchQueueProducerModule>(
 		'./dispatch-queue-producer.ts',

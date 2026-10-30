@@ -108,7 +108,21 @@ export async function tryAllowedPackagesSafetyWindowGrant(input: {
 		packageId: input.packageId,
 		accessKind: input.accessKind,
 	}
-	if ((await grantPreWindowPair({ ...input, db, cutoverAt })) === 'granted') {
+	let outcome: Awaited<ReturnType<typeof grantPreWindowPair>> | 'error'
+	try {
+		outcome = await grantPreWindowPair({ ...input, db, cutoverAt })
+	} catch (error) {
+		// The grant is optional while the window is open; never refuse on it.
+		outcome = 'error'
+		console.warn(
+			JSON.stringify({
+				event: 'credential_allowed_packages_safety_window_grant_failed',
+				...ids,
+				error: error instanceof Error ? error.name : 'unknown',
+			}),
+		)
+	}
+	if (outcome === 'granted') {
 		console.info(
 			JSON.stringify({
 				event: 'credential_allowed_packages_safety_window_grant',
