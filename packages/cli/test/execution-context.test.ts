@@ -645,6 +645,29 @@ test('a run the local deadline stops reports cancelReason deadline, not a code e
 	assert.equal(result?.body.cancelReason, 'deadline')
 })
 
+test('hello tells Kody which runs this daemon still holds after a reconnect', async () => {
+	SilentSocket.instances = []
+	const { signed, serverKeys } = await serverFrames([welcome])
+	ServerSocket.frames = signed
+	const abort = new AbortController()
+	const { input } = await daemonInput({
+		serverKeys,
+		signal: abort.signal,
+		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
+	})
+	setTimeout(() => abort.abort(), 100)
+	await runDaemonConnection(input)
+	const hello = (SilentSocket.instances[0] as unknown as ServerSocket).sent
+		.filter((data) => data !== ecpPingFrame)
+		.map((data) => {
+			const envelope = parseEnvelope(JSON.parse(data))
+			return decodeEnvelopePayload(envelope!.p) as EcpFramePayload
+		})
+		.find((frame) => frame.t === 'hello')
+	assert.deepEqual(hello?.body.heldRuns, [])
+	assert.deepEqual(hello?.body.pendingResults, [])
+})
+
 test('frames that arrive back to back are verified in order, not raced', async () => {
 	SilentSocket.instances = []
 	const { signed, serverKeys } = await serverFrames([
