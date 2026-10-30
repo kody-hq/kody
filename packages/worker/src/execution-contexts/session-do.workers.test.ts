@@ -122,7 +122,6 @@ function lease(ecid: string, runId: string): ExecutionContextLease {
 		requester: { userId: 'user_requester', handle: 'requester' },
 		orgId: 'org_test',
 		callerScopes: null,
-		credentialIds: [],
 		runtime: { mode: 'all' },
 		deadline: Date.now() + 60_000,
 		sharedRun: true,

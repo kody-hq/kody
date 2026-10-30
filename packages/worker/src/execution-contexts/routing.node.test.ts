@@ -187,7 +187,7 @@ test('a grant that allows no credentials refuses a run that can use one', () => 
 })
 
 test('an explicit list must cover every credential the run can use', () => {
-	const list = { mode: 'list', ids: ['cred_1', 'cred_2'] } as const
+	const list = { mode: 'list' as const, ids: ['cred_1', 'cred_2'] }
 	expect(credentialRefusal(list, none)).toBeNull()
 	expect(credentialRefusal(list, { kind: 'ids', ids: ['cred_1'] })).toBeNull()
 	expect(

@@ -140,10 +140,11 @@ test('sharing or attaching is refused while the grant lets every credential thro
 })
 
 test('list and none grants can still be shared', () => {
-	for (const credentials of [
+	const grants: Array<(typeof ecpDefaultGrant)['credentials']> = [
 		{ mode: 'list', ids: ['cred_1'] },
 		{ mode: 'none' },
-	] as const) {
+	]
+	for (const credentials of grants) {
 		expect(() =>
 			assertGrantAllowsSharing({ name: 'mac', grant: { credentials } }),
 		).not.toThrow()
