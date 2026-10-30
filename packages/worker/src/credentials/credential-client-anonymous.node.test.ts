@@ -204,7 +204,9 @@ test('a client never opens without a run binding, so it cannot fail later at fir
 			),
 		).resolves.toMatchObject({
 			body: { code: 'invalid_request' },
-			message: expect.stringContaining('no credential client binding'),
+			message: expect.stringContaining(
+				'no request-scoped credential client binding',
+			),
 		})
 	}
 	await expect(

@@ -899,7 +899,7 @@ async function issueClient(
 	if (!ctx.binding.trim()) {
 		throw refusal(
 			'invalid_request',
-			'credential() cannot open a client here: this run has no credential client binding, so the client could never be used. This is a Kody bug; please report it.',
+			'credential() cannot open a client here: this call has no request-scoped credential client binding, so the client could never be used. Call credential() while handling a request or run.',
 		)
 	}
 	const request = packageAppRequest ?? requireActorRequest(ctx)
