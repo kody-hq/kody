@@ -19,11 +19,9 @@ there as the fallback.
 Use one when code needs something only a machine has: a folder on disk, a device
 on your local network, or a tool installed there.
 
-> [!NOTE] Execution contexts are an experiment, off by default because the CLI
-> daemon and the chain may still change. Turn them on for your account at
-> [Experiments](https://kody.codes/account/experiments) or on this page. An
-> agent can do it for you with `experimentSet` (see
-> [How to turn it on](#how-to-turn-it-on)).
+> [!NOTE] Execution contexts are an experiment, off until you turn them on at
+> [Experiments](https://kody.codes/account/experiments). An agent can turn them
+> on for you with `experimentSet` (see How to turn it on below).
 
 ## What changes on a machine
 

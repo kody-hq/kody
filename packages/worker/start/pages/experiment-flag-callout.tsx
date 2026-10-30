@@ -32,8 +32,8 @@ export function renderExperimentFlagCallout(input: {
 		>
 			<p>
 				{input.enabled
-					? `${experiment.title} is on for your account. It is an experiment, so it may change or go away.`
-					: `${experiment.title} is an experiment, off by default because it may change or go away. Turn it on for your account to try it.`}
+					? `${experiment.title}: this experiment is on for your account. It may change or go away.`
+					: `${experiment.title}: this experiment is off for your account until you turn it on. It may change or go away.`}
 			</p>
 			<p css={noteCss}>
 				{experiment.stage} Manage every experiment on{' '}
