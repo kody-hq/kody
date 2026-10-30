@@ -194,7 +194,7 @@ async function runCommand(
 	if (
 		input.command === 'connect' &&
 		!input.values.name &&
-		!rest[0] &&
+		!sub &&
 		localContextId(input.apiUrl, input.values.context)
 	) {
 		const ecid = localContextId(input.apiUrl, input.values.context)!
@@ -291,7 +291,7 @@ async function runCommand(
 				.join('\n'),
 		)
 		if (input.values.json && input.values.install === undefined) return 0
-		await offerInstall(serviceEnv, {
+		const install = {
 			ecid: registered.ecid,
 			...(input.values.install !== undefined
 				? { install: input.values.install }
@@ -299,7 +299,22 @@ async function runCommand(
 					? { install: true }
 					: {}),
 			...(maxConcurrent === undefined ? {} : { maxConcurrent }),
-		})
+		}
+		if (input.values.install === true) {
+			await offerInstall(serviceEnv, install)
+			return 0
+		}
+		// Registration already succeeded: a default install that cannot run
+		// (npx, root, no systemd) is a hint, not a failure to retry.
+		try {
+			await offerInstall(serviceEnv, install)
+		} catch (error) {
+			input.write(
+				`Registered, but the background service was not installed: ${error instanceof Error ? error.message : String(error)}
+Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --context ${registered.ecid}
+`,
+			)
+		}
 		return 0
 	}
 	if (input.command === 'context' && (sub === 'list' || sub === undefined)) {

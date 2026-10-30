@@ -107,8 +107,10 @@ function isRoot(env: ServiceCommandEnv) {
 	return env.isRoot ?? process.getuid?.() === 0
 }
 
-function maxConcurrentInUnit(text: string | null) {
-	const match = text?.match(/--max-concurrent\W+(\d+)/)
+export function maxConcurrentInUnit(text: string | null) {
+	const match = text?.match(
+		/--max-concurrent(?:"?\s+"?|<\/string>\s*<string>)(\d+)/,
+	)
 	return match ? Number(match[1]) : undefined
 }
 
@@ -188,8 +190,10 @@ async function ensureServiceKey(
 				? 'This context key is protected by a passphrase, which a background service cannot type.'
 				: 'On Linux the login keyring is usually locked until you log in, so after a reboot the service could not unlock its key.'
 		const question = `${why}\nStore a separate file key instead (only readable by your user, 600 permissions, in the kody state directory)?`
+		// --yes only consents for a passphrase key, which a service cannot use;
+		// a working keyring stays unless --key-storage file is passed.
 		toFile = env.yes
-			? true
+			? wrap === 'passphrase'
 			: env.confirm
 				? await env.confirm(question, true)
 				: wrap === 'passphrase'
@@ -535,10 +539,11 @@ export async function runUpdate(env: ServiceCommandEnv) {
 	const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 	const installed = spawnSync(npm, ['install', '-g', '@kodycodes/cli@latest'], {
 		stdio: 'inherit',
+		shell: process.platform === 'win32',
 	})
 	if (installed.status !== 0) {
 		throw new Error(
-			'npm install -g @kodycodes/cli@latest failed. Fix the npm error above and run `kody update` again.',
+			`npm install -g @kodycodes/cli@latest failed${installed.error ? ` (${installed.error.message})` : ''}. Fix the npm error above and run \`kody update\` again.`,
 		)
 	}
 	const manager = serviceManagerFor(env.platform)
