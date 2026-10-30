@@ -461,7 +461,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 	expect(jsonResponse.content).toEqual([
 		{ type: 'text', text: 'conversationId: conv-456' },
 		{ type: 'text', text: '{\n  "ok": true\n}' },
-	cloudLine,
+		cloudLine,
 	])
 	expect(jsonResponse.structuredContent).toEqual({
 		conversationId: 'conv-456',
@@ -518,7 +518,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 			type: 'text',
 			text: `hello\n\n--- TRUNCATED ---\n${truncationNote(11, 5)}`,
 		},
-	cloudLine,
+		cloudLine,
 	])
 	expect(truncatedStringResponse.structuredContent).toEqual({
 		conversationId: 'conv-truncated-string',
@@ -619,7 +619,7 @@ test('execute passes through downstream MCP image content with structured data a
 	expect(largeResponse.content).toEqual([
 		conversationLine('conv-large-image'),
 		largeBlock,
-	cloudLine,
+		cloudLine,
 	])
 
 	moduleReturns({
@@ -680,7 +680,7 @@ test('execute passes through downstream MCP image content with structured data a
 			type: 'text',
 			text: JSON.stringify({ content: [webpBlock], ok: true }, null, 2),
 		},
-	cloudLine,
+		cloudLine,
 	])
 
 	// Malformed user-authored __mcpContent becomes an isError result (no throw).
