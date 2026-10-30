@@ -27,7 +27,27 @@ function setup() {
 		APP_DB: createD1FromSqlite(sqlite),
 		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
 	} as unknown as Env
-	return { env }
+	sqlite
+		.prepare(
+			`INSERT INTO secret_buckets (id, user_id, scope, binding_key) VALUES ('bucket-token-demo', ?, 'user', 'user')`,
+		)
+		.run(ownerId)
+	sqlite
+		.prepare(
+			`INSERT INTO secret_entries (id, bucket_id, name, encrypted_value, kind) VALUES (?, 'bucket-token-demo', 'token-demo', 'dummy-ciphertext', 'login')`,
+		)
+		.run(key.credentialId)
+	const moveTo = (owner: string) =>
+		sqlite
+			.prepare(
+				`UPDATE secret_buckets SET user_id = ? WHERE id = 'bucket-token-demo'`,
+			)
+			.run(owner)
+	const deleteCredential = () =>
+		sqlite
+			.prepare(`UPDATE secret_entries SET deleted_at = 'now' WHERE id = ?`)
+			.run(key.credentialId)
+	return { env, moveTo, deleteCredential }
 }
 
 function deferred<T>() {
@@ -222,7 +242,7 @@ test('a stored session is bound to its revision and owner, and is never stored i
 })
 
 test('after an org transfer the new owner claims the row and mints its own session', async () => {
-	const { env } = setup()
+	const { env, moveTo } = setup()
 	await obtainLoginSession({
 		...key,
 		env,
@@ -232,6 +252,7 @@ test('after an org transfer the new owner claims the row and mints its own sessi
 		}),
 	})
 	const newOwner = ownerIdFromStored('org-token-demo-target')
+	moveTo(newOwner)
 	const exchange = vi.fn(async () => ({
 		token: 'dummy-new-owner',
 		expiresAt: hourFromNow(),
@@ -271,4 +292,55 @@ test('an expired session is not reused', async () => {
 	})
 	await new Promise((resolve) => setTimeout(resolve, 30))
 	expect(await readStoredLoginSession({ ...key, env })).toBeNull()
+})
+
+test('a deleted credential gets no lease and no session, without waiting', async () => {
+	const { env, deleteCredential } = setup()
+	deleteCredential()
+	const exchange = vi.fn(async () => ({
+		token: 'dummy-session',
+		expiresAt: hourFromNow(),
+	}))
+	const started = Date.now()
+	await expect(
+		obtainLoginSession({ ...key, env, exchange, leaseMs: 60_000 }),
+	).rejects.toBeInstanceOf(CredentialLoginFailedError)
+	expect(Date.now() - started).toBeLessThan(5_000)
+	expect(exchange).not.toHaveBeenCalled()
+	const rows = await env.APP_DB.prepare(
+		`SELECT COUNT(*) AS n FROM login_credential_sessions`,
+	).first<{ n: number }>()
+	expect(rows?.n).toBe(0)
+})
+
+test('a failed session write releases the lease', async () => {
+	const { env } = setup()
+	const db = env.APP_DB
+	const failingDb = new Proxy(db, {
+		get(target, prop, receiver) {
+			if (prop !== 'prepare') return Reflect.get(target, prop, receiver)
+			return (sql: string) => {
+				if (sql.includes('SET revision = ?'))
+					throw new Error('dummy write failure')
+				return target.prepare(sql)
+			}
+		},
+	})
+	await expect(
+		obtainLoginSession({
+			...key,
+			env: { ...env, APP_DB: failingDb } as unknown as Env,
+			exchange: async () => ({
+				token: 'dummy-session',
+				expiresAt: hourFromNow(),
+			}),
+		}),
+	).rejects.toThrow('dummy write failure')
+	const row = await db
+		.prepare(
+			`SELECT lease_id FROM login_credential_sessions WHERE credential_id = ?`,
+		)
+		.bind(key.credentialId)
+		.first<{ lease_id: string | null }>()
+	expect(row?.lease_id).toBeNull()
 })

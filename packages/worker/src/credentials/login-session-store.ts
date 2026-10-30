@@ -74,6 +74,20 @@ export async function readStoredLoginSession(
 	}
 }
 
+/** The credential still exists, undeleted, under this owner. */
+const liveCredentialSql = `SELECT 1 FROM secret_entries AS e
+	JOIN secret_buckets AS b ON b.id = e.bucket_id
+	WHERE e.id = ? AND b.user_id = ?
+		AND e.deleted_at IS NULL AND b.deleted_at IS NULL`
+
+async function credentialIsLive(db: D1Database, input: SessionKey) {
+	const row = await db
+		.prepare(liveCredentialSql)
+		.bind(input.credentialId, input.ownerId)
+		.first()
+	return row !== null
+}
+
 async function claimLease(
 	input: SessionKey & {
 		db: D1Database
@@ -86,7 +100,8 @@ async function claimLease(
 		.prepare(
 			`INSERT INTO login_credential_sessions
 				(credential_id, user_id, lease_id, lease_expires_at, updated_at)
-			VALUES (?, ?, ?, ?, ?)
+			SELECT ?, ?, ?, ?, ?
+			WHERE EXISTS (${liveCredentialSql})
 			ON CONFLICT (credential_id) DO UPDATE SET
 				user_id = excluded.user_id,
 				lease_id = excluded.lease_id,
@@ -102,6 +117,8 @@ async function claimLease(
 			input.leaseId,
 			input.now + input.leaseMs,
 			new Date(input.now).toISOString(),
+			input.credentialId,
+			input.ownerId,
 			input.now,
 		)
 		.run()
@@ -185,29 +202,31 @@ export async function obtainLoginSession(
 				leaseMs,
 			})
 		) {
-			// The holder may have published between the read and the claim.
-			const storedAfterClaim = await readStoredLoginSession(input)
-			if (storedAfterClaim) {
-				await releaseLease(input.env.APP_DB, input.credentialId, leaseId)
-				return { session: storedAfterClaim, source: 'stored' }
-			}
-			let session: LoginSession
+			let written = false
 			try {
-				session = await input.exchange()
-			} catch (error) {
-				await releaseLease(input.env.APP_DB, input.credentialId, leaseId)
-				throw error
+				// The holder may have published between the read and the claim.
+				const storedAfterClaim = await readStoredLoginSession(input)
+				if (storedAfterClaim) {
+					return { session: storedAfterClaim, source: 'stored' }
+				}
+				const session = await input.exchange()
+				if (session.expiresAt !== null) {
+					await writeSessionUnderLease({
+						...input,
+						leaseId,
+						session: { token: session.token, expiresAt: session.expiresAt },
+					})
+					written = true
+				}
+				return { session, source: 'new' }
+			} finally {
+				if (!written) {
+					await releaseLease(input.env.APP_DB, input.credentialId, leaseId)
+				}
 			}
-			if (session.expiresAt === null) {
-				await releaseLease(input.env.APP_DB, input.credentialId, leaseId)
-			} else {
-				await writeSessionUnderLease({
-					...input,
-					leaseId,
-					session: { token: session.token, expiresAt: session.expiresAt },
-				})
-			}
-			return { session, source: 'new' }
+		}
+		if (!(await credentialIsLive(input.env.APP_DB, input))) {
+			throw new CredentialLoginFailedError(null)
 		}
 		if (Date.now() + pollMs > deadline)
 			throw new CredentialLoginFailedError(null)
