@@ -880,3 +880,40 @@ test('an overdue run with no daemon connected is rechecked before it would be lo
 		expect(alarm ?? 0).toBeLessThanOrEqual(before + 6_000)
 	})
 })
+
+test('dispatching a run that is already committed leaves the live run alone', async () => {
+	const ecid = 'ec_redispatch_committed'
+	const { stub, next, send } = await connect(ecid)
+	const first = stub.dispatch({
+		request: runRequest('run_dup'),
+		lease: lease(ecid, 'run_dup'),
+		runRecord: null,
+		position: 1,
+	})
+	const request = await next('run.request')
+	await send('run.accept', { runId: 'run_dup' }, { re: request.seq })
+	expect(await first).toEqual({ outcome: 'committed' })
+	await next('run.commit')
+
+	// A queue drain that restarts before deleting its row dispatches the same
+	// run again. It must not re-offer, abort, or overwrite the committed run.
+	expect(
+		await stub.dispatch({
+			request: runRequest('run_dup'),
+			lease: lease(ecid, 'run_dup'),
+			runRecord: null,
+			position: 1,
+		}),
+	).toEqual({ outcome: 'committed' })
+
+	await send('run.result', {
+		runId: 'run_dup',
+		isError: false,
+		content: [{ type: 'text', text: '1' }],
+		structuredContent: { result: 1 },
+	})
+	await next('run.result.ack')
+	expect(
+		await stub.awaitResult({ runId: 'run_dup', waitMs: 1000 }),
+	).toMatchObject({ state: 'succeeded' })
+}, 60_000)
