@@ -284,6 +284,20 @@ async function applyPackageAppVisitTicketToGateway(input: {
 	})
 	const headers = new Headers(input.request.headers)
 	headers.delete(packageAppVisitTicketHeaderName)
+	if (!claims.visitor) {
+		// An anonymous ticket names nobody: the fetch stays anonymous and only
+		// gains this request's credential-client binding.
+		return {
+			...input,
+			request: new Request(input.request, { headers }),
+			props: {
+				...input.props,
+				request: null,
+				executorVisitorRequest: null,
+				credentialClientBinding: claims.credentialClientBinding,
+			},
+		}
+	}
 	return {
 		...input,
 		request: new Request(input.request, { headers }),

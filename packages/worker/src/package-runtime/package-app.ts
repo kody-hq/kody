@@ -140,10 +140,11 @@ import {
 import { packageAppVisitorHeaderName } from './package-app-visitor-header.ts'
 import {
 	createPackageAppRequestVisit,
+	packageAppAnonymousVisitTicketPrefix,
 	packageAppVisitTicketHeaderName,
 	type PackageAppRequestVisit,
 	type PackageAppVisitAudience,
-	type PackageAppVisitClaims,
+	type PackageAppVerifiedVisit,
 	verifyPackageAppVisitTicket,
 	withPackageAppVisitTicket,
 } from './package-app-visit-ticket.ts'
@@ -271,6 +272,8 @@ const __kodyPackageBindingIds = __kodyObjectFreezeCaptured(${JSON.stringify(inpu
 const __kodyIdentityOnlyOrgSlug = ${JSON.stringify(input.identityOnlyOrgSlug)};
 const __kodyJsonParseCaptured = JSON.parse;
 const __kodyVisitTicketHeaderName = ${JSON.stringify(packageAppVisitTicketHeaderName)};
+const __kodyAnonymousVisitTicketPrefix = ${JSON.stringify(packageAppAnonymousVisitTicketPrefix)};
+const __kodyStringStartsWithCaptured = String.prototype.startsWith;
 const __kodyVisitStorage = new AsyncLocalStorage();
 
 function __kodyCurrentVisitTicket() {
@@ -278,6 +281,18 @@ function __kodyCurrentVisitTicket() {
 		return __kodyVisitStorage.getStore()?.ticket ?? null;
 	} catch {
 		return null;
+	}
+}
+// An anonymous ticket only scopes credential clients to this request; it
+// names nobody, so the identity-only shortcut below still applies.
+function __kodyTicketNamesVisitor(ticket) {
+	if (typeof ticket !== 'string' || !ticket) return false;
+	try {
+		return !__kodyReflectApplyCaptured(__kodyStringStartsWithCaptured, ticket, [
+			__kodyAnonymousVisitTicketPrefix,
+		]);
+	} catch {
+		return true;
 	}
 }
 function __kodyReadVisitTicket(request) {
@@ -294,7 +309,8 @@ function __kodyReadVisitTicket(request) {
 // (inbound X-Kody-* headers are stripped before it is set), so
 // metaGetCurrentUser can say who is visiting. That answer is the only thing
 // the header changes: it grants no storage, credentials, or capability.
-// A visit ticket means the visitor acts as themselves; skip this shortcut.
+// A ticket that names a visitor means they act as themselves; skip this
+// shortcut.
 function __kodyReadIdentityOnlyVisitor(request) {
 	if (__kodyIdentityOnlyOrgSlug === null) return null;
 	let raw = null;
@@ -373,7 +389,7 @@ function __kodyCreateAppPackageBindings(bridge, identity) {
 		const token = __kodyPackageBindingToken;
 		const boundCapability = async (callInput) => {
 			const visitTicket = __kodyCurrentVisitTicket();
-			const identityAnswer = visitTicket
+			const identityAnswer = __kodyTicketNamesVisitor(visitTicket)
 				? null
 				: __kodyIdentityOnlyAnswer(identity, callInput?.name);
 			if (identityAnswer) return identityAnswer;
@@ -637,7 +653,7 @@ function createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity = null)
 			}
 			return async (args = {}) => {
 				const visitTicket = __kodyCurrentVisitTicket();
-				const identityAnswer = visitTicket
+				const identityAnswer = __kodyTicketNamesVisitor(visitTicket)
 					? null
 					: __kodyIdentityOnlyAnswer(identity, property);
 				if (identityAnswer) return identityAnswer;
@@ -1218,7 +1234,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 		// Read before any package code runs. Ticket and visitor stay in ALS
 		// for this request only; they never enter module scope.
 		const visitTicket = __kodyReadVisitTicket(request);
-		const identityOnlyVisitor = visitTicket
+		const identityOnlyVisitor = __kodyTicketNamesVisitor(visitTicket)
 			? null
 			: __kodyReadIdentityOnlyVisitor(request);
 		const runtimeRun = startRuntimeRun(runtimeBridge, {
@@ -1689,12 +1705,13 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 
 	/**
 	 * The visit every path except executor credentials acts on. An
-	 * executor-only ticket (an outside-org visitor) counts as no visit, so
-	 * storage, capabilities and identity stay anonymous plus identity.
+	 * executor-only ticket (an outside-org visitor) or an anonymous ticket
+	 * counts as no visit, so storage, capabilities and identity stay
+	 * anonymous (plus identity).
 	 */
 	private async requireActingVisit(ticket: string | null | undefined) {
 		const visit = await this.requireVisit(ticket)
-		return visit?.executorOnly ? null : visit
+		return visit?.visitor && !visit.executorOnly ? visit : null
 	}
 
 	/** Who this call acts for the legacy way: the ticket's visitor, if any. */
@@ -1741,7 +1758,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
-	private credentialBindingFor(visit: PackageAppVisitClaims | null) {
+	/**
+	 * Every ticket, anonymous included, carries this request's binding. With
+	 * no ticket there is no binding, and opening a client fails closed.
+	 */
+	private credentialBindingFor(visit: PackageAppVerifiedVisit | null) {
 		return visit?.credentialClientBinding ?? ''
 	}
 

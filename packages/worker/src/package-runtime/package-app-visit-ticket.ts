@@ -14,6 +14,13 @@
  *
  * A ticket records the live grant and scopes observed at serve time. Visitor
  * credential access checks the grant again before each use.
+ *
+ * A request with no acting visitor gets an anonymous ticket (`kva1.`): same
+ * signing, audience, nonce, and lifetime rules, but it names nobody. It only
+ * carries the request's credential-client binding, so handles opened by an
+ * anonymous request work on every bridge and gateway call of that request and
+ * nowhere else. Every identity, storage, and capability path treats it as no
+ * visit.
  */
 import {
 	base64UrlToBytes,
@@ -42,8 +49,10 @@ export const packageAppVisitTicketTtlMs = 60_000
  */
 export const packageAppVisitLiveHoldMs = 5 * 60_000
 export const packageAppVisitTicketPrefix = 'kvt1.'
+export const packageAppAnonymousVisitTicketPrefix = 'kva1.'
 
 const ticketPurpose = 'kody-package-app-visit@v1'
+const anonymousTicketPurpose = 'kody-package-app-anonymous-visit@v1'
 const signingInfo = new TextEncoder().encode('kody-package-app-visit-ticket-v1')
 const orgRoles: ReadonlyArray<OrgRole> = ['owner', 'member', 'billing']
 
@@ -79,6 +88,20 @@ export type PackageAppVisitClaims = {
 	exp: number
 }
 
+/** A verified anonymous ticket: one request's binding, and nobody. */
+export type PackageAppAnonymousVisitClaims = {
+	visitor: null
+	executorOnly?: undefined
+	audience: PackageAppVisitAudience
+	nonce: string
+	credentialClientBinding: string
+	exp: number
+}
+
+export type PackageAppVerifiedVisit =
+	| PackageAppVisitClaims
+	| PackageAppAnonymousVisitClaims
+
 export type PackageAppRequestVisit = {
 	ticket: string | null
 	nonce: string | null
@@ -110,6 +133,19 @@ type StoredVisitTicket = {
 	grantId: string | null
 	scopes: Array<string>
 	xo?: true
+}
+
+type StoredAnonymousVisitTicket = {
+	v: 1
+	anon: true
+	nonce: string
+	exp: number
+	host: string
+	pkg: string
+	kid: string
+	src: string
+	commit: string | null
+	binding: string
 }
 
 const liveNonces = new Map<string, number>()
@@ -183,14 +219,34 @@ function pruneNonceMaps(now: number) {
 	}
 }
 
+const isText = (field: unknown) => typeof field === 'string'
+const isNonEmptyText = (field: unknown) =>
+	typeof field === 'string' && field.trim().length > 0
+const isFiniteNumber = (field: unknown) =>
+	typeof field === 'number' && Number.isFinite(field)
+
+function isStoredAnonymousVisitTicket(
+	value: unknown,
+): value is StoredAnonymousVisitTicket {
+	if (!value || typeof value !== 'object') return false
+	const record = value as Record<string, unknown>
+	return (
+		record.v === 1 &&
+		record.anon === true &&
+		isNonEmptyText(record.nonce) &&
+		isFiniteNumber(record.exp) &&
+		isText(record.host) &&
+		isNonEmptyText(record.pkg) &&
+		isText(record.kid) &&
+		isText(record.src) &&
+		(record.commit === null || isText(record.commit)) &&
+		isNonEmptyText(record.binding)
+	)
+}
+
 function isStoredVisitTicket(value: unknown): value is StoredVisitTicket {
 	if (!value || typeof value !== 'object') return false
 	const record = value as Record<string, unknown>
-	const isText = (field: unknown) => typeof field === 'string'
-	const isNonEmptyText = (field: unknown) =>
-		typeof field === 'string' && field.trim().length > 0
-	const isFiniteNumber = (field: unknown) =>
-		typeof field === 'number' && Number.isFinite(field)
 	return (
 		record.v === 1 &&
 		isNonEmptyText(record.nonce) &&
@@ -241,6 +297,45 @@ function claimsFromStored(stored: StoredVisitTicket): PackageAppVisitClaims {
 		scopes: stored.scopes,
 		...(stored.xo ? { executorOnly: true } : {}),
 		exp: stored.exp,
+	}
+}
+
+function anonymousClaimsFromStored(
+	stored: StoredAnonymousVisitTicket,
+): PackageAppAnonymousVisitClaims {
+	return {
+		visitor: null,
+		audience: {
+			host: stored.host,
+			packageId: stored.pkg,
+			kodyId: stored.kid,
+			sourceId: stored.src,
+			publishedCommit: stored.commit,
+		},
+		nonce: stored.nonce,
+		credentialClientBinding: stored.binding,
+		exp: stored.exp,
+	}
+}
+
+async function signTicket(input: {
+	env: Pick<Env, 'SECRET_STORE_KEY'>
+	purpose: string
+	prefix: string
+	stored: StoredVisitTicket | StoredAnonymousVisitTicket
+}) {
+	const payload = utf8ToBase64Url(JSON.stringify(input.stored))
+	const signature = await crypto.subtle.sign(
+		'HMAC',
+		await derivationKey(input.env.SECRET_STORE_KEY),
+		new TextEncoder().encode(`${input.purpose}.${payload}`),
+	)
+	return `${input.prefix}${payload}.${bytesToBase64Url(new Uint8Array(signature))}`
+}
+
+function assertTicketBinding(binding: string) {
+	if (!binding.trim()) {
+		throw new Error('A package app visit needs a credential client binding.')
 	}
 }
 
@@ -353,11 +448,15 @@ export async function mintPackageAppVisitTicket(input: {
 	nonce?: string
 	now?: number
 }): Promise<{ ticket: string; nonce: string; exp: number }> {
+	assertTicketBinding(input.credentialClientBinding)
 	const now = input.now ?? Date.now()
 	const nonce = input.nonce ?? crypto.randomUUID()
 	const exp = now + packageAppVisitTicketTtlMs
-	const payload = utf8ToBase64Url(
-		JSON.stringify({
+	const ticket = await signTicket({
+		env: input.env,
+		purpose: ticketPurpose,
+		prefix: packageAppVisitTicketPrefix,
+		stored: {
 			v: 1,
 			nonce,
 			exp,
@@ -377,19 +476,46 @@ export async function mintPackageAppVisitTicket(input: {
 			grantId: input.grantId ?? null,
 			scopes: [...(input.scopes ?? [])],
 			...(input.executorOnly ? { xo: true as const } : {}),
-		} satisfies StoredVisitTicket),
-	)
-	const signature = await crypto.subtle.sign(
-		'HMAC',
-		await derivationKey(input.env.SECRET_STORE_KEY),
-		new TextEncoder().encode(`${ticketPurpose}.${payload}`),
-	)
+		},
+	})
 	beginPackageAppVisit(nonce, now)
-	return {
-		ticket: `${packageAppVisitTicketPrefix}${payload}.${bytesToBase64Url(new Uint8Array(signature))}`,
-		nonce,
-		exp,
-	}
+	return { ticket, nonce, exp }
+}
+
+/**
+ * Mint the ticket for a request with no acting visitor. It names nobody and
+ * carries only the request's credential-client binding.
+ */
+export async function mintPackageAppAnonymousVisitTicket(input: {
+	env: Pick<Env, 'SECRET_STORE_KEY'>
+	audience: PackageAppVisitAudience
+	credentialClientBinding: string
+	nonce?: string
+	now?: number
+}): Promise<{ ticket: string; nonce: string; exp: number }> {
+	assertTicketBinding(input.credentialClientBinding)
+	const now = input.now ?? Date.now()
+	const nonce = input.nonce ?? crypto.randomUUID()
+	const exp = now + packageAppVisitTicketTtlMs
+	const ticket = await signTicket({
+		env: input.env,
+		purpose: anonymousTicketPurpose,
+		prefix: packageAppAnonymousVisitTicketPrefix,
+		stored: {
+			v: 1,
+			anon: true,
+			nonce,
+			exp,
+			host: input.audience.host,
+			pkg: input.audience.packageId,
+			kid: input.audience.kodyId,
+			src: input.audience.sourceId,
+			commit: input.audience.publishedCommit,
+			binding: input.credentialClientBinding,
+		},
+	})
+	beginPackageAppVisit(nonce, now)
+	return { ticket, nonce, exp }
 }
 
 export async function verifyPackageAppVisitTicket(input: {
@@ -397,13 +523,18 @@ export async function verifyPackageAppVisitTicket(input: {
 	ticket: string
 	audience: PackageAppVisitAudience
 	now?: number
-}): Promise<PackageAppVisitClaims> {
+}): Promise<PackageAppVerifiedVisit> {
 	const fail = () => new PackageAppVisitTicketError()
 	const ticket = input.ticket.trim()
-	if (!ticket.startsWith(packageAppVisitTicketPrefix)) throw fail()
-	const [payload, signature, extra] = ticket
-		.slice(packageAppVisitTicketPrefix.length)
-		.split('.')
+	const anonymous = ticket.startsWith(packageAppAnonymousVisitTicketPrefix)
+	if (!anonymous && !ticket.startsWith(packageAppVisitTicketPrefix)) {
+		throw fail()
+	}
+	const prefix = anonymous
+		? packageAppAnonymousVisitTicketPrefix
+		: packageAppVisitTicketPrefix
+	const purpose = anonymous ? anonymousTicketPurpose : ticketPurpose
+	const [payload, signature, extra] = ticket.slice(prefix.length).split('.')
 	if (!payload || !signature || extra !== undefined) throw fail()
 	let valid = false
 	try {
@@ -411,7 +542,7 @@ export async function verifyPackageAppVisitTicket(input: {
 			'HMAC',
 			await derivationKey(input.env.SECRET_STORE_KEY),
 			base64UrlToBytes(signature),
-			new TextEncoder().encode(`${ticketPurpose}.${payload}`),
+			new TextEncoder().encode(`${purpose}.${payload}`),
 		)
 	} catch {
 		throw fail()
@@ -423,25 +554,34 @@ export async function verifyPackageAppVisitTicket(input: {
 	} catch {
 		throw fail()
 	}
-	if (!isStoredVisitTicket(parsed)) throw fail()
+	if (
+		anonymous
+			? !isStoredAnonymousVisitTicket(parsed)
+			: !isStoredVisitTicket(parsed)
+	) {
+		throw fail()
+	}
+	const stored = parsed as StoredVisitTicket | StoredAnonymousVisitTicket
 	const now = input.now ?? Date.now()
 	pruneNonceMaps(now)
-	const liveUntil = liveNonces.get(parsed.nonce) ?? 0
+	const liveUntil = liveNonces.get(stored.nonce) ?? 0
 	if (
-		(parsed.exp <= now && liveUntil <= now) ||
-		parsed.exp > now + packageAppVisitTicketTtlMs ||
-		burnedNonces.has(parsed.nonce) ||
+		(stored.exp <= now && liveUntil <= now) ||
+		stored.exp > now + packageAppVisitTicketTtlMs ||
+		burnedNonces.has(stored.nonce) ||
 		!audienceMatches(input.audience, {
-			host: parsed.host,
-			packageId: parsed.pkg,
-			kodyId: parsed.kid,
-			sourceId: parsed.src,
-			publishedCommit: parsed.commit,
+			host: stored.host,
+			packageId: stored.pkg,
+			kodyId: stored.kid,
+			sourceId: stored.src,
+			publishedCommit: stored.commit,
 		})
 	) {
 		throw fail()
 	}
-	return claimsFromStored(parsed)
+	return 'anon' in stored
+		? anonymousClaimsFromStored(stored)
+		: claimsFromStored(stored)
 }
 
 /** Read and verify the platform-set visit ticket on a package-code request. */
@@ -450,7 +590,7 @@ export async function verifyPackageAppVisitTicketFromRequest(input: {
 	request: Request
 	audience: PackageAppVisitAudience
 	now?: number
-}): Promise<PackageAppVisitClaims | null> {
+}): Promise<PackageAppVerifiedVisit | null> {
 	const ticket = input.request.headers.get(packageAppVisitTicketHeaderName)
 	if (!ticket) return null
 	return await verifyPackageAppVisitTicket({
@@ -549,9 +689,15 @@ export async function createPackageAppRequestVisit(input: {
 		}
 	}
 	if (!input.visitor || !input.request?.actor) {
+		const minted = await mintPackageAppAnonymousVisitTicket({
+			env: input.env,
+			audience: input.audience,
+			credentialClientBinding,
+			now: input.now,
+		})
 		return {
-			ticket: null,
-			nonce: null,
+			ticket: minted.ticket,
+			nonce: minted.nonce,
 			visitor: null,
 			request: null,
 			credentialClientBinding,

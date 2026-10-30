@@ -132,6 +132,7 @@ export default {
 		const out = {
 			header: request.headers.get('X-Kody-Visitor'),
 			cookie: request.headers.get('Cookie'),
+			ticketKind: (request.headers.get('X-Kody-Visit-Ticket') ?? '').slice(0, 5),
 		}
 		out.scopes = {
 			profile: hasScope(request, 'profile'),
@@ -420,6 +421,9 @@ test(
 			{ [packageAppVisitorHeaderName]: forged },
 		]) {
 			const body = await t.serve({ visitor: null, inboundHeaders })
+			// An anonymous ticket scopes credential clients to this request
+			// and names nobody.
+			expect(body.ticketKind).toBe('kva1.')
 			expect(body.header).toBeNull()
 			expect(body.me).toBeUndefined()
 			expect(String(body.meError)).toMatch(/Authenticated MCP user is required/)

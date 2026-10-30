@@ -67,6 +67,7 @@ import {
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { getPackageAppClientReadableCookieNames } from '#worker/package-registry/manifest.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
+import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { savedCredentialNeeds } from '#worker/credentials/credential-needs.ts'
 import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
@@ -1212,7 +1213,8 @@ export async function servePackageAppRequest(input: {
 					{
 						env,
 						callerContext,
-						binding: '',
+						// Only checks the need can open; the handle is discarded.
+						binding: newRunCredentialClientBinding(),
 						packageId: savedPackage.id,
 						runNeeds: async () =>
 							new Map(visitorNeeds.map((item) => [item.key, item])),

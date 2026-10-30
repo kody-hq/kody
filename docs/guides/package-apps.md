@@ -241,9 +241,11 @@ forged, and it is absent for anonymous visitors. Visitors of one app share one
 worker isolate per commit per mount; identity and authority travel per request
 (the visitor header plus a short-lived host-signed visit ticket on every bridge
 and gateway call; a warm isolate does not reuse another visitor's ticket), never
-inside the cached worker. The OAuth helper's `getUser`, `requireUser`, and
-`resolveUser` read the visitor header in server code; `/-/auth/me` stays the
-browser's way to ask (it adds avatar and consented email).
+inside the cached worker. An anonymous visitor's ticket names nobody; it only
+ties that request's `credential()` clients to the request. The OAuth helper's
+`getUser`, `requireUser`, and `resolveUser` read the visitor header in server
+code; `/-/auth/me` stays the browser's way to ask (it adds avatar and consented
+email).
 
 Responses to a request that names a visitor are forced `private` so no shared
 cache can mix visitors.
