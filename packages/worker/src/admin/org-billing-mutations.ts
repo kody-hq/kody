@@ -25,7 +25,8 @@ import {
 import {
 	countLiveFreeOwnedOrgs,
 	FreeOrgLimitError,
-	isPaidOrg,
+	effectiveFreeOrgSql,
+	isPaidOrgBilling,
 	MAX_FREE_ORGS_PER_USER,
 } from '#worker/orgs/billing.ts'
 import {
@@ -48,6 +49,29 @@ export const orgBillingAuditActions = {
 	creditEligibilitySet: 'admin_credit_eligibility_set',
 } as const
 
+export const freeOrgCapDowngradeGuardSql = `
+	AND NOT EXISTS (
+		SELECT 1
+		FROM org_memberships m
+		INNER JOIN users u ON u.stable_user_id = m.user_id AND u.deleted_at IS NULL
+		WHERE m.org_id = orgs.id
+		  AND m.role = 'owner'
+		  AND m.deleted_at IS NULL
+		  AND (
+		    SELECT COUNT(*)
+		    FROM orgs o2
+		    INNER JOIN org_memberships m2
+		      ON m2.org_id = o2.id
+		     AND m2.user_id = m.user_id
+		     AND m2.role = 'owner'
+		     AND m2.deleted_at IS NULL
+		    WHERE ${effectiveFreeOrgSql('o2')} AND o2.deleted_at IS NULL
+		  ) >= ?
+	)`
+
+const freeOrgDowngradeRaceMessage =
+	'Downgrading this organization to free would give an Owner more than 2 free organizations. Make one of their organizations paid or delete one first.'
+
 export class AdminOrgBillingMutationError extends Error {
 	readonly status: 400 | 404
 
@@ -67,6 +91,8 @@ export async function writeOrgManualPlan(input: {
 	orgId: string
 	plan: PlanName
 	now: Date
+	orgWhereSuffix?: string
+	orgWhereValues?: ReadonlyArray<unknown>
 	audit?: OrgAuditWriter
 	auditEvent?: {
 		action: string
@@ -96,12 +122,20 @@ export async function writeOrgManualPlan(input: {
 	const updatedAt = utcSqliteTimestamp(input.now)
 	const setClause = 'plan = ?, entitlement_ladder = ?, updated_at = ?'
 	const values = [input.plan, nextLadder, updatedAt]
+	const orgWhereValues = input.orgWhereValues ?? []
 	if (input.audit && input.auditEvent) {
 		const result = await runAppDbBatchWithOrgAudit({
 			appDb: input.db,
 			audit: input.audit,
 			statements: [
-				prepareOrgBillingUpdate(input.db, input.orgId, setClause, values),
+				prepareOrgBillingUpdate(
+					input.db,
+					input.orgId,
+					setClause,
+					values,
+					input.orgWhereSuffix,
+					orgWhereValues,
+				),
 			],
 			onlyIfChanged: true,
 			event: {
@@ -113,7 +147,11 @@ export async function writeOrgManualPlan(input: {
 			},
 		})
 		if (!result.changed) {
-			throw new AdminOrgBillingMutationError(404, 'Org not found.')
+			await throwManualPlanWriteError({
+				db: input.db,
+				orgId: input.orgId,
+				capGuarded: Boolean(input.orgWhereSuffix),
+			})
 		}
 		return
 	}
@@ -122,10 +160,33 @@ export async function writeOrgManualPlan(input: {
 		orgId: input.orgId,
 		setClause,
 		values,
+		orgWhereSuffix: input.orgWhereSuffix,
+		orgWhereValues,
 	})
 	if ((result.meta.changes ?? 0) === 0) {
-		throw new AdminOrgBillingMutationError(404, 'Org not found.')
+		await throwManualPlanWriteError({
+			db: input.db,
+			orgId: input.orgId,
+			capGuarded: Boolean(input.orgWhereSuffix),
+		})
 	}
+}
+
+async function throwManualPlanWriteError(input: {
+	db: D1Database
+	orgId: string
+	capGuarded: boolean
+}): Promise<never> {
+	if (input.capGuarded) {
+		const liveOrg = await input.db
+			.prepare(
+				`SELECT 1 AS present FROM orgs WHERE id = ? AND deleted_at IS NULL`,
+			)
+			.bind(input.orgId)
+			.first<{ present: number }>()
+		if (liveOrg) throw new FreeOrgLimitError(freeOrgDowngradeRaceMessage)
+	}
+	throw new AdminOrgBillingMutationError(404, 'Org not found.')
 }
 
 export async function writeOrgCreditEligibility(input: {
@@ -235,15 +296,21 @@ export async function setAdminOrgPlan(input: {
 	const db = input.env.APP_DB
 	const org = await resolveAdminOrgTarget(db, input.target)
 	const current = await db
-		.prepare(`SELECT plan FROM orgs WHERE id = ? AND deleted_at IS NULL`)
+		.prepare(
+			`SELECT plan, stripe_plan FROM orgs WHERE id = ? AND deleted_at IS NULL`,
+		)
 		.bind(org.id)
-		.first<{ plan: string | null }>()
+		.first<{ plan: string | null; stripe_plan: string | null }>()
 	if (!current) throw new AdminOrgBillingMutationError(404, 'Org not found.')
 	const previous = parseStoredPlanName(current.plan)
 	if (previous === input.plan) {
 		return { orgId: org.id, previous, next: input.plan, changed: false }
 	}
-	if (isPaidOrg(previous) && input.plan === 'free') {
+	const capRelevantDowngrade =
+		input.plan === 'free' &&
+		isPaidOrgBilling({ plan: previous, stripe_plan: current.stripe_plan }) &&
+		!isPaidOrgBilling({ plan: 'free', stripe_plan: current.stripe_plan })
+	if (capRelevantDowngrade) {
 		for (const owner of await liveOwners(db, org.id)) {
 			if (
 				(await countLiveFreeOwnedOrgs(db, owner.user_id)) >=
@@ -262,6 +329,10 @@ export async function setAdminOrgPlan(input: {
 		orgId: org.id,
 		plan: input.plan,
 		now,
+		orgWhereSuffix: capRelevantDowngrade
+			? freeOrgCapDowngradeGuardSql
+			: undefined,
+		orgWhereValues: capRelevantDowngrade ? [MAX_FREE_ORGS_PER_USER] : undefined,
 		audit: input.audit,
 		auditEvent: {
 			action: orgBillingAuditActions.planSet,
@@ -328,6 +399,7 @@ export async function grantAdminCreditsToOrg(input: {
 			},
 		},
 	})
+	invalidateCachedUserEntitlement(db, org.id)
 	await writePlatformAudit({
 		env: input.env,
 		audit: input.platformAudit,

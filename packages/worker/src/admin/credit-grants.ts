@@ -28,6 +28,7 @@ import {
 	toAccountCreditsLedgerItem,
 } from '#worker/billing/credit-wallet.ts'
 import {
+	invalidateCachedUserEntitlement,
 	resolveUserEntitlementFromRow,
 	userEntitlementColumnsSql,
 	type UserEntitlementRow,
@@ -235,6 +236,7 @@ export async function grantAdminCreditsToUser(input: {
 		note,
 		now,
 	})
+	invalidateCachedUserEntitlement(db, orgId)
 	if (input.audit !== false) {
 		void logAuditEvent({
 			db: auditDatabaseFromEnv(input.env),

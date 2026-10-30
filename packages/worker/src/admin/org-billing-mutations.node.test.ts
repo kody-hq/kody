@@ -4,10 +4,17 @@ import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { orgAuditWriterForPerson } from '#worker/orgs/org-audit.ts'
+import { getCachedUserEntitlement } from '#worker/entitlements/service.ts'
 import {
+	FreeOrgLimitError,
+	MAX_FREE_ORGS_PER_USER,
+} from '#worker/orgs/billing.ts'
+import {
+	freeOrgCapDowngradeGuardSql,
 	grantAdminCreditsToOrg,
 	setAdminOrgCreditEligibility,
 	setAdminOrgPlan,
+	writeOrgManualPlan,
 } from './org-billing-mutations.ts'
 
 const adminId = testStableUserIdFromEmail('admin@example.com')
@@ -233,6 +240,97 @@ test('paid-to-free downgrade blocks owners at the cap but allows one free org', 
 	).resolves.toMatchObject({ previous: 'pro', next: 'free', changed: true })
 })
 
+test('manual Pro downgrade stays allowed when Stripe keeps the org paid', async () => {
+	const { sqlite, env, audit } = createDb()
+	const ownerId = insertUser(sqlite, { email: 'stripe-paid-owner@example.com' })
+	const secondFree = testStableUserIdFromEmail('stripe-paid-free@example.com')
+	const stripePaidOrg = testStableUserIdFromEmail(
+		'stripe-paid-team@example.com',
+	)
+	insertOrg(sqlite, { id: ownerId, slug: 'stripe-paid-owner', plan: 'free' })
+	insertOrg(sqlite, { id: secondFree, slug: 'stripe-paid-free', plan: 'free' })
+	insertOrg(sqlite, {
+		id: stripePaidOrg,
+		slug: 'stripe-paid-team',
+		plan: 'pro',
+	})
+	sqlite
+		.prepare(`UPDATE orgs SET stripe_plan = 'pro' WHERE id = ?`)
+		.run(stripePaidOrg)
+	addOwner(sqlite, ownerId, ownerId)
+	addOwner(sqlite, secondFree, ownerId)
+	addOwner(sqlite, stripePaidOrg, ownerId)
+
+	await expect(
+		setAdminOrgPlan({
+			...auditInput(env, audit),
+			target: { orgId: stripePaidOrg },
+			plan: 'free',
+			reason: 'Stripe continues billing this team.',
+		}),
+	).resolves.toMatchObject({ previous: 'pro', next: 'free', changed: true })
+	expect(
+		sqlite.prepare(`SELECT plan FROM orgs WHERE id = ?`).get(stripePaidOrg),
+	).toEqual({ plan: 'free' })
+})
+
+test('atomic downgrade cap guard blocks a race without writing audits', async () => {
+	const { sqlite, auditSqlite, env, audit } = createDb()
+	const ownerId = insertUser(sqlite, { email: 'race-cap-owner@example.com' })
+	const firstPaid = testStableUserIdFromEmail('race-first-paid@example.com')
+	const secondPaid = testStableUserIdFromEmail('race-second-paid@example.com')
+	insertOrg(sqlite, { id: ownerId, slug: 'race-cap-owner', plan: 'free' })
+	insertOrg(sqlite, { id: firstPaid, slug: 'race-first-paid', plan: 'pro' })
+	insertOrg(sqlite, { id: secondPaid, slug: 'race-second-paid', plan: 'pro' })
+	addOwner(sqlite, ownerId, ownerId)
+	addOwner(sqlite, firstPaid, ownerId)
+	addOwner(sqlite, secondPaid, ownerId)
+
+	await setAdminOrgPlan({
+		...auditInput(env, audit),
+		platformAudit: false,
+		target: { orgId: firstPaid },
+		plan: 'free',
+		reason: 'The first downgrade fits under the cap.',
+	})
+
+	const guardedDowngrade = writeOrgManualPlan({
+		db: env.APP_DB,
+		orgId: secondPaid,
+		plan: 'free',
+		now,
+		orgWhereSuffix: freeOrgCapDowngradeGuardSql,
+		orgWhereValues: [MAX_FREE_ORGS_PER_USER],
+		audit,
+		auditEvent: {
+			action: 'admin_plan_set',
+			details: { previous: 'pro', next: 'free' },
+		},
+	})
+	await expect(guardedDowngrade).rejects.toBeInstanceOf(FreeOrgLimitError)
+	await expect(guardedDowngrade).rejects.toThrow(
+		'Downgrading this organization to free would give an Owner more than 2 free organizations. Make one of their organizations paid or delete one first.',
+	)
+	expect(
+		sqlite.prepare(`SELECT plan FROM orgs WHERE id = ?`).get(secondPaid),
+	).toEqual({ plan: 'pro' })
+	expect(
+		auditSqlite
+			.prepare(
+				`SELECT COUNT(*) AS count FROM org_audit_events
+				 WHERE org_id = ? AND action = 'admin_plan_set'`,
+			)
+			.get(secondPaid),
+	).toMatchObject({ count: 0 })
+	expect(
+		auditSqlite
+			.prepare(
+				`SELECT COUNT(*) AS count FROM audit_events WHERE action = 'adminOrgPlanSet'`,
+			)
+			.get(),
+	).toMatchObject({ count: 0 })
+})
+
 test('billing-only memberships and deleted owners do not block downgrades; upgrades are allowed', async () => {
 	const { sqlite, env, audit } = createDb()
 	const billingOwner = insertUser(sqlite, { email: 'billing-cap@example.com' })
@@ -363,6 +461,30 @@ test('org credit grants are positive, reasoned, and written to both audit logs',
 	await expect(
 		grantAdminCreditsToOrg({ ...args, reason: '  ' }),
 	).rejects.toThrow('A reason is required.')
+})
+
+test('org credit grant invalidates cached entitlement after funding the wallet', async () => {
+	const { sqlite, env, audit } = createDb()
+	const orgId = testStableUserIdFromEmail('cached-credit-team@example.com')
+	insertOrg(sqlite, { id: orgId, slug: 'cached-credit-team', plan: 'pro' })
+	sqlite
+		.prepare(`UPDATE orgs SET admin_credits_eligible = 1 WHERE id = ?`)
+		.run(orgId)
+	const entitlementInput = { userId: orgId, email: null }
+
+	await expect(
+		getCachedUserEntitlement(env.APP_DB, entitlementInput),
+	).resolves.toMatchObject({ creditWallet: 'empty' })
+	await grantAdminCreditsToOrg({
+		...auditInput(env, audit),
+		target: { orgId },
+		grantedBy: { stableUserId: adminId, email: 'admin@example.com' },
+		amountCents: 125,
+		reason: 'Fund the eligible team wallet.',
+	})
+	await expect(
+		getCachedUserEntitlement(env.APP_DB, entitlementInput),
+	).resolves.toMatchObject({ creditWallet: 'funded' })
 })
 
 test('org credit grant and audit outbox roll back together when the audit batch fails', async () => {
