@@ -368,8 +368,14 @@ async function serveHelloWorld(input?: {
 	mount?: 'username-path' | 'user-subdomain'
 	/** Serve as an internet-visible outsider instead of the owner. */
 	outsider?: {
-		identity?: { userId: PersonId; username: string } | null
-		consentPrincipal?: { userId: PersonId; username: string } | null
+		identity?: {
+			userId: ReturnType<typeof personIdFromStored>
+			username: string
+		} | null
+		consentPrincipal?: {
+			userId: ReturnType<typeof personIdFromStored>
+			username: string
+		} | null
 	}
 }) {
 	const kodyId = input?.kodyId ?? 'perf-app'
