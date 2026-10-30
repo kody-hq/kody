@@ -45,6 +45,7 @@ export const executionContextCapabilityNames = {
 	get: 'executionContextGet',
 	optIn: 'executionContextOptIn',
 	optOut: 'executionContextOptOut',
+	delete: 'executionContextDelete',
 	chainGet: 'executionChainGet',
 	chainSet: 'executionChainSet',
 	runList: 'executionContextRunList',
@@ -486,6 +487,19 @@ export async function optIntoExecutionContextForUser(
 			optedIn: result.optedIn !== false,
 			usable: result.usable !== false,
 		}
+	})
+}
+
+export async function deleteExecutionContextForUser(
+	input: ScopedInput & { contextId: string },
+) {
+	return runScoped(input, async (scope) => {
+		const result = await callCapability(
+			scope,
+			executionContextCapabilityNames.delete,
+			{ id: input.contextId },
+		)
+		return { ok: true as const, deleted: result.deleted === true }
 	})
 }
 

@@ -8,8 +8,11 @@ import {
 import { wrapArtifactsGitHttpError } from '#worker/repo/artifacts-git-retry.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { QuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
+import { publishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import {
 	ApiError,
+	computeLimitExceededMessage,
+	serverRestartedMessage,
 	toApiError,
 	transientDatabaseUnavailableMessage,
 } from './errors.ts'
@@ -302,4 +305,66 @@ test('toApiError does not treat caller text that echoes D1 markers as retryable'
 
 	expect(apiError).toMatchObject({ status: 404, code: 'not_found' })
 	expect(apiError.headers).not.toHaveProperty('Retry-After')
+})
+
+test('toApiError maps a bare Durable Object CPU or memory reset to a compute-limit 503, not a storage outage (KODY-CY)', () => {
+	for (const message of [
+		'Durable Object exceeded its CPU time limit and was reset.',
+		"Durable Object's isolate exceeded its memory limit and was reset.",
+	]) {
+		const apiError = toApiError(
+			new Error('publish failed', { cause: new Error(message) }),
+		)
+		expect(apiError).toMatchObject({
+			status: 503,
+			code: 'internal_error',
+			message: computeLimitExceededMessage,
+		})
+		expect(apiError.message).not.toBe(transientDatabaseUnavailableMessage)
+		expect(apiError.message).toContain('compute limit')
+		expect(apiError.headers?.['Retry-After']).toBeUndefined()
+	}
+})
+
+test('toApiError keeps D1-prefixed Durable Object resets on the storage message', () => {
+	const apiError = toApiError(
+		new Error(
+			'D1_ERROR: Durable Object exceeded its CPU time limit and was reset.',
+		),
+	)
+	expect(apiError).toMatchObject({
+		status: 503,
+		message: transientDatabaseUnavailableMessage,
+	})
+})
+
+test('toApiError maps a bare deploy reset to a retryable server-restart 503', () => {
+	const apiError = toApiError(
+		new Error('Durable Object reset because its code was updated.'),
+	)
+	expect(apiError).toMatchObject({
+		status: 503,
+		code: 'internal_error',
+		message: serverRestartedMessage,
+		headers: { 'Retry-After': '5' },
+	})
+})
+
+test('toApiError surfaces a publish compute-limit caller error as-is even when its cause is a raw reset', () => {
+	const message = publishComputeLimitMessage('credentials')
+	const apiError = toApiError(
+		new McpCallerError(message, {
+			cause: new Error(
+				'Durable Object exceeded its CPU time limit and was reset.',
+			),
+		}),
+	)
+	expect(apiError).toMatchObject({
+		status: 400,
+		code: 'invalid_request',
+		message,
+	})
+	expect(apiError.message).toContain('credential stamp scan')
+	expect(apiError.message).toContain('kody dev check')
+	expect(apiError.message).not.toMatch(/\bsecrets?\b/i)
 })

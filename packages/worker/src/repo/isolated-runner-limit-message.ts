@@ -128,3 +128,33 @@ export function externalPublishResourceLimitMessage(
 		'publishing again.'
 	)
 }
+
+const publishComputeLimitPhrase = 'exceeded a Kody compute limit'
+
+/**
+ * Caller-facing copy when one publish step, already running in its own
+ * throwaway isolate, still hits the Durable Object CPU time or memory limit.
+ * The step is deterministic for this package tree, so a plain retry would
+ * hit the same limit; this is never a storage outage.
+ */
+export function publishComputeLimitMessage(step: RepoCheckStep | null = null) {
+	const where = step ? ` during ${repoCheckStepLabel(step)}` : ''
+	return (
+		`This publish ${publishComputeLimitPhrase} (Durable Object CPU time or ` +
+		`memory)${where}, so it stopped before it finished. This is not a ` +
+		'storage outage, and retrying the same package tree will hit the same ' +
+		`limit. ${repoCheckStepResourceLimitAdvice(step)} \`kody dev check\` runs ` +
+		'the same checks under the same limits, so use it to confirm a fix ' +
+		'before publishing again.'
+	)
+}
+
+/** True for {@link publishComputeLimitMessage} and the external push copy. */
+export function isPublishComputeLimitMessage(message: string) {
+	return (
+		message.includes(publishComputeLimitPhrase) ||
+		message.includes(
+			'packagePublishExternalPush hit the Durable Object isolate memory or CPU limit',
+		)
+	)
+}

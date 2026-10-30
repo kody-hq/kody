@@ -3,7 +3,10 @@ import { css } from '@emotion/react'
 import { useQuery } from '@tanstack/react-query'
 import { useRefreshExecutionContextsPage } from '../execution-contexts-query.ts'
 import { useRef, useState } from 'react'
+import { useRouter } from '@tanstack/react-router'
+import { orgResourcePath } from '#universal/org-pages.ts'
 import {
+	deleteExecutionContext,
 	loadExecutionContextAudit,
 	loadExecutionContextRuns,
 	optIntoExecutionContext,
@@ -187,7 +190,107 @@ export function ExecutionContextDetail(props: {
 			{context.sharing ? <SharingPanel {...props} onChanged={refresh} /> : null}
 			<RunHistory orgSlug={orgSlug} context={context} nameForId={nameForId} />
 			<AuditLog orgSlug={orgSlug} context={context} />
+			<DeleteControls orgSlug={orgSlug} context={context} onDeleted={refresh} />
 		</div>
+	)
+}
+
+function DeleteControls(props: {
+	orgSlug: string
+	context: ExecutionContextListItem
+	onDeleted: () => void
+}) {
+	const { context } = props
+	const router = useRouter()
+	const dialog = useRef<HTMLDialogElement>(null)
+	const [busy, setBusy] = useState(false)
+	const [error, setError] = useState<string | null>(null)
+	const ownedHere = context.ownerOrg.slug === props.orgSlug
+	if (context.status !== 'revoked' || !context.canAddShares || !ownedHere) {
+		return null
+	}
+
+	async function remove() {
+		setBusy(true)
+		setError(null)
+		const result = (await deleteExecutionContext({
+			data: { orgSlug: props.orgSlug, contextId: context.id },
+		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
+		setBusy(false)
+		if (!result.ok) return setError(failureText(result))
+		dialog.current?.close()
+		await router.navigate({
+			to: orgResourcePath(props.orgSlug, 'execution-contexts'),
+			resetScroll: false,
+		})
+		props.onDeleted()
+	}
+
+	return (
+		<section
+			css={sectionCss}
+			aria-labelledby="context-delete-title"
+			data-testid="context-delete"
+		>
+			<h3 id="context-delete-title" css={{ margin: 0 }}>
+				Delete
+			</h3>
+			<p css={mutedCss}>
+				This context is revoked. Deleting it removes it from this list for good.
+				Past runs keep its name in their history.
+			</p>
+			<div>
+				<button
+					type="button"
+					data-testid="context-delete-open"
+					css={[getDangerButtonCss(), target]}
+					onClick={() => {
+						setError(null)
+						dialog.current?.showModal()
+					}}
+				>
+					Delete context
+				</button>
+			</div>
+			<dialog
+				ref={dialog}
+				css={dialogCss}
+				aria-labelledby="context-delete-dialog-title"
+				data-testid="context-delete-dialog"
+			>
+				<h2 id="context-delete-dialog-title" css={{ marginTop: 0 }}>
+					Delete {context.name}?
+				</h2>
+				<p>
+					This permanently deletes {context.name} and removes it from every
+					chain, share and org it was in. You cannot undo this. Past runs still
+					show it in their history.
+				</p>
+				{error ? (
+					<AccountManagementMessage tone="error">
+						{error}
+					</AccountManagementMessage>
+				) : null}
+				<div css={{ display: 'flex', gap: spacing.sm, justifyContent: 'end' }}>
+					<button
+						type="button"
+						css={[getGhostButtonCss({ size: 'sm' }), target]}
+						onClick={() => dialog.current?.close()}
+					>
+						Cancel
+					</button>
+					<button
+						type="button"
+						data-testid="context-delete-confirm"
+						css={[getDangerButtonCss(), target]}
+						disabled={busy}
+						onClick={() => void remove()}
+					>
+						{busy ? 'Deleting…' : 'Delete permanently'}
+					</button>
+				</div>
+			</dialog>
+		</section>
 	)
 }
 

@@ -349,6 +349,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['id'],
 	},
 	{
+		operationId: 'executionContextDelete',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/delete',
+		pathParamNames: ['id'],
+	},
+	{
 		operationId: 'executionContextDetach',
 		method: 'DELETE',
 		pathTemplate: '/v1/execution-contexts/{id}/attachments/{org_id}',

@@ -725,6 +725,150 @@ export async function revokeContext(
 	return { revoked: true, id: row.id, revokedAt: now }
 }
 
+/**
+ * A revoked context by id, or by name when exactly one revoked context in the
+ * org has it (revoking releases the name, so name lookups skip revoked rows).
+ */
+async function resolveDeletableContext(
+	caller: ExecutionContextCaller,
+	ref: string,
+) {
+	const live = await resolveExecutionContextRef(
+		caller.env.APP_DB,
+		caller.orgId,
+		ref,
+	)
+	if (live) return live
+	const trimmed = ref.trim()
+	const revoked = (
+		await listOrgExecutionContexts(caller.env.APP_DB, caller.orgId)
+	).filter((row) => row.name === trimmed && row.revoked_at)
+	if (revoked.length > 1) {
+		throw new ExecutionContextError({
+			status: 409,
+			code: 'invalid_request',
+			message: `More than one revoked context is named ${trimmed}. Delete it by id (ec_...) instead.`,
+		})
+	}
+	return revoked[0] ?? notFound()
+}
+
+/** Drops a deleted context from every chain that still lists it. */
+async function removeFromChains(
+	caller: ExecutionContextCaller,
+	contextId: string,
+) {
+	const db = caller.env.APP_DB
+	const holders = await db
+		.prepare(
+			`SELECT DISTINCT org_id, user_id FROM execution_context_chain_entries WHERE context_id = ?`,
+		)
+		.bind(contextId)
+		.all<{ org_id: string; user_id: string }>()
+	for (const holder of holders.results) {
+		const chainKey = { orgId: holder.org_id, userId: holder.user_id }
+		for (let attempt = 0; ; attempt += 1) {
+			const chain = await getChain(db, chainKey)
+			const kept = chain.entries.filter(
+				(entry) => entry.kind !== 'context' || entry.id !== contextId,
+			)
+			try {
+				await writeChain(db, {
+					...chainKey,
+					entries: kept.length > 0 ? kept : [{ kind: 'cloud' }],
+					expectedVersion: chain.version,
+					updatedBy: chainUpdatedBy(caller),
+					now: new Date().toISOString(),
+				})
+				break
+			} catch (error) {
+				if (!(error instanceof ChainConflictError) || attempt >= 2) throw error
+			}
+		}
+	}
+}
+
+/**
+ * Permanently deletes a revoked context: its row, shares, opt-ins, org
+ * attachments and chain entries. Run records keep their own copy of the
+ * context id and name, so run history still reads after the delete.
+ */
+export async function deleteContext(
+	caller: ExecutionContextCaller,
+	ref: string,
+) {
+	const row = await resolveDeletableContext(caller, ref)
+	const db = caller.env.APP_DB
+	const access = await loadContextAccess(db, row, caller)
+	if (!canManageContext(access)) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'not_granted',
+			message: 'Deleting this context needs Manage on it.',
+		})
+	}
+	if (row.org_id !== caller.orgId) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'not_granted',
+			message: `${row.name} belongs to another org. Delete it from the org that owns it, or detach it from this one.`,
+		})
+	}
+	if (!row.revoked_at) {
+		throw new ExecutionContextError({
+			status: 409,
+			code: 'context_not_revoked',
+			message: `${row.name} is not revoked. Revoke it first (executionContextRevoke or \`kody context revoke <name>\`), then delete it.`,
+		})
+	}
+	const attachedOrgs = await db
+		.prepare(
+			`SELECT org_id FROM execution_context_org_attachments WHERE context_id = ?`,
+		)
+		.bind(row.id)
+		.all<{ org_id: string }>()
+	const grantOrgs = await db
+		.prepare(
+			`SELECT DISTINCT org_id FROM grants WHERE resource_type = 'execution_context' AND resource_id = ? AND deleted_at IS NULL`,
+		)
+		.bind(row.id)
+		.all<{ org_id: string }>()
+	await removeFromChains(caller, row.id)
+	const now = new Date().toISOString()
+	const epochOrgs = new Set([
+		...attachedOrgs.results.map((entry) => entry.org_id),
+		...grantOrgs.results.map((entry) => entry.org_id),
+	])
+	await db.batch([
+		db
+			.prepare(
+				`UPDATE grants SET deleted_at = ?, updated_at = ? WHERE resource_type = 'execution_context' AND resource_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(now, now, row.id),
+		...[...epochOrgs].map((orgId) => bumpAccessEpochStatement(db, orgId)),
+		db
+			.prepare(`DELETE FROM execution_context_opt_ins WHERE context_id = ?`)
+			.bind(row.id),
+		db
+			.prepare(
+				`DELETE FROM execution_context_org_attachments WHERE context_id = ?`,
+			)
+			.bind(row.id),
+		db
+			.prepare(
+				`DELETE FROM execution_context_chain_entries WHERE context_id = ?`,
+			)
+			.bind(row.id),
+		db
+			.prepare(
+				`DELETE FROM execution_contexts WHERE id = ? AND revoked_at IS NOT NULL`,
+			)
+			.bind(row.id),
+	])
+	await recordContextAudit(caller, row.id, 'deleted')
+	return { deleted: true, id: row.id, name: row.name }
+}
+
 // ---------- sharing ----------
 
 type ShareRow = {
