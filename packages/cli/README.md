@@ -477,6 +477,42 @@ npx @kodycodes/cli execute --local --invoke kody:@scope/pkg/export --params '{"n
   (`public`, `public-and-lan`, `allowlist` hosts and ports, or `none`), and the
   message points the machine owner at `executionContextUpdate` `grant.egress`.
 
+## Execution context host folders
+
+Runs on an execution context (`kody daemon`) use workerd's virtual filesystem
+unless a host folder is allowed by **both** layers:
+
+1. The context's server grant (`grant.fs`, set with `executionContextUpdate` by
+   someone with Contribute on the context).
+2. This machine's local policy, kept by the machine owner in
+   `execution-context-policy.json` under the CLI config directory
+   (`~/.config/kody/` on Linux or `$XDG_CONFIG_HOME/kody/`,
+   `~/Library/Application Support/kody/` on macOS, `%APPDATA%\kody\` on
+   Windows). No file means no host folder access.
+
+```sh
+kody context policy                              # show allowed folders
+kody context policy allow ~/Desktop --mode rw    # ro (default) or rw
+kody context policy remove ~/Desktop
+```
+
+The daemon mounts the overlap of the two layers at its real absolute path, with
+the narrower mode (`ro` wins), and re-applies it on every `grant.update` and
+policy edit (running daemons pick up edits within a few seconds). Paths are
+canonicalized with `realpath`, so symlinks, `..` segments, and prefix tricks
+like `/Users/a/Desktop-evil` cannot reach outside a mount. A context advertises
+the `fs` capability only while at least one folder is mounted, so
+`requires: ["fs"]` routing and chains skip it otherwise (`no_fs`: the server
+grant lists no folders; `no_local_fs`: the local policy allows none of them).
+
+Inside a run, `node:fs` / `fs/promises` `readFile`, `writeFile`, `appendFile`,
+`readdir`, `stat`, `lstat`, `mkdir`, `rm`, `unlink`, `rmdir`, `rename`,
+`copyFile`, `access`, and `realpath` work on mounted paths (up to 32 MiB per
+read or write). Writes under an `ro` mount fail with `EROFS`; paths outside
+every mount fail with `EACCES` naming the layer that refused (server grant or
+local policy). Synchronous calls and streams cannot reach host folders. Other
+paths, including workerd's `/bundle`, `/tmp`, and `/dev`, stay virtual.
+
 ## Token storage
 
 CLI credentials are stored in the OS secret store:

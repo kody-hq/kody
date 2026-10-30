@@ -18,6 +18,7 @@ import { runSecretHeader } from './local-runtime-source.js'
 
 export const localBridgeCallPath = '/call'
 export const localBridgeGatewayFetchPath = '/gateway-fetch'
+export const localBridgeHostFsPath = '/fs'
 
 export type LocalRuntimeBridge = {
 	port: number
@@ -44,6 +45,8 @@ export type LocalRuntimeBridgeInput = {
 		response: ServerResponse
 		signal: AbortSignal
 	}) => Promise<void>
+	/** Host-folder fs calls for an execution-context run with mounts. */
+	forwardHostFs?: (body: unknown) => Promise<unknown>
 }
 
 export async function startLocalRuntimeBridge(
@@ -115,6 +118,25 @@ export async function startLocalRuntimeBridge(
 					redact(error instanceof Error ? error.message : String(error)),
 					'gateway_fetch_failed',
 				)
+			}
+			return
+		}
+		if (
+			request.method === 'POST' &&
+			request.url === localBridgeHostFsPath &&
+			input.forwardHostFs
+		) {
+			try {
+				const body: unknown = JSON.parse(await readBodyText(request))
+				replyJson(200, { result: await input.forwardHostFs(body) })
+			} catch (error) {
+				const code = (error as { code?: unknown })?.code
+				replyJson(200, {
+					error: {
+						code: typeof code === 'string' ? code : 'EIO',
+						message: error instanceof Error ? error.message : String(error),
+					},
+				})
 			}
 			return
 		}

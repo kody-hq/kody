@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	writeFileSync,
+} from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -1354,6 +1362,83 @@ test(
 		assert.match(
 			String((result.structuredContent as { result: unknown }).result),
 			/^Blocked by kody execute --local's network setting: .*10\.0\.0\.1 is a private or local network address\. Re-run with --allow-private-network/,
+		)
+	},
+)
+
+test(
+	'runLocalExecute mounts effective host folders at their real paths and refuses everything else',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const { effectiveFs } =
+			await import('../src/execution-context/fs-access.js')
+		const root = realpathSync(mkdtempSync(join(tmpdir(), 'kody-host-fs-')))
+		const rw = join(root, 'granted')
+		const ro = join(root, 'readonly')
+		const denied = join(root, 'granted-evil')
+		for (const dir of [rw, ro, denied]) mkdirSync(dir)
+		writeFileSync(join(ro, 'note.txt'), 'read me')
+		const hostFs = await effectiveFs(
+			[
+				{ path: rw, mode: 'rw' },
+				{ path: ro, mode: 'rw' },
+				{ path: denied, mode: 'rw' },
+			],
+			[
+				{ path: rw, mode: 'rw' },
+				{ path: ro, mode: 'ro' },
+			],
+		)
+		const code = `import { promises as fsp, readFileSync } from 'node:fs'
+import { writeFile } from 'fs/promises'
+const attempt = async (fn) => { try { return await fn() } catch (error) { return error.code + ': ' + error.message } }
+export default async function main(p) {
+	await fsp.writeFile(p.rw + '/a.txt', 'hello host')
+	await writeFile(p.rw + '/b.txt', 'bare specifier')
+	return {
+		a: await fsp.readFile(p.rw + '/a.txt', 'utf8'),
+		listing: (await fsp.readdir(p.rw)).sort(),
+		note: await fsp.readFile(p.ro + '/note.txt', 'utf8'),
+		roWrite: await attempt(() => fsp.writeFile(p.ro + '/x.txt', 'nope')),
+		prefixTrick: await attempt(() => fsp.writeFile(p.denied + '/x.txt', 'nope')),
+		dotDot: await attempt(() => fsp.readFile(p.rw + '/../readonly/../granted-evil/x.txt')),
+		outside: await attempt(() => fsp.readFile('/etc/hostname', 'utf8')),
+		sync: await attempt(() => readFileSync(p.rw + '/a.txt')),
+		virtualTmp: await attempt(async () => { await fsp.writeFile('/tmp/v.txt', 'v'); return fsp.readFile('/tmp/v.txt', 'utf8') }),
+	}
+}`
+		const result = await runLocalExecute({
+			code,
+			params: { rw, ro, denied },
+			token: goodToken,
+			apiUrl,
+			hostFs,
+		})
+		assert.equal(result.isError, false, JSON.stringify(result.content))
+		const out = (result.structuredContent as { result: Record<string, string> })
+			.result
+		assert.equal(out.a, 'hello host')
+		assert.deepEqual(out.listing, ['a.txt', 'b.txt'])
+		assert.equal(readFileSync(join(rw, 'b.txt'), 'utf8'), 'bare specifier')
+		assert.equal(out.note, 'read me')
+		assert.match(out.roWrite!, /^EROFS: .*read-only/)
+		assert.equal(existsSync(join(ro, 'x.txt')), false)
+		assert.match(
+			out.prefixTrick!,
+			/^EACCES: .*server grant, but this machine's local policy/,
+		)
+		assert.equal(existsSync(join(denied, 'x.txt')), false)
+		assert.match(out.dotDot!, /^EACCES: .*local policy/)
+		assert.match(
+			out.outside!,
+			/^EACCES: .*outside this execution context's server grant/,
+		)
+		assert.match(out.sync!, /^ENOTSUP: .*use await fs\.promises\.readFile/)
+		assert.equal(out.virtualTmp, 'v')
+		assert.equal(
+			existsSync('/tmp/v.txt') && readFileSync('/tmp/v.txt', 'utf8') === 'v',
+			false,
 		)
 	},
 )

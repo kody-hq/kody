@@ -9,6 +9,16 @@ import {
 import { randomBytes } from 'node:crypto'
 import { rmSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { type EffectiveFs } from './execution-context/fs-access.js'
+import {
+	type HostFsRequest,
+	handleHostFsRequest,
+} from './execution-context/host-fs-bridge.js'
+import {
+	createHostFsPromisesSource,
+	createHostFsSource,
+	hostFsShimModules,
+} from './host-fs-shim.js'
 import { request as httpRequest, type IncomingMessage } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -119,6 +129,11 @@ export type LocalExecuteInput = {
 	onStatus?: (message: string) => void
 	/** Aborting kills workerd and ends the run with a cancelled error. */
 	signal?: AbortSignal
+	/**
+	 * Execution-context host folders (server grant ∩ local policy). When the
+	 * grant names any folder, `node:fs` resolves through the bridge-backed shim.
+	 */
+	hostFs?: EffectiveFs
 	/** Told about the workerd process so a daemon can reap it after a crash. */
 	workerTracker?: LocalWorkerTracker
 }
@@ -279,6 +294,11 @@ export async function runLocalExecute(
 			allowPrivateNetwork: input.allowPrivateNetwork,
 			onStatus: input.onStatus,
 		})
+		const hostFs =
+			input.hostFs &&
+			(input.hostFs.mounts.length > 0 || input.hostFs.grantRoots.length > 0)
+				? input.hostFs
+				: undefined
 		bridge = await startLocalRuntimeBridge({
 			runSecret,
 			forwardCall: async (call, signal) => {
@@ -300,6 +320,12 @@ export async function runLocalExecute(
 					signal,
 				})
 			},
+			...(hostFs
+				? {
+						forwardHostFs: async (body: unknown) =>
+							await handleHostFsRequest(hostFs, body as HostFsRequest),
+					}
+				: {}),
 			forwardGatewayFetchStream: async ({ request, response, signal }) => {
 				await forwardLocalGatewayFetchStream({
 					request,
@@ -322,6 +348,23 @@ export async function runLocalExecute(
 			})
 			packageModules = installed.packageModules
 			gatewayFetchShimModules = installed.sideEffectModules
+		}
+		if (hostFs) {
+			const routeRoots = [
+				...new Set([
+					...hostFs.mounts.map((mount) => mount.path),
+					...hostFs.grantRoots,
+				]),
+			]
+			await writeFile(
+				join(workDir, hostFsShimModules[0].file),
+				createHostFsSource(),
+			)
+			await writeFile(
+				join(workDir, hostFsShimModules[1].file),
+				createHostFsPromisesSource({ routeRoots }),
+			)
+			packageModules = [...packageModules, ...hostFsShimModules]
 		}
 		await writeFile(
 			join(workDir, files.entry),

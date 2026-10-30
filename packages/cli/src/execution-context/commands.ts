@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync, unwatchFile, watchFile } from 'node:fs'
 import { cpus, platform, totalmem } from 'node:os'
 import { ed25519JwkThumbprint } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import {
@@ -9,6 +9,14 @@ import {
 	registerContext,
 } from './client.js'
 import { runDaemon } from './daemon.js'
+import {
+	type FsMode,
+	allowLocalPath,
+	effectiveFs,
+	localPolicyPath,
+	readLocalPolicy,
+	removeLocalPath,
+} from './fs-access.js'
 import {
 	contextWorkersDir,
 	contextsDir,
@@ -24,7 +32,7 @@ import {
 export type ExecutionContextCommandInput = {
 	command: 'context' | 'chain' | 'daemon'
 	positionals: Array<string>
-	values: { name?: string; context?: string; json?: boolean }
+	values: { name?: string; context?: string; mode?: string; json?: boolean }
 	apiUrl: string
 	org?: string
 	token: () => Promise<string>
@@ -73,6 +81,9 @@ export async function runExecutionContextCommand(
 		apiUrl: input.apiUrl,
 		...(input.org ? { org: input.org } : {}),
 		...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+	}
+	if (input.command === 'context' && sub === 'policy') {
+		return await runPolicyCommand(input, rest)
 	}
 	if (input.command === 'context' && sub === 'register') {
 		const name = input.values.name ?? rest[0]
@@ -269,6 +280,15 @@ export async function runExecutionContextCommand(
 				capabilities: localCapabilities(),
 				execute: (run) =>
 					runContextRun({ ...run, apiUrl: input.apiUrl, workerTracker }),
+				fs: {
+					effective: async (grantFs) =>
+						await effectiveFs(grantFs, (await readLocalPolicy()).fs),
+					onChange: (listener) => {
+						const path = localPolicyPath()
+						watchFile(path, { interval: 2000 }, listener)
+						return () => unwatchFile(path, listener)
+					},
+				},
 				log: (line) => input.write(`${line}\n`),
 				signal: abort.signal,
 			})
@@ -279,7 +299,7 @@ export async function runExecutionContextCommand(
 		return 0
 	}
 	throw new Error(
-		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody chain show | add <name> | remove <name> | kody daemon [--context <ec id>]',
+		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody chain show | add <name> | remove <name> | kody daemon [--context <ec id>]',
 	)
 }
 
@@ -343,4 +363,58 @@ function describeChain(
 
 export function readCodeFile(path: string) {
 	return readFileSync(path, 'utf8')
+}
+
+const policyUsage =
+	'Usage: kody context policy [show] | kody context policy allow <path> [--mode ro|rw] | kody context policy remove <path>'
+
+async function runPolicyCommand(
+	input: ExecutionContextCommandInput,
+	[action, path, ...extra]: Array<string>,
+): Promise<number> {
+	const file = localPolicyPath()
+	const describe = (rules: Array<{ path: string; mode: FsMode }>) =>
+		rules.length === 0
+			? `No host folders are allowed on this machine (${file}). Execution-context runs only see their virtual filesystem.`
+			: [
+					`Host folders this machine allows (${file}):`,
+					...rules.map((rule) => `  ${rule.mode}  ${rule.path}`),
+					'A run can use a folder only if its context grant (grant.fs) also lists it; the narrower mode wins.',
+				].join('\n')
+	if (action === undefined || action === 'show') {
+		const policy = await readLocalPolicy(file)
+		out(input, { path: file, ...policy }, describe(policy.fs))
+		return 0
+	}
+	if (!path || extra.length > 0) throw new Error(policyUsage)
+	if (action === 'allow') {
+		const mode = input.values.mode ?? 'ro'
+		if (mode !== 'ro' && mode !== 'rw') {
+			throw new Error('--mode must be ro (read-only) or rw (read-write).')
+		}
+		const { policy, added } = await allowLocalPath({
+			path,
+			mode,
+			policyPath: file,
+		})
+		out(
+			input,
+			{ path: file, ...policy },
+			`Allowed ${added.path} (${added.mode}). Running daemons pick this up within a few seconds.\n${describe(policy.fs)}`,
+		)
+		return 0
+	}
+	if (action === 'remove') {
+		const { policy, removed } = await removeLocalPath({
+			path,
+			policyPath: file,
+		})
+		out(
+			input,
+			{ path: file, removed, ...policy },
+			`${removed ? `Removed ${path}.` : `${path} was not in the policy.`}\n${describe(policy.fs)}`,
+		)
+		return 0
+	}
+	throw new Error(policyUsage)
 }

@@ -1,5 +1,6 @@
 import {
 	type EcpCancelReason,
+	type EcpCapabilities,
 	type EcpGrant,
 	type EcpRunRequestBody,
 	sha256Base64Url,
@@ -20,6 +21,7 @@ import {
 	getChain,
 	getExecutionContext,
 	loadContextAccess,
+	parseCapabilities,
 	parseGrant,
 	resolveExecutionContextRef,
 	sessionStub,
@@ -289,9 +291,14 @@ export function grantRefusal(input: {
 	requires: ReadonlyArray<ExecuteRequirement>
 	credentials: CredentialCallMap | null
 	code?: string | null
+	/** What the daemon advertised; `fs` means its effective mount set is non-empty. */
+	capabilities: EcpCapabilities
 }): string | null {
-	if (input.requires.includes('fs') && input.grant.fs.length === 0) {
-		return 'no_fs'
+	if (input.requires.includes('fs')) {
+		if (input.grant.fs.length === 0) return 'no_fs'
+		if (!(input.capabilities.features ?? []).includes('fs')) {
+			return 'no_local_fs'
+		}
 	}
 	if (
 		input.requires.includes('lan') &&
@@ -466,6 +473,7 @@ export async function routeExecute(input: {
 			requires,
 			credentials: input.credentials,
 			code: input.code,
+			capabilities: parseCapabilities(row),
 		})
 		if (refusal) {
 			skip(refusal)
@@ -669,12 +677,21 @@ function hasContextScope(input: { request: { scopes: Array<string> | null } }) {
 	return scopes === null || scopes.includes('execution_context:execute')
 }
 
+const contextReasonText: Record<string, string> = {
+	no_fs: 'no_fs: its server grant lists no host folders (grant.fs)',
+	no_local_fs:
+		"no_local_fs: its server grant lists host folders, but the machine's local policy allows none of them (`kody context policy allow <folder>`)",
+}
+
 function describeAttempts(attempts: ReadonlyArray<RoutingAttempt>) {
 	return attempts
-		.map(
-			(a) =>
-				`${a.name ?? a.target}: ${a.outcome}${a.reason ? ` (${a.reason})` : ''}`,
-		)
+		.map((a) => {
+			const reason =
+				a.reason && a.target !== 'cloud'
+					? (contextReasonText[a.reason] ?? a.reason)
+					: a.reason
+			return `${a.name ?? a.target}: ${a.outcome}${reason ? ` (${reason})` : ''}`
+		})
 		.join('; ')
 }
 

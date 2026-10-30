@@ -90,6 +90,16 @@ sequenceDiagram
   there).
 - A named context never falls back unless the run passes `fallback: "chain"`.
   `requires: ["fs" | "lan"]` skips Kody cloud.
+- Host folders: the daemon mounts `grant.fs` intersected with the machine's
+  local policy (`kody context policy`, stored as `execution-context-policy.json`
+  in the CLI config dir; absent means none), canonicalized with `realpath`,
+  narrower mode wins. Mounts are re-applied on `grant.update` and policy edits.
+  The daemon advertises `features: ["fs"]` in `hello` / `capabilities.update`
+  only while a folder is mounted, and routing refuses `requires: ["fs"]` with
+  `no_fs` (grant lists none) or `no_local_fs` (local policy allows none). In the
+  run, a `node:fs` shim sends host paths over the run-secret loopback bridge,
+  which enforces the mounts on the Node side; see
+  [CLI README](../../../packages/cli/README.md#execution-context-host-folders).
 - A run (`execute` `chain`) or automation (`execution` on jobs, webhooks,
   subscriptions and workflow steps) can set its own `context` or `chain`, which
   overrides the default chain. API/MCP/UI overrides beat the manifest.
