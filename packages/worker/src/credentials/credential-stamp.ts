@@ -497,14 +497,18 @@ function isRuntimeImportEqualsOfRuntime(
 	if (node.type !== 'TSImportEqualsDeclaration') return false
 	if ((node as { importKind?: unknown }).importKind === 'type') return false
 	let reference = node.moduleReference as AstNode | undefined
+	let firstMember: AstNode | undefined
 	while (reference?.type === 'TSQualifiedName') {
+		firstMember = reference.right as AstNode | undefined
 		reference = reference.left as AstNode | undefined
 	}
-	if (reference?.type !== 'Identifier' || reference === node.moduleReference) {
-		return false
-	}
+	if (reference?.type !== 'Identifier' || firstMember == null) return false
 	const name = getNodeName(reference) ?? ''
-	return bindings.runtimeObjects.has(name) || bindings.functions.has(name)
+	if (bindings.functions.has(name)) return true
+	return (
+		bindings.runtimeObjects.has(name) &&
+		credentialFunctionNames.has(getNodeName(firstMember) ?? '')
+	)
 }
 
 function isVisitorCallOrTypeof(visitor: AstNode, parent: AstNode | undefined) {

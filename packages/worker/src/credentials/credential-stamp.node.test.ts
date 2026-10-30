@@ -236,6 +236,9 @@ test('scanCredentialStamp ignores credential/credentials in erased type position
 		'type Fn = (open: typeof credential) => typeof credentials',
 		'type Mapped = { [K in "a"]: typeof credential }',
 		'type Cond<T> = T extends typeof credential ? 1 : 0',
+		'type Named = typeof credential.named',
+		'type ViaKodyNamed = typeof kody.credential.named',
+		'import Mcp = kody.mcp',
 	]
 	for (const form of typeOnlyForms) {
 		const result = scanCredentialStamp({
@@ -315,6 +318,8 @@ test('scanCredentialStamp accepts a runtime typeof check but still rejects every
 		'import c = credential',
 		'import c = kody.credential',
 		'export import c = kody.credentials',
+		'import v = credential.visitor',
+		'import v = kody.credential.visitor',
 		'@take(credential) class D {}',
 	]
 	for (const form of runtimeForms) {
