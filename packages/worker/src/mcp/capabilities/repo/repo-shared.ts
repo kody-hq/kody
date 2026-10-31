@@ -195,9 +195,16 @@ export const repoSourceRefSchema = z.object({
 export const repoSessionLastPublishSchema = z
 	.object({
 		state: z
-			.enum(['running', 'interrupted', 'published', 'not_published', 'failed'])
+			.enum([
+				'running',
+				'interrupted',
+				'published',
+				'pushed',
+				'not_published',
+				'failed',
+			])
 			.describe(
-				'running: in progress. interrupted: the server restarted mid-publish; retry repoPublishSession to resume. published: done. not_published: returned a non-ok status (see result_status). failed: the call errored; nothing was published unless published_commit moved.',
+				'running: in progress. interrupted: the server restarted mid-publish; retry repoPublishSession to resume. published: done. pushed: pushed without promotion (promotePublished: false); published_commit did not change. not_published: returned a non-ok status (see result_status). failed: the call errored; nothing was published unless published_commit moved (an unknown push outcome says so in error_message).',
 			),
 		started_at: z.string(),
 		finished_at: z.string().nullable(),

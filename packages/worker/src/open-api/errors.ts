@@ -312,9 +312,9 @@ export function toApiError(error: unknown): ApiError {
 			status: 503,
 			code: 'internal_error',
 			message:
-				'The publish push may or may not have reached the source repo (Kody could not read its refs back). published_commit did not move. Check repoGetSession last_publish and the package published_commit before retrying.',
+				'The publish outcome is unknown: Kody could not read the source repo refs back after the push, so the push may have landed. published_commit did not move. Check the source ref before retrying.',
 			details: {
-				published: false,
+				published_commit_moved: false,
 				ref_state: 'unknown',
 				ref: notApplied.ref,
 				expected_commit: notApplied.expectedCommit,

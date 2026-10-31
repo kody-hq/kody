@@ -421,7 +421,7 @@ test('toApiError reports an unreadable confirm (no observed ref) as an unknown r
 	expect(error.status).toBe(503)
 	expect(error.code).toBe('internal_error')
 	expect(error.details).toMatchObject({
-		published: false,
+		published_commit_moved: false,
 		ref_state: 'unknown',
 	})
 })

@@ -3960,11 +3960,18 @@ class RepoSessionBase extends DurableObject<Env> {
 		try {
 			const result = await this.runPublishSession(input)
 			await writeOutcome({
-				state: result.status === 'ok' ? 'published' : 'not_published',
+				state:
+					result.status !== 'ok'
+						? 'not_published'
+						: input.promotePublished === false
+							? 'pushed'
+							: 'published',
 				started_at: startedAt,
 				finished_at: nowIso(),
 				published_commit:
-					result.status === 'ok' ? result.publishedCommit : null,
+					result.status === 'ok' && input.promotePublished !== false
+						? result.publishedCommit
+						: null,
 				result_status: result.status,
 				error_name: null,
 				error_message: null,

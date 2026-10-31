@@ -16,7 +16,7 @@ export class RemoteRefNotConfirmedError extends Error {
 		cause?: unknown
 	}) {
 		super(
-			`The source repo did not confirm the push: ${input.ref} is at ${input.observedCommit ?? 'no commit'}, expected ${input.expectedCommit}. Nothing was published and the session is unchanged; retry the publish.`,
+			`The source repo did not confirm the push: ${input.ref} is at ${input.observedCommit ?? 'no commit'}, expected ${input.expectedCommit}. ${input.observedCommit === null ? 'published_commit did not move, but the publish outcome is unknown: the push may have landed. Check the source ref before retrying.' : 'Nothing was published and the session is unchanged; retry the publish.'}`,
 			input.cause === undefined ? undefined : { cause: input.cause },
 		)
 		this.name = 'RemoteRefNotConfirmedError'

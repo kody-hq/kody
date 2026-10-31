@@ -165,10 +165,17 @@ export type RepoSessionInfoResult = {
  * `running`: in progress. `interrupted`: the server restarted mid-publish;
  * retrying resumes it. `failed`: threw; nothing moved unless
  * `published_commit` on the session says otherwise. `not_published`: returned
- * a non-ok status (`result_status`) such as `base_moved`.
+ * a non-ok status (`result_status`) such as `base_moved`. `pushed`: pushed
+ * without promotion; the live `published_commit` did not change.
  */
 export type RepoSessionLastPublish = {
-	state: 'running' | 'interrupted' | 'published' | 'not_published' | 'failed'
+	state:
+		| 'running'
+		| 'interrupted'
+		| 'published'
+		| 'pushed'
+		| 'not_published'
+		| 'failed'
 	started_at: string
 	finished_at: string | null
 	published_commit: string | null
