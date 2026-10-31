@@ -51,6 +51,8 @@ export type ExecutionContextShareGrant = {
 	orgSlug?: string
 	subject: ExecutionContextGrantSubject
 	preset: ExecutionContextPreset
+	/** Explicit execution_context:command on top of the preset (ADR 0092). */
+	commands?: boolean
 }
 
 export type ExecutionContextSharing = {

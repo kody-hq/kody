@@ -171,7 +171,7 @@ context.
 
 ```sh
 KODY_API_TOKEN=<token with execution_context:create, execution_context:execute, execution_context:command, execution_context:delete> \
-  node tools/e2e/execution-context-commands.ts --api-url https://kody.codes
+  npm run e2e:context-commands -- --api-url https://kody.codes
 ```
 
 The account needs the `execution-contexts` experiment on. PR previews lack

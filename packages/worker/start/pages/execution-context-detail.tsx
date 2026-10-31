@@ -755,6 +755,7 @@ function SharingPanel(props: {
 	const [kind, setKind] = useState<'user' | 'team' | 'org'>('user')
 	const [value, setValue] = useState('')
 	const [preset, setPreset] = useState<ExecutionContextPreset>('use')
+	const [commands, setCommands] = useState(false)
 	const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [busy, setBusy] = useState(false)
@@ -773,11 +774,13 @@ function SharingPanel(props: {
 							? { kind, slug: value }
 							: { kind },
 				preset,
+				commands: kind !== 'org' && commands,
 			},
 		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
 		setBusy(false)
 		if (!result.ok) return setError(failureText(result))
 		setValue('')
+		setCommands(false)
 		props.onChanged()
 	}
 
@@ -864,7 +867,8 @@ function SharingPanel(props: {
 				>
 					{sharing.grants.map((grant) => (
 						<li key={grant.grantId}>
-							{subjectLabel(grant)}, {presetLabels[grant.preset]}{' '}
+							{subjectLabel(grant)}, {presetLabels[grant.preset]}
+							{grant.commands ? ' + host commands' : ''}{' '}
 							{confirmRemove === grant.grantId ? (
 								<>
 									<span css={mutedCss}>
@@ -965,6 +969,24 @@ function SharingPanel(props: {
 								))}
 							</select>
 						</label>
+						{kind !== 'org' ? (
+							<label
+								css={{
+									display: 'flex',
+									alignItems: 'center',
+									gap: spacing.sm,
+									minHeight: 44,
+								}}
+							>
+								<input
+									type="checkbox"
+									checked={commands}
+									onChange={(event) => setCommands(event.target.checked)}
+									data-testid="context-share-commands"
+								/>
+								Also allow host commands
+							</label>
+						) : null}
 						<button
 							type="submit"
 							css={[getPillButtonCss({ size: 'sm' }), target]}
