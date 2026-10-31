@@ -659,7 +659,7 @@ export async function handlePackageAppOauthAuthorizeRequest(
 			? String(form.get('device_user_code') ?? '')
 			: (url.searchParams.get('device_user_code') ?? '')
 		).trim() || null
-	// "Sign in on another device" (ADR 0092): the approver consents here for a
+	// "Sign in on another device" (ADR 0094): the approver consents here for a
 	// limited browser. The request comes from the stored device row, never
 	// from the query, and the code is looked up under the `/device` limits.
 	let deviceRow: DeviceAuthorizationRow | null = null

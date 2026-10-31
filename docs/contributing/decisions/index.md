@@ -263,7 +263,7 @@ Open these before proposing a new primitive, surface, or storage home.
   `POST /agent/identity` takes `service_auth` only; the claim mints a user-owned
   `kody_at_` (default `long`, amends 0056); no identity assertion or JWT-bearer
   refresh; anonymous stays behind a flag that is off
-- [0092: Package-app visitors sign in from limited browsers](./0092-package-app-limited-browser-sign-in.md)
+- [0094: Package-app visitors sign in from limited browsers](./0094-package-app-limited-browser-sign-in.md)
   `/login`, `/verify`, and consent work as plain HTML; "Sign in on another
   device" reuses the 0082 device code (amends 0082)
 

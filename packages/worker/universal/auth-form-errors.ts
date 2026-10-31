@@ -1,6 +1,6 @@
 /**
  * `?formError=` codes the server-rendered `/login` and `/verify` forms show
- * after a plain HTML form POST (ADR 0092). Codes, not server text, travel in
+ * after a plain HTML form POST (ADR 0094). Codes, not server text, travel in
  * the URL so nobody can put their own sentence on Kody's sign-in page.
  */
 export type AuthFormError =

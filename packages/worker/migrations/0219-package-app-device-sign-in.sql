@@ -1,5 +1,5 @@
 -- Package-app visitors on limited browsers can sign in on another device
--- (ADR 0092). Those requests reuse `oauth_device_authorizations` with
+-- (ADR 0094). Those requests reuse `oauth_device_authorizations` with
 -- `kind = 'package_app'`: `client_id` is the package app client
 -- (`owner/leaf`), `resource` is the app's `redirect_uri`, and `request_json`
 -- holds the rest of the authorize request (state, PKCE challenge, the

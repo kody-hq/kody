@@ -4,7 +4,7 @@ import { executeE2eD1Command } from './d1-utils.ts'
 import { expect, test } from './playwright-utils.ts'
 
 /**
- * Package-app visitors on limited browsers (ADR 0092): the sign-in and
+ * Package-app visitors on limited browsers (ADR 0094): the sign-in and
  * consent pages work as plain HTML with JavaScript off, and "Sign in on
  * another device" finishes from a second, signed-in browser. The limited
  * browser uses an e-reader's Chromium 80 user agent.

@@ -1,6 +1,6 @@
 import { getStartRequestEnv } from './request-env.ts'
 
-// Plain HTML form POSTs for `/login` and `/verify` (ADR 0092). Browsers that
+// Plain HTML form POSTs for `/login` and `/verify` (ADR 0094). Browsers that
 // cannot run the page JavaScript (old engines, JavaScript turned off) submit
 // the server-rendered form here and get a redirect, never JSON. Modern
 // browsers keep the in-page submit. The per-IP auth rate limit runs in the

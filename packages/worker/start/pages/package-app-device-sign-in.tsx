@@ -26,7 +26,7 @@ import {
 } from '#universal/styles/tokens.ts'
 
 /**
- * The limited browser's half of "Sign in on another device" (ADR 0092). Every
+ * The limited browser's half of "Sign in on another device" (ADR 0094). Every
  * state is plain server-rendered HTML: the page refreshes itself with an HTTP
  * `Refresh` header while it waits, and "Check now" is an ordinary link, so it
  * works with JavaScript turned off.

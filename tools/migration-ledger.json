@@ -785,8 +785,8 @@
 			"sha256": "f03eca3000bd5bccf11589889ccdbfdc141ff57b4879ac988b3f6a701b627e3b"
 		},
 		{
-			"filename": "0218-package-app-device-sign-in.sql",
-			"sha256": "3c17ffb3edcae60963b8780043e2bd73a3feb5ef853792d0276294778cd6c622"
+			"filename": "0219-package-app-device-sign-in.sql",
+			"sha256": "bf0d240ef6db96cb0ae6a8c6d2ebeb567102244deac3881149c6810adf13d6f8"
 		}
 	]
 }

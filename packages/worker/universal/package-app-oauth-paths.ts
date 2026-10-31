@@ -10,7 +10,7 @@
 
 export const packageAppOauthPaths = {
 	authorize: '/oauth/package-app/authorize',
-	/** Limited-browser sign-in approved on another device (ADR 0092). */
+	/** Limited-browser sign-in approved on another device (ADR 0094). */
 	device: '/oauth/package-app/device',
 	login: '/-/auth/login',
 	callback: '/-/auth/callback',

@@ -55,7 +55,7 @@ import {
 
 /**
  * "Sign in on another device" for package-app visitors on limited browsers
- * (ADR 0092). The limited browser starts an RFC 8628 style request from the
+ * (ADR 0094). The limited browser starts an RFC 8628 style request from the
  * app's sign-in page, shows the user code and a QR code, and checks back with
  * plain page reloads. The visitor approves on a device where they are signed
  * in to Kody, on the app's normal consent screen. The limited browser then

@@ -3,7 +3,7 @@ import { publicAsset } from '../public-assets.ts'
 
 /**
  * Server-rendered extras that keep a sign-in form usable without the page's
- * app JavaScript (ADR 0092): a note for browsers with JavaScript off, and a
+ * app JavaScript (ADR 0094): a note for browsers with JavaScript off, and a
  * small classic script that draws the Turnstile check when the app never
  * hydrates (older engines).
  */

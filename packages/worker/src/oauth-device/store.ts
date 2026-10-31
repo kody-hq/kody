@@ -28,7 +28,7 @@ export type DeviceAuthorizationRow = {
 	org_id: string | null
 	decided_at: number | null
 	consumed_at: number | null
-	/** `package_app` rows are package-app visitor sign-ins (ADR 0092). */
+	/** `package_app` rows are package-app visitor sign-ins (ADR 0094). */
 	kind: DeviceAuthorizationKind
 	/** Package-app rows only: the rest of the authorize request, as JSON. */
 	request_json: string | null
@@ -195,7 +195,7 @@ export async function decideDeviceAuthorization(
 }
 
 /**
- * Records the decision on a pending package-app visitor sign-in (ADR 0092).
+ * Records the decision on a pending package-app visitor sign-in (ADR 0094).
  * An approval stores the scopes the approver allowed; the limited device
  * turns it into a package-app authorization code when it next checks in.
  */

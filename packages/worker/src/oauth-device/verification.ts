@@ -308,7 +308,7 @@ export async function decideDeviceAuthorizationForPerson(input: {
 }
 
 /**
- * A pending package-app visitor sign-in (ADR 0092) by the code the visitor
+ * A pending package-app visitor sign-in (ADR 0094) by the code the visitor
  * typed or scanned, under the same per-person and per-IP code-entry limits as
  * `/device`.
  */

@@ -1,6 +1,6 @@
 /* oxlint-disable no-undef -- classic browser script served from public/;
    the lint config's browser env does not apply here. */
-// Low-JavaScript fallback for Kody's sign-in forms (ADR 0092). Older browsers
+// Low-JavaScript fallback for Kody's sign-in forms (ADR 0094). Older browsers
 // (for example e-readers on Chromium 80) may not run the page's app
 // JavaScript, which is what normally draws the Turnstile human check. When
 // the page has not hydrated a few seconds after load, this plain ES5 script

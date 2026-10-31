@@ -290,7 +290,7 @@ export function AuthForm(
 			{renderStatusMessage(props.handleId, props.status, props.message)}
 			{/*
 			 * Submit works before (or without) hydration: the form posts to
-			 * `/login` as plain HTML (ADR 0092).
+			 * `/login` as plain HTML (ADR 0094).
 			 */}
 			<button type="submit" disabled={props.isSubmitting} css={authSubmitCss}>
 				<span

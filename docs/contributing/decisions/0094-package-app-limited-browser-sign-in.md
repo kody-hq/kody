@@ -1,4 +1,4 @@
-# 0092: Package-app visitors sign in from limited browsers
+# 0094: Package-app visitors sign in from limited browsers
 
 - **Status:** accepted
 - **Date:** 2026-10-31

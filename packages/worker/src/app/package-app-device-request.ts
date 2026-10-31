@@ -1,7 +1,7 @@
 import { type DeviceAuthorizationRow } from '#worker/oauth-device/store.ts'
 
 /**
- * The stored half of a package-app visitor device sign-in (ADR 0092): what
+ * The stored half of a package-app visitor device sign-in (ADR 0094): what
  * `oauth_device_authorizations.request_json` holds for `kind = 'package_app'`
  * rows, and the authorize query such a row stands for.
  */
