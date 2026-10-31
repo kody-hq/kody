@@ -26,7 +26,7 @@ const grantSchema = z.object({
 	resource_type: z
 		.enum(profileGrantResourceTypes)
 		.describe(
-			'One resource kind, or `org` (resource_id = the org id) for org-level permissions only: org:read, org:execute, search:read, member:read, team:read, audit:read, and <type>:create. A profile never gets org-wide reads of a resource kind.',
+			'One resource kind, or `org` (resource_id = the org id) for org-level permissions only: org:read, org:execute, search:read, member:read, team:read, audit:read, profile:manage (for sub-profiles), and <type>:create. A profile never gets org-wide reads of a resource kind.',
 		),
 	resource_id: z
 		.string()

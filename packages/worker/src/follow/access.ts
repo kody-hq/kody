@@ -143,6 +143,8 @@ export async function loadFollowTargetSnapshot(
 export async function loadFollowTargetPermissions(input: {
 	env: Env
 	creatorUserId: string
+	/** Profile (ADR 0092) that created the follow; null is the person. */
+	creatorProfileId?: string | null
 	ownerId: string
 }): Promise<EffectivePermissions | null> {
 	const binding = await loadOrgBindingForOrg(
@@ -160,6 +162,7 @@ export async function loadFollowTargetPermissions(input: {
 			},
 			source: { kind: 'session' },
 			orgBinding: binding,
+			profileId: input.creatorProfileId ?? null,
 		}),
 	})
 }
@@ -167,11 +170,13 @@ export async function loadFollowTargetPermissions(input: {
 export async function resolveFollowDeliveryAccess(input: {
 	env: Env
 	creatorUserId: string
+	creatorProfileId?: string | null
 	target: FollowTargetSnapshot
 }): Promise<FollowPermissionDecision> {
 	const access = await loadFollowTargetPermissions({
 		env: input.env,
 		creatorUserId: input.creatorUserId,
+		creatorProfileId: input.creatorProfileId ?? null,
 		ownerId: input.target.ownerId,
 	}).catch((error: unknown) => {
 		console.error('follow-access-lookup-failed', error)

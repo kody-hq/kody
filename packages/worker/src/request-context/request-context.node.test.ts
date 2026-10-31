@@ -468,3 +468,61 @@ test('context-run lineage keeps operator access and narrowing across a durable b
 	})
 	expect(forged?.credential.contextCredentialIds).toEqual([])
 })
+
+test('profile binding and its frozen chain survive a lineage round trip', () => {
+	const lineage = requestLineage(
+		deriveRequestContext({
+			user,
+			source: { kind: 'api-token', tokenId: 'tok_1' },
+			profileId: 'prf_child',
+			profileChain: ['prf_root', 'prf_child'],
+		}),
+	)
+	const parsed = parseRequestLineage(JSON.parse(JSON.stringify(lineage)))
+	expect(parsed?.credential.profileId).toBe('prf_child')
+	expect(parsed?.credential.profileChain).toEqual(['prf_root', 'prf_child'])
+	expect(
+		parseRequestLineage({
+			...lineage,
+			credential: { ...lineage.credential, profileChain: ['prf_other'] },
+		})?.credential,
+	).toMatchObject({ profileId: 'prf_child' })
+	expect(
+		parseRequestLineage({
+			...lineage,
+			credential: { ...lineage.credential, profileChain: ['prf_other'] },
+		})?.credential.profileChain,
+	).toBeUndefined()
+})
+
+test('a triggered run as a sub-profile records its whole chain', () => {
+	const enablement = {
+		id: 'enablement-1',
+		enabler: { userId: user.userId, username: 'cy' },
+		role: 'member' as const,
+		profileId: 'prf_child',
+		profileChain: ['prf_root', 'prf_child'],
+	}
+	const request = deriveRequestContext({
+		user,
+		source: { kind: 'schedule', jobId: 'job-1', enablement },
+	})
+	expect(request.credential).toMatchObject({
+		profileId: 'prf_child',
+		profileChain: ['prf_root', 'prf_child'],
+	})
+	const parent = deriveRequestContext({
+		user,
+		source: { kind: 'api-token', tokenId: 'tok_1' },
+	})
+	const inherited = deriveRequestContext({
+		user,
+		source: { kind: 'inherited', lineage: requestLineage(parent) },
+		profileId: 'prf_child',
+		profileChain: ['prf_root', 'prf_child'],
+	})
+	expect(inherited.credential).toMatchObject({
+		profileId: 'prf_child',
+		profileChain: ['prf_root', 'prf_child'],
+	})
+})

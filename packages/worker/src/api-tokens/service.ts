@@ -29,6 +29,11 @@ export const apiTokenPolicy = {
 	/** ADR 0056: absolute lifetime at most 3 months. */
 	maxMaxLifetimeSeconds: 90 * 24 * 60 * 60,
 	maxActiveTokensPerUser: 500,
+	/**
+	 * Profile-bound tokens (ADR 0092) are a separate pool, so a burst of
+	 * sub-agent handoffs never reclaims the person's own tokens.
+	 */
+	maxActiveProfileTokensPerUser: 500,
 	maxNameLength: 100,
 	/**
 	 * Sliding-expiry writes are skipped when they would extend the expiry by
@@ -179,6 +184,7 @@ const apiTokenRowSchema = object({
 	rotated_at: nullable(string()),
 	revoked_at: nullable(string()),
 	profile_name: nullable(string()),
+	profile_id: nullable(string()),
 })
 
 type ApiTokenRow = InferOutput<typeof apiTokenRowSchema>
@@ -211,6 +217,8 @@ export type ApiTokenView = {
 	rotated_at: string | null
 	revoked_at: string | null
 	profile_name: string | null
+	/** Profile (ADR 0092) this token acts as; null is the live mirror. */
+	profile_id: string | null
 }
 
 export type ApiTokenSecretView = ApiTokenView & {
@@ -235,6 +243,7 @@ function mapRow(row: Record<string, unknown>): ApiTokenRecord {
 			typeof row.profile_name === 'string' || row.profile_name === null
 				? row.profile_name
 				: null,
+		profile_id: typeof row.profile_id === 'string' ? row.profile_id : null,
 	})
 	if (!parsed.success) {
 		const message = parsed.issues.map((issue) => issue.message).join(', ')
@@ -276,6 +285,7 @@ export function toApiTokenView(
 		rotated_at: record.rotated_at,
 		revoked_at: record.revoked_at,
 		profile_name: record.profile_name ?? null,
+		profile_id: record.profile_id ?? null,
 	}
 }
 
@@ -346,10 +356,25 @@ async function pruneInactiveApiTokens(input: {
 		.run()
 }
 
+type ApiTokenPool = 'person' | 'profile'
+
+function apiTokenPoolSql(pool: ApiTokenPool) {
+	return pool === 'profile'
+		? ' AND profile_id IS NOT NULL'
+		: ' AND profile_id IS NULL'
+}
+
+function apiTokenPoolCap(pool: ApiTokenPool) {
+	return pool === 'profile'
+		? apiTokenPolicy.maxActiveProfileTokensPerUser
+		: apiTokenPolicy.maxActiveTokensPerUser
+}
+
 async function countActiveApiTokens(input: {
 	db: D1Database
 	userId: string
 	now: Date
+	pool: ApiTokenPool
 }) {
 	const row = await input.db
 		.prepare(
@@ -357,7 +382,7 @@ async function countActiveApiTokens(input: {
 			FROM api_tokens
 			WHERE user_id = ?
 				AND revoked_at IS NULL
-				AND expires_at > ?${andLiveDeletedAtSql()}`,
+				AND expires_at > ?${apiTokenPoolSql(input.pool)}${andLiveDeletedAtSql()}`,
 		)
 		.bind(input.userId, input.now.toISOString())
 		.first<{ count: number }>()
@@ -381,6 +406,7 @@ async function listActiveApiTokenRecords(input: {
 	db: D1Database
 	userId: string
 	now: Date
+	pool: ApiTokenPool
 }) {
 	const rows = await input.db
 		.prepare(
@@ -388,7 +414,7 @@ async function listActiveApiTokenRecords(input: {
 			FROM api_tokens
 			WHERE user_id = ?
 				AND revoked_at IS NULL
-				AND expires_at > ?${andLiveDeletedAtSql()}
+				AND expires_at > ?${apiTokenPoolSql(input.pool)}${andLiveDeletedAtSql()}
 			ORDER BY created_at ASC, id ASC`,
 		)
 		.bind(input.userId, input.now.toISOString())
@@ -408,6 +434,7 @@ async function reclaimApiTokenSlots(input: {
 	db: D1Database
 	userId: string
 	now: Date
+	pool: ApiTokenPool
 	excludeTokenIds?: ReadonlyArray<string>
 	/** ISO timestamp: only reclaim rows with created_at strictly earlier. */
 	onlyCreatedBefore?: string
@@ -417,10 +444,8 @@ async function reclaimApiTokenSlots(input: {
 		(input.excludeTokenIds ?? []).filter((id) => typeof id === 'string' && id),
 	)
 	let activeCount = await countActiveApiTokens(input)
-	while (
-		activeCount + input.slotsNeeded >
-		apiTokenPolicy.maxActiveTokensPerUser
-	) {
+	const cap = apiTokenPoolCap(input.pool)
+	while (activeCount + input.slotsNeeded > cap) {
 		const active = await listActiveApiTokenRecords(input)
 		const candidates = active
 			.filter((record) => {
@@ -445,7 +470,9 @@ async function reclaimApiTokenSlots(input: {
 			// Soft overshoot from concurrent sibling mints; next mint heals.
 			if (input.onlyCreatedBefore && input.slotsNeeded === 0) return
 			throw new McpCallerError(
-				`This account already has ${apiTokenPolicy.maxActiveTokensPerUser} active API tokens and none can be reclaimed (protected tokens cannot be revoked). Revoke one before minting another.`,
+				input.pool === 'profile'
+					? `This account already has ${cap} active profile tokens and none can be reclaimed (protected tokens cannot be revoked). Revoke one before minting another.`
+					: `This account already has ${cap} active API tokens and none can be reclaimed (protected tokens cannot be revoked). Revoke one before minting another.`,
 			)
 		}
 		await revokeApiToken({
@@ -467,6 +494,8 @@ export type ApiTokenMintParent = {
 	scopes: ReadonlyArray<ApiTokenScope>
 	maxExpiresAt: string
 	profileName?: string | null
+	/** Profile the parent acts as; a child must stay on a profile too. */
+	profileId?: string | null
 }
 
 export async function mintApiToken(input: {
@@ -490,6 +519,13 @@ export async function mintApiToken(input: {
 	createdVia: ApiTokenCreatedVia
 	parent?: ApiTokenMintParent
 	profileName?: string | null
+	/**
+	 * Profile (ADR 0092) the token acts as. The caller has already checked the
+	 * minter may act for it (`resolveProfileTokenTarget`).
+	 */
+	profileId?: string | null
+	/** Earliest expiry across the profile chain; the token never outlives it. */
+	profileMaxExpiresAt?: string | null
 	/** Never reclaimed when the active-token pool is full. */
 	excludeTokenId?: string
 	now?: Date
@@ -533,6 +569,22 @@ export async function mintApiToken(input: {
 			)
 		}
 	}
+	const profileId = input.profileId?.trim() || null
+	if (profileId && profileName) {
+		throw new McpCallerError(
+			'A token binds to a profile or a connection profile, not both.',
+		)
+	}
+	if (parent?.profileId && !profileId) {
+		throw new McpCallerError(
+			'A profile-bound token can only mint tokens for itself or its sub-profiles.',
+		)
+	}
+	if (profileId && orgBinding !== 'org') {
+		throw new McpCallerError(
+			'A profile token is bound to the profile\'s org; org_binding must be "org".',
+		)
+	}
 	const idleTtlSeconds = readRequiredInteger({
 		value: input.idleTtlSeconds,
 		min: apiTokenPolicy.minIdleTtlSeconds,
@@ -549,6 +601,12 @@ export async function mintApiToken(input: {
 	if (parent) {
 		maxExpiresAtMs = Math.min(maxExpiresAtMs, Date.parse(parent.maxExpiresAt))
 	}
+	if (profileId && input.profileMaxExpiresAt) {
+		maxExpiresAtMs = Math.min(
+			maxExpiresAtMs,
+			Date.parse(input.profileMaxExpiresAt),
+		)
+	}
 	if (maxExpiresAtMs <= now.getTime()) {
 		throw new McpCallerError(
 			'The resulting API token would already be expired (absolute max expiry is not in the future).',
@@ -558,10 +616,12 @@ export async function mintApiToken(input: {
 
 	await pruneInactiveApiTokens({ db: input.db, userId: input.userId, now })
 	const protectedIds = input.excludeTokenId ? [input.excludeTokenId] : []
+	const pool: ApiTokenPool = profileId ? 'profile' : 'person'
 	await reclaimApiTokenSlots({
 		db: input.db,
 		userId: input.userId,
 		now,
+		pool,
 		excludeTokenIds: protectedIds,
 		slotsNeeded: 1,
 	})
@@ -586,6 +646,7 @@ export async function mintApiToken(input: {
 		rotated_at: null,
 		revoked_at: null,
 		profile_name: profileName,
+		profile_id: profileId,
 	}
 	await input.db
 		.prepare(
@@ -603,8 +664,9 @@ export async function mintApiToken(input: {
 				created_via,
 				created_at,
 				updated_at,
-				profile_name
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				profile_name,
+				profile_id
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		)
 		.bind(
 			record.id,
@@ -621,6 +683,7 @@ export async function mintApiToken(input: {
 			record.created_at,
 			record.updated_at,
 			record.profile_name,
+			record.profile_id,
 		)
 		.run()
 	// Heal concurrent mint races that both reclaimed the same victim. Only
@@ -629,6 +692,7 @@ export async function mintApiToken(input: {
 		db: input.db,
 		userId: input.userId,
 		now,
+		pool,
 		excludeTokenIds: [...protectedIds, record.id],
 		onlyCreatedBefore: record.created_at,
 		slotsNeeded: 0,

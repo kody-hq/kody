@@ -275,6 +275,9 @@ ${orgBlock}
              Prefer \`cliCredentialBootstrap\` then \`auth bootstrap\`
              (\`--lifetime short|long\`). CI/headless: \`tokenCreate\` with
              \`org:execute\` plus the capability scopes you need.
+             Profiles: \`tokenCreate\` with \`profile_id\`, or
+             \`profileHandoff\` for a new sub-profile, mints a token
+             that acts as that profile (not accepted by /mcp).
              For \`execute --local\`, a valid \`kody login\` session can also
              supply Bearer when no scoped token is available (no tokenCreate
              exchange). User-owned tokens (\`org_binding: user\`) honor

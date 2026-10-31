@@ -86,6 +86,7 @@ export const nativeApiOperationIds = [
 	'tokenGet',
 	'tokenRotate',
 	'tokenRevoke',
+	'profileHandoff',
 	'cliCredentialBootstrapRedeem',
 	'capabilityProxySession',
 	'capabilityProxyCall',
@@ -591,6 +592,8 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		'none',
 	),
 	nativeRoute('GET', '/v1/tokens/current', 'tokenGetCurrent', 'none'),
+	// Profile creation runs its own chain and grant checks (ADR 0092).
+	nativeRoute('POST', '/v1/profiles/handoff', 'profileHandoff', 'none'),
 	nativeRoute(
 		'POST',
 		'/v1/tokens/current/rotate',

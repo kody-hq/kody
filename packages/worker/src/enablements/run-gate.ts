@@ -249,6 +249,7 @@ async function checkEnablerAccess(input: {
 		role: binding.role,
 		scopes: enablement.enablerScopes,
 		profileName: enablement.enablerProfileName,
+		profileId: enablement.enablerProfileId,
 	}
 	const request = deriveRequestContext({
 		user: run.enabler,
@@ -259,7 +260,22 @@ async function checkEnablerAccess(input: {
 		},
 		orgBinding: binding,
 	})
+	// A profile chain never comes back once revoked or expired, so a
+	// profile pause never lifts here: an active credential must turn it on.
+	if (enablement.pause?.reason === 'profile_inactive') {
+		return { ok: false, pause: null }
+	}
 	const access = await computeEffectivePermissions({ env: input.env, request })
+	if (access.profileChain?.inactive) {
+		return {
+			ok: false,
+			pause: {
+				reason: 'profile_inactive',
+				resourceType: 'profile',
+				resourceId: access.profileChain.inactive.id,
+			},
+		}
+	}
 	const packageDecision = checkPermission(
 		access,
 		'package:execute',
@@ -295,7 +311,14 @@ async function checkEnablerAccess(input: {
 		enablement,
 	})
 	if (mappingPause) return { ok: false, pause: mappingPause }
-	return { ok: true, run, access }
+	const profileChain = access.profileChain?.layers
+		.map((layer) => layer.id)
+		.reverse()
+	return {
+		ok: true,
+		run: profileChain?.length ? { ...run, profileChain } : run,
+		access,
+	}
 }
 
 function samePause(

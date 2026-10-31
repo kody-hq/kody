@@ -168,6 +168,7 @@ export async function subscribeMcpEvent(
 		userId,
 		oauthClientId: principal.oauthClientId,
 		connectionProfileName,
+		profileId: principal.callerContext.request?.credential.profileId ?? null,
 		eventName: params.name,
 		arguments: subscriptionArguments,
 		callbackUrl,

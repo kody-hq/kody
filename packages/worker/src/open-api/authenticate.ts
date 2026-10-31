@@ -1,3 +1,5 @@
+import { loadProfileChain } from '#worker/profiles/store.ts'
+import { profileStatus } from '#worker/profiles/rules.ts'
 import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	ownerIdFromStored,
@@ -261,6 +263,15 @@ async function authenticateWithApiToken(input: {
 				executionOrigin: 'interactive',
 				user: authContext.user,
 				connectionProfileName: record.profile_name ?? null,
+				profileId: record.profile_id ?? null,
+				profileChain: record.profile_id
+					? (
+							await loadProfileChain(input.env.APP_DB, {
+								orgId: orgBinding.org.id,
+								profileId: record.profile_id,
+							})
+						).map((row) => row.id)
+					: null,
 				orgBinding,
 				scopes: record.scopes,
 			}),
@@ -449,6 +460,24 @@ async function authenticateWithExecutionContextLease(input: {
 			'The requester of this run no longer has access to this execution context.',
 		)
 	}
+	const profileChain = lease.profileId
+		? await loadProfileChain(input.env.APP_DB, {
+				orgId: lease.orgId,
+				profileId: lease.profileId,
+			})
+		: null
+	if (
+		lease.profileId &&
+		(profileChain?.at(-1)?.id !== lease.profileId ||
+			profileStatus(profileChain, new Date().toISOString()) !== 'active')
+	) {
+		throw new ApiError({
+			status: 403,
+			code: 'execution_context_access_lost',
+			message:
+				'The profile this run acts as, or a parent profile, is revoked or expired.',
+		})
+	}
 	const scopes = lease.callerScopes as ReadonlyArray<OrgPermission> | null
 	const identity = {
 		operatorUserId: context.operator_user_id,
@@ -469,6 +498,8 @@ async function authenticateWithExecutionContextLease(input: {
 				executionOrigin: 'interactive',
 				user: authContext.user,
 				connectionProfileName: null,
+				profileId: lease.profileId ?? null,
+				profileChain: profileChain?.map((row) => row.id) ?? null,
 				orgBinding,
 				scopes,
 				contextCredentialIds: contextCredentialIds(credentials),

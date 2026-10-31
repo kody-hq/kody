@@ -52,6 +52,8 @@ export const followAddCapability = defineDomainCapability(
 				env: ctx.env,
 				followerOrgId: ownerIdFromCaller(ctx.callerContext),
 				creatorUserId: user.userId,
+				creatorProfileId:
+					ctx.callerContext.request?.credential.profileId ?? null,
 				name: args.name,
 				kind: args.kind,
 				events: args.events,

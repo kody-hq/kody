@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
+import { type EffectivePermissions } from '#worker/authorization/authorize.ts'
 import { type ApiInvocationContext } from '#worker/open-api/context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
@@ -11,6 +12,15 @@ import {
 	updateContext,
 } from './service.ts'
 import { getExecutionContext, parseGrant } from './store.ts'
+
+const profileAccess = vi.hoisted(() => ({
+	current: null as EffectivePermissions | null,
+}))
+
+vi.mock('#worker/authorization/authorize.ts', async (original) => ({
+	...(await original<object>()),
+	computeEffectivePermissions: async () => profileAccess.current,
+}))
 
 const orgId = 'org_acme'
 const operator = 'user_operator'
@@ -83,6 +93,7 @@ function setup(input: { commands?: boolean } = {}) {
 		userId: string,
 		kind = 'execution-context-run',
 		scopes: Array<string> | null = null,
+		profileId: string | null = null,
 	) =>
 		({
 			env,
@@ -90,6 +101,15 @@ function setup(input: { commands?: boolean } = {}) {
 			callerContext: {
 				user: { userId, username: userId },
 				orgBinding: { org: { id: orgId } },
+				...(profileId
+					? {
+							request: {
+								actor: { userId, username: userId },
+								org: { id: orgId, slug: 'acme' },
+								credential: { kind: 'api-token', id: 'tok_1', profileId },
+							},
+						}
+					: {}),
 			},
 		}) as unknown as ApiInvocationContext
 	const args = {
@@ -313,4 +333,52 @@ test('fitAuditStrings trims command_finished detail to valid JSON under the cut'
 	expect(json.length).toBeLessThanOrEqual(2000)
 	expect(() => JSON.parse(json.slice(0, 2048))).not.toThrow()
 	expect(fitted.truncated).toBe(true)
+})
+
+test('a run acting as a profile needs execution_context:command granted to every profile layer, even for the operator', async () => {
+	const s = setup({ commands: true })
+	const layerWith = (permissions: Array<string>): EffectivePermissions =>
+		({
+			orgId,
+			permissions: new Set(['execution_context:command']),
+			isOwner: true,
+			resourcePermissions: new Map(),
+			credentialScopes: null,
+			profileGrants: null,
+			profileChain: {
+				inactive: null,
+				layers: [
+					{
+						id: 'prf_bot',
+						name: 'bot',
+						self: true,
+						orgPermissions: new Set(),
+						resourcePermissions: new Map([
+							['execution_context:ec_mac', new Set(permissions)],
+						]),
+					},
+				],
+			},
+		}) as unknown as EffectivePermissions
+	profileAccess.current = layerWith(['execution_context:execute'])
+	await expect(
+		authorizeContextCommand(
+			s.runCtx(operator, 'execution-context-run', null, 'prf_bot'),
+			s.args,
+		),
+	).rejects.toMatchObject({
+		code: 'execution_context_command_not_granted',
+		message: expect.stringMatching(/profile/),
+	})
+	profileAccess.current = layerWith([
+		'execution_context:execute',
+		'execution_context:command',
+	])
+	await expect(
+		authorizeContextCommand(
+			s.runCtx(operator, 'execution-context-run', null, 'prf_bot'),
+			s.args,
+		),
+	).resolves.toMatchObject({ ok: true })
+	profileAccess.current = null
 })

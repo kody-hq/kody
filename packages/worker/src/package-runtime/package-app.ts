@@ -1251,6 +1251,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 		const runtimeRun = startRuntimeRun(runtimeBridge, {
 			surface: 'app_fetch',
 			name: requestUrl.pathname,
+			visitTicket,
 			metadata: {
 				method: request.method,
 				queryParamNames: collectQueryParamNames(requestUrl),
@@ -1364,6 +1365,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 		const runtimeRun = startRuntimeRun(runtimeBridge, {
 			surface: 'app_realtime',
 			name: buildFacetName(payload?.facet),
+			visitTicket,
 			sessionId: payload?.sessionId,
 			metadata: {
 				facet: payload?.facet,
@@ -1765,6 +1767,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 						role: visitor.role,
 					}
 				: undefined,
+			...(visit && 'credentialProfileId' in visit && visit.credentialProfileId
+				? {
+						profileId: visit.credentialProfileId,
+						profileChain: visit.credentialProfileChain ?? null,
+					}
+				: {}),
 			storageContext: {
 				sessionId: null,
 				appId: this.ctx.props.packageId,
@@ -1916,8 +1924,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		name?: string | null
 		sessionId?: string | null
 		metadata?: Record<string, unknown> | null
+		visitTicket?: string | null
 	}): Promise<RunRecordHandle | null> {
-		const callerContext = await this.createCallerContext(null)
+		const callerContext = await this.createCallerContext(
+			null,
+			input.visitTicket,
+		)
 		return beginRunRecord({
 			env: this.env,
 			userId: this.ctx.props.userId,

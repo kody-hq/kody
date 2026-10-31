@@ -7,6 +7,17 @@ import {
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { type CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
 import { type RunRecordHandle } from '#worker/run-records/types.ts'
+import {
+	checkPermission,
+	computeEffectivePermissions,
+	type EffectivePermissions,
+} from '#worker/authorization/authorize.ts'
+import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
+import {
+	type OwnerId,
+	type PersonId,
+} from '@kody-internal/shared/owner-person-ids.ts'
 import { contextRunCredentials } from './credential-grant.ts'
 import { ExecutionContextError } from './errors.ts'
 import { type RunCredentialUse } from './run-credential-use.ts'
@@ -329,6 +340,14 @@ export async function routeExecute(input: {
 		orgSlug: string | null
 		scopes: Array<string> | null
 		credentialKind: string
+		/**
+		 * The caller's access when it acts as a profile (ADR 0092): every
+		 * layer of its chain must hold execution_context:execute on a context,
+		 * even one the person operates.
+		 */
+		profileAccess?: EffectivePermissions | null
+		/** That profile's id, carried on the lease so callbacks stay narrowed. */
+		profileId?: string | null
 	}
 	args: ExecuteRoutingArgs
 	runId: string
@@ -456,6 +475,18 @@ export async function routeExecute(input: {
 			skip('credential_scope')
 			continue
 		}
+		const profileAccess = input.request.profileAccess
+		if (
+			profileAccess &&
+			!checkPermission(profileAccess, 'execution_context:execute', {
+				type: 'execution_context',
+				id: row.id,
+				orgId: input.request.orgId as OwnerId,
+			}).allowed
+		) {
+			skip('profile_grant')
+			continue
+		}
 		const access = await loadContextAccess(db, row, {
 			userId: input.request.userId,
 			orgId: input.request.orgId,
@@ -494,6 +525,9 @@ export async function routeExecute(input: {
 			},
 			orgId: input.request.orgId,
 			callerScopes: input.request.scopes,
+			...(input.request.profileId
+				? { profileId: input.request.profileId }
+				: {}),
 			runtime: grant.runtime,
 			deadline,
 			sharedRun,
@@ -690,6 +724,8 @@ function hasContextScope(input: { request: { scopes: Array<string> | null } }) {
 }
 
 const contextReasonText: Record<string, string> = {
+	profile_grant:
+		'profile_grant: the profile this credential acts as, or a parent profile, was not granted execution_context:execute on it',
 	no_fs: 'no_fs: its server grant lists no host folders (grant.fs)',
 	no_local_fs:
 		"no_local_fs: its server grant lists host folders, but the machine's local policy allows none of them (`kody context policy allow <folder>`)",
@@ -823,4 +859,48 @@ function markQueuedAttempt(
 			),
 		},
 	}
+}
+
+/**
+ * A queued run acting as a profile waits for a reconnect; recheck its chain
+ * and `execution_context:execute` before it dispatches. Null means it may run.
+ */
+export async function queuedProfileRefusal(input: {
+	env: Env
+	lease: Pick<
+		ExecutionContextLease,
+		'profileId' | 'orgId' | 'requester' | 'ecid' | 'runId'
+	>
+	context: { id: string; org_id: string }
+}): Promise<string | null> {
+	const { lease } = input
+	if (!lease.profileId) return null
+	const binding = await loadOrgBindingForOrg(
+		input.env.APP_DB,
+		lease.requester.userId,
+		lease.orgId,
+	)
+	if (!binding) return 'the person this run acts as is no longer in the org'
+	const request = deriveRequestContext({
+		user: {
+			userId: lease.requester.userId as PersonId,
+			username: lease.requester.handle ?? lease.requester.userId,
+		},
+		source: {
+			kind: 'execution-context-run',
+			ecid: lease.ecid,
+			runId: lease.runId,
+		},
+		orgBinding: binding,
+		profileId: lease.profileId,
+	})
+	const access = await computeEffectivePermissions({ env: input.env, request })
+	const decision = checkPermission(access, 'execution_context:execute', {
+		type: 'execution_context',
+		id: input.context.id,
+		orgId: input.context.org_id as OwnerId,
+	})
+	return decision.allowed
+		? null
+		: 'the profile this run acts as, or a parent profile, is revoked, expired, or no longer granted execution_context:execute on it'
 }

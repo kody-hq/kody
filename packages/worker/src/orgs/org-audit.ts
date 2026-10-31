@@ -134,6 +134,12 @@ export function orgAuditWriterFromRequest(
 		actorUsername: request.actor?.username ?? null,
 		credentialKind: request.credential.kind,
 		credentialId: request.credential.id,
+		...(request.credential.profileId
+			? {
+					actorProfileId: request.credential.profileId,
+					actorProfileChain: request.credential.profileChain ?? null,
+				}
+			: {}),
 		env,
 	}
 }

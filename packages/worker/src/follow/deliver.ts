@@ -127,6 +127,7 @@ async function deliverOneFollow(input: {
 	const access = await resolveAccess({
 		env: input.env,
 		creatorUserId: input.follow.creatorUserId,
+		creatorProfileId: input.follow.creatorProfileId,
 		target,
 	})
 	if (!access.canCreate) {

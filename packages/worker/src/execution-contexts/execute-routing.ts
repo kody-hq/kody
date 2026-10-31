@@ -10,6 +10,7 @@ import {
 	routeExecute,
 } from './routing.ts'
 import { resolveRunCredentialUse } from './run-credential-use.ts'
+import { computeEffectivePermissions } from '#worker/authorization/authorize.ts'
 
 export { type ExecuteRoutingArgs } from './routing.ts'
 
@@ -107,6 +108,10 @@ export async function routeExecuteForCaller(input: {
 			orgSlug: request.org.slug ?? null,
 			scopes: (request.credential.scopes as Array<string> | null) ?? null,
 			credentialKind: request.credential.kind,
+			profileAccess: request.credential.profileId
+				? await computeEffectivePermissions({ env: input.env, request })
+				: null,
+			profileId: request.credential.profileId ?? null,
 		},
 		args: input.args,
 		runId: input.runRecord.id,

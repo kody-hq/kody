@@ -23,6 +23,8 @@ export type McpEventSubscriptionKey = {
 	userId: OwnerId
 	oauthClientId: string
 	connectionProfileName: string | null
+	/** Profile (ADR 0092) of the subscribing credential; part of the id when set. */
+	profileId?: string | null
 	eventName: string
 	arguments: Record<string, unknown>
 	callbackUrl: string
@@ -33,6 +35,7 @@ export type McpEventSubscriptionRecord = {
 	userId: OwnerId
 	oauthClientId: string
 	connectionProfileName: string | null
+	profileId: string | null
 	eventName: string
 	argumentsJson: string
 	callbackUrl: string
@@ -50,6 +53,7 @@ type McpEventSubscriptionRow = {
 	user_id: OwnerId
 	oauth_client_id: string
 	connection_profile_name: string | null
+	profile_id: string | null
 	event_name: string
 	arguments_json: string
 	callback_url: string
@@ -65,7 +69,7 @@ type McpEventSubscriptionRow = {
 	updated_at: string
 }
 
-const selectColumns = `id, user_id, oauth_client_id, connection_profile_name,
+const selectColumns = `id, user_id, oauth_client_id, connection_profile_name, profile_id,
 	event_name, arguments_json, callback_url, secret_encrypted,
 	previous_secret_encrypted, previous_secret_expires_at, refresh_before,
 	verified_at, active, last_delivery_at, last_error, created_at, updated_at`
@@ -86,6 +90,7 @@ function toRecord(row: McpEventSubscriptionRow): McpEventSubscriptionRecord {
 		userId: row.user_id,
 		oauthClientId: row.oauth_client_id,
 		connectionProfileName: row.connection_profile_name,
+		profileId: row.profile_id ?? null,
 		eventName: row.event_name,
 		argumentsJson: row.arguments_json,
 		callbackUrl: row.callback_url,
@@ -122,6 +127,7 @@ export async function buildMcpEventSubscriptionId(
 				userId: key.userId,
 				oauthClientId: key.oauthClientId,
 				connectionProfileName: key.connectionProfileName,
+				...(key.profileId ? { profileId: key.profileId } : {}),
 				eventName: key.eventName,
 				arguments: key.arguments,
 				callbackUrl: key.callbackUrl,
@@ -265,13 +271,14 @@ export async function upsertMcpEventSubscription(input: {
 	await input.db
 		.prepare(
 			`INSERT INTO mcp_event_subscriptions (
-				id, user_id, oauth_client_id, connection_profile_name, event_name,
-				arguments_json, callback_url, secret_encrypted,
+				id, user_id, oauth_client_id, connection_profile_name, profile_id,
+				event_name, arguments_json, callback_url, secret_encrypted,
 				previous_secret_encrypted, previous_secret_expires_at,
 				refresh_before, verified_at, active, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
 				connection_profile_name = excluded.connection_profile_name,
+				profile_id = excluded.profile_id,
 				secret_encrypted = excluded.secret_encrypted,
 				previous_secret_encrypted = excluded.previous_secret_encrypted,
 				previous_secret_expires_at = excluded.previous_secret_expires_at,
@@ -285,6 +292,7 @@ export async function upsertMcpEventSubscription(input: {
 			input.key.userId,
 			input.key.oauthClientId,
 			input.connectionProfileName,
+			input.key.profileId ?? null,
 			input.key.eventName,
 			canonicalMcpEventArgumentsJson(input.key.arguments),
 			input.key.callbackUrl,

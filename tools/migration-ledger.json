@@ -801,7 +801,11 @@
 			"sha256": "bf0d240ef6db96cb0ae6a8c6d2ebeb567102244deac3881149c6810adf13d6f8"
 		},
 		{
-			"filename": "0221-package-app-visitor-billed-org.sql",
+			"filename": "0222-profile-tokens-and-enablers.sql",
+			"sha256": "33160dee7165b61b0526bfee4eda395c89668c4b0b1f7744bcaf16a751699300"
+		},
+		{
+			"filename": "0223-package-app-visitor-billed-org.sql",
 			"sha256": "b97e24532cad33b3c88dbe4323549b6264c2ef0ef5aadd6287696c433e9b4a03"
 		}
 	]
