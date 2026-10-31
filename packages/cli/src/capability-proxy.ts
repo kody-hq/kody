@@ -467,6 +467,12 @@ export async function callCapabilityProxyGatewayFetchStream(
 		capabilityProxyUrl(input.apiUrl, capabilityProxyGatewayFetchPath),
 		input.org,
 	)
+	if (input.fetchFn) {
+		return await sendGatewayFetchWithFetchFn(
+			{ ...input, fetchFn: input.fetchFn },
+			url,
+		)
+	}
 	const timeoutMs = capabilityProxyHttpTimeoutMs
 	const connectTimeoutMs = capabilityProxyConnectTimeoutMs
 	const useEnvProxy = nodeUsesEnvProxy()
@@ -482,29 +488,8 @@ export async function callCapabilityProxyGatewayFetchStream(
 			`Unsupported protocol for the Kody API: ${url.protocol}`,
 		)
 	}
-	const headers: Record<string, string | number | Array<string>> = {
-		accept: '*/*',
-		authorization: `Bearer ${input.token}`,
-		'user-agent': `${cliName}/${readPackageVersion()}`,
-		[gatewayFetchUrlHeaderName]: input.gateway.url,
-	}
-	if (input.gateway.method) {
-		headers[gatewayFetchMethodHeaderName] = input.gateway.method
-	}
-	if (input.gateway.packageId) {
-		headers[gatewayFetchPackageIdHeaderName] = input.gateway.packageId
-	}
-	if (input.gateway.headers && Object.keys(input.gateway.headers).length > 0) {
-		headers[gatewayFetchHeadersHeaderName] = JSON.stringify(
-			input.gateway.headers,
-		)
-	}
-	if (input.gateway.secretResolution) {
-		headers[secretResolutionHeaderName] = input.gateway.secretResolution
-	}
-	if (input.gateway.contentType) {
-		headers['content-type'] = input.gateway.contentType
-	}
+	const headers: Record<string, string | number | Array<string>> =
+		gatewayFetchRequestHeaders(input)
 	if (input.contentLength) {
 		headers['content-length'] = input.contentLength
 	}
@@ -590,6 +575,73 @@ export async function callCapabilityProxyGatewayFetchStream(
 	})
 }
 
+function gatewayFetchRequestHeaders(
+	input: CapabilityProxyClientInput & {
+		gateway: CapabilityProxyGatewayFetchStreamHeaders
+	},
+): Record<string, string> {
+	const headers: Record<string, string> = {
+		accept: '*/*',
+		authorization: `Bearer ${input.token}`,
+		'user-agent': `${cliName}/${readPackageVersion()}`,
+		[gatewayFetchUrlHeaderName]: input.gateway.url,
+	}
+	if (input.gateway.method) {
+		headers[gatewayFetchMethodHeaderName] = input.gateway.method
+	}
+	if (input.gateway.packageId) {
+		headers[gatewayFetchPackageIdHeaderName] = input.gateway.packageId
+	}
+	if (input.gateway.headers && Object.keys(input.gateway.headers).length > 0) {
+		headers[gatewayFetchHeadersHeaderName] = JSON.stringify(
+			input.gateway.headers,
+		)
+	}
+	if (input.gateway.secretResolution) {
+		headers[secretResolutionHeaderName] = input.gateway.secretResolution
+	}
+	if (input.gateway.contentType) {
+		headers['content-type'] = input.gateway.contentType
+	}
+	return headers
+}
+
+/**
+ * Gateway-fetch through the caller's `fetchFn`. Execution context runs pass a
+ * run-scoped signed fetch (no bearer token) that must sign the whole body, so
+ * the outbound body is buffered here instead of streamed.
+ */
+async function sendGatewayFetchWithFetchFn(
+	input: CapabilityProxyClientInput & {
+		fetchFn: typeof fetch
+		gateway: CapabilityProxyGatewayFetchStreamHeaders
+		body: IncomingMessage | Readable | null
+	},
+	url: URL,
+): Promise<Response> {
+	const chunks: Array<Buffer> = []
+	if (input.body) {
+		for await (const chunk of input.body) {
+			chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+		}
+	}
+	const body = chunks.length > 0 ? Buffer.concat(chunks) : null
+	try {
+		return await input.fetchFn(url, {
+			method: 'POST',
+			headers: gatewayFetchRequestHeaders(input),
+			...(body ? { body } : {}),
+			signal: input.signal,
+		})
+	} catch (error) {
+		if (error instanceof CapabilityProxyError) throw error
+		throw new CapabilityProxyError(
+			formatUnreachableApiMessage({ origin: url.origin, error }),
+			{ sent: requestSentStatus(error) },
+		)
+	}
+}
+
 /** Convert a Node response into a streaming Web `Response`. */
 export function nodeIncomingToWebResponse(response: IncomingMessage): Response {
 	const headers = new Headers()
@@ -661,7 +713,9 @@ export async function checkCredentialCallMap(
 		const error = isRecord(result.error) ? result.error : {}
 		const code =
 			typeof error.code === 'string' ? error.code : 'credential_error'
-		throw new CapabilityProxyError(formatCredentialClientError(error), { code })
+		throw new CapabilityProxyError(formatCredentialClientError(error), {
+			code,
+		})
 	}
 	const value = isRecord(result.value) ? result.value : null
 	const warnings = Array.isArray(value?.warnings)

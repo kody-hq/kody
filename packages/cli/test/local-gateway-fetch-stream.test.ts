@@ -116,7 +116,10 @@ test('local runtime bridge streams gateway-fetch to the mock MSW gateway', async
 			} as RequestInit,
 		)
 		assert.equal(response.status, 202)
-		assert.deepEqual(await response.json(), { ok: true, echo: 'payload-bytes' })
+		assert.deepEqual(await response.json(), {
+			ok: true,
+			echo: 'payload-bytes',
+		})
 	} finally {
 		await bridge.close()
 	}
@@ -217,4 +220,75 @@ test('writeWebResponse pipes status, headers, and body', async () => {
 	} finally {
 		server.close()
 	}
+})
+
+test('callCapabilityProxyGatewayFetchStream sends through a caller fetchFn with the buffered body', async () => {
+	const seen: Array<{ url: string; headers: Headers; body: string }> = []
+	const fetchFn: typeof fetch = async (resource, init) => {
+		const request = new Request(resource, init)
+		seen.push({
+			url: request.url,
+			headers: request.headers,
+			body: await request.text(),
+		})
+		return new Response('signed-ok', { status: 202 })
+	}
+	const response = await callCapabilityProxyGatewayFetchStream({
+		apiUrl: 'https://api.kody.test',
+		token: 'execution-context-run',
+		fetchFn,
+		gateway: {
+			url: 'https://discord.com/api/v10/channels/1/messages/2',
+			method: 'PATCH',
+			headers: { authorization: 'Bot {{secret:demo}}' },
+			contentType: 'application/json',
+		},
+		body: Readable.from([Buffer.from('{"content":'), Buffer.from('"hi"}')]),
+	})
+	assert.equal(response.status, 202)
+	assert.equal(await response.text(), 'signed-ok')
+	assert.equal(seen.length, 1)
+	const [request] = seen
+	assert.equal(
+		request?.url,
+		'https://api.kody.test/v1/capability-proxy/gateway-fetch',
+	)
+	assert.equal(request?.body, '{"content":"hi"}')
+	assert.equal(
+		request?.headers.get(gatewayFetchUrlHeaderName),
+		'https://discord.com/api/v10/channels/1/messages/2',
+	)
+	assert.equal(request?.headers.get(gatewayFetchMethodHeaderName), 'PATCH')
+	assert.equal(request?.headers.get('content-type'), 'application/json')
+})
+
+test('execution context runs sign gateway-fetch instead of sending the placeholder bearer', async () => {
+	const { runScopedFetch } = await import('../src/execution-context/daemon.js')
+	const { generateContextKey, importContextKey } =
+		await import('../src/execution-context/client.js')
+	const { privateKeyJwk } = await generateContextKey()
+	const privateKey = await importContextKey(privateKeyJwk)
+	const seen: Array<Headers> = []
+	const fetchFn = runScopedFetch({
+		apiUrl: 'https://api.kody.test',
+		ecid: 'ec_test',
+		runId: 'run_test',
+		privateKey,
+		fetchFn: async (resource, init) => {
+			seen.push(new Request(resource, init).headers)
+			return new Response(null, { status: 204 })
+		},
+	})
+	const response = await callCapabilityProxyGatewayFetchStream({
+		apiUrl: 'https://api.kody.test',
+		token: 'execution-context-run',
+		fetchFn,
+		gateway: { url: 'https://discord.com/api/v10/users/@me', method: 'GET' },
+		body: null,
+	})
+	assert.equal(response.status, 204)
+	assert.equal(seen.length, 1)
+	assert.equal(seen[0]?.get('authorization'), null)
+	assert.ok(seen[0]?.get('kody-ecp-signature'))
+	assert.equal(seen[0]?.get('kody-ecp-run'), 'run_test')
 })
