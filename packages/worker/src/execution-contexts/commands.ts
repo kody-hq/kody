@@ -1,4 +1,9 @@
+import {
+	checkPermission,
+	computeEffectivePermissions,
+} from '#worker/authorization/authorize.ts'
 import { type ApiInvocationContext } from '#worker/open-api/context.ts'
+import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { maxAuditDetailChars } from './audit-detail.ts'
 import { ExecutionContextError } from './errors.ts'
 import {
@@ -154,6 +159,22 @@ async function assertCommandAccess(
 		orgId,
 	})
 	if (!access.canRunCommands) throw commandNotGrantedError(row.name)
+	const request = ctx.callerContext.request
+	if (request?.credential.profileId) {
+		const profileAccess = await computeEffectivePermissions({ env, request })
+		const decision = checkPermission(
+			profileAccess,
+			executionContextCommandPermission,
+			{ type: 'execution_context', id: row.id, orgId: row.org_id as OwnerId },
+		)
+		if (!decision.allowed) {
+			throw new ExecutionContextError({
+				status: 403,
+				code: 'execution_context_command_not_granted',
+				message: `The profile this run acts as, or a parent profile, was not granted ${executionContextCommandPermission} on ${row.name}. The person it acts for can grant it (accessGrant with subject_type "profile").`,
+			})
+		}
+	}
 	if (
 		Array.isArray(principal.scopes) &&
 		!principal.scopes.includes(executionContextCommandPermission)

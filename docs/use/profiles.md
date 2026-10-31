@@ -102,7 +102,9 @@ sub-profile is revoked.
 - **Memory:** none unless a grant includes it.
 - **Execution contexts:** a run routes to a context only when the profile chain
   holds `execution_context:execute` on it; otherwise the context is skipped with
-  reason `profile_grant`.
+  reason `profile_grant`. Host commands (`kody.command.*`) on a context also
+  need `execution_context:command` in every layer of the chain, even when you
+  operate the machine.
 - **Jobs, triggers, app visits:** what a profile turns on runs as that profile.
   When the profile or a parent is revoked or expires, the enablement pauses with
   `paused_reason: "profile_inactive"`. It stays paused until an active
