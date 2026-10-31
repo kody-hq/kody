@@ -638,12 +638,12 @@ test('adminUserUpdate sets plan, maps null clear to free, and rejects unknown us
 		{
 			action: 'adminUserUpdate',
 			result: 'success',
-			reason: `target_stable_user_id=${janeStableId};plan=pro`,
+			reason: `target_stable_user_id=${janeStableId};plan=pro;reason=No reason given (legacy adminUserUpdate)`,
 		},
 		{
 			action: 'adminUserUpdate',
 			result: 'success',
-			reason: `target_stable_user_id=${janeStableId};plan=free`,
+			reason: `target_stable_user_id=${janeStableId};plan=free;reason=No reason given (legacy adminUserUpdate)`,
 		},
 		{
 			action: 'adminUserUpdate',

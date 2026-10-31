@@ -59,15 +59,6 @@ export const adminUserUpdateCapability = defineDomainCapability(
 		outputSchema,
 		async handler(args, ctx) {
 			const admin = await resolveActingAdminPerson(ctx)
-			const target = await loadAdminUserByTarget(ctx.env.APP_DB, args)
-			if (!target) throw new McpCallerError('User not found.')
-			const org = await ctx.env.APP_DB.prepare(
-				`SELECT COALESCE(NULLIF(TRIM(personal_org_id), ''), stable_user_id) AS id
-					 FROM users WHERE stable_user_id = ? AND deleted_at IS NULL`,
-			)
-				.bind(target.stableUserId)
-				.first<{ id: string }>()
-			if (!org) throw new McpCallerError('Personal organization not found.')
 			const baseAudit = ctx.callerContext.request
 				? orgAuditWriterFromRequest(ctx.env, ctx.callerContext.request)
 				: orgAuditWriterForPerson(ctx.env, {
@@ -78,6 +69,17 @@ export const adminUserUpdateCapability = defineDomainCapability(
 				ctx,
 				'adminUserUpdate',
 				async () => {
+					const target = await loadAdminUserByTarget(ctx.env.APP_DB, args)
+					if (!target) throw new McpCallerError('User not found.')
+					const org = await ctx.env.APP_DB.prepare(
+						`SELECT COALESCE(NULLIF(TRIM(personal_org_id), ''), stable_user_id) AS id
+							 FROM users WHERE stable_user_id = ? AND deleted_at IS NULL`,
+					)
+						.bind(target.stableUserId)
+						.first<{ id: string }>()
+					if (!org) {
+						throw new McpCallerError('Personal organization not found.')
+					}
 					try {
 						await setAdminOrgPlan({
 							env: ctx.env,
