@@ -1266,7 +1266,8 @@ test(
 		const scratch = mkdtempSync(join(tmpdir(), 'kody-daemon-kill-'))
 		const workersDir = join(scratch, 'workers')
 		const src = (path: string) =>
-			JSON.stringify(fileURLToPath(new URL(`../src/${path}`, import.meta.url)))
+			// ESM import specifiers must be file URLs (a bare C:\\ path fails).
+			JSON.stringify(new URL(`../src/${path}`, import.meta.url).href)
 		const script = `
 import { runLocalExecute } from ${src('local-execute.ts')}
 import { createLocalWorkerTracker } from ${src('execution-context/worker-tracker.ts')}

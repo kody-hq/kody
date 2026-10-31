@@ -250,6 +250,7 @@ test('mock credentials OpenAll + authenticatedFetch + adminUserList fixtures', a
 						`${server.url}/v1/capability-proxy/call`,
 						{
 							method: 'POST',
+							signal: AbortSignal.timeout(30_000),
 							headers: {
 								authorization: `Bearer ${token}`,
 								'content-type': 'application/json',
