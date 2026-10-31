@@ -47,6 +47,7 @@ export const executionContextCapabilityNames = {
 	get: 'executionContextGet',
 	optIn: 'executionContextOptIn',
 	optOut: 'executionContextOptOut',
+	update: 'executionContextUpdate',
 	delete: 'executionContextDelete',
 	chainGet: 'executionChainGet',
 	chainSet: 'executionChainSet',
@@ -521,6 +522,19 @@ export async function optOutOfExecutionContextForUser(
 	})
 }
 
+/** Turning host commands on is machine-only (ADR 0093); off works here. */
+export async function turnOffExecutionContextCommandsForUser(
+	input: ScopedInput & { contextId: string },
+) {
+	return runScoped(input, async (scope) => {
+		await callCapability(scope, executionContextCapabilityNames.update, {
+			id: input.contextId,
+			grant: { commands: { enabled: false } },
+		})
+		return { ok: true as const }
+	})
+}
+
 export async function setExecutionChainForUser(
 	input: ScopedInput & {
 		entries: Array<ExecutionChainEntryInput>
@@ -632,6 +646,7 @@ function normalizeShareGrant(
 						...(subject.outside === true ? { outside: true } : {}),
 					},
 		preset,
+		...(grant.commands === true ? { commands: true } : {}),
 	}
 }
 
@@ -662,6 +677,7 @@ export async function setExecutionContextShareForUser(
 			| { kind: 'team'; slug: string }
 			| { kind: 'org'; enabled?: boolean }
 		preset: 'use' | 'contribute' | 'manage'
+		commands?: boolean
 	},
 ) {
 	return runScoped(input, async (scope) => {
@@ -676,6 +692,9 @@ export async function setExecutionContextShareForUser(
 						? { team_slug: input.subject.slug }
 						: { all_members: input.subject.enabled ?? true }),
 				preset: input.preset,
+				...(input.commands && input.subject.kind !== 'org'
+					? { commands: true }
+					: {}),
 			},
 		)
 		return {

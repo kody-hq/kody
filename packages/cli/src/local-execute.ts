@@ -148,6 +148,17 @@ export type LocalExecuteInput = {
 	 */
 	/** Current host folders (server grant ∩ local policy), checked on every host fs call. */
 	hostFs?: () => EffectiveFs
+	/**
+	 * Serves `kody.command.<name>` on an execution context (ADR 0093).
+	 * `authorize` asks Kody (grant + opt-in + audit) before a process starts.
+	 * Absent: the call goes to Kody, which says commands need a context.
+	 */
+	hostCommands?: (call: {
+		name: string
+		args: unknown
+		signal: AbortSignal
+		authorize: (input: Record<string, unknown>) => Promise<void>
+	}) => Promise<unknown>
 	/** Told about the workerd process so a daemon can reap it after a crash. */
 	workerTracker?: LocalWorkerTracker
 }
@@ -328,6 +339,41 @@ export async function runLocalExecute(
 		bridge = await startLocalRuntimeBridge({
 			runSecret,
 			forwardCall: async (call, signal) => {
+				if (
+					call.path.length === 3 &&
+					call.path[0] === 'kody' &&
+					call.path[1] === 'command' &&
+					call.path[2] === 'authorize'
+				) {
+					// Only the daemon's own hop (below) may authorize, so run code
+					// cannot write command_started rows for commands that never ran.
+					throw new Error(
+						'kody.command.authorize is internal; call kody.command.run or kody.command.start. (invalid_request)',
+					)
+				}
+				const hostCommands = input.hostCommands
+				if (
+					hostCommands &&
+					call.path.length === 3 &&
+					call.path[0] === 'kody' &&
+					call.path[1] === 'command' &&
+					call.path[2] !== 'authorize'
+				) {
+					return await hostCommands({
+						name: call.path[2] as string,
+						args: call.args[0],
+						signal,
+						authorize: async (authorizeInput) => {
+							await callCapabilityProxy({
+								...client,
+								path: ['kody', 'command', 'authorize'],
+								args: [authorizeInput],
+								conversationId: input.conversationId,
+								signal,
+							})
+						},
+					})
+				}
 				const mocked = tryHandleMockGatewayFetchCall({
 					gateway: mockFetchGateway,
 					path: call.path,

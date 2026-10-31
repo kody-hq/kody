@@ -57,6 +57,19 @@ downloads. Windows registration is available, but starting the runner is
 disabled until the CLI supports a Windows execution runtime. Native Apple app
 access is not part of this wrapper, it needs specific permissioned capabilities.
 
+## Host commands
+
+**Machine › Allow commands** turns host commands on for this machine after a
+confirmation that spells out what it allows: runs with the command grant can run
+any shell command as your user account, with no approval per command. The app
+runs the bundled CLI's `kody context commands on|off --context <ecid>`, which
+sets the local opt-in and tells Kody through the machine-signed route. Uncheck
+it to turn commands off (this also stops background commands). The website and
+`kody context commands off` turn it off too, and the menu shows that the next
+time the app checks. The item is disabled on Windows and before the machine is
+registered. See
+[Host commands](../../docs/use/execution-contexts.md#host-commands).
+
 ## Packaging and checks
 
 ```sh

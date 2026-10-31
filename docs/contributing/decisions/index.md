@@ -266,6 +266,11 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0092: Profiles are scoped agent identities, capped by their parent chain](./0092-profiles-are-scoped-agent-identities.md)
   Person-owned profiles with snapshot grants, capped at run time by the acting
   person and every parent; no epoch bump; behind the `profiles` flag
+- [0093: Execution-context runs can run host commands after a local opt-in](./0093-execution-context-host-commands.md)
+  Off by default; only the machine turns it on, anyone with access turns it off;
+  `execution_context:command` (operator by default, shares only when granted);
+  `kody.command.*` with daemon-held background jobs; audited without env values;
+  macOS and Linux only
 - [0094: A visit from another org to an internal package app bills the visiting org](./0094-cross-org-package-app-visits-bill-the-visitor-org.md)
   Outside collaborators on an internal app pay for their metered work from their
   personal org; the publisher keeps the worker day; public apps stay

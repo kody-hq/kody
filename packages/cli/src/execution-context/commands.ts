@@ -10,18 +10,22 @@ import {
 	generateContextKey,
 	importContextKey,
 	registerContext,
+	setContextCommands,
 	experimentOffError,
 	isExperimentOffError,
 } from './client.js'
 import { runDaemon } from './daemon.js'
+import { HostCommands } from './host-commands.js'
 import { createPackageGraphCache } from './package-graph-cache.js'
 import {
 	type FsMode,
 	allowLocalPath,
 	effectiveFs,
 	localPolicyPath,
+	readLocalCommandsEnabled,
 	readLocalPolicy,
 	removeLocalPath,
+	setLocalCommandsEnabled,
 } from './fs-access.js'
 import {
 	contextWorkersDir,
@@ -145,6 +149,9 @@ async function runCommand(
 		apiUrl: input.apiUrl,
 		...(input.org ? { org: input.org } : {}),
 		...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+	}
+	if (input.command === 'context' && sub === 'commands') {
+		return await runCommandsOptInCommand(input, rest)
 	}
 	if (input.command === 'context' && sub === 'policy') {
 		return await runPolicyCommand(input, rest)
@@ -509,6 +516,16 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		const privateKey = await importContextKey(privateJwk)
 		const serverKeys = await fetchServerKeys({ apiUrl: input.apiUrl })
 		const { runContextRun } = await import('./run-executor.js')
+		const hostCommands = new HostCommands({
+			localEnabled: await readLocalCommandsEnabled().catch(() => false),
+		})
+		const commandsPolicyPath = localPolicyPath()
+		const onCommandsPolicyChange = () => {
+			void readLocalCommandsEnabled()
+				.catch(() => false)
+				.then((enabled) => hostCommands.setLocalEnabled(enabled))
+		}
+		watchFile(commandsPolicyPath, { interval: 2000 }, onCommandsPolicyChange)
 		const abort = new AbortController()
 		const drain = new AbortController()
 		let hardStop: NodeJS.Timeout | undefined
@@ -561,6 +578,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 					...localCapabilities(maxConcurrent),
 					...(manager ? { service: manager } : {}),
 				},
+				hostCommands,
 				execute: (run) =>
 					runContextRun({
 						...run,
@@ -582,6 +600,9 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 				drainSignal: drain.signal,
 			})
 		} finally {
+			unwatchFile(commandsPolicyPath, onCommandsPolicyChange)
+			// Background commands are the daemon's children: they stop with it.
+			hostCommands.killAll('shutdown')
 			workerTracker.killAll()
 			workerTracker.dispose()
 			if (hardStop) clearTimeout(hardStop)
@@ -610,7 +631,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		return stayStoppedExitCode
 	}
 	throw new Error(
-		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | uninstall | kody update',
+		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | uninstall | kody update',
 	)
 }
 
@@ -678,6 +699,111 @@ export function readCodeFile(path: string) {
 
 const policyUsage =
 	'Usage: kody context policy [show] | kody context policy allow <path> [--mode ro|rw] | kody context policy remove <path>'
+
+const commandsUsage =
+	'Usage: kody context commands [status | on | off] [--context <name>] [--json]'
+
+/**
+ * Host commands opt-in (ADR 0093). `on` is a local action: it writes this
+ * machine's policy and tells Kody with a request signed by the context key.
+ * `off` works here, in the desktop app, or on the website.
+ */
+async function runCommandsOptInCommand(
+	input: ExecutionContextCommandInput,
+	[action = 'status', ...extra]: Array<string>,
+): Promise<number> {
+	if (extra.length > 0 || !['status', 'on', 'off'].includes(action)) {
+		throw new Error(commandsUsage)
+	}
+	if (process.platform === 'win32' && action === 'on') {
+		throw new Error(
+			'Host commands are not supported on Windows yet: the Kody runner supports macOS and Linux. (execution_context_commands_unsupported)',
+		)
+	}
+	const ecids = input.values.context
+		? [
+				localContextId(input.apiUrl, input.values.context) ??
+					input.values.context,
+			]
+		: storedContextIds(input.apiUrl)
+	if (action === 'on' && input.values.context) {
+		// Fails for an unknown context before the shared local switch changes.
+		loadContext({
+			apiUrl: input.apiUrl,
+			ecid: ecids[0]!,
+			wrapping: wrappingKeyForStoredContext({
+				apiUrl: input.apiUrl,
+				ecid: ecids[0]!,
+			}),
+		})
+	}
+	if (action !== 'status') {
+		await setLocalCommandsEnabled({ enabled: action === 'on' })
+	}
+	const local = await readLocalCommandsEnabled()
+	const contexts: Array<{
+		id: string
+		name: string
+		commands: { enabled: boolean; enabledAt?: string | null } | null
+		error?: string
+	}> = []
+	for (const ecid of ecids) {
+		try {
+			const { context, privateJwk } = loadContext({
+				apiUrl: input.apiUrl,
+				ecid,
+				wrapping: wrappingKeyForStoredContext({ apiUrl: input.apiUrl, ecid }),
+			})
+			const result = await setContextCommands({
+				apiUrl: input.apiUrl,
+				ecid: context.ecid,
+				privateKey: await importContextKey(privateJwk),
+				...(action === 'status' ? {} : { enabled: action === 'on' }),
+				...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+			})
+			contexts.push({
+				id: result.id,
+				name: result.name,
+				commands: result.commands,
+			})
+		} catch (error) {
+			contexts.push({
+				id: ecid,
+				name: ecid,
+				commands: null,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+	const lines = [
+		`Host commands on this machine: ${local ? 'on' : 'off'} (local opt-in, ${localPolicyPath()}).`,
+		...contexts.map((context) =>
+			context.commands
+				? `  ${context.name}: ${context.commands.enabled ? 'on' : 'off'} in Kody`
+				: `  ${context.name}: could not reach Kody (${context.error})`,
+		),
+	]
+	if (contexts.length === 0) {
+		lines.push(
+			'  This machine has no registered execution context. Run `kody connect --name <name>` first.',
+		)
+	}
+	if (action === 'on') {
+		lines.push(
+			'Runs with the command grant (you on your own context; others only if you share it with commands) can now run any command as your OS user, with no per-command approval. Every command is recorded in the context audit log. Turn it off any time: kody context commands off, the desktop app, or the website.',
+		)
+	} else if (action === 'off') {
+		lines.push('Background commands started by runs were stopped.')
+	} else if (!local) {
+		lines.push('Turn them on with: kody context commands on')
+	}
+	out(
+		input,
+		{ local: { enabled: local, path: localPolicyPath() }, contexts },
+		lines.join('\n'),
+	)
+	return contexts.some((context) => context.error) ? 1 : 0
+}
 
 async function runPolicyCommand(
 	input: ExecutionContextCommandInput,

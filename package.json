@@ -62,6 +62,7 @@
     "feature-map:check": "node tools/control-kody.ts map --check",
     "primitives:classify": "node .agents/skills/visual-recap/scripts/classify-primitives.mjs",
     "docs:check": "node tools/run-check-group.ts docs",
+    "e2e:context-commands": "node tools/e2e/execution-context-commands.ts",
     "deps:check": "node tools/run-check-group.ts deps",
     "error-agent-prompt:check": "node tools/check-error-agent-prompt.ts",
     "slop-ratchet:check": "node tools/check-file-size-ratchet.ts && node tools/check-decorative-banners.ts",

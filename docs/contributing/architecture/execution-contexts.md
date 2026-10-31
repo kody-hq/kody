@@ -10,16 +10,17 @@ cloud.
 
 ## Pieces
 
-| Piece                                                                                     | Where                                                                                            |
-| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Protocol (envelopes, frames, HTTP signatures, replay, server keys, vectors)               | `packages/shared/src/execution-context-protocol/`                                                |
-| Session Durable Object (`ExecutionContextSessionV1`, one per context, on `kody-platform`) | `packages/worker/src/execution-contexts/session-do.ts`                                           |
-| Registration, connect ticket, connect, server keys                                        | `packages/worker/src/execution-contexts/key-routes.ts`                                           |
-| Management, sharing, chain, runs, audit                                                   | `packages/worker/src/execution-contexts/service.ts`, MCP `executionContext*` / `executionChain*` |
-| Routing for execute (`context`, `fallback`, `requires`)                                   | `packages/worker/src/execution-contexts/routing.ts`, `execute-routing.ts`                        |
-| Lease authentication on CapabilityProxy and package graph                                 | `packages/worker/src/open-api/authenticate.ts`                                                   |
-| API edge WebSocket forward (rate limited per context and IP)                              | `packages/api-worker/src/edge.ts`                                                                |
-| CLI (`kody context`, `kody chain`, `kody daemon`)                                         | `packages/cli/src/execution-context/`                                                            |
+| Piece                                                                                     | Where                                                                                                       |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Protocol (envelopes, frames, HTTP signatures, replay, server keys, vectors)               | `packages/shared/src/execution-context-protocol/`                                                           |
+| Session Durable Object (`ExecutionContextSessionV1`, one per context, on `kody-platform`) | `packages/worker/src/execution-contexts/session-do.ts`                                                      |
+| Registration, connect ticket, connect, server keys                                        | `packages/worker/src/execution-contexts/key-routes.ts`                                                      |
+| Management, sharing, chain, runs, audit                                                   | `packages/worker/src/execution-contexts/service.ts`, MCP `executionContext*` / `executionChain*`            |
+| Routing for execute (`context`, `fallback`, `requires`)                                   | `packages/worker/src/execution-contexts/routing.ts`, `execute-routing.ts`                                   |
+| Lease authentication on CapabilityProxy and package graph                                 | `packages/worker/src/open-api/authenticate.ts`                                                              |
+| API edge WebSocket forward (rate limited per context and IP)                              | `packages/api-worker/src/edge.ts`                                                                           |
+| CLI (`kody context`, `kody chain`, `kody daemon`)                                         | `packages/cli/src/execution-context/`                                                                       |
+| Host commands (ADR 0093): process manager, authorize hop, opt-in route                    | `packages/cli/src/execution-context/host-commands.ts`, `packages/worker/src/execution-contexts/commands.ts` |
 
 ## Lifecycle
 
@@ -98,6 +99,86 @@ uninstall, `kody update`).
   `metadata.executionContext`, so `ranOn` still renders the deleted machine. The
   context's session Durable Object history is unreachable once the row is gone;
   its storage is left to expire with the object.
+
+## Host commands
+
+[ADR 0093](../decisions/0093-execution-context-host-commands.md) lets context
+runs run shell commands on the machine through `kody.command.*`. Two switches
+must both be on, and either one turns it off:
+
+- **Local opt-in**: `commands.enabled` in the machine's
+  `execution-context-policy.json` (`fs-access.ts`), set by
+  `kody context commands on|off` or the desktop's **Machine › Allow commands**.
+  Missing means off.
+- **Server state**: `grant.commands.enabled` in `grant_json`. Only the signed
+  machine route `POST /v1/execution-contexts/commands` (`key-routes.ts`, ECP
+  HTTP signature plus a consumed nonce) sets it to `true`.
+  `executionContextUpdate` accepts `false` and refuses `true` with
+  `commands_opt_in_local`. Either write bumps `grant_version` and pushes a
+  `grant.update`, so a daemon applies it at once.
+
+Then the caller needs `execution_context:command`. `loadContextAccess` computes
+`canRunCommands`: always for the operator, otherwise only with a grant row whose
+`command` column is set. Presets and `all_members` never set it;
+`executionContextShareSet` with `commands: true` does (`extraPermissions` in
+`access-writes.ts`). A future profile withholds it by leaving the permission
+out; there is no other special case.
+
+Call path:
+
+```mermaid
+sequenceDiagram
+  participant Code as run code (workerd)
+  participant D as kody daemon (HostCommands)
+  participant API as CapabilityProxy
+  participant DO as ExecutionContextSessionV1
+  Code->>D: kody.command.run / start (local runtime bridge)
+  D->>D: local opt-in and grant.commands on? else commands_off
+  D->>API: kody.command.authorize (signed, Kody-ECP-Run)
+  API->>API: lease, grant.commands, canRunCommands, audit command_started
+  D->>D: spawn as the daemon user (process group)
+  D-->>DO: command.finished frame
+  DO->>DO: audit command_finished (exit, signal, duration, reason)
+```
+
+- `HostCommands` lives for the daemon, not the run, so background jobs outlive
+  the 90 second run window. Jobs belong to the requester; others get
+  `command_not_found`. Turning either switch off, revoke, and daemon shutdown
+  kill every job's process group.
+- Audit rows hold the command (first 1000 characters, trimmed further so the row
+  stays valid JSON), cwd, env keys, run id, and background flag. Authorization
+  requests and audit rows never carry env values; command output can, if the
+  command prints them.
+- Kody cloud and `--local` runs get a `kody.command` whose methods throw
+  `execution_context_command_requires_context` (`runtime-source-modules.ts`);
+  the authorize hop refuses any other principal with the same code.
+- Windows: `kody context commands on` and `HostCommands` refuse before spawning.
+
+Tests: `packages/cli/test/host-commands.test.ts` (process manager, real
+commands), `packages/cli/test/execution-context.test.ts` (real daemon and
+workerd against a fake ECP server), and
+`packages/worker/src/execution-contexts/commands.node.test.ts` (authorization,
+denials, sharing, audit). CI runs the CLI ones on Linux and macOS
+(`host-commands` job in `validate.yml`).
+
+### End-to-end check
+
+`tools/e2e/execution-context-commands.ts` checks a real deployment unattended.
+It registers a throwaway context with temporary `XDG_CONFIG_HOME`,
+`XDG_STATE_HOME`, and `XDG_DATA_HOME` directories, turns commands on locally,
+starts a daemon, runs an `execute` routed to the context that runs a foreground
+command and a background start, poll, and kill, checks the audit log for
+`command_started` and `command_finished`, then revokes and deletes the context.
+It never touches the default CLI config or an existing context.
+
+```sh
+KODY_API_TOKEN=<token with execution_context:create, execution_context:execute, execution_context:command, execution_context:delete> \
+  npm run e2e:context-commands -- --api-url https://api.kody.codes
+```
+
+The account needs the `execution-contexts` experiment on. PR previews lack
+`ECP_FRAME_SIGNING_KEYS`, so the daemon cannot connect there; run it against
+production (or any deployment with signing keys).
 
 ## Rules that matter
 
