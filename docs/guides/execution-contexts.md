@@ -221,11 +221,11 @@ stops them.
 
 When a command cannot run, the error names what is missing:
 
-| Code                                         | Meaning                                                          |
-| -------------------------------------------- | ---------------------------------------------------------------- |
-| `execution_context_commands_off`             | The machine has not turned host commands on                      |
-| `execution_context_command_not_granted`      | You lack `execution_context:command` on this context             |
-| `execution_context_command_requires_context` | The run is in Kody cloud (including fallback) or a `--local` run |
+| Code                                         | Meaning                                                                                      |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `execution_context_commands_off`             | The machine has not turned host commands on                                                  |
+| `execution_context_command_not_granted`      | You lack `execution_context:command` on this context, or the run's token scopes leave it out |
+| `execution_context_command_requires_context` | The run is in Kody cloud (including fallback) or a `--local` run                             |
 
 Busy and offline machines fall back the same way as other runs. A run that fell
 back to Kody cloud gets `execution_context_command_requires_context` from

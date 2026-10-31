@@ -272,3 +272,15 @@ test('an expired command share confers nothing', async () => {
 		authorizeContextCommand(s.runCtx('user_friend'), s.args),
 	).rejects.toMatchObject({ code: 'execution_context_command_not_granted' })
 })
+
+test('a command cut to the audit cap is marked truncated', async () => {
+	const s = setup({ commands: true })
+	await authorizeContextCommand(s.runCtx(operator), {
+		...s.args,
+		command: 'x'.repeat(1500),
+	})
+	expect(s.audits[0]?.detail).toMatchObject({ truncated: true })
+	expect((s.audits[0]?.detail as { command: string }).command).toHaveLength(
+		1000,
+	)
+})

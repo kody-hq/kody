@@ -108,12 +108,16 @@ export async function authorizeContextCommand(
 			message: `This run's credential (token scopes) does not include ${executionContextCommandPermission}, so it cannot run host commands on ${row.name}. Use a credential with that scope.`,
 		})
 	}
-	const envKeys = Array.isArray(args.envKeys)
-		? args.envKeys
-				.filter((key): key is string => typeof key === 'string')
-				.slice(0, 64)
-				.map((key) => key.slice(0, 128))
+	const rawEnvKeys = Array.isArray(args.envKeys)
+		? args.envKeys.filter((key): key is string => typeof key === 'string')
 		: []
+	const envKeys = rawEnvKeys.slice(0, 64).map((key) => key.slice(0, 128))
+	const rawCwd = typeof args.cwd === 'string' ? args.cwd : null
+	const cut =
+		args.command.length > maxAuditedCommandChars ||
+		(rawCwd?.length ?? 0) > 512 ||
+		rawEnvKeys.length > 64 ||
+		rawEnvKeys.some((key) => key.length > 128)
 	await sessionStub(env, row.id).recordAudit({
 		event: 'command_started',
 		actor: { userId: user.userId, handle: user.username ?? null },
@@ -122,9 +126,10 @@ export async function authorizeContextCommand(
 			commandId: args.commandId,
 			runId: principal.runId,
 			command: args.command.slice(0, maxAuditedCommandChars),
-			cwd: typeof args.cwd === 'string' ? args.cwd.slice(0, 512) : null,
+			cwd: rawCwd ? rawCwd.slice(0, 512) : null,
 			envKeys,
 			background: args.background === true,
+			...(cut ? { truncated: true as const } : {}),
 		}),
 	})
 	return { ok: true as const, commandId: args.commandId }
