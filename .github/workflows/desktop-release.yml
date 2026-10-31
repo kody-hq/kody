@@ -168,8 +168,9 @@ jobs:
           foreach ($file in $files) {
             $signature = Get-AuthenticodeSignature $file.FullName
             if ($signature.Status -ne 'Valid') { throw "Invalid signature: $($file.Name)" }
-            $publisher = $signature.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
-            if ($publisher -cne $env:EXPECTED_PUBLISHER) { throw 'Signing certificate does not match DESKTOP_WINDOWS_PUBLISHER.' }
+            $env:ACTUAL_PUBLISHER_SUBJECT = $signature.SignerCertificate.Subject
+            node packages/desktop/scripts/verify-windows-publisher.cjs
+            if ($LASTEXITCODE -ne 0) { throw 'Windows update publisher verification failed.' }
           }
       - run: npm run test:packaged-cli --workspace @kodycodes/desktop
       - name: Upload release assets
