@@ -1004,7 +1004,7 @@ export async function handlePackageAppOauthAuthorizeRequest(
 		personId: user.mcpUser.userId,
 		viewerUsername: user.username,
 		orgUsername: validated.client.username,
-		internetVisible: meta.internetVisible,
+		internetVisible: validated.savedPackage.isInternetVisible,
 	})
 
 	return {

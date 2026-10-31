@@ -4118,15 +4118,14 @@ export async function buildPackageAppWorker(input: {
 					db: input.env.APP_DB,
 					env: input.env,
 					userId: billedOrgId,
-					orgBudget:
-						request && !billing
-							? {
-									orgId: request.org.id,
-									orgSlug: request.org.slug,
-									actorUserId: request.actor?.userId ?? null,
-									actorUsername: request.actor?.username ?? null,
-								}
-							: undefined,
+					orgBudget: request
+						? {
+								orgId: billing ? billedOrgId : request.org.id,
+								orgSlug: billing ? null : request.org.slug,
+								actorUserId: request.actor?.userId ?? null,
+								actorUsername: request.actor?.username ?? null,
+							}
+						: undefined,
 				}),
 		})
 	})
