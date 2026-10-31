@@ -857,9 +857,8 @@ test('buildPackageAppWorker serves an artifactName-null artifact hit and reuses 
 	expect(packageAppHostSource).toContain('credentialClientCall')
 	expect(packageAppHostSource).toContain('x-kody-credential-client')
 	expect(packageAppHostSource).toContain('Leave x-kody-credential-client alone')
-	// Must not statically import runtime.js at entry load: optional exports
-	// (credential) freeze from empty ALS and stay undefined forever. Preload
-	// inside ALS.run via __kodyEnsureRuntimeLoaded, then enter the runtime's
+	// No static runtime.js import at entry load (exports freeze from empty ALS).
+	// Preload inside ALS.run via __kodyEnsureRuntimeLoaded, then enter the
 	// private package-binding scope (GHSA-5fv3). No ambient getter or header.
 	expect(packageAppHostSource).not.toMatch(
 		/^import .+ from '\.\/\.__kody_virtual__\/runtime\.js'/m,
@@ -1702,10 +1701,8 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 })
 
 test('buildPackageAppWorker mints request-bound loopback bindings on every loader callback, never from the cached build', async () => {
-	// Loopback fetchers (KODY_RUNTIME, KodyFetchGateway) are bound to the
-	// request that creates them. When the loader (re)loads the isolate from a
-	// later request, reusing the cached build's fetcher fails with "Cannot
-	// perform I/O on behalf of a different request" before app code runs.
+	// Loopback fetchers are bound to the request that creates them; a cached
+	// build's fetcher fails "Cannot perform I/O on behalf of a different request".
 	const { env, loader } = createPackageAppTestEnv()
 	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
 		makeArtifact(),
@@ -1760,9 +1757,8 @@ test('buildPackageAppWorker mints request-bound loopback bindings on every loade
 })
 
 test("buildPackageAppWorker never reuses one visitor's request context or credential binding for another", async () => {
-	// Visitors share one worker per app commit per mount. Identity and the
-	// credential binding are rematerialized per request from the visit
-	// ticket, so one visitor cannot resolve another's authority.
+	// Visitors share one worker per app commit per mount; identity and binding
+	// come per request from the visit ticket, never another visitor's.
 	const { env, loader } = createPackageAppTestEnv()
 	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
 		makeArtifact(),
@@ -1862,8 +1858,7 @@ test("buildPackageAppWorker never reuses one visitor's request context or creden
 })
 
 test('buildPackageAppWorker keeps one worker id per app commit per mount across build cache expiry', async () => {
-	// The cached build expires after a few minutes. A rebuild for the same
-	// package, commit, and mount must land on the same worker id, or every
+	// A rebuild after cache expiry must land on the same worker id, or every
 	// expiry mints another unique Dynamic Worker day and a cold isolate.
 	const { env, loader } = createPackageAppTestEnv()
 	const secretEnv = {
