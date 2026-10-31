@@ -99,13 +99,10 @@ export function AccountPackageOwnerDetails(props: {
 	const [visibilityMessage, setVisibilityMessage] = useState<string | null>(
 		null,
 	)
-	const packageOwnerHandle = /^@([^/]+)\//.exec(props.packageDetail.name)?.[1]
-	const collaboratorsHref = packageOwnerHandle
-		? routes.communityPackageCollaborators.href({
-				username: packageOwnerHandle,
-				kodyId: props.packageDetail.kodyId,
-			})
-		: null
+	const collaboratorsHref = routes.communityPackageCollaborators.href({
+		username: props.ownerUsername,
+		kodyId: props.packageDetail.kodyId,
+	})
 
 	async function submitVisibility(
 		packageDetail: AccountPackageDetail,
@@ -336,11 +333,7 @@ export function AccountPackageOwnerDetails(props: {
 								Public makes the default branch readable and forkable by anyone
 								on the internet, signed in or not. To share with specific
 								people, use{' '}
-								{collaboratorsHref ? (
-									<SiteLink href={collaboratorsHref}>Collaborators</SiteLink>
-								) : (
-									'Collaborators'
-								)}{' '}
+								<SiteLink href={collaboratorsHref}>Collaborators</SiteLink>{' '}
 								instead.
 							</p>
 						) : (
