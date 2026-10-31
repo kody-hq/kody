@@ -127,10 +127,13 @@ helpers, workflows, and timeouts.
 
 Every execute response says where the run happened. `structuredContent.ranOn`
 (also in CLI `--json` and `POST /v1/execute`) is
-`{ kind: "cloud" | "context", id: "cloud" | "ec_…", name: "Kody cloud" | context name, attempts, fellBackToCloud }`,
-and a text line names it with friendly names only, such as `Ran on Kody cloud.`
-or `Ran on build-box (your machine).` `runGet` shows the same `metadata.ranOn`.
-See [execution contexts](./execution-contexts.md) (internals:
+`{ kind: "cloud" | "context", id: "cloud" | "ec_…", name: "Kody cloud" | context name, attempts, fellBackToCloud, workerUnits }`,
+and a text line names it with friendly names only, plus the Worker compute units
+the call charged, such as `Ran on Kody cloud, 1 worker unit.` or
+`Ran on build-box (your machine), 0 worker units.` Runs on an execution context
+are always 0; a cloud run is 1 only the first time its worker runs that UTC day.
+`runGet` shows the same `metadata.ranOn`. See
+[execution contexts](./execution-contexts.md) (internals:
 [architecture](../contributing/architecture/execution-contexts.md)).
 
 ## Search first, then execute

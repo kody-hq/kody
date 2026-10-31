@@ -122,6 +122,14 @@ Revoking a context stops its daemon for good: it does not reconnect, and the
 service disables itself instead of restarting. Remove the leftover service with
 `kody daemon uninstall`.
 
+## Worker compute on a machine
+
+A run on an execution context does not use your Worker compute allowance: the
+code runs in workerd on your machine, not in a Kody cloud Dynamic Worker. When a
+run falls back to Kody cloud, it counts like any other cloud run (one unit the
+first time that worker runs on a UTC day). Anything the run calls that runs on
+Kody cloud, such as a nested `execute`, counts on Kody cloud.
+
 ## The chain and cloud fallback
 
 Your chain is the ordered list of places Kody tries for your runs, up to three
@@ -162,9 +170,13 @@ Every routed `execute` result carries `ranOn` (in MCP `structuredContent`, CLI
 	"id": "ec_…",
 	"name": "my-laptop",
 	"attempts": [{ "target": "ec_…", "name": "build-box", "outcome": "busy" }],
-	"fellBackToCloud": false
+	"fellBackToCloud": false,
+	"workerUnits": 0
 }
 ```
+
+`workerUnits` is how many Worker compute units this call charged, and the text
+line says it too: `Ran on my-laptop (your machine), 0 worker units.`
 
 `attempts` lists every entry Kody skipped and why (`offline`, `busy`, …).
 `fellBackToCloud: true` means no context could take the run and it ran on Kody

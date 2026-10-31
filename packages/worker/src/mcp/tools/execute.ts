@@ -7,7 +7,9 @@ import {
 } from '#worker/execution-contexts/execute-routing.ts'
 import {
 	describeRanOn,
+	describeRanOnWithWorkerUnits,
 	ranOnFromMetadata,
+	type ExecuteRanOn,
 	type ExecutionContextRunMetadata,
 } from '#worker/execution-contexts/routing.ts'
 import * as Sentry from '@sentry/cloudflare'
@@ -252,7 +254,7 @@ export const executeToolOutputSchema = {
 		.unknown()
 		.optional()
 		.describe(
-			'Where the run happened, on every routed response (input errors before routing may omit it): { kind: "cloud" | "context", id: "cloud" | context id, name: "Kody cloud" | context name, yours?, timing?, attempts, fellBackToCloud }. attempts lists contexts that passed on it (offline, busy, skipped) with reasons. timing (ms, context runs that reported it): queueMs, setupMs (packageGraphMs, packageGraphCached), executeMs and daemonMs on the machine, serverMs on Kody, transitMs = serverMs - daemonMs for dispatch plus return.',
+			'Where the run happened, on every routed response (input errors before routing may omit it): { kind: "cloud" | "context", id: "cloud" | context id, name: "Kody cloud" | context name, yours?, timing?, attempts, fellBackToCloud, workerUnits? }. workerUnits is the Worker compute units charged by the worker of this call: 0 on an execution context or when that worker already ran today, 1 when Kody cloud started it today; omitted while a cloud run is still in progress. attempts lists contexts that passed on it (offline, busy, skipped) with reasons. timing (ms, context runs that reported it): queueMs, setupMs (packageGraphMs, packageGraphCached), executeMs and daemonMs on the machine, serverMs on Kody, transitMs = serverMs - daemonMs for dispatch plus return.',
 		),
 	executionContext: z
 		.unknown()
@@ -412,8 +414,9 @@ export async function runExecuteToolCall(input: {
 	let transportSignal: ReturnType<typeof createDetachableAbortSignal> | null =
 		null
 	let claimedExecuteUsage: ClaimedExecuteUsage | null = null
+	let chargedWorkerUnits = 0
 	const response = await attachExecuteUsage(
-		await runExecuteToolWithErrorBoundary(),
+		attachWorkerUnits(await runExecuteToolWithErrorBoundary()),
 	)
 	// Detach only after the follow response is built, including the
 	// usage read. A caller cancel before that still stops the sandbox.
@@ -429,6 +432,51 @@ export async function runExecuteToolCall(input: {
 		transportDetached = true
 	}
 	return response
+
+	/**
+	 * Units this call's own worker charged, on `ranOn` and its text line.
+	 * Context runs never claim one; a cloud run still in progress has not
+	 * settled yet, so it is left out until runGet.
+	 */
+	function attachWorkerUnits<
+		Response extends {
+			content: Array<ContentBlock>
+			structuredContent: Record<string, unknown>
+		},
+	>(response: Response): Response {
+		const ranOn = response.structuredContent['ranOn'] as
+			| ExecuteRanOn
+			| undefined
+		if (!ranOn || typeof ranOn !== 'object' || !('kind' in ranOn)) {
+			return response
+		}
+		if (
+			ranOn.kind === 'cloud' &&
+			response.structuredContent['inProgress'] === true
+		) {
+			return response
+		}
+		const workerUnits = ranOn.kind === 'context' ? 0 : chargedWorkerUnits
+		const lines = new Set([
+			describeRanOn(ranOn),
+			describeRanOn(ranOn, { running: true }),
+		])
+		return {
+			...response,
+			content: response.content.map((block) =>
+				block.type === 'text' && lines.has(block.text)
+					? {
+							...block,
+							text: describeRanOnWithWorkerUnits(block.text, workerUnits),
+						}
+					: block,
+			),
+			structuredContent: {
+				...response.structuredContent,
+				ranOn: { ...ranOn, workerUnits },
+			},
+		}
+	}
 
 	async function attachExecuteUsage<
 		Response extends { structuredContent: Record<string, unknown> },
@@ -594,6 +642,7 @@ export async function runExecuteToolCall(input: {
 						email: entitlementEmail,
 						onUsage: (claimed) => {
 							claimedExecuteUsage = claimed
+							if (claimed.usage.created) chargedWorkerUnits += 1
 						},
 						waitUntil,
 						orgBudget: callerContext.request

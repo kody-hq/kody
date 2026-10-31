@@ -172,6 +172,18 @@ export function describeRanOn(
 	return `${options.running ? 'Running' : 'Ran'} on ${where}${after}.`
 }
 
+/**
+ * The ran-on line with the worker units this call charged, e.g.
+ * "Ran on nautilus (your machine), 0 worker units."
+ */
+export function describeRanOnWithWorkerUnits(
+	line: string,
+	workerUnits: number,
+) {
+	const units = `${workerUnits} worker unit${workerUnits === 1 ? '' : 's'}`
+	return `${line.replace(/\.$/, '')}, ${units}.`
+}
+
 /** The cloud-fallback line (kept for callers that only have metadata). */
 export function describeCloudFallback(metadata: ExecutionContextRunMetadata) {
 	return describeRanOn(ranOnFromMetadata(metadata))

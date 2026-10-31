@@ -28,6 +28,11 @@ meter.
 - Worker identity follows the acting user plus the **module graph** for that
   run: the same user and published graph reuse one isolate; a different graph or
   a different user is a different isolate.
+- Runs on an [execution context](./execution-contexts.md) (your own machine) do
+  not count: they run in workerd there, not in a Kody cloud isolate. A run that
+  falls back to Kody cloud counts like any cloud run.
+- Every `execute` response says what that call charged in `ranOn.workerUnits`
+  and its "Ran on …" line (`Ran on nautilus (your machine), 0 worker units.`).
 
 Workspace usage (`/@<slug>/-/usage` and `usageGet`) shows this meter as **Worker
 compute**, next to **Rows read** and the execute caps. The $12 Pro plan includes
