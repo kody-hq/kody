@@ -258,7 +258,7 @@
 			// override wholesale, so "enabled" is restated): same tracing,
 			// plus the account-level Sentry OTLP export destination
 			// "sentry-otlp-traces" (Workers Observability -> Destinations),
-			// which points at the kody-cloudflare Sentry project's OTLP
+			// which points at the kody Sentry project's OTLP
 			// traces endpoint. The destination must exist in the target
 			// account before deploy; forks create their own or remove it.
 			// See docs/contributing/setup-manifest.md.

@@ -256,9 +256,9 @@ This project uses the following resources:
     account-level **Traces** destination `sentry-otlp-traces`, referenced from
     `observability.traces.destinations` in the **production** environment only
     (preview and test deploys keep dashboard-only tracing). In the production
-    Cloudflare account it points at the `kody-cloudflare` Sentry project's OTLP
-    endpoint (`https://<HOST>/api/<PROJECT_ID>/integration/otlp/v1/traces` with
-    the `x-sentry-auth: sentry sentry_key=<public key>` header derived from the
+    Cloudflare account it points at the `kody` Sentry project's OTLP endpoint
+    (`https://<HOST>/api/<PROJECT_ID>/integration/otlp/v1/traces` with the
+    `x-sentry-auth: sentry sentry_key=<public key>` header derived from the
     project DSN).
   - Forks must create their own destination under the same name, or remove the
     `destinations` line — deploys can fail on unknown destinations. Create it in

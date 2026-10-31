@@ -103,7 +103,7 @@ Production names from committed Wrangler / ensure scripts
   Auth off is HTTP 403; zero credits is HTTP 402. Embeddings (`@cf/baai/…`)
   succeed without Gateway.
 - **OTLP traces** — account destination `sentry-otlp-traces` → Sentry project
-  `kody-cloudflare`. Dashboard: **Workers Observability → Destinations**.
+  `kody`. Dashboard: **Workers Observability → Destinations**.
 
 ### Email (Cloudflare Email Sending + Email Routing)
 
@@ -380,8 +380,8 @@ Error reporting, error-only session replay, source maps, and production OTLP
 traces.
 
 Dashboard: [Sentry](https://sentry.io/). Project slug in docs and Wrangler
-comments: `kody-cloudflare`. Org slug is a GitHub Actions variable
-(`SENTRY_ORG`), not committed.
+comments: `kody`. Org slug is a GitHub Actions variable (`SENTRY_ORG`), not
+committed.
 
 | Name                        | Kind                       | Purpose                                                                      |
 | --------------------------- | -------------------------- | ---------------------------------------------------------------------------- |
@@ -398,6 +398,16 @@ OTLP destination name in Cloudflare: `sentry-otlp-traces` (see
 [#1092](https://github.com/kody-hq/kody/issues/1092) item 1 asks for Sentry
 alert rules (error-rate spike; cron-monitor on the DR staging watchdog) on a
 channel independent of Cloudflare Email. Those rules are dashboard-only.
+
+Performance issue detection (dashboard-only, **Project Settings →
+Performance**): **Slow DB Query** detection is off. Production SDK tracing is
+`0`, so every DB span in the project comes from the Workers Observability OTLP
+export, and those spans measure the client-side D1 call, including round trip
+and queueing. Server-side SQL time is usually under 1 ms, so a 1 s threshold
+flags indexed single-row lookups as noise. For real query cost, use D1 query
+insights or the D1 Analytics Engine data. **N+1 Query** detection stays on:
+repeated per-row D1 calls are a real round-trip cost. Batch them rather than
+muting the issue.
 
 Rotation: rotate the DSN/key in Sentry, update `SENTRY_DSN` and
 `SENTRY_AUTH_TOKEN`, deploy. The OTLP destination header must change with the
