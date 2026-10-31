@@ -49,8 +49,19 @@ export async function handleArtifactsRepoEventsQueue(
 				}
 			}
 		} catch (error) {
-			console.error('artifacts-repo-event-processing-failed', error)
+			console.error('artifacts-repo-event-processing-failed', {
+				queueMessageId: queueMessage.id,
+				attempts: queueMessage.attempts,
+				error: describeError(error),
+				cause: error instanceof Error ? describeError(error.cause) : null,
+			})
 			queueMessage.retry({ delaySeconds: unmatchedRetryDelaySeconds })
 		}
 	}
+}
+
+function describeError(error: unknown) {
+	if (error == null) return null
+	if (error instanceof Error) return `${error.name}: ${error.message}`
+	return String(error)
 }

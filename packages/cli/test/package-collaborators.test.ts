@@ -238,6 +238,8 @@ test('kody package grant and revoke call the package-scoped routes with --org', 
 				'kody_at_test',
 				'--api-url',
 				'https://api.kody.codes',
+				'--mcp-url',
+				'https://package-collaborators.test/mcp',
 			],
 			{
 				stdout: (text) => {
@@ -332,6 +334,8 @@ test('kody package grant --user adds an outside collaborator with Read', async (
 				'kody_at_test',
 				'--api-url',
 				'https://api.kody.codes',
+				'--mcp-url',
+				'https://package-collaborators.test/mcp',
 			],
 			{
 				stdout: (text) => {

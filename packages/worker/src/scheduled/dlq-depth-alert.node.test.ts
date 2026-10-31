@@ -326,7 +326,7 @@ test('one unread queue fails the lane after a sibling stuck queue has already pa
 		'kody-email-delivery-dlq': {
 			backlogCount: 0,
 			oldestMessageTimestampMs: null,
-			status: 500,
+			status: 403,
 		},
 	})
 	await expect(
@@ -421,4 +421,97 @@ test('a failed parked-message read fails the check instead of reporting healthy'
 			now,
 		}),
 	).rejects.toThrow('parked dead-letter messages (D1 unavailable)')
+})
+
+test('a Cloudflare 5xx that recovers on retry reads the queue normally', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const { kv } = memoryKv()
+	installQueues({
+		[stuckQueue]: {
+			backlogCount: 2,
+			oldestMessageTimestampMs: now.getTime() - 20 * 60_000,
+		},
+	})
+	const healthy = mocks.rawRequest.getMockImplementation()
+	let failed = false
+	mocks.rawRequest.mockImplementation(async (input: { path: string }) => {
+		if (!failed && input.path.endsWith(`id-${stuckQueue}/metrics`)) {
+			failed = true
+			return { status: 500, body: { success: false, errors: [] } }
+		}
+		return await healthy?.(input)
+	})
+	const result = await checkDlqDepthAndAlert({
+		env: productionEnv(kv),
+		now,
+		upstreamRetryDelaysMs: [0, 0],
+	})
+	expect(result).toMatchObject({
+		status: 'checked',
+		alerted: 1,
+		upstreamUnavailable: 0,
+	})
+	expect(mocks.captureMessage).toHaveBeenCalledOnce()
+	expect(mocks.captureMessage.mock.calls[0]?.[0]).toContain(stuckQueue)
+})
+
+test('a Cloudflare 5xx that outlasts retries warns on one issue instead of failing the lane', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const { kv } = memoryKv()
+	installQueues({
+		[stuckQueue]: {
+			backlogCount: 2,
+			oldestMessageTimestampMs: now.getTime() - 20 * 60_000,
+		},
+		'kody-email-delivery-dlq': {
+			backlogCount: 0,
+			oldestMessageTimestampMs: null,
+			status: 500,
+		},
+	})
+	const result = await checkDlqDepthAndAlert({
+		env: productionEnv(kv),
+		now,
+		upstreamRetryDelaysMs: [0, 0],
+	})
+	expect(result).toMatchObject({
+		status: 'checked',
+		alerted: 1,
+		upstreamUnavailable: 1,
+	})
+	const metricsCalls = mocks.rawRequest.mock.calls.filter(([request]) =>
+		(request as { path: string }).path.endsWith(
+			'id-kody-email-delivery-dlq/metrics',
+		),
+	)
+	expect(metricsCalls).toHaveLength(3)
+	expect(mocks.captureMessage).toHaveBeenCalledTimes(2)
+	expect(mocks.captureMessage.mock.calls[1]?.[0]).toContain(
+		'kody-email-delivery-dlq (Failed to read Cloudflare Queue metrics (500)',
+	)
+	expect(mocks.setFingerprint).toHaveBeenLastCalledWith([
+		'dlq-depth-alert',
+		'cloudflare-upstream',
+	])
+})
+
+test('a Cloudflare 5xx on the queue list warns and skips the tick', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const { kv } = memoryKv()
+	mocks.rawRequest.mockResolvedValue({
+		status: 500,
+		body: { success: false, errors: [] },
+	})
+	await expect(
+		checkDlqDepthAndAlert({
+			env: productionEnv(kv),
+			now,
+			upstreamRetryDelaysMs: [0, 0],
+		}),
+	).resolves.toEqual({ status: 'upstream_unavailable', reason: 'queue_list' })
+	expect(mocks.rawRequest).toHaveBeenCalledTimes(3)
+	expect(mocks.captureMessage).toHaveBeenCalledOnce()
+	expect(mocks.captureMessage.mock.calls[0]?.[0]).toContain(
+		'queue list (Failed to list Cloudflare Queues (500).)',
+	)
 })

@@ -140,6 +140,33 @@ function responseWithSetCookies(
 	return rebuilt
 }
 
+/**
+ * One Set-Cookie through the HttpOnly rule: auth cookies gain `HttpOnly`
+ * (`added_httponly`), other non-HttpOnly cookies are reported
+ * (`missing_httponly`). Deletion cookies are never reported.
+ */
+export function enforcePackageAppSetCookieHttpOnly(
+	cookie: string,
+	options: { clientReadable?: ReadonlyArray<string>; now: number },
+): { header: string; finding: PackageAppCookieFinding | null } {
+	if (hasHttpOnlyAttribute(cookie)) return { header: cookie, finding: null }
+	const cookieName = packageAppCookieName(cookie)
+	const isAuthCookie = isPackageAppAuthCookie({
+		cookieName,
+		clientReadable: options.clientReadable,
+	})
+	const report = !isDeletionCookie(cookie, options.now)
+	const finding = (reason: PackageAppCookieFinding['reason']) =>
+		report ? { cookieName: cookieName.slice(0, 128), reason } : null
+	if (isAuthCookie) {
+		return {
+			header: `${cookie}; HttpOnly`,
+			finding: finding('added_httponly'),
+		}
+	}
+	return { header: cookie, finding: finding('missing_httponly') }
+}
+
 export function enforcePackageAppCookieHttpOnly(
 	response: Response,
 	options: { clientReadable?: ReadonlyArray<string> } = {},
@@ -161,33 +188,14 @@ export function enforcePackageAppCookieHttpOnly(
 	const rewritten: Array<string> = []
 	let changed = false
 	for (const cookie of setCookies) {
-		if (hasHttpOnlyAttribute(cookie)) {
-			rewritten.push(cookie)
-			continue
-		}
-		const cookieName = packageAppCookieName(cookie)
-		const isAuthCookie = isPackageAppAuthCookie({
-			cookieName,
+		const enforced = enforcePackageAppSetCookieHttpOnly(cookie, {
 			clientReadable: options.clientReadable,
+			now,
 		})
-		if (isAuthCookie) {
-			rewritten.push(`${cookie}; HttpOnly`)
-			changed = true
-			if (!isDeletionCookie(cookie, now) && findings.length < 20) {
-				findings.push({
-					cookieName: cookieName.slice(0, 128),
-					reason: 'added_httponly',
-				})
-			}
-			continue
-		}
-
-		rewritten.push(cookie)
-		if (!isDeletionCookie(cookie, now) && findings.length < 20) {
-			findings.push({
-				cookieName: cookieName.slice(0, 128),
-				reason: 'missing_httponly',
-			})
+		rewritten.push(enforced.header)
+		if (enforced.header !== cookie) changed = true
+		if (enforced.finding && findings.length < 20) {
+			findings.push(enforced.finding)
 		}
 	}
 	return {

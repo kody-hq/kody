@@ -15,3 +15,8 @@ npm run control-kody -- request GET /onboarding --contains 'Onboarding'
   `/onboarding/step-3`
 - Agent/service variants: `/onboarding/step-1/$agent`,
   `/onboarding/step-2/$service`, `/onboarding/step-3/$agent`
+
+- Desktop machine onboarding opens only after the normal onboarding gate clears
+  and the user leaves onboarding. Regular browsers never show it
+- Skipping setup persists per account and installation. This machine in the web
+  account menu reopens setup. The native Machine menu is removed

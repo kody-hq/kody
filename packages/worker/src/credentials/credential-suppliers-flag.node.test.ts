@@ -10,8 +10,11 @@ vi.mock('#worker/feature-flags/service.ts', () => ({
 	isMissingFeatureFlagsTable: mocks.isMissingFeatureFlagsTable,
 }))
 
-const { isPackageCredentialSuppliersEnabled } =
-	await import('./credential-suppliers-flag.ts')
+const {
+	isPackageCredentialSuppliersEnabled,
+	packageCredentialSuppliersFlagTtlMs,
+	resetPackageCredentialSuppliersFlagCacheForTests,
+} = await import('./credential-suppliers-flag.ts')
 
 function dbForOwner(id: number | null) {
 	return {
@@ -28,6 +31,8 @@ function dbForOwner(id: number | null) {
 }
 
 beforeEach(() => {
+	vi.useRealTimers()
+	resetPackageCredentialSuppliersFlagCacheForTests()
 	mocks.isFeatureEnabled.mockReset().mockResolvedValue(true)
 	mocks.isMissingFeatureFlagsTable.mockReset().mockReturnValue(false)
 })
@@ -108,4 +113,37 @@ test('a missing feature flags table keeps supplier behavior disabled', async () 
 			orgId: 'org-fixture',
 		}),
 	).resolves.toBe(false)
+})
+
+test('reuses one org answer across requests until the TTL expires', async () => {
+	vi.useFakeTimers({ now: new Date('2026-10-31T00:00:00Z') })
+	const db = dbForOwner(42)
+	const evaluate = () =>
+		isPackageCredentialSuppliersEnabled({
+			db,
+			orgId: 'org-fixture',
+			request: new Request('https://app.example.test/'),
+		})
+
+	await expect(evaluate()).resolves.toBe(true)
+	mocks.isFeatureEnabled.mockResolvedValue(false)
+	await expect(evaluate()).resolves.toBe(true)
+	expect(mocks.isFeatureEnabled).toHaveBeenCalledTimes(1)
+
+	vi.advanceTimersByTime(packageCredentialSuppliersFlagTtlMs + 1)
+	await expect(evaluate()).resolves.toBe(false)
+	expect(mocks.isFeatureEnabled).toHaveBeenCalledTimes(2)
+	vi.useRealTimers()
+})
+
+test('does not cache a failed evaluation across requests', async () => {
+	const db = dbForOwner(42)
+	mocks.isFeatureEnabled.mockRejectedValueOnce(new Error('d1 down'))
+	await expect(
+		isPackageCredentialSuppliersEnabled({ db, orgId: 'org-fixture' }),
+	).rejects.toThrow('d1 down')
+	await expect(
+		isPackageCredentialSuppliersEnabled({ db, orgId: 'org-fixture' }),
+	).resolves.toBe(true)
+	expect(mocks.isFeatureEnabled).toHaveBeenCalledTimes(2)
 })

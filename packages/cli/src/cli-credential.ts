@@ -125,10 +125,17 @@ export function resolveCliCredential(
 	input: ResolveCliCredentialInput = {},
 ): CliCredential | null {
 	const purpose = input.purpose ?? 'call'
+	// Desktop explicitly opts into its browser login without changing any saved
+	// API tokens used by terminal commands or other clients.
+	const source = (input.env ?? process.env).KODY_CREDENTIAL_SOURCE
+	if (source && source !== 'login')
+		throw new Error('KODY_CREDENTIAL_SOURCE must be login when set.')
 	let picked: CliCredentialCandidate | null = null
 	const shadowed: Array<CliCredentialCandidate> = []
-	for (const source of precedence[purpose]) {
-		const loaded = loadCandidate(source, input)
+	for (const candidateSource of source === 'login'
+		? ['login' as const]
+		: precedence[purpose]) {
+		const loaded = loadCandidate(candidateSource, input)
 		// An unreadable store only fails the command when it would be used.
 		if (loaded.error !== undefined && !picked) throw loaded.error
 		if (!loaded.candidate) continue

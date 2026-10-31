@@ -4,6 +4,7 @@ import {
 	isMissingFeatureFlagsTable,
 } from '#worker/feature-flags/service.ts'
 import { packageCredentialSuppliersFlagKey } from '#universal/feature-flags/registry.ts'
+import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
 
 const enabledByRequest = new WeakMap<object, Map<string, Promise<boolean>>>()
 
@@ -41,10 +42,35 @@ async function evaluateForOrg(input: {
 }
 
 /**
- * Memoizes per `orgId` on the caller's `request` object only. There is no
- * process-wide cache for the no-request path: a shared Map keyed by orgId
- * would leak enabled/disabled results across users and requests. Callers that
- * load many packages for one org should pass `request` and/or a precomputed
+ * How long one org's supplier-flag answer is reused across requests. Same
+ * 15 s window as `callerFeatureFlagEvaluationTtlMs` and the package freshness
+ * tier, so a flag flip reaches package apps within one freshness window.
+ */
+export const packageCredentialSuppliersFlagTtlMs = 15_000
+
+/**
+ * The answer depends only on `orgId` (evaluated as the org's owner), never on
+ * the viewer, so an org-keyed cache cannot leak one visitor's answer to
+ * another. Failures are not cached.
+ */
+function createEnabledByOrgCache() {
+	return new PromiseLruCache<boolean>({
+		ttlMs: packageCredentialSuppliersFlagTtlMs,
+		limit: 1000,
+	})
+}
+
+let enabledByOrg = createEnabledByOrgCache()
+
+export function resetPackageCredentialSuppliersFlagCacheForTests() {
+	enabledByOrg = createEnabledByOrgCache()
+}
+
+/**
+ * Reused across requests per `orgId` for {@link packageCredentialSuppliersFlagTtlMs}
+ * (package-app serve calls this on every request), and memoized on the
+ * caller's `request` object so one request never sees two answers. Callers
+ * that load many packages for one org can still pass a precomputed
  * `supplierSemanticsEnabled` (see credential-detail listUsage / KODY-BV).
  */
 export async function isPackageCredentialSuppliersEnabled(input: {
@@ -52,7 +78,12 @@ export async function isPackageCredentialSuppliersEnabled(input: {
 	orgId: string
 	request?: object | null
 }): Promise<boolean> {
-	if (!input.request) return await evaluateForOrg(input)
+	const evaluate = () =>
+		enabledByOrg.getOrCreate({
+			cacheKey: input.orgId,
+			create: () => evaluateForOrg(input),
+		})
+	if (!input.request) return await evaluate()
 	let flags = enabledByRequest.get(input.request)
 	if (!flags) {
 		flags = new Map()
@@ -60,7 +91,7 @@ export async function isPackageCredentialSuppliersEnabled(input: {
 	}
 	let result = flags.get(input.orgId)
 	if (!result) {
-		result = evaluateForOrg(input)
+		result = evaluate()
 		flags.set(input.orgId, result)
 	}
 	try {

@@ -18,7 +18,10 @@ test('older CLI logins must sign in again before registering a device', () => {
 				user: { email: 'sam@example.com' },
 				scope: ['org:read'],
 			}),
-		/Sign in to CLI again/,
+		/Sign in to this machine again/,
 	)
-	assert.throws(() => registrationIdentity({}), /Sign in to CLI before/)
+	assert.throws(
+		() => registrationIdentity({}),
+		/Sign in to this machine before/,
+	)
 })

@@ -20,7 +20,12 @@ export default defineConfig({
 			project: ['tools/**/*.{ts,js,mjs,cjs}', '*.ts', 'e2e/**/*.ts'],
 		},
 		'packages/desktop': {
-			entry: ['cli-host.cjs', 'preload.cjs', 'test/**/*.cjs'],
+			entry: [
+				'cli-host.cjs',
+				'preload.cjs',
+				'electron-builder*.cjs',
+				'test/**/*.cjs',
+			],
 			project: ['**/*.cjs'],
 		},
 		'packages/worker': {
