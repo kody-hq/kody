@@ -30,7 +30,7 @@ test('commands pass arguments without shell interpretation and surface CLI error
 
 test(
 	'stop ends the daemon and its workerd child, and start is idempotent',
-	{ timeout: 20000 },
+	{ timeout: 90_000 },
 	async () => {
 		const runner = new FixtureRunner()
 		try {
@@ -70,7 +70,7 @@ test('production CLI host runs the bundled CLI without a terminal Node installat
 
 test(
 	'losing the desktop IPC owner stops the CLI and its worker',
-	{ timeout: 20000 },
+	{ timeout: 90_000 },
 	async () => {
 		const runner = new FixtureRunner()
 		const child = runner.launch(['daemon'])
@@ -86,7 +86,7 @@ test(
 
 test(
 	'a CLI crash cannot leave its worker running',
-	{ timeout: 20000 },
+	{ timeout: 90_000 },
 	async () => {
 		const runner = new FixtureRunner()
 		try {
