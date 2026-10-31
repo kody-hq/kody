@@ -20,7 +20,12 @@ import {
 	resolveSavedPackageImport,
 	SavedPackageNotFoundError,
 } from './package-import-resolution.ts'
-import { loadPublishedBundleArtifactByIdentity } from './published-bundle-artifacts.ts'
+import {
+	loadPublishedBundleArtifactByIdentity,
+	loadPublishedBundleArtifactsByIdentities,
+	publishedBundleLoadIdentityKey,
+	type LoadedPublishedBundleArtifact,
+} from './published-bundle-artifacts.ts'
 import { assertPublishedSourceCanRebuildWithoutInstallingDeps } from './published-source-dependencies.ts'
 import { isTypeDeclarationFilePath } from './static-kody-imports.ts'
 import { assertNotSealedSecretProviderExport } from '#mcp/secrets/secret-providers/sealed-export.ts'
@@ -125,6 +130,14 @@ type RewriteState = {
 	 * prepare.
 	 */
 	importNodesCache: ModuleImportNodesCache
+	/**
+	 * Importable-module artifacts prefetched in one batched identity SELECT
+	 * per module, keyed by {@link publishedBundleLoadIdentityKey}.
+	 */
+	prefetchedPublishedArtifacts: Map<
+		string,
+		LoadedPublishedBundleArtifact | null
+	>
 }
 
 async function maybeEnsurePublishedArtifactTarget(input: {
@@ -142,14 +155,20 @@ async function maybeEnsurePublishedArtifactTarget(input: {
 		manifest: input.loaded.manifest,
 		exportName,
 	})
-	const artifact = await loadPublishedBundleArtifactByIdentity({
-		env: input.state.env,
-		userId: input.state.userId,
+	const identity = {
 		sourceId: input.loaded.row.sourceId,
-		kind: 'importable-module',
+		kind: 'importable-module' as const,
 		artifactName: exportName,
 		entryPoint,
-	})
+	}
+	const prefetchKey = publishedBundleLoadIdentityKey(identity)
+	const artifact = input.state.prefetchedPublishedArtifacts.has(prefetchKey)
+		? input.state.prefetchedPublishedArtifacts.get(prefetchKey)
+		: await loadPublishedBundleArtifactByIdentity({
+				env: input.state.env,
+				userId: input.state.userId,
+				...identity,
+			})
 	if (!artifact?.artifact) {
 		return null
 	}
@@ -220,6 +239,66 @@ function assertReplacementsDoNotOverlap(
  * published source snapshot into the bundler VFS. Callers that need a live
  * rebuild must {@link materializePackageSourceIntoFiles} after an artifact miss.
  */
+/**
+ * Load every published importable artifact a module's static `kody:@` imports
+ * may compose in one batched identity SELECT instead of one per import
+ * (issue #4290). Best effort: anything that fails here falls back to the
+ * per-import path, which raises the real error.
+ */
+async function prefetchPublishedArtifactTargets(
+	state: RewriteState,
+	specifiers: ReadonlyArray<string>,
+) {
+	const identities: Array<{
+		sourceId: string
+		kind: 'importable-module'
+		artifactName: string
+		entryPoint: string
+	}> = []
+	for (const specifier of new Set(specifiers)) {
+		if (state.proxies.has(specifier)) continue
+		try {
+			const parsed = parseKodyPackageSpecifier(specifier)
+			if (parsed.packageName === state.rootPackage?.manifest.name) continue
+			assertNotSealedSecretProviderExport(parsed.exportName)
+			const loaded = await ensurePackageResolved(state, specifier)
+			if (!loaded.source.published_commit) continue
+			const exportName = normalizePackageExportKey(parsed.exportName)
+			const identity = {
+				sourceId: loaded.row.sourceId,
+				kind: 'importable-module' as const,
+				artifactName: exportName,
+				entryPoint: resolvePackageExportPath({
+					manifest: loaded.manifest,
+					exportName,
+				}),
+			}
+			if (
+				!state.prefetchedPublishedArtifacts.has(
+					publishedBundleLoadIdentityKey(identity),
+				)
+			) {
+				identities.push(identity)
+			}
+		} catch {
+			continue
+		}
+	}
+	if (identities.length < 2) return
+	try {
+		const loaded = await loadPublishedBundleArtifactsByIdentities({
+			env: state.env,
+			userId: state.userId,
+			identities,
+		})
+		for (const [key, artifact] of loaded) {
+			state.prefetchedPublishedArtifacts.set(key, artifact)
+		}
+	} catch {
+		// The per-import fallback repeats these reads and surfaces any failure.
+	}
+}
+
 async function ensurePackageResolved(
 	state: RewriteState,
 	specifier: string,
@@ -518,6 +597,16 @@ async function rewriteKodyImports(input: {
 	if (importNodes.length === 0 && dynamicImportNodes.length === 0) {
 		return boundFetchPrefix + input.source
 	}
+	await prefetchPublishedArtifactTargets(
+		input.state,
+		importNodes
+			.filter(
+				(node) =>
+					node.kind !== 'dynamic' &&
+					node.specifier.startsWith(packageSpecifierPrefix),
+			)
+			.map((node) => node.specifier),
+	)
 	const replacements: Array<RewriteReplacement> = []
 	for (const node of importNodes) {
 		if (node.specifier === 'kody:runtime') {
@@ -664,6 +753,7 @@ export async function prepareKodyGraphFiles(input: {
 		packages: new Map(),
 		publishedArtifactDependencies: [],
 		importNodesCache,
+		prefetchedPublishedArtifacts: new Map(),
 	}
 	for (const [filePath, content] of Object.entries(input.sourceFiles)) {
 		const normalizedSourcePath = normalizePackageWorkspacePath(filePath)

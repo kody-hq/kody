@@ -27,6 +27,7 @@ import {
 	getSecondaryButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
+import { formatTimestamp } from '../components/local-timestamp.tsx'
 import { AccountManagementMessage } from './account-management-components.tsx'
 import { selectCss } from './package-collaborators-parts.tsx'
 
@@ -592,7 +593,7 @@ export function ExecutionChainPanel(props: {
 			</div>
 			{chain.updatedAt ? (
 				<p css={mutedCss}>
-					Last changed {new Date(chain.updatedAt).toLocaleString()}
+					Last changed {formatTimestamp(chain.updatedAt)}
 					{chain.updatedBy ? ` by ${chain.updatedBy.label}` : ''}.
 				</p>
 			) : null}

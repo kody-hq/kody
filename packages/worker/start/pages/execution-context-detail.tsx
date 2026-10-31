@@ -65,6 +65,10 @@ import {
 } from './account-management-components.tsx'
 import { selectCss } from './package-collaborators-parts.tsx'
 import { recordBodyCss } from './record-table.tsx'
+import {
+	formatTimestamp,
+	formatTimestampDate,
+} from '../components/local-timestamp.tsx'
 
 const sectionCss = css({ display: 'grid', gap: spacing.sm })
 const mutedCss = css({ color: colors.textMuted, margin: 0 })
@@ -145,11 +149,11 @@ export function ExecutionContextDetail(props: {
 				<dt>Status</dt>
 				<dd data-testid="context-status">
 					{displayStatusLabel(status)}
-					{context.status === 'revoked' && context.revokedAt
-						? `, ${new Date(context.revokedAt).toLocaleDateString()}`
-						: context.lastSeenAt && status === 'offline'
-							? `, last seen ${new Date(context.lastSeenAt).toLocaleString()}`
-							: null}
+					{context.status === 'revoked' && context.revokedAt ? (
+						<>, {formatTimestampDate(context.revokedAt)}</>
+					) : context.lastSeenAt && status === 'offline' ? (
+						<>, last seen {formatTimestamp(context.lastSeenAt)}</>
+					) : null}
 				</dd>
 				<dt>Operator</dt>
 				<dd>{context.isOperator ? 'You' : `@${context.operator.handle}`}</dd>
@@ -1153,7 +1157,7 @@ function RunHistory(props: {
 						<tbody>
 							{runs.map((run) => (
 								<tr key={`${run.runId}:${run.dispatchedAt}`}>
-									<td>{new Date(run.dispatchedAt).toLocaleString()}</td>
+									<td>{formatTimestamp(run.dispatchedAt)}</td>
 									<td>@{run.requester.handle}</td>
 									<td>{durationLabel(run.durationMs)}</td>
 									<td>
@@ -1318,9 +1322,7 @@ function AuditLog(props: {
 						<li key={event.id}>
 							{auditEventLabel(event.action)}
 							{event.actor ? ` by ${event.actor.label}` : ''},{' '}
-							<time dateTime={event.at}>
-								{new Date(event.at).toLocaleString()}
-							</time>
+							<time dateTime={event.at}>{formatTimestamp(event.at)}</time>
 							{commandAuditSummary(event.detail) ? (
 								<>
 									{': '}

@@ -821,7 +821,11 @@
 			"sha256": "006fbd7348590dd4d72034fbf3665e2d6372e13af8f7338e69915aed6bdea4cc"
 		},
 		{
-			"filename": "0227-grants-allow-unmappable-credential-changes.sql",
+			"filename": "0229-users-personal-org-id-lookup-index.sql",
+			"sha256": "7f63aabddc9cc498cde6551a417cb2f5d941598b252e05ab67e0d85afa2b684a"
+		},
+		{
+			"filename": "0231-grants-allow-unmappable-credential-changes.sql",
 			"sha256": "89d2c767853b3991c35f588eff0ecd0a652d3956ac4e73abf4d1785bd2e169b4"
 		}
 	]

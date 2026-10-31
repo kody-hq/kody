@@ -37,8 +37,14 @@ vi.mock('./published-bundle-artifacts.ts', async () => {
 		...actual,
 		loadPublishedBundleArtifactByIdentity: (...args: Array<unknown>) =>
 			mockModule.loadPublishedBundleArtifactByIdentity(...args),
+		loadPublishedBundleArtifactsByIdentities: (...args: Array<unknown>) =>
+			mockModule.loadPublishedBundleArtifactsByIdentities(...args),
 	}
 })
+
+const { publishedBundleLoadIdentityKey } = await vi.importActual<
+	typeof PublishedBundleArtifactsModule
+>('./published-bundle-artifacts.ts')
 
 const { buildKodyAppBundle, buildKodyModuleBundle, hydrateKodyRuntimeModules } =
 	await import('./module-graph.ts')
@@ -317,6 +323,86 @@ test('hydrateKodyRuntimeModules terminates circular literal dynamic package impo
 	expect(
 		mockModule.loadPublishedBundleArtifactByIdentity,
 	).toHaveBeenCalledTimes(2)
+})
+
+test("buildKodyModuleBundle batches published artifact lookups for a module's static package imports", async () => {
+	passThroughBundler()
+	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue({
+		...createLoadedPackageSource(),
+		manifest: {
+			...createLoadedPackageSource().manifest,
+			exports: { './a': './a.js', './b': './b.js' },
+		},
+		files: {
+			'a.js': 'export default function a() { return "source-a" }',
+			'b.js': 'export default function b() { return "source-b" }',
+		},
+	})
+	const artifactFor = (name: string) => ({
+		row: {},
+		artifact: {
+			version: 1,
+			kind: 'importable-module',
+			artifactName: `./${name}`,
+			sourceId: 'source-1',
+			publishedCommit: 'commit-1',
+			entryPoint: `./${name}.js`,
+			mainModule: `${name}.js`,
+			modules: {
+				[`${name}.js`]: `export default function ${name}() { return "artifact-${name}" }`,
+			},
+			dependencies: [],
+			dynamicDependencies: [],
+			packageContext: null,
+			createdAt: '2026-05-11T00:00:00.000Z',
+		},
+	})
+	mockModule.loadPublishedBundleArtifactByIdentity.mockReset()
+	mockModule.loadPublishedBundleArtifactsByIdentities.mockReset()
+	mockModule.loadPublishedBundleArtifactsByIdentities.mockImplementation(
+		async (input: {
+			identities: Array<{
+				sourceId: string
+				kind: 'importable-module'
+				artifactName: string
+				entryPoint: string
+			}>
+		}) =>
+			new Map(
+				input.identities.map((identity) => [
+					publishedBundleLoadIdentityKey(identity),
+					artifactFor(identity.artifactName.replace('./', '')),
+				]),
+			),
+	)
+
+	const bundle = await buildLocal(
+		`import a from 'kody:@kentcdodds/example-package/a'
+import b from 'kody:@kentcdodds/example-package/b'
+
+export default async function run() {
+	return [a(), b()]
+}
+`,
+		{ ...localKody, dependencies: ['@kentcdodds/example-package'] },
+	)
+
+	expect(
+		mockModule.loadPublishedBundleArtifactsByIdentities,
+	).toHaveBeenCalledTimes(1)
+	expect(
+		mockModule.loadPublishedBundleArtifactsByIdentities.mock.calls[0]?.[0]
+			.identities,
+	).toHaveLength(2)
+	expect(
+		mockModule.loadPublishedBundleArtifactByIdentity,
+	).not.toHaveBeenCalled()
+	await expect(runHydratedEntry(bundle)).resolves.toEqual([
+		'artifact-a',
+		'artifact-b',
+	])
+	mockModule.loadPublishedBundleArtifactsByIdentities.mockReset()
 })
 
 test('buildKodyModuleBundle rejects nested dynamic kody package import rewrites clearly', async () => {

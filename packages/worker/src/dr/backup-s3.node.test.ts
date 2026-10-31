@@ -180,3 +180,34 @@ test('DR backup S3 client retries transient failures and fails closed otherwise'
 	)
 	expect(blobGets).toBe(2)
 })
+
+test('DR backup S3 client retries a conditional PUT conflict (409) and reports a lasting one as a precondition failure', async () => {
+	let racedPuts = 0
+	using _server = createMswNodeServer([
+		http.put(`${r2Origin}/backups/raced.tsv`, () => {
+			racedPuts += 1
+			if (racedPuts === 1) return new HttpResponse('conflict', { status: 409 })
+			return new HttpResponse('', { status: 200, headers: { etag: '"r"' } })
+		}),
+		http.put(`${r2Origin}/backups/stuck.tsv`, () => {
+			return new HttpResponse('conflict', { status: 409 })
+		}),
+		http.put(`${r2Origin}/backups/plain.tsv`, () => {
+			return new HttpResponse('conflict', { status: 409 })
+		}),
+	])
+	const client = createDrBackupS3Client(config, {
+		maxAttempts: 3,
+		baseDelayMs: 1,
+	})
+	await expect(
+		client.put('raced.tsv', 'a', { ifNoneMatch: '*' }),
+	).resolves.toEqual({ etag: '"r"' })
+	expect(racedPuts).toBe(2)
+	await expect(
+		client.put('stuck.tsv', 'a', { ifNoneMatch: '*' }),
+	).rejects.toBeInstanceOf(DrBackupPreconditionFailedError)
+	await expect(client.put('plain.tsv', 'a')).rejects.toThrow(
+		'DR backup PUT failed for plain.tsv: HTTP 409',
+	)
+})
