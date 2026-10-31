@@ -1803,7 +1803,6 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				: { status: 'finished', state: this.#run(input.runId)?.state ?? '' }
 		}
 		// A queued run whose earlier attempt was rejected keeps its queued row.
-		if (this.#dispatchingQueued.has(input.runId)) return { status: 'starting' }
 		const queued = this.ctx.storage.sql
 			.exec<{ lease_json: string; run_record_json: string | null }>(
 				`SELECT lease_json, run_record_json FROM queued WHERE run_id = ?`,
@@ -1816,6 +1815,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				? { status: 'finished', state: run.state }
 				: { status: 'not_found' }
 		}
+		if (this.#dispatchingQueued.has(input.runId)) return { status: 'starting' }
 		this.ctx.storage.sql.exec(
 			`DELETE FROM queued WHERE run_id = ?`,
 			input.runId,
