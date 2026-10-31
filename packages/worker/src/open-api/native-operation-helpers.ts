@@ -86,9 +86,9 @@ export function assertContextRunRuntimePathAllowed(
 }
 
 /**
- * Runtime paths with special handling on a context run: workflows never
- * start from a machine, and only the operator's own runs use credentials.
- * Credential values still never leave Kody cloud.
+ * Runtime paths with special handling on a context run: the operator's own
+ * runs start workflows and use credentials as in Kody cloud; anyone else's
+ * do neither. Credential values still never leave Kody cloud.
  */
 export function assertContextRunSpecialPathAllowed(
 	ctx: ApiInvocationContext,
@@ -96,12 +96,12 @@ export function assertContextRunSpecialPathAllowed(
 ) {
 	if (ctx.principal.kind !== 'execution-context-run') return
 	const [root, name] = path
-	if (root === 'workflows') {
+	if (root === 'workflows' && !ctx.principal.byOperator) {
 		throw new ApiError({
 			status: 403,
 			code: 'insufficient_scope',
 			message:
-				'Runs on an execution context cannot start workflows. Start the workflow from Kody cloud instead.',
+				"Only this execution context's operator can start workflows from runs on it. Start the workflow from Kody cloud, or from a context you operate.",
 			details: { reason: 'context_denied', path: path.join('.') },
 		})
 	}
