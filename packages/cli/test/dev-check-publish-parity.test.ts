@@ -56,7 +56,7 @@ async function withPackage(fn: (root: string) => Promise<void>) {
 		await writeStampedScopePackage(root)
 		await fn(root)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 }
 
@@ -153,7 +153,7 @@ test('kody dev check passes a data-only app package with no exports field', asyn
 		assert.match(out.stdout, /^ok\s+publish:manifest/m)
 		assert.doesNotMatch(out.stdout, /export:/)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 

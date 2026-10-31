@@ -50,7 +50,7 @@ test('track detaches the poll map so a concurrent poll cannot echo a rebuild', a
 		)
 		await watcher.close()
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -77,6 +77,6 @@ test('track reports mid-build edits that are not in ignoreChanges', async () => 
 		assert.deepEqual([...changed], [other])
 		await watcher.close()
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })

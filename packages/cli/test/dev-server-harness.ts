@@ -88,8 +88,8 @@ export async function withDevServer(
 		await auth.closeMock?.()
 		if (previousCache === undefined) delete process.env.KODY_CACHE_DIR
 		else process.env.KODY_CACHE_DIR = previousCache
-		await rm(root, { recursive: true, force: true })
-		await rm(cache, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
+		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
 	}
 }
 

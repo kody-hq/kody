@@ -180,7 +180,7 @@ test('P1: mock storage packageId is shared across ensureMockTarget callers', asy
 		assert.equal(body.result.value, '123456789012345678')
 		await second.server.close()
 	} finally {
-		await rm(cache, { recursive: true, force: true })
+		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -232,7 +232,7 @@ test('P2: metaGetCurrentUser is flat user_id; --org honored', async () => {
 			},
 		)
 	} finally {
-		await rm(cache, { recursive: true, force: true })
+		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -275,7 +275,7 @@ test('P2: local deps resolve self-package without login', async () => {
 		assert.match(resolved.modules[0]?.esModule ?? '', /42/)
 		void code
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -319,7 +319,7 @@ test('P2: .kody/deps.json maps unpublished sibling packages', async () => {
 		assert.deepEqual(resolved.unresolved, [])
 		assert.ok(resolved.modules[0]?.esModule.includes('pong'))
 	} finally {
-		await rm(parent, { recursive: true, force: true })
+		await rm(parent, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -363,7 +363,7 @@ test('P2: --invoke unknown export lists keys (exportsOnly)', async () => {
 			},
 		)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -405,7 +405,7 @@ test('P3: mocks.ts bundle_failed includes line number', async () => {
 			},
 		)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -457,7 +457,7 @@ export default async () => ({ ok: true })
 		assert.deepEqual(resolved.modules, [])
 		assert.deepEqual(resolved.unresolved, [])
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -502,7 +502,7 @@ test('P2: local dep bundle failure tip is not npm install', async () => {
 			},
 		)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -562,7 +562,7 @@ test('P2/#5: local dep bundles rewrite kody:runtime to flat alias', async () => 
 			/kody:@kentcdodds\/grok-bot\/kody:runtime/,
 		)
 	} finally {
-		await rm(parent, { recursive: true, force: true })
+		await rm(parent, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -670,6 +670,6 @@ test('prod still fetches package-graph when local deps cover all imports (gatewa
 		)
 		assert.ok(result.modules.some((m) => m.name === 'kody:@local/demo/helper'))
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })

@@ -155,7 +155,7 @@ test('A: local dep importing kody:runtime absolutizes the flat runtime alias', a
 		assert.doesNotMatch(mod.esModule, /from ["']\.__kody_runtime__\.js["']/)
 		assert.doesNotMatch(mod.esModule, /kody:@repro\/runtime-dep\/\.__kody/)
 	} finally {
-		await rm(parent, { recursive: true, force: true })
+		await rm(parent, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -180,7 +180,7 @@ test('B: local dep importing another local dep absolutizes the nested kody:@ imp
 		)
 		assert.ok(resolved.modules.some((m) => m.name === 'kody:@repro/leaf/value'))
 	} finally {
-		await rm(parent, { recursive: true, force: true })
+		await rm(parent, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -206,7 +206,7 @@ test('C: local dep importing both kody:runtime and a nested local dep', async ()
 		assert.match(midMod.esModule, /from ["']\/kody:@repro\/leaf\/value["']/)
 		assert.ok(resolved.modules.some((m) => m.name === 'kody:@repro/leaf/value'))
 	} finally {
-		await rm(parent, { recursive: true, force: true })
+		await rm(parent, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -292,7 +292,7 @@ export default {
 		assert.deepEqual(JSON.parse(body), { hasKody: true, value: 'leaf-ok' })
 	} finally {
 		await handle?.kill()
-		await rm(parent, { recursive: true, force: true })
-		await rm(workDir, { recursive: true, force: true })
+		await rm(parent, { recursive: true, force: true, maxRetries: 10 })
+		await rm(workDir, { recursive: true, force: true, maxRetries: 10 })
 	}
 })

@@ -95,7 +95,7 @@ test('loadPackageManifest accepts cron and interval schedules like production', 
 			every: '15m',
 		})
 	} finally {
-		await rm(dir, { recursive: true, force: true })
+		await rm(dir, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -128,7 +128,7 @@ test('loadPackageManifest rejects invalid job schedules with a clear fix', async
 			},
 		)
 	} finally {
-		await rm(dir, { recursive: true, force: true })
+		await rm(dir, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -149,7 +149,7 @@ test('loadPackageManifest matches production accept fixtures', async () => {
 				fixture.name,
 			)
 		} finally {
-			await rm(dir, { recursive: true, force: true })
+			await rm(dir, { recursive: true, force: true, maxRetries: 10 })
 		}
 	}
 })
@@ -174,7 +174,7 @@ test('loadPackageManifest matches production reject fixtures', async () => {
 				},
 			)
 		} finally {
-			await rm(dir, { recursive: true, force: true })
+			await rm(dir, { recursive: true, force: true, maxRetries: 10 })
 		}
 	}
 })

@@ -31,6 +31,6 @@ test('package roots use the same canonical path through directory aliases', asyn
 		assert.equal((await loadPackageManifest(alias)).root, await realpath(root))
 		assert.equal((await loadPackageManifest(root)).root, await realpath(root))
 	} finally {
-		await rm(dir, { recursive: true, force: true })
+		await rm(dir, { recursive: true, force: true, maxRetries: 10 })
 	}
 })

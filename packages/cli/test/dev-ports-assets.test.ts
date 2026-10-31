@@ -201,7 +201,7 @@ test('loadPackageManifest reads kody.dev and the object form of kody.app.client'
 			/kody\.app\.client\.entry must be a non-empty string/,
 		)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -407,7 +407,7 @@ test('runPrebuild keeps a final incomplete stderr line and aborts on signal', as
 		abort.abort()
 		await assert.rejects(pending, /kody\.dev\.prebuild aborted/)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -525,7 +525,7 @@ test('onListening failure closes the bound HTTP server', async () => {
 	} finally {
 		if (previousCache === undefined) delete process.env.KODY_CACHE_DIR
 		else process.env.KODY_CACHE_DIR = previousCache
-		await rm(root, { recursive: true, force: true })
-		await rm(cache, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
+		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
 	}
 })

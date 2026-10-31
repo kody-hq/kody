@@ -258,7 +258,7 @@ test('kody dev fetch rejects on a bundle error, prints it once, and closes the m
 		assert.equal(stdout, '')
 		assert.doesNotMatch(stderr, /entry\.ts:1:52/)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -311,7 +311,7 @@ test('kody dev fetch --json writes a build_error object to stdout on bundle fail
 		assert.match(event.message, /app[\\/]entry\.ts:1:52/)
 		assert.ok(typeof event.ts === 'string' && event.ts.length > 0)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 

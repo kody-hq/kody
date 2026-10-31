@@ -89,7 +89,7 @@ test('listPackageCheckPaths omits gitignored files', async () => {
 		assert.ok(paths.includes('src/index.ts'))
 		assert.ok(!paths.includes('src/generated.js'))
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -157,7 +157,7 @@ test('kody dev check --offline fails when an export imports a gitignored file', 
 		)
 		assert.doesNotMatch(out.stdout, /kody\.dev\.prebuild/)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -187,7 +187,7 @@ test('kody dev check --offline hints that prebuild is serve-only when declared',
 		assert.match(out.stdout, /kody\.dev\.prebuild runs only in `kody dev`/)
 		assert.match(out.stdout, /commit generated output/)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -218,6 +218,6 @@ test('kody dev check --offline passes when the generated import is committed', a
 		assert.equal(code, 0)
 		assert.match(out.stdout, /kody dev check passed/)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })

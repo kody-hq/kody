@@ -110,7 +110,7 @@ test('packageStorageSql returns INSERT RETURNING rows', async () => {
 		assert.deepEqual(emptyReturning, { rows: [] })
 	} finally {
 		closePackageSqlDbsForSession('returning')
-		await rm(cache, { recursive: true, force: true })
+		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -165,6 +165,6 @@ test('packageStorageSql UPDATE/DELETE RETURNING and plain mutations', async () =
 		assert.equal(plain.changes, 1)
 	} finally {
 		closePackageSqlDbsForSession('returning-dml')
-		await rm(cache, { recursive: true, force: true })
+		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
 	}
 })

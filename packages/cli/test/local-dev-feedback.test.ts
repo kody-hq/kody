@@ -180,7 +180,7 @@ export default async function main() {
 		assert.ok(mocksCheck)
 		assert.match(mocksCheck.detail ?? '', /suggested/)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -265,6 +265,6 @@ export default async function post(userReport: string) {
 		assert.equal(optedCode, 0)
 		assert.doesNotMatch(opted, /WARN\s+secret-resolution/)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })

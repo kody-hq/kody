@@ -61,7 +61,7 @@ test('ensureMsw returns cached package without installing', async () => {
 		const mod = await importMsw({ cacheDir })
 		assert.equal(typeof mod.getResponse, 'function')
 	} finally {
-		await rm(cacheDir, { recursive: true, force: true })
+		await rm(cacheDir, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -90,7 +90,7 @@ test('ensureMsw installs into the Kody cache when missing', async () => {
 		assert.equal(again, packageDir)
 		assert.deepEqual(installs, [mswPackageSpec])
 	} finally {
-		await rm(cacheDir, { recursive: true, force: true })
+		await rm(cacheDir, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -121,6 +121,6 @@ test('ensureMsw reports a clear fix when install fails', async () => {
 		assert.deepEqual(installs, [mswPackageSpec])
 		assert.equal(existsSync(cachedMswRoot(cacheDir)), false)
 	} finally {
-		await rm(cacheDir, { recursive: true, force: true })
+		await rm(cacheDir, { recursive: true, force: true, maxRetries: 10 })
 	}
 })

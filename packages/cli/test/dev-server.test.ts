@@ -397,6 +397,6 @@ test('sweepStaleDevDirs reaps dirs of dead owners and legacy orphans only', asyn
 		])
 		void legacyFresh
 	} finally {
-		await rm(tmp, { recursive: true, force: true })
+		await rm(tmp, { recursive: true, force: true, maxRetries: 10 })
 	}
 })

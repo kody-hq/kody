@@ -147,7 +147,7 @@ export const handlers = [
 		})
 		assert.equal(result.status, 200)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -156,7 +156,7 @@ test('loadPackageMocks returns null when the file is missing', async () => {
 	try {
 		assert.equal(await loadPackageMocks(root), null)
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -190,6 +190,6 @@ test('mock gateway fetch shim uses a flat module name (no path-join)', async () 
 			mockGatewayFetchShimModuleName,
 		])
 	} finally {
-		await rm(root, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
 	}
 })

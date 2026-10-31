@@ -148,8 +148,8 @@ test('kody dev --json emits NDJSON events and --ready-file is written before rea
 		else process.env.KODY_CACHE_DIR = previousCache
 		if (previousWorkerd === undefined) delete process.env.KODY_WORKERD_PATH
 		else process.env.KODY_WORKERD_PATH = previousWorkerd
-		await rm(root, { recursive: true, force: true })
-		await rm(cache, { recursive: true, force: true })
+		await rm(root, { recursive: true, force: true, maxRetries: 10 })
+		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -171,7 +171,7 @@ test('removeOwnedReadyFile only deletes the ready file when the pid still matche
 		assert.equal(existsSync(path), false, 'removes the file this process wrote')
 		await removeOwnedReadyFile(path, 111)
 	} finally {
-		await rm(dir, { recursive: true, force: true })
+		await rm(dir, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -253,7 +253,7 @@ test('findRunningDevServer drops registrations whose process is gone', async () 
 			null,
 		)
 	} finally {
-		await rm(cache, { recursive: true, force: true })
+		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -312,7 +312,7 @@ test('dev registry keys by target and removeDevRegistration refuses successor/un
 			'unreadable successor file is not deleted',
 		)
 	} finally {
-		await rm(cache, { recursive: true, force: true })
+		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
