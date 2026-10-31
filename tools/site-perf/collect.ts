@@ -34,6 +34,8 @@ export type SitePerfPageProbe = {
  */
 export type SitePerfPackageAppProbe = {
 	url: string
+	/** Set when a sample after the first failed, so the series is partial. */
+	error?: string
 	samples: Array<{
 		status: number
 		ttfbMs: number
@@ -249,8 +251,13 @@ async function probePackageApp(
 				),
 			})
 		}
-	} catch {
+	} catch (error) {
 		if (samples.length === 0) return null
+		return {
+			url,
+			error: `sample ${samples.length + 1} of ${packageAppProbeSamples} failed: ${error instanceof Error ? error.message : String(error)}`,
+			samples,
+		}
 	}
 	return { url, samples }
 }

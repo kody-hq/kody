@@ -69,9 +69,9 @@ Owner grants read access on the organization: **Grants** page,
 From the CLI: `kody api accessGrant --org <slug> --params '<that JSON>'`. Add
 `"expires_at": "<ISO time>"` for temporary access: the grant stops counting at
 that time. A new grant without `expires_at` never expires. Rewriting a grant
-without `expires_at` keeps its current expiry; pass `null` to make it unlimited.
-`accessList` still shows an expired grant, with its past `expires_at`, until you
-rewrite or revoke it.
+without `expires_at` keeps a future expiry but drops one that has already
+passed; pass `null` to make it unlimited. `accessList` still shows an expired
+grant, with its past `expires_at`, until you rewrite or revoke it.
 
 | Permission         | Reads                                                                                       |
 | ------------------ | ------------------------------------------------------------------------------------------- |

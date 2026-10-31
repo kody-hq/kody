@@ -219,7 +219,9 @@ publish refuses code that passes `credential`, `credentials`, or
 or `personal`, relative to the run's org. `secretSet` and `secretList` use a
 different word, the storage scope (`user`, `package`, or `session`), which says
 where a Key is stored, not whose it is. A `user`-scope Key is an owner-level Key
-of the org it was saved in, not a personal credential.
+of the org it was saved in; `user` alone does not make it a personal credential.
+It reads `personal` only when its owner grants it from their personal org to a
+team org and it runs there (see the table).
 
 | Credential                                                                   | `secretList` scope            | `client.scope`                 |
 | ---------------------------------------------------------------------------- | ----------------------------- | ------------------------------ |
@@ -687,11 +689,14 @@ Pass a map on `execute` next to its `code`:
 ```
 
 A string picks by name, and an object adds `scope` when an org and a personal
-credential share a name. For a `multiple` need, an array picks several for
-`credentials(key)` (`"google": ["work", "personal"]`), and `[]` picks none on
-purpose. On `execute`, a key that no package in the run declares gets a warning,
-not a failure. The CLI takes the same picks (`--invoke` writes the passthrough
-for you):
+credential share a name. Package-bound Keys also read `org` scope, so when a
+`user`-scope Key and a package Key share a name, a `{ name, scope }` pick always
+gets the `user`-scope Key. Give them distinct names, or map a need that must use
+the package Key in the package's credential settings. For a `multiple` need, an
+array picks several for `credentials(key)` (`"google": ["work", "personal"]`),
+and `[]` picks none on purpose. On `execute`, a key that no package in the run
+declares gets a warning, not a failure. The CLI takes the same picks (`--invoke`
+writes the passthrough for you):
 
 ```bash
 npx @kodycodes/cli execute --invoke kody:@you/pr-digest/summarize \

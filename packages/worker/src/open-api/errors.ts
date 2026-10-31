@@ -108,7 +108,6 @@ export const apiErrorCodes = [
 	'execution_context_unavailable',
 	'execution_context_lease_invalid',
 	'execution_context_access_lost',
-	'execution_context_credential_not_granted',
 	'context_not_revoked',
 	'commands_opt_in_local',
 	'execution_context_commands_off',

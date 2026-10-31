@@ -18,9 +18,7 @@ import {
 	type OwnerId,
 	type PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { contextRunCredentials } from './credential-grant.ts'
 import { ExecutionContextError } from './errors.ts'
-import { type RunCredentialUse } from './run-credential-use.ts'
 import {
 	type ExecutionContextLease,
 	type ExecutionContextRunResult,
@@ -284,36 +282,14 @@ export function requirementRefusal(
 	return null
 }
 
-/**
- * Why a context cannot serve the run's credentials, or null when it can. The
- * operator's own runs use credentials as they would in Kody cloud; a run by
- * anyone else that can use one is skipped before the code starts.
- */
-export function credentialRefusal(input: {
-	operatorUserId: string
-	requesterUserId: string
-	credentialUse: RunCredentialUse
-}): string | null {
-	if (contextRunCredentials(input) === 'requester') return null
-	return input.credentialUse.kind === 'none'
-		? null
-		: 'credentials_operator_only'
-}
-
 /** Why a context cannot take this run, or null when it can. */
 export function grantRefusal(input: {
 	grant: EcpGrant
 	requires: ReadonlyArray<ExecuteRequirement>
-	operatorUserId: string
-	requesterUserId: string
-	credentialUse: RunCredentialUse
 	/** What the daemon advertised; `fs` means its effective mount set is non-empty. */
 	capabilities: EcpCapabilities
 }): string | null {
-	return (
-		requirementRefusal(input.grant, input.requires, input.capabilities) ??
-		credentialRefusal(input)
-	)
+	return requirementRefusal(input.grant, input.requires, input.capabilities)
 }
 
 function noContext(attempts: Array<RoutingAttempt>, message: string): never {
@@ -356,11 +332,6 @@ export async function routeExecute(input: {
 	params: unknown
 	conversationId?: string
 	credentials: CredentialCallMap | null
-	/**
-	 * What the run can do with credentials. Called at most once, and only
-	 * when the run would land on someone else's context.
-	 */
-	credentialUse: () => Promise<RunCredentialUse>
 	apiUrl: string
 	waitMs: number
 	signal?: AbortSignal
@@ -442,8 +413,6 @@ export async function routeExecute(input: {
 			metadata: attempts.length > 0 ? metadata(null, true) : null,
 		}
 	}
-	let credentialUse: Promise<RunCredentialUse> | null = null
-	const credentialUseOf = () => (credentialUse ??= input.credentialUse())
 	let lastTried: ExecutionContextRow | null = null
 	let firstOffline: {
 		row: ExecutionContextRow
@@ -497,15 +466,7 @@ export async function routeExecute(input: {
 		}
 		const grant = parseGrant(row)
 		const sharedRun = row.operator_user_id !== input.request.userId
-		const refusal =
-			requirementRefusal(grant, requires, parseCapabilities(row)) ??
-			(sharedRun
-				? credentialRefusal({
-						operatorUserId: row.operator_user_id,
-						requesterUserId: input.request.userId,
-						credentialUse: await credentialUseOf(),
-					})
-				: null)
+		const refusal = requirementRefusal(grant, requires, parseCapabilities(row))
 		if (refusal) {
 			skip(refusal)
 			continue
@@ -588,10 +549,7 @@ export async function routeExecute(input: {
 					row,
 					request,
 					// The drain re-checks the grant, which may change while queued.
-					lease:
-						input.queue && sharedRun
-							? { ...lease, credentialUse: await credentialUseOf() }
-							: lease,
+					lease,
 					requires,
 				}
 			}

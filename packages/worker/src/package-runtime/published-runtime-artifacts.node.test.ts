@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import { type EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	type BundleArtifactKind,
 	isUsableStoredPublishedBundleArtifact,
@@ -6,6 +7,7 @@ import {
 	readPackageAppWorkerTemplate,
 	readPublishedBundleArtifact,
 	writePublishedBundleArtifact,
+	writePublishedSourceSnapshot,
 } from './published-runtime-artifacts.ts'
 
 test('isUsableStoredPublishedBundleArtifact keeps clean v1 payloads and rejects remix-injected ones', () => {
@@ -244,4 +246,39 @@ test('module and job bundles never write a package-app template', async () => {
 	expect([...store.keys()].some((key) => key.startsWith('package-app'))).toBe(
 		false,
 	)
+})
+
+test('a same-commit snapshot repair drops the template so cold builds fall back', async () => {
+	const { env } = fakeKvEnv()
+	await writePublishedBundleArtifact({
+		env,
+		artifact: publishedArtifact('app'),
+	})
+	await writePublishedBundleArtifact({
+		env,
+		artifact: publishedArtifact('app-client'),
+	})
+	await writePublishedSourceSnapshot({
+		env,
+		source: {
+			id: 'source-app',
+			published_commit: 'commit-2',
+			manifest_path: 'package.json',
+			source_root: '/',
+			repo_id: 'repo-1',
+			entity_kind: 'package',
+			entity_id: 'pkg-app',
+		} as unknown as EntitySourceRow,
+		files: { 'package.json': '{}' },
+		invalidateExistingArtifacts: true,
+	})
+	await expect(
+		readPackageAppWorkerTemplate({
+			env,
+			sourceId: 'source-app',
+			publishedCommit: 'commit-2',
+			appEntry: 'src/app.ts',
+			clientEntry: 'src/client.ts',
+		}),
+	).resolves.toEqual({ app: null, client: undefined })
 })

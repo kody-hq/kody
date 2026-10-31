@@ -1,6 +1,5 @@
 import { type z } from 'zod'
 import { type ApiInvocationContext, type ApiPrincipal } from './context.ts'
-import { isCredentialedRuntimeCall } from '#worker/execution-contexts/credential-grant.ts'
 import { ApiError, invalidRequest } from './errors.ts'
 
 export type NativeApiOperationDefinition = {
@@ -89,15 +88,14 @@ export function assertContextRunRuntimePathAllowed(
 
 /**
  * Runtime paths with special handling on a context run: the operator's own
- * runs start workflows and use credentials as in Kody cloud; anyone else's
- * do neither. Credential values still never leave Kody cloud.
+ * runs start workflows as in Kody cloud; anyone else's cannot.
  */
 export function assertContextRunSpecialPathAllowed(
 	ctx: ApiInvocationContext,
 	path: ReadonlyArray<string>,
 ) {
 	if (ctx.principal.kind !== 'execution-context-run') return
-	const [root, name] = path
+	const [root] = path
 	if (root === 'workflows' && !ctx.principal.byOperator) {
 		throw new ApiError({
 			status: 403,
@@ -107,16 +105,4 @@ export function assertContextRunSpecialPathAllowed(
 			details: { reason: 'context_denied', path: path.join('.') },
 		})
 	}
-	const credentialed =
-		root === 'kody' &&
-		typeof name === 'string' &&
-		isCredentialedRuntimeCall(name)
-	if (!credentialed) return
-	if (ctx.principal.credentials === 'requester') return
-	throw new ApiError({
-		status: 403,
-		code: 'execution_context_credential_not_granted',
-		message: `Only this execution context's operator can use credentials in runs on it, so kody.${name} cannot run here. Run this on Kody cloud, or on a context you operate.`,
-		details: { path: path.join('.'), reason: 'context_operator_only' },
-	})
 }

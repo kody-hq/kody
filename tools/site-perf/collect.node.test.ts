@@ -219,3 +219,27 @@ test('collectSitePerf omits a package-app probe that cannot connect', async () =
 		vi.unstubAllGlobals()
 	}
 })
+
+test('collectSitePerf marks a partial package-app series', async () => {
+	let appRequests = 0
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL) => {
+			const url = new URL(String(input))
+			if (url.hostname === 'kentcdodds.kody.run') {
+				appRequests += 1
+				if (appRequests > 1) throw new Error('reset')
+				return new Response('ok')
+			}
+			if (url.pathname === '/') return new Response(healthyHtml)
+			throw new Error(`unexpected probe: ${url}`)
+		}),
+	)
+	try {
+		const report = await collectSitePerf({ url: 'https://kody.codes/', budget })
+		expect(report.packageApp?.samples).toHaveLength(1)
+		expect(report.packageApp?.error).toBe('sample 2 of 3 failed: reset')
+	} finally {
+		vi.unstubAllGlobals()
+	}
+})

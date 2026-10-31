@@ -1074,7 +1074,7 @@ test('execute tool names the context a run ran on without raw ids', async () => 
 				target: 'ec_old',
 				name: 'old-box',
 				outcome: 'skipped' as const,
-				reason: 'credentials_operator_only',
+				reason: 'no_lan',
 			},
 			{ target: 'ec_box', name: 'build-box', outcome: 'ran' as const },
 		],
@@ -1116,7 +1116,7 @@ test('execute tool names the context a run ran on without raw ids', async () => 
 		},
 	})
 	const line =
-		'Ran on build-box (your machine) after old-box was skipped (credentials operator only).'
+		'Ran on build-box (your machine) after old-box was skipped (no lan).'
 	expect(response.content).toContainEqual({ type: 'text', text: line })
 	expect(JSON.stringify(response.content)).not.toContain('ec_')
 })

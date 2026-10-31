@@ -205,22 +205,15 @@ production (or any deployment with signing keys).
   grant allows. Credentialed calls (`authenticatedFetch`, `gatewayFetch`,
   `oauthClientCredentials`, `credentialClient*`) run from Kody cloud, so
   credential values never reach the machine.
-- Grants have no credential setting. The operator's own runs on their context
-  use credentials exactly as the same run in Kody cloud (token scopes,
-  credential picks and grants, package capabilities, org grants). Anyone else's
-  run on a shared context uses no credentials (`credential-grant.ts`). Each hop
-  derives this from operator and requester and puts it on the request
-  (`credential.contextCredentialIds`: `null` for the operator, empty for anyone
-  else), and `resolveCredential` refuses before reading a value
-  (`context-credential-grant.ts`). The streaming gateway-fetch hop uses the same
-  check as `gatewayFetch`.
-- Before a run starts, routing works out which credentials it can use
-  (`run-credential-use.ts`): the entry module and every `kody:` package its
-  static imports reach, read from publish metadata (needs closure, credential
-  stamp) or, once per source and commit, from the published files (KV
-  `credential-use:v2`). Only a run on someone else's context needs this: when it
-  can use a credential the context is skipped (`credentials_operator_only`), so
-  the chain falls through to the next entry or cloud.
+- Grants have no credential setting, and there is no context-level credential
+  narrowing. Every run on a context uses the requester's credentials exactly as
+  the same run in Kody cloud (token scopes, credential picks and grants, package
+  capabilities, org grants). On a shared context only the operator and people
+  who opted in can run at all (`loadContextAccess`, `not_opted_in`), and that
+  opt-in is the consent for credential use; its notice (`trust-copy.ts`,
+  `universal/execution-context-trust-copy.ts`) says the machine can use their
+  credentials and read the responses while a run is active. Routing never skips
+  a context for credential reasons.
 - A busy context (daemon not accepting, or every slot taken) is skipped like an
   offline one and the chain falls through; `ranOn.attempts` records
   `outcome: "busy"`. The session counts runs dispatched but not yet accepted
