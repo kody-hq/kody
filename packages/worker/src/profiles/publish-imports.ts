@@ -33,7 +33,8 @@ export async function assertProfileCanPublishImports(input: {
 			userId: input.ownerUserId,
 			name,
 		})
-		// A missing import fails the publish checks with its own message.
+		// A missing import is not a profile question: saves already accept it and
+		// the run fails with SavedPackageNotFoundError, for profiles and people alike.
 		if (!row) continue
 		const decision = checkPermission(
 			access,

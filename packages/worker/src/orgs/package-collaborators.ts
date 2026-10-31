@@ -221,6 +221,8 @@ export async function listPackageCollaborators(input: {
 			avatarUrl: null,
 			teamSlug: null,
 			teamMemberCount: null,
+			profileName: grant.profileName,
+			profileActive: grant.active,
 			preset: readPresetFromPermissions(grant.permissions),
 			permissions: grant.permissions,
 			createdAt: grant.createdAt,

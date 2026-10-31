@@ -38,6 +38,16 @@ const collaboratorSchema = z.object({
 	display_name: z.string().nullable(),
 	team_slug: z.string().nullable(),
 	team_name: z.string().nullable(),
+	profile_name: z
+		.string()
+		.nullable()
+		.describe('The profile name, for a profile collaborator.'),
+	profile_active: z
+		.boolean()
+		.nullable()
+		.describe(
+			'For a profile collaborator: false once it or a parent is revoked or expired, so the grant no longer reaches anything.',
+		),
 	preset: grantPresetSchema
 		.nullable()
 		.describe('Null for an advanced grant; see permissions.'),
@@ -63,6 +73,8 @@ function toCollaboratorPayload(collaborator: PackageCollaboratorView) {
 		display_name: collaborator.displayName,
 		team_slug: collaborator.teamSlug,
 		team_name: collaborator.subjectType === 'team' ? collaborator.label : null,
+		profile_name: collaborator.profileName ?? null,
+		profile_active: collaborator.profileActive ?? null,
 		preset: collaborator.preset,
 		permissions: collaborator.permissions,
 		created_at: collaborator.createdAt,

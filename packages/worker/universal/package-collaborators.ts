@@ -53,6 +53,10 @@ export type PackageCollaboratorView = {
 	teamSlug: string | null
 	/** Live member count for a team, or for the org subject. */
 	teamMemberCount: number | null
+	/** Set only for a profile collaborator (ADR 0092). */
+	profileName?: string
+	/** False once the profile or a parent is revoked or expired. */
+	profileActive?: boolean
 	/** Null for an advanced grant with an explicit permission list. */
 	preset: PackageCollaboratorPreset | null
 	permissions: Array<string>

@@ -53,7 +53,7 @@ export const selfServeExperiments = [
 			'Give an agent or bot its own identity in an org, with only the access you hand it, an optional expiry, and sub-profiles for the agents it starts. A profile only reaches what you and every parent profile granted it, including packages shared with it from their Collaborators tab.',
 		docsSlug: 'profiles',
 		stage:
-			'Early access: profiles exist but nothing runs as a profile yet; profile authorization and tokens come next.',
+			'Early access: profile access rules are live; tokens that let an agent run as a profile come next.',
 	},
 	{
 		id: 'package-skills',
