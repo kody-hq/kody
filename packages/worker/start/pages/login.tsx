@@ -489,9 +489,13 @@ export function LoginPage({
 				note={
 					isSignup
 						? 'JavaScript is off. Creating an account needs JavaScript. If you already have an account, sign in instead.'
-						: deviceSignInAuthorize
-							? 'JavaScript is off. Sign in with your email and password, or use Sign in on another device. Passkeys and social sign-in need JavaScript.'
-							: 'JavaScript is off. Sign in with your email and password. Passkeys and social sign-in need JavaScript.'
+						: turnstileSiteKey
+							? deviceSignInAuthorize
+								? 'JavaScript is off. Email and password sign-in needs a quick human check that uses JavaScript, so use Sign in on another device, or turn JavaScript on.'
+								: 'JavaScript is off. Email and password sign-in needs a quick human check that uses JavaScript, so turn JavaScript on to sign in.'
+							: deviceSignInAuthorize
+								? 'JavaScript is off. Sign in with your email and password, or use Sign in on another device. Passkeys and social sign-in need JavaScript.'
+								: 'JavaScript is off. Sign in with your email and password. Passkeys and social sign-in need JavaScript.'
 				}
 			/>
 

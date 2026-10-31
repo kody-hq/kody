@@ -21,8 +21,12 @@ a plain form: enter your email and password and press **Sign in**. If your
 account uses two-factor authentication, enter the code on the next page. Then
 choose **Allow** on the app's consent page.
 
-Passkeys and social sign-in (GitHub, Google, and others) need JavaScript, so use
-your email and password, or the option below.
+This works on browsers that run older JavaScript, such as e-readers. The page
+draws a quick human check with a small script, so if JavaScript is turned off
+completely, use **Sign in on another device** instead.
+
+Passkeys and social sign-in (GitHub, Google, and others) need modern JavaScript,
+so use your email and password, or the option below.
 
 ## Sign in on another device
 

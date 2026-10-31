@@ -183,7 +183,10 @@ e-reader on Chromium 80, or JavaScript turned off). Nothing changes for the app;
 keep sending visitors to `/-/auth/login`.
 
 - **Email and password:** the Kody sign-in, two-factor, and consent pages are
-  plain HTML forms. Passkeys and social sign-in still need JavaScript.
+  plain HTML forms. The human check still needs a little JavaScript (a small
+  classic script draws it on old engines), so visitors with JavaScript fully off
+  use Sign in on another device. Passkeys and social sign-in still need
+  JavaScript.
 - **Sign in on another device:** the sign-in page offers this when it is
   resuming an app sign-in. The limited browser shows a short code, a QR code,
   and the `/device` URL. The visitor opens it on a phone or computer where they
