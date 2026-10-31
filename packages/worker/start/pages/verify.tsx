@@ -24,10 +24,11 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState, type FormEvent } from 'react'
+import { authFormErrorMessage } from '#universal/auth-form-errors.ts'
+import { AuthFormFallback } from '../components/auth-form-fallback.tsx'
 import { Honeypot } from '../components/honeypot-field.tsx'
 import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import { useHydrated } from '../components/use-hydrated.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 
 function buildLoginHref(redirectTo: string | null) {
@@ -38,11 +39,14 @@ function buildLoginHref(redirectTo: string | null) {
 
 export function VerifyRoute() {
 	const verifyTwoFactor = useServerFn(verifyWebsiteTwoFactor)
-	const hydrated = useHydrated()
 	const [status, setStatus] = useState<'idle' | 'submitting'>('idle')
 	const [message, setMessage] = useState<string | null>(null)
 	const turnstileSiteKey = usePublicAuthProtection()
 	const search = useMatchedPageScope().pageLocation.searchStr
+	const formErrorMessage =
+		status === 'idle'
+			? authFormErrorMessage(new URLSearchParams(search).get('formError'))
+			: null
 
 	function getRedirectTo() {
 		const params = new URLSearchParams(search)
@@ -123,16 +127,15 @@ export function VerifyRoute() {
 					/>
 				</label>
 				{turnstileSiteKey ? (
-					<div className={turnstileWidgetClassName}></div>
+					<div
+						className={turnstileWidgetClassName}
+						data-sitekey={turnstileSiteKey}
+					></div>
 				) : null}
-				<button
-					type="submit"
-					disabled={!hydrated || isSubmitting}
-					css={primaryButtonCss}
-				>
+				<button type="submit" disabled={isSubmitting} css={primaryButtonCss}>
 					{isSubmitting ? 'Verifying...' : 'Verify'}
 				</button>
-				{message ? (
+				{(message ?? formErrorMessage) ? (
 					<p
 						aria-live="polite"
 						css={{
@@ -140,10 +143,14 @@ export function VerifyRoute() {
 							fontSize: typography.fontSize.sm,
 						}}
 					>
-						{message}
+						{message ?? formErrorMessage}
 					</p>
 				) : null}
 			</form>
+			<AuthFormFallback
+				turnstileSiteKey={turnstileSiteKey}
+				note="JavaScript is off, so this form submits as a plain page. Enter your code and press Verify."
+			/>
 			<div css={{ display: 'grid', gap: spacing.sm }}>
 				<SiteLink href={buildLoginHref(getRedirectTo())} css={mutedLinkCss}>
 					Back to login

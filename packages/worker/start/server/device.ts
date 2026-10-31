@@ -25,7 +25,12 @@ export type DevicePageData =
 			account: { email: string; displayName: string }
 			error: DevicePageError | null
 	  }
-	| { kind: 'done'; result: 'approved' | 'denied' }
+	| {
+			kind: 'done'
+			result: 'approved' | 'denied'
+			/** A package-app visitor sign-in rather than the Kody CLI. */
+			packageApp: boolean
+	  }
 
 const devicePageErrors = new Set<DevicePageError>([
 	'invalid_code',
@@ -56,11 +61,13 @@ export const loadDevicePage = createServerFn({ method: 'GET' })
 			{ setAuthSessionSecret },
 			{ readAuthenticatedAppUser },
 			{ lookupDeviceAuthorization },
+			{ redirect },
 		] = await Promise.all([
 			import('@tanstack/react-start/server'),
 			import('../../src/app/auth-session.ts'),
 			import('../../src/app/authenticated-user.ts'),
 			import('../../src/oauth-device/verification.ts'),
+			import('@tanstack/react-router'),
 		])
 		const env = getStartRequestEnv()
 		const request = getRequest()
@@ -69,7 +76,11 @@ export const loadDevicePage = createServerFn({ method: 'GET' })
 		const params = new URLSearchParams(search)
 		const result = params.get('result')
 		if (result === 'approved' || result === 'denied') {
-			return { kind: 'done', result }
+			return {
+				kind: 'done',
+				result,
+				packageApp: params.get('kind') === 'package_app',
+			}
 		}
 		const userCode = params.get('user_code')?.trim() || null
 		const user = await readAuthenticatedAppUser(request, env)
@@ -92,6 +103,15 @@ export const loadDevicePage = createServerFn({ method: 'GET' })
 			user: { personId: user.mcpUser.userId, email: user.email },
 			userCode,
 		})
+		if (lookup.kind === 'package_app') {
+			// App visitor sign-ins are approved on that app's consent screen.
+			const consent = new URL('/oauth/package-app/authorize', request.url)
+			consent.searchParams.set('device_user_code', lookup.userCode)
+			throw redirect({
+				href: `${consent.pathname}${consent.search}`,
+				reloadDocument: true,
+			})
+		}
 		if (lookup.kind !== 'found') {
 			return {
 				kind: 'enter',

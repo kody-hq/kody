@@ -783,6 +783,10 @@
 		{
 			"filename": "0216-login-credential-session-failures.sql",
 			"sha256": "f03eca3000bd5bccf11589889ccdbfdc141ff57b4879ac988b3f6a701b627e3b"
+		},
+		{
+			"filename": "0218-package-app-device-sign-in.sql",
+			"sha256": "3c17ffb3edcae60963b8780043e2bd73a3feb5ef853792d0276294778cd6c622"
 		}
 	]
 }

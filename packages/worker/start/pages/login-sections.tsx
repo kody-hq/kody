@@ -271,7 +271,10 @@ export function AuthForm(
 				/>
 			</div>
 			{props.turnstileSiteKey ? (
-				<div className={turnstileWidgetClassName}></div>
+				<div
+					className={turnstileWidgetClassName}
+					data-sitekey={props.turnstileSiteKey}
+				></div>
 			) : null}
 			{!props.isSignup ? (
 				<label css={rememberCss}>
@@ -285,11 +288,11 @@ export function AuthForm(
 				</label>
 			) : null}
 			{renderStatusMessage(props.handleId, props.status, props.message)}
-			<button
-				type="submit"
-				disabled={!props.isInteractive || props.isSubmitting}
-				css={authSubmitCss}
-			>
+			{/*
+			 * Submit works before (or without) hydration: the form posts to
+			 * `/login` as plain HTML (ADR 0092).
+			 */}
+			<button type="submit" disabled={props.isSubmitting} css={authSubmitCss}>
 				<span
 					data-swap-label
 					data-active={props.isSubmitting ? undefined : true}
