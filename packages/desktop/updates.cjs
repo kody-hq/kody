@@ -15,7 +15,7 @@ function startUpdates({
 	updater.allowPrerelease = false
 	updater.allowDowngrade = false
 	updater.on('error', () => {
-		console.warn('Kody update check or download failed, it will retry.')
+		console.warn('Kody update failed, it will retry.')
 	})
 	updater.on('update-downloaded', () => {
 		downloaded = true
@@ -27,7 +27,7 @@ function startUpdates({
 			try {
 				const result = await updater.checkForUpdates()
 				await result?.downloadPromise
-				if (manual && result && result.updateInfo.version === app.getVersion())
+				if (manual && result && !result.isUpdateAvailable)
 					await dialog.showMessageBox({
 						message: 'Kody is up to date.',
 						buttons: ['OK'],
@@ -55,6 +55,9 @@ function startUpdates({
 		stop: () => clearInterval(timer),
 		install: () => {
 			if (!downloaded) return false
+			// Some installers report failure through an event instead of throwing.
+			// Finish the requested quit even when installation cannot start.
+			updater.once('error', () => app.quit())
 			updater.quitAndInstall(false, true)
 			return true
 		},

@@ -7,6 +7,7 @@ function setup({ isPackaged = true, checkForUpdates } = {}) {
 	const updater = new EventEmitter()
 	let checks = 0
 	let installs = 0
+	let quits = 0
 	let interval
 	let milliseconds
 	let changes = 0
@@ -15,14 +16,22 @@ function setup({ isPackaged = true, checkForUpdates } = {}) {
 		checks++
 		return (
 			checkForUpdates?.() ??
-			Promise.resolve({ updateInfo: { version: '0.1.1' } })
+			Promise.resolve({
+				isUpdateAvailable: false,
+				updateInfo: { version: '0.1.1' },
+			})
 		)
 	}
 	updater.quitAndInstall = () => {
 		installs++
 	}
 	const updates = startUpdates({
-		app: { isPackaged, getVersion: () => '0.1.1' },
+		app: {
+			isPackaged,
+			quit: () => {
+				quits++
+			},
+		},
 		updater,
 		dialog: {
 			showMessageBox: async (options) => messages.push(options.message),
@@ -46,6 +55,9 @@ function setup({ isPackaged = true, checkForUpdates } = {}) {
 		},
 		get checks() {
 			return checks
+		},
+		get quits() {
+			return quits
 		},
 		get installs() {
 			return installs
@@ -86,7 +98,10 @@ test('an offline check retries on the next interval without interrupting the use
 	const fixture = setup({
 		checkForUpdates: () => {
 			if (failed) throw new Error('Offline')
-			return Promise.resolve({ updateInfo: { version: '0.1.1' } })
+			return Promise.resolve({
+				isUpdateAvailable: false,
+				updateInfo: { version: '0.1.1' },
+			})
 		},
 	})
 	await fixture.updates.check()
@@ -184,4 +199,14 @@ test('normal Quit stops the runner and lets the quit installer run without forci
 		app: { quit: () => calls.push('quit') },
 	})
 	assert.deepEqual(calls, ['stopped', 'quit'])
+})
+
+test('an installer error still completes the requested quit', async () => {
+	const fixture = setup()
+	await fixture.updates.check()
+	fixture.updater.emit('update-downloaded')
+	fixture.updater.quitAndInstall = () =>
+		fixture.updater.emit('error', new Error('Installer failed'))
+	fixture.updates.install()
+	assert.equal(fixture.quits, 1)
 })
