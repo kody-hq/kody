@@ -70,9 +70,9 @@ export function optInCopy(input: {
 	return {
 		title: `Opt into ${input.name}?`,
 		paragraphs: [
-			`Your runs will execute on ${input.name}, a machine operated by ${op}. ${op} can see the code, inputs, logs and results of your runs. Runs that can use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.`,
+			`Your runs will execute on ${input.name}, a machine operated by ${op}. ${op} can see the code, inputs, logs and results of your runs.`,
 			`Your runs get this machine's network position and access: ${accessLine(input.grant)}.`,
-			`While your run is active, ${op}'s machine can make Kody API calls as you, within that Kody API access, and can change the results your run returns.`,
+			`While your run is active, ${op}'s machine can make Kody API calls as you (within that Kody API access), can use your credentials (GitHub, email and any others you've connected) and read the responses, and can change the results your run returns. Your credential values stay in Kody cloud and never reach the machine. Opting in is your consent to this.`,
 		],
 		lan: lanEnabled(input.grant)
 			? `Local network access is on: your runs can reach devices and services on ${op}'s local network.`
@@ -141,9 +141,9 @@ export function shareCopy(input: {
 	return {
 		title: `Share ${input.name}`,
 		paragraphs: [
-			`Anyone you share with can run code on this machine (operated by ${op}) after they opt in. ${who} be able to see their code, inputs, logs and results. Their runs that can use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.`,
+			`Anyone you share with can run code on this machine (operated by ${op}) after they opt in. ${who} be able to see their code, inputs, logs and results.`,
 			`Their runs get: ${accessLine(input.grant)}.`,
-			'While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.',
+			"While their run is active, this machine can make Kody API calls as them (within that Kody API access), can use their credentials (GitHub, email and any others they've connected) and read the responses, and can change their results. Credential values stay in Kody cloud and never reach this machine.",
 		],
 		lan: lanEnabled(input.grant)
 			? "Local network access is on: their runs can reach devices and services on this machine's local network."
@@ -180,7 +180,7 @@ export function registerCopy(input: { orgSlug: string | null }): RegisterCopy {
 		],
 		trust: [
 			'Code sent to this context runs on that machine, under the account that runs kody daemon.',
-			'It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach that machine. Its Kody API allowlist can narrow what runs there may call. If you share it, the people you share it with run code on that machine and you can see their code, inputs, logs and results. Their runs cannot use their credentials or start workflows there, and Kody APIs kept for Kody cloud refuse them.',
+			'It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach that machine. Its Kody API allowlist can narrow what runs there may call. If you share it, the people who opt in run code on that machine with their own credentials, and you can see their code, inputs, logs and results, including responses to their credentialed requests. Their runs cannot start workflows there, and Kody APIs kept for Kody cloud refuse them.',
 			'What it exposes (files, local network, internet) is set on the machine; the CLI prints it.',
 		],
 		after:

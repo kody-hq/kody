@@ -6,7 +6,7 @@
 
 export const registrationTrustLines = [
 	'Code sent to this context runs on this machine, under the account that runs kody daemon.',
-	'It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach this machine. Its Kody API allowlist can narrow what runs here may call. If you share it, the people you share it with run code on this machine and you can see their code, inputs, logs and results. Their runs that need credentials go to the next entry in their chain instead. Their other runs cannot start workflows here, and Kody APIs kept for Kody cloud refuse them.',
+	'It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach this machine. Its Kody API allowlist can narrow what runs here may call. If you share it, the people who opt in run code on this machine with their own credentials, and you can see their code, inputs, logs and results, including responses to their credentialed requests. Their runs cannot start workflows here, and Kody APIs kept for Kody cloud refuse them.',
 	'What it exposes (files, local network, internet) is set on this machine by its local policy.',
 ] as const
 
@@ -22,8 +22,8 @@ export function sharingTrustNotice(input: {
 		? `@${input.operatorHandle}`
 		: 'its operator'
 	const lines = [
-		`Anyone you share with can run code on this machine (operated by ${operator}) after they opt in. ${operator} can see their code, inputs, logs and results. Their runs that can use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.`,
-		'While their run is active, this machine can make Kody API calls as them (within the Kody API access the grant allows) and can change their results.',
+		`Anyone you share with can run code on this machine (operated by ${operator}) after they opt in. ${operator} can see their code, inputs, logs and results.`,
+		"While their run is active, this machine can make Kody API calls as them (within the Kody API access the grant allows), can use their credentials (GitHub, email and any others they've connected) and read the responses, and can change their results. Credential values stay in Kody cloud and never reach this machine.",
 	]
 	if (input.localNetwork) {
 		lines.push(
@@ -42,8 +42,8 @@ export function optInTrustNotice(input: {
 		? `@${input.operatorHandle}`
 		: 'its operator'
 	const lines = [
-		`Your runs will execute on ${input.name}, a machine operated by ${operator}. ${operator} can see the code, inputs, logs and results of your runs. Runs that can use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.`,
-		`While your run is active, ${operator}'s machine can make Kody API calls as you, within the Kody API access its grant allows, and can change the results your run returns.`,
+		`Your runs will execute on ${input.name}, a machine operated by ${operator}. ${operator} can see the code, inputs, logs and results of your runs.`,
+		`While your run is active, ${operator}'s machine can make Kody API calls as you (within the Kody API access its grant allows), can use your credentials (GitHub, email and any others you've connected) and read the responses, and can change the results your run returns. Your credential values stay in Kody cloud and never reach the machine. Opting in is your consent to this.`,
 	]
 	if (input.localNetwork) {
 		lines.push(
@@ -74,7 +74,7 @@ export function registrationNextSteps(input: {
 		},
 		{
 			kind: 'share',
-			text: `Optional: share ${input.name} with people, a team, or everyone in the org. Sharing lets them run code on this machine after they opt in; their runs that can use credentials go to the next entry in their chain instead.`,
+			text: `Optional: share ${input.name} with people, a team, or everyone in the org. Sharing lets them run code on this machine with their own credentials after they opt in.`,
 			mcp: { capability: 'executionContextShareSet' },
 			api: {
 				method: 'PUT',

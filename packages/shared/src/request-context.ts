@@ -59,11 +59,6 @@ export type RequestCredential = {
 	/** That profile's chain at authentication: ids, root first (attribution). */
 	profileChain?: ReadonlyArray<string> | null
 	/**
-	 * Execution-context runs only: the stable credential ids the context's
-	 * grant lets through. Absent or null does not narrow; empty allows none.
-	 */
-	contextCredentialIds?: ReadonlyArray<string> | null
-	/**
 	 * Execution-context runs only: true when the requester operates the
 	 * context, so the run has the Kody access the same run has in Kody cloud.
 	 */

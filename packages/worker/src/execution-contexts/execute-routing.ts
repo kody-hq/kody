@@ -9,7 +9,6 @@ import {
 	executeRequirements,
 	routeExecute,
 } from './routing.ts'
-import { resolveRunCredentialUse } from './run-credential-use.ts'
 import { computeEffectivePermissions } from '#worker/authorization/authorize.ts'
 
 export { type ExecuteRoutingArgs } from './routing.ts'
@@ -120,14 +119,6 @@ export async function routeExecuteForCaller(input: {
 		params: input.params,
 		conversationId: input.conversationId,
 		credentials: input.credentials,
-		credentialUse: () =>
-			resolveRunCredentialUse({
-				env: input.env,
-				request,
-				ownerId: request.org.id,
-				code: input.code,
-				credentials: input.credentials,
-			}),
 		apiUrl: input.callerContext.baseUrl,
 		waitMs: input.waitMs,
 		signal: input.signal,

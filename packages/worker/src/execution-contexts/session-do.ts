@@ -41,7 +41,6 @@ import {
 	queuedProfileRefusal,
 	withRunTiming,
 } from './routing.ts'
-import { type RunCredentialUse } from './run-credential-use.ts'
 import {
 	getExecutionContext,
 	loadContextAccess,
@@ -93,11 +92,6 @@ export type ExecutionContextLease = {
 	/** Profile (ADR 0092) the requester acted as; callbacks act as it too. */
 	profileId?: string | null
 	runtime: EcpGrant['runtime']
-	/**
-	 * Set on queued runs: what the run can do with credentials, so the drain
-	 * re-checks a grant that changed while it waited. Absent means unknown.
-	 */
-	credentialUse?: RunCredentialUse
 	deadline: number
 	sharedRun: boolean
 }
@@ -1307,9 +1301,6 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		const refusal = grantRefusal({
 			grant,
 			requires,
-			operatorUserId: row.operator_user_id,
-			requesterUserId: lease.requester.userId,
-			credentialUse: lease.credentialUse ?? { kind: 'unknown' },
 			capabilities: parseCapabilities(row),
 		})
 		if (refusal) {

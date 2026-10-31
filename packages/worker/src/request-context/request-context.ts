@@ -120,7 +120,6 @@ function credentialFor(input: {
 	profileId?: string | null
 	profileChain?: ReadonlyArray<string> | null
 	scopes?: RequestCredential['scopes']
-	contextCredentialIds?: RequestCredential['contextCredentialIds']
 	contextRunByOperator?: boolean
 }): RequestCredential {
 	return {
@@ -131,9 +130,6 @@ function credentialFor(input: {
 		...(input.profileId ? { profileId: input.profileId } : {}),
 		...(input.profileId && input.profileChain?.length
 			? { profileChain: [...input.profileChain] }
-			: {}),
-		...(input.contextCredentialIds
-			? { contextCredentialIds: input.contextCredentialIds }
 			: {}),
 		...(input.contextRunByOperator ? { contextRunByOperator: true } : {}),
 	}
@@ -236,8 +232,6 @@ export function deriveRequestContext(input: {
 	orgBinding?: RequestOrgBinding
 	/** Credential scopes. Populated for API tokens; null does not narrow. */
 	scopes?: RequestCredential['scopes']
-	/** Execution-context runs: credential ids the context's grant allows. */
-	contextCredentialIds?: RequestCredential['contextCredentialIds']
 	/** Execution-context runs: the requester operates the context. */
 	contextRunByOperator?: boolean
 }): RequestContext {
@@ -263,10 +257,6 @@ export function deriveRequestContext(input: {
 					profileId,
 					profileChain: input.profileChain ?? null,
 					scopes: input.scopes ?? null,
-					contextCredentialIds:
-						source.kind === 'execution-context-run'
-							? input.contextCredentialIds
-							: null,
 					contextRunByOperator:
 						source.kind === 'execution-context-run' &&
 						input.contextRunByOperator === true,
@@ -590,20 +580,12 @@ function parseProfileFields(
 	}
 }
 
-/** Context-run narrowing survives a durable boundary; malformed fails closed. */
+/** The operator marker survives a durable boundary only as exactly `true`. */
 function parseContextRunFields(
 	credential: Record<string, unknown>,
-): Pick<RequestCredential, 'contextCredentialIds' | 'contextRunByOperator'> {
-	if (credential.kind !== 'execution-context-run') return {}
-	const ids = credential.contextCredentialIds
-	const byOperator = credential.contextRunByOperator === true
-	if (byOperator && (ids === undefined || ids === null)) {
-		return { contextRunByOperator: true }
-	}
-	return {
-		contextCredentialIds:
-			Array.isArray(ids) && ids.every((id) => typeof id === 'string')
-				? ids
-				: [],
-	}
+): Pick<RequestCredential, 'contextRunByOperator'> {
+	return credential.kind === 'execution-context-run' &&
+		credential.contextRunByOperator === true
+		? { contextRunByOperator: true }
+		: {}
 }
