@@ -77,6 +77,7 @@ import {
 } from './checks.ts'
 import { RepoChecksFailedError } from './repo-checks-failed-error.ts'
 import { confirmRemoteRefAtCommit } from './confirm-remote-ref.ts'
+import { readRemoteRefNotConfirmedError } from './remote-ref-not-confirmed-error.ts'
 import { runAuthoringPublishChecksOnFiles } from './authoring-publish-checks.ts'
 import { buildCredentialPatternCheck } from './credential-pattern-check.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
@@ -117,6 +118,7 @@ import {
 	type RepoSessionRow,
 	type RepoSessionSearchResult,
 	type RepoSessionTreeResult,
+	type RepoSessionLastPublish,
 } from './types.ts'
 import {
 	finalizePublishedEntitySource,
@@ -205,6 +207,27 @@ import {
 const repoSessionWorkspacePrefix = '/session'
 const lastCheckStatusStorageKey = 'repo-session:last-check-status'
 const lastCheckStepStorageKey = 'repo-session:last-check-step'
+const lastPublishStorageKey = 'repo-session:last-publish'
+
+type RepoSessionPublishInput = {
+	sessionId: string
+	userId: OwnerId
+	force?: boolean
+	destructiveOverwriteConfirmed?: boolean
+	privateVisibilityChangeConfirmed?: boolean
+	rebuildPackageArtifacts?: boolean
+	expectedPackageScope?: string
+	commitMessage?: string
+	allowLockedPublish?: boolean
+	credentialNeedsApproved?: boolean
+	requestedByUserId?: string | null
+	promotePublished?: boolean
+	/** Refuse unless the session still holds exactly this commit. */
+	expectedHeadCommit?: string
+	/** The publishing request; a profile-bound one must reach every import. */
+	publisherRequest?: RequestContext | null
+}
+
 const cachedSessionStateStorageKeyPrefix = 'repo-session:state:'
 const defaultSessionBranch = 'main'
 const publishedSessionRetentionMs = 14 * 24 * 60 * 60 * 1000
@@ -736,6 +759,45 @@ class RepoSessionBase extends DurableObject<Env> {
 			depth: 1,
 		})
 		return log[0]?.oid ?? null
+	}
+
+	/**
+	 * Keep HEAD on the session branch. Publish pushes the session branch, so
+	 * commits made while HEAD sat on another branch never reach the remote and
+	 * the push confirm fails on every retry. Older rebases left HEAD on the
+	 * source branch. HEAD is what checks ran on and what publish publishes, so
+	 * the session branch moves to it.
+	 */
+	private async attachHeadToSessionBranch(sessionBranch: string) {
+		const { current } = await (
+			await this.ensureGit()
+		).branch({ dir: repoSessionWorkspacePrefix })
+		if (current === sessionBranch) return
+		const { git } = await loadIsomorphicGit()
+		const fs = this.rawGitFileSystem
+		const dir = repoSessionWorkspacePrefix
+		const head = await git.resolveRef({ fs, dir, ref: 'HEAD' })
+		await git.writeRef({
+			fs,
+			dir,
+			ref: `refs/heads/${sessionBranch}`,
+			value: head,
+			force: true,
+		})
+		await git.writeRef({
+			fs,
+			dir,
+			ref: 'HEAD',
+			value: `refs/heads/${sessionBranch}`,
+			force: true,
+			symbolic: true,
+		})
+		console.warn('repo session HEAD reattached to session branch', {
+			scope: 'repo.session-branch-reattach',
+			sessionBranch,
+			previousBranch: current ?? null,
+			head,
+		})
 	}
 
 	private async commitIfDirty(
@@ -2125,7 +2187,10 @@ class RepoSessionBase extends DurableObject<Env> {
 			)
 		}
 		await this.touchRepoSession(sessionRow)
-		return toRepoSessionInfoResult(sessionRow, source)
+		return {
+			...toRepoSessionInfoResult(sessionRow, source),
+			last_publish: await this.readLastPublish(),
+		}
 	}
 
 	async discardSession(input: {
@@ -3695,14 +3760,24 @@ class RepoSessionBase extends DurableObject<Env> {
 			input.userId,
 		)
 		const sessionBranch = sessionRow.session_branch
-		const pullResult = await (
-			await this.ensureGit()
-		).pull({
+		await this.attachHeadToSessionBranch(sessionBranch)
+		// Merge the source branch into the session branch. Pulling with
+		// `ref: <source branch>` would merge into and check out the local source
+		// branch instead, stranding later commits off the session branch.
+		const { git, http } = await loadIsomorphicGit()
+		const pullAuth = buildArtifactsGitAuth({ token: sessionAccess.token })
+		await git.pull({
+			fs: this.rawGitFileSystem,
+			http,
 			dir: repoSessionWorkspacePrefix,
 			remote: 'origin',
-			ref: sessionRow.source_branch,
+			ref: sessionBranch,
+			remoteRef: sessionRow.source_branch,
+			singleBranch: true,
 			author: sessionCommitAuthor,
-			...buildArtifactsGitAuth({ token: sessionAccess.token }),
+			onAuth() {
+				return pullAuth
+			},
 		})
 		const headCommit = await this.getHeadCommit()
 		// Session branches are ephemeral workspace state; pull/merge can rewrite
@@ -3737,7 +3812,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			sessionId: sessionRow.id,
 			baseCommit: rebasedBaseCommit,
 			headCommit,
-			merged: pullResult.pulled,
+			merged: true,
 		}
 	}
 
@@ -3777,6 +3852,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					'The source repo has moved since this session opened. Rebase the session before publishing.',
 			}
 		}
+		await this.attachHeadToSessionBranch(sessionBranch)
 		const sessionHeadCommit =
 			(await this.commitIfDirty(
 				input.commitMessage?.trim() ||
@@ -3861,24 +3937,97 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 	}
 
-	async publishSession(input: {
-		sessionId: string
-		userId: OwnerId
-		force?: boolean
-		destructiveOverwriteConfirmed?: boolean
-		privateVisibilityChangeConfirmed?: boolean
-		rebuildPackageArtifacts?: boolean
-		expectedPackageScope?: string
-		commitMessage?: string
-		allowLockedPublish?: boolean
-		credentialNeedsApproved?: boolean
-		requestedByUserId?: string | null
-		/** The publishing request; a profile-bound one must reach every import. */
-		publisherRequest?: RequestContext | null
-		promotePublished?: boolean
-		/** Refuse unless the session still holds exactly this commit. */
-		expectedHeadCommit?: string
-	}): Promise<RepoSessionPublishResult> {
+	/**
+	 * Publish the session and record the attempt for `repoGetSession`
+	 * `last_publish`, so a caller whose request failed (or whose connection
+	 * dropped) can see whether anything was published.
+	 */
+	async publishSession(
+		input: RepoSessionPublishInput,
+	): Promise<RepoSessionPublishResult> {
+		const startedAt = nowIso()
+		this.publishesInFlight += 1
+		const attempt = ++this.publishAttempts
+		// An older overlapping publish must not overwrite the latest attempt.
+		const writeOutcome = async (value: RepoSessionLastPublish) => {
+			if (attempt === this.publishAttempts) await this.writeLastPublish(value)
+		}
+		await writeOutcome({
+			state: 'running',
+			started_at: startedAt,
+			finished_at: null,
+			published_commit: null,
+			result_status: null,
+			error_name: null,
+			error_message: null,
+		})
+		try {
+			const result = await this.runPublishSession(input)
+			await writeOutcome({
+				state:
+					result.status !== 'ok'
+						? 'not_published'
+						: input.promotePublished === false
+							? 'pushed'
+							: 'published',
+				started_at: startedAt,
+				finished_at: nowIso(),
+				published_commit:
+					result.status === 'ok' && input.promotePublished !== false
+						? result.publishedCommit
+						: null,
+				result_status: result.status,
+				error_name: null,
+				error_message: null,
+			})
+			return result
+		} catch (error) {
+			await writeOutcome({
+				state: 'failed',
+				started_at: startedAt,
+				finished_at: nowIso(),
+				published_commit: null,
+				result_status: null,
+				error_name: error instanceof Error ? error.name : 'Error',
+				// Only messages known to be caller-safe; others may carry internals.
+				error_message: readRemoteRefNotConfirmedError(error)?.message ?? null,
+			})
+			throw error
+		} finally {
+			this.publishesInFlight -= 1
+		}
+	}
+
+	private publishesInFlight = 0
+	private publishAttempts = 0
+
+	private async writeLastPublish(value: RepoSessionLastPublish) {
+		try {
+			await this.ctx.storage.put(lastPublishStorageKey, value)
+		} catch (error) {
+			console.warn('repo session last_publish write failed', {
+				scope: 'repo.last-publish-write',
+				state: value.state,
+				error: getErrorMessage(error),
+			})
+		}
+	}
+
+	/** A `running` record this instance is not running was cut off by a reset. */
+	private async readLastPublish(): Promise<RepoSessionLastPublish | null> {
+		const stored =
+			(await this.ctx.storage.get<RepoSessionLastPublish>(
+				lastPublishStorageKey,
+			)) ?? null
+		if (stored?.state === 'running' && this.publishesInFlight === 0) {
+			return { ...stored, state: 'interrupted' }
+		}
+		return stored
+	}
+
+	private async runPublishSession(
+		input: RepoSessionPublishInput,
+	): Promise<RepoSessionPublishResult> {
 		const { sessionRow, source, sessionAccess } = await this.getSessionState(
 			input.sessionId,
 			input.userId,
@@ -3970,6 +4119,7 @@ class RepoSessionBase extends DurableObject<Env> {
 				confirmed: input.privateVisibilityChangeConfirmed,
 			})
 		}
+		await this.attachHeadToSessionBranch(sessionBranch)
 		// A re-run of a paused publish must publish the commit it paused on, so
 		// it never mints a new history-replacing commit.
 		const sessionHeadCommit =
