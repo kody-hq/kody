@@ -138,23 +138,27 @@ export default () => missing
 	)
 })
 
-test('bundleLocalUserModule path containing kody:@ still gets npm tip for relative misses', async () => {
-	const dir = writeFixture({
-		'kody:@fake/entry.mjs': `import { missing } from './nope.js'
+test(
+	'bundleLocalUserModule path containing kody:@ still gets npm tip for relative misses',
+	{ skip: process.platform === 'win32' && 'Windows paths cannot contain ":"' },
+	async () => {
+		const dir = writeFixture({
+			'kody:@fake/entry.mjs': `import { missing } from './nope.js'
 export default () => missing
 `,
-	})
-	await assert.rejects(
-		() => bundleLocalUserModule(join(dir, 'kody:@fake/entry.mjs')),
-		(error: unknown) => {
-			assert.ok(error instanceof Error)
-			assert.match(error.message, /kody:@/)
-			assert.match(error.message, /Run `npm install`/)
-			assert.doesNotMatch(error.message, /\.kody\/deps\.json/)
-			return true
-		},
-	)
-})
+		})
+		await assert.rejects(
+			() => bundleLocalUserModule(join(dir, 'kody:@fake/entry.mjs')),
+			(error: unknown) => {
+				assert.ok(error instanceof Error)
+				assert.match(error.message, /kody:@/)
+				assert.match(error.message, /Run `npm install`/)
+				assert.doesNotMatch(error.message, /\.kody\/deps\.json/)
+				return true
+			},
+		)
+	},
+)
 
 test('bundleLocalUserModule syntax errors carry file:line:col and a code frame', async () => {
 	const dir = writeFixture({

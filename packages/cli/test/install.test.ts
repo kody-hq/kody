@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { join } from 'node:path'
 import { runInstall } from '../src/install.js'
 
 const mcpUrl = 'https://kody.codes/mcp'
@@ -113,7 +114,9 @@ test('runInstall writes leftover VS Code Insiders config without add-mcp', async
 	assert.deepEqual(upserts, [])
 	assert.deepEqual(
 		JSON.parse(
-			files.get('/home/me/.config/Code - Insiders/User/mcp.json') ?? '{}',
+			files.get(
+				join('/home/me', '.config', 'Code - Insiders', 'User', 'mcp.json'),
+			) ?? '{}',
 		),
 		{ servers: { kody: { type: 'http', url: mcpUrl } } },
 	)

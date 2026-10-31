@@ -488,7 +488,16 @@ export async function runLocalExecute(
 		releaseSignals()
 		stopWorkerd()
 		await bridge?.close()
-		await rm(workDir, { recursive: true, force: true })
+		// Windows keeps a dead process's files locked until it has exited.
+		if (child && child.exitCode === null && child.signalCode === null) {
+			await new Promise((resolve) => child?.once('exit', resolve))
+		}
+		await rm(workDir, {
+			recursive: true,
+			force: true,
+			maxRetries: 10,
+			retryDelay: 100,
+		})
 	}
 }
 

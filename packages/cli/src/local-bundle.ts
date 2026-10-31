@@ -100,7 +100,7 @@ export function bundleInputs(
 		.filter((path) => {
 			// Virtual modules use `:`; real `node_modules` is a path segment
 			// (not a filename like `node_modules-generated.ts`).
-			if (path.includes(':')) return false
+			if (path.includes(':') && !/^[A-Za-z]:[\\/]/.test(path)) return false
 			return !path.split(/[/\\]/).includes('node_modules')
 		})
 		.map((path) => resolve(workingDir, path))

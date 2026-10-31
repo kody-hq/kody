@@ -264,9 +264,18 @@ async function waitFor<T>(
 }
 
 function workerdPidUnder(dir: string): number | null {
-	const listing = execFileSync('ps', ['-A', '-o', 'pid=,args='], {
-		encoding: 'utf8',
-	})
+	const listing =
+		process.platform === 'win32'
+			? execFileSync(
+					'powershell.exe',
+					[
+						'-NoProfile',
+						'-Command',
+						`Get-CimInstance Win32_Process -Filter "Name='workerd.exe'" | ForEach-Object { "$($_.ProcessId) $($_.CommandLine)" }`,
+					],
+					{ encoding: 'utf8' },
+				)
+			: execFileSync('ps', ['-A', '-o', 'pid=,args='], { encoding: 'utf8' })
 	for (const line of listing.split('\n')) {
 		if (line.includes('workerd') && line.includes(dir))
 			return Number(line.trim().split(/\s+/)[0])
@@ -1403,7 +1412,10 @@ export default async function main(p) {
 		roWrite: await attempt(() => fsp.writeFile(p.ro + '/x.txt', 'nope')),
 		prefixTrick: await attempt(() => fsp.writeFile(p.denied + '/x.txt', 'nope')),
 		dotDot: await attempt(() => fsp.readFile(p.rw + '/../readonly/../granted-evil/x.txt')),
-		outside: await attempt(() => fsp.readFile('/etc/hostname', 'utf8')),
+		outside: await attempt(() => fsp.readFile(
+				process.platform === 'win32' ? 'C:\\Windows\\win.ini' : '/etc/hostname',
+				'utf8',
+			)),
 		sync: await attempt(() => readFileSync(p.rw + '/a.txt')),
 		virtualTmp: await attempt(async () => { await fsp.writeFile('/tmp/v.txt', 'v'); return fsp.readFile('/tmp/v.txt', 'utf8') }),
 	}

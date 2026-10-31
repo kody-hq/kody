@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { join } from 'node:path'
 import { detectRunningHosts } from '../src/detect-running-hosts.js'
 import { hostConfigPath, parseHostIds } from '../src/host-catalog.js'
 
@@ -66,7 +67,7 @@ test('hostConfigPath uses user-level files by default', () => {
 			cwd: '/proj',
 			project: false,
 		}),
-		'/home/me/.cursor/mcp.json',
+		join('/home/me', '.cursor', 'mcp.json'),
 	)
 	assert.equal(
 		hostConfigPath({

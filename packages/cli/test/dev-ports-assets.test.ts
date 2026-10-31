@@ -3,7 +3,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { resolveDevAuth, runDevServe } from '../src/dev-command.js'
@@ -135,7 +135,7 @@ test('dev asset paths are decoded and never escape the assets dir', () => {
 	assert.equal(parseDevAssetPath('/_assets/%E0%A4%A'), null)
 	assert.equal(
 		resolveDevAssetFile('/pkg/public', 'css/app.css'),
-		'/pkg/public/css/app.css',
+		resolve('/pkg/public/css/app.css'),
 	)
 	assert.equal(resolveDevAssetFile('/pkg/public', '../package.json'), null)
 	assert.equal(resolveDevAssetFile('/pkg/public', '/etc/passwd'), null)

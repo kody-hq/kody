@@ -76,7 +76,7 @@ test('the systemd unit restarts on crashes, not on a revoke, and holds no secret
 	assert.match(
 		unit,
 		new RegExp(
-			`^WorkingDirectory=/.*${'/kody/contexts/ec_unit'.replace(/\//g, '\\/')}$`,
+			`^WorkingDirectory=.*${'/kody/contexts/ec_unit'.replace(/\//g, '[\\\\/]')}$`,
 			'm',
 		),
 	)
@@ -113,7 +113,7 @@ test('the LaunchAgent runs at load, keeps only failed exits alive, and holds no 
 	)
 	assert.match(
 		plist,
-		/<key>WorkingDirectory<\/key>\s*<string>[^<]*\/contexts\/ec_unit<\/string>/,
+		/<key>WorkingDirectory<\/key>\s*<string>[^<]*[\\/]contexts[\\/]ec_unit<\/string>/,
 	)
 	assert.match(
 		plist,
@@ -566,7 +566,10 @@ test('the file wrapping key is 600 and replaces a passphrase without a passphras
 		to: keystore.fileWrappingKey({ apiUrl, ecid, create: true }),
 	})
 	const keyPath = keystore.fileWrappingKeyPath(apiUrl, ecid)
-	assert.equal(statSync(keyPath).mode & 0o777, 0o600)
+	// Windows has no POSIX mode bits; the file inherits the profile ACL.
+	if (process.platform !== 'win32') {
+		assert.equal(statSync(keyPath).mode & 0o777, 0o600)
+	}
 	assert.equal(keystore.storedKeyWrap(apiUrl, ecid), 'file')
 	const loaded = keystore.loadContext({
 		apiUrl,

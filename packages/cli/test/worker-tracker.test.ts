@@ -109,9 +109,10 @@ test('startup reaping leaves a reused pid and a live daemon’s workers alone', 
 
 test('a daemon that exits kills the workers it is still tracking', async () => {
 	const { configPath, workersDir } = runDir()
-	const trackerModule = fileURLToPath(
-		new URL('../src/execution-context/worker-tracker.ts', import.meta.url),
-	)
+	const trackerModule = new URL(
+		'../src/execution-context/worker-tracker.ts',
+		import.meta.url,
+	).href
 	const script = `
 import { spawn } from 'node:child_process'
 import { createLocalWorkerTracker } from ${JSON.stringify(trackerModule)}

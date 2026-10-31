@@ -251,7 +251,7 @@ test('kody dev fetch rejects on a bundle error, prints it once, and closes the m
 					},
 				},
 			}),
-			/app\/entry\.ts:1:52/,
+			/app[\\/]entry\.ts:1:52/,
 		)
 		assert.ok(Date.now() - started < 10_000)
 		assert.equal(mockClosed, 1)
@@ -300,7 +300,7 @@ test('kody dev fetch --json writes a build_error object to stdout on bundle fail
 					stderr: () => {},
 				},
 			}),
-			/app\/entry\.ts:1:52/,
+			/app[\\/]entry\.ts:1:52/,
 		)
 		const event = JSON.parse(stdout) as {
 			type: string
@@ -308,7 +308,7 @@ test('kody dev fetch --json writes a build_error object to stdout on bundle fail
 			ts: string
 		}
 		assert.equal(event.type, 'build_error')
-		assert.match(event.message, /app\/entry\.ts:1:52/)
+		assert.match(event.message, /app[\\/]entry\.ts:1:52/)
 		assert.ok(typeof event.ts === 'string' && event.ts.length > 0)
 	} finally {
 		await rm(root, { recursive: true, force: true })

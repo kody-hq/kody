@@ -180,7 +180,7 @@ test('kody dev injects the live-reload client and pushes reload / build_error ov
 				detail: string
 			}
 			assert.equal(view.kind, 'build')
-			assert.match(view.detail, /app\/message\.ts:1:24/)
+			assert.match(view.detail, /app[\\/]message\.ts:1:24/)
 
 			const errorPage = await server.fetchPath('/', {
 				headers: { accept: 'text/html' },

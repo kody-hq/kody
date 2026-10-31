@@ -20,7 +20,10 @@ import {
 import { runExecutionContextCommand } from '../src/execution-context/commands.js'
 
 function sandbox() {
-	const root = realpathSync(mkdtempSync(join(tmpdir(), 'kody-fs-access-')))
+	// .native expands Windows 8.3 names (RUNNER~1) like the code under test.
+	const root = realpathSync.native(
+		mkdtempSync(join(tmpdir(), 'kody-fs-access-')),
+	)
 	const dir = (name: string) => {
 		const path = join(root, name)
 		mkdirSync(path, { recursive: true })

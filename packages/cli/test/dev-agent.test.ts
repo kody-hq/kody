@@ -45,7 +45,7 @@ test('GET /__kody/dev/status reports build id, state, and the last error', async
 		assert.equal(afterBoom.lastError?.kind, 'runtime')
 		assert.match(
 			afterBoom.lastError?.kind === 'runtime' ? afterBoom.lastError.stack : '',
-			/app\/entry\.ts/,
+			/app[\\/]entry\.ts/,
 		)
 
 		await writeMessage(`export const message = = 'broken'\n`)
@@ -56,7 +56,7 @@ test('GET /__kody/dev/status reports build id, state, and the last error', async
 		assert.equal(broken.ok, false)
 		assert.equal(broken.lastError?.kind, 'build')
 		if (broken.lastError?.kind === 'build') {
-			assert.equal(broken.lastError.file, 'app/message.ts')
+			assert.equal(broken.lastError.file, join('app', 'message.ts'))
 			assert.equal(broken.lastError.line, 1)
 			assert.equal(broken.lastError.col, 24)
 		}

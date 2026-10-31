@@ -128,7 +128,9 @@ test('downloadVerifiedGzip writes an executable binary when the digest matches',
 		fetchFn: serve(gz).fetchFn,
 	})
 	assert.deepEqual(readFileSync(destination), binary)
-	assert.equal(statSync(destination).mode & 0o111, 0o111)
+	if (process.platform !== 'win32') {
+		assert.equal(statSync(destination).mode & 0o111, 0o111)
+	}
 	assert.deepEqual(readdirSync(dirname(destination)), ['workerd'])
 })
 

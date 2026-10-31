@@ -66,12 +66,12 @@ test('kody dev swaps workerd without a 503 and recovers from build errors', asyn
 			return response.status === 500 ? response : undefined
 		}, 'build error page')
 		assert.equal(broken.headers['x-kody-dev-error'], 'build')
-		assert.match(broken.body, /app\/message\.ts:1:24: Unexpected "="/)
+		assert.match(broken.body, /app[\\/]message\.ts:1:24: Unexpected "="/)
 		assert.match(broken.body, /\| export const message = = 'broken'/)
 		assert.doesNotMatch(broken.body, /for local execute/)
 		const buildError = events.find((event) => event.type === 'build_error')
 		assert.ok(buildError && buildError.type === 'build_error')
-		assert.equal(buildError.file, 'app/message.ts')
+		assert.equal(buildError.file, join('app', 'message.ts'))
 		assert.equal(buildError.line, 1)
 		assert.equal(buildError.col, 24)
 
@@ -114,12 +114,12 @@ test('kody dev streams tagged console logs and source-maps runtime errors', asyn
 		assert.equal(html.status, 500)
 		assert.match(html.headers['content-type'] ?? '', /text\/html/)
 		assert.match(html.body, /Runtime error/)
-		assert.match(html.body, /app\/entry\.ts:7:/)
+		assert.match(html.body, /app[\\/]entry\.ts:7:/)
 
 		const text = await server.fetchPath('/boom')
 		assert.equal(text.status, 500)
 		assert.match(text.body, /^kody dev runtime error \(GET \/boom\)/)
-		assert.match(text.body, /Error: kaboom\n\s+at .*app\/entry\.ts:7:\d+/)
+		assert.match(text.body, /Error: kaboom\n\s+at .*app[\\/]entry\.ts:7:\d+/)
 		assert.doesNotMatch(text.body, /main\.js|__kody_local_entry|workerd@/)
 
 		const runtimeError = await waitFor(
@@ -244,29 +244,37 @@ test('shouldIgnoreWatchPath skips dependencies, dotfiles, maps, and custom prefi
 	)
 })
 
-test('process reaper kills tracked pids and removes the work dir when its pipe closes', async () => {
-	const workDir = await mkdtemp(join(tmpdir(), 'kody-dev-reaper-test-'))
-	const sleeper = spawn('sleep', ['30'], { stdio: 'ignore' })
-	assert.ok(sleeper.pid)
-	const exited = new Promise<void>((resolve) =>
-		sleeper.once('exit', () => resolve()),
-	)
-	const reaper = await startProcessReaper({ workDir })
-	reaper.track(sleeper.pid)
-	reaper.close()
-	await Promise.race([
-		exited,
-		new Promise<void>((resolve) => setTimeout(resolve, 5000).unref()),
-	])
-	assert.equal(isProcessAlive(sleeper.pid), false)
-	await waitFor(
-		async () =>
-			(await readdir(tmpdir())).includes(workDir.split('/').pop()!)
-				? undefined
-				: true,
-		'work dir removal',
-	)
-})
+test(
+	'process reaper kills tracked pids and removes the work dir when its pipe closes',
+	{
+		skip:
+			process.platform === 'win32' &&
+			'the kody dev reaper is a POSIX sh script',
+	},
+	async () => {
+		const workDir = await mkdtemp(join(tmpdir(), 'kody-dev-reaper-test-'))
+		const sleeper = spawn('sleep', ['30'], { stdio: 'ignore' })
+		assert.ok(sleeper.pid)
+		const exited = new Promise<void>((resolve) =>
+			sleeper.once('exit', () => resolve()),
+		)
+		const reaper = await startProcessReaper({ workDir })
+		reaper.track(sleeper.pid)
+		reaper.close()
+		await Promise.race([
+			exited,
+			new Promise<void>((resolve) => setTimeout(resolve, 5000).unref()),
+		])
+		assert.equal(isProcessAlive(sleeper.pid), false)
+		await waitFor(
+			async () =>
+				(await readdir(tmpdir())).includes(workDir.split('/').pop()!)
+					? undefined
+					: true,
+			'work dir removal',
+		)
+	},
+)
 
 // The grandchild is reparented to PID 1, which may not reap it in a container
 // without an init process; a zombie still answers kill(pid, 0).
@@ -284,38 +292,42 @@ function isLiveNonZombie(pid: number) {
 	}
 }
 
-test('process reaper kills a detached process group on pipe close', async () => {
-	const workDir = await mkdtemp(join(tmpdir(), 'kody-dev-reaper-group-'))
-	// Nested sleep under detached sh — killing only the shell would leave the child.
-	const shell = spawn('sh', ['-c', 'sleep 30 & wait'], {
-		stdio: 'ignore',
-		detached: true,
-	})
-	assert.ok(shell.pid)
-	shell.unref()
-	const childPid = await waitFor(async () => {
-		const listed = await psList()
-		const child = listed.find(
-			(item) => item.ppid === shell.pid && /sleep/.test(item.name),
+test(
+	'process reaper kills a detached process group on pipe close',
+	{ skip: process.platform === 'win32' && 'POSIX process groups' },
+	async () => {
+		const workDir = await mkdtemp(join(tmpdir(), 'kody-dev-reaper-group-'))
+		// Nested sleep under detached sh — killing only the shell would leave the child.
+		const shell = spawn('sh', ['-c', 'sleep 30 & wait'], {
+			stdio: 'ignore',
+			detached: true,
+		})
+		assert.ok(shell.pid)
+		shell.unref()
+		const childPid = await waitFor(async () => {
+			const listed = await psList()
+			const child = listed.find(
+				(item) => item.ppid === shell.pid && /sleep/.test(item.name),
+			)
+			return child?.pid
+		}, 'detached sleep grandchild')
+		const reaper = await startProcessReaper({ workDir })
+		reaper.trackGroup(shell.pid)
+		reaper.close()
+		await waitFor(async () => {
+			if (isLiveNonZombie(shell.pid!) || isLiveNonZombie(childPid))
+				return undefined
+			return true
+		}, 'detached process group death')
+		await waitFor(
+			async () =>
+				(await readdir(tmpdir())).includes(workDir.split('/').pop()!)
+					? undefined
+					: true,
+			'work dir removal',
 		)
-		return child?.pid
-	}, 'detached sleep grandchild')
-	const reaper = await startProcessReaper({ workDir })
-	reaper.trackGroup(shell.pid)
-	reaper.close()
-	await waitFor(async () => {
-		if (isLiveNonZombie(shell.pid!) || isLiveNonZombie(childPid))
-			return undefined
-		return true
-	}, 'detached process group death')
-	await waitFor(
-		async () =>
-			(await readdir(tmpdir())).includes(workDir.split('/').pop()!)
-				? undefined
-				: true,
-		'work dir removal',
-	)
-})
+	},
+)
 
 test('sweepStaleDevDirs reaps dirs of dead owners and legacy orphans only', async () => {
 	const tmp = await mkdtemp(join(tmpdir(), 'kody-dev-sweep-'))

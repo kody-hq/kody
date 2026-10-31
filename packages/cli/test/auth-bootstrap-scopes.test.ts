@@ -73,12 +73,15 @@ async function withCliEnv<T>(
 	const saved = {
 		HOME: process.env.HOME,
 		XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+		APPDATA: process.env.APPDATA,
 		KODY_API_TOKEN: process.env.KODY_API_TOKEN,
 		KODY_MCP_URL: process.env.KODY_MCP_URL,
 		KODY_API_URL: process.env.KODY_API_URL,
 	}
 	process.env.HOME = home
 	process.env.XDG_CONFIG_HOME = home
+	// Windows keeps CLI config under %APPDATA%.
+	process.env.APPDATA = home
 	delete process.env.KODY_API_TOKEN
 	delete process.env.KODY_MCP_URL
 	delete process.env.KODY_API_URL

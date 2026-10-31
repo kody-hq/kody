@@ -280,8 +280,10 @@ test('kody org list and org use work for agents', async () => {
 	const dir = mkdtempSync(join(tmpdir(), 'kody-org-cli-'))
 	const previousHome = process.env.HOME
 	const previousXdg = process.env.XDG_CONFIG_HOME
+	const previousAppData = process.env.APPDATA
 	process.env.HOME = dir
 	process.env.XDG_CONFIG_HOME = dir
+	process.env.APPDATA = dir
 	try {
 		const { fileStorePath } = await import('../src/store.js')
 		const backend = createFileBackend(fileStorePath(mcpUrl, dir))
@@ -320,6 +322,8 @@ test('kody org list and org use work for agents', async () => {
 		else process.env.HOME = previousHome
 		if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME
 		else process.env.XDG_CONFIG_HOME = previousXdg
+		if (previousAppData === undefined) delete process.env.APPDATA
+		else process.env.APPDATA = previousAppData
 	}
 })
 
