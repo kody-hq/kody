@@ -14,6 +14,7 @@ import {
 	selectPurchasableSeatSubscription,
 } from './seat-sync.ts'
 import { type BillingEnv } from './billing-config.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
 
 type SeatQuantityReportEnv = Env & BillingEnv & StripeEnv
 
@@ -33,6 +34,9 @@ function parseQuantity(value: unknown): number | null {
 }
 
 export async function buildSeatQuantityReport(input: SeatQuantityReportInput) {
+	if (input.checkStripe && !input.env.STRIPE_SECRET_KEY?.trim()) {
+		throw new McpCallerError('Stripe is not configured in this environment.')
+	}
 	const since = new Date(input.since).toISOString()
 	const auditDb = auditDatabaseFromEnvOrThrow(input.env)
 	const auditRows = await auditDb

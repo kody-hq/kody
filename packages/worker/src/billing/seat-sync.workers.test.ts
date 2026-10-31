@@ -4,6 +4,7 @@ import { syncOrgSeatQuantity } from './seat-sync.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensureCreditWalletTestSchema } from './test-schema.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import * as orgAudit from '#worker/orgs/org-audit.ts'
 
 function jsonResponse(body: unknown, status = 200) {
 	return new Response(JSON.stringify(body), {
@@ -187,6 +188,9 @@ test('syncOrgSeatQuantity updates Stripe when seat count changes', async () => {
 		}
 		return jsonResponse({ error: 'unexpected path' }, 500)
 	})
+	const auditSpy = vi
+		.spyOn(orgAudit, 'recordOrgAuditEvent')
+		.mockResolvedValue(undefined)
 	const result = await syncOrgSeatQuantity({
 		db: env.APP_DB,
 		env: {
@@ -196,13 +200,129 @@ test('syncOrgSeatQuantity updates Stripe when seat count changes', async () => {
 			STRIPE_PRO_YEARLY_PRICE_ID: 'price_pro_yearly',
 		},
 		orgId,
+		audit: {} as never,
 	})
 	expect(result).toEqual({ previousQuantity: 1, nextQuantity: 3 })
+	expect(auditSpy).toHaveBeenCalledTimes(1)
+	expect(auditSpy.mock.calls[0]?.[1]).toMatchObject({
+		orgId,
+		action: 'billing_seat_quantity_synced',
+		resourceType: 'org_subscription',
+		details: { previousQuantity: 1, nextQuantity: 3 },
+	})
+	auditSpy.mockRestore()
 	expect(
 		fetchStub.mock.calls.some((call) =>
 			String(call[0]).includes('subscription_items'),
 		),
 	).toBe(true)
+})
+
+test('syncOrgSeatQuantity does not audit when the Stripe quantity is already current', async () => {
+	const orgId = testStableUserIdFromEmail('current-seat-sync@example.com')
+	await seedPaidOrg({
+		orgId,
+		stripeCustomerId: 'cus_current_seats',
+		seatRoles: ['owner', 'member'],
+	})
+	using fetchStub = stubStripeFetch((url) =>
+		url.includes('/v1/subscriptions')
+			? jsonResponse({
+					data: [
+						{
+							id: 'sub_current',
+							status: 'active',
+							cancel_at: null,
+							items: {
+								data: [
+									{
+										id: 'si_current',
+										quantity: 2,
+										price: { id: 'price_pro' },
+									},
+								],
+							},
+						},
+					],
+				})
+			: jsonResponse({ error: 'unexpected update' }, 500),
+	)
+	const auditSpy = vi
+		.spyOn(orgAudit, 'recordOrgAuditEvent')
+		.mockResolvedValue(undefined)
+	await syncOrgSeatQuantity({
+		db: env.APP_DB,
+		env: {
+			STRIPE_SECRET_KEY: 'sk_test',
+			STRIPE_API_BASE_URL: 'https://stripe.mock',
+			STRIPE_PRO_PRICE_ID: 'price_pro',
+		},
+		orgId,
+		audit: {} as never,
+	})
+	expect(auditSpy).not.toHaveBeenCalled()
+	expect(fetchStub.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(
+		false,
+	)
+	auditSpy.mockRestore()
+})
+
+test('syncOrgSeatQuantity tolerates an audit failure after Stripe updates', async () => {
+	const orgId = testStableUserIdFromEmail('audit-failure-seat-sync@example.com')
+	await seedPaidOrg({
+		orgId,
+		stripeCustomerId: 'cus_audit_failure',
+		seatRoles: ['owner', 'member', 'member'],
+	})
+	using fetchStub = stubStripeFetch((url) => {
+		if (url.includes('/v1/subscriptions')) {
+			return jsonResponse({
+				data: [
+					{
+						id: 'sub_audit_failure',
+						status: 'active',
+						cancel_at: null,
+						items: {
+							data: [
+								{
+									id: 'si_audit_failure',
+									quantity: 1,
+									price: { id: 'price_pro' },
+								},
+							],
+						},
+					},
+				],
+			})
+		}
+		return jsonResponse({ id: 'si_audit_failure', quantity: 3 })
+	})
+	const auditSpy = vi
+		.spyOn(orgAudit, 'recordOrgAuditEvent')
+		.mockRejectedValue(new Error('audit unavailable'))
+	const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+	await expect(
+		syncOrgSeatQuantity({
+			db: env.APP_DB,
+			env: {
+				STRIPE_SECRET_KEY: 'sk_test',
+				STRIPE_API_BASE_URL: 'https://stripe.mock',
+				STRIPE_PRO_PRICE_ID: 'price_pro',
+			},
+			orgId,
+			audit: {} as never,
+		}),
+	).resolves.toEqual({ previousQuantity: 1, nextQuantity: 3 })
+	expect(auditSpy).toHaveBeenCalledTimes(1)
+	expect(warnSpy).toHaveBeenCalledWith(
+		'org-seat-sync-audit-failed',
+		expect.objectContaining({ orgId }),
+	)
+	expect(fetchStub.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(
+		true,
+	)
+	auditSpy.mockRestore()
+	warnSpy.mockRestore()
 })
 
 test('syncOrgSeatQuantity ignores non-Kody subscriptions on the shared Stripe account', async () => {

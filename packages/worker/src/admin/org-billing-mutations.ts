@@ -47,7 +47,6 @@ export const orgBillingAuditActions = {
 	planSet: 'admin_plan_set',
 	creditsGranted: 'admin_credits_granted',
 	creditEligibilitySet: 'admin_credit_eligibility_set',
-	seatQuantitySynced: 'billing_seat_quantity_synced',
 } as const
 
 export const freeOrgCapDowngradeGuardSql = `

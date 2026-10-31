@@ -1,12 +1,13 @@
 /** @jsxImportSource @emotion/react */
 import { useRouter } from '@tanstack/react-router'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import {
 	grantAdminCreditsToOrg,
 	setAdminOrgCreditEligibility,
 	setAdminOrgPlan,
 } from '#start/server/admin-controls'
+import { loadAdminOrgSeatQuantityReport } from '#start/server/admin-orgs'
 import { parseDollarsToCents } from '#client/routes/credit-amount-input.ts'
 import {
 	formatMicroUsd,
@@ -52,6 +53,126 @@ import {
 const billingInputCss = getAuthInputCss()
 const billingSelectCss = getSelectCss()
 const billingButtonCss = getPillButtonCss({ size: 'sm' })
+
+function AdminOrgSeatSyncPanel(props: { currentHref: string }) {
+	const report = useQuery({
+		queryKey: ['admin-org-seat-sync', props.currentHref],
+		staleTime: 30_000,
+		queryFn: () =>
+			loadAdminOrgSeatQuantityReport({
+				data: {
+					returnTo: props.currentHref,
+					checkStripe: false,
+					limit: 100,
+					offset: 0,
+				},
+			}),
+	})
+	const stripe = useMutation({
+		mutationFn: (offset: number) =>
+			loadAdminOrgSeatQuantityReport({
+				data: {
+					returnTo: props.currentHref,
+					checkStripe: true,
+					limit: 100,
+					offset,
+				},
+			}),
+	})
+	const stripeReport = stripe.data?.stripe
+	return (
+		<AccountManagementPanel
+			title="Seat sync"
+			description="Stripe seat quantity changes from the last 30 days, in aggregate. No organization names are shown."
+		>
+			{report.data ? (
+				<>
+					<MetadataGrid
+						items={[
+							{ label: 'Events', value: report.data.syncs.events },
+							{ label: 'Organizations', value: report.data.syncs.orgs },
+						]}
+					/>
+					<RecordTable
+						mode="none"
+						ariaLabel="Seat sync history"
+						emptyLabel="No seat changes recorded."
+						columns={[
+							{ key: 'change', label: 'Old → new seats', primary: true },
+							{ key: 'orgs', label: 'Organizations', align: 'end' },
+						]}
+						rows={report.data.syncs.changes.map((change) => ({
+							id: `${change.previousQuantity}-${change.nextQuantity}`,
+							cells: {
+								change: `${change.previousQuantity} → ${change.nextQuantity}`,
+								orgs: change.orgs,
+							},
+						}))}
+					/>
+				</>
+			) : report.isError ? (
+				<AccountManagementMessage tone="error">
+					{report.error.message}
+				</AccountManagementMessage>
+			) : (
+				<p>Loading seat changes…</p>
+			)}
+			<button
+				type="button"
+				css={billingButtonCss}
+				disabled={stripe.isPending}
+				onClick={() => stripe.mutate(0)}
+			>
+				{stripe.isPending ? 'Comparing…' : 'Compare with Stripe'}
+			</button>
+			{stripe.isError ? (
+				<AccountManagementMessage tone="error">
+					{stripe.error.message}
+				</AccountManagementMessage>
+			) : null}
+			{stripeReport ? (
+				<>
+					<MetadataGrid
+						items={[
+							{ label: 'Checked', value: stripeReport.checked },
+							{ label: 'Matching', value: stripeReport.matching },
+							{ label: 'Mismatched', value: stripeReport.mismatched },
+							{ label: 'Skipped', value: stripeReport.skipped },
+						]}
+					/>
+					<RecordTable
+						mode="none"
+						ariaLabel="Stripe seat mismatches"
+						emptyLabel="No seat mismatches."
+						columns={[
+							{ key: 'stripe', label: 'Stripe seats', primary: true },
+							{ key: 'live', label: 'Live seats' },
+							{ key: 'orgs', label: 'Organizations', align: 'end' },
+						]}
+						rows={stripeReport.mismatches.map((mismatch) => ({
+							id: `${mismatch.stripeQuantity}-${mismatch.liveSeats}`,
+							cells: {
+								stripe: mismatch.stripeQuantity,
+								live: mismatch.liveSeats,
+								orgs: mismatch.orgs,
+							},
+						}))}
+					/>
+					{stripeReport.nextOffset !== null ? (
+						<button
+							type="button"
+							css={billingButtonCss}
+							disabled={stripe.isPending}
+							onClick={() => stripe.mutate(stripeReport.nextOffset!)}
+						>
+							Next page
+						</button>
+					) : null}
+				</>
+			) : null}
+		</AccountManagementPanel>
+	)
+}
 
 function AdminOrgPlanForm(props: { orgId: string; manualPlan: PlanName }) {
 	const router = useRouter()
@@ -348,6 +469,7 @@ export function AdminOrgsPage(props: {
 				description="Review organization plans, seats, credits, budgets, and lifecycle state."
 				currentHref={props.currentHref}
 			/>
+			<AdminOrgSeatSyncPanel currentHref={props.currentHref} />
 			<RecordTable
 				mode="none"
 				ariaLabel="Organizations"

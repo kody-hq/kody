@@ -9,13 +9,22 @@ import {
 import {
 	AdminCreditGrantError,
 	formatAdminCreditGrantAuditReason,
-	grantAdminCreditsToUser,
+	loadAdminCreditWallet,
 } from '#worker/admin/credit-grants.ts'
+import {
+	AdminOrgBillingMutationError,
+	grantAdminCreditsToOrg,
+} from '#worker/admin/org-billing-mutations.ts'
+import { orgLimitOverrideReasonMaxLength } from '#worker/admin/org-limit-overrides.ts'
 import {
 	adminMutationCapabilityAccess,
 	auditAdminCapabilityInvocation,
-	resolveActingAdminPerson,
 } from './admin-shared.ts'
+import {
+	legacyAuditWriter,
+	legacyReason,
+	resolveLegacyPersonalOrg,
+} from './admin-legacy-billing.ts'
 import {
 	adminCreditTargetSchema,
 	adminCreditWalletSchema,
@@ -35,7 +44,12 @@ const inputSchema = z.intersection(
 			.max(creditAdminGrantNoteMaxLength)
 			.optional()
 			.describe('Why the grant was made. Stored on the ledger entry.'),
-		reason: z.string().trim().max(500).optional(),
+		reason: z
+			.string()
+			.trim()
+			.max(orgLimitOverrideReasonMaxLength)
+			.optional()
+			.describe('Why the grant was made. Defaults to the legacy note.'),
 	}),
 )
 
@@ -52,36 +66,46 @@ export const adminCreditGrantCapability = defineDomainCapability(
 		name: 'adminCreditGrant',
 		contextRuns: 'deny',
 		description:
-			'Deprecated: use adminOrgPlanSet / adminOrgCreditGrant / adminOrgCreditEligibilitySet / adminOrgGet with an org handle. Grant prepaid credits to one account.',
+			'Deprecated: use adminOrgCreditGrant with an org handle. Grant (add) prepaid credits to one account by stable user id, email, or username, including the calling admin. House-funded: no Stripe charge. Writes an audited ledger entry with the granting admin, amount, recipient, time, and optional note. Credits are only spent (on usage past the Pro include) by credit-eligible Pro accounts; otherwise the balance is held. Use adminOrgCreditGrant to grant credits to any organization wallet.',
 		keywords: ['admin', 'credits', 'wallet', 'grant', 'balance', 'top up'],
 		inputSchema,
 		outputSchema,
 		async handler(args, ctx) {
-			const admin = await resolveActingAdminPerson(ctx)
+			const reason = legacyReason('adminCreditGrant', args.reason, args.note)
 			return auditAdminCapabilityInvocation(
 				ctx,
 				'adminCreditGrant',
 				async () => {
 					try {
-						return await grantAdminCreditsToUser({
+						const { user, orgId } = await resolveLegacyPersonalOrg(ctx, args)
+						const { admin, audit } = await legacyAuditWriter(ctx)
+						const result = await grantAdminCreditsToOrg({
 							env: ctx.env,
-							target: {
-								stableUserId: args.stableUserId,
-								email: args.email,
-								username: args.username,
-							},
+							audit,
+							target: { orgId },
 							grantedBy: {
 								stableUserId: admin.stableUserId,
 								email: admin.email,
 							},
 							amountCents: args.amountCents,
-							note: args.note,
-							path: '/mcp',
-							audit: false,
+							reason,
+							platformAudit: false,
 						})
+						const wallet = await loadAdminCreditWallet(ctx.env, {
+							stableUserId: user.stableUserId,
+						})
+						if (!wallet) throw new McpCallerError('User not found.')
+						const { ok: _ok, ...legacyWallet } = wallet
+						return {
+							entryId: result.entryId,
+							amountCents: result.amountCents,
+							wallet: legacyWallet,
+						}
 					} catch (error) {
-						// Missing targets and bad grant input are caller-clearable.
-						if (error instanceof AdminCreditGrantError) {
+						if (
+							error instanceof AdminCreditGrantError ||
+							error instanceof AdminOrgBillingMutationError
+						) {
 							throw new McpCallerError(error.message, { cause: error })
 						}
 						throw error
@@ -93,7 +117,7 @@ export const adminCreditGrantCapability = defineDomainCapability(
 							stableUserId: result.wallet.stableUserId,
 							amountCents: result.amountCents,
 							entryId: result.entryId,
-						})};reason=${args.reason?.trim() || args.note?.trim() || 'No reason given (legacy adminCreditGrant)'}`,
+						})};reason=${reason}`,
 				},
 			)
 		},

@@ -6,12 +6,22 @@ import { creditAdminGrantNoteMaxLength } from '#universal/credits.ts'
 import {
 	AdminCreditGrantError,
 	formatAdminCreditEligibilityAuditReason,
-	setAdminCreditEligibility,
+	loadAdminCreditWallet,
 } from '#worker/admin/credit-grants.ts'
+import {
+	AdminOrgBillingMutationError,
+	setAdminOrgCreditEligibility,
+} from '#worker/admin/org-billing-mutations.ts'
+import { orgLimitOverrideReasonMaxLength } from '#worker/admin/org-limit-overrides.ts'
 import {
 	adminMutationCapabilityAccess,
 	auditAdminCapabilityInvocation,
 } from './admin-shared.ts'
+import {
+	legacyAuditWriter,
+	legacyReason,
+	resolveLegacyPersonalOrg,
+} from './admin-legacy-billing.ts'
 import {
 	adminCreditTargetSchema,
 	adminCreditWalletSchema,
@@ -30,7 +40,12 @@ const inputSchema = z.intersection(
 			.max(creditAdminGrantNoteMaxLength)
 			.optional()
 			.describe('Why eligibility changed. Stored on the admin audit event.'),
-		reason: z.string().trim().max(500).optional(),
+		reason: z
+			.string()
+			.trim()
+			.max(orgLimitOverrideReasonMaxLength)
+			.optional()
+			.describe('Why eligibility changed. Defaults to the legacy note.'),
 	}),
 )
 
@@ -46,7 +61,7 @@ export const adminCreditEligibilitySetCapability = defineDomainCapability(
 		name: 'adminCreditEligibilitySet',
 		contextRuns: 'deny',
 		description:
-			'Deprecated: use adminOrgPlanSet / adminOrgCreditGrant / adminOrgCreditEligibilitySet / adminOrgGet with an org handle. Change prepaid-credit eligibility for one account.',
+			'Deprecated: use adminOrgCreditEligibilitySet with an org handle. Turn admin prepaid-credit eligibility on or off for one account by stable user id, email, or username (users.admin_credits_eligible). Stripe refreshes never overwrite it. With an effective Pro plan (for example a manual adminUserUpdate plan grant), eligibility gives the account the same credit wallet as the purchasable Pro subscription: usage past the Pro include runs on credits and debits the wallet, and stops at the include when the balance runs out. Turning it off leaves the balance on hold. Does not create Stripe customers or subscriptions, and does not enable buying credits or auto-refill. Audited, with an optional note. Use adminOrgCreditEligibilitySet to change eligibility for any organization.',
 		keywords: [
 			'admin',
 			'credits',
@@ -59,31 +74,41 @@ export const adminCreditEligibilitySetCapability = defineDomainCapability(
 		inputSchema,
 		outputSchema,
 		async handler(args, ctx) {
-			let note: string | null = null
+			const reason = legacyReason(
+				'adminCreditEligibilitySet',
+				args.reason,
+				args.note,
+			)
+			const note = args.note?.trim() || null
 			return auditAdminCapabilityInvocation(
 				ctx,
 				'adminCreditEligibilitySet',
 				async () => {
 					try {
-						const result = await setAdminCreditEligibility({
+						const { user, orgId } = await resolveLegacyPersonalOrg(ctx, args)
+						const { audit } = await legacyAuditWriter(ctx)
+						const result = await setAdminOrgCreditEligibility({
 							env: ctx.env,
-							target: {
-								stableUserId: args.stableUserId,
-								email: args.email,
-								username: args.username,
-							},
+							audit,
+							target: { orgId },
 							creditsEligible: args.creditsEligible,
-							note: args.note,
+							reason,
+							platformAudit: false,
 						})
-						note = result.note
-						const { ok: _ok, ...wallet } = result.wallet
+						const wallet = await loadAdminCreditWallet(ctx.env, {
+							stableUserId: user.stableUserId,
+						})
+						if (!wallet) throw new McpCallerError('User not found.')
+						const { ok: _ok, ...legacyWallet } = wallet
 						return {
-							previousAdminCreditsEligible: result.previousAdminCreditsEligible,
-							wallet,
+							previousAdminCreditsEligible: result.previous,
+							wallet: legacyWallet,
 						}
 					} catch (error) {
-						// Missing targets and bad note input are caller-clearable.
-						if (error instanceof AdminCreditGrantError) {
+						if (
+							error instanceof AdminCreditGrantError ||
+							error instanceof AdminOrgBillingMutationError
+						) {
 							throw new McpCallerError(error.message, { cause: error })
 						}
 						throw error
@@ -96,7 +121,7 @@ export const adminCreditEligibilitySetCapability = defineDomainCapability(
 							creditsEligible: args.creditsEligible,
 							previousAdminCreditsEligible: result.previousAdminCreditsEligible,
 							note,
-						})};reason=${args.reason?.trim() || args.note?.trim() || 'No reason given (legacy adminCreditEligibilitySet)'}`,
+						})};reason=${reason}`,
 				},
 			)
 		},
