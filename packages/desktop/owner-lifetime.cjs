@@ -7,10 +7,15 @@ function bindOwnerLifetime() {
 		stopping = true
 		const deadline = setTimeout(() => {
 			if (process.platform !== 'win32') process.kill(-process.pid, 'SIGKILL')
-			else process.exit(1)
+			else process.exit(1) // 'exit' handlers still kill tracked workers.
 		}, 5000)
 		deadline.unref()
-		process.kill(process.pid, 'SIGTERM')
+		// On Windows, signalling yourself is a hard TerminateProcess that skips
+		// the daemon's drain and cleanup: run its SIGTERM handlers in-process.
+		if (process.platform !== 'win32') process.kill(process.pid, 'SIGTERM')
+		else if (process.listenerCount('SIGTERM') > 0)
+			process.emit('SIGTERM', 'SIGTERM')
+		else process.exit(0)
 	}
 	process.on('disconnect', stop)
 	process.on('message', (message) => {

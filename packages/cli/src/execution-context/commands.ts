@@ -1,4 +1,10 @@
-import { readFileSync, rmSync, unwatchFile, watchFile } from 'node:fs'
+import {
+	appendFileSync,
+	readFileSync,
+	rmSync,
+	unwatchFile,
+	watchFile,
+} from 'node:fs'
 import { cpus, platform, totalmem } from 'node:os'
 import {
 	ed25519JwkThumbprint,
@@ -43,6 +49,7 @@ import {
 } from './service-commands.js'
 import {
 	disableOwnService,
+	isServiceManager,
 	rotateLog,
 	serviceEnvVar,
 	serviceManagerFor,
@@ -495,12 +502,13 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			)
 		}
 		const asService = process.env[serviceEnvVar]
-		const manager =
-			asService === 'systemd' || asService === 'launchd' ? asService : null
+		const manager = isServiceManager(asService) ? asService : null
 		const paths = manager
 			? servicePaths({ apiUrl: input.apiUrl, ecid, manager })
 			: null
 		if (paths) rotateLog(paths.logPath)
+		// Task Scheduler has no stdout redirect: the daemon appends its own log.
+		if (paths && manager === 'taskscheduler') appendOutputTo(paths.logPath)
 		const { context, privateJwk } = loadContext({
 			apiUrl: input.apiUrl,
 			ecid,
@@ -728,4 +736,16 @@ async function runPolicyCommand(
 		return 0
 	}
 	throw new Error(policyUsage)
+}
+
+function appendOutputTo(path: string) {
+	for (const stream of [process.stdout, process.stderr]) {
+		const write = stream.write.bind(stream)
+		stream.write = ((chunk: string | Uint8Array, ...rest: Array<unknown>) => {
+			try {
+				appendFileSync(path, chunk, { mode: 0o600 })
+			} catch {}
+			return (write as (...args: Array<unknown>) => boolean)(chunk, ...rest)
+		}) as typeof stream.write
+	}
 }

@@ -134,12 +134,6 @@ async function smoke() {
 							)
 						}
 						const registered = saved()
-						if (process.platform === 'win32')
-							return {
-								registered,
-								startEnabled: item('Start runner').enabled,
-								calls,
-							}
 						item('Stop runner').click()
 						await waitFor(() => !saved().enabled && idle())
 						const stopped = saved()
@@ -152,16 +146,14 @@ async function smoke() {
 		if (workflow) {
 			assert.deepEqual(workflow.registered, {
 				ecid: 'ec_smoke',
-				enabled: process.platform !== 'win32',
+				enabled: true,
 			})
-			if (process.platform !== 'win32') {
-				assert.equal(workflow.stopped.enabled, false)
-				assert.equal(workflow.restarted.enabled, true)
-				assert.deepEqual(workflow.calls[0], ['whoami', '--json'])
-				assert.equal(workflow.calls[1][1], 'register')
-				assert.deepEqual(workflow.calls[2], ['start', 'ec_smoke'])
-				assert.deepEqual(workflow.calls[3], ['stop'])
-			} else assert.equal(workflow.startEnabled, false)
+			assert.equal(workflow.stopped.enabled, false)
+			assert.equal(workflow.restarted.enabled, true)
+			assert.deepEqual(workflow.calls[0], ['whoami', '--json'])
+			assert.equal(workflow.calls[1][1], 'register')
+			assert.deepEqual(workflow.calls[2], ['start', 'ec_smoke'])
+			assert.deepEqual(workflow.calls[3], ['stop'])
 		}
 
 		await page.screenshot({ path: 'artifacts/desktop-live.png' })

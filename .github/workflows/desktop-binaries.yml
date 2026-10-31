@@ -88,6 +88,14 @@ jobs:
           }} --${{ matrix.arch }}
       - name: Verify packaged CLI and native bindings
         run: npm run test:packaged-cli --workspace @kodycodes/desktop
+      - name: Electron smoke (menus, register, Start/Stop/Start runner)
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get install -y xvfb
+            xvfb-run -a npm run test:smoke --workspace @kodycodes/desktop
+          else
+            npm run test:smoke --workspace @kodycodes/desktop
+          fi
       - name: Upload binaries and checksums
         uses: actions/upload-artifact@v4
         with:

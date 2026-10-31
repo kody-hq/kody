@@ -400,7 +400,12 @@ export async function runDaemonServiceCommand(
 	}
 	if (input.sub === 'restart') {
 		const before = runtimeState(paths.statePath)
-		restartService({ manager, ecid, ...(env.run ? { run: env.run } : {}) })
+		restartService({
+			manager,
+			ecid,
+			statePath: paths.statePath,
+			...(env.run ? { run: env.run } : {}),
+		})
 		env.write(
 			'Restarting the kody daemon service. Runs in flight finish first.\n',
 		)

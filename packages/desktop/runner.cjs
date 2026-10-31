@@ -1,6 +1,7 @@
 const { fork } = require('node:child_process')
 const { EventEmitter } = require('node:events')
 const { join } = require('node:path')
+const { killWindowsTree } = require('./process-tree.cjs')
 
 class Runner extends EventEmitter {
 	constructor() {
@@ -42,6 +43,7 @@ class Runner extends EventEmitter {
 	}
 
 	trackChild(child) {
+		child.kodyStartedAt = Date.now()
 		this.children.add(child)
 		// A native crash can skip the CLI's finally block. The desktop still
 		// owns this process group and must stop any workerd left behind.
@@ -52,7 +54,14 @@ class Runner extends EventEmitter {
 	}
 
 	killGroup(child) {
-		if (process.platform === 'win32' || !child.pid) return
+		if (!child.pid) return
+		if (process.platform === 'win32') {
+			const done = new Promise((resolve) =>
+				killWindowsTree(child.pid, child.kodyStartedAt ?? 0, resolve),
+			)
+			this.treeKills = [...(this.treeKills ?? []), done]
+			return
+		}
 		try {
 			process.kill(-child.pid, 'SIGKILL')
 		} catch (error) {
@@ -90,10 +99,6 @@ class Runner extends EventEmitter {
 	start(ecid) {
 		if (!/^ec_[A-Za-z0-9_-]+$/.test(ecid))
 			throw new Error('Register this machine first.')
-		if (process.platform === 'win32')
-			throw new Error(
-				'Local execution currently supports macOS and Linux. The CLI workerd runtime does not support Windows yet.',
-			)
 		if (this.daemon) return
 		const child = this.launch(['daemon', '--context', ecid])
 		this.daemon = child
@@ -128,8 +133,7 @@ class Runner extends EventEmitter {
 			const timer = setTimeout(() => {
 				// POSIX process group includes workerd, not just the CLI parent.
 				try {
-					if (process.platform !== 'win32') this.killGroup(child)
-					else child.kill('SIGKILL')
+					this.killGroup(child)
 				} catch (error) {
 					if (error.code !== 'ESRCH') this.emit('shutdown-error', error)
 				}
@@ -145,6 +149,7 @@ class Runner extends EventEmitter {
 	async close() {
 		this.closing = true
 		await Promise.all([...this.children].map((child) => this.settle(child)))
+		await Promise.all(this.treeKills ?? [])
 	}
 }
 module.exports = { Runner }

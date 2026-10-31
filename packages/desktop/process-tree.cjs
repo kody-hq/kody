@@ -1,0 +1,30 @@
+const { execFile } = require('node:child_process')
+
+const hidden = { windowsHide: true, timeout: 15_000 }
+
+// Windows has no process groups. While the CLI is alive, taskkill walks its
+// tree; once it is gone its orphans still name it as their parent, so match
+// on that plus a creation time after the CLI started (PIDs are reused).
+function killWindowsTree(pid, startedAt, done = () => {}) {
+	const since = Math.max(0, Math.trunc(startedAt) - 1000)
+	const script = [
+		`$since = [DateTimeOffset]::FromUnixTimeMilliseconds(${since}).UtcDateTime`,
+		'$all = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, CreationDate)',
+		`$parents = @(${Math.trunc(pid)}); $kill = @()`,
+		'while ($parents.Count -gt 0) {',
+		'  $next = @($all | Where-Object { $parents -contains $_.ParentProcessId -and $_.CreationDate.ToUniversalTime() -ge $since -and $kill -notcontains $_.ProcessId } | ForEach-Object { $_.ProcessId })',
+		'  $kill += $next; $parents = $next',
+		'}',
+		'foreach ($id in $kill) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }',
+	].join('\n')
+	execFile('taskkill.exe', ['/PID', String(pid), '/T', '/F'], hidden, () =>
+		execFile(
+			'powershell.exe',
+			['-NoProfile', '-NonInteractive', '-Command', script],
+			hidden,
+			() => done(),
+		),
+	)
+}
+
+module.exports = { killWindowsTree }

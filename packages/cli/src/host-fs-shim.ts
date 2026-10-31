@@ -21,20 +21,23 @@ function exportNames(value: object) {
 		.sort()
 }
 
-export function createHostFsPromisesSource(input: {
-	routeRoots: ReadonlyArray<string>
-}) {
-	const names = exportNames(nodeFs.promises)
-	return `import { env } from 'cloudflare:workers';
-import { Buffer } from 'node:buffer';
-import { posix } from 'node:path';
+/**
+ * Windows runs see native host paths (`C:\...`, `C:/...`, `\\server\share`,
+ * `\\?\...`). workerd's own virtual fs only has POSIX paths, so every
+ * Windows-shaped path goes to the bridge and every `/` path stays virtual.
+ */
+const windowsHostPathSource = `export function __kodyHostPath(path) {
+	if (path instanceof URL) {
+		if (path.protocol !== 'file:') return null;
+		const pathname = decodeURIComponent(path.pathname);
+		path = path.host ? '\\\\\\\\' + path.host + pathname : pathname.replace(/^\\/([A-Za-z]:)/, '$1');
+	}
+	if (typeof path !== 'string') return null;
+	if (/^[A-Za-z]:[\\\\/]/.test(path) || /^[\\\\/]{2}(?:\\?[\\\\/]|[^\\\\/?.])/.test(path)) return path.replaceAll('/', '\\\\');
+	return null;
+}`
 
-const real = process.getBuiltinModule('node:fs').promises;
-const routeRoots = ${JSON.stringify(input.routeRoots)};
-const virtualRoots = ['/bundle', '/tmp', '/dev'];
-const within = (path, root) => path === root || path.startsWith(root.endsWith('/') ? root : root + '/');
-
-export function __kodyHostPath(path) {
+const posixHostPathSource = `export function __kodyHostPath(path) {
 	if (path instanceof URL) {
 		if (path.protocol !== 'file:') return null;
 		path = decodeURIComponent(path.pathname);
@@ -44,7 +47,24 @@ export function __kodyHostPath(path) {
 	if (routeRoots.some((root) => within(normalized, root))) return normalized;
 	if (virtualRoots.some((root) => within(normalized, root))) return null;
 	return normalized;
-}
+}`
+
+export function createHostFsPromisesSource(input: {
+	routeRoots: ReadonlyArray<string>
+	platform?: NodeJS.Platform
+}) {
+	const names = exportNames(nodeFs.promises)
+	const platform = input.platform ?? process.platform
+	return `import { env } from 'cloudflare:workers';
+import { Buffer } from 'node:buffer';
+import { posix } from 'node:path';
+
+const real = process.getBuiltinModule('node:fs').promises;
+const routeRoots = ${JSON.stringify(input.routeRoots)};
+const virtualRoots = ['/bundle', '/tmp', '/dev'];
+const within = (path, root) => path === root || path.startsWith(root.endsWith('/') ? root : root + '/');
+
+${platform === 'win32' ? windowsHostPathSource : posixHostPathSource}
 
 export function __kodyHostFsError(code, message, syscall, path) {
 	const error = new Error(message);

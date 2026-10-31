@@ -30,7 +30,7 @@ test('commands pass arguments without shell interpretation and surface CLI error
 
 test(
 	'stop ends the daemon and its workerd child, and start is idempotent',
-	{ skip: process.platform === 'win32', timeout: 10000 },
+	{ timeout: 20000 },
 	async () => {
 		const runner = new FixtureRunner()
 		try {
@@ -70,7 +70,7 @@ test('production CLI host runs the bundled CLI without a terminal Node installat
 
 test(
 	'losing the desktop IPC owner stops the CLI and its worker',
-	{ skip: process.platform === 'win32', timeout: 10000 },
+	{ timeout: 20000 },
 	async () => {
 		const runner = new FixtureRunner()
 		const child = runner.launch(['daemon'])
@@ -86,7 +86,7 @@ test(
 
 test(
 	'a CLI crash cannot leave its worker running',
-	{ skip: process.platform === 'win32', timeout: 10000 },
+	{ timeout: 20000 },
 	async () => {
 		const runner = new FixtureRunner()
 		try {
@@ -98,10 +98,10 @@ test(
 			await closed
 			const { setTimeout: delay } = require('node:timers/promises')
 			let alive = true
-			for (let attempt = 0; attempt < 50 && alive; attempt++) {
+			for (let attempt = 0; attempt < 400 && alive; attempt++) {
 				try {
 					process.kill(workerPid, 0)
-					await delay(20)
+					await delay(50)
 				} catch (error) {
 					assert.equal(error.code, 'ESRCH')
 					alive = false

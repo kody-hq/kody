@@ -189,7 +189,7 @@ async function register() {
 		!/^ec_[A-Za-z0-9_-]+$/.test(result.ecid)
 	)
 		throw new Error('The CLI did not return an execution context id.')
-	state = { ecid: result.ecid, enabled: process.platform !== 'win32' }
+	state = { ecid: result.ecid, enabled: true }
 	saveState()
 	if (state.enabled && !quitting) runner.start(state.ecid)
 	if (quitting) return
@@ -197,9 +197,7 @@ async function register() {
 		.showMessageBox({
 			message: `Registered ${name}`,
 			detail:
-				process.platform === 'win32'
-					? 'The desktop shell works on Windows, but the CLI execution runtime currently supports only macOS and Linux.'
-					: 'The runner is starting. Choose this machine in your execution chain on the website to use it by default. Folder access still requires both a local policy and a server grant.',
+				'The runner is starting. Choose this machine in your execution chain on the website to use it by default. Folder access still requires both a local policy and a server grant.',
 			buttons: ['Open execution contexts', 'Done'],
 		})
 		.then(({ response: choice }) => {
@@ -245,11 +243,7 @@ function updateMenu() {
 					},
 					{
 						label: 'Start runner',
-						enabled:
-							available &&
-							!!state.ecid &&
-							!running &&
-							process.platform !== 'win32',
+						enabled: available && !!state.ecid && !running,
 						click: () =>
 							action(async () => {
 								runner.start(state.ecid)

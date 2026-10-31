@@ -7,7 +7,15 @@ import {
 	rename,
 	writeFile,
 } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, normalize, sep } from 'node:path'
+import {
+	basename,
+	dirname,
+	isAbsolute as isRooted,
+	join,
+	normalize,
+	posix,
+	win32,
+} from 'node:path'
 import { cliConfigDir } from '../store.js'
 
 export type FsMode = 'ro' | 'rw'
@@ -53,10 +61,60 @@ function hasDotSegments(path: string) {
 	return path.split(/[\\/]+/).some((part) => part === '.' || part === '..')
 }
 
-export function isWithin(child: string, parent: string) {
+/**
+ * Windows spells one folder several ways: drop the `\\?\` long-path prefix
+ * (and `\\?\UNC\` for shares) so policy, grant, and run paths compare.
+ */
+export function plainPath(
+	path: string,
+	platform: NodeJS.Platform = process.platform,
+) {
+	if (platform !== 'win32') return path
+	if (/^[\\/]{2}\?[\\/]UNC[\\/]/i.test(path)) return `\\\\${path.slice(8)}`
+	if (/^[\\/]{2}\?[\\/]/.test(path)) return path.slice(4)
+	return path
+}
+
+/**
+ * POSIX: starts at `/`. Windows: a drive (`C:\`, `C:/`) or a share
+ * (`\\server\share`); a drive-relative `\folder` or a device path is not
+ * a host folder.
+ */
+export function isAbsolute(
+	path: string,
+	platform: NodeJS.Platform = process.platform,
+) {
+	if (platform !== 'win32') return isRooted(path)
+	return /^[A-Za-z]:[\\/]/.test(path) || /^[\\/]{2}[^\\/?.]/.test(path)
+}
+
+/** Windows file systems compare names case-insensitively. */
+export function samePath(
+	a: string,
+	b: string,
+	platform: NodeJS.Platform = process.platform,
+) {
+	return platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
+}
+
+export function isWithin(
+	child: string,
+	parent: string,
+	platform: NodeJS.Platform = process.platform,
+) {
+	if (platform === 'win32') {
+		child = child.toLowerCase()
+		parent = parent.toLowerCase()
+	}
 	if (child === parent) return true
+	const sep = platform === 'win32' ? win32.sep : posix.sep
 	const prefix = parent.endsWith(sep) ? parent : `${parent}${sep}`
 	return child.startsWith(prefix)
+}
+
+/** An example host folder for this machine, for error messages and help. */
+export function examplePath(platform: NodeJS.Platform = process.platform) {
+	return platform === 'win32' ? 'C:\\Users\\you\\project' : '/absolute/path'
 }
 
 function narrower(a: FsMode, b: FsMode): FsMode {
@@ -65,6 +123,7 @@ function narrower(a: FsMode, b: FsMode): FsMode {
 
 /** Absolute, free of `.`/`..` segments, and resolved through symlinks. */
 async function canonicalize(path: string): Promise<string> {
+	path = plainPath(path)
 	if (!isAbsolute(path)) {
 		throw new FsAccessError('EINVAL', `${path} is not an absolute path.`)
 	}
@@ -109,7 +168,7 @@ export async function readLocalPolicy(
 		)
 	) {
 		throw new Error(
-			`${path} must look like {"version":1,"fs":[{"path":"/absolute/path","mode":"ro"|"rw"}]}.`,
+			`${path} must look like {"version":1,"fs":[{"path":${JSON.stringify(examplePath())},"mode":"ro"|"rw"}]}.`,
 		)
 	}
 	return {
@@ -141,7 +200,7 @@ export async function allowLocalPath(input: {
 		throw error
 	})
 	const policy = await readLocalPolicy(policyPath)
-	const fs = policy.fs.filter((rule) => rule.path !== canonical)
+	const fs = policy.fs.filter((rule) => !samePath(rule.path, canonical))
 	fs.push({ path: canonical, mode: input.mode })
 	fs.sort((a, b) => a.path.localeCompare(b.path))
 	const next: LocalFsPolicy = { version: 1, fs }
@@ -157,7 +216,8 @@ export async function removeLocalPath(input: {
 	const policy = await readLocalPolicy(policyPath)
 	const canonical = await canonicalize(input.path).catch(() => input.path)
 	const fs = policy.fs.filter(
-		(rule) => rule.path !== canonical && rule.path !== input.path,
+		(rule) =>
+			!samePath(rule.path, canonical) && !samePath(rule.path, input.path),
 	)
 	const removed = fs.length !== policy.fs.length
 	const next: LocalFsPolicy = { version: 1, fs }
@@ -184,7 +244,8 @@ export async function effectiveFs(
 	const grantRoots = new Set<string>()
 	for (const entry of grant) {
 		const mode: FsMode = entry.mode === 'rw' ? 'rw' : 'ro'
-		if (!isAbsolute(entry.path) || hasDotSegments(entry.path)) {
+		const grantPath = plainPath(entry.path)
+		if (!isAbsolute(grantPath) || hasDotSegments(grantPath)) {
 			refused.push({
 				path: entry.path,
 				layer: 'server_grant',
@@ -192,8 +253,8 @@ export async function effectiveFs(
 			})
 			continue
 		}
-		grantRoots.add(normalize(entry.path))
-		const path = await realpath(entry.path).catch(() => null)
+		grantRoots.add(normalize(grantPath))
+		const path = await realpath(grantPath).catch(() => null)
 		if (!path) {
 			refused.push({
 				path: entry.path,
@@ -258,7 +319,7 @@ async function resolveExisting(
 			if (depth >= 40) {
 				throw new FsAccessError('EACCES', `Too many symlinks at ${path}.`)
 			}
-			const target = await readlink(entry)
+			const target = plainPath(await readlink(entry))
 			return await resolveExisting(
 				isAbsolute(target) ? target : join(resolvedParent, target),
 				true,
@@ -279,13 +340,13 @@ export async function resolveHostPath(
 	access: 'read' | 'write',
 	options: { followFinal?: boolean; allowMountRoot?: boolean } = {},
 ) {
-	if (typeof path !== 'string' || !isAbsolute(path)) {
+	if (typeof path !== 'string' || !isAbsolute(plainPath(path))) {
 		throw new FsAccessError(
 			'EINVAL',
-			`Execution context host folders need absolute paths (got ${String(path)}).`,
+			`Execution context host folders need absolute paths like ${examplePath()} (got ${String(path)}).`,
 		)
 	}
-	const lexical = normalize(path)
+	const lexical = normalize(plainPath(path))
 	const real = await resolveExisting(lexical, options.followFinal ?? true)
 	const mount = effective.mounts
 		.filter((candidate) => isWithin(real, candidate.path))
@@ -307,7 +368,11 @@ export async function resolveHostPath(
 			`${path} is read-only in this execution context: ${mount.path} is mounted ro (the narrower of the server grant and this machine's local policy).`,
 		)
 	}
-	if (access === 'write' && !options.allowMountRoot && real === mount.path) {
+	if (
+		access === 'write' &&
+		!options.allowMountRoot &&
+		samePath(real, mount.path)
+	) {
 		throw new FsAccessError(
 			'EACCES',
 			`${path} is the root of a host folder mount and cannot be removed or renamed from a run.`,
