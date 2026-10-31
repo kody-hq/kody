@@ -146,8 +146,9 @@ sequenceDiagram
   `command_not_found`. Turning either switch off, revoke, and daemon shutdown
   kill every job's process group.
 - Audit rows hold the command (first 1000 characters, trimmed further so the row
-  stays valid JSON), cwd, env keys, run id, and background flag. Env values
-  never leave the daemon.
+  stays valid JSON), cwd, env keys, run id, and background flag. Authorization
+  requests and audit rows never carry env values; command output can, if the
+  command prints them.
 - Kody cloud and `--local` runs get a `kody.command` whose methods throw
   `execution_context_command_requires_context` (`runtime-source-modules.ts`);
   the authorize hop refuses any other principal with the same code.

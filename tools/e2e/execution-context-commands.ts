@@ -46,6 +46,8 @@ const cliArgv = values.cli
 const temp = mkdtempSync(join(tmpdir(), 'kody-ec-commands-e2e-'))
 const env: NodeJS.ProcessEnv = {
 	...process.env,
+	// macOS keeps CLI config under $HOME/Library, ignoring XDG_*: isolate both.
+	HOME: temp,
 	XDG_CONFIG_HOME: join(temp, 'config'),
 	XDG_STATE_HOME: join(temp, 'state'),
 	XDG_DATA_HOME: join(temp, 'data'),

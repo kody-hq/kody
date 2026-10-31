@@ -447,7 +447,13 @@ function CommandsPanel(props: {
 			) : (
 				<p css={mutedCss}>
 					Runs on {context.name} cannot run shell commands.
-					{context.isOperator ? (
+					{context.capabilities?.os === 'win32' ? (
+						<>
+							{' '}
+							Host commands are not supported on Windows yet: the Kody runner
+							supports macOS and Linux.
+						</>
+					) : context.isOperator ? (
 						<>
 							{' '}
 							Only the machine can turn them on: run{' '}
