@@ -281,7 +281,7 @@ test('the off switch is stored in the local policy and wins everywhere', async (
 	const policyPath = join(configHome, 'policy-test.json')
 	writeFileSync(
 		policyPath,
-		JSON.stringify({ version: 1, fs: [{ path: '/tmp', mode: 'ro' }] }),
+		JSON.stringify({ version: 1, fs: [{ path: configHome, mode: 'ro' }] }),
 	)
 	assert.deepEqual(
 		update.autoUpdateSetting(await fsAccess.readLocalPolicy(policyPath), {}),
