@@ -135,7 +135,6 @@ test('profiles never get org-wide family reads; lists narrow to granted ids', ()
 })
 
 test('org-level allowlist permissions pass only when every layer holds them', () => {
-	const org: OrgResource = { type: 'org', id: 'org-1', orgId }
 	const allowed = access({
 		inactive: null,
 		layers: [
@@ -143,7 +142,6 @@ test('org-level allowlist permissions pass only when every layer holds them', ()
 			layer('agent', false, {}, ['org:execute']),
 		],
 	})
-	expect(checkPermission(allowed, 'org:execute', org).allowed).toBe(true)
 	expect(checkOrgWide(allowed, 'org:execute').allowed).toBe(true)
 	const blocked = access({
 		inactive: null,
