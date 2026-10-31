@@ -93,6 +93,7 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 			{ slug: 'platform-efficiency', label: 'Runtime and efficiency' },
 			{ slug: 'local-execute', label: 'Local CLI execute' },
 			{ slug: 'execution-contexts', label: 'Execution contexts' },
+			{ slug: 'profiles', label: 'Profiles' },
 			{ slug: 'auth-setup-git', label: 'Git credential helper' },
 			{ slug: 'open-api', label: 'Kody Open API' },
 			{ slug: 'api-versioning', label: 'API versioning' },

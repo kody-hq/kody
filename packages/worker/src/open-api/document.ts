@@ -136,6 +136,8 @@ const tagDescriptions: Record<ApiOperation['tag'], string> = {
 	storage: 'Durable storage export and SQL query.',
 	community: 'Public packages in the community catalog, and profile.',
 	tokens: 'Scoped, short-lived API tokens.',
+	profiles:
+		'Profiles: scoped agent identities capped by you and every parent profile. Behind the `profiles` experiment: off answers 403 `feature_disabled`.',
 	'capability-proxy':
 		'Platform I/O for a local execute venue: CapabilityProxy hops (`kody:runtime` calls) and `POST /v1/local-execute/package-graph` (stamped `kody:@…` module download). Requires `org:execute` and a scoped API token or CLI `kody login` MCP OAuth bearer.',
 	execute:

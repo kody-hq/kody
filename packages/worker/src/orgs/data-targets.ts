@@ -104,6 +104,7 @@ const orgStructuralHardPurgeTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{ kind: 'org_id', table: 'execution_context_org_attachments' },
 	{ kind: 'org_id', table: 'execution_context_registration_challenges' },
 	{ kind: 'org_id', table: 'execution_contexts' },
+	{ kind: 'org_id', table: 'profiles' },
 	{ kind: 'org_id', table: 'org_memberships' },
 	{ kind: 'org_id', table: 'invites' },
 	{

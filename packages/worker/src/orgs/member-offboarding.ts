@@ -3,6 +3,7 @@
  */
 
 import { endMemberExecutionContextLeases } from '#worker/execution-contexts/service.ts'
+import { revokeProfilesForMember } from '#worker/profiles/store.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { offboardOrgMember } from '#worker/orgs/offboarding.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
@@ -65,6 +66,12 @@ export async function onMemberSoftRemoved(
 	await endMemberExecutionContextLeases(input.env, {
 		orgId: input.orgId,
 		userId: input.userId,
+	})
+	// ADR 0092: a member who leaves stops acting through their profiles.
+	await revokeProfilesForMember(input.env.APP_DB, {
+		orgId: input.orgId,
+		userId: input.userId,
+		now: input.deletedAt,
 	})
 	await recordOrgAuditEvent(input.audit, {
 		orgId: input.orgId,

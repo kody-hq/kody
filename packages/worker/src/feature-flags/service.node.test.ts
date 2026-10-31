@@ -319,6 +319,7 @@ const registryKeys = [
 	'execution-contexts',
 	'credential-need-enforcement',
 	'credential-allowed-packages-safety-window',
+	'profiles',
 ] as const
 
 function everyFlag<T>(value: T, overrides: Partial<Record<FlagKey, T>> = {}) {

@@ -263,6 +263,9 @@ Open these before proposing a new primitive, surface, or storage home.
   `POST /agent/identity` takes `service_auth` only; the claim mints a user-owned
   `kody_at_` (default `long`, amends 0056); no identity assertion or JWT-bearer
   refresh; anonymous stays behind a flag that is off
+- [0092: Profiles are scoped agent identities, capped by their parent chain](./0092-profiles-are-scoped-agent-identities.md)
+  Person-owned profiles with snapshot grants, capped at run time by the acting
+  person and every parent; no epoch bump; behind the `profiles` flag
 - [0094: A visit from another org to an internal package app bills the visiting org](./0094-cross-org-package-app-visits-bill-the-visitor-org.md)
   Outside collaborators on an internal app pay for their metered work from their
   personal org; the publisher keeps the worker day; public apps stay

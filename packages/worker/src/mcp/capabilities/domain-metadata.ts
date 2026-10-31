@@ -15,6 +15,7 @@ export const capabilityDomainNames = {
 	meta: 'meta',
 	orgs: 'orgs',
 	packages: 'packages',
+	profiles: 'profiles',
 	repo: 'repo',
 	runs: 'runs',
 	secrets: 'secrets',
