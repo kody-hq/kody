@@ -12,8 +12,8 @@ Profiles are an experiment. Turn them on at
 
 Manage them in the browser at
 [`/account/profiles`](https://kody.codes/account/profiles) (your personal
-workspace) or `/@{org}/-/profiles` for a team org: a tree of every profile and
-its sub-profiles, with status, expiry, grants, and profile tokens. Owners add
+workspace) or `/@{org}/-/profiles` for a team org: a tree of your profiles and
+their sub-profiles, with status, expiry, grants, and profile tokens. Owners add
 `?members=all` to see and revoke every member's profiles.
 
 ## Fields

@@ -158,11 +158,13 @@ export const redirectProfilesEntry = createServerFn({ method: 'GET' })
 		const { withWebsiteRead, WebsiteAuthenticationError } =
 			await import('./mutation-context.ts')
 		const { orgResourcePath } = await import('#universal/org-pages.ts')
+		const { personalUsageSlug } = await import('#app/handlers/account-usage.ts')
 		const url = new URL(href, 'https://kody.local')
 		try {
-			return await withWebsiteRead({}, async ({ user }) => {
+			return await withWebsiteRead({}, async ({ user, env }) => {
+				const slug = await personalUsageSlug(env, user)
 				throw redirect({
-					href: orgResourcePath(user.username, 'profiles') + url.search,
+					href: orgResourcePath(slug, 'profiles') + url.search,
 					statusCode: 302,
 					headers: { 'Cache-Control': 'private, no-store' },
 				})

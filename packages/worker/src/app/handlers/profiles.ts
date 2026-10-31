@@ -149,6 +149,14 @@ function inList(ids: ReadonlyArray<string>) {
 	return ids.map(() => '?').join(', ')
 }
 
+/** D1 binds at most 100 parameters per statement. */
+function chunks<T>(items: ReadonlyArray<T>, size = 90) {
+	const out: Array<Array<T>> = []
+	for (let i = 0; i < items.length; i += size)
+		out.push(items.slice(i, i + size))
+	return out
+}
+
 async function packageLabels(
 	db: D1Database,
 	orgSlug: string,
@@ -156,14 +164,18 @@ async function packageLabels(
 ) {
 	const labels = new Map<string, { label: string; href: string }>()
 	if (!ids.length) return labels
-	const rows = await db
-		.prepare(
-			`SELECT id, name, kody_id FROM saved_packages
-			 WHERE id IN (${inList(ids)})${andLiveDeletedAtSql()}`,
-		)
-		.bind(...ids)
-		.all<{ id: string; name: string; kody_id: string }>()
-	for (const row of rows.results ?? []) {
+	const rows = []
+	for (const batch of chunks(ids)) {
+		const result = await db
+			.prepare(
+				`SELECT id, name, kody_id FROM saved_packages
+				 WHERE id IN (${inList(batch)})${andLiveDeletedAtSql()}`,
+			)
+			.bind(...batch)
+			.all<{ id: string; name: string; kody_id: string }>()
+		rows.push(...(result.results ?? []))
+	}
+	for (const row of rows) {
 		labels.set(row.id, {
 			label: row.name,
 			href: routes.communityPackage.href({

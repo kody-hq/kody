@@ -120,28 +120,36 @@ export async function loadProfileGrants(
 ): Promise<Map<string, Array<ProfileGrantRow>>> {
 	const byProfile = new Map<string, Array<ProfileGrantRow>>()
 	if (input.profileIds.length === 0) return byProfile
-	const placeholders = input.profileIds.map(() => '?').join(', ')
-	const result = await db
-		.prepare(
-			`SELECT g.id AS grant_id, g.subject_id, g.resource_type, g.resource_id,
-				gp.permission
-			 FROM grants g JOIN grant_permissions gp ON gp.grant_id = g.id
-			 WHERE g.org_id = ? AND g.subject_type = 'profile'
-			   AND g.deleted_at IS NULL
-			   AND (g.expires_at IS NULL OR g.expires_at > ?)
-			   AND g.subject_id IN (${placeholders})
-			 ORDER BY g.created_at ASC, g.id ASC, gp.permission ASC`,
-		)
-		.bind(input.orgId, new Date().toISOString(), ...input.profileIds)
-		.all<{
-			grant_id: string
-			subject_id: string
-			resource_type: string
-			resource_id: string
-			permission: OrgPermission
-		}>()
+	type Row = {
+		grant_id: string
+		subject_id: string
+		resource_type: string
+		resource_id: string
+		permission: OrgPermission
+	}
+	const now = new Date().toISOString()
+	// D1 binds at most 100 parameters; two are fixed.
+	const rows: Array<Row> = []
+	for (let i = 0; i < input.profileIds.length; i += 90) {
+		const batch = input.profileIds.slice(i, i + 90)
+		const placeholders = batch.map(() => '?').join(', ')
+		const result = await db
+			.prepare(
+				`SELECT g.id AS grant_id, g.subject_id, g.resource_type, g.resource_id,
+					gp.permission
+				 FROM grants g JOIN grant_permissions gp ON gp.grant_id = g.id
+				 WHERE g.org_id = ? AND g.subject_type = 'profile'
+				   AND g.deleted_at IS NULL
+				   AND (g.expires_at IS NULL OR g.expires_at > ?)
+				   AND g.subject_id IN (${placeholders})
+				 ORDER BY g.created_at ASC, g.id ASC, gp.permission ASC`,
+			)
+			.bind(input.orgId, now, ...batch)
+			.all<Row>()
+		rows.push(...result.results)
+	}
 	const byGrant = new Map<string, ProfileGrantRow>()
-	for (const row of result.results) {
+	for (const row of rows) {
 		let grant = byGrant.get(row.grant_id)
 		if (!grant) {
 			grant = {

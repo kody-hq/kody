@@ -19,7 +19,8 @@ export function profilesPageQuery(
 	actorKey: string | null,
 	input: { orgSlug: string; members?: 'all' },
 ) {
-	return pageQuery(actorKey, input)
+	// Expiry flips statuses with no event, so poll while the page is open.
+	return { ...pageQuery(actorKey, input), refetchInterval: 60_000 }
 }
 
 /** Router invalidation alone reuses the cached page query, so refetch it too. */

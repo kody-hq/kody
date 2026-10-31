@@ -24,8 +24,10 @@ that let an agent act as one (see
 [Hand a sub-agent its own token](#hand-a-sub-agent-its-own-token)).
 
 The **Agent profiles** page at `/account/profiles` (or `/@{org}/-/profiles` in a
-team org) shows the same profiles as a tree of parents and sub-profiles, and
-does each of these from the browser. It is not your public profile.
+team org) shows the same profiles as a tree of parents and sub-profiles. From
+the browser you can create, list, shorten, and revoke profiles and mint or
+revoke profile tokens; share packages from a package's **Collaborators** tab. It
+is not your public profile.
 
 ## How access is checked
 

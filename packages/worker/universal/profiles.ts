@@ -305,7 +305,7 @@ export function profileAgentHints(input: {
 	return {
 		mcp: [
 			`profileList({})`,
-			`profileCreate({ name: "my-agent", expires_at: "2026-12-31T00:00:00Z", grants: [] })`,
+			`profileCreate({ name: "my-agent", grants: [] })`,
 			`profileCreate({ name: "helper", parent_profile_id: "${id}" })`,
 			`tokenCreate({ name: "my-agent", profile_id: "${id}", scopes: ["org:execute"], lifetime: "short" })`,
 			`profileRevoke({ profile_id: "${id}" })`,

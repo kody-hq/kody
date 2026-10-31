@@ -821,6 +821,8 @@ function ShortenExpiryForm(props: {
 			})) as MutationResult
 			setMessage(failureText(result))
 			if (result.ok) await props.onDone()
+		} catch (error) {
+			setMessage(thrownText(error))
 		} finally {
 			setPending(false)
 		}
@@ -883,6 +885,8 @@ function RevokeProfileButton(props: {
 				dialog.current?.close()
 				await props.onDone()
 			}
+		} catch (error) {
+			setMessage(thrownText(error))
 		} finally {
 			setPending(false)
 		}
@@ -989,17 +993,23 @@ function ProfileTokens(props: {
 				setSecret(result.token)
 				await props.onChange()
 			} else setMessage(failureText(result))
+		} catch (error) {
+			setMessage(thrownText(error))
 		} finally {
 			setPending(false)
 		}
 	}
 
 	async function revoke(tokenId: string) {
-		const result = (await revokeProfileToken({
-			data: { orgSlug: props.orgSlug, tokenId },
-		})) as MutationResult
-		setMessage(failureText(result))
-		if (result.ok) await props.onChange()
+		try {
+			const result = (await revokeProfileToken({
+				data: { orgSlug: props.orgSlug, tokenId },
+			})) as MutationResult
+			setMessage(failureText(result))
+			if (result.ok) await props.onChange()
+		} catch (error) {
+			setMessage(thrownText(error))
+		}
 	}
 
 	return (
@@ -1151,6 +1161,12 @@ function ProfileTokens(props: {
 	)
 }
 
+function thrownText(error: unknown) {
+	return error instanceof Error && error.message
+		? error.message
+		: 'Something went wrong.'
+}
+
 function CreateProfilePanel(props: {
 	orgSlug: string
 	parent: ProfileItem | null
@@ -1236,6 +1252,8 @@ function CreateProfilePanel(props: {
 				typeof result.profileId === 'string' ? result.profileId : null,
 			)
 			await refresh()
+		} catch (error) {
+			setMessage(thrownText(error))
 		} finally {
 			setPending(false)
 		}
