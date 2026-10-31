@@ -775,6 +775,46 @@ jobs:
             echo "- duration_seconds: **${dur}**"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  cli_windows:
+    # Windows execution contexts (kody daemon, host folders, Task Scheduler):
+    # x64 natively and Windows on Arm running the x64 workerd under emulation.
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.runner }}
+    name: 🪟 CLI (${{ matrix.runner }})
+    timeout-minutes: 30
+    if: >-
+      github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false
+    defaults:
+      run:
+        shell: bash
+    env:
+      KODY_SKIP_SKILL_REFRESH: '1'
+      KODY_SKIP_GIT_HELPER_REFRESH: '1'
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: ⎔ Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: 📥 Install deps
+        run: npm ci
+
+      - name: 🧪 CLI validate
+        run: npm run cli:validate
+
+      - name: Desktop validate
+        run: npm run desktop:validate
+
   validate:
     # Final merge gate stays on GitHub-hosted ubuntu-latest so a green
     # ✅ Validate check does not wait on a Warp machine (~10s) for a 3–4s job.
@@ -789,6 +829,7 @@ jobs:
       - e2e
       - e2e_report
       - cli
+      - cli_windows
     permissions:
       contents: read
       actions: read
@@ -1054,7 +1095,8 @@ jobs:
           needs.static.result == 'success' && needs.node.result == 'success' &&
           needs.workers.result == 'success' && needs.mcp.result == 'success' &&
           needs.e2e.result == 'success' && needs.e2e_report.result == 'success'
-          && needs.cli.result == 'success'
+          && needs.cli.result == 'success' && needs.cli_windows.result ==
+          'success'
         run: echo "All validate jobs passed"
 
       - name: ❌ Report failures

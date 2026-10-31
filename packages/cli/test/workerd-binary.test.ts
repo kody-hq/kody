@@ -19,6 +19,7 @@ import {
 	WorkerdDownloadStalledError,
 	workerdAssetUrl,
 	workerdTargetFor,
+	workerdVersion,
 } from '../src/workerd-binary.js'
 
 function serve(body: Buffer) {
@@ -30,18 +31,31 @@ function serve(body: Buffer) {
 	return { fetchFn, urls }
 }
 
-test('workerdTargetFor covers Linux and macOS on x64/arm64 only', () => {
+test('workerdTargetFor covers Linux, macOS, and Windows on x64/arm64', () => {
 	assert.equal(workerdTargetFor('linux', 'x64'), 'linux-64')
 	assert.equal(workerdTargetFor('linux', 'arm64'), 'linux-arm64')
 	assert.equal(workerdTargetFor('darwin', 'x64'), 'darwin-64')
 	assert.equal(workerdTargetFor('darwin', 'arm64'), 'darwin-arm64')
-	assert.throws(
-		() => workerdTargetFor('win32', 'x64'),
-		/supports Linux and macOS/,
-	)
+	assert.equal(workerdTargetFor('win32', 'x64'), 'windows-64')
+	assert.equal(workerdTargetFor('win32', 'arm64'), 'windows-64')
 	assert.throws(
 		() => workerdTargetFor('linux', 'ia32'),
-		/supports Linux and macOS/,
+		/supports Linux, macOS, and Windows/,
+	)
+	assert.throws(
+		() => workerdTargetFor('freebsd', 'x64'),
+		/supports Linux, macOS, and Windows/,
+	)
+})
+
+test('cachedWorkerdPath names the Windows binary workerd.exe', () => {
+	assert.equal(
+		cachedWorkerdPath('cache', 'windows-64'),
+		join('cache', 'workerd', `${workerdVersion}-windows-64`, 'workerd.exe'),
+	)
+	assert.equal(
+		cachedWorkerdPath('cache', 'linux-64'),
+		join('cache', 'workerd', `${workerdVersion}-linux-64`, 'workerd'),
 	)
 })
 
@@ -52,12 +66,27 @@ test('userCacheDir honors KODY_CACHE_DIR, XDG_CACHE_HOME, and macOS Caches', () 
 	)
 	assert.equal(
 		userCacheDir({ XDG_CACHE_HOME: '/xdg' }, 'linux', '/home/u'),
-		'/xdg/kody',
+		join('/xdg', 'kody'),
 	)
-	assert.equal(userCacheDir({}, 'linux', '/home/u'), '/home/u/.cache/kody')
+	assert.equal(
+		userCacheDir({}, 'linux', '/home/u'),
+		join('/home/u', '.cache', 'kody'),
+	)
 	assert.equal(
 		userCacheDir({}, 'darwin', '/Users/u'),
-		'/Users/u/Library/Caches/kody',
+		join('/Users/u', 'Library', 'Caches', 'kody'),
+	)
+	assert.equal(
+		userCacheDir(
+			{ LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' },
+			'win32',
+			'C:\\Users\\u',
+		),
+		join('C:\\Users\\u\\AppData\\Local', 'kody', 'cache'),
+	)
+	assert.equal(
+		userCacheDir({}, 'win32', 'C:\\Users\\u'),
+		join('C:\\Users\\u', 'AppData', 'Local', 'kody', 'cache'),
 	)
 })
 

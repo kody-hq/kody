@@ -21,6 +21,8 @@ export const workerdAssetDigests = {
 		'752ec91c01dfc44d660de6e3a654879cfc1277caa7f3c5312871c608c4c2d6df',
 	'darwin-arm64':
 		'c189fc08f691739c37d8784945e943e33b66cbd4e14635a061fe516dc95f2b39',
+	'windows-64':
+		'49a0c1247da0c2a085717926f8c3e63ed3ff0df1c6a6fc5eebb22309dab630f1',
 } as const
 
 /** Abort a workerd download after this long with no bytes; a download that keeps making progress can run as long as it needs. */
@@ -35,13 +37,21 @@ export function workerdTargetFor(
 	arch: string = process.arch,
 ): WorkerdTarget {
 	const os =
-		platform === 'linux' ? 'linux' : platform === 'darwin' ? 'darwin' : null
+		platform === 'linux'
+			? 'linux'
+			: platform === 'darwin'
+				? 'darwin'
+				: platform === 'win32'
+					? 'windows'
+					: null
 	const cpu = arch === 'x64' ? '64' : arch === 'arm64' ? 'arm64' : null
 	if (!os || !cpu) {
 		throw new Error(
-			`execute --local supports Linux and macOS on x64 or arm64 (this machine is ${platform}-${arch}).`,
+			`execute --local supports Linux, macOS, and Windows on x64 or arm64 (this machine is ${platform}-${arch}).`,
 		)
 	}
+	// workerd ships no Windows arm64 build; Windows on Arm runs the x64 one under emulation.
+	if (os === 'windows') return 'windows-64'
 	return `${os}-${cpu}`
 }
 
@@ -59,6 +69,12 @@ export function userCacheDir(
 ): string {
 	if (env.KODY_CACHE_DIR) return env.KODY_CACHE_DIR
 	if (platform === 'darwin') return join(home, 'Library', 'Caches', 'kody')
+	if (platform === 'win32')
+		return join(
+			env.LOCALAPPDATA || join(home, 'AppData', 'Local'),
+			'kody',
+			'cache',
+		)
 	return join(env.XDG_CACHE_HOME || join(home, '.cache'), 'kody')
 }
 
@@ -66,7 +82,12 @@ export function cachedWorkerdPath(
 	cacheDir: string,
 	target: WorkerdTarget,
 ): string {
-	return join(cacheDir, 'workerd', `${workerdVersion}-${target}`, 'workerd')
+	return join(
+		cacheDir,
+		'workerd',
+		`${workerdVersion}-${target}`,
+		target.startsWith('windows-') ? 'workerd.exe' : 'workerd',
+	)
 }
 
 /**

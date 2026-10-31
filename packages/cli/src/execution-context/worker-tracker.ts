@@ -7,6 +7,7 @@ import {
 	writeFileSync,
 } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { windowsCommandLine } from '../process-tree.js'
 
 /** A workerd a run started, as recorded on disk. */
 type WorkerRecord = {
@@ -45,7 +46,7 @@ const defaultOps: ProcessOps = {
 					' ',
 				)
 			}
-			if (process.platform === 'win32') return null
+			if (process.platform === 'win32') return windowsCommandLine(pid)
 			return execFileSync('ps', ['-p', String(pid), '-o', 'command='], {
 				encoding: 'utf8',
 				stdio: ['ignore', 'pipe', 'ignore'],
