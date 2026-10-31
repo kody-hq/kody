@@ -468,7 +468,10 @@ export async function mintPackageAppVisitTicket(input: {
 	credentialClientBinding: string
 	grantId?: string | null
 	scopes?: ReadonlyArray<string>
-	credential?: Pick<RequestCredential, 'scopes' | 'profileName' | 'profileId'> | null
+	credential?: Pick<
+		RequestCredential,
+		'scopes' | 'profileName' | 'profileId'
+	> | null
 	executorOnly?: boolean
 	nonce?: string
 	now?: number

@@ -120,12 +120,12 @@ returns `{ profile, token }`; give the sub-agent `token.token` as its
 
 ## What runs as a profile
 
-- Credentials, memory, and execution contexts need a grant in the profile
-  chain; without one they are refused or skipped (`profile_grant`).
+- Credentials, memory, and execution contexts need a grant in the profile chain;
+  without one they are refused or skipped (`profile_grant`).
 - Jobs, triggers, and app visits a profile turns on keep running as that
   profile. When it or a parent is revoked or expires, they pause with
-  `paused_reason: "profile_inactive"` and stay paused until an active
-  credential turns them on again.
+  `paused_reason: "profile_inactive"` and stay paused until an active credential
+  turns them on again.
 - Runs record the profile id and chain, so activity shows which agent did it.
 
 ## Shorten or revoke

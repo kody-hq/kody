@@ -75,11 +75,11 @@ without it keeps its current expiry, and `null` makes it unlimited. See
 
 - `tokenCreate` (Open API `POST /v1/tokens`, through the MCP `api` tool or the
   CLI) takes optional `profile_id` to mint a token that acts as that profile. A
-  token already bound to a profile defaults to its own profile and can only
-  name itself or a sub-profile below it.
-- A profile token expires no later than the earliest `expires_at` in the
-  profile chain. Profile tokens have their own limit and never push out your
-  person tokens.
+  token already bound to a profile defaults to its own profile and can only name
+  itself or a sub-profile below it.
+- A profile token expires no later than the earliest `expires_at` in the profile
+  chain. Profile tokens have their own limit and never push out your person
+  tokens.
 - `/mcp` does not take profile tokens. Use them with the Open API, the `api`
   tool, or the CLI (`KODY_API_TOKEN`).
 - `cliCredentialBootstrap` refuses a profile-bound caller. Mint with
@@ -110,5 +110,5 @@ as `profileCreate`), `scopes`, and optional `token_name`. It returns
 
 ## Attribution
 
-Runs record the profile id and its chain (ids, root first) as they were when
-the run started, so attribution survives the profile being purged.
+Runs record the profile id and its chain (ids, root first) as they were when the
+run started, so attribution survives the profile being purged.
