@@ -7,6 +7,7 @@ import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { resolveSavedPackage } from '#worker/package-invocations/module-artifacts.ts'
 import { getGrantById } from '#worker/orgs/access-writes.ts'
 import { getLiveOrgMembership } from '#worker/orgs/org-members-list.ts'
+import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { listPackageCollaborators } from '#worker/orgs/package-collaborators.ts'
 import {
 	grantPackageToProfile,
@@ -109,11 +110,10 @@ function readSelector(value: string | undefined) {
 }
 
 /**
- * The team, org member, or everyone in the org to add. Only subjects inside
- * the owning org are accepted; people outside it are refused rather than
- * granted directly.
+ * The team, person, or everyone in the org to add. A person outside the org
+ * becomes an outside collaborator, the same direct grant `accessGrant` writes.
  */
-async function resolveInternalSubject(
+async function resolveCollaboratorSubject(
 	db: D1Database,
 	orgId: string,
 	input: {
@@ -146,15 +146,19 @@ async function resolveInternalSubject(
 	}
 	const userId = await resolvePersonId(db, { userId: userIdInput, username })
 	const membership = await getLiveOrgMembership(db, orgId, userId)
-	if (!membership) {
-		throw new McpCallerError(
-			'That person is not a member of this organization. Only teams and org members can be added as collaborators.',
-		)
-	}
-	if (membership.role === 'owner') {
+	if (membership?.role === 'owner') {
 		throw new McpCallerError(
 			'Owners already have full access to every package in this organization.',
 		)
+	}
+	if (!membership && userIdInput) {
+		const user = await db
+			.prepare(
+				`SELECT 1 AS found FROM users WHERE stable_user_id = ?${andLiveDeletedAtSql()}`,
+			)
+			.bind(userId)
+			.first<{ found: number }>()
+		if (!user) throw new McpCallerError('No user with that user_id.')
 	}
 	return { type: 'user', id: userId }
 }
@@ -162,9 +166,10 @@ async function resolveInternalSubject(
 /** Shared write operation. MCP enriches its response separately; website writes
  * return an acknowledgement without depending on a subsequent list read. */
 export async function setPackageCollaboratorAccess(
-	args: Parameters<typeof resolveInternalSubject>[2] & {
+	args: Parameters<typeof resolveCollaboratorSubject>[2] & {
 		package_id: string
-		preset: z.infer<typeof grantPresetSchema>
+		preset?: z.infer<typeof grantPresetSchema>
+		permissions?: Array<string>
 		profile_id?: string
 	},
 	ctx: CapabilityContext,
@@ -182,6 +187,11 @@ export async function setPackageCollaboratorAccess(
 				'Pass exactly one of team_slug, team_id, username, user_id, everyone: true, or profile_id.',
 			)
 		}
+		if (!args.preset) {
+			throw new McpCallerError(
+				'Profile grants take a preset (read, use, contribute, or manage), not a permissions list.',
+			)
+		}
 		await grantPackageToProfile({
 			env: ctx.env,
 			request: requireMcpRequest(ctx.callerContext),
@@ -191,7 +201,7 @@ export async function setPackageCollaboratorAccess(
 		})
 		return { managed, subject: { type: 'profile' as const, id: profileId } }
 	}
-	const subject = await resolveInternalSubject(
+	const subject = await resolveCollaboratorSubject(
 		ctx.env.APP_DB,
 		managed.orgId,
 		args,
@@ -203,6 +213,7 @@ export async function setPackageCollaboratorAccess(
 			subject_type: subject.type,
 			subject_id: subject.id,
 			preset: args.preset,
+			permissions: args.permissions,
 		},
 		ctx,
 	)
@@ -216,7 +227,7 @@ export const packageCollaboratorListCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
-			'List who can use one package in the organization this request is bound to: teams, org members, and outside collaborators with their preset (Use, Contribute, or Manage) and grant_id. package_id takes the package id or its kody id. You need manage access on the package. Add a team or org member, or change their preset, with packageCollaboratorSet; remove one with packageCollaboratorRemove.',
+			'List who can use one package in the organization this request is bound to: teams, org members, and outside collaborators with their preset (Read, Use, Contribute, or Manage) and grant_id. package_id takes the package id or its kody id. You need manage access on the package. Add a team or org member, or change their preset, with packageCollaboratorSet; remove one with packageCollaboratorRemove.',
 		keywords: [
 			'collaborators',
 			'package',
@@ -261,7 +272,7 @@ export const packageCollaboratorSetCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
-			'Add a team, an org member, or everyone in this organization as a collaborator on one package in the organization this request is bound to, or change the preset of one who already is. Pass exactly one of team_slug, team_id, username, user_id, everyone: true, or profile_id (an agent profile, profiles experiment), and a preset (use, contribute, or manage). everyone covers current and future members, resolved live, so someone who leaves loses it at once; the package stays private to everyone else. Only teams and members of this organization are accepted; Owners already have full access. You need manage access on the package. Member, team, and org grants are audited like accessGrant; profile grants are not audited yet.',
+			'Add a team, a person, or everyone in this organization as a collaborator on one package in the organization this request is bound to, or change the preset of one who already is. Pass exactly one of team_slug, team_id, username, user_id, everyone: true, or profile_id (an agent profile, profiles experiment), and a preset (read, use, contribute, or manage). read shares only the source: they can read, clone, and fork it into their own Kody (packageFork) but cannot run the package or open its app. A username outside this organization becomes an outside collaborator. everyone covers current and future members, resolved live, so someone who leaves loses it at once; the package stays private to everyone else. Owners already have full access. You need manage access on the package. Member, team, and org grants are audited like accessGrant; profile grants are not audited yet.',
 		keywords: [
 			'collaborators',
 			'package',
@@ -270,6 +281,9 @@ export const packageCollaboratorSetCapability = defineDomainCapability(
 			'share',
 			'add team',
 			'add member',
+			'outside collaborator',
+			'read only',
+			'share source',
 			'preset',
 		],
 		readOnly: false,
@@ -283,7 +297,9 @@ export const packageCollaboratorSetCapability = defineDomainCapability(
 				.string()
 				.min(1)
 				.optional()
-				.describe('Username of an org member, without the leading @.'),
+				.describe(
+					'Username of the person, without the leading @. People outside this organization become outside collaborators.',
+				),
 			user_id: z.string().min(1).optional(),
 			profile_id: z
 				.string()
@@ -298,7 +314,13 @@ export const packageCollaboratorSetCapability = defineDomainCapability(
 				.describe(
 					'true: everyone in this organization (current and future members).',
 				),
-			preset: grantPresetSchema,
+			preset: grantPresetSchema.optional(),
+			permissions: z
+				.array(z.string().min(1))
+				.optional()
+				.describe(
+					'Advanced grant: package permissions (package:read, package:execute, package:write, package:publish, package:delete, package:manage_access). Do not combine with preset.',
+				),
 		}),
 		outputSchema: z.object({
 			package: packageSchema,

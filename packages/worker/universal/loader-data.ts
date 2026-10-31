@@ -10,6 +10,7 @@ import {
 	type ViewerListingInstall,
 } from '#universal/community-public-types.ts'
 import { type McpOAuthClientMode } from '@kody-internal/shared/mcp-servers.ts'
+import { type GrantPreset } from '@kody-internal/shared/grant-presets.ts'
 import { type PermissionString, type RoleName } from '#universal/permissions.ts'
 import { type AdminFeatureFlag } from '#universal/feature-flags/types.ts'
 import { type OnboardingChecklistItemId } from '#universal/onboarding-checklist-types.ts'
@@ -1441,7 +1442,7 @@ export type OrgInviteJoinOffer =
 			kind: 'resource'
 			packageName: string
 			packageHref: string
-			preset: 'use' | 'contribute' | 'manage'
+			preset: GrantPreset
 			presetLabel: string
 			presetDescription: string
 			/** The viewer is not a member, so they stay an outside collaborator. */

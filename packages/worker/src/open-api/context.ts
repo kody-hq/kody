@@ -44,6 +44,8 @@ export type ApiPrincipal =
 			runtime: EcpGrant['runtime']
 			/** `requester` on the operator's own runs, `none` on anyone else's. */
 			credentials: ContextRunCredentials
+			/** The requester operates the context: cloud-equivalent Kody access. */
+			byOperator: boolean
 	  }
 
 export function toCapabilityOpenApiPrincipal(

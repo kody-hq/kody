@@ -31,6 +31,8 @@ import { colors, mq, typography } from '#universal/styles/tokens.ts'
 
 const OTHER_ACCOUNT_FORK_TOOLTIP =
 	'This was built by another user. Verify it before using. Click again to confirm fork.'
+const READABLE_PACKAGE_FORK_TOOLTIP =
+	'Fork the source into your own Kody. It runs and bills there, and gives you no new access to this package. Click again to confirm fork.'
 const FORK_LABEL = 'Fork'
 const OPEN_FORK_LABEL = 'Open fork'
 const COPY_SETUP_PROMPT_LABEL = 'Copy setup prompt'
@@ -227,7 +229,9 @@ function renderStatusControl(fork: PackageRepoForkAction) {
 		...fork,
 		icon: 'git-fork',
 		label: FORK_LABEL,
-		tooltip: OTHER_ACCOUNT_FORK_TOOLTIP,
+		tooltip: fork.source
+			? READABLE_PACKAGE_FORK_TOOLTIP
+			: OTHER_ACCOUNT_FORK_TOOLTIP,
 	})
 }
 
@@ -288,7 +292,7 @@ function renderInstallControl(input: {
 	loggedIn: boolean
 	loginHref: string
 	trusted: boolean
-	listingId: string
+	listingId: string | null
 }) {
 	return <InstallControl input={input} />
 }
@@ -302,7 +306,7 @@ function InstallControl({
 		loggedIn: boolean
 		loginHref: string
 		trusted: boolean
-		listingId: string
+		listingId: string | null
 	}
 }) {
 	const install = useContext(PackageInstallContext)
@@ -332,7 +336,9 @@ function InstallControl({
 		'data-testid': 'community-detail-install',
 		'data-package-title-status': 'verify',
 		'data-package-title-idle': 'verify',
-		'data-package-title-listing': input.listingId,
+		...(input.listingId
+			? { 'data-package-title-listing': input.listingId }
+			: {}),
 		'data-title-idle-label': input.label,
 		'data-title-idle-tooltip': input.tooltip,
 		'data-community-install': '',

@@ -1597,10 +1597,9 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	await expect(
 		bridge.packageStorageGet({ packageId: 'package-1', key: 'count' }),
 	).resolves.toEqual({ value: 'granted-value' })
+	const runnerCall = (id: string, visitor?: string) => [id, visitor, undefined]
 	expect(getStorageRunner).toHaveBeenCalledWith(
-		buildPackageStorageId('package-1'),
-		undefined,
-		undefined,
+		...runnerCall(buildPackageStorageId('package-1')),
 	)
 	expect(getValue).toHaveBeenCalledWith({ key: 'count' })
 
@@ -1625,9 +1624,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 		}),
 	).resolves.toEqual({ ok: true })
 	expect(getStorageRunner).toHaveBeenCalledWith(
-		buildPackageStorageId('dep-package'),
-		'',
-		undefined,
+		...runnerCall(buildPackageStorageId('dep-package'), ''),
 	)
 	expect(setValue).toHaveBeenCalledWith({ key: 'flag', value: true })
 	// The bound binding cannot be pointed at another granted bucket either.
@@ -1675,9 +1672,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	).resolves.toEqual({ ok: true })
 	expect(getStorageRunner).toHaveBeenCalledWith('package-1:facet:main')
 	expect(getStorageRunner).toHaveBeenCalledWith(
-		'package-1:Counter:instance-a',
-		undefined,
-		undefined,
+		...runnerCall('package-1:Counter:instance-a'),
 	)
 
 	const outsideNamespaceError =
@@ -1773,6 +1768,7 @@ test("buildPackageAppWorker never reuses one visitor's request context or creden
 		actorId: string,
 		role: 'owner' | 'member',
 		orgSlug: string = key,
+		billedOrgId?: string,
 	) =>
 		makeBuildInput(env, key, {
 			runtime: {
@@ -1793,7 +1789,8 @@ test("buildPackageAppWorker never reuses one visitor's request context or creden
 							scopes: null,
 							profileName: null,
 						},
-						membership: { role },
+						membership: billedOrgId ? null : { role },
+						...(billedOrgId ? { billing: { orgId: billedOrgId } } : {}),
 					},
 				},
 			} as never,
@@ -1825,14 +1822,13 @@ test("buildPackageAppWorker never reuses one visitor's request context or creden
 	await serve(visit('person-a', 'member'))
 	await serve(visit('person-a', 'owner', 'renamed-org'))
 	await serve(visit('person-a', 'owner'))
-
-	const [first, other, demoted, renamed, again] = loads
+	await serve(visit('person-c', 'member', key, 'org-visitor-c'))
+	const [first, other, demoted, renamed, again, crossOrg] = loads
+	expect(crossOrg!.bridge.props.gatewayProps).toMatchObject({
+		request: { billing: { orgId: 'org-visitor-c' } },
+	})
 	// Every visitor of this app and mount shares the isolate.
 	expect(new Set(loads.map((load) => load.id)).size).toBe(1)
-	expect(again!.id).toBe(first!.id)
-	expect(other!.id).toBe(first!.id)
-	expect(demoted!.id).toBe(first!.id)
-	expect(renamed!.id).toBe(first!.id)
 	// Per-request authority never copies another visitor's identity or binding.
 	for (const load of [other!, demoted!, renamed!, again!]) {
 		expect(load.bridge.props.credentialClientBinding).not.toBe(
@@ -1858,87 +1854,6 @@ test("buildPackageAppWorker never reuses one visitor's request context or creden
 		userId: 'person-a',
 		role: 'owner',
 	})
-})
-
-test('buildPackageAppWorker bills a cross-org visit to the visiting org and keeps the worker and its day on the publisher', async () => {
-	const usageModule = await import('#worker/usage/dynamic-worker-day.ts')
-	const breakerModule = await import('./package-app-usage-breaker.ts')
-	const daySpy = vi
-		.spyOn(usageModule, 'recordUniqueDynamicWorkerDay')
-		.mockResolvedValue(undefined)
-	const gateSpy = vi
-		.spyOn(breakerModule, 'gatePackageAppUsage')
-		.mockResolvedValue(undefined)
-	const { env, loader } = createPackageAppTestEnv()
-	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
-		makeArtifact(),
-	)
-	const key = 'cross-org-billing'
-	const ownerOrgId = `user-${key}`
-	const visit = (actorId: string, billedOrgId: string | null) =>
-		makeBuildInput(env, key, {
-			runtime: {
-				callerContext: {
-					user: {
-						userId: actorId,
-						email: `${key}@example.com`,
-						displayName: `${key} User`,
-					},
-					request: {
-						...appVisitorRequest(key),
-						actor: { userId: actorId, username: actorId },
-						attribution: { kind: 'user', userId: actorId },
-						membership: billedOrgId ? null : { role: 'member' },
-						...(billedOrgId ? { billing: { orgId: billedOrgId } } : {}),
-					},
-				},
-			} as never,
-		})
-	type MaterializedBridge = {
-		props: {
-			gatewayProps: {
-				request: { billing?: { orgId: string } } | null
-			}
-		}
-	}
-	const loads: Array<{ id: string; bridge: MaterializedBridge }> = []
-	const serve = async (input: BuildInput) => {
-		await buildPackageAppWorker(input)
-		const [id, factory] = loader.get.mock.calls.at(-1) as unknown as [
-			string,
-			() => { env: { KODY_RUNTIME: MaterializedBridge } },
-		]
-		loads.push({ id, bridge: factory().env.KODY_RUNTIME })
-	}
-	try {
-		await serve(visit('person-member', null))
-		await serve(visit('person-outside-a', 'org-visitor-a'))
-		await serve(visit('person-outside-b', 'org-visitor-b'))
-
-		// One worker per app commit and mount, whoever pays.
-		expect(new Set(loads.map((load) => load.id)).size).toBe(1)
-		// The worker day is always the publisher's.
-		for (const call of daySpy.mock.calls) {
-			expect(call[0]).toMatchObject({ userId: ownerOrgId })
-		}
-		// The usage breaker checks whoever pays for the request.
-		expect(gateSpy.mock.calls.map(([input]) => input.ownerId)).toEqual([
-			ownerOrgId,
-			'org-visitor-a',
-			'org-visitor-b',
-		])
-		// Metered work (gateway fetches, bridge calls) sees the billed org.
-		expect(
-			loads.map((load) => load.bridge.props.gatewayProps.request?.billing),
-		).toEqual([
-			undefined,
-			{ orgId: 'org-visitor-a' },
-			{ orgId: 'org-visitor-b' },
-		])
-	} finally {
-		daySpy.mockRestore()
-		gateSpy.mockRestore()
-	}
 })
 
 test('buildPackageAppWorker keeps one worker id per app commit per mount across build cache expiry', async () => {

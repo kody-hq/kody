@@ -172,6 +172,8 @@ function communityFork(forkedPackageId: string, targetKodyId: string) {
 	return {
 		id: 'fork-1',
 		listingId: 'listing-1',
+		upstreamOwnerId: null,
+		upstreamPackageId: null,
 		forkerUserId: 'user-123',
 		originCommit: 'abc123',
 		forkedPackageId,

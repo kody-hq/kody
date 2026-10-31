@@ -69,7 +69,7 @@ export const createPackageInviteLink = createServerFn({ method: 'POST' })
 	.validator(
 		packageAccessInput.extend({
 			...options.shape,
-			preset: z.enum(['use', 'contribute', 'manage']),
+			preset: z.enum(['read', 'use', 'contribute', 'manage']),
 		}),
 	)
 	.handler(async ({ data }) => {
