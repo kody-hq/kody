@@ -425,15 +425,17 @@ anonymously when there is none. When that works, it logs a
 of difference. Any other failure throws as is, with no retry. Do not rely on the
 retry. Only a `capability_not_declared` difference is fixed in the manifest: add
 the capability to `kody.app.capabilities`, or for `credential.named` declare the
-credential in `kody.credentials` and use `credential(key)`. Other kinds (an
-unavailable runs-as person, a permission or credential refusal, an unavailable
-capability) need the runs-as person's access or credentials fixed instead. When
-the visitor retry also fails, the app gets the runs-as error. Only when that
-error is the "not listed in `kody.app.capabilities`" one
-(`PackageAppCapabilityNotDeclaredError`) does the platform also log a
-`package_app_authority_rejection` event. Admins count both per app with
-`adminPackageAppAuthorityFallbackReport` (`hardRejections` holds the second),
-and the
+credential in `kody.credentials` and use `credential(key)`. An unavailable
+runs-as person or a permission or credential refusal needs the runs-as person's
+access or credentials fixed instead. An unavailable capability
+(`PackageAppCapabilityUnavailableError`) is not an access problem: the
+capability is not available on this server, so neither the manifest nor access
+fixes it. When the visitor retry also fails, a thrown runs-as error is rethrown
+to the app, and a returned refusal result is returned unchanged. Only a thrown
+`PackageAppCapabilityNotDeclaredError` (the "not listed in
+`kody.app.capabilities`" error) also logs a `package_app_authority_rejection`
+event. Admins count both per app with `adminPackageAppAuthorityFallbackReport`
+(`hardRejections` holds the second), and the
 [0017 scan](../contributing/package-codemods.md#0017-detect-package-app-visitor-authority)
 lists published apps that will hit them.
 
