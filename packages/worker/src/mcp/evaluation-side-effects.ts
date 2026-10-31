@@ -71,8 +71,9 @@ export type SandboxFetchRecordFailures = {
 }
 
 let reportedSandboxFetchRecordFailure = false
-const globalScopeIoMessagePattern =
-	/Disallowed operation called within global scope/
+
+const globalScopeDisallowedPattern =
+	/^Disallowed operation called within global scope\b/
 
 /**
  * The sandbox never fails a fetch because its attempt could not be recorded.
@@ -93,9 +94,9 @@ export function noteSandboxFetchRecordFailures(
 		typeof failures?.message === 'string'
 			? failures.message.slice(0, 200)
 			: 'unknown'
-	// Caller code fetched at module top level. Workers rejects that fetch
-	// itself, so the caller already gets the error; it is not a host fault.
-	if (globalScopeIoMessagePattern.test(message)) return
+	// Package code fetching at module top level: the runtime rejects the
+	// fetch itself too, so the caller already sees it (KODY-CZ).
+	if (globalScopeDisallowedPattern.test(message)) return
 	reportedSandboxFetchRecordFailure = true
 	Sentry.withScope((scope) => {
 		scope.setTag('executor.fetch_record_failure', 'true')

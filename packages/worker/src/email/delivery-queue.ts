@@ -3,8 +3,6 @@ import {
 	DeliverabilityEffectsClaimHeldError,
 } from './deliverability-side-effects.ts'
 import { processCloudflareEmailDeliveryEvent } from './delivery-events.ts'
-import { getSystemEmailDomain } from './platform-address.ts'
-import { isSystemEmailLocal } from './system-email.ts'
 import { applyOutboundEmailAbusePause } from './outbound-abuse.ts'
 import { applyOutboundConsecutiveFailureTracking } from './outbound-consecutive-failures.ts'
 import { dispatchEmailDeliverySubscriptionEvents } from './package-subscriptions.ts'
@@ -15,6 +13,8 @@ import { transactionalEmailVerificationKind } from './verification-delivery.ts'
 export { emailDeliveryQueueName } from './delivery-queue-names.ts'
 
 const unmatchedRetryDelaySeconds = 30
+// Matches `max_retries` on the kody-email-delivery consumer (wrangler.jsonc).
+export const emailDeliveryMaxRetries = 3
 // The consumer allows 3 retries; together they must outlast a crashed
 // delivery's ledger claim, or the event lands in the DLQ unapplied.
 const claimHeldRetryDelaySeconds = Math.ceil(
@@ -74,17 +74,15 @@ export async function handleEmailDeliveryQueue(
 					break
 				}
 				case 'unmatched':
-					// System mail (`kody@`, `support@`, ...) has no mailbox or
-					// transactional record, so its delivery reports can never
-					// match. Allow one retry for a transactional send whose row
-					// lands after the report, then ack instead of parking it.
-					if (
-						queueMessage.attempts > 1 &&
-						isSystemSenderAddress(env, result.providerEvent?.payload.sender)
-					) {
-						console.info('email-delivery-event-system-sender', {
+					// Retries cover the send-vs-index race. A status report still
+					// unmatched on its last attempt is for mail this deployment never
+					// indexed; parking it in the DLQ cannot help (KODY-CK).
+					if (queueMessage.attempts > emailDeliveryMaxRetries) {
+						console.warn('email-delivery-event-unmatched-dropped', {
 							queueMessageId: queueMessage.id,
-							status: result.providerEvent?.payload.delivery.status ?? null,
+							attempts: queueMessage.attempts,
+							providerMessageId:
+								result.providerEvent?.payload.messageId ?? null,
 						})
 						queueMessage.ack()
 						break
@@ -162,14 +160,4 @@ export async function handleEmailDeliveryQueue(
 			})
 		}
 	}
-}
-
-function isSystemSenderAddress(env: Env, sender: string | null | undefined) {
-	const domain = getSystemEmailDomain(env)
-	const address = sender?.trim().toLowerCase() ?? ''
-	const at = address.lastIndexOf('@')
-	if (!domain || at <= 0) return false
-	return (
-		address.slice(at + 1) === domain && isSystemEmailLocal(address.slice(0, at))
-	)
 }

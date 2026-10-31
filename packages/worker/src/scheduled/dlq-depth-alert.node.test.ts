@@ -64,20 +64,6 @@ function memoryKv() {
 	}
 }
 
-function parkedDb(parked: Record<string, { count: number; oldest: number }>) {
-	return {
-		prepare: () => ({
-			all: async () => ({
-				results: Object.entries(parked).map(([queue, entry]) => ({
-					dead_letter_queue: queue,
-					count: entry.count,
-					oldest_enqueued_at_ms: entry.oldest,
-				})),
-			}),
-		}),
-	} as unknown as D1Database
-}
-
 function productionEnv(kv: KVNamespace) {
 	return {
 		SENTRY_ENVIRONMENT: 'production',
@@ -329,9 +315,7 @@ test('a cooldown write failure does not page that queue', async () => {
 	expect(mocks.captureMessage).not.toHaveBeenCalled()
 })
 
-test('a non-transient metrics error fails the lane after a sibling stuck queue has already paged', async () => {
-	mocks.rawRequest.mockClear()
-	mocks.captureMessage.mockClear()
+test('one unread queue fails the lane after a sibling stuck queue has already paged', async () => {
 	consoleWarn.mockImplementation(() => {})
 	const { kv } = memoryKv()
 	installQueues({
@@ -346,119 +330,10 @@ test('a non-transient metrics error fails the lane after a sibling stuck queue h
 		},
 	})
 	await expect(
-		checkDlqDepthAndAlert({ env: productionEnv(kv), now, retryDelaysMs: [0] }),
+		checkDlqDepthAndAlert({ env: productionEnv(kv), now }),
 	).rejects.toThrow(/kody-email-delivery-dlq/)
 	expect(mocks.captureMessage).toHaveBeenCalledTimes(1)
 	expect(mocks.captureMessage.mock.calls[0]?.[0]).toContain(stuckQueue)
-})
-
-test('a transient metrics 500 retries, then skips the queue without failing the lane', async () => {
-	mocks.rawRequest.mockClear()
-	mocks.captureMessage.mockClear()
-	consoleWarn.mockImplementation(() => {})
-	const { kv, values } = memoryKv()
-	installQueues({
-		[stuckQueue]: {
-			backlogCount: 2,
-			oldestMessageTimestampMs: now.getTime() - 20 * 60_000,
-		},
-		'kody-email-delivery-dlq': {
-			backlogCount: 0,
-			oldestMessageTimestampMs: null,
-			status: 500,
-		},
-	})
-	const result = await checkDlqDepthAndAlert({
-		env: productionEnv(kv),
-		now,
-		retryDelaysMs: [0, 0],
-	})
-	expect(result).toMatchObject({
-		status: 'checked',
-		alerted: 1,
-		unavailable: 1,
-	})
-	const emailMetricCalls = mocks.rawRequest.mock.calls.filter(([input]) =>
-		(input as { path: string }).path.includes('id-kody-email-delivery-dlq'),
-	)
-	expect(emailMetricCalls).toHaveLength(3)
-	expect(mocks.captureMessage).toHaveBeenCalledTimes(1)
-	expect(mocks.captureMessage.mock.calls[0]?.[0]).toContain(stuckQueue)
-	expect(
-		values.get(`${dlqDepthAlertKvKeyPrefix}__cloudflare_metrics_unavailable`),
-	).toBe(JSON.stringify({ sinceMs: now.getTime() }))
-})
-
-test('a transient metrics 500 recovers on retry', async () => {
-	mocks.rawRequest.mockClear()
-	mocks.captureMessage.mockClear()
-	const { kv } = memoryKv()
-	installQueues()
-	const healthy = mocks.rawRequest.getMockImplementation()!
-	mocks.rawRequest.mockImplementationOnce(async () => ({
-		status: 502,
-		body: null,
-	}))
-	mocks.rawRequest.mockImplementation(healthy)
-	await expect(
-		checkDlqDepthAndAlert({ env: productionEnv(kv), now, retryDelaysMs: [0] }),
-	).resolves.toMatchObject({ status: 'checked', unavailable: 0 })
-})
-
-test('a queue list 500 still evaluates parked rows and pages only once depth stays unavailable', async () => {
-	mocks.rawRequest.mockClear()
-	mocks.captureMessage.mockClear()
-	consoleWarn.mockImplementation(() => {})
-	const { kv, values } = memoryKv()
-	mocks.rawRequest.mockImplementation(async () => ({
-		status: 500,
-		body: { success: false, errors: [{ message: 'internal' }] },
-	}))
-	const parkedEnv = {
-		...productionEnv(kv),
-		APP_DB: parkedDb({
-			[stuckQueue]: { count: 3, oldest: now.getTime() - 30 * 60_000 },
-		}),
-	}
-	const first = await checkDlqDepthAndAlert({
-		env: parkedEnv,
-		now,
-		retryDelaysMs: [0],
-	})
-	expect(first).toMatchObject({
-		status: 'checked',
-		sustained: 1,
-		alerted: 1,
-		unavailable: productionDeadLetterQueueNames.length,
-	})
-	expect(mocks.captureMessage).toHaveBeenCalledTimes(1)
-	expect(mocks.captureMessage.mock.calls[0]?.[0]).toContain(stuckQueue)
-
-	const later = new Date(now.getTime() + 61 * 60_000)
-	await checkDlqDepthAndAlert({
-		env: parkedEnv,
-		now: later,
-		retryDelaysMs: [0],
-	})
-	expect(mocks.captureMessage).toHaveBeenCalledTimes(2)
-	expect(mocks.captureMessage.mock.calls[1]?.[0]).toMatch(
-		/unavailable from Cloudflare for 61 minutes: queue list/,
-	)
-	await checkDlqDepthAndAlert({
-		env: parkedEnv,
-		now: new Date(later.getTime() + 5 * 60_000),
-		retryDelaysMs: [0],
-	})
-	expect(mocks.captureMessage).toHaveBeenCalledTimes(2)
-
-	installQueues()
-	await checkDlqDepthAndAlert({
-		env: productionEnv(kv),
-		now: new Date(later.getTime() + 10 * 60_000),
-	})
-	expect(
-		values.has(`${dlqDepthAlertKvKeyPrefix}__cloudflare_metrics_unavailable`),
-	).toBe(false)
 })
 
 test('non-production and missing Cloudflare credentials do not report an empty DLQ', async () => {
@@ -546,4 +421,97 @@ test('a failed parked-message read fails the check instead of reporting healthy'
 			now,
 		}),
 	).rejects.toThrow('parked dead-letter messages (D1 unavailable)')
+})
+
+test('a Cloudflare 5xx that recovers on retry reads the queue normally', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const { kv } = memoryKv()
+	installQueues({
+		[stuckQueue]: {
+			backlogCount: 2,
+			oldestMessageTimestampMs: now.getTime() - 20 * 60_000,
+		},
+	})
+	const healthy = mocks.rawRequest.getMockImplementation()
+	let failed = false
+	mocks.rawRequest.mockImplementation(async (input: { path: string }) => {
+		if (!failed && input.path.endsWith(`id-${stuckQueue}/metrics`)) {
+			failed = true
+			return { status: 500, body: { success: false, errors: [] } }
+		}
+		return await healthy?.(input)
+	})
+	const result = await checkDlqDepthAndAlert({
+		env: productionEnv(kv),
+		now,
+		upstreamRetryDelaysMs: [0, 0],
+	})
+	expect(result).toMatchObject({
+		status: 'checked',
+		alerted: 1,
+		upstreamUnavailable: 0,
+	})
+	expect(mocks.captureMessage).toHaveBeenCalledOnce()
+	expect(mocks.captureMessage.mock.calls[0]?.[0]).toContain(stuckQueue)
+})
+
+test('a Cloudflare 5xx that outlasts retries warns on one issue instead of failing the lane', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const { kv } = memoryKv()
+	installQueues({
+		[stuckQueue]: {
+			backlogCount: 2,
+			oldestMessageTimestampMs: now.getTime() - 20 * 60_000,
+		},
+		'kody-email-delivery-dlq': {
+			backlogCount: 0,
+			oldestMessageTimestampMs: null,
+			status: 500,
+		},
+	})
+	const result = await checkDlqDepthAndAlert({
+		env: productionEnv(kv),
+		now,
+		upstreamRetryDelaysMs: [0, 0],
+	})
+	expect(result).toMatchObject({
+		status: 'checked',
+		alerted: 1,
+		upstreamUnavailable: 1,
+	})
+	const metricsCalls = mocks.rawRequest.mock.calls.filter(([request]) =>
+		(request as { path: string }).path.endsWith(
+			'id-kody-email-delivery-dlq/metrics',
+		),
+	)
+	expect(metricsCalls).toHaveLength(3)
+	expect(mocks.captureMessage).toHaveBeenCalledTimes(2)
+	expect(mocks.captureMessage.mock.calls[1]?.[0]).toContain(
+		'kody-email-delivery-dlq (Failed to read Cloudflare Queue metrics (500)',
+	)
+	expect(mocks.setFingerprint).toHaveBeenLastCalledWith([
+		'dlq-depth-alert',
+		'cloudflare-upstream',
+	])
+})
+
+test('a Cloudflare 5xx on the queue list warns and skips the tick', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const { kv } = memoryKv()
+	mocks.rawRequest.mockResolvedValue({
+		status: 500,
+		body: { success: false, errors: [] },
+	})
+	await expect(
+		checkDlqDepthAndAlert({
+			env: productionEnv(kv),
+			now,
+			upstreamRetryDelaysMs: [0, 0],
+		}),
+	).resolves.toEqual({ status: 'upstream_unavailable', reason: 'queue_list' })
+	expect(mocks.rawRequest).toHaveBeenCalledTimes(3)
+	expect(mocks.captureMessage).toHaveBeenCalledOnce()
+	expect(mocks.captureMessage.mock.calls[0]?.[0]).toContain(
+		'queue list (Failed to list Cloudflare Queues (500).)',
+	)
 })

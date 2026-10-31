@@ -256,48 +256,49 @@ test('an event held by another delivery retries after the claim window', async (
 	expect(delaySeconds * 3 * 1000).toBeGreaterThan(deliverabilityEffectsClaimMs)
 })
 
-test('unmatched delivery reports for system mail ack after one retry', async () => {
+test('an unmatched status event acks on its last attempt instead of parking in the DLQ', async () => {
 	consoleWarn.mockImplementation(() => {})
-	const systemEvent = (sender: string) => ({
-		outcome: 'unmatched' as const,
-		providerEvent: {
-			payload: {
-				sender,
-				messageId: 'provider-system',
-				delivery: { status: 'delivered' },
-			},
-		},
-		message: null,
-	})
-	const queueMessage = (id: string, attempts: number) => ({
-		id,
-		timestamp: new Date('2026-10-30T20:00:00.000Z'),
-		body: { kind: id },
+	const { emailDeliveryMaxRetries } = await import('./delivery-queue.ts')
+	const providerEvent = { payload: { messageId: '<untracked@kody.codes>' } }
+	const queuedAt = (attempts: number) => ({
+		id: `queue-unmatched-${String(attempts)}`,
+		timestamp: new Date('2026-07-17T20:00:00.000Z'),
+		body: { kind: 'unmatched' },
 		attempts,
 		ack: vi.fn(),
 		retry: vi.fn(),
 	})
-	mocks.processCloudflareEmailDeliveryEvent
-		.mockResolvedValueOnce(systemEvent('kody@kody.codes'))
-		.mockResolvedValueOnce(systemEvent('KODY@kody.codes'))
-		.mockResolvedValueOnce(systemEvent('someone@kody.codes'))
-		.mockResolvedValueOnce(systemEvent('kody@example.com'))
-	const firstTry = queueMessage('first-try', 1)
-	const retried = queueMessage('retried', 2)
-	const nonSystemLocal = queueMessage('non-system-local', 2)
-	const otherDomain = queueMessage('other-domain', 2)
+	const early = queuedAt(emailDeliveryMaxRetries)
+	const last = queuedAt(emailDeliveryMaxRetries + 1)
+	mocks.processCloudflareEmailDeliveryEvent.mockResolvedValue({
+		outcome: 'unmatched',
+		providerEvent,
+		message: null,
+	})
 	await handleEmailDeliveryQueue(
 		{
 			queue: 'kody-email-delivery',
-			messages: [firstTry, retried, nonSystemLocal, otherDomain],
+			messages: [early, last],
+			ackAll() {},
+			retryAll() {},
 		} as unknown as MessageBatch<unknown>,
-		{ SYSTEM_EMAIL_DOMAIN: 'kody.codes', APP_DB: {} } as unknown as Env,
-		{ waitUntil: vi.fn() } as unknown as ExecutionContext,
+		{ APP_DB: { prepare: vi.fn() } } as unknown as Env,
+		{
+			waitUntil() {},
+			passThroughOnException() {},
+		} as unknown as ExecutionContext,
 	)
-	expect(firstTry.retry).toHaveBeenCalledTimes(1)
-	expect(firstTry.ack).not.toHaveBeenCalled()
-	expect(retried.ack).toHaveBeenCalledTimes(1)
-	expect(retried.retry).not.toHaveBeenCalled()
-	expect(nonSystemLocal.retry).toHaveBeenCalledTimes(1)
-	expect(otherDomain.retry).toHaveBeenCalledTimes(1)
+	mocks.processCloudflareEmailDeliveryEvent.mockReset()
+	expect(early.ack).not.toHaveBeenCalled()
+	expect(early.retry).toHaveBeenCalledWith({ delaySeconds: 30 })
+	expect(last.retry).not.toHaveBeenCalled()
+	expect(last.ack).toHaveBeenCalledOnce()
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'email-delivery-event-unmatched-dropped',
+		{
+			queueMessageId: last.id,
+			attempts: emailDeliveryMaxRetries + 1,
+			providerMessageId: '<untracked@kody.codes>',
+		},
+	)
 })
