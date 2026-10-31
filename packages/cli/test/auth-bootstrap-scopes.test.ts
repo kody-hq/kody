@@ -10,7 +10,10 @@ import {
 	insufficientScopeMessage,
 	readInsufficientScopeDetails,
 } from '../src/api-token.js'
-import { loadStoredApiToken } from '../src/api-token-store.js'
+import {
+	deleteStoredApiToken,
+	loadStoredApiToken,
+} from '../src/api-token-store.js'
 import {
 	parseCliScopesFlag,
 	resolveMintedRedeemLifetime,
@@ -103,9 +106,13 @@ async function withCliEnv<T>(
 		})
 		return fetchStub(url, init)
 	}) as typeof fetch
+	// Windows Credential Manager (and macOS Keychain) are per-user, not per
+	// HOME, so a token an earlier test saved would leak into this one.
+	deleteStoredApiToken(apiUrl)
 	try {
 		return await run({ home, requests })
 	} finally {
+		deleteStoredApiToken(apiUrl)
 		globalThis.fetch = previousFetch
 		for (const [key, value] of Object.entries(saved)) {
 			if (value === undefined) delete process.env[key]

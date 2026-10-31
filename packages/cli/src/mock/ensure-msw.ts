@@ -12,6 +12,7 @@ import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { windowsFileLaunch } from '../execution-context/windows-command.js'
 import { StructuredCliError } from '../structured-error.js'
 import { userCacheDir } from '../workerd-binary.js'
 
@@ -163,24 +164,29 @@ async function npmInstallMsw(
 		)}\n`,
 	)
 	await new Promise<void>((resolve, reject) => {
-		const child = spawn(
-			'npm',
-			[
-				'install',
-				'--omit=dev',
-				'--no-audit',
-				'--no-fund',
-				'--no-update-notifier',
-				'--no-progress',
-			],
-			{
-				cwd: stagingDir,
-				env: npmInstallEnv(env),
-				// Ignore stdout so a full pipe buffer cannot hang npm; keep stderr
-				// for the failure message.
-				stdio: ['ignore', 'ignore', 'pipe'],
-			},
-		)
+		const installEnv = npmInstallEnv(env)
+		const args = [
+			'install',
+			'--omit=dev',
+			'--no-audit',
+			'--no-fund',
+			'--no-update-notifier',
+			'--no-progress',
+		]
+		// Windows ships npm as npm.cmd, which spawn cannot run without cmd.exe.
+		const launch =
+			process.platform === 'win32'
+				? windowsFileLaunch('npm', args, installEnv)
+				: { file: 'npm', argv: args, verbatim: false }
+		const child = spawn(launch.file, launch.argv, {
+			cwd: stagingDir,
+			env: installEnv,
+			windowsHide: true,
+			windowsVerbatimArguments: launch.verbatim,
+			// Ignore stdout so a full pipe buffer cannot hang npm; keep stderr
+			// for the failure message.
+			stdio: ['ignore', 'ignore', 'pipe'],
+		})
 		let stderr = ''
 		child.stderr?.on('data', (chunk: Buffer) => {
 			stderr += chunk.toString('utf8')
@@ -230,6 +236,12 @@ function npmInstallEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 		'NODE_EXTRA_CA_CERTS',
 		'SSL_CERT_FILE',
 		'SSL_CERT_DIR',
+		// Windows: npm.cmd needs cmd.exe, PATHEXT, and its per-user dirs.
+		'PATHEXT',
+		'SYSTEMROOT',
+		'COMSPEC',
+		'APPDATA',
+		'LOCALAPPDATA',
 	])
 	const out: NodeJS.ProcessEnv = {}
 	for (const [key, value] of Object.entries(env)) {

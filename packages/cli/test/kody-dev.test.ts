@@ -206,7 +206,7 @@ test('kody dev job / webhook / emit / fetch against mock', async () => {
 		process.chdir(cwd)
 		if (previous === undefined) delete process.env.KODY_CACHE_DIR
 		else process.env.KODY_CACHE_DIR = previous
-		await rm(cache, { recursive: true, force: true })
+		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -345,7 +345,7 @@ export default async function main() {
 	} finally {
 		if (previous === undefined) delete process.env.KODY_CACHE_DIR
 		else process.env.KODY_CACHE_DIR = previous
-		await rm(cache, { recursive: true, force: true })
+		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -380,7 +380,7 @@ test('execute --invoke local export against mock', async () => {
 		process.chdir(cwd)
 		if (previous === undefined) delete process.env.KODY_CACHE_DIR
 		else process.env.KODY_CACHE_DIR = previous
-		await rm(cache, { recursive: true, force: true })
+		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
 
@@ -441,6 +441,6 @@ test('search --target mock hits the mock catalog', async () => {
 	} finally {
 		if (previous === undefined) delete process.env.KODY_CACHE_DIR
 		else process.env.KODY_CACHE_DIR = previous
-		await rm(cache, { recursive: true, force: true })
+		await rm(cache, { recursive: true, force: true, maxRetries: 10 })
 	}
 })
