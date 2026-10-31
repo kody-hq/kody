@@ -106,6 +106,9 @@ The desktop app and the CLI share this machine's registration and its runner:
   that the registration belongs to your account.
 - With no service, the app runs the daemon itself, with the same lock and
   auto-update.
+- On macOS, only the app's own runner can control other apps (such as Messages)
+  through the app's Automation permission; see
+  [macOS app control](#macos-app-control).
 
 `kody daemon status` shows the runner holding the lock, and `kody daemon stop`
 stops whichever one runs (the service, or a terminal or desktop daemon after its
@@ -157,6 +160,35 @@ and what Kody has for each context. A command runs only when both are on.
 **Platforms.** macOS, Linux, and Windows. Commands use your shell (`$SHELL`,
 else `/bin/sh`) on macOS and Linux, and PowerShell on Windows (`pwsh` if
 installed, else Windows PowerShell; pass `shell: 'cmd'` for `cmd.exe`).
+
+### macOS app control
+
+Commands that control other apps on a Mac (sending iMessages with `osascript`,
+scripting Finder or Calendar) need macOS Automation permission, and reading the
+Messages database (`~/Library/Messages/chat.db`) needs Full Disk Access. macOS
+asks once per target app; after you allow it, runs with host commands on can use
+that app without asking you again.
+
+macOS checks the app that runs the daemon:
+
+- **Kody desktop app runs the runner** (no CLI service): macOS asks for
+  **Kody**. Use desktop 0.1.4 or later.
+- **CLI service** (`kody daemon install`, a LaunchAgent) or **`kody daemon` in a
+  terminal**: macOS checks that `node` binary or the terminal app, not Kody,
+  even when the desktop app shows the runner as adopted. It may deny control
+  without asking.
+
+To send Messages through the Kody app on a machine with a CLI service, remove
+the service but keep the registration, then let the app run the runner:
+
+```sh
+kody daemon uninstall --no-unregister
+```
+
+Then open **This machine** in the desktop app and resume it if paused. Allow
+**Kody** when macOS asks to control Messages, and grant Full Disk Access to Kody
+in System Settings › Privacy & Security if the run reads `chat.db`. The runner
+then stops when you quit the app.
 
 **Fields.**
 

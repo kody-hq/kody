@@ -313,6 +313,12 @@ with the command, folder, exit code, and caller. Environment values are never
 recorded. See [Host commands](../use/execution-contexts.md#host-commands) for
 the security trade-off in plain words.
 
+On macOS, commands that control other apps (Messages via `osascript`) need
+Automation permission for the process running the daemon. Only the desktop app's
+own runner gets Kody's permission; a CLI service or terminal daemon does not,
+even when the desktop app adopts it. See
+[macOS app control](../use/execution-contexts.md#macos-app-control).
+
 ## Sharing a context
 
 You can share a context with people or teams in your org. Their runs use the
