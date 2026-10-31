@@ -599,7 +599,10 @@ instead of one RPC per resource:
   past-include credit attribution by package (`loadCreditAttributionBreakdown` /
   account usage `whereItWent`). Meters are Worker compute and Rows read credits
   only; optional `packageId` returns that package’s slice. Does not add a
-  package axis to UserMeter.
+  package axis to UserMeter. `adHocConnections` (also under the Ad hoc row on
+  the usage page) groups Ad hoc `dynamic_worker_day` units in
+  `usage_connection_daily` by connection label (`loadAdHocConnectionUsage`),
+  since the later of the month start or the 14-day rollup retention.
 - Admin per-user usage drill-down —
   `packages/worker/src/admin/user-usage-data.ts` (via
   `readAdminEntitlementConsumption` in
@@ -647,9 +650,16 @@ instead of one RPC per resource:
   `waitUntil`, which mails the org's billing recipients and writes the same
   instance claim, so the sweep skips it (and the immediate send skips a crossing
   the sweep already mailed). Operator crossing events run even when user warning
-  sends fail. The same hourly lane also evaluates the usage-state campaign.
-  Users near stock caps enter `LimitAware` and stay campaign-silent so these
-  entitlement warnings remain the entitlement nudge. See
+  sends fail. Hosted execute also adds a one-time in-response heads-up
+  (`resolveComputeIncludeHeadsUp`, `formatComputeIncludeHeadsUp`) on the call
+  that mints a new worker while monthly Worker compute is at or past 80% of the
+  include. It is claimed once per org per UTC month in KV
+  `execute-compute-include-heads-up:v1:{orgId}:{month}` and skipped for
+  wallet-less plans. It is separate from the email claims, so it does not
+  suppress the mail. There is no per-user opt-out for these warnings today. The
+  same hourly lane also evaluates the usage-state campaign. Users near stock
+  caps enter `LimitAware` and stay campaign-silent so these entitlement warnings
+  remain the entitlement nudge. See
   [Usage metering](./usage-metering.md#usage-campaign).
 
 `readEntitlementResourceUsage` counts only APP_DB-backed row resources (`repos`,

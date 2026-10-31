@@ -3,10 +3,12 @@
  * Analytics Engine into `usage_attribution_daily`. Local/dev upserts on
  * each billable `recordUsage` write instead.
  */
-import { utcMonthKey } from '@kody-internal/shared/date-keys.ts'
+import { utcDayKey, utcMonthKey } from '@kody-internal/shared/date-keys.ts'
+import { connectionUsageRetentionDays } from '#worker/usage/connection-usage-rollup.ts'
 import { creditDebitCostMicroUsd } from '#universal/credits.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
+	summarizeAdHocConnectionUsage,
 	buildCreditAttributionBreakdown,
 	creditAttributionMeters,
 	creditAttributionMeterFromComputeResource,
@@ -509,7 +511,59 @@ export async function loadCreditAttributionBreakdown(input: {
 		row.visitorCount = visitorData.total
 		row.visitorsTruncated = visitorData.truncated
 	}
+	try {
+		breakdown.adHocConnections = await loadAdHocConnectionUsage({
+			db: input.db,
+			stableUserId: input.stableUserId,
+			now,
+		})
+	} catch (error) {
+		console.warn('credit-attribution-adhoc-connections-failed', error)
+	}
 	return breakdown
+}
+
+/**
+ * Ad hoc (no package) worker loads per connection this month, from
+ * `usage_connection_daily`. That rollup keeps 14 days, so early in the
+ * month this covers the whole month and later only the recent window.
+ */
+export async function loadAdHocConnectionUsage(input: {
+	db: D1Database
+	stableUserId: string
+	now?: Date
+}) {
+	const now = input.now ?? new Date()
+	const monthStart = `${utcMonthKey(now)}-01`
+	const retentionStart = utcDayKey(
+		new Date(now.getTime() - (connectionUsageRetentionDays - 1) * 86_400_000),
+	)
+	const sinceDay = retentionStart > monthStart ? retentionStart : monthStart
+	const rows =
+		(
+			await input.db
+				.prepare(
+					`SELECT credential_kind, credential_id, SUM(units) AS units
+					 FROM usage_connection_daily
+					 WHERE user_id = ? AND day >= ? AND package_id = ''
+						AND event_type = 'dynamic_worker_day'
+					 GROUP BY credential_kind, credential_id`,
+				)
+				.bind(input.stableUserId, sinceDay)
+				.all<{
+					credential_kind: string
+					credential_id: string
+					units: number
+				}>()
+		).results ?? []
+	return summarizeAdHocConnectionUsage({
+		sinceDay,
+		rows: rows.map((row) => ({
+			credentialKind: row.credential_kind,
+			credentialId: row.credential_id,
+			units: Number(row.units) || 0,
+		})),
+	})
 }
 
 const maxPackageAppVisitorRows = 500

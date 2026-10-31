@@ -1,4 +1,10 @@
 import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
+import {
+	computeIncludeHeadsUpClaimTtlSeconds,
+	computeIncludeHeadsUpKvKey,
+	formatComputeIncludeHeadsUp,
+} from '#mcp/compute-include-heads-up.ts'
+import { orgUsagePath } from '#universal/org-pages.ts'
 import { executionContextsFlagKey } from '#worker/execution-contexts/flag.ts'
 import {
 	type ExecuteRoutingArgs,
@@ -245,7 +251,9 @@ export const executeToolOutputSchema = {
 	warnings: z
 		.array(z.string())
 		.optional()
-		.describe('Server guidance, e.g. raw-fetch host nudges.'),
+		.describe(
+			'Server guidance, e.g. raw-fetch host nudges, or the once-a-month usage heads-up when this workspace has used 80% or more of its included Worker compute.',
+		),
 	memories: z
 		.unknown()
 		.optional()
@@ -1157,6 +1165,11 @@ export async function runExecuteToolCall(input: {
 				conversationId: resolvedConversationId,
 				claimed: claimedExecuteUsage,
 			})),
+			...(await resolveComputeIncludeHeadsUp({
+				env,
+				callerContext,
+				claimed: claimedExecuteUsage,
+			})),
 		]
 		const runId =
 			typeof result.runId === 'string'
@@ -1654,6 +1667,56 @@ async function resolveRawFetchHostNudges(input: {
 		})
 	}
 	return applied.nudges
+}
+
+/**
+ * Once a month per org, the hosted execute call that mints a new worker
+ * while the org is at or past 80% of its included Worker compute says so.
+ */
+async function resolveComputeIncludeHeadsUp(input: {
+	env: Env
+	callerContext: ReturnType<McpRegistrationAgent['getCallerContext']>
+	claimed: ClaimedExecuteUsage | null
+}): Promise<Array<string>> {
+	if (dailyFreshWorkersFromClaim(input.claimed?.usage) === null) return []
+	const ownerId = ownerIdFromCaller(input.callerContext)
+	const kv = input.env.BUNDLE_ARTIFACTS_KV
+	if (!ownerId || !kv) return []
+	try {
+		const now = input.claimed?.claimedAt ?? new Date()
+		const key = computeIncludeHeadsUpKvKey(ownerId, now)
+		if (await kv.get(key)) return []
+		const [entitlement, usage] = await Promise.all([
+			getCachedUserEntitlement(input.env.APP_DB, {
+				userId: ownerId,
+				email: entitlementEmailForOwner(input.callerContext, ownerId),
+			}),
+			readMonthlyComputeUsage({
+				db: input.env.APP_DB,
+				stableUserId: ownerId,
+				month: preferLocalNudgeMonthKey(now),
+			}),
+		])
+		const slug = input.callerContext.request?.org.slug
+		const usageUrl = new URL(
+			slug ? orgUsagePath(slug) : '/account/usage',
+			input.callerContext.baseUrl,
+		).toString()
+		const text = formatComputeIncludeHeadsUp({
+			used: usage.uniqueWorkerDays,
+			include: monthlyIncludeForPreferLocalNudge(entitlement, now),
+			creditWallet: entitlement.creditWallet,
+			usageUrl,
+		})
+		if (!text) return []
+		await kv.put(key, String(now.getTime()), {
+			expirationTtl: computeIncludeHeadsUpClaimTtlSeconds,
+		})
+		return [text]
+	} catch (error: unknown) {
+		console.warn('compute-include-heads-up-failed', error)
+		return []
+	}
 }
 
 async function resolvePreferLocalExecuteNudges(input: {

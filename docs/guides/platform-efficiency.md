@@ -47,6 +47,18 @@ account or stops runs, and Kody does not email about it. Execute caps are the
 Free limit. Do not spend execute calls diagnosing a high Worker compute count on
 Free; move repeated ad hoc work into packages or triggers instead.
 
+When a hosted `execute` call starts a new worker and the workspace has used 80%
+or more of its included Worker compute this month, that response carries a
+one-time usage heads-up in `warnings` (and its text), once per workspace per UTC
+month. It goes with the 80% and 100% warning emails rather than replacing them;
+Free and other plans without a credit wallet do not get it.
+
+To see what starts the most workers, open **Where it went** on the usage page or
+call `usageByPackageGet`. Packages are ranked by credits. The Ad hoc row also
+lists which connection (MCP agent, Kody CLI, API token, Automation) started the
+most Ad hoc workers (`adHocConnections`). That list counts Worker compute units
+(inside and past the include) for at most the last 14 days of the month.
+
 ## Rows read
 
 Storage SQL that examines a lot of rows is allowed. Those rows count toward the

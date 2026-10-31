@@ -83,7 +83,7 @@ export const usageByPackageGetCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'billing:read',
 		description:
-			'Read the current UTC month past-include credit attribution for the org this connection is bound to (personal or team) by package (Where it went): Worker compute and Rows read credits only — not execute, jobs, or package exports. Optional packageId returns that package’s slice of the same period breakdown. Another org’s internal app that this org’s people visited shows up named as shared by its owner (this org paid for that metered work); in a publisher’s Visitors list, visitors from other orgs are flagged billedToVisitorOrg with no credits charged here.',
+			'Read the current UTC month past-include credit attribution for the org this connection is bound to (personal or team) by package (Where it went): Worker compute and Rows read credits only — not execute, jobs, or package exports. Optional packageId returns that package’s slice of the same period breakdown. Another org’s internal app that this org’s people visited shows up named as shared by its owner (this org paid for that metered work); in a publisher’s Visitors list, visitors from other orgs are flagged billedToVisitorOrg with no credits charged here. adHocConnections splits Ad hoc worker starts by connection so you can see which agent or token runs the most fresh code.',
 		keywords: [
 			'account',
 			'usage',
@@ -119,6 +119,22 @@ export const usageByPackageGetCapability = defineDomainCapability(
 			 */
 			totalCreditsMicroUsd: z.number().int().nonnegative(),
 			rows: z.array(creditAttributionRowSchema),
+			adHocConnections: z
+				.object({
+					sinceDay: z.string(),
+					rows: z.array(
+						z.object({
+							id: z.string(),
+							label: z.string(),
+							workerUnits: z.number().nonnegative(),
+						}),
+					),
+					otherWorkerUnits: z.number().nonnegative(),
+				})
+				.optional()
+				.describe(
+					'Which connections (MCP agent, Kody CLI, API token, Automation) started the most Ad hoc workers: Worker compute units since sinceDay, heaviest first, including units inside the include. Covers at most the last 14 days of this month.',
+				),
 		}),
 		async handler(args, ctx) {
 			const user = requireMcpUser(ctx.callerContext)

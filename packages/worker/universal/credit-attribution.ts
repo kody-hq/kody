@@ -6,6 +6,8 @@
  */
 import { creditDebitCostMicroUsd, type CreditDebitMeter } from './credits.ts'
 import { type ComputeOverageWarningResource } from './compute-overage.ts'
+import { connectedAgentConnectionLabel } from './connected-mcp-agents.ts'
+import { connectionUsageKindLabel } from './connection-usage-presentation.ts'
 
 /** Empty package_id in D1 / AE blob9 means Ad hoc (direct execute + unknown). */
 const creditAttributionAdHocPackageId = ''
@@ -159,11 +161,87 @@ export type CreditAttributionRow = {
 	isAdHoc: boolean
 }
 
+/** Ad hoc Worker compute units started through one connection. */
+export type CreditAttributionAdHocConnection = {
+	id: string
+	label: string
+	workerUnits: number
+}
+
+/**
+ * Which connections start the most Ad hoc workers, from the per-connection
+ * rollup. Units, not credits, and only since `sinceDay`: that rollup keeps
+ * 14 days.
+ */
+export type CreditAttributionAdHocConnections = {
+	sinceDay: string
+	rows: Array<CreditAttributionAdHocConnection>
+	/** Units from connections past the top rows. */
+	otherWorkerUnits: number
+}
+
 export type CreditAttributionBreakdown = {
 	month: string
 	/** Sum of attributed past-include credits this period. */
 	totalCreditsMicroUsd: number
 	rows: Array<CreditAttributionRow>
+	adHocConnections?: CreditAttributionAdHocConnections
+}
+
+export const creditAttributionAdHocConnectionLimit = 10
+
+function adHocConnectionLabel(credentialKind: string, credentialId: string) {
+	switch (credentialKind) {
+		case '':
+			return 'Unattributed (before connection tracking)'
+		case 'mcp-oauth':
+			return credentialId
+				? `MCP agent · ${connectedAgentConnectionLabel(credentialId)}`
+				: 'MCP agent'
+		case 'schedule':
+			return 'Scheduled job'
+		case 'webhook':
+			return 'Webhook'
+		case 'inbound-email':
+			return 'Inbound email'
+		case 'platform-event':
+			return 'Event subscription'
+		default:
+			return connectionUsageKindLabel(credentialKind)
+	}
+}
+
+/** Group Ad hoc worker units by connection label, heaviest first. */
+export function summarizeAdHocConnectionUsage(input: {
+	sinceDay: string
+	rows: ReadonlyArray<{
+		credentialKind: string
+		credentialId: string
+		units: number
+	}>
+}): CreditAttributionAdHocConnections {
+	const byLabel = new Map<string, CreditAttributionAdHocConnection>()
+	for (const row of input.rows) {
+		const units = Number(row.units) || 0
+		if (units <= 0) continue
+		const label = adHocConnectionLabel(row.credentialKind, row.credentialId)
+		const existing = byLabel.get(label)
+		if (existing) {
+			existing.workerUnits += units
+			continue
+		}
+		byLabel.set(label, { id: label, label, workerUnits: units })
+	}
+	const sorted = [...byLabel.values()].sort(
+		(left, right) =>
+			right.workerUnits - left.workerUnits ||
+			left.label.localeCompare(right.label),
+	)
+	const rows = sorted.slice(0, creditAttributionAdHocConnectionLimit)
+	const otherWorkerUnits = sorted
+		.slice(creditAttributionAdHocConnectionLimit)
+		.reduce((sum, row) => sum + row.workerUnits, 0)
+	return { sinceDay: input.sinceDay, rows, otherWorkerUnits }
 }
 
 const meterLabels = {

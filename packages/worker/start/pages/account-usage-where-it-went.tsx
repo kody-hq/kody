@@ -13,6 +13,7 @@ import { RecordTable } from './record-table.tsx'
 import {
 	creditAttributionDefaultVisiblePackages,
 	filterAndSortCreditAttributionVisitors,
+	type CreditAttributionAdHocConnections,
 	type CreditAttributionBreakdown,
 	type CreditAttributionRow,
 	type CreditAttributionVisitorRow,
@@ -142,6 +143,12 @@ export function WhereItWentPanel({
 											<p css={descriptionCss}>
 												Direct execute and any debit we cannot tie to a package.
 											</p>
+											{breakdown.adHocConnections &&
+											breakdown.adHocConnections.rows.length > 0 ? (
+												<AdHocConnectionList
+													connections={breakdown.adHocConnections}
+												/>
+											) : null}
 											{renderCumulativeGraph({
 												id: `where-adhoc-${breakdown.month}`,
 												row,
@@ -185,6 +192,35 @@ export function WhereItWentPanel({
 				</button>
 			) : null}
 		</AccountManagementPanel>
+	)
+}
+
+function AdHocConnectionList({
+	connections,
+}: {
+	connections: CreditAttributionAdHocConnections
+}) {
+	return (
+		<section data-where-it-went-adhoc-connections>
+			<p css={descriptionCss}>
+				Ad hoc workers started by each connection since{' '}
+				{formatDayLabel(connections.sinceDay)} (Worker compute units, inside and
+				past the include):
+			</p>
+			<ul css={{ margin: 0, paddingLeft: spacing.lg }}>
+				{connections.rows.map((row) => (
+					<li key={row.id} data-where-it-went-adhoc-connection>
+						{row.label}: {formatIntegerNumber(row.workerUnits)}
+					</li>
+				))}
+				{connections.otherWorkerUnits > 0 ? (
+					<li>
+						Other connections:{' '}
+						{formatIntegerNumber(connections.otherWorkerUnits)}
+					</li>
+				) : null}
+			</ul>
+		</section>
 	)
 }
 
