@@ -339,6 +339,18 @@ export async function runLocalExecute(
 		bridge = await startLocalRuntimeBridge({
 			runSecret,
 			forwardCall: async (call, signal) => {
+				if (
+					call.path.length === 3 &&
+					call.path[0] === 'kody' &&
+					call.path[1] === 'command' &&
+					call.path[2] === 'authorize'
+				) {
+					// Only the daemon's own hop (below) may authorize, so run code
+					// cannot write command_started rows for commands that never ran.
+					throw new Error(
+						'kody.command.authorize is internal; call kody.command.run or kody.command.start. (invalid_request)',
+					)
+				}
 				const hostCommands = input.hostCommands
 				if (
 					hostCommands &&

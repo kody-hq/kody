@@ -192,7 +192,9 @@ function shellFor(env: NodeJS.ProcessEnv) {
 }
 
 function killTree(child: ChildProcess, signal: NodeJS.Signals) {
-	if (child.pid === undefined || child.exitCode !== null) return
+	// No exitCode guard: the shell leader can exit while the rest of its
+	// group (e.g. `server &`) still runs and holds the pipes.
+	if (child.pid === undefined) return
 	try {
 		// Detached children lead their own process group: signal the group so
 		// `npm run build` does not leave its grandchildren running.

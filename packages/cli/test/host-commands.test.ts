@@ -227,6 +227,27 @@ test('a background job outlives its run, and turning commands off kills it', asy
 	)
 })
 
+test('turning commands off kills the whole group after the shell leader exits', async () => {
+	const { commands, finished } = enabledCommands()
+	const { run } = runContext()
+	// sh exits at once; the backgrounded sleep keeps the pipes open.
+	const started = (await commands.call(
+		'start',
+		{ command: 'sleep 30 & echo leader-done' },
+		run,
+	)) as { commandId: string }
+	await waitFor(() =>
+		commands
+			.output({ commandId: started.commandId }, run)
+			.stdout.includes('leader-done'),
+	)
+	await new Promise((resolve) => setTimeout(resolve, 200))
+	assert.equal(commands.status(started.commandId, run).state, 'running')
+	commands.setLocalEnabled(false)
+	await waitFor(() => finished.length === 1, 5_000)
+	assert.equal(finished[0]?.reason, 'commands_off')
+})
+
 test('local policy keeps the commands opt-in alongside host folders', async () => {
 	const dir = realpathSync(mkdtempSync(join(tmpdir(), 'kody-cmd-policy-')))
 	const policyPath = join(dir, 'policy.json')

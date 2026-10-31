@@ -16,7 +16,9 @@ import {
  * `command.finished` frame because background jobs outlive the run lease.
  */
 export const commandRuntimeName = 'command'
-export const maxAuditedCommandChars = 2000
+export const maxAuditedCommandChars = 1000
+/** session-do stores at most 2048 chars of detail JSON; stay under it. */
+const maxAuditDetailChars = 2000
 
 export function commandRequiresContextError() {
 	return new ExecutionContextError({
@@ -99,19 +101,63 @@ export async function authorizeContextCommand(
 		? args.envKeys
 				.filter((key): key is string => typeof key === 'string')
 				.slice(0, 64)
+				.map((key) => key.slice(0, 128))
 		: []
 	await sessionStub(env, row.id).recordAudit({
 		event: 'command_started',
 		actor: { userId: user.userId, handle: user.username ?? null },
 		orgId,
-		detail: {
+		detail: fitAuditDetail({
 			commandId: args.commandId,
 			runId: principal.runId,
 			command: args.command.slice(0, maxAuditedCommandChars),
-			cwd: typeof args.cwd === 'string' ? args.cwd.slice(0, 1024) : null,
+			cwd: typeof args.cwd === 'string' ? args.cwd.slice(0, 512) : null,
 			envKeys,
 			background: args.background === true,
-		},
+		}),
 	})
 	return { ok: true as const, commandId: args.commandId }
+}
+
+type CommandStartedDetail = {
+	commandId: string
+	runId: string | null | undefined
+	command: string
+	cwd: string | null
+	envKeys: Array<string>
+	background: boolean
+	truncated?: true
+}
+
+/** Shrinks the detail so its JSON never hits the audit store's cut (which would leave invalid JSON). */
+export function fitAuditDetail(detail: CommandStartedDetail) {
+	let fitted = detail
+	const size = () => JSON.stringify(fitted).length
+	while (size() > maxAuditDetailChars && fitted.envKeys.length > 0) {
+		fitted = {
+			...fitted,
+			envKeys: fitted.envKeys.slice(0, -1),
+			truncated: true,
+		}
+	}
+	while (size() > maxAuditDetailChars && fitted.cwd && fitted.cwd.length > 0) {
+		const over = size() - maxAuditDetailChars
+		fitted = {
+			...fitted,
+			cwd: fitted.cwd!.slice(0, Math.max(0, fitted.cwd!.length - over - 1)),
+			truncated: true,
+		}
+	}
+	while (size() > maxAuditDetailChars && fitted.command.length > 0) {
+		const over = size() - maxAuditDetailChars
+		fitted = {
+			...fitted,
+			command: fitted.command.slice(
+				0,
+				Math.max(0, fitted.command.length - Math.max(1, Math.ceil(over / 6))),
+			),
+			truncated: true,
+		}
+	}
+	return fitted
 }

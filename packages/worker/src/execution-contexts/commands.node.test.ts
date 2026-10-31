@@ -202,3 +202,19 @@ test('the website/API can turn commands off but never on', async () => {
 		expect.objectContaining({ event: 'commands_disabled' }),
 	)
 })
+
+test('fitAuditDetail keeps command_started detail under the audit cut as valid JSON', async () => {
+	const { fitAuditDetail } = await import('./commands.ts')
+	const fitted = fitAuditDetail({
+		commandId: 'cmd_abcdef',
+		runId: 'run_1',
+		command: '"\\'.repeat(500),
+		cwd: '/x'.repeat(256),
+		envKeys: Array.from({ length: 64 }, (_, i) => `KEY_${i}_`.padEnd(128, 'K')),
+		background: false,
+	})
+	const json = JSON.stringify(fitted)
+	expect(json.length).toBeLessThanOrEqual(2000)
+	expect(() => JSON.parse(json.slice(0, 2048))).not.toThrow()
+	expect(fitted.truncated).toBe(true)
+})
