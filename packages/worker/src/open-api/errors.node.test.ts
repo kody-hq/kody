@@ -391,3 +391,20 @@ test('toApiError maps an unconfirmed publish push to 409 publish_not_applied', (
 		status_capability: 'repoGetSession',
 	})
 })
+
+test('toApiError maps a publish_not_applied error rebuilt by Durable Object RPC (name and message only)', () => {
+	const original = new RemoteRefNotConfirmedError({
+		ref: 'refs/heads/main',
+		expectedCommit: 'b'.repeat(40),
+		observedCommit: 'a'.repeat(40),
+	})
+	const overRpc = new Error(original.message)
+	overRpc.name = original.name
+	const error = toApiError(overRpc)
+	expect(error.code).toBe('publish_not_applied')
+	expect(error.details).toMatchObject({
+		ref: 'refs/heads/main',
+		expected_commit: 'b'.repeat(40),
+		observed_commit: 'a'.repeat(40),
+	})
+})

@@ -124,17 +124,17 @@ keeps its commits. `details` carries `published: false`, `retry_safe: true`, the
 To see what happened to a publish (for example after an error or a dropped
 connection), call **`repoGetSession`** and read `last_publish`:
 
-| `state`         | Meaning                                                                                  |
-| --------------- | ---------------------------------------------------------------------------------------- |
-| `running`       | The publish is still in progress. Wait, then check again.                                |
-| `interrupted`   | The server restarted mid-publish. Retry `repoPublishSession`; it finishes the publish.   |
-| `published`     | Done. `published_commit` is the commit that went live.                                   |
-| `not_published` | Returned without publishing; `result_status` says why (`base_moved`, `checks_outdated`). |
-| `failed`        | The call errored; `error_name` / `error_message` say why. Retrying is safe.              |
+| `state`         | Meaning                                                                                                                                                                                                                    |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `running`       | The publish is still in progress. Wait, then check again.                                                                                                                                                                  |
+| `interrupted`   | The server restarted mid-publish. Retry `repoPublishSession`; it finishes the publish.                                                                                                                                     |
+| `published`     | Done. `published_commit` is the commit that went live.                                                                                                                                                                     |
+| `not_published` | Returned without publishing; `result_status` says why (`base_moved`, `checks_outdated`).                                                                                                                                   |
+| `failed`        | The call errored. `error_name` names the error. `error_message` is set only for `publish_not_applied`, where nothing moved and a retry is safe. For other errors, check the session's `published_commit` before you retry. |
 
-Publishing is idempotent and resumable: a retry after `failed` or `interrupted`
-either publishes the session or finishes an already-moved publish (jobs,
-bundles, publish note) without a duplicate.
+Publishing is idempotent and resumable: a retry after `publish_not_applied` or
+`interrupted` either publishes the session or finishes an already-moved publish
+(jobs, bundles, publish note) without a duplicate.
 
 That makes it easier for agents to resume or repair a workflow without string
 parsing.

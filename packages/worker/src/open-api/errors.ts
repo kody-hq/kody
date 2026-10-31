@@ -29,7 +29,7 @@ import {
 	transientDatabaseUnavailableMessage,
 } from '#worker/d1-retry.ts'
 import { isPublishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
-import { isRemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
+import { readRemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
 import {
 	ArtifactsGitUnavailableError,
 	artifactsGitTemporarilyUnavailableMessage,
@@ -302,9 +302,9 @@ export function toApiError(error: unknown): ApiError {
 	}
 	// The push did not land, so nothing moved. Say so with a real code: a
 	// generic 500 leaves callers unsure whether the publish is half-applied.
-	const notApplied = getErrorCauseChain(error).find(
-		isRemoteRefNotConfirmedError,
-	)
+	const notApplied = getErrorCauseChain(error)
+		.map(readRemoteRefNotConfirmedError)
+		.find((entry) => entry !== null)
 	if (notApplied) {
 		return new ApiError({
 			status: 409,

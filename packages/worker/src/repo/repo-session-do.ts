@@ -75,7 +75,7 @@ import {
 } from './checks.ts'
 import { RepoChecksFailedError } from './repo-checks-failed-error.ts'
 import { confirmRemoteRefAtCommit } from './confirm-remote-ref.ts'
-import { isRemoteRefNotConfirmedError } from './remote-ref-not-confirmed-error.ts'
+import { readRemoteRefNotConfirmedError } from './remote-ref-not-confirmed-error.ts'
 import { runAuthoringPublishChecksOnFiles } from './authoring-publish-checks.ts'
 import { buildCredentialPatternCheck } from './credential-pattern-check.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
@@ -3942,7 +3942,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		input: RepoSessionPublishInput,
 	): Promise<RepoSessionPublishResult> {
 		const startedAt = nowIso()
-		this.publishInFlight = true
+		this.publishesInFlight += 1
 		await this.writeLastPublish({
 			state: 'running',
 			started_at: startedAt,
@@ -3974,17 +3974,15 @@ class RepoSessionBase extends DurableObject<Env> {
 				result_status: null,
 				error_name: error instanceof Error ? error.name : 'Error',
 				// Only messages known to be caller-safe; others may carry internals.
-				error_message: isRemoteRefNotConfirmedError(error)
-					? error.message
-					: null,
+				error_message: readRemoteRefNotConfirmedError(error)?.message ?? null,
 			})
 			throw error
 		} finally {
-			this.publishInFlight = false
+			this.publishesInFlight -= 1
 		}
 	}
 
-	private publishInFlight = false
+	private publishesInFlight = 0
 
 	private async writeLastPublish(value: RepoSessionLastPublish) {
 		try {
@@ -4004,7 +4002,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			(await this.ctx.storage.get<RepoSessionLastPublish>(
 				lastPublishStorageKey,
 			)) ?? null
-		if (stored?.state === 'running' && !this.publishInFlight) {
+		if (stored?.state === 'running' && this.publishesInFlight === 0) {
 			return { ...stored, state: 'interrupted' }
 		}
 		return stored

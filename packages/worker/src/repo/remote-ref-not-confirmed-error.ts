@@ -26,8 +26,44 @@ export class RemoteRefNotConfirmedError extends Error {
 	}
 }
 
-export function isRemoteRefNotConfirmedError(
-	error: unknown,
-): error is RemoteRefNotConfirmedError {
-	return error instanceof RemoteRefNotConfirmedError
+const notConfirmedMessagePattern =
+	/did not confirm the push: (\S+) is at (\S+), expected ([0-9a-f]+)\./
+
+/**
+ * Durable Object RPC rebuilds thrown errors as plain `Error`s that keep
+ * `name` and `message`, so match on those and read the fields back from the
+ * message when the class did not survive.
+ */
+export function readRemoteRefNotConfirmedError(error: unknown): {
+	message: string
+	ref: string
+	expectedCommit: string
+	observedCommit: string | null
+} | null {
+	if (error instanceof RemoteRefNotConfirmedError) {
+		return {
+			message: error.message,
+			ref: error.ref,
+			expectedCommit: error.expectedCommit,
+			observedCommit: error.observedCommit,
+		}
+	}
+	if (
+		!(error instanceof Error) ||
+		error.name !== 'RemoteRefNotConfirmedError'
+	) {
+		return null
+	}
+	const match = notConfirmedMessagePattern.exec(error.message)
+	if (!match) return null
+	return {
+		message: error.message,
+		ref: match[1]!,
+		expectedCommit: match[3]!,
+		observedCommit: match[2] === 'no' ? null : match[2]!,
+	}
+}
+
+export function isRemoteRefNotConfirmedError(error: unknown) {
+	return readRemoteRefNotConfirmedError(error) !== null
 }
