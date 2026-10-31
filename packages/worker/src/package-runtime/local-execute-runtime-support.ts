@@ -1127,7 +1127,7 @@ export function __kodyCreatePackageBoundKody(packageId) {
 	return new Proxy(Object.create(null), {
 		get(_target, property) {
 			if (typeof property === "symbol" || property === "then") return undefined;
-			if (property === "mcp") return kody.mcp;
+			if (property === "mcp" || property === "command") return kody[property];
 			const name = String(property);
 			return function (args) {
 				const fn = kody[name];

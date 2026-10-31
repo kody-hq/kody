@@ -134,6 +134,9 @@ export default async function count() {
 	const cached = await kody.packageStorageGet({ key: 'count' })
 	return { total: page.total, cached: cached.value }
 }
+export async function hostCommand(params) {
+	return await kody.command[params.method](params.input)
+}
 `,
 	},
 }
@@ -640,4 +643,85 @@ export default async function main() { return await count() }`
 			subject: { org: userId, actor: 'actor-1' },
 		}),
 	).toBe(rosterPackage.id)
+})
+
+test('stamped package host commands keep their nested path and the current run dispatcher', async () => {
+	vi.clearAllMocks()
+	const artifacts = new Map<string, ReturnType<typeof artifactHit>>()
+	installRegistry(artifacts)
+	const bundle = await buildKodyImportableModuleBundle({
+		env,
+		baseUrl,
+		userId,
+		sourceFiles: sourceFilesFor(rosterPackage),
+		entryPoint: rosterPackage.entryPoint,
+		rootPackageId: rosterPackage.id,
+	})
+	artifacts.set(rosterPackage.sourceId, artifactHit(rosterPackage, bundle))
+	const code = `import { hostCommand } from 'kody:@acme/roster/count'
+export default async function main(params) { return await hostCommand(params) }`
+	const graph = await buildLocalExecutePackageGraph({
+		env,
+		baseUrl,
+		userId,
+		actorUserId: 'actor-1',
+		code,
+	})
+	const files: Record<string, string> = {
+		'kody:runtime': createCliHostRuntimeSource(),
+		'entry.js': createCliEntrySource(),
+		'main.js': code.replace(
+			"'kody:@acme/roster/count'",
+			"'./kody:@acme/roster/count'",
+		),
+	}
+	for (const module of graph.modules) files[module.name] = module.esModule
+	const calls: Array<{ path: string; args: Array<unknown> }> = []
+	const bridge = async (path: Array<string>, args: Array<unknown>) => {
+		calls.push({ path: path.join('.'), args })
+		if ((args[0] as { deny?: boolean })?.deny)
+			throw new Error('execution_context_commands_off')
+		return { commandId: 'command-fixture', exitCode: 0, stdout: 'fixture' }
+	}
+	const symbol = Symbol.for('kody.runtimeStorage')
+	const previous = Reflect.get(globalThis, symbol)
+	Reflect.set(globalThis, symbol, new AsyncLocalStorage())
+	Reflect.set(globalThis, '__kodyTestBridge', bridge)
+	const moduleGraph = await createTemporaryModuleGraph(files)
+	try {
+		const entry = (await moduleGraph.importModule('entry.js')) as {
+			run: (params: unknown) => Promise<unknown>
+		}
+		for (const method of ['run', 'start', 'status', 'output', 'kill', 'list']) {
+			const input =
+				method === 'run' || method === 'start'
+					? { file: '/usr/bin/true', args: [] }
+					: { commandId: 'command-fixture' }
+			expect(await entry.run({ method, input })).toEqual({
+				commandId: 'command-fixture',
+				exitCode: 0,
+				stdout: 'fixture',
+			})
+			expect(calls.at(-1)).toEqual({
+				path: `kody.command.${method}`,
+				args: [input],
+			})
+		}
+		await expect(
+			entry.run({ method: 'run', input: { deny: true } }),
+		).rejects.toThrow('execution_context_commands_off')
+		const nextRun = vi.fn(async () => ({ stdout: 'next-run' }))
+		Reflect.set(globalThis, '__kodyTestBridge', nextRun)
+		expect(
+			await entry.run({ method: 'run', input: { file: '/usr/bin/true' } }),
+		).toEqual({ stdout: 'next-run' })
+		expect(nextRun).toHaveBeenCalledWith(
+			['kody', 'command', 'run'],
+			[{ file: '/usr/bin/true' }],
+		)
+	} finally {
+		await moduleGraph.cleanup()
+		Reflect.deleteProperty(globalThis, '__kodyTestBridge')
+		Reflect.set(globalThis, symbol, previous)
+	}
 })
