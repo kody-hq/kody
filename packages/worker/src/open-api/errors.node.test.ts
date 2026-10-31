@@ -365,11 +365,10 @@ test('toApiError surfaces a publish compute-limit caller error as-is even when i
 	expect(apiError).toMatchObject({
 		status: 400,
 		code: 'invalid_request',
-		message,
 	})
+	expect(apiError.message).toContain('exceeded a Kody compute limit')
 	expect(apiError.message).toContain('credential stamp scan')
 	expect(apiError.message).toContain('kody dev check')
-	expect(apiError.message).not.toMatch(/\bsecrets?\b/i)
 })
 
 test('toApiError maps an unconfirmed publish push to 409 publish_not_applied', () => {

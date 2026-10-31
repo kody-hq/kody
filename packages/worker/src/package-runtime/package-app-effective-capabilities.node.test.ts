@@ -43,7 +43,6 @@ test('a dependency recorded without declarations adds nothing', () => {
 		dependencies: [{}, { capabilities: [] }],
 	})
 	expect(effective).toEqual(['secretList'])
-	expect(effective).not.toContain('secretSet')
 })
 
 test('a non-app manifest grants nothing at runtime of its own', () => {

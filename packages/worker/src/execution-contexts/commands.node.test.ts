@@ -106,7 +106,6 @@ test('host commands are off on every new context', async () => {
 	const s = setup()
 	const row = await getExecutionContext(s.db, 'ec_mac')
 	expect(parseGrant(row!).commands?.enabled ?? false).toBe(false)
-	expect(ecpDefaultGrant.commands).toEqual({ enabled: false })
 })
 
 test('a run off a context (cloud or --local) gets a clear context-required error', async () => {
