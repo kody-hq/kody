@@ -17,7 +17,16 @@ const resourceActions = {
 	// A registered machine that runs execute. Org roles and org-wide grants
 	// confer read, write, delete and manage_access only; `execute` comes from
 	// a grant on the context itself (canExecuteOnContext), never from a role.
-	execution_context: ['read', 'execute', 'write', 'delete', 'manage_access'],
+	// `command` (run host commands, ADR 0093) is never in a preset or role:
+	// the operator has it, anyone else needs it granted on the context.
+	execution_context: [
+		'read',
+		'execute',
+		'command',
+		'write',
+		'delete',
+		'manage_access',
+	],
 } as const
 
 /** A permission family: the `resource-type` half of a permission string. */

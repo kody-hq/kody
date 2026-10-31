@@ -463,6 +463,22 @@ function __kodyCreateRuntimeNestedObjectProxy(exportName, path) {
 	});
 }
 
+// kody.command.* (host commands, ADR 0093) only exists on an execution
+// context, where the daemon serves it. Anywhere else say so plainly instead
+// of a TypeError on undefined.
+const __kodyHostCommandsUnavailable = Object.freeze(
+	Object.fromEntries(
+		['run', 'start', 'status', 'output', 'kill', 'list'].map((name) => [
+			name,
+			async () => {
+				throw new Error(
+					'kody.command.' + name + ' runs shell commands on an execution context (a machine running kody daemon or the Kody desktop app with commands turned on). This run is in Kody cloud, which cannot run host commands. Route the run to a context (executionContext) instead. (execution_context_command_requires_context)',
+				);
+			},
+		]),
+	),
+);
+
 function __kodyCreateRuntimeObjectProxy(exportName) {
 	return new Proxy({}, {
 		get(_target, property) {
@@ -475,6 +491,9 @@ function __kodyCreateRuntimeObjectProxy(exportName) {
 			}
 			const runtimeExport = __kodyReadRuntimeExport(exportName);
 			const value = runtimeExport[property];
+			if (value == null && exportName === 'kody' && property === 'command') {
+				return __kodyHostCommandsUnavailable;
+			}
 			if (typeof value === 'function') {
 				// Late-bind method calls to the runtime of the *calling* run: a
 				// function captured at property-access time (for example a

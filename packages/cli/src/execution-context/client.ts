@@ -239,6 +239,40 @@ export async function requestConnectTicket(input: {
 	return (await response.json()) as { ticket: string; expiresAt: string }
 }
 
+/**
+ * Host commands opt-in (ADR 0093), signed with the context key so only this
+ * machine can turn commands on. Omit `enabled` to read the current state.
+ */
+export async function setContextCommands(input: {
+	apiUrl: string
+	ecid: string
+	privateKey: EcpCryptoKey
+	enabled?: boolean
+	fetchFn?: typeof fetch
+	signal?: AbortSignal
+}) {
+	const response = await signedFetch({
+		apiUrl: input.apiUrl,
+		ecid: input.ecid,
+		privateKey: input.privateKey,
+		...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+		...(input.signal ? { signal: input.signal } : {}),
+		method: 'POST',
+		pathAndQuery: `${executionContextsPath}/commands`,
+		body: JSON.stringify(
+			input.enabled === undefined ? {} : { enabled: input.enabled },
+		),
+		headers: { 'content-type': 'application/json' },
+	})
+	if (!response.ok) throw await readError(response)
+	return (await response.json()) as {
+		id: string
+		name: string
+		commands: { enabled: boolean; enabledAt?: string | null }
+		grantVersion: number
+	}
+}
+
 /** Server frame keys, trusted only when signed by a pinned root key. */
 export async function fetchServerKeys(input: {
 	apiUrl: string
