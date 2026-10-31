@@ -716,6 +716,7 @@ const executionContextAuditLabels: Record<string, string> = {
 	commands_disabled: 'Commands turned off',
 	command_started: 'Command started',
 	command_finished: 'Command finished',
+	run_cancelled: 'Run cancelled',
 }
 
 /** `$ npm test in /repo, exit 0` for host command audit rows (ADR 0093). */

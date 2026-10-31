@@ -9,6 +9,7 @@ import { renderStartPage } from '../test-support/render-start-page.ts'
 import { createElement } from 'react'
 import { type ExecutionContextsPageData } from '#universal/execution-contexts.ts'
 import { ExecutionContextsRoute } from './execution-contexts.tsx'
+import { RunCancelControl } from './execution-context-detail.tsx'
 
 function route(
 	payload: ExecutionContextsPageData,
@@ -247,4 +248,44 @@ test('operator detail shows daemon version, outdated flag and background service
 		'Keep kody daemon --context ec_laptop running in a terminal',
 	)
 	expect(idle).not.toContain('kody daemon install --context')
+})
+
+test('an in-progress run offers Cancel, then asks before it stops the run', async () => {
+	const props = {
+		runId: 'run_1',
+		onAsk: () => {},
+		onConfirm: () => {},
+		onKeep: () => {},
+	}
+	const idle = await renderStartPage(
+		createElement(RunCancelControl, {
+			...props,
+			cancelling: false,
+			confirming: false,
+		}),
+	)
+	expect(idle).toContain('aria-label="Cancel run run_1"')
+	expect(text(idle)).toContain('Cancel')
+	const confirming = text(
+		await renderStartPage(
+			createElement(RunCancelControl, {
+				...props,
+				cancelling: false,
+				confirming: true,
+			}),
+		),
+	)
+	expect(confirming).toContain('Stop run')
+	expect(confirming).toContain('Keep running')
+	expect(
+		text(
+			await renderStartPage(
+				createElement(RunCancelControl, {
+					...props,
+					cancelling: true,
+					confirming: false,
+				}),
+			),
+		),
+	).toContain('Cancelling…')
 })

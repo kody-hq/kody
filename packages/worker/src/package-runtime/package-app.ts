@@ -43,8 +43,12 @@ import {
 	collectPackageStorageGrantIds,
 } from '#mcp/run-kody-registry.ts'
 import { getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
+import { readIntegrationRuntimeConfig } from '#mcp/capabilities/integrations/integration-runtime-config.ts'
 import { listVisibleEnabledMcpServerRefsCached } from '#worker/mcp-client/settings-service.ts'
-import { createAuthenticatedFetch } from '#mcp/execute-modules/kody-runtime-utils.ts'
+import {
+	createAuthenticatedFetch,
+	INTEGRATION_RUNTIME_CONFIG_TOOL_NAME,
+} from '#mcp/execute-modules/kody-runtime-utils.ts'
 import {
 	buildKodyAppBundle,
 	createPublishedPackageAppBundleCacheKey,
@@ -172,6 +176,7 @@ import {
 	type PackageAppAuthorityMode,
 	type PackageAppAuthorityScope,
 	type PackageAppRunsAs,
+	type PackageAppRunsAsSource,
 	type PackageAppVisitorGrantScope,
 } from './package-app-authority.ts'
 import {
@@ -188,6 +193,9 @@ import {
 	notePackageAppOauthGrantUse,
 } from '#app/package-app-oauth-grants.ts'
 import { scopesIncludeEmail } from '#app/package-app-oauth-scopes.ts'
+import { loadPackageAppCapabilityAllowance } from './package-app-capability-allowances.ts'
+import { resolveDisplayName } from '#worker/identity/username.ts'
+import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	buildPackageAppAssetBasePath,
 	buildPackageAppClientModuleUrl,
@@ -661,6 +669,9 @@ function createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity = null)
 			}
 			if (property === 'appSpendGet') {
 				return async () => await runtimeBridge.appSpendGet();
+			}
+			if (property === 'appPublisherGet') {
+				return async () => await runtimeBridge.appPublisherGet();
 			}
 			return async (args = {}) => {
 				const visitTicket = __kodyCurrentVisitTicket();
@@ -1478,6 +1489,11 @@ type PackageAppRuntimeBridgeProps = {
 	 * app's runs-as person.
 	 */
 	declaredCapabilities: Array<string>
+	/**
+	 * Capabilities this published commit may call without declaring them
+	 * (`package_app_capability_allowances`). Never carries to a new publish.
+	 */
+	capabilityAllowance?: Array<string>
 	/** The app's package.json name and version, for not-declared errors. */
 	appPackage?: { name: string; version: string | null }
 	/**
@@ -2172,7 +2188,13 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				visitTicket,
 			)
 		}
-		const declared = new Set(this.ctx.props.declaredCapabilities)
+		if (name === INTEGRATION_RUNTIME_CONFIG_TOOL_NAME) {
+			return await this.integrationRuntimeConfig(capabilityArgs, visitTicket)
+		}
+		const declared = new Set([
+			...(this.ctx.props.declaredCapabilities ?? []),
+			...(this.ctx.props.capabilityAllowance ?? []),
+		])
 		return await this.runWithAuthority({
 			callName: name,
 			storageId: null,
@@ -2190,6 +2212,38 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 							: new Error(
 									`Package app capability "${missing}" is not available.`,
 								),
+				})
+			},
+		})
+	}
+
+	/**
+	 * `createAuthenticatedFetch(name)` reads non-secret integration config
+	 * through this host-side helper. It is internal, not a capability, so it
+	 * needs no `kody.app.capabilities` entry.
+	 */
+	private async integrationRuntimeConfig(
+		args: Record<string, unknown>,
+		visitTicket: string | null | undefined,
+	) {
+		return await this.runWithAuthority({
+			callName: INTEGRATION_RUNTIME_CONFIG_TOOL_NAME,
+			storageId: null,
+			visitTicket,
+			run: async (callerContext) => {
+				const { capabilityMap } = await getCapabilityRegistryForContext({
+					env: this.env,
+					callerContext,
+				})
+				const integrationGet = capabilityMap.integrationGet
+				if (!integrationGet) {
+					throw new Error('Integration config is not available to this app.')
+				}
+				return await readIntegrationRuntimeConfig({
+					env: this.env,
+					callerContext,
+					integrationGet,
+					args,
 				})
 			},
 		})
@@ -2225,9 +2279,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 
 	/**
 	 * `metaGetCurrentUser` names the visitor, never the runs-as person:
-	 * identity is information, not authority. Members of the owning org also
-	 * get their role. Email needs the visitor's `email` consent; an answer
-	 * that carried it without consent keeps it for now and is logged.
+	 * identity is information, not authority. In a visit, "current user" is
+	 * the visitor, with their own display name and members' role. Email is
+	 * the visitor's own address, and only when they shared it (the `email`
+	 * consent scope) or the app belongs to their own personal org. Otherwise
+	 * it is empty. The publisher's identity is `kody.appPublisherGet()`.
 	 */
 	private async visitorIdentityAnswer(
 		boundPackageId: string | null,
@@ -2247,24 +2303,53 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			}
 		}
 		const visitor = visit?.visitor ?? null
-		const legacy = (await this.invokeCapability(
+		const base = (await this.invokeCapability(
 			boundPackageId,
 			await this.createCallerContext(null, visitTicket),
 			{ name: packageAppIdentityCapabilityName, args },
 		)) as Record<string, unknown>
-		if (!visitor) return legacy
-		const answer = { ...legacy, role: visitor.role }
-		const email = typeof legacy.email === 'string' ? legacy.email : ''
-		if (!email) return answer
-		// Only decides whether to log; a failed grant read never changes the answer.
-		const grant = await this.findVisitorGrant(visitor).catch(() => null)
-		if (grant && scopesIncludeEmail(grant.scopes)) return answer
-		this.noteAuthorityFallback(
-			packageAppIdentityCapabilityName,
-			'identity_email',
-			visitor,
-		)
-		return answer
+		if (!visitor) return base
+		const person = await loadPackageAppVisitorPerson(this.env.APP_DB, visitor)
+		const ownApp = person?.personalOrgId === this.ctx.props.userId
+		const shared =
+			ownApp ||
+			Boolean(
+				person?.email &&
+				(await this.findVisitorGrant(visitor)
+					.then((grant) => grant && scopesIncludeEmail(grant.scopes))
+					.catch(() => false)),
+			)
+		return {
+			...base,
+			user_id: visitor.userId,
+			username: visitor.username,
+			email: shared ? (person?.email ?? '') : '',
+			display_name: person?.displayName ?? visitor.username,
+			role: visitor.role,
+		}
+	}
+
+	/** The app's runs-as person (the publisher unless an Owner chose someone). */
+	async appPublisherGet(): Promise<{
+		user_id: string
+		username: string
+		email: string
+		display_name: string
+		org: { slug: string }
+		source: PackageAppRunsAsSource
+	}> {
+		const runsAs = await this.loadRunsAs()
+		if (runsAs.status !== 'ready') {
+			throw new PackageAppRunsAsUnavailableError(runsAs.reason)
+		}
+		return {
+			user_id: runsAs.personId,
+			username: runsAs.username,
+			email: runsAs.email,
+			display_name: runsAs.displayName,
+			org: { slug: this.ctx.props.orgSlug ?? '' },
+			source: runsAs.source,
+		}
 	}
 
 	private async findVisitorGrant(visitor: RuntimePackageAppVisitor) {
@@ -3452,6 +3537,36 @@ export function createPackageAppWorkerCacheKey(input: {
  * The visitor a package app acts as. An anonymous visitor (no request
  * context) is null; `servingUsername` then names the owning org's slug.
  */
+/** The visitor's own account row, for their identity in a visit. */
+async function loadPackageAppVisitorPerson(
+	db: D1Database,
+	visitor: RuntimePackageAppVisitor,
+) {
+	const row = await db
+		.prepare(
+			`SELECT email, username, display_name, personal_org_id FROM users
+			 WHERE stable_user_id = ?
+			   AND suspended_at IS NULL
+			   AND deleting_at IS NULL${andLiveDeletedAtSql()}
+			 LIMIT 1`,
+		)
+		.bind(visitor.userId)
+		.first<{
+			email: string | null
+			username: string
+			display_name: string | null
+			personal_org_id: string | null
+		}>()
+	if (!row) return null
+	return {
+		email: row.email?.trim() || null,
+		displayName:
+			row.display_name?.trim() ||
+			resolveDisplayName({ email: row.email ?? '', username: row.username }),
+		personalOrgId: row.personal_org_id?.trim() || null,
+	}
+}
+
 function packageAppVisitorOf(
 	callerContext: McpCallerContext,
 	servingUsername?: string,
@@ -3830,6 +3945,20 @@ async function buildPackageAppWorkerOptionsUncached(
 		sourceFiles: input.sourceFiles,
 		savedPackage: input.savedPackage,
 	})
+	// Starts before the template read so the D1 allowance row overlaps it.
+	const capabilityAllowancePending = (
+		typeof input.env.APP_DB?.prepare === 'function'
+			? loadPackageAppCapabilityAllowance(input.env.APP_DB, {
+					packageId: input.savedPackage.id,
+					publishedCommit: input.savedPackage.publishedCommit,
+				})
+			: Promise.resolve([] as Array<string>)
+	).catch((error: unknown) => {
+		if (!/no such table/i.test(String(error))) {
+			console.warn('package-app-capability-allowance-load-failed', error)
+		}
+		return [] as Array<string>
+	})
 	const published = await pushServerTiming(
 		input.serverTiming,
 		'appTemplate',
@@ -3840,7 +3969,7 @@ async function buildPackageAppWorkerOptionsUncached(
 				savedPackage: input.savedPackage,
 			}),
 	)
-	const [bundled, clientArtifact] = await Promise.all([
+	const [bundled, clientArtifact, capabilityAllowance] = await Promise.all([
 		published?.bundled ??
 			resolvePackageAppBundledArtifact({
 				env: input.env,
@@ -3862,6 +3991,7 @@ async function buildPackageAppWorkerOptionsUncached(
 					loadSourceFiles: input.loadSourceFiles,
 					sourceFiles: input.sourceFiles,
 				}),
+		capabilityAllowancePending,
 	])
 	// Platform-served static surface. The client module URL carries the
 	// content hash, so pages read it from packageContext instead of
@@ -4010,6 +4140,7 @@ async function buildPackageAppWorkerOptionsUncached(
 				manifest,
 				dependencies: bundled.dependencies,
 			}),
+			...(capabilityAllowance.length ? { capabilityAllowance } : {}),
 			appPackage: { name: manifest.name, version: manifest.version ?? null },
 			dependencyPackageNames: collectDependencyPackageNames({
 				dependencies: bundled.dependencies,

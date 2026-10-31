@@ -1383,6 +1383,15 @@ function normalizeExecuteIdempotencyKey(
 	return trimmed.slice(0, runRecordMaxIdempotencyKeyLength)
 }
 
+/** The context a detached run is on; cloud runs have no context to cancel. */
+function runningContextName(metadata: unknown) {
+	if (!metadata || typeof metadata !== 'object') return null
+	const { id, name } = metadata as { id?: unknown; name?: unknown }
+	return typeof id === 'string' && id !== 'cloud' && typeof name === 'string'
+		? name
+		: null
+}
+
 function buildTransportBudgetFollowResponse(input: {
 	conversationId: string
 	timing: {
@@ -1398,9 +1407,13 @@ function buildTransportBudgetFollowResponse(input: {
 	const { ranOnContent, ranOnFields } = ranOnParts(input.executionContext, {
 		running: true,
 	})
-	const text = input.idempotencyKey
+	const base = input.idempotencyKey
 		? `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Retrying execute with idempotencyKey "${input.idempotencyKey}" reads this run instead of starting another mutation.`
 		: `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Do not start another mutation for this call.`
+	const contextName = runningContextName(input.executionContext)
+	const text = contextName
+		? `${base} To stop it, call executionContextRunCancel with id "${contextName}" and that run_id.`
+		: base
 	return {
 		content: prependToolMetadataContent(input.conversationId, [
 			{ type: 'text' as const, text },
