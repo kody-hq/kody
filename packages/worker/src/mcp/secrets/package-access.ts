@@ -25,7 +25,7 @@ import {
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	isAllowedPackagesSafetyWindowActive,
-	tryAllowedPackagesSafetyWindowGrant,
+	allowDuringAllowedPackagesSafetyWindow,
 } from '#worker/credentials/allowed-packages-safety-window.ts'
 import {
 	scheduleAllowedPackagesWouldBlock,
@@ -245,7 +245,7 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 		if (implicitKind) {
 			// A non-empty list is enforced for self-authored and adopted
 			// packages too (#4129). Keep the deduped marker (now a refusal or a
-			// safety-window grant) off the hot path; it never logs values.
+			// safety-window allow) off the hot path; it never logs values.
 			const credentialId = input.resolved.credentialId?.trim()
 			if (credentialId) {
 				scheduleAllowedPackagesWouldBlock({
@@ -257,20 +257,14 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 						accessKind: implicitKind,
 					},
 				})
-				savedPackage = await getSavedPackageById(input.env.APP_DB, {
-					userId: input.userId,
-					packageId,
-				})
 				if (
-					savedPackage &&
-					(await tryAllowedPackagesSafetyWindowGrant({
+					await allowDuringAllowedPackagesSafetyWindow({
 						env: input.env,
 						ownerId: String(input.userId),
 						credentialId,
 						packageId,
-						packageCreatedAt: savedPackage.createdAt,
 						accessKind: implicitKind,
-					}))
+					})
 				) {
 					return
 				}

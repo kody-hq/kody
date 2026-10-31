@@ -31,7 +31,7 @@ vi.mock('#worker/orgs/repo.ts', () => ({
 }))
 
 vi.mock('#worker/credentials/allowed-packages-safety-window.ts', () => ({
-	tryAllowedPackagesSafetyWindowGrant: vi.fn(async () => false),
+	allowDuringAllowedPackagesSafetyWindow: vi.fn(async () => false),
 }))
 
 vi.mock('#worker/credentials/allowed-packages-would-block.ts', () => ({

@@ -49,7 +49,7 @@ export type AllowedPackagesGrandfatherPair = {
 	credentialId: string
 	packageId: string
 	accessKind: AllowedPackagesWouldBlockAccessKind
-	source: Exclude<AllowedPackagesGrandfatherSource, 'safety_window'>
+	source: AllowedPackagesGrandfatherSource
 	/** Package source has names static analysis cannot resolve. */
 	packageUnresolved: boolean
 	logLastSeenAt: string | null
@@ -410,7 +410,7 @@ export async function runAllowedPackagesGrandfather(input: {
 			}
 		}
 		if (!dryRun && pair.outcome === 'would_grant') {
-			const granted = await grantGrandfatheredPackageAccess({
+			pair.outcome = await grantGrandfatheredPackageAccess({
 				db: input.env.APP_DB,
 				audit: input.audit,
 				ownerId: pair.ownerId,
@@ -418,8 +418,6 @@ export async function runAllowedPackagesGrandfather(input: {
 				packageId: pair.packageId,
 				source: pair.source,
 			})
-			// No `credentialCreatedBefore` here, so `not_eligible` cannot happen.
-			pair.outcome = granted === 'not_eligible' ? 'missing' : granted
 		}
 		switch (pair.outcome) {
 			case 'would_grant':

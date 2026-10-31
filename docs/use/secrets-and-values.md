@@ -367,10 +367,10 @@ fetch even when package read/use is automatic.
 > **Rollout window (#4129), until 2026-11-30T00:00:00Z.** While the
 > `credential-allowed-packages-safety-window` flag is on, a package you authored
 > or adopted that a non-empty list leaves out is still allowed when it uses the
-> credential directly, and the use is logged. If both the package and the
-> credential existed before 2026-10-31, the first use adds the package to the
-> list. Nested use and unadopted forks are refused as described below. After the
-> window, the rules below apply with no exception.
+> credential directly, and the use is logged. Kody does not add it to the list,
+> so a package you remove stays removed. Nested use and unadopted forks are
+> refused as described below. After the window, the rules below apply with no
+> exception.
 
 User-scoped secrets are available automatically for **reading and using**
 (mounts, fetch placeholders, named capability lookups including `secretList`) to

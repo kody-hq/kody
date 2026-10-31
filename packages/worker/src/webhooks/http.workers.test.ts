@@ -80,7 +80,10 @@ vi.mock('#worker/credentials/allowed-packages-safety-window.ts', async () => {
 	const actual = await vi.importActual<
 		typeof import('#worker/credentials/allowed-packages-safety-window.ts')
 	>('#worker/credentials/allowed-packages-safety-window.ts')
-	return { ...actual, tryAllowedPackagesSafetyWindowGrant: async () => false }
+	return {
+		...actual,
+		allowDuringAllowedPackagesSafetyWindow: async () => false,
+	}
 })
 
 vi.mock('./dispatch-queue-producer.ts', async () => {

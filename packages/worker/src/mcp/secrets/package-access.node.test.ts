@@ -12,15 +12,15 @@ const mockModule = vi.hoisted(() => ({
 	loadPackageManifestBySourceId: vi.fn(),
 	findSecret: vi.fn(),
 	getOrgById: vi.fn(),
-	tryAllowedPackagesSafetyWindowGrant: vi.fn(
+	allowDuringAllowedPackagesSafetyWindow: vi.fn(
 		async (..._args: Array<unknown>) => false,
 	),
 	safetyWindowActive: vi.fn(async (..._args: Array<unknown>) => false),
 }))
 
 vi.mock('#worker/credentials/allowed-packages-safety-window.ts', () => ({
-	tryAllowedPackagesSafetyWindowGrant: (...args: Array<unknown>) =>
-		mockModule.tryAllowedPackagesSafetyWindowGrant(...args),
+	allowDuringAllowedPackagesSafetyWindow: (...args: Array<unknown>) =>
+		mockModule.allowDuringAllowedPackagesSafetyWindow(...args),
 	isAllowedPackagesSafetyWindowActive: (...args: Array<unknown>) =>
 		mockModule.safetyWindowActive(...args),
 }))
@@ -500,11 +500,12 @@ test('a non-empty allowed list is enforced for self-authored and adopted package
 			accessInput({ resolved: lockedToOther }),
 		),
 	).rejects.toSatisfy(expectNotOnList)
-	expect(mockModule.tryAllowedPackagesSafetyWindowGrant).toHaveBeenCalledWith(
+	expect(
+		mockModule.allowDuringAllowedPackagesSafetyWindow,
+	).toHaveBeenCalledWith(
 		expect.objectContaining({
 			credentialId: 'cred-user-token',
 			packageId: 'pkg-1',
-			packageCreatedAt: '2026-01-01T00:00:00.000Z',
 			accessKind: 'self_authored',
 		}),
 	)
@@ -518,10 +519,10 @@ test('a non-empty allowed list is enforced for self-authored and adopted package
 		),
 	).rejects.toSatisfy(expectNotOnList)
 
-	// Safety window approves the pre-cutover pair on first use.
+	// Safety window allows the pair without touching the list.
 	clearLookups()
 	lookups(datedPackage, null, { packageLoads: 2 })
-	mockModule.tryAllowedPackagesSafetyWindowGrant.mockResolvedValueOnce(true)
+	mockModule.allowDuringAllowedPackagesSafetyWindow.mockResolvedValueOnce(true)
 	await expect(
 		assertPackageCanAccessResolvedSecret(
 			accessInput({ resolved: lockedToOther }),

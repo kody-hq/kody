@@ -221,7 +221,7 @@ test('grant never widens an empty list and skips missing credentials', async () 
 		audit: null,
 		ownerId: owner,
 		packageId: 'pkg-x',
-		source: 'safety_window' as const,
+		source: 'static' as const,
 	}
 	await expect(
 		grantGrandfatheredPackageAccess({ ...base, credentialId: 'cred-open' }),

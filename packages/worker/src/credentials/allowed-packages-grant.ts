@@ -21,27 +21,13 @@ import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 export const allowedPackagesGrandfatherReason = 'grandfathered for #4129'
 
-export type AllowedPackagesGrandfatherSource =
-	| 'static'
-	| 'log'
-	| 'static+log'
-	| 'safety_window'
-
-/** D1 `CURRENT_TIMESTAMP` rows have no `T`/`Z`; compare as instants. */
-export function isBefore(timestamp: string, instant: string) {
-	const normalized = timestamp.includes('T')
-		? timestamp
-		: `${timestamp.replace(' ', 'T')}Z`
-	const time = Date.parse(normalized)
-	return Number.isFinite(time) && time < Date.parse(instant)
-}
+export type AllowedPackagesGrandfatherSource = 'static' | 'log' | 'static+log'
 
 export type GrantOutcome =
 	| 'granted'
 	| 'already_allowed'
 	| 'missing'
 	| 'conflict'
-	| 'not_eligible'
 
 /**
  * Add one package to a user credential's non-empty allowed list, guarded on
@@ -55,13 +41,10 @@ export async function grantGrandfatheredPackageAccess(input: {
 	credentialId: string
 	packageId: string
 	source: AllowedPackagesGrandfatherSource
-	/** Safety window: refuse credentials created at or after this instant. */
-	credentialCreatedBefore?: string
 }): Promise<GrantOutcome> {
 	const row = await input.db
 		.prepare(
-			`SELECT e.id AS id, e.name AS name, e.allowed_packages AS allowed_packages,
-				e.created_at AS created_at
+			`SELECT e.id AS id, e.name AS name, e.allowed_packages AS allowed_packages
 			 FROM secret_entries e
 			 JOIN secret_buckets b ON b.id = e.bucket_id
 			 WHERE e.id = ? AND b.user_id = ? AND b.scope = 'user'${andLiveDeletedAtSql('e')}${andLiveDeletedAtSql('b')}`,
@@ -71,15 +54,8 @@ export async function grantGrandfatheredPackageAccess(input: {
 			id: string
 			name: string
 			allowed_packages: string
-			created_at: string
 		}>()
 	if (!row) return 'missing'
-	if (
-		input.credentialCreatedBefore &&
-		!isBefore(row.created_at, input.credentialCreatedBefore)
-	) {
-		return 'not_eligible'
-	}
 	const before = parseAllowedPackages(row.allowed_packages)
 	if (before.length === 0 || before.includes(input.packageId)) {
 		return 'already_allowed'
