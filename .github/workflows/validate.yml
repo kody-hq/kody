@@ -1153,8 +1153,8 @@ jobs:
           needs.static.result != 'success' || needs.node.result != 'success' ||
           needs.workers.result != 'success' || needs.mcp.result != 'success' ||
           needs.e2e.result != 'success' || needs.e2e_report.result != 'success'
-          || needs.cli.result != 'success' || needs.host_commands.result !=
-          'success'
+          || needs.cli.result != 'success' || needs.cli_windows.result !=
+          'success' || needs.host_commands.result != 'success'
         run: |
           echo "static=${{ needs.static.result }}"
           echo "node=${{ needs.node.result }}"
@@ -1163,5 +1163,6 @@ jobs:
           echo "e2e=${{ needs.e2e.result }}"
           echo "e2e_report=${{ needs.e2e_report.result }}"
           echo "cli=${{ needs.cli.result }}"
+          echo "cli_windows=${{ needs.cli_windows.result }}"
           echo "host_commands=${{ needs.host_commands.result }}"
           exit 1

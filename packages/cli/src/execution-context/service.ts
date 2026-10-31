@@ -10,7 +10,7 @@ import {
 } from 'node:fs'
 import { homedir, tmpdir, userInfo } from 'node:os'
 import { dirname, join, sep } from 'node:path'
-import { killProcessTree } from '../process-tree.js'
+import { killProcessTree, windowsCommandLine } from '../process-tree.js'
 import { contextDir } from './keystore.js'
 
 /**
@@ -312,8 +312,10 @@ function powershellQuote(value: string) {
  */
 export function taskSchedulerScript(input: UnitInput) {
 	const env = serviceEnvironment(input)
+	// The BOM makes Windows PowerShell 5.1 read UTF-8 instead of the ANSI code
+	// page, so non-ASCII profile paths (a user named José) survive.
 	return [
-		'# Written by `kody daemon install`. Re-run it to repair; remove with `kody daemon uninstall`.',
+		'\ufeff# Written by `kody daemon install`. Re-run it to repair; remove with `kody daemon uninstall`.',
 		`# Kody execution context ${input.contextName.replace(/[\n\r]/g, ' ')} (${input.ecid})`,
 		...Object.entries(env).map(
 			([key, value]) => `$env:${key} = ${powershellQuote(value)}`,
@@ -558,7 +560,11 @@ function scheduledTaskState(ecid: string, run: CommandRunner) {
 function endScheduledTask(ecid: string, statePath: string, run: CommandRunner) {
 	run('schtasks.exe', ['/End', '/TN', scheduledTaskName(ecid)])
 	const runtime = readJson<ServiceRuntimeState>(statePath)
-	if (runtime?.pid && runtime.service === 'taskscheduler')
+	if (!runtime?.pid || runtime.service !== 'taskscheduler') return
+	// daemon.json outlives a hard crash and Windows reuses PIDs quickly: only
+	// kill a process that is still this context's daemon.
+	const commandLine = windowsCommandLine(runtime.pid)
+	if (commandLine?.includes('daemon') && commandLine.includes(ecid))
 		killProcessTree(runtime.pid, 'win32')
 }
 

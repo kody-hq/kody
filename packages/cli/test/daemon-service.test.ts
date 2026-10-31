@@ -192,6 +192,8 @@ test('the Windows logon task supervises the daemon without secrets or admin righ
 	const input = unitInput('taskscheduler')
 	const script = service.taskSchedulerScript(input)
 	assertNoSecrets(script)
+	// Windows PowerShell 5.1 reads BOM-less scripts as the ANSI code page.
+	assert.ok(script.startsWith('\ufeff#'))
 	assert.match(script, /\$env:KODY_DAEMON_SERVICE = 'taskscheduler'/)
 	assert.match(script, /if \(\$LASTEXITCODE -eq \d+\) \{ break \}/)
 	assert.match(script, / 'daemon' '--context' 'ec_unit' /)
@@ -682,12 +684,14 @@ test('a drained daemon does not connect again', async () => {
 	assert.equal(calls, 0)
 })
 
-test('repair keeps --max-concurrent from both a systemd unit and a LaunchAgent plist', () => {
-	for (const manager of ['systemd', 'launchd'] as const) {
+test('repair keeps --max-concurrent from a systemd unit, a LaunchAgent plist, and a logon task script', () => {
+	for (const manager of ['systemd', 'launchd', 'taskscheduler'] as const) {
 		const text =
 			manager === 'systemd'
 				? service.systemdUnit(unitInput(manager))
-				: service.launchdPlist(unitInput(manager))
+				: manager === 'launchd'
+					? service.launchdPlist(unitInput(manager))
+					: service.taskSchedulerScript(unitInput(manager))
 		assert.equal(serviceCommands.maxConcurrentInUnit(text), 3, manager)
 	}
 	assert.equal(serviceCommands.maxConcurrentInUnit(null), undefined)

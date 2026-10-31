@@ -178,8 +178,9 @@ async function fingerprint(path: string): Promise<string> {
 	}
 }
 
+// shouldIgnoreWatchPath compares with '/' on every platform.
 function normalizePrefix(prefix: string): string {
-	return prefix.replace(/^\.\//, '').replace(/\/+$/, '').split('/').join(sep)
+	return prefix.split(sep).join('/').replace(/^\.\//, '').replace(/\/+$/, '')
 }
 
 export function shouldIgnoreWatchPath(

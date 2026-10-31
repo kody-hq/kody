@@ -14,10 +14,13 @@ import { openRehearsalSession } from '../preview-rehearsal/kody-session.ts'
 import { mintCliToken } from '../preview-rehearsal/cli-token.ts'
 
 const appOrigin = (process.env.PREVIEW_ORIGIN ?? '').replace(/\/+$/, '')
-const host = new URL(appOrigin || 'https://invalid').hostname
-if (!/^kody-[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev$/.test(host))
+const { protocol, hostname: host } = new URL(appOrigin || 'https://invalid')
+if (
+	protocol !== 'https:' ||
+	!/^kody-[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev$/.test(host)
+)
 	throw new Error(
-		`PREVIEW_ORIGIN must be a kody preview on workers.dev (got ${JSON.stringify(appOrigin)}). Production is never allowed.`,
+		`PREVIEW_ORIGIN must be an https kody preview on workers.dev (got ${JSON.stringify(appOrigin)}). Production is never allowed.`,
 	)
 const apiOrigin = appOrigin.replace(/^(https:\/\/[^.]+)\./, '$1-api.')
 const root = join(import.meta.dirname, '..', '..')

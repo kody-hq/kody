@@ -121,7 +121,7 @@ function isRoot(env: ServiceCommandEnv) {
 
 export function maxConcurrentInUnit(text: string | null) {
 	const match = text?.match(
-		/--max-concurrent(?:"?\s+"?|<\/string>\s*<string>)(\d+)/,
+		/--max-concurrent(?:"?\s+"?|'\s+'|<\/string>\s*<string>)(\d+)/,
 	)
 	return match ? Number(match[1]) : undefined
 }

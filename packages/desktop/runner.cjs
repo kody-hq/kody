@@ -59,7 +59,12 @@ class Runner extends EventEmitter {
 		if (!child.pid) return
 		if (process.platform === 'win32') {
 			const done = new Promise((resolve) =>
-				killWindowsTree(child.pid, child.kodyStartedAt ?? 0, resolve),
+				killWindowsTree(
+					child.pid,
+					child.kodyStartedAt ?? 0,
+					resolve,
+					child.exitCode === null && child.signalCode === null,
+				),
 			)
 			this.treeKills = [...(this.treeKills ?? []), done]
 			return

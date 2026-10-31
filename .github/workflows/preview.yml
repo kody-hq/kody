@@ -1215,7 +1215,8 @@ jobs:
     secrets: inherit
     with:
       preview_name: kody-pr-${{ github.event.pull_request.number }}
-      sha: ${{ github.event.pull_request.head.sha }}
+      # The merge commit the deploy job checked out, not the PR head.
+      sha: ${{ github.sha }}
 
   cleanup:
     runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}
