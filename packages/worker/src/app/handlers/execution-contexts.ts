@@ -52,6 +52,7 @@ export const executionContextCapabilityNames = {
 	chainGet: 'executionChainGet',
 	chainSet: 'executionChainSet',
 	runList: 'executionContextRunList',
+	runCancel: 'executionContextRunCancel',
 	auditList: 'executionContextAuditList',
 	shareList: 'executionContextShareList',
 	shareSet: 'executionContextShareSet',
@@ -594,6 +595,23 @@ export async function listExecutionContextRunsForUser(
 			scope: result.scope === 'all' ? 'all' : 'own',
 		}
 		return { ok: true as const, page }
+	})
+}
+
+export async function cancelExecutionContextRunForUser(
+	input: ScopedInput & { contextId: string; runId: string },
+) {
+	return runScoped(input, async (scope) => {
+		const result = await callCapability(
+			scope,
+			executionContextCapabilityNames.runCancel,
+			{ id: input.contextId, run_id: input.runId },
+		)
+		return {
+			ok: true as const,
+			cancelled: result.cancelled === true,
+			state: typeof result.state === 'string' ? result.state : null,
+		}
 	})
 }
 

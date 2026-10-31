@@ -171,6 +171,20 @@ export const loadExecutionContextRuns = createServerFn({ method: 'GET' })
 		)
 	})
 
+export const cancelExecutionContextRun = createServerFn({ method: 'POST' })
+	.validator(z.object({ orgSlug, contextId: segment, runId: segment }))
+	.handler(async ({ data }) => {
+		const { cancelExecutionContextRunForUser } =
+			await import('../../src/app/handlers/execution-contexts.ts')
+		return mutate(data.orgSlug, (input) =>
+			cancelExecutionContextRunForUser({
+				...input,
+				contextId: data.contextId,
+				runId: data.runId,
+			}),
+		)
+	})
+
 export const loadExecutionContextAudit = createServerFn({ method: 'GET' })
 	.validator(
 		z.object({

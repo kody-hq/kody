@@ -27,15 +27,21 @@ Execution contexts are an experiment. Turn them on at
   kept for Kody cloud.
 - Capabilities: `executionContextList`, `executionContextGet`,
   `executionContextUpdate`, `executionContextRevoke`, `executionContextDelete`,
-  `executionContextRunList`, `executionChainGet`, `executionChainSet`, and the
-  sharing capabilities. Find them with `search({ query: "execution context" })`.
+  `executionContextRunList`, `executionContextRunCancel`, `executionChainGet`,
+  `executionChainSet`, and the sharing capabilities. Find them with
+  `search({ query: "execution context" })`.
 - CLI: `kody connect --name <name>` (register plus background service),
   `kody context register --name <name>`,
   `kody daemon install | status [--json] | logs | restart | uninstall`,
   `kody update`, `kody context policy allow <path> [--mode ro|rw]`,
   `kody daemon [--max-concurrent <n>]` (`KODY_CONTEXT_MAX_CONCURRENT`, 1 to 8,
   default 2), `kody chain show | add | remove`,
-  `kody context commands [status | on | off] [--context <name>] [--json]`.
+  `kody context commands [status | on | off] [--context <name>] [--json]`,
+  `kody context cancel-run <name> <run id>`.
+- Cancel a run on a machine with `executionContextRunCancel({ id, run_id })`
+  (Open API `POST /v1/execution-contexts/{id}/runs/{run_id}/cancel`). It ends
+  cancelled with `cancelReason: "user_cancelled"`. Ending the execute call
+  (closing the CLI or MCP client) does not cancel a context run.
 
 ## Host commands
 

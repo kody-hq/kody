@@ -1119,6 +1119,50 @@ test('kody context revoke and delete call the revoke and delete routes', async (
 	await assert.rejects(run(['delete']), /Usage: kody context delete/)
 })
 
+test('kody context cancel-run posts to the run cancel route', async () => {
+	const calls: Array<string> = []
+	const replies = [
+		{ cancelled: true, runId: 'run_1', state: 'cancelled' },
+		{ cancelled: false, runId: 'run_1', state: 'succeeded' },
+	]
+	const fetchFn = (async (url: URL | string, init?: RequestInit) => {
+		calls.push(`${init?.method} ${new URL(url).pathname}`)
+		return Response.json(replies.shift())
+	}) as typeof fetch
+	const run = async (positionals: Array<string>) => {
+		let text = ''
+		await runExecutionContextCommand({
+			command: 'context',
+			positionals,
+			values: {},
+			apiUrl: 'https://api.kody.test',
+			token: async () => 'kody_at_test',
+			clientVersion: '0.0.0',
+			write: (chunk) => {
+				text += chunk
+			},
+			fetchFn,
+		})
+		return text
+	}
+	assert.equal(
+		await run(['cancel-run', 'build box', 'run_1']),
+		'Cancelled run run_1 on build box.\n',
+	)
+	assert.equal(
+		await run(['cancel-run', 'build box', 'run_1']),
+		'Run run_1 already ended (succeeded).\n',
+	)
+	assert.deepEqual(calls, [
+		'POST /v1/execution-contexts/build%20box/runs/run_1/cancel',
+		'POST /v1/execution-contexts/build%20box/runs/run_1/cancel',
+	])
+	await assert.rejects(
+		run(['cancel-run', 'build box']),
+		/Usage: kody context cancel-run/,
+	)
+})
+
 test('a context run with commands on runs a real command and a background job, authorized and reported to Kody', async () => {
 	SilentSocket.instances = []
 	const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'kody-daemon-cmd-')))

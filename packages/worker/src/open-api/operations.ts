@@ -550,6 +550,11 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'executionContextDetach',
 		],
 		['GET', '/v1/execution-contexts/{id}/runs', 'executionContextRunList'],
+		[
+			'POST',
+			'/v1/execution-contexts/{id}/runs/{run_id}/cancel',
+			'executionContextRunCancel',
+		],
 		['GET', '/v1/execution-contexts/{id}/audit', 'executionContextAuditList'],
 		['GET', '/v1/execution-chain', 'executionChainGet'],
 		['PUT', '/v1/execution-chain', 'executionChainSet'],

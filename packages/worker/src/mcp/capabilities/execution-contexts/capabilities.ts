@@ -8,6 +8,7 @@ import {
 } from '#mcp/capabilities/access/shared.ts'
 import {
 	attachContext,
+	cancelContextRun,
 	chainResponse,
 	detachContext,
 	deleteContext,
@@ -388,6 +389,40 @@ export const executionContextRunListCapability = defineDomainCapability(
 		async handler(args, ctx) {
 			const { id, ...rest } = args
 			return await listRuns(await caller(ctx), id, rest)
+		},
+	},
+)
+
+export const executionContextRunCancelCapability = defineDomainCapability(
+	domain,
+	{
+		name: 'executionContextRunCancel',
+		contextRuns: 'deny',
+		orgPermission: 'execution_context:execute',
+		description:
+			'Cancel a run on an execution context (a machine): a running run is stopped there and a queued one is dropped before it runs. The run ends cancelled with cancelReason "user_cancelled" in executionContextRunList and runGet. Pass the context (ec_ id or name) and the runId from execute or executionContextRunList. You can cancel your own runs; people who manage the context can cancel any run on it. A run that already ended returns cancelled: false with its state, so retrying is safe. Cloud runs cannot be cancelled. Ending the CLI or MCP call does not cancel a context run; use this.',
+		keywords: [
+			'execution context',
+			'cancel run',
+			'stop run',
+			'kill run',
+			'abort',
+		],
+		readOnly: false,
+		idempotent: true,
+		destructive: true,
+		inputSchema: z.object({
+			id: idSchema,
+			run_id: z
+				.string()
+				.min(1)
+				.max(200)
+				.describe(
+					'The runId to cancel (from execute or executionContextRunList).',
+				),
+		}),
+		async handler(args, ctx) {
+			return await cancelContextRun(await caller(ctx), args.id, args.run_id)
 		},
 	},
 )

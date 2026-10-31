@@ -1739,6 +1739,83 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	}
 
 	/**
+	 * A person cancels one run here (`user_cancelled`): a started run is
+	 * stopped on the machine; a queued one is dropped before it runs. With
+	 * `requesterUserId`, only that person's runs match.
+	 */
+	async cancelRunFor(input: {
+		runId: string
+		orgId: string
+		requesterUserId?: string
+	}): Promise<{
+		status: 'cancelled' | 'starting' | 'not_found' | 'finished'
+		queued?: boolean
+		requesterUserId?: string
+		/** The run's terminal state when it had already ended. */
+		state?: string
+	}> {
+		const matches = (leaseJson: string) => {
+			const lease = JSON.parse(leaseJson) as ExecutionContextLease
+			return lease.orgId === input.orgId &&
+				(!input.requesterUserId ||
+					lease.requester.userId === input.requesterUserId)
+				? lease
+				: null
+		}
+		const run = this.#run(input.runId)
+		const lease = run ? matches(run.lease_json) : null
+		if (run && lease) {
+			if (run.state === 'dispatched') return { status: 'starting' }
+			if (run.state !== 'committed') {
+				return { status: 'finished', state: run.state }
+			}
+			const { cancelled } = await this.cancel({
+				runId: input.runId,
+				reason: 'user_cancelled',
+			})
+			return cancelled
+				? {
+						status: 'cancelled',
+						queued: false,
+						requesterUserId: lease.requester.userId,
+					}
+				: { status: 'finished', state: this.#run(input.runId)?.state ?? '' }
+		}
+		const queued = this.ctx.storage.sql
+			.exec<{ lease_json: string; run_record_json: string | null }>(
+				`SELECT lease_json, run_record_json FROM queued WHERE run_id = ?`,
+				input.runId,
+			)
+			.toArray()[0]
+		const queuedLease = queued ? matches(queued.lease_json) : null
+		if (!queued || !queuedLease) return { status: 'not_found' }
+		this.ctx.storage.sql.exec(
+			`DELETE FROM queued WHERE run_id = ?`,
+			input.runId,
+		)
+		if (queued.run_record_json) {
+			const handle = JSON.parse(queued.run_record_json) as RunRecordHandle
+			handle.context.metadata = markQueuedAttemptExpired(
+				handle.context.metadata ?? {},
+				'user_cancelled',
+			)
+			await finishRunRecord({
+				env: this.env,
+				handle,
+				status: 'error',
+				error: Object.assign(new Error(cancelledSummary('user_cancelled')), {
+					name: 'ExecutionContextRunCancelled',
+				}),
+			})
+		}
+		return {
+			status: 'cancelled',
+			queued: true,
+			requesterUserId: queuedLease.requester.userId,
+		}
+	}
+
+	/**
 	 * End every committed lease whose requester is in `userIds` (or every
 	 * lease bound to `orgId`, or all of them when neither is given).
 	 */

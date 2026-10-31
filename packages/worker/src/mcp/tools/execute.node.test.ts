@@ -1121,6 +1121,43 @@ test('execute tool names the context a run ran on without raw ids', async () => 
 	expect(JSON.stringify(response.content)).not.toContain('ec_')
 })
 
+test('a run still going on a context says how to cancel it, by name only', async () => {
+	routingMock.outcome = {
+		kind: 'pending',
+		runId: 'run-context-pending',
+		metadata: {
+			id: 'ec_box',
+			name: 'build-box',
+			fellBackToCloud: false,
+			attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'ran' }],
+		},
+	}
+	onTestFinished(() => {
+		routingMock.outcome = null
+	})
+	const handler = await getExecuteHandler({
+		baseUrl: 'https://example.com',
+		user: {
+			userId: ownerIdFromStored('user-context-pending'),
+			email: 'pending@example.com',
+			displayName: 'Pending',
+		},
+	})
+	const response = await handler({
+		code: 'export default async () => ({ ok: true })',
+		conversationId: 'conv-context-pending',
+	})
+	expect(response.structuredContent).toMatchObject({
+		runId: 'run-context-pending',
+		inProgress: true,
+	})
+	const text = JSON.stringify(response.content)
+	expect(text).toContain(
+		'To stop it, call executionContextRunCancel with id \\"build-box\\" and that run_id.',
+	)
+	expect(text).not.toContain('ec_box')
+})
+
 test('execute tool releases a keyed claim when a usage denial stops the load', async () => {
 	const denials = [
 		new EntitlementLimitError({
