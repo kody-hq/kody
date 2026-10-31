@@ -9,9 +9,15 @@ import { type CredentialCallMap } from '#worker/credentials/credential-call-map.
 import { type RunRecordHandle } from '#worker/run-records/types.ts'
 import {
 	checkPermission,
+	computeEffectivePermissions,
 	type EffectivePermissions,
 } from '#worker/authorization/authorize.ts'
-import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
+import {
+	type OwnerId,
+	type PersonId,
+} from '@kody-internal/shared/owner-person-ids.ts'
 import { contextRunCredentials } from './credential-grant.ts'
 import { ExecutionContextError } from './errors.ts'
 import { type RunCredentialUse } from './run-credential-use.ts'
@@ -853,4 +859,48 @@ function markQueuedAttempt(
 			),
 		},
 	}
+}
+
+/**
+ * A queued run acting as a profile waits for a reconnect; recheck its chain
+ * and `execution_context:execute` before it dispatches. Null means it may run.
+ */
+export async function queuedProfileRefusal(input: {
+	env: Env
+	lease: Pick<
+		ExecutionContextLease,
+		'profileId' | 'orgId' | 'requester' | 'ecid' | 'runId'
+	>
+	context: { id: string; org_id: string }
+}): Promise<string | null> {
+	const { lease } = input
+	if (!lease.profileId) return null
+	const binding = await loadOrgBindingForOrg(
+		input.env.APP_DB,
+		lease.requester.userId,
+		lease.orgId,
+	)
+	if (!binding) return 'the person this run acts as is no longer in the org'
+	const request = deriveRequestContext({
+		user: {
+			userId: lease.requester.userId as PersonId,
+			username: lease.requester.handle ?? lease.requester.userId,
+		},
+		source: {
+			kind: 'execution-context-run',
+			ecid: lease.ecid,
+			runId: lease.runId,
+		},
+		orgBinding: binding,
+		profileId: lease.profileId,
+	})
+	const access = await computeEffectivePermissions({ env: input.env, request })
+	const decision = checkPermission(access, 'execution_context:execute', {
+		type: 'execution_context',
+		id: input.context.id,
+		orgId: input.context.org_id as OwnerId,
+	})
+	return decision.allowed
+		? null
+		: 'the profile this run acts as, or a parent profile, is revoked, expired, or no longer granted execution_context:execute on it'
 }

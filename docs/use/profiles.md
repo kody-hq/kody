@@ -81,19 +81,22 @@ without it keeps its current expiry, and `null` makes it unlimited. See
 - A profile token expires no later than the earliest `expires_at` in the profile
   chain. Profile tokens have their own limit and never push out your person
   tokens.
-- `/mcp` does not take profile tokens. Use them with the Open API, the `api`
-  tool, or the CLI (`KODY_API_TOKEN`).
+- `/mcp` (and its `api` tool) does not take profile tokens. Use them with the
+  Open API or the CLI (`KODY_API_TOKEN`).
 - `cliCredentialBootstrap` refuses a profile-bound caller. Mint with
   `tokenCreate({ profile_id })` or `profileHandoff` instead.
 
 ## Hand off to a sub-agent
 
-`profileHandoff` (`POST /v1/profiles/handoff`) creates a sub-profile and mints a
-token bound to it in one step. It takes `name`, optional `parent_profile_id`
-(defaults to the calling profile), optional `expires_at`, `grants[]` (same shape
-as `profileCreate`), `scopes`, optional `lifetime` (`short` by default), and
-optional `token_name`. It returns `{ profile, token }`. If minting fails the new
-sub-profile is revoked.
+`profileHandoff` (`POST /v1/profiles/handoff`) creates a profile and mints a
+token bound to it in one step. It takes `name`, optional `parent_profile_id`,
+optional `expires_at`, `grants[]` (same shape as `profileCreate`), `scopes`,
+optional `lifetime` (`short` by default), and optional `token_name`. It returns
+`{ profile, token }`. Called with a profile token, the new profile is a
+sub-profile of the calling profile unless `parent_profile_id` names one below
+it. Called as yourself without `parent_profile_id`, it creates a top-level
+profile. If minting fails, Kody tries to revoke the new profile; if that also
+fails, revoke it yourself with `profileRevoke`.
 
 ## What a profile can use
 

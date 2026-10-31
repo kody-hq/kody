@@ -38,6 +38,7 @@ import {
 	grantRefusal,
 	markQueuedAttemptExpired,
 	markQueuedAttemptRan,
+	queuedProfileRefusal,
 	withRunTiming,
 } from './routing.ts'
 import { type RunCredentialUse } from './run-credential-use.ts'
@@ -1288,6 +1289,17 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		if (!access.usable) {
 			return await fail(
 				`${row.name} reconnected, but the person this run acts as can no longer use it (${access.unusableReason ?? 'not_granted'}), so it did not run (execution_context_access_lost).`,
+				'ExecutionContextAccessLost',
+			)
+		}
+		const profileRefusal = await queuedProfileRefusal({
+			env: this.env,
+			lease,
+			context: row,
+		})
+		if (profileRefusal) {
+			return await fail(
+				`${row.name} reconnected, but ${profileRefusal}, so it did not run (execution_context_access_lost).`,
 				'ExecutionContextAccessLost',
 			)
 		}

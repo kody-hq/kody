@@ -639,7 +639,7 @@ export const tokenOperationDefinitions: Record<
 	profileHandoff: {
 		summary: 'Hand a sub-agent its own sub-profile and token',
 		description:
-			'Create a sub-profile (ADR 0092) and mint a token bound to it in one step, for handing work to a sub-agent. The sub-profile gets only the grants you list, capped by every parent profile; the token expires no later than the profile chain. If minting fails, the new sub-profile is revoked.',
+			'Create a sub-profile (ADR 0092) and mint a token bound to it in one step, for handing work to a sub-agent. The sub-profile gets only the grants you list, capped by every parent profile; the token expires no later than the profile chain. Called as a person without parent_profile_id it creates a top-level profile. If minting fails, Kody tries to revoke the new profile.',
 		inputSchema: profileHandoffInputSchema,
 		outputSchema: z.object({
 			profile: z.object({
