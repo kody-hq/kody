@@ -204,7 +204,7 @@ export const repoSessionLastPublishSchema = z
 				'failed',
 			])
 			.describe(
-				'running: in progress. interrupted: the server restarted mid-publish; retry repoPublishSession to resume. published: done. pushed: pushed without promotion (promotePublished: false); published_commit did not change. not_published: returned a non-ok status (see result_status). failed: the call errored; nothing was published unless published_commit moved (an unknown push outcome says so in error_message).',
+				'running: in progress. interrupted: the server restarted mid-publish; for a package session retry repoPublishSession to resume (for a plain repo, check the source ref first). published: done. pushed: pushed without promotion (promotePublished: false); published_commit did not change. not_published: returned a non-ok status (see result_status). failed: the call errored. For a package session nothing was published unless published_commit moved; for a plain repo, check the source ref (an unknown push outcome says so in error_message).',
 			),
 		started_at: z.string(),
 		finished_at: z.string().nullable(),
