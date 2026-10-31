@@ -446,8 +446,8 @@ then call it.
 - **External HTTP clients** → [inbound webhooks](../use/webhooks.md).
 
 **Declare the capabilities you call** in `kody.capabilities` (apps:
-`kody.app.capabilities`, covering imports too; MCP tools as
-`mcp:<server>:<tool>`, one per tool); publish and `kody dev check` warn on gaps
+`kody.app.capabilities`, covering imports too); publish and `kody dev check`
+warn on gaps
 ([ADR 0089](../contributing/decisions/0089-packages-declare-capabilities.md),
 [details](./package-apps.md#who-the-app-runs-as)).
 
