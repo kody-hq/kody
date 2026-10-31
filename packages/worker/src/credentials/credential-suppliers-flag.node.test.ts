@@ -6,7 +6,10 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('#worker/feature-flags/service.ts', () => ({
-	isFeatureEnabled: mocks.isFeatureEnabled,
+	evaluateFeatureFlagBatched: async (...args: Array<unknown>) => ({
+		enabled: await mocks.isFeatureEnabled(...args),
+		source: 'global',
+	}),
 	isMissingFeatureFlagsTable: mocks.isMissingFeatureFlagsTable,
 }))
 

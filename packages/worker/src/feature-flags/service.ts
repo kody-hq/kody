@@ -353,6 +353,92 @@ async function readFeatureFlagEvaluation(
 	})
 }
 
+/**
+ * {@link evaluateFeatureFlag} in one D1 round trip: the experiments opt-in,
+ * user override, org override, and global row are read in a single batch,
+ * then resolved with the same precedence. For hot paths that cannot afford
+ * the sequential reads (package-app serve's supplier flag).
+ */
+export async function evaluateFeatureFlagBatched(
+	db: D1Database,
+	key: FeatureFlagKey,
+	userId: number | null,
+	orgContext: FeatureFlagOrgContext = null,
+): Promise<FeatureFlagEvaluation> {
+	return await memoizeForFeatureFlagExecution(
+		`evaluate:${key}:${userId ?? ''}:${orgContext?.orgId ?? ''}`,
+		() => readFeatureFlagEvaluationBatched(db, key, userId, orgContext),
+	)
+}
+
+async function readFeatureFlagEvaluationBatched(
+	db: D1Database,
+	key: FeatureFlagKey,
+	userId: number | null,
+	orgContext: FeatureFlagOrgContext,
+): Promise<FeatureFlagEvaluation> {
+	// Without a user only the global row applies: already one read.
+	if (userId === null) {
+		return await readFeatureFlagEvaluation(db, key, userId, orgContext)
+	}
+	const [globalResult, overrideResult, optInResult, orgResult] = await db.batch(
+		[
+			db
+				.prepare(
+					`SELECT enabled, rollout_percent, audience
+					 FROM feature_flags
+					 WHERE key = ?`,
+				)
+				.bind(key),
+			db
+				.prepare(
+					`SELECT enabled
+					 FROM feature_flag_user_overrides
+					 WHERE flag_key = ? AND user_id = ?`,
+				)
+				.bind(key, userId),
+			db
+				.prepare(
+					`SELECT experiments_opt_in FROM users WHERE id = ?${andLiveDeletedAtSql()}`,
+				)
+				.bind(userId),
+			...(orgContext
+				? [orgOverrideStatement(db, { userId, orgId: orgContext.orgId, key })]
+				: []),
+		],
+	)
+	const global = d1ResultRows<{
+		enabled: number
+		rollout_percent: number | null
+		audience: string | null
+	}>(globalResult as D1Result<GlobalEvaluationRow>)[0]
+	const override = d1ResultRows<{ enabled: number }>(
+		overrideResult as D1Result<{ enabled: number }>,
+	)[0]
+	const optIn = d1ResultRows<{ experiments_opt_in: number }>(
+		optInResult as D1Result<{ experiments_opt_in: number }>,
+	)[0]
+	const orgRow = d1ResultRows<OverrideEnabledRow>(
+		orgResult as D1Result<OverrideEnabledRow> | undefined,
+	)[0]
+	return evaluateFlagState({
+		key,
+		rolloutSubject: userId,
+		overrideEnabled: override ? override.enabled === 1 : null,
+		orgEnabled: orgRow ? orgRow.enabled === 1 : null,
+		global: global
+			? {
+					enabled: global.enabled === 1,
+					rolloutPercent: global.rollout_percent,
+					audience: normalizeAudience(global.audience),
+				}
+			: null,
+		defaultEnabled: getFeatureFlagDefinition(key).defaultEnabled,
+		defaultAudience: getFeatureFlagDefaultAudience(key),
+		experimentsOptIn: optIn?.experiments_opt_in === 1,
+	})
+}
+
 export async function isFeatureEnabled(
 	db: D1Database,
 	key: FeatureFlagKey,

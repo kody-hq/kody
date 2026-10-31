@@ -3,6 +3,8 @@ import { expect, test } from 'vitest'
 import {
 	clearFeatureFlagUserOverride,
 	deleteStaleFeatureFlag,
+	evaluateFeatureFlag,
+	evaluateFeatureFlagBatched,
 	getFeatureFlagEvaluationsForUser,
 	getFeatureFlagsForUser,
 	isFeatureEnabled,
@@ -780,4 +782,123 @@ test('profiles first insert without audience uses registry defaultAudience', asy
 	await setGlobal(db, true, { key: 'profiles' })
 	expect(db.globals.get('profiles')?.audience).toBe('experiments_opt_in')
 	expect(await enabledFor(db, [7, 8], 'profiles')).toEqual([true, false])
+})
+
+test('evaluateFeatureFlagBatched matches evaluateFeatureFlag in one batch', async () => {
+	const now = '2026-10-31T00:00:00.000Z'
+	const scenarios: Array<{
+		name: string
+		globals?: Array<GlobalRow>
+		overrides?: Array<OverrideRow>
+		optIn?: number
+	}> = [
+		{ name: 'default' },
+		{
+			name: 'global on',
+			globals: [
+				{
+					key: 'package-credential-suppliers',
+					enabled: 1,
+					rollout_percent: null,
+					audience: 'everyone',
+					note: '',
+					updated_by: null,
+					updated_at: now,
+				},
+			],
+		},
+		{
+			name: 'opt-in audience without opt-in',
+			globals: [
+				{
+					key: 'package-credential-suppliers',
+					enabled: 1,
+					rollout_percent: null,
+					audience: 'experiments_opt_in',
+					note: '',
+					updated_by: null,
+					updated_at: now,
+				},
+			],
+		},
+		{
+			name: 'opt-in audience with opt-in',
+			optIn: 1,
+			globals: [
+				{
+					key: 'package-credential-suppliers',
+					enabled: 1,
+					rollout_percent: null,
+					audience: 'experiments_opt_in',
+					note: '',
+					updated_by: null,
+					updated_at: now,
+				},
+			],
+		},
+		{
+			name: 'user override wins over global',
+			globals: [
+				{
+					key: 'package-credential-suppliers',
+					enabled: 0,
+					rollout_percent: null,
+					audience: 'everyone',
+					note: '',
+					updated_by: null,
+					updated_at: now,
+				},
+			],
+			overrides: [
+				{
+					flag_key: 'package-credential-suppliers',
+					user_id: 3,
+					enabled: 1,
+					updated_by: null,
+					updated_at: now,
+				},
+			],
+		},
+	]
+	for (const scenario of scenarios) {
+		const db = createFeatureFlagsTestDb({
+			globals: scenario.globals,
+			overrides: scenario.overrides,
+			users: [
+				{ id: 3, username: 'alice', experiments_opt_in: scenario.optIn ?? 0 },
+			],
+		})
+		let batches = 0
+		let prepares = 0
+		const prepare = db.prepare.bind(db)
+		const counted = Object.assign(Object.create(db), {
+			// D1 batch semantics: one results array per statement.
+			batch: async (statements: Array<{ first: () => Promise<unknown> }>) => {
+				batches += 1
+				return await Promise.all(
+					statements.map(async (statement) => {
+						const row = await statement.first()
+						return { results: row ? [row] : [] }
+					}),
+				)
+			},
+			prepare: (query: string) => {
+				prepares += 1
+				return prepare(query)
+			},
+		}) as D1Database
+		const expected = await evaluateFeatureFlag(
+			db,
+			'package-credential-suppliers',
+			3,
+		)
+		await expect(
+			evaluateFeatureFlagBatched(counted, 'package-credential-suppliers', 3),
+		).resolves.toEqual(expected)
+		expect({ scenario: scenario.name, batches, prepares }).toEqual({
+			scenario: scenario.name,
+			batches: 1,
+			prepares: 3,
+		})
+	}
 })

@@ -185,9 +185,10 @@ test('fetches in one execution read each flag and org owner once; a new executio
 	expect(firstFetch.map((query) => query.match(/FROM (\w+)/)?.[1])).toEqual([
 		'feature_flags',
 		'org_memberships',
+		// Supplier flag: owner lookup, then one batch (global, user, org).
+		'feature_flags',
 		'feature_flag_user_overrides',
 		'feature_flag_org_overrides',
-		'feature_flags',
 	])
 	await t.fetchInExecution('execution-1')
 	await t.fetchInExecution('execution-1')

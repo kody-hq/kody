@@ -1,6 +1,6 @@
 import { memoizeForFeatureFlagExecution } from '#worker/feature-flags/execution-scope.ts'
 import {
-	isFeatureEnabled,
+	evaluateFeatureFlagBatched,
 	isMissingFeatureFlagsTable,
 } from '#worker/feature-flags/service.ts'
 import { packageCredentialSuppliersFlagKey } from '#universal/feature-flags/registry.ts'
@@ -28,13 +28,16 @@ async function evaluateForOrg(input: {
 				.bind(input.orgId)
 				.first<{ id: number }>(),
 	)
+	// Two round trips on a cache miss: the owner, then one batch for the flag.
 	try {
-		return await isFeatureEnabled(
-			input.db,
-			packageCredentialSuppliersFlagKey,
-			owner?.id ?? null,
-			{ orgId: input.orgId },
-		)
+		return (
+			await evaluateFeatureFlagBatched(
+				input.db,
+				packageCredentialSuppliersFlagKey,
+				owner?.id ?? null,
+				{ orgId: input.orgId },
+			)
+		).enabled
 	} catch (error) {
 		if (isMissingFeatureFlagsTable(error)) return false
 		throw error

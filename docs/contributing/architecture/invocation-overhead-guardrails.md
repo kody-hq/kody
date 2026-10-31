@@ -115,7 +115,9 @@ caches come in two tiers with different correctness arguments (see
   answer per org, TTL **15 s** (same clock as invoke freshness and the caller
   feature-flag cache). The answer depends only on the org (evaluated as its
   owner), so the org key cannot leak across visitors; failures are never
-  retained. A flag flip reaches package apps within one window.
+  retained. A miss costs two D1 round trips: the owner lookup, then
+  `evaluateFeatureFlagBatched` reads opt-in, user, org, and global rows in one
+  batch. A flag flip reaches package apps within one window.
 - **Package-app worker template** — publish writes
   `package-app-template:v1:{sourceId}:{commit}` (the `app` bundle) and
   `package-app-client:v1:{sourceId}:{commit}` (the client module name) when it
