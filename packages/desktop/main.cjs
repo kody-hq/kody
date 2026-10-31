@@ -8,6 +8,7 @@ const {
 	clipboard,
 	net,
 } = require('electron')
+const { startUpdates, finishQuit } = require('./updates.cjs')
 const { browserLogin } = require('./browser-login.cjs')
 const { parseString } = require('set-cookie-parser')
 const { supportsIntegratedTitlebar } = require('./site-capabilities.cjs')
@@ -128,6 +129,8 @@ const runner = new Runner()
 let window
 let busy = false
 let quitting = false
+let updates
+let restartForUpdate = false
 let state = { ecid: null, enabled: false }
 function statePath() {
 	return join(app.getPath('userData'), 'machine.json')
@@ -213,6 +216,24 @@ function updateMenu() {
 		Menu.buildFromTemplate([
 			...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
 			{ label: 'File', submenu: [{ role: 'close' }] },
+			{
+				label: 'Updates',
+				submenu: [
+					{
+						label: 'Check for updates…',
+						enabled: !!updates && !quitting,
+						click: () => void updates.check(),
+					},
+					{
+						label: 'Restart to update',
+						enabled: !!updates?.downloaded && !quitting,
+						click: () => {
+							restartForUpdate = true
+							app.quit()
+						},
+					},
+				],
+			},
 			{
 				label: 'Machine',
 				submenu: [
@@ -495,19 +516,25 @@ else {
 		if (quitting) return
 		event.preventDefault()
 		quitting = true
-		void runner
-			.close()
-			.then(() => app.quit())
-			.catch((error) => {
-				dialog.showErrorBox('Could not stop runner', error.message)
+		updates?.stop()
+		void finishQuit({ runner, updates, app, restart: restartForUpdate }).catch(
+			(error) => {
+				dialog.showErrorBox('Could not quit Kody', error.message)
 				app.exit(1)
-			})
+			},
+		)
 	})
 	app
 		.whenReady()
 		.then(async () => {
 			if (process.platform === 'darwin')
 				app.dock.setIcon(join(__dirname, 'assets/icon.png'))
+			updates = startUpdates({
+				app,
+				updater: require('electron-updater').autoUpdater,
+				dialog,
+				changed: updateMenu,
+			})
 			loadState()
 			updateMenu()
 			await showApp()

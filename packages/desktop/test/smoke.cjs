@@ -59,6 +59,7 @@ async function smoke() {
 		assert.equal(result.preferences.sandbox, true)
 		assert.equal(result.preferences.webviewTag, false)
 		assert.ok(result.menus.includes('Machine'))
+		assert.ok(result.menus.includes('Updates'))
 		assert.match(result.version, /\d+\.\d+\.\d+/)
 		const workflow = executablePath
 			? null

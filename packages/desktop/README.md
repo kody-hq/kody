@@ -2,7 +2,8 @@
 
 A thin Electron shell that loads https://kody.codes/account and supervises the
 existing CLI execution context daemon. Website releases update the UI without a
-desktop release. Shell and CLI automatic updates are planned, not implemented.
+desktop release. Published desktop releases automatically update the shell and
+its bundled CLI.
 
 ```sh
 npm install
@@ -69,9 +70,10 @@ npm run validate
 Packaging produces an unpacked app under `artifacts/desktop/` for the current
 platform. Build each platform on its own CI host. The Desktop binaries workflow
 builds installers for macOS, Windows, and Linux on native x64 and arm64 runners.
-Signing, notarization, release publishing, and automatic shell/CLI updates still
-need release configuration. Application files are unpacked so CLI chunks,
-Node-API modules, and native executables have normal filesystem paths.
+The separate Desktop release workflow signs, notarizes, verifies, and publishes
+production installers once release credentials are configured. Application files
+are unpacked so CLI chunks, Node-API modules, and native executables have normal
+filesystem paths.
 
 The smoke check needs a graphical desktop and the live website. To check a
 packaged build, pass its executable after `--`, for example:
@@ -155,3 +157,55 @@ npm run test:packaged-cli --workspace @kodycodes/desktop
 
 The packaged CLI check also accepts an absolute output directory after `--` when
 using a separate local packaging directory.
+
+## Production releases and updates
+
+Desktop downloads and updates live in the public `kody-hq/kody-desktop`
+repository. This keeps the update feed separate from the website's daily
+releases. Users do not need a GitHub token. Every architecture has its own
+update manifest so parallel jobs cannot overwrite another architecture's feed.
+
+Packaged apps check on launch and every five minutes, download automatically,
+and install on Quit. **Updates > Restart to update** quits and relaunches with
+the downloaded version. Both paths stop the local runner before installing.
+Closing a Mac window continues to keep the app and runner open. Update failures
+retry without interrupting the app. Development builds never check for updates.
+Updates do not downgrade or install prereleases.
+
+Run **Desktop release** manually on main after bumping the desktop package
+version and lockfile. All six builds must succeed before publishing. macOS
+builds require Developer ID signing, Apple's notarization service, and a valid
+stapled ticket. Windows builds require valid signatures on the application and
+installer. The final job uploads all installers, blockmaps, manifests, and
+checksums to a draft, then publishes it. Published versions cannot be replaced.
+The normal Desktop binaries workflow still produces unsigned CI artifacts.
+
+A repository admin must create the `desktop-release` GitHub environment in
+`kody-hq/kody`, restrict its deployment branches to main, and configure:
+
+| Secret                                 | Value                                                                        |
+| -------------------------------------- | ---------------------------------------------------------------------------- |
+| `DESKTOP_MAC_CERTIFICATE_BASE64`       | Base64 Developer ID Application `.p12`, including its private key            |
+| `DESKTOP_MAC_CERTIFICATE_PASSWORD`     | Password protecting that export                                              |
+| `DESKTOP_APPLE_API_KEY_BASE64`         | Base64 App Store Connect `.p8` key authorized for notarization               |
+| `DESKTOP_APPLE_API_KEY_ID`             | Apple API key ID                                                             |
+| `DESKTOP_APPLE_API_ISSUER`             | Apple API issuer ID                                                          |
+| `DESKTOP_WINDOWS_CERTIFICATE_BASE64`   | Base64 Windows signing `.pfx`, including its private key                     |
+| `DESKTOP_WINDOWS_CERTIFICATE_PASSWORD` | Password protecting that export                                              |
+| `DESKTOP_RELEASE_TOKEN`                | Fine-grained token with Contents write access only to `kody-hq/kody-desktop` |
+
+Set the environment variable `DESKTOP_WINDOWS_PUBLISHER` to the exact Windows
+certificate publisher name. Keep signing identities stable, existing installs
+verify replacement signatures. If Windows uses hardware or cloud signing instead
+of an exportable certificate, configure that provider before releasing.
+
+Upload credentials through GitHub's environment secrets UI or
+`gh secret set --env desktop-release --repo kody-hq/kody`. Do not put keys or
+passwords in chat, source files, or release notes. The local Mac's Developer ID
+identity is not available on GitHub runners until a protected export is
+configured there.
+
+The existing 0.1.0 demo predates the updater. Install the first production
+release manually once, subsequent releases update automatically. A real
+signed-version-to-signed-version update remains part of first-release
+acceptance.

@@ -10,6 +10,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/desktop-binaries.yml'
+      - '.github/workflows/desktop-release.yml'
   pull_request:
     paths:
       - 'packages/desktop/**'
@@ -18,6 +19,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/desktop-binaries.yml'
+      - '.github/workflows/desktop-release.yml'
   workflow_dispatch:
 
 permissions:
@@ -100,5 +102,7 @@ jobs:
             artifacts/desktop/*.zip
             artifacts/desktop/*.exe
             artifacts/desktop/*.AppImage
+            artifacts/desktop/*.blockmap
+            artifacts/desktop/latest*.yml
             artifacts/desktop/SHA256SUMS-*.txt
             artifacts/desktop/build-info-*.json
