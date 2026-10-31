@@ -30,7 +30,7 @@ every push. Previews sign session frames with the committed TEST key
 never get a welcome frame. To rerun against a preview by hand:
 
 ```sh
-gh workflow run execution-context-e2e.yml -f preview_origin=https://<preview-app-origin> -f sha=<pr-head-sha>
+gh workflow run execution-context-e2e.yml -f preview_name=kody-pr-<n> -f sha=<pr-head-sha>
 ```
 
 The preview CLI token comes from `tools/preview-rehearsal/cli-token.ts`

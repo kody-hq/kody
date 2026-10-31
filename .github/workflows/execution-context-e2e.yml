@@ -9,7 +9,7 @@ on:
   # preview.yml calls this after a labeled PR's preview deploys.
   workflow_call:
     inputs:
-      preview_origin:
+      preview_name:
         required: true
         type: string
       sha:
@@ -17,8 +17,8 @@ on:
         type: string
   workflow_dispatch:
     inputs:
-      preview_origin:
-        description: Preview app origin (https://kody-<pr>.<sub>.workers.dev)
+      preview_name:
+        description: Preview app worker name (kody-pr-<n> or kody-branch-<slug>)
         required: true
         type: string
       sha:
@@ -52,7 +52,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build --workspace @kodycodes/cli
-      - name: Run e2e
+      - name: Resolve preview origin
         env:
-          PREVIEW_ORIGIN: ${{ inputs.preview_origin }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          PREVIEW_NAME: ${{ inputs.preview_name }}
+        run: |
+          set -euo pipefail
+          case "$PREVIEW_NAME" in
+            kody-pr-*|kody-branch-*) ;;
+            *) echo "Not a preview worker: $PREVIEW_NAME" >&2; exit 1 ;;
+          esac
+          subdomain="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" |
+            node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).result?.subdomain ?? ""))')"
+          test -n "$subdomain"
+          echo "PREVIEW_ORIGIN=https://$PREVIEW_NAME.$subdomain.workers.dev" >> "$GITHUB_ENV"
+      - name: Run e2e
         run: node tools/execution-context-e2e/run.ts

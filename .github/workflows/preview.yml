@@ -79,8 +79,10 @@ jobs:
           startsWith(github.event.label.name, 'preview-flag:'))) ||
       (github.event_name == 'workflow_dispatch' &&
         inputs.action == 'deploy')
+    # The workers.dev URL is masked (it holds the account subdomain), so
+    # callers get the worker name and resolve the origin themselves.
     outputs:
-      url: ${{ steps.deploy_preview.outputs.url }}
+      worker_name: ${{ steps.names.outputs.worker_name }}
     steps:
       - name: 📦 Checkout
         uses: actions/checkout@v6.0.2
@@ -1209,14 +1211,15 @@ jobs:
     needs: deploy
     if: >-
       github.event_name == 'pull_request' && needs.deploy.result == 'success' &&
-      needs.deploy.outputs.url != '' &&
+      needs.deploy.outputs.worker_name != '' &&
       contains(github.event.pull_request.labels.*.name,
       'preview-flag:execution-contexts')
     permissions:
       contents: read
     uses: ./.github/workflows/execution-context-e2e.yml
+    secrets: inherit
     with:
-      preview_origin: ${{ needs.deploy.outputs.url }}
+      preview_name: ${{ needs.deploy.outputs.worker_name }}
       sha: ${{ github.event.pull_request.head.sha }}
 
   cleanup:
