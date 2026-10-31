@@ -16,6 +16,7 @@ import { listPackagesCapability } from './list-packages.ts'
 import { listPackageSubscriptionsCapability } from './list-package-subscriptions.ts'
 import { packageAppFetchCapability } from './package-app-fetch.ts'
 import { packageCheckCapability } from './package-check.ts'
+import { packageForkCapability } from './package-fork.ts'
 import { packageSubscriptionDispatchCapability } from './package-subscription-dispatch.ts'
 import { packageUpdateCapability } from './package-update.ts'
 import { publishExternalPushCapability } from './publish-external-push.ts'
@@ -50,6 +51,7 @@ export const packagesDomain = defineDomain({
 		savePackageCapability,
 		getPackageCapability,
 		getGitRemoteCapability,
+		packageForkCapability,
 		listPackagesCapability,
 		listPackageSubscriptionsCapability,
 		packageAppFetchCapability,

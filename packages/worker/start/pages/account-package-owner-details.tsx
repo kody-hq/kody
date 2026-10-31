@@ -99,6 +99,13 @@ export function AccountPackageOwnerDetails(props: {
 	const [visibilityMessage, setVisibilityMessage] = useState<string | null>(
 		null,
 	)
+	const packageOwnerHandle = /^@([^/]+)\//.exec(props.packageDetail.name)?.[1]
+	const collaboratorsHref = packageOwnerHandle
+		? routes.communityPackageCollaborators.href({
+				username: packageOwnerHandle,
+				kodyId: props.packageDetail.kodyId,
+			})
+		: null
 
 	async function submitVisibility(
 		packageDetail: AccountPackageDetail,
@@ -321,11 +328,28 @@ export function AccountPackageOwnerDetails(props: {
 						</p>
 					</div>
 					<div css={{ display: 'grid', gap: spacing.xs }}>
-						<p css={{ margin: 0, color: colors.textMuted }}>
-							{packageDetail.isPrivate
-								? 'Make it public on the community so anyone can read and fork the source. This does not host your app.'
-								: 'Turn off public community listing. Public source URLs will 404; existing forks keep their copies. Does not change whether the app is internet-visible.'}
-						</p>
+						{packageDetail.isPrivate ? (
+							<p
+								css={{ margin: 0, color: colors.textMuted }}
+								data-testid="package-make-public-warning"
+							>
+								Public makes the default branch readable and forkable by anyone
+								on the internet, signed in or not. To share with specific
+								people, use{' '}
+								{collaboratorsHref ? (
+									<SiteLink href={collaboratorsHref}>Collaborators</SiteLink>
+								) : (
+									'Collaborators'
+								)}{' '}
+								instead.
+							</p>
+						) : (
+							<p css={{ margin: 0, color: colors.textMuted }}>
+								Turn off public community listing. Public source URLs will 404;
+								existing forks keep their copies. Does not change whether the
+								app is internet-visible.
+							</p>
+						)}
 						<label css={{ display: 'grid', gap: spacing.xs }}>
 							<span css={visuallyHiddenCss}>
 								Type {packageDetail.kodyId} to change who can see the source

@@ -9,7 +9,7 @@ import {
 
 const orphanedForkSchema = z.object({
 	fork_id: z.string(),
-	listing_id: z.string(),
+	listing_id: z.string().nullable(),
 	listing_name: z.string().nullable(),
 	listing_kody_id: z.string().nullable(),
 	forker_user_id: z.string(),
