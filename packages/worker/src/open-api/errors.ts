@@ -29,6 +29,7 @@ import {
 	transientDatabaseUnavailableMessage,
 } from '#worker/d1-retry.ts'
 import { isPublishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
+import { isRemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
 import {
 	ArtifactsGitUnavailableError,
 	artifactsGitTemporarilyUnavailableMessage,
@@ -121,6 +122,7 @@ export const apiErrorCodes = [
 	'package_import_unresolved',
 	'package_import_unpublished',
 	'unsupported_dynamic_package_import',
+	'publish_not_applied',
 	'internal_error',
 ] as const
 
@@ -295,6 +297,27 @@ export function toApiError(error: unknown): ApiError {
 			status: 409,
 			code: 'quarantined_inbound_reply',
 			message: quarantinedReply.message,
+			cause: error,
+		})
+	}
+	// The push did not land, so nothing moved. Say so with a real code: a
+	// generic 500 leaves callers unsure whether the publish is half-applied.
+	const notApplied = getErrorCauseChain(error).find(
+		isRemoteRefNotConfirmedError,
+	)
+	if (notApplied) {
+		return new ApiError({
+			status: 409,
+			code: 'publish_not_applied',
+			message: notApplied.message,
+			details: {
+				published: false,
+				retry_safe: true,
+				ref: notApplied.ref,
+				expected_commit: notApplied.expectedCommit,
+				observed_commit: notApplied.observedCommit,
+				status_capability: 'repoGetSession',
+			},
 			cause: error,
 		})
 	}

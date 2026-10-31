@@ -9,6 +9,7 @@ import { wrapArtifactsGitHttpError } from '#worker/repo/artifacts-git-retry.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { QuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
 import { publishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
+import { RemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
 import {
 	ApiError,
 	computeLimitExceededMessage,
@@ -369,4 +370,24 @@ test('toApiError surfaces a publish compute-limit caller error as-is even when i
 	expect(apiError.message).toContain('credential stamp scan')
 	expect(apiError.message).toContain('kody dev check')
 	expect(apiError.message).not.toMatch(/\bsecrets?\b/i)
+})
+
+test('toApiError maps an unconfirmed publish push to 409 publish_not_applied', () => {
+	const notApplied = new RemoteRefNotConfirmedError({
+		ref: 'refs/heads/main',
+		expectedCommit: 'b'.repeat(40),
+		observedCommit: 'a'.repeat(40),
+	})
+	const error = toApiError(new Error('rpc wrapper', { cause: notApplied }))
+	expect(error.status).toBe(409)
+	expect(error.code).toBe('publish_not_applied')
+	expect(error.message).toBe(notApplied.message)
+	expect(error.details).toEqual({
+		published: false,
+		retry_safe: true,
+		ref: 'refs/heads/main',
+		expected_commit: 'b'.repeat(40),
+		observed_commit: 'a'.repeat(40),
+		status_capability: 'repoGetSession',
+	})
 })

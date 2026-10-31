@@ -192,6 +192,22 @@ export const repoSourceRefSchema = z.object({
 		.describe('Shared source id to open a session for.'),
 })
 
+export const repoSessionLastPublishSchema = z
+	.object({
+		state: z
+			.enum(['running', 'interrupted', 'published', 'not_published', 'failed'])
+			.describe(
+				'running: in progress. interrupted: the server restarted mid-publish; retry repoPublishSession to resume. published: done. not_published: returned a non-ok status (see result_status). failed: the call errored; nothing was published unless published_commit moved.',
+			),
+		started_at: z.string(),
+		finished_at: z.string().nullable(),
+		published_commit: z.string().nullable(),
+		result_status: z.string().nullable(),
+		error_name: z.string().nullable(),
+		error_message: z.string().nullable(),
+	})
+	.describe('Latest repoPublishSession attempt on this session.')
+
 export const repoSessionInfoSchema = z.object({
 	id: z.string(),
 	source_id: z.string(),
@@ -209,6 +225,7 @@ export const repoSessionInfoSchema = z.object({
 	published_commit: z.string().nullable(),
 	manifest_path: z.string(),
 	entity_type: z.enum(entityKindValues),
+	last_publish: repoSessionLastPublishSchema.nullable().optional(),
 })
 
 export const repoListSessionStatusValues = [

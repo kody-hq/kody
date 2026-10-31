@@ -114,6 +114,28 @@ states:
   URL. The `commit` query is the full 40-character SHA-1. Approving one commit
   does not unlock the package.
 
+When the publish push does not land on the source branch, `repoPublishSession`
+fails with error code **`publish_not_applied`** (HTTP 409). Nothing was
+published: `published_commit`, jobs, and bundles are unchanged, and the session
+keeps its commits. `details` carries `published: false`, `retry_safe: true`, the
+`ref`, and the `expected_commit` / `observed_commit` pair. Retrying
+`repoPublishSession` on the same session is safe.
+
+To see what happened to a publish (for example after an error or a dropped
+connection), call **`repoGetSession`** and read `last_publish`:
+
+| `state`         | Meaning                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------- |
+| `running`       | The publish is still in progress. Wait, then check again.                                |
+| `interrupted`   | The server restarted mid-publish. Retry `repoPublishSession`; it finishes the publish.   |
+| `published`     | Done. `published_commit` is the commit that went live.                                   |
+| `not_published` | Returned without publishing; `result_status` says why (`base_moved`, `checks_outdated`). |
+| `failed`        | The call errored; `error_name` / `error_message` say why. Retrying is safe.              |
+
+Publishing is idempotent and resumable: a retry after `failed` or `interrupted`
+either publishes the session or finishes an already-moved publish (jobs,
+bundles, publish note) without a duplicate.
+
 That makes it easier for agents to resume or repair a workflow without string
 parsing.
 
