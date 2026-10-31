@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { openRehearsalSession } from '../preview-rehearsal/kody-session.ts'
-import { mintCliToken } from '../preview-rehearsal/seed.ts'
+import { mintCliToken } from '../preview-rehearsal/cli-token.ts'
 
 const appOrigin = (process.env.PREVIEW_ORIGIN ?? '').replace(/\/+$/, '')
 const host = new URL(appOrigin || 'https://invalid').hostname

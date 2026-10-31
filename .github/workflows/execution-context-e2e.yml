@@ -6,56 +6,31 @@ name: 🖥️ Execution context e2e
 # production. Agent guide: docs/contributing/execution-context-e2e.md.
 
 on:
-  workflow_run:
-    workflows: ['🔎 Preview']
-    types: [completed]
+  # preview.yml calls this after a labeled PR's preview deploys.
+  workflow_call:
+    inputs:
+      preview_origin:
+        required: true
+        type: string
+      sha:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       preview_origin:
         description: Preview app origin (https://kody-<pr>.<sub>.workers.dev)
         required: true
         type: string
+      sha:
+        description: Commit to check out (defaults to the dispatched ref)
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 jobs:
-  resolve:
-    name: Resolve preview
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request')
-    runs-on: ubuntu-latest
-    outputs:
-      origin: ${{ steps.origin.outputs.origin }}
-      sha: ${{ steps.origin.outputs.sha }}
-    steps:
-      - id: origin
-        env:
-          GH_TOKEN: ${{ github.token }}
-          INPUT_ORIGIN: ${{ inputs.preview_origin }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
-        run: |
-          if [ -n "$INPUT_ORIGIN" ]; then
-            echo "origin=$INPUT_ORIGIN" >> "$GITHUB_OUTPUT"
-            echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          pr="$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls" --jq '[.[] | select(.head.ref == env.HEAD_BRANCH)][0]')"
-          if ! echo "$pr" | jq -e '.labels | map(.name) | index("preview-flag:execution-contexts")' >/dev/null; then
-            echo "PR has no preview-flag:execution-contexts label; skipping."
-            exit 0
-          fi
-          number="$(echo "$pr" | jq -r .number)"
-          url="$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=preview-$number&per_page=1" --jq '.[0].statuses_url' | xargs -r gh api --jq '[.[] | select(.state == "success")][0].environment_url')"
-          echo "origin=$url" >> "$GITHUB_OUTPUT"
-          echo "sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-
   e2e:
-    needs: resolve
-    if: needs.resolve.outputs.origin != ''
     strategy:
       fail-fast: false
       matrix:
@@ -69,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
         with:
-          ref: ${{ needs.resolve.outputs.sha }}
+          ref: ${{ inputs.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
@@ -79,5 +54,5 @@ jobs:
       - run: npm run build --workspace @kodycodes/cli
       - name: Run e2e
         env:
-          PREVIEW_ORIGIN: ${{ needs.resolve.outputs.origin }}
+          PREVIEW_ORIGIN: ${{ inputs.preview_origin }}
         run: node tools/execution-context-e2e/run.ts

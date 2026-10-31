@@ -79,6 +79,8 @@ jobs:
           startsWith(github.event.label.name, 'preview-flag:'))) ||
       (github.event_name == 'workflow_dispatch' &&
         inputs.action == 'deploy')
+    outputs:
+      url: ${{ steps.deploy_preview.outputs.url }}
     steps:
       - name: 📦 Checkout
         uses: actions/checkout@v6.0.2
@@ -1199,6 +1201,23 @@ jobs:
         run: |
           set -euo pipefail
           node tools/ci/preview-resources.ts cleanup --worker-name "$APP_WORKER_NAME"
+
+  execution_context_e2e:
+    # Real `kody daemon` on Ubuntu, macOS, and Windows against this preview
+    # (docs/contributing/execution-context-e2e.md). Opt in per PR with the
+    # preview-flag:execution-contexts label.
+    needs: deploy
+    if: >-
+      github.event_name == 'pull_request' && needs.deploy.result == 'success' &&
+      needs.deploy.outputs.url != '' &&
+      contains(github.event.pull_request.labels.*.name,
+      'preview-flag:execution-contexts')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/execution-context-e2e.yml
+    with:
+      preview_origin: ${{ needs.deploy.outputs.url }}
+      sha: ${{ github.event.pull_request.head.sha }}
 
   cleanup:
     runs-on: ${{ vars.CI_RUNNER || 'warp-ubuntu-latest-x64-4x' }}

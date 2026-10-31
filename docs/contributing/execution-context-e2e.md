@@ -23,12 +23,19 @@ Each cell:
 ## Run it
 
 The preview seed must have the experiment on: add the
-`preview-flag:execution-contexts` label to the PR. After 🔎 Preview succeeds the
-workflow runs on its own. To rerun against a preview by hand:
+`preview-flag:execution-contexts` label to the PR. 🔎 Preview then runs the
+`execution_context_e2e` job (this workflow, called after the deploy job) on
+every push. Previews sign session frames with the committed TEST key
+(`ECP_FRAME_SIGNING_KEYS` in `packages/worker/.env.example`); without it daemons
+never get a welcome frame. To rerun against a preview by hand:
 
 ```sh
-gh workflow run execution-context-e2e.yml -f preview_origin=https://<preview-app-origin>
+gh workflow run execution-context-e2e.yml -f preview_origin=https://<preview-app-origin> -f sha=<pr-head-sha>
 ```
+
+The preview CLI token comes from `tools/preview-rehearsal/cli-token.ts`
+(`cliCredentialBootstrap` through the MCP `api` tool, then the bootstrap
+redeem), which stays importable from plain `node`.
 
 Locally (any OS), against a preview:
 

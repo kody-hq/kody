@@ -794,6 +794,8 @@ jobs:
     env:
       KODY_SKIP_SKILL_REFRESH: '1'
       KODY_SKIP_GIT_HELPER_REFRESH: '1'
+      # Package scripts use POSIX env prefixes and globs; run them in Git Bash.
+      NPM_CONFIG_SCRIPT_SHELL: C:\Program Files\Git\bin\bash.exe
     steps:
       - name: 📦 Checkout
         uses: actions/checkout@v6.0.2
