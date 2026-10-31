@@ -44,7 +44,7 @@ test('/@me package links resolve before runtime Worker forwarding', async () => 
 			forwarded.push(new Request(input).url)
 			return new Response('runtime', { status: 200 })
 		},
-	} as unknown as Fetcher
+	} as unknown as Env['RUNTIME_WORKER']
 	const handleFetch = originWorkerHandler.fetch
 	if (!handleFetch) throw new Error('Expected the origin fetch handler.')
 	const ctx = createExecutionContext()
