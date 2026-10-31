@@ -37,6 +37,7 @@ import {
 } from '#worker/package-registry/package-name.ts'
 import { authorizePackageWrite } from '#worker/authorization/authorize.ts'
 import {
+	knownUnmappableCredentials,
 	loadOnePackageUnmappableCredentials,
 	unmappableCredentialOwnerNotice,
 } from '#worker/credentials/package-unmappable-credentials.ts'
@@ -1457,12 +1458,14 @@ export const publishExternalPushCapability = defineDomainCapability(
 				{ env: ctx.env, request: ctx.callerContext.request },
 				{ id: packageId, userId, label: name },
 			)
-			const unmappable = await loadOnePackageUnmappableCredentials({
-				env: ctx.env,
-				orgId: userId,
-				packageId,
-				request: ctx.callerContext.request,
-			})
+			const unmappable = knownUnmappableCredentials(
+				await loadOnePackageUnmappableCredentials({
+					env: ctx.env,
+					orgId: userId,
+					packageId,
+					request: ctx.callerContext.request,
+				}),
+			)
 			const unmappableNotice =
 				unmappable.length > 0
 					? unmappableCredentialOwnerNotice({

@@ -11,6 +11,7 @@ import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { runAuthoringPublishChecksOnFiles } from '#worker/repo/authoring-publish-checks.ts'
 import { repoCheckKinds } from '#worker/repo/checks.ts'
 import {
+	knownUnmappableCredentials,
 	loadOnePackageUnmappableCredentials,
 	unmappableCredentialOwnerNotice,
 } from '#worker/credentials/package-unmappable-credentials.ts'
@@ -184,12 +185,14 @@ export const packageCheckCapability = defineDomainCapability(
 				(await runAuthoringChecksInIsolate(checkInput)) ??
 				(await runAuthoringPublishChecksOnFiles(checkInput))
 			const unmappable = existingPackage
-				? await loadOnePackageUnmappableCredentials({
-						env: ctx.env,
-						orgId: owner.ownerUserId,
-						packageId: existingPackage.id,
-						request: ctx.callerContext.request,
-					})
+				? knownUnmappableCredentials(
+						await loadOnePackageUnmappableCredentials({
+							env: ctx.env,
+							orgId: owner.ownerUserId,
+							packageId: existingPackage.id,
+							request: ctx.callerContext.request,
+						}),
+					)
 				: []
 			const notices =
 				existingPackage && unmappable.length > 0

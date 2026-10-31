@@ -257,6 +257,13 @@ export async function loadOnePackageUnmappableCredentials(input: {
 }
 
 /** `"Prod DB" (need "rooms-db")`, joined; never ids or values. */
+/** Owner notices skip `unchecked` markers: those only fail collaborator changes closed. */
+export function knownUnmappableCredentials(
+	credentials: ReadonlyArray<UnmappableCredential>,
+) {
+	return credentials.filter((credential) => credential.reason !== 'unchecked')
+}
+
 export function describeUnmappableCredentials(
 	credentials: ReadonlyArray<UnmappableCredential>,
 ) {

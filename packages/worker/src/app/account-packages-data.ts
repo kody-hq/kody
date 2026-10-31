@@ -1,5 +1,6 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
+	knownUnmappableCredentials,
 	loadOnePackageUnmappableCredentials,
 	unmappableCredentialOwnerNotice,
 } from '#worker/credentials/package-unmappable-credentials.ts'
@@ -607,7 +608,7 @@ async function toDetailWithListingState(input: {
 					env: input.env,
 					orgId: input.userId,
 					packageId: input.record.id,
-				})
+				}).then(knownUnmappableCredentials)
 			: Promise.resolve([]),
 	])
 	const listingState = await loadActiveCommunityListingState({
