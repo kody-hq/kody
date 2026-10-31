@@ -75,6 +75,7 @@ exports[`contextRuns allow list snapshot 1`] = `
   "packageAppRunsAsGet",
   "packageCheck",
   "packageCollaboratorList",
+  "packageFork",
   "packageGet",
   "packageList",
   "packageSave",
