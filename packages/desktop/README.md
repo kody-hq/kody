@@ -209,11 +209,16 @@ certificate secrets. Set environment variables `DESKTOP_AZURE_ENDPOINT`,
 on a Public Trust certificate profile. Publisher name must match the profile
 certificate. The default `certificate` provider uses the `.pfx` secrets above.
 
-Upload credentials through GitHub's environment secrets UI or
-`gh secret set --env desktop-release --repo kody-hq/kody`. Do not put keys or
-passwords in chat, source files, or release notes. The local Mac's Developer ID
-identity is not available on GitHub runners until a protected export is
-configured there.
+Upload credentials through GitHub's environment secrets UI or use the CLI's
+interactive prompt, for example:
+
+```sh
+gh secret set DESKTOP_MAC_CERTIFICATE_PASSWORD --env desktop-release --repo kody-hq/kody
+```
+
+Enter the value at the prompt. Do not put keys or passwords in chat, source
+files, or release notes. The local Mac's Developer ID identity is not available
+on GitHub runners until a protected export is configured there.
 
 The existing 0.1.0 demo predates the updater. Install the first production
 release manually once, subsequent releases update automatically. A real
