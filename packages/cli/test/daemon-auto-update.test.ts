@@ -304,7 +304,7 @@ test('the off switch is stored in the local policy and wins everywhere', async (
 	})
 	assert.deepEqual(result, { kind: 'disabled' })
 	assert.deepEqual(counts, { meta: 0, tarball: 0 })
-	await fsAccess.allowLocalPath({ path: '/var', mode: 'ro', policyPath })
+	await fsAccess.allowLocalPath({ path: tmpdir(), mode: 'ro', policyPath })
 	assert.equal(
 		(await fsAccess.readLocalPolicy(policyPath)).autoUpdate?.enabled,
 		false,
