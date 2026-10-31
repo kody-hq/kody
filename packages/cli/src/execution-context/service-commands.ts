@@ -417,13 +417,20 @@ async function startOrStopRunner(
 			ecid: input.ecid,
 			...(env.run ? { run: env.run } : {}),
 		})
+		// The service may be stopped while a terminal or desktop daemon holds
+		// the lock: stop that one too, since it is what runs this context.
+		const other =
+			runner && runner.pid > 0 && runner.launcher !== input.manager
+				? runner
+				: null
+		if (other) process.kill(other.pid, 'SIGTERM')
 		say(
-			'Stopped the kody daemon service after runs in flight finish. It starts again at the next login or boot, or with `kody daemon start`.',
-			{ service: input.manager },
+			`Stopped the kody daemon service after runs in flight finish.${other ? ` Also stopping the kody daemon that held this context (${describeHolder(other)}).` : ''} It starts again at the next login or boot, or with \`kody daemon start\`.`,
+			{ service: input.manager, ...(other ? { runner: other } : {}) },
 		)
 		return 0
 	}
-	if (!runner) {
+	if (!runner || runner.pid <= 0) {
 		say('No kody daemon is running this context.')
 		return 0
 	}

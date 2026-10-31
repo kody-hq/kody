@@ -84,3 +84,18 @@ test('an existing registration is offered instead of registering again', () => {
 	assert.equal(existingRegistration({ ecid: null, contexts: [] }), null)
 	assert.equal(existingRegistration(null), null)
 })
+
+test('a stopped service with a terminal daemon holding the lock shows that daemon', () => {
+	const view = runnerView({
+		status: {
+			installed: true,
+			manager: 'launchd',
+			running: false,
+			runner: { pid: 7, launcher: 'terminal', version: '3.17.0' },
+		},
+		ownRunning: false,
+		hasRegistration: true,
+	})
+	assert.equal(view.mode, 'external')
+	assert.deepEqual([view.canStart, view.canStop], [false, true])
+})

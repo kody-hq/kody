@@ -18,7 +18,9 @@ function runnerView({ status, ownRunning, hasRegistration }) {
 			canStop: true,
 			canRestart: true,
 		}
-	if (status?.installed) {
+	// A stopped service can coexist with a terminal or desktop daemon holding
+	// the lock; that holder is the runner (`kody daemon stop` stops it too).
+	if (status?.installed && !(status.running === false && status.runner)) {
 		const name = launcherNames[status.manager] ?? 'CLI service'
 		return {
 			mode: 'service',
