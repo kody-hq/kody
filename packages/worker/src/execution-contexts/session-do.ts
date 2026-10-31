@@ -1237,6 +1237,17 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 	}
 
+	/** Queued runs being handed to the daemon now; a cancel waits them out. */
+	#dispatchingQueued = new Set<string>()
+
+	#stillQueued(runId: string) {
+		return (
+			this.ctx.storage.sql
+				.exec(`SELECT 1 FROM queued WHERE run_id = ?`, runId)
+				.toArray().length > 0
+		)
+	}
+
 	async #dispatchQueued(queued: QueuedRow): Promise<'done' | 'keep'> {
 		const lease = JSON.parse(queued.lease_json) as ExecutionContextLease
 		const request = JSON.parse(queued.request_json) as EcpRunRequestBody
@@ -1247,6 +1258,8 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			? (JSON.parse(queued.run_record_json) as RunRecordHandle)
 			: null
 		const fail = async (message: string, name: string) => {
+			// A person may have cancelled it meanwhile; that already ended it.
+			if (!this.#stillQueued(queued.run_id)) return 'done' as const
 			if (handle) {
 				await finishRunRecord({
 					env: this.env,
@@ -1318,36 +1331,45 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 				'ExecutionContextNotUsable',
 			)
 		}
+		if (!this.#stillQueued(queued.run_id)) return 'done'
+		this.#dispatchingQueued.add(queued.run_id)
 		const now = Date.now()
 		const deadline = now + grant.limits.timeoutMs
-		const dispatched = await this.dispatch({
-			request: {
-				...request,
-				deadline,
-				acceptBy: now + queuedAcceptWindowMs,
-				grantVersion: row.grant_version,
-				limits: {
-					timeoutMs: grant.limits.timeoutMs,
-					maxResultBytes: grant.payload.maxResultBytes,
-					memoryMb: grant.limits.memoryMb,
+		let dispatched: Awaited<
+			ReturnType<ExecutionContextSessionV1Base['dispatch']>
+		>
+		try {
+			dispatched = await this.dispatch({
+				request: {
+					...request,
+					deadline,
+					acceptBy: now + queuedAcceptWindowMs,
+					grantVersion: row.grant_version,
+					limits: {
+						timeoutMs: grant.limits.timeoutMs,
+						maxResultBytes: grant.payload.maxResultBytes,
+						memoryMb: grant.limits.memoryMb,
+					},
 				},
-			},
-			lease: {
-				...lease,
-				deadline,
-				runtime: grant.runtime,
-			},
-			runRecord: handle
-				? {
-						...handle,
-						context: {
-							...handle.context,
-							metadata: markQueuedAttemptRan(handle.context.metadata ?? {}),
-						},
-					}
-				: null,
-			position: queued.position,
-		})
+				lease: {
+					...lease,
+					deadline,
+					runtime: grant.runtime,
+				},
+				runRecord: handle
+					? {
+							...handle,
+							context: {
+								...handle.context,
+								metadata: markQueuedAttemptRan(handle.context.metadata ?? {}),
+							},
+						}
+					: null,
+				position: queued.position,
+			})
+		} finally {
+			this.#dispatchingQueued.delete(queued.run_id)
+		}
 		switch (dispatched.outcome) {
 			case 'committed':
 				return 'done'
@@ -1764,11 +1786,10 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 		const run = this.#run(input.runId)
 		const lease = run ? matches(run.lease_json) : null
-		if (run && lease) {
-			if (run.state === 'dispatched') return { status: 'starting' }
-			if (run.state !== 'committed') {
-				return { status: 'finished', state: run.state }
-			}
+		if (run && lease && run.state === 'dispatched') {
+			return { status: 'starting' }
+		}
+		if (run && lease && run.state === 'committed') {
 			const { cancelled } = await this.cancel({
 				runId: input.runId,
 				reason: 'user_cancelled',
@@ -1781,6 +1802,8 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 					}
 				: { status: 'finished', state: this.#run(input.runId)?.state ?? '' }
 		}
+		// A queued run whose earlier attempt was rejected keeps its queued row.
+		if (this.#dispatchingQueued.has(input.runId)) return { status: 'starting' }
 		const queued = this.ctx.storage.sql
 			.exec<{ lease_json: string; run_record_json: string | null }>(
 				`SELECT lease_json, run_record_json FROM queued WHERE run_id = ?`,
@@ -1788,7 +1811,11 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			)
 			.toArray()[0]
 		const queuedLease = queued ? matches(queued.lease_json) : null
-		if (!queued || !queuedLease) return { status: 'not_found' }
+		if (!queued || !queuedLease) {
+			return run && lease
+				? { status: 'finished', state: run.state }
+				: { status: 'not_found' }
+		}
 		this.ctx.storage.sql.exec(
 			`DELETE FROM queued WHERE run_id = ?`,
 			input.runId,

@@ -181,15 +181,19 @@ Stop a run on a machine before it finishes:
   table.
 
 A running run is stopped on the machine; a queued run is dropped before it runs.
-Either way it ends `cancelled` with `cancelReason: "user_cancelled"` in
-`executionContextRunList` and `runGet`, next to the other reasons such as
-`deadline` (the time limit) or `revoked`. You can cancel your own runs; people
-who manage the context can cancel anyone's run on it. Cancelling a run that
-already ended returns `cancelled: false` with its state, so retrying is safe.
+In `executionContextRunList` it ends `cancelled` with
+`cancelReason: "user_cancelled"`, next to the other reasons such as `deadline`
+(the time limit) or `revoked`. Its run record (`runGet`) ends with status
+`error` and the message "The run was cancelled (user_cancelled).". You can
+cancel your own runs; people who manage the context can cancel anyone's run on
+it. Cancelling a run that already ended returns `cancelled: false` with its
+state, so retrying is safe.
 
-Closing the CLI or MCP client while a run is in progress does not cancel it: the
-run keeps going and its result stays readable with `runGet`. Cancel it
-explicitly instead. Runs on Kody cloud cannot be cancelled this way.
+Once execute has handed back an in-progress run id, closing the CLI or MCP
+client does not cancel it: the run keeps going and its result stays readable
+with `runGet`. Cancel it explicitly instead. (Disconnecting while execute is
+still waiting for the result, before it returns, can still cancel the run.) Runs
+on Kody cloud cannot be cancelled this way.
 
 ## Run commands on the machine
 

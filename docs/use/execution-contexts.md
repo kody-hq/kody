@@ -40,8 +40,10 @@ Execution contexts are an experiment. Turn them on at
   `kody context cancel-run <name> <run id>`.
 - Cancel a run on a machine with `executionContextRunCancel({ id, run_id })`
   (Open API `POST /v1/execution-contexts/{id}/runs/{run_id}/cancel`). It ends
-  cancelled with `cancelReason: "user_cancelled"`. Ending the execute call
-  (closing the CLI or MCP client) does not cancel a context run.
+  cancelled with `cancelReason: "user_cancelled"` in run history (its run record
+  is status `error`). Once execute returned an in-progress runId, closing the
+  CLI or MCP client does not cancel the run; disconnecting before execute
+  returns can.
 
 ## Host commands
 

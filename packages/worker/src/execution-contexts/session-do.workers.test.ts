@@ -1079,3 +1079,47 @@ test('cancelling a queued run drops it before it runs', async () => {
 		await stub.cancelRunFor({ runId: 'run_queued_cancel', orgId: 'org_test' }),
 	).toEqual({ status: 'not_found' })
 })
+
+test('a queued run whose earlier attempt was refused can still be cancelled', async () => {
+	const ecid = 'ec_user_cancel_retry'
+	const stub = env.EXECUTION_CONTEXT_SESSION.get(
+		env.EXECUTION_CONTEXT_SESSION.idFromName(ecid),
+	)
+	await stub.issueConnectTicket({
+		snapshot: snapshot(ecid),
+		nonce: crypto.randomUUID(),
+	})
+	await stub.enqueue({
+		request: runRequest('run_queued_retry'),
+		lease: lease(ecid, 'run_queued_retry'),
+		runRecord: null,
+		requires: [],
+		position: 1,
+		expiresAt: Date.now() + 60_000,
+	})
+	await runInDurableObject(stub, async (_instance, state) => {
+		state.storage.sql.exec(
+			`INSERT INTO runs (run_id, state, lease_json, deadline, accept_by, created_at)
+			 VALUES ('run_queued_retry', 'rejected', ?, ?, ?, ?)`,
+			JSON.stringify(lease(ecid, 'run_queued_retry')),
+			Date.now() + 60_000,
+			Date.now(),
+			Date.now(),
+		)
+	})
+	expect(
+		await stub.cancelRunFor({
+			runId: 'run_queued_retry',
+			orgId: 'org_test',
+			requesterUserId: 'user_requester',
+		}),
+	).toEqual({
+		status: 'cancelled',
+		queued: true,
+		requesterUserId: 'user_requester',
+	})
+	expect(await stub.listQueued()).toEqual([])
+	expect(
+		await stub.cancelRunFor({ runId: 'run_queued_retry', orgId: 'org_test' }),
+	).toEqual({ status: 'finished', state: 'rejected' })
+})
