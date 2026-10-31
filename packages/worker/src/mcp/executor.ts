@@ -88,6 +88,7 @@ import {
 	buildUnboundRuntimeHelperNextStep,
 	parseUnboundRuntimeHelperMessage,
 } from '#worker/package-runtime/unbound-runtime-helpers.ts'
+import { stripKodyRuntimeModules } from '#worker/package-runtime/runtime-source-modules.ts'
 import { createDynamicWorkerCompatibilityOptions } from '#worker/dynamic-worker-compatibility.ts'
 import {
 	getDynamicWorkerEvaluationContext,
@@ -114,7 +115,10 @@ import {
 	kodyProviderEvaluateBindingName,
 } from '#worker/kody-evaluate-bindings.ts'
 import { isTransientDurableObjectResetError } from '#worker/durable-object-reset-retry.ts'
-import { createStableDynamicWorkerId } from '#mcp/dynamic-worker-id.ts'
+import {
+	createDynamicWorkerBillingId,
+	createStableDynamicWorkerId,
+} from '#mcp/dynamic-worker-id.ts'
 import {
 	createEvaluationSideEffectTracker,
 	createHostSideEffectProvider,
@@ -816,6 +820,15 @@ function createStableDynamicWorkerExecutor(input: DynamicWorkerExecutorInput) {
 				workerOptions,
 			})
 			input.onWorkerId?.(workerId)
+			// Unique worker days bill on user-owned inputs only, so a Kody
+			// deploy that changes the harness reloads the isolate (new
+			// LOADER id) without billing unchanged user code again that day.
+			const billingWorkerId = await createDynamicWorkerBillingId({
+				userId: input.gatewayProps.userId,
+				storageContext: input.gatewayProps.storageContext,
+				code,
+				userModules: stripKodyRuntimeModules(modules),
+			})
 			const attributedPackageId =
 				input.packageId?.trim() ||
 				invocation?.packageContext?.packageId?.trim() ||
@@ -827,13 +840,13 @@ function createStableDynamicWorkerExecutor(input: DynamicWorkerExecutorInput) {
 			let claimedDay: Promise<{ created: boolean } | undefined>
 			if (input.claimWorkerDay) {
 				claimedDay = Promise.resolve(
-					await input.claimWorkerDay(workerId, dayAttribution),
+					await input.claimWorkerDay(billingWorkerId, dayAttribution),
 				)
 			} else {
 				claimedDay = recordUniqueDynamicWorkerDay({
 					env: input.usageEnv,
 					userId: input.gatewayProps.userId,
-					workerId,
+					workerId: billingWorkerId,
 					surface: input.surface ?? 'execute',
 					...dayAttribution,
 				})

@@ -25,9 +25,13 @@ meter.
 
 - The first use of a given worker id on a UTC day counts once for that user.
 - Repeating the same worker id on the same UTC day does not add another day.
-- Worker identity follows the acting user plus the **module graph** for that
-  run: the same user and published graph reuse one isolate; a different graph or
-  a different user is a different isolate.
+- The billed worker follows only what you control: the acting user, storage
+  context, your code, and your own modules (saved and published package source,
+  so a republish is a new worker). The same user and code count once per UTC
+  day; different code or a different user is a different worker.
+- Kody deploys do not start a new billed worker. A deploy that changes Kody's
+  executor or runtime can load a fresh isolate, but unchanged code that already
+  ran today does not count again.
 - Runs on an [execution context](./execution-contexts.md) (your own machine) do
   not count: they run in workerd there, not in a Kody cloud isolate. A run that
   falls back to Kody cloud counts like any cloud run.

@@ -55,6 +55,43 @@ export async function createStableDynamicWorkerId(input: {
 	return `${dynamicWorkerIdPrefix}${hash.slice(0, 43)}`
 }
 
+/**
+ * Billing / cap version for {@link createDynamicWorkerBillingId}. Bump only
+ * when the billing identity contract itself changes.
+ */
+export const dynamicWorkerBillingKeyVersion = 1
+
+/**
+ * Key for unique-worker-day billing and caps (`claimDynamicWorkerDay`).
+ *
+ * Built only from what the user controls: their code, their own modules
+ * (saved and published package sources, so the published commit), and the
+ * acting user plus storage context. Kody-owned inputs are left out on
+ * purpose: the executor harness, the `kody:runtime` modules, compatibility
+ * date/flags, and `dynamicWorkerCacheKeyVersion`. A Kody deploy that changes
+ * those still loads a fresh isolate under a new LOADER id
+ * ({@link createStableDynamicWorkerId}), but it does not start a new billable
+ * worker for unchanged user code on the same UTC day.
+ */
+export async function createDynamicWorkerBillingId(input: {
+	userId: string | null
+	storageContext: StorageContext | null
+	code: string
+	userModules: WorkerLoaderModules
+}) {
+	const hash = await sha256Base64Url(
+		canonicalJsonStringify({
+			version: dynamicWorkerBillingKeyVersion,
+			binding: 'LOADER:billing',
+			userId: input.userId,
+			storageContext: input.storageContext,
+			code: input.code,
+			modules: input.userModules,
+		}),
+	)
+	return `${dynamicWorkerIdPrefix}${hash.slice(0, 43)}`
+}
+
 function canonicalJsonStringify(value: unknown) {
 	return JSON.stringify(canonicalizeForHash(value, '$'))
 }

@@ -387,7 +387,9 @@ limit, current usage, upgrade hint). Daily quota denials add compact `used` and
 
 Dynamic Worker identity for an execute run follows the acting user and that
 module graph. The same user and graph reuse one isolate for the UTC day when
-only `params` or `packageContext` change. The cost model is documented once in
+only `params` or `packageContext` change. Billing counts your code and modules
+only, so a Kody deploy never bills unchanged code a second time the same day.
+The cost model is documented once in
 [Platform efficiency](../guides/platform-efficiency.md).
 
 For memory mutations, the workflow is explicit and strict:

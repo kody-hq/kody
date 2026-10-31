@@ -1,6 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
 import {
+	createDynamicWorkerBillingId,
 	createStableDynamicWorkerId,
 	dynamicWorkerCacheKeyVersion,
 } from '#mcp/dynamic-worker-id.ts'
@@ -152,4 +153,38 @@ test('createStableDynamicWorkerId rejects compiled WebAssembly modules, which ex
 	).rejects.toThrow(
 		'Dynamic Worker id input $.modules.lib.wasm.wasm is a Module object',
 	)
+})
+
+test('createDynamicWorkerBillingId follows only user code, user modules, user, and storage context', async () => {
+	const mintBilling = (
+		input: {
+			userId?: string | null
+			storageContext?: StorageContext | null
+			code?: string
+			userModules?: Record<string, string>
+		} = {},
+	) =>
+		createDynamicWorkerBillingId({
+			userId: input.userId === undefined ? 'user-1' : input.userId,
+			storageContext:
+				input.storageContext === undefined
+					? storageContext
+					: input.storageContext,
+			code: input.code ?? 'async () => 1',
+			userModules: input.userModules ?? { 'lib.js': 'export const a = 1' },
+		})
+	const first = await mintBilling()
+	expect(first).toMatch(/^kody-[A-Za-z0-9_-]{43}$/)
+	expect(await mintBilling()).toBe(first)
+	const variants = [
+		await mintBilling({ userId: 'user-2' }),
+		await mintBilling({
+			storageContext: { ...storageContext, storageId: 'storage-2' },
+		}),
+		await mintBilling({ code: 'async () => 2' }),
+		await mintBilling({ userModules: { 'lib.js': 'export const a = 2' } }),
+	]
+	expect(variants.filter((id) => id === first)).toEqual([])
+	// Never collides with the LOADER id for the same inputs.
+	expect(first).not.toBe(await mintId())
 })

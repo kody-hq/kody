@@ -1009,7 +1009,10 @@ test('createExecuteExecutor awaits a capped worker-day claim before load and ski
 		},
 	})
 	expect(allowed.error).toBeUndefined()
-	expect(allowedLoader.ids).toEqual(claimed)
+	// Billing claims a user-owned key; LOADER keeps the full graph id.
+	expect(allowedLoader.ids).toHaveLength(1)
+	expect(claimed).toHaveLength(1)
+	expect(claimed[0]).not.toBe(allowedLoader.ids[0])
 	expect(attributions).toEqual([{ packageId: 'pkg-1' }])
 	expect(usage.dataPoints.map((point) => point.blobs?.[1])).toEqual([
 		'dynamic_worker_invoke',
@@ -1027,6 +1030,45 @@ test('createExecuteExecutor awaits a capped worker-day claim before load and ski
 		}),
 	).rejects.toBe(denial)
 	expect(deniedLoader.ids).toEqual([])
+})
+
+test('a Kody harness change reloads the isolate but bills unchanged user code once', async () => {
+	const claimed: Array<string> = []
+	const loader = createFakeWorkerLoader()
+	const claimWorkerDay = async (workerId: string) => {
+		claimed.push(workerId)
+		return { created: true }
+	}
+	const env = createExecutorTestEnv(loader.loader)
+	const userModules = { 'lib.js': 'export const answer = 42' }
+	// Timeout is baked into the generated harness, so it stands in for a
+	// Kody deploy that changes executor bytes.
+	await runExecutor({
+		env,
+		claimWorkerDay,
+		modules: userModules,
+		timeoutMs: 1_000,
+	})
+	await runExecutor({
+		env,
+		claimWorkerDay,
+		modules: userModules,
+		timeoutMs: 2_000,
+	})
+	expect(new Set(loader.ids).size).toBe(2)
+	expect(new Set(claimed).size).toBe(1)
+
+	await runExecutor(
+		{ env, claimWorkerDay, modules: userModules, timeoutMs: 1_000 },
+		'async () => "changed"',
+	)
+	await runExecutor({
+		env,
+		claimWorkerDay,
+		modules: { 'lib.js': 'export const answer = 43' },
+		timeoutMs: 1_000,
+	})
+	expect(new Set(claimed).size).toBe(3)
 })
 
 test('createExecuteExecutor rejects reserved provider names, keeps side-effect counts on DO reset, and disables dispatchers after completion', async () => {

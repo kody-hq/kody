@@ -468,8 +468,22 @@ actually changes.
 first factory's WorkerCode for a given id, including the `KodyFetchGateway`
 `globalOutbound` stub. Those props authorize outbound fetch, secrets, and quota,
 so two users (or two storage contexts) with the same module graph still get
-distinct ids. UWD metering stays `(userId, workerId, day)` via
-`claimDynamicWorkerDay` and is independent of this hash.
+distinct ids.
+
+UWD billing and caps do not use that id. `createDynamicWorkerBillingId` (same
+file) hashes only user-owned inputs: `userId`, `storageContext`, the raw execute
+`code`, and the user module graph with Kody runtime modules removed
+(`stripKodyRuntimeModules`; saved and published package sources, so a republish
+is a new worker). The executor harness, compatibility date/flags, and
+`dynamicWorkerCacheKeyVersion` are left out on purpose: a Kody deploy that
+changes them reloads the isolate under a new LOADER id, but unchanged user code
+does not start another billed worker that UTC day (Kody absorbs those extra
+Cloudflare isolates). `claimDynamicWorkerDay` and `dynamic_worker_day`
+(`entityId`) carry the billing id; `onWorkerId`, the LOADER cache, and
+`dynamic_worker_cpu` keep the LOADER id. Package-app `APP_LOADER` ids are
+already owner + package + commit + mount, so they are unchanged. Bump
+`dynamicWorkerBillingKeyVersion` only when the billing contract changes: every
+bump bills each live worker once more that day.
 
 Every module value is hashed deterministically: strings, `ArrayBuffer` and
 typed-array bytes (including fields such as `wasm`), and JSON values. A function
