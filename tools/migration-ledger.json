@@ -793,6 +793,10 @@
 			"sha256": "436a7498c073d33b7c0448ad3126888d4cdb2573ccefd3dbd06a741e31a1e8f3"
 		},
 		{
+			"filename": "0219-email-deliverability-effects.sql",
+			"sha256": "1f2a97b2bc3a3289a90f2cef59c3f72a31d3f33c5eabdc089461ffd19f1ad759"
+		},
+		{
 			"filename": "0221-package-app-visitor-billed-org.sql",
 			"sha256": "f8aa36e07418276f30719b846f4ced1fc741b51254b5d4690337d3e6c8210261"
 		}

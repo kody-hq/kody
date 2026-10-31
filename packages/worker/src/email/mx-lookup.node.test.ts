@@ -1,5 +1,7 @@
 import { expect, test } from 'vitest'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import {
+	lookupMxViaDoh,
 	providerKeyFromMxHost,
 	providerKeysFromMxHosts,
 	resolveRecipientMxProviders,
@@ -97,4 +99,17 @@ test('resolveRecipientMxProviders caches DoH answers in D1', async () => {
 	expect(second.fromCache).toBe(true)
 	expect(second.providerKeys).toEqual(['messagingengine.com'])
 	expect(fetchCount).toBe(1)
+})
+
+test('lookupMxViaDoh fails open on a malformed DoH body', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const result = await lookupMxViaDoh(
+		'example.com',
+		async () => new Response('not json', { status: 200 }),
+	)
+	expect(result.mxHosts).toEqual([])
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'email-mx-doh-parse-failed',
+		expect.anything(),
+	)
 })

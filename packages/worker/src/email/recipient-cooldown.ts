@@ -137,14 +137,26 @@ export async function assertEmailRecipientSendable(input: {
 	}
 }
 
-export async function recordEmailRecipientCooldown(input: {
+/** Extra SQL condition (and its binds) a guarded write must satisfy. */
+export type EmailPolicyWriteGuard = { sql: string; binds: Array<unknown> }
+
+type EmailRecipientCooldownInput = {
 	db: D1Database
 	recipient: string
 	status: EmailDeliveryStatus | EmailVerificationDeliveryStatus
 	smtpResponse?: string | null
 	smtpEnhancedStatusCode?: string | null
 	now?: Date
-}): Promise<EmailRecipientCooldown | null> {
+}
+
+/**
+ * Builds the cooldown upsert without running it, so a caller can commit it
+ * in one batch with its own bookkeeping. With `onlyIf`, the row is written
+ * only when that condition holds at commit time.
+ */
+export function prepareEmailRecipientCooldownUpsert(
+	input: EmailRecipientCooldownInput & { onlyIf?: EmailPolicyWriteGuard },
+): { statement: D1PreparedStatement; cooldown: EmailRecipientCooldown } | null {
 	const recipient = normalizeEmailAddress(input.recipient)
 	if (!recipient) return null
 	const deliveryClass = classifyRecipientDeliveryFailure({
@@ -173,12 +185,12 @@ export async function recordEmailRecipientCooldown(input: {
 		input.smtpResponse ?? input.smtpEnhancedStatusCode ?? null,
 	)
 
-	await input.db
+	const statement = input.db
 		.prepare(
 			`INSERT INTO email_recipient_cooldowns (
 				recipient, class, reason, cooldown_until, last_failure_at,
 				failure_count, created_at, updated_at
-			 ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+			 ) SELECT ?, ?, ?, ?, ?, 1, ?, ? WHERE ${input.onlyIf?.sql ?? '1'}
 			 ON CONFLICT(recipient) DO UPDATE SET
 				class = excluded.class,
 				reason = excluded.reason,
@@ -199,17 +211,29 @@ export async function recordEmailRecipientCooldown(input: {
 			nowIso,
 			nowIso,
 			nowIso,
+			...(input.onlyIf?.binds ?? []),
 		)
-		.run()
 
 	return {
-		recipient,
-		class: deliveryClass,
-		reason,
-		cooldownUntil,
-		lastFailureAt: nowIso,
-		failureCount: 1,
+		statement,
+		cooldown: {
+			recipient,
+			class: deliveryClass,
+			reason,
+			cooldownUntil,
+			lastFailureAt: nowIso,
+			failureCount: 1,
+		},
 	}
+}
+
+export async function recordEmailRecipientCooldown(
+	input: EmailRecipientCooldownInput,
+): Promise<EmailRecipientCooldown | null> {
+	const prepared = prepareEmailRecipientCooldownUpsert(input)
+	if (!prepared) return null
+	await prepared.statement.run()
+	return prepared.cooldown
 }
 
 export async function clearEmailRecipientCooldown(input: {
