@@ -227,6 +227,11 @@ Enter the value at the prompt. Do not put keys or passwords in chat, source
 files, or release notes. The local Mac's Developer ID identity is not available
 on GitHub runners until a protected export is configured there.
 
+For a local Mac production build, `CSC_NAME` can select the existing Developer
+ID identity in Keychain without exporting its private key. Provide
+`APPLE_API_KEY` as the local `.p8` path, plus `APPLE_API_KEY_ID` and
+`APPLE_API_ISSUER`. CI still requires the protected certificate export above.
+
 The existing 0.1.0 demo predates the updater. Install the first production
 release manually once, subsequent releases update automatically. A real
 signed-version-to-signed-version update remains part of first-release

@@ -12,11 +12,10 @@ if (
 const required =
 	process.platform === 'darwin'
 		? [
-				'CSC_LINK',
-				'CSC_KEY_PASSWORD',
 				'APPLE_API_KEY',
 				'APPLE_API_KEY_ID',
 				'APPLE_API_ISSUER',
+				...(process.env.CSC_LINK ? ['CSC_KEY_PASSWORD'] : []),
 			]
 		: process.platform === 'win32'
 			? azure
@@ -33,6 +32,13 @@ const required =
 			: []
 for (const name of required) {
 	if (!process.env[name]) throw new Error(`Missing release credential: ${name}`)
+}
+if (
+	process.platform === 'darwin' &&
+	!process.env.CSC_LINK &&
+	!process.env.CSC_NAME
+) {
+	throw new Error('Missing release credential: CSC_LINK or CSC_NAME')
 }
 module.exports = {
 	...config,

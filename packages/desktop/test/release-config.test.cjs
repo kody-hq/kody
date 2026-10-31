@@ -62,3 +62,15 @@ test('Mac releases do not require unused Windows Azure settings', async () => {
 		isEnabled: false,
 	})
 })
+
+test('local Mac releases can use a Keychain identity without exporting its private key', async () => {
+	await validateConfiguration(
+		configuration('darwin', {
+			CSC_NAME: 'Existing Developer ID identity',
+			APPLE_API_KEY: 'local-private-key-path.p8',
+			APPLE_API_KEY_ID: 'test-key-id',
+			APPLE_API_ISSUER: 'test-issuer',
+		}),
+		{ isEnabled: false },
+	)
+})
