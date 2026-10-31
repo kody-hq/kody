@@ -16,6 +16,9 @@ import {
 	type OrgTransferSnapshot,
 } from './snapshot.ts'
 
+/** Grantable resources a transfer leaves in the source org. */
+const resourceTypesThatStay = new Set(['memory', 'email', 'execution_context'])
+
 export type OrgTransferOrphanCleanup =
 	/** Normal per-row soft delete (sets deleted_at). */
 	| 'soft-delete'
@@ -700,8 +703,10 @@ export function planOrgTransfer(
 	for (const row of source.grants.filter(isLiveRow)) {
 		if (text(row, 'resource_type') === 'org') continue
 		// Profiles stay in the source org (ADR 0092), so their grants on moved
-		// resources are dropped and kept in the transfer backup.
+		// resources are dropped and kept in the transfer backup. Grants on
+		// resources that stay keep pointing at them.
 		if (text(row, 'subject_type') === 'profile') {
+			if (resourceTypesThatStay.has(text(row, 'resource_type'))) continue
 			droppedCreatorGrants.push(row)
 			warnings.push({
 				code: 'profile_grant_dropped',

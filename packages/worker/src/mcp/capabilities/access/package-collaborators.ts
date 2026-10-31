@@ -261,7 +261,7 @@ export const packageCollaboratorSetCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
-			'Add a team, an org member, or everyone in this organization as a collaborator on one package in the organization this request is bound to, or change the preset of one who already is. Pass exactly one of team_slug, team_id, username, user_id, everyone: true, or profile_id (an agent profile, profiles experiment), and a preset (use, contribute, or manage). everyone covers current and future members, resolved live, so someone who leaves loses it at once; the package stays private to everyone else. Only teams and members of this organization are accepted; Owners already have full access. You need manage access on the package. Audited like accessGrant.',
+			'Add a team, an org member, or everyone in this organization as a collaborator on one package in the organization this request is bound to, or change the preset of one who already is. Pass exactly one of team_slug, team_id, username, user_id, everyone: true, or profile_id (an agent profile, profiles experiment), and a preset (use, contribute, or manage). everyone covers current and future members, resolved live, so someone who leaves loses it at once; the package stays private to everyone else. Only teams and members of this organization are accepted; Owners already have full access. You need manage access on the package. Member, team, and org grants are audited like accessGrant; profile grants are not audited yet.',
 		keywords: [
 			'collaborators',
 			'package',
@@ -340,7 +340,7 @@ export const packageCollaboratorRemoveCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
-			'Remove one collaborator from a package in the organization this request is bound to, by the grant_id from packageCollaboratorList. Works for teams, org members, and outside collaborators. You need manage access on the package. Audited like accessRevoke.',
+			'Remove one collaborator from a package in the organization this request is bound to, by the grant_id from packageCollaboratorList. Works for teams, org members, and outside collaborators. You need manage access on the package. Member, team, and org removals are audited like accessRevoke; profile grant removals are not audited yet.',
 		keywords: ['collaborators', 'package', 'access', 'revoke', 'remove'],
 		readOnly: false,
 		idempotent: false,

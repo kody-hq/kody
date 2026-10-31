@@ -277,3 +277,20 @@ test('offboarding revokes a member’s profiles and purge removes them with thei
 		count(`SELECT COUNT(*) AS n FROM grants WHERE subject_type = 'profile'`),
 	).toBe(0)
 })
+
+test('purge removes a revoked profile with descendants that never expire', async () => {
+	const { callerFor, db, count } = setup()
+	const me = callerFor({})
+	const root = await createProfile(me, { name: 'root', grants: readExecute })
+	await createProfile(me, {
+		name: 'child',
+		parentProfileId: root.id,
+		grants: readExecute,
+	})
+	await revokeProfile(me, { profileId: root.id })
+	const purged = await purgeProfiles(db, {
+		now: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+	})
+	expect(purged.profiles).toBe(2)
+	expect(count(`SELECT COUNT(*) AS n FROM profiles`)).toBe(0)
+})

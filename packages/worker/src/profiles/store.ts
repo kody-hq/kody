@@ -288,7 +288,8 @@ export async function revokeProfilesForMember(
 
 /**
  * Hard-deletes profiles revoked or expired more than `profilePurgeAfterDays`
- * ago once they have no children left, then the `grants` rows of profiles that
+ * ago, with every descendant (inactive through them), once they have no
+ * children left, then the `grants` rows of profiles that
  * no longer exist (account and org purges delete profile rows directly).
  * Leaves first, so repeated runs walk a dead tree bottom-up.
  */
@@ -303,15 +304,21 @@ export async function purgeProfiles(
 	for (let depth = maxProfileDepth; depth >= 1; depth--) {
 		const result = await db
 			.prepare(
-				`DELETE FROM profiles
+				`WITH RECURSIVE dead(id) AS (
+				   SELECT id FROM profiles
+				   WHERE (revoked_at IS NOT NULL AND revoked_at < ?)
+				      OR (expires_at IS NOT NULL AND expires_at < ?)
+				   UNION
+				   SELECT p.id FROM profiles p JOIN dead d ON p.parent_profile_id = d.id
+				 )
+				 DELETE FROM profiles
 				 WHERE depth = ?
-				   AND ((revoked_at IS NOT NULL AND revoked_at < ?)
-				     OR (expires_at IS NOT NULL AND expires_at < ?))
+				   AND id IN (SELECT id FROM dead)
 				   AND NOT EXISTS (
 				     SELECT 1 FROM profiles child WHERE child.parent_profile_id = profiles.id
 				   )`,
 			)
-			.bind(depth, cutoff, cutoff)
+			.bind(cutoff, cutoff, depth)
 			.run()
 		profiles += result.meta.changes ?? 0
 	}

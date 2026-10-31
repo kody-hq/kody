@@ -12,8 +12,9 @@ audience: agents
 # Profiles
 
 A profile is an identity in one org that an agent or bot acts as instead of
-acting as you. You decide what it can reach when you create it, and it never
-gets more later.
+acting as you. You decide its starting access when you create it. It gets more
+only when someone explicitly grants it something, such as sharing a package with
+it, and never more than you and its parents hold.
 
 Profiles are an experiment. Turn them on at `/account/experiments` or with
 `experimentSet({ experiment: "profiles", enabled: true })`. In this release you
@@ -81,7 +82,10 @@ Call `profileCreate` with a name and the grants it starts with:
 }
 ```
 
-- Each grant names one resource. A profile cannot get an org-wide grant.
+- Each grant names one resource, or the org itself for org-level permissions
+  only: `org:read`, `org:execute`, `search:read`, `member:read`, `team:read`,
+  `audit:read`, `profile:manage`, and any `<type>:create`. A grant that covers
+  every resource of a kind is refused.
 - You can only hand over permissions you hold on that resource right now.
 - Grants are a snapshot. When you or a parent later gain access, the profile
   does not.
