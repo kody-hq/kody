@@ -171,13 +171,18 @@ async function setupTwoFactor({ seedUser = true } = {}) {
 				}),
 			)
 		},
-		verify(code: string, cookie?: string) {
-			const request = postJson('/verify/2fa.json', { code }, cookie)
+		verify(
+			code: string,
+			cookie?: string,
+			protection: Record<string, unknown> = {},
+		) {
+			const body = { code, ...protection }
+			const request = postJson('/verify/2fa.json', body, cookie)
 			return verifyWebsiteTwoFactor({
 				env,
 				request,
 				url: new URL(request.url),
-				body: { code },
+				body,
 			})
 		},
 		countRows() {
@@ -455,4 +460,77 @@ test('a deleted person cannot finish a previously issued TOTP challenge or mint 
 					cookie.startsWith('kody_session=') && !cookie.includes('Max-Age=0'),
 			),
 	).toBe(false)
+})
+
+async function pendingVerifyCookie() {
+	return (
+		await createVerifySessionCookie(
+			{
+				stableUserId: session.stableUserId,
+				email: session.email,
+				rememberMe: false,
+			},
+			false,
+		)
+	).split(';')[0]
+}
+
+test('a filled honeypot is refused without spending the code guess budget', async () => {
+	const { enable, verify } = await setupTwoFactor()
+	const verificationRow = await enable()
+	const pendingCookie = await pendingVerifyCookie()
+
+	for (let i = 0; i <= twoFactorVerifyRateLimitConfig.maxRequests; i++) {
+		const refused = await verify(
+			await currentCode(verificationRow),
+			pendingCookie,
+			{ kody_hp: 'bot' },
+		)
+		expect(refused.status).toBe(400)
+		expect(refused.data).toMatchObject({ ok: false })
+		expect(refused.headers.getSetCookie()).toEqual([])
+	}
+
+	const verified = await verify(
+		await currentCode(verificationRow),
+		pendingCookie,
+	)
+	expect(verified.data).toMatchObject({ ok: true })
+})
+
+test('code verification requires the Turnstile check when it is configured', async () => {
+	const { enable, verify, env } = await setupTwoFactor()
+	const verificationRow = await enable()
+	const pendingCookie = await pendingVerifyCookie()
+	Object.assign(env, {
+		TURNSTILE_SITE_KEY: 'test-site-key',
+		TURNSTILE_SECRET_KEY: 'test-secret-key',
+		SENTRY_ENVIRONMENT: 'production',
+	})
+	const siteverify = vi.fn(async () =>
+		Response.json({ success: true, hostname: 'example.com' }),
+	)
+	vi.stubGlobal('fetch', siteverify)
+	try {
+		const missing = await verify(
+			await currentCode(verificationRow),
+			pendingCookie,
+		)
+		expect(missing.status).toBe(400)
+		expect(missing.data).toMatchObject({
+			ok: false,
+			error: expect.stringMatching(/human verification/i),
+		})
+		expect(siteverify).not.toHaveBeenCalled()
+
+		const verified = await verify(
+			await currentCode(verificationRow),
+			pendingCookie,
+			{ turnstileToken: 'token-from-widget' },
+		)
+		expect(verified.data).toMatchObject({ ok: true })
+		expect(siteverify).toHaveBeenCalledTimes(1)
+	} finally {
+		vi.unstubAllGlobals()
+	}
 })

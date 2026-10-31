@@ -17,16 +17,17 @@ they stayed signed out of the app.
 1. **Plain HTML first.** `/login` and `/verify` (two-factor) accept a normal
    `application/x-www-form-urlencoded` POST and answer with a 303 redirect,
    never JSON. They run the same operations, the same per-IP auth rate limit
-   (origin handler), the honeypot, and Turnstile. Same-origin is required
-   (`Origin`, then `Sec-Fetch-Site`, then `Referer`). Failures come back as a
-   `?formError=` code, never server text. Modern browsers keep the in-page
-   submit. A classic ES5 script (`public/auth-fallback.js`) draws Turnstile when
-   the app never hydrates. Turnstile is not bypassed: with JavaScript fully off
-   it cannot be solved, so the `<noscript>` note sends those visitors to Sign in
-   on another device. Passkeys and social sign-in still need JavaScript; the
-   note says so. The consent page was already a form POST; its "Choose another
-   credential" toggle is now a native `<details>`. `styles.css` adds sRGB
-   fallbacks for browsers without `oklch()`.
+   (origin handler), the honeypot, and Turnstile (the two-factor step checks the
+   honeypot and Turnstile too, before the per-account guess budget). Same-origin
+   is required (`Origin`, then `Sec-Fetch-Site`, then `Referer`). Failures come
+   back as a `?formError=` code, never server text. Modern browsers keep the
+   in-page submit. A classic ES5 script (`public/auth-fallback.js`) draws
+   Turnstile when the app never hydrates. Turnstile is not bypassed: with
+   JavaScript fully off it cannot be solved, so the `<noscript>` note sends
+   those visitors to Sign in on another device. Passkeys and social sign-in
+   still need JavaScript; the note says so. The consent page was already a form
+   POST; its "Choose another credential" toggle is now a native `<details>`.
+   `styles.css` adds sRGB fallbacks for browsers without `oklch()`.
 2. **Sign in on another device.** When `/login` is resuming a package-app
    authorize request it offers "Sign in on another device". That reuses the 0082
    device-code machinery (`oauth_device_authorizations`, user codes, 10 minute

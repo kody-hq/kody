@@ -1,4 +1,5 @@
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
+import { checkPublicFormProtection } from '#app/public-form-protection.ts'
 import { authOperationResult } from './auth-operation-result.ts'
 import { object, parseSafe, string } from 'remix/data-schema'
 import {
@@ -57,6 +58,16 @@ export async function verifyWebsiteTwoFactor({
 				error: 'Your verification session expired. Please log in again.',
 			},
 			401,
+		)
+	}
+
+	// Same honeypot and Turnstile gate as password sign-in, checked before the
+	// per-account guess budget so automated submits cannot burn it.
+	const protection = await checkPublicFormProtection({ env, request, body })
+	if (!protection.ok) {
+		return authOperationResult(
+			{ ok: false, error: protection.error },
+			protection.status ?? 400,
 		)
 	}
 
