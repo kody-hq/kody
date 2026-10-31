@@ -126,7 +126,11 @@ async function buildCollaboratorsView(
 		listPackageCollaborators(target),
 		scope.personal ? listPendingPackageInvites(target) : Promise.resolve([]),
 		viewerId && (await isProfilesEnabledFor(db, viewerId, scope.org.id))
-			? listGrantableProfiles({ db, orgId: scope.org.id, actingUserId: viewerId })
+			? listGrantableProfiles({
+					db,
+					orgId: scope.org.id,
+					actingUserId: viewerId,
+				})
 			: Promise.resolve(null),
 	])
 	return {

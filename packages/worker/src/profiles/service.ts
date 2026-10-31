@@ -174,9 +174,7 @@ async function loadAuthorizedChain(
 		profileId,
 	})
 	if (chain.length === 0) notFound()
-	if (
-		!canActOnProfile({ actor: caller.actor, targetChain: chain, action })
-	) {
+	if (!canActOnProfile({ actor: caller.actor, targetChain: chain, action })) {
 		// Reading someone else's profile is indistinguishable from a miss.
 		if (action === 'read') notFound()
 		throw new ProfileError({

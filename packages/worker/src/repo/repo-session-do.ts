@@ -1,3 +1,5 @@
+import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { isUserCodeError } from '#worker/user-code-error.ts'
@@ -3871,6 +3873,8 @@ class RepoSessionBase extends DurableObject<Env> {
 		allowLockedPublish?: boolean
 		credentialNeedsApproved?: boolean
 		requestedByUserId?: string | null
+		/** The publishing request; a profile-bound one must reach every import. */
+		publisherRequest?: RequestContext | null
 		promotePublished?: boolean
 		/** Refuse unless the session still holds exactly this commit. */
 		expectedHeadCommit?: string
@@ -3986,10 +3990,17 @@ class RepoSessionBase extends DurableObject<Env> {
 				pausedSessionMovedMessage(input.sessionId, input.expectedHeadCommit),
 			)
 		}
-		await this.readManifestFromWorkspace(
+		const sessionManifest = await this.readManifestFromWorkspace(
 			source.manifest_path,
 			input.expectedPackageScope,
 		)
+		await assertProfileCanPublishImports({
+			env: this.env,
+			request: input.publisherRequest,
+			ownerUserId: input.userId,
+			packageName: sessionManifest.name,
+			dependencies: sessionManifest.kody?.dependencies,
+		})
 		await (
 			await this.ensureGit()
 		).push({
@@ -4445,6 +4456,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		allowLockedPublish?: boolean
 		credentialNeedsApproved?: boolean
 		requestedByUserId?: string | null
+		publisherRequest?: RequestContext | null
 		deferBundleCheckToRebuild?: boolean
 		resumeFinalize?: boolean
 	}): Promise<RepoExternalPublishResult> {
@@ -4501,6 +4513,7 @@ class RepoSessionBase extends DurableObject<Env> {
 				allowLockedPublish: input.allowLockedPublish,
 				credentialNeedsApproved: input.credentialNeedsApproved,
 				requestedByUserId: input.requestedByUserId,
+				publisherRequest: input.publisherRequest ?? null,
 				phaseTimings,
 				...(recordCheckStep ? { onCheckStep: recordCheckStep } : {}),
 				...(input.deferBundleCheckToRebuild

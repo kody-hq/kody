@@ -1,3 +1,5 @@
+import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
 import * as Sentry from '@sentry/cloudflare'
@@ -395,6 +397,8 @@ export async function publishFromExternalRef(input: {
 	/** The owner approved this commit's credential needs (or a platform rewrite). */
 	credentialNeedsApproved?: boolean
 	requestedByUserId?: string | null
+	/** The publishing request; a profile-bound one must reach every import. */
+	publisherRequest?: RequestContext | null
 	phaseTimings?: PublishPhaseTimings
 	/** Records each check step so a resource reset can name it. */
 	onCheckStep?: (step: RepoCheckStep) => Promise<void>
@@ -518,6 +522,13 @@ export async function publishFromExternalRef(input: {
 	if (!checkedManifest) {
 		throw new Error('Publish checks passed without a parsed package.json.')
 	}
+	await assertProfileCanPublishImports({
+		env: input.env,
+		request: input.publisherRequest,
+		ownerUserId: input.userId,
+		packageName: checkedManifest.name,
+		dependencies: checkedManifest.kody?.dependencies,
+	})
 	// input.files (clone collectFiles) is keyed relative to the repo, while
 	// input.sourceRoot is workspace-prefixed, so scope clone maps by the stored
 	// repo-relative root. checks.sourceFiles is already package-relative.

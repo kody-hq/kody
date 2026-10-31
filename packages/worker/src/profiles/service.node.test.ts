@@ -81,10 +81,10 @@ test('a person creates a profile with a snapshot of their own access', async () 
 test('a profile cannot get access its creator lacks', async () => {
 	const { callerFor } = setup()
 	await expect(
-		createProfile(
-			callerFor({ holds: (_t, _id, p) => p === 'package:read' }),
-			{ name: 'bot', grants: readExecute },
-		),
+		createProfile(callerFor({ holds: (_t, _id, p) => p === 'package:read' }), {
+			name: 'bot',
+			grants: readExecute,
+		}),
 	).rejects.toMatchObject({ code: 'profile_grant_exceeds_caller' })
 })
 
@@ -263,9 +263,7 @@ test('offboarding revokes a member’s profiles and purge removes them with thei
 		now: '2026-01-01T00:00:00.000Z',
 	})
 	expect(
-		count(
-			`SELECT COUNT(*) AS n FROM profiles WHERE revoked_at IS NOT NULL`,
-		),
+		count(`SELECT COUNT(*) AS n FROM profiles WHERE revoked_at IS NOT NULL`),
 	).toBe(2)
 	await purgeProfiles(db, { now: new Date('2026-01-15T00:00:00.000Z') })
 	expect(count(`SELECT COUNT(*) AS n FROM profiles`)).toBe(3)

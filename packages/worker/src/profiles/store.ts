@@ -318,6 +318,8 @@ export async function purgeProfiles(
 	await db
 		.prepare(`DELETE FROM grant_permissions WHERE grant_id IN (${orphans})`)
 		.run()
-	const grants = await db.prepare(`DELETE FROM grants WHERE id IN (${orphans})`).run()
+	const grants = await db
+		.prepare(`DELETE FROM grants WHERE id IN (${orphans})`)
+		.run()
 	return { profiles, grants: grants.meta.changes ?? 0 }
 }

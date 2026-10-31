@@ -163,3 +163,51 @@ test('unprofiled access is unchanged', () => {
 		kind: 'all',
 	})
 })
+
+test('a publish-time import denial names the blocking layer', () => {
+	const imported: OrgResource = {
+		type: 'package',
+		id: 'pkg-1',
+		orgId,
+		label: '@acme/lib',
+	}
+	const selfMissing = checkPermission(
+		access({
+			inactive: null,
+			layers: [
+				layer('helper', true, {}),
+				layer('agent', false, both(['package:execute'])),
+			],
+		}),
+		'package:execute',
+		imported,
+	)
+	expect(selfMissing).toMatchObject({ allowed: false })
+	if (!selfMissing.allowed) {
+		expect(selfMissing.error.message).toContain('Profile "helper"')
+		expect(selfMissing.error.message).toContain('@acme/lib')
+	}
+	const ancestorMissing = checkPermission(
+		access({
+			inactive: null,
+			layers: [
+				layer('helper', true, both(['package:execute'])),
+				layer('agent', false, {}),
+			],
+		}),
+		'package:execute',
+		imported,
+	)
+	if (!ancestorMissing.allowed) {
+		expect(ancestorMissing.error.message).toContain('Parent profile "agent"')
+	} else {
+		throw new Error('expected the ancestor to block the import')
+	}
+	expect(
+		checkPermission(
+			access({ inactive: null, layers: [] }, { profileChain: null }),
+			'package:execute',
+			imported,
+		).allowed,
+	).toBe(true)
+})

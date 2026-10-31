@@ -162,9 +162,21 @@ export type RequestedProfileGrant = {
 }
 
 export type ProfileGrantRefusal =
-	| { code: 'profile_grant_not_allowed'; grant: RequestedProfileGrant; permission?: OrgPermission }
-	| { code: 'profile_grant_exceeds_caller'; grant: RequestedProfileGrant; permission: OrgPermission }
-	| { code: 'profile_grant_exceeds_parent'; grant: RequestedProfileGrant; permission: OrgPermission }
+	| {
+			code: 'profile_grant_not_allowed'
+			grant: RequestedProfileGrant
+			permission?: OrgPermission
+	  }
+	| {
+			code: 'profile_grant_exceeds_caller'
+			grant: RequestedProfileGrant
+			permission: OrgPermission
+	  }
+	| {
+			code: 'profile_grant_exceeds_parent'
+			grant: RequestedProfileGrant
+			permission: OrgPermission
+	  }
 
 /** A credential grant uses the family of its permission (`secret` or `integration`). */
 function permissionFamily(
@@ -227,7 +239,9 @@ export function checkProfileGrants(input: {
 			return { code: 'profile_grant_not_allowed', grant }
 		}
 		for (const permission of grant.permissions) {
-			if (!isGrantablePermission(permissionFamily(grant, permission), permission)) {
+			if (
+				!isGrantablePermission(permissionFamily(grant, permission), permission)
+			) {
 				return { code: 'profile_grant_not_allowed', grant, permission }
 			}
 			if (input.parentGrants) {
@@ -238,7 +252,9 @@ export function checkProfileGrants(input: {
 					return { code: 'profile_grant_exceeds_parent', grant, permission }
 				}
 			}
-			if (!input.callerHolds(grant.resourceType, grant.resourceId, permission)) {
+			if (
+				!input.callerHolds(grant.resourceType, grant.resourceId, permission)
+			) {
 				return { code: 'profile_grant_exceeds_caller', grant, permission }
 			}
 		}

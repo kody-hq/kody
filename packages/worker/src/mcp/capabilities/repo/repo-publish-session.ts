@@ -101,6 +101,7 @@ export const repoPublishSessionCapability = defineDomainCapability(
 					sessionId: args.session_id,
 					userId: owner.ownerUserId,
 					requestedByUserId: ctx.callerContext.user?.userId ?? null,
+					publisherRequest: ctx.callerContext.request ?? null,
 					rebuildPackageArtifacts: false,
 					expectedPackageScope: isPackageSession ? owner.ownerScope : undefined,
 					privateVisibilityChangeConfirmed:

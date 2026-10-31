@@ -148,7 +148,9 @@ test('a profile that creates a package gets manage too, alongside its person', a
 	expect(await grantCreatorAccess(input)).toEqual({ granted: 0 })
 	const rows = liveGrants(sqlite) as Array<Record<string, string>>
 	expect(
-		rows.map((row) => `${row.resource_type}:${row.subject_type}:${row.origin}`).sort(),
+		rows
+			.map((row) => `${row.resource_type}:${row.subject_type}:${row.origin}`)
+			.sort(),
 	).toEqual([
 		'app:profile:created',
 		'app:user:created',
