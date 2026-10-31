@@ -169,7 +169,7 @@ you only have the MCP URL.
   [OAuth over SSH guide](https://hermes-agent.nousresearch.com/docs/guides/oauth-over-ssh)
   and
   [MCP docs](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp).
-- **Muse** — [Muse Code](https://dev.meta.ai/docs/muse-code/) reads MCP from
+- **Muse Code** — [Muse Code](https://dev.meta.ai/docs/muse-code/) reads MCP from
   `~/.config/muse/settings.json` under `mcp_servers`. Add a remote
   `streamable_http` server with this deployment’s MCP URL (see
   [Muse extending docs](https://dev.meta.ai/docs/muse-code/extending/)), then
@@ -177,6 +177,26 @@ you only have the MCP URL.
   chat — that runs in Muse's Linux VM and cannot configure Muse. After OAuth
   succeeds, headless Muse may ask you to paste a localhost URL into the Muse
   chat.
+- **Muse chat** — The Meta Muse assistant at agent.meta.ai has no native MCP
+  settings screen. Ask Muse to create a custom connector for this
+  deployment’s MCP URL (Streamable HTTP, OAuth, scopes `openid profile
+  email`, resource set to the MCP URL). Muse's custom-connector flow asks
+  for a Client ID and Client Secret, so pre-register a confidential client
+  at Workspace → Agents → Advanced → MCP OAuth clients, with the redirect
+  URI exactly `https://agent.meta.ai/api/hatch/oauth/callback`. Enter the
+  ID and Secret only in Muse's Secure credentials store, never in chat.
+  See [Connect Muse chat to Kody](/docs/muse-chat) for the full walkthrough.
+  Prove the connection by asking Muse to list tools, then run
+  `search({ entity: "guide:onboarding" })`. Allowlist `search` before any
+  other tool; do not allowlist `api`, and treat `execute` as a separate
+  opt-in. If list-tools returns a Cloudflare 1010 error, read the error
+  body. The response may indicate that the edge blocked the client's
+  signature before the request reached Kody. Cloudflare recommends a
+  descriptive User-Agent instead of a library default. If Muse does not
+  provide a way to configure that header, contact the deployment owner to
+  review the Cloudflare rule. An Agents
+  entry for Muse may be Muse Code, not Muse chat; read its connect steps
+  before concluding Muse chat is granted.
 - **Wajo** — [Wajo](https://wajo.ai) (Fo) connects ChatGPT and Claude through
   Wajo sign-in. Paste the MCP URL where Wajo asks for a custom MCP server, then
   complete OAuth.
