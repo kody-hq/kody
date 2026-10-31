@@ -33,7 +33,7 @@ test('success and error pages say what happened and what to do next', () => {
 	assert.match(success.html, /data-tone="success"/)
 	assert.match(success.html, /<h1 id="title">You’re signed in<\/h1>/)
 	assert.match(success.html, /Head back to the Kody app/)
-	for (const kind of ['failed', 'invalid']) {
+	for (const kind of ['failed', 'denied', 'invalid']) {
 		const page = renderCallbackPage(kind)
 		assert.equal(page.status, 400)
 		assert.match(page.html, /data-tone="error"/)

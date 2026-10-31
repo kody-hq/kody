@@ -100,3 +100,24 @@ test('a failed exchange shows the retry page without request values', async () =
 	assert.doesNotMatch(page, /exchange failed/)
 	await rejected
 })
+test('a browser denial ends the attempt only when state matches', async () => {
+	let calls = 0
+	const { attempt, ready } = setup(async () => calls++)
+	const url = await ready
+	const callback = new URL(url.searchParams.get('callback'))
+	callback.search = new URLSearchParams({
+		state: 'wrong',
+		error: 'access_denied',
+	}).toString()
+	const mismatch = await fetch(callback)
+	assert.equal(mismatch.status, 400)
+	assert.match(await mismatch.text(), /This sign-in link isn’t valid/)
+	callback.searchParams.set('state', url.searchParams.get('state'))
+	const rejected = assert.rejects(attempt.result, /canceled\. Please try again/)
+	const denied = await fetch(callback)
+	assert.equal(denied.status, 400)
+	assert.match(await denied.text(), /Sign-in was canceled/)
+	await rejected
+	assert.equal(calls, 0)
+	await assert.rejects(fetch(callback))
+})

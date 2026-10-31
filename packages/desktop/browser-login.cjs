@@ -57,6 +57,22 @@ function browserLogin({ origin, mode, openExternal, exchange }) {
 			sendPage(response, 'busy')
 			return
 		}
+		// A browser-side refusal (OAuth-style `error`) ends this attempt early.
+		if (url.searchParams.has('error')) {
+			const denied = url.searchParams.get('error') === 'access_denied'
+			redeeming = true
+			server.close()
+			sendPage(response, denied ? 'denied' : 'failed', () =>
+				finish(
+					new Error(
+						denied
+							? 'Browser sign-in was canceled. Please try again.'
+							: 'Could not complete browser sign-in. Please try again.',
+					),
+				),
+			)
+			return
+		}
 		if (!/^[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('code') || '')) {
 			sendPage(response, 'invalid')
 			return

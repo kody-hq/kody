@@ -17,6 +17,13 @@ const pages = {
 		body: 'Kody couldn’t complete sign-in. The request may have expired or been interrupted.',
 		hint: 'Return to the Kody app and choose Sign in to try again.',
 	},
+	denied: {
+		status: 400,
+		tone: 'error',
+		title: 'Sign-in was canceled',
+		body: 'Kody desktop wasn’t given access to your account.',
+		hint: 'Return to the Kody app and choose Sign in to try again.',
+	},
 	invalid: {
 		status: 400,
 		tone: 'error',
