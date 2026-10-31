@@ -108,7 +108,9 @@ Usage:
   Profiles (scoped identities for your agents and sub-agents) are an
   experiment too: turn it on at https://kody.codes/account/experiments, then
   \`kody execute\` a module that calls \`profileCreate\`, \`profileList\`, or
-  \`profileRevoke\` (guide: https://kody.codes/docs/profiles).
+  \`profileRevoke\`, and share a package with one through
+  \`packageCollaboratorSet\` with \`profile_id\` (guide:
+  https://kody.codes/docs/profiles).
 
   kody install configures running local MCP clients (Cursor, Claude Desktop,
   VS Code, Goose, and others). For web-based clients (ChatGPT, Claude.ai, Grok),

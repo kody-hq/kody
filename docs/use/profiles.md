@@ -53,6 +53,18 @@ Profiles are an experiment. Turn them on at
 - An org Owner can list and revoke any profile in the org but cannot change
   one.
 
+## Package grants
+
+Share a package from its **Collaborators** tab (**Add one of your profiles**)
+or with `packageCollaboratorSet({ package_id, profile_id, preset })`. A
+sub-profile only gets what its parent holds on that package. Profile grants
+list with `kind: "profile"`.
+
+## Running profile
+
+`whoami` returns `profile: { id, name, ancestors } | null`. It is
+informational; grants enforce access.
+
 ## Grant expiry
 
 Grants to people, teams, and the org can expire too: pass `expires_at` to

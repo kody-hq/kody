@@ -17,8 +17,51 @@ gets more later.
 
 Profiles are an experiment. Turn them on at `/account/experiments` or with
 `experimentSet({ experiment: "profiles", enabled: true })`. In this release you
-can create, list, shorten, and revoke profiles; signing an agent in as a
-profile comes in a later release.
+can create, list, shorten, and revoke profiles, and share packages with them;
+handoff tokens that sign an agent in as a profile come in the next release.
+
+## How access is checked
+
+A request running as a profile reaches something only when all of these allow
+it: your own live access, the profile's grants, every parent profile's grants,
+and the credential's scopes. Being an org Owner does not skip a profile's
+limits. A denial names the layer that blocked it:
+
+- `profile_grant`: `Profile "helper" was not granted package:execute on
+  package @acme/tools` (or `Parent profile "agent" does not hold ...`).
+- `profile_inactive`: the profile or a parent was revoked or expired.
+
+## Share a package with a profile
+
+Open the package's **Collaborators** tab and use **Add one of your profiles**,
+or call:
+
+```ts
+packageCollaboratorSet({
+	package_id: 'pkg_...',
+	profile_id: 'prf_...',
+	preset: 'use',
+})
+```
+
+A sub-profile can only get what its parent already holds on that package, and
+it still never gets more than you. `packageCollaboratorList` shows profile
+grants with `kind: "profile"`; `packageCollaboratorRemove` takes their
+`grant_id`.
+
+## Which profile is running
+
+`whoami` (and `meta_get_current_user`) returns `profile: { id, name,
+ancestors }` when the request runs as a profile, ancestors root first, or
+`null` when it runs as you. Use it to branch behavior, never as a security
+check: grants enforce access.
+
+## What a profile creates
+
+When a request running as a profile creates a package, app, or credential,
+both the profile and you get `manage` on it, so nothing is stranded when the
+profile ends. Publishing under a profile is refused when the profile chain
+cannot run a package the new version imports.
 
 ## Create a profile
 
