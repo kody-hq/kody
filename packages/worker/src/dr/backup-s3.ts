@@ -111,15 +111,19 @@ export function createDrBackupS3Client(
 	 * each attempt: a phantom success that still 412s on retry is handled by
 	 * callers as `DrBackupPreconditionFailedError` (safe skip / resume).
 	 */
-	async function signedFetchWithRetry(key: string, init?: RequestInit) {
+	async function signedFetchWithRetry(
+		key: string,
+		init?: RequestInit,
+		options: { retryConflict?: boolean } = {},
+	) {
 		let lastError: unknown
 		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 			try {
 				const response = await signedFetch(key, init)
-				if (
-					!isTransientDrBackupHttpStatus(response.status) ||
-					attempt === maxAttempts
-				) {
+				const retryable =
+					isTransientDrBackupHttpStatus(response.status) ||
+					(options.retryConflict === true && response.status === 409)
+				if (!retryable || attempt === maxAttempts) {
 					return response
 				}
 				await drainResponseBody(response)
@@ -182,12 +186,16 @@ export function createDrBackupS3Client(
 			if (options.ifNoneMatch) {
 				headers['If-None-Match'] = options.ifNoneMatch
 			}
-			const response = await signedFetchWithRetry(key, {
-				method: 'PUT',
-				headers,
-				body: body as BodyInit,
-			})
-			if (response.status === 412) {
+			// R2 answers a conditional PUT that races another write to the same
+			// key with 409 instead of 412. Retry it; a conflict that outlasts
+			// the retries is the same "someone else wrote it" signal as 412.
+			const conditional = Boolean(options.ifMatch || options.ifNoneMatch)
+			const response = await signedFetchWithRetry(
+				key,
+				{ method: 'PUT', headers, body: body as BodyInit },
+				{ retryConflict: conditional },
+			)
+			if (response.status === 412 || (conditional && response.status === 409)) {
 				throw new DrBackupPreconditionFailedError(key, response.status)
 			}
 			if (!response.ok) {

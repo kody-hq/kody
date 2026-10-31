@@ -54,6 +54,7 @@ import { type RunRecordHandle } from '#worker/run-records/types.ts'
 
 export const executionContextsUnavailableCode = 'execution_contexts_unavailable'
 
+const webSocketOpenState = 1
 const ticketLifetimeMs = 30_000
 const historyRetentionMs = 30 * 24 * 60 * 60 * 1000
 const historyMaxRows = 1_000
@@ -616,6 +617,15 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		body: Record<string, unknown>,
 		re?: number,
 	) {
+		// The peer can close while a frame is being handled. A socket that is
+		// no longer open cannot take the frame; that is not a server failure.
+		if (ws.readyState !== webSocketOpenState) {
+			console.info('execution_context_frame_send_skipped', {
+				frameType: type,
+				readyState: ws.readyState,
+			})
+			return false
+		}
 		let signer: { kid: string; key: CryptoKey } | null
 		try {
 			signer = await this.#frameSigner()

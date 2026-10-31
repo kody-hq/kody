@@ -61,19 +61,30 @@ test('host counts sandbox fetch-record failures as fetch attempts and reports on
 	expect(mocks.captureMessage).not.toHaveBeenCalled()
 
 	noteSandboxFetchRecordFailures(
+		{
+			count: 1,
+			message:
+				'Disallowed operation called within global scope. Asynchronous I/O (ex: fetch() or connect()), setting a timeout, and generating random values are not allowed within global scope.',
+		},
+		sideEffects,
+	)
+	expect(sideEffects.snapshot().fetchAttempts).toBe(1)
+	expect(mocks.captureMessage).not.toHaveBeenCalled()
+
+	noteSandboxFetchRecordFailures(
 		{ count: 2, message: 'RPC stub used after being disposed.' },
 		sideEffects,
 	)
 	expect(sideEffects.snapshot()).toEqual({
 		dispatcherAttempts: 0,
-		fetchAttempts: 2,
+		fetchAttempts: 3,
 	})
 	expect(evaluationHasHostMediatedSideEffects(sideEffects.snapshot())).toBe(
 		true,
 	)
 
 	noteSandboxFetchRecordFailures({ count: 1, message: 'again' }, sideEffects)
-	expect(sideEffects.snapshot().fetchAttempts).toBe(3)
+	expect(sideEffects.snapshot().fetchAttempts).toBe(4)
 	expect(mocks.captureMessage).toHaveBeenCalledTimes(1)
 	expect(mocks.captureMessage).toHaveBeenCalledWith(
 		'Executor fetch-attempt recording failed: RPC stub used after being disposed.',
