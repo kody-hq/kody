@@ -330,7 +330,7 @@ run as anyone.
 
 For example, `@example/app` imports `kody:@example/helper/save-token`, and that
 helper export calls `kody.secretList(...)` and `kody.secretSet(...)`. Those
-calls run while `@example/app` runs, so today `@example/app` lists both, even
+calls run while `@example/app` runs, so `@example/app` must list both, even
 though its own code never calls them:
 
 ```json
@@ -346,12 +346,12 @@ though its own code never calls them:
 }
 ```
 
-Without them the call cannot run as the runs-as person. For now it may still run
-under the visitor's authority (see the temporary fallback below); when that also
-fails, the app gets `PackageAppCapabilityNotDeclaredError`, which names the app
-(package name and version), the imported package that made the call, and the
-capability to add. Add it to the importing app's `kody.app.capabilities` and
-republish the app.
+Without them the call cannot run as the runs-as person. If that attempt fails
+for a missing capability, Kody may retry the call under the visitor's authority.
+When that also fails, the app gets `PackageAppCapabilityNotDeclaredError`, which
+names the app (package name and version), the imported package that made the
+call, and the capability to add. Add it to the importing app's
+`kody.app.capabilities` and republish the app. Do not depend on the retry.
 
 `kody.app.visitorNeeds` is how an app works on a signed-in visitor's own data.
 Each key is its own Sign in with Kody consent scope, `need:<key>`, and the
@@ -415,11 +415,11 @@ reported as `credential_unbound`. Keep publisher-supplied needs on
 
 If a bridge call fails as the runs-as person for an authority reason (a
 capability missing from `kody.app.capabilities`, an unavailable runs-as person,
-a permission or credential refusal), the platform retries it the legacy way: as
-the visitor, or anonymously when there is none. When that works, it logs a
+a permission or credential refusal), the platform retries as the visitor, or
+anonymously when there is none. When that works, it logs a
 `package_app_authority_fallback` event with the app, the call name, and the kind
 of difference. Any other failure throws as is, with no retry. Add what the logs
-name to the manifest; do not rely on the fallback. When the legacy retry also
+name to the manifest; do not rely on the retry. When the visitor retry also
 fails, the app gets the runs-as error. Only when that error is the "not listed
 in `kody.app.capabilities`" one (`PackageAppCapabilityNotDeclaredError`) does
 the platform also log a `package_app_authority_rejection` event. Admins count

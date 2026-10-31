@@ -93,7 +93,8 @@ the context, so the daemon starts at login or boot and restarts after a crash:
   `sudo loginctl enable-linger "$(id -un)"`. Kody prints that command instead of
   running it.
 - **macOS:** a per-user LaunchAgent, so it runs while you are logged in.
-- **Windows:** not supported yet. Keep `kody daemon` running in a terminal.
+- **Windows:** no background service. Keep `kody daemon` running in a terminal.
+  Host commands stay off.
 
 | Command                                        | What it does                                         |
 | ---------------------------------------------- | ---------------------------------------------------- |

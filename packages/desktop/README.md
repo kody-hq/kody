@@ -2,7 +2,8 @@
 
 A thin Electron shell that loads https://kody.codes/account and supervises the
 existing CLI execution context daemon. Website releases update the UI without a
-desktop release. Shell and CLI automatic updates are planned, not implemented.
+desktop release. The shell does not auto-update. Update the bundled CLI with
+`kody update` on the machine.
 
 ```sh
 npm install
@@ -51,11 +52,11 @@ dependencies keep their normal Node build, not an Electron rebuild.
 
 ## Platform support
 
-The shell targets macOS, Windows, and Linux. Local execution currently supports
-**macOS and Linux on x64 or arm64**, matching the CLI's pinned workerd
-downloads. Windows registration is available, but starting the runner is
-disabled until the CLI supports a Windows execution runtime. Native Apple app
-access is not part of this wrapper, it needs specific permissioned capabilities.
+The shell targets macOS, Windows, and Linux. Local execution supports **macOS
+and Linux on x64 or arm64**, matching the CLI's pinned workerd downloads.
+Windows registration is available. The desktop runner and host commands stay
+off: the CLI has no Windows execution runtime. Native Apple app access is not
+part of this wrapper, it needs specific permissioned capabilities.
 
 ## Host commands
 
