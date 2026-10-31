@@ -46,3 +46,19 @@ test('both signing providers and all release platforms match the pinned builder 
 		}
 	}
 })
+
+test('Mac releases do not require unused Windows Azure settings', async () => {
+	const env = Object.fromEntries(
+		[
+			'CSC_LINK',
+			'CSC_KEY_PASSWORD',
+			'APPLE_API_KEY',
+			'APPLE_API_KEY_ID',
+			'APPLE_API_ISSUER',
+		].map((name) => [name, 'test-only-placeholder']),
+	)
+	env.KODY_WINDOWS_SIGNING_PROVIDER = 'azure'
+	await validateConfiguration(configuration('darwin', env), {
+		isEnabled: false,
+	})
+})

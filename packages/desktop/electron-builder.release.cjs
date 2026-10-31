@@ -1,5 +1,7 @@
 const config = require('./electron-builder.cjs')
-const azure = process.env.KODY_WINDOWS_SIGNING_PROVIDER === 'azure'
+const azure =
+	process.platform === 'win32' &&
+	process.env.KODY_WINDOWS_SIGNING_PROVIDER === 'azure'
 if (
 	process.platform === 'win32' &&
 	!['certificate', 'azure'].includes(

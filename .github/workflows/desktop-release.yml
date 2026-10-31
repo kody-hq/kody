@@ -2,6 +2,12 @@ name: Desktop release
 
 on:
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: Platforms to publish, use all after adding Windows or Linux
+        type: choice
+        options: [mac, all]
+        default: mac
 
 permissions:
   contents: read
@@ -15,9 +21,16 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment: desktop-release
     runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.check.outputs.matrix }}
     steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
       - name: Check release credentials
+        id: check
         env:
+          RELEASE_PLATFORMS: ${{ inputs.platforms }}
           DESKTOP_MAC_CERTIFICATE_BASE64:
             ${{ secrets.DESKTOP_MAC_CERTIFICATE_BASE64 }}
           DESKTOP_MAC_CERTIFICATE_PASSWORD:
@@ -41,41 +54,14 @@ jobs:
           DESKTOP_AZURE_ACCOUNT: ${{ vars.DESKTOP_AZURE_ACCOUNT }}
           DESKTOP_AZURE_PROFILE: ${{ vars.DESKTOP_AZURE_PROFILE }}
           DESKTOP_RELEASE_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
-        run: |
-          node <<'JS'
-          const provider = process.env.DESKTOP_WINDOWS_SIGNING_PROVIDER || 'certificate'
-          if (!['certificate', 'azure'].includes(provider)) throw new Error('Unsupported Windows signing provider')
-          const required = ['DESKTOP_MAC_CERTIFICATE_BASE64', 'DESKTOP_MAC_CERTIFICATE_PASSWORD', 'DESKTOP_APPLE_API_KEY_BASE64', 'DESKTOP_APPLE_API_KEY_ID', 'DESKTOP_APPLE_API_ISSUER', 'DESKTOP_WINDOWS_PUBLISHER', 'DESKTOP_RELEASE_TOKEN']
-          required.push(...(provider === 'azure' ? ['DESKTOP_AZURE_TENANT_ID', 'DESKTOP_AZURE_CLIENT_ID', 'DESKTOP_AZURE_CLIENT_SECRET', 'DESKTOP_AZURE_ENDPOINT', 'DESKTOP_AZURE_ACCOUNT', 'DESKTOP_AZURE_PROFILE'] : ['DESKTOP_WINDOWS_CERTIFICATE_BASE64', 'DESKTOP_WINDOWS_CERTIFICATE_PASSWORD']))
-          const missing = required.filter(name => !process.env[name])
-          if (missing.length) { console.error('Configure desktop-release environment: ' + missing.join(', ')); process.exit(1) }
-          JS
+        run: node packages/desktop/scripts/release-plan.cjs
   build:
     needs: credentials
     if: github.ref == 'refs/heads/main'
     environment: desktop-release
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: mac
-            arch: arm64
-            runner: macos-15
-          - platform: mac
-            arch: x64
-            runner: macos-15-intel
-          - platform: win
-            arch: x64
-            runner: windows-latest
-          - platform: win
-            arch: arm64
-            runner: windows-11-arm
-          - platform: linux
-            arch: x64
-            runner: ubuntu-24.04
-          - platform: linux
-            arch: arm64
-            runner: ubuntu-24.04-arm
+      matrix: ${{ fromJSON(needs.credentials.outputs.matrix) }}
     name: Release ${{ matrix.platform }} ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
@@ -210,11 +196,14 @@ jobs:
           GH_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
           GH_REPO: kody-hq/kody-desktop
           SOURCE_SHA: ${{ github.sha }}
+          RELEASE_PLATFORMS: ${{ inputs.platforms }}
         run: |
           version=$(node -p 'require("./packages/desktop/package.json").version')
           tag="v$version"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Desktop releases must use a stable version.'; exit 1; }
-          if latest=$(gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name' 2> release-lookup-error.txt); then
+          if latest_json=$(gh api "repos/$GH_REPO/releases/latest" 2> release-lookup-error.txt); then
+            latest=$(printf '%s' "$latest_json" | node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(0,"utf8")).tag_name)')
+            printf '%s' "$latest_json" | node packages/desktop/scripts/release-plan.cjs --check-feed
             [[ "$latest" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Unexpected published desktop tag.'; exit 1; }
             newest=$(printf '%s\n%s\n' "$version" "${latest#v}" | sort -V | tail -n 1)
             test "$newest" = "$version" && test "$version" != "${latest#v}" || { echo 'Bump the desktop version above the published release.'; exit 1; }

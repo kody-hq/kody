@@ -174,15 +174,22 @@ retry without interrupting the app. Development builds never check for updates.
 Updates do not downgrade or install prereleases.
 
 Run **Desktop release** manually on main after bumping the desktop package
-version and lockfile. All six builds must succeed before publishing. macOS
-builds require Developer ID signing, Apple's notarization service, and a valid
-stapled ticket. Windows builds require valid signatures on the application and
-installer. The final job uploads all installers, blockmaps, manifests, and
-checksums to a draft, then publishes it. Published versions cannot be replaced.
-The normal Desktop binaries workflow still produces unsigned CI artifacts.
+version and lockfile. The default `mac` scope builds Apple silicon and Intel Mac
+installers without requiring a Windows signing account. Choose `all` to add
+Windows and Linux later. Once those platforms have been published, future
+releases must keep choosing `all` so their update feeds stay available. Every
+selected build must succeed before publishing. macOS builds require Developer ID
+signing, Apple's notarization service, and a valid stapled ticket. Windows
+builds require valid signatures on the application and installer. The final job
+uploads all installers, blockmaps, manifests, and checksums to a draft, then
+publishes it. Published versions cannot be replaced. The normal Desktop binaries
+workflow still produces unsigned CI artifacts.
 
 A repository admin must create the `desktop-release` GitHub environment in
-`kody-hq/kody`, restrict its deployment branches to main, and configure:
+`kody-hq/kody` and restrict its deployment branches to main. The first Mac
+release needs the five Apple secrets and publishing token below. Windows
+certificate secrets and the Windows publisher variable are only required for
+`all` releases.
 
 | Secret                                 | Value                                                                        |
 | -------------------------------------- | ---------------------------------------------------------------------------- |
