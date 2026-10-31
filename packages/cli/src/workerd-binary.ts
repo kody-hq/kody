@@ -224,7 +224,13 @@ async function fetchAndWrite(input: {
 			createWriteStream(partialPath),
 		)
 		await chmod(partialPath, 0o755)
-		await rename(partialPath, input.destination)
+		try {
+			await rename(partialPath, input.destination)
+		} catch (error) {
+			// A concurrent download won the race. Windows refuses to replace a
+			// running workerd.exe; the pinned digest makes their copy identical.
+			if (!existsSync(input.destination)) throw error
+		}
 	} finally {
 		await rm(gzipPath, { force: true })
 		await rm(partialPath, { force: true })
