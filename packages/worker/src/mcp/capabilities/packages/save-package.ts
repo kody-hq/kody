@@ -339,6 +339,13 @@ export const savePackageCapability = defineDomainCapability(
 					}),
 				)
 			}
+			await assertProfileCanPublishImports({
+				env: ctx.env,
+				request: ctx.callerContext.request,
+				ownerUserId: owner.ownerUserId,
+				packageName: lookupManifest.name,
+				dependencies: lookupManifest.kody.dependencies,
+			})
 			const canonicalExistingSource =
 				existing == null
 					? null
@@ -406,13 +413,6 @@ export const savePackageCapability = defineDomainCapability(
 					throw error
 				}
 			}
-			await assertProfileCanPublishImports({
-				env: ctx.env,
-				request: ctx.callerContext.request,
-				ownerUserId: owner.ownerUserId,
-				packageName: lookupManifest.name,
-				dependencies: lookupManifest.kody.dependencies,
-			})
 			await reportCapabilityProgress(ctx.reportProgress, {
 				progress: 1,
 				total: 4,

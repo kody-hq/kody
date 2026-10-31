@@ -200,26 +200,43 @@ export async function listPackageProfileGrants(input: {
 		grant.permissions.push(row.permission)
 	}
 	const grants = [...byGrant.values()]
+	const inactive = await inactiveProfileChains(input.db, {
+		orgId: input.orgId,
+		profileIds: grants.filter((g) => g.active).map((g) => g.profileId),
+		now,
+	})
 	for (const grant of grants) {
-		if (!grant.active) continue
-		grant.active = await isProfileChainActive(input.db, {
-			orgId: input.orgId,
-			profileId: grant.profileId,
-			now,
-		})
+		if (inactive.has(grant.profileId)) grant.active = false
 	}
 	return grants
 }
 
-async function isProfileChainActive(
+/**
+ * The given profiles whose chain holds a revoked or expired row, in one
+ * recursive query however many profiles are passed.
+ */
+async function inactiveProfileChains(
 	db: D1Database,
-	input: { orgId: string; profileId: string; now: string },
-) {
-	const chain = await loadProfileChain(db, {
-		orgId: input.orgId,
-		profileId: input.profileId,
-	})
-	return profileStatus(chain, input.now) === 'active'
+	input: { orgId: string; profileIds: Array<string>; now: string },
+): Promise<Set<string>> {
+	if (input.profileIds.length === 0) return new Set()
+	const result = await db
+		.prepare(
+			`WITH RECURSIVE walk(start_id, parent_profile_id, revoked_at, expires_at) AS (
+			   SELECT id, parent_profile_id, revoked_at, expires_at FROM profiles
+			   WHERE org_id = ? AND id IN (SELECT value FROM json_each(?))
+			   UNION ALL
+			   SELECT w.start_id, p.parent_profile_id, p.revoked_at, p.expires_at
+			   FROM profiles p JOIN walk w ON p.id = w.parent_profile_id
+			   WHERE p.org_id = ?
+			 )
+			 SELECT DISTINCT start_id FROM walk
+			 WHERE revoked_at IS NOT NULL
+			    OR (expires_at IS NOT NULL AND expires_at <= ?)`,
+		)
+		.bind(input.orgId, JSON.stringify(input.profileIds), input.orgId, input.now)
+		.all<{ start_id: string }>()
+	return new Set(result.results.map((row) => row.start_id))
 }
 
 /** The viewer's own active profiles in the org, for the "Add a profile" picker. */
@@ -238,17 +255,10 @@ export async function listGrantableProfiles(input: {
 		)
 		.bind(input.orgId, input.actingUserId, now)
 		.all<{ id: string; name: string; depth: number }>()
-	const active = []
-	for (const row of result.results) {
-		if (
-			await isProfileChainActive(input.db, {
-				orgId: input.orgId,
-				profileId: row.id,
-				now,
-			})
-		) {
-			active.push(row)
-		}
-	}
-	return active
+	const inactive = await inactiveProfileChains(input.db, {
+		orgId: input.orgId,
+		profileIds: result.results.map((row) => row.id),
+		now,
+	})
+	return result.results.filter((row) => !inactive.has(row.id))
 }

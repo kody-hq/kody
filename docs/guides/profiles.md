@@ -14,7 +14,8 @@ audience: agents
 A profile is an identity in one org that an agent or bot acts as instead of
 acting as you. You decide its starting access when you create it. It gets more
 only when someone explicitly grants it something, such as sharing a package with
-it, and never more than you and its parents hold.
+it, or when it creates something and gets the creator grant on it. It never
+holds more than you and its parents hold.
 
 Profiles are an experiment. Turn them on at `/account/experiments` or with
 `experimentSet({ experiment: "profiles", enabled: true })`. In this release you
