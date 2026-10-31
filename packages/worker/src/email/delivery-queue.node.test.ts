@@ -219,3 +219,39 @@ test('delivery queue handles terminal outcomes without a D1-to-Mailbox graph mir
 		expect.any(Error),
 	)
 })
+
+test('an event held by another delivery retries after the claim window', async () => {
+	consoleError.mockImplementation(() => {})
+	const { DeliverabilityEffectsClaimHeldError, deliverabilityEffectsClaimMs } =
+		await import('./deliverability-side-effects.ts')
+	mocks.processCloudflareEmailDeliveryEvent.mockRejectedValueOnce(
+		new DeliverabilityEffectsClaimHeldError('event-held'),
+	)
+	const queued = {
+		id: 'queue-held',
+		timestamp: new Date('2026-07-17T20:00:00.000Z'),
+		body: { kind: 'held' },
+		attempts: 1,
+		ack: vi.fn(),
+		retry: vi.fn(),
+	}
+	await handleEmailDeliveryQueue(
+		{
+			queue: 'kody-email-delivery',
+			messages: [queued],
+			ackAll() {},
+			retryAll() {},
+		} as unknown as MessageBatch<unknown>,
+		{ APP_DB: { prepare: vi.fn() } } as unknown as Env,
+		{
+			waitUntil() {},
+			passThroughOnException() {},
+		} as unknown as ExecutionContext,
+	)
+	expect(queued.ack).not.toHaveBeenCalled()
+	const delaySeconds = (
+		queued.retry.mock.calls[0] as unknown as [{ delaySeconds: number }]
+	)[0].delaySeconds
+	// The consumer allows 3 retries; together they must outlast the claim.
+	expect(delaySeconds * 3 * 1000).toBeGreaterThan(deliverabilityEffectsClaimMs)
+})

@@ -100,7 +100,13 @@ export async function lookupMxViaDoh(
 		return { mxHosts: [], ttlSeconds: emailMxLookupNegativeTtlSeconds }
 	}
 
-	const payload = (await response.json()) as DohMxResponse
+	let payload: DohMxResponse
+	try {
+		payload = (await response.json()) as DohMxResponse
+	} catch (error) {
+		console.warn('email-mx-doh-parse-failed', error)
+		return { mxHosts: [], ttlSeconds: emailMxLookupNegativeTtlSeconds }
+	}
 	const answers = Array.isArray(payload.Answer) ? payload.Answer : []
 	const mxHosts: Array<string> = []
 	let minTtl = emailMxLookupCacheTtlSeconds

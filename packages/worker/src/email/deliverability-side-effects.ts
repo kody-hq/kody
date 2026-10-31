@@ -24,15 +24,28 @@ import {
 	recordVerificationRecipientHardBounce,
 } from './verification-recipient-suppression.ts'
 
-const deliverabilityEffectsClaimMs = 2 * 60 * 1000
+export const deliverabilityEffectsClaimMs = 2 * 60 * 1000
 
-function isMissingPolicyTableError(error: unknown) {
+/** Another delivery of the same event holds the ledger claim. */
+export class DeliverabilityEffectsClaimHeldError extends Error {
+	constructor(providerEventId: string) {
+		super(
+			`Deliverability side effects for provider event ${providerEventId} are being applied by another delivery`,
+		)
+		this.name = 'DeliverabilityEffectsClaimHeldError'
+	}
+}
+
+function isMissingPolicyTableError(
+	error: unknown,
+	input: { anySqliteError?: boolean } = {},
+) {
 	const message = error instanceof Error ? error.message : String(error)
 	// Pre-migration / stripped workers fixtures omit policy tables.
 	return (
 		error instanceof TypeError ||
 		/no such table/i.test(message) ||
-		/SQLITE_ERROR/i.test(message)
+		(input.anySqliteError === true && /SQLITE_ERROR/i.test(message))
 	)
 }
 
@@ -86,9 +99,7 @@ export async function applyDeliverabilitySideEffectsOnce(input: {
 			.bind(input.providerEventId)
 			.first<{ applied_at: string | null }>()
 		if (row?.applied_at != null) return
-		throw new Error(
-			`Deliverability side effects for provider event ${input.providerEventId} are being applied by another delivery`,
-		)
+		throw new DeliverabilityEffectsClaimHeldError(input.providerEventId)
 	}
 	const markApplied = input.db
 		.prepare(
@@ -268,7 +279,7 @@ export async function applyDeliverabilitySideEffects(input: {
 		}
 	} catch (error) {
 		// Fail open quietly so delivery-event processing still acks.
-		if (isMissingPolicyTableError(error)) return
+		if (isMissingPolicyTableError(error, { anySqliteError: true })) return
 		if (input.throwOnFailure) throw error
 		console.warn('email-deliverability-side-effects-failed', error)
 	}
