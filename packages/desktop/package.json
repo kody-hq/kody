@@ -1,6 +1,6 @@
 {
   "name": "@kodycodes/desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Kody desktop shell and local execution runner",
   "main": "main.cjs",
