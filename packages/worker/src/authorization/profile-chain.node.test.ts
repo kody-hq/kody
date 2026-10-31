@@ -88,7 +88,12 @@ test('a denial names the blocking ancestor when the profile itself holds the gra
 
 test('a revoked or expired layer blocks everything and says which one', () => {
 	const effective = access({
-		inactive: { id: 'prf_agent', name: 'agent', self: false, reason: 'expired' },
+		inactive: {
+			id: 'prf_agent',
+			name: 'agent',
+			self: false,
+			reason: 'expired',
+		},
 		layers: [
 			layer('helper', true, both(['package:read'])),
 			layer('agent', false, both(['package:read'])),

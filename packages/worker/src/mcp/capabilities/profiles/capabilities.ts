@@ -67,7 +67,7 @@ export const profileCreateCapability = defineDomainCapability(domain, {
 	orgPermission: 'profile:manage',
 	featureFlag: 'profiles',
 	description:
-		'Create a profile: a scoped identity in this org for an agent or bot you run. It starts with a snapshot of grants (each one a subset of what you hold now), an optional expiry, and an optional parent profile to make a sub-profile (at most 5 levels). Profiles never gain access later when you or a parent do. Profiles cannot act yet in this release; you can create, list, shorten, and revoke them. Guide: guide:profiles.',
+		'Create a profile: a scoped identity in this org for an agent or bot you run. It starts with a snapshot of grants (each one a subset of what you hold now), an optional expiry, and an optional parent profile to make a sub-profile (at most 5 levels). Profiles never gain access later when you or a parent do. A request running as a profile reaches only what you, the profile, and every parent allow. Share a package with a profile through packageCollaboratorSet (profile_id). Guide: guide:profiles.',
 	keywords: [...keywords, 'create profile', 'new profile'],
 	readOnly: false,
 	idempotent: false,

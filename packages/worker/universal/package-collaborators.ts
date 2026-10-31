@@ -86,7 +86,7 @@ export type PackageCollaboratorEveryoneOption = {
 export type PackageCollaboratorSubjectType = 'user' | 'team' | 'org' | 'profile'
 
 /** One of the viewer's own active profiles (ADR 0092; profiles experiment). */
-export type PackageCollaboratorProfileOption = {
+type PackageCollaboratorProfileOption = {
 	id: string
 	name: string
 	depth: number

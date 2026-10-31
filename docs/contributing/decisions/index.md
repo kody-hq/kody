@@ -264,8 +264,8 @@ Open these before proposing a new primitive, surface, or storage home.
   `kody_at_` (default `long`, amends 0056); no identity assertion or JWT-bearer
   refresh; anonymous stays behind a flag that is off
 - [0092: Profiles are scoped agent identities, capped by their parent chain](./0092-profiles-are-scoped-agent-identities.md)
-  Person-owned profiles with snapshot grants, capped at run time by the
-  acting person and every parent; no epoch bump; behind the `profiles` flag
+  Person-owned profiles with snapshot grants, capped at run time by the acting
+  person and every parent; no epoch bump; behind the `profiles` flag
 
 ## Historical / UI / implementation
 

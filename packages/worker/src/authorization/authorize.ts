@@ -246,7 +246,10 @@ function toEffective(
 	compiled: CompiledAccess,
 	request: RequestContext,
 	profileGrants: ReadonlyArray<ConnectionProfileGrant> | null,
-	profile: { chain: ProfileChainAccess; validUntil: string | null } | null = null,
+	profile: {
+		chain: ProfileChainAccess
+		validUntil: string | null
+	} | null = null,
 ): EffectivePermissions {
 	return {
 		...(profile ? { profileChain: profile.chain } : {}),
@@ -463,12 +466,10 @@ function profileChainBlock(
 	access: EffectivePermissions,
 	permission: OrgPermission,
 	resource: OrgResource | undefined,
-):
-	| {
-			code: 'profile_inactive' | 'profile_grant'
-			layer: { name: string; self: boolean; reason?: 'revoked' | 'expired' }
-	  }
-	| null {
+): {
+	code: 'profile_inactive' | 'profile_grant'
+	layer: { name: string; self: boolean; reason?: 'revoked' | 'expired' }
+} | null {
 	const chain = access.profileChain
 	if (!chain) return null
 	if (chain.inactive) return { code: 'profile_inactive', layer: chain.inactive }
@@ -749,7 +750,10 @@ export function checkOrgWide(
 	if (
 		roleHoldsOrgWide &&
 		access.profileChain &&
-		(blocked || !access.profileChain.layers.every((l) => l.orgPermissions.has(permission)))
+		(blocked ||
+			!access.profileChain.layers.every((l) =>
+				l.orgPermissions.has(permission),
+			))
 	) {
 		const code = blocked?.code ?? 'profile_grant'
 		return deny({

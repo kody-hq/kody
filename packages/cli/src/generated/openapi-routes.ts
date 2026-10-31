@@ -889,6 +889,36 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['package_id'],
 	},
 	{
+		operationId: 'profileCreate',
+		method: 'POST',
+		pathTemplate: '/v1/profiles',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'profileGet',
+		method: 'GET',
+		pathTemplate: '/v1/profiles/{profile_id}',
+		pathParamNames: ['profile_id'],
+	},
+	{
+		operationId: 'profileList',
+		method: 'GET',
+		pathTemplate: '/v1/profiles',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'profileRevoke',
+		method: 'DELETE',
+		pathTemplate: '/v1/profiles/{profile_id}',
+		pathParamNames: ['profile_id'],
+	},
+	{
+		operationId: 'profileUpdate',
+		method: 'PATCH',
+		pathTemplate: '/v1/profiles/{profile_id}',
+		pathParamNames: ['profile_id'],
+	},
+	{
 		operationId: 'repoApplyPatch',
 		method: 'POST',
 		pathTemplate: '/v1/repo-sessions/{session_id}/patch',

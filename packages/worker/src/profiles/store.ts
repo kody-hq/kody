@@ -1,4 +1,7 @@
 /**
+ * soft-delete-read-filter: opt-out (purgeProfiles hard-deletes orphaned profile grants)
+ */
+/**
  * Profile storage (ADR 0092). Profile rows and their `grants` rows (subject
  * type `profile`) never feed a person's roles or org binding, so these writes
  * do not bump `orgs.access_epoch`.
