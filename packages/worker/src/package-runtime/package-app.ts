@@ -866,6 +866,7 @@ function createInternalDurableObjectState(runtimeBridge, storageId) {
 	const listToMap = async (options = {}) => {
 		const result = await runtimeBridge.storageList({
 			storageId,
+			visitTicket: __kodyCurrentVisitTicket(),
 			...options,
 		});
 		return new Map((result?.entries ?? []).map((entry) => [entry.key, entry.value]));
@@ -882,22 +883,26 @@ function createInternalDurableObjectState(runtimeBridge, storageId) {
 			get: async (key) =>
 				(await runtimeBridge.storageGet({
 					storageId,
+					visitTicket: __kodyCurrentVisitTicket(),
 					key,
 				})).value,
 			put: async (key, value) =>
 				await runtimeBridge.storageSet({
 					storageId,
+					visitTicket: __kodyCurrentVisitTicket(),
 					key,
 					value,
 				}),
 			delete: async (key) =>
 				await runtimeBridge.storageDelete({
 					storageId,
+					visitTicket: __kodyCurrentVisitTicket(),
 					key,
 				}),
 			deleteAll: async () =>
 				await runtimeBridge.storageClear({
 					storageId,
+					visitTicket: __kodyCurrentVisitTicket(),
 				}),
 			list: async (options = {}) => await listToMap(options),
 			sql: {
@@ -1500,6 +1505,8 @@ function redactRunRecordError(
 	if (error === undefined) return undefined
 	return secretRedactor.redactUnknown(error)
 }
+
+type AppStorageInput = { storageId: string; visitTicket?: string | null }
 
 export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	Env,
@@ -2334,21 +2341,35 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return await this.createCallerContext(null, visitTicket)
 	}
 
-	async storageGet(input: { storageId: string; key: string }) {
+	/** Facet storage meters to the visit's billed org (ADR 0094). */
+	private async facetBilledOrgId(visitTicket?: string | null) {
+		return (await this.requireActingVisit(visitTicket))?.billing?.orgId
+	}
+
+	async storageGet(input: AppStorageInput & { key: string }) {
 		const storageId = this.assertAppOwnedStorageId(input.storageId)
-		return await this.getStorageRunner(storageId).getValue({
+		return await this.getStorageRunner(
+			storageId,
+			undefined,
+			await this.facetBilledOrgId(input.visitTicket),
+		).getValue({
 			key: input.key,
 		})
 	}
 
-	async storageList(input: {
-		storageId: string
-		prefix?: string | null
-		pageSize?: number
-		startAfter?: string | null
-	}) {
+	async storageList(
+		input: AppStorageInput & {
+			prefix?: string | null
+			pageSize?: number
+			startAfter?: string | null
+		},
+	) {
 		const storageId = this.assertAppOwnedStorageId(input.storageId)
-		return await this.getStorageRunner(storageId).listValues({
+		return await this.getStorageRunner(
+			storageId,
+			undefined,
+			await this.facetBilledOrgId(input.visitTicket),
+		).listValues({
 			prefix: input.prefix,
 			pageSize: input.pageSize,
 			startAfter: input.startAfter,
@@ -2423,40 +2444,51 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
-	async storageSql(input: {
-		storageId: string
-		query: string
-		params?: Array<unknown>
-		writable?: boolean
-	}) {
+	async storageSql(
+		input: AppStorageInput & {
+			query: string
+			params?: Array<unknown>
+			writable?: boolean
+		},
+	) {
 		const storageId = this.assertAppOwnedStorageId(input.storageId)
 		return await this.sqlQueryWithEntitlement({
 			storageId,
 			query: input.query,
 			params: input.params,
 			writable: input.writable ?? false,
+			billedOrgId: await this.facetBilledOrgId(input.visitTicket),
 		})
 	}
 
-	async storageSet(input: { storageId: string; key: string; value: unknown }) {
+	async storageSet(input: AppStorageInput & { key: string; value: unknown }) {
 		const storageId = this.assertAppOwnedStorageId(input.storageId)
 		return await this.setValueWithEntitlement({
 			storageId,
 			key: input.key,
 			value: input.value,
+			billedOrgId: await this.facetBilledOrgId(input.visitTicket),
 		})
 	}
 
-	async storageDelete(input: { storageId: string; key: string }) {
+	async storageDelete(input: AppStorageInput & { key: string }) {
 		const storageId = this.assertAppOwnedStorageId(input.storageId)
-		return await this.getStorageRunner(storageId).deleteValue({
+		return await this.getStorageRunner(
+			storageId,
+			undefined,
+			await this.facetBilledOrgId(input.visitTicket),
+		).deleteValue({
 			key: input.key,
 		})
 	}
 
-	async storageClear(input: { storageId: string }) {
+	async storageClear(input: AppStorageInput) {
 		const storageId = this.assertAppOwnedStorageId(input.storageId)
-		return await this.getStorageRunner(storageId).clearStorage()
+		return await this.getStorageRunner(
+			storageId,
+			undefined,
+			await this.facetBilledOrgId(input.visitTicket),
+		).clearStorage()
 	}
 
 	async appRateLimit(input: {

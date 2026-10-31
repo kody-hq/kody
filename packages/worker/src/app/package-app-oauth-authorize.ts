@@ -875,7 +875,7 @@ export async function handlePackageAppOauthAuthorizeRequest(
 	const billing = await loadConsentBilling({
 		env,
 		personId: user.mcpUser.userId,
-		viewerUsername: user.request.org.slug ?? user.username,
+		viewerUsername: user.username,
 		orgUsername: validated.client.username,
 		internetVisible: meta.internetVisible,
 	})

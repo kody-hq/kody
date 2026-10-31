@@ -1597,9 +1597,9 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	await expect(
 		bridge.packageStorageGet({ packageId: 'package-1', key: 'count' }),
 	).resolves.toEqual({ value: 'granted-value' })
-	const runnerCall = (id: string, visitor?: string) => [id, visitor, undefined]
+	const rc = (id: string, visitor?: string) => [id, visitor, undefined]
 	expect(getStorageRunner).toHaveBeenCalledWith(
-		...runnerCall(buildPackageStorageId('package-1')),
+		...rc(buildPackageStorageId('package-1')),
 	)
 	expect(getValue).toHaveBeenCalledWith({ key: 'count' })
 
@@ -1624,7 +1624,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 		}),
 	).resolves.toEqual({ ok: true })
 	expect(getStorageRunner).toHaveBeenCalledWith(
-		...runnerCall(buildPackageStorageId('dep-package'), ''),
+		...rc(buildPackageStorageId('dep-package'), ''),
 	)
 	expect(setValue).toHaveBeenCalledWith({ key: 'flag', value: true })
 	// The bound binding cannot be pointed at another granted bucket either.
@@ -1670,9 +1670,9 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 			value: 1,
 		}),
 	).resolves.toEqual({ ok: true })
-	expect(getStorageRunner).toHaveBeenCalledWith('package-1:facet:main')
+	expect(getStorageRunner).toHaveBeenCalledWith(...rc('package-1:facet:main'))
 	expect(getStorageRunner).toHaveBeenCalledWith(
-		...runnerCall('package-1:Counter:instance-a'),
+		...rc('package-1:Counter:instance-a'),
 	)
 
 	const outsideNamespaceError =
