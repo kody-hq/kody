@@ -72,6 +72,9 @@ export type SandboxFetchRecordFailures = {
 
 let reportedSandboxFetchRecordFailure = false
 
+const globalScopeDisallowedPattern =
+	/^Disallowed operation called within global scope\b/
+
 /**
  * The sandbox never fails a fetch because its attempt could not be recorded.
  * Count the fetch here instead so the run still reads as having side
@@ -87,11 +90,14 @@ export function noteSandboxFetchRecordFailures(
 		sideEffects.recordFetchAttempt()
 	}
 	if (reportedSandboxFetchRecordFailure) return
-	reportedSandboxFetchRecordFailure = true
 	const message =
 		typeof failures?.message === 'string'
 			? failures.message.slice(0, 200)
 			: 'unknown'
+	// Package code fetching at module top level: the runtime rejects the
+	// fetch itself too, so the caller already sees it (KODY-CZ).
+	if (globalScopeDisallowedPattern.test(message)) return
+	reportedSandboxFetchRecordFailure = true
 	Sentry.withScope((scope) => {
 		scope.setTag('executor.fetch_record_failure', 'true')
 		scope.setContext('executor_fetch_record_failure', { count, message })

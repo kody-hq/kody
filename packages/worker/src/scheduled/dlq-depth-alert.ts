@@ -34,6 +34,8 @@ export const dlqDepthAlertCooldownMinutes = 6 * 60
 export const dlqDepthAlertKvKeyPrefix = 'ops-alert:dlq-depth:v1:'
 const dlqDepthStateTtlSeconds = 7 * 24 * 60 * 60
 const queueListPageLimit = 20
+/** Waits before each retry of a Cloudflare 429/5xx (KODY-CX/D1/D2). */
+export const dlqDepthUpstreamRetryDelaysMs: ReadonlyArray<number> = [500, 2_000]
 
 export const productionDeadLetterQueueNames = deadLetterQueueNames
 
@@ -120,13 +122,16 @@ export type DlqDepthAlertResult =
 			sustained: number
 			alerted: number
 			cooldown: number
+			upstreamUnavailable: number
 	  }
+	| { status: 'upstream_unavailable'; reason: 'queue_list' }
 
 export async function checkDlqDepthAndAlert(input: {
 	env: DlqDepthAlertEnv
 	now?: Date
 	sustainedMs?: number
 	cooldownMinutes?: number
+	upstreamRetryDelaysMs?: ReadonlyArray<number>
 }): Promise<DlqDepthAlertResult> {
 	if (isNonProductionRuntime(input.env)) {
 		return { status: 'skipped', reason: 'non_production' }
@@ -143,13 +148,24 @@ export async function checkDlqDepthAndAlert(input: {
 	const now = input.now ?? new Date()
 	const sustainedMs = input.sustainedMs ?? dlqDepthSustainedMs
 	const cooldownMinutes = input.cooldownMinutes ?? dlqDepthAlertCooldownMinutes
-	const client = createCloudflareRestClient({
-		CLOUDFLARE_API_TOKEN: apiToken,
-		CLOUDFLARE_API_BASE_URL: input.env.CLOUDFLARE_API_BASE_URL,
-		CLOUDFLARE_API_MOCK: input.env.CLOUDFLARE_API_MOCK,
-	})
-	const queueIds = await listQueueIds(client, accountId)
+	const client = withUpstreamRetry(
+		createCloudflareRestClient({
+			CLOUDFLARE_API_TOKEN: apiToken,
+			CLOUDFLARE_API_BASE_URL: input.env.CLOUDFLARE_API_BASE_URL,
+			CLOUDFLARE_API_MOCK: input.env.CLOUDFLARE_API_MOCK,
+		}),
+		input.upstreamRetryDelaysMs ?? dlqDepthUpstreamRetryDelaysMs,
+	)
+	let queueIds: Map<string, string>
+	try {
+		queueIds = await listQueueIds(client, accountId)
+	} catch (error) {
+		if (!isUpstreamUnavailableError(error)) throw error
+		reportUpstreamUnavailable([`queue list (${readFailureDetail(error)})`])
+		return { status: 'upstream_unavailable', reason: 'queue_list' }
+	}
 	const failures: Array<string> = []
+	const upstreamFailures: Array<string> = []
 	let parkedSummaries = new Map<string, ParkedDeadLetterSummary>()
 	if (input.env.APP_DB) {
 		try {
@@ -197,7 +213,9 @@ export async function checkDlqDepthAndAlert(input: {
 					parkedSummaries.get(queueName),
 				)
 			} catch (error) {
-				failures.push(`${queueName} (${readFailureDetail(error)})`)
+				const detail = `${queueName} (${readFailureDetail(error)})`
+				if (isUpstreamUnavailableError(error)) upstreamFailures.push(detail)
+				else failures.push(detail)
 				return
 			}
 			const read = await readState(kv, queueName)
@@ -257,10 +275,61 @@ export async function checkDlqDepthAndAlert(input: {
 		}),
 	)
 
+	if (upstreamFailures.length > 0) reportUpstreamUnavailable(upstreamFailures)
 	if (failures.length > 0) {
 		throw new Error(`DLQ depth alert failed for ${failures.sort().join(', ')}.`)
 	}
-	return { status: 'checked', ...counts }
+	return {
+		status: 'checked',
+		...counts,
+		upstreamUnavailable: upstreamFailures.length,
+	}
+}
+
+function isUpstreamUnavailableStatus(status: number) {
+	return status === 429 || status >= 500
+}
+
+function isUpstreamUnavailableError(error: unknown) {
+	return (
+		error instanceof CloudflareApiError &&
+		isUpstreamUnavailableStatus(error.status)
+	)
+}
+
+function withUpstreamRetry(
+	client: CloudflareQueueClient,
+	delaysMs: ReadonlyArray<number>,
+): CloudflareQueueClient {
+	return {
+		async rawRequest(request) {
+			let response = await client.rawRequest(request)
+			for (const delayMs of delaysMs) {
+				if (!isUpstreamUnavailableStatus(response.status)) return response
+				await new Promise((resolve) => setTimeout(resolve, delayMs))
+				response = await client.rawRequest(request)
+			}
+			return response
+		},
+	}
+}
+
+/**
+ * Cloudflare API 429/5xx that outlasted the retries: a warning on one stable
+ * issue, not a lane failure. The next 5 minute tick reads the queues again.
+ */
+function reportUpstreamUnavailable(details: Array<string>) {
+	const sorted = [...details].sort()
+	console.warn('dlq-depth-alert-upstream-unavailable', { failures: sorted })
+	Sentry.withScope((scope) => {
+		scope.setLevel('warning')
+		scope.setFingerprint(['dlq-depth-alert', 'cloudflare-upstream'])
+		scope.setTag('scheduled.lane', 'dlq_depth_alert')
+		scope.setContext('dlq_depth_upstream', { failures: sorted })
+		Sentry.captureMessage(
+			`DLQ depth alert could not read Cloudflare Queues: ${sorted.join(', ')}.`,
+		)
+	})
 }
 
 function reportDlqDepth(input: {
