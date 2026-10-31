@@ -255,3 +255,49 @@ test('an event held by another delivery retries after the claim window', async (
 	// The consumer allows 3 retries; together they must outlast the claim.
 	expect(delaySeconds * 3 * 1000).toBeGreaterThan(deliverabilityEffectsClaimMs)
 })
+
+test('unmatched delivery reports for system mail ack after one retry', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const systemEvent = (sender: string) => ({
+		outcome: 'unmatched' as const,
+		providerEvent: {
+			payload: {
+				sender,
+				messageId: 'provider-system',
+				delivery: { status: 'delivered' },
+			},
+		},
+		message: null,
+	})
+	const queueMessage = (id: string, attempts: number) => ({
+		id,
+		timestamp: new Date('2026-10-30T20:00:00.000Z'),
+		body: { kind: id },
+		attempts,
+		ack: vi.fn(),
+		retry: vi.fn(),
+	})
+	mocks.processCloudflareEmailDeliveryEvent
+		.mockResolvedValueOnce(systemEvent('kody@kody.codes'))
+		.mockResolvedValueOnce(systemEvent('KODY@kody.codes'))
+		.mockResolvedValueOnce(systemEvent('someone@kody.codes'))
+		.mockResolvedValueOnce(systemEvent('kody@example.com'))
+	const firstTry = queueMessage('first-try', 1)
+	const retried = queueMessage('retried', 2)
+	const nonSystemLocal = queueMessage('non-system-local', 2)
+	const otherDomain = queueMessage('other-domain', 2)
+	await handleEmailDeliveryQueue(
+		{
+			queue: 'kody-email-delivery',
+			messages: [firstTry, retried, nonSystemLocal, otherDomain],
+		} as unknown as MessageBatch<unknown>,
+		{ SYSTEM_EMAIL_DOMAIN: 'kody.codes', APP_DB: {} } as unknown as Env,
+		{ waitUntil: vi.fn() } as unknown as ExecutionContext,
+	)
+	expect(firstTry.retry).toHaveBeenCalledTimes(1)
+	expect(firstTry.ack).not.toHaveBeenCalled()
+	expect(retried.ack).toHaveBeenCalledTimes(1)
+	expect(retried.retry).not.toHaveBeenCalled()
+	expect(nonSystemLocal.retry).toHaveBeenCalledTimes(1)
+	expect(otherDomain.retry).toHaveBeenCalledTimes(1)
+})

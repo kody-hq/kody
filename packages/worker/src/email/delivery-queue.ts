@@ -3,6 +3,8 @@ import {
 	DeliverabilityEffectsClaimHeldError,
 } from './deliverability-side-effects.ts'
 import { processCloudflareEmailDeliveryEvent } from './delivery-events.ts'
+import { getSystemEmailDomain } from './platform-address.ts'
+import { isSystemEmailLocal } from './system-email.ts'
 import { applyOutboundEmailAbusePause } from './outbound-abuse.ts'
 import { applyOutboundConsecutiveFailureTracking } from './outbound-consecutive-failures.ts'
 import { dispatchEmailDeliverySubscriptionEvents } from './package-subscriptions.ts'
@@ -72,6 +74,21 @@ export async function handleEmailDeliveryQueue(
 					break
 				}
 				case 'unmatched':
+					// System mail (`kody@`, `support@`, ...) has no mailbox or
+					// transactional record, so its delivery reports can never
+					// match. Allow one retry for a transactional send whose row
+					// lands after the report, then ack instead of parking it.
+					if (
+						queueMessage.attempts > 1 &&
+						isSystemSenderAddress(env, result.providerEvent?.payload.sender)
+					) {
+						console.info('email-delivery-event-system-sender', {
+							queueMessageId: queueMessage.id,
+							status: result.providerEvent?.payload.delivery.status ?? null,
+						})
+						queueMessage.ack()
+						break
+					}
 					console.warn('email-delivery-event-unmatched', {
 						queueMessageId: queueMessage.id,
 						providerMessageId: result.providerEvent?.payload.messageId ?? null,
@@ -145,4 +162,14 @@ export async function handleEmailDeliveryQueue(
 			})
 		}
 	}
+}
+
+function isSystemSenderAddress(env: Env, sender: string | null | undefined) {
+	const domain = getSystemEmailDomain(env)
+	const address = sender?.trim().toLowerCase() ?? ''
+	const at = address.lastIndexOf('@')
+	if (!domain || at <= 0) return false
+	return (
+		address.slice(at + 1) === domain && isSystemEmailLocal(address.slice(0, at))
+	)
 }

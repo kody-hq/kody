@@ -28,8 +28,17 @@ import {
  *
  * Sentry is the operator page. Discord receives the issue from the existing
  * Sentry alert destination, the same path as the webhook auth regression alert.
+ *
+ * Cloudflare's queue list and metrics APIs intermittently return 5xx. Those
+ * requests retry with backoff; a tick that still cannot read depth logs a
+ * warning instead of failing the lane, keeps evaluating parked rows, and only
+ * pages once depth data has been unavailable for
+ * {@link dlqDepthMetricsUnavailableSustainedMs}.
  */
 export const dlqDepthSustainedMs = 15 * 60 * 1000
+export const dlqDepthMetricsUnavailableSustainedMs = 60 * 60 * 1000
+export const cloudflareQueueRetryDelaysMs: ReadonlyArray<number> = [500, 2_000]
+const metricsUnavailableStateName = '__cloudflare_metrics_unavailable'
 export const dlqDepthAlertCooldownMinutes = 6 * 60
 export const dlqDepthAlertKvKeyPrefix = 'ops-alert:dlq-depth:v1:'
 const dlqDepthStateTtlSeconds = 7 * 24 * 60 * 60
@@ -120,6 +129,7 @@ export type DlqDepthAlertResult =
 			sustained: number
 			alerted: number
 			cooldown: number
+			unavailable: number
 	  }
 
 export async function checkDlqDepthAndAlert(input: {
@@ -127,6 +137,8 @@ export async function checkDlqDepthAndAlert(input: {
 	now?: Date
 	sustainedMs?: number
 	cooldownMinutes?: number
+	unavailableSustainedMs?: number
+	retryDelaysMs?: ReadonlyArray<number>
 }): Promise<DlqDepthAlertResult> {
 	if (isNonProductionRuntime(input.env)) {
 		return { status: 'skipped', reason: 'non_production' }
@@ -148,7 +160,16 @@ export async function checkDlqDepthAndAlert(input: {
 		CLOUDFLARE_API_BASE_URL: input.env.CLOUDFLARE_API_BASE_URL,
 		CLOUDFLARE_API_MOCK: input.env.CLOUDFLARE_API_MOCK,
 	})
-	const queueIds = await listQueueIds(client, accountId)
+	const retry = { retryDelaysMs: input.retryDelaysMs }
+	const unavailable: Array<string> = []
+	let queueIds: Map<string, string> | null
+	try {
+		queueIds = await listQueueIds(client, accountId, retry)
+	} catch (error) {
+		if (!isTransientQueueApiFailure(error)) throw error
+		unavailable.push(`queue list (${readFailureDetail(error)})`)
+		queueIds = null
+	}
 	const failures: Array<string> = []
 	let parkedSummaries = new Map<string, ParkedDeadLetterSummary>()
 	if (input.env.APP_DB) {
@@ -167,6 +188,7 @@ export async function checkDlqDepthAndAlert(input: {
 		sustained: 0,
 		alerted: 0,
 		cooldown: 0,
+		unavailable: 0,
 	}
 	const persist = async (
 		queueName: string,
@@ -185,20 +207,36 @@ export async function checkDlqDepthAndAlert(input: {
 
 	await Promise.all(
 		productionDeadLetterQueueNames.map(async (queueName) => {
-			const queueId = queueIds.get(queueName)
-			if (!queueId) {
+			const queueId = queueIds ? queueIds.get(queueName) : null
+			if (queueIds && !queueId) {
 				failures.push(`${queueName} (not found)`)
 				return
 			}
+			const parked = parkedSummaries.get(queueName)
 			let metrics: DlqDepthMetrics
 			try {
+				if (!queueId) throw new QueueDepthUnavailableError()
 				metrics = withParked(
-					await readQueueMetrics(client, accountId, queueId),
-					parkedSummaries.get(queueName),
+					await readQueueMetrics(client, accountId, queueId, retry),
+					parked,
 				)
 			} catch (error) {
-				failures.push(`${queueName} (${readFailureDetail(error)})`)
-				return
+				if (!isTransientQueueApiFailure(error)) {
+					failures.push(`${queueName} (${readFailureDetail(error)})`)
+					return
+				}
+				counts.unavailable += 1
+				if (queueId) {
+					unavailable.push(`${queueName} (${readFailureDetail(error)})`)
+				}
+				// Without live depth, parked rows are still known. Evaluate
+				// them alone; skip the queue (keeping its episode state) when
+				// nothing is parked so a blind tick cannot mark it healthy.
+				if (!parked || parked.count <= 0) return
+				metrics = withParked(
+					{ backlogCount: 0, backlogBytes: 0, oldestMessageTimestampMs: null },
+					parked,
+				)
 			}
 			const read = await readState(kv, queueName)
 			if (read.failed) {
@@ -249,7 +287,7 @@ export async function checkDlqDepthAndAlert(input: {
 			if (!recorded) return
 			reportDlqDepth({
 				queueName,
-				queueId,
+				queueId: queueId ?? null,
 				metrics,
 				verdict,
 			})
@@ -257,15 +295,144 @@ export async function checkDlqDepthAndAlert(input: {
 		}),
 	)
 
+	await trackMetricsAvailability({
+		kv,
+		now,
+		unavailable,
+		sustainedMs:
+			input.unavailableSustainedMs ?? dlqDepthMetricsUnavailableSustainedMs,
+		cooldownMinutes,
+		failures,
+	})
+
 	if (failures.length > 0) {
 		throw new Error(`DLQ depth alert failed for ${failures.sort().join(', ')}.`)
 	}
 	return { status: 'checked', ...counts }
 }
 
+class QueueDepthUnavailableError extends Error {
+	constructor() {
+		super('Cloudflare queue list unavailable')
+		this.name = 'QueueDepthUnavailableError'
+	}
+}
+
+class CloudflareQueueRequestError extends Error {
+	constructor(cause: unknown) {
+		super(
+			`Cloudflare Queues request failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+		)
+		this.name = 'CloudflareQueueRequestError'
+	}
+}
+
+function isTransientStatus(status: number) {
+	return status === 429 || status >= 500
+}
+
+/** 429/5xx responses and network errors that survived the retries. */
+export function isTransientQueueApiFailure(error: unknown) {
+	if (
+		error instanceof QueueDepthUnavailableError ||
+		error instanceof CloudflareQueueRequestError
+	) {
+		return true
+	}
+	return error instanceof CloudflareApiError && isTransientStatus(error.status)
+}
+
+async function requestWithRetry(
+	client: CloudflareQueueClient,
+	request: Parameters<CloudflareQueueClient['rawRequest']>[0],
+	retryDelaysMs: ReadonlyArray<number>,
+) {
+	for (let attempt = 0; ; attempt += 1) {
+		const delayMs = retryDelaysMs[attempt]
+		try {
+			const response = await client.rawRequest(request)
+			if (!isTransientStatus(response.status) || delayMs == null) {
+				return response
+			}
+		} catch (error) {
+			if (error instanceof CloudflareApiError) throw error
+			if (delayMs == null) throw new CloudflareQueueRequestError(error)
+		}
+		await new Promise((resolve) => setTimeout(resolve, delayMs))
+	}
+}
+
+async function trackMetricsAvailability(input: {
+	kv: KVNamespace
+	now: Date
+	unavailable: Array<string>
+	sustainedMs: number
+	cooldownMinutes: number
+	failures: Array<string>
+}) {
+	const read = await readState(input.kv, metricsUnavailableStateName)
+	if (read.failed) {
+		if (input.unavailable.length > 0) {
+			input.failures.push('depth availability (state read failed)')
+		}
+		return
+	}
+	const stored = read.state
+	const persist = async (state: DlqDepthState) => {
+		try {
+			await writeStateIfChanged(
+				input.kv,
+				metricsUnavailableStateName,
+				stored,
+				state,
+			)
+			return true
+		} catch (error) {
+			input.failures.push('depth availability (state write failed)')
+			console.debug('dlq-depth-alert-state-write-failed', {
+				queueName: metricsUnavailableStateName,
+				error,
+			})
+			return false
+		}
+	}
+	if (input.unavailable.length === 0) {
+		await persist({})
+		return
+	}
+	const nowMs = input.now.getTime()
+	const sinceMs = stored.sinceMs ?? nowMs
+	const ageMs = nowMs - sinceMs
+	const detail = input.unavailable.sort().join(', ')
+	console.warn('dlq-depth-metrics-unavailable', { detail, ageMs })
+	const next: DlqDepthState = {
+		sinceMs,
+		...(stored.alertedMs != null ? { alertedMs: stored.alertedMs } : {}),
+	}
+	if (
+		ageMs <= input.sustainedMs ||
+		isOnCooldown(stored.alertedMs, input.now, input.cooldownMinutes)
+	) {
+		await persist(next)
+		return
+	}
+	if (!(await persist({ ...next, alertedMs: nowMs }))) return
+	const minutes = Math.floor(ageMs / 60_000)
+	Sentry.withScope((scope) => {
+		scope.setLevel('warning')
+		scope.setFingerprint(['dlq-depth', 'metrics-unavailable'])
+		scope.setTag('queue.dlq_depth', 'true')
+		scope.setTag('scheduled.lane', 'dlq_depth_alert')
+		scope.setContext('dlq_depth', { unavailable: detail, ageMs })
+		Sentry.captureMessage(
+			`Dead-letter queue depth has been unavailable from Cloudflare for ${String(minutes)} minutes: ${detail}.`,
+		)
+	})
+}
+
 function reportDlqDepth(input: {
 	queueName: string
-	queueId: string
+	queueId: string | null
 	metrics: DlqDepthMetrics
 	verdict: Extract<DlqDepthVerdict, { kind: 'sustained' }>
 }) {
@@ -324,9 +491,12 @@ export type CloudflareQueueClient = {
 	}) => Promise<{ status: number; body: unknown | null }>
 }
 
+type QueueRequestOptions = { retryDelaysMs?: ReadonlyArray<number> }
+
 export async function listQueueIds(
 	client: CloudflareQueueClient,
 	accountId: string,
+	options: QueueRequestOptions = {},
 ) {
 	const ids = new Map<string, string>()
 	let page = 1
@@ -337,11 +507,15 @@ export async function listQueueIds(
 				`Cloudflare queue list exceeded ${String(queueListPageLimit)} pages.`,
 			)
 		}
-		const response = await client.rawRequest({
-			method: 'GET',
-			path: `/client/v4/accounts/${encodeURIComponent(accountId)}/queues`,
-			query: { page: String(page), per_page: '100' },
-		})
+		const response = await requestWithRetry(
+			client,
+			{
+				method: 'GET',
+				path: `/client/v4/accounts/${encodeURIComponent(accountId)}/queues`,
+				query: { page: String(page), per_page: '100' },
+			},
+			options.retryDelaysMs ?? cloudflareQueueRetryDelaysMs,
+		)
 		const queues = readCloudflareResult<
 			Array<{ queue_id?: string; queue_name?: string }>
 		>(response.body)
@@ -366,11 +540,16 @@ export async function readQueueMetrics(
 	client: CloudflareQueueClient,
 	accountId: string,
 	queueId: string,
+	options: QueueRequestOptions = {},
 ): Promise<QueueMetrics> {
-	const response = await client.rawRequest({
-		method: 'GET',
-		path: `/client/v4/accounts/${encodeURIComponent(accountId)}/queues/${encodeURIComponent(queueId)}/metrics`,
-	})
+	const response = await requestWithRetry(
+		client,
+		{
+			method: 'GET',
+			path: `/client/v4/accounts/${encodeURIComponent(accountId)}/queues/${encodeURIComponent(queueId)}/metrics`,
+		},
+		options.retryDelaysMs ?? cloudflareQueueRetryDelaysMs,
+	)
 	const result = readCloudflareResult<Record<string, unknown>>(response.body)
 	if (response.status >= 400 || !result) {
 		const detail = readErrorMessage(response.body)

@@ -6,7 +6,8 @@
  *
  * Hot path cost: `scheduleAllowedPackagesWouldBlock` never awaits D1. Calls for
  * the same day + owner + credential + package inside one isolate coalesce into
- * a single deduped upsert flushed through `waitUntil`. Never stores values.
+ * one deduped upsert, and every pending marker flushes in one `db.batch()`
+ * through `waitUntil`. Never stores values.
  */
 import { waitUntil } from 'cloudflare:workers'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -31,6 +32,7 @@ type PendingMarker = AllowedPackagesWouldBlockMarker & {
 }
 
 const pendingByDb = new WeakMap<D1Database, Map<string, PendingMarker>>()
+const flushScheduled = new WeakSet<D1Database>()
 
 function utcDay(iso: string) {
 	return iso.slice(0, 10)
@@ -47,9 +49,25 @@ export async function recordAllowedPackagesWouldBlock(input: {
 	const credentialId = input.marker.credentialId.trim()
 	const packageId = input.marker.packageId.trim()
 	if (!ownerId || !credentialId || !packageId) return
+	await buildWouldBlockUpsert({
+		db: input.db,
+		marker: { ...input.marker, ownerId, credentialId, packageId },
+		firstSeenAt: input.firstSeenAt,
+		lastSeenAt: input.lastSeenAt,
+		observations: input.observations,
+	}).run()
+}
+
+function buildWouldBlockUpsert(input: {
+	db: D1Database
+	marker: AllowedPackagesWouldBlockMarker
+	firstSeenAt: string
+	lastSeenAt?: string
+	observations?: number
+}) {
 	const lastSeenAt = input.lastSeenAt ?? input.firstSeenAt
 	const observations = Math.max(1, Math.trunc(input.observations ?? 1))
-	await input.db
+	return input.db
 		.prepare(
 			`INSERT INTO credential_allowed_packages_would_block (
 				day, owner_id, credential_id, package_id, access_kind,
@@ -63,40 +81,41 @@ export async function recordAllowedPackagesWouldBlock(input: {
 		)
 		.bind(
 			utcDay(input.firstSeenAt),
-			ownerId,
-			credentialId,
-			packageId,
+			input.marker.ownerId,
+			input.marker.credentialId,
+			input.marker.packageId,
 			input.marker.accessKind,
 			input.firstSeenAt,
 			lastSeenAt,
 			observations,
 		)
-		.run()
 }
 
-async function flushPendingMarker(
-	db: D1Database,
-	key: string,
-	delayMs: number,
-) {
+async function flushPendingMarkers(db: D1Database, delayMs: number) {
 	// Always yield at least one macrotask so same-tick repeats coalesce.
 	await new Promise((resolve) => setTimeout(resolve, Math.max(0, delayMs)))
+	flushScheduled.delete(db)
 	const pending = pendingByDb.get(db)
-	const marker = pending?.get(key)
-	if (!pending || !marker) return
-	pending.delete(key)
+	if (!pending || pending.size === 0) return
+	const markers = [...pending.values()]
+	pending.clear()
 	try {
-		await recordAllowedPackagesWouldBlock({
-			db,
-			marker,
-			firstSeenAt: marker.firstSeenAt,
-			lastSeenAt: marker.lastSeenAt,
-			observations: marker.observations,
-		})
+		await db.batch(
+			markers.map((marker) =>
+				buildWouldBlockUpsert({
+					db,
+					marker,
+					firstSeenAt: marker.firstSeenAt,
+					lastSeenAt: marker.lastSeenAt,
+					observations: marker.observations,
+				}),
+			),
+		)
 	} catch (error) {
 		console.error('credential-allowed-packages-would-block-record-failed', {
-			credentialId: marker.credentialId,
-			packageId: marker.packageId,
+			markers: markers.length,
+			credentialId: markers[0]?.credentialId,
+			packageId: markers[0]?.packageId,
 			error: error instanceof Error ? error.message : String(error),
 		})
 	}
@@ -143,10 +162,11 @@ export function scheduleAllowedPackagesWouldBlock(input: {
 			lastSeenAt: now,
 			observations: 1,
 		})
+		if (flushScheduled.has(db)) return
+		flushScheduled.add(db)
 		waitUntil(
-			flushPendingMarker(
+			flushPendingMarkers(
 				db,
-				key,
 				input.flushDelayMs ?? allowedPackagesWouldBlockFlushDelayMs,
 			),
 		)
