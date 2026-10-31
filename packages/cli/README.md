@@ -185,6 +185,10 @@ the same pick:
 | `search`, cloud `execute` (no `--local`)                                  | `--token`, `kody login` (over MCP), `KODY_API_TOKEN`, stored API token |
 | `auth bootstrap --scopes` (minting)                                       | `--token`, `kody login`, `KODY_API_TOKEN`, stored API token            |
 
+Desktop integrations can set `KODY_CREDENTIAL_SOURCE=login` to select only the
+browser login for these commands. There is no API token fallback in this mode,
+and saved API tokens remain unchanged. Unset it for normal CLI precedence.
+
 - The stored API token comes from `kody auth bootstrap` or
   `kody auth setup-git`. `kody login` stores a login session next to it and does
   not replace it, so a stored token keeps winning for `api` and the other

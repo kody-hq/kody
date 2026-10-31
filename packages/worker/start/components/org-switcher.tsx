@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { useDesktopMachine } from './desktop-execution.tsx'
 import { dismissOpenPopoverPanel, isPopoverOpen } from '#client/popover-open.ts'
 import {
 	useState,
@@ -363,6 +364,7 @@ export function AccountMenu(props: {
 	displayName: string
 	avatarUrl: string | null
 }) {
+	const desktop = useDesktopMachine()
 	const [open, setOpen] = useState(false)
 	const href = useLocation({ select: (location) => location.href })
 	const {
@@ -437,6 +439,18 @@ export function AccountMenu(props: {
 						<span css={switcherRowDetailCss}>{`@${props.username}`}</span>
 					) : null}
 				</div>
+				{desktop
+					? renderSwitcherRow({
+							key: 'this-machine',
+							href: '/account/execution-contexts',
+							label: 'This machine',
+							detail: null,
+							ariaCurrent: undefined,
+							selected: false,
+							leading: renderIconWell('server'),
+							badge: null,
+						})
+					: null}
 				{renderManageGroup({
 					links: manageLinks,
 					currentPathname: pathname,

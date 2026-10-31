@@ -18,6 +18,7 @@ const needsFixReport: SitePerfReport = {
 	ttfbMs: 80,
 	serverTiming: [{ name: 'ssr', durationMs: 20 }],
 	pages: [],
+	packageApp: null,
 	findings: [
 		{
 			id: 'home-no-store',

@@ -70,7 +70,16 @@ async function smoke() {
 			},
 			{ origin, cookieHeader },
 		)
-		await page.getByRole('button', { name: 'Home', exact: true }).click()
+		await page.goto(`${origin}/`)
+		const workspaceHref = await page
+			.getByRole('link', { name: 'Workspace', exact: true })
+			.first()
+			.getAttribute('href')
+		await expect(
+			page.getByRole('link', { name: 'Home', exact: true }),
+		).toHaveAttribute('href', workspaceHref)
+		await page.getByRole('link', { name: 'Home', exact: true }).click()
+		await page.waitForURL(new URL(workspaceHref, origin).href)
 		await page
 			.getByRole('complementary', { name: 'Workspace navigation', exact: true })
 			.waitFor()
@@ -88,7 +97,10 @@ async function smoke() {
 				'aside[aria-label="Workspace navigation"]',
 			)
 			const brand = sidebar.querySelector('a[href="/"]').getBoundingClientRect()
+			const dragStrip = document.querySelector('[data-desktop-drag-strip]')
 			return {
+				dragWidth: dragStrip?.getBoundingClientRect().width,
+				dragHeight: dragStrip?.getBoundingClientRect().height,
 				cornerWidth: corner.width,
 				cornerBottom: corner.bottom,
 				panelTop: panel.top,
@@ -96,6 +108,10 @@ async function smoke() {
 				viewportWidth: innerWidth,
 			}
 		})
+		if (process.platform === 'darwin') {
+			assert.equal(layout.dragWidth, layout.viewportWidth)
+			assert.equal(layout.dragHeight, 16)
+		}
 		assert.ok(
 			layout.cornerWidth < layout.viewportWidth / 2,
 			'Desktop controls must stay in the corner.',

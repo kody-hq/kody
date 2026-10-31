@@ -6,8 +6,10 @@ const {
 	shell,
 	ipcMain,
 	clipboard,
+	session,
 	net,
 } = require('electron')
+const { startUpdates, finishQuit } = require('./updates.cjs')
 const { browserLogin } = require('./browser-login.cjs')
 const { parseString } = require('set-cookie-parser')
 const { supportsIntegratedTitlebar } = require('./site-capabilities.cjs')
@@ -21,8 +23,7 @@ const {
 const { hostname } = require('node:os')
 const { join } = require('node:path')
 const { Runner } = require('./runner.cjs')
-const { machineName } = require('./machine-name.cjs')
-const { registrationIdentity } = require('./registration-identity.cjs')
+const { DesktopExecution } = require('./execution.cjs')
 const {
 	appOrigin: productionOrigin,
 	isExternalUrl,
@@ -126,8 +127,9 @@ ipcMain.handle('kody:authentication', async (event, mode) => {
 })
 const runner = new Runner()
 let window
-let busy = false
 let quitting = false
+let updates
+let restartForUpdate = false
 let state = { ecid: null, enabled: false }
 function statePath() {
 	return join(app.getPath('userData'), 'machine.json')
@@ -141,11 +143,23 @@ function saveState() {
 function loadState() {
 	try {
 		const saved = JSON.parse(readFileSync(statePath(), 'utf8'))
-		if (
-			typeof saved.ecid === 'string' &&
-			/^ec_[A-Za-z0-9_-]+$/.test(saved.ecid)
-		) {
-			state = { ecid: saved.ecid, enabled: saved.enabled === true }
+		const ecid =
+			typeof saved.ecid === 'string' && /^ec_[A-Za-z0-9_-]+$/.test(saved.ecid)
+				? saved.ecid
+				: null
+		state = {
+			ecid,
+			name: typeof saved.name === 'string' ? saved.name : undefined,
+			enabled: !!ecid && saved.enabled === true,
+			owner:
+				saved.owner &&
+				typeof saved.owner.username === 'string' &&
+				typeof saved.owner.orgSlug === 'string'
+					? { username: saved.owner.username, orgSlug: saved.owner.orgSlug }
+					: null,
+			onboardingSeen: Array.isArray(saved.onboardingSeen)
+				? saved.onboardingSeen.filter((value) => typeof value === 'string')
+				: [],
 		}
 	} catch (error) {
 		if (error.code !== 'ENOENT')
@@ -154,84 +168,15 @@ function loadState() {
 			)
 	}
 }
-async function action(run) {
-	if (busy || quitting) return
-	busy = true
-	updateMenu()
-	try {
-		await run()
-	} catch (error) {
-		if (!quitting) dialog.showErrorBox('Kody', error.message)
-	} finally {
-		busy = false
-		if (!quitting) updateMenu()
-	}
-}
-async function register() {
-	const identity = registrationIdentity(
-		JSON.parse(await runner.command(['whoami', '--json'])),
-	)
-	const name = machineName(hostname())
-	const { response } = await dialog.showMessageBox({
-		type: 'question',
-		message: `Register ${name}?`,
-		detail: `${identity.trim()}\n\nUses the CLI account shown above. Registration does not add this machine to an execution chain.`,
-		buttons: ['Register', 'Cancel'],
-		defaultId: 0,
-		cancelId: 1,
-	})
-	if (response !== 0 || quitting) return
-	const result = JSON.parse(
-		await runner.command(['context', 'register', '--name', name, '--json']),
-	)
-	if (
-		typeof result.ecid !== 'string' ||
-		!/^ec_[A-Za-z0-9_-]+$/.test(result.ecid)
-	)
-		throw new Error('The CLI did not return an execution context id.')
-	state = { ecid: result.ecid, enabled: process.platform !== 'win32' }
-	saveState()
-	void refreshCommands()
-	if (state.enabled && !quitting) runner.start(state.ecid)
-	if (quitting) return
-	await dialog
-		.showMessageBox({
-			message: `Registered ${name}`,
-			detail:
-				process.platform === 'win32'
-					? 'The desktop shell works on Windows, but the CLI execution runtime currently supports only macOS and Linux.'
-					: 'The runner is starting. Choose this machine in your execution chain on the website to use it by default. Folder access still requires both a local policy and a server grant.',
-			buttons: ['Open execution contexts', 'Done'],
-		})
-		.then(({ response: choice }) => {
-			if (choice === 0 && !quitting) showApp('/account/execution-contexts')
-		})
-}
-let commandsEnabled = false
-async function refreshCommands() {
-	if (!state.ecid || process.platform === 'win32') return
-	try {
-		const status = JSON.parse(
-			await runner.command([
-				'context',
-				'commands',
-				'status',
-				'--context',
-				state.ecid,
-				'--json',
-			]),
-		)
-		commandsEnabled =
-			status.local?.enabled === true &&
-			status.contexts?.[0]?.commands?.enabled === true
-	} catch {
-		commandsEnabled = false
-	}
-	if (!quitting) updateMenu()
-}
-async function toggleCommands() {
-	const enable = !commandsEnabled
-	if (enable) {
+const execution = new DesktopExecution({
+	runner,
+	read: () => state,
+	write: (next) => {
+		state = next
+		saveState()
+	},
+	hostname: hostname(),
+	confirmCommands: async () => {
 		const { response } = await dialog.showMessageBox({
 			type: 'warning',
 			message: 'Allow Kody runs to run commands on this machine?',
@@ -241,128 +186,72 @@ async function toggleCommands() {
 			defaultId: 1,
 			cancelId: 1,
 		})
-		if (response !== 0 || quitting) return
-	}
-	await runner.command([
-		'context',
-		'commands',
-		enable ? 'on' : 'off',
-		'--context',
-		state.ecid,
-		'--json',
-	])
-	await refreshCommands()
-}
+		return response === 0 && !quitting
+	},
+	viewer: async () => {
+		const response = await session
+			.fromPartition('persist:kody')
+			.fetch(`${appOrigin}/session`, {
+				credentials: 'include',
+				redirect: 'error',
+				cache: 'no-store',
+				signal: AbortSignal.timeout(10000),
+			})
+		if (!response.ok)
+			throw new Error('Could not verify your Kody account. Try again.')
+		const result = await response.json()
+		if (!result.ok || !result.session) return null
+		const person = result.session
+		const personal = person.organizations?.find((org) => org.personal)
+		if (!person.emailVerified || !personal) return null
+		if (
+			typeof person.username !== 'string' ||
+			typeof person.email !== 'string' ||
+			!/^[a-zA-Z0-9_-]+$/.test(personal.slug)
+		)
+			throw new Error('Could not verify this workspace.')
+		return {
+			username: person.username,
+			email: person.email,
+			orgSlug: personal.slug,
+		}
+	},
+})
+ipcMain.handle('kody:execution', (event, command, input) => {
+	if (!navigation?.accepts(event))
+		throw new Error(
+			'Machine controls are only available to the main Kody document.',
+		)
+	if (quitting) throw new Error('Kody is quitting.')
+	return execution.request(command, input)
+})
 function updateMenu() {
-	const running = runner.daemon !== null
-	const available = !busy && !quitting
 	Menu.setApplicationMenu(
 		Menu.buildFromTemplate([
 			...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
 			{ label: 'File', submenu: [{ role: 'close' }] },
-			{
-				label: 'Machine',
-				submenu: [
-					{
-						label: busy
-							? 'Working…'
-							: running
-								? 'Runner running'
-								: 'Runner stopped',
-						enabled: false,
-					},
-					{ type: 'separator' },
-					{
-						label: 'Sign in to CLI…',
-						enabled: available && !running,
-						click: () =>
-							action(async () => {
-								await runner.command(['login'])
-								if (quitting) return
-								await dialog.showMessageBox({
-									message: 'CLI sign-in complete',
-									buttons: ['OK'],
-								})
-							}),
-					},
-					{
-						label: 'Register this machine…',
-						enabled: available && !state.ecid,
-						click: () => action(register),
-					},
-					{
-						label: 'Start runner',
-						enabled:
-							available &&
-							!!state.ecid &&
-							!running &&
-							process.platform !== 'win32',
-						click: () =>
-							action(async () => {
-								runner.start(state.ecid)
-								state.enabled = true
-								saveState()
-							}),
-					},
-					{
-						label: 'Stop runner',
-						enabled: available && running,
-						click: () =>
-							action(async () => {
-								state.enabled = false
-								saveState()
-								await runner.stop()
-							}),
-					},
-					{
-						label: 'Forget desktop registration…',
-						enabled: available && !!state.ecid && !running,
-						click: () =>
-							action(async () => {
-								const { response } = await dialog.showMessageBox({
-									message: 'Forget this registration in the desktop app?',
-									detail:
-										'The CLI keys and server registration stay in place. Revoke the context on the website to remove access.',
-									buttons: ['Cancel', 'Forget'],
-									defaultId: 0,
-									cancelId: 0,
-								})
-								if (response === 1) {
-									state = { ecid: null, enabled: false }
-									saveState()
-								}
-							}),
-					},
-					{
-						label: 'Allow commands',
-						type: 'checkbox',
-						checked: commandsEnabled,
-						enabled: available && !!state.ecid && process.platform !== 'win32',
-						click: () => action(toggleCommands),
-					},
-					{ type: 'separator' },
-					{
-						label: 'Execution contexts',
-						click: () => showApp('/account/execution-contexts'),
-					},
-					{
-						label: 'Execution context experiment',
-						click: () => showApp('/account/experiments'),
-					},
-					{
-						label: 'Runner details…',
-						click: () =>
-							dialog.showMessageBox({
-								message: running ? 'Runner running' : 'Runner stopped',
-								detail: runner.output || 'No runner output yet.',
-								buttons: ['OK'],
-							}),
-					},
-					...(process.platform !== 'darwin'
-						? [{ type: 'separator' }, { role: 'quit' }]
-						: []),
-				],
-			},
+			...(updates
+				? [
+						{
+							label: 'Updates',
+							submenu: [
+								{
+									label: 'Check for updates…',
+									enabled: !!updates && !quitting,
+									click: () => void updates.check(),
+								},
+								{
+									label: 'Restart to update',
+									enabled: !!updates?.downloaded && !quitting,
+									click: () => {
+										restartForUpdate = true
+										app.quit()
+									},
+								},
+							],
+						},
+					]
+				: []),
 			{ role: 'editMenu' },
 			{
 				label: 'Navigate',
@@ -524,16 +413,12 @@ async function createWindow() {
 runner.on('change', () => {
 	if (app.isReady() && !quitting) updateMenu()
 })
-runner.on('ended', () =>
-	dialog.showErrorBox(
-		'Kody runner stopped',
-		runner.output ||
-			'The CLI runner exited. Use Machine > Start runner to try again.',
-	),
-)
-runner.on('shutdown-error', (error) =>
-	dialog.showErrorBox('Could not stop runner', error.message),
-)
+runner.on('ended', () => {
+	execution.error = 'The runner stopped unexpectedly. Start it again.'
+})
+runner.on('shutdown-error', () => {
+	execution.error = 'Could not stop the runner. Quit Kody and try again.'
+})
 
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
@@ -549,24 +434,29 @@ else {
 		if (quitting) return
 		event.preventDefault()
 		quitting = true
-		void runner
-			.close()
-			.then(() => app.quit())
-			.catch((error) => {
-				dialog.showErrorBox('Could not stop runner', error.message)
+		updates?.stop()
+		void finishQuit({ runner, updates, app, restart: restartForUpdate }).catch(
+			(error) => {
+				dialog.showErrorBox('Could not quit Kody', error.message)
 				app.exit(1)
-			})
+			},
+		)
 	})
 	app
 		.whenReady()
 		.then(async () => {
 			if (process.platform === 'darwin')
 				app.dock.setIcon(join(__dirname, 'assets/icon.png'))
+			updates = startUpdates({
+				app,
+				updater: require('electron-updater').autoUpdater,
+				dialog,
+				changed: updateMenu,
+			})
 			loadState()
 			updateMenu()
 			await showApp()
-			if (!quitting && state.enabled && state.ecid) runner.start(state.ecid)
-			void refreshCommands()
+			if (!quitting) void execution.request('state').catch(() => {})
 		})
 		.catch((error) => {
 			dialog.showErrorBox('Could not start Kody', error.message)

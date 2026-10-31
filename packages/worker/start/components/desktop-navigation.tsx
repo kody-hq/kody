@@ -7,12 +7,13 @@ import {
 	type DesktopNavigationState,
 	type DesktopShell,
 } from '../desktop-shell.ts'
+import { SiteLink } from './site-link.tsx'
 import { renderIcon } from './icon.tsx'
 
 const cornerHeight = 44
 const cornerWidth = 248
 
-export function DesktopNavigation() {
+export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 	const [shell, setShell] = useState<DesktopShell | null>(null)
 	const [state, setState] = useState<DesktopNavigationState | null>(null)
 	const [addressOpen, setAddressOpen] = useState(false)
@@ -55,12 +56,33 @@ export function DesktopNavigation() {
 		<>
 			<Global
 				styles={{
+					...(state.integratedTitlebar && !state.fullscreen
+						? {
+								'a, button, input, select, textarea, [role="button"], [contenteditable="true"]':
+									{ WebkitAppRegion: 'no-drag' },
+							}
+						: {}),
 					':root': {
 						'--desktop-corner-height': `${cornerHeight}px`,
 						'--desktop-corner-width': `${cornerWidth}px`,
 					},
 				}}
 			/>
+			{state.integratedTitlebar && !state.fullscreen ? (
+				<div
+					aria-hidden="true"
+					data-desktop-drag-strip
+					css={{
+						position: 'fixed',
+						top: 0,
+						insetInline: 0,
+						height: 16,
+						zIndex: 99,
+						WebkitAppRegion: 'drag',
+						pointerEvents: 'none',
+					}}
+				/>
+			) : null}
 			<nav
 				aria-label="App navigation"
 				data-desktop-navigation
@@ -107,15 +129,14 @@ export function DesktopNavigation() {
 						{renderIcon('arrow-left', { size: '14px' })}
 					</span>
 				</button>
-				<button
-					type="button"
+				<SiteLink
+					href={homeHref}
 					aria-label="Home"
 					title="Home"
 					css={buttonCss}
-					onClick={() => void navigate('home')}
 				>
 					{renderIcon('home', { size: '14px' })}
-				</button>
+				</SiteLink>
 				<div
 					onKeyDown={(event) => {
 						if (event.key === 'Escape') setAddressOpen(false)

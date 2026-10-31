@@ -11,6 +11,7 @@ export const moduleGraphMockModule = {
 	getSavedPackageByName: vi.fn(),
 	loadPackageSourceBySourceId: vi.fn(),
 	loadPublishedBundleArtifactByIdentity: vi.fn(),
+	loadPublishedBundleArtifactsByIdentities: vi.fn(),
 }
 
 export function createBundleResult(suffix: string) {

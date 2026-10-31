@@ -324,3 +324,52 @@ export const setAutomationExecution = createServerFn({ method: 'POST' })
 			}),
 		)
 	})
+
+/** Desktop setup adds only the caller's own machine to their personal chain. */
+export const putDesktopExecutionFirst = createServerFn({ method: 'POST' })
+	.validator(
+		z.object({
+			orgSlug,
+			username: z.string().min(1),
+			contextId: segment,
+			replaceContextId: segment.optional(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const [
+			{ loadExecutionContextsPageData, setExecutionChainForUser },
+			{ desktopExecutionChain },
+		] = await Promise.all([
+			import('../../src/app/handlers/execution-contexts.ts'),
+			import('#universal/desktop-execution.ts'),
+		])
+		return mutate(data.orgSlug, async (input) => {
+			if (input.user.username !== data.username)
+				throw new Error('Your account changed. Start machine setup again.')
+			const page = await loadExecutionContextsPageData({
+				...input,
+				contextId: null,
+			})
+			if ('notFound' in page || !page.enabled || !page.personalOrg)
+				throw new Error('Set up this machine in your personal workspace.')
+			const context = page.contexts.find((item) => item.id === data.contextId)
+			if (
+				!context ||
+				context.operator.handle !== data.username ||
+				context.ownerOrg.slug !== data.orgSlug ||
+				context.status === 'revoked'
+			)
+				throw new Error('This machine is not registered to your account.')
+			const result = await setExecutionChainForUser({
+				...input,
+				...desktopExecutionChain(
+					page.chain,
+					data.contextId,
+					data.replaceContextId,
+				),
+				ifMatch: page.chain.updatedAt,
+			})
+			if (!result.ok) throw new Error(result.message)
+			return result
+		})
+	})

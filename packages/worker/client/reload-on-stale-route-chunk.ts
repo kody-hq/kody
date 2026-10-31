@@ -114,7 +114,8 @@ const tanstackSplitExportName =
  * issue 7799039116; KODY-BJ / issue 7811018247):
  * - Safari: `undefined is not an object (evaluating 'e[i??`component`]')`
  * - Chromium: `Cannot read properties of undefined (reading 'component')`
- * - Firefox: `can't access property "component" of undefined`
+ * - Firefox: `can't access property "component" of undefined`, or newer
+ *   `can't access property "component", e is undefined` (KODY-A1)
  */
 const safariUndefinedModuleExport = new RegExp(
 	String.raw`^(?:TypeError:\s*)?undefined is not an object \(evaluating ['"][^'"]*\?\?\s*[\`'"]${tanstackSplitExportName}[\`'"][^'"]*['"]\)$`,
@@ -125,7 +126,7 @@ const chromiumUndefinedModuleExport = new RegExp(
 )
 
 const firefoxUndefinedModuleExport = new RegExp(
-	String.raw`^(?:TypeError:\s*)?can't access property ['"]${tanstackSplitExportName}['"] of undefined$`,
+	String.raw`^(?:TypeError:\s*)?can't access property ['"]${tanstackSplitExportName}['"](?: of undefined|, [\w$]+ is undefined)$`,
 )
 
 export function isStaleRouteChunkUndefinedModuleError(error: unknown) {

@@ -90,6 +90,11 @@ function firefoxUndefinedModule(exportName: string) {
 	return `can't access property "${exportName}" of undefined`
 }
 
+/** Newer Firefox wording names the minified binding (KODY-A1). */
+function firefoxNamedUndefinedModule(exportName: string) {
+	return `can't access property "${exportName}", e is undefined`
+}
+
 /** Safari (KODY-A1): TanStack minified `e[i??\`default\`]` on undefined module. */
 const safariUndefinedModuleDefault = safariUndefinedModule('default')
 const chromiumUndefinedModuleDefault = chromiumUndefinedModule('default')
@@ -289,6 +294,11 @@ test('isStaleRouteChunkUndefinedModuleError matches Safari, Chromium, and Firefo
 				new TypeError(firefoxUndefinedModule(exportName)),
 			),
 		).toBe(true)
+		expect(
+			isStaleRouteChunkUndefinedModuleError(
+				new TypeError(firefoxNamedUndefinedModule(exportName)),
+			),
+		).toBe(true)
 	}
 	expect(
 		isStaleRouteChunkUndefinedModuleError(
@@ -311,6 +321,8 @@ test('isStaleRouteChunkUndefinedModuleError ignores near-miss undefined-property
 		new TypeError(`can't access property "name" of undefined`),
 		new TypeError(safariUndefinedModule('foo')),
 		new TypeError(firefoxUndefinedModule('foo')),
+		new TypeError(firefoxNamedUndefinedModule('foo')),
+		new TypeError(`can't access property "component", e is null`),
 		new TypeError(chromium),
 		new TypeError('x'),
 		'undefined is not an object',
