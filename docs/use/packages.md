@@ -349,9 +349,10 @@ outside the org gets a short-lived visit pass that only opens the executor
 credentials they approved; storage, capabilities and everything else still treat
 them as an anonymous visitor plus identity.
 
-`ownerCredentialForVisitors: true` still parses on a need and is ignored. Omit
-it on new packages. A visitor who needs their own credential should declare a
-`kody.app.visitorNeeds` entry and open it with `credential.visitor(need)`.
+`ownerCredentialForVisitors: true` still parses on a need as a legacy alias for
+`supplier: "publisher"`. Omit it on new packages. A visitor who needs their own
+credential should declare a `kody.app.visitorNeeds` entry and open it with
+`credential.visitor(need)`.
 
 To list credential references that match the detect-only scan, run
 `repoRunChecks`. Its `credentials` result lists each file with the codemod 0010

@@ -86,13 +86,17 @@ export const packageAppRunsAsUnavailableMessages = {
 		'This app has no one to run as. An owner of its org must publish it again or choose who it runs as.',
 	'person-unavailable':
 		'This app runs as a person who can no longer act for its org. An owner of its org must choose who it runs as.',
+	'lookup-failed': 'Kody could not check who this app runs as. Try again.',
 } as const
 
+export type PackageAppRunsAsUnavailableReason =
+	keyof typeof packageAppRunsAsUnavailableMessages
+
 export class PackageAppRunsAsUnavailableError extends Error {
-	readonly reason: 'not-set' | 'person-unavailable'
+	readonly reason: PackageAppRunsAsUnavailableReason
 
 	constructor(
-		reason: 'not-set' | 'person-unavailable',
+		reason: PackageAppRunsAsUnavailableReason,
 		options?: ErrorOptions,
 	) {
 		super(packageAppRunsAsUnavailableMessages[reason], options)

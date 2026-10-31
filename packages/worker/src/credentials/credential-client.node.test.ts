@@ -1375,7 +1375,7 @@ test('local CapabilityProxy reads the entry mapping from the signed binding, nev
 	}
 })
 
-test('ownerCredentialForVisitors on a need is ignored; the caller still resolves the credential', async () => {
+test('ownerCredentialForVisitors on a need grants no owner authority; the caller still resolves the credential', async () => {
 	const t = await setup()
 	await t.storeKey({
 		name: 'rooms-db',

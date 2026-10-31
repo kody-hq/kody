@@ -48,13 +48,13 @@ export function credentialSummary(entry: CapabilityEntry) {
 
 /**
  * Set when a need still declares the deprecated
- * `ownerCredentialForVisitors` flag. The flag is ignored: apps already use
- * the publisher's credentials for every visitor.
+ * `ownerCredentialForVisitors` flag, a legacy alias for supplier
+ * `publisher`: apps already use the publisher's credentials for every visitor.
  */
 export function credentialVisitorsNote(entry: CapabilityEntry) {
 	if (!entry.ownerCredentialForVisitors) return null
 	const need = entry.needKey ? `The ${entry.needKey} need` : 'A need'
-	return `${need} sets ownerCredentialForVisitors, which is deprecated and ignored. The app already uses the publisher’s credentials for every visitor.`
+	return `${need} sets ownerCredentialForVisitors, which is deprecated: it is a legacy alias for supplier “publisher”. The app already uses the publisher’s credentials for every visitor.`
 }
 
 /** Stable list key: one credential can appear once per visitor-shared need. */

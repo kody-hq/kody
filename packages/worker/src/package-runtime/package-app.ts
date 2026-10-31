@@ -1606,7 +1606,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 					error: error instanceof Error ? error.name : 'unknown',
 				}),
 			)
-			throw new PackageAppRunsAsUnavailableError('not-set', { cause: error })
+			throw new PackageAppRunsAsUnavailableError('lookup-failed', {
+				cause: error,
+			})
 		}
 	}
 

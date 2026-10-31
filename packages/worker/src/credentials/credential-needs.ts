@@ -29,8 +29,8 @@ export const credentialNeedSchema = z.object({
 	description: z.string(),
 	multiple: z.boolean(),
 	/**
-	 * Set only by the package that declares the need: on an internet-visible
-	 * app it resolves with the approving owner's credentials for visitors.
+	 * Deprecated legacy alias for `supplier: 'publisher'`, set only by the
+	 * package that declares the need.
 	 */
 	ownerCredentialForVisitors: z.literal(true).optional(),
 	supplier: z.enum(['publisher', 'executor']).optional(),

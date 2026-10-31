@@ -353,8 +353,8 @@ behavior.
 ### Let app visitors use your credential
 
 Deprecated. Package apps already use the publisher's credentials for every
-visitor. `ownerCredentialForVisitors: true` still parses on a need and is
-ignored. Omit it on new packages. See
+visitor. `ownerCredentialForVisitors: true` still parses on a need as a legacy
+alias for `supplier: "publisher"`. Omit it on new packages. See
 [Packages](../use/packages.md#let-app-visitors-use-the-owners-credential).
 
 ## Each kind through `credential()`

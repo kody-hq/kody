@@ -159,7 +159,7 @@ test('a need opts in to owner credentials for visitors only with true', () => {
 				database: { description: 'x', ownerCredentialForVisitors: value },
 			}),
 		).toMatch(
-			/ownerCredentialForVisitors is deprecated and ignored[\s\S]*kody\.credentials\.database\.ownerCredentialForVisitors/,
+			/ownerCredentialForVisitors is deprecated: it is a legacy alias for supplier "publisher"[\s\S]*kody\.credentials\.database\.ownerCredentialForVisitors/,
 		)
 	}
 	expect(

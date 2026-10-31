@@ -215,7 +215,7 @@ export function isSavedCredentialKind(
 }
 
 export const ownerCredentialForVisitorsValueMessage =
-	'kody.credentials ownerCredentialForVisitors is deprecated and ignored. Apps already use the publisher’s credentials. If you still set it, it takes only true.'
+	'kody.credentials ownerCredentialForVisitors is deprecated: it is a legacy alias for supplier "publisher", and apps already use the publisher’s credentials. If you still set it, it takes only true.'
 
 /**
  * Kinds that satisfy a need with no declared `kind`: any fetch-capable

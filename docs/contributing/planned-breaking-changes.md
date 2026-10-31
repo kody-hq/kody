@@ -52,7 +52,8 @@ drop the param and columns without a fleet codemod.
 
 Package apps run as their publisher. `kody.credentials` slots may still declare
 `ownerCredentialForVisitors: true`. The field parses and stays in the capability
-fingerprint so existing approvals do not churn. Runtime ignores it.
+fingerprint so existing approvals do not churn. Runtime reads it only as a
+legacy alias for `supplier: "publisher"`.
 
 **Ready when:** published manifests and capability-set rows no longer need the
 field, and a dedicated removal PR can drop it from the schema without a fleet
