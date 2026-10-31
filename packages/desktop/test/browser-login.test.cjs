@@ -35,9 +35,20 @@ test('loopback login binds state and PKCE and accepts one callback', async () =>
 		state: 'wrong',
 		code: 'c'.repeat(43),
 	}).toString()
-	assert.equal((await fetch(callback)).status, 400)
+	const mismatch = await fetch(callback)
+	assert.equal(mismatch.status, 400)
+	const mismatchPage = await mismatch.text()
+	assert.match(mismatchPage, /This sign-in link isn’t valid/)
+	assert.doesNotMatch(mismatchPage, /wrong|c{43}/)
 	callback.searchParams.set('state', url.searchParams.get('state'))
-	assert.equal((await fetch(callback)).status, 200)
+	const success = await fetch(callback)
+	assert.equal(success.status, 200)
+	assert.match(success.headers.get('content-type'), /^text\/html/)
+	assert.equal(success.headers.get('cache-control'), 'no-store')
+	const successPage = await success.text()
+	assert.match(successPage, /You’re signed in/)
+	assert.ok(!successPage.includes(url.searchParams.get('state')))
+	assert.ok(!successPage.includes('c'.repeat(43)))
 	assert.equal(await attempt.result, 'session')
 	assert.equal(calls, 1)
 	await assert.rejects(fetch(callback))
@@ -66,4 +77,26 @@ test('cancel closes the listener and aborts an in-flight exchange', async () => 
 	await rejected
 	await response
 	await assert.rejects(fetch(callback))
+})
+test('a failed exchange shows the retry page without request values', async () => {
+	const { attempt, ready } = setup(async () => {
+		throw new Error('exchange failed')
+	})
+	const url = await ready
+	const callback = new URL(url.searchParams.get('callback'))
+	const state = url.searchParams.get('state')
+	callback.search = new URLSearchParams({
+		state,
+		code: 'c'.repeat(43),
+	}).toString()
+	const rejected = assert.rejects(attempt.result, /Could not complete/)
+	const response = await fetch(callback)
+	assert.equal(response.status, 400)
+	const page = await response.text()
+	assert.match(page, /Sign-in didn’t finish/)
+	assert.match(page, /choose Sign in to try again/)
+	assert.ok(!page.includes(state))
+	assert.ok(!page.includes('c'.repeat(43)))
+	assert.doesNotMatch(page, /exchange failed/)
+	await rejected
 })

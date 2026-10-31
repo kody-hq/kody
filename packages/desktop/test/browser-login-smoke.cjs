@@ -120,7 +120,8 @@ async function smoke() {
 			.getByRole('button', { name: 'Continue to Kody desktop', exact: true })
 			.click()
 		await expect(
-			browserPage.getByText('Signed in. You can return to Kody.', {
+			browserPage.getByRole('heading', {
+				name: 'You’re signed in',
 				exact: true,
 			}),
 		)

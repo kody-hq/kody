@@ -114,8 +114,12 @@ default browser, reuses its normal login/signup flow, and asks for approval. A
 random loopback listener accepts the one-time code, and the main process redeems
 it with an S256 verifier before installing the HttpOnly app session. The
 verifier and session never enter renderer JavaScript. Codes expire after 90
-seconds, attempts after five minutes. Cancel and Quit close the listener. Older
-websites and shells keep the existing embedded sign-in form.
+seconds, attempts after five minutes. Cancel and Quit close the listener. The
+listener answers with a self-contained branded page (`callback-page.cjs`: inline
+CSS and Kody mark, a hash-pinned CSP, light and dark themes) that confirms
+sign-in or explains the failure with a retry hint. It never echoes the code,
+state, or session. Older websites and shells keep the existing embedded sign-in
+form.
 
 The website release includes migration `0215-desktop-browser-login.sql` and must
 ship before the shell enables browser authentication on the live site. CLI
