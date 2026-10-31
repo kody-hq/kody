@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouteContext } from '@tanstack/react-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { type PackageRepoForkAction } from '#universal/package-repo-actions.ts'
-import { installCommunityPackage } from '#start/server/community-mutations'
+import {
+	forkReadablePackage,
+	installCommunityPackage,
+} from '#start/server/community-mutations'
 import { communityForkStateQuery } from './community-fork-state-query.ts'
 import {
 	type CommunityInstallApiPayload,
@@ -37,7 +40,7 @@ function useCommunityForkState(
 			actorKey,
 			listingId: fork?.listingId ?? null,
 			org,
-			enabled: Boolean(fork?.loggedIn),
+			enabled: Boolean(fork?.loggedIn && fork.listingId),
 		}),
 	)
 	const { refetch } = query
@@ -86,10 +89,24 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 	}, [confirmed])
 	const mutation = useMutation({
 		gcTime: 0,
-		mutationFn: async (input: { listingId: string; org: string | null }) => {
-			const result = (await installCommunityPackage({
-				data: { ...input, acknowledged: true },
-			})) as CommunityInstallApiPayload
+		mutationFn: async (input: {
+			fork: PackageRepoForkAction
+			org: string | null
+		}) => {
+			const { fork: target, org: targetOrg } = input
+			const result = (
+				target.source
+					? await forkReadablePackage({
+							data: { ...target.source, org: targetOrg },
+						})
+					: await installCommunityPackage({
+							data: {
+								listingId: target.listingId ?? '',
+								org: targetOrg,
+								acknowledged: true,
+							},
+						})
+			) as CommunityInstallApiPayload
 			if (
 				!result.ok ||
 				!result.status ||
@@ -157,10 +174,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		setConfirmed(false)
 		setMessage(null)
 		try {
-			const outcome = await mutation.mutateAsync({
-				listingId: fork.listingId,
-				org,
-			})
+			const outcome = await mutation.mutateAsync({ fork, org })
 			if (isCurrent()) setOutcome(outcome)
 		} catch (error) {
 			if (isCurrent())

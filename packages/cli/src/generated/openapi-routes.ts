@@ -829,6 +829,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['package_id'],
 	},
 	{
+		operationId: 'packageFork',
+		method: 'POST',
+		pathTemplate: '/v1/packages/fork',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'packageGet',
 		method: 'GET',
 		pathTemplate: '/v1/packages/{package_id}',

@@ -34,6 +34,7 @@ import {
 	type PackageCollaboratorInviteCreated,
 	readPackageCollaboratorInvitee,
 	packageCollaboratorInviteeLabel,
+	type PackageCollaboratorPermission,
 	type PackageCollaboratorPreset,
 	type PackageCollaboratorSubjectType,
 } from '#universal/package-collaborators.ts'
@@ -184,7 +185,8 @@ export function grantPackageCollaborator(
 	input: CollaboratorsInput & {
 		subjectType: PackageCollaboratorSubjectType
 		subjectId: string
-		preset: PackageCollaboratorPreset
+		preset?: PackageCollaboratorPreset | null
+		permissions?: Array<PackageCollaboratorPermission>
 	},
 ) {
 	return changeCollaborator(input, async (scope) => {
@@ -193,11 +195,19 @@ export function grantPackageCollaborator(
 			{
 				package_id: savedPackage.id,
 				...subjectSelector(scope, input.subjectType, input.subjectId),
-				preset: input.preset,
+				...presetOrPermissionsArgs(input),
 			},
 			ctx,
 		)
 	})
+}
+function presetOrPermissionsArgs(input: {
+	preset?: PackageCollaboratorPreset | null
+	permissions?: Array<PackageCollaboratorPermission>
+}) {
+	return input.preset
+		? { preset: input.preset }
+		: { permissions: [...(input.permissions ?? [])] }
 }
 function subjectSelector(
 	scope: CollaboratorsScope,
@@ -253,7 +263,8 @@ function requirePersonalOrg(scope: CollaboratorsScope) {
 export function createPackageCollaboratorInvite(
 	input: CollaboratorsInput & {
 		invitee: string
-		preset: PackageCollaboratorPreset
+		preset?: PackageCollaboratorPreset | null
+		permissions?: Array<PackageCollaboratorPermission>
 	},
 ) {
 	return changeCollaborator(input, async (scope) => {
@@ -264,7 +275,7 @@ export function createPackageCollaboratorInvite(
 				...readPackageCollaboratorInvitee(input.invitee),
 				resource_type: 'package',
 				resource_id: scope.savedPackage.id,
-				preset: input.preset,
+				...presetOrPermissionsArgs(input),
 			},
 			scope.ctx,
 		)
@@ -275,7 +286,7 @@ export function createPackageCollaboratorInvite(
 				inviteeEmail: created.invite.invitee_email,
 				inviteeUsername: created.invite.invitee_username,
 			}),
-			preset: input.preset,
+			preset: input.preset ?? null,
 			prompt: created.prompt,
 		}
 	})

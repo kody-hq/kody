@@ -197,3 +197,83 @@ export default async function main() { return await ping() }`,
 		expect.objectContaining({ userId: granteeId }),
 	)
 })
+
+test('Read grant: grantee can read the source but cannot import or run it', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const db = await createDb()
+	const ownerId = testStableUserIdFromEmail('alice-read-grant@example.com')
+	const granteeId = testStableUserIdFromEmail('carol-read-grant@example.com')
+	await provisionPersonalOrg(db, {
+		stableUserId: ownerId,
+		username: 'rd-alice',
+	})
+	await provisionPersonalOrg(db, {
+		stableUserId: granteeId,
+		username: 'rd-carol',
+	})
+	const packageId = crypto.randomUUID()
+	const packageName = '@rd-alice/rehearsal-notes'
+	await insertSavedPackage(db, {
+		id: packageId,
+		user_id: ownerIdFromStored(ownerId),
+		name: packageName,
+		kody_id: 'rehearsal-notes',
+		description: 'rehearsal notes',
+		tags_json: '[]',
+		search_text: null,
+		source_id: `source-${packageId}`,
+		has_app: 1,
+		has_skills: 0,
+		hidden: 0,
+		is_private: 1,
+	})
+	const env = { APP_DB: db, AUDIT_DB: createAuditTestDb() } as Env
+	const granted = await accessGrantCapability.handler(
+		{
+			resource_type: 'package',
+			resource_id: packageId,
+			subject_type: 'user',
+			subject_id: granteeId,
+			preset: 'read',
+		},
+		{
+			env,
+			callerContext: ownerCaller({ userId: ownerId, username: 'rd-alice' }),
+		},
+	)
+	expect(granted.grant.permissions).toEqual(['package:read'])
+	const carolInAlice = granteeInOwnerOrg({
+		granteeUserId: granteeId,
+		granteeUsername: 'rd-carol',
+		ownerOrgId: ownerId,
+		ownerSlug: 'rd-alice',
+	})
+	const {
+		loadSavedPackageViewerAccess,
+		savedPackageViewerAllows,
+		savedPackageViewerMayRunApp,
+	} = await import('#worker/app/package-viewer-access.ts')
+	const viewerAccess = await loadSavedPackageViewerAccess({
+		env,
+		viewer: { userId: granteeId, username: 'rd-carol' } as Parameters<
+			typeof loadSavedPackageViewerAccess
+		>[0]['viewer'],
+		ownerId,
+	})
+	const target = { ownerId, packageId }
+	const permissions = {
+		read: savedPackageViewerAllows(viewerAccess, 'package:read', target),
+		execute: savedPackageViewerAllows(viewerAccess, 'package:execute', target),
+		app: savedPackageViewerMayRunApp(viewerAccess, { ownerId }),
+	}
+	expect(permissions).toEqual({ read: true, execute: false, app: false })
+	await expect(
+		runWithRequestPermissions({ env, request: carolInAlice.request! }, () =>
+			resolveSavedPackageImport({
+				db,
+				userId: carolInAlice.request!.org.id,
+				specifier: `kody:${packageName}/ping`,
+			}),
+		),
+	).rejects.toThrow(/Missing package:execute/)
+})

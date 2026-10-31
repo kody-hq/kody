@@ -194,6 +194,7 @@ async function dispatchAccountPackageAction(input: {
 					env: input.env,
 					userId: resolved.package.ownerUserId,
 					packageId,
+					reader: input.user.mcpUser,
 				})
 			} catch (error) {
 				if (error instanceof CommunityActionError) {

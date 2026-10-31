@@ -197,15 +197,41 @@ test('set adds a team and a member by slug and username, then changes a preset',
 	])
 })
 
-test('set refuses people outside the org, owners, and ambiguous subjects', async () => {
+test('set adds a person outside the org as an outside Read collaborator', async () => {
 	const seed = await createSeed()
 	const ctx = collaboratorCapabilityContext(seed, 'ada', 'owner')
-	await expect(
-		packageCollaboratorSetCapability.handler(
-			{ package_id: 'pkg-1', username: 'dan', preset: 'use' },
-			ctx,
-		),
-	).rejects.toThrow(/not a member of this organization/)
+	const result = await packageCollaboratorSetCapability.handler(
+		{ package_id: 'pkg-1', username: 'dan', preset: 'read' },
+		ctx,
+	)
+	expect(result.collaborator).toMatchObject({
+		kind: 'outside',
+		username: 'dan',
+		preset: 'read',
+		permissions: ['package:read'],
+	})
+})
+
+test('set takes an advanced permission list instead of a preset', async () => {
+	const seed = await createSeed()
+	const ctx = collaboratorCapabilityContext(seed, 'ada', 'owner')
+	const result = await packageCollaboratorSetCapability.handler(
+		{
+			package_id: 'pkg-1',
+			username: 'dan',
+			permissions: ['package:read', 'package:write'],
+		},
+		ctx,
+	)
+	expect(result.collaborator).toMatchObject({
+		preset: null,
+		permissions: ['package:read', 'package:write'],
+	})
+})
+
+test('set refuses owners and ambiguous subjects', async () => {
+	const seed = await createSeed()
+	const ctx = collaboratorCapabilityContext(seed, 'ada', 'owner')
 	await expect(
 		packageCollaboratorSetCapability.handler(
 			{ package_id: 'pkg-1', username: 'ada', preset: 'use' },
@@ -229,6 +255,23 @@ test('set refuses people outside the org, owners, and ambiguous subjects', async
 			ctx,
 		),
 	).rejects.toThrow(/exactly one/)
+	await expect(
+		packageCollaboratorSetCapability.handler(
+			{
+				package_id: 'pkg-1',
+				username: 'dan',
+				preset: 'manage',
+				permissions: ['package:read'],
+			},
+			ctx,
+		),
+	).rejects.toThrow(/not both/)
+	await expect(
+		packageCollaboratorSetCapability.handler(
+			{ package_id: 'pkg-1', user_id: 'no-such-user', preset: 'read' },
+			ctx,
+		),
+	).rejects.toThrow(/No user with that user_id/)
 	expect(await auditActions(seed)).toEqual([])
 })
 

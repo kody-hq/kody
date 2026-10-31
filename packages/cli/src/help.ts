@@ -70,7 +70,7 @@ Usage:
   kody api <operationId> [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
   kody package publish [<@owner/leaf|package_id>] [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
   kody package collaborators <package> [--org <slug>] [--json] [--token <token>] [--api-url <url>]
-  kody package grant <package> (--team <slug> | --user <username>) [--preset use|contribute|manage] [--org <slug>] [--json]
+  kody package grant <package> (--team <slug> | --user <username>) [--preset read|use|contribute|manage] [--org <slug>] [--json]
   kody package revoke <package> (--team <slug> | --user <username> | --grant <grant_id>) [--org <slug>] [--json]
   kody execute [--org <slug>] [--invoke <ref> | --code <esm> | --file <path>] [--params <json>] [--conversation-id <id>] [--json]
   kody context register --name <name> [--org <slug>] | kody context list [--json]
@@ -253,7 +253,9 @@ ${orgBlock}
              the org (\`--org\`). \`<package>\` is \`@owner/leaf\`, the kody id,
              or the package id. \`grant\` adds a team or org member or changes
              their preset (default \`use\`) via \`packageCollaboratorSet\`;
-             people outside the org are refused. \`revoke\` removes one by
+             \`--user\` outside the org adds an outside collaborator.
+             \`--preset read\` shares only the source: they can read, clone,
+             and fork it (\`packageFork\`) but not run it or open its app. \`revoke\` removes one by
              team, user, or grant id via \`packageCollaboratorRemove\`. Needs
              Manage on the package and a token with
              \`package:manage_access\` (\`auth bootstrap --scopes …\`); same

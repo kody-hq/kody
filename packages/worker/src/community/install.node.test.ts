@@ -3,6 +3,7 @@ import { expect, test, vi } from 'vitest'
 
 const mockModule = vi.hoisted(() => ({
 	prepareCommunityFork: vi.fn(),
+	preparePrivatePackageFork: vi.fn(),
 	persistPreparedCommunityFork: vi.fn(),
 	runRepoChecks: vi.fn(),
 	refreshSavedPackageProjection: vi.fn(),
@@ -16,6 +17,17 @@ vi.mock('./service.ts', () => ({
 	// Claim + existing-fork lookup are covered in community-service and
 	// fork-claims tests; here every install is a first fork.
 	runIdempotentCommunityFork: (
+		_input: unknown,
+		handlers: {
+			create: (hold: { claimId: string }) => Promise<unknown>
+			existing: (fork: unknown) => Promise<unknown>
+		},
+	) =>
+		mockModule.existingFork
+			? handlers.existing(mockModule.existingFork)
+			: handlers.create({ claimId: 'test-claim' }),
+	preparePrivatePackageFork: mockModule.preparePrivatePackageFork,
+	runIdempotentPrivatePackageFork: (
 		_input: unknown,
 		handlers: {
 			create: (hold: { claimId: string }) => Promise<unknown>
@@ -45,7 +57,10 @@ vi.mock('#worker/package-registry/service.ts', () => ({
 	refreshSavedPackageProjection: mockModule.refreshSavedPackageProjection,
 }))
 
-import { installCommunityListing } from './install.ts'
+import {
+	installCommunityListing,
+	installPrivatePackageFork,
+} from './install.ts'
 
 const env = { APP_DB: {} as D1Database } as Env
 const files = {
@@ -363,4 +378,46 @@ test('install returns the existing fork instead of forking again', async () => {
 	} finally {
 		mockModule.existingFork = null
 	}
+})
+
+test('private package fork uses the reader-checked prepare and publishes clean forks', async () => {
+	mockModule.existingFork = null
+	mockCleanInstall()
+	mockModule.preparePrivatePackageFork.mockResolvedValue({
+		...preparedFork(),
+		listingId: null,
+		upstreamOwnerId: 'owner-org',
+		upstreamPackageId: 'source-package',
+		claimKey: 'package:source-package',
+	})
+	mockModule.prepareCommunityFork.mockClear()
+	const result = await installPrivatePackageFork({
+		env,
+		baseUrl: 'https://kody.test',
+		userId: ownerIdFromStored('user-b'),
+		userEmail: 'userb@example.com',
+		expectedPackageScope: 'userb',
+		sourcePackage: {
+			ownerId: ownerIdFromStored('owner-org'),
+			packageId: 'source-package',
+		},
+		reader: { userId: 'user-b', username: 'userb' } as Parameters<
+			typeof installPrivatePackageFork
+		>[0]['reader'],
+	})
+	expect(result).toMatchObject({ status: 'installed', packageId: 'package-1' })
+	expect(mockModule.prepareCommunityFork).not.toHaveBeenCalled()
+	expect(mockModule.preparePrivatePackageFork).toHaveBeenCalledWith(
+		expect.objectContaining({
+			sourcePackage: { ownerId: 'owner-org', packageId: 'source-package' },
+			reader: { userId: 'user-b', username: 'userb' },
+		}),
+	)
+	expect(mockModule.persistPreparedCommunityFork).toHaveBeenCalledWith(
+		expect.objectContaining({
+			listingId: null,
+			upstreamPackageId: 'source-package',
+		}),
+		{ claimId: 'test-claim' },
+	)
 })

@@ -6,6 +6,7 @@
  */
 
 export const packageCollaboratorPresets = [
+	'read',
 	'use',
 	'contribute',
 	'manage',
@@ -29,7 +30,7 @@ export function isPackageCollaboratorAction(
 
 export const packageCollaboratorUsage = [
 	'Usage: kody package collaborators <@owner/leaf|kody_id|package_id> [--org <slug>] [--json]',
-	'       kody package grant <package> (--team <slug> | --user <username>) [--preset use|contribute|manage] [--org <slug>] [--json]',
+	'       kody package grant <package> (--team <slug> | --user <username>) [--preset read|use|contribute|manage] [--org <slug>] [--json]',
 	'       kody package revoke <package> (--team <slug> | --user <username> | --grant <grant_id>) [--org <slug>] [--json]',
 ].join('\n')
 

@@ -789,6 +789,10 @@
 			"sha256": "2560759567b1ddb011ff91bb9a9664eeb9e6f3a81ad4d5c9d6a2927f5d13734d"
 		},
 		{
+			"filename": "0218-read-preset-and-package-forks.sql",
+			"sha256": "436a7498c073d33b7c0448ad3126888d4cdb2573ccefd3dbd06a741e31a1e8f3"
+		},
+		{
 			"filename": "0222-profile-tokens-and-enablers.sql",
 			"sha256": "33160dee7165b61b0526bfee4eda395c89668c4b0b1f7744bcaf16a751699300"
 		}
