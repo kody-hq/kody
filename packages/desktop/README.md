@@ -196,8 +196,17 @@ A repository admin must create the `desktop-release` GitHub environment in
 
 Set the environment variable `DESKTOP_WINDOWS_PUBLISHER` to the exact Windows
 certificate publisher name. Keep signing identities stable, existing installs
-verify replacement signatures. If Windows uses hardware or cloud signing instead
-of an exportable certificate, configure that provider before releasing.
+verify replacement signatures.
+
+For Azure Artifact Signing (formerly Trusted Signing), set
+`DESKTOP_WINDOWS_SIGNING_PROVIDER=azure` instead of supplying the Windows
+certificate secrets. Set environment variables `DESKTOP_AZURE_ENDPOINT`,
+`DESKTOP_AZURE_ACCOUNT`, and `DESKTOP_AZURE_PROFILE`, plus secrets
+`DESKTOP_AZURE_TENANT_ID`, `DESKTOP_AZURE_CLIENT_ID`, and
+`DESKTOP_AZURE_CLIENT_SECRET`. The service principal needs the
+[Artifact Signing Certificate Profile Signer role](https://learn.microsoft.com/azure/artifact-signing/tutorial-assign-roles)
+on a Public Trust certificate profile. Publisher name must match the profile
+certificate. The default `certificate` provider uses the `.pfx` secrets above.
 
 Upload credentials through GitHub's environment secrets UI or
 `gh secret set --env desktop-release --repo kody-hq/kody`. Do not put keys or
