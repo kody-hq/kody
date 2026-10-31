@@ -1,6 +1,9 @@
 import { z } from 'zod'
 import { recordDeliveryAlertEvent } from './delivery-alert-events.ts'
-import { applyDeliverabilitySideEffects } from './deliverability-side-effects.ts'
+import {
+	applyDeliverabilitySideEffects,
+	applyDeliverabilitySideEffectsOnce,
+} from './deliverability-side-effects.ts'
 import { type MailboxEnv } from './mailbox-client.ts'
 import { type EmailReportingEnv } from './reporting-events.ts'
 import { recordProviderEmailDeliveryEvent } from './service.ts'
@@ -97,6 +100,19 @@ export function parseCloudflareEmailDeliveryEvent(input: unknown) {
 	return result.data
 }
 
+function eventHoldsLatestStatus(input: {
+	message: { deliveryStatus: string | null; deliveryStatusAt: string | null }
+	deliveryStatus: string
+	eventTimestamp: string
+}) {
+	if (input.message.deliveryStatus !== input.deliveryStatus) return false
+	if (!input.message.deliveryStatusAt) return false
+	return (
+		Date.parse(input.message.deliveryStatusAt) ===
+		Date.parse(input.eventTimestamp)
+	)
+}
+
 export async function processCloudflareEmailDeliveryEvent(input: {
 	env: MailboxEnv & { APP_DB: D1Database }
 	reportingEnv?: EmailReportingEnv
@@ -138,15 +154,27 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 		// mutate cooldowns / rejecting providers. Stale and duplicate
 		// payloads can arrive after a newer `delivered` and must not
 		// re-arm a 24h hold.
-		if (result.outcome === 'recorded') {
-			await applyDeliverabilitySideEffects({
+		// A duplicate whose status still holds the message's latest status is
+		// a retry of the recorded event (maybe after a crash before these
+		// ran); the ledger applies them once either way.
+		if (
+			result.outcome === 'recorded' ||
+			(result.outcome === 'duplicate' &&
+				eventHoldsLatestStatus({
+					message: result.message,
+					deliveryStatus: providerEvent.payload.delivery.status,
+					eventTimestamp: providerEvent.metadata.eventTimestamp,
+				}))
+		) {
+			await applyDeliverabilitySideEffectsOnce({
 				db: input.env.APP_DB,
+				providerEventId: providerEvent.payload.eventId,
+				userId: result.message.userId,
 				recipient: providerEvent.payload.recipient,
 				deliveryStatus: providerEvent.payload.delivery.status,
 				smtpResponse: providerEvent.payload.delivery.smtpResponse,
 				smtpEnhancedStatusCode:
 					providerEvent.payload.delivery.smtpEnhancedStatusCode,
-				smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
 				fetchImpl: input.fetchImpl,
 			})
 		}

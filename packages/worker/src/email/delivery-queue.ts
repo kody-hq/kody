@@ -1,3 +1,7 @@
+import {
+	deliverabilityEffectsClaimMs,
+	DeliverabilityEffectsClaimHeldError,
+} from './deliverability-side-effects.ts'
 import { processCloudflareEmailDeliveryEvent } from './delivery-events.ts'
 import { applyOutboundEmailAbusePause } from './outbound-abuse.ts'
 import { applyOutboundConsecutiveFailureTracking } from './outbound-consecutive-failures.ts'
@@ -9,6 +13,11 @@ import { transactionalEmailVerificationKind } from './verification-delivery.ts'
 export { emailDeliveryQueueName } from './delivery-queue-names.ts'
 
 const unmatchedRetryDelaySeconds = 30
+// The consumer allows 3 retries; together they must outlast a crashed
+// delivery's ledger claim, or the event lands in the DLQ unapplied.
+const claimHeldRetryDelaySeconds = Math.ceil(
+	deliverabilityEffectsClaimMs / 2000,
+)
 
 export async function handleEmailDeliveryQueue(
 	batch: MessageBatch<unknown>,
@@ -128,7 +137,12 @@ export async function handleEmailDeliveryQueue(
 			}
 		} catch (error) {
 			console.error('email-delivery-event-processing-failed', error)
-			queueMessage.retry({ delaySeconds: unmatchedRetryDelaySeconds })
+			queueMessage.retry({
+				delaySeconds:
+					error instanceof DeliverabilityEffectsClaimHeldError
+						? claimHeldRetryDelaySeconds
+						: unmatchedRetryDelaySeconds,
+			})
 		}
 	}
 }

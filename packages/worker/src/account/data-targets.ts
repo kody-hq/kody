@@ -567,6 +567,14 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	},
 	{
 		kind: 'user_id',
+		table: 'email_deliverability_effects',
+		includeInExport: false,
+		surface: 'email_deliverability_effects',
+		reason:
+			'Operational per-provider-event deliverability side-effect ledger omitted from portable export; account deletion removes the owner rows.',
+	},
+	{
+		kind: 'user_id',
 		table: 'email_outbound_failure_tracking',
 		includeInExport: false,
 		surface: 'email_outbound_failure_tracking',
