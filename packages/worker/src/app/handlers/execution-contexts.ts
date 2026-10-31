@@ -47,6 +47,7 @@ export const executionContextCapabilityNames = {
 	get: 'executionContextGet',
 	optIn: 'executionContextOptIn',
 	optOut: 'executionContextOptOut',
+	update: 'executionContextUpdate',
 	delete: 'executionContextDelete',
 	chainGet: 'executionChainGet',
 	chainSet: 'executionChainSet',
@@ -518,6 +519,19 @@ export async function optOutOfExecutionContextForUser(
 			chainChanged: result.chainChanged === true,
 			chain: result.chain ? parseChain(result.chain) : null,
 		}
+	})
+}
+
+/** Turning host commands on is machine-only (ADR 0092); off works here. */
+export async function turnOffExecutionContextCommandsForUser(
+	input: ScopedInput & { contextId: string },
+) {
+	return runScoped(input, async (scope) => {
+		await callCapability(scope, executionContextCapabilityNames.update, {
+			id: input.contextId,
+			grant: { commands: { enabled: false } },
+		})
+		return { ok: true as const }
 	})
 }
 

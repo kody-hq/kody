@@ -111,6 +111,21 @@ export const optOutOfExecutionContext = createServerFn({ method: 'POST' })
 		)
 	})
 
+export const turnOffExecutionContextCommands = createServerFn({
+	method: 'POST',
+})
+	.validator(z.object({ orgSlug, contextId: segment }))
+	.handler(async ({ data }) => {
+		const { turnOffExecutionContextCommandsForUser } =
+			await import('../../src/app/handlers/execution-contexts.ts')
+		return mutate(data.orgSlug, (input) =>
+			turnOffExecutionContextCommandsForUser({
+				...input,
+				contextId: data.contextId,
+			}),
+		)
+	})
+
 export const setExecutionChain = createServerFn({ method: 'POST' })
 	.validator(
 		z.object({

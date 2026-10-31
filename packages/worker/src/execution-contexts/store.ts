@@ -13,6 +13,7 @@ import {
 /** D1 access for execution contexts (tables from migrations 0189 and 0190). */
 
 export const executionContextIdPrefix = 'ec_'
+export const executionContextCommandPermission = 'execution_context:command'
 export const registrationChallengeTtlMs = 5 * 60_000
 export const unutilizedNamedMax = 3
 export const revokedVisibleMs = 30 * 24 * 60 * 60_000
@@ -49,6 +50,12 @@ export type ContextAccess = {
 	granted: boolean
 	optedIn: boolean
 	preset: 'use' | 'contribute' | 'manage' | null
+	/**
+	 * May run host commands (`execution_context:command`, ADR 0092): the
+	 * operator, or a live grant on this context that lists the permission.
+	 * Never from all_members, an org role, or a preset.
+	 */
+	canRunCommands: boolean
 	usable: boolean
 	unusableReason: UnusableReason | null
 }
@@ -205,7 +212,12 @@ export async function loadContextAccess(
 			.bind(context.id, input.orgId),
 		db
 			.prepare(
-				`SELECT g.preset AS preset FROM grants g
+				`SELECT g.preset AS preset,
+				        EXISTS (
+				          SELECT 1 FROM grant_permissions gp
+				          WHERE gp.grant_id = g.id AND gp.permission = '${executionContextCommandPermission}'
+				        ) AS command
+				 FROM grants g
 				 WHERE g.resource_type = 'execution_context' AND g.resource_id = ?
 				   AND g.org_id = ? AND g.deleted_at IS NULL
 				   AND ${subjectMatch.sql}`,
@@ -230,6 +242,9 @@ export async function loadContextAccess(
 		(row) => (row as { preset: ContextAccess['preset'] }).preset,
 	)
 	const preset = strongestPreset(presets)
+	const commandGranted = (grant?.results ?? []).some(
+		(row) => Number((row as { command?: unknown }).command) === 1,
+	)
 	const isMember = (membership?.results.length ?? 0) > 0
 	const allMembers =
 		context.org_id === input.orgId
@@ -253,6 +268,8 @@ export async function loadContextAccess(
 		granted,
 		optedIn,
 		preset: isOperator ? 'manage' : (preset ?? (granted ? 'use' : null)),
+		canRunCommands:
+			isOperator || (granted && preset !== null && commandGranted),
 		usable: unusableReason === null,
 		unusableReason,
 	}
