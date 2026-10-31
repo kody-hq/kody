@@ -207,7 +207,7 @@ async function register() {
 }
 let commandsEnabled = false
 async function refreshCommands() {
-	if (!state.ecid || process.platform === 'win32') return
+	if (!state.ecid) return
 	try {
 		const status = JSON.parse(
 			await runner.command([
@@ -331,7 +331,7 @@ function updateMenu() {
 						label: 'Allow commands',
 						type: 'checkbox',
 						checked: commandsEnabled,
-						enabled: available && !!state.ecid && process.platform !== 'win32',
+						enabled: available && !!state.ecid,
 						click: () => action(toggleCommands),
 					},
 					{ type: 'separator' },

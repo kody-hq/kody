@@ -168,14 +168,17 @@ sequenceDiagram
 - Kody cloud and `--local` runs get a `kody.command` whose methods throw
   `execution_context_command_requires_context` (`runtime-source-modules.ts`);
   the authorize hop refuses any other principal with the same code.
-- Windows: `kody context commands on` and `HostCommands` refuse before spawning.
+- Windows: PowerShell (`pwsh`, else `powershell.exe`) or `cmd.exe` with
+  `shell: 'cmd'`, UTF-8 output, hidden windows; `.cmd`/`.bat` files resolve
+  through `PATH`/`PATHEXT` and run through `cmd.exe` with escaped args
+  (`windows-command.ts`); every kill is `taskkill /T /F`.
 
 Tests: `packages/cli/test/host-commands.test.ts` (process manager, real
 commands), `packages/cli/test/execution-context.test.ts` (real daemon and
 workerd against a fake ECP server), and
 `packages/worker/src/execution-contexts/commands.node.test.ts` (authorization,
-denials, sharing, audit). CI runs the CLI ones on Linux and macOS
-(`host-commands` job in `validate.yml`).
+denials, sharing, audit). CI runs the CLI ones on Linux, macOS, Windows x64, and
+Windows ARM (`host-commands` job in `validate.yml`).
 
 ### End-to-end check
 

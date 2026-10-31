@@ -12,11 +12,13 @@ Each cell:
    with `mintCliToken` (`tools/preview-rehearsal/seed.ts`).
 2. Registers a throwaway context (`e2e-<os>-<arch>-<run>`) with a passphrase key
    (`KODY_CONTEXT_KEY_PASSPHRASE`) in a temp home.
-3. Allows a temp folder in the local policy and the server grant (rw).
+3. Allows a temp folder in the local policy and the server grant (rw), and turns
+   host commands on locally (`kody context commands on`).
 4. Starts `kody daemon` as an IPC child (`daemon-host.cjs`, the same stop path
    as the desktop app) and waits for `executionContextGet` to say `online`.
 5. Runs `kody execute --context <name>` with a module that reads and writes the
-   folder by its native path (`C:\...` on Windows).
+   folder by its native path (`C:\...` on Windows) and runs one
+   `kody.command.run` (PowerShell on Windows, `$SHELL` elsewhere).
 6. Sends `stop`, then asserts no `workerd` (`workerd.exe`) process is left.
 7. Revokes and deletes the context.
 

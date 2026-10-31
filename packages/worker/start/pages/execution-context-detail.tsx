@@ -183,13 +183,7 @@ export function ExecutionContextDetail(props: {
 							!context.capabilities?.service &&
 							context.status !== 'revoked' ? (
 								<span css={hintCss}>
-									{context.capabilities?.os === 'win32' ? (
-										<>
-											Keep <code>kody daemon --context {context.id}</code>{' '}
-											running in a terminal. Background services are not
-											supported on Windows yet
-										</>
-									) : context.status === 'offline' ? (
+									{context.status === 'offline' ? (
 										<>
 											Run{' '}
 											<code>kody daemon install --context {context.id}</code> to
@@ -447,13 +441,7 @@ function CommandsPanel(props: {
 			) : (
 				<p css={mutedCss}>
 					Runs on {context.name} cannot run shell commands.
-					{context.capabilities?.os === 'win32' ? (
-						<>
-							{' '}
-							Host commands are not supported on Windows yet: the Kody runner
-							supports macOS and Linux.
-						</>
-					) : context.isOperator ? (
+					{context.isOperator ? (
 						<>
 							{' '}
 							Only the machine can turn them on: run{' '}

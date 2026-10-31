@@ -43,7 +43,10 @@ Kent decided on 2026-10-30:
    CapabilityProxy authorize hop) and finish (`command_finished`, through a
    signed `command.finished` frame) lands in the context audit log with command,
    cwd, exit code, context, and caller; env keys only.
-7. **macOS and Linux.** Windows refuses before spawning.
+7. **macOS, Linux, and Windows.** Windows (amended with the Windows runner) runs
+   PowerShell (`pwsh`, else `powershell.exe`) with UTF-8 output, or `cmd.exe`
+   with `shell: 'cmd'`; `.cmd`/`.bat` files run through `cmd.exe` with escaped
+   args; timeouts, kills, and shutdown end the tree with `taskkill /T /F`.
 
 ## Consequences
 

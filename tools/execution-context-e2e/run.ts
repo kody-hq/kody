@@ -1,7 +1,7 @@
 /**
  * End-to-end execution context check against a PR preview (never production):
  * register a throwaway context, run the daemon, execute on it with a host
- * folder, stop the daemon, assert no workerd is left, then revoke and delete.
+ * folder and a host command, stop the daemon, assert no workerd is left, then revoke and delete.
  * See docs/contributing/execution-context-e2e.md.
  */
 import { execFileSync, fork } from 'node:child_process'
@@ -77,6 +77,27 @@ function workerdProcesses() {
 	}
 }
 
+const shellMarker = 'kody-ec-e2e-shell'
+// Windows runs PowerShell by default; macOS and Linux run $SHELL.
+const shellCommand =
+	process.platform === 'win32'
+		? `"${shellMarker}|$($PSVersionTable.PSEdition)|$((Get-Location).Path)"`
+		: `printf '%s|%s' ${shellMarker} "$(pwd)"`
+
+function findShellResult(
+	value: unknown,
+): { exitCode?: number; stdout?: string } | null {
+	if (!value || typeof value !== 'object') return null
+	const record = value as Record<string, unknown>
+	if (record.shell && typeof record.shell === 'object')
+		return record.shell as { exitCode?: number; stdout?: string }
+	for (const child of Object.values(record)) {
+		const hit = findShellResult(child)
+		if (hit) return hit
+	}
+	return null
+}
+
 async function main() {
 	const session = await openRehearsalSession(appOrigin, {
 		email: 'me@kentcdodds.com',
@@ -109,6 +130,8 @@ async function main() {
 			id: ecid,
 			grant: { fs: [{ path: folder, mode: 'rw' }] },
 		})
+		cli(env, ['context', 'commands', 'on', '--context', name, '--json'])
+		log('host commands turned on locally')
 
 		const daemon = fork(
 			join(import.meta.dirname, 'daemon-host.cjs'),
@@ -133,12 +156,17 @@ async function main() {
 		writeFileSync(
 			module,
 			`import { readFile, writeFile } from 'node:fs/promises'
+import { kody } from 'kody:runtime'
 export default async function main() {
 	const folder = ${JSON.stringify(folder)}
 	const sep = folder.includes('\\\\') ? '\\\\' : '/'
 	const seed = await readFile(folder + sep + 'seed.txt', 'utf8')
 	await writeFile(folder + sep + 'from-run.txt', 'written by the run')
-	return { seed, sum: 20 + 22 }
+	const shell = await kody.command.run({
+		command: ${JSON.stringify(shellCommand)},
+		cwd: folder,
+	})
+	return { seed, sum: 20 + 22, shell }
 }
 `,
 		)
@@ -159,6 +187,10 @@ export default async function main() {
 		)
 			throw new Error('The run did not write into the host folder.')
 		log(`host folder read/write ok on ${process.platform}`)
+		const shell = findShellResult(JSON.parse(output.slice(output.indexOf('{'))))
+		if (shell?.exitCode !== 0 || !shell.stdout?.includes(shellMarker))
+			throw new Error(`The host command did not run: ${JSON.stringify(shell)}`)
+		log(`host command ok on ${process.platform}`)
 
 		daemon.send('stop')
 		const [code] = await Promise.race([

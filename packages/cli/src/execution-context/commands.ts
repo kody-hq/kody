@@ -723,11 +723,6 @@ async function runCommandsOptInCommand(
 	if (extra.length > 0 || !['status', 'on', 'off'].includes(action)) {
 		throw new Error(commandsUsage)
 	}
-	if (process.platform === 'win32' && action === 'on') {
-		throw new Error(
-			'Host commands are not supported on Windows yet: the Kody runner supports macOS and Linux. (execution_context_commands_unsupported)',
-		)
-	}
 	const ecids = input.values.context
 		? [
 				localContextId(input.apiUrl, input.values.context) ??

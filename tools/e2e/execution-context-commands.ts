@@ -31,10 +31,6 @@ if (!token) {
 	)
 	process.exit(2)
 }
-if (process.platform === 'win32') {
-	console.error('Host commands are macOS and Linux only.')
-	process.exit(2)
-}
 
 const repoRoot = resolve(import.meta.dirname, '../..')
 const cliArgv = values.cli
@@ -51,6 +47,8 @@ const env: NodeJS.ProcessEnv = {
 	XDG_CONFIG_HOME: join(temp, 'config'),
 	XDG_STATE_HOME: join(temp, 'state'),
 	XDG_DATA_HOME: join(temp, 'data'),
+	APPDATA: join(temp, 'config'),
+	LOCALAPPDATA: join(temp, 'data'),
 	KODY_API_TOKEN: token,
 	KODY_SKIP_SKILL_REFRESH: '1',
 	KODY_SKIP_GIT_HELPER_REFRESH: '1',
@@ -121,17 +119,29 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
+// Windows runs PowerShell by default; macOS and Linux run $SHELL.
+const [fgCommand, bgCommand] =
+	process.platform === 'win32'
+		? [
+				'"$env:KODY_E2E_VALUE|$((Get-Location).Path)"; [Console]::Error.WriteLine(\'oops\'); exit 3',
+				'1..6 | ForEach-Object { "tick$_"; Start-Sleep -Seconds 1 }; Start-Sleep -Seconds 120',
+			]
+		: [
+				'printf "%s|%s" "$KODY_E2E_VALUE" "$(pwd)"; echo oops >&2; exit 3',
+				'for i in 1 2 3 4 5 6; do echo tick$i; sleep 1; done; sleep 120',
+			]
+
 const runModule = `
 import { kody } from 'kody:runtime'
 export default async function main() {
 	const cwd = ${JSON.stringify(temp)}
 	const fg = await kody.command.run({
-		command: 'printf "%s|%s" "$KODY_E2E_VALUE" "$(pwd)"; echo oops >&2; exit 3',
+		command: ${JSON.stringify(fgCommand)},
 		cwd,
 		env: { KODY_E2E_VALUE: ${JSON.stringify(secretEnvValue)} },
 	})
 	const job = await kody.command.start({
-		command: 'for i in 1 2 3 4 5 6; do echo tick$i; sleep 1; done; sleep 120',
+		command: ${JSON.stringify(bgCommand)},
 		cwd,
 	})
 	let chunk = { stdout: '', stdoutOffset: 0 }

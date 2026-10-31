@@ -184,7 +184,11 @@ cloud. Automation runs record the same `ranOn` on their run records.
 
 With host commands on, code in a run on the machine calls `kody.command.*` from
 `kody:runtime`. Commands run as the user running the daemon, in a real shell
-(`$SHELL -c`, else `/bin/sh -c`), with that user's `PATH` and tools.
+(`$SHELL -c`, else `/bin/sh -c`), with that user's `PATH` and tools. On Windows
+the shell is PowerShell (`pwsh`, else `powershell.exe`, UTF-8 output); pass
+`shell: 'cmd'` for `cmd.exe`. `file` resolves through `PATH`/`PATHEXT`, so
+`{ file: 'npm', args: ['test'] }` runs `npm.cmd`, and every kill ends the whole
+process tree.
 
 ```ts
 import { kody } from 'kody:runtime'

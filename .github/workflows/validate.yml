@@ -730,12 +730,15 @@ jobs:
           retention-days: 14
 
   host_commands:
-    # ADR 0093: real daemon, workerd, and host processes on Linux and macOS.
+    # ADR 0093: real daemon, workerd, and host processes on every OS.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        os: [ubuntu-24.04, macos-15, windows-latest, windows-11-arm]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     name: 🖥️ Host commands (${{ matrix.os }})
     timeout-minutes: 20
     if: >-
