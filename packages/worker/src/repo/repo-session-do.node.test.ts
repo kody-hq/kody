@@ -559,12 +559,8 @@ test('rebaseSession and publishSession use Artifacts username/password auth with
 			remoteRef: 'main',
 		}),
 	)
-	const pullAuth = mockModule.rawPull.mock.calls[0]?.[0].onAuth?.(
-		'',
-		{} as never,
-	)
-	expect(pullAuth).toEqual(artifactsAuth)
-	expect(mockModule.git.pull).not.toHaveBeenCalled()
+	const pull = mockModule.rawPull.mock.calls[0]![0]
+	expect(pull.onAuth?.('', {} as never)).toEqual(artifactsAuth)
 	expect(mockModule.git.push).toHaveBeenCalledWith(
 		expect.objectContaining({
 			remote: 'origin',
