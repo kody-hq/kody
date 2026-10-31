@@ -3,6 +3,8 @@ const { test } = require('node:test')
 const {
 	releasePlan,
 	assertFeedCoverage,
+	releaseNotes,
+	assertDraft,
 } = require('../scripts/release-plan.cjs')
 const apple = Object.fromEntries(
 	[
@@ -45,4 +47,37 @@ test('Mac-only publication cannot remove existing Windows or Linux update channe
 		)
 		assert.doesNotThrow(() => assertFeedCoverage('all', [name]))
 	}
+})
+
+test('draft retries require matching source, platforms, and asset names', () => {
+	const draft = {
+		isDraft: true,
+		body: releaseNotes('abc123', 'mac'),
+		assets: [{ name: 'Kody-mac.zip' }],
+	}
+	assert.doesNotThrow(() =>
+		assertDraft(draft, 'abc123', 'mac', [
+			'Kody-mac.zip',
+			'latest-arm64-mac.yml',
+		]),
+	)
+	assert.throws(
+		() => assertDraft(draft, 'other', 'mac', ['Kody-mac.zip']),
+		/source or platforms differ/,
+	)
+	assert.throws(
+		() => assertDraft(draft, 'abc123', 'all', ['Kody-mac.zip']),
+		/source or platforms differ/,
+	)
+	assert.throws(
+		() => assertDraft(draft, 'abc123', 'mac', ['other.zip']),
+		/outside this release plan/,
+	)
+	assert.throws(
+		() =>
+			assertDraft({ ...draft, isDraft: false }, 'abc123', 'mac', [
+				'Kody-mac.zip',
+			]),
+		/already published/,
+	)
 })

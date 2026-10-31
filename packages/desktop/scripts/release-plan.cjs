@@ -1,4 +1,4 @@
-const { appendFileSync, readFileSync } = require('node:fs')
+const { appendFileSync, readFileSync, readdirSync } = require('node:fs')
 
 const targets = [
 	{ platform: 'mac', arch: 'arm64', runner: 'macos-15' },
@@ -66,9 +66,35 @@ function assertFeedCoverage(scope, assets) {
 		)
 	}
 }
+function releaseNotes(sha, scope) {
+	return `Source: https://github.com/kody-hq/kody/commit/${sha}\nPlatforms: ${scope}`
+}
+function assertDraft(draft, sha, scope, assetNames) {
+	if (!draft.isDraft)
+		throw new Error(
+			'Version already published. Bump the desktop version first.',
+		)
+	if (draft.body !== releaseNotes(sha, scope))
+		throw new Error(
+			'Draft source or platforms differ. Use a new version or remove the stale draft before retrying.',
+		)
+	if (draft.assets.some((asset) => !assetNames.includes(asset.name)))
+		throw new Error(
+			'Draft contains assets outside this release plan. Remove the stale draft before retrying.',
+		)
+}
 if (require.main === module) {
 	const scope = process.env.RELEASE_PLATFORMS || 'mac'
-	if (process.argv.includes('--check-feed')) {
+	if (process.argv.includes('--check-draft')) {
+		assertDraft(
+			JSON.parse(readFileSync(0, 'utf8')),
+			process.env.SOURCE_SHA,
+			scope,
+			readdirSync('release-assets'),
+		)
+	} else if (process.argv.includes('--notes')) {
+		process.stdout.write(releaseNotes(process.env.SOURCE_SHA, scope))
+	} else if (process.argv.includes('--check-feed')) {
 		const latest = JSON.parse(readFileSync(0, 'utf8'))
 		assertFeedCoverage(
 			scope,
@@ -88,4 +114,4 @@ if (require.main === module) {
 		}
 	}
 }
-module.exports = { releasePlan, assertFeedCoverage }
+module.exports = { releasePlan, assertFeedCoverage, releaseNotes, assertDraft }

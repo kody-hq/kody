@@ -214,10 +214,11 @@ jobs:
             esac
           fi
           # Never replace a published version. Drafts may be resumed after an upload failure.
-          if gh release view "$tag" --json isDraft --jq '.isDraft' > is-draft.txt 2>/dev/null; then
-            test "$(cat is-draft.txt)" = true || { echo 'Version already published. Bump the desktop version first.'; exit 1; }
+          node packages/desktop/scripts/release-plan.cjs --notes > release-notes.txt
+          if gh release view "$tag" --json isDraft,body,assets > draft.json 2>/dev/null; then
+            node packages/desktop/scripts/release-plan.cjs --check-draft < draft.json
           else
-            gh release create "$tag" --draft --title "Kody $version" --notes "Source: https://github.com/kody-hq/kody/commit/$SOURCE_SHA"
+            gh release create "$tag" --draft --title "Kody $version" --notes-file release-notes.txt
           fi
           gh release upload "$tag" release-assets/* --clobber
-          gh release edit "$tag" --draft=false --latest --notes "Source: https://github.com/kody-hq/kody/commit/$SOURCE_SHA"
+          gh release edit "$tag" --draft=false --latest --notes-file release-notes.txt
