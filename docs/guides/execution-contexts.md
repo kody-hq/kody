@@ -249,15 +249,21 @@ the security trade-off in plain words.
 
 You can share a context with people or teams in your org. Their runs use the
 grant you set (host folders, egress, limits). Someone you share with can use the
-context only after they opt in to it (`executionContextOptIn`,
-`POST /v1/execution-contexts/{id}/opt-in`, or the context's page); until then
-their runs skip it (`not_opted_in`) and move down their chain. Opting in is
-their consent: while their run is active, the operator's machine can make Kody
-API calls as them (within the grant), use their credentials and read the
-responses, and change the results their run returns. Their credential values
-still stay in Kody cloud. Their runs use their own credentials exactly as in
-Kody cloud, but cannot start workflows there, and Kody APIs kept for Kody cloud
-refuse them (`context_run_denied`).
+context only after they opt in to it: the "Opt into <name>?" dialog on the
+context's page, `executionContextOptIn` (`executionContextOptOut` to leave), or
+`POST /v1/execution-contexts/{id}/opt-in` (from the CLI,
+`kody api executionContextOptIn`). Until then the context is skipped for their
+runs (`not_opted_in`) and the run moves down their chain; a run that names the
+context without `fallback: "chain"` fails instead.
+
+Opting in is their consent, and the opt-in notice says so: while their run is
+active, the operator's machine can make Kody API calls as them (within the Kody
+API access its grant allows), use their credentials (GitHub, email and any
+others they've connected) and read the responses, and change the results their
+run returns. Their runs use their own credentials exactly as in Kody cloud, and
+the credential values stay in Kody cloud and never reach the machine. Their runs
+cannot start workflows there, and Kody APIs kept for Kody cloud refuse them
+(`context_run_denied`). The context's runtime allowlist narrows their runs too.
 
 Shares never include host commands unless you say so: share with
 `commands: true` (`executionContextShareSet`) to give someone
