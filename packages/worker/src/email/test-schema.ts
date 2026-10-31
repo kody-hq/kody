@@ -25,6 +25,7 @@ export async function ensureEmailTestSchema(db: D1Database) {
 		`DROP TABLE IF EXISTS email_attachments;`,
 		`DROP TABLE IF EXISTS email_outbound_failure_tracking;`,
 		`DROP TABLE IF EXISTS email_deliverability_effects;`,
+		`DROP TABLE IF EXISTS email_mailbox_delivery_cursors;`,
 		`DROP TABLE IF EXISTS email_outbound_provider_index;`,
 		`DROP TABLE IF EXISTS email_messages;`,
 		`DROP TABLE IF EXISTS email_threads;`,
@@ -272,6 +273,13 @@ ON email_outbound_failure_tracking(user_id);`,
 	created_at TEXT NOT NULL,
 	claimed_at TEXT,
 	applied_at TEXT
+);`,
+		`CREATE TABLE IF NOT EXISTS email_mailbox_delivery_cursors (
+	provider_message_id TEXT PRIMARY KEY NOT NULL,
+	user_id TEXT NOT NULL,
+	last_status TEXT NOT NULL,
+	last_status_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
 );`,
 		`CREATE TABLE IF NOT EXISTS email_outbound_provider_index (
 	provider TEXT NOT NULL,

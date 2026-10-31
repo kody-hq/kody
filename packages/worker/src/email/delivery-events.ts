@@ -175,6 +175,10 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 				smtpResponse: providerEvent.payload.delivery.smtpResponse,
 				smtpEnhancedStatusCode:
 					providerEvent.payload.delivery.smtpEnhancedStatusCode,
+				deliveryCursor: {
+					providerMessageId: providerEvent.payload.messageId,
+					at: providerEvent.metadata.eventTimestamp,
+				},
 				fetchImpl: input.fetchImpl,
 			})
 		}

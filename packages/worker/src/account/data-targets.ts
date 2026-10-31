@@ -574,6 +574,14 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	},
 	{
 		kind: 'user_id',
+		table: 'email_mailbox_delivery_cursors',
+		includeInExport: false,
+		surface: 'email_mailbox_delivery_cursors',
+		reason:
+			'Operational per-message mailbox delivery cursor that orders lifecycle events for deliverability holds; omitted from portable export; account deletion removes the owner rows.',
+	},
+	{
+		kind: 'user_id',
 		table: 'email_outbound_failure_tracking',
 		includeInExport: false,
 		surface: 'email_outbound_failure_tracking',

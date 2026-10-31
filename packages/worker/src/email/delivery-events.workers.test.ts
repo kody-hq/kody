@@ -453,3 +453,92 @@ test('a failure after the cooldown write does not count the cooldown twice on re
 			.first(),
 	).toEqual({ rejection_count: 1 })
 }, 30_000)
+
+test('an older bounce waiting on its MX lookup does not re-arm holds a newer delivered event cleared', async () => {
+	await ensureEmailTestSchema(env.APP_DB)
+	const userId = ownerIdFromStored(`provider-user-${crypto.randomUUID()}`)
+	const providerMessageId = `provider-${crypto.randomUUID()}`
+	const recipient = `bounce@race-${crypto.randomUUID()}.example`
+	const createdAt = '2026-08-03T01:00:00.000Z'
+	const mailbox = mailboxRpc({ env, userId })
+	const message = baseMessage(userId, {
+		direction: 'outbound',
+		inboxId: null,
+		processingStatus: 'sent',
+		providerMessageId,
+		sentAt: createdAt,
+		createdAt,
+	})
+	await mailbox.upsertMessageGraph({ ownerId: userId, message })
+	await upsertOutboundProviderIndexRow({
+		db: env.APP_DB,
+		providerMessageId,
+		userId,
+		messageId: message.id,
+		inboxId: null,
+		now: createdAt,
+	})
+	const withRecipient = (
+		event: ReturnType<typeof providerEvent>,
+		delivery: Record<string, string>,
+	) => ({ ...event, payload: { ...event.payload, recipient, delivery } })
+	const bounce = withRecipient(
+		providerEvent({
+			providerMessageId,
+			providerEventId: `event-${crypto.randomUUID()}`,
+			status: 'bounced',
+			at: '2026-08-03T01:03:00.000Z',
+		}),
+		{
+			status: 'bounced',
+			smtpResponse: '550 5.7.1 rejected by Spamhaus blocklist',
+			smtpEnhancedStatusCode: '5.7.1',
+		},
+	)
+	const delivered = withRecipient(
+		providerEvent({
+			providerMessageId,
+			providerEventId: `event-${crypto.randomUUID()}`,
+			status: 'delivered',
+			at: '2026-08-03T01:05:00.000Z',
+		}),
+		{ status: 'delivered' },
+	)
+	const mxResponse = () =>
+		Response.json({
+			Status: 0,
+			Answer: [{ type: 15, data: '10 mx.race-provider.example.' }],
+		})
+	let raced = false
+	// The newer delivered event lands while the bounce waits on its MX lookup.
+	const fetchImpl = (async () => {
+		if (!raced) {
+			raced = true
+			await processCloudflareEmailDeliveryEvent({
+				env,
+				body: delivered,
+				fetchImpl: mxResponse as unknown as typeof fetch,
+			})
+		}
+		return mxResponse()
+	}) as unknown as typeof fetch
+
+	await processCloudflareEmailDeliveryEvent({ env, body: bounce, fetchImpl })
+
+	expect(raced).toBe(true)
+	expect(
+		await env.APP_DB.prepare(
+			`SELECT failure_count FROM email_recipient_cooldowns WHERE recipient = ?`,
+		)
+			.bind(recipient)
+			.first(),
+	).toBeNull()
+	expect(
+		await env.APP_DB.prepare(
+			`SELECT last_status FROM email_mailbox_delivery_cursors
+			WHERE provider_message_id = ?`,
+		)
+			.bind(providerMessageId)
+			.first(),
+	).toEqual({ last_status: 'delivered' })
+}, 30_000)

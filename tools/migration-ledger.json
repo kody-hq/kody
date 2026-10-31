@@ -831,6 +831,10 @@
 		{
 			"filename": "0232-drop-package-app-authority-fallbacks.sql",
 			"sha256": "3027a0f0df7221fd7b76763d1aa2e188afdabf8dace0854b4be63481a3a40034"
+		},
+		{
+			"filename": "0233-email-mailbox-delivery-cursors.sql",
+			"sha256": "9a05ec582c855d33c266744379531016a09559cba9214447f4432dd6b0c0c163"
 		}
 	]
 }
