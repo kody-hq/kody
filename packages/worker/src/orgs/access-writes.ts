@@ -474,7 +474,7 @@ export async function upsertGrant(input: {
 			input.db
 				.prepare(
 					`UPDATE grants SET allow_unmappable_credential_changes = ?
-					 WHERE id = ? AND org_id = ?`,
+					 WHERE id = ? AND org_id = ? AND deleted_at IS NULL`,
 				)
 				.bind(
 					input.allowUnmappableCredentialChanges ? 1 : 0,

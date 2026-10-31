@@ -94,6 +94,7 @@ import { adminPreBindingArtifactRebuildCapability } from './admin-pre-binding-ar
 import { adminPackageAppAuthorityFallbackReportCapability } from './admin-package-app-authority-fallback-report.ts'
 import { adminPackageAppCapabilityMigrationReportCapability } from './admin-package-app-capability-migration-report.ts'
 import { adminPackageCredentialSupplierReportCapability } from './admin-package-credential-supplier-report.ts'
+import { adminUnmappableCredentialLockReportCapability } from './admin-unmappable-credential-lock-report.ts'
 import { adminCredentialBackfillCapability } from './admin-credential-backfill.ts'
 import { adminCredentialStampBackfillCapability } from './admin-credential-stamp-backfill.ts'
 import { adminCredentialStampMigrateCapability } from './admin-credential-stamp-migrate.ts'
@@ -222,6 +223,7 @@ export const adminDomain = defineDomain({
 		adminPackageAppAuthorityFallbackReportCapability,
 		adminPackageAppCapabilityMigrationReportCapability,
 		adminPackageCredentialSupplierReportCapability,
+		adminUnmappableCredentialLockReportCapability,
 		adminCredentialBackfillCapability,
 		adminCredentialStampBackfillCapability,
 		adminCredentialStampMigrateCapability,

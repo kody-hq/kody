@@ -8,14 +8,13 @@
  * `docs/guides/package-sharing.md#unmappable-credentials`).
  */
 import * as Sentry from '@sentry/cloudflare'
-import { listOrgCredentialsByIds } from '#worker/credentials/credential-ids.ts'
-import { loadAllCredentialMappingsForPackage } from '#worker/credentials/credential-mappings.ts'
-import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
 import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import { getLatestPackageCapabilityApproval } from '#worker/package-capabilities/capability-approvals-repo.ts'
 import { visitorCredentialIdsByNeedKey } from '#worker/package-capabilities/capability-set.ts'
-import { listEntitySourcesByIds } from '#worker/repo/entity-sources.ts'
+// Type-only and erased: repo/types.ts pulls in Workers-only modules at runtime.
+// oxlint-disable-next-line import/consistent-type-specifier-style
+import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { memoizePerRequest } from '#worker/request-context.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
@@ -58,7 +57,7 @@ export function isUnmappableNeed(
 
 type PackageRow = { id: string; source_id: string | null }
 
-type EntitySource = Awaited<ReturnType<typeof listEntitySourcesByIds>>[number]
+type EntitySource = EntitySourceRow
 
 async function loadPackageRows(
 	db: D1Database,
@@ -89,6 +88,10 @@ async function describePackage(input: {
 }): Promise<Array<UnmappableCredential>> {
 	const { env, orgId, packageId, source } = input
 	if (!source?.published_commit) return []
+	// Loaded lazily: these pull in Workers-only modules, and this module is
+	// reachable from Node tooling (the OpenAPI generator) through capabilities.
+	const { loadPublishedCredentialNeeds } =
+		await import('#worker/credentials/credential-needs-closure.ts')
 	const needs = await loadPublishedCredentialNeeds({
 		env,
 		userId: orgId,
@@ -108,6 +111,8 @@ async function describePackage(input: {
 		for (const id of ids) set.add(id)
 		idsByNeed.set(needKey, set)
 	}
+	const { loadAllCredentialMappingsForPackage } =
+		await import('#worker/credentials/credential-mappings.ts')
 	const mappings = await loadAllCredentialMappingsForPackage({
 		db: env.APP_DB,
 		orgId,
@@ -130,6 +135,8 @@ async function describePackage(input: {
 			}
 		}
 	}
+	const { listOrgCredentialsByIds } =
+		await import('#worker/credentials/credential-ids.ts')
 	const credentials = await listOrgCredentialsByIds(
 		env.APP_DB,
 		orgId,
@@ -184,9 +191,11 @@ export async function loadPackageUnmappableCredentials(input: {
 					row.source_id ? [row.source_id] : [],
 				)
 				sources = new Map(
-					(await listEntitySourcesByIds(input.env.APP_DB, sourceIds)).map(
-						(source) => [source.id, source],
-					),
+					(
+						await (
+							await import('#worker/repo/entity-sources.ts')
+						).listEntitySourcesByIds(input.env.APP_DB, sourceIds)
+					).map((source) => [source.id, source]),
 				)
 				suppliersEnabled = await isPackageCredentialSuppliersEnabled({
 					db: input.env.APP_DB,

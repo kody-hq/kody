@@ -122,7 +122,7 @@ export type PackageCollaboratorView = {
 }
 
 /** The package's unmappable credentials, for the owner notice. */
-export type PackageUnmappableCredentialsView = {
+type PackageUnmappableCredentialsView = {
 	/** Credential names (null: the need has no credential picked yet). */
 	credentials: Array<{ needKey: string; credentialName: string | null }>
 	notice: string
