@@ -180,6 +180,7 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 							providerEvent.payload.delivery.smtpEnhancedStatusCode,
 						smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
 						fetchImpl: input.fetchImpl,
+						throwOnFailure: true,
 					}),
 			})
 		}

@@ -287,3 +287,75 @@ test('concurrent deliveries of one bounce apply the cooldown once', async () => 
 			.first(),
 	).toEqual({ failure_count: 1 })
 }, 30_000)
+
+test('a transient failure while applying the cooldown is retried, not marked applied', async () => {
+	await ensureEmailTestSchema(env.APP_DB)
+	const userId = ownerIdFromStored(`provider-user-${crypto.randomUUID()}`)
+	const providerMessageId = `provider-${crypto.randomUUID()}`
+	const recipient = `bounce-${crypto.randomUUID()}@example.net`
+	const createdAt = '2026-08-03T01:00:00.000Z'
+	const mailbox = mailboxRpc({ env, userId })
+	const message = baseMessage(userId, {
+		direction: 'outbound',
+		inboxId: null,
+		processingStatus: 'sent',
+		providerMessageId,
+		sentAt: createdAt,
+		createdAt,
+	})
+	await mailbox.upsertMessageGraph({ ownerId: userId, message })
+	await upsertOutboundProviderIndexRow({
+		db: env.APP_DB,
+		providerMessageId,
+		userId,
+		messageId: message.id,
+		inboxId: null,
+		now: createdAt,
+	})
+	const event = providerEvent({
+		providerMessageId,
+		providerEventId: `event-${crypto.randomUUID()}`,
+		status: 'bounced',
+		at: '2026-08-03T01:03:00.000Z',
+	})
+	const body = {
+		...event,
+		payload: {
+			...event.payload,
+			recipient,
+			delivery: {
+				status: 'bounced',
+				smtpResponse: '550 5.1.1 user unknown',
+				smtpEnhancedStatusCode: '5.1.1',
+			},
+		},
+	}
+	const flakyDb = new Proxy(env.APP_DB, {
+		get(target, property, receiver) {
+			if (property === 'prepare') {
+				return (statement: string) => {
+					if (statement.includes('INSERT INTO email_recipient_cooldowns')) {
+						throw new Error('D1_ERROR: Network connection lost.')
+					}
+					return target.prepare(statement)
+				}
+			}
+			const value = Reflect.get(target, property, receiver)
+			return typeof value === 'function' ? value.bind(target) : value
+		},
+	})
+	await expect(
+		processCloudflareEmailDeliveryEvent({
+			env: { ...env, APP_DB: flakyDb },
+			body,
+		}),
+	).rejects.toThrow('Network connection lost')
+	await processCloudflareEmailDeliveryEvent({ env, body })
+	expect(
+		await env.APP_DB.prepare(
+			`SELECT failure_count FROM email_recipient_cooldowns WHERE recipient = ?`,
+		)
+			.bind(recipient)
+			.first(),
+	).toEqual({ failure_count: 1 })
+}, 30_000)

@@ -106,6 +106,8 @@ export async function applyDeliverabilitySideEffects(input: {
 	 * must not.
 	 */
 	recordVerificationSuppression?: boolean
+	/** Rethrow real write failures so a ledger-wrapped caller can retry. */
+	throwOnFailure?: boolean
 	/**
 	 * When set, skip (and undo) mutations unless the transactional delivery
 	 * cursor still names this exact event. Prevents an older bounce from
@@ -216,6 +218,7 @@ export async function applyDeliverabilitySideEffects(input: {
 		) {
 			return
 		}
+		if (input.throwOnFailure) throw error
 		console.warn('email-deliverability-side-effects-failed', error)
 	}
 }
