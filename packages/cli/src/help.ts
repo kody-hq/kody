@@ -95,10 +95,11 @@ Usage:
 
   kody connect registers this machine as an execution context and installs
   \`kody daemon\` as a per-user background service (systemd --user on Linux,
-  a LaunchAgent on macOS) so it starts at boot and restarts after crashes.
+  a LaunchAgent on macOS, a Task Scheduler logon task on Windows, no admin
+  needed) so it starts at login and restarts after crashes.
   \`kody daemon status\` names each problem with the command that fixes it;
-  re-running \`kody daemon install\` repairs the service. Windows is not
-  supported yet: keep \`kody daemon\` running in a terminal. \`kody update\`
+  re-running \`kody daemon install\` repairs the service. Host folders use
+  native paths (C:\\Users\\you\\project on Windows). \`kody update\`
   installs the latest CLI and restarts services after runs in flight finish.
 
   kody context, chain, and daemon need execution contexts, an experiment.
@@ -271,7 +272,7 @@ ${orgBlock}
              exchange). User-owned tokens (\`org_binding: user\`) honor
              \`--org\` / ${orgEnvVar} as \`?org=\` on API calls.
 
-  --local    Run the execute module on this machine (workerd, Linux/macOS).
+  --local    Run the execute module on this machine (workerd, Linux/macOS/Windows).
              Requires Node.js 22 or newer. \`--file\` entries are bundled
              (relative imports and npm packages; \`kody:*\` stays external)
              before workerd loads them — same shape as hosted execute /

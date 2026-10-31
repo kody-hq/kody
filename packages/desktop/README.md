@@ -15,8 +15,7 @@ In the **Machine** menu:
    and CLI login are separate. Existing CLI credentials are reused.
 2. Enable **Execution context experiment** on the website if needed.
 3. **Register this machine…** shows the CLI identity before registering under a
-   lowercase name based on the computer's hostname. On macOS and Linux, this
-   also starts the daemon.
+   lowercase name based on the computer's hostname. This also starts the daemon.
 4. Open **Execution contexts** and add the machine to your chain if you want it
    used by default. Registration alone never changes routing.
 
@@ -51,11 +50,13 @@ dependencies keep their normal Node build, not an Electron rebuild.
 
 ## Platform support
 
-The shell targets macOS, Windows, and Linux. Local execution currently supports
-**macOS and Linux on x64 or arm64**, matching the CLI's pinned workerd
-downloads. Windows registration is available, but starting the runner is
-disabled until the CLI supports a Windows execution runtime. Native Apple app
-access is not part of this wrapper, it needs specific permissioned capabilities.
+The shell and local execution support macOS, Windows, and Linux on x64 or arm64,
+matching the CLI's pinned workerd downloads (Windows on Arm runs the x64 workerd
+under emulation). On Windows, Stop and Quit end the CLI in-process so it drains
+runs, then `taskkill /T` removes any `workerd.exe` left behind. Open at login
+covers the runner; `kody daemon install` (a per-user logon task) is the CLI-only
+alternative. Native Apple app access is not part of this wrapper, it needs
+specific permissioned capabilities.
 
 ## Packaging and checks
 
@@ -143,7 +144,7 @@ updates.
 
 CI builds are unsigned, and macOS builds are not notarized. Signing credentials
 are not configured in this repository. Windows installers work on x64 and arm64,
-but the local execution runner remains disabled on Windows.
+including the local execution runner.
 
 To build the same native installers locally:
 

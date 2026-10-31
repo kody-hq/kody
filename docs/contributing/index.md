@@ -16,6 +16,8 @@ style, tests, MCP capabilities, and runtime architecture.
   [environment variables](./environment-variables.md),
   [setup manifest](./setup-manifest.md)
 - [Manual PR preview testing](./preview-manual-testing.md)
+- [Execution context e2e on previews](./execution-context-e2e.md) (Linux, macOS,
+  Windows daemon check)
 - [Preview migration rehearsal](./preview-migration-rehearsal.md) (seed,
   snapshot, migrate, verify, restore on a branch preview; operator/CI only)
 - [control-kody](./control-kody.md) (Feature Map + CLI; daily

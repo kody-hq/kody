@@ -60,7 +60,23 @@ uninstall, `kody update`).
 - macOS: a LaunchAgent `codes.kody.daemon.<ecid>` loaded with
   `launchctl bootstrap gui/<uid>`, `RunAtLoad`, `KeepAlive` on unsuccessful
   exit, `ThrottleInterval`.
-- Windows is not supported; install says so.
+- Windows: a Task Scheduler task `\Kody\kody-daemon-<ecid>` registered with
+  `schtasks /Create /XML` (UTF-16): logon trigger for the current user,
+  `InteractiveToken`, `LeastPrivilege`, no time limit, no admin. Its action runs
+  `daemon-task.ps1` (the "unit", in the context dir) hidden; the script is the
+  supervisor, relaunching the daemon after a crash and stopping on the
+  stay-stopped exit code. The daemon tees its own `daemon.log`. Stop/uninstall
+  `schtasks /End`s the task and `taskkill /T /F`s the daemon tree (no process
+  groups on Windows). No Windows Service.
+- Windows runtime: workerd `windows-64` (also used on Windows arm64 under
+  emulation), cached as `workerd.exe` under `%LOCALAPPDATA%\kody\cache`.
+  Host-folder paths are native (`fs-access.ts`: drive letters, UNC, `\\?\`
+  stripped, case-insensitive containment, junctions resolved by `realpath`);
+  `host-fs-shim.ts` forwards Windows-shaped paths and keeps `/bundle`, `/tmp`,
+  `/dev` virtual. Orphan reaping reads command lines with
+  `Get-CimInstance Win32_Process` (`process-tree.ts`). Signals: `raiseSignal`
+  dispatches in-process on Windows, since signalling yourself is a hard
+  TerminateProcess that skips cleanup.
 - Units hold only paths, the context id, `PATH`, and `KODY_DAEMON_SERVICE`. No
   API token or passphrase. Install refuses root and refuses an npx, pnpm dlx,
   bunx or temp-dir CLI (the path would vanish); it points at
@@ -103,7 +119,10 @@ uninstall, `kody update`).
 
 - The private key is generated on the machine and never leaves it. The CLI
   stores it AES-256-GCM encrypted, wrapped by the OS keyring or
-  `KODY_CONTEXT_KEY_PASSPHRASE`.
+  `KODY_CONTEXT_KEY_PASSPHRASE`. The keyring is `@napi-rs/keyring`: macOS
+  Keychain, Linux Secret Service, Windows Credential Manager (usable by the
+  logon task, so Windows keeps the keyring by default). The service file-key
+  fallback is mode 600 on POSIX; on Windows it relies on the user profile ACL.
 - Server frames are signed with `ECP_FRAME_SIGNING_KEYS`; daemons trust only
   keys published at `/v1/execution-contexts/server-keys` and signed by a root
   key pinned in `server-keys.ts`. That route serves the committed test key set

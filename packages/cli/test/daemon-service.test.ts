@@ -31,7 +31,10 @@ await import('node:fs').then(({ mkdirSync }) =>
 writeFileSync(entry, '')
 const program = { node: process.execPath, entry, version: '1.2.3' }
 
-function unitInput(manager: 'systemd' | 'launchd', ecid = 'ec_unit') {
+function unitInput(
+	manager: 'systemd' | 'launchd' | 'taskscheduler',
+	ecid = 'ec_unit',
+) {
 	return {
 		ecid,
 		contextName: 'Build box',
@@ -39,7 +42,12 @@ function unitInput(manager: 'systemd' | 'launchd', ecid = 'ec_unit') {
 		program,
 		paths: service.servicePaths({ apiUrl, ecid, manager }),
 		maxConcurrent: 3,
-		platform: manager === 'systemd' ? 'linux' : 'darwin',
+		platform:
+			manager === 'systemd'
+				? 'linux'
+				: manager === 'launchd'
+					? 'darwin'
+					: 'win32',
 		env: {
 			KODY_API_TOKEN: 'kody_at_secret',
 			KODY_CONTEXT_KEY_PASSPHRASE: 'hunter2',
@@ -169,7 +177,108 @@ test('install refuses an npx, pnpm dlx, or bunx copy of the CLI and says how to 
 	)
 })
 
-test('install refuses root and Windows with a clear message', async () => {
+test('the Windows logon task supervises the daemon without secrets or admin rights', () => {
+	assert.equal(service.serviceManagerFor('win32'), 'taskscheduler')
+	const input = unitInput('taskscheduler')
+	const script = service.taskSchedulerScript(input)
+	assertNoSecrets(script)
+	assert.match(script, /\$env:KODY_DAEMON_SERVICE = 'taskscheduler'/)
+	assert.match(script, /if \(\$LASTEXITCODE -eq \d+\) \{ break \}/)
+	assert.match(script, / 'daemon' '--context' 'ec_unit' /)
+	assert.deepEqual(service.programInUnit(script, 'taskscheduler'), {
+		node: program.node,
+		entry: program.entry,
+	})
+	const quoted = service.taskSchedulerScript({
+		...input,
+		program: { ...program, node: "C:\\Users\\O'Neil\\node.exe" },
+	})
+	assert.equal(
+		service.programInUnit(quoted, 'taskscheduler').node,
+		"C:\\Users\\O'Neil\\node.exe",
+	)
+	const xml = service.scheduledTaskXml({
+		ecid: 'ec_unit',
+		scriptPath: 'C:\\Users\\me & you\\daemon-task.ps1',
+		workingDir: 'C:\\Users\\me & you',
+		user: 'DESK\\me',
+	})
+	assertNoSecrets(xml)
+	assert.match(xml, /<LogonTrigger>[\s\S]*<UserId>DESK\\me<\/UserId>/)
+	assert.match(xml, /<LogonType>InteractiveToken<\/LogonType>/)
+	assert.match(xml, /<RunLevel>LeastPrivilege<\/RunLevel>/)
+	assert.match(xml, /<URI>\\Kody\\kody-daemon-ec_unit<\/URI>/)
+	assert.match(xml, /-WindowStyle Hidden -File &quot;C:\\Users\\me &amp; you/)
+})
+
+test('Task Scheduler status, restart, and disable drive schtasks', () => {
+	const calls: Array<Call> = []
+	let state = 'Running'
+	const run: import('../src/execution-context/service.js').CommandRunner = (
+		command,
+		args,
+	) => {
+		calls.push([command, ...args])
+		if (command === 'powershell.exe')
+			return { ok: true, stdout: `${state}\r\n`, stderr: '' }
+		return { ok: true, stdout: '', stderr: '' }
+	}
+	const paths = service.servicePaths({
+		apiUrl,
+		ecid: 'ec_win',
+		manager: 'taskscheduler',
+	})
+	assert.match(paths.unitPath, /daemon-task\.ps1$/)
+	const unit = service.taskSchedulerScript({
+		...unitInput('taskscheduler', 'ec_win'),
+		paths,
+	})
+	const status = service.serviceStatus({
+		apiUrl,
+		ecid: 'ec_win',
+		cliVersion: '1.2.3',
+		platform: 'win32',
+		isRoot: false,
+		run,
+		readText: (path) => (path === paths.unitPath ? unit : null),
+		expectedUnit: unit,
+		tmpDir: null,
+	})
+	assert.equal(status.manager, 'taskscheduler')
+	assert.equal(status.installed, true)
+	assert.equal(status.enabled, true)
+	assert.equal(status.running, true)
+	state = 'Disabled'
+	const disabled = service.serviceStatus({
+		apiUrl,
+		ecid: 'ec_win',
+		cliVersion: '1.2.3',
+		platform: 'win32',
+		isRoot: false,
+		run,
+		readText: (path) => (path === paths.unitPath ? unit : null),
+		tmpDir: null,
+	})
+	assert.equal(disabled.enabled, false)
+	calls.length = 0
+	service.restartService({ manager: 'taskscheduler', ecid: 'ec_win', run })
+	assert.deepEqual(calls, [
+		['schtasks.exe', '/Run', '/TN', '\\Kody\\kody-daemon-ec_win'],
+	])
+	calls.length = 0
+	service.disableOwnService({ manager: 'taskscheduler', ecid: 'ec_win', run })
+	assert.deepEqual(calls, [
+		[
+			'schtasks.exe',
+			'/Change',
+			'/TN',
+			'\\Kody\\kody-daemon-ec_win',
+			'/DISABLE',
+		],
+	])
+})
+
+test('install refuses root and unsupported platforms with a clear message', async () => {
 	const env = {
 		apiUrl,
 		clientVersion: '1.2.3',
@@ -186,10 +295,10 @@ test('install refuses root and Windows with a clear message', async () => {
 	)
 	await assert.rejects(
 		serviceCommands.installDaemonService(
-			{ ...env, platform: 'win32', isRoot: false },
+			{ ...env, platform: 'freebsd', isRoot: false },
 			{ ecid: 'ec_unit' },
 		),
-		/Windows is not supported yet/,
+		/supported on Linux \(systemd\), macOS \(launchd\), and Windows \(Task Scheduler\)/,
 	)
 })
 
@@ -306,10 +415,10 @@ test('status names each problem with the command that fixes it', () => {
 		apiUrl,
 		ecid: null,
 		cliVersion: '1.2.3',
-		platform: 'win32',
+		platform: 'freebsd',
 	})
 	assert.equal(windows.supported, false)
-	assert.match(windows.problems[0]!.message, /Windows is not supported yet/)
+	assert.match(windows.problems[0]!.message, /Windows \(Task Scheduler\)/)
 })
 
 test('install writes the unit, starts it, repairs on re-run, and restarts onto a new version', async () => {
