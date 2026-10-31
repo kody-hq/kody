@@ -150,10 +150,14 @@ async function smoke() {
 			})
 			assert.equal(workflow.stopped.enabled, false)
 			assert.equal(workflow.restarted.enabled, true)
-			assert.deepEqual(workflow.calls[0], ['whoami', '--json'])
-			assert.equal(workflow.calls[1][1], 'register')
-			assert.deepEqual(workflow.calls[2], ['start', 'ec_smoke'])
-			assert.deepEqual(workflow.calls[3], ['stop'])
+			// The host-commands menu also polls `context commands status`.
+			const calls = workflow.calls.filter(
+				(call) => !(call[0] === 'context' && call[1] === 'commands'),
+			)
+			assert.deepEqual(calls[0], ['whoami', '--json'])
+			assert.equal(calls[1][1], 'register')
+			assert.deepEqual(calls[2], ['start', 'ec_smoke'])
+			assert.deepEqual(calls[3], ['stop'])
 		}
 
 		await page.screenshot({ path: 'artifacts/desktop-live.png' })

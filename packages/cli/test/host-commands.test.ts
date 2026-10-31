@@ -85,7 +85,9 @@ test(
 	'a foreground command runs for real: stdout, stderr, exit code, cwd, env, stdin, and the audit hop',
 	posixOnly,
 	async () => {
-		const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'kody-cmd-cwd-')))
+		const cwd = realpathSync.native(
+			mkdtempSync(join(tmpdir(), 'kody-cmd-cwd-')),
+		)
 		const { commands, finished } = enabledCommands()
 		const { run, authorized } = runContext()
 		const result = (await commands.call(
@@ -318,7 +320,9 @@ test(
 	'Windows: PowerShell by default, UTF-8 output, cwd, env, stdin, exit code',
 	windowsOnly,
 	async () => {
-		const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'kody-cmd-cwd-')))
+		const cwd = realpathSync.native(
+			mkdtempSync(join(tmpdir(), 'kody-cmd-cwd-')),
+		)
 		const { commands, finished } = enabledCommands()
 		const { run } = runContext()
 		const result = (await commands.call(
@@ -348,7 +352,9 @@ test(
 	'Windows: cmd on request, and .cmd files resolve and run with quoted args',
 	windowsOnly,
 	async () => {
-		const dir = realpathSync(mkdtempSync(join(tmpdir(), 'kody-cmd-bat-')))
+		const dir = realpathSync.native(
+			mkdtempSync(join(tmpdir(), 'kody-cmd-bat-')),
+		)
 		writeFileSync(
 			join(dir, 'kody-tool.cmd'),
 			'@echo off\r\necho [%~1] [%~2]\r\n',
@@ -411,7 +417,9 @@ test(
 )
 
 test('local policy keeps the commands opt-in alongside host folders', async () => {
-	const dir = realpathSync(mkdtempSync(join(tmpdir(), 'kody-cmd-policy-')))
+	const dir = realpathSync.native(
+		mkdtempSync(join(tmpdir(), 'kody-cmd-policy-')),
+	)
 	const policyPath = join(dir, 'policy.json')
 	await setLocalCommandsEnabled({ enabled: true, policyPath })
 	await allowLocalPath({ path: dir, mode: 'ro', policyPath })
