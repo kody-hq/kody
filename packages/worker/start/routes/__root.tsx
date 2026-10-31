@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { workspaceHomeHref } from '#client/routes/account-rail.ts'
 import { homeSoftwareApplicationJsonLdScriptText } from '#universal/home-json-ld.ts'
 import { workspaceLayoutNavigation } from '../workspace-layout-policy.ts'
 import { publicAsset } from '../public-assets.ts'
@@ -168,6 +169,14 @@ export const Route = createRootRouteWithContext<{
 			abortController.signal.throwIfAborted()
 			return {
 				actorKey: shell.actorKey,
+				desktopHomeHref: (() => {
+					const personal = shell.session?.organizations.find(
+						(org) => org.personal,
+					)
+					return personal
+						? workspaceHomeHref(personal)
+						: '/account/organizations'
+				})(),
 				appShell: context.appShell,
 				shellLocation: {
 					pathname: location.pathname,
@@ -492,7 +501,9 @@ function DocumentShell({ children }: { children: ReactNode }) {
 				<FathomTracker siteId={loaded?.fathomSiteId} />
 			</head>
 			<body>
-				<DesktopNavigation />
+				<DesktopNavigation
+					homeHref={loaded?.desktopHomeHref ?? '/account/organizations'}
+				/>
 				<AppBrowserEffects />
 				{children}
 				<Toaster />
