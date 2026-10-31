@@ -248,13 +248,16 @@ the security trade-off in plain words.
 ## Sharing a context
 
 You can share a context with people or teams in your org. Their runs use the
-grant you set (host folders, egress, limits). Runs by someone other than the
-operator cannot use credentials on a shared context: when such a run needs
-credentials, Kody skips the context before the code starts (reason
-`credentials_operator_only`) and the run moves down their chain or to Kody
-cloud. Runs that use no credentials run there as usual. Their runs also cannot
-start workflows there, and Kody APIs kept for Kody cloud refuse them
-(`context_run_denied`).
+grant you set (host folders, egress, limits). Someone you share with can use the
+context only after they opt in to it (`executionContextOptIn`,
+`POST /v1/execution-contexts/{id}/opt-in`, or the context's page); until then
+their runs skip it (`not_opted_in`) and move down their chain. Opting in is
+their consent: while their run is active, the operator's machine can make Kody
+API calls as them (within the grant), use their credentials and read the
+responses, and change the results their run returns. Their credential values
+still stay in Kody cloud. Their runs use their own credentials exactly as in
+Kody cloud, but cannot start workflows there, and Kody APIs kept for Kody cloud
+refuse them (`context_run_denied`).
 
 Shares never include host commands unless you say so: share with
 `commands: true` (`executionContextShareSet`) to give someone
