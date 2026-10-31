@@ -86,6 +86,7 @@ jobs:
       KODY_SKIP_SKILL_REFRESH: '1'
       KODY_SKIP_GIT_HELPER_REFRESH: '1'
       KODY_DESKTOP_ARCH: ${{ matrix.arch }}
+      KODY_DESKTOP_RELEASE: '1'
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -157,6 +158,8 @@ jobs:
           spctl --assess --type execute --verbose "$bundle"
       - name: Verify Windows signatures
         if: runner.os == 'Windows'
+        env:
+          EXPECTED_PUBLISHER: ${{ vars.DESKTOP_WINDOWS_PUBLISHER }}
         shell: pwsh
         run: |
           $files = @(Get-ChildItem artifacts/desktop -Filter '*.exe')
@@ -165,6 +168,8 @@ jobs:
           foreach ($file in $files) {
             $signature = Get-AuthenticodeSignature $file.FullName
             if ($signature.Status -ne 'Valid') { throw "Invalid signature: $($file.Name)" }
+            $publisher = $signature.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+            if ($publisher -cne $env:EXPECTED_PUBLISHER) { throw 'Signing certificate does not match DESKTOP_WINDOWS_PUBLISHER.' }
           }
       - run: npm run test:packaged-cli --workspace @kodycodes/desktop
       - name: Upload release assets

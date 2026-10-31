@@ -3,7 +3,11 @@ const { EventEmitter } = require('node:events')
 const { test } = require('node:test')
 const { startUpdates, finishQuit } = require('../updates.cjs')
 
-function setup({ isPackaged = true, checkForUpdates } = {}) {
+function setup({
+	isPackaged = true,
+	hasUpdateFeed = true,
+	checkForUpdates,
+} = {}) {
 	const updater = new EventEmitter()
 	let checks = 0
 	let installs = 0
@@ -33,6 +37,7 @@ function setup({ isPackaged = true, checkForUpdates } = {}) {
 			},
 		},
 		updater,
+		hasUpdateFeed,
 		dialog: {
 			showMessageBox: async (options) => messages.push(options.message),
 		},
@@ -209,4 +214,11 @@ test('an installer error still completes the requested quit', async () => {
 		fixture.updater.emit('error', new Error('Installer failed'))
 	fixture.updates.install()
 	assert.equal(fixture.quits, 1)
+})
+
+test('unsigned CI packages never check or install production updates', () => {
+	const fixture = setup({ hasUpdateFeed: false })
+	assert.equal(fixture.updates, null)
+	assert.equal(fixture.checks, 0)
+	assert.equal(fixture.installs, 0)
 })

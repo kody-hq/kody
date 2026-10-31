@@ -46,6 +46,11 @@ async function smoke() {
 						url: window.webContents.getURL(),
 						preferences: window.webContents.getLastWebPreferences(),
 						menus: Menu.getApplicationMenu().items.map((item) => item.label),
+						productionBuild:
+							electronApp.isPackaged &&
+							load('node:fs').existsSync(
+								`${process.resourcesPath}/app-update.yml`,
+							),
 						version: await runner.command(['version']),
 					}
 				} finally {
@@ -59,7 +64,7 @@ async function smoke() {
 		assert.equal(result.preferences.sandbox, true)
 		assert.equal(result.preferences.webviewTag, false)
 		assert.ok(result.menus.includes('Machine'))
-		assert.ok(result.menus.includes('Updates'))
+		assert.equal(result.menus.includes('Updates'), result.productionBuild)
 		assert.match(result.version, /\d+\.\d+\.\d+/)
 		const workflow = executablePath
 			? null

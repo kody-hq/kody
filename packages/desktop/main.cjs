@@ -216,24 +216,28 @@ function updateMenu() {
 		Menu.buildFromTemplate([
 			...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
 			{ label: 'File', submenu: [{ role: 'close' }] },
-			{
-				label: 'Updates',
-				submenu: [
-					{
-						label: 'Check for updates…',
-						enabled: !!updates && !quitting,
-						click: () => void updates.check(),
-					},
-					{
-						label: 'Restart to update',
-						enabled: !!updates?.downloaded && !quitting,
-						click: () => {
-							restartForUpdate = true
-							app.quit()
+			...(updates
+				? [
+						{
+							label: 'Updates',
+							submenu: [
+								{
+									label: 'Check for updates…',
+									enabled: !!updates && !quitting,
+									click: () => void updates.check(),
+								},
+								{
+									label: 'Restart to update',
+									enabled: !!updates?.downloaded && !quitting,
+									click: () => {
+										restartForUpdate = true
+										app.quit()
+									},
+								},
+							],
 						},
-					},
-				],
-			},
+					]
+				: []),
 			{
 				label: 'Machine',
 				submenu: [

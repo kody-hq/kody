@@ -34,6 +34,16 @@ for (const name of required) {
 }
 module.exports = {
 	...config,
+	// Architecture channels keep parallel Windows and Mac jobs from
+	// replacing each other's update manifests.
+	publish: {
+		provider: 'github',
+		owner: 'kody-hq',
+		repo: 'kody-desktop',
+		channel: `latest-${process.arch}`,
+		tagNamePrefix: 'v',
+		releaseType: 'draft',
+	},
 	forceCodeSigning: process.platform !== 'linux',
 	mac: {
 		...config.mac,

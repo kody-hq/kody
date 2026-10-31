@@ -1,3 +1,6 @@
+const { existsSync } = require('node:fs')
+const { join } = require('node:path')
+
 // Updates stay in the main process. Quitting is owned by main.cjs so the
 // execution runner always finishes shutting down before replacing the app.
 function startUpdates({
@@ -5,9 +8,11 @@ function startUpdates({
 	updater,
 	dialog,
 	changed,
+	hasUpdateFeed = !!process.resourcesPath &&
+		existsSync(join(process.resourcesPath, 'app-update.yml')),
 	setIntervalFn = setInterval,
 }) {
-	if (!app.isPackaged) return null
+	if (!app.isPackaged || !hasUpdateFeed) return null
 	let downloaded = false
 	let checking
 	updater.autoDownload = true

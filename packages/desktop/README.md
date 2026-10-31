@@ -166,7 +166,7 @@ repository. This keeps the update feed separate from the website's daily
 releases. Users do not need a GitHub token. Every architecture has its own
 update manifest so parallel jobs cannot overwrite another architecture's feed.
 
-Packaged apps check on launch and every five minutes, download automatically,
+Production apps check on launch and every five minutes, download automatically,
 and install on Quit. **Updates > Restart to update** quits and relaunches with
 the downloaded version. Both paths stop the local runner before installing.
 Closing a Mac window continues to keep the app and runner open. Update failures
