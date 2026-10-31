@@ -10,6 +10,7 @@ import {
 	type ViewerListingInstall,
 } from '#universal/community-public-types.ts'
 import { type McpOAuthClientMode } from '@kody-internal/shared/mcp-servers.ts'
+import { type GrantPreset } from '@kody-internal/shared/grant-presets.ts'
 import { type PermissionString, type RoleName } from '#universal/permissions.ts'
 import { type AdminFeatureFlag } from '#universal/feature-flags/types.ts'
 import { type OnboardingChecklistItemId } from '#universal/onboarding-checklist-types.ts'
@@ -1441,7 +1442,7 @@ export type OrgInviteJoinOffer =
 			kind: 'resource'
 			packageName: string
 			packageHref: string
-			preset: 'use' | 'contribute' | 'manage'
+			preset: GrantPreset
 			presetLabel: string
 			presetDescription: string
 			/** The viewer is not a member, so they stay an outside collaborator. */
@@ -1718,20 +1719,6 @@ export type AccountMcpOauthClientsLoaderData = {
 
 export type AccountConnectedAgentListItem = ConnectedMcpAgent & {
 	grantIds: Array<string>
-	connectionProfileName: string | null
-}
-
-export type AccountConnectionProfileView = {
-	id: string
-	name: string
-	grants: Array<{
-		resourceType: string
-		resourceId: string
-		actions: Array<'read' | 'execute' | 'write'>
-	}>
-	mcpServerUrl: string
-	createdAt: string
-	updatedAt: string
 }
 
 export type AccountConnectedAgentsLoaderData = {
@@ -1743,15 +1730,6 @@ export type AccountConnectedAgentsLoaderData = {
 	 * cannot send an unverified user into the authorize → 403 loop.
 	 */
 	mcpServerUrl: string
-	/** Experimenter-only. Absent/empty when the connection-profiles flag is off. */
-	connectionProfilesEnabled?: boolean
-	connectionProfiles?: Array<AccountConnectionProfileView>
-	/** Owned packages offered when editing profile grants (id + name). */
-	connectionProfilePackageOptions?: Array<{
-		id: string
-		name: string
-		kodyId: string
-	}>
 }
 
 type PackageWebhookVerification =
@@ -3081,6 +3059,20 @@ export type PackageAppOauthConsentLoaderData = {
 	}>
 	alreadyAllowedLabels: Array<string>
 	hiddenFields: Record<string, string>
+	/**
+	 * Who pays for what the app runs for this visitor (ADR 0095): the
+	 * publisher, or the visitor's own org on another org's internal app.
+	 */
+	billing?: { payer: 'publisher' } | { payer: 'visitor-org'; orgSlug: string }
+	/** Set when approving "Sign in on another device" for a limited browser. */
+	device: {
+		/** Code shown on the other device, `XXXX-XXXX`. */
+		userCode: string
+		/** Self-reported browser label, e.g. "Chrome 80 on Linux". */
+		requester: string
+		/** Unix seconds. */
+		expiresAt: number
+	} | null
 }
 
 export type DiscordPageLoaderData = {

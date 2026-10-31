@@ -24,6 +24,11 @@ if (process.isMainFrame && location.origin === origin) {
 				}
 			: {}),
 		execution: {
+			commandsStatus: () =>
+				ipcRenderer.invoke('kody:execution', 'commands-status'),
+			enableCommands: () => ipcRenderer.invoke('kody:execution', 'commands-on'),
+			disableCommands: () =>
+				ipcRenderer.invoke('kody:execution', 'commands-off'),
 			getState: () => ipcRenderer.invoke('kody:execution', 'state'),
 			forgetSetup: () => ipcRenderer.invoke('kody:execution', 'forget'),
 			signIn: () => ipcRenderer.invoke('kody:execution', 'sign-in'),

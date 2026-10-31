@@ -1,5 +1,4 @@
 import { expect, test } from 'vitest'
-import { type ContextRunCredentials } from '#worker/execution-contexts/credential-grant.ts'
 import { type ApiInvocationContext } from './context.ts'
 import {
 	assertContextRunRuntimePathAllowed,
@@ -8,7 +7,7 @@ import {
 
 function contextRun(
 	runtime: { mode: 'all' } | { mode: 'allowlist'; paths: Array<string> },
-	credentials: ContextRunCredentials = 'none',
+	byOperator = false,
 ) {
 	return {
 		principal: {
@@ -18,7 +17,7 @@ function contextRun(
 			deadline: Date.now() + 60_000,
 			scopes: null,
 			runtime,
-			credentials,
+			byOperator,
 		},
 	} as unknown as ApiInvocationContext
 }
@@ -54,45 +53,35 @@ test('other principals are not narrowed by a context grant', () => {
 	).not.toThrow()
 })
 
-test('context runs never start workflows', () => {
+test("only the operator's own context runs start workflows", () => {
 	expect(() =>
 		assertContextRunSpecialPathAllowed(contextRun({ mode: 'all' }), [
 			'workflows',
 			'create',
 		]),
-	).toThrow(/cannot start workflows/)
+	).toThrow(/Only this execution context's operator can start workflows/)
+	expect(() =>
+		assertContextRunSpecialPathAllowed(contextRun({ mode: 'all' }, true), [
+			'workflows',
+			'create',
+		]),
+	).not.toThrow()
 })
 
-test('credentialed runtime calls need a grant that allows credentials', () => {
+test('every context run makes credentialed runtime calls, as in Kody cloud', () => {
 	for (const name of [
 		'authenticatedFetch',
 		'gatewayFetch',
 		'oauthClientCredentials',
 		'credentialClientCheck',
 	]) {
-		expect(() =>
-			assertContextRunSpecialPathAllowed(contextRun({ mode: 'all' }), [
-				'kody',
-				name,
-			]),
-		).toThrow(/Only this execution context.s operator can use credentials/)
-		expect(() =>
-			assertContextRunSpecialPathAllowed(
-				contextRun({ mode: 'all' }, 'requester'),
-				['kody', name],
-			),
-		).not.toThrow()
-		expect(() =>
-			assertContextRunSpecialPathAllowed(contextRun({ mode: 'all' }, 'none'), [
-				'kody',
-				name,
-			]),
-		).toThrow(/Only this execution context's operator can use credentials/)
+		for (const byOperator of [true, false]) {
+			expect(() =>
+				assertContextRunSpecialPathAllowed(
+					contextRun({ mode: 'all' }, byOperator),
+					['kody', name],
+				),
+			).not.toThrow()
+		}
 	}
-	expect(() =>
-		assertContextRunSpecialPathAllowed(contextRun({ mode: 'all' }), [
-			'kody',
-			'packageStorageGet',
-		]),
-	).not.toThrow()
 })

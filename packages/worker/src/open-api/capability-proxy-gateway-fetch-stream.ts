@@ -9,6 +9,7 @@ import { authorizeLocalExecutePackageBinding } from './capability-proxy-package-
 import { type ApiInvocationContext } from './context.ts'
 import { ApiError, invalidRequest } from './errors.ts'
 import {
+	assertContextRunRuntimePathAllowed,
 	assertContextRunSpecialPathAllowed,
 	requireLocalExecuteHttpPrincipal,
 } from './native-operation-helpers.ts'
@@ -114,8 +115,8 @@ export async function runCapabilityProxyGatewayFetchStream(input: {
 	request: Request
 }): Promise<Response> {
 	requireLocalExecuteHttpPrincipal(input.ctx)
-	// Same gate as the JSON gatewayFetch hop; the credential door then checks
-	// each filled credential against the context's list.
+	// Same gates as the JSON gatewayFetch hop.
+	assertContextRunRuntimePathAllowed(input.ctx, ['kody', 'gatewayFetch'])
 	assertContextRunSpecialPathAllowed(input.ctx, ['kody', 'gatewayFetch'])
 	assertGatewayFetchContentLength(input.request.headers)
 	const call = parseCapabilityProxyGatewayFetchStreamHeaders(

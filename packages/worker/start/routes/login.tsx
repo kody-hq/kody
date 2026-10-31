@@ -4,7 +4,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import { NativeAuth } from '../components/native-auth.tsx'
 import { LoginPage } from '../pages/login.tsx'
 import { loadAuthPage } from '#start/server/auth-page'
+import { loginDocumentPost } from '#start/server/auth-document-protocol'
 export const Route = createFileRoute('/login')({
+	server: { handlers: { POST: loginDocumentPost } },
 	staticData: { anonymousDocumentCache: 'marketing', shell: { mode: 'auth' } },
 	head: staticDocumentHead('login'),
 	loaderDeps: ({ search }) => search,

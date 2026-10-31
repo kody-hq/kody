@@ -44,8 +44,10 @@ export type EnablementRun = {
 	role: OrgRole | null
 	/** Scopes of the credential that turned it on; null does not narrow. */
 	scopes?: RequestCredential['scopes']
-	/** Connection profile of the credential that turned it on. */
-	profileName?: string | null
+	/** Profile (ADR 0092) of the credential that turned it on. */
+	profileId?: string | null
+	/** That profile's chain when the run gate checked it: ids, root first. */
+	profileChain?: ReadonlyArray<string> | null
 }
 
 /**
@@ -115,19 +117,21 @@ function credentialFor(input: {
 	kind: RequestCredentialKind
 	id: string | null
 	org: RequestOrg
-	profileName: string | null
+	profileId?: string | null
+	profileChain?: ReadonlyArray<string> | null
 	scopes?: RequestCredential['scopes']
-	contextCredentialIds?: RequestCredential['contextCredentialIds']
+	contextRunByOperator?: boolean
 }): RequestCredential {
 	return {
 		kind: input.kind,
 		id: input.id,
 		orgId: input.org.id,
 		scopes: input.scopes ?? null,
-		profileName: input.profileName,
-		...(input.contextCredentialIds
-			? { contextCredentialIds: input.contextCredentialIds }
+		...(input.profileId ? { profileId: input.profileId } : {}),
+		...(input.profileId && input.profileChain?.length
+			? { profileChain: [...input.profileChain] }
 			: {}),
+		...(input.contextRunByOperator ? { contextRunByOperator: true } : {}),
 	}
 }
 
@@ -136,7 +140,8 @@ function automation(input: {
 	source: AutomationSource
 	sourceId: string
 	credentialKind: RequestCredentialKind
-	profileName: string | null
+	profileId: string | null
+	profileChain: ReadonlyArray<string> | null
 	enablement: EnablementRun | undefined
 }): RequestContext {
 	const { enablement } = input
@@ -150,7 +155,8 @@ function automation(input: {
 				kind: input.credentialKind,
 				id: enablement.id,
 				org: input.binding.org,
-				profileName: enablement.profileName ?? null,
+				profileId: enablement.profileId ?? null,
+				profileChain: enablement.profileChain ?? null,
 				scopes: enablement.scopes ?? null,
 			}),
 			membership: enablement.role ? { role: enablement.role } : null,
@@ -168,7 +174,8 @@ function automation(input: {
 			kind: input.credentialKind,
 			id: input.sourceId,
 			org: input.binding.org,
-			profileName: input.profileName,
+			profileId: input.profileId,
+			profileChain: input.profileChain,
 		}),
 		membership: null,
 	}
@@ -216,19 +223,21 @@ function credentialIdFor(
 export function deriveRequestContext(input: {
 	user: RequestPerson
 	source: RequestSource
-	profileName?: string | null
+	/** Profile (ADR 0092) the credential is bound to; null is the live mirror. */
+	profileId?: string | null
+	profileChain?: ReadonlyArray<string> | null
 	/** OAuth client of an `mcp-oauth` / `cli` bearer grant; the credential id. */
 	oauthClientId?: string | null
 	/** When set (DB-backed session paths), overrides {@link resolveOrgBinding}. */
 	orgBinding?: RequestOrgBinding
 	/** Credential scopes. Populated for API tokens; null does not narrow. */
 	scopes?: RequestCredential['scopes']
-	/** Execution-context runs: credential ids the context's grant allows. */
-	contextCredentialIds?: RequestCredential['contextCredentialIds']
+	/** Execution-context runs: the requester operates the context. */
+	contextRunByOperator?: boolean
 }): RequestContext {
 	const binding = input.orgBinding ?? resolveOrgBinding(input.user)
 	const { source } = input
-	const profileName = input.profileName?.trim() || null
+	const profileId = input.profileId?.trim() || null
 	switch (source.kind) {
 		case 'session':
 		case 'mcp-oauth':
@@ -245,12 +254,12 @@ export function deriveRequestContext(input: {
 					kind: source.kind,
 					id: credentialIdFor(source, input.oauthClientId),
 					org: binding.org,
-					profileName,
+					profileId,
+					profileChain: input.profileChain ?? null,
 					scopes: input.scopes ?? null,
-					contextCredentialIds:
-						source.kind === 'execution-context-run'
-							? input.contextCredentialIds
-							: null,
+					contextRunByOperator:
+						source.kind === 'execution-context-run' &&
+						input.contextRunByOperator === true,
 				}),
 				membership: binding.role ? { role: binding.role } : null,
 			}
@@ -261,7 +270,8 @@ export function deriveRequestContext(input: {
 				source: 'schedule',
 				sourceId: source.jobId,
 				credentialKind: 'schedule',
-				profileName,
+				profileId,
+				profileChain: input.profileChain ?? null,
 				enablement: source.enablement,
 			})
 		case 'webhook':
@@ -270,7 +280,8 @@ export function deriveRequestContext(input: {
 				source: 'webhook',
 				sourceId: source.sourceId,
 				credentialKind: 'webhook',
-				profileName,
+				profileId,
+				profileChain: input.profileChain ?? null,
 				enablement: source.enablement,
 			})
 		case 'inbound-email': {
@@ -279,7 +290,8 @@ export function deriveRequestContext(input: {
 				source: 'email',
 				sourceId: source.sourceId,
 				credentialKind: 'inbound-email',
-				profileName,
+				profileId,
+				profileChain: input.profileChain ?? null,
 				enablement: source.enablement,
 			})
 			const { sender } = source
@@ -309,7 +321,8 @@ export function deriveRequestContext(input: {
 				source: 'event',
 				sourceId: source.sourceId,
 				credentialKind: 'platform-event',
-				profileName,
+				profileId,
+				profileChain: input.profileChain ?? null,
 				enablement: source.enablement,
 			})
 		case 'inherited': {
@@ -320,7 +333,14 @@ export function deriveRequestContext(input: {
 				attribution: lineage.attribution,
 				credential: {
 					...lineage.credential,
-					profileName: lineage.credential.profileName ?? profileName,
+					...(!lineage.credential.profileId && profileId
+						? {
+								profileId,
+								...(input.profileChain?.at(-1) === profileId
+									? { profileChain: [...input.profileChain] }
+									: {}),
+							}
+						: {}),
 				},
 				membership: inheritedMembership(lineage, binding),
 			}
@@ -431,6 +451,7 @@ const credentialKinds: ReadonlySet<string> = new Set<RequestCredentialKind>([
 	'webhook',
 	'schedule',
 	'platform-event',
+	'execution-context-run',
 ])
 
 const automationSources: ReadonlySet<string> = new Set<AutomationSource>([
@@ -536,7 +557,35 @@ export function parseRequestLineage(value: unknown): RequestLineage | null {
 			id: readNullableString(credential.id),
 			orgId: ownerIdFromStored(credential.orgId),
 			scopes: scopes as RequestCredential['scopes'],
-			profileName: readNullableString(credential.profileName),
+			...parseProfileFields(credential),
+			...parseContextRunFields(credential),
 		},
 	}
+}
+
+/** Profile binding and its frozen chain survive a durable boundary. */
+function parseProfileFields(
+	credential: Record<string, unknown>,
+): Pick<RequestCredential, 'profileId' | 'profileChain'> {
+	const profileId = readNullableString(credential.profileId)
+	if (!profileId) return {}
+	const chain = Array.isArray(credential.profileChain)
+		? credential.profileChain.filter(
+				(id): id is string => typeof id === 'string' && id.trim() !== '',
+			)
+		: []
+	return {
+		profileId,
+		...(chain.at(-1) === profileId ? { profileChain: chain } : {}),
+	}
+}
+
+/** The operator marker survives a durable boundary only as exactly `true`. */
+function parseContextRunFields(
+	credential: Record<string, unknown>,
+): Pick<RequestCredential, 'contextRunByOperator'> {
+	return credential.kind === 'execution-context-run' &&
+		credential.contextRunByOperator === true
+		? { contextRunByOperator: true }
+		: {}
 }

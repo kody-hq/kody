@@ -32,6 +32,8 @@ import {
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
+	checkPermission,
+	computeEffectivePermissions,
 	listScopeIncludes,
 	loadResourceListScope,
 } from '#worker/authorization/authorize.ts'
@@ -477,6 +479,7 @@ function usableCredentialsCacheKey(input: {
 	orgId: string
 	actorUserId: string | null | undefined
 	membershipRole: string | null | undefined
+	profileId: string | null | undefined
 	packageId: string | null | undefined
 	scopes: ReadonlyArray<string> | null
 	/** Set only when the caller passed an explicit `now` (expiry boundary). */
@@ -485,7 +488,7 @@ function usableCredentialsCacheKey(input: {
 }) {
 	const scopesKey =
 		input.scopes === null ? '*' : [...input.scopes].sort().join(',')
-	return `${input.orgId}\0${input.actorUserId ?? ''}\0${input.membershipRole ?? ''}\0${input.packageId ?? ''}\0${scopesKey}\0${input.explicitNow ?? ''}\0${input.generation}`
+	return `${input.orgId}\0${input.actorUserId ?? ''}\0${input.membershipRole ?? ''}\0${input.profileId ?? ''}\0${input.packageId ?? ''}\0${scopesKey}\0${input.explicitNow ?? ''}\0${input.generation}`
 }
 
 /**
@@ -512,6 +515,7 @@ export async function listUsableCredentials(input: {
 		orgId,
 		actorUserId: input.request.actor?.userId,
 		membershipRole: input.request.membership?.role,
+		profileId: input.request.credential.profileId,
 		packageId: input.packageId,
 		scopes: input.request.credential.scopes,
 		explicitNow,
@@ -602,9 +606,24 @@ async function loadUsableCredentials(input: {
 			now,
 			runOrgId: orgId,
 		})
+		// A profile (ADR 0092) reaches a personal credential only when every
+		// layer of its chain was granted Use on it.
+		const profileAccess = input.request.credential.profileId
+			? await computeEffectivePermissions({
+					env: input.env,
+					request: input.request,
+				})
+			: null
+		const profileAllows = (row: (typeof personalRows)[number]) =>
+			!profileAccess ||
+			checkPermission(profileAccess, `${row.family}:use`, {
+				type: 'credential',
+				id: row.id,
+				orgId: orgId as OwnerId,
+			}).allowed
 		usable.push(
 			...personalRows
-				.filter((row) => tokenAllows(row.family))
+				.filter((row) => tokenAllows(row.family) && profileAllows(row))
 				.map((row) => toUsable(row, 'personal', now)),
 		)
 	}

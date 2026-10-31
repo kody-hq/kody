@@ -62,6 +62,16 @@ downloads. Windows machine setup is disabled until the CLI supports a Windows
 execution runtime. Native Apple app access is not part of this wrapper, it needs
 specific permissioned capabilities.
 
+## Host commands
+
+**This machine > Allow host commands** opens a native confirmation explaining
+that granted runs can execute any shell command as your user, without approval
+per command. It uses the CLI's `context commands on|off --context <ecid>`.
+Turning it off stops background commands too. The website and CLI can also turn
+it off, and the controls refresh while the machine panel is open. Commands are
+disabled on Windows and before setup. See
+[Host commands](../../docs/use/execution-contexts.md#host-commands).
+
 ## Packaging and checks
 
 ```sh

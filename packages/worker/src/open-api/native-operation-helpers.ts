@@ -1,6 +1,5 @@
 import { type z } from 'zod'
 import { type ApiInvocationContext, type ApiPrincipal } from './context.ts'
-import { isCredentialedRuntimeCall } from '#worker/execution-contexts/credential-grant.ts'
 import { ApiError, invalidRequest } from './errors.ts'
 
 export type NativeApiOperationDefinition = {
@@ -75,6 +74,8 @@ export function assertContextRunRuntimePathAllowed(
 	if (ctx.principal.kind !== 'execution-context-run') return
 	const { runtime } = ctx.principal
 	if (runtime.mode === 'all') return
+	// Host commands have their own grant (execution_context:command, ADR 0093).
+	if (path[0] === 'kody' && path[1] === 'command') return
 	const joined = path.join('.')
 	if (runtime.paths.includes(joined)) return
 	throw new ApiError({
@@ -86,35 +87,22 @@ export function assertContextRunRuntimePathAllowed(
 }
 
 /**
- * Runtime paths with special handling on a context run: workflows never
- * start from a machine, and only the operator's own runs use credentials.
- * Credential values still never leave Kody cloud.
+ * Runtime paths with special handling on a context run: the operator's own
+ * runs start workflows as in Kody cloud; anyone else's cannot.
  */
 export function assertContextRunSpecialPathAllowed(
 	ctx: ApiInvocationContext,
 	path: ReadonlyArray<string>,
 ) {
 	if (ctx.principal.kind !== 'execution-context-run') return
-	const [root, name] = path
-	if (root === 'workflows') {
+	const [root] = path
+	if (root === 'workflows' && !ctx.principal.byOperator) {
 		throw new ApiError({
 			status: 403,
 			code: 'insufficient_scope',
 			message:
-				'Runs on an execution context cannot start workflows. Start the workflow from Kody cloud instead.',
+				"Only this execution context's operator can start workflows from runs on it. Start the workflow from Kody cloud, or from a context you operate.",
 			details: { reason: 'context_denied', path: path.join('.') },
 		})
 	}
-	const credentialed =
-		root === 'kody' &&
-		typeof name === 'string' &&
-		isCredentialedRuntimeCall(name)
-	if (!credentialed) return
-	if (ctx.principal.credentials === 'requester') return
-	throw new ApiError({
-		status: 403,
-		code: 'execution_context_credential_not_granted',
-		message: `Only this execution context's operator can use credentials in runs on it, so kody.${name} cannot run here. Run this on Kody cloud, or on a context you operate.`,
-		details: { path: path.join('.'), reason: 'context_operator_only' },
-	})
 }

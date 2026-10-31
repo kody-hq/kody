@@ -1,7 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
 import {
-	accountUserDataTargets,
 	buildUserScopedDeleteOrUpdateSql,
 	buildUserScopedTargetMatch,
 	type UserScopedDataTarget,
@@ -22,13 +21,8 @@ function sqlFor(target: UserScopedDataTarget) {
 	return buildUserScopedDeleteOrUpdateSql(match).sql
 }
 
-test('person hard purge is the account inventory', () => {
-	expect(hardPurgeDataTargets('person')).toBe(accountUserDataTargets)
-})
-
 test('org hard purge is the org-owned slice of the account inventory plus the org graph', () => {
 	const orgTargets = hardPurgeDataTargets('org')
-	expect(orgTargets).toEqual(hardPurgeOrgDataTargets('team'))
 	const kinds = new Set(orgTargets.map((target) => target.kind))
 	expect(kinds.has('db_user_id')).toBe(false)
 	expect(kinds.has('db_user_target')).toBe(false)

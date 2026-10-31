@@ -33,6 +33,7 @@ import { onboardingQuery } from '../onboarding-query.ts'
 
 const DesktopMachineContext = createContext<null | {
 	state: DesktopExecutionState | undefined
+	commands: (action: 'status' | 'on' | 'off') => Promise<void>
 	forget: () => void
 	open: () => void
 	toggle: () => Promise<void>
@@ -193,6 +194,25 @@ export function DesktopExecutionProvider({
 		bridge && username
 			? {
 					state: machine.data,
+					commands: async (action: 'status' | 'on' | 'off') => {
+						if (action === 'status') {
+							try {
+								client.setQueryData(
+									['desktop-machine', actorKey],
+									await bridge.commandsStatus(),
+								)
+							} catch (error) {
+								setError(error instanceof Error ? error.message : String(error))
+							}
+							return
+						}
+						await run(async () => {
+							const result = await (action === 'on'
+								? bridge.enableCommands()
+								: bridge.disableCommands())
+							client.setQueryData(['desktop-machine', actorKey], result)
+						})
+					},
 					forget: () => {
 						setError(null)
 						setStep('forget')
@@ -392,6 +412,15 @@ export function useDesktopMachine() {
 
 export function DesktopMachinePanel() {
 	const machine = useDesktopMachine()
+	const contextId = machine?.state?.contextId
+	const commands = useRef(machine?.commands)
+	commands.current = machine?.commands
+	useEffect(() => {
+		if (!contextId) return
+		void commands.current?.('status')
+		const interval = setInterval(() => void commands.current?.('status'), 15000)
+		return () => clearInterval(interval)
+	}, [contextId])
 	if (!machine) return null
 	const state = machine.state
 	return (
@@ -450,6 +479,20 @@ export function DesktopMachinePanel() {
 					</button>
 				</>
 			)}
+			{state?.contextId && state.supported ? (
+				<button
+					type="button"
+					css={{ ...secondaryCss, marginLeft: spacing.sm }}
+					disabled={state.busy || state.commandsEnabled === null}
+					onClick={() =>
+						void machine.commands(state.commandsEnabled ? 'off' : 'on')
+					}
+				>
+					{state.commandsEnabled
+						? 'Turn off host commands'
+						: 'Allow host commands'}
+				</button>
+			) : null}
 			{state?.hasSetup ? (
 				<button
 					type="button"

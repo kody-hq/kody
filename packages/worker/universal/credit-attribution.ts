@@ -99,13 +99,21 @@ type CreditAttributionMeterSplit = {
 
 export type CreditAttributionVisitorRow = {
 	displayName: string
+	/** Credits this org paid for the visitor (never their own org's share). */
 	creditsMicroUsd: number
 	lastDay: string
+	/**
+	 * True when the visitor came from another org and that org paid for the
+	 * metered work their visits caused (ADR 0095).
+	 */
+	billedToVisitorOrg?: boolean
 	meters: Array<{
 		meter: CreditAttributionMeter
 		label: string
 		units: number
 		creditsMicroUsd: number
+		/** Units the visitor's own org paid for; none of it is in credits. */
+		billedToVisitorOrg?: boolean
 	}>
 }
 

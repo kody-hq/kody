@@ -40,8 +40,6 @@ export async function mintCliLoginDeviceToken(input: {
 		if (error instanceof McpCallerError) throw invalidRequest(error.message)
 		throw error
 	}
-	const callerProfileName =
-		input.ctx.callerContext.request?.credential.profileName ?? null
 	try {
 		const minted = await mintApiToken({
 			db: input.ctx.env.APP_DB,
@@ -52,7 +50,6 @@ export async function mintCliLoginDeviceToken(input: {
 			idleTtlSeconds: lifetime.idleTtlSeconds,
 			maxLifetimeSeconds: lifetime.maxLifetimeSeconds,
 			createdVia: 'cli-login',
-			...(callerProfileName ? { profileName: callerProfileName } : {}),
 		})
 		const slug = input.ctx.callerContext.request?.org.slug?.trim() ?? ''
 		return {

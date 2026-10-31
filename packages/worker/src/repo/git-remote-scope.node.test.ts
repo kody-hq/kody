@@ -57,11 +57,11 @@ test('pickGitRemoteAccessScope defaults from write access and honors explicit sc
 
 test('enhanceGitRemoteWriteDenial keeps AuthorizationError and adds next steps', () => {
 	const base = new AuthorizationError({
-		code: 'connection_profile',
+		code: 'profile_grant',
 		permission: 'package:write',
 		orgId: ownerIdFromStored('user-1'),
 		resource: null,
-		message: 'This connection profile cannot write.',
+		message: 'This profile cannot write.',
 	})
 	const enhanced = enhanceGitRemoteWriteDenial({
 		error: base,
@@ -70,7 +70,7 @@ test('enhanceGitRemoteWriteDenial keeps AuthorizationError and adds next steps',
 		canRead: true,
 	})
 	expect(enhanced).toBeInstanceOf(AuthorizationError)
-	expect(enhanced.code).toBe('connection_profile')
+	expect(enhanced.code).toBe('profile_grant')
 	expect(enhanced.message).toMatch(
 		/You have read access to package @you\/demo, not write[\s\S]*scope: 'read'[\s\S]*communityFork/,
 	)

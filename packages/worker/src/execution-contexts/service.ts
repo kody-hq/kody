@@ -35,6 +35,7 @@ import {
 	type ContextAccess,
 	type ExecutionContextRow,
 	type UnusableReason,
+	executionContextCommandPermission,
 } from './store.ts'
 import { optInTrustNotice, sharingTrustNotice } from './trust-copy.ts'
 import { type RunHistoryRow } from './session-do.ts'
@@ -149,12 +150,14 @@ export function grantSummary(grant: EcpGrant) {
 					? ('none' as const)
 					: { mode: 'allowlist' as const, count: grant.runtime.paths.length },
 		timeoutMs: grant.limits.timeoutMs,
+		commands: grant.commands?.enabled === true,
 	}
 }
 
 function myPermissions(access: ContextAccess) {
 	const permissions: Array<string> = []
 	if (access.granted || access.isOperator) permissions.push('read', 'execute')
+	if (access.canRunCommands) permissions.push('command')
 	if (canWriteContext(access)) permissions.push('write')
 	if (canManageContext(access)) permissions.push('delete', 'manage_access')
 	return permissions
@@ -383,7 +386,7 @@ function chainUpdatedBy(caller: ExecutionContextCaller) {
 	}
 	return {
 		kind: 'agent' as const,
-		label: caller.request.credential.profileName ?? kind,
+		label: kind,
 	}
 }
 
@@ -640,7 +643,15 @@ export async function updateContext(
 			message: `${row.name} was revoked.`,
 		})
 	}
+	if (input.grant?.commands?.enabled === true) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'commands_opt_in_local',
+			message: `Host commands can only be turned on from the machine itself: run \`kody context commands on --context ${row.name}\` there, or use the Kody desktop app. Turning them off works from anywhere.`,
+		})
+	}
 	const db = caller.env.APP_DB
+	const commandsWereOn = parseGrant(row).commands?.enabled === true
 	const grant = input.grant
 		? mergeGrant(parseGrant(row), input.grant)
 		: parseGrant(row)
@@ -677,7 +688,11 @@ export async function updateContext(
 	await recordContextAudit(
 		caller,
 		row.id,
-		input.grant ? 'grant_changed' : 'renamed',
+		input.grant?.commands && commandsWereOn
+			? 'commands_disabled'
+			: input.grant
+				? 'grant_changed'
+				: 'renamed',
 		{
 			...(input.name ? { name } : {}),
 			...(input.grant ? { grantVersion } : {}),
@@ -696,6 +711,14 @@ export function mergeGrant(
 		...patch,
 		limits: { ...current.limits, ...patch.limits },
 		payload: { ...current.payload, ...patch.payload },
+		commands: patch.commands
+			? {
+					enabled: patch.commands.enabled,
+					enabledAt: patch.commands.enabled
+						? (patch.commands.enabledAt ?? current.commands?.enabledAt ?? null)
+						: null,
+				}
+			: (current.commands ?? { enabled: false }),
 	}
 }
 
@@ -881,6 +904,7 @@ type ShareRow = {
 	team_slug: string | null
 	team_name: string | null
 	is_member: number
+	command: number
 }
 
 export async function loadSharing(
@@ -892,6 +916,10 @@ export async function loadSharing(
 	const grants = await db
 		.prepare(
 			`SELECT g.id, g.subject_type, g.subject_id, g.preset, u.username,
+				EXISTS (
+				  SELECT 1 FROM grant_permissions gp
+				  WHERE gp.grant_id = g.id AND gp.permission = '${executionContextCommandPermission}'
+				) AS command,
 				t.slug AS team_slug, t.name AS team_name,
 				CASE WHEN m.user_id IS NULL THEN 0 ELSE 1 END AS is_member
 			 FROM grants g
@@ -935,6 +963,7 @@ export async function loadSharing(
 						outside: grant.is_member === 0,
 					},
 		preset: grant.preset,
+		commands: Number(grant.command) === 1,
 	}))
 	const level = allMembers
 		? 'org'
@@ -992,6 +1021,8 @@ export async function setSharing(
 		add?: Array<{
 			subject: { type: 'user' | 'team'; id: string }
 			preset: 'use' | 'contribute' | 'manage'
+			/** Also grant `execution_context:command` (run host commands). */
+			commands?: boolean
 		}>
 		allMembers?: boolean
 	},
@@ -1028,12 +1059,16 @@ export async function setSharing(
 			subject: share.subject,
 			preset: share.preset,
 			permissions: null,
+			...(share.commands
+				? { extraPermissions: [executionContextCommandPermission] }
+				: {}),
 			createdByUserId: caller.userId,
 			audit,
 		})
 		await recordContextAudit(caller, row.id, 'share_added', {
 			subject: share.subject,
 			preset: share.preset,
+			...(share.commands ? { commands: true } : {}),
 		})
 	}
 	if (input.allMembers !== undefined) {
@@ -1211,6 +1246,67 @@ export async function listRuns(
 						: null,
 		})),
 		nextCursor: page.nextCursor,
+	}
+}
+
+/**
+ * Cancels one run on a context (`cancelReason: user_cancelled`). Managers
+ * cancel anyone's run in this org; everyone else only their own. A run that
+ * already ended is reported, not an error, so retries are safe.
+ */
+export async function cancelContextRun(
+	caller: ExecutionContextCaller,
+	ref: string,
+	runId: string,
+) {
+	const { row, access } = await loadVisibleContext(caller, ref)
+	if (!access.granted && !access.isOperator && !isOrgOwner(caller)) notFound()
+	const manager = canManageContext(access) || isOrgOwner(caller)
+	const result = await sessionStub(caller.env, row.id).cancelRunFor({
+		runId,
+		orgId: caller.orgId,
+		...(manager ? {} : { requesterUserId: caller.userId }),
+	})
+	if (result.status === 'not_found') {
+		throw new ExecutionContextError({
+			status: 404,
+			code: 'not_found',
+			message: manager
+				? `No run ${runId} is in this context's history or queue.`
+				: `None of your runs on this context has id ${runId}. You can cancel only your own runs unless you manage the context.`,
+		})
+	}
+	if (result.status === 'starting') {
+		throw new ExecutionContextError({
+			status: 409,
+			code: 'invalid_request',
+			message:
+				'The run is still being handed to the machine. Try again in a few seconds.',
+		})
+	}
+	if (result.status === 'finished') {
+		const state = result.state || 'finished'
+		return {
+			cancelled: false,
+			id: row.id,
+			runId,
+			state,
+			message: `The run already ended (${state}).`,
+		}
+	}
+	const queued = result.queued === true
+	await recordContextAudit(caller, row.id, 'run_cancelled', {
+		runId,
+		requesterUserId: result.requesterUserId ?? null,
+		queued,
+	})
+	return {
+		cancelled: true,
+		id: row.id,
+		runId,
+		state: 'cancelled' as const,
+		cancelReason: 'user_cancelled' as const,
+		queued,
 	}
 }
 

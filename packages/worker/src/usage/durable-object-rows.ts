@@ -21,6 +21,8 @@ export function recordDurableObjectRowsRead(input: {
 	packageId?: string | null
 	/** Present for package-app visitor reads; empty string means anonymous. */
 	packageAppVisitorUserId?: string
+	/** The app's owning org when `userId` is a visiting org (ADR 0095). */
+	packageAppOwnerOrgId?: string
 }): void {
 	queueDurableObjectRowsRead({
 		...input,

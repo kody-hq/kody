@@ -254,6 +254,13 @@ function PackageVisitorsTable({
 					Sort by username
 				</button>
 			</div>
+			{rows.some((row) => row.billedToVisitorOrg) ? (
+				<p css={descriptionCss} data-visitors-billed-elsewhere>
+					Visitors marked "their org pays" came from another organization. Their
+					org pays for the metered work their visits cause, so those units carry
+					no credits here. You still pay the app's Worker compute.
+				</p>
+			) : null}
 			<p css={descriptionCss} data-visitors-count>
 				Showing {formatIntegerNumber(visible.length)} of{' '}
 				{formatIntegerNumber(filtered.length)} visitors
@@ -275,12 +282,14 @@ function PackageVisitorsTable({
 				rows={visible.map((row, index) => ({
 					id: `${row.displayName}-${row.lastDay}-${index}`,
 					cells: {
-						visitor: row.displayName,
+						visitor: row.billedToVisitorOrg
+							? `${row.displayName} (their org pays)`
+							: row.displayName,
 						credits: formatOnCreditsMicroUsd(row.creditsMicroUsd),
 						meters: row.meters
 							.map(
 								(meter) =>
-									`${meter.label}: ${formatIntegerNumber(meter.units)}`,
+									`${meter.label}: ${formatIntegerNumber(meter.units)}${meter.billedToVisitorOrg ? ' (their org paid)' : ''}`,
 							)
 							.join(' · '),
 						lastDay: row.lastDay,

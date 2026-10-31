@@ -26,8 +26,8 @@ export type AuthorizeConsentOrg = {
 }
 
 /**
- * Resolve `?org=` on the authorize URL and OAuth resource, then strip `org`
- * from the resource so profile resolution can still read `?profile=`.
+ * Resolve `?org=` on the authorize URL and OAuth resource, then normalize the
+ * resource to the canonical `/mcp` audience.
  * Returns null when neither source names an org.
  */
 export async function resolveAuthorizeOrg(input: {
@@ -53,14 +53,15 @@ export async function resolveAuthorizeOrg(input: {
 		try {
 			const resourceUrl = new URL(stripped.canonicalResource)
 			const canonicalUrl = new URL(canonical)
-			const onlyProfileQuery =
-				[...resourceUrl.searchParams.keys()].every(
-					(key) => key === 'profile',
-				) &&
+			// Retired connection profiles used `?profile=`; old client URLs may
+			// still carry it, and it must not change the `/mcp` audience.
+			resourceUrl.searchParams.delete('profile')
+			if (
+				resourceUrl.searchParams.size === 0 &&
 				resourceUrl.origin === canonicalUrl.origin &&
 				resourceUrl.pathname.replace(/\/$/, '') ===
 					canonicalUrl.pathname.replace(/\/$/, '')
-			if (onlyProfileQuery && resourceUrl.searchParams.size === 0) {
+			) {
 				input.authRequest.resource = canonical
 			}
 		} catch {

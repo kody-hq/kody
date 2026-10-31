@@ -56,24 +56,23 @@ synchronous, for callers that already hold the compiled permissions.
    org that owns the job, webhook, or subscription. The result is also cached
    per request context.
 4. **Credential scopes.** Non-null `credential.scopes` narrow the result.
-5. **Connection profile.** A bound profile narrows package resources to the
-   packages and actions it lists (`read`, `execute`, `write`). Profiles list
-   packages only, so they do not narrow other resources or org-level checks.
-   `package:write`, `package:delete`, and `package:publish` handlers call
-   `authorizePackageWrite` once the saved package row is known. Those
-   permissions map to the profile `write` action, so a profile that lists only
-   `read` cannot mutate, delete, or publish that package. Handlers that read or
-   execute one saved package call `authorize` with `package:read` or
-   `package:execute` on `packageResource` (profile `read` and `execute`), and
-   lists filter rows with `checkPermission`. Creating a saved package goes
-   through `authorizePackageCreate`: `packageSave` and `packageGetGitRemote`
-   when the package does not exist yet, `communityFork`, and
-   `repoPromoteToPackage`. It requires org-level `package:create` (grantable on
-   the org, unlike `package:write`) and refuses a profile-bound credential,
-   because a profile names existing packages only. `packageGetGitRemote` create
-   mode mints a write remote for the package it just created on that check
-   alone; it grants nothing on other packages. Plain repo create stays an
-   org-level `package:create` check.
+5. **Profile chain.** A profile-bound credential (`credential.profileId`)
+   intersects the result with the acting profile's grants and every ancestor's
+   snapshot grants (`computeEffectivePermissions` in `authorize.ts`,
+   [ADR 0092](../decisions/0092-profiles-are-scoped-agent-identities.md)). An
+   inactive link denies with `profile_inactive`, a missing grant with
+   `profile_grant`, and Owner status does not bypass it. Unprofiled requests
+   load no chain. `package:write`, `package:delete`, and `package:publish`
+   handlers call `authorizePackageWrite` once the saved package row is known.
+   Handlers that read or execute one saved package call `authorize` with
+   `package:read` or `package:execute` on `packageResource`, and lists filter
+   rows with `checkPermission`. Creating a saved package goes through
+   `authorizePackageCreate`: `packageSave` and `packageGetGitRemote` when the
+   package does not exist yet, `communityFork`, and `repoPromoteToPackage`. It
+   requires org-level `package:create` (grantable on the org, unlike
+   `package:write`). `packageGetGitRemote` create mode mints a write remote for
+   the package it just created on that check alone; it grants nothing on other
+   packages. Plain repo create stays an org-level `package:create` check.
 
 **Member permissions.** A team org's `members_can_create_packages` (default off)
 and `members_can_create_credentials` (default on) columns on `orgs` add
@@ -305,7 +304,7 @@ const visible = packages.filter((pkg) =>
 
 - `checkPermission(access, permission, resource)` is one decision.
 - `canSeeResource` is list and search visibility: the request holds some
-  permission on the resource. An execute-only profile still shows the package so
+  permission on the resource. An execute-only grant still shows the package so
   it can be invoked; reading its source or skills needs `package:read`.
 - `runWithRequestPermissions` binds the compiled permissions for deep call sites
   that carry no caller context. Package import resolution reads them with
@@ -315,10 +314,10 @@ const visible = packages.filter((pkg) =>
   `wrong_org` unless the request is bound to that org (as a member or through a
   grant).
 
-The connection profile comes from `request.credential.profileName`. Automation
-keeps the profile of the credential that created the job or webhook, and a run
-started by another run keeps its starter's profile. Read the profile there,
-never from the wire `connectionProfileName`.
+The profile comes from `request.credential.profileId` and its frozen
+`profileChain`. Automation keeps the profile of the credential that enabled the
+job or webhook (`enabler_profile_id`), and a run started by another run keeps
+its starter's profile. Read the profile there, never from wire input.
 
 ### Surfaces declare their permission
 
@@ -417,9 +416,8 @@ same commands. Default bootstrap scopes include local-execute use scopes plus
 `package:write` and `token:delete`; callers can still narrow or expand via
 explicit `scopes`.
 
-Connection profiles remain an org-bound narrowing layer (not folded into
-scopes). A profile is stored with `org_id` and limits package resources listed
-on that credential; it does not replace token scopes.
+Profiles are a separate narrowing layer (not folded into scopes): a
+profile-bound token is narrowed by both its scopes and its profile chain.
 
 ## Site admin
 

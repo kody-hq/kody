@@ -67,7 +67,7 @@ function createPrincipal(
 	overrides: {
 		oauthClientId?: string
 		userId?: string | null
-		connectionProfileName?: string | null
+		profileId?: string
 	} = {},
 ) {
 	const sqlite = new DatabaseSync(':memory:')
@@ -83,6 +83,7 @@ function createPrincipal(
 		callerContext: createMcpCallerContext({
 			source: { kind: 'mcp-oauth' },
 			baseUrl: 'https://kody.example.com',
+			profileId: overrides.profileId,
 			user: userId
 				? {
 						userId: personIdFromStored(userId),
@@ -90,7 +91,6 @@ function createPrincipal(
 						displayName: 'One',
 					}
 				: null,
-			connectionProfileName: overrides.connectionProfileName ?? null,
 		}),
 	}
 	return { sqlite, env, principal }
@@ -108,7 +108,7 @@ function params(
 }
 
 test('subscribe verifies the callback with a signed challenge and stores the subscription', async () => {
-	const { env, principal } = createPrincipal({ connectionProfileName: 'work' })
+	const { env, principal } = createPrincipal()
 	const result = await subscribeMcpEvent(principal, params(), now)
 
 	expect(result).toEqual({
@@ -138,7 +138,6 @@ test('subscribe verifies the callback with a signed challenge and stores the sub
 		}),
 	).resolves.toMatchObject({
 		oauthClientId: 'client-a',
-		connectionProfileName: 'work',
 		eventName: topic,
 		callbackUrl,
 		verifiedAt: now.toISOString(),
@@ -319,6 +318,24 @@ test('new subscriptions beyond the per-principal limit are ResourceExhausted', a
 	await expect(
 		subscribeMcpEvent(principal, params(), now),
 	).resolves.toMatchObject({ id: expect.stringMatching(/^sub_/) })
+})
+
+test('unsubscribe deletes a profile-bound subscription by its profile key', async () => {
+	const { env, principal } = createPrincipal({ profileId: 'profile-1' })
+	const created = await subscribeMcpEvent(principal, params(), now)
+	await expect(
+		unsubscribeMcpEvent(principal, {
+			name: topic,
+			delivery: { mode: 'webhook', url: callbackUrl },
+		}),
+	).resolves.toEqual({})
+	await expect(
+		getMcpEventSubscription({
+			db: env.APP_DB,
+			userId: ownerIdFromStored('user-1'),
+			id: created.id,
+		}),
+	).resolves.toBeNull()
 })
 
 test('unsubscribe deletes by key and is idempotent', async () => {

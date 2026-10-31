@@ -263,6 +263,21 @@ Open these before proposing a new primitive, surface, or storage home.
   `POST /agent/identity` takes `service_auth` only; the claim mints a user-owned
   `kody_at_` (default `long`, amends 0056); no identity assertion or JWT-bearer
   refresh; anonymous stays behind a flag that is off
+- [0092: Profiles are scoped agent identities, capped by their parent chain](./0092-profiles-are-scoped-agent-identities.md)
+  Person-owned profiles with snapshot grants, capped at run time by the acting
+  person and every parent; no epoch bump; behind the `profiles` flag
+- [0093: Execution-context runs can run host commands after a local opt-in](./0093-execution-context-host-commands.md)
+  Off by default; only the machine turns it on, anyone with access turns it off;
+  `execution_context:command` (operator by default, shares only when granted);
+  `kody.command.*` with daemon-held background jobs; audited without env values;
+  macOS and Linux only
+- [0094: Package-app visitors sign in from limited browsers](./0094-package-app-limited-browser-sign-in.md)
+  `/login`, `/verify`, and consent work as plain HTML; "Sign in on another
+  device" reuses the 0082 device code (amends 0082)
+- [0095: A visit from another org to an internal package app bills the visiting org](./0095-cross-org-package-app-visits-bill-the-visitor-org.md)
+  Outside collaborators on an internal app pay for their metered work from their
+  personal org; the publisher keeps the worker day; public apps stay
+  publisher-paid; the billed org rides on the request, never the worker key
 
 ## Historical / UI / implementation
 

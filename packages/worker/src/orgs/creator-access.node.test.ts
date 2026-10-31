@@ -110,3 +110,90 @@ test('a credential creator grant carries the credential family', async () => {
 	expect(permissions).toContain('secret:use')
 	expect(permissions).not.toContain('integration:use')
 })
+
+function seedProfile(
+	sqlite: DatabaseSync,
+	input: { id: string; actingUserId: string; revokedAt?: string | null },
+) {
+	sqlite
+		.prepare(
+			`INSERT INTO profiles (id, org_id, acting_user_id, name, depth, revoked_at,
+				created_by_user_id, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+		)
+		.run(
+			input.id,
+			orgId,
+			input.actingUserId,
+			input.id,
+			input.revokedAt ?? null,
+			input.actingUserId,
+			now,
+			now,
+		)
+}
+
+test('a profile that creates a package gets manage too, alongside its person', async () => {
+	const { sqlite, env } = seed()
+	seedProfile(sqlite, { id: 'prf-bot', actingUserId: 'person-member' })
+	const input = {
+		env,
+		orgId,
+		creatorUserId: 'person-member',
+		creatorProfileId: 'prf-bot',
+		resources: createdPackageResources('pkg-1'),
+		audit: createTestOrgAuditWriter(),
+	}
+	expect(await grantCreatorAccess(input)).toEqual({ granted: 4 })
+	expect(await grantCreatorAccess(input)).toEqual({ granted: 0 })
+	const rows = liveGrants(sqlite) as Array<Record<string, string>>
+	expect(
+		rows
+			.map((row) => `${row.resource_type}:${row.subject_type}:${row.origin}`)
+			.sort(),
+	).toEqual([
+		'app:profile:created',
+		'app:user:created',
+		'package:profile:created',
+		'package:user:created',
+	])
+})
+
+test('an owner acting as a profile still grants the profile, never itself', async () => {
+	const { sqlite, env } = seed()
+	seedProfile(sqlite, { id: 'prf-owner-bot', actingUserId: 'person-owner' })
+	expect(
+		await grantCreatorAccess({
+			env,
+			orgId,
+			creatorUserId: 'person-owner',
+			creatorProfileId: 'prf-owner-bot',
+			resources: createdPackageResources('pkg-1'),
+			audit: createTestOrgAuditWriter(),
+		}),
+	).toEqual({ granted: 2 })
+	const rows = liveGrants(sqlite) as Array<Record<string, string>>
+	expect(rows.every((row) => row.subject_type === 'profile')).toBe(true)
+})
+
+test('a revoked or foreign profile gets no creator grant', async () => {
+	const { sqlite, env } = seed()
+	seedProfile(sqlite, {
+		id: 'prf-gone',
+		actingUserId: 'person-member',
+		revokedAt: now,
+	})
+	seedProfile(sqlite, { id: 'prf-other', actingUserId: 'person-owner' })
+	for (const creatorProfileId of ['prf-gone', 'prf-other', 'prf-missing']) {
+		await grantCreatorAccess({
+			env,
+			orgId,
+			creatorUserId: 'person-member',
+			creatorProfileId,
+			resources: createdPackageResources(`pkg-${creatorProfileId}`),
+			audit: createTestOrgAuditWriter(),
+		})
+	}
+	const rows = liveGrants(sqlite) as Array<Record<string, string>>
+	expect(rows.some((row) => row.subject_type === 'profile')).toBe(false)
+})

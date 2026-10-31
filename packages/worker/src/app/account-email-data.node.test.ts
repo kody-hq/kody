@@ -568,18 +568,86 @@ test('readAccountEmailData shows a paid team plan instead of the viewer email fr
 	})
 })
 
-test('detail requires verified email before reading any message data', async () => {
+test('detail requires verified email before reading a personal inbox message', async () => {
 	vi.clearAllMocks()
 	const { isAccountEmailVerified } = await import('#app/email-verification.ts')
 	vi.mocked(isAccountEmailVerified).mockResolvedValueOnce(false)
+	const db = await usersAndOrgsDb()
+	const orgId = personalOrgId(personIdFromStored('stable-user-1'))
+	await db
+		.prepare(
+			`INSERT INTO users (stable_user_id, email, deleted_at, deleting_at)
+			 VALUES (?, 'user@example.com', NULL, NULL)`,
+		)
+		.bind(orgId)
+		.run()
 	const detail = await loadAccountEmailDetail({
-		env: { APP_DB: {} } as Env,
+		env: { APP_DB: db } as Env,
 		user: { ...authenticatedUser, emailVerified: false },
 		messageId: 'msg-1',
 	})
 	expect(detail).toBeNull()
 	expect(mocks.getOwnerEmailMessageById).not.toHaveBeenCalled()
 	expect(mocks.listOwnerEmailAttachmentsForMessage).not.toHaveBeenCalled()
+})
+
+test('detail shows a team inbox message to an unverified owner with email:read', async () => {
+	vi.clearAllMocks()
+	const { isAccountEmailVerified } = await import('#app/email-verification.ts')
+	vi.mocked(isAccountEmailVerified).mockResolvedValueOnce(false)
+	mocks.classifyInboundEmailSender.mockResolvedValue({
+		kind: 'unverified',
+		reason: 'From address was not authenticated.',
+	})
+	mocks.getOwnerEmailMessageById.mockResolvedValueOnce(messageRecord)
+	mocks.listOwnerEmailAttachmentsForMessage.mockResolvedValueOnce([])
+	mocks.listOwnerEmailDeliveryEvents.mockResolvedValueOnce([])
+	const db = await usersAndOrgsDb()
+	const orgId = ownerIdFromStored('a'.repeat(64))
+	const viewerId = personIdFromStored('b'.repeat(64))
+	const now = new Date(0).toISOString()
+	await db
+		.prepare(
+			`INSERT INTO orgs (id, slug, created_at, updated_at)
+			 VALUES (?, 'acme', ?, ?)`,
+		)
+		.bind(orgId, now, now)
+		.run()
+	await db
+		.prepare(
+			`INSERT INTO users (stable_user_id, email, deleted_at, deleting_at)
+			 VALUES (?, 'ada@example.com', NULL, NULL)`,
+		)
+		.bind(viewerId)
+		.run()
+	const detail = await loadAccountEmailDetail({
+		env: { APP_DB: db } as Env,
+		user: {
+			...authenticatedUser,
+			email: 'ada@example.com',
+			emailVerified: false,
+			username: 'ada',
+			mcpUser: {
+				...authenticatedUser.mcpUser,
+				userId: viewerId,
+				email: 'ada@example.com',
+				username: 'ada',
+			},
+			request: deriveRequestContext({
+				user: { userId: viewerId, username: 'ada' },
+				source: { kind: 'session' },
+				orgBinding: { org: { id: orgId, slug: 'acme' }, role: 'owner' },
+			}),
+		},
+		messageId: 'msg-1',
+	})
+	expect(detail).toMatchObject({
+		id: 'msg-1',
+		subject: 'Hello from sender',
+	})
+	expect(mocks.getOwnerEmailMessageById).toHaveBeenCalledWith(
+		expect.objectContaining({ ownerId: orgId, messageId: 'msg-1' }),
+	)
 })
 
 test('readAccountEmailData hides a personal inbox until the account email is verified', async () => {

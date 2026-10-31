@@ -70,11 +70,12 @@ Usage:
   kody api <operationId> [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
   kody package publish [<@owner/leaf|package_id>] [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
   kody package collaborators <package> [--org <slug>] [--json] [--token <token>] [--api-url <url>]
-  kody package grant <package> (--team <slug> | --user <username>) [--preset use|contribute|manage] [--org <slug>] [--json]
+  kody package grant <package> (--team <slug> | --user <username>) [--preset read|use|contribute|manage] [--org <slug>] [--json]
   kody package revoke <package> (--team <slug> | --user <username> | --grant <grant_id>) [--org <slug>] [--json]
   kody execute [--org <slug>] [--invoke <ref> | --code <esm> | --file <path>] [--params <json>] [--conversation-id <id>] [--json]
   kody context register --name <name> [--org <slug>] | kody context list [--json]
   kody context revoke <name|ec id> | kody context delete <name|ec id> [--org <slug>] [--json]
+  kody context cancel-run <name|ec id> <run id> [--org <slug>] [--json]
   kody context policy [show] | allow <path> [--mode ro|rw] | remove <path> [--json]
   kody chain show | add <name> | remove <name> [--org <slug>] [--json]
   kody connect --name <name> [--org <slug>] [--no-install] [--key-storage keyring|file] [--yes]
@@ -104,6 +105,13 @@ Usage:
   kody context, chain, and daemon need execution contexts, an experiment.
   Turn it on at https://kody.codes/account/experiments (guide:
   https://kody.codes/docs/execution-contexts).
+
+  Profiles (scoped identities for your agents and sub-agents) are an
+  experiment too: turn it on at https://kody.codes/account/experiments, then
+  \`kody execute\` a module that calls \`profileCreate\`, \`profileList\`, or
+  \`profileRevoke\`, and share a package with one through
+  \`packageCollaboratorSet\` with \`profile_id\` (guide:
+  https://kody.codes/docs/profiles).
 
   kody install configures running local MCP clients (Cursor, Claude Desktop,
   VS Code, Goose, and others). For web-based clients (ChatGPT, Claude.ai, Grok),
@@ -246,7 +254,9 @@ ${orgBlock}
              the org (\`--org\`). \`<package>\` is \`@owner/leaf\`, the kody id,
              or the package id. \`grant\` adds a team or org member or changes
              their preset (default \`use\`) via \`packageCollaboratorSet\`;
-             people outside the org are refused. \`revoke\` removes one by
+             \`--user\` outside the org adds an outside collaborator.
+             \`--preset read\` shares only the source: they can read, clone,
+             and fork it (\`packageFork\`) but not run it or open its app. \`revoke\` removes one by
              team, user, or grant id via \`packageCollaboratorRemove\`. Needs
              Manage on the package and a token with
              \`package:manage_access\` (\`auth bootstrap --scopes …\`); same
@@ -266,6 +276,9 @@ ${orgBlock}
              Prefer \`cliCredentialBootstrap\` then \`auth bootstrap\`
              (\`--lifetime short|long\`). CI/headless: \`tokenCreate\` with
              \`org:execute\` plus the capability scopes you need.
+             Profiles: \`tokenCreate\` with \`profile_id\`, or
+             \`profileHandoff\` for a new sub-profile, mints a token
+             that acts as that profile (not accepted by /mcp).
              For \`execute --local\`, a valid \`kody login\` session can also
              supply Bearer when no scoped token is available (no tokenCreate
              exchange). User-owned tokens (\`org_binding: user\`) honor

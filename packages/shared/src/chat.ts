@@ -65,11 +65,12 @@ export const mcpCallerContextSchema = object({
 	storageContext: optional(nullable(mcpStorageContextSchema)),
 	repoContext: optional(nullable(mcpRepoContextSchema)),
 	/**
-	 * Named connection profile bound to this MCP OAuth grant or API token.
-	 * Absent / null = unlimited (today's default connection). Present = the
-	 * profile's grant allowlist (empty allowlist denies everything).
+	 * Profile (ADR 0092) the credential is bound to. Absent / null is the live
+	 * mirror: the person's own access.
 	 */
-	connectionProfileName: optional(nullable(string())),
+	profileId: optional(nullable(string())),
+	/** That profile's chain (ids, root first), frozen for run attribution. */
+	profileChain: optional(nullable(array(string()))),
 	/**
 	 * OAuth client the bearer grant was issued to (MCP host or `kody login`
 	 * CLI). Becomes the request credential id so usage can be attributed to
@@ -122,13 +123,15 @@ type McpCallerContextInferred = InferOutput<typeof mcpCallerContextSchema>
 export type McpCallerContextWire = Omit<
 	McpCallerContextInferred,
 	| 'user'
-	| 'connectionProfileName'
+	| 'profileId'
+	| 'profileChain'
 	| 'oauthClientId'
 	| 'orgBinding'
 	| 'resourceEventDepth'
 > & {
 	user?: McpUserContext | null
-	connectionProfileName?: string | null
+	profileId?: string | null
+	profileChain?: ReadonlyArray<string> | null
 	oauthClientId?: string | null
 	orgBinding?: McpOrgBinding | null
 	resourceEventDepth?: number | null

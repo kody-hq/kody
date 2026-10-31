@@ -33,6 +33,11 @@ import {
 import { ApiError, invalidRequest, notFound, toApiError } from './errors.ts'
 import { maxApiRequestBodyBytes } from './request-params.ts'
 import { runCapabilityProxyAuthenticatedFetch } from './capability-proxy-authenticated-fetch.ts'
+import {
+	authorizeContextCommand,
+	commandRequiresContextError,
+	commandRuntimeName,
+} from '#worker/execution-contexts/commands.ts'
 import { runCapabilityProxyGatewayFetch } from './capability-proxy-gateway-fetch.ts'
 import { runCapabilityProxyOauthClientCredentials } from './capability-proxy-oauth-client-credentials.ts'
 import {
@@ -333,6 +338,12 @@ async function dispatchCapabilityProxyCall(input: {
 }) {
 	const { ctx, call, redactor } = input
 	const [root, name] = call.path
+	if (root === 'kody' && name === commandRuntimeName) {
+		if (call.path.length === 3 && call.path[2] === 'authorize') {
+			return await authorizeContextCommand(ctx, call.args[0])
+		}
+		throw commandRequiresContextError()
+	}
 	if (root === 'kody') {
 		return callKodyPath({
 			ctx,

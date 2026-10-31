@@ -228,3 +228,40 @@ test('Windows setup does not launch the unsupported runtime', async () => {
 	)
 	assert.deepEqual(f.calls, [])
 })
+
+test('host commands require native confirmation and verified ownership, and status combines local and server grants', async () => {
+	const f = fixture({
+		ecid: 'ec_test',
+		enabled: false,
+		owner: { username: 'jane', orgSlug: 'jane' },
+	})
+	let enabled = false
+	f.runner.command = async (args) => {
+		f.calls.push(args)
+		if (args[2] === 'on') enabled = true
+		if (args[2] === 'off') enabled = false
+		return JSON.stringify({
+			local: { enabled },
+			contexts: [{ commands: { enabled } }],
+		})
+	}
+	await f.execution.request('commands-on')
+	assert.equal(enabled, false)
+	assert.deepEqual(f.calls, [])
+	f.execution.confirmCommands = async () => true
+	assert.equal((await f.execution.request('commands-on')).commandsEnabled, true)
+	assert.deepEqual(f.calls[0], [
+		'context',
+		'commands',
+		'on',
+		'--context',
+		'ec_test',
+		'--json',
+	])
+	assert.equal(
+		(await f.execution.request('commands-off')).commandsEnabled,
+		false,
+	)
+	f.viewer({ username: 'sam', email: 'sam@example.com', orgSlug: 'sam' })
+	await assert.rejects(f.execution.request('commands-on'), /another workspace/)
+})

@@ -10,8 +10,17 @@ class DesktopExecution {
 		viewer,
 		hostname,
 		platform = process.platform,
+		confirmCommands = async () => false,
 	}) {
-		Object.assign(this, { runner, read, write, viewer, platform })
+		Object.assign(this, {
+			runner,
+			read,
+			write,
+			viewer,
+			platform,
+			confirmCommands,
+		})
+		this.commandsEnabled = null
 		this.name = machineName(hostname)
 		this.busy = false
 		this.authorized = null
@@ -61,6 +70,7 @@ class DesktopExecution {
 			busy: this.busy,
 			contextId: owns ? state.ecid : null,
 			hasSetup: !!state.ecid,
+			commandsEnabled: owns ? this.commandsEnabled : null,
 			running: !!owns && !!this.runner.daemon,
 			needsVerification: !!viewer && !!state.ecid && !state.owner,
 			blocked: !!viewer && !!state.ecid && !!state.owner && !owns,
@@ -93,6 +103,7 @@ class DesktopExecution {
 						...new Set([...(state.onboardingSeen ?? []), viewer.username]),
 					],
 				})
+				this.commandsEnabled = null
 				this.authorized = null
 				this.error = null
 			} finally {
@@ -115,7 +126,17 @@ class DesktopExecution {
 			})
 			return this.snapshot(viewer)
 		}
-		if (!['sign-in', 'connect', 'start', 'stop'].includes(command))
+		if (
+			![
+				'sign-in',
+				'connect',
+				'start',
+				'stop',
+				'commands-status',
+				'commands-on',
+				'commands-off',
+			].includes(command)
+		)
 			throw new Error('Unknown machine action.')
 		if (this.platform === 'win32')
 			throw new Error(
@@ -123,7 +144,40 @@ class DesktopExecution {
 			)
 		this.busy = true
 		try {
-			if (command === 'sign-in') {
+			if (command.startsWith('commands-')) {
+				if (!state.ecid || !this.owns(state, viewer))
+					throw new Error('Set up this machine first.')
+				if (command === 'commands-on' && !(await this.confirmCommands()))
+					return this.snapshot(await this.viewer())
+				const current = await this.viewer()
+				if (
+					current?.username !== viewer.username ||
+					current.orgSlug !== viewer.orgSlug
+				)
+					throw new Error('The signed-in account changed. Start setup again.')
+				const args = [
+					'context',
+					'commands',
+					command.slice('commands-'.length),
+					'--context',
+					state.ecid,
+					'--json',
+				]
+				if (command !== 'commands-status') await this.runner.command(args)
+				const status = JSON.parse(
+					await this.runner.command([
+						'context',
+						'commands',
+						'status',
+						'--context',
+						state.ecid,
+						'--json',
+					]),
+				)
+				this.commandsEnabled =
+					status.local?.enabled === true &&
+					status.contexts?.[0]?.commands?.enabled === true
+			} else if (command === 'sign-in') {
 				await this.runner.command(['login', '--org', viewer.orgSlug])
 				const current = await this.viewer()
 				if (

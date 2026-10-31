@@ -32,7 +32,13 @@ const allOrgPermissions: ReadonlySet<OrgPermission> = new Set(orgPermissions)
 
 export const rolePresets: Record<OrgRole, ReadonlySet<OrgPermission>> = {
 	owner: allOrgPermissions,
-	member: new Set(['org:read', 'member:read', 'team:read', 'search:read']),
+	member: new Set([
+		'org:read',
+		'member:read',
+		'team:read',
+		'search:read',
+		'profile:manage',
+	]),
 	billing: new Set([
 		'org:read',
 		'member:read',

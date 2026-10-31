@@ -1,3 +1,5 @@
+import { loadProfileChain } from '#worker/profiles/store.ts'
+import { profileStatus } from '#worker/profiles/rules.ts'
 import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	ownerIdFromStored,
@@ -33,7 +35,7 @@ import {
 	type ApiInvocationContext,
 } from './context.ts'
 import { ApiError } from './errors.ts'
-import { readConnectionProfileNameFromGrantProps } from '#worker/connection-profiles/oauth.ts'
+import { grantHasRetiredConnectionProfile } from '#worker/orgs/oauth-grant.ts'
 import {
 	ecpRunHeader,
 	ecpSignatureHeader,
@@ -45,10 +47,7 @@ import {
 	loadContextAccess,
 	sessionStub,
 } from '#worker/execution-contexts/store.ts'
-import {
-	contextCredentialIds,
-	contextRunCredentials,
-} from '#worker/execution-contexts/credential-grant.ts'
+import { isOperatorContextRun } from '#worker/execution-contexts/credential-grant.ts'
 
 type McpOauthGrantProps = {
 	userId?: unknown
@@ -259,7 +258,15 @@ async function authenticateWithApiToken(input: {
 				source: { kind: 'api-token', tokenId: record.id },
 				executionOrigin: 'interactive',
 				user: authContext.user,
-				connectionProfileName: record.profile_name ?? null,
+				profileId: record.profile_id ?? null,
+				profileChain: record.profile_id
+					? (
+							await loadProfileChain(input.env.APP_DB, {
+								orgId: orgBinding.org.id,
+								profileId: record.profile_id,
+							})
+						).map((row) => row.id)
+					: null,
 				orgBinding,
 				scopes: record.scopes,
 			}),
@@ -330,6 +337,13 @@ async function authenticateWithMcpOauth(input: {
 		personId: authContext.user.userId,
 		grantProps: tokenSummary.grant.props,
 	})
+	if (grantHasRetiredConnectionProfile(tokenSummary.grant.props)) {
+		throw unauthorized(
+			'Access token was bound to a connection profile, which no longer exists. Run kody login again.',
+			true,
+			personalOrgIdForPerson(authContext.user),
+		)
+	}
 	if (!orgBinding) {
 		throw unauthorized(
 			'Access token is not bound to an org you can access.',
@@ -345,9 +359,6 @@ async function authenticateWithMcpOauth(input: {
 				source: { kind: 'cli' },
 				executionOrigin: 'interactive',
 				user: authContext.user,
-				connectionProfileName: readConnectionProfileNameFromGrantProps(
-					tokenSummary.grant.props,
-				),
 				oauthClientId: tokenSummary.grant.clientId,
 				orgBinding,
 			}),
@@ -448,11 +459,30 @@ async function authenticateWithExecutionContextLease(input: {
 			'The requester of this run no longer has access to this execution context.',
 		)
 	}
+	const profileChain = lease.profileId
+		? await loadProfileChain(input.env.APP_DB, {
+				orgId: lease.orgId,
+				profileId: lease.profileId,
+			})
+		: null
+	if (
+		lease.profileId &&
+		(profileChain?.at(-1)?.id !== lease.profileId ||
+			profileStatus(profileChain, new Date().toISOString()) !== 'active')
+	) {
+		throw new ApiError({
+			status: 403,
+			code: 'execution_context_access_lost',
+			message:
+				'The profile this run acts as, or a parent profile, is revoked or expired.',
+		})
+	}
 	const scopes = lease.callerScopes as ReadonlyArray<OrgPermission> | null
-	const credentials = contextRunCredentials({
+	const identity = {
 		operatorUserId: context.operator_user_id,
 		requesterUserId: authContext.user.userId,
-	})
+	}
+	const byOperator = isOperatorContextRun(identity)
 	return createApiInvocationContext({
 		env: input.env,
 		callerContext: {
@@ -465,10 +495,11 @@ async function authenticateWithExecutionContextLease(input: {
 				},
 				executionOrigin: 'interactive',
 				user: authContext.user,
-				connectionProfileName: null,
+				profileId: lease.profileId ?? null,
+				profileChain: profileChain?.map((row) => row.id) ?? null,
 				orgBinding,
 				scopes,
-				contextCredentialIds: contextCredentialIds(credentials),
+				contextRunByOperator: byOperator,
 			}),
 			user: authContext.user,
 		},
@@ -479,7 +510,7 @@ async function authenticateWithExecutionContextLease(input: {
 			deadline: lease.deadline,
 			scopes: lease.callerScopes,
 			runtime: lease.runtime,
-			credentials,
+			byOperator,
 		},
 		waitUntil: input.waitUntil,
 	})

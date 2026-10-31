@@ -13,7 +13,13 @@ import { cliConfigDir } from '../store.js'
 export type FsMode = 'ro' | 'rw'
 export type FsRule = { path: string; mode: FsMode }
 export type FsLayer = 'server_grant' | 'local_policy'
-export type LocalFsPolicy = { version: 1; fs: Array<FsRule> }
+/** Host commands opt-in on this machine (ADR 0093). Absent means off. */
+export type LocalCommandsPolicy = { enabled: boolean; changedAt?: string }
+export type LocalFsPolicy = {
+	version: 1
+	fs: Array<FsRule>
+	commands?: LocalCommandsPolicy
+}
 export type FsMount = { path: string; mode: FsMode }
 export type FsRefusal = { path: string; layer: FsLayer; reason: string }
 /**
@@ -112,10 +118,49 @@ export async function readLocalPolicy(
 			`${path} must look like {"version":1,"fs":[{"path":"/absolute/path","mode":"ro"|"rw"}]}.`,
 		)
 	}
+	const commands = (parsed as { commands?: unknown }).commands as
+		| { enabled?: unknown; changedAt?: unknown }
+		| undefined
+	if (commands !== undefined && typeof commands?.enabled !== 'boolean') {
+		throw new Error(
+			`${path} has an invalid "commands" entry. Use \`kody context commands on|off\` to fix it.`,
+		)
+	}
 	return {
 		version: 1,
 		fs: (fs as Array<FsRule>).map(({ path, mode }) => ({ path, mode })),
+		...(commands
+			? {
+					commands: {
+						enabled: commands.enabled as boolean,
+						...(typeof commands.changedAt === 'string'
+							? { changedAt: commands.changedAt }
+							: {}),
+					},
+				}
+			: {}),
 	}
+}
+
+/** Whether this machine's owner turned host commands on locally. */
+export async function readLocalCommandsEnabled(
+	path: string = localPolicyPath(),
+) {
+	return (await readLocalPolicy(path)).commands?.enabled === true
+}
+
+export async function setLocalCommandsEnabled(input: {
+	enabled: boolean
+	policyPath?: string
+}) {
+	const policyPath = input.policyPath ?? localPolicyPath()
+	const current = await readLocalPolicy(policyPath)
+	const next: LocalFsPolicy = {
+		...current,
+		commands: { enabled: input.enabled, changedAt: new Date().toISOString() },
+	}
+	await writeLocalPolicy(policyPath, next)
+	return next
 }
 
 async function writeLocalPolicy(path: string, policy: LocalFsPolicy) {
@@ -144,7 +189,11 @@ export async function allowLocalPath(input: {
 	const fs = policy.fs.filter((rule) => rule.path !== canonical)
 	fs.push({ path: canonical, mode: input.mode })
 	fs.sort((a, b) => a.path.localeCompare(b.path))
-	const next: LocalFsPolicy = { version: 1, fs }
+	const next: LocalFsPolicy = {
+		version: 1,
+		fs,
+		...(policy.commands ? { commands: policy.commands } : {}),
+	}
 	await writeLocalPolicy(policyPath, next)
 	return { policy: next, added: { path: canonical, mode: input.mode } }
 }
@@ -160,7 +209,11 @@ export async function removeLocalPath(input: {
 		(rule) => rule.path !== canonical && rule.path !== input.path,
 	)
 	const removed = fs.length !== policy.fs.length
-	const next: LocalFsPolicy = { version: 1, fs }
+	const next: LocalFsPolicy = {
+		version: 1,
+		fs,
+		...(policy.commands ? { commands: policy.commands } : {}),
+	}
 	if (removed) await writeLocalPolicy(policyPath, next)
 	return { policy: next, removed }
 }

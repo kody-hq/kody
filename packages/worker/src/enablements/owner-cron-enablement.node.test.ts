@@ -123,7 +123,7 @@ test('a job enabled through a scoped credential keeps that narrowing', async () 
 			jobName,
 			packageId,
 			enablerUserId: personIdFromStored('user-noah'),
-			enablerCredential: { scopes: ['package:execute'], profileName: 'work' },
+			enablerCredential: { scopes: ['package:execute'], profileId: 'prof-1' },
 		}),
 	).toBe('inserted')
 	const [enablement] = await listEnablementsForInstance({
@@ -135,7 +135,7 @@ test('a job enabled through a scoped credential keeps that narrowing', async () 
 	})
 	expect(enablement).toMatchObject({
 		enablerScopes: ['package:execute'],
-		enablerProfileName: 'work',
+		enablerProfileId: 'prof-1',
 	})
 })
 
@@ -156,7 +156,7 @@ test('turning a job on again records the credential that turned it on', async ()
 			jobName,
 			packageId,
 			enablerUserId: personIdFromStored('user-noah'),
-			enablerCredential: { scopes: input.scopes, profileName: null },
+			enablerCredential: { scopes: input.scopes, profileId: null },
 			refreshEnablerCredential: input.refresh,
 		})
 	const stored = async () =>
@@ -204,7 +204,6 @@ test('stored enabler scopes that cannot be read narrow to nothing', async () => 
 		})
 	expect((await list())[0]).toMatchObject({
 		enablerScopes: null,
-		enablerProfileName: null,
 	})
 	sqlite.exec(`UPDATE enablements SET enabler_scopes_json = 'not json'`)
 	expect((await list())[0]?.enablerScopes).toEqual([])

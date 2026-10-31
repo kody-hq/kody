@@ -4,6 +4,7 @@ export type DesktopExecutionState = {
 	supported: boolean
 	signedIn: boolean
 	busy: boolean
+	commandsEnabled: boolean | null
 	hasSetup: boolean
 	contextId: string | null
 	running: boolean
@@ -14,6 +15,9 @@ export type DesktopExecutionState = {
 	error: string | null
 }
 export type DesktopExecutionBridge = {
+	commandsStatus: () => Promise<DesktopExecutionState>
+	enableCommands: () => Promise<DesktopExecutionState>
+	disableCommands: () => Promise<DesktopExecutionState>
 	forgetSetup: () => Promise<DesktopExecutionState>
 	getState: () => Promise<DesktopExecutionState>
 	signIn: () => Promise<DesktopExecutionState>

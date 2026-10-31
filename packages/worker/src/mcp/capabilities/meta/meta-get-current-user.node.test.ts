@@ -85,7 +85,6 @@ test('metaGetCurrentUser reports a member sender only while that account is live
 					id: 'session-1',
 					orgId: ownerIdFromStored('c'.repeat(64)),
 					scopes: null,
-					profileName: null,
 				},
 				membership: { role: 'member' },
 			},

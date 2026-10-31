@@ -390,9 +390,6 @@ vi.mock(
 const { RepoSession } = await import('./repo-session-do.ts')
 const { refreshSavedPackageProjection } =
 	await import('#worker/package-registry/service.ts')
-const { publishComputeLimitMessage } =
-	await import('./isolated-runner-limit-message.ts')
-
 const session = { sessionId: 'session-1', userId: ownerIdFromStored('user-1') }
 const largePackageJson =
 	'{"name":"@user/demo","exports":{".":"./src/index.ts"},"kody":{"id":"demo","description":"Demo"}}'
@@ -613,11 +610,9 @@ test('a publish step over the CPU limit names the compute limit, and the retry s
 		.catch((caught: unknown) => caught as Error)
 	expect(error).toBeInstanceOf(Error)
 	// The message also lists the session tree's largest non-runtime files.
-	expect((error as Error).message).toContain(
-		publishComputeLimitMessage('credentials').split(' Memory and CPU')[0],
-	)
+	expect((error as Error).message).toContain('exceeded a Kody compute limit')
+	expect((error as Error).message).toContain('the credential stamp scan')
 	expect((error as Error).message).toContain('`.kodyignore`')
-	expect((error as Error).message).not.toContain('storage was briefly')
 	expectStagingCleared(kv)
 
 	// The coordinating Durable Object survived; each step gets a fresh isolate

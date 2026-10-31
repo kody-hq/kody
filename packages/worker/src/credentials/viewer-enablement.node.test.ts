@@ -26,7 +26,7 @@ function emailRow(input: {
 		instanceId: 'pkg',
 		enablerUserId: actorId,
 		enablerScopes: null,
-		enablerProfileName: null,
+		enablerProfileId: null,
 		state: 'on',
 		pause: null,
 		origin: 'enabled',

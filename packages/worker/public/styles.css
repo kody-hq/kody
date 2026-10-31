@@ -226,6 +226,47 @@
 	--spacing-header: var(--spacing-xl);
 }
 
+/* Browsers without oklch() (for example Chromium 80 on e-readers) drop every
+   oklch color above, so sign-in pages lost their buttons and borders there.
+   These sRGB equivalents keep the same palette; the dark-mode block below
+   still swaps in the -dark values. */
+@supports not (color: oklch(0 0 0)) {
+	:root {
+		--color-primary: #008819;
+		--color-primary-hover: #007406;
+		--color-primary-active: #007406;
+		--color-on-primary: #ffffff;
+		--color-primary-text: #006d00;
+		--color-background: #f7f8fa;
+		--color-surface: #ffffff;
+		--color-text: #171b20;
+		--color-text-muted: #4e535a;
+		--color-border: #c7cbd0;
+		--color-field-border: #7b8187;
+		--color-danger: #c3292e;
+		--color-danger-hover: #b32228;
+		--color-on-danger: #fdf9f8;
+		--color-warning: #d29a00;
+		--color-warning-text: #884f00;
+		--color-primary-dark: #33c447;
+		--color-primary-hover-dark: #48d858;
+		--color-primary-active-dark: #48d858;
+		--color-on-primary-dark: #031c08;
+		--color-primary-text-dark: #45cd55;
+		--color-background-dark: #111417;
+		--color-surface-dark: #1b1e23;
+		--color-text-dark: #eaedf0;
+		--color-text-muted-dark: #a0a5ab;
+		--color-border-dark: #32363b;
+		--color-field-border-dark: #6d7279;
+		--color-danger-dark: #ff8179;
+		--color-danger-hover-dark: #f66d67;
+		--color-on-danger-dark: #290b0a;
+		--color-warning-dark: #fac131;
+		--color-warning-text-dark: #f7c243;
+	}
+}
+
 /* Tablet responsive overrides */
 @media (max-width: 1024px) {
 	:root {

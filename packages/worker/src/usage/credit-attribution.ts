@@ -41,9 +41,12 @@ ON CONFLICT (user_id, day, package_id, meter) DO UPDATE SET
 
 const visitorAttributionUpsertStatement = `
 INSERT INTO package_app_visitor_attribution_daily (
-	user_id, day, package_id, visitor_user_id, meter, units, updated_at
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-ON CONFLICT (user_id, day, package_id, visitor_user_id, meter) DO UPDATE SET
+	user_id, day, package_id, visitor_user_id, meter, units, updated_at,
+	billed_org_id
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+ON CONFLICT (
+	user_id, day, package_id, visitor_user_id, billed_org_id, meter
+) DO UPDATE SET
 	units = excluded.units,
 	updated_at = excluded.updated_at
 `.trim()
@@ -83,6 +86,11 @@ FORMAT JSON
 `.trim()
 }
 
+/**
+ * Visitor attribution stays under the app's owning org. `blob16` is that org
+ * when a visiting org was billed (`blob1`, ADR 0095); then `billed_org_id`
+ * names the visiting org. Empty `billed_org_id` means the owner paid.
+ */
 export function buildPackageAppVisitorAttributionDailyQuery(
 	dataset: string,
 	bounds: { monthStart: string; nextMonthStart: string },
@@ -92,7 +100,8 @@ export function buildPackageAppVisitorAttributionDailyQuery(
 		.join(', ')
 	return `
 SELECT
-	blob1 AS user_id,
+	if(blob16 != '', blob16, blob1) AS user_id,
+	if(blob16 != '', blob1, '') AS billed_org_id,
 	toDate(timestamp) AS day,
 	blob9 AS package_id,
 	blob14 AS visitor_user_id,
@@ -106,7 +115,7 @@ WHERE timestamp >= toDateTime('${bounds.monthStart}')
 	AND blob15 = 'package-app'
 	AND blob2 IN (${billable})
 	AND blob9 != ''
-GROUP BY user_id, day, package_id, visitor_user_id, event_type
+GROUP BY user_id, billed_org_id, day, package_id, visitor_user_id, event_type
 FORMAT JSON
 `.trim()
 }
@@ -136,6 +145,7 @@ type AttributionAnalyticsRow = {
 
 type VisitorAttributionAnalyticsRow = AttributionAnalyticsRow & {
 	visitor_user_id?: string | null
+	billed_org_id?: string | null
 }
 
 function meterFromEventType(eventType: string): CreditAttributionMeter | null {
@@ -244,10 +254,11 @@ export async function aggregateCreditAttributionDaily(
 		if (!day.startsWith(month)) continue
 		const packageId = (row.package_id ?? '').trim()
 		const visitorUserId = row.visitor_user_id ?? ''
+		const billedOrgId = (row.billed_org_id ?? '').trim()
 		const units = Number(row.units)
 		if (!packageId || !Number.isFinite(units) || units <= 0) continue
 		presentVisitorKeys.add(
-			`${row.user_id}\0${day}\0${packageId}\0${visitorUserId}\0${meter}`,
+			`${row.user_id}\0${day}\0${packageId}\0${visitorUserId}\0${billedOrgId}\0${meter}`,
 		)
 		visitorUpsertStatements.push(
 			env.APP_DB.prepare(visitorAttributionUpsertStatement).bind(
@@ -258,6 +269,7 @@ export async function aggregateCreditAttributionDaily(
 				meter,
 				units,
 				updatedAt,
+				billedOrgId,
 			),
 		)
 	}
@@ -335,7 +347,7 @@ export async function aggregateCreditAttributionDaily(
 	let visitorDeleteStatements: Array<D1PreparedStatement> = []
 	if (visitorAnalyticsRows.length > 0) {
 		const existingVisitorRows = await env.APP_DB.prepare(
-			`SELECT user_id, day, package_id, visitor_user_id, meter
+			`SELECT user_id, day, package_id, visitor_user_id, billed_org_id, meter
 			 FROM package_app_visitor_attribution_daily
 			 WHERE day >= ? AND day < ?`,
 		)
@@ -348,22 +360,24 @@ export async function aggregateCreditAttributionDaily(
 				day: string
 				package_id: string
 				visitor_user_id: string
+				billed_org_id: string
 				meter: string
 			}>()
 		visitorDeleteStatements = []
 		for (const row of existingVisitorRows.results ?? []) {
-			const key = `${row.user_id}\0${row.day}\0${row.package_id}\0${row.visitor_user_id}\0${row.meter}`
+			const key = `${row.user_id}\0${row.day}\0${row.package_id}\0${row.visitor_user_id}\0${row.billed_org_id}\0${row.meter}`
 			if (presentVisitorKeys.has(key)) continue
 			visitorDeleteStatements.push(
 				env.APP_DB.prepare(
 					`DELETE FROM package_app_visitor_attribution_daily
 					 WHERE user_id = ? AND day = ? AND package_id = ?
-						AND visitor_user_id = ? AND meter = ?`,
+						AND visitor_user_id = ? AND billed_org_id = ? AND meter = ?`,
 				).bind(
 					row.user_id,
 					row.day,
 					row.package_id,
 					row.visitor_user_id,
+					row.billed_org_id,
 					row.meter,
 				),
 			)
@@ -543,7 +557,7 @@ export async function loadPackageAppVisitorAttribution(input: {
 	const nextMonth = nextUtcMonthKey(input.month)
 	const result = await input.db
 		.prepare(
-			`SELECT day, package_id, visitor_user_id, meter, units
+			`SELECT day, package_id, visitor_user_id, billed_org_id, meter, units
 			 FROM package_app_visitor_attribution_daily
 			 WHERE user_id = ? AND day >= ? AND day < ?`,
 		)
@@ -552,6 +566,7 @@ export async function loadPackageAppVisitorAttribution(input: {
 			day: string
 			package_id: string
 			visitor_user_id: string
+			billed_org_id?: string | null
 			meter: string
 			units: number
 		}>()
@@ -611,6 +626,7 @@ export async function loadPackageAppVisitorAttribution(input: {
 				lastDay: string
 				units: Map<CreditAttributionMeter, number>
 				credits: Map<CreditAttributionMeter, number>
+				visitorOrgUnits: Map<CreditAttributionMeter, number>
 			}
 		>
 	>()
@@ -622,9 +638,21 @@ export async function loadPackageAppVisitorAttribution(input: {
 			lastDay: row.day,
 			units: new Map<CreditAttributionMeter, number>(),
 			credits: new Map<CreditAttributionMeter, number>(),
+			visitorOrgUnits: new Map<CreditAttributionMeter, number>(),
 		}
 		if (row.day > visitor.lastDay) visitor.lastDay = row.day
 		const units = Number(row.units)
+		if (row.billed_org_id?.trim()) {
+			// The visitor's own org paid (ADR 0095): show the units, but none of
+			// this org's credits are theirs.
+			visitor.visitorOrgUnits.set(
+				meter,
+				(visitor.visitorOrgUnits.get(meter) ?? 0) + units,
+			)
+			byVisitor.set(visitorId, visitor)
+			visitorsByPackage.set(row.package_id, byVisitor)
+			continue
+		}
 		visitor.units.set(meter, (visitor.units.get(meter) ?? 0) + units)
 		const packageUnits =
 			dailyPackageUnits.get(`${row.package_id}\0${row.day}\0${meter}`) ?? 0
@@ -648,6 +676,7 @@ export async function loadPackageAppVisitorAttribution(input: {
 				lastDay: string
 				units: Map<CreditAttributionMeter, number>
 				credits: Map<CreditAttributionMeter, number>
+				visitorOrgUnits: Map<CreditAttributionMeter, number>
 			}
 			creditsMicroUsd: number
 		}>
@@ -716,14 +745,24 @@ export async function loadPackageAppVisitorAttribution(input: {
 	for (const [packageId, selected] of rankedByPackage) {
 		const visitors = visitorsByPackage.get(packageId) ?? new Map()
 		const displayRows = selected.map(({ visitorId, visitor }) => {
-			const meters = creditAttributionMeters
-				.map((meter) => ({
+			const meters = creditAttributionMeters.flatMap((meter) => {
+				const label = visitorMeterLabels[meter]
+				const paid = {
 					meter,
-					label: visitorMeterLabels[meter],
+					label,
 					units: visitor.units.get(meter) ?? 0,
 					creditsMicroUsd: visitor.credits.get(meter) ?? 0,
-				}))
-				.filter((meter) => meter.units > 0)
+				}
+				const visitorOrg = {
+					meter,
+					label,
+					units: visitor.visitorOrgUnits.get(meter) ?? 0,
+					creditsMicroUsd: 0,
+					billedToVisitorOrg: true,
+				}
+				return [paid, visitorOrg].filter((entry) => entry.units > 0)
+			})
+			const billedToVisitorOrg = visitor.visitorOrgUnits.size > 0
 			return {
 				visitorId,
 				row: {
@@ -735,6 +774,7 @@ export async function loadPackageAppVisitorAttribution(input: {
 						0,
 					),
 					lastDay: visitor.lastDay,
+					...(billedToVisitorOrg ? { billedToVisitorOrg } : {}),
 					meters,
 				},
 			}
@@ -756,6 +796,14 @@ export async function loadPackageAppVisitorAttribution(input: {
 		})
 	}
 	return byPackage
+}
+
+/** Where-it-went label for another org's app this org paid to use. */
+export function sharedPackageAppLabel(input: {
+	name: string
+	ownerSlug: string
+}) {
+	return `${input.name} (app shared by @${input.ownerSlug})`
 }
 
 export async function loadPackageAttributionLabels(input: {
@@ -795,6 +843,42 @@ export async function loadPackageAttributionLabels(input: {
 				row.id,
 				routes.communityPackage.href({
 					username: input.username,
+					kodyId: row.kody_id,
+				}),
+			)
+		}
+	}
+	// A package this org does not own is another org's internal app that this
+	// org's people visited; this org paid for that metered work (ADR 0095).
+	const shared = input.packageIds.filter((packageId) => !names.has(packageId))
+	for (
+		let index = 0;
+		index < shared.length;
+		index += attributionPackageLabelChunkSize
+	) {
+		const chunk = shared.slice(index, index + attributionPackageLabelChunkSize)
+		const placeholders = chunk.map(() => '?').join(', ')
+		const rows = await input.db
+			.prepare(
+				`SELECT sp.id, sp.kody_id, sp.name, o.slug AS owner_slug
+				 FROM saved_packages sp
+				 INNER JOIN orgs o ON o.id = sp.user_id
+				 WHERE sp.id IN (${placeholders})${andLiveDeletedAtSql('sp')}${andLiveDeletedAtSql('o')}`,
+			)
+			.bind(...chunk)
+			.all<{ id: string; kody_id: string; name: string; owner_slug: string }>()
+		for (const row of rows.results ?? []) {
+			names.set(
+				row.id,
+				sharedPackageAppLabel({
+					name: row.name?.trim() || row.kody_id,
+					ownerSlug: row.owner_slug,
+				}),
+			)
+			hrefs.set(
+				row.id,
+				routes.communityPackage.href({
+					username: row.owner_slug,
 					kodyId: row.kody_id,
 				}),
 			)

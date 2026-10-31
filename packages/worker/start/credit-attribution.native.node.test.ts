@@ -82,3 +82,40 @@ test('visitor usage reuses the account search, sort, and record table styles', a
 	expect(html).toContain('Showing')
 	expect(html).toContain('visitors')
 })
+
+test('visitors from another org are marked as paid by their own org', async () => {
+	const visitor: CreditAttributionVisitorRow = {
+		displayName: 'outside-visitor',
+		creditsMicroUsd: 0,
+		lastDay: '2026-10-16',
+		billedToVisitorOrg: true,
+		meters: [
+			{
+				meter: 'durable_object_rows_read',
+				label: 'Rows read',
+				units: 40,
+				creditsMicroUsd: 0,
+				billedToVisitorOrg: true,
+			},
+		],
+	}
+	const html = await renderStartPage(
+		createElement(WhereItWentPanel, {
+			breakdown: {
+				month: '2026-10',
+				totalCreditsMicroUsd: 2_000_000,
+				rows: [
+					{
+						...row,
+						visitors: [visitor],
+						visitorCount: 1,
+						visitorsTruncated: false,
+					},
+				],
+			},
+		}),
+	)
+	expect(html).toContain('data-visitors-billed-elsewhere')
+	expect(html).toContain('outside-visitor (their org pays)')
+	expect(html).toContain('Rows read: 40 (their org paid)')
+})

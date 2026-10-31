@@ -1,5 +1,8 @@
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
-import { resolveGrantPermissions } from '@kody-internal/shared/grant-presets.ts'
+import {
+	type GrantPreset,
+	resolveGrantPermissions,
+} from '@kody-internal/shared/grant-presets.ts'
 import {
 	type OrgPermission,
 	type OrgResourceType,
@@ -506,7 +509,7 @@ export const inviteCreateCapability = defineDomainCapability(
 				let teamIds: Array<string> | null = null
 				let resourceType: GrantResourceType | null = null
 				let resourceId: string | null = null
-				let preset: 'use' | 'contribute' | 'manage' | null = null
+				let preset: GrantPreset | null = null
 				let permissions: Array<OrgPermission> | null = null
 				switch (kind) {
 					case 'membership': {

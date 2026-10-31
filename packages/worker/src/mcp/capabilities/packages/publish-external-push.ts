@@ -1,3 +1,4 @@
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	type OwnerId,
 	personIdFromStored,
@@ -904,6 +905,7 @@ async function runExternalPublishAttempt(input: {
 	allowForce: boolean
 	destructiveOverwriteConfirmed: boolean
 	requestedByUserId: string | null
+	publisherRequest?: RequestContext | null
 	approvalViewer: ApprovalViewer | null
 	signal?: AbortSignal
 	reportProgress?: McpReportProgress
@@ -942,6 +944,7 @@ async function runExternalPublishAttempt(input: {
 				rebuildPackageArtifacts: false,
 				expectedPackageScope: input.expectedPackageScope,
 				requestedByUserId: input.requestedByUserId,
+				publisherRequest: input.publisherRequest ?? null,
 				deferBundleCheckToRebuild: true,
 			})
 			const publishMs = Date.now() - publishStartedAt
@@ -1475,6 +1478,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 				allowForce: args.allow_force,
 				destructiveOverwriteConfirmed: args.confirm_destructive_overwrite,
 				requestedByUserId: user.userId,
+				publisherRequest: ctx.callerContext.request ?? null,
 				approvalViewer: optionalApprovalViewerForCaller(ctx),
 				reportProgress: ctx.reportProgress,
 			}

@@ -7,10 +7,7 @@ import { planLimits } from '#universal/plans.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
-import {
-	createMissingSecretMessage,
-	parseSecretScopeUnavailableMessage,
-} from './errors.ts'
+import { parseSecretScopeUnavailableMessage } from './errors.ts'
 import {
 	disconnectSecret,
 	findStoredCredentialForUse,
@@ -303,7 +300,7 @@ test('listSecrets from execute lists caller-owned package metadata without weake
 			name: 'noSuchSecret',
 			baseUrl: 'https://example.com',
 		}),
-	).resolves.toBe(createMissingSecretMessage('noSuchSecret'))
+	).resolves.toBe('Secret "noSuchSecret" was not found.')
 	await expect(
 		resolveSecret({
 			env,

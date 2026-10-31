@@ -318,7 +318,6 @@ test('a verified app custom hostname serves at / behind the same host-only hando
 	if (served.status === 404) {
 		expect(servedBody).toBe(buildPackageAppNotFoundMessage())
 	}
-
 	// OPTIONS is a preflight, not a mutation, so a foreign Origin still reaches
 	// the app gate. POST from that Origin stays blocked.
 	const crossOriginOptions = await workerFetch(`${customOrigin}/`, {

@@ -18,6 +18,10 @@ export type OrgAuditWriter = {
 	actorUsername: string | null
 	credentialKind: string | null
 	credentialId: string | null
+	/** The profile the actor ran as (ADR 0092), for its creator grant. */
+	actorProfileId?: string | null
+	/** That profile's chain when the change was made: ids, root first. */
+	actorProfileChain?: ReadonlyArray<string> | null
 	/** Set when a package run made the change. */
 	cause?: OrgAuditCause | null
 	/**
@@ -60,9 +64,21 @@ export type OrgAuditOutboxEvent = {
 	details?: Record<string, unknown>
 }
 
-function serializeDetails(event: OrgAuditOutboxEvent): string | null {
-	if (event.details === undefined) return null
-	return JSON.stringify(event.details)
+function serializeDetails(
+	event: OrgAuditOutboxEvent,
+	writer?: Pick<OrgAuditWriter, 'actorProfileId' | 'actorProfileChain'>,
+): string | null {
+	const profileId = writer?.actorProfileId?.trim() || null
+	if (!profileId) {
+		return event.details === undefined ? null : JSON.stringify(event.details)
+	}
+	const chain = writer?.actorProfileChain?.length
+		? [...writer.actorProfileChain]
+		: [profileId]
+	return JSON.stringify({
+		...event.details,
+		actingProfile: { id: profileId, chain },
+	})
 }
 
 export function buildOrgAuditOutboxPayload(
@@ -82,7 +98,7 @@ export function buildOrgAuditOutboxPayload(
 		resourceType: event.resourceType ?? null,
 		resourceId: event.resourceId ?? null,
 		targetUserId: event.targetUserId ?? null,
-		detailsJson: serializeDetails(event),
+		detailsJson: serializeDetails(event, writer),
 		ipHash: null,
 		createdAt,
 		...(writer.cause ? { cause: writer.cause } : {}),

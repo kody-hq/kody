@@ -552,6 +552,20 @@ function emptyVerifiedShell(input: {
 	}
 }
 
+/**
+ * Personal inboxes stay behind account email verification. A team mailbox is
+ * the org's: a viewer with `email:read` sees it even when their own address
+ * is unverified. List and detail share this gate so they cannot disagree.
+ */
+async function canReadAccountMailbox(input: {
+	db: D1Database
+	ownerId: string
+	emailVerified: boolean
+}) {
+	if (input.emailVerified) return true
+	return !(await isPersonalOrg(input.db, input.ownerId))
+}
+
 /** Read one message without reloading the inbox list, usage, or destinations.
  * The caller supplies an authenticated, organization-bound user. */
 export async function loadAccountEmailDetail(input: {
@@ -560,20 +574,29 @@ export async function loadAccountEmailDetail(input: {
 	messageId: string
 }): Promise<AccountEmailMessageDetail | null> {
 	await authorize({ env: input.env, request: input.user.request }, 'email:read')
-	const verified =
+	const ownerId = ownerIdFromCaller({
+		request: input.user.request,
+		user: input.user.mcpUser,
+	})
+	const emailVerified =
 		input.user.emailVerified ||
 		(await isAccountEmailVerified({
 			db: input.env.APP_DB,
 			email: input.user.email,
 			stableUserId: input.user.mcpUser.userId,
 		}))
-	if (!verified) return null
+	if (
+		!(await canReadAccountMailbox({
+			db: input.env.APP_DB,
+			ownerId,
+			emailVerified,
+		}))
+	) {
+		return null
+	}
 	return loadSelectedMessage({
 		env: input.env,
-		stableUserId: ownerIdFromCaller({
-			request: input.user.request,
-			user: input.user.mcpUser,
-		}),
+		stableUserId: ownerId,
 		orgSlug: orgSlugFor(input.user),
 		messageId: input.messageId,
 	})
@@ -635,10 +658,13 @@ export async function readAccountEmailData(input: {
 			stableUserId: input.user.mcpUser.userId,
 		}))
 
-	// Personal inboxes stay behind account email verification. A team mailbox
-	// is the org's: a viewer with email:read sees it even when their own
-	// address is unverified.
-	if (!emailVerified && (await isPersonalOrg(input.env.APP_DB, userId))) {
+	if (
+		!(await canReadAccountMailbox({
+			db: input.env.APP_DB,
+			ownerId: userId,
+			emailVerified,
+		}))
+	) {
 		return emptyVerifiedShell({
 			user: input.user,
 			env: input.env,

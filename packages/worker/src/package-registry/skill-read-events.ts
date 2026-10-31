@@ -50,7 +50,6 @@ export async function recordSkillRead(input: {
 				credentialKind: request.credential.kind,
 				connectionId: request.credential.id,
 				clientId: input.callerContext.oauthClientId ?? null,
-				profileName: request.credential.profileName,
 				channel: input.channel,
 			},
 		)

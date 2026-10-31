@@ -174,7 +174,6 @@ test('a grant-only collaborator sees only granted secrets and integrations', asy
 			['credential:cred-github', new Set(['integration:use'])],
 		]),
 		credentialScopes: null,
-		profileGrants: null,
 	}
 	mocks.listSecrets.mockResolvedValue([
 		{ name: 'granted-secret', credentialId: 'cred-granted-secret' },

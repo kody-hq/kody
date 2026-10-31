@@ -21,7 +21,6 @@ function makeAgent(
 	return {
 		clientId,
 		grantIds: [`grant-${clientId}`],
-		connectionProfileName: null,
 		label,
 		kind,
 		connectedAt,

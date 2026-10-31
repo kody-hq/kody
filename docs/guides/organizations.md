@@ -69,9 +69,9 @@ Owner grants read access on the organization: **Grants** page,
 From the CLI: `kody api accessGrant --org <slug> --params '<that JSON>'`. Add
 `"expires_at": "<ISO time>"` for temporary access: the grant stops counting at
 that time. A new grant without `expires_at` never expires. Rewriting a grant
-without `expires_at` keeps its current expiry; pass `null` to make it unlimited.
-`accessList` still shows an expired grant, with its past `expires_at`, until you
-rewrite or revoke it.
+without `expires_at` keeps a future expiry but drops one that has already
+passed; pass `null` to make it unlimited. `accessList` still shows an expired
+grant, with its past `expires_at`, until you rewrite or revoke it.
 
 | Permission         | Reads                                                                                       |
 | ------------------ | ------------------------------------------------------------------------------------------- |
@@ -271,6 +271,12 @@ Example: Jesse holds Use on `@acme/bot` and is not a member. Connected as
 `@acme`, his runs count against acme's execute pool, credits, and budgets.
 Nothing is charged to Jesse's personal plan, and acme's seat count does not
 change.
+
+Visits to an internal **package app** are billed differently: a visitor from
+outside the org pays for the metered work their visits cause from their own
+personal org, and the owning org keeps paying the app's Worker compute.
+Internet-visible apps are always paid by the owning org. See
+[Package apps: who pays for visits](/docs/package-apps#who-pays-for-visits).
 
 ## Connect one client to two orgs
 

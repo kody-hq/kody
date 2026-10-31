@@ -63,19 +63,19 @@ The briefing's `API:` line is the preview's Open API host,
 
 Flag-gated preview checks need a `preview-flag:<key>` label for a key in
 `tools/preview-seed-flag-allowlist.ts` before 🔎 Preview seeds. Example for
-connection profiles:
+execution contexts:
 
 ```bash
-# PR label: preview-flag:connection-profiles
+# PR label: preview-flag:execution-contexts
 # .github/workflows/preview.yml then seeds with:
 # node tools/seed-test-data.ts --remote --config "$WRANGLER_CONFIG" \
 #   --email me@kentcdodds.com --password ilikecode \
-#   --enable-flag connection-profiles
-npm run control-kody -- preview --pr 42 --check /@<slug>/-/agents
+#   --enable-flag execution-contexts
+npm run control-kody -- preview --pr 42 --check /@<slug>/-/execution-contexts
 ```
 
-Open `/@<slug>/-/agents` in the signed-in browser and verify the connection
-profile controls. A successful HTML check alone does not prove the flag-gated
+Open `/@<slug>/-/execution-contexts` in the signed-in browser and verify the
+flagged page. A successful HTML check alone does not prove the flag-gated
 interaction works.
 
 `--enable-flag` with `--remote` fails unless the wrangler env is `preview`.

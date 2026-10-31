@@ -140,7 +140,6 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	community_bans: keep(personOwned),
 	community_ratings: keep(personOwned),
 	community_reports: keep('Moderation history.'),
-	connection_profiles: keep(personOwned),
 	credential_inventory_items: keep(
 		'Credential inventory results stay with the run that recorded them.',
 	),
@@ -161,6 +160,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 		'Org overrides of where an automation runs; the manifest declaration travels with the package and the target org sets its own override.',
 	),
 	execution_context_opt_ins: keep(personOwned),
+	profiles: keep(
+		'Profiles are identities a person acts as in one org; they stay in that org and their grants on moved resources are dropped with the other grants.',
+	),
 	execution_context_org_attachments: keep(
 		'Attachments link a context to an org by its operator; they are not resources of the transferred packages.',
 	),
@@ -178,6 +180,7 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	email_inboxes: keep(emailStays),
 	email_notification_destinations: keep(emailStays),
 	email_outbound_failure_tracking: keep(emailStays),
+	email_deliverability_effects: keep(emailStays),
 	email_outbound_provider_index: keep(emailStays),
 	email_outbound_provider_index_repair_owners: keep(emailStays),
 	email_sender_identities: keep(emailStays),

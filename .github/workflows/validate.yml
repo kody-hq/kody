@@ -729,6 +729,46 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  host_commands:
+    # ADR 0093: real daemon, workerd, and host processes on Linux and macOS.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    name: 🖥️ Host commands (${{ matrix.os }})
+    timeout-minutes: 20
+    if: >-
+      github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false
+    env:
+      KODY_SKIP_SKILL_REFRESH: '1'
+      KODY_SKIP_GIT_HELPER_REFRESH: '1'
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: 🟢 Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: 📥 Install
+        run: npm ci
+
+      - name: 🧪 Host command process manager
+        working-directory: packages/cli
+        run: ../../node_modules/.bin/tsx --test test/host-commands.test.ts
+
+      - name: 🧪 Host commands through a real daemon and workerd
+        working-directory: packages/cli
+        run: >-
+          ../../node_modules/.bin/tsx --test --test-name-pattern="commands on
+          runs a real" test/execution-context.test.ts
+
   cli:
     runs-on:
       ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
@@ -789,6 +829,7 @@ jobs:
       - e2e
       - e2e_report
       - cli
+      - host_commands
     permissions:
       contents: read
       actions: read
@@ -1054,7 +1095,8 @@ jobs:
           needs.static.result == 'success' && needs.node.result == 'success' &&
           needs.workers.result == 'success' && needs.mcp.result == 'success' &&
           needs.e2e.result == 'success' && needs.e2e_report.result == 'success'
-          && needs.cli.result == 'success'
+          && needs.cli.result == 'success' && needs.host_commands.result ==
+          'success'
         run: echo "All validate jobs passed"
 
       - name: ❌ Report failures
@@ -1062,7 +1104,8 @@ jobs:
           needs.static.result != 'success' || needs.node.result != 'success' ||
           needs.workers.result != 'success' || needs.mcp.result != 'success' ||
           needs.e2e.result != 'success' || needs.e2e_report.result != 'success'
-          || needs.cli.result != 'success'
+          || needs.cli.result != 'success' || needs.host_commands.result !=
+          'success'
         run: |
           echo "static=${{ needs.static.result }}"
           echo "node=${{ needs.node.result }}"
@@ -1071,4 +1114,5 @@ jobs:
           echo "e2e=${{ needs.e2e.result }}"
           echo "e2e_report=${{ needs.e2e_report.result }}"
           echo "cli=${{ needs.cli.result }}"
+          echo "host_commands=${{ needs.host_commands.result }}"
           exit 1

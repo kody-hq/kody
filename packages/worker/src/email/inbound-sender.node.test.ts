@@ -485,7 +485,6 @@ test('a member email runs as that member, only their packages, audited under the
 			id: enablementId,
 			orgId: t.orgId,
 			scopes: null,
-			profileName: null,
 		},
 		membership: { role: 'member' },
 	})

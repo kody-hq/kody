@@ -27,16 +27,21 @@ import {
 	type NativeApiOperationDefinition,
 } from './native-operation-helpers.ts'
 import { type NativeApiOperationId } from './operations.ts'
-import { connectionProfilesFlagKey } from '#universal/feature-flags/registry.ts'
-import { isFeatureEnabled } from '#worker/feature-flags/service.ts'
-import { getConnectionProfileByName } from '#worker/connection-profiles/repo.ts'
 import {
-	connectionProfileNameErrorMessage,
-	getConnectionProfileNameValidationError,
-	normalizeConnectionProfileName,
-} from '#universal/connection-profiles/names.ts'
-
-import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+	ProfileTokenError,
+	resolveProfileTokenTarget,
+} from '#worker/profiles/tokens.ts'
+import { loadProfileChain } from '#worker/profiles/store.ts'
+import {
+	createProfile,
+	requireProfilesCaller,
+	revokeProfile,
+} from '#worker/profiles/service.ts'
+import { type RequestedProfileGrant } from '#worker/profiles/rules.ts'
+import {
+	isOrgPermission,
+	type OrgPermission,
+} from '@kody-internal/shared/org-permissions.ts'
 const scopeSchema = z.enum(
 	apiTokenScopes as [ApiTokenScope, ...Array<ApiTokenScope>],
 )
@@ -77,11 +82,11 @@ const tokenViewSchema = z.object({
 	last_used_at: z.string().nullable(),
 	rotated_at: z.string().nullable(),
 	revoked_at: z.string().nullable(),
-	profile_name: z
+	profile_id: z
 		.string()
 		.nullable()
 		.describe(
-			'Named connection profile this token is bound to, or null for unlimited.',
+			'Profile this token acts as (guide:profiles), or null when it acts as you.',
 		),
 })
 
@@ -124,7 +129,15 @@ export const tokenCreateInputSchema = z
 			.max(64)
 			.optional()
 			.describe(
-				'Optional connection profile name. The token’s package access is limited to that profile’s grants. Experimenters only.',
+				'Removed: connection profiles no longer exist. Passing it fails; use profile_id.',
+			),
+		profile_id: z
+			.string()
+			.min(1)
+			.max(64)
+			.optional()
+			.describe(
+				'Bind the token to one of your profiles (guide:profiles), so every request with it acts as that profile: it reaches only what you, the profile, and every parent profile allow. A profile-bound caller may only name itself or a sub-profile, and its own profile is the default. The token never outlives the profile chain. Profiles experiment only.',
 			),
 		lifetime: lifetimeAliasSchema
 			.optional()
@@ -233,21 +246,39 @@ async function assertCallerMayRotate(
 	)
 	const outlives =
 		Date.parse(target.max_expires_at) > Date.parse(caller.max_expires_at)
-	const callerProfile = caller.profile_name ?? null
-	const targetProfile = target.profile_name ?? null
 	const profileEscalation =
-		callerProfile != null && callerProfile !== targetProfile
+		caller.profile_id != null &&
+		!(await profileTokenWithin(ctx, {
+			callerProfileId: caller.profile_id,
+			targetProfileId: target.profile_id ?? null,
+		}))
 	if (missing.length === 0 && !outlives && !profileEscalation) return
 	throw new ApiError({
 		status: 403,
 		code: 'insufficient_scope',
 		message: profileEscalation
-			? 'This profile-bound API token cannot rotate a token for a different connection profile (or an unlimited token).'
+			? 'This profile-bound API token can only rotate tokens for its own profile or its sub-profiles.'
 			: missing.length > 0
 				? `This API token cannot rotate a token with scopes it does not hold: ${missing.join(', ')}.`
 				: 'This API token cannot rotate a token that outlives it.',
 		details: { missing_scopes: missing },
 	})
+}
+
+/** Whether `targetProfileId` is the caller's profile or a sub-profile of it. */
+async function profileTokenWithin(
+	ctx: ApiInvocationContext,
+	input: { callerProfileId: string; targetProfileId: string | null },
+) {
+	if (!input.targetProfileId) return false
+	if (input.targetProfileId === input.callerProfileId) return true
+	const orgId = ctx.callerContext.request?.org.id
+	if (!orgId) return false
+	const chain = await loadProfileChain(ctx.env.APP_DB, {
+		orgId,
+		profileId: input.targetProfileId,
+	})
+	return chain.some((row) => row.id === input.callerProfileId)
 }
 
 async function rotateOrThrow(ctx: ApiInvocationContext, tokenId: string) {
@@ -273,8 +304,61 @@ async function revokeOrThrow(ctx: ApiInvocationContext, tokenId: string) {
 
 const ttlDescription = apiTokenIdleTtlDescription()
 
+const profileHandoffInputSchema = z
+	.object({
+		name: z
+			.string()
+			.min(1)
+			.max(63)
+			.describe(
+				'Name for the new sub-profile (lowercase letters, digits, dashes).',
+			),
+		parent_profile_id: z
+			.string()
+			.min(1)
+			.optional()
+			.describe(
+				'Parent profile id. Defaults to the calling profile; a person-level caller may omit it for a top-level profile.',
+			),
+		expires_at: z
+			.string()
+			.datetime()
+			.optional()
+			.describe(
+				'When the sub-profile expires. Capped by every parent profile.',
+			),
+		grants: z
+			.array(
+				z.object({
+					resource_type: z.string().min(1),
+					resource_id: z.string().min(1),
+					permissions: z
+						.array(z.string().refine(isOrgPermission, 'Unknown permission'))
+						.min(1),
+				}),
+			)
+			.max(50)
+			.optional()
+			.describe(
+				'Snapshot grants for the sub-profile. Each must be held by you and by every parent profile.',
+			),
+		scopes: tokenCreateInputSchema.shape.scopes,
+		lifetime: lifetimeAliasSchema
+			.optional()
+			.describe(
+				'Handoff token lifetime. Defaults to `short` (1h idle / 24h max), still capped by the profile chain.',
+			),
+		token_name: z
+			.string()
+			.min(1)
+			.max(apiTokenPolicy.maxNameLength)
+			.optional()
+			.describe('Label for the handoff token. Defaults to `handoff <name>`.'),
+	})
+	.strict()
+
 export const tokenOperationDefinitions: Record<
-	Extract<NativeApiOperationId, `token${string}`>,
+	Extract<NativeApiOperationId, `token${string}`> | 'profileHandoff',
 	NativeApiOperationDefinition
 > = {
 	tokenList: {
@@ -312,75 +396,46 @@ export const tokenOperationDefinitions: Record<
 					? {
 							scopes: ctx.principal.token.scopes,
 							maxExpiresAt: ctx.principal.token.max_expires_at,
-							profileName: ctx.principal.token.profile_name ?? null,
+							profileId: ctx.principal.token.profile_id ?? null,
 						}
 					: undefined
-			const callerProfileName =
-				ctx.callerContext.request?.credential.profileName ?? null
-			let profileName: string | null = null
+			const request = ctx.callerContext.request
+			const callerProfileId = request?.credential.profileId ?? null
 			if (input.profile !== undefined) {
-				profileName = normalizeConnectionProfileName(input.profile)
-				const nameError = getConnectionProfileNameValidationError(profileName)
-				if (nameError) {
-					throw invalidRequest(connectionProfileNameErrorMessage(nameError))
-				}
-				const userRow = await ctx.env.APP_DB.prepare(
-					`SELECT id FROM users WHERE stable_user_id = ?${andLiveDeletedAtSql()}`,
+				throw invalidRequest(
+					'Connection profiles were removed. Bind the token to a profile with profile_id (see profileList), or call profileHandoff.',
 				)
-					.bind(userIdOf(ctx))
-					.first<{ id: number }>()
-				const enabled =
-					userRow != null &&
-					(await isFeatureEnabled(
-						ctx.env.APP_DB,
-						connectionProfilesFlagKey,
-						userRow.id,
-						ctx.callerContext.request?.org.id
-							? { orgId: ctx.callerContext.request.org.id }
-							: null,
-					))
-				if (!enabled) {
-					throw new ApiError({
-						status: 404,
-						code: 'not_found',
-						message: 'Connection profiles are not enabled for this account.',
+			}
+			const targetProfileId = input.profile_id ?? callerProfileId
+			let profileTarget: { maxExpiresAt: string | null } | null = null
+			if (targetProfileId) {
+				if (!request) throw invalidRequest('Profile tokens need a request.')
+				if (input.org_binding === 'user') {
+					throw invalidRequest(
+						'A profile token is bound to the profile\'s org; omit org_binding or pass "org".',
+					)
+				}
+				try {
+					profileTarget = await resolveProfileTokenTarget({
+						db: ctx.env.APP_DB,
+						request,
+						profileId: targetProfileId,
 					})
+				} catch (error) {
+					if (error instanceof ProfileTokenError) {
+						throw new ApiError({
+							status: error.status,
+							code:
+								error.status === 404
+									? 'not_found'
+									: error.status === 409
+										? 'invalid_request'
+										: 'insufficient_scope',
+							message: error.message,
+						})
+					}
+					throw error
 				}
-				const profile = await getConnectionProfileByName({
-					db: ctx.env.APP_DB,
-					userId: userIdOf(ctx),
-					orgId: ctx.callerContext.request?.org.id,
-					name: profileName,
-				})
-				if (!profile) {
-					throw notFound(`Connection profile "${profileName}" not found.`)
-				}
-				profileName = profile.name
-			} else if (parent?.profileName) {
-				profileName = parent.profileName
-			} else if (callerProfileName) {
-				// MCP OAuth / session callers inherit their stamped profile so they
-				// cannot mint an unlimited token by omitting `profile`.
-				profileName = callerProfileName
-			}
-			if (
-				callerProfileName &&
-				profileName &&
-				callerProfileName !== profileName
-			) {
-				throw new ApiError({
-					status: 403,
-					code: 'insufficient_scope',
-					message: `This connection profile can only mint tokens for profile "${callerProfileName}".`,
-				})
-			}
-			if (callerProfileName && !profileName) {
-				throw new ApiError({
-					status: 403,
-					code: 'insufficient_scope',
-					message:
-						'This connection profile cannot mint an unlimited API token.',
-				})
 			}
 			const orgBinding: ApiTokenOrgBinding =
 				input.org_binding === 'user' ? 'user' : 'org'
@@ -410,7 +465,8 @@ export const tokenOperationDefinitions: Record<
 				...(ctx.principal.kind === 'token'
 					? { excludeTokenId: ctx.principal.token.id }
 					: {}),
-				profileName,
+				profileId: targetProfileId,
+				profileMaxExpiresAt: profileTarget?.maxExpiresAt ?? null,
 			})
 		},
 	},
@@ -490,6 +546,68 @@ export const tokenOperationDefinitions: Record<
 		async handler(params, ctx) {
 			const input = parseNativeInput(tokenIdInputSchema, params)
 			return revokeOrThrow(ctx, resolveTokenIdInput(input))
+		},
+	},
+	profileHandoff: {
+		summary: 'Hand a sub-agent its own sub-profile and token',
+		description:
+			'Create a sub-profile (ADR 0092) and mint a token bound to it in one step, for handing work to a sub-agent. The sub-profile gets only the grants you list, capped by every parent profile; the token expires no later than the profile chain. Called as a person without parent_profile_id it creates a top-level profile. If minting fails, Kody tries to revoke the new profile.',
+		inputSchema: profileHandoffInputSchema,
+		outputSchema: z.object({
+			profile: z.object({
+				id: z.string(),
+				name: z.string(),
+				parent_profile_id: z.string().nullable(),
+				effective_expires_at: z.string().nullable(),
+			}),
+			token: tokenSecretViewSchema,
+		}),
+		readOnly: false,
+		async handler(params, ctx) {
+			const input = parseNativeInput(profileHandoffInputSchema, params)
+			const caller = await requireProfilesCaller({
+				env: ctx.env,
+				callerContext: ctx.callerContext,
+			})
+			const profile = await createProfile(caller, {
+				name: input.name,
+				parentProfileId:
+					input.parent_profile_id ??
+					ctx.callerContext.request?.credential.profileId ??
+					null,
+				expiresAt: input.expires_at ?? null,
+				grants: (input.grants ?? []).map((grant) => ({
+					resourceType:
+						grant.resource_type as RequestedProfileGrant['resourceType'],
+					resourceId: grant.resource_id,
+					permissions: grant.permissions as Array<OrgPermission>,
+				})),
+			})
+			try {
+				const token = await tokenOperationDefinitions.tokenCreate.handler(
+					{
+						name: input.token_name ?? `handoff ${profile.name}`,
+						scopes: input.scopes,
+						lifetime: input.lifetime ?? 'short',
+						profile_id: profile.id,
+					},
+					ctx,
+				)
+				return {
+					profile: {
+						id: profile.id,
+						name: profile.name,
+						parent_profile_id: profile.parentProfileId,
+						effective_expires_at: profile.effectiveExpiresAt,
+					},
+					token,
+				}
+			} catch (error) {
+				await revokeProfile(caller, { profileId: profile.id }).catch(
+					() => undefined,
+				)
+				throw error
+			}
 		},
 	},
 }

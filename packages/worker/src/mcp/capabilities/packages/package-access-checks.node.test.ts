@@ -11,7 +11,6 @@ import { webhookDeliveryListCapability } from '#mcp/capabilities/webhooks/webhoo
 import { webhookListCapability } from '#mcp/capabilities/webhooks/webhook-list.ts'
 import { webhookSyntheticDispatchCapability } from '#mcp/capabilities/webhooks/webhook-synthetic-dispatch.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
-import { createConnectionProfile } from '#worker/connection-profiles/repo.ts'
 import {
 	addOrgMember,
 	createOrg,
@@ -145,7 +144,6 @@ function context(
 		personId: string
 		username: string
 		org: { id: string; slug: string; role: OrgRole }
-		profile?: string
 	},
 ) {
 	return {
@@ -154,7 +152,6 @@ function context(
 			source: { kind: 'mcp-oauth' },
 			baseUrl: 'https://heykody.dev',
 			executionOrigin: 'interactive',
-			connectionProfileName: input.profile ?? null,
 			user: {
 				userId: personIdFromStored(input.personId),
 				email: `${input.username}@example.com`,
@@ -248,42 +245,6 @@ async function teamMemberWithGrantOnA() {
 	}
 }
 
-/**
- * Kent owns A and B in his personal org and connects with a profile that
- * lists read and execute on A only.
- */
-async function profileWithReadOnA() {
-	const { db, env, kentId } = await setup()
-	const a = await insertPackage(db, {
-		ownerId: kentId,
-		scope: 'kentcdodds',
-		leaf: 'alpha',
-	})
-	const b = await insertPackage(db, {
-		ownerId: kentId,
-		scope: 'kentcdodds',
-		leaf: 'bravo',
-	})
-	await createConnectionProfile({
-		db,
-		userId: kentId,
-		name: 'work',
-		grants: [
-			{ resourceType: 'package', resourceId: a, actions: ['read', 'execute'] },
-		],
-	})
-	return {
-		a,
-		b,
-		ctx: context(env, {
-			personId: kentId,
-			username: 'kentcdodds',
-			org: { id: kentId, slug: 'kentcdodds', role: 'owner' },
-			profile: 'work',
-		}),
-	}
-}
-
 async function rejection(promise: Promise<unknown>) {
 	return await promise.then(
 		() => null,
@@ -293,7 +254,6 @@ async function rejection(promise: Promise<unknown>) {
 
 for (const [label, arrange] of [
 	['an org member', teamMemberWithGrantOnA],
-	['a connection profile', profileWithReadOnA],
 ] as const) {
 	test(`${label} with read on package A gets a read remote for A and none for B`, async () => {
 		const { a, b, ctx } = await arrange()

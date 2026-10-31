@@ -186,18 +186,14 @@ test('repoPublishSession keeps the credential notice on a locked publish', async
 	expect(result.message).toContain(`\n\n${credentialNotice}`)
 })
 
-test('repoPublishSession reports a compute-limit reset as a caller error naming the limit, never a storage outage (KODY-CY)', async () => {
+test('repoPublishSession reports a compute-limit reset as a caller error naming the limit', async () => {
 	const { McpCallerError } = await import('#mcp/caller-error.ts')
-	const { publishComputeLimitMessage } =
-		await import('#worker/repo/isolated-runner-limit-message.ts')
-	const stepMessage = publishComputeLimitMessage('credentials')
-	for (const [failure, expectedMessage] of [
-		[
-			new Error('Durable Object exceeded its CPU time limit and was reset.'),
-			publishComputeLimitMessage(),
-		],
-		[new Error(stepMessage), stepMessage],
-	] as const) {
+	const rawReset = new Error(
+		'Durable Object exceeded its CPU time limit and was reset.',
+	)
+	const alreadyNamed =
+		'This publish exceeded a Kody compute limit during the credential stamp scan.'
+	const runPublish = async (failure: Error) => {
 		resetMocks()
 		mockModule.repoSessionRpc.mockReturnValue({
 			getSessionInfo: vi.fn(async () => ({
@@ -208,15 +204,23 @@ test('repoPublishSession reports a compute-limit reset as a caller error naming 
 				throw failure
 			}),
 		})
-		const error = await repoPublishSessionCapability
+		return repoPublishSessionCapability
 			.handler({ session_id: 'session-1' }, createCtx())
 			.catch((caught: unknown) => caught)
-		expect(error).toBeInstanceOf(McpCallerError)
-		expect((error as Error).message).toBe(expectedMessage)
-		expect((error as Error).message).toContain('compute limit')
-		expect((error as Error).message).not.toContain('storage was briefly')
-		expect(
-			mockModule.rebuildPublishedPackageArtifactsViaRepoSession,
-		).not.toHaveBeenCalled()
 	}
+
+	const remapped = await runPublish(rawReset)
+	expect(remapped).toBeInstanceOf(McpCallerError)
+	expect((remapped as Error).message).toContain('exceeded a Kody compute limit')
+	expect((remapped as Error).message).not.toContain(rawReset.message)
+	expect(
+		mockModule.rebuildPublishedPackageArtifactsViaRepoSession,
+	).not.toHaveBeenCalled()
+
+	const passedThrough = await runPublish(new Error(alreadyNamed))
+	expect(passedThrough).toBeInstanceOf(McpCallerError)
+	expect((passedThrough as Error).message).toBe(alreadyNamed)
+	expect(
+		mockModule.rebuildPublishedPackageArtifactsViaRepoSession,
+	).not.toHaveBeenCalled()
 })

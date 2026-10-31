@@ -306,7 +306,7 @@ function workflowStartedBy(
 		userId: lineage.actor?.userId ?? null,
 		username: lineage.actor?.username ?? null,
 		client: runStartedByClientFromCredentialKind(lineage.credential.kind),
-		label: lineage.credential.profileName,
+		label: null,
 	})
 }
 const maxPackageWorkflowParamsJsonBytes = 16 * 1024

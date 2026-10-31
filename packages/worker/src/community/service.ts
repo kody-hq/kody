@@ -2,6 +2,8 @@ import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { invalidateCommunityPublicCache } from '#app/data-cache.ts'
+import { viewerCanReadSavedPackage } from '#app/package-viewer-access.ts'
+import { type McpUserContext } from '@kody-internal/shared/chat.ts'
 import { parseListingOwnerUsername } from '#universal/community-links.ts'
 import { communityForkAdoptionReviewNoteMinLength } from '#universal/community-fork-adoption.ts'
 import {
@@ -87,6 +89,7 @@ import {
 	getCommunityListingByOwnerAndKodyId,
 	getCommunityListingByOwnerAndPackage,
 	listCommunityForksByListingAndUser,
+	listCommunityForksByUpstreamPackageAndUser,
 	markCommunityForkAdopted,
 	updateCommunityForkOriginCommit,
 	listCommunityActivityPageRowsForAdmin,
@@ -1346,7 +1349,15 @@ export type PreparedCommunityFork = {
 	userId: OwnerId
 	followerOrgId: OwnerId
 	creatorUserId: string
-	listingId: string
+	/** Null when forking a private package (see `upstreamPackageId`). */
+	listingId: string | null
+	/** Org that owns the forked private package; null for listing forks. */
+	upstreamOwnerId: OwnerId | null
+	/** Forked private package; null for listing forks. */
+	upstreamPackageId: string | null
+	/** `community_fork_claims` key: the listing id or `package:<id>`. */
+	claimKey: string
+	/** Origin package name (`@owner/leaf`) at fork time. */
 	listingName: string
 	listingKodyId: string
 	originCommit: string
@@ -1461,13 +1472,63 @@ export async function prepareCommunityFork(
 		)
 	}
 
+	return await prepareForkFromOriginFiles({
+		input,
+		files,
+		originCommit,
+		originName: listing.name,
+		originKodyId: listing.kodyId,
+		originRepoId: source?.repo_id ?? null,
+		lineage: {
+			listingId: input.listingId,
+			upstreamOwnerId: null,
+			upstreamPackageId: null,
+			claimKey: input.listingId,
+		},
+		subject: 'listing',
+		listExistingForks: () =>
+			listCommunityForksByListingAndUser(input.env.APP_DB, {
+				listingId: input.listingId,
+				userId: input.userId,
+			}),
+	})
+}
+
+type ForkLineage = Pick<
+	PreparedCommunityFork,
+	'listingId' | 'upstreamOwnerId' | 'upstreamPackageId' | 'claimKey'
+>
+
+type ForkSubject = 'listing' | 'package'
+
+/**
+ * Shared second half of preparing a fork: pick the target leaf, rewrite the
+ * manifest and self-references, and scan cross-scope imports. Listing and
+ * private package forks differ only in where `files` came from.
+ */
+async function prepareForkFromOriginFiles(args: {
+	input: Omit<PrepareCommunityForkInput, 'listingId' | 'expectedPinnedCommit'>
+	files: Record<string, string>
+	originCommit: string
+	originName: string
+	originKodyId: string
+	originRepoId: string | null
+	lineage: ForkLineage
+	subject: ForkSubject
+	listExistingForks: () => Promise<Array<CommunityForkRecord>>
+}): Promise<PreparedCommunityFork> {
+	const { input, files, originCommit, subject } = args
 	const packageJsonContent = files['package.json']
 	if (!packageJsonContent) {
-		throw new Error('Catalog entry snapshot is missing package.json.')
+		throw new Error(
+			subject === 'listing'
+				? 'Catalog entry snapshot is missing package.json.'
+				: 'This package has no package.json on its default branch.',
+		)
 	}
 
 	const explicitKodyId = input.kodyId?.trim() || undefined
-	const preferredKodyId = explicitKodyId || listing.kodyId
+	const preferredKodyId = explicitKodyId || args.originKodyId
 	const packageScope = input.expectedPackageScope.replace(/^@/, '')
 	const scopedName = (leaf: string) => `@${packageScope}/${leaf}`
 	const [existingByKody, existingByName, existingForks] = await Promise.all([
@@ -1480,10 +1541,7 @@ export async function prepareCommunityFork(
 			userId: input.userId,
 			name: scopedName(preferredKodyId),
 		}),
-		listCommunityForksByListingAndUser(input.env.APP_DB, {
-			listingId: input.listingId,
-			userId: input.userId,
-		}),
+		args.listExistingForks(),
 	])
 	const collidingFork = existingForks.find(
 		(fork) => fork.targetKodyId === preferredKodyId,
@@ -1532,13 +1590,13 @@ export async function prepareCommunityFork(
 			})
 			if (!alternate) {
 				throw new CommunityActionError(
-					`You already have a saved package named "${preferredKodyId}". Pass a different package name leaf to fork this listing.`,
+					`You already have a saved package named "${preferredKodyId}". Pass a different package name leaf to fork this ${subject}.`,
 				)
 			}
 			targetKodyId = alternate
 		} else {
 			throw new CommunityActionError(
-				`You already have a saved package named "${preferredKodyId}". Pass a different package name leaf to fork this listing.`,
+				`You already have a saved package named "${preferredKodyId}". Pass a different package name leaf to fork this ${subject}.`,
 			)
 		}
 	} else if (collidingFork) {
@@ -1592,7 +1650,7 @@ export async function prepareCommunityFork(
 			...originFiles,
 			'package.json': rewrittenManifest.content,
 		},
-		originPackageName: listing.name,
+		originPackageName: args.originName,
 		nextPackageName: rewrittenManifest.targetName,
 	})
 	const crossScopeReferences = scanCrossScopeReferences({
@@ -1606,16 +1664,16 @@ export async function prepareCommunityFork(
 		userId: input.userId,
 		followerOrgId: input.followerOrgId ?? input.userId,
 		creatorUserId: input.creatorUserId ?? input.userId,
-		listingId: input.listingId,
-		listingName: listing.name,
-		listingKodyId: listing.kodyId,
+		...args.lineage,
+		listingName: args.originName,
+		listingKodyId: args.originKodyId,
 		originCommit,
 		actor: input.actor ?? null,
 		packageId: crypto.randomUUID(),
 		targetKodyId,
 		targetName: rewrittenManifest.targetName,
 		expectedPackageScope: input.expectedPackageScope,
-		originRepoId: source?.repo_id ?? null,
+		originRepoId: args.originRepoId,
 		files: rewrittenFiles,
 		changedFiles: collectChangedForkFiles({
 			originFiles,
@@ -1798,6 +1856,9 @@ export async function persistPreparedCommunityFork(
 			await insertCommunityFork(prepared.env.APP_DB, {
 				id: forkId,
 				listing_id: prepared.listingId,
+				upstream_owner_id: prepared.upstreamOwnerId,
+				upstream_package_id: prepared.upstreamPackageId,
+				claim_key: prepared.claimKey,
 				forker_user_id: prepared.userId,
 				origin_commit: originCommit,
 				forked_package_id: prepared.packageId,
@@ -1808,6 +1869,9 @@ export async function persistPreparedCommunityFork(
 				actor: prepared.actor,
 				...(claimId ? { claim_id: claimId } : {}),
 			})
+			// Private package forks are not community activity and have no
+			// listing to follow.
+			if (!prepared.listingId) return
 			await ensureFollowForCommunityFork({
 				env: prepared.env,
 				listingId: prepared.listingId,
@@ -1821,11 +1885,11 @@ export async function persistPreparedCommunityFork(
 			})
 		})
 
-		invalidateCommunityPublicCache()
+		if (prepared.listingId) invalidateCommunityPublicCache()
 		logCommunityPhaseTiming({
 			phase: 'fork-persist',
 			durationMs: Date.now() - persistStartedAt,
-			listingId: prepared.listingId,
+			listingId: prepared.listingId ?? undefined,
 			packageId: prepared.packageId,
 			filesCount: Object.keys(syncedFiles).length,
 		})
@@ -1857,8 +1921,10 @@ export function buildAlreadyForkedMessage(input: {
 	targetName: string
 	forkedPackageId: string
 	forkedSourceId: string
+	subject?: ForkSubject
 }) {
-	return `You already forked this listing as "${input.targetName}" (package_id "${input.forkedPackageId}", source_id "${input.forkedSourceId}"). Returned that fork instead of creating a duplicate. Resume it with repoOpenSession, or pass a different package name leaf to fork the listing again under a new name.`
+	const subject = input.subject ?? 'listing'
+	return `You already forked this ${subject} as "${input.targetName}" (package_id "${input.forkedPackageId}", source_id "${input.forkedSourceId}"). Returned that fork instead of creating a duplicate. Resume it with repoOpenSession, or pass a different package name leaf to fork the ${subject} again under a new name.`
 }
 
 /**
@@ -1877,19 +1943,35 @@ export async function findExistingCommunityFork(input: {
 		listingId: input.listingId,
 		userId: input.userId,
 	})
+	return await pickExistingFork({
+		forks,
+		kodyId: input.kodyId,
+		loadOriginLeaf: async () =>
+			(
+				await getCommunityListingById(input.env.APP_DB, {
+					listingId: input.listingId,
+					includeDelisted: true,
+				})
+			)?.kodyId ?? null,
+	})
+}
+
+async function pickExistingFork(input: {
+	forks: Array<CommunityForkRecord>
+	kodyId?: string
+	loadOriginLeaf: () => Promise<string | null>
+}): Promise<CommunityForkRecord | null> {
+	const { forks } = input
 	if (forks.length === 0) return null
 	const explicitKodyId = input.kodyId?.trim() || undefined
 	if (explicitKodyId) {
 		return forks.find((fork) => fork.targetKodyId === explicitKodyId) ?? null
 	}
-	const listing = await getCommunityListingById(input.env.APP_DB, {
-		listingId: input.listingId,
-		includeDelisted: true,
-	})
-	const atListingLeaf = listing
-		? forks.find((fork) => fork.targetKodyId === listing.kodyId)
+	const originLeaf = await input.loadOriginLeaf()
+	const atOriginLeaf = originLeaf
+		? forks.find((fork) => fork.targetKodyId === originLeaf)
 		: undefined
-	return atListingLeaf ?? forks[forks.length - 1] ?? null
+	return atOriginLeaf ?? forks[forks.length - 1] ?? null
 }
 
 /**
@@ -1920,24 +2002,289 @@ export async function runIdempotentCommunityFork<T>(
 			? assertNotCommunityBanned(input.env.APP_DB, input.creatorUserId)
 			: undefined,
 	])
+	return await withForkClaim(
+		{ ...input, claimKey: input.listingId },
+		() => findExistingCommunityFork(input),
+		handlers,
+	)
+}
+
+type IdempotentForkClaimInput = {
+	env: Env
+	userId: OwnerId
+	claimKey: string
+	kodyId?: string
+	onWaiting?: () => void | Promise<void>
+	claimWaitMs?: number
+	claimPollMs?: number
+}
+
+async function withForkClaim<T>(
+	input: IdempotentForkClaimInput,
+	findExisting: () => Promise<CommunityForkRecord | null>,
+	handlers: {
+		existing: (fork: CommunityForkRecord) => Promise<T>
+		create: (hold: { claimId: string }) => Promise<T>
+	},
+): Promise<T> {
 	return await withCommunityForkClaim(
 		{
 			db: input.env.APP_DB,
 			ownerId: input.userId,
-			listingId: input.listingId,
+			listingId: input.claimKey,
 			requestedKodyId: input.kodyId?.trim() || null,
 			waitMs: input.claimWaitMs,
 			pollMs: input.claimPollMs,
 			onWaiting: input.onWaiting,
 		},
 		async (hold) => {
-			const existing = await findExistingCommunityFork(input)
+			const existing = await findExisting()
 			if (existing) return await handlers.existing(existing)
 			// Fence create on a live claim so a lost lease cannot duplicate.
 			await hold.assertHeld()
 			return await handlers.create(hold)
 		},
 	)
+}
+
+export type PrivatePackageForkSource = {
+	/** Org that owns the package being forked. */
+	ownerId: OwnerId
+	packageId: string
+}
+
+export type PreparePrivatePackageForkInput = Omit<
+	PrepareCommunityForkInput,
+	'listingId' | 'expectedPinnedCommit'
+> & {
+	sourcePackage: PrivatePackageForkSource
+	/**
+	 * The person forking. They must already hold `package:read` on the source
+	 * package; the fork never grants them anything on it.
+	 */
+	reader: Pick<McpUserContext, 'userId' | 'username'>
+	/** Reject when the source default branch moved past what the reader saw. */
+	expectedOriginCommit?: string
+}
+
+/** Same message as a missing package so a fork never reveals one. */
+export const privatePackageForkNotFoundMessage = 'Package not found.'
+
+/**
+ * The source package when `reader` may read it, else null. Non-readers get
+ * the same answer as a package that does not exist.
+ */
+export async function loadReadablePrivateForkSource(input: {
+	env: Env
+	reader: Pick<McpUserContext, 'userId' | 'username'>
+	sourcePackage: PrivatePackageForkSource
+}) {
+	const saved = await getSavedPackageById(input.env.APP_DB, {
+		userId: input.sourcePackage.ownerId,
+		packageId: input.sourcePackage.packageId,
+	})
+	if (!saved) return null
+	const canRead = await viewerCanReadSavedPackage({
+		env: input.env,
+		viewer: input.reader,
+		ownerId: input.sourcePackage.ownerId,
+		packageId: input.sourcePackage.packageId,
+	})
+	return canRead ? saved : null
+}
+
+/**
+ * Prepare a fork of a package the reader may read but that has no community
+ * listing (private, or never listed). Files come from the source
+ * default-branch HEAD, the same tree `git clone` returns with `package:read`.
+ */
+export async function preparePrivatePackageFork(
+	input: PreparePrivatePackageForkInput,
+): Promise<PreparedCommunityFork> {
+	const [, , saved] = await Promise.all([
+		assertNotCommunityBanned(input.env.APP_DB, input.userId),
+		input.creatorUserId && input.creatorUserId !== input.userId
+			? assertNotCommunityBanned(input.env.APP_DB, input.creatorUserId)
+			: undefined,
+		loadReadablePrivateForkSource(input),
+	])
+	if (!saved) {
+		throw new CommunityActionError(privatePackageForkNotFoundMessage)
+	}
+	const source = await getEntitySourceById(input.env.APP_DB, saved.sourceId)
+	if (!source?.repo_id) {
+		throw new CommunityActionError(
+			'This package has no source to fork yet. Ask the owner to push it first.',
+		)
+	}
+	let originCommit: string | null = source.published_commit ?? null
+	try {
+		const head = await resolveArtifactSourceHead(input.env, source.repo_id)
+		if (head.commit) originCommit = head.commit
+	} catch {
+		// Fall back to the published commit, like community forks.
+	}
+	if (!originCommit) {
+		throw new CommunityActionError(
+			'This package has no commits to fork yet. Ask the owner to push it first.',
+		)
+	}
+	if (
+		input.expectedOriginCommit &&
+		originCommit !== input.expectedOriginCommit
+	) {
+		throw new CommunityActionError(
+			'This package changed after you opened it. Reload the page and try again.',
+		)
+	}
+	const snapshot = await readArtifactSourceSnapshot({
+		env: input.env,
+		repoId: source.repo_id,
+		commit: originCommit,
+	})
+	if (!snapshot?.files) {
+		throw new Error(
+			`Source snapshot for package "${saved.id}" at ${originCommit} was not found.`,
+		)
+	}
+	return await prepareForkFromOriginFiles({
+		input,
+		files: snapshot.files,
+		originCommit,
+		originName: saved.name,
+		originKodyId: saved.kodyId,
+		originRepoId: source.repo_id,
+		lineage: {
+			listingId: null,
+			upstreamOwnerId: input.sourcePackage.ownerId,
+			upstreamPackageId: saved.id,
+			claimKey: privatePackageForkClaimKey(saved.id),
+		},
+		subject: 'package',
+		listExistingForks: () =>
+			listCommunityForksByUpstreamPackageAndUser(input.env.APP_DB, {
+				upstreamPackageId: saved.id,
+				userId: input.userId,
+			}),
+	})
+}
+
+function privatePackageForkClaimKey(packageId: string) {
+	return `package:${packageId}`
+}
+
+/** This org's existing fork of a private package, same rules as listings. */
+export async function findExistingPrivatePackageFork(input: {
+	env: Env
+	userId: OwnerId
+	sourcePackage: PrivatePackageForkSource
+	kodyId?: string
+}): Promise<CommunityForkRecord | null> {
+	const forks = await listCommunityForksByUpstreamPackageAndUser(
+		input.env.APP_DB,
+		{ upstreamPackageId: input.sourcePackage.packageId, userId: input.userId },
+	)
+	return await pickExistingFork({
+		forks,
+		kodyId: input.kodyId,
+		loadOriginLeaf: async () =>
+			(
+				await getSavedPackageById(input.env.APP_DB, {
+					userId: input.sourcePackage.ownerId,
+					packageId: input.sourcePackage.packageId,
+				})
+			)?.kodyId ?? null,
+	})
+}
+
+/**
+ * Idempotent per (target org, source package), like
+ * {@link runIdempotentCommunityFork}. The read check runs first so a
+ * non-reader learns nothing, not even that a fork already exists.
+ */
+export async function runIdempotentPrivatePackageFork<T>(
+	input: Pick<
+		PreparePrivatePackageForkInput,
+		'env' | 'userId' | 'kodyId' | 'creatorUserId' | 'sourcePackage' | 'reader'
+	> & {
+		onWaiting?: () => void | Promise<void>
+		claimWaitMs?: number
+		claimPollMs?: number
+	},
+	handlers: {
+		existing: (fork: CommunityForkRecord) => Promise<T>
+		create: (hold: { claimId: string }) => Promise<T>
+	},
+): Promise<T> {
+	const [, , saved] = await Promise.all([
+		assertNotCommunityBanned(input.env.APP_DB, input.userId),
+		input.creatorUserId && input.creatorUserId !== input.userId
+			? assertNotCommunityBanned(input.env.APP_DB, input.creatorUserId)
+			: undefined,
+		loadReadablePrivateForkSource(input),
+	])
+	if (!saved) {
+		throw new CommunityActionError(privatePackageForkNotFoundMessage)
+	}
+	return await withForkClaim(
+		{ ...input, claimKey: privatePackageForkClaimKey(saved.id) },
+		() => findExistingPrivatePackageFork(input),
+		handlers,
+	)
+}
+
+/** Fork a readable private package into an inert source in `userId`. */
+export async function forkPrivatePackage(
+	input: PreparePrivatePackageForkInput & {
+		onWaiting?: () => void | Promise<void>
+		claimWaitMs?: number
+		claimPollMs?: number
+	},
+): Promise<ForkCommunityListingResult> {
+	return await runIdempotentPrivatePackageFork<ForkCommunityListingResult>(
+		input,
+		{
+			existing: async (fork) =>
+				existingForkResult(input.expectedPackageScope, fork, 'package'),
+			create: async (hold) => {
+				const serverTiming: Array<ServerTimingEntry> = []
+				const prepared = await pushServerTiming(serverTiming, 'prepare', () =>
+					preparePrivatePackageFork(input),
+				)
+				return await persistPreparedCommunityFork(prepared, {
+					serverTiming,
+					claimId: hold.claimId,
+				})
+			},
+		},
+	)
+}
+
+function existingForkResult(
+	expectedPackageScope: string,
+	fork: CommunityForkRecord,
+	subject: ForkSubject,
+): ForkCommunityListingResult {
+	const packageScope = expectedPackageScope.replace(/^@/, '')
+	const targetName = `@${packageScope}/${fork.targetKodyId}`
+	return {
+		forkId: fork.id,
+		packageId: fork.forkedPackageId,
+		sourceId: fork.forkedSourceId,
+		targetKodyId: fork.targetKodyId,
+		targetName,
+		originCommit: fork.originCommit,
+		crossScopeReferences: [],
+		filesCount: 0,
+		files: {},
+		alreadyForked: true,
+		message: buildAlreadyForkedMessage({
+			targetName,
+			forkedPackageId: fork.forkedPackageId,
+			forkedSourceId: fork.forkedSourceId,
+			subject,
+		}),
+	}
 }
 
 export async function forkCommunityListing(
@@ -1948,27 +2295,8 @@ export async function forkCommunityListing(
 	},
 ): Promise<ForkCommunityListingResult> {
 	return await runIdempotentCommunityFork<ForkCommunityListingResult>(input, {
-		existing: async (fork) => {
-			const packageScope = input.expectedPackageScope.replace(/^@/, '')
-			const targetName = `@${packageScope}/${fork.targetKodyId}`
-			return {
-				forkId: fork.id,
-				packageId: fork.forkedPackageId,
-				sourceId: fork.forkedSourceId,
-				targetKodyId: fork.targetKodyId,
-				targetName,
-				originCommit: fork.originCommit,
-				crossScopeReferences: [],
-				filesCount: 0,
-				files: {},
-				alreadyForked: true,
-				message: buildAlreadyForkedMessage({
-					targetName,
-					forkedPackageId: fork.forkedPackageId,
-					forkedSourceId: fork.forkedSourceId,
-				}),
-			}
-		},
+		existing: async (fork) =>
+			existingForkResult(input.expectedPackageScope, fork, 'listing'),
 		create: async (hold) => {
 			const serverTiming: Array<ServerTimingEntry> = []
 			const prepared = await pushServerTiming(serverTiming, 'prepare', () =>
@@ -1984,7 +2312,7 @@ export async function forkCommunityListing(
 
 export type OrphanedCommunityFork = {
 	forkId: string
-	listingId: string
+	listingId: string | null
 	listingName: string | null
 	listingKodyId: string | null
 	forkerUserId: string
@@ -2047,7 +2375,8 @@ export async function cleanupOrphanedCommunityForks(input: {
 export type AdoptCommunityForkResult = {
 	packageId: string
 	kodyId: string
-	listingId: string
+	/** Null for a fork of a private package. */
+	listingId: string | null
 	originCommit: string
 	adoptedAt: string
 	alreadyAdopted: boolean
@@ -2125,7 +2454,7 @@ export type CommunityForkAdoptionState = {
 	packageId: string
 	kodyId: string
 	ownerScope: string
-	listingId: string
+	listingId: string | null
 	originCommit: string
 	adoptedAt: string | null
 }
@@ -2219,8 +2548,10 @@ export async function adoptCommunityFork(input: {
 export type AbsorbCommunityForkUpstreamResult = {
 	packageId: string
 	kodyId: string
-	listingId: string
+	/** Null for a fork of a private package. */
+	listingId: string | null
 	originCommit: string
+	/** Listing pin, or the upstream package HEAD for a private package fork. */
 	listingPinnedCommit: string
 	alreadyAbsorbed: boolean
 }
@@ -2231,6 +2562,11 @@ export async function absorbCommunityForkUpstream(input: {
 	packageId?: string
 	kodyId?: string
 	originCommit?: string
+	/**
+	 * Person absorbing. Needed to read the upstream HEAD of a private package
+	 * fork when `originCommit` is omitted; they must still hold package:read.
+	 */
+	reader?: Pick<McpUserContext, 'userId' | 'username'> | null
 }): Promise<AbsorbCommunityForkUpstreamResult> {
 	const packageIdCount =
 		(input.packageId !== undefined ? 1 : 0) +
@@ -2273,15 +2609,14 @@ export async function absorbCommunityForkUpstream(input: {
 		)
 	}
 
-	const listing = await getCommunityListingById(input.env.APP_DB, {
-		listingId: fork.listingId,
-		includeDelisted: false,
+	const upstream = await resolveForkUpstreamPin({
+		env: input.env,
+		fork,
+		kodyId: savedPackage.kodyId,
+		reader: input.reader ?? null,
+		originCommit: input.originCommit,
 	})
-	if (!listing) {
-		throw new CommunityActionError(
-			`The source catalog entry for package "${savedPackage.kodyId}" is no longer active.`,
-		)
-	}
+	const listing = { id: fork.listingId, pinnedCommit: upstream.pinnedCommit }
 	const originCommit = input.originCommit?.trim() || listing.pinnedCommit
 	if (fork.originCommit === originCommit) {
 		return {
@@ -2312,6 +2647,60 @@ export async function absorbCommunityForkUpstream(input: {
 		listingPinnedCommit: listing.pinnedCommit,
 		alreadyAbsorbed: false,
 	}
+}
+
+/**
+ * The commit a fork's upstream currently offers: the listing pin, or the
+ * private package default-branch HEAD while the reader may still read it.
+ */
+async function resolveForkUpstreamPin(input: {
+	env: Env
+	fork: CommunityForkRecord
+	kodyId: string
+	reader: Pick<McpUserContext, 'userId' | 'username'> | null
+	originCommit?: string
+}): Promise<{ pinnedCommit: string }> {
+	const { fork } = input
+	if (fork.listingId) {
+		const listing = await getCommunityListingById(input.env.APP_DB, {
+			listingId: fork.listingId,
+			includeDelisted: false,
+		})
+		if (!listing) {
+			throw new CommunityActionError(
+				`The source catalog entry for package "${input.kodyId}" is no longer active.`,
+			)
+		}
+		return { pinnedCommit: listing.pinnedCommit }
+	}
+	const explicit = input.originCommit?.trim()
+	if (!fork.upstreamOwnerId || !fork.upstreamPackageId || !input.reader) {
+		if (explicit) return { pinnedCommit: explicit }
+		throw new CommunityActionError(
+			`The package "${input.kodyId}" was forked from is not available to you.`,
+		)
+	}
+	const saved = await loadReadablePrivateForkSource({
+		env: input.env,
+		reader: input.reader,
+		sourcePackage: {
+			ownerId: fork.upstreamOwnerId as OwnerId,
+			packageId: fork.upstreamPackageId,
+		},
+	})
+	const source = saved
+		? await getEntitySourceById(input.env.APP_DB, saved.sourceId)
+		: null
+	const head = source?.repo_id
+		? await resolveArtifactSourceHead(input.env, source.repo_id)
+		: null
+	if (!head?.commit) {
+		if (explicit) return { pinnedCommit: explicit }
+		throw new CommunityActionError(
+			`The package "${input.kodyId}" was forked from is not available to you.`,
+		)
+	}
+	return { pinnedCommit: head.commit }
 }
 
 export async function rateCommunityListing(input: {

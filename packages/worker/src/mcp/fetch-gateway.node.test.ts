@@ -172,6 +172,8 @@ function communityFork(forkedPackageId: string, targetKodyId: string) {
 	return {
 		id: 'fork-1',
 		listingId: 'listing-1',
+		upstreamOwnerId: null,
+		upstreamPackageId: null,
 		forkerUserId: 'user-123',
 		originCommit: 'abc123',
 		forkedPackageId,
@@ -1957,4 +1959,33 @@ test('fetch gateway provider placeholders: normalize mixed case, deny wrong host
 	expect(resolveSpy).toHaveBeenLastCalledWith(
 		expect.objectContaining({ provider: '1Password', ref: providerRef }),
 	)
+})
+
+test('gateway fetch meters a cross-org package-app visit to the visiting org', async () => {
+	const recordUsageSpy = vi
+		.spyOn(usageModule, 'recordUsage')
+		.mockResolvedValue(undefined)
+	const fetchStub = vi.fn(async () => new Response('ok', { status: 200 }))
+	try {
+		const response = await executeGatewayFetch({
+			env,
+			props: {
+				...props,
+				request: {
+					...props.request,
+					billing: { orgId: ownerIdFromStored('org-visitor') },
+				},
+			},
+			request: new Request('https://api.example.com/data'),
+			globalFetch: fetchStub,
+		})
+		await response.arrayBuffer()
+		await vi.waitFor(() => expect(recordUsageSpy).toHaveBeenCalled())
+		expect(recordUsageSpy.mock.calls[0]?.[1]).toMatchObject({
+			userId: 'org-visitor',
+			eventType: 'outbound_fetch',
+		})
+	} finally {
+		recordUsageSpy.mockRestore()
+	}
 })

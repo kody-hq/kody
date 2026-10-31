@@ -27,6 +27,8 @@ import { buildOauthLoginErrorAgentPrompt } from '#universal/error-agent-prompt-p
 import { withAccountCreatedQuery } from '#universal/fathom-events.ts'
 import { serializeFirstTouchAttributionForTransport } from '#universal/first-touch-attribution.ts'
 import { getOauthLoginErrorMessage } from '#universal/oauth-login-errors.ts'
+import { authFormErrorMessage } from '#universal/auth-form-errors.ts'
+import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
@@ -44,6 +46,7 @@ import {
 	type CSSProperties,
 	type FormEvent,
 } from 'react'
+import { AuthFormFallback } from '../components/auth-form-fallback.tsx'
 import { AuthLayout } from '../components/auth-layout.tsx'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { ProviderIcon } from '../components/provider-icons.tsx'
@@ -77,6 +80,8 @@ export function LoginPage({
 	const hydrated = useHydrated()
 	const [status, setStatus] = useState<AuthStatus>('idle')
 	const [message, setMessage] = useState<string | null>(null)
+	// The `formError` query from a plain HTML post stays until the next edit.
+	const [formErrorDismissed, setFormErrorDismissed] = useState(false)
 	const [signupUsername, setSignupUsername] = useState('')
 	const [signupEmail, setSignupEmail] = useState('')
 	const [usernameAvailability, setUsernameAvailability] =
@@ -131,6 +136,7 @@ export function LoginPage({
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
+		setFormErrorDismissed(true)
 		if (!(event.currentTarget instanceof HTMLFormElement)) return
 		const form = event.currentTarget
 
@@ -342,6 +348,15 @@ export function LoginPage({
 		!message && status === 'idle'
 			? getOauthLoginErrorMessage(searchParams.get('oauthError'))
 			: null
+	// Set after a plain HTML form post (no page JavaScript) bounced back here.
+	const formErrorMessage =
+		!formErrorDismissed && !message && status === 'idle'
+			? authFormErrorMessage(searchParams.get('formError'))
+			: null
+	const deviceSignInAuthorize =
+		!isSignupMode(mode) && redirectTo && isPackageAppAuthorizePath(redirectTo)
+			? redirectTo
+			: null
 	const isSignup = mode === 'signup'
 	const isSubmitting = status === 'submitting'
 	const title = isSignup ? 'Create your account' : 'Welcome back'
@@ -375,8 +390,8 @@ export function LoginPage({
 			<AuthForm
 				handleId={handleId}
 				turnstileSiteKey={turnstileSiteKey}
-				status={status}
-				message={message}
+				status={formErrorMessage ? 'error' : status}
+				message={message ?? formErrorMessage}
 				isSubmitting={isSubmitting}
 				isInteractive={hydrated}
 				isSignup={isSignup}
@@ -409,6 +424,7 @@ export function LoginPage({
 				onSubmit={handleSubmit}
 				onPasskeySignIn={handlePasskeySignIn}
 				onFieldEdit={() => {
+					setFormErrorDismissed(true)
 					if (mode === 'signup' && getHandleFormatError(signupUsername)) return
 					clearFieldError()
 				}}
@@ -447,9 +463,45 @@ export function LoginPage({
 				</>
 			) : null}
 
+			{deviceSignInAuthorize ? (
+				<form
+					method="post"
+					action={packageAppOauthPaths.device}
+					data-rise
+					style={{ '--rise': '4' } as CSSProperties}
+					css={deviceSignInCss}
+					data-testid="sign-in-on-another-device"
+				>
+					<input type="hidden" name="authorize" value={deviceSignInAuthorize} />
+					<p>
+						<strong>On an e-reader or an older browser?</strong> Approve this
+						sign-in from your phone or computer instead. You get a short code
+						and a QR code.
+					</p>
+					<button type="submit" css={deviceSignInButtonCss}>
+						Sign in on another device
+					</button>
+				</form>
+			) : null}
+
+			<AuthFormFallback
+				turnstileSiteKey={turnstileSiteKey}
+				note={
+					isSignup
+						? 'JavaScript is off. Creating an account needs JavaScript. If you already have an account, sign in instead.'
+						: turnstileSiteKey
+							? deviceSignInAuthorize
+								? 'JavaScript is off. Email and password sign-in needs a quick human check that uses JavaScript, so use Sign in on another device, or turn JavaScript on.'
+								: 'JavaScript is off. Email and password sign-in needs a quick human check that uses JavaScript, so turn JavaScript on to sign in.'
+							: deviceSignInAuthorize
+								? 'JavaScript is off. Sign in with your email and password, or use Sign in on another device. Passkeys and social sign-in need JavaScript.'
+								: 'JavaScript is off. Sign in with your email and password. Passkeys and social sign-in need JavaScript.'
+				}
+			/>
+
 			<footer
 				data-rise
-				style={{ '--rise': '4' } as CSSProperties}
+				style={{ '--rise': '5' } as CSSProperties}
 				css={authFootCss}
 			>
 				{isSignup ? (
@@ -476,6 +528,37 @@ export function LoginPage({
 			</footer>
 		</AuthLayout>
 	)
+}
+
+function isSignupMode(mode: 'login' | 'signup') {
+	return mode === 'signup'
+}
+
+function isPackageAppAuthorizePath(path: string) {
+	return (
+		new URL(path, 'https://kody.local').pathname ===
+		packageAppOauthPaths.authorize
+	)
+}
+
+const deviceSignInCss: CSSObject = {
+	display: 'grid',
+	gap: '0.7rem',
+	padding: '1rem',
+	borderRadius: '0.9rem',
+	border: `1px solid ${colors.border}`,
+	'& p': {
+		margin: 0,
+		fontSize: '0.92rem',
+		lineHeight: 1.5,
+		color: colors.textMuted,
+	},
+	'& strong': { color: colors.text },
+}
+
+const deviceSignInButtonCss: CSSObject = {
+	...getGhostButtonCss(),
+	justifySelf: 'start',
 }
 
 const authDividerCss: CSSObject = {

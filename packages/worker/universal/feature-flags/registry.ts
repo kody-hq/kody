@@ -82,17 +82,17 @@ export const featureFlagDefinitions = [
 		// admin notice), not to move a product metric.
 	},
 	{
-		key: 'connection-profiles',
+		key: 'profiles',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
-			'Named connection profiles on the Agents page (/@slug/-/agents): package grant allowlists (read/execute) for MCP ?profile= URLs and profile-bound API tokens. Off by default; enable with audience experiments_opt_in. Delete the flag and gate sites when the experiment ends.',
+			'Profiles (ADR 0092): scoped identities a person creates for agents and bots, with snapshot grants capped by the parent chain, shorten-only expiry, and terminal revoke. Off by default; experimenters opt in at /account/experiments. Delete the flag and gate sites when profiles graduate.',
 		successMetric: {
 			eventType: 'execute',
 			measure: 'event_count',
 			goal: 'increase',
 			hypothesis:
-				'Experimenters with connection profiles create restricted agent connections and keep executing against granted packages.',
+				'Experimenters who create profiles give their agents narrower identities and keep executing through them.',
 		},
 	},
 	{
@@ -181,9 +181,6 @@ export const featureFlagDefinitions = [
 
 export type FeatureFlagKey = (typeof featureFlagDefinitions)[number]['key']
 
-export const connectionProfilesFlagKey =
-	'connection-profiles' satisfies FeatureFlagKey
-
 export const mcpSkillsExtensionFlagKey =
 	'mcp-skills-extension' satisfies FeatureFlagKey
 
@@ -197,6 +194,8 @@ export const repoPushQueueFlagKey = 'repo-push-queue' satisfies FeatureFlagKey
 
 export const executionContextsFlagKey =
 	'execution-contexts' satisfies FeatureFlagKey
+
+export const profilesFlagKey = 'profiles' satisfies FeatureFlagKey
 
 export const credentialNeedEnforcementFlagKey =
 	'credential-need-enforcement' satisfies FeatureFlagKey

@@ -87,6 +87,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 						signedIn: true,
 						busy: false,
 						hasSetup: false,
+						commandsEnabled: null,
 						contextId: null,
 						running: false,
 						needsVerification: false,
@@ -123,6 +124,18 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 						window.kodyDesktop = {
 							execution: {
 								getState: async () => ({ ...state }),
+								commandsStatus: async () => {
+									state.commandsEnabled ??= false
+									return { ...state }
+								},
+								enableCommands: async () => {
+									state.commandsEnabled = true
+									return { ...state }
+								},
+								disableCommands: async () => {
+									state.commandsEnabled = false
+									return { ...state }
+								},
 								signIn: async () => {
 									window.fixture.logins++
 									state.cliReady = true
@@ -209,6 +222,15 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			{ orgSlug: 'jane', username: 'jane', contextId: 'ec_mac' },
 		])
 		await page.getByRole('button', { name: 'Done', exact: true }).click()
+		await page
+			.getByRole('button', { name: 'Allow host commands', exact: true })
+			.click()
+		await page
+			.getByRole('button', { name: 'Turn off host commands', exact: true })
+			.click()
+		await expect(
+			page.getByRole('button', { name: 'Allow host commands', exact: true }),
+		).toBeVisible()
 		await page
 			.getByRole('button', { name: 'Pause execution', exact: true })
 			.click()

@@ -45,8 +45,9 @@ export function useRefreshExecutionContextsPage() {
 		void queryClient
 			.invalidateQueries({
 				predicate: (query) =>
-					query.queryKey[0] === 'page' &&
-					query.queryKey[2] === 'loadExecutionContextsPage',
+					query.queryKey[0] === 'execution-context-audit' ||
+					(query.queryKey[0] === 'page' &&
+						query.queryKey[2] === 'loadExecutionContextsPage'),
 			})
 			.then(() => router.invalidate())
 	}

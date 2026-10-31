@@ -103,7 +103,10 @@ import { CredentialLoginRetryLaterError } from '#worker/credentials/credential-r
 import { recordRetriedLoginSession } from '#worker/credentials/login-session-store.ts'
 import { IntegrationHostNotAllowedError } from './execute-modules/integration-host-allowlist.ts'
 import { type StorageContext } from '#mcp/storage.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import {
+	billedOrgIdOf,
+	type RequestContext,
+} from '@kody-internal/shared/request-context.ts'
 import {
 	createPackageAppVisitorPersonalRequest,
 	loadPackageAppRunsAs,
@@ -364,7 +367,10 @@ async function fetchThroughGateway(
 		// this gateway, so the atomic counter here bounds cost abuse and
 		// third-party hammering from user code. Consumed before secret
 		// expansion so over-limit requests never resolve secrets.
-		if (input.props.userId) {
+		// A visit from another org to an internal app charges the visiting
+		// org's quota and meter (ADR 0095).
+		const billedUserId = billedOrgIdOf(input.props.request, input.props.userId)
+		if (billedUserId) {
 			// Plan lookup requires the account email. Callers that cannot
 			// carry one (MCP provider requests, package runtime) get it
 			// reverse-resolved from the stable userId so authenticated
@@ -372,18 +378,18 @@ async function fetchThroughGateway(
 			// failing open to `max` (whose limit is still finite for
 			// genuinely accountless synthetic contexts).
 			const email =
-				input.props.email ??
+				(billedUserId === input.props.userId ? input.props.email : null) ??
 				(
 					await findCachedUserAccountByStableUserId(
 						input.env.APP_DB,
-						input.props.userId,
+						billedUserId,
 					)
 				)?.email ??
 				null
 			await consumeDailyEntitlement({
 				db: input.env.APP_DB,
 				env: input.env,
-				userId: input.props.userId,
+				userId: billedUserId,
 				email,
 				resource: 'outbound_fetches_per_day',
 			})
@@ -544,7 +550,7 @@ async function fetchThroughGateway(
 		deadline?.fail()
 		throw asCallerFacingBodyFillError(error)
 	} finally {
-		const { userId } = input.props
+		const userId = billedOrgIdOf(input.props.request, input.props.userId)
 		if (userId) {
 			const meteredResponse = response
 			// Outcome is settled at headers; duration waits for the body so a

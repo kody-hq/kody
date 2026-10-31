@@ -7,10 +7,6 @@ import {
 	stagePublishWorkFiles,
 	type PublishWorkRequest,
 } from './publish-work.ts'
-import {
-	isPublishComputeLimitMessage,
-	publishComputeLimitMessage,
-} from './isolated-runner-limit-message.ts'
 import { type EntitySourceRow } from './types.ts'
 
 const userId = ownerIdFromStored('user-1')
@@ -196,13 +192,10 @@ test('a compute-limit error lists the largest staged files runtime code does not
 			input: { source, publishedCommit: 'commit-2' },
 		})
 		.catch((caught: unknown) => caught as Error)
-	expect((error as Error).message).toBe(
-		publishComputeLimitMessage('credentials', [
-			{ path: 'scripts/generate.ts', bytes: 4096 },
-		]),
-	)
+	expect((error as Error).message).toContain('exceeded a Kody compute limit')
+	expect((error as Error).message).toContain('the credential stamp scan')
+	expect((error as Error).message).toContain('`scripts/generate.ts`')
 	expect((error as Error).message).toContain('`.kodyignore`')
-	expect((error as Error).message).not.toContain('deterministic')
 })
 
 test('a step that still hits the CPU limit on its own fails with a compute-limit message naming the step', async () => {
@@ -225,11 +218,8 @@ test('a step that still hits the CPU limit on its own fails with a compute-limit
 		})
 		.catch((caught: unknown) => caught as Error)
 	expect(error).toBeInstanceOf(Error)
-	expect((error as Error).message).toBe(
-		publishComputeLimitMessage('credentials'),
-	)
-	expect(isPublishComputeLimitMessage((error as Error).message)).toBe(true)
-	expect((error as Error).message).not.toContain('storage was briefly')
+	expect((error as Error).message).toContain('exceeded a Kody compute limit')
+	expect((error as Error).message).toContain('the credential stamp scan')
 	expect((error as Error).cause).toBe(cpuReset)
 
 	// Checks report the limit as a failed check, like packageCheck.

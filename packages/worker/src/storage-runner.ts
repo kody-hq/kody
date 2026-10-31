@@ -1009,10 +1009,19 @@ export function storageRunnerRpc(input: {
 	userId: OwnerId
 	storageId: string
 	packageAppVisitorUserId?: string
+	/**
+	 * Org billed for this bucket's metered work when it is not the bucket
+	 * owner (a visit from another org to an internal app, ADR 0095). The
+	 * bucket itself always stays the owner's.
+	 */
+	meterUserId?: OwnerId
 }) {
+	const meterUserId = input.meterUserId ?? input.userId
+	const packageAppOwnerOrgId =
+		meterUserId !== input.userId ? input.userId : undefined
 	const runner = createMeteredDurableObjectStub({
 		env: input.env,
-		userId: input.userId,
+		userId: meterUserId,
 		doClass: 'StorageRunner',
 		stub: input.env.STORAGE_RUNNER.get(
 			input.env.STORAGE_RUNNER.idFromName(
@@ -1099,13 +1108,14 @@ export function storageRunnerRpc(input: {
 	) => {
 		recordDurableObjectRowsRead({
 			env: input.env,
-			userId: input.userId,
+			userId: meterUserId,
 			doClass: 'StorageRunner',
 			rowsRead,
 			outcome,
 			...(input.packageAppVisitorUserId !== undefined
 				? { packageAppVisitorUserId: input.packageAppVisitorUserId }
 				: {}),
+			...(packageAppOwnerOrgId ? { packageAppOwnerOrgId } : {}),
 			...(attributedPackageId ? { packageId: attributedPackageId } : {}),
 		})
 	}
