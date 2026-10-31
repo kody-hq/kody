@@ -51,6 +51,7 @@ const writers: Record<string, Invalidation> = {
 	'orgs/soft-delete.ts': 'org-tombstone-then-restore-bump',
 	'orgs/provision.ts': 'org-row-lifecycle',
 	'account/data-targets.ts': 'person-row-gone',
+	'profiles/package-grants.ts': 'profile-subject-only',
 	'profiles/store.ts': 'profile-subject-only',
 }
 

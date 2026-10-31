@@ -171,6 +171,9 @@ function permissionFamily(
 	grant: RequestedProfileGrant,
 	permission: OrgPermission,
 ): OrgResourceType {
+	if (grant.resourceType === 'org') {
+		throw new Error('org grants carry org-level permissions, not a family')
+	}
 	if (grant.resourceType !== 'credential') return grant.resourceType
 	return permission.startsWith('integration:') ? 'integration' : 'secret'
 }

@@ -30,7 +30,12 @@ export function isPackageCollaboratorPreset(
  * is not a member (granted elsewhere); the tab can remove them but not change
  * their access.
  */
-export type PackageCollaboratorKind = 'org' | 'team' | 'member' | 'outside'
+export type PackageCollaboratorKind =
+	| 'org'
+	| 'team'
+	| 'member'
+	| 'outside'
+	| 'profile'
 
 export type PackageCollaboratorView = {
 	grantId: string
@@ -78,7 +83,14 @@ export type PackageCollaboratorEveryoneOption = {
 	memberCount: number
 }
 
-export type PackageCollaboratorSubjectType = 'user' | 'team' | 'org'
+export type PackageCollaboratorSubjectType = 'user' | 'team' | 'org' | 'profile'
+
+/** One of the viewer's own active profiles (ADR 0092; profiles experiment). */
+export type PackageCollaboratorProfileOption = {
+	id: string
+	name: string
+	depth: number
+}
 
 export type PackageCollaboratorMemberOption = {
 	userId: string
@@ -99,6 +111,8 @@ export type PackageCollaboratorsView = {
 		everyone: PackageCollaboratorEveryoneOption | null
 		teams: Array<PackageCollaboratorTeamOption>
 		members: Array<PackageCollaboratorMemberOption>
+		/** The viewer's profiles; absent unless the profiles experiment is on. */
+		profiles?: Array<PackageCollaboratorProfileOption>
 	}
 }
 
@@ -216,6 +230,8 @@ export function packageCollaboratorKindLabel(kind: PackageCollaboratorKind) {
 			return 'Org member'
 		case 'outside':
 			return 'Outside collaborator'
+		case 'profile':
+			return 'Agent profile'
 		default: {
 			const exhaustive: never = kind
 			return exhaustive
