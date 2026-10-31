@@ -249,7 +249,10 @@ const rewriteScope = new AsyncLocalStorage<RewriteScope>()
  */
 export async function runWithPackageAppResponseRewrite(
 	serve: () => Promise<Response | null>,
-	boundary: (input: { deferred: boolean }) => PackageAppResponseRewrite,
+	boundary: (input: {
+		/** A layer inside the scope registered an `onReport` for this response. */
+		reported: boolean
+	}) => PackageAppResponseRewrite,
 ): Promise<Response | null> {
 	const scope: RewriteScope = { pending: new WeakMap() }
 	const response = await rewriteScope.run(scope, serve)
@@ -257,7 +260,10 @@ export async function runWithPackageAppResponseRewrite(
 	const pending = scope.pending.get(response)
 	return applyPackageAppResponseRewrite(
 		response,
-		mergeRewrite(pending ?? {}, boundary({ deferred: Boolean(pending) })),
+		mergeRewrite(
+			pending ?? {},
+			boundary({ reported: (pending?.onReport?.length ?? 0) > 0 }),
+		),
 	).response
 }
 

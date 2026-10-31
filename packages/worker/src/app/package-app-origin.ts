@@ -1583,7 +1583,7 @@ export async function handlePackageAppOriginRequest(
 					// Serve, cache headers, and ticket cookies registered their
 					// parts; this boundary adds its own and the response is
 					// rewritten once.
-					({ deferred }) => {
+					({ reported }) => {
 						const serverTiming = packageAppServerTiming()
 						serverTiming.push({
 							name: 'total',
@@ -1605,7 +1605,7 @@ export async function handlePackageAppOriginRequest(
 							},
 							serverTiming,
 							// Serve already logs its own strips.
-							onReport: deferred
+							onReport: reported
 								? []
 								: [
 										(report) =>

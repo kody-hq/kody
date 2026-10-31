@@ -123,8 +123,8 @@ test('inside the boundary scope, layers defer and the response is rewritten once
 			expect(fromOrigin.headers.get('Vary')).toBeNull()
 			return fromOrigin
 		},
-		({ deferred }) => {
-			expect(deferred).toBe(true)
+		({ reported }) => {
+			expect(reported).toBe(false)
 			return {
 				stripRuntimeRunId: true,
 				domainScrub,

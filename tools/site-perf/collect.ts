@@ -46,6 +46,7 @@ export type SitePerfPackageAppProbe = {
 export const defaultPackageAppProbeUrl =
 	'https://kentcdodds.kody.run/perf-hello/'
 const packageAppProbeSamples = 3
+const packageAppProbeTimeoutMs = 15_000
 
 export type SitePerfReport = {
 	url: string
@@ -240,7 +241,10 @@ async function probePackageApp(
 	try {
 		for (let index = 0; index < packageAppProbeSamples; index += 1) {
 			const startedAt = performance.now()
-			const response = await fetch(url, { redirect: 'manual' })
+			const response = await fetch(url, {
+				redirect: 'manual',
+				signal: AbortSignal.timeout(packageAppProbeTimeoutMs),
+			})
 			const ttfbMs = Math.round(performance.now() - startedAt)
 			await response.arrayBuffer()
 			samples.push({
