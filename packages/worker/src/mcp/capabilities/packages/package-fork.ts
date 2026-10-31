@@ -105,10 +105,6 @@ export const packageForkCapability = defineDomainCapability(
 				user,
 				request: requireMcpRequest(ctx.callerContext),
 			})
-			const sourcePackage = await resolveForkSourceRef(ctx.env, args.package)
-			if (!sourcePackage) {
-				throw new McpCallerError(privatePackageForkNotFoundMessage)
-			}
 			const expectedPackageScope = owner.ownerScope
 			const kodyId =
 				args.kody_id === undefined
@@ -118,6 +114,10 @@ export const packageForkCapability = defineDomainCapability(
 							ownerScope: expectedPackageScope,
 							action: 'create',
 						})
+			const sourcePackage = await resolveForkSourceRef(ctx.env, args.package)
+			if (!sourcePackage) {
+				throw new McpCallerError(privatePackageForkNotFoundMessage)
+			}
 			await reportCapabilityProgress(ctx.reportProgress, {
 				progress: 1,
 				total: 2,

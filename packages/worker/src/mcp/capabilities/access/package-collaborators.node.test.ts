@@ -255,6 +255,23 @@ test('set refuses owners and ambiguous subjects', async () => {
 			ctx,
 		),
 	).rejects.toThrow(/exactly one/)
+	await expect(
+		packageCollaboratorSetCapability.handler(
+			{
+				package_id: 'pkg-1',
+				username: 'dan',
+				preset: 'manage',
+				permissions: ['package:read'],
+			},
+			ctx,
+		),
+	).rejects.toThrow(/not both/)
+	await expect(
+		packageCollaboratorSetCapability.handler(
+			{ package_id: 'pkg-1', user_id: 'no-such-user', preset: 'read' },
+			ctx,
+		),
+	).rejects.toThrow(/No user with that user_id/)
 	expect(await auditActions(seed)).toEqual([])
 })
 

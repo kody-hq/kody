@@ -2117,8 +2117,13 @@ export async function preparePrivatePackageFork(
 			'This package has no source to fork yet. Ask the owner to push it first.',
 		)
 	}
-	const head = await resolveArtifactSourceHead(input.env, source.repo_id)
-	const originCommit = head.commit ?? source.published_commit ?? null
+	let originCommit: string | null = source.published_commit ?? null
+	try {
+		const head = await resolveArtifactSourceHead(input.env, source.repo_id)
+		if (head.commit) originCommit = head.commit
+	} catch {
+		// Fall back to the published commit, like community forks.
+	}
 	if (!originCommit) {
 		throw new CommunityActionError(
 			'This package has no commits to fork yet. Ask the owner to push it first.',

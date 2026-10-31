@@ -7,6 +7,7 @@ import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { resolveSavedPackage } from '#worker/package-invocations/module-artifacts.ts'
 import { getGrantById } from '#worker/orgs/access-writes.ts'
 import { getLiveOrgMembership } from '#worker/orgs/org-members-list.ts'
+import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { listPackageCollaborators } from '#worker/orgs/package-collaborators.ts'
 import {
 	grantPackageToProfile,
@@ -150,6 +151,15 @@ async function resolveCollaboratorSubject(
 			'Owners already have full access to every package in this organization.',
 		)
 	}
+	if (!membership && userIdInput) {
+		const user = await db
+			.prepare(
+				`SELECT 1 AS found FROM users WHERE stable_user_id = ?${andLiveDeletedAtSql()}`,
+			)
+			.bind(userId)
+			.first<{ found: number }>()
+		if (!user) throw new McpCallerError('No user with that user_id.')
+	}
 	return { type: 'user', id: userId }
 }
 
@@ -202,9 +212,8 @@ export async function setPackageCollaboratorAccess(
 			resource_id: managed.package.id,
 			subject_type: subject.type,
 			subject_id: subject.id,
-			...(args.preset
-				? { preset: args.preset }
-				: { permissions: args.permissions }),
+			preset: args.preset,
+			permissions: args.permissions,
 		},
 		ctx,
 	)

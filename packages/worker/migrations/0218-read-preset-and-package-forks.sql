@@ -82,7 +82,7 @@ SELECT id, org_id, resource_type, resource_id, subject_type, subject_id,
 FROM grants;
 
 INSERT INTO __migration_assertions (message)
-SELECT 'grants_next does not match grants; aborting 0217.'
+SELECT 'grants_next does not match grants; aborting 0218.'
 WHERE EXISTS (
 	SELECT id, org_id, resource_type, resource_id, subject_type, subject_id,
 		preset, created_by_user_id, created_at, updated_at, deleted_at, origin,
@@ -168,7 +168,7 @@ SELECT id, org_id, token_hash, kind, role, team_id, resource_type, resource_id,
 FROM org_invite_links;
 
 INSERT INTO __migration_assertions (message)
-SELECT 'org_invite_links_next does not match org_invite_links; aborting 0217.'
+SELECT 'org_invite_links_next does not match org_invite_links; aborting 0218.'
 WHERE EXISTS (
 	SELECT id, org_id, token_hash, kind, role, team_id, resource_type,
 		resource_id, preset, allowed_email_domains_json, max_uses, use_count,
@@ -234,7 +234,7 @@ SELECT id, listing_id, forker_user_id, origin_commit, forked_package_id,
 FROM community_forks;
 
 INSERT INTO __migration_assertions (message)
-SELECT 'community_forks_next does not match community_forks; aborting 0217.'
+SELECT 'community_forks_next does not match community_forks; aborting 0218.'
 WHERE EXISTS (
 	SELECT id, listing_id, forker_user_id, origin_commit, forked_package_id,
 		forked_source_id, target_kody_id, listing_name, listing_kody_id,
@@ -292,7 +292,7 @@ SELECT 'after',
 	(SELECT COUNT(*) FROM community_forks);
 
 INSERT INTO __migration_assertions (message)
-SELECT 'row counts changed in 0217; aborting.'
+SELECT 'row counts changed in 0218; aborting.'
 FROM __read_preset_rebuild_counts before_counts
 JOIN __read_preset_rebuild_counts after_counts
 	ON before_counts.phase = 'before' AND after_counts.phase = 'after'

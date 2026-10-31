@@ -18,7 +18,10 @@ import {
 	installPrivatePackageFork,
 } from '#worker/community/install.ts'
 import { resolvePackageForkSource } from '#worker/community/package-fork-source.ts'
-import { privatePackageForkNotFoundMessage } from '#worker/community/service.ts'
+import {
+	loadReadablePrivateForkSource,
+	privatePackageForkNotFoundMessage,
+} from '#worker/community/service.ts'
 import { getCommunityListingById } from '#worker/community/repo.ts'
 import { EntitlementLimitError } from '#worker/entitlements/errors.ts'
 import { toApiError } from '#worker/open-api/errors.ts'
@@ -164,6 +167,12 @@ export async function installWebsitePrivatePackageFork(input: {
 		kodyId: input.kodyId,
 	})
 	if (!sourcePackage) return notFound
+	const readable = await loadReadablePrivateForkSource({
+		env,
+		reader: user.mcpUser,
+		sourcePackage,
+	})
+	if (!readable) return notFound
 	try {
 		const installOwner = await resolveCommunityInstallOwner({
 			env,
