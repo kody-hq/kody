@@ -7,9 +7,9 @@ exports[`opt-in copy for every access combination > allowlist 1`] = `
   "lan": null,
   "managersNote": "Context managers see run metadata in the context's run history (who, when, duration, outcome), never results.",
   "paragraphs": [
-    "Your runs will execute on buildbox, a machine operated by @sam. @sam can see the code, inputs, logs and results of your runs. Runs that can use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.",
+    "Your runs will execute on buildbox, a machine operated by @sam. @sam can see the code, inputs, logs and results of your runs.",
     "Your runs get this machine's network position and access: files: 1 path, read · local network: no · internet: allowlist of 4 hosts · Kody APIs: none.",
-    "While your run is active, @sam's machine can make Kody API calls as you, within that Kody API access, and can change the results your run returns.",
+    "While your run is active, @sam's machine can make Kody API calls as you (within that Kody API access), can use your credentials (GitHub, email and any others you've connected) and read the responses, and can change the results your run returns. Your credential values stay in Kody cloud and never reach the machine. Opting in is your consent to this.",
   ],
   "title": "Opt into buildbox?",
 }
@@ -22,9 +22,9 @@ exports[`opt-in copy for every access combination > lanWithFiles 1`] = `
   "lan": "Local network access is on: your runs can reach devices and services on @sam's local network.",
   "managersNote": "Context managers see run metadata in the context's run history (who, when, duration, outcome), never results.",
   "paragraphs": [
-    "Your runs will execute on buildbox, a machine operated by @sam. @sam can see the code, inputs, logs and results of your runs. Runs that can use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.",
+    "Your runs will execute on buildbox, a machine operated by @sam. @sam can see the code, inputs, logs and results of your runs.",
     "Your runs get this machine's network position and access: files: 2 paths, write · local network: yes · internet: public · Kody APIs: 3 allowed.",
-    "While your run is active, @sam's machine can make Kody API calls as you, within that Kody API access, and can change the results your run returns.",
+    "While your run is active, @sam's machine can make Kody API calls as you (within that Kody API access), can use your credentials (GitHub, email and any others you've connected) and read the responses, and can change the results your run returns. Your credential values stay in Kody cloud and never reach the machine. Opting in is your consent to this.",
   ],
   "title": "Opt into buildbox?",
 }
@@ -37,9 +37,9 @@ exports[`opt-in copy for every access combination > locked 1`] = `
   "lan": null,
   "managersNote": "Context managers see run metadata in the context's run history (who, when, duration, outcome), never results.",
   "paragraphs": [
-    "Your runs will execute on buildbox, a machine operated by @sam. @sam can see the code, inputs, logs and results of your runs. Runs that can use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.",
+    "Your runs will execute on buildbox, a machine operated by @sam. @sam can see the code, inputs, logs and results of your runs.",
     "Your runs get this machine's network position and access: files: none · local network: no · internet: none · Kody APIs: none.",
-    "While your run is active, @sam's machine can make Kody API calls as you, within that Kody API access, and can change the results your run returns.",
+    "While your run is active, @sam's machine can make Kody API calls as you (within that Kody API access), can use your credentials (GitHub, email and any others you've connected) and read the responses, and can change the results your run returns. Your credential values stay in Kody cloud and never reach the machine. Opting in is your consent to this.",
   ],
   "title": "Opt into buildbox?",
 }
@@ -52,9 +52,9 @@ exports[`opt-in copy for every access combination > publicDefault 1`] = `
   "lan": null,
   "managersNote": "Context managers see run metadata in the context's run history (who, when, duration, outcome), never results.",
   "paragraphs": [
-    "Your runs will execute on buildbox, a machine operated by @sam. @sam can see the code, inputs, logs and results of your runs. Runs that can use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.",
+    "Your runs will execute on buildbox, a machine operated by @sam. @sam can see the code, inputs, logs and results of your runs.",
     "Your runs get this machine's network position and access: files: none · local network: no · internet: public · Kody APIs: all.",
-    "While your run is active, @sam's machine can make Kody API calls as you, within that Kody API access, and can change the results your run returns.",
+    "While your run is active, @sam's machine can make Kody API calls as you (within that Kody API access), can use your credentials (GitHub, email and any others you've connected) and read the responses, and can change the results your run returns. Your credential values stay in Kody cloud and never reach the machine. Opting in is your consent to this.",
   ],
   "title": "Opt into buildbox?",
 }
@@ -72,7 +72,7 @@ exports[`register copy, personal and team, names kody login > personal 1`] = `
   "login": "If your Kody login predates execution context permissions, registering fails and tells you to run \`kody login\` again first. Other logins keep working as they are.",
   "trust": [
     "Code sent to this context runs on that machine, under the account that runs kody daemon.",
-    "It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach that machine. Its Kody API allowlist can narrow what runs there may call. If you share it, the people you share it with run code on that machine and you can see their code, inputs, logs and results. Their runs cannot use their credentials or start workflows there, and Kody APIs kept for Kody cloud refuse them.",
+    "It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach that machine. Its Kody API allowlist can narrow what runs there may call. If you share it, the people who opt in run code on that machine with their own credentials, and you can see their code, inputs, logs and results, including responses to their credentialed requests. Their runs cannot start workflows there, and Kody APIs kept for Kody cloud refuse them.",
     "What it exposes (files, local network, internet) is set on the machine; the CLI prints it.",
   ],
 }
@@ -90,7 +90,7 @@ exports[`register copy, personal and team, names kody login > team 1`] = `
   "login": "If your Kody login predates execution context permissions, registering fails and tells you to run \`kody login\` again first. Other logins keep working as they are.",
   "trust": [
     "Code sent to this context runs on that machine, under the account that runs kody daemon.",
-    "It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach that machine. Its Kody API allowlist can narrow what runs there may call. If you share it, the people you share it with run code on that machine and you can see their code, inputs, logs and results. Their runs cannot use their credentials or start workflows there, and Kody APIs kept for Kody cloud refuse them.",
+    "It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach that machine. Its Kody API allowlist can narrow what runs there may call. If you share it, the people who opt in run code on that machine with their own credentials, and you can see their code, inputs, logs and results, including responses to their credentialed requests. Their runs cannot start workflows there, and Kody APIs kept for Kody cloud refuse them.",
     "What it exposes (files, local network, internet) is set on the machine; the CLI prints it.",
   ],
 }
@@ -103,9 +103,9 @@ exports[`share copy for every access combination, as operator and as manager > a
   "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
-    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs and results. Their runs that can use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.",
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs and results.",
     "Their runs get: files: 1 path, read · local network: no · internet: allowlist of 4 hosts · Kody APIs: none.",
-    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access), can use their credentials (GitHub, email and any others they've connected) and read the responses, and can change their results. Credential values stay in Kody cloud and never reach this machine.",
   ],
   "title": "Share buildbox",
 }
@@ -118,9 +118,9 @@ exports[`share copy for every access combination, as operator and as manager > a
   "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
-    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs and results. Their runs that can use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.",
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs and results.",
     "Their runs get: files: 1 path, read · local network: no · internet: allowlist of 4 hosts · Kody APIs: none.",
-    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access), can use their credentials (GitHub, email and any others they've connected) and read the responses, and can change their results. Credential values stay in Kody cloud and never reach this machine.",
   ],
   "title": "Share buildbox",
 }
@@ -133,9 +133,9 @@ exports[`share copy for every access combination, as operator and as manager > l
   "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
-    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs and results. Their runs that can use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.",
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs and results.",
     "Their runs get: files: 2 paths, write · local network: yes · internet: public · Kody APIs: 3 allowed.",
-    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access), can use their credentials (GitHub, email and any others they've connected) and read the responses, and can change their results. Credential values stay in Kody cloud and never reach this machine.",
   ],
   "title": "Share buildbox",
 }
@@ -148,9 +148,9 @@ exports[`share copy for every access combination, as operator and as manager > l
   "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
-    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs and results. Their runs that can use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.",
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs and results.",
     "Their runs get: files: 2 paths, write · local network: yes · internet: public · Kody APIs: 3 allowed.",
-    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access), can use their credentials (GitHub, email and any others they've connected) and read the responses, and can change their results. Credential values stay in Kody cloud and never reach this machine.",
   ],
   "title": "Share buildbox",
 }
@@ -163,9 +163,9 @@ exports[`share copy for every access combination, as operator and as manager > l
   "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
-    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs and results. Their runs that can use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.",
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs and results.",
     "Their runs get: files: none · local network: no · internet: none · Kody APIs: none.",
-    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access), can use their credentials (GitHub, email and any others they've connected) and read the responses, and can change their results. Credential values stay in Kody cloud and never reach this machine.",
   ],
   "title": "Share buildbox",
 }
@@ -178,9 +178,9 @@ exports[`share copy for every access combination, as operator and as manager > l
   "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
-    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs and results. Their runs that can use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.",
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs and results.",
     "Their runs get: files: none · local network: no · internet: none · Kody APIs: none.",
-    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access), can use their credentials (GitHub, email and any others they've connected) and read the responses, and can change their results. Credential values stay in Kody cloud and never reach this machine.",
   ],
   "title": "Share buildbox",
 }
@@ -193,9 +193,9 @@ exports[`share copy for every access combination, as operator and as manager > p
   "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
-    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs and results. Their runs that can use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.",
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. @sam will be able to see their code, inputs, logs and results.",
     "Their runs get: files: none · local network: no · internet: public · Kody APIs: all.",
-    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access), can use their credentials (GitHub, email and any others they've connected) and read the responses, and can change their results. Credential values stay in Kody cloud and never reach this machine.",
   ],
   "title": "Share buildbox",
 }
@@ -208,9 +208,9 @@ exports[`share copy for every access combination, as operator and as manager > p
   "noInviteLinksNote": "Add people by their Kody username. There are no invite links, so access cannot be forwarded.",
   "ownerWithoutManageNote": "Only @sam or people with Manage can add access.",
   "paragraphs": [
-    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs and results. Their runs that can use credentials cannot run here; they go to the next usable entry in their chain, or fail if there is none.",
+    "Anyone you share with can run code on this machine (operated by @sam) after they opt in. You will be able to see their code, inputs, logs and results.",
     "Their runs get: files: none · local network: no · internet: public · Kody APIs: all.",
-    "While their run is active, this machine can make Kody API calls as them (within that Kody API access) and can change their results.",
+    "While their run is active, this machine can make Kody API calls as them (within that Kody API access), can use their credentials (GitHub, email and any others they've connected) and read the responses, and can change their results. Credential values stay in Kody cloud and never reach this machine.",
   ],
   "title": "Share buildbox",
 }

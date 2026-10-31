@@ -6,6 +6,7 @@ import { useRef, useState } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import {
+	cancelExecutionContextRun,
 	deleteExecutionContext,
 	loadExecutionContextAudit,
 	loadExecutionContextRuns,
@@ -1090,6 +1091,20 @@ function RunHistory(props: {
 	const runs = ok.flatMap((page) => page.runs)
 	const last = ok.at(-1)
 	const manager = ok[0]?.scope === 'all'
+	const [confirmCancel, setConfirmCancel] = useState<string | null>(null)
+	const [cancelling, setCancelling] = useState<string | null>(null)
+	const [cancelError, setCancelError] = useState<string | null>(null)
+	async function cancelRun(runId: string) {
+		setConfirmCancel(null)
+		setCancelling(runId)
+		setCancelError(null)
+		const result = (await cancelExecutionContextRun({
+			data: { orgSlug: props.orgSlug, contextId: props.context.id, runId },
+		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
+		setCancelling(null)
+		if (!result.ok) setCancelError(failureText(result))
+		await pages.refetch()
+	}
 	return (
 		<section
 			css={sectionCss}
@@ -1143,6 +1158,11 @@ function RunHistory(props: {
 					{failureText(failed)}
 				</AccountManagementMessage>
 			) : null}
+			{cancelError ? (
+				<AccountManagementMessage tone="error">
+					{cancelError}
+				</AccountManagementMessage>
+			) : null}
 			{pages.isPending ? (
 				<p css={mutedCss}>Loading runs…</p>
 			) : runs.length === 0 && !failed ? (
@@ -1166,9 +1186,28 @@ function RunHistory(props: {
 									<td>@{run.requester.handle}</td>
 									<td>{durationLabel(run.durationMs)}</td>
 									<td>
-										{run.outcome
-											? runOutcomeLabels[run.outcome]
-											: 'In progress'}
+										{run.outcome ? (
+											runOutcomeLabels[run.outcome]
+										) : (
+											<span
+												css={{
+													display: 'flex',
+													flexWrap: 'wrap',
+													alignItems: 'center',
+													gap: spacing.sm,
+												}}
+											>
+												In progress
+												<RunCancelControl
+													runId={run.runId}
+													cancelling={cancelling === run.runId}
+													confirming={confirmCancel === run.runId}
+													onAsk={() => setConfirmCancel(run.runId)}
+													onConfirm={() => void cancelRun(run.runId)}
+													onKeep={() => setConfirmCancel(null)}
+												/>
+											</span>
+										)}
 									</td>
 									<td>
 										{runFallbackLabel({
@@ -1197,6 +1236,48 @@ function RunHistory(props: {
 				</div>
 			) : null}
 		</section>
+	)
+}
+
+/** Cancel for an in-progress run, with a confirm step before it stops. */
+export function RunCancelControl(props: {
+	runId: string
+	cancelling: boolean
+	confirming: boolean
+	onAsk: () => void
+	onConfirm: () => void
+	onKeep: () => void
+}) {
+	if (props.cancelling) return <span css={mutedCss}>Cancelling…</span>
+	if (props.confirming) {
+		return (
+			<>
+				<button
+					type="button"
+					css={[getSecondaryButtonCss(), target]}
+					onClick={props.onConfirm}
+				>
+					Stop run
+				</button>
+				<button
+					type="button"
+					css={[getSecondaryButtonCss(), target]}
+					onClick={props.onKeep}
+				>
+					Keep running
+				</button>
+			</>
+		)
+	}
+	return (
+		<button
+			type="button"
+			css={[getSecondaryButtonCss(), target]}
+			aria-label={`Cancel run ${props.runId}`}
+			onClick={props.onAsk}
+		>
+			Cancel
+		</button>
 	)
 }
 

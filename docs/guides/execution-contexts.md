@@ -186,6 +186,31 @@ Every routed `execute` result carries `ranOn` (in MCP `structuredContent`, CLI
 `fellBackToCloud: true` means no context could take the run and it ran on Kody
 cloud. Automation runs record the same `ranOn` on their run records.
 
+## Cancel a run
+
+Stop a run on a machine before it finishes:
+
+- CLI: `kody context cancel-run <name|ec id> <run id>`
+- MCP / capabilities: `executionContextRunCancel({ id, run_id })`
+- Open API: `POST /v1/execution-contexts/{id}/runs/{run_id}/cancel`
+- Website: **Cancel** next to an in-progress run in the context's **Runs**
+  table.
+
+A running run is stopped on the machine; a queued run is dropped before it runs.
+In `executionContextRunList` it ends `cancelled` with
+`cancelReason: "user_cancelled"`, next to the other reasons such as `deadline`
+(the time limit) or `revoked`. Its run record (`runGet`) ends with status
+`error` and the message "The run was cancelled (user_cancelled).". You can
+cancel your own runs; people who manage the context can cancel anyone's run on
+it. Cancelling a run that already ended returns `cancelled: false` with its
+state, so retrying is safe.
+
+Once execute has handed back an in-progress run id, closing the CLI or MCP
+client does not cancel it: the run keeps going and its result stays readable
+with `runGet`. Cancel it explicitly instead. (Disconnecting while execute is
+still waiting for the result, before it returns, can still cancel the run.) Runs
+on Kody cloud cannot be cancelled this way.
+
 ## Run commands on the machine
 
 With host commands on, code in a run on the machine calls `kody.command.*` from
@@ -264,13 +289,22 @@ the security trade-off in plain words.
 ## Sharing a context
 
 You can share a context with people or teams in your org. Their runs use the
-grant you set (host folders, egress, limits). Runs by someone other than the
-operator cannot use credentials on a shared context: when such a run needs
-credentials, Kody skips the context before the code starts (reason
-`credentials_operator_only`) and the run moves down their chain or to Kody
-cloud. Runs that use no credentials run there as usual. Their runs also cannot
-start workflows there, and Kody APIs kept for Kody cloud refuse them
-(`context_run_denied`).
+grant you set (host folders, egress, limits). Someone you share with can use the
+context only after they opt in to it: the "Opt into <name>?" dialog on the
+context's page, `executionContextOptIn` (`executionContextOptOut` to leave), or
+`POST /v1/execution-contexts/{id}/opt-in` (from the CLI,
+`kody api executionContextOptIn`). Until then the context is skipped for their
+runs (`not_opted_in`) and the run moves down their chain; a run that names the
+context without `fallback: "chain"` fails instead.
+
+Opting in is their consent, and the opt-in notice says so: while their run is
+active, the operator's machine can make Kody API calls as them (within the Kody
+API access its grant allows), use their credentials (GitHub, email and any
+others they've connected) and read the responses, and change the results their
+run returns. Their runs use their own credentials exactly as in Kody cloud, and
+the credential values stay in Kody cloud and never reach the machine. Their runs
+cannot start workflows there, and Kody APIs kept for Kody cloud refuse them
+(`context_run_denied`). The context's runtime allowlist narrows their runs too.
 
 Shares never include host commands unless you say so: share with
 `commands: true` (`executionContextShareSet`) to give someone

@@ -188,7 +188,10 @@ test('downstream runs keep the starter role instead of the org identity Owner ro
 	).toBeNull()
 
 	// A personal org's owner still runs as Owner from legacy lineage.
-	const ownerRun = deriveRequestContext({ user, source: { kind: 'mcp-oauth' } })
+	const ownerRun = deriveRequestContext({
+		user,
+		source: { kind: 'mcp-oauth' },
+	})
 	const { membership: _ownerMembership, ...legacyOwner } = JSON.parse(
 		JSON.stringify(requestLineage(ownerRun)),
 	) as Record<string, unknown>
@@ -383,7 +386,7 @@ test('a triggered run never exceeds the credential that turned it on', () => {
 	})
 })
 
-test('context-run lineage keeps operator access and narrowing across a durable boundary', () => {
+test('context-run lineage keeps the operator marker across a durable boundary', () => {
 	const operatorRun = deriveRequestContext({
 		user,
 		source: { kind: 'execution-context-run', ecid: 'ec_1', runId: 'run_1' },
@@ -396,28 +399,22 @@ test('context-run lineage keeps operator access and narrowing across a durable b
 		kind: 'execution-context-run',
 		contextRunByOperator: true,
 	})
-	expect(operator?.credential.contextCredentialIds).toBeUndefined()
 
 	const sharedRun = deriveRequestContext({
 		user,
 		source: { kind: 'execution-context-run', ecid: 'ec_1', runId: 'run_2' },
-		contextCredentialIds: [],
 	})
 	const shared = parseRequestLineage(
 		JSON.parse(JSON.stringify(requestLineage(sharedRun))),
 	)
 	expect(shared?.credential.contextRunByOperator).toBeUndefined()
-	expect(shared?.credential.contextCredentialIds).toEqual([])
 
-	// A forged operator flag never drops narrowing someone else's run carries.
-	const forged = parseRequestLineage({
+	// Only exactly `true` counts; anything else drops the marker.
+	const malformed = parseRequestLineage({
 		...JSON.parse(JSON.stringify(requestLineage(sharedRun))),
-		credential: {
-			...sharedRun.credential,
-			contextRunByOperator: true,
-		},
+		credential: { ...sharedRun.credential, contextRunByOperator: 'true' },
 	})
-	expect(forged?.credential.contextCredentialIds).toEqual([])
+	expect(malformed?.credential.contextRunByOperator).toBeUndefined()
 })
 
 test('profile binding and its frozen chain survive a lineage round trip', () => {

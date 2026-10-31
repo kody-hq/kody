@@ -2,11 +2,6 @@ import { expect, test } from 'vitest'
 import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { runChainShapeError } from './chain-rules.ts'
 import {
-	type RunCredentialUse,
-	codeNeedsCredentials,
-} from './run-credential-use.ts'
-import {
-	credentialRefusal,
 	describeCloudFallback,
 	describeRanOn,
 	historyRanOn,
@@ -102,9 +97,6 @@ test('context: cloud runs on cloud only', () => {
 	).toEqual([cloud])
 })
 
-const none = { kind: 'none' } as const
-const unknown = { kind: 'unknown' } as const
-
 test('requires fs needs both a server grant folder and an advertised local mount', () => {
 	const grant = {
 		...ecpDefaultGrant,
@@ -114,9 +106,6 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant,
 			requires: ['fs'],
-			operatorUserId: 'user_operator',
-			requesterUserId: 'user_operator',
-			credentialUse: none,
 			capabilities: {},
 		}),
 	).toBe('no_local_fs')
@@ -124,9 +113,6 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant,
 			requires: ['fs'],
-			operatorUserId: 'user_operator',
-			requesterUserId: 'user_operator',
-			credentialUse: none,
 			capabilities: { features: ['fs'] },
 		}),
 	).toBeNull()
@@ -134,9 +120,6 @@ test('requires fs needs both a server grant folder and an advertised local mount
 		grantRefusal({
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
-			operatorUserId: 'user_operator',
-			requesterUserId: 'user_operator',
-			credentialUse: none,
 			capabilities: { features: ['fs'] },
 		}),
 	).toBe('no_fs')
@@ -148,9 +131,6 @@ test('a grant refuses runs it cannot serve', () => {
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['fs'],
-			operatorUserId: 'user_operator',
-			requesterUserId: 'user_operator',
-			credentialUse: none,
 		}),
 	).toBe('no_fs')
 	expect(
@@ -158,103 +138,15 @@ test('a grant refuses runs it cannot serve', () => {
 			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: ['lan'],
-			operatorUserId: 'user_operator',
-			requesterUserId: 'user_operator',
-			credentialUse: none,
 		}),
 	).toBe('no_lan')
 	expect(
 		grantRefusal({
-			capabilities: {},
 			grant: ecpDefaultGrant,
 			requires: [],
-			operatorUserId: 'user_operator',
-			requesterUserId: 'user_other',
-			credentialUse: { kind: 'ids', ids: ['cred_gh'] },
-		}),
-	).toBe('credentials_operator_only')
-	expect(
-		grantRefusal({
-			grant: ecpDefaultGrant,
-			requires: [],
-			operatorUserId: 'user_operator',
-			requesterUserId: 'user_operator',
-			credentialUse: none,
 			capabilities: {},
 		}),
 	).toBeNull()
-})
-
-// Built at runtime so no literal placeholder sits in the source.
-const placeholder = (inner: string) =>
-	`${'{'.repeat(2)}${inner}${'}'.repeat(2)}`
-
-test('execute code that needs a credential is detected before it runs', () => {
-	expect(codeNeedsCredentials(null)).toBe(false)
-	expect(
-		codeNeedsCredentials(
-			"import { kody } from 'kody:runtime'\nexport default () => kody.metaGetCurrentUser({})",
-		),
-	).toBe(false)
-	expect(
-		codeNeedsCredentials(
-			`export default () => fetch('https://api.example.com', { headers: { authorization: 'Bearer ${placeholder('secret:example-token')}' } })`,
-		),
-	).toBe(true)
-	expect(
-		codeNeedsCredentials(
-			`export default () => fetch('https://api.example.com', { headers: { authorization: '${placeholder('integration-token:example')}' } })`,
-		),
-	).toBe(true)
-	expect(
-		codeNeedsCredentials(
-			"import { credential } from 'kody:runtime'\nexport default async () => (await credential('example')).fetch('/')",
-		),
-	).toBe(true)
-	expect(
-		codeNeedsCredentials(
-			'import { kody, createAuthenticatedFetch as authFetch } from "kody:runtime"\nexport default () => authFetch',
-		),
-	).toBe(true)
-	expect(
-		codeNeedsCredentials(
-			"import runtime from 'kody:runtime'\nexport default () => runtime.credentials('example')",
-		),
-	).toBe(true)
-	expect(
-		codeNeedsCredentials(
-			"import * as rt from 'kody:runtime'\nexport default () => rt.kody.metaGetCurrentUser({})",
-		),
-	).toBe(false)
-})
-
-test("the operator's own runs use credentials as in cloud, and anyone else's credentialed run is refused", () => {
-	const own = {
-		operatorUserId: 'user_operator',
-		requesterUserId: 'user_operator',
-	}
-	const other = {
-		operatorUserId: 'user_operator',
-		requesterUserId: 'user_other',
-	}
-	const uses: Array<RunCredentialUse> = [
-		none,
-		unknown,
-		{ kind: 'ids', ids: ['cred_1'] },
-	]
-	for (const credentialUse of uses) {
-		expect(credentialRefusal({ ...own, credentialUse })).toBeNull()
-	}
-	expect(credentialRefusal({ ...other, credentialUse: none })).toBeNull()
-	expect(credentialRefusal({ ...other, credentialUse: unknown })).toBe(
-		'credentials_operator_only',
-	)
-	expect(
-		credentialRefusal({
-			...other,
-			credentialUse: { kind: 'ids', ids: ['cred_1'] },
-		}),
-	).toBe('credentials_operator_only')
 })
 
 test('a run chain follows the default chain shape rules', () => {
@@ -395,14 +287,12 @@ test('describeRanOn names where a run happened with friendly names only', () => 
 						target: 'ec_box',
 						name: 'build-box',
 						outcome: 'skipped',
-						reason: 'credentials_operator_only',
+						reason: 'no_lan',
 					},
 				],
 			}),
 		),
-	).toBe(
-		'Ran on Kody cloud after build-box was skipped (credentials operator only).',
-	)
+	).toBe('Ran on Kody cloud after build-box was skipped (no lan).')
 	expect(
 		describeRanOn(
 			ranOnFromMetadata({

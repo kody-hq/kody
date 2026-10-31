@@ -8,6 +8,7 @@ import {
 } from '#mcp/capabilities/access/shared.ts'
 import {
 	attachContext,
+	cancelContextRun,
 	chainResponse,
 	detachContext,
 	deleteContext,
@@ -124,7 +125,7 @@ export const grantPatchSchema = z
 	.loose()
 	.refine((grant) => !('credentials' in grant), {
 		message:
-			'grant.credentials was removed: runs on a context use credentials as they would in Kody cloud for the operator, and runs by anyone else use none. Drop the credentials field.',
+			"grant.credentials was removed: every run on a context uses its requester's credentials as it would in Kody cloud. Drop the credentials field.",
 	})
 	.describe(
 		'Server-side grant. The daemon intersects it with the machine local policy (`kody context policy` on that machine), so it can only narrow what the machine allows. fs entries are absolute host folders with mode ro or rw; a folder is mounted at its real path only where both layers allow it, with the narrower mode, and the context offers `requires: ["fs"]` only while at least one folder is mounted.',
@@ -135,7 +136,7 @@ export const executionContextUpdateCapability = defineDomainCapability(domain, {
 	contextRuns: 'deny',
 	orgPermission: 'execution_context:write',
 	description:
-		'Rename an execution context or change its grant (files, egress, Kody API runtime allowlist, limits), or turn host commands off (`grant.commands.enabled: false`; turning them on happens only on the machine). Runs on a context use credentials exactly as they would in Kody cloud for the operator (requests leave from Kody cloud, so values never reach the machine); runs by anyone else use none. Needs Contribute or Manage on it.',
+		"Rename an execution context or change its grant (files, egress, Kody API runtime allowlist, limits), or turn host commands off (`grant.commands.enabled: false`; turning them on happens only on the machine). Every run on a context uses its requester's credentials exactly as in Kody cloud (requests leave from Kody cloud, so values never reach the machine). Needs Contribute or Manage on it.",
 	keywords: ['execution context', 'grant', 'rename'],
 	readOnly: false,
 	idempotent: true,
@@ -199,7 +200,7 @@ export const executionContextOptInCapability = defineDomainCapability(domain, {
 	contextRuns: 'deny',
 	orgPermission: 'execution_context:execute',
 	description:
-		'Join an execution context someone shared with you (to turn the execution contexts experiment on for your account, use experimentSet instead). Read the returned notice: the operator can see the code, inputs, logs and results of your runs. Opting in does not add it to your chain.',
+		"Join an execution context someone shared with you (to turn the execution contexts experiment on for your account, use experimentSet instead). Opting in is consent: the operator can see the code, inputs, logs and results of your runs, and while a run is active their machine can use your credentials (GitHub, email and others you've connected) and read the responses. Credential values stay in Kody cloud. Read the returned notice. Opting in does not add it to your chain.",
 	keywords: ['execution context', 'opt in', 'join'],
 	readOnly: false,
 	idempotent: true,
@@ -252,7 +253,7 @@ export const executionContextShareSetCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'execution_context:manage_access',
 		description:
-			'Share an execution context with a person (username or user_id, including outside collaborators), a team, or everyone in the org (all_members). People you share with run code on this machine after they opt in, and the operator sees their code, inputs, logs and results. Only the operator or a Manage holder may add.',
+			'Share an execution context with a person (username or user_id, including outside collaborators), a team, or everyone in the org (all_members). People you share with run code on this machine after they opt in, with their own credentials; the operator sees their code, inputs, logs and results, including responses to their credentialed requests. Only the operator or a Manage holder may add.',
 		keywords: ['execution context', 'share', 'grant'],
 		readOnly: false,
 		idempotent: true,
@@ -388,6 +389,40 @@ export const executionContextRunListCapability = defineDomainCapability(
 		async handler(args, ctx) {
 			const { id, ...rest } = args
 			return await listRuns(await caller(ctx), id, rest)
+		},
+	},
+)
+
+export const executionContextRunCancelCapability = defineDomainCapability(
+	domain,
+	{
+		name: 'executionContextRunCancel',
+		contextRuns: 'deny',
+		orgPermission: 'execution_context:execute',
+		description:
+			'Cancel a run on an execution context (a machine): a running run is stopped there and a queued one is dropped before it runs. The run ends cancelled with cancelReason "user_cancelled" in executionContextRunList and runGet. Pass the context (ec_ id or name) and the runId from execute or executionContextRunList. You can cancel your own runs; people who manage the context can cancel any run on it. A run that already ended returns cancelled: false with its state, so retrying is safe. Cloud runs cannot be cancelled. Ending the CLI or MCP call does not cancel a context run; use this.',
+		keywords: [
+			'execution context',
+			'cancel run',
+			'stop run',
+			'kill run',
+			'abort',
+		],
+		readOnly: false,
+		idempotent: true,
+		destructive: true,
+		inputSchema: z.object({
+			id: idSchema,
+			run_id: z
+				.string()
+				.min(1)
+				.max(200)
+				.describe(
+					'The runId to cancel (from execute or executionContextRunList).',
+				),
+		}),
+		async handler(args, ctx) {
+			return await cancelContextRun(await caller(ctx), args.id, args.run_id)
 		},
 	},
 )

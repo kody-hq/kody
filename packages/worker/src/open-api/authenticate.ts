@@ -47,11 +47,7 @@ import {
 	loadContextAccess,
 	sessionStub,
 } from '#worker/execution-contexts/store.ts'
-import {
-	contextCredentialIds,
-	isOperatorContextRun,
-	contextRunCredentials,
-} from '#worker/execution-contexts/credential-grant.ts'
+import { isOperatorContextRun } from '#worker/execution-contexts/credential-grant.ts'
 
 type McpOauthGrantProps = {
 	userId?: unknown
@@ -487,7 +483,6 @@ async function authenticateWithExecutionContextLease(input: {
 		requesterUserId: authContext.user.userId,
 	}
 	const byOperator = isOperatorContextRun(identity)
-	const credentials = contextRunCredentials(identity)
 	return createApiInvocationContext({
 		env: input.env,
 		callerContext: {
@@ -504,7 +499,6 @@ async function authenticateWithExecutionContextLease(input: {
 				profileChain: profileChain?.map((row) => row.id) ?? null,
 				orgBinding,
 				scopes,
-				contextCredentialIds: contextCredentialIds(credentials),
 				contextRunByOperator: byOperator,
 			}),
 			user: authContext.user,
@@ -516,7 +510,6 @@ async function authenticateWithExecutionContextLease(input: {
 			deadline: lease.deadline,
 			scopes: lease.callerScopes,
 			runtime: lease.runtime,
-			credentials,
 			byOperator,
 		},
 		waitUntil: input.waitUntil,

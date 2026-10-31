@@ -78,11 +78,14 @@ two amendments above.
 - The operator's own runs on their context use credentials exactly as in Kody
   cloud: the same token-scope narrowing, credential picks and grants, package
   capabilities and org grants, with no context-level narrowing.
-- Anyone else's run on a shared context uses no credentials, as before. Routing
-  skips the context for such a run when it can use a credential
-  (`credentials_operator_only`) and the chain falls through; the door refuses
-  any credential such a run resolves anyway. Whether other people's runs get
-  full parity is an open product decision.
+- Anyone else's run on a shared context also uses their own credentials as in
+  Kody cloud (Kent's decision, option A). Their existing per-context opt-in is
+  the consent: the opt-in and share notices say that while their run is active,
+  the operator's machine can use their credentials (GitHub, email and others)
+  and read the responses. Without that opt-in they cannot run on the context at
+  all, so the chain falls through (`not_opted_in`), or a run naming the context
+  without `fallback: "chain"` fails. The pre-dispatch credential-use check
+  (`credentials_operator_only`) and the context credential door are gone.
 - Sharing and attaching no longer depend on the grant's credentials.
 - Credentialed requests still leave from Kody cloud, so credential values never
   reach the machine.

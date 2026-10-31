@@ -391,6 +391,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['id'],
 	},
 	{
+		operationId: 'executionContextRunCancel',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/runs/{run_id}/cancel',
+		pathParamNames: ['id', 'run_id'],
+	},
+	{
 		operationId: 'executionContextRunList',
 		method: 'GET',
 		pathTemplate: '/v1/execution-contexts/{id}/runs',

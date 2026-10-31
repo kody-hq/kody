@@ -401,6 +401,44 @@ test('context grants reach a person directly or through a team, never through an
 	})
 })
 
+test('a granted sharee can use a context only after opting in; the operator never needs to', async () => {
+	const seed = await seedWithContextTables()
+	insertGrant(seed, {
+		id: 'grant-context-user',
+		resourceType: 'execution_context',
+		resourceId: 'ctx-1',
+		subjectType: 'user',
+		subjectId: collaboratorPeople.bob.personId,
+		preset: 'use',
+	})
+	expect(await contextAccess(seed, 'ada')).toMatchObject({
+		isOperator: true,
+		usable: true,
+	})
+	expect(await contextAccess(seed, 'bob')).toMatchObject({
+		granted: true,
+		optedIn: false,
+		usable: false,
+		unusableReason: 'not_opted_in',
+	})
+	await seed.db
+		.prepare(
+			'INSERT INTO execution_context_opt_ins (context_id, user_id, org_id, created_at) VALUES (?, ?, ?, ?)',
+		)
+		.bind(
+			'ctx-1',
+			collaboratorPeople.bob.personId,
+			seed.orgId,
+			collaboratorsNow,
+		)
+		.run()
+	expect(await contextAccess(seed, 'bob')).toMatchObject({
+		optedIn: true,
+		usable: true,
+		unusableReason: null,
+	})
+})
+
 async function grantOnlySlugs(seed: PackageCollaboratorsSeed) {
 	const personId = collaboratorPeople.dan.personId
 	const listed = (await listOrganizationsForPerson(seed.db, personId))
