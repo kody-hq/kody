@@ -16,6 +16,7 @@ class Runner extends EventEmitter {
 		const env = {
 			...process.env,
 			ELECTRON_RUN_AS_NODE: '1',
+			KODY_CREDENTIAL_SOURCE: 'login',
 			KODY_SKIP_SKILL_REFRESH: '1',
 			KODY_SKIP_GIT_HELPER_REFRESH: '1',
 		}

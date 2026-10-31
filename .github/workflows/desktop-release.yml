@@ -1,0 +1,224 @@
+name: Desktop release
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: Platforms to publish, use all after adding Windows or Linux
+        type: choice
+        options: [mac, all]
+        default: mac
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  credentials:
+    if: github.ref == 'refs/heads/main'
+    environment: desktop-release
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.check.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - name: Check release credentials
+        id: check
+        env:
+          RELEASE_PLATFORMS: ${{ inputs.platforms }}
+          DESKTOP_MAC_CERTIFICATE_BASE64:
+            ${{ secrets.DESKTOP_MAC_CERTIFICATE_BASE64 }}
+          DESKTOP_MAC_CERTIFICATE_PASSWORD:
+            ${{ secrets.DESKTOP_MAC_CERTIFICATE_PASSWORD }}
+          DESKTOP_APPLE_API_KEY_BASE64:
+            ${{ secrets.DESKTOP_APPLE_API_KEY_BASE64 }}
+          DESKTOP_APPLE_API_KEY_ID: ${{ secrets.DESKTOP_APPLE_API_KEY_ID }}
+          DESKTOP_APPLE_API_ISSUER: ${{ secrets.DESKTOP_APPLE_API_ISSUER }}
+          DESKTOP_WINDOWS_CERTIFICATE_BASE64:
+            ${{ secrets.DESKTOP_WINDOWS_CERTIFICATE_BASE64 }}
+          DESKTOP_WINDOWS_CERTIFICATE_PASSWORD:
+            ${{ secrets.DESKTOP_WINDOWS_CERTIFICATE_PASSWORD }}
+          DESKTOP_WINDOWS_PUBLISHER: ${{ vars.DESKTOP_WINDOWS_PUBLISHER }}
+          DESKTOP_WINDOWS_SIGNING_PROVIDER:
+            ${{ vars.DESKTOP_WINDOWS_SIGNING_PROVIDER }}
+          DESKTOP_AZURE_TENANT_ID: ${{ secrets.DESKTOP_AZURE_TENANT_ID }}
+          DESKTOP_AZURE_CLIENT_ID: ${{ secrets.DESKTOP_AZURE_CLIENT_ID }}
+          DESKTOP_AZURE_CLIENT_SECRET:
+            ${{ secrets.DESKTOP_AZURE_CLIENT_SECRET }}
+          DESKTOP_AZURE_ENDPOINT: ${{ vars.DESKTOP_AZURE_ENDPOINT }}
+          DESKTOP_AZURE_ACCOUNT: ${{ vars.DESKTOP_AZURE_ACCOUNT }}
+          DESKTOP_AZURE_PROFILE: ${{ vars.DESKTOP_AZURE_PROFILE }}
+          DESKTOP_RELEASE_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
+        run: node packages/desktop/scripts/release-plan.cjs
+  build:
+    needs: credentials
+    if: github.ref == 'refs/heads/main'
+    environment: desktop-release
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.credentials.outputs.matrix) }}
+    name: Release ${{ matrix.platform }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      KODY_SKIP_SKILL_REFRESH: '1'
+      KODY_SKIP_GIT_HELPER_REFRESH: '1'
+      KODY_DESKTOP_ARCH: ${{ matrix.arch }}
+      KODY_DESKTOP_RELEASE: '1'
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          architecture: ${{ matrix.arch }}
+          cache: npm
+      - name: Install Linux runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-0t64 libnss3 libxss1 libasound2t64 libgbm1 libsecret-1-0
+      - run: npm ci
+      - run: npm run build --workspace @kodycodes/cli
+      - run: npm run desktop:validate
+      - name: Restore Apple API key
+        if: runner.os == 'macOS'
+        env:
+          API_KEY: ${{ secrets.DESKTOP_APPLE_API_KEY_BASE64 }}
+        run: |
+          node -e 'const fs = require("node:fs"); if (!process.env.API_KEY) throw new Error("Missing DESKTOP_APPLE_API_KEY_BASE64"); fs.writeFileSync(process.env.RUNNER_TEMP + "/notary.p8", Buffer.from(process.env.API_KEY, "base64"), {mode: 0o600})'
+      - name: Build signed and notarized installers
+        env:
+          CSC_LINK:
+            ${{ runner.os == 'macOS' && secrets.DESKTOP_MAC_CERTIFICATE_BASE64
+            || '' }}
+          CSC_KEY_PASSWORD:
+            ${{ runner.os == 'macOS' && secrets.DESKTOP_MAC_CERTIFICATE_PASSWORD
+            || '' }}
+          APPLE_API_KEY: ${{ runner.temp }}/notary.p8
+          APPLE_API_KEY_ID:
+            ${{ runner.os == 'macOS' && secrets.DESKTOP_APPLE_API_KEY_ID || ''
+            }}
+          APPLE_API_ISSUER:
+            ${{ runner.os == 'macOS' && secrets.DESKTOP_APPLE_API_ISSUER || ''
+            }}
+          WIN_CSC_LINK:
+            ${{ runner.os == 'Windows' &&
+            secrets.DESKTOP_WINDOWS_CERTIFICATE_BASE64 || '' }}
+          WIN_CSC_KEY_PASSWORD:
+            ${{ runner.os == 'Windows' &&
+            secrets.DESKTOP_WINDOWS_CERTIFICATE_PASSWORD || '' }}
+          KODY_WINDOWS_PUBLISHER: ${{ vars.DESKTOP_WINDOWS_PUBLISHER }}
+          KODY_WINDOWS_SIGNING_PROVIDER:
+            ${{ vars.DESKTOP_WINDOWS_SIGNING_PROVIDER }}
+          AZURE_TENANT_ID:
+            ${{ runner.os == 'Windows' && secrets.DESKTOP_AZURE_TENANT_ID || ''
+            }}
+          AZURE_CLIENT_ID:
+            ${{ runner.os == 'Windows' && secrets.DESKTOP_AZURE_CLIENT_ID || ''
+            }}
+          AZURE_CLIENT_SECRET:
+            ${{ runner.os == 'Windows' && secrets.DESKTOP_AZURE_CLIENT_SECRET ||
+            '' }}
+          KODY_AZURE_ENDPOINT: ${{ vars.DESKTOP_AZURE_ENDPOINT }}
+          KODY_AZURE_ACCOUNT: ${{ vars.DESKTOP_AZURE_ACCOUNT }}
+          KODY_AZURE_PROFILE: ${{ vars.DESKTOP_AZURE_PROFILE }}
+        run:
+          npm run dist:release --workspace @kodycodes/desktop -- --${{
+          matrix.platform }} --${{ matrix.arch }}
+      - name: Verify Apple signature and notarization ticket
+        if: runner.os == 'macOS'
+        run: |
+          if [ "$KODY_DESKTOP_ARCH" = arm64 ]; then bundle=artifacts/desktop/mac-arm64/Kody.app; else bundle=artifacts/desktop/mac/Kody.app; fi
+          codesign --verify --deep --strict "$bundle"
+          xcrun stapler validate "$bundle"
+          spctl --assess --type execute --verbose "$bundle"
+      - name: Verify Windows signatures
+        if: runner.os == 'Windows'
+        env:
+          EXPECTED_PUBLISHER: ${{ vars.DESKTOP_WINDOWS_PUBLISHER }}
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem artifacts/desktop -Filter '*.exe')
+          $bundle = if ($env:KODY_DESKTOP_ARCH -eq 'arm64') { 'win-arm64-unpacked' } else { 'win-unpacked' }
+          $files += Get-Item "artifacts/desktop/$bundle/Kody.exe"
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature $file.FullName
+            if ($signature.Status -ne 'Valid') { throw "Invalid signature: $($file.Name)" }
+            $env:ACTUAL_PUBLISHER_SUBJECT = $signature.SignerCertificate.Subject
+            node packages/desktop/scripts/verify-windows-publisher.cjs
+            if ($LASTEXITCODE -ne 0) { throw 'Windows update publisher verification failed.' }
+          }
+      - run: npm run test:packaged-cli --workspace @kodycodes/desktop
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            artifacts/desktop/*.dmg
+            artifacts/desktop/*.zip
+            artifacts/desktop/*.exe
+            artifacts/desktop/*.AppImage
+            artifacts/desktop/*.blockmap
+            artifacts/desktop/latest*.yml
+            artifacts/desktop/SHA256SUMS-*.txt
+            artifacts/desktop/build-info-*.json
+      - name: Remove Apple API key
+        if: always() && runner.os == 'macOS'
+        run: rm -f "$RUNNER_TEMP/notary.p8"
+
+  publish:
+    needs: build
+    environment: desktop-release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release-assets
+      - name: Publish completed release
+        env:
+          GH_TOKEN: ${{ secrets.DESKTOP_RELEASE_TOKEN }}
+          GH_REPO: kody-hq/kody-desktop
+          SOURCE_SHA: ${{ github.sha }}
+          RELEASE_PLATFORMS: ${{ inputs.platforms }}
+        run: |
+          version=$(node -p 'require("./packages/desktop/package.json").version')
+          tag="v$version"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Desktop releases must use a stable version.'; exit 1; }
+          if latest_json=$(gh api "repos/$GH_REPO/releases/latest" 2> release-lookup-error.txt); then
+            latest=$(printf '%s' "$latest_json" | node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(0,"utf8")).tag_name)')
+            printf '%s' "$latest_json" | node packages/desktop/scripts/release-plan.cjs --check-feed
+            [[ "$latest" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Unexpected published desktop tag.'; exit 1; }
+            newest=$(printf '%s\n%s\n' "$version" "${latest#v}" | sort -V | tail -n 1)
+            test "$newest" = "$version" && test "$version" != "${latest#v}" || { echo 'Bump the desktop version above the published release.'; exit 1; }
+          else
+            case "$(cat release-lookup-error.txt)" in
+              *'HTTP 404'*) ;; # First release.
+              *) cat release-lookup-error.txt; exit 1 ;;
+            esac
+          fi
+          # Never replace a published version. Drafts may be resumed after an upload failure.
+          node packages/desktop/scripts/release-plan.cjs --notes > release-notes.txt
+          if gh release view "$tag" --json isDraft,body,assets > draft.json 2>/dev/null; then
+            node packages/desktop/scripts/release-plan.cjs --check-draft < draft.json
+          else
+            gh release create "$tag" --draft --title "Kody $version" --notes-file release-notes.txt
+          fi
+          gh release upload "$tag" release-assets/* --clobber
+          gh release edit "$tag" --draft=false --latest --notes-file release-notes.txt

@@ -237,9 +237,12 @@ export default {
 - `role` is the visitor's role in the owning org, `null` for anyone who is not a
   member.
 - `org.slug` is the org that owns the app, not the visitor's org.
-- Do not treat `email` or `display_name` from this call as the visitor's inside
-  an app request. Request `email` through the OAuth helper above when the app
-  needs the visitor's email.
+- In a visit, "current user" is the visitor. `display_name` is the visitor's
+  own. `email` is the visitor's own address when they shared it (the `email`
+  consent scope through the OAuth helper above) or when the app belongs to their
+  own personal org; otherwise it is `""`. It is never the publisher's.
+- To read who publishes the app, call `kody.appPublisherGet({})` instead (see
+  [Who the app runs as](#who-the-app-runs-as)).
 - A signed-in visitor who cannot run the app (no `app:execute` in the owning
   org, for example someone who only used Sign in with Kody on an
   internet-visible app) gets `user_id` and `username` too, while their Sign in
@@ -291,6 +294,14 @@ credentials through `credential(key)`. Executor needs use the visitor's
 connected credentials when the app declares them. Visitors bring their verified
 identity. `packageAppRunsAsGet` says who it is, or why the app cannot run as
 anyone.
+
+From app server code, `kody.appPublisherGet({})` returns that person:
+`{ user_id, username, email, display_name, org: { slug }, source }`, where
+`source` is `"explicit"` (an Owner chose them), `"publisher"`, or
+`"personal-org"`. It needs no `kody.app.capabilities` entry, and it throws the
+same runs-as error as other calls when the app has no one to run as. Use it when
+the app wants the publisher (for example a "contact the owner" link); use
+`kody.metaGetCurrentUser({})` for the visitor.
 
 - The person is checked live on every call. Someone who left the org, or whose
   account is suspended or deleted, stops the app from acting as them, with an
@@ -356,6 +367,32 @@ and the imported package that made the call. Add it to the importing app's
 `kody.app.capabilities` and republish the app. For `credential.named`, declare
 the credential in `kody.credentials` and open it with `credential(key)` instead.
 Do not depend on the retry.
+
+`createAuthenticatedFetch(name)` reads the integration's non-secret config
+through an internal host helper. That helper is not a capability, so it needs no
+`kody.app.capabilities` entry.
+
+#### Capability allowances for published versions
+
+Some published app versions call capabilities their `kody.app.capabilities` does
+not list. So those apps keep working unchanged, Kody records an allowance for
+each one: the exact capability names that published version was seen calling,
+pinned to that version's published commit. Under an allowance the call runs as
+the runs-as person, the same as a declared capability. An allowance is data (the
+`package_app_capability_allowances` table), not a general loosening: other
+capabilities still need a declaration, and other apps get nothing.
+
+The allowance does not carry over. A new publish has a new commit, so its calls
+need the declarations. Before that happens Kody says exactly what to add:
+
+- The package page shows people who can publish a **Declare these capabilities
+  before your next publish** callout with the names and a `package.json`
+  snippet.
+- Publish and `kody dev check` (`repoRunChecks`, `packageCheck`) add a
+  `capabilities` warning that starts "Action needed before this publish" and
+  lists each name still missing from `kody.app.capabilities`.
+
+Add the listed names to `kody.app.capabilities` and the warning goes away.
 
 `kody.app.visitorNeeds` is how an app works on a signed-in visitor's own data.
 Each key is its own Sign in with Kody consent scope, `need:<key>`, and the

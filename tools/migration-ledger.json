@@ -817,7 +817,11 @@
 			"sha256": "761dab0e2cc9d1568db9c1d981c690afef51b9cdaf3a93dcdbdca19dd4a09174"
 		},
 		{
-			"filename": "0228-users-personal-org-id-lookup-index.sql",
+			"filename": "0226-package-app-capability-allowances.sql",
+			"sha256": "006fbd7348590dd4d72034fbf3665e2d6372e13af8f7338e69915aed6bdea4cc"
+		},
+		{
+			"filename": "0229-users-personal-org-id-lookup-index.sql",
 			"sha256": "7f63aabddc9cc498cde6551a417cb2f5d941598b252e05ab67e0d85afa2b684a"
 		}
 	]

@@ -182,6 +182,21 @@ const entityExplainerDefinitions = [
 		],
 	},
 	{
+		id: 'profiles',
+		question: 'What is an agent profile?',
+		paragraphs: [
+			'An agent profile is a scoped identity you create for an agent or bot you run, in one organization. It is not your public profile. A request made as a profile reaches only what you, the profile, and every profile above it allow.',
+			'A profile starts with a snapshot of grants, each one a subset of what you hold. It does not inherit access you or its parent gain later; only an explicit share adds more. Sub-profiles nest up to five levels and can only narrow what their parent holds.',
+			'Expiry only moves earlier, and a sub-profile never outlives its parents. Revoking a profile is final and stops every sub-profile below it. Profile-bound tokens let an agent act as one profile.',
+		],
+		learnMore: [
+			{
+				href: docHref('profiles'),
+				label: 'Profiles',
+			},
+		],
+	},
+	{
 		id: 'workflows',
 		question: 'What is a workflow?',
 		paragraphs: [

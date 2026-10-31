@@ -432,14 +432,25 @@ export function endPackageAppVisitWithResponse(
 ) {
 	if (!nonce) return response
 	const webSocket = 'webSocket' in response ? response.webSocket : null
-	if (webSocket || response.status === 101) {
+	if (webSocket || response.status === 101 || !response.body) {
 		endPackageAppVisit(nonce)
 		return response
 	}
-	const body = response.body
+	return new Response(watchPackageAppVisitBody(response.body, nonce), response)
+}
+
+/**
+ * The body stream that burns `nonce` when it completes, cancels, or cannot
+ * be watched. A null body ends the visit now.
+ */
+export function watchPackageAppVisitBody(
+	body: ReadableStream<Uint8Array> | null,
+	nonce: string | null | undefined,
+): ReadableStream<Uint8Array> | null {
+	if (!nonce) return body
 	if (!body) {
 		endPackageAppVisit(nonce)
-		return response
+		return null
 	}
 	try {
 		const reader = body.getReader()
@@ -449,7 +460,7 @@ export function endPackageAppVisitWithResponse(
 			settled = true
 			endPackageAppVisit(nonce)
 		}
-		const watched = new ReadableStream<Uint8Array>({
+		return new ReadableStream<Uint8Array>({
 			async pull(controller) {
 				try {
 					const { done, value } = await reader.read()
@@ -469,10 +480,9 @@ export function endPackageAppVisitWithResponse(
 				await reader.cancel(reason)
 			},
 		})
-		return new Response(watched, response)
 	} catch {
 		endPackageAppVisit(nonce)
-		return response
+		return body
 	}
 }
 

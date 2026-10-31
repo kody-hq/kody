@@ -122,7 +122,9 @@ test('collectSitePerf keeps homepage classify when extra landing probes fail', a
 		const report = await collectSitePerf({
 			url: 'https://kody.codes/',
 			budget,
+			packageAppUrl: null,
 		})
+		expect(report.packageApp).toBeNull()
 		expect(report.pages).toEqual([
 			{
 				url: 'https://kody.codes/docs/how-kody-works',
@@ -134,6 +136,109 @@ test('collectSitePerf keeps homepage classify when extra landing probes fail', a
 		])
 		expect(report.verdict).toBe('ok')
 		expect(report.findings).toEqual([])
+	} finally {
+		vi.unstubAllGlobals()
+	}
+})
+
+test('collectSitePerf probes the hello-world package app without changing the verdict', async () => {
+	let appRequests = 0
+	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+		const url = new URL(String(input))
+		if (url.hostname === 'kentcdodds.kody.run') {
+			appRequests += 1
+			return new Response('ok', {
+				headers: {
+					'Server-Timing': `credentialSuppliers;dur=${appRequests === 1 ? 40 : 0}, entrypoint;dur=3, total;dur=${appRequests === 1 ? 90 : 20}`,
+				},
+			})
+		}
+		if (url.pathname === '/') {
+			return new Response(healthyHtml, {
+				headers: {
+					'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
+					Vary: 'Cookie',
+					'Server-Timing': 'session;dur=1, ssr;dur=4',
+				},
+			})
+		}
+		throw new Error(`unexpected probe: ${url}`)
+	})
+	vi.stubGlobal('fetch', fetchMock)
+	try {
+		const report = await collectSitePerf({
+			url: 'https://kody.codes/',
+			budget,
+		})
+		expect(report.packageApp?.url).toBe(
+			'https://kentcdodds.kody.run/perf-hello/',
+		)
+		expect(report.packageApp?.samples).toHaveLength(3)
+		expect(report.packageApp?.samples[0]).toEqual({
+			status: 200,
+			ttfbMs: expect.any(Number),
+			serverTiming: [
+				{ name: 'credentialSuppliers', durationMs: 40 },
+				{ name: 'entrypoint', durationMs: 3 },
+				{ name: 'total', durationMs: 90 },
+			],
+		})
+		expect(report.packageApp?.samples[2]?.serverTiming).toContainEqual({
+			name: 'total',
+			durationMs: 20,
+		})
+		expect(report.verdict).toBe('ok')
+	} finally {
+		vi.unstubAllGlobals()
+	}
+})
+
+test('collectSitePerf omits a package-app probe that cannot connect', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL) => {
+			const url = new URL(String(input))
+			if (url.hostname === 'kentcdodds.kody.run') throw new Error('offline')
+			if (url.pathname === '/') {
+				return new Response(healthyHtml, {
+					headers: {
+						'Cache-Control': 'public, max-age=60, stale-while-revalidate=300',
+						Vary: 'Cookie',
+						'Server-Timing': 'session;dur=1, ssr;dur=4',
+					},
+				})
+			}
+			throw new Error(`unexpected probe: ${url}`)
+		}),
+	)
+	try {
+		const report = await collectSitePerf({ url: 'https://kody.codes/', budget })
+		expect(report.packageApp).toBeNull()
+		expect(report.verdict).toBe('ok')
+	} finally {
+		vi.unstubAllGlobals()
+	}
+})
+
+test('collectSitePerf marks a partial package-app series', async () => {
+	let appRequests = 0
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL) => {
+			const url = new URL(String(input))
+			if (url.hostname === 'kentcdodds.kody.run') {
+				appRequests += 1
+				if (appRequests > 1) throw new Error('reset')
+				return new Response('ok')
+			}
+			if (url.pathname === '/') return new Response(healthyHtml)
+			throw new Error(`unexpected probe: ${url}`)
+		}),
+	)
+	try {
+		const report = await collectSitePerf({ url: 'https://kody.codes/', budget })
+		expect(report.packageApp?.samples).toHaveLength(1)
+		expect(report.packageApp?.error).toBe('sample 2 of 3 failed: reset')
 	} finally {
 		vi.unstubAllGlobals()
 	}

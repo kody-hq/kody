@@ -2270,6 +2270,12 @@ export type AccountPackageDetail = AccountPackageListItem & {
 	 * or empty when the package has none.
 	 */
 	customDomains?: Array<PackageAppCustomDomainView>
+	/**
+	 * Capabilities the published version may call without declaring them,
+	 * which the next publish must add to `kody.app.capabilities` (owner view
+	 * only).
+	 */
+	capabilityAllowance?: Array<string>
 	/** Recent package-app cookie HttpOnly warnings (owner view only). */
 	cookieWarnings?: Array<{
 		cookieName: string

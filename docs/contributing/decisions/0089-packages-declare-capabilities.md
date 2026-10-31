@@ -63,3 +63,15 @@ discover them.
 - Revisit if the warn-only findings show a large class of legitimate dynamic
   calls that no declaration can cover, or if the closure walk makes publish
   measurably slower.
+
+## Amendment 2026-10-31: per-version allowances
+
+Retiring the package-app visitor retry would break a few published app versions
+that call capabilities they never declared. Instead of loosening the cap,
+`package_app_capability_allowances` records, per app and published commit, the
+exact capability names the fallback telemetry saw that version call (seeded once
+by migration 0226). The runtime treats those names as declared for that commit
+only. A new publish gets no allowance; the package page, publish, and
+`kody dev check` name what to add to `kody.app.capabilities` before that
+publish. `__kodyIntegrationRuntimeConfig` (behind `createAuthenticatedFetch`) is
+an internal host helper, not a capability, and never needs a declaration.
