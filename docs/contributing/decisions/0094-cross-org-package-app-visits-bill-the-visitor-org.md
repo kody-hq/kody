@@ -36,11 +36,14 @@ Kent decided on 2026-10-25 (option B):
 6. **No new per-visitor platform limit** (the earlier decision 6C stands). The
    existing usage breaker applies, scoped to whoever is billed.
 
-Attribution: billed events keep the app's owning org in Analytics Engine
-`blob16`. `package_app_visitor_attribution_daily` stays keyed by the owning org
-with a `billed_org_id` column, so the publisher's Visitors view still lists the
-visitor (marked "their org pays", no credits), while the visiting org's usage
-and Where it went show the app by name as shared by its owner.
+Attribution: visitor-billed storage meter events keep the app's owning org in
+Analytics Engine `blob16`; fetch and static-call events carry the visiting org
+as `userId` and the app as `entityId` only.
+`package_app_visitor_attribution_daily` stays keyed by the owning org with a
+`billed_org_id` column, so the publisher's Visitors view still attributes the
+visitor (marked "their org pays"; their metered units carry no publisher
+credits, while the Worker compute they cause still does), and the visiting org's
+usage and Where it went show the app by name as shared by its owner.
 
 ## Consequences
 

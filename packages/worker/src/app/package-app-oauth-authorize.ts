@@ -3,7 +3,11 @@ import {
 	readParsedAuthSession,
 } from '#app/auth-session.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
-import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
+import {
+	loadOrgBindingForPerson,
+	loadOrgBindingForSlug,
+} from '#worker/orgs/repo.ts'
+import { decidePackageAppBilling } from '#worker/package-runtime/package-app-billing.ts'
 import {
 	packageAppOauthAppDomain,
 	packageAppOauthClaimLabels,
@@ -268,11 +272,25 @@ async function loadConsentBilling(input: {
 			input.personId,
 			input.orgUsername,
 		)
-		if (binding?.role) return { payer: 'publisher' }
+		if (!binding) return { payer: 'publisher' }
+		const personal = await loadOrgBindingForPerson(
+			input.env.APP_DB,
+			input.personId,
+		)
+		const billing = decidePackageAppBilling({
+			ownerId: binding.org.id,
+			visitor: { role: binding.role },
+			internetVisible: false,
+			visitorPersonalOrgId: personal.org.id,
+		})
+		if (!billing) return { payer: 'publisher' }
+		return {
+			payer: 'visitor-org',
+			orgSlug: personal.org.slug ?? input.viewerUsername,
+		}
 	} catch {
 		return { payer: 'publisher' }
 	}
-	return { payer: 'visitor-org', orgSlug: input.viewerUsername }
 }
 
 async function parseAndValidateAuthorizeRequest(input: {

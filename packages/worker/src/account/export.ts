@@ -436,6 +436,7 @@ function sanitizeRow(
 		if (
 			foreignUserIdColumns.includes(key) &&
 			typeof value === 'string' &&
+			value !== '' &&
 			!ownedIds.has(value)
 		) {
 			sanitized[key] = accountExportRedactedForeignUserId

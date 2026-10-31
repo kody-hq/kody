@@ -263,7 +263,7 @@ A package app runs as one person in the owning org: the person who last
 published it, unless an Owner picks someone else with `packageAppRunsAsSet`
 (`username: null` goes back to the publisher). In a personal org with no
 recorded publisher, that is the org owner. The owning org pays for the app
-(except metered work caused by visitors from other orgs, see
+(except metered work caused by visitors from other orgs to internal apps, see
 [Who pays for visits](#who-pays-for-visits)), and that person supplies publisher
 credentials through `credential(key)`. Executor needs use the visitor's
 connected credentials when the app declares them. Visitors bring their verified
@@ -1441,12 +1441,15 @@ Billing follows who is visiting
 | Someone outside the org with a grant, on an internal app   | **Their own personal org**                             | Owning org                                    |
 | Anyone on an internet-visible app (anonymous or signed in) | Owning org                                             | Owning org                                    |
 
-- The visiting org's usage and credits pages list the app by name, marked as
-  shared by its owner. The usage breaker for those visits checks the visiting
-  org, so a visitor whose org is out of credits is refused without affecting
-  anyone else.
-- The publisher's Visitors table still lists every visitor; a visitor from
-  another org is marked "their org pays" and carries no credits there.
+- If the visitor's personal org cannot be looked up, the request is still served
+  and the owning org pays.
+- The visiting org's usage page lists the app by name, marked as shared by its
+  owner; Where it went lists it once it adds credits past the include. The usage
+  breaker for those visits checks the visiting org, so a visitor whose org is
+  out of credits is refused without affecting anyone else.
+- The publisher's Visitors table attributes visitors (the top 500 with
+  Worker-day or rows-read usage); a visitor from another org is marked "their
+  org pays", and only the Worker compute they cause adds publisher credits.
 - Stored data stays in the publisher's buckets, so storage capacity stays the
   publisher's. Realtime sessions run as the owner and are billed to it.
 - The billed org rides on each request, never on the worker, so every visitor
