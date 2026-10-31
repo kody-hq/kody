@@ -382,6 +382,11 @@ export async function main(argv = process.argv.slice(2)) {
 		process.stdout.write(
 			`${report.verdict} ${report.url} html=${report.htmlBytes} js=${report.largestSameOriginJsBytes ?? 'n/a'} lcp=${report.lcpImageBytes ?? 'n/a'} ttfb=${report.ttfbMs ?? 'n/a'}\n`,
 		)
+		if (report.packageApp?.error) {
+			process.stdout.write(
+				`package-app ${report.packageApp.url} partial: ${report.packageApp.error}\n`,
+			)
+		}
 		for (const sample of report.packageApp?.samples ?? []) {
 			process.stdout.write(
 				`package-app ${report.packageApp?.url} status=${sample.status} ttfb=${sample.ttfbMs} ${sample.serverTiming.map((entry) => `${entry.name}=${entry.durationMs}`).join(' ')}\n`,
