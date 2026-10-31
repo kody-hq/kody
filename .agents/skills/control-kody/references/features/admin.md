@@ -1,3 +1,11 @@
+## Billing ownership and seat reporting
+
+Billing controls live on organization pages; user details link to the personal
+organization and retain only metadata, including credentials/privacy copy.
+Legacy user-targeted billing tools are deprecated forwarders. Seat sync emits
+`billing_seat_quantity_synced`, and admins can query aggregate history with the
+read-only `adminOrgSeatQuantityReport` capability.
+
 # Admin
 
 ## Seed / reach

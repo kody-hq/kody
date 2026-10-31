@@ -4,6 +4,7 @@
  * membership roles (owner/member seats vs billing-only).
  */
 import { syncOrgSeatQuantity } from '#worker/billing/seat-sync.ts'
+import { optionalOrgAuditWriter } from './org-audit.ts'
 
 export async function syncSeatsAfterMembershipChange(input: {
 	db: D1Database
@@ -17,6 +18,7 @@ export async function syncSeatsAfterMembershipChange(input: {
 			orgId: input.orgId,
 			emailEnv: input.env,
 			notifySeatChange: true,
+			audit: optionalOrgAuditWriter(input.env, null),
 		})
 	} catch (error) {
 		console.warn('org-seat-sync-after-membership-failed', {

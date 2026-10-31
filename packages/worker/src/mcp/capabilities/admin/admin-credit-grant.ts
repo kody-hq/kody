@@ -35,6 +35,7 @@ const inputSchema = z.intersection(
 			.max(creditAdminGrantNoteMaxLength)
 			.optional()
 			.describe('Why the grant was made. Stored on the ledger entry.'),
+		reason: z.string().trim().max(500).optional(),
 	}),
 )
 
@@ -51,7 +52,7 @@ export const adminCreditGrantCapability = defineDomainCapability(
 		name: 'adminCreditGrant',
 		contextRuns: 'deny',
 		description:
-			'Grant (add) prepaid credits to one account by stable user id, email, or username, including the calling admin. House-funded: no Stripe charge. Writes an audited ledger entry with the granting admin, amount, recipient, time, and optional note. Credits are only spent (on usage past the Pro include) by credit-eligible Pro accounts; otherwise the balance is held. Use adminOrgCreditGrant to grant credits to any organization wallet.',
+			'Deprecated: use adminOrgPlanSet / adminOrgCreditGrant / adminOrgCreditEligibilitySet / adminOrgGet with an org handle. Grant prepaid credits to one account.',
 		keywords: ['admin', 'credits', 'wallet', 'grant', 'balance', 'top up'],
 		inputSchema,
 		outputSchema,
@@ -88,11 +89,11 @@ export const adminCreditGrantCapability = defineDomainCapability(
 				},
 				{
 					successReason: (result) =>
-						formatAdminCreditGrantAuditReason({
+						`${formatAdminCreditGrantAuditReason({
 							stableUserId: result.wallet.stableUserId,
 							amountCents: result.amountCents,
 							entryId: result.entryId,
-						}),
+						})};reason=${args.reason?.trim() || args.note?.trim() || 'No reason given (legacy adminCreditGrant)'}`,
 				},
 			)
 		},

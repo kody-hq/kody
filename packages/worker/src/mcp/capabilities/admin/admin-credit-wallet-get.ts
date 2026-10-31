@@ -18,7 +18,7 @@ export const adminCreditWalletGetCapability = defineDomainCapability(
 		name: 'adminCreditWalletGet',
 		contextRuns: 'deny',
 		description:
-			'Read one account’s prepaid credit wallet: balance, whether it is on the credit-eligible Pro plan, whether usage past the include runs on credits, and the 20 most recent ledger entries (top-ups, auto-refills, debits, and admin grants with the granting admin and note).',
+			'Deprecated: use adminOrgPlanSet / adminOrgCreditGrant / adminOrgCreditEligibilitySet / adminOrgGet with an org handle. Read one account’s prepaid credit wallet.',
 		keywords: ['admin', 'credits', 'wallet', 'balance', 'ledger', 'audit'],
 		inputSchema: adminCreditTargetSchema,
 		outputSchema: adminCreditWalletSchema,

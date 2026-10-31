@@ -16,7 +16,6 @@ import {
 import {
 	assignAdminUserRoleSchema,
 	removeAdminUserRoleSchema,
-	setAdminUserPlanSchema,
 	suspendAdminUserSchema,
 	unsuspendAdminUserSchema,
 	resumeAdminUserEmailSchema,
@@ -291,16 +290,6 @@ export const removeAdminUserRole = createServerFn({ method: 'POST' })
 			await import('../../src/admin/users-operations.ts')
 		return withWebsiteMutation({}, async ({ request, env }) => {
 			return removeAdminUserRole({ env, request, ...data })
-		})
-	})
-export const setAdminUserPlan = createServerFn({ method: 'POST' })
-	.inputValidator(setAdminUserPlanSchema)
-	.handler(async ({ data }) => {
-		const { withWebsiteMutation } = await import('./mutation-context.ts')
-		const { setAdminUserPlan } =
-			await import('../../src/admin/users-operations.ts')
-		return withWebsiteMutation({}, async ({ request, env }) => {
-			return setAdminUserPlan({ env, request, ...data })
 		})
 	})
 export const suspendAdminUser = createServerFn({ method: 'POST' })

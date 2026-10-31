@@ -1,3 +1,13 @@
+## User-targeted admin billing capabilities
+
+The legacy user-targeted billing capabilities still work as deprecated
+forwarders for personal organizations, preserving their existing inputs and
+outputs. New integrations should use `adminOrgPlanSet`, `adminOrgCreditGrant`,
+`adminOrgCreditEligibilitySet`, and `adminOrgGet` with an organization handle.
+This change introduced the deprecation and forwarder behavior. Removal is ready
+when there are no invocations of the four tools in the platform audit log for 4
+consecutive weeks.
+
 # Planned breaking changes
 
 Leftover fields and params that still work, and that a later change will remove.

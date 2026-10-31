@@ -1,3 +1,12 @@
+### Admin organization billing and seat reporting
+
+The admin user detail page is metadata-only for billing and links administrators
+to the user's personal organization. User-targeted billing tools are deprecated
+forwarders to organization mutations. Seat synchronization records
+`billing_seat_quantity_synced` organization audit events, and
+`adminOrgSeatQuantityReport` provides an aggregate, read-only report without
+exposing organization or Stripe identifiers.
+
 # Entitlements (plans and quotas)
 
 ## Contents

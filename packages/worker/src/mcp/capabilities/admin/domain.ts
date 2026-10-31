@@ -11,6 +11,7 @@ import { adminOrgCreditGrantCapability } from './admin-org-credit-grant.ts'
 import { adminOrgCreditEligibilitySetCapability } from './admin-org-credit-eligibility-set.ts'
 import { adminOrgLimitsGetCapability } from './admin-org-limits-get.ts'
 import { adminOrgGetCapability } from './admin-org-get.ts'
+import { adminOrgSeatQuantityReportCapability } from './admin-org-seat-quantity-report.ts'
 import { adminOrgResourceTransferCapability } from './admin-org-resource-transfer.ts'
 import { adminOrgRestoreCapability } from './admin-org-restore.ts'
 import { adminPackageAppCustomHostnameRemoveCapability } from './admin-package-app-custom-hostname-remove.ts'
@@ -240,6 +241,7 @@ export const adminDomain = defineDomain({
 		adminCreditEligibilitySetCapability,
 		adminOrgLimitsGetCapability,
 		adminOrgGetCapability,
+		adminOrgSeatQuantityReportCapability,
 		adminOrgLimitOverridesSetCapability,
 		adminOrgPlanSetCapability,
 		adminOrgCreditGrantCapability,

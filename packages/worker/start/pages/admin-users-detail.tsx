@@ -1,6 +1,5 @@
 /** @jsxImportSource @emotion/react */
 import { useRouteContext } from '@tanstack/react-router'
-import { AdminOrgLimitsPanel } from './admin-users-limits.tsx'
 import { AdminUserDestinationPanel } from './admin-users-destination-panel.tsx'
 import { useState } from 'react'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
@@ -28,7 +27,6 @@ import {
 } from '#client/charts/usage-metric-series.ts'
 import { type RoleName } from '#universal/permissions.ts'
 import {
-	type AdminPlanName,
 	type AdminUserListItem,
 	type AdminUserOrgMembership,
 	type AdminUserUsageLoaderData,
@@ -38,7 +36,6 @@ import {
 	formatUsageLimit,
 	formatUsagePercent,
 } from '#client/routes/admin-users-shared.ts'
-import { AdminUserCreditsPanel } from './admin-users-credits.tsx'
 import {
 	formatAdminEntitlementLadder,
 	formatAdminOrganizationRole,
@@ -69,7 +66,6 @@ export type AdminUsersActionState =
 	| 'idle'
 	| 'assigning'
 	| 'removing'
-	| 'saving-plan'
 	| 'moderating'
 	| 'verifying'
 	| 'creatingUser'
@@ -77,10 +73,8 @@ export type AdminUserDetailProps = {
 	selectedUser: AdminUserListItem
 	orgs: Array<AdminUserOrgMembership>
 	availableRoles: Array<RoleName>
-	availablePlans: Array<AdminPlanName>
 	actionState: AdminUsersActionState
 	selectedRoleToAssign: RoleName
-	selectedPlanChoice: AdminPlanName
 	mintedVerifyUrl: string | null
 	mintedVerifyUrlForStableUserId: string | null
 	usageStatus: 'loading' | 'ready' | 'error'
@@ -92,9 +86,6 @@ export type AdminUserDetailProps = {
 	onSubmitVerificationAction: (
 		action: 'mark_email_verified' | 'mint_verify_url',
 	) => void
-	onPlanChoiceChange: (plan: AdminPlanName) => void
-	onSubmitPlanAction: () => void
-	onCreditsGranted: () => void
 	onSubmitModerationAction: (
 		action: 'suspend_user' | 'unsuspend_user' | 'resume_email_outbound',
 	) => void
@@ -310,26 +301,6 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 								: 'None',
 					},
 					{
-						label: 'Admin grant',
-						value: selectedUser.plan ?? 'free',
-					},
-					{
-						label: 'Subscription plan',
-						value: selectedUser.stripePlan ?? 'None',
-					},
-					{
-						label: 'Effective plan',
-						value: selectedUser.effectivePlan ?? 'free',
-					},
-					{
-						label: 'Entitlement ladder',
-						value: formatAdminEntitlementLadder(selectedUser.entitlementLadder),
-					},
-					{
-						label: 'Stripe customer',
-						value: selectedUser.stripeCustomerLinked ? 'Linked' : 'Not linked',
-					},
-					{
 						label: 'Suspended',
 						value: (
 							<TimestampValue value={selectedUser.suspended_at} fallback="No" />
@@ -495,78 +466,54 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 				stableUserId={selectedUser.stableUserId}
 			/>
 			<AccountManagementPanel
-				title="Manage plan"
-				description={
+				title="Billing"
+				description="Plans, seats, credits, budgets and limits live on organizations. Change them from the organization page."
+			>
+				{personalOrganization ? (
 					<>
-						Sets the admin grant on this person’s personal organization. The
-						effective plan reflects the higher of the manual grant and Stripe
-						subscription.{' '}
-						{personalOrganization ? (
+						<MetadataGrid
+							items={[
+								{
+									label: 'Plan',
+									value: formatAdminPlanLabel(selectedUser.manualPlan),
+								},
+								{
+									label: 'Subscription plan',
+									value: selectedUser.stripePlan
+										? formatAdminPlanLabel(selectedUser.stripePlan)
+										: 'None',
+								},
+								{
+									label: 'Effective plan',
+									value: formatAdminPlanLabel(selectedUser.effectivePlan),
+								},
+								{
+									label: 'Entitlement ladder',
+									value: formatAdminEntitlementLadder(
+										selectedUser.entitlementLadder,
+									),
+								},
+								{
+									label: 'Stripe customer',
+									value: selectedUser.stripeCustomerLinked
+										? 'Linked'
+										: 'Not linked',
+								},
+							]}
+						/>
+						<p>
 							<a
 								href={`/admin/orgs/${encodeURIComponent(personalOrganization.slug)}`}
 							>
 								Open personal organization
 							</a>
-						) : null}
+						</p>
+						<p>Team organizations are listed in the Organizations panel.</p>
 					</>
-				}
-			>
-				<div
-					css={{
-						display: 'grid',
-						gap: spacing.md,
-						gridTemplateColumns: 'minmax(0, 1fr) auto',
-						alignItems: 'end',
-						[mq.mobile]: { gridTemplateColumns: '1fr' },
-					}}
-				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Admin grant</span>
-						<select
-							data-field-ring
-							disabled={isMutating}
-							aria-label="Admin grant"
-							value={props.selectedPlanChoice}
-							onChange={(event) => {
-								props.onPlanChoiceChange(
-									event.currentTarget.value as AdminPlanName,
-								)
-							}}
-							css={selectCss}
-						>
-							{props.availablePlans.map((plan) => (
-								<option key={plan} value={plan}>
-									{formatAdminPlanLabel(plan)}
-								</option>
-							))}
-						</select>
-					</label>
-					<button
-						type="button"
-						disabled={
-							isMutating ||
-							props.selectedPlanChoice === (selectedUser.plan ?? 'free')
-						}
-						onClick={() => props.onSubmitPlanAction()}
-						css={primaryButtonCss}
-					>
-						{actionState === 'saving-plan' ? 'Saving…' : 'Save grant'}
-					</button>
-				</div>
+				) : (
+					<p>No personal organization is available for this user.</p>
+				)}
 			</AccountManagementPanel>
-			<AdminUserCreditsPanel
-				key={selectedUser.stableUserId}
-				stableUserId={selectedUser.stableUserId}
-				organizationSlug={personalOrganization?.slug}
-				personalOrganizationMissing={!personalOrganization}
-				onGranted={props.onCreditsGranted}
-			/>
-			<AdminOrgLimitsPanel
-				key={`limits-${actorKey}-${selectedUser.stableUserId}`}
-				orgId={personalOrganization?.orgId ?? selectedUser.stableUserId}
-				organizationSlug={personalOrganization?.slug}
-				personalOrganizationMissing={!personalOrganization}
-			/>
 			<AccountManagementPanel
 				title="Moderation"
 				description="Suspension blocks the account at the session, MCP, and email chokepoints. The outbound-email pause is set automatically after spam complaints or repeated bounces."

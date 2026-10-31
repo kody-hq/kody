@@ -21,7 +21,12 @@ import {
 	type StripeSubscription,
 } from './stripe-client.ts'
 import { sendSeatChangeEmail } from './org-billing-emails.ts'
+import {
+	recordOrgAuditEvent,
+	type OrgAuditWriter,
+} from '#worker/orgs/org-audit.ts'
 type SeatSyncEnv = BillingEnv & StripeEnv
+export const billingSeatQuantitySyncedAction = 'billing_seat_quantity_synced'
 
 type OrgBillingRow = {
 	plan: string
@@ -45,6 +50,19 @@ async function loadOrgBillingRow(
 		.first<OrgBillingRow>()
 }
 
+export function selectPurchasableSeatSubscription(
+	env: SeatSyncEnv,
+	subscriptions: ReadonlyArray<StripeSubscription>,
+): { subscription: StripeSubscription; subscriptionItemId: string } | null {
+	const selected = selectKodyPlanRetainingSubscriptions(env, subscriptions)
+	if (selected.length !== 1) return null
+	const subscription = selected[0]!
+	if (!isPurchasableProSubscription(env, subscription)) return null
+	const subscriptionItemId = primarySubscriptionItemId(subscription)
+	if (!subscriptionItemId) return null
+	return { subscription, subscriptionItemId }
+}
+
 function primarySubscriptionItemId(
 	subscription: StripeSubscription,
 ): string | null {
@@ -62,6 +80,7 @@ export async function syncOrgSeatQuantity(input: {
 	now?: Date
 	notifySeatChange?: boolean
 	emailEnv?: Env
+	audit?: OrgAuditWriter | null
 }): Promise<{ previousQuantity: number; nextQuantity: number } | null> {
 	void input.now
 	const orgId = input.orgId.trim()
@@ -73,18 +92,12 @@ export async function syncOrgSeatQuantity(input: {
 	const customerId = billing.stripe_customer_id?.trim()
 	if (!customerId) return null
 
-	const subscriptions = selectKodyPlanRetainingSubscriptions(
+	const selected = selectPurchasableSeatSubscription(
 		input.env,
 		await listSubscriptions(input.env, customerId),
 	)
-	if (subscriptions.length !== 1) return null
-
-	const subscription = subscriptions[0]!
-	// Retired Standard/Pro keep exact billing in P6 (quantity and price).
-	if (!isPurchasableProSubscription(input.env, subscription)) return null
-
-	const subscriptionItemId = primarySubscriptionItemId(subscription)
-	if (!subscriptionItemId) return null
+	if (!selected) return null
+	const { subscription, subscriptionItemId } = selected
 
 	const previousQuantity = subscriptionSeatQuantity(subscription)
 	const seatCount = await countLiveSeats(input.db, orgId)
@@ -104,6 +117,21 @@ export async function syncOrgSeatQuantity(input: {
 		subscriptionItemId,
 		quantity: confirmedQuantity,
 	})
+	try {
+		if (input.audit) {
+			await recordOrgAuditEvent(input.audit, {
+				orgId,
+				action: billingSeatQuantitySyncedAction,
+				resourceType: 'org_subscription',
+				details: {
+					previousQuantity,
+					nextQuantity: confirmedQuantity,
+				},
+			})
+		}
+	} catch (error) {
+		console.warn('org-seat-sync-audit-failed', { orgId, error })
+	}
 	const emailEnv = input.emailEnv
 	if (input.notifySeatChange !== false && billing.slug && emailEnv) {
 		await sendSeatChangeEmail({

@@ -29,7 +29,6 @@ import {
 import {
 	assignAdminUserRole,
 	removeAdminUserRole,
-	setAdminUserPlan,
 	suspendAdminUser,
 	unsuspendAdminUser,
 	resumeAdminUserEmail,
@@ -39,7 +38,6 @@ import {
 } from '#start/server/admin-mutations'
 import {
 	type AdminCreatedUserSetup,
-	type AdminPlanName,
 	type AdminUsersLoaderData,
 } from '#universal/loader-data.ts'
 import { type RoleName } from '#universal/permissions.ts'
@@ -86,7 +84,6 @@ export function AdminUsersPage(props: {
 	}, [actorKey, props.currentHref])
 	const sentinelRef = useRef<HTMLDivElement | null>(null)
 	const availableRoles = props.payload.availableRoles
-	const availablePlans = props.payload.availablePlans
 	const selectedUserFallback = props.payload.selectedUser
 	const [loadAdditionalPages, setLoadAdditionalPages] = useState(false)
 	const listFilters = adminUsersFilters(pageLocation.search)
@@ -177,14 +174,7 @@ export function AdminUsersPage(props: {
 		useState<string | null>(null)
 	const [selectedRoleToAssign, setSelectedRoleToAssign] = useState(
 		'user' as RoleName,
-		// Draft follows the selected user (see the render body) until the admin
-		// edits it. Null stored plan values are shown/saved as `free`.
 	)
-	const [planDraftChoice, setSelectedPlanChoice] =
-		useState<AdminPlanName>('free')
-	const [planDraftStableUserId, setPlanDraftStableUserId] = useState<
-		string | null
-	>(null)
 	function getCurrentHref() {
 		return props.currentHref
 	}
@@ -233,12 +223,6 @@ export function AdminUsersPage(props: {
 	function buildUserDetailHref(stableUserId: string) {
 		return buildUserDetailHrefFrom(getCurrentHref(), stableUserId)
 	}
-	function invalidateUsage() {
-		void client.invalidateQueries({ queryKey: ['admin-user', actorKey] })
-	}
-	function resetPlanDraft() {
-		setPlanDraftStableUserId(null)
-	}
 	async function loadMoreUsers() {
 		if (additional.isFetching || !usersSnapshot.hasMore) return false
 		if (!loadAdditionalPages) setLoadAdditionalPages(true)
@@ -261,7 +245,6 @@ export function AdminUsersPage(props: {
 				}),
 			)
 			if (activeScope.current !== submittedScope) return
-			resetPlanDraft()
 			setMessage(
 				action === 'assign_role'
 					? `Assigned ${selectedRoleToAssign} role.`
@@ -273,35 +256,6 @@ export function AdminUsersPage(props: {
 			setActionState('idle')
 			setMessage(
 				error instanceof Error ? error.message : 'Unable to update user roles.',
-			)
-		}
-	}
-	async function submitPlanAction() {
-		const submittedScope = activeScope.current
-		const selectedUser = resolveSelectedUser()
-		if (!selectedUser || actionState !== 'idle') return
-		const plan =
-			selectedUser.stableUserId === planDraftStableUserId
-				? planDraftChoice
-				: (selectedUser.plan ?? 'free')
-		setActionState('saving-plan')
-		setMessage(null)
-		try {
-			await submitUserChange(selectedUser.stableUserId, () =>
-				setAdminUserPlan({
-					data: { stableUserId: selectedUser.stableUserId, plan },
-				}),
-			)
-			if (activeScope.current !== submittedScope) return
-			resetPlanDraft()
-			invalidateUsage()
-			setMessage(`Updated admin grant to ${plan}.`)
-			setActionState('idle')
-		} catch (error) {
-			if (activeScope.current !== submittedScope) return
-			setActionState('idle')
-			setMessage(
-				error instanceof Error ? error.message : 'Unable to update user plan.',
 			)
 		}
 	}
@@ -322,7 +276,6 @@ export function AdminUsersPage(props: {
 				}),
 			)
 			if (activeScope.current !== submittedScope) return
-			resetPlanDraft()
 			if (
 				action === 'mint_verify_url' &&
 				'verifyUrl' in payload &&
@@ -368,7 +321,6 @@ export function AdminUsersPage(props: {
 				}),
 			)
 			if (activeScope.current !== submittedScope) return
-			resetPlanDraft()
 			setMessage(
 				action === 'suspend_user'
 					? 'Account suspended.'
@@ -407,7 +359,6 @@ export function AdminUsersPage(props: {
 				}),
 			)
 			if (activeScope.current !== submittedScope) return
-			resetPlanDraft()
 			setCreatedUser(
 				'createdUser' in payload ? payload.createdUser : createdUser,
 			)
@@ -487,11 +438,6 @@ export function AdminUsersPage(props: {
 		usageData.stableUserId === selectedUser.stableUserId
 			? usageData
 			: null
-	const selectedPlanChoice =
-		selectedUser?.stableUserId === planDraftStableUserId
-			? planDraftChoice
-			: (selectedUser?.plan ?? 'free')
-
 	return (
 		<AccountManagementShell
 			layout="list"
@@ -625,10 +571,8 @@ export function AdminUsersPage(props: {
 								selectedUser,
 								orgs: props.payload.selectedUserOrgs,
 								availableRoles,
-								availablePlans,
 								actionState,
 								selectedRoleToAssign,
-								selectedPlanChoice,
 								mintedVerifyUrl,
 								mintedVerifyUrlForStableUserId,
 								usageStatus:
@@ -645,12 +589,6 @@ export function AdminUsersPage(props: {
 								onSubmitRoleAction: (action) => void submitRoleAction(action),
 								onSubmitVerificationAction: (action) =>
 									void submitVerificationAction(action),
-								onPlanChoiceChange: (plan) => {
-									setPlanDraftStableUserId(selectedUser.stableUserId)
-									setSelectedPlanChoice(plan)
-								},
-								onSubmitPlanAction: () => void submitPlanAction(),
-								onCreditsGranted: invalidateUsage,
 								onSubmitModerationAction: (action) =>
 									void submitModerationAction(action),
 								onAccountDeleted: (handle) => {

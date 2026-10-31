@@ -30,6 +30,7 @@ const inputSchema = z.intersection(
 			.max(creditAdminGrantNoteMaxLength)
 			.optional()
 			.describe('Why eligibility changed. Stored on the admin audit event.'),
+		reason: z.string().trim().max(500).optional(),
 	}),
 )
 
@@ -45,7 +46,7 @@ export const adminCreditEligibilitySetCapability = defineDomainCapability(
 		name: 'adminCreditEligibilitySet',
 		contextRuns: 'deny',
 		description:
-			'Turn admin prepaid-credit eligibility on or off for one account by stable user id, email, or username (users.admin_credits_eligible). Stripe refreshes never overwrite it. With an effective Pro plan (for example a manual adminUserUpdate plan grant), eligibility gives the account the same credit wallet as the purchasable Pro subscription: usage past the Pro include runs on credits and debits the wallet, and stops at the include when the balance runs out. Turning it off leaves the balance on hold. Does not create Stripe customers or subscriptions, and does not enable buying credits or auto-refill. Audited, with an optional note. Use adminOrgCreditEligibilitySet to change eligibility for any organization.',
+			'Deprecated: use adminOrgPlanSet / adminOrgCreditGrant / adminOrgCreditEligibilitySet / adminOrgGet with an org handle. Change prepaid-credit eligibility for one account.',
 		keywords: [
 			'admin',
 			'credits',
@@ -90,12 +91,12 @@ export const adminCreditEligibilitySetCapability = defineDomainCapability(
 				},
 				{
 					successReason: (result) =>
-						formatAdminCreditEligibilityAuditReason({
+						`${formatAdminCreditEligibilityAuditReason({
 							stableUserId: result.wallet.stableUserId,
 							creditsEligible: args.creditsEligible,
 							previousAdminCreditsEligible: result.previousAdminCreditsEligible,
 							note,
-						}),
+						})};reason=${args.reason?.trim() || args.note?.trim() || 'No reason given (legacy adminCreditEligibilitySet)'}`,
 				},
 			)
 		},

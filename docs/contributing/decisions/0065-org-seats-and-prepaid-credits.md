@@ -1,3 +1,6 @@
+Seat synchronization records a `billing_seat_quantity_synced` organization audit
+event after a successful Stripe quantity update.
+
 # 0065 — Org seats and prepaid credits
 
 - **Status:** accepted (amended 2026-10-10)
