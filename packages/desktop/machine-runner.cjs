@@ -65,12 +65,8 @@ function shouldAdopt(status) {
 	return Boolean(status?.installed || status?.runner)
 }
 
-const relationshipCopy =
-	"One runner per machine: the Kody desktop app and the kody CLI share this machine's registration and its runner. When the CLI installed a background service (kody daemon install), the app controls that service instead of starting a second runner."
-
 module.exports = {
 	existingRegistration,
-	relationshipCopy,
 	runnerView,
 	shouldAdopt,
 }
