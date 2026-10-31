@@ -52,6 +52,7 @@ const loaderData: PackageAppOauthConsentLoaderData = {
 	optionalScopes: [{ scope: 'email', label: 'See your email address' }],
 	executorNeeds: [],
 	alreadyAllowedLabels: [],
+	device: null,
 	hiddenFields: {
 		client_id: 'acme/demo',
 		redirect_uri: 'https://acme.kody.run/_kody/auth/callback',
@@ -199,7 +200,11 @@ test('package-app OAuth consent recommends one credential and hides alternates i
 	expect(html).toContain('Used by ')
 	expect(html).toContain('>2<')
 	expect(html).toContain('Choose another credential')
-	expect(html).not.toContain('Other calendar credentials')
+	// Alternates sit in a closed native <details> (works without JavaScript).
+	expect(html).toMatch(
+		/<details[^>]*>\s*<summary>Choose another credential<\/summary>/,
+	)
+	expect(html).not.toMatch(/<details[^>]*\bopen\b/)
 	expect(html.replace(/<!--[\s\S]*?-->|<[^>]*>/g, '')).toContain(
 		'Create a google-calendar OAuth credential',
 	)

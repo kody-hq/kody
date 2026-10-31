@@ -35,7 +35,7 @@ type PendingDurableObjectUsage = {
 	/** Package id when known; empty string coalesces with unset (Ad hoc). */
 	packageId: string
 	packageAppVisitorUserId?: string
-	/** The app's owning org when `userId` is a visiting org (ADR 0094). */
+	/** The app's owning org when `userId` is a visiting org (ADR 0095). */
 	packageAppOwnerOrgId?: string
 	/** First queued event in this bucket; the flush writes this timestamp. */
 	timestamp: string

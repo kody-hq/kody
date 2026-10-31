@@ -368,7 +368,7 @@ async function fetchThroughGateway(
 		// third-party hammering from user code. Consumed before secret
 		// expansion so over-limit requests never resolve secrets.
 		// A visit from another org to an internal app charges the visiting
-		// org's quota and meter (ADR 0094).
+		// org's quota and meter (ADR 0095).
 		const billedUserId = billedOrgIdOf(input.props.request, input.props.userId)
 		if (billedUserId) {
 			// Plan lookup requires the account email. Callers that cannot

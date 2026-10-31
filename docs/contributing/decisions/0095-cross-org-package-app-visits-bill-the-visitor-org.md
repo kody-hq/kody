@@ -1,4 +1,4 @@
-# 0094: A visit from another org to an internal package app bills the visiting org
+# 0095: A visit from another org to an internal package app bills the visiting org
 
 - **Status:** accepted
 - **Date:** 2026-10-30

@@ -144,7 +144,7 @@ export type UsageEvent = {
 	packageAppVisitorUserId?: string
 	/**
 	 * The app's owning org when `userId` (the billed org) is a visiting org
-	 * (ADR 0094). Analytics Engine blob16. Empty when the owner pays.
+	 * (ADR 0095). Analytics Engine blob16. Empty when the owner pays.
 	 */
 	packageAppOwnerOrgId?: string | null
 	/**
@@ -654,7 +654,7 @@ async function writePackageAppVisitorAttributionDaily(
 	const packageId = event.packageId?.trim()
 	if (!meter || !packageId) return
 	// Rows stay under the app's owning org so its Visitors view keeps every
-	// visitor; `billed_org_id` names a visiting org that paid (ADR 0094).
+	// visitor; `billed_org_id` names a visiting org that paid (ADR 0095).
 	const billedOrgId = packageAppOwnerOrgIdBlob(event) ? event.userId : ''
 	try {
 		await env.APP_DB.prepare(packageAppVisitorAttributionDailyUpsertStatement)

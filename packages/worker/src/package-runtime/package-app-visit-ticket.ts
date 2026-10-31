@@ -99,7 +99,7 @@ export type PackageAppVisitClaims = {
 	executorOnly?: boolean
 	/**
 	 * The visitor's own org pays for this request's metered work (a visit
-	 * from another org to an internal app, ADR 0094). Absent: the owner pays.
+	 * from another org to an internal app, ADR 0095). Absent: the owner pays.
 	 */
 	billing?: RequestBilling
 	exp: number
@@ -152,7 +152,7 @@ type StoredVisitTicket = {
 	cs?: Array<string> | null
 	cp?: string | null
 	xo?: true
-	/** Billed org id when it is not the owner (ADR 0094). */
+	/** Billed org id when it is not the owner (ADR 0095). */
 	bo?: string
 }
 

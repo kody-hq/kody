@@ -84,7 +84,7 @@ export type RequestContext = {
 	/**
 	 * The org billed for metered work this request causes, when it is not
 	 * `org`. Only a visit from another org to an internal package app sets it
-	 * (ADR 0094). Absent means `org` pays.
+	 * (ADR 0095). Absent means `org` pays.
 	 */
 	billing?: RequestBilling
 }

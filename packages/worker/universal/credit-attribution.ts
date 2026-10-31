@@ -104,7 +104,7 @@ export type CreditAttributionVisitorRow = {
 	lastDay: string
 	/**
 	 * True when the visitor came from another org and that org paid for the
-	 * metered work their visits caused (ADR 0094).
+	 * metered work their visits caused (ADR 0095).
 	 */
 	billedToVisitorOrg?: boolean
 	meters: Array<{

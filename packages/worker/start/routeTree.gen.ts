@@ -163,6 +163,7 @@ import { Route as DocsSlugOgDotpngRouteImport } from './routes/docs_.$slug_.og[.
 import { Route as IntegrationsLogosIntegrationSlugRouteImport } from './routes/integrations_.logos_.$integrationSlug'
 import { Route as IntegrationsProviderMarksSlugRouteImport } from './routes/integrations_.provider-marks_.$slug'
 import { Route as OauthPackageAppAuthorizeRouteImport } from './routes/oauth.package-app.authorize'
+import { Route as OauthPackageAppDeviceRouteImport } from './routes/oauth.package-app.device'
 import { Route as OnboardingStep1AgentRouteImport } from './routes/onboarding.step-1_.$agent'
 import { Route as OnboardingStep2ServiceRouteImport } from './routes/onboarding.step-2_.$service'
 import { Route as OnboardingStep3AgentRouteImport } from './routes/onboarding.step-3_.$agent'
@@ -1078,6 +1079,11 @@ const OauthPackageAppAuthorizeRoute =
     path: '/oauth/package-app/authorize',
     getParentRoute: () => rootRouteImport,
   } as any)
+const OauthPackageAppDeviceRoute = OauthPackageAppDeviceRouteImport.update({
+  id: '/oauth/package-app/device',
+  path: '/oauth/package-app/device',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OnboardingStep1AgentRoute = OnboardingStep1AgentRouteImport.update({
   id: '/step-1_/$agent',
   path: '/step-1/$agent',
@@ -1934,6 +1940,7 @@ export interface FileRoutesByFullPath {
   '/integrations/logos/$integrationSlug': typeof IntegrationsLogosIntegrationSlugRoute
   '/integrations/provider-marks/$slug': typeof IntegrationsProviderMarksSlugRoute
   '/oauth/package-app/authorize': typeof OauthPackageAppAuthorizeRoute
+  '/oauth/package-app/device': typeof OauthPackageAppDeviceRoute
   '/onboarding/step-1/$agent': typeof OnboardingStep1AgentRoute
   '/onboarding/step-2/$service': typeof OnboardingStep2ServiceRoute
   '/onboarding/step-3/$agent': typeof OnboardingStep3AgentRoute
@@ -2206,6 +2213,7 @@ export interface FileRoutesByTo {
   '/integrations/logos/$integrationSlug': typeof IntegrationsLogosIntegrationSlugRoute
   '/integrations/provider-marks/$slug': typeof IntegrationsProviderMarksSlugRoute
   '/oauth/package-app/authorize': typeof OauthPackageAppAuthorizeRoute
+  '/oauth/package-app/device': typeof OauthPackageAppDeviceRoute
   '/onboarding/step-1/$agent': typeof OnboardingStep1AgentRoute
   '/onboarding/step-2/$service': typeof OnboardingStep2ServiceRoute
   '/onboarding/step-3/$agent': typeof OnboardingStep3AgentRoute
@@ -2481,6 +2489,7 @@ export interface FileRoutesById {
   '/integrations_/logos_/$integrationSlug': typeof IntegrationsLogosIntegrationSlugRoute
   '/integrations_/provider-marks_/$slug': typeof IntegrationsProviderMarksSlugRoute
   '/oauth/package-app/authorize': typeof OauthPackageAppAuthorizeRoute
+  '/oauth/package-app/device': typeof OauthPackageAppDeviceRoute
   '/onboarding/step-1_/$agent': typeof OnboardingStep1AgentRoute
   '/onboarding/step-2_/$service': typeof OnboardingStep2ServiceRoute
   '/onboarding/step-3_/$agent': typeof OnboardingStep3AgentRoute
@@ -2756,6 +2765,7 @@ export interface FileRouteTypes {
     | '/integrations/logos/$integrationSlug'
     | '/integrations/provider-marks/$slug'
     | '/oauth/package-app/authorize'
+    | '/oauth/package-app/device'
     | '/onboarding/step-1/$agent'
     | '/onboarding/step-2/$service'
     | '/onboarding/step-3/$agent'
@@ -3028,6 +3038,7 @@ export interface FileRouteTypes {
     | '/integrations/logos/$integrationSlug'
     | '/integrations/provider-marks/$slug'
     | '/oauth/package-app/authorize'
+    | '/oauth/package-app/device'
     | '/onboarding/step-1/$agent'
     | '/onboarding/step-2/$service'
     | '/onboarding/step-3/$agent'
@@ -3302,6 +3313,7 @@ export interface FileRouteTypes {
     | '/integrations_/logos_/$integrationSlug'
     | '/integrations_/provider-marks_/$slug'
     | '/oauth/package-app/authorize'
+    | '/oauth/package-app/device'
     | '/onboarding/step-1_/$agent'
     | '/onboarding/step-2_/$service'
     | '/onboarding/step-3_/$agent'
@@ -3531,6 +3543,7 @@ export interface RootRouteChildren {
   IntegrationsLogosIntegrationSlugRoute: typeof IntegrationsLogosIntegrationSlugRoute
   IntegrationsProviderMarksSlugRoute: typeof IntegrationsProviderMarksSlugRoute
   OauthPackageAppAuthorizeRoute: typeof OauthPackageAppAuthorizeRoute
+  OauthPackageAppDeviceRoute: typeof OauthPackageAppDeviceRoute
   ProfilesUsernameOgDotpngRoute: typeof ProfilesUsernameOgDotpngRoute
   DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute: typeof DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute
   AtChar123orgSlugChar125ConnectionsSplatRoute: typeof AtChar123orgSlugChar125ConnectionsSplatRoute
@@ -4626,6 +4639,13 @@ declare module '@tanstack/react-router' {
       path: '/oauth/package-app/authorize'
       fullPath: '/oauth/package-app/authorize'
       preLoaderRoute: typeof OauthPackageAppAuthorizeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/package-app/device': {
+      id: '/oauth/package-app/device'
+      path: '/oauth/package-app/device'
+      fullPath: '/oauth/package-app/device'
+      preLoaderRoute: typeof OauthPackageAppDeviceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding/step-1_/$agent': {
@@ -5974,6 +5994,7 @@ const rootRouteChildren: RootRouteChildren = {
   IntegrationsLogosIntegrationSlugRoute: IntegrationsLogosIntegrationSlugRoute,
   IntegrationsProviderMarksSlugRoute: IntegrationsProviderMarksSlugRoute,
   OauthPackageAppAuthorizeRoute: OauthPackageAppAuthorizeRoute,
+  OauthPackageAppDeviceRoute: OauthPackageAppDeviceRoute,
   ProfilesUsernameOgDotpngRoute: ProfilesUsernameOgDotpngRoute,
   DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute:
     DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute,

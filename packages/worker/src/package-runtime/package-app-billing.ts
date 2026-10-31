@@ -1,5 +1,5 @@
 /**
- * Who pays for the metered work of one package-app request (ADR 0094).
+ * Who pays for the metered work of one package-app request (ADR 0095).
  *
  * - A member of the owning org (any role): the owning org, as always.
  * - A person from outside the org on an internal (not internet-visible) app,

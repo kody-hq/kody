@@ -9,6 +9,8 @@ export type DeviceAuthorizationStatus =
 	| 'denied'
 	| 'consumed'
 
+export type DeviceAuthorizationKind = 'cli' | 'package_app'
+
 export type DeviceAuthorizationRow = {
 	id: string
 	device_code_hash: string
@@ -26,6 +28,12 @@ export type DeviceAuthorizationRow = {
 	org_id: string | null
 	decided_at: number | null
 	consumed_at: number | null
+	/** `package_app` rows are package-app visitor sign-ins (ADR 0094). */
+	kind: DeviceAuthorizationKind
+	/** Package-app rows only: the rest of the authorize request, as JSON. */
+	request_json: string | null
+	/** Package-app rows only: the scopes the approver allowed. */
+	approved_scope: string | null
 }
 
 const table = 'oauth_device_authorizations'
@@ -59,15 +67,17 @@ export async function insertDeviceAuthorization(
 		| 'interval_seconds'
 		| 'created_at'
 		| 'expires_at'
-	>,
+	> &
+		Partial<Pick<DeviceAuthorizationRow, 'kind' | 'request_json'>>,
 ) {
 	const result = await db
 		.prepare(
 			`INSERT INTO ${table} (
 				id, device_code_hash, user_code, client_id, scope, resource,
-				requested_org_slug, status, interval_seconds, created_at, expires_at
+				requested_org_slug, status, interval_seconds, created_at, expires_at,
+				kind, request_json
 			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
 			ON CONFLICT (user_code) DO NOTHING`,
 		)
 		.bind(
@@ -81,6 +91,8 @@ export async function insertDeviceAuthorization(
 			row.interval_seconds,
 			row.created_at,
 			row.expires_at,
+			row.kind ?? 'cli',
+			row.request_json ?? null,
 		)
 		.run()
 	return (result.meta.changes ?? 0) > 0
@@ -167,12 +179,49 @@ export async function decideDeviceAuthorization(
 		.prepare(
 			`UPDATE ${table}
 			SET status = ?, user_id = ?, org_id = ?, decided_at = ?
-			WHERE id = ? AND status = 'pending' AND expires_at > ?`,
+			WHERE id = ? AND status = 'pending' AND expires_at > ?
+				AND kind = 'cli'`,
 		)
 		.bind(
 			input.decision,
 			input.userId,
 			input.decision === 'approved' ? input.orgId : null,
+			now,
+			input.id,
+			now,
+		)
+		.run()
+	return (result.meta.changes ?? 0) > 0
+}
+
+/**
+ * Records the decision on a pending package-app visitor sign-in (ADR 0094).
+ * An approval stores the scopes the approver allowed; the limited device
+ * turns it into a package-app authorization code when it next checks in.
+ */
+export async function decidePackageAppDeviceAuthorization(
+	db: D1Database,
+	input:
+		| {
+				id: string
+				decision: 'approved'
+				userId: string
+				approvedScope: string
+		  }
+		| { id: string; decision: 'denied'; userId: string },
+	now = nowSeconds(),
+) {
+	const result = await db
+		.prepare(
+			`UPDATE ${table}
+			SET status = ?, user_id = ?, approved_scope = ?, decided_at = ?
+			WHERE id = ? AND status = 'pending' AND expires_at > ?
+				AND kind = 'package_app'`,
+		)
+		.bind(
+			input.decision,
+			input.userId,
+			input.decision === 'approved' ? input.approvedScope : null,
 			now,
 			input.id,
 			now,

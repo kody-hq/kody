@@ -90,9 +90,12 @@ function deviceLead(data: DevicePageData) {
 		case 'consent':
 			return `${data.request.clientName} is asking to sign in to your Kody account.`
 		case 'done':
-			return data.result === 'approved'
-				? 'Your device is finishing the sign-in. Return to your terminal; you can close this tab.'
-				: 'Nothing was shared with that device. You can close this tab.'
+			if (data.result !== 'approved') {
+				return 'Nothing was shared with that device. You can close this tab.'
+			}
+			return data.packageApp
+				? 'The other device is finishing signing in to the app. It continues on its own within a few seconds; you can close this tab.'
+				: 'Your device is finishing the sign-in. Return to your terminal; you can close this tab.'
 	}
 }
 

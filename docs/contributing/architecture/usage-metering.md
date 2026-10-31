@@ -431,7 +431,7 @@ id; execute-surface hit rate and unique-day yield are the fleet readouts for
 that reuse.
 
 Package-app billing
-([ADR 0094](../decisions/0094-cross-org-package-app-visits-bill-the-visitor-org.md)):
+([ADR 0095](../decisions/0095-cross-org-package-app-visits-bill-the-visitor-org.md)):
 a visit from another org to an internal app carries `RequestContext.billing`
 (visit ticket claim `bo`). Metering sites read `billedOrgIdOf(request, owner)`
 for `userId` (storage rows read and duration, outbound fetch and its daily

@@ -53,7 +53,7 @@ export async function handleDeviceCodeTokenRequest(input: {
 		env.APP_DB,
 		await hashDeviceCode(deviceCode),
 	)
-	if (!row || row.client_id !== clientId) {
+	if (!row || row.client_id !== clientId || row.kind !== 'cli') {
 		return {
 			response: oauthErrorResponse(
 				'invalid_grant',

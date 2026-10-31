@@ -88,7 +88,7 @@ FORMAT JSON
 
 /**
  * Visitor attribution stays under the app's owning org. `blob16` is that org
- * when a visiting org was billed (`blob1`, ADR 0094); then `billed_org_id`
+ * when a visiting org was billed (`blob1`, ADR 0095); then `billed_org_id`
  * names the visiting org. Empty `billed_org_id` means the owner paid.
  */
 export function buildPackageAppVisitorAttributionDailyQuery(
@@ -643,7 +643,7 @@ export async function loadPackageAppVisitorAttribution(input: {
 		if (row.day > visitor.lastDay) visitor.lastDay = row.day
 		const units = Number(row.units)
 		if (row.billed_org_id?.trim()) {
-			// The visitor's own org paid (ADR 0094): show the units, but none of
+			// The visitor's own org paid (ADR 0095): show the units, but none of
 			// this org's credits are theirs.
 			visitor.visitorOrgUnits.set(
 				meter,
@@ -849,7 +849,7 @@ export async function loadPackageAttributionLabels(input: {
 		}
 	}
 	// A package this org does not own is another org's internal app that this
-	// org's people visited; this org paid for that metered work (ADR 0094).
+	// org's people visited; this org paid for that metered work (ADR 0095).
 	const shared = input.packageIds.filter((packageId) => !names.has(packageId))
 	for (
 		let index = 0;

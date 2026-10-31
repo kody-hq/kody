@@ -71,6 +71,8 @@ export type DeviceVerificationRequest = {
 
 export type DeviceLookupResult =
 	| { kind: 'found'; request: DeviceVerificationRequest }
+	/** A package-app visitor sign-in; approve it on the app's consent page. */
+	| { kind: 'package_app'; userCode: string }
 	| { kind: 'invalid_code' }
 	| { kind: 'not_found' }
 	| { kind: 'rate_limited'; retryAfterSeconds: number }
@@ -133,7 +135,11 @@ async function findPendingForPerson(input: {
 		input.env.APP_DB,
 		userCode,
 	)
-	if (!row || !deviceGrantClientIds(appOrigin).includes(row.client_id)) {
+	const admitted =
+		row &&
+		(row.kind === 'package_app' ||
+			deviceGrantClientIds(appOrigin).includes(row.client_id))
+	if (!row || !admitted) {
 		void logAuditEvent({
 			db: auditDatabaseFromEnv(input.env),
 			category: 'oauth',
@@ -167,6 +173,9 @@ export async function lookupDeviceAuthorization(input: {
 	const found = await findPendingForPerson(input)
 	if (found.kind !== 'found') return found
 	const { row } = found
+	if (row.kind === 'package_app') {
+		return { kind: 'package_app', userCode: formatUserCode(row.user_code) }
+	}
 	const appOrigin = getAppBaseUrl({
 		env: input.env,
 		requestUrl: input.request.url,
@@ -213,6 +222,8 @@ export async function decideDeviceAuthorizationForPerson(input: {
 	const found = await findPendingForPerson(input)
 	if (found.kind !== 'found') return found
 	const { row } = found
+	// Package-app visitor sign-ins are decided on the app's consent page.
+	if (row.kind !== 'cli') return { kind: 'not_found' }
 	const personId = personIdFromStored(input.user.personId)
 	const ip = getRequestIp(input.request) ?? undefined
 	if (input.decision === 'deny') {
@@ -294,4 +305,24 @@ export async function decideDeviceAuthorizationForPerson(input: {
 		...(approved ? {} : { reason: 'not_pending' }),
 	})
 	return approved ? { kind: 'approved' } : { kind: 'not_found' }
+}
+
+/**
+ * A pending package-app visitor sign-in (ADR 0094) by the code the visitor
+ * typed or scanned, under the same per-person and per-IP code-entry limits as
+ * `/device`.
+ */
+export async function findPendingPackageAppDeviceAuthorization(input: {
+	request: Request
+	env: Env
+	user: DeviceVerificationUser
+	userCode: string | null
+}): Promise<
+	| { kind: 'found'; row: DeviceAuthorizationRow }
+	| { kind: 'invalid_code' | 'not_found' }
+	| { kind: 'rate_limited'; retryAfterSeconds: number }
+> {
+	const found = await findPendingForPerson(input)
+	if (found.kind !== 'found') return found
+	return found.row.kind === 'package_app' ? found : { kind: 'not_found' }
 }

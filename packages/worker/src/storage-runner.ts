@@ -1011,7 +1011,7 @@ export function storageRunnerRpc(input: {
 	packageAppVisitorUserId?: string
 	/**
 	 * Org billed for this bucket's metered work when it is not the bucket
-	 * owner (a visit from another org to an internal app, ADR 0094). The
+	 * owner (a visit from another org to an internal app, ADR 0095). The
 	 * bucket itself always stays the owner's.
 	 */
 	meterUserId?: OwnerId

@@ -1,4 +1,4 @@
--- Package-app visitor attribution gains `billed_org_id` (ADR 0094). A visit
+-- Package-app visitor attribution gains `billed_org_id` (ADR 0095). A visit
 -- from another org to an internal app bills that visiting org for its
 -- metered work, but the row stays under the app's owning org (`user_id`) so
 -- the publisher's Visitors view keeps every visitor. Empty means the owning

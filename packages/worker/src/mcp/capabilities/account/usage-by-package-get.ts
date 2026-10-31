@@ -39,7 +39,7 @@ const creditAttributionVisitorSchema = z.object({
 	displayName: z.string(),
 	creditsMicroUsd: z.number().int().nonnegative(),
 	lastDay: z.string(),
-	/** The visitor's own org paid for their metered work (ADR 0094). */
+	/** The visitor's own org paid for their metered work (ADR 0095). */
 	billedToVisitorOrg: z.boolean().optional(),
 	meters: z.array(
 		z.object({

@@ -797,8 +797,12 @@
 			"sha256": "1f2a97b2bc3a3289a90f2cef59c3f72a31d3f33c5eabdc089461ffd19f1ad759"
 		},
 		{
+			"filename": "0220-package-app-device-sign-in.sql",
+			"sha256": "bf0d240ef6db96cb0ae6a8c6d2ebeb567102244deac3881149c6810adf13d6f8"
+		},
+		{
 			"filename": "0221-package-app-visitor-billed-org.sql",
-			"sha256": "f8aa36e07418276f30719b846f4ced1fc741b51254b5d4690337d3e6c8210261"
+			"sha256": "b97e24532cad33b3c88dbe4323549b6264c2ef0ef5aadd6287696c433e9b4a03"
 		}
 	]
 }

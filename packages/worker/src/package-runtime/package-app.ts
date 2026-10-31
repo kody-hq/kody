@@ -2341,7 +2341,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return await this.createCallerContext(null, visitTicket)
 	}
 
-	/** Facet storage meters to the visit's billed org (ADR 0094). */
+	/** Facet storage meters to the visit's billed org (ADR 0095). */
 	private async facetBilledOrgId(visitTicket?: string | null) {
 		return (await this.requireActingVisit(visitTicket))?.billing?.orgId
 	}
@@ -4092,7 +4092,7 @@ export async function buildPackageAppWorker(input: {
 	// the response and refuses only once a denial has opened it.
 	const request = input.runtime.callerContext.request
 	// A visit from another org to an internal app is gated on the visiting
-	// org's usage, since that org pays for its metered work (ADR 0094).
+	// org's usage, since that org pays for its metered work (ADR 0095).
 	const billing = request?.billing ?? null
 	const billedOrgId = billedOrgIdOf(request, input.userId)
 	await pushServerTiming(input.serverTiming, 'usageGate', async () => {
@@ -4283,7 +4283,7 @@ export async function createPackageAppCallerContext(input: {
 	}
 	visitor: RuntimePackageAppVisitor | null
 	packageId: string
-	/** Set for a visit from another org to an internal app (ADR 0094). */
+	/** Set for a visit from another org to an internal app (ADR 0095). */
 	billing?: RequestBilling | null
 }) {
 	const { visitor } = input
