@@ -61,6 +61,11 @@ export function buildPackageRepoActions(input: {
 	viewerIsOwner: boolean
 	viewerCanManage: boolean
 	loggedIn: boolean
+	/**
+	 * Signed-in viewer holds package:read on a saved package with no listing.
+	 * They may fork it; the fork grants nothing on this package.
+	 */
+	viewerCanForkSource?: boolean
 	ownerPackage: PackageRepoOwnerPackageActions | null
 	/** Set when the page names a followable package or plain repo. */
 	follow?: { kind: 'package' | 'repo'; viewerFollowing: boolean } | null
@@ -88,7 +93,18 @@ export function buildPackageRepoActions(input: {
 					}),
 					viewerInstall: input.viewerInstall ?? listing.viewerInstall ?? null,
 				}
-			: null
+			: !listing && input.viewerCanForkSource && input.loggedIn
+				? {
+						listingId: null,
+						source: { username: input.username, kodyId: input.kodyId },
+						trusted: false,
+						loggedIn: true,
+						loginHref: routes.login.href(null, {
+							searchParams: { redirectTo: repoHref },
+						}),
+						viewerInstall: null,
+					}
+				: null
 	const listingAhead = listing?.sourceAhead === true
 	const ownerAhead = input.ownerPackage?.sourceAhead === true
 	const publishHref =
@@ -335,6 +351,8 @@ export async function buildPackageRepoActionsForPage(
 		viewerIsOwner: page.viewerIsOwner,
 		viewerCanManage: page.viewerCanManage,
 		loggedIn: page.loggedIn,
+		viewerCanForkSource:
+			page.viewerIsOwner && page.loggedIn && page.hasPackage && !page.listing,
 		ownerPackage: owner
 			? {
 					hasApp: owner.hasApp,

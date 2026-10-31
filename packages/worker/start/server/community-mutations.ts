@@ -1,5 +1,31 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
+export const forkReadablePackage = createServerFn({ method: 'POST' })
+	.validator(
+		z.object({
+			username: z.string().min(1),
+			kodyId: z.string().min(1),
+			org: z.string().min(1).nullable().optional(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		return withWebsiteMutation({}, async ({ env, request, user }) => {
+			const { installWebsitePrivatePackageFork } =
+				await import('../../src/app/handlers/community-install.ts')
+			return (
+				await installWebsitePrivatePackageFork({
+					env,
+					request,
+					user,
+					ownerHandle: data.username,
+					kodyId: data.kodyId,
+					body: data.org ? { org: data.org } : {},
+				})
+			).data
+		})
+	})
+
 export const installCommunityPackage = createServerFn({ method: 'POST' })
 	.validator(
 		z.object({

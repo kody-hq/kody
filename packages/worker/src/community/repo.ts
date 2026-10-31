@@ -23,6 +23,7 @@ import {
 	type CommunityBanRecord,
 	type CommunityBanRow,
 	type CommunityForkRecord,
+	type ListingCommunityForkRecord,
 	type CommunityForkActor,
 	type CommunityForkRow,
 	type CommunityListingRecord,
@@ -81,14 +82,23 @@ export function mapCommunityListingRow(
 }
 
 export const communityForkSelectColumns = `id, listing_id, forker_user_id, origin_commit, forked_package_id,
-	forked_source_id, target_kody_id, created_at, adopted_at, adoption_note`
+	forked_source_id, target_kody_id, created_at, adopted_at, adoption_note,
+	upstream_owner_id, upstream_package_id`
 
 export function mapCommunityForkRow(
 	row: Record<string, unknown>,
 ): CommunityForkRecord {
 	return {
 		id: String(row['id']),
-		listingId: String(row['listing_id']),
+		listingId: row['listing_id'] == null ? null : String(row['listing_id']),
+		upstreamOwnerId:
+			row['upstream_owner_id'] == null
+				? null
+				: String(row['upstream_owner_id']),
+		upstreamPackageId:
+			row['upstream_package_id'] == null
+				? null
+				: String(row['upstream_package_id']),
 		forkerUserId: String(row['forker_user_id']),
 		originCommit: String(row['origin_commit']),
 		forkedPackageId: String(row['forked_package_id']),
@@ -849,6 +859,8 @@ export async function insertCommunityFork(
 		listing_kody_id: string
 		created_at?: string
 		actor?: CommunityForkActor | null
+		/** Claim key when it is not `listing_id` (private package forks). */
+		claim_key?: string
 		/**
 		 * When set, the insert only succeeds while this claim still holds
 		 * `(forker_user_id, listing_id)`. A lost lease inserts zero rows and
@@ -870,9 +882,9 @@ export async function insertCommunityFork(
 				`INSERT INTO community_forks (
 					id, listing_id, forker_user_id, origin_commit, forked_package_id,
 					forked_source_id, target_kody_id, listing_name, listing_kody_id,
-					created_at, actor
+					created_at, actor, upstream_owner_id, upstream_package_id
 				)
-				SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+				SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 				WHERE EXISTS (
 					SELECT 1 FROM community_fork_claims
 					WHERE owner_id = ?
@@ -893,8 +905,10 @@ export async function insertCommunityFork(
 				row.listing_kody_id,
 				createdAt,
 				row.actor ?? null,
+				row.upstream_owner_id ?? null,
+				row.upstream_package_id ?? null,
 				row.forker_user_id,
-				row.listing_id,
+				row.claim_key ?? row.listing_id,
 				claimId,
 				leaseNow,
 			)
@@ -909,8 +923,8 @@ export async function insertCommunityFork(
 			`INSERT INTO community_forks (
 				id, listing_id, forker_user_id, origin_commit, forked_package_id,
 				forked_source_id, target_kody_id, listing_name, listing_kody_id,
-				created_at, actor
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				created_at, actor, upstream_owner_id, upstream_package_id
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		)
 		.bind(
 			row.id,
@@ -924,6 +938,8 @@ export async function insertCommunityFork(
 			row.listing_kody_id,
 			createdAt,
 			row.actor ?? null,
+			row.upstream_owner_id ?? null,
+			row.upstream_package_id ?? null,
 		)
 		.run()
 }
@@ -958,7 +974,7 @@ export async function deleteCommunityForksForPackage(
 
 export type OrphanedCommunityForkRow = {
 	id: string
-	listing_id: string
+	listing_id: string | null
 	listing_name: string | null
 	listing_kody_id: string | null
 	forker_user_id: string
@@ -1184,6 +1200,26 @@ export async function listCommunityForksByListingAndUser(
 	return (result.results ?? []).map((row) => mapCommunityForkRow(row))
 }
 
+/** This org's forks of one private package, oldest first. */
+export async function listCommunityForksByUpstreamPackageAndUser(
+	db: D1Database,
+	input: {
+		upstreamPackageId: string
+		userId: string
+	},
+): Promise<Array<CommunityForkRecord>> {
+	const result = await db
+		.prepare(
+			`SELECT ${communityForkSelectColumns}
+			FROM community_forks
+			WHERE upstream_package_id = ? AND forker_user_id = ?
+			ORDER BY created_at ASC`,
+		)
+		.bind(input.upstreamPackageId, input.userId)
+		.all<Record<string, unknown>>()
+	return (result.results ?? []).map((row) => mapCommunityForkRow(row))
+}
+
 export async function listCommunityForksByListingId(
 	db: D1Database,
 	input: { listingId: string },
@@ -1210,10 +1246,10 @@ export async function listCommunityForksByListingIdsAndUser(
 		listingIds: Array<string>
 		userId: string
 	},
-): Promise<Array<CommunityForkRecord>> {
+): Promise<Array<ListingCommunityForkRecord>> {
 	if (input.listingIds.length === 0) return []
 	const uniqueListingIds = [...new Set(input.listingIds)]
-	const forks: Array<CommunityForkRecord> = []
+	const forks: Array<ListingCommunityForkRecord> = []
 	for (const idChunk of chunkArray(
 		uniqueListingIds,
 		maxSqlBindingsPerChunk - 1,
@@ -1229,7 +1265,7 @@ export async function listCommunityForksByListingIdsAndUser(
 			.bind(input.userId, ...idChunk)
 			.all<Record<string, unknown>>()
 		for (const row of rows.results ?? []) {
-			forks.push(mapCommunityForkRow(row))
+			forks.push(mapCommunityForkRow(row) as ListingCommunityForkRecord)
 		}
 	}
 	return forks

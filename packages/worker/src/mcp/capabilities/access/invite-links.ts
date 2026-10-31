@@ -267,7 +267,7 @@ export const inviteLinkCreateCapability = defineDomainCapability(
 						}
 						if (!args.preset) {
 							throw new McpCallerError(
-								'Resource invite links need a preset (use, contribute, or manage).',
+								'Resource invite links need a preset (read, use, contribute, or manage).',
 							)
 						}
 						const savedPackage = await resolveSavedPackage({

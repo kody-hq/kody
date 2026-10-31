@@ -20,6 +20,8 @@ import {
 import { operationResult } from '../operation-result.ts'
 import { getInviteById } from '#worker/orgs/access-writes.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
+import { isProfilesEnabledFor } from '#worker/profiles/flag.ts'
+import { listGrantableProfiles } from '#worker/profiles/package-grants.ts'
 import {
 	listPackageCollaborators,
 	listPendingPackageInvites,
@@ -32,6 +34,7 @@ import {
 	type PackageCollaboratorInviteCreated,
 	readPackageCollaboratorInvitee,
 	packageCollaboratorInviteeLabel,
+	type PackageCollaboratorPermission,
 	type PackageCollaboratorPreset,
 	type PackageCollaboratorSubjectType,
 } from '#universal/package-collaborators.ts'
@@ -119,9 +122,17 @@ async function buildCollaboratorsView(
 ): Promise<PackageCollaboratorsView> {
 	const db = scope.ctx.env.APP_DB
 	const target = { db, orgId: scope.org.id, packageId: scope.savedPackage.id }
-	const [listed, invites] = await Promise.all([
+	const viewerId = scope.ctx.callerContext.request?.actor?.userId ?? null
+	const [listed, invites, profileOptions] = await Promise.all([
 		listPackageCollaborators(target),
 		scope.personal ? listPendingPackageInvites(target) : Promise.resolve([]),
+		viewerId && (await isProfilesEnabledFor(db, viewerId, scope.org.id))
+			? listGrantableProfiles({
+					db,
+					orgId: scope.org.id,
+					actingUserId: viewerId,
+				})
+			: Promise.resolve(null),
 	])
 	return {
 		ok: true,
@@ -129,7 +140,10 @@ async function buildCollaboratorsView(
 		org: { slug: scope.orgSlug, personal: scope.personal },
 		collaborators: listed.collaborators,
 		invites,
-		options: listed.options,
+		options: {
+			...listed.options,
+			...(profileOptions ? { profiles: profileOptions } : {}),
+		},
 	}
 }
 
@@ -171,7 +185,8 @@ export function grantPackageCollaborator(
 	input: CollaboratorsInput & {
 		subjectType: PackageCollaboratorSubjectType
 		subjectId: string
-		preset: PackageCollaboratorPreset
+		preset?: PackageCollaboratorPreset | null
+		permissions?: Array<PackageCollaboratorPermission>
 	},
 ) {
 	return changeCollaborator(input, async (scope) => {
@@ -180,11 +195,19 @@ export function grantPackageCollaborator(
 			{
 				package_id: savedPackage.id,
 				...subjectSelector(scope, input.subjectType, input.subjectId),
-				preset: input.preset,
+				...presetOrPermissionsArgs(input),
 			},
 			ctx,
 		)
 	})
+}
+function presetOrPermissionsArgs(input: {
+	preset?: PackageCollaboratorPreset | null
+	permissions?: Array<PackageCollaboratorPermission>
+}) {
+	return input.preset
+		? { preset: input.preset }
+		: { permissions: [...(input.permissions ?? [])] }
 }
 function subjectSelector(
 	scope: CollaboratorsScope,
@@ -196,6 +219,8 @@ function subjectSelector(
 			return { team_id: subjectId }
 		case 'user':
 			return { user_id: subjectId }
+		case 'profile':
+			return { profile_id: subjectId }
 		case 'org':
 			if (scope.personal || subjectId !== scope.org.id) {
 				throw new CollaboratorChangeRefused(
@@ -238,7 +263,8 @@ function requirePersonalOrg(scope: CollaboratorsScope) {
 export function createPackageCollaboratorInvite(
 	input: CollaboratorsInput & {
 		invitee: string
-		preset: PackageCollaboratorPreset
+		preset?: PackageCollaboratorPreset | null
+		permissions?: Array<PackageCollaboratorPermission>
 	},
 ) {
 	return changeCollaborator(input, async (scope) => {
@@ -249,7 +275,7 @@ export function createPackageCollaboratorInvite(
 				...readPackageCollaboratorInvitee(input.invitee),
 				resource_type: 'package',
 				resource_id: scope.savedPackage.id,
-				preset: input.preset,
+				...presetOrPermissionsArgs(input),
 			},
 			scope.ctx,
 		)
@@ -260,7 +286,7 @@ export function createPackageCollaboratorInvite(
 				inviteeEmail: created.invite.invitee_email,
 				inviteeUsername: created.invite.invitee_username,
 			}),
-			preset: input.preset,
+			preset: input.preset ?? null,
 			prompt: created.prompt,
 		}
 	})

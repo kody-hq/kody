@@ -46,7 +46,7 @@ export const communityForkAdoptCapability = defineDomainCapability(
 			status: z.enum(['approval_required', 'already_adopted']),
 			package_id: z.string(),
 			kody_id: z.string(),
-			listing_id: z.string(),
+			listing_id: z.string().nullable(),
 			origin_commit: z.string(),
 			adopted_at: z.string().nullable(),
 			approval_url: z.string(),

@@ -569,3 +569,17 @@ test('a failed access write gives the link use back', async () => {
 		preset: 'use',
 	})
 })
+
+test('a package link with the Read preset grants package:read only', async () => {
+	const { tokenHash, link } = await createLink(owner.personId, {
+		kind: 'resource',
+		resourceType: 'package',
+		resourceId: 'pkg-weather',
+		preset: 'read',
+	})
+	expect(await inviteLinkTargetBlock(db, link)).toBeNull()
+	expect(await redeemAsJoiner(tokenHash)).toMatchObject({ ok: true })
+	expect(await joinerGrant(owner.personId, 'pkg-weather')).toMatchObject({
+		preset: 'read',
+	})
+})

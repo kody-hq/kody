@@ -32,6 +32,7 @@ type ExecutionContextPermission =
 	| 'write'
 	| 'delete'
 	| 'manage_access'
+	| 'command'
 
 export type ExecutionContextPreset = 'use' | 'contribute' | 'manage'
 export type ExecutionContextSharingLevel = 'only_me' | 'people' | 'team' | 'org'
@@ -50,6 +51,8 @@ export type ExecutionContextShareGrant = {
 	orgSlug?: string
 	subject: ExecutionContextGrantSubject
 	preset: ExecutionContextPreset
+	/** Explicit execution_context:command on top of the preset (ADR 0093). */
+	commands?: boolean
 }
 
 export type ExecutionContextSharing = {
@@ -65,6 +68,8 @@ export type ExecutionContextGrantSummary = {
 	egress: { mode: ExecutionContextEgressMode; hosts?: number }
 	runtime: 'all' | 'none' | { mode: 'allowlist'; count: number }
 	timeoutMs: number
+	/** Host commands (ADR 0093): on only after the machine opted in locally. */
+	commands?: boolean
 }
 
 type ExecutionContextChainUsage = {
@@ -538,6 +543,7 @@ export function grantSummaryDetail(grant: ExecutionContextGrantSummary) {
 		`Egress: ${egressLabel(grant.egress.mode)}`,
 		`Kody APIs: ${runtimeLabel(grant.runtime)}`,
 		`Timeout: ${timeoutLabel(grant.timeoutMs)}`,
+		`Commands: ${grant.commands ? 'on' : 'off'}`,
 	].join(' · ')
 }
 
@@ -706,6 +712,29 @@ const executionContextAuditLabels: Record<string, string> = {
 	detached: 'Detached from an org',
 	chain_added: 'Added to a chain',
 	chain_removed: 'Removed from a chain',
+	commands_enabled: 'Commands turned on (on the machine)',
+	commands_disabled: 'Commands turned off',
+	command_started: 'Command started',
+	command_finished: 'Command finished',
+}
+
+/** `$ npm test in /repo, exit 0` for host command audit rows (ADR 0093). */
+export function commandAuditSummary(detail: string | null | undefined) {
+	if (!detail) return null
+	let parsed: Record<string, unknown>
+	try {
+		parsed = JSON.parse(detail) as Record<string, unknown>
+	} catch {
+		return null
+	}
+	if (typeof parsed.command !== 'string') return null
+	const parts = [`$ ${parsed.command}`]
+	if (typeof parsed.cwd === 'string') parts.push(`in ${parsed.cwd}`)
+	if (parsed.background === true) parts.push('(background)')
+	if (typeof parsed.exitCode === 'number') parts.push(`exit ${parsed.exitCode}`)
+	else if (typeof parsed.reason === 'string' && parsed.reason !== 'exited')
+		parts.push(parsed.reason.replaceAll('_', ' '))
+	return parts.join(' ')
 }
 
 export function auditEventLabel(action: string) {

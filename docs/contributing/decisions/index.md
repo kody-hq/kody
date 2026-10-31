@@ -263,6 +263,14 @@ Open these before proposing a new primitive, surface, or storage home.
   `POST /agent/identity` takes `service_auth` only; the claim mints a user-owned
   `kody_at_` (default `long`, amends 0056); no identity assertion or JWT-bearer
   refresh; anonymous stays behind a flag that is off
+- [0092: Profiles are scoped agent identities, capped by their parent chain](./0092-profiles-are-scoped-agent-identities.md)
+  Person-owned profiles with snapshot grants, capped at run time by the acting
+  person and every parent; no epoch bump; behind the `profiles` flag
+- [0093: Execution-context runs can run host commands after a local opt-in](./0093-execution-context-host-commands.md)
+  Off by default; only the machine turns it on, anyone with access turns it off;
+  `execution_context:command` (operator by default, shares only when granted);
+  `kody.command.*` with daemon-held background jobs; audited without env values;
+  macOS and Linux only
 
 ## Historical / UI / implementation
 

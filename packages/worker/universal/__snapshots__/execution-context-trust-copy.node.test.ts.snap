@@ -72,7 +72,7 @@ exports[`register copy, personal and team, names kody login > personal 1`] = `
   "login": "If your Kody login predates execution context permissions, registering fails and tells you to run \`kody login\` again first. Other logins keep working as they are.",
   "trust": [
     "Code sent to this context runs on that machine, under the account that runs kody daemon.",
-    "It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach that machine. Its Kody API allowlist can narrow what runs there may call, and runs there cannot start workflows. If you share it, the people you share it with run code on that machine and you can see their code, inputs, logs and results. Their runs cannot use their credentials there.",
+    "It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach that machine. Its Kody API allowlist can narrow what runs there may call. If you share it, the people you share it with run code on that machine and you can see their code, inputs, logs and results. Their runs cannot use their credentials or start workflows there, and Kody APIs kept for Kody cloud refuse them.",
     "What it exposes (files, local network, internet) is set on the machine; the CLI prints it.",
   ],
 }
@@ -90,7 +90,7 @@ exports[`register copy, personal and team, names kody login > team 1`] = `
   "login": "If your Kody login predates execution context permissions, registering fails and tells you to run \`kody login\` again first. Other logins keep working as they are.",
   "trust": [
     "Code sent to this context runs on that machine, under the account that runs kody daemon.",
-    "It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach that machine. Its Kody API allowlist can narrow what runs there may call, and runs there cannot start workflows. If you share it, the people you share it with run code on that machine and you can see their code, inputs, logs and results. Their runs cannot use their credentials there.",
+    "It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach that machine. Its Kody API allowlist can narrow what runs there may call. If you share it, the people you share it with run code on that machine and you can see their code, inputs, logs and results. Their runs cannot use their credentials or start workflows there, and Kody APIs kept for Kody cloud refuse them.",
     "What it exposes (files, local network, internet) is set on the machine; the CLI prints it.",
   ],
 }

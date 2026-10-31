@@ -14,6 +14,7 @@ import {
 	removeExecutionContextShare,
 	setExecutionChain,
 	shareExecutionContext,
+	turnOffExecutionContextCommands,
 } from '#start/server/execution-contexts'
 import {
 	optInCopy,
@@ -34,6 +35,7 @@ import {
 	chainHasCloud,
 	chainIsFull,
 	chainPosition,
+	commandAuditSummary,
 	contextDisplayStatus,
 	daemonRunsAsLabel,
 	displayStatusLabel,
@@ -223,6 +225,7 @@ export function ExecutionContextDetail(props: {
 					})}
 				</AccountManagementMessage>
 			) : null}
+			<CommandsPanel orgSlug={orgSlug} context={context} onChanged={refresh} />
 			<OptInControls {...props} onChanged={refresh} />
 			{context.sharing ? <SharingPanel {...props} onChanged={refresh} /> : null}
 			<RunHistory orgSlug={orgSlug} context={context} nameForId={nameForId} />
@@ -327,6 +330,191 @@ function DeleteControls(props: {
 					</button>
 				</div>
 			</dialog>
+		</section>
+	)
+}
+
+/** Host commands (ADR 0093): shows the machine opt-in and the off switch. */
+function CommandsPanel(props: {
+	orgSlug: string
+	context: ExecutionContextListItem
+	onChanged: () => void
+}) {
+	const { context } = props
+	const [busy, setBusy] = useState(false)
+	const [error, setError] = useState<string | null>(null)
+	const [confirming, setConfirming] = useState(false)
+	if (context.status === 'revoked') return null
+	const on = context.grantSummary.commands === true
+	const canTurnOff =
+		context.isOperator || context.myPermissions.includes('write')
+	const canRun = context.myPermissions.includes('command')
+
+	async function turnOff() {
+		setBusy(true)
+		setError(null)
+		try {
+			const result = (await turnOffExecutionContextCommands({
+				data: { orgSlug: props.orgSlug, contextId: context.id },
+			})) as { ok: true } | Failure
+			if (!result.ok) {
+				setError(failureText(result))
+				return
+			}
+			setConfirming(false)
+			props.onChanged()
+		} catch {
+			setError(unexpectedErrorText)
+		} finally {
+			setBusy(false)
+		}
+	}
+
+	return (
+		<section
+			css={[
+				sectionCss,
+				{
+					border: `1px solid ${colors.border}`,
+					borderRadius: radius.lg,
+					padding: spacing.md,
+				},
+			]}
+			aria-labelledby="context-commands-title"
+			data-testid="context-commands"
+		>
+			<div
+				css={{
+					display: 'flex',
+					flexWrap: 'wrap',
+					gap: spacing.sm,
+					alignItems: 'center',
+					justifyContent: 'space-between',
+				}}
+			>
+				<h2 id="context-commands-title" css={{ margin: 0, fontSize: '1rem' }}>
+					Host commands
+				</h2>
+				<span
+					role="switch"
+					aria-checked={on}
+					aria-readonly
+					aria-labelledby="context-commands-title"
+					data-testid="context-commands-state"
+					css={{
+						display: 'inline-flex',
+						alignItems: 'center',
+						gap: spacing.xs,
+						fontWeight: 600,
+						color: on ? colors.text : colors.textMuted,
+					}}
+				>
+					<span
+						aria-hidden
+						css={{
+							width: 36,
+							height: 20,
+							borderRadius: 999,
+							background: on ? colors.primary : colors.borderSubtle,
+							border: `1px solid ${on ? colors.primary : colors.border}`,
+							position: 'relative',
+							'&::after': {
+								content: '""',
+								position: 'absolute',
+								top: 2,
+								left: on ? 18 : 2,
+								width: 14,
+								height: 14,
+								borderRadius: 999,
+								background: colors.surface,
+							},
+						}}
+					/>
+					{on ? 'On' : 'Off'}
+				</span>
+			</div>
+			{on ? (
+				<p css={mutedCss}>
+					Runs on {context.name} that have the command grant can run any shell
+					command as{' '}
+					{context.isOperator ? 'your' : `@${context.operator.handle}'s`} user
+					account on that machine, with no approval per command. Every command
+					is recorded in the audit log below.{' '}
+					{canRun
+						? 'You have the command grant here.'
+						: 'You do not have the command grant here.'}
+				</p>
+			) : (
+				<p css={mutedCss}>
+					Runs on {context.name} cannot run shell commands.
+					{context.capabilities?.os === 'win32' ? (
+						<>
+							{' '}
+							Host commands are not supported on Windows yet: the Kody runner
+							supports macOS and Linux.
+						</>
+					) : context.isOperator ? (
+						<>
+							{' '}
+							Only the machine can turn them on: run{' '}
+							<code>
+								kody context commands on --context {context.name}
+							</code>{' '}
+							there, or choose Machine › Allow commands in the Kody desktop app.
+						</>
+					) : null}
+				</p>
+			)}
+			{error ? (
+				<AccountManagementMessage tone="error">
+					{error}
+				</AccountManagementMessage>
+			) : null}
+			{on && canTurnOff ? (
+				confirming ? (
+					<div
+						css={{
+							display: 'flex',
+							flexWrap: 'wrap',
+							gap: spacing.sm,
+							alignItems: 'center',
+						}}
+					>
+						<span>
+							Turn off commands? Background commands stop right away. Turning
+							them back on needs the machine.
+						</span>
+						<button
+							type="button"
+							css={[getDangerButtonCss(), target]}
+							disabled={busy}
+							onClick={() => void turnOff()}
+							data-testid="context-commands-off-confirm"
+						>
+							{busy ? 'Turning off…' : 'Turn off'}
+						</button>
+						<button
+							type="button"
+							css={[getSecondaryButtonCss(), target]}
+							disabled={busy}
+							onClick={() => setConfirming(false)}
+						>
+							Cancel
+						</button>
+					</div>
+				) : (
+					<div>
+						<button
+							type="button"
+							css={[getDangerButtonCss(), target]}
+							onClick={() => setConfirming(true)}
+							data-testid="context-commands-off"
+						>
+							Turn off commands
+						</button>
+					</div>
+				)
+			) : null}
 		</section>
 	)
 }
@@ -573,6 +761,7 @@ function SharingPanel(props: {
 	const [kind, setKind] = useState<'user' | 'team' | 'org'>('user')
 	const [value, setValue] = useState('')
 	const [preset, setPreset] = useState<ExecutionContextPreset>('use')
+	const [commands, setCommands] = useState(false)
 	const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
 	const [error, setError] = useState<string | null>(null)
 	const [busy, setBusy] = useState(false)
@@ -591,11 +780,13 @@ function SharingPanel(props: {
 							? { kind, slug: value }
 							: { kind },
 				preset,
+				commands: kind !== 'org' && commands,
 			},
 		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
 		setBusy(false)
 		if (!result.ok) return setError(failureText(result))
 		setValue('')
+		setCommands(false)
 		props.onChanged()
 	}
 
@@ -682,7 +873,8 @@ function SharingPanel(props: {
 				>
 					{sharing.grants.map((grant) => (
 						<li key={grant.grantId}>
-							{subjectLabel(grant)}, {presetLabels[grant.preset]}{' '}
+							{subjectLabel(grant)}, {presetLabels[grant.preset]}
+							{grant.commands ? ' + host commands' : ''}{' '}
 							{confirmRemove === grant.grantId ? (
 								<>
 									<span css={mutedCss}>
@@ -783,6 +975,24 @@ function SharingPanel(props: {
 								))}
 							</select>
 						</label>
+						{kind !== 'org' ? (
+							<label
+								css={{
+									display: 'flex',
+									alignItems: 'center',
+									gap: spacing.sm,
+									minHeight: 44,
+								}}
+							>
+								<input
+									type="checkbox"
+									checked={commands}
+									onChange={(event) => setCommands(event.target.checked)}
+									data-testid="context-share-commands"
+								/>
+								Also allow host commands
+							</label>
+						) : null}
 						<button
 							type="submit"
 							css={[getPillButtonCss({ size: 'sm' }), target]}
@@ -1030,6 +1240,14 @@ function AuditLog(props: {
 							<time dateTime={event.at}>
 								{new Date(event.at).toLocaleString()}
 							</time>
+							{commandAuditSummary(event.detail) ? (
+								<>
+									{': '}
+									<code css={{ overflowWrap: 'anywhere' }}>
+										{commandAuditSummary(event.detail)}
+									</code>
+								</>
+							) : null}
 						</li>
 					))}
 				</ul>

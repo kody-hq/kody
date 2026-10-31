@@ -9,6 +9,7 @@ import {
 function contextRun(
 	runtime: { mode: 'all' } | { mode: 'allowlist'; paths: Array<string> },
 	credentials: ContextRunCredentials = 'none',
+	byOperator = credentials === 'requester',
 ) {
 	return {
 		principal: {
@@ -19,6 +20,7 @@ function contextRun(
 			scopes: null,
 			runtime,
 			credentials,
+			byOperator,
 		},
 	} as unknown as ApiInvocationContext
 }
@@ -54,13 +56,19 @@ test('other principals are not narrowed by a context grant', () => {
 	).not.toThrow()
 })
 
-test('context runs never start workflows', () => {
+test("only the operator's own context runs start workflows", () => {
 	expect(() =>
 		assertContextRunSpecialPathAllowed(contextRun({ mode: 'all' }), [
 			'workflows',
 			'create',
 		]),
-	).toThrow(/cannot start workflows/)
+	).toThrow(/Only this execution context's operator can start workflows/)
+	expect(() =>
+		assertContextRunSpecialPathAllowed(
+			contextRun({ mode: 'all' }, 'requester'),
+			['workflows', 'create'],
+		),
+	).not.toThrow()
 })
 
 test('credentialed runtime calls need a grant that allows credentials', () => {

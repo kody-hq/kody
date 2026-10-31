@@ -70,7 +70,7 @@ Usage:
   kody api <operationId> [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
   kody package publish [<@owner/leaf|package_id>] [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
   kody package collaborators <package> [--org <slug>] [--json] [--token <token>] [--api-url <url>]
-  kody package grant <package> (--team <slug> | --user <username>) [--preset use|contribute|manage] [--org <slug>] [--json]
+  kody package grant <package> (--team <slug> | --user <username>) [--preset read|use|contribute|manage] [--org <slug>] [--json]
   kody package revoke <package> (--team <slug> | --user <username> | --grant <grant_id>) [--org <slug>] [--json]
   kody execute [--org <slug>] [--invoke <ref> | --code <esm> | --file <path>] [--params <json>] [--conversation-id <id>] [--json]
   kody context register --name <name> [--org <slug>] | kody context list [--json]
@@ -105,6 +105,13 @@ Usage:
   kody context, chain, and daemon need execution contexts, an experiment.
   Turn it on at https://kody.codes/account/experiments (guide:
   https://kody.codes/docs/execution-contexts).
+
+  Profiles (scoped identities for your agents and sub-agents) are an
+  experiment too: turn it on at https://kody.codes/account/experiments, then
+  \`kody execute\` a module that calls \`profileCreate\`, \`profileList\`, or
+  \`profileRevoke\`, and share a package with one through
+  \`packageCollaboratorSet\` with \`profile_id\` (guide:
+  https://kody.codes/docs/profiles).
 
   kody install configures running local MCP clients (Cursor, Claude Desktop,
   VS Code, Goose, and others). For web-based clients (ChatGPT, Claude.ai, Grok),
@@ -247,7 +254,9 @@ ${orgBlock}
              the org (\`--org\`). \`<package>\` is \`@owner/leaf\`, the kody id,
              or the package id. \`grant\` adds a team or org member or changes
              their preset (default \`use\`) via \`packageCollaboratorSet\`;
-             people outside the org are refused. \`revoke\` removes one by
+             \`--user\` outside the org adds an outside collaborator.
+             \`--preset read\` shares only the source: they can read, clone,
+             and fork it (\`packageFork\`) but not run it or open its app. \`revoke\` removes one by
              team, user, or grant id via \`packageCollaboratorRemove\`. Needs
              Manage on the package and a token with
              \`package:manage_access\` (\`auth bootstrap --scopes …\`); same

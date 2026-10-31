@@ -95,6 +95,7 @@ test('session handler only renews remembered sessions after the renewal window',
 				featureFlags: {
 					'demo-indicator': false,
 					'connection-profiles': false,
+					profiles: false,
 					'mcp-skills-extension': false,
 					'mcp-events-extension': false,
 					'package-credential-suppliers': false,

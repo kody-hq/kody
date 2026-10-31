@@ -278,3 +278,77 @@ test('kody package grant and revoke call the package-scoped routes with --org', 
 		clearOpenApiRouteCache()
 	}
 })
+
+test('kody package grant --user adds an outside collaborator with Read', async () => {
+	clearOpenApiRouteCache()
+	const previousFetch = globalThis.fetch
+	const calls: Array<string> = []
+	const outside = collaborator({
+		grant_id: 'grant-outside',
+		kind: 'outside',
+		username: 'dana',
+		display_name: null,
+		preset: 'read',
+		permissions: ['package:read'],
+	})
+	globalThis.fetch = (async (
+		input: Parameters<typeof fetch>[0],
+		init?: RequestInit,
+	) => {
+		const url = new URL(String(input))
+		const method = (init?.method ?? 'GET').toUpperCase()
+		const json = (body: unknown) =>
+			new Response(JSON.stringify(body), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			})
+		if (url.pathname === '/openapi.json') {
+			return json({
+				paths: {
+					'/v1/packages/{package_id}/collaborators': {
+						post: { operationId: 'packageCollaboratorSet' },
+					},
+				},
+			})
+		}
+		calls.push(
+			`${method} ${url.pathname}${url.search} ${typeof init?.body === 'string' ? init.body : ''}`.trim(),
+		)
+		return json({ package: pkg, collaborator: outside })
+	}) as typeof fetch
+	try {
+		let stdout = ''
+		let stderr = ''
+		const code = await runCli(
+			[
+				'package',
+				'grant',
+				'@acme/release-notes',
+				'--user',
+				'@dana',
+				'--preset',
+				'read',
+				'--token',
+				'kody_at_test',
+				'--api-url',
+				'https://api.kody.codes',
+			],
+			{
+				stdout: (text) => {
+					stdout += text
+				},
+				stderr: (text) => {
+					stderr += text
+				},
+			},
+		)
+		assert.equal(code, 0, stderr)
+		assert.match(stdout, /@dana now has read on @acme\/release-notes/)
+		assert.deepEqual(calls, [
+			'POST /v1/packages/%40acme%2Frelease-notes/collaborators {"username":"dana","preset":"read"}',
+		])
+	} finally {
+		globalThis.fetch = previousFetch
+		clearOpenApiRouteCache()
+	}
+})

@@ -8,9 +8,28 @@
  */
 import { type OrgPermission, type OrgResourceType } from './org-permissions.ts'
 
-export const grantPresets = ['use', 'contribute', 'manage'] as const
+export const grantPresets = ['read', 'use', 'contribute', 'manage'] as const
 
 export type GrantPreset = (typeof grantPresets)[number]
+
+/**
+ * Read is a package preset: read and fork the source without running it.
+ * Other families keep Use as their smallest preset.
+ */
+const readByType: Partial<
+	Record<OrgResourceType, ReadonlyArray<OrgPermission>>
+> = {
+	package: ['package:read'],
+}
+
+/** Whether `preset` expands to anything on `family`. */
+export function grantPresetAppliesTo(
+	family: OrgResourceType | 'org',
+	preset: GrantPreset,
+): boolean {
+	if (family === 'org') return false
+	return preset !== 'read' || readByType[family] !== undefined
+}
 
 const useByType: Record<OrgResourceType, ReadonlyArray<OrgPermission>> = {
 	package: ['package:read', 'package:execute'],
@@ -117,6 +136,15 @@ export function permissionsForGrantPreset(
 		throw new Error(
 			'Grant presets do not apply to the org resource. Pass an explicit permission list.',
 		)
+	}
+	if (preset === 'read') {
+		const read = readByType[family]
+		if (!read) {
+			throw new Error(
+				`The Read preset does not apply to ${family}. Use the Use preset instead.`,
+			)
+		}
+		return read
 	}
 	const use = useByType[family]
 	if (preset === 'use') return use

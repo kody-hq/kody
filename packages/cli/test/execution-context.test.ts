@@ -30,6 +30,7 @@ import {
 } from '../src/execution-context/client.js'
 import { runExecutionContextCommand } from '../src/execution-context/commands.js'
 import { effectiveFs } from '../src/execution-context/fs-access.js'
+import { HostCommands } from '../src/execution-context/host-commands.js'
 import { runContextRun } from '../src/execution-context/run-executor.js'
 import {
 	abortableDelay,
@@ -1116,4 +1117,145 @@ test('kody context revoke and delete call the revoke and delete routes', async (
 		'POST /v1/execution-contexts/box/delete',
 	])
 	await assert.rejects(run(['delete']), /Usage: kody context delete/)
+})
+
+test('a context run with commands on runs a real command and a background job, authorized and reported to Kody', async () => {
+	SilentSocket.instances = []
+	const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'kody-daemon-cmd-')))
+	const code = `import { kody } from 'kody:runtime'
+export default async function main(p) {
+	const fg = await kody.command.run({ command: 'echo hello-from-host; pwd; echo warn >&2; exit 2', cwd: p.cwd, env: { KODY_E2E_SECRET: 'do-not-log' } })
+	const bg = await kody.command.start({ command: 'echo bg-start; sleep 30' })
+	let out
+	for (let i = 0; i < 200; i++) {
+		out = await kody.command.output({ commandId: bg.commandId })
+		if (out.stdout.includes('bg-start')) break
+		await new Promise((resolve) => setTimeout(resolve, 25))
+	}
+	const status = await kody.command.status({ commandId: bg.commandId })
+	await kody.command.kill({ commandId: bg.commandId })
+	return { fg, bgOut: out.stdout, bgState: status.state }
+}`
+	const now = Date.now()
+	const { signed, serverKeys } = await serverFrames([
+		{
+			t: 'welcome',
+			body: {
+				sid: 'sid_test',
+				grantVersion: 1,
+				grant: { fs: [], commands: { enabled: true } },
+			},
+		},
+		{
+			t: 'run.request',
+			body: {
+				runId: 'run_cmd',
+				deadline: now + 120_000,
+				acceptBy: now + 120_000,
+				requestedBy: { userId: 'u', handle: null, orgId: 'o', orgSlug: null },
+				source: { kind: 'code', code, sha256: '' },
+				params: { cwd },
+				credentialPicks: {},
+				limits: { timeoutMs: 60_000, maxResultBytes: 1_000_000, memoryMb: 128 },
+				grantVersion: 1,
+				apiUrl: 'https://api.kody.test',
+			},
+		},
+		{ t: 'run.commit', body: { runId: 'run_cmd' } },
+	])
+	ServerSocket.frames = signed
+	const abort = new AbortController()
+	const authorized: Array<{ path: unknown; args: unknown }> = []
+	const hostCommands = new HostCommands({ localEnabled: true })
+	const { input } = await daemonInput({
+		serverKeys,
+		signal: abort.signal,
+		hostCommands,
+		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
+		fetchFn: (async (url: string | URL | Request, init?: RequestInit) => {
+			if (String(url).includes('package-graph')) {
+				return Response.json({ modules: [] })
+			}
+			if (String(url).includes('capability-proxy/call')) {
+				const body = JSON.parse(String(init?.body)) as {
+					path: unknown
+					args: Array<unknown>
+				}
+				authorized.push({ path: body.path, args: body.args[0] })
+				return Response.json({ result: { ok: true } })
+			}
+			return Response.json({
+				ticket: 'ticket_1',
+				expiresAt: '2099-01-01T00:00:00.000Z',
+			})
+		}) as typeof fetch,
+		execute: (run: Parameters<ContextRunExecutor>[0]) =>
+			runContextRun({ ...run, apiUrl: 'https://api.kody.test' }),
+	})
+	const decoded = () =>
+		(SilentSocket.instances[0] as unknown as ServerSocket | undefined)?.sent
+			.filter((data) => data !== ecpPingFrame)
+			.map((data) => {
+				const envelope = parseEnvelope(JSON.parse(data))
+				return decodeEnvelopePayload(envelope!.p) as EcpFramePayload
+			}) ?? []
+	const watcher = setInterval(() => {
+		const frames = decoded()
+		if (
+			frames.some((frame) => frame.t === 'run.result') &&
+			frames.filter((frame) => frame.t === 'command.finished').length >= 2
+		) {
+			abort.abort()
+		}
+	}, 50)
+	const timeout = setTimeout(() => abort.abort(), 120_000)
+	await runDaemonConnection(input)
+	clearInterval(watcher)
+	clearTimeout(timeout)
+	hostCommands.killAll('shutdown')
+	const frames = decoded()
+	const result = frames.find((frame) => frame.t === 'run.result')
+	assert.equal(result?.body.isError, false, JSON.stringify(result?.body))
+	const value = (result?.body.structuredContent as { result: any }).result
+	assert.equal(value.fg.exitCode, 2)
+	assert.equal(value.fg.stdout, `hello-from-host\n${cwd}\n`)
+	assert.equal(value.fg.stderr, 'warn\n')
+	assert.match(value.bgOut, /^bg-start/)
+	assert.equal(value.bgState, 'running')
+	assert.ok(
+		authorized.some(
+			(call) => (call.args as { lifecycle?: string }).lifecycle === 'output',
+		),
+	)
+	const starts = authorized.filter(
+		(call) => !(call.args as { lifecycle?: string }).lifecycle,
+	)
+	assert.deepEqual(
+		starts.map((call) => [
+			call.path,
+			(call.args as { background: boolean }).background,
+		]),
+		[
+			[['kody', 'command', 'authorize'], false],
+			[['kody', 'command', 'authorize'], true],
+		],
+	)
+	assert.deepEqual((starts[0]?.args as { envKeys: unknown }).envKeys, [
+		'KODY_E2E_SECRET',
+	])
+	const finished = frames.filter((frame) => frame.t === 'command.finished')
+	assert.deepEqual(
+		finished.map((frame) => [
+			frame.body.exitCode ?? null,
+			frame.body.background,
+			frame.body.reason,
+		]),
+		[
+			[2, false, 'exited'],
+			[null, true, 'killed'],
+		],
+	)
+	assert.equal(finished[0]?.body.runId, 'run_cmd')
+	assert.equal(JSON.stringify(frames).includes('do-not-log'), false)
+	assert.equal(JSON.stringify(authorized).includes('do-not-log'), false)
 })

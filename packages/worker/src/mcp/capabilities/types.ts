@@ -97,7 +97,10 @@ export type CapabilityDefinition<
 	 * concrete resource they touch.
 	 */
 	orgPermission: SurfacePermission
-	/** Required: whether execution context runs may call it. */
+	/**
+	 * Required: whether runs on an execution context by someone other than its
+	 * operator may call it. The operator's own runs are not gated.
+	 */
 	contextRuns: CapabilityContextRunsPolicy
 	/**
 	 * The capability needs a live person: role, membership, and invite

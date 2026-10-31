@@ -320,6 +320,8 @@ function forkRecord(
 	return {
 		id: 'fork-1',
 		listingId: 'listing-1',
+		upstreamOwnerId: null,
+		upstreamPackageId: null,
 		forkerUserId: 'person-a',
 		originCommit: 'old',
 		forkedPackageId: opaquePackageId,

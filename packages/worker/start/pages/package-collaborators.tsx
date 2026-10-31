@@ -31,6 +31,7 @@ import {
 import { renderIcon } from '../components/icon.tsx'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
 import {
+	type PackageCollaboratorPermission,
 	type PackageCollaboratorPreset,
 	type PackageCollaboratorsChange,
 	type PackageCollaboratorsLoaderData,
@@ -61,6 +62,8 @@ import {
 	iconWellCss,
 	listCss,
 	mutedCopyCss,
+	AdvancedPermissionsField,
+	presetOrPermissions,
 	readPreset,
 	renderPresetOptions,
 	rowActionsCss,
@@ -94,6 +97,18 @@ export function PackageCollaboratorsRoute({
 		useState<PackageCollaboratorPreset>('use')
 	const [memberPreset, setMemberPreset] =
 		useState<PackageCollaboratorPreset>('use')
+	const [teamPermissions, setTeamPermissions] = useState<
+		Array<PackageCollaboratorPermission>
+	>([])
+	const [everyonePermissions, setEveryonePermissions] = useState<
+		Array<PackageCollaboratorPermission>
+	>([])
+	const [memberPermissions, setMemberPermissions] = useState<
+		Array<PackageCollaboratorPermission>
+	>([])
+	const [profileId, setProfileId] = useState('')
+	const [profilePreset, setProfilePreset] =
+		useState<PackageCollaboratorPreset>('use')
 	const inFlight = useRef(false)
 	const mutation = useMutation(
 		collaboratorsMutationOptions(
@@ -108,6 +123,7 @@ export function PackageCollaboratorsRoute({
 								...page,
 								invitee: input.change.invitee,
 								preset: input.change.preset,
+								permissions: input.change.permissions,
 							},
 						})
 					case 'revoke-invite':
@@ -121,6 +137,7 @@ export function PackageCollaboratorsRoute({
 								subjectType: input.change.subjectType,
 								subjectId: input.change.subjectId,
 								preset: input.change.preset,
+								permissions: input.change.permissions,
 							},
 						})
 					case 'revoke':
@@ -196,7 +213,7 @@ export function PackageCollaboratorsRoute({
 				intent: 'grant',
 				subjectType: 'org',
 				subjectId: everyone.orgId,
-				preset: everyonePreset,
+				...presetOrPermissions(everyonePreset, everyonePermissions),
 			},
 			'Added everyone in this organization.',
 		)
@@ -215,11 +232,14 @@ export function PackageCollaboratorsRoute({
 				intent: 'grant',
 				subjectType: 'team',
 				subjectId: team.id,
-				preset: teamPreset,
+				...presetOrPermissions(teamPreset, teamPermissions),
 			},
 			`Added ${team.name}.`,
 		)
-		if (accepted) setTeamId('')
+		if (accepted) {
+			setTeamId('')
+			setTeamPermissions([])
+		}
 	}
 
 	async function addMember(
@@ -237,11 +257,99 @@ export function PackageCollaboratorsRoute({
 				intent: 'grant',
 				subjectType: 'user',
 				subjectId: member.userId,
-				preset: memberPreset,
+				...presetOrPermissions(memberPreset, memberPermissions),
 			},
 			`Added ${member.username ? `@${member.username}` : 'that member'}.`,
 		)
-		if (accepted) setMemberId('')
+		if (accepted) {
+			setMemberId('')
+			setMemberPermissions([])
+		}
+	}
+
+	async function addProfile(
+		event: FormEvent<HTMLFormElement>,
+		view: PackageCollaboratorsView,
+	) {
+		event.preventDefault()
+		const profile = view.options.profiles?.find(
+			(option) => option.id === profileId,
+		)
+		if (!profile) return
+		const accepted = await postChange(
+			'add-profile',
+			{
+				intent: 'grant',
+				subjectType: 'profile',
+				subjectId: profile.id,
+				preset: profilePreset,
+			},
+			`Added profile ${profile.name}.`,
+		)
+		if (accepted) setProfileId('')
+	}
+
+	function renderAddProfile(view: PackageCollaboratorsView) {
+		const profiles = view.options.profiles
+		if (!profiles) return null
+		return (
+			<AccountManagementPanel
+				title="Add one of your profiles"
+				description="A profile is an agent identity you control. It can only use what you can, and a sub-profile only what its parent holds here too."
+			>
+				{profiles.length === 0 ? (
+					<p css={mutedCopyCss}>
+						You have no active profiles in this organization.{' '}
+						<SiteLink href="/docs/profiles">Learn about profiles</SiteLink>.
+					</p>
+				) : (
+					<form
+						data-testid="package-collaborators-add-profile"
+						css={formCss}
+						onSubmit={(event) => void addProfile(event, view)}
+					>
+						<label css={accountFieldCss}>
+							<span css={accountFieldLabelCss}>Profile</span>
+							<select
+								aria-label="Profile"
+								value={profileId}
+								required
+								css={selectCss}
+								onChange={(event) => {
+									setProfileId((event.currentTarget as HTMLSelectElement).value)
+								}}
+							>
+								<option value="">Choose a profile</option>
+								{profiles.map((profile) => (
+									<option key={profile.id} value={profile.id}>
+										{profile.depth > 1
+											? `${profile.name} (sub-profile, depth ${profile.depth})`
+											: profile.name}
+									</option>
+								))}
+							</select>
+						</label>
+						{renderPresetField({
+							label: 'Access for the profile',
+							value: profilePreset,
+							onChange: (preset) => {
+								setProfilePreset(preset)
+							},
+						})}
+						<div css={accountActionsCss}>
+							<button
+								type="submit"
+								disabled={busy !== null || profileId === ''}
+								css={getPillButtonCss({ size: 'sm' })}
+							>
+								{renderIcon('plus', { size: '1.05rem' })}
+								{busy === 'add-profile' ? 'Adding…' : 'Add profile'}
+							</button>
+						</div>
+					</form>
+				)}
+			</AccountManagementPanel>
+		)
 	}
 
 	function renderCollaborator(collaborator: PackageCollaboratorView) {
@@ -336,26 +444,41 @@ export function PackageCollaboratorsRoute({
 		label: string
 		value: PackageCollaboratorPreset
 		onChange: (preset: PackageCollaboratorPreset) => void
+		advanced?: {
+			permissions: Array<PackageCollaboratorPermission>
+			onPermissionsChange: (value: Array<PackageCollaboratorPermission>) => void
+			testId: string
+		}
 	}) {
 		return (
-			<label css={accountFieldCss}>
-				<span css={accountFieldLabelCss}>Access</span>
-				<select
-					aria-label={input.label}
-					value={input.value}
-					css={selectCss}
-					onChange={(event) => {
-						const preset = readPreset(event)
-						if (!preset) return
-						input.onChange(preset)
-					}}
-				>
-					{renderPresetOptions(input.value)}
-				</select>
-				<p css={accountFieldNoteCss}>
-					{packageCollaboratorPresetDescription(input.value)}.
-				</p>
-			</label>
+			<>
+				<label css={accountFieldCss}>
+					<span css={accountFieldLabelCss}>Access</span>
+					<select
+						aria-label={input.label}
+						value={input.value}
+						css={selectCss}
+						onChange={(event) => {
+							const preset = readPreset(event)
+							if (!preset) return
+							input.onChange(preset)
+						}}
+					>
+						{renderPresetOptions(input.value)}
+					</select>
+					<p css={accountFieldNoteCss}>
+						{packageCollaboratorPresetDescription(input.value)}.
+					</p>
+				</label>
+				{input.advanced ? (
+					<AdvancedPermissionsField
+						value={input.advanced.permissions}
+						onChange={input.advanced.onPermissionsChange}
+						disabled={busy !== null}
+						testId={input.advanced.testId}
+					/>
+				) : null}
+			</>
 		)
 	}
 
@@ -382,6 +505,11 @@ export function PackageCollaboratorsRoute({
 							value: everyonePreset,
 							onChange: (preset) => {
 								setEveryonePreset(preset)
+							},
+							advanced: {
+								permissions: everyonePermissions,
+								onPermissionsChange: setEveryonePermissions,
+								testId: 'package-collaborators-advanced-everyone',
 							},
 						})}
 						<div css={accountActionsCss}>
@@ -443,6 +571,11 @@ export function PackageCollaboratorsRoute({
 							onChange: (preset) => {
 								setTeamPreset(preset)
 							},
+							advanced: {
+								permissions: teamPermissions,
+								onPermissionsChange: setTeamPermissions,
+								testId: 'package-collaborators-advanced-team',
+							},
 						})}
 						<div css={accountActionsCss}>
 							<button
@@ -498,6 +631,11 @@ export function PackageCollaboratorsRoute({
 							value: memberPreset,
 							onChange: (preset) => {
 								setMemberPreset(preset)
+							},
+							advanced: {
+								permissions: memberPermissions,
+								onPermissionsChange: setMemberPermissions,
+								testId: 'package-collaborators-advanced-member',
 							},
 						})}
 						<div css={accountActionsCss}>
@@ -579,6 +717,7 @@ export function PackageCollaboratorsRoute({
 						{view.org.personal ? null : renderAddEveryone(view)}
 						{view.org.personal ? null : renderAddTeam(view)}
 						{view.org.personal ? null : renderAddMember(view)}
+						{renderAddProfile(view)}
 						{view.org.personal ? (
 							<PackageCollaboratorInvites
 								key={`${actorKey}/${username}/${kodyId}`}
