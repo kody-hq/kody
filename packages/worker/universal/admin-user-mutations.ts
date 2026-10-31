@@ -8,10 +8,6 @@ export const removeAdminUserRoleSchema = z.object({
 	stableUserId: z.string(),
 	role: z.enum(roleNames),
 })
-export const setAdminUserPlanSchema = z.object({
-	stableUserId: z.string(),
-	plan: z.string().nullable(),
-})
 export const suspendAdminUserSchema = z.object({ stableUserId: z.string() })
 export const unsuspendAdminUserSchema = z.object({ stableUserId: z.string() })
 export const resumeAdminUserEmailSchema = z.object({ stableUserId: z.string() })

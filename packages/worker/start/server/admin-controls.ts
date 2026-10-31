@@ -192,54 +192,6 @@ export const setAdminOrgCreditEligibility = createServerFn({ method: 'POST' })
 		})
 	})
 
-export const readAdminCreditWallet = createServerFn({ method: 'GET' })
-	.inputValidator(z.object({ stableUserId: z.string().min(1) }))
-	.handler(async ({ data }) => {
-		const { env } = await adminContext('read:user:any')
-		const [{ loadAdminCreditWallet }, { parseOwnerId }] = await Promise.all([
-			import('../../src/admin/credit-grants.ts'),
-			import('@kody-internal/shared/owner-person-ids.ts'),
-		])
-		const stableUserId = parseOwnerId(data.stableUserId)
-		if (!stableUserId) throw new Error('stableUserId is required.')
-		const wallet = await loadAdminCreditWallet(env, { stableUserId })
-		if (!wallet) throw new Error('User not found.')
-		return wallet
-	})
-
-export const grantAdminCredits = createServerFn({ method: 'POST' })
-	.inputValidator(
-		z.object({
-			stableUserId: z.string().min(1),
-			amountCents: z.number(),
-			note: z.string().optional(),
-		}),
-	)
-	.handler(async ({ data }) => {
-		const { withWebsiteMutation } = await import('./mutation-context.ts')
-		return withWebsiteMutation({}, async () => {
-			const { env, actor, request } = await adminContext('update:user:any')
-			const [{ grantAdminCreditsToUser }, { parseOwnerId }, { getRequestIp }] =
-				await Promise.all([
-					import('../../src/admin/credit-grants.ts'),
-					import('@kody-internal/shared/owner-person-ids.ts'),
-					import('../../src/audit-log.ts'),
-				])
-			const stableUserId = parseOwnerId(data.stableUserId)
-			if (!stableUserId) throw new Error('stableUserId is required.')
-			const result = await grantAdminCreditsToUser({
-				env,
-				target: { stableUserId },
-				grantedBy: { stableUserId: actor.mcpUser.userId, email: actor.email },
-				amountCents: data.amountCents,
-				note: data.note,
-				path: '/admin/users',
-				ip: getRequestIp(request) ?? undefined,
-			})
-			return result.wallet
-		})
-	})
-
 export const readAdminUsersPage = createServerFn({ method: 'GET' })
 	.inputValidator(
 		adminUsersReadInput.extend({ page: z.number().int().positive() }),
