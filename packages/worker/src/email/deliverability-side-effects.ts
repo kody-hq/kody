@@ -6,10 +6,12 @@
 
 import {
 	clearEmailRecipientCooldown,
+	prepareEmailRecipientCooldownUpsert,
 	recordEmailRecipientCooldown,
 } from './recipient-cooldown.ts'
 import {
 	clearRejectingProvidersForRecipient,
+	prepareRejectingProviderUpserts,
 	recordRejectingProvidersForRecipient,
 } from './rejecting-providers.ts'
 import { type EmailDeliveryStatus } from './types.ts'
@@ -24,19 +26,35 @@ import {
 
 const deliverabilityEffectsClaimMs = 2 * 60 * 1000
 
+function isMissingPolicyTableError(error: unknown) {
+	const message = error instanceof Error ? error.message : String(error)
+	// Pre-migration / stripped workers fixtures omit policy tables.
+	return (
+		error instanceof TypeError ||
+		/no such table/i.test(message) ||
+		/SQLITE_ERROR/i.test(message)
+	)
+}
+
 /**
- * Runs `apply` once per provider event across queue retries. A crash after
- * the event row is saved leaves the ledger row unapplied, so the retry (seen
- * as a duplicate event) applies it. A short claim keeps two concurrent
- * deliveries of the same event from both applying; the loser throws so the
- * queue retries it after the winner marks the row applied.
+ * Applies mailbox delivery-event side effects once per provider event across
+ * queue retries. A crash after the event row is saved leaves the ledger row
+ * unapplied, so the retry (seen as a duplicate event) applies it. Failure
+ * holds commit in one batch with the ledger's `applied_at`, guarded by this
+ * delivery's claim, so a failed or repeated attempt cannot count twice. The
+ * short claim keeps two concurrent deliveries from both applying; the loser
+ * throws so the queue retries it after the winner marks the row applied.
  */
 export async function applyDeliverabilitySideEffectsOnce(input: {
 	db: D1Database
 	providerEventId: string
 	userId: string
-	apply: () => Promise<void>
+	recipient: string
+	deliveryStatus: EmailDeliveryStatus
+	smtpResponse?: string | null
+	smtpEnhancedStatusCode?: string | null
 	now?: Date
+	fetchImpl?: typeof fetch
 }): Promise<void> {
 	const now = input.now ?? new Date()
 	const nowIso = now.toISOString()
@@ -72,9 +90,57 @@ export async function applyDeliverabilitySideEffectsOnce(input: {
 			`Deliverability side effects for provider event ${input.providerEventId} are being applied by another delivery`,
 		)
 	}
+	const markApplied = input.db
+		.prepare(
+			`UPDATE email_deliverability_effects SET applied_at = ?
+			WHERE provider_event_id = ? AND claimed_at = ? AND applied_at IS NULL`,
+		)
+		.bind(nowIso, input.providerEventId, nowIso)
 	try {
-		await input.apply()
+		if (input.deliveryStatus === 'delivered') {
+			// Clearing holds is idempotent, so a retry can repeat it safely.
+			await applyDeliverabilitySideEffects({
+				db: input.db,
+				recipient: input.recipient,
+				deliveryStatus: input.deliveryStatus,
+				now,
+				fetchImpl: input.fetchImpl,
+				throwOnFailure: true,
+			})
+			await markApplied.run()
+			return
+		}
+		const onlyIf = {
+			sql: `EXISTS (
+				SELECT 1 FROM email_deliverability_effects
+				WHERE provider_event_id = ? AND claimed_at = ? AND applied_at = ?
+			)`,
+			binds: [input.providerEventId, nowIso, nowIso],
+		}
+		const failure = {
+			db: input.db,
+			recipient: input.recipient,
+			status: input.deliveryStatus,
+			smtpResponse: input.smtpResponse,
+			smtpEnhancedStatusCode: input.smtpEnhancedStatusCode,
+			now,
+			onlyIf,
+		}
+		const cooldown = prepareEmailRecipientCooldownUpsert(failure)
+		const providers = await prepareRejectingProviderUpserts({
+			...failure,
+			fetchImpl: input.fetchImpl,
+		})
+		await input.db.batch([
+			markApplied,
+			...(cooldown ? [cooldown.statement] : []),
+			...providers.statements,
+		])
 	} catch (error) {
+		if (isMissingPolicyTableError(error)) {
+			await markApplied.run().catch(() => {})
+			return
+		}
 		await input.db
 			.prepare(
 				`UPDATE email_deliverability_effects SET claimed_at = NULL
@@ -84,13 +150,6 @@ export async function applyDeliverabilitySideEffectsOnce(input: {
 			.run()
 		throw error
 	}
-	await input.db
-		.prepare(
-			`UPDATE email_deliverability_effects SET applied_at = ?
-			WHERE provider_event_id = ? AND applied_at IS NULL`,
-		)
-		.bind(nowIso, input.providerEventId)
-		.run()
 }
 
 export async function applyDeliverabilitySideEffects(input: {
@@ -208,16 +267,8 @@ export async function applyDeliverabilitySideEffects(input: {
 			})
 		}
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error)
-		// Pre-migration / stripped workers fixtures omit policy tables. Fail
-		// open quietly so delivery-event processing still acks.
-		if (
-			error instanceof TypeError ||
-			/no such table/i.test(message) ||
-			/SQLITE_ERROR/i.test(message)
-		) {
-			return
-		}
+		// Fail open quietly so delivery-event processing still acks.
+		if (isMissingPolicyTableError(error)) return
 		if (input.throwOnFailure) throw error
 		console.warn('email-deliverability-side-effects-failed', error)
 	}

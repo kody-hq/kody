@@ -359,3 +359,97 @@ test('a transient failure while applying the cooldown is retried, not marked app
 			.first(),
 	).toEqual({ failure_count: 1 })
 }, 30_000)
+
+test('a failure after the cooldown write does not count the cooldown twice on retry', async () => {
+	await ensureEmailTestSchema(env.APP_DB)
+	const userId = ownerIdFromStored(`provider-user-${crypto.randomUUID()}`)
+	const providerMessageId = `provider-${crypto.randomUUID()}`
+	const domain = `blocked-${crypto.randomUUID()}.example`
+	const recipient = `bounce@${domain}`
+	const providerKey = `provider-${crypto.randomUUID()}.example`
+	await env.APP_DB.prepare(
+		`INSERT INTO email_mx_lookup_cache (
+			domain, provider_keys_json, mx_hosts_json, looked_up_at, expires_at
+		) VALUES (?, ?, ?, ?, ?)`,
+	)
+		.bind(
+			domain,
+			JSON.stringify([providerKey]),
+			JSON.stringify([`mx.${providerKey}`]),
+			'2026-08-03T00:00:00.000Z',
+			'2999-01-01T00:00:00.000Z',
+		)
+		.run()
+	const createdAt = '2026-08-03T01:00:00.000Z'
+	const mailbox = mailboxRpc({ env, userId })
+	const message = baseMessage(userId, {
+		direction: 'outbound',
+		inboxId: null,
+		processingStatus: 'sent',
+		providerMessageId,
+		sentAt: createdAt,
+		createdAt,
+	})
+	await mailbox.upsertMessageGraph({ ownerId: userId, message })
+	await upsertOutboundProviderIndexRow({
+		db: env.APP_DB,
+		providerMessageId,
+		userId,
+		messageId: message.id,
+		inboxId: null,
+		now: createdAt,
+	})
+	const event = providerEvent({
+		providerMessageId,
+		providerEventId: `event-${crypto.randomUUID()}`,
+		status: 'bounced',
+		at: '2026-08-03T01:03:00.000Z',
+	})
+	const body = {
+		...event,
+		payload: {
+			...event.payload,
+			recipient,
+			delivery: {
+				status: 'bounced',
+				smtpResponse: '550 5.7.1 rejected by Spamhaus blocklist',
+				smtpEnhancedStatusCode: '5.7.1',
+			},
+		},
+	}
+	const flakyDb = new Proxy(env.APP_DB, {
+		get(target, property, receiver) {
+			if (property === 'prepare') {
+				return (statement: string) => {
+					if (statement.includes('INSERT INTO email_rejecting_providers')) {
+						throw new Error('D1_ERROR: Network connection lost.')
+					}
+					return target.prepare(statement)
+				}
+			}
+			const value = Reflect.get(target, property, receiver)
+			return typeof value === 'function' ? value.bind(target) : value
+		},
+	})
+	await expect(
+		processCloudflareEmailDeliveryEvent({
+			env: { ...env, APP_DB: flakyDb },
+			body,
+		}),
+	).rejects.toThrow('Network connection lost')
+	await processCloudflareEmailDeliveryEvent({ env, body })
+	expect(
+		await env.APP_DB.prepare(
+			`SELECT failure_count FROM email_recipient_cooldowns WHERE recipient = ?`,
+		)
+			.bind(recipient)
+			.first(),
+	).toEqual({ failure_count: 1 })
+	expect(
+		await env.APP_DB.prepare(
+			`SELECT rejection_count FROM email_rejecting_providers WHERE provider_key = ?`,
+		)
+			.bind(providerKey)
+			.first(),
+	).toEqual({ rejection_count: 1 })
+}, 30_000)

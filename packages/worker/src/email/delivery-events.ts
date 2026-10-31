@@ -170,18 +170,12 @@ export async function processCloudflareEmailDeliveryEvent(input: {
 				db: input.env.APP_DB,
 				providerEventId: providerEvent.payload.eventId,
 				userId: result.message.userId,
-				apply: () =>
-					applyDeliverabilitySideEffects({
-						db: input.env.APP_DB,
-						recipient: providerEvent.payload.recipient,
-						deliveryStatus: providerEvent.payload.delivery.status,
-						smtpResponse: providerEvent.payload.delivery.smtpResponse,
-						smtpEnhancedStatusCode:
-							providerEvent.payload.delivery.smtpEnhancedStatusCode,
-						smtpStatusCode: providerEvent.payload.delivery.smtpStatusCode,
-						fetchImpl: input.fetchImpl,
-						throwOnFailure: true,
-					}),
+				recipient: providerEvent.payload.recipient,
+				deliveryStatus: providerEvent.payload.delivery.status,
+				smtpResponse: providerEvent.payload.delivery.smtpResponse,
+				smtpEnhancedStatusCode:
+					providerEvent.payload.delivery.smtpEnhancedStatusCode,
+				fetchImpl: input.fetchImpl,
 			})
 		}
 		return { ...result, providerEvent }

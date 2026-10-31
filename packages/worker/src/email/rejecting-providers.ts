@@ -6,7 +6,10 @@
  */
 
 import { resolveRecipientMxProviders } from './mx-lookup.ts'
-import { classifyRecipientDeliveryFailure } from './recipient-cooldown.ts'
+import {
+	classifyRecipientDeliveryFailure,
+	type EmailPolicyWriteGuard,
+} from './recipient-cooldown.ts'
 import { type EmailDeliveryStatus } from './types.ts'
 import { type EmailVerificationDeliveryStatus } from '#universal/email-verification-delivery.ts'
 
@@ -104,7 +107,7 @@ export async function isRejectingProviderActive(input: {
 	return isRejectingProviderTimestampActive(row.last_rejection_at, now)
 }
 
-export async function recordRejectingProvidersForRecipient(input: {
+type RejectingProvidersInput = {
 	db: D1Database
 	recipient: string
 	status: EmailDeliveryStatus | EmailVerificationDeliveryStatus
@@ -112,13 +115,27 @@ export async function recordRejectingProvidersForRecipient(input: {
 	smtpEnhancedStatusCode?: string | null
 	now?: Date
 	fetchImpl?: typeof fetch
-}): Promise<Array<string>> {
+}
+
+/**
+ * Resolves the recipient's MX providers and builds their rejection upserts
+ * without running them. With `onlyIf`, each row is written only when that
+ * condition holds at commit time.
+ */
+export async function prepareRejectingProviderUpserts(
+	input: RejectingProvidersInput & { onlyIf?: EmailPolicyWriteGuard },
+): Promise<{
+	providerKeys: Array<string>
+	statements: Array<D1PreparedStatement>
+}> {
 	const deliveryClass = classifyRecipientDeliveryFailure({
 		status: input.status,
 		smtpResponse: input.smtpResponse,
 		smtpEnhancedStatusCode: input.smtpEnhancedStatusCode,
 	})
-	if (deliveryClass !== 'sender_block') return []
+	if (deliveryClass !== 'sender_block') {
+		return { providerKeys: [], statements: [] }
+	}
 
 	const mx = await resolveRecipientMxProviders({
 		db: input.db,
@@ -126,27 +143,41 @@ export async function recordRejectingProvidersForRecipient(input: {
 		now: input.now,
 		fetchImpl: input.fetchImpl,
 	})
-	if (mx.providerKeys.length === 0) return []
-
 	const now = input.now ?? new Date()
 	const nowIso = now.toISOString()
-	for (const providerKey of mx.providerKeys) {
-		await input.db
+	const statements = mx.providerKeys.map((providerKey) =>
+		input.db
 			.prepare(
 				`INSERT INTO email_rejecting_providers (
 					provider_key, last_rejection_at, rejection_count,
 					last_recipient_domain, seeded, created_at, updated_at
-				 ) VALUES (?, ?, 1, ?, 0, ?, ?)
+				 ) SELECT ?, ?, 1, ?, 0, ?, ? WHERE ${input.onlyIf?.sql ?? '1'}
 				 ON CONFLICT(provider_key) DO UPDATE SET
 					last_rejection_at = excluded.last_rejection_at,
 					rejection_count = email_rejecting_providers.rejection_count + 1,
 					last_recipient_domain = excluded.last_recipient_domain,
 					updated_at = excluded.updated_at`,
 			)
-			.bind(providerKey, nowIso, mx.domain || null, nowIso, nowIso)
-			.run()
+			.bind(
+				providerKey,
+				nowIso,
+				mx.domain || null,
+				nowIso,
+				nowIso,
+				...(input.onlyIf?.binds ?? []),
+			),
+	)
+	return { providerKeys: mx.providerKeys, statements }
+}
+
+export async function recordRejectingProvidersForRecipient(
+	input: RejectingProvidersInput,
+): Promise<Array<string>> {
+	const prepared = await prepareRejectingProviderUpserts(input)
+	for (const statement of prepared.statements) {
+		await statement.run()
 	}
-	return mx.providerKeys
+	return prepared.providerKeys
 }
 
 /**
