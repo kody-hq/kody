@@ -5,8 +5,9 @@ summary:
   Run execute and automations on your own laptop or build server instead of Kody
   cloud. Credentials stay in Kody cloud; the machine adds host folders, LAN, and
   (after a local opt-in) shell commands via kody.command.run /
-  kody.command.start with the execution_context:command grant. An experiment you
-  turn on at /account/experiments.
+  kody.command.start, from execute or saved packages, with the
+  execution_context:command grant. An experiment you turn on at
+  /account/experiments.
 category: platform
 audience: agents
 ---
@@ -303,6 +304,10 @@ back to Kody cloud gets `execution_context_command_requires_context` from
 `kody.command.*`, so pin `context` without `fallback` when the code needs
 commands. Scheduled, triggered, and app-visit runs routed to the machine use
 commands the same way as `execute`.
+
+Saved packages can call `kody.command.*` too: package code (including an
+imported community package) running on the machine gets the same host commands
+under the same machine opt-in, command grant, and denials as code in `execute`.
 
 Turn host commands on with `kody context commands on` or **Machine › Allow
 commands** in the Kody desktop app. Only the machine can turn them on; turn them

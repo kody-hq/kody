@@ -186,6 +186,10 @@ sequenceDiagram
   stays valid JSON), cwd, env keys, run id, and background flag. Authorization
   requests and audit rows never carry env values; command output can, if the
   command prints them.
+- Saved package code gets the same `kody.command`: the package-bound `kody`
+  wrapper (`__kodyCreatePackageBoundKody` in `local-execute-runtime-support.ts`)
+  passes `command` through like `mcp`, so the opt-in, grant, and authorize hop
+  checks above apply unchanged.
 - Kody cloud and `--local` runs get a `kody.command` whose methods throw
   `execution_context_command_requires_context` (`runtime-source-modules.ts`);
   the authorize hop refuses any other principal with the same code.

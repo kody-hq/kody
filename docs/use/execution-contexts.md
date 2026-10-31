@@ -163,6 +163,8 @@ installed, else Windows PowerShell; pass `shell: 'cmd'` for `cmd.exe`).
 - Runtime: `kody.command.run`, `start`, `status`, `output`, `kill`, `list` from
   `kody:runtime`. See the
   [Execution contexts guide](../guides/execution-contexts.md#run-commands-on-the-machine).
+  Saved packages (including imported community packages) can call
+  `kody.command.*` too, under the same machine opt-in and grant.
 - Grant: `grant.commands: { enabled, enabledAt }` on `executionContextGet`.
   `executionContextUpdate` accepts only `enabled: false`; `enabled: true` fails
   with `commands_opt_in_local`.
