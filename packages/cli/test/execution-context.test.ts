@@ -834,7 +834,9 @@ test('runs get the grant egress from welcome, re-applied on grant.update', async
 
 test('grant.update re-applies host folders: capabilities follow the effective mounts and a run writes inside them only', async () => {
 	SilentSocket.instances = []
-	const root = realpathSync(mkdtempSync(join(tmpdir(), 'kody-daemon-fs-')))
+	const root = realpathSync.native(
+		mkdtempSync(join(tmpdir(), 'kody-daemon-fs-')),
+	)
 	const granted = join(root, 'granted')
 	const outside = join(root, 'outside')
 	mkdirSync(granted)
@@ -1121,7 +1123,9 @@ test('kody context revoke and delete call the revoke and delete routes', async (
 
 test('a context run with commands on runs a real command and a background job, authorized and reported to Kody', async () => {
 	SilentSocket.instances = []
-	const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'kody-daemon-cmd-')))
+	const cwd = realpathSync.native(
+		mkdtempSync(join(tmpdir(), 'kody-daemon-cmd-')),
+	)
 	// Windows runs PowerShell by default.
 	const [fgCommand, bgCommand] =
 		process.platform === 'win32'

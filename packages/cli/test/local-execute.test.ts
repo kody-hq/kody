@@ -1382,7 +1382,9 @@ test(
 		reset()
 		const { effectiveFs } =
 			await import('../src/execution-context/fs-access.js')
-		const root = realpathSync(mkdtempSync(join(tmpdir(), 'kody-host-fs-')))
+		const root = realpathSync.native(
+			mkdtempSync(join(tmpdir(), 'kody-host-fs-')),
+		)
 		const rw = join(root, 'granted')
 		const ro = join(root, 'readonly')
 		const denied = join(root, 'granted-evil')
@@ -1462,7 +1464,9 @@ test(
 		reset()
 		const { effectiveFs } =
 			await import('../src/execution-context/fs-access.js')
-		const root = realpathSync(mkdtempSync(join(tmpdir(), 'kody-host-fs-')))
+		const root = realpathSync.native(
+			mkdtempSync(join(tmpdir(), 'kody-host-fs-')),
+		)
 		const granted = await effectiveFs(
 			[{ path: root, mode: 'rw' }],
 			[{ path: root, mode: 'rw' }],
