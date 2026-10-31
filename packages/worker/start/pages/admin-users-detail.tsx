@@ -501,14 +501,18 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 								},
 							]}
 						/>
-						<p>
-							<a
-								href={`/admin/orgs/${encodeURIComponent(personalOrganization.slug)}`}
-							>
-								Open personal organization
-							</a>
-						</p>
-						<p>Team organizations are listed in the Organizations panel.</p>
+						<div css={{ display: 'grid', gap: spacing.sm }}>
+							<p css={{ margin: 0, color: colors.textMuted }}>
+								<a
+									href={`/admin/orgs/${encodeURIComponent(personalOrganization.slug)}`}
+								>
+									Open personal organization
+								</a>
+							</p>
+							<p css={{ margin: 0, color: colors.textMuted }}>
+								Team organizations are listed in the Organizations panel.
+							</p>
+						</div>
 					</>
 				) : (
 					<p>No personal organization is available for this user.</p>

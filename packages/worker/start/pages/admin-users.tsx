@@ -446,7 +446,7 @@ export function AdminUsersPage(props: {
 		>
 			<AdminPageHeader
 				title="Admin users"
-				description="Review account metadata and manage role assignments and entitlement plans. User content is never shown here."
+				description="Review account metadata and manage role assignments. Plans and billing live on organizations. User content is never shown here."
 				currentHref={currentHref}
 			/>
 			{message ? (

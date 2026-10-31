@@ -19,6 +19,7 @@ import {
 	fieldCss,
 	fieldLabelCss,
 	getAuthInputCss,
+	getGhostButtonCss,
 	getPillButtonCss,
 	getSelectCss,
 } from '#universal/styles/style-primitives.ts'
@@ -53,6 +54,10 @@ import {
 const billingInputCss = getAuthInputCss()
 const billingSelectCss = getSelectCss()
 const billingButtonCss = getPillButtonCss({ size: 'sm' })
+const secondaryButtonCss = {
+	...getGhostButtonCss({ size: 'sm' }),
+	justifySelf: 'start',
+}
 
 function AdminOrgSeatSyncPanel(props: { currentHref: string }) {
 	const report = useQuery({
@@ -119,7 +124,7 @@ function AdminOrgSeatSyncPanel(props: { currentHref: string }) {
 			)}
 			<button
 				type="button"
-				css={billingButtonCss}
+				css={secondaryButtonCss}
 				disabled={stripe.isPending}
 				onClick={() => stripe.mutate(0)}
 			>
@@ -469,7 +474,6 @@ export function AdminOrgsPage(props: {
 				description="Review organization plans, seats, credits, budgets, and lifecycle state."
 				currentHref={props.currentHref}
 			/>
-			<AdminOrgSeatSyncPanel currentHref={props.currentHref} />
 			<RecordTable
 				mode="none"
 				ariaLabel="Organizations"
@@ -583,6 +587,7 @@ export function AdminOrgsPage(props: {
 					</div>
 				</div>
 			) : null}
+			<AdminOrgSeatSyncPanel currentHref={props.currentHref} />
 		</AccountManagementShell>
 	)
 }

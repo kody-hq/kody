@@ -39,4 +39,8 @@ test('organization list renders aggregate seat sync history without identifiers'
 	expect(html).toContain('2')
 	expect(html).toContain('Compare with Stripe')
 	expect(html).not.toContain('fixture-org')
+	const organizationsTableIndex = html.indexOf('aria-label="Organizations"')
+	const seatSyncPanelIndex = html.indexOf('Seat sync')
+	expect(organizationsTableIndex).toBeGreaterThanOrEqual(0)
+	expect(organizationsTableIndex).toBeLessThan(seatSyncPanelIndex)
 })
