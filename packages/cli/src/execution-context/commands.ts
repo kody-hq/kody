@@ -14,7 +14,24 @@ import {
 	experimentOffError,
 	isExperimentOffError,
 } from './client.js'
+import {
+	type CurrentVersion,
+	autoUpdateSetting,
+	newerInstalledVersion,
+	relaunchExitCode,
+	startDaemonUpdater,
+	superviseNewerVersion,
+	supervisedEnvVar,
+} from './auto-update.js'
 import { runDaemon } from './daemon.js'
+import {
+	type RunnerLauncher,
+	acquireRunnerLock,
+	describeHolder,
+	launcherEnvVar,
+	lockPathFor,
+	otherLocalDaemons,
+} from './runner-lock.js'
 import { HostCommands } from './host-commands.js'
 import { createPackageGraphCache } from './package-graph-cache.js'
 import {
@@ -40,6 +57,7 @@ import {
 	localContextId,
 	offerInstall,
 	offerUninstallAfterRevoke,
+	runAutoUpdateCommand,
 	runDaemonServiceCommand,
 	runUpdate,
 	storedContextIds,
@@ -174,6 +192,9 @@ async function runCommand(
 			: maxConcurrentRuns(input.values.maxConcurrent)
 	}
 	if (input.command === 'update') return await runUpdate(serviceEnv)
+	if (input.command === 'daemon' && sub === 'auto-update') {
+		return await runAutoUpdateCommand(serviceEnv, rest[0])
+	}
 	if (input.command === 'daemon' && sub !== undefined) {
 		const maxConcurrent = maxConcurrentFlag()
 		return await runDaemonServiceCommand(serviceEnv, {
@@ -507,7 +528,34 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		const paths = manager
 			? servicePaths({ apiUrl: input.apiUrl, ecid, manager })
 			: null
-		if (paths) rotateLog(paths.logPath)
+		const supervised = process.env[supervisedEnvVar] === '1'
+		if (paths && !supervised) rotateLog(paths.logPath)
+		const readAutoUpdate = async () =>
+			autoUpdateSetting(await readLocalPolicy().catch(() => null))
+		const relaunchArgs = [
+			'daemon',
+			'--context',
+			ecid,
+			'--api-url',
+			input.apiUrl,
+			...(input.values.maxConcurrent === undefined
+				? []
+				: ['--max-concurrent', input.values.maxConcurrent]),
+		]
+		const log = (line: string) => input.write(`${line}\n`)
+		// A newer verified CLI is installed (by this or another daemon): run it.
+		if (!supervised && (await readAutoUpdate()).enabled) {
+			const newer = newerInstalledVersion({ selfVersion: input.clientVersion })
+			if (newer) {
+				const outcome = await superviseNewerVersion({
+					first: newer,
+					selfVersion: input.clientVersion,
+					args: relaunchArgs,
+					log,
+				})
+				if (outcome.kind === 'exit') return outcome.code
+			}
+		}
 		const { context, privateJwk } = loadContext({
 			apiUrl: input.apiUrl,
 			ecid,
@@ -526,12 +574,71 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 				.then((enabled) => hostCommands.setLocalEnabled(enabled))
 		}
 		watchFile(commandsPolicyPath, { interval: 2000 }, onCommandsPolicyChange)
+		const lockStatePath = servicePaths({
+			apiUrl: input.apiUrl,
+			ecid,
+			manager: serviceManagerFor() ?? 'systemd',
+		}).statePath
+		const launcher: RunnerLauncher =
+			manager ??
+			(process.env[launcherEnvVar] === 'desktop' ? 'desktop' : 'terminal')
+		const lockInfo = {
+			version: input.clientVersion,
+			launcher,
+			startedAt: new Date().toISOString(),
+		}
+		let lock = acquireRunnerLock(lockPathFor(lockStatePath), lockInfo)
+		if (!lock.ok && manager) {
+			// A service waits instead of exiting, so the manager neither restarts
+			// it in a loop nor gives up on it: it takes over once the other stops.
+			let holder = lock.holder
+			log(
+				`Another kody daemon already runs ${context.name} (${describeHolder(holder)}). One runner per context: this service waits for it to stop instead of replacing it.`,
+			)
+			let stopWaiting = false
+			const onWaitSignal = () => {
+				stopWaiting = true
+			}
+			process.on('SIGINT', onWaitSignal)
+			process.on('SIGTERM', onWaitSignal)
+			try {
+				while (!lock.ok && !stopWaiting) {
+					await new Promise((resolve) => setTimeout(resolve, 15_000))
+					lock = acquireRunnerLock(lockPathFor(lockStatePath), lockInfo)
+					if (!lock.ok && lock.holder.pid !== holder.pid) {
+						holder = lock.holder
+						log(
+							`The runner for ${context.name} is now ${describeHolder(holder)}. Still waiting.`,
+						)
+					}
+				}
+			} finally {
+				process.off('SIGINT', onWaitSignal)
+				process.off('SIGTERM', onWaitSignal)
+			}
+			if (!lock.ok) {
+				unwatchFile(commandsPolicyPath, onCommandsPolicyChange)
+				return stayStoppedExitCode
+			}
+			log(`The other daemon stopped. Starting ${context.name}.`)
+		}
+		if (!lock.ok) {
+			unwatchFile(commandsPolicyPath, onCommandsPolicyChange)
+			throw new Error(
+				`Another kody daemon already runs ${context.name} (${describeHolder(lock.holder)}). One runner per context on a machine: use that one, or stop it first (\`kody daemon stop\`, or Machine > Stop runner in the desktop app).`,
+			)
+		}
+		const releaseLock = lock.release
 		const abort = new AbortController()
 		const drain = new AbortController()
 		let hardStop: NodeJS.Timeout | undefined
+		let signalled = false
+		let updateTo: CurrentVersion | null = null
 		const onSignal = () => {
-			if (drain.signal.aborted) return abort.abort()
-			drain.abort()
+			if (signalled) return abort.abort()
+			signalled = true
+			updateTo = null
+			if (!drain.signal.aborted) drain.abort()
 			hardStop = setTimeout(() => abort.abort(), 80_000)
 			hardStop.unref()
 		}
@@ -555,6 +662,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			version: input.clientVersion,
 			service: manager,
 			startedAt: new Date().toISOString(),
+			...(supervised ? { supervisorPid: process.ppid } : {}),
 		})
 		const workersDir = contextWorkersDir(input.apiUrl, context.ecid)
 		const reaped = reapLeftoverWorkers(workersDir)
@@ -566,6 +674,26 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		const workerTracker = createLocalWorkerTracker(workersDir)
 		const packageGraphCache = createPackageGraphCache()
 		let stop: Awaited<ReturnType<typeof runDaemon>> = 'shutdown'
+		let autoUpdateEnabled = (await readAutoUpdate()).enabled
+		const activity = { runs: 0 }
+		const updater = startDaemonUpdater({
+			selfVersion: input.clientVersion,
+			setting: async () => {
+				const setting = await readAutoUpdate()
+				autoUpdateEnabled = setting.enabled
+				return setting
+			},
+			busy: () => ({
+				runs: activity.runs,
+				background: hostCommands.runningBackground(),
+			}),
+			log,
+			onReady: (current) => {
+				if (signalled) return
+				updateTo = current
+				if (!drain.signal.aborted) drain.abort()
+			},
+		})
 		try {
 			stop = await runDaemon({
 				apiUrl: input.apiUrl,
@@ -578,6 +706,15 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 					...localCapabilities(maxConcurrent),
 					...(manager ? { service: manager } : {}),
 				},
+				extraCapabilities: () => ({
+					autoUpdate: autoUpdateEnabled ? 'on' : 'off',
+				}),
+				activity,
+				// An update drain also waits for background host commands.
+				drainHold: () =>
+					updateTo !== null &&
+					!signalled &&
+					hostCommands.runningBackground() > 0,
 				hostCommands,
 				execute: (run) =>
 					runContextRun({
@@ -587,19 +724,23 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 						packageGraphCache,
 					}),
 				fs: {
-					effective: async (grantFs) =>
-						await effectiveFs(grantFs, (await readLocalPolicy()).fs),
+					effective: async (grantFs) => {
+						const policy = await readLocalPolicy()
+						autoUpdateEnabled = autoUpdateSetting(policy).enabled
+						return await effectiveFs(grantFs, policy.fs)
+					},
 					onChange: (listener) => {
 						const path = localPolicyPath()
 						watchFile(path, { interval: 2000 }, listener)
 						return () => unwatchFile(path, listener)
 					},
 				},
-				log: (line) => input.write(`${line}\n`),
+				log,
 				signal: abort.signal,
 				drainSignal: drain.signal,
 			})
 		} finally {
+			updater.stop()
 			unwatchFile(commandsPolicyPath, onCommandsPolicyChange)
 			// Background commands are the daemon's children: they stop with it.
 			hostCommands.killAll('shutdown')
@@ -609,8 +750,33 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			process.off('SIGINT', onSignal)
 			process.off('SIGTERM', onSignal)
 			rmSync(statePath, { force: true })
+			releaseLock()
 		}
-		if (stop !== 'shutdown') {
+		if (stop === 'replaced') {
+			const others = await otherLocalDaemons({ ecid: context.ecid })
+			log(
+				others.length > 0
+					? `Another kody daemon for ${context.name} connected and replaced this one: ${others.map((other) => `pid ${other.pid} (${other.cmd})`).join('; ')}. It predates the one-runner lock. Stopping this daemon instead of reconnecting, so they do not keep replacing each other. Keep one: stop the other, or run \`kody update\` so both use the lock.`
+					: `Another kody daemon for ${context.name} connected and replaced this one (not on this machine as far as kody can tell: is the same context key copied to another machine?). Stopping this daemon instead of reconnecting, so they do not keep replacing each other. Restart it with \`kody daemon restart\` once the other is gone.`,
+			)
+			return manager ? stayStoppedExitCode : 1
+		}
+		const target: CurrentVersion | null = updateTo
+		if (stop === 'shutdown' && target && !signalled) {
+			// Services and supervised daemons exit so they come back on the new
+			// version; a terminal daemon runs it in place.
+			if (manager || supervised) return relaunchExitCode
+			const outcome = await superviseNewerVersion({
+				first: target,
+				selfVersion: input.clientVersion,
+				args: relaunchArgs,
+				log,
+			})
+			if (outcome.kind === 'exit') return outcome.code
+			log(`Auto-update: back on kody ${input.clientVersion}.`)
+			return await runExecutionContextCommand(input)
+		}
+		if (stop === 'revoked' || stop === 'unknown_context') {
 			const reason =
 				stop === 'revoked'
 					? 'Kody revoked this context'
@@ -631,7 +797,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		return stayStoppedExitCode
 	}
 	throw new Error(
-		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | uninstall | kody update',
+		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | uninstall | auto-update [on | off | status] | kody update',
 	)
 }
 

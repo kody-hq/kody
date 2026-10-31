@@ -82,6 +82,7 @@ Usage:
   kody daemon install [--context <ec id>] [--max-concurrent <n>] [--key-storage keyring|file] [--yes]
   kody daemon status [--context <ec id>] [--json] | logs [--lines <n>] [--follow] | restart
   kody daemon uninstall [--context <ec id>] [--unregister | --no-unregister]
+  kody daemon auto-update [on | off | status] [--json]
   kody update
                [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
   kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]
@@ -100,6 +101,9 @@ Usage:
   re-running \`kody daemon install\` repairs the service. Windows is not
   supported yet: keep \`kody daemon\` running in a terminal. \`kody update\`
   installs the latest CLI and restarts services after runs in flight finish.
+  Every daemon also auto-updates: it checks npm on start and every ~4h,
+  installs the verified new version, and relaunches once runs and background
+  commands finish. \`kody daemon auto-update off\` turns it off on this machine.
 
   kody context, chain, and daemon need execution contexts, an experiment.
   Turn it on at https://kody.codes/account/experiments (guide:

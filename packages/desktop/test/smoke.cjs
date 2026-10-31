@@ -72,6 +72,12 @@ async function smoke() {
 						const { Runner } = load('./runner.cjs')
 						const calls = []
 						Runner.prototype.command = async function (args) {
+							// Status polls (runner, commands, auto-update) are not steps.
+							if (
+								args[0] === 'daemon' ||
+								(args[0] === 'context' && args[1] === 'commands')
+							)
+								throw new Error('No CLI in the smoke test.')
 							calls.push(args)
 							if (args[0] === 'whoami')
 								return JSON.stringify({

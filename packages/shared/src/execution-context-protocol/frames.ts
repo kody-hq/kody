@@ -159,6 +159,8 @@ export type EcpCapabilities = {
 	enforcement?: { memory?: string; cpu?: string }
 	/** Set when the daemon runs as a background service. */
 	service?: 'systemd' | 'launchd'
+	/** Daemon auto-update on this machine (`kody daemon auto-update`). */
+	autoUpdate?: 'on' | 'off'
 }
 
 export type EcpRunRequestBody = {

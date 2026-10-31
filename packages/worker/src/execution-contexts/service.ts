@@ -253,6 +253,11 @@ export async function formatContexts(
 				capabilities: {
 					os: capabilities.os ?? null,
 					service: capabilities.service ?? null,
+					autoUpdate:
+						capabilities.autoUpdate === 'on' ||
+						capabilities.autoUpdate === 'off'
+							? capabilities.autoUpdate
+							: null,
 					maxConcurrent:
 						capabilities.maxConcurrent ?? grant.limits.maxConcurrent,
 					features: capabilities.features ?? [],

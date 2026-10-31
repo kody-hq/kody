@@ -19,6 +19,8 @@ export type LocalFsPolicy = {
 	version: 1
 	fs: Array<FsRule>
 	commands?: LocalCommandsPolicy
+	/** Daemon auto-update on this machine. Absent means on. */
+	autoUpdate?: LocalCommandsPolicy
 }
 export type FsMount = { path: string; mode: FsMode }
 export type FsRefusal = { path: string; layer: FsLayer; reason: string }
@@ -126,20 +128,40 @@ export async function readLocalPolicy(
 			`${path} has an invalid "commands" entry. Use \`kody context commands on|off\` to fix it.`,
 		)
 	}
+	const autoUpdate = (parsed as { autoUpdate?: unknown }).autoUpdate as
+		| { enabled?: unknown; changedAt?: unknown }
+		| undefined
+	if (autoUpdate !== undefined && typeof autoUpdate?.enabled !== 'boolean') {
+		throw new Error(
+			`${path} has an invalid "autoUpdate" entry. Use \`kody daemon auto-update on|off\` to fix it.`,
+		)
+	}
+	const toggle = (value: { enabled?: unknown; changedAt?: unknown }) => ({
+		enabled: value.enabled as boolean,
+		...(typeof value.changedAt === 'string'
+			? { changedAt: value.changedAt }
+			: {}),
+	})
 	return {
 		version: 1,
 		fs: (fs as Array<FsRule>).map(({ path, mode }) => ({ path, mode })),
-		...(commands
-			? {
-					commands: {
-						enabled: commands.enabled as boolean,
-						...(typeof commands.changedAt === 'string'
-							? { changedAt: commands.changedAt }
-							: {}),
-					},
-				}
-			: {}),
+		...(commands ? { commands: toggle(commands) } : {}),
+		...(autoUpdate ? { autoUpdate: toggle(autoUpdate) } : {}),
 	}
+}
+
+export async function setLocalAutoUpdateEnabled(input: {
+	enabled: boolean
+	policyPath?: string
+}) {
+	const policyPath = input.policyPath ?? localPolicyPath()
+	const current = await readLocalPolicy(policyPath)
+	const next: LocalFsPolicy = {
+		...current,
+		autoUpdate: { enabled: input.enabled, changedAt: new Date().toISOString() },
+	}
+	await writeLocalPolicy(policyPath, next)
+	return next
 }
 
 /** Whether this machine's owner turned host commands on locally. */
@@ -193,6 +215,7 @@ export async function allowLocalPath(input: {
 		version: 1,
 		fs,
 		...(policy.commands ? { commands: policy.commands } : {}),
+		...(policy.autoUpdate ? { autoUpdate: policy.autoUpdate } : {}),
 	}
 	await writeLocalPolicy(policyPath, next)
 	return { policy: next, added: { path: canonical, mode: input.mode } }
@@ -213,6 +236,7 @@ export async function removeLocalPath(input: {
 		version: 1,
 		fs,
 		...(policy.commands ? { commands: policy.commands } : {}),
+		...(policy.autoUpdate ? { autoUpdate: policy.autoUpdate } : {}),
 	}
 	if (removed) await writeLocalPolicy(policyPath, next)
 	return { policy: next, removed }

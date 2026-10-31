@@ -101,8 +101,10 @@ the context, so the daemon starts at login or boot and restarts after a crash:
 | `kody daemon status` (`--json`)                | Names each problem with the command that fixes it    |
 | `kody daemon logs` (`--lines <n>`, `--follow`) | Shows the daemon log                                 |
 | `kody daemon restart`                          | Restarts after runs in flight finish                 |
+| `kody daemon start` / `stop`                   | Starts or stops the service (or the running daemon)  |
 | `kody daemon install`                          | Installs the service, or repairs it                  |
 | `kody daemon uninstall` (`--unregister`)       | Removes the service and offers to revoke the context |
+| `kody daemon auto-update on\|off\|status`      | Auto-update switch for every daemon on this machine  |
 | `kody update`                                  | Installs the latest CLI and moves services onto it   |
 
 Install the CLI globally (`npm install -g @kodycodes/cli`). The service refuses
@@ -114,9 +116,23 @@ when the key needs one, or Linux has no unlocked keyring, install offers a file
 key instead: a random key stored next to the encrypted machine key, readable
 only by you (`--key-storage file`).
 
-The context page shows the daemon's CLI version, flags it when a newer
-`@kodycodes/cli` is out (run `kody update` on the machine), and says whether it
-runs as a background service or in a terminal.
+Daemons auto-update by default: on start and about every 4 hours each daemon
+(service, terminal, or desktop app) checks npm, installs the verified newer
+`@kodycodes/cli` into a Kody-managed folder, waits for runs in flight and
+background host commands to finish, and relaunches onto it. It never downgrades,
+keeps the old version when an update fails, and logs each step.
+`kody daemon auto-update off` (or the desktop Machine menu) turns it off on that
+machine; see [execution contexts](../use/execution-contexts.md#auto-update).
+
+The context page shows the daemon's CLI version, whether auto-update is on,
+flags it when a newer `@kodycodes/cli` is out (run `kody update` on the
+machine), and says whether it runs as a background service or in a terminal.
+
+One runner per machine: the service, a terminal `kody daemon`, and the desktop
+app share one lock per context, so a second daemon refuses (a service waits)
+instead of replacing the first in a loop. The desktop app adopts an existing
+service and registration instead of starting or registering a second one; see
+[one runner per machine](../use/execution-contexts.md#one-runner-per-machine).
 
 Revoking a context stops its daemon for good: it does not reconnect, and the
 service disables itself instead of restarting. Remove the leftover service with
