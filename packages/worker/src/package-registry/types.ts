@@ -3,6 +3,7 @@ import {
 	type PackageJobSchedule as SharedPackageJobSchedule,
 } from '@kody-internal/shared/jobs/package-job-schedule.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { mcpServerNamePattern } from '@kody-internal/shared/mcp-servers.ts'
 import { z } from 'zod'
 import { automationExecutionSchema } from '#worker/execution-contexts/automation-execution-schema.ts'
 import { communityPackageCategories } from '#universal/community-categories.ts'
@@ -85,7 +86,57 @@ export type PackageAppClientDefinition = z.infer<
  */
 export const packageCredentialSlotNamePattern = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/
 
+/** A built-in Kody capability name, e.g. `secretList`. */
 export const packageAppCapabilityNamePattern = /^[A-Za-z][A-Za-z0-9_]{0,99}$/
+
+/**
+ * The tool part of an MCP tool capability (`mcpServerToolName`): word
+ * characters, up to the MCP spec's 128-character tool name plus the
+ * 9-character `_<fnv1a>` suffix added when a name has to be rewritten.
+ */
+const mcpToolCapabilitySegment = '[A-Za-z0-9_]{1,137}'
+
+/**
+ * An MCP server tool as `kody.mcp[server][tool](...)` calls it:
+ * `mcp:<server>:<tool>`, where `<server>` is the connected server's name
+ * (`mcpServerNamePattern`).
+ */
+export const packageMcpToolCapabilityNamePattern = new RegExp(
+	`^mcp:${mcpServerNamePattern.source.replace(/^\^|\$$/g, '')}:${mcpToolCapabilitySegment}$`,
+)
+
+/** A name `kody.capabilities` / `kody.app.capabilities` may list. */
+export function isPackageCapabilityDeclarationName(name: string) {
+	return (
+		packageAppCapabilityNamePattern.test(name) ||
+		packageMcpToolCapabilityNamePattern.test(name)
+	)
+}
+
+function packageCapabilityDeclarationIssue(name: string) {
+	if (name.startsWith('mcp:')) {
+		if (name.endsWith(':*')) {
+			return `"${name}" is not a valid capability: list each MCP tool by name ("mcp:<server>:<tool>"); wildcards are not supported.`
+		}
+		return `"${name}" is not a valid MCP tool capability: use "mcp:<server>:<tool>" with the lowercase server name (letters, digits, -) and the tool name (letters, digits, _), for example "mcp:home:court_get_status".`
+	}
+	return `"${name}" is not a valid capability: use a Kody capability name like "secretList" or an MCP tool as "mcp:<server>:<tool>", for example "mcp:home:court_get_status".`
+}
+
+const packageCapabilityDeclarationsSchema = z
+	.array(
+		z
+			.string()
+			.trim()
+			.superRefine((name, ctx) => {
+				if (isPackageCapabilityDeclarationName(name)) return
+				ctx.addIssue({
+					code: 'custom',
+					message: packageCapabilityDeclarationIssue(name),
+				})
+			}),
+	)
+	.max(100)
 
 /** Lowercase so the consent scope `need:<key>` reads the same everywhere. */
 export const packageAppVisitorNeedKeyPattern = /^[a-z][a-z0-9-]{0,39}$/
@@ -147,10 +198,7 @@ export const packageAppDefinitionSchema = z.object({
 	 * publisher unless an owner chose someone else). Anything not listed
 	 * never runs with that person's authority.
 	 */
-	capabilities: z
-		.array(z.string().trim().regex(packageAppCapabilityNamePattern))
-		.max(100)
-		.optional(),
+	capabilities: packageCapabilityDeclarationsSchema.optional(),
 	/**
 	 * What the app may do with a signed-in visitor's own data, by key. Each
 	 * key is its own Sign in with Kody consent scope (`need:<key>`), shown to
@@ -847,10 +895,7 @@ export const authoredPackageKodySchema = z.object({
 	 * app declares its own calls in `kody.app.capabilities` instead, which is
 	 * what package-app authority checks.
 	 */
-	capabilities: z
-		.array(z.string().trim().regex(packageAppCapabilityNamePattern))
-		.max(100)
-		.optional(),
+	capabilities: packageCapabilityDeclarationsSchema.optional(),
 	credentials: packageCredentialsSchema.optional(),
 	secretMounts: z
 		.record(z.string().min(1), packageSecretMountDefinitionSchema)

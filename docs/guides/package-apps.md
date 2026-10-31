@@ -365,6 +365,15 @@ and the imported package that made the call. Add it to the importing app's
 `kody.app.capabilities` and republish the app. For `credential.named`, declare
 the credential in `kody.credentials` and open it with `credential(key)` instead.
 
+MCP server tools are declared one tool at a time as `mcp:<server>:<tool>`:
+`kody.mcp.home.court_get_status(input)` (or `kody.mcp['home'].court_get_status`)
+needs `"mcp:home:court_get_status"` in `kody.app.capabilities` (or in
+`kody.capabilities` for a package the app imports). `<server>` is the connected
+server's name (lowercase letters, digits and `-`) and `<tool>` is the tool name
+Kody shows for it (letters, digits and `_`, as in `search` results). There is no
+`mcp:<server>:*` wildcard: a server can add tools at any time, and a wildcard
+would hand each new tool the runs-as person's authority without a new publish.
+
 `createAuthenticatedFetch(name)` reads the integration's non-secret config
 through an internal host helper. That helper is not a capability, so it needs no
 `kody.app.capabilities` entry.

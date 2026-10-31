@@ -24,7 +24,10 @@ discover them.
 - **Every package declares.** Any package (app or not) lists the Kody
   capabilities its own modules call in `kody.capabilities`. An app's own list
   stays in `kody.app.capabilities`, which is read as that package's declaration.
-  There is no second list for apps to keep in sync.
+  There is no second list for apps to keep in sync. MCP server tools are listed
+  by exact name, `mcp:<server>:<tool>` (the name `kody.mcp[server][tool]` calls
+  and `callCapabilityAs` checks); there is no per-server wildcard, so a tool a
+  server adds later needs its own declaration.
 - **Effective requirement.** At publish, an app's effective capabilities are its
   own declaration plus the declarations of every package in its static import
   closure (`kody:@scope/name` imports, followed through each export the app

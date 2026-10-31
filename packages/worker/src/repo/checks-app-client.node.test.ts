@@ -35,7 +35,7 @@ vi.mock('#worker/package-runtime/module-graph.ts', () => ({
 import { runRepoChecks } from './checks.ts'
 import { withRequiredPackageDocs } from './checks-test-docs.ts'
 
-function createAppManifest(app: Record<string, string>) {
+function createAppManifest(app: Record<string, unknown>) {
 	return JSON.stringify({
 		name: '@kody/client-app',
 		exports: { '.': './src/index.ts' },
@@ -85,7 +85,7 @@ const baseFiles: Array<[string, string]> = [
 ]
 
 async function runChecks(
-	app: Record<string, string>,
+	app: Record<string, unknown>,
 	extraFiles: Array<[string, string]> = [],
 	clientError?: Error,
 ) {
@@ -281,4 +281,26 @@ test('runRepoChecks reports kody.app client, asset, and graph problems as bundle
 		}
 		expect(notBuilt?.mock.calls ?? []).toEqual([])
 	}
+})
+
+test('runRepoChecks accepts MCP tool capabilities and rejects malformed ones by name', async () => {
+	const mcpApp = await runChecks({
+		entry: './src/app.ts',
+		capabilities: ['mcp:home:court_get_status', 'secretList'],
+	})
+	expect(mcpApp.ok).toBe(true)
+	expect(mcpApp.results).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ kind: 'manifest', ok: true }),
+		]),
+	)
+
+	const wildcard = await runChecks({
+		entry: './src/app.ts',
+		capabilities: ['mcp:home:*'],
+	})
+	expect(wildcard.ok).toBe(false)
+	expect(JSON.stringify(wildcard.results)).toContain(
+		'list each MCP tool by name (\\"mcp:<server>:<tool>\\"); wildcards are not supported.',
+	)
 })
