@@ -129,6 +129,12 @@ vi.mock('./isomorphic-git-lazy.ts', () => ({
 			commit: (...args: Parameters<typeof git.commit>) =>
 				mockModule.rawCommit(...args),
 			readBlob: mockModule.readBlob,
+			pull: (...args: Parameters<typeof git.pull>) =>
+				mockModule.rawPull(...args),
+			resolveRef: (...args: Parameters<typeof git.resolveRef>) =>
+				mockModule.rawResolveRef(...args),
+			writeRef: (...args: Parameters<typeof git.writeRef>) =>
+				mockModule.rawWriteRef(...args),
 		},
 		http: {},
 		createGit: () => mockModule.git,
@@ -815,4 +821,95 @@ test('packagePublishExternalPush clones, checks, and finalizes a large package o
 	expect(isolateRuns.map((run) => run.op)).toEqual(['clone', 'checks'])
 	expectAllHeavyWorkInIsolates(['clone', 'checks'])
 	expectStagingCleared(kv)
+})
+
+test('a publish whose HEAD left the session branch reattaches it before pushing, and last_publish records the result', async () => {
+	consoleWarn.mockImplementation(() => {})
+	setCommonSessionFixtures()
+	const files = largePackageFiles()
+	seedSessionWorkspace(files)
+	recordHeavyMocks()
+	const state = await checkedPublishState(files)
+	const { env } = createIsolateEnv()
+	// An older repoRebaseSession pulled with `ref: main`, leaving HEAD on the
+	// local source branch; the session branch tip is stale.
+	mockModule.gitState.currentBranch = 'main'
+
+	const repo = repoSession(env, state)
+	await expect(repo.publishSession(session)).resolves.toMatchObject({
+		status: 'ok',
+		publishedCommit: 'commit-head',
+	})
+	expect(mockModule.rawWriteRef).toHaveBeenCalledWith(
+		expect.objectContaining({
+			ref: 'refs/heads/sessions/session1',
+			value: 'commit-head',
+			force: true,
+		}),
+	)
+	expect(mockModule.rawWriteRef).toHaveBeenCalledWith(
+		expect.objectContaining({
+			ref: 'HEAD',
+			value: 'refs/heads/sessions/session1',
+			symbolic: true,
+		}),
+	)
+	const branchWrite = mockModule.rawWriteRef.mock.invocationCallOrder[0]!
+	expect(branchWrite).toBeLessThan(
+		mockModule.rawPush.mock.invocationCallOrder[0]!,
+	)
+	expect((await repo.getSessionInfo(session)).last_publish).toMatchObject({
+		state: 'published',
+		published_commit: 'commit-head',
+		result_status: 'ok',
+		error_name: null,
+	})
+})
+
+test('a push the remote never confirms publishes nothing, reports failed in last_publish, and a reset mid-publish reads as interrupted', async () => {
+	consoleWarn.mockImplementation(() => {})
+	setCommonSessionFixtures()
+	const files = largePackageFiles()
+	seedSessionWorkspace(files)
+	recordHeavyMocks()
+	const state = await checkedPublishState(files)
+	const { env } = createIsolateEnv()
+	// The push "succeeds" but the source branch stays at the old tip.
+	mockModule.rawPush.mockImplementation(async () => ({
+		ok: true,
+		error: null,
+		refs: {},
+	}))
+	mockModule.listArtifactServerRefs.mockResolvedValue([
+		{ ref: 'refs/heads/main', oid: 'commit-base' },
+	])
+
+	const repo = repoSession(env, state)
+	await expect(repo.publishSession(session)).rejects.toMatchObject({
+		name: 'RemoteRefNotConfirmedError',
+	})
+	expect(mockModule.updateEntitySource).not.toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ publishedCommit: 'commit-head' }),
+	)
+	expect((await repo.getSessionInfo(session)).last_publish).toMatchObject({
+		state: 'failed',
+		published_commit: null,
+		error_name: 'RemoteRefNotConfirmedError',
+		error_message: expect.stringContaining('Nothing was published'),
+	})
+
+	// A `running` record left by an instance that was reset mid-publish.
+	await state.storage.put('repo-session:last-publish', {
+		state: 'running',
+		started_at: '2026-10-30T23:16:33.000Z',
+		finished_at: null,
+		published_commit: null,
+		result_status: null,
+		error_name: null,
+		error_message: null,
+	})
+	expect(
+		(await repoSession(env, state).getSessionInfo(session)).last_publish,
+	).toMatchObject({ state: 'interrupted' })
 })

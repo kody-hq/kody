@@ -51,7 +51,7 @@ export function createExternalClone(headCommit: string) {
 
 export const repoSessionMockModule = (() => {
 	const gitState = {
-		currentBranch: 'main',
+		currentBranch: 'sessions/session1',
 		headCommit: 'commit-head',
 		statusEntries: [] as Array<{ status: string }>,
 		remotes: [] as Array<{ remote: string; url: string }>,
@@ -142,6 +142,11 @@ export const repoSessionMockModule = (() => {
 		rawCommit: vi.fn<typeof isomorphicGit.commit>(
 			async () => 'commit-orphan-root',
 		),
+		rawPull: vi.fn<typeof isomorphicGit.pull>(async () => undefined),
+		rawResolveRef: vi.fn<typeof isomorphicGit.resolveRef>(
+			async () => gitState.headCommit,
+		),
+		rawWriteRef: vi.fn<typeof isomorphicGit.writeRef>(async () => undefined),
 		readBlob: vi.fn(async () => ({
 			blob: new TextEncoder().encode('restored content\n'),
 		})),
@@ -346,6 +351,9 @@ export function restoreRepoSessionMockBaseline() {
 		mocks.getSavedPackageById,
 		mocks.rawPush,
 		mocks.rawCommit,
+		mocks.rawPull,
+		mocks.rawResolveRef,
+		mocks.rawWriteRef,
 		mocks.workspaceExists,
 		mocks.workspaceStat,
 		mocks.cloneExternalPublishWorkspace,
@@ -374,6 +382,7 @@ export function restoreRepoSessionMockBaseline() {
 	mocks.cloneExternalPublishWorkspace.mockImplementation(async () =>
 		createExternalClone(gitState.headCommit),
 	)
+	mocks.rawResolveRef.mockImplementation(async () => gitState.headCommit)
 	mocks.rawCommit.mockImplementation(async () => {
 		gitState.headCommit = 'commit-orphan-root'
 		return gitState.headCommit
@@ -617,7 +626,7 @@ export function setCommonSessionFixtures() {
 			plaintext: 'art_source_secret?expires=1760000100',
 		})),
 	})
-	repoSessionMockModule.gitState.currentBranch = 'main'
+	repoSessionMockModule.gitState.currentBranch = 'sessions/session1'
 	repoSessionMockModule.gitState.headCommit = 'commit-head'
 	repoSessionMockModule.gitState.statusEntries = []
 	repoSessionMockModule.gitState.remotes = [
