@@ -13,7 +13,7 @@ function createDb() {
 	sqlite.exec(`
 		create table community_forks (
 			id text primary key,
-			listing_id text not null,
+			listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
 			forker_user_id text not null,
 			origin_commit text not null,
 			forked_package_id text not null,

@@ -214,7 +214,7 @@ async function ensureSchema(db: D1Database) {
 		.prepare(
 			`CREATE TABLE IF NOT EXISTS community_forks (
 				id TEXT PRIMARY KEY NOT NULL,
-				listing_id TEXT NOT NULL,
+				listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
 				forker_user_id TEXT NOT NULL,
 				origin_commit TEXT NOT NULL,
 				forked_package_id TEXT NOT NULL,
