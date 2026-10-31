@@ -66,6 +66,8 @@ profile tokens on `/mcp` and `asProfile` are out of scope;
 - The old connection profiles (named, package-only narrowing behind the
   `connection-profiles` flag) are removed. OAuth grants and API tokens still
   stamped with a connection profile name are refused, not widened, so the holder
-  signs in again. The legacy tables and name columns are dropped in a separate
-  migration after the code that reads them is gone, because Deploy applies D1
-  migrations before the new Worker version goes live.
+  signs in again. The legacy name columns are dropped in a separate migration
+  after the code that reads them is gone, because Deploy applies D1 migrations
+  before the new Worker version goes live. The `connection_profiles` table goes
+  one deploy later still, because account deletion and org soft-delete listed it
+  until the column drop shipped.

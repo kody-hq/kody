@@ -224,7 +224,6 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 				instance_id TEXT NOT NULL,
 				enabler_user_id TEXT NOT NULL,
 				enabler_scopes_json TEXT,
-				enabler_profile_name TEXT,
 				enabler_profile_id TEXT,
 				state TEXT NOT NULL DEFAULT 'on',
 				paused_reason TEXT,

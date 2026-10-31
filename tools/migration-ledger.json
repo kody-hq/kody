@@ -807,6 +807,10 @@
 		{
 			"filename": "0223-package-app-visitor-billed-org.sql",
 			"sha256": "b97e24532cad33b3c88dbe4323549b6264c2ef0ef5aadd6287696c433e9b4a03"
+		},
+		{
+			"filename": "0224-drop-connection-profile-columns.sql",
+			"sha256": "35c5ad0bc4e3c57010b14aca75af6a68e543b2c9c1bebd388be55c6c3172f871"
 		}
 	]
 }

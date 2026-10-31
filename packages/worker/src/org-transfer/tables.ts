@@ -140,7 +140,6 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	community_bans: keep(personOwned),
 	community_ratings: keep(personOwned),
 	community_reports: keep('Moderation history.'),
-	connection_profiles: keep(personOwned),
 	credential_inventory_items: keep(
 		'Credential inventory results stay with the run that recorded them.',
 	),
