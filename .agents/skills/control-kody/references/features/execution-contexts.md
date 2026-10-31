@@ -19,7 +19,11 @@ non-empty list.
 - `/@{$orgSlug}/-/execution-contexts`,
   `/@{$orgSlug}/-/execution-contexts/$contextId`
 - Legacy `/account/execution-contexts` redirects to the personal org
-- Rail item sits in Build right after Jobs, only with the flag on, and never for
-  grant-only collaborators
-- A new registration shows "Not in any chain" and is never added to a chain
+- Rail item sits in Build right after Jobs with an Experiment badge, and never
+  for grant-only collaborators
+- CLI registration alone does not change a chain
+- Desktop setup adds the verified personal machine first, preserving other
+  entries and cloud fallback. A full chain requires an explicit replacement
+- Desktop-only This machine controls support setup, pause/resume, and forgetting
+  local setup. Forgetting does not revoke the device or remove its chain entry
 - Kody cloud stays last in the chain and cannot be dragged

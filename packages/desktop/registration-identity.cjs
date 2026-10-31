@@ -1,14 +1,12 @@
 function registrationIdentity(identity) {
 	if (!identity.user?.email)
-		throw new Error(
-			'Use Machine > Sign in to CLI before registering this machine.',
-		)
+		throw new Error('Sign in to this machine before registering it.')
 	if (
 		!Array.isArray(identity.scope) ||
 		!identity.scope.includes('execution_context:create')
 	) {
 		throw new Error(
-			'Use Machine > Sign in to CLI again. This CLI login does not have permission to register execution contexts.',
+			'Sign in to this machine again. This CLI login does not have permission to register execution contexts.',
 		)
 	}
 	const { displayName, email } = identity.user

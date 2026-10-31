@@ -31,6 +31,7 @@ export type PageNavigation = {
 		| 'platform-feedback'
 		| 'platform-integrations'
 		| 'profile'
+		| 'profiles'
 		| 'provider-marks'
 		| 'public-profile'
 		| 'repositories'

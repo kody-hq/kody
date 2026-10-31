@@ -1,6 +1,6 @@
 // One runner per machine: the desktop app and the kody CLI share this
 // machine's registration and its daemon. This decides who owns the runner
-// from `kody daemon status --json` and what the Machine menu offers.
+// from `kody daemon status --json` and what the machine controls offer.
 
 const launcherNames = {
 	systemd: 'CLI service (systemd)',

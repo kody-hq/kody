@@ -4,6 +4,7 @@ const { createHash } = require('node:crypto')
 const { existsSync, readFileSync, writeFileSync } = require('node:fs')
 const { join, resolve } = require('node:path')
 
+const { parse } = require('yaml')
 const { version } = require('../package.json')
 const arch = process.arch
 const platform = process.platform
@@ -110,6 +111,43 @@ const files = extensions.map((extension) => {
 		sha256: createHash('sha256').update(bytes).digest('hex'),
 	}
 })
+const feedPath = join(resources, 'app-update.yml')
+if (process.env.KODY_DESKTOP_RELEASE === '1') {
+	// Verify the same architecture-specific manifest the installed updater reads.
+	const suffix =
+		platform === 'darwin'
+			? '-mac'
+			: platform === 'linux'
+				? `-linux${arch === 'x64' ? '' : `-${arch}`}`
+				: ''
+	const channel = `latest-${arch}${suffix}.yml`
+	const manifest = parse(readFileSync(join(output, channel), 'utf8'))
+	assert.equal(manifest.version, version)
+	assert.ok(manifest.files.length > 0)
+	for (const file of manifest.files) {
+		assert.ok(
+			files.some((artifact) => artifact.name === file.url),
+			`Unexpected update artifact: ${file.url}`,
+		)
+		assert.equal(
+			createHash('sha512')
+				.update(readFileSync(join(output, file.url)))
+				.digest('base64'),
+			file.sha512,
+		)
+	}
+	const installedFeed = parse(
+		readFileSync(join(resources, 'app-update.yml'), 'utf8'),
+	)
+	assert.equal(installedFeed.owner, 'kody-hq')
+	assert.equal(installedFeed.repo, 'kody-desktop')
+	assert.equal(installedFeed.channel, `latest-${arch}`)
+} else {
+	assert.ok(
+		!existsSync(feedPath),
+		'Unsigned test builds must not contain an update feed.',
+	)
+}
 writeFileSync(
 	join(output, `SHA256SUMS-${os}-${arch}.txt`),
 	files.map((file) => `${file.sha256}  ${file.name}`).join('\n') + '\n',

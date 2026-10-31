@@ -161,6 +161,29 @@ test('leaving an owner page opens that workspace Overview by org slug', () => {
 	).toBe('/@acme-public')
 })
 
+test('Agent profiles sits right after Agents, marked as an experiment while the flag is off', () => {
+	const agentsGroup = (groups: Array<AccountRailGroup>) =>
+		groups.find((group) => group.items.some((item) => item.id === 'agents'))
+			?.items ?? []
+	const off = agentsGroup(rails.team)
+	const offIds = off.map((item) => item.id)
+	expect(offIds[offIds.indexOf('agents') + 1]).toBe('profiles')
+	expect(off.find((item) => item.id === 'profiles')).toMatchObject({
+		badge: 'Experiment',
+		label: 'Agent profiles',
+		href: '/@acme/-/profiles',
+	})
+	const on = agentsGroup(
+		workspaceRailGroups({
+			orgSlug: 'acme',
+			personal: false,
+			role: 'member',
+			profiles: true,
+		}),
+	)
+	expect(on.find((item) => item.id === 'profiles')?.badge).toBeUndefined()
+})
+
 test('Execution contexts sits right after Jobs in Build, marked as an experiment while the flag is off', () => {
 	const build = (groups: Array<AccountRailGroup>) =>
 		groups

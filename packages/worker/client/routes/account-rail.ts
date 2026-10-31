@@ -386,6 +386,25 @@ function executionContextsRailItem(
 	}
 }
 
+/**
+ * Agent profiles (ADR 0092). Shown with the flag off too, marked as an
+ * experiment, so people find the page and its opt-in.
+ */
+function profilesRailItem(
+	orgSlug: string | null | undefined,
+	enabled: boolean,
+): AccountRailItem {
+	return {
+		...(enabled ? {} : { badge: 'Experiment' }),
+		href: orgSectionHref(orgSlug, 'profiles'),
+		id: 'profiles',
+		label: 'Agent profiles',
+		icon: 'users',
+		description:
+			'Scoped identities for your agents and bots, and the sub-profiles below them.',
+	}
+}
+
 function agentsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 	return {
 		href: orgSectionHref(orgSlug, 'agents'),
@@ -500,6 +519,7 @@ function workspaceResourceGroups(
 	orgSlug: string | null | undefined,
 	personal: boolean,
 	executionContexts = false,
+	profiles = false,
 ): Array<AccountRailGroup> {
 	return [
 		{
@@ -542,6 +562,7 @@ function workspaceResourceGroups(
 			label: 'Agents & data',
 			items: [
 				agentsRailItem(orgSlug),
+				profilesRailItem(orgSlug, profiles),
 				{
 					href: orgSectionHref(orgSlug, 'skills'),
 					id: 'skills',
@@ -587,6 +608,8 @@ export function workspaceRailGroups(input: {
 	profileUsername?: string | null
 	/** The `execution-contexts` flag is on for the viewer. */
 	executionContexts?: boolean
+	/** The `profiles` flag is on for the viewer. */
+	profiles?: boolean
 }): Array<AccountRailGroup> {
 	const { orgSlug, personal, role } = input
 	const profileUsername = personal ? input.profileUsername : null
@@ -663,7 +686,12 @@ export function workspaceRailGroups(input: {
 					},
 				]
 			: []),
-		...workspaceResourceGroups(orgSlug, personal, input.executionContexts),
+		...workspaceResourceGroups(
+			orgSlug,
+			personal,
+			input.executionContexts,
+			input.profiles,
+		),
 		{ label: 'Organization', items: organizationItems },
 	]
 }

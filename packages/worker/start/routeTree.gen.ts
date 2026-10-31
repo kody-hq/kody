@@ -133,6 +133,7 @@ import { Route as AppAccountMcpServersRouteImport } from './routes/_app.account_
 import { Route as AppAccountMemoriesRouteImport } from './routes/_app.account_.memories'
 import { Route as AppAccountOrganizationsRouteImport } from './routes/_app.account_.organizations'
 import { Route as AppAccountPasskeysRouteImport } from './routes/_app.account_.passkeys'
+import { Route as AppAccountProfilesRouteImport } from './routes/_app.account_.profiles'
 import { Route as AppAccountSecretProvidersRouteImport } from './routes/_app.account_.secret-providers'
 import { Route as AppAccountSecretsRouteImport } from './routes/_app.account_.secrets'
 import { Route as AppAccountSecurityRouteImport } from './routes/_app.account_.security'
@@ -189,6 +190,7 @@ import { Route as AppAtChar123orgSlugChar125MembersRouteImport } from './routes/
 import { Route as AppAtChar123orgSlugChar125MemoriesRouteImport } from './routes/_app.@{$orgSlug}_.-.memories'
 import { Route as AppAtChar123orgSlugChar125OverviewRouteImport } from './routes/_app.@{$orgSlug}_.-.overview'
 import { Route as AppAtChar123orgSlugChar125PackagesRouteImport } from './routes/_app.@{$orgSlug}_.-.packages'
+import { Route as AppAtChar123orgSlugChar125ProfilesRouteImport } from './routes/_app.@{$orgSlug}_.-.profiles'
 import { Route as AppAtChar123orgSlugChar125RepositoriesRouteImport } from './routes/_app.@{$orgSlug}_.-.repositories'
 import { Route as AppAtChar123orgSlugChar125SecretProvidersRouteImport } from './routes/_app.@{$orgSlug}_.-.secret-providers'
 import { Route as AppAtChar123orgSlugChar125SecretsRouteImport } from './routes/_app.@{$orgSlug}_.-.secrets'
@@ -920,6 +922,11 @@ const AppAccountPasskeysRoute = AppAccountPasskeysRouteImport.update({
   path: '/account/passkeys',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAccountProfilesRoute = AppAccountProfilesRouteImport.update({
+  id: '/account_/profiles',
+  path: '/account/profiles',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppAccountSecretProvidersRoute =
   AppAccountSecretProvidersRouteImport.update({
     id: '/account_/secret-providers',
@@ -1229,6 +1236,12 @@ const AppAtChar123orgSlugChar125PackagesRoute =
   AppAtChar123orgSlugChar125PackagesRouteImport.update({
     id: '/@{$orgSlug}_/-/packages',
     path: '/@{$orgSlug}/-/packages',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAtChar123orgSlugChar125ProfilesRoute =
+  AppAtChar123orgSlugChar125ProfilesRouteImport.update({
+    id: '/@{$orgSlug}_/-/profiles',
+    path: '/@{$orgSlug}/-/profiles',
     getParentRoute: () => AppRoute,
   } as any)
 const AppAtChar123orgSlugChar125RepositoriesRoute =
@@ -1911,6 +1924,7 @@ export interface FileRoutesByFullPath {
   '/account/memories': typeof AppAccountMemoriesRoute
   '/account/organizations': typeof AppAccountOrganizationsRoute
   '/account/passkeys': typeof AppAccountPasskeysRoute
+  '/account/profiles': typeof AppAccountProfilesRoute
   '/account/secret-providers': typeof AppAccountSecretProvidersRoute
   '/account/secrets': typeof AppAccountSecretsRoute
   '/account/security': typeof AppAccountSecurityRoute
@@ -1967,6 +1981,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/memories': typeof AppAtChar123orgSlugChar125MemoriesRoute
   '/@{$orgSlug}/-/overview': typeof AppAtChar123orgSlugChar125OverviewRoute
   '/@{$orgSlug}/-/packages': typeof AppAtChar123orgSlugChar125PackagesRoute
+  '/@{$orgSlug}/-/profiles': typeof AppAtChar123orgSlugChar125ProfilesRoute
   '/@{$orgSlug}/-/repositories': typeof AppAtChar123orgSlugChar125RepositoriesRoute
   '/@{$orgSlug}/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/@{$orgSlug}/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
@@ -2184,6 +2199,7 @@ export interface FileRoutesByTo {
   '/account/memories': typeof AppAccountMemoriesRoute
   '/account/organizations': typeof AppAccountOrganizationsRoute
   '/account/passkeys': typeof AppAccountPasskeysRoute
+  '/account/profiles': typeof AppAccountProfilesRoute
   '/account/secret-providers': typeof AppAccountSecretProvidersRoute
   '/account/secrets': typeof AppAccountSecretsRoute
   '/account/security': typeof AppAccountSecurityRoute
@@ -2240,6 +2256,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/memories': typeof AppAtChar123orgSlugChar125MemoriesRoute
   '/@{$orgSlug}/-/overview': typeof AppAtChar123orgSlugChar125OverviewRoute
   '/@{$orgSlug}/-/packages': typeof AppAtChar123orgSlugChar125PackagesRoute
+  '/@{$orgSlug}/-/profiles': typeof AppAtChar123orgSlugChar125ProfilesRoute
   '/@{$orgSlug}/-/repositories': typeof AppAtChar123orgSlugChar125RepositoriesRoute
   '/@{$orgSlug}/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/@{$orgSlug}/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
@@ -2460,6 +2477,7 @@ export interface FileRoutesById {
   '/_app/account_/memories': typeof AppAccountMemoriesRoute
   '/_app/account_/organizations': typeof AppAccountOrganizationsRoute
   '/_app/account_/passkeys': typeof AppAccountPasskeysRoute
+  '/_app/account_/profiles': typeof AppAccountProfilesRoute
   '/_app/account_/secret-providers': typeof AppAccountSecretProvidersRoute
   '/_app/account_/secrets': typeof AppAccountSecretsRoute
   '/_app/account_/security': typeof AppAccountSecurityRoute
@@ -2516,6 +2534,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/memories': typeof AppAtChar123orgSlugChar125MemoriesRoute
   '/_app/@{$orgSlug}_/-/overview': typeof AppAtChar123orgSlugChar125OverviewRoute
   '/_app/@{$orgSlug}_/-/packages': typeof AppAtChar123orgSlugChar125PackagesRoute
+  '/_app/@{$orgSlug}_/-/profiles': typeof AppAtChar123orgSlugChar125ProfilesRoute
   '/_app/@{$orgSlug}_/-/repositories': typeof AppAtChar123orgSlugChar125RepositoriesRoute
   '/_app/@{$orgSlug}_/-/secret-providers': typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   '/_app/@{$orgSlug}_/-/secrets': typeof AppAtChar123orgSlugChar125SecretsRoute
@@ -2736,6 +2755,7 @@ export interface FileRouteTypes {
     | '/account/memories'
     | '/account/organizations'
     | '/account/passkeys'
+    | '/account/profiles'
     | '/account/secret-providers'
     | '/account/secrets'
     | '/account/security'
@@ -2792,6 +2812,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/memories'
     | '/@{$orgSlug}/-/overview'
     | '/@{$orgSlug}/-/packages'
+    | '/@{$orgSlug}/-/profiles'
     | '/@{$orgSlug}/-/repositories'
     | '/@{$orgSlug}/-/secret-providers'
     | '/@{$orgSlug}/-/secrets'
@@ -3009,6 +3030,7 @@ export interface FileRouteTypes {
     | '/account/memories'
     | '/account/organizations'
     | '/account/passkeys'
+    | '/account/profiles'
     | '/account/secret-providers'
     | '/account/secrets'
     | '/account/security'
@@ -3065,6 +3087,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/memories'
     | '/@{$orgSlug}/-/overview'
     | '/@{$orgSlug}/-/packages'
+    | '/@{$orgSlug}/-/profiles'
     | '/@{$orgSlug}/-/repositories'
     | '/@{$orgSlug}/-/secret-providers'
     | '/@{$orgSlug}/-/secrets'
@@ -3284,6 +3307,7 @@ export interface FileRouteTypes {
     | '/_app/account_/memories'
     | '/_app/account_/organizations'
     | '/_app/account_/passkeys'
+    | '/_app/account_/profiles'
     | '/_app/account_/secret-providers'
     | '/_app/account_/secrets'
     | '/_app/account_/security'
@@ -3340,6 +3364,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/memories'
     | '/_app/@{$orgSlug}_/-/overview'
     | '/_app/@{$orgSlug}_/-/packages'
+    | '/_app/@{$orgSlug}_/-/profiles'
     | '/_app/@{$orgSlug}_/-/repositories'
     | '/_app/@{$orgSlug}_/-/secret-providers'
     | '/_app/@{$orgSlug}_/-/secrets'
@@ -4431,6 +4456,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountPasskeysRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/account_/profiles': {
+      id: '/_app/account_/profiles'
+      path: '/account/profiles'
+      fullPath: '/account/profiles'
+      preLoaderRoute: typeof AppAccountProfilesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/account_/secret-providers': {
       id: '/_app/account_/secret-providers'
       path: '/account/secret-providers'
@@ -4821,6 +4853,13 @@ declare module '@tanstack/react-router' {
       path: '/@{$orgSlug}/-/packages'
       fullPath: '/@{$orgSlug}/-/packages'
       preLoaderRoute: typeof AppAtChar123orgSlugChar125PackagesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/@{$orgSlug}_/-/profiles': {
+      id: '/_app/@{$orgSlug}_/-/profiles'
+      path: '/@{$orgSlug}/-/profiles'
+      fullPath: '/@{$orgSlug}/-/profiles'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125ProfilesRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/@{$orgSlug}_/-/repositories': {
@@ -5514,6 +5553,7 @@ interface AppRouteChildren {
   AppAccountMemoriesRoute: typeof AppAccountMemoriesRoute
   AppAccountOrganizationsRoute: typeof AppAccountOrganizationsRoute
   AppAccountPasskeysRoute: typeof AppAccountPasskeysRoute
+  AppAccountProfilesRoute: typeof AppAccountProfilesRoute
   AppAccountSecretProvidersRoute: typeof AppAccountSecretProvidersRoute
   AppAccountSecretsRoute: typeof AppAccountSecretsRoute
   AppAccountSecurityRoute: typeof AppAccountSecurityRoute
@@ -5553,6 +5593,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125MemoriesRoute: typeof AppAtChar123orgSlugChar125MemoriesRoute
   AppAtChar123orgSlugChar125OverviewRoute: typeof AppAtChar123orgSlugChar125OverviewRoute
   AppAtChar123orgSlugChar125PackagesRoute: typeof AppAtChar123orgSlugChar125PackagesRoute
+  AppAtChar123orgSlugChar125ProfilesRoute: typeof AppAtChar123orgSlugChar125ProfilesRoute
   AppAtChar123orgSlugChar125RepositoriesRoute: typeof AppAtChar123orgSlugChar125RepositoriesRoute
   AppAtChar123orgSlugChar125SecretProvidersRoute: typeof AppAtChar123orgSlugChar125SecretProvidersRoute
   AppAtChar123orgSlugChar125SecretsRoute: typeof AppAtChar123orgSlugChar125SecretsRoute
@@ -5659,6 +5700,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountMemoriesRoute: AppAccountMemoriesRoute,
   AppAccountOrganizationsRoute: AppAccountOrganizationsRoute,
   AppAccountPasskeysRoute: AppAccountPasskeysRoute,
+  AppAccountProfilesRoute: AppAccountProfilesRoute,
   AppAccountSecretProvidersRoute: AppAccountSecretProvidersRoute,
   AppAccountSecretsRoute: AppAccountSecretsRoute,
   AppAccountSecurityRoute: AppAccountSecurityRoute,
@@ -5711,6 +5753,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125OverviewRoute,
   AppAtChar123orgSlugChar125PackagesRoute:
     AppAtChar123orgSlugChar125PackagesRoute,
+  AppAtChar123orgSlugChar125ProfilesRoute:
+    AppAtChar123orgSlugChar125ProfilesRoute,
   AppAtChar123orgSlugChar125RepositoriesRoute:
     AppAtChar123orgSlugChar125RepositoriesRoute,
   AppAtChar123orgSlugChar125SecretProvidersRoute:

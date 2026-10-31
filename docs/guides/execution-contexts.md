@@ -121,8 +121,9 @@ Daemons auto-update by default: on start and about every 4 hours each daemon
 `@kodycodes/cli` into a Kody-managed folder, waits for runs in flight and
 background host commands to finish, and relaunches onto it. It never downgrades,
 keeps the old version when an update fails, and logs each step.
-`kody daemon auto-update off` (or the desktop Machine menu) turns it off on that
-machine; see [execution contexts](../use/execution-contexts.md#auto-update).
+`kody daemon auto-update off` (or **This machine** in the desktop app) turns it
+off on that machine; see
+[execution contexts](../use/execution-contexts.md#auto-update).
 
 The context page shows the daemon's CLI version, whether auto-update is on,
 flags it when a newer `@kodycodes/cli` is out (run `kody update` on the

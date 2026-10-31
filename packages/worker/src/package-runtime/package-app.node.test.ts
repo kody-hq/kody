@@ -631,8 +631,9 @@ function createPackageAppTestEnv() {
 		load: vi.fn(() => ({ getEntrypoint })),
 		get: vi.fn(() => ({ getEntrypoint })),
 	}
+	const all = async () => ({ results: [] })
 	const appDb = {
-		prepare: () => ({ bind: () => ({ first: async () => null }) }),
+		prepare: () => ({ bind: () => ({ first: async () => null, all }) }),
 	}
 	const bundleArtifactsKv = { get: async () => null }
 	return {
