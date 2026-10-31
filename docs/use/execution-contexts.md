@@ -44,10 +44,11 @@ Every `kody daemon` keeps itself current: background services, a daemon in a
 terminal, and the one the desktop app runs. It checks npm for a newer
 `@kodycodes/cli` on start and about every 4 hours (with jitter), downloads it,
 checks the npm sha512 integrity, installs it into a Kody-managed folder
-(`~/.local/share/kody/cli` on Linux, `~/.kody/cli` elsewhere), and proves it
-starts. Then it stops taking new runs, waits for runs in flight and background
-host commands to finish (at most 24 hours), and relaunches onto the new version.
-New runs go down the chain meanwhile.
+(`~/.local/share/kody/cli` on Linux, `~/Library/Application Support/kody/cli` on
+macOS, `%APPDATA%\kody\cli` on Windows), and proves it starts. Then it stops
+taking new runs, waits for runs in flight and background host commands to finish
+(at most 24 hours), and relaunches onto the new version. New runs go down the
+chain meanwhile.
 
 It never downgrades. A failed download or install keeps the old version running
 and retries with backoff (1h, doubling to 24h); a new version that crashes right

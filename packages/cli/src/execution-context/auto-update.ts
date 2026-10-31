@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import {
 	cpSync,
@@ -29,6 +29,12 @@ export const packageName = '@kodycodes/cli'
 export const registryUrl = 'https://registry.npmjs.org'
 /** A daemon exits with this to ask its supervisor to relaunch it (newer CLI). */
 export const relaunchExitCode = 75
+/**
+ * A supervised daemon exits with this when it refused to start for a reason
+ * unrelated to its version (runner lock held, Kody unreachable at start), so
+ * the supervisor does not count it against that version.
+ */
+export const startupRefusedExitCode = 76
 /** Set on a daemon started by a supervisor; it exits instead of supervising. */
 export const supervisedEnvVar = 'KODY_DAEMON_SUPERVISED'
 /** `0`, `off`, or `false` turns auto-update off regardless of the policy file. */
@@ -517,34 +523,70 @@ export function findNpm(env: NodeJS.ProcessEnv = process.env) {
 	return null
 }
 
+type StepResult = { ok: boolean; output: string }
+
 export type InstallDeps = {
 	/** Runs `<cli entry> version` and returns stdout; overridable in tests. */
-	smokeTest?: (entry: string) => { ok: boolean; output: string }
+	smokeTest?: (entry: string) => StepResult | Promise<StepResult>
 	/** Installs a tarball's dependencies with npm into `prefix`. */
-	npmInstall?: (input: { prefix: string; tarballPath: string }) => {
-		ok: boolean
-		output: string
-	}
+	npmInstall?: (input: {
+		prefix: string
+		tarballPath: string
+	}) => StepResult | Promise<StepResult>
 	runningEntry?: string
 }
 
-function defaultSmokeTest(entry: string) {
-	const result = spawnSync(process.execPath, [entry, 'version'], {
-		encoding: 'utf8',
-		timeout: 60_000,
+/** Async so a long npm install never blocks the live daemon's event loop. */
+function runStep(
+	command: string,
+	args: Array<string>,
+	options: { timeoutMs: number; env?: NodeJS.ProcessEnv; shell?: boolean },
+) {
+	return new Promise<{ code: number | null; output: string }>((resolve) => {
+		let output = ''
+		let settled = false
+		const finish = (code: number | null, extra = '') => {
+			if (settled) return
+			settled = true
+			clearTimeout(timer)
+			resolve({ code, output: `${output}${extra}` })
+		}
+		const child = spawn(command, args, {
+			stdio: ['ignore', 'pipe', 'pipe'],
+			...(options.env ? { env: options.env } : {}),
+			...(options.shell ? { shell: true } : {}),
+		})
+		const append = (chunk: Buffer) => {
+			output = `${output}${chunk.toString('utf8')}`.slice(-8000)
+		}
+		child.stdout?.on('data', append)
+		child.stderr?.on('data', append)
+		const timer = setTimeout(() => {
+			child.kill('SIGKILL')
+			finish(null, `\ntimed out after ${Math.round(options.timeoutMs / 1000)}s`)
+		}, options.timeoutMs)
+		timer.unref?.()
+		child.once('error', (error) => finish(null, error.message))
+		child.once('close', (code) => finish(code))
+	})
+}
+
+async function defaultSmokeTest(entry: string) {
+	const result = await runStep(process.execPath, [entry, 'version'], {
+		timeoutMs: 60_000,
 		env: {
 			...process.env,
 			KODY_SKIP_SKILL_REFRESH: '1',
 			KODY_SKIP_GIT_HELPER_REFRESH: '1',
 		},
 	})
-	return {
-		ok: result.status === 0,
-		output: `${result.stdout ?? ''}${result.stderr ?? ''}${result.error ? result.error.message : ''}`,
-	}
+	return { ok: result.code === 0, output: result.output }
 }
 
-function defaultNpmInstall(input: { prefix: string; tarballPath: string }) {
+async function defaultNpmInstall(input: {
+	prefix: string
+	tarballPath: string
+}) {
 	const npm = findNpm()
 	if (!npm) {
 		return {
@@ -552,7 +594,7 @@ function defaultNpmInstall(input: { prefix: string; tarballPath: string }) {
 			output: 'npm was not found to install its dependencies',
 		}
 	}
-	const result = spawnSync(
+	const result = await runStep(
 		npm,
 		[
 			'install',
@@ -565,16 +607,9 @@ function defaultNpmInstall(input: { prefix: string; tarballPath: string }) {
 			'--omit=dev',
 			input.tarballPath,
 		],
-		{
-			encoding: 'utf8',
-			timeout: 10 * 60_000,
-			shell: process.platform === 'win32',
-		},
+		{ timeoutMs: 10 * 60_000, shell: process.platform === 'win32' },
 	)
-	return {
-		ok: result.status === 0,
-		output: `${result.stdout ?? ''}${result.stderr ?? ''}`.slice(-2000),
-	}
+	return { ok: result.code === 0, output: result.output.slice(-2000) }
 }
 
 /**
@@ -582,20 +617,20 @@ function defaultNpmInstall(input: { prefix: string; tarballPath: string }) {
  * starts (`kody version`), then points current.json at it. Nothing changes
  * for the running daemon until it relaunches, so any failure keeps it as is.
  */
-export function installVersion(input: {
+export async function installVersion(input: {
 	store: string
 	published: PublishedVersion
 	tarball: Buffer
 	deps?: InstallDeps
-}): CurrentVersion {
+}): Promise<CurrentVersion> {
 	const { store, published } = input
 	const versionsDir = join(store, 'versions')
 	const final = join(versionsDir, published.version)
 	const entryIn = (root: string) =>
 		join(root, 'node_modules', ...packageName.split('/'), 'dist', 'bin.js')
 	const smoke = input.deps?.smokeTest ?? defaultSmokeTest
-	const proven = (root: string) => {
-		const result = smoke(entryIn(root))
+	const proven = async (root: string) => {
+		const result = await smoke(entryIn(root))
 		if (
 			!result.ok ||
 			result.output.trim().split('\n').pop()?.trim() !== published.version
@@ -610,7 +645,7 @@ export function installVersion(input: {
 			join(final, 'node_modules', ...packageName.split('/'), 'package.json'),
 		)?.version === published.version
 	) {
-		proven(final)
+		await proven(final)
 	} else {
 		mkdirSync(versionsDir, { recursive: true, mode: 0o700 })
 		const staging = join(
@@ -648,7 +683,7 @@ export function installVersion(input: {
 				const tarballPath = join(staging, 'package.tgz')
 				writeFileSync(tarballPath, input.tarball)
 				rmSync(join(staging, 'node_modules'), { recursive: true, force: true })
-				const installed = (input.deps?.npmInstall ?? defaultNpmInstall)({
+				const installed = await (input.deps?.npmInstall ?? defaultNpmInstall)({
 					prefix: staging,
 					tarballPath,
 				})
@@ -659,7 +694,7 @@ export function installVersion(input: {
 					)
 				}
 			}
-			proven(staging)
+			await proven(staging)
 			rmSync(final, { recursive: true, force: true })
 			renameSync(staging, final)
 		} finally {
@@ -808,7 +843,7 @@ export async function checkForUpdate(input: {
 				published,
 				...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
 			})
-			const current = installVersion({
+			const current = await installVersion({
 				store,
 				published,
 				tarball,
@@ -926,6 +961,7 @@ export async function superviseNewerVersion(input: {
 			}
 			continue
 		}
+		if (code === startupRefusedExitCode) return { kind: 'exit', code: 1 }
 		if (code !== 0 && Date.now() - startedAt < healthyAfterMs) {
 			const seconds = Math.round((Date.now() - startedAt) / 1000)
 			recordFailedStart(
@@ -960,7 +996,8 @@ export function startDaemonUpdater(input: {
 	setting: () => Promise<AutoUpdateSetting>
 	busy: () => { runs: number; background: number }
 	log: (line: string) => void
-	onReady: (current: CurrentVersion) => void
+	/** `forced`: the idle deadline passed, so background commands stop. */
+	onReady: (current: CurrentVersion, forced: boolean) => void
 	store?: string
 	fetchFn?: typeof fetch
 	deps?: InstallDeps
@@ -982,6 +1019,7 @@ export function startDaemonUpdater(input: {
 	const waitForIdle = async (current: CurrentVersion) => {
 		const deadline = Date.now() + (input.maxIdleWaitMs ?? maxIdleWaitMs)
 		let said = false
+		let forced = false
 		while (!stopped) {
 			const busy = input.busy()
 			if (busy.runs === 0 && busy.background === 0) break
@@ -989,6 +1027,7 @@ export function startDaemonUpdater(input: {
 				input.log(
 					`Auto-update: still busy after ${Math.round((input.maxIdleWaitMs ?? maxIdleWaitMs) / 3_600_000)}h; updating now. Runs in flight finish first; background commands stop.`,
 				)
+				forced = true
 				break
 			}
 			if (!said) {
@@ -1007,7 +1046,7 @@ export function startDaemonUpdater(input: {
 		input.log(
 			`Auto-update: updating kody ${input.selfVersion} to ${current.version}. New runs go to the next context in the chain until it is back.`,
 		)
-		input.onReady(current)
+		input.onReady(current, forced)
 	}
 	const check = async () => {
 		const setting = await input
@@ -1043,7 +1082,16 @@ export function startDaemonUpdater(input: {
 		running ??= check().finally(() => {
 			running = null
 		})
-		const result = await running
+		let result: CheckResult
+		try {
+			result = await running
+		} catch (error) {
+			input.log(
+				`Auto-update: check failed: ${error instanceof Error ? error.message : String(error)}. Staying on ${input.selfVersion}; retrying later.`,
+			)
+			schedule(input.intervalMs ?? nextCheckDelay(false))
+			return
+		}
 		if (result.kind === 'ready' && !stopped) {
 			await waitForIdle(result.current)
 			return

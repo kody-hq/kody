@@ -1,11 +1,15 @@
+import { execFileSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import {
-	closeSync,
-	openSync,
-	readFileSync,
-	rmSync,
-	writeSync,
+	linkSync,
 	mkdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	statSync,
+	writeFileSync,
 } from 'node:fs'
+import { uptime } from 'node:os'
 import { dirname } from 'node:path'
 import psList from 'ps-list'
 
@@ -28,6 +32,9 @@ export type RunnerLockHolder = {
 	startedAt: string
 }
 
+/** A lock file younger than this with no readable holder is still being written. */
+const unreadableGraceMs = 10_000
+
 export function lockPathFor(statePath: string) {
 	return statePath.replace(/daemon\.json$/, 'daemon.lock')
 }
@@ -42,6 +49,46 @@ export function isAlive(pid: number) {
 	}
 }
 
+function commandOf(pid: number): string | null {
+	if (process.platform === 'win32') return null
+	try {
+		return execFileSync('ps', ['-o', 'command=', '-p', String(pid)], {
+			encoding: 'utf8',
+			stdio: ['ignore', 'pipe', 'ignore'],
+			timeout: 2_000,
+		}).trim()
+	} catch {
+		return null
+	}
+}
+
+export type HolderCheck = {
+	isAlive?: (pid: number) => boolean
+	/** The process's command line, or null when it cannot be read. */
+	commandOf?: (pid: number) => string | null
+	bootTimeMs?: number
+}
+
+/**
+ * Whether the recorded holder still runs. The lock outlives reboots and
+ * crashes, so a live pid alone is not enough: the pid may now belong to an
+ * unrelated process. It must have started after boot and still be a daemon.
+ */
+export function isLiveHolder(
+	holder: RunnerLockHolder,
+	check: HolderCheck = {},
+) {
+	if (!(check.isAlive ?? isAlive)(holder.pid)) return false
+	if (holder.pid === process.pid) return true
+	const startedAt = Date.parse(holder.startedAt)
+	const bootTimeMs = check.bootTimeMs ?? Date.now() - uptime() * 1000
+	if (Number.isFinite(startedAt) && startedAt < bootTimeMs - 60_000) {
+		return false
+	}
+	const command = (check.commandOf ?? commandOf)(holder.pid)
+	return command === null || /\bdaemon\b/.test(command)
+}
+
 function readHolder(path: string): RunnerLockHolder | null {
 	try {
 		const holder = JSON.parse(readFileSync(path, 'utf8')) as RunnerLockHolder
@@ -51,10 +98,17 @@ function readHolder(path: string): RunnerLockHolder | null {
 	}
 }
 
+function sameHolder(a: RunnerLockHolder, b: RunnerLockHolder) {
+	return a.pid === b.pid && a.startedAt === b.startedAt
+}
+
 /** The live daemon holding this context's lock, if any. */
-export function runnerLockHolder(path: string): RunnerLockHolder | null {
+export function runnerLockHolder(
+	path: string,
+	check: HolderCheck = {},
+): RunnerLockHolder | null {
 	const holder = readHolder(path)
-	return holder && isAlive(holder.pid) ? holder : null
+	return holder && isLiveHolder(holder, check) ? holder : null
 }
 
 export type RunnerLock =
@@ -64,29 +118,74 @@ export type RunnerLock =
 export function acquireRunnerLock(
 	path: string,
 	info: Omit<RunnerLockHolder, 'pid'> & { pid?: number },
+	check: HolderCheck = {},
 ): RunnerLock {
 	const mine: RunnerLockHolder = { ...info, pid: info.pid ?? process.pid }
 	mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+	const unique = () => `${process.pid}-${randomBytes(4).toString('hex')}`
 	for (let attempt = 0; attempt < 3; attempt++) {
+		// Write the whole holder first, then link it into place: the lock never
+		// exists half-written, and link fails atomically if another daemon won.
+		const temp = `${path}.${unique()}.tmp`
+		writeFileSync(temp, `${JSON.stringify(mine)}\n`, { mode: 0o600 })
 		try {
-			const fd = openSync(path, 'wx', 0o600)
-			writeSync(fd, `${JSON.stringify(mine)}\n`)
-			closeSync(fd)
+			linkSync(temp, path)
 			return {
 				ok: true,
 				release: () => {
-					if (readHolder(path)?.pid === mine.pid) rmSync(path, { force: true })
+					const holder = readHolder(path)
+					if (holder && sameHolder(holder, mine)) rmSync(path, { force: true })
 				},
 			}
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+		} finally {
+			rmSync(temp, { force: true })
 		}
 		const holder = readHolder(path)
-		if (holder && holder.pid !== mine.pid && isAlive(holder.pid)) {
+		if (!holder) {
+			let ageMs = Infinity
+			try {
+				ageMs = Date.now() - statSync(path).mtimeMs
+			} catch {
+				continue
+			}
+			if (ageMs < unreadableGraceMs) {
+				return {
+					ok: false,
+					holder: {
+						pid: 0,
+						version: 'unknown',
+						launcher: 'terminal',
+						startedAt: new Date(Date.now() - ageMs).toISOString(),
+					},
+				}
+			}
+		} else if (holder.pid !== mine.pid && isLiveHolder(holder, check)) {
 			return { ok: false, holder }
 		}
-		// A crashed daemon left it behind (or it is ours from a re-exec).
-		rmSync(path, { force: true })
+		// A crashed daemon left it behind. Move it aside rather than delete it,
+		// so a lock another daemon took in the meantime is put back, not lost.
+		const aside = `${path}.${unique()}.stale`
+		try {
+			renameSync(path, aside)
+		} catch {
+			continue
+		}
+		const moved = readHolder(aside)
+		if (
+			moved &&
+			(!holder || !sameHolder(moved, holder)) &&
+			moved.pid !== mine.pid &&
+			isLiveHolder(moved, check)
+		) {
+			try {
+				linkSync(aside, path)
+			} catch {}
+			rmSync(aside, { force: true })
+			return { ok: false, holder: moved }
+		}
+		rmSync(aside, { force: true })
 	}
 	const holder = readHolder(path)
 	if (holder) return { ok: false, holder }
@@ -101,6 +200,9 @@ export function describeLauncher(launcher: RunnerLauncher | undefined) {
 }
 
 export function describeHolder(holder: RunnerLockHolder) {
+	if (holder.pid === 0) {
+		return `another daemon is taking the lock right now (since ${holder.startedAt})`
+	}
 	return `pid ${holder.pid}, kody ${holder.version}, started by ${describeLauncher(holder.launcher)} at ${holder.startedAt}`
 }
 

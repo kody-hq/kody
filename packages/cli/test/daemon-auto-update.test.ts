@@ -107,6 +107,13 @@ const deps = {
 	npmInstall: () => ({ ok: false, output: 'npm should not be needed' }),
 }
 
+/** A path under a regular file: creating anything in it fails. */
+function writeBlocker() {
+	const file = join(mkdtempSync(join(tmpdir(), 'kody-blocker-')), 'file')
+	writeFileSync(file, '')
+	return file
+}
+
 function freshStore() {
 	return mkdtempSync(join(tmpdir(), 'kody-cli-store-'))
 }
@@ -196,7 +203,7 @@ test('never downgrades: an older or equal latest leaves the daemon alone', async
 		deps,
 	})
 	const older = cliTarball('3.6.0')
-	update.installVersion({
+	await update.installVersion({
 		store,
 		published: {
 			version: '3.6.0',
@@ -426,14 +433,14 @@ test('one runner per context: a second daemon is refused and names the first', (
 	const first = lock.acquireRunnerLock(path, {
 		version: '3.16.1',
 		launcher: 'launchd',
-		startedAt: '2026-10-31T00:00:00.000Z',
+		startedAt: new Date().toISOString(),
 	})
 	assert.ok(first.ok)
 	const second = lock.acquireRunnerLock(path, {
 		pid: process.pid + 100_000,
 		version: '3.16.1',
 		launcher: 'desktop',
-		startedAt: '2026-10-31T00:00:01.000Z',
+		startedAt: new Date().toISOString(),
 	})
 	assert.equal(second.ok, false)
 	assert.equal(!second.ok && second.holder.launcher, 'launchd')
@@ -480,5 +487,152 @@ test('old daemons without the lock are found by command line', async () => {
 	assert.deepEqual(
 		others.map((other) => other.pid),
 		[11],
+	)
+})
+
+test('a startup refusal (lock held, offline) does not count against the version', async () => {
+	const store = freshStore()
+	await update.checkForUpdate({
+		selfVersion: '3.11.0',
+		enabled: true,
+		store,
+		fetchFn: registry({ version: '3.16.1' }),
+		deps,
+	})
+	const first = update.readCurrent(store)!
+	for (let i = 0; i < 4; i++) {
+		const outcome = await update.superviseNewerVersion({
+			first,
+			selfVersion: '3.11.0',
+			args: [],
+			log: () => {},
+			store,
+			spawnFn: (() => {
+				const child = new FakeChild()
+				setTimeout(
+					() => child.emit('exit', update.startupRefusedExitCode, null),
+					5,
+				)
+				return child
+			}) as never,
+		})
+		assert.deepEqual(outcome, { kind: 'exit', code: 1 })
+	}
+	assert.equal(
+		update.newerInstalledVersion({ selfVersion: '3.11.0', store })?.version,
+		'3.16.1',
+	)
+})
+
+test('a failing check is logged and retried instead of stopping the updater', async () => {
+	const lines: Array<string> = []
+	const updater = update.startDaemonUpdater({
+		selfVersion: '3.11.0',
+		setting: async () => ({ enabled: true, source: 'default' }),
+		busy: () => ({ runs: 0, background: 0 }),
+		log: (line) => lines.push(line),
+		onReady: () => {},
+		// A store path that cannot be created makes the check throw.
+		store: join(writeBlocker(), 'store'),
+		fetchFn: registry({ version: '3.16.1' }),
+		deps,
+		firstDelayMs: 0,
+		intervalMs: 20,
+	})
+	await new Promise((resolve) => setTimeout(resolve, 200))
+	updater.stop()
+	assert.match(lines.join('\n'), /Auto-update: check failed/)
+	assert.ok(
+		lines.filter((line) => line.includes('check failed')).length >= 2,
+		'it keeps checking on schedule',
+	)
+})
+
+test('the idle deadline forces the update and says so', async () => {
+	const store = freshStore()
+	const forcedFlags: Array<boolean> = []
+	const done = new Promise<void>((resolve) => {
+		const updater = update.startDaemonUpdater({
+			selfVersion: '3.11.0',
+			setting: async () => ({ enabled: true, source: 'default' }),
+			busy: () => ({ runs: 0, background: 1 }),
+			log: () => {},
+			onReady: (_current, forced) => {
+				forcedFlags.push(forced)
+				updater.stop()
+				resolve()
+			},
+			store,
+			fetchFn: registry({ version: '3.16.1' }),
+			deps,
+			firstDelayMs: 0,
+			idlePollMs: 5,
+			maxIdleWaitMs: 30,
+		})
+	})
+	await done
+	assert.deepEqual(forcedFlags, [true])
+})
+
+test('a lock whose pid now belongs to another process, or predates boot, is taken over', () => {
+	const dir = mkdtempSync(join(tmpdir(), 'kody-lock-'))
+	const path = lock.lockPathFor(join(dir, 'daemon.json'))
+	const holder = {
+		pid: 4242,
+		version: '3.16.1',
+		launcher: 'launchd' as const,
+		startedAt: new Date().toISOString(),
+	}
+	const alive = { isAlive: (pid: number) => pid === 4242 }
+	writeFileSync(path, JSON.stringify(holder))
+	assert.equal(
+		lock.runnerLockHolder(path, { ...alive, commandOf: () => '/usr/bin/vim' }),
+		null,
+		'a reused pid running something else is not a runner',
+	)
+	const asDaemon = {
+		...alive,
+		commandOf: () => 'node kody daemon --context ec',
+	}
+	assert.equal(lock.runnerLockHolder(path, asDaemon)?.pid, 4242)
+	assert.equal(
+		lock.acquireRunnerLock(
+			path,
+			{ version: '3.17.0', launcher: 'terminal', startedAt: '' },
+			asDaemon,
+		).ok,
+		false,
+	)
+	assert.equal(
+		lock.runnerLockHolder(path, {
+			...asDaemon,
+			bootTimeMs: Date.now() + 120_000,
+		}),
+		null,
+		'a lock written before this boot is stale',
+	)
+	const taken = lock.acquireRunnerLock(
+		path,
+		{
+			version: '3.17.0',
+			launcher: 'terminal',
+			startedAt: new Date().toISOString(),
+		},
+		{ ...alive, commandOf: () => '/usr/bin/vim' },
+	)
+	assert.ok(taken.ok)
+	assert.equal(lock.runnerLockHolder(path)?.pid, process.pid)
+	if (taken.ok) taken.release()
+	// A lock file another daemon is still writing is not reaped.
+	writeFileSync(path, '')
+	const young = lock.acquireRunnerLock(path, {
+		version: '3.17.0',
+		launcher: 'terminal',
+		startedAt: '',
+	})
+	assert.equal(young.ok, false)
+	assert.match(
+		lock.describeHolder(!young.ok ? young.holder : (null as never)),
+		/taking the lock right now/,
 	)
 })

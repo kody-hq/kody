@@ -19,6 +19,7 @@ import {
 	autoUpdateSetting,
 	newerInstalledVersion,
 	relaunchExitCode,
+	startupRefusedExitCode,
 	startDaemonUpdater,
 	superviseNewerVersion,
 	supervisedEnvVar,
@@ -556,13 +557,32 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 				if (outcome.kind === 'exit') return outcome.code
 			}
 		}
-		const { context, privateJwk } = loadContext({
-			apiUrl: input.apiUrl,
-			ecid,
-			wrapping: wrappingKeyForStoredContext({ apiUrl: input.apiUrl, ecid }),
-		})
-		const privateKey = await importContextKey(privateJwk)
-		const serverKeys = await fetchServerKeys({ apiUrl: input.apiUrl })
+		let started: {
+			context: ReturnType<typeof loadContext>['context']
+			privateKey: Awaited<ReturnType<typeof importContextKey>>
+			serverKeys: Awaited<ReturnType<typeof fetchServerKeys>>
+		}
+		try {
+			const { context, privateJwk } = loadContext({
+				apiUrl: input.apiUrl,
+				ecid,
+				wrapping: wrappingKeyForStoredContext({ apiUrl: input.apiUrl, ecid }),
+			})
+			started = {
+				context,
+				privateKey: await importContextKey(privateJwk),
+				serverKeys: await fetchServerKeys({ apiUrl: input.apiUrl }),
+			}
+		} catch (error) {
+			if (!supervised) throw error
+			// Not this version's fault (offline at boot, say): the supervisor
+			// must not count it as a failed update.
+			log(
+				`Could not start: ${error instanceof Error ? error.message : String(error)}`,
+			)
+			return startupRefusedExitCode
+		}
+		const { context, privateKey, serverKeys } = started
 		const { runContextRun } = await import('./run-executor.js')
 		const hostCommands = new HostCommands({
 			localEnabled: await readLocalCommandsEnabled().catch(() => false),
@@ -624,19 +644,28 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		}
 		if (!lock.ok) {
 			unwatchFile(commandsPolicyPath, onCommandsPolicyChange)
-			throw new Error(
-				`Another kody daemon already runs ${context.name} (${describeHolder(lock.holder)}). One runner per context on a machine: use that one, or stop it first (\`kody daemon stop\`, or Machine > Stop runner in the desktop app).`,
-			)
+			const message = `Another kody daemon already runs ${context.name} (${describeHolder(lock.holder)}). One runner per context on a machine: use that one, or stop it first (\`kody daemon stop\`, or Machine > Stop runner in the desktop app).`
+			if (!supervised) throw new Error(message)
+			log(message)
+			return startupRefusedExitCode
 		}
 		const releaseLock = lock.release
 		const abort = new AbortController()
 		const drain = new AbortController()
 		let hardStop: NodeJS.Timeout | undefined
 		let signalled = false
+		let signalledAt = 0
 		let updateTo: CurrentVersion | null = null
+		let forcedUpdate = false
 		const onSignal = () => {
-			if (signalled) return abort.abort()
+			if (signalled) {
+				// A supervisor forwards the signal the terminal or service manager
+				// already sent the whole group: only a later repeat is a hard stop.
+				if (Date.now() - signalledAt < 2_000) return
+				return abort.abort()
+			}
 			signalled = true
+			signalledAt = Date.now()
 			updateTo = null
 			if (!drain.signal.aborted) drain.abort()
 			hardStop = setTimeout(() => abort.abort(), 80_000)
@@ -688,9 +717,10 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 				background: hostCommands.runningBackground(),
 			}),
 			log,
-			onReady: (current) => {
+			onReady: (current, forced) => {
 				if (signalled) return
 				updateTo = current
+				forcedUpdate = forced
 				if (!drain.signal.aborted) drain.abort()
 			},
 		})
@@ -714,6 +744,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 				drainHold: () =>
 					updateTo !== null &&
 					!signalled &&
+					!forcedUpdate &&
 					hostCommands.runningBackground() > 0,
 				hostCommands,
 				execute: (run) =>
