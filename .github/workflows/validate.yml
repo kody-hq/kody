@@ -841,8 +841,7 @@ jobs:
       NPM_CONFIG_SCRIPT_SHELL: C:\Program Files\Git\bin\bash.exe
       # TAP prints each failure (and the test still running at a timeout)
       # inline; spec only prints details after every file finishes.
-      # The timeout fails a hung test by name instead of the job timing out.
-      NODE_OPTIONS: --test-reporter=tap --test-timeout=180000
+      NODE_OPTIONS: --test-reporter=tap
     steps:
       - name: 📦 Checkout
         uses: actions/checkout@v6.0.2
