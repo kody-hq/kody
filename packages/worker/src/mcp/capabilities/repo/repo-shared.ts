@@ -1,8 +1,9 @@
 import { z } from 'zod'
+import { repoCheckKinds } from '#worker/repo/checks.ts'
 import { credentialNeedChangeSchema } from '#mcp/capabilities/packages/shared.ts'
 import {
 	packageIdLookupDescription,
-	packageNameLookupDescription,
+	packageKodyIdRequiredInput,
 } from '#worker/package-registry/package-name.ts'
 import {
 	entityKindValues,
@@ -19,7 +20,7 @@ const repoTargetShapeSchema = z.union([
 	}),
 	z.object({
 		kind: z.literal('package'),
-		kody_id: z.string().min(1).describe(packageNameLookupDescription),
+		kody_id: packageKodyIdRequiredInput(),
 	}),
 	z.object({
 		kind: z.literal('repo'),
@@ -191,6 +192,29 @@ export const repoSourceRefSchema = z.object({
 		.describe('Shared source id to open a session for.'),
 })
 
+export const repoSessionLastPublishSchema = z
+	.object({
+		state: z
+			.enum([
+				'running',
+				'interrupted',
+				'published',
+				'pushed',
+				'not_published',
+				'failed',
+			])
+			.describe(
+				'running: in progress. interrupted: the server restarted mid-publish; for a package session retry repoPublishSession to resume (for a plain repo, check the source ref first). published: done. pushed: pushed without promotion (promotePublished: false); published_commit did not change. not_published: returned a non-ok status (see result_status). failed: the call errored. For a package session nothing was published unless published_commit moved; for a plain repo, check the source ref (an unknown push outcome says so in error_message).',
+			),
+		started_at: z.string(),
+		finished_at: z.string().nullable(),
+		published_commit: z.string().nullable(),
+		result_status: z.string().nullable(),
+		error_name: z.string().nullable(),
+		error_message: z.string().nullable(),
+	})
+	.describe('Latest repoPublishSession attempt on this session.')
+
 export const repoSessionInfoSchema = z.object({
 	id: z.string(),
 	source_id: z.string(),
@@ -208,6 +232,7 @@ export const repoSessionInfoSchema = z.object({
 	published_commit: z.string().nullable(),
 	manifest_path: z.string(),
 	entity_type: z.enum(entityKindValues),
+	last_publish: repoSessionLastPublishSchema.nullable().optional(),
 })
 
 export const repoListSessionStatusValues = [
@@ -472,9 +497,10 @@ export const repoTreeNodeSchema: z.ZodType<unknown> = z.lazy(() =>
 export const repoSearchInputSchema = repoSessionIdSchema.extend({
 	pattern: z
 		.string()
+		.trim()
 		.min(1)
 		.describe(
-			'Literal text or regex to search for. In regex mode this must be valid JavaScript RegExp syntax (no Python/PCRE inline flags such as (?s) or (?i)).',
+			'Literal text or regex to search for. Whitespace-only patterns are rejected. In regex mode this must be valid JavaScript RegExp syntax (no Python/PCRE inline flags such as (?s) or (?i)).',
 		),
 	mode: repoSearchModeSchema
 		.optional()
@@ -547,17 +573,7 @@ export const repoDiscardSessionOutputSchema = z.object({
 })
 
 export const repoCheckResultSchema = z.object({
-	kind: z.enum([
-		'manifest',
-		'docs',
-		'skills',
-		'dependencies',
-		'bundle',
-		'typecheck',
-		'lint',
-		'credentials',
-		'smoke',
-	]),
+	kind: z.enum(repoCheckKinds),
 	ok: z.boolean(),
 	message: z.string(),
 })

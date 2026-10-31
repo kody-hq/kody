@@ -16,11 +16,11 @@ so a single slow upstream, such as a streamed AI-provider response that runs
 past a minute, can finish inside a workflow. A response body that sends no bytes
 for 60s is aborted; one that keeps streaming runs until the deadline or the
 sandbox budget, whichever comes first. The initial `execute` call should submit
-one `workflows.create`; inspect that workflow later with `workflowRunList`, or
-cancel it with `workflowRunCancel`. Check-heavy admin steps such as fleet apply,
-dry-run, and revert take one page per workflow sandbox; when `nextCursor` is
-set, create another workflow with that `runId` and cursor instead of looping in
-the same run.
+one `workflows.create`; inspect that workflow later with
+`workflowRunList({ workflow_id })`, or cancel it with `workflowRunCancel`.
+Check-heavy admin steps such as fleet apply, dry-run, and revert take one page
+per workflow sandbox; when `nextCursor` is set, create another workflow with
+that `runId` and cursor instead of looping in the same run.
 
 ```ts
 import { workflows } from 'kody:runtime'
@@ -100,8 +100,10 @@ workflow limit from the account plan (see
 [Plans and pricing](https://kody.codes/pricing)); if the cap is reached,
 `workflows.create` returns a clear quota error.
 
-Use `workflowRunList` to inspect recent workflow runs and statuses, and
-`workflowRunCancel` to stop a run by id.
+Use `workflowRunList` to inspect recent workflow runs and statuses. Pass
+`workflow_id` for one run (for example after a durable `dispatched` handoff), or
+combine `status`, `package_id`, and `since` like `runList`. Unknown input fields
+are rejected. Use `workflowRunCancel` to stop a run by id.
 
 ## Source revision across queue waits and retries
 

@@ -73,6 +73,7 @@ test('bootstrap mint requires a lifetime and embeds it in cli_command', async ()
 	expect(minted.scopes).toContain('secret:use')
 	expect(minted.scopes).toContain('package:execute')
 	expect(minted.scopes).toContain('package:write')
+	expect(minted.scopes).toContain('package:create')
 	expect(minted.scopes).toContain('token:delete')
 	expect(minted.idle_ttl_seconds).toBe(shortLife.idleTtlSeconds)
 	expect(minted.max_lifetime_seconds).toBe(shortLife.maxLifetimeSeconds)
@@ -363,8 +364,6 @@ test('bootstrap without explicit scopes intersects defaults with the parent', as
 		now: start,
 	})
 	expect(minted.scopes).toEqual(['org:execute', 'org:read', 'token:delete'])
-	expect(minted.scopes).not.toContain('package:execute')
-	expect(minted.scopes).not.toContain('package:write')
 })
 
 test('bootstrap long lifetime clamps absolute max to a shorter API-token parent', async () => {

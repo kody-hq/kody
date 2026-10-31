@@ -1,4 +1,4 @@
-import { cp, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
+import { cp, realpath, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -47,7 +47,9 @@ export async function withDevServer(
 	const { prepare, ...devOptions } = options
 	// Resolve workerd from the real cache before KODY_CACHE_DIR is pointed at scratch.
 	const workerdPath = await ensureWorkerdBinary()
-	const root = await mkdtemp(join(tmpdir(), 'kody-dev-server-test-'))
+	const root = await realpath(
+		await mkdtemp(join(tmpdir(), 'kody-dev-server-test-')),
+	)
 	const cache = await mkdtemp(join(tmpdir(), 'kody-dev-server-cache-'))
 	const previousCache = process.env.KODY_CACHE_DIR
 	process.env.KODY_CACHE_DIR = cache

@@ -31,6 +31,7 @@ import {
 import { renderIcon } from '../components/icon.tsx'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
 import {
+	type PackageCollaboratorPermission,
 	type PackageCollaboratorPreset,
 	type PackageCollaboratorsChange,
 	type PackageCollaboratorsLoaderData,
@@ -43,7 +44,10 @@ import {
 	fallbackDefaultBranchName,
 	getPackageTreeHref,
 } from '#universal/package-files.ts'
-import { renderPackageRepoChrome } from '../components/package-repo-nav.tsx'
+import {
+	PackageRepoTabPanel,
+	renderPackageRepoChrome,
+} from '../components/package-repo-nav.tsx'
 import { routes } from '#universal/routes.ts'
 import {
 	getDangerPillCss,
@@ -58,6 +62,8 @@ import {
 	iconWellCss,
 	listCss,
 	mutedCopyCss,
+	AdvancedPermissionsField,
+	presetOrPermissions,
 	readPreset,
 	renderPresetOptions,
 	rowActionsCss,
@@ -87,7 +93,21 @@ export function PackageCollaboratorsRoute({
 	const [teamId, setTeamId] = useState('')
 	const [memberId, setMemberId] = useState('')
 	const [teamPreset, setTeamPreset] = useState<PackageCollaboratorPreset>('use')
+	const [everyonePreset, setEveryonePreset] =
+		useState<PackageCollaboratorPreset>('use')
 	const [memberPreset, setMemberPreset] =
+		useState<PackageCollaboratorPreset>('use')
+	const [teamPermissions, setTeamPermissions] = useState<
+		Array<PackageCollaboratorPermission>
+	>([])
+	const [everyonePermissions, setEveryonePermissions] = useState<
+		Array<PackageCollaboratorPermission>
+	>([])
+	const [memberPermissions, setMemberPermissions] = useState<
+		Array<PackageCollaboratorPermission>
+	>([])
+	const [profileId, setProfileId] = useState('')
+	const [profilePreset, setProfilePreset] =
 		useState<PackageCollaboratorPreset>('use')
 	const inFlight = useRef(false)
 	const mutation = useMutation(
@@ -103,6 +123,7 @@ export function PackageCollaboratorsRoute({
 								...page,
 								invitee: input.change.invitee,
 								preset: input.change.preset,
+								permissions: input.change.permissions,
 							},
 						})
 					case 'revoke-invite':
@@ -116,6 +137,7 @@ export function PackageCollaboratorsRoute({
 								subjectType: input.change.subjectType,
 								subjectId: input.change.subjectId,
 								preset: input.change.preset,
+								permissions: input.change.permissions,
 							},
 						})
 					case 'revoke':
@@ -178,6 +200,25 @@ export function PackageCollaboratorsRoute({
 		void select
 	}
 
+	async function addEveryone(
+		event: FormEvent<HTMLFormElement>,
+		view: PackageCollaboratorsView,
+	) {
+		event.preventDefault()
+		const everyone = view.options.everyone
+		if (!everyone) return
+		await postChange(
+			'add-everyone',
+			{
+				intent: 'grant',
+				subjectType: 'org',
+				subjectId: everyone.orgId,
+				...presetOrPermissions(everyonePreset, everyonePermissions),
+			},
+			'Added everyone in this organization.',
+		)
+	}
+
 	async function addTeam(
 		event: FormEvent<HTMLFormElement>,
 		view: PackageCollaboratorsView,
@@ -191,11 +232,14 @@ export function PackageCollaboratorsRoute({
 				intent: 'grant',
 				subjectType: 'team',
 				subjectId: team.id,
-				preset: teamPreset,
+				...presetOrPermissions(teamPreset, teamPermissions),
 			},
 			`Added ${team.name}.`,
 		)
-		if (accepted) setTeamId('')
+		if (accepted) {
+			setTeamId('')
+			setTeamPermissions([])
+		}
 	}
 
 	async function addMember(
@@ -213,11 +257,99 @@ export function PackageCollaboratorsRoute({
 				intent: 'grant',
 				subjectType: 'user',
 				subjectId: member.userId,
-				preset: memberPreset,
+				...presetOrPermissions(memberPreset, memberPermissions),
 			},
 			`Added ${member.username ? `@${member.username}` : 'that member'}.`,
 		)
-		if (accepted) setMemberId('')
+		if (accepted) {
+			setMemberId('')
+			setMemberPermissions([])
+		}
+	}
+
+	async function addProfile(
+		event: FormEvent<HTMLFormElement>,
+		view: PackageCollaboratorsView,
+	) {
+		event.preventDefault()
+		const profile = view.options.profiles?.find(
+			(option) => option.id === profileId,
+		)
+		if (!profile) return
+		const accepted = await postChange(
+			'add-profile',
+			{
+				intent: 'grant',
+				subjectType: 'profile',
+				subjectId: profile.id,
+				preset: profilePreset,
+			},
+			`Added profile ${profile.name}.`,
+		)
+		if (accepted) setProfileId('')
+	}
+
+	function renderAddProfile(view: PackageCollaboratorsView) {
+		const profiles = view.options.profiles
+		if (!profiles) return null
+		return (
+			<AccountManagementPanel
+				title="Add one of your profiles"
+				description="A profile is an agent identity you control. It can only use what you can, and a sub-profile only what its parent holds here too."
+			>
+				{profiles.length === 0 ? (
+					<p css={mutedCopyCss}>
+						You have no active profiles in this organization.{' '}
+						<SiteLink href="/docs/profiles">Learn about profiles</SiteLink>.
+					</p>
+				) : (
+					<form
+						data-testid="package-collaborators-add-profile"
+						css={formCss}
+						onSubmit={(event) => void addProfile(event, view)}
+					>
+						<label css={accountFieldCss}>
+							<span css={accountFieldLabelCss}>Profile</span>
+							<select
+								aria-label="Profile"
+								value={profileId}
+								required
+								css={selectCss}
+								onChange={(event) => {
+									setProfileId((event.currentTarget as HTMLSelectElement).value)
+								}}
+							>
+								<option value="">Choose a profile</option>
+								{profiles.map((profile) => (
+									<option key={profile.id} value={profile.id}>
+										{profile.depth > 1
+											? `${profile.name} (sub-profile, depth ${profile.depth})`
+											: profile.name}
+									</option>
+								))}
+							</select>
+						</label>
+						{renderPresetField({
+							label: 'Access for the profile',
+							value: profilePreset,
+							onChange: (preset) => {
+								setProfilePreset(preset)
+							},
+						})}
+						<div css={accountActionsCss}>
+							<button
+								type="submit"
+								disabled={busy !== null || profileId === ''}
+								css={getPillButtonCss({ size: 'sm' })}
+							>
+								{renderIcon('plus', { size: '1.05rem' })}
+								{busy === 'add-profile' ? 'Adding…' : 'Add profile'}
+							</button>
+						</div>
+					</form>
+				)}
+			</AccountManagementPanel>
+		)
 	}
 
 	function renderCollaborator(collaborator: PackageCollaboratorView) {
@@ -230,9 +362,14 @@ export function PackageCollaboratorsRoute({
 				data-subject={collaborator.subjectId}
 				css={rowCss}
 			>
-				{collaborator.subjectType === 'team' ? (
+				{collaborator.subjectType !== 'user' ? (
 					<span aria-hidden="true" css={iconWellCss}>
-						{renderIcon('users', { size: '1.25rem' })}
+						{renderIcon(
+							collaborator.subjectType === 'org' ? 'globe' : 'users',
+							{
+								size: '1.25rem',
+							},
+						)}
 					</span>
 				) : (
 					<UserAvatar
@@ -307,26 +444,89 @@ export function PackageCollaboratorsRoute({
 		label: string
 		value: PackageCollaboratorPreset
 		onChange: (preset: PackageCollaboratorPreset) => void
+		advanced?: {
+			permissions: Array<PackageCollaboratorPermission>
+			onPermissionsChange: (value: Array<PackageCollaboratorPermission>) => void
+			testId: string
+		}
 	}) {
 		return (
-			<label css={accountFieldCss}>
-				<span css={accountFieldLabelCss}>Access</span>
-				<select
-					aria-label={input.label}
-					value={input.value}
-					css={selectCss}
-					onChange={(event) => {
-						const preset = readPreset(event)
-						if (!preset) return
-						input.onChange(preset)
-					}}
-				>
-					{renderPresetOptions(input.value)}
-				</select>
-				<p css={accountFieldNoteCss}>
-					{packageCollaboratorPresetDescription(input.value)}.
-				</p>
-			</label>
+			<>
+				<label css={accountFieldCss}>
+					<span css={accountFieldLabelCss}>Access</span>
+					<select
+						aria-label={input.label}
+						value={input.value}
+						css={selectCss}
+						onChange={(event) => {
+							const preset = readPreset(event)
+							if (!preset) return
+							input.onChange(preset)
+						}}
+					>
+						{renderPresetOptions(input.value)}
+					</select>
+					<p css={accountFieldNoteCss}>
+						{packageCollaboratorPresetDescription(input.value)}.
+					</p>
+				</label>
+				{input.advanced ? (
+					<AdvancedPermissionsField
+						value={input.advanced.permissions}
+						onChange={input.advanced.onPermissionsChange}
+						disabled={busy !== null}
+						testId={input.advanced.testId}
+					/>
+				) : null}
+			</>
+		)
+	}
+
+	function renderAddEveryone(view: PackageCollaboratorsView) {
+		const everyone = view.options.everyone
+		return (
+			<AccountManagementPanel
+				title="Everyone in this organization"
+				description="Every current member, and anyone who joins later. Someone who leaves the organization loses access right away. The package stays private to everyone else."
+			>
+				{everyone === null ? (
+					<p css={mutedCopyCss}>
+						Everyone in this organization already has access. Change or remove
+						it under Who has access.
+					</p>
+				) : (
+					<form
+						data-testid="package-collaborators-add-everyone"
+						css={formCss}
+						onSubmit={(event) => void addEveryone(event, view)}
+					>
+						{renderPresetField({
+							label: 'Access for everyone in this organization',
+							value: everyonePreset,
+							onChange: (preset) => {
+								setEveryonePreset(preset)
+							},
+							advanced: {
+								permissions: everyonePermissions,
+								onPermissionsChange: setEveryonePermissions,
+								testId: 'package-collaborators-advanced-everyone',
+							},
+						})}
+						<div css={accountActionsCss}>
+							<button
+								type="submit"
+								disabled={busy !== null}
+								css={getPillButtonCss({ size: 'sm' })}
+							>
+								{renderIcon('plus', { size: '1.05rem' })}
+								{busy === 'add-everyone'
+									? 'Adding…'
+									: `Add everyone (${everyone.memberCount} ${everyone.memberCount === 1 ? 'member' : 'members'})`}
+							</button>
+						</div>
+					</form>
+				)}
+			</AccountManagementPanel>
 		)
 	}
 
@@ -370,6 +570,11 @@ export function PackageCollaboratorsRoute({
 							value: teamPreset,
 							onChange: (preset) => {
 								setTeamPreset(preset)
+							},
+							advanced: {
+								permissions: teamPermissions,
+								onPermissionsChange: setTeamPermissions,
+								testId: 'package-collaborators-advanced-team',
 							},
 						})}
 						<div css={accountActionsCss}>
@@ -427,6 +632,11 @@ export function PackageCollaboratorsRoute({
 							onChange: (preset) => {
 								setMemberPreset(preset)
 							},
+							advanced: {
+								permissions: memberPermissions,
+								onPermissionsChange: setMemberPermissions,
+								testId: 'package-collaborators-advanced-member',
+							},
 						})}
 						<div css={accountActionsCss}>
 							<button
@@ -458,6 +668,8 @@ export function PackageCollaboratorsRoute({
 				viewerIsOwner: true,
 				viewerCanManage: shell?.viewerCanManage ?? false,
 				viewerCanManageAccess: true,
+				viewerCanSeeConnectedPeople:
+					shell?.viewerCanSeeConnectedPeople ?? false,
 				active: 'collaborators',
 				filesHref: getPackageTreeHref({
 					username,
@@ -476,51 +688,65 @@ export function PackageCollaboratorsRoute({
 				}),
 				iconName: kodyId,
 			})}
-
-			{message ? (
-				<AccountManagementMessage tone={messageTone}>
-					{message}
-				</AccountManagementMessage>
-			) : null}
-			{view ? (
-				<>
-					<AccountManagementPanel
-						title="Who has access"
-						description={
-							view.org.personal
-								? 'You always have full access to your own packages. People you invite show up here once they accept.'
-								: 'Organization owners always have full access.'
-						}
-					>
-						{view.collaborators.length === 0 ? (
-							<p css={mutedCopyCss} data-testid="package-collaborators-empty">
-								Nobody else has been given access to this package yet.
-							</p>
-						) : (
-							<ul css={listCss} data-testid="package-collaborators-list">
-								{view.collaborators.map(renderCollaborator)}
-							</ul>
-						)}
-					</AccountManagementPanel>
-					{view.org.personal ? null : renderAddTeam(view)}
-					{view.org.personal ? null : renderAddMember(view)}
-					{view.org.personal ? (
-						<PackageCollaboratorInvites
-							key={`${actorKey}/${username}/${kodyId}`}
-							view={view}
-							busyKey={busy}
-							postChange={postChange}
+			<PackageRepoTabPanel>
+				{message ? (
+					<AccountManagementMessage tone={messageTone}>
+						{message}
+					</AccountManagementMessage>
+				) : null}
+				{view ? (
+					<>
+						<AccountManagementPanel
+							title="Who has access"
+							description={
+								view.org.personal
+									? 'You always have full access to your own packages. People you invite show up here once they accept.'
+									: 'Organization owners always have full access.'
+							}
+						>
+							{view.package.hasApp && !view.package.internetVisible ? (
+								<p
+									css={mutedCopyCss}
+									data-testid="package-collaborators-who-pays"
+								>
+									Who pays: when someone outside this organization opens this
+									package's app, their own org pays for the metered work their
+									visits cause (storage reads, outbound fetches, email). This
+									org keeps paying the app's Worker compute.
+								</p>
+							) : null}
+							{view.collaborators.length === 0 ? (
+								<p css={mutedCopyCss} data-testid="package-collaborators-empty">
+									Nobody else has been given access to this package yet.
+								</p>
+							) : (
+								<ul css={listCss} data-testid="package-collaborators-list">
+									{view.collaborators.map(renderCollaborator)}
+								</ul>
+							)}
+						</AccountManagementPanel>
+						{view.org.personal ? null : renderAddEveryone(view)}
+						{view.org.personal ? null : renderAddTeam(view)}
+						{view.org.personal ? null : renderAddMember(view)}
+						{renderAddProfile(view)}
+						{view.org.personal ? (
+							<PackageCollaboratorInvites
+								key={`${actorKey}/${username}/${kodyId}`}
+								view={view}
+								busyKey={busy}
+								postChange={postChange}
+							/>
+						) : null}
+						<PackageInviteLinksPanel
+							username={username}
+							kodyId={kodyId}
+							orgSlug={view.org.slug}
+							personal={view.org.personal}
+							actorKey={actorKey}
 						/>
-					) : null}
-					<PackageInviteLinksPanel
-						username={username}
-						kodyId={kodyId}
-						orgSlug={view.org.slug}
-						personal={view.org.personal}
-						actorKey={actorKey}
-					/>
-				</>
-			) : null}
+					</>
+				) : null}
+			</PackageRepoTabPanel>
 		</article>
 	)
 }

@@ -29,6 +29,7 @@ import {
 	collectModuleImportNodesCached,
 	type ModuleImportNodesCache,
 } from './import-specifiers.ts'
+import { declaredCapabilitiesOf } from './package-app-effective-capabilities.ts'
 import { type BundleArtifactDependency } from './published-runtime-artifacts.ts'
 import {
 	dirname,
@@ -175,13 +176,16 @@ function createBundleArtifactDependency(input: {
 	row: SavedPackageRecord
 	sourceId: string
 	publishedCommit: string
+	manifest: Pick<AuthoredPackageJson, 'kody'>
 }): BundleArtifactDependency {
+	const capabilities = declaredCapabilitiesOf(input.manifest)
 	return {
 		sourceId: input.sourceId,
 		publishedCommit: input.publishedCommit,
 		kodyId: input.row.kodyId,
 		packageName: input.row.name,
 		packageId: input.row.id,
+		...(capabilities.length > 0 ? { capabilities } : {}),
 	}
 }
 
@@ -235,6 +239,7 @@ function collectTransitiveKodyDependencies(input: {
 					row: loaded.row,
 					sourceId: loaded.source.id,
 					publishedCommit,
+					manifest: loaded.manifest,
 				}),
 				transitive: true,
 			})
@@ -342,6 +347,7 @@ export async function resolveKodyDependenciesForEntryPoint(input: {
 				row,
 				sourceId: loaded.source.id,
 				publishedCommit: loaded.source.published_commit,
+				manifest: loaded.manifest,
 			})
 		}),
 	)

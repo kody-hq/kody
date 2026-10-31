@@ -44,7 +44,12 @@ event contract is [Subscriptions and events](./package-subscriptions.md).
   dispatch on the tag.
 - The inbox is provisioned automatically. There is nothing to create.
 - `emailSend` from a job or export only mails verified destinations on the
-  account. The From address is always `{username}@<platform domain>`.
+  account. The From address is `{username}@<platform domain>`, or a plus alias
+  of it when you pass `from` (for example
+  `examplebot+support@inbox.kody.codes`).
+- `emailReply` answers from the exact alias the original was sent to, with
+  `Reply-To` on that alias and the thread headers kept, so a bot reached at
+  `{username}+support@` stays on `+support` for the whole conversation.
 
 Forward a thread, mail a plus-tag from a form, or BCC the inbox from a system
 that already speaks SMTP. Kody stores the message, then subscribers run.
@@ -156,6 +161,8 @@ inbox**. It links here.
 
 ## Where to go next
 
+- [Wake your agent](./wake-your-agent.md) — pick MCP Events, a webhook POST, or
+  email wake from what the agent's client supports.
 - [Email primitives](../use/email-primitives.md) — addressing, plus-tags,
   quotas, `emailSend` / `emailReply`. `emailReply` will not answer quarantined
   mail until you release it.

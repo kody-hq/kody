@@ -1,10 +1,13 @@
 /** @jsxImportSource @emotion/react */
 import { type CSSObject } from '@emotion/react'
+import { nativeDisclosureCss } from '#universal/styles/style-primitives.ts'
 import {
+	type PackageCollaboratorPermission,
 	type PackageCollaboratorPreset,
 	type PackageCollaboratorView,
 	isPackageCollaboratorPreset,
 	packageCollaboratorKindLabel,
+	packageCollaboratorPermissionOptions,
 	packageCollaboratorPresetLabel,
 	packageCollaboratorPresets,
 } from '#universal/package-collaborators.ts'
@@ -18,12 +21,20 @@ import {
 } from '#universal/styles/tokens.ts'
 
 export function collaboratorName(collaborator: PackageCollaboratorView) {
-	if (collaborator.subjectType === 'team') return collaborator.label
+	if (collaborator.subjectType !== 'user') return collaborator.label
 	return collaborator.displayName?.trim() || collaborator.label
 }
 
 export function collaboratorDetail(collaborator: PackageCollaboratorView) {
 	const kind = packageCollaboratorKindLabel(collaborator.kind)
+	if (collaborator.subjectType === 'org') {
+		const count = collaborator.teamMemberCount
+		const members =
+			count === null ? null : `${count} ${count === 1 ? 'member' : 'members'}`
+		return [members, 'including anyone who joins later']
+			.filter(Boolean)
+			.join(' · ')
+	}
 	if (collaborator.subjectType === 'team') {
 		const count = collaborator.teamMemberCount
 		return count === null
@@ -50,6 +61,88 @@ export function renderPresetOptions(
 			{packageCollaboratorPresetLabel(preset)}
 		</option>
 	))
+}
+
+/**
+ * Escape hatch under a preset picker: an explicit permission list, the same
+ * one the API accepts. Any checked permission replaces the preset.
+ */
+export function AdvancedPermissionsField(props: {
+	value: Array<PackageCollaboratorPermission>
+	onChange: (value: Array<PackageCollaboratorPermission>) => void
+	disabled?: boolean
+	testId: string
+}) {
+	return (
+		<details css={nativeDisclosureCss} data-testid={props.testId}>
+			<summary>Advanced: choose permissions</summary>
+			<fieldset css={advancedFieldsetCss} disabled={props.disabled}>
+				<legend css={mutedCopyCss}>
+					Checking any permission replaces the preset. Leave all unchecked to
+					use the preset.
+				</legend>
+				{packageCollaboratorPermissionOptions.map((option) => {
+					const checked = props.value.includes(option.permission)
+					return (
+						<label key={option.permission} css={advancedOptionCss}>
+							<input
+								type="checkbox"
+								checked={checked}
+								value={option.permission}
+								css={{ marginTop: '0.25rem', accentColor: colors.primary }}
+								onChange={() => {
+									props.onChange(
+										checked
+											? props.value.filter(
+													(permission) => permission !== option.permission,
+												)
+											: packageCollaboratorPermissionOptions
+													.map((entry) => entry.permission)
+													.filter(
+														(permission) =>
+															permission === option.permission ||
+															props.value.includes(permission),
+													),
+									)
+								}}
+							/>
+							<span css={{ display: 'grid', gap: '0.1rem' }}>
+								<span css={{ fontWeight: 600 }}>{option.label}</span>
+								<span css={rowDetailCss}>{option.description}</span>
+							</span>
+						</label>
+					)
+				})}
+			</fieldset>
+		</details>
+	)
+}
+
+/** Preset or permission list for a write, whichever the form holds. */
+export function presetOrPermissions(
+	preset: PackageCollaboratorPreset,
+	permissions: Array<PackageCollaboratorPermission>,
+) {
+	return permissions.length > 0
+		? { preset: null, permissions }
+		: { preset, permissions: undefined }
+}
+
+const advancedFieldsetCss: CSSObject = {
+	margin: 0,
+	marginTop: spacing.sm,
+	padding: 0,
+	border: 'none',
+	display: 'grid',
+	gap: spacing.sm,
+	minWidth: 0,
+}
+
+const advancedOptionCss: CSSObject = {
+	display: 'flex',
+	alignItems: 'flex-start',
+	gap: spacing.sm,
+	cursor: 'pointer',
 }
 
 export const mutedCopyCss: CSSObject = {

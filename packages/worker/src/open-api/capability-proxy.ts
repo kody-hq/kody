@@ -16,9 +16,15 @@ import {
 } from '#worker/credentials/credential-call-map.ts'
 import {
 	CredentialClientError,
+	loadRunCredentialNeedEntries,
 	toCredentialClientError,
+	type RunCredentialEntries,
 } from '#worker/credentials/credential-client.ts'
 import { capabilityProxyCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
+import {
+	isLocalExecutePackageBindingToken,
+	verifyLocalExecutePackageBindingClaims,
+} from '#worker/package-runtime/local-execute-package-binding.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
 	toCapabilityOpenApiPrincipal,
@@ -27,6 +33,11 @@ import {
 import { ApiError, invalidRequest, notFound, toApiError } from './errors.ts'
 import { maxApiRequestBodyBytes } from './request-params.ts'
 import { runCapabilityProxyAuthenticatedFetch } from './capability-proxy-authenticated-fetch.ts'
+import {
+	authorizeContextCommand,
+	commandRequiresContextError,
+	commandRuntimeName,
+} from '#worker/execution-contexts/commands.ts'
 import { runCapabilityProxyGatewayFetch } from './capability-proxy-gateway-fetch.ts'
 import { runCapabilityProxyOauthClientCredentials } from './capability-proxy-oauth-client-credentials.ts'
 import {
@@ -156,12 +167,13 @@ async function invokeCapability<T>(invoke: () => Promise<T> | T) {
  * graph's signed binding, and stays a claim until `package:execute` on it
  * holds. A bare package id is refused.
  */
-function createCapabilityProxyCredentialClientTools(
+export function createCapabilityProxyCredentialClientTools(
 	ctx: ApiInvocationContext,
 	callMap: CredentialCallMap | null,
 ): CredentialClientToolOptions | undefined {
 	const request = ctx.callerContext.request
 	if (!request) return undefined
+	const runEntriesByKey = new Map<string, Promise<RunCredentialEntries>>()
 	return {
 		binding: capabilityProxyCredentialClientBinding(request),
 		callMap,
@@ -186,6 +198,32 @@ function createCapabilityProxyCredentialClientTools(
 					})
 				)
 			}
+		},
+		// Entries come only from the verified binding the call claims;
+		// `resolvePackageId` has already checked `package:execute` on it.
+		runEntries: async (requested) => {
+			if (!isLocalExecutePackageBindingToken(requested)) return null
+			const { entryPackageIds } = await verifyLocalExecutePackageBindingClaims({
+				env: ctx.env,
+				token: requested,
+				subject: {
+					org: ownerIdFromCaller(ctx.callerContext),
+					actor: request.actor?.userId ?? null,
+				},
+			}).catch(() => ({ entryPackageIds: [] as Array<string> }))
+			if (entryPackageIds.length === 0) return null
+			const cacheKey = entryPackageIds.join('\n')
+			let entries = runEntriesByKey.get(cacheKey)
+			if (!entries) {
+				entries = loadRunCredentialNeedEntries({
+					env: ctx.env,
+					orgId: request.org.id,
+					packageIds: entryPackageIds,
+					request,
+				}).then((loaded) => loaded.entries)
+				runEntriesByKey.set(cacheKey, entries)
+			}
+			return await entries
 		},
 		...(ctx.waitUntil ? { waitUntil: ctx.waitUntil } : {}),
 	}
@@ -238,6 +276,14 @@ async function callKodyPath(input: {
 				packageContext: null,
 			}),
 			openApiPrincipal: toCapabilityOpenApiPrincipal(ctx.principal),
+			localExecuteHop: true,
+			...(ctx.callerContext.request
+				? {
+						credentialClientBinding: capabilityProxyCredentialClientBinding(
+							ctx.callerContext.request,
+						),
+					}
+				: {}),
 			...(ctx.waitUntil ? { waitUntil: ctx.waitUntil } : {}),
 			...(credentialClientTools ? { credentialClientTools } : {}),
 		},
@@ -292,6 +338,12 @@ async function dispatchCapabilityProxyCall(input: {
 }) {
 	const { ctx, call, redactor } = input
 	const [root, name] = call.path
+	if (root === 'kody' && name === commandRuntimeName) {
+		if (call.path.length === 3 && call.path[2] === 'authorize') {
+			return await authorizeContextCommand(ctx, call.args[0])
+		}
+		throw commandRequiresContextError()
+	}
 	if (root === 'kody') {
 		return callKodyPath({
 			ctx,

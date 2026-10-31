@@ -4,6 +4,7 @@
  * is rebuilt on the next publish. A stored stamp is what turns on runtime
  * fail-closed for that package (issue #3836 phase 3).
  */
+import { resolveSecretProviderSlots } from './secret-provider-slots.ts'
 import * as Sentry from '@sentry/cloudflare'
 import {
 	getEntitySourceById,
@@ -134,7 +135,13 @@ export async function storePublishedCredentialStamp(input: {
 			content: manifestContent,
 			mode: 'published',
 		})
-		const scanned = scanCredentialStamp(files)
+		const scanned = scanCredentialStamp(files, {
+			secretProviders: await resolveSecretProviderSlots({
+				env: input.env,
+				userId: input.source.user_id,
+				files,
+			}),
+		})
 		const merged = mergeCredentialStampIntoManifestFiles(files, scanned.keys)
 		const depStamps = await loadDependencyStamps({
 			env: input.env,

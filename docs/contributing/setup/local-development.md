@@ -49,7 +49,7 @@ Prerequisites, install, and `npm run dev` notes. See the
   writes `.tmp/dev-server.log` (printed as `Dev server log: <path>`). Agents
   should call this instead of reconstructing a startup playbook from terminal
   files.
-- `npm run dev` starts the Cloudflare API mock, then Vite (`@pitlane/dev` +
+- `npm run dev` starts the Cloudflare API mock, then Vite (TanStack Start +
   `@cloudflare/vite-plugin`) so origin SSR runs inside workerd with client HMR.
   Jobs and highlight join as Vite auxiliary workers in every serve, including
   `CLOUDFLARE_ENV=test`. Platform and runtime join only outside the test env.
@@ -77,9 +77,9 @@ Prerequisites, install, and `npm run dev` notes. See the
   required for `npm run test` or unauthenticated local runs). Production uses
   Vectorize plus the Workers AI `@cf/baai/bge-small-en-v1.5` embedding model
   through the `AI` binding, optionally routed through AI Gateway. Ranked search
-  can also call `typesafe/jev` when `jev-search-rerank` is on; see
+  can also call `typesafe/jev` for paid plans; see
   [`environment-variables.md`](../environment-variables.md) and
-  [feature flags](../architecture/feature-flags.md).
+  [Search](../../use/search.md#ranked-search-scoring).
 - Add new mock API servers by following
   [`mock-api-servers.md`](../mock-api-servers.md).
 - `npm run dev:client`, `npm run dev:vite`, and `npm run dev:worker` all start

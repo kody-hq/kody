@@ -81,7 +81,6 @@ function endpoint(
 		previousHmacSecretName: null,
 		previousHmacSecretEncrypted: null,
 		previousHmacSecretExpiresAt: null,
-		enabled: true,
 		createdAt: '2026-07-24T00:00:00.000Z',
 		rotatedAt: '2026-07-24T00:00:00.000Z',
 		instanceLabel: null,
@@ -372,7 +371,6 @@ async function seededEndpointEnv() {
 			'package-owned-unused',
 			userWebhookHmacSecretContext(userId, endpointId),
 		),
-		enabled: true,
 		now: '2026-07-24T00:00:00.000Z',
 	})
 	const previousPlaintext = 'stripe-signing-secret-v1'

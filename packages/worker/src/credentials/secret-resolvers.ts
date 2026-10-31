@@ -42,7 +42,12 @@ import {
 	type ResolverCall,
 } from './credential-resolver.ts'
 import { rememberFetchFillPlacement } from './fetch-fill-placement-cache.ts'
-import { observeFillPlacementWouldBlockSites } from './fill-placement.ts'
+import {
+	enforceFillPlacement,
+	resolveEffectiveFillPlacement,
+	type FillPlacementRefusalLinks,
+	refusalLinkOrgSlug,
+} from './fill-placement-enforcement.ts'
 import { authorizePersonalCredentialUse } from './personal-credentials.ts'
 
 function isFoundSecret(secret: ResolvedSecret) {
@@ -186,22 +191,47 @@ export const secretResolver: CredentialResolver<'secret'> = {
 						scope: found.scope ?? credential.scope ?? 'user',
 					})
 				}
+				const placement = await resolveEffectiveFillPlacement({
+					db: call.input.env.APP_DB,
+					credentialId: found.credentialId,
+					stored: found.placement,
+				})
+				const ownedByRunOrg = lookup.owner === 'org'
+				const refusalLinks: FillPlacementRefusalLinks | null = ownedByRunOrg
+					? {
+							baseUrl: input.baseUrl,
+							orgSlug:
+								credential.orgSlug?.trim() ||
+								refusalLinkOrgSlug({
+									actor: call.input.actor,
+									orgId: call.input.orgId,
+								}),
+							approvalSecretName:
+								(found.scope ?? credential.scope ?? 'user') === 'user'
+									? credential.name
+									: null,
+							requestHost: credential.requestHost ?? null,
+						}
+					: null
 				rememberFetchFillPlacement({
 					actor: call.input.actor,
 					orgId: call.input.orgId,
 					packageStamp: call.input.packageStamp,
 					credential,
-					placement: found.placement,
+					placement,
 					credentialId: found.credentialId,
+					refusalLinks,
 				})
 				if (credential.fillSites && credential.fillSites.length > 0) {
-					observeFillPlacementWouldBlockSites({
+					enforceFillPlacement({
+						env: call.input.env,
 						credentialName: credential.name,
-						placement: found.placement,
+						credentialId: found.credentialId,
+						slot: credential.name,
+						placement,
 						sites: credential.fillSites,
 						surface: 'placeholder',
-						env: call.input.env,
-						credentialId: found.credentialId,
+						links: refusalLinks,
 					})
 				}
 			},
@@ -410,22 +440,37 @@ export const vaultSecretResolver: CredentialResolver<'provider-secret'> = {
 			async authorize() {
 				await authorizeActorUse(call, binding?.credentialId ?? null)
 				if (binding) {
+					const placement = await resolveEffectiveFillPlacement({
+						db: call.input.env.APP_DB,
+						credentialId: binding.credentialId,
+						stored: binding.placement,
+					})
+					const refusalLinks: FillPlacementRefusalLinks = {
+						baseUrl: input.baseUrl,
+						orgSlug: refusalLinkOrgSlug({
+							actor: call.input.actor,
+							orgId: call.input.orgId,
+						}),
+					}
 					rememberFetchFillPlacement({
 						actor: call.input.actor,
 						orgId: call.input.orgId,
 						packageStamp: call.input.packageStamp,
 						credential,
-						placement: binding.placement,
+						placement,
 						credentialId: binding.credentialId,
+						refusalLinks,
 					})
 					if (credential.fillSites && credential.fillSites.length > 0) {
-						observeFillPlacementWouldBlockSites({
+						enforceFillPlacement({
+							env: call.input.env,
 							credentialName: `secret/${normalizeProviderId(credential.provider)}`,
-							placement: binding.placement,
+							credentialId: binding.credentialId,
+							slot: null,
+							placement,
 							sites: credential.fillSites,
 							surface: 'placeholder',
-							env: call.input.env,
-							credentialId: binding.credentialId,
+							links: refusalLinks,
 						})
 					}
 				}

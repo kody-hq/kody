@@ -1,6 +1,5 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type getCapabilityRegistryForContext } from '#mcp/capabilities/registry.ts'
-import { type PackageRetrieverSurfaceResult } from '#worker/package-retrievers/types.ts'
 
 import {
 	type SearchEntityDetail,
@@ -32,7 +31,6 @@ export type SearchEntityCandidateInput = {
 		OptionalSearchRowsResult,
 		'packageRows' | 'userSecretRows' | 'userIntegrationRows'
 	>
-	retrieverResults: Array<PackageRetrieverSurfaceResult>
 	queryEmbedding: ReadonlyArray<number>
 	sharedQueryVector?: ReadonlyArray<number>
 	/** Capability domain id when ranked search is scoped to one domain. */
@@ -74,13 +72,6 @@ export type SearchEntityPlugin<Type extends SearchMatch['type']> = {
 		SearchPhaseTimings,
 		'capabilityCandidatesMs' | 'packageCandidatesMs'
 	>
-	/**
-	 * This plugin's candidates come from search-scope package retrievers.
-	 * Ranking starts the other plugins before those retrievers settle, then
-	 * builds this plugin's candidates and merges them in plugin order before
-	 * hybrid rerank / Jev.
-	 */
-	waitsForRetrieverResults?: boolean
 	buildDescriptors?: (
 		input: SearchEntityDescriptorInput,
 	) => Array<SearchableEntityDescriptor>

@@ -1,7 +1,7 @@
 /**
- * Client-side mint of the same thin passthrough the MCP `execute.invoke`
- * shortcut writes, so token-authenticated cloud execute (CapabilityProxy →
- * `kody.execute`) can run `--invoke` without the MCP tool.
+ * Client-side sugar for `kody execute --invoke`: mints the thin passthrough
+ * module for one package export. Every execute path (local, Open API, MCP)
+ * sends the result as plain `code`; hosted execute has no `invoke` field.
  */
 
 const invokeLocalName = 'action'

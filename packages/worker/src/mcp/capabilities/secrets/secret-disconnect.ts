@@ -17,6 +17,7 @@ export const secretDisconnectCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'secretDisconnect',
+		contextRuns: 'deny',
 		orgPermission: 'secret:write',
 		description:
 			'Disconnect a secret: clear its value but keep the credential row, placement, hosts, and grants. Reconnect with secretSet (same name) to restore the value into the same row. Distinct from secretDelete, which removes the credential and every record of it. Package Connect/Disconnect flows that previously called secretDelete on package-scope secrets should use this instead; package-runtime secretDelete on package scope also disconnects for compatibility.',

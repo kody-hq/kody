@@ -39,7 +39,7 @@ export type McpEventFanOutResult = {
 		| 'fanned_out'
 	delivered: number
 	failed: number
-	/** Subscriptions whose connection profile no longer grants the source package. */
+	/** Subscriptions whose credential or profile can no longer read the source package. */
 	denied: number
 }
 
@@ -117,7 +117,7 @@ async function isOwnedOauthClientRevoked(input: {
  * Delivery-time re-checks: the emitter still declares `mcp: true` on the live
  * manifest (not only the enqueue stamp), the user still has the flag, the
  * subscription is live and verified, its OAuth client is not an owned revoked
- * client, and its connection profile still grants `read` on the emitting
+ * client, and its credential (and profile, when bound) still allows `read` on the emitting
  * package. Per-subscription failures are recorded as `last_error` and never
  * thrown, so a dead callback cannot force a queue redelivery that would
  * replay every other subscriber.
@@ -169,8 +169,8 @@ export async function fanOutPackageEventToMcpSubscriptions(input: {
 	}
 
 	const accessByProfile = new Map<string, Promise<EffectivePermissions>>()
-	const subscriberAccess = (profileName: string | null) => {
-		const key = profileName ?? ''
+	const subscriberAccess = (profileId: string | null) => {
+		const key = profileId ?? ''
 		let pending = accessByProfile.get(key)
 		if (!pending) {
 			pending = computeEffectivePermissions({
@@ -178,7 +178,7 @@ export async function fanOutPackageEventToMcpSubscriptions(input: {
 				request: deriveRequestContext({
 					user: { userId: personIdFromStored(message.userId as string) },
 					source: { kind: 'mcp-oauth' },
-					profileName,
+					profileId,
 				}),
 			})
 			accessByProfile.set(key, pending)
@@ -200,7 +200,7 @@ export async function fanOutPackageEventToMcpSubscriptions(input: {
 			result.denied += 1
 			continue
 		}
-		const access = await subscriberAccess(subscription.connectionProfileName)
+		const access = await subscriberAccess(subscription.profileId)
 		const decision = checkPermission(
 			access,
 			'package:read',

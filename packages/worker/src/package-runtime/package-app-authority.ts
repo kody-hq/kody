@@ -18,14 +18,19 @@ import {
 	type OrgRole,
 	type RequestContext,
 } from '@kody-internal/shared/request-context.ts'
+import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import {
 	findLivePackageAppOauthGrant,
 	touchPackageAppOauthGrantLastUsed,
 } from '#app/package-app-oauth-grants.ts'
 import { packageAppVisitorNeedScope } from '#app/package-app-oauth-scopes.ts'
 import { type PackageAppCredentialAuthority } from '#worker/credentials/credential-client.ts'
+import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { PromiseLruCache } from '#worker/package-registry/published-package-cache.ts'
-import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
+import {
+	loadOrgBindingForOrg,
+	loadOrgBindingForPerson,
+} from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
@@ -418,6 +423,7 @@ export function createPackageAppCredentialAuthority(input: {
 }): PackageAppCredentialAuthority {
 	return {
 		issue: input.issue,
+		orgId: input.scope.orgId,
 		runsAsRequest: async () => {
 			const runsAs = await loadPackageAppRunsAs({
 				env: input.env,
@@ -426,16 +432,70 @@ export function createPackageAppCredentialAuthority(input: {
 			return runsAs.status === 'ready' ? runsAs.request : null
 		},
 		visitorNeedRequest: async (needKey) => {
-			const visitor = input.visitorRequest
-			if (!visitor?.actor) return null
-			const consents = await packageAppVisitorConsents({
-				db: input.env.APP_DB,
-				visitorPersonId: visitor.actor.userId,
-				grantScope: input.grantScope,
-				needKey,
-				waitUntil: input.waitUntil,
-			})
-			return consents ? visitor : null
+			const grant = await visitorNeedGrant(needKey)
+			return grant?.request ?? null
 		},
+		visitorNeedGrant: async (needKey) => await visitorNeedGrant(needKey),
 	}
+
+	async function visitorNeedGrant(needKey: string) {
+		const visitor = input.visitorRequest
+		if (
+			!visitor?.actor ||
+			!input.grantScope?.orgSlug ||
+			!input.grantScope.kodyId
+		) {
+			return null
+		}
+		const grant = await findLivePackageAppOauthGrant({
+			db: input.env.APP_DB,
+			personId: visitor.actor.userId,
+			orgUsername: input.grantScope.orgSlug.toLowerCase(),
+			kodyId: input.grantScope.kodyId,
+		})
+		if (!grant?.scopes.includes(packageAppVisitorNeedScope(needKey))) {
+			return null
+		}
+		const touched = touchPackageAppOauthGrantLastUsed({
+			db: input.env.APP_DB,
+			grantId: grant.id,
+		}).catch((error: unknown) => {
+			console.warn('package-app-grant-last-used-failed', error)
+		})
+		if (input.waitUntil) input.waitUntil(touched)
+		else await touched
+		return { request: visitor, grantId: grant.id }
+	}
+}
+
+export async function createPackageAppVisitorPersonalRequest(input: {
+	db: D1Database
+	visitor: Pick<RuntimePackageAppVisitor, 'userId' | 'username'> | null
+}) {
+	const visitor = input.visitor
+	if (!visitor) return null
+	const orgBinding = await loadOrgBindingForPerson(input.db, visitor.userId)
+	return deriveRequestContext({
+		user: { userId: visitor.userId, username: visitor.username },
+		source: { kind: 'package-app' },
+		orgBinding,
+	})
+}
+
+export async function createPackageAppVisitorCredentialRequest(input: {
+	db: D1Database
+	orgId: OwnerId
+	callerRequest: RequestContext | null
+	visitor: Pick<RuntimePackageAppVisitor, 'userId' | 'username'> | null
+}) {
+	const suppliersEnabled = await isPackageCredentialSuppliersEnabled({
+		db: input.db,
+		orgId: input.orgId,
+		request: input.callerRequest,
+	})
+	if (!suppliersEnabled) return input.callerRequest
+	return await createPackageAppVisitorPersonalRequest({
+		db: input.db,
+		visitor: input.visitor,
+	})
 }

@@ -35,8 +35,8 @@ There are two lanes for writing package source. Pick based on whether you have
 local filesystem and git access:
 
 - **Git lane (coding agents — preferred).** Call
-  `packageGetGitRemote({ create: true, kody_id: '@owner/leaf', description })`
-  (or the name leaf as `kody_id`) to register a stub saved package and mint a
+  `packageGetGitRemote({ create: true, name: '@owner/leaf', description })` (or
+  the name leaf as `name`) to register a stub saved package and mint a
   short-lived authenticated remote in one call (for existing packages, omit
   `create` and pass the scoped name, or `package_id` when the name is not
   known). Run the returned `setup_commands` to clone into a temporary directory
@@ -268,22 +268,20 @@ agent-facing gotchas (strict keys, dry-run mode fields) in `AGENTS.md`.
 
 ## Package app routing
 
-Hosted-app session handoff, `packageAppFetch` smoke tests, asset URLs, and lean
-forks are the [Package apps](./package-apps.md) playbook (`guide:package_apps`).
-This section is the mount-prefix recipe those pages share.
+The rest of hosted apps is the [Package apps](./package-apps.md) playbook
+(`guide:package_apps`); this is the mount-prefix recipe they share.
 
 Production-hosted package apps live at
-`https://{username}.kody.run/<package-name>/<path>` (the username is in the
-hostname; the path mount is `/<package-name>`). Confirmed non-production
-runtimes may serve inline on the app origin at
-`/@username/packages/<package-name>/<path>` instead.
+`https://{username}.kody.run/<package-name>/<path>` (mount `/<package-name>`).
+Non-production runtimes may serve inline on the app origin at
+`/@{username}/packages/<package-name>/<path>` instead.
 
 Every package app receives only `/<path>` after the host strips the mount.
-Root-relative links such as `/audio/123` therefore escape the mount and are not
-routed back to the package app. Import `packageContext` from `kody:runtime` and
-build every in-app link, redirect, share/email URL, and OAuth callback against
-its public base. A Remix recipe that prefixes its route contract remounts the
-Request in the entry; see [Package apps](./package-apps.md#remix-recipe).
+Root-relative links such as `/audio/123` therefore escape the mount. Import
+`packageContext` from `kody:runtime` and build every in-app link, redirect,
+share/email URL, and OAuth callback against its public base. A Remix recipe that
+prefixes its route contract remounts the Request in the entry; see
+[Package apps](./package-apps.md#remix-recipe).
 
 ```ts
 import { packageContext } from 'kody:runtime'
@@ -310,13 +308,9 @@ const audioUrl = new URL(
 )
 ```
 
-- `packageContext.hostedUrl` is the full public URL of the app mount.
-- `packageContext.appBasePath` is the origin-relative mount path
-  (`/<package-name>` on a subdomain, `/@username/packages/<package-name>` when
-  inline).
-
-Kody derives both fields from the package's current serving username and package
-name leaf, including after a rename or fork. Do not hard-code either path
+`hostedUrl` is the full public mount URL and `appBasePath` its origin-relative
+path (empty on a custom hostname). Kody derives both from the current username
+and package name, including after a rename or fork; never hard-code either
 segment.
 
 ## `kody.description` (short public tagline)
@@ -451,6 +445,12 @@ then call it.
 - **Exactly-once** → [workflows](../use/workflows.md), not a keyed invoke.
 - **External HTTP clients** → [inbound webhooks](../use/webhooks.md).
 
+**Declare the capabilities you call** in `kody.capabilities` (apps:
+`kody.app.capabilities`, covering imports too); publish and `kody dev check`
+warn on gaps
+([ADR 0089](../contributing/decisions/0089-packages-declare-capabilities.md),
+[details](./package-apps.md#who-the-app-runs-as)).
+
 README, `AGENTS.md`, and export `@example` blocks follow the same rules: import
 and call. Do not demo a `packages` helper. Package codemod
 `0008-packages-invoke-to-static-import` rewrites literal call sites and
@@ -478,11 +478,10 @@ irreversible-side-effect guard when a smoke test should stay safe.
    `kody:@scope/package/export` from `execute` against a read-only export or
    package-supported dry-run input that exercises approved secrets (see
    [Secret-using packages](#secret-using-packages) above).
-3. **Package apps** — `packageAppFetch` with the scoped name (or `package_id`
-   when the name is not known), plus the path, method, and body your handler
-   needs. Confirm `{ status, headers, body, truncated }` and any
-   `packageStorage()` side effects. See
-   [Package app fetch](../use/package-app-fetch.md) and the
+3. **Package apps** — `packageAppFetch` with `package_id` or leftover `kody_id`
+   (the scoped name), plus the path, method, and body your handler needs.
+   Confirm `{ status, headers, body, truncated }` and any `packageStorage()`
+   side effects. See [Package app fetch](../use/package-app-fetch.md) and the
    [Package apps](./package-apps.md) playbook (`guide:package_apps`).
 4. **Subscriptions** — from interactive MCP, `packageSubscriptionDispatch` with
    the scoped name (or `package_id` when the name is not known), `topic`, and

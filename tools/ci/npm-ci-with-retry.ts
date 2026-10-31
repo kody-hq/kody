@@ -26,6 +26,16 @@ function sleep(ms: number) {
  * read `ECONNRESET` after the child closes. Node built-ins only: setup-validate
  * runs this before `node_modules` exists.
  */
+/**
+ * `npm.cmd` on Windows needs a shell; Unix `npm` does not. Kept as a pure
+ * helper so tests can lock the platform branch without spawning npm.
+ */
+export function spawnNpmCiShellOption(
+	platform: NodeJS.Platform = process.platform,
+) {
+	return platform === 'win32'
+}
+
 export function spawnNpmCi(
 	extraArgs: ReadonlyArray<string> = [],
 	env?: NodeJS.ProcessEnv,
@@ -41,6 +51,10 @@ export function spawnNpmCi(
 		const child = spawn(resolveNpmCommand(), ['ci', ...extraArgs], {
 			env,
 			stdio: ['inherit', 'pipe', 'pipe'],
+			// Node refuses to spawn `npm.cmd` without a shell on Windows. With
+			// shell enabled, only pass trusted fixed args (CI passes none or
+			// `--prefer-online`); an argv array is not a shell-safety boundary.
+			shell: spawnNpmCiShellOption(),
 		})
 		function forward(
 			stream: NodeJS.ReadableStream | null,

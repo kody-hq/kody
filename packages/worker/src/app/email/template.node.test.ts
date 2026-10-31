@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
+import { emailFooterMark, emailHeaderLogo } from './brand-images.ts'
 import {
 	buildAdvocateReferralEmail,
 	buildBillingSuccessEmail,
@@ -6,6 +9,7 @@ import {
 	buildPaymentFailedEmail,
 	buildConnectAgentEmail,
 	buildCoolingHomeEmail,
+	buildEmailChangedSecurityEmail,
 	buildKeepPackageEmail,
 	buildPlatformFeedbackAcknowledgementEmail,
 	buildPlatformFeedbackOutcomeEmail,
@@ -14,6 +18,7 @@ import {
 	buildUserErrorRateEmail,
 	buildVerificationEmail,
 	buildEmailDestinationVerificationEmail,
+	maskEmailAddressForNotice,
 } from './messages.ts'
 import { renderTransactionalEmail } from './template.ts'
 
@@ -297,4 +302,62 @@ test('transactional emails escape untrusted content and put action URLs in both 
 	expect(dismissedWithNote.text).toContain(
 		'https://github.com/example/repo/pull/42',
 	)
+})
+
+test('email-changed security notice masks the new address and keeps the this-wasnt-me path', () => {
+	expect(maskEmailAddressForNotice('new-login@example.com')).toBe(
+		'n***@example.com',
+	)
+	expect(maskEmailAddressForNotice('Ab@Example.COM')).toBe('a***@example.com')
+	expect(maskEmailAddressForNotice('a@example.com')).toBe('***@example.com')
+	expect(maskEmailAddressForNotice('not-an-email')).toBe('***')
+
+	const email = buildEmailChangedSecurityEmail({
+		appBaseUrl: 'https://kody.codes',
+		oldEmail: 'old@example.com',
+		newEmail: 'new-login@example.com',
+		changedAt: new Date('2026-10-27T12:34:56.789Z'),
+		accountUrl: 'https://kody.codes/account',
+		resetPasswordUrl: 'https://kody.codes/reset-password',
+		supportEmail: 'support@kody.codes',
+		ip: '203.0.113.10',
+		userAgent: 'Mozilla/5.0',
+		country: 'US',
+	})
+	expect(email.subject).toBe('Your Kody account email was changed')
+	expect(email.text).toContain('old@example.com')
+	expect(email.text).toContain('n***@example.com')
+	expect(email.text).not.toContain('new-login@example.com')
+	expect(email.text).toContain('2026-10-27T12:34:56Z (UTC)')
+	expect(email.text).toContain('IP 203.0.113.10')
+	expect(email.text).toContain('country US')
+	expect(email.text).toContain('browser Mozilla/5.0')
+	expect(email.text).toContain('https://kody.codes/account')
+	expect(email.text).toContain('https://kody.codes/reset-password')
+	expect(email.text).toContain('support@kody.codes')
+	expect(email.html).toContain('/images/email/kody-logo-plate.png')
+	expect(email.html).toContain('/images/email/kody-mark-plate.png')
+	expect(email.html).not.toContain('.svg')
+})
+
+test('every email shows the full logo on top and the Kody mark at the bottom as hosted 2x PNG plates', () => {
+	const email = buildVerificationEmail({
+		appBaseUrl: 'https://kody.codes',
+		verificationUrl: 'https://kody.codes/verify-email?token=abc123',
+	})
+
+	for (const image of [emailHeaderLogo, emailFooterMark]) {
+		expect(email.html).toContain(
+			`<img src="https://kody.codes${image.src}" alt="Kody" width="${image.width}" height="${image.height}"`,
+		)
+		const png = readFileSync(
+			fileURLToPath(new URL(`../../../public${image.src}`, import.meta.url)),
+		)
+		expect(png.readUInt32BE(16)).toBe(image.width * 2)
+		expect(png.readUInt32BE(20)).toBe(image.height * 2)
+	}
+	expect(email.html.indexOf(emailHeaderLogo.src)).toBeLessThan(
+		email.html.indexOf(emailFooterMark.src),
+	)
+	expect(email.html).not.toContain('.svg')
 })

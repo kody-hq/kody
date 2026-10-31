@@ -174,6 +174,9 @@ function createFeatureFlagsTestDb(
 							),
 					)
 				}
+				if (has('from feature_flag_org_overrides')) {
+					return allResults<T>([])
+				}
 				if (has('select distinct flag_key from feature_flag_repo_overrides')) {
 					return allResults<T>(
 						[...new Set(repoOverrides.map((row) => row.flag_key))].map(
@@ -256,6 +259,9 @@ function createFeatureFlagsTestDb(
 					}
 					return { meta: { changes: before - repoOverrides.length } }
 				}
+				if (normalized.startsWith('delete from feature_flag_org_overrides')) {
+					return { meta: { changes: 0 } }
+				}
 				throw new Error(`Unsupported run query: ${query}`)
 			},
 		}
@@ -305,14 +311,14 @@ function createFeatureFlagsTestDb(
 
 const registryKeys = [
 	'demo-indicator',
-	'jev-search-rerank',
-	'execute-invoke',
-	'connection-profiles',
 	'mcp-skills-extension',
 	'mcp-events-extension',
-	'package-app-custom-domains',
+	'package-credential-suppliers',
 	'repo-push-queue',
+	'execution-contexts',
 	'credential-need-enforcement',
+	'credential-allowed-packages-safety-window',
+	'profiles',
 ] as const
 
 function everyFlag<T>(value: T, overrides: Partial<Record<FlagKey, T>> = {}) {
@@ -366,7 +372,9 @@ async function userInBucket(db: TestDb, inRollout: boolean) {
 test('isFeatureEnabled falls back to registry default when no DB state exists', async () => {
 	const db = createFeatureFlagsTestDb()
 	expect(await enabledFor(db, [1, null])).toEqual([false, false])
-	await expect(getFeatureFlagsForUser(db, 1)).resolves.toEqual(everyFlag(false))
+	await expect(getFeatureFlagsForUser(db, 1)).resolves.toEqual(
+		everyFlag(false, { 'credential-allowed-packages-safety-window': true }),
+	)
 })
 
 test('global on/off and percentage rollout evaluation', async () => {
@@ -436,7 +444,10 @@ test('user override wins over global off and global on; clear restores evaluatio
 	await setOverride(db, 7, true)
 	expect(await enabledFor(db, [7, 8])).toEqual([true, false])
 	await expect(getFeatureFlagsForUser(db, 7)).resolves.toEqual(
-		everyFlag(false, { 'demo-indicator': true }),
+		everyFlag(false, {
+			'demo-indicator': true,
+			'credential-allowed-packages-safety-window': true,
+		}),
 	)
 
 	await setGlobal(db, true)
@@ -454,20 +465,20 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 	const db = createFeatureFlagsTestDb()
 	await setFeatureFlagUserOverrides(db, [
 		{
-			key: 'execute-invoke',
+			key: 'mcp-skills-extension',
 			userId: 7,
 			enabled: true,
 			updatedBy: 7,
 		},
 		{
-			key: 'jev-search-rerank',
+			key: 'profiles',
 			userId: 7,
 			enabled: true,
 			updatedBy: 7,
 		},
 	])
-	expect(await enabledFor(db, [7], 'execute-invoke')).toEqual([true])
-	expect(await enabledFor(db, [7], 'jev-search-rerank')).toEqual([true])
+	expect(await enabledFor(db, [7], 'mcp-skills-extension')).toEqual([true])
+	expect(await enabledFor(db, [7], 'profiles')).toEqual([true])
 
 	const originalPrepare = db.prepare.bind(db)
 	let overrideRuns = 0
@@ -500,7 +511,7 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 				updatedBy: 7,
 			},
 			{
-				key: 'execute-invoke',
+				key: 'mcp-skills-extension',
 				userId: 7,
 				enabled: true,
 				updatedBy: 7,
@@ -508,9 +519,9 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 		]),
 	).rejects.toThrow('second override write failed')
 	expect(db.overrides.has('demo-indicator:7')).toBe(false)
-	expect(db.overrides.has('execute-invoke:7')).toBe(true)
-	expect(await enabledFor(db, [7], 'execute-invoke')).toEqual([true])
-	expect(await enabledFor(db, [7], 'jev-search-rerank')).toEqual([true])
+	expect(db.overrides.has('mcp-skills-extension:7')).toBe(true)
+	expect(await enabledFor(db, [7], 'mcp-skills-extension')).toEqual([true])
+	expect(await enabledFor(db, [7], 'profiles')).toEqual([true])
 })
 
 test('getFeatureFlagEvaluationsForUser reports assignment sources', async () => {
@@ -519,7 +530,15 @@ test('getFeatureFlagEvaluationsForUser reports assignment sources', async () => 
 		(await getFeatureFlagEvaluationsForUser(db, userId))['demo-indicator']
 
 	await expect(getFeatureFlagEvaluationsForUser(db, 7)).resolves.toEqual(
-		everyFlag({ enabled: false, source: 'default' }),
+		everyFlag(
+			{ enabled: false, source: 'default' },
+			{
+				'credential-allowed-packages-safety-window': {
+					enabled: true,
+					source: 'default',
+				},
+			},
+		),
 	)
 
 	await setGlobal(db, true)
@@ -595,10 +614,9 @@ test('listFeatureFlagsForAdmin includes registry flags and stale DB-only keys', 
 	}
 	const registryExpectations: Array<[string, Record<string, unknown>]> = [
 		[
-			'jev-search-rerank',
+			'profiles',
 			{ defaultAudience: 'experiments_opt_in', successMetric: executeMetric },
 		],
-		['execute-invoke', { defaultAudience: 'experiments_opt_in' }],
 		[
 			'demo-indicator',
 			{
@@ -647,12 +665,14 @@ test('listFeatureFlagsForAdmin includes registry flags and stale DB-only keys', 
 			updatedByStableUserId: null,
 			updatedAt: '2026-06-01T00:00:00.000Z',
 		},
+		orgOverrides: [],
 		overrides: [],
 	})
 	expect(byKey('retired-repo-flag')).toEqual({
 		key: 'retired-repo-flag',
 		...staleShape,
 		global: null,
+		orgOverrides: [],
 		overrides: [],
 	})
 	expect(byKey('repo-push-queue')?.stale).toBe(false)
@@ -660,6 +680,7 @@ test('listFeatureFlagsForAdmin includes registry flags and stale DB-only keys', 
 		key: 'orphan-override',
 		...staleShape,
 		global: null,
+		orgOverrides: [],
 		overrides: [
 			{
 				stableUserId: ownerIdFromStored('stable-3'),
@@ -748,7 +769,7 @@ test('experiments_opt_in audience requires users.experiments_opt_in; overrides s
 	).rejects.toThrow(/audience must be one of/)
 })
 
-test('execute-invoke first insert without audience uses registry defaultAudience', async () => {
+test('profiles first insert without audience uses registry defaultAudience', async () => {
 	const db = createFeatureFlagsTestDb({
 		users: [
 			{ id: 7, username: 'opted', experiments_opt_in: 1 },
@@ -756,7 +777,7 @@ test('execute-invoke first insert without audience uses registry defaultAudience
 		],
 	})
 
-	await setGlobal(db, true, { key: 'execute-invoke' })
-	expect(db.globals.get('execute-invoke')?.audience).toBe('experiments_opt_in')
-	expect(await enabledFor(db, [7, 8], 'execute-invoke')).toEqual([true, false])
+	await setGlobal(db, true, { key: 'profiles' })
+	expect(db.globals.get('profiles')?.audience).toBe('experiments_opt_in')
+	expect(await enabledFor(db, [7, 8], 'profiles')).toEqual([true, false])
 })

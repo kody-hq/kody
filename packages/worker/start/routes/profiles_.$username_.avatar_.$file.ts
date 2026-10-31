@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { profileAvatarHttp } from '#start/server/protocol-handlers'
 export const Route = createFileRoute('/profiles_/$username_/avatar_/$file')({
+	staticData: { documentNavigation: true },
 	server: {
 		handlers: {
 			GET: ({ request, params }) => {

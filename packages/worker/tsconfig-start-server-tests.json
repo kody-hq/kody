@@ -3,7 +3,7 @@
 	"compilerOptions": {
 		"composite": false,
 		"noEmit": true,
-		"types": ["node", "@pitlane/dev/assets"]
+		"types": ["node"]
 	},
 	"include": [
 		"start/server/**/*.node.test.ts",

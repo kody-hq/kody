@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { sessionRequestContext } from '#worker/test-support/request-context.ts'
 import type * as PackageInvocations from '#worker/package-invocations/service.ts'
 
@@ -49,9 +50,9 @@ vi.mock('#worker/package-registry/package-owner.ts', () => ({
 	resolvePackageOwnerContext: mocks.resolvePackageOwnerContext,
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 vi.mock('#worker/email/mailbox-internal-read.ts', () => ({
 	getInternalEmailMessageById: mocks.getInternalEmailMessageById,

@@ -166,11 +166,10 @@ MCP server is removed from the source hub with all its keys (without first
 redialing it, when the source hub has not started yet) and only then registered
 and connected in the target hub, so only one hub can refresh its OAuth tokens;
 old logos are deleted, orphans cleaned, repo sessions on moved sources
-discarded, package and job vectors reindexed under the target, and the
-retriever, skills, subscription, invoke-contract, and community caches
-refreshed. Failures there come back as `post_commit_warnings` (code
-`post_commit_step_failed`, `subject` naming the step), and `leftovers` counts
-any rows still pointing at the source.
+discarded, package and job vectors reindexed under the target, and the skills,
+subscription, invoke-contract, and community caches refreshed. Failures there
+come back as `post_commit_warnings` (code `post_commit_step_failed`, `subject`
+naming the step), and `leftovers` counts any rows still pointing at the source.
 
 The result has `outcome` (`planned`, `refused`, `failed`, or `applied`),
 `fingerprint`, the dry-run summary (including `kept.memories`), `refusals`,

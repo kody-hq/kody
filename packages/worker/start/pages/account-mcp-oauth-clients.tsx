@@ -347,7 +347,7 @@ export function AccountMcpOauthClientsPage({
 											gap: spacing.md,
 											flexWrap: 'wrap',
 											paddingBottom: spacing.md,
-											borderBottom: `1px solid ${colors.border}`,
+											borderBottom: `1px solid ${colors.borderSubtle}`,
 										}}
 									>
 										<div

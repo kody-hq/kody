@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import {
 	approveCredentialProposal,
 	resolveCredentialApproval,
@@ -19,9 +20,9 @@ import { credentialTriggerPickSetCapability } from './credential-trigger-pick-se
 
 const mocks = vi.hoisted(() => ({ loadPackageManifestBySourceId: vi.fn() }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 async function setup() {
 	const t = await setupPackageCredentialMappingFixture({

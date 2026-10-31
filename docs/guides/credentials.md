@@ -5,10 +5,12 @@ summary:
   What a Kody credential is and every kind it comes in (Key, OAuth, MCP server,
   URL, login, signing), how `{{secret:name}}` placeholders and scoped
   `credential(key)` clients place a value at the network boundary, how packages
-  declare needs in `kody.credentials`, how callers pick between credentials with
-  names and call maps, the `credential_ambiguous` / `credential_unbound` errors,
-  and webhook verification. Load this when someone asks how credentials work,
-  which kind to use, or why a credential did not resolve.
+  declare needs in `kody.credentials` (including publisher and executor
+  credential needs that app visitors fill with `credential.visitor(key)`), how
+  callers pick between credentials with names and call maps, the
+  `credential_ambiguous` / `credential_unbound` errors, and webhook
+  verification. Load this when someone asks how credentials work, which kind to
+  use, or why a credential did not resolve.
 category: platform
 ---
 
@@ -43,14 +45,22 @@ The kind names in manifests and APIs are `secret`, `oauth`, `mcp`, `url`,
 
 Custom secret providers (vaults such as 1Password) are not a credential kind.
 Granting Kody access to a vault is a separate trust decision, so they have their
-own page; see [Custom secret providers](./secret-providers.md).
+own page; see [Custom secret providers](./secret-providers.md). A saved package
+declares a provider it uses with a `kind: "secret-provider"` need (see
+[Use a provider in a saved package](./secret-providers.md#use-a-provider-in-a-saved-package)).
+No saved credential ever fills that need.
 
 Every credential has:
 
 - **name**: yours to choose, such as `work` or `personal`. Callers pick a
   credential by name.
-- **scope**: `org` (shared with the org under its Use grants) or `personal`
-  (yours, granted to an org one org at a time).
+- **scope**: who owns it, seen from the run's org. `org` means the run's org
+  owns it: every Key, login, OAuth connection, or MCP server stored in that org
+  reads `org`, including a credential saved with `secretSet({ scope: 'user' })`
+  and a Key bound to the package. `personal` means it is the caller's own
+  personal credential, stored in their personal org and granted to this org one
+  org at a time. In your personal org, your own credentials read `org`. See
+  [Scope in code](#scope-in-code).
 - **provider**: an optional slug such as `github`. Package needs match on it.
 - **hosts**: the only hosts the value may be sent to, over HTTPS. Hosts live on
   the credential, never in a package manifest, so publishing or forking a
@@ -136,13 +146,29 @@ that build headers in a variable and header spreads — the scanner cannot see
 are still skipped. The warning does not fail the check or block publish.
 
 Each credential also stores an allowed **fill placement** (headers, optionally
-named; query; path; and/or body). Null means anywhere. New credentials default
-to headers-only. The per-request header **intersects** with that placement (it
-never widens it). Distinct from **inject**, which only steers a scoped
-`credential()` client. Edit fill placement on the credential detail page, via
-`secretSet` / `credentialUpdate`, or the account secret editor. The gateway
-fills placeholders regardless of placement and logs would-block when a fill is
-outside the declared parts.
+named; query; path; and/or body). New credentials default to headers-only. The
+per-request header **intersects** with that placement (it never widens it).
+Distinct from **inject**, which only steers a scoped `credential()` client. Edit
+fill placement on the credential detail page, via `secretSet` /
+`credentialUpdate`, or the account secret editor.
+
+The fetch gateway enforces placement: a fill into a part the credential does not
+allow is refused with a message naming the credential, the refused part, and the
+allowed parts. Query, URL path, and body also need the owner's opt-in, given by
+saving them on the credential page, which warns that the host may store a value
+sent there. A credential that already filled query, path, or body keeps those
+parts without a new save. Older credentials with no placement set fill headers
+plus those parts.
+
+Agents cannot widen placement, but they can ask the owner to. A refused query,
+path, or body fill of a user Key carries a ready approval link,
+`/connect/secrets?name=<key>&placement=body` (add `&hosts=<host>` to approve the
+host in the same click). The owner sees the credential, the requested part, and
+the "host may store this" warning, then approves or declines. Agents can build
+the same link with `credentialPlacementApprovalLink` (MCP `api`, or
+`kody api credentialPlacementApprovalLink --params '{"name":"plaidSecret","parts":["body"],"hosts":["production.plaid.com"]}'`),
+which never changes placement itself. Other refusals link to the credential's
+fill placement setting (`/@<org>/-/credentials/<credential>#fill-placement`).
 
 Full placeholder rules (encodings, multipart, the inert `{{secret:<name>}}`
 mention form):
@@ -177,6 +203,58 @@ the credential only travels to its own hosts. A 401 or 403 response carries an
 
 `credentials(key)` returns an array of clients for a need declared with
 `multiple: true`.
+
+The client's type is `KodyCredentialClient`, exported from `kody:runtime`
+(`import type { KodyCredentialClient } from 'kody:runtime'`). Use it to type a
+helper that takes a client, and call `credential('key')` with a literal key
+where the client is opened (the same goes for `credential.visitor('key')`):
+publish refuses code that passes `credential`, `credentials`, or
+`credential.visitor` itself around at run time, but type-only uses such as
+`typeof credential` are fine
+([stamp rule](../use/packages.md#declare-what-a-stamped-package-may-use)).
+
+### Scope in code
+
+`client.scope` uses the same two values as `credentialList` and call maps: `org`
+or `personal`, relative to the run's org. `secretSet` and `secretList` use a
+different word, the storage scope (`user`, `package`, or `session`), which says
+where a Key is stored, not whose it is. A `user`-scope Key is an owner-level Key
+of the org it was saved in; `user` alone does not make it a personal credential.
+It reads `personal` only when its owner grants it from their personal org to a
+team org and it runs there (see the table).
+
+| Credential                                                                   | `secretList` scope            | `client.scope`                 |
+| ---------------------------------------------------------------------------- | ----------------------------- | ------------------------------ |
+| Key saved with `secretSet({ scope: 'user' })` in the run's org               | `user`                        | `org`                          |
+| Key saved with `secretSet({ scope: 'package' })` for the running package     | `package`                     | `org`                          |
+| OAuth connection or MCP server in the run's org                              | not listed                    | `org`                          |
+| Your `user`-scope Key in your personal org, run in your personal org         | `user`                        | `org`                          |
+| Your `user`-scope Key in your personal org, granted to and run in a team org | `user` (in your personal org) | `personal`                     |
+| Key saved with `secretSet({ scope: 'session' })`                             | `session`                     | never opened by `credential()` |
+
+Most package code should not branch on `scope`. Kody already picked the
+credential and checked that the run may use it, and both scopes fetch the same
+way. Use it for labels, logs, or results that say whose account was used:
+
+```ts
+import { credential } from 'kody:runtime'
+
+export default async function checkPortal() {
+	const login = await credential('portal')
+	// Do not refuse a login because scope is 'org': a credential saved with
+	// secretSet({ scope: 'user' }) in the run's org reads 'org'.
+	const response = await login.fetch('/api/me')
+	return {
+		account: login.scope === 'personal' ? `${login.name} (yours)` : login.name,
+		ok: response.ok,
+	}
+}
+```
+
+To require one specific credential, declare the need with a `provider` and
+`kind`, and let the caller map it by `{ name, scope }` (see
+[Picking a credential](#picking-a-credential)) instead of checking `scope` in
+code.
 
 ### Declare needs in `kody.credentials`
 
@@ -227,8 +305,50 @@ Declare `kind` only when the package needs a specific shape:
   exists yet), instead of headers-only. Disconnect clears the value but keeps
   the row and placement; reconnect fills the same record so placement wins over
   the manifest default. Delete removes the credential entirely; a later Connect
-  is a new insert. Package runtimes still cannot set placement themselves; the
-  owner can edit it on the credential detail page.
+  is a new insert. Package runtimes cannot set placement themselves; the owner
+  can edit it on the credential detail page.
+
+### Choose who supplies a package credential
+
+When the `package-credential-suppliers` flag is on, a need can declare
+`supplier: "publisher"` or `supplier: "executor"`. A publisher need is set by
+the package publisher with an org-level mapping. It cannot be set by a
+per-person or per-trigger mapping, and a visitor cannot resolve it from their
+own credentials. An app uses it with `credential("key")`.
+
+An executor need is chosen by each person who uses the app. Its consent scope is
+`need:<key>`. The app resolves only the credential IDs selected for that need in
+that person's live Sign in with Kody grant. It does not fall back to the
+publisher's credentials, the visitor's personal defaults, or automatic matching.
+A mapped credential is rechecked for live Use access on every call.
+
+`kody.credentials` is where a credential need and its supplier are declared. An
+executor need gets its own `need:<key>` consent scope from that declaration and
+needs no `kody.app.visitorNeeds` entry. A `kody.app.visitorNeeds` entry whose
+`credential` names an executor need is accepted as an alias for it; it cannot
+name a publisher need. Use `kody.app.visitorNeeds` for capability needs.
+
+In app code, open an executor need with `credential.visitor("key")`. Plain
+`credential("key")` never reads the visitor's pick. Inside an app it is refused
+with `credential_denied`, naming `credential.visitor`. In a direct run (execute,
+a job, or another package calling it) the person running it is the executor, so
+`credential("key")` resolves their own credentials.
+
+To check whether the flag is on for an org, call `packageGet` on one of its
+packages: `credentials.suppliersEnabled` is `true` when it is. While it is
+`false`, `supplier` and `required` are ignored and needs resolve without a
+supplier.
+
+Executor needs default to required. Set `required: false` to make a need
+optional. Required needs cannot be skipped in consent, and the app does not
+serve until the visitor has connected a usable credential. A direct run that
+cannot resolve a required executor need fails before execution with
+`credential_required`, naming the need. Inside an app, an executor need without
+its grant mapping fails with `credential_unbound`; it never falls back to the
+publisher's credential. `required` is valid only for executor-supplied needs.
+The older `ownerCredentialForVisitors: true` setting keeps its meaning as a
+publisher-supplied alias. A need with no supplier keeps the existing package
+behavior.
 
 ### Let app visitors use your credential
 
@@ -243,18 +363,21 @@ ignored. Omit it on new packages. See
 
 Any saved Key can be used through a client. Set its provider so needs match it,
 and its inject if the service does not take `Authorization: Bearer`. This is
-one-time setup from ad hoc `execute` or the API, not package code (package
-runtimes cannot change a credential's provider or inject). `credentialList`
-returns each credential's `id`:
+one-time setup on the credential's page on the website, or with the MCP `api`
+tool (`credentialUpdate`). Changing inject or widening placement is refused from
+`execute` (hosted or `--local`), package, and app code, with a link to the
+credential's page; narrowing placement and setting the provider still work
+there. `credentialList` returns each credential's `id`:
 
-```ts
-import { kody } from 'kody:runtime'
-
-await kody.credentialUpdate({
-	credential_id: 'cred_…',
-	provider: 'anthropic',
-	inject: { kind: 'header', name: 'x-api-key', format: '{value}' },
-})
+```json
+{
+	"operationId": "credentialUpdate",
+	"params": {
+		"credential_id": "cred_…",
+		"provider": "anthropic",
+		"inject": { "kind": "header", "name": "x-api-key", "format": "{value}" }
+	}
+}
 ```
 
 ```ts
@@ -282,8 +405,9 @@ placeholders; inject and provider only affect clients.
 
 ### OAuth
 
-Connect the service once (your agent sends a `/connect/oauth` link). Kody keeps
-the token fresh. Code looks exactly like the Key example:
+Connect the service once (your agent sends a `/connect/oauth` link, with
+`org=<slug>` for a team organization). Kody keeps the token fresh. Code looks
+exactly like the Key example:
 
 ```ts
 const github = await credential('github')
@@ -345,6 +469,107 @@ of the credential's hosts), `bodyFormat` (`json` or `form`), a `body` template
 where `{field}` is replaced by a login field, and `tokenPath`, the dot path to
 the token in the JSON response.
 
+A login also keeps a refresh token. The value holds the token as a field, and
+the exchange is the token request:
+
+```ts
+await kody.secretSet({
+	name: 'token-demo',
+	scope: 'user',
+	kind: 'login',
+	hosts: ['auth.example.com', 'api.example.com'],
+	value: JSON.stringify({ refresh_token: '<refresh token>' }),
+	login_exchange: {
+		url: 'https://auth.example.com/oauth/token',
+		bodyFormat: 'form',
+		body: {
+			grant_type: 'refresh_token',
+			client_id: '<client id>',
+			refresh_token: '{refresh_token}',
+		},
+		tokenPath: 'access_token',
+		expiresInPath: 'expires_in',
+		refreshToken: { path: 'refresh_token', field: 'refresh_token' },
+	},
+})
+```
+
+Body values without a `{field}` token (`grant_type`, `client_id`) are sent as
+written. Without `expiresInPath`, a session lasts `ttlSeconds` (default 3600, at
+most 24 hours). The session goes in an `Authorization: Bearer` header unless the
+credential's `inject` says otherwise. The package declares the need with
+`"kind": "login"` in `kody.credentials` and calls
+`(await credential('token-demo')).fetch('https://api.example.com/v1/items')`; it
+never sees the refresh token or the access token. The owner creates or rotates
+the credential on the website or with `secretSet` outside a package: package
+code cannot set `kind`, `hosts`, or `login_exchange`.
+
+`refreshToken` is for providers that rotate refresh tokens: `path` is where the
+response carries the new one, and `field` is the login field it replaces (a
+field the body sends). When the response has a new one, Kody saves it in place
+of the old one together with the new session, only if the credential did not
+change meanwhile, and records a value replacement in the audit log without the
+value.
+
+What Kody keeps: the session, encrypted, for this credential and its current
+value, exchange, hosts, and inject, until it expires (the 30 second early margin
+included). Every isolate reuses it, and only one exchange runs at a time per
+credential, so a rotating provider never sees the same refresh token twice.
+Editing the value, exchange, hosts, or inject, or deleting the credential, drops
+it. When one of the credential's hosts answers 401 to a request without a body,
+Kody drops the session, runs the exchange once more, and retries the request
+once (with the same host and placement checks). A request with a body is
+returned as is.
+
+When the exchange fails, Kody records the failure for the credential's current
+revision and does not run the exchange again until a cooldown passes, so apps
+and jobs sharing one credential never hammer the provider's token endpoint. The
+caller that ran the exchange gets `login_failed`, and so does any caller in the
+same isolate that was sharing that pending exchange. Callers that arrive during
+the recorded cooldown, in any isolate (including ones that were waiting on the
+exchange's lease), fail fast with `login_retry_later` without contacting the
+provider. Both carry `retryAfterSeconds`: wait that long, then retry. The
+cooldown is 30 seconds after the first failure and doubles for each failure in a
+row, up to 15 minutes (or longer when the provider's `Retry-After` asks for it,
+up to an hour). Network errors, timeouts, 5xx, and 429 recover on their own:
+after the cooldown the next request runs the exchange again, and a success
+clears the failure. While a cooldown is running, the 401 retry is skipped and
+the host's 401 is returned; a freshly exchanged session that the host refuses
+again also backs off the next 401 retry the same way.
+
+When the token endpoint answers `invalid_grant` (the refresh token was revoked
+or is invalid), retrying cannot help: requests fail with
+`login_needs_reconnect`, the credential shows **Needs attention** in the
+credentials list, and Kody stops running the exchange. The owner reconnects it
+by saving a new value (for example a new refresh token, on the website or with
+`secretSet`). Saving a new value, or editing the exchange, hosts, or inject,
+starts a new revision with no failure state.
+
+A refresh token that a token request in an execute run returned sealed
+(`kody-sealed.…`) can become a login credential without code reading it: pass it
+as `sealed_token` together with `login_exchange`, as in
+`secretSet({ name: 'token-demo', scope: 'user', sealed_token: tokens.refresh_token, login_exchange })`.
+Kody opens it on the host and stores it as the login field the body sends
+(`refreshToken.field`, or `refresh_token`). The credential's hosts are the
+sealed token's save hosts, and the exchange URL must be one of them. This works
+from execute in the run that minted the token, not from package code.
+
+Moving a package off a package-scoped refresh secret and a stored access token:
+
+1. Declare the need in `kody.credentials` with `"kind": "login"`, and replace
+   the package's token handling with `credential('<key>').fetch(...)`.
+2. The owner creates the login credential on the website, or with `secretSet`
+   outside a package (`value` holding the refresh token field, or a
+   `sealed_token` from a token request in the same execute run, so no code reads
+   the value), and maps it to the need.
+3. Publish, check a request works, then delete the old package secrets (the
+   refresh token and the stored access token) with `secretDelete`.
+
+Limits: the exchange sends only `content-type` and `accept` headers. Package
+code cannot save the sealed `access_token` from its own token request as a Key
+(`sealed_token` saving works from execute only); without a login credential, use
+the sealed token in the run that minted it and mint it again next run.
+
 ### Signing
 
 For APIs that want a signed JWT or an HMAC. Code gets the signature, never the
@@ -392,8 +617,19 @@ https://kody.codes/@acme/-/credentials/new?kind=url&name=alerts-bot&provider=tel
 `kind` preselects a kind; add `kindMode=required` to lock it. `name`,
 `provider`, `description`, and `allowedHosts` prefill the form. The page saves
 Key, URL, login, and signing credentials in place, and hands OAuth and MCP
-servers to their own connect flows. The **Add credential** button on the
-Credentials page opens the same form.
+servers to their own connect flows.
+
+The **Add credential** button on the Credentials page opens the page without a
+link. It leads with **Copy prompt**, a short prompt you paste into your agent so
+it works out the kind, name, and hosts and hands back a prefilled link. **Create
+one manually** opens the same form in place. A link with any prefill skips
+straight to the form.
+
+On that form, **Which packages can read it** is **Any package in this org** (the
+default) or **Only these packages**, which locks the credential to the packages
+you pick (`allowedPackages`). A key that belongs to one package is made from
+that package's own **Credentials** tab (**Add a key only this package can
+read**), or from a link that names the package (`scope=package&packageId=...`).
 
 Code that already holds a value (a key the package just minted) can store it
 with `secretSet`, which also takes `kind`, `hosts`, `login_exchange`,
@@ -414,11 +650,11 @@ applies:
 Kody never guesses between two matches. Zero matches is `credential_unbound` and
 two or more is `credential_ambiguous`.
 
-Pass a map on `execute`, for ad hoc code or an `invoke`:
+Pass a map on `execute` next to its `code`:
 
 ```json
 {
-	"invoke": "kody:@you/pr-digest/summarize",
+	"code": "import action from 'kody:@you/pr-digest/summarize'\nexport default (params) => action(params)",
 	"credentials": {
 		"github": "work",
 		"slack": { "name": "work", "scope": "org" }
@@ -427,11 +663,14 @@ Pass a map on `execute`, for ad hoc code or an `invoke`:
 ```
 
 A string picks by name, and an object adds `scope` when an org and a personal
-credential share a name. For a `multiple` need, an array picks several for
-`credentials(key)` (`"google": ["work", "personal"]`), and `[]` picks none on
-purpose. In an `invoke`, a key that no package in the run declares fails the run
-with `credential_need_unknown`; ad hoc code only gets a warning. The CLI takes
-the same picks:
+credential share a name. Package-bound Keys also read `org` scope, so when a
+`user`-scope Key and a package Key share a name, a `{ name, scope }` pick always
+gets the `user`-scope Key. Give them distinct names, or map a need that must use
+the package Key in the package's credential settings. For a `multiple` need, an
+array picks several for `credentials(key)` (`"google": ["work", "personal"]`),
+and `[]` picks none on purpose. On `execute`, a key that no package in the run
+declares gets a warning, not a failure. The CLI takes the same picks (`--invoke`
+writes the passthrough for you):
 
 ```bash
 npx @kodycodes/cli execute --invoke kody:@you/pr-digest/summarize \
@@ -442,9 +681,20 @@ A pick grants nothing. It chooses only among credentials you can already Use.
 Running code through a client needs your Use on the credential; a package's
 identity never grants access on its own.
 
-Defaults and trigger mappings are stored per package. Agents propose changes
-with `credentialMappingPropose`; you approve them on the package's approval page
-or its **Credentials** tab.
+Defaults and trigger mappings are stored on the package you run (the entry
+package), including needs it inherits from its dependencies. When a dependency
+calls `credential(key)` in that run, it uses the entry package's mappings (the
+first entry that has the need when one run has several, and a caller that is
+itself an entry uses its own), and a creation link names the entry package. A
+mapping stored on the dependency applies only when you run the dependency
+itself. Agents propose changes with `credentialMappingPropose`; you approve them
+on the package's approval page or its **Credentials** tab.
+
+To build one shared package that many callers use with their own accounts, see
+[Shared packages for many accounts](./shared-packages.md).
+
+A Key bound to one package fills only that package's own `credential()` calls,
+so map an org or personal credential for a need the entry package inherits.
 
 ### Errors
 
@@ -454,12 +704,16 @@ Every credential error is structured: it has a `code`, a message, and
 | Code                         | Meaning                                                                                 |
 | ---------------------------- | --------------------------------------------------------------------------------------- |
 | `credential_unbound`         | No credential you can use matches the need                                              |
+| `credential_required`        | A required executor need has no connected credential before a direct run                |
 | `credential_ambiguous`       | More than one matches; `options` lists them by name/scope                               |
 | `credential_not_found`       | The named credential is missing or not usable by you                                    |
 | `credential_need_unknown`    | The map names a key no package in the invoked run declares                              |
 | `credential_need_undeclared` | A package someone else runs uses a credential it does not declare in `kody.credentials` |
 | `credential_denied`          | Authorization failed                                                                    |
 | `credential_rate_limited`    | An app's visitors used an owner's credential too often; try again shortly               |
+| `login_failed`               | A login's exchange failed; `retryAfterSeconds` says when Kody runs it again             |
+| `login_retry_later`          | A login's exchange failed recently and is cooling down; retry after `retryAfterSeconds` |
+| `login_needs_reconnect`      | The provider rejected the login's refresh token; the owner saves a new value            |
 | `host_not_allowed`           | The request's host is not one of the credential's hosts                                 |
 | `insecure_transport`         | The request is not HTTPS                                                                |
 
@@ -518,16 +772,27 @@ Treat a minted webhook URL like any other credential. Details:
 
 A Key, OAuth connection, or MCP server in your personal org is a personal
 credential. Grant it to a team org with `credentialOrgGrant`. It then works in
-that org only in your own runs, through `credential(key)`; nobody else there can
-use it, Owners included, and `{{secret:name}}` placeholders never resolve it.
+that org only in your own runs: through `credential(key)`, through
+`{{secret:name}}` and `{{integration-token:name}}` placeholders, and through
+`createAuthenticatedFetch(name)`. An org credential with the same name wins
+first. Nobody else there can use it, Owners and Automation included.
 `credentialOrgRevoke` removes the grant.
 
-## Not available yet
+When a team org has registered an OAuth app, each Member can connect their own
+account through it (**Connect your own account** on the app's page, or
+`/connect/oauth?org=<org>&app=<app>&mode=personal`). The connection is yours and
+lives in your personal org, but it is pinned to that org: it is granted there
+automatically, can never be granted anywhere else, and works only in your own
+runs in that org. The org's client secret stays with the org. Org Owners can see
+who connected (member, account label, date) and revoke a connection, but never
+use it or read its tokens. Revoking, leaving the org, or deleting the app wipes
+it and revokes it with the provider where the provider supports that. See
+[OAuth](./oauth.md#connect-your-own-account-through-an-orgs-app).
+
+## Limits
 
 - Using a personal MCP server through `credential()`. Add the MCP server to the
   org instead.
-- A credential picker for visitors of a package app. Apps auto-resolve the
-  signed-in visitor's single match; grant Use to the role that needs it.
 - A `verify` operation on signing credentials for inbound webhooks. Keys verify
   webhooks.
 - Declaring OAuth scopes on a need. A missing scope shows up as a 401 or 403

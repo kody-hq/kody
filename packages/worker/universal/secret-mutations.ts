@@ -34,11 +34,17 @@ const oauthFields = {
 	scopeSeparator: text,
 	extraAuthorizeParams: z.record(z.string(), z.string()).default({}),
 	tokenExchangeStyle: text,
+	/** Explicitly replace the app behind a live connection of this name. */
+	replaceLiveConnection: z.boolean().optional(),
+	/** "Save as a new connection": refuse a name that already exists. */
+	newConnection: z.boolean().optional(),
 }
 export const saveOAuthAppSchema = z.object(oauthFields)
 export const connectOAuthSchema = z.object({
 	...oauthFields,
 	platformAppSlug: text,
+	/** Personal connection through the scoped org's OAuth app (ADR 0068). */
+	pinnedAppSlug: text,
 	allowedHosts: z.array(z.string()).default([]),
 	scopes: z.array(z.string()).default([]),
 	tokenPayload: z.record(z.string(), z.unknown()),
@@ -46,6 +52,8 @@ export const connectOAuthSchema = z.object({
 export const exchangeOAuthTokenSchema = z.object({
 	params: z.string(),
 	platformAppSlug: text,
+	/** Personal connection through the scoped org's OAuth app (ADR 0068). */
+	pinnedAppSlug: text,
 	tokenUrl: text,
 	flow: text,
 	allowedHosts: z.array(z.string()).default([]),

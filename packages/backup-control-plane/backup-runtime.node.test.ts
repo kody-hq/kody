@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 
 import { afterEach, test, vi } from 'vitest'
 
-import { runBackupRuntime } from './backup-runtime.ts'
+import { NonRetryableError } from 'cloudflare:workflows'
+import { acceptUploadStepResult, runBackupRuntime } from './backup-runtime.ts'
 import { DEFAULT_BACKUP_MAX_SOURCE_BYTES } from './d1-export-api.ts'
 import { readManifest } from './immutable-storage.ts'
 import {
 	backupPayload,
+	errorCode,
 	objectKeyForBookmark,
 	workflowInstanceId,
 } from './backup-policy.ts'
@@ -24,6 +27,7 @@ import {
 	identityEnvelope,
 	backupError,
 } from './backup-control-plane-test-support.ts'
+import { withNonRetryableBackupErrors } from './workflow-step-boundary.ts'
 
 afterEach(() => {
 	vi.restoreAllMocks()
@@ -69,6 +73,38 @@ function runDay(
 		step,
 		options,
 	)
+}
+
+/**
+ * Match production `ProductionD1BackupWorkflow`: convert non-retryable
+ * BackupError to NonRetryableError inside the step, then reconstitute the
+ * rejection the way Workflows RPC often does (`Error` + `NonRetryableError:`
+ * message prefix) so recovery must parse that form via `errorCode()`.
+ */
+function productionLikeStep(inner: RuntimeStep): RuntimeStep {
+	const bounded = withNonRetryableBackupErrors(inner)
+	return {
+		async do<T>(
+			name: string,
+			configOrCallback: unknown,
+			callback?: () => Promise<T>,
+		): Promise<T> {
+			try {
+				if (typeof configOrCallback === 'function') {
+					return await bounded.do(name, configOrCallback as () => Promise<T>)
+				}
+				return await bounded.do(name, configOrCallback, callback!)
+			} catch (error) {
+				if (error instanceof NonRetryableError) {
+					throw new Error(`NonRetryableError: ${error.message}`)
+				}
+				throw error
+			}
+		},
+		sleep(name, duration) {
+			return bounded.sleep(name, duration)
+		},
+	}
 }
 
 const julyPayload = (env: BackupEnvironment, day = '2026-07-22') =>
@@ -395,39 +431,281 @@ test('initial upload ignores a stale cached signed URL and refreshes it in the c
 	)
 })
 
-test('an expired export result fails the upload step without starting a second export', async () => {
-	const consoleError = vi.spyOn(console, 'error')
-	consoleError.mockImplementation(() => undefined)
+test('upload falls back to the poll-step signed URL when refresh finds the export lost', async () => {
+	const consoleLog = vi.spyOn(console, 'log')
+	consoleLog.mockImplementation(() => undefined)
 	const bucket = new MemoryBucket()
 	const env = environment(bucket)
 	const payload = julyPayload(env)
 	const exportBodies: unknown[] = []
 	const downloadUrls: string[] = []
-	await assert.rejects(
-		runDay(env, payload, new CachedUploadStep(() => undefined), {
+	let exportCalls = 0
+	const result = await runDay(
+		env,
+		payload,
+		new CachedUploadStep(() => undefined),
+		{
 			api: completeApi((init) => {
+				exportCalls += 1
 				exportBodies.push(JSON.parse(String(init?.body)))
-				// The durable export completes; the upload-step refresh then
-				// finds the short-lived poll result already expired.
-				return exportBodies.length === 1
-					? exportEnvelope('complete', 'bookmark-1')
-					: exportEnvelope('lost')
+				if (exportCalls === 1) {
+					return exportEnvelope(
+						'complete',
+						'bookmark-1',
+						'https://download.example/from-poll-step',
+					)
+				}
+				return exportEnvelope('lost')
 			}),
 			downloadFetcher: async (input) => {
 				downloadUrls.push(String(input))
 				return okDownload()
 			},
-		}),
-		backupError('export-result-expired', false),
+		},
 	)
-	// Exactly one export start; the refresh only polls the original bookmark.
+	assert.equal(result.payload.export.bookmark, 'bookmark-1')
 	assert.deepEqual(exportBodies, [
 		{ output_format: 'polling' },
 		{ output_format: 'polling', current_bookmark: 'bookmark-1' },
 	])
-	assert.deepEqual(downloadUrls, [])
-	assert.equal(bucket.puts.length, 0)
+	assert.deepEqual(downloadUrls, ['https://download.example/from-poll-step'])
+	assert.ok(
+		consoleEvents(consoleLog).includes('backup-export-signed-url-fallback'),
+	)
+	assert.equal(
+		consoleEvents(consoleLog).includes('backup-export-result-expired-recover'),
+		false,
+	)
+	assert.deepEqual(
+		await readManifest(bucket as unknown as R2Bucket, payload.manifestKey),
+		result,
+	)
+})
+
+test('an expired export result recovers via durable step result (not NonRetryableError)', async () => {
+	// Workflows treats NonRetryableError as instance-terminal. Recovery must
+	// complete the upload step with `{ kind: 'export-result-expired' }` so the
+	// runtime can start `recover-N-*` steps in the same instance.
+	const consoleLog = vi.spyOn(console, 'log')
+	consoleLog.mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const env = environment(bucket)
+	const payload = julyPayload(env)
+	const exportBodies: unknown[] = []
+	const downloadUrls: string[] = []
+	let exportCalls = 0
+	const result = await runDay(
+		env,
+		payload,
+		productionLikeStep(new CachedUploadStep(() => undefined)),
+		{
+			api: completeApi((init) => {
+				exportCalls += 1
+				exportBodies.push(JSON.parse(String(init?.body)))
+				// Attempt 1: start completes, upload refresh finds expired, and
+				// the poll-step signed URL is also dead (403) → recover-2.
+				// Attempt 2 (recover-2-* steps): start + refresh succeed.
+				if (exportCalls === 1) {
+					return exportEnvelope(
+						'complete',
+						'bookmark-1',
+						'https://download.example/stale',
+					)
+				}
+				if (exportCalls === 2) return exportEnvelope('lost')
+				return exportEnvelope(
+					'complete',
+					'bookmark-2',
+					'https://download.example/recovered',
+				)
+			}),
+			downloadFetcher: async (input) => {
+				const url = String(input)
+				downloadUrls.push(url)
+				if (url === 'https://download.example/stale') {
+					return new Response('', { status: 403 })
+				}
+				return okDownload()
+			},
+		},
+	)
+	assert.equal(result.payload.export.bookmark, 'bookmark-2')
+	assert.deepEqual(exportBodies, [
+		{ output_format: 'polling' },
+		{ output_format: 'polling', current_bookmark: 'bookmark-1' },
+		{ output_format: 'polling' },
+		{ output_format: 'polling', current_bookmark: 'bookmark-2' },
+	])
+	assert.deepEqual(downloadUrls, [
+		'https://download.example/stale',
+		'https://download.example/recovered',
+	])
+	assert.deepEqual(
+		consoleEvents(consoleLog).filter((event) =>
+			[
+				'backup-export-signed-url-fallback',
+				'backup-export-result-expired-recover',
+				'backup-success',
+			].includes(event),
+		),
+		[
+			'backup-export-signed-url-fallback',
+			'backup-export-result-expired-recover',
+			'backup-success',
+		],
+	)
+	assert.deepEqual(
+		await readManifest(bucket as unknown as R2Bucket, payload.manifestKey),
+		result,
+	)
+})
+
+test('acceptUploadStepResult keeps legacy flat StoredBackup and tagged results', () => {
+	assert.deepEqual(acceptUploadStepResult({ kind: 'export-result-expired' }), {
+		kind: 'export-result-expired',
+	})
+	assert.equal(
+		acceptUploadStepResult({
+			kind: 'stored',
+			stored: {
+				objectKey: 'daily/d1/x/2026-07-22/backup-b.sql',
+				bookmark: 'bookmark-1',
+				bytes: 5,
+				sha256: 'abc',
+				r2Etag: 'etag',
+				alreadyExisted: false,
+			},
+		}).kind,
+		'stored',
+	)
+	const legacy = acceptUploadStepResult({
+		objectKey: 'daily/d1/x/2026-07-22/backup-b.sql',
+		bookmark: 'bookmark-1',
+		bytes: 5,
+		sha256: 'abc',
+		r2Etag: 'etag',
+		alreadyExisted: true,
+	})
+	assert.equal(legacy.kind, 'stored')
+	if (legacy.kind === 'stored') {
+		assert.equal(legacy.stored.bookmark, 'bookmark-1')
+		assert.equal(legacy.stored.alreadyExisted, true)
+	}
+	assert.equal(acceptUploadStepResult({ kind: 'stored' }).kind, 'unexpected')
+	assert.equal(acceptUploadStepResult({ hello: 'world' }).kind, 'unexpected')
+})
+
+test('replayed pre-change flat upload result is accepted without recover export', async () => {
+	const consoleLog = vi.spyOn(console, 'log')
+	consoleLog.mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const env = environment(bucket)
+	const payload = julyPayload(env)
+	const objectKey = objectKeyForBookmark(payload.objectPrefix, 'bookmark-1')
+	const sqlBody = 'valid'
+	await bucket.put(objectKey, sqlBody)
+	const exportBodies: unknown[] = []
+	const flatLegacyUpload = {
+		objectKey,
+		bookmark: 'bookmark-1',
+		bytes: sqlBody.length,
+		sha256: createHash('sha256').update(sqlBody).digest('hex'),
+		r2Etag: createHash('md5').update(sqlBody).digest('hex'),
+		alreadyExisted: true,
+	}
+	const step: RuntimeStep = {
+		async do<T>(
+			name: string,
+			configOrCallback: unknown,
+			callback?: () => Promise<T>,
+		): Promise<T> {
+			if (name === 'stream-export-to-immutable-r2') {
+				return flatLegacyUpload as T
+			}
+			const execute =
+				typeof configOrCallback === 'function'
+					? (configOrCallback as () => Promise<T>)
+					: callback
+			if (!execute) {
+				throw new Error('Workflow step callback is required.')
+			}
+			return await execute()
+		},
+		sleep: async () => undefined,
+	}
+	const result = await runDay(env, payload, step, {
+		api: completeApi((init) => {
+			exportBodies.push(JSON.parse(String(init?.body)))
+			return exportEnvelope(
+				'complete',
+				'bookmark-1',
+				'https://download.example/unused',
+			)
+		}),
+		downloadFetcher: async () => {
+			throw new Error('legacy replay must not re-download')
+		},
+	})
+	assert.equal(result.payload.export.bookmark, 'bookmark-1')
+	assert.equal(exportBodies.length, 1)
+	assert.equal(
+		consoleEvents(consoleLog).includes('backup-export-result-expired-recover'),
+		false,
+	)
+	assert.deepEqual(
+		await readManifest(bucket as unknown as R2Bucket, payload.manifestKey),
+		result,
+	)
+})
+
+test('exhausted export-result-expired recovery fails without a manifest', async () => {
+	const consoleError = vi.spyOn(console, 'error')
+	consoleError.mockImplementation(() => undefined)
+	const consoleLog = vi.spyOn(console, 'log')
+	consoleLog.mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const env = environment(bucket)
+	const payload = julyPayload(env)
+	const downloadUrls: string[] = []
+	let exportCalls = 0
+	await assert.rejects(
+		runDay(
+			env,
+			payload,
+			productionLikeStep(new CachedUploadStep(() => undefined)),
+			{
+				api: completeApi(() => {
+					exportCalls += 1
+					// Each attempt: start completes with a unique bookmark, refresh lost.
+					if (exportCalls % 2 === 1) {
+						return exportEnvelope('complete', `bookmark-${String(exportCalls)}`)
+					}
+					return exportEnvelope('lost')
+				}),
+				downloadFetcher: async (input) => {
+					// Poll-step signed URLs are also dead, so fallback cannot save
+					// the attempt and recover-N must run (then also fail).
+					downloadUrls.push(String(input))
+					return new Response('', { status: 403 })
+				},
+			},
+		),
+		(error: unknown) =>
+			error instanceof Error && errorCode(error) === 'export-result-expired',
+	)
+	// Three start+refresh pairs (attempts 1..3).
+	assert.equal(exportCalls, 6)
+	assert.equal(downloadUrls.length, 3)
 	assert.equal(await bucket.head(payload.manifestKey), null)
+	assert.deepEqual(
+		consoleEvents(consoleLog).filter(
+			(event) => event === 'backup-export-result-expired-recover',
+		),
+		[
+			'backup-export-result-expired-recover',
+			'backup-export-result-expired-recover',
+		],
+	)
 	assert.deepEqual(consoleEvents(consoleError), ['backup-failure'])
 })
 

@@ -11,15 +11,21 @@ import {
 	emailOwnerOrgId,
 	requireVerifiedEmailAccountUser,
 } from './require-verified-user.ts'
-import { emailMessageSummarySchema, toMessageSummary } from './shared.ts'
+import {
+	emailMessageSummarySchema,
+	emailMessageViewInputSchema,
+	resolveEmailMessageView,
+	toMessageSummary,
+} from './shared.ts'
 
 export const emailMessageSearchCapability = defineDomainCapability(
 	capabilityDomainNames.email,
 	{
 		name: 'emailMessageSearch',
+		contextRuns: 'allow',
 		orgPermission: 'email:read',
 		description:
-			'Search stored email messages for the current org by case-insensitive substring match against subject, header From, and envelope sender.',
+			'Search stored email messages for the current org by case-insensitive substring match against subject, header From, and envelope sender. The default "inbox" view skips spam and archived messages; pass view "all" to search everything.',
 		keywords: ['email', 'message', 'inbox', 'search', 'find', 'query'],
 		readOnly: true,
 		idempotent: true,
@@ -37,6 +43,7 @@ export const emailMessageSearchCapability = defineDomainCapability(
 			direction: z.enum(emailDirectionValues).optional(),
 			processing_status: z.enum(emailProcessingStatusValues).optional(),
 			delivery_status: z.enum(emailDeliveryStatusValues).optional(),
+			view: emailMessageViewInputSchema,
 			limit: z.number().int().positive().max(100).default(25),
 		}),
 		outputSchema: z.object({
@@ -52,6 +59,7 @@ export const emailMessageSearchCapability = defineDomainCapability(
 				direction: args.direction ?? null,
 				processingStatus: args.processing_status ?? null,
 				deliveryStatus: args.delivery_status ?? null,
+				view: resolveEmailMessageView(args),
 				limit: args.limit,
 			})
 			return { messages: messages.map(toMessageSummary) }

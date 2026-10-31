@@ -10,10 +10,10 @@ when [local cannot](./docs/contributing/cloud-agents.md#local-limitations)).
 
 Open the page that owns the task:
 
-- Contributor documentation map:
-  [docs/contributing/index.md](./docs/contributing/index.md)
-- Engineering principles: [docs/principles/](./docs/principles/index.md)
-- Task skills: [`.agents/skills/`](./.agents/skills/)
+- Docs map: [contributing](./docs/contributing/index.md) ·
+  [principles](./docs/principles/index.md) · [skills](./.agents/skills/)
+- Invite a whole team: [organizations](./docs/guides/organizations.md)
+  (`guide:organizations`, `inviteLinkCreate`)
 - Cloud Agent VM gotchas (Node, Playwright, dev server, seeding, limits):
   [docs/contributing/cloud-agents.md](./docs/contributing/cloud-agents.md)
 - Dependency bump or audit fix: reuse an open PR, never open a duplicate

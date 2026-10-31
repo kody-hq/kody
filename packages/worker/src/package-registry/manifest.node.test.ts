@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	buildPackageSearchProjection,
 	getPackageAppAssetsDirectory,
+	getPackageAppClientReadableCookieNames,
 	getPackageAppClientEntryPath,
 	getPackageAppClientExternals,
 	getPackageAppEntryPath,
@@ -39,6 +40,26 @@ function parse(
 		...options,
 	})
 }
+
+test('parseAuthoredPackageJson rejects retrievers but published manifests ignore them', () => {
+	const retrievers = {
+		notes: {
+			export: './notes',
+			name: 'Notes',
+			description: 'Searches saved notes.',
+			scopes: ['search'],
+		},
+	}
+	expect(() => parse('@kentcdodds/notes', { retrievers })).toThrow(
+		'Invalid package.json:\nkody.retrievers was removed; package retrievers no longer run during search or context enrichment. Delete the kody.retrievers block (keep the export if other code still calls it).',
+	)
+	const published = parse(
+		'@kentcdodds/notes',
+		{ retrievers },
+		{ mode: 'published' },
+	)
+	expect(published.kody).not.toHaveProperty('retrievers')
+})
 
 const sentryExports = {
 	exports: { './handle-sentry-webhook': './src/handle-sentry-webhook.ts' },
@@ -113,6 +134,41 @@ test('parseAuthoredPackageJson accepts kody.app.client and kody.app.assets next 
 		{ mode: 'published' },
 	)
 	expect(published.kody.app).toEqual({ entry: './app/router.ts' })
+})
+
+test('kody.app.cookies.clientReadable accepts bounded non-empty names', () => {
+	const withClientReadable = parse('@kentcdodds/client-readable-cookies', {
+		app: {
+			entry: './src/app.ts',
+			cookies: { clientReadable: [' theme-session '] },
+		},
+	})
+	expect(getPackageAppClientReadableCookieNames(withClientReadable)).toEqual([
+		'theme-session',
+	])
+
+	const withoutClientReadable = parse('@kentcdodds/default-cookies', {
+		app: { entry: './src/app.ts' },
+	})
+	expect(getPackageAppClientReadableCookieNames(withoutClientReadable)).toEqual(
+		[],
+	)
+
+	expect(() =>
+		parse('@kentcdodds/empty-client-readable-cookie', {
+			app: { entry: './src/app.ts', cookies: { clientReadable: [''] } },
+		}),
+	).toThrow(/Invalid package.json/)
+	expect(() =>
+		parse('@kentcdodds/too-many-client-readable-cookies', {
+			app: {
+				entry: './src/app.ts',
+				cookies: {
+					clientReadable: Array.from({ length: 21 }, (_, i) => `c${i}`),
+				},
+			},
+		}),
+	).toThrow(/Invalid package.json/)
 })
 
 test('parseAuthoredPackageJson validates scoped package names against kody.id', () => {
@@ -260,27 +316,6 @@ test('parseAuthoredPackageJson rejects invalid manifests with a specific error p
 			},
 			/payloadSchema is not a supported JSON Schema subset/,
 		],
-		// kody.retrievers.
-		[
-			'@kentcdodds/personal-inbox',
-			{
-				retrievers: {
-					'notes-search': {
-						export: './search-notes',
-						name: 'Personal notes',
-						description: 'Searches saved notes and snippets.',
-						scopes: [],
-					},
-				},
-			},
-			'Too small',
-			{
-				exports: {
-					'.': './index.ts',
-					'./search-notes': './src/search-notes.ts',
-				},
-			},
-		],
 		// kody.webhooks.
 		[
 			'@kentcdodds/sentry-bridge',
@@ -410,7 +445,74 @@ test('parseAuthoredPackageJson rejects invalid manifests with a specific error p
 	expect(unmatched).toEqual([])
 })
 
-test('parseAuthoredPackageJson accepts subscriptions, emits, retrievers, and secret mounts', () => {
+test('parseAuthoredPackageJson rejects once job schedules with workflow guidance', () => {
+	const error = (() => {
+		try {
+			parse('@kentcdodds/retired-once-job', {
+				jobs: {
+					reminder: {
+						entry: './src/reminder.ts',
+						schedule: {
+							type: 'once',
+							runAt: '2027-01-01T16:00:00Z',
+						},
+					},
+				},
+			})
+		} catch (caught) {
+			return caught instanceof Error ? caught.message : String(caught)
+		}
+		return ''
+	})()
+
+	expect(error).toContain('at kody.jobs.reminder.schedule')
+	expect(error).toContain(
+		"Job schedule type \"once\" was removed: jobs are recurring (cron or interval). For a one-shot run at a set time, delete this job and start a workflow instead: import { workflows } from 'kody:runtime'; await workflows.create({ exportName: './my-export', runAt: '2027-01-01T16:00:00Z', idempotencyKey: 'my-export:2027-01-01', params: {} }). See https://kody.codes/docs/triggers.",
+	)
+})
+
+test('published snapshots omit retired once jobs while preserving recurring jobs', () => {
+	const manifest = parse(
+		'@kentcdodds/legacy-once-job',
+		{
+			jobs: {
+				legacy: {
+					entry: './src/legacy.ts',
+					schedule: {
+						type: 'once',
+						runAt: '2027-01-01T16:00:00Z',
+					},
+				},
+				digest: {
+					entry: './src/digest.ts',
+					schedule: { type: 'interval', every: '1h' },
+				},
+			},
+		},
+		{ mode: 'published' },
+	)
+
+	expect(Object.keys(manifest.kody.jobs ?? {})).toEqual(['digest'])
+	expect(
+		parse(
+			'@kentcdodds/legacy-once-job',
+			{
+				jobs: {
+					legacy: {
+						entry: './src/legacy.ts',
+						schedule: {
+							type: 'once',
+							runAt: '2027-01-01T16:00:00Z',
+						},
+					},
+				},
+			},
+			{ mode: 'published' },
+		).kody.jobs,
+	).toEqual({})
+})
+
+test('parseAuthoredPackageJson accepts subscriptions, emits, and secret mounts', () => {
 	const manifest = parse('@kentcdodds/discord-gateway', {
 		secretMounts: {
 			discordBotToken: {
@@ -427,16 +529,6 @@ test('parseAuthoredPackageJson accepts subscriptions, emits, retrievers, and sec
 			},
 		},
 		emits: { '@kentcdodds/discord.message.created': discordEvent },
-		retrievers: {
-			'notes-search': {
-				export: './search-notes',
-				name: 'Personal notes',
-				description: 'Searches saved notes and snippets.',
-				scopes: ['context', 'search'],
-				timeoutMs: 250,
-				maxResults: 3,
-			},
-		},
 	})
 
 	expect(manifest.kody.secretMounts).toEqual({
@@ -461,17 +553,6 @@ test('parseAuthoredPackageJson accepts subscriptions, emits, retrievers, and sec
 			topic: '@kentcdodds/discord.message.created',
 			...discordEvent,
 			payloadSchema: null,
-		},
-	])
-	expect(buildPackageSearchProjection(manifest).retrievers).toEqual([
-		{
-			key: 'notes-search',
-			exportName: './search-notes',
-			name: 'Personal notes',
-			description: 'Searches saved notes and snippets.',
-			scopes: ['context', 'search'],
-			timeoutMs: 250,
-			maxResults: 3,
 		},
 	])
 
@@ -1120,4 +1201,33 @@ export default forecast
 `,
 		})?.functions,
 	).toEqual([expect.objectContaining({ name: 'forecast' })])
+})
+
+test('parseAuthoredPackageJson treats a missing exports field as no exports', () => {
+	const content = JSON.stringify({
+		name: '@acme/board',
+		kody: {
+			id: 'board',
+			description: 'Data-only package with an app',
+			app: { entry: './src/app.ts' },
+		},
+	})
+	for (const mode of ['authoring', 'published'] as const) {
+		const manifest = parseAuthoredPackageJson({
+			content,
+			manifestPath: 'package.json',
+			mode,
+		})
+		expect(manifest.exports).toEqual({})
+		expect(manifest).toEqual(
+			parseAuthoredPackageJson({
+				content: JSON.stringify({ ...JSON.parse(content), exports: {} }),
+				manifestPath: 'package.json',
+				mode,
+			}),
+		)
+	}
+	expect(() => parse('@acme/board', {}, { exports: null })).toThrow(
+		/Invalid package.json/,
+	)
 })

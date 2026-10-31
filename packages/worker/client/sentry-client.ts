@@ -16,6 +16,7 @@ import {
 	isTanStackServerFnFetchNetworkError,
 	isUnknownStartReleaseError,
 } from '#client/sentry-browser-filters.ts'
+import { isPermissionDeniedError } from '#universal/permission-denied.ts'
 import {
 	parseSentryClientConfig,
 	SENTRY_CONFIG_META_NAME,
@@ -86,7 +87,8 @@ function shouldIgnoreBufferedError(error: unknown) {
 		isSyntaxHighlightCoreDynamicImportFailureError(error) ||
 		isLocalViteDevError(error) ||
 		isCloudflareTurnstileClientError(error) ||
-		isTanStackRouterNotFoundError(error)
+		isTanStackRouterNotFoundError(error) ||
+		isPermissionDeniedError(error)
 	)
 }
 
@@ -96,7 +98,8 @@ function enqueueBufferedError(error: unknown, context?: ClientErrorContext) {
 	// First stale-chunk miss reloads and is expected. A later miss (flag
 	// already set) falls through so a genuinely missing chunk is reported.
 	if (reloadOnStaleRouteChunk(error)) return
-	// Vite preventDefault + TanStack `module[export ?? 'default']` (KODY-A1).
+	// Vite preventDefault + TanStack `module[exportName ?? 'default']`
+	// (KODY-A1 / KODY-BJ; exportName may be `component`, etc.).
 	if (shouldSuppressStaleRouteChunkFollowOnError(error)) return
 	if (shouldIgnoreBufferedError(error)) return
 	// Keep the earliest errors when full — the first failure is usually the
@@ -220,7 +223,7 @@ export function captureClientException(
 	// Stale hashed route chunk (KODY-5W, KODY-9S, KODY-9V, KODY-9Y): skip
 	// Sentry only when this call triggered the one-shot reload.
 	if (reloadOnStaleRouteChunk(error)) return
-	// Follow-on undefined-module TypeError after that reload (KODY-A1).
+	// Follow-on undefined-module TypeError after that reload (KODY-A1 / KODY-BJ).
 	if (shouldSuppressStaleRouteChunkFollowOnError(error)) return
 	if (shouldIgnoreBufferedError(error)) return
 	try {

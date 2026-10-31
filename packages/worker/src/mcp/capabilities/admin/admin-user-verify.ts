@@ -53,6 +53,7 @@ export const adminUserVerifyCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminUserVerify',
+		contextRuns: 'deny',
 		description:
 			'Mark one account email verified, or mint a one-time verify URL to send over a path that is not kody.codes. Admin-only; audited; never touches user content.',
 		keywords: [

@@ -107,14 +107,40 @@ export function setMailboxMessageClassification(
 	input: Omit<MailboxSetMessageClassificationInput, 'ownerId'>,
 ): MailboxPartialMutationResult {
 	const messageId = assertMailboxNonEmptyString(input.messageId, 'messageId')
-	const classification = assertMailboxClassification(input.classification)
 	const updatedAt = assertMailboxCanonicalIsoTimestamp(
 		input.updatedAt,
 		'updatedAt',
 	)
+	const assignments: Array<string> = []
+	const values: Array<SqlStorageValue> = []
+	if (input.classification !== undefined) {
+		assignments.push('classification = ?', 'classification_reason = ?')
+		values.push(
+			assertMailboxClassification(input.classification),
+			input.classificationReason ?? null,
+		)
+	}
+	if (input.archivedAt !== undefined) {
+		assignments.push('archived_at = ?')
+		values.push(
+			assertOptionalMailboxCanonicalIsoTimestamp(
+				input.archivedAt,
+				'archivedAt',
+			),
+		)
+	}
+	if (assignments.length === 0) {
+		throw new Error(
+			'Mailbox message triage update requires classification or archivedAt.',
+		)
+	}
+	// Inbound only: triage must not hide outbound/sent mail from the default
+	// inbox view. Outbound and missing ids both report missing.
 	const existing = sql
 		.exec<{ updated_at: string }>(
-			`SELECT updated_at FROM email_messages WHERE id = ? LIMIT 1`,
+			`SELECT updated_at FROM email_messages
+			WHERE id = ? AND direction = 'inbound'
+			LIMIT 1`,
 			messageId,
 		)
 		.toArray()[0]
@@ -123,13 +149,12 @@ export function setMailboxMessageClassification(
 
 	sql.exec(
 		`UPDATE email_messages
-		SET classification = ?,
-			classification_reason = ?,
+		SET ${assignments.join(', ')},
 			updated_at = ?
 		WHERE id = ?
+			AND direction = 'inbound'
 			AND updated_at <= ?`,
-		classification,
-		input.classificationReason,
+		...values,
 		updatedAt,
 		messageId,
 		updatedAt,

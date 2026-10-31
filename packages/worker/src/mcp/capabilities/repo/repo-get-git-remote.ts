@@ -76,6 +76,7 @@ export const repoGetGitRemoteCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoGetGitRemote',
+		contextRuns: 'deny',
 		orgPermission: 'package:read',
 		description:
 			"Mint a short-lived git remote for a plain repo (Kody smart-HTTP proxy in front of Cloudflare Artifacts). When scope is omitted, defaults to write if you have org-wide write access, otherwise read. Pass scope explicitly to force read or write; requesting write without write access is denied with guidance (use scope: 'read', or ask an Owner for a grant). Write pushes are live at HEAD — no package publish reconcile step runs afterward. Concurrent push lock contention is held and retried on the proxy (bounded wait) before HTTP 503 with Retry-After and \"repository busy, retry\". A read remote rejects push with: this remote is read-only; request scope: 'write'. The result includes `git_author` (signed-in Kody account email and display name) and `setup_commands` that set local `user.email` / `user.name` to that identity — never invent a git email. The Artifacts backing store fails pushes above ~32 MiB of decompressed pack content with a raw HTTP 413.",
@@ -112,8 +113,8 @@ export const repoGetGitRemoteCapability = defineDomainCapability(
 				request,
 			})
 			// Plain repos are not a grantable resource type. A write grant on one
-			// package must not mint write remotes for every repo in the org, and
-			// connection profiles only narrow packages — use org-wide access.
+			// package must not mint write remotes for every repo in the org, so use
+			// org-wide access.
 			const canWrite = checkOrgWide(access, 'package:write').allowed
 			const canRead = canWrite || checkOrgWide(access, 'package:read').allowed
 			const scope = pickGitRemoteAccessScope({

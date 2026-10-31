@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { dispatchAdminPackageSubscriptionEvent } from '#worker/package-invocations/admin-package-subscriptions.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { platformFeedbackContentWarning } from './content-warning.ts'
@@ -30,9 +31,9 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 	listSavedPackagesByUserId: mocks.listSavedPackagesByUserId,
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 vi.mock('./service.ts', () => ({
 	getPlatformFeedbackForAdmin: mocks.getPlatformFeedbackForAdmin,

@@ -11,7 +11,13 @@ import {
 	collectPublishedPackageArtifactTargets,
 	type PublishedPackageArtifactBuildTarget,
 } from './package-artifact-targets.ts'
-import { isPublishedPackageArtifactBuiltForCommit } from './published-bundle-artifacts.ts'
+import {
+	isPublishedPackageArtifactBuiltForCommit,
+	loadPublishedBundleArtifactsForPackageTargets,
+	publishedBundleArtifactForPackageTarget,
+	type LoadedPublishedBundleArtifact,
+} from './published-bundle-artifacts.ts'
+import { hasPublishedRuntimeArtifacts } from './published-runtime-artifacts.ts'
 
 /** Keyset page size when walking `saved_packages` for gap detection. */
 export const publishedImportableArtifactBackfillScanPageSize = 50
@@ -96,14 +102,32 @@ async function findMissingImportableTargets(input: {
 	publishedCommit: string
 	targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
 }): Promise<Array<PublishedPackageArtifactBuildTarget>> {
+	const candidates = importableTargets(input.targets)
 	const missing: Array<PublishedPackageArtifactBuildTarget> = []
-	for (const target of importableTargets(input.targets)) {
+	if (candidates.length === 0) return missing
+	// Without BUNDLE_ARTIFACTS_KV, identity preload hydrates D1 rows via KV and
+	// throws. Match the built-for-commit guard: treat every candidate as missing
+	// so the scan completes without marking the package failed.
+	const loadedByIdentity = hasPublishedRuntimeArtifacts(input.env)
+		? await loadPublishedBundleArtifactsForPackageTargets({
+				env: input.env,
+				userId: input.userId,
+				sourceId: input.sourceId,
+				targets: candidates,
+			})
+		: new Map<string, LoadedPublishedBundleArtifact | null>()
+	for (const target of candidates) {
 		const built = await isPublishedPackageArtifactBuiltForCommit({
 			env: input.env,
 			userId: input.userId,
 			sourceId: input.sourceId,
 			publishedCommit: input.publishedCommit,
 			target,
+			preloaded: publishedBundleArtifactForPackageTarget({
+				sourceId: input.sourceId,
+				target,
+				loadedByIdentity,
+			}),
 		})
 		if (!built) missing.push(target)
 	}
@@ -126,7 +150,7 @@ function matchesOptionalFilters(
 	return true
 }
 
-async function listCandidatePackages(input: {
+export async function listCandidatePackages(input: {
 	env: Env
 	afterId: string | null
 	limit: number

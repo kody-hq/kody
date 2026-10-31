@@ -18,6 +18,11 @@ import {
 	type HostId,
 } from './host-catalog.js'
 import { writeMergedConfig, type LeftoverHostId } from './host-config.js'
+import {
+	describeHeadlessLoginReason,
+	detectHeadlessLoginReason,
+	type HeadlessLoginReason,
+} from './login-notice.js'
 import { openUrl } from './open-url.js'
 import { which as whichOnPath } from './which.js'
 
@@ -46,9 +51,51 @@ export type InstallRuntime = {
 	writeFile?: (path: string, body: string) => Promise<void>
 	mkdir?: (path: string) => Promise<void>
 	upsertServer?: UpsertServerFn
+	/** Defaults to detecting SSH or a missing display from the environment. */
+	headlessLoginReason?: HeadlessLoginReason | null
 }
 
 const oauthNote = 'Approve Kody in the browser when the client starts OAuth.'
+
+function headlessReasonFor(runtime: InstallRuntime) {
+	if (runtime.headlessLoginReason !== undefined) {
+		return runtime.headlessLoginReason
+	}
+	return detectHeadlessLoginReason(process.env, runtime.platform)
+}
+
+/** Mirrors docs/use/troubleshooting.md "Authorizing from a remote or headless machine". */
+function headlessOAuthSteps(
+	id: 'codex' | 'opencode',
+	reason: HeadlessLoginReason,
+): Array<string> {
+	const lead = `${describeHeadlessLoginReason(reason)}, so a browser on another computer cannot reach the OAuth callback here. To sign in:`
+	if (id === 'codex') {
+		return [
+			lead,
+			'1. Run: codex mcp login kody --no-browser',
+			'2. Open the printed link in the browser on your own computer and approve Kody.',
+			'3. The last page fails to load; that is expected. Copy the whole URL from the address bar (it starts with http://127.0.0.1) and paste it into this terminal.',
+		]
+	}
+	const portNote =
+		'If you set oauth.callbackPort (or callback_port) for kody, use that port instead of 19876. Without it, newer OpenCode builds can pick a random port, so pin it to 19876 first.'
+	if (reason === 'ssh') {
+		return [
+			lead,
+			'1. From your own computer, reconnect with the callback port forwarded: ssh -L 127.0.0.1:19876:127.0.0.1:19876 user@host',
+			'2. In that session, run: opencode mcp auth kody and approve Kody in your browser.',
+			portNote,
+		]
+	}
+	return [
+		lead,
+		'1. Run: opencode mcp auth kody and leave it waiting.',
+		'2. Open the printed link in a browser on any computer and approve Kody.',
+		"3. The last page fails to load; that is expected. Copy the whole URL from the address bar (it starts with http://127.0.0.1:19876/mcp/oauth/callback) and, in another terminal here, run: curl '<that URL>'",
+		portNote,
+	]
+}
 
 async function defaultReadFile(path: string): Promise<string | null> {
 	try {
@@ -320,6 +367,14 @@ export async function applyHost(input: {
 		}
 		case 'codex': {
 			const written = writeMappedHost(input)
+			if (written.status === 'manual') return written
+			const headless = headlessReasonFor(input.runtime)
+			if (headless) {
+				return {
+					...written,
+					instructions: headlessOAuthSteps('codex', headless),
+				}
+			}
 			if (written.status === 'wrote') {
 				await tryCommand(input.runtime, 'codex', ['mcp', 'login', 'kody'])
 			}
@@ -333,6 +388,14 @@ export async function applyHost(input: {
 		}
 		case 'opencode': {
 			const written = writeMappedHost(input)
+			if (written.status === 'manual') return written
+			const headless = headlessReasonFor(input.runtime)
+			if (headless) {
+				return {
+					...written,
+					instructions: headlessOAuthSteps('opencode', headless),
+				}
+			}
 			if (written.status === 'wrote') {
 				await tryCommand(input.runtime, 'opencode', ['mcp', 'auth', 'kody'])
 			}

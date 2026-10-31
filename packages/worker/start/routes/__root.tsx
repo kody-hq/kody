@@ -49,7 +49,9 @@ import {
 } from '../document-shell-meta.ts'
 import { SENTRY_CONFIG_META_NAME } from '#universal/sentry-config.ts'
 import { NotFoundPage } from '../components/not-found-page.tsx'
-import { InternalErrorPage } from '../components/internal-error-page.tsx'
+import { RouteErrorPage } from '../components/route-error-page.tsx'
+import { isPermissionDeniedError } from '#universal/permission-denied.ts'
+import { DesktopNavigation } from '../components/desktop-navigation.tsx'
 import { Toaster } from '../components/toaster.tsx'
 import { YouTubeWatchOverlay } from '../components/youtube-watch-overlay.tsx'
 
@@ -153,6 +155,7 @@ export const Route = createRootRouteWithContext<{
 					context.queryClient,
 					context.actorKey,
 					location.searchStr,
+					context.orgScope?.orgSlug ?? null,
 					!context.inPlaceNavigation,
 				),
 				context.verifyAccess
@@ -201,16 +204,18 @@ export const Route = createRootRouteWithContext<{
 					<SiteLink href="/">Go home</SiteLink>
 				</section>
 			) : (
-				<InternalErrorPage />
+				<RouteErrorPage error={error} />
 			)}
 		</main>
 	),
 })
 
 export function useShellData() {
-	const { actorKey } = useRouteContext({ from: '__root__' })
+	const { actorKey, orgScope } = useRouteContext({ from: '__root__' })
 	const { shellLocation } = useLoaderData({ from: '__root__' })
-	return useSuspenseQuery(shellQuery(actorKey, shellLocation.searchStr)).data
+	return useSuspenseQuery(
+		shellQuery(actorKey, shellLocation.searchStr, orgScope?.orgSlug ?? null),
+	).data
 }
 
 function Root() {
@@ -281,6 +286,10 @@ function LoadedAppLayout() {
 		'/login',
 		appShell.preserveLoginReturn ? authReturnHref : null,
 	)
+	const signupHref = buildAuthLink(
+		'/signup',
+		appShell.preserveLoginReturn ? authReturnHref : null,
+	)
 	const authShell = appShell.mode === 'auth'
 	const focused = appShell.mode === 'focused'
 	const workspace = Boolean(workspaceLayoutNavigation(useMatches(), session))
@@ -320,7 +329,11 @@ function LoadedAppLayout() {
 				<Outlet />
 			</Content>
 			{authShell || focused || workspace ? null : (
-				<SiteFooter loggedIn={session !== null} loginHref={loginHref} />
+				<SiteFooter
+					loggedIn={session !== null}
+					loginHref={loginHref}
+					signupHref={signupHref}
+				/>
 			)}
 			<YouTubeWatchOverlay snapshot={youtubeWatch} location={shellLocation} />
 		</div>
@@ -374,7 +387,9 @@ function DocumentShell({ children }: { children: ReactNode }) {
 						failure instanceof Error &&
 						failure.message === documentForbiddenMessage
 							? 'Unauthorized | Kody'
-							: 'Something went wrong | Kody',
+							: isPermissionDeniedError(failure)
+								? 'Access denied | Kody'
+								: 'Something went wrong | Kody',
 				}
 			: undefined
 	useEffect(() => {
@@ -477,6 +492,7 @@ function DocumentShell({ children }: { children: ReactNode }) {
 				<FathomTracker siteId={loaded?.fathomSiteId} />
 			</head>
 			<body>
+				<DesktopNavigation />
 				<AppBrowserEffects />
 				{children}
 				<Toaster />

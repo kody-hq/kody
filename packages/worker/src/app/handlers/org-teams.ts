@@ -1,3 +1,4 @@
+import { endMemberExecutionContextLeases } from '#worker/execution-contexts/service.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { operationResult } from '#app/operation-result.ts'
 import {
@@ -316,6 +317,10 @@ export async function removeOrganizationTeamMember({
 			teamId,
 			userId,
 			audit: orgAuditWriterFromRequest(env, user.request),
+		})
+		await endMemberExecutionContextLeases(env, {
+			orgId: access.org.id,
+			userId,
 		})
 	} catch (error) {
 		const message =

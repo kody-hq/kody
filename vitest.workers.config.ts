@@ -1,15 +1,13 @@
 import { resolve } from 'node:path'
 import { availableParallelism } from 'node:os'
-import {
-	cloudflareTest,
-	readD1Migrations,
-} from '@cloudflare/vitest-pool-workers'
+import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-plugin'
 import { defineProject, mergeConfig } from 'vitest/config'
 import {
 	rootDir,
 	sharedProjectConfig,
 	sharedTestExclude,
 } from './vitest-shared.ts'
+import { harfbuzzWorker } from './tools/vite-harfbuzz-worker.ts'
 
 // The pool restarts a Wrangler config read per test file, and each read logs
 // "Using secrets defined in packages/worker/.env" at the default log level.
@@ -37,6 +35,7 @@ export default mergeConfig(
 	sharedProjectConfig,
 	defineProject({
 		plugins: [
+			harfbuzzWorker(),
 			cloudflareTest({
 				remoteBindings: false,
 				wrangler: {

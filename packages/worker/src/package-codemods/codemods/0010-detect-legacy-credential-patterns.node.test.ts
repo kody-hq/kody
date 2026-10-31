@@ -347,6 +347,7 @@ test('0010 ignores placeholder-shaped prose that names nothing', () => {
 				"export const redacted = '{{secret:…}}'",
 				"export const help = JSON.stringify({ usage: 'Send {{integration-token:<integration>}} in a header.' })",
 				"export const vault = 'Use {{secret/<provider>:<ref>}}.'",
+				"export const status = () => ({ example: '{{secret/bwvault:i/<item-uuid>/<field>}}' })",
 			].join('\n'),
 		),
 	).toEqual([])

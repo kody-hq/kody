@@ -228,3 +228,69 @@ test('runCapabilityProxyGatewayFetchStream propagates missing-secret caller erro
 		message: 'Secret "demoToken" was not found.',
 	})
 })
+
+function contextRunStream(
+	byOperator: boolean,
+	runtime: { mode: 'all' } | { mode: 'list'; paths: Array<string> } = {
+		mode: 'all',
+	},
+) {
+	return runCapabilityProxyGatewayFetchStream({
+		ctx: {
+			env: { APP_DB: {} },
+			principal: {
+				kind: 'execution-context-run',
+				ecid: 'ec-1',
+				runId: 'run-1',
+				deadline: Date.now() + 60_000,
+				scopes: null,
+				runtime,
+				byOperator,
+			},
+			callerContext: {
+				baseUrl: 'https://heykody.dev',
+				user: {
+					userId: ownerIdFromStored('user-1'),
+					email: 'user@example.com',
+				},
+				storageContext: null,
+			},
+		} as never,
+		request: new Request(
+			'https://api.kody.test/v1/capability-proxy/gateway-fetch',
+			{
+				method: 'POST',
+				headers: {
+					[gatewayFetchUrlHeaderName]: 'https://example.com/upload',
+					[gatewayFetchHeadersHeaderName]: JSON.stringify({
+						authorization: 'Bearer {{secret:demoToken}}',
+					}),
+				},
+				body: 'raw-bytes',
+			},
+		),
+	})
+}
+
+test('runCapabilityProxyGatewayFetchStream lets every context run use its own credentials, as in Kody cloud', async () => {
+	executeGatewayFetch.mockReset()
+	executeGatewayFetch.mockImplementation(async () => new Response('ok'))
+	for (const byOperator of [true, false]) {
+		const response = await contextRunStream(byOperator)
+		expect(await response.text()).toBe('ok')
+	}
+	expect(executeGatewayFetch).toHaveBeenCalledTimes(2)
+})
+
+test('runCapabilityProxyGatewayFetchStream honors the context runtime allowlist', async () => {
+	executeGatewayFetch.mockReset()
+	for (const byOperator of [true, false]) {
+		await expect(
+			contextRunStream(byOperator, { mode: 'list', paths: ['kody.storage'] }),
+		).rejects.toMatchObject({
+			status: 403,
+			details: { reason: 'context_runtime', path: 'kody.gatewayFetch' },
+		})
+	}
+	expect(executeGatewayFetch).not.toHaveBeenCalled()
+})

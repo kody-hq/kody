@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
 import {
@@ -1131,7 +1131,8 @@ test('hook scripts can create foreign repositories without inherited worktree st
 			status: 0,
 			error: undefined,
 		})
-		expect(top.stdout.trim()).toBe(await realpath(target))
+		// Git prints forward slashes on Windows; resolve() normalizes them.
+		expect(resolve(top.stdout.trim())).toBe(await realpath(target))
 	} finally {
 		await rm(root, { recursive: true, force: true })
 	}

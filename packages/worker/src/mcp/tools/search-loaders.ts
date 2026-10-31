@@ -113,8 +113,6 @@ export async function loadSearchRowsAndRegistry(input: {
 						})
 					},
 					loadUserSecrets: async () => {
-						// Connection profiles grant packages only, never secrets.
-						if (access?.profileGrants) return []
 						const userId = input.userId
 						if (!userId) return []
 						const secrets = await listUserSecretsForSearch({
@@ -124,7 +122,6 @@ export async function loadSearchRowsAndRegistry(input: {
 						return secrets.filter((secret) => revealSecret(secret.credentialId))
 					},
 					loadUserIntegrations: async () => {
-						if (access?.profileGrants) return []
 						const userId = input.userId
 						if (!userId) return []
 						const integrations = await listJoinedIntegrations({

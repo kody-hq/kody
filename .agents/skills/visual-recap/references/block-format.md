@@ -8,6 +8,9 @@ will not render the diagram. Participants are primitive `id`s from
 shows something the first cannot. Omit optional sections rather than leaving
 them empty.
 
+Link a touched primitive's `adrs` (from the classifier) in the table or below it
+when the change bears on that decision.
+
 Optional sections (add only when they have real content): **Before / after**
 (schema, API shape, or route changes as compact before/after fenced blocks or
 tables); **Invariants** (only when the change touches an invariant from

@@ -11,6 +11,10 @@ import {
 	type OnboardingChecklistItemId,
 } from './onboarding-process.ts'
 import { enablementMappingPauseResourceType } from './credential-contracts.ts'
+import {
+	packageApprovePublishHrefFromScope,
+	packageScopeFromNameOrOwner,
+} from './community-links.ts'
 import { orgResourcePathForAccountPath } from './org-pages.ts'
 import { routes } from './routes.ts'
 
@@ -121,7 +125,11 @@ export type WaitingPausedEnablementSignal = {
 	triggerKind: 'cron' | 'subscription' | 'webhook'
 	triggerName: string
 	packageName: string | null
-	reason: 'org_access' | 'package_access' | 'credential_access'
+	reason:
+		| 'org_access'
+		| 'package_access'
+		| 'credential_access'
+		| 'profile_inactive'
 	resourceType: string | null
 	resourceId: string | null
 }
@@ -220,7 +228,7 @@ export function buildWaitingItems(
 	}
 
 	for (const connection of signals.integrationAuth) {
-		const copy = integrationAuthFailureCopy(connection)
+		const copy = integrationAuthFailureCopy({ ...connection, orgSlug })
 		if (copy.who !== 'you' || !copy.reconnectable) continue
 		items.push({
 			id: `integration-auth:${connection.name}`,
@@ -288,6 +296,11 @@ export function buildWaitingItems(
 	}
 
 	for (const pkg of signals.lockedPackages) {
+		const scope = packageScopeFromNameOrOwner({
+			packageName: pkg.name,
+			ownerUsername: signals.username,
+			kodyId: pkg.kodyId,
+		})
 		items.push({
 			id: `publish-lock:${pkg.id}`,
 			kind: 'publish-lock',
@@ -295,10 +308,12 @@ export function buildWaitingItems(
 			why: 'Agents can push drafts, but published code does not move until you promote a commit or unlock it.',
 			who: 'you',
 			doLabel: 'Review lock',
-			href: routes.communityPackageApprovePublish.href({
-				username: signals.username,
-				kodyId: pkg.kodyId,
-			}),
+			href: scope
+				? packageApprovePublishHrefFromScope(scope)
+				: routes.communityPackageApprovePublish.href({
+						username: signals.username,
+						kodyId: pkg.kodyId,
+					}),
 			severity: 'block',
 		})
 	}
@@ -512,6 +527,8 @@ function pausedEnablementWhy(signal: WaitingPausedEnablementSignal) {
 			return `It runs as you, and you no longer hold package:execute on ${signal.packageName ?? 'its package'}. Ask an org Owner for access. ${resumes}`
 		case 'org_access':
 			return `It runs as you, and you no longer have access to this org. ${resumes}`
+		case 'profile_inactive':
+			return `It runs as the profile that turned it on, and that profile or a parent profile was revoked or expired. It stays paused: turn it on again with an active credential.`
 		default: {
 			const unknownReason: never = signal.reason
 			throw new Error(

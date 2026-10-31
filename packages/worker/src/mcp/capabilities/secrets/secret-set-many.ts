@@ -5,11 +5,16 @@ import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { requireMcpUser } from '#mcp/capabilities/meta/require-user.ts'
 import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { assertCanSetSecrets } from '#mcp/secrets/package-access.ts'
 import { secretPageOrgSlugFromCaller } from '#mcp/secrets/package-approval-url.ts'
 import { resolveCallerSecretAuthority } from '#mcp/secrets/secret-authority.ts'
 import { setSecretsAtomically } from '#mcp/secrets/service.ts'
 import { secretScopeValues } from '#mcp/secrets/types.ts'
+import {
+	containsSealedToken,
+	packageSealedTokenRefusal,
+} from '#worker/credentials/sealed-token.ts'
 import { authorizeSecretSet } from './authorize-secret.ts'
 import { assertPackageScopedSecretWriteAvailable } from './package-scoped-secret-write.ts'
 import { secretMetadataSchema, toSecretCapabilityOutput } from './shared.ts'
@@ -77,7 +82,8 @@ export const secretSetManyCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'secretSetMany',
-		orgPermission: 'secret:write',
+		contextRuns: 'deny',
+		orgPermission: ['secret:write', 'secret:create'],
 		description:
 			'Assert authorization for, and optionally atomically persist, multiple secret references for the signed-in user (API keys, PATs, HMAC secrets). Use assertOnly before a multi-write that must not partially succeed. Do not use this for OAuth access or refresh tokens — `/connect/oauth` and `createAuthenticatedFetch` / `integrationTokenRefresh` persist those on the connection. Host use is authorized through secret policy approvals. Saved secrets are consumed in outbound `fetch` calls by placeholder, e.g. `{{secret:name}}`, resolved only for approved hosts.',
 		keywords: [
@@ -98,9 +104,20 @@ export const secretSetManyCapability = defineDomainCapability(
 		outputSchema: secretSetManyOutputSchema,
 		async handler(parsed, ctx: CapabilityContext) {
 			const user = requireMcpUser(ctx.callerContext)
-			const { storageContext } = resolveCallerSecretAuthority({
-				storageContext: ctx.callerContext.storageContext,
-			})
+			const { authorityPackageId, storageContext } =
+				resolveCallerSecretAuthority({
+					storageContext: ctx.callerContext.storageContext,
+				})
+			if (
+				authorityPackageId &&
+				!parsed.assertOnly &&
+				parsed.secrets.some(
+					(secret) =>
+						secret.value !== undefined && containsSealedToken(secret.value),
+				)
+			) {
+				throw new McpCallerError(packageSealedTokenRefusal)
+			}
 			for (const secret of parsed.secrets) {
 				assertPackageScopedSecretWriteAvailable({
 					scope: secret.scope,

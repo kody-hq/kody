@@ -686,8 +686,19 @@ Create, list, and remove follows with `followAdd` / `followList` /
 **Follow** on the package or repo page. Each follow chooses its events
 (`published`, `pushed`, or both); a follow only delivers the events it chose.
 The workspace's Follows page (`/@<slug>/-/follows`) lists them with status and
-pause reason. See the
-[follow CLI contract](../contributing/contracts/follow-cli.md).
+pause reason.
+
+When no package subscription in the follower org has an enablement turned on for
+the topic, the event is not lost: after the same access recheck, Kody stores it
+as a **Recent update** on that follow (one entry per published version or per
+coalesced push window, latest 20 per follow, kept 30 days, zero credits). The
+Follows page and the package Follow panel say which selected events nothing
+handles and list those entries; `followList` returns them as `recent_updates`.
+Handled events, events a subscription's filters drop, zero-credit skips, failed
+handlers or incomplete subscription discovery, paused follows, and pushes the
+follower cannot read are not recorded. See
+[decision 0081](../contributing/decisions/0081-follow-recent-updates-default-delivery.md).
+See the [follow CLI contract](../contributing/contracts/follow-cli.md).
 
 ## `follow.pushed`
 

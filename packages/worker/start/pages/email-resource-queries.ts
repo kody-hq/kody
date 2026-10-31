@@ -12,6 +12,7 @@ import {
 } from '#start/server/email'
 import {
 	emailKeys,
+	isEmailMissingGrant,
 	type EmailResourceInput,
 	type EmailListInput,
 } from './email-resources.ts'
@@ -83,7 +84,10 @@ export function useEmailResources(
 	const destinations = useSuspenseQuery(emailDestinationsQuery(actor))
 	for (const result of [list, detail, destinations])
 		if (isNotFound(result.error)) throw result.error
+	if (isEmailMissingGrant(list.data))
+		return { missingGrant: true as const, payload: undefined }
 	return {
+		missingGrant: false as const,
 		payload: list.data
 			? { ...list.data, selectedMessage: detail.data }
 			: undefined,

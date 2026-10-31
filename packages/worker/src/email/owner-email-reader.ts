@@ -14,6 +14,7 @@ import {
 	type EmailDeliveryStatus,
 	type EmailDirection,
 	type EmailMessageRecord,
+	type EmailMessageView,
 	type EmailProcessingStatus,
 } from './types.ts'
 
@@ -48,6 +49,7 @@ export async function listOwnerEmailMessages(
 		processingStatus?: EmailProcessingStatus | null
 		deliveryStatus?: EmailDeliveryStatus | null
 		classification?: EmailClassification | null
+		view?: EmailMessageView | null
 		limit: number
 	},
 ): Promise<Array<EmailMessageRecord>> {
@@ -57,6 +59,7 @@ export async function listOwnerEmailMessages(
 		processingStatus: input.processingStatus,
 		deliveryStatus: input.deliveryStatus,
 		classification: input.classification,
+		view: input.view,
 		limit: input.limit,
 	})
 	return listed.messages.map((message) =>
@@ -72,6 +75,7 @@ export async function searchOwnerEmailMessages(
 		processingStatus?: EmailProcessingStatus | null
 		deliveryStatus?: EmailDeliveryStatus | null
 		classification?: EmailClassification | null
+		view?: EmailMessageView | null
 		limit: number
 	},
 ): Promise<Array<EmailMessageRecord>> {
@@ -82,6 +86,7 @@ export async function searchOwnerEmailMessages(
 		processingStatus: input.processingStatus,
 		deliveryStatus: input.deliveryStatus,
 		classification: input.classification,
+		view: input.view,
 		limit: input.limit,
 	})
 	return searched.messages.map((message) =>
@@ -92,14 +97,14 @@ export async function searchOwnerEmailMessages(
 export async function listOwnerEmailMessagesPage(
 	input: OwnerReadBase & {
 		query: string
-		classification: EmailClassification | null
+		view: EmailMessageView
 		pageSize: number
 		offset: number
 	},
 ): Promise<{ total: number; messages: Array<EmailMessageRecord> }> {
 	const mailbox = ownerMailbox(input)
 	const filters = {
-		classification: input.classification,
+		view: input.view,
 		query: input.query || null,
 	}
 	const [{ total }, listed] = await Promise.all([
@@ -107,12 +112,12 @@ export async function listOwnerEmailMessagesPage(
 		input.query
 			? mailbox.searchMessages({
 					query: input.query,
-					classification: input.classification,
+					view: input.view,
 					limit: input.pageSize,
 					offset: input.offset,
 				})
 			: mailbox.listMessages({
-					classification: input.classification,
+					view: input.view,
 					limit: input.pageSize,
 					offset: input.offset,
 				}),

@@ -4,9 +4,9 @@
  * `packages/highlight-worker` and `#app/highlight-code.ts` share it.
  */
 
-const highlighterVersion = '1'
+const highlighterVersion = '2'
 
-export const shikiPreClass = 'shiki shiki-themes github-light github-dark'
+export const highlightPreClass = 'tanstack-highlight'
 
 export type HighlightedSpan = {
 	content: string

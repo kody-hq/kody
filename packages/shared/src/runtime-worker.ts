@@ -95,6 +95,12 @@ export type RuntimePackageAppServeInput = {
 	 */
 	identity?: RuntimePackageAppIdentity | null
 	/**
+	 * With a null visitor and no identity: the signed-in person who has not
+	 * signed in to this app yet. Used only to send them to consent for optional
+	 * executor needs; package code never receives it.
+	 */
+	consentPrincipal?: RuntimePackageAppIdentity | null
+	/**
 	 * With a null visitor: the published commit the owner approved for
 	 * internet-visible serving (ADR 0069). Serve refuses an anonymous request
 	 * when it is missing or the live published commit differs.

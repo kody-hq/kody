@@ -338,6 +338,62 @@ export type CreditAdminGrantResult = {
 	createdAt: string
 }
 
+export async function buildAdminCreditGrantStatements(input: {
+	db: D1Database
+	recipientUserId: string
+	grantedByUserId: string
+	amountCents: number
+	note: string | null
+	now: Date
+}): Promise<{
+	entryId: string
+	createdAt: string
+	statements: Array<D1PreparedStatement>
+}> {
+	const createdAt = input.now.toISOString()
+	const amountMicroUsd = input.amountCents * microUsdPerCent
+	const entryId = crypto.randomUUID()
+	await forgiveBeforeFunding({
+		db: input.db,
+		userId: input.recipientUserId,
+		now: input.now,
+	})
+	return {
+		entryId,
+		createdAt,
+		statements: [
+			input.db
+				.prepare(
+					`INSERT OR IGNORE INTO credit_wallets (user_id, created_at, updated_at)
+					 VALUES (?, ?, ?)`,
+				)
+				.bind(input.recipientUserId, createdAt, createdAt),
+			input.db
+				.prepare(
+					`INSERT INTO credit_ledger_entries
+						(id, user_id, kind, amount_micro_usd, month, granted_by_user_id, note, created_at)
+					 VALUES (?, ?, 'admin_grant', ?, ?, ?, ?, ?)`,
+				)
+				.bind(
+					entryId,
+					input.recipientUserId,
+					amountMicroUsd,
+					utcMonthKey(input.now),
+					input.grantedByUserId,
+					input.note?.trim() || null,
+					createdAt,
+				),
+			input.db
+				.prepare(
+					`UPDATE credit_wallets
+					 SET balance_micro_usd = balance_micro_usd + ?, updated_at = ?
+					 WHERE user_id = ?`,
+				)
+				.bind(amountMicroUsd, createdAt, input.recipientUserId),
+		],
+	}
+}
+
 /**
  * House-funded credit grant by an admin (including to themselves). No
  * Stripe charge. The ledger row is the audit record: granted_by, amount,
@@ -351,49 +407,13 @@ export async function grantAdminCredits(input: {
 	note: string | null
 	now: Date
 }): Promise<CreditAdminGrantResult> {
-	const nowIso = input.now.toISOString()
-	const amountMicroUsd = input.amountCents * microUsdPerCent
-	const entryId = crypto.randomUUID()
-	await forgiveBeforeFunding({
-		db: input.db,
-		userId: input.recipientUserId,
-		now: input.now,
-	})
-	await input.db.batch([
-		input.db
-			.prepare(
-				`INSERT OR IGNORE INTO credit_wallets (user_id, created_at, updated_at)
-				 VALUES (?, ?, ?)`,
-			)
-			.bind(input.recipientUserId, nowIso, nowIso),
-		input.db
-			.prepare(
-				`INSERT INTO credit_ledger_entries
-					(id, user_id, kind, amount_micro_usd, month, granted_by_user_id, note, created_at)
-				 VALUES (?, ?, 'admin_grant', ?, ?, ?, ?, ?)`,
-			)
-			.bind(
-				entryId,
-				input.recipientUserId,
-				amountMicroUsd,
-				utcMonthKey(input.now),
-				input.grantedByUserId,
-				input.note?.trim() || null,
-				nowIso,
-			),
-		input.db
-			.prepare(
-				`UPDATE credit_wallets
-				 SET balance_micro_usd = balance_micro_usd + ?, updated_at = ?
-				 WHERE user_id = ?`,
-			)
-			.bind(amountMicroUsd, nowIso, input.recipientUserId),
-	])
+	const grant = await buildAdminCreditGrantStatements(input)
+	await input.db.batch(grant.statements)
 	const wallet = await readCreditWallet(input.db, input.recipientUserId)
 	return {
-		entryId,
+		entryId: grant.entryId,
 		balanceMicroUsd: wallet.balanceMicroUsd,
-		createdAt: nowIso,
+		createdAt: grant.createdAt,
 	}
 }
 

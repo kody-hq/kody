@@ -15,6 +15,7 @@ import {
 	listJobRowsByUserId,
 	listJobRowsPage,
 	listJobStorageIdRowsForUser,
+	recordJobRunNowOutcomeRow,
 	refreshPackageJobRowIdentity,
 	renewClaimedJobRow,
 	restoreJobRowsForUser,
@@ -95,6 +96,20 @@ export type JobsStore = {
 		publishedCommit: string | null
 		callerContextJson: string
 		updatedAt: string
+	}): Promise<boolean>
+	/**
+	 * Records a Run now outcome without rewriting the job's settings, so edits
+	 * that land while it runs survive. See `recordJobRunNowOutcomeRow`.
+	 */
+	recordJobRunNowOutcome(input: {
+		userId: string
+		jobId: string
+		lastRunAt: string
+		lastRunStatus: JobRecord['lastRunStatus']
+		updatedAt: string
+		nextRunAt: string
+		scheduleJson: string
+		timezone: string
 	}): Promise<boolean>
 	/**
 	 * Narrow caller-context rewrite with an optimistic concurrency guard on
@@ -193,6 +208,8 @@ export function createD1JobsStore(db: D1Database): JobsStore {
 		retryClaimedJob: (input) => retryClaimedJobRow({ db, ...input }),
 		refreshPackageJobIdentity: (input) =>
 			refreshPackageJobRowIdentity({ db, ...input }),
+		recordJobRunNowOutcome: (input) =>
+			recordJobRunNowOutcomeRow({ db, ...input }),
 		updateJobCallerContextJson: (input) =>
 			updateJobRowCallerContextJson({ db, ...input }),
 		deleteJob: (input) => deleteJobRow(db, input.userId, input.jobId),

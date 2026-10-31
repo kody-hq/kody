@@ -30,13 +30,13 @@ export const secretMetadataSchema = z.object({
 	placement: credentialFillPlacementSchema
 		.nullable()
 		.describe(
-			'Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means anywhere. New credentials default to headers-only. Distinct from inject. The gateway does not enforce this yet.',
+			'Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means not set (legacy): the gateway fills headers plus the parts it was seen used in before enforcement. New credentials default to headers-only. Distinct from inject. The gateway enforces it: query, path, and body also need an owner opt-in on the credential page, because the host may store the value.',
 		),
 	placement_origin: z
 		.enum(credentialPlacementOrigins)
 		.nullable()
 		.describe(
-			'How fill placement was chosen: manifest (package declaration), default_unread (manifest could not be read), default_undeclared (package has no placement on this need), owner (credential page editor), explicit (secretSet / credentialUpdate placement input). Null on legacy rows. The gateway does not enforce placement yet.',
+			'How fill placement was chosen: manifest (package declaration), default_unread (manifest could not be read), default_undeclared (package has no placement on this need), owner (credential page editor), explicit (secretSet / credentialUpdate placement input). Null on legacy rows. Query, path, and body take effect only after the owner opts in on the credential page.',
 		),
 	disconnected: z
 		.boolean()

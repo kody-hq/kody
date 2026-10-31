@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { SiteLink } from '../components/site-link.tsx'
+import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
 import { formatTimestamp } from '#client/format-timestamp.ts'
 import {
 	AccountManagementMessage,
@@ -9,6 +10,10 @@ import {
 } from './account-management-components.tsx'
 import { recordBodyCss } from './record-table.tsx'
 import { renderHighlightedCode } from '../components/syntax-highlight.tsx'
+import {
+	packageHrefFromScope,
+	packageScopeFromNameOrOwner,
+} from '#universal/community-links.ts'
 import { plainHighlightedCode } from '#universal/highlighted-code.ts'
 import { type AccountJobDetail } from '#universal/loader-data.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
@@ -31,6 +36,8 @@ import {
 import {
 	type PostAccountJobsAction,
 	formatDurationMs,
+	runNowSuccessMessage,
+	runNowSuccessTone,
 	statusColor,
 	statusLabel,
 } from './account-jobs-shared.ts'
@@ -40,15 +47,14 @@ function packageValue(
 	username: string,
 	job: Pick<AccountJobDetail, 'packageName' | 'packageKodyId'>,
 ) {
-	if (username && job.packageKodyId && job.packageName) {
+	const scope = packageScopeFromNameOrOwner({
+		packageName: job.packageName,
+		ownerUsername: username,
+		kodyId: job.packageKodyId,
+	})
+	if (scope && job.packageName) {
 		return (
-			<SiteLink
-				href={routes.communityPackage.href({
-					username,
-					kodyId: job.packageKodyId,
-				})}
-				css={primaryLinkCss}
-			>
+			<SiteLink href={packageHrefFromScope(scope)} css={primaryLinkCss}>
 				{job.packageName}
 			</SiteLink>
 		)
@@ -74,6 +80,7 @@ export function renderJobDetailPlaceholder(title: string, body: string) {
 }
 export function renderAccountJobDetail(input: {
 	username: string
+	orgSlug?: string | null
 	currentHref: string
 	detail: AccountJobDetail
 	isMutating: boolean
@@ -186,6 +193,13 @@ export function renderAccountJobDetail(input: {
 				]}
 			/>
 
+			{input.orgSlug ? (
+				<AutomationExecutionSettings
+					orgSlug={input.orgSlug}
+					target={{ kind: 'job', jobId: detail.id }}
+				/>
+			) : null}
+
 			{detail.lastRunError ? (
 				<AccountManagementMessage tone="error">
 					{detail.lastRunError}
@@ -224,6 +238,7 @@ export function renderAccountJobDetail(input: {
 										'Started',
 										'Finished',
 										'Status',
+										'Trigger',
 										'Duration',
 										'Error',
 										'',
@@ -275,6 +290,14 @@ export function renderAccountJobDetail(input: {
 											}}
 										>
 											{run.status}
+										</td>
+										<td
+											css={{
+												padding: spacing.sm,
+												borderBottom: `1px solid ${colors.border}`,
+											}}
+										>
+											{run.trigger}
 										</td>
 										<td
 											css={{
@@ -360,25 +383,9 @@ export function renderAccountJobDetail(input: {
 					onClick={() =>
 						runJobAction({
 							id: detail.id,
-							successMessage: (payload) => {
-								if (payload.runNow?.deletedAfterRun) {
-									return payload.runNow.ok
-										? 'Ran one-off job and deleted it.'
-										: `Ran one-off job (failed) and deleted it${
-												payload.runNow.error ? `: ${payload.runNow.error}` : '.'
-											}`
-								}
-								if (payload.runNow && !payload.runNow.ok) {
-									return `Run finished with an error${payload.runNow.error ? `: ${payload.runNow.error}` : '.'}`
-								}
-								return 'Job run requested.'
-							},
+							successMessage: runNowSuccessMessage,
+							successTone: runNowSuccessTone,
 							failureMessage: 'Unable to run job now.',
-							afterSuccess: (payload) => {
-								if (payload.runNow?.deletedAfterRun) {
-									navigateToList()
-								}
-							},
 						})
 					}
 					css={primaryButtonCss}

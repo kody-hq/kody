@@ -1,3 +1,4 @@
+import { type SkillReadEvent } from '#universal/skill-metrics.ts'
 import {
 	buildWorkspaceRunCharts,
 	workspaceChartWindow,
@@ -37,6 +38,7 @@ import {
 	type WorkflowProjectionReserveResult,
 	type WorkflowProjectionUpsertInput,
 } from './workflow-projection.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	type RunErrorTriage,
 	type RunRecord,
@@ -59,6 +61,10 @@ import {
 	runRecordMaxResultSnapshotBytes,
 	runRecordMaxTextBytes,
 } from './types.ts'
+import {
+	normalizeRunStartedBy,
+	runStartedByFromRequest,
+} from './run-started-by.ts'
 
 export { runLogSqlBillingOps }
 export type { RunLogSqlBillingInspection, RunLogSqlBillingStats }
@@ -229,6 +235,27 @@ function normalizeLogs(
 		})
 }
 
+/**
+ * Stamp started_by onto a run context when the caller passes a request and
+ * the context does not already set it. Call sites can also set `startedBy`
+ * explicitly (for example after resolving a token name label).
+ */
+export function withRunStartedBy(
+	context: RunRecordContext,
+	request?: RequestContext | null,
+	label?: string | null,
+): RunRecordContext {
+	if (context.startedBy) {
+		return {
+			...context,
+			startedBy: normalizeRunStartedBy(context.startedBy),
+		}
+	}
+	const startedBy = runStartedByFromRequest(request, { label })
+	if (!startedBy) return context
+	return { ...context, startedBy }
+}
+
 function buildRunRow(input: {
 	handle: RunRecordHandle
 	status: RunStatus
@@ -260,6 +287,7 @@ function buildRunRow(input: {
 		durationMs: input.durationMs,
 		errorName: input.errorName,
 		errorMessage: input.errorMessage,
+		startedBy: normalizeRunStartedBy(context.startedBy),
 		metadataJson: serializeJson(context.metadata ?? {}),
 		createdAt: input.handle.startedAt,
 		updatedAt: input.updatedAt,
@@ -289,11 +317,17 @@ export function beginRunRecord(input: {
 	env: Env
 	userId?: OwnerId | null
 	context?: RunRecordContext | null
+	/** Live request used to stamp started_by when context omits it. */
+	request?: RequestContext | null
+	/** Optional display label (API token name); never a secret. */
+	startedByLabel?: string | null
 	waitUntil?: (promise: Promise<unknown>) => void
 }): RunRecordHandle | null {
 	const namespace = runLogBinding(input.env)
 	const userId = runLogOwnerId(input.userId)
 	const context = input.context
+		? withRunStartedBy(input.context, input.request, input.startedByLabel)
+		: null
 	if (!namespace || !userId || !context) return null
 
 	try {
@@ -378,6 +412,32 @@ export async function ensureRunRecordStarted(input: {
 }
 
 /**
+ * Persist the handle's current metadata onto its still-running row, so keyed
+ * retries that land mid-run see it. A finished row is left alone. Never throws.
+ */
+export async function updateRunningRunRecordMetadata(input: {
+	env: Env
+	handle: RunRecordHandle | null
+}): Promise<boolean> {
+	const handle = input.handle
+	if (!handle || handle.persistence !== 'eager') return false
+	if (!runLogBinding(input.env)) return false
+	try {
+		const { updated } = await runLogRpc({
+			env: input.env,
+			userId: handle.userId,
+		}).updateRunningMetadata({
+			runId: handle.id,
+			metadataJson: serializeJson(handle.context.metadata ?? {}),
+		})
+		return updated
+	} catch (error) {
+		console.warn('run-record-update-metadata-failed', error)
+		return false
+	}
+}
+
+/**
  * Awaited claim for keyed runs (execute with `idempotencyKey`). Returns the
  * existing owner when the key is already taken so callers can replay or report
  * in-progress without starting a duplicate sandbox.
@@ -388,6 +448,8 @@ export async function claimRunRecord(input: {
 	env: Env
 	userId?: OwnerId | null
 	context?: RunRecordContext | null
+	request?: RequestContext | null
+	startedByLabel?: string | null
 }): Promise<
 	| { claimed: true; handle: RunRecordHandle }
 	| { claimed: false; run: RunRecord }
@@ -395,25 +457,25 @@ export async function claimRunRecord(input: {
 > {
 	const namespace = runLogBinding(input.env)
 	const userId = runLogOwnerId(input.userId)
-	const context = input.context
-	if (!namespace || !userId || !context) return null
-	const idempotencyKey = normalizeOptionalString(context.idempotencyKey)
+	const stamped = input.context
+		? withRunStartedBy(input.context, input.request, input.startedByLabel)
+		: null
+	if (!namespace || !userId || !stamped) return null
+	const idempotencyKey = normalizeOptionalString(stamped.idempotencyKey)
 	if (!idempotencyKey) return null
 
 	try {
 		const startedAt = new Date().toISOString()
+		const context = {
+			...stamped,
+			idempotencyKey,
+		}
 		const handle: RunRecordHandle = {
 			id: crypto.randomUUID(),
 			userId,
 			startedAt,
-			persistence: runPersistenceForContext({
-				...context,
-				idempotencyKey,
-			}),
-			context: {
-				...context,
-				idempotencyKey,
-			},
+			persistence: runPersistenceForContext(context),
+			context,
 		}
 		const run = buildRunRow({
 			handle,
@@ -492,11 +554,18 @@ export async function finishRunRecord(input: {
 				errorMessage,
 				updatedAt: finishedAt,
 			})
-			await runLogRpc({ env: input.env, userId: handle.userId }).finishRun({
+			const finishResult = await runLogRpc({
+				env: input.env,
+				userId: handle.userId,
+			}).finishRun({
 				run,
 				logs: normalizeLogs(input.logs),
 			})
-			persistedRun = run
+			// Scheduled late finishes may be fenced (`wrote: false`); do not
+			// treat them as persisted or dispatch run.error for a no-op write.
+			if (finishResult.wrote) {
+				persistedRun = run
+			}
 		}
 	} catch (error) {
 		console.warn('run-record-finish-failed', error)
@@ -528,6 +597,8 @@ export async function recordRunRecord(input: {
 	env: Env
 	userId?: OwnerId | null
 	context?: RunRecordContext | null
+	request?: RequestContext | null
+	startedByLabel?: string | null
 	status: RunTerminalStatus
 	logs?: Array<RunRecordLogInput>
 	error?: unknown
@@ -538,6 +609,8 @@ export async function recordRunRecord(input: {
 	const namespace = runLogBinding(input.env)
 	const userId = runLogOwnerId(input.userId)
 	const context = input.context
+		? withRunStartedBy(input.context, input.request, input.startedByLabel)
+		: null
 	if (!namespace || !userId || !context) return null
 
 	let handle: RunRecordHandle
@@ -590,6 +663,10 @@ export async function listRunRecords(input: {
 		since: normalizeOptionalIsoTimestamp(input.filter?.since),
 		until: normalizeOptionalIsoTimestamp(input.filter?.until),
 		errorTriage: input.filter?.errorTriage ?? null,
+		startedByUserId: normalizeOptionalString(input.filter?.startedByUserId),
+		executionContextId: normalizeOptionalString(
+			input.filter?.executionContextId,
+		),
 		limit,
 		cursor: input.cursor ?? null,
 	})
@@ -725,6 +802,8 @@ export async function claimPackageInvocationRecord(input: {
 	userId: OwnerId
 	/** `null` when the caller owns the run record (workflow-sourced invokes). */
 	context: RunRecordContext | null
+	request?: RequestContext | null
+	startedByLabel?: string | null
 	invocation: PackageInvocationClaimInput
 	/** ISO cutoff for in-place stale `in_progress` reclaims. */
 	staleBefore: string
@@ -746,13 +825,18 @@ export async function claimPackageInvocationRecord(input: {
 	let handle: RunRecordHandle | null = null
 	let run: RunLogRowInput | null = null
 	if (input.context) {
+		const context = withRunStartedBy(
+			input.context,
+			input.request,
+			input.startedByLabel,
+		)
 		const startedAt = new Date().toISOString()
 		handle = {
 			id: crypto.randomUUID(),
 			userId: input.userId,
 			startedAt,
-			persistence: runPersistenceForContext(input.context),
-			context: input.context,
+			persistence: runPersistenceForContext(context),
+			context,
 		}
 		run = buildRunRow({
 			handle,
@@ -1148,6 +1232,7 @@ export async function exportRunRecords(input: {
 	jobRunObservability: Array<JobRunObservabilityRecord>
 	packageRunSuccesses: Array<PackageRunSuccessRecord>
 	activationMilestones: Array<ActivationMilestoneRecord>
+	skillReads: Array<SkillReadEvent>
 	nextStartAfter: string | null
 	truncated: boolean
 }> {
@@ -1160,6 +1245,7 @@ export async function exportRunRecords(input: {
 			jobRunObservability: [],
 			packageRunSuccesses: [],
 			activationMilestones: [],
+			skillReads: [],
 			nextStartAfter: null,
 			truncated: false,
 		}
@@ -1178,6 +1264,7 @@ export async function exportRunRecords(input: {
 		jobRunObservability: page.jobRunObservability ?? [],
 		packageRunSuccesses: page.packageRunSuccesses ?? [],
 		activationMilestones: page.activationMilestones ?? [],
+		skillReads: page.skillReads ?? [],
 	}
 }
 
@@ -1266,7 +1353,11 @@ export async function listWorkflowProjections(input: {
 	limit?: number | null
 	cursor?: string | null
 	status?: string | null
+	statuses?: ReadonlyArray<string> | null
 	bindingName?: string | null
+	id?: string | null
+	packageId?: string | null
+	since?: string | null
 }): Promise<{
 	projections: Array<WorkflowProjectionRecord>
 	nextCursor: string | null
@@ -1275,6 +1366,10 @@ export async function listWorkflowProjections(input: {
 		Math.max(input.limit ?? runRecordDefaultPageSize, 1),
 		runRecordMaxPageSize,
 	)
+	const statuses =
+		input.statuses
+			?.map((value) => normalizeOptionalString(value))
+			.filter((value): value is string => value != null) ?? null
 	return await runLogRpc({
 		env: input.env,
 		userId: input.userId,
@@ -1282,7 +1377,11 @@ export async function listWorkflowProjections(input: {
 		limit,
 		cursor: input.cursor ?? null,
 		status: input.status ?? null,
+		statuses,
 		bindingName: input.bindingName ?? null,
+		id: normalizeOptionalString(input.id),
+		packageId: normalizeOptionalString(input.packageId),
+		since: normalizeOptionalIsoTimestamp(input.since),
 	})
 }
 

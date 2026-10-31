@@ -1,37 +1,17 @@
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
-import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import {
 	requireMcpRequest,
 	requireMcpUser,
 } from '#mcp/capabilities/meta/require-user.ts'
+import { requireInteractiveMcpCaller } from '#mcp/capabilities/meta/require-interactive-caller.ts'
 import { dispatchSyntheticWebhookForUser } from '#worker/webhooks/service.ts'
 import { webhookSyntheticDispatchCapabilityName } from '#worker/webhooks/synthetic.ts'
 import { requirePackageRef, webhookPackageRefSchema } from './shared.ts'
 
 const packageRuntimeCallerErrorMessage = `${webhookSyntheticDispatchCapabilityName} is unavailable from package runtime contexts. It is the interactive-MCP post-publish webhook smoke test. Compose another package with a static kody:@scope/pkg/export import.`
-
-function assertDirectMcpCaller(callerContext: {
-	executionOrigin?: string
-	storageContext?: {
-		packageId?: string | null
-		appId?: string | null
-		storageId?: string | null
-	} | null
-}) {
-	if (callerContext.executionOrigin !== 'interactive') {
-		throw new McpCallerError(packageRuntimeCallerErrorMessage)
-	}
-	const storageContext = callerContext.storageContext
-	const packageId = storageContext?.packageId?.trim() ?? ''
-	const appId = storageContext?.appId?.trim() ?? ''
-	const storageId = storageContext?.storageId?.trim() ?? ''
-	if (packageId || appId || storageId) {
-		throw new McpCallerError(packageRuntimeCallerErrorMessage)
-	}
-}
 
 const requestFixtureSchema = z
 	.object({
@@ -49,6 +29,7 @@ export const webhookSyntheticDispatchCapability = defineDomainCapability(
 	capabilityDomainNames.webhooks,
 	{
 		name: webhookSyntheticDispatchCapabilityName,
+		contextRuns: 'deny',
 		orgPermission: 'package:execute',
 		description:
 			'Interactive-MCP post-publish smoke test for one minted package.json#kody.webhooks export. Skips public URL and HMAC, invokes the bound export with a caller fixture, marks the Activity webhook run synthetic: true, and counts against automation usage like a normal delivery. Side effects are real. Unavailable from package jobs, subscriptions, webhooks, or other package runtimes. Does not return url or url_secret. Distinct from any package-local dryRun field on trusted-client POSTs.',
@@ -124,7 +105,10 @@ export const webhookSyntheticDispatchCapability = defineDomainCapability(
 		}),
 		async handler(args, ctx) {
 			requireMcpUser(ctx.callerContext)
-			assertDirectMcpCaller(ctx.callerContext)
+			requireInteractiveMcpCaller(
+				ctx.callerContext,
+				packageRuntimeCallerErrorMessage,
+			)
 			const dispatched = await dispatchSyntheticWebhookForUser({
 				env: ctx.env,
 				requestContext: requireMcpRequest(ctx.callerContext),

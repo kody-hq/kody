@@ -396,12 +396,19 @@ export function AccountMenu(props: {
 				aria-expanded={open ? 'true' : 'false'}
 				data-open={open ? '' : undefined}
 				data-testid="account-menu"
-				css={accountMenuButtonCss}
+				css={[
+					accountMenuButtonCss,
+					props.placement === 'sidebar' && {
+						width: '38px',
+						height: '38px',
+						'@media (pointer: coarse)': { width: '44px', height: '44px' },
+					},
+				]}
 			>
 				<UserAvatar
 					displayName={name}
 					avatarUrl={props.avatarUrl}
-					size={34}
+					size={props.placement === 'sidebar' ? 28 : 34}
 					variant="well"
 				/>
 			</button>

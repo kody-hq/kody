@@ -74,7 +74,7 @@ export function formatUnreachableApiMessage(input: {
 	return (
 		`${base} The request may have been sent; outcome is unknown. ` +
 		`If this was a write such as \`kody package publish\`, list recent runs with ` +
-		`\`kody api workflowRunList\` (or MCP \`workflowRunList\`) before publishing again. ` +
+		`\`kody api workflowRunList\` (or MCP \`workflowRunList\`; pass \`workflow_id\` when known) before publishing again. ` +
 		networkHint
 	)
 }

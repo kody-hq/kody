@@ -1,4 +1,13 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	defaultEmailMessageView,
+	emailClassificationValues,
+	emailMessageViewValues,
+	isEmailMessageView,
+	manualEmailClassificationReason,
+	type EmailClassification,
+	type EmailMessageView,
+} from '#universal/email-message-view.ts'
 
 export const emailDirectionValues = ['inbound', 'outbound'] as const
 export type EmailDirection = (typeof emailDirectionValues)[number]
@@ -31,8 +40,53 @@ export const emailDeliveryEventTypeValues = [
 export type EmailDeliveryEventType =
 	(typeof emailDeliveryEventTypeValues)[number]
 
-export const emailClassificationValues = ['accepted', 'quarantined'] as const
-export type EmailClassification = (typeof emailClassificationValues)[number]
+export {
+	defaultEmailMessageView,
+	emailClassificationValues,
+	emailMessageViewValues,
+	isEmailMessageView,
+	manualEmailClassificationReason,
+	type EmailClassification,
+	type EmailMessageView,
+}
+
+/** Receive-time verdicts. `spam` is only ever set by a person or admin. */
+export const emailReceiveClassificationValues = [
+	'accepted',
+	'quarantined',
+] as const satisfies ReadonlyArray<EmailClassification>
+export type EmailReceiveClassification =
+	(typeof emailReceiveClassificationValues)[number]
+
+/**
+ * SQL predicates for a list view over a message table. Literal-only so the
+ * Mailbox DO and the system D1 graph share one definition.
+ */
+export function emailMessageViewSqlClauses(
+	view: EmailMessageView,
+	columnPrefix = '',
+): Array<string> {
+	const classification = `${columnPrefix}classification`
+	const archivedAt = `${columnPrefix}archived_at`
+	switch (view) {
+		case 'inbox':
+			return [`${classification} <> 'spam'`, `${archivedAt} IS NULL`]
+		case 'accepted':
+			return [`${classification} = 'accepted'`, `${archivedAt} IS NULL`]
+		case 'quarantined':
+			return [`${classification} = 'quarantined'`, `${archivedAt} IS NULL`]
+		case 'spam':
+			return [`${classification} = 'spam'`]
+		case 'archived':
+			return [`${classification} <> 'spam'`, `${archivedAt} IS NOT NULL`]
+		case 'all':
+			return []
+		default: {
+			const exhaustive: never = view
+			throw new Error(`Unhandled email message view: ${String(exhaustive)}`)
+		}
+	}
+}
 
 export const emailSenderRuleKindValues = ['address', 'domain'] as const
 export type EmailSenderRuleKind = (typeof emailSenderRuleKindValues)[number]
@@ -150,6 +204,8 @@ export type EmailMessageRecord = {
 	processingStatus: EmailProcessingStatus
 	classification: EmailClassification
 	classificationReason: string | null
+	/** Orthogonal to classification; archived mail leaves the default inbox. */
+	archivedAt: string | null
 	providerMessageId: string | null
 	deliveryStatus: EmailDeliveryStatus | null
 	deliveryStatusAt: string | null

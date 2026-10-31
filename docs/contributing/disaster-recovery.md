@@ -59,16 +59,17 @@ First-proven dates for each lane (newest first). Re-prove and update after
 material schema/storage/pipeline changes; a lane is only as trusted as its most
 recent evidence.
 
-| Date (UTC) | Lane proven                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-10-18 | Staging fell behind one UTC day per day. Consecutive `exporter/summary.json` completions were ~27–28h apart (2026-10-08 through 2026-10-15), and 2026-10-16 was still in the mailbox phase on 2026-10-18T03:05Z (`ownerIndex` 736, revision 2645, `advancedAt` moving). The 06:15 watchdog stayed silent because that cursor was inside the 2h "still draining" window. D1 exports and hourly seals of finished days were fine.                                                                                                                                                                                                                                                                |
-| 2026-09-22 | Staging catch-up lookback raised 2→14 days and cadence 15→5 min after eleven stranded days (2026-09-12..2026-09-22) aged out mid-phase under the old window; seal scan matched at 16 days (14 lookback + today + overnight gap). Operator `POST /__maintenance/dr-export` resumes each day until `summaryWritten` (see PR for recovery status).                                                                                                                                                                                                                                                                                                                                                |
-| 2026-08-07 | First stranded staging day recovered and sealed (`daily/full/2026-08-07/manifest.json`, sealedAt 2026-08-07T19:45:16Z, 341 sealed objects). The night ran out of window mid-`artifacts` (progress revision 714, no summary; 06:15 watchdog paged correctly). Recovery resumed the existing `exporter/progress.json` (no staged work purged), staged the ~20 remaining snapshots, wrote `exporter/summary.json` at 19:05:29Z, and the unchanged hourly control-plane seal picked the day up at 19:45. Motivated the daytime catch-up lane and `POST /__maintenance/dr-export` ([#1287](https://github.com/kentcdodds/kody/pull/1287); [#1223](https://github.com/kentcdodds/kody/issues/1223)). |
-| 2026-08-07 | Offline escrow unseal smoke test proven with the real `SECRET_ESCROW_PASSPHRASE` against `escrow/secret-store-key.v1.json` ([#1091](https://github.com/kentcdodds/kody/issues/1091)): recovered key matched production `SECRET_STORE_KEY`; wrong passphrase failed cleanly (auth-tag error, no partial output).                                                                                                                                                                                                                                                                                                                                                                                |
-| 2026-07-28 | Isolated restore drill green through the product UI against a sealed day (`PRAGMA quick_check` ok, table counts plausible, temp database cleaned up). Required [#1002](https://github.com/kentcdodds/kody/pull/1002): presigned D1 import uploads reject chunked bodies with HTTP 411, so stream uploads go through `FixedLengthStream`.                                                                                                                                                                                                                                                                                                                                                       |
-| 2026-07-28 | First sealed full-backup day (`daily/full/2026-07-28/manifest.json`). Required [#1000](https://github.com/kentcdodds/kody/pull/1000): bucket-lock rules reject puts on existing keys with error 10069 before conditionals are evaluated, and exporter resume became identity-driven after mid-window inventory drift produced duplicate storage-index entries.                                                                                                                                                                                                                                                                                                                                 |
-| 2026-07-28 | First completed staging run (`staging/2026-07-28/exporter/summary.json`; 186 storage dumps, R2 indexes, artifacts index).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| 2026-07-26 | First verified nightly D1 export (signed manifest, stored-object digest verified; ~118 MB).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Date (UTC) | Lane proven                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-10-29 | 2026-10-25 sat in the storage phase for four days (`storageIndex` ~724, revision ~2880) and no full backup sealed after 2026-10-24. One bucket's next 250-entry StorageRunner page was too large to return: ticks failed or ran out of memory (KODY-AQ) on the same page, but the lease-acquire persist still bumped `advancedAt`, so the day looked like it was moving. The 06:15 watchdog threw the 2+ day lag error on 2026-10-27/28/29, but `JobsHost` RPC methods had no Sentry client, so no issue opened. Fixes: byte-bounded storage pages (`maxBytes`), lease-only persists no longer move `advancedAt`, a storage identity whose last 3 serial attempts all aborted is skipped with a `storage dump failed:` warning, storage first pages are fetched 4 at a time, and `JobsHost` is wrapped with `Sentry.withSentry`. |
+| 2026-10-18 | Staging fell behind one UTC day per day. Consecutive `exporter/summary.json` completions were ~27–28h apart (2026-10-08 through 2026-10-15), and 2026-10-16 was still in the mailbox phase on 2026-10-18T03:05Z (`ownerIndex` 736, revision 2645, `advancedAt` moving). The 06:15 watchdog stayed silent because that cursor was inside the 2h "still draining" window. D1 exports and hourly seals of finished days were fine.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 2026-09-22 | Staging catch-up lookback raised 2→14 days and cadence 15→5 min after eleven stranded days (2026-09-12..2026-09-22) aged out mid-phase under the old window; seal scan matched at 16 days (14 lookback + today + overnight gap). Operator `POST /__maintenance/dr-export` resumes each day until `summaryWritten` (see PR for recovery status).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 2026-08-07 | First stranded staging day recovered and sealed (`daily/full/2026-08-07/manifest.json`, sealedAt 2026-08-07T19:45:16Z, 341 sealed objects). The night ran out of window mid-`artifacts` (progress revision 714, no summary; 06:15 watchdog paged correctly). Recovery resumed the existing `exporter/progress.json` (no staged work purged), staged the ~20 remaining snapshots, wrote `exporter/summary.json` at 19:05:29Z, and the unchanged hourly control-plane seal picked the day up at 19:45. Motivated the daytime catch-up lane and `POST /__maintenance/dr-export` ([#1287](https://github.com/kentcdodds/kody/pull/1287); [#1223](https://github.com/kentcdodds/kody/issues/1223)).                                                                                                                                   |
+| 2026-08-07 | Offline escrow unseal smoke test proven with the real `SECRET_ESCROW_PASSPHRASE` against `escrow/secret-store-key.v1.json` ([#1091](https://github.com/kentcdodds/kody/issues/1091)): recovered key matched production `SECRET_STORE_KEY`; wrong passphrase failed cleanly (auth-tag error, no partial output).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 2026-07-28 | Isolated restore drill green through the product UI against a sealed day (`PRAGMA quick_check` ok, table counts plausible, temp database cleaned up). Required [#1002](https://github.com/kentcdodds/kody/pull/1002): presigned D1 import uploads reject chunked bodies with HTTP 411, so stream uploads go through `FixedLengthStream`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 2026-07-28 | First sealed full-backup day (`daily/full/2026-07-28/manifest.json`). Required [#1000](https://github.com/kentcdodds/kody/pull/1000): bucket-lock rules reject puts on existing keys with error 10069 before conditionals are evaluated, and exporter resume became identity-driven after mid-window inventory drift produced duplicate storage-index entries.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 2026-07-28 | First completed staging run (`staging/2026-07-28/exporter/summary.json`; 186 storage dumps, R2 indexes, artifacts index).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 2026-07-26 | First verified nightly D1 export (signed manifest, stored-object digest verified; ~118 MB).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 Still unproven live: graduated production restore into the production database
 (drill-level evidence only; it shares the `FixedLengthStream` upload path),
@@ -112,6 +113,10 @@ Nightly */5 ticks 00:30–06:10 UTC           02:15 UTC: D1 export Workflow
 Daytime */5 ticks: staging catch-up         Admin UI: drill / production restore
   resume oldest stranded day (≤14 days)     Agent seal API: `/__maintenance/dr-seal`
 06:15 UTC: staging watchdog → Sentry
+Same nightly window: paced D1 walk          Paced backup lane only; REST D1
+  APP_DB + AUDIT_DB + JOBS_DB → d1-paced/…   stays the drill / restore path
+Hourly :45 / Sunday 07:00: paced freshness  GET /__maintenance/dr-paced-status
+  and weekly paced restore drill → Sentry
 ```
 
 ### What intentionally lives on the DR (KCD) account
@@ -146,22 +151,25 @@ which is account-scoped; the two gateways are independent.
 
 Contract: `packages/shared/src/backup-staging.ts`.
 
-| Prefix                          | Mutability       | Contents                                                                                                  |
-| ------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------- |
-| `daily/d1/...`, `weekly/d1/...` | Immutable        | Signed D1 SQL + schema-v2 D1 manifests                                                                    |
-| `staging/{day}/...`             | Mutable          | Production exporter cursor progress, chunked phase output, indexes, NDJSON dumps, `exporter/summary.json` |
-| `daily/full/{day}/...`          | Immutable        | Sealed copy of staged indexes/dumps + Ed25519 full-backup manifest                                        |
-| `blobs/sha256/{hash}`           | Immutable        | Deduplicated email MIME, community assets, published source snapshots                                     |
-| `escrow/`                       | Operator-managed | Sealed `SECRET_STORE_KEY` blob (`escrow/secret-store-key.v1.json`)                                        |
+| Prefix                                      | Mutability       | Contents                                                                                                  |
+| ------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------- |
+| `daily/d1/...`, `weekly/d1/...`             | Immutable        | Signed D1 SQL + schema-v2 D1 manifests (REST export; UI drill and production restore)                     |
+| `staging/{day}/d1-paced/{databaseName}/...` | Mutable          | Paced D1 night walk (progress, table TSV, parts, night manifest)                                          |
+| `daily/d1-paced/{databaseId}/{day}/...`     | Immutable        | Sealed weekday paced nights                                                                               |
+| `weekly/d1-paced/{databaseId}/{day}/...`    | Immutable        | Sealed Sunday UTC paced full bases                                                                        |
+| `staging/{day}/...`                         | Mutable          | Production exporter cursor progress, chunked phase output, indexes, NDJSON dumps, `exporter/summary.json` |
+| `daily/full/{day}/...`                      | Immutable        | Sealed copy of staged indexes/dumps + Ed25519 full-backup manifest                                        |
+| `blobs/sha256/{hash}`                       | Immutable        | Deduplicated email MIME, community assets, published source snapshots                                     |
+| `escrow/`                                   | Operator-managed | Sealed `SECRET_STORE_KEY` blob (`escrow/secret-store-key.v1.json`)                                        |
 
 ### Capture lanes
 
 1. **D1 (control plane)** — Dedicated Worker/Workflow in
    `packages/backup-control-plane/` calls the production-account D1 export API
-   with `CLOUDFLARE_API_TOKEN` (Account D1 Edit) for every entry in
-   `SOURCE_DATABASES`: APP_DB (`kody`, `SOURCE_DATABASE_ID`) and JOBS_DB
-   (`kody-jobs`). Each database gets its own Workflow instance
-   (`d1-backup-<databaseId>-<day>`) and objects under
+   with `CLOUDFLARE_API_TOKEN` (Account D1 Edit) for every `SOURCE_DATABASES`
+   entry whose `restExport` is omitted or `true`: APP_DB (`kody`,
+   `SOURCE_DATABASE_ID`) and JOBS_DB (`kody-jobs`). Each database gets its own
+   Workflow instance (`d1-backup-<databaseId>-<day>`) and objects under
    `<tier>/d1/<database-uuid>/<day>/`. The signed schema-v2 manifest records
    that database's id, name, SQL byte count, and sha256. Restore drills sample
    table counts after import; the manifest itself does not store row counts.
@@ -173,6 +181,26 @@ Contract: `packages/shared/src/backup-staging.ts`.
    inert otherwise. The production `kody-jobs` UUID is the live D1 named
    `kody-jobs`; deploy resolves it by name in
    `tools/ci/jobs-worker-resources.ts` (`jobs_d1_database_id`).
+   `SOURCE_DATABASES` entries accept optional `restExport` (default `true`).
+   `restExport: false` skips that database on REST cron, hourly freshness, and
+   seal-full REST prerequisites; the paced walk is independent. **D1 paced walk
+   (production worker)** — When `DR_D1_PACED_BACKUP_ENABLED` is `"true"` and the
+   same DR S3 credentials are set, the production worker walks APP_DB, AUDIT_DB,
+   and JOBS_DB page-by-page (`packages/worker/src/dr/d1-paced-backup.ts`) in the
+   same nightly window as non-D1 staging. Staging lives under
+   `staging/{day}/d1-paced/{databaseName}/`. Completed nights seal to
+   `daily/d1-paced/{databaseId}/{day}/` (weekdays) or
+   `weekly/d1-paced/{databaseId}/{day}/` (Sunday UTC full bases). Tick writers
+   flush TSV parts at 4 MiB and stop a tick at 8 MiB emitted so peak heap stays
+   under the isolate limit. The weekly Sunday 07:00 drill rebuilds from the
+   sealed chain and compares counts; a mismatch throws so the scheduled lane
+   pages Sentry. This lane does not feed the admin UI drill or graduated
+   production restore — those stay on the REST SQL objects (APP_DB and JOBS_DB
+   only; AUDIT_DB is paced-only). `GET`/`POST /__maintenance/dr-paced-status`
+   (bearer `DR_RESTORE_SECRET`, optional `?day=YYYY-MM-DD`) reports
+   staging/sealed presence per source. `DR_D1_PACED_SOURCES` commits APP_DB +
+   AUDIT_DB + JOBS_DB (deploy still expands live D1 UUIDs from resource
+   bindings).
 2. **Other canonical stores (production worker)** — When
    `DR_EXPORT_ENABLED=true` and DR S3 credentials are set, nightly ticks
    (`packages/worker/src/dr/exporter.ts`) stage:
@@ -214,7 +242,7 @@ Contract: `packages/shared/src/backup-staging.ts`.
      during the nightly window so the two lanes do not double-run the same tick.
      The 14-day lookback stays above both the 2026-09 failure (eleven days aged
      out under a 2-day window) and the 2026-10 pace (~28h wall clock per staged
-     day at ~700 Mailbox owners). Mailbox and RunLog now fetch 8 owners per wave
+     day at ~700 Mailbox owners). Mailbox and RunLog fetch 8 owners per wave
      inside the 45s tick, which should finish a day well inside 24h; the wide
      lookback is what keeps a regression from aging a day out mid-phase.
      Catch-up is resume-only: a day that never staged progress is not started
@@ -320,13 +348,13 @@ Restore rebuilds the derived stores below; do not treat them as recovery media:
   selective export cursor and remain excluded. Incident handling must treat
   in-flight workflow state as lost and restart or reconcile affected workflows.
 - **`AUDIT_DB`** — the separate D1 database containing hashed security audit
-  events with 180-day retention has no cross-account backup lane. This is
-  **accepted-unprotected** operator/security evidence, not user content
-  (confirmed 2026-08-07): losing the retained audit trail in a DR account-loss
-  event is acceptable; new events accumulate again after restore. Revisit only
-  if forensics retention across account loss becomes a requirement. Scheduled
-  job definitions live in `JOBS_DB` (`kody-jobs`) and are part of the nightly D1
-  export; APP_DB does not store them.
+  events with 180-day retention is included in the paced D1 walk
+  (`DR_D1_PACED_SOURCES`) but is **not** on the REST SQL / admin UI drill /
+  graduated production-restore path (those still read only APP_DB and JOBS_DB).
+  Cross-account REST export of AUDIT_DB remains out of scope: paced sealed
+  nights are the backup lane for this evidence. Scheduled job definitions live
+  in `JOBS_DB` (`kody-jobs`) and are part of the nightly D1 export; APP_DB does
+  not store them.
 
 ### Honest gaps
 
@@ -706,7 +734,12 @@ the correctness spec and incident-only fallback:
 | 06:15                           | Production worker | Staging watchdog: missing today's summary with no older stranded days, today complete while earlier days are stranded, catch-up with no advance for 2h, or the oldest stranded day 2+ UTC days behind, fails → Sentry. A one-day backlog that is still advancing does not page |
 | 02:15                           | Control plane     | Primary D1 export Workflow per configured database (APP_DB and JOBS_DB)                                                                                                                                                                                                        |
 | 02:45–05:45 hourly              | Control plane     | Catch-up create/restart of same-day D1 Workflows                                                                                                                                                                                                                               |
-| Hourly `:45`                    | Control plane     | D1 freshness for every configured source (identity, size ceiling, manifest age ≤26h, R2 size/ETag) + seal recent complete days                                                                                                                                                 |
+| Hourly `:45`                    | Control plane     | D1 freshness for every REST-enabled source (identity, size ceiling, manifest age ≤26h, R2 size/ETag) + seal recent complete days                                                                                                                                               |
+| `*/5` during 00:30–06:10        | Production worker | Paced D1 walk (`dr_d1_paced_backup`): APP_DB, AUDIT_DB, and JOBS_DB when `DR_D1_PACED_BACKUP_ENABLED=true`                                                                                                                                                                     |
+| Every 5 min outside 00:30–06:10 | Production worker | Paced D1 catch-up: resume the oldest incomplete paced night (today − ≤14 days)                                                                                                                                                                                                 |
+| 06:15                           | Production worker | Paced D1 watchdog: tonight's paced staging/sealed manifests still missing → Sentry                                                                                                                                                                                             |
+| Hourly `:45`                    | Production worker | Paced D1 freshness: sealed paced night for yesterday (or today after 06:15) must exist for every bound source                                                                                                                                                                  |
+| Sunday 07:00–07:19              | Production worker | Paced D1 restore drill: rebuild sealed chain, compare counts; mismatch → Sentry                                                                                                                                                                                                |
 
 ### Stranded staging days (manual finish)
 
@@ -789,8 +822,8 @@ What stays reachable on the apex:
 
 - `GET /health` — external uptime check. The rule expression is an exact path
   match, so `/health/components` is redirected.
-- `/__maintenance/*` — DR restore, reindex, PITR, and other operator endpoints
-  must stay reachable while ingress is off.
+- `/__maintenance/*` — DR restore, paced D1 status, reindex, PITR, and other
+  operator endpoints must stay reachable while ingress is off.
 
 Everything else on `kody.codes`, including `POST /webhooks/stripe`, is a 302 to
 the status maintenance page (`preserve_query_string` false). Stripe retries on
@@ -948,8 +981,9 @@ Work top-to-bottom. Leave gates false until the matching gate item is done.
   self-retention), invocation idempotency ledger, and workflow projections;
   never-pruned job observability and activation state are backed up
 - Backup of UserMeter (reconciliation/restart is the accepted recovery path)
-- Backup of `AUDIT_DB` hashed audit events (180-day evidence;
-  accepted-unprotected 2026-08-07 — operator confirmed no backup lane for now)
+- Graduated production restore / admin UI drill of `AUDIT_DB` (paced walk seals
+  APP_DB + AUDIT_DB + JOBS_DB; REST SQL restore still covers APP_DB and JOBS_DB
+  only)
 - Plaintext `SECRET_STORE_KEY` or other credentials inside backup media
 
 ## Provider references

@@ -30,9 +30,12 @@ vi.mock('#worker/package-runtime/module-graph.ts', () => ({
 }))
 
 import {
+	createSnapshotFilesWorkspace,
+	isolatedCredentialScanMinSourceBytes,
 	repoChecksSourceMaxFiles,
 	repoChecksSourceMaxTotalBytes,
 	runRepoChecks,
+	runRepoSourceWalkChecks,
 } from './checks.ts'
 import { withRequiredPackageDocs } from './checks-test-docs.ts'
 import {
@@ -59,8 +62,8 @@ const bundleContext = {
 	userId: ownerIdFromStored('user-123'),
 }
 
-function onceJob(entry: string) {
-	return { entry, schedule: { type: 'once', runAt: '2026-04-17T15:00:00Z' } }
+function recurringJob(entry: string) {
+	return { entry, schedule: { type: 'interval', every: '1h' } }
 }
 
 function manifest(
@@ -245,6 +248,74 @@ test('runRepoChecks keeps non-code source files for publish snapshots while excl
 	expect(snapshotFiles.has('.git/config')).toBe(false)
 })
 
+test('runRepoChecks skips .kodyignore matches before checks and publish caps', async () => {
+	const files = packageFiles(manifest('ignored-fixtures'), {
+		'.kodyignore': 'fixtures/\n',
+		...Object.fromEntries(
+			Array.from({ length: repoChecksSourceMaxFiles + 1 }, (_, index) => [
+				`fixtures/case-${index}.ts`,
+				`export const value = ${index}\n`,
+			]),
+		),
+	})
+	const { result } = await runChecks(files)
+
+	expect(Object.keys(result.sourceFiles).sort()).toEqual([
+		'.kodyignore',
+		'AGENTS.md',
+		'README.md',
+		'package.json',
+		'src/index.ts',
+	])
+	expect(
+		result.results.some((check) =>
+			check.message.includes('file publish check limit'),
+		),
+	).toBe(false)
+})
+
+test('runRepoChecks warns when .kodyignore hides declaration files tsconfig may need', async () => {
+	const files = packageFiles(manifest('ignored-declarations'), {
+		'.kodyignore': '**/__tests__/\n',
+		'tsconfig.json': '{"include":["src","types"]}',
+		'types/__tests__/runtime.d.ts': 'declare const example: string\n',
+		'src/__tests__/case.ts': 'export const value = 1\n',
+	})
+	const { result } = await runChecks(files)
+	const typecheck = findCheck(result, 'typecheck')
+
+	expect(typecheck?.message).toContain('`types/__tests__/runtime.d.ts`')
+	expect(typecheck?.message).toContain('`!types/__tests__/`')
+	expect(typecheck?.message).not.toContain('case.ts')
+
+	files.set('.kodyignore', '**/__tests__/\n!types/__tests__/\n')
+	const { result: kept } = await runChecks(files)
+	expect(findCheck(kept, 'typecheck')?.message).not.toContain('.kodyignore')
+	expect(findCheck(kept, 'lint')?.message).not.toContain('placeholder')
+})
+
+test('runRepoSourceWalkChecks counts .kodyignore matches for plain repos', async () => {
+	const files = new Map<string, string>([
+		['.kodyignore', 'fixtures/\n'],
+		['README.md', '# notes\n'],
+		...Array.from(
+			{ length: repoChecksSourceMaxFiles },
+			(_, index) => [`fixtures/case-${index}.txt`, `${index}\n`] as const,
+		),
+	])
+	const result = await runRepoSourceWalkChecks({
+		workspace: {
+			readFile: async (path) => files.get(path) ?? null,
+			glob: async () =>
+				Array.from(files.keys(), (path) => ({ path, type: 'file' })),
+		},
+		sourceRoot: '/',
+	})
+
+	expect(result.ok).toBe(false)
+	expect(result.message).toContain('file publish check limit')
+})
+
 test('runRepoChecks strips repo-session workspace prefixes from package snapshot paths', async () => {
 	const { result, snapshot, snapshotFiles, getSemanticDiagnostics } =
 		await runChecks(
@@ -252,7 +323,7 @@ test('runRepoChecks strips repo-session workspace prefixes from package snapshot
 				[
 					'/session/package.json',
 					manifest('session-backed-job', {
-						jobs: { session: onceJob('/src/job.ts') },
+						jobs: { session: recurringJob('/src/job.ts') },
 					}),
 				],
 				['/session/src/index.ts', ready],
@@ -278,7 +349,7 @@ test('runRepoChecks strips repo-session workspace prefixes from package snapshot
 })
 
 test('runRepoChecks typechecks package-owned jobs (kody:runtime imports, emits, and ESM entrypoints)', async () => {
-	const jobs = { runtime: onceJob('src/job.ts') }
+	const jobs = { runtime: recurringJob('src/job.ts') }
 	const runtimeGlobals = await runChecks(
 		packageFiles(manifest('runtime-globals-job', { jobs }), {
 			'src/job.ts': `import { kody, packageStorage } from 'kody:runtime'
@@ -302,6 +373,7 @@ export default async (params) => {
 	)?.[1]
 	expect(prelude).toContain('declare module "kody:runtime"')
 	expect(prelude).toContain('export function packageStorage()')
+	expect(prelude).toContain('export type KodyCredentialClient = {')
 	expect(prelude).not.toMatch(
 		/declare const (capabilities|secretHeaders|packageContext|packages|email|workflows|events|packageSecrets)/,
 	)
@@ -369,17 +441,9 @@ test('runRepoChecks validates every persisted package artifact target before pub
 			manifest(
 				'persisted-artifacts',
 				{
-					jobs: { digest: onceJob('src/job.ts') },
+					jobs: { digest: recurringJob('src/job.ts') },
 					subscriptions: {
 						'email.message.received': { handler: './src/subscription.ts' },
-					},
-					retrievers: {
-						search: {
-							export: './search',
-							name: 'Search',
-							description: 'Searches package records.',
-							scopes: ['search'],
-						},
 					},
 				},
 				{
@@ -433,8 +497,8 @@ test('runRepoChecks typechecks every callable through one language-service progr
 				'multi-callable',
 				{
 					jobs: {
-						alpha: onceJob('src/job-a.ts'),
-						beta: onceJob('src/job-b.ts'),
+						alpha: recurringJob('src/job-a.ts'),
+						beta: recurringJob('src/job-b.ts'),
 					},
 					subscriptions: {
 						'email.message.received': { handler: './src/on-email.ts' },
@@ -492,7 +556,7 @@ test('runRepoChecks typechecks every callable through one language-service progr
 test('runRepoChecks still reports unknown globals for package-owned jobs', async () => {
 	const { result } = await runChecks(
 		packageFiles(
-			manifest('broken-job', { jobs: { broken: onceJob('src/job.ts') } }),
+			manifest('broken-job', { jobs: { broken: recurringJob('src/job.ts') } }),
 			{ 'src/job.ts': 'export default async () => totallyMissingThing()\n' },
 		),
 		{
@@ -524,7 +588,7 @@ test('runRepoChecks still reports unknown globals for package-owned jobs', async
 
 test('runRepoChecks injects package tsconfig overlays that allow optional .ts imports', async () => {
 	const packageJson = manifest('ts-extension-job', {
-		jobs: { tsExtension: onceJob('src/job.ts') },
+		jobs: { tsExtension: recurringJob('src/job.ts') },
 	})
 	const sources = {
 		'src/job.ts': 'export { default } from "./helper.ts"\n',
@@ -1090,6 +1154,77 @@ test('an isolate reset during a check phase becomes a failed check, not a crash'
 	)
 })
 
+test('large source trees run the credential stamp scan in its own isolate', async () => {
+	const filler = `export const filler = ${JSON.stringify('x'.repeat(1024))}\n`
+	const fillerFiles = Object.fromEntries(
+		Array.from(
+			{
+				length: Math.ceil(isolatedCredentialScanMinSourceBytes / filler.length),
+			},
+			(_, index) => [`src/generated/filler-${index}.ts`, filler],
+		),
+	)
+	const phaseRequests: Array<Record<string, unknown>> = []
+	const { env } = isolatedEnv(async (request) => {
+		phaseRequests.push(request)
+		if (request.phase === 'credentials') {
+			return {
+				ok: true,
+				message: 'credentials ok (isolated)',
+				changedFiles: { 'src/index.ts': '// stamped\n' },
+				stampKeys: [],
+			}
+		}
+		return { ok: true, message: 'ok (isolated)' }
+	})
+	const { result } = await runChecks(
+		packageFiles(manifest('large-tree-package'), {
+			'src/index.ts': `export default async function main() {\n\treturn 'ok'\n}\n`,
+			...fillerFiles,
+		}),
+		{ env, baseUrl: '/', userId: ownerIdFromStored('user-123') },
+	)
+
+	expect(phaseRequests.map((request) => request.phase)).toContain('credentials')
+	expect(findCheck(result, 'credentials')).toMatchObject({
+		ok: true,
+		message: 'credentials ok (isolated)',
+	})
+	expect(result.sourceFiles['src/index.ts']).toBe('// stamped\n')
+})
+
+test('an isolate reset during the credential scan names that step', async () => {
+	const filler = `export const filler = ${JSON.stringify('x'.repeat(1024))}\n`
+	const fillerFiles = Object.fromEntries(
+		Array.from(
+			{
+				length: Math.ceil(isolatedCredentialScanMinSourceBytes / filler.length),
+			},
+			(_, index) => [`src/generated/filler-${index}.ts`, filler],
+		),
+	)
+	const { env } = isolatedEnv(async (request) => {
+		if (request.phase === 'credentials') {
+			throw new Error(
+				"Durable Object's isolate exceeded its memory limit and was reset.",
+			)
+		}
+		return { ok: true, message: 'ok (isolated)' }
+	})
+	const { result } = await runChecks(
+		packageFiles(manifest('large-tree-package'), {
+			'src/index.ts': `export default async function main() {\n\treturn 'ok'\n}\n`,
+			...fillerFiles,
+		}),
+		{ env, baseUrl: '/', userId: ownerIdFromStored('user-123') },
+	)
+
+	expect(result.ok).toBe(false)
+	const credentials = findCheck(result, 'credentials')
+	expect(credentials?.ok).toBe(false)
+	expect(credentials?.message).toContain('credential stamp scan')
+})
+
 test('runRepoChecks validates package skills and fails publish on malformed SKILL.md frontmatter', async () => {
 	const okFiles = packageFiles(
 		manifest('skilled', {}, { name: '@kentcdodds/skilled' }),
@@ -1418,4 +1553,23 @@ test('credentialPatternNoticeForFiles reads repo paths under the source root', (
 	expect(
 		credentialPatternNoticeForFiles({ 'package.json': manifest('clean') }),
 	).toMatch(/Credential stamp is empty/)
+})
+
+test('snapshot workspace ignores inherited object keys for binary paths', async () => {
+	const binaryFileSizes = JSON.parse(
+		'{"icons/a.png": 3, "__proto__": 7}',
+	) as Record<string, number>
+	const workspace = createSnapshotFilesWorkspace(
+		{ 'package.json': '{}' },
+		{ binaryFileSizes },
+	)
+	expect(await workspace.readFile('constructor')).toBeNull()
+	expect(await workspace.stat('toString')).toBeNull()
+	expect(await workspace.stat('icons/a.png')).toEqual({ size: 3 })
+	expect(await workspace.stat('__proto__')).toEqual({ size: 7 })
+	expect((await workspace.glob()).map((entry) => entry.path).sort()).toEqual([
+		'__proto__',
+		'icons/a.png',
+		'package.json',
+	])
 })

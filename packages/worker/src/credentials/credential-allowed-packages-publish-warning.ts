@@ -3,11 +3,10 @@
  * credential by literal name and that credential's allowed-packages list is
  * non-empty and does not include this package.
  *
- * Current runtime behavior (see `assertPackageCanAccessResolvedSecret`): the
- * list is already enforced when the package is reached through another package
- * or a one-off execute run. A self-authored or adopted package running on its
- * own still uses the credential (issue #4129); an unadopted community fork
- * does not. The warning tells the owner how to approve or move the use.
+ * Kody denies those uses at runtime for every package, including
+ * self-authored and adopted ones (see `assertPackageCanAccessResolvedSecret`,
+ * issue #4129), so the warning tells the owner how to approve or move the use
+ * before it fails.
  *
  * Does not change fill, access, publish, or save behavior.
  */
@@ -17,9 +16,9 @@ import {
 	type PackageCredentialScan,
 } from '#worker/credentials/credential-inventory-scan.ts'
 import {
-	type PackageCredentialKind,
+	type PackageCredentialSlotKind,
 	type PackageCredentialSlot,
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
 } from '#worker/package-registry/types.ts'
 import {
 	getSavedPackageById,
@@ -42,7 +41,7 @@ export type CredentialAllowedPackagesPublishWarning = {
 }
 
 const packageCredentialKinds: ReadonlySet<string> = new Set(
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
 )
 
 /**
@@ -52,7 +51,7 @@ export function formatCredentialAllowedPackagesPublishWarning(
 	input: CredentialAllowedPackagesPublishWarning,
 ): string {
 	const allowedList = formatAllowedPackagesList(input.allowedEntries)
-	return `Credential "${input.credentialName}" is allowed only for ${allowedList}, not ${input.packageDisplayName}. Kody denies this use when ${input.packageDisplayName} is used through another package or imported in a one-off execute run. When ${input.packageDisplayName} runs on its own, Kody allows it for now only if you authored or adopted the package; otherwise Kody denies this use. That authored-or-adopted exception is planned to go away. To allow it everywhere, approve: ${input.approvalUrl}. Or move this credential use into a package that is already allowed.`
+	return `Credential "${input.credentialName}" is allowed only for ${allowedList}, not ${input.packageDisplayName}, so Kody denies ${input.packageDisplayName} when it uses this credential, whether it runs on its own, through another package, or in a one-off execute run. To allow it, approve: ${input.approvalUrl}. Or move this credential use into a package that is already allowed.`
 }
 
 export function formatAllowedPackagesList(
@@ -317,11 +316,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isPackageCredentialKind(
 	value: string,
-): value is PackageCredentialKind {
+): value is PackageCredentialSlotKind {
 	return packageCredentialKinds.has(value)
 }
 
-function readDeclaredCredentialSlots(
+export function readDeclaredCredentialSlots(
 	manifestSource: string | undefined,
 ): Record<string, PackageCredentialSlot> | undefined {
 	if (manifestSource == null) return undefined

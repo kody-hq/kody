@@ -32,16 +32,28 @@ type Invalidation =
 	| 'org-tombstone-then-restore-bump'
 	/** Person hard purge runs after the `users` row is gone: identity fails closed. */
 	| 'person-row-gone'
+	/**
+	 * Writes only `grants` rows with subject_type `profile` (ADR 0092). They
+	 * never feed a person's roles or org binding, and profile access reads
+	 * them live through the profile chain, so no epoch bump.
+	 */
+	| 'profile-subject-only'
 
 const writers: Record<string, Invalidation> = {
+	'admin/personal-org-repair.ts': 'same-batch-bump',
 	'orgs/access-writes.ts': 'same-batch-bump',
 	'orgs/offboarding.ts': 'same-batch-bump',
+	'org-transfer/batch.ts': 'same-batch-bump',
 	'orgs/convert-personal-org.ts': 'same-batch-bump',
 	'credentials/credential-grant-cleanup.ts': 'same-batch-bump',
 	'identity/permissions-db.ts': 'same-batch-bump',
+	'execution-contexts/service.ts': 'same-batch-bump',
 	'orgs/soft-delete.ts': 'org-tombstone-then-restore-bump',
 	'orgs/provision.ts': 'org-row-lifecycle',
 	'account/data-targets.ts': 'person-row-gone',
+	'profiles/creator-grants.ts': 'profile-subject-only',
+	'profiles/package-grants.ts': 'profile-subject-only',
+	'profiles/store.ts': 'profile-subject-only',
 }
 
 const genericWriters = new Set([

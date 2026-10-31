@@ -6,6 +6,25 @@ import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
 const getEntitySourceById = vi.fn()
 const resolveExistingArtifactSourceRepo = vi.fn()
 
+function fakeAnalyticsDataset() {
+	const points: Array<AnalyticsEngineDataPoint> = []
+	return {
+		points,
+		binding: {
+			writeDataPoint: (point?: AnalyticsEngineDataPoint) => {
+				if (point) points.push(point)
+			},
+		} as AnalyticsEngineDataset,
+	}
+}
+
+function testEnv() {
+	return {
+		APP_DB: {},
+		USAGE_EVENTS: fakeAnalyticsDataset().binding,
+	} as unknown as Env
+}
+
 vi.mock('#worker/repo/entity-sources.ts', () => ({
 	getEntitySourceById: (...args: Array<unknown>) =>
 		getEntitySourceById(...args),
@@ -203,7 +222,7 @@ test('proxy waits through Artifacts receive-pack busy then succeeds', async () =
 				body: 'PACK-RETRY',
 			},
 		),
-		{ APP_DB: {} } as Env,
+		testEnv(),
 	)
 	expect(response).not.toBeNull()
 	expect(response!.status).toBe(200)
@@ -243,7 +262,7 @@ test('proxy waits through in-band HTTP 200 busy (sideband fatal) then succeeds',
 				body: 'PACK-IN-BAND',
 			},
 		),
-		{ APP_DB: {} } as Env,
+		testEnv(),
 	)
 	expect(response).not.toBeNull()
 	expect(response!.status).toBe(200)
@@ -275,7 +294,7 @@ test('proxy returns 503 Retry-After after the receive-pack wait budget', async (
 					body: 'PACK',
 				},
 			),
-			{ APP_DB: {} } as Env,
+			testEnv(),
 		)
 		await vi.advanceTimersByTimeAsync(artifactsReceivePackWaitBudgetMs + 1_000)
 		const response = await responsePromise
@@ -318,7 +337,7 @@ test('proxy streams successful receive-pack unchanged', async () => {
 				body: 'PACK-OK',
 			},
 		),
-		{ APP_DB: {} } as Env,
+		testEnv(),
 	)
 	expect(response).not.toBeNull()
 	expect(response!.status).toBe(200)
@@ -370,7 +389,7 @@ test('proxy forwards gzip-encoded upload-pack requests to Artifacts decoded', as
 				body: gzipped,
 			},
 		),
-		{ APP_DB: {} } as Env,
+		testEnv(),
 	)
 	expect(response!.status).toBe(200)
 	expect(await response!.text()).toBe('000dpackfile\n0000')
@@ -388,7 +407,7 @@ test('proxy forwards gzip-encoded upload-pack requests to Artifacts decoded', as
 				body: 'x',
 			},
 		),
-		{ APP_DB: {} } as Env,
+		testEnv(),
 	)
 	expect(rejected!.status).toBe(415)
 	expect(seen).toHaveLength(1)
@@ -425,7 +444,7 @@ test('proxy forwards a gzip-encoded receive-pack body decoded', async () => {
 				body: gzipped,
 			},
 		),
-		{ APP_DB: {} } as Env,
+		testEnv(),
 	)
 	expect(response!.status).toBe(200)
 	expect(await response!.text()).toBe(packResult)
@@ -449,7 +468,7 @@ test('proxy does not claim busy for unrelated upstream errors', async () => {
 				body: 'PACK',
 			},
 		),
-		{ APP_DB: {} } as Env,
+		testEnv(),
 	)
 	expect(response!.status).toBe(500)
 	expect(await response!.text()).toBe('internal blowup')
@@ -465,7 +484,7 @@ test('proxy requires auth and 404s unknown repos', async () => {
 				body: 'PACK',
 			},
 		),
-		{ APP_DB: {} } as Env,
+		testEnv(),
 	)
 	expect(missingAuth!.status).toBe(401)
 
@@ -479,7 +498,7 @@ test('proxy requires auth and 404s unknown repos', async () => {
 				body: 'PACK',
 			},
 		),
-		{ APP_DB: {} } as Env,
+		testEnv(),
 	)
 	expect(missingRepo!.status).toBe(404)
 })
@@ -528,7 +547,7 @@ test('proxy keeps working after promote flips entity_kind to package', async () 
 				body: 'PACK',
 			},
 		),
-		{ APP_DB: {} } as Env,
+		testEnv(),
 	)
 	expect(response).not.toBeNull()
 	expect(response!.status).toBe(200)

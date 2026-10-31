@@ -15,6 +15,12 @@
 
 import { credentialClientRuntimeSource } from './credential-client-runtime-source.js'
 
+import {
+	egressBlockedHeader,
+	egressGateModuleName,
+	type LocalEgressPolicy,
+} from './local-egress.js'
+
 export const localExecuteCompatibilityDate = '2026-04-16'
 export const localExecuteCompatibilityFlags = ['nodejs_compat'] as const
 
@@ -391,8 +397,30 @@ const __kodyRuntimeStorage =
 	__globalAny[__kodyRuntimeStorageSymbol] ??
 	(__globalAny[__kodyRuntimeStorageSymbol] = new AsyncLocalStorage());
 
+export function hasScope(request, scope) {
+	if (typeof scope !== 'string') return false;
+	try {
+		const raw = request?.headers?.get('X-Kody-Visitor');
+		if (!raw) return false;
+		const visitor = JSON.parse(raw);
+		return (
+			typeof visitor?.userId === 'string' &&
+			visitor.userId.length > 0 &&
+			Array.isArray(visitor.scopes) &&
+			visitor.scopes.includes(scope)
+		);
+	} catch {
+		return false;
+	}
+}
+export function hasVisitorCredential(request, key) {
+	return typeof key === 'string' && hasScope(request, \`need:\${key}\`);
+}
+
 const __kodyRuntimeDefault = Object.freeze({
 	kody,
+	hasScope,
+	hasVisitorCredential,
 	packageStorage,
 	createAuthenticatedFetch,
 	secretHeaders,
@@ -440,6 +468,15 @@ ${sideEffectBlock}import {
 
 const __kodyRunSecretHeader = ${JSON.stringify(runSecretHeader)};
 let __kodyClaimed = false;
+
+const __kodyNativeFetch = globalThis.fetch;
+globalThis.fetch = async (...args) => {
+	const response = await __kodyNativeFetch(...args);
+	if (response.headers.get(${JSON.stringify(egressBlockedHeader)}) === '1') {
+		throw new TypeError(await response.text());
+	}
+	return response;
+};
 
 function __kodyFormatLogArgs(args) {
 	return args.map(String).join(' ');
@@ -529,6 +566,8 @@ export function createWorkerdConfig(input: {
 	files: { entry: string; user: string; runtime: string }
 	packageModules?: Array<WorkerdPackageModuleFile>
 	allowPrivateNetwork?: boolean
+	/** Routes outbound fetch through the egress gate (`createEgressGateSource`). */
+	egress?: { policy: LocalEgressPolicy; gateFile: string }
 }): string {
 	const flags = localExecuteCompatibilityFlags
 		.map((flag) => JSON.stringify(flag))
@@ -543,6 +582,9 @@ export function createWorkerdConfig(input: {
 		)
 		.join('\n')
 	const packageBlock = packageEntries ? `\n${packageEntries}` : ''
+	const egressService = input.egress
+		? `\n    (name = "egress-gate", worker = (modules = [(name = ${JSON.stringify(egressGateModuleName)}, esModule = embed ${JSON.stringify(input.egress.gateFile)})], compatibilityDate = ${JSON.stringify(localExecuteCompatibilityDate)}, globalOutbound = "internet", bindings = [(name = "KODY_EGRESS_POLICY", json = ${JSON.stringify(JSON.stringify(input.egress.policy))})])),`
+		: ''
 	// Flat re-export of kody:runtime (same module instance). Callers must write
 	// createRuntimeFlatAliasSource() to this filename before serving.
 	const runtimeFlatAliasFile = localWorkerModuleNames.runtimeFlatAlias
@@ -553,7 +595,7 @@ const config :Workerd.Config = (
   services = [
     (name = "main", worker = .kodyWorker),
     (name = "kody-bridge", external = (address = "127.0.0.1:${input.bridgePort}", http = ())),
-    (name = "internet", network = (allow = ${networkAllow}, tlsOptions = (trustBrowserCas = true))),
+    (name = "internet", network = (allow = ${networkAllow}, tlsOptions = (trustBrowserCas = true))),${egressService}
   ],
   sockets = [ (name = "http", address = "127.0.0.1:0", http = (), service = "main") ],
 );
@@ -567,7 +609,7 @@ ${runtimeFlatAlias}${packageBlock}
   ],
   compatibilityDate = ${JSON.stringify(localExecuteCompatibilityDate)},
   compatibilityFlags = [${flags}],
-  globalOutbound = "internet",
+  globalOutbound = ${JSON.stringify(input.egress ? 'egress-gate' : 'internet')},
   bindings = [
     (name = "KODY_BRIDGE", service = "kody-bridge"),
     (name = ${JSON.stringify(runSecretEnvVar)}, fromEnvironment = ${JSON.stringify(runSecretEnvVar)}),

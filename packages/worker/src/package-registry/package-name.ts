@@ -2,6 +2,7 @@ import {
 	isPackageAppHostReservedPackageLeaf,
 	packageAppHostReservedPackageLeafMessage,
 } from '@kody-internal/shared/package-app-host-paths.ts'
+import { z } from 'zod'
 import { kodyPackageIdPattern } from './types.ts'
 
 export const packageNameLeafPattern = kodyPackageIdPattern
@@ -13,6 +14,45 @@ export const packageNameLookupDescription =
 export const packageIdLookupDescription =
 	'Saved-package UUID. Use when the scoped name is not known, or for a stable ref.'
 
+/**
+ * Leftover MCP/OpenAPI input alias for the package name. Prefer `name` or
+ * `package_id`. Tracked in docs/contributing/planned-breaking-changes.md and
+ * #3676.
+ */
+export const packageKodyIdLeftoverDescription =
+	'Deprecated leftover alias for the package name (`@owner/leaf` or the name leaf). Prefer `name` or `package_id`.'
+
+/** Optional input field: leftover `kody_id`, marked deprecated in JSON Schema. */
+export function packageKodyIdOptionalInput() {
+	return z
+		.string()
+		.min(1)
+		.optional()
+		.meta({ deprecated: true })
+		.describe(packageKodyIdLeftoverDescription)
+}
+
+/** Required input field: leftover `kody_id`, marked deprecated in JSON Schema. */
+export function packageKodyIdRequiredInput() {
+	return z
+		.string()
+		.min(1)
+		.meta({ deprecated: true })
+		.describe(packageKodyIdLeftoverDescription)
+}
+
+/**
+ * Optional camelCase leftover `kodyId` (OpenAPI / older MCP shapes), marked
+ * deprecated in JSON Schema. Prefer `name` or `packageId` / `package_id`.
+ */
+export function packageKodyIdOptionalCamelInput() {
+	return z
+		.string()
+		.min(1)
+		.optional()
+		.meta({ deprecated: true })
+		.describe(packageKodyIdLeftoverDescription)
+}
 const scopedPackageNamePattern =
 	/^@([a-z0-9][a-z0-9._-]*)\/([a-z0-9]+(?:-[a-z0-9]+)*)$/i
 

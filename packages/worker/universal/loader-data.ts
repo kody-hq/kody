@@ -1,3 +1,4 @@
+import { type SelfServeExperimentState } from '#universal/feature-flags/experiments.ts'
 import { type OAuthAuthorizeClientFailure } from '#universal/oauth-authorize-client-failure.ts'
 import {
 	type OnboardingFeaturedListing,
@@ -9,6 +10,7 @@ import {
 	type ViewerListingInstall,
 } from '#universal/community-public-types.ts'
 import { type McpOAuthClientMode } from '@kody-internal/shared/mcp-servers.ts'
+import { type GrantPreset } from '@kody-internal/shared/grant-presets.ts'
 import { type PermissionString, type RoleName } from '#universal/permissions.ts'
 import { type AdminFeatureFlag } from '#universal/feature-flags/types.ts'
 import { type OnboardingChecklistItemId } from '#universal/onboarding-checklist-types.ts'
@@ -24,10 +26,17 @@ import { type CommunityListingSort } from '#universal/community-search.ts'
 import { type AccountCredentialsResponse } from '#universal/credentials-list.ts'
 import { type CredentialFillPlacementView } from '#universal/credential-fill-placement.ts'
 import { type ApprovalBundleLoaderData } from '#universal/approval-bundles.ts'
+import { type CredentialPlacementApprovalView } from '#universal/credential-placement-approval.ts'
 import { type PackageCredentialApprovalLoaderData } from '#universal/package-credential-approval-page.ts'
 import { type PackageCollaboratorsLoaderData } from '#universal/package-collaborators.ts'
+import { type PackageAppConnectedPeopleLoaderData } from '#universal/package-app-connected-people.ts'
+import { type PackageForksLoaderData } from '#universal/package-forks.ts'
 import { type PackageCredentialsLoaderData } from '#universal/package-credentials-page.ts'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
+import {
+	type EmailClassification,
+	type EmailMessageView,
+} from '#universal/email-message-view.ts'
 import { type PackageFilesContentKind } from '#universal/package-file-media.ts'
 import {
 	type PackageAppCustomDomainRecordView,
@@ -179,6 +188,11 @@ export type CommunityIndexLoaderData = {
 	query: string | null
 	sort: CommunityListingSort
 	category: CommunityListingCategory | null
+	/**
+	 * Org slug the install badges were read for (`?org=`). Null means the
+	 * viewer's personal org, including when the requested org was rejected.
+	 */
+	installOrg?: string | null
 }
 
 export type CommunityDetailLoaderData = {
@@ -208,6 +222,8 @@ type PackageFilesChildLoaderData = {
 }
 
 export type PackageFilesLoaderData = {
+	viewedCommit?: string | null
+	skillRead?: { orgSlug: string; receipt: string } | null
 	ok: true
 	title: string
 	backHref: string
@@ -232,6 +248,8 @@ export type PackageFilesLoaderData = {
 	viewerIsOwner?: boolean
 	viewerCanManage?: boolean
 	viewerCanManageAccess?: boolean
+	/** Manage on a package with an app: shows the Connected people tab. */
+	viewerCanSeeConnectedPeople?: boolean
 	isPrivate?: boolean
 	isListed?: boolean
 	/** False for plain repos that share package chrome. Defaults to true. */
@@ -273,6 +291,8 @@ type CommunityDetailShellLoaderData = {
 	viewerIsOwner: boolean
 	viewerCanManage: boolean
 	viewerCanManageAccess?: boolean
+	/** Manage on a package with an app: shows the Connected people tab. */
+	viewerCanSeeConnectedPeople?: boolean
 	viewerCanPublish?: boolean
 	viewerCanDelete?: boolean
 	viewerCanAdoptCommunityFork?: boolean
@@ -304,6 +324,8 @@ type CommunityPackageNoAccessLoaderData = {
 
 export type ProfileLoaderData = {
 	ok: true
+	/** `org` for a public team org page; absent for a person's profile. */
+	ownerKind?: 'org'
 	profile: PublicCommunityProfile
 	packages: Array<PublicProfilePackageItem>
 	/** Null when the profile has no activity source (e.g. team org repositories). */
@@ -331,6 +353,7 @@ export type ProfileShellLoaderData = {
 	isSelf: boolean
 	loggedIn: boolean
 	visibility: ProfileVisibility
+	ownerKind?: 'org'
 }
 
 export function toProfileShellLoaderData(
@@ -346,6 +369,7 @@ export function toProfileShellLoaderData(
 		isSelf: data.isSelf,
 		loggedIn: data.loggedIn,
 		visibility: data.profile.visibility,
+		...(data.ownerKind ? { ownerKind: data.ownerKind } : {}),
 	}
 }
 
@@ -422,6 +446,8 @@ export type AdminUserListItem = {
 	last_active_at: string | null
 	created_at: string
 	updated_at: string
+	deleted_at: string | null
+	deleting_at: string | null
 	roles: Array<RoleName>
 }
 
@@ -433,11 +459,25 @@ export type AdminUsersLoaderData = {
 	 * (or a selected user outside the current page) still has detail data.
 	 */
 	selectedUser: AdminUserListItem | null
+	selectedUserOrgs: Array<AdminUserOrgMembership>
 	page: number
 	pageSize: number
 	total: number
+	statusFilter: 'live' | 'deleted'
 	availableRoles: Array<RoleName>
 	availablePlans: Array<AdminPlanName>
+}
+
+export type AdminUserOrgMembership = {
+	orgId: string
+	slug: string
+	displayName: string | null
+	kind: 'personal' | 'team'
+	role: 'owner' | 'member' | 'billing'
+	effectivePlan: AdminPlanName
+	seats: number
+	membershipDeletedAt: string | null
+	orgDeletedAt: string | null
 }
 
 export type AdminCreditLedgerItem = AccountCreditsLedgerItem & {
@@ -1112,6 +1152,9 @@ type AdminSystemEmailListItem = {
 	received_at: string | null
 	created_at: string
 	to_addresses: Array<string>
+	classification: EmailClassification
+	classification_reason: string | null
+	archived_at: string | null
 }
 
 type AdminSystemEmailDetail = AdminSystemEmailListItem & {
@@ -1149,6 +1192,7 @@ export type AdminSystemEmailLoaderData = {
 	page: number
 	pageSize: number
 	total: number
+	view: EmailMessageView
 }
 
 export type AdminPlatformFeedbackListItem = {
@@ -1306,6 +1350,8 @@ type OrgSettingsCustomHostnameView = {
 }
 
 type OrgSettingsCustomDomainsView = {
+	/** False on free plans: custom domains need a paid org (ADR 0071). */
+	canAdd: boolean
 	hostnames: Array<OrgSettingsCustomHostnameView>
 	dnsTarget: string | null
 }
@@ -1314,12 +1360,15 @@ export type OrgSettingsLoaderData = {
 	ok: true
 	org: OrgManagementOrg
 	canManage: boolean
+	/** `org:write` on this org, personal orgs included (custom domains). */
+	canManageDomains: boolean
 	canDelete: boolean
-	/**
-	 * Present only when `package-app-custom-domains` is on for this
-	 * environment. Null when the flag is off (panel stays hidden).
-	 */
+	/** Who sees `/@slug`; null for personal orgs (they follow the account profile). */
+	profileVisibility: 'public' | 'private' | null
+	/** Null for viewers who cannot manage the org's domains. */
 	customDomains: OrgSettingsCustomDomainsView | null
+	/** What every Member may create without a grant; null for personal orgs. */
+	memberCreation: { packages: boolean; credentials: boolean } | null
 }
 
 export type OrgMemberView = {
@@ -1345,13 +1394,23 @@ export type OrgInviteLinkView = {
 	id: string
 	role: 'member' | 'billing'
 	roleLabel: string
+	label: string | null
+	teamIds: Array<string>
+	teamNames: Array<string>
 	allowedEmailDomains: Array<string>
 	maxUses: number | null
 	useCount: number
+	lastUsedAt: string | null
 	expiresAt: string
 	createdAt: string
 	createdByUsername: string | null
 	createdByDisplayName: string | null
+}
+
+export type OrgMembersTeamOption = {
+	id: string
+	slug: string
+	name: string
 }
 
 export type OrgMembersLoaderData = {
@@ -1360,12 +1419,19 @@ export type OrgMembersLoaderData = {
 	members: Array<OrgMemberView>
 	invites: Array<OrgInviteView>
 	inviteLinks: Array<OrgInviteLinkView>
+	teams: Array<OrgMembersTeamOption>
 	canManage: boolean
 }
 
 /** What accepting an invite link gives, as the join page describes it. */
 export type OrgInviteJoinOffer =
-	| { kind: 'membership'; role: 'member' | 'billing'; roleLabel: string }
+	| {
+			kind: 'membership'
+			role: 'member' | 'billing'
+			roleLabel: string
+			/** Live default team names this link still assigns. */
+			teamNames: Array<string>
+	  }
 	| {
 			kind: 'team'
 			teamName: string
@@ -1376,7 +1442,7 @@ export type OrgInviteJoinOffer =
 			kind: 'resource'
 			packageName: string
 			packageHref: string
-			preset: 'use' | 'contribute' | 'manage'
+			preset: GrantPreset
 			presetLabel: string
 			presetDescription: string
 			/** The viewer is not a member, so they stay an outside collaborator. */
@@ -1470,7 +1536,8 @@ export type OrgGrantView = {
 	resourceType: string
 	resourceId: string
 	resourceLabel: string
-	subjectType: 'user' | 'team'
+	/** `org` is everyone in this organization, resolved live. */
+	subjectType: 'user' | 'team' | 'org'
 	subjectId: string
 	subjectLabel: string
 	preset: string | null
@@ -1494,6 +1561,25 @@ export type OrgGrantsLoaderData = {
 		}
 	>
 	canManage: boolean
+	/**
+	 * Owner-facing form for organization grants that carry read-only resource
+	 * permissions. Null when the viewer cannot grant them (no `member:write`)
+	 * or the organization is personal.
+	 */
+	orgWideRead: {
+		subjects: Array<OrgWideReadSubjectView>
+	} | null
+}
+
+export type OrgWideReadSubjectView = {
+	/** `user:<id>` or `team:<id>`; never shown. */
+	key: string
+	kind: 'user' | 'team'
+	label: string
+	/** Read-only permissions this subject already holds on the organization. */
+	reads: Array<string>
+	/** Create permissions this subject's own organization grant holds. */
+	creates: Array<string>
 }
 
 export type OrgCollaboratorView = {
@@ -1633,20 +1719,6 @@ export type AccountMcpOauthClientsLoaderData = {
 
 export type AccountConnectedAgentListItem = ConnectedMcpAgent & {
 	grantIds: Array<string>
-	connectionProfileName: string | null
-}
-
-export type AccountConnectionProfileView = {
-	id: string
-	name: string
-	grants: Array<{
-		resourceType: string
-		resourceId: string
-		actions: Array<'read' | 'execute' | 'write'>
-	}>
-	mcpServerUrl: string
-	createdAt: string
-	updatedAt: string
 }
 
 export type AccountConnectedAgentsLoaderData = {
@@ -1658,15 +1730,6 @@ export type AccountConnectedAgentsLoaderData = {
 	 * cannot send an unverified user into the authorize → 403 loop.
 	 */
 	mcpServerUrl: string
-	/** Experimenter-only. Absent/empty when the connection-profiles flag is off. */
-	connectionProfilesEnabled?: boolean
-	connectionProfiles?: Array<AccountConnectionProfileView>
-	/** Owned packages offered when editing profile grants (id + name). */
-	connectionProfilePackageOptions?: Array<{
-		id: string
-		name: string
-		kodyId: string
-	}>
 }
 
 type PackageWebhookVerification =
@@ -1766,7 +1829,6 @@ export type PackageWebhookListItem = {
 	instanceLabel: string | null
 	handle: string | null
 	urlHost: string | null
-	enabled: boolean | null
 	/** True once a person approved it (a live enablement exists). */
 	approved: boolean
 	/** Where to approve a minted webhook; null when unminted or approved. */
@@ -1851,6 +1913,8 @@ export type PendingVerificationLoaderData = {
 }
 
 export type AccountIntegrationListItem = {
+	/** Org OAuth app a member connects their own account through (ADR 0068). */
+	pinnedAppSlug?: string | null
 	name: string
 	appSlug: string
 	provider: string
@@ -1973,6 +2037,24 @@ export type AccountIntegrationsLoaderData = {
 export type ConnectOauthExistingConnection = {
 	lane: 'user' | 'platform'
 	appSlug: string
+	/** Display name of the app behind the connection (label, else slug). */
+	appName: string
+	/** True once the connection holds tokens (`connected_at` is set). */
+	connected: boolean
+	/**
+	 * The user-lane app's identity fields (non-secret). A save that changes
+	 * any of them rewrites the app this connection depends on. Null for
+	 * platform connections.
+	 */
+	identity: ConnectOauthAppIdentity | null
+}
+
+type ConnectOauthAppIdentity = {
+	clientId: string
+	tokenUrl: string
+	authorizeUrl: string | null
+	deviceAuthorizationUrl: string | null
+	flow: 'pkce' | 'confidential' | 'device'
 }
 
 /**
@@ -1985,6 +2067,20 @@ export type ConnectOauthLoaderData = {
 	ok: true
 	provider: string | null
 	integration: AccountIntegrationListItem | null
+	/**
+	 * `mode=personal`: the member connects their own account through this
+	 * org app (ADR 0068). Never carries a client secret.
+	 */
+	pinnedConnect?: {
+		orgSlug: string
+		appSlug: string
+		appLabel: string | null
+		connectionName: string
+	}
+	/** Why `mode=personal` cannot connect here (not a member, no app, ...). */
+	pinnedConnectError?: string
+	/** The connection is pinned to an org app: reconnect through it here. */
+	pinnedReconnectHref?: string
 	/** Built-in connections use platform discovery links instead. */
 	builtInAvailable?: boolean
 	/** See {@link ConnectOauthExistingConnection}. */
@@ -2174,6 +2270,18 @@ export type AccountPackageDetail = AccountPackageListItem & {
 	 * or empty when the package has none.
 	 */
 	customDomains?: Array<PackageAppCustomDomainView>
+	/**
+	 * Capabilities the published version may call without declaring them,
+	 * which the next publish must add to `kody.app.capabilities` (owner view
+	 * only).
+	 */
+	capabilityAllowance?: Array<string>
+	/** Recent package-app cookie HttpOnly warnings (owner view only). */
+	cookieWarnings?: Array<{
+		cookieName: string
+		reason: 'added_httponly' | 'missing_httponly'
+		lastSeenAt: string
+	}>
 }
 
 type AccountPackagePublishDiffFile = {
@@ -2474,6 +2582,9 @@ export type AccountSecretsLoaderData = {
 		currentAllowedPackages: Array<string>
 	} | null
 	approvalError: string | null
+	/** `/connect/secrets?placement=`: the fill placement the owner is asked to allow. */
+	placementApproval?: CredentialPlacementApprovalView | null
+	placementApprovalError?: string | null
 	/**
 	 * Set when the secret value/access writes committed but linking the Key to
 	 * a credential provider failed. Callers must not treat this as a failed
@@ -2500,7 +2611,6 @@ type AccountLoaderJsonValue =
 	| { [key: string]: AccountLoaderJsonValue }
 
 type AccountJobSchedule =
-	| { type: 'once'; runAt: string }
 	| { type: 'interval'; every: string }
 	| { type: 'cron'; expression: string }
 
@@ -2535,6 +2645,8 @@ type AccountJobRecentRun = {
 	status: 'success' | 'error' | 'running'
 	durationMs: number
 	error: string | null
+	/** How the run started: `manual`, `scheduled`, or another stored trigger. */
+	trigger: string
 }
 
 export type AccountJobDetail = AccountJobListItem & {
@@ -2631,6 +2743,26 @@ export type AccountActivityRunListItem = {
 	entry: 'invoke' | 'code' | null
 	/** Stable LOADER worker id (UWD graph identity) from run metadata. */
 	workerId: string | null
+	/**
+	 * Who started the run. Null for legacy rows (UI shows Unknown) or when
+	 * begin had no request context.
+	 */
+	startedBy: {
+		userId: string | null
+		username: string | null
+		client:
+			| 'session'
+			| 'mcp'
+			| 'cli'
+			| 'api-token'
+			| 'package-app'
+			| 'schedule'
+			| 'webhook'
+			| 'inbound-email'
+			| 'platform-event'
+			| 'execution-context'
+		label: string | null
+	} | null
 }
 
 type AccountActivityRunLog = {
@@ -2789,8 +2921,9 @@ export type AccountEmailMessageListItem = {
 	subject: string | null
 	message_id_header: string | null
 	processing_status: string
-	classification: 'accepted' | 'quarantined'
+	classification: EmailClassification
 	classification_reason: string | null
+	archived_at: string | null
 	sender_classification: AccountEmailSenderClassification | null
 	sender_classification_reason: string | null
 	provider_message_id: string | null
@@ -2861,8 +2994,7 @@ export type AccountEmailLoaderData = {
 	pageSize: number
 	total: number
 	query: string
-	/** `null` means no classification filter (all messages). */
-	classification: 'accepted' | 'quarantined' | null
+	view: EmailMessageView
 }
 
 export type AuthProvidersLoaderData = {
@@ -2911,8 +3043,42 @@ export type PackageAppOauthConsentLoaderData = {
 	kodyId: string
 	redirectUri: string
 	scopes: Array<string>
+	requiredScopes: Array<string>
+	alreadyAllowedScopes: Array<string>
+	requiredLabels: Array<string>
 	claimLabels: Array<string>
+	optionalScopes: Array<{ scope: string; label: string }>
+	executorNeeds: Array<{
+		key: string
+		description: string
+		required: boolean
+		scope: string
+		credentials: Array<{ id: string; name: string; usedByApps: number }>
+		recommendedCredentialId: string | null
+		createUrl: string
+		/** Provider slug the need matches, e.g. `github`. */
+		provider: string
+		/** Declared credential kind label (e.g. `Key`), or null for any kind. */
+		kindLabel: string | null
+		/** Org handle the create link saves the credential to. */
+		createDestination: string | null
+	}>
+	alreadyAllowedLabels: Array<string>
 	hiddenFields: Record<string, string>
+	/**
+	 * Who pays for what the app runs for this visitor (ADR 0095): the
+	 * publisher, or the visitor's own org on another org's internal app.
+	 */
+	billing?: { payer: 'publisher' } | { payer: 'visitor-org'; orgSlug: string }
+	/** Set when approving "Sign in on another device" for a limited browser. */
+	device: {
+		/** Code shown on the other device, `XXXX-XXXX`. */
+		userCode: string
+		/** Self-reported browser label, e.g. "Chrome 80 on Linux". */
+		requester: string
+		/** Unix seconds. */
+		expiresAt: number
+	} | null
 }
 
 export type DiscordPageLoaderData = {
@@ -2982,6 +3148,8 @@ export type AppLoaderData = {
 	accountCredentials?: AccountCredentialsResponse
 	packageCredentials?: PackageCredentialsLoaderData
 	packageCollaborators?: PackageCollaboratorsLoaderData
+	packageAppConnectedPeople?: PackageAppConnectedPeopleLoaderData
+	packageForks?: PackageForksLoaderData
 	packageCredentialApproval?: PackageCredentialApprovalLoaderData
 	approvalBundle?: ApprovalBundleLoaderData
 	accountSecrets?: AccountSecretsLoaderData
@@ -3317,6 +3485,8 @@ export type AccountWaitingLoaderData = {
 export type AccountExperimentsLoaderData = {
 	ok: true
 	experimentsOptIn: boolean
+	/** Every self-serve experiment, from `selfServeExperiments`. */
+	experiments: Array<SelfServeExperimentState>
 }
 
 /** One package app the person signed in to with Kody. */
@@ -3327,7 +3497,12 @@ export type AccountConnectedAppView = {
 	publisherName: string
 	iconUrl: string | null
 	/** What the app may see or use, in plain words. */
-	allows: Array<string>
+	allows: Array<{
+		label: string
+		scope: string | null
+		disconnectableCredentials?: Array<{ id: string; name: string }>
+	}>
+	disconnectableCredentials: Array<{ id: string; name: string }>
 	connectedAt: string
 	lastUsedAt: string | null
 }
@@ -3338,4 +3513,23 @@ export type AccountConnectedAppsLoaderData = {
 	agents: Array<ConnectedMcpAgent>
 	/** True when the agent list could not load; apps still show. */
 	agentsUnavailable: boolean
+}
+
+/** A member's own connection through an org OAuth app (ADR 0068). */
+export type OrgAppMemberConnection = {
+	credentialId: string
+	memberUsername: string | null
+	memberDisplayName: string | null
+	accountLabel: string | null
+	connectedAt: string
+	yours: boolean
+}
+
+export type OrgAppMemberConnectionsData = {
+	teamOrg: boolean
+	canConnectOwn: boolean
+	canManage: boolean
+	own: OrgAppMemberConnection | null
+	/** Every member's connection; empty unless `canManage`. */
+	connections: Array<OrgAppMemberConnection>
 }

@@ -1,3 +1,4 @@
+import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import {
@@ -106,6 +107,106 @@ test('ensureOwnerCronEnablementForJob inserts once and is idempotent', async () 
 			triggerName: jobName,
 		}),
 	).toHaveLength(1)
+})
+
+test('a job enabled through a scoped credential keeps that narrowing', async () => {
+	const { db } = await setup()
+	const packageId = 'e0c8c4c7-25fb-4d44-9446-3ee7cf4677dd'
+	const jobName = 'inbox-refresh'
+	const jobId = buildPackageJobId(packageId, jobName)
+	const orgId = ownerIdFromStored('user-noah')
+	expect(
+		await ensureOwnerCronEnablementForJob({
+			db,
+			orgId,
+			jobId,
+			jobName,
+			packageId,
+			enablerUserId: personIdFromStored('user-noah'),
+			enablerCredential: { scopes: ['package:execute'], profileId: 'prof-1' },
+		}),
+	).toBe('inserted')
+	const [enablement] = await listEnablementsForInstance({
+		db,
+		orgId: String(orgId),
+		triggerKind: 'cron',
+		instanceId: jobId,
+		triggerName: jobName,
+	})
+	expect(enablement).toMatchObject({
+		enablerScopes: ['package:execute'],
+		enablerProfileId: 'prof-1',
+	})
+})
+
+test('turning a job on again records the credential that turned it on', async () => {
+	const { db } = await setup()
+	const packageId = 'e0c8c4c7-25fb-4d44-9446-3ee7cf4677dd'
+	const jobName = 'inbox-refresh'
+	const jobId = buildPackageJobId(packageId, jobName)
+	const orgId = ownerIdFromStored('user-noah')
+	const enable = (input: {
+		scopes: Array<OrgPermission> | null
+		refresh: boolean
+	}) =>
+		ensureOwnerCronEnablementForJob({
+			db,
+			orgId,
+			jobId,
+			jobName,
+			packageId,
+			enablerUserId: personIdFromStored('user-noah'),
+			enablerCredential: { scopes: input.scopes, profileId: null },
+			refreshEnablerCredential: input.refresh,
+		})
+	const stored = async () =>
+		(
+			await listEnablementsForInstance({
+				db,
+				orgId: String(orgId),
+				triggerKind: 'cron',
+				instanceId: jobId,
+				triggerName: jobName,
+			})
+		).map((row) => row.enablerScopes)
+
+	// Package create writes the row (job still off) with an unscoped session.
+	expect(await enable({ scopes: null, refresh: false })).toBe('inserted')
+	// Editing an already-on job keeps the narrowing it was turned on with.
+	await enable({ scopes: ['job:write'], refresh: false })
+	expect(await stored()).toEqual([null])
+	// A scoped token turning the job on narrows the existing row.
+	expect(await enable({ scopes: ['job:write'], refresh: true })).toBe(
+		'already_present',
+	)
+	expect(await stored()).toEqual([['job:write']])
+})
+
+test('stored enabler scopes that cannot be read narrow to nothing', async () => {
+	const { db, sqlite } = await setup()
+	const packageId = 'e0c8c4c7-25fb-4d44-9446-3ee7cf4677dd'
+	const jobId = buildPackageJobId(packageId, 'a')
+	const orgId = ownerIdFromStored('user-noah')
+	await ensureOwnerCronEnablementForJob({
+		db,
+		orgId,
+		jobId,
+		jobName: 'a',
+		packageId,
+	})
+	const list = () =>
+		listEnablementsForInstance({
+			db,
+			orgId: String(orgId),
+			triggerKind: 'cron',
+			instanceId: jobId,
+			triggerName: 'a',
+		})
+	expect((await list())[0]).toMatchObject({
+		enablerScopes: null,
+	})
+	sqlite.exec(`UPDATE enablements SET enabler_scopes_json = 'not json'`)
+	expect((await list())[0]?.enablerScopes).toEqual([])
 })
 
 test('backfillOwnerCronEnablements dryRun and apply insert missing owner enablements', async () => {

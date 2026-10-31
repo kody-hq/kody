@@ -40,15 +40,13 @@ style, tests, MCP capabilities, and runtime architecture.
 - Local CLI execute (when, command, failure):
   [guide:local_execute](../guides/local-execute.md) and
   [prefer-local-cli-execute](../../.agents/skills/prefer-local-cli-execute/SKILL.md).
-  Streaming placeholder-fill hop:
-  [CLI streaming gateway-fetch contract](./contracts/cli-streaming-gateway-fetch.md).
-  Ad hoc `credential()` on local `kody:runtime`:
-  [CLI local credential runtime](./contracts/cli-local-credential-runtime.md).
   Changing `@kodycodes/cli` (it lives in `packages/cli`; merges to `main`
   publish through `.github/workflows/publish-cli.yml`):
   [Changing the CLI](./cloud-agents.md#changing-the-cli)
 - PR system recaps (visual plan/recap blocks in PR descriptions):
   [visual-recap skill](../../.agents/skills/visual-recap/SKILL.md)
+
+- [Desktop Electron shell](../../packages/desktop/README.md)
 
 ## Code and tooling
 
@@ -74,6 +72,7 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Testing principles](./testing-principles.md)
 - [End-to-end testing](./end-to-end-testing.md)
 - [Weekly site performance](./weekly-site-perf.md)
+- [Markdown and highlighting migration measurements](./performance/markdown-migration-2026-10-28.md)
 - [MCP latency bench](./latency-bench.md)
 - [Mock API servers](./mock-api-servers.md)
 - [Package discovery routing evaluation](./package-discovery-evaluation.md)
@@ -108,6 +107,8 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Operator accounts](./operator-accounts.md) (third-party services, secret
   names, recovery)
 - [Production backup and disaster recovery](./disaster-recovery.md)
+- [Dead-letter queues](./dead-letter-queues.md) (admin list, peek, replay, ack,
+  and purge; safety rules)
 - [Production rollback](./rollback.md)
 - Ops runbook: [account write-lease repair](./account-write-lease-repair.md)
 - Ops runbook: [org resource transfer](./org-resource-transfer.md)

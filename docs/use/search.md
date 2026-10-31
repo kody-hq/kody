@@ -81,10 +81,7 @@ hints for medium-confidence matches.
 Pass optional **`domain`** with a capability domain id:
 
 - **With `query`** — ranks only that domain's capabilities. User-owned entities
-  (packages, integrations, secrets, retriever results) are excluded because they
-  have no domain. Installed-package retrievers run in a read-only, closed-world
-  sandbox: they can read their package storage and return results, but they
-  cannot write, fetch, invoke, or call capabilities.
+  (packages, integrations, secrets) are excluded because they have no domain.
 - **Without `query`** — lists the domain's capabilities in curated registry
   order (with inlined call shapes for the top hits), which completes the two-hop
   browse flow: broad query → domain overview → domain listing.
@@ -102,11 +99,11 @@ and MCP server can appear together. Kody also recognizes current-origin
 `/account/packages/:packageId` URLs (which redirect to the package page),
 owner-matching `/@username/:name` package pages, and per-user package-app
 subdomain URLs (`https://{username}.<package-app host>/{package-name}`, plus
-legacy `/packages/{package-name}` on the same host) — so a URL copied from an
-open app resolves too. Exact package identities never compete with semantic
-capability results. Hidden exact query matches still require
-`includeHiddenPackages: true`; exact `entity` lookup by UUID or package name
-leaf ignores the hidden discovery preference.
+`/packages/{package-name}` on the same host) — so a URL copied from an open app
+resolves too. Exact package identities never compete with semantic capability
+results. Hidden exact query matches still require `includeHiddenPackages: true`;
+exact `entity` lookup by UUID or package name leaf ignores the hidden discovery
+preference.
 
 Ranked `search({ query })` calls may include relevant long-term memory metadata
 in structured content. Entity lookups, domain listings, empty/broad discovery,
@@ -116,35 +113,33 @@ memory matches are not surfaced automatically.
 
 ### Ranked search scoring
 
-Optional stage-2 Jev Score rerank runs only for **paid** plans (Standard / Pro /
-Max) when the `jev-search-rerank` flag is on **and** the post-hybrid candidate
-pool looks ambiguous (small clear pools skip). Free and anonymous never get Jev.
-The flag is a kill switch; plan + necessity are the product gates.
+Stage-2 Jev Score rerank runs only for **paid** plans (Standard / Pro / Max),
+and only when the post-hybrid candidate pool looks ambiguous (small clear pools
+skip). Paid searches also widen hybrid recall. Free and anonymous never get Jev.
 
 Ranked list-mode structured content includes **`telemetry.jevRerank`**
 (`applied`, `skipped-*`, or `fallback-*`) and **`phaseTimings.jevRerankMs`**.
-Skip reasons include `skipped-flag-off`, `skipped-plan` (Free / anonymous),
-`skipped-small-pool` (≤8 hybrid candidates), and `skipped-clear-winner` (9–20
-with a decisive top hit). A `fallback-error` outcome includes a short
-**`errorReason`** (missing AI Gateway, Gateway 403/402, or incomplete Score
-answers, including sampled top-level response keys when answers are missing).
-Score batches share a 4-second budget; past it Kody aborts them and returns
-hybrid order with outcome `fallback-timeout`. When every Score misses the keep
-floors, the ranked list stays empty (`fallback-empty-after-drop`,
-`keepPath: empty`). Hybrid candidates whose package name, kody id, or name leaf
-equals a query term or a contiguous run of query terms stay in hybrid order
-(`keepPath: kept-identity`). `search({ query: "dropbox shared link" })` can
-still return the package `search({ query: "dropbox" })` finds. A package that
-only mentions those words in its description stays dropped. The response is
-still **No matches** when nothing matches an identity term. When the Jev stage
-runs or attempts, that object also carries **`model`**, **`aiCallCount`** (Score
-`AI.run` batches), and **`usage`** (`inputTokens` / `outputTokens`, or nulls
-when the binding omits them) so eval can weigh ranking quality against latency
-and token use. Public `search` also returns request-scoped
-**`timing.serverTiming`** phases (`{ name, durationMs }`, same shape as execute,
-not stored), including **`jevRerank`** when that stage ran. Execution-level
-tiles (`rateLimit`, `usernameLookup`, `identityResolution`,
-`rowAndRegistryLoad`, `featureFlags`, `loadAndRank`, `retrievers`,
+Skip reasons include `skipped-plan` (Free / anonymous), `skipped-small-pool` (≤8
+hybrid candidates), and `skipped-clear-winner` (9–20 with a decisive top hit). A
+`fallback-error` outcome includes a short **`errorReason`** (missing AI Gateway,
+Gateway 403/402, or incomplete Score answers, including sampled top-level
+response keys when answers are missing). Score batches share a 4-second budget;
+past it Kody aborts them and returns hybrid order with outcome
+`fallback-timeout`. When every Score misses the keep floors, the ranked list
+stays empty (`fallback-empty-after-drop`, `keepPath: empty`). Hybrid candidates
+whose package name, kody id, or name leaf equals a query term or a contiguous
+run of query terms stay in hybrid order (`keepPath: kept-identity`).
+`search({ query: "dropbox shared link" })` can still return the package
+`search({ query: "dropbox" })` finds. A package that only mentions those words
+in its description stays dropped. The response is still **No matches** when
+nothing matches an identity term. When the Jev stage runs or attempts, that
+object also carries **`model`**, **`aiCallCount`** (Score `AI.run` batches), and
+**`usage`** (`inputTokens` / `outputTokens`, or nulls when the binding omits
+them) so eval can weigh ranking quality against latency and token use. Public
+`search` also returns request-scoped **`timing.serverTiming`** phases
+(`{ name, durationMs }`, same shape as execute, not stored), including
+**`jevRerank`** when that stage ran. Execution-level tiles (`rateLimit`,
+`usernameLookup`, `identityResolution`, `rowAndRegistryLoad`, `loadAndRank`,
 `memoryEnrichment`) and `unaccounted` (wall clock minus the exclusive tiles)
 appear when that step ran. The `search` meta capability (usable inside
 **execute**) returns the same `telemetry`, `phaseTimings`, and top-level
@@ -264,24 +259,24 @@ that provider, capped). Ranked query results stay lean and do not run community
 lookup or expand those suggestions.
 
 Package entity detail (`package:{id}`) is a slim index: summary, export subpaths
-with one-line purposes, job and retriever names, and the README `Intent`
-section. Structured content mirrors that index and does not contain a full
-export tree. Open one export with `package:{id}#{subpath}` for that export's
-import specifier, types, and execute snippet. `packageGet` is the bulk metadata
-API: full export array, provenance, and package-scoped secret FYI. When a
-community fork is outdated (the listing pin is not an ancestor of the fork tip),
-detail includes `listingAhead: true` and a one-line absorb next step
-(`communityGet`, then `repoPublishSession` with `absorbed_upstream_commit`).
-Ranked package hits include that same notice only when the fork is outdated.
-`packageGet` does not return files. Open one package file with
-`package:{id}#{path}` (`package:{id}#README.md`,
-`package:{id}#README.md#export-jsdoc`, `package:{id}#src/file.ts#L165`, or
-`package:{id}#src/file.ts#L165-L180`). A fragment that matches an export subpath
-still opens that export. Markdown heading slugs use the same rules as guide
-headings. A missing file, heading, or line fails instead of returning the whole
-file. For the tree, or to edit, open a repo session (`repoOpenSession` +
-`repoReadFile`) or clone with `packageGetGitRemote`. `repoReadFile` accepts the
-same `#L165`, `#L165-L180`, and Markdown heading fragments on `path`. See
+with one-line purposes, job names, and the README `Intent` section. Structured
+content mirrors that index and does not contain a full export tree. Open one
+export with `package:{id}#{subpath}` for that export's import specifier, types,
+and execute snippet. `packageGet` is the bulk metadata API: full export array,
+provenance, and package-scoped secret FYI. When a community fork is outdated
+(the listing pin is not an ancestor of the fork tip), detail includes
+`listingAhead: true` and a one-line absorb next step (`communityGet`, then
+`repoPublishSession` with `absorbed_upstream_commit`). Ranked package hits
+include that same notice only when the fork is outdated. `packageGet` does not
+return files. Open one package file with `package:{id}#{path}`
+(`package:{id}#README.md`, `package:{id}#README.md#export-jsdoc`,
+`package:{id}#src/file.ts#L165`, or `package:{id}#src/file.ts#L165-L180`). A
+fragment that matches an export subpath still opens that export. Markdown
+heading slugs use the same rules as guide headings. A missing file, heading, or
+line fails instead of returning the whole file. For the tree, or to edit, open a
+repo session (`repoOpenSession` + `repoReadFile`) or clone with
+`packageGetGitRemote`. `repoReadFile` accepts the same `#L165`, `#L165-L180`,
+and Markdown heading fragments on `path`. See
 [Repo sessions](./repo-sessions.md). Search `guide:package_authoring` for
 inbound webhooks and maintenance workflows.
 
@@ -334,12 +329,13 @@ metadata, including caller-owned package-scoped rows with **`package_id`**.
 
 Saved integrations and the `integration_*` capabilities live in the
 **integrations** domain (`integrationList`, `integrationGet`, `integrationSave`,
-`integrationLock`, `integrationDelete`, plus `integrationOauthAppList`,
+`integrationDelete`, plus `integrationOauthAppList`,
 `integrationOauthAppDelete`, `integrationOauthAppRotateCredentials` for shared
 OAuth apps, and `integrationTokenRefresh` for host-side metadata-only refresh).
-For a new provider, load `integration_bootstrap` and prefer `communitySearch`
-for a close helpers package before writing fetch code. For integrations.sh
-registry lookup, `communityFork` `@kody/integrations-sh`. See
+Package locks use `resourceLock` in the **secrets** domain. For a new provider,
+load `integration_bootstrap` and prefer `communitySearch` for a close helpers
+package before writing fetch code. For integrations.sh registry lookup,
+`communityFork` `@kody/integrations-sh`. See
 `search({ entity: "guide:openapi_integrations" })` (also at
 `/docs/openapi-integrations`) when the API publishes a spec. For a named
 bind-and-call surface, `communityFork` `@kody/openapi` into the user's org;

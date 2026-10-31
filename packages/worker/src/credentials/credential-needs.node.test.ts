@@ -235,6 +235,11 @@ test('owner credentials for visitors follow the declaring package through the cl
 	})
 	expect(inherited.needs).toEqual([{ ...shared, from: '@acme/rooms' }])
 	expect(readStoredCredentialNeeds(inherited.needs)).toEqual(inherited.needs)
+	expect(
+		readStoredCredentialNeeds(inherited.needs, {
+			supplierSemanticsEnabled: true,
+		}),
+	).toEqual([{ ...shared, from: '@acme/rooms', supplier: 'publisher' }])
 
 	// A dependency cannot share a credential the package itself declares.
 	const ownWins = mergeCredentialNeeds({
@@ -268,6 +273,184 @@ test('owner credentials for visitors follow the declaring package through the cl
 	expect(ownShares.needs).toEqual([shared])
 })
 
+test('supplier aliases normalize and executor required defaults to true when enabled', () => {
+	expect(
+		ownCredentialNeeds(
+			{
+				publisher: {
+					description: 'Publisher access.',
+					ownerCredentialForVisitors: true,
+				},
+				executor: {
+					description: 'Visitor access.',
+					supplier: 'executor',
+				},
+				optional: {
+					description: 'Optional visitor access.',
+					supplier: 'executor',
+					required: false,
+				},
+			},
+			{ supplierSemanticsEnabled: true },
+		),
+	).toEqual([
+		{
+			key: 'executor',
+			provider: 'executor',
+			description: 'Visitor access.',
+			multiple: false,
+			supplier: 'executor',
+			required: true,
+		},
+		{
+			key: 'optional',
+			provider: 'optional',
+			description: 'Optional visitor access.',
+			multiple: false,
+			supplier: 'executor',
+			required: false,
+		},
+		{
+			key: 'publisher',
+			provider: 'publisher',
+			description: 'Publisher access.',
+			multiple: false,
+			ownerCredentialForVisitors: true,
+			supplier: 'publisher',
+		},
+	])
+})
+
+test('the flag-off closure merge ignores supplier metadata', () => {
+	const merged = mergeCredentialNeeds({
+		own: ownCredentialNeeds(
+			{
+				service: {
+					description: 'Publisher access.',
+					supplier: 'publisher',
+				},
+			},
+			{ supplierSemanticsEnabled: false },
+		),
+		dependencies: [
+			{
+				packageName: '@fixture/dependency',
+				needs: [
+					{
+						key: 'service',
+						provider: 'service',
+						description: 'Dependency access.',
+						multiple: false,
+						supplier: 'executor',
+					},
+				],
+			},
+		],
+		supplierSemanticsEnabled: false,
+	})
+
+	expect(merged.conflicts).toEqual([])
+	expect(merged.needs).toEqual([
+		{
+			key: 'service',
+			provider: 'service',
+			description: 'Publisher access.',
+			multiple: false,
+		},
+	])
+})
+
+test('supplier closure permits publisher tightening and required tightening only', () => {
+	const dependency = {
+		key: 'service',
+		provider: 'service',
+		description: 'Dependency access.',
+		multiple: false,
+		supplier: 'executor' as const,
+		required: false,
+	}
+	const tightened = mergeCredentialNeeds({
+		own: ownCredentialNeeds(
+			{
+				service: {
+					description: 'Publisher access.',
+					supplier: 'publisher',
+				},
+				executor: {
+					description: 'Required access.',
+					supplier: 'executor',
+				},
+			},
+			{ supplierSemanticsEnabled: true },
+		),
+		dependencies: [
+			{
+				packageName: '@fixture/dependency',
+				needs: [
+					dependency,
+					{
+						...dependency,
+						key: 'executor',
+						provider: 'executor',
+						supplier: 'executor',
+						required: false,
+					},
+				],
+			},
+		],
+		supplierSemanticsEnabled: true,
+	})
+	expect(tightened.conflicts).toEqual([])
+	expect(tightened.needs).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ key: 'service', supplier: 'publisher' }),
+			expect.objectContaining({
+				key: 'executor',
+				supplier: 'executor',
+				required: true,
+			}),
+		]),
+	)
+
+	const loosened = mergeCredentialNeeds({
+		own: ownCredentialNeeds(
+			{
+				service: {
+					description: 'Executor access.',
+					supplier: 'executor',
+				},
+				executor: {
+					description: 'Optional access.',
+					supplier: 'executor',
+					required: false,
+				},
+			},
+			{ supplierSemanticsEnabled: true },
+		),
+		dependencies: [
+			{
+				packageName: '@fixture/publisher',
+				needs: [
+					{
+						...dependency,
+						supplier: 'publisher',
+						required: undefined,
+					},
+					{
+						...dependency,
+						key: 'executor',
+						provider: 'executor',
+						required: true,
+					},
+				],
+			},
+		],
+		supplierSemanticsEnabled: true,
+	})
+	expect(loosened.conflicts).toHaveLength(2)
+	expect(loosened.conflicts.join('\n')).toContain('@fixture/publisher')
+})
+
 test('a stored closure that does not parse counts as not stored', () => {
 	expect(readStoredCredentialNeeds(null)).toBeNull()
 	expect(readStoredCredentialNeeds([{ key: 'x' }])).toBeNull()
@@ -286,6 +469,38 @@ test('a stored closure that does not parse counts as not stored', () => {
 			key: 'github',
 			provider: 'github',
 			description: 'Read PRs.',
+			multiple: false,
+		},
+	])
+	expect(
+		readStoredCredentialNeeds([
+			{
+				key: 'legacy-owner',
+				provider: 'legacy-owner',
+				description: 'Legacy publisher access.',
+				multiple: false,
+				ownerCredentialForVisitors: true,
+			},
+			{
+				key: 'executor',
+				provider: 'executor',
+				description: 'Executor access.',
+				multiple: false,
+				supplier: 'executor',
+			},
+		]),
+	).toEqual([
+		{
+			key: 'legacy-owner',
+			provider: 'legacy-owner',
+			description: 'Legacy publisher access.',
+			multiple: false,
+			ownerCredentialForVisitors: true,
+		},
+		{
+			key: 'executor',
+			provider: 'executor',
+			description: 'Executor access.',
 			multiple: false,
 		},
 	])

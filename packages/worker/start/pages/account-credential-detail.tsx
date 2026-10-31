@@ -12,6 +12,7 @@ import { CredentialHostsEditor } from './account-credential-hosts-editor.tsx'
 import { CredentialFillPlacementEditor } from './account-credential-fill-placement-editor.tsx'
 import { RecordChips, recordBodyCss } from './record-table.tsx'
 import { formatFillPlacementSummary } from '#universal/credential-fill-placement.ts'
+import { fillPlacementAnchor } from '#universal/credential-placement-approval.ts'
 import {
 	type CredentialInjectView,
 	type CredentialListItem,
@@ -162,8 +163,8 @@ function renderFillPlacementObservation(
 		<div css={{ display: 'grid', gap: spacing.xs }}>
 			{wouldBlock ? (
 				<p css={mutedCss}>
-					Kody would block placeholders in: {wouldBlock}. Placement is not
-					enforced yet; this is observe-only from recent fills.
+					Recent fills outside this placement: {wouldBlock}. Kody refuses these
+					now; allow a part above if this credential needs it there.
 				</p>
 			) : null}
 			{filled ? <p css={mutedCss}>Recently filled parts: {filled}.</p> : null}
@@ -249,9 +250,9 @@ function packageName(
 ) {
 	return packagesById.get(id)?.kodyId ?? id
 }
-function renderField(label: string, body: ReactNode) {
+function renderField(label: string, body: ReactNode, id?: string) {
 	return (
-		<div css={fieldCss}>
+		<div css={fieldCss} id={id}>
 			<span css={fieldLabelCss}>{label}</span>
 			{body}
 		</div>
@@ -421,6 +422,7 @@ export function renderCredentialDetail(input: {
 								</p>
 							) : null}
 						</div>,
+						fillPlacementAnchor,
 					)
 				: null}
 

@@ -8,7 +8,11 @@ import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import { authorizeLocalExecutePackageBinding } from './capability-proxy-package-grants.ts'
 import { type ApiInvocationContext } from './context.ts'
 import { ApiError, invalidRequest } from './errors.ts'
-import { requireLocalExecuteHttpPrincipal } from './native-operation-helpers.ts'
+import {
+	assertContextRunRuntimePathAllowed,
+	assertContextRunSpecialPathAllowed,
+	requireLocalExecuteHttpPrincipal,
+} from './native-operation-helpers.ts'
 
 /**
  * Cloudflare Worker request upload limit on Free/Pro. Matches the api-worker
@@ -111,6 +115,9 @@ export async function runCapabilityProxyGatewayFetchStream(input: {
 	request: Request
 }): Promise<Response> {
 	requireLocalExecuteHttpPrincipal(input.ctx)
+	// Same gates as the JSON gatewayFetch hop.
+	assertContextRunRuntimePathAllowed(input.ctx, ['kody', 'gatewayFetch'])
+	assertContextRunSpecialPathAllowed(input.ctx, ['kody', 'gatewayFetch'])
 	assertGatewayFetchContentLength(input.request.headers)
 	const call = parseCapabilityProxyGatewayFetchStreamHeaders(
 		input.request.headers,

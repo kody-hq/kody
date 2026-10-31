@@ -1,4 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import {
+	surfaceCardCss,
+	nestedSurfaceDarkCss,
+} from '#universal/styles/surface.ts'
 import { type CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
@@ -183,11 +187,14 @@ const activityGridCss: CSSObject = {
 }
 
 const activityTileCss: CSSObject = {
+	...surfaceCardCss,
+	'@media (prefers-color-scheme: dark)': {
+		...nestedSurfaceDarkCss,
+		boxShadow: 'none',
+	},
 	display: 'grid',
 	gap: '0.25rem',
 	padding: `${spacing.sm} ${spacing.md}`,
-	borderRadius: radius.md,
-	background: colors.primarySoftest,
 	minWidth: 0,
 }
 

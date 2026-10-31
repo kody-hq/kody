@@ -10,8 +10,8 @@
  * with one get exposure recording and an on/off cohort readout on the admin
  * surfaces (see `docs/contributing/architecture/feature-flags.md`). Optional
  * `exposureRecording` selects the write site (`evaluation` chokepoints by
- * default, `paid-ranked-search` for the Jev experiment frame, or
- * `mcp-events-clients` for events-capable MCP clients only). The
+ * default, `mcp-events-clients` for MCP clients that call `events/*` only,
+ * or `repo-push-owners` for repo owners on each git push). The
  * `successMetric` field stays optional for flags that are genuinely
  * unmeasurable (such as the permanent `demo-indicator`), and the admin UI and
  * MCP list surface a notice strongly recommending one everywhere else.
@@ -43,15 +43,15 @@ export type FeatureFlagSuccessMetric = {
  * Where success-metric exposures are written for a measured flag.
  *
  * - `evaluation` (default): app session cache + MCP caller flag resolver.
- * - `paid-ranked-search`: only from paid list-mode ranked search (Jev frame);
- *   free/anonymous never enter the on/off cohorts for that flag.
- * - `mcp-events-clients`: only from `registerMcpEvents` after the client
- *   declares events support; execute and other MCP callers stay out.
+ * - `mcp-events-clients`: only from the `registerMcpEvents` `events/*`
+ *   handlers; execute and other MCP callers stay out.
+ * - `repo-push-owners`: only from the plain-repo git proxy on each
+ *   receive-pack, attributed to the repo owner (repo-scoped flags).
  */
 export type FeatureFlagExposureRecording =
 	| 'evaluation'
-	| 'paid-ranked-search'
 	| 'mcp-events-clients'
+	| 'repo-push-owners'
 
 export type FeatureFlagDefinition = {
 	key: string
@@ -82,46 +82,17 @@ export const featureFlagDefinitions = [
 		// admin notice), not to move a product metric.
 	},
 	{
-		key: 'jev-search-rerank',
+		key: 'profiles',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
-			'Kill switch for improved ranked search: when on, paid plans (standard/pro/max) widen hybrid recall and may run Workers AI typesafe/jev Score (AI Gateway) when the post-hybrid pool looks ambiguous. Free and anonymous never get Jev (skipped-plan). Necessity skips: skipped-small-pool (≤8), skipped-clear-winner (9–20 with a decisive top hit). Pricing-page improved-search copy is gated by this same flag. List-mode ranked search only. Offline/deterministic paths skip Jev and use hybrid order. Plan gate is a feature gate, not an entitlement. Delete the flag and gate sites when the experiment ends.',
-		exposureRecording: 'paid-ranked-search',
+			'Profiles (ADR 0092): scoped identities a person creates for agents and bots, with snapshot grants capped by the parent chain, shorten-only expiry, and terminal revoke. Off by default; experimenters opt in at /account/experiments. Delete the flag and gate sites when profiles graduate.',
 		successMetric: {
 			eventType: 'execute',
 			measure: 'event_count',
 			goal: 'increase',
 			hypothesis:
-				'Paid ranked-search users with the flag on (Jev-eligible: widen recall + selective Score; necessity may still skip) follow search with more execute calls than comparable paid flag-off searchers.',
-		},
-	},
-	{
-		key: 'execute-invoke',
-		defaultEnabled: false,
-		defaultAudience: 'experiments_opt_in',
-		description:
-			'MCP execute `invoke` shortcut: mint the canonical thin kody:@ passthrough for a package export, then run the existing execute path. Off by default; enable with audience experiments_opt_in. Delete the flag and gate sites when the experiment ends.',
-		successMetric: {
-			eventType: 'dynamic_worker_day',
-			measure: 'event_count',
-			goal: 'decrease',
-			hypothesis:
-				'Invoke-generated thin passthrough reuses one Dynamic Worker per package export, so experiment users burn fewer unique worker-days on execute.',
-		},
-	},
-	{
-		key: 'connection-profiles',
-		defaultEnabled: false,
-		defaultAudience: 'experiments_opt_in',
-		description:
-			'Named connection profiles on the Agents page (/@slug/-/agents): package grant allowlists (read/execute) for MCP ?profile= URLs and profile-bound API tokens. Off by default; enable with audience experiments_opt_in. Delete the flag and gate sites when the experiment ends.',
-		successMetric: {
-			eventType: 'execute',
-			measure: 'event_count',
-			goal: 'increase',
-			hypothesis:
-				'Experimenters with connection profiles create restricted agent connections and keep executing against granted packages.',
+				'Experimenters who create profiles give their agents narrower identities and keep executing through them.',
 		},
 	},
 	{
@@ -143,7 +114,7 @@ export const featureFlagDefinitions = [
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
-			'MCP Events extension (draft, webhook delivery only) on the stateless /mcp lane: advertise the events capability and serve events/list, events/subscribe, and events/unsubscribe for package kody.emits topics that opt in with mcp: true. Only for clients that declare events support. Off by default; enable with audience experiments_opt_in. Signed-in users can also turn it on from /docs/mcp-events. Delete the flag and gate sites when the experiment ends.',
+			'MCP Events extension (draft, webhook delivery only) on the stateless /mcp lane: advertise the events capability and serve events/list, events/subscribe, and events/unsubscribe for package kody.emits topics that opt in with mcp: true. OAuth callers only; clients declare nothing. Off by default; enable with audience experiments_opt_in. Signed-in users can also turn it on from /docs/mcp-events. Delete the flag and gate sites when the experiment ends.',
 		exposureRecording: 'mcp-events-clients',
 		successMetric: {
 			eventType: 'execute',
@@ -154,27 +125,41 @@ export const featureFlagDefinitions = [
 		},
 	},
 	{
-		key: 'package-app-custom-domains',
+		key: 'package-credential-suppliers',
 		defaultEnabled: false,
-		defaultAudience: 'experiments_opt_in',
 		description:
-			'Serve package apps on customer custom hostnames (Cloudflare for SaaS on the package-app zone). Off by default; enable with audience experiments_opt_in so only opted-in users can manage domains. Anonymous serve still uses the global on switch once a hostname is verified. Delete the flag when custom domains ship.',
-		successMetric: {
-			eventType: 'execute',
-			measure: 'event_count',
-			goal: 'increase',
-			hypothesis:
-				'Users with a working custom-hostname package app keep executing against that package more than comparable flag-off users.',
-		},
+			'Gate publisher- and executor-supplied package credentials, including visitor grant mappings. Off by default. Delete this flag after the follow-up removes supplier aliases and legacy paths.',
+		// Intentionally no successMetric: a credential authority boundary, not
+		// a product experiment.
 	},
 	{
 		key: 'repo-push-queue',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
-			'Per-repo Durable Object write queue for plain-repo git pushes (git-receive-pack): pushes land in the kody-push-queue Worker (RepoPushQueueV1) and reach Artifacts one at a time in FIFO order, with a 90s per-push budget and a clean 503 + Retry-After instead of a raw busy error. Evaluated per repo: repo allowlist (adminFeatureFlagRepoOverride), then the repo owner override, then the global switch with percentage rollout bucketed by repo, then the audience gate on the repo owner. Off repos keep the isolate-local wait-and-retry proxy. Delete the flag and gate sites when the queue ships to everyone.',
-		// Intentionally no successMetric: git pushes are not a metered usage
-		// event, so exposures would not join any readout.
+			'Per-repo Durable Object write queue for plain-repo git pushes (git-receive-pack): pushes land in the kody-push-queue Worker (RepoPushQueueV1) and reach Artifacts one at a time in FIFO order, with a 90s per-push budget and a clean 503 + Retry-After instead of a raw busy error. Evaluated per repo: repo allowlist (adminFeatureFlagRepoOverride), then the repo owner override, then the global switch with percentage rollout bucketed by repo, then the audience gate on the repo owner. Off repos keep the isolate-local wait-and-retry proxy. Kept as a kill switch after the global rollout. Every push records an observe-only git_push usage event (path, outcome, Durable Object wall time, wait, queue depth, attempts) and an exposure for the repo owner; read queue cost with adminRepoPushQueueCost.',
+		exposureRecording: 'repo-push-owners',
+		successMetric: {
+			eventType: 'git_push',
+			measure: 'error_rate',
+			goal: 'decrease',
+			hypothesis:
+				'Pushes to repos on the per-repo push queue fail with busy, timeout, or other errors less often than pushes through the isolate-local wait-and-retry proxy.',
+		},
+	},
+	{
+		key: 'execution-contexts',
+		defaultEnabled: false,
+		defaultAudience: 'experiments_opt_in',
+		description:
+			'Execution contexts: run execute on a machine the user registered (their laptop or a build server) instead of Kody cloud, with package-style sharing and a per-user chain. Off by default; enable with audience experiments_opt_in. Delete the flag and gate sites when the feature ships.',
+		successMetric: {
+			eventType: 'dynamic_worker_day',
+			measure: 'event_count',
+			goal: 'decrease',
+			hypothesis:
+				'Runs that go to a registered execution context do not start a cloud Dynamic Worker, so experiment users burn fewer unique worker-days.',
+		},
 	},
 	{
 		key: 'credential-need-enforcement',
@@ -184,17 +169,17 @@ export const featureFlagDefinitions = [
 		// Intentionally no successMetric: a security boundary, not a product
 		// metric; the readout is the codemod rescan and credential_need_undeclared errors.
 	},
+	{
+		key: 'credential-allowed-packages-safety-window',
+		defaultEnabled: true,
+		description:
+			"Global switch (audience and rollout are ignored) for the issue #4129 30-day safety window before allowed-packages enforcement cutover. While on and inside the window, nothing is refused for a self-authored or adopted package that a user credential's non-empty allowed-packages list leaves out. A pair whose package and credential both existed before the window started is added to the list on first use (credential.allowed_packages_updated audit row, reason grandfathered for #4129, source safety_window, plus a log line); any other pair is quietly allowed with a log line and keeps its would-block marker. The owner is never notified. From cutover the rule is strict whether or not this flag is on. Delete the flag and gate sites once the window has closed.",
+		// Intentionally no successMetric: a credential authority boundary, not
+		// a product experiment; the readout is the safety_window audit rows.
+	},
 ] as const satisfies ReadonlyArray<FeatureFlagDefinition>
 
 export type FeatureFlagKey = (typeof featureFlagDefinitions)[number]['key']
-
-export const jevSearchRerankFlagKey =
-	'jev-search-rerank' satisfies FeatureFlagKey
-
-export const executeInvokeFlagKey = 'execute-invoke' satisfies FeatureFlagKey
-
-export const connectionProfilesFlagKey =
-	'connection-profiles' satisfies FeatureFlagKey
 
 export const mcpSkillsExtensionFlagKey =
 	'mcp-skills-extension' satisfies FeatureFlagKey
@@ -202,13 +187,21 @@ export const mcpSkillsExtensionFlagKey =
 export const mcpEventsExtensionFlagKey =
 	'mcp-events-extension' satisfies FeatureFlagKey
 
-export const packageAppCustomDomainsFlagKey =
-	'package-app-custom-domains' satisfies FeatureFlagKey
+export const packageCredentialSuppliersFlagKey =
+	'package-credential-suppliers' satisfies FeatureFlagKey
 
 export const repoPushQueueFlagKey = 'repo-push-queue' satisfies FeatureFlagKey
 
+export const executionContextsFlagKey =
+	'execution-contexts' satisfies FeatureFlagKey
+
+export const profilesFlagKey = 'profiles' satisfies FeatureFlagKey
+
 export const credentialNeedEnforcementFlagKey =
 	'credential-need-enforcement' satisfies FeatureFlagKey
+
+export const credentialAllowedPackagesSafetyWindowFlagKey =
+	'credential-allowed-packages-safety-window' satisfies FeatureFlagKey
 
 export const featureFlagKeys: ReadonlyArray<FeatureFlagKey> =
 	featureFlagDefinitions.map((definition) => definition.key)
@@ -287,7 +280,7 @@ export function getFeatureFlagExposureRecording(
 /**
  * True when the app/MCP evaluation chokepoints should write an exposure for
  * this measured flag. Flags with a dedicated recording site (for example
- * paid ranked search) return false here and record only on that path.
+ * events-capable MCP clients) return false here and record only on that path.
  */
 export function recordsFeatureFlagExposureAtEvaluation(
 	key: FeatureFlagKey,

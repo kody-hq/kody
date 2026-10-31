@@ -8,6 +8,7 @@ import {
 import { type McpUserContext } from '@kody-internal/shared/chat.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
+import { loadRunningProfile } from '#worker/profiles/running-profile.ts'
 import { getMcpUserPackageScope } from '#worker/package-registry/user-scope.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { requireMcpRequest, requireMcpUser } from './require-user.ts'
@@ -25,6 +26,16 @@ const outputSchema = z.object({
 	org: z.object({
 		slug: z.string().describe('Package scope and package-app subdomain.'),
 	}),
+	profile: z
+		.object({
+			id: z.string(),
+			name: z.string(),
+			ancestors: z.array(z.object({ id: z.string(), name: z.string() })),
+		})
+		.nullable()
+		.describe(
+			'The profile this request runs as (ancestors root first), or null for the person themselves. Informational only; grants enforce access.',
+		),
 })
 
 /**
@@ -67,6 +78,7 @@ export const metaGetCurrentUserCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'metaGetCurrentUser',
+		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
 			'Get harmless identity fields for the signed-in MCP user: id, username, email, display name, and the slug of the org this request acts in. Email is empty when the caller is a team org rather than a person. Use email and display_name as git user.email / user.name on Kody remotes when a git-remote result is not already in hand.',
@@ -99,6 +111,7 @@ export const metaGetCurrentUserCapability = defineDomainCapability(
 				email: user.email,
 				display_name: user.displayName,
 				org: { slug: request.org.slug ?? username },
+				profile: await loadRunningProfile(ctx.env.APP_DB, request),
 			}
 		},
 	},

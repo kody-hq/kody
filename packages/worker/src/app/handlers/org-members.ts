@@ -39,6 +39,7 @@ import {
 	revokeOrgInviteLink,
 	type ListedInviteLink,
 } from '#worker/orgs/invite-links.ts'
+import { listTeams } from '#worker/orgs/org-teams-list.ts'
 import { onMemberSoftRemoved } from '#worker/orgs/member-offboarding.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import {
@@ -105,16 +106,26 @@ function toInviteView(invite: ListedOrgInvite): OrgInviteView {
 	}
 }
 
-function toInviteLinkView(link: ListedInviteLink): Array<OrgInviteLinkView> {
+function toInviteLinkView(
+	link: ListedInviteLink,
+	teamNamesById: Map<string, string>,
+): Array<OrgInviteLinkView> {
 	if (link.target.kind !== 'membership') return []
 	return [
 		{
 			id: link.id,
 			role: link.target.role,
 			roleLabel: orgRoleLabel(link.target.role),
+			label: link.label,
+			teamIds: link.teamIds,
+			teamNames: link.teamIds.flatMap((teamId) => {
+				const name = teamNamesById.get(teamId)
+				return name ? [name] : []
+			}),
 			allowedEmailDomains: link.allowedEmailDomains,
 			maxUses: link.maxUses,
 			useCount: link.useCount,
+			lastUsedAt: link.lastUsedAt,
 			expiresAt: link.expiresAt,
 			createdAt: link.createdAt,
 			createdByUsername: link.createdByUsername,
@@ -133,7 +144,7 @@ export async function loadOrgMembersData(input: {
 	const canManage =
 		!input.org.personal &&
 		(await orgHasPermission(input.env, input.user, 'member:write'))
-	const [members, invites, inviteLinks] = await Promise.all([
+	const [members, invites, inviteLinks, teams] = await Promise.all([
 		listOrgMembers(input.env.APP_DB, input.org.id),
 		canManage
 			? listPendingOrgInvites(input.env.APP_DB, input.org.id)
@@ -141,13 +152,22 @@ export async function loadOrgMembersData(input: {
 		canManage
 			? listActiveOrgInviteLinks(input.env.APP_DB, input.org.id)
 			: Promise.resolve([]),
+		canManage ? listTeams(input.env.APP_DB, input.org.id) : Promise.resolve([]),
 	])
+	const teamNamesById = new Map(teams.map((team) => [team.id, team.name]))
 	return {
 		ok: true,
 		org: input.org,
 		members: members.map(toMemberView),
 		invites: invites.map(toInviteView),
-		inviteLinks: inviteLinks.flatMap(toInviteLinkView),
+		inviteLinks: inviteLinks.flatMap((link) =>
+			toInviteLinkView(link, teamNamesById),
+		),
+		teams: teams.map((team) => ({
+			id: team.id,
+			slug: team.slug,
+			name: team.name,
+		})),
 		canManage,
 	}
 }
@@ -456,6 +476,8 @@ export async function createOrganizationInviteLink({
 	env: Env
 	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 	role?: unknown
+	label?: unknown
+	teamIds?: unknown
 	allowedEmailDomains?: unknown
 	domains?: unknown
 	allowedDomains?: unknown
@@ -489,6 +511,28 @@ export async function createOrganizationInviteLink({
 		return operationResult({ ok: false, error: 'Choose a valid role.' }, 400)
 	}
 	const role = isInviteLinkRole(fields.role) ? fields.role : 'member'
+	const label =
+		typeof fields.label === 'string'
+			? fields.label
+			: fields.label == null
+				? null
+				: undefined
+	if (label === undefined) {
+		return operationResult({ ok: false, error: 'Label must be text.' }, 400)
+	}
+	const teamIds = Array.isArray(fields.teamIds)
+		? fields.teamIds.filter(
+				(entry): entry is string => typeof entry === 'string',
+			)
+		: fields.teamIds == null
+			? []
+			: null
+	if (teamIds == null) {
+		return operationResult(
+			{ ok: false, error: 'Default teams must be a list of team ids.' },
+			400,
+		)
+	}
 	const parsedOptions = readInviteLinkOptions(fields)
 	if (!parsedOptions.ok)
 		return operationResult({ ok: false, error: parsedOptions.error }, 400)
@@ -503,6 +547,8 @@ export async function createOrganizationInviteLink({
 			createdByUserId: user.mcpUser.userId,
 			tokenHash,
 			allowedEmailDomains,
+			teamIds,
+			label,
 			maxUses,
 			expiresAt,
 			audit: orgAuditWriterFromRequest(env, user.request),
@@ -514,6 +560,8 @@ export async function createOrganizationInviteLink({
 				expiresAt: created.expiresAt,
 				maxUses: created.maxUses,
 				allowedEmailDomains: created.allowedEmailDomains,
+				label: created.label,
+				teamIds: created.teamIds,
 				role,
 				url: inviteLinkUrl(request, token),
 				token,

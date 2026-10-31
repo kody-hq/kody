@@ -9,9 +9,8 @@ import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import {
 	type AstNode,
 	constantsWithoutShadows,
-	createModuleConstantsReader,
+	forEachScannableModule,
 	getNodeName,
-	listScannableModulePaths,
 	parseModule,
 	resolveStringExpression,
 	scannableModuleFilePattern,
@@ -19,9 +18,15 @@ import {
 	walkAst,
 } from '#worker/credentials/module-placeholder-scan.ts'
 import {
+	isVaultCredentialUsePlacement,
 	scanPackageCredentials,
 	type PackageCredentialScan,
 } from '#worker/credentials/credential-inventory-scan.ts'
+import {
+	normalizeSecretProviderNeedId,
+	secretProviderSlotExample,
+} from '#worker/credentials/credential-needs.ts'
+import { type ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	getPackageAppClientEntryPath,
 	getPackageAppEntryPath,
@@ -30,10 +35,12 @@ import {
 	parseAuthoredPackageJson,
 } from '#worker/package-registry/manifest.ts'
 import {
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
+	secretProviderSlotKind,
 	packageCredentialSlotNamePattern,
 	type AuthoredPackageJson,
 	type PackageCredentialKind,
+	type PackageCredentialSlotKind,
 	type PackageCredentialSlot,
 } from '#worker/package-registry/types.ts'
 import { collectDynamicImportExpressionNodes } from '#worker/package-runtime/import-specifiers.ts'
@@ -67,22 +74,22 @@ export function measureCredentialStampModuleBytes(source: string): number {
 
 /**
  * Drop oversized scannable modules from a package file map before stamp
- * planning / sealing. Non-module assets and package.json are kept.
+ * planning / sealing. Non-module assets and package.json are kept. Returns
+ * `files` itself when nothing is dropped so the credential scans of one check
+ * share one module index.
  */
 export function omitOversizedCredentialStampModules(
 	files: Record<string, string>,
 ): Record<string, string> {
-	const next: Record<string, string> = {}
-	for (const [path, content] of Object.entries(files)) {
-		if (
+	const oversized = Object.entries(files).filter(
+		([path, content]) =>
 			scannableModuleFilePattern.test(path) &&
 			measureCredentialStampModuleBytes(content) >
-				credentialStampMaxModuleScanBytes
-		) {
-			continue
-		}
-		next[path] = content
-	}
+				credentialStampMaxModuleScanBytes,
+	)
+	if (oversized.length === 0) return files
+	const next = { ...files }
+	for (const [path] of oversized) delete next[path]
 	return next
 }
 
@@ -164,7 +171,7 @@ export type CredentialStampScan = {
 export type CredentialStampSealSlot = {
 	key: string
 	description: string
-	kind?: PackageCredentialKind
+	kind?: PackageCredentialSlotKind
 }
 
 export type CredentialStampSealPlan = {
@@ -205,13 +212,14 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 const packageCredentialKinds: ReadonlySet<string> = new Set(
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
 )
 
 type ManifestCredentialSlot = {
 	description: string | null
-	kind?: PackageCredentialKind
+	kind?: PackageCredentialSlotKind
 	provider?: string
+	package?: string
 	multiple?: boolean
 }
 
@@ -240,11 +248,12 @@ function readManifestCredentialSlots(
 			typeof slot.kind === 'string' &&
 			packageCredentialKinds.has(slot.kind)
 		) {
-			declared.kind = slot.kind as PackageCredentialKind
+			declared.kind = slot.kind as PackageCredentialSlotKind
 		}
 		if (typeof slot.provider === 'string' && slot.provider.trim().length > 0) {
 			declared.provider = slot.provider
 		}
+		if (typeof slot.package === 'string') declared.package = slot.package.trim()
 		if (typeof slot.multiple === 'boolean') declared.multiple = slot.multiple
 		slots[name] = declared
 	}
@@ -374,6 +383,30 @@ function isCredentialNamedMember(
 	return isCredentialFunctionValue(node.object, bindings)
 }
 
+/** `credential.visitor(key)`: a literal key read on the visitor's grant. */
+function isCredentialVisitorMember(
+	node: AstNode | undefined,
+	bindings: CredentialBindings,
+): boolean {
+	if (
+		node?.type !== 'MemberExpression' &&
+		node?.type !== 'OptionalMemberExpression'
+	) {
+		return false
+	}
+	if (memberPropertyName(node) !== 'visitor') return false
+	return isCredentialFunctionValue(node.object, bindings)
+}
+
+function isCalledMember(node: AstNode, parent: AstNode | undefined) {
+	return Boolean(
+		parent &&
+		(parent.type === 'CallExpression' ||
+			parent.type === 'OptionalCallExpression') &&
+		parent.callee === node,
+	)
+}
+
 function isNonReferenceName(node: AstNode, parent: AstNode) {
 	if (parent.computed === true) return false
 	if (
@@ -396,6 +429,94 @@ function isNonReferenceName(node: AstNode, parent: AstNode) {
 	return false
 }
 
+/**
+ * TypeScript nodes whose children can hold runtime expressions. Every other
+ * `TS*` node is a type (alias, interface, annotation, type arguments, `typeof`
+ * query, …) and is erased before the code runs.
+ */
+const runtimeTypeScriptNodeTypes = new Set([
+	'TSAsExpression',
+	'TSSatisfiesExpression',
+	'TSTypeAssertion',
+	'TSNonNullExpression',
+	'TSInstantiationExpression',
+	'TSEnumDeclaration',
+	'TSEnumBody',
+	'TSEnumMember',
+	'TSModuleDeclaration',
+	'TSModuleBlock',
+	'TSExportAssignment',
+	'TSImportEqualsDeclaration',
+	'TSParameterProperty',
+])
+
+/**
+ * A reference that is erased before the code runs: inside a type, under an
+ * ambient `declare`, or in a type-only export. Such a reference cannot hand
+ * the credential function to anything at run time.
+ */
+function isErasedTypePosition(ancestors: ReadonlyArray<AstNode>) {
+	for (const ancestor of ancestors) {
+		if (
+			ancestor.type.startsWith('TS') &&
+			!runtimeTypeScriptNodeTypes.has(ancestor.type)
+		) {
+			return true
+		}
+		if ((ancestor as { declare?: unknown }).declare === true) return true
+		if (
+			(ancestor.type === 'ExportNamedDeclaration' ||
+				ancestor.type === 'ExportSpecifier' ||
+				ancestor.type === 'TSImportEqualsDeclaration') &&
+			((ancestor as { exportKind?: unknown }).exportKind === 'type' ||
+				(ancestor as { importKind?: unknown }).importKind === 'type')
+		) {
+			return true
+		}
+	}
+	return false
+}
+
+/** `typeof credential` in a runtime expression reads a string, not the value. */
+function isRuntimeTypeofOperand(node: AstNode, parent: AstNode | undefined) {
+	return (
+		parent?.type === 'UnaryExpression' &&
+		parent.operator === 'typeof' &&
+		parent.argument === node
+	)
+}
+
+/**
+ * `import c = kody.credential` is a runtime alias, but its qualified name is a
+ * `TS*` node that {@link isErasedTypePosition} would otherwise skip.
+ */
+function isRuntimeImportEqualsOfRuntime(
+	node: AstNode,
+	bindings: CredentialBindings,
+) {
+	if (node.type !== 'TSImportEqualsDeclaration') return false
+	if ((node as { importKind?: unknown }).importKind === 'type') return false
+	let reference = node.moduleReference as AstNode | undefined
+	let firstMember: AstNode | undefined
+	while (reference?.type === 'TSQualifiedName') {
+		firstMember = reference.right as AstNode | undefined
+		reference = reference.left as AstNode | undefined
+	}
+	if (reference?.type !== 'Identifier' || firstMember == null) return false
+	const name = getNodeName(reference) ?? ''
+	if (bindings.functions.has(name)) return true
+	return (
+		bindings.runtimeObjects.has(name) &&
+		credentialFunctionNames.has(getNodeName(firstMember) ?? '')
+	)
+}
+
+function isVisitorCallOrTypeof(visitor: AstNode, parent: AstNode | undefined) {
+	return (
+		isCalledMember(visitor, parent) || isRuntimeTypeofOperand(visitor, parent)
+	)
+}
+
 type KeyScan = {
 	key: (key: string) => void
 	computed: () => void
@@ -410,6 +531,10 @@ function scanParsedCredentialKeys(
 ) {
 	const bindings = collectCredentialBindings(parsed.program?.body ?? [])
 	walkAst(parsed, (node, ancestors) => {
+		if (isRuntimeImportEqualsOfRuntime(node, bindings)) {
+			scan.indirect()
+			return
+		}
 		if (
 			node.type === 'CallExpression' ||
 			node.type === 'OptionalCallExpression'
@@ -418,7 +543,10 @@ function scanParsedCredentialKeys(
 				scan.named()
 				return
 			}
-			if (isCredentialCallee(node.callee, bindings)) {
+			if (
+				isCredentialCallee(node.callee, bindings) ||
+				isCredentialVisitorMember(node.callee, bindings)
+			) {
 				const key = resolveStringExpression(
 					node.arguments?.[0],
 					constantsWithoutShadows(constants, ancestors),
@@ -450,6 +578,12 @@ function scanParsedCredentialKeys(
 			isCredentialFunctionValue(node, bindings)
 		) {
 			const parent = ancestors.at(-1)
+			if (
+				isRuntimeTypeofOperand(node, parent) ||
+				isErasedTypePosition(ancestors)
+			) {
+				return
+			}
 			const called =
 				parent &&
 				(parent.type === 'CallExpression' ||
@@ -461,7 +595,27 @@ function scanParsedCredentialKeys(
 					parent.type === 'OptionalMemberExpression') &&
 				parent.object === node &&
 				memberPropertyName(parent) === 'named'
-			if (!called && !namedAccess) scan.indirect()
+			const visitorCall =
+				parent != null &&
+				parent.object === node &&
+				isCredentialVisitorMember(parent, bindings) &&
+				isVisitorCallOrTypeof(parent, ancestors.at(-2))
+			if (!called && !namedAccess && !visitorCall) scan.indirect()
+			return
+		}
+		if (
+			(node.type === 'MemberExpression' ||
+				node.type === 'OptionalMemberExpression') &&
+			isCredentialVisitorMember(node, bindings)
+		) {
+			const parent = ancestors.at(-1)
+			if (
+				!isCalledMember(node, parent) &&
+				!isRuntimeTypeofOperand(node, parent) &&
+				!isErasedTypePosition(ancestors)
+			) {
+				scan.indirect()
+			}
 			return
 		}
 		if (node.type !== 'Identifier') return
@@ -469,6 +623,8 @@ function scanParsedCredentialKeys(
 		const parent = ancestors.at(-1)
 		if (!parent || parent.type.startsWith('Import')) return
 		if (isNonReferenceName(node, parent)) return
+		if (isRuntimeTypeofOperand(node, parent)) return
+		if (isErasedTypePosition(ancestors)) return
 		const isCallee =
 			(parent.type === 'CallExpression' ||
 				parent.type === 'OptionalCallExpression') &&
@@ -482,12 +638,16 @@ function scanParsedCredentialKeys(
 			scan.named()
 			return
 		}
-		if (!isCallee) scan.indirect()
+		const isVisitorCall =
+			isCredentialVisitorMember(parent, bindings) &&
+			parent.object === node &&
+			isVisitorCallOrTypeof(parent, ancestors.at(-2))
+		if (!isCallee && !isVisitorCall) scan.indirect()
 	})
 }
 
 const textCredentialCallPattern =
-	/\bcredentials?\s*\(\s*(?:(['"`])([^'"`$\\]*)\1)?/g
+	/\b(?:credentials?|credential\s*(?:\?\.|\.)\s*visitor)\s*\(\s*(?:(['"`])([^'"`$\\]*)\1)?/g
 
 function scanUnparsedCredentialKeys(source: string, scan: KeyScan) {
 	if (!/\bkody:runtime\b|\bkody\s*(?:\?\.|\.)\s*credentials?\b/.test(source)) {
@@ -700,14 +860,8 @@ export function scanLiteralMcpServerKeys(files: Record<string, string>): {
 	const declaredMcpKeys = declaredMcpCredentialKeys(
 		readManifestCredentialSlots(files[packageManifestPath]),
 	)
-	const modulePaths = listScannableModulePaths(files)
-	const parsedModules = new Map(
-		modulePaths.map((path) => [path, parseModule(files[path]!)]),
-	)
-	const moduleConstants = createModuleConstantsReader(parsedModules)
-	for (const path of modulePaths) {
+	forEachScannableModule(files, (path, parsed, constants) => {
 		const source = files[path]!
-		const parsed = parsedModules.get(path)
 		if (!parsed) {
 			if (
 				/\bkody\s*(?:\?\.|\.)\s*mcp\b|\bkody\s*\[\s*['"`]mcp['"`]/.test(source)
@@ -718,9 +872,8 @@ export function scanLiteralMcpServerKeys(files: Record<string, string>): {
 					message: `${path}: kody.mcp access could not be parsed. Call kody.mcp.SERVER (or kody.mcp["SERVER"]) with a literal server name, and declare a kind "mcp" slot for each server.`,
 				})
 			}
-			continue
+			return
 		}
-		const constants = moduleConstants(path)
 		const body = parsed.program?.body ?? []
 		const kodyAliases = new Set<string>(['kody'])
 		const mcpAliases = createMcpAliasTable()
@@ -876,7 +1029,7 @@ export function scanLiteralMcpServerKeys(files: Record<string, string>): {
 				message: `${path}: kody.mcp escaped as a value. Keep MCP access as literal kody.mcp.SERVER (or a local alias used only as mcp.SERVER) and declare each server as a kind "mcp" kody.credentials slot.`,
 			})
 		})
-	}
+	})
 	return { keys: [...keys].sort(), failures: dedupeFailures(failures) }
 }
 
@@ -1304,7 +1457,7 @@ function mcpServerFromMember(
  */
 export function inferCredentialStampDescription(input: {
 	key: string
-	kind?: PackageCredentialKind
+	kind?: PackageCredentialSlotKind
 	mcp?: boolean
 	jwtSign?: boolean
 	oauth?: boolean
@@ -1475,6 +1628,10 @@ export function applyCredentialStampSealPlan(
  */
 export function scanCredentialStamp(
 	files: Record<string, string>,
+	options: {
+		/** From {@link resolveSecretProviderSlots}; unresolved slots seal nothing. */
+		secretProviders?: ResolvedSecretProviderSlots
+	} = {},
 ): CredentialStampScan {
 	files = omitOversizedCredentialStampModules(files)
 	const keys = new Set<string>()
@@ -1521,7 +1678,7 @@ export function scanCredentialStamp(
 		})
 	}
 
-	scanModuleCredentialReferences(files, (path) => ({
+	scanModuleCredentialReferences(files, (_path) => ({
 		add: () => {},
 		named: (name, kind) => {
 			if (packageCredentialSlotNamePattern.test(name)) {
@@ -1531,23 +1688,45 @@ export function scanCredentialStamp(
 		},
 		// Non-literal helper args are refused via 0010 unstampable patterns.
 		computed: () => {},
-		unnamed: (via) => {
-			if (via === 'placeholder') {
-				failures.push({
-					code: 'unstampable_pattern',
-					path,
-					message: `${path}: vault placeholder {{secret/provider:ref}} cannot be stamped. Declare a kody.credentials slot keyed by the provider with a description, and use that literal key.`,
-				})
-			}
-		},
+		// Vault placeholders are gated from inventory placements below: only
+		// request / credential-mapped sites fail the stamp. Display strings
+		// (status example/help fields) are not credential uses.
+		unnamed: () => {},
 	}))
 
-	const modulePaths = listScannableModulePaths(files)
-	const parsedModules = new Map(
-		modulePaths.map((path) => [path, parseModule(files[path]!)]),
+	// A vault use seals only through a described kind "secret-provider" slot
+	// for its literal provider id. Refs stay governed by per-package grants.
+	const providerSlots = secretProviderSlotKeysByProvider(
+		slots,
+		options.secretProviders,
 	)
-	const moduleConstants = createModuleConstantsReader(parsedModules)
-	for (const path of modulePaths) {
+	const undeclaredProviders = new Set<string>()
+	const vaultUses = scan.vaultUses.filter((use) =>
+		isVaultCredentialUsePlacement(use.placement),
+	)
+	for (const use of vaultUses) {
+		const provider = normalizeSecretProviderNeedId(use.provider)
+		const slotKeys = providerSlots.get(provider)
+		if (slotKeys) for (const key of slotKeys) keys.add(key)
+		else undeclaredProviders.add(provider)
+	}
+	// Fail closed on a vault use the scanner read no provider id from.
+	const unreadVaultUse =
+		scan.vaultPlacements.filter(isVaultCredentialUsePlacement).length >
+		vaultUses.length
+	if (undeclaredProviders.size > 0 || unreadVaultUse) {
+		failures.push({
+			code: 'unstampable_pattern',
+			message: vaultPlaceholderFixMessage(
+				[...undeclaredProviders].sort(),
+				slots,
+				options.secretProviders,
+			),
+		})
+	}
+	failures.push(...(options.secretProviders?.failures ?? []))
+
+	forEachScannableModule(files, (path, parsed, constants) => {
 		const keyScan: KeyScan = {
 			key: (key) => {
 				if (packageCredentialSlotNamePattern.test(key)) keys.add(key)
@@ -1564,7 +1743,7 @@ export function scanCredentialStamp(
 					code: 'non_literal',
 					path,
 					message: nonLiteralFixMessage(
-						`${path}: credential() / credentials() was called with a non-literal key.`,
+						`${path}: credential() / credentials() / credential.visitor() was called with a non-literal key. Call it with a literal key, e.g. credential.visitor("SLOT") for a need each visitor supplies.`,
 					),
 				})
 			},
@@ -1579,14 +1758,13 @@ export function scanCredentialStamp(
 				failures.push({
 					code: 'non_literal',
 					path,
-					message: `${path}: passes credential/credentials around instead of calling it with a literal key. ${credentialStampConversionFixGuidance}`,
+					message: `${path}: passes credential/credentials around instead of calling it with a literal key. Call credential("SLOT"), credentials("SLOT"), or credential.visitor("SLOT") directly. Type-only uses are fine: for a client type, import type { KodyCredentialClient } from "kody:runtime" (or write typeof credential inside a type). ${credentialStampConversionFixGuidance}`,
 				})
 			},
 		}
-		const parsed = parsedModules.get(path)
-		if (parsed) scanParsedCredentialKeys(parsed, moduleConstants(path), keyScan)
+		if (parsed) scanParsedCredentialKeys(parsed, constants, keyScan)
 		else scanUnparsedCredentialKeys(files[path]!, keyScan)
-	}
+	})
 
 	const mcp = scanLiteralMcpServerKeys(files)
 	for (const key of mcp.keys) keys.add(key)
@@ -1632,6 +1810,49 @@ export function scanCredentialStamp(
 		oauthKeys: [...oauthKeys].sort(),
 		scan,
 	}
+}
+
+/**
+ * Slot keys by the provider id their package declares. Only slots that are
+ * described secret-provider slots in this manifest and that resolved count.
+ */
+function secretProviderSlotKeysByProvider(
+	slots: Record<string, ManifestCredentialSlot>,
+	resolved: ResolvedSecretProviderSlots | undefined,
+) {
+	const byProvider = new Map<string, Array<string>>()
+	for (const [key, slot] of Object.entries(slots)) {
+		if (slot.kind !== secretProviderSlotKind || slot.description == null) {
+			continue
+		}
+		if (!packageCredentialSlotNamePattern.test(key)) continue
+		const provider = resolved?.ids[key]
+		if (provider == null) continue
+		byProvider.set(provider, [...(byProvider.get(provider) ?? []), key])
+	}
+	return byProvider
+}
+
+function vaultPlaceholderFixMessage(
+	providers: ReadonlyArray<string>,
+	slots: Record<string, ManifestCredentialSlot>,
+	resolved: ResolvedSecretProviderSlots | undefined,
+) {
+	const which =
+		providers.length > 0
+			? ` for provider id${providers.length === 1 ? '' : 's'} ${providers.map((id) => `"${id}"`).join(', ')}`
+			: ''
+	const declared = Object.entries(slots)
+		.filter(([, slot]) => slot.kind === secretProviderSlotKind)
+		.map(([key, slot]) => {
+			const id = resolved?.ids[key]
+			return `${key} (package "${slot.package ?? ''}"${id ? `, provider id "${id}"` : ', unresolved'})`
+		})
+	const declaredNote =
+		declared.length > 0
+			? ` Declared secret-provider slots: ${declared.join('; ')}.`
+			: ''
+	return `A vault placeholder {{secret/provider:ref}}${which} appears in a request or credential-mapped site (fetch URL, header, query, path, body, signing key, SDK option, call argument, or an object, array, or helper return that can feed one) and no declared provider package serves that provider id.${declaredNote} Declare a kody.credentials slot with kind "secret-provider" that names the saved provider package whose kody.secretProvider.id matches, for example:\n\n"kody": {\n  "credentials": {\n    ${secretProviderSlotExample()}\n  }\n}\n\nThe placeholder's provider id must be literal. Each ref still needs a per-package grant on the secret-providers page (resourceLock kind "secret_provider"). Placeholders only in values returned from status(), help(), docs(), or usage() are display text and do not block the stamp.`
 }
 
 function unstampablePatternFix(pattern: LegacyCredentialPattern): string {

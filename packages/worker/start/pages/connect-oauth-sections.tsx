@@ -1,7 +1,12 @@
 /** @jsxImportSource @emotion/react */
 
+import { type FormEvent } from 'react'
+import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import { type ConnectOauthExistingConnection } from '#universal/loader-data.ts'
+import {
+	type ConnectOauthExistingConnection,
+	type ConnectOauthLoaderData,
+} from '#universal/loader-data.ts'
 import { docHref } from '#universal/docs-nav.ts'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildConnectOauthFailureAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
@@ -13,6 +18,8 @@ import { colors, spacing } from '#universal/styles/tokens.ts'
 import {
 	cardCss,
 	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
 	getAccentCalloutCss,
 	getSecondaryButtonCss,
 	inputCss,
@@ -32,7 +39,185 @@ import {
 	type ConnectOauthChooserOption,
 	type ConnectOauthStatusTone,
 	type ConnectOauthStep,
+	connectOauthPrimaryButtonCss,
+	connectOauthSecondaryButtonCss,
 } from './connect-oauth-shared.ts'
+
+/**
+ * True when saving `next` would swap the OAuth app behind a live
+ * bring-your-own connection (client ID or another app-identity field
+ * changed). Mirrors the server guard in `integrations/service.ts`.
+ */
+export function wouldReplaceLiveApp(input: {
+	next: ConnectOauthConfig
+	existingConnection: ConnectOauthExistingConnection | null
+}) {
+	const existing = input.existingConnection
+	if (input.next.platformAppSlug) return false
+	if (existing?.lane !== 'user' || !existing.connected || !existing.identity) {
+		return false
+	}
+	const identity = existing.identity
+	return (
+		identity.clientId !== input.next.clientId ||
+		identity.tokenUrl !== input.next.tokenUrl ||
+		(identity.authorizeUrl ?? null) !== (input.next.authorizeUrl ?? null) ||
+		(identity.deviceAuthorizationUrl ?? null) !==
+			(input.next.deviceAuthorizationUrl ?? null) ||
+		identity.flow !== input.next.flow
+	)
+}
+
+export function suggestNewConnectionName(providerKey: string) {
+	return `${providerKey}-2`
+}
+
+/** Same rule as `integrationNameSchema`, plus "not the name being kept". */
+export function newConnectionNameError(value: string, currentKey: string) {
+	const key = normalizeProviderKey(value)
+	if (!/[a-z0-9]/.test(key)) {
+		return 'Connection name must contain letters or numbers.'
+	}
+	if (key === currentKey) {
+		return `Pick a name other than ${currentKey}.`
+	}
+	return null
+}
+
+export type LiveReplaceState = {
+	mode: 'choose' | 'new-name'
+	newName: string
+	nameError: string | null
+}
+
+export function renderLiveAppReplaceWarning(input: {
+	connectionName: string
+	existingConnection: ConnectOauthExistingConnection
+	state: LiveReplaceState
+	submitting: boolean
+	onReplace: () => void
+	onChooseNewName: () => void
+	onNewNameInput: (value: string) => void
+	onSaveAsNew: (event: FormEvent<HTMLFormElement>) => void
+	onCancel: () => void
+}) {
+	const { connectionName, existingConnection, state } = input
+	return (
+		<section
+			css={{ ...insetCardCss, display: 'grid', gap: spacing.sm }}
+			role="alert"
+			data-testid="connect-live-replace-warning"
+		>
+			<p css={{ margin: 0, color: colors.text, fontWeight: 600 }}>
+				This replaces the OAuth app your {connectionName} connection uses.
+			</p>
+			<p css={descriptionCss}>
+				{connectionName} is connected through the{' '}
+				<strong>{existingConnection.appName}</strong> app. Saving a different
+				client ID rewrites that app: the existing connection stops working until
+				you reconnect it. To keep it working, save the new app as a separate
+				connection instead.
+			</p>
+			{state.mode === 'choose' ? (
+				<div
+					css={{
+						display: 'flex',
+						flexWrap: 'wrap',
+						gap: spacing.sm,
+						alignItems: 'center',
+					}}
+				>
+					<button
+						type="button"
+						disabled={input.submitting}
+						css={connectOauthSecondaryButtonCss}
+						onClick={input.onReplace}
+						data-testid="connect-live-replace-confirm"
+					>
+						Replace this app
+					</button>
+					<button
+						type="button"
+						disabled={input.submitting}
+						css={connectOauthSecondaryButtonCss}
+						onClick={input.onChooseNewName}
+						data-testid="connect-live-replace-save-new"
+					>
+						Save as a new connection
+					</button>
+					<button
+						type="button"
+						disabled={input.submitting}
+						css={connectOauthSecondaryButtonCss}
+						onClick={input.onCancel}
+					>
+						Cancel
+					</button>
+				</div>
+			) : (
+				<form
+					css={{ display: 'grid', gap: spacing.sm }}
+					onSubmit={input.onSaveAsNew}
+					data-testid="connect-live-replace-new-form"
+				>
+					<label css={fieldCss}>
+						<span css={fieldLabelCss}>New connection name</span>
+						<input
+							name="newConnectionName"
+							required
+							value={state.newName}
+							css={inputCss}
+							aria-invalid={state.nameError ? true : undefined}
+							aria-describedby={
+								state.nameError ? 'connect-new-name-error' : undefined
+							}
+							onChange={(event) => {
+								input.onNewNameInput(event.currentTarget.value)
+							}}
+						/>
+					</label>
+					{state.nameError ? (
+						<p
+							id="connect-new-name-error"
+							css={{ ...descriptionCss, color: colors.danger }}
+						>
+							{state.nameError}
+						</p>
+					) : (
+						<p css={descriptionCss}>
+							{connectionName} keeps its current app and tokens.
+						</p>
+					)}
+					<div
+						css={{
+							display: 'flex',
+							flexWrap: 'wrap',
+							gap: spacing.sm,
+							alignItems: 'center',
+						}}
+					>
+						<button
+							type="submit"
+							disabled={input.submitting}
+							css={connectOauthPrimaryButtonCss}
+							data-testid="connect-live-replace-new-submit"
+						>
+							Save as new connection
+						</button>
+						<button
+							type="button"
+							disabled={input.submitting}
+							css={connectOauthSecondaryButtonCss}
+							onClick={input.onCancel}
+						>
+							Cancel
+						</button>
+					</div>
+				</form>
+			)}
+		</section>
+	)
+}
 
 export function wouldReplaceDifferentApp(input: {
 	config: ConnectOauthConfig | null
@@ -259,6 +444,38 @@ export function renderStatusCallout(input: {
 		return <p css={pageDescriptionCss}>{input.statusMessage}</p>
 	}
 	return null
+}
+
+/**
+ * `mode=personal`: says whose account this is and what the org can do with
+ * it (ADR 0068 amendment 2026-10-29).
+ */
+export function renderPinnedConnectNotice(input: {
+	pinnedConnect: NonNullable<ConnectOauthLoaderData['pinnedConnect']>
+}) {
+	const appName = input.pinnedConnect.appLabel || input.pinnedConnect.appSlug
+	return (
+		<div role="note" css={getAccentCalloutCss({ accentColor: colors.primary })}>
+			<p css={{ margin: 0, fontWeight: 600 }}>Connect your own account</p>
+			<p css={{ margin: 0 }}>
+				You are connecting your own account through the {appName} OAuth app of
+				the {input.pinnedConnect.orgSlug} org. The connection is yours and is
+				saved in your personal org. It works only in{' '}
+				{input.pinnedConnect.orgSlug}, only in your own runs. Org admins can see
+				that it exists and revoke it, but never use it or read its tokens.
+				Leaving the org removes it.
+			</p>
+		</div>
+	)
+}
+
+/** Why `mode=personal` cannot connect on this page. */
+export function renderPinnedConnectError(message: string) {
+	return (
+		<div role="alert" css={getAccentCalloutCss({ accentColor: colors.error })}>
+			<p css={{ margin: 0, color: colors.error }}>{message}</p>
+		</div>
+	)
 }
 
 export function connectOauthHeaderTitle(input: {

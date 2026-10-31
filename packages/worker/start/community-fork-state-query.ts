@@ -8,10 +8,12 @@ export const FORK_IN_PROGRESS_POLL_MS = 2_000
 const communityForkStateKey = (
 	actorKey: string | null,
 	listingId: string | null,
-) => ['community-fork-state', actorKey, listingId] as const
+	org: string | null,
+) => ['community-fork-state', actorKey, listingId, org] as const
 
 /**
- * Live fork state for the viewer and one listing. The page's `viewerInstall`
+ * Live fork state for the viewer, one listing, and the install org (`org`,
+ * null for the personal org). The page's `viewerInstall`
  * is computed at load time and misses a fork that was still in flight, and
  * local mutation state is lost when the viewer navigates away mid-fork. So
  * this read is never trusted from cache: it refetches on every mount
@@ -22,18 +24,20 @@ const communityForkStateKey = (
 export function communityForkStateQuery(input: {
 	actorKey: string | null
 	listingId: string | null
+	org?: string | null
 	enabled: boolean
 	load?: (listingId: string, signal: AbortSignal) => Promise<CommunityForkState>
 }) {
+	const org = input.org ?? null
 	const load =
 		input.load ??
 		((listingId: string, signal: AbortSignal) =>
 			loadCommunityForkState({
-				data: { listingId },
+				data: { listingId, org },
 				signal,
 			}) as Promise<CommunityForkState>)
 	return queryOptions({
-		queryKey: communityForkStateKey(input.actorKey, input.listingId),
+		queryKey: communityForkStateKey(input.actorKey, input.listingId, org),
 		queryFn: ({ signal }) => load(input.listingId ?? '', signal),
 		enabled: input.enabled && Boolean(input.listingId),
 		staleTime: 0,

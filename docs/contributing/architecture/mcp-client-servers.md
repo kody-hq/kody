@@ -268,11 +268,12 @@ API response, MCP tool, or page returns the secret after save.
   letter).
 - **Capabilities**: the `mcpServers` domain (`mcpServerAdd`, `mcpServerList`,
   `mcpServerReconnect`, `mcpServerRefresh`, `mcpServerRemove`,
-  `mcpServerSetEnabled`, `mcpServerLock`). `mcpServerAdd` accepts optional
-  `bearerToken`. `mcpServerLock` grants a package; unlock is website-only.
-  Integration connections use the same tighten-only shape (`integrationLock`).
-  User-secret package grants are website-only; `secretLock` returns an approval
-  URL and does not add `allowed_packages`.
+  `mcpServerSetEnabled`). `mcpServerAdd` accepts optional `bearerToken`.
+  `resourceLock({ kind: 'mcp_server', server, package_id })` grants a package;
+  unlock is website-only. Integration connections use the same tighten-only
+  shape with kind `integration`. User-secret package grants are website-only;
+  `resourceLock({ kind: 'secret', name, package_id })` returns an approval URL
+  and does not add `allowed_packages`.
 
 ## Isolation and lifecycle
 

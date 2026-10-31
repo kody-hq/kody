@@ -18,7 +18,12 @@ const conventional =
 
 function bumpForCommit(commit: ReleaseCommit): ReleaseBump {
 	const match = conventional.exec(commit.subject.trim())
-	if (!match?.groups?.type) return 'none'
+	if (!match?.groups?.type) {
+		// Squash-merge subjects often copy the PR title and omit feat/fix
+		// (#4363). Conventional types still choose the bump; a prose subject
+		// that touches packages/cli still publishes a patch.
+		return commit.touchesCli ? 'patch' : 'none'
+	}
 	const breaking =
 		match.groups.breaking === '!' ||
 		/^BREAKING CHANGE:/m.test(commit.body) ||
@@ -87,12 +92,12 @@ function nextVersion(current: string, bump: ReleaseBump): string | null {
 }
 
 /**
- * Publish when a conventional commit touches the CLI (`feat` → minor;
- * `fix` / `perf` / `revert` → patch; `docs` / `chore` / `ci` / `test` /
- * `build` / `style` / `refactor` → patch per #3975), or when the generated
- * route table changed (spec/shared input) even if those commits are not
- * `feat`/`fix`. Commits that do not touch the CLI (and do not change the
- * generated client) do not publish.
+ * Publish when a commit touches the CLI (`feat` → minor; `fix` / `perf` /
+ * `revert` → patch; `docs` / `chore` / `ci` / `test` / `build` / `style` /
+ * `refactor` → patch per #3975; a subject without a conventional prefix →
+ * patch per #4363), or when the generated route table changed (spec/shared
+ * input) even if those commits are not `feat`/`fix`. Commits that do not
+ * touch the CLI (and do not change the generated client) do not publish.
  */
 export function planCliRelease(input: {
 	currentVersion: string

@@ -54,7 +54,22 @@ export function redactKodyCredentialsInSentryEvent(
 		}
 	}
 
+	const request = event.request
+	if (request) {
+		if (typeof request.url === 'string') {
+			request.url = redactConnectTicket(request.url)
+		}
+		if (typeof request.query_string === 'string') {
+			request.query_string = redactConnectTicket(request.query_string)
+		}
+	}
+
 	return event
+}
+
+/** Execution context connect tickets are bearer secrets in a query param. */
+export function redactConnectTicket(value: string) {
+	return value.replace(/([?&]|^)ticket=[^&#\s]*/g, '$1ticket=[redacted]')
 }
 
 /**
@@ -237,10 +252,10 @@ export function filterIntegrationTokenRefreshCallerSentryEvent(
  * isolate / storage handle; app-level retry of non-idempotent work is still
  * unsafe, and moving heavy Agent/MCP startup out of `onStart` is an
  * architectural change outside a triage fix. Match only the bare platform
- * strings (optional `Error:` / `D1_ERROR:` prefixes — KODY-A9 — plus the
- * storage form that requires a support `reference =` token) so wrapped
- * failures such as exhausted `packagePublishExternalPush` recovery messages
- * stay visible.
+ * strings (optional `Error:` / `D1_ERROR:` prefixes — KODY-A9 — Agents SDK
+ * `SQL query failed:` SqlError prefix — KODY-B9 — plus the storage form that
+ * requires a support `reference =` token) so wrapped failures such as
+ * exhausted `packagePublishExternalPush` recovery messages stay visible.
  */
 export const durableObjectIsolateMemoryResetMessage =
 	"Durable Object's isolate exceeded its memory limit and was reset."
@@ -254,11 +269,23 @@ export const durableObjectIsolateCpuResetMessage =
  * resource-limit class as the isolate memory reset string: SQLite gives up
  * before workerd's hard isolate cap, so the platform surfaces
  * `out of memory: SQLITE_NOMEM` instead of "exceeded its memory limit".
- * Match only this bare SQLite phrasing so wrapped recovery messages and
- * unrelated `…: SQLITE_*` caller SQL failures stay Sentry-visible.
+ * Match this bare SQLite phrasing and the Agents SDK SqlError wrapper
+ * (`SQL query failed: out of memory: SQLITE_NOMEM` — KODY-B9) so wrapped
+ * recovery messages and unrelated `…: SQLITE_*` / `SQL query failed: …`
+ * caller SQL failures stay Sentry-visible.
  */
 export const durableObjectSqliteOutOfMemoryMessage =
 	'out of memory: SQLITE_NOMEM.'
+
+/**
+ * Leading phrase the Cloudflare Agents SDK `SqlError` prepends when
+ * `Agent.sql` / DO SQLite throws (`node_modules/agents` `sql-error.ts`:
+ * ``SQL query failed: ${cause.message}``). Strip only this exact wrapper
+ * so a bare platform reset underneath still classifies as a DO isolate
+ * reset while `SQL query failed: <other SQLITE_* or caller text>` stays
+ * visible.
+ */
+export const agentsSdkSqlErrorMessagePrefix = 'SQL query failed:'
 
 export const durableObjectCodeUpdatedResetMessage =
 	'Durable Object reset because its code was updated.'
@@ -304,16 +331,22 @@ const durableObjectStorageObjectResetPattern =
 
 /**
  * Strip the same optional platform prefixes D1 bindings attach (`Error:` then
- * `D1_ERROR:`) before matching exact DO isolate-reset sentences. D1 is
- * DO-backed, so deploy/code-updated resets can arrive as
+ * `D1_ERROR:`) and the Agents SDK `SqlError` prefix (`SQL query failed:`)
+ * before matching exact DO isolate-reset sentences. D1 is DO-backed, so
+ * deploy/code-updated resets can arrive as
  * `D1_ERROR: Durable Object reset because its code was updated.` (KODY-A9).
- * Same order as `stripD1ErrorPrefixes` in `d1-retry.ts`.
+ * Agents DO SQLite surfaces the same resets as
+ * `SQL query failed: out of memory: SQLITE_NOMEM` (KODY-B9). Same `Error:` /
+ * `D1_ERROR:` order as `stripD1ErrorPrefixes` in `d1-retry.ts`, then the
+ * Agents SqlError phrase.
  */
 function normalizeDurableObjectIsolateResetMessage(message: string) {
 	const withoutErrorPrefix = message
 		.trim()
 		.replace(/^Error:\s*/i, '')
 		.replace(/^D1_ERROR:\s*/i, '')
+		// Agents SDK SqlError (`agentsSdkSqlErrorMessagePrefix`).
+		.replace(/^SQL query failed:\s*/i, '')
 	return withoutErrorPrefix.endsWith('.')
 		? withoutErrorPrefix
 		: `${withoutErrorPrefix}.`
@@ -712,7 +745,8 @@ export function buildSentryOptions(env: Env): CloudflareOptions {
 		// is dropped the same way — see
 		// filterIntegrationTokenRefreshCallerSentryEvent. Bare Cloudflare Durable
 		// Object platform reset strings (memory/CPU limits, DO SQLite
-		// SQLITE_NOMEM, deploy-time code updates, blockConcurrencyWhile
+		// SQLITE_NOMEM including Agents SDK `SQL query failed:` SqlError
+		// wrappers — KODY-B9 — deploy-time code updates, blockConcurrencyWhile
 		// timeouts, DO storage operation timeouts, and DO storage object-reset
 		// with a support reference — `in` or `while starting up` phrasing,
 		// including D1_ERROR:-prefixed forms D1 bindings emit) are dropped the

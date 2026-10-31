@@ -8,6 +8,8 @@ import {
 	buildKeySaveBody,
 	createKeyFormState,
 	credentialCreateAgentPrompt,
+	credentialCreateShowsAgentFirst,
+	credentialCreateStartPrompt,
 	credentialCreateFormKey,
 	credentialCreateHandoffHref,
 	credentialCreateMode,
@@ -516,4 +518,45 @@ test('picking Key on a link with no kind keeps the same form', () => {
 	expect(credentialCreateFormKey(bare)).not.toBe(
 		credentialCreateFormKey(writeCredentialCreateKind(bare, 'url')),
 	)
+})
+
+test('a bare create page leads with the agent; any link prefill opens the form', () => {
+	const leads = (search: string) =>
+		credentialCreateShowsAgentFirst(new URLSearchParams(search))
+	expect(leads('')).toBe(true)
+	expect(leads('utm_source=mail')).toBe(true)
+	for (const search of [
+		'kind=secret',
+		'kind=url&kindMode=required',
+		'name=DEMO_KEY',
+		'provider=resend',
+		'description=Demo',
+		'allowedHosts=api.example.com',
+		'forPackage=example&need=email',
+		'scope=package&packageId=pkg_1',
+		'packageId=pkg_1',
+		'expiresAt=2030-01-01',
+		'allowedPackages=pkg_1',
+		'loginExchange=%7B%7D',
+	]) {
+		expect(leads(search), search).toBe(false)
+	}
+})
+
+test('the start prompt asks the agent for a prefilled link for this org', () => {
+	const prompt = credentialCreateStartPrompt({
+		orgSlug: 'acme',
+		pageUrl: 'https://kody.example/@acme/-/credentials/new',
+	})
+	expect(prompt).toContain('"acme"')
+	expect(prompt).toContain('https://kody.example/@acme/-/credentials/new')
+	expect(prompt).toContain('ask me')
+	expect(prompt).toContain('credential creation capability or a creation link')
+	expect(prompt).toContain('key, URL, login, signing, OAuth, or MCP')
+	expect(prompt).toContain('hosts')
+	expect(prompt).toContain('prefilled Kody creation link')
+	expect(prompt).toContain(
+		'Never ask me to paste a secret value into this chat.',
+	)
+	expect(prompt).not.toMatch(/\u2014/)
 })

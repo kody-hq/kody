@@ -1,9 +1,13 @@
 # First steps
 
-Kody exposes **search** and **execute** as the main tools. The agent should
-**search first** to find the right capability, official guide, package,
-integration, or secret reference, then run work through **execute**. Official
-guides load with `search({ entity: "guide:{id}" })` — not execute.
+Kody exposes **search** and **execute** as the main tools. MCP also registers
+**api** for HTTPS operations and token minting. The agent should **search
+first** to find the right capability, official guide, package, integration, or
+secret reference, then run work through **execute**. When Node ≥22 and the CLI
+are available, run one-off modules with local CLI execute
+([Local CLI execute](../guides/local-execute.md)). Do not use hosted MCP
+`execute` when a local or Open API path exists. Official guides load with
+`search({ entity: "guide:{id}" })` — not execute.
 
 ## Habits that help
 
@@ -60,8 +64,8 @@ guides load with `search({ entity: "guide:{id}" })` — not execute.
 
 ## Where to go next
 
-- [Search and execute](../guides/search-and-execute.md) — the two-tool playbook
-  with copy-pasteable agent inputs
+- [Search and execute](../guides/search-and-execute.md) — the search and execute
+  playbook with copy-pasteable agent inputs
 - [Search](./search.md) — discovery, ranked results, and `entity` lookups
 - [Execute and workflows](./execute.md) — module-based execution with
   `kody:runtime`

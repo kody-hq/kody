@@ -3,9 +3,6 @@ import { operationResult } from '#app/operation-result.ts'
 import {
 	loadAccountConnectedAgentsData,
 	revokeAccountConnectedAgent,
-	createConnectedAgentProfile,
-	updateConnectedAgentProfile,
-	deleteConnectedAgentProfile,
 } from './account-connected-agents.ts'
 export * from './account-connected-agents.ts'
 export function testAccountConnectedAgentsApiHandler(env: Env) {
@@ -44,33 +41,7 @@ export function testAccountConnectedAgentsApiHandler(env: Env) {
 							...context,
 							clientId: fields.clientId.trim(),
 						})
-					: fields.intent === 'create'
-						? await createConnectedAgentProfile({
-								...context,
-								name: typeof fields.name === 'string' ? fields.name : '',
-								grants: fields.grants,
-							})
-						: fields.intent === 'update' &&
-							  typeof fields.profileId === 'string' &&
-							  fields.profileId.trim()
-							? await updateConnectedAgentProfile({
-									...context,
-									profileId: fields.profileId.trim(),
-									name:
-										typeof fields.name === 'string' ? fields.name : undefined,
-									grants: fields.grants,
-								})
-							: fields.intent === 'delete' &&
-								  typeof fields.profileId === 'string' &&
-								  fields.profileId.trim()
-								? await deleteConnectedAgentProfile({
-										...context,
-										profileId: fields.profileId.trim(),
-									})
-								: operationResult(
-										{ ok: false, error: 'Invalid request body.' },
-										400,
-									)
+					: operationResult({ ok: false, error: 'Invalid request body.' }, 400)
 
 			return operationResult(result.data, result.status)
 		},

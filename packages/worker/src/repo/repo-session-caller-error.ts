@@ -83,6 +83,26 @@ export function isRepoSearchInvalidRegexMessage(message: string) {
 }
 
 /**
+ * Stable prefix when `repoSearch` gets a blank or whitespace-only pattern.
+ * Schema trims and rejects these at the MCP/Open API boundary; the DO still
+ * throws this phrase for other entry points. Subclass identity does not
+ * survive Durable Object RPC. KODY-BA.
+ */
+export const repoSearchEmptyPatternMessagePrefix =
+	'repoSearch requires a non-empty pattern'
+
+export function isRepoSearchEmptyPatternMessage(message: string) {
+	return message.startsWith(repoSearchEmptyPatternMessagePrefix)
+}
+
+export function buildRepoSearchEmptyPatternCallerMessage() {
+	return (
+		`${repoSearchEmptyPatternMessagePrefix}. ` +
+		'Pass literal text or a JavaScript RegExp pattern; whitespace-only patterns are rejected.'
+	)
+}
+
+/**
  * Stable phrase from `resolveRepoWorkspacePath` when a caller path escapes
  * the session workspace or names a `.git` segment. Subclass identity does
  * not survive Durable Object RPC. Also match the pre-normalization wording
@@ -212,11 +232,12 @@ export function isRepoSessionStructuralEditCallerMessage(message: string) {
 }
 
 /**
- * Stable phrases when a write/replace/writeJson/delete/move/applyPatch target
- * is an existing directory (`src` instead of `src/index.ts`). Agents often
- * pass a folder from `repoTree`; the shell then throws raw `EISDIR`, which is
- * caller-correctable. Subclass identity does not survive Durable Object RPC,
- * so MCP observability and capabilities match these phrases. KODY-A6.
+ * Stable phrases when a read/write/replace/writeJson/delete/move/applyPatch
+ * target is an existing directory (`src` instead of `src/index.ts`). Agents
+ * often pass a folder from `repoTree`; the shell then throws raw `EISDIR`,
+ * which is caller-correctable. Subclass identity does not survive Durable
+ * Object RPC, so MCP observability and capabilities match these phrases.
+ * KODY-A6, KODY-CA (repoReadFile).
  */
 export const repoSessionDirectoryTargetGuidance =
 	'Pass a file path (for example src/index.ts), not a folder.'
@@ -225,6 +246,7 @@ export const repoSessionDirectoryTargetMessagePhrase =
 	'is a directory. Pass a file path'
 
 export type RepoSessionDirectoryTargetKind =
+	| 'read'
 	| 'write'
 	| 'replace'
 	| 'writeJson'
@@ -234,11 +256,18 @@ export type RepoSessionDirectoryTargetKind =
 
 const repoSessionDirectoryTargetSuffix = `" is a directory. ${repoSessionDirectoryTargetGuidance}`
 
+const repoSessionReadTargetPrefix = 'repo session read target "'
+
+const repoSessionReadDirectoryTargetSuffix =
+	'" is a directory. Pass a file path (for example src/index.ts), or use repoTree to list the folder.'
+
 export function buildRepoSessionDirectoryTargetMessage(
 	kind: RepoSessionDirectoryTargetKind,
 	path: string,
 ) {
 	switch (kind) {
+		case 'read':
+			return `${repoSessionReadTargetPrefix}${path}${repoSessionReadDirectoryTargetSuffix}`
 		case 'write':
 			return `repo session write edit target "${path}${repoSessionDirectoryTargetSuffix}`
 		case 'replace':
@@ -263,6 +292,11 @@ export function buildRepoSessionDirectoryTargetMessage(
 export function isRepoSessionDirectoryTargetCallerMessage(message: string) {
 	if (!message.includes(repoSessionDirectoryTargetMessagePhrase)) return false
 	return (
+		matchesQuotedRepoSessionPath(
+			message,
+			repoSessionReadTargetPrefix,
+			repoSessionReadDirectoryTargetSuffix,
+		) ||
 		matchesQuotedRepoSessionPath(
 			message,
 			'repo session write edit target "',

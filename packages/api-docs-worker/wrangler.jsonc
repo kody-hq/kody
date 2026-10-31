@@ -12,8 +12,14 @@
 	"upload_source_maps": true,
 	"observability": {
 		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1,
+			"invocation_logs": true,
+		},
 		"traces": {
 			"enabled": true,
+			"head_sampling_rate": 1,
 		},
 	},
 	"workers_dev": false,

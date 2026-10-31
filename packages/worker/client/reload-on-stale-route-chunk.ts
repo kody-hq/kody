@@ -10,9 +10,10 @@
  *
  * When `onVitePreloadError` calls `preventDefault` after triggering reload,
  * Vite's `__vitePreload` resolves `undefined` instead of rejecting. TanStack
- * Router then crashes on `module[exportName ?? 'default']` (KODY-A1 /
- * issue 7799039116). Suppress that follow-on only while this page's reload
- * is pending — real undefined-default TypeErrors stay reportable.
+ * Router then crashes on `module[exportName ?? 'default']` for split exports
+ * such as `component` (KODY-A1 / issue 7799039116; KODY-BJ /
+ * issue 7811018247). Suppress that follow-on only while this page's reload
+ * is pending — real undefined-property TypeErrors stay reportable.
  */
 
 import { isSyntaxHighlightCoreDynamicImportFailureError } from '#client/sentry-browser-filters.ts'
@@ -97,37 +98,52 @@ export function isStaleRouteChunkLoadError(error: unknown) {
 }
 
 /**
- * TanStack `lazyRouteComponent` does `res[exportName ?? 'default']`. After
- * Vite swallows a preload failure via `preventDefault`, `res` is undefined
- * and browsers throw (KODY-A1 / issue 7799039116):
- * - Safari: `undefined is not an object (evaluating 'e[i??`default`]')`
- * - Chromium: `Cannot read properties of undefined (reading 'default')`
- * - Firefox: `can't access property "default" of undefined`
+ * Named exports TanStack's router-plugin emits for auto code-split routes
+ * (`@tanstack/router-plugin` `splitRouteIdentNodes` / `lazyRouteComponent` /
+ * `lazyFn`). Keep this list explicit — do not wildcard property names.
+ * `default` covers non-split / omitted `exportName` (KODY-A1); the rest cover
+ * split route chunks (KODY-BJ / issue 7811018247 reading `'component'`).
  */
-const safariUndefinedModuleDefault =
-	/^(?:TypeError:\s*)?undefined is not an object \(evaluating ['"][^'"]*\?\?\s*[`'"]default[`'"][^'"]*['"]\)$/
+const tanstackSplitExportName =
+	'(?:default|component|pendingComponent|errorComponent|notFoundComponent|loader)'
 
-const chromiumUndefinedModuleDefault =
-	/^(?:TypeError:\s*)?Cannot read properties of undefined \(reading ['"]default['"]\)$/
+/**
+ * TanStack `lazyRouteComponent` / `lazyFn` do `res[exportName ?? 'default']`
+ * (or `[key || 'default']`). After Vite swallows a preload failure via
+ * `preventDefault`, `res` is undefined and browsers throw (KODY-A1 /
+ * issue 7799039116; KODY-BJ / issue 7811018247):
+ * - Safari: `undefined is not an object (evaluating 'e[i??`component`]')`
+ * - Chromium: `Cannot read properties of undefined (reading 'component')`
+ * - Firefox: `can't access property "component" of undefined`
+ */
+const safariUndefinedModuleExport = new RegExp(
+	String.raw`^(?:TypeError:\s*)?undefined is not an object \(evaluating ['"][^'"]*\?\?\s*[\`'"]${tanstackSplitExportName}[\`'"][^'"]*['"]\)$`,
+)
 
-const firefoxUndefinedModuleDefault =
-	/^(?:TypeError:\s*)?can't access property ['"]default['"] of undefined$/
+const chromiumUndefinedModuleExport = new RegExp(
+	String.raw`^(?:TypeError:\s*)?Cannot read properties of undefined \(reading ['"]${tanstackSplitExportName}['"]\)$`,
+)
+
+const firefoxUndefinedModuleExport = new RegExp(
+	String.raw`^(?:TypeError:\s*)?can't access property ['"]${tanstackSplitExportName}['"] of undefined$`,
+)
 
 export function isStaleRouteChunkUndefinedModuleError(error: unknown) {
 	const message = staleRouteChunkLoadMessage(error)
 	if (message === undefined) return false
 	const trimmed = message.trim()
 	return (
-		safariUndefinedModuleDefault.test(trimmed) ||
-		chromiumUndefinedModuleDefault.test(trimmed) ||
-		firefoxUndefinedModuleDefault.test(trimmed)
+		safariUndefinedModuleExport.test(trimmed) ||
+		chromiumUndefinedModuleExport.test(trimmed) ||
+		firefoxUndefinedModuleExport.test(trimmed)
 	)
 }
 
 /**
  * Drop the TanStack undefined-module TypeError only when this page already
  * triggered the stale-chunk reload. Without that gate, Chromium's
- * "reading 'default'" wording is too common to filter globally.
+ * "reading 'component'" / "reading 'default'" wording is too common to
+ * filter globally.
  */
 export function shouldSuppressStaleRouteChunkFollowOnError(
 	error: unknown,

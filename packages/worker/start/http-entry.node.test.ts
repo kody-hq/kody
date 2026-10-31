@@ -256,3 +256,23 @@ test('canonical document redirects retain their public cache policy', async () =
 	expect(response.headers.get('Cache-Control')).toBe('public, max-age=3600')
 	expect(response.headers.get('Location')).toBe('/community/canonical')
 })
+
+test('a disconnected cold request keeps shared route initialization alive', async () => {
+	const controller = new AbortController()
+	let finishRendering!: (response: Response) => void
+	const rendering = new Promise<Response>((resolve) => {
+		finishRendering = resolve
+	})
+	const waitUntil = vi.fn()
+	const handle = createHttpRequestHandler(() => rendering)
+	const response = handle(
+		new Request('https://example.com/health', { signal: controller.signal }),
+		createEnv(),
+		{ waitUntil },
+	)
+	expect(waitUntil).toHaveBeenCalledTimes(1)
+	controller.abort()
+	finishRendering(Response.json({ ok: true }))
+	await expect(response.then((result) => result.status)).resolves.toBe(200)
+	await expect(waitUntil.mock.calls[0]![0]).resolves.toBeUndefined()
+})

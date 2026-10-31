@@ -41,6 +41,7 @@ export const systemEmailMessageColumns = [
 	'delivery_status_at',
 	'classification',
 	'classification_reason',
+	'archived_at',
 ] as const
 
 export const systemEmailAttachmentColumns = [

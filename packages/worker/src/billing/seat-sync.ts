@@ -12,7 +12,7 @@ import {
 	selectKodyPlanRetainingSubscriptions,
 	type BillingEnv,
 } from './billing-config.ts'
-import { countLiveSeats, isPaidOrg } from '#worker/orgs/billing.ts'
+import { countLiveSeats, isPaidOrgBilling } from '#worker/orgs/billing.ts'
 import {
 	listSubscriptions,
 	subscriptionSeatQuantity,
@@ -25,6 +25,7 @@ type SeatSyncEnv = BillingEnv & StripeEnv
 
 type OrgBillingRow = {
 	plan: string
+	stripe_plan: string | null
 	stripe_customer_id: string | null
 	slug: string | null
 }
@@ -35,7 +36,7 @@ async function loadOrgBillingRow(
 ): Promise<OrgBillingRow | null> {
 	return await db
 		.prepare(
-			`SELECT plan, stripe_customer_id, slug
+			`SELECT plan, stripe_plan, stripe_customer_id, slug
 			 FROM orgs
 			 WHERE id = ?
 			   AND deleted_at IS NULL`,
@@ -67,7 +68,7 @@ export async function syncOrgSeatQuantity(input: {
 	if (!orgId) return null
 
 	const billing = await loadOrgBillingRow(input.db, orgId)
-	if (!billing || !isPaidOrg(billing.plan)) return null
+	if (!billing || !isPaidOrgBilling(billing)) return null
 
 	const customerId = billing.stripe_customer_id?.trim()
 	if (!customerId) return null

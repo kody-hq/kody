@@ -1,16 +1,10 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
-import {
-	callerHasRole,
-	resolveCallerFeatureFlagEvaluations,
-	resolveCallerFeatureFlags,
-} from '#mcp/capabilities/access-control.ts'
-import { runWithDynamicWorkerEvaluationBudget } from '#mcp/executor.ts'
+import { callerHasRole } from '#mcp/capabilities/access-control.ts'
 import { buildMemoryRetrievalQuery } from '#mcp/tools/memory-tool-context.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { resolvePublicUsername } from '#worker/identity/user-lookup.ts'
-import { runPackageRetrievers } from '#worker/package-retrievers/service.ts'
 import {
 	createTextEmbeddingCache,
 	isCapabilitySearchOffline,
@@ -19,17 +13,14 @@ import {
 import { consumeSearchRateLimit } from '#worker/search-rate-limit.ts'
 import { getUserPlan } from '#worker/entitlements/service.ts'
 import { isPaidPlan, type PlanName } from '#universal/plans.ts'
-import { recordPaidRankedSearchFlagExposure } from '#worker/feature-flags/paid-ranked-search-exposure.ts'
 import { entitlementEmailForOwner } from '#worker/request-context/owner-id.ts'
 
 import { resolvePackageIdentitySearch } from './package-search-identity.ts'
 import { buildExactPackageSearchResult, searchUnified } from './search-core.ts'
-import { jevSearchRerankFlagKey } from './search-jev-rerank.ts'
 import { searchQueryUsesRankingEmbedding } from './search-domain-overview.ts'
 import { loadSearchRowsAndRegistry } from './search-loaders.ts'
 import {
 	launchSearchMemoryEnrichment,
-	resolveSearchMemoryContext,
 	settleSearchMemoryEnrichment,
 } from './search-memory.ts'
 import { elapsedMs } from './search-timing.ts'
@@ -73,18 +64,6 @@ type ExecuteSearchListInput = {
 }
 
 export async function executeSearchList(
-	input: ExecuteSearchListInput,
-): Promise<SearchListExecutionResult> {
-	// Memory enrichment (context-scope retrievers) and search-scope retrievers
-	// each open their own Worker Loader evaluations. Cloudflare caps those at
-	// four per incoming request; a shared budget lets the later wave queue
-	// instead of failing at sandboxMs 0.
-	return await runWithDynamicWorkerEvaluationBudget(
-		async () => await executeSearchListWithinBudget(input),
-	)
-}
-
-async function executeSearchListWithinBudget(
 	input: ExecuteSearchListInput,
 ): Promise<SearchListExecutionResult> {
 	const phaseTimings: Partial<SearchPhaseTimings> = input.phaseTimings ?? {}
@@ -243,61 +222,9 @@ async function executeSearchListWithinBudget(
 		phaseTimings.rowAndRegistryLoadMs = elapsedMs(rowAndRegistryLoadStart)
 		return rows
 	})
-	const retrieversStart = performance.now()
-	const retrieverRunStarted =
-		input.userId && input.query && !domainFilter
-			? runPackageRetrievers({
-					env: input.env,
-					baseUrl: input.callerContext.baseUrl,
-					userId: input.userId,
-					request: input.callerContext.request,
-					scope: 'search',
-					query: input.query,
-					includeHiddenPackages: input.includeHiddenPackages,
-					memoryContext: resolveSearchMemoryContext({
-						query: input.query,
-						memoryContext: input.memoryContext,
-					}),
-					conversationId: input.conversationId,
-				})
-			: Promise.resolve({ results: [], warnings: [] })
-	// Rows and flags still have to finish before ranking. Observe a retriever
-	// rejection now so that gap cannot surface as an unhandled rejection.
-	// Awaiting `retrieverRunPromise` later still throws.
-	void retrieverRunStarted.catch(() => {})
-	const retrieverRunPromise = retrieverRunStarted.then(
-		(settled) => {
-			phaseTimings.retrieversMs = elapsedMs(retrieversStart)
-			return settled
-		},
-		(error: unknown) => {
-			phaseTimings.retrieversMs = elapsedMs(retrieversStart)
-			throw error
-		},
-	)
-	void retrieverRunPromise.catch(() => {})
-	const featureFlagsStart = performance.now()
-	// Flag reads overlap row load and retrievers. Recall width needs the
-	// evaluation before candidate generation; retriever hits are merged later.
-	const evaluationsPromise = (async () => {
-		await resolveCallerFeatureFlags(input.env, input.callerContext)
-		return await resolveCallerFeatureFlagEvaluations(
-			input.env,
-			input.callerContext,
-		)
-	})().then((evaluations) => {
-		phaseTimings.featureFlagsMs = elapsedMs(featureFlagsStart)
-		return evaluations
-	})
-	const [searchRows, evaluations, jevPlan] = await Promise.all([
-		rowsPromise,
-		evaluationsPromise,
-		jevPlanPromise,
-	])
+	const [searchRows, jevPlan] = await Promise.all([rowsPromise, jevPlanPromise])
 	input.signal?.throwIfAborted()
 	warnings = searchRows.warnings
-	const jevEvaluation = evaluations?.[jevSearchRerankFlagKey]
-	const jevRerankEnabled = jevEvaluation?.enabled === true
 	const jevRerankPlanEligible = isPaidPlan(jevPlan)
 	const searchUnifiedStart = performance.now()
 	const rankedPromise = searchUnified({
@@ -307,35 +234,17 @@ async function executeSearchListWithinBudget(
 		userId: input.userId ?? undefined,
 		registry: searchRows.registry,
 		optionalRows: searchRows,
-		retrieverResults: retrieverRunPromise.then((run) => run.results),
 		embedText: embeddingCache.embedText,
 		...(domainFilter ? { domain: domainFilter } : {}),
 		...(callerHasRole(input.callerContext, 'admin')
 			? { includeAdminGuides: true }
 			: {}),
-		...(jevRerankEnabled ? { jevRerankEnabled: true } : {}),
 		...(jevRerankPlanEligible ? { jevRerankPlanEligible: true } : {}),
 		...(input.signal ? { signal: input.signal } : {}),
 	})
-	const [ranked, retrieverRun] = await Promise.all([
-		rankedPromise,
-		retrieverRunPromise,
-	])
-	result = ranked
-	warnings.push(...retrieverRun.warnings)
+	result = await rankedPromise
 	input.signal?.throwIfAborted()
 	phaseTimings.searchUnifiedMs = elapsedMs(searchUnifiedStart)
-	// Only ranked-path results include jevRerank telemetry. Domain index /
-	// overview / empty-query short-circuits stay outside the experiment frame.
-	if (result.telemetry.jevRerank && jevEvaluation) {
-		await recordPaidRankedSearchFlagExposure({
-			env: input.env,
-			stableUserId: input.userId,
-			planEligible: jevRerankPlanEligible,
-			evaluation: jevEvaluation,
-			flagKey: jevSearchRerankFlagKey,
-		})
-	}
 	capabilityGuidance = result.guidance
 	const returnsDomainIndex =
 		result.matches.length > 0 &&

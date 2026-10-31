@@ -9,6 +9,61 @@ const basicAuthSecretPlaceholderRegex =
 const integrationTokenPlaceholderRegex =
 	/\{\{integration-token:([a-zA-Z0-9._-]+)\}\}/g
 
+/**
+ * Documentation / example placeholders are display text: the fetch gateway
+ * never fills them, and stamp / inventory scans do not count them as
+ * credential uses. Two inert forms:
+ * - Angle-bracket markers: `{{secret/<provider>:<ref>}}`,
+ *   `{{secret/bwvault:i/<item-uuid>/<field>}}`
+ * - Grammar metavariables only: provider id is the literal `provider` and
+ *   every ref path segment is a docs metavariable (`ref`, `field`, …), as in
+ *   the platform copy `{{secret/provider:ref}}`
+ */
+const examplePlaceholderMarkerPattern = /<[^>]+>/
+/** Structural item-form prefix; not a concrete id by itself. */
+const vaultItemFormPrefix = 'i'
+const vaultGrammarMetavariables = new Set([
+	'provider',
+	'ref',
+	'field',
+	'item',
+	'item-id',
+	'item-uuid',
+	'name',
+	'vault',
+])
+
+export function placeholderHoldsExampleMarkers(token: string) {
+	// URL path serialization may leave `<` / `>` as %3C / %3E even after
+	// placeholder-punctuation decode (which only restores { } : / = , |).
+	const withAngleBrackets = token
+		.replaceAll(/%3C/gi, '<')
+		.replaceAll(/%3E/gi, '>')
+	return examplePlaceholderMarkerPattern.test(withAngleBrackets)
+}
+
+/**
+ * True when a matched `{{secret/…}}` token is documentation, not a live vault
+ * reference. Prefer this over {@link placeholderHoldsExampleMarkers} alone.
+ */
+export function isInertExamplePlaceholder(token: string) {
+	if (placeholderHoldsExampleMarkers(token)) return true
+	const vault = /^\{\{secret\/([a-zA-Z0-9._-]+):([^}]+)\}\}$/.exec(token.trim())
+	if (!vault) return false
+	const provider = vault[1]!.trim().toLowerCase()
+	if (provider !== 'provider') return false
+	const segments = vault[2]!
+		.trim()
+		.toLowerCase()
+		.split('/')
+		.filter((segment) => segment.length > 0)
+	if (segments.length === 0) return false
+	return segments.every(
+		(segment) =>
+			segment === vaultItemFormPrefix || vaultGrammarMetavariables.has(segment),
+	)
+}
+
 export type ReferencedSecret = {
 	name: string
 	scope: SecretScope | null
@@ -49,6 +104,7 @@ export function formUrlEncodedTexts(value: string) {
 export function parseSecretPlaceholders(value: string) {
 	const secrets: Array<ReferencedSecret> = []
 	for (const match of value.matchAll(secretPlaceholderRegex)) {
+		if (placeholderHoldsExampleMarkers(match[0]!)) continue
 		const name = match[1]?.trim()
 		if (!name) continue
 		const scope = match[2]
@@ -68,6 +124,7 @@ export function parseSecretPlaceholders(value: string) {
 export function parseBasicAuthSecretPlaceholders(value: string) {
 	const placeholders: Array<ReferencedBasicAuthSecretPlaceholder> = []
 	for (const match of value.matchAll(basicAuthSecretPlaceholderRegex)) {
+		if (placeholderHoldsExampleMarkers(match[0]!)) continue
 		const usernameSecretName = match[1]?.trim()
 		const passwordSecretName = match[2]?.trim()
 		if (!usernameSecretName || !passwordSecretName) continue
@@ -90,6 +147,7 @@ export function parseBasicAuthSecretPlaceholders(value: string) {
 export function parseProviderSecretPlaceholders(value: string) {
 	const secrets: Array<ReferencedProviderSecret> = []
 	for (const match of value.matchAll(providerSecretPlaceholderRegex)) {
+		if (isInertExamplePlaceholder(match[0]!)) continue
 		const provider = match[1]?.trim()
 		const ref = match[2]?.trim()
 		if (!provider || !ref) continue
@@ -107,6 +165,7 @@ export function buildProviderSecretPlaceholder(
 export function parseIntegrationTokenPlaceholders(value: string) {
 	const names: Array<string> = []
 	for (const match of value.matchAll(integrationTokenPlaceholderRegex)) {
+		if (placeholderHoldsExampleMarkers(match[0]!)) continue
 		const name = match[1]?.trim()
 		if (name) names.push(name)
 	}
@@ -302,7 +361,15 @@ export function parseSecretNameOrPlaceholder(
 }
 
 export function containsSecretPlaceholder(value: string) {
-	return /\{\{(?:secret(?:\/|:|-basic:)|integration-token:)/.test(value)
+	if (!/\{\{(?:secret(?:\/|:|-basic:)|integration-token:)/.test(value)) {
+		return false
+	}
+	return (
+		parseSecretPlaceholders(value).length > 0 ||
+		parseBasicAuthSecretPlaceholders(value).length > 0 ||
+		parseProviderSecretPlaceholders(value).length > 0 ||
+		parseIntegrationTokenPlaceholders(value).length > 0
+	)
 }
 
 function parseSecretScope(scope: string | undefined) {

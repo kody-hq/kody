@@ -40,32 +40,99 @@ synchronous, for callers that already hold the compiled permissions.
 3. **Effective permissions.** `computeEffectivePermissions` compiles
    memberships, team memberships, and grants (`access-compile.ts`): Owner holds
    every permission; Member and Billing hold their org-level basics plus any
-   direct or team grants; outside collaborators hold `search:read` plus grants
-   (and `org:execute` when they hold `package:execute` somewhere, the ad-hoc
-   rule). Compiled results are stored in `access_cache` and keyed by
-   `orgs.access_epoch`. Automation (no actor) acts for the org that owns the
-   job, webhook, or subscription. The result is also cached per request context.
+   direct, team, or everyone-in-org grants (`subject_type = 'org'`, whose
+   `subject_id` must equal the grant's `org_id`, a CHECK since migration 0201;
+   it matches any live `org_memberships` row at compile time, so joins and
+   leaves need no grant rows, only the existing epoch bumps); outside
+   collaborators hold `search:read` plus grants (and `org:execute` when they
+   hold `package:execute` somewhere, the ad-hoc rule). Compiled results are
+   stored in `access_cache` and keyed by `orgs.access_epoch`. A grant with
+   `expires_at` (migration 0212; NULL never expires) stops counting at that
+   instant: every subject lookup filters it in SQL, the cached row's
+   `valid_until` holds the earliest expiry it used and is a miss from then, and
+   the per-request memo recompiles past it, so a long run loses the grant
+   mid-run. `subject_type = 'profile'` rows exist for profiles and never reach a
+   person: every lookup site excludes them. Automation (no actor) acts for the
+   org that owns the job, webhook, or subscription. The result is also cached
+   per request context.
 4. **Credential scopes.** Non-null `credential.scopes` narrow the result.
-5. **Connection profile.** A bound profile narrows package resources to the
-   packages and actions it lists (`read`, `execute`, `write`). Profiles list
-   packages only, so they do not narrow other resources or org-level checks.
-   `package:write`, `package:delete`, and `package:publish` handlers call
-   `authorizePackageWrite` once the saved package row is known. Those
-   permissions map to the profile `write` action, so a profile that lists only
-   `read` cannot mutate, delete, or publish that package. Handlers that read or
-   execute one saved package call `authorize` with `package:read` or
-   `package:execute` on `packageResource` (profile `read` and `execute`), and
-   lists filter rows with `checkPermission`. A profile-bound credential cannot
-   create a saved package: `denyProfileBoundPackageCreate` runs from
-   `packageSave` and `packageGetGitRemote` when the package does not exist yet,
-   and from `communityFork` and `repoPromoteToPackage`. Plain repo create stays
-   an org-level `package:create` check. A profile names existing packages only.
+5. **Profile chain.** A profile-bound credential (`credential.profileId`)
+   intersects the result with the acting profile's grants and every ancestor's
+   snapshot grants (`computeEffectivePermissions` in `authorize.ts`,
+   [ADR 0092](../decisions/0092-profiles-are-scoped-agent-identities.md)). An
+   inactive link denies with `profile_inactive`, a missing grant with
+   `profile_grant`, and Owner status does not bypass it. Unprofiled requests
+   load no chain. `package:write`, `package:delete`, and `package:publish`
+   handlers call `authorizePackageWrite` once the saved package row is known.
+   Handlers that read or execute one saved package call `authorize` with
+   `package:read` or `package:execute` on `packageResource`, and lists filter
+   rows with `checkPermission`. Creating a saved package goes through
+   `authorizePackageCreate`: `packageSave` and `packageGetGitRemote` when the
+   package does not exist yet, `communityFork`, and `repoPromoteToPackage`. It
+   requires org-level `package:create` (grantable on the org, unlike
+   `package:write`). `packageGetGitRemote` create mode mints a write remote for
+   the package it just created on that check alone; it grants nothing on other
+   packages. Plain repo create stays an org-level `package:create` check.
+
+**Member permissions.** A team org's `members_can_create_packages` (default off)
+and `members_can_create_credentials` (default on) columns on `orgs` add
+`package:create` + `app:create` and `secret:create` + `integration:create` to
+every Member's compiled org permissions (`memberCreationGrants` in
+`authorization/member-creation-permissions.ts`, applied in
+`compileFromRoleAndGrants`). `updateOrgMemberCreation`
+(`orgs/member-creation.ts`) writes them with the `org.member_creation_changed`
+audit row and an `access_epoch` bump in one batch. Create checks therefore stay
+plain
+`authorize(..., 'package:create' | 'secret:create' | 'integration:create')`
+calls; the denial text for those permissions names the setting and the Grants
+page. Website credential writes run the shared capabilities through
+`callCapabilityAsWebsite` (`packages/worker/src/app/website-capability.ts`): MCP
+server add, reconnect, enable, and remove call the `mcpServer*` capabilities,
+and saving a secret runs `authorizeSecretSet` (Write on an existing secret,
+`secret:create` for a new one). The remaining website OAuth connect paths check
+through `requireWebsiteCreatePermission`.
+
+**Creator grants.** A non-owner member who creates a package (on its first
+publish) or a team-org credential (on its `credential.created` audit) gets a
+`manage` user grant on it, and on the package's app, with
+`grants.origin = 'created'` (`grantCreatorAccess` in
+`packages/worker/src/orgs/creator-access.ts`). Owners get none; they already
+hold everything. Owners can revoke the grant like any other. Org transfer
+re-points a creator grant when its person is a target member and drops it
+otherwise; a `manual` grant still blocks the move. `adminCreatorAccessBackfill`
+writes the same grants for older creations from the audit log, skipping anyone
+whose grant was ever revoked.
+
+**Org-wide read grants.** An `org` grant may carry the read-only resource
+permissions in `orgWideReadPermissions`
+(`packages/shared/src/grant-presets.ts`): `package:read`, `app:read`,
+`job:read`, `integration:read`, and `email:read`. They compile into org-level
+permissions, so a Member holding `job:read` on the org passes `authorizeOrgWide`
+and lists every run (`runList`, `runGet`, `runSummary`, `workflowList`,
+`jobList`, `jobGet`). The website's org-wide run history uses the same org-wide
+check (`canReadOrgRunHistory`): the Activity page and the Overview's run
+summary, charts, and recent runs need org-wide `job:read`, and without it they
+show a permission state that links to Grants. A job-scoped grant still reads
+that one job's runs (`runList` with `job_id`, the job's page). Nothing else
+rides along: `use`, `execute`, `write`, `delete`, `publish`, and `manage_access`
+are never grantable on the org, so triage (`runUpdate`), edits, and runs still
+need their own permission. `secret:read` (reveals values), `memory:read`
+(memories are personal, ADR 0072), and `execution_context:read` (machines are
+listed per share) are left out. Owners set these from the Grants page or with
+`accessGrant` (`resource_type: "org"`); a denial for one of them says so.
 
 A surface check without a resource (capability `orgPermission`, Open API
 `x-kody-permission`) passes when the permission is held at org level **or on any
-resource grant** in the org. A check with a resource requires that resource.
-Personal-org Owners hold every permission, so steps 2 to 4 never deny for them.
-Profiles and the signed-in step are the other denials that can fire.
+resource grant** in the org. A surface that both creates and updates declares a
+list (`packageSave`: `package:write` or `package:create`) and passes on any one;
+the handler then checks the one the call needs. A check with a resource requires
+that resource. Email Delete and Classify/Archive (MCP `emailMessageDelete` /
+`emailMessageClassify` and the website inbox) load the message first and check
+`email:delete` / `email:write` on its own inbox (`authorizeEmailMessageChange`),
+so a Manage grant on one inbox cannot touch another; a message with no inbox
+needs the permission org-wide. Personal-org Owners hold every permission, so
+steps 2 to 4 never deny for them. Profiles and the signed-in step are the other
+denials that can fire.
 
 **Credential resolution** goes through one door,
 `resolveCredential({ orgId, actor, packageStamp, credential })`
@@ -136,10 +203,27 @@ credentials of an active personal org qualify: a user-scope secret that has not
 expired, an integration, or an MCP server. Vault bindings and package or session
 secrets never do. Leaving the org hard-deletes the person's rows for it, and an
 org transfer out of the personal org is blocked while a moved credential still
-has grants. Placeholders and scoped `credential()` clients resolve the same set
-(org credentials the actor can Use, plus the actor's own personal credentials
-granted into the org). See
+has grants. Placeholders, scoped `credential()` clients, and name-based
+`createAuthenticatedFetch` resolve the same set (org credentials the actor can
+Use, plus the actor's own personal credentials granted into the org, org first
+by name). See
 ([ADR 0068](../decisions/0068-credentials-own-placement-scoped-clients.md)).
+
+**Pinned connections** (`integrations/pinned-connect.ts`,
+`integrations/pinned-connections.ts`) are personal OAuth connections whose
+`app_owner_id` is a team org: the member connected their own account through
+that org's app. Connecting needs a live binding with the Member or Owner role,
+not `integration:use` (a per-credential grant for org credentials, which this is
+not); Billing and outside collaborators are refused. Saving grants it to that
+org; `credentialOrgGrant` refuses any other org. Every candidate query filters
+with `integrationUsableInOrgSql` (`integrations/connected.ts`), so it resolves
+only in its pinned org and, as a personal credential, only for its owner.
+Listing and revoking members' connections (`integrationMemberConnectionList` /
+`Revoke`) calls `authorizeOrgWide('integration:manage_access')`: only Owners
+hold it org-wide, and a grant on one integration does not reach members'
+connections. Revoke, `offboardOrgMember`, and app deletion wipe locally first
+and then revoke upstream (`integrations/upstream-revoke.ts`); an upstream
+failure never keeps the connection.
 
 `credential-storage-boundary.node.test.ts` fails if credential storage is read
 outside the door and its resolvers. Credential storage keys use
@@ -157,7 +241,7 @@ cause), or `off`. One person may hold several enablements of the same trigger.
 
 Every org runs its triggers through enablements. A person turning a trigger on
 writes `origin = 'enabled'`. A unique index allows one `origin = 'migrated'` row
-per trigger instance. Migration `0115` drops `enablement_org_migrations`.
+per trigger instance. There is no `enablement_org_migrations` table.
 
 `planEnablementRuns` (`enablements/run-gate.ts`) is the one gate every trigger
 passes:
@@ -181,7 +265,9 @@ passes:
 - The next event checks again and resumes a paused enablement once access is
   back. There is never a fallback to another person, credential, or Owner.
 - No `on` enablement means nothing runs: a scheduled tick is skipped, a webhook
-  answers 409 `enablement_not_on`, and a subscription event is dropped.
+  with only `off` enablements answers 404 before rate limiting, and one with no
+  enablement or a paused enablement answers 409 `enablement_not_on` with its
+  approval link; a subscription event is dropped.
 
 Subscriptions also apply an audience rule (`subscriptionEnablerScope`):
 
@@ -194,15 +280,16 @@ Subscriptions also apply an audience rule (`subscriptionEnablerScope`):
   can see the resource the event is about (`enablerCanSee`). Run errors with no
   package or job reach Owners only.
 
-People turn jobs and subscriptions on for themselves with `enablementEnable` (a
-webhook's first turn-on is Approve only) and off with `enablementDisable` (the
-enabler or an Owner); `enablementList` lists them. Publishing never turns
-anything on, and neither does minting a webhook URL: the mint returns an
-approval link, and Approve on that page creates the enablement. Enablements
-created before minting stopped enabling keep running. A webhook verifies a
-signature only when its manifest declares `verification`; otherwise its URL
-secret is the credential. The generated signing secret on unsigned endpoints is
-stored but not checked.
+People turn jobs and subscriptions on for themselves with `enablementEnable`;
+webhooks turn on only through Approve, including after being turned off.
+`enablementDisable` turns an enablement off (the enabler or an Owner);
+`enablementList` lists them. An off webhook answers 404 before rate limiting.
+Publishing never turns anything on, and neither does minting a webhook URL: the
+mint returns an approval link, and Approve on that page creates the enablement.
+Enablements created before minting stopped enabling keep running. A webhook
+verifies a signature only when its manifest declares `verification`; otherwise
+its URL secret is the credential. The generated signing secret on unsigned
+endpoints is stored but not checked.
 
 ### Checking many resources
 
@@ -217,7 +304,7 @@ const visible = packages.filter((pkg) =>
 
 - `checkPermission(access, permission, resource)` is one decision.
 - `canSeeResource` is list and search visibility: the request holds some
-  permission on the resource. An execute-only profile still shows the package so
+  permission on the resource. An execute-only grant still shows the package so
   it can be invoked; reading its source or skills needs `package:read`.
 - `runWithRequestPermissions` binds the compiled permissions for deep call sites
   that carry no caller context. Package import resolution reads them with
@@ -227,10 +314,10 @@ const visible = packages.filter((pkg) =>
   `wrong_org` unless the request is bound to that org (as a member or through a
   grant).
 
-The connection profile comes from `request.credential.profileName`. Automation
-keeps the profile of the credential that created the job or webhook, and a run
-started by another run keeps its starter's profile. Read the profile there,
-never from the wire `connectionProfileName`.
+The profile comes from `request.credential.profileId` and its frozen
+`profileChain`. Automation keeps the profile of the credential that enabled the
+job or webhook (`enabler_profile_id`), and a run started by another run keeps
+its starter's profile. Read the profile there, never from wire input.
 
 ### Surfaces declare their permission
 
@@ -274,10 +361,11 @@ which names the capability; Open API maps it to 403 `insufficient_scope` with
 `denial: 'live_person_required'`.
 
 Declared: `orgMemberUpdate`, `orgMemberRemove`, `inviteCreate`, `inviteAccept`,
-`inviteRevoke`, `teamMemberAdd`, `teamMemberRemove`, and member or billing
-grants. Org billing writes are session-only web handlers.
-`registry.node.test.ts` fails when a member-changing capability does not declare
-it, and when a site-admin capability does.
+`inviteRevoke`, `inviteLinkCreate`, `inviteLinkAccept`, `inviteLinkRevoke`,
+`teamMemberAdd`, `teamMemberRemove`, and member or billing grants. Org billing
+writes are session-only web handlers. `registry.node.test.ts` fails when a
+member-changing capability does not declare it, and when a site-admin capability
+does.
 
 ### Site-admin capabilities from triggered runs
 
@@ -328,9 +416,8 @@ same commands. Default bootstrap scopes include local-execute use scopes plus
 `package:write` and `token:delete`; callers can still narrow or expand via
 explicit `scopes`.
 
-Connection profiles remain an org-bound narrowing layer (not folded into
-scopes). A profile is stored with `org_id` and limits package resources listed
-on that credential; it does not replace token scopes.
+Profiles are a separate narrowing layer (not folded into scopes): a
+profile-bound token is narrowed by both its scopes and its profile chain.
 
 ## Site admin
 
@@ -617,8 +704,8 @@ owner and carries that owner's current roles and permissions.
 (`packages/worker/src/identity/background-mcp-user.ts`) loads them from D1 with
 `getUserRolesAndPermissions` for every `executionOrigin: 'background'` caller it
 builds: package jobs, inbound webhook handlers, package subscription handlers,
-package exports invoked from other package code, package workflows, and
-retrievers. The per-binding identity cache holds a resolved user for up to 60
+package exports invoked from other package code, package workflows, and realtime
+hooks. The per-binding identity cache holds a resolved user for up to 60
 seconds, so a revoked role can still pass background checks until that entry
 expires and the owner is resolved again. Interactive MCP and browser requests
 reload roles on every request.

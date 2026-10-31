@@ -1,3 +1,7 @@
+import {
+	chunkArray,
+	maxD1BoundParameters,
+} from '@kody-internal/shared/chunk.ts'
 import { errorCauseChainIncludes } from '@kody-internal/shared/error-message.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
@@ -92,6 +96,28 @@ function mapStaticDependentBundleArtifactRow(
 	}
 }
 
+export type PublishedBundleArtifactIdentity = {
+	sourceId: string
+	artifactKind: string
+	artifactName: string | null
+	entryPoint: string
+}
+
+/**
+ * Stable key for identity rows. Matches the unique index's
+ * `COALESCE(artifact_name, '')` null-vs-empty equivalence.
+ */
+export function publishedBundleArtifactIdentityKey(
+	identity: PublishedBundleArtifactIdentity,
+) {
+	return [
+		identity.sourceId,
+		identity.artifactKind,
+		identity.artifactName ?? '',
+		identity.entryPoint,
+	].join('\0')
+}
+
 export async function getPublishedBundleArtifactByIdentity(
 	db: D1Database,
 	input: {
@@ -119,6 +145,75 @@ export async function getPublishedBundleArtifactByIdentity(
 		)
 		.first<Record<string, unknown>>()
 	return row ? mapRow(row) : null
+}
+
+/**
+ * Batch form of {@link getPublishedBundleArtifactByIdentity}. One (or a few
+ * chunked) SELECT(s) for many identities, preserving COALESCE null-vs-empty
+ * artifact_name matching. Returns at most one row per identity key.
+ */
+export async function listPublishedBundleArtifactsByIdentities(
+	db: D1Database,
+	input: {
+		userId: string
+		identities: ReadonlyArray<PublishedBundleArtifactIdentity>
+	},
+): Promise<Map<string, PublishedBundleArtifactRecord>> {
+	const uniqueByKey = new Map<string, PublishedBundleArtifactIdentity>()
+	for (const identity of input.identities) {
+		const key = publishedBundleArtifactIdentityKey(identity)
+		if (!uniqueByKey.has(key)) uniqueByKey.set(key, identity)
+	}
+	const uniqueIdentities = [...uniqueByKey.values()]
+	const found = new Map<string, PublishedBundleArtifactRecord>()
+	if (uniqueIdentities.length === 0) return found
+
+	// user_id + (source_id, artifact_kind, artifact_name, entry_point) per identity
+	const bindsPerIdentity = 4
+	const maxIdentitiesPerChunk = Math.max(
+		1,
+		Math.floor((maxD1BoundParameters - 1) / bindsPerIdentity),
+	)
+	for (const identityChunk of chunkArray(
+		uniqueIdentities,
+		maxIdentitiesPerChunk,
+	)) {
+		const clauses = identityChunk
+			.map(
+				() =>
+					`(source_id = ? AND artifact_kind = ? AND COALESCE(artifact_name, '') = COALESCE(?, '') AND entry_point = ?)`,
+			)
+			.join(' OR ')
+		const binds: Array<string | null> = [input.userId]
+		for (const identity of identityChunk) {
+			binds.push(
+				identity.sourceId,
+				identity.artifactKind,
+				identity.artifactName,
+				identity.entryPoint,
+			)
+		}
+		const result = await db
+			.prepare(
+				`SELECT * FROM published_bundle_artifacts
+				WHERE user_id = ? AND (${clauses})`,
+			)
+			.bind(...binds)
+			.all<Record<string, unknown>>()
+		for (const row of result.results ?? []) {
+			const mapped = mapRow(row)
+			found.set(
+				publishedBundleArtifactIdentityKey({
+					sourceId: mapped.sourceId,
+					artifactKind: mapped.artifactKind,
+					artifactName: mapped.artifactName,
+					entryPoint: mapped.entryPoint,
+				}),
+				mapped,
+			)
+		}
+	}
+	return found
 }
 
 export async function countStaticDependentBundleArtifactPackages(
@@ -327,7 +422,107 @@ export async function insertPublishedBundleArtifactRow(
 ) {
 	const now = new Date().toISOString()
 	const id = crypto.randomUUID()
-	await db
+	await prepareUnguardedInsert(db, input, id, now).run()
+	return id
+}
+
+/**
+ * Insert an identity row only while `entity_sources.published_commit` still
+ * matches the write. Zero changes means the live commit moved — treat as a
+ * stale write and leave the identity table alone.
+ */
+async function insertPublishedBundleArtifactRowForLiveCommit(
+	db: D1Database,
+	input: PublishedBundleArtifactUpsertInput,
+) {
+	const now = new Date().toISOString()
+	const id = crypto.randomUUID()
+	const result = await prepareGuardedInsert(db, input, id, now).run()
+	return (result.meta.changes ?? 0) > 0 ? id : null
+}
+
+function publishedCommitFromRow(
+	row: Record<string, unknown> | null | undefined,
+) {
+	const commit = row?.['published_commit']
+	return typeof commit === 'string' && commit.length > 0 ? commit : null
+}
+
+async function getLivePublishedCommit(
+	db: D1Database,
+	input: { userId: string; sourceId: string },
+) {
+	try {
+		const row = await db
+			.prepare(
+				`SELECT published_commit FROM entity_sources
+				WHERE id = ? AND user_id = ?
+				${andLiveDeletedAtSql()} LIMIT 1`,
+			)
+			.bind(input.sourceId, input.userId)
+			.first<Record<string, unknown>>()
+		return publishedCommitFromRow(row)
+	} catch {
+		// Tests and callers without entity_sources keep last-write-wins.
+		return null
+	}
+}
+
+/**
+ * Batch form of {@link getLivePublishedCommit}. One (or a few chunked)
+ * SELECT(s) for many source ids owned by `userId`. Missing sources map to
+ * `null` (same as the single-row helper when no live row matches).
+ */
+async function listLivePublishedCommitsBySourceIds(
+	db: D1Database,
+	input: { userId: string; sourceIds: ReadonlyArray<string> },
+): Promise<Map<string, string | null>> {
+	const uniqueIds = [...new Set(input.sourceIds)]
+	const found = new Map<string, string | null>()
+	if (uniqueIds.length === 0) return found
+	try {
+		for (const idChunk of chunkArray(uniqueIds, maxD1BoundParameters - 1)) {
+			const placeholders = idChunk.map(() => '?').join(', ')
+			const result = await db
+				.prepare(
+					`SELECT id, published_commit FROM entity_sources
+					WHERE user_id = ? AND id IN (${placeholders})
+					${andLiveDeletedAtSql()}`,
+				)
+				.bind(input.userId, ...idChunk)
+				.all<Record<string, unknown>>()
+			for (const row of result.results ?? []) {
+				found.set(String(row['id']), publishedCommitFromRow(row))
+			}
+		}
+	} catch (error) {
+		// Fixture / local DBs without entity_sources: same last-write-wins as
+		// getLivePublishedCommit. Any other read failure (including an empty
+		// first chunk then a later chunk timeout) must not look like "no live
+		// commit" or the planner plans unguarded writes.
+		if (
+			found.size === 0 &&
+			errorCauseChainIncludes(error, (message) =>
+				/no such table:\s*entity_sources/i.test(message),
+			)
+		) {
+			return found
+		}
+		throw error
+	}
+	return found
+}
+
+/** Cap write statements per `db.batch` (same order as usage rollup upserts). */
+const publishedBundleArtifactUpsertBatchSize = 50
+
+function prepareUnguardedInsert(
+	db: D1Database,
+	input: PublishedBundleArtifactUpsertInput,
+	id: string,
+	now: string,
+) {
+	return db
 		.prepare(
 			`INSERT INTO published_bundle_artifacts (
 				id, user_id, source_id, published_commit, artifact_kind, artifact_name,
@@ -347,22 +542,15 @@ export async function insertPublishedBundleArtifactRow(
 			now,
 			now,
 		)
-		.run()
-	return id
 }
 
-/**
- * Insert an identity row only while `entity_sources.published_commit` still
- * matches the write. Zero changes means the live commit moved — treat as a
- * stale write and leave the identity table alone.
- */
-async function insertPublishedBundleArtifactRowForLiveCommit(
+function prepareGuardedInsert(
 	db: D1Database,
 	input: PublishedBundleArtifactUpsertInput,
+	id: string,
+	now: string,
 ) {
-	const now = new Date().toISOString()
-	const id = crypto.randomUUID()
-	const result = await db
+	return db
 		.prepare(
 			`INSERT INTO published_bundle_artifacts (
 				id, user_id, source_id, published_commit, artifact_kind, artifact_name,
@@ -393,29 +581,70 @@ async function insertPublishedBundleArtifactRowForLiveCommit(
 			input.userId,
 			input.publishedCommit,
 		)
-		.run()
-	return (result.meta.changes ?? 0) > 0 ? id : null
 }
 
-async function getLivePublishedCommit(
+function prepareUnguardedUpdate(
 	db: D1Database,
-	input: { userId: string; sourceId: string },
+	input: { id: string } & PublishedBundleArtifactUpsertInput,
+	now: string,
 ) {
-	try {
-		const row = await db
-			.prepare(
-				`SELECT published_commit FROM entity_sources
-				WHERE id = ? AND user_id = ?
-				${andLiveDeletedAtSql()} LIMIT 1`,
-			)
-			.bind(input.sourceId, input.userId)
-			.first<Record<string, unknown>>()
-		const commit = row?.['published_commit']
-		return typeof commit === 'string' && commit.length > 0 ? commit : null
-	} catch {
-		// Tests and callers without entity_sources keep last-write-wins.
-		return null
-	}
+	return db
+		.prepare(
+			`UPDATE published_bundle_artifacts
+			SET user_id = ?, source_id = ?, published_commit = ?, artifact_kind = ?,
+				artifact_name = ?, entry_point = ?, kv_key = ?, dependencies_json = ?,
+				updated_at = ?
+			WHERE id = ?`,
+		)
+		.bind(
+			input.userId,
+			input.sourceId,
+			input.publishedCommit,
+			input.artifactKind,
+			input.artifactName,
+			input.entryPoint,
+			input.kvKey,
+			input.dependenciesJson,
+			now,
+			input.id,
+		)
+}
+
+function prepareGuardedUpdate(
+	db: D1Database,
+	input: { id: string } & PublishedBundleArtifactUpsertInput,
+	now: string,
+) {
+	return db
+		.prepare(
+			`UPDATE published_bundle_artifacts
+			SET user_id = ?, source_id = ?, published_commit = ?, artifact_kind = ?,
+				artifact_name = ?, entry_point = ?, kv_key = ?, dependencies_json = ?,
+				updated_at = ?
+			WHERE id = ?
+				AND EXISTS (
+					SELECT 1 FROM entity_sources
+					WHERE id = ?
+						AND user_id = ?
+						AND published_commit = ?
+						${andLiveDeletedAtSql()}
+				)`,
+		)
+		.bind(
+			input.userId,
+			input.sourceId,
+			input.publishedCommit,
+			input.artifactKind,
+			input.artifactName,
+			input.entryPoint,
+			input.kvKey,
+			input.dependenciesJson,
+			now,
+			input.id,
+			input.sourceId,
+			input.userId,
+			input.publishedCommit,
+		)
 }
 
 /**
@@ -504,6 +733,223 @@ export async function upsertPublishedBundleArtifactRow(
 	}
 }
 
+type BatchedUpsertPlanEntry = {
+	inputIndex: number
+	input: PublishedBundleArtifactUpsertInput
+	id: string
+	kind: 'insert' | 'update'
+	guarded: boolean
+}
+
+/**
+ * Batch form of {@link upsertPublishedBundleArtifactRow}. One live-commit
+ * read per distinct `(userId, sourceId)`, one batched identity read, then
+ * chunked `db.batch` writes. Preserves the single-row guarantees: stale
+ * commits leave the identity alone, INSERT/UPDATE stay EXISTS-gated when a
+ * live commit is known, UNIQUE races resolve to updating the winner, and
+ * `liveCommit == null` stays last-write-wins. Returns ids in input order
+ * (`null` when a gated insert refused to create a stale row).
+ */
+export async function upsertPublishedBundleArtifactRows(
+	db: D1Database,
+	inputs: ReadonlyArray<PublishedBundleArtifactUpsertInput>,
+): Promise<Array<string | null>> {
+	if (inputs.length === 0) return []
+	if (inputs.length === 1) {
+		const only = inputs[0]
+		if (!only) return []
+		return [await upsertPublishedBundleArtifactRow(db, only)]
+	}
+
+	// Last write wins for duplicate identities in one batch (same as sequential
+	// upserts). Keep the last input index so results align with callers.
+	const uniqueByKey = new Map<
+		string,
+		{ input: PublishedBundleArtifactUpsertInput; inputIndex: number }
+	>()
+	for (const [inputIndex, input] of inputs.entries()) {
+		uniqueByKey.set(
+			publishedBundleArtifactIdentityKey({
+				sourceId: input.sourceId,
+				artifactKind: input.artifactKind,
+				artifactName: input.artifactName,
+				entryPoint: input.entryPoint,
+			}),
+			{ input, inputIndex },
+		)
+	}
+	const uniqueEntries = [...uniqueByKey.values()]
+
+	const results: Array<string | null> = inputs.map(() => null)
+
+	// Prefetch live commits per user (rebuild chunks are single-user).
+	const sourceIdsByUser = new Map<string, Array<string>>()
+	for (const { input } of uniqueEntries) {
+		const list = sourceIdsByUser.get(input.userId) ?? []
+		list.push(input.sourceId)
+		sourceIdsByUser.set(input.userId, list)
+	}
+	const liveByUserAndSource = new Map<string, string | null>()
+	for (const [userId, sourceIds] of sourceIdsByUser) {
+		const liveBySource = await listLivePublishedCommitsBySourceIds(db, {
+			userId,
+			sourceIds,
+		})
+		for (const sourceId of new Set(sourceIds)) {
+			liveByUserAndSource.set(
+				`${userId}\0${sourceId}`,
+				liveBySource.get(sourceId) ?? null,
+			)
+		}
+	}
+
+	// Prefetch identities per user.
+	const identitiesByUser = new Map<
+		string,
+		Array<PublishedBundleArtifactIdentity>
+	>()
+	for (const { input } of uniqueEntries) {
+		const list = identitiesByUser.get(input.userId) ?? []
+		list.push({
+			sourceId: input.sourceId,
+			artifactKind: input.artifactKind,
+			artifactName: input.artifactName,
+			entryPoint: input.entryPoint,
+		})
+		identitiesByUser.set(input.userId, list)
+	}
+	const existingByUserAndKey = new Map<string, PublishedBundleArtifactRecord>()
+	for (const [userId, identities] of identitiesByUser) {
+		const found = await listPublishedBundleArtifactsByIdentities(db, {
+			userId,
+			identities,
+		})
+		for (const [key, row] of found) {
+			existingByUserAndKey.set(`${userId}\0${key}`, row)
+		}
+	}
+
+	const now = new Date().toISOString()
+	const plan: Array<BatchedUpsertPlanEntry> = []
+	for (const { input, inputIndex } of uniqueEntries) {
+		const identityKey = publishedBundleArtifactIdentityKey({
+			sourceId: input.sourceId,
+			artifactKind: input.artifactKind,
+			artifactName: input.artifactName,
+			entryPoint: input.entryPoint,
+		})
+		const existing = existingByUserAndKey.get(`${input.userId}\0${identityKey}`)
+		const liveCommit =
+			liveByUserAndSource.get(`${input.userId}\0${input.sourceId}`) ?? null
+		if (liveCommit != null && liveCommit !== input.publishedCommit) {
+			results[inputIndex] = existing?.id ?? null
+			continue
+		}
+		if (existing) {
+			plan.push({
+				inputIndex,
+				input,
+				id: existing.id,
+				kind: 'update',
+				guarded: liveCommit != null,
+			})
+			results[inputIndex] = existing.id
+			continue
+		}
+		const id = crypto.randomUUID()
+		plan.push({
+			inputIndex,
+			input,
+			id,
+			kind: 'insert',
+			guarded: liveCommit != null,
+		})
+		// Tentative; gated insert may refuse (changes === 0).
+		results[inputIndex] = id
+	}
+
+	if (plan.length === 0) {
+		return fillDuplicateIdentityResults(inputs, results, uniqueByKey)
+	}
+
+	try {
+		await runPublishedBundleArtifactUpsertPlan(db, plan, now, results)
+	} catch (error) {
+		if (!isPublishedBundleArtifactIdentityConflict(error)) {
+			throw error
+		}
+		// D1 batches are transactional: one UNIQUE race rolls back the chunk.
+		// Fall back to the single-row path (which recovers races) for the
+		// planned writes only — stale skips already have results.
+		for (const entry of plan) {
+			results[entry.inputIndex] = await upsertPublishedBundleArtifactRow(
+				db,
+				entry.input,
+			)
+		}
+	}
+
+	return fillDuplicateIdentityResults(inputs, results, uniqueByKey)
+}
+
+function fillDuplicateIdentityResults(
+	inputs: ReadonlyArray<PublishedBundleArtifactUpsertInput>,
+	results: Array<string | null>,
+	uniqueByKey: Map<
+		string,
+		{ input: PublishedBundleArtifactUpsertInput; inputIndex: number }
+	>,
+) {
+	for (const [inputIndex, input] of inputs.entries()) {
+		if (results[inputIndex] != null) continue
+		const winner = uniqueByKey.get(
+			publishedBundleArtifactIdentityKey({
+				sourceId: input.sourceId,
+				artifactKind: input.artifactKind,
+				artifactName: input.artifactName,
+				entryPoint: input.entryPoint,
+			}),
+		)
+		if (!winner || winner.inputIndex === inputIndex) continue
+		results[inputIndex] = results[winner.inputIndex] ?? null
+	}
+	return results
+}
+
+async function runPublishedBundleArtifactUpsertPlan(
+	db: D1Database,
+	plan: ReadonlyArray<BatchedUpsertPlanEntry>,
+	now: string,
+	results: Array<string | null>,
+) {
+	for (const planChunk of chunkArray(
+		[...plan],
+		publishedBundleArtifactUpsertBatchSize,
+	)) {
+		const statements = planChunk.map((entry) => {
+			if (entry.kind === 'update') {
+				const updateInput = { id: entry.id, ...entry.input }
+				return entry.guarded
+					? prepareGuardedUpdate(db, updateInput, now)
+					: prepareUnguardedUpdate(db, updateInput, now)
+			}
+			return entry.guarded
+				? prepareGuardedInsert(db, entry.input, entry.id, now)
+				: prepareUnguardedInsert(db, entry.input, entry.id, now)
+		})
+		const batchResults = await db.batch(statements)
+		for (const [index, entry] of planChunk.entries()) {
+			if (entry.kind !== 'insert' || !entry.guarded) continue
+			const batchResult = batchResults[index] as
+				| { meta?: { changes?: number } }
+				| undefined
+			if ((batchResult?.meta?.changes ?? 0) <= 0) {
+				results[entry.inputIndex] = null
+			}
+		}
+	}
+}
+
 /**
  * Update an identity row only while `entity_sources.published_commit` still
  * matches the write. Callers only use this when a live commit is already
@@ -516,37 +962,7 @@ async function updatePublishedBundleArtifactRowForLiveCommit(
 	input: { id: string } & PublishedBundleArtifactUpsertInput,
 ) {
 	const now = new Date().toISOString()
-	const result = await db
-		.prepare(
-			`UPDATE published_bundle_artifacts
-			SET user_id = ?, source_id = ?, published_commit = ?, artifact_kind = ?,
-				artifact_name = ?, entry_point = ?, kv_key = ?, dependencies_json = ?,
-				updated_at = ?
-			WHERE id = ?
-				AND EXISTS (
-					SELECT 1 FROM entity_sources
-					WHERE id = ?
-						AND user_id = ?
-						AND published_commit = ?
-						${andLiveDeletedAtSql()}
-				)`,
-		)
-		.bind(
-			input.userId,
-			input.sourceId,
-			input.publishedCommit,
-			input.artifactKind,
-			input.artifactName,
-			input.entryPoint,
-			input.kvKey,
-			input.dependenciesJson,
-			now,
-			input.id,
-			input.sourceId,
-			input.userId,
-			input.publishedCommit,
-		)
-		.run()
+	const result = await prepareGuardedUpdate(db, input, now).run()
 	return (result.meta.changes ?? 0) > 0
 }
 
@@ -554,27 +970,11 @@ export async function updatePublishedBundleArtifactRow(
 	db: D1Database,
 	input: { id: string } & PublishedBundleArtifactUpsertInput,
 ) {
-	const result = await db
-		.prepare(
-			`UPDATE published_bundle_artifacts
-			SET user_id = ?, source_id = ?, published_commit = ?, artifact_kind = ?,
-				artifact_name = ?, entry_point = ?, kv_key = ?, dependencies_json = ?,
-				updated_at = ?
-			WHERE id = ?`,
-		)
-		.bind(
-			input.userId,
-			input.sourceId,
-			input.publishedCommit,
-			input.artifactKind,
-			input.artifactName,
-			input.entryPoint,
-			input.kvKey,
-			input.dependenciesJson,
-			new Date().toISOString(),
-			input.id,
-		)
-		.run()
+	const result = await prepareUnguardedUpdate(
+		db,
+		input,
+		new Date().toISOString(),
+	).run()
 	return (result.meta.changes ?? 0) > 0
 }
 

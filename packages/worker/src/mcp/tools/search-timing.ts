@@ -21,13 +21,11 @@ const searchServerTimingPhases = [
 	['usernameLookup', 'usernameLookupMs'],
 	['identityResolution', 'identityResolutionMs'],
 	['rowAndRegistryLoad', 'rowAndRegistryLoadMs'],
-	['featureFlags', 'featureFlagsMs'],
 	['queryUnderstanding', 'queryUnderstandingMs'],
 	['candidateGeneration', 'candidateGenerationMs'],
 	['queryEmbedding', 'queryEmbeddingMs'],
 	['loadAndRank', 'loadAndRankMs'],
 	['reranking', 'rerankingMs'],
-	['retrievers', 'retrieversMs'],
 	['memoryEnrichment', 'memoryEnrichmentMs'],
 	['formatting', 'formattingMs'],
 	['waitingItems', 'waitingItemsMs'],
@@ -47,7 +45,7 @@ export function toSearchServerTiming(input: {
 		if (name === 'reranking') {
 			const jevDurationMs = input.phaseTimings.jevRerankMs
 			if (
-				input.jevRerank?.enabled === true &&
+				input.jevRerank &&
 				typeof jevDurationMs === 'number' &&
 				Number.isFinite(jevDurationMs)
 			) {
@@ -60,7 +58,7 @@ export function toSearchServerTiming(input: {
 
 /**
  * Exclusive tiles that partition search wall clock. Overlapping detail
- * phases (memory, retrievers, candidate plugins) are published beside
+ * phases (memory, candidate plugins) are published beside
  * these and must not be summed into `exclusiveMs`.
  */
 export const searchExclusivePhaseKeys = [

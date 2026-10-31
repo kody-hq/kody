@@ -4,7 +4,7 @@ import {
 } from '#worker/orgs/org-audit.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { z } from 'zod'
-import { denyProfileBoundPackageCreate } from '#worker/authorization/authorize.ts'
+import { authorizePackageCreate } from '#worker/authorization/authorize.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -63,6 +63,7 @@ export const repoPromoteToPackageCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoPromoteToPackage',
+		contextRuns: 'deny',
 		orgPermission: 'package:create',
 		description:
 			'Promote a package-shaped plain repo (root package.json at HEAD) into a saved package. Runs the full external-push publish checks; on success creates the saved-package projection and removes the plain-repo row.',
@@ -84,7 +85,7 @@ export const repoPromoteToPackageCapability = defineDomainCapability(
 				user: requireMcpUser(ctx.callerContext),
 				request: requireMcpRequest(ctx.callerContext),
 			})
-			await denyProfileBoundPackageCreate({
+			await authorizePackageCreate({
 				env: ctx.env,
 				request: ctx.callerContext.request,
 			})
@@ -309,9 +310,11 @@ export const repoPromoteToPackageCapability = defineDomainCapability(
 				baseUrl: ctx.callerContext.baseUrl,
 				userId: owner.ownerUserId,
 				actorUserId: owner.actorUserId,
+				actorCredential: ctx.callerContext.request?.credential ?? null,
 				packageId,
 				sourceId: source.id,
 				firstPublish: true,
+				creatorUserId: owner.actorUserId,
 				audit: optionalOrgAuditWriter(
 					ctx.env,
 					ctx.callerContext.request ?? null,

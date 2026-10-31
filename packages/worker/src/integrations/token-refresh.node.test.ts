@@ -638,6 +638,83 @@ test('a refresher whose lease was taken over cannot overwrite the stored tokens'
 	}
 })
 
+test('a reconnect during an in-flight refresh keeps the reconnected tokens', async () => {
+	const { env } = createHarness()
+	const userId = ownerIdFromStored('user-reconnect-mid-refresh')
+	const tokens = { env, userId, name: 'github' }
+	await seedPlatformConnection(env, userId, 'github')
+	const fetchMock = vi.fn(async () => {
+		await persistIntegrationTokens({
+			env,
+			userId,
+			name: 'github',
+			accessToken: 'reconnected-access-token',
+			refreshToken: 'reconnected-refresh-token',
+			refreshPolicy: 'required',
+			audit: null,
+		})
+		return jsonResponse({
+			access_token: 'old-grant-access-token',
+			refresh_token: 'old-grant-refresh-token',
+		})
+	})
+	vi.stubGlobal('fetch', fetchMock)
+	try {
+		await expect(refreshIntegrationTokens(tokens)).rejects.toThrow(
+			'expired before its tokens were saved',
+		)
+		expect(await resolveIntegrationRefreshToken(tokens)).toBe(
+			'reconnected-refresh-token',
+		)
+		expect((await resolveIntegrationAccessToken(tokens))?.accessToken).toBe(
+			'reconnected-access-token',
+		)
+	} finally {
+		vi.unstubAllGlobals()
+	}
+})
+
+test('a refresh waiting on the lease does not refresh the old grant over a reconnect', async () => {
+	const queries: Array<string> = []
+	const { sqlite, env } = createHarness({ queries })
+	const userId = ownerIdFromStored('user-reconnect-while-waiting')
+	const tokens = { env, userId, name: 'github' }
+	await seedPlatformConnection(env, userId, 'github')
+	sqlite
+		.prepare(
+			`UPDATE user_integrations
+			SET token_refresh_lease_id = 'other-holder',
+				token_refresh_lease_expires_at = '2999-01-01T00:00:00.000Z'
+			WHERE user_id = ? AND name = 'github'`,
+		)
+		.run(userId)
+	const fetchMock = stubTokenEndpoint({
+		access_token: 'old-grant-access-token',
+		refresh_token: 'old-grant-refresh-token',
+	})
+	try {
+		const refresh = refreshIntegrationTokens(tokens)
+		await expect.poll(() => countLeaseClaims(queries)).toBeGreaterThan(0)
+		// The reconnect returns no refresh token, so the stored one stays.
+		await persistIntegrationTokens({
+			env,
+			userId,
+			name: 'github',
+			accessToken: 'reconnected-access-token',
+			refreshToken: null,
+			refreshPolicy: 'required',
+			audit: null,
+		})
+		await expect(refresh).resolves.toMatchObject({ refreshed: true })
+		expect(fetchMock).not.toHaveBeenCalled()
+		expect((await resolveIntegrationAccessToken(tokens))?.accessToken).toBe(
+			'reconnected-access-token',
+		)
+	} finally {
+		vi.unstubAllGlobals()
+	}
+})
+
 test('a waiter whose connection was replaced mid-wait re-reads it and refreshes instead of stalling', async () => {
 	const queries: Array<string> = []
 	const { sqlite, env } = createHarness({ queries })

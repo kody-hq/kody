@@ -8,8 +8,12 @@ import {
 import { wrapArtifactsGitHttpError } from '#worker/repo/artifacts-git-retry.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { QuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
+import { publishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
+import { RemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
 import {
 	ApiError,
+	computeLimitExceededMessage,
+	serverRestartedMessage,
 	toApiError,
 	transientDatabaseUnavailableMessage,
 } from './errors.ts'
@@ -60,7 +64,9 @@ test('toApiError maps a quarantined inbound reply refusal to 409 quarantined_inb
 		code: 'quarantined_inbound_reply',
 		message: refused.message,
 	})
-	const wrapped = new Error('Capability invocation failed.', { cause: refused })
+	const wrapped = new Error('Capability invocation failed.', {
+		cause: refused,
+	})
 	expect(toApiError(wrapped)).toMatchObject({
 		status: 409,
 		code: 'quarantined_inbound_reply',
@@ -302,4 +308,120 @@ test('toApiError does not treat caller text that echoes D1 markers as retryable'
 
 	expect(apiError).toMatchObject({ status: 404, code: 'not_found' })
 	expect(apiError.headers).not.toHaveProperty('Retry-After')
+})
+
+test('toApiError maps a bare Durable Object CPU or memory reset to a compute-limit 503, not a storage outage (KODY-CY)', () => {
+	for (const message of [
+		'Durable Object exceeded its CPU time limit and was reset.',
+		"Durable Object's isolate exceeded its memory limit and was reset.",
+	]) {
+		const apiError = toApiError(
+			new Error('publish failed', { cause: new Error(message) }),
+		)
+		expect(apiError).toMatchObject({
+			status: 503,
+			code: 'internal_error',
+			message: computeLimitExceededMessage,
+		})
+		expect(apiError.message).not.toBe(transientDatabaseUnavailableMessage)
+		expect(apiError.message).toContain('compute limit')
+		expect(apiError.headers?.['Retry-After']).toBeUndefined()
+	}
+})
+
+test('toApiError keeps D1-prefixed Durable Object resets on the storage message', () => {
+	const apiError = toApiError(
+		new Error(
+			'D1_ERROR: Durable Object exceeded its CPU time limit and was reset.',
+		),
+	)
+	expect(apiError).toMatchObject({
+		status: 503,
+		message: transientDatabaseUnavailableMessage,
+	})
+})
+
+test('toApiError maps a bare deploy reset to a retryable server-restart 503', () => {
+	const apiError = toApiError(
+		new Error('Durable Object reset because its code was updated.'),
+	)
+	expect(apiError).toMatchObject({
+		status: 503,
+		code: 'internal_error',
+		message: serverRestartedMessage,
+		headers: { 'Retry-After': '5' },
+	})
+})
+
+test('toApiError surfaces a publish compute-limit caller error as-is even when its cause is a raw reset', () => {
+	const message = publishComputeLimitMessage('credentials')
+	const apiError = toApiError(
+		new McpCallerError(message, {
+			cause: new Error(
+				'Durable Object exceeded its CPU time limit and was reset.',
+			),
+		}),
+	)
+	expect(apiError).toMatchObject({
+		status: 400,
+		code: 'invalid_request',
+	})
+	expect(apiError.message).toBe(message)
+	expect(apiError.message).toContain('exceeded a Kody compute limit')
+	expect(apiError.message).toContain('credential stamp scan')
+	expect(apiError.message).toContain('kody dev check')
+})
+
+test('toApiError maps an unconfirmed publish push to 409 publish_not_applied', () => {
+	const notApplied = new RemoteRefNotConfirmedError({
+		ref: 'refs/heads/main',
+		expectedCommit: 'b'.repeat(40),
+		observedCommit: 'a'.repeat(40),
+	})
+	const error = toApiError(new Error('rpc wrapper', { cause: notApplied }))
+	expect(error.status).toBe(409)
+	expect(error.code).toBe('publish_not_applied')
+	expect(error.message).toBe(notApplied.message)
+	expect(error.details).toEqual({
+		published: false,
+		retry_safe: true,
+		ref: 'refs/heads/main',
+		expected_commit: 'b'.repeat(40),
+		observed_commit: 'a'.repeat(40),
+		status_capability: 'repoGetSession',
+	})
+})
+
+test('toApiError maps a publish_not_applied error rebuilt by Durable Object RPC (name and message only)', () => {
+	const original = new RemoteRefNotConfirmedError({
+		ref: 'refs/heads/main',
+		expectedCommit: 'b'.repeat(40),
+		observedCommit: 'a'.repeat(40),
+	})
+	const overRpc = new Error(original.message)
+	overRpc.name = original.name
+	const error = toApiError(overRpc)
+	expect(error.code).toBe('publish_not_applied')
+	expect(error.details).toMatchObject({
+		ref: 'refs/heads/main',
+		expected_commit: 'b'.repeat(40),
+		observed_commit: 'a'.repeat(40),
+	})
+})
+
+test('toApiError reports an unreadable confirm (no observed ref) as an unknown ref state, not a rejected publish', () => {
+	const original = new RemoteRefNotConfirmedError({
+		ref: 'refs/heads/main',
+		expectedCommit: 'b'.repeat(40),
+		observedCommit: null,
+	})
+	const overRpc = new Error(original.message)
+	overRpc.name = original.name
+	const error = toApiError(overRpc)
+	expect(error.status).toBe(503)
+	expect(error.code).toBe('internal_error')
+	expect(error.details).toMatchObject({
+		published_commit_moved: false,
+		ref_state: 'unknown',
+	})
 })

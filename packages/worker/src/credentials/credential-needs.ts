@@ -13,15 +13,19 @@
 import { z } from 'zod'
 import {
 	isFetchCapableCredentialKind,
-	packageCredentialKindValues,
+	packageCredentialSlotKindValues,
+	secretProviderSlotKind,
 	type AuthoredPackageJson,
 	type PackageCredentialKind,
+	type PackageCredentialSlotKind,
 } from '#worker/package-registry/types.ts'
 
 export const credentialNeedSchema = z.object({
 	key: z.string(),
-	kind: z.enum(packageCredentialKindValues).optional(),
+	kind: z.enum(packageCredentialSlotKindValues).optional(),
 	provider: z.string(),
+	/** Kind `secret-provider` only: the provider package name. */
+	package: z.string().optional(),
 	description: z.string(),
 	multiple: z.boolean(),
 	/**
@@ -29,6 +33,8 @@ export const credentialNeedSchema = z.object({
 	 * app it resolves with the approving owner's credentials for visitors.
 	 */
 	ownerCredentialForVisitors: z.literal(true).optional(),
+	supplier: z.enum(['publisher', 'executor']).optional(),
+	required: z.boolean().optional(),
 	/** The dependency that declared an inherited need. */
 	from: z.string().optional(),
 })
@@ -37,6 +43,41 @@ export type CredentialNeed = z.infer<typeof credentialNeedSchema>
 
 export const credentialNeedsClosureSchema = z.array(credentialNeedSchema)
 
+/** A need a saved credential fills: every kind but `secret-provider`. */
+export type SavedCredentialNeed = Omit<CredentialNeed, 'kind'> & {
+	kind?: PackageCredentialKind
+}
+
+/** A need for a bound secret provider; `provider` is the provider id. */
+export function isSecretProviderNeed(need: Pick<CredentialNeed, 'kind'>) {
+	return need.kind === secretProviderSlotKind
+}
+
+/** A secret provider id as the gateway reads it (`normalizeProviderId`). */
+export function normalizeSecretProviderNeedId(provider: string) {
+	return provider.trim().toLowerCase()
+}
+
+/** The manifest shape that declares a provider package, for fix messages. */
+export function secretProviderSlotExample(
+	packageName = '@your-org/provider-package',
+) {
+	return `"vault": { "kind": "secret-provider", "package": "${packageName}", "description": "What this package reads from the vault." }`
+}
+
+/**
+ * Needs that callers fill with a saved credential. Secret-provider needs are
+ * filled by the org's provider binding and per-ref package grants, so they
+ * stay out of call maps, mappings, candidates, and creation links.
+ */
+export function savedCredentialNeeds(
+	needs: ReadonlyArray<CredentialNeed>,
+): Array<SavedCredentialNeed> {
+	return needs.filter(
+		(need): need is SavedCredentialNeed => !isSecretProviderNeed(need),
+	)
+}
+
 const providerSlugPattern = /^[a-z0-9-]+$/
 
 type ManifestCredentials = AuthoredPackageJson['kody']['credentials']
@@ -44,22 +85,33 @@ type ManifestCredentials = AuthoredPackageJson['kody']['credentials']
 /** The package's own declared needs, with `provider` defaulted to the key. */
 export function ownCredentialNeeds(
 	credentials: ManifestCredentials,
+	options: { supplierSemanticsEnabled?: boolean } = {},
 ): Array<CredentialNeed> {
 	return Object.entries(credentials ?? {})
-		.map(([key, slot]) => ({
-			key,
-			...(slot.kind ? { kind: slot.kind } : {}),
-			provider: slot.provider ?? key,
-			description: slot.description,
-			multiple: slot.multiple === true,
-			...(slot.ownerCredentialForVisitors
-				? { ownerCredentialForVisitors: true as const }
-				: {}),
-		}))
+		.map(([key, slot]) => {
+			const supplier = slot.ownerCredentialForVisitors
+				? 'publisher'
+				: slot.supplier
+			return {
+				key,
+				...(slot.kind ? { kind: slot.kind } : {}),
+				provider: slot.provider ?? key,
+				...(slot.package ? { package: slot.package } : {}),
+				description: slot.description,
+				multiple: slot.multiple === true,
+				...(slot.ownerCredentialForVisitors
+					? { ownerCredentialForVisitors: true as const }
+					: {}),
+				...(options.supplierSemanticsEnabled && supplier ? { supplier } : {}),
+				...(options.supplierSemanticsEnabled && supplier === 'executor'
+					? { required: slot.required ?? true }
+					: {}),
+			}
+		})
 		.sort((left, right) => left.key.localeCompare(right.key))
 }
 
-function describeNeedKind(kind: PackageCredentialKind | undefined): string {
+function describeNeedKind(kind: PackageCredentialSlotKind | undefined): string {
 	return kind ?? 'any fetch-capable kind'
 }
 
@@ -69,8 +121,8 @@ function describeNeedKind(kind: PackageCredentialKind | undefined): string {
  * fetch-capable kind (the declared kind is kept).
  */
 export function credentialNeedKindsCompatible(
-	left: PackageCredentialKind | undefined,
-	right: PackageCredentialKind | undefined,
+	left: PackageCredentialSlotKind | undefined,
+	right: PackageCredentialSlotKind | undefined,
 ): boolean {
 	if (left === right) return true
 	if (left == null) return right != null && isFetchCapableCredentialKind(right)
@@ -79,9 +131,9 @@ export function credentialNeedKindsCompatible(
 }
 
 export function mergeCredentialNeedKinds(
-	left: PackageCredentialKind | undefined,
-	right: PackageCredentialKind | undefined,
-): PackageCredentialKind | undefined {
+	left: PackageCredentialSlotKind | undefined,
+	right: PackageCredentialSlotKind | undefined,
+): PackageCredentialSlotKind | undefined {
 	return left ?? right
 }
 
@@ -93,7 +145,7 @@ export function credentialNeedKeyNotes(
 	credentials: ManifestCredentials,
 ): Array<string> {
 	return Object.entries(credentials ?? {}).flatMap(([key, slot]) => {
-		if (providerSlugPattern.test(key)) return []
+		if (providerSlugPattern.test(key) || isSecretProviderNeed(slot)) return []
 		const provider = slot.provider ?? key
 		return [
 			providerSlugPattern.test(provider)
@@ -119,11 +171,14 @@ export type DependencyCredentialNeeds = {
 export function mergeCredentialNeeds(input: {
 	own: ReadonlyArray<CredentialNeed>
 	dependencies: ReadonlyArray<DependencyCredentialNeeds>
+	supplierSemanticsEnabled?: boolean
 }): { needs: Array<CredentialNeed>; conflicts: Array<string> } {
 	const byKey = new Map<string, CredentialNeed>()
 	const conflicts: Array<string> = []
 	const describe = (need: CredentialNeed) =>
 		`${describeNeedKind(need.kind)} from provider "${need.provider}" (${need.from ? `declared by ${need.from}` : 'declared by this package'})`
+	const describeSupplier = (need: CredentialNeed) =>
+		need.ownerCredentialForVisitors ? 'publisher' : (need.supplier ?? 'legacy')
 	const add = (need: CredentialNeed) => {
 		const existing = byKey.get(need.key)
 		if (!existing) {
@@ -132,6 +187,7 @@ export function mergeCredentialNeeds(input: {
 		}
 		if (
 			existing.provider !== need.provider ||
+			existing.package !== need.package ||
 			!credentialNeedKindsCompatible(existing.kind, need.kind)
 		) {
 			conflicts.push(
@@ -139,16 +195,68 @@ export function mergeCredentialNeeds(input: {
 			)
 			return
 		}
+		let supplier = describeSupplier(existing)
+		let required = existing.required
+		if (input.supplierSemanticsEnabled) {
+			const incomingSupplier = describeSupplier(need)
+			if (supplier !== incomingSupplier) {
+				const importerTightensToPublisher =
+					!existing.from &&
+					supplier === 'publisher' &&
+					incomingSupplier !== 'publisher'
+				if (!importerTightensToPublisher) {
+					conflicts.push(
+						`kody.credentials.${need.key}: supplier "${supplier}" conflicts with supplier "${incomingSupplier}" from dependency "${need.from ?? 'another dependency'}".`,
+					)
+					return
+				}
+				supplier = 'publisher'
+			}
+			if (supplier === 'executor') {
+				const existingRequired = existing.required ?? true
+				const incomingRequired = need.required ?? true
+				if (
+					existingRequired !== incomingRequired &&
+					(!existing.from || !need.from)
+				) {
+					const ownNeed = existing.from ? need : existing
+					const dependency = existing.from ? existing : need
+					if (ownNeed.required === false && dependency.required !== false) {
+						conflicts.push(
+							`kody.credentials.${need.key}: optional cannot loosen required executor need from dependency "${dependency.from ?? 'another dependency'}".`,
+						)
+						return
+					}
+				} else if (
+					existingRequired !== incomingRequired &&
+					existing.from &&
+					need.from
+				) {
+					conflicts.push(
+						`kody.credentials.${need.key}: required status conflicts with dependency "${need.from}".`,
+					)
+					return
+				}
+				required = existingRequired || incomingRequired
+			}
+		}
 		const kind = mergeCredentialNeedKinds(existing.kind, need.kind)
 		const multiple = need.multiple || existing.multiple
 		byKey.set(need.key, {
 			key: existing.key,
 			provider: existing.provider,
+			...(existing.package ? { package: existing.package } : {}),
 			description: existing.description,
 			multiple,
 			...(kind ? { kind } : {}),
 			...(existing.ownerCredentialForVisitors
 				? { ownerCredentialForVisitors: true as const }
+				: {}),
+			...(input.supplierSemanticsEnabled && supplier !== 'legacy'
+				? { supplier: supplier as 'publisher' | 'executor' }
+				: {}),
+			...(input.supplierSemanticsEnabled && supplier === 'executor'
+				? { required: required ?? true }
 				: {}),
 			...(existing.from ? { from: existing.from } : {}),
 		})
@@ -170,7 +278,23 @@ export function mergeCredentialNeeds(input: {
 /** Parses a stored closure; anything unreadable counts as not stored. */
 export function readStoredCredentialNeeds(
 	value: unknown,
+	options: { supplierSemanticsEnabled?: boolean } = {},
 ): Array<CredentialNeed> | null {
 	const parsed = credentialNeedsClosureSchema.safeParse(value)
-	return parsed.success ? parsed.data : null
+	if (!parsed.success) return null
+	if (!options.supplierSemanticsEnabled) {
+		return parsed.data.map(
+			({ supplier: _supplier, required: _required, ...need }) => need,
+		)
+	}
+	return parsed.data.map((need) => {
+		const supplier = need.ownerCredentialForVisitors
+			? 'publisher'
+			: need.supplier
+		return {
+			...need,
+			...(supplier ? { supplier } : {}),
+			...(supplier === 'executor' ? { required: need.required ?? true } : {}),
+		}
+	})
 }

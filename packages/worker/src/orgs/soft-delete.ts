@@ -5,6 +5,10 @@
  */
 
 import {
+	isReleasedAccountEmail,
+	isReleasedOrgSlug,
+} from '#worker/identity/deleted-account-identity-release.ts'
+import {
 	ownerIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
@@ -34,10 +38,12 @@ import {
 	orgOwnedUserIdSoftDeleteTables,
 } from '#worker/orgs/data-targets.ts'
 import { cancelKodySubscriptionsForSoftDelete } from '#worker/billing/soft-delete-billing.ts'
+import { refreshStripePlanForOrg } from '#worker/billing/subscription-sync.ts'
 import {
 	FreeOrgLimitError,
 	MAX_FREE_ORGS_PER_USER,
 	countLiveFreeOwnedOrgs,
+	effectiveFreeOrgSql,
 	isPaidOrg,
 } from '#worker/orgs/billing.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
@@ -631,7 +637,7 @@ const freeOrgCapRestoreGuardSql = `
 		     AND m2.user_id = m.user_id
 		     AND m2.role = 'owner'
 		     AND m2.deleted_at IS NULL
-		    WHERE o2.plan = 'free' AND o2.deleted_at IS NULL
+		    WHERE ${effectiveFreeOrgSql('o2')} AND o2.deleted_at IS NULL
 		  ) >= ?
 	)`
 
@@ -645,15 +651,28 @@ export async function restoreOrg(input: {
 	const now = input.now ?? new Date()
 	const appDb = input.env.APP_DB
 	const row = await appDb
-		.prepare(`SELECT deleted_at, plan FROM orgs WHERE id = ?`)
+		.prepare(
+			`SELECT deleted_at, plan, stripe_plan, stripe_customer_id, slug
+			 FROM orgs WHERE id = ?`,
+		)
 		.bind(input.orgId)
-		.first<{ deleted_at: string | null; plan: string }>()
+		.first<{
+			deleted_at: string | null
+			plan: string
+			stripe_plan: string | null
+			stripe_customer_id: string | null
+			slug: string
+		}>()
 	if (!row?.deleted_at) {
 		throw new Error('org_not_deleted')
+	}
+	if (isReleasedOrgSlug(row.slug)) {
+		throw new Error('org_superseded_by_new_signup')
 	}
 	if (!isWithinSoftDeleteRestoreWindow(row.deleted_at, now)) {
 		throw new OrgRestoreWindowExpiredError()
 	}
+	// Soft-delete cancels Kody subscriptions, so a tombstone's Stripe plan is stale.
 	const freeOrg = !isPaidOrg(row.plan)
 	const deletedAt = row.deleted_at
 	const assertUnderCap = () =>
@@ -677,7 +696,8 @@ export async function restoreOrg(input: {
 				`UPDATE orgs
 				 SET deleted_at = NULL, deleting_at = NULL, updated_at = ?,
 				     access_epoch = access_epoch + 1
-				 WHERE id = ? AND deleted_at = ?${freeOrg ? freeOrgCapRestoreGuardSql : ''}`,
+				 WHERE id = ? AND deleted_at = ?
+				   AND slug NOT LIKE '~released-%'${freeOrg ? freeOrgCapRestoreGuardSql : ''}`,
 			)
 			.bind(
 				restoredAt,
@@ -743,6 +763,22 @@ export async function restoreOrg(input: {
 		}),
 		createdAt: restoredAt,
 	})
+
+	if (row.stripe_customer_id) {
+		try {
+			await refreshStripePlanForOrg({
+				env: input.env,
+				orgId: input.orgId,
+				customerId: row.stripe_customer_id,
+				now,
+			})
+		} catch (error) {
+			console.warn('org-restore-stripe-refresh-failed', {
+				orgId: input.orgId,
+				error,
+			})
+		}
+	}
 
 	return {
 		orgId: input.orgId,
@@ -961,12 +997,17 @@ export async function restoreUserAccount(input: {
 	const now = input.now ?? new Date()
 	const restoredAt = now.toISOString()
 	const userRow = await input.env.APP_DB.prepare(
-		`SELECT deleted_at FROM users WHERE stable_user_id = ?`,
+		`SELECT deleted_at, email FROM users WHERE stable_user_id = ?`,
 	)
 		.bind(input.userId)
-		.first<{ deleted_at: string | null }>()
+		.first<{ deleted_at: string | null; email: string }>()
 	if (!userRow?.deleted_at) {
 		throw new Error('user_not_deleted')
+	}
+	// A fresh signup with this email superseded the account and took its
+	// email and handle; restoring it would revive a nameless account.
+	if (isReleasedAccountEmail(userRow.email)) {
+		throw new Error('user_superseded_by_new_signup')
 	}
 	if (!isWithinSoftDeleteRestoreWindow(userRow.deleted_at, now)) {
 		throw new OrgRestoreWindowExpiredError()
@@ -976,7 +1017,8 @@ export async function restoreUserAccount(input: {
 	const userUpdate = await input.env.APP_DB.prepare(
 		`UPDATE users
 		 SET deleted_at = NULL, deleting_at = NULL, updated_at = ?
-		 WHERE stable_user_id = ? AND deleted_at = ?`,
+		 WHERE stable_user_id = ? AND deleted_at = ?
+		   AND email NOT LIKE '%@released.kody.invalid'`,
 	)
 		.bind(restoredAt, input.userId, deletedAt)
 		.run()

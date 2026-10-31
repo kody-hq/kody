@@ -67,6 +67,10 @@ import { handleInboundEmail } from '#worker/email/inbound.ts'
 import { handleQueueBatch } from '#worker/queue-handler.ts'
 import { handleDrRestoreRequest } from '#worker/dr/dr-restore.ts'
 import { handleDrExportRequest } from '#worker/dr/dr-export-maintenance.ts'
+import {
+	d1PacedStatusPath,
+	handleD1PacedStatusRequest,
+} from '#worker/dr/d1-paced-status.ts'
 import { handleDoPitrRequest } from '#worker/dr/do-pitr-maintenance.ts'
 import { handleMailboxImportRequest } from '#worker/dr/mailbox-import-maintenance.ts'
 import { handleStatusIncidentEventRequest } from '#worker/status-incidents/maintenance.ts'
@@ -83,6 +87,8 @@ import {
 } from '#worker/user-namespace-routes.ts'
 import { requestSkipsAssetProbe } from './static-asset-probe.ts'
 import { handleOpenIdConfigurationRequest } from '#worker/oidc/discovery.ts'
+import { deviceCodeGrantType } from '#worker/oauth-device/device-grant.ts'
+import { agentClaimGrantType } from '#worker/agent-registration/grant-type.ts'
 import { handleOidcJwksRequest } from '#worker/oidc/jwks.ts'
 import { handleOidcUserinfoRequest } from '#worker/oidc/userinfo.ts'
 import { handleOidcLogoutRequest } from '#worker/oidc/logout.ts'
@@ -137,8 +143,13 @@ const socialLoginStartPaths = new Set([
 	'/auth/discord',
 ])
 
+// Plain HTML form posts from `/login` and `/verify` (no page JavaScript).
+const authDocumentFormPaths = new Set(['/login', '/verify'])
+
 const rateLimitedAuthPaths = new Set([
+	'/desktop/session',
 	'/auth',
+	...authDocumentFormPaths,
 	...socialLoginStartPaths,
 	'/oauth/authorize',
 	packageAppOauthPaths.authorize,
@@ -189,6 +200,22 @@ const appHandler = withCors({
 					.get('Accept')
 					?.toLowerCase()
 					.includes('application/json')
+				if (authDocumentFormPaths.has(url.pathname) && !prefersJson) {
+					const pageUrl = new URL(url.pathname, url)
+					const redirectTo = normalizeRedirectTo(
+						url.searchParams.get('redirectTo'),
+					)
+					if (redirectTo) pageUrl.searchParams.set('redirectTo', redirectTo)
+					pageUrl.searchParams.set('formError', 'rate_limited')
+					await discardUnreadRequestBody(request)
+					return new Response(null, {
+						status: 303,
+						headers: {
+							Location: `${pageUrl.pathname}${pageUrl.search}`,
+							'Retry-After': String(result.retryAfterSeconds ?? 60),
+						},
+					})
+				}
 				if (socialLoginStartPaths.has(url.pathname) && !prefersJson) {
 					const loginUrl = new URL('/login', url)
 					loginUrl.searchParams.set('oauthError', 'rate-limited')
@@ -279,6 +306,10 @@ const appHandler = withCors({
 
 		if (url.pathname === '/__maintenance/dr-export') {
 			return handleDrExportRequest(request, env)
+		}
+
+		if (url.pathname === d1PacedStatusPath) {
+			return handleD1PacedStatusRequest(request, env)
 		}
 
 		if (url.pathname === '/__maintenance/do-pitr') {
@@ -471,9 +502,36 @@ function isMcpResourceOwnedPath(pathname: string) {
 	)
 }
 
+const internalTokenGrantTypes = new Set([
+	deviceCodeGrantType,
+	agentClaimGrantType,
+])
+
+/**
+ * The parsed form when `/oauth/token` carries a grant Kody handles itself: the
+ * RFC 8628 device grant or the auth.md claim grant (ADR 0091).
+ */
+async function readInternalTokenGrantForm(request: Request) {
+	const contentType = request.headers.get('Content-Type') ?? ''
+	if (!contentType.includes('application/x-www-form-urlencoded')) return null
+	const form = await request
+		.clone()
+		.formData()
+		.catch(() => null)
+	const grantType = form?.get('grant_type')
+	return form &&
+		typeof grantType === 'string' &&
+		internalTokenGrantTypes.has(grantType)
+		? { form, grantType }
+		: null
+}
+
 function isOAuthProviderOwnedPath(pathname: string) {
 	return (
 		pathname === oauthPaths.token ||
+		pathname === oauthPaths.deviceAuthorization ||
+		pathname === oauthPaths.agentIdentity ||
+		pathname === oauthPaths.agentIdentityClaim ||
 		pathname === oauthPaths.register ||
 		pathname === oauthPaths.discovery ||
 		pathname === protectedResourceMetadataPath ||
@@ -983,7 +1041,65 @@ async function handleOriginAppFetch(
 	let mcpPeek: McpJsonRpcPeek = { kind: 'unknown' }
 	let mcpPeekCloned = false
 	try {
+		if (url.pathname === oauthPaths.agentIdentity) {
+			const { handleAgentIdentityRequest } =
+				await import('#worker/agent-registration/identity-endpoint.ts')
+			return await handleAgentIdentityRequest(request, env)
+		}
+		if (url.pathname === oauthPaths.agentIdentityClaim) {
+			const { handleAgentClaimRestartRequest } =
+				await import('#worker/agent-registration/identity-endpoint.ts')
+			return await handleAgentClaimRestartRequest(request, env)
+		}
+		if (url.pathname === oauthPaths.deviceAuthorization) {
+			const { handleDeviceAuthorizationRequest } =
+				await import('#worker/oauth-device/authorization-endpoint.ts')
+			return await handleDeviceAuthorizationRequest(request, env)
+		}
+		if (url.pathname === oauthPaths.discovery && request.method === 'GET') {
+			const { withDeviceGrantDiscovery } =
+				await import('#worker/oauth-device/discovery.ts')
+			return await withDeviceGrantDiscovery(
+				request,
+				env,
+				await oauthProvider.fetch(request, env, ctx),
+			)
+		}
 		if (url.pathname === oauthPaths.token && request.method === 'POST') {
+			const internalGrant = await readInternalTokenGrantForm(request)
+			if (internalGrant?.grantType === agentClaimGrantType) {
+				await discardUnreadRequestBody(request)
+				const { handleAgentClaimTokenRequest } =
+					await import('#worker/agent-registration/token-grant.ts')
+				return await handleAgentClaimTokenRequest({
+					request,
+					env,
+					form: internalGrant.form,
+				})
+			}
+			const deviceForm = internalGrant?.form ?? null
+			if (deviceForm) {
+				await discardUnreadRequestBody(request)
+				const { handleDeviceCodeTokenRequest } =
+					await import('#worker/oauth-device/token-grant.ts')
+				const fetchProvider = (providerRequest: Request) =>
+					oauthProvider.fetch(providerRequest, env, ctx)
+				const result = await handleDeviceCodeTokenRequest({
+					request,
+					env,
+					form: deviceForm,
+					fetchProvider,
+				})
+				if ('response' in result) return result.response
+				const { response, grantType } = await handleMcpOAuthTokenRequest({
+					request: result.providerRequest,
+					env,
+					fetchProvider,
+				})
+				return enrichOAuthTokenResponse(result.providerRequest, response, env, {
+					grantType,
+				})
+			}
 			const { response, grantType } = await handleMcpOAuthTokenRequest({
 				request,
 				env,

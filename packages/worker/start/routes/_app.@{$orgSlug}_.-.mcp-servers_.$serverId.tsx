@@ -14,6 +14,7 @@ export const Route = createFileRoute(
 )({
 	validateSearch: textSearch,
 	staticData: {
+		presentationSearchKeys: ['q'],
 		workspaceSwitch: {
 			section: 'mcp-servers',
 			suffix: [{ param: 'serverId' }],
@@ -21,9 +22,10 @@ export const Route = createFileRoute(
 		navigation: { rail: 'workspace', item: 'credentials' },
 		orgScope: { section: 'mcp-servers' },
 	},
-	context: ({ params }) => ({
+	beforeLoad: ({ params }) => ({
 		pageQueryInput: { orgSlug: params.orgSlug, serverId: params.serverId },
 	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,

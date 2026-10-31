@@ -7,15 +7,20 @@ import {
 	apiTokenScopes,
 } from '#worker/api-tokens/scopes.ts'
 import { apiTokenIdleTtlDescription } from '#worker/api-tokens/service.ts'
-import { type SurfacePermission } from '#worker/authorization/authorize.ts'
+import {
+	type SurfacePermission,
+	surfacePermissionList,
+} from '#worker/authorization/authorize.ts'
 import { apiErrorCodes } from './errors.ts'
 import {
 	apiOperationUsesQueryInputs,
 	apiOperations,
+	capabilityNameForOperation,
 	getApiOperationPathParams,
 	isCapabilityProxyGatewayFetchOperation,
 	listApiOperationPaths,
 	type ApiOperation,
+	type CapabilityApiOperation,
 } from './operations.ts'
 import { nativeApiOperationDefinitions } from './native-operations.ts'
 
@@ -43,6 +48,7 @@ type OpenApiOperation = {
 	operationId: string
 	summary: string
 	description: string
+	deprecated?: boolean
 	tags: Array<string>
 	parameters?: Array<OpenApiParameter>
 	requestBody?: {
@@ -52,7 +58,10 @@ type OpenApiOperation = {
 	}
 	responses: Record<string, unknown>
 	security: Array<Record<string, Array<string>>>
-	/** Org permission the caller must hold (`none`: touches no org data). */
+	/**
+	 * Org permission the caller must hold (`none`: touches no org data). A list
+	 * means any one of them; the handler picks per call (create vs update).
+	 */
 	'x-kody-permission': SurfacePermission
 	'x-kody-read-only': boolean
 	'x-kody-feature-flag'?: string
@@ -122,9 +131,13 @@ const tagDescriptions: Record<ApiOperation['tag'], string> = {
 	integrations: 'OAuth integrations and OAuth apps.',
 	'mcp-servers': 'User-added MCP servers.',
 	runs: 'Execution run history and triage.',
+	'execution-contexts':
+		'Execution contexts (machines running `kody daemon`), their sharing, run history and audit, and your per-org fallback chain. Kody cloud, when present, is always the last chain entry. Behind the `execution-contexts` feature flag: off answers 403 `feature_disabled`.',
 	storage: 'Durable storage export and SQL query.',
 	community: 'Public packages in the community catalog, and profile.',
 	tokens: 'Scoped, short-lived API tokens.',
+	profiles:
+		'Profiles: scoped agent identities capped by you and every parent profile. Behind the `profiles` experiment: off answers 403 `feature_disabled`.',
 	'capability-proxy':
 		'Platform I/O for a local execute venue: CapabilityProxy hops (`kody:runtime` calls) and `POST /v1/local-execute/package-graph` (stamped `kody:@…` module download). Requires `org:execute` and a scoped API token or CLI `kody login` MCP OAuth bearer.',
 	execute:
@@ -205,6 +218,66 @@ function readUnionVariants(schema: JsonSchema): Array<JsonSchema> {
 	return variants
 }
 
+function narrowForwardSchema(
+	schema: JsonSchema,
+	fixedInputs: Readonly<Record<string, string>>,
+	operationId: string,
+): JsonSchema {
+	const matches = readUnionVariants(schema).filter((variant) =>
+		Object.entries(fixedInputs).every(([key, value]) => {
+			const property = readProperties(variant)[key]
+			if (!isRecord(property)) return false
+			if (property['const'] === value) return true
+			const enumValues = property['enum']
+			return (
+				Array.isArray(enumValues) &&
+				enumValues.length === 1 &&
+				enumValues[0] === value
+			)
+		}),
+	)
+	if (matches.length !== 1) {
+		throw new Error(
+			`Open API operation "${operationId}" expected one matching schema variant, found ${matches.length}.`,
+		)
+	}
+	const variant = matches[0]!
+	const { anyOf: _anyOf, oneOf: _oneOf, ...schemaMetadata } = schema
+	return {
+		...schemaMetadata,
+		...variant,
+		properties: Object.fromEntries(
+			Object.entries(readProperties(variant)).filter(
+				([key]) => !(key in fixedInputs),
+			),
+		),
+		required: readRequired(variant).filter((key) => !(key in fixedInputs)),
+	}
+}
+
+function describeDeprecatedForward(
+	operation: CapabilityApiOperation,
+	description: string,
+): string {
+	const forward = operation.deprecatedForward
+	if (!forward) return description
+	const replacement = apiOperations.find(
+		(candidate) => candidate.operationId === forward.capability,
+	)
+	if (!replacement) {
+		throw new Error(
+			`Deprecated Open API operation "${operation.operationId}" has no replacement "${forward.capability}".`,
+		)
+	}
+	const fixedInputDescription = Object.entries(forward.fixedInputs)
+		.map(([key, value]) => `${key} "${value}"`)
+		.join(', ')
+	const fixedInputs = fixedInputDescription
+		? ` with ${fixedInputDescription}`
+		: ''
+	return `Deprecated: use \`${forward.capability}\` (${replacement.method} ${replacement.path})${fixedInputs} instead; this route is removed after ${forward.sunset}.\n\n${description}`
+}
+
 export function resolveApiOperation(
 	operation: ApiOperation,
 	registry: BuiltCapabilityRegistry,
@@ -223,19 +296,43 @@ export function resolveApiOperation(
 			}
 		}
 		case 'capability': {
-			const capability = registry.capabilityMap[operation.operationId]
+			const capabilityName = capabilityNameForOperation(operation)
+			const capability = registry.capabilityMap[capabilityName]
 			if (!capability) {
 				throw new Error(
-					`Open API operation "${operation.operationId}" has no capability.`,
+					`Open API operation "${operation.operationId}" has no capability "${capabilityName}".`,
+				)
+			}
+			const forward = operation.deprecatedForward
+			const inputSchema = forward
+				? narrowForwardSchema(
+						capability.inputSchema as JsonSchema,
+						forward.fixedInputs,
+						operation.operationId,
+					)
+				: (capability.inputSchema as JsonSchema)
+			const outputSchema =
+				(capability.outputSchema as JsonSchema | undefined) ?? null
+			if (forward && !outputSchema) {
+				throw new Error(
+					`Deprecated Open API operation "${operation.operationId}" has no output schema.`,
 				)
 			}
 			return {
 				operation,
-				description: capability.description,
-				inputSchema: capability.inputSchema as JsonSchema,
-				outputSchema:
-					(capability.outputSchema as JsonSchema | undefined) ?? null,
-				permission: capability.orgPermission,
+				description: describeDeprecatedForward(
+					operation,
+					capability.description,
+				),
+				inputSchema,
+				outputSchema: forward
+					? narrowForwardSchema(
+							outputSchema!,
+							forward.fixedInputs,
+							operation.operationId,
+						)
+					: outputSchema,
+				permission: forward?.permission ?? capability.orgPermission,
 				readOnly: capability.readOnly,
 				featureFlag: capability.featureFlag ?? null,
 			}
@@ -251,7 +348,9 @@ function describeWithPermission(resolved: ResolvedApiOperation) {
 	const permission =
 		resolved.permission === 'none'
 			? 'none (touches no org data)'
-			: `\`${resolved.permission}\``
+			: surfacePermissionList(resolved.permission)
+					.map((one) => `\`${one}\``)
+					.join(' or ')
 	return `${resolved.description}\n\nOrg permission: ${permission}.`
 }
 
@@ -447,6 +546,9 @@ function buildOperation(
 		operationId: operation.operationId,
 		summary: summarize(resolved.description),
 		description: describeWithPermission(resolved),
+		...(operation.kind === 'capability' && operation.deprecatedForward
+			? { deprecated: true }
+			: {}),
 		tags: [operation.tag],
 		...(parameters.length > 0 ? { parameters } : {}),
 		...(requestBody ? { requestBody } : {}),
@@ -514,7 +616,7 @@ function buildDocumentBody(registry: BuiltCapabilityRegistry) {
 				'',
 				'Errors use `{ "error": { "code", "message", "details"? } }` (see components.schemas.Error). Documented 4xx/5xx responses reference that schema. Requests are rate limited per IP (600/min) and per token (300/min); HTTP 429 includes `Retry-After`. Edge-generated 429 responses also include a `RateLimit-Policy` advertisement; entitlement 429s send `Retry-After` only.',
 				'',
-				'`operationId` values match Kody capability names, so the same ids work with the MCP `api` tool (`{ operationId, params }`, where params hold path, query, and body fields flat).',
+				'`operationId` values match Kody capability names, except deprecated forwarders, which keep their old ids and forward to the capability their description names. Every id, deprecated ones included, works with the MCP `api` tool (`{ operationId, params }`, where params hold path, query, and body fields flat).',
 				'',
 				`Interactive docs: ${kodyApiDocsUrl}`,
 				'',

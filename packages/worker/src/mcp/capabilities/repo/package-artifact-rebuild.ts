@@ -1,7 +1,6 @@
 import { chunkArray } from '@kody-internal/shared/chunk.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
-	errorCauseChainIncludes,
 	formatErrorCauseChain,
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
@@ -11,6 +10,8 @@ import {
 } from '#worker/d1-retry.ts'
 import {
 	isPublishedPackageArtifactBuiltForCommit,
+	loadPublishedBundleArtifactsForPackageTargets,
+	publishedBundleArtifactForPackageTarget,
 	reusePublishedPackageArtifactIfUnchanged,
 	type PublishedPackageArtifactReuseSnapshotCache,
 } from '#worker/package-runtime/published-bundle-artifacts.ts'
@@ -26,7 +27,10 @@ import {
 	isolatedArtifactRebuildChunkSize,
 } from '#worker/repo/isolated-artifact-rebuild.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
-import { isDurableObjectIsolateResetMessage } from '#worker/sentry-options.ts'
+import {
+	isDurableObjectIsolateResourceLimitResetError,
+	isTransientDurableObjectResetError,
+} from '#worker/durable-object-reset-retry.ts'
 import { isUserCodeError, UserCodeError } from '#worker/user-code-error.ts'
 
 /**
@@ -40,10 +44,12 @@ export const publishedPackageArtifactRebuildConcurrency =
 	isolatedArtifactRebuildChunkConcurrency
 
 /**
- * Deploy-time DO code resets and other platform isolate resets during
- * staging or target rebuilds are transient. Rebuilds are idempotent
+ * Deploy-time DO code resets and other genuinely transient platform isolate
+ * resets during staging or target rebuilds. Rebuilds are idempotent
  * (already-built targets are skipped), so a short bounded retry recovers
- * without re-running publish. Matches packagePublishExternalPush delays.
+ * without re-running publish. Memory/CPU / SQLITE_NOMEM resource limits are
+ * excluded — they repeat for the same targets. Matches
+ * packagePublishExternalPush delays.
  */
 export const publishedPackageArtifactRebuildRetryDelaysMs = [100, 500] as const
 
@@ -59,11 +65,13 @@ export const publishedPackageArtifactRebuildD1LockRetryDelaysMs = [
 	500, 2_000, 5_000, 10_000,
 ] as const
 
-function isTransientDurableObjectResetError(error: unknown) {
-	return errorCauseChainIncludes(error, isDurableObjectIsolateResetMessage)
-}
-
 function isTransientArtifactRebuildError(error: unknown) {
+	// `isRetryableD1LockError` still matches isolate memory/CPU / SQLITE_NOMEM
+	// (D1 is DO-backed). Those limits are deterministic for the same targets —
+	// do not burn the rebuild retry budget on them.
+	if (isDurableObjectIsolateResourceLimitResetError(error)) {
+		return false
+	}
 	return (
 		isTransientDurableObjectResetError(error) || isRetryableD1LockError(error)
 	)
@@ -232,7 +240,22 @@ async function filterTargetsNeedingRebuild(input: {
 	const sharedSnapshot =
 		publishedSnapshot !== undefined ? { publishedSnapshot } : {}
 	const snapshotCache: PublishedPackageArtifactReuseSnapshotCache = new Map()
+	const loadedByIdentity = hasPublishedRuntimeArtifacts(input.env)
+		? await loadPublishedBundleArtifactsForPackageTargets({
+				env: input.env,
+				userId: input.userId,
+				sourceId: input.sourceId,
+				targets: input.targets,
+			})
+		: null
 	for (const target of input.targets) {
+		const preloaded = loadedByIdentity
+			? publishedBundleArtifactForPackageTarget({
+					sourceId: input.sourceId,
+					target,
+					loadedByIdentity,
+				})
+			: undefined
 		const built = await isPublishedPackageArtifactBuiltForCommit({
 			env: input.env,
 			userId: input.userId,
@@ -240,6 +263,7 @@ async function filterTargetsNeedingRebuild(input: {
 			publishedCommit: input.publishedCommit,
 			target,
 			...sharedSnapshot,
+			...(preloaded !== undefined ? { preloaded } : {}),
 		})
 		if (built) {
 			alreadyBuilt.push(target)
@@ -253,6 +277,7 @@ async function filterTargetsNeedingRebuild(input: {
 			target,
 			snapshotCache,
 			...sharedSnapshot,
+			...(preloaded !== undefined ? { preloaded } : {}),
 		})
 		if (didReuse) {
 			// Reuse copies prior-commit bytes under this tip — that is artifact
@@ -287,6 +312,49 @@ async function listTargetsOrThrow(input: {
 			error,
 		})
 	}
+}
+
+/**
+ * Read-only: how many of the package's artifact targets are not built for
+ * `publishedCommit`. Unlike the rebuild filter it never reuses or writes.
+ */
+export async function countUnbuiltPublishedPackageArtifactTargets(input: {
+	env: Env
+	rpcSessionId: string
+	sourceId: string
+	userId: OwnerId
+	publishedCommit: string
+}) {
+	const targets = await repoSessionRpc(
+		input.env,
+		input.rpcSessionId,
+	).listPublishedPackageArtifactTargets({
+		sourceId: input.sourceId,
+		userId: input.userId,
+	})
+	const loadedByIdentity = await loadPublishedBundleArtifactsForPackageTargets({
+		env: input.env,
+		userId: input.userId,
+		sourceId: input.sourceId,
+		targets,
+	})
+	let unbuilt = 0
+	for (const target of targets) {
+		const built = await isPublishedPackageArtifactBuiltForCommit({
+			env: input.env,
+			userId: input.userId,
+			sourceId: input.sourceId,
+			publishedCommit: input.publishedCommit,
+			target,
+			preloaded: publishedBundleArtifactForPackageTarget({
+				sourceId: input.sourceId,
+				target,
+				loadedByIdentity,
+			}),
+		})
+		if (!built) unbuilt += 1
+	}
+	return { targetCount: targets.length, unbuiltCount: unbuilt }
 }
 
 export type RebuildPublishedPackageArtifactsResult = {

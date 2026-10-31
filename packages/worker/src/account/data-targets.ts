@@ -57,7 +57,13 @@ export type UserScopedDataTarget =
 			surface?: string
 			reason?: string
 	  }
-	| { kind: 'bucket_parent'; table: string; parentTable: string }
+	| {
+			kind: 'bucket_parent'
+			table: string
+			parentTable: string
+			childParentColumn?: string
+			parentUserColumn?: string
+	  }
 	| {
 			kind: 'community_listing_child'
 			table: string
@@ -204,9 +210,10 @@ export const accountUserDataPendingDropTables = [] as const
 
 export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{ kind: 'user_id', table: 'api_tokens' },
-	{ kind: 'user_id', table: 'connection_profiles' },
 	{ kind: 'user_id', table: 'mcp_event_subscriptions' },
 	{ kind: 'user_id', table: 'cli_credential_bootstrap_codes' },
+	{ kind: 'user_id', table: 'oauth_device_authorizations' },
+	{ kind: 'user_id', table: 'agent_registrations' },
 	{ kind: 'user_id', table: 'user_storage_buckets' },
 	{ kind: 'user_id', table: 'usage_rollups' },
 	{
@@ -215,6 +222,26 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		columns: ['actor_user_id'],
 	},
 	{ kind: 'user_id', table: 'usage_attribution_daily' },
+	{
+		kind: 'bucket_parent',
+		table: 'package_app_grant_credential_mappings',
+		parentTable: 'package_app_oauth_grants',
+		childParentColumn: 'grant_id',
+		parentUserColumn: 'person_id',
+	},
+	{
+		kind: 'user_id',
+		table: 'package_app_visitor_attribution_daily',
+	},
+	{
+		kind: 'user_columns',
+		table: 'package_app_visitor_attribution_daily',
+		columns: ['visitor_user_id'],
+		includeInExport: false,
+		surface: 'package_app_visitor_attribution_daily_visitor_ids',
+		reason:
+			'Purge derived visitor usage rows that reference a deleted person and exclude cross-account visitor ids from export.',
+	},
 	{
 		kind: 'user_columns',
 		table: 'usage_attribution_daily',
@@ -288,6 +315,63 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	},
 	// A person's org grants of their personal credentials.
 	{ kind: 'user_id', table: 'credential_org_grants' },
+	// Execution contexts a person registered (they operate the machine), the
+	// contexts they opted into, their attachments of contexts to other orgs,
+	// and their chains. Registration challenges are short-lived and never
+	// exported.
+	{
+		kind: 'user_columns',
+		table: 'execution_contexts',
+		columns: ['operator_user_id'],
+	},
+	{ kind: 'user_id', table: 'execution_context_opt_ins' },
+	// Profiles a person acts as (ADR 0092). Their `grants` rows are swept by
+	// the profile purge once the profile row is gone.
+	{
+		kind: 'user_columns',
+		table: 'profiles',
+		columns: ['acting_user_id'],
+	},
+	// Who created or revoked a profile is attribution only (an Owner may revoke
+	// a member's profile): anonymize instead of dropping the member's row.
+	{
+		kind: 'replace_user_column',
+		table: 'profiles',
+		matchColumn: 'created_by_user_id',
+		setColumn: 'created_by_user_id',
+		value: 'deleted-user',
+	},
+	{
+		kind: 'replace_user_column',
+		table: 'profiles',
+		matchColumn: 'revoked_by_user_id',
+		setColumn: 'revoked_by_user_id',
+		value: 'deleted-user',
+	},
+	{
+		kind: 'user_columns',
+		table: 'execution_context_org_attachments',
+		columns: ['attached_by_user_id'],
+	},
+	{ kind: 'user_id', table: 'execution_context_chains' },
+	// Org automation settings outlive the member who last edited them; only
+	// the editor id is anonymized.
+	{
+		kind: 'replace_user_column',
+		table: 'automation_execution_settings',
+		matchColumn: 'updated_by_user_id',
+		setColumn: 'updated_by_user_id',
+		value: 'deleted-user',
+	},
+	{ kind: 'user_id', table: 'execution_context_chain_entries' },
+	{
+		kind: 'user_id',
+		table: 'execution_context_registration_challenges',
+		includeInExport: false,
+		surface: 'execution_context_registration_challenges',
+		reason:
+			'Short-lived, single-use registration challenge hashes; they are deleted on use or expiry and carry no user content.',
+	},
 	// Inventory items are per-package results owned by the package owner; runs
 	// are operator ledger rows whose initiator is attribution only.
 	{ kind: 'user_id', table: 'credential_inventory_items' },
@@ -322,6 +406,14 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		parentTable: 'secret_buckets',
 	},
 	{ kind: 'user_id', table: 'secret_buckets' },
+	{
+		kind: 'user_id',
+		table: 'login_credential_sessions',
+		includeInExport: false,
+		surface: 'login_credential_sessions',
+		reason:
+			'Encrypted login sessions Kody minted from a login credential; operational cache that is re-minted from the credential, never user-readable.',
+	},
 	{ kind: 'user_id', table: 'secret_provider_grants' },
 	{ kind: 'user_id', table: 'secret_provider_bindings' },
 	// Connections reference OAuth apps with ON DELETE RESTRICT, so delete
@@ -334,6 +426,16 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		matchColumn: 'connected_by_user_id',
 		setColumn: 'connected_by_user_id',
 		value: 'deleted-user',
+	},
+	// Members' personal connections pinned to this org's apps (ADR 0068)
+	// live in their personal orgs and end with the app.
+	{
+		kind: 'user_columns',
+		table: 'user_integrations',
+		columns: ['app_owner_id'],
+		includeInExport: false,
+		surface: 'user_integrations_pinned_to_org_apps',
+		reason: "members' personal connections pinned to the org's OAuth apps",
 	},
 	{ kind: 'user_id', table: 'user_oauth_apps' },
 	{ kind: 'user_id', table: 'mcp_server_settings' },
@@ -377,6 +479,11 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{
 		kind: 'user_columns',
 		table: 'package_security_audits',
+		columns: ['owner_user_id'],
+	},
+	{
+		kind: 'user_columns',
+		table: 'package_app_cookie_warnings',
 		columns: ['owner_user_id'],
 	},
 	{
@@ -456,6 +563,14 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		surface: 'email_outbound_provider_index',
 		reason:
 			'Operational global provider→owner reverse lookup omitted from portable export. Mailbox rows retain provider ids, but no fleet-wide automatic rebuild is claimed; account deletion keeps explicit owner cleanup.',
+	},
+	{
+		kind: 'user_id',
+		table: 'email_deliverability_effects',
+		includeInExport: false,
+		surface: 'email_deliverability_effects',
+		reason:
+			'Operational per-provider-event deliverability side-effect ledger omitted from portable export; account deletion removes the owner rows.',
 	},
 	{
 		kind: 'user_id',
@@ -593,6 +708,15 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		surface: 'follows_owned_by_org',
 		reason:
 			'Org hard purge deletes follows owned by the org. Account export uses creator_user_id so the creating person receives the row. Deleting a member anonymizes creator_user_id and leaves the org follow in place.',
+	},
+	{
+		kind: 'user_columns',
+		table: 'follow_recent_updates',
+		columns: ['follower_org_id'],
+		includeInExport: false,
+		surface: 'follow_recent_updates_owned_by_org',
+		reason:
+			'Org hard purge deletes the Recent updates of follows owned by the org. Rows only describe public or readable follow targets and carry no person id, so they stay out of account export.',
 	},
 	{
 		kind: 'community_listing_child',
@@ -1022,8 +1146,11 @@ export function buildUserScopedTargetMatch(input: {
 			}
 		}
 		case 'bucket_parent': {
-			const parentMatch = columnInIdsSql('user_id', ids)
-			const whereSql = `bucket_id IN (
+			const parentMatch = columnInIdsSql(
+				target.parentUserColumn ?? 'user_id',
+				ids,
+			)
+			const whereSql = `${target.childParentColumn ?? 'bucket_id'} IN (
 						SELECT id FROM ${target.parentTable} WHERE ${parentMatch.sql}
 					)`
 			return {
@@ -1151,6 +1278,12 @@ export const accountExportRedactedColumnsByTable: Readonly<
 > = {
 	api_tokens: ['token_hash'],
 	cli_credential_bootstrap_codes: ['code_hash'],
+	oauth_device_authorizations: ['device_code_hash', 'user_code'],
+	agent_registrations: [
+		'claim_token_hash',
+		'attempt_token_hash',
+		'user_code_hash',
+	],
 	email_verifications: ['token_hash'],
 	org_invite_links: ['token_hash'],
 	mcp_event_subscriptions: ['secret_encrypted', 'previous_secret_encrypted'],
@@ -1184,6 +1317,7 @@ export const accountExportForeignUserIdColumnsByTable: Readonly<
 	community_activity_events: ['actor_user_id'],
 	durable_object_duration_daily: ['actor_user_id'],
 	usage_attribution_daily: ['actor_user_id'],
+	package_app_visitor_attribution_daily: ['visitor_user_id', 'billed_org_id'],
 	usage_connection_daily: ['holder_user_id'],
 	usage_rollups: ['actor_user_id'],
 	community_reports: ['listing_owner_user_id', 'resolved_by_user_id'],

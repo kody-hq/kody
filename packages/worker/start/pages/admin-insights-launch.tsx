@@ -1,13 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { cardCss } from '#universal/styles/style-primitives.ts'
 
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import { FunnelChart } from '../charts/funnel-chart.tsx'
 import { DonutChart } from '../charts/donut-chart.tsx'
 import { StatCard } from '../charts/stat-card.tsx'
-import {
-	chartColor,
-	formatIntegerNumber,
-	formatPercentShare,
-} from '#client/charts/chart-theme.ts'
+import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
 import {
 	type AdminInsightsLaunchFunnelStep,
 	type AdminInsightsLaunchSignals,
@@ -60,61 +58,19 @@ function renderLaunchFunnel(input: {
 	steps: Array<AdminInsightsLaunchFunnelStep>
 	ariaLabel: string
 }) {
-	const total = input.steps[0]?.users ?? 0
 	return (
-		<div css={{ display: 'grid', gap: spacing.sm }}>
-			{input.steps.map((entry) => {
-				const share = total > 0 ? entry.users / total : 0
-				return (
-					<div
-						key={`${input.id}-${entry.step}`}
-						css={{ display: 'grid', gap: spacing.xs }}
-					>
-						<div
-							css={{
-								display: 'flex',
-								justifyContent: 'space-between',
-								gap: spacing.sm,
-								fontSize: typography.fontSize.sm,
-								color: colors.text,
-							}}
-						>
-							<span>{launchFunnelLabels[entry.step]}</span>
-							<span
-								css={{
-									color: colors.textMuted,
-									whiteSpace: 'nowrap',
-									fontVariantNumeric: 'tabular-nums',
-								}}
-							>
-								{formatIntegerNumber(entry.users)} · {formatPercentShare(share)}
-							</span>
-						</div>
-						<div
-							role="img"
-							aria-label={`${launchFunnelLabels[entry.step]}: ${entry.users} users, ${formatPercentShare(share)} of signups`}
-							css={{
-								height: '10px',
-								borderRadius: '999px',
-								background: colors.border,
-								overflow: 'hidden',
-							}}
-						>
-							<div
-								css={{
-									height: '100%',
-									width: `${Math.round(share * 100)}%`,
-									background:
-										entry.step === 'first_saved_package'
-											? chartColor.emerald
-											: chartColor.blue,
-								}}
-							/>
-						</div>
-					</div>
-				)
-			})}
-		</div>
+		<FunnelChart
+			ariaLabel={input.ariaLabel}
+			steps={input.steps.map((entry) => ({
+				key: `${input.id}-${entry.step}`,
+				label: launchFunnelLabels[entry.step],
+				users: entry.users,
+				color:
+					entry.step === 'first_saved_package'
+						? chartColor.emerald
+						: chartColor.blue,
+			}))}
+		/>
 	)
 }
 
@@ -428,10 +384,7 @@ export function renderOnboardingFunnelSummary(
 		funnel.windows.days28.steps.map((step) => [step.stage, step.users]),
 	)
 	return (
-		<section
-			aria-label="Onboarding funnel"
-			css={{ display: 'grid', gap: spacing.sm }}
-		>
+		<section aria-label="Onboarding funnel" css={cardCss}>
 			<div css={{ display: 'grid', gap: spacing.xs }}>
 				<h2
 					css={{

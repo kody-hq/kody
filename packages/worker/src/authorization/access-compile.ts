@@ -15,13 +15,30 @@ import {
 	type OrgRole,
 	type RequestContext,
 } from '@kody-internal/shared/request-context.ts'
+import {
+	type GrantSubjectChoices,
+	grantSubjectMatchSql,
+} from '#worker/authorization/grant-subjects.ts'
+import {
+	defaultOrgMemberCreation,
+	memberCreationFromRow,
+	memberCreationGrants,
+	type OrgMemberCreation,
+} from '#worker/authorization/member-creation-permissions.ts'
+import { memoizePerRequest } from '#worker/request-context.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 const allOrgPermissions: ReadonlySet<OrgPermission> = new Set(orgPermissions)
 
 export const rolePresets: Record<OrgRole, ReadonlySet<OrgPermission>> = {
 	owner: allOrgPermissions,
-	member: new Set(['org:read', 'member:read', 'team:read', 'search:read']),
+	member: new Set([
+		'org:read',
+		'member:read',
+		'team:read',
+		'search:read',
+		'profile:manage',
+	]),
 	billing: new Set([
 		'org:read',
 		'member:read',
@@ -48,6 +65,19 @@ export type CompiledAccess = {
 	 * grants are folded into `orgPermissions` instead.
 	 */
 	resourcePermissions: ReadonlyMap<string, ReadonlySet<OrgPermission>>
+	/**
+	 * The earliest expiry among the grants this compile used (ISO), or null
+	 * when none expires. The compile is stale from that moment.
+	 */
+	validUntil: string | null
+}
+
+/** True once `compiled` has passed its `validUntil`. */
+export function compiledAccessExpired(
+	compiled: Pick<CompiledAccess, 'validUntil'>,
+	now: string = new Date().toISOString(),
+) {
+	return compiled.validUntil !== null && compiled.validUntil <= now
 }
 
 export function resourceGrantKey(
@@ -61,16 +91,18 @@ type GrantRow = {
 	resource_type: string
 	resource_id: string
 	permission: string
+	expires_at: string | null
 }
 
 type AccessCacheRow = {
 	epoch: number
 	compiled_json: string
+	valid_until: string | null
 }
 
 function parseCompiledJson(
 	json: string,
-): Omit<CompiledAccess, 'orgId' | 'epoch'> | null {
+): Omit<CompiledAccess, 'orgId' | 'epoch' | 'validUntil'> | null {
 	let parsed: unknown
 	try {
 		parsed = JSON.parse(json)
@@ -114,7 +146,7 @@ function parseCompiledJson(
 }
 
 function serializeCompiled(
-	compiled: Omit<CompiledAccess, 'orgId' | 'epoch'>,
+	compiled: Omit<CompiledAccess, 'orgId' | 'epoch' | 'validUntil'>,
 ): string {
 	const resourcePermissions: Record<string, Array<string>> = {}
 	for (const [key, set] of compiled.resourcePermissions) {
@@ -168,37 +200,42 @@ function applyAdHocRule(
 	}
 }
 
+/** Compiled access honors every subject type a grant can name. */
+export const liveGrantRowSubjects = {
+	user: 'include',
+	team: 'include',
+	org: 'include',
+	profile: {
+		exclude:
+			'Profile grants narrow a profile; they never grant the person behind it.',
+	},
+} as const satisfies GrantSubjectChoices
+
 async function loadLiveGrantRows(
 	db: D1Database,
 	orgId: string,
 	userId: string,
+	now: string,
 ): Promise<Array<GrantRow>> {
+	const subjectMatch = grantSubjectMatchSql({
+		subjects: liveGrantRowSubjects,
+		personId: userId,
+		boundOrgId: orgId,
+		now,
+	})
 	const result = await db
 		.prepare(
 			`SELECT g.resource_type AS resource_type,
 			        g.resource_id AS resource_id,
-			        gp.permission AS permission
+			        gp.permission AS permission,
+			        g.expires_at AS expires_at
 			 FROM grants g
 			 INNER JOIN grant_permissions gp ON gp.grant_id = g.id
 			 WHERE g.org_id = ?
 			   AND g.deleted_at IS NULL
-			   AND (
-			     (g.subject_type = 'user' AND g.subject_id = ?)
-			     OR (
-			       g.subject_type = 'team'
-			       AND g.subject_id IN (
-			         SELECT tm.team_id
-			         FROM team_members tm
-			         INNER JOIN teams t ON t.id = tm.team_id
-			         WHERE tm.user_id = ?
-			           AND tm.deleted_at IS NULL
-			           AND t.org_id = ?
-			           AND t.deleted_at IS NULL
-			       )
-			     )
-			   )`,
+			   AND ${subjectMatch.sql}`,
 		)
-		.bind(orgId, userId, userId, orgId)
+		.bind(orgId, ...subjectMatch.binds)
 		.all<GrantRow>()
 	return result.results ?? []
 }
@@ -207,10 +244,15 @@ function dbCanPrepare(db: D1Database) {
 	return typeof db?.prepare === 'function'
 }
 
+type OrgAccessRow = {
+	epoch: number
+	memberCreation: OrgMemberCreation
+}
+
 async function readOrgEpoch(
 	db: D1Database,
 	orgId: string,
-): Promise<number | null> {
+): Promise<OrgAccessRow | null> {
 	if (!dbCanPrepare(db)) {
 		throw new Error(
 			`APP_DB cannot prepare statements while compiling access for org ${orgId}.`,
@@ -219,12 +261,21 @@ async function readOrgEpoch(
 	try {
 		const row = await db
 			.prepare(
-				`SELECT access_epoch FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`,
+				`SELECT access_epoch, members_can_create_packages,
+				        members_can_create_credentials
+				 FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`,
 			)
 			.bind(orgId)
-			.first<{ access_epoch: number }>()
+			.first<{
+				access_epoch: number
+				members_can_create_packages: number | null
+				members_can_create_credentials: number | null
+			}>()
 		if (!row) return null
-		return Number(row.access_epoch) || 0
+		return {
+			epoch: Number(row.access_epoch) || 0,
+			memberCreation: memberCreationFromRow(row),
+		}
 	} catch (error) {
 		// Incomplete test DBs may lack the orgs table; production always has it
 		// after P3. Surface the error for non-owner callers instead.
@@ -243,22 +294,26 @@ async function readAccessCache(
 	orgId: string,
 	userId: string,
 	epoch: number,
+	now: string,
 ): Promise<CompiledAccess | null> {
 	const row = await db
 		.prepare(
-			`SELECT epoch, compiled_json
+			`SELECT epoch, compiled_json, valid_until
 			 FROM access_cache
 			 WHERE org_id = ? AND user_id = ?`,
 		)
 		.bind(orgId, userId)
 		.first<AccessCacheRow>()
 	if (!row || Number(row.epoch) !== epoch) return null
+	const validUntil = row.valid_until ?? null
+	if (compiledAccessExpired({ validUntil }, now)) return null
 	const parsed = parseCompiledJson(row.compiled_json)
 	if (!parsed) return null
 	return {
 		orgId: orgId as OwnerId,
 		epoch,
 		...parsed,
+		validUntil,
 	}
 }
 
@@ -269,12 +324,13 @@ async function writeAccessCache(
 ) {
 	await db
 		.prepare(
-			`INSERT INTO access_cache (org_id, user_id, epoch, compiled_json, computed_at)
-			 VALUES (?, ?, ?, ?, ?)
+			`INSERT INTO access_cache (org_id, user_id, epoch, compiled_json, computed_at, valid_until)
+			 VALUES (?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(org_id, user_id) DO UPDATE SET
 			   epoch = excluded.epoch,
 			   compiled_json = excluded.compiled_json,
-			   computed_at = excluded.computed_at`,
+			   computed_at = excluded.computed_at,
+			   valid_until = excluded.valid_until`,
 		)
 		.bind(
 			compiled.orgId,
@@ -282,6 +338,7 @@ async function writeAccessCache(
 			compiled.epoch,
 			serializeCompiled(compiled),
 			new Date().toISOString(),
+			compiled.validUntil,
 		)
 		.run()
 }
@@ -291,6 +348,8 @@ function compileFromRoleAndGrants(input: {
 	epoch: number
 	role: OrgRole | null
 	grantRows: ReadonlyArray<GrantRow>
+	/** The org's member-creation settings; they add to the Member preset. */
+	memberCreation?: OrgMemberCreation
 }): CompiledAccess {
 	const isOwner = input.role === 'owner'
 	if (isOwner) {
@@ -300,21 +359,39 @@ function compileFromRoleAndGrants(input: {
 			isOwner: true,
 			orgPermissions: allOrgPermissions,
 			resourcePermissions: new Map(),
+			validUntil: null,
 		}
 	}
 
 	const orgPerms = new Set<OrgPermission>(
 		input.role ? rolePresets[input.role] : outsideCollaboratorBasics,
 	)
+	if (input.role === 'member') {
+		for (const permission of memberCreationGrants(
+			input.memberCreation ?? defaultOrgMemberCreation,
+		)) {
+			orgPerms.add(permission)
+		}
+	}
 	const resourcePermissions = new Map<string, Set<OrgPermission>>()
 	applyGrantRows(input.grantRows, input.orgId, orgPerms, resourcePermissions)
 	applyAdHocRule(orgPerms, resourcePermissions)
+	let validUntil: string | null = null
+	for (const row of input.grantRows) {
+		if (
+			row.expires_at &&
+			(validUntil === null || row.expires_at < validUntil)
+		) {
+			validUntil = row.expires_at
+		}
+	}
 	return {
 		orgId: input.orgId,
 		epoch: input.epoch,
 		isOwner: false,
 		orgPermissions: orgPerms,
 		resourcePermissions,
+		validUntil,
 	}
 }
 
@@ -325,6 +402,7 @@ function noCompiledAccess(orgId: OwnerId): CompiledAccess {
 		isOwner: false,
 		orgPermissions: new Set(),
 		resourcePermissions: new Map(),
+		validUntil: null,
 	}
 }
 
@@ -335,6 +413,7 @@ function ownerCompiledAccess(orgId: OwnerId, epoch: number): CompiledAccess {
 		isOwner: true,
 		orgPermissions: allOrgPermissions,
 		resourcePermissions: new Map(),
+		validUntil: null,
 	}
 }
 
@@ -376,24 +455,43 @@ export async function compileAccessForActor(input: {
 	const { orgId, userId, role } = input
 	if (role === 'owner') return ownerCompiledAccess(orgId, 0)
 
-	const epochOrNull = await readOrgEpoch(input.db, orgId)
-	if (epochOrNull === null) {
+	// One HTTP request can derive many request contexts for the same person
+	// (a page checking several package permissions), so share the compile
+	// across the request. Every new request still reads access_epoch, and a
+	// long run recompiles once a grant it used expires.
+	return await memoizePerRequest({
+		key: `compiled-access:${orgId}:${userId}:${role ?? 'none'}`,
+		load: () => compileUncached(input.db, orgId, userId, role),
+		isFresh: (compiled) => !compiledAccessExpired(compiled),
+	})
+}
+
+async function compileUncached(
+	db: D1Database,
+	orgId: OwnerId,
+	userId: string,
+	role: OrgRole | null,
+): Promise<CompiledAccess> {
+	const orgRow = await readOrgEpoch(db, orgId)
+	if (orgRow === null) {
 		throw new Error(`Org ${orgId} was not found while compiling access.`)
 	}
-	const epoch = epochOrNull
+	const { epoch, memberCreation } = orgRow
+	const now = new Date().toISOString()
 
-	const cached = await readAccessCache(input.db, orgId, userId, epoch)
+	const cached = await readAccessCache(db, orgId, userId, epoch, now)
 	if (cached) return cached
 
-	const grantRows = await loadLiveGrantRows(input.db, orgId, userId)
+	const grantRows = await loadLiveGrantRows(db, orgId, userId, now)
 	const compiled = compileFromRoleAndGrants({
 		orgId,
 		epoch,
 		role,
 		grantRows,
+		memberCreation,
 	})
 	try {
-		await writeAccessCache(input.db, compiled, userId)
+		await writeAccessCache(db, compiled, userId)
 	} catch {
 		// Cache is derived; a write failure must not block the request.
 	}

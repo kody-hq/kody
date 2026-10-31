@@ -11,6 +11,10 @@ import {
 	usageAttributionFieldsFromRequest,
 } from '#worker/usage/record-usage.ts'
 import { authenticateApiRequest } from './authenticate.ts'
+import {
+	handleExecutionContextKeyRoute,
+	isExecutionContextKeyRoute,
+} from '#worker/execution-contexts/key-routes.ts'
 import { type ApiInvocationContext } from './context.ts'
 import {
 	buildOpenApiDocument,
@@ -24,7 +28,11 @@ import {
 	notFound,
 	toApiError,
 } from './errors.ts'
-import { authorizeSurface } from '#worker/authorization/authorize.ts'
+import {
+	authorizeSurface,
+	type SurfacePermission,
+	surfacePermissionList,
+} from '#worker/authorization/authorize.ts'
 import {
 	capabilityProxyObservationEntityId,
 	invokeApiOperation,
@@ -38,6 +46,7 @@ import {
 	apiOperationUsesQueryInputs,
 	isCapabilityProxyGatewayFetchOperation,
 	matchApiRoute,
+	type ApiOperation,
 } from './operations.ts'
 import {
 	maxApiRequestBodyBytes,
@@ -51,18 +60,17 @@ export const openApiDocumentPath = '/openapi.json'
 
 function operationNeedsAccountWriteLease(resolved: {
 	readOnly: boolean
-	permission: string
+	permission: SurfacePermission
 }) {
 	if (!resolved.readOnly) return true
-	const { permission } = resolved
-	if (permission === 'none' || permission.endsWith(':read')) return false
-	return (
-		permission.endsWith(':write') ||
-		permission.endsWith(':delete') ||
-		permission.endsWith(':create') ||
-		permission.endsWith(':use') ||
-		permission.endsWith(':send') ||
-		permission.endsWith(':publish')
+	return surfacePermissionList(resolved.permission).some(
+		(permission) =>
+			permission.endsWith(':write') ||
+			permission.endsWith(':delete') ||
+			permission.endsWith(':create') ||
+			permission.endsWith(':use') ||
+			permission.endsWith(':send') ||
+			permission.endsWith(':publish'),
 	)
 }
 
@@ -120,6 +128,23 @@ function json(body: unknown, init: ResponseInit = {}) {
 		...init,
 		headers: { 'Cache-Control': 'no-store', ...init.headers },
 	})
+}
+
+function deprecatedForwardHeaders(
+	operation: ApiOperation,
+): Record<string, string> | undefined {
+	if (operation.kind !== 'capability' || !operation.deprecatedForward) {
+		return undefined
+	}
+	const { deprecatedAt, sunset } = operation.deprecatedForward
+	const deprecatedUnixSeconds = Math.floor(
+		new Date(`${deprecatedAt}T00:00:00.000Z`).getTime() / 1000,
+	)
+	return {
+		Deprecation: `@${deprecatedUnixSeconds}`,
+		Sunset: new Date(`${sunset}T00:00:00.000Z`).toUTCString(),
+		Link: '<https://kody.codes/docs/api-versioning.md>; rel="deprecation"',
+	}
 }
 
 async function readOperationParams(input: {
@@ -270,6 +295,7 @@ async function handleOperation(input: {
 			// CLIs) and on POST /v1/tokens/device (mint a device kody_at_).
 			// Other Open API ops stay `kody_at_`-only (ADR 0053/0055).
 			allowMcpOauth: operationAllowsCliOauth(matchedOperation),
+			allowExecutionContextLease: isCapabilityProxyOperation(matchedOperation),
 		})
 	} catch (error) {
 		const apiError = toApiError(error)
@@ -330,20 +356,21 @@ async function handleOperation(input: {
 			params,
 			ctx,
 		})
+	const deprecationHeaders = deprecatedForwardHeaders(matchedOperation)
+	const responseInit = deprecationHeaders ? { headers: deprecationHeaders } : {}
 	const writes = operationNeedsAccountWriteLease(resolved)
 	if (!writes) {
 		await assertAccountWritableDb(input.env.APP_DB, userId)
-		return json(await run())
+		return json(await run(), responseInit)
 	}
-	return json(
-		await withAccountWriteLease({
-			db: input.env.APP_DB,
-			stableUserId: userId,
-			holder: `api:${matchedOperation.operationId}`,
-			env: input.env,
-			write: run,
-		}),
-	)
+	const result = await withAccountWriteLease({
+		db: input.env.APP_DB,
+		stableUserId: userId,
+		holder: `api:${matchedOperation.operationId}`,
+		env: input.env,
+		write: run,
+	})
+	return json(result, responseInit)
 }
 
 async function handleCapabilityProxyGatewayFetchStream(input: {
@@ -447,6 +474,9 @@ export async function handleOpenApiRequest(input: {
 				version: kodyApiVersion,
 				openapi: `${url.origin}${openApiDocumentPath}`,
 			})
+		}
+		if (isExecutionContextKeyRoute(input.request.method, url.pathname)) {
+			return await handleExecutionContextKeyRoute({ ...input, url })
 		}
 		return await handleOperation({ ...input, url })
 	} catch (error) {

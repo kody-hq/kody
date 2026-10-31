@@ -1,6 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { type ContentBlock } from '@modelcontextprotocol/sdk/types.js'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
+import { z } from 'zod'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { planLimits } from '#universal/plans.ts'
 import {
@@ -18,10 +19,7 @@ import {
 	maxMcpContentBlockCount,
 	wrapDownstreamMcpToolResult,
 } from '#mcp/downstream-mcp-result.ts'
-import {
-	executeInvokeFlagOffMessage,
-	executeInvokeMutualExclusionMessage,
-} from '#mcp/execute-invoke.ts'
+import { executeInvokeRemovedMessage } from '#mcp/execute-invoke-removed.ts'
 import type * as AccessControlModule from '#mcp/capabilities/access-control.ts'
 import type * as MemoryToolContextModule from './memory-tool-context.ts'
 import type * as CapabilityRegistryModule from '#mcp/capabilities/registry.ts'
@@ -42,6 +40,18 @@ import { type RunRecordHandle } from '#worker/run-records/types.ts'
 const transportBudgetMock = vi.hoisted(() => ({
 	remainingMs: null as number | null,
 }))
+
+const routingMock = vi.hoisted(() => ({
+	outcome: null as unknown,
+}))
+
+vi.mock(
+	'#worker/execution-contexts/execute-routing.ts',
+	async (importActual) => ({
+		...(await importActual<object>()),
+		routeExecuteForCaller: async () => routingMock.outcome,
+	}),
+)
 
 const heartbeatMock = vi.hoisted(() => ({
 	scheduleFleetExecuteLastSuccess: vi.fn(),
@@ -96,6 +106,9 @@ const mockModule = vi.hoisted(() => ({
 	claimRunRecord: vi.fn<typeof RunRecordsServiceModule.claimRunRecord>(
 		async () => null,
 	),
+	updateRunningRunRecordMetadata: vi.fn<
+		typeof RunRecordsServiceModule.updateRunningRunRecordMetadata
+	>(async () => true),
 	finishRunRecord: vi.fn(
 		async (
 			..._args: Parameters<typeof RunRecordsServiceModule.finishRunRecord>
@@ -110,8 +123,6 @@ const mockModule = vi.hoisted(() => ({
 		async (
 			..._args: Parameters<typeof AccessControlModule.resolveCallerFeatureFlags>
 		) => ({
-			'execute-invoke': false,
-			'connection-profiles': false,
 			'mcp-skills-extension': false,
 			'mcp-events-extension': false,
 		}),
@@ -199,6 +210,11 @@ vi.mock('#worker/run-records/service.ts', async () => {
 		claimRunRecord: (
 			...args: Parameters<typeof RunRecordsServiceModule.claimRunRecord>
 		) => mockModule.claimRunRecord(...args),
+		updateRunningRunRecordMetadata: (
+			...args: Parameters<
+				typeof RunRecordsServiceModule.updateRunningRunRecordMetadata
+			>
+		) => mockModule.updateRunningRunRecordMetadata(...args),
 		finishRunRecord: (
 			...args: Parameters<typeof RunRecordsServiceModule.finishRunRecord>
 		) => mockModule.finishRunRecord(...args),
@@ -253,6 +269,7 @@ function mockPerformanceSequence(...values: Array<number>) {
 
 type ExecuteInput = {
 	code?: string
+	/** Removed field; still sent by legacy callers. */
 	invoke?: string
 	params?: Record<string, unknown>
 	responseLimit?: number
@@ -323,13 +340,10 @@ async function getExecuteRegistration(
 		state?: Record<string, unknown>
 		setState?: (state: Record<string, unknown>) => void
 		waitUntil?: (promise: Promise<unknown>) => void
-		invokeEnabled?: boolean
 	} = {},
 ) {
 	vi.clearAllMocks()
 	mockModule.resolveCallerFeatureFlags.mockResolvedValue({
-		'execute-invoke': agentExtras.invokeEnabled === true,
-		'connection-profiles': false,
 		'mcp-skills-extension': false,
 		'mcp-events-extension': false,
 	})
@@ -348,7 +362,7 @@ async function getExecuteRegistration(
 	expect(registerTool).toHaveBeenCalledTimes(1)
 	return registerTool.mock.calls[0] as [
 		string,
-		{ description: string; inputSchema: Record<string, unknown> },
+		{ description: string; inputSchema: z.ZodType },
 		ExecuteHandler,
 	]
 }
@@ -381,6 +395,15 @@ const timing = (durationMs: number) => ({
 })
 const truncationNote = (bytes: number, limit: number) =>
 	`Returned value was ${String(bytes)} bytes, exceeding responseLimit ${String(limit)} bytes; output was truncated. Project fields before returning.`
+
+const cloudRanOn = {
+	kind: 'cloud',
+	id: 'cloud',
+	name: 'Kody cloud',
+	attempts: [],
+	fellBackToCloud: false,
+}
+const cloudLine = { type: 'text', text: 'Ran on Kody cloud.' }
 
 test('execute tool serializes successes and errors, binds no packages helper tools, and truncates oversized returns', async () => {
 	const handler = await getExecuteHandler()
@@ -417,6 +440,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 	expect(mcpContentResponse.content).toEqual([
 		{ type: 'text', text: 'conversationId: conv-123' },
 		...rawContent,
+		cloudLine,
 	])
 	expect(mcpContentResponse.structuredContent).toEqual({
 		conversationId: 'conv-123',
@@ -425,6 +449,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 			.byteLength,
 		result: null,
 		logs: [{ level: 'info', message: 'captured screenshot' }],
+		ranOn: cloudRanOn,
 	})
 
 	const serverTiming = [
@@ -442,6 +467,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 	expect(jsonResponse.content).toEqual([
 		{ type: 'text', text: 'conversationId: conv-456' },
 		{ type: 'text', text: '{\n  "ok": true\n}' },
+		cloudLine,
 	])
 	expect(jsonResponse.structuredContent).toEqual({
 		conversationId: 'conv-456',
@@ -449,6 +475,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 		returnedBytes: 11,
 		result: { ok: true },
 		logs: [],
+		ranOn: cloudRanOn,
 	})
 
 	const callerContext = {
@@ -497,6 +524,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 			type: 'text',
 			text: `hello\n\n--- TRUNCATED ---\n${truncationNote(11, 5)}`,
 		},
+		cloudLine,
 	])
 	expect(truncatedStringResponse.structuredContent).toEqual({
 		conversationId: 'conv-truncated-string',
@@ -506,6 +534,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 		note: truncationNote(11, 5),
 		result: 'hello',
 		logs: [],
+		ranOn: cloudRanOn,
 	})
 
 	mockPerformanceSequence(30, 40)
@@ -528,6 +557,7 @@ test('execute tool serializes successes and errors, binds no packages helper too
 		note: truncationNote(48, 10),
 		result: { truncated: true, type: 'object' },
 		logs: [],
+		ranOn: cloudRanOn,
 	})
 
 	mockPerformanceSequence(50, 65)
@@ -574,6 +604,7 @@ test('execute passes through downstream MCP image content with structured data a
 	expect(passthroughResponse.content).toEqual([
 		conversationLine('conv-passthrough'),
 		webpBlock,
+		cloudLine,
 	])
 	expect(passthroughResponse.structuredContent.result).toEqual({
 		shotId: 's1',
@@ -594,6 +625,7 @@ test('execute passes through downstream MCP image content with structured data a
 	expect(largeResponse.content).toEqual([
 		conversationLine('conv-large-image'),
 		largeBlock,
+		cloudLine,
 	])
 
 	moduleReturns({
@@ -654,6 +686,7 @@ test('execute passes through downstream MCP image content with structured data a
 			type: 'text',
 			text: JSON.stringify({ content: [webpBlock], ok: true }, null, 2),
 		},
+		cloudLine,
 	])
 
 	// Malformed user-authored __mcpContent becomes an isError result (no throw).
@@ -743,6 +776,31 @@ test('execute tool replays finished keyed runs and reports in-progress without r
 		runId: 'run-finished-1',
 		replayed: true,
 		result: { ok: true, agentId: 'agent-9' },
+	})
+
+	const fallback = {
+		id: 'ec_box',
+		name: 'build-box',
+		fellBackToCloud: true,
+		attempts: [
+			{
+				target: 'ec_box',
+				name: 'build-box',
+				outcome: 'rejected',
+				reason: 'busy',
+			},
+		],
+	}
+	const fallbackReplayed = await replay('conv-fallback-replay', {
+		metadata: { result: { ok: true }, executionContext: fallback },
+	})
+	expect(fallbackReplayed.structuredContent).toMatchObject({
+		replayed: true,
+		executionContext: fallback,
+	})
+	expect(fallbackReplayed.content).toContainEqual({
+		type: 'text',
+		text: 'Ran on Kody cloud after build-box declined it (busy).',
 	})
 
 	const inProgress = await replay('conv-running', {
@@ -867,6 +925,239 @@ test('execute tool claims a keyed run, passes the handle, and returns runId', as
 	})
 })
 
+test('execute tool shows a cloud fallback in the response when no context took the run', async () => {
+	const fallback = {
+		id: 'ec_box',
+		name: 'build-box',
+		fellBackToCloud: true,
+		attempts: [
+			{
+				target: 'ec_box',
+				name: 'build-box',
+				outcome: 'rejected',
+				reason: 'grant_mismatch',
+			},
+		],
+	}
+	routingMock.outcome = { kind: 'cloud', metadata: fallback }
+	onTestFinished(() => {
+		routingMock.outcome = null
+	})
+	const handler = await getExecuteHandler({
+		baseUrl: 'https://example.com',
+		user: {
+			userId: ownerIdFromStored('user-fallback-execute'),
+			email: 'fallback@example.com',
+			displayName: 'Fallback',
+		},
+	})
+	moduleReturns({ ok: true })
+	const response = await handler({
+		code: 'export default async () => ({ ok: true })',
+		conversationId: 'conv-fallback',
+	})
+	expect(response.structuredContent).toMatchObject({
+		result: { ok: true },
+		executionContext: fallback,
+		ranOn: {
+			kind: 'cloud',
+			id: 'cloud',
+			name: 'Kody cloud',
+			fellBackToCloud: true,
+			attempts: fallback.attempts,
+		},
+	})
+	expect(response.content).toContainEqual({
+		type: 'text',
+		text: 'Ran on Kody cloud after build-box declined it (grant mismatch).',
+	})
+})
+
+test('execute tool persists a cloud fallback onto the running keyed row', async () => {
+	const fallback = {
+		id: 'ec_box',
+		name: 'build-box',
+		fellBackToCloud: true,
+		attempts: [
+			{
+				target: 'ec_box',
+				name: 'build-box',
+				outcome: 'rejected',
+				reason: 'busy',
+			},
+		],
+	}
+	routingMock.outcome = { kind: 'cloud', metadata: fallback }
+	onTestFinished(() => {
+		routingMock.outcome = null
+	})
+	const claimedHandle = {
+		id: 'run-claimed-fallback',
+		userId: ownerIdFromStored('user-claim-fallback'),
+		startedAt: '2026-07-28T00:00:00.000Z',
+		persistence: 'eager' as const,
+		context: {
+			surface: 'execute' as const,
+			idempotencyKey: 'claim-fallback-key',
+			metadata: { conversationId: 'conv-claim-fallback' },
+		},
+	}
+	const handler = await getExecuteHandler({
+		baseUrl: 'https://example.com',
+		user: {
+			userId: ownerIdFromStored('user-claim-fallback'),
+			email: 'claim-fallback@example.com',
+			displayName: 'Claim Fallback',
+		},
+	})
+	mockModule.claimRunRecord.mockResolvedValueOnce({
+		claimed: true,
+		handle: claimedHandle,
+	} as never)
+	moduleReturns({ ok: true }, { runId: 'run-claimed-fallback' })
+	await handler({
+		code: 'export default async () => ({ ok: true })',
+		idempotencyKey: 'claim-fallback-key',
+		conversationId: 'conv-claim-fallback',
+	})
+	expect(mockModule.updateRunningRunRecordMetadata).toHaveBeenCalledWith(
+		expect.objectContaining({
+			handle: expect.objectContaining({
+				id: 'run-claimed-fallback',
+				context: expect.objectContaining({
+					metadata: expect.objectContaining({ executionContext: fallback }),
+				}),
+			}),
+		}),
+	)
+})
+
+test('execute tool says Kody cloud ran a plain run', async () => {
+	const handler = await getExecuteHandler({
+		baseUrl: 'https://example.com',
+		user: {
+			userId: ownerIdFromStored('user-cloud-execute'),
+			email: 'cloud@example.com',
+			displayName: 'Cloud',
+		},
+	})
+	moduleReturns({ ok: true })
+	const response = await handler({
+		code: 'export default async () => ({ ok: true })',
+		conversationId: 'conv-cloud',
+	})
+	expect(response.structuredContent).toMatchObject({
+		result: { ok: true },
+		ranOn: {
+			kind: 'cloud',
+			id: 'cloud',
+			name: 'Kody cloud',
+			attempts: [],
+			fellBackToCloud: false,
+		},
+	})
+	expect(response.structuredContent).not.toHaveProperty('executionContext')
+	expect(response.content).toContainEqual({
+		type: 'text',
+		text: 'Ran on Kody cloud.',
+	})
+})
+
+test('execute tool names the context a run ran on without raw ids', async () => {
+	const metadata = {
+		id: 'ec_box',
+		name: 'build-box',
+		yours: true,
+		fellBackToCloud: false,
+		attempts: [
+			{
+				target: 'ec_old',
+				name: 'old-box',
+				outcome: 'skipped' as const,
+				reason: 'no_lan',
+			},
+			{ target: 'ec_box', name: 'build-box', outcome: 'ran' as const },
+		],
+	}
+	routingMock.outcome = {
+		kind: 'ran',
+		result: {
+			content: [{ type: 'text', text: '{ "ok": true }' }],
+			structuredContent: { result: { ok: true } },
+			isError: false,
+		},
+		metadata,
+	}
+	onTestFinished(() => {
+		routingMock.outcome = null
+	})
+	const handler = await getExecuteHandler({
+		baseUrl: 'https://example.com',
+		user: {
+			userId: ownerIdFromStored('user-context-execute'),
+			email: 'context@example.com',
+			displayName: 'Context',
+		},
+	})
+	const response = await handler({
+		code: 'export default async () => ({ ok: true })',
+		conversationId: 'conv-context',
+	})
+	expect(response.structuredContent).toMatchObject({
+		result: { ok: true },
+		executionContext: metadata,
+		ranOn: {
+			kind: 'context',
+			id: 'ec_box',
+			name: 'build-box',
+			yours: true,
+			fellBackToCloud: false,
+			attempts: metadata.attempts,
+		},
+	})
+	const line =
+		'Ran on build-box (your machine) after old-box was skipped (no lan).'
+	expect(response.content).toContainEqual({ type: 'text', text: line })
+	expect(JSON.stringify(response.content)).not.toContain('ec_')
+})
+
+test('a run still going on a context says how to cancel it, by name only', async () => {
+	routingMock.outcome = {
+		kind: 'pending',
+		runId: 'run-context-pending',
+		metadata: {
+			id: 'ec_box',
+			name: 'build-box',
+			fellBackToCloud: false,
+			attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'ran' }],
+		},
+	}
+	onTestFinished(() => {
+		routingMock.outcome = null
+	})
+	const handler = await getExecuteHandler({
+		baseUrl: 'https://example.com',
+		user: {
+			userId: ownerIdFromStored('user-context-pending'),
+			email: 'pending@example.com',
+			displayName: 'Pending',
+		},
+	})
+	const response = await handler({
+		code: 'export default async () => ({ ok: true })',
+		conversationId: 'conv-context-pending',
+	})
+	expect(response.structuredContent).toMatchObject({
+		runId: 'run-context-pending',
+		inProgress: true,
+	})
+	const text = JSON.stringify(response.content)
+	expect(text).toContain(
+		'To stop it, call executionContextRunCancel with id \\"build-box\\" and that run_id.',
+	)
+	expect(text).not.toContain('ec_box')
+})
+
 test('execute tool releases a keyed claim when a usage denial stops the load', async () => {
 	const denials = [
 		new EntitlementLimitError({
@@ -947,6 +1238,7 @@ test('execute tool attaches entitlement metadata on denials and quota, not on su
 		returnedBytes: expect.any(Number),
 		result: { ok: true },
 		logs: [],
+		ranOn: cloudRanOn,
 	})
 	expect(success.structuredContent).not.toHaveProperty('entitlement')
 	expect(heartbeatMock.scheduleFleetExecuteLastSuccess).toHaveBeenCalledTimes(1)
@@ -1061,7 +1353,7 @@ test('execute tool attaches entitlement metadata on denials and quota, not on su
 		throw new Error('Expected an entitlement upgrade hint on quota denial')
 	}
 	expect(quotaHint).toMatch(
-		/^This daily limit resets at 00:00 UTC, in (\d+d )?(\d+h )?\d+m\. Rerun code you already ran today and vary params; repeats are free, or upgrade your plan at \/@[^/]+\/-\/billing\.$/,
+		/^This daily limit resets at 00:00 UTC, in (\d+d )?(\d+h )?\d+m\. Rerun code you already ran today and vary params; repeats are free\. Shell-capable hosts can run `npx -y @kodycodes\/cli@latest execute --local` \(Node 22\+\); if it is not signed in, call `api` with `cliCredentialBootstrap` and run its `cli_command`, or upgrade your plan at \/@[^/]+\/-\/billing\.$/,
 	)
 	const quotaEntitlement = {
 		code: entitlementLimitErrorCode,
@@ -1111,8 +1403,6 @@ test('execute tool refuses past the per-minute runaway limit before any run work
 		memoryContext: { task: 'recall what the user asked for last time' },
 	})
 	expect(mockModule.runModuleWithRegistry).not.toHaveBeenCalled()
-	// Memory retrievers can run package code, so a refused call never starts
-	// them.
 	expect(mockModule.surfaceToolMemories).not.toHaveBeenCalled()
 	expect(refused.isError).toBe(true)
 	expect(refused.structuredContent.error).toMatch(
@@ -1166,76 +1456,67 @@ test('execute tool refuses an identical call loop but still runs changed params'
 	)
 })
 
-test('execute invoke is omitted when the flag is off and mints the handwritten passthrough when on', async () => {
-	const [offName, offConfig, offHandler] = await getExecuteRegistration()
-	expect(offName).toBe('execute')
-	expect(offConfig.inputSchema).not.toHaveProperty('invoke')
+test('execute rejects the removed invoke field with the equivalent code', async () => {
+	const [name, config, handler] = await getExecuteRegistration({
+		baseUrl: 'https://example.com',
+		user: { userId: ownerIdFromStored('user-1') },
+	})
+	expect(name).toBe('execute')
+	expect(config.description).not.toMatch(/\binvoke\b/)
+	const jsonSchema = z.toJSONSchema(config.inputSchema) as {
+		properties: Record<string, unknown>
+		required?: Array<string>
+	}
+	expect(jsonSchema.properties).not.toHaveProperty('invoke')
+	expect(jsonSchema.required).toContain('code')
 
-	const rejected = await offHandler({
+	const expected = executeInvokeRemovedMessage('kody:@acme/github/listRepos')
+	expect(expected).toContain(
+		'import action from "kody:@acme/github/listRepos"\nexport default (params) => action(params)',
+	)
+	const parsed = config.inputSchema.safeParse({
 		invoke: 'kody:@acme/github/listRepos',
-		conversationId: 'conv-invoke-off',
+	})
+	expect(parsed.success).toBe(false)
+	expect(parsed.error?.issues.map((issue) => issue.message)).toContain(expected)
+	expect(
+		config.inputSchema.safeParse({ code: 'export default () => 1' }).success,
+	).toBe(true)
+
+	const rejected = await handler({
+		invoke: '@acme/github#listRepos',
+		conversationId: 'conv-invoke-removed',
 	})
 	expect(rejected.isError).toBe(true)
-	expect(rejected.structuredContent.error).toBe(executeInvokeFlagOffMessage)
-	expect(mockModule.runModuleWithRegistry).not.toHaveBeenCalled()
+	expect(rejected.structuredContent.error).toBe(expected)
 
-	const [, onConfig, onHandler] = await getExecuteRegistration(
-		{
-			baseUrl: 'https://example.com',
-			user: { userId: ownerIdFromStored('user-1') },
-		},
-		{ invokeEnabled: true },
-	)
-	expect(onConfig.inputSchema).toHaveProperty('invoke')
-
-	moduleReturns({ ok: true })
-	const invoked = await onHandler({
-		invoke: '@acme/github#listRepos',
-		params: { limit: 5 },
-		conversationId: 'conv-invoke-on',
-	})
-	expect(invoked.isError).toBe(false)
-	expect(mockModule.runModuleWithRegistry).toHaveBeenCalledWith(
-		expect.anything(),
-		expect.anything(),
-		`import action from "kody:@acme/github/listRepos"
-
-export default async function main(params) {
-	return await action(params)
-}`,
-		{ limit: 5 },
-		expect.objectContaining({
-			runRecord: expect.objectContaining({
-				metadata: {
-					conversationId: 'conv-invoke-on',
-					entry: 'invoke',
-					invoke: 'kody:@acme/github/listRepos',
-				},
-			}),
-		}),
-	)
-
-	const both = await onHandler({
+	const both = await handler({
 		code: 'export default async function main() { return 1 }',
 		invoke: 'kody:@acme/github/listRepos',
 		conversationId: 'conv-invoke-both',
 	})
 	expect(both.isError).toBe(true)
-	expect(both.structuredContent.error).toBe(executeInvokeMutualExclusionMessage)
+	expect(both.structuredContent.error).toBe(expected)
+	expect(mockModule.runModuleWithRegistry).not.toHaveBeenCalled()
 
-	mockModule.resolveCallerFeatureFlags.mockResolvedValue({
-		'execute-invoke': false,
-		'connection-profiles': false,
-		'mcp-skills-extension': false,
-		'mcp-events-extension': false,
+	moduleReturns({ ok: true })
+	const ran = await handler({
+		code: 'import action from "kody:@acme/github/listRepos"\nexport default (params) => action(params)',
+		params: { limit: 5 },
+		conversationId: 'conv-code',
 	})
-	const killed = await onHandler({
-		invoke: 'kody:@acme/github/listRepos',
-		conversationId: 'conv-invoke-killed',
-	})
-	expect(killed.isError).toBe(true)
-	expect(killed.structuredContent.error).toBe(executeInvokeFlagOffMessage)
-	expect(mockModule.runModuleWithRegistry).toHaveBeenCalledTimes(1)
+	expect(ran.isError).toBe(false)
+	expect(mockModule.runModuleWithRegistry).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.anything(),
+		expect.stringContaining('kody:@acme/github/listRepos'),
+		{ limit: 5 },
+		expect.objectContaining({
+			runRecord: expect.objectContaining({
+				metadata: { conversationId: 'conv-code', entry: 'code' },
+			}),
+		}),
+	)
 })
 
 test('execute does not run or reach the registry when live flag resolution fails', async () => {
@@ -1341,8 +1622,16 @@ test('execute returns the server-assigned key with a finished run and does not a
 
 test('execute returns runId when the transport budget hits and keeps the sandbox running', async () => {
 	transportBudgetMock.remainingMs = 0
+	const fallback = {
+		id: 'ec_box',
+		name: 'build-box',
+		fellBackToCloud: true,
+		attempts: [{ target: 'ec_box', name: 'build-box', outcome: 'offline' }],
+	}
+	routingMock.outcome = { kind: 'cloud', metadata: fallback }
 	onTestFinished(() => {
 		transportBudgetMock.remainingMs = null
+		routingMock.outcome = null
 	})
 	const handle = transportFollowHandle(
 		'run-follow-budget',
@@ -1366,6 +1655,7 @@ test('execute returns runId when the transport budget hits and keeps the sandbox
 		idempotencyKey: 'execute:budget-key',
 		inProgress: true,
 		status: 'running',
+		executionContext: fallback,
 	})
 	expect(response.structuredContent).not.toHaveProperty('error')
 	const text = response.content
@@ -1374,6 +1664,7 @@ test('execute returns runId when the transport budget hits and keeps the sandbox
 	expect(text).toContain('Poll runGet')
 	expect(text).toContain('execute:budget-key')
 	expect(text).not.toContain('Error:')
+	expect(text).toContain('Running on Kody cloud after build-box was offline.')
 	expect(mockModule.ensureRunRecordStarted).toHaveBeenCalledWith(
 		expect.objectContaining({ handle }),
 	)

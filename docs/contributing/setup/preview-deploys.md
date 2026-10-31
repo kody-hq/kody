@@ -22,7 +22,9 @@ setup pages.
   `tools/ci/reindex-capabilities.ts --phases capabilities --force` with a
   per-deploy random `CAPABILITY_REINDEX_SECRET` so builtin capability search
   works on the fresh index (`--force` because APP_DB embed fingerprints can
-  outlive the index they described). A per-preview index (instead of a namespace
+  outlive the index they described). `--auth-retry-seconds` also waits out a
+  first-sweep workers.dev 1042 (`workers_dev_script_not_found`) while the
+  preview hostname is still binding. A per-preview index (instead of a namespace
   prefix inside a shared index) avoids sharing production's index namespace and
   lets cleanup delete every preview vector in one call; Cloudflare allows 50,000
   indexes per account.
@@ -84,6 +86,19 @@ allows 500. When that cap is hit, every preview deploy fails (Cloudflare code
   running past the job timeout. Preview ensure also asserts Durable Object
   namespace headroom before provisioning so the job fails with a clear quota
   message near the 500-namespace cap instead of mid-deploy 10067/10090.
+- `.github/workflows/preview-pr-cleanup.yml` runs daily and deletes previews
+  whose pull request is closed or merged, judged only from GitHub PR state,
+  never age (`tools/ci/preview-pr-cleanup.ts`). `kody-pr-<n>` belongs to PR `n`.
+  `kody-branch-<slug>` belongs to the PRs of the branch it was last deployed
+  from, read from the `Preview deploy (branch: <name>)` run name or, for older
+  runs, from the `preview.yml` dispatch runs at the Worker's `APP_COMMIT_SHA`.
+  Previews tied to no PR at all (deployed from `main`, a branch with no PR, or a
+  PR number GitHub does not know) are deleted too. Previews with an open PR, or
+  whose owner cannot be determined (an ambiguous deploy branch, too many PRs, no
+  `APP_COMMIT_SHA`), are kept and listed in the job summary with the reason.
+  Each delete re-reads the PR state first, and branch deletes wait while a
+  branch deploy is running. Manual dispatch defaults to `dry_run`, and pull
+  requests that change the job run it as a dry run only.
 
 Cleanup is bounded, retry-safe, and idempotent. Transient Cloudflare 429 and 5xx
 responses (including wrangler 504 Gateway Timeout) retry with backoff inside the

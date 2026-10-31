@@ -14,6 +14,8 @@ export const colors = {
 	text: 'var(--color-text)',
 	textMuted: 'var(--color-text-muted)',
 	border: 'var(--color-border)',
+	borderSubtle:
+		'color-mix(in srgb, var(--color-border) 30%, var(--color-surface))',
 	fieldBorder: 'var(--color-field-border)',
 	danger: 'var(--color-danger)',
 	dangerHover: 'var(--color-danger-hover)',

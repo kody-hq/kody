@@ -61,6 +61,7 @@ export const loadPackageCollaborators = createServerFn({ method: 'GET' })
 						publishedCommit: page.ownerPackage.publishedCommit ?? null,
 						ownerProfilePublic: page.ownerProfilePublic,
 						viewerCanManage: page.viewerCanManage,
+						viewerCanSeeConnectedPeople: page.viewerCanSeeConnectedPeople,
 					},
 					view: result.data,
 				}

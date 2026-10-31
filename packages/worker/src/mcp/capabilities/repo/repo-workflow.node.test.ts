@@ -360,6 +360,9 @@ test('repoPublishSession covers base_moved repair, artifact rebuild, and rebuild
 		expectedPackageScope: 'user',
 		privateVisibilityChangeConfirmed: false,
 		requestedByUserId: 'user-1',
+		publisherRequest: expect.objectContaining({
+			actor: expect.objectContaining({ userId: 'user-1' }),
+		}),
 	})
 	expect(publishRpc.rebuildPublishedPackageArtifact).toHaveBeenCalledWith({
 		sessionId: 'session-1',

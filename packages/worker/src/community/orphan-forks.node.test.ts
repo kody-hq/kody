@@ -3,11 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { communityForksDeleteCascadeStatements } from './community-forks-delete-cascade.ts'
-import {
-	countCommunityForksByListingIds,
-	deleteCommunityForksForPackage,
-	insertCommunityFork,
-} from './repo.ts'
+import { deleteCommunityForksForPackage, insertCommunityFork } from './repo.ts'
 import { cleanupOrphanedCommunityForks } from './service.ts'
 
 async function createSeededDb() {
@@ -44,7 +40,7 @@ async function createSeededDb() {
 		);
 		CREATE TABLE community_forks (
 			id TEXT PRIMARY KEY NOT NULL,
-			listing_id TEXT NOT NULL,
+			listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
 			forker_user_id TEXT NOT NULL,
 			origin_commit TEXT NOT NULL,
 			forked_package_id TEXT NOT NULL,
@@ -98,9 +94,16 @@ test('orphan fork cleanup and package delete drop leftover community_forks witho
 	const db = await createSeededDb()
 	const env = { APP_DB: db } as Env
 	const forkCount = async () =>
-		(await countCommunityForksByListingIds(db, ['listing-plaid']))[
-			'listing-plaid'
-		]
+		Number(
+			(
+				await db
+					.prepare(
+						'SELECT COUNT(*) AS count FROM community_forks WHERE listing_id = ?',
+					)
+					.bind('listing-plaid')
+					.first<{ count: number }>()
+			)?.count ?? 0,
+		)
 	const noop = { applied: true, deletedCount: 0, orphans: [] }
 
 	expect(await forkCount()).toBe(3)

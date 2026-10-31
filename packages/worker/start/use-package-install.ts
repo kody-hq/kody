@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouteContext } from '@tanstack/react-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { type PackageRepoForkAction } from '#universal/package-repo-actions.ts'
-import { installCommunityPackage } from '#start/server/community-mutations'
+import {
+	forkReadablePackage,
+	installCommunityPackage,
+} from '#start/server/community-mutations'
 import { communityForkStateQuery } from './community-fork-state-query.ts'
 import {
 	type CommunityInstallApiPayload,
@@ -10,6 +13,7 @@ import {
 } from './community-types.ts'
 import { usePageInvalidation } from './page-invalidation.ts'
 import { useSubmitterScope } from './use-submitter-scope.ts'
+import { useCommunityInstallOrg } from './use-community-install-org.ts'
 
 const resources = [
 	'loadPackage',
@@ -26,13 +30,17 @@ const resources = [
  * refetches. Also refetches on a bfcache restore (back/forward without a
  * remount).
  */
-function useCommunityForkState(fork: PackageRepoForkAction | null) {
+function useCommunityForkState(
+	fork: PackageRepoForkAction | null,
+	org: string | null,
+) {
 	const { actorKey } = useRouteContext({ from: '__root__' })
 	const query = useQuery(
 		communityForkStateQuery({
 			actorKey,
 			listingId: fork?.listingId ?? null,
-			enabled: Boolean(fork?.loggedIn),
+			org,
+			enabled: Boolean(fork?.loggedIn && fork.listingId),
 		}),
 	)
 	const { refetch } = query
@@ -52,7 +60,10 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 	const { actorKey } = useRouteContext({ from: '__root__' })
 	const capture = useSubmitterScope()
 	const reconcile = usePageInvalidation(resources)
-	const forkStateQuery = useCommunityForkState(fork)
+	const { org, picker: orgPicker } = useCommunityInstallOrg(
+		Boolean(fork?.loggedIn),
+	)
+	const forkStateQuery = useCommunityForkState(fork, org)
 	const liveForkState = forkStateQuery.data ?? null
 	const [confirmed, setConfirmed] = useState(false)
 	const [installMessage, setMessage] = useState<string | null>(null)
@@ -63,7 +74,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		setConfirmed(false)
 		setMessage(null)
 		setOutcome(null)
-	}, [fork?.listingId, actorKey])
+	}, [fork?.listingId, actorKey, org])
 	useEffect(() => {
 		if (!confirmed) return
 		const disarm = (event: MouseEvent) => {
@@ -78,10 +89,24 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 	}, [confirmed])
 	const mutation = useMutation({
 		gcTime: 0,
-		mutationFn: async (listingId: string) => {
-			const result = (await installCommunityPackage({
-				data: { listingId, acknowledged: true },
-			})) as CommunityInstallApiPayload
+		mutationFn: async (input: {
+			fork: PackageRepoForkAction
+			org: string | null
+		}) => {
+			const { fork: target, org: targetOrg } = input
+			const result = (
+				target.source
+					? await forkReadablePackage({
+							data: { ...target.source, org: targetOrg },
+						})
+					: await installCommunityPackage({
+							data: {
+								listingId: target.listingId ?? '',
+								org: targetOrg,
+								acknowledged: true,
+							},
+						})
+			) as CommunityInstallApiPayload
 			if (
 				!result.ok ||
 				!result.status ||
@@ -118,11 +143,11 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 			: null
 	useEffect(() => {
 		if (!liveDone || fork?.viewerInstall) return
-		const key = `${fork?.listingId}:${liveDone.targetName}:${liveDone.state}`
+		const key = `${org ?? 'personal'}:${fork?.listingId}:${liveDone.targetName}:${liveDone.state}`
 		if (reconciledFor.current === key) return
 		reconciledFor.current = key
 		void reconcile()
-	}, [liveDone, fork?.viewerInstall, fork?.listingId, reconcile])
+	}, [liveDone, fork?.viewerInstall, fork?.listingId, org, reconcile])
 	const existingFork =
 		fork?.viewerInstall || !liveDone
 			? null
@@ -149,7 +174,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		setConfirmed(false)
 		setMessage(null)
 		try {
-			const outcome = await mutation.mutateAsync(fork.listingId)
+			const outcome = await mutation.mutateAsync({ fork, org })
 			if (isCurrent()) setOutcome(outcome)
 		} catch (error) {
 			if (isCurrent())
@@ -161,6 +186,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 		}
 	}
 	return {
+		org,
 		installMessage,
 		installOutcome,
 		context: {
@@ -170,6 +196,7 @@ export function usePackageInstall(fork: PackageRepoForkAction | null) {
 			inProgress,
 			onInstall: () => void install(),
 			onDisarm: () => setConfirmed(false),
+			orgPicker,
 		},
 	}
 }

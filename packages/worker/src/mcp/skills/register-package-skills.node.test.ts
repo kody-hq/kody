@@ -15,8 +15,15 @@ const mocks = vi.hoisted(() => ({
 	resolveCallerFeatureFlags: vi.fn(),
 	loadSource: vi.fn(),
 	listOwn: vi.fn(),
+	recordRead: vi.fn(),
 }))
 
+vi.mock('#worker/package-registry/skill-read-events.ts', async (original) => ({
+	...(await original<
+		typeof import('#worker/package-registry/skill-read-events.ts')
+	>()),
+	recordSkillRead: mocks.recordRead,
+}))
 vi.mock('#mcp/capabilities/access-control.ts', () => ({
 	resolveCallerFeatureFlags: (...args: Array<unknown>) =>
 		mocks.resolveCallerFeatureFlags(...args),
@@ -269,6 +276,15 @@ test('resources/list and resources/read serve skill:// files', async () => {
 		params: { uri: skillUri },
 		extensions: supported,
 	})
+	expect(mocks.recordRead).toHaveBeenCalledWith(
+		expect.objectContaining({
+			channel: 'mcp-resource',
+			resource: expect.objectContaining({
+				kind: 'instructions',
+				skillName: 'ship-it',
+			}),
+		}),
+	)
 	expect(read.result).toMatchObject({
 		contents: [{ uri: skillUri, mimeType: 'text/markdown', text: skillMd }],
 	})

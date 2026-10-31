@@ -11,6 +11,7 @@ export type UserOwnedDurableObjectSurface = {
 		| 'mailbox'
 		| 'repo_session_index'
 		| 'mcp'
+		| 'execution_context_session'
 	binding: string
 	/** Result key used in AccountDeletionResult.clearedDurableObjects when purged */
 	deletionResultKey: string | null
@@ -47,9 +48,6 @@ export type UserOwnedKvKeyScheme = {
 		| 'identity_icon_derived_cache'
 		| 'usage_rollup_derived_cache'
 		| 'artifact_head_derived_cache'
-		| 'package_retriever_manifest'
-		| 'package_retriever_index_entry'
-		| 'package_retriever_index_prefix'
 		| 'package_skills_index'
 		| 'webhook_dispatch_payload'
 		| 'package_codemod_revert'
@@ -140,7 +138,7 @@ export const accountUserOwnedDurableObjectSurfaces: ReadonlyArray<UserOwnedDurab
 			deletionResultKey: 'runLogs',
 			export: 'include',
 			notes:
-				'Per-user RunLog DO (RUN_LOG binding; idFromName(userId)). Sole runtime authority for pruned run history (runs + run_logs), the keyed package-invocation idempotency ledger, and dedicated state: workflow_projections (binding_name, typically DYNAMIC_CALLABLE_WORKFLOWS; terminal rows age-prune after 90 days), job_run_observability (terminal outcomes/counters; D1 jobs keeps schedule + last_run_at/last_run_status for retention only), package_run_successes, and activation_milestones. There are no D1 tables workflow_runs, user_package_run_successes, or user_activation_milestones (pre-drop Time Travel bookmark 0000116d-000000d2-000050bd-c7ecd5892a189df7cda145af746bc9c9 on database 8c1014d1-6b41-4695-a0a2-159071f0f919). Run history self-prunes (~30 days / 2,000 runs); job/activation dedicated tables are never pruned. Account deletion clearAll deletes every DO table and reinitializes schema. Account export pages all tables through the run_records section (runs first, then ledger, then dedicated phases).',
+				'Per-user RunLog DO (RUN_LOG binding; idFromName(userId)). Sole runtime authority for pruned run history (runs + run_logs), the keyed package-invocation idempotency ledger, and dedicated state: workflow_projections (binding_name, typically DYNAMIC_CALLABLE_WORKFLOWS; terminal rows age-prune after 90 days), job_run_observability (terminal outcomes/counters; D1 jobs keeps schedule + last_run_at/last_run_status for retention only), package_run_successes, activation_milestones, and content-free skill_reads (retained until account deletion, exported after activation milestones). There are no D1 tables workflow_runs, user_package_run_successes, or user_activation_milestones (pre-drop Time Travel bookmark 0000116d-000000d2-000050bd-c7ecd5892a189df7cda145af746bc9c9 on database 8c1014d1-6b41-4695-a0a2-159071f0f919). Run history self-prunes (~30 days / 2,000 runs); job/activation dedicated tables are never pruned. Account deletion clearAll deletes every DO table and reinitializes schema. Account export pages all tables through the run_records section (runs first, then ledger, then dedicated phases).',
 		},
 		{
 			id: 'user_meter',
@@ -185,6 +183,16 @@ export const accountUserOwnedDurableObjectSurfaces: ReadonlyArray<UserOwnedDurab
 				'Session-keyed by the MCP SDK and not globally enumerable; durable user data is carried by D1 and user-scoped stores instead.',
 			notes:
 				'Session DO ids are indexed by user in mcp_agent_sessions and purged during account deletion.',
+		},
+		{
+			id: 'execution_context_session',
+			binding: 'EXECUTION_CONTEXT_SESSION',
+			deletionResultKey: null,
+			export: 'exclude',
+			excludeReason:
+				'Execution context connection sessions store nothing today: every connection is refused. Registrations, sharing, and chains live in D1 and follow the D1 account data targets.',
+			notes:
+				'Platform-owned ExecutionContextSessionV1. When sessions start keeping run history it is bounded (30 days, 1,000 runs per context) and this entry declares how it is exported and purged.',
 		},
 	] as const
 
@@ -258,19 +266,6 @@ export const accountUserOwnedKvKeySchemes: ReadonlyArray<UserOwnedKvKeyScheme> =
 				'Expires through the KV expirationTtl written by the cachified adapter; retention is at most 65 minutes (5 minute TTL plus 1 hour stale-while-revalidate).',
 			notes:
 				'Default-branch HEAD of an Artifacts repo for package pages (buildArtifactSourceHeadCacheKey). Holds a branch name and commit hash only. Immediate account-deletion cleanup is optional because KV enforces the TTL and the repo id stops resolving once entity_sources is gone.',
-		},
-		{
-			id: 'package_retriever_manifest',
-			binding: 'BUNDLE_ARTIFACTS_KV',
-			prefixTemplate: 'package-retriever-manifest:v1:{userId}:{packageId}:',
-			notes: 'Deleted by deleteAllPackageRetrieverCacheEntriesForUser.',
-		},
-		{
-			id: 'package_retriever_index_entry',
-			binding: 'BUNDLE_ARTIFACTS_KV',
-			prefixTemplate:
-				'package-retriever-index-entry:v1:{userId}:{scope}:{packageId}:',
-			notes: 'Deleted by deleteAllPackageRetrieverCacheEntriesForUser.',
 		},
 		{
 			id: 'package_skills_index',

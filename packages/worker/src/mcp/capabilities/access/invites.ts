@@ -1,5 +1,8 @@
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
-import { resolveGrantPermissions } from '@kody-internal/shared/grant-presets.ts'
+import {
+	type GrantPreset,
+	resolveGrantPermissions,
+} from '@kody-internal/shared/grant-presets.ts'
 import {
 	type OrgPermission,
 	type OrgResourceType,
@@ -13,6 +16,10 @@ import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { assertMemoryGrantsAllowedOnOrg } from '#mcp/memory/memory-owner.ts'
 import { normalizeEmailAddress } from '#worker/email/address.ts'
 import { normalizeUsername } from '#worker/identity/username.ts'
+import {
+	type GrantSubjectChoices,
+	grantSubjectMatchSql,
+} from '#worker/authorization/grant-subjects.ts'
 import {
 	authorize,
 	computeEffectivePermissions,
@@ -125,6 +132,27 @@ function toInvitePayload(invite: StoredInvite, orgSlug: string) {
 	}
 }
 
+/**
+ * An inviter who is no longer a member keeps grant invites valid only with a
+ * direct grant here. Team seats and everyone-in-org grants both need a live
+ * membership, and a live member already passed the check above.
+ */
+export const outsideInviterGrantSubjects = {
+	user: 'include',
+	team: {
+		exclude:
+			'Team seats need a live org membership (addTeamMember, offboarding tombstones them), and members pass before this check.',
+	},
+	org: {
+		exclude:
+			'An org subject grant only reaches live members, and members pass before this check.',
+	},
+	profile: {
+		exclude:
+			'Profile grants narrow a profile; they never grant the person behind it.',
+	},
+} as const satisfies GrantSubjectChoices
+
 async function assertInviterStillValid(db: D1Database, invite: StoredInvite) {
 	const requireOwner = invite.kind === 'membership' && invite.role === 'owner'
 	const inviter = await db
@@ -152,16 +180,19 @@ async function assertInviterStillValid(db: D1Database, invite: StoredInvite) {
 	}
 	// Grant invites may come from outside collaborators who still hold a grant.
 	if (inviter) return
+	const subjectMatch = grantSubjectMatchSql({
+		subjects: outsideInviterGrantSubjects,
+		personId: invite.invitedByUserId,
+	})
 	const grant = await db
 		.prepare(
-			`SELECT id FROM grants
-			 WHERE org_id = ?
-			   AND subject_type = 'user'
-			   AND subject_id = ?
-			   AND deleted_at IS NULL
+			`SELECT g.id AS id FROM grants g
+			 WHERE g.org_id = ?
+			   AND ${subjectMatch.sql}
+			   AND g.deleted_at IS NULL
 			 LIMIT 1`,
 		)
-		.bind(invite.orgId, invite.invitedByUserId)
+		.bind(invite.orgId, ...subjectMatch.binds)
 		.first<{ id: string }>()
 	if (!grant) {
 		throw new McpCallerError(
@@ -196,6 +227,7 @@ async function grantInviteFamily(
 		case 'job':
 		case 'memory':
 		case 'email':
+		case 'execution_context':
 			return resourceType
 		default: {
 			const exhaustive: never = resourceType
@@ -439,6 +471,7 @@ export const inviteCreateCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'inviteCreate',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: true,
 		description:
@@ -476,7 +509,7 @@ export const inviteCreateCapability = defineDomainCapability(
 				let teamIds: Array<string> | null = null
 				let resourceType: GrantResourceType | null = null
 				let resourceId: string | null = null
-				let preset: 'use' | 'contribute' | 'manage' | null = null
+				let preset: GrantPreset | null = null
 				let permissions: Array<OrgPermission> | null = null
 				switch (kind) {
 					case 'membership': {
@@ -598,6 +631,7 @@ export const inviteAcceptCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'inviteAccept',
+		contextRuns: 'deny',
 		orgPermission: 'org:read',
 		requiresLivePerson: true,
 		description:
@@ -655,6 +689,7 @@ export const inviteRevokeCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'inviteRevoke',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: true,
 		description:

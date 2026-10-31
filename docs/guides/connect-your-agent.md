@@ -13,12 +13,12 @@ category: platform
 # Connect your agent
 
 Kody is Your agents' cloud for individuals and teams (orgs, teams, and grants),
-and you reach it over MCP. Keep using the agent you like: Cursor, ChatGPT,
-Codex, Claude Desktop, Claude Code, Copilot, Grok, Gemini, OpenCode, OpenClaw,
-Hermes Agent, Muse, Devin, or any other agent that supports MCP. That agent
-stays the place you talk and work. Kody adds memory, credentials it never reads,
-saved packages, and jobs that every agent you connect can share. There is no
-separate Kody chat app to learn.
+and you reach it over MCP. Keep using the agent you like. Cursor, ChatGPT,
+Codex, Claude, Copilot, Grok, Gemini, and others connect over MCP — the
+[host notes](../use/connect-your-agent.md) list every agent Kody knows how to
+connect. That agent stays the place you talk and work. Kody adds memory,
+credentials it never reads, saved packages, and jobs that every agent you
+connect can share. There is no separate Kody chat app to learn.
 
 Getting started is three steps, and the in-app page at `/onboarding` walks you
 through each one.
@@ -31,11 +31,11 @@ Also watch:
 
 ## Before you start
 
-- **A Kody account with a verified email.** Authorize cannot finish, and MCP
-  cannot run, until the address on your account is verified. If authorize asks
-  you to verify, keep that tab open, finish from the email link (or
-  `/pending-verification`), then continue — you do not need to restart the host
-  connection.
+- **A verified email.** You can create a Kody account from the authorize page if
+  you do not have one. Authorize cannot finish, and MCP cannot run, until that
+  address is verified. If authorize asks you to verify, keep that tab open,
+  finish from the email link (or `/pending-verification`), then continue — you
+  do not need to restart the host connection.
 - **One agent you already use.** You do not need every host on day one. A second
   agent is Step 3, and it is worth it precisely because the first one has
   already furnished the home.
@@ -53,8 +53,8 @@ Also watch:
    the Kody plugin, sets up the Kody CLI and git on its own, and walks you
    through a first chat. Adding the Kody plugin to a Grok Bot you already use is
    the manual alternative.
-3. Complete the OAuth flow when the host opens it. Sign in to Kody if needed,
-   then approve access.
+3. Complete the OAuth flow when the host opens it. Sign in or create an account
+   if needed, then approve access.
 
 **Approving gives that agent full access to this Kody account** — not a limited
 permission set. Kody does not control or supervise what your agent does with the
@@ -76,6 +76,15 @@ Desktop, ChatGPT, Grok, Gemini, the Copilot app. Creating or editing packages is
 smoother from a coding agent — Cursor, Claude Code, Codex, Copilot CLI,
 OpenCode, Devin, OpenClaw, Hermes Agent, Muse — because those hosts edit files
 and iterate on code easily. Either kind can be first; the home is the same.
+
+Coding agents with a shell should install the Kody CLI and prefer
+`npx -y @kodycodes/cli@latest execute --local` (Node 22+) so fresh one-off code
+does not spend Worker compute days. After MCP is connected, call `api` with
+`cliCredentialBootstrap` and run the returned `cli_command`, or run
+`npx -y @kodycodes/cli@latest skill install` and follow the hosted `kody-cli`
+skill. Web-only hosts keep using MCP `execute`. Details:
+[Local CLI execute](./local-execute.md)
+(`search({ entity: "guide:local_execute" })`).
 
 ## Step 2 — Make something useful
 

@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { type CSSObject } from '@emotion/react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon, type IconName } from '../components/icon.tsx'
 import { colors, transitions } from '#universal/styles/tokens.ts'
@@ -25,6 +25,8 @@ type AccountManagementLinkNavItem = {
 	label: string
 	active: boolean
 	icon?: IconName
+	/** Short marker after the label, e.g. `Experiment`. */
+	badge?: string
 }
 
 type AccountManagementLinkNavGroup = {
@@ -34,6 +36,7 @@ type AccountManagementLinkNavGroup = {
 }
 
 type AccountManagementLinkNavProps = {
+	mobileFooter?: ReactNode
 	label: string
 	/** Names whose settings these are: "Account", or "Workspace" plus `@slug`. */
 	heading?: { eyebrow: string; name?: string }
@@ -224,6 +227,7 @@ function renderAccountNavLinks(
 		>
 			{item.icon ? renderIcon(item.icon, { size: '1.05em' }) : null}
 			{item.label}
+			{item.badge ? <NavItemBadge label={item.badge} /> : null}
 		</SiteLink>
 	))
 }
@@ -313,6 +317,7 @@ export function AccountManagementLinkNav(props: AccountManagementLinkNavProps) {
 						) : null}
 						{renderRailGroups(props.groups, accountMobileNavLinkCss)}
 					</nav>
+					{props.mobileFooter}
 				</details>
 			</>
 		)
@@ -345,8 +350,30 @@ export function AccountManagementInlineLinkNav(
 					css={accountMobileNavLinkCss}
 				>
 					{item.label}
+					{item.badge ? <NavItemBadge label={item.badge} /> : null}
 				</SiteLink>
 			))}
 		</nav>
 	)
+}
+
+function NavItemBadge({ label }: { label: string }) {
+	return (
+		<span data-nav-badge css={navItemBadgeCss}>
+			{label}
+		</span>
+	)
+}
+
+const navItemBadgeCss: CSSObject = {
+	marginLeft: 'auto',
+	padding: '0.05rem 0.45rem',
+	borderRadius: '999px',
+	border: `1px solid ${colors.border}`,
+	color: colors.textMuted,
+	fontSize: '0.7rem',
+	fontWeight: 500,
+	lineHeight: 1.5,
+	letterSpacing: '0.01em',
+	whiteSpace: 'nowrap',
 }

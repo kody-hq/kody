@@ -60,7 +60,7 @@ export type FillPlacementPartId = (typeof fillPlacementPartIds)[number]
 export function formatFillPlacementSummary(
 	placement: CredentialFillPlacementView | null,
 ): string {
-	if (placement === null) return 'Anywhere (headers, query, path, body)'
+	if (placement === null) return 'Not set (headers, plus parts used before)'
 	const parts: Array<string> = []
 	if (placement.headers !== undefined) parts.push('headers')
 	if (placement.query === true) parts.push('query')

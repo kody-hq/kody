@@ -46,6 +46,22 @@ URL (`/connect/secrets?names=...&hosts=...`) or the bulk package approval URL
 (`/@<slug>/-/secrets/approve?package_id=...&names=...`) over one link per
 secret. Agents must never auto-approve host or package access.
 
+## Placement in the same approval
+
+Filling a credential into the query, URL path, or body needs a per-credential
+owner opt-in (ADR 0068), because the host may store what it receives there.
+`/connect/secrets` takes an optional `placement` parameter (`query`, `path`,
+`body`, comma-separated) so a new secret for a body-auth API can be set up in
+one step:
+`/connect/secrets?name=plaidSecret&hosts=production.plaid.com&placement=body`.
+`hosts` is optional when only placement is requested. The page shows the
+credential, the requested parts, the hosts, and the "host may store this"
+warning; one click approves both, and nothing changes on decline.
+
+Agents build the link (`credentialPlacementApprovalLink`, or the link a
+`credential_placement_refused` error already carries) and hand it to the owner.
+They never approve it: approval is a website mutation only.
+
 ## Host shape
 
 `/connect/secrets` (and the Allow write) treat each `hosts` value as a hostname

@@ -127,7 +127,8 @@ Playwright gate locally. `wrangler-env.ts` defaults `X_LOCAL_EXPLORER=false` on
 these VMs, retriggers esbuild, and leaves ProxyWorker in a pause/reload loop
 after Ready. Opt in with `X_LOCAL_EXPLORER=true`. Wrangler 4.131+ keeps
 `Error inside ProxyWorker` request-scoped (workers-sdk#15252), so a transient
-ProxyWorker failure no longer exits the Playwright webServer.
+ProxyWorker failure stays request-scoped and the Playwright webServer keeps
+running.
 
 Cloud Agent environment `start` should run `npm run hooks:ensure` so a snapshot
 boot that skips `npm ci` still composes hooks after Cursor installs the
@@ -159,7 +160,10 @@ Do not symlink the whole `node_modules` directory into the worktree.
 `node_modules/@kody/*` and `node_modules/@kody-internal/shared` are relative
 links to `../../packages/*`. Through a whole-directory symlink they resolve to
 the main checkout's `packages/`, so typecheck and tests read the main checkout's
-branch instead of the worktree's (#3404).
+branch instead of the worktree's (#3404). The same whole-directory symlink also
+makes TypeScript see `csstype` through two paths, so a pre-push typecheck in the
+**main** checkout can fail with thousands of TS2883 errors on untouched style
+helpers (#4446).
 
 From the main checkout, link every entry except those workspace scopes, which
 are copied as links so they point at the worktree's own `packages/`. The repo
@@ -386,11 +390,15 @@ tests, and builds it. `npm run cli:openapi:check` fails when
 `packages/worker/src/open-api/operations.ts`.
 
 Merges to `main` that change the CLI in a publishable way (conventional `fix` /
-`feat` / `perf`, or a generated route-table diff) publish through
+`feat` / `perf`, a generated route-table diff, or a squash subject without a
+conventional prefix that still touches `packages/cli`) publish through
 [`.github/workflows/publish-cli.yml`](../../.github/workflows/publish-cli.yml).
 The package version in git stays `0.0.0-semantically-released`. Tags are
-`cli-vX.Y.Z`, continuing from `cli-v1.26.3`. npm trusted publishing for this
-repository and workflow is required; the workflow does not read an npm token.
+`cli-vX.Y.Z` created by the CLI publish workflow
+([`tools/publish-cli.ts`](../../tools/publish-cli.ts) /
+[`tools/cli-release-plan.ts`](../../tools/cli-release-plan.ts)). npm trusted
+publishing for this repository and workflow is required; the workflow does not
+read an npm token.
 
 Keep the merge commit (do not squash away the subtree history). Origin-side
 contracts:

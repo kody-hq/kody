@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { INTEGRATION_RUNTIME_CONFIG_TOOL_NAME } from '#mcp/execute-modules/kody-runtime-utils.ts'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -86,11 +87,25 @@ test('the hosted runtime and the local shim export every facade creator', () => 
 	}
 })
 
+test('the local execute shim exports every shared facade re-export', () => {
+	const local = createLocalExecuteRuntimeShimSource()
+	for (const name of Object.keys(sharedRuntimeExportReasons)) {
+		expect(local).toMatch(
+			new RegExp(
+				`(?:export function ${name}\\b|export \\{[\\s\\S]*\\b${name}\\b)`,
+			),
+		)
+	}
+})
+
 async function loadHostedPackageRuntime(
 	packageId: string,
 	runtime: Record<string, unknown>,
 ) {
-	const root = await mkdtemp(path.join(tmpdir(), 'kody-bound-exports-'))
+	// Resolve macOS temp-directory symlinks so relative and direct imports share one module.
+	const root = await realpath(
+		await mkdtemp(path.join(tmpdir(), 'kody-bound-exports-')),
+	)
 	roots.push(root)
 	const runtimePath = path.join(root, '.__kody_virtual__', 'runtime.js')
 	const packagePath = path.join(root, buildPackageRuntimeModulePath(packageId))
@@ -170,7 +185,10 @@ test("an imported package's createAuthenticatedFetch and oauthClientCredentials 
 	)
 
 	expect(runLevel).toEqual([])
-	expect(calls).toEqual([{ name: 'integrationGet', args: { name: 'svc' } }])
+	// The gateway seals the minted token, so no redactor call follows.
+	expect(calls).toEqual([
+		{ name: INTEGRATION_RUNTIME_CONFIG_TOOL_NAME, args: { name: 'svc' } },
+	])
 	expect(fetched).toEqual([
 		{
 			url: 'https://api.example.com/v1/me',

@@ -24,7 +24,7 @@ export const Route = createFileRoute('/_app/admin/platform-feedback')({
 	loaderDeps: ({ search }) => ({
 		feedbackId: search.feedbackId,
 	}),
-	context: ({ location, context }) => {
+	beforeLoad: ({ location, context }) => {
 		const pageQueryInput = {
 			returnTo: location.pathname,
 			page: adminPageNumber(

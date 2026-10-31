@@ -40,8 +40,9 @@ export const adminUserUpdateCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminUserUpdate',
+		contextRuns: 'deny',
 		description:
-			'Update account metadata for one user by stable user id, email, or username. Supports setting the manual entitlement grant (null maps to free; Stripe subscriptions stay on stripe_plan). Admin-only; never touches user content.',
+			'Update account metadata for one user by stable user id, email, or username. Supports setting the manual entitlement grant on that user’s personal organization (null maps to free; Stripe subscriptions stay on stripe_plan). Admin-only; never touches user content. Use adminOrgPlanSet for plan changes on any organization.',
 		keywords: ['admin', 'user', 'update', 'account', 'plan', 'entitlements'],
 		inputSchema,
 		outputSchema,

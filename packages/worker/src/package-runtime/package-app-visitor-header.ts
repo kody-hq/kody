@@ -9,7 +9,8 @@ import {
  * `createPackageCodeRequest` has stripped every inbound `X-Kody-*` header, so
  * a browser or upstream cannot forge it. It carries `userId`, `username`, and
  * `role` (the visitor's role in the owning org, null for anyone who is not a
- * member). It grants nothing; it only says who is visiting.
+ * member) and a snapshot of the live consent scopes. It grants no authority:
+ * credential consumers recheck the current grant before use.
  */
 export const packageAppVisitorHeaderName = 'X-Kody-Visitor'
 
@@ -17,23 +18,27 @@ export type PackageAppVisitorHeaderValue = {
 	userId: string
 	username: string
 	role: string | null
+	scopes: ReadonlyArray<string>
 }
 
 export function packageAppVisitorHeaderValue(input: {
 	visitor: RuntimePackageAppVisitor | null
 	identity?: RuntimePackageAppIdentity | null
+	scopes?: ReadonlyArray<string>
 }): string | null {
 	const value: PackageAppVisitorHeaderValue | null = input.visitor
 		? {
 				userId: input.visitor.userId,
 				username: input.visitor.username,
 				role: input.visitor.role,
+				scopes: [...(input.scopes ?? ['profile'])],
 			}
 		: input.identity
 			? {
 					userId: input.identity.userId,
 					username: input.identity.username,
 					role: null,
+					scopes: [...(input.scopes ?? ['profile'])],
 				}
 			: null
 	if (!value || !value.userId) return null
@@ -50,6 +55,7 @@ export function withPackageAppVisitorHeader(
 	input: {
 		visitor: RuntimePackageAppVisitor | null
 		identity?: RuntimePackageAppIdentity | null
+		scopes?: ReadonlyArray<string>
 	},
 ) {
 	const value = packageAppVisitorHeaderValue(input)

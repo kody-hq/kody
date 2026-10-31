@@ -5,7 +5,7 @@ import { loadAdditionalOgAsset } from '#worker/og/og-emoji.ts'
 import {
 	ensureOgBinaryAssetsReady,
 	getBricolageGrotesqueLatin700FontData,
-	getKodyLogoDataUri,
+	getKodyMarkDataUri,
 	getKodyPatternDataUri,
 	getWixMadeforTextLatin400FontData,
 	ogYogaWasm,
@@ -22,6 +22,14 @@ export type { OgAssetsFetcher } from '#worker/og/og-image-assets.ts'
 
 export const OG_WIDTH = 1200
 export const OG_HEIGHT = 630
+
+/**
+ * Header mark at the site header's mark-to-wordmark ratio (34px mark beside
+ * 28px type), scaled to the 46px OG wordmark. Width follows the mark viewBox
+ * aspect (807.44 by 593.24).
+ */
+const OG_MARK_HEIGHT = 56
+const OG_MARK_WIDTH = 76
 
 export type SatoriChild = string | SatoriElement
 export type SatoriElement = {
@@ -46,6 +54,27 @@ export type SatoriElement = {
 	}
 }
 
+/**
+ * Satori does not inherit `textWrap`, so every element that holds text gets
+ * `balance` here unless it opts out. Wrapped lines come out even on every
+ * card, and a description never ends on a lone word.
+ */
+export function withBalancedTextWrap(
+	type: string,
+	props: Omit<SatoriElement['props'], 'children'>,
+	descendants: Array<SatoriChild>,
+): Omit<SatoriElement['props'], 'children'> {
+	// Spans are runs inside a single-line row; balancing them shrinks each
+	// run's box and the row paints them on top of each other.
+	if (type === 'span') return props
+	if (!descendants.some((child) => typeof child === 'string')) return props
+	const style = props.style ?? {}
+	if (style.textWrap !== undefined || style.whiteSpace === 'nowrap') {
+		return props
+	}
+	return { ...props, style: { ...style, textWrap: 'balance' } }
+}
+
 function renderSatoriChild(child: SatoriChild): ReactNode {
 	if (typeof child === 'string') return child
 	const { children, ...props } = child.props
@@ -55,7 +84,11 @@ function renderSatoriChild(child: SatoriChild): ReactNode {
 			: Array.isArray(children)
 				? children
 				: [children]
-	return createElement(child.type, props, ...descendants.map(renderSatoriChild))
+	return createElement(
+		child.type,
+		withBalancedTextWrap(child.type, props, descendants),
+		...descendants.map(renderSatoriChild),
+	)
 }
 
 let wasmReady: Promise<void> | null = null
@@ -216,13 +249,13 @@ export function createOgFrame(input: {
 										{
 											type: 'img',
 											props: {
-												src: getKodyLogoDataUri(),
-												width: 64,
-												height: 64,
+												src: getKodyMarkDataUri(theme),
+												width: OG_MARK_WIDTH,
+												height: OG_MARK_HEIGHT,
 												style: {
-													width: 64,
-													height: 64,
-													marginRight: 16,
+													width: OG_MARK_WIDTH,
+													height: OG_MARK_HEIGHT,
+													marginRight: 18,
 												},
 											},
 										},

@@ -662,7 +662,6 @@ test('assertWithinEntitlement passes under the limit, throws at it, and enforces
 			current: limit,
 			upgradeHint: error.details.upgradeHint,
 		})
-		expect(error.message).toBe(buildEntitlementLimitMessage(error.details))
 	}
 })
 

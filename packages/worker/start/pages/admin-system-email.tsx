@@ -3,11 +3,22 @@ import {
 	buildAdminEmailHtmlPreviewDocument,
 	emailHtmlPreviewSandbox,
 } from '#client/email-html-preview.ts'
-import { deleteAdminSystemEmail } from '#start/server/admin-mutations'
+import {
+	blockAdminSystemEmailSender,
+	classifyAdminSystemEmail,
+	deleteAdminSystemEmail,
+} from '#start/server/admin-mutations'
+import {
+	defaultEmailMessageView,
+	isEmailMessageView,
+	type EmailClassification,
+	type EmailMessageView,
+} from '#universal/email-message-view.ts'
 import { type AdminSystemEmailLoaderData } from '#universal/loader-data.ts'
 import {
 	cardCss,
 	getDangerPillCss,
+	getGhostButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -32,12 +43,39 @@ import {
 	TimestampValue,
 } from './account-management-components.tsx'
 import {
+	EmailTriageBadges,
+	emailViewOptions,
+} from './email-triage-controls.tsx'
+import {
 	RecordTable,
+	RecordTableSelect,
 	recordBodyCss,
 	recordCellClamp,
 	recordStampCss,
 } from './record-table.tsx'
 const clampedCellCss = css(recordCellClamp(30))
+const subjectCellCss = css({
+	display: 'inline-flex',
+	alignItems: 'center',
+	gap: spacing.xs,
+	minWidth: 0,
+})
+const actionRowCss = css({
+	display: 'flex',
+	flexWrap: 'wrap',
+	gap: spacing.xs,
+	alignItems: 'center',
+})
+const blockOfferCss = css({
+	display: 'flex',
+	flexWrap: 'wrap',
+	gap: spacing.sm,
+	alignItems: 'center',
+	padding: spacing.sm,
+	border: `1px solid ${colors.border}`,
+	borderRadius: radius.md,
+	background: colors.primarySoftest,
+})
 const emailBodyPreCss = css({
 	margin: 0,
 	whiteSpace: 'pre-wrap',
@@ -58,8 +96,26 @@ const emailHtmlPreviewIframeCss = css({
 function formatByteCount(value: number) {
 	return new Intl.NumberFormat().format(value)
 }
-function messageHref(messageId: string) {
-	return `/admin/system-email?messageId=${encodeURIComponent(messageId)}`
+function systemEmailHref(input: {
+	view: EmailMessageView
+	messageId?: string | null
+}) {
+	const search = new URLSearchParams()
+	if (input.view !== defaultEmailMessageView) search.set('view', input.view)
+	if (input.messageId) search.set('messageId', input.messageId)
+	const query = search.toString()
+	return query ? `/admin/system-email?${query}` : '/admin/system-email'
+}
+type TriageInput = {
+	messageId: string
+	classification?: EmailClassification
+	archived?: boolean
+}
+function triageNotice(input: TriageInput) {
+	if (input.classification === 'spam') return 'Marked as spam.'
+	if (input.classification === 'accepted') return 'Marked as not spam.'
+	if (input.classification === 'quarantined') return 'Quarantined.'
+	return input.archived ? 'Archived.' : 'Unarchived.'
 }
 export function AdminSystemEmailPage({
 	payload: data,
@@ -79,9 +135,73 @@ export function AdminSystemEmailPage({
 		// A lost reply can follow a committed deletion. Reconcile the submitting actor.
 		onSettled: (_data, _error, _input, reconcile) => reconcile?.(),
 	})
+	const triageMutation = useMutation({
+		gcTime: 0,
+		mutationFn: (input: TriageInput) =>
+			classifyAdminSystemEmail({ data: input }),
+		onMutate: () => invalidate,
+		onSettled: (_data, _error, _input, reconcile) => reconcile?.(),
+	})
+	const blockMutation = useMutation({
+		gcTime: 0,
+		mutationFn: (input: { messageId: string }) =>
+			blockAdminSystemEmailSender({ data: input }),
+		onMutate: () => invalidate,
+		onSettled: (_data, _error, _input, reconcile) => reconcile?.(),
+	})
 	const [armedId, setArmedId] = useState<string | null>(null)
-	const [message, setMessage] = useState<string | null>(null)
-	const pending = mutation.isPending
+	const [message, setMessage] = useState<{
+		tone: 'error' | 'info'
+		text: string
+	} | null>(null)
+	const [blockOfferId, setBlockOfferId] = useState<string | null>(null)
+	const pending =
+		mutation.isPending || triageMutation.isPending || blockMutation.isPending
+	const view = isEmailMessageView(data.view)
+		? data.view
+		: defaultEmailMessageView
+	async function triageMessage(input: TriageInput) {
+		if (pending) return
+		const isCurrent = captureSubmitter()
+		setMessage(null)
+		setBlockOfferId(null)
+		try {
+			await triageMutation.mutateAsync(input)
+			if (!isCurrent()) return
+			setMessage({ tone: 'info', text: triageNotice(input) })
+			if (input.classification === 'spam') setBlockOfferId(input.messageId)
+		} catch (error) {
+			if (!isCurrent()) return
+			setMessage({
+				tone: 'error',
+				text:
+					error instanceof Error
+						? error.message
+						: 'Unable to update system email.',
+			})
+		}
+	}
+	async function blockSender(messageId: string) {
+		if (pending) return
+		const isCurrent = captureSubmitter()
+		setMessage(null)
+		try {
+			const result = await blockMutation.mutateAsync({ messageId })
+			if (!isCurrent()) return
+			setBlockOfferId(null)
+			setMessage({
+				tone: 'info',
+				text: `Future mail from ${result.rule.value} will be blocked.`,
+			})
+		} catch (error) {
+			if (!isCurrent()) return
+			setMessage({
+				tone: 'error',
+				text:
+					error instanceof Error ? error.message : 'Unable to block sender.',
+			})
+		}
+	}
 	async function deleteMessage(id: string) {
 		if (pending) return
 		if (armedId !== id) {
@@ -94,15 +214,20 @@ export function AdminSystemEmailPage({
 			await mutation.mutateAsync({ messageId: id })
 			if (!isCurrent()) return
 			setArmedId(null)
-			await router.navigate({ href: '/admin/system-email' })
+			await router.navigate({
+				href: systemEmailHref({ view }),
+				resetScroll: false,
+			})
 		} catch (error) {
 			if (!isCurrent()) return
 			setArmedId(null)
-			setMessage(
-				error instanceof Error
-					? error.message
-					: 'Unable to delete system email.',
-			)
+			setMessage({
+				tone: 'error',
+				text:
+					error instanceof Error
+						? error.message
+						: 'Unable to delete system email.',
+			})
 		}
 	}
 	const totalPages = data
@@ -123,8 +248,8 @@ export function AdminSystemEmailPage({
 			/>
 
 			{message ? (
-				<AccountManagementMessage tone="error">
-					{message}
+				<AccountManagementMessage tone={message.tone}>
+					{message.text}
 				</AccountManagementMessage>
 			) : null}
 			{data ? (
@@ -143,7 +268,30 @@ export function AdminSystemEmailPage({
 							ariaLabel="System inbox messages"
 							selectedId={selectedMessage?.id ?? null}
 							countLabel={`${data.total} stored`}
-							emptyLabel="No system mail has been stored."
+							emptyLabel={
+								view === defaultEmailMessageView
+									? 'No system mail in the inbox.'
+									: 'No system mail matches this view.'
+							}
+							toolbar={
+								<RecordTableSelect
+									label="Filter system mail by view"
+									value={view}
+									onChange={(value) => {
+										setBlockOfferId(null)
+										void router.navigate({
+											resetScroll: false,
+											href: systemEmailHref({
+												view: isEmailMessageView(value)
+													? value
+													: defaultEmailMessageView,
+											}),
+										})
+									}}
+								>
+									{emailViewOptions}
+								</RecordTableSelect>
+							}
 							columns={[
 								{ key: 'subject', label: 'Subject', primary: true },
 								{ key: 'inbox', label: 'Inbox' },
@@ -154,11 +302,20 @@ export function AdminSystemEmailPage({
 							]}
 							rows={data.messages.map((systemMessage) => ({
 								id: systemMessage.id,
-								href: messageHref(systemMessage.id),
+								href: systemEmailHref({ view, messageId: systemMessage.id }),
 								cells: {
 									subject: (
-										<span css={clampedCellCss}>
-											{systemMessage.subject || '(no subject)'}
+										<span css={subjectCellCss}>
+											<span css={clampedCellCss}>
+												{systemMessage.subject || '(no subject)'}
+											</span>
+											<EmailTriageBadges
+												classification={systemMessage.classification}
+												classificationReason={
+													systemMessage.classification_reason
+												}
+												archivedAt={systemMessage.archived_at}
+											/>
 										</span>
 									),
 									inbox: systemMessage.inbox_local_part,
@@ -222,25 +379,80 @@ export function AdminSystemEmailPage({
 												>
 													{selectedMessage.subject || '(no subject)'}
 												</h2>
-												<button
-													type="button"
-													css={getDangerPillCss({ size: 'sm' })}
-													disabled={pending}
-													aria-label={`${armedId === selectedMessage.id ? 'Confirm delete' : 'Delete'} message "${selectedMessage.subject || '(no subject)'}"`}
-													title={
-														armedId === selectedMessage.id
-															? 'Click again to permanently delete this system email message'
-															: 'Delete this system email message and its attachments'
-													}
-													onBlur={() => setArmedId(null)}
-													onClick={() => void deleteMessage(selectedMessage.id)}
-												>
-													{pending
-														? 'Deleting…'
-														: armedId === selectedMessage.id
-															? 'Confirm delete'
-															: 'Delete'}
-												</button>
+												<div css={actionRowCss}>
+													<EmailTriageBadges
+														classification={selectedMessage.classification}
+														classificationReason={
+															selectedMessage.classification_reason
+														}
+														archivedAt={selectedMessage.archived_at}
+													/>
+													{selectedMessage.classification === 'accepted' ? (
+														<button
+															type="button"
+															css={getGhostButtonCss({ size: 'sm' })}
+															disabled={pending}
+															onClick={() =>
+																void triageMessage({
+																	messageId: selectedMessage.id,
+																	classification: 'spam',
+																})
+															}
+														>
+															Mark as spam
+														</button>
+													) : (
+														<button
+															type="button"
+															css={getGhostButtonCss({ size: 'sm' })}
+															disabled={pending}
+															onClick={() =>
+																void triageMessage({
+																	messageId: selectedMessage.id,
+																	classification: 'accepted',
+																})
+															}
+														>
+															Not spam
+														</button>
+													)}
+													<button
+														type="button"
+														css={getGhostButtonCss({ size: 'sm' })}
+														disabled={pending}
+														onClick={() =>
+															void triageMessage({
+																messageId: selectedMessage.id,
+																archived: !selectedMessage.archived_at,
+															})
+														}
+													>
+														{selectedMessage.archived_at
+															? 'Unarchive'
+															: 'Archive'}
+													</button>
+													<button
+														type="button"
+														css={getDangerPillCss({ size: 'sm' })}
+														disabled={pending}
+														aria-label={`${armedId === selectedMessage.id ? 'Confirm delete' : 'Delete'} message "${selectedMessage.subject || '(no subject)'}"`}
+														title={
+															armedId === selectedMessage.id
+																? 'Click again to permanently delete this system email message'
+																: 'Delete this system email message and its attachments'
+														}
+														onBlur={() => setArmedId(null)}
+														onClick={() =>
+															void deleteMessage(selectedMessage.id)
+														}
+													>
+														{mutation.isPending
+															? 'Deleting…'
+															: armedId === selectedMessage.id
+																? 'Confirm delete'
+																: 'Delete'}
+													</button>
+												</div>
 											</div>
 											<p
 												css={{
@@ -248,9 +460,38 @@ export function AdminSystemEmailPage({
 													color: colors.textMuted,
 												}}
 											>
-												Admin reads and deletes of message content are audit
-												logged.
+												Admin reads, spam and archive changes, and deletes of
+												message content are audit logged. Spam and archive never
+												delete mail.
 											</p>
+											{blockOfferId === selectedMessage.id &&
+											selectedMessage.classification === 'spam' &&
+											selectedMessage.from_address ? (
+												<div css={blockOfferCss} role="status">
+													<span>
+														Also block future mail from{' '}
+														<code>{selectedMessage.from_address}</code>?
+													</span>
+													<button
+														type="button"
+														css={getGhostButtonCss({ size: 'sm' })}
+														disabled={pending}
+														onClick={() => void blockSender(selectedMessage.id)}
+													>
+														{blockMutation.isPending
+															? 'Blocking…'
+															: 'Block sender'}
+													</button>
+													<button
+														type="button"
+														css={getGhostButtonCss({ size: 'sm' })}
+														disabled={pending}
+														onClick={() => setBlockOfferId(null)}
+													>
+														No thanks
+													</button>
+												</div>
+											) : null}
 										</div>
 										<MetadataGrid
 											items={[
@@ -291,6 +532,23 @@ export function AdminSystemEmailPage({
 												{
 													label: 'Attachments',
 													value: String(selectedMessage.attachments.length),
+												},
+												{
+													label: 'Classification',
+													value: selectedMessage.classification_reason
+														? `${selectedMessage.classification} (${selectedMessage.classification_reason})`
+														: selectedMessage.classification,
+												},
+												{
+													label: 'Archived',
+													value: selectedMessage.archived_at ? (
+														<TimestampValue
+															value={selectedMessage.archived_at}
+															fallback="No"
+														/>
+													) : (
+														'No'
+													),
 												},
 											]}
 										/>

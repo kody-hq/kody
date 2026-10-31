@@ -227,6 +227,11 @@
 					"tag": "v24",
 					"location": "env.test.migrations",
 					"new_sqlite_classes": ["RepoSessionIndex"]
+				},
+				{
+					"tag": "v27",
+					"location": "env.test.migrations",
+					"new_sqlite_classes": ["ExecutionContextSessionV1"]
 				}
 			],
 			"protected_binding_sets": [
@@ -287,6 +292,11 @@
 							"name": "PACKAGE_REALTIME_SESSION",
 							"class_name": "PackageRealtimeSession",
 							"script_name": "kody-runtime"
+						},
+						{
+							"name": "EXECUTION_CONTEXT_SESSION",
+							"class_name": "ExecutionContextSessionV1",
+							"script_name": "kody-platform"
 						}
 					]
 				},
@@ -347,6 +357,11 @@
 							"name": "PACKAGE_REALTIME_SESSION",
 							"class_name": "PackageRealtimeSession",
 							"script_name": "kody-runtime"
+						},
+						{
+							"name": "EXECUTION_CONTEXT_SESSION",
+							"class_name": "ExecutionContextSessionV1",
+							"script_name": "kody-platform"
 						}
 					]
 				},
@@ -396,6 +411,10 @@
 						{
 							"name": "PACKAGE_REALTIME_SESSION",
 							"class_name": "PackageRealtimeSession"
+						},
+						{
+							"name": "EXECUTION_CONTEXT_SESSION",
+							"class_name": "ExecutionContextSessionV1"
 						}
 					]
 				}
@@ -552,6 +571,10 @@
 			"path": "packages/platform-worker/wrangler.jsonc",
 			"protected_migrations": [
 				{
+					"tag": "v2",
+					"new_sqlite_classes": ["ExecutionContextSessionV1"]
+				},
+				{
 					"tag": "v1",
 					"location": "env.preview.migrations",
 					"new_sqlite_classes": [
@@ -564,6 +587,11 @@
 						"RepoSessionIndex",
 						"StripePlanRefresh"
 					]
+				},
+				{
+					"tag": "v2",
+					"location": "env.preview.migrations",
+					"new_sqlite_classes": ["ExecutionContextSessionV1"]
 				}
 			],
 			"protected_transfer_migrations": [
@@ -663,6 +691,10 @@
 							"name": "PACKAGE_REALTIME_SESSION",
 							"class_name": "PackageRealtimeSession",
 							"script_name": "kody-runtime"
+						},
+						{
+							"name": "EXECUTION_CONTEXT_SESSION",
+							"class_name": "ExecutionContextSessionV1"
 						}
 					]
 				},
@@ -715,6 +747,10 @@
 							"name": "PACKAGE_REALTIME_SESSION",
 							"class_name": "PackageRealtimeSession",
 							"script_name": "kody-runtime"
+						},
+						{
+							"name": "EXECUTION_CONTEXT_SESSION",
+							"class_name": "ExecutionContextSessionV1"
 						}
 					]
 				}

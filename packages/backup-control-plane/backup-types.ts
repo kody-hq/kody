@@ -101,6 +101,8 @@ export interface LogRecord {
 		| 'backup-enqueued'
 		| 'backup-overlap'
 		| 'backup-restarted'
+		| 'backup-export-result-expired-recover'
+		| 'backup-export-signed-url-fallback'
 		| 'backup-success'
 		| 'backup-failure'
 		| 'backup-sql-stats'
@@ -147,4 +149,6 @@ export interface LogRecord {
 	blobsVerified?: number
 	maxStatementBytes?: number
 	oversizedStatementCount?: number
+	attempt?: number
+	maxAttempts?: number
 }

@@ -108,9 +108,11 @@ test('login notice always prints the sign-in URL, with or without the browser', 
 	assert.ok(opening.includes(url.href))
 	assert.match(opening, /If no browser window appears, copy this link/)
 	assert.match(opening, /Waiting for you to finish signing in/)
+	assert.match(opening, /New to Kody\? Create an account on that page/)
 	const manual = formatLoginUrlNotice({ url, openBrowser: false })
 	assert.ok(manual.includes(url.href))
 	assert.match(manual, /Open this link in your browser/)
+	assert.match(manual, /New to Kody\? Create an account on that page/)
 	assert.match(loginBrowserOpenFailedNotice, /could not open your browser/)
 })
 

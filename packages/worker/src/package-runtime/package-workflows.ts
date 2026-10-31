@@ -1,4 +1,10 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	type AutomationExecution,
+	automationExecutionSchema,
+	parseAutomationExecution,
+} from '#worker/execution-contexts/automation-execution-schema.ts'
+import { isExecutionContextsEnabledFor } from '#worker/execution-contexts/flag.ts'
 import { isoTimestampDayKey } from '@kody-internal/shared/date-keys.ts'
 import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
 import {
@@ -43,6 +49,10 @@ import {
 	recordUsage,
 	usageErrorNameFromUnknown,
 } from '#worker/usage/record-usage.ts'
+import {
+	runStartedByClientFromCredentialKind,
+	normalizeRunStartedBy,
+} from '#worker/run-records/run-started-by.ts'
 import {
 	beginRunRecord,
 	deleteWorkflowProjectionIfCreating,
@@ -107,6 +117,8 @@ export type PackageWorkflowCreateInput = WorkflowCreateBaseInput &
 				 * the commit resolved at enqueue, or it refuses to run.
 				 */
 				sourceRevision?: WorkflowSourceRevisionPolicy
+				/** Execution-context routing for each step (flagged). */
+				execution?: unknown
 				code?: never
 		  }
 		| {
@@ -114,6 +126,7 @@ export type PackageWorkflowCreateInput = WorkflowCreateBaseInput &
 				exportName?: never
 				packageId?: never
 				sourceRevision?: never
+				execution?: never
 		  }
 	)
 
@@ -155,6 +168,8 @@ export type DynamicCallableWorkflowPayload =
 			enqueuedCommit?: string
 			/** Absent means `latest`. */
 			sourceRevision?: 'pinned'
+			/** Where each step runs (execution contexts); absent is Kody cloud. */
+			execution?: AutomationExecution
 	  }
 	| {
 			version: 3
@@ -279,6 +294,20 @@ function workflowRequestSource(
 	return payload.lineage
 		? { kind: 'inherited', lineage: payload.lineage }
 		: { kind: 'platform-event', sourceId: packageWorkflowTokenId }
+}
+
+/** Person + client from the starter lineage; null for legacy payloads. */
+function workflowStartedBy(
+	payload: Pick<DynamicCallableWorkflowPayload, 'lineage'>,
+) {
+	const lineage = payload.lineage
+	if (!lineage) return null
+	return normalizeRunStartedBy({
+		userId: lineage.actor?.userId ?? null,
+		username: lineage.actor?.username ?? null,
+		client: runStartedByClientFromCredentialKind(lineage.credential.kind),
+		label: null,
+	})
 }
 const maxPackageWorkflowParamsJsonBytes = 16 * 1024
 const workflowStatusRefreshTtlMs = 30_000
@@ -522,6 +551,7 @@ function createDynamicPackageWorkflowPayload(input: {
 	lineage: RequestLineage | null
 	enqueuedCommit?: string | null
 	sourceRevision?: WorkflowSourceRevisionPolicy | null
+	execution?: AutomationExecution | null
 }): DynamicCallableWorkflowPayload {
 	const runAt = normalizeRunAt(input.runAt)
 	const idempotencyKey = normalizeWorkflowIdempotencyKey(input.idempotencyKey)
@@ -553,6 +583,7 @@ function createDynamicPackageWorkflowPayload(input: {
 		...(input.lineage ? { lineage: input.lineage } : {}),
 		...(enqueuedCommit ? { enqueuedCommit } : {}),
 		...(pinned ? { sourceRevision: 'pinned' as const } : {}),
+		...(input.execution ? { execution: input.execution } : {}),
 	}
 }
 
@@ -647,6 +678,7 @@ function validateDynamicCallableWorkflowPayload(
 			sourceRevision: parseWorkflowProjectionSourceRevision(
 				record['sourceRevision'],
 			),
+			execution: parseAutomationExecution(record['execution']),
 		})
 	}
 	throw new Error('Dynamic callable workflow payload sourceType is invalid.')
@@ -1042,6 +1074,13 @@ async function resolveWorkflowPayload(input: {
 	const body = input.body as PackageWorkflowCreateInput &
 		Record<string, unknown>
 	const { code, exportName } = assertWorkflowCreateBodyShape(input.body)
+	const execution = await resolveWorkflowExecution({
+		db: input.env.APP_DB,
+		raw: body.execution,
+		code,
+		lineage: input.lineage,
+		orgId: input.userId,
+	})
 	if (code) {
 		return createInlineWorkflowPayload({
 			userId: input.userId,
@@ -1096,7 +1135,48 @@ async function resolveWorkflowPayload(input: {
 		lineage: input.lineage,
 		enqueuedCommit,
 		sourceRevision,
+		execution,
 	})
+}
+
+/**
+ * `workflows.create({ execution })`: same rules as an automation's setting.
+ * Checked at enqueue so a flag-off or malformed setting fails up front.
+ */
+async function resolveWorkflowExecution(input: {
+	db: D1Database
+	raw: unknown
+	code: string | null | undefined
+	lineage: RequestLineage
+	orgId: string
+}): Promise<AutomationExecution | null> {
+	if (input.raw === undefined || input.raw === null) return null
+	if (input.code) {
+		throw new Error(
+			'workflows.create execution needs exportName: an execution context runs a package export, not inline code.',
+		)
+	}
+	const parsed = automationExecutionSchema.safeParse(input.raw)
+	if (!parsed.success) {
+		throw new Error(
+			`workflows.create execution is invalid: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`,
+		)
+	}
+	if (parsed.data.whenOffline === 'queue') {
+		throw new Error(
+			'workflows.create execution cannot use whenOffline: "queue": a workflow step needs its result before the next step runs. Omit whenOffline so an offline context fails the step.',
+		)
+	}
+	const actorId = input.lineage.actor?.userId ?? null
+	if (
+		!actorId ||
+		!(await isExecutionContextsEnabledFor(input.db, actorId, input.orgId))
+	) {
+		throw new Error(
+			'workflows.create execution needs the execution-contexts feature, which is not enabled for you. Omit execution to run on Kody cloud.',
+		)
+	}
+	return parsed.data
 }
 
 export async function createDynamicCallableWorkflow(input: {
@@ -1532,34 +1612,137 @@ export async function cancelActiveWorkflowRunsForUser(input: {
 	return cancelled
 }
 
+export type ListWorkflowRunsForUserFilter = {
+	/** Exact workflow run id (dynwf-… or pkgwf-…). */
+	workflowId?: string | null
+	status?: string | null
+	packageId?: string | null
+	/** Inclusive ISO lower bound on created_at. */
+	since?: string | null
+}
+
 export async function listWorkflowRunsForUser(input: {
 	env: Pick<Env, 'DYNAMIC_CALLABLE_WORKFLOWS' | 'RUN_LOG'>
 	userId: OwnerId
 	limit?: number
+	filter?: ListWorkflowRunsForUserFilter | null
 }): Promise<Array<WorkflowRunInspection>> {
 	const env = input.env as Env
 	const limit = Math.min(Math.max(input.limit ?? 25, 1), 100)
-	const listed = await listWorkflowProjections({
+	const filter = input.filter ?? null
+	const statusFilter = filter?.status?.trim() || null
+	const shared = {
 		env,
 		userId: input.userId,
-		limit,
 		bindingName: dynamicCallableWorkflowsBindingName,
+		id: filter?.workflowId ?? null,
+		packageId: filter?.packageId ?? null,
+		since: filter?.since ?? null,
+	} as const
+
+	if (!statusFilter) {
+		const listed = await listWorkflowProjections({
+			...shared,
+			limit,
+		})
+		const rows = listed.projections.map((projection) =>
+			mapWorkflowProjectionToInspection(projection, input.userId),
+		)
+		await refreshListedWorkflowRunStatuses({
+			env,
+			userId: input.userId,
+			rows,
+			forceRefresh: false,
+		})
+		return rows
+	}
+
+	// Exact SQL matches plus every active projection (page through; max plan
+	// allows more concurrent workflows than one list page). Refresh actives,
+	// then keep only the requested status so stale "running" rows that already
+	// finished are not missed and older terminal rows are not dropped behind a
+	// newest-page window of actives.
+	const [exact, activeProjections] = await Promise.all([
+		listWorkflowProjections({
+			...shared,
+			status: statusFilter,
+			limit,
+		}),
+		listAllActiveWorkflowProjections(shared),
+	])
+	const byId = new Map<string, WorkflowRunInspection>()
+	for (const projection of [...exact.projections, ...activeProjections]) {
+		if (byId.has(projection.id)) continue
+		byId.set(
+			projection.id,
+			mapWorkflowProjectionToInspection(projection, input.userId),
+		)
+	}
+	const rows = [...byId.values()]
+	await refreshListedWorkflowRunStatuses({
+		env,
+		userId: input.userId,
+		rows,
+		forceRefresh: true,
 	})
-	const rows = listed.projections.map((projection) =>
-		mapWorkflowProjectionToInspection(projection, input.userId),
-	)
+	return rows
+		.filter((row) => row.status === statusFilter)
+		.sort((left, right) => {
+			const byCreated = right.createdAt.localeCompare(left.createdAt)
+			if (byCreated !== 0) return byCreated
+			return right.id.localeCompare(left.id)
+		})
+		.slice(0, limit)
+}
+
+async function listAllActiveWorkflowProjections(shared: {
+	env: Env
+	userId: OwnerId
+	bindingName: string
+	id?: string | null
+	packageId?: string | null
+	since?: string | null
+}) {
+	const projections: Array<
+		Awaited<ReturnType<typeof listWorkflowProjections>>['projections'][number]
+	> = []
+	let cursor: string | null = null
+	do {
+		const page = await listWorkflowProjections({
+			...shared,
+			statuses: activeWorkflowStatusValues,
+			limit: runRecordMaxPageSize,
+			cursor,
+		})
+		projections.push(...page.projections)
+		cursor = page.nextCursor
+	} while (cursor)
+	return projections
+}
+
+async function refreshListedWorkflowRunStatuses(input: {
+	env: Env
+	userId: OwnerId
+	rows: Array<WorkflowRunInspection>
+	forceRefresh: boolean
+}) {
 	const now = new Date()
 	await Promise.all(
-		rows.map(async (row) => {
+		input.rows.map(async (row) => {
 			if (!row.status || !activeWorkflowStatuses.has(row.status)) return
-			const updatedAtMs = new Date(row.updatedAt).getTime()
-			if (
-				Number.isFinite(updatedAtMs) &&
-				now.getTime() - updatedAtMs < workflowStatusRefreshTtlMs
-			) {
-				return
+			if (!input.forceRefresh) {
+				const updatedAtMs = new Date(row.updatedAt).getTime()
+				if (
+					Number.isFinite(updatedAtMs) &&
+					now.getTime() - updatedAtMs < workflowStatusRefreshTtlMs
+				) {
+					return
+				}
 			}
-			const workflowBinding = resolveWorkflowEngineBinding(env, row.bindingName)
+			const workflowBinding = resolveWorkflowEngineBinding(
+				input.env,
+				row.bindingName,
+			)
 			let instance: WorkflowInstance
 			try {
 				instance = await workflowBinding.get(row.id)
@@ -1577,7 +1760,7 @@ export async function listWorkflowRunsForUser(input: {
 			}
 			const payload = payloadFromWorkflowInspection(row)
 			await projectWorkflowRun({
-				env,
+				env: input.env,
 				userId: input.userId,
 				id: row.id,
 				payload,
@@ -1588,7 +1771,6 @@ export async function listWorkflowRunsForUser(input: {
 			})
 		}),
 	)
-	return rows
 }
 
 export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
@@ -1781,6 +1963,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				sourceId: payload.sourceId,
 				workflowId: instanceId,
 				idempotencyKey: payload.idempotencyKey,
+				startedBy: workflowStartedBy(payload),
 				metadata: runMetadata,
 			},
 			waitUntil: (promise) => {
@@ -1815,6 +1998,16 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				},
 				ephemeral: true,
 				executorTimeoutMs: backgroundExecutorTimeoutMs,
+				...(payload.execution
+					? {
+							executionTarget: {
+								kind: 'workflow' as const,
+								exportName: payload.exportName,
+								execution: payload.execution,
+							},
+							parentRunHandle: runHandle,
+						}
+					: {}),
 				sourceRevision: {
 					pinnedCommit,
 					// Per-attempt provenance, captured before any sandbox work.
@@ -1924,12 +2117,14 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 		const runHandle = beginRunRecord({
 			env: this.env,
 			userId: payload.userId,
+			request: callerContext.request,
 			context: {
 				surface: 'workflow',
 				name: payload.workflowName,
 				workflowId: instanceId,
 				storageId: null,
 				idempotencyKey: payload.idempotencyKey,
+				startedBy: workflowStartedBy(payload),
 				metadata: {
 					sourceType: 'inline',
 					...(stepCtx?.attempt != null

@@ -11,7 +11,10 @@ import {
 import {
 	createExecuteHelperPrelude,
 	getExecuteHelperCapabilityNames,
+	INTEGRATION_RUNTIME_CONFIG_TOOL_NAME,
 } from '#mcp/execute-modules/kody-runtime-utils.ts'
+import { readIntegrationRuntimeConfig } from '#mcp/capabilities/integrations/integration-runtime-config.ts'
+import { type Capability } from '#mcp/capabilities/types.ts'
 import {
 	createPackageStorageHelperPrelude,
 	createPackageStorageKodyTools,
@@ -26,8 +29,11 @@ import { staticCallMeterRuntimeBridgeProviderName } from '#mcp/evaluation-side-e
 import { takeSecretAuthorityFromCapabilityArgs } from '#mcp/secrets/secret-authority.ts'
 import { kodyCallDispatcherName } from '#worker/kody-evaluate-bindings.ts'
 import { type CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
-import { type PackageAppCredentialAuthority } from '#worker/credentials/credential-client.ts'
+import { type SavedCredentialNeed } from '#worker/credentials/credential-needs.ts'
+import {
+	type PackageAppCredentialAuthority,
+	type RunCredentialEntries,
+} from '#worker/credentials/credential-client.ts'
 import { createCredentialClientKodyTools } from './credential-client-tools.ts'
 import { createCredentialClientRuntimeSource } from './execute-modules/credential-client-source.ts'
 
@@ -49,12 +55,6 @@ export type PackageStorageToolOptions = {
 	 * reach only this package's bucket (GHSA-5fv3).
 	 */
 	runPackageId?: string | null
-	/**
-	 * Defaults to writable. Retriever runs set this to false so the sandbox
-	 * can read granted buckets but cannot set, delete, clear, or run mutating
-	 * SQL.
-	 */
-	writable?: boolean
 }
 
 export type PackageSecretToolOptions = {
@@ -84,7 +84,13 @@ export type CredentialClientToolOptions = {
 	/** The caller's credential picks for this run, by need key. */
 	callMap?: CredentialCallMap | null
 	/** The run's pinned needs by key (hosted runs only). */
-	runNeeds?: () => Promise<ReadonlyMap<string, CredentialNeed>>
+	runNeeds?: () => Promise<ReadonlyMap<string, SavedCredentialNeed>>
+	/**
+	 * The run's entry packages for mapping selection, from the host: the run
+	 * package context when hosted; for CapabilityProxy, the entries signed
+	 * into the verified package binding the call claims.
+	 */
+	runEntries?: (requested: unknown) => Promise<RunCredentialEntries | null>
 	/** Package-app runs only; see `CredentialClientContext.packageAppAuthority`. */
 	packageAppAuthority?: PackageAppCredentialAuthority | null
 	waitUntil?: (promise: Promise<unknown>) => void
@@ -526,8 +532,23 @@ const runtimeHelperManifest: Array<RuntimeHelperManifestEntry> = [
 		isBound: (context) =>
 			context.provider
 				? providerExposesExecuteHelperCapabilities(context.provider)
-				: false,
+				: 'integrationGet' in context.capabilityMap,
 		createPrelude: () => createExecuteHelperPrelude(),
+		createKodyTools: (context): AdditionalKodyTools => {
+			const integrationGet = context.capabilityMap.integrationGet as
+				| Capability
+				| undefined
+			if (!integrationGet) return {}
+			return {
+				[INTEGRATION_RUNTIME_CONFIG_TOOL_NAME]: (args) =>
+					readIntegrationRuntimeConfig({
+						env: context.env,
+						callerContext: context.callerContext,
+						integrationGet,
+						args,
+					}),
+			}
+		},
 	},
 	{
 		runtimeName: 'packageStorage',
@@ -539,10 +560,7 @@ const runtimeHelperManifest: Array<RuntimeHelperManifestEntry> = [
 		],
 		unboundNames: [],
 		isBound: (context) => Boolean(context.packageStorageTools),
-		createPrelude: (context) =>
-			createPackageStorageHelperPrelude({
-				writable: context.packageStorageTools?.writable !== false,
-			}),
+		createPrelude: () => createPackageStorageHelperPrelude(),
 		createKodyTools: (context) => {
 			const packageStorageTools = context.packageStorageTools
 			const ownerId = ownerIdFromCaller(context.callerContext)
@@ -552,7 +570,6 @@ const runtimeHelperManifest: Array<RuntimeHelperManifestEntry> = [
 				userId: ownerId,
 				email: entitlementEmailForOwner(context.callerContext, ownerId),
 				grantedPackageIds: packageStorageTools.grantedPackageIds,
-				writable: packageStorageTools.writable,
 				runPackageId: packageStorageTools.runPackageId ?? null,
 			})
 		},

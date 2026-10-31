@@ -1,3 +1,4 @@
+import { type RequestCredential } from '@kody-internal/shared/request-context.ts'
 /**
  * Owner cron enablement for scheduled package jobs.
  *
@@ -13,7 +14,11 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { packageIdFromJobId } from '@kody-internal/shared/jobs/package-job-id.ts'
 import { jobsData, type JobsDataEnv } from '#worker/jobs/jobs-data.ts'
-import { insertEnablement, loadEarliestLiveOwnerId } from './repo.ts'
+import {
+	insertEnablement,
+	loadEarliestLiveOwnerId,
+	updateCronEnablerNarrowing,
+} from './repo.ts'
 import { type EnablementRecord } from './types.ts'
 
 /**
@@ -38,6 +43,9 @@ async function ownerHasCronEnablementRow(input: {
 		.first<{ id: string }>()
 	return row != null
 }
+
+/** What the person turning a trigger on could do with their credential. */
+export type EnablerCredential = Pick<RequestCredential, 'scopes' | 'profileId'>
 
 export type OwnerCronEnablementOutcome =
 	| 'inserted'
@@ -88,6 +96,16 @@ export async function ensureOwnerCronEnablementForJob(input: {
 	packageId?: string | null
 	enablerUserId?: PersonId | string | null
 	now?: string
+	/**
+	 * The credential the enabler used, when they are the person acting now.
+	 * Scheduled runs never exceed it.
+	 */
+	enablerCredential?: EnablerCredential | null
+	/**
+	 * The enabler is turning the job on now: an existing row of theirs takes
+	 * `enablerCredential` as its narrowing instead of keeping the old one.
+	 */
+	refreshEnablerCredential?: boolean
 	/** Runs after a new enablement row is written (for the audit log). */
 	onInserted?: (enablement: EnablementRecord) => Promise<unknown>
 }): Promise<OwnerCronEnablementOutcome> {
@@ -108,6 +126,22 @@ export async function ensureOwnerCronEnablementForJob(input: {
 			enablerUserId: String(enablerUserId),
 		})
 	) {
+		if (
+			input.refreshEnablerCredential &&
+			input.enablerUserId &&
+			input.enablerCredential
+		) {
+			await updateCronEnablerNarrowing({
+				db: input.db,
+				orgId: String(input.orgId),
+				jobId: input.jobId,
+				jobName: input.jobName,
+				enablerUserId: String(enablerUserId),
+				enablerScopes: input.enablerCredential.scopes,
+				enablerProfileId: input.enablerCredential.profileId ?? null,
+				now: input.now,
+			})
+		}
 		return 'already_present'
 	}
 
@@ -120,6 +154,12 @@ export async function ensureOwnerCronEnablementForJob(input: {
 			triggerName: input.jobName,
 			instanceId: input.jobId,
 			enablerUserId: String(enablerUserId),
+			...(input.enablerUserId && input.enablerCredential
+				? {
+						enablerScopes: input.enablerCredential.scopes,
+						enablerProfileId: input.enablerCredential.profileId ?? null,
+					}
+				: {}),
 			origin: 'enabled',
 		},
 		now: input.now,

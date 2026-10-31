@@ -80,6 +80,12 @@ function createSavedPackage(suffix: string): SavedPackageRecord {
 async function seedPreBindingModuleBundle(input: {
 	suffix: string
 	manifest: Record<string, unknown>
+	/**
+	 * Stored main-module body. Defaults to a free-fetch pre-binding shape.
+	 * Pass a packageStorage-only body to cover marker-missing bundles the
+	 * free-fetch heuristic alone would have kept serving.
+	 */
+	bundledEntry?: string
 }) {
 	const db = createDatabase()
 	const bundleKv = createBundleArtifactsKv()
@@ -106,6 +112,9 @@ async function seedPreBindingModuleBundle(input: {
 	})
 	const source = await getEntitySourceById(db, savedPackage.sourceId)
 	if (!source) throw new Error('Expected source row.')
+	const bundledEntry =
+		input.bundledEntry ??
+		'export default async () => { await fetch("https://example.com/"); return { version: "pre-binding-bundle" } }'
 	const kvKey = await persistPublishedBundleArtifact({
 		env: { APP_DB: db, BUNDLE_ARTIFACTS_KV: bundleKv } as Env,
 		userId,
@@ -115,8 +124,7 @@ async function seedPreBindingModuleBundle(input: {
 		entryPoint: 'src/nightly.ts',
 		mainModule: 'dist/bundled-entry.js',
 		modules: {
-			'dist/bundled-entry.js':
-				'export default async () => { await fetch("https://example.com/"); return { version: "pre-binding-bundle" } }',
+			'dist/bundled-entry.js': bundledEntry,
 		},
 		dependencies: [
 			{
@@ -161,6 +169,35 @@ test('a pre-binding module bundle that inlines another package rebuilds before a
 	const modules = Object.values(artifact.modules).join('\n')
 	expect(modules).toContain('userEntrypoint')
 	expect(modules).not.toContain('pre-binding-bundle')
+})
+
+test('a packageStorage-only multi-package module bundle without a binding marker rebuilds for workflow export steps', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const { env, savedPackage } = await seedPreBindingModuleBundle({
+		suffix: 'pre-binding-storage-workflow',
+		manifest: {
+			name: '@kody/pre-binding-storage-workflow',
+			exports: { './nightly': './src/nightly.ts' },
+			kody: {
+				id: 'pre-binding-storage-workflow',
+				description: 'Workflow that only uses packageStorage',
+			},
+		},
+		bundledEntry:
+			'export default async () => { const storage = packageStorage(); return { version: "pre-binding-storage-bundle", value: await storage.get("skill") } }',
+	})
+
+	const { artifact } = await ensureModuleArtifact({
+		env,
+		baseUrl: 'https://kody.dev',
+		savedPackage,
+		selector: { kind: 'export', exportName: 'nightly' },
+		userId,
+	})
+
+	const modules = Object.values(artifact.modules).join('\n')
+	expect(modules).toContain('userEntrypoint')
+	expect(modules).not.toContain('pre-binding-storage-bundle')
 })
 
 test('a pre-binding module bundle whose source needs an npm install keeps serving and logs the republish need', async () => {

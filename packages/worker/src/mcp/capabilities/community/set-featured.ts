@@ -10,6 +10,7 @@ export const communitySetFeaturedCapability = defineDomainCapability(
 	capabilityDomainNames.community,
 	{
 		name: 'communitySetFeatured',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
 			'Admin-only curation: mark a public package as an onboarding starter package, or remove the mark. Featured is editorial placement on /onboarding, not a safety review.',

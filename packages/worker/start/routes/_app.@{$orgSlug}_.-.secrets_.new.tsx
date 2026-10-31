@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { secretsSearch } from '../filter-search.ts'
+import { secretsSearch, withoutTextSearch } from '../filter-search.ts'
 import { secretsInput } from '../secrets-input.ts'
 import { loadPageQuery, createPageQuery, usePageQuery } from '../page-query.ts'
 import { createFileRoute } from '@tanstack/react-router'
@@ -12,13 +12,14 @@ const pageQuery = createPageQuery('loadSecretsPage', loadSecretsPage, {
 
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/secrets_/new')({
 	staticData: {
+		presentationSearchKeys: ['q'],
 		workspaceSwitch: { section: 'secrets', suffix: ['new'] },
 		navigation: { rail: 'workspace', item: 'credentials' },
 		orgScope: { section: 'secrets' },
 	},
 	validateSearch: secretsSearch,
-	loaderDeps: ({ search }) => search,
-	context: ({ params, location }) => ({
+	loaderDeps: ({ search }) => withoutTextSearch(search),
+	beforeLoad: ({ params, location }) => ({
 		pageQueryInput: secretsInput(
 			params.orgSlug,
 			location.searchStr,
@@ -26,6 +27,7 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/secrets_/new')({
 			true,
 		),
 	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,

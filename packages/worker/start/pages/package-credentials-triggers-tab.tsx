@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
 import { type ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import {
@@ -38,7 +39,6 @@ import {
 	renderMappingCell,
 	renderStatus,
 	rowCss,
-	tabBodyCss,
 	tableCss,
 } from './package-credentials-tabs.tsx'
 
@@ -174,7 +174,7 @@ function renderTriggerMappings(
 										need,
 										stored: mapping?.override ?? null,
 										inheritLabel: 'Inherits your default',
-										editable,
+										editable: editable && need.supplier !== 'publisher',
 										trigger,
 									})}
 								</td>
@@ -321,7 +321,7 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 		)
 	}
 	return (
-		<div css={tabBodyCss}>
+		<>
 			{renderIncomplete(context, 'triggers')}
 			<p css={mutedCss}>
 				Each trigger runs as the person who turned it on. A trigger can map its
@@ -458,9 +458,21 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 								</div>
 							</details>
 						) : null}
+						{trigger.canEdit &&
+						(trigger.trigger.kind === 'subscription' ||
+							trigger.trigger.kind === 'webhook') ? (
+							<AutomationExecutionSettings
+								orgSlug={context.orgSlug}
+								target={{
+									kind: trigger.trigger.kind,
+									packageId: context.kodyId,
+									name: trigger.trigger.name,
+								}}
+							/>
+						) : null}
 					</section>
 				)
 			})}
-		</div>
+		</>
 	)
 }

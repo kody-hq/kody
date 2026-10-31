@@ -43,6 +43,7 @@ export const adminSystemEmailGetCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminSystemEmailGet',
+		contextRuns: 'deny',
 		description:
 			'Read one operator-owned system inbox message, including body content and attachment metadata. Admin-only; never reads user-owned email.',
 		keywords: [

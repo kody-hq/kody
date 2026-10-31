@@ -19,6 +19,7 @@ import {
 } from '#worker/credentials/placement-refusal.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
 import { PackageSecretAccessDeniedError } from '#mcp/secrets/package-access.ts'
+import { getWebhookEnablementPresence } from '#worker/enablements/repo.ts'
 import { planEnablementRuns } from '#worker/enablements/run-gate.ts'
 import { jsonResponse } from '#worker/json-response.ts'
 import {
@@ -483,8 +484,16 @@ export async function handleWebhookIngressRequest(
 		urlSecret: route.urlSecret,
 		now: receivedAt,
 	})
-	// Unminted, disabled, wrong secret, or unknown name → indistinguishable 404.
-	if (!matched || !matched.endpoint.enabled) {
+	// Unminted, turned off, wrong secret, or unknown name → indistinguishable 404.
+	if (!matched) {
+		return notFoundResponse()
+	}
+	const enablementPresence = await getWebhookEnablementPresence({
+		db: env.APP_DB,
+		orgId: routeOwner.ownerId,
+		endpointId: matched.endpoint.id,
+	})
+	if (enablementPresence === 'off') {
 		return notFoundResponse()
 	}
 	const liveEndpoint = matched.endpoint
@@ -1095,6 +1104,7 @@ export async function handleWebhookIngressRequest(
 				invocationBody: response.body,
 				startedAt: receivedAt,
 				waitUntil,
+				request: response.request,
 			})
 			return jsonResponse(response.body, { status: 409 })
 		}
@@ -1119,6 +1129,7 @@ export async function handleWebhookIngressRequest(
 			invocationBody: response.body,
 			startedAt: receivedAt,
 			waitUntil,
+			request: response.request,
 		})
 		if (!ok) {
 			return jsonResponse(

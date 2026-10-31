@@ -7,8 +7,11 @@ import {
 	getPublishedBundleArtifactByIdentity,
 	insertPublishedBundleArtifactRow,
 	isPublishedBundleArtifactIdentityConflict,
+	listPublishedBundleArtifactsByIdentities,
 	listStaticDependentBundleArtifactRows,
+	publishedBundleArtifactIdentityKey,
 	upsertPublishedBundleArtifactRow,
+	upsertPublishedBundleArtifactRows,
 } from './published-bundle-artifacts-repo.ts'
 
 function createPublishedBundleArtifactsDb() {
@@ -473,4 +476,614 @@ test('upsertPublishedBundleArtifactRow propagates guarded update failures withou
 	expect(queries).toHaveLength(1)
 	expect(queries[0]).toContain('UPDATE published_bundle_artifacts')
 	expect(queries[0]).toContain('EXISTS')
+})
+
+test('upsertPublishedBundleArtifactRows inserts and updates many identities with a fixed query count', async () => {
+	const db = createPublishedBundleArtifactsDb()
+	const userId = ownerIdFromStored('user-1')
+	await setLivePublishedCommit(db, {
+		userId,
+		sourceId: 'source-1',
+		publishedCommit: 'commit-1',
+	})
+
+	const firstBatch = [
+		artifactRow('module', 'commit-1'),
+		{
+			...artifactRow('importable-module', 'commit-1'),
+			artifactName: './a',
+			entryPoint: 'src/a.ts',
+			kvKey: 'kv:importable:a:commit-1',
+		},
+		{
+			...artifactRow('importable-module', 'commit-1'),
+			artifactName: './b',
+			entryPoint: 'src/b.ts',
+			kvKey: 'kv:importable:b:commit-1',
+		},
+	]
+	const prepareSpy = vi.spyOn(db, 'prepare')
+	const batchSpy = vi.spyOn(db, 'batch')
+	const insertedIds = await upsertPublishedBundleArtifactRows(db, firstBatch)
+	expect(insertedIds).toHaveLength(3)
+	expect(insertedIds.every((id) => typeof id === 'string')).toBe(true)
+
+	const liveCommitSelects = prepareSpy.mock.calls.filter(([query]) => {
+		const sql = String(query)
+		return (
+			sql.includes('FROM entity_sources') &&
+			sql.includes('IN (') &&
+			!sql.includes('INSERT INTO') &&
+			!sql.includes('UPDATE')
+		)
+	})
+	const identitySelects = prepareSpy.mock.calls.filter(([query]) => {
+		const sql = String(query)
+		return (
+			sql.includes('FROM published_bundle_artifacts') &&
+			sql.includes('user_id = ? AND (')
+		)
+	})
+	expect(liveCommitSelects).toHaveLength(1)
+	expect(identitySelects).toHaveLength(1)
+	expect(batchSpy).toHaveBeenCalledTimes(1)
+	prepareSpy.mockRestore()
+	batchSpy.mockRestore()
+
+	await expect(lookup(db, 'module')).resolves.toEqual(
+		expect.objectContaining({
+			publishedCommit: 'commit-1',
+			kvKey: 'kv:module:commit-1',
+		}),
+	)
+	await expect(
+		getPublishedBundleArtifactByIdentity(db, {
+			userId,
+			sourceId: 'source-1',
+			artifactKind: 'importable-module',
+			artifactName: './a',
+			entryPoint: 'src/a.ts',
+		}),
+	).resolves.toEqual(
+		expect.objectContaining({
+			id: insertedIds[1],
+			kvKey: 'kv:importable:a:commit-1',
+		}),
+	)
+
+	const updatedIds = await upsertPublishedBundleArtifactRows(db, [
+		{
+			...firstBatch[0]!,
+			publishedCommit: 'commit-1',
+			kvKey: 'kv:module:commit-1-b',
+			dependenciesJson: '[{"sourceId":"dep-1"}]',
+		},
+		{
+			...firstBatch[1]!,
+			kvKey: 'kv:importable:a:commit-1-b',
+		},
+		{
+			...firstBatch[2]!,
+			kvKey: 'kv:importable:b:commit-1-b',
+		},
+	])
+	expect(updatedIds).toEqual(insertedIds)
+	await expect(lookup(db, 'module')).resolves.toEqual(
+		expect.objectContaining({
+			id: insertedIds[0],
+			kvKey: 'kv:module:commit-1-b',
+			dependenciesJson: '[{"sourceId":"dep-1"}]',
+		}),
+	)
+})
+
+test('upsertPublishedBundleArtifactRows leaves live identities alone for stale commits', async () => {
+	const db = createPublishedBundleArtifactsDb()
+	const userId = ownerIdFromStored('user-1')
+	await setLivePublishedCommit(db, {
+		userId,
+		sourceId: 'source-1',
+		publishedCommit: 'commit-2',
+	})
+	const liveIds = await upsertPublishedBundleArtifactRows(db, [
+		artifactRow('module', 'commit-2'),
+		artifactRow('importable-module', 'commit-2'),
+	])
+	expect(liveIds).toHaveLength(2)
+
+	const staleIds = await upsertPublishedBundleArtifactRows(db, [
+		{
+			...artifactRow('module', 'commit-1'),
+			kvKey: 'kv:module:stale',
+			dependenciesJson: '[{"sourceId":"stale"}]',
+		},
+		{
+			...artifactRow('importable-module', 'commit-1'),
+			kvKey: 'kv:importable:stale',
+			dependenciesJson: '[{"sourceId":"stale"}]',
+		},
+	])
+	expect(staleIds).toEqual(liveIds)
+	await expect(lookup(db, 'module')).resolves.toEqual(
+		expect.objectContaining({
+			id: liveIds[0],
+			publishedCommit: 'commit-2',
+			kvKey: 'kv:module:commit-2',
+			dependenciesJson: '[]',
+		}),
+	)
+	await expect(lookup(db, 'importable-module')).resolves.toEqual(
+		expect.objectContaining({
+			id: liveIds[1],
+			publishedCommit: 'commit-2',
+			kvKey: 'kv:importable:commit-2',
+			dependenciesJson: '[]',
+		}),
+	)
+})
+
+test('upsertPublishedBundleArtifactRows does not insert when live commit moved before gated write', async () => {
+	const db = createPublishedBundleArtifactsDb()
+	const userId = ownerIdFromStored('user-1')
+	await setLivePublishedCommit(db, {
+		userId,
+		sourceId: 'source-1',
+		publishedCommit: 'commit-2',
+	})
+
+	// Prefetch still sees commit-1; guarded INSERT EXISTS reads live commit-2.
+	const guarded = {
+		prepare(query: string) {
+			const stmt = db.prepare(query)
+			return {
+				bind(...values: Array<unknown>) {
+					const bound = stmt.bind(...values)
+					return {
+						async first() {
+							if (
+								query.includes('FROM entity_sources') &&
+								!query.includes('INSERT INTO published_bundle_artifacts') &&
+								query.includes('LIMIT 1')
+							) {
+								return { published_commit: 'commit-1' }
+							}
+							return await bound.first()
+						},
+						async all() {
+							if (
+								query.includes('FROM entity_sources') &&
+								query.includes('IN (')
+							) {
+								return {
+									results: [{ id: 'source-1', published_commit: 'commit-1' }],
+								}
+							}
+							return await bound.all()
+						},
+						run: () => bound.run(),
+					}
+				},
+			}
+		},
+		batch: (statements: Array<D1PreparedStatement>) => db.batch(statements),
+	} as unknown as D1Database
+
+	const ids = await upsertPublishedBundleArtifactRows(guarded, [
+		artifactRow('module', 'commit-1'),
+		artifactRow('importable-module', 'commit-1'),
+	])
+	expect(ids).toEqual([null, null])
+	await expect(lookup(db, 'module')).resolves.toBeNull()
+	await expect(lookup(db, 'importable-module')).resolves.toBeNull()
+})
+
+test('upsertPublishedBundleArtifactRows recovers UNIQUE identity conflicts via single-row fallback', async () => {
+	const db = createPublishedBundleArtifactsDb()
+	const userId = ownerIdFromStored('user-1')
+	await setLivePublishedCommit(db, {
+		userId,
+		sourceId: 'source-1',
+		publishedCommit: 'commit-2',
+	})
+	// Seed the identity so a batched insert plan races the unique index.
+	const liveId = await insertPublishedBundleArtifactRow(
+		db,
+		artifactRow('importable-module', 'commit-1'),
+	)
+
+	const originalBatch = db.batch.bind(db)
+	let batchCalls = 0
+	db.batch = async (statements) => {
+		batchCalls += 1
+		if (batchCalls === 1) {
+			throw new Error(
+				'D1_ERROR: UNIQUE constraint failed: idx_published_bundle_artifacts_source_identity: SQLITE_CONSTRAINT (extended: SQLITE_CONSTRAINT_UNIQUE)',
+			)
+		}
+		return await originalBatch(statements)
+	}
+
+	// Prefetch sees no row (simulate lookup miss), so the plan chooses INSERT.
+	const guarded = {
+		prepare(query: string) {
+			const stmt = db.prepare(query)
+			return {
+				bind(...values: Array<unknown>) {
+					const bound = stmt.bind(...values)
+					return {
+						first: () => bound.first(),
+						async all() {
+							if (
+								query.includes('FROM published_bundle_artifacts') &&
+								query.includes('user_id = ? AND (')
+							) {
+								return { results: [] }
+							}
+							return await bound.all()
+						},
+						run: () => bound.run(),
+					}
+				},
+			}
+		},
+		batch: (statements: Array<D1PreparedStatement>) => db.batch(statements),
+	} as unknown as D1Database
+
+	await expect(
+		upsertPublishedBundleArtifactRows(guarded, [
+			artifactRow('module', 'commit-2'),
+			artifactRow('importable-module', 'commit-2', '[{"sourceId":"dep-1"}]'),
+		]),
+	).resolves.toEqual([expect.any(String), liveId])
+	await expect(lookup(db, 'importable-module')).resolves.toEqual(
+		expect.objectContaining({
+			id: liveId,
+			publishedCommit: 'commit-2',
+			kvKey: 'kv:importable:commit-2',
+			dependenciesJson: '[{"sourceId":"dep-1"}]',
+		}),
+	)
+	await expect(lookup(db, 'module')).resolves.toEqual(
+		expect.objectContaining({
+			publishedCommit: 'commit-2',
+			artifactKind: 'module',
+		}),
+	)
+})
+
+test('upsertPublishedBundleArtifactRows rethrows non-fixture live-commit read failures even when no rows matched yet', async () => {
+	const db = {
+		prepare(query: string) {
+			return {
+				bind() {
+					return {
+						async all() {
+							if (query.includes('FROM entity_sources')) {
+								throw new Error('D1_ERROR: network timeout')
+							}
+							return { results: [] }
+						},
+						async first() {
+							return null
+						},
+						async run() {
+							return { meta: { changes: 0 } }
+						},
+					}
+				},
+			}
+		},
+		async batch() {
+			return []
+		},
+	} as unknown as D1Database
+
+	await expect(
+		upsertPublishedBundleArtifactRows(db, [
+			artifactRow('module', 'commit-1'),
+			artifactRow('importable-module', 'commit-1'),
+		]),
+	).rejects.toThrow('D1_ERROR: network timeout')
+})
+
+test('upsertPublishedBundleArtifactRows does not treat a mid-batch live-commit read failure as null live commits', async () => {
+	const db = createPublishedBundleArtifactsDb()
+	const userId = ownerIdFromStored('user-1')
+	await setLivePublishedCommit(db, {
+		userId,
+		sourceId: 'source-1',
+		publishedCommit: 'commit-live',
+	})
+	await setLivePublishedCommit(db, {
+		userId,
+		sourceId: 'source-2',
+		publishedCommit: 'commit-live',
+	})
+
+	let entitySourceSelects = 0
+	const guarded = {
+		prepare(query: string) {
+			const stmt = db.prepare(query)
+			return {
+				bind(...values: Array<unknown>) {
+					const bound = stmt.bind(...values)
+					return {
+						first: () => bound.first(),
+						async all() {
+							if (
+								query.includes('FROM entity_sources') &&
+								query.includes('IN (')
+							) {
+								entitySourceSelects += 1
+								if (entitySourceSelects === 1) {
+									return await bound.all()
+								}
+								throw new Error('D1_ERROR: network timeout')
+							}
+							return await bound.all()
+						},
+						run: () => bound.run(),
+					}
+				},
+			}
+		},
+		batch: (statements: Array<D1PreparedStatement>) => db.batch(statements),
+	} as unknown as D1Database
+
+	// Force two live-commit chunks so the second can fail after the first lands.
+	const many = Array.from({ length: 100 }, (_, index) => ({
+		...artifactRow('module', 'commit-stale'),
+		sourceId: `source-${index + 1}`,
+		artifactName: `./export-${index}`,
+		entryPoint: `src/export-${index}.ts`,
+		kvKey: `kv:export-${index}`,
+	}))
+	await expect(
+		upsertPublishedBundleArtifactRows(guarded, many),
+	).rejects.toThrow('D1_ERROR: network timeout')
+	await expect(lookup(db, 'module')).resolves.toBeNull()
+})
+
+test('upsertPublishedBundleArtifactRows preserves COALESCE null-vs-empty artifact_name and last-write-wins without entity_sources', async () => {
+	const db = createPublishedBundleArtifactsDb()
+	// No entity_sources row → liveCommit null → unguarded last-write-wins.
+	const ids = await upsertPublishedBundleArtifactRows(db, [
+		{
+			...artifactRow('module', 'commit-1'),
+			artifactName: null,
+			entryPoint: 'src/default.ts',
+			kvKey: 'kv:null-name',
+		},
+		{
+			...artifactRow('module', 'commit-1'),
+			artifactName: '',
+			entryPoint: 'src/default.ts',
+			kvKey: 'kv:empty-name-should-collide',
+		},
+	])
+	expect(ids[0]).toBe(ids[1])
+	await expect(
+		getPublishedBundleArtifactByIdentity(db, {
+			userId: ownerIdFromStored('user-1'),
+			sourceId: 'source-1',
+			artifactKind: 'module',
+			artifactName: null,
+			entryPoint: 'src/default.ts',
+		}),
+	).resolves.toEqual(
+		expect.objectContaining({
+			id: ids[0],
+			kvKey: 'kv:empty-name-should-collide',
+		}),
+	)
+})
+
+test('listPublishedBundleArtifactsByIdentities matches single-identity lookups including COALESCE null-vs-empty artifact_name', async () => {
+	const db = createPublishedBundleArtifactsDb()
+	const userId = ownerIdFromStored('user-1')
+	const now = '2026-10-24T00:00:00.000Z'
+	await db
+		.prepare(
+			`INSERT INTO published_bundle_artifacts (
+				id, user_id, source_id, published_commit, artifact_kind, artifact_name,
+				entry_point, kv_key, dependencies_json, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		)
+		.bind(
+			'row-null-name',
+			userId,
+			'source-null',
+			'commit-1',
+			'module',
+			null,
+			'src/default.ts',
+			'kv:null',
+			'[]',
+			now,
+			now,
+		)
+		.run()
+	await db
+		.prepare(
+			`INSERT INTO published_bundle_artifacts (
+				id, user_id, source_id, published_commit, artifact_kind, artifact_name,
+				entry_point, kv_key, dependencies_json, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		)
+		.bind(
+			'row-empty-name',
+			userId,
+			'source-empty',
+			'commit-1',
+			'module',
+			'',
+			'src/empty.ts',
+			'kv:empty',
+			'[]',
+			now,
+			now,
+		)
+		.run()
+	await db
+		.prepare(
+			`INSERT INTO published_bundle_artifacts (
+				id, user_id, source_id, published_commit, artifact_kind, artifact_name,
+				entry_point, kv_key, dependencies_json, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		)
+		.bind(
+			'row-named',
+			userId,
+			'source-named',
+			'commit-1',
+			'module',
+			'./notes',
+			'src/notes.ts',
+			'kv:named',
+			'[]',
+			now,
+			now,
+		)
+		.run()
+
+	const identities = [
+		{
+			sourceId: 'source-null',
+			artifactKind: 'module',
+			artifactName: null,
+			entryPoint: 'src/default.ts',
+		},
+		{
+			sourceId: 'source-null',
+			artifactKind: 'module',
+			artifactName: '',
+			entryPoint: 'src/default.ts',
+		},
+		{
+			sourceId: 'source-empty',
+			artifactKind: 'module',
+			artifactName: null,
+			entryPoint: 'src/empty.ts',
+		},
+		{
+			sourceId: 'source-empty',
+			artifactKind: 'module',
+			artifactName: '',
+			entryPoint: 'src/empty.ts',
+		},
+		{
+			sourceId: 'source-named',
+			artifactKind: 'module',
+			artifactName: './notes',
+			entryPoint: 'src/notes.ts',
+		},
+		{
+			sourceId: 'source-missing',
+			artifactKind: 'module',
+			artifactName: './gone',
+			entryPoint: 'src/gone.ts',
+		},
+	] as const
+
+	for (const identity of identities) {
+		const single = await getPublishedBundleArtifactByIdentity(db, {
+			userId,
+			...identity,
+		})
+		const batched = await listPublishedBundleArtifactsByIdentities(db, {
+			userId,
+			identities: [identity],
+		})
+		expect(
+			batched.get(publishedBundleArtifactIdentityKey(identity)) ?? null,
+		).toEqual(single)
+	}
+
+	const prepareSpy = vi.spyOn(db, 'prepare')
+	const batched = await listPublishedBundleArtifactsByIdentities(db, {
+		userId,
+		identities: [...identities],
+	})
+	const identitySelects = prepareSpy.mock.calls.filter(([query]) =>
+		String(query).includes('FROM published_bundle_artifacts'),
+	)
+	expect(identitySelects).toHaveLength(1)
+	prepareSpy.mockRestore()
+
+	expect(
+		batched.get(publishedBundleArtifactIdentityKey(identities[0])),
+	).toEqual(
+		expect.objectContaining({ id: 'row-null-name', artifactName: null }),
+	)
+	expect(
+		batched.get(publishedBundleArtifactIdentityKey(identities[1])),
+	).toEqual(
+		expect.objectContaining({ id: 'row-null-name', artifactName: null }),
+	)
+	expect(
+		batched.get(publishedBundleArtifactIdentityKey(identities[2])),
+	).toEqual(expect.objectContaining({ id: 'row-empty-name', artifactName: '' }))
+	expect(
+		batched.get(publishedBundleArtifactIdentityKey(identities[3])),
+	).toEqual(expect.objectContaining({ id: 'row-empty-name', artifactName: '' }))
+	expect(
+		batched.get(publishedBundleArtifactIdentityKey(identities[4])),
+	).toEqual(
+		expect.objectContaining({ id: 'row-named', artifactName: './notes' }),
+	)
+	expect(batched.has(publishedBundleArtifactIdentityKey(identities[5]))).toBe(
+		false,
+	)
+})
+
+test('listPublishedBundleArtifactsByIdentities issues a fixed number of queries regardless of identity count within the bind cap', async () => {
+	const db = createPublishedBundleArtifactsDb()
+	const userId = ownerIdFromStored('user-1')
+	const now = '2026-10-24T00:00:00.000Z'
+	const identities = Array.from({ length: 6 }, (_, index) => ({
+		sourceId: `source-${index}`,
+		artifactKind: 'module',
+		artifactName: `./optional-${index}`,
+		entryPoint: `src/optional-${index}.ts`,
+	}))
+	for (const [index, identity] of identities.entries()) {
+		await db
+			.prepare(
+				`INSERT INTO published_bundle_artifacts (
+					id, user_id, source_id, published_commit, artifact_kind, artifact_name,
+					entry_point, kv_key, dependencies_json, created_at, updated_at
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.bind(
+				`row-${index}`,
+				userId,
+				identity.sourceId,
+				'commit-1',
+				identity.artifactKind,
+				identity.artifactName,
+				identity.entryPoint,
+				`kv:${index}`,
+				'[]',
+				now,
+				now,
+			)
+			.run()
+	}
+
+	const prepareSpy = vi.spyOn(db, 'prepare')
+	const batched = await listPublishedBundleArtifactsByIdentities(db, {
+		userId,
+		identities,
+	})
+	const identitySelects = prepareSpy.mock.calls.filter(([query]) =>
+		String(query).includes('FROM published_bundle_artifacts'),
+	)
+	expect(identitySelects).toHaveLength(1)
+	expect(batched.size).toBe(6)
+	for (const [index, identity] of identities.entries()) {
+		expect(batched.get(publishedBundleArtifactIdentityKey(identity))).toEqual(
+			expect.objectContaining({ id: `row-${index}` }),
+		)
+	}
+	prepareSpy.mockRestore()
 })

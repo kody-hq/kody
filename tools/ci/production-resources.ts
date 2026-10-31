@@ -49,6 +49,8 @@ type ResolvedProductionBindings = {
 	d1ConfiguredId: string
 	auditD1DatabaseName: string
 	auditD1ConfiguredId: string
+	jobsD1DatabaseName?: string
+	jobsD1ConfiguredId?: string
 	oauthKvTitle: string
 	oauthKvConfiguredId: string
 	bundleArtifactsKvTitle: string
@@ -398,6 +400,24 @@ async function resolveProductionBindings({
 	const auditD1ConfiguredId =
 		typeof auditD1Entry.database_id === 'string' ? auditD1Entry.database_id : ''
 
+	const jobsD1Entry = d1Databases.find((entry) => {
+		if (!entry || typeof entry !== 'object') return false
+		return (entry as Record<string, unknown>).binding === 'JOBS_DB'
+	}) as Record<string, unknown> | undefined
+	let jobsD1DatabaseName: string | undefined
+	let jobsD1ConfiguredId = ''
+	if (jobsD1Entry) {
+		const name = jobsD1Entry.database_name
+		if (typeof name !== 'string' || name.length === 0) {
+			fail(
+				`wrangler config "${wranglerConfigPath}" is missing "database_name" for production "JOBS_DB".`,
+			)
+		}
+		jobsD1DatabaseName = name
+		jobsD1ConfiguredId =
+			typeof jobsD1Entry.database_id === 'string' ? jobsD1Entry.database_id : ''
+	}
+
 	const kvNamespaces = (productionEnv as Record<string, unknown>).kv_namespaces
 	if (!Array.isArray(kvNamespaces)) {
 		fail(
@@ -570,6 +590,8 @@ async function resolveProductionBindings({
 		d1ConfiguredId,
 		auditD1DatabaseName,
 		auditD1ConfiguredId,
+		jobsD1DatabaseName,
+		jobsD1ConfiguredId,
 		oauthKvTitle,
 		oauthKvConfiguredId,
 		bundleArtifactsKvTitle,
@@ -609,6 +631,14 @@ async function ensureProductionResources(options: CliOptions) {
 		location: options.d1Location,
 		dryRun: options.dryRun,
 	})
+	const jobsD1 = bindings.jobsD1DatabaseName
+		? await ensureD1Database({
+				name: bindings.jobsD1DatabaseName,
+				configuredId: bindings.jobsD1ConfiguredId ?? '',
+				location: options.d1Location,
+				dryRun: options.dryRun,
+			})
+		: null
 	const oauthKv = ensureKvNamespace({
 		title: bindings.oauthKvTitle,
 		configuredId: bindings.oauthKvConfiguredId,
@@ -856,6 +886,12 @@ async function ensureProductionResources(options: CliOptions) {
 		d1DatabaseId: d1.id,
 		auditD1DatabaseName: auditD1.name,
 		auditD1DatabaseId: auditD1.id,
+		...(jobsD1
+			? {
+					jobsD1DatabaseName: jobsD1.name,
+					jobsD1DatabaseId: jobsD1.id,
+				}
+			: {}),
 		oauthKvId: oauthKv.id,
 		bundleArtifactsKvId: bundleArtifactsKv.id,
 		communityAssetsBucketName: communityAssets.name,
@@ -936,6 +972,10 @@ async function ensureProductionResources(options: CliOptions) {
 	console.log(`d1_database_id=${d1.id}`)
 	console.log(`audit_d1_database_name=${auditD1.name}`)
 	console.log(`audit_d1_database_id=${auditD1.id}`)
+	if (jobsD1) {
+		console.log(`jobs_d1_database_name=${jobsD1.name}`)
+		console.log(`jobs_d1_database_id=${jobsD1.id}`)
+	}
 	console.log(`oauth_kv_title=${oauthKv.title}`)
 	console.log(`oauth_kv_id=${oauthKv.id}`)
 	console.log(`bundle_artifacts_kv_title=${bundleArtifactsKv.title}`)

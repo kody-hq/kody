@@ -253,7 +253,7 @@ test('metaGetCurrentUser never answers with the owner email; email consent retur
 
 	const withoutConsent = await identity()
 	expect(withoutConsent.user_id).toBe(t.visitors.bea.userId)
-	expect(withoutConsent).not.toHaveProperty('email')
+	expect(withoutConsent.email).toBe('')
 	expect(withoutConsent.role).toBe('member')
 
 	await upsertPackageAppOauthGrant({

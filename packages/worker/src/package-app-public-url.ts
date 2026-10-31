@@ -4,17 +4,18 @@ import {
 	buildPackageAppSubdomainUrl,
 } from '@kody-internal/shared/public-urls.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
-import { isPackageAppCustomDomainsEnabled } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import { lookupVerifiedAppCustomHostnameForPackage } from '#worker/package-app-custom-hostnames/lookup.ts'
 
 /**
  * Where a browser should open a hosted package app when it does not need a
- * kody.codes session handoff.
+ * kody.codes session handoff (and the hosted target for `/open` handoff).
  *
- * App-level custom hostnames win. Otherwise this is the per-user `kody.run`
- * subdomain. Org-level custom hostnames are session-gated and are not a public
- * origin. Returns null when this deployment serves package apps inline on the
- * app origin (no `PACKAGE_APP_BASE_URL`).
+ * A verified app-level custom hostname wins (both hostname and certificate
+ * active; lexicographically smallest when several qualify). Pending hostnames
+ * never win. Otherwise this is the per-user `kody.run` subdomain. Org-level
+ * custom hostnames are session-gated and are not a public origin. Returns null
+ * when this deployment serves package apps inline on the app origin (no
+ * `PACKAGE_APP_BASE_URL`).
  */
 export type PublicPackageAppLocation = {
 	hostedUrl: string
@@ -65,7 +66,6 @@ async function verifiedAppCustomOrigin(input: {
 	kodyId: string
 }): Promise<string | null> {
 	try {
-		if (!(await isPackageAppCustomDomainsEnabled(input.env.APP_DB))) return null
 		const mapping = await lookupVerifiedAppCustomHostnameForPackage({
 			db: input.env.APP_DB,
 			username: input.username,

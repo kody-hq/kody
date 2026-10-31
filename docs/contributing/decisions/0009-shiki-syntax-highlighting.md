@@ -1,6 +1,8 @@
 # 0009: Shiki for in-app syntax highlighting
 
-- **Status:** accepted
+- **Status:** superseded, the app now uses TanStack Highlight with a selective
+  language registry in `kody-highlight`, and TanStack Markdown for parsing.
+  Serializable spans, escaped JSX, and light/dark themes stay in place.
 - **Date:** 2026-08-06
 
 ## Context

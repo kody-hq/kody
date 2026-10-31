@@ -99,13 +99,18 @@ function mapRow(row: Record<string, unknown>): JobRow {
 			row['params_json'] == null ? null : String(row['params_json']),
 			undefined,
 		),
-		schedule: parseJsonWithFallback<JobRecord['schedule']>(
-			String(row['schedule_json']),
-			{
-				type: 'once',
-				runAt: String(row['next_run_at']),
-			},
-		),
+		schedule: (() => {
+			const schedule = parseJsonWithFallback<JobRecord['schedule'] | null>(
+				String(row['schedule_json']),
+				null,
+			)
+			if (!schedule) {
+				throw new Error(
+					`Job "${jobId}" has an invalid schedule_json; expected a cron or interval schedule.`,
+				)
+			}
+			return schedule
+		})(),
 		timezone: String(row['timezone']),
 		enabled: Number(row['enabled']) === 1,
 		killSwitchEnabled: Number(row['kill_switch_enabled']) === 1,
@@ -425,7 +430,6 @@ export async function listStuckSkippedJobRowsPage(
 				AND enabled = 1
 				AND kill_switch_enabled = 0
 				AND (expires_at IS NULL OR expires_at > ?)
-				AND json_extract(schedule_json, '$.type') != 'once'
 				AND last_completed_scheduled_for IS NOT NULL
 				AND last_completed_scheduled_for = COALESCE(retry_scheduled_for, next_run_at)
 			ORDER BY id ASC
@@ -656,6 +660,47 @@ export async function retryClaimedJobRow(input: {
  * Refresh package-owned execution identity without disturbing an in-flight
  * scheduler claim or recomputing the next occurrence.
  */
+/**
+ * Records a Run now outcome without rewriting the job's settings. Run now can
+ * execute for minutes, so it must not save the row it read before running:
+ * that would undo a turn-off, an edit, or a publish that landed meanwhile.
+ * `next_run_at` moves only when the schedule is still the one it ran under.
+ */
+export async function recordJobRunNowOutcomeRow(input: {
+	db: D1Database
+	userId: string
+	jobId: string
+	lastRunAt: string
+	lastRunStatus: JobRecord['lastRunStatus']
+	updatedAt: string
+	nextRunAt: string
+	scheduleJson: string
+	timezone: string
+}) {
+	const result = await input.db
+		.prepare(
+			`UPDATE jobs SET
+				last_run_at = ?, last_run_status = ?, updated_at = ?,
+				next_run_at = CASE
+					WHEN schedule_json = ? AND timezone = ? THEN ?
+					ELSE next_run_at
+				END
+			WHERE id = ? AND user_id = ?`,
+		)
+		.bind(
+			input.lastRunAt,
+			input.lastRunStatus ?? null,
+			input.updatedAt,
+			input.scheduleJson,
+			input.timezone,
+			input.nextRunAt,
+			input.jobId,
+			input.userId,
+		)
+		.run()
+	return (result.meta.changes ?? 0) > 0
+}
+
 export async function refreshPackageJobRowIdentity(input: {
 	db: D1Database
 	userId: string

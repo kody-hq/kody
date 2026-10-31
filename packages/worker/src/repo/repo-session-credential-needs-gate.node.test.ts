@@ -15,6 +15,7 @@ import type * as StorageBuckets from '#worker/storage-buckets/service.ts'
 import type * as CredentialNeedsApproval from '#worker/credentials/credential-needs-approval.ts'
 import {
 	repoSessionMockModule as mockModule,
+	publishedBundleArtifactsRepoSessionMocks,
 	checkedPublishState,
 	createDurableObjectState,
 	createEnv,
@@ -252,21 +253,7 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', async () => {
 	)
 	return {
 		...actual,
-		isPublishedPackageArtifactBuiltForCommit: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.isPublishedPackageArtifactBuiltForCommit
-			>
-		) => mockModule.isPublishedPackageArtifactBuiltForCommit(...args),
-		persistPublishedPackageArtifactTarget: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.persistPublishedPackageArtifactTarget
-			>
-		) => mockModule.persistPublishedPackageArtifactTarget(...args),
-		deletePublishedArtifactsForSource: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.deletePublishedArtifactsForSource
-			>
-		) => mockModule.deletePublishedArtifactsForSource(...args),
+		...publishedBundleArtifactsRepoSessionMocks(mockModule),
 	}
 })
 

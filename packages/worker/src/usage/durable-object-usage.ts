@@ -34,6 +34,9 @@ type PendingDurableObjectUsage = {
 	eventCount: number
 	/** Package id when known; empty string coalesces with unset (Ad hoc). */
 	packageId: string
+	packageAppVisitorUserId?: string
+	/** The app's owning org when `userId` is a visiting org (ADR 0095). */
+	packageAppOwnerOrgId?: string
 	/** First queued event in this bucket; the flush writes this timestamp. */
 	timestamp: string
 }
@@ -150,6 +153,8 @@ export function queueDurableObjectRowsRead(input: {
 	rowsRead: number
 	outcome?: UsageOutcome
 	packageId?: string | null
+	packageAppVisitorUserId?: string
+	packageAppOwnerOrgId?: string
 }): void {
 	try {
 		if (!input.userId) return
@@ -157,6 +162,7 @@ export function queueDurableObjectRowsRead(input: {
 		const rowsRead = Math.trunc(input.rowsRead)
 		const outcome = input.outcome ?? 'success'
 		const packageId = input.packageId?.trim() || ''
+		const packageAppVisitorUserId = input.packageAppVisitorUserId
 		if (!input.env.USAGE_EVENTS) {
 			recordUsage(input.env, {
 				userId: input.userId,
@@ -165,6 +171,12 @@ export function queueDurableObjectRowsRead(input: {
 				eventCount: rowsRead,
 				outcome,
 				...(packageId ? { packageId } : {}),
+				...(packageAppVisitorUserId !== undefined
+					? { packageAppVisitorUserId }
+					: {}),
+				...(input.packageAppOwnerOrgId
+					? { packageAppOwnerOrgId: input.packageAppOwnerOrgId }
+					: {}),
 			}).catch((error: unknown) => {
 				console.debug('durable-object-rows-read-failed', error)
 			})
@@ -179,6 +191,8 @@ export function queueDurableObjectRowsRead(input: {
 			durationMs: 0,
 			units: rowsRead,
 			packageId,
+			packageAppVisitorUserId,
+			packageAppOwnerOrgId: input.packageAppOwnerOrgId,
 		})
 	} catch (error) {
 		console.debug('durable-object-rows-read-failed', error)
@@ -194,13 +208,21 @@ function queueDurableObjectUsage(input: {
 	durationMs: number
 	units: number
 	packageId?: string
+	packageAppVisitorUserId?: string
+	packageAppOwnerOrgId?: string
 }) {
 	const timestamp = new Date().toISOString()
 	// Buckets never span a UTC month, so a burst that crosses midnight on the
 	// last day cannot move earlier units into the next month's rollup.
 	const month = timestamp.slice(0, 'YYYY-MM'.length)
 	const packageId = input.packageId?.trim() || ''
-	const key = `${input.eventType}\0${input.userId}\0${input.doClass}\0${input.outcome}\0${month}\0${packageId}`
+	const packageAppVisitorUserId = input.packageAppVisitorUserId
+	const visitorKey =
+		packageAppVisitorUserId === undefined
+			? ''
+			: `visitor:${packageAppVisitorUserId}`
+	const ownerOrgId = input.packageAppOwnerOrgId?.trim() || ''
+	const key = `${input.eventType}\0${input.userId}\0${input.doClass}\0${input.outcome}\0${month}\0${packageId}\0${visitorKey}\0${ownerOrgId}`
 	const existing = pendingByKey.get(key)
 	if (existing) {
 		existing.durationMs += input.durationMs
@@ -215,6 +237,10 @@ function queueDurableObjectUsage(input: {
 			durationMs: input.durationMs,
 			eventCount: input.units,
 			packageId,
+			...(packageAppVisitorUserId !== undefined
+				? { packageAppVisitorUserId }
+				: {}),
+			...(ownerOrgId ? { packageAppOwnerOrgId: ownerOrgId } : {}),
 			timestamp,
 		})
 	}
@@ -276,6 +302,12 @@ async function flushQueuedDurableObjectUsage() {
 				outcome: bucket.outcome,
 				timestamp: bucket.timestamp,
 				...(bucket.packageId ? { packageId: bucket.packageId } : {}),
+				...(bucket.packageAppVisitorUserId !== undefined
+					? { packageAppVisitorUserId: bucket.packageAppVisitorUserId }
+					: {}),
+				...(bucket.packageAppOwnerOrgId
+					? { packageAppOwnerOrgId: bucket.packageAppOwnerOrgId }
+					: {}),
 			}),
 		),
 	).then(() => undefined)

@@ -8,6 +8,10 @@ export function adminUsersFilters(search: Record<string, unknown>) {
 		query: searchText(search.q)?.trim() ?? '',
 		role: searchText(search.role)?.trim() ?? '',
 		verification: searchText(search.verification)?.trim() ?? '',
+		status:
+			searchText(search.status) === 'deleted'
+				? ('deleted' as const)
+				: ('live' as const),
 		pageSize:
 			Number.isFinite(pageSize) && pageSize > 0 ? Math.min(pageSize, 100) : 20,
 	}
@@ -29,6 +33,7 @@ export function adminUsersSearch(search: Record<string, unknown>) {
 		q: searchText(search.q),
 		role: searchText(search.role),
 		verification: searchText(search.verification),
+		status: adminUsersFilters(search).status,
 		selected: searchText(search.selected),
 		pageSize: adminUsersFilters(search).pageSize,
 	}

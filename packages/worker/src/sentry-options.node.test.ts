@@ -16,6 +16,7 @@ import {
 import { type EntitySourceRow } from './repo/types.ts'
 import { isUserCodeError, UserCodeError } from './user-code-error.ts'
 import {
+	agentsSdkSqlErrorMessagePrefix,
 	buildSentryOptions,
 	cloudflareArtifactsOpaqueInternalErrorMessage,
 	cloudflareOpaqueInternalErrorMessage,
@@ -83,12 +84,24 @@ function packageSourceForSentry(
 
 test('filterSentryEvent drops expected platform and caller noise and keeps real errors', () => {
 	// Isolate resource-limit resets are the only DO resets that isolated
-	// artifact rebuild / check phases treat as retryable.
+	// artifact rebuild / check phases remap to actionable "package too large"
+	// outcomes (they must not be retried as if they were deploy blips).
 	expect(
 		isDurableObjectIsolateResourceLimitResetMessage(
 			noPeriod(durableObjectSqliteOutOfMemoryMessage),
 		),
 	).toBe(true)
+	// KODY-B9: Agents SDK SqlError prefix still classifies as resource-limit.
+	expect(
+		isDurableObjectIsolateResourceLimitResetMessage(
+			`${agentsSdkSqlErrorMessagePrefix} ${noPeriod(durableObjectSqliteOutOfMemoryMessage)}`,
+		),
+	).toBe(true)
+	expect(
+		isDurableObjectIsolateResourceLimitResetMessage(
+			`${agentsSdkSqlErrorMessagePrefix} database is locked: SQLITE_BUSY`,
+		),
+	).toBe(false)
 	expect(
 		[
 			durableObjectCodeUpdatedResetMessage,
@@ -180,6 +193,9 @@ test('filterSentryEvent drops expected platform and caller noise and keeps real 
 		// timeout / storage object-reset / instance-inactive RPC close).
 		durableObjectIsolateMemoryResetMessage,
 		`Error: ${noPeriod(durableObjectSqliteOutOfMemoryMessage)}`,
+		// KODY-B9: Agents SDK SqlError wraps the bare DO SQLite OOM.
+		`${agentsSdkSqlErrorMessagePrefix} ${noPeriod(durableObjectSqliteOutOfMemoryMessage)}`,
+		`${agentsSdkSqlErrorMessagePrefix} ${durableObjectSqliteOutOfMemoryMessage}`,
 		noPeriod(durableObjectCodeUpdatedResetMessage),
 		// KODY-A9: D1 bindings surface DO isolate platform-resets under D1_ERROR:.
 		`D1_ERROR: ${durableObjectCodeUpdatedResetMessage}`,
@@ -240,6 +256,11 @@ test('filterSentryEvent drops expected platform and caller noise and keeps real 
 		`Error: ${executorSandboxTimeoutMessage}`,
 		`packagePublishExternalPush could not recover after 3 transient Durable Object reset attempts: ${durableObjectIsolateMemoryResetMessage}`,
 		`UserMeter acquireWriteLease failed after retries: ${durableObjectSqliteOutOfMemoryMessage}`,
+		// KODY-B9 negatives: Agents SqlError with unrelated SQLITE_* / SQL text,
+		// and recovery wraps that embed the SqlError OOM sentence, stay visible.
+		`${agentsSdkSqlErrorMessagePrefix} database is locked: SQLITE_BUSY`,
+		`${agentsSdkSqlErrorMessagePrefix} UNIQUE constraint failed: cf_agents_state.id`,
+		`serveMcp could not recover after retries: ${agentsSdkSqlErrorMessagePrefix} ${noPeriod(durableObjectSqliteOutOfMemoryMessage)}`,
 		`rebuildPublishedPackageArtifactsViaRepoSession could not recover after 3 transient platform error attempts: Package source publish succeeded, but bundle artifact rebuild failed for source "source-1" at commit "commit-1". Succeeded: none. Failed: ${durableObjectCodeUpdatedResetMessage} Re-run the publish capability to repair artifacts.`,
 		'Internal error in Durable Object storage caused object to be reset',
 		'D1_ERROR: Internal error in Durable Object storage caused object to be reset',
@@ -366,6 +387,35 @@ test('filterSentryEvent drops expected platform and caller noise and keeps real 
 	]) {
 		expect(filterSentryEvent(event)).toBe(event)
 	}
+
+	// KODY-B9: production MCP Agent chain — SqlError outer + bare SQLITE_NOMEM
+	// inner. Both normalize to the DO SQLite OOM reset, so the all-messages
+	// rule drops the event. A recovery outer around the same SqlError stays.
+	const agentsSdkSqliteNomem = `${agentsSdkSqlErrorMessagePrefix} ${noPeriod(durableObjectSqliteOutOfMemoryMessage)}`
+	const bareSqliteNomem = noPeriod(durableObjectSqliteOutOfMemoryMessage)
+	expect(
+		filterSentryEvent(
+			exceptionEvent(
+				{ type: 'SqlError', value: agentsSdkSqliteNomem },
+				{ type: 'Error', value: bareSqliteNomem },
+			),
+		),
+	).toBeNull()
+	const recoveryAroundAgentsSdkNomem = exceptionEvent(
+		`serveMcp could not recover after retries: ${agentsSdkSqliteNomem}`,
+		agentsSdkSqliteNomem,
+	)
+	expect(filterSentryEvent(recoveryAroundAgentsSdkNomem)).toBe(
+		recoveryAroundAgentsSdkNomem,
+	)
+	const agentsSdkBusyChain = exceptionEvent(
+		{
+			type: 'SqlError',
+			value: `${agentsSdkSqlErrorMessagePrefix} database is locked: SQLITE_BUSY`,
+		},
+		{ type: 'Error', value: 'database is locked: SQLITE_BUSY' },
+	)
+	expect(filterSentryEvent(agentsSdkBusyChain)).toBe(agentsSdkBusyChain)
 
 	// User-code errors drop via the typed originalException (including causes).
 	const userCodeEvent = exceptionEvent({

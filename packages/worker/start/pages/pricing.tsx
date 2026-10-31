@@ -135,18 +135,9 @@ const limitGroups: ReadonlyArray<LimitGroup> = [
 	},
 ]
 
-export function PricingPage({
-	isSignedIn,
-	showImprovedSearch,
-}: {
-	isSignedIn: boolean
-	showImprovedSearch: boolean
-}) {
+export function PricingPage({ isSignedIn }: { isSignedIn: boolean }) {
 	const { session } = useShellData()
 	const signedOutCta = publicSignupPrimaryCta()
-	const improvedSearchNote = showImprovedSearch
-		? ' Improved search when the candidate pool is ambiguous.'
-		: ''
 	return (
 		<section css={pricingCss}>
 			<header css={pageHeadCss}>
@@ -202,7 +193,7 @@ export function PricingPage({
 					<p css={planCopyCss}>
 						Same {factoryGuideLink()}. More room for jobs, workflows, and daily
 						volume, with a monthly include. Need more? Add prepaid credits.
-						{improvedSearchNote}
+						Improved search when the candidate pool is ambiguous.
 					</p>
 					{renderPaidPlanCta(
 						isSignedIn,

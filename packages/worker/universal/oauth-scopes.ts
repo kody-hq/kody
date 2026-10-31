@@ -72,6 +72,8 @@ export function buildChangeIntegrationScopesPrompt(input: {
 	platform: boolean
 	currentScopes: ReadonlyArray<string> | null | undefined
 	allowedScopes?: ReadonlyArray<string> | null
+	/** Team org that owns the connection; omit for the personal org. */
+	orgSlug?: string | null
 }): string {
 	const name = input.name.trim() || 'this'
 	const current = uniqueOauthScopes(input.currentScopes)
@@ -79,7 +81,8 @@ export function buildChangeIntegrationScopesPrompt(input: {
 		current.length > 0
 			? current.map((scope) => `\`${scope}\``).join(', ')
 			: 'none'
-	const reconnectHref = `/connect/oauth?provider=${encodeURIComponent(name)}`
+	const orgSlug = input.orgSlug?.trim()
+	const reconnectHref = `/connect/oauth?provider=${encodeURIComponent(name)}${orgSlug ? `&org=${encodeURIComponent(orgSlug)}` : ''}`
 	if (input.platform) {
 		return [
 			`The "${name}" connection is a built-in (platform) integration that is being retired.`,

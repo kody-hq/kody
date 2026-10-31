@@ -1,9 +1,19 @@
 import {
+	resolvePinnedConnectClientSecret,
+	resolvePinnedConnectTarget,
+	savePinnedConnection,
+} from '#worker/integrations/pinned-connect.ts'
+import {
 	type SaveSecretInput,
 	type SaveOAuthAppInput,
 	type ConnectOAuthInput,
 	type ExchangeOAuthTokenInput,
 } from '#universal/secret-mutations.ts'
+import {
+	fillPlacementOptInFromPlacement,
+	readFillPlacementOptIn,
+	type FillPlacementOptIn,
+} from '#worker/credentials/fill-placement-opt-ins.ts'
 import {
 	getSecretContextForAccountSecret,
 	listAccountSecrets,
@@ -14,6 +24,12 @@ import {
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { buildConnectOauthNextSteps } from '#worker/integrations/connect-oauth-next-steps.ts'
 import { operationResult } from '#app/operation-result.ts'
+import {
+	authorizeSecret,
+	authorizeSecretSet,
+	type SecretAuthorizationContext,
+} from '#mcp/capabilities/secrets/authorize-secret.ts'
+import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import {
 	canonicalIntegrationName,
 	integrationConfigSchema,
@@ -40,6 +56,8 @@ import {
 	type SaveSecretCredential,
 	setSecretAllowedHosts,
 	setSecretAllowedPackages,
+	setSecretsAllowedHosts,
+	setSecretsAllowedPackages,
 } from '#mcp/secrets/service.ts'
 import { type SecretScope } from '#mcp/secrets/types.ts'
 import {
@@ -86,7 +104,10 @@ import {
 	assertScopesAllowedForPlatformApp,
 	findOauthAppForProviderSetup,
 	getAvailablePlatformApp,
+	assertOauthAppReplaceConfirmed,
 	getJoinedIntegration,
+	LiveOauthAppReplaceError,
+	type LiveConnectionGuard,
 	upsertIntegration,
 	upsertOauthAppWithoutConnection,
 	upsertPlatformIntegration,
@@ -101,6 +122,11 @@ import {
 } from '#worker/credentials/credential-audit.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	requireWebsitePermission,
+	requireWebsiteIntegrationPermission,
+	requireWebsiteOauthAppConnectAccess,
+} from '#app/handlers/website-integration-access.ts'
 import {
 	buildAccountSecretId,
 	parseAccountSecretId,
@@ -192,9 +218,19 @@ export async function saveAccountOAuthApp(input: {
 		}
 	}
 
+	await requireWebsiteIntegrationPermission({
+		env: input.env,
+		user: input.user,
+		permission: 'integration:write',
+		action: 'save OAuth apps',
+	})
 	try {
 		const app = await upsertOauthAppWithoutConnection({
 			env: input.env,
+			liveConnectionGuard: {
+				confirmed: input.fields.replaceLiveConnection === true,
+				newConnection: input.fields.newConnection === true,
+			},
 			userId: ownerIdFromCaller({
 				request: input.user.request,
 				user: input.user.mcpUser,
@@ -266,6 +302,9 @@ export async function saveAccountOAuthApp(input: {
 					error instanceof Error
 						? error.message
 						: 'Unable to save OAuth app configuration.',
+				...(error instanceof LiveOauthAppReplaceError
+					? { code: error.code }
+					: {}),
 			},
 			400,
 		)
@@ -279,6 +318,44 @@ export async function connectAccountOAuth(input: {
 	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 	fields: ConnectOAuthInput
 }) {
+	const pinnedAppSlug = input.fields.pinnedAppSlug?.trim() ?? null
+	if (pinnedAppSlug) {
+		const target = await resolvePinnedConnectTarget({
+			env: input.env,
+			request: input.user.request,
+			mcpUser: input.user.mcpUser,
+			appSlug: pinnedAppSlug,
+		})
+		if (!target.ok) {
+			return operationResult({ ok: false, error: target.error }, target.status)
+		}
+		const tokenPayload = input.fields.tokenPayload
+		if (!tokenPayload || typeof tokenPayload !== 'object') {
+			return operationResult(
+				{ ok: false, error: 'Token payload is required.' },
+				400,
+			)
+		}
+		const saved = await savePinnedConnection({
+			env: input.env,
+			request: input.user.request,
+			target,
+			scopes: input.fields.scopes ?? [],
+			allowedHosts: input.fields.allowedHosts ?? [],
+			tokenRecord: tokenPayload as Record<string, unknown>,
+		})
+		if (!saved.ok) {
+			return operationResult({ ok: false, error: saved.error }, saved.status)
+		}
+		return operationResult({
+			ok: true,
+			accessTokenSaved: true,
+			refreshTokenSaved: saved.refreshTokenSaved,
+			allowedHosts: saved.allowedHosts,
+			integrationName: saved.integrationName,
+			nextSteps: null,
+		})
+	}
 	const provider = input.fields.provider?.trim() || null
 	const platformAppSlug = input.fields.platformAppSlug?.trim() ?? null
 	const platformApp = platformAppSlug
@@ -358,6 +435,29 @@ export async function connectAccountOAuth(input: {
 			400,
 		)
 	}
+	if (!platformApp) {
+		await requireWebsiteOauthAppConnectAccess({
+			env: input.env,
+			user: input.user,
+			clientSecret: input.fields.clientSecret,
+			config: {
+				name: provider,
+				tokenUrl,
+				apiBaseUrl,
+				flow: flow === 'confidential' || flow === 'device' ? flow : 'pkce',
+				usePkce,
+				clientId,
+				tokenExchangeStyle: resolveTokenExchangeStyle({
+					tokenUrl,
+					tokenExchangeStyle: input.fields.tokenExchangeStyle?.trim() ?? null,
+				}),
+				deviceAuthorizationUrl,
+				authorization: authorizeUrl
+					? { authorizeUrl, scopes, scopeSeparator, extraAuthorizeParams }
+					: null,
+			},
+		})
+	}
 	const tokenRecord = tokenPayload as Record<string, unknown>
 	const accessToken = readTokenField(tokenRecord, 'access_token')
 	const refreshToken = readTokenField(tokenRecord, 'refresh_token')
@@ -401,6 +501,9 @@ export async function connectAccountOAuth(input: {
 			).name
 		: await saveIntegrationConfig({
 				env: input.env,
+				liveConnectionGuard: {
+					confirmed: input.fields.replaceLiveConnection === true,
+				},
 				userId: ownerIdFromCaller({
 					request: input.user.request,
 					user: input.user.mcpUser,
@@ -539,6 +642,49 @@ async function emitConnectOauthAuthSucceeded(input: {
 	}
 }
 
+/**
+ * Device connects persist after the poll, so refuse to start one that would
+ * swap a live connection's app before the user confirmed it.
+ */
+async function refuseUnconfirmedDeviceReplace(input: {
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	fields: Parameters<typeof startAccountDeviceConnect>[0]['fields']
+}) {
+	const { fields } = input
+	const tokenUrl = fields.tokenUrl?.trim()
+	const clientId = fields.clientId?.trim()
+	if (fields.platformAppSlug?.trim() || !tokenUrl || !clientId) return null
+	try {
+		await assertOauthAppReplaceConfirmed({
+			env: input.env,
+			userId: ownerIdFromCaller({
+				request: input.user.request,
+				user: input.user.mcpUser,
+			}),
+			guard: { confirmed: fields.replaceLiveConnection === true },
+			config: {
+				name: fields.provider,
+				tokenUrl,
+				apiBaseUrl: fields.apiBaseUrl?.trim() || null,
+				flow: 'device',
+				clientId,
+				deviceAuthorizationUrl: fields.deviceAuthorizationUrl?.trim() || null,
+				authorization: fields.authorizeUrl?.trim()
+					? { authorizeUrl: fields.authorizeUrl.trim() }
+					: null,
+			},
+		})
+		return null
+	} catch (error) {
+		if (!(error instanceof LiveOauthAppReplaceError)) return null
+		return operationResult(
+			{ ok: false, error: error.message, code: error.code },
+			400,
+		)
+	}
+}
+
 export async function startAccountDeviceConnect(input: {
 	env: Env
 	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
@@ -557,12 +703,54 @@ export async function startAccountDeviceConnect(input: {
 		extraAuthorizeParams?: Record<string, string>
 		allowedHosts?: Array<string>
 		tokenExchangeStyle?: string | null
+		replaceLiveConnection?: boolean
 	}
 }) {
+	const deviceTokenUrl = input.fields.tokenUrl?.trim()
+	const deviceClientId = input.fields.clientId?.trim()
+	if (
+		!input.fields.platformAppSlug?.trim() &&
+		deviceTokenUrl &&
+		deviceClientId
+	) {
+		const authorizeUrl = input.fields.authorizeUrl?.trim() || null
+		await requireWebsiteOauthAppConnectAccess({
+			env: input.env,
+			user: input.user,
+			clientSecret: input.fields.clientSecret,
+			config: {
+				name: input.fields.provider,
+				tokenUrl: deviceTokenUrl,
+				apiBaseUrl: input.fields.apiBaseUrl?.trim() || null,
+				flow: 'device',
+				usePkce: input.fields.usePkce ?? null,
+				clientId: deviceClientId,
+				tokenExchangeStyle: resolveTokenExchangeStyle({
+					tokenUrl: deviceTokenUrl,
+					tokenExchangeStyle: input.fields.tokenExchangeStyle ?? null,
+				}),
+				deviceAuthorizationUrl:
+					input.fields.deviceAuthorizationUrl?.trim() || null,
+				authorization: authorizeUrl
+					? {
+							authorizeUrl,
+							scopes: input.fields.scopes ?? [],
+							scopeSeparator: input.fields.scopeSeparator ?? null,
+							extraAuthorizeParams: input.fields.extraAuthorizeParams ?? {},
+						}
+					: null,
+			},
+		})
+	}
+	const guardFailure = await refuseUnconfirmedDeviceReplace(input)
+	if (guardFailure) return guardFailure
 	const started = await startIntegrationDeviceConnect({
 		env: input.env,
 		request: input.user.request,
 		mcpUser: input.user.mcpUser,
+		liveConnectionGuard: {
+			confirmed: input.fields.replaceLiveConnection === true,
+		},
 		provider: input.fields.provider ?? '',
 		platformAppSlug: input.fields.platformAppSlug,
 		tokenUrl: input.fields.tokenUrl,
@@ -616,6 +804,32 @@ export async function pollAccountDeviceConnect(input: {
 		request: input.user.request,
 		mcpUser: input.user.mcpUser,
 		sessionId,
+		authorizePersist: (session) =>
+			requireWebsiteOauthAppConnectAccess({
+				env: input.env,
+				user: input.user,
+				config: {
+					name: session.provider,
+					tokenUrl: session.tokenUrl,
+					apiBaseUrl: session.apiBaseUrl,
+					flow: 'device',
+					usePkce: session.usePkce,
+					clientId: session.clientId,
+					tokenExchangeStyle: resolveTokenExchangeStyle({
+						tokenUrl: session.tokenUrl,
+						tokenExchangeStyle: session.tokenExchangeStyle,
+					}),
+					deviceAuthorizationUrl: session.deviceAuthorizationUrl,
+					authorization: session.authorizeUrl
+						? {
+								authorizeUrl: session.authorizeUrl,
+								scopes: session.scopes,
+								scopeSeparator: session.scopeSeparator,
+								extraAuthorizeParams: session.extraAuthorizeParams,
+							}
+						: null,
+				},
+			}),
 	})
 	if (!polled.ok) {
 		return operationResult(
@@ -658,6 +872,15 @@ export async function exchangeAccountOAuthToken(input: {
 			{ ok: false, error: 'Token params are required.' },
 			400,
 		)
+	}
+	const pinnedAppSlug = input.fields.pinnedAppSlug?.trim() ?? null
+	if (pinnedAppSlug) {
+		return handlePinnedOAuthExchange({
+			env: input.env,
+			user: input.user,
+			paramsRaw,
+			appSlug: pinnedAppSlug,
+		})
 	}
 	const platformAppSlug = input.fields.platformAppSlug?.trim() ?? null
 	if (platformAppSlug) {
@@ -723,6 +946,58 @@ export async function exchangeAccountOAuthToken(input: {
 }
 
 /**
+ * A member connecting their own account through the scoped org's app: the
+ * token URL, client id, and client secret come from the org's app row, never
+ * from the request body (ADR 0068 amendment 2026-10-29).
+ */
+async function handlePinnedOAuthExchange(input: {
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	paramsRaw: string
+	appSlug: string
+}) {
+	const target = await resolvePinnedConnectTarget({
+		env: input.env,
+		request: input.user.request,
+		mcpUser: input.user.mcpUser,
+		appSlug: input.appSlug,
+	})
+	if (!target.ok) {
+		return operationResult({ ok: false, error: target.error }, target.status)
+	}
+	const clientSecret = await resolvePinnedConnectClientSecret({
+		env: input.env,
+		target,
+	})
+	if (target.app.flow === 'confidential' && !clientSecret) {
+		return operationResult(
+			{ ok: false, error: "The org's OAuth app has no client secret saved." },
+			400,
+		)
+	}
+	const params = new URLSearchParams(input.paramsRaw)
+	// Host-side client credentials only ever back the browser code exchange.
+	if (params.get('grant_type') !== 'authorization_code') {
+		return operationResult(
+			{ ok: false, error: 'Only the authorization_code grant is allowed.' },
+			400,
+		)
+	}
+	params.set('client_id', target.app.clientId)
+	params.delete('client_secret')
+	return exchangeOAuthToken({
+		tokenUrl: target.app.tokenUrl,
+		params,
+		flow: target.app.flow === 'confidential' ? 'confidential' : 'pkce',
+		clientSecret,
+		style: resolveTokenExchangeStyle({
+			tokenUrl: target.app.tokenUrl,
+			tokenExchangeStyle: target.app.tokenExchangeStyle,
+		}),
+	})
+}
+
+/**
  * Every exchange input comes from the operator-provisioned app row, never
  * from the request body, so a caller cannot point the decrypted shared client
  * secret at an arbitrary token URL. Only discoverable (enabled + published)
@@ -767,6 +1042,13 @@ async function handlePlatformOAuthExchange(input: {
 		)
 	}
 	const params = new URLSearchParams(input.paramsRaw)
+	// Host-side client credentials only ever back the browser code exchange.
+	if (params.get('grant_type') !== 'authorization_code') {
+		return operationResult(
+			{ ok: false, error: 'Only the authorization_code grant is allowed.' },
+			400,
+		)
+	}
 	params.set('client_id', platformApp.clientId)
 	params.delete('client_secret')
 	return exchangeOAuthToken({
@@ -862,6 +1144,7 @@ async function exchangeOAuthToken(input: {
 
 async function saveIntegrationConfig(input: {
 	env: Env
+	liveConnectionGuard: LiveConnectionGuard
 	userId: OwnerId
 	provider: string
 	tokenUrl: string
@@ -907,6 +1190,7 @@ async function saveIntegrationConfig(input: {
 		env: input.env,
 		userId: input.userId,
 		config: normalizeIntegrationConfig(parsed.data),
+		liveConnectionGuard: input.liveConnectionGuard,
 		waitUntil,
 		audit: input.audit,
 	})
@@ -965,6 +1249,77 @@ function readTokenField(
 ): string | null {
 	const value = payload[field]
 	return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+type WebsiteUser = NonNullable<
+	Awaited<ReturnType<typeof readAuthenticatedAppUser>>
+>
+
+function websiteSecretAuthorization(input: {
+	env: Env
+	user: WebsiteUser
+}): SecretAuthorizationContext {
+	return {
+		env: input.env,
+		callerContext: { request: input.user.request, user: input.user.mcpUser },
+	}
+}
+
+/** Runs the shared credential checks; a denial becomes a 403 result. */
+async function refuseUnauthorized(check: () => Promise<void>) {
+	try {
+		await check()
+		return null
+	} catch (error) {
+		if (!(error instanceof AuthorizationError)) throw error
+		return operationResult({ ok: false, error: credentialDenial(error) }, 403)
+	}
+}
+
+function credentialDenial(error: AuthorizationError) {
+	const access = error.permission === 'secret:delete' ? 'Delete' : 'Write'
+	return `You need ${access} on this credential to do that. Ask an org Owner for ${access} on it. Nothing was changed.`
+}
+
+/**
+ * Approving hosts or packages widens where a credential's value can go, so it
+ * needs Write on every credential it changes, checked by the same
+ * `authorizeSecret` the capabilities use. A bulk approval with any credential
+ * lacking Write is refused whole. Personal-org owners hold Write on their own.
+ */
+async function refuseApprovalWithoutWrite(input: {
+	env: Env
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	names: ReadonlyArray<string>
+	scope: SecretScope
+	storageContext: StorageContext | null
+}) {
+	const ctx = websiteSecretAuthorization(input)
+	const denied: Array<string> = []
+	for (const name of input.names) {
+		try {
+			await authorizeSecret(ctx, 'secret:write', {
+				name,
+				scope: input.scope,
+				storageContext: input.storageContext,
+			})
+		} catch (error) {
+			if (!(error instanceof AuthorizationError)) throw error
+			denied.push(name)
+		}
+	}
+	if (denied.length === 0) return null
+	const list = denied.map((name) => `"${name}"`).join(', ')
+	return operationResult(
+		{
+			ok: false,
+			error:
+				input.names.length === 1
+					? `You need Write on the credential ${list} to approve this. Ask an org Owner for Write on it. Nothing was changed.`
+					: `You need Write on every listed credential to approve this, and you don't have it on ${list}. Ask an org Owner for Write on ${denied.length === 1 ? 'it' : 'them'}. Nothing was changed.`,
+		},
+		403,
+	)
 }
 
 async function handleApprovalAction(input: {
@@ -1033,6 +1388,10 @@ async function handleApprovalAction(input: {
 						.map((item) => [item.name, item]),
 				)
 				const missingNames: Array<string> = []
+				const updates: Array<{
+					name: string
+					allowedPackages: Array<string>
+				}> = []
 				for (const name of approval.names) {
 					const secret = byName.get(name)
 					if (!secret) {
@@ -1040,19 +1399,11 @@ async function handleApprovalAction(input: {
 						continue
 					}
 					if (secret.allowedPackages.includes(approval.packageId)) continue
-					await setSecretAllowedPackages({
-						env: input.env,
-						audit: orgAuditWriterFromRequest(input.env, input.user.request),
-						userId: ownerIdFromCaller({
-							request: input.user.request,
-							user: input.user.mcpUser,
-						}),
+					updates.push({
 						name,
-						scope: 'user',
 						allowedPackages: Array.from(
 							new Set([...secret.allowedPackages, approval.packageId]),
 						),
-						storageContext: null,
 					})
 				}
 				if (missingNames.length === approval.names.length) {
@@ -1060,6 +1411,27 @@ async function handleApprovalAction(input: {
 						{ ok: false, error: 'None of the listed secrets were found.' },
 						404,
 					)
+				}
+				const refused = await refuseApprovalWithoutWrite({
+					env: input.env,
+					user: input.user,
+					names: updates.map((update) => update.name),
+					scope: 'user',
+					storageContext: null,
+				})
+				if (refused) return refused
+				if (updates.length > 0) {
+					await setSecretsAllowedPackages({
+						env: input.env,
+						audit: orgAuditWriterFromRequest(input.env, input.user.request),
+						userId: ownerIdFromCaller({
+							request: input.user.request,
+							user: input.user.mcpUser,
+						}),
+						scope: 'user',
+						updates,
+						storageContext: null,
+					})
 				}
 			}
 			return operationResult({
@@ -1102,6 +1474,14 @@ async function handleApprovalAction(input: {
 				if (!secret) {
 					return operationResult({ ok: false, error: 'Secret not found.' }, 404)
 				}
+				const refused = await refuseApprovalWithoutWrite({
+					env: input.env,
+					user: input.user,
+					names: [approval.name],
+					scope: approval.scope,
+					storageContext: approval.storageContext,
+				})
+				if (refused) return refused
 				await setSecretAllowedPackages({
 					env: input.env,
 					audit: orgAuditWriterFromRequest(input.env, input.user.request),
@@ -1153,6 +1533,14 @@ async function handleApprovalAction(input: {
 				if (!secret) {
 					return operationResult({ ok: false, error: 'Secret not found.' }, 404)
 				}
+				const refused = await refuseApprovalWithoutWrite({
+					env: input.env,
+					user: input.user,
+					names: [approval.name],
+					scope: approval.scope,
+					storageContext: approval.storageContext,
+				})
+				if (refused) return refused
 				await setSecretAllowedHosts({
 					env: input.env,
 					audit: orgAuditWriterFromRequest(input.env, input.user.request),
@@ -1205,26 +1593,22 @@ async function handleApprovalAction(input: {
 						.map((item) => [item.name, item]),
 				)
 				const missingNames: Array<string> = []
+				const updates: Array<{
+					name: string
+					allowedHosts: Array<string>
+				}> = []
 				for (const name of approval.names) {
 					const secret = byName.get(name)
 					if (!secret) {
 						missingNames.push(name)
 						continue
 					}
-					await setSecretAllowedHosts({
-						env: input.env,
-						audit: orgAuditWriterFromRequest(input.env, input.user.request),
-						userId: ownerIdFromCaller({
-							request: input.user.request,
-							user: input.user.mcpUser,
-						}),
+					updates.push({
 						name,
-						scope: approval.scope,
 						allowedHosts: normalizeAllowedHosts([
 							...secret.allowedHosts,
 							...hostsToGrant,
 						]),
-						storageContext: approval.storageContext,
 					})
 				}
 				if (missingNames.length === approval.names.length) {
@@ -1232,6 +1616,27 @@ async function handleApprovalAction(input: {
 						{ ok: false, error: 'None of the listed secrets were found.' },
 						404,
 					)
+				}
+				const refused = await refuseApprovalWithoutWrite({
+					env: input.env,
+					user: input.user,
+					names: updates.map((update) => update.name),
+					scope: approval.scope,
+					storageContext: approval.storageContext,
+				})
+				if (refused) return refused
+				if (updates.length > 0) {
+					await setSecretsAllowedHosts({
+						env: input.env,
+						audit: orgAuditWriterFromRequest(input.env, input.user.request),
+						userId: ownerIdFromCaller({
+							request: input.user.request,
+							user: input.user.mcpUser,
+						}),
+						scope: approval.scope,
+						updates,
+						storageContext: approval.storageContext,
+					})
 				}
 			}
 			return operationResult({
@@ -1449,6 +1854,38 @@ export async function saveAccountSecret(input: {
 		currentSecret != null &&
 		currentSecret.scope === scope &&
 		(currentSecret.packageId ?? null) === (packageId ?? null)
+	const refused = await refuseUnauthorized(async () => {
+		const ctx = websiteSecretAuthorization(input)
+		if (currentSecret) {
+			const current = {
+				name: currentSecret.name,
+				scope: currentSecret.scope,
+				storageContext: getSecretContextForAccountSecret(currentSecret),
+			}
+			await authorizeSecret(ctx, 'secret:write', current)
+			if (!samePlacement) await authorizeSecret(ctx, 'secret:delete', current)
+		}
+	})
+	if (refused) return refused
+	// A same-placement rename keeps the credential id, so Write is enough.
+	// A new credential or a move lands at a free name, which needs Create.
+	if (!currentSecret || !samePlacement) {
+		await requireWebsitePermission({
+			user: input.user,
+			permission: 'secret:create',
+			action: 'add credentials',
+			check: () =>
+				authorizeSecretSet(websiteSecretAuthorization(input), {
+					name,
+					scope,
+					storageContext: getSecretContextForAccountSecret({
+						scope,
+						packageId,
+					}),
+				}),
+		})
+	}
+
 	const nameChanged = currentSecret != null && currentSecret.name !== name
 	// Same-scope renames (including Henry → henry) update the row in place so
 	// the credential id and opt-in kind stay put. Scope/package moves still use
@@ -1589,6 +2026,12 @@ export async function saveAccountSecret(input: {
 	// package declaration (and marks unread when the manifest cannot be read).
 	let placementOnInsert: CredentialFillPlacement | null | undefined
 	let placementOriginOnInsert: CredentialPlacementOrigin | null | undefined
+	let fillPlacementOptInOnInsert: FillPlacementOptIn | undefined
+	// A website placement save is the owner's opt-in, whichever path writes it.
+	if (requestedPlacement !== undefined) {
+		fillPlacementOptInOnInsert =
+			fillPlacementOptInFromPlacement(requestedPlacement)
+	}
 	if (requestedPlacement !== undefined && credential == null) {
 		placementOnInsert = requestedPlacement
 		placementOriginOnInsert = 'owner'
@@ -1608,6 +2051,13 @@ export async function saveAccountSecret(input: {
 		if (source.found) {
 			placementOnInsert = source.placement
 			placementOriginOnInsert = source.placementOrigin
+			// A move keeps the source's opt-in; it never grants a new one.
+			if (source.credentialId) {
+				fillPlacementOptInOnInsert = await readFillPlacementOptIn(
+					input.env.APP_DB,
+					source.credentialId,
+				)
+			}
 		}
 	}
 
@@ -1638,6 +2088,7 @@ export async function saveAccountSecret(input: {
 						placementOriginOnInsert: placementOriginOnInsert ?? null,
 					}
 				: {}),
+			...(fillPlacementOptInOnInsert ? { fillPlacementOptInOnInsert } : {}),
 		})
 		if (
 			requestedPlacement !== undefined &&
@@ -1668,6 +2119,7 @@ export async function saveAccountSecret(input: {
 					credentialId: found.credentialId,
 					update: { placement: requestedPlacement },
 					audit: orgAuditWriterFromRequest(input.env, input.user.request),
+					ownerOptIn: true,
 				})
 			}
 		}
@@ -1872,9 +2324,23 @@ export async function deleteAccountSecret(input: {
 	}
 
 	const secret = parseAccountSecretId(currentId)
-	if (!secret || secret.scope === 'session') {
+	// Authorization trims names, so a padded id must not reach the exact-name write.
+	if (
+		!secret ||
+		secret.scope === 'session' ||
+		secret.name !== secret.name.trim()
+	) {
 		return operationResult({ ok: false, error: 'Invalid secret id.' }, 400)
 	}
+
+	const refused = await refuseUnauthorized(() =>
+		authorizeSecret(websiteSecretAuthorization(input), 'secret:delete', {
+			name: secret.name,
+			scope: secret.scope,
+			storageContext: getSecretContextForAccountSecret(secret),
+		}),
+	)
+	if (refused) return refused
 
 	const deleted = await deleteSecret({
 		env: input.env,
@@ -1906,9 +2372,23 @@ export async function disconnectAccountSecret(input: {
 	}
 
 	const secret = parseAccountSecretId(currentId)
-	if (!secret || secret.scope === 'session') {
+	// Authorization trims names, so a padded id must not reach the exact-name write.
+	if (
+		!secret ||
+		secret.scope === 'session' ||
+		secret.name !== secret.name.trim()
+	) {
 		return operationResult({ ok: false, error: 'Invalid secret id.' }, 400)
 	}
+
+	const refused = await refuseUnauthorized(() =>
+		authorizeSecret(websiteSecretAuthorization(input), 'secret:write', {
+			name: secret.name,
+			scope: secret.scope,
+			storageContext: getSecretContextForAccountSecret(secret),
+		}),
+	)
+	if (refused) return refused
 
 	const disconnected = await disconnectSecret({
 		env: input.env,

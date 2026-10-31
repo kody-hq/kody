@@ -14,6 +14,7 @@ import {
 	approvePackageSchema,
 } from '#universal/integration-mutations.ts'
 import { connectSecretsSchema } from '../connect-input.ts'
+import { emailClassificationValues } from '#universal/email-message-view.ts'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 
@@ -42,7 +43,11 @@ const resourceInput = z.object({
 	search: z.string().default(''),
 })
 const secretRefreshSchema = connectSecretsSchema
-	.pick({ selectedSecretId: true, approval: true })
+	.pick({
+		selectedSecretId: true,
+		approval: true,
+		placementCredentialId: true,
+	})
 	.default({
 		selectedSecretId: null,
 		approval: { hosts: [], names: [], scope: 'user' },
@@ -144,18 +149,33 @@ export const approveSecretAccess = createServerFn({ method: 'POST' })
 		const [
 			{ withWebsiteMutation },
 			{ approveAccountSecretAccess },
-			{ requireOperationResult },
+			{ requireOperationResult, operationResult },
+			{ pinnedCredentialMismatchFor },
 		] = await Promise.all([
 			import('./mutation-context.ts'),
 			import('../../src/app/handlers/account-secrets.ts'),
 			import('../../src/app/operation-result.ts'),
+			import('../../src/app/credential-placement-approval.ts'),
 		])
 		return withWebsiteMutation(
 			{ scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined },
-			async (context) =>
-				requireOperationResult(
+			async (context) => {
+				const mismatch = await pinnedCredentialMismatchFor({
+					env: context.env,
+					user: context.user,
+					names: data.refresh.approval.names,
+					credentialId: data.refresh.placementCredentialId,
+					target: data.refresh.approval,
+				})
+				if (mismatch) {
+					return requireOperationResult(
+						operationResult({ ok: false, error: mismatch }, 409),
+					)
+				}
+				return requireOperationResult(
 					await approveAccountSecretAccess({ ...context, ...data }),
-				),
+				)
+			},
 		)
 	})
 
@@ -245,6 +265,7 @@ export const exchangeOAuthToken = createServerFn({ method: 'POST' })
 
 const deviceConnectStartSchema = z.object({
 	provider: z.string(),
+	replaceLiveConnection: z.boolean().optional(),
 	platformAppSlug: z.string().nullish(),
 	tokenUrl: z.string().nullish(),
 	apiBaseUrl: z.string().nullish(),
@@ -1074,10 +1095,18 @@ export const deleteEmailMessage = createServerFn({ method: 'POST' })
 
 export const classifyEmailMessage = createServerFn({ method: 'POST' })
 	.validator(
-		resourceInput.omit({ search: true }).extend({
-			messageId: z.string().trim().min(1),
-			classification: z.enum(['accepted', 'quarantined']),
-		}),
+		resourceInput
+			.omit({ search: true })
+			.extend({
+				messageId: z.string().trim().min(1),
+				classification: z.enum(emailClassificationValues).optional(),
+				archived: z.boolean().optional(),
+			})
+			.refine(
+				(value) =>
+					value.classification !== undefined || value.archived !== undefined,
+				'Provide classification, archived, or both.',
+			),
 	)
 	.handler(async ({ data }) => {
 		const [
@@ -1099,10 +1128,41 @@ export const classifyEmailMessage = createServerFn({ method: 'POST' })
 						...context,
 						messageId: data.messageId,
 						classification: data.classification,
+						archived: data.archived,
 					}),
 				)
 				return result
 			},
+		)
+	})
+
+export const blockEmailMessageSender = createServerFn({ method: 'POST' })
+	.validator(
+		resourceInput.omit({ search: true }).extend({
+			messageId: z.string().trim().min(1),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const [
+			{ withWebsiteMutation },
+			{ blockAccountEmailSender },
+			{ requireOperationResult },
+		] = await Promise.all([
+			import('./mutation-context.ts'),
+			import('../../src/app/handlers/account-email.ts'),
+			import('../../src/app/operation-result.ts'),
+		])
+		return withWebsiteMutation(
+			{
+				scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined,
+			},
+			async (context) =>
+				requireOperationResult(
+					await blockAccountEmailSender({
+						...context,
+						messageId: data.messageId,
+					}),
+				),
 		)
 	})
 
@@ -1234,13 +1294,6 @@ export const updateAvatar = createServerFn({ method: 'POST' })
 		)
 	})
 
-const profileGrants = z.array(
-	z.object({
-		resourceType: z.literal('package'),
-		resourceId: z.string(),
-		actions: z.array(z.enum(['read', 'execute'])),
-	}),
-)
 export const revokeConnectedAgent = createServerFn({ method: 'POST' })
 	.validator(
 		resourceInput
@@ -1269,94 +1322,6 @@ export const revokeConnectedAgent = createServerFn({ method: 'POST' })
 		)
 	})
 
-export const createConnectionProfile = createServerFn({ method: 'POST' })
-	.validator(
-		resourceInput
-			.omit({ search: true })
-			.extend({ name: z.string(), grants: profileGrants }),
-	)
-	.handler(async ({ data }) => {
-		const [
-			{ withWebsiteMutation },
-			{ createConnectedAgentProfile },
-			{ requireOperationResult },
-		] = await Promise.all([
-			import('./mutation-context.ts'),
-			import('../../src/app/handlers/account-connected-agents.ts'),
-			import('../../src/app/operation-result.ts'),
-		])
-		return withWebsiteMutation(
-			{ scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined },
-			async (context) =>
-				requireOperationResult(
-					await createConnectedAgentProfile({
-						...context,
-						name: data.name,
-						grants: data.grants,
-					}),
-				),
-		)
-	})
-
-export const updateConnectionProfile = createServerFn({ method: 'POST' })
-	.validator(
-		resourceInput.omit({ search: true }).extend({
-			profileId: z.string().trim().min(1),
-			name: z.string().optional(),
-			grants: profileGrants.optional(),
-		}),
-	)
-	.handler(async ({ data }) => {
-		const [
-			{ withWebsiteMutation },
-			{ updateConnectedAgentProfile },
-			{ requireOperationResult },
-		] = await Promise.all([
-			import('./mutation-context.ts'),
-			import('../../src/app/handlers/account-connected-agents.ts'),
-			import('../../src/app/operation-result.ts'),
-		])
-		return withWebsiteMutation(
-			{ scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined },
-			async (context) =>
-				requireOperationResult(
-					await updateConnectedAgentProfile({
-						...context,
-						profileId: data.profileId,
-						name: data.name,
-						grants: data.grants,
-					}),
-				),
-		)
-	})
-
-export const deleteConnectionProfile = createServerFn({ method: 'POST' })
-	.validator(
-		resourceInput
-			.omit({ search: true })
-			.extend({ profileId: z.string().trim().min(1) }),
-	)
-	.handler(async ({ data }) => {
-		const [
-			{ withWebsiteMutation },
-			{ deleteConnectedAgentProfile },
-			{ requireOperationResult },
-		] = await Promise.all([
-			import('./mutation-context.ts'),
-			import('../../src/app/handlers/account-connected-agents.ts'),
-			import('../../src/app/operation-result.ts'),
-		])
-		return withWebsiteMutation(
-			{ scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined },
-			async (context) =>
-				requireOperationResult(
-					await deleteConnectedAgentProfile({
-						...context,
-						profileId: data.profileId,
-					}),
-				),
-		)
-	})
 export const continueMcpAuthorization = createServerFn({ method: 'POST' })
 	.validator(
 		z.object({
@@ -1455,7 +1420,15 @@ export const updateExperiments = createServerFn({ method: 'POST' })
 	})
 
 export const revokeConnectedApp = createServerFn({ method: 'POST' })
-	.validator(z.object({ appKey: z.string().trim().min(1).max(300) }))
+	.validator(
+		z.object({
+			appKey: z.string().trim().min(1).max(300),
+			disconnectCredentialIds: z
+				.array(z.string().trim().min(1).max(300))
+				.max(20)
+				.optional(),
+		}),
+	)
 	.handler(async ({ data }) => {
 		const [
 			{ withWebsiteMutation },
@@ -1468,7 +1441,35 @@ export const revokeConnectedApp = createServerFn({ method: 'POST' })
 		])
 		return withWebsiteMutation({}, async (context) =>
 			requireOperationResult(
-				await revokeAccountConnectedApp({ ...context, appKey: data.appKey }),
+				await revokeAccountConnectedApp({ ...context, ...data }),
+			),
+		)
+	})
+
+export const revokeConnectedAppScope = createServerFn({ method: 'POST' })
+	.validator(
+		z.object({
+			appKey: z.string().trim().min(1).max(300),
+			scope: z.string().trim().min(1).max(260),
+			disconnectCredentialIds: z
+				.array(z.string().trim().min(1).max(300))
+				.max(20)
+				.optional(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const [
+			{ withWebsiteMutation },
+			{ revokeAccountConnectedAppScope },
+			{ requireOperationResult },
+		] = await Promise.all([
+			import('./mutation-context.ts'),
+			import('../../src/app/handlers/account-connected-apps.ts'),
+			import('../../src/app/operation-result.ts'),
+		])
+		return withWebsiteMutation({}, async (context) =>
+			requireOperationResult(
+				await revokeAccountConnectedAppScope({ ...context, ...data }),
 			),
 		)
 	})

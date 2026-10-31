@@ -3,6 +3,7 @@ import {
 	issuePackageSecretRef,
 } from '#mcp/secrets/package-secret-ref.ts'
 import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
+import { billedOrgIdOf } from '@kody-internal/shared/request-context.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { isRecord } from '@kody-internal/shared/is-record.ts'
 import {
@@ -30,7 +31,7 @@ import {
 	isCallerDisconnectAbort,
 } from '#worker/caller-disconnect.ts'
 import { recordExecuteInterpretableEvent } from '#mcp/execute-interpretable.ts'
-import { executeWorkerIdMetadataKey } from '#mcp/execute-invoke.ts'
+import { executeWorkerIdMetadataKey } from '#worker/run-records/execute-attribution.ts'
 import {
 	classifyExecuteThinGlue,
 	type ExecuteThinGlueClass,
@@ -78,10 +79,9 @@ import {
 	type RunCredentialCallMap,
 } from '#worker/credentials/credential-call-map.ts'
 import {
-	loadRunCredentialNeeds,
+	loadRunCredentialNeedEntries,
 	validateCredentialCallMap,
 } from '#worker/credentials/credential-client.ts'
-import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import {
 	buildKodyModuleBundle,
 	hydrateKodyRuntimeModules,
@@ -106,7 +106,20 @@ import { runWithTransientDurableObjectResetRetry } from '#worker/durable-object-
 import { isPreRunUsageDenial } from '#worker/entitlements/errors.ts'
 import { evaluationHasHostMediatedSideEffects } from '#mcp/evaluation-side-effects.ts'
 import { isTransientJobExecutionError } from '#worker/jobs/execution-safety.ts'
-import { beginRunRecord, finishRunRecord } from '#worker/run-records/service.ts'
+import {
+	abandonRunRecord,
+	beginRunRecord,
+	ensureRunRecordStarted,
+	finishRunRecord,
+} from '#worker/run-records/service.ts'
+import { isExecutionContextsEnabledFor } from '#worker/execution-contexts/flag.ts'
+import { sessionStub } from '#worker/execution-contexts/store.ts'
+import {
+	type AutomationRouting,
+	automationContextWaitMs,
+	type ContextRunDeferral,
+	runAutomationOnContext,
+} from '#worker/execution-contexts/automation-execution.ts'
 import {
 	type RunRecordContext,
 	type RunRecordHandle,
@@ -442,6 +455,8 @@ export async function buildKodyToolContext(
 		reportProgress?: McpReportProgress
 		waitUntil?: (promise: Promise<unknown>) => void
 		openApiPrincipal?: CapabilityOpenApiPrincipal
+		localExecuteHop?: true
+		credentialClientBinding?: string
 	},
 ): Promise<{
 	tools: AdditionalKodyTools
@@ -499,6 +514,10 @@ export async function buildKodyToolContext(
 						...(options?.waitUntil ? { waitUntil: options.waitUntil } : {}),
 						...(options?.openApiPrincipal
 							? { openApiPrincipal: options.openApiPrincipal }
+							: {}),
+						...(options?.localExecuteHop ? { localExecuteHop: true } : {}),
+						...(options?.credentialClientBinding
+							? { credentialClientBinding: options.credentialClientBinding }
 							: {}),
 					})
 				} finally {
@@ -648,6 +667,7 @@ export async function buildKodyProvider(
 		capabilityRegistry?: BuiltCapabilityRegistry
 		reportProgress?: McpReportProgress
 		waitUntil?: (promise: Promise<unknown>) => void
+		credentialClientBinding?: string
 	},
 ): Promise<ResolvedProvider> {
 	const { tools, mcpServers } = await buildKodyToolContext(
@@ -744,6 +764,7 @@ export async function runModuleWithRegistry(
 			env,
 			userId: ownerIdFromCaller(callerContext) || null,
 			context: options?.runRecord ?? null,
+			request: callerContext.request,
 			waitUntil: options?.waitUntil,
 		})
 	let enteredBundledRun = false
@@ -884,6 +905,52 @@ export function collectPackageStorageGrantIds(input: {
 }
 
 /**
+ * Hosted credential client options. The calling package decides declared
+ * use and bound Keys (GHSA-5fv3): the bound dispatcher's stamp, or the run
+ * package for unbound calls; naming another id is denied. Stored mappings
+ * and creation links come from the host-computed entries (ADR 0068
+ * amendment 2026-10-27), never from arguments.
+ */
+export function createRunCredentialClientToolOptions(input: {
+	env: Env
+	callerContext: McpCallerContext
+	binding: string
+	runPackageId: string | null
+	entryPackageIds: ReadonlyArray<string>
+	callMap: CredentialCallMap | null
+	waitUntil?: (promise: Promise<unknown>) => void
+}): CredentialClientToolOptions | undefined {
+	if (!input.callerContext.user?.userId) return undefined
+	let runNeedEntries: ReturnType<typeof loadRunCredentialNeedEntries> | null =
+		null
+	const loadRunNeedEntries = () => {
+		const request = input.callerContext.request
+		if (!request) return null
+		runNeedEntries ??= loadRunCredentialNeedEntries({
+			env: input.env,
+			orgId: request.org.id,
+			packageIds: input.entryPackageIds,
+			request,
+		})
+		return runNeedEntries
+	}
+	return {
+		binding: input.binding,
+		resolvePackageId: async (requested) =>
+			resolveCallerCredentialPackageId({
+				requested,
+				callerPackageId:
+					getSecretAuthorityScope()?.currentPackageId?.trim() ||
+					input.runPackageId,
+			}),
+		callMap: input.callMap,
+		runNeeds: async () => (await loadRunNeedEntries())?.needs ?? new Map(),
+		runEntries: async () => (await loadRunNeedEntries())?.entries ?? null,
+		waitUntil: input.waitUntil,
+	}
+}
+
+/**
  * The packages whose needs closures pin a run's credential needs, in
  * precedence order. A run's own package's static imports are pinned by its
  * closure, so they are not entries; ad hoc code has no closure, so its direct
@@ -941,11 +1008,6 @@ export function createComputedPackageImportTools(input: {
 	 * the callee's own transitive deps.
 	 */
 	conversationId?: string | null
-	/**
-	 * Propagate closed-world retriever restrictions into nested library loads
-	 * when a restricted run supplies these tools explicitly.
-	 */
-	closedWorldRetrieverRuntime?: boolean
 	/** The caller's credential picks, which nested library loads keep. */
 	credentialCallMap?: CredentialCallMap | null
 }): ComputedPackageImportTools {
@@ -1025,7 +1087,6 @@ export function createComputedPackageImportTools(input: {
 					signal: input.signal,
 					computedImportDepth: computedImportDepth + 1,
 					computedPackageImportTools: nestedTools,
-					closedWorldRetrieverRuntime: input.closedWorldRetrieverRuntime,
 					credentialCallMap: input.credentialCallMap
 						? { map: input.credentialCallMap, strict: false, checked: true }
 						: null,
@@ -1078,8 +1139,8 @@ export async function runBundledModuleWithRegistry(
 		packageEventTools?: PackageEventTools
 		/**
 		 * Host bridge for computed `import(specifier)` of caller-owned
-		 * `kody:@` names. When omitted on an authenticated run (outside
-		 * closed-world retriever), a default bridge is created.
+		 * `kody:@` names. When omitted on an authenticated run, a default
+		 * bridge is created.
 		 */
 		computedPackageImportTools?: ComputedPackageImportTools
 		/** Nested depth for computed import library loads. */
@@ -1097,12 +1158,6 @@ export async function runBundledModuleWithRegistry(
 		 */
 		skipExecuteUsage?: boolean
 		skipCapabilityRegistry?: boolean
-		/**
-		 * Retriever enrichment profile: no capability map, no workflows,
-		 * no package invoke/events, read-only packageStorage, no outbound
-		 * fetch. Search annotations depend on this being a runtime constraint.
-		 */
-		closedWorldRetrieverRuntime?: boolean
 		executorTimeoutMs?: number | null
 		signal?: AbortSignal
 		runRecord?: RunRecordContext | null
@@ -1136,11 +1191,22 @@ export async function runBundledModuleWithRegistry(
 		credentialCallMap?: RunCredentialCallMap | null
 		/** The package a computed-import library load runs. */
 		computedImportCalleePackageId?: string | null
+		/**
+		 * The automation's execution-context setting. Routed before the hosted
+		 * sandbox; a context run never reaches it.
+		 */
+		executionRouting?: AutomationRouting | null
+		/**
+		 * Looks up a declared automation's setting, only once the run's actor
+		 * has the execution-contexts flag; with it off the run stays on cloud.
+		 */
+		resolveExecutionRouting?: (() => Promise<AutomationRouting | null>) | null
 	},
 ): Promise<
 	ExecuteResult & {
 		runId?: string
 		serverTiming?: Array<ExecuteServerTimingEntry>
+		executionContext?: ContextRunDeferral
 	}
 > {
 	const runServerTiming: Array<ExecuteServerTimingEntry> = []
@@ -1165,6 +1231,7 @@ export async function runBundledModuleWithRegistry(
 			env,
 			userId: ownerIdFromCaller(callerContext) || null,
 			context: runRecordContext,
+			request: callerContext.request,
 			waitUntil,
 		})
 	let runRecordFinished = false
@@ -1191,7 +1258,7 @@ export async function runBundledModuleWithRegistry(
 		const errorName =
 			outcome === 'error' ? usageErrorNameFromUnknown(error) : ''
 		await recordUsage(env, {
-			userId,
+			userId: billedOrgIdOf(callerContext.request, userId),
 			eventType: 'package_export',
 			entityId: options.packageContext.packageId,
 			durationMs: Date.now() - usageStartedAtMs,
@@ -1258,6 +1325,131 @@ export async function runBundledModuleWithRegistry(
 				: result
 		if (!exposeRunId || !runRecordHandle) return timed
 		return { ...timed, runId: runRecordHandle.id }
+	}
+	const executionRoutingActorId = callerContext.request?.actor?.userId ?? null
+	const resolveExecutionRouting = options?.resolveExecutionRouting ?? null
+	const executionRouting =
+		options?.executionRouting ??
+		(resolveExecutionRouting &&
+		executionRoutingActorId &&
+		(await isExecutionContextsEnabledFor(
+			env.APP_DB,
+			executionRoutingActorId,
+			callerContext.request?.org?.id ?? null,
+		))
+			? await resolveExecutionRouting()
+			: null)
+	if (executionRouting) {
+		const routing = executionRouting
+		const parentContext =
+			routing.parentRunRecord ??
+			options?.runRecord ??
+			runRecordHandle?.context ??
+			null
+		const parentRunId = routing.parentRunId ?? runRecordHandle?.id ?? null
+		// The context run gets its own record, owned by the context session,
+		// so the automation's record keeps its usual owner and finish path.
+		const contextRunRecord = parentContext
+			? beginRunRecord({
+					env,
+					userId: ownerIdFromCaller(callerContext) || null,
+					context: {
+						...parentContext,
+						// Job counters count the automation's own record only.
+						jobId: null,
+						idempotencyKey: null,
+						invocationId: null,
+						parentRunId,
+					},
+					request: callerContext.request,
+					waitUntil,
+				})
+			: null
+		let routed: Awaited<ReturnType<typeof runAutomationOnContext>>
+		try {
+			routed = await runAutomationOnContext({
+				env,
+				callerContext,
+				routing,
+				runRecord: contextRunRecord,
+				params: params ?? {},
+				waitMs: Math.min(
+					options?.executorTimeoutMs ?? automationContextWaitMs,
+					automationContextWaitMs,
+				),
+				...(options?.signal ? { signal: options.signal } : {}),
+			})
+		} catch (error) {
+			await abandonRunRecord({ env, handle: contextRunRecord })
+			if (!leavesCallerRunRecordOpen(error) && !runRecordFinished) {
+				const resolved = resolveThrownRunError(error)
+				await finishObservedRun({
+					status: 'error',
+					logs: resolved.logs,
+					error: resolved.error,
+				})
+			}
+			throw error
+		}
+		if (routed.kind === 'cloud' && routed.metadata && parentContext) {
+			parentContext.metadata = {
+				...parentContext.metadata,
+				executionContext: routed.metadata,
+			}
+		}
+		if (routed.kind !== 'done') {
+			await abandonRunRecord({ env, handle: contextRunRecord })
+		}
+		if (routed.kind === 'error') {
+			await finishObservedRun({
+				status: 'error',
+				error: routed.error,
+				logs: [routed.error.message],
+			})
+			return withRunId({
+				result: undefined,
+				error: routed.error.message,
+				logs: [routed.error.message],
+			})
+		}
+		if (routed.kind === 'done' && routed.deferred && routing.needsResult) {
+			// A retried step must not run alongside the attempt it replaces.
+			if (routed.deferred.contextId) {
+				await sessionStub(env, routed.deferred.contextId)
+					.cancel({ runId: routed.deferred.runId, reason: 'caller_cancelled' })
+					.catch(() => undefined)
+			}
+			const message = `${routed.deferred.context} did not finish this workflow step in time, so the step failed. The context run ${routed.deferred.runId} continues in run history (execution_context_result_pending).`
+			await finishObservedRun({
+				status: 'error',
+				error: Object.assign(new Error(message), {
+					name: 'ExecutionContextResultPending',
+				}),
+				logs: [message],
+			})
+			return withRunId({ result: undefined, error: message, logs: [message] })
+		}
+		if (routed.kind === 'done') {
+			await ensureRunRecordStarted({ env, handle: contextRunRecord })
+			const { result } = routed
+			await finishObservedRun(
+				result.error
+					? {
+							status: 'error',
+							error: new Error(result.error),
+							logs: result.logs ?? [],
+						}
+					: {
+							status: 'success',
+							result: result.result,
+							logs: result.logs ?? [],
+						},
+			)
+			return withRunId({
+				...result,
+				...(routed.deferred ? { executionContext: routed.deferred } : {}),
+			})
+		}
 	}
 	// Host-observed run outcome for static-call reclassification. Default to
 	// failed so an early throw before execute still treats buffered throws as
@@ -1326,8 +1518,6 @@ export async function runBundledModuleWithRegistry(
 					.filter((packageId): packageId is string => Boolean(packageId)),
 			),
 		})
-		const closedWorldRetrieverRuntime =
-			options?.closedWorldRetrieverRuntime === true
 		const callMap = options?.credentialCallMap ?? null
 		const credentialEntryPackageIds = credentialNeedsEntryPackageIds({
 			packageContext: options?.packageContext ?? null,
@@ -1348,35 +1538,15 @@ export async function runBundledModuleWithRegistry(
 			if (warnings.length > 0) callMap.onWarnings?.(warnings)
 		}
 		const credentialClientBinding = newRunCredentialClientBinding()
-		let runNeeds: Promise<ReadonlyMap<string, CredentialNeed>> | null = null
-		const credentialClientTools: CredentialClientToolOptions | undefined =
-			callerContext.user?.userId && !closedWorldRetrieverRuntime
-				? {
-						binding: credentialClientBinding,
-						// The calling package decides whose needs, mappings, and bound
-						// Keys apply (GHSA-5fv3): the bound dispatcher's stamp, or the
-						// run package for unbound calls. Naming another id is denied.
-						resolvePackageId: async (requested) =>
-							resolveCallerCredentialPackageId({
-								requested,
-								callerPackageId:
-									getSecretAuthorityScope()?.currentPackageId?.trim() ||
-									(options?.packageContext?.packageId ?? null),
-							}),
-						callMap: callMap?.map ?? null,
-						runNeeds: () => {
-							const request = callerContext.request
-							if (!request) return Promise.resolve(new Map())
-							runNeeds ??= loadRunCredentialNeeds({
-								env,
-								orgId: request.org.id,
-								packageIds: credentialEntryPackageIds,
-							})
-							return runNeeds
-						},
-						waitUntil: options?.waitUntil,
-					}
-				: undefined
+		const credentialClientTools = createRunCredentialClientToolOptions({
+			env,
+			callerContext,
+			binding: credentialClientBinding,
+			runPackageId: options?.packageContext?.packageId ?? null,
+			entryPackageIds: credentialEntryPackageIds,
+			callMap: callMap?.map ?? null,
+			waitUntil: options?.waitUntil,
+		})
 		const packageSecretRefKey = createPackageSecretRefKey()
 		const executor = createExecuteExecutor({
 			env,
@@ -1400,6 +1570,7 @@ export async function runBundledModuleWithRegistry(
 				},
 				grantedSecretAuthorityPackageIds: [...grantedPackageStorageIds],
 				packageSecretRefKey,
+				executionId: crypto.randomUUID(),
 				credentialClientBinding: credentialClientTools
 					? credentialClientBinding
 					: null,
@@ -1424,7 +1595,6 @@ export async function runBundledModuleWithRegistry(
 			}),
 			packageId: options?.packageContext?.packageId ?? null,
 			executeShape: options?.executeShape,
-			allowOutboundFetch: !closedWorldRetrieverRuntime,
 			onWorkerId: runRecordHandle
 				? (workerId) => {
 						runRecordHandle.context = {
@@ -1439,17 +1609,16 @@ export async function runBundledModuleWithRegistry(
 			claimWorkerDay: options?.claimWorkerDay,
 			waitUntil: options?.waitUntil,
 		})
-		const workflowTools = closedWorldRetrieverRuntime
-			? undefined
-			: (options?.workflowTools ??
-				createWorkflowTools({
-					env,
-					callerContext,
-					packageContext: options?.packageContext ?? null,
-				}))
+		const workflowTools =
+			options?.workflowTools ??
+			createWorkflowTools({
+				env,
+				callerContext,
+				packageContext: options?.packageContext ?? null,
+			})
 		const computedPackageImportTools =
 			options?.computedPackageImportTools ??
-			(callerContext.user?.userId && !closedWorldRetrieverRuntime
+			(callerContext.user?.userId
 				? createComputedPackageImportTools({
 						env,
 						baseUrl: callerContext.baseUrl,
@@ -1466,7 +1635,6 @@ export async function runBundledModuleWithRegistry(
 						executorTimeoutMs: options?.executorTimeoutMs,
 						computedImportDepth: options?.computedImportDepth ?? 0,
 						conversationId: options?.conversationId ?? null,
-						closedWorldRetrieverRuntime,
 						credentialCallMap: callMap?.map ?? null,
 					})
 				: undefined)
@@ -1477,7 +1645,6 @@ export async function runBundledModuleWithRegistry(
 		const packageStorageTools = callerContext.user?.userId
 			? {
 					grantedPackageIds: grantedPackageStorageIds,
-					writable: !closedWorldRetrieverRuntime,
 					runPackageId: options?.packageContext?.packageId ?? null,
 				}
 			: undefined
@@ -1498,15 +1665,13 @@ export async function runBundledModuleWithRegistry(
 			packageStorageTools,
 			packageSecretTools,
 			credentialClientTools,
-			emailTools: closedWorldRetrieverRuntime ? undefined : options?.emailTools,
+			emailTools: options?.emailTools,
 			workflowTools,
-			skipCapabilityRegistry:
-				closedWorldRetrieverRuntime || options?.skipCapabilityRegistry,
-			capabilityRegistry: closedWorldRetrieverRuntime
-				? undefined
-				: options?.capabilityRegistry,
+			skipCapabilityRegistry: options?.skipCapabilityRegistry,
+			capabilityRegistry: options?.capabilityRegistry,
 			reportProgress,
 			waitUntil: options?.waitUntil,
+			...(credentialClientTools ? { credentialClientBinding } : {}),
 		})
 		runServerTiming.push({
 			name: 'provider-assembly',
@@ -1520,11 +1685,9 @@ export async function runBundledModuleWithRegistry(
 			packageStorageTools,
 			packageSecretTools,
 			credentialClientTools,
-			emailTools: closedWorldRetrieverRuntime ? undefined : options?.emailTools,
+			emailTools: options?.emailTools,
 			workflowTools,
-			packageEventTools: closedWorldRetrieverRuntime
-				? undefined
-				: options?.packageEventTools,
+			packageEventTools: options?.packageEventTools,
 			computedPackageImportTools,
 			staticCallMeterTools,
 		}

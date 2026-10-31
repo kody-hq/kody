@@ -66,6 +66,7 @@ export function buildOrgTransferBackup(input: {
 		},
 		derivedDeletes: plan.derivedDeletes,
 		orphans: plan.orphans,
+		droppedCreatorGrants: plan.droppedCreatorGrants,
 		jobs: plan.jobs.map((job) => ({
 			id: job.id,
 			userId: job.user_id,

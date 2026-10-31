@@ -21,6 +21,7 @@ import {
 	quarantinedInboundReplyErrorCode,
 	quarantinedInboundReplyMessage,
 	QuarantinedInboundReplyError,
+	spamInboundReplyMessage,
 } from './quarantined-inbound-reply.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
@@ -171,10 +172,12 @@ async function writeInboundMailboxMessage(
 	userId: string,
 	input: {
 		toAddresses: Array<string>
+		ccAddresses?: Array<string>
 		subject: string
 		messageIdHeader: string
-		classification?: 'accepted' | 'quarantined'
+		classification?: 'accepted' | 'quarantined' | 'spam'
 		classificationReason?: string | null
+		archivedAt?: string | null
 		updatedAt?: string
 	},
 ) {
@@ -663,6 +666,80 @@ test('sendOutboundEmail refuses replies to quarantined inbound mail until it is 
 	expect(await readDailyEmailSendCounter(account.userId)).toBe(sendsBefore + 2)
 })
 
+test('sendOutboundEmail refuses replies to spam like quarantine, and archive does not block replies', async () => {
+	await ensureUsageRollupsTestSchema(env.APP_DB)
+	const account = await seedAccount()
+	let providerSends = 0
+	const sendEnv = bindingEnv(async () => {
+		providerSends += 1
+		return { messageId: `provider-spam-${providerSends}` }
+	})
+	const spam = await writeInboundMailboxMessage(account.userId, {
+		toAddresses: [account.accountEmail],
+		subject: 'Cheap watches',
+		messageIdHeader: '<spam@example.com>',
+		classification: 'spam',
+		classificationReason: 'Marked as spam.',
+		updatedAt: '2026-07-01T12:00:00.000Z',
+	})
+	const sendsBefore = await readDailyEmailSendCounter(account.userId)
+	const refused = await rejection(
+		sendAs(account, {
+			env: sendEnv,
+			recipientPolicy: 'reply',
+			replyToMessageId: spam.id,
+			subject: 'Re: Cheap watches',
+			text: 'This should not send.',
+		}),
+	)
+	expect(refused).toBeInstanceOf(QuarantinedInboundReplyError)
+	expect(refused).toMatchObject({
+		code: quarantinedInboundReplyErrorCode,
+		message: spamInboundReplyMessage,
+	})
+	expect(providerSends).toBe(0)
+	expect(await readDailyEmailSendCounter(account.userId)).toBe(sendsBefore)
+
+	const archivedAt = '2026-07-01T12:00:00.000Z'
+	const archived = await writeInboundMailboxMessage(account.userId, {
+		toAddresses: [account.accountEmail],
+		subject: 'Old thread',
+		messageIdHeader: '<archived@example.com>',
+		classification: 'accepted',
+		archivedAt,
+	})
+	const archivedReply = await sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: archived.id,
+		subject: 'Re: Old thread',
+		text: 'Archived mail can still be answered.',
+	})
+	expect(archivedReply.status).toBe('sent')
+	expect(providerSends).toBe(1)
+
+	const notSpam = await mailboxRpc({
+		env,
+		userId: ownerIdFromStored(account.userId),
+	}).setMessageClassification({
+		ownerId: ownerIdFromStored(account.userId),
+		messageId: spam.id,
+		classification: 'accepted',
+		classificationReason: null,
+		updatedAt: '2026-07-01T12:00:01.000Z',
+	})
+	expect(notSpam).toEqual({ status: 'accepted' })
+	const releasedReply = await sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: spam.id,
+		subject: 'Re: Cheap watches',
+		text: 'Not spam after all.',
+	})
+	expect(releasedReply.status).toBe('sent')
+	expect(providerSends).toBe(2)
+})
+
 test('sendOutboundEmail preserves reply headers and records failed fallback sends', async () => {
 	silenceIncidentalRuntimeWarnings(['cloudflare-email-api-failed'])
 	await ensureUsageRollupsTestSchema(env.APP_DB)
@@ -981,4 +1058,202 @@ test('sendOutboundEmail caps max-plan users at the email daily backstop', async 
 		current: backstop,
 	})
 	expect(await readDailyEmailSendCounter(account.userId)).toBe(backstop)
+}, 30_000)
+
+function senderAliasFixture(account: Account) {
+	const username = account.from.slice(0, account.from.indexOf('@'))
+	return {
+		username,
+		alias: (tag: string, domain = platformDomain) =>
+			`${username}+${tag}@${domain}`,
+	}
+}
+
+test('sendOutboundEmail replies from the plus alias the original was sent to, with Reply-To and thread headers', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const account = await seedAccount()
+	const { alias } = senderAliasFixture(account)
+	const legacyDomain = 'inbox.legacy.example.com'
+	const sent: Array<SentMessage> = []
+	const sendEnv = {
+		...bindingEnv(async (message) => {
+			sent.push(message)
+			return { messageId: `provider-alias-${sent.length}` }
+		}),
+		LEGACY_USER_EMAIL_DOMAINS: legacyDomain,
+	}
+	const inbound = await writeInboundMailboxMessage(account.userId, {
+		// Envelope recipient first, then the header To list.
+		toAddresses: [alias('support'), 'someone-else@example.com'],
+		subject: 'Need help',
+		messageIdHeader: '<alias-inbound@example.com>',
+	})
+
+	const reply = await sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: inbound.id,
+		subject: 'Re: Need help',
+		inReplyToHeader: inbound.messageIdHeader,
+		references: ['<root@example.com>', inbound.messageIdHeader!],
+	})
+	expect(reply.status).toBe('sent')
+	expect(sent[0]).toMatchObject({
+		from: alias('support'),
+		to: 'recipient@example.com',
+		replyTo: alias('support'),
+		headers: {
+			'In-Reply-To': '<alias-inbound@example.com>',
+			References: '<root@example.com> <alias-inbound@example.com>',
+		},
+	})
+	expect(reply.message).toMatchObject({
+		fromAddress: alias('support'),
+		envelopeFrom: alias('support'),
+		replyToAddresses: [alias('support')],
+		inReplyToHeader: '<alias-inbound@example.com>',
+	})
+
+	// A message to the base address is answered from the base address with
+	// no Reply-To, exactly as before.
+	const base = await writeInboundMailboxMessage(account.userId, {
+		toAddresses: [account.from],
+		subject: 'Hello',
+		messageIdHeader: '<base-inbound@example.com>',
+	})
+	await sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: base.id,
+		subject: 'Re: Hello',
+	})
+	expect(sent[1]?.from).toBe(account.from)
+	expect(sent[1]).not.toHaveProperty('replyTo')
+
+	// Mail that reached a legacy domain alias (here via Cc) is answered from
+	// the same alias on the canonical domain.
+	const legacy = await writeInboundMailboxMessage(account.userId, {
+		toAddresses: ['list@example.com'],
+		ccAddresses: [alias('billing', legacyDomain)],
+		subject: 'Invoice',
+		messageIdHeader: '<legacy-inbound@example.com>',
+	})
+	await sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: legacy.id,
+		subject: 'Re: Invoice',
+	})
+	expect(sent[2]).toMatchObject({
+		from: alias('billing'),
+		replyTo: alias('billing'),
+	})
+
+	// Another handle's alias on the To line is never borrowed.
+	const foreign = await writeInboundMailboxMessage(account.userId, {
+		toAddresses: [`someone-else+support@${platformDomain}`],
+		subject: 'Forwarded',
+		messageIdHeader: '<foreign-inbound@example.com>',
+	})
+	await sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: foreign.id,
+		subject: 'Re: Forwarded',
+	})
+	expect(sent[3]?.from).toBe(account.from)
+
+	// An explicit owned alias overrides the derived one; a caller Reply-To
+	// still wins over the alias default.
+	await sendAs(account, {
+		env: sendEnv,
+		recipientPolicy: 'reply',
+		replyToMessageId: inbound.id,
+		subject: 'Re: Need help',
+		from: alias('escalations'),
+		replyTo: 'desk@example.com',
+	})
+	expect(sent[4]).toMatchObject({
+		from: alias('escalations'),
+		replyTo: 'desk@example.com',
+	})
+}, 30_000)
+
+test('sendOutboundEmail sends from an owned plus alias and refuses any From the caller does not own', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const account = await seedAccount()
+	const other = await seedAccount()
+	const { username, alias } = senderAliasFixture(account)
+	const sent: Array<SentMessage> = []
+	const sendEnv = bindingEnv(async (message) => {
+		sent.push(message)
+		return { messageId: `provider-from-${sent.length}` }
+	})
+
+	const aliasSend = await sendAs(account, {
+		env: sendEnv,
+		from: `Example Bot <${alias('Support').toUpperCase()}>`,
+	})
+	expect(aliasSend.status).toBe('sent')
+	expect(sent[0]).toMatchObject({
+		from: alias('support'),
+		replyTo: alias('support'),
+		to: account.accountEmail,
+	})
+	await sendAs(account, { env: sendEnv, from: account.from })
+	expect(sent[1]?.from).toBe(account.from)
+	expect(sent[1]).not.toHaveProperty('replyTo')
+
+	const inbound = await writeInboundMailboxMessage(account.userId, {
+		toAddresses: [alias('support')],
+		subject: 'Need help',
+		messageIdHeader: '<owned-from-inbound@example.com>',
+	})
+	const sendsBefore = await readDailyEmailSendCounter(account.userId)
+	const notOwned = [
+		other.from,
+		`${other.from.slice(0, other.from.indexOf('@'))}+support@${platformDomain}`,
+		`${username}+support@example.com`,
+		`${username}+support@kody.example.com`,
+		`kody@${platformDomain}`,
+		`kody+${username}@${platformDomain}`,
+		`${username}x+support@${platformDomain}`,
+		`${username}+@${platformDomain}`,
+		`${username}+a+b@${platformDomain}`,
+		`${username}+-tag@${platformDomain}`,
+		`${username}+${'t'.repeat(64)}@${platformDomain}`,
+		'not an address',
+	]
+	for (const from of notOwned) {
+		for (const overrides of [
+			{},
+			{
+				recipientPolicy: 'reply' as const,
+				replyToMessageId: inbound.id,
+				subject: 'Re: Need help',
+			},
+		]) {
+			const refused = await rejection(
+				sendAs(account, { env: sendEnv, from, ...overrides }),
+			)
+			expect(refused, from).toBeInstanceOf(McpCallerError)
+			expect((refused as Error).message).toContain(`Cannot send from ${from}`)
+		}
+	}
+	for (const from of ['', '   ']) {
+		const refused = await rejection(
+			sendAs(account, {
+				env: sendEnv,
+				from,
+				recipientPolicy: 'reply',
+				replyToMessageId: inbound.id,
+				subject: 'Re: Need help',
+			}),
+		)
+		expect(refused, JSON.stringify(from)).toBeInstanceOf(McpCallerError)
+		expect((refused as Error).message).toContain('Cannot send from')
+	}
+	// Refusals happen before quota, storage, or the provider.
+	expect(sent).toHaveLength(2)
+	expect(await readDailyEmailSendCounter(account.userId)).toBe(sendsBefore)
 }, 30_000)

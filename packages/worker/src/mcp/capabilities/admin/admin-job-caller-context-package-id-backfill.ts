@@ -73,6 +73,7 @@ export const adminJobCallerContextPackageIdBackfillCapability =
 		...adminMutationCapabilityAccess,
 		idempotent: true,
 		name: 'adminJobCallerContextPackageIdBackfill',
+		contextRuns: 'deny',
 		description:
 			'Restore package job caller_context_json rows that lost storageContext.packageId (for example after Run now persisted the clicker context). Rebuilds the blob the same way package publish does. Idempotent: skips rows that already match the package id in the job id. dryRun defaults to true. Page with cursor until nextCursor is null, then set dryRun false and page again.',
 		keywords: [

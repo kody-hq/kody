@@ -41,7 +41,7 @@ function seedPackage(
 
 test('lockSecretToPackage adds a package grant and rejects unknown packages', async () => {
 	const { sqlite, env } = createHarness()
-	const userId = ownerIdFromStored('user-secret-lock')
+	const userId = ownerIdFromStored('user-secret-package-grant')
 	seedPackage(sqlite, { id: 'pkg-notes', userId, kodyId: 'notes' })
 	seedPackage(sqlite, { id: 'pkg-mail', userId, kodyId: 'mail' })
 

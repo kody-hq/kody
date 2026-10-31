@@ -23,8 +23,11 @@ import {
 const CONTENT_WIDTH = OG_WIDTH - 52 * 2
 const CONTENT_HEIGHT = OG_HEIGHT - 40 * 2
 
-/** Starts just after the 580px title column. */
-const STAGE_LEFT = 600
+/**
+ * Centres the lantern and its labels between the 580px title column and the
+ * right edge, so the art has an even margin on both sides.
+ */
+const STAGE_LEFT = 640
 const LANTERN_WIDTH = 286
 const WORD_GAP = 18
 const STAGE_WIDTH = CONTENT_WIDTH - STAGE_LEFT

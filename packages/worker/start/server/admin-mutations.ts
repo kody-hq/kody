@@ -8,6 +8,8 @@ import {
 	setGlobalFeatureFlagSchema,
 	setFeatureFlagOverrideSchema,
 	clearFeatureFlagOverrideSchema,
+	setFeatureFlagOrgOverrideSchema,
+	clearFeatureFlagOrgOverrideSchema,
 	deleteStaleFlagSchema,
 	reservedUsernamesSchema,
 } from '#universal/admin-setting-mutations.ts'
@@ -23,6 +25,7 @@ import {
 	verifyAdminUserEmailDestinationSchema,
 	createAdminUserSchema,
 } from '#universal/admin-user-mutations.ts'
+import { emailClassificationValues } from '#universal/email-message-view.ts'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 
@@ -45,6 +48,30 @@ export const setAdminFeatureFlagOverride = createServerFn({ method: 'POST' })
 			await import('../../src/admin/feature-flags-operations.ts')
 		return withWebsiteMutation({}, async ({ request, env }) =>
 			setAdminFeatureFlagOverride({ request, env, fields: data }),
+		)
+	})
+
+export const setAdminFeatureFlagOrgOverride = createServerFn({ method: 'POST' })
+	.validator(setFeatureFlagOrgOverrideSchema)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { setAdminFeatureFlagOrgOverride } =
+			await import('../../src/admin/feature-flags-operations.ts')
+		return withWebsiteMutation({}, async ({ request, env }) =>
+			setAdminFeatureFlagOrgOverride({ request, env, fields: data }),
+		)
+	})
+
+export const clearAdminFeatureFlagOrgOverride = createServerFn({
+	method: 'POST',
+})
+	.validator(clearFeatureFlagOrgOverrideSchema)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { clearAdminFeatureFlagOrgOverride } =
+			await import('../../src/admin/feature-flags-operations.ts')
+		return withWebsiteMutation({}, async ({ request, env }) =>
+			clearAdminFeatureFlagOrgOverride({ request, env, fields: data }),
 		)
 	})
 
@@ -212,6 +239,38 @@ export const deleteAdminSystemEmail = createServerFn({ method: 'POST' })
 			await import('../../src/admin/system-email-operations.ts')
 		return withWebsiteMutation({}, async ({ env, request }) => {
 			return deleteAdminSystemEmail({ env, request, ...data })
+		})
+	})
+export const classifyAdminSystemEmail = createServerFn({ method: 'POST' })
+	.inputValidator(
+		z
+			.object({
+				messageId: z.string(),
+				classification: z.enum(emailClassificationValues).optional(),
+				archived: z.boolean().optional(),
+			})
+			.refine(
+				(value) =>
+					value.classification !== undefined || value.archived !== undefined,
+				'Provide classification, archived, or both.',
+			),
+	)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { classifyAdminSystemEmail } =
+			await import('../../src/admin/system-email-operations.ts')
+		return withWebsiteMutation({}, async ({ env, request }) => {
+			return classifyAdminSystemEmail({ env, request, ...data })
+		})
+	})
+export const blockAdminSystemEmailSender = createServerFn({ method: 'POST' })
+	.inputValidator(z.object({ messageId: z.string() }))
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { blockAdminSystemEmailSender } =
+			await import('../../src/admin/system-email-operations.ts')
+		return withWebsiteMutation({}, async ({ env, request }) => {
+			return blockAdminSystemEmailSender({ env, request, ...data })
 		})
 	})
 export const assignAdminUserRole = createServerFn({ method: 'POST' })

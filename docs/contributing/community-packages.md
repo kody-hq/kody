@@ -94,6 +94,13 @@ Profile activity reads stored `community_activity_events` plus public forks from
 `community_forks`. Forks appear only while the forker's saved package copy has
 `is_private = 0`. Ratings are never projected into profile activity.
 
+`fork_count` (catalog cards, listing detail, OG image, MCP) counts **public**
+forks only: the fork's saved package is live, `is_private = 0`, `hidden = 0`,
+and its org is active. Inert forks never count. `/@owner/kody-id/forks` lists
+those plus private or hidden forks the viewer can `package:read`
+(`src/app/community-forks-data.ts`); the package page adds the same private
+forks to its Forks count, so the count and the list always agree.
+
 `community_forks.origin_commit` is the origin SHA the fork last absorbed. It
 starts as HEAD copied at fork time. When that SHA and the listing pin differ,
 the platform walks the **listing origin** Artifacts repo from the absorb marker.
@@ -466,16 +473,16 @@ overwrites it. Pass `category` (or `/community?category=integrations`) to keep
 only that browse category. Unfiltered `/community` browse groups the newest
 candidates by category and shows a few cards in each section.
 
-Fork counts are live `COUNT(*)` aggregates over `community_forks` grouped by
-listing id. Detail reads always count the selected listing. Browse and search
-counts are also correct for every materialized result, although unfiltered
-browse intentionally ranks only the newest 500 candidates. The reported
-production mismatch for `@kentcdodds/github` was therefore consistent with a
-data snapshot/cache artifact rather than a defect in the aggregate SQL; the
-worker integration test pins that a successful fork increments the surfaced
-count. Failed fork cleanup and `packageDelete` of the forked copy remove the
-matching `community_forks` row (application delete plus D1 `AFTER DELETE`
-triggers on `saved_packages` and `entity_sources` in
+Public fork counts are live `COUNT(*)` aggregates over `community_forks`, joined
+to live saved packages in active orgs and filtered to packages with
+`is_private = 0` and `hidden = 0`. Detail, browse, and search counts use this
+public-only aggregate for each materialized result, although unfiltered browse
+intentionally ranks only the newest 500 candidates. A new fork starts private,
+so it does not increment the public count until it becomes public. The package
+page can add viewer-readable private forks through its viewer-specific overlay.
+Failed fork cleanup and `packageDelete` of the forked copy remove the matching
+`community_forks` row (application delete plus D1 `AFTER DELETE` triggers on
+`saved_packages` and `entity_sources` in
 `0061-community-forks-package-delete-cascade.sql`), so the live count drops
 without a separate recount and the viewer overlay cannot keep showing **Fork
 outdated** for a package that is gone. Healthy inert forks keep their

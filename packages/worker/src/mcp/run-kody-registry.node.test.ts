@@ -12,6 +12,7 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 import * as moduleGraph from '#worker/package-runtime/module-graph.ts'
 import {
 	buildKodyFns,
+	buildKodyToolContext,
 	createWorkflowTools,
 	credentialNeedsEntryPackageIds,
 	executeBundleTimeoutMs,
@@ -204,6 +205,53 @@ function createWorkflowEnv(savedPackageRow: Record<string, unknown> | null) {
 	return { workflowEnv, created }
 }
 
+test('buildKodyToolContext forwards localExecuteHop to capability handlers only when set', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const registry = buildCapabilityRegistry([
+		{
+			name: 'meta',
+			description: 'Meta capabilities',
+			capabilities: [
+				defineDomainCapability('meta', {
+					name: 'hopProbe',
+					orgPermission: 'none',
+					contextRuns: 'deny',
+					description: 'Report the local execute hop flag',
+					readOnly: true,
+					idempotent: true,
+					inputSchema: { type: 'object', properties: {} },
+					handler: async (_args, ctx) => ({
+						localExecuteHop: ctx.localExecuteHop ?? null,
+					}),
+				}),
+			],
+		},
+	])
+	const callerContext = createMcpCallerContext({
+		source: { kind: 'mcp-oauth' },
+		baseUrl: 'https://example.com',
+		user: {
+			userId: personIdFromStored('user-1'),
+			email: 'user@example.com',
+			displayName: 'user',
+			roles: ['user'],
+		},
+	})
+	const hop = await buildKodyToolContext({} as Env, callerContext, {
+		capabilityRegistry: registry,
+		localExecuteHop: true,
+	})
+	await expect(requireFn(hop.tools, 'hopProbe')({})).resolves.toEqual({
+		localExecuteHop: true,
+	})
+	const direct = await buildKodyToolContext({} as Env, callerContext, {
+		capabilityRegistry: registry,
+	})
+	await expect(requireFn(direct.tools, 'hopProbe')({})).resolves.toEqual({
+		localExecuteHop: null,
+	})
+})
+
 test('buildKodyFns rejects role-gated capabilities even when passed an unfiltered registry', async () => {
 	// The stub Env has no MCP server storage, so metadata loading warns
 	// 'mcp-server-refs-load-failed' before degrading to "no MCP servers".
@@ -216,6 +264,7 @@ test('buildKodyFns rejects role-gated capabilities even when passed an unfiltere
 				defineDomainCapability('admin', {
 					name: 'adminUserList',
 					orgPermission: 'none',
+					contextRuns: 'deny',
 					description: 'List admin user account metadata',
 					readOnly: true,
 					idempotent: true,
@@ -918,6 +967,31 @@ export default async function main(params) { return { other: true, ...params } }
 	const ids = await Promise.all(executor.calls.map(mintFromRun))
 	expect(ids.slice(1, 3)).toEqual([ids[0], ids[0]])
 	expect(ids[3]).not.toBe(ids[0])
+})
+
+test('runModuleWithRegistry gives each run its own gateway executionId', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const env = {} as Env
+	const callerContext = meCaller()
+	vi.spyOn(registryModule, 'getCapabilityRegistryForContext').mockResolvedValue(
+		emptyRegistry,
+	)
+	const executor = mockExecutor()
+	vi.mocked(moduleGraph.buildKodyModuleBundle).mockResolvedValue({
+		mainModule: 'entry.js',
+		modules: { 'entry.js': 'export default async function main() {}' },
+		dependencies: [],
+	})
+	const code = 'export default async function main() { return null }'
+	await runModuleWithRegistry(env, callerContext, code)
+	await runModuleWithRegistry(env, callerContext, code)
+
+	const [first, second] = executor.calls.map(
+		(call) => call.input.gatewayProps.executionId,
+	)
+	expect(first).toEqual(expect.any(String))
+	expect(second).toEqual(expect.any(String))
+	expect(second).not.toBe(first)
 })
 
 test('runModuleWithRegistry begins a run before bundling and records a clear timeout when bundling hangs', async () => {

@@ -14,6 +14,9 @@ export type FollowPauseReason = (typeof followPauseReasons)[number]
 
 export const followCreateLimitPerHour = 30
 export const followPausedRetentionDays = 30
+/** Recent updates kept per follow; older ones drop on insert. */
+export const followRecentUpdatesPerFollow = 20
+export const followRecentUpdatesRetentionDays = 30
 
 export function isFollowPauseReason(
 	value: unknown,
@@ -123,7 +126,74 @@ export type PackageFollowStatePayload = {
 		displayName: string | null
 		personal: boolean
 		follow: FollowSummary | null
+		/** Follow events no enabled package subscription in this workspace handles. */
+		unhandledEvents: Array<FollowEvent>
+		/** This follow's latest Recent updates, newest first. */
+		recentUpdates: Array<FollowRecentUpdate>
 	}>
+}
+
+/** What an unhandled delivery carried, enough to describe it later. */
+export type FollowRecentUpdateDetail =
+	| {
+			event: 'published'
+			publishedCommit: string
+			previousCommit: string | null
+	  }
+	| {
+			event: 'pushed'
+			ref: string
+			afterCommit: string | null
+			totalCommits: number
+			latestMessage: string | null
+	  }
+
+/** One Recent updates entry: a follow event no package handled. */
+export type FollowRecentUpdate = {
+	id: string
+	name: string
+	kind: FollowTargetKindName
+	/** The target's page, or null when the stored name no longer parses. */
+	href: string | null
+	event: FollowEvent
+	occurredAt: string
+	summary: string
+}
+
+function shortCommit(commit: string | null) {
+	return commit ? commit.slice(0, 7) : null
+}
+
+/** "Published version abc1234" or "3 commits pushed to main: Fix typo". */
+export function describeFollowRecentUpdate(detail: FollowRecentUpdateDetail) {
+	switch (detail.event) {
+		case 'published':
+			return `Published version ${shortCommit(detail.publishedCommit)}`
+		case 'pushed': {
+			const branch = detail.ref.replace(/^refs\/heads\//, '')
+			const count = `${detail.totalCommits} ${detail.totalCommits === 1 ? 'commit' : 'commits'}`
+			const message = detail.latestMessage?.split('\n')[0]?.trim()
+			return `${count} pushed to ${branch}${message ? `: ${message}` : ''}`
+		}
+		default: {
+			const exhaustive: never = detail
+			throw new Error(`Unsupported recent update: ${String(exhaustive)}`)
+		}
+	}
+}
+
+/**
+ * Selected events that no enabled package subscription in the org handles,
+ * so they land in Recent updates. Empty while paused.
+ */
+export function followUnhandledEvents(
+	follow: Pick<FollowSummary, 'status' | 'events'>,
+	unhandledEvents: ReadonlyArray<FollowEvent>,
+) {
+	if (follow.status !== 'active') return []
+	return normalizeFollowEvents(
+		follow.events.filter((event) => unhandledEvents.includes(event)),
+	)
 }
 
 export type OrgFollowRow = FollowSummary & {
@@ -144,6 +214,10 @@ export type OrgFollowsLoaderData = {
 	ok: true
 	orgSlug: string
 	follows: Array<OrgFollowRow>
+	/** Follow events no enabled package subscription in this org handles. */
+	unhandledEvents: Array<FollowEvent>
+	/** Newest first, across every follow in the org. */
+	recentUpdates: Array<FollowRecentUpdate>
 }
 
 type FollowOperationErrorCode =

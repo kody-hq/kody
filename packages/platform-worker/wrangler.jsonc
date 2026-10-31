@@ -136,19 +136,37 @@
 				},
 			],
 		},
+		// Execution context sessions. A new class: Cloudflare refuses a version
+		// rollback across this tag, so it ships in its own PR.
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["ExecutionContextSessionV1"],
+		},
 	],
 	"observability": {
 		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1,
+			"invocation_logs": true,
+		},
 		"traces": {
 			"enabled": true,
+			"head_sampling_rate": 0.1,
 		},
 	},
 	"env": {
 		"production": {
 			"observability": {
 				"enabled": true,
+				"logs": {
+					"enabled": true,
+					"head_sampling_rate": 1,
+					"invocation_logs": true,
+				},
 				"traces": {
 					"enabled": true,
+					"head_sampling_rate": 0.1,
 					"destinations": ["sentry-otlp-traces"],
 				},
 			},
@@ -202,6 +220,10 @@
 					{
 						"class_name": "RepoSession",
 						"name": "REPO_SESSION",
+					},
+					{
+						"class_name": "ExecutionContextSessionV1",
+						"name": "EXECUTION_CONTEXT_SESSION",
 					},
 					// Runtime-owned classes reached cross-script (ADR 0016).
 					{
@@ -350,6 +372,19 @@
 			},
 		},
 		"preview": {
+			// Previews: traces off, 10% of logs (Workers Observability cost).
+			// `wrangler tail` still streams every log line live.
+			"observability": {
+				"enabled": true,
+				"logs": {
+					"enabled": true,
+					"head_sampling_rate": 0.1,
+					"invocation_logs": true,
+				},
+				"traces": {
+					"enabled": false,
+				},
+			},
 			// Preview worker sets are created fresh per PR: the
 			// platform-owned classes are new namespaces here, not a transfer.
 			"migrations": [
@@ -365,6 +400,10 @@
 						"RepoSessionIndex",
 						"StripePlanRefresh",
 					],
+				},
+				{
+					"tag": "v2",
+					"new_sqlite_classes": ["ExecutionContextSessionV1"],
 				},
 			],
 			"worker_loaders": [
@@ -416,6 +455,10 @@
 					{
 						"class_name": "RepoSession",
 						"name": "REPO_SESSION",
+					},
+					{
+						"class_name": "ExecutionContextSessionV1",
+						"name": "EXECUTION_CONTEXT_SESSION",
 					},
 					{
 						"class_name": "StorageRunner",

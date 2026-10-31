@@ -1,4 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import {
+	dashboardPanelCss,
+	dashboardHeaderCss,
+	dashboardHeadingCss,
+	dashboardLinkCss,
+} from './workspace-dashboard-styles.ts'
+import { renderIcon } from '../components/icon.tsx'
 import { type CSSObject } from '@emotion/react'
 import {
 	formatWorkspaceChartUtcDay,
@@ -21,7 +28,8 @@ export function WorkspaceCharts({
 	billing,
 	base,
 }: {
-	charts: WorkspaceRunCharts
+	/** Null when the viewer can't read run history; only billing renders. */
+	charts: WorkspaceRunCharts | null
 	billing: WorkspaceBilling | null
 	base: string
 }) {
@@ -33,81 +41,85 @@ export function WorkspaceCharts({
 		{
 			label: 'Success',
 			color: chartColor.emerald,
-			values: charts.days.map((day) => day.success),
+			values: (charts?.days ?? []).map((day) => day.success),
 		},
 		{
 			label: 'Error',
 			color: chartColor.rose,
-			values: charts.days.map((day) => day.error),
+			values: (charts?.days ?? []).map((day) => day.error),
 		},
 		{
 			label: 'Running',
 			color: chartColor.blue,
-			values: charts.days.map((day) => day.running),
+			values: (charts?.days ?? []).map((day) => day.running),
 		},
 	]
-	const partialSince = workspaceChartsPartialSince(charts)
+	const partialSince = charts ? workspaceChartsPartialSince(charts) : null
 	const partialNote = partialSince
 		? `Showing runs since ${formatWorkspaceChartUtcDay(partialSince)}.`
 		: null
 	return (
 		<div css={gridCss}>
-			<section css={panelCss} aria-labelledby="execution-history">
-				<div css={headerCss}>
-					<h2 id="execution-history" css={headingCss}>
-						Execution history
-					</h2>
-					<span css={mutedCss}>Last 7 days · UTC</span>
-				</div>
-				<div css={bodyCss}>
-					<ExecutionHistoryChart days={charts.days} />
-					<div css={legendCss}>
-						{series.map((entry) => (
-							<span key={entry.label}>
-								<i
-									aria-hidden="true"
-									css={{
-										display: 'inline-block',
-										width: 8,
-										height: 8,
-										borderRadius: 2,
-										background: entry.color,
-										marginRight: 6,
-									}}
+			{charts ? (
+				<>
+					<section css={panelCss} aria-labelledby="execution-history">
+						<div css={headerCss}>
+							<h2 id="execution-history" css={headingCss}>
+								{renderIcon('chart')} Execution history
+							</h2>
+							<span css={mutedCss}>Last 7 days · UTC</span>
+						</div>
+						<div css={bodyCss}>
+							<ExecutionHistoryChart days={charts.days} />
+							<div css={legendCss}>
+								{series.map((entry) => (
+									<span key={entry.label}>
+										<i
+											aria-hidden="true"
+											css={{
+												display: 'inline-block',
+												width: 8,
+												height: 8,
+												borderRadius: 2,
+												background: entry.color,
+												marginRight: 6,
+											}}
+										/>
+										{entry.label}
+									</span>
+								))}
+							</div>
+							{partialNote ? <p css={noteCss}>{partialNote}</p> : null}
+							<p css={noteCss}>Package exports and child runs excluded.</p>
+						</div>
+					</section>
+					<section css={panelCss} aria-labelledby="activity-source">
+						<div css={headerCss}>
+							<h2 id="activity-source" css={headingCss}>
+								{renderIcon('pie-chart')} Activity by source
+							</h2>
+							<span css={mutedCss}>Last 7 days</span>
+						</div>
+						<div css={bodyCss}>
+							{charts.sources.length ? (
+								<WorkspaceRankingChart
+									id="workspace-sources"
+									ariaLabel="Top-level execution counts by source"
+									rows={charts.sources.map((source) => ({
+										key: source.surface,
+										label: surfaceLabel(source.surface),
+										value: source.count,
+										href: `${base}/activity?view=recent&status=all&triage=all&surface=${encodeURIComponent(source.surface)}`,
+									}))}
 								/>
-								{entry.label}
-							</span>
-						))}
-					</div>
-					{partialNote ? <p css={noteCss}>{partialNote}</p> : null}
-					<p css={noteCss}>Package exports and child runs excluded.</p>
-				</div>
-			</section>
-			<section css={panelCss} aria-labelledby="activity-source">
-				<div css={headerCss}>
-					<h2 id="activity-source" css={headingCss}>
-						Activity by source
-					</h2>
-					<span css={mutedCss}>Last 7 days</span>
-				</div>
-				<div css={bodyCss}>
-					{charts.sources.length ? (
-						<WorkspaceRankingChart
-							id="workspace-sources"
-							ariaLabel="Top-level execution counts by source"
-							rows={charts.sources.map((source) => ({
-								key: source.surface,
-								label: surfaceLabel(source.surface),
-								value: source.count,
-								href: `${base}/activity?view=recent&status=all&triage=all&surface=${encodeURIComponent(source.surface)}`,
-							}))}
-						/>
-					) : (
-						<p css={emptyCss}>No top-level executions in this period.</p>
-					)}
-					{partialNote ? <p css={noteCss}>{partialNote}</p> : null}
-				</div>
-			</section>
+							) : (
+								<p css={emptyCss}>No top-level executions in this period.</p>
+							)}
+							{partialNote ? <p css={noteCss}>{partialNote}</p> : null}
+						</div>
+					</section>
+				</>
+			) : null}
 			{billing && spend ? (
 				<section
 					css={{ ...panelCss, gridColumn: '1 / -1' }}
@@ -115,7 +127,7 @@ export function WorkspaceCharts({
 				>
 					<div css={headerCss}>
 						<h2 id="credits-by-package" css={headingCss}>
-							Credits spent by package
+							{renderIcon('wallet')} Credits spent by package
 						</h2>
 						<SiteLink css={moreCss} href={`${base}/usage`}>
 							Usage & billing
@@ -216,32 +228,14 @@ export function WorkspaceCharts({
 const gridCss: CSSObject = {
 	display: 'grid',
 	gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)',
-	gap: '0.75rem',
+	gap: '1.25rem',
 	'@media (max-width: 1100px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
 }
-const panelCss: CSSObject = {
-	minWidth: 0,
-	border: `1px solid ${colors.border}`,
-	borderRadius: '0.5rem',
-	background: colors.surface,
-	overflow: 'hidden',
-}
-const headerCss: CSSObject = {
-	display: 'flex',
-	justifyContent: 'space-between',
-	alignItems: 'baseline',
-	flexWrap: 'wrap',
-	gap: '0.5rem',
-	padding: '0.65rem 0.8rem',
-	borderBottom: `1px solid ${colors.border}`,
-}
-const headingCss: CSSObject = {
-	margin: 0,
-	fontSize: '0.875rem',
-	fontWeight: 650,
-}
+const panelCss = dashboardPanelCss
+const headerCss = dashboardHeaderCss
+const headingCss = dashboardHeadingCss
 const mutedCss: CSSObject = { fontSize: '0.8rem', color: colors.textMuted }
-const bodyCss: CSSObject = { padding: '0.65rem 0.8rem' }
+const bodyCss: CSSObject = { padding: '0.75rem 1.25rem 1.25rem' }
 const billingGridCss: CSSObject = {
 	...bodyCss,
 	display: 'grid',
@@ -288,4 +282,4 @@ const emptyCss: CSSObject = {
 	fontSize: '0.875rem',
 	color: colors.textMuted,
 }
-const moreCss: CSSObject = { fontSize: '0.8rem', color: colors.primaryText }
+const moreCss = dashboardLinkCss

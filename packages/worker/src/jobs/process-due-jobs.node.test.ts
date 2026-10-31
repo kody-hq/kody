@@ -3,6 +3,32 @@ import { expect, test } from 'vitest'
 import { processDueJobs } from './process-due-jobs.ts'
 import { type JobRecord } from './types.ts'
 
+test('processDueJobs advances next_run_at from the claimed occurrence, not wall clock', async () => {
+	const scheduledFor = '2026-04-12T07:00:00.000Z'
+	const lateNow = new Date('2026-04-12T12:30:00.000Z')
+	const hourly = createCronJob({
+		id: 'hourly-job',
+		schedule: { type: 'cron', expression: '0 * * * *' },
+		nextRunAt: scheduledFor,
+	})
+	const result = await processDueJobs({
+		jobs: [hourly],
+		now: lateNow,
+		scheduledFor,
+		async executeJob() {
+			return {
+				execution: { ok: true, logs: [], result: { ok: true } },
+				startedAt: lateNow.toISOString(),
+				finishedAt: lateNow.toISOString(),
+				durationMs: 0,
+			}
+		},
+	})
+	// Next after the 07:00 occurrence is 08:00, not 13:00 from wall clock.
+	expect(result.saveJobs[0]?.nextRunAt).toBe('2026-04-12T08:00:00.000Z')
+	expect(result.jobOutcomes[0]?.nextRunAt).toBe('2026-04-12T08:00:00.000Z')
+})
+
 function createCronJob(overrides: Partial<JobRecord> = {}): JobRecord {
 	return {
 		version: 1,
@@ -30,7 +56,7 @@ function createCronJob(overrides: Partial<JobRecord> = {}): JobRecord {
 	}
 }
 
-test('processDueJobs handles cron batching and once-job retain, preserve, and reschedule outcomes', async () => {
+test('processDueJobs handles cron batching and reschedule outcomes', async () => {
 	const now = new Date('2026-04-12T07:00:00.000Z')
 	const first = createCronJob({ id: 'job-1' })
 	const second = createCronJob({ id: 'job-2', name: 'Second job' })
@@ -55,7 +81,6 @@ test('processDueJobs handles cron batching and once-job retain, preserve, and re
 		},
 	})
 
-	expect(batchResult.deleteJobIds).toEqual([])
 	expect(batchResult.saveJobs).toHaveLength(2)
 	expect(batchResult.successCount).toBe(1)
 	expect(batchResult.errorCount).toBe(1)
@@ -102,62 +127,6 @@ test('processDueJobs handles cron batching and once-job retain, preserve, and re
 	).toBeUndefined()
 	expect(batchResult.saveJobs[0]).not.toHaveProperty('runHistory')
 	expect(batchResult.saveJobs[1]).not.toHaveProperty('runHistory')
-
-	// Once jobs are disabled after either outcome and keep RunLog-owned counters.
-	const runAt = '2026-04-12T07:00:00.000Z'
-	for (const [id, execution, outcome] of [
-		[
-			'job-once',
-			{ ok: false, error: 'expected failure', logs: [] as Array<string> },
-			{ outcome: 'failure', error: 'expected failure' },
-		],
-		[
-			'job-once-success',
-			{ ok: true, logs: ['ok'] as Array<string>, result: { ok: true } },
-			{ outcome: 'success' },
-		],
-	] as const) {
-		const result = await processDueJobs({
-			jobs: [
-				createCronJob({
-					id,
-					schedule: { type: 'once', runAt },
-					nextRunAt: runAt,
-				}),
-			],
-			now,
-			async executeJob() {
-				return {
-					execution,
-					startedAt: runAt,
-					finishedAt: runAt,
-					durationMs: 0,
-				}
-			},
-		})
-		expect(result.deleteJobIds).toEqual([])
-		expect(result.saveJobs).toEqual([
-			expect.objectContaining({
-				id,
-				enabled: false,
-				disabledReason: 'The one-time job finished its run.',
-				lastRunStatus: execution.ok ? 'success' : 'error',
-				lastRunAt: expect.any(String),
-				runCount: 0,
-				successCount: 0,
-				errorCount: 0,
-			}),
-		])
-		expect(result.jobOutcomes).toEqual([
-			{
-				jobId: id,
-				scheduleType: 'once',
-				nextRunAt: runAt,
-				deleted: false,
-				...outcome,
-			},
-		])
-	}
 
 	const cronJob = createCronJob({
 		id: 'job-reschedule-failure',

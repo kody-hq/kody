@@ -27,8 +27,9 @@ import {
 	BackupError,
 	backupPayload,
 	bindSourceDatabase,
-	configuredSourceDatabases,
 	errorCode,
+	primarySourceDatabase,
+	restExportSourceDatabases,
 	safeLog,
 	utcDay,
 } from './backup-policy.ts'
@@ -583,7 +584,23 @@ export async function sealFullBackupDay(
 	}
 
 	const d1Sources: Array<BackupFullD1Source> = []
-	for (const source of configuredSourceDatabases(env)) {
+	const restSources = restExportSourceDatabases(env)
+	const primary = primarySourceDatabase(env)
+	// Full manifests still require the primary REST D1 identity fields. Turning
+	// restExport off on the primary is supported for REST cron/freshness, but
+	// full-day seal waits until a paced-backed full-seal path lands (#4306).
+	if (
+		!restSources.some(
+			(source) => source.id.toLowerCase() === primary.id.toLowerCase(),
+		)
+	) {
+		return {
+			kind: 'incomplete',
+			day,
+			reason: 'primary-rest-export-disabled',
+		}
+	}
+	for (const source of restSources) {
 		const sourceEnv = bindSourceDatabase(env, source)
 		const sourceResult = await assertSourceDayRestorable(sourceEnv, day)
 		if (sourceResult.kind === 'incomplete') {
@@ -618,6 +635,7 @@ export async function sealFullBackupDay(
 		return { kind: 'incomplete', day, reason: 'd1-manifest-missing' }
 	}
 	const d1ManifestSha256 = primarySource.manifestSha256
+	const d1ManifestKey = d1Payload.manifestKey
 
 	let summary: StagingSummary
 	try {
@@ -739,7 +757,7 @@ export async function sealFullBackupDay(
 
 	const fullManifest = await signBackupFullManifest(env, {
 		day,
-		d1ManifestKey: d1Payload.manifestKey,
+		d1ManifestKey,
 		d1ManifestSha256,
 		d1Sources,
 		mailboxIndex: sealedMailboxIndex,

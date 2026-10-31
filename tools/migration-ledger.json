@@ -661,7 +661,167 @@
 			"sha256": "9c068be2ab8baaf73d36f92cde603fed959f63fd2068b3c3a19b61ee3ee08585"
 		},
 		{
-			"filename": "0179-drop-package-app-authority-fallbacks.sql",
+			"filename": "0180-webhook-disabled-to-enablement-off.sql",
+			"sha256": "1d99d037083ddbe3b83e5d37d3f73a3d446c6f6c25cdd58163b2608a69af9fa9"
+		},
+		{
+			"filename": "0181-email-spam-archive.sql",
+			"sha256": "bc29602a884b87d31884621109b6815f34d5f2678578a58652bd84b4fb6ed561"
+		},
+		{
+			"filename": "0182-follow-recent-updates.sql",
+			"sha256": "b10290377c7c50356c0555050ff3ed253991c8098f2991c6812cd787512232e9"
+		},
+		{
+			"filename": "0183-package-app-rate-limits.sql",
+			"sha256": "a422b61e272cb5852e5e5bb2a41aa68cf5ff4800f26a705ce5b93ab5bd199a3b"
+		},
+		{
+			"filename": "0184-package-app-visitor-attribution.sql",
+			"sha256": "1dc06bbd7ea0c17e490f3b7c4830d2ceef00276a48ff48efa2693a84fb0e8e77"
+		},
+		{
+			"filename": "0185-package-app-grant-credential-mappings.sql",
+			"sha256": "329a5f8c01ad0aff394ebd9089e3a08d7ef424d14802a8e9074262bf79775788"
+		},
+		{
+			"filename": "0186-platform-feedback-acknowledgement-message-id.sql",
+			"sha256": "3d5df4e50dc8f43c9f54fcaaacfc7bd956a8e879f5e8180b3685db8e9b831a4a"
+		},
+		{
+			"filename": "0187-invite-link-label-last-used-teams.sql",
+			"sha256": "76e1d1039763217904b695d146e39b677d426185a5a990da535bed5b13090d89"
+		},
+		{
+			"filename": "0189-execution-contexts.sql",
+			"sha256": "d520e690a22e4e982270652a3567f78ec1dfaca1b4082a28d0de17843e712fce"
+		},
+		{
+			"filename": "0190-grants-execution-context-resource-type.sql",
+			"sha256": "2ee08874e6fa1e1d7256eb642325d36de682ab1fd71ee910903ff4b47f97028d"
+		},
+		{
+			"filename": "0193-oauth-device-authorizations.sql",
+			"sha256": "f1c7bbbf9a2d164b4601e675547f600ac4d0be26cbda0bc985174f127ebffd78"
+		},
+		{
+			"filename": "0194-package-app-cookie-warnings.sql",
+			"sha256": "a5470e3405f1f379c82d37285e1f6731e8b070e272066166a056039916511f8d"
+		},
+		{
+			"filename": "0195-credential-fill-placement-opt-ins.sql",
+			"sha256": "9c4ae5ee34158ebde5106433f0d5a9a0caf5dfb1b41ae8080c64034cdcb734cd"
+		},
+		{
+			"filename": "0197-feature-flag-org-overrides.sql",
+			"sha256": "01798745f6d47a56ca2c5a3ca9799879afe8d49018288b4f3a3ab03be4790c4c"
+		},
+		{
+			"filename": "0199-sealed-token-fill-placement-opt-in-source.sql",
+			"sha256": "74d251b6ff979b4c4bd444a1ef6609987356df3f9e7ac7ca69362fa931f97830"
+		},
+		{
+			"filename": "0200-automation-execution-settings.sql",
+			"sha256": "c66865bd1eafbe8c363a64390e1d45096f54a374a644be5c56c32f3e55ec6d6f"
+		},
+		{
+			"filename": "0201-grants-org-everyone-subject.sql",
+			"sha256": "ea9af01477cc26dcec8d4b64a517686550bd78eb19c5843163f63aae8be830ca"
+		},
+		{
+			"filename": "0202-integration-app-owner.sql",
+			"sha256": "1e979e460810d54c91b3288e4e4a0b2cf838e320541613c009b0051814b14bb8"
+		},
+		{
+			"filename": "0203-package-app-authority-rejections.sql",
+			"sha256": "651d06f8cef558e6f830407647be3e83bc54edfd9edb620c33fd12f9eedc2f74"
+		},
+		{
+			"filename": "0204-package-codemod-run-item-owner-detail.sql",
+			"sha256": "3c8aa596e5dbf9460ce3a8051325286f0867fbdcbe394854b361aedb1f4d3d71"
+		},
+		{
+			"filename": "0205-dead-letter-messages.sql",
+			"sha256": "70844e2b9878460431cf3ded00132b20e5d03fbaeb96f98ef7e6bd91f9e20eb7"
+		},
+		{
+			"filename": "0206-login-credential-sessions.sql",
+			"sha256": "4f8025d5208873d7761c2f4e78233de172aa547f73b5572e606a645a8d927d6e"
+		},
+		{
+			"filename": "0207-execution-contexts-release-revoked-names.sql",
+			"sha256": "187cbb834aa580cb02572f501b3fc8672ccd0a7fe26af94a609c435038a4778d"
+		},
+		{
+			"filename": "0208-grants-origin.sql",
+			"sha256": "9cf506b9f0b61b52484698f834c6a48e83c8a5509fa86244053506cf935a859e"
+		},
+		{
+			"filename": "0209-agent-registrations.sql",
+			"sha256": "0713cbe4e214d27fa90062dadda1c18ee0aeb6e030d24a94179f4e7d1431fb4c"
+		},
+		{
+			"filename": "0210-enablement-enabler-narrowing.sql",
+			"sha256": "611d6838231313539698f202913361e2c928978f3ae4394f2037426c51967cad"
+		},
+		{
+			"filename": "0211-org-member-creation.sql",
+			"sha256": "191710d9f0786fdee465d000fb63e0680903ebb88217871d884afc3ed4e7b52e"
+		},
+		{
+			"filename": "0213-execution-context-grant-credentials-removed.sql",
+			"sha256": "026cc10018f6e1ea63788f975d3ef4a4c5132d388c8ea2420e076326477165b6"
+		},
+		{
+			"filename": "0214-grants-expiry-and-profile-subject.sql",
+			"sha256": "418ac9f8e5352de6a754fece077b91f8d85b6abb04c3c028f1f5a2e3d2421c84"
+		},
+		{
+			"filename": "0215-desktop-browser-login.sql",
+			"sha256": "e78b3f061da49bd219bc3dfe4080e9abb18f33a44688577a2da893b5189820ae"
+		},
+		{
+			"filename": "0216-login-credential-session-failures.sql",
+			"sha256": "f03eca3000bd5bccf11589889ccdbfdc141ff57b4879ac988b3f6a701b627e3b"
+		},
+		{
+			"filename": "0217-profiles.sql",
+			"sha256": "2560759567b1ddb011ff91bb9a9664eeb9e6f3a81ad4d5c9d6a2927f5d13734d"
+		},
+		{
+			"filename": "0218-read-preset-and-package-forks.sql",
+			"sha256": "436a7498c073d33b7c0448ad3126888d4cdb2573ccefd3dbd06a741e31a1e8f3"
+		},
+		{
+			"filename": "0219-email-deliverability-effects.sql",
+			"sha256": "1f2a97b2bc3a3289a90f2cef59c3f72a31d3f33c5eabdc089461ffd19f1ad759"
+		},
+		{
+			"filename": "0220-package-app-device-sign-in.sql",
+			"sha256": "bf0d240ef6db96cb0ae6a8c6d2ebeb567102244deac3881149c6810adf13d6f8"
+		},
+		{
+			"filename": "0222-profile-tokens-and-enablers.sql",
+			"sha256": "33160dee7165b61b0526bfee4eda395c89668c4b0b1f7744bcaf16a751699300"
+		},
+		{
+			"filename": "0223-package-app-visitor-billed-org.sql",
+			"sha256": "b97e24532cad33b3c88dbe4323549b6264c2ef0ef5aadd6287696c433e9b4a03"
+		},
+		{
+			"filename": "0224-drop-connection-profile-columns.sql",
+			"sha256": "35c5ad0bc4e3c57010b14aca75af6a68e543b2c9c1bebd388be55c6c3172f871"
+		},
+		{
+			"filename": "0225-drop-connection-profiles.sql",
+			"sha256": "761dab0e2cc9d1568db9c1d981c690afef51b9cdaf3a93dcdbdca19dd4a09174"
+		},
+		{
+			"filename": "0226-package-app-capability-allowances.sql",
+			"sha256": "006fbd7348590dd4d72034fbf3665e2d6372e13af8f7338e69915aed6bdea4cc"
+		},
+		{
+			"filename": "0228-drop-package-app-authority-fallbacks.sql",
 			"sha256": "3027a0f0df7221fd7b76763d1aa2e188afdabf8dace0854b4be63481a3a40034"
 		}
 	]

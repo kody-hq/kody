@@ -8,7 +8,7 @@ import { mcpServerInstructionsClientHeadLimitChars } from '#mcp/mcp-user-server-
  * guidance belong in skills / guides, not this stub.
  *
  * Copy is Kent-locked; change only with an explicit server-instructions update.
- * Prefer-local one-liner is {@link preferLocalCliExecuteGuidance} (shared with
+ * Prefer-local guidance is {@link preferLocalCliExecuteGuidance} (shared with
  * execute + api tool descriptions).
  */
 export const baseMcpServerInstructions = `Kody is Your agents' cloud: a software platform of primitives for individuals and teams including:
@@ -21,10 +21,6 @@ export const baseMcpServerInstructions = `Kody is Your agents' cloud: a software
 - apps
 
 ${preferLocalCliExecuteGuidance}
-
-When you need the Kody CLI and are not signed in, bootstrap it yourself with \`cliCredentialBootstrap\` and do not ask the human for a token.
-
-When the user asks you to do something, start with \`search\`, then \`execute\` to run code in Kody's cloud.
 
 Learn more with \`search({ entity: "guide:local_execute" })\`.`
 

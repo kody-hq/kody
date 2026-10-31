@@ -6,10 +6,12 @@ import {
 	type ExecuteRequestInput,
 	createAuthenticatedFetch,
 	createExecuteHelperPrelude,
-	type oauthClientCredentials,
+	oauthClientCredentials,
 	type secretHeaders,
+	INTEGRATION_RUNTIME_CONFIG_TOOL_NAME,
 } from './kody-runtime-utils.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
+import { buildBasicAuthSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
 
 type SandboxHelpers = {
 	createAuthenticatedFetch: (
@@ -80,7 +82,7 @@ function createKody(
 ) {
 	const tokenRefreshCalls: Array<CapabilityArgs> = []
 	const kody = {
-		async integrationGet(args: CapabilityArgs) {
+		async [INTEGRATION_RUNTIME_CONFIG_TOOL_NAME](args: CapabilityArgs) {
 			expect(args.name).toBe(integration.name)
 			return { integration }
 		},
@@ -403,7 +405,7 @@ test('createExecuteHelperPrelude exposes sandbox oauth and secret helper binding
 	})
 	expect(typeof platformHelpers.createAuthenticatedFetch).toBe('function')
 	await platformHelpers.createAuthenticatedFetch('github')
-	expect(platformCalls).toEqual(['integrationGet'])
+	expect(platformCalls).toEqual([INTEGRATION_RUNTIME_CONFIG_TOOL_NAME])
 
 	const clientCredentialsCalls: Array<RecordedRequest> = []
 	{
@@ -437,4 +439,60 @@ test('createExecuteHelperPrelude exposes sandbox oauth and secret helper binding
 	expect(clientCredentialsCalls[0]?.headers.get('authorization')).toBe(
 		'{{secret-basic:username=paypalClientId,password=paypalClientSecret|scope=user}}',
 	)
+})
+
+test('oauthClientCredentials returns the gateway payload and makes no redactor call', async () => {
+	const authorizations: Array<string | null> = []
+	const payload = await oauthClientCredentials(
+		{
+			tokenUrl: 'https://oauth.example.com/token',
+			clientIdSecret: 'exampleClientId',
+			clientSecretSecret: 'exampleClientSecret',
+		},
+		{
+			fetch: async (input, init) => {
+				authorizations.push(
+					new Request(input, init).headers.get('authorization'),
+				)
+				return Response.json({
+					access_token: 'sealed-by-gateway',
+					expires_in: 60,
+				})
+			},
+		},
+	)
+	expect(payload).toEqual({ access_token: 'sealed-by-gateway', expires_in: 60 })
+	expect(authorizations).toEqual([
+		buildBasicAuthSecretPlaceholder({
+			usernameSecret: 'exampleClientId',
+			passwordSecret: 'exampleClientSecret',
+		}),
+	])
+})
+
+test('sandbox oauthClientCredentials calls no host tool', async () => {
+	const calls: Array<{ name: string; args: CapabilityArgs }> = []
+	using _server = createMswNodeServer([
+		http.post('https://oauth.example.com/token', () =>
+			HttpResponse.json({
+				access_token: 'sealed-by-gateway',
+				token_type: 'Bearer',
+			}),
+		),
+	])
+	const helpers = createSandboxHelpers(async (name, args) => {
+		calls.push({ name, args })
+		return { ok: true }
+	})
+	await expect(
+		helpers.oauthClientCredentials({
+			tokenUrl: 'https://oauth.example.com/token',
+			clientIdSecret: 'exampleClientId',
+			clientSecretSecret: 'exampleClientSecret',
+		}),
+	).resolves.toEqual({
+		access_token: 'sealed-by-gateway',
+		token_type: 'Bearer',
+	})
+	expect(calls).toEqual([])
 })

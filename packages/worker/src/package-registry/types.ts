@@ -1,33 +1,43 @@
+import {
+	parsePackageJobSchedule,
+	type PackageJobSchedule as SharedPackageJobSchedule,
+} from '@kody-internal/shared/jobs/package-job-schedule.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
+import { automationExecutionSchema } from '#worker/execution-contexts/automation-execution-schema.ts'
 import { communityPackageCategories } from '#universal/community-categories.ts'
 import { type ForkListingRelation } from '#universal/community-listing-ahead.ts'
 import { credentialFillPlacementViewSchema } from '#universal/credential-fill-placement.ts'
 
 export const kodyPackageIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
-export const packageJobScheduleSchema = z.union([
-	z.object({
-		type: z.literal('cron'),
-		expression: z.string().min(1),
-	}),
-	z.object({
-		type: z.literal('interval'),
-		every: z.string().min(1),
-	}),
-	z.object({
-		type: z.literal('once'),
-		runAt: z.string().min(1),
-	}),
-])
+/**
+ * Zod wrapper around the shared package-job schedule parser so publish and
+ * `kody dev check` stay on one accept/reject set.
+ */
+export const packageJobScheduleSchema = z
+	.unknown()
+	.transform((schedule, ctx) => {
+		const parsed = parsePackageJobSchedule(schedule)
+		if (!parsed.ok) {
+			ctx.addIssue({
+				code: 'custom',
+				message: parsed.message,
+				fatal: parsed.code === 'once_removed',
+			})
+			return z.NEVER
+		}
+		return parsed.schedule
+	})
 
-export type PackageJobSchedule = z.infer<typeof packageJobScheduleSchema>
+export type PackageJobSchedule = SharedPackageJobSchedule
 
 export const packageJobDefinitionSchema = z.object({
 	entry: z.string().min(1),
 	schedule: packageJobScheduleSchema,
 	timezone: z.string().min(1).optional(),
 	enabled: z.boolean().optional(),
+	execution: automationExecutionSchema.optional(),
 })
 
 export type PackageJobDefinition = z.infer<typeof packageJobDefinitionSchema>
@@ -119,6 +129,20 @@ export const packageAppDefinitionSchema = z.object({
 	 */
 	assets: z.string().trim().min(1).optional(),
 	/**
+	 * Cookie names the app's page scripts must read. Kody normally adds
+	 * HttpOnly to cookies that look like sign-in or session cookies; names
+	 * listed here are left as set and still shown on the owner dashboard.
+	 * Use the name without the Kody cookie prefix.
+	 */
+	cookies: z
+		.object({
+			clientReadable: z
+				.array(z.string().trim().min(1).max(128))
+				.max(20)
+				.optional(),
+		})
+		.optional(),
+	/**
 	 * Kody capabilities the app may call as the person it runs as (its
 	 * publisher unless an owner chose someone else). Anything not listed
 	 * never runs with that person's authority.
@@ -169,6 +193,27 @@ export const packageCredentialKindValues = [
 ] as const
 export type PackageCredentialKind = (typeof packageCredentialKindValues)[number]
 
+/**
+ * A `kody.credentials` slot kind that names a secret provider package instead
+ * of a saved credential. Its `package` is the provider package; the org's
+ * provider binding and per-ref package grants fill it, never a caller pick.
+ */
+export const secretProviderSlotKind = 'secret-provider' as const
+
+/** Every `kind` a `kody.credentials` slot may declare. */
+export const packageCredentialSlotKindValues = [
+	...packageCredentialKindValues,
+	secretProviderSlotKind,
+] as const
+export type PackageCredentialSlotKind =
+	(typeof packageCredentialSlotKindValues)[number]
+
+export function isSavedCredentialKind(
+	kind: PackageCredentialSlotKind,
+): kind is PackageCredentialKind {
+	return kind !== secretProviderSlotKind
+}
+
 export const ownerCredentialForVisitorsValueMessage =
 	'kody.credentials ownerCredentialForVisitors is deprecated and ignored. Apps already use the publisher’s credentials. If you still set it, it takes only true.'
 
@@ -198,12 +243,18 @@ export const packageCredentialSlotSchema = z.strictObject({
 	 * (secret/Key, oauth, login). Declare only when a specific shape is needed
 	 * (`signing`, `mcp`, `url`, or a provider that truly requires one kind).
 	 */
-	kind: z.enum(packageCredentialKindValues).optional(),
+	kind: z.enum(packageCredentialSlotKindValues).optional(),
 	/**
 	 * Provider slug a credential must carry to auto-resolve for this need
-	 * (for example `github`). Defaults to the key.
+	 * (for example `github`). Defaults to the key. Not used by kind
+	 * `secret-provider`.
 	 */
 	provider: z.string().trim().min(1).max(64).optional(),
+	/**
+	 * Kind `secret-provider` only: the saved provider package (its
+	 * package.json name) whose `kody.secretProvider.id` this package uses.
+	 */
+	package: z.string().trim().min(1).max(165).optional(),
 	/** `credentials(key)` returns the caller's picks as an array. */
 	multiple: z.boolean().optional(),
 	/** Shown to callers choosing a credential for this need. */
@@ -215,6 +266,10 @@ export const packageCredentialSlotSchema = z.strictObject({
 	ownerCredentialForVisitors: z
 		.literal(true, { error: ownerCredentialForVisitorsValueMessage })
 		.optional(),
+	/** Credential authority when the supplier feature is enabled. */
+	supplier: z.enum(['publisher', 'executor']).optional(),
+	/** Executor needs default to required when omitted. */
+	required: z.boolean().optional(),
 	/**
 	 * Optional fill placement for package-scope secrets this need names.
 	 * Applied on Connect / secretSet insert when no row exists yet, instead of
@@ -230,21 +285,87 @@ export type PackageCredentialSlot = z.infer<typeof packageCredentialSlotSchema>
 export const packageCredentialsSchema = z
 	.record(z.string(), packageCredentialSlotSchema)
 	.superRefine((slots, ctx) => {
-		for (const name of Object.keys(slots)) {
-			if (packageCredentialSlotNamePattern.test(name)) continue
-			ctx.addIssue({
-				code: 'custom',
-				path: [name],
-				message:
-					'Credential slot names start with a letter and use letters, numbers, dots, underscores, or hyphens (max 64).',
-			})
+		for (const [name, slot] of Object.entries(slots)) {
+			if (!packageCredentialSlotNamePattern.test(name)) {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name],
+					message:
+						'Credential slot names start with a letter and use letters, numbers, dots, underscores, or hyphens (max 64).',
+				})
+			}
+			if (slot.kind === secretProviderSlotKind) {
+				addSecretProviderSlotIssues(name, slot, ctx)
+			} else if (slot.package !== undefined) {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name, 'package'],
+					message: `kody.credentials.${name}.package is only valid with kind: "secret-provider".`,
+				})
+			}
+			if (slot.required !== undefined && slot.supplier !== 'executor') {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name, 'required'],
+					message: `kody.credentials.${name}.required is only valid with supplier: "executor".`,
+				})
+			}
+			if (
+				slot.ownerCredentialForVisitors === true &&
+				slot.supplier === 'executor'
+			) {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name, 'supplier'],
+					message: `kody.credentials.${name} cannot combine ownerCredentialForVisitors with supplier: "executor".`,
+				})
+			}
 		}
 	})
+
+/** A scoped saved package name, such as `@acme/op-provider`. */
+export const secretProviderSlotPackagePattern =
+	/^@[a-z0-9][a-z0-9._-]{0,63}\/[a-z0-9][a-z0-9._-]{0,99}$/
+
+const secretProviderSlotOnlyFields = [
+	'provider',
+	'multiple',
+	'ownerCredentialForVisitors',
+	'supplier',
+	'required',
+	'placement',
+] as const satisfies ReadonlyArray<keyof PackageCredentialSlot>
+
+function addSecretProviderSlotIssues(
+	name: string,
+	slot: PackageCredentialSlot,
+	ctx: z.RefinementCtx,
+) {
+	if (
+		slot.package === undefined ||
+		!secretProviderSlotPackagePattern.test(slot.package)
+	) {
+		ctx.addIssue({
+			code: 'custom',
+			path: [name, 'package'],
+			message: `kody.credentials.${name} has kind "secret-provider", so package must name the saved provider package (its package.json name, such as "@acme/op-provider").`,
+		})
+	}
+	for (const field of secretProviderSlotOnlyFields) {
+		if (slot[field] === undefined) continue
+		ctx.addIssue({
+			code: 'custom',
+			path: [name, field],
+			message: `kody.credentials.${name}.${field} does not apply to kind "secret-provider": it names the provider package, and the org's provider binding and per-item package grants fill it, not a saved credential.`,
+		})
+	}
+}
 
 export const packageSubscriptionDefinitionSchema = z.object({
 	handler: z.string().min(1),
 	description: z.string().min(1).optional(),
 	filters: z.record(z.string().min(1), z.unknown()).optional(),
+	execution: automationExecutionSchema.optional(),
 })
 
 export type PackageSubscriptionDefinition = z.infer<
@@ -529,6 +650,7 @@ export const packageWebhookDefinitionSchema = z
 		verification: packageWebhookVerificationSchema.optional(),
 		replay: packageWebhookReplaySchema.optional(),
 		challenge: packageWebhookChallengeSchema.optional(),
+		execution: automationExecutionSchema.optional(),
 	})
 	.superRefine((webhook, ctx) => {
 		if (
@@ -578,25 +700,6 @@ export const packageEmittedEventDefinitionSchema = z.object({
 
 export type PackageEmittedEventDefinition = z.infer<
 	typeof packageEmittedEventDefinitionSchema
->
-
-export const packageRetrieverScopeValues = ['search', 'context'] as const
-export type PackageRetrieverScope = (typeof packageRetrieverScopeValues)[number]
-
-export const packageRetrieverDefinitionSchema = z.object({
-	export: z.string().min(1),
-	name: z.string().min(1),
-	description: z.string().min(1),
-	scopes: z
-		.array(z.enum(packageRetrieverScopeValues))
-		.min(1)
-		.max(packageRetrieverScopeValues.length),
-	timeoutMs: z.number().int().positive().max(5_000).optional(),
-	maxResults: z.number().int().positive().max(20).optional(),
-})
-
-export type PackageRetrieverDefinition = z.infer<
-	typeof packageRetrieverDefinitionSchema
 >
 
 const packageExportConditionSchema = z
@@ -739,6 +842,15 @@ export const authoredPackageKodySchema = z.object({
 	category: z.enum(communityPackageCategories).optional(),
 	searchText: z.string().min(1).optional(),
 	dependencies: kodyPackageDependenciesSchema.optional(),
+	/**
+	 * Kody capabilities this package's own modules call (ADR 0089). A package
+	 * app declares its own calls in `kody.app.capabilities` instead, which is
+	 * what package-app authority checks.
+	 */
+	capabilities: z
+		.array(z.string().trim().regex(packageAppCapabilityNamePattern))
+		.max(100)
+		.optional(),
 	credentials: packageCredentialsSchema.optional(),
 	secretMounts: z
 		.record(z.string().min(1), packageSecretMountDefinitionSchema)
@@ -752,12 +864,6 @@ export const authoredPackageKodySchema = z.object({
 		.optional(),
 	app: packageAppDefinitionSchema.optional(),
 	jobs: z.record(z.string().min(1), packageJobDefinitionSchema).optional(),
-	retrievers: z
-		.record(
-			z.string().regex(kodyPackageIdPattern),
-			packageRetrieverDefinitionSchema,
-		)
-		.optional(),
 	webhooks: packageWebhooksSchema.optional(),
 })
 
@@ -777,8 +883,11 @@ export type AuthoredPackageKody = Omit<
 
 export const authoredPackageJsonSchema = z.object({
 	name: z.string().min(1),
+	/** Informational; a non-string value is dropped, never refused. */
+	version: z.string().optional().catch(undefined),
 	private: z.boolean().optional(),
-	exports: z.record(z.string().min(1), packageExportTargetSchema),
+	/** Omitted means no exports, the same as `{}` (e.g. an app-only package). */
+	exports: z.record(z.string().min(1), packageExportTargetSchema).default({}),
 	kody: authoredPackageKodySchema,
 })
 

@@ -29,7 +29,8 @@ type McpCallerContextWireInput = {
 	user?: McpUserContext | null
 	storageContext?: McpStorageContext | null
 	repoContext?: McpRepoContext | null
-	connectionProfileName?: string | null
+	profileId?: string | null
+	profileChain?: ReadonlyArray<string> | null
 	oauthClientId?: string | null
 	/**
 	 * DB-backed org membership when available. Persisted on the wire so
@@ -71,7 +72,10 @@ export function createMcpCallerContextWire(
 		user: input.user ?? null,
 		storageContext: input.storageContext ?? null,
 		repoContext: input.repoContext ?? null,
-		connectionProfileName: input.connectionProfileName ?? null,
+		...(input.profileId?.trim() ? { profileId: input.profileId.trim() } : {}),
+		...(input.profileId?.trim() && input.profileChain?.length
+			? { profileChain: [...input.profileChain] }
+			: {}),
 		...(input.oauthClientId?.trim()
 			? { oauthClientId: input.oauthClientId.trim() }
 			: {}),
@@ -88,6 +92,8 @@ export function createMcpCallerContext(
 		source: RequestSource
 		/** API-token scopes; null/omitted does not narrow the actor. */
 		scopes?: ReadonlyArray<OrgPermission> | null
+		/** Execution-context runs: the requester operates the context. */
+		contextRunByOperator?: boolean
 	},
 ): McpCallerContext {
 	const wire = createMcpCallerContextWire(input)
@@ -97,10 +103,12 @@ export function createMcpCallerContext(
 			? deriveRequestContext({
 					user: wire.user,
 					source: input.source,
-					profileName: wire.connectionProfileName,
+					profileId: wire.profileId ?? null,
+					profileChain: wire.profileChain ?? null,
 					oauthClientId: wire.oauthClientId ?? null,
 					orgBinding: wire.orgBinding ?? undefined,
 					scopes: input.scopes ?? null,
+					contextRunByOperator: input.contextRunByOperator === true,
 				})
 			: null,
 	}

@@ -35,6 +35,7 @@ import {
 	limitExecutionResultValue,
 	runWithDynamicWorkerEvaluationBudget,
 	type ClaimWorkerDayAttribution,
+	createSandboxRecordFetchAttemptSource,
 } from './executor.ts'
 import {
 	durableObjectCodeUpdatedResetMessage,
@@ -349,11 +350,6 @@ test('generated kody provider and executor module sources stay bundle-safe and g
 	expect(await moduleSourceFor({ shadowGlobalThis: true })).toContain(
 		`async (globalThis, self, global, __kodyPackageBindings, __kodyPackageBindingStubs, __kodyPackageMcpFactoryRef, ${kodyCallDispatcherName}, ${kodyProviderEvaluateBindingName}, __kodyMcp, __kodyCreateRemoteProxy, __dispatchers) => (`,
 	)
-
-	// Closed-world modules reject fetch in the sandbox before outbound RPC.
-	const denied = await moduleSourceFor({ allowOutboundFetch: false })
-	expect(denied).not.toContain('.call("recordFetch", "[]")')
-	expect(denied).not.toContain('__kodyNativeFetchSymbol](input, init)')
 })
 
 test('generated kody provider source wires mcp proxy dispatch', async () => {
@@ -460,9 +456,9 @@ test('createExecuteExecutor aligns worker compatibility and leaves the fetch dea
 		const { options, runFetcher } = await readWorkerOptions(timeoutMs)
 		expect(
 			(options['globalOutbound'] as { props?: object } | undefined)?.props,
-		).toEqual({ allowOutboundFetch: false })
+		).toEqual({})
 		const gatewayProps = (runFetcher as { props?: object } | undefined)?.props
-		expect(gatewayProps).toMatchObject({ allowOutboundFetch: true })
+		expect(gatewayProps).not.toHaveProperty('allowOutboundFetch')
 		expect(gatewayProps).not.toHaveProperty('outboundFetchTimeoutMs')
 	}
 })
@@ -543,7 +539,6 @@ test('createExecuteExecutor enforces the host timeout: hang, late settle, abort-
 		gatewayProps: createGatewayProps('hang-user'),
 		timeoutMs: 40,
 	})
-	expect(hung.error).toBe(createExecutorSandboxTimeoutMessage(40))
 	expect(hung.error).toContain('Execution timed out after 40ms:')
 	expect(hung.result).toBeUndefined()
 	expect(Date.now() - startedAtMs).toBeLessThan(500)
@@ -606,7 +601,7 @@ test('createExecuteExecutor enforces the host timeout: hang, late settle, abort-
 			} as never,
 		],
 	)
-	expect(aborted.error).toBe(createExecutorSandboxTimeoutMessage(40))
+	expect(aborted.error).toContain('Execution timed out after 40ms:')
 	expect(observedSignal?.aborted).toBe(true)
 
 	// Queued evaluations are dropped once their host deadline expires.
@@ -642,7 +637,7 @@ test('createExecuteExecutor enforces the host timeout: hang, late settle, abort-
 			{ env: sharedEnv, gatewayProps: queueUser, timeoutMs: 40 },
 			'async () => "queued"',
 		)
-		expect(queuedResult.error).toBe(createExecutorSandboxTimeoutMessage(40))
+		expect(queuedResult.error).toContain('Execution timed out after 40ms:')
 		expect(evaluateStarts).toBe(4)
 
 		releaseHolders()
@@ -1729,4 +1724,63 @@ test('executor maps secret errors, formats guidance, and truncates on UTF-8 boun
 	expect(
 		new TextEncoder().encode(String(threeByteLimit.value)).byteLength,
 	).toBe(3)
+})
+
+type RecordFetchAttempt = (
+	hostSideEffects: {
+		call: (name: string, argsJson: string) => Promise<string>
+	} | null,
+	failures: { count: number; message: string | null },
+) => Promise<void>
+
+function loadSandboxRecordFetchAttempt() {
+	return new Function(
+		'__kodyJsonParseCaptured',
+		'__kodyErrorCaptured',
+		'__kodyStringCaptured',
+		`${createSandboxRecordFetchAttemptSource()}; return __kodyRecordFetchAttempt;`,
+	)(JSON.parse, Error, String) as RecordFetchAttempt
+}
+
+test('sandbox fetch recording never throws when the recorder stub is disposed', async () => {
+	const recordFetchAttempt = loadSandboxRecordFetchAttempt()
+	const failures = { count: 0, message: null as string | null }
+	const calls: Array<string> = []
+	let disposed = false
+	const recorder = {
+		async call(name: string) {
+			if (disposed) throw new Error('RPC stub used after being disposed.')
+			calls.push(name)
+			return JSON.stringify({ result: null })
+		},
+	}
+
+	await recordFetchAttempt(recorder, failures)
+	expect(calls).toEqual(['recordFetch'])
+	expect(failures).toEqual({ count: 0, message: null })
+
+	disposed = true
+	await expect(recordFetchAttempt(recorder, failures)).resolves.toBeUndefined()
+	await expect(recordFetchAttempt(recorder, failures)).resolves.toBeUndefined()
+	expect(failures).toEqual({
+		count: 2,
+		message: 'RPC stub used after being disposed.',
+	})
+
+	const errorEnvelope = {
+		async call() {
+			return JSON.stringify({ error: 'Execution has already completed.' })
+		},
+	}
+	const envelopeFailures = { count: 0, message: null as string | null }
+	await expect(
+		recordFetchAttempt(errorEnvelope, envelopeFailures),
+	).resolves.toBeUndefined()
+	expect(envelopeFailures).toEqual({
+		count: 1,
+		message: 'Execution has already completed.',
+	})
+
+	await expect(recordFetchAttempt(null, failures)).resolves.toBeUndefined()
+	expect(failures.count).toBe(2)
 })

@@ -11,6 +11,10 @@ import {
 	orgAuditOutboxInsertStatement,
 	planOrgAuditOutbox,
 } from '#worker/orgs/org-audit-outbox.ts'
+import {
+	listPinnedConnectionsForOrg,
+	planPinnedConnectionWipes,
+} from '#worker/integrations/pinned-connections.ts'
 import { type OrgTransferEffects } from './apply.ts'
 import { writeOrgTransferBackup } from './backup.ts'
 import { runOrgTransferPostCommit } from './post-commit.ts'
@@ -71,6 +75,24 @@ export function defaultOrgTransferEffects(input: {
 			mcpClientHubTransferStub({ env, userId }).discardTransferredServer({
 				serverId,
 			}),
+		async planPinnedMemberWipes({ orgId, appSlugs }) {
+			const connections = []
+			for (const appSlug of appSlugs) {
+				connections.push(
+					...(await listPinnedConnectionsForOrg({
+						db: env.APP_DB,
+						pinnedOrgId: orgId,
+						appSlug,
+					})),
+				)
+			}
+			return planPinnedConnectionWipes({
+				env,
+				connections,
+				reason: 'app_deleted',
+				audit: orgAuditWriterForPerson(env, input.actor),
+			})
+		},
 		async jobCallerContextJson({ userId, packageId }) {
 			return serializeCallerContext(
 				await createPackageJobCallerContext({

@@ -371,3 +371,54 @@ test('non-production and missing Cloudflare credentials do not report an empty D
 	expect(mocks.rawRequest).not.toHaveBeenCalled()
 	expect(mocks.captureMessage).not.toHaveBeenCalled()
 })
+
+test('parked dead-letter messages keep the queue on the page after the consumer acks them', async () => {
+	consoleWarn.mockImplementation(() => {})
+	mocks.captureMessage.mockClear()
+	const { kv } = memoryKv()
+	const parkedQueue = 'kody-platform-feedback-dispatch-dlq'
+	const appDb = {
+		prepare: () => ({
+			all: async () => ({
+				results: [
+					{
+						dead_letter_queue: parkedQueue,
+						count: 1,
+						oldest_enqueued_at_ms: now.getTime() - 60 * 60_000,
+					},
+				],
+			}),
+		}),
+	} as unknown as D1Database
+	installQueues()
+	const result = await checkDlqDepthAndAlert({
+		env: { ...productionEnv(kv), APP_DB: appDb },
+		now,
+	})
+	expect(result).toMatchObject({ status: 'checked', sustained: 1, alerted: 1 })
+	expect(mocks.setFingerprint).toHaveBeenLastCalledWith([
+		'dlq-depth',
+		parkedQueue,
+	])
+	expect(mocks.captureMessage.mock.calls[0]?.[0]).toContain(
+		`Dead-letter queue ${parkedQueue} still has 1 unacknowledged message (1 parked for admin replay, ack, or purge) after 60 minutes.`,
+	)
+})
+
+test('a failed parked-message read fails the check instead of reporting healthy', async () => {
+	const { kv } = memoryKv()
+	const appDb = {
+		prepare: () => ({
+			all: async () => {
+				throw new Error('D1 unavailable')
+			},
+		}),
+	} as unknown as D1Database
+	installQueues()
+	await expect(
+		checkDlqDepthAndAlert({
+			env: { ...productionEnv(kv), APP_DB: appDb },
+			now,
+		}),
+	).rejects.toThrow('parked dead-letter messages (D1 unavailable)')
+})

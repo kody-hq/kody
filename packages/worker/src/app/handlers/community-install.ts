@@ -1,8 +1,8 @@
-import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { z } from 'zod'
 import { waitUntil } from 'cloudflare:workers'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { type AuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { resolveCommunityInstallOwner } from '#app/community-install-org.ts'
 import {
 	buildInstallAdaptPrompt,
 	buildInstallSuccessPrompt,
@@ -13,7 +13,15 @@ import {
 	communityForkResourceLimitLogFields,
 	isCommunityForkResourceLimitCause,
 } from '#worker/community/fork-resource-limit.ts'
-import { installCommunityListing } from '#worker/community/install.ts'
+import {
+	installCommunityListing,
+	installPrivatePackageFork,
+} from '#worker/community/install.ts'
+import { resolvePackageForkSource } from '#worker/community/package-fork-source.ts'
+import {
+	loadReadablePrivateForkSource,
+	privatePackageForkNotFoundMessage,
+} from '#worker/community/service.ts'
 import { getCommunityListingById } from '#worker/community/repo.ts'
 import { EntitlementLimitError } from '#worker/entitlements/errors.ts'
 import { toApiError } from '#worker/open-api/errors.ts'
@@ -25,6 +33,8 @@ import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 const communityInstallPostSchema = z.object({
 	acknowledged: z.boolean().optional(),
 	kody_id: z.string().trim().min(1).optional(),
+	/** Org slug to fork into. Omitted keeps the personal org. */
+	org: z.string().trim().min(1).optional(),
 })
 
 const thirdPartyInstallConfirmError =
@@ -74,8 +84,21 @@ export async function installWebsiteCommunityPackage(input: {
 	}
 
 	try {
-		// Unscoped community installs always belong to the person's personal org.
-		const installOwnerId = personalOrgIdForPerson(user.mcpUser)
+		const installOwner = await resolveCommunityInstallOwner({
+			env,
+			request,
+			user,
+			orgSlug: parsed.data.org,
+		})
+		if (!installOwner.ok) {
+			return installResult(
+				{ ok: false, error: installOwner.error },
+				installOwner.status,
+			)
+		}
+		// Only the body `org` picks another org; URL params and the last-org
+		// cookie never redirect an install away from the personal org.
+		const installOwnerId = installOwner.ownerId
 		const expectedPackageScope = await getPackageScopeByUserId(
 			env.APP_DB,
 			installOwnerId,
@@ -108,29 +131,98 @@ export async function installWebsiteCommunityPackage(input: {
 			// Bind the install to origin HEAD (the commit the fork copies)
 			// so a concurrent push cannot activate content the user never saw.
 			expectedPinnedCommit,
-			// Projection already supports deferred search-index upsert and
-			// retriever-cache refresh; without waitUntil those await on the
-			// install response and stretch one-click / onboarding latency.
+			// Search-index upsert can run after the install response; without
+			// waitUntil it stretches one-click / onboarding latency.
 			waitUntil,
 		})
-		if (result.status === 'adaptation_required') {
-			return installResult({
-				ok: true,
-				status: result.status,
-				packageId: result.packageId,
-				sourceId: result.sourceId,
-				targetName: result.targetName,
-				...alreadyInstalledFields(result),
-				failedChecks: result.failedChecks.map((check) => ({
-					kind: check.kind,
-					message: check.message,
-				})),
-				agentPrompt: buildInstallAdaptPrompt({
-					targetName: result.targetName,
-					sourceId: result.sourceId,
-				}),
-			})
+		return installResultPayload(result)
+	} catch (error) {
+		return installErrorResult(error)
+	}
+}
+
+/**
+ * Website Fork for a package the viewer may read that has no listing
+ * (private or never listed). Same install flow and responses as a listing;
+ * a viewer without package:read gets the same 404 as a missing package.
+ */
+export async function installWebsitePrivatePackageFork(input: {
+	env: Env
+	request: Request
+	user: AuthenticatedAppUser
+	ownerHandle: string
+	kodyId: string
+	body: unknown
+}) {
+	const { env, request, user } = input
+	const parsed = communityInstallPostSchema.safeParse(input.body)
+	if (!parsed.success)
+		return installResult({ ok: false, error: 'Invalid request body.' }, 400)
+	const notFound = installResult(
+		{ ok: false, error: privatePackageForkNotFoundMessage },
+		404,
+	)
+	const sourcePackage = await resolvePackageForkSource(env, {
+		ownerHandle: input.ownerHandle,
+		kodyId: input.kodyId,
+	})
+	if (!sourcePackage) return notFound
+	const readable = await loadReadablePrivateForkSource({
+		env,
+		reader: user.mcpUser,
+		sourcePackage,
+	})
+	if (!readable) return notFound
+	try {
+		const installOwner = await resolveCommunityInstallOwner({
+			env,
+			request,
+			user,
+			orgSlug: parsed.data.org,
+		})
+		if (!installOwner.ok) {
+			return installResult(
+				{ ok: false, error: installOwner.error },
+				installOwner.status,
+			)
 		}
+		const installOwnerId = installOwner.ownerId
+		const expectedPackageScope = await getPackageScopeByUserId(
+			env.APP_DB,
+			installOwnerId,
+		)
+		const result = await installPrivatePackageFork({
+			env,
+			baseUrl: getAppBaseUrl({ env, requestUrl: request.url }),
+			userId: installOwnerId,
+			followerOrgId: installOwnerId,
+			creatorUserId: user.mcpUser.userId,
+			userEmail: entitlementEmailForOwner(
+				{ user: { userId: user.mcpUser.userId, email: user.email } },
+				installOwnerId,
+			),
+			expectedPackageScope,
+			sourcePackage,
+			reader: user.mcpUser,
+			kodyId: parsed.data.kody_id,
+			waitUntil,
+		})
+		return installResultPayload(result)
+	} catch (error) {
+		if (
+			error instanceof CommunityActionError &&
+			error.message === privatePackageForkNotFoundMessage
+		) {
+			return notFound
+		}
+		return installErrorResult(error)
+	}
+}
+
+function installResultPayload(
+	result: Awaited<ReturnType<typeof installCommunityListing>>,
+) {
+	if (result.status === 'adaptation_required') {
 		return installResult({
 			ok: true,
 			status: result.status,
@@ -138,39 +230,54 @@ export async function installWebsiteCommunityPackage(input: {
 			sourceId: result.sourceId,
 			targetName: result.targetName,
 			...alreadyInstalledFields(result),
-			agentPrompt: buildInstallSuccessPrompt({
+			failedChecks: result.failedChecks.map((check) => ({
+				kind: check.kind,
+				message: check.message,
+			})),
+			agentPrompt: buildInstallAdaptPrompt({
 				targetName: result.targetName,
+				sourceId: result.sourceId,
 			}),
 		})
-	} catch (error) {
-		if (
-			error instanceof CommunityActionError ||
-			error instanceof EntitlementLimitError
-		) {
-			return installResult({ ok: false, error: error.message }, 400)
-		}
-		if (
-			error instanceof CommunityForkResourceLimitError ||
-			isCommunityForkResourceLimitCause(error)
-		) {
-			const mapped =
-				error instanceof CommunityForkResourceLimitError
-					? error
-					: new CommunityForkResourceLimitError(error)
-			console.error(
-				'Community install failed:',
-				communityForkResourceLimitLogFields(error),
-			)
-			return installResult({ ok: false, error: mapped.message }, 503)
-		}
-		// Same Open API remap as communityFork: Artifacts git transients
-		// become 503 with a retry next step; other unknowns keep the
-		// generic internal message that says retry or report.
-		const apiError = toApiError(error)
-		console.error('Community install failed:', error)
-		return installResult(
-			{ ok: false, error: apiError.message },
-			apiError.status,
-		)
 	}
+	return installResult({
+		ok: true,
+		status: result.status,
+		packageId: result.packageId,
+		sourceId: result.sourceId,
+		targetName: result.targetName,
+		...alreadyInstalledFields(result),
+		agentPrompt: buildInstallSuccessPrompt({
+			targetName: result.targetName,
+		}),
+	})
+}
+
+function installErrorResult(error: unknown) {
+	if (
+		error instanceof CommunityActionError ||
+		error instanceof EntitlementLimitError
+	) {
+		return installResult({ ok: false, error: error.message }, 400)
+	}
+	if (
+		error instanceof CommunityForkResourceLimitError ||
+		isCommunityForkResourceLimitCause(error)
+	) {
+		const mapped =
+			error instanceof CommunityForkResourceLimitError
+				? error
+				: new CommunityForkResourceLimitError(error)
+		console.error(
+			'Community install failed:',
+			communityForkResourceLimitLogFields(error),
+		)
+		return installResult({ ok: false, error: mapped.message }, 503)
+	}
+	// Same Open API remap as communityFork: Artifacts git transients
+	// become 503 with a retry next step; other unknowns keep the
+	// generic internal message that says retry or report.
+	const apiError = toApiError(error)
+	console.error('Community install failed:', error)
+	return installResult({ ok: false, error: apiError.message }, apiError.status)
 }

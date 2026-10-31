@@ -114,7 +114,7 @@ export function insertCollaboratorGrant(
 	input: {
 		id: string
 		packageId: string
-		subjectType: 'user' | 'team'
+		subjectType: 'user' | 'team' | 'org'
 		subjectId: string
 		preset: GrantPreset
 	},

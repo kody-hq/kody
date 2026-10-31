@@ -1,3 +1,15 @@
+import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
+import { executionContextsFlagKey } from '#worker/execution-contexts/flag.ts'
+import {
+	type ExecuteRoutingArgs,
+	executeRoutingInputFields,
+	routeExecuteForCaller,
+} from '#worker/execution-contexts/execute-routing.ts'
+import {
+	describeRanOn,
+	ranOnFromMetadata,
+	type ExecutionContextRunMetadata,
+} from '#worker/execution-contexts/routing.ts'
 import * as Sentry from '@sentry/cloudflare'
 import {
 	type ContentBlock,
@@ -5,18 +17,17 @@ import {
 } from '@modelcontextprotocol/sdk/types.js'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { z } from 'zod'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	callerFeatureFlagEvaluationFailed,
 	resolveCallerFeatureFlags,
 } from '#mcp/capabilities/access-control.ts'
 import { runWithRequestPermissions } from '#worker/authorization/authorize.ts'
 import {
-	executeInvokeFieldDescription,
-	executeInvokeFlagKey,
-	executeToolDescriptionWithInvoke,
-	buildExecuteAttributionMetadata,
-	resolveExecuteModule,
-} from '#mcp/execute-invoke.ts'
+	executeInvokeRemovedMessage,
+	hasRemovedExecuteInvoke,
+} from '#mcp/execute-invoke-removed.ts'
+import { buildExecuteAttributionMetadata } from '#worker/run-records/execute-attribution.ts'
 import { executeToolDescription } from '#mcp/instructions/execute-tool-description.ts'
 import {
 	defaultExecutionResponseLimitBytes,
@@ -67,7 +78,16 @@ import {
 	createRawFetchHostSink,
 	type RawFetchHostNudgeState,
 } from '#mcp/raw-fetch-host-nudge.ts'
+import {
+	applyPreferLocalExecuteNudge,
+	dailyFreshWorkersFromClaim,
+	isKnownWebOnlyMcpClient,
+	monthlyIncludeForPreferLocalNudge,
+	preferLocalNudgeMonthKey,
+	shouldTipPreferLocalExecuteNudge,
+} from '#mcp/prefer-local-execute-nudge.ts'
 import { isPreRunUsageDenial } from '#worker/entitlements/errors.ts'
+import { readMonthlyComputeUsage } from '#worker/billing/compute-overage-usage.ts'
 import {
 	getCachedUserEntitlement,
 	readExecuteUniqueWorkerUsage,
@@ -94,6 +114,7 @@ import {
 	beginRunRecord,
 	claimRunRecord,
 	ensureRunRecordStarted,
+	updateRunningRunRecordMetadata,
 	finishRunRecord,
 	getRunRecord,
 	getRunRecordByIdempotencyKey,
@@ -227,11 +248,33 @@ export const executeToolOutputSchema = {
 		.unknown()
 		.optional()
 		.describe('Relevant stored memories surfaced for this call.'),
+	ranOn: z
+		.unknown()
+		.optional()
+		.describe(
+			'Where the run happened, on every routed response (input errors before routing may omit it): { kind: "cloud" | "context", id: "cloud" | context id, name: "Kody cloud" | context name, yours?, timing?, attempts, fellBackToCloud }. attempts lists contexts that passed on it (offline, busy, skipped) with reasons. timing (ms, context runs that reported it): queueMs, setupMs (packageGraphMs, packageGraphCached), executeMs and daemonMs on the machine, serverMs on Kody, transitMs = serverMs - daemonMs for dispatch plus return.',
+		),
+	executionContext: z
+		.unknown()
+		.optional()
+		.describe(
+			'Legacy detail for runs that involved an execution context (same attempts and fellBackToCloud as ranOn). Prefer ranOn.',
+		),
 }
 
 export type ExecuteToolStructuredContent = StructuredContentFromFields<
 	typeof executeToolOutputSchema
 >
+
+/** Longest a detached context run waits for its main run record to start. */
+const runRecordStartWaitMs = 2_000
+
+const executeCodeRequiredMessage =
+	'execute requires `code`: a single ESM module string with a default export.'
+
+function executeCodeMissingError(issue: { input: unknown }) {
+	return issue.input === undefined ? executeCodeRequiredMessage : undefined
+}
 
 const executeCodeFieldDescription =
 	'Single ESM module string with imports/exports and a default export to execute. Imports may be arbitrary npm packages compatible with the Cloudflare Workers runtime; prefer packages over rewriting helpers.'
@@ -242,55 +285,58 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 		agent.getEnv(),
 		agent.getCallerContext(),
 	)
-	const invokeEnabled = featureFlags[executeInvokeFlagKey] === true
+	const executionContextsEnabled =
+		featureFlags[executionContextsFlagKey] === true
 	agent.server.registerTool(
 		executeTool.name,
 		{
 			title: executeTool.title,
-			description: invokeEnabled
-				? executeToolDescriptionWithInvoke
-				: executeTool.description,
+			description: executeTool.description,
 			outputSchema: executeToolOutputSchema,
 			...(icons ? { icons } : {}),
-			inputSchema: {
-				code: invokeEnabled
-					? z.string().optional().describe(executeCodeFieldDescription)
-					: z.string().describe(executeCodeFieldDescription),
-				...(invokeEnabled
-					? {
-							invoke: z
-								.string()
-								.min(1)
-								.optional()
-								.describe(executeInvokeFieldDescription),
-						}
-					: {}),
-				params: z
-					.record(z.string(), z.unknown())
-					.optional()
-					.describe(
-						'JSON object passed as the first argument to the default export. Put varying capability args here so the same `code` graph is reused.',
-					),
-				responseLimit: z
-					.number()
-					.int()
-					.min(1)
-					.optional()
-					.describe(
-						"Soft cap on the default export's JSON/text result. Oversized results are truncated. Project large API payloads before returning. Protocol __mcpContent media uses a separate limit and fails explicitly when oversized; oversized text-only protocol content is truncated.",
-					),
-				conversationId: conversationIdInputField,
-				memoryContext: memoryContextInputField,
-				idempotencyKey: z
-					.string()
-					.min(1)
-					.max(runRecordMaxIdempotencyKeyLength)
-					.optional()
-					.describe(
-						'Optional idempotency key. Omit it for ordinary calls. If the call is still running at the transport budget, Kody assigns one and returns it with runId. Reuse that key to read the in-progress or retained run instead of starting the mutation again.',
-					),
-				credentials: credentialCallMapSchema.optional(),
-			},
+			inputSchema: z
+				.object({
+					code: z
+						.string({ error: executeCodeMissingError })
+						.describe(executeCodeFieldDescription),
+					params: z
+						.record(z.string(), z.unknown())
+						.optional()
+						.describe(
+							'JSON object passed as the first argument to the default export. Put varying capability args here so the same `code` graph is reused.',
+						),
+					responseLimit: z
+						.number()
+						.int()
+						.min(1)
+						.optional()
+						.describe(
+							"Soft cap on the default export's JSON/text result. Oversized results are truncated. Project large API payloads before returning. Protocol __mcpContent media uses a separate limit and fails explicitly when oversized; oversized text-only protocol content is truncated.",
+						),
+					conversationId: conversationIdInputField,
+					memoryContext: memoryContextInputField,
+					idempotencyKey: z
+						.string()
+						.min(1)
+						.max(runRecordMaxIdempotencyKeyLength)
+						.optional()
+						.describe(
+							'Optional idempotency key. Omit it for ordinary calls. If the call is still running at the transport budget, Kody assigns one and returns it with runId. Reuse that key to read the in-progress or retained run instead of starting the mutation again.',
+						),
+					credentials: credentialCallMapSchema.optional(),
+					...(executionContextsEnabled ? executeRoutingInputFields : {}),
+				})
+				// Unknown keys pass through so a removed `invoke` reaches the
+				// check below instead of being silently stripped.
+				.loose()
+				.refine((args) => !hasRemovedExecuteInvoke(args), {
+					error: (issue) =>
+						executeInvokeRemovedMessage(
+							(issue.input as Record<string, unknown>)['invoke'],
+						),
+					path: ['invoke'],
+					when: () => true,
+				}),
 			annotations: executeTool.annotations,
 		},
 		async (args, toolExtra) =>
@@ -308,14 +354,13 @@ export async function registerExecuteTool(agent: McpRegistrationAgent) {
 
 export type ExecuteToolCallArgs = {
 	code?: string
-	invoke?: string
 	params?: Record<string, unknown>
 	responseLimit?: number
 	conversationId?: string
 	memoryContext?: z.infer<typeof memoryContextInputField>
 	idempotencyKey?: string
 	credentials?: CredentialCallMapInput
-}
+} & ExecuteRoutingArgs
 
 export async function runExecuteToolCall(input: {
 	env: Env
@@ -325,10 +370,11 @@ export async function runExecuteToolCall(input: {
 	mcpAgent?: McpRegistrationAgent
 	args: ExecuteToolCallArgs
 	extra?: McpToolCallExtra
+	/** Cheap display label for started_by (API token name). Never a secret. */
+	startedByLabel?: string | null
 }) {
 	const {
 		code,
-		invoke,
 		params,
 		responseLimit,
 		conversationId,
@@ -460,6 +506,9 @@ export async function runExecuteToolCall(input: {
 					...(errorDetails ? { errorDetails } : {}),
 					...entitlementStructuredContent(error),
 					...executeAdmissionStructuredContent(error),
+					...(error instanceof ExecutionContextError
+						? { errorCode: error.code, ...error.details }
+						: {}),
 				},
 				isError: true,
 			}
@@ -494,10 +543,8 @@ export async function runExecuteToolCall(input: {
 			}
 		}
 
-		// Schema omit/advertise is decided at register. Re-read the
-		// flag here so a kill-switch applies on the next call even
-		// when a legacy session still has invoke in its tool list.
-		// Plan lookup overlaps that read. The daily counter is spent
+		// Re-read caller flags per call so a kill-switch applies on the
+		// next call even when the tool was registered earlier. Plan lookup overlaps that read. The daily counter is spent
 		// only after the read succeeds — an evaluation failure is
 		// fail-closed and must not consume quota.
 		const liveFlagsPromise = resolveCallerFeatureFlags(env, callerContext)
@@ -515,26 +562,24 @@ export async function runExecuteToolCall(input: {
 			throw new Error('Feature flag evaluation failed')
 		}
 		void entitlementPrefetch
-		// Registry assembly overlaps the quota check. Context retrievers
-		// stay after quota and a fresh idempotency claim so a denied
-		// call does not run bundled package code.
+		// Registry assembly starts before quota to overlap the quota check.
+		// It is awaited only after quota and a fresh idempotency claim, so a
+		// denied call does not run bundled package code.
 		const registryPromise = getCapabilityRegistryForContext({
 			env,
 			callerContext,
 		})
 		void registryPromise.catch(() => {})
-		const resolvedModule = resolveExecuteModule({
-			code,
-			invoke,
-			invokeEnabled: liveFlags[executeInvokeFlagKey] === true,
-		})
-		const executeAttribution = buildExecuteAttributionMetadata({
-			entry: resolvedModule.entry,
-			invoke: resolvedModule.invoke,
-		})
+		if (hasRemovedExecuteInvoke(input.args)) {
+			throw new McpCallerError(executeInvokeRemovedMessage(input.args.invoke))
+		}
+		const moduleCode = code?.trim() ? code : undefined
+		if (!moduleCode) {
+			throw new McpCallerError(executeCodeRequiredMessage)
+		}
 		const executeRunMetadata = {
 			conversationId: resolvedConversationId,
-			...executeAttribution,
+			...buildExecuteAttributionMetadata(),
 		}
 
 		// Runaway and loop brakes before claim/bundling/sandbox so a refused call
@@ -565,25 +610,30 @@ export async function runExecuteToolCall(input: {
 		// so let it overlap the registry read; nothing that writes, retrieves
 		// memories, or runs sandbox code proceeds until it has admitted.
 		const normalizedCallMap = normalizeCredentialCallMap(credentials)
-		const admissionPromise = claimWorkerDay
-			? admitHostedExecuteCall({
-					env,
-					ownerId: storageOwnerId,
-					email: entitlementEmail,
-					repeatKey: await executeRepeatKey({
-						credential: callerContext.request?.credential ?? null,
-						actorUserId:
-							callerContext.request?.actor?.userId ??
-							callerContext.user?.userId ??
-							null,
-						conversationId,
-						code,
-						invoke,
-						params,
-						credentials: normalizedCallMap,
-					}),
-				})
-			: null
+		// Runs on an execution context never count toward hosted quota, so
+		// when routing is possible admission waits until routing picks cloud.
+		const deferAdmission =
+			Boolean(claimWorkerDay) && liveFlags[executionContextsFlagKey] === true
+		const startAdmission = async () =>
+			claimWorkerDay
+				? admitHostedExecuteCall({
+						env,
+						ownerId: storageOwnerId,
+						email: entitlementEmail,
+						repeatKey: await executeRepeatKey({
+							credential: callerContext.request?.credential ?? null,
+							actorUserId:
+								callerContext.request?.actor?.userId ??
+								callerContext.user?.userId ??
+								null,
+							conversationId,
+							code: moduleCode,
+							params,
+							credentials: normalizedCallMap,
+						}),
+					})
+				: null
+		let admissionPromise = deferAdmission ? null : startAdmission()
 		void admissionPromise?.catch(() => {})
 
 		if (storageOwnerId) {
@@ -594,10 +644,13 @@ export async function runExecuteToolCall(input: {
 			// cannot record one.
 			await admissionPromise
 		}
+		const executeStartedByLabel = input.startedByLabel?.trim() || null
 		if (normalizedIdempotencyKey && storageOwnerId) {
 			const claim = await claimRunRecord({
 				env,
 				userId: storageOwnerId,
+				request: callerContext.request,
+				startedByLabel: executeStartedByLabel,
 				context: {
 					surface: 'execute',
 					name: null,
@@ -627,6 +680,8 @@ export async function runExecuteToolCall(input: {
 				env,
 				userId: storageOwnerId,
 				waitUntil,
+				request: callerContext.request,
+				startedByLabel: executeStartedByLabel,
 				context: {
 					surface: 'execute',
 					name: null,
@@ -710,6 +765,96 @@ export async function runExecuteToolCall(input: {
 				idempotencyKey,
 			}
 		}
+		const routed = await routeExecuteForCaller({
+			env,
+			callerContext,
+			args: input.args,
+			enabled: liveFlags[executionContextsFlagKey] === true,
+			runRecord: claimedRunHandle,
+			code: moduleCode,
+			params,
+			conversationId: resolvedConversationId,
+			credentials: normalizedCallMap,
+			waitMs: remainingTransportBudgetMs({
+				startedAtMs: timingStart.startedAtMs,
+			}),
+			signal: activeTransportSignal.signal,
+		})
+		if (routed?.kind === 'cloud' && routed.metadata) {
+			Object.assign(executeRunMetadata, {
+				executionContext: routed.metadata,
+			})
+			if (claimedRunHandle) {
+				claimedRunHandle.context.metadata = {
+					...claimedRunHandle.context.metadata,
+					executionContext: routed.metadata,
+				}
+				// Best-effort and never throws; routing must not wait on it. The
+				// running-row check keeps a late write off a finished run.
+				const metadataWrite = updateRunningRunRecordMetadata({
+					env,
+					handle: claimedRunHandle,
+				})
+				if (waitUntil) waitUntil(metadataWrite)
+				else void metadataWrite
+			}
+		}
+		const { ranOnContent, ranOnFields } = ranOnParts(
+			routed?.kind === 'cloud' ? routed.metadata : null,
+		)
+		if (routed?.kind === 'pending' || routed?.kind === 'queued') {
+			transportDetached = true
+			// The context finishes this row later; make sure the running row
+			// (idempotency key, started_by) is readable before the caller polls.
+			const started = claimedRunHandle
+				? await Promise.race([
+						ensureRunRecordStarted({ env, handle: claimedRunHandle }).catch(
+							(error: unknown) => {
+								console.warn('execute-context-run-start-failed', error)
+								return false
+							},
+						),
+						new Promise<false>((resolve) =>
+							setTimeout(resolve, runRecordStartWaitMs, false),
+						),
+					])
+				: false
+			const timing = finishToolTiming(timingStart)
+			return buildTransportBudgetFollowResponse({
+				conversationId: resolvedConversationId,
+				timing,
+				runId: routed.runId,
+				idempotencyKey:
+					runRowOwned || started
+						? (claimedRunHandle?.context.idempotencyKey?.trim() ?? '')
+						: '',
+				memories: null,
+				executionContext: routed.metadata,
+			})
+		}
+		if (routed?.kind === 'ran') {
+			transportDetached = true
+			const timing = finishToolTiming(timingStart)
+			const ranOnContext = ranOnParts(routed.metadata)
+			return {
+				content: prependToolMetadataContent(resolvedConversationId, [
+					...(routed.result.content as Array<ContentBlock>),
+					...ranOnContext.ranOnContent,
+				]),
+				structuredContent: {
+					...routed.result.structuredContent,
+					conversationId: resolvedConversationId,
+					timing,
+					...(claimedRunHandle ? { runId: claimedRunHandle.id } : {}),
+					...ranOnContext.ranOnFields,
+				},
+				isError: routed.result.isError,
+			}
+		}
+		if (deferAdmission) {
+			admissionPromise = startAdmission()
+			await admissionPromise
+		}
 		const admittedWork = (async () => {
 			const [registry] = await Promise.all([registryPromise, admissionPromise])
 			registeredCapabilityCount = Object.keys(
@@ -724,7 +869,7 @@ export async function runExecuteToolCall(input: {
 			const credentialCallMap = normalizedCallMap
 				? {
 						map: normalizedCallMap,
-						strict: resolvedModule.entry === 'invoke',
+						strict: false,
 						onWarnings: (warnings: Array<string>) => {
 							credentialCallMapWarnings.push(...warnings)
 						},
@@ -743,33 +888,27 @@ export async function runExecuteToolCall(input: {
 						const execution = runWithRequestPermissions(
 							{ env, request: callerContext.request },
 							async () =>
-								runModuleWithRegistry(
-									env,
-									callerContext,
-									resolvedModule.code,
-									params,
-									{
-										executorExports: input.loopbackExports,
-										capabilityRegistry: registry,
-										rawFetchHostSink: rawFetchHosts.sink,
-										conversationId: resolvedConversationId,
-										runRecordHandle: claimedRunHandle,
-										claimWorkerDay,
-										credentialCallMap,
-										waitUntil,
-										reportProgress: reportProgress ?? undefined,
-										signal: activeTransportSignal.signal,
-										runRecord: {
-											surface: 'execute',
-											name: null,
-											storageId: activeStorageId,
-											idempotencyKey:
-												claimedRunHandle?.context.idempotencyKey ??
-												normalizedIdempotencyKey,
-											metadata: executeRunMetadata,
-										},
+								runModuleWithRegistry(env, callerContext, moduleCode, params, {
+									executorExports: input.loopbackExports,
+									capabilityRegistry: registry,
+									rawFetchHostSink: rawFetchHosts.sink,
+									conversationId: resolvedConversationId,
+									runRecordHandle: claimedRunHandle,
+									claimWorkerDay,
+									credentialCallMap,
+									waitUntil,
+									reportProgress: reportProgress ?? undefined,
+									signal: activeTransportSignal.signal,
+									runRecord: {
+										surface: 'execute',
+										name: null,
+										storageId: activeStorageId,
+										idempotencyKey:
+											claimedRunHandle?.context.idempotencyKey ??
+											normalizedIdempotencyKey,
+										metadata: executeRunMetadata,
 									},
-								),
+								}),
 						)
 						const settled = execution.then(
 							async (value) => {
@@ -941,6 +1080,7 @@ export async function runExecuteToolCall(input: {
 				runId: spanned.runId,
 				idempotencyKey: spanned.idempotencyKey,
 				memories: surfacedMemories,
+				executionContext: routed?.kind === 'cloud' ? routed.metadata : null,
 			})
 		}
 		const result = spanned
@@ -959,9 +1099,14 @@ export async function runExecuteToolCall(input: {
 				callerContext,
 				conversationId: resolvedConversationId,
 				hostCounts: rawFetchHosts.hostCounts(),
-				usedIntegrationAuthHelpers: codeUsesIntegrationAuthHelpers(
-					resolvedModule.code,
-				),
+				usedIntegrationAuthHelpers: codeUsesIntegrationAuthHelpers(moduleCode),
+			})),
+			...(await resolvePreferLocalExecuteNudges({
+				agent: input.mcpAgent ?? agentlessNudgeState(),
+				env,
+				callerContext,
+				conversationId: resolvedConversationId,
+				claimed: claimedExecuteUsage,
 			})),
 		]
 		const runId =
@@ -1008,6 +1153,7 @@ export async function runExecuteToolCall(input: {
 						type: 'text',
 						text: formatExecutionOutput(result),
 					},
+					...ranOnContent,
 					...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 					...formatSurfacedMemoriesMarkdown(surfacedMemories),
 				]),
@@ -1024,6 +1170,7 @@ export async function runExecuteToolCall(input: {
 						? { warnings: rawFetchHostNudges }
 						: {}),
 					...buildMemoryStructuredContent(surfacedMemories),
+					...ranOnFields,
 				},
 				isError: true,
 			}
@@ -1061,6 +1208,7 @@ export async function runExecuteToolCall(input: {
 							text: `Error: ${message}`,
 						},
 						...formatSurfacedMemoriesMarkdown(surfacedMemories),
+						...ranOnContent,
 					]),
 					structuredContent: {
 						conversationId: resolvedConversationId,
@@ -1071,6 +1219,7 @@ export async function runExecuteToolCall(input: {
 						result: passthrough?.structuredResult ?? null,
 						logs: result.logs ?? [],
 						...buildMemoryStructuredContent(surfacedMemories),
+						...ranOnFields,
 					},
 					isError: true,
 				}
@@ -1088,6 +1237,7 @@ export async function runExecuteToolCall(input: {
 							text: `Error: ${contentLimited.note}`,
 						},
 						...formatSurfacedMemoriesMarkdown(surfacedMemories),
+						...ranOnContent,
 					]),
 					structuredContent: {
 						conversationId: resolvedConversationId,
@@ -1099,6 +1249,7 @@ export async function runExecuteToolCall(input: {
 						result: passthrough?.structuredResult ?? null,
 						logs: result.logs ?? [],
 						...buildMemoryStructuredContent(surfacedMemories),
+						...ranOnFields,
 					},
 					isError: true,
 				}
@@ -1133,6 +1284,7 @@ export async function runExecuteToolCall(input: {
 					...contentLimited.blocks,
 					...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 					...formatSurfacedMemoriesMarkdown(surfacedMemories),
+					...ranOnContent,
 				]),
 				structuredContent: {
 					conversationId: resolvedConversationId,
@@ -1155,6 +1307,7 @@ export async function runExecuteToolCall(input: {
 						? { warnings: rawFetchHostNudges }
 						: {}),
 					...buildMemoryStructuredContent(surfacedMemories),
+					...ranOnFields,
 				},
 				isError,
 			}
@@ -1194,6 +1347,7 @@ export async function runExecuteToolCall(input: {
 						displayText: structuredResultValue.displayText,
 					}),
 				},
+				...ranOnContent,
 				...formatRawFetchHostNudgeContent(rawFetchHostNudges),
 				...formatSurfacedMemoriesMarkdown(surfacedMemories),
 			]),
@@ -1210,6 +1364,7 @@ export async function runExecuteToolCall(input: {
 					: {}),
 				result: structuredResultValue.value,
 				logs: result.logs ?? [],
+				...ranOnFields,
 				...(rawFetchHostNudges.length > 0
 					? { warnings: rawFetchHostNudges }
 					: {}),
@@ -1228,6 +1383,15 @@ function normalizeExecuteIdempotencyKey(
 	return trimmed.slice(0, runRecordMaxIdempotencyKeyLength)
 }
 
+/** The context a detached run is on; cloud runs have no context to cancel. */
+function runningContextName(metadata: unknown) {
+	if (!metadata || typeof metadata !== 'object') return null
+	const { id, name } = metadata as { id?: unknown; name?: unknown }
+	return typeof id === 'string' && id !== 'cloud' && typeof name === 'string'
+		? name
+		: null
+}
+
 function buildTransportBudgetFollowResponse(input: {
 	conversationId: string
 	timing: {
@@ -1238,13 +1402,22 @@ function buildTransportBudgetFollowResponse(input: {
 	runId: string
 	idempotencyKey: string
 	memories: Parameters<typeof formatSurfacedMemoriesMarkdown>[0]
+	executionContext?: unknown
 }) {
-	const text = input.idempotencyKey
+	const { ranOnContent, ranOnFields } = ranOnParts(input.executionContext, {
+		running: true,
+	})
+	const base = input.idempotencyKey
 		? `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Retrying execute with idempotencyKey "${input.idempotencyKey}" reads this run instead of starting another mutation.`
 		: `Execute is still running (runId: ${input.runId}). Poll runGet with that id. Do not start another mutation for this call.`
+	const contextName = runningContextName(input.executionContext)
+	const text = contextName
+		? `${base} To stop it, call executionContextRunCancel with id "${contextName}" and that run_id.`
+		: base
 	return {
 		content: prependToolMetadataContent(input.conversationId, [
 			{ type: 'text' as const, text },
+			...ranOnContent,
 			...formatSurfacedMemoriesMarkdown(input.memories),
 		]),
 		structuredContent: {
@@ -1255,6 +1428,7 @@ function buildTransportBudgetFollowResponse(input: {
 			inProgress: true as const,
 			status: 'running' as const,
 			...buildMemoryStructuredContent(input.memories),
+			...ranOnFields,
 		},
 		isError: false,
 	}
@@ -1270,12 +1444,16 @@ function buildKeyedExecuteLookupResponse(input: {
 	}
 }) {
 	if (input.run.status === 'running') {
+		const running = ranOnParts(input.run.metadata['executionContext'], {
+			running: true,
+		})
 		return {
 			content: prependToolMetadataContent(input.conversationId, [
 				{
 					type: 'text',
 					text: `Execute still in progress (runId: ${input.run.id}). Poll runGet with that id, or retry with the same idempotencyKey.`,
 				},
+				...running.ranOnContent,
 			]),
 			structuredContent: {
 				conversationId: input.conversationId,
@@ -1286,12 +1464,16 @@ function buildKeyedExecuteLookupResponse(input: {
 					: {}),
 				inProgress: true,
 				status: 'running' as const,
+				...running.ranOnFields,
 			},
 			isError: false,
 		}
 	}
 
 	const retainedResult = input.run.metadata['result']
+	const { ranOnContent, ranOnFields } = ranOnParts(
+		input.run.metadata['executionContext'],
+	)
 	if (input.run.status === 'error') {
 		const errorMessage =
 			input.run.errorMessage ?? 'Execute failed (replayed from run record).'
@@ -1303,6 +1485,7 @@ function buildKeyedExecuteLookupResponse(input: {
 					type: 'text',
 					text: `Error: ${errorMessage}`,
 				},
+				...ranOnContent,
 			]),
 			structuredContent: {
 				conversationId: input.conversationId,
@@ -1318,6 +1501,7 @@ function buildKeyedExecuteLookupResponse(input: {
 				...entitlementStructuredContent(replayedError),
 				...(retainedResult !== undefined ? { result: retainedResult } : {}),
 				logs: [] as Array<unknown>,
+				...ranOnFields,
 			},
 			isError: true,
 		}
@@ -1334,6 +1518,7 @@ function buildKeyedExecuteLookupResponse(input: {
 					displayText: undefined,
 				}),
 			},
+			...ranOnContent,
 		]),
 		structuredContent: {
 			conversationId: input.conversationId,
@@ -1346,8 +1531,28 @@ function buildKeyedExecuteLookupResponse(input: {
 			returnedBytes: 0,
 			result: retainedResult,
 			logs: [] as Array<unknown>,
+			...ranOnFields,
 		},
 		isError: false,
+	}
+}
+
+function isRunMetadata(value: unknown): value is ExecutionContextRunMetadata {
+	if (typeof value !== 'object' || value === null) return false
+	return Array.isArray((value as Partial<ExecutionContextRunMetadata>).attempts)
+}
+
+/** `ranOn` (and the legacy `executionContext`) plus its human line. */
+function ranOnParts(metadata: unknown, options: { running?: boolean } = {}) {
+	const ranOn = ranOnFromMetadata(metadata)
+	return {
+		ranOnContent: [
+			{ type: 'text' as const, text: describeRanOn(ranOn, options) },
+		],
+		ranOnFields: {
+			ranOn,
+			...(isRunMetadata(metadata) ? { executionContext: metadata } : {}),
+		},
 	}
 }
 
@@ -1397,6 +1602,86 @@ async function resolveRawFetchHostNudges(input: {
 		statefulAgent.setState({
 			...statefulAgent.state,
 			rawFetchHostNudges: applied.state,
+		})
+	}
+	return applied.nudges
+}
+
+async function resolvePreferLocalExecuteNudges(input: {
+	agent: McpRegistrationAgent
+	env: Env
+	callerContext: ReturnType<McpRegistrationAgent['getCallerContext']>
+	conversationId: string
+	claimed: ClaimedExecuteUsage | null
+}): Promise<Array<string>> {
+	if (isKnownWebOnlyMcpClient(input.callerContext.oauthClientId)) {
+		return []
+	}
+	const dailyFreshWorkers = dailyFreshWorkersFromClaim(input.claimed?.usage)
+	if (dailyFreshWorkers === null) return []
+
+	const statefulAgent = input.agent as McpRegistrationAgent & {
+		state?: {
+			preferLocalExecuteNudgeConversationIds?: Array<string>
+		}
+		setState?: (state: {
+			preferLocalExecuteNudgeConversationIds?: Array<string>
+			[key: string]: unknown
+		}) => void
+	}
+	const priorIds = statefulAgent.state?.preferLocalExecuteNudgeConversationIds
+	if (
+		Array.isArray(priorIds) &&
+		priorIds.includes(input.conversationId.trim())
+	) {
+		return []
+	}
+
+	let monthlyUniqueWorkerDays: number | null = null
+	let monthlyInclude: number | null = null
+	const ownerId = ownerIdFromCaller(input.callerContext)
+	if (
+		ownerId &&
+		!shouldTipPreferLocalExecuteNudge({
+			dailyFreshWorkers,
+			monthlyUniqueWorkerDays: null,
+			monthlyInclude: null,
+		})
+	) {
+		try {
+			const now = input.claimed?.claimedAt ?? new Date()
+			const entitlement = await getCachedUserEntitlement(input.env.APP_DB, {
+				userId: ownerId,
+				email: entitlementEmailForOwner(input.callerContext, ownerId),
+			})
+			const usage = await readMonthlyComputeUsage({
+				db: input.env.APP_DB,
+				stableUserId: ownerId,
+				month: preferLocalNudgeMonthKey(now),
+			})
+			monthlyUniqueWorkerDays = usage.uniqueWorkerDays
+			monthlyInclude = monthlyIncludeForPreferLocalNudge(entitlement, now)
+		} catch (error: unknown) {
+			console.warn('prefer-local-execute-nudge-monthly-read-failed', error)
+		}
+	}
+
+	const shouldTip = shouldTipPreferLocalExecuteNudge({
+		dailyFreshWorkers,
+		monthlyUniqueWorkerDays,
+		monthlyInclude,
+	})
+	const applied = applyPreferLocalExecuteNudge({
+		state: {
+			conversationIds: Array.isArray(priorIds) ? priorIds : [],
+		},
+		conversationId: input.conversationId,
+		shouldTip,
+	})
+	if (typeof statefulAgent.setState === 'function' && shouldTip) {
+		statefulAgent.setState({
+			...statefulAgent.state,
+			preferLocalExecuteNudgeConversationIds: applied.state.conversationIds,
 		})
 	}
 	return applied.nudges

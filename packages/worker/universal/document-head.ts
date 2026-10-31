@@ -269,6 +269,8 @@ const routeDocumentHeads = {
 	accountMcpOauthClients: titleOnly('MCP OAuth clients'),
 	accountTwoFactor: titleOnly('Two-factor authentication'),
 	admin: titleOnly('Admin users'),
+	adminOrgs: titleOnly('Admin organizations'),
+	adminOrgDetail: titleOnly('Admin organization'),
 	adminUsers: titleOnly('Admin users'),
 	adminUserDetail: titleOnly('Admin users'),
 	adminAccountDeletion: titleOnly('Delete account'),
@@ -346,6 +348,23 @@ const routeDocumentHeads = {
 			canonicalPath: pathname,
 		}
 	},
+	communityPackageConnectedPeople: ({ loaderData, pathname }) => {
+		const page = loaderData?.packageAppConnectedPeople
+		if (page && !page.ok) return titleOnly(NOT_FOUND_DOCUMENT_TITLE)
+		if (!page) return titleOnly('Connected people')
+		return {
+			title: `${page.shell.name} connected people`,
+			canonicalPath: pathname,
+		}
+	},
+	communityPackageForks: ({ loaderData, pathname }) => {
+		const page = loaderData?.packageForks
+		if (!page) return titleOnly('Package forks')
+		return {
+			title: `${page.shell.name} forks`,
+			canonicalPath: pathname,
+		}
+	},
 	communityDetailFiles: ({ loaderData, pathname }) => {
 		const files = loaderData?.packageFiles
 		if (!files?.ok) return titleOnly('Package files')
@@ -386,9 +405,12 @@ const routeDocumentHeads = {
 		}
 
 		const ogTitle = `${shell.displayName} (@${shell.username}) — Kody`
+		const isOrg = shell.ownerKind === 'org'
 		const ogDescription =
 			shell.bio == null || shell.bio.trim() === ''
-				? 'Community profile on Kody.'
+				? isOrg
+					? 'Organization on Kody.'
+					: 'Community profile on Kody.'
 				: truncateText(shell.bio, 200)
 		return {
 			title,
@@ -396,7 +418,10 @@ const routeDocumentHeads = {
 			og: {
 				title: ogTitle,
 				description: ogDescription,
-				imagePath: `/profiles/${shell.username}/og.png`,
+				// The profile card renders people only; org pages use the site card.
+				imagePath: isOrg
+					? '/og/home.png'
+					: `/profiles/${shell.username}/og.png`,
 			},
 		}
 	},
@@ -473,7 +498,7 @@ const routeDocumentHeads = {
 		const join = loaderData?.orgInviteJoin
 		if (join?.ok) {
 			const name = join.org.displayName?.trim() || join.org.slug
-			return titleOnly(`Join ${name}`)
+			return titleOnly(`You're invited to ${name}`)
 		}
 		return titleOnly('Invite link')
 	},
@@ -487,7 +512,10 @@ const routeDocumentHeads = {
 	connectSecretSet: titleOnly('Set secret'),
 	connectWebhookApply: titleOnly('Approve webhook apply destination'),
 	oauthAuthorize: titleOnly('Authorize access'),
+	device: titleOnly('Sign in on a device'),
+	agentClaim: titleOnly('Connect an agent'),
 	packageAppOauthAuthorize: titleOnly('Allow package app'),
+	packageAppDeviceSignIn: titleOnly('Sign in on another device'),
 	oauthCallback: titleOnly('OAuth callback'),
 } as const satisfies Record<string, DocumentHeadResolver>
 
@@ -515,6 +543,8 @@ const orgDocumentHeads = {
 	},
 	orgCredentials: titleOnly('Credentials'),
 	orgCredentialNew: titleOnly('Add a credential'),
+	orgExecutionContexts: titleOnly('Execution contexts'),
+	orgProfiles: titleOnly('Agent profiles'),
 	orgEmail: titleOnly('Email inbox'),
 	orgIntegrations: titleOnly('Integrations'),
 	orgJobs: titleOnly('Jobs'),
@@ -523,6 +553,7 @@ const orgDocumentHeads = {
 	orgFollows: titleOnly('Follows'),
 	orgOverview: titleOnly('Overview'),
 	orgRepositories: titleOnly('Repositories'),
+	orgRepositoryNew: titleOnly('New repository'),
 	orgSecretProviders: titleOnly('Secret providers'),
 	orgSecrets: titleOnly('Secrets'),
 	orgWaiting: titleOnly('Waiting'),
@@ -559,6 +590,18 @@ export function resolveDocumentHead(
 	return { ...descriptor, description }
 }
 
+/**
+ * Bump when the shared OG renderer changes how every card looks. X, Slack and
+ * Discord cache unfurl images by URL, so a new query value makes them refetch.
+ * The OG handlers ignore the param.
+ */
+const OG_IMAGE_VERSION = '3'
+
+function withOgImageVersion(path: string): string {
+	if (path.startsWith('http://') || path.startsWith('https://')) return path
+	return `${path}${path.includes('?') ? '&' : '?'}v=${OG_IMAGE_VERSION}`
+}
+
 export function absolutizeDocumentHead(
 	descriptor: DocumentHeadDescriptor,
 	origin: string,
@@ -579,7 +622,7 @@ export function absolutizeDocumentHead(
 			? {
 					title: descriptor.og.title,
 					description: descriptor.og.description,
-					imageUrl: toAbsolute(descriptor.og.imagePath),
+					imageUrl: toAbsolute(withOgImageVersion(descriptor.og.imagePath)),
 				}
 			: undefined,
 		links: descriptor.links?.map((link) => ({

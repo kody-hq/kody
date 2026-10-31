@@ -1,12 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { renderMcpEventsFlagCallout } from './mcp-events-flag-callout.tsx'
-import { renderPackageSkillsFlagCallout } from './package-skills-flag-callout.tsx'
+import { renderExperimentFlagCallout } from './experiment-flag-callout.tsx'
 import { isFeatureFlagEnabled } from '#client/feature-flags.ts'
-import {
-	mcpEventsExtensionFlagKey,
-	mcpSkillsExtensionFlagKey,
-} from '#universal/feature-flags/registry.ts'
+import { getSelfServeExperimentForDoc } from '#universal/feature-flags/experiments.ts'
 import { type CSSObject } from '@emotion/react'
 import { type CSSProperties, type ReactNode, useMemo } from 'react'
 import { type HighlightedCode } from '#universal/highlighted-code.ts'
@@ -132,18 +128,7 @@ export function DocDetailRoute({
 						{describeDoc(doc)}
 					</p>
 				</header>
-				{doc.slug === 'mcp-events'
-					? renderMcpEventsFlagCallout({
-							loggedIn: Boolean(session),
-							enabled: isFeatureFlagEnabled(session, mcpEventsExtensionFlagKey),
-						})
-					: null}
-				{doc.slug === 'package-skills'
-					? renderPackageSkillsFlagCallout({
-							loggedIn: Boolean(session),
-							enabled: isFeatureFlagEnabled(session, mcpSkillsExtensionFlagKey),
-						})
-					: null}
+				{renderDocExperimentCallout(doc.slug, session)}
 
 				{doc.image && doc.imageAlt ? (
 					<img
@@ -173,7 +158,7 @@ export function DocDetailRoute({
 						Working with an agent? This page is also plain markdown at{' '}
 						<SiteLink
 							href={routes.docDetailMarkdown.href({ slug: doc.slug })}
-							data-rmx-document
+							reloadDocument
 						>
 							/docs/{doc.slug}.md
 						</SiteLink>
@@ -263,3 +248,16 @@ const docFootCss = {
 		color: colors.primaryText,
 	},
 } satisfies CSSObject
+
+function renderDocExperimentCallout(
+	slug: string,
+	session: SessionInfo | null | undefined,
+) {
+	const experiment = getSelfServeExperimentForDoc(slug)
+	if (!experiment) return null
+	return renderExperimentFlagCallout({
+		experiment,
+		loggedIn: Boolean(session),
+		enabled: isFeatureFlagEnabled(session, experiment.flagKey),
+	})
+}

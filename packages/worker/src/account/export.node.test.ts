@@ -340,6 +340,25 @@ test('account write lease repair export redacts the foreign party for both persp
 	])
 })
 
+test('visitor attribution export keeps the owner-paid sentinel and redacts foreign payers', async () => {
+	const { sqlite, db } = createMigratedDbWithUser()
+	sqlite.exec(`
+		INSERT INTO package_app_visitor_attribution_daily (
+			user_id, day, package_id, visitor_user_id, billed_org_id, meter, units
+		) VALUES
+			('user-aaa', '2026-07-05', 'pkg-a', 'user-ccc', '', 'dynamic_worker_day', 1),
+			('user-aaa', '2026-07-05', 'pkg-a', 'user-ccc', 'org-visitor', 'rows_read', 5);
+	`)
+	const rows = d1Table(
+		await exportFor({ APP_DB: db } as Env),
+		'package_app_visitor_attribution_daily',
+	).rows
+	expect(rows.map((row) => row.billed_org_id).sort()).toEqual([
+		'',
+		'[redacted]',
+	])
+})
+
 test('createAccountExport redacts secrets and credential-equivalent hashes', async () => {
 	const { sqlite, db } = createMigratedDbWithUser()
 	insertTestUser(sqlite, {

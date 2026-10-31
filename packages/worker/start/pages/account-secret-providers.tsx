@@ -434,7 +434,10 @@ export function AccountSecretProvidersPage({
 							relocateAccountHref('/account/secret-providers', currentHref),
 						)
 					}}
-					css={getPrimaryButtonCss()}
+					css={{
+						...getPrimaryButtonCss({ mobileFullWidth: true }),
+						justifySelf: 'start',
+					}}
 				>
 					Bind provider
 				</button>

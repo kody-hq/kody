@@ -6,7 +6,11 @@ import {
 } from '#universal/loader-data.ts'
 import { type PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
 import { loadPlatformIntegrationCatalog } from '#app/platform-integration-catalog.ts'
-import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
+import {
+	normalizeProviderKey,
+	safeParseHost,
+} from '@kody-internal/shared/url-hosts.ts'
+import { defaultScopesForAuthorizeHost } from '#universal/oauth-authorize-scopes.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { toOauthAppPublic } from '#mcp/capabilities/integrations/oauth-app-shared.ts'
 import { canonicalIntegrationName } from '#mcp/capabilities/integrations/integration-shared.ts'
@@ -165,7 +169,7 @@ function toBringYourOwnSetupFromPlatformConnection(
  * across accounts. Disagreed family fields are omitted / left empty so the UI
  * does not invent a secret name or endpoint.
  */
-function toAppOnlyIntegrationRecord(
+export function toAppOnlyIntegrationRecord(
 	prefill: OauthAppSetupPrefill,
 	requestedName: string,
 ): AccountIntegrationRecord {
@@ -197,7 +201,13 @@ function toAppOnlyIntegrationRecord(
 		authorization: prefill.authorizeUrl
 			? {
 					authorizeUrl: prefill.authorizeUrl,
-					scopes: [],
+					// User-lane apps do not store scopes; connection scopes are
+					// empty until the first successful connect. Prefill known
+					// host defaults so /connect/oauth does not authorize without
+					// a scope parameter for providers that require one.
+					scopes: defaultScopesForAuthorizeHost(
+						safeParseHost(prefill.authorizeUrl),
+					),
 					scopeSeparator: prefill.scopeSeparator,
 					extraAuthorizeParams: prefill.extraAuthorizeParams ?? {},
 				}
@@ -555,7 +565,29 @@ export async function loadExistingConnectionSummary(
 		name,
 	})
 	if (!joined) return null
-	return { lane: joined.lane, appSlug: joined.app.slug }
+	const connected = Boolean(joined.connection.connectedAt)
+	if (joined.lane === 'platform') {
+		return {
+			lane: 'platform',
+			appSlug: joined.app.slug,
+			appName: joined.app.slug,
+			connected,
+			identity: null,
+		}
+	}
+	return {
+		lane: 'user',
+		appSlug: joined.app.slug,
+		appName: joined.app.label ?? joined.app.slug,
+		connected,
+		identity: {
+			clientId: joined.app.clientId,
+			tokenUrl: joined.app.tokenUrl,
+			authorizeUrl: joined.app.authorizeUrl,
+			deviceAuthorizationUrl: joined.app.deviceAuthorizationUrl,
+			flow: joined.app.flow,
+		},
+	}
 }
 
 /**

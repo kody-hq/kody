@@ -63,7 +63,7 @@ const identityCapabilityName = 'metaGetCurrentUser'
 /** Bridge calls that never need a kody.app.capabilities entry. */
 const alwaysAvailableCalls = new Set([identityCapabilityName, 'visitorNeed'])
 
-type AppManifest = {
+export type AppManifest = {
 	capabilities: Set<string>
 	visitorNeeds: number
 }
@@ -72,7 +72,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return value != null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function readAppManifest(source: string | undefined): AppManifest | null {
+export function readPackageAppManifest(
+	source: string | undefined,
+): AppManifest | null {
 	if (source == null) return null
 	let parsed: unknown
 	try {
@@ -94,8 +96,53 @@ function readAppManifest(source: string | undefined): AppManifest | null {
 	return { capabilities, visitorNeeds }
 }
 
+/** A module-level `kody` that is not the runtime bridge (`const kody = …`, another module's `kody`). */
+function declaresTopLevelBinding(body: Array<AstNode>, name: string) {
+	const runtimeNamespaces = new Set<string>()
+	for (const node of body) {
+		if (node.type !== 'ImportDeclaration') continue
+		if (getNodeName(node.source) !== 'kody:runtime') continue
+		for (const specifier of node.specifiers ?? []) {
+			if (specifier.type !== 'ImportNamespaceSpecifier') continue
+			const local = getNodeName(specifier.local)
+			if (local) runtimeNamespaces.add(local)
+		}
+	}
+	const readsRuntimeBridge = (init: AstNode | undefined) =>
+		isMemberExpression(init) &&
+		init?.object?.type === 'Identifier' &&
+		runtimeNamespaces.has(getNodeName(init.object) ?? '') &&
+		getNodeName(init.property) === 'kody'
+	return body.some((node) => {
+		const declaration =
+			node.type === 'ExportNamedDeclaration' ? node.declaration : node
+		if (declaration?.type === 'VariableDeclaration') {
+			return (declaration.declarations ?? []).some(
+				(declarator: AstNode) =>
+					getNodeName(declarator.id) === name &&
+					!readsRuntimeBridge(declarator.init),
+			)
+		}
+		if (
+			declaration?.type === 'FunctionDeclaration' ||
+			declaration?.type === 'ClassDeclaration'
+		) {
+			return getNodeName(declaration.id) === name
+		}
+		if (node.type === 'ImportDeclaration') {
+			if (getNodeName(node.source) === 'kody:runtime') return false
+			return (node.specifiers ?? []).some(
+				(specifier: AstNode) => getNodeName(specifier.local) === name,
+			)
+		}
+		return false
+	})
+}
+
 function collectKodyAliases(body: Array<AstNode>) {
-	const aliases = new Set<string>(['kody'])
+	const aliases = new Set<string>(
+		declaresTopLevelBinding(body, 'kody') ? [] : ['kody'],
+	)
 	for (const node of body) {
 		if (node.type !== 'ImportDeclaration') continue
 		if (getNodeName(node.source) !== 'kody:runtime') continue
@@ -120,14 +167,28 @@ function isKodyObject(node: AstNode | undefined, aliases: Set<string>) {
 	return node?.type === 'Identifier' && aliases.has(getNodeName(node) ?? '')
 }
 
-function detectInModule(
-	parsed: AstNode,
-	app: AppManifest,
-	add: (pattern: PackageAppVisitorAuthorityPattern) => void,
-) {
+export type ModuleKodyCalls = {
+	/** Capability names called with a static name (`kody.x()`, `kody['x']()`). */
+	names: Set<string>
+	/** Calls whose capability name is picked at run time. */
+	computedCalls: number
+	/** `kody.mcp` member reads. */
+	mcpCalls: number
+	readsEmail: boolean
+}
+
+/**
+ * The kody bridge calls one parsed module makes. Shared with the
+ * import-closure scan in `package-app-capability-closure.ts`.
+ */
+export function collectModuleKodyCalls(parsed: AstNode): ModuleKodyCalls {
 	const aliases = collectKodyAliases(parsed.program?.body ?? [])
-	let callsIdentity = false
-	let readsEmail = false
+	const calls: ModuleKodyCalls = {
+		names: new Set(),
+		computedCalls: 0,
+		mcpCalls: 0,
+		readsEmail: false,
+	}
 	walkAst(parsed, (node) => {
 		if (
 			node.type === 'CallExpression' ||
@@ -145,22 +206,12 @@ function detectInModule(
 					callee.property?.type === 'StringLiteral'
 						? getNodeName(callee.property)
 						: null
-				if (literal == null) add('computed capability')
-				else if (literal === identityCapabilityName) callsIdentity = true
-				else if (
-					!alwaysAvailableCalls.has(literal) &&
-					!app.capabilities.has(literal)
-				) {
-					add('undeclared capability')
-				}
+				if (literal == null) calls.computedCalls += 1
+				else calls.names.add(literal)
 				return
 			}
 			const name = getCalleeName(callee)
-			if (name == null) return
-			if (name === identityCapabilityName) callsIdentity = true
-			if (!alwaysAvailableCalls.has(name) && !app.capabilities.has(name)) {
-				add('undeclared capability')
-			}
+			if (name != null) calls.names.add(name)
 			return
 		}
 		if (isMemberExpression(node)) {
@@ -168,10 +219,10 @@ function detectInModule(
 				isKodyObject(node.object, aliases) &&
 				getNodeName(node.property) === 'mcp'
 			) {
-				add('kody.mcp')
+				calls.mcpCalls += 1
 			}
 			if (node.computed !== true && getNodeName(node.property) === 'email') {
-				readsEmail = true
+				calls.readsEmail = true
 			}
 			return
 		}
@@ -181,12 +232,36 @@ function detectInModule(
 					property.type === 'ObjectProperty' &&
 					getNodeName(property.key) === 'email'
 				) {
-					readsEmail = true
+					calls.readsEmail = true
 				}
 			}
 		}
 	})
-	if (callsIdentity && readsEmail) add('identity email')
+	return calls
+}
+
+/** Whether a statically named call needs a `kody.app.capabilities` entry. */
+export function needsCapabilityDeclaration(name: string) {
+	return !alwaysAvailableCalls.has(name)
+}
+
+function detectInModule(
+	parsed: AstNode,
+	app: AppManifest,
+	add: (pattern: PackageAppVisitorAuthorityPattern) => void,
+) {
+	const calls = collectModuleKodyCalls(parsed)
+	if (calls.computedCalls > 0) add('computed capability')
+	for (const name of calls.names) {
+		if (needsCapabilityDeclaration(name) && !app.capabilities.has(name)) {
+			add('undeclared capability')
+			break
+		}
+	}
+	if (calls.mcpCalls > 0) add('kody.mcp')
+	if (calls.names.has(identityCapabilityName) && calls.readsEmail) {
+		add('identity email')
+	}
 }
 
 function usesCredentialHelper(parsed: AstNode) {
@@ -217,7 +292,7 @@ function usesCredentialHelper(parsed: AstNode) {
 function detectPackageAppVisitorAuthority(
 	files: Record<string, string>,
 ): Array<PackageCodemodFinding> {
-	const app = readAppManifest(
+	const app = readPackageAppManifest(
 		Object.hasOwn(files, packageManifestPath)
 			? files[packageManifestPath]
 			: undefined,

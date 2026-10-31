@@ -104,7 +104,6 @@ function packageRow({
 			exports,
 			jobs: [],
 			subscriptions: [],
-			retrievers: [],
 			webhooks: [],
 		},
 		...rest,
@@ -477,7 +476,6 @@ test('package candidates hydrate the requested page, not Jev wide recall', async
 				userSecretRows: [],
 				userIntegrationRows: [],
 			},
-			retrieverResults: [],
 			queryEmbedding: deterministicEmbedding(query),
 		})
 		expect(candidates.length).toBe(rowCount)

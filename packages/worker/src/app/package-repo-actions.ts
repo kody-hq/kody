@@ -61,6 +61,11 @@ export function buildPackageRepoActions(input: {
 	viewerIsOwner: boolean
 	viewerCanManage: boolean
 	loggedIn: boolean
+	/**
+	 * Signed-in viewer holds package:read on a saved package with no listing.
+	 * They may fork it; the fork grants nothing on this package.
+	 */
+	viewerCanForkSource?: boolean
 	ownerPackage: PackageRepoOwnerPackageActions | null
 	/** Set when the page names a followable package or plain repo. */
 	follow?: { kind: 'package' | 'repo'; viewerFollowing: boolean } | null
@@ -88,7 +93,18 @@ export function buildPackageRepoActions(input: {
 					}),
 					viewerInstall: input.viewerInstall ?? listing.viewerInstall ?? null,
 				}
-			: null
+			: !listing && input.viewerCanForkSource && input.loggedIn
+				? {
+						listingId: null,
+						source: { username: input.username, kodyId: input.kodyId },
+						trusted: false,
+						loggedIn: true,
+						loginHref: routes.login.href(null, {
+							searchParams: { redirectTo: repoHref },
+						}),
+						viewerInstall: null,
+					}
+				: null
 	const listingAhead = listing?.sourceAhead === true
 	const ownerAhead = input.ownerPackage?.sourceAhead === true
 	const publishHref =
@@ -140,8 +156,9 @@ type PackageAppLinkFlags = {
  * Someone who may run the app (`app:execute`) gets the self-describing
  * handoff path `/@{user}/packages/{name}/open`, which mints a session token
  * and redirects to the hosted origin from
- * {@link resolvePublicPackageAppLocation}. Readers who cannot execute get
- * that hosted URL only when the app is approved for anonymous serving.
+ * {@link resolvePublicPackageAppLocation} (verified app custom hostname when
+ * one exists, else `{username}.kody.run/{name}`). Readers who cannot execute
+ * get that hosted URL only when the app is approved for anonymous serving.
  * Inline deployments (no `PACKAGE_APP_BASE_URL`) keep the path mount. There
  * is no second host button: `packageAppOriginHref` stays null.
  */
@@ -334,6 +351,8 @@ export async function buildPackageRepoActionsForPage(
 		viewerIsOwner: page.viewerIsOwner,
 		viewerCanManage: page.viewerCanManage,
 		loggedIn: page.loggedIn,
+		viewerCanForkSource:
+			page.viewerIsOwner && page.loggedIn && page.hasPackage && !page.listing,
 		ownerPackage: owner
 			? {
 					hasApp: owner.hasApp,

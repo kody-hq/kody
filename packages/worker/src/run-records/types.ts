@@ -2,7 +2,7 @@
  * Run records: the per-user execution history primitive.
  *
  * Every runtime surface (execute, jobs, workflows, package exports, apps,
- * retrievers, subscriptions, inbound webhooks) reports what it ran and
+ * subscriptions, inbound webhooks) reports what it ran and
  * how it ended through one contract. Records live in a per-user `RunLog`
  * Durable Object, not in the shared D1 writer — see
  * `docs/contributing/architecture/run-records.md`.
@@ -16,6 +16,16 @@
  */
 
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { type RunStartedBy } from './run-started-by.ts'
+
+export type { RunStartedBy, RunStartedByClient } from './run-started-by.ts'
+export {
+	isRunStartedByClient,
+	normalizeRunStartedBy,
+	runStartedByClientFromCredentialKind,
+	runStartedByClientValues,
+	runStartedByFromRequest,
+} from './run-started-by.ts'
 
 export const runSurfaceValues = [
 	'execute',
@@ -25,7 +35,6 @@ export const runSurfaceValues = [
 	'app_realtime',
 	'job',
 	'workflow',
-	'retriever',
 	'webhook',
 ] as const
 
@@ -77,6 +86,10 @@ export const runRecordPlatformInterruptedErrorMessage =
  * queue, or webhook delivery, so retain their interrupted attempt as ignored
  * history instead of an open user-facing failure. Interactive and
  * non-idempotent attempts stay open.
+ *
+ * Scheduled job ticks (`scheduled-job:…`) are the exception: a stranded
+ * `running` row that becomes terminal must stay owner-visible. Soft-ignoring
+ * those rows hid missed slots while the scheduler advanced `next_run_at`.
  */
 export function runErrorTriageForPlatformInterrupt(
 	context: Pick<RunRecordContext, 'surface' | 'idempotencyKey'>,
@@ -84,7 +97,7 @@ export function runErrorTriageForPlatformInterrupt(
 	const idempotencyKey = context.idempotencyKey?.trim()
 	switch (context.surface) {
 		case 'job':
-			return idempotencyKey?.startsWith('scheduled-job:') ? 'ignored' : null
+			return null
 		case 'subscription':
 		case 'export':
 			return idempotencyKey ? 'ignored' : null
@@ -92,7 +105,6 @@ export function runErrorTriageForPlatformInterrupt(
 		case 'app_fetch':
 		case 'app_realtime':
 		case 'workflow':
-		case 'retriever':
 		case 'webhook':
 			return null
 		default: {
@@ -138,7 +150,6 @@ export function runPersistenceForSurface(surface: RunSurface): RunPersistence {
 		case 'app_realtime':
 		case 'job':
 		case 'workflow':
-		case 'retriever':
 		case 'webhook':
 			return 'eager'
 		default: {
@@ -168,6 +179,12 @@ export type RunRecordContext = {
 	sessionId?: string | null
 	idempotencyKey?: string | null
 	parentRunId?: string | null
+	/**
+	 * Who started this run (person + client). Omitted on legacy rows and when
+	 * the caller had no request context. Prefer
+	 * {@link runStartedByFromRequest} at begin/claim sites.
+	 */
+	startedBy?: RunStartedBy | null
 	metadata?: Record<string, unknown> | null
 }
 
@@ -231,6 +248,11 @@ export type RunRecord = {
 	triagedAt: string | null
 	/** User id of whoever last set triage (account owner or agent acting for them). */
 	triagedBy: string | null
+	/**
+	 * Who started this run. `null` for legacy rows recorded before started_by
+	 * existed, or when begin had no request context.
+	 */
+	startedBy: RunStartedBy | null
 	metadata: Record<string, unknown>
 	logCount: number
 }
@@ -275,6 +297,13 @@ export type RunRecordFilter = {
 	 * User-facing `runList` and Activity pass `open` by default.
 	 */
 	errorTriage?: RunErrorTriageFilter | null
+	/**
+	 * Exact match on started-by person id (the actor who started or owns the
+	 * enablement). Omit / `null` means no started-by filter.
+	 */
+	startedByUserId?: string | null
+	/** Exact match on the execution context a run ran on or tried. */
+	executionContextId?: string | null
 }
 
 export type RunRecordPage = {
@@ -351,6 +380,53 @@ export const runRecordStaleRunningTtlMsBackground = 10 * 60 * 1000
 export const runRecordStaleRunningTtlMsJob = 6 * 60 * 60 * 1000
 
 /**
+ * Scheduled-tick idempotency keys (`scheduled-job:…`) release stranded
+ * `running` rows after the D1 job execution lease (10 minutes). Waiting for
+ * {@link runRecordStaleRunningTtlMsJob} left occurrences soft-retrying for
+ * hours, then a terminal interrupt consumed the key and dropped the slot.
+ * Keep this aligned with `jobExecutionLeaseMs` in shared jobs repo.
+ */
+export const runRecordStaleRunningTtlMsScheduledJob = 10 * 60 * 1_000
+
+export function isScheduledJobIdempotencyKey(
+	idempotencyKey: string | null | undefined,
+): boolean {
+	return Boolean(idempotencyKey?.trim().startsWith('scheduled-job:'))
+}
+
+/**
+ * How a job surface run was started. Stored on run `metadata.trigger` for new
+ * rows; older rows derive from the scheduled-tick idempotency key.
+ */
+export const jobRunTriggerValues = ['manual', 'scheduled'] as const
+
+export type JobRunTrigger = (typeof jobRunTriggerValues)[number]
+
+export function jobRunTriggerForContext(input: {
+	idempotencyKey?: string | null
+}): JobRunTrigger {
+	return isScheduledJobIdempotencyKey(input.idempotencyKey)
+		? 'scheduled'
+		: 'manual'
+}
+
+/**
+ * Resolve a job run's trigger for UI and APIs. Prefer the stored metadata
+ * value (including any future/non-canonical string); fall back for legacy
+ * rows that only have the scheduled-job idempotency key.
+ */
+export function jobRunTriggerFromRecord(
+	run: Pick<RunRecord, 'idempotencyKey' | 'metadata'>,
+): string {
+	const stored = run.metadata?.trigger
+	if (typeof stored === 'string') {
+		const trimmed = stored.trim()
+		if (trimmed) return trimmed
+	}
+	return jobRunTriggerForContext({ idempotencyKey: run.idempotencyKey })
+}
+
+/**
  * Surface-aware stale-`running` TTL. Workflows keep the long default;
  * sandbox-backed surfaces heal after a few minutes. History only — live job
  * state lives on entity rows, not here.
@@ -361,7 +437,6 @@ export function runRecordStaleRunningTtlMsForSurface(
 	switch (surface) {
 		case 'execute':
 		case 'export':
-		case 'retriever':
 		case 'subscription':
 		case 'app_fetch':
 		case 'app_realtime':

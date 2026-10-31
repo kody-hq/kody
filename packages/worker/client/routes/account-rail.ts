@@ -64,6 +64,8 @@ export type AccountRailItem = {
 	icon: IconName
 	/** One line for the workspace overview card. */
 	description?: string
+	/** Short marker beside the label, such as `Experiment` for a flag-off feature. */
+	badge?: string
 	/**
 	 * Sibling pages shown as tabs under the page title. Each tab page also
 	 * marks this item current, so the rail lists the group once.
@@ -243,8 +245,9 @@ function creditsRailItem(orgSlug: string): AccountRailItem {
 }
 
 /**
- * The public face of a workspace: a person's profile or a team org's home at
- * `/@slug`. Listed under Overview so that page has its own rail item instead
+ * The public face of a workspace at `/@slug`: a person's profile, or a team
+ * org's public page (members open its home from there; private orgs show the
+ * home only). Listed under Overview so that page has its own rail item instead
  * of borrowing Overview's highlight.
  */
 function publicProfileRailItem(
@@ -348,7 +351,8 @@ function repositoriesRailItem(
 		id: 'repositories',
 		label: 'Repositories',
 		icon: 'box',
-		description: 'Every repository in this workspace, private ones included.',
+		description:
+			'Repositories and packages in this workspace, private ones included.',
 	}
 }
 
@@ -359,6 +363,45 @@ function jobsRailItem(orgSlug: string | null | undefined): AccountRailItem {
 		label: 'Jobs',
 		icon: 'briefcase',
 		description: 'Scheduled package jobs. Run one now or pause it.',
+	}
+}
+
+/**
+ * Shown whether or not the flag is on, so people can find the feature. Off,
+ * it is marked as an experiment and the page explains it and offers the
+ * opt-in.
+ */
+function executionContextsRailItem(
+	orgSlug: string | null | undefined,
+	enabled: boolean,
+): AccountRailItem {
+	return {
+		...(enabled ? {} : { badge: 'Experiment' }),
+		href: orgSectionHref(orgSlug, 'execution-contexts'),
+		id: 'execution-contexts',
+		label: 'Execution contexts',
+		icon: 'server',
+		description:
+			'Your machines and shared servers that run execute, and the order Kody tries them in.',
+	}
+}
+
+/**
+ * Agent profiles (ADR 0092). Shown with the flag off too, marked as an
+ * experiment, so people find the page and its opt-in.
+ */
+function profilesRailItem(
+	orgSlug: string | null | undefined,
+	enabled: boolean,
+): AccountRailItem {
+	return {
+		...(enabled ? {} : { badge: 'Experiment' }),
+		href: orgSectionHref(orgSlug, 'profiles'),
+		id: 'profiles',
+		label: 'Agent profiles',
+		icon: 'users',
+		description:
+			'Scoped identities for your agents and bots, and the sub-profiles below them.',
 	}
 }
 
@@ -475,6 +518,8 @@ function membersRailItem(orgSlug: string, role: OrgRole): AccountRailItem {
 function workspaceResourceGroups(
 	orgSlug: string | null | undefined,
 	personal: boolean,
+	executionContexts = false,
+	profiles = false,
 ): Array<AccountRailGroup> {
 	return [
 		{
@@ -482,6 +527,7 @@ function workspaceResourceGroups(
 			items: [
 				repositoriesRailItem(orgSlug),
 				jobsRailItem(orgSlug),
+				executionContextsRailItem(orgSlug, executionContexts),
 				{
 					href: orgSectionHref(orgSlug, 'webhooks'),
 					id: 'webhooks',
@@ -516,6 +562,13 @@ function workspaceResourceGroups(
 			label: 'Agents & data',
 			items: [
 				agentsRailItem(orgSlug),
+				profilesRailItem(orgSlug, profiles),
+				{
+					href: orgSectionHref(orgSlug, 'skills'),
+					id: 'skills',
+					label: 'Skills',
+					icon: 'book',
+				},
 				...(personal ? [memoriesRailItem(orgSlug)] : []),
 				{
 					href: orgSectionHref(orgSlug, 'email'),
@@ -553,6 +606,10 @@ export function workspaceRailGroups(input: {
 	 * username.
 	 */
 	profileUsername?: string | null
+	/** The `execution-contexts` flag is on for the viewer. */
+	executionContexts?: boolean
+	/** The `profiles` flag is on for the viewer. */
+	profiles?: boolean
 }): Array<AccountRailGroup> {
 	const { orgSlug, personal, role } = input
 	const profileUsername = personal ? input.profileUsername : null
@@ -629,7 +686,12 @@ export function workspaceRailGroups(input: {
 					},
 				]
 			: []),
-		...workspaceResourceGroups(orgSlug, personal),
+		...workspaceResourceGroups(
+			orgSlug,
+			personal,
+			input.executionContexts,
+			input.profiles,
+		),
 		{ label: 'Organization', items: organizationItems },
 	]
 }

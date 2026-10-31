@@ -185,6 +185,21 @@ export function isRetryableWorkersDevSubdomainRace(output: string) {
 	return uploaded && missingAfterUpload
 }
 
+/**
+ * Fresh per-PR mock Workers often exist (secrets sync created them) with
+ * no Durable Object migration tag yet. Wrangler then fails deploy with
+ * "got tag '' when expected tag is 'v2' [code: 10079]". A bounded retry
+ * usually succeeds after the first create; a non-empty mismatched tag is
+ * a real migration bug and stays terminal.
+ */
+export function isRetryableEmptyMigrationTagPrecondition(output: string) {
+	return (
+		/actor migration tag precondition failed/i.test(output) &&
+		/got tag ''/i.test(output) &&
+		/\[code:\s*10079\]/i.test(output)
+	)
+}
+
 const workersDevSubdomainRaceMinDelayMs = 10_000
 
 /**
@@ -198,6 +213,7 @@ function isWranglerCrashAfterSubdomainRace(output: string) {
 export function isRetryableWranglerDeployFailure(output: string) {
 	return (
 		isRetryableWorkersDevSubdomainRace(output) ||
+		isRetryableEmptyMigrationTagPrecondition(output) ||
 		isRetryableCloudflareFailure(output)
 	)
 }

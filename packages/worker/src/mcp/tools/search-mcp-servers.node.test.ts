@@ -25,6 +25,7 @@ function createHomeRegistry() {
 				{
 					name: 'mcp:home:set_pin',
 					orgPermission: 'none',
+					contextRuns: 'deny',
 					requiresLivePerson: 'never',
 					domain: 'mcp:home',
 					description: 'Set the island router PIN.',
@@ -45,6 +46,7 @@ function createHomeRegistry() {
 				{
 					name: 'mcp:home:list_lights',
 					orgPermission: 'none',
+					contextRuns: 'deny',
 					requiresLivePerson: 'never',
 					domain: 'mcp:home',
 					description: 'List lights.',
@@ -180,6 +182,7 @@ test('unscoped search ranks the MCP server instead of dumping every remote tool'
 				idempotent: false,
 				destructive: false,
 				orgPermission: 'none',
+				contextRuns: 'deny',
 				requiresLivePerson: 'never',
 				source: 'mcp-server' as const,
 				mcpServer: {

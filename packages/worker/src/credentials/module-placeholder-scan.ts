@@ -3,7 +3,11 @@
  * placeholder shapes, an AST walk, and the string constants a name can be
  * built from.
  */
-import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
+import { isInertExamplePlaceholder } from '#mcp/secrets/placeholders.ts'
+import {
+	parseModuleSourceAllowingTypeAssertions,
+	type ModuleAstNode,
+} from '#worker/module-source.ts'
 import { collectBundlerResolvedSpecifiers } from '#worker/package-runtime/import-specifiers.ts'
 
 export const scannableModuleFilePattern = /\.(?:[cm]?[jt]s|[jt]sx)$/
@@ -42,7 +46,10 @@ const completePlaceholderPatterns: Record<
  * Placeholder-shaped text that closes in the same string piece but names
  * nothing, such as help or redaction text (`{{secret:<name>}}`). The gateway
  * never substitutes it. `$`, quotes, and `+` stay out so the text fallback
- * still sees `${name}` and concatenation as computed.
+ * still sees `${name}` and concatenation as computed. Complete tokens that
+ * still hold `<...>` example markers or grammar metavariables only
+ * (`{{secret/provider:ref}}`) are also inert (same rule as
+ * {@link isInertExamplePlaceholder}).
  */
 const prosePlaceholderPattern =
 	/\{\{(?:secret-basic:|secret:|secret\/|integration-token:)[^}$'"`+]*\}\}/y
@@ -60,6 +67,7 @@ export function findPlaceholders(text: string) {
 		complete.pattern.lastIndex = match.index
 		const found = complete.pattern.exec(text)
 		if (found) {
+			if (isInertExamplePlaceholder(found[0]!)) continue
 			placeholders.push(
 				complete.kind
 					? { kind: complete.kind, names: found.slice(1) }
@@ -100,9 +108,13 @@ export type PlaceholderMatch = {
 	names: Array<string>
 	/** Literal `|scope=` suffix, or null when it has none. */
 	scope: string | null
+	/** The literal provider id of a vault placeholder; null for other kinds. */
+	provider: string | null
 	start: number
 	end: number
 }
+
+const vaultProviderPattern = /^\{\{secret\/([a-zA-Z0-9._-]+):/
 
 /**
  * Every placeholder in `text` with its position. Prose that names nothing is
@@ -117,10 +129,15 @@ export function findPlaceholderMatches(text: string) {
 		complete.pattern.lastIndex = match.index
 		const found = complete.pattern.exec(text)
 		if (found) {
+			if (isInertExamplePlaceholder(found[0]!)) continue
 			matches.push({
 				kind: placeholderMatchKindByOpener[opener]!,
 				names: complete.kind ? found.slice(1) : [],
 				scope: /\|scope=([a-z]+)\}\}$/.exec(found[0])?.[1] ?? null,
+				provider:
+					opener === 'secret/'
+						? (vaultProviderPattern.exec(found[0])?.[1] ?? null)
+						: null,
 				start: match.index,
 				end: match.index + found[0].length,
 			})
@@ -132,6 +149,7 @@ export function findPlaceholderMatches(text: string) {
 			kind: 'computed',
 			names: [],
 			scope: null,
+			provider: null,
 			start: match.index,
 			end: match.index + opener.length + 2,
 		})
@@ -571,42 +589,108 @@ type ModuleImport = {
 	target: string
 }
 
-type ModuleBindingInfo = {
-	body: Array<AstNode>
+/**
+ * A top-level `const` string initializer with every AST node dropped, so a
+ * module's constants can be resolved after its AST is released.
+ */
+type StringExpression =
+	| { kind: 'literal'; value: string }
+	| { kind: 'ref'; name: string }
+	| { kind: 'concat'; parts: Array<StringExpression> }
+
+type ModuleConstantStatement =
+	| { kind: 'const'; name: string; value: StringExpression; exported: boolean }
+	| { kind: 'export'; local: string; exported: string }
+
+/** What constant resolution needs from one module, without its AST. */
+export type ModuleConstantsSummary = {
+	statements: Array<ModuleConstantStatement>
 	imports: Array<ModuleImport>
 }
 
-function readModuleBindingInfo(
+/** Mirrors {@link resolveStringExpression}; null when it can never resolve. */
+function toStringExpression(
+	node: AstNode | undefined,
+): StringExpression | null {
+	const inner = unwrapExpression(node)
+	switch (inner?.type) {
+		case 'StringLiteral':
+			return typeof inner.value === 'string'
+				? { kind: 'literal', value: inner.value }
+				: null
+		case 'Identifier': {
+			const name = getNodeName(inner)
+			return name ? { kind: 'ref', name } : null
+		}
+		case 'TemplateLiteral': {
+			const quasis = inner.quasis ?? []
+			const expressions = inner.expressions ?? []
+			const parts: Array<StringExpression> = []
+			for (const [index, quasi] of quasis.entries()) {
+				parts.push({ kind: 'literal', value: templateElementText(quasi) })
+				if (index >= expressions.length) continue
+				const part = toStringExpression(expressions[index])
+				if (part == null) return null
+				parts.push(part)
+			}
+			return { kind: 'concat', parts }
+		}
+		case 'BinaryExpression': {
+			if (inner.operator !== '+') return null
+			const left = toStringExpression(inner.left)
+			if (left == null) return null
+			const right = toStringExpression(inner.right)
+			return right == null ? null : { kind: 'concat', parts: [left, right] }
+		}
+		default:
+			return null
+	}
+}
+
+function evaluateStringExpression(
+	expression: StringExpression,
+	constants: ReadonlyMap<string, string>,
+): string | null {
+	switch (expression.kind) {
+		case 'literal':
+			return expression.value
+		case 'ref':
+			return constants.get(expression.name) ?? null
+		case 'concat': {
+			let text = ''
+			for (const part of expression.parts) {
+				const value = evaluateStringExpression(part, constants)
+				if (value == null) return null
+				text += value
+			}
+			return text
+		}
+	}
+}
+
+export function readModuleConstantsSummary(
 	path: string,
 	parsed: AstNode | null | undefined,
 	modulePaths: ReadonlySet<string>,
-): ModuleBindingInfo {
+): ModuleConstantsSummary {
 	const body = parsed?.program?.body ?? []
 	const imports: Array<ModuleImport> = []
+	const statements: Array<ModuleConstantStatement> = []
 	for (const node of body) {
-		if (node.type !== 'ImportDeclaration') continue
-		const source = getNodeName(node.source)
-		const target = source
-			? resolveRelativeModulePath(path, source, modulePaths)
-			: null
-		if (!target) continue
-		for (const specifier of node.specifiers ?? []) {
-			if (specifier.type !== 'ImportSpecifier') continue
-			const imported = getNodeName(specifier.imported)
-			const local = getNodeName(specifier.local)
-			if (imported && local) imports.push({ local, imported, target })
+		if (node.type === 'ImportDeclaration') {
+			const source = getNodeName(node.source)
+			const target = source
+				? resolveRelativeModulePath(path, source, modulePaths)
+				: null
+			if (!target) continue
+			for (const specifier of node.specifiers ?? []) {
+				if (specifier.type !== 'ImportSpecifier') continue
+				const imported = getNodeName(specifier.imported)
+				const local = getNodeName(specifier.local)
+				if (imported && local) imports.push({ local, imported, target })
+			}
+			continue
 		}
-	}
-	return { body, imports }
-}
-
-function resolveModuleBindings(
-	info: ModuleBindingInfo,
-	importedConstants: ReadonlyMap<string, string>,
-) {
-	const constants = new Map(importedConstants)
-	const exportedNames = new Map<string, string>()
-	for (const node of info.body) {
 		const declaration =
 			node.type === 'ExportNamedDeclaration' ? node.declaration : node
 		if (
@@ -616,19 +700,44 @@ function resolveModuleBindings(
 			for (const declarator of declaration.declarations ?? []) {
 				if (declarator.id?.type !== 'Identifier') continue
 				const name = getNodeName(declarator.id)
-				const value = resolveStringExpression(declarator.init, constants)
+				const value = toStringExpression(declarator.init)
 				if (!name || value == null) continue
-				constants.set(name, value)
-				if (declaration !== node) exportedNames.set(name, name)
+				statements.push({
+					kind: 'const',
+					name,
+					value,
+					exported: declaration !== node,
+				})
 			}
 		}
 		if (node.type === 'ExportNamedDeclaration' && !node.source) {
 			for (const specifier of node.specifiers ?? []) {
 				const local = getNodeName(specifier.local)
 				const exported = getNodeName(specifier.exported)
-				if (local && exported) exportedNames.set(exported, local)
+				if (local && exported) {
+					statements.push({ kind: 'export', local, exported })
+				}
 			}
 		}
+	}
+	return { statements, imports }
+}
+
+function resolveModuleBindings(
+	summary: ModuleConstantsSummary,
+	importedConstants: ReadonlyMap<string, string>,
+) {
+	const constants = new Map(importedConstants)
+	const exportedNames = new Map<string, string>()
+	for (const statement of summary.statements) {
+		if (statement.kind === 'export') {
+			exportedNames.set(statement.exported, statement.local)
+			continue
+		}
+		const value = evaluateStringExpression(statement.value, constants)
+		if (value == null) continue
+		constants.set(statement.name, value)
+		if (statement.exported) exportedNames.set(statement.name, statement.name)
 	}
 	const exported = new Map<string, string>()
 	for (const [exportedName, local] of exportedNames) {
@@ -645,30 +754,25 @@ function resolveModuleBindings(
  * constant are filtered at each use via {@link constantsWithoutShadows}.
  */
 export function createModuleConstantsReader(
-	parsedModules: ReadonlyMap<string, AstNode | null>,
+	summaries: ReadonlyMap<string, ModuleConstantsSummary>,
 ) {
-	const modulePaths = new Set(parsedModules.keys())
-	const infos = new Map<string, ModuleBindingInfo>()
-	for (const [path, parsed] of parsedModules) {
-		infos.set(path, readModuleBindingInfo(path, parsed, modulePaths))
-	}
 	const constantsByPath = new Map<string, Map<string, string>>()
 	const exportedByPath = new Map<string, Map<string, string>>()
-	for (const [path, info] of infos) {
-		const resolved = resolveModuleBindings(info, new Map())
+	for (const [path, summary] of summaries) {
+		const resolved = resolveModuleBindings(summary, new Map())
 		constantsByPath.set(path, resolved.constants)
 		exportedByPath.set(path, resolved.exported)
 	}
 	let changed = true
 	while (changed) {
 		changed = false
-		for (const [path, info] of infos) {
+		for (const [path, summary] of summaries) {
 			const importedConstants = new Map<string, string>()
-			for (const { local, imported, target } of info.imports) {
+			for (const { local, imported, target } of summary.imports) {
 				const value = exportedByPath.get(target)?.get(imported)
 				if (value != null) importedConstants.set(local, value)
 			}
-			const resolved = resolveModuleBindings(info, importedConstants)
+			const resolved = resolveModuleBindings(summary, importedConstants)
 			const previousConstants = constantsByPath.get(path)!
 			const previousExported = exportedByPath.get(path)!
 			if (
@@ -682,6 +786,87 @@ export function createModuleConstantsReader(
 		}
 	}
 	return (path: string) => constantsByPath.get(path) ?? new Map()
+}
+
+type ScannableModuleIndex = {
+	sources: ReadonlyMap<string, string>
+	modulePaths: ReadonlyArray<string>
+	readConstants: (path: string) => ReadonlyMap<string, string>
+}
+
+const scannableModuleIndexes = new WeakMap<
+	Record<string, string>,
+	ScannableModuleIndex
+>()
+
+function indexStillMatches(
+	index: ScannableModuleIndex,
+	files: Record<string, string>,
+) {
+	if (Object.keys(files).length !== index.sources.size) return false
+	for (const [path, source] of index.sources) {
+		if (files[path] !== source) return false
+	}
+	return true
+}
+
+/**
+ * The scannable module paths of `files` and their resolved constants. Builds
+ * the constants from one parse per module, keeping only a small summary of
+ * each, never the ASTs: a package with megabytes of source would otherwise
+ * hold every AST at once and exceed the isolate memory limit. The result is
+ * reused for the same unchanged file map, so the several credential scans of
+ * one publish check parse each module for constants only once.
+ */
+export function scannableModuleIndex(
+	files: Record<string, string>,
+): ScannableModuleIndex {
+	const cached = scannableModuleIndexes.get(files)
+	if (cached && indexStillMatches(cached, files)) return cached
+	const modulePaths = listScannableModulePaths(files)
+	const modulePathSet = new Set(modulePaths)
+	const summaries = new Map<string, ModuleConstantsSummary>()
+	for (const path of modulePaths) {
+		summaries.set(
+			path,
+			readModuleConstantsSummary(
+				path,
+				parseModule(files[path]!),
+				modulePathSet,
+			),
+		)
+	}
+	const index: ScannableModuleIndex = {
+		sources: new Map(Object.entries(files)),
+		modulePaths,
+		readConstants: createModuleConstantsReader(summaries),
+	}
+	scannableModuleIndexes.set(files, index)
+	return index
+}
+
+/**
+ * Visit every scannable module (in {@link listScannableModulePaths} order, or
+ * sorted) with its AST, or null when it does not parse, and its resolved
+ * module constants. Only one AST is alive at a time; keep only small results
+ * from each visit, never the AST.
+ */
+export function forEachScannableModule(
+	files: Record<string, string>,
+	visit: (
+		path: string,
+		parsed: AstNode | null,
+		constants: ReadonlyMap<string, string>,
+	) => void,
+	options: { sorted?: boolean } = {},
+) {
+	const index = scannableModuleIndex(files)
+	const paths = options.sorted
+		? [...index.modulePaths].sort()
+		: index.modulePaths
+	for (const path of paths) {
+		visit(path, parseModule(files[path]!), index.readConstants(path))
+	}
 }
 
 function mapsEqual(
@@ -761,7 +946,7 @@ export function getCalleeObjectName(callee: AstNode | undefined) {
 
 export function parseModule(source: string) {
 	try {
-		return parseModuleSource(source) as unknown as AstNode
+		return parseModuleSourceAllowingTypeAssertions(source) as unknown as AstNode
 	} catch {
 		return null
 	}

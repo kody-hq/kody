@@ -11,7 +11,7 @@ import { credentialPickSchema } from '#universal/credential-pick-schema.ts'
 import { loadPackageMappingScopeForRequest } from '#worker/credentials/package-mapping-scope-access.ts'
 import {
 	packageIdLookupDescription,
-	packageNameLookupDescription,
+	packageKodyIdOptionalCamelInput,
 } from '#worker/package-registry/package-name.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -41,6 +41,7 @@ export const credentialTriggerPickSetCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'credentialTriggerPickSet',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
 			"Set which credentials one need uses for your instance of a trigger (cron job, subscription, or webhook), but only to a value you already proposed with credentialMappingPropose and the person approved from that link, for example to switch back after the pick changed. The pick is resolved and written the same way Approve writes it. Anything else is refused: propose it instead. Never turns a trigger on; a trigger that is off needs approval. Needs package:execute on the package and an agent credential (MCP OAuth client, CLI, or API token); the person's own approval page and Credentials tab do not use this.",
@@ -64,11 +65,7 @@ export const credentialTriggerPickSetCapability = defineDomainCapability(
 					.min(1)
 					.optional()
 					.describe(packageIdLookupDescription),
-				kodyId: z
-					.string()
-					.min(1)
-					.optional()
-					.describe(packageNameLookupDescription),
+				kodyId: packageKodyIdOptionalCamelInput(),
 				trigger: z.object({
 					kind: z.enum(credentialTriggerKinds),
 					name: z
@@ -84,7 +81,7 @@ export const credentialTriggerPickSetCapability = defineDomainCapability(
 					),
 			})
 			.refine((input) => Boolean(input.packageId ?? input.kodyId), {
-				message: 'Provide packageId or kodyId.',
+				message: 'Provide packageId or leftover kodyId. Prefer packageId.',
 				path: ['packageId'],
 			}),
 		outputSchema: z.object({

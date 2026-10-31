@@ -24,7 +24,10 @@ import {
 	type RequestSource,
 } from '#worker/request-context/request-context.ts'
 import { buildNoEnablementSkipError } from '#worker/enablements/enablement-agent-hints.ts'
-import { ensureOwnerCronEnablementForJob } from '#worker/enablements/owner-cron-enablement.ts'
+import {
+	ensureOwnerCronEnablementForJob,
+	type EnablerCredential,
+} from '#worker/enablements/owner-cron-enablement.ts'
 import {
 	planEnablementRuns,
 	type EnablementSkip,
@@ -49,6 +52,7 @@ import {
 	upsertJobRunObservability,
 } from '#worker/run-records/service.ts'
 import {
+	jobRunTriggerForContext,
 	runPersistenceForContext,
 	runRecordMaxPageSize,
 	type RunRecordHandle,
@@ -62,7 +66,6 @@ import { hydrateJobViewFromRunLog } from './job-run-observability-hydrate.ts'
 import { notifyOwnersOfJobAutoDisabled } from './job-auto-disabled-notice.ts'
 import {
 	jobExpiredDisabledReason,
-	oneTimeJobFinishedReason,
 	rescheduleFailedDisabledReason,
 } from '@kody-internal/shared/jobs/disabled-reason.ts'
 import {
@@ -86,10 +89,12 @@ import {
 	isTransientJobExecutionError,
 	markPreExecutionTransientError,
 	resolveScheduledJobCallerContext,
+	resolveScheduledJobRunRequest,
 	TransientJobExecutionError,
 } from './execution-safety.ts'
 import {
 	computeNextRunAt,
+	computeNextRunAtAfterOccurrence,
 	estimateScheduleMinIntervalMs,
 	formatJobError,
 	isJobExpired,
@@ -510,6 +515,11 @@ async function executePublishedJobArtifact(input: {
 		sourceId: packageContext?.sourceId ?? input.job.sourceId,
 		publishedCommit: source?.published_commit ?? input.job.publishedCommit,
 		...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+		metadata: {
+			trigger: jobRunTriggerForContext({
+				idempotencyKey: input.idempotencyKey,
+			}),
+		},
 		...(packageContext
 			? {
 					packageId: packageContext.packageId,
@@ -521,6 +531,18 @@ async function executePublishedJobArtifact(input: {
 	// registry initialization.
 	const { createPackageEventTools } =
 		await import('#worker/package-invocations/service.ts')
+	const { resolvePackageAutomationRouting } =
+		await import('#worker/package-invocations/automation-routing.ts')
+	const resolveExecutionRouting = packageContext
+		? () =>
+				resolvePackageAutomationRouting({
+					env: input.env,
+					orgId: input.job.userId,
+					packageId: packageContext.packageId,
+					sourceId: packageContext.sourceId ?? input.job.sourceId,
+					target: { kind: 'job', name: input.job.name, jobId: input.job.id },
+				})
+		: null
 	const packageRuntimeTools = packageContext
 		? {
 				packageEventTools: createPackageEventTools({
@@ -553,6 +575,7 @@ async function executePublishedJobArtifact(input: {
 			executorTimeoutMs: backgroundExecutorTimeoutMs,
 			runRecord,
 			runRecordHandle: input.runRecordHandle,
+			...(resolveExecutionRouting ? { resolveExecutionRouting } : {}),
 			...packageRuntimeTools,
 			// Keep waitUntil even when the caller pre-claimed the run record
 			// (scheduled jobs). Terminal run-record writes stay awaited inside
@@ -656,6 +679,8 @@ export async function syncPackageJobsForPackage(input: {
 	manifest: Awaited<ReturnType<typeof parseAuthoredPackageJson>>
 	/** Publishing person when known; preferred enabler over earliest Owner. */
 	actorUserId?: PersonId
+	/** The publishing person's credential; their job runs stay within it. */
+	actorCredential?: EnablerCredential | null
 }) {
 	return await withAccountWriteLease({
 		db: input.env.APP_DB,
@@ -763,6 +788,7 @@ export async function syncPackageJobsForPackage(input: {
 					jobName: job.name,
 					packageId: input.packageId,
 					enablerUserId: input.actorUserId,
+					enablerCredential: input.actorCredential ?? null,
 					now,
 				})
 			}
@@ -1125,6 +1151,8 @@ export async function updateJob(input: {
 					jobId: updated.id,
 					jobName: updated.name,
 					enablerUserId: callerContext.user.userId,
+					enablerCredential: input.callerContext.request?.credential ?? null,
+					refreshEnablerCredential: existing.enabled === false,
 					now: nowIso,
 					onInserted: (enablement) =>
 						recordEnablementToggle({
@@ -1498,37 +1526,37 @@ export async function runJobNow(input: {
 				repoCheckPolicyOverride: input.repoCheckPolicyOverride,
 				waitUntil: input.waitUntil,
 			})
-			const updated = applyExecutionOutcome(
-				row.record,
-				outcome,
-				row.record.schedule.type === 'once'
-					? { enabled: false, disabledReason: oneTimeJobFinishedReason }
-					: {
-							nextRunAt: computeNextRunAt({
-								schedule: row.record.schedule,
-								timezone: row.record.timezone,
-								from: outcome.finishedAt,
-							}),
-						},
-			)
-			// Successful once jobs are retained for account/platform cleanup
-			// rather than deleted immediately.
-			const deletedAfterRun = false
-			// Outcome / schedule only — keep the published package caller context.
-			await jobsData(input.env).updateJob({
+			const updated = applyExecutionOutcome(row.record, outcome, {
+				nextRunAt: computeNextRunAt({
+					schedule: row.record.schedule,
+					timezone: row.record.timezone,
+					from: outcome.finishedAt,
+				}),
+			})
+			// Outcome only: the run can take minutes, and saving the row read
+			// before it would undo a turn-off, edit, or publish made meanwhile.
+			await jobsData(input.env).recordJobRunNowOutcome({
 				userId: input.userId,
-				job: updated,
-				callerContextJson: row.callerContextJson,
+				jobId: input.jobId,
+				lastRunAt: outcome.finishedAt,
+				lastRunStatus: updated.lastRunStatus,
+				updatedAt: updated.updatedAt,
+				nextRunAt: updated.nextRunAt,
+				scheduleJson: JSON.stringify(row.record.schedule),
+				timezone: row.record.timezone,
+			})
+			const current = await jobsData(input.env).getJobById({
+				userId: input.userId,
+				jobId: input.jobId,
 			})
 			const job = await hydrateJobViewFromRunLog({
 				env: input.env,
 				userId: input.userId,
-				job: toJobView(updated),
+				job: toJobView(current?.record ?? updated),
 			})
 			return {
 				job,
 				execution: outcome.execution,
-				deletedAfterRun,
 			}
 		},
 	})
@@ -1775,38 +1803,36 @@ async function deferClaimedJobWithoutEnablement(input: {
 		})
 		return { settled, nextRunAt, error }
 	}
-	const nextRunAt =
-		row.record.schedule.type === 'once' || !scheduledFor
-			? computeJobRetryAt({
-					now: input.now,
-					retryCount: row.retry_count,
-				})
-			: computeNextRunAt({
-					schedule: row.record.schedule,
-					timezone: row.record.timezone,
-					from: input.now,
-				})
-	const settled =
-		row.record.schedule.type === 'once' || !scheduledFor
-			? await store.retryClaimedJob({
-					userId: input.userId,
-					jobId: row.id,
-					claimToken: input.claimToken,
+	const nextRunAt = !scheduledFor
+		? computeJobRetryAt({
+				now: input.now,
+				retryCount: row.retry_count,
+			})
+		: computeNextRunAtAfterOccurrence({
+				schedule: row.record.schedule,
+				timezone: row.record.timezone,
+				scheduledFor,
+			})
+	const settled = !scheduledFor
+		? await store.retryClaimedJob({
+				userId: input.userId,
+				jobId: row.id,
+				claimToken: input.claimToken,
+				nextRunAt,
+			})
+		: await store.finalizeClaimedJob({
+				userId: input.userId,
+				job: {
+					...row.record,
+					updatedAt: nowIso,
+					lastRunAt: slotAt,
+					lastRunStatus: 'error',
+					lastRunError: error,
 					nextRunAt,
-				})
-			: await store.finalizeClaimedJob({
-					userId: input.userId,
-					job: {
-						...row.record,
-						updatedAt: nowIso,
-						lastRunAt: slotAt,
-						lastRunStatus: 'error',
-						lastRunError: error,
-						nextRunAt,
-					},
-					claimToken: input.claimToken,
-					scheduledFor,
-				})
+				},
+				claimToken: input.claimToken,
+				scheduledFor,
+			})
 	logJobSchedulerEvent({
 		event: settled
 			? 'scheduled_job_skipped'
@@ -1835,9 +1861,14 @@ async function executeClaimedScheduledJobRun(input: {
 	}).catch((error: unknown) => {
 		throw markPreExecutionTransientError(error)
 	})
+	const jobRequest = resolveScheduledJobRunRequest({
+		callerContext: input.row.callerContext,
+		source: input.source,
+	})
 	const claim = await claimRunRecord({
 		env: input.env,
 		userId: input.row.record.userId,
+		request: jobRequest,
 		context: {
 			surface: 'job',
 			name: input.row.record.name,
@@ -1849,6 +1880,7 @@ async function executeClaimedScheduledJobRun(input: {
 			kodyId: attribution.kodyId,
 			idempotencyKey,
 			metadata: {
+				trigger: jobRunTriggerForContext({ idempotencyKey }),
 				scheduledFor: input.scheduledFor,
 			},
 		},
@@ -2028,6 +2060,7 @@ async function runDueJobsForUserUnderLease(
 					const result = await processDueJobs({
 						jobs: [row.record],
 						now,
+						scheduledFor: row.claimed_scheduled_for,
 						async executeJob() {
 							return scheduledOutcome
 						},
@@ -2060,7 +2093,7 @@ async function runDueJobsForUserUnderLease(
 					successCount += result.successCount
 					errorCount += result.errorCount
 					jobOutcomes.push(...result.jobOutcomes)
-					if (!updated.enabled && row.record.schedule.type !== 'once') {
+					if (!updated.enabled) {
 						// The scheduler turned a recurring job off (it could not
 						// compute the next run). Nobody on the account did this, so
 						// say why and tell the owners.
@@ -2343,7 +2376,7 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 		finishedAt: nowIso,
 		durationMs,
 	}
-	if (row.record.schedule.type === 'once' || !scheduledFor) {
+	if (!scheduledFor) {
 		const nextRunAt = computeJobRetryAt({
 			now: input.now,
 			retryCount: row.retry_count,
@@ -2368,10 +2401,10 @@ async function settleClaimedScheduledJobAsHungFailure(input: {
 	}
 	const updated = applyExecutionOutcome(row.record, outcome, {
 		updatedAt: nowIso,
-		nextRunAt: computeNextRunAt({
+		nextRunAt: computeNextRunAtAfterOccurrence({
 			schedule: row.record.schedule,
 			timezone: row.record.timezone,
-			from: input.now,
+			scheduledFor,
 		}),
 	})
 	const finalized = await jobsData(input.env).finalizeClaimedJob({

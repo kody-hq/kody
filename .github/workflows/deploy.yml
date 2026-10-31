@@ -1318,6 +1318,7 @@ jobs:
           OIDC_SIGNING_KEY_ID: ${{ secrets.OIDC_SIGNING_KEY_ID }}
           CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN:
             ${{ secrets.CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN }}
+          ECP_FRAME_SIGNING_KEYS: ${{ secrets.ECP_FRAME_SIGNING_KEYS }}
         run: >
           node tools/ci/sync-worker-secrets.ts
           ${PLATFORM_SECRET_MODE:+$PLATFORM_SECRET_MODE} --env "" --name
@@ -1339,6 +1340,7 @@ jobs:
           --set-from-env-optional STATUS_INCIDENT_EVENT_SECRET --set-from-env
           OIDC_SIGNING_PRIVATE_KEY_PEM --set-from-env OIDC_SIGNING_KEY_ID
           --set-from-env-optional CLOUDFLARE_CUSTOM_HOSTNAMES_API_TOKEN
+          --set-from-env-optional ECP_FRAME_SIGNING_KEYS
 
       - name: 🗄️ Apply D1 Migrations
         env:
@@ -1931,9 +1933,11 @@ jobs:
             toJSON(secrets.DISCORD_MEMBER_ROLE_ID) }}, "DISCORD_PRO_ROLE_ID":
             ${{ toJSON(secrets.DISCORD_PRO_ROLE_ID) }},
             "DISCORD_STANDARD_ROLE_ID": ${{
-            toJSON(secrets.DISCORD_STANDARD_ROLE_ID) }}, "GITHUB_TOKEN": ${{
-            toJSON(secrets.GITHUB_TOKEN) }}, "KIT_API_KEY": ${{
-            toJSON(secrets.KIT_API_KEY) }}, "OAUTH_DISCORD_CLIENT_ID": ${{
+            toJSON(secrets.DISCORD_STANDARD_ROLE_ID) }},
+            "ECP_FRAME_SIGNING_KEYS": ${{ toJSON(secrets.ECP_FRAME_SIGNING_KEYS)
+            }}, "GITHUB_TOKEN": ${{ toJSON(secrets.GITHUB_TOKEN) }},
+            "KIT_API_KEY": ${{ toJSON(secrets.KIT_API_KEY) }},
+            "OAUTH_DISCORD_CLIENT_ID": ${{
             toJSON(secrets.OAUTH_DISCORD_CLIENT_ID) }},
             "OAUTH_DISCORD_CLIENT_SECRET": ${{
             toJSON(secrets.OAUTH_DISCORD_CLIENT_SECRET) }},

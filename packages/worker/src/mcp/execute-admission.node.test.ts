@@ -70,8 +70,7 @@ test('the loop brake key tells credential picks apart and keeps old keys', async
 		credential: null,
 		actorUserId: 'u1',
 		conversationId: undefined,
-		code: undefined,
-		invoke: 'kody:@acme/digest',
+		code: 'export default () => 1',
 		params: { day: 'mon' },
 	}
 	const keyFor = async (credentials: CredentialCallMapInput | undefined) =>

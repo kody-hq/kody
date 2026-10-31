@@ -5,7 +5,7 @@ import { publicAsset } from '../public-assets.ts'
  * (public package READMEs).
  *
  * Safety model (do not regress):
- * - Markdown is parsed with `marked`'s lexer only; its HTML renderer is never
+ * - Markdown is parsed with TanStack Markdown's parser; its HTML renderer is never
  *   used. Output is built exclusively from JSX text and an allowlist of token
  *   types, so every string goes through the framework's escaping.
  * - Raw HTML tokens (block and inline) are rendered as escaped literal text,
@@ -39,7 +39,14 @@ import { publicAsset } from '../public-assets.ts'
  */
 import { SiteLink } from './site-link.tsx'
 
-import { lexer, type Token, type Tokens } from 'marked'
+import { parseKodyMarkdown } from '#universal/markdown.ts'
+import {
+	type BlockNode,
+	type InlineNode,
+	type TableNode,
+	type TableCellNode,
+} from '@tanstack/markdown'
+type MarkdownNode = BlockNode | InlineNode
 import { type CSSObject } from '@emotion/react'
 import { type ReactNode } from 'react'
 import { CopyCodeBlock } from './copy-code-block.tsx'
@@ -47,14 +54,15 @@ import { DocYoutubeEmbed } from './doc-youtube-embed.tsx'
 import { renderMarkdownHeadingAnchor } from './markdown-heading-anchor.tsx'
 import { renderDocDiagram } from './doc-diagrams.tsx'
 import {
-	coalesceFirstPartyDetails,
+	markdownInlineText,
+	decodeMarkdownText,
+	markdownBlockText,
 	firstPartyAlertKind,
 	firstPartyAlertLabel,
 	firstPartyDiagramId,
-	isFirstPartyDetailsToken,
 	stripFirstPartyAlertMarker,
 	stripFirstPartyDiagramMarker,
-} from '#client/markdown-first-party.ts'
+} from '#universal/markdown-first-party.ts'
 import { renderHighlightedCode } from './syntax-highlight.tsx'
 import { parseDocWatchBlock } from '#universal/doc-youtube.ts'
 import {
@@ -101,7 +109,7 @@ export type RenderMarkdownOptions = {
 	 */
 	copyCodeBlocks?: boolean
 	/**
-	 * Highlight tokens for fenced code, in the same order `marked` emits
+	 * Highlight tokens for fenced code, in the same order TanStack Markdown emits
 	 * `code` tokens. Missing or mismatched entries fall back to plaintext.
 	 */
 	fences?: Array<HighlightedCode>
@@ -238,51 +246,17 @@ function slugifyMarkdownHeading(text: string): string {
  * visible text instead of markdown source.
  */
 function headingPermalinkLabel(
-	tokens: Array<Token> | undefined,
+	tokens: Array<InlineNode> | undefined,
 	headingId: string,
 ): string {
 	const visible = inlineTokensAccessibleName(tokens).replace(/\s+/g, ' ').trim()
 	return visible || headingId
 }
 
-function inlineTokensAccessibleName(tokens: Array<Token> | undefined): string {
-	if (!tokens) return ''
-	let name = ''
-	for (const token of tokens) {
-		name += inlineTokenAccessibleName(token)
-	}
-	return name
-}
-
-function inlineTokenAccessibleName(token: Token): string {
-	switch (token.type) {
-		case 'text': {
-			const textToken = token as Tokens.Text
-			if (textToken.tokens?.length) {
-				return inlineTokensAccessibleName(textToken.tokens)
-			}
-			return decodeCharacterReferences(textToken.text)
-		}
-		case 'strong':
-		case 'em':
-		case 'del':
-		case 'link':
-			return inlineTokensAccessibleName(token.tokens)
-		case 'image':
-			return decodeCharacterReferences(token.text)
-		case 'codespan':
-		case 'escape':
-			return token.text
-		case 'br':
-			return ' '
-		case 'html':
-			return ''
-		default:
-			if ('tokens' in token && Array.isArray(token.tokens)) {
-				return inlineTokensAccessibleName(token.tokens)
-			}
-			return ''
-	}
+function inlineTokensAccessibleName(
+	tokens: Array<InlineNode> | undefined,
+): string {
+	return tokens ? markdownInlineText(tokens) : ''
 }
 
 function nextHeadingId(used: Map<string, number>, text: string): string {
@@ -297,42 +271,6 @@ function isHtmlCommentOnly(raw: unknown): boolean {
 	if (typeof raw !== 'string') return false
 	const stripped = raw.replace(/<!--[\s\S]*?-->/g, '')
 	return stripped.trim() === '' && stripped !== raw
-}
-
-const namedEntities: Record<string, string> = {
-	amp: '&',
-	lt: '<',
-	gt: '>',
-	quot: '"',
-	apos: "'",
-	nbsp: '\u00a0',
-}
-
-/**
- * Markdown text tokens keep character references (`&amp;`, `&#65;`) verbatim
- * because marked expects HTML passthrough. We render as JSX text (which
- * re-escapes), so decode them first to display what the author meant.
- */
-function decodeCharacterReferences(value: string): string {
-	if (!value.includes('&')) return value
-	return value.replace(
-		/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi,
-		(match, entity: string) => {
-			if (entity.startsWith('#')) {
-				const codePoint =
-					entity[1]?.toLowerCase() === 'x'
-						? Number.parseInt(entity.slice(2), 16)
-						: Number.parseInt(entity.slice(1), 10)
-				if (!Number.isInteger(codePoint) || codePoint <= 0) return match
-				try {
-					return String.fromCodePoint(codePoint)
-				} catch {
-					return match
-				}
-			}
-			return namedEntities[entity.toLowerCase()] ?? match
-		},
-	)
 }
 
 function resolveMarkdownImageSrc(
@@ -371,49 +309,51 @@ function renderLink(
 }
 
 function renderTableCell(
-	cell: Tokens.TableCell,
+	cell: TableCellNode,
 	key: number,
 	tag: 'th' | 'td',
+	align: TableNode['align'][number],
 	options: ResolvedRenderOptions,
 ): ReactNode {
 	const Tag = tag
 	return (
-		<Tag key={key} css={cell.align ? { textAlign: cell.align } : undefined}>
-			{renderTokens(cell.tokens, options)}
+		<Tag key={key} css={align ? { textAlign: align } : undefined}>
+			{renderTokens(cell.children, options)}
 		</Tag>
 	)
 }
 
 const compactLastColumnMaxChars = 40
 
-function tableLastColumnIsCompact(table: Tokens.Table): boolean {
+function tableLastColumnIsCompact(table: TableNode): boolean {
 	const lastCells = [
 		table.header.at(-1),
 		...table.rows.map((row) => row.at(-1)),
 	]
 	return lastCells.every((cell) => {
-		const text = cell?.text.trim() ?? ''
+		const text = cell ? markdownInlineText(cell.children).trim() : ''
 		return text.length > 0 && text.length <= compactLastColumnMaxChars
 	})
 }
 
 function renderToken(
-	token: Token,
+	token: MarkdownNode,
 	key: number,
 	options: ResolvedRenderOptions,
 ): ReactNode {
-	if (isFirstPartyDetailsToken(token)) {
+	if (
+		token.type === 'component' &&
+		token.name === 'kody-details' &&
+		options.linkPolicy === 'first-party'
+	) {
 		return (
 			<details key={key} data-doc-disclosure="" css={firstPartyDetailsCss}>
-				<summary>{token.summary}</summary>
-				<div>{renderTokens(token.tokens, options)}</div>
+				<summary>{token.attributes.summary}</summary>
+				<div>{renderTokens(token.children, options)}</div>
 			</details>
 		)
 	}
 	switch (token.type) {
-		case 'space':
-		case 'def':
-			return null
 		case 'heading': {
 			// Authored depth + offset, clamped so the page always owns h1 (the
 			// README default offset of 2 also keeps listing-owned h2 clear).
@@ -422,16 +362,19 @@ function renderToken(
 				6,
 			)
 			const Tag = `h${level}` as 'h2' | 'h3' | 'h4' | 'h5' | 'h6'
-			const children = renderTokens(token.tokens, options)
+			const children = renderTokens(token.children, options)
 			if (!options.headingIds) {
 				return <Tag key={key}>{children}</Tag>
 			}
-			const headingId = nextHeadingId(options.headingSlugCounts, token.text)
+			const headingId = nextHeadingId(
+				options.headingSlugCounts,
+				markdownInlineText(token.children),
+			)
 			return (
 				<Tag
 					key={key}
 					id={headingId}
-					aria-label={headingPermalinkLabel(token.tokens, headingId)}
+					aria-label={headingPermalinkLabel(token.children, headingId)}
 				>
 					{renderMarkdownHeadingAnchor(key, headingId)}
 					<span data-heading-text="">{children}</span>
@@ -439,10 +382,10 @@ function renderToken(
 			)
 		}
 		case 'paragraph':
-			return <p key={key}>{renderTokens(token.tokens, options)}</p>
+			return <p key={key}>{renderTokens(token.children, options)}</p>
 		case 'blockquote': {
 			if (options.linkPolicy === 'first-party') {
-				const watch = parseDocWatchBlock(token.raw)
+				const watch = parseDocWatchBlock(markdownBlockText(token.children))
 				if (watch) {
 					return (
 						<DocYoutubeEmbed
@@ -459,7 +402,7 @@ function renderToken(
 							id: diagramId,
 							key,
 							caption: renderTokens(
-								stripFirstPartyDiagramMarker(token.tokens),
+								stripFirstPartyDiagramMarker(token.children),
 								options,
 							),
 						})
@@ -481,25 +424,30 @@ function renderToken(
 							}}
 						>
 							<strong>{firstPartyAlertLabel(alertKind)}</strong>
-							{renderTokens(stripFirstPartyAlertMarker(token.tokens), options)}
+							{renderTokens(
+								stripFirstPartyAlertMarker(token.children),
+								options,
+							)}
 						</aside>
 					)
 				}
 			}
 			return (
-				<blockquote key={key}>{renderTokens(token.tokens, options)}</blockquote>
+				<blockquote key={key}>
+					{renderTokens(token.children, options)}
+				</blockquote>
 			)
 		}
-		case 'hr':
+		case 'thematicBreak':
 			return <hr key={key} />
 		case 'code': {
-			const codeToken = token as Tokens.Code
-			const highlighted = takeFence(options, codeToken.text, codeToken.lang)
+			const codeToken = token
+			const highlighted = takeFence(options, codeToken.value, codeToken.lang)
 			if (options.copyCodeBlocks) {
 				return (
 					<CopyCodeBlock
 						key={key}
-						code={codeToken.text}
+						code={codeToken.value}
 						lang={codeToken.lang}
 						highlighted={highlighted}
 					/>
@@ -508,12 +456,23 @@ function renderToken(
 			return renderHighlightedCode(highlighted, key)
 		}
 		case 'list': {
-			// marked's Token union includes a generic catch-all, so `type`
-			// narrowing alone leaves these fields untyped (same for `table`).
-			const listToken = token as Tokens.List
-			const items = listToken.items.map((item, index) =>
-				renderToken(item, index, options),
-			)
+			const listToken = token
+			const items = listToken.items.map((item, index) => (
+				<li key={index}>
+					{item.checked !== undefined ? (
+						<input type="checkbox" disabled checked={item.checked} />
+					) : null}
+					{item.children.map((child, childIndex) =>
+						child.type === 'paragraph' && !listToken.loose ? (
+							<span key={childIndex}>
+								{renderTokens(child.children, options)}
+							</span>
+						) : (
+							renderToken(child, childIndex, options)
+						),
+					)}
+				</li>
+			))
 			if (!listToken.ordered) return <ul key={key}>{items}</ul>
 			const start =
 				typeof listToken.start === 'number' && listToken.start !== 1
@@ -525,14 +484,8 @@ function renderToken(
 				</ol>
 			)
 		}
-		case 'list_item':
-			return <li key={key}>{renderTokens(token.tokens, options)}</li>
-		case 'checkbox':
-			return (
-				<input key={key} type="checkbox" disabled checked={token.checked} />
-			)
 		case 'table': {
-			const tableToken = token as Tokens.Table
+			const tableToken = token
 			const compactLast = tableLastColumnIsCompact(tableToken)
 			return (
 				<div
@@ -544,7 +497,13 @@ function renderToken(
 						<thead>
 							<tr>
 								{tableToken.header.map((cell, index) =>
-									renderTableCell(cell, index, 'th', options),
+									renderTableCell(
+										cell,
+										index,
+										'th',
+										tableToken.align[index],
+										options,
+									),
 								)}
 							</tr>
 						</thead>
@@ -552,7 +511,13 @@ function renderToken(
 							{tableToken.rows.map((row, rowIndex) => (
 								<tr key={rowIndex}>
 									{row.map((cell, cellIndex) =>
-										renderTableCell(cell, cellIndex, 'td', options),
+										renderTableCell(
+											cell,
+											cellIndex,
+											'td',
+											tableToken.align[cellIndex],
+											options,
+										),
 									)}
 								</tr>
 							))}
@@ -561,67 +526,73 @@ function renderToken(
 				</div>
 			)
 		}
+		case 'footnoteReference':
+			return (
+				<sup key={key}>
+					<a href={`#markdown-footnote-${token.id}`}>{token.number}</a>
+				</sup>
+			)
+		case 'footnotes':
+			return (
+				<section key={key} aria-label="Footnotes">
+					<ol>
+						{token.items.map((item) => (
+							<li key={item.id} id={`markdown-footnote-${item.id}`}>
+								{renderTokens(item.children, options)}
+							</li>
+						))}
+					</ol>
+				</section>
+			)
 		case 'strong':
-			return <strong key={key}>{renderTokens(token.tokens, options)}</strong>
-		case 'em':
-			return <em key={key}>{renderTokens(token.tokens, options)}</em>
-		case 'del':
-			return <del key={key}>{renderTokens(token.tokens, options)}</del>
-		case 'codespan':
-			return <code key={key}>{token.text}</code>
-		case 'br':
+			return <strong key={key}>{renderTokens(token.children, options)}</strong>
+		case 'emphasis':
+			return <em key={key}>{renderTokens(token.children, options)}</em>
+		case 'strike':
+			return <del key={key}>{renderTokens(token.children, options)}</del>
+		case 'inlineCode':
+			return <code key={key}>{token.value}</code>
+		case 'break':
 			return <br key={key} />
-		case 'escape':
-			return token.text
 		case 'link':
 			return renderLink(
 				key,
 				token.href,
-				renderTokens(token.tokens, options),
+				renderTokens(token.children, options),
 				options,
 			)
 		case 'image': {
-			const imageSrc = resolveMarkdownImageSrc(token.href, options)
+			const imageSrc = resolveMarkdownImageSrc(token.src, options)
 			if (imageSrc) {
-				return <img key={key} src={publicAsset(imageSrc)} alt={token.text} />
+				return <img key={key} src={publicAsset(imageSrc)} alt={token.alt} />
 			}
 			// Remote / unsafe hrefs stay links (or plain text). Auto-loading
 			// author-chosen URLs is exactly what this renderer exists to prevent.
-			return renderLink(key, token.href, token.text || token.href, options)
+			return renderLink(key, token.src, token.alt || token.src, options)
 		}
 		case 'html':
+		case 'inlineHtml':
 			// Comment-only tokens carry author/agent notes (guides embed agent
 			// steering in HTML comments); showing them as literal text would
 			// leak scaffolding into the page, so they render as nothing under
 			// every policy. Other raw HTML stays escaped literal text so
 			// authors see their markup but it never becomes part of the
 			// document.
-			if (isHtmlCommentOnly(token.raw)) return null
-			return token.raw
-		case 'text': {
-			const textToken = token as Tokens.Text
-			if (textToken.tokens?.length) {
-				return <span key={key}>{renderTokens(textToken.tokens, options)}</span>
-			}
-			return decodeCharacterReferences(textToken.text)
-		}
+			if (isHtmlCommentOnly(token.value)) return null
+			return token.value
+		case 'text':
+			return decodeMarkdownText(token.value)
 		default:
-			// marked's token union is open (extensions add types), so exhaustive
-			// `never` checking is impossible; fall back to escaped raw text.
-			return typeof token.raw === 'string' ? token.raw : null
+			return null
 	}
 }
 
 function renderTokens(
-	tokens: Array<Token> | undefined,
+	tokens: Array<MarkdownNode> | undefined,
 	options: ResolvedRenderOptions,
 ): Array<ReactNode> {
 	if (!tokens) return []
-	const resolved =
-		options.linkPolicy === 'first-party'
-			? coalesceFirstPartyDetails(tokens, lexer)
-			: tokens
-	return resolved.map((token, index) => renderToken(token, index, options))
+	return tokens.map((token, index) => renderToken(token, index, options))
 }
 
 function takeFence(
@@ -640,13 +611,16 @@ export function renderMarkdownNodes(
 	markdown: string,
 	options?: RenderMarkdownOptions,
 ): Array<ReactNode> {
-	return renderTokens(lexer(markdown), {
-		...defaultRenderOptions,
-		...options,
-		fences: options?.fences ?? defaultRenderOptions.fences,
-		fenceCursor: { index: 0 },
-		headingSlugCounts: new Map(),
-	})
+	return renderTokens(
+		parseKodyMarkdown(markdown, options?.linkPolicy === 'first-party').children,
+		{
+			...defaultRenderOptions,
+			...options,
+			fences: options?.fences ?? defaultRenderOptions.fences,
+			fenceCursor: { index: 0 },
+			headingSlugCounts: new Map(),
+		},
+	)
 }
 
 const firstPartyCalloutBoxCss = {

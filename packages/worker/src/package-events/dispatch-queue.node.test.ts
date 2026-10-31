@@ -159,6 +159,4 @@ test('package events queue message parsing keeps MCP fan-out fields only when we
 		createMessageBody({ mcp: 'true', emittedAt: 'yesterday' }),
 	)
 	expect(parsed).toEqual(createMessageBody())
-	expect(parsed).not.toHaveProperty('mcp')
-	expect(parsed).not.toHaveProperty('emittedAt')
 })

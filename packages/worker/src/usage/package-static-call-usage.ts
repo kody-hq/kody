@@ -1,4 +1,7 @@
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import {
+	billedOrgIdOf,
+	type RequestContext,
+} from '@kody-internal/shared/request-context.ts'
 import {
 	recordUsage,
 	type UsageEnv,
@@ -110,7 +113,7 @@ export function createPackageStaticCallMeterTools(input: {
 					const outcome: UsageOutcome =
 						event.outcome === 'error' && !runFailed ? 'caught' : event.outcome
 					await recordUsage(input.env, {
-						userId,
+						userId: billedOrgIdOf(input.request, userId),
 						eventType: 'package_static_call',
 						entityId: event.packageId,
 						durationMs: event.durationMs,

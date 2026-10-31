@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 const require = createRequire(import.meta.url)
 
 /**
- * Guards the Zod Worker startup patch (`patches/zod+4.6.5.patch`).
+ * Guards the Zod Worker startup patch (`patches/zod+4.6.6.patch`).
  *
  * 1. Locales barrel stays English-only. Without that trim, `import { z } from
  *    'zod'` pulls ~50 locale modules into every Worker main (~190 KB).

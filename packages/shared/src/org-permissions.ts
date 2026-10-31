@@ -14,6 +14,19 @@ const resourceActions = {
 	integration: ['use', 'read', 'write', 'delete', 'manage_access'],
 	memory: ['read', 'write', 'delete', 'manage_access'],
 	email: ['read', 'send', 'write', 'delete', 'manage_access'],
+	// A registered machine that runs execute. Org roles and org-wide grants
+	// confer read, write, delete and manage_access only; `execute` comes from
+	// a grant on the context itself (canExecuteOnContext), never from a role.
+	// `command` (run host commands, ADR 0093) is never in a preset or role:
+	// the operator has it, anyone else needs it granted on the context.
+	execution_context: [
+		'read',
+		'execute',
+		'command',
+		'write',
+		'delete',
+		'manage_access',
+	],
 } as const
 
 /** A permission family: the `resource-type` half of a permission string. */
@@ -76,6 +89,7 @@ const orgLevelPermissionList = [
 	'audit:read',
 	'token:read',
 	'token:delete',
+	'profile:manage',
 ] as const
 
 export type OrgPermission =

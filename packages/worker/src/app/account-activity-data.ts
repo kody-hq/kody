@@ -1,9 +1,9 @@
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
-	executeEntryMetadataKey,
 	executeWorkerIdMetadataKey,
+	readExecuteEntry,
 	type ExecuteEntry,
-} from '#mcp/execute-invoke.ts'
+} from '#worker/run-records/execute-attribution.ts'
 import { type readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { highlightJsonValue } from '#app/highlight-code.ts'
 import { type ServerTimingEntry } from '#worker/server-timing.ts'
@@ -20,6 +20,7 @@ import {
 	type RunLogLevel,
 	type RunRecord,
 	type RunRecordLog,
+	type RunStartedBy,
 	type RunStatus,
 	type RunSurface,
 	runRecordRetentionDays,
@@ -69,6 +70,7 @@ export type AccountActivityRunListItem = {
 	idempotencyKey: string | null
 	entry: ExecuteEntry | null
 	workerId: string | null
+	startedBy: RunStartedBy | null
 }
 
 export type AccountActivityRunLog = {
@@ -188,14 +190,6 @@ function readMetadataString(
 	return typeof value === 'string' && value.trim() ? value : null
 }
 
-function readExecuteEntry(
-	metadata: Record<string, unknown>,
-): ExecuteEntry | null {
-	const entry = readMetadataString(metadata, executeEntryMetadataKey)
-	if (entry === 'invoke' || entry === 'code') return entry
-	return null
-}
-
 function toListItem(run: RunRecord): AccountActivityRunListItem {
 	return {
 		id: run.id,
@@ -214,6 +208,7 @@ function toListItem(run: RunRecord): AccountActivityRunListItem {
 		idempotencyKey: run.idempotencyKey,
 		entry: readExecuteEntry(run.metadata),
 		workerId: readMetadataString(run.metadata, executeWorkerIdMetadataKey),
+		startedBy: run.startedBy,
 	}
 }
 

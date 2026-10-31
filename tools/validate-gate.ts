@@ -37,6 +37,11 @@ const parallelValidateLegs = [
 		command: 'npm run generate-types:check',
 		weight: 'check',
 	},
+	{
+		name: 'start-routes',
+		command: 'npm run routes:generate:check',
+		weight: 'check',
+	},
 	{ name: 'test-node', command: 'CI=1 npm run test:node', weight: 'suite' },
 	{
 		name: 'test-workers',
@@ -136,7 +141,11 @@ const parallelValidateLegs = [
 		weight: 'check',
 	},
 	{ name: 'knip', command: 'npm run knip', weight: 'build' },
-	{ name: 'cli', command: 'npm run cli:validate', weight: 'build' },
+	{
+		name: 'cli',
+		command: 'npm run cli:validate && npm run desktop:validate',
+		weight: 'build',
+	},
 	{
 		name: 'cli-openapi',
 		command: 'npm run cli:openapi:check',

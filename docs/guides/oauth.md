@@ -46,6 +46,54 @@ Example shape:
 
 `https://kody.codes/connect/oauth?provider=...&authorizeUrl=...&tokenUrl=...`
 
+## Choosing the organization (`org`)
+
+OAuth apps and connections belong to one organization. Add `org=<slug>` to save
+the app and connection to that organization:
+
+`https://kody.codes/connect/oauth?org=test-team&provider=github&authorizeUrl=...&tokenUrl=...&flow=confidential`
+
+- The signed-in user must be a member of that organization; otherwise the page
+  answers "Organization not found." An empty `org=` is rejected (it never falls
+  back to the personal org).
+- Saving, rotating, or deleting a team organization's OAuth app needs
+  `integration:write` (`integration:delete` to delete). Owners have both;
+  members need a grant from an Owner. Connecting an account through an app the
+  organization already saved stays open to members.
+- Without `org`, single-organization users save to their personal organization.
+  Users in more than one organization first pick an organization (personal is
+  the default); the page then reloads with `org=<slug>` so it shows that
+  organization's saved apps.
+- The page always shows which organization it saves to. Lookups (`app=`,
+  provider-family prefill) only see apps saved in that organization.
+
+Agents: when setting up for anything other than the user's personal
+organization, always include `org=<slug>`. Otherwise the page may find the
+personal org's app with the same name and skip the client ID / secret form.
+
+## Connect your own account through an org's app
+
+When a team org has registered an OAuth app, a Member or Owner of that org can
+connect **their own** provider account through it, so packages in that org run
+with each person's own account:
+
+`https://kody.codes/connect/oauth?org=<org>&app=<app slug>&mode=personal`
+
+The app's page in the org (**Integrations**, then the app) links there as
+**Connect your own account**. The page skips the app setup step: the client id
+and secret come from the org's app and stay on the server, so the member never
+sees or edits them. The connection and its tokens are saved in the member's
+personal org, granted to that org only, and used only in the member's own runs
+there (never in another org, the member's personal org, another member's runs,
+or by Owners or Automation on their behalf). Billing members and outside
+collaborators cannot use this mode. Org Owners see each member's connection on
+the app's page (member, account label, date; never tokens or scopes) and can
+revoke it. Revoking, leaving the org, or deleting the app wipes the connection
+and revokes it with the provider: GitHub OAuth Apps through the app's token
+revoke endpoint, and providers with an RFC 7009 revocation endpoint through it.
+Other providers keep listing the app under the account's authorized apps until
+the person removes it there.
+
 ## Token refresh
 
 All integrations refresh host-side through `createAuthenticatedFetch`, which
@@ -85,11 +133,12 @@ The provider-side setup is the same for every provider:
 
 ## Query parameters
 
-| Param          | Purpose                                                                                       |
-| -------------- | --------------------------------------------------------------------------------------------- |
-| `provider`     | Required. Short integration label used to derive stored names.                                |
-| `authorizeUrl` | Provider authorization endpoint URL. Required for a new provider setup; omitted on reconnect. |
-| `tokenUrl`     | Provider token endpoint URL. Required for a new provider setup; omitted on reconnect.         |
+| Param          | Purpose                                                                                                                            |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `provider`     | Required. Short integration label used to derive stored names.                                                                     |
+| `authorizeUrl` | Provider authorization endpoint URL. Required for a new provider setup; omitted on reconnect.                                      |
+| `tokenUrl`     | Provider token endpoint URL. Required for a new provider setup; omitted on reconnect.                                              |
+| `mode`         | `personal` with `org` and `app`: [connect your own account](#connect-your-own-account-through-an-orgs-app) through that org's app. |
 
 For reconnects, `/connect/oauth?provider=<name>` alone is enough — the page
 derives the endpoint URLs from the saved integration.
@@ -105,6 +154,7 @@ with `allowedHosts` when needed.
 
 | Param                       | Purpose                                                                                                                          |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `org`                       | Organization slug that receives the app and connection. Omit only for the personal org; see above.                               |
 | `flow`                      | `pkce` (default), `confidential`, or `device` (RFC 8628).                                                                        |
 | `deviceAuthorizationUrl`    | Required when `flow=device`: the provider's device authorization endpoint.                                                       |
 | `pkce`                      | `true` or `false`; overrides the PKCE default for `pkce` / `confidential` only. Device flow ignores PKCE entirely (no override). |
@@ -248,7 +298,8 @@ already surface same-provider package suggestions.
 
 1. Confirm OAuth is the right auth shape.
 2. Build the connect URL with the required params:
-   `https://kody.codes/connect/oauth?...`.
+   `https://kody.codes/connect/oauth?...`. Add `org=<slug>` when the app is for
+   a team organization.
 3. Tell the user the exact redirect URI to register:
    `https://kody.codes/connect/oauth`. The page shows it with a copy button.
 4. Have the user open the URL while signed in, paste their client ID (and client

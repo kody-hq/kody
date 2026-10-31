@@ -17,7 +17,11 @@ A run record is one execution attempt on a named **surface**: status (`running`
 / `success` / `error`), optional package/job/workflow identifiers, start and
 finish timestamps, duration, truncated error fields, optional soft error triage
 (`error_triage`: `ignored` / `resolved`, plus note / who / when — separate from
-execution status), JSON metadata, and up to 200 captured log lines.
+execution status), who started the run (`started_by`: person id / handle +
+client such as MCP, CLI, API token, schedule, or webhook — the interactive
+caller or the enablement owner; `null` only when neither an explicit
+`context.startedBy` nor request-derived attribution exists), JSON metadata, and
+up to 200 captured log lines.
 
 Package ownership is optional. Ad-hoc MCP `execute` and inline workflows have no
 `package_id`; the record still lands under the signed-in user. That optionality
@@ -39,7 +43,6 @@ via `runUpdate`). The account UI is `/@<slug>/-/activity`.
 | `app_realtime` | Package app realtime websocket session                         |
 | `job`          | Scheduled or manually triggered job execution                  |
 | `workflow`     | Cloudflare Workflow run (`DynamicCallableWorkflow`)            |
-| `retriever`    | Package retriever evaluation                                   |
 | `webhook`      | Authenticated inbound webhook delivery (and post-auth rejects) |
 
 The closed union is `RunSurface` in `packages/worker/src/run-records/types.ts`.
@@ -90,7 +93,10 @@ const handle = beginRunRecord({
 		name: job.name,
 		jobId: job.id,
 		// packageId / kodyId optional
+		// startedBy optional; begin stamps it from `request` when omitted
 	},
+	request, // optional live RequestContext
+	startedByLabel, // optional display label (API token name); never a secret
 	waitUntil, // optional; preferred when ExecutionContext is available
 })
 
@@ -120,11 +126,14 @@ Rules:
   fire-and-forgets `startRun` (optionally via `waitUntil`). It returns a handle
   that already carries a minted run id, `startedAt`, persistence mode, and the
   full context — or `null` when there is no user / no `RUN_LOG` binding /
-  missing context. Callers that reach begin through a WorkerEntrypoint RPC
-  (package-app isolates: `packageRuntimeRunStart`) must not await that RPC on
-  the HTTP/realtime response path — kick it off, run user code, and `waitUntil`
-  begin-then-finish. A dropped `running` insert is still harmless because finish
-  upserts the terminal row.
+  missing context. Pass the live `request` (and optional `startedByLabel`) so
+  begin can stamp `started_by` when `context.startedBy` is omitted; without a
+  request or explicit stamp, Activity shows the run as unknown. Callers that
+  reach begin through a WorkerEntrypoint RPC (package-app isolates:
+  `packageRuntimeRunStart`) must not await that RPC on the HTTP/realtime
+  response path — kick it off, run user code, and `waitUntil` begin-then-finish.
+  A dropped `running` insert is still harmless because finish upserts the
+  terminal row.
 - **`finishRunRecord` awaits the complete-row upsert in one RPC** (`finishRun`),
   then replaces logs and enforces retention. A supplied `waitUntil` applies only
   to post-terminal observers such as `run.error.recorded`, never to the terminal
@@ -141,11 +150,13 @@ Rules:
   return value (at minimum webhook deliveries, package exports, and ad-hoc
   execute) should pass it so `runGet` can show what the handler returned.
 - Ad-hoc **execute** runs (MCP tool and in-runtime `meta.execute`) stamp
-  forward-only attribution in metadata: `entry` (`invoke` | `code`), optional
-  `invoke` specifier when entry is invoke, and `workerId` (the stable LOADER id
-  unique_worker_days already meters) once the module graph is minted. Package
-  columns (`package_id`, `published_commit`, …) stay first-class.
-  `published_commit` is the bundle that executed, which can trail
+  forward-only attribution in metadata: `entry` (`code`) and `workerId` (the
+  stable LOADER id unique_worker_days already meters) once the module graph is
+  minted. Older rows may carry `entry: invoke` plus an `invoke` specifier from
+  the removed execute shortcut
+  ([ADR 0085](../decisions/0085-execute-takes-code-only.md)); readers keep
+  showing them. Package columns (`package_id`, `published_commit`, …) stay
+  first-class. `published_commit` is the bundle that executed, which can trail
   `entity_sources.published_commit` for a short npm-backed republish window
   (bounded by the published source snapshot `createdAt`, not
   `entity_sources.updated_at`). No historical backfill.
@@ -322,6 +333,7 @@ Modelled on the
    		packageId, // optional
    		metadata: {/* small, non-secret */},
    	},
+   	request, // stamps started_by when context omits it
    	waitUntil: ctx.waitUntil.bind(ctx),
    })
 
@@ -422,16 +434,16 @@ triage). Filters must contain at least one identity/error field; filtered reopen
 requires an explicit ignored/resolved source state. `dry_run` previews ids, and
 `has_more` tells operators to repeat the same bounded call. Like single-run
 triage, it never deletes a row or changes execution status, errors, or logs.
-Schema version 10 on the RunLog DO.
 
 ## Reading the data
 
 - UI: `/@<slug>/-/activity` (open failures first by default; Recent runs lists
   the last 7 days of successes and errors; status / triage / surface filters,
-  7-day summary with ignored/resolved counts, log viewer, cursor pagination).
-  `/@<slug>/-/jobs` recent runs link into it.
+  who started each run, 7-day summary with ignored/resolved counts, log viewer,
+  cursor pagination). `/@<slug>/-/jobs` recent runs link into it.
 - MCP domain `runs`: `runList`, `runGet`, `runSummary`, `runUpdate`,
-  `runUpdateBulk`.
+  `runUpdateBulk`. `runList` / `runGet` include `started_by` when recorded;
+  `runList` can filter by `started_by` person id.
 - Account export: section `run_records` pages through the user’s `RunLog`.
 - Account deletion: `clearAll` on the user’s `RunLog` stub (deletes every DO
   table — runs, ledger, and dedicated state — then reinitializes schema).

@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { packageAppOauthHostAuth } from '#start/server/package-app-oauth-protocol'
 export const Route = createFileRoute('/-/auth/$')({
+	staticData: { documentNavigation: true },
 	server: {
 		handlers: {
 			GET: packageAppOauthHostAuth,

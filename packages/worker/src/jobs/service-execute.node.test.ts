@@ -98,7 +98,7 @@ afterEach(() => {
 	resetJobServiceMocks()
 })
 
-const onceSchedule = { type: 'once', runAt: '2026-04-17T15:00:00Z' } as const
+const recurringSchedule = { type: 'interval', every: '1h' } as const
 
 function createExecuteEnv(
 	initialRows: Parameters<typeof createDatabase>[0] = {},
@@ -125,7 +125,7 @@ function createJob(
 		userId: ownerIdFromStored('user-123'),
 		publishedCommit: null,
 		storageId: `job:${input.id}`,
-		schedule: onceSchedule,
+		schedule: recurringSchedule,
 		timezone: 'UTC',
 		enabled: true,
 		killSwitchEnabled: false,
@@ -157,7 +157,7 @@ async function publishInsertedPackageJob(input: {
 			name: input.name,
 			code: input.code,
 			params: input.params,
-			schedule: input.schedule ?? onceSchedule,
+			schedule: input.schedule ?? recurringSchedule,
 		},
 	})
 	const row = await getJobRowById(
@@ -901,7 +901,7 @@ test('runJobNow refuses a run that has no person', async () => {
 	const jobView = await insertPackageJob({
 		env,
 		callerContext,
-		body: { name: 'runs-as-nobody', schedule: onceSchedule },
+		body: { name: 'runs-as-nobody', schedule: recurringSchedule },
 	})
 	const executeSpy = vi.spyOn(registry, 'runBundledModuleWithRegistry')
 	const actorless = {
@@ -1003,62 +1003,6 @@ test('runJobNow keeps the job row package storage context so later scheduled run
 	expect(scheduled.execution.ok).toBe(true)
 	expect(executeSpy.mock.lastCall?.[1].storageContext?.packageId).toBe(
 		packageId,
-	)
-})
-
-test('runJobNow keeps once jobs instead of deleting them', async () => {
-	silenceIncidentalRuntimeWarnings()
-	const { db, env: baseEnv } = createExecuteEnv()
-	const deleteByIds = vi.fn(async () => {})
-	const env = {
-		...baseEnv,
-		CAPABILITY_VECTOR_INDEX: { deleteByIds } as unknown as VectorizeIndex,
-	}
-	mockRepoPersistence()
-	const callerContext = createBaseCallerContext()
-	const jobView = await insertPackageJob({
-		env,
-		callerContext,
-		body: { name: 'run-once-and-retain', schedule: onceSchedule },
-	})
-	const executeSpy = vi
-		.spyOn(registry, 'runBundledModuleWithRegistry')
-		.mockResolvedValue({
-			result: { ok: true },
-			logs: [],
-		})
-
-	const result = await runJobNow({
-		env,
-		userId: personalOrgId(callerContext.user.userId),
-		jobId: jobView.id,
-		callerContext,
-	})
-
-	expect(result.execution).toEqual({
-		ok: true,
-		result: { ok: true },
-		logs: [],
-	})
-	expect(result.deletedAfterRun).toBe(false)
-	const runRequest = executeSpy.mock.lastCall?.[1].request
-	expect(runRequest?.attribution).toEqual(callerContext.request?.attribution)
-	expect(runRequest?.credential).toEqual(callerContext.request?.credential)
-	expect(deleteByIds).not.toHaveBeenCalled()
-	const row = await getJobRowById(db, callerContext.user.userId, jobView.id)
-	expect(row?.record).toEqual(
-		expect.objectContaining({
-			id: jobView.id,
-			enabled: false,
-			lastRunStatus: 'success',
-			lastRunAt: expect.any(String),
-			// RunLog-owned counters/error/duration stay at insert defaults.
-			runCount: 0,
-			successCount: 0,
-			errorCount: 0,
-			lastRunError: undefined,
-			lastDurationMs: undefined,
-		}),
 	)
 })
 
@@ -1237,4 +1181,70 @@ test("a team-org job runs for an active member and a run-now uses the member's c
 	})
 	const updated = await getJobRowById(db, teamOrgId, jobView.id)
 	expect(updated?.record.enabled).toBe(false)
+})
+
+test('runJobNow keeps a turn-off and a publish that land while it runs', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const { db, env } = createExecuteEnv()
+	mockRepoPersistence()
+	const callerContext = createBaseCallerContext()
+	const ownerId = personalOrgId(callerContext.user.userId)
+	const jobView = await insertPackageJob({
+		env,
+		callerContext,
+		body: {
+			name: 'run-now-concurrent-edits',
+			schedule: { type: 'interval', every: '15m' },
+			code: 'export default async () => ({ ok: true })',
+		},
+	})
+	const before = await getJobRowById(db, ownerId, jobView.id)
+	if (!before) throw new Error('expected inserted job')
+	const publishedCallerContextJson = JSON.stringify({
+		...before.callerContext,
+		executionOrigin: 'background',
+	})
+
+	vi.spyOn(registry, 'runBundledModuleWithRegistry').mockImplementation(
+		async () => {
+			// Another request turns the job off and a publish refreshes its
+			// package identity while Run now is still executing.
+			const current = await getJobRowById(db, ownerId, jobView.id)
+			if (!current) throw new Error('expected job during run')
+			await jobsData(env).updateJob({
+				userId: ownerId,
+				job: {
+					...current.record,
+					enabled: false,
+					disabledReason: 'Turned off by the owner.',
+				},
+				callerContextJson: current.callerContextJson,
+			})
+			await jobsData(env).refreshPackageJobIdentity({
+				userId: ownerId,
+				jobId: jobView.id,
+				sourceId: current.record.sourceId,
+				publishedCommit: 'published-during-run',
+				callerContextJson: publishedCallerContextJson,
+				updatedAt: new Date().toISOString(),
+			})
+			return { result: { ok: true }, logs: [] }
+		},
+	)
+
+	const result = await runJobNow({
+		env,
+		userId: ownerId,
+		jobId: jobView.id,
+		callerContext,
+	})
+	expect(result.execution.ok).toBe(true)
+
+	const after = await getJobRowById(db, ownerId, jobView.id)
+	expect(after?.record.enabled).toBe(false)
+	expect(after?.record.disabledReason).toBe('Turned off by the owner.')
+	expect(after?.record.publishedCommit).toBe('published-during-run')
+	expect(after?.callerContextJson).toBe(publishedCallerContextJson)
+	expect(after?.record.lastRunStatus).toBe('success')
+	expect(result.job.enabled).toBe(false)
 })

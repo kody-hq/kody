@@ -39,3 +39,6 @@ on the 0055 routes.
   because the device token holds the full permission vocabulary.
 - npm publishes of `@kodycodes/cli` from this repo use trusted publishing. The
   previous package line continues from 1.26.3.
+- **Amended by [0082](./0082-cli-oauth-device-authorization-grant.md):**
+  `kody login --device` gets the same CLI OAuth access token through the RFC
+  8628 device grant and exchanges it at `POST /v1/tokens/device` the same way.

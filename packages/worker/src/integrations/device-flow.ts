@@ -7,6 +7,10 @@
  * an opaque session id plus the user-facing code and verification URI.
  */
 import { safeParseHost } from '@kody-internal/shared/url-hosts.ts'
+import {
+	pickAuthorizeScopeHost,
+	resolveAuthorizeRequestScopes,
+} from '#universal/oauth-authorize-scopes.ts'
 import { checkRateLimit } from '#worker/rate-limit.ts'
 import { normalizeAllowedHosts } from '#worker/secrets/allowed-hosts.ts'
 import {
@@ -91,6 +95,14 @@ export type DevicePendingSession = {
 	extraAuthorizeParams: Record<string, string>
 	/** BYO confidential secret captured at start; never returned to callers. */
 	clientSecret: string | null
+	/** Website starts: re-check the live-app replace guard at completion. */
+	liveConnectionGuard?: { confirmed: boolean }
+	/**
+	 * False when `clientSecret` was resolved from the saved app rather than
+	 * typed at start, so a poll must not write it back over a rotated secret.
+	 * Missing on sessions stored before this field existed.
+	 */
+	clientSecretFromInput?: boolean
 	/**
 	 * Set once the provider returns tokens. Later polls return this payload
 	 * without re-using `device_code` at the provider. Cleared when
@@ -366,6 +378,7 @@ export async function startDeviceAuthorization(input: {
 	authorizeUrl: string | null
 	clientId: string
 	clientSecret: string | null
+	clientSecretFromInput?: boolean
 	scopes: Array<string>
 	scopeSeparator: string | null
 	extraAuthorizeParams: Record<string, string>
@@ -374,6 +387,7 @@ export async function startDeviceAuthorization(input: {
 	platformAppSlug: string | null
 	usePkce: boolean | null
 	tokenExchangeStyle: TokenExchangeStyle | null
+	liveConnectionGuard?: { confirmed: boolean }
 	fetchImpl?: typeof fetch
 }): Promise<DeviceStartSuccess | DeviceStartFailure> {
 	const urlError = assertSafeDeviceAuthorizationUrl(
@@ -421,10 +435,23 @@ export async function startDeviceAuthorization(input: {
 	}
 
 	const scopeSeparator = input.scopeSeparator ?? ' '
+	const scopeHost = pickAuthorizeScopeHost([
+		input.authorizeUrl ? safeParseHost(input.authorizeUrl) : null,
+		deviceHost,
+		tokenHost,
+	])
+	const resolvedScopes = resolveAuthorizeRequestScopes({
+		scopes: input.scopes,
+		authorizeHost: scopeHost,
+		fillDefaults: !input.platformAppSlug,
+	})
+	if (!resolvedScopes.ok) {
+		return { ok: false, error: resolvedScopes.error, status: 400 }
+	}
 	const params = new URLSearchParams()
 	params.set('client_id', input.clientId)
-	if (input.scopes.length > 0) {
-		params.set('scope', input.scopes.join(scopeSeparator))
+	if (resolvedScopes.scopes.length > 0) {
+		params.set('scope', resolvedScopes.scopes.join(scopeSeparator))
 	}
 	for (const [key, value] of Object.entries(input.extraAuthorizeParams)) {
 		if (!params.has(key)) params.set(key, value)
@@ -537,10 +564,16 @@ export async function startDeviceAuthorization(input: {
 		clientId: input.clientId,
 		tokenExchangeStyle: input.tokenExchangeStyle,
 		allowedHosts,
-		scopes: input.scopes,
+		// Persist the scopes actually sent to the provider (including host
+		// defaults filled above), not the possibly-empty caller list.
+		scopes: resolvedScopes.scopes,
 		scopeSeparator: input.scopeSeparator,
 		extraAuthorizeParams: input.extraAuthorizeParams,
 		clientSecret: input.clientSecret,
+		clientSecretFromInput: input.clientSecretFromInput,
+		...(input.liveConnectionGuard
+			? { liveConnectionGuard: input.liveConnectionGuard }
+			: {}),
 	}
 	await storeDevicePendingSession({
 		env: input.env,

@@ -27,9 +27,33 @@ function githubApiErrorStatus(error) {
 	return undefined
 }
 
+function isRetryableGithubNetworkError(error) {
+	if (error == null || typeof error !== 'object') return false
+	const code = 'code' in error ? error.code : undefined
+	if (
+		code === 'ECONNRESET' ||
+		code === 'ETIMEDOUT' ||
+		code === 'ECONNREFUSED' ||
+		code === 'ENOTFOUND' ||
+		code === 'EAI_AGAIN'
+	) {
+		return true
+	}
+	const message =
+		error instanceof Error
+			? error.message
+			: typeof error.message === 'string'
+				? error.message
+				: ''
+	return /ECONNRESET|ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed|upstream connect error/i.test(
+		message,
+	)
+}
+
 function isRetryableGithubApiError(error) {
 	const status = githubApiErrorStatus(error)
-	return status !== undefined && isRetryableGithubApiStatus(status)
+	if (status !== undefined) return isRetryableGithubApiStatus(status)
+	return isRetryableGithubNetworkError(error)
 }
 
 /**
@@ -80,6 +104,7 @@ module.exports = {
 	defaultBaseDelayMs,
 	isRetryableGithubApiStatus,
 	githubApiErrorStatus,
+	isRetryableGithubNetworkError,
 	isRetryableGithubApiError,
 	withGithubApiRetry,
 }

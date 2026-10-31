@@ -12,6 +12,7 @@ import {
 	type OrgAuditWriter,
 	runAppDbBatchWithOrgAudit,
 } from '#worker/orgs/org-audit.ts'
+import { bumpUsableCredentialsGeneration } from './credential-read-generation.ts'
 import { getOrgCredential, type OrgCredential } from './credential-ids.ts'
 
 export const credentialHostsMax = 20
@@ -143,7 +144,7 @@ async function readHostSettings(
 						a.api_base_url AS api_base_url, a.token_url AS token_url
 					FROM user_integrations i
 					LEFT JOIN user_oauth_apps a
-						ON a.user_id = i.user_id AND a.slug = i.app_slug AND a.deleted_at IS NULL
+						ON a.user_id = COALESCE(i.app_owner_id, i.user_id) AND a.slug = i.app_slug AND a.deleted_at IS NULL
 					WHERE i.id = ? AND i.user_id = ? AND i.deleted_at IS NULL`,
 				)
 				.bind(credential.id, orgId)
@@ -323,5 +324,6 @@ export async function updateCredentialHosts(input: {
 	if (!changed) {
 		throw new McpCallerError('No credential with that id in this org.')
 	}
+	bumpUsableCredentialsGeneration(input.db)
 	return { ...settings, changed: true }
 }

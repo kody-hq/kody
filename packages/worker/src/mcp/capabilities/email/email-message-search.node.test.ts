@@ -89,6 +89,7 @@ test('emailMessageSearch requires a signed-in, verified user and forwards the qu
 			processingStatus: 'stored',
 			classification: 'accepted',
 			classificationReason: null,
+			archivedAt: null,
 			providerMessageId: null,
 			error: null,
 			receivedAt: '2026-07-01T00:00:00.000Z',
@@ -116,6 +117,7 @@ test('emailMessageSearch requires a signed-in, verified user and forwards the qu
 		direction: 'inbound',
 		processingStatus: null,
 		deliveryStatus: null,
+		view: 'inbox',
 		limit: 10,
 	})
 	expect(result.messages).toEqual([

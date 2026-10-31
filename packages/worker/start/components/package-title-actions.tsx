@@ -18,6 +18,8 @@ import {
 	copyPromptTooltipCss,
 } from './fork-outdated-copy-button.tsx'
 import { renderIcon, type IconName } from './icon.tsx'
+import { CommunityInstallOrgSelect } from './community-install-org-select.tsx'
+import { type CommunityInstallOrgPicker } from '../use-community-install-org.ts'
 import {
 	getGhostButtonCss,
 	getPillButtonCss,
@@ -29,6 +31,8 @@ import { colors, mq, typography } from '#universal/styles/tokens.ts'
 
 const OTHER_ACCOUNT_FORK_TOOLTIP =
 	'This was built by another user. Verify it before using. Click again to confirm fork.'
+const READABLE_PACKAGE_FORK_TOOLTIP =
+	'Fork the source into your own Kody. It runs and bills there, and gives you no new access to this package. Click again to confirm fork.'
 const FORK_LABEL = 'Fork'
 const OPEN_FORK_LABEL = 'Open fork'
 const COPY_SETUP_PROMPT_LABEL = 'Copy setup prompt'
@@ -119,6 +123,7 @@ export function renderPackageRepoActions(
 					</span>
 				</SiteLink>
 			) : null}
+			{actions.fork?.loggedIn ? <InstallOrgControl /> : null}
 			{actions.fork ? renderStatusControl(actions.fork) : null}
 			{actions.packageAppHref ? (
 				<a
@@ -224,7 +229,9 @@ function renderStatusControl(fork: PackageRepoForkAction) {
 		...fork,
 		icon: 'git-fork',
 		label: FORK_LABEL,
-		tooltip: OTHER_ACCOUNT_FORK_TOOLTIP,
+		tooltip: fork.source
+			? READABLE_PACKAGE_FORK_TOOLTIP
+			: OTHER_ACCOUNT_FORK_TOOLTIP,
 	})
 }
 
@@ -255,6 +262,8 @@ export const PackageInstallContext = createContext<{
 	inProgress: { startedAt: string } | null
 	onInstall: () => void
 	onDisarm: () => void
+	/** Org picker for the fork target; null when only one org can fork. */
+	orgPicker?: CommunityInstallOrgPicker | null
 }>({
 	busy: false,
 	confirmed: false,
@@ -262,7 +271,20 @@ export const PackageInstallContext = createContext<{
 	inProgress: null,
 	onInstall: () => {},
 	onDisarm: () => {},
+	orgPicker: null,
 })
+
+function InstallOrgControl() {
+	const install = useContext(PackageInstallContext)
+	if (!install.orgPicker) return null
+	return (
+		<CommunityInstallOrgSelect
+			picker={install.orgPicker}
+			disabled={install.busy}
+			compact
+		/>
+	)
+}
 function renderInstallControl(input: {
 	icon: IconName
 	label: string
@@ -270,7 +292,7 @@ function renderInstallControl(input: {
 	loggedIn: boolean
 	loginHref: string
 	trusted: boolean
-	listingId: string
+	listingId: string | null
 }) {
 	return <InstallControl input={input} />
 }
@@ -284,7 +306,7 @@ function InstallControl({
 		loggedIn: boolean
 		loginHref: string
 		trusted: boolean
-		listingId: string
+		listingId: string | null
 	}
 }) {
 	const install = useContext(PackageInstallContext)
@@ -314,7 +336,9 @@ function InstallControl({
 		'data-testid': 'community-detail-install',
 		'data-package-title-status': 'verify',
 		'data-package-title-idle': 'verify',
-		'data-package-title-listing': input.listingId,
+		...(input.listingId
+			? { 'data-package-title-listing': input.listingId }
+			: {}),
 		'data-title-idle-label': input.label,
 		'data-title-idle-tooltip': input.tooltip,
 		'data-community-install': '',

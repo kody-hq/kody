@@ -217,12 +217,18 @@
 		"enabled": true,
 		// Workers automatic tracing (beta): OTel-standard spans for handler
 		// invocations, outbound fetches, and binding calls (D1, KV, R2, DO,
-		// queues). Spans share the Workers Logs event quota. Inherited by all
-		// environments unless overridden; local dev and tests ignore it. The
-		// production env overrides this block to add the Sentry OTLP export
-		// destination, so preview spans stay in the Cloudflare dashboard only.
+		// queues). Spans share the Workers Logs event quota, so traces are head
+		// sampled at 10% (this Worker emits ~15 spans per request) while logs
+		// stay at 100%. Local dev and tests ignore it. The production env adds
+		// the Sentry OTLP export destination; the preview env turns traces off.
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1,
+			"invocation_logs": true,
+		},
 		"traces": {
 			"enabled": true,
+			"head_sampling_rate": 0.1,
 		},
 	},
 	// Cron scheduling moved to the jobs worker (packages/jobs-worker, ADR
@@ -258,8 +264,14 @@
 			// See docs/contributing/setup-manifest.md.
 			"observability": {
 				"enabled": true,
+				"logs": {
+					"enabled": true,
+					"head_sampling_rate": 1,
+					"invocation_logs": true,
+				},
 				"traces": {
 					"enabled": true,
+					"head_sampling_rate": 0.1,
 					"destinations": ["sentry-otlp-traces"],
 				},
 			},
@@ -390,6 +402,11 @@
 						"script_name": "kody-platform",
 					},
 					{
+						"class_name": "ExecutionContextSessionV1",
+						"name": "EXECUTION_CONTEXT_SESSION",
+						"script_name": "kody-platform",
+					},
+					{
 						"class_name": "PackageRealtimeSession",
 						"name": "PACKAGE_REALTIME_SESSION",
 						"script_name": "kody-runtime",
@@ -406,6 +423,11 @@
 					"binding": "AUDIT_DB",
 					"database_name": "kody-audit",
 					"migrations_dir": "./audit-migrations",
+				},
+				// Read-only for paced D1 shadow backup (migrations live on jobs-worker).
+				{
+					"binding": "JOBS_DB",
+					"database_name": "kody-jobs",
 				},
 			],
 			"send_email": [
@@ -490,6 +512,66 @@
 						"max_retries": 10,
 						"max_concurrency": 16,
 						"dead_letter_queue": "kody-webhook-dispatch-dlq",
+					},
+					// Dead-letter queues (including the jobs worker's scheduled
+					// dispatch DLQ) are parked in APP_DB for the admin DLQ
+					// capabilities (docs/contributing/dead-letter-queues.md). A
+					// message that cannot be parked retries for ~100 minutes.
+					{
+						"queue": "kody-email-delivery-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-artifacts-repo-events-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-platform-feedback-dispatch-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-community-activity-dispatch-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-community-listing-published-dispatch-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-package-events-dispatch-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-webhook-dispatch-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
+					},
+					{
+						"queue": "kody-scheduled-dispatch-dlq",
+						"max_batch_size": 10,
+						"max_batch_timeout": 5,
+						"max_retries": 100,
+						"retry_delay": 60,
 					},
 				],
 			},
@@ -638,6 +720,14 @@
 				// (DR) account. The companion S3 credentials are Worker
 				// secrets set out-of-band via the Cloudflare API.
 				"DR_EXPORT_ENABLED": "true",
+				// Shadow paced D1 backup (alongside REST export). Match live
+				// production: APP + AUDIT + JOBS (deploy still expands UUIDs
+				// from resource bindings; committed list must not omit AUDIT).
+				"DR_D1_PACED_BACKUP_ENABLED": "true",
+				// Streaming one-table drill + durable S3 report (re-enabled
+				// after KODY-AQ pause). Keep false only for emergency stop.
+				"DR_D1_PACED_RESTORE_DRILL_ENABLED": "true",
+				"DR_D1_PACED_SOURCES": "[{\"binding\":\"APP_DB\",\"name\":\"kody\",\"id\":\"8c1014d1-6b41-4695-a0a2-159071f0f919\"},{\"binding\":\"AUDIT_DB\",\"name\":\"kody-audit\",\"id\":\"c48f9d10-e4fc-4749-9188-82d68025284e\"},{\"binding\":\"JOBS_DB\",\"name\":\"kody-jobs\",\"id\":\"5410331e-4d25-47e4-a1e5-a248f7cc764c\"}]",
 				"SOFT_DELETE_PURGE_ENABLED": "false",
 				"DR_BACKUP_ACCOUNT_ID": "a41d50ecaf0ae0f86dd1824ef6729cb2",
 				"DR_BACKUP_BUCKET_NAME": "kody-production-backups",
@@ -648,6 +738,19 @@
 			},
 		},
 		"preview": {
+			// Previews: traces off, 10% of logs (Workers Observability cost).
+			// `wrangler tail` still streams every log line live.
+			"observability": {
+				"enabled": true,
+				"logs": {
+					"enabled": true,
+					"head_sampling_rate": 0.1,
+					"invocation_logs": true,
+				},
+				"traces": {
+					"enabled": false,
+				},
+			},
 			"version_metadata": { "binding": "CF_VERSION_METADATA" },
 			// Deployed preview origins upload the slim entry and own no Durable
 			// Object class, so `tools/ci/preview-resources.ts` strips this block
@@ -886,6 +989,11 @@
 						"script_name": "kody-platform",
 					},
 					{
+						"class_name": "ExecutionContextSessionV1",
+						"name": "EXECUTION_CONTEXT_SESSION",
+						"script_name": "kody-platform",
+					},
+					{
 						"class_name": "PackageRealtimeSession",
 						"name": "PACKAGE_REALTIME_SESSION",
 						"script_name": "kody-runtime",
@@ -1047,6 +1155,9 @@
 				"ARTIFACTS_NAMESPACE": "preview",
 				"YOUTUBE_ALLOWED_PLAYLIST_IDS": "PLV5CVI1eNcJhP4nrJt85L7PxHjebFpDfY",
 				"DR_EXPORT_ENABLED": "",
+				"DR_D1_PACED_BACKUP_ENABLED": "",
+				"DR_D1_PACED_RESTORE_DRILL_ENABLED": "",
+				"DR_D1_PACED_SOURCES": "",
 				"SOFT_DELETE_PURGE_ENABLED": "false",
 				"DR_BACKUP_ACCOUNT_ID": "",
 				"DR_BACKUP_BUCKET_NAME": "",
@@ -1154,6 +1265,12 @@
 					"deleted_classes": ["PackageServiceInstance"],
 					"tag": "v26",
 				},
+				// Local stand-in for the platform-owned class (ADR 0034: deployed
+				// origins bind it on kody-platform and own no class).
+				{
+					"new_sqlite_classes": ["ExecutionContextSessionV1"],
+					"tag": "v27",
+				},
 			],
 			"worker_loaders": [
 				{
@@ -1235,6 +1352,10 @@
 						"name": "REPO_SESSION",
 					},
 					{
+						"class_name": "ExecutionContextSessionV1",
+						"name": "EXECUTION_CONTEXT_SESSION",
+					},
+					{
 						"class_name": "PackageRealtimeSession",
 						"name": "PACKAGE_REALTIME_SESSION",
 					},
@@ -1297,7 +1418,7 @@
 				},
 			],
 			// Like the D1 database above, the test env reuses the preview
-			// bucket name; local runs and vitest-pool-workers simulate it.
+			// bucket name; local runs and vitest-plugin simulate it.
 			"r2_buckets": [
 				{
 					"binding": "COMMUNITY_ASSETS",
@@ -1322,6 +1443,8 @@
 			"vars": {
 				"SENTRY_ENVIRONMENT": "test",
 				"ARTIFACTS_NAMESPACE": "default",
+				// TEST ONLY frame-signing key (ecp-frame-test-1); see packages/shared/src/execution-context-protocol/vectors/test-keys.json.
+				"ECP_FRAME_SIGNING_KEYS": "[{\"kid\":\"ecp-frame-test-1\",\"privateKeyJwk\":{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"dhu5yQAAwEd6De_QQrbxRuozBukGgMr2XScwH8du5GU\",\"d\":\"Dg7fXFAhz9rb_g58f4ula78vd6QMBlLqDc6hMx8cq4g\"},\"notAfter\":4102444800000}]",
 				"COOKIE_SECRET": "LOCAL_AND_PREVIEW_COOKIE_SECRET_32_CHARS_MINIMUM",
 				"SECRET_STORE_KEY": "LOCAL_TEST_SECRET_STORE_KEY_32_CHARS_MINIMUM_OK",
 				"OIDC_SIGNING_KEY_ID": "kody-oidc-local-test",
@@ -1342,6 +1465,9 @@
 				"STRIPE_PRO_YEARLY_PRICE_ID": "price_pro_yearly",
 				"STRIPE_API_BASE_URL": "https://stripe.mock",
 				"DR_EXPORT_ENABLED": "",
+				"DR_D1_PACED_BACKUP_ENABLED": "",
+				"DR_D1_PACED_RESTORE_DRILL_ENABLED": "",
+				"DR_D1_PACED_SOURCES": "",
 				"SOFT_DELETE_PURGE_ENABLED": "false",
 				"DR_BACKUP_ACCOUNT_ID": "",
 				"DR_BACKUP_BUCKET_NAME": "",

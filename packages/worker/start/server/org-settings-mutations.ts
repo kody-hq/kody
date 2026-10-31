@@ -7,6 +7,7 @@ export const updateOrganizationProfile = createServerFn({ method: 'POST' })
 			orgSlug,
 			displayName: z.string().optional(),
 			slug: z.string().optional(),
+			profileVisibility: z.enum(['public', 'private']).optional(),
 		}),
 	)
 	.handler(async ({ data }) => {
@@ -20,6 +21,30 @@ export const updateOrganizationProfile = createServerFn({ method: 'POST' })
 			async (context) =>
 				requireOperationResult(
 					await updateOrganizationProfile({ ...context, ...data }),
+				),
+		)
+	})
+export const updateOrganizationMemberCreation = createServerFn({
+	method: 'POST',
+})
+	.inputValidator(
+		z.object({
+			orgSlug,
+			packages: z.boolean().optional(),
+			credentials: z.boolean().optional(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		const { updateOrganizationMemberCreation } =
+			await import('../../src/app/handlers/org-settings.ts')
+		const { requireOperationResult } =
+			await import('../../src/app/operation-result.ts')
+		return withWebsiteMutation(
+			{ scope: { orgSlug: data.orgSlug } },
+			async (context) =>
+				requireOperationResult(
+					await updateOrganizationMemberCreation({ ...context, ...data }),
 				),
 		)
 	})

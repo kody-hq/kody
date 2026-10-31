@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import {
 	ownerIdFromStored,
@@ -13,7 +14,10 @@ import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { resolveOrgManagementAccess } from '#app/org-management-access.ts'
-import { createTestOrgAuditWriter } from '#worker/test-support/create-audit-db.ts'
+import {
+	createAuditTestDb,
+	createTestOrgAuditWriter,
+} from '#worker/test-support/create-audit-db.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 
 const mocks = vi.hoisted(() => ({
@@ -31,12 +35,6 @@ const mocks = vi.hoisted(() => ({
 	softDeleteOrg: vi.fn(),
 	processUserAvatar: vi.fn(),
 	saveOrgAvatar: vi.fn(),
-	customDomainsEnabled: vi.fn(async (..._args: unknown[]) => false),
-}))
-
-vi.mock('#worker/package-app-custom-hostnames/feature-flag.ts', () => ({
-	isPackageAppCustomDomainsEnabledForUser: (...args: unknown[]) =>
-		mocks.customDomainsEnabled(...args),
 }))
 vi.mock('#app/authenticated-user.ts', () => ({
 	readAuthenticatedAppUser: (...args: Array<unknown>) =>
@@ -72,6 +70,9 @@ const {
 	saveOrganizationPhoto,
 	deleteOrganization,
 	updateOrganizationProfile,
+	addOrganizationDomain,
+	deleteOrganizationDomain,
+	updateOrganizationMemberCreation,
 } = await import('./org-settings.ts')
 
 const people = {
@@ -84,6 +85,19 @@ type Person = keyof typeof people
 
 let sqlite: DatabaseSync
 let db: D1Database
+
+const customHostnameMigrationSql = [
+	'0133-package-app-custom-hostnames.sql',
+	'0135-package-app-custom-hostname-verification.sql',
+	'0175-package-app-custom-hostname-auto-check.sql',
+]
+	.map((name) =>
+		readFileSync(
+			new URL(`../../../migrations/${name}`, import.meta.url),
+			'utf8',
+		),
+	)
+	.join('\n')
 let acmeId = ''
 
 async function seed() {
@@ -92,8 +106,14 @@ async function seed() {
 	await ensureOrgsTestSchema(db)
 	await ensureUsersTestSchema({
 		db,
-		columns: ['avatar_key', 'experiments_opt_in'],
+		columns: ['avatar_key'],
 	})
+	sqlite.exec(`CREATE TABLE IF NOT EXISTS saved_packages (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		deleted_at TEXT
+	)`)
+	sqlite.exec(customHostnameMigrationSql)
 	const now = '2026-01-01T00:00:00.000Z'
 	for (const [username, person] of Object.entries(people)) {
 		sqlite
@@ -194,7 +214,6 @@ beforeEach(async () => {
 	mocks.softDeleteOrg.mockClear()
 	mocks.processUserAvatar.mockReset()
 	mocks.saveOrgAvatar.mockReset()
-	mocks.customDomainsEnabled.mockReset().mockResolvedValue(false)
 	await seed()
 })
 
@@ -240,6 +259,7 @@ async function callSettings(
 	const body = (await request.json()) as {
 		displayName?: string
 		slug?: string
+		profileVisibility?: 'public' | 'private'
 		confirmation?: string
 	}
 	if (operation === deleteOrganization)
@@ -251,6 +271,7 @@ async function callSettings(
 		...context,
 		displayName: body.displayName,
 		slug: body.slug,
+		profileVisibility: body.profileVisibility,
 	})
 }
 
@@ -463,7 +484,9 @@ test('owner sees personal identity lock on their signup org and edits a team org
 		ok: true,
 		org: { slug: 'ada', personal: true },
 		canManage: false,
+		canManageDomains: true,
 		canDelete: false,
+		customDomains: { canAdd: false, hostnames: [] },
 	})
 
 	const teamGet = new Request('https://kody.test/@zeta-co/-/settings.json')
@@ -479,6 +502,7 @@ test('owner sees personal identity lock on their signup org and edits a team org
 		org: { slug: 'zeta-co', personal: false },
 		canManage: true,
 		canDelete: true,
+		customDomains: { canAdd: false, hostnames: [] },
 	})
 })
 
@@ -541,6 +565,80 @@ test('former platform orgs are not personal for settings identity editing', asyn
 	})
 })
 
+test('paid personal orgs manage custom domains in settings; free personal orgs are refused', async () => {
+	const env = createEnv()
+	const addOnPersonal = async () => {
+		const request = new Request(
+			'https://kody.test/@ada/-/settings/domains.json',
+			{ method: 'POST' },
+		)
+		const user = await signIn('ada', request)
+		return addOrganizationDomain({
+			env,
+			request,
+			user,
+			orgSlug: 'ada',
+			hostname: 'apps.example.com',
+			bindingKind: 'org',
+		})
+	}
+
+	const freeAdd = await addOnPersonal()
+	expect(freeAdd.status).toBe(400)
+	expect(freeAdd.data).toMatchObject({
+		ok: false,
+		error: expect.stringContaining('paid organization plan'),
+	})
+
+	sqlite.prepare(`UPDATE orgs SET plan = 'pro' WHERE slug = 'ada'`).run()
+	const get = new Request('https://kody.test/@ada/-/settings.json')
+	await signIn('ada', get)
+	expect(
+		(await readSettings(env, { request: get } as never)).data,
+	).toMatchObject({
+		ok: true,
+		org: { slug: 'ada', personal: true },
+		canManage: false,
+		canManageDomains: true,
+		customDomains: { canAdd: true, hostnames: [] },
+	})
+
+	// Past the plan gate, the add reaches the Cloudflare setup check (no
+	// package-app zone in tests) instead of a personal-org refusal.
+	await expect(addOnPersonal()).rejects.toThrow('PACKAGE_APP_ZONE_ID')
+
+	const removeRequest = new Request(
+		'https://kody.test/@ada/-/settings/domains/delete.json',
+		{ method: 'POST' },
+	)
+	const user = await signIn('ada', removeRequest)
+	const removed = await deleteOrganizationDomain({
+		env,
+		request: removeRequest,
+		user,
+		orgSlug: 'ada',
+		hostname: 'apps.example.com',
+	})
+	expect(removed.data).toMatchObject({
+		ok: false,
+		error: 'Custom hostname not found.',
+	})
+})
+
+test('members without org:write get no custom domain settings', async () => {
+	const env = createEnv()
+	const get = new Request('https://kody.test/@zeta-co/-/settings.json')
+	await signIn('bob', get)
+	expect(
+		(await readSettings(env, { request: get } as never)).data,
+	).toMatchObject({
+		ok: true,
+		canManage: false,
+		canManageDomains: false,
+		customDomains: null,
+	})
+})
+
 test('profile write succeeds without loading unrelated custom domain settings', async () => {
 	const env = createEnv()
 	const request = new Request('https://kody.test/@zeta-co/-/settings.json', {
@@ -549,9 +647,6 @@ test('profile write succeeds without loading unrelated custom domain settings', 
 		body: JSON.stringify({ displayName: 'Saved name' }),
 	})
 	await signIn('ada', request)
-	mocks.customDomainsEnabled.mockRejectedValue(
-		new Error('Domain settings unavailable'),
-	)
 	const result = await callSettings(updateOrganizationProfile, env, {
 		request,
 	} as never)
@@ -561,5 +656,119 @@ test('profile write succeeds without loading unrelated custom domain settings', 
 		org: { displayName: 'Saved name' },
 	})
 	expect(result.data).not.toHaveProperty('customDomains')
-	expect(mocks.customDomainsEnabled).not.toHaveBeenCalled()
+})
+
+test('owners toggle page visibility in settings with an audit event; members cannot', async () => {
+	const auditDb = createAuditTestDb()
+	const env = { ...createEnv(), AUDIT_DB: auditDb } as Env
+	const get = new Request('https://kody.test/@zeta-co/-/settings.json')
+	await signIn('ada', get)
+	expect(
+		(await readSettings(env, { request: get } as never)).data,
+	).toMatchObject({ ok: true, canManage: true, profileVisibility: 'public' })
+
+	const update = new Request('https://kody.test/@zeta-co/-/settings.json', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ profileVisibility: 'private' }),
+	})
+	await signIn('ada', update)
+	expect(
+		(
+			await callSettings(updateOrganizationProfile, env, {
+				request: update,
+			} as never)
+		).status,
+	).toBe(200)
+	await signIn('ada', get)
+	expect(
+		(await readSettings(env, { request: get } as never)).data,
+	).toMatchObject({ profileVisibility: 'private' })
+	const { results } = await auditDb
+		.prepare(
+			`SELECT action, details_json FROM org_audit_events
+			 WHERE action = 'org.profile_visibility_changed'`,
+		)
+		.all<{ action: string; details_json: string }>()
+	expect(results.map((row) => JSON.parse(row.details_json))).toEqual([
+		{ profile_visibility: 'private', previous_profile_visibility: 'public' },
+	])
+
+	const memberWrite = new Request(
+		'https://kody.test/@zeta-co/-/settings.json',
+		{
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ profileVisibility: 'public' }),
+		},
+	)
+	await signIn('bob', memberWrite)
+	expect(
+		(
+			await callSettings(updateOrganizationProfile, env, {
+				request: memberWrite,
+			} as never)
+		).status,
+	).toBe(403)
+	const personalGet = new Request('https://kody.test/@ada/-/settings.json')
+	await signIn('ada', personalGet)
+	expect(
+		(await readSettings(env, { request: personalGet } as never)).data,
+	).toMatchObject({ profileVisibility: null })
+})
+
+test('owners set member permissions on a team org; members and personal orgs cannot', async () => {
+	const auditDb = createAuditTestDb()
+	const env = { ...createEnv(), AUDIT_DB: auditDb } as Env
+	const writeAs = async (
+		person: Person,
+		orgSlug: string,
+		fields: { packages?: boolean; credentials?: boolean },
+	) => {
+		const request = new Request(
+			`https://kody.test/@${orgSlug}/-/settings.json`,
+			{ method: 'POST' },
+		)
+		await signIn(person, request)
+		const user = await mocks.readAuthenticatedAppUser(request, env)
+		return updateOrganizationMemberCreation({
+			env,
+			request,
+			user,
+			orgSlug,
+			...fields,
+		})
+	}
+	const get = new Request('https://kody.test/@zeta-co/-/settings.json')
+	await signIn('ada', get)
+	expect(
+		(await readSettings(env, { request: get } as never)).data,
+	).toMatchObject({
+		memberCreation: { packages: false, credentials: true },
+	})
+
+	expect((await writeAs('ada', 'zeta-co', { packages: true })).status).toBe(200)
+	await signIn('ada', get)
+	expect(
+		(await readSettings(env, { request: get } as never)).data,
+	).toMatchObject({
+		memberCreation: { packages: true, credentials: true },
+	})
+	const { results } = await auditDb
+		.prepare(
+			`SELECT details_json FROM org_audit_events
+			 WHERE action = 'org.member_creation_changed'`,
+		)
+		.all<{ details_json: string }>()
+	expect(results).toHaveLength(1)
+
+	expect((await writeAs('bob', 'zeta-co', { credentials: false })).status).toBe(
+		403,
+	)
+	expect((await writeAs('ada', 'ada', { packages: true })).status).toBe(400)
+	const personalGet = new Request('https://kody.test/@ada/-/settings.json')
+	await signIn('ada', personalGet)
+	expect(
+		(await readSettings(env, { request: personalGet } as never)).data,
+	).toMatchObject({ memberCreation: null })
 })

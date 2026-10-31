@@ -140,6 +140,13 @@ export type UsageEvent = {
 	 * (direct execute or unattributed). Never guess.
 	 */
 	packageId?: string | null
+	/** Present for package-app billable units; empty string means anonymous. */
+	packageAppVisitorUserId?: string
+	/**
+	 * The app's owning org when `userId` (the billed org) is a visiting org
+	 * (ADR 0095). Analytics Engine blob16. Empty when the owner pays.
+	 */
+	packageAppOwnerOrgId?: string | null
 	/**
 	 * Person who triggered the metered unit. Empty for Automation. When unset
 	 * at write time, defaults to `userId` (org billing id) for backward
@@ -164,6 +171,18 @@ export type UsageEvent = {
 	 * rows written before this dimension existed. Never a free-form message.
 	 */
 	errorName?: string | null
+	/**
+	 * `git_push` only: milliseconds before the push's first Artifacts send
+	 * (time waiting in the queue or the isolate-local gate). double6.
+	 */
+	waitMs?: number | null
+	/**
+	 * `git_push` only: pushes already in the repo's push queue when this one
+	 * arrived (0 on the direct path). double7.
+	 */
+	queueDepth?: number | null
+	/** `git_push` only: Artifacts sends for this push (>1 means busy retries). double8. */
+	attempts?: number | null
 }
 
 export const dynamicWorkerCacheReuses = ['hit', 'miss'] as const
@@ -184,6 +203,9 @@ export const usageEventBlobIndexes = {
 	automationSource: 10,
 	connectionKey: 11,
 	errorName: 12,
+	packageAppVisitorUserId: 13,
+	packageAppUsage: 14,
+	packageAppOwnerOrgId: 15,
 } as const
 
 export function automationSourceForAnalytics(
@@ -273,6 +295,10 @@ export const usageEventDoubleIndexes = {
 	bytesOrCoalescedCount: 2,
 	codeChars: 3,
 	paramsChars: 4,
+	/** `git_push` points only. */
+	waitMs: 5,
+	queueDepth: 6,
+	attempts: 7,
 } as const
 
 export function usageEventBlobs(
@@ -286,6 +312,8 @@ export function usageEventBlobs(
 		| 'executeShape'
 		| 'cacheReuse'
 		| 'packageId'
+		| 'packageAppVisitorUserId'
+		| 'packageAppOwnerOrgId'
 		| 'actorUserId'
 		| 'automationSource'
 		| 'connectionKey'
@@ -293,6 +321,9 @@ export function usageEventBlobs(
 	>,
 	timestamp: string,
 ): [
+	string,
+	string,
+	string,
 	string,
 	string,
 	string,
@@ -324,7 +355,18 @@ export function usageEventBlobs(
 		event.outcome === 'success'
 			? usageErrorNameUnrecorded
 			: sanitizeUsageErrorName(event.errorName),
+		event.packageAppVisitorUserId ?? '',
+		event.packageAppVisitorUserId === undefined ? '' : 'package-app',
+		packageAppOwnerOrgIdBlob(event),
 	]
+}
+
+/** The owning org, only when it differs from the billed org. */
+function packageAppOwnerOrgIdBlob(
+	event: Pick<UsageEvent, 'userId' | 'packageAppOwnerOrgId'>,
+) {
+	const ownerOrgId = event.packageAppOwnerOrgId?.trim() || ''
+	return ownerOrgId && ownerOrgId !== event.userId ? ownerOrgId : ''
 }
 
 export type UsageEnv = {
@@ -359,6 +401,18 @@ ON CONFLICT (user_id, day, package_id, meter) DO UPDATE SET
 	updated_at = excluded.updated_at,
 	actor_user_id = excluded.actor_user_id,
 	automation_source = excluded.automation_source
+`.trim()
+
+const packageAppVisitorAttributionDailyUpsertStatement = `
+INSERT INTO package_app_visitor_attribution_daily (
+	user_id, day, package_id, visitor_user_id, meter, units, updated_at,
+	billed_org_id
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+ON CONFLICT (
+	user_id, day, package_id, visitor_user_id, billed_org_id, meter
+) DO UPDATE SET
+	units = units + excluded.units,
+	updated_at = excluded.updated_at
 `.trim()
 
 const usageConnectionDailyUpsertStatement = `
@@ -508,6 +562,9 @@ function writeUsageDataPoint(
 					: (event.bytes ?? 0),
 				event.codeChars ?? 0,
 				event.paramsChars ?? 0,
+				...(event.eventType === 'git_push'
+					? [event.waitMs ?? 0, event.queueDepth ?? 0, event.attempts ?? 0]
+					: []),
 			],
 		})
 	} catch (error) {
@@ -541,6 +598,12 @@ async function writeUsageRollup(
 			)
 			.run()
 		await writeUsageAttributionDaily(env, event, timestamp, eventCount)
+		await writePackageAppVisitorAttributionDaily(
+			env,
+			event,
+			timestamp,
+			eventCount,
+		)
 		await writeUsageConnectionDaily(env, event, timestamp, eventCount)
 	} catch (error) {
 		console.warn('usage-rollup-failed', error)
@@ -577,6 +640,37 @@ async function writeUsageAttributionDaily(
 			.run()
 	} catch (error) {
 		console.warn('usage-attribution-daily-failed', error)
+	}
+}
+
+async function writePackageAppVisitorAttributionDaily(
+	env: UsageEnv,
+	event: UsageEvent,
+	timestamp: string,
+	eventCount: number,
+) {
+	if (!env.APP_DB || event.packageAppVisitorUserId === undefined) return
+	const meter = creditAttributionMeterFromUsageEventType(event.eventType)
+	const packageId = event.packageId?.trim()
+	if (!meter || !packageId) return
+	// Rows stay under the app's owning org so its Visitors view keeps every
+	// visitor; `billed_org_id` names a visiting org that paid (ADR 0095).
+	const billedOrgId = packageAppOwnerOrgIdBlob(event) ? event.userId : ''
+	try {
+		await env.APP_DB.prepare(packageAppVisitorAttributionDailyUpsertStatement)
+			.bind(
+				billedOrgId ? (event.packageAppOwnerOrgId?.trim() ?? '') : event.userId,
+				timestamp.slice(0, 'YYYY-MM-DD'.length),
+				packageId,
+				event.packageAppVisitorUserId,
+				meter,
+				eventCount,
+				timestamp,
+				billedOrgId,
+			)
+			.run()
+	} catch (error) {
+		console.warn('package-app-visitor-attribution-daily-failed', error)
 	}
 }
 

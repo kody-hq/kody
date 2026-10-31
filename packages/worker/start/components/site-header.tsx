@@ -243,6 +243,7 @@ const navCss: CSSObject = {
 	maxWidth: layoutMaxWidths.extended,
 	marginInline: 'auto',
 	padding: `${siteHeaderNavPaddingBlock} ${pageGutter}`,
+	paddingLeft: `max(${pageGutter}, calc(var(--desktop-corner-width, 0px) - max(0px, (100vw - ${layoutMaxWidths.extended}) / 2)))`,
 	display: 'flex',
 	alignItems: 'center',
 	gap: '1.8rem',

@@ -79,7 +79,13 @@ import {
 	resolveCredential,
 } from '#worker/credentials/resolve-credential.ts'
 import { assertCredentialUsesDeclared } from '#worker/credentials/credential-need-enforcement.ts'
+import { runInFeatureFlagExecution } from '#worker/feature-flags/execution-scope.ts'
 import { credentialClientHeaderName } from '#worker/credentials/credential-client-header.ts'
+import {
+	isSealedTokenName,
+	openSealedToken,
+	sealTokenResponse,
+} from '#worker/credentials/sealed-token.ts'
 import {
 	pathSegmentEncodedCredentialNames,
 	withPathSegmentEncodingWarning,
@@ -91,10 +97,17 @@ import {
 	withoutCodePlacement,
 } from './credential-client-gateway.ts'
 import { createMissingIntegrationAccessTokenMessage } from '#worker/integrations/credentials.ts'
+import { CredentialClientError } from '#worker/credentials/credential-client.ts'
+import { CredentialLoginRetryLaterError } from '#worker/credentials/credential-request.ts'
+import { recordRetriedLoginSession } from '#worker/credentials/login-session-store.ts'
 import { IntegrationHostNotAllowedError } from './execute-modules/integration-host-allowlist.ts'
 import { type StorageContext } from '#mcp/storage.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
+	billedOrgIdOf,
+	type RequestContext,
+} from '@kody-internal/shared/request-context.ts'
+import {
+	createPackageAppVisitorPersonalRequest,
 	loadPackageAppRunsAs,
 	PackageAppRunsAsUnavailableError,
 	type PackageAppAuthorityScope,
@@ -152,11 +165,6 @@ type FetchGatewayProps = {
 	 */
 	boundPackageId?: string | null
 	/**
-	 * When false, every sandbox `fetch` is rejected. Retriever runs use
-	 * this to stay closed-world. Defaults to true.
-	 */
-	allowOutboundFetch?: boolean
-	/**
 	 * The run (or CapabilityProxy credential) `credential()` client handles
 	 * must be bound to. Without it, a client fetch is refused.
 	 */
@@ -171,10 +179,21 @@ type FetchGatewayProps = {
 		grantScope: PackageAppVisitorGrantScope | null
 	} | null
 	/**
+	 * An outside-org visitor's own request, from an executor-only visit
+	 * ticket. Only resolves their executor credential handles; `request`
+	 * stays null so nothing else acts as them.
+	 */
+	executorVisitorRequest?: RequestContext | null
+	/**
 	 * Per-run HMAC key for package-scoped `packageSecrets.get` placeholders
 	 * (GHSA-5fv3). Omitted outside bundled sandbox runs.
 	 */
 	packageSecretRefKey?: string | null
+	/**
+	 * One id per execution: its gateway calls reuse feature-flag reads (see
+	 * `runInFeatureFlagExecution`), and the next execution reads again.
+	 */
+	executionId?: string | null
 	/**
 	 * Package-app runs only: audience used to verify a per-request visit
 	 * ticket. Omitted outside package-app serving.
@@ -207,8 +226,11 @@ export type FetchGatewayEnv = Pick<
  * still fills header placeholders but sends the URL and body as written, for
  * a body that quotes the syntax (an issue or chat message) on a host the
  * credential allows; without it that text would be filled with the secret.
- * For merely mentioning the syntax in prose, prefer the inert
- * `{{secret:<name>}}` form, which never resolves.
+ * For merely mentioning the syntax in prose, prefer an inert form:
+ * angle-bracket markers (`{{secret:<name>}}`,
+ * `{{secret/<provider>:<ref>}}`,
+ * `{{secret/bwvault:i/<item-uuid>/<field>}}`) or the grammar metavariable
+ * token `{{secret/provider:ref}}`. Those never resolve.
  */
 export const secretResolutionHeaderName = 'x-kody-secret-resolution'
 
@@ -222,9 +244,6 @@ export const secretResolutionHeaderName = 'x-kody-secret-resolution'
  * `AbortSignal` also wins.
  */
 export const outboundFetchTimeoutMs = 5 * 60_000
-
-export const retrieverOutboundFetchDeniedMessage =
-	'Outbound fetch is not available in retriever runs.'
 
 async function applyPackageAppVisitTicketToGateway(input: {
 	env: FetchGatewayEnv
@@ -246,6 +265,7 @@ async function applyPackageAppVisitTicketToGateway(input: {
 			props: {
 				...input.props,
 				request: null,
+				executorVisitorRequest: null,
 				credentialClientBinding: null,
 			},
 		}
@@ -261,13 +281,35 @@ async function applyPackageAppVisitTicketToGateway(input: {
 	})
 	const headers = new Headers(input.request.headers)
 	headers.delete(packageAppVisitTicketHeaderName)
+	if (!claims.visitor) {
+		// An anonymous ticket names nobody: the fetch stays anonymous and only
+		// gains this request's credential-client binding.
+		return {
+			...input,
+			request: new Request(input.request, { headers }),
+			props: {
+				...input.props,
+				request: null,
+				executorVisitorRequest: null,
+				credentialClientBinding: claims.credentialClientBinding,
+			},
+		}
+	}
 	return {
 		...input,
 		request: new Request(input.request, { headers }),
 		props: {
 			...input.props,
 			email: claims.owner.email,
-			request: requestContextFromVisitClaims(claims),
+			request: claims.executorOnly
+				? null
+				: requestContextFromVisitClaims(claims),
+			executorVisitorRequest: claims.executorOnly
+				? await createPackageAppVisitorPersonalRequest({
+						db: input.env.APP_DB,
+						visitor: claims.visitor,
+					})
+				: null,
 			credentialClientBinding: claims.credentialClientBinding,
 		},
 	}
@@ -295,6 +337,14 @@ export async function executeGatewayFetch(input: {
 	/** Override {@link outboundFetchIdleTimeoutMs}. Tests use short values. */
 	idleTimeoutMs?: number
 }): Promise<Response> {
+	return await runInFeatureFlagExecution(input.props.executionId, () =>
+		fetchThroughGateway(input),
+	)
+}
+
+async function fetchThroughGateway(
+	input: Parameters<typeof executeGatewayFetch>[0],
+): Promise<Response> {
 	const resolved = await applyPackageAppVisitTicketToGateway(input)
 	const globalFetch = resolved.globalFetch ?? fetch
 	const startedAtMs = Date.now()
@@ -304,14 +354,14 @@ export async function executeGatewayFetch(input: {
 	input = resolved
 
 	try {
-		if (input.props.allowOutboundFetch === false) {
-			throw new Error(retrieverOutboundFetchDeniedMessage)
-		}
 		// Daily outbound-fetch quota: every sandbox fetch leaves through
 		// this gateway, so the atomic counter here bounds cost abuse and
 		// third-party hammering from user code. Consumed before secret
 		// expansion so over-limit requests never resolve secrets.
-		if (input.props.userId) {
+		// A visit from another org to an internal app charges the visiting
+		// org's quota and meter (ADR 0095).
+		const billedUserId = billedOrgIdOf(input.props.request, input.props.userId)
+		if (billedUserId) {
 			// Plan lookup requires the account email. Callers that cannot
 			// carry one (MCP provider requests, package runtime) get it
 			// reverse-resolved from the stable userId so authenticated
@@ -319,18 +369,18 @@ export async function executeGatewayFetch(input: {
 			// failing open to `max` (whose limit is still finite for
 			// genuinely accountless synthetic contexts).
 			const email =
-				input.props.email ??
+				(billedUserId === input.props.userId ? input.props.email : null) ??
 				(
 					await findCachedUserAccountByStableUserId(
 						input.env.APP_DB,
-						input.props.userId,
+						billedUserId,
 					)
 				)?.email ??
 				null
 			await consumeDailyEntitlement({
 				db: input.env.APP_DB,
 				env: input.env,
-				userId: input.props.userId,
+				userId: billedUserId,
 				email,
 				resource: 'outbound_fetches_per_day',
 			})
@@ -338,7 +388,7 @@ export async function executeGatewayFetch(input: {
 		const credentialClientToken = input.request.headers.get(
 			credentialClientHeaderName,
 		)
-		const credentialClient =
+		let credentialClient =
 			credentialClientToken === null
 				? null
 				: await resolveCredentialClientPlacement({
@@ -390,6 +440,61 @@ export async function executeGatewayFetch(input: {
 			// Body placeholders may resolve while the upload streams; wait so
 			// echo redaction and redirect policy see every substituted value.
 			await bodyFillDone
+			if (credentialClient) {
+				substitutedValues = [
+					...expanded.substitutedValues,
+					...credentialClient.substitutedValues,
+				]
+			}
+			// A login session a host refused gets one fresh session and one
+			// retry, through the same door (host and placement re-checked).
+			// Only a request with no body can be replayed.
+			if (
+				upstream.status === 401 &&
+				credentialClient?.login &&
+				credentialClientToken !== null &&
+				input.request.body === null
+			) {
+				// While the login's exchange cools down after a recent failure or
+				// a repeated 401, the host's 401 is returned instead.
+				const retried = await resolveCredentialClientPlacement({
+					env: input.env,
+					props: input.props,
+					token: credentialClientToken,
+					request: input.request,
+					rejectedLoginSessionId: credentialClient.login.sessionId,
+				}).catch((error: unknown) => {
+					if (isLoginRetryLater(error)) return null
+					throw error
+				})
+				if (retried) {
+					await upstream.body?.cancel()
+					substitutedValues = [
+						...substitutedValues,
+						...retried.substitutedValues,
+					]
+					credentialClient = retried
+					transformed = applyCredentialClientPlacement(
+						expanded.request,
+						retried.placement,
+						codeRequest,
+					)
+					upstream = await globalFetch(
+						new Request(transformed, { signal: deadline.signal }),
+					)
+					const retriedSessionId = retried.login?.sessionId
+					if (retriedSessionId) {
+						try {
+							await recordRetriedLoginSession(input.env, {
+								sessionId: retriedSessionId,
+								rejected: upstream.status === 401,
+							})
+						} catch {
+							// Backoff bookkeeping only; never fail a completed retry.
+						}
+					}
+				}
+			}
 			// Credential-bearing requests stay on redirect=manual (fail closed).
 			// Ordinary bodies that used manual only so mid-stream fills could be
 			// observed still get Fetch-like follow for redirects that do not
@@ -407,6 +512,18 @@ export async function executeGatewayFetch(input: {
 				})
 			}
 			response = deadline.track(upstream)
+			// A token minted with a credential comes back sealed (ADR 0068).
+			if (substitutedValues.length > 0 && input.props.userId) {
+				response = await sealTokenResponse({
+					env: input.env,
+					response,
+					requestUrl: transformed.url,
+					approvedHosts: expanded.approvedHosts,
+					filledValues: substitutedValues,
+					org: input.props.userId,
+					binding: input.props.credentialClientBinding ?? null,
+				})
+			}
 		} catch (error) {
 			throw redactEchoedSecretsInError(
 				asCallerFacingBodyFillError(error),
@@ -424,8 +541,8 @@ export async function executeGatewayFetch(input: {
 		deadline?.fail()
 		throw asCallerFacingBodyFillError(error)
 	} finally {
-		const { userId } = input.props
-		if (input.props.allowOutboundFetch !== false && userId) {
+		const userId = billedOrgIdOf(input.props.request, input.props.userId)
+		if (userId) {
 			const meteredResponse = response
 			// Outcome is settled at headers; duration waits for the body so a
 			// streamed response reports how long it stayed open.
@@ -559,6 +676,8 @@ export async function expandSecretPlaceholders(input: {
 	 * Used to warn on a 4xx; never includes values.
 	 */
 	pathSegmentEncodedNames: Array<string>
+	/** Approved hosts of the stored secrets this request filled. */
+	approvedHosts: Array<string>
 }> {
 	const headers = new Headers(input.request.headers)
 	// A client handle is for the gateway only; it never leaves.
@@ -605,6 +724,7 @@ export async function expandSecretPlaceholders(input: {
 			bodyFillDone: Promise.resolve(),
 			deferRedirectFollow: false,
 			pathSegmentEncodedNames: [],
+			approvedHosts: [],
 		}
 	}
 
@@ -632,6 +752,7 @@ export async function expandSecretPlaceholders(input: {
 	const credentialNamesByPlaceholder = new Map<string, string>()
 	const encodedBasicCredentials: Array<string> = []
 	const substitutedValues: Array<string> = []
+	const approvedHosts: Array<string> = []
 	let referencedAnyCredential = false
 
 	const requestHost = normalizeHost(requestUrl.hostname)
@@ -799,29 +920,55 @@ export async function expandSecretPlaceholders(input: {
 				},
 			]
 		})
-		const referencedIntegrationTokens = dedupeIntegrationTokenNames(
+		const integrationTokenNames = dedupeIntegrationTokenNames(
 			texts.flatMap((value) => parseIntegrationTokenPlaceholders(value)),
-		).flatMap((name) => {
+		)
+		for (const name of integrationTokenNames.filter(isSealedTokenName)) {
 			const placeholder = buildIntegrationTokenPlaceholder(name)
-			const placements = takePendingPlacements(
-				placeholder,
-				placementsByPlaceholder.get(placeholder),
-			)
-			if (placements.length === 0) return []
-			return [
-				{
-					name,
+			if (
+				replacements.has(placeholder) ||
+				!placementsByPlaceholder.has(placeholder)
+			) {
+				continue
+			}
+			const value = await openSealedToken({
+				env: input.env,
+				name,
+				org: requireFetchUserId(batchProps),
+				binding: batchProps.credentialClientBinding ?? null,
+				requestHost,
+				parts: (fillSitesByPlaceholder.get(placeholder) ?? []).map(
+					(site) => site.part,
+				),
+			})
+			referencedAnyCredential = true
+			credentialNamesByPlaceholder.set(placeholder, 'sealed token')
+			replacements.set(placeholder, value)
+			substitutedValues.push(value)
+		}
+		const referencedIntegrationTokens = integrationTokenNames
+			.filter((name) => !isSealedTokenName(name))
+			.flatMap((name) => {
+				const placeholder = buildIntegrationTokenPlaceholder(name)
+				const placements = takePendingPlacements(
 					placeholder,
-					credential: {
-						use: 'integration-token' as const,
+					placementsByPlaceholder.get(placeholder),
+				)
+				if (placements.length === 0) return []
+				return [
+					{
 						name,
-						requestHost,
-						placements,
-						fillSites: fillSitesByPlaceholder.get(placeholder) ?? [],
+						placeholder,
+						credential: {
+							use: 'integration-token' as const,
+							name,
+							requestHost,
+							placements,
+							fillSites: fillSitesByPlaceholder.get(placeholder) ?? [],
+						},
 					},
-				},
-			]
-		})
+				]
+			})
 		const referencedProviderSecrets = dedupeReferencedProviderSecrets(
 			texts.flatMap((value) => parseProviderSecretPlaceholders(value)),
 		).flatMap((referenced) => {
@@ -1021,7 +1168,8 @@ export async function expandSecretPlaceholders(input: {
 				return { referenced, resolved }
 			}),
 		)
-		for (const { referenced, value } of resolvedSecretResults) {
+		for (const { referenced, resolved, value } of resolvedSecretResults) {
+			approvedHosts.push(...resolved.allowedHosts)
 			const placeholder = buildSecretPlaceholder(referenced)
 			credentialNamesByPlaceholder.set(placeholder, referenced.name)
 			if (!replacements.has(placeholder)) {
@@ -1159,6 +1307,7 @@ export async function expandSecretPlaceholders(input: {
 		bodyFillDone,
 		deferRedirectFollow,
 		pathSegmentEncodedNames,
+		approvedHosts,
 	}
 }
 
@@ -1644,4 +1793,12 @@ function buildBasicAuthHeader(input: { username: string; password: string }) {
 		`${input.username}:${input.password}`,
 	)
 	return `Basic ${bytesToBase64(credentials)}`
+}
+
+function isLoginRetryLater(error: unknown) {
+	return (
+		error instanceof CredentialLoginRetryLaterError ||
+		(error instanceof CredentialClientError &&
+			error.body.code === 'login_retry_later')
+	)
 }

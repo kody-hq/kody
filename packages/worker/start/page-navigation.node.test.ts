@@ -49,6 +49,7 @@ test.each([
 	['/@acme/-/grants', 'workspace', 'grants', 'acme'],
 	['/@acme/-/credits', 'workspace', 'credits', 'acme'],
 	['/admin/users/person', 'admin', 'users', null],
+	['/admin/orgs/blue-team', 'admin', 'orgs', 'blue-team'],
 	[
 		'/admin/platform-integrations/google',
 		'admin',
@@ -113,10 +114,13 @@ test('retained page reads its own route context while destination loader is pend
 	// Its layout-effect acknowledgment cannot run in renderToString.
 	const render = () =>
 		renderToString(
-			createElement(RouterContextProvider, {
-				router: pendingRouter,
-				children: createElement(Match, { routeId: root.id }),
-			}),
+			createElement(
+				RouterContextProvider,
+				{ router: pendingRouter } as Parameters<
+					typeof RouterContextProvider
+				>[0],
+				createElement(Match, { routeId: root.id }),
+			),
 		)
 	expect(render()).toContain('workspace:jobs')
 	const navigation = pendingRouter.navigate({ to: '/security' } as never)

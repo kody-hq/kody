@@ -11,6 +11,7 @@ export const loadCommunity = createServerFn({ method: 'GET' })
 			sort: z.string().nullable(),
 			category: z.string().nullable(),
 			limit: z.number().int().positive().max(100),
+			installOrg: z.string().nullable().optional(),
 		}),
 	)
 	.handler(async ({ data }) => {
@@ -77,12 +78,9 @@ export const loadProfile = createServerFn({ method: 'GET' })
 			{ query: data.query, limit: data.limit },
 		)
 		if (!profile) {
-			const { loadSessionInfo } = await import('../../src/app/session-info.ts')
-			const { session, setCookie } = await loadSessionInfo(request, bindings)
-			if (setCookie) setResponseHeader('Set-Cookie', setCookie)
-			const orgHome = session?.organizations.find(
-				(org) => org.slug === data.username && !org.personal,
-			)
+			const member = await loadMemberOrgHome(request, bindings, data.username)
+			if (member?.setCookie) setResponseHeader('Set-Cookie', member.setCookie)
+			const orgHome = member?.org
 			if (!orgHome) throw notFound()
 			setResponseHeader('Cache-Control', 'no-store')
 			return {
@@ -94,15 +92,36 @@ export const loadProfile = createServerFn({ method: 'GET' })
 				},
 			}
 		}
+		// A public team org page is the same for everyone; a member also gets
+		// the link to the org home, so their copy is viewer-specific.
+		const orgHome =
+			profile.ownerKind === 'org' && profile.loggedIn
+				? await loadMemberOrgHome(request, bindings, data.username)
+				: null
+		if (orgHome) {
+			if (orgHome.setCookie) setResponseHeader('Set-Cookie', orgHome.setCookie)
+			setResponseHeader('Cache-Control', 'no-store')
+		}
 		return {
 			data: profile,
-			orgHome: null,
+			orgHome: orgHome?.org ?? null,
 			head: loadDocumentHead('profile', path, {
 				profileShell: toProfileShellLoaderData(profile),
 				profileList: toProfileListLoaderData(profile),
 			}),
 		}
 	})
+
+/** The team org at `slug` when the signed-in viewer's switcher lists it. */
+async function loadMemberOrgHome(request: Request, env: Env, slug: string) {
+	const { loadSessionInfo } = await import('../../src/app/session-info.ts')
+	const { session, setCookie } = await loadSessionInfo(request, env)
+	const org =
+		session?.organizations.find(
+			(candidate) => candidate.slug === slug && !candidate.personal,
+		) ?? null
+	return { org, setCookie }
+}
 
 export const loadPackage = createServerFn({ method: 'GET' })
 	.validator(
@@ -163,6 +182,8 @@ export const loadPackage = createServerFn({ method: 'GET' })
 				? routes.communityPackageSettings.href(data)
 				: routes.communityPackage.href(data)
 		const request = original
+		const installOrg =
+			new URLSearchParams(data.search ?? '').get('org')?.trim() || null
 		let loaded:
 			| Awaited<ReturnType<typeof loadCommunityPackagePayload>>
 			| Awaited<ReturnType<typeof loadCommunityDetailPayload>>
@@ -175,6 +196,7 @@ export const loadPackage = createServerFn({ method: 'GET' })
 				bindings,
 				request,
 				data.listingId,
+				installOrg,
 			)
 			if (!detail?.listing) throw notFound()
 			const canonical = await resolveCanonicalListingPath({
@@ -202,6 +224,7 @@ export const loadPackage = createServerFn({ method: 'GET' })
 				request,
 				username: data.username,
 				kodyId: data.kodyId,
+				installOrg,
 			})
 		if (loaded.kind === 'redirect') {
 			const isPublic = loaded.shared
@@ -249,6 +272,7 @@ export const loadPackage = createServerFn({ method: 'GET' })
 			viewerIsOwner: result.viewerIsOwner,
 			viewerCanManage: result.viewerCanManage,
 			viewerCanManageAccess: result.viewerCanManageAccess,
+			viewerCanSeeConnectedPeople: result.viewerCanSeeConnectedPeople,
 			hasPackage: result.hasPackage,
 			packageShaped: result.packageShaped === true,
 			repoActions: result.repoActions ?? null,

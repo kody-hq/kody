@@ -12,6 +12,7 @@ import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
+import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
 import {
 	buildKodyImportableModuleBundle,
 	buildKodyModuleBundle,
@@ -46,6 +47,7 @@ async function runSql(sql: string, ...values: Array<unknown>) {
 async function ensureSecretAuthorityTestSchema() {
 	await ensureEntitlementTestSchema(env.APP_DB)
 	await ensureOrgsTestSchema(env.APP_DB)
+	await ensureUsageRollupsTestSchema(env.APP_DB)
 	await runSql(`CREATE TABLE IF NOT EXISTS entity_sources (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
@@ -77,6 +79,17 @@ async function ensureSecretAuthorityTestSchema() {
 		created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 		updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
 	)`)
+	await runSql(`CREATE TABLE IF NOT EXISTS package_app_oauth_grants (
+		id TEXT PRIMARY KEY,
+		person_id TEXT NOT NULL,
+		org_username TEXT NOT NULL,
+		kody_id TEXT NOT NULL,
+		scopes TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		revoked_at TEXT,
+		last_used_at TEXT,
+		UNIQUE (person_id, org_username, kody_id)
+	)`)
 	try {
 		await runSql(
 			`ALTER TABLE saved_packages ADD COLUMN is_internet_visible INTEGER NOT NULL DEFAULT 0`,
@@ -100,7 +113,7 @@ async function ensureSecretAuthorityTestSchema() {
 	await ensureSecretBucketsTestSchema(env.APP_DB)
 	await runSql(`CREATE TABLE IF NOT EXISTS community_forks (
 		id TEXT PRIMARY KEY NOT NULL,
-		listing_id TEXT NOT NULL,
+		listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
 		forker_user_id TEXT NOT NULL,
 		origin_commit TEXT NOT NULL,
 		forked_package_id TEXT NOT NULL,
@@ -844,7 +857,7 @@ export default async function wake() {
 }`
 
 const credentialTablesDdl = [
-	"CREATE TABLE IF NOT EXISTS user_integrations (\n\tuser_id TEXT NOT NULL,\n\tname TEXT NOT NULL,\n\tapp_slug TEXT,\n\tplatform_app_slug TEXT ,\n\taccount_label TEXT,\n\tdescription TEXT NOT NULL DEFAULT '',\n\tscopes_json TEXT NOT NULL DEFAULT '[]',\n\trequired_hosts_json TEXT NOT NULL DEFAULT '[]',\n\tconnected_at TEXT,\n\ttoken_refreshed_at TEXT,\n\tcreated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n\tupdated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), access_token_encrypted TEXT, refresh_token_encrypted TEXT, usage_mode TEXT NOT NULL DEFAULT 'any'\n\tCHECK (usage_mode IN ('any', 'packages')), allowed_packages_json TEXT NOT NULL DEFAULT '[]', auth_failed_at TEXT, auth_failed_reason TEXT, auth_failed_provider_error TEXT, auth_failed_provider_description TEXT, auth_failed_http_status INTEGER, auth_failed_reconnectable INTEGER\n\tCHECK (auth_failed_reconnectable IN (0, 1)), refresh_policy TEXT\n\tCHECK (refresh_policy IN ('required', 'not_applicable')), deleted_at TEXT, deleting_at TEXT, connected_by_user_id TEXT, token_refresh_lease_id TEXT, token_refresh_lease_expires_at TEXT, id TEXT, provider TEXT, inject_json TEXT NOT NULL\n\tDEFAULT '{\"kind\":\"header\",\"name\":\"Authorization\",\"format\":\"Bearer {value}\"}'\n\tCHECK (json_valid(inject_json)), source_json TEXT NOT NULL\n\tDEFAULT '\"stored\"' CHECK (json_valid(source_json)), placement_json TEXT\n\tCHECK (placement_json IS NULL OR json_valid(placement_json)),\n\tPRIMARY KEY (user_id, name)\n,\n\tCHECK ((app_slug IS NULL) <> (platform_app_slug IS NULL))\n)",
+	"CREATE TABLE IF NOT EXISTS user_integrations (\n\tuser_id TEXT NOT NULL,\n\tname TEXT NOT NULL,\n\tapp_slug TEXT,\n\tplatform_app_slug TEXT ,\n\taccount_label TEXT,\n\tdescription TEXT NOT NULL DEFAULT '',\n\tscopes_json TEXT NOT NULL DEFAULT '[]',\n\trequired_hosts_json TEXT NOT NULL DEFAULT '[]',\n\tconnected_at TEXT,\n\ttoken_refreshed_at TEXT,\n\tcreated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n\tupdated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), access_token_encrypted TEXT, refresh_token_encrypted TEXT, usage_mode TEXT NOT NULL DEFAULT 'any'\n\tCHECK (usage_mode IN ('any', 'packages')), allowed_packages_json TEXT NOT NULL DEFAULT '[]', auth_failed_at TEXT, auth_failed_reason TEXT, auth_failed_provider_error TEXT, auth_failed_provider_description TEXT, auth_failed_http_status INTEGER, auth_failed_reconnectable INTEGER\n\tCHECK (auth_failed_reconnectable IN (0, 1)), refresh_policy TEXT\n\tCHECK (refresh_policy IN ('required', 'not_applicable')), deleted_at TEXT, deleting_at TEXT, connected_by_user_id TEXT, token_refresh_lease_id TEXT, token_refresh_lease_expires_at TEXT, id TEXT, provider TEXT, inject_json TEXT NOT NULL\n\tDEFAULT '{\"kind\":\"header\",\"name\":\"Authorization\",\"format\":\"Bearer {value}\"}'\n\tCHECK (json_valid(inject_json)), source_json TEXT NOT NULL\n\tDEFAULT '\"stored\"' CHECK (json_valid(source_json)), placement_json TEXT\n\tCHECK (placement_json IS NULL OR json_valid(placement_json)),\n\tapp_owner_id TEXT,\n\tPRIMARY KEY (user_id, name)\n,\n\tCHECK ((app_slug IS NULL) <> (platform_app_slug IS NULL))\n)",
 	"CREATE TABLE IF NOT EXISTS mcp_server_settings (\n\tid TEXT PRIMARY KEY NOT NULL,\n\tuser_id TEXT NOT NULL,\n\tname TEXT NOT NULL,\n\turl TEXT NOT NULL,\n\tenabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),\n\tcreated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n\tupdated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), logo_key TEXT, logo_content_type TEXT, logo_source TEXT\n\tCHECK (logo_source IN ('favicon')), favicon_source_host TEXT, usage_mode TEXT NOT NULL DEFAULT 'any'\n\tCHECK (usage_mode IN ('any', 'packages')), allowed_packages_json TEXT NOT NULL DEFAULT '[]', last_error TEXT, deleted_at TEXT, deleting_at TEXT, connected_by_user_id TEXT, provider TEXT, inject_json TEXT NOT NULL\n\tDEFAULT '{\"kind\":\"header\",\"name\":\"Authorization\",\"format\":\"Bearer {value}\"}'\n\tCHECK (json_valid(inject_json)), source_json TEXT NOT NULL\n\tDEFAULT '\"stored\"' CHECK (json_valid(source_json)),\n\tUNIQUE(user_id, name)\n)",
 	"CREATE TABLE IF NOT EXISTS platform_oauth_apps (\n\tslug TEXT PRIMARY KEY NOT NULL,\n\tprovider TEXT NOT NULL,\n\tlabel TEXT,\n\tdescription TEXT,\n\tclient_id TEXT NOT NULL,\n\tclient_secret_encrypted TEXT,\n\ttoken_url TEXT NOT NULL,\n\tauthorize_url TEXT NOT NULL,\n\tdevice_authorization_url TEXT,\n\tapi_base_url TEXT,\n\tflow TEXT NOT NULL CHECK (flow IN ('pkce', 'confidential', 'device')),\n\tuse_pkce INTEGER CHECK (use_pkce IN (0, 1)),\n\ttoken_exchange_style TEXT CHECK (token_exchange_style IN ('form', 'basic-json', 'basic-form')),\n\tscope_separator TEXT,\n\textra_authorize_params_json TEXT NOT NULL DEFAULT '{}',\n\tallowed_scopes_json TEXT NOT NULL DEFAULT '[]',\n\tdefault_scopes_json TEXT NOT NULL DEFAULT '[]',\n\trequired_hosts_json TEXT NOT NULL DEFAULT '[]',\n\tenabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),\n\tvisibility TEXT NOT NULL DEFAULT 'draft'\n\t\tCHECK (visibility IN ('draft', 'published')),\n\tlogo_key TEXT,\n\tlogo_content_type TEXT,\n\tcreated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n\tupdated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))\n)",
 	"CREATE TABLE IF NOT EXISTS user_oauth_apps (\n\tuser_id TEXT NOT NULL,\n\tslug TEXT NOT NULL,\n\tprovider TEXT NOT NULL,\n\tlabel TEXT,\n\tclient_id TEXT NOT NULL,\n\tclient_secret_encrypted TEXT,\n\ttoken_url TEXT NOT NULL,\n\tauthorize_url TEXT,\n\tdevice_authorization_url TEXT,\n\tapi_base_url TEXT,\n\tflow TEXT NOT NULL CHECK (flow IN ('pkce', 'confidential', 'device')),\n\tuse_pkce INTEGER CHECK (use_pkce IN (0, 1)),\n\ttoken_exchange_style TEXT CHECK (token_exchange_style IN ('form', 'basic-json', 'basic-form')),\n\tscope_separator TEXT,\n\textra_authorize_params_json TEXT NOT NULL DEFAULT '{}',\n\tlogo_key TEXT,\n\tlogo_content_type TEXT,\n\tlogo_source TEXT CHECK (logo_source IN ('upload', 'favicon')),\n\tfavicon_source_host TEXT,\n\tdeleted_at TEXT,\n\tdeleting_at TEXT,\n\tcreated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n\tupdated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),\n\tPRIMARY KEY (user_id, slug)\n)",
@@ -869,12 +882,21 @@ async function ensureCredentialColumns() {
 	for (const ddl of credentialTablesDdl) await runSql(ddl)
 }
 
-async function setupCredentialVault() {
+async function setupCredentialVault(
+	options: {
+		beforeWake?: (userId: string) => Promise<unknown>
+		extraKody?: Record<string, unknown>
+		extraSourceFiles?: Record<string, string>
+		extraExports?: Record<string, string>
+	} = {},
+) {
 	silenceIncidentalRuntimeWarnings()
 	await ensureSecretAuthorityTestSchema()
 	await ensureCredentialColumns()
 	const userId = `user-${crypto.randomUUID()}`
 	await provisionTestUser(userId, `wt-${userId.slice(-12)}`)
+	await options.beforeWake?.(userId)
+	const extraExports = options.extraExports ?? {}
 	const wake = await publishForkedPackage({
 		userId,
 		name: '@kentcdodds/grok-bot',
@@ -888,12 +910,20 @@ async function setupCredentialVault() {
 					credentials: {
 						wakeToken: { kind: 'secret', description: 'Wake token.' },
 					},
+					...options.extraKody,
 				},
-				{ exports: { './wake': './src/wake.ts' } },
+				{ exports: { './wake': './src/wake.ts', ...extraExports } },
 			),
 			'src/wake.ts': credentialWake,
+			...options.extraSourceFiles,
 		},
-		exports: [{ artifactName: './wake', entryPoint: 'src/wake.ts' }],
+		exports: [
+			{ artifactName: './wake', entryPoint: 'src/wake.ts' },
+			...Object.entries(extraExports).map(([artifactName, path]) => ({
+				artifactName,
+				entryPoint: path.replace(/^\.\//, ''),
+			})),
+		],
 	})
 	const storageContext = {
 		sessionId: null,
@@ -1020,6 +1050,52 @@ export default async function main() {
 		expect(out['steal']).toBeUndefined()
 		expect(out['opened']).not.toMatchObject({ name: 'wakeToken' })
 		expect(out['named']).not.toBe('wakeToken')
+	},
+)
+
+test(
+	'credential client passing: a client the caller opens works inside a dependency it is handed to',
+	{ timeout: 120_000 },
+	async () => {
+		const { userId } = await setupCredentialVault({
+			beforeWake: (userId) =>
+				publishForkedPackage({
+					userId,
+					name: '@kentcdodds/shared-poster',
+					kodyId: 'shared-poster',
+					sourceFiles: {
+						'package.json': manifest(
+							'@kentcdodds/shared-poster',
+							{ id: 'shared-poster', description: 'Posts with a client' },
+							{ exports: { './post': './src/post.ts' } },
+						),
+						'src/post.ts': `export default async function post(client) {
+	const res = await client.fetch('https://upstream.example.com/a-only/wake', { method: 'POST' })
+	return { status: res.status }
+}`,
+					},
+					exports: [{ artifactName: './post', entryPoint: 'src/post.ts' }],
+				}),
+			extraKody: { dependencies: { '@kentcdodds/shared-poster': '*' } },
+			extraExports: { './pass': './src/pass.ts' },
+			extraSourceFiles: {
+				'src/pass.ts': `import { credential } from 'kody:runtime'
+import post from 'kody:@kentcdodds/shared-poster/post'
+export default async function pass() {
+	return await post(await credential('wakeToken'))
+}`,
+			},
+		})
+		const seen = installFakeUpstream()
+		const run = await runModule(userId, {
+			'entry.ts': `import pass from 'kody:@kentcdodds/grok-bot/pass'
+export default async function main() {
+	return await pass()
+}`,
+		})
+		expect(run.error).toBeUndefined()
+		expect(run.result).toEqual({ status: 200 })
+		expect(pathsCarrying(seen, DUMMY_SECRET)).toEqual(['POST /a-only/wake'])
 	},
 )
 

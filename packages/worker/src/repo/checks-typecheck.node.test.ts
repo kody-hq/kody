@@ -176,6 +176,35 @@ export async function callTools() {
 	})
 })
 
+test('publish typecheck types credential.visitor for executor needs', async () => {
+	const typecheck = await runTypecheck({
+		'package.json': JSON.stringify({
+			name: '@kody/typecheck-fixture',
+			exports: { '.': './src/index.ts' },
+			kody: {
+				id: 'typecheck-fixture',
+				description: 'Typecheck fixture package',
+				credentials: {
+					github: {
+						kind: 'secret',
+						provider: 'github',
+						supplier: 'executor',
+						description: 'Each visitor brings their own GitHub token.',
+					},
+				},
+			},
+		}),
+		'tsconfig.json': packageTsconfig,
+		'src/index.ts': `import { credential } from 'kody:runtime'
+export async function openVisitorGithub() {
+  const github = await credential.visitor('github')
+  return github.name
+}
+`,
+	})
+	expect(typecheck).toMatchObject({ kind: 'typecheck', ok: true })
+})
+
 test('export modules with only named exports pass publish typecheck', async () => {
 	const typecheck = await runTypecheck({
 		'package.json': createManifest({
@@ -234,7 +263,7 @@ test('job bodies with a tsconfig are typechecked, not only their default-export 
 			jobs: {
 				nightly: {
 					entry: 'src/job.ts',
-					schedule: { type: 'once', runAt: '2026-04-17T15:00:00Z' },
+					schedule: { type: 'interval', every: '1h' },
 				},
 			},
 		}),
@@ -259,7 +288,7 @@ test('without a tsconfig, publish discloses that exports are not typechecked', a
 		kind: 'typecheck',
 		ok: true,
 		message:
-			'Package source files, including package.json exports, are not typechecked: add a root tsconfig.json to typecheck every TypeScript file reachable from exports, jobs, subscription handlers, and retrievers.',
+			'Package source files, including package.json exports, are not typechecked: add a root tsconfig.json to typecheck every TypeScript file reachable from exports, jobs, and subscription handlers.',
 	})
 })
 
@@ -289,17 +318,39 @@ test('publish and invocation agree on exports with a narrowly typed required par
 	).toEqual({ ok: true })
 }, 60_000)
 
+test('package app rate-limit and spend helpers retain their specific result types', async () => {
+	const typecheck = await runTypecheck({
+		'package.json': createManifest({}),
+		'tsconfig.json': packageTsconfig,
+		'src/index.ts': `import { kody } from 'kody:runtime'
+
+export async function readUsage() {
+  const rateLimit = await kody.appRateLimit({
+    key: 'send-message',
+    limit: 5,
+    windowSeconds: 60,
+  })
+  const allowed: boolean = rateLimit.allowed
+  const spend = await kody.appSpendGet()
+  const creditsMicroUsd: number = spend.creditsMicroUsd
+  return { allowed, creditsMicroUsd }
+}
+`,
+	})
+	expect(typecheck).toMatchObject({ kind: 'typecheck', ok: true })
+}, 60_000)
+
 test('multi-callable typecheck keeps per-entrypoint diagnostics from one harness program', async () => {
 	const typecheck = await runTypecheck({
 		'package.json': createManifest({
 			jobs: {
 				a: {
 					entry: 'src/job-a.ts',
-					schedule: { type: 'once', runAt: '2026-04-17T15:00:00Z' },
+					schedule: { type: 'interval', every: '1h' },
 				},
 				b: {
 					entry: 'src/job-b.ts',
-					schedule: { type: 'once', runAt: '2026-04-17T15:00:00Z' },
+					schedule: { type: 'interval', every: '1h' },
 				},
 			},
 		}),

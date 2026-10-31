@@ -468,7 +468,6 @@ async function seedPersonData(
 	stableUserId: string,
 ): Promise<SeededPerson> {
 	const log = input.log ?? (() => {})
-	const now = input.now ?? (() => new Date())
 	const echoUrl = `${input.origins.mockCloudflare}/__mocks/rehearsal/echo`
 	const mockHost = new URL(input.origins.mockCloudflare).host
 
@@ -493,12 +492,10 @@ async function seedPersonData(
 		})
 	}
 
-	const oneOffRunAt = new Date(now().getTime() + 30 * 86_400_000).toISOString()
 	const saved = await callCapability(session, 'packageSave', {
 		files: personalPackageFiles({
 			username: user.username,
 			echoUrl,
-			oneOffRunAt,
 		}),
 	})
 	const packageId = readStringAt(saved, ['package_id'], 'packageSave')
@@ -532,17 +529,15 @@ async function seedPersonData(
 	const jobIds = jobRows.flatMap((job) =>
 		typeof job.id === 'string' ? [job.id] : [],
 	)
-	if (jobIds.length < 2) {
-		throw new Error(
-			`${user.role}: expected two package jobs, got ${JSON.stringify(jobs)}`,
-		)
-	}
-	const recurring = jobRows.find((job) =>
+	const dailyDigest = jobRows.find((job) =>
 		JSON.stringify(job).includes('daily-digest'),
 	)
-	if (typeof recurring?.id === 'string') {
-		await callCapability(session, 'jobRunNow', { id: recurring.id })
+	if (typeof dailyDigest?.id !== 'string') {
+		throw new Error(
+			`${user.role}: expected the daily-digest package job, got ${JSON.stringify(jobs)}`,
+		)
 	}
+	await callCapability(session, 'jobRunNow', { id: dailyDigest.id })
 
 	await connectMockIntegration(session, input.origins)
 	const integrationProof = readRecord(

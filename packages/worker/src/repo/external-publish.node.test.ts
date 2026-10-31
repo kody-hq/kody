@@ -30,6 +30,18 @@ const mockModule = vi.hoisted(() => ({
 	hasPublishedRuntimeArtifacts: vi.fn<
 		typeof PublishedRuntimeArtifacts.hasPublishedRuntimeArtifacts
 	>(() => false),
+	publishedPublishChecksAreCurrent: vi.fn<
+		typeof PublishedRuntimeArtifacts.publishedPublishChecksAreCurrent
+	>(async () => true),
+	writePublishedPublishChecksVersion: vi.fn<
+		typeof PublishedRuntimeArtifacts.writePublishedPublishChecksVersion
+	>(async () => undefined),
+	storePublishedCredentialNeeds: vi.fn(
+		async (_input?: unknown) => null as unknown,
+	),
+	storePublishedCredentialStamp: vi.fn(
+		async (_input?: unknown) => null as unknown,
+	),
 	loadLockedSavedPackage: vi.fn<typeof PublishLock.loadLockedSavedPackage>(
 		async () => null,
 	),
@@ -84,6 +96,16 @@ vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () => ({
 			typeof PublishedRuntimeArtifacts.hasPublishedRuntimeArtifacts
 		>
 	) => mockModule.hasPublishedRuntimeArtifacts(...args),
+	publishedPublishChecksAreCurrent: (
+		...args: Parameters<
+			typeof PublishedRuntimeArtifacts.publishedPublishChecksAreCurrent
+		>
+	) => mockModule.publishedPublishChecksAreCurrent(...args),
+	writePublishedPublishChecksVersion: (
+		...args: Parameters<
+			typeof PublishedRuntimeArtifacts.writePublishedPublishChecksVersion
+		>
+	) => mockModule.writePublishedPublishChecksVersion(...args),
 	loadPublishedSourceSnapshot: (...args: Array<unknown>) =>
 		mockModule.loadPublishedSourceSnapshot(...args),
 	writePublishedSourceSnapshot: (
@@ -97,6 +119,30 @@ vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () => ({
 		>
 	) => mockModule.deletePublishedSourceSnapshot(...args),
 }))
+
+vi.mock(
+	'#worker/credentials/credential-needs-closure.ts',
+	async (importOriginal) => {
+		const actual = await importOriginal<object>()
+		return {
+			...actual,
+			storePublishedCredentialNeeds: (input: unknown) =>
+				mockModule.storePublishedCredentialNeeds(input),
+		}
+	},
+)
+
+vi.mock(
+	'#worker/credentials/credential-stamp-store.ts',
+	async (importOriginal) => {
+		const actual = await importOriginal<object>()
+		return {
+			...actual,
+			storePublishedCredentialStamp: (input: unknown) =>
+				mockModule.storePublishedCredentialStamp(input),
+		}
+	},
+)
 
 vi.mock('#worker/package-registry/service.ts', () => ({
 	refreshSavedPackageProjection: (...args: Array<unknown>) =>
@@ -176,6 +222,10 @@ function setupPublish(sourceOverrides: Record<string, unknown> = {}) {
 		files: { 'package.json': '{}' },
 	})
 	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(false)
+	mockModule.publishedPublishChecksAreCurrent.mockResolvedValue(true)
+	mockModule.writePublishedPublishChecksVersion.mockResolvedValue(undefined)
+	mockModule.storePublishedCredentialNeeds.mockResolvedValue(null)
+	mockModule.storePublishedCredentialStamp.mockResolvedValue(null)
 	mockModule.loadLockedSavedPackage.mockResolvedValue(null)
 	mockModule.requireCredentialNeedsApproval.mockResolvedValue(null)
 	mockModule.getEntitySourceById.mockResolvedValue(source(sourceOverrides))
@@ -278,6 +328,59 @@ test('publishes an external fast-forward ref after checks pass', async () => {
 	)
 })
 
+test('publish snapshot, credential scans, and finalize skip .kodyignore matches', async () => {
+	setupPublish()
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.runRepoChecks.mockResolvedValue(passingChecks)
+	const files = {
+		'package.json': '{"name":"@example/demo"}',
+		'.kodyignore': 'fixtures/\n',
+		'src/index.ts': 'export default async () => null',
+		'fixtures/large.ts': 'export const data = []',
+	}
+	const kept = {
+		'package.json': files['package.json'],
+		'.kodyignore': files['.kodyignore'],
+		'src/index.ts': files['src/index.ts'],
+	}
+
+	await expect(publish({ env: kvEnv, files })).resolves.toMatchObject({
+		status: 'published',
+	})
+
+	expect(mockModule.writePublishedSourceSnapshot).toHaveBeenCalledWith(
+		expect.objectContaining({ files: kept }),
+	)
+	expect(mockModule.storePublishedCredentialNeeds).toHaveBeenCalledWith(
+		expect.objectContaining({ files: kept }),
+	)
+	expect(mockModule.storePublishedCredentialStamp).toHaveBeenCalledWith(
+		expect.objectContaining({ files: kept }),
+	)
+})
+
+test('clone-path publish matches .kodyignore against the repo-relative source root', async () => {
+	setupPublish({ source_root: '/packages/demo/' })
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.runRepoChecks.mockResolvedValue(passingChecks)
+	const files = {
+		'README.md': '# repo\n',
+		'packages/demo/package.json': '{"name":"@example/demo"}',
+		'packages/demo/.kodyignore': 'fixtures/\n',
+		'packages/demo/src/index.ts': 'export default async () => null',
+		'packages/demo/fixtures/large.ts': 'export const data = []',
+	}
+	const { 'packages/demo/fixtures/large.ts': _ignored, ...kept } = files
+
+	await expect(
+		publish({ env: kvEnv, files, sourceRoot: '/repo/packages/demo' }),
+	).resolves.toMatchObject({ status: 'published' })
+
+	expect(mockModule.writePublishedSourceSnapshot).toHaveBeenCalledWith(
+		expect.objectContaining({ files: kept }),
+	)
+})
+
 test('returns no-op when commit is already current', async () => {
 	setupPublish()
 	const alreadyPublished = {
@@ -302,6 +405,171 @@ test('returns no-op when commit is already current', async () => {
 		}),
 	).resolves.toEqual(alreadyPublished)
 	expect(mockModule.runRepoChecks).not.toHaveBeenCalled()
+	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
+})
+
+test('same-commit republish re-runs checks when stored checker version is stale', async () => {
+	setupPublish()
+	mockModule.publishedPublishChecksAreCurrent.mockResolvedValue(false)
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.storePublishedCredentialStamp.mockResolvedValue({
+		stamp: { version: 1, keys: [], depStamps: [], stampHash: 'hash' },
+		files: { 'package.json': JSON.stringify(manifest) },
+	})
+	mockModule.runRepoChecks.mockResolvedValue({
+		...passingChecks,
+		sourceFiles: { 'package.json': JSON.stringify(manifest) },
+	})
+
+	const result = await publish({
+		newCommit: 'commit-old',
+		files: { 'package.json': JSON.stringify(manifest) },
+	})
+	expect(result).toMatchObject({
+		status: 'already_published',
+		published_commit: 'commit-old',
+		checks_rerun: true,
+	})
+	expect(result).toEqual(
+		expect.objectContaining({
+			message: expect.stringMatching(/re-run|older checker/i),
+		}),
+	)
+	expect(mockModule.runRepoChecks).toHaveBeenCalled()
+	expect(mockModule.storePublishedCredentialStamp).toHaveBeenCalled()
+	expect(mockModule.writePublishedPublishChecksVersion).toHaveBeenCalledWith(
+		expect.objectContaining({
+			sourceId: 'source-1',
+			publishedCommit: 'commit-old',
+		}),
+	)
+	// Finishes the live tip's finalize without re-recording its publisher.
+	expect(mockModule.updateEntitySource).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ publishedCommit: 'commit-old' }),
+	)
+	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalled()
+	expect(mockModule.recordPackageAppPublisher).not.toHaveBeenCalled()
+})
+
+test('storage failure after the pointer advances leaves the commit unsealed and a same-commit retry finishes it', async () => {
+	setupPublish()
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.storePublishedCredentialStamp.mockResolvedValue({
+		stamp: { version: 1, keys: [], depStamps: [], stampHash: 'hash' },
+		files: { 'package.json': JSON.stringify(manifest) },
+	})
+	mockModule.runRepoChecks.mockResolvedValue({
+		...passingChecks,
+		sourceFiles: { 'package.json': JSON.stringify(manifest) },
+	})
+	// The pointer write lands, then the isolate dies: projection fails and the
+	// revert cannot run, so published_commit stays on the new commit.
+	mockModule.updateEntitySource
+		.mockResolvedValueOnce(true)
+		.mockRejectedValueOnce(new Error('storage unavailable'))
+	mockModule.refreshSavedPackageProjection.mockRejectedValueOnce(
+		new Error('storage unavailable'),
+	)
+
+	await expect(
+		publish({
+			newCommit: 'commit-new',
+			files: { 'package.json': JSON.stringify(manifest) },
+		}),
+	).rejects.toThrow('storage unavailable')
+	expect(mockModule.updateEntitySource).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ publishedCommit: 'commit-new' }),
+	)
+	expect(mockModule.writePublishedPublishChecksVersion).not.toHaveBeenCalled()
+
+	vi.clearAllMocks()
+	setupPublish({ published_commit: 'commit-new' })
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.publishedPublishChecksAreCurrent.mockResolvedValue(false)
+	mockModule.storePublishedCredentialStamp.mockResolvedValue({
+		stamp: { version: 1, keys: [], depStamps: [], stampHash: 'hash' },
+		files: { 'package.json': JSON.stringify(manifest) },
+	})
+	mockModule.runRepoChecks.mockResolvedValue({
+		...passingChecks,
+		sourceFiles: { 'package.json': JSON.stringify(manifest) },
+	})
+	mockModule.updateEntitySource.mockResolvedValue(true)
+	mockModule.refreshSavedPackageProjection.mockResolvedValue(undefined)
+
+	await expect(
+		publish({
+			newCommit: 'commit-new',
+			files: { 'package.json': JSON.stringify(manifest) },
+		}),
+	).resolves.toMatchObject({
+		status: 'already_published',
+		published_commit: 'commit-new',
+		checks_rerun: true,
+	})
+	expect(mockModule.storePublishedCredentialStamp).toHaveBeenCalled()
+	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalled()
+	expect(mockModule.writePublishedPublishChecksVersion).toHaveBeenCalledWith(
+		expect.objectContaining({
+			sourceId: 'source-1',
+			publishedCommit: 'commit-new',
+		}),
+	)
+})
+
+test('finalize seals the checker version only after projection succeeds', async () => {
+	const callOrder: Array<string> = []
+	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(true)
+	mockModule.writePublishedSourceSnapshot.mockResolvedValue('snapshot-key')
+	mockModule.updateEntitySource.mockResolvedValue(true)
+	mockModule.storePublishedCredentialStamp.mockResolvedValue({
+		stamp: { version: 1, keys: [], depStamps: [], stampHash: 'hash' },
+		files: { 'package.json': '{}' },
+	})
+	mockModule.refreshSavedPackageProjection.mockImplementation(async () => {
+		callOrder.push('refreshSavedPackageProjection')
+	})
+	mockModule.writePublishedPublishChecksVersion.mockImplementation(async () => {
+		callOrder.push('writePublishedPublishChecksVersion')
+	})
+
+	await finalizePublishedEntitySource({
+		env: kvEnv,
+		source: source() as ReturnType<typeof source> & { entity_kind: 'package' },
+		publishedCommit: 'commit-new',
+		files: { 'package.json': '{}' },
+		baseUrl: 'https://kody.test',
+	})
+
+	expect(callOrder).toEqual([
+		'refreshSavedPackageProjection',
+		'writePublishedPublishChecksVersion',
+	])
+})
+
+test('same-commit republish with stale checker returns checks_failed when checks fail', async () => {
+	setupPublish()
+	mockModule.publishedPublishChecksAreCurrent.mockResolvedValue(false)
+	mockModule.runRepoChecks.mockResolvedValue({
+		ok: false,
+		results: [
+			{ kind: 'credential-patterns', ok: false, message: 'stamp failed' },
+		],
+		manifest,
+		sourceFiles: { 'package.json': JSON.stringify(manifest) },
+	})
+
+	await expect(
+		publish({
+			newCommit: 'commit-old',
+			files: { 'package.json': JSON.stringify(manifest) },
+		}),
+	).resolves.toMatchObject({
+		status: 'checks_failed',
+	})
+	expect(mockModule.writePublishedPublishChecksVersion).not.toHaveBeenCalled()
 	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
 })
 

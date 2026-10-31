@@ -16,6 +16,7 @@ import {
 	apiOperationsById,
 	type ApiOperation,
 	type CapabilityApiOperation,
+	capabilityNameForOperation,
 } from './operations.ts'
 import { nativeApiOperationDefinitions } from './native-operations.ts'
 
@@ -73,12 +74,13 @@ export function capabilityProxyObservationEntityId(input: {
 
 async function resolveCapability(operation: CapabilityApiOperation) {
 	const registry = await getStaticRegistry()
-	const capability = registry.capabilityMap[operation.operationId]
+	const capabilityName = capabilityNameForOperation(operation)
+	const capability = registry.capabilityMap[capabilityName]
 	if (!capability) {
 		throw new ApiError({
 			status: 500,
 			code: 'internal_error',
-			message: `Operation "${operation.operationId}" has no capability.`,
+			message: `Operation "${operation.operationId}" has no capability "${capabilityName}".`,
 		})
 	}
 	return capability
@@ -134,12 +136,22 @@ async function dispatch(input: {
 		case 'capability': {
 			const capability = await resolveCapability(operation)
 			await assertCapabilityAvailable(ctx, capability)
-			return capability.handler(params, {
+			const capabilityParams = operation.deprecatedForward
+				? { ...params, ...operation.deprecatedForward.fixedInputs }
+				: params
+			const result = await capability.handler(capabilityParams, {
 				env: ctx.env,
 				callerContext: ctx.callerContext,
 				openApiPrincipal: toCapabilityOpenApiPrincipal(ctx.principal),
 				...(ctx.waitUntil ? { waitUntil: ctx.waitUntil } : {}),
 			})
+			if (!operation.deprecatedForward || !isRecord(result)) return result
+			const fixedInputNames = new Set(
+				Object.keys(operation.deprecatedForward.fixedInputs),
+			)
+			return Object.fromEntries(
+				Object.entries(result).filter(([key]) => !fixedInputNames.has(key)),
+			)
 		}
 		default: {
 			const exhaustive: never = operation

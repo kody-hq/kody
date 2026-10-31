@@ -15,6 +15,7 @@ import {
 	AccountPageHeader,
 } from './account-management-components.tsx'
 import { renderCredentialDetail } from './account-credential-detail.tsx'
+import { renderVaultCredentialDetail } from './account-credential-vault-detail.tsx'
 import {
 	credentialManageHref,
 	credentialsRoute,
@@ -29,6 +30,7 @@ import {
 	type CredentialListFilters,
 	type CredentialListItem,
 	orgCredentialCreatePath,
+	buildCredentialCreateHref,
 	credentialKinds,
 	isCredentialKind,
 } from '#universal/credential-contracts.ts'
@@ -277,13 +279,23 @@ export function AccountCredentialsRoute({
 		selectedItem && !filtered.includes(selectedItem)
 			? [selectedItem, ...filtered]
 			: filtered
-	const selectedMissing = selectedId !== null && !selectedItem
+	const selectedProvider = selectedItem
+		? null
+		: ((payload?.providers ?? []).find(
+				(binding) => binding.id === selectedId,
+			) ?? null)
+	const selectedMissing =
+		selectedId !== null && !selectedItem && !selectedProvider
 	const lockedPackageId =
 		typeof filters.locked === 'string' ? filters.locked : ''
-	const shownProviders = filterProviderBindings(
+	const filteredProviders = filterProviderBindings(
 		payload?.providers ?? [],
 		filters,
 	)
+	const shownProviders =
+		selectedProvider && !filteredProviders.includes(selectedProvider)
+			? [selectedProvider, ...filteredProviders]
+			: filteredProviders
 	const packageOptions: Array<ComboboxOption> = [
 		{ id: '', label: 'Any package' },
 		...packages.map((pkg) => ({
@@ -360,8 +372,28 @@ export function AccountCredentialsRoute({
 					credentials.length === 0
 						? shownProviders.length > 0
 							? 'No keys, OAuth connections, or MCP servers yet. Your custom secret providers are listed below.'
-							: 'No credentials yet. Add a key, connect an OAuth service, or add an MCP server to get started.'
+							: 'No credentials yet. Add a key, connect an OAuth service, or connect a remote MCP server Kody can use.'
 						: 'No credentials match the current filters.'
+				}
+				emptyAction={
+					credentials.length === 0 && orgSlug ? (
+						<>
+							<SiteLink
+								href={orgCredentialCreatePath(orgSlug)}
+								css={getPillButtonCss({ size: 'sm' })}
+								data-testid="credentials-empty-add"
+							>
+								Add credential
+							</SiteLink>
+							<SiteLink
+								href={buildCredentialCreateHref({ orgSlug, kind: 'mcp' })}
+								css={getGhostButtonCss({ size: 'sm' })}
+								data-testid="credentials-empty-connect-mcp"
+							>
+								Connect a remote MCP server
+							</SiteLink>
+						</>
+					) : undefined
 				}
 				toolbar={
 					<>
@@ -504,8 +536,21 @@ export function AccountCredentialsRoute({
 					description="Vaults (like 1Password) that resolve secret references when a run needs them. Each is unlocked by a door secret stored in a package."
 				>
 					<RecordTable
-						mode="none"
+						mode="expand"
 						ariaLabel="Custom secret providers"
+						selectedId={selectedProvider ? selectedProvider.id : null}
+						recordLoading={false}
+						record={
+							selectedProvider
+								? renderVaultCredentialDetail({
+										binding: selectedProvider,
+										packageName:
+											packagesById.get(selectedProvider.packageId)?.kodyId ??
+											'a package',
+										orgSlug,
+									})
+								: undefined
+						}
 						countLabel={`${shownProviders.length} connected`}
 						columns={[
 							{ key: 'provider', label: 'Secret provider', primary: true },
@@ -513,7 +558,14 @@ export function AccountCredentialsRoute({
 						]}
 						rows={shownProviders.map((binding) => ({
 							id: binding.id,
-							href: orgResourcePath(orgSlug, 'secret-providers'),
+							href:
+								binding.id === selectedId
+									? credentialsRoute.buildListHref(search, currentHref)
+									: credentialsRoute.buildDetailHref(
+											binding.id,
+											search,
+											currentHref,
+										),
 							cells: {
 								provider: (
 									<span css={clampedCellCss}>
@@ -523,8 +575,7 @@ export function AccountCredentialsRoute({
 								package: (
 									<span css={clampedCellCss}>
 										{`${binding.doorSecretName} in ${
-											packagesById.get(binding.packageId)?.kodyId ??
-											binding.packageId
+											packagesById.get(binding.packageId)?.kodyId ?? 'a package'
 										}`}
 									</span>
 								),

@@ -23,7 +23,12 @@ import {
 	followPublishedEventId,
 	followPushedEventId,
 } from './events.ts'
-import { markFollowDeliverySkip, pauseFollow } from './repo.ts'
+import {
+	insertFollowRecentUpdate,
+	markFollowDeliverySkip,
+	pauseFollow,
+} from './repo.ts'
+import { type FollowRecentUpdateDetail } from '#universal/follows.ts'
 import {
 	followPublishedTopic,
 	followPushedTopic,
@@ -48,7 +53,13 @@ export type FollowDeliveryHooks = {
 		userId: string
 		topic: string
 		payload: Record<string, unknown>
-	}) => Promise<Array<LoadedPackageSubscription>>
+	}) => Promise<
+		| Array<LoadedPackageSubscription>
+		| {
+				subscriptions: Array<LoadedPackageSubscription>
+				discoveryErrors: Array<unknown>
+		  }
+	>
 	invoke?: typeof invokePackageSubscription
 }
 
@@ -57,7 +68,8 @@ export type FollowDeliveryHooks = {
  * that event. Lost create-level access pauses the row. Push without `package:read`
  * (or org-wide `package:read` for a plain repo) is skipped and the follow
  * stays active. A 429 from invocation is recorded as `zero_credits` and
- * does not throw.
+ * does not throw. An event no enabled package subscription handles is stored
+ * as a Recent update for the follow (no credits), after the access recheck.
  */
 export async function deliverFollowRecords(input: {
 	env: Env
@@ -115,6 +127,7 @@ async function deliverOneFollow(input: {
 	const access = await resolveAccess({
 		env: input.env,
 		creatorUserId: input.follow.creatorUserId,
+		creatorProfileId: input.follow.creatorProfileId,
 		target,
 	})
 	if (!access.canCreate) {
@@ -133,7 +146,8 @@ async function deliverOneFollow(input: {
 			target,
 			pending: input.pushed,
 		})
-		await invokeFollowTopic({
+		const pushed = input.pushed
+		const result = await invokeFollowTopic({
 			env: input.env,
 			follow: input.follow,
 			nowIso: input.nowIso,
@@ -141,8 +155,24 @@ async function deliverOneFollow(input: {
 			payload,
 			hooks: input.hooks,
 			idempotencyKey: (packageId) =>
-				`follow-pushed:${input.follow.id}:${input.pushed?.windowStartedAt}:${input.pushed?.afterCommit}:${packageId}`,
+				`follow-pushed:${input.follow.id}:${pushed.windowStartedAt}:${pushed.afterCommit}:${packageId}`,
 		})
+		if (result === 'unhandled') {
+			await recordRecentUpdate({
+				env: input.env,
+				follow: input.follow,
+				nowIso: input.nowIso,
+				dedupeKey: `pushed:${pushed.windowStartedAt}:${pushed.afterCommit}`,
+				occurredAt: pushed.updatedAt,
+				detail: {
+					event: 'pushed',
+					ref: pushed.ref,
+					afterCommit: pushed.afterCommit,
+					totalCommits: pushed.totalCommitsCount,
+					latestMessage: pushed.commits.at(-1)?.message ?? null,
+				},
+			})
+		}
 		return
 	}
 	if (!input.published) return
@@ -154,7 +184,8 @@ async function deliverOneFollow(input: {
 		publishedCommit: input.published.publishedCommit,
 		publishedAt: input.published.publishedAt,
 	})
-	await invokeFollowTopic({
+	const published = input.published
+	const result = await invokeFollowTopic({
 		env: input.env,
 		follow: input.follow,
 		nowIso: input.nowIso,
@@ -162,8 +193,55 @@ async function deliverOneFollow(input: {
 		payload,
 		hooks: input.hooks,
 		idempotencyKey: (packageId) =>
-			`follow-published:${input.follow.id}:${input.published?.publishedCommit}:${packageId}`,
+			`follow-published:${input.follow.id}:${published.publishedCommit}:${packageId}`,
 	})
+	if (result === 'unhandled') {
+		await recordRecentUpdate({
+			env: input.env,
+			follow: input.follow,
+			nowIso: input.nowIso,
+			dedupeKey: `published:${published.publishedCommit}`,
+			occurredAt: published.publishedAt,
+			detail: {
+				event: 'published',
+				publishedCommit: published.publishedCommit,
+				previousCommit: published.previousCommit,
+			},
+		})
+	}
+}
+
+async function recordRecentUpdate(input: {
+	env: Env
+	follow: FollowRecord
+	nowIso: string
+	dedupeKey: string
+	occurredAt: string
+	detail: FollowRecentUpdateDetail
+}) {
+	try {
+		await insertFollowRecentUpdate(input.env.APP_DB, {
+			id: crypto.randomUUID(),
+			followerOrgId: input.follow.followerOrgId,
+			followId: input.follow.id,
+			dedupeKey: input.dedupeKey,
+			detail: input.detail,
+			occurredAt: input.occurredAt,
+			createdAt: input.nowIso,
+		})
+	} catch (error) {
+		console.error('follow-recent-update-failed', {
+			followId: input.follow.id,
+			error,
+		})
+	}
+}
+
+/** A declared subscription with no live enablement ran no handler. */
+function subscriptionRanNoHandler(response: { status: number; body: unknown }) {
+	if (response.status !== 202) return false
+	const body = response.body as { skipped?: { reason?: unknown } } | null
+	return body?.skipped?.reason === 'no_enablement_on'
 }
 
 /**
@@ -245,33 +323,46 @@ async function invokeFollowTopic(input: {
 	payload: object
 	hooks?: FollowDeliveryHooks
 	idempotencyKey: (packageId: string) => string
-}): Promise<'delivered' | 'zero_credits' | 'none' | 'failed'> {
+}): Promise<
+	'delivered' | 'zero_credits' | 'filtered' | 'unhandled' | 'failed'
+> {
 	const baseUrl = getAppBaseUrl({ env: input.env })
 	const payload = input.payload as Record<string, unknown>
 	const invoke = input.hooks?.invoke ?? invokePackageSubscription
 	let subscriptions: Array<LoadedPackageSubscription> = []
+	let filteredOut = false
+	let discoveryIncomplete = false
 	try {
-		if (input.hooks?.loadSubscriptions) {
-			subscriptions = await input.hooks.loadSubscriptions({
-				env: input.env,
-				userId: input.follow.followerOrgId,
-				topic: input.topic,
-				payload,
-			})
-		} else {
-			const loaded = await loadMatchingPackageSubscriptions({
-				env: input.env,
-				baseUrl,
-				userId: input.follow.followerOrgId,
-				topic: input.topic,
-			})
-			subscriptions = loaded.subscriptions.filter((entry) =>
-				packageEventFiltersMatchPayload({
-					filters: entry.subscription.filters,
+		const loaded = input.hooks?.loadSubscriptions
+			? await input.hooks.loadSubscriptions({
+					env: input.env,
+					userId: input.follow.followerOrgId,
+					topic: input.topic,
 					payload,
-				}),
-			)
+				})
+			: await loadMatchingPackageSubscriptions({
+					env: input.env,
+					baseUrl,
+					userId: input.follow.followerOrgId,
+					topic: input.topic,
+				})
+		const declared = Array.isArray(loaded) ? loaded : loaded.subscriptions
+		const discoveryErrors = Array.isArray(loaded) ? [] : loaded.discoveryErrors
+		if (discoveryErrors.length > 0) {
+			discoveryIncomplete = true
+			console.error('follow-subscription-discovery-incomplete', {
+				followId: input.follow.id,
+				topic: input.topic,
+				errors: discoveryErrors.length,
+			})
 		}
+		subscriptions = declared.filter((entry) =>
+			packageEventFiltersMatchPayload({
+				filters: entry.subscription.filters,
+				payload,
+			}),
+		)
+		filteredOut = subscriptions.length < declared.length
 	} catch (error) {
 		console.error('follow-subscription-discovery-failed', {
 			followId: input.follow.id,
@@ -282,6 +373,7 @@ async function invokeFollowTopic(input: {
 	}
 	let delivered = false
 	let zeroCredits = false
+	let invokeFailed = false
 	for (const { savedPackage } of subscriptions) {
 		try {
 			const response = await invoke({
@@ -299,8 +391,10 @@ async function invokeFollowTopic(input: {
 				zeroCredits = true
 				continue
 			}
+			if (subscriptionRanNoHandler(response)) continue
 			delivered = true
 		} catch (error) {
+			invokeFailed = true
 			console.error('follow-subscription-invoke-failed', {
 				followId: input.follow.id,
 				packageId: savedPackage.id,
@@ -317,5 +411,7 @@ async function invokeFollowTopic(input: {
 		})
 		return 'zero_credits'
 	}
-	return delivered ? 'delivered' : 'none'
+	if (delivered) return 'delivered'
+	if (invokeFailed || discoveryIncomplete) return 'failed'
+	return filteredOut ? 'filtered' : 'unhandled'
 }

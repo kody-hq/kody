@@ -30,8 +30,10 @@ import {
 	insertPackageCodemodRunItem,
 	listPackageCodemodRunItems,
 	updatePackageCodemodRunItem,
+	updatePackageCodemodRunFilters,
 	updatePackageCodemodRunStatus,
 	type PackageCodemodRunRecord,
+	hasPackageCodemodRunItemForPackage,
 } from './ledger.ts'
 import { getPackageCodemodById } from './registry.ts'
 import {
@@ -40,6 +42,8 @@ import {
 	packageCodemodAppliedTopic,
 	packageCodemodRevertedTopic,
 } from './subscription-events.ts'
+import { computePackageAppCapabilityHostFacts } from './package-app-capability-closure.ts'
+import { isRepoCheckResourceLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import {
 	type PackageCodemod,
 	type PackageCodemodApplyMode,
@@ -56,6 +60,11 @@ export type PackageCodemodRunScope =
 export type PackageCodemodRunFilters = {
 	userIds?: Array<string>
 	packageIds?: Array<string>
+	/**
+	 * Saved package ids that scan, dry-run, and apply record as needs_manual
+	 * with a fixed finding instead of processing.
+	 */
+	excludePackageIds?: Array<string>
 	/**
 	 * Keep the run to packages the credential-need enforcement can reach.
 	 * Reverts ignore it: they only touch items an earlier run applied.
@@ -100,6 +109,8 @@ export type PackageCodemodRunStepResult = {
 
 type PersistedItemResult = PackageCodemodRunItemResult & {
 	revertSnapshotKey?: string | null
+	/** Owner-private detail; persisted, never returned in step results. */
+	ownerDetail?: Record<string, unknown> | null
 }
 
 const scanDefaultStepLimit = 20
@@ -152,9 +163,34 @@ function failureKeys(result: RepoCheckRunResult): Set<string> {
 	const keys = new Set<string>()
 	for (const check of result.results) {
 		if (check.ok) continue
-		keys.add(`${check.kind}:${normalizeFailureMessage(check.message)}`)
+		for (const line of failureLines(check.message)) {
+			keys.add(`${check.kind}:${normalizeFailureMessage(line)}`)
+		}
 	}
 	return keys
+}
+
+/**
+ * Chunked checks join one line per failed chunk, so compare failures line by
+ * line and drop lines that only say a chunk hit the runner limit.
+ */
+function failureLines(message: string) {
+	const lines = message
+		.split('\n')
+		.map((line) => line.trim())
+		.filter((line) => line && !isRepoCheckResourceLimitMessage(line))
+	if (lines.length > 0 || isRepoCheckResourceLimitMessage(message)) return lines
+	return [message]
+}
+
+/**
+ * A check runner that hit its memory or CPU limit says nothing about the
+ * change, so the comparison is inconclusive rather than a new failure.
+ */
+function hitCheckRunnerLimit(result: RepoCheckRunResult) {
+	return result.results.some(
+		(check) => !check.ok && isRepoCheckResourceLimitMessage(check.message),
+	)
 }
 
 function computeCheckSummary(input: {
@@ -220,6 +256,7 @@ function emptyItemResult(input: {
 	afterCommit?: string | null
 	checkSummary?: PackageCodemodRunItemResult['checkSummary']
 	revertSnapshotKey?: string | null
+	ownerDetail?: Record<string, unknown> | null
 }): PersistedItemResult {
 	return {
 		itemId: input.itemId,
@@ -234,6 +271,7 @@ function emptyItemResult(input: {
 		checkSummary: input.checkSummary ?? null,
 		error: input.error ?? null,
 		revertSnapshotKey: input.revertSnapshotKey ?? null,
+		ownerDetail: input.ownerDetail ?? null,
 	}
 }
 
@@ -283,6 +321,12 @@ function normalizeFiltersJson(filters?: PackageCodemodRunFilters | null) {
 	const normalized: PackageCodemodRunFilters = {}
 	if (userIds.length > 0) normalized.userIds = userIds
 	if (packageIds.length > 0) normalized.packageIds = packageIds
+	const excludePackageIds = [...(filters?.excludePackageIds ?? [])].sort(
+		(left, right) => compareBinaryIds(left, right),
+	)
+	if (excludePackageIds.length > 0) {
+		normalized.excludePackageIds = excludePackageIds
+	}
 	if (filters?.scope) normalized.scope = filters.scope
 	return JSON.stringify(normalized)
 }
@@ -303,6 +347,11 @@ function parseStoredFiltersJson(filtersJson: string): PackageCodemodRunFilters {
 				(value): value is string => typeof value === 'string',
 			)
 		}
+		if (Array.isArray(record.excludePackageIds)) {
+			filters.excludePackageIds = record.excludePackageIds.filter(
+				(value): value is string => typeof value === 'string',
+			)
+		}
 		if (record.scope === credentialNeedEnforcementScope) {
 			filters.scope = credentialNeedEnforcementScope
 		}
@@ -310,6 +359,62 @@ function parseStoredFiltersJson(filtersJson: string): PackageCodemodRunFilters {
 	} catch {
 		return {}
 	}
+}
+
+/**
+ * True when `requested` keeps every stored filter and only adds package ids
+ * to `excludePackageIds`.
+ */
+function widensExclusionsOnly(
+	stored: PackageCodemodRunFilters,
+	requested: PackageCodemodRunFilters,
+) {
+	const withoutExclusions = (filters: PackageCodemodRunFilters) =>
+		normalizeFiltersJson({ ...filters, excludePackageIds: [] })
+	if (withoutExclusions(stored) !== withoutExclusions(requested)) return false
+	const requestedExclusions = new Set(requested.excludePackageIds ?? [])
+	return (stored.excludePackageIds ?? []).every((id) =>
+		requestedExclusions.has(id),
+	)
+}
+
+/**
+ * Accepts requested continuation filters that equal the stored ones or only
+ * widen `excludePackageIds`, persisting a widening with a compare-and-swap so
+ * concurrent continuations can't drop each other's exclusions.
+ */
+async function reconcileRunFilters(
+	db: D1Database,
+	input: {
+		run: PackageCodemodRunRecord
+		requested: PackageCodemodRunFilters
+		requestedJson: string
+	},
+): Promise<PackageCodemodRunRecord> {
+	let current = input.run
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const stored = parseStoredFiltersJson(current.filtersJson)
+		if (normalizeFiltersJson(stored) === input.requestedJson) return current
+		if (!widensExclusionsOnly(stored, input.requested)) {
+			throw new Error(
+				`Package codemod run "${current.id}" filters do not match the requested filters.`,
+			)
+		}
+		const changed = await updatePackageCodemodRunFilters(db, {
+			id: current.id,
+			expectedFiltersJson: current.filtersJson,
+			filtersJson: input.requestedJson,
+		})
+		if (changed > 0) return { ...current, filtersJson: input.requestedJson }
+		const reloaded = await getPackageCodemodRunById(db, current.id)
+		if (!reloaded) {
+			throw new Error(`Package codemod run "${current.id}" was not found.`)
+		}
+		current = reloaded
+	}
+	throw new Error(
+		`Package codemod run "${input.run.id}" filters kept changing concurrently; retry the step.`,
+	)
 }
 
 async function ensureRun(input: {
@@ -358,17 +463,17 @@ async function ensureRun(input: {
 			)
 		}
 		// Continuation steps may omit filters; the stored run is the source of
-		// truth. Only an explicit mismatched value is rejected.
-		if (input.filters !== undefined) {
-			const existingFiltersJson = normalizeFiltersJson(
-				parseStoredFiltersJson(existing.filtersJson),
-			)
-			if (existingFiltersJson !== filtersJson) {
-				throw new Error(
-					`Package codemod run "${input.runId}" filters do not match the requested filters.`,
-				)
-			}
-		}
+		// truth. Only an explicit mismatched value is rejected, except that an
+		// operator may widen `excludePackageIds` to step past a package that
+		// keeps failing mid-run (apply has no unfinished-attempt skip).
+		const run =
+			input.filters === undefined
+				? existing
+				: await reconcileRunFilters(input.env.APP_DB, {
+						run: existing,
+						requested: input.filters,
+						requestedJson: filtersJson,
+					})
 		if (existing.status !== 'completed') {
 			// Heartbeat: every continuation step re-asserts `running` and bumps
 			// `updated_at`, so stale-run reconciliation only marks runs nobody is
@@ -378,9 +483,9 @@ async function ensureRun(input: {
 				id: existing.id,
 				status: 'running',
 			})
-			return { ...existing, status: 'running' }
+			return { ...run, status: 'running' }
 		}
-		return existing
+		return run
 	}
 	return await createPackageCodemodRun(input.env.APP_DB, {
 		id: crypto.randomUUID(),
@@ -567,6 +672,8 @@ async function persistItem(
 			result.checkSummary == null ? null : JSON.stringify(result.checkSummary),
 		error: result.error,
 		revertSnapshotKey: result.revertSnapshotKey ?? null,
+		ownerDetailJson:
+			result.ownerDetail == null ? null : JSON.stringify(result.ownerDetail),
 	})
 }
 
@@ -586,6 +693,9 @@ async function runChecksOnFiles(input: {
 		baseUrl: input.baseUrl,
 		userId: input.userId,
 		requirePackageDocs: false,
+		// The engine already walked the import closure for host facts; the
+		// warn-only capability check would walk it twice more per item.
+		followCapabilityImports: false,
 		// Platform migrations must still transform legacy credential patterns
 		// before phase 2/3 stamp enforcement (#3836).
 		enforceCredentialStamp: false,
@@ -599,6 +709,9 @@ async function runChecksOnFiles(input: {
  */
 async function buildCodemodContext(input: {
 	env: Env
+	baseUrl: string
+	codemod: PackageCodemod
+	files: Record<string, string>
 	savedPackage: SavedPackageRecord
 	manifestPath: string
 	sourceRoot: string
@@ -613,6 +726,16 @@ async function buildCodemodContext(input: {
 		packageName: `@${ownerScope}/${leaf}`,
 		manifestPath: input.manifestPath,
 		sourceRoot: input.sourceRoot,
+		...(input.codemod.hostFacts?.includes('package-app-capabilities')
+			? {
+					packageAppCapabilities: await computePackageAppCapabilityHostFacts({
+						env: input.env,
+						baseUrl: input.baseUrl,
+						savedPackage: input.savedPackage,
+						files: input.files,
+					}),
+				}
+			: {}),
 	}
 }
 
@@ -659,6 +782,7 @@ async function processTransformGates(input: {
 			changedPaths: Array<string>
 			findings: Array<PackageCodemodFinding>
 			checkSummary: { ok: boolean; newFailures: Array<string> }
+			ownerDetail: Record<string, unknown> | null
 	  }
 > {
 	const itemId = crypto.randomUUID()
@@ -675,6 +799,7 @@ async function processTransformGates(input: {
 				status: 'needs_manual',
 				findings: transformed.needsManual,
 				beforeCommit: input.beforeCommit,
+				ownerDetail: transformed.ownerDetail,
 			}),
 		}
 	}
@@ -689,6 +814,7 @@ async function processTransformGates(input: {
 				status: 'clean',
 				findings: transformed.needsManual,
 				beforeCommit: input.beforeCommit,
+				ownerDetail: transformed.ownerDetail,
 			}),
 		}
 	}
@@ -705,6 +831,7 @@ async function processTransformGates(input: {
 				findings: transformed.needsManual,
 				changedPaths: transformed.changedPaths,
 				beforeCommit: input.beforeCommit,
+				ownerDetail: transformed.ownerDetail,
 				error:
 					'Codemod transform is not idempotent: a second transform pass still reported changes.',
 			}),
@@ -730,6 +857,24 @@ async function processTransformGates(input: {
 		before: beforeChecks,
 		after: afterChecks,
 	})
+	if (checkSummary.ok && hitCheckRunnerLimit(afterChecks)) {
+		return {
+			kind: 'terminal',
+			result: emptyItemResult({
+				itemId,
+				userId: input.savedPackage.userId,
+				packageId: input.savedPackage.id,
+				kodyId: input.savedPackage.kodyId,
+				status: 'failed',
+				findings: transformed.needsManual,
+				changedPaths: transformed.changedPaths,
+				beforeCommit: input.beforeCommit,
+				ownerDetail: transformed.ownerDetail,
+				error:
+					'Repo checks on the transformed tree hit the check runner memory or CPU limits, so the change could not be verified.',
+			}),
+		}
+	}
 	if (!checkSummary.ok) {
 		return {
 			kind: 'terminal',
@@ -742,6 +887,7 @@ async function processTransformGates(input: {
 				findings: transformed.needsManual,
 				changedPaths: transformed.changedPaths,
 				beforeCommit: input.beforeCommit,
+				ownerDetail: transformed.ownerDetail,
 				checkSummary,
 			}),
 		}
@@ -753,6 +899,7 @@ async function processTransformGates(input: {
 		changedPaths: transformed.changedPaths,
 		findings: transformed.needsManual,
 		checkSummary,
+		ownerDetail: transformed.ownerDetail ?? null,
 	}
 }
 
@@ -804,6 +951,9 @@ async function processPackageForMode(input: {
 
 	const context = await buildCodemodContext({
 		env: input.env,
+		baseUrl: input.baseUrl,
+		codemod: input.codemod,
+		files: loaded.files,
 		savedPackage: input.savedPackage,
 		manifestPath: loaded.source.manifest_path,
 		sourceRoot: loaded.source.source_root,
@@ -838,6 +988,7 @@ async function processPackageForMode(input: {
 				status: 'dry_run_ok',
 				changedPaths: gated.changedPaths,
 				findings: gated.findings,
+				ownerDetail: gated.ownerDetail,
 				beforeCommit: publishedCommit,
 				checkSummary: gated.checkSummary,
 			})
@@ -872,6 +1023,7 @@ async function processPackageForMode(input: {
 					status: 'skipped_drift',
 					changedPaths: gated.changedPaths,
 					findings: gated.findings,
+					ownerDetail: gated.ownerDetail,
 					beforeCommit: publishedCommit,
 					checkSummary: gated.checkSummary,
 				})
@@ -950,6 +1102,7 @@ async function processPackageForMode(input: {
 						status: 'failed',
 						changedPaths: gated.changedPaths,
 						findings: gated.findings,
+						ownerDetail: gated.ownerDetail,
 						beforeCommit: publishedCommit,
 						checkSummary: gated.checkSummary,
 						revertSnapshotKey,
@@ -1000,6 +1153,7 @@ async function processPackageForMode(input: {
 					status: 'applied',
 					changedPaths: gated.changedPaths,
 					findings: gated.findings,
+					ownerDetail: gated.ownerDetail,
 					beforeCommit: publishedCommit,
 					afterCommit,
 					checkSummary: gated.checkSummary,
@@ -1014,6 +1168,7 @@ async function processPackageForMode(input: {
 					status: 'failed',
 					changedPaths: gated.changedPaths,
 					findings: gated.findings,
+					ownerDetail: gated.ownerDetail,
 					beforeCommit: publishedCommit,
 					checkSummary: gated.checkSummary,
 					revertSnapshotKey,
@@ -1437,6 +1592,27 @@ async function processRevertStep(input: {
 	}
 }
 
+/**
+ * A package whose processing kills the step (out of CPU or memory) never
+ * reaches the per-item catch, so the same cursor would fail forever. Each
+ * scan or dry-run attempt is counted before processing and cleared after;
+ * past the limit the package is recorded as failed and paging moves on. A
+ * retried page skips packages this run already recorded.
+ */
+const maxUnfinishedAttempts = 2
+const unfinishedAttemptTtlSeconds = 7 * 24 * 60 * 60
+export const operatorExcludedFinding: PackageCodemodFinding = {
+	path: null,
+	message:
+		'Excluded from this run by the operator; handle this package manually.',
+}
+export const unfinishedAttemptsError =
+	'Skipped: earlier attempts on this package did not finish (the step ran out of time or memory).'
+
+function unfinishedAttemptKvKey(runId: string, packageId: string) {
+	return `package-codemod-attempt:${runId}:${packageId}`
+}
+
 export async function runPackageCodemodStep(input: {
 	env: Env
 	baseUrl: string
@@ -1501,10 +1677,12 @@ export async function runPackageCodemodStep(input: {
 			})
 		}
 
+		const filters = input.filters ?? parseStoredFiltersJson(run.filtersJson)
+		const excluded = new Set(filters.excludePackageIds ?? [])
 		const { packages, nextCursor } = await listCandidatePackages({
 			env: input.env,
 			scope: input.scope,
-			filters: input.filters ?? parseStoredFiltersJson(run.filtersJson),
+			filters,
 			cursor: input.cursor ?? null,
 			limit,
 		})
@@ -1512,6 +1690,58 @@ export async function runPackageCodemodStep(input: {
 		const summary: Partial<Record<PackageCodemodItemStatus, number>> = {}
 		for (const savedPackage of packages) {
 			let result: PersistedItemResult
+			// Read-only modes only: an interrupted apply may already have
+			// published, so it must not be recorded as a plain failure.
+			const tracksAttempts = input.mode !== 'apply'
+			if (
+				tracksAttempts &&
+				(await hasPackageCodemodRunItemForPackage(input.env.APP_DB, {
+					runId: run.id,
+					packageId: savedPackage.id,
+				}))
+			) {
+				continue
+			}
+			if (excluded.has(savedPackage.id)) {
+				result = emptyItemResult({
+					itemId: crypto.randomUUID(),
+					userId: savedPackage.userId,
+					packageId: savedPackage.id,
+					kodyId: savedPackage.kodyId,
+					status: 'needs_manual',
+					findings: [operatorExcludedFinding],
+				})
+				await persistItem(input.env, result, run.id)
+				items.push(toPublicItem(result))
+				incrementSummary(summary, result.status)
+				continue
+			}
+			const attemptKey = unfinishedAttemptKvKey(run.id, savedPackage.id)
+			const unfinishedAttempts = tracksAttempts
+				? Number((await input.env.BUNDLE_ARTIFACTS_KV.get(attemptKey)) ?? 0)
+				: 0
+			if (unfinishedAttempts >= maxUnfinishedAttempts) {
+				result = emptyItemResult({
+					itemId: crypto.randomUUID(),
+					userId: savedPackage.userId,
+					packageId: savedPackage.id,
+					kodyId: savedPackage.kodyId,
+					status: 'failed',
+					error: unfinishedAttemptsError,
+				})
+				await persistItem(input.env, result, run.id)
+				await input.env.BUNDLE_ARTIFACTS_KV.delete(attemptKey)
+				items.push(toPublicItem(result))
+				incrementSummary(summary, result.status)
+				continue
+			}
+			if (tracksAttempts) {
+				await input.env.BUNDLE_ARTIFACTS_KV.put(
+					attemptKey,
+					String(unfinishedAttempts + 1),
+					{ expirationTtl: unfinishedAttemptTtlSeconds },
+				)
+			}
 			try {
 				result = await processPackageForMode({
 					env: input.env,
@@ -1533,7 +1763,13 @@ export async function runPackageCodemodStep(input: {
 					error: getErrorMessage(error),
 				})
 			}
-			await persistItem(input.env, result, run.id)
+			try {
+				await persistItem(input.env, result, run.id)
+			} finally {
+				if (tracksAttempts) {
+					await input.env.BUNDLE_ARTIFACTS_KV.delete(attemptKey)
+				}
+			}
 			items.push(toPublicItem(result))
 			incrementSummary(summary, result.status)
 		}

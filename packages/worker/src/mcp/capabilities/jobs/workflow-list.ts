@@ -8,6 +8,19 @@ import {
 	requireMcpUser,
 } from '#mcp/capabilities/meta/require-user.ts'
 
+const workflowRunStatusSchema = z.enum([
+	'queued',
+	'running',
+	'paused',
+	'waiting',
+	'waitingForPause',
+	'unknown',
+	'complete',
+	'errored',
+	'terminated',
+	'cancelled',
+])
+
 const workflowRunSchema = z.object({
 	id: z.string(),
 	source_type: z.enum(['package', 'inline']),
@@ -19,20 +32,7 @@ const workflowRunSchema = z.object({
 	idempotency_key: z.string(),
 	run_at: z.string(),
 	plan_date: z.string().nullable(),
-	status: z
-		.enum([
-			'queued',
-			'running',
-			'paused',
-			'waiting',
-			'waitingForPause',
-			'unknown',
-			'complete',
-			'errored',
-			'terminated',
-			'cancelled',
-		])
-		.nullable(),
+	status: workflowRunStatusSchema.nullable(),
 	created_at: z.string(),
 	updated_at: z.string(),
 	completed_at: z.string().nullable(),
@@ -51,13 +51,87 @@ const workflowRunSchema = z.object({
 		),
 })
 
+const workflowRunListInputKeys = [
+	'workflow_id',
+	'status',
+	'package_id',
+	'since',
+	'limit',
+] as const
+
+const workflowRunListInputKeySet = new Set<string>(workflowRunListInputKeys)
+
+function camelToSnakeCaseKey(key: string) {
+	return key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
+}
+
+function unknownWorkflowRunListKeyMessage(key: string) {
+	const snake = camelToSnakeCaseKey(key)
+	if (snake !== key && workflowRunListInputKeySet.has(snake)) {
+		return `${key} is not a parameter; did you mean ${snake}?`
+	}
+	return `${key} is not a parameter`
+}
+
+/** Exported for schema-level tests; keep snake_case keys strict for callers. */
+export const workflowRunListInputSchema = z
+	.object(
+		{
+			workflow_id: z
+				.string()
+				.min(1)
+				.optional()
+				.describe(
+					'Optional exact workflow run id (dynwf-… or pkgwf-…) from workflows.create or a dispatched durable handoff. Returns that run alone when present.',
+				),
+			status: workflowRunStatusSchema
+				.optional()
+				.describe(
+					'Optional workflow-level status filter such as queued, running, complete, or errored.',
+				),
+			package_id: z
+				.string()
+				.min(1)
+				.optional()
+				.describe(
+					'Optional saved package id to list package-owned workflow runs only.',
+				),
+			since: z
+				.string()
+				.min(1)
+				.optional()
+				.describe(
+					'Optional ISO 8601 lower bound on created_at (inclusive), for example 2026-07-01T00:00:00.000Z.',
+				),
+			limit: z
+				.number()
+				.int()
+				.min(1)
+				.max(100)
+				.optional()
+				.describe(
+					'Maximum number of recent workflow runs to return. Defaults to 25.',
+				),
+		},
+		{
+			error: (issue) => {
+				if (issue.code !== 'unrecognized_keys') return undefined
+				return {
+					message: issue.keys.map(unknownWorkflowRunListKeyMessage).join(' '),
+				}
+			},
+		},
+	)
+	.strict()
+
 export const workflowListCapability = defineDomainCapability(
 	capabilityDomainNames.jobs,
 	{
 		name: 'workflowRunList',
+		contextRuns: 'allow',
 		orgPermission: 'job:read',
 		description:
-			'List recent Cloudflare Workflow runs created through kody:runtime workflows.create for durable work that may outlive execute timeouts, including source, status, and completion/error metadata.',
+			'List recent Cloudflare Workflow runs created through kody:runtime workflows.create for durable work that may outlive execute timeouts, including source, status, and completion/error metadata. Filter with workflow_id (exact id), status, package_id, and/or since. Unknown input fields are rejected.',
 		keywords: [
 			'workflow',
 			'workflows',
@@ -68,21 +142,13 @@ export const workflowListCapability = defineDomainCapability(
 			'background',
 			'timeout',
 			'migration',
+			'poll',
+			'dispatched',
 		],
 		readOnly: true,
 		idempotent: true,
 		destructive: false,
-		inputSchema: z.object({
-			limit: z
-				.number()
-				.int()
-				.min(1)
-				.max(100)
-				.optional()
-				.describe(
-					'Maximum number of recent workflow runs to return. Defaults to 25.',
-				),
-		}),
+		inputSchema: workflowRunListInputSchema,
 		outputSchema: z.object({
 			workflows: z.array(workflowRunSchema),
 		}),
@@ -98,6 +164,12 @@ export const workflowListCapability = defineDomainCapability(
 				env: ctx.env,
 				userId: ownerIdFromCaller(ctx.callerContext),
 				limit: args.limit,
+				filter: {
+					workflowId: args.workflow_id ?? null,
+					status: args.status ?? null,
+					packageId: args.package_id ?? null,
+					since: args.since ?? null,
+				},
 			})
 			return {
 				workflows: workflows.map((workflow) => ({

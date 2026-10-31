@@ -41,6 +41,8 @@ export type RequestCredentialKind =
 	| 'webhook'
 	| 'schedule'
 	| 'platform-event'
+	/** A run on a registered execution context; the id is the run id. */
+	| 'execution-context-run'
 
 export type RequestCredential = {
 	kind: RequestCredentialKind
@@ -49,8 +51,18 @@ export type RequestCredential = {
 	orgId: OwnerId
 	/** Null means the credential does not narrow the actor's permissions. */
 	scopes: ReadonlyArray<OrgPermission> | null
-	/** Connection profile that narrows this credential to listed resources. */
-	profileName: string | null
+	/**
+	 * The profile this credential acts as (ADR 0092), or absent/null for the
+	 * person themselves (the live mirror).
+	 */
+	profileId?: string | null
+	/** That profile's chain at authentication: ids, root first (attribution). */
+	profileChain?: ReadonlyArray<string> | null
+	/**
+	 * Execution-context runs only: true when the requester operates the
+	 * context, so the run has the Kody access the same run has in Kody cloud.
+	 */
+	contextRunByOperator?: boolean
 }
 
 export type RequestContext = {
@@ -64,6 +76,22 @@ export type RequestContext = {
 	credential: RequestCredential
 	/** Null for a request with no person and for outside collaborators. */
 	membership: { role: OrgRole } | null
+	/**
+	 * The org billed for metered work this request causes, when it is not
+	 * `org`. Only a visit from another org to an internal package app sets it
+	 * (ADR 0095). Absent means `org` pays.
+	 */
+	billing?: RequestBilling
+}
+
+export type RequestBilling = { orgId: OwnerId }
+
+/** The org a request's metered work is charged to. */
+export function billedOrgIdOf<T extends string | null | undefined>(
+	request: Pick<RequestContext, 'billing'> | null | undefined,
+	fallback: T,
+): OwnerId | T {
+	return request?.billing?.orgId ?? fallback
 }
 
 /**

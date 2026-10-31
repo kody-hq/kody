@@ -700,3 +700,94 @@ test('member and billing grant changes need a live person; other grants do not',
 		accessRevokeCapability.handler({ grant_id: granted.grant.id }, live),
 	).resolves.toMatchObject({ revoked: true })
 })
+
+test('org grants carry read-only resource permissions but refuse writes', async () => {
+	const db = await createDb()
+	const ownerId = testStableUserIdFromEmail('owner-read@example.com')
+	await provisionPersonalOrg(db, {
+		stableUserId: ownerId,
+		username: 'readowner',
+	})
+	const created = await orgCreateCapability.handler(
+		{ slug: 'readco' },
+		capabilityContext({
+			db,
+			userId: ownerId,
+			email: 'owner-read@example.com',
+			username: 'readowner',
+		}),
+	)
+	const org = { id: created.org.id, slug: created.org.slug }
+	const owner = capabilityContext({
+		db,
+		userId: ownerId,
+		email: 'owner-read@example.com',
+		username: 'readowner',
+		org: { ...org, role: 'owner' },
+	})
+	const memberId = testStableUserIdFromEmail('reader@example.com')
+	const granted = await accessGrantCapability.handler(
+		{
+			resource_type: 'org',
+			resource_id: org.id,
+			subject_type: 'user',
+			subject_id: memberId,
+			permissions: ['job:read', 'app:read', 'package:read'],
+		},
+		owner,
+	)
+	expect([...granted.grant.permissions].sort()).toEqual([
+		'app:read',
+		'job:read',
+		'package:read',
+	])
+
+	for (const permission of [
+		'job:write',
+		'job:execute',
+		'package:write',
+		'secret:use',
+		'secret:read',
+		'memory:read',
+	]) {
+		await expect(
+			accessGrantCapability.handler(
+				{
+					resource_type: 'org',
+					resource_id: org.id,
+					subject_type: 'user',
+					subject_id: memberId,
+					permissions: [permission],
+				},
+				owner,
+			),
+		).rejects.toThrow(
+			new McpCallerError(`Permission ${permission} cannot be granted on org.`),
+		)
+	}
+
+	const compiled = await compileAccessForRequest({
+		db,
+		request: deriveRequestContext({
+			user: { userId: personIdFromStored(memberId), username: 'reader' },
+			source: { kind: 'session' },
+			orgBinding: {
+				org: { id: ownerIdFromStored(org.id), slug: org.slug },
+				role: 'member',
+			},
+		}),
+	})
+	for (const permission of ['job:read', 'app:read', 'package:read'] as const) {
+		expect(compiled.orgPermissions.has(permission)).toBe(true)
+	}
+	for (const permission of [
+		'job:write',
+		'job:execute',
+		'app:execute',
+		'package:execute',
+		'package:write',
+		'org:execute',
+	] as const) {
+		expect(compiled.orgPermissions.has(permission)).toBe(false)
+	}
+})

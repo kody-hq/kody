@@ -43,9 +43,10 @@ const entityExplainerDefinitions = [
 		id: 'repositories',
 		question: 'What is a repository?',
 		paragraphs: [
-			'A repository stores code and files in this workspace. Repositories with a kody.json manifest can publish reusable packages for agents.',
+			'A repository is the git home for code in this workspace. This page lists plain repositories and packages. A package is a repository with a Kody package manifest; the API and CLI still call that entity package (for example packageList and packageSave).',
 		],
 		learnMore: [
+			{ href: docHref('package-authoring'), label: 'Package authoring' },
 			{ href: docHref('package-lifecycle'), label: 'Package lifecycle' },
 		],
 	},
@@ -162,6 +163,36 @@ const entityExplainerDefinitions = [
 			{
 				href: docHref('how-kody-works'),
 				label: 'How Kody works',
+			},
+		],
+	},
+	{
+		id: 'execution-contexts',
+		question: 'What is an execution context?',
+		paragraphs: [
+			"An execution context is a machine you registered with the Kody CLI daemon, such as your laptop or a build server. When one is in your fallback chain, execute runs there instead of on Kody cloud, so runs can reach that machine's files and local network.",
+			'A new context is used by no one until someone adds it to a chain. Its operator can share it with specific people, a team, or everyone in an organization, and each of them opts in first, because the operator can see the code, inputs, logs and results of runs on it. Credential values stay on Kody.',
+			'Kody tries your chain in order and moves on when a context is offline or busy. Kody cloud stays last unless you remove it. Context runs do not count toward plan quotas, and agents use the same contexts and chain through the API.',
+		],
+		learnMore: [
+			{
+				href: docHref('how-kody-works'),
+				label: 'How Kody works',
+			},
+		],
+	},
+	{
+		id: 'profiles',
+		question: 'What is an agent profile?',
+		paragraphs: [
+			'An agent profile is a scoped identity you create for an agent or bot you run, in one organization. It is not your public profile. A request made as a profile reaches only what you, the profile, and every profile above it allow.',
+			'A profile starts with a snapshot of grants, each one a subset of what you hold. It does not inherit access you or its parent gain later; only an explicit share adds more. Sub-profiles nest up to five levels and can only narrow what their parent holds.',
+			'Expiry only moves earlier, and a sub-profile never outlives its parents. Revoking a profile is final and stops every sub-profile below it. Profile-bound tokens let an agent act as one profile.',
+		],
+		learnMore: [
+			{
+				href: docHref('profiles'),
+				label: 'Profiles',
 			},
 		],
 	},

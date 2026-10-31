@@ -8,7 +8,6 @@
 import { type IncomingMessage, type ServerResponse } from 'node:http'
 import { type DevErrorView } from './error-page.js'
 
-export const devRoutePrefix = '/__kody/dev/'
 export const liveReloadEventsPath = '/__kody/dev/events'
 export const liveReloadClientPath = '/__kody/dev/client.js'
 

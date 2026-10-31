@@ -15,6 +15,7 @@ export const Route = createFileRoute(
 	'/_app/@{$orgSlug}_/-/integrations_/apps/$appSlug',
 )({
 	staticData: {
+		presentationSearchKeys: ['q'],
 		workspaceSwitch: {
 			section: 'integrations',
 			suffix: ['apps', { param: 'appSlug' }],
@@ -27,7 +28,7 @@ export const Route = createFileRoute(
 		name: search.name,
 		package_id: search.package_id,
 	}),
-	context: ({ location, params }) => ({
+	beforeLoad: ({ location, params }) => ({
 		pageQueryInput: {
 			orgSlug: params.orgSlug,
 			approve: false,
@@ -38,6 +39,7 @@ export const Route = createFileRoute(
 				new URLSearchParams(location.searchStr).get('package_id') ?? undefined,
 		},
 	}),
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,

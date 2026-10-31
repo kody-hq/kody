@@ -75,7 +75,7 @@ test('fork backfill stores personal org id and keeps the person as creator', () 
 		);
 		CREATE TABLE community_forks (
 			id TEXT PRIMARY KEY,
-			listing_id TEXT,
+			listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
 			forker_user_id TEXT,
 			created_at TEXT
 		);

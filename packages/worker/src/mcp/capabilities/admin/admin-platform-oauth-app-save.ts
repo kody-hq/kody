@@ -112,6 +112,7 @@ export const adminPlatformOauthAppSaveCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminPlatformOauthAppSave',
+		contextRuns: 'deny',
 		description:
 			'Create or update a platform (built-in) OAuth app. Once enabled and published, users can connect it through /connect/oauth without registering their own provider app; new apps start as drafts. The client secret is encrypted at rest outside the user secret store and is never returned. Admin-only.',
 		keywords: [

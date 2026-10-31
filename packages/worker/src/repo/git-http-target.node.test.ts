@@ -105,7 +105,6 @@ function seedCrossOrgPackage(input?: {
 		permissions: new Set(['package:read', 'package:write']),
 		resourcePermissions: new Map(),
 		credentialScopes: new Set(['package:read', 'package:write']),
-		profileGrants: null,
 	})
 	viewerCanReadSavedPackage.mockResolvedValue(true)
 	getEntitySourceByEntity.mockResolvedValue({

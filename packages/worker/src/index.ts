@@ -15,6 +15,7 @@ import { KodyFetchGateway } from '#mcp/fetch-gateway.ts'
 import { DynamicWorkerUsageTail } from '#worker/usage/dynamic-worker-cpu.ts'
 import { PackageAppRuntimeBridge } from '#worker/package-runtime/package-app.ts'
 import { OAuthPurgeCoordinator } from './oauth-purge.ts'
+import { ExecutionContextSessionV1 } from './execution-contexts/session-do.ts'
 import { originWorkerHandler } from './origin-handler.ts'
 
 /**
@@ -56,6 +57,7 @@ export {
 	StripePlanRefresh,
 	Mailbox,
 	OAuthPurgeCoordinator,
+	ExecutionContextSessionV1,
 }
 
 export default originWorkerHandler

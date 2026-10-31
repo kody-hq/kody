@@ -18,23 +18,97 @@ belong to one org. Handles are permanent: `@slug` does not rename.
 The org is the billing and data boundary: its resources, usage, limits, and bill
 stay inside it. Inside an org, grants control access. Owners hold everything,
 Members hold the org basics (`org:read`, `member:read`, `team:read`,
-`search:read`) plus what they are granted, and an outside collaborator holds
-catalog search (`search:read`) plus their grants. See
-[Share a package](/docs/package-sharing) for presets and grants.
+`search:read`), what [member permissions](#member-permissions) allow, and what
+they are granted. An outside collaborator holds catalog search (`search:read`)
+plus their grants. See [Share a package](/docs/package-sharing) for presets and
+grants.
+
+## Member permissions
+
+Like a code host's "members can create repositories" setting, an Owner chooses
+what every Member of a team org can create without a grant: **Organization
+settings**, **Member permissions**, or `orgUpdate`.
+
+| Setting                              | Default | Gives every Member                                                                  |
+| ------------------------------------ | ------- | ----------------------------------------------------------------------------------- |
+| Members can create packages and apps | Off     | `package:create`, `app:create`: save, fork, and first-publish packages, repos, apps |
+| Members can create credentials       | On      | `secret:create`, `integration:create`: new secrets, OAuth connections, MCP servers  |
+
+```json
+{ "members_can_create_packages": true, "members_can_create_credentials": true }
+```
+
+Owners can always create. Whoever creates something gets full (`manage`) access
+to it. Changing an existing package or credential still needs its own write
+permission, so these settings never let a Member edit what someone else made.
+The settings are enforced on the server for every path (MCP, the API, the CLI's
+first publish and repo push, and the website). A Member who is refused gets an
+error naming the setting and the Grants page.
+
+To let only some people or teams create, leave a setting off and use **Grants**,
+**Create access** (or `accessGrant` with `resource_type: "org"` and
+`permissions: ["package:create"]`, `["secret:create"]`, or
+`["integration:create"]`). Those grants still apply when a setting is off.
+
+## Org-wide read access
+
+To let a Member read everything of one kind without making them an Owner, an
+Owner grants read access on the organization: **Grants** page,
+**Organization-wide read access**, or `accessGrant` with `resource_type: "org"`:
+
+```json
+{
+	"resource_type": "org",
+	"resource_id": "<org id>",
+	"subject_type": "user",
+	"username": "casey",
+	"permissions": ["job:read"]
+}
+```
+
+From the CLI: `kody api accessGrant --org <slug> --params '<that JSON>'`. Add
+`"expires_at": "<ISO time>"` for temporary access: the grant stops counting at
+that time. A new grant without `expires_at` never expires. Rewriting a grant
+without `expires_at` keeps a future expiry but drops one that has already
+passed; pass `null` to make it unlimited. `accessList` still shows an expired
+grant, with its past `expires_at`, until you rewrite or revoke it.
+
+| Permission         | Reads                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------- |
+| `job:read`         | Every job, workflow, and run (`runList`, `runGet`, the Activity page, Overview run history) |
+| `app:read`         | Every package app and its sessions                                                          |
+| `package:read`     | Source, skills, and checks for every package and repo                                       |
+| `integration:read` | Which integrations and MCP servers exist, never a token                                     |
+| `email:read`       | Every inbox and message, including sign-in codes they get                                   |
+
+These are read only. Running, editing, triaging runs, sharing, and using a
+credential still need their own grant. Secret values and memories are never
+grantable org-wide.
 
 ## Personal vs team
 
-|                    | Personal                                             | Team                                                                                                                                                                    |
-| ------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Created            | At signup (slug = username)                          | `orgCreate` or Create organization                                                                                                                                      |
-| Members / teams    | No. Create a team org to invite people or group them | Yes                                                                                                                                                                     |
-| Package grants     | `accessGrant` / grant invites / package invite links | Same, plus the Grants web page                                                                                                                                          |
-| Resource web pages | Secrets, jobs, repositories, agents, and the rest    | Every resource page reads the org. Agents lists connections approved for that org; Repositories lists the org's packages you can see plus every plain repo the org owns |
+|                    | Personal                                             | Team                                                                                                                                                                                            |
+| ------------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Created            | At signup (slug = username)                          | `orgCreate` or Create organization                                                                                                                                                              |
+| Members / teams    | No. Create a team org to invite people or group them | Yes                                                                                                                                                                                             |
+| Package grants     | `accessGrant` / grant invites / package invite links | Same, plus the Grants web page                                                                                                                                                                  |
+| Resource web pages | Secrets, jobs, repositories, agents, and the rest    | Every resource page reads the org. Agents lists connections approved for that org; **Repositories** lists packages you can see plus every plain repo the org owns (API/CLI still say `package`) |
 
 Switch orgs from the workspace name at the top of the workspace rail (it keeps
 the section you are on), from the avatar menu's Manage group, or pick the org at
-MCP consent. Overview is `/@<slug>/-/overview` on a personal org and `/@<slug>`
-on a team org. One connection binds one org.
+MCP consent. Overview is `/@<slug>/-/overview`. One connection binds one org.
+
+## Public org page
+
+A team org's page at `kody.codes/@<slug>` is **Public** by default: anyone can
+see its name, photo, bio, and public packages. Members are never listed, and
+private or hidden packages never show. Pick **Private** when you create the org,
+or later in **Settings** (Owners only), or pass `profile_visibility` (`public` |
+`private`) to `orgCreate` / `orgUpdate`. A private org's page is a not-found
+page for everyone outside it, the same as a handle that doesn't exist. Members
+of a public org see the public page with an **Organization home** link
+(`/@<slug>?view=home`); on a private org the home is at `/@<slug>`. A personal
+org's page is your account profile, set on Account.
 
 ## Invites
 
@@ -56,6 +130,22 @@ An invite waits on the person it is for and shows on the page that sent it:
 Agents use `inviteAccept` with the token and `inviteRevoke` for addressed
 invites.
 
+## How do I invite my whole team?
+
+Use a **Members** invite link when you do not know every email yet, or when many
+people should join with the same role. Prefer addressed `inviteCreate` only when
+you need to invite one known person (and optionally Owner).
+
+1. On the web: open `/@<org>/-/members`, create an invite link (Member by
+   default; optional label, default teams, domains, max uses, expiry), copy the
+   credential once, and share it.
+2. As an agent: call `inviteLinkCreate` (needs `member:write`) in that org, then
+   share the returned URL or tell people to call `inviteLinkAccept` with the
+   token. List with `inviteLinkList`. End a link with `inviteLinkRevoke`.
+3. CLI/Open API: `POST /v1/access/invite-links`, `GET /v1/access/invite-links`,
+   `POST /v1/access/invite-links/accept`, and
+   `POST /v1/access/invite-links/{invite_link_id}/revoke`.
+
 ## Invite links
 
 An invite link lets someone in without knowing their email or username. You make
@@ -64,29 +154,35 @@ you made it:
 
 | Made on                           | Accepting it                                                                               | Who can make it                 |
 | --------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------- |
-| **Members** (team org)            | Joins the org as Member or Billing                                                         | `member:write`                  |
+| **Members** (team org)            | Joins the org as Member or Billing; optional default teams                                 | `member:write`                  |
 | **Teams**, one team (team org)    | Joins that team, and the org as Member if they are not in it yet                           | `team:write` and `member:write` |
 | A package's **Collaborators** tab | Grants the chosen preset on that package; non-members stay outside collaborators (any org) | Manage on the package           |
 
-Opening a link signs the person in or lets them create an account, then shows an
-accept page with what the link gives and who sent it. Nothing happens until they
-choose **Accept**; they can also **Decline**. A signed-in person who opened a
-link sees it on their Waiting page and in the Invites panel on their
-Organizations page until they accept or decline it, or it stops working.
+Opening a link signs the person in or lets them create an account (every signup
+method asks them to choose their own username first), then shows an accept page
+with what the link gives and who sent it. Nothing happens until they choose
+**Accept**; they can also **Decline**. A signed-in person who opened a link sees
+it on their Waiting page and in the Invites panel on their Organizations page
+until they accept or decline it, or it stops working. OAuth keeps the join URL
+through redirects via `redirectTo`.
 
-Links last 7 days by default (up to 365) and can be limited by number of uses;
-Members links can also require a verified email domain. Kody stores only a hash,
-so the link is shown once. Each page lists its active links with uses and
-expiry, and **Revoke** ends one right away. A link also stops working when its
-org is no longer active, when the team or package it points at is deleted, or
-when the person who made it loses access. Someone removed from the org can
-rejoin with the same membership link while it is live. Team and package links
-are spent per person, so removing someone is not undone by the link they already
-used.
+Links last 7 days by default (up to 365; every link expires) and can be limited
+by number of uses. Members links can also carry an optional label, default
+teams, and a verified email domain allowlist. The link is a credential: Kody
+stores only a hash, so the full URL is shown once. Each page lists its active
+links with uses and expiry; the Members page also shows last used. **Revoke**
+ends one right away. A link also stops working when its org is no longer active,
+when the team or package it points at is deleted, or when the person who made it
+loses access. Someone removed from the org can rejoin with the same membership
+link while it is live (idempotent for people who are already members). Team and
+package links are spent per person, so removing someone is not undone by the
+link they already used.
 
-Creating, revoking, and accepting are recorded in the org audit log as
-`invite_link.created`, `invite_link.revoked`, and `invite_link.joined`, with the
-link's kind, team or package, and preset in the details.
+Agents use `inviteLinkCreate`, `inviteLinkList`, `inviteLinkRevoke`, and
+`inviteLinkAccept` (same surfaces as Open API and the CLI). Creating, revoking,
+and accepting are recorded in the org audit log as `invite_link.created`,
+`invite_link.revoked`, and `invite_link.joined`, with the link's kind, team or
+package, label, teams, and preset in the details.
 
 ## Automation runs as the person who turned it on
 
@@ -142,9 +238,8 @@ did it (a person, an automation run, or a site admin), when, the old and new
 state, where it came from (web app, MCP, API, CLI, the scheduler, and so on),
 and the reason when one was given (`jobUpdate` and `enablementDisable` take an
 optional `reason`). Owners see the last 7 days under **On/off changes** on the
-Activity page. A job that reaches its own expiry time or a one-time job that
-finishes its run turns off without a row, and pause and resume are a separate
-state with their own reason.
+Activity page. A job that reaches its own expiry time turns off without a row,
+and pause and resume are a separate state with their own reason.
 
 Example: Bea is a Member of `@acme` with Use on `@acme/digest`. She turns on its
 nightly job. Each night it runs as Bea, with Bea's grants. It cannot read a
@@ -176,6 +271,12 @@ Example: Jesse holds Use on `@acme/bot` and is not a member. Connected as
 `@acme`, his runs count against acme's execute pool, credits, and budgets.
 Nothing is charged to Jesse's personal plan, and acme's seat count does not
 change.
+
+Visits to an internal **package app** are billed differently: a visitor from
+outside the org pays for the metered work their visits cause from their own
+personal org, and the owning org keeps paying the app's Worker compute.
+Internet-visible apps are always paid by the owning org. See
+[Package apps: who pays for visits](/docs/package-apps#who-pays-for-visits).
 
 ## Connect one client to two orgs
 

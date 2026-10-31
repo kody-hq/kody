@@ -16,6 +16,9 @@ import {
 	type OrgTransferSnapshot,
 } from './snapshot.ts'
 
+/** Grantable resources a transfer leaves in the source org. */
+const resourceTypesThatStay = new Set(['memory', 'email', 'execution_context'])
+
 export type OrgTransferOrphanCleanup =
 	/** Normal per-row soft delete (sets deleted_at). */
 	| 'soft-delete'
@@ -72,6 +75,11 @@ export type OrgTransferPlan = {
 	storageCopies: Array<OrgTransferStorageCopy>
 	logoCopies: Array<OrgTransferLogoCopy>
 	orphans: Array<OrgTransferOrphan>
+	/**
+	 * Creator grants (`origin = 'created'`) whose person is not a target
+	 * member. Soft-deleted in the batch; they never block the move.
+	 */
+	droppedCreatorGrants: Array<OrgTransferRow>
 	/** Person ids with a live membership in the target org. */
 	targetMemberIds: ReadonlySet<string>
 	clashes: Array<OrgTransferFinding>
@@ -92,6 +100,8 @@ const movedTables: ReadonlyArray<OrgTransferMovedTable> = [
 	'package_capability_approvals',
 	// Kept empty: audits for moved packages are orphan-deleted (re-audit).
 	'package_security_audits',
+	// Kept empty: cookie findings are orphan-deleted for the destination owner.
+	'package_app_cookie_warnings',
 	// Kept empty: requests for moved packages are orphan-deleted.
 	'package_approval_requests',
 	'user_repos',
@@ -115,6 +125,7 @@ const movedTables: ReadonlyArray<OrgTransferMovedTable> = [
 	'package_kody_id_redirects',
 	'package_slug_redirects',
 	'enablements',
+	'grants',
 ]
 
 export function isLiveRow(row: OrgTransferRow) {
@@ -157,6 +168,7 @@ export function planOrgTransfer(
 		movedTables.map((table) => [table, [] as Array<OrgTransferRow>]),
 	) as OrgTransferPlan['moves']
 	const orphans: Array<OrgTransferOrphan> = []
+	const droppedCreatorGrants: Array<OrgTransferRow> = []
 	const clashes: Array<OrgTransferFinding> = []
 	const blockers: Array<OrgTransferFinding> = []
 	const warnings: Array<OrgTransferFinding> = []
@@ -649,6 +661,18 @@ export function planOrgTransfer(
 		)
 	}
 
+	for (const row of source.package_app_cookie_warnings) {
+		orphan(
+			'package_app_cookie_warnings',
+			row,
+			text(row, 'cookie_name'),
+			packageIds.has(text(row, 'package_id'))
+				? 'cookie warning observations belong to the source owner; the destination owner can collect new findings'
+				: 'package no longer exists',
+			'delete',
+		)
+	}
+
 	for (const row of source.package_approval_requests) {
 		orphan(
 			'package_approval_requests',
@@ -678,6 +702,36 @@ export function planOrgTransfer(
 	}
 	for (const row of source.grants.filter(isLiveRow)) {
 		if (text(row, 'resource_type') === 'org') continue
+		// Profiles stay in the source org (ADR 0092), so their grants on moved
+		// resources are dropped and kept in the transfer backup. Grants on
+		// resources that stay keep pointing at them.
+		if (text(row, 'subject_type') === 'profile') {
+			if (resourceTypesThatStay.has(text(row, 'resource_type'))) continue
+			droppedCreatorGrants.push(row)
+			warnings.push({
+				code: 'profile_grant_dropped',
+				message: `Profile grant ${text(row, 'id')} on ${text(row, 'resource_type')} ${text(row, 'resource_id')} is dropped: profiles stay in @${from.slug}.`,
+				table: 'grants',
+				subject: text(row, 'id'),
+			})
+			continue
+		}
+		// A creator's own grant follows them into the target when they are a
+		// member there; otherwise the target's grants decide who reaches it.
+		if (row['origin'] === 'created' && text(row, 'subject_type') === 'user') {
+			if (snapshot.targetMembers.has(text(row, 'subject_id'))) {
+				moves.grants.push(row)
+			} else {
+				droppedCreatorGrants.push(row)
+				warnings.push({
+					code: 'creator_grant_dropped',
+					message: `Creator grant ${text(row, 'id')} on ${text(row, 'resource_type')} ${text(row, 'resource_id')} is dropped: its person is not a member of @${to.slug}.`,
+					table: 'grants',
+					subject: text(row, 'id'),
+				})
+			}
+			continue
+		}
 		blockers.push({
 			code: 'grant_names_source_subjects',
 			message: `Grant ${text(row, 'id')} on ${text(row, 'resource_type')} ${text(row, 'resource_id')} names @${from.slug} subjects; remove it before transferring.`,
@@ -745,6 +799,7 @@ export function planOrgTransfer(
 		storageCopies,
 		logoCopies,
 		orphans,
+		droppedCreatorGrants,
 		targetMemberIds: new Set(snapshot.targetMembers.keys()),
 		clashes,
 		blockers,

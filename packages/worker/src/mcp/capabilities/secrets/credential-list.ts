@@ -25,7 +25,9 @@ const credentialListItemSchema = z.object({
 	name: z.string(),
 	scope: z
 		.enum(['org', 'personal'])
-		.describe('personal: your own credential granted to this org.'),
+		.describe(
+			"org: stored in this org (secretSet scope 'user' or 'package', OAuth, MCP). personal: your own credential granted to this org. Same value as credential(key).scope.",
+		),
 	provider: z.string().nullable(),
 	description: z.string(),
 	hosts: z.array(z.string()),
@@ -66,6 +68,7 @@ export const credentialListCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'credentialList',
+		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
 			'List every credential you can use in this org as one shape: Keys (secrets) and the opt-in url, login, and signing kinds, OAuth integrations, and MCP servers (kind "mcp"). Includes your own personal credentials granted to this org (scope "personal"). Filter by text, kind, scope, package-scoped Keys, or package locks. Metadata only: never values. To add one, send the person to /connect/credential (kind, kindMode=hint|required, name, provider, allowedHosts).',

@@ -1,3 +1,9 @@
+/**
+ * soft-delete-read-filter: opt-out
+ *
+ * The admin user inventory has an explicit live/deleted filter. Target
+ * lookups used by mutation paths remain live-only.
+ */
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
 import { updateOrgBillingColumns } from '#worker/orgs/org-billing-columns.ts'
 import { d1ContainsLikePattern } from '#worker/d1-like-pattern.ts'
@@ -13,7 +19,6 @@ import {
 	parseStoredPlanName,
 	parseStripePlanName,
 	planNames,
-	resolveEntitlementLadderAfterPaidAccessChange,
 	resolvePlanWrite,
 	type EntitlementLadder,
 	type PlanName,
@@ -37,18 +42,15 @@ import {
 	emailVerificationStallCutoffIso,
 	emailVerificationStallSqlConditions,
 } from '#worker/identity/email-verification-stall.ts'
-import { forgiveCreditUsageBeforeUnlock } from '#worker/billing/credit-wallet.ts'
-import {
-	userEntitlementColumnsSql,
-	type UserEntitlementRow,
-} from '#worker/entitlements/service.ts'
 import {
 	parsePersonId,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { listAdminUserOrgMemberships } from '#worker/admin/orgs-data.ts'
+import { writeOrgManualPlan } from './org-billing-mutations.ts'
 
-export const adminUserRowSelectSql = `u.id, u.stable_user_id, u.username, u.email, u.email_verified_at, COALESCE(o.plan, 'free') AS plan, o.stripe_plan, COALESCE(o.entitlement_ladder, 'public') AS entitlement_ladder, o.stripe_customer_id, u.suspended_at,
+export const adminUserRowSelectSql = `u.id, u.stable_user_id, o.id AS org_id, u.username, u.email, u.email_verified_at, COALESCE(o.plan, 'free') AS plan, o.stripe_plan, COALESCE(o.entitlement_ladder, 'public') AS entitlement_ladder, o.stripe_customer_id, u.suspended_at, u.deleted_at, u.deleting_at,
 				o.email_outbound_paused_at, u.email_verification_delivery_status, u.email_verification_delivery_at, u.email_verification_delivery_detail, u.email_verification_delivery_class,
 				u.utm_source, u.utm_medium, u.utm_campaign, u.utm_content, u.utm_term, u.first_touch_landing_path, u.first_touch_referrer,
 				u.first_mcp_connected_at, u.first_execute_at, u.first_search_at, u.first_saved_package_at, u.mcp_client_name, u.last_active_at,
@@ -74,6 +76,8 @@ export const adminUserListItemFieldNames = [
 	'entitlementLadder',
 	'stripeCustomerLinked',
 	'suspended_at',
+	'deleted_at',
+	'deleting_at',
 	'email_outbound_paused_at',
 	'email_verification_delivery',
 	'email_verification_delivery_detail',
@@ -116,6 +120,8 @@ export type AdminUserListItem = Record<AdminUserListItemFieldName, unknown> & {
 	entitlementLadder: EntitlementLadder
 	stripeCustomerLinked: boolean
 	suspended_at: string | null
+	deleted_at: string | null
+	deleting_at: string | null
 	email_outbound_paused_at: string | null
 	email_verification_delivery: EmailVerificationDelivery | null
 	email_verification_delivery_detail: string | null
@@ -145,6 +151,7 @@ type AdminUserListFilters = {
 	query: string
 	role: RoleName | null
 	verification: AdminUserVerificationFilter | null
+	status: 'live' | 'deleted'
 }
 
 /**
@@ -198,6 +205,7 @@ function readAdminUserListFilters(url: URL): AdminUserListFilters {
 		verification: isAdminUserVerificationFilter(rawVerification)
 			? rawVerification
 			: null,
+		status: url.searchParams.get('status') === 'deleted' ? 'deleted' : 'live',
 	}
 }
 
@@ -209,7 +217,11 @@ function buildAdminUserListWhereClause(
 	filters: AdminUserListFilters,
 	now: Date,
 ) {
-	const conditions: Array<string> = ['u.deleted_at IS NULL']
+	const conditions: Array<string> = [
+		filters.status === 'deleted'
+			? 'u.deleted_at IS NOT NULL'
+			: 'u.deleted_at IS NULL',
+	]
 	const params: Array<string> = []
 	if (filters.query) {
 		const pattern = d1ContainsLikePattern(filters.query)
@@ -271,6 +283,7 @@ export async function readAdminUsersData(
 		query: string
 		role: string | null
 		verification: string | null
+		status?: 'live' | 'deleted'
 		page: number
 		pageSize: number
 		selectedStableUserId?: string | null
@@ -290,6 +303,7 @@ export async function readAdminUsersData(
 		verification: isAdminUserVerificationFilter(verification)
 			? verification
 			: null,
+		status: input.status === 'deleted' ? 'deleted' : 'live',
 	}
 
 	const { whereClause, params } = buildAdminUserListWhereClause(
@@ -299,32 +313,38 @@ export async function readAdminUsersData(
 	const selectedStableUserId = parseSelectedStableUserId(
 		input.selectedStableUserId,
 	)
+	const selectedUserRead = selectedStableUserId
+		? filters.status === 'deleted'
+			? loadAdminUserByTargetForPage(env.APP_DB, {
+					stableUserId: selectedStableUserId,
+				}).then((user) => (user?.deleted_at ? user : null))
+			: loadAdminUserByTarget(env.APP_DB, {
+					stableUserId: selectedStableUserId,
+				})
+		: Promise.resolve(null)
 
 	const [totalResult, userRows, selectedUser] = await Promise.all([
-		env.APP_DB.prepare(
-			`SELECT COUNT(*) AS total FROM users u ${whereClause}${andLiveDeletedAtSql('u')}`,
-		)
+		env.APP_DB.prepare(`SELECT COUNT(*) AS total FROM users u ${whereClause}`)
 			.bind(...params)
 			.first<{ total: number }>(),
 		env.APP_DB.prepare(
 			`SELECT ${adminUserRowSelectSql}
 			 FROM ${adminUsersFromSql}
-			 ${whereClause}${andLiveDeletedAtSql('u')}
+			 ${whereClause}
 			 ORDER BY u.id ASC
 			 LIMIT ? OFFSET ?`,
 		)
 			.bind(...params, pageSize, offset)
 			.all<AdminUserRow>(),
-		selectedStableUserId
-			? loadAdminUserByTarget(env.APP_DB, {
-					stableUserId: selectedStableUserId,
-				})
-			: Promise.resolve(null),
+		selectedUserRead,
 	])
 	const total = totalResult?.total ?? 0
 
 	const userIds = (userRows.results ?? []).map((row) => row.id)
 	const rolesByUserId = await loadRolesByUserIds(env.APP_DB, userIds)
+	const selectedUserOrgs = selectedUser
+		? await listAdminUserOrgMemberships(env.APP_DB, selectedUser.stableUserId)
+		: []
 
 	return {
 		ok: true,
@@ -332,9 +352,11 @@ export async function readAdminUsersData(
 			toAdminUserListItem(row, rolesByUserId.get(row.id) ?? []),
 		),
 		selectedUser,
+		selectedUserOrgs,
 		page,
 		pageSize,
 		total,
+		statusFilter: filters.status,
 		availableRoles: [...roleNames],
 		availablePlans: [...planNames],
 	}
@@ -390,6 +412,26 @@ export async function loadAdminUserByTarget(
 	return toAdminUserListItem(userRow, rolesByUserId.get(userRow.id) ?? [])
 }
 
+/** Page-only include-deleted read. Mutation paths continue using the live-only loader above. */
+export async function loadAdminUserByTargetForPage(
+	db: D1Database,
+	input: Pick<AdminUserTarget, 'stableUserId'>,
+): Promise<AdminUserListItem | null> {
+	const stableUserId = parsePersonId(input.stableUserId)
+	if (!stableUserId) return null
+	const userRow = await db
+		.prepare(
+			`SELECT ${adminUserRowSelectSql}
+			 FROM ${adminUsersFromSql}
+			 WHERE u.stable_user_id = ?`,
+		)
+		.bind(stableUserId)
+		.first<AdminUserRow>()
+	if (!userRow) return null
+	const rolesByUserId = await loadRolesByUserIds(db, [userRow.id])
+	return toAdminUserListItem(userRow, rolesByUserId.get(userRow.id) ?? [])
+}
+
 /**
  * Set the manual entitlement grant on the person's personal org (`orgs.plan`).
  * Nullish inputs map to `free`, the normal default; writers never persist
@@ -409,46 +451,21 @@ export async function updateAdminUserPlan(
 	)
 	if (!existingRow) return null
 
-	const now = input.now ?? new Date()
-	const nextPlan = resolvePlanWrite(input.plan)
-	const stripePlan = parseStripePlanName(existingRow.stripe_plan)
-	const nextLadder = resolveEntitlementLadderAfterPaidAccessChange({
-		currentLadder: parseEntitlementLadder(existingRow.entitlement_ladder),
-		manualPlan: nextPlan,
-		previousStripePlan: stripePlan,
-		nextStripePlan: stripePlan,
-	})
-	const entitlementRow = await db
-		.prepare(
-			`SELECT ${userEntitlementColumnsSql()} FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`,
-		)
-		.bind(existing.stableUserId)
-		.first<UserEntitlementRow>()
-	if (entitlementRow) {
-		await forgiveCreditUsageBeforeUnlock({
-			db,
-			userId: existing.stableUserId,
-			current: entitlementRow,
-			next: {
-				...entitlementRow,
-				plan: nextPlan,
-				entitlement_ladder: nextLadder,
-			},
-			now,
-		})
-	}
-	const updatedAt = utcSqliteTimestamp(now)
-	const planWrite = await updateOrgBillingColumns({
-		db,
-		orgId: existing.stableUserId,
-		setClause: 'plan = ?, entitlement_ladder = ?, updated_at = ?',
-		values: [nextPlan, nextLadder, updatedAt],
-	})
-	if ((planWrite.meta.changes ?? 0) === 0) {
+	// Signups since #3053 phase 2 have orgs.id distinct from the person id.
+	const orgId = existingRow.org_id
+	if (!orgId) {
 		throw new Error(
 			`Cannot update billing: missing personal org ${existing.stableUserId}.`,
 		)
 	}
+	const now = input.now ?? new Date()
+	const nextPlan = resolvePlanWrite(input.plan)
+	await writeOrgManualPlan({
+		db,
+		orgId,
+		plan: nextPlan,
+		now,
+	})
 
 	return loadAdminUserByTarget(db, { stableUserId: existing.stableUserId })
 }
@@ -490,10 +507,15 @@ export async function clearAdminUserEmailOutboundPause(
 ): Promise<AdminUserListItem | null> {
 	const existing = await loadAdminUserRowByStableUserId(db, input.stableUserId)
 	if (!existing) return null
+	if (!existing.org_id) {
+		throw new Error(
+			`Cannot clear email pause: missing personal org ${input.stableUserId}.`,
+		)
+	}
 
 	await updateOrgBillingColumns({
 		db,
-		orgId: input.stableUserId,
+		orgId: existing.org_id,
 		setClause: 'email_outbound_paused_at = NULL, updated_at = ?',
 		values: [utcSqliteTimestamp()],
 	})
@@ -539,6 +561,8 @@ export async function loadRolesByUserIds(
 type AdminUserRow = {
 	id: number
 	stable_user_id: OwnerId
+	/** Live personal org row id (`users.personal_org_id`); null when missing. */
+	org_id: string | null
 	username: string
 	email: string
 	email_verified_at: string | null
@@ -547,6 +571,8 @@ type AdminUserRow = {
 	entitlement_ladder: string | null
 	stripe_customer_id: string | null
 	suspended_at: string | null
+	deleted_at: string | null
+	deleting_at: string | null
 	email_outbound_paused_at: string | null
 	email_verification_delivery_status: string | null
 	email_verification_delivery_at: string | null
@@ -605,6 +631,8 @@ function toAdminUserListItem(
 		entitlementLadder: parseEntitlementLadder(row.entitlement_ladder),
 		stripeCustomerLinked: Boolean(row.stripe_customer_id),
 		suspended_at: row.suspended_at,
+		deleted_at: row.deleted_at,
+		deleting_at: row.deleting_at,
 		email_outbound_paused_at: row.email_outbound_paused_at,
 		email_verification_delivery: parseEmailVerificationDelivery({
 			status: row.email_verification_delivery_status,

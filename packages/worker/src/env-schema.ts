@@ -272,6 +272,13 @@ export const EnvSchema = object({
 	// signs; every key verifies (rotation: docs/contributing/secret-rotation.md).
 	// Unset derives one key from COOKIE_SECRET.
 	PACKAGE_APP_TICKET_KEYS: optionalPackageAppTicketKeysSchema,
+	// Execution context frame-signing keys (platform Worker only). JSON list
+	// `[{ kid, privateKeyJwk, notAfter }]`: `notAfter` is Unix epoch ms and
+	// each JWK carries only `kty`, `crv`, `x`, `d` (Ed25519, no `alg`). The
+	// first entry signs; every unexpired entry is published. Not read yet and
+	// may be unset; the feature requires it. Rotation:
+	// docs/contributing/secret-rotation.md.
+	ECP_FRAME_SIGNING_KEYS: optionalNonEmptyStringSchema,
 	// Percent of the existing usage limit at which the package-app usage
 	// circuit breaker opens. Unset means 100 (trip exactly at the limit).
 	PACKAGE_APP_USAGE_BREAKER_LIMIT_PERCENT: optionalPositivePercentSchema,
@@ -397,6 +404,15 @@ export const EnvSchema = object({
 	// unless DR_EXPORT_ENABLED is the literal string "true" and credentials
 	// are present. Secrets are set out-of-band via the Cloudflare API.
 	DR_EXPORT_ENABLED: optionalNonEmptyStringSchema,
+	// Shadow paced D1 backup lane (alongside REST export). Literal "true"
+	// plus DR S3 credentials; sources are DR_D1_PACED_SOURCES JSON.
+	DR_D1_PACED_BACKUP_ENABLED: optionalNonEmptyStringSchema,
+	// Weekly paced restore drill. Separate from the backup lane so OOMing
+	// drills can be paused without stopping shadow seals. Literal "true".
+	DR_D1_PACED_RESTORE_DRILL_ENABLED: optionalNonEmptyStringSchema,
+	// JSON array of { binding: "APP_DB"|"AUDIT_DB"|"JOBS_DB", name, id:uuid }.
+	// Production commits APP + AUDIT + JOBS (deploy may still expand UUIDs).
+	DR_D1_PACED_SOURCES: optionalNonEmptyStringSchema,
 	// Soft-delete purge lane (Teams P7). Default false: first production
 	// enable is dry-run via adminSoftDeletePurgeRun, then flip to "true".
 	SOFT_DELETE_PURGE_ENABLED: optionalNonEmptyStringSchema,

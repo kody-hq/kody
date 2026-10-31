@@ -9,6 +9,7 @@ import type git from 'isomorphic-git'
 import type * as CloudflareWorkers from 'cloudflare:workers'
 import type * as Artifacts from './artifacts.ts'
 import type * as Checks from './checks.ts'
+import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
 import type * as EntitySources from './entity-sources.ts'
 import type * as ExternalPublishClone from './external-publish-clone.ts'
 import type * as RepoSessions from './repo-sessions.ts'
@@ -19,6 +20,7 @@ import type * as CredentialNeedsApproval from '#worker/credentials/credential-ne
 import type * as StorageBuckets from '#worker/storage-buckets/service.ts'
 import {
 	repoSessionMockModule as mockModule,
+	publishedBundleArtifactsRepoSessionMocks,
 	restoreRepoSessionMockBaseline,
 	createDurableObjectState,
 	createEnv,
@@ -176,37 +178,30 @@ vi.mock('./artifacts.ts', async () => {
 	}
 })
 
-vi.mock('./checks.ts', () => ({
-	runRepoChecks: (...args: Parameters<typeof Checks.runRepoChecks>) =>
-		mockModule.runRepoChecks(...args),
-	validatePackageBundles: (
-		...args: Parameters<typeof Checks.validatePackageBundles>
-	) => mockModule.validatePackageBundles(...args),
-	runPackageTypecheckLanguageService: (
-		...args: Parameters<typeof Checks.runPackageTypecheckLanguageService>
-	) => mockModule.runPackageTypecheckLanguageService(...args),
-	formatFailedRepoCheckMessages: (
-		results: Array<{ ok: boolean; message: string }>,
-		fallback = 'Publish checks failed.',
-	) => {
-		const failed = results
-			.filter((entry) => !entry.ok)
-			.map((entry) => entry.message)
-			.filter((message) => message.trim().length > 0)
-		return failed.length > 0 ? failed.join('\n') : fallback
-	},
-	createSnapshotFilesWorkspace: (files: Record<string, string>) => ({
-		async readFile(path: string) {
-			return files[path.trim().replace(/^\/+/, '')] ?? null
+vi.mock('./checks.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof Checks>()
+	return {
+		runRepoChecks: (...args: Parameters<typeof Checks.runRepoChecks>) =>
+			mockModule.runRepoChecks(...args),
+		validatePackageBundles: (
+			...args: Parameters<typeof Checks.validatePackageBundles>
+		) => mockModule.validatePackageBundles(...args),
+		runPackageTypecheckLanguageService: (
+			...args: Parameters<typeof Checks.runPackageTypecheckLanguageService>
+		) => mockModule.runPackageTypecheckLanguageService(...args),
+		formatFailedRepoCheckMessages: (
+			results: Array<{ ok: boolean; message: string }>,
+			fallback = 'Publish checks failed.',
+		) => {
+			const failed = results
+				.filter((entry) => !entry.ok)
+				.map((entry) => entry.message)
+				.filter((message) => message.trim().length > 0)
+			return failed.length > 0 ? failed.join('\n') : fallback
 		},
-		async glob() {
-			return Object.keys(files).map((path) => ({
-				path,
-				type: 'file' as const,
-			}))
-		},
-	}),
-}))
+		createSnapshotFilesWorkspace: actual.createSnapshotFilesWorkspace,
+	}
+})
 
 vi.mock('./external-publish-clone.ts', () => ({
 	externalPublishWorkspaceDir: '/repo',
@@ -252,21 +247,7 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', async () => {
 	)
 	return {
 		...actual,
-		isPublishedPackageArtifactBuiltForCommit: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.isPublishedPackageArtifactBuiltForCommit
-			>
-		) => mockModule.isPublishedPackageArtifactBuiltForCommit(...args),
-		persistPublishedPackageArtifactTarget: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.persistPublishedPackageArtifactTarget
-			>
-		) => mockModule.persistPublishedPackageArtifactTarget(...args),
-		deletePublishedArtifactsForSource: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.deletePublishedArtifactsForSource
-			>
-		) => mockModule.deletePublishedArtifactsForSource(...args),
+		...publishedBundleArtifactsRepoSessionMocks(mockModule),
 	}
 })
 
@@ -403,4 +384,82 @@ test('isolated authoring checks run the publish checks on staged files and rejec
 		results: [{ message: expect.stringMatching(/expired or is missing/) }],
 	})
 	expect(mockModule.runRepoChecks.mock.calls.length).toBe(callsBefore)
+})
+
+test('isolated authoring checks expose staged binary files by path and size', async () => {
+	restoreRepoSessionMockBaseline()
+	const staged = {
+		sourceFiles: { 'package.json': '{"name":"@kody/demo"}' },
+		binaryFileSizes: { 'icons/icon-192.png': 52_126 },
+	}
+	const repo = repoSession(kvEnv({ get: vi.fn(async () => staged) }))
+	mockModule.runRepoChecks.mockResolvedValueOnce({
+		ok: false,
+		results: [],
+		manifest: null,
+		sourceFiles: {},
+	})
+	await repo.runIsolatedAuthoringChecks({
+		stagingKey: 'repo-checks-staging:v1:user-1:abc',
+		userId: ownerIdFromStored('user-1'),
+		baseUrl: 'https://kody.test',
+	})
+	const [{ workspace }] = mockModule.runRepoChecks.mock.lastCall as [
+		{
+			workspace: {
+				readFile(path: string): Promise<string | null>
+				stat(path: string): Promise<{ size: number } | null>
+				glob(pattern: string): Promise<Array<{ path: string }>>
+			}
+		},
+	]
+	expect((await workspace.glob('**/*')).map((file) => file.path)).toEqual([
+		'package.json',
+		'icons/icon-192.png',
+	])
+	await expect(workspace.readFile('icons/icon-192.png')).resolves.toBe('')
+	await expect(workspace.stat('icons/icon-192.png')).resolves.toEqual({
+		size: 52_126,
+	})
+	await expect(workspace.stat('package.json')).resolves.toBeNull()
+})
+
+test('isolated authoring checks keep the running step for takeLastCheckStep and clear it when done', async () => {
+	restoreRepoSessionMockBaseline()
+	const staged = { sourceFiles: { 'package.json': '{"name":"@kody/demo"}' } }
+	const repo = repoSession(kvEnv({ get: vi.fn(async () => staged) }))
+	const request = {
+		stagingKey: 'repo-checks-staging:v1:user-1:abc',
+		userId: ownerIdFromStored('user-1'),
+		baseUrl: 'https://kody.test',
+	}
+	let finish: (() => void) | undefined
+	const stepRecorded = new Promise<void>((resolveStep) => {
+		mockModule.runRepoChecks.mockImplementationOnce(
+			async (input: { onStep?: (step: RepoCheckStep) => Promise<void> }) => {
+				await input.onStep?.('credentials')
+				resolveStep()
+				await new Promise<void>((resolve) => {
+					finish = resolve
+				})
+				return { ok: false, results: [], manifest: null, sourceFiles: {} }
+			},
+		)
+	})
+	const run = repo.runIsolatedAuthoringChecks(request)
+	await stepRecorded
+	// What a caller reads after a memory or CPU reset mid-step.
+	await expect(repo.takeLastCheckStep()).resolves.toBe('credentials')
+	await expect(repo.takeLastCheckStep()).resolves.toBeNull()
+
+	mockModule.runRepoChecks.mockImplementationOnce(
+		async (input: { onStep?: (step: RepoCheckStep) => Promise<void> }) => {
+			await input.onStep?.('typecheck')
+			return { ok: false, results: [], manifest: null, sourceFiles: {} }
+		},
+	)
+	finish?.()
+	await run
+	await repo.runIsolatedAuthoringChecks(request)
+	await expect(repo.takeLastCheckStep()).resolves.toBeNull()
 })

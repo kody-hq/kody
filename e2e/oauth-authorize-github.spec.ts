@@ -112,6 +112,13 @@ test('GitHub sign-in from authorize returns with OAuth params intact', async ({
 
 	// New GitHub account parks on username choice, then resumes authorize
 	// (explicit redirectTo wins); prompt=login is stripped after create.
+	await expect(page).toHaveURL(/\/signup\/choose-username/)
+	await expect(
+		page.getByRole('link', { name: 'Start over', exact: true }),
+	).toHaveAttribute(
+		'href',
+		`/signup?${new URLSearchParams({ redirectTo: authorizePath })}`,
+	)
 	await completeUsernameChoice(page, 'mock-octo')
 	await expect(page).toHaveURL(/\/oauth\/authorize\?/)
 	await expect(page).not.toHaveURL(/prompt=login/)

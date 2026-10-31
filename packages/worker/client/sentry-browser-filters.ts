@@ -3,6 +3,8 @@
  * tests can exercise the predicates with plain event shapes.
  */
 
+import { isBrowserRetryableD1LockSentryEvent } from '@kody-internal/shared/d1-retry.ts'
+import { isPermissionDeniedError } from '#universal/permission-denied.ts'
 import {
 	isBrowserFetchNetworkError,
 	isBrowserFetchNetworkErrorMessage,
@@ -1881,7 +1883,33 @@ function filterCrabAppleUserAgentSpoofSentryEvent<
 	return event
 }
 
+/**
+ * Transient D1 platform-unavailability messages that already reach the
+ * browser via SSR / serverFn dehydration (KODY-B7). Shares
+ * {@link isBrowserRetryableD1LockSentryEvent} with the Worker / jobs-worker
+ * bare-message predicate so lock, long-running export, overload, and related
+ * D1 blips are not re-reported by the browser SDK after the server filter
+ * already treats them as expected platform noise.
+ */
+export function filterRetryableD1LockSentryEvent<
+	T extends SentryErrorEventLike,
+>(event: T, _originalException?: unknown): T | null {
+	if (isBrowserRetryableD1LockSentryEvent(event)) return null
+	return event
+}
+
 /** Combined browser beforeSend / capture gate used by the client SDK. */
+/**
+ * Route boundaries render a 403 explainer for expected permission denials
+ * (`PermissionDeniedError`, rebuilt from the Start serialization adapter).
+ */
+function filterPermissionDeniedSentryEvent<T>(
+	event: T,
+	originalException?: unknown,
+): T | null {
+	return isPermissionDeniedError(originalException) ? null : event
+}
+
 export function filterBrowserSentryEvent<T extends SentryErrorEventLike>(
 	event: T,
 	originalException?: unknown,
@@ -2041,6 +2069,12 @@ export function filterBrowserSentryEvent<T extends SentryErrorEventLike>(
 		filterSentryReplayCrossOriginIframeSentryEvent(event, originalException) ===
 		null
 	) {
+		return null
+	}
+	if (filterRetryableD1LockSentryEvent(event, originalException) === null) {
+		return null
+	}
+	if (filterPermissionDeniedSentryEvent(event, originalException) === null) {
 		return null
 	}
 	return event

@@ -22,7 +22,6 @@ export const dynamicWorkerDaySurfaces = [
 	'subscription',
 	'app_fetch',
 	'app_realtime',
-	'retriever',
 	'webhook',
 	'unknown',
 ] as const
@@ -37,7 +36,6 @@ const runSurfaceToDynamicWorkerDaySurface = {
 	subscription: 'subscription',
 	app_fetch: 'app_fetch',
 	app_realtime: 'app_realtime',
-	retriever: 'retriever',
 	webhook: 'webhook',
 } as const satisfies Record<RunSurface, DynamicWorkerDaySurface>
 
@@ -64,7 +62,6 @@ export function dynamicWorkerDaySurfaceFromRunSurface(
 		case 'subscription':
 		case 'app_fetch':
 		case 'app_realtime':
-		case 'retriever':
 		case 'webhook':
 			return runSurfaceToDynamicWorkerDaySurface[surface]
 		default: {

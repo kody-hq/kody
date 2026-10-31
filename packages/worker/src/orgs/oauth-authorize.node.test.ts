@@ -54,7 +54,7 @@ test('resolveAuthorizeOrg mismatches authorize URL and resource slugs', async ()
 	)
 })
 
-test('resolveAuthorizeOrg resolves a matching slug and strips org from resource', async () => {
+test('resolveAuthorizeOrg resolves a matching slug and canonicalizes the resource', async () => {
 	const db = await createDb()
 	const userId = testStableUserIdFromEmail('ada@example.com')
 	await provisionPersonalOrg(db, {
@@ -70,7 +70,7 @@ test('resolveAuthorizeOrg resolves a matching slug and strips org from resource'
 		userId,
 	})
 	expect(resolved).toEqual({ orgId: userId, slug: 'ada' })
-	expect(request.resource).toBe('https://kody.codes/mcp?profile=ci')
+	expect(request.resource).toBe('https://kody.codes/mcp')
 })
 
 test('resolveAccessibleOrgBySlug rejects unknown or inaccessible slugs', async () => {

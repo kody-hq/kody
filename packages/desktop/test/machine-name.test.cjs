@@ -1,0 +1,10 @@
+const assert = require('node:assert/strict')
+const { test } = require('node:test')
+const { machineName } = require('../machine-name.cjs')
+test('machine names satisfy registration rules for macOS, Windows, and Linux hostnames', () => {
+	assert.equal(machineName('Tanners-MacBook-Pro.local'), 'tanners-macbook-pro')
+	assert.equal(machineName('DESKTOP-123ABC'), 'desktop-123abc')
+	assert.equal(machineName('build-box'), 'build-box')
+	for (const name of ['', '💻', '.my host.', 'x'.repeat(255)])
+		assert.match(machineName(name), /^[a-z0-9][a-z0-9-]{0,62}$/)
+})

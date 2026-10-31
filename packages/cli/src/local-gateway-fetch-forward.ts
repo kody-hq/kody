@@ -15,17 +15,6 @@ import {
 } from './capability-proxy.js'
 import { readBodyBuffer, writeWebResponse } from './local-runtime-bridge.js'
 import { type MockFetchGateway } from './mock/mock-fetch-gateway.js'
-import { runSecretHeader } from './local-runtime-source.js'
-
-const gatewayMetaHeaderNames = [
-	gatewayFetchUrlHeaderName,
-	gatewayFetchMethodHeaderName,
-	gatewayFetchPackageIdHeaderName,
-	gatewayFetchHeadersHeaderName,
-	secretResolutionHeaderName,
-	'content-type',
-	'content-length',
-] as const
 
 function headerValue(
 	headers: IncomingMessage['headers'],
@@ -217,13 +206,4 @@ export async function forwardLocalGatewayFetchStream(input: {
 		...(contentLength ? { contentLength } : {}),
 	})
 	await writeWebResponse(input.response, upstream)
-}
-
-/** Headers the workerd bridge may forward (excludes the run secret). */
-export function isGatewayFetchForwardHeader(name: string): boolean {
-	const lower = name.toLowerCase()
-	if (lower === runSecretHeader) return false
-	return gatewayMetaHeaderNames.some(
-		(allowed) => allowed.toLowerCase() === lower,
-	)
 }

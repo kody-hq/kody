@@ -1,14 +1,27 @@
+import {
+	defaultEmailMessageView,
+	isEmailMessageView,
+	type EmailMessageView,
+} from '#universal/email-message-view.ts'
 import { type AccountEmailLoaderData } from '#universal/loader-data.ts'
 import { searchText } from '../filter-search.ts'
 
 export type EmailListInput = {
 	org: string | null
 	query: string
-	classification: AccountEmailLoaderData['classification']
+	view: EmailMessageView
 	page: number
 	pageSize: number
 }
 export type EmailListData = Omit<AccountEmailLoaderData, 'selectedMessage'>
+/** A member without the org-wide `email:read` grant. Expected, not a failure. */
+export type EmailMissingGrant = { missingGrant: 'email:read' }
+export type EmailListResult = EmailListData | EmailMissingGrant
+export function isEmailMissingGrant(
+	value: EmailListResult | undefined,
+): value is EmailMissingGrant {
+	return value !== undefined && 'missingGrant' in value
+}
 export type EmailDetail = AccountEmailLoaderData['selectedMessage']
 
 function positive(
@@ -21,20 +34,26 @@ function positive(
 		? Math.min(parsed, max)
 		: fallback
 }
+/** `classification=quarantined` is the pre-view spelling of the same filter. */
+function readView(search: Record<string, unknown>): EmailMessageView {
+	if (isEmailMessageView(search.view)) return search.view
+	if (
+		search.classification === 'quarantined' ||
+		search.classification === 'spam'
+	)
+		return search.classification
+	return defaultEmailMessageView
+}
 export function emailSearch(search: Record<string, unknown>): {
 	q: string
-	classification: EmailListInput['classification']
+	view: EmailMessageView
 	page: number
 	pageSize: number
 	selected: string
 } {
 	return {
 		q: searchText(search.q) ?? '',
-		classification:
-			search.classification === 'accepted' ||
-			search.classification === 'quarantined'
-				? search.classification
-				: null,
+		view: readView(search),
 		page: positive(search.page, 1),
 		pageSize: positive(search.pageSize, 25, 100),
 		selected: typeof search.selected === 'string' ? search.selected.trim() : '',
@@ -48,7 +67,7 @@ export function emailResourceInput(
 		list: {
 			org: params.orgSlug,
 			query: search.q.trim(),
-			classification: search.classification,
+			view: search.view,
 			page: search.page,
 			pageSize: search.pageSize,
 		} satisfies EmailListInput,
@@ -67,7 +86,7 @@ export const emailKeys = {
 			...emailKeys.lists(actor, input.org),
 			{
 				query: input.query,
-				classification: input.classification,
+				view: input.view,
 				page: input.page,
 				pageSize: input.pageSize,
 			},
@@ -89,6 +108,6 @@ export function emailListHref(input: EmailListInput) {
 		page: String(input.page),
 		pageSize: String(input.pageSize),
 	})
-	if (input.classification) search.set('classification', input.classification)
+	if (input.view !== defaultEmailMessageView) search.set('view', input.view)
 	return `${base}?${search}`
 }

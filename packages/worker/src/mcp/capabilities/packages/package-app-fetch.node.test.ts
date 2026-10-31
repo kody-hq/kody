@@ -147,11 +147,12 @@ test('packageAppFetch dispatches synthetic in-process app requests against hoste
 		},
 	})
 
-	expect(result).toEqual({
+	expect(result).toMatchObject({
 		status: 200,
 		headers: { 'content-type': 'application/json' },
 		body: '{"ok":true}',
 		truncated: false,
+		kody_id_deprecation: expect.stringContaining('Deprecated:'),
 	})
 	expect(mockModule.servePackageAppRequest).toHaveBeenCalledWith(
 		expect.objectContaining({
@@ -245,8 +246,10 @@ test('packageAppFetch rejects invalid callers, paths, and missing packages', asy
 			{},
 			'packageAppFetch path must not contain parent traversal segments.',
 		],
+		[{ ...demo, method: 'POST', body: 'x'.repeat(102_401) }, {}, 'Too big'],
 		[
-			{ ...demo, method: 'POST', body: 'x'.repeat(102_401) },
+			// Under the character cap but over the UTF-8 byte cap.
+			{ ...demo, method: 'POST', body: 'é'.repeat(51_201) },
 			{},
 			'request body exceeds 102400 bytes',
 		],

@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare'
 /**
  * Org audit rows for credential writes that had none: create, value replace,
  * delete, disconnect, rename, allowed packages, and plain detail edits, for
@@ -11,7 +12,11 @@
  *
  * Details carry names and field names only, never credential values.
  */
-import { type CredentialKind } from './credential-ids.ts'
+import {
+	credentialPermissionFamily,
+	type CredentialKind,
+} from './credential-ids.ts'
+import { grantCreatorAccess } from '#worker/orgs/creator-access.ts'
 import {
 	recordOrgAuditEvent,
 	type OrgAuditOutboxEvent,
@@ -80,6 +85,32 @@ export async function recordCredentialAudit(
 		: [changes as CredentialAuditChange]
 	for (const change of list) {
 		await recordOrgAuditEvent(writer, credentialAuditEvent(change))
+	}
+	// Every credential create is audited here, so this is where its creator
+	// gets access. Vault bindings are org-wide configuration, never granted.
+	for (const change of list) {
+		if (change.action !== credentialAuditActions.created) continue
+		if (change.credential.kind === 'vault' || !writer.env) continue
+		// The credential is stored; adminCreatorAccessBackfill repairs a
+		// missed grant, so it must not fail the create.
+		await grantCreatorAccess({
+			env: writer.env,
+			orgId: change.orgId,
+			creatorUserId: writer.actorUserId,
+			creatorProfileId: writer.actorProfileId ?? null,
+			audit: writer,
+			resources: [
+				{
+					resourceType: 'credential',
+					resourceId: change.credential.id,
+					family: credentialPermissionFamily(change.credential.kind),
+				},
+			],
+		}).catch((error: unknown) => {
+			Sentry.captureException(error, {
+				tags: { context: 'credential-creator-grant' },
+			})
+		})
 	}
 }
 

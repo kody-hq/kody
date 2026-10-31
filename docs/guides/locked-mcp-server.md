@@ -18,7 +18,8 @@ Agent notes — for AI agents explaining or recreating this loop:
 - This is a runtime grant on mcp_server_settings (usage_mode + allowed
   package ids). It is not package publish lock (saved_packages.locked_at).
 - Do not put usage_mode on package.json. Lock the server from
-  mcpServerLock or /@<slug>/-/mcp-servers/:serverId.
+  `resourceLock({ kind: 'mcp_server', server, package_id })` or
+  `/@<slug>/-/mcp-servers/:serverId`.
 - Agents can lock (grant a package). Agents cannot unlock or remove a grant.
   Unlock is website-only: switch Usage back to any context.
 - After lock, search and execute hide kody.mcp["server-name"] unless the
@@ -38,7 +39,8 @@ This is the MCP counterpart to
 [Gmail drafts without send](./locked-gmail-drafts.md). OAuth tokens stay as wide
 as the provider issued them; a publish lock holds a package tree. An MCP server
 lock holds **who may call the connector**. Integration connections use the same
-tighten-only grant via `integrationLock`.
+tighten-only grant via
+`resourceLock({ kind: 'integration', name, package_id })`.
 
 ## What the lock does
 
@@ -52,9 +54,10 @@ tighten-only grant via `integrationLock`.
 Tokens stay in the per-user MCP client hub. Disable still hides tools for
 everyone; lock leaves the connection up and narrows who may use it.
 
-`mcpServerLock { server, package_id }` switches the server to packages mode and
-adds that package id. Additional grants accumulate. Unlocking or removing a
-grant is website-only at `/@<slug>/-/mcp-servers/:serverId`.
+`resourceLock({ kind: 'mcp_server', server, package_id })` switches the server
+to packages mode and adds that package id. Additional grants accumulate.
+Unlocking or removing a grant is website-only at
+`/@<slug>/-/mcp-servers/:serverId`.
 
 ## The loop
 
@@ -67,18 +70,19 @@ grant is website-only at `/@<slug>/-/mcp-servers/:serverId`.
    package name leaf. The export calls `kody.mcp["server-name"]` for the allowed
    tools only. Do not re-export the whole server.
 4. **Publish, then lock.** After the first successful publish, call
-   `mcpServerLock` with the server id or name and the saved `package_id` (or set
-   Usage on `/@<slug>/-/mcp-servers/:serverId`). Say so in chat so the owner
-   knows unlock is a website click.
+   `resourceLock({ kind: 'mcp_server', server, package_id })` with the server id
+   or name and the saved `package_id` (or set Usage on
+   `/@<slug>/-/mcp-servers/:serverId`). Say so in chat so the owner knows unlock
+   is a website click.
 5. **Smoke-test from the package, not execute.** Invoke the named export. A
    later `execute` that calls `kody.mcp["server-name"]` should fail with the
    account URL.
 
 ## Later grants
 
-`mcpServerLock` with another `package_id` adds that package. It does not unlock.
-The owner removes a grant or returns the server to any context on the account
-page.
+`resourceLock({ kind: 'mcp_server', server, package_id })` with another
+`package_id` adds that package. It does not unlock. The owner removes a grant or
+returns the server to any context on the account page.
 
 If a package needs the lock off, send the owner to
 `/@<slug>/-/mcp-servers/:serverId`. Do not invent an unlock capability.
@@ -88,7 +92,8 @@ If a package needs the lock off, send the owner to
 Load `locked_mcp_server` when someone wants a connected MCP server that execute
 must not call, when a home or third-party MCP is coarser than the intended
 package, or when they ask how MCP usage compares to publish lock or
-`integrationLock`. For connecting the server, load the
-[usage page](../use/mcp-client-servers.md) and `local_mcp_tunnels` for home LAN
-servers. For holding a published tree still, load `locked_gmail_drafts` and
+`resourceLock({ kind: 'integration', name, package_id })`. For connecting the
+server, load the [usage page](../use/mcp-client-servers.md) and
+`local_mcp_tunnels` for home LAN servers. For holding a published tree still,
+load `locked_gmail_drafts` and
 [Packages → Publish lock](../use/packages.md#publish-lock).

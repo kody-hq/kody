@@ -92,6 +92,8 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 			{ slug: 'triggers', label: 'Jobs, workflows, and webhooks' },
 			{ slug: 'platform-efficiency', label: 'Runtime and efficiency' },
 			{ slug: 'local-execute', label: 'Local CLI execute' },
+			{ slug: 'execution-contexts', label: 'Execution contexts' },
+			{ slug: 'profiles', label: 'Profiles' },
 			{ slug: 'auth-setup-git', label: 'Git credential helper' },
 			{ slug: 'open-api', label: 'Kody Open API' },
 			{ slug: 'api-versioning', label: 'API versioning' },
@@ -120,6 +122,7 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 			},
 			{ slug: 'package-authoring', label: 'Authoring' },
 			{ slug: 'package-sharing', label: 'Sharing a package' },
+			{ slug: 'shared-packages', label: 'Shared packages for many accounts' },
 			{ slug: 'package-skills', label: 'Package skills' },
 			{ slug: 'package-apps', label: 'Package apps' },
 			{
@@ -128,6 +131,7 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 			},
 			{ slug: 'package-subscriptions', label: 'Subscriptions and events' },
 			{ slug: 'mcp-events', label: 'MCP Events' },
+			{ slug: 'wake-your-agent', label: 'Wake your agent' },
 			{ slug: 'heavy-work-offload', label: 'Offload heavy work' },
 		],
 	},
@@ -174,6 +178,7 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 		label: 'Help',
 		description: 'When Kody gets in the way.',
 		items: [
+			{ slug: 'limited-browser-sign-in', label: 'Sign in from an e-reader' },
 			{
 				slug: 'cant-open-or-get-mail',
 				label: "Can't open or get mail",
@@ -236,6 +241,8 @@ export const legacyGuideIdAliases: Readonly<
  */
 export const useDocGuideTwins: Readonly<Record<string, string>> = {
 	'what-can-kody-do': 'what-is-kody',
+	'package-skills': 'package-skills',
+	'mcp-events': 'mcp-events',
 }
 
 export function isReservedDocsIndexSlug(slug: string): boolean {

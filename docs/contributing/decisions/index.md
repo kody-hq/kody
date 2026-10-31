@@ -39,6 +39,11 @@ When a later record changes a decision, mark the old one `superseded by NNNN`
 rather than editing or deleting it, and list it under
 [Historical / UI / implementation](#historical--ui--implementation).
 
+Keep the [primitives map](../architecture/primitives.yaml) `adrs` lists in sync
+in the same PR: add a new record to every primitive it defines or materially
+shapes, and replace a superseded record's path with the new one.
+`npm run primitives:check` fails on missing or superseded paths.
+
 Add new steering records to the steering list, not a catch-all numbered dump.
 
 ## Steering list
@@ -138,7 +143,8 @@ Open these before proposing a new primitive, surface, or storage home.
 - [0059 — MCP Events extension (webhook profile) behind a flag](./0059-mcp-events-extension-behind-flag.md)
   — `kody.emits` topics with `mcp: true` reach ChatGPT-style webhook subscribers
   through the existing package events consumer; flag plus client capability
-  gate; Workers-limited SSRF guard documented
+  gate; Workers-limited SSRF guard documented (client-declaration gate
+  superseded by 0087)
 - [0060 — Owner ids and person ids are separate types; storage stays keyed as-is](./0060-owner-and-person-ids.md)
   — `OwnerId` (owning org) vs `PersonId` (actor), `personalOrgId` is the only
   conversion; no `orgs` tables, column renames, or storage re-keying yet
@@ -213,6 +219,65 @@ Open these before proposing a new primitive, surface, or storage home.
   — one server backend (`device_start` / `device_poll`), two entry points
   (`/connect/oauth` + MCP); `device_code` and client secret stay server-side;
   additive `device_authorization_url` + `flow=device`
+- [0078 — Webhook on/off is its enablement](./0078-webhook-on-off-is-its-enablement.md)
+- [0079 — Remove package retrievers](./0079-remove-package-retrievers.md) —
+  remove implicit package execution from search and context enrichment; use
+  explicit `execute` calls for package exports
+- [0080 — One `resourceLock` capability; no per-resource lock capabilities](./0080-one-resource-lock-capability.md)
+  — per-kind permission is checked in the handler (`orgPermission: 'none'`);
+  lock REST paths collapse to `POST /v1/resource-locks`; unlock stays
+  website-only
+- [0081 — Follow Recent updates are the default delivery](./0081-follow-recent-updates-default-delivery.md)
+  — events no enabled subscription handles land in a bounded per-follow Recent
+  updates list (20 per follow, 30 days, zero credits); builds on 0073
+- [0082 — OAuth device authorization grant for the Kody CLI](./0082-cli-oauth-device-authorization-grant.md)
+  — RFC 8628 on Kody's own authorization server for the official CLI only;
+  `kody login --device` and `/device`; amends 0056 and 0076
+- [0083 — Context runs never receive credential values](./0083-context-runs-never-see-credential-values.md)
+  — credentialed requests from execution-context runs leave from Kody cloud, so
+  the machine never sees credential values
+- [0084: Org feature flag rows target the request org](./0084-org-feature-flag-rows.md)
+  Per-org rows sit between user overrides and the global row and apply only in
+  that org's request context; no org context means no org row
+- [0085: Execute takes code only](./0085-execute-takes-code-only.md) The
+  server-side execute `invoke` shortcut and its flag are removed; one export is
+  a two-line `code` passthrough, and CLI `--invoke` stays client-side
+- [0086 — Automations choose an execution context](./0086-automation-execution-contexts.md)
+  — per-automation `execution` (context or own chain), offline fails or queues
+  (default 60 min, max 24 h), runs use the automation actor's access
+- [0087: MCP Events need no client declaration](./0087-mcp-events-no-client-declaration.md)
+  The OAuth gate and the `mcp-events-extension` flag gate advertising and
+  subscribing; clients declare nothing, matching the OpenAI profile (supersedes
+  0059's client-declaration gate)
+- [0088: Team orgs have a public page at `/@slug`](./0088-public-team-org-pages.md)
+  Public by default with a create-time choice; owners toggle it; lists only
+  public packages, never members; private orgs 404 like unknown handles
+- [0089: Every package declares its capabilities; publish checks the import closure](./0089-packages-declare-capabilities.md)
+  `kody.capabilities` on every package; an app's effective set is its closure;
+  publish and `kody dev check` warn (then fail) on unverifiable calls; runtime
+  is a backstop
+- [0090: `login` credentials are Kody-managed OAuth refresh](./0090-login-credentials-are-kody-managed-oauth-refresh.md)
+  Kody holds the refresh token, runs the exchange on the host, and keeps the
+  session encrypted; code never holds a refresh or access token
+- [0091: Agents register people with auth.md `service_auth`](./0091-auth-md-service-auth-registration.md)
+  `POST /agent/identity` takes `service_auth` only; the claim mints a user-owned
+  `kody_at_` (default `long`, amends 0056); no identity assertion or JWT-bearer
+  refresh; anonymous stays behind a flag that is off
+- [0092: Profiles are scoped agent identities, capped by their parent chain](./0092-profiles-are-scoped-agent-identities.md)
+  Person-owned profiles with snapshot grants, capped at run time by the acting
+  person and every parent; no epoch bump; behind the `profiles` flag
+- [0093: Execution-context runs can run host commands after a local opt-in](./0093-execution-context-host-commands.md)
+  Off by default; only the machine turns it on, anyone with access turns it off;
+  `execution_context:command` (operator by default, shares only when granted);
+  `kody.command.*` with daemon-held background jobs; audited without env values;
+  macOS and Linux only
+- [0094: Package-app visitors sign in from limited browsers](./0094-package-app-limited-browser-sign-in.md)
+  `/login`, `/verify`, and consent work as plain HTML; "Sign in on another
+  device" reuses the 0082 device code (amends 0082)
+- [0095: A visit from another org to an internal package app bills the visiting org](./0095-cross-org-package-app-visits-bill-the-visitor-org.md)
+  Outside collaborators on an internal app pay for their metered work from their
+  personal org; the publisher keeps the worker day; public apps stay
+  publisher-paid; the billed org rides on the request, never the worker key
 
 ## Historical / UI / implementation
 

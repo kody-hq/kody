@@ -23,6 +23,13 @@ export const repoPushQueueWaitMsHeader = 'Kody-Push-Queue-Wait-Ms'
 export const repoPushQueueAttemptsHeader = 'Kody-Push-Queue-Attempts'
 /** Why the queue rejected a push: `timeout`, `full`, `unavailable`. */
 export const repoPushQueueOutcomeHeader = 'Kody-Push-Queue-Outcome'
+/** Pushes in the repo's queue (landing, waiting, running) when this one arrived. */
+export const repoPushQueueDepthHeader = 'Kody-Push-Queue-Depth'
+/**
+ * Milliseconds this push spent in the Durable Object, from arrival until its
+ * response was ready: landing, waiting for its turn, and the Artifacts send.
+ */
+export const repoPushQueueWallMsHeader = 'Kody-Push-Queue-Wall-Ms'
 
 /** `Kody-Push-Queue` values. */
 export const repoPushQueuePathQueued = 'v1'

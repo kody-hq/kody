@@ -9,10 +9,13 @@ import {
 	endPackageAppVisit,
 	endPackageAppVisitWithResponse,
 	forgetPackageAppVisitLiveForTests,
+	mintPackageAppAnonymousVisitTicket,
 	mintPackageAppVisitTicket,
+	packageAppAnonymousVisitTicketPrefix,
 	packageAppVisitTicketPrefix,
 	packageAppVisitTicketTtlMs,
 	PackageAppVisitTicketError,
+	requestContextFromVisitClaims,
 	resetPackageAppVisitNoncesForTests,
 	verifyPackageAppVisitTicket,
 	verifyPackageAppVisitTicketFromRequest,
@@ -82,7 +85,7 @@ test('a visit ticket names only its visitor and refuses another visitor, app, co
 	expect(claimsA.credentialClientBinding).toBe('run:person-a')
 	expect(claimsB.visitor).toEqual(visitorB)
 	expect(claimsB.credentialClientBinding).toBe('run:person-b')
-	expect(claimsA.visitor.userId).not.toBe(claimsB.visitor.userId)
+	expect(claimsA.visitor?.userId).not.toBe(claimsB.visitor?.userId)
 	expect(claimsA.nonce).not.toBe(claimsB.nonce)
 
 	await expect(
@@ -106,6 +109,23 @@ test('a visit ticket names only its visitor and refuses another visitor, app, co
 			audience: { ...audience, host: 'https://other.example' },
 		}),
 	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+})
+
+test('a package app visit ticket binds the live consent grant scopes', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const minted = await mintFor(visitorA, {
+		grantId: 'grant-live',
+		scopes: ['profile', 'email', 'need:calendar'],
+	})
+	const claims = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: minted.ticket,
+		audience,
+	})
+	expect(claims).toMatchObject({
+		grantId: 'grant-live',
+		scopes: ['profile', 'email', 'need:calendar'],
+	})
 })
 
 test('a replayed, expired, or forged visit ticket is refused', async () => {
@@ -225,7 +245,6 @@ test('createPackageAppRequestVisit mints a ticket only when the visitor is the a
 			id: null,
 			orgId: owner.userId,
 			scopes: null,
-			profileName: null,
 		},
 		membership: { role: 'owner' as const },
 	}
@@ -254,13 +273,109 @@ test('createPackageAppRequestVisit mints a ticket only when the visitor is the a
 		audience,
 		request: null,
 	})
-	expect(anonymous.ticket).toBeNull()
+	expect(anonymous.ticket).toMatch(/^kva1\./)
+	expect(anonymous.nonce).toBeTruthy()
 	expect(anonymous.visitor).toBeNull()
 	expect(anonymous.request).toBeNull()
+	expect(anonymous.claims).toBeNull()
 	expect(anonymous.credentialClientBinding).toMatch(/^run:/)
 	expect(anonymous.credentialClientBinding).not.toBe(
 		acting.credentialClientBinding,
 	)
+	await expect(
+		verifyPackageAppVisitTicket({
+			env: secretEnv,
+			ticket: anonymous.ticket!,
+			audience,
+		}),
+	).resolves.toEqual({
+		visitor: null,
+		audience,
+		nonce: anonymous.nonce,
+		credentialClientBinding: anonymous.credentialClientBinding,
+		exp: expect.any(Number),
+	})
+})
+
+test('an anonymous ticket names nobody, binds one request, and follows the ticket rules', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const first = await createPackageAppRequestVisit({
+		env: secretEnv,
+		visitor: null,
+		owner,
+		audience,
+		request: null,
+	})
+	const second = await createPackageAppRequestVisit({
+		env: secretEnv,
+		visitor: null,
+		owner,
+		audience,
+		request: null,
+	})
+	expect(first.credentialClientBinding).not.toBe(second.credentialClientBinding)
+	expect(first.nonce).not.toBe(second.nonce)
+	const verify = (ticket: string, against = audience) =>
+		verifyPackageAppVisitTicket({ env: secretEnv, ticket, audience: against })
+	const firstClaims = await verify(first.ticket!)
+	expect(firstClaims.visitor).toBeNull()
+	expect(firstClaims).not.toHaveProperty('owner')
+	expect(firstClaims.credentialClientBinding).toBe(
+		first.credentialClientBinding,
+	)
+	expect(JSON.stringify(firstClaims)).not.toContain(owner.email)
+
+	// Another app or commit, a forged signature, or a prefix swap is refused.
+	await expect(
+		verify(first.ticket!, { ...audience, packageId: 'pkg-other' }),
+	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+	await expect(
+		verify(first.ticket!, { ...audience, publishedCommit: 'commit-other' }),
+	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+	await expect(
+		verify(`${first.ticket!.slice(0, -2)}xx`),
+	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+	await expect(
+		verify(
+			first.ticket!.replace(
+				packageAppAnonymousVisitTicketPrefix,
+				packageAppVisitTicketPrefix,
+			),
+		),
+	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+	const acting = await mintFor(visitorA)
+	await expect(
+		verify(
+			acting.ticket.replace(
+				packageAppVisitTicketPrefix,
+				packageAppAnonymousVisitTicketPrefix,
+			),
+		),
+	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
+
+	// The request's end burns it; the other request is unaffected.
+	endPackageAppVisit(first.nonce)
+	await expect(verify(first.ticket!)).rejects.toBeInstanceOf(
+		PackageAppVisitTicketError,
+	)
+	await expect(verify(second.ticket!)).resolves.toMatchObject({
+		visitor: null,
+		credentialClientBinding: second.credentialClientBinding,
+	})
+})
+
+test('a visit ticket is never minted without a credential client binding', async () => {
+	resetPackageAppVisitNoncesForTests()
+	await expect(
+		mintPackageAppAnonymousVisitTicket({
+			env: secretEnv,
+			audience,
+			credentialClientBinding: ' ',
+		}),
+	).rejects.toThrow('credential client binding')
+	await expect(
+		mintFor(visitorA, { credentialClientBinding: '' }),
+	).rejects.toThrow('credential client binding')
 })
 
 test('endPackageAppVisitWithResponse keeps the ticket live until the body ends', async () => {
@@ -314,4 +429,155 @@ test('endPackageAppVisitWithResponse burns the nonce when the client cancels', a
 			}),
 		).rejects.toBeInstanceOf(PackageAppVisitTicketError)
 	})
+})
+
+test('an outside-org visitor gets an executor-only ticket that names them without a role', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const outsider = await createPackageAppRequestVisit({
+		env: secretEnv,
+		visitor: null,
+		owner,
+		audience,
+		request: null,
+		grantId: 'grant-outsider',
+		scopes: ['profile', 'need:github'],
+		executorVisitor: visitorB,
+	})
+	expect(outsider.ticket).toMatch(/^kvt1\./)
+	expect(outsider.visitor).toBeNull()
+	expect(outsider.request).toBeNull()
+	const claims = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: outsider.ticket!,
+		audience,
+	})
+	expect(claims).toMatchObject({
+		executorOnly: true,
+		visitor: { userId: visitorB.userId, username: 'beta', role: null },
+		grantId: 'grant-outsider',
+		scopes: ['profile', 'need:github'],
+	})
+	const member = await mintFor(visitorA)
+	expect(
+		(
+			await verifyPackageAppVisitTicket({
+				env: secretEnv,
+				ticket: member.ticket,
+				audience,
+			})
+		).executorOnly,
+	).toBeUndefined()
+})
+
+test('a narrowed visitor credential stays narrowed through the visit ticket', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const request = {
+		org: { id: owner.userId, slug: owner.orgSlug },
+		actor: { userId: visitorB.userId, username: visitorB.username },
+		attribution: { kind: 'user' as const, userId: visitorB.userId },
+		credential: {
+			kind: 'package-app' as const,
+			id: null,
+			orgId: owner.userId,
+			scopes: ['package:execute' as const, 'secret:use' as const],
+		},
+		membership: { role: 'member' as const },
+	}
+	const visit = await createPackageAppRequestVisit({
+		env: secretEnv,
+		visitor: visitorB,
+		owner,
+		audience,
+		request,
+	})
+	expect(visit.request?.credential).toMatchObject({
+		scopes: ['package:execute', 'secret:use'],
+	})
+	const claims = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: visit.ticket!,
+		audience,
+	})
+	if (!claims.visitor) throw new Error('expected a visitor ticket')
+	expect(requestContextFromVisitClaims(claims).credential).toEqual({
+		kind: 'package-app',
+		id: null,
+		orgId: owner.userId,
+		scopes: ['package:execute', 'secret:use'],
+	})
+
+	const unscoped = await mintFor(visitorA)
+	const unscopedClaims = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: unscoped.ticket,
+		audience,
+	})
+	if (!unscopedClaims.visitor) throw new Error('expected a visitor ticket')
+	expect(
+		requestContextFromVisitClaims(unscopedClaims).credential,
+	).toMatchObject({ scopes: null })
+})
+
+test('a profile visitor keeps its profile and chain through the visit ticket', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const visit = await createPackageAppRequestVisit({
+		env: secretEnv,
+		visitor: visitorB,
+		owner,
+		audience,
+		request: {
+			org: { id: owner.userId, slug: owner.orgSlug },
+			actor: { userId: visitorB.userId, username: visitorB.username },
+			attribution: { kind: 'user' as const, userId: visitorB.userId },
+			credential: {
+				kind: 'package-app' as const,
+				id: null,
+				orgId: owner.userId,
+				scopes: null,
+				profileId: 'prf_child',
+				profileChain: ['prf_root', 'prf_child'],
+			},
+			membership: { role: 'member' as const },
+		},
+	})
+	const claims = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: visit.ticket!,
+		audience,
+	})
+	if (!claims.visitor) throw new Error('expected a visitor ticket')
+	expect(requestContextFromVisitClaims(claims).credential).toMatchObject({
+		profileId: 'prf_child',
+		profileChain: ['prf_root', 'prf_child'],
+	})
+})
+
+test('a visit ticket carries the billed org of a cross-org visit into the rebuilt request', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const outsider: RuntimePackageAppVisitor = {
+		userId: personIdFromStored('person-outside'),
+		username: 'outside',
+		role: null,
+	}
+	const billing = { orgId: ownerIdFromStored('org-visitor') }
+	const billed = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: (await mintFor(outsider, { billing })).ticket,
+		audience,
+	})
+	expect(billed.visitor).not.toBeNull()
+	if (!billed.visitor) throw new Error('expected a named visit')
+	expect(billed.billing).toEqual(billing)
+	const request = requestContextFromVisitClaims(billed)
+	expect(request.org.id).toBe(owner.userId)
+	expect(request.billing).toEqual(billing)
+
+	const member = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: (await mintFor(visitorB)).ticket,
+		audience,
+	})
+	if (!member.visitor) throw new Error('expected a named visit')
+	expect(member.billing).toBeUndefined()
+	expect(requestContextFromVisitClaims(member).billing).toBeUndefined()
 })

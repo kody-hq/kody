@@ -14,6 +14,7 @@ import type * as SavedPackageRepo from '#worker/package-registry/repo.ts'
 import type * as StorageBuckets from '#worker/storage-buckets/service.ts'
 import {
 	repoSessionMockModule as mockModule,
+	publishedBundleArtifactsRepoSessionMocks,
 	createDurableObjectState,
 	createEnv,
 	setCommonSessionFixtures,
@@ -245,21 +246,7 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', async () => {
 	)
 	return {
 		...actual,
-		isPublishedPackageArtifactBuiltForCommit: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.isPublishedPackageArtifactBuiltForCommit
-			>
-		) => mockModule.isPublishedPackageArtifactBuiltForCommit(...args),
-		persistPublishedPackageArtifactTarget: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.persistPublishedPackageArtifactTarget
-			>
-		) => mockModule.persistPublishedPackageArtifactTarget(...args),
-		deletePublishedArtifactsForSource: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.deletePublishedArtifactsForSource
-			>
-		) => mockModule.deletePublishedArtifactsForSource(...args),
+		...publishedBundleArtifactsRepoSessionMocks(mockModule),
 	}
 })
 
@@ -426,4 +413,34 @@ test('applyEdits EISDIR remap uses the failing path kind in a multi-edit plan', 
 	).rejects.toThrow(
 		'repo session replace edit target "src/my file.ts" is a directory. Pass a file path (for example src/index.ts), not a folder.',
 	)
+})
+
+test('readFile remaps raw Cloudflare shell EISDIR for a folder path (KODY-CA)', async () => {
+	setCommonSessionFixtures()
+	const fallbackReadFile = mockModule.workspaceReadFile.getMockImplementation()
+	mockModule.workspaceReadFile.mockImplementation(async (path: string) => {
+		if (path === '/session/src') {
+			throw new Error('EISDIR: /session/src is a directory')
+		}
+		return fallbackReadFile ? fallbackReadFile(path) : null
+	})
+	const repo = repoSession()
+
+	await expect(repo.readFile({ ...session, path: 'src' })).rejects.toThrow(
+		'repo session read target "src" is a directory. Pass a file path (for example src/index.ts), or use repoTree to list the folder.',
+	)
+	await expect(repo.readFile({ ...session, path: 'src' })).rejects.not.toThrow(
+		/EISDIR/,
+	)
+})
+
+test('readFile keeps non-EISDIR workspace failures unchanged', async () => {
+	setCommonSessionFixtures()
+	mockModule.workspaceReadFile.mockImplementation(async () => {
+		throw new Error('SQLITE_BUSY: database is locked')
+	})
+
+	await expect(
+		repoSession().readFile({ ...session, path: 'src/index.ts' }),
+	).rejects.toThrow('SQLITE_BUSY: database is locked')
 })

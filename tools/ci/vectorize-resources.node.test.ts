@@ -16,6 +16,10 @@ function fakeVectorizeApi(
 		metadataStaleAfterCreate?: number
 		/** 1-based metadata_index/list calls that answer 410 (readiness flap). */
 		metadataList410OnCalls?: Array<number>
+		/** metadata_index/list omits these properties even when they exist. */
+		omitFromMetadataList?: Array<string>
+		/** metadata_index/create answers 400 already-exists for these properties. */
+		createAlreadyExists?: Array<string>
 	} = {},
 ) {
 	const indexes = new Map<string, FakeIndex>()
@@ -102,14 +106,31 @@ function fakeVectorizeApi(
 			)
 		}
 		if (match?.[2] === '/metadata_index/list') {
+			const omitted = new Set(options.omitFromMetadataList ?? [])
 			return ok({
-				metadataIndexes: index.metadataIndexes.map((propertyName) => ({
-					propertyName,
-					indexType: 'String',
-				})),
+				metadataIndexes: index.metadataIndexes
+					.filter((propertyName) => !omitted.has(propertyName))
+					.map((propertyName) => ({
+						propertyName,
+						indexType: 'String',
+					})),
 			})
 		}
 		if (match?.[2] === '/metadata_index/create') {
+			if (options.createAlreadyExists?.includes(body.propertyName)) {
+				return Response.json(
+					{
+						success: false,
+						errors: [
+							{
+								code: 400,
+								message: 'metadata index already exists for this name',
+							},
+						],
+					},
+					{ status: 400 },
+				)
+			}
 			index.metadataIndexes.push(body.propertyName)
 			return ok({})
 		}
@@ -327,6 +348,63 @@ test('ensureVectorizeIndex recreates once when configure keeps answering 410 pas
 	expect(consoleError).toHaveBeenCalledWith(
 		expect.stringContaining('Recreating Vectorize index once'),
 	)
+})
+
+test('ensureVectorizeIndex treats metadata_index/create 400 already exists as success', async () => {
+	consoleError.mockImplementation(() => {})
+	const name = 'kody-pr-16-vectors'
+	const api = fakeVectorizeApi({
+		omitFromMetadataList: ['kind', 'domain'],
+		createAlreadyExists: ['kind', 'domain'],
+	})
+	api.indexes.set(name, {
+		config: { dimensions: 384, metric: 'cosine' },
+		metadataIndexes: ['kind', 'userId', 'status', 'category', 'domain'],
+	})
+	await ensureVectorizeIndex({ ...client(api.fetcher), name })
+	expect(api.indexes.get(name)?.metadataIndexes).toEqual([
+		'kind',
+		'userId',
+		'status',
+		'category',
+		'domain',
+	])
+	expect(
+		api.requests.filter((entry) => entry.includes('metadata_index/create')),
+	).toEqual([
+		`POST /${name}/metadata_index/create`,
+		`POST /${name}/metadata_index/create`,
+	])
+	expect(consoleError).toHaveBeenCalledWith(
+		`Vectorize metadata index already exists: ${name}.kind`,
+	)
+	expect(consoleError).toHaveBeenCalledWith(
+		`Vectorize metadata index already exists: ${name}.domain`,
+	)
+})
+
+test('ensureVectorizeIndex still throws on a metadata_index/create 400 that is not already-exists', async () => {
+	consoleError.mockImplementation(() => {})
+	const name = 'kody-pr-17-vectors'
+	const api = fakeVectorizeApi()
+	const base = api.fetcher
+	const fetcher: typeof fetch = async (input, init) => {
+		const url = new URL(String(input))
+		const method = init?.method ?? 'GET'
+		if (url.pathname.endsWith('/metadata_index/create') && method === 'POST') {
+			return Response.json(
+				{
+					success: false,
+					errors: [{ code: 400, message: 'invalid property name' }],
+				},
+				{ status: 400 },
+			)
+		}
+		return base(input, init)
+	}
+	await expect(
+		ensureVectorizeIndex({ ...client(fetcher), name }),
+	).rejects.toThrow('invalid property name')
 })
 
 test('ensureVectorizeIndex respects deadlineMs while waiting for readiness', async () => {

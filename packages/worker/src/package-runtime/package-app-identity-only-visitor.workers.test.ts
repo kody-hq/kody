@@ -1,4 +1,5 @@
 import {
+	mintPersonId,
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
@@ -14,6 +15,13 @@ import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
+import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
+import {
+	createPackageAppSessionCookie,
+	readPackageAppSession,
+} from '#app/package-app-session.ts'
+import { handlePackageAppRequest } from '#app/handlers/package-app.ts'
+import { authorizePackageAppVisitorForOrg } from '#app/package-app-origin.ts'
 import {
 	buildPackageAppWorker,
 	createPackageAppCallerContext,
@@ -45,6 +53,7 @@ async function ensureSchema() {
 	await ensureEntitlementTestSchema(env.APP_DB)
 	await ensureOrgsTestSchema(env.APP_DB)
 	await ensureCreditWalletTestSchema(env.APP_DB)
+	await ensureUsageRollupsTestSchema(env.APP_DB)
 	await runSql(`CREATE TABLE IF NOT EXISTS entity_sources (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
@@ -76,6 +85,17 @@ async function ensureSchema() {
 		created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 		updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
 	)`)
+	await runSql(`CREATE TABLE IF NOT EXISTS package_app_oauth_grants (
+		id TEXT PRIMARY KEY,
+		person_id TEXT NOT NULL,
+		org_username TEXT NOT NULL,
+		kody_id TEXT NOT NULL,
+		scopes TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		revoked_at TEXT,
+		last_used_at TEXT,
+		UNIQUE (person_id, org_username, kody_id)
+	)`)
 	await runSql(`CREATE TABLE IF NOT EXISTS published_bundle_artifacts (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
@@ -89,15 +109,36 @@ async function ensureSchema() {
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)`)
+	await runSql(`CREATE TABLE IF NOT EXISTS package_capability_approvals (
+		id TEXT PRIMARY KEY NOT NULL,
+		package_id TEXT NOT NULL,
+		owner_user_id TEXT NOT NULL,
+		published_commit TEXT NOT NULL,
+		fingerprint TEXT NOT NULL,
+		capability_set_json TEXT NOT NULL,
+		dependency_snapshot_json TEXT NOT NULL DEFAULT '{}',
+		approved_by_user_id TEXT NOT NULL,
+		approved_at TEXT NOT NULL,
+		created_at TEXT NOT NULL
+	)`)
 	await ensureSecretBucketsTestSchema(env.APP_DB)
 	await ensureSoftDeleteTestColumns(env.APP_DB)
 }
 
-const appSource = `import { kody } from 'kody:runtime'
+const appSource = `import { hasScope, hasVisitorCredential, kody } from 'kody:runtime'
 export default {
 	async fetch(request) {
 		const msg = (e) => String(e?.message ?? e).slice(0, 200)
-		const out = { header: request.headers.get('X-Kody-Visitor') }
+		const out = {
+			header: request.headers.get('X-Kody-Visitor'),
+			cookie: request.headers.get('Cookie'),
+			ticketKind: (request.headers.get('X-Kody-Visit-Ticket') ?? '').slice(0, 5),
+		}
+		out.scopes = {
+			profile: hasScope(request, 'profile'),
+			email: hasScope(request, 'email'),
+			calendar: hasVisitorCredential(request, 'calendar'),
+		}
 		try { out.me = await kody.metaGetCurrentUser({}) } catch (e) { out.meError = msg(e) }
 		try { out.secrets = await kody.secretList({}) } catch (e) { out.secretsError = msg(e) }
 		try { out.packages = await kody.packageList({}) } catch (e) { out.packagesError = msg(e) }
@@ -110,7 +151,7 @@ const notDeclared = /not listed in kody\.app\.capabilities/
 async function setup(input: { capabilities?: Array<string> } = {}) {
 	silenceIncidentalRuntimeWarnings()
 	await ensureSchema()
-	const ownerId = `user-${crypto.randomUUID()}`
+	const ownerId = mintPersonId() as string
 	const username = `wt-${ownerId.slice(-12)}`
 	await ensureUsersTestSchema({ db: env.APP_DB })
 	await ensureCommunityFlowSchema(env.APP_DB)
@@ -241,12 +282,63 @@ async function setup(input: { capabilities?: Array<string> } = {}) {
 			.getEntrypoint(appWorker.entrypointName)
 			.fetch(request)
 		const text = await response.text()
-		expect(response.status, text.slice(0, 600)).toBe(200)
+		expect(response.status).toBe(200)
 		return JSON.parse(text) as Record<string, unknown>
 	}
 
-	return { ownerId, username, serve }
+	return { ownerId, username, packageId: savedPackage.id, serve }
 }
+
+test(
+	'a package-app session becomes a verified visitor header without exposing its cookie',
+	{ timeout: 120_000 },
+	async () => {
+		const t = await setup()
+		const [setCookie] = await createPackageAppSessionCookie({
+			env,
+			session: { stableUserId: t.ownerId, username: t.username },
+			slug: 'visitor-app',
+			secure: true,
+			expiresAt: Date.now() + 60_000,
+		})
+		const request = new Request(
+			`https://kody.dev/@${t.username}/packages/visitor-app`,
+			{ headers: { Cookie: setCookie?.split(';')[0] ?? '' } },
+		)
+		const parsedSession = await readPackageAppSession({
+			request,
+			env,
+			slug: 'visitor-app',
+		})
+		expect(parsedSession?.session.stableUserId).toBe(t.ownerId)
+		const authorized = parsedSession
+			? await authorizePackageAppVisitorForOrg({
+					env,
+					stableUserId: parsedSession.session.stableUserId,
+					issuedAt: parsedSession.issuedAt,
+					handle: t.username,
+					kodyId: 'visitor-app',
+				})
+			: null
+		expect(authorized?.kind).toBe('ok')
+		const response = await handlePackageAppRequest(request, env)
+		expect(
+			response.status,
+			response.headers.get('Location') ?? 'no redirect location',
+		).toBe(200)
+		const body = (await response.json()) as {
+			header: string
+			cookie: string | null
+		}
+		expect(JSON.parse(body.header)).toEqual({
+			userId: t.ownerId,
+			username: t.username,
+			role: 'owner',
+			scopes: ['profile'],
+		})
+		expect(body.cookie).toBeNull()
+	},
+)
 
 test(
 	'a signed-in outsider gets their identity from metaGetCurrentUser and nothing else',
@@ -264,12 +356,19 @@ test(
 			email: '',
 			display_name: 'outside-visitor',
 			org: { slug: t.username },
+			scopes: ['profile'],
+		})
+		expect(body.scopes).toEqual({
+			profile: true,
+			email: false,
+			calendar: false,
 		})
 		expect(body.meError).toBeUndefined()
 		expect(JSON.parse(String(body.header))).toEqual({
 			userId: outsiderId,
 			username: 'outside-visitor',
 			role: null,
+			scopes: ['profile'],
 		})
 		// No new access: undeclared calls never run as the publisher, and the
 		// visitor's own identity grants nothing.
@@ -277,6 +376,33 @@ test(
 		expect(String(body.secretsError)).toMatch(notDeclared)
 		expect(body.packages).toBeUndefined()
 		expect(String(body.packagesError)).toMatch(notDeclared)
+		// Both refusals reached the app, so both count as hard rejections.
+		await expect
+			.poll(
+				async () =>
+					(
+						await env.APP_DB.prepare(
+							`SELECT call_name, difference_kind, visitor_hash
+							 FROM package_app_authority_rejections
+							 WHERE package_id = ? ORDER BY call_name`,
+						)
+							.bind(t.packageId)
+							.all()
+					).results,
+				{ timeout: 15_000 },
+			)
+			.toEqual([
+				{
+					call_name: 'packageList',
+					difference_kind: 'capability_not_declared',
+					visitor_hash: 'anonymous',
+				},
+				{
+					call_name: 'secretList',
+					difference_kind: 'capability_not_declared',
+					visitor_hash: 'anonymous',
+				},
+			])
 	},
 )
 
@@ -295,6 +421,9 @@ test(
 			{ [packageAppVisitorHeaderName]: forged },
 		]) {
 			const body = await t.serve({ visitor: null, inboundHeaders })
+			// An anonymous ticket scopes credential clients to this request
+			// and names nobody.
+			expect(body.ticketKind).toBe('kva1.')
 			expect(body.header).toBeNull()
 			expect(body.me).toBeUndefined()
 			expect(String(body.meError)).toMatch(/Authenticated MCP user is required/)
@@ -327,6 +456,7 @@ test(
 			userId: t.ownerId,
 			username: t.username,
 			role: 'owner',
+			scopes: ['profile'],
 		})
 	},
 )

@@ -135,10 +135,11 @@ export const credentialOrgGrantCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'credentialOrgGrant',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: true,
 		description:
-			'Grant one of your personal credentials (a secret, OAuth connection, or MCP server in your personal org) to an org you belong to (ADR 0068). It then works in that org only in your own runs, for scoped `credential(key)` clients; nobody else there can use it, Owners and Automation included. Granting again is a no-op. Needs Write on the credential (a token needs secret:write, or integration:write for OAuth connections and MCP servers) and a live person, and is audited in your personal org. `{{secret:name}}` placeholders never resolve personal credentials. Never takes or returns a value.',
+			'Grant one of your personal credentials (a secret, OAuth connection, or MCP server in your personal org) to an org you belong to (ADR 0068). It then works in that org only in your own runs: through `{{secret:name}}` and `{{integration-token:name}}` placeholders and `createAuthenticatedFetch(name)` (an org credential with the same name wins first), and through scoped `credential(key)` clients for secrets and OAuth connections (when an org credential also matches the need, `credential(key)` reports it as ambiguous until a mapping picks one; personal MCP servers are not usable through `credential(key)` yet). Nobody else there can use it, Owners and Automation included. Granting again is a no-op. Needs Write on the credential (a token needs secret:write, or integration:write for OAuth connections and MCP servers) and a live person, and is audited in your personal org. Never takes or returns a value.',
 		keywords: ['credential', 'personal', 'grant', 'share', 'org', 'team'],
 		readOnly: false,
 		idempotent: true,
@@ -182,6 +183,7 @@ export const credentialOrgRevokeCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'credentialOrgRevoke',
+		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: true,
 		description:
@@ -221,6 +223,7 @@ export const credentialOrgGrantListCapability = defineDomainCapability(
 	capabilityDomainNames.secrets,
 	{
 		name: 'credentialOrgGrantList',
+		contextRuns: 'allow',
 		orgPermission: 'none',
 		description:
 			"List the orgs your personal credentials are granted to (ADR 0068), optionally for one credential. `active` is false when a grant does not work right now: the credential's value expired, its OAuth connection is disconnected, its MCP server is disabled, or you no longer belong to the org. Lists only your own grants, never anyone else's. Never returns values.",
@@ -248,9 +251,6 @@ export const credentialOrgGrantListCapability = defineDomainCapability(
 			const scopes = request.credential.scopes
 			const readable = (kind: CredentialKind) =>
 				!scopes || scopes.includes(`${credentialPermissionFamily(kind)}:read`)
-			if (request.credential.profileName) {
-				authorizeCredentialScope(request, 'secret:read')
-			}
 			const grants = await listPersonalCredentialOrgGrants({
 				db: ctx.env.APP_DB,
 				ownerPersonId: personId,

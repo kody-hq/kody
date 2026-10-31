@@ -1,3 +1,6 @@
+import { loadProfileChain } from '#worker/profiles/store.ts'
+import { profileStatus } from '#worker/profiles/rules.ts'
+import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	ownerIdFromStored,
 	type OwnerId,
@@ -32,7 +35,19 @@ import {
 	type ApiInvocationContext,
 } from './context.ts'
 import { ApiError } from './errors.ts'
-import { readConnectionProfileNameFromGrantProps } from '#worker/connection-profiles/oauth.ts'
+import { grantHasRetiredConnectionProfile } from '#worker/orgs/oauth-grant.ts'
+import {
+	ecpRunHeader,
+	ecpSignatureHeader,
+	parseEcpSignatureHeader,
+	sha256Base64Url,
+} from '@kody-internal/shared/execution-context-protocol/index.ts'
+import {
+	getExecutionContext,
+	loadContextAccess,
+	sessionStub,
+} from '#worker/execution-contexts/store.ts'
+import { isOperatorContextRun } from '#worker/execution-contexts/credential-grant.ts'
 
 type McpOauthGrantProps = {
 	userId?: unknown
@@ -243,7 +258,15 @@ async function authenticateWithApiToken(input: {
 				source: { kind: 'api-token', tokenId: record.id },
 				executionOrigin: 'interactive',
 				user: authContext.user,
-				connectionProfileName: record.profile_name ?? null,
+				profileId: record.profile_id ?? null,
+				profileChain: record.profile_id
+					? (
+							await loadProfileChain(input.env.APP_DB, {
+								orgId: orgBinding.org.id,
+								profileId: record.profile_id,
+							})
+						).map((row) => row.id)
+					: null,
 				orgBinding,
 				scopes: record.scopes,
 			}),
@@ -314,6 +337,13 @@ async function authenticateWithMcpOauth(input: {
 		personId: authContext.user.userId,
 		grantProps: tokenSummary.grant.props,
 	})
+	if (grantHasRetiredConnectionProfile(tokenSummary.grant.props)) {
+		throw unauthorized(
+			'Access token was bound to a connection profile, which no longer exists. Run kody login again.',
+			true,
+			personalOrgIdForPerson(authContext.user),
+		)
+	}
 	if (!orgBinding) {
 		throw unauthorized(
 			'Access token is not bound to an org you can access.',
@@ -329,9 +359,6 @@ async function authenticateWithMcpOauth(input: {
 				source: { kind: 'cli' },
 				executionOrigin: 'interactive',
 				user: authContext.user,
-				connectionProfileName: readConnectionProfileNameFromGrantProps(
-					tokenSummary.grant.props,
-				),
 				oauthClientId: tokenSummary.grant.clientId,
 				orgBinding,
 			}),
@@ -341,6 +368,149 @@ async function authenticateWithMcpOauth(input: {
 			kind: 'mcp-oauth',
 			expiresAtUnix: tokenSummary.expiresAt,
 			grantScopes,
+		},
+		waitUntil: input.waitUntil,
+	})
+}
+
+function leaseDenied(message: string) {
+	return new ApiError({
+		status: 401,
+		code: 'execution_context_lease_invalid',
+		message,
+	})
+}
+
+/**
+ * A run on an execution context calling back into Kody (CapabilityProxy and
+ * package graph only). The context signs the request; its session checks
+ * the signature, nonce, and that `runId` holds a live lease. The requester's
+ * account, org binding, and access to the context are then re-read fresh, so
+ * a lease never outlives the access it was granted under.
+ */
+async function authenticateWithExecutionContextLease(input: {
+	request: Request
+	env: Env
+	appOrigin: string
+	waitUntil: (promise: Promise<unknown>) => void
+	runId: string
+}): Promise<ApiInvocationContext> {
+	const signature = parseEcpSignatureHeader(
+		input.request.headers.get(ecpSignatureHeader),
+	)
+	if (!signature) {
+		throw leaseDenied(`Send ${ecpSignatureHeader} with ${ecpRunHeader}.`)
+	}
+	const url = new URL(input.request.url)
+	const body = new Uint8Array(await input.request.clone().arrayBuffer())
+	const session = sessionStub(input.env, signature.ec)
+	const verdict = await session.authorizeRunCall({
+		runId: input.runId,
+		signature,
+		method: input.request.method,
+		pathAndQuery: `${url.pathname}${url.search}`,
+		bodySha256: await sha256Base64Url(body),
+	})
+	if (!verdict.ok) {
+		throw leaseDenied(
+			verdict.code === 'lease_ended'
+				? 'This run has ended, so it can no longer call Kody.'
+				: `Execution context request rejected (${verdict.code}).`,
+		)
+	}
+	const { lease } = verdict
+	const accessLost = async (message: string) => {
+		input.waitUntil(
+			session
+				.endLeases({ userIds: [lease.requester.userId], reason: 'access_lost' })
+				.catch(() => {}),
+		)
+		return new ApiError({
+			status: 403,
+			code: 'execution_context_access_lost',
+			message,
+		})
+	}
+	const authContext = await buildMcpUserContextFromGrantProps(input.env, {
+		userId: lease.requester.userId,
+	})
+	if (!authContext || authContext.suspended || !authContext.emailVerified) {
+		throw await accessLost('The requester of this run can no longer use Kody.')
+	}
+	const [orgBinding, context] = await Promise.all([
+		loadOrgBindingForOrg(
+			input.env.APP_DB,
+			authContext.user.userId,
+			lease.orgId,
+		),
+		getExecutionContext(input.env.APP_DB, lease.ecid),
+	])
+	if (!orgBinding || !context) {
+		throw await accessLost(
+			'The requester of this run no longer has access to its org.',
+		)
+	}
+	const access = await loadContextAccess(input.env.APP_DB, context, {
+		userId: authContext.user.userId,
+		orgId: lease.orgId,
+	})
+	if (!access.usable) {
+		throw await accessLost(
+			'The requester of this run no longer has access to this execution context.',
+		)
+	}
+	const profileChain = lease.profileId
+		? await loadProfileChain(input.env.APP_DB, {
+				orgId: lease.orgId,
+				profileId: lease.profileId,
+			})
+		: null
+	if (
+		lease.profileId &&
+		(profileChain?.at(-1)?.id !== lease.profileId ||
+			profileStatus(profileChain, new Date().toISOString()) !== 'active')
+	) {
+		throw new ApiError({
+			status: 403,
+			code: 'execution_context_access_lost',
+			message:
+				'The profile this run acts as, or a parent profile, is revoked or expired.',
+		})
+	}
+	const scopes = lease.callerScopes as ReadonlyArray<OrgPermission> | null
+	const identity = {
+		operatorUserId: context.operator_user_id,
+		requesterUserId: authContext.user.userId,
+	}
+	const byOperator = isOperatorContextRun(identity)
+	return createApiInvocationContext({
+		env: input.env,
+		callerContext: {
+			...createMcpCallerContext({
+				baseUrl: input.appOrigin,
+				source: {
+					kind: 'execution-context-run',
+					ecid: lease.ecid,
+					runId: lease.runId,
+				},
+				executionOrigin: 'interactive',
+				user: authContext.user,
+				profileId: lease.profileId ?? null,
+				profileChain: profileChain?.map((row) => row.id) ?? null,
+				orgBinding,
+				scopes,
+				contextRunByOperator: byOperator,
+			}),
+			user: authContext.user,
+		},
+		principal: {
+			kind: 'execution-context-run',
+			ecid: lease.ecid,
+			runId: lease.runId,
+			deadline: lease.deadline,
+			scopes: lease.callerScopes,
+			runtime: lease.runtime,
+			byOperator,
 		},
 		waitUntil: input.waitUntil,
 	})
@@ -367,7 +537,22 @@ export async function authenticateApiRequest(input: {
 	 * route so OAuth stays out of the general credential class (ADR 0053/0055).
 	 */
 	allowMcpOauth?: boolean
+	/**
+	 * When true, accept an execution context lease (`Kody-ECP-Run` plus
+	 * `Kody-ECP-Signature`) instead of a bearer. CapabilityProxy and package
+	 * graph only.
+	 */
+	allowExecutionContextLease?: boolean
 }): Promise<ApiInvocationContext> {
+	const runId = input.request.headers.get(ecpRunHeader)
+	if (runId) {
+		if (!input.allowExecutionContextLease) {
+			throw leaseDenied(
+				'Execution context runs can only call CapabilityProxy and package graph routes.',
+			)
+		}
+		return authenticateWithExecutionContextLease({ ...input, runId })
+	}
 	const token = readBearerApiToken(input.request.headers.get('Authorization'))
 	if (!token) {
 		throw unauthorized(

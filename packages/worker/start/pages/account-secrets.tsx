@@ -658,9 +658,6 @@ export function AccountSecretsPage({
 			}
 		},
 	)
-	const availableAllowedPackageOptions = packageSelectOptions.filter(
-		(option) => !editorState.allowedPackages.includes(option.id),
-	)
 	const filterPackageOptions: Array<ComboboxOption> = [
 		{ id: '', label: 'All packages' },
 		...packageSelectOptions,
@@ -877,8 +874,6 @@ export function AccountSecretsPage({
 								},
 								packageOptions,
 								packageSelectOptions,
-								availableAllowedPackageOptions,
-								packagesById,
 								canCreatePackageSecrets,
 								isMutating,
 								saveState,

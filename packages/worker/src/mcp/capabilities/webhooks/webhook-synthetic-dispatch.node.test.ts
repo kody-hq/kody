@@ -67,7 +67,7 @@ test('webhookSyntheticDispatch returns synthetic run metadata and rejects runtim
 		createCtx() as never,
 	)
 
-	expect(requestResult).toEqual({
+	expect(requestResult).toMatchObject({
 		package_id: 'pkg-1',
 		package_kody_id: 'sentry-bridge',
 		webhook_name: 'sentry',
@@ -77,6 +77,7 @@ test('webhookSyntheticDispatch returns synthetic run metadata and rejects runtim
 		run_id: 'run-1',
 		idempotency_key: 'synthetic:00000000-0000-4000-8000-000000000001',
 		result: { ok: true },
+		kody_id_deprecation: expect.stringContaining('packageId: "pkg-1"'),
 	})
 	expect(requestResult).not.toHaveProperty('url')
 	expect(requestResult).not.toHaveProperty('url_secret')

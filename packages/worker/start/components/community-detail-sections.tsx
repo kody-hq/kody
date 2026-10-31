@@ -43,8 +43,14 @@ export function renderInstallStrip(props: InstallStripProps) {
 				? `Installed as ${props.installOutcome.targetName}.`
 				: `Forked as ${props.installOutcome.targetName}; it needs adaptation before it can run.`
 		: ''
+	const hasVisibleContent = Boolean(
+		props.installOutcome || props.installMessage,
+	)
 	return (
-		<div data-testid="community-install" css={installStripCss}>
+		<div
+			data-testid="community-install"
+			css={hasVisibleContent ? installStripCss : liveRegionOnlyCss}
+		>
 			<p role="status" css={visuallyHiddenCss}>
 				{installAnnouncement}
 			</p>
@@ -255,7 +261,6 @@ const missingHeadCss = {
 
 /* Quiet sections in the `.pkg-fork` voice: display-face h2, muted lede. */
 export const detailSectionCss = {
-	marginTop: 'clamp(2.4rem, 5vw, 3.2rem)',
 	'& h2': {
 		margin: 0,
 		fontSize: 'clamp(1.4rem, 2.4vw, 1.65rem)',
@@ -278,6 +283,9 @@ export const detailSectionCss = {
 const sectionActionCss = {
 	marginTop: '1.1rem',
 } satisfies CSSObject
+
+/** Keeps the hidden status region out of the parent grid until there is content. */
+const liveRegionOnlyCss = { display: 'contents' } satisfies CSSObject
 
 const installStripCss = {
 	display: 'grid',
@@ -325,9 +333,7 @@ const mutedTextCss = {
 } satisfies CSSObject
 
 /* README as real prose (no scroll box), h3 subheads per DESIGN.md. */
-const readmeSectionCss = {
-	marginTop: 'clamp(2.4rem, 5vw, 3.2rem)',
-} satisfies CSSObject
+const readmeSectionCss = {} satisfies CSSObject
 
 const readmeHeadingRowCss = {
 	display: 'flex',
@@ -364,7 +370,6 @@ const readmeProseCss = mergeCss(proseCss, {
 
 /* "Report this listing" tucked in a details disclosure. */
 const reportDisclosureCss = {
-	marginTop: 'clamp(2.4rem, 5vw, 3.2rem)',
 	'& summary': {
 		cursor: 'pointer',
 		fontWeight: 600,

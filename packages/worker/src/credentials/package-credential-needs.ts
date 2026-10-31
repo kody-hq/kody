@@ -19,23 +19,35 @@ import {
 } from './credential-mappings.ts'
 import { mappedCredentialFitsNeed } from './credential-need-fit.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import {
+	savedCredentialNeeds,
+	type SavedCredentialNeed,
+} from './credential-needs.ts'
 
-type NeedStatus = 'ready' | 'ambiguous' | 'unbound' | 'expired'
+type NeedStatus =
+	| 'ready'
+	| 'ambiguous'
+	| 'unbound'
+	| 'expired'
+	| 'executor_supplied'
 
 /**
  * How one need resolves with no call map entry: a stored default mapping
  * first, then auto-resolve. Trigger overrides are per run and not shown here.
  */
 function resolveNeedForCaller(
-	need: CredentialNeed,
+	need: SavedCredentialNeed,
 	usable: ReadonlyArray<UsableCredential>,
 	rows: ReadonlyArray<CredentialMappingRow>,
 ): {
 	status: NeedStatus
 	autoPick: string | null
-	source: 'mine' | 'org' | 'auto'
+	source: 'mine' | 'org' | 'auto' | 'visitor'
 } {
+	// Each visitor picks on consent; the caller's own defaults never fill it.
+	if (need.supplier === 'executor') {
+		return { status: 'executor_supplied', autoPick: null, source: 'visitor' }
+	}
 	const layer = (target: 'mine' | 'org') =>
 		rows.find((row) => row.needKey === need.key && row.target.target === target)
 			?.credentialIds ?? null
@@ -63,7 +75,12 @@ function resolveNeedForCaller(
 			source: stored.source === 'mine' ? 'mine' : 'org',
 		}
 	}
-	const resolution = resolveNeedCandidates(need, usable)
+	const resolution = resolveNeedCandidates(
+		need,
+		need.supplier === 'publisher'
+			? usable.filter((credential) => credential.scope === 'org')
+			: usable,
+	)
 	return {
 		status: resolution.status,
 		autoPick: resolution.autoPick?.name ?? null,
@@ -78,13 +95,19 @@ export async function describePackageCredentialNeeds(input: {
 	sourceId: string
 	/** Saved package id so Keys bound to this package can fill its needs. */
 	packageId: string
+	/** The caller's already-read flag result, so the needs agree with it. */
+	supplierSemanticsEnabled?: boolean
 }) {
 	try {
-		const needs = await loadPublishedCredentialNeeds({
-			env: input.env,
-			userId: input.ownerUserId,
-			sourceId: input.sourceId,
-		})
+		const needs = savedCredentialNeeds(
+			await loadPublishedCredentialNeeds({
+				env: input.env,
+				userId: input.ownerUserId,
+				sourceId: input.sourceId,
+				request: input.request,
+				supplierSemanticsEnabled: input.supplierSemanticsEnabled,
+			}),
+		)
 		if (needs.length === 0) return []
 		const [usable, rows] = await Promise.all([
 			listUsableCredentials({
@@ -105,14 +128,24 @@ export async function describePackageCredentialNeeds(input: {
 			return {
 				...need,
 				...resolveNeedForCaller(need, usable, rows),
-				yourOptions: resolution.options.map((option) => ({
-					name: option.name,
-					scope: option.scope,
-					...(option.scope === 'org' && input.request.org.slug
-						? { org: input.request.org.slug }
-						: {}),
-					hosts: option.hosts,
-				})),
+				// Provider matches only. Same-kind credentials with no provider
+				// are counted, not listed, so a GitHub need does not list every
+				// unlabeled Key.
+				possibleMatchCount: resolution.possibleMatches.filter(
+					(option) => need.supplier !== 'publisher' || option.scope === 'org',
+				).length,
+				yourOptions: resolution.candidates
+					.filter(
+						(option) => need.supplier !== 'publisher' || option.scope === 'org',
+					)
+					.map((option) => ({
+						name: option.name,
+						scope: option.scope,
+						...(option.scope === 'org' && input.request.org.slug
+							? { org: input.request.org.slug }
+							: {}),
+						hosts: option.hosts,
+					})),
 			}
 		})
 	} catch (error) {

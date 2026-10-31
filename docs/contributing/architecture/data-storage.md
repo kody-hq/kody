@@ -184,9 +184,8 @@ Deletion must cover these user-owned surfaces:
   (`repo-session:{durableObjectId}/`). Account deletion enumerates session ids
   and each `purgeSession` prefix-purges that object's keys after `deleteAll`.
 - **KV:** published bundle artifact keys, source/manifest snapshot keys,
-  community listing snapshots, per-user package retriever cache/index keys,
-  package-skills index keys, package codemod revert keys, and MCP OAuth
-  refresh-family snapshot/replay keys
+  community listing snapshots, package-skills index keys, package codemod revert
+  keys, and MCP OAuth refresh-family snapshot/replay keys
   (`derived-cache:v1:mcp-oauth-refresh-{family,replay}:{userId}:`) in
   `BUNDLE_ARTIFACTS_KV` are deleted before D1 projection rows are removed. OAuth
   token/grant KV is owned by the OAuth provider and is handled through provider
@@ -427,7 +426,11 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   org. Personal orgs reuse `users.stable_user_id` as `orgs.id`. Billing,
   profile, gift, and budget columns live on the org row. Soft-delete and actor
   columns exist on the row. See
-  [decision 0063](../decisions/0063-teams-expand-orgs.md).
+  [decision 0063](../decisions/0063-teams-expand-orgs.md). `profile_visibility`
+  (`public` default | `private`) decides whether a team org's `/@slug` page and
+  avatar are visible outside the org (set at create and in org Settings /
+  `orgUpdate`); personal orgs follow `users.profile_visibility` instead
+  ([decision 0088](../decisions/0088-public-team-org-pages.md)).
 - `handles` (0086): the username namespace. Handles are permanent (no username
   or org slug renames); rows left by pre-rule renames stay reserved.
 - `org_memberships` (0086): `(org_id, user_id)` with role `owner`, `member`, or
@@ -446,11 +449,11 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   tables; D1 has no corresponding projection tables (see
   [Run records](./run-records.md)).
 - There is no `jobs` table in `APP_DB` — it lives in the jobs worker's `JOBS_DB`
-  (see [D1 (`JOBS_DB`)](#d1-jobs_db)). `archived_job_artifacts` was dropped from
-  `JOBS_DB`.
-- There is no `repo_sessions` table in `APP_DB` (dropped in migration `0013`).
-  The catalog lives in the per-user `RepoSessionIndex` Durable Object. D1 keeps
-  only the thin `repo_session_due_owners` hint and the platform-owned
+  (see [D1 (`JOBS_DB`)](#d1-jobs_db)). `JOBS_DB` has no `archived_job_artifacts`
+  table.
+- There is no `repo_sessions` table in `APP_DB`. The catalog lives in the
+  per-user `RepoSessionIndex` Durable Object. D1 keeps only the thin
+  `repo_session_due_owners` hint and the platform-owned
   `repo_session_storage_bucket_cursor`.
 - `entity_sources`: durable mapping from user-facing entities (`package` or
   `repo`) to Artifacts repos and their latest published commit (packages only;
@@ -470,8 +473,9 @@ The schema is defined by migrations in `packages/worker/migrations/`:
 - `mcp_event_subscriptions` (`0083-mcp-event-subscriptions.sql`): user-owned MCP
   Events webhook subscriptions (event name, callback URL, encrypted `whsec_`
   secrets). Deleted and exported with the account; secret columns are redacted
-  from export. See [MCP Events](../../guides/mcp-events.md) and
-  [0059](../decisions/0059-mcp-events-extension-behind-flag.md).
+  from export. See [MCP Events](../../guides/mcp-events.md),
+  [0059](../decisions/0059-mcp-events-extension-behind-flag.md), and
+  [0087](../decisions/0087-mcp-events-no-client-declaration.md).
 - `community_listings`, `community_forks`, `community_ratings`,
   `community_reports`, `community_bans`: public package listings and moderation
   (see [Public packages](../community-packages.md)). `community_forks` rows for
@@ -537,7 +541,15 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   `CHECK` constraint; both FKs use `ON DELETE RESTRICT`. Holds `scopes_json`,
   `required_hosts_json`, `usage_mode` / `allowed_packages_json`, and access /
   refresh token ciphertext. The non-secret `client_id` is stored inline on the
-  owning app row.
+  owning app row. `0202-integration-app-owner.sql` rebuilds the table to add
+  nullable `app_owner_id`, the org whose app the connection uses; the app FK is
+  now `(app_owner_id, app_slug) → user_oauth_apps(user_id, slug)`, and user-lane
+  rows were backfilled with `app_owner_id = user_id`. A row whose `app_owner_id`
+  differs from `user_id` is a member's personal connection pinned to that org
+  (ADR 0068 amendment 2026-10-29): tokens live with the member's personal org,
+  the client secret with the org's app. Deleting the org's app, the member
+  leaving, or org purge (`account/data-targets.ts`) wipes those rows; org
+  transfer rewrites `app_owner_id` with the apps.
 
 App access pattern:
 
@@ -619,11 +631,11 @@ Two D1 reporting projections deliberately remain:
 
 OAuth provider state is stored in `OAUTH_KV` through the
 `@cloudflare/workers-oauth-provider` integration. Published package source
-snapshots, bundle artifacts, package retriever caches, and community listing
-snapshots are stored in `BUNDLE_ARTIFACTS_KV`. That binding also holds the
-platform-owned `platform-settings:v1:reserved-usernames` runtime
-reserved-username override and short-lived encrypted MCP OAuth refresh-family
-snapshots (`derived-cache:v1:mcp-oauth-refresh-family:` /
+snapshots, bundle artifacts, and community listing snapshots are stored in
+`BUNDLE_ARTIFACTS_KV`. That binding also holds the platform-owned
+`platform-settings:v1:reserved-usernames` runtime reserved-username override and
+short-lived encrypted MCP OAuth refresh-family snapshots
+(`derived-cache:v1:mcp-oauth-refresh-family:` /
 `derived-cache:v1:mcp-oauth-refresh-replay:`).
 
 - Bindings are configured in `packages/worker/wrangler.jsonc` (remote KV IDs are
@@ -708,7 +720,7 @@ protocol. Sender identities accept only `verified` rows, and
 - Bucket names: `kody-email-blobs` (production), per-preview
   `{worker}-email-blobs` buckets created and cleaned up by
   `tools/ci/preview-resources.ts`, and the test env reuses the preview-style
-  name locally (Wrangler/vitest-pool-workers simulate the bucket).
+  name locally (Wrangler/vitest-plugin simulate the bucket).
 
 RepoSession `@cloudflare/shell` Workspace objects above the inline threshold
 (~1.5 MiB) live in `REPO_SESSION_BLOBS`. This is session scratch, not a
@@ -1331,8 +1343,7 @@ calls `publishFromExternalRef(...)`.
 - advance `entity_sources.published_commit` only after that KV write succeeds
 - delete the never-advertised new snapshot key if the D1 pointer update fails
 - rebuild saved package projections, bundle artifacts, vector search entries,
-  retriever manifests, and package jobs through
-  `refreshSavedPackageProjection(...)`
+  and package jobs through `refreshSavedPackageProjection(...)`
 
 The same helper is used by the existing repo-session publish path after it has
 pushed the session commit to the source Artifacts repo.
@@ -1402,6 +1413,11 @@ runtimes skip the read. A failed metrics read fails the lane instead of
 reporting the queue as empty. Inbound email subscription dead-letters are
 terminal handler failures and are not part of this page.
 
+The origin worker consumes every production DLQ and parks each message in APP_DB
+`dead_letter_messages`; the alert counts those parked rows too, so a DLQ keeps
+paging until an admin replays, acks, or purges its messages with the admin DLQ
+capabilities ([dead-letter queues](../dead-letter-queues.md)).
+
 Production note:
 
 - Production deploys warn that the documented Artifacts Worker binding config is
@@ -1465,11 +1481,12 @@ on write unless a migration backfills existing rows.
   `0072-webhook-hmac-secret-encrypted.sql`,
   `0127-webhook-hmac-rotation-grace.sql`) stores per-user minted URL state for
   `package.json#kody.webhooks`, keyed by `(user_id, package_id, webhook_name)`.
-  URL secrets are SHA-256 hashed for ingress and AES-GCM encrypted
-  (`url_secret_encrypted`) for server-side apply. Package-owned HMAC signing
-  material lives on the same row (`hmac_secret_encrypted`) when verification
-  omits `secretName`; provider-issued secrets use the secrets primitive via
-  optional `verification.secretName`. Last-seen signing identity
+  Its unused `enabled` column is leftover. Webhook on/off state lives only in
+  `enablements`. URL secrets are SHA-256 hashed for ingress and AES-GCM
+  encrypted (`url_secret_encrypted`) for server-side apply. Package-owned HMAC
+  signing material lives on the same row (`hmac_secret_encrypted`) when
+  verification omits `secretName`; provider-issued secrets use the secrets
+  primitive via optional `verification.secretName`. Last-seen signing identity
   (`hmac_secret_name`) and a verification snapshot
   (`hmac_verification_secret_encrypted`) track declared-secret rotation;
   `previous_hmac_secret_*` holds the outgoing key for a 24h grace window (same
@@ -1500,8 +1517,8 @@ on write unless a migration backfills existing rows.
   grant for read/use only. Mutations from package code (`secretSet` /
   `secretDelete`) always require the grant. Only the account owner can add a
   package to that grant (secret editor or `/@<slug>/-/secrets/approve`).
-  `secretLock` returns an approval URL and does not change `allowed_packages`.
-  Removing a grant is website-only.
+  `resourceLock({ kind: 'secret', name, package_id })` returns an approval URL
+  and does not change `allowed_packages`. Removing a grant is website-only.
 - `secret_provider_bindings` and `secret_provider_grants`
   (`0064-secret-provider-bindings.sql`) pin one saved package plus door-key
   secret name to a provider id per account, and grant saved packages use of a
@@ -1541,8 +1558,27 @@ on write unless a migration backfills existing rows.
   credential's exchange: an HTTPS URL on one of the row's `allowed_hosts`, the
   body template, and where the session token is in the response. Other kinds
   leave it NULL. The value holds the login fields as one JSON object, and
-  `inject_json` places the session token. Sessions are kept per isolate, never
-  in storage.
+  `inject_json` places the session token. Kody keeps the session in
+  `login_credential_sessions`, never in `secret_entries`.
+- `login_credential_sessions` (`0206-login-credential-sessions.sql`,
+  `packages/worker/src/credentials/login-session-store.ts`) holds one row per
+  `login` credential: the session token its exchange returned, encrypted with
+  the `login-credential-session` purpose and bound (AAD) to the owner,
+  credential id, and revision, plus `expires_at`. The revision is a digest of
+  the credential's ciphertext, `config_json`, `allowed_hosts`, and
+  `inject_json`, so an edit to any of them strands the session; deleting the
+  credential deletes the row. `lease_id` / `lease_expires_at` are a 60-second D1
+  lease so one exchange runs at a time per credential across isolates.
+  `failure_revision`, `failure_kind`, `failure_count`, and `retry_after`
+  (`0216-login-credential-session-failures.sql`) record the last failed exchange
+  for one revision: callers fail fast until `retry_after` (backoff from 30
+  seconds to 15 minutes), `needs_reconnect` (the provider answered
+  `invalid_grant`) holds until a new revision, and `rejected` backs off the 401
+  retry after a fresh session was refused. A success clears an exchange failure;
+  a new revision ignores the old one. The session is never code-readable and
+  never in capability output, logs, errors, or audit details. Account and org
+  deletion delete rows by `user_id` (the owning org); account export omits the
+  table.
 - `credential_inventory_runs` and `credential_inventory_items`
   (`0112-credential-inventory.sql`,
   `packages/worker/src/credentials/credential-inventory.ts`) hold the admin
@@ -1650,9 +1686,6 @@ app-owned keys in it. App-owned `BUNDLE_ARTIFACTS_KV` keys are:
   new key (D1 identity row retargets) so a partial export bump does not leave
   the new `published_commit` missing artifacts.
 - `community-snapshot:v1:{listingId}`.
-- `package-retriever-manifest:v1:{userId}:{packageId}:{revision}`.
-- `package-retriever-index-entry:v1:{userId}:{scope}:{packageId}:{retrieverKey}`
-  for per-entry retriever index rows.
 - `package-skills-index:v1:{userId}:{packageId}:{publishedCommit}` — per-version
   Agent Skills index (frontmatter + digests, no file contents) written at
   publish; served by Skills-over-MCP when `mcp-skills-extension` is on.

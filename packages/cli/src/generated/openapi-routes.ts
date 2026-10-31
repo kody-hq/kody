@@ -43,6 +43,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'automationExecutionGet',
+		method: 'GET',
+		pathTemplate: '/v1/automation-execution',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'automationExecutionSet',
+		method: 'PUT',
+		pathTemplate: '/v1/automation-execution',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'capabilityProxyCall',
 		method: 'POST',
 		pathTemplate: '/v1/capability-proxy/call',
@@ -167,6 +179,12 @@ export const bakedOpenApiRoutes = [
 		method: 'DELETE',
 		pathTemplate: '/v1/personal-credential-grants/{credential_id}/{org}',
 		pathParamNames: ['credential_id', 'org'],
+	},
+	{
+		operationId: 'credentialPlacementApprovalLink',
+		method: 'POST',
+		pathTemplate: '/v1/credential-placement-approvals',
+		pathParamNames: [],
 	},
 	{
 		operationId: 'credentialTriggerPickSet',
@@ -307,6 +325,120 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'executionChainGet',
+		method: 'GET',
+		pathTemplate: '/v1/execution-chain',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'executionChainSet',
+		method: 'PUT',
+		pathTemplate: '/v1/execution-chain',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'executionContextAttach',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/attachments',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextAuditList',
+		method: 'GET',
+		pathTemplate: '/v1/execution-contexts/{id}/audit',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextDelete',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/delete',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextDetach',
+		method: 'DELETE',
+		pathTemplate: '/v1/execution-contexts/{id}/attachments/{org_id}',
+		pathParamNames: ['id', 'org_id'],
+	},
+	{
+		operationId: 'executionContextGet',
+		method: 'GET',
+		pathTemplate: '/v1/execution-contexts/{id}',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextList',
+		method: 'GET',
+		pathTemplate: '/v1/execution-contexts',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'executionContextOptIn',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/opt-in',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextOptOut',
+		method: 'DELETE',
+		pathTemplate: '/v1/execution-contexts/{id}/opt-in',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextRevoke',
+		method: 'DELETE',
+		pathTemplate: '/v1/execution-contexts/{id}',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextRunCancel',
+		method: 'POST',
+		pathTemplate: '/v1/execution-contexts/{id}/runs/{run_id}/cancel',
+		pathParamNames: ['id', 'run_id'],
+	},
+	{
+		operationId: 'executionContextRunList',
+		method: 'GET',
+		pathTemplate: '/v1/execution-contexts/{id}/runs',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextShareList',
+		method: 'GET',
+		pathTemplate: '/v1/execution-contexts/{id}/sharing',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextShareRemove',
+		method: 'DELETE',
+		pathTemplate: '/v1/execution-contexts/{id}/sharing/{grant_id}',
+		pathParamNames: ['id', 'grant_id'],
+	},
+	{
+		operationId: 'executionContextShareSet',
+		method: 'PUT',
+		pathTemplate: '/v1/execution-contexts/{id}/sharing',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextUpdate',
+		method: 'PATCH',
+		pathTemplate: '/v1/execution-contexts/{id}',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'experimentList',
+		method: 'GET',
+		pathTemplate: '/v1/account/experiments',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'experimentSet',
+		method: 'PUT',
+		pathTemplate: '/v1/account/experiments/{experiment}',
+		pathParamNames: ['experiment'],
+	},
+	{
 		operationId: 'followAdd',
 		method: 'POST',
 		pathTemplate: '/v1/follows',
@@ -361,6 +493,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['name'],
 	},
 	{
+		operationId: 'integrationMemberConnectionList',
+		method: 'GET',
+		pathTemplate: '/v1/oauth-apps/member-connections',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'integrationMemberConnectionRevoke',
+		method: 'DELETE',
+		pathTemplate: '/v1/oauth-apps/member-connections/{credential_id}',
+		pathParamNames: ['credential_id'],
+	},
+	{
 		operationId: 'integrationOauthAppDelete',
 		method: 'DELETE',
 		pathTemplate: '/v1/oauth-apps/{slug}',
@@ -407,6 +551,30 @@ export const bakedOpenApiRoutes = [
 		method: 'POST',
 		pathTemplate: '/v1/access/invites',
 		pathParamNames: [],
+	},
+	{
+		operationId: 'inviteLinkAccept',
+		method: 'POST',
+		pathTemplate: '/v1/access/invite-links/accept',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'inviteLinkCreate',
+		method: 'POST',
+		pathTemplate: '/v1/access/invite-links',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'inviteLinkList',
+		method: 'GET',
+		pathTemplate: '/v1/access/invite-links',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'inviteLinkRevoke',
+		method: 'POST',
+		pathTemplate: '/v1/access/invite-links/{invite_link_id}/revoke',
+		pathParamNames: ['invite_link_id'],
 	},
 	{
 		operationId: 'inviteRevoke',
@@ -583,6 +751,18 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'packageAppConnectedPeopleList',
+		method: 'GET',
+		pathTemplate: '/v1/packages/{package_id}/connected-people',
+		pathParamNames: ['package_id'],
+	},
+	{
+		operationId: 'packageAppConnectedPersonRevoke',
+		method: 'DELETE',
+		pathTemplate: '/v1/packages/{package_id}/connected-people/{grant_id}',
+		pathParamNames: ['package_id', 'grant_id'],
+	},
+	{
 		operationId: 'packageAppCustomHostnameAdd',
 		method: 'POST',
 		pathTemplate: '/v1/orgs/package-app-custom-hostnames',
@@ -605,6 +785,12 @@ export const bakedOpenApiRoutes = [
 		method: 'POST',
 		pathTemplate: '/v1/orgs/package-app-custom-hostnames/{id}/sync',
 		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'packageAppFetch',
+		method: 'POST',
+		pathTemplate: '/v1/packages/app-fetch',
+		pathParamNames: [],
 	},
 	{
 		operationId: 'packageAppRunsAsGet',
@@ -649,6 +835,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['package_id'],
 	},
 	{
+		operationId: 'packageFork',
+		method: 'POST',
+		pathTemplate: '/v1/packages/fork',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'packageGet',
 		method: 'GET',
 		pathTemplate: '/v1/packages/{package_id}',
@@ -656,6 +848,12 @@ export const bakedOpenApiRoutes = [
 	},
 	{
 		operationId: 'packageGetGitRemote',
+		method: 'POST',
+		pathTemplate: '/v1/packages/git-remote',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'packageGetGitRemoteByPath',
 		method: 'POST',
 		pathTemplate: '/v1/packages/{package_id}/git-remote',
 		pathParamNames: ['package_id'],
@@ -668,6 +866,12 @@ export const bakedOpenApiRoutes = [
 	},
 	{
 		operationId: 'packagePublishExternalPush',
+		method: 'POST',
+		pathTemplate: '/v1/packages/external-push',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'packagePublishExternalPushByPath',
 		method: 'POST',
 		pathTemplate: '/v1/packages/{package_id}/external-push',
 		pathParamNames: ['package_id'],
@@ -695,6 +899,42 @@ export const bakedOpenApiRoutes = [
 		method: 'PATCH',
 		pathTemplate: '/v1/packages/{package_id}',
 		pathParamNames: ['package_id'],
+	},
+	{
+		operationId: 'profileCreate',
+		method: 'POST',
+		pathTemplate: '/v1/profiles',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'profileGet',
+		method: 'GET',
+		pathTemplate: '/v1/profiles/{profile_id}',
+		pathParamNames: ['profile_id'],
+	},
+	{
+		operationId: 'profileHandoff',
+		method: 'POST',
+		pathTemplate: '/v1/profiles/handoff',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'profileList',
+		method: 'GET',
+		pathTemplate: '/v1/profiles',
+		pathParamNames: [],
+	},
+	{
+		operationId: 'profileRevoke',
+		method: 'DELETE',
+		pathTemplate: '/v1/profiles/{profile_id}',
+		pathParamNames: ['profile_id'],
+	},
+	{
+		operationId: 'profileUpdate',
+		method: 'PATCH',
+		pathTemplate: '/v1/profiles/{profile_id}',
+		pathParamNames: ['profile_id'],
 	},
 	{
 		operationId: 'repoApplyPatch',
@@ -857,6 +1097,12 @@ export const bakedOpenApiRoutes = [
 		method: 'PATCH',
 		pathTemplate: '/v1/repos/{repo_id}',
 		pathParamNames: ['repo_id'],
+	},
+	{
+		operationId: 'resourceLock',
+		method: 'POST',
+		pathTemplate: '/v1/resource-locks',
+		pathParamNames: [],
 	},
 	{
 		operationId: 'runGet',
@@ -1078,18 +1324,6 @@ export const bakedOpenApiRoutes = [
 		operationId: 'webhookDeliveryList',
 		method: 'GET',
 		pathTemplate: '/v1/webhooks/{webhookName}/deliveries',
-		pathParamNames: ['webhookName'],
-	},
-	{
-		operationId: 'webhookDisable',
-		method: 'POST',
-		pathTemplate: '/v1/webhooks/{webhookName}/disable',
-		pathParamNames: ['webhookName'],
-	},
-	{
-		operationId: 'webhookEnable',
-		method: 'POST',
-		pathTemplate: '/v1/webhooks/{webhookName}/enable',
 		pathParamNames: ['webhookName'],
 	},
 	{

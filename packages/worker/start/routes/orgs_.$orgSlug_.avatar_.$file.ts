@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { orgAvatarHttp } from '#start/server/protocol-handlers'
 export const Route = createFileRoute('/orgs_/$orgSlug_/avatar_/$file')({
+	staticData: { documentNavigation: true },
 	server: {
 		handlers: {
 			GET: ({ request, params }) => {

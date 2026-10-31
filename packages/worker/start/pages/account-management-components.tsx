@@ -4,6 +4,7 @@ import { type MatchedPageNavigation } from '../page-navigation.ts'
 import { appShellForMatches } from '../app-shell.ts'
 import { type CSSObject } from '@emotion/react'
 import { useContext, type ReactNode, type FormEvent } from 'react'
+import { surfaceCardCss } from '#universal/styles/surface.ts'
 import { WorkspaceSwitcher } from '../components/workspace-switcher.tsx'
 import { WorkspaceLayoutContext } from '../workspace-layout-context.ts'
 import { organizationsWithSignupFallback } from '#universal/org-pages.ts'
@@ -25,6 +26,7 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { useShellData } from '../routes/__root.tsx'
 import { getSessionDisplayName, type SessionInfo } from '#client/session.ts'
+import { isFeatureFlagEnabled } from '#client/feature-flags.ts'
 import {
 	accountRailGroups,
 	accountRailOrgSlug,
@@ -53,15 +55,15 @@ export {
 /*
  * Account-area visual language, ported from the redesign prototype
  * (`landing/account.html` + the `.account-*` blocks in `landing/styles.css`).
- * Sections are hairline-divided (no card chrome), headings speak in the
+ * Sections use shared card surfaces, headings speak in the
  * display face, ledes are muted and measured, and nav links are quiet pills
  * that only go green when current.
  */
 
-/** `.account-section` — hairline-topped section, no card chrome. */
+/** Shared account section card. */
 const accountSectionCss: CSSObject = {
-	borderTop: `1px solid ${colors.border}`,
-	paddingTop: 'clamp(2rem, 4vw, 2.75rem)',
+	...surfaceCardCss,
+	padding: 'clamp(1rem, 2vw, 1.5rem)',
 	scrollMarginTop: '5.5rem',
 	display: 'grid',
 	gap: spacing.md,
@@ -309,9 +311,11 @@ export function ShellWorkspaceSwitcher({
 export function ShellNavigation({
 	navigation,
 	separateWorkspaceSwitcher = false,
+	mobileFooter,
 }: {
 	navigation?: MatchedPageNavigation
 	separateWorkspaceSwitcher?: boolean
+	mobileFooter?: ReactNode
 } = {}) {
 	const session = useShellData().session
 	const context = useRouteContext({ strict: false })
@@ -327,6 +331,7 @@ export function ShellNavigation({
 			}}
 		>
 			<AccountManagementLinkNav
+				mobileFooter={mobileFooter}
 				workspaceSwitcher={admin ? undefined : rail.workspaceSwitcher}
 				// Rail copy lives in ShellWorkspaceSwitcher above the scroll region;
 				// keep the drawer copy so narrow viewports still get a switcher.
@@ -422,6 +427,12 @@ export function AccountManagementHeader(props: AccountManagementHeaderProps) {
 
 const adminNavItems = [
 	{
+		href: '/admin/orgs',
+		label: 'Organizations',
+		icon: 'users',
+		id: 'orgs',
+	},
+	{
 		href: '/admin/users',
 		label: 'Users',
 		icon: 'users',
@@ -513,6 +524,7 @@ function railLinkGroups(
 			href: item.href,
 			label: item.label,
 			icon: item.icon,
+			...(item.badge ? { badge: item.badge } : {}),
 			active: isAccountNavItemSelected(item, itemId),
 		})),
 	}))
@@ -584,6 +596,8 @@ function pageRail(input: {
 			personal,
 			role,
 			profileUsername: session?.username,
+			executionContexts: isFeatureFlagEnabled(session, 'execution-contexts'),
+			profiles: isFeatureFlagEnabled(session, 'profiles'),
 		}),
 	}
 }
@@ -659,7 +673,7 @@ export function AccountManagementMessage(props: AccountManagementMessageProps) {
 type AccountManagementPanelProps = {
 	id?: string
 	title?: string
-	description?: string
+	description?: AccountManagementSlot
 	children?: AccountManagementSlot
 	asForm?: boolean
 	onSubmit?: (event: FormEvent<HTMLFormElement>) => void
@@ -829,7 +843,5 @@ export const noticeCardCss: CSSObject = {
 	display: 'grid',
 	gap: spacing.md,
 	padding: spacing.lg,
-	borderRadius: radius.card,
-	border: `1.5px solid ${colors.border}`,
-	backgroundColor: colors.surface,
+	...surfaceCardCss,
 }

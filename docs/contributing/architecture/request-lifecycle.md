@@ -316,13 +316,14 @@ site-perf collector records these phases; it does not budget them.
 
 Browser pages that show code — markdown bodies on guides, blog posts, and
 community READMEs, onboarding MCP config snippets, and JSON dumps on account
-jobs/activity — highlight with [Shiki](https://shiki.style/) on the
-`kody-highlight` worker. Origin loaders POST snippets over the `HIGHLIGHT`
-service binding (`POST /highlight`) and attach serializable token trees to
-loader/API data. The browser only paints those tokens as JSX text and inline
-styles — never `innerHTML` — so untrusted README fences stay inside the markdown
-safety model. Light and dark tokens follow `prefers-color-scheme` via CSS
-variables in `packages/worker/public/styles.css`. Shiki grammars are not part of
+jobs/activity — highlight with
+[TanStack Highlight](https://tanstack.com/highlight) on the `kody-highlight`
+worker. Origin loaders POST snippets over the `HIGHLIGHT` service binding
+(`POST /highlight`) and attach serializable token trees to loader/API data. The
+browser only paints those tokens as JSX text and inline styles — never
+`innerHTML` — so untrusted README fences stay inside the markdown safety model.
+Light and dark tokens follow `prefers-color-scheme` via CSS variables in
+`packages/worker/public/styles.css`. TanStack Highlight grammars are not part of
 the browser bundle; missing tokens render as escaped plaintext in the same
 wrapper. Both origin and the highlight worker cache token batches keyed by
 highlighter version.
@@ -398,16 +399,15 @@ line and never reach Sentry; genuine platform failures still do. New "not found
 `search` also publishes exclusive wall-clock tiles (`rateLimitMs`,
 `usernameLookupMs`, `identityResolutionMs`, `loadAndRankMs`, suffix stamps,
 `waitingItemsMs`, `formattingMs`) plus `exclusiveMs` / `unaccountedMs` so named
-phases reconcile against `timing.durationMs`. Overlapping detail (memory,
-retrievers, candidate plugins) stays beside those tiles and is not summed. Each
-call writes one privacy-safe point to `MCP_SEARCH_EVENTS` (see
+phases reconcile against `timing.durationMs`. Overlapping detail (memory
+enrichment and candidate plugins) stays beside those tiles and is not summed.
+Each call writes one privacy-safe point to `MCP_SEARCH_EVENTS` (see
 [Usage metering — MCP search duration](./usage-metering.md#mcp-search-duration)).
-Operators asking "is search slow this hour?" query that dataset; UWD `retriever`
-surface attribution is unchanged and does not measure search latency.
-`/admin/insights` has no search-latency chart. The same page does show the
-onboarding funnel (`ONBOARDING_FUNNEL_EVENTS`): unique users per stage for the
-last 7 and 28 days. See
-[Usage metering — Onboarding funnel](./usage-metering.md#onboarding-funnel).
+Operators asking "is search slow this hour?" query that dataset; UWD surface
+attribution does not measure search latency. `/admin/insights` has no
+search-latency chart. The same page does show the onboarding funnel
+(`ONBOARDING_FUNNEL_EVENTS`): unique users per stage for the last 7 and 28 days.
+See [Usage metering — Onboarding funnel](./usage-metering.md#onboarding-funnel).
 
 Authentication and authorization denials are deliberately **not**
 `McpCallerError`. `/mcp` rejects anonymous callers at the transport before any

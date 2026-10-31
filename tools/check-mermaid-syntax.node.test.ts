@@ -18,7 +18,7 @@ const repoRoot = fileURLToPath(new URL('..', import.meta.url))
 const githubPlusNoteDiagram = [
 	'sequenceDiagram',
 	'  actor Caller',
-	'  participant vite as Vite + Pitlane',
+	'  participant vite as Vite',
 	'  participant appUi as app-ui',
 	'  participant originWorker as origin worker',
 	'  Caller->>vite: vite serve or vite build',

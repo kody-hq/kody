@@ -350,6 +350,28 @@ export class ReplayStep implements DurableExportStep {
 	}
 }
 
+/**
+ * Upload steps return `{ kind: 'stored', stored }` (or expired). Older doubles
+ * also accepted a bare StoredBackup; keep both shapes readable in tests.
+ */
+function uploadAlreadyExisted(result: unknown): boolean {
+	if (
+		result !== null &&
+		typeof result === 'object' &&
+		'kind' in result &&
+		(result as { kind: unknown }).kind === 'stored' &&
+		'stored' in result
+	) {
+		const stored = (result as { stored: { alreadyExisted?: boolean } }).stored
+		return stored.alreadyExisted === true
+	}
+	return (
+		result !== null &&
+		typeof result === 'object' &&
+		(result as { alreadyExisted?: boolean }).alreadyExisted === true
+	)
+}
+
 export class RetryAfterCommitStep implements BackupRuntimeStep {
 	readonly uploadResults: boolean[] = []
 	private readonly cache = new Map<string, unknown>()
@@ -375,12 +397,10 @@ export class RetryAfterCommitStep implements BackupRuntimeStep {
 			typeof configOrCallback === 'function'
 				? (configOrCallback as () => Promise<T>)
 				: callback!
-		if (name === 'stream-export-to-immutable-r2') {
+		if (name.endsWith('stream-export-to-immutable-r2')) {
 			try {
 				const discarded = await execute()
-				this.uploadResults.push(
-					(discarded as { alreadyExisted: boolean }).alreadyExisted,
-				)
+				this.uploadResults.push(uploadAlreadyExisted(discarded))
 				this.afterFirstUpload?.()
 				throw new Error('simulated Workflow failure before step persistence')
 			} catch (error) {
@@ -392,9 +412,7 @@ export class RetryAfterCommitStep implements BackupRuntimeStep {
 				}
 			}
 			const retried = await execute()
-			this.uploadResults.push(
-				(retried as { alreadyExisted: boolean }).alreadyExisted,
-			)
+			this.uploadResults.push(uploadAlreadyExisted(retried))
 			this.cache.set(name, retried)
 			return retried
 		}
@@ -437,7 +455,7 @@ export class CachedUploadStep implements BackupRuntimeStep {
 				: callback!
 		const value = await execute()
 		this.cache.set(name, value)
-		if (name === 'stream-export-to-immutable-r2') await this.afterUpload()
+		if (name.endsWith('stream-export-to-immutable-r2')) await this.afterUpload()
 		if (
 			name === 'verify-stored-object-and-write-immutable-manifest' &&
 			this.afterFinalization
@@ -470,21 +488,43 @@ export class PreStatsUploadStep implements BackupRuntimeStep {
 				? (configOrCallback as () => Promise<T>)
 				: callback!
 		const value = await execute()
-		const persisted =
-			name === 'stream-export-to-immutable-r2' &&
-			value !== null &&
-			typeof value === 'object'
-				? Object.fromEntries(
-						Object.entries(value).filter(
-							([key]) => key !== 'sqlStatementStats',
-						),
-					)
-				: value
+		const persisted = stripUploadSqlStatementStats(name, value)
 		this.cache.set(name, persisted)
 		return persisted as T
 	}
 
 	async sleep(): Promise<void> {}
+}
+
+/** Drop sqlStatementStats from an upload step result (flat or `{ kind: 'stored' }`). */
+function stripUploadSqlStatementStats(name: string, value: unknown): unknown {
+	if (
+		!name.endsWith('stream-export-to-immutable-r2') ||
+		value === null ||
+		typeof value !== 'object'
+	) {
+		return value
+	}
+	if (
+		'kind' in value &&
+		(value as { kind: unknown }).kind === 'stored' &&
+		'stored' in value &&
+		(value as { stored: unknown }).stored !== null &&
+		typeof (value as { stored: unknown }).stored === 'object'
+	) {
+		const stored = (value as { stored: Record<string, unknown> }).stored
+		return {
+			...value,
+			stored: Object.fromEntries(
+				Object.entries(stored).filter(([key]) => key !== 'sqlStatementStats'),
+			),
+		}
+	}
+	return Object.fromEntries(
+		Object.entries(value as Record<string, unknown>).filter(
+			([key]) => key !== 'sqlStatementStats',
+		),
+	)
 }
 
 export class RetryUploadStep implements BackupRuntimeStep {
@@ -507,7 +547,7 @@ export class RetryUploadStep implements BackupRuntimeStep {
 			typeof configOrCallback === 'function'
 				? (configOrCallback as () => Promise<T>)
 				: callback!
-		if (name === 'stream-export-to-immutable-r2') {
+		if (name.endsWith('stream-export-to-immutable-r2')) {
 			for (let attempt = 1; attempt <= 2; attempt += 1) {
 				this.uploadAttempts.push(attempt)
 				try {

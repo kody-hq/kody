@@ -180,3 +180,33 @@ test('reports the undefined-module TypeError when no stale-chunk reload fired', 
 		expect(capture).toHaveBeenCalledWith(followOn, undefined),
 	)
 })
+
+test('skips expected permission denials and still reports real errors', async () => {
+	vi.stubGlobal('window', new EventTarget())
+	vi.stubGlobal('requestIdleCallback', vi.fn())
+	const { initSentryClient, captureClientException } =
+		await import('./sentry-client.ts')
+	const { PermissionDeniedError } =
+		await import('#universal/permission-denied.ts')
+	const doc = {
+		querySelector: () => ({
+			getAttribute: () =>
+				JSON.stringify({
+					dsn: 'https://key@o1.ingest.sentry.io/2',
+					environment: 'production',
+					tunnel: '/sentry-tunnel',
+				}),
+		}),
+	} as unknown as Document
+	expect(initSentryClient(doc)).toBe(true)
+	captureClientException(
+		new PermissionDeniedError('Missing email:read.', {
+			permission: 'email:read',
+		}),
+		{ componentStack: '\n    at Page' },
+	)
+	const real = new Error('real failure')
+	captureClientException(real)
+	await vi.waitFor(() => expect(capture).toHaveBeenCalledWith(real, undefined))
+	expect(capture).toHaveBeenCalledTimes(1)
+})

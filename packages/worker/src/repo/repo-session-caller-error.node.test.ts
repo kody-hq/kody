@@ -1,11 +1,13 @@
 import { expect, test } from 'vitest'
 import {
 	buildRepoApplyPatchParseCallerMessage,
+	buildRepoSearchEmptyPatternCallerMessage,
 	buildRepoSessionDirectoryTargetMessage,
 	externalPathFromRawWorkspaceEisdirMessage,
 	isGitPushNotFastForwardError,
 	isGitPushNotFastForwardMessage,
 	isRawWorkspaceEisdirMessage,
+	isRepoSearchEmptyPatternMessage,
 	isRepoSessionApplyPatchCallerMessage,
 	isRepoSessionDirectoryTargetCallerMessage,
 	isRepoSessionInactiveMessage,
@@ -40,6 +42,24 @@ test('isGitPushNotFastForwardError matches isomorphic-git PushRejected non-FF on
 	expect(isGitPushNotFastForwardError(new Error('D1 write failed.'))).toBe(
 		false,
 	)
+})
+
+test('isRepoSearchEmptyPatternMessage matches blank-pattern phrases only', () => {
+	const guided = buildRepoSearchEmptyPatternCallerMessage()
+	expect(guided).toContain('repoSearch requires a non-empty pattern.')
+	expect(guided).toContain('whitespace-only patterns are rejected')
+	// Legacy exact phrase from pre-KODY-BA DO builds still matches the prefix.
+	expect(
+		isRepoSearchEmptyPatternMessage('repoSearch requires a non-empty pattern.'),
+	).toBe(true)
+	expect(
+		isRepoSearchEmptyPatternMessage(
+			'repoSearch received an invalid regex: Invalid group',
+		),
+	).toBe(false)
+	expect(
+		isRepoSearchEmptyPatternMessage('Durable Object storage unavailable'),
+	).toBe(false)
 })
 
 test('isRepoSessionNotFoundMessage matches missing and wrong-user phrases only', () => {
@@ -121,6 +141,10 @@ test('isRepoSessionDirectoryTargetCallerMessage matches directory edit targets o
 	)
 	const directoryTargetCases = [
 		[
+			'read',
+			'repo session read target "src" is a directory. Pass a file path (for example src/index.ts), or use repoTree to list the folder.',
+		],
+		[
 			'move',
 			'repo session move edit source "src" is a directory. Pass a file path (for example src/index.ts), not a folder.',
 		],
@@ -142,6 +166,7 @@ test('isRepoSessionDirectoryTargetCallerMessage matches directory edit targets o
 		'Source "abc" was not found.',
 		'git apply patch did not apply cleanly to src/index.ts.',
 		'repo session write edit target "" is a directory. Pass a file path (for example src/index.ts), not a folder.',
+		'repo session read target "" is a directory. Pass a file path (for example src/index.ts), or use repoTree to list the folder.',
 	]
 	expect(
 		platformMessages.filter((message) =>

@@ -28,7 +28,10 @@ export async function toBlogPostLoaderData(
 		imageAlt: post.imageAlt,
 		ogImage: post.ogImage,
 		body: post.body,
-		bodyFences: await highlightMarkdownFences(env, post.body, { serverTiming }),
+		bodyFences: await highlightMarkdownFences(env, post.body, {
+			serverTiming,
+			firstParty: true,
+		}),
 		readNext: getReadNextBlogPost(post.slug),
 	}
 }

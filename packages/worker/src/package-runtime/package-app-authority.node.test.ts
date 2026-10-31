@@ -1,14 +1,21 @@
 import { DatabaseSync } from 'node:sqlite'
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	personalOrgId,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import {
 	revokePackageAppOauthGrantsForPersonApp,
 	upsertPackageAppOauthGrant,
 } from '#app/package-app-oauth-grants.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
+	createPackageAppVisitorCredentialRequest,
+	createPackageAppVisitorPersonalRequest,
 	createPackageAppCredentialAuthority,
 	forgetPackageAppRunsAs,
 	loadPackageAppRunsAs,
@@ -295,7 +302,7 @@ test('consent scope: a visitor need resolves only while a live grant covers that
 
 test('revoked grant: the next visitor-need call fails, and credential handles stop resolving', async () => {
 	const t = await setup()
-	await upsertPackageAppOauthGrant({
+	const grantId = await upsertPackageAppOauthGrant({
 		db: t.db,
 		personId: t.outsider,
 		orgUsername: 'acme',
@@ -315,6 +322,10 @@ test('revoked grant: the next visitor-need call fails, and credential handles st
 		issue: { visitorNeed: 'github' },
 	})
 	expect(await authority.visitorNeedRequest('github')).toBe(visitorRequest)
+	expect(await authority.visitorNeedGrant('github')).toMatchObject({
+		request: visitorRequest,
+		grantId,
+	})
 	expect(await authority.visitorNeedRequest('calendar')).toBeNull()
 
 	await revokePackageAppOauthGrantsForPersonApp({
@@ -324,6 +335,7 @@ test('revoked grant: the next visitor-need call fails, and credential handles st
 		kodyId: 'board',
 	})
 	expect(await authority.visitorNeedRequest('github')).toBeNull()
+	expect(await authority.visitorNeedGrant('github')).toBeNull()
 	expect(
 		await packageAppVisitorConsents({
 			db: t.db,
@@ -332,6 +344,54 @@ test('revoked grant: the next visitor-need call fails, and credential handles st
 			needKey: 'github',
 		}),
 	).toBe(false)
+})
+
+test('visitor credential requests use the visitor personal binding', async () => {
+	const t = await setup()
+	const visitorOrgId = personalOrgId(personIdFromStored(t.member))
+	const request = await createPackageAppVisitorPersonalRequest({
+		db: t.db,
+		visitor: {
+			userId: personIdFromStored(t.member),
+			username: 'member',
+		},
+	})
+
+	expect(request).toMatchObject({
+		org: { id: visitorOrgId, slug: 'member' },
+		actor: { userId: t.member },
+		membership: { role: 'owner' },
+		credential: { kind: 'package-app' },
+	})
+	expect(request?.org.id).not.toBe(t.orgId)
+})
+
+test('flag-off visitor credential requests reuse the caller request', async () => {
+	const t = await setup()
+	const callerRequest = deriveRequestContext({
+		user: {
+			userId: personIdFromStored(t.member),
+			username: 'member',
+		},
+		source: { kind: 'package-app' },
+		orgBinding: {
+			org: { id: t.orgId, slug: 'acme' },
+			role: 'member',
+		},
+	})
+
+	const request = await createPackageAppVisitorCredentialRequest({
+		db: t.db,
+		orgId: t.orgId,
+		callerRequest,
+		visitor: {
+			userId: personIdFromStored(t.member),
+			username: 'member',
+		},
+	})
+
+	expect(request).toBe(callerRequest)
+	expect(request?.org.id).toBe(t.orgId)
 })
 
 test('runs-as credential handles resolve as the live runs-as person, and stop when that person leaves', async () => {

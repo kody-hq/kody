@@ -78,7 +78,7 @@ export function AddAccountForm(props: {
 			<SiteLink
 				href={props.openHref}
 				data-testid="add-account-open"
-				data-prevent-scroll-reset
+				resetScroll={false}
 				css={addAccountLinkCss}
 			>
 				Add another account

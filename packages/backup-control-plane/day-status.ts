@@ -110,7 +110,7 @@ export const dayColumnLegend: ReadonlyArray<{
 	},
 	{
 		label: 'Staging',
-		text: 'Mailbox, RunLog, storage, R2, and artifact export. Starts at 00:30 UTC. In progress, starting, or queued behind an older day is normal. Overdue after 48h while the cursor still moves. Red when nothing has advanced for 2h, the day never started after the window, progress is unreadable, or the day is within 2 days of falling out of the 14-day catch-up lookback.',
+		text: 'Mailbox, RunLog, storage, R2, and artifact export. Starts at 00:30 UTC. In progress, starting, or queued behind an older day is normal for the first 48h. Overdue after 48h (including a day still queued behind an older one) while the cursor still moves. Red when nothing has advanced for 2h, the day never started after the window, progress is unreadable, or the day is within 2 days of falling out of the 14-day catch-up lookback.',
 	},
 	{
 		label: 'Sealed',
@@ -317,7 +317,7 @@ type StagingClassification =
 	| { kind: 'pending' }
 	| { kind: 'due' }
 	| { kind: 'missing' }
-	| { kind: 'queued'; behind: string }
+	| { kind: 'queued'; behind: string; overdue: boolean }
 	| { kind: 'starting' }
 	| { kind: 'not-started' }
 	| { kind: 'stuck'; progress: ProgressPhrase; nearingLookback: boolean }
@@ -352,7 +352,13 @@ function classifyStaging(input: {
 		}
 	}
 	if (input.activeStagingDay !== null && input.activeStagingDay < input.day) {
-		return { kind: 'queued', behind: input.activeStagingDay }
+		const queuedAgeMs =
+			input.now.getTime() - Date.parse(`${input.day}T00:00:00.000Z`)
+		return {
+			kind: 'queued',
+			behind: input.activeStagingDay,
+			overdue: queuedAgeMs >= stagingExpectedCompleteMs,
+		}
 	}
 	const progress = progressPhrase(input.stagingProgress, input.now)
 	const nearing = input.offsetDays >= stagingNearingLookbackOffset
@@ -406,10 +412,17 @@ function stagingCell(classification: StagingClassification): DayCell {
 		case 'missing':
 			return { tone: 'bad', label: 'Missing' }
 		case 'queued':
-			return {
-				tone: 'neutral',
-				label: `Queued behind ${classification.behind}`,
-			}
+			// A day 48h+ old still waiting means the backlog is losing to the
+			// calendar, even if the head day is moving. Not normal queueing.
+			return classification.overdue
+				? {
+						tone: 'warn',
+						label: `Overdue · queued behind ${classification.behind}`,
+					}
+				: {
+						tone: 'neutral',
+						label: `Queued behind ${classification.behind}`,
+					}
 		case 'starting':
 			return { tone: 'neutral', label: 'Starting' }
 		case 'not-started':

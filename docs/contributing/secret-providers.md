@@ -8,7 +8,18 @@ provider-agnostic.
 ## Grammar
 
 `{{secret/<provider>:<ref>}}` splits on the **first** `:` after `secret/`. The
-`ref` is opaque to core.
+`ref` is opaque to core. Angle-bracket markers such as `<provider>`,
+`<item-id>`, or `<field>`, and the grammar metavariable form
+`{{secret/provider:ref}}`, make a token inert documentation (never filled,
+including in ordinary message bodies). The publish stamp also ignores vault
+tokens that appear only in display/help text (for example `status()` example
+fields), even with a concrete provider id and ref. A token in a fetch/request or
+credential-mapped site stamps only when the package declares a described
+`kind: "secret-provider"` slot whose `package` (looked up in the publishing org)
+declares the token's literal provider id as `kody.secretProvider.id`; that slot
+key is sealed into the stamp. At run time a provider use is declared only when
+the org's binding for the id names the declared package (an older slot keyed by
+the provider id still counts).
 
 - `{{secret/1password:i/<item-id>/password}}` — canonical form (`<item-id>` is a
   UUID or a 1Password Connect 26-char id `^[a-z0-9]{26}$`)
@@ -25,8 +36,9 @@ segment is already a UUID or Connect item id. Name-based
 package's sealed `./secretProvider` export can canonicalize that synonym
 (`action: "canonicalize"`) and return `{ canonicalRef }` without a secret value.
 
-Grant approval (`secretProviderLock`) requires a locally canonicalizable ref so
-lock/search never call the vault.
+Grant approval through
+`resourceLock({ kind: 'secret_provider', provider, ref, package_id })` requires
+a locally canonicalizable ref so lock/search never call the vault.
 
 ## Binding
 
@@ -65,10 +77,12 @@ websites fail closed.
 
 - Ad hoc execute may use provider placeholders without a package grant (same
   spirit as unlocked user secrets).
-- Saved packages need an explicit `(provider, canonicalRef) → package` grant.
-  `secretProviderLock` returns the approval URL; only the owner can grant or
-  revoke on `/@<slug>/-/secret-providers`. Unbind, and rebind to a different
-  provider package, drop every grant for that provider.
+- Saved packages need a `kind: "secret-provider"` slot for the provider (see
+  [Use a provider in a saved package](../guides/secret-providers.md#use-a-provider-in-a-saved-package))
+  and an explicit `(provider, canonicalRef) → package` grant. `resourceLock`
+  returns the approval URL; only the owner can grant or revoke on
+  `/@<slug>/-/secret-providers`. Unbind, and rebind to a different provider
+  package, drop every grant for that provider.
 - A package runs in the org that owns it, so a collaborator holding a grant uses
   that org's binding and grants, not their own.
 

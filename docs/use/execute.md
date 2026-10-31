@@ -65,15 +65,19 @@ the code is written. Use `import(specifier)` when the name is data.
 the module's **default export** as the first function argument. Shared helpers
 should receive that object through normal function arguments.
 
-When the `execute-invoke` experiment is on for the caller (operators enable that
-flag for the `experiments_opt_in` audience at `/account/experiments`),
-**execute** also accepts **`invoke`**: a package export specifier such as
-`kody:@scope/package/export` or `@scope/package#export`. `invoke` is mutually
-exclusive with `code`. Kody writes the same canonical thin passthrough a careful
-agent would write (`import action from "kody:@scope/package/export"` plus a
-default export that calls it with `params`) and then runs the ordinary execute
-path. The Dynamic Worker identity matches that hand-written module. Arbitrary
-URLs are rejected. Vary args via **`params`**.
+To call one package export, send a thin passthrough as **`code`** and vary args
+via **`params`**:
+
+```ts
+import action from 'kody:@scope/package/export'
+export default (params) => action(params)
+```
+
+**execute** has no `invoke` field
+([ADR 0085](../contributing/decisions/0085-execute-takes-code-only.md)). A call
+that still sends `invoke` fails with an error that shows this `code` form for
+its specifier. The CLI `kody execute --invoke kody:@scope/package/export` flag
+is client-side sugar: the CLI writes this module and sends it as `code`.
 
 Ad hoc worker identity follows the acting user plus that **`code`** module
 graph. Put varying capability args in **`params`**, not string literals inside
@@ -198,9 +202,9 @@ Hosted MCP clients stop waiting after about 60 seconds and surface JSON-RPC
 notifications do not reset that clock. Before that client deadline, hosted
 **execute** returns `inProgress: true` with **`runId`** and **`idempotencyKey`**
 instead of letting the timeout look like a failed mutation with nothing to
-follow. The sandbox keeps running. Poll **`runGet`** with `runId`. Retry
-**execute** with the same `idempotencyKey` to read the in-progress or retained
-result. Do not start a second mutation.
+follow. The sandbox keeps running. Poll **`runGet({ run_id: runId })`** with
+that `runId`. Retry **execute** with the same `idempotencyKey` to read the
+in-progress or retained result. Do not start a second mutation.
 
 You can omit **`idempotencyKey`**. When Kody can record the run, it assigns one
 (`execute:…`) and returns it on that follow response. Pass your own key (string,
@@ -236,6 +240,18 @@ To read field shapes while coding, use **search** with
 inspect the relevant saved package with **`entity: "package:{package-name}"`**.
 Capability detail includes a complete **execute** module snippet; the runtime
 call itself is always through the imported `kody` object.
+
+## Execution contexts
+
+By default execute runs on Kody cloud. With the execution contexts experiment
+on, it can run on your own machine instead: pass `context` (with optional
+`fallback: "chain"`), a per-run `chain`, or `requires: ["fs" | "lan"]`, or let
+your default chain decide. Every routed result carries `ranOn`. Credentials stay
+in Kody cloud. See the
+[Execution contexts guide](../guides/execution-contexts.md) and the
+[field reference](./execution-contexts.md); turn the experiment on at
+[`/account/experiments`](https://kody.codes/account/experiments) or with
+`experimentSet`.
 
 ## Saved packages
 
@@ -338,16 +354,16 @@ For dedicated inspection, use:
 
 - **`storageExport`** — export one storage bucket as JSON (`page_size` max 1000)
 - **`storageQuery`** — run SQL against one storage bucket (read-only by default,
-  opt into writes explicitly). Package-bucket ids still require `package:write`
-  (connection-profile write), including for SELECT inspection. Returns at most
-  1000 rows and sets `truncated: true` when more matched — same cap as
-  `sql(...)`. `warning` is set when the scan examines at least 1,000,000 rows.
-  The read is allowed and metered until 1,000,000,000 rows, then it stops.
+  opt into writes explicitly). Package-bucket ids still require `package:write`,
+  including for SELECT inspection. Returns at most 1000 rows and sets
+  `truncated: true` when more matched — same cap as `sql(...)`. `warning` is set
+  when the scan examines at least 1,000,000 rows. The read is allowed and
+  metered until 1,000,000,000 rows, then it stops.
 
 Both are scoped to the caller. Code running as a saved package (invocations,
-jobs, package apps, retrievers) may name only buckets that package owns — its
-own bucket, its app facet buckets, and its package job buckets. Another
-package's bucket is reachable only through `packageStorage()`, which is gated by
+jobs, and package apps) may name only buckets that package owns — its own
+bucket, its app facet buckets, and its package job buckets. Another package's
+bucket is reachable only through `packageStorage()`, which is gated by
 bundler-recorded provenance grants.
 
 ## Long-term memory
@@ -455,7 +471,20 @@ the worked example in [Secrets and host approval](./secrets-and-values.md).
 
 Kody resolves both saved secrets server-side, requires the token endpoint host
 to be approved for both secrets, and only sends the derived Basic header in the
-outbound request.
+outbound request. The token request runs on Kody, hosted and `--local`, and its
+`access_token` and `refresh_token` come back as sealed handles: use
+`Authorization: Bearer ${token.access_token}` in a fetch to the token host's
+registrable domain, to any host approved for the client secrets, or to the exact
+host of the access token's https `aud` claim (an Azure token for
+`https://management.azure.com/.default` fills on `management.azure.com`), and
+Kody fills the token on egress. Code never sees the token. Any JSON response to
+a request Kody filled a credential into has its nonempty `access_token`,
+`refresh_token`, and `id_token` string fields sealed the same way; other fields
+stay readable. To keep one, pass it to
+`secretSet({ name, scope: 'user', sealed_token })` in the same run. That works
+from ad hoc execute (hosted, `--local`, or Open API with a run), not from
+package code; a package that holds a refresh token uses a
+[login credential](../guides/credentials.md#login).
 
 See [Secrets and host approval](./secrets-and-values.md) for placeholders, host
 approval, and **`kody.secretList`** / **`secretSet`**.

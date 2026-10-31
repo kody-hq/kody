@@ -1,8 +1,7 @@
 import { normalizeEmailAddress } from './address.ts'
 import { resolveInboundEmailAuthVerdict } from './auth-verdict.ts'
-import { authenticatesFromAddress } from './inbound-sender.ts'
 import { evaluateEmailSenderRules } from './sender-rules.ts'
-import { type EmailClassification } from './types.ts'
+import { type EmailReceiveClassification } from './types.ts'
 
 export async function resolveInboundEmailClassification(input: {
 	db: D1Database
@@ -12,11 +11,9 @@ export async function resolveInboundEmailClassification(input: {
 	envelopeFrom: string
 	authResults: string | null
 }): Promise<{
-	classification: EmailClassification
+	classification: EmailReceiveClassification
 	classificationReason: string | null
 }> {
-	// Authentication is decided before sender rules so an allow address/domain
-	// rule cannot accept spoofed (auth-failed) mail.
 	const verdict = resolveInboundEmailAuthVerdict(input.authResults)
 
 	const senderAddress = input.fromAddress
@@ -33,22 +30,10 @@ export async function resolveInboundEmailClassification(input: {
 	if (ruleMatch) {
 		switch (ruleMatch.effect) {
 			case 'allow':
-				if (
-					senderAddress &&
-					authenticatesFromAddress({
-						verdict,
-						fromAddress: senderAddress,
-						envelopeFrom: input.envelopeFrom,
-					})
-				) {
-					return { classification: 'accepted', classificationReason: null }
-				}
-				return {
-					classification: 'quarantined',
-					classificationReason: verdict.suspect
-						? verdict.reason
-						: 'Sender matched allow rule but From did not authenticate.',
-				}
+				// Address/domain allow overrides auto-quarantine for failed
+				// sender authentication. Block and quarantine rules still win
+				// over allow via address-vs-domain precedence in evaluation.
+				return { classification: 'accepted', classificationReason: null }
 			case 'block':
 				return {
 					classification: 'quarantined',

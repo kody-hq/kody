@@ -30,6 +30,7 @@ export const orgDeleteCapability = defineDomainCapability(
 			'Soft-delete an organization. Resources are tombstoned immediately and can be restored within 30 days.',
 		keywords: ['org', 'delete', 'soft delete', 'team'],
 		destructive: true,
+		contextRuns: 'deny',
 		orgPermission: 'org:delete',
 		inputSchema,
 		outputSchema,

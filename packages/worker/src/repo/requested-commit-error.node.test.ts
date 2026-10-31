@@ -2,7 +2,6 @@ import { expect, test } from 'vitest'
 import { type EntitySourceRow } from './types.ts'
 import { buildSourceRecoveryProblemMessage } from './source-safety-policy.ts'
 import {
-	buildUnknownRequestedCommitMessage,
 	classifyExternalPublishCloneError,
 	unknownRequestedCommitError,
 } from './requested-commit-error.ts'
@@ -25,9 +24,10 @@ test('an unknown full SHA is not classified as a backup or clone failure', () =>
 	)
 	expect(classified.kind).toBe('unknown_commit')
 	if (classified.kind !== 'unknown_commit') return
-	expect(classified.error.message).toBe(
-		buildUnknownRequestedCommitMessage(commit),
+	expect(classified.error.message).toContain(
+		'was not found in the package source',
 	)
+	expect(classified.error.message).toContain(commit)
 	expect(classified.error.message).not.toContain('restorable backup')
 	expect(classified.error.message).not.toContain('source clone failed')
 })

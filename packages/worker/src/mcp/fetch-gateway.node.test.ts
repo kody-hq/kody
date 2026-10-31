@@ -35,6 +35,22 @@ import * as providerService from '#mcp/secrets/secret-providers/service.ts'
 import * as usageModule from '#worker/usage/record-usage.ts'
 import { IntegrationHostNotAllowedError } from '#mcp/execute-modules/integration-host-allowlist.ts'
 
+// These cases cover fills the owner has opted in to; enforcement of the
+// opt-in itself is covered in fill-placement-enforcement.node.test.ts.
+vi.mock(
+	'#worker/credentials/fill-placement-opt-ins.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<
+			typeof import('#worker/credentials/fill-placement-opt-ins.ts')
+		>()),
+		readFillPlacementOptIn: async () => ({
+			query: true,
+			path: true,
+			body: true,
+		}),
+	}),
+)
+
 const userMeter = createInMemoryUserMeterEnv()
 const env = {
 	APP_DB: {
@@ -156,6 +172,8 @@ function communityFork(forkedPackageId: string, targetKodyId: string) {
 	return {
 		id: 'fork-1',
 		listingId: 'listing-1',
+		upstreamOwnerId: null,
+		upstreamPackageId: null,
 		forkerUserId: 'user-123',
 		originCommit: 'abc123',
 		forkedPackageId,
@@ -628,7 +646,6 @@ test('fetch gateway headers-only fills headers and sends a body that quotes plac
 	expect(new URL(sent.url).searchParams.get('q')).toBe('{{secret:githubToken}}')
 	const sentBody = await sent.text()
 	expect(sentBody).toBe(issueBody)
-	expect(sentBody).not.toContain('secret-value')
 	expect(resolveSpy).toHaveBeenCalledTimes(1)
 })
 
@@ -920,7 +937,7 @@ test('fetch gateway gates integration tokens by the connection grant and require
 
 	// Package export imported into execute: run has no packageId; the
 	// callee's per-package binding (boundPackageId) carries the package for
-	// integrationLock grants (same as secrets). A header never does.
+	// resourceLock integration grants (same as secrets). A header never does.
 	grantSpy.mockClear()
 	const stampedFromExecute = await expand(
 		integrationRequest('https://example.com/api'),
@@ -1944,26 +1961,31 @@ test('fetch gateway provider placeholders: normalize mixed case, deny wrong host
 	)
 })
 
-test('executeGatewayFetch rejects when allowOutboundFetch is false', async () => {
+test('gateway fetch meters a cross-org package-app visit to the visiting org', async () => {
 	const recordUsageSpy = vi
 		.spyOn(usageModule, 'recordUsage')
 		.mockResolvedValue(undefined)
-	const globalFetch = vi.fn(async () => new Response('ok'))
-	await expect(
-		executeGatewayFetch({
+	const fetchStub = vi.fn(async () => new Response('ok', { status: 200 }))
+	try {
+		const response = await executeGatewayFetch({
 			env,
 			props: {
-				baseUrl: 'https://kody.example',
-				userId: ownerIdFromStored('user-123'),
-				email: 'user@example.com',
-				request: null,
-				storageContext: null,
-				allowOutboundFetch: false,
+				...props,
+				request: {
+					...props.request,
+					billing: { orgId: ownerIdFromStored('org-visitor') },
+				},
 			},
-			request: new Request('https://example.com'),
-			globalFetch: globalFetch as unknown as typeof fetch,
-		}),
-	).rejects.toThrow('Outbound fetch is not available in retriever runs.')
-	expect(globalFetch).not.toHaveBeenCalled()
-	expect(recordUsageSpy).not.toHaveBeenCalled()
+			request: new Request('https://api.example.com/data'),
+			globalFetch: fetchStub,
+		})
+		await response.arrayBuffer()
+		await vi.waitFor(() => expect(recordUsageSpy).toHaveBeenCalled())
+		expect(recordUsageSpy.mock.calls[0]?.[1]).toMatchObject({
+			userId: 'org-visitor',
+			eventType: 'outbound_fetch',
+		})
+	} finally {
+		recordUsageSpy.mockRestore()
+	}
 })

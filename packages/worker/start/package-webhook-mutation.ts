@@ -2,8 +2,6 @@ import {
 	mintPackageWebhook,
 	rotatePackageWebhook,
 	revealPackageWebhook,
-	enablePackageWebhook,
-	disablePackageWebhook,
 } from '#start/server/package-webhooks'
 import {
 	mutationOptions,
@@ -35,8 +33,6 @@ export function packageWebhookMutationOptions(queryClient: QueryClient) {
 				mint: mintPackageWebhook,
 				rotate: rotatePackageWebhook,
 				reveal: revealPackageWebhook,
-				enable: enablePackageWebhook,
-				disable: disablePackageWebhook,
 			}[input.intent]
 			const payload = await operation({
 				data: {

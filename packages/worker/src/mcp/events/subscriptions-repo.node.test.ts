@@ -38,7 +38,6 @@ function key(
 	return {
 		userId: ownerIdFromStored('user-1'),
 		oauthClientId: 'client-a',
-		connectionProfileName: null,
 		eventName: '@kentcdodds/discord.message.created',
 		arguments: {},
 		callbackUrl: 'https://hooks.example.com/kody',
@@ -54,24 +53,15 @@ async function save(
 		refreshBefore?: Date
 		verifiedAt?: string
 		at?: Date
-		connectionProfileName?: string | null
 	} = {},
 ) {
-	const keyWithProfile: McpEventSubscriptionKey = {
-		...subscriptionKey,
-		connectionProfileName:
-			options.connectionProfileName !== undefined
-				? options.connectionProfileName
-				: subscriptionKey.connectionProfileName,
-	}
-	const id = await buildMcpEventSubscriptionId(keyWithProfile)
+	const id = await buildMcpEventSubscriptionId(subscriptionKey)
 	const at = options.at ?? now
 	return await upsertMcpEventSubscription({
 		db,
 		env,
 		id,
-		key: keyWithProfile,
-		connectionProfileName: keyWithProfile.connectionProfileName,
+		key: subscriptionKey,
 		secret: options.secret ?? secretA,
 		refreshBefore: options.refreshBefore ?? new Date(at.getTime() + hourMs),
 		verifiedAt: options.verifiedAt ?? at.toISOString(),
@@ -90,22 +80,20 @@ test('subscription ids are deterministic over the full key and argument order', 
 		[
 			key({ userId: ownerIdFromStored('user-2') }),
 			key({ oauthClientId: 'client-b' }),
-			key({ connectionProfileName: 'work' }),
 			key({ eventName: 'other.topic' }),
 			key({ arguments: { a: 1 } }),
 			key({ callbackUrl: 'https://hooks.example.com/other' }),
 		].map(buildMcpEventSubscriptionId),
 	)
-	expect(new Set([base, ...variants]).size).toBe(7)
+	expect(new Set([base, ...variants]).size).toBe(6)
 })
 
 test('upsert stores an encrypted secret and refreshes in place', async () => {
 	const { sqlite, db } = createDb()
-	const created = await save(db, key({ connectionProfileName: 'work' }))
+	const created = await save(db, key())
 	expect(created).toMatchObject({
 		userId: ownerIdFromStored('user-1'),
 		oauthClientId: 'client-a',
-		connectionProfileName: 'work',
 		eventName: '@kentcdodds/discord.message.created',
 		argumentsJson: '{}',
 		callbackUrl: 'https://hooks.example.com/kody',
@@ -121,7 +109,7 @@ test('upsert stores an encrypted secret and refreshes in place', async () => {
 	expect(stored.secret_encrypted).not.toContain(secretA.slice(6))
 
 	const later = new Date(now.getTime() + 10 * 60 * 1000)
-	const refreshed = await save(db, key({ connectionProfileName: 'work' }), {
+	const refreshed = await save(db, key(), {
 		at: later,
 		refreshBefore: new Date(later.getTime() + 2 * hourMs),
 	})
@@ -129,18 +117,6 @@ test('upsert stores an encrypted secret and refreshes in place', async () => {
 	expect(refreshed.refreshBefore).toBe(
 		new Date(later.getTime() + 2 * hourMs).toISOString(),
 	)
-	expect(refreshed.connectionProfileName).toBe('work')
-	// A different profile is a different subscription id, so it cannot erase
-	// the original grant's stored profile binding.
-	const otherProfile = await save(db, key({ connectionProfileName: null }), {
-		at: later,
-	})
-	expect(otherProfile.id).not.toBe(created.id)
-	expect(
-		sqlite
-			.prepare(`SELECT COUNT(*) AS count FROM mcp_event_subscriptions`)
-			.get(),
-	).toEqual({ count: 2 })
 	await expect(
 		readMcpEventSubscriptionSigningSecrets({
 			db,

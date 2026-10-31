@@ -1,13 +1,16 @@
 import { expect, test } from 'vitest'
+import { transientDatabaseUnavailableMessage } from '@kody-internal/shared/d1-retry.ts'
 import {
 	filterBrowserAbortSentryEvent,
 	filterBrowserInjectedGlobalNoiseSentryEvent,
 	filterBrowserSentryEvent,
 	filterFirefoxDomPermissionDeniedSentryEvent,
+	filterRetryableD1LockSentryEvent,
 	isChromeExtensionMessageChannelDisconnectedError,
 	isTanStackRouterNotFoundError,
 	isTanStackServerFnFetchNetworkError,
 } from './sentry-browser-filters.ts'
+import { PermissionDeniedError } from '#universal/permission-denied.ts'
 
 type Frame = {
 	filename?: string
@@ -123,6 +126,23 @@ const createServerFnFrame = fr(
 )
 const serverFnFetcherStack =
 	'TypeError: Load failed\n    at getResponse (@tanstack/start-client-core/dist/esm/client-rpc/serverFnFetcher.js:138:9)\n    at userNext (@tanstack/start-client-core/dist/esm/createServerFn.js:1:1)'
+
+test('filterRetryableD1LockSentryEvent drops bare D1 export locks and remaps (KODY-B7)', () => {
+	const d1Export = 'D1_ERROR: Currently processing a long-running export.'
+	expect(
+		filterRetryableD1LockSentryEvent(makeEvent(['Error', d1Export])),
+	).toBeNull()
+	expect(
+		filterRetryableD1LockSentryEvent(
+			makeEvent(['Error', transientDatabaseUnavailableMessage]),
+		),
+	).toBeNull()
+	const wrapper = makeEvent([
+		'Error',
+		`serveMcp could not recover after retries: ${d1Export}`,
+	])
+	expect(filterRetryableD1LockSentryEvent(wrapper)).toBe(wrapper)
+})
 
 test('individual browser Sentry filters drop AbortError, Firefox Xray, and injected-global noise', () => {
 	const cases: Array<[typeof filterBrowserSentryEvent, Case, boolean]> = [
@@ -471,6 +491,18 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 			undefined,
 			withStack(new TypeError('Load failed'), serverFnFetcherStack),
 		],
+		// Transient D1 platform unavailability dehydrated to the browser (KODY-B7).
+		[
+			'Error',
+			'D1_ERROR: Currently processing a long-running export.',
+			[kodyEntry],
+		],
+		[
+			'Error',
+			'Currently processing a long-running export.',
+			[minifiedEntryFrame],
+		],
+		['Error', transientDatabaseUnavailableMessage, [kodyEntry]],
 	]
 	expect(
 		dropped.filter((c) => !droppedBy(filterBrowserSentryEvent, c)),
@@ -761,6 +793,12 @@ test('filterBrowserSentryEvent drops third-party and platform noise and keeps re
 				new DOMException(replayCrossOriginElementMessage, 'SecurityError'),
 				`SecurityError: ${replayCrossOriginElementMessage}\n    at boot (https://kody.codes/assets/onIframeLoad-helper.js:1:1)`,
 			),
+		],
+		// Recovery wrappers that embed the D1 export sentence stay visible.
+		[
+			'Error',
+			'serveMcp could not recover after retries: D1_ERROR: Currently processing a long-running export.',
+			[kodyEntry],
 		],
 	]
 	expect(kept.filter((c) => !keptBy(filterBrowserSentryEvent, c))).toEqual([])
@@ -1152,4 +1190,24 @@ test('drops TanStack Router notFound control flow (KODY-AH)', () => {
 	expect(filterBrowserSentryEvent(event, { isNotFound: false })).toBe(event)
 	const real = makeEvent(['Error', 'Real failure'])
 	expect(filterBrowserSentryEvent(real, new Error('Real failure'))).toBe(real)
+})
+
+test('drops expected permission denials and keeps real errors', () => {
+	const event = makeEvent(['PermissionDeniedError', 'Missing email:read.'])
+	expect(
+		filterBrowserSentryEvent(
+			event,
+			new PermissionDeniedError('Missing email:read.', {
+				permission: 'email:read',
+			}),
+		),
+	).toBeNull()
+	const authorization = Object.assign(new Error('Missing email:read.'), {
+		name: 'AuthorizationError',
+	})
+	expect(filterBrowserSentryEvent(event, authorization)).toBeNull()
+	const real = makeEvent(['Error', 'Missing email:read.'])
+	expect(filterBrowserSentryEvent(real, new Error('Missing email:read.'))).toBe(
+		real,
+	)
 })

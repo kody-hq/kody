@@ -42,7 +42,10 @@ import {
 	type CredentialMappingRowTarget,
 } from './credential-mappings.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
-import { type CredentialNeed } from './credential-needs.ts'
+import {
+	savedCredentialNeeds,
+	type SavedCredentialNeed,
+} from './credential-needs.ts'
 import { buildNeedCreateUrl } from './need-create-url.ts'
 
 export type PackageMappingScope = {
@@ -53,7 +56,8 @@ export type PackageMappingScope = {
 	actorId: string
 	savedPackage: SavedPackageRecord
 	canManage: boolean
-	needs: Array<CredentialNeed>
+	/** Needs a saved credential fills; secret-provider needs are left out. */
+	needs: Array<SavedCredentialNeed>
 	usable: Array<UsableCredential>
 	triggers: Array<DeclaredTrigger>
 	rows: Array<CredentialMappingRow>
@@ -141,7 +145,8 @@ export async function loadPackageMappingScope(input: {
 			env: input.env,
 			userId: savedPackage.userId,
 			sourceId: savedPackage.sourceId,
-		}),
+			request: input.request,
+		}).then(savedCredentialNeeds),
 		listUsableCredentials({
 			env: input.env,
 			request: input.request,
@@ -277,7 +282,7 @@ function storedView(
 
 function effectiveMapping(
 	scope: PackageMappingScope,
-	need: CredentialNeed,
+	need: SavedCredentialNeed,
 	input: { trigger: CredentialMappingRow | null; createUrl: string },
 ): EffectiveCredentialMapping {
 	const layer = (target: CredentialMappingRowTarget) =>
@@ -328,7 +333,12 @@ function effectiveMapping(
 			}
 		}
 	}
-	const resolution = resolveNeedCandidates(need, scope.usable)
+	const resolution = resolveNeedCandidates(
+		need,
+		need.supplier === 'publisher'
+			? scope.usable.filter((credential) => credential.scope === 'org')
+			: scope.usable,
+	)
 	if (resolution.autoPick) {
 		return {
 			source: 'auto',
@@ -356,7 +366,21 @@ function effectiveMapping(
 	}
 	return resolution.status === 'ambiguous'
 		? notReady('ambiguous', 'auto', resolution.candidates.map(toCredentialRef))
-		: notReady('unbound', 'auto')
+		: notReady(
+				'unbound',
+				'auto',
+				resolution.possibleMatches
+					.filter((credential) => !credential.expired)
+					.map(toCredentialRef),
+			)
+}
+
+function possibleMatchesOf(
+	effective: EffectiveCredentialMapping,
+): Pick<PackageCredentialsIncomplete, 'possibleMatches'> {
+	return effective.status === 'unbound' && effective.candidates.length > 0
+		? { possibleMatches: effective.candidates }
+		: {}
 }
 
 function isIncomplete(
@@ -416,6 +440,7 @@ export async function buildPackageCredentialsView(
 				needKey: need.key,
 				where: { type: 'default' },
 				status: effective.status,
+				...possibleMatchesOf(effective),
 			})
 		}
 		return {
@@ -424,6 +449,10 @@ export async function buildPackageCredentialsView(
 			provider: need.provider,
 			description: need.description,
 			multiple: need.multiple,
+			...(need.supplier ? { supplier: need.supplier } : {}),
+			...(need.supplier === 'executor'
+				? { required: need.required ?? true }
+				: {}),
 			...(need.from ? { from: need.from } : {}),
 			defaults: {
 				org: storedView(
@@ -442,6 +471,7 @@ export async function buildPackageCredentialsView(
 			options: scope.usable
 				.filter(
 					(credential) =>
+						(need.supplier !== 'publisher' || credential.scope === 'org') &&
 						needAcceptsKind(need.kind, credential.kind) &&
 						needAcceptsProvider(need.provider, credential.provider),
 				)
@@ -511,6 +541,7 @@ export async function buildPackageCredentialsView(
 										...(liveOwnCount > 1 ? { enablementId: row.id } : {}),
 									},
 									status: effective.status,
+									...possibleMatchesOf(effective),
 								})
 							}
 							return {

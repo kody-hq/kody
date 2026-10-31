@@ -14,15 +14,13 @@ const agentsMd =
 	'# Agents\n\nSynthetic rehearsal data. Import `./ping` to smoke test.\n'
 
 /**
- * A person's package covering §12.2 "data per user": an app, a recurring and
- * a one-off job, a webhook, a package-scoped secret, and an export that proves
- * that secret still decrypts by fetching the mock echo route with the
- * placeholder.
+ * A person's package covering §12.2 "data per user": an app, a recurring job,
+ * a webhook, a package-scoped secret, and an export that proves that secret
+ * still decrypts by fetching the mock echo route with the placeholder.
  */
 export function personalPackageFiles(input: {
 	username: string
 	echoUrl: string
-	oneOffRunAt: string
 }): Array<PackageFile> {
 	const packageJson = {
 		name: `@${input.username}/${personalPackageLeaf}`,
@@ -43,11 +41,6 @@ export function personalPackageFiles(input: {
 				'daily-digest': {
 					entry: './src/daily.ts',
 					schedule: { type: 'interval', every: '1d' },
-					enabled: true,
-				},
-				'one-off-reminder': {
-					entry: './src/daily.ts',
-					schedule: { type: 'once', runAt: input.oneOffRunAt },
 					enabled: true,
 				},
 			},

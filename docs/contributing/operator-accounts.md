@@ -232,7 +232,8 @@ From `.github/workflows/*.yml` (automatic `GITHUB_TOKEN` omitted):
 `DISCORD_GUILD_ID`, `DISCORD_MEMBER_ROLE_ID`, `DISCORD_STANDARD_ROLE_ID`,
 `DISCORD_PRO_ROLE_ID`, `KIT_API_KEY`, `STRIPE_SECRET_KEY`,
 `STRIPE_WEBHOOK_SECRET`, `STATUS_INCIDENT_EVENT_SECRET`,
-`OIDC_SIGNING_PRIVATE_KEY_PEM`, `OIDC_SIGNING_KEY_ID`,
+`OIDC_SIGNING_PRIVATE_KEY_PEM`, `OIDC_SIGNING_KEY_ID`, `ECP_FRAME_SIGNING_KEYS`
+(optional; required for production execution-context daemon connections),
 `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN`,
 `NX_SELF_HOSTED_REMOTE_CACHE_READ_TOKEN`, `KODY_WEBHOOK_URL_RUN`,
 `SECRET_ESCROW_PASSPHRASE`, `DR_BACKUP_ACCOUNT_ID`, `DR_BACKUP_BUCKET_NAME`,
@@ -255,14 +256,14 @@ secret if a later workflow needs them).
 
 ### Apps and bots
 
-| App / identity         | Used for                                                                                        | Config                                                                                                                     |
-| ---------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Cursor Bugbot          | AI review on PRs (`Cursor Bugbot` check / `cursor[bot]` comments)                               | GitHub App on the repo; trigger via `kody:@kentcdodds/bugbot`                                                              |
-| CodeRabbit             | Optional AI review comments                                                                     | GitHub App on the repo                                                                                                     |
-| CLA workflow           | Records inbound CLA signers on `main` (`.github/workflows/cla.yml`, `.github/cla-signers.json`) | Not a GitHub App — `github-actions[bot]` commits to `main`                                                                 |
-| `kody-bot`             | Allowlisted CLA identity; operator GitHub connector                                             | [inbound-contributions.md](./inbound-contributions.md)                                                                     |
-| `cursoragent`          | Cursor Cloud Agent commit author; CLA-allowlisted                                               | same                                                                                                                       |
-| Social-login OAuth App | `Sign in with GitHub` (`read:user user:email`)                                                  | [GitHub Developer Settings → OAuth Apps](https://github.com/settings/developers); see [social-login.md](./social-login.md) |
+| App / identity         | Used for                                                                                                     | Config                                                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| Cursor Bugbot          | AI review on PRs (`Cursor Bugbot` check / `cursor[bot]` comments)                                            | GitHub App on the repo; trigger via `kody:@kentcdodds/bugbot`                                                              |
+| CodeRabbit             | Optional AI review comments                                                                                  | GitHub App on the repo                                                                                                     |
+| CLA workflow           | Records inbound CLA signers on the `cla-signatures` branch (`.github/workflows/cla.yml`, `cla-signers.json`) | Not a GitHub App; `github-actions[bot]` commits to `cla-signatures`                                                        |
+| `kody-bot`             | Allowlisted CLA identity; operator GitHub connector                                                          | [inbound-contributions.md](./inbound-contributions.md)                                                                     |
+| `cursoragent`          | Cursor Cloud Agent commit author; CLA-allowlisted                                                            | same                                                                                                                       |
+| Social-login OAuth App | `Sign in with GitHub` (`read:user user:email`)                                                               | [GitHub Developer Settings → OAuth Apps](https://github.com/settings/developers); see [social-login.md](./social-login.md) |
 
 Actions secret names for social login are `OAUTH_GITHUB_*` because Actions
 reserves `GITHUB_*`. Deploy maps them to Worker secrets `GITHUB_CLIENT_ID` /

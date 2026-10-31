@@ -98,7 +98,7 @@ test('loadAccountIntegrationByName covers setup prefill, reconnect, and exact-sl
 		flow: 'pkce',
 		authorization: {
 			authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
-			scopes: [],
+			scopes: ['openid', 'email', 'profile'],
 		},
 		hasClientSecret: false,
 	})

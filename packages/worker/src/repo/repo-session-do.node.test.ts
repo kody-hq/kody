@@ -1,3 +1,4 @@
+import { registerSkillRestoreTests } from '#worker/test-support/repo-session-skill-restore.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { createWorkspaceStateBackend, type Workspace } from '@cloudflare/shell'
@@ -23,6 +24,7 @@ import type * as CredentialNeedsApproval from '#worker/credentials/credential-ne
 import type * as StorageBuckets from '#worker/storage-buckets/service.ts'
 import {
 	repoSessionMockModule as mockModule,
+	publishedBundleArtifactsRepoSessionMocks,
 	restoreRepoSessionMockBaseline,
 	checkedPublishState,
 	createDurableObjectState,
@@ -133,6 +135,12 @@ vi.mock('./isomorphic-git-lazy.ts', () => ({
 			commit: (...args: Parameters<typeof git.commit>) =>
 				mockModule.rawCommit(...args),
 			readBlob: mockModule.readBlob,
+			pull: (...args: Parameters<typeof git.pull>) =>
+				mockModule.rawPull(...args),
+			resolveRef: (...args: Parameters<typeof git.resolveRef>) =>
+				mockModule.rawResolveRef(...args),
+			writeRef: (...args: Parameters<typeof git.writeRef>) =>
+				mockModule.rawWriteRef(...args),
 		},
 		http: {},
 		createGit: () => mockModule.git,
@@ -232,12 +240,15 @@ vi.mock('./external-publish-clone.ts', () => ({
 	) => mockModule.cloneExternalPublishWorkspace(...args),
 }))
 
+const skillSnapshot = vi.hoisted(() => vi.fn())
+
 vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', async () => {
 	const actual = await vi.importActual<typeof PublishedRuntimeArtifacts>(
 		'#worker/package-runtime/published-runtime-artifacts.ts',
 	)
 	return {
 		...actual,
+		readPublishedSourceSnapshot: skillSnapshot,
 		writePublishedSourceSnapshot: (
 			...args: Parameters<
 				typeof PublishedRuntimeArtifacts.writePublishedSourceSnapshot
@@ -262,21 +273,7 @@ vi.mock('#worker/package-runtime/published-bundle-artifacts.ts', async () => {
 	)
 	return {
 		...actual,
-		isPublishedPackageArtifactBuiltForCommit: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.isPublishedPackageArtifactBuiltForCommit
-			>
-		) => mockModule.isPublishedPackageArtifactBuiltForCommit(...args),
-		persistPublishedPackageArtifactTarget: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.persistPublishedPackageArtifactTarget
-			>
-		) => mockModule.persistPublishedPackageArtifactTarget(...args),
-		deletePublishedArtifactsForSource: (
-			...args: Parameters<
-				typeof PublishedBundleArtifactsModule.deletePublishedArtifactsForSource
-			>
-		) => mockModule.deletePublishedArtifactsForSource(...args),
+		...publishedBundleArtifactsRepoSessionMocks(mockModule),
 	}
 })
 
@@ -554,14 +551,16 @@ test('rebaseSession and publishSession use Artifacts username/password auth with
 	const noToken = expect.not.objectContaining({ token: expect.anything() })
 
 	await repo.rebaseSession(session)
-	expect(mockModule.git.pull).toHaveBeenCalledWith(
+	// Merge the source branch into the session branch, never into local main.
+	expect(mockModule.rawPull).toHaveBeenCalledWith(
 		expect.objectContaining({
 			remote: 'origin',
-			ref: 'main',
-			...artifactsAuth,
+			ref: 'sessions/session1',
+			remoteRef: 'main',
 		}),
 	)
-	expect(mockModule.git.pull).toHaveBeenCalledWith(noToken)
+	const pull = mockModule.rawPull.mock.calls[0]![0]
+	expect(pull.onAuth?.('', {} as never)).toEqual(artifactsAuth)
 	expect(mockModule.git.push).toHaveBeenCalledWith(
 		expect.objectContaining({
 			remote: 'origin',
@@ -572,7 +571,6 @@ test('rebaseSession and publishSession use Artifacts username/password auth with
 	)
 	expect(mockModule.git.push).toHaveBeenCalledWith(noToken)
 
-	mockModule.git.pull.mockClear()
 	mockModule.git.push.mockClear()
 	mockModule.rawPush.mockClear()
 	seedWorkspace(packageFile)
@@ -951,6 +949,8 @@ test('restoreFiles restores modified files to the session base commit', async ()
 	)
 	expect(result).toEqual({ commit: 'commit-base', restored: ['src/index.ts'] })
 })
+
+registerSkillRestoreTests({ repoSession, seedWorkspace, skillSnapshot })
 
 test('sessionCommit rejects empty commit messages', async () => {
 	setCommonSessionFixtures()

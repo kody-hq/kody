@@ -22,6 +22,8 @@ import { handleWebhookIngressRequest } from './http.ts'
 import {
 	disableEnablement,
 	insertEnablement,
+	pauseEnablement,
+	resumeEnablement,
 } from '#worker/enablements/repo.ts'
 import { encryptWebhookVerificationSnapshot } from './hmac-rotation.ts'
 import { mintPackageOwnedWebhookHmacCiphertext } from './signing-secret.ts'
@@ -35,6 +37,7 @@ import { ensureSavedPackageInternetVisibleColumn } from '#worker/package-registr
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { consoleInfo, consoleWarn } from '#worker/test-support/console-spies.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 const mocks = vi.hoisted(() => ({
@@ -55,10 +58,13 @@ vi.mock('#worker/package-invocations/service.ts', async () => {
 	}
 })
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: (...args: Array<unknown>) =>
-		mocks.loadPackageManifestBySourceId(...args),
-}))
+vi.mock('#worker/package-registry/source.ts', async () => {
+	const { createSubscriptionDiscoverySourceMocks } =
+		await import('#worker/test-support/package-subscription-source-mocks.ts')
+	return createSubscriptionDiscoverySourceMocks(
+		mocks.loadPackageManifestBySourceId,
+	)
+})
 
 vi.mock('#mcp/secrets/service.ts', () => ({
 	resolveSecret: (...args: Array<unknown>) => mocks.resolveSecret(...args),
@@ -68,6 +74,14 @@ vi.mock('#mcp/secrets/service.ts', () => ({
 		return { found, readValue: async () => resolved }
 	},
 }))
+
+// Assert the strict rule regardless of the #4129 safety-window flag.
+vi.mock('#worker/credentials/allowed-packages-safety-window.ts', async () => {
+	const actual = await vi.importActual<
+		typeof import('#worker/credentials/allowed-packages-safety-window.ts')
+	>('#worker/credentials/allowed-packages-safety-window.ts')
+	return { ...actual, tryAllowedPackagesSafetyWindowGrant: async () => false }
+})
 
 vi.mock('./dispatch-queue-producer.ts', async () => {
 	const actual = await vi.importActual<typeof DispatchQueueProducerModule>(
@@ -130,21 +144,7 @@ function createHashedIdempotencyExportMock() {
 }
 
 async function ensureSchema(db: D1Database) {
-	await db
-		.prepare(
-			`CREATE TABLE IF NOT EXISTS users (
-				id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-				username TEXT NOT NULL UNIQUE,
-				email TEXT NOT NULL UNIQUE,
-				password_hash TEXT NOT NULL,
-				stable_user_id TEXT NOT NULL,
-			personal_org_id TEXT,
-				deleting_at TEXT,
-				deleted_at TEXT,
-				suspended_at TEXT
-			)`,
-		)
-		.run()
+	await ensureUsersTestSchema({ db })
 	await db
 		.prepare(
 			`CREATE TABLE IF NOT EXISTS saved_packages (
@@ -214,7 +214,7 @@ async function ensureSchema(db: D1Database) {
 		.prepare(
 			`CREATE TABLE IF NOT EXISTS community_forks (
 				id TEXT PRIMARY KEY NOT NULL,
-				listing_id TEXT NOT NULL,
+				listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
 				forker_user_id TEXT NOT NULL,
 				origin_commit TEXT NOT NULL,
 				forked_package_id TEXT NOT NULL,
@@ -250,7 +250,7 @@ async function mintWebhook(input: {
 	userId: string
 	webhookName: string
 	urlSecret?: string
-	enabled?: boolean
+	enablementState?: 'on' | 'off'
 	previousUrlSecret?: string
 	previousExpiresAt?: string
 }) {
@@ -267,8 +267,8 @@ async function mintWebhook(input: {
 		`INSERT INTO webhook_endpoints (
 			id, user_id, package_id, webhook_name, url_secret_hash,
 			hmac_secret_encrypted, previous_url_secret_hash,
-			previous_url_secret_expires_at, enabled, created_at, rotated_at
-		) VALUES (?, ?, 'pkg-1', ?, ?, ?, ?, ?, ?, ?, ?)`,
+			previous_url_secret_expires_at, created_at, rotated_at
+		) VALUES (?, ?, 'pkg-1', ?, ?, ?, ?, ?, ?, ?)`,
 	)
 		.bind(
 			endpointId,
@@ -280,12 +280,11 @@ async function mintWebhook(input: {
 				? await hashWebhookUrlSecret(input.previousUrlSecret)
 				: null,
 			input.previousExpiresAt ?? null,
-			input.enabled === false ? 0 : 1,
 			now,
 			now,
 		)
 		.run()
-	return await insertEnablement({
+	const enablement = await insertEnablement({
 		db: env.APP_DB,
 		enablement: {
 			orgId,
@@ -297,6 +296,14 @@ async function mintWebhook(input: {
 			origin: 'enabled',
 		},
 	})
+	if (input.enablementState === 'off') {
+		await disableEnablement({
+			db: env.APP_DB,
+			orgId,
+			id: enablement.id,
+		})
+	}
+	return enablement
 }
 
 async function setupOwnerWithWebhooks(webhookNames: Array<string>) {
@@ -537,7 +544,11 @@ async function listDeliveries(userId: string, webhookName: string) {
 
 test('package-centered webhook ingress auth, HMAC, size cap, ack/sync, and isolation', async () => {
 	const userId = await setupOwnerWithWebhooks(['sentry', 'sync-hook'])
-	await mintWebhook({ userId, webhookName: 'disabled', enabled: false })
+	await mintWebhook({
+		userId,
+		webhookName: 'disabled',
+		enablementState: 'off',
+	})
 	await useNamedSecret('sentry')
 	declareWebhook({ name: 'sentry', verification: githubVerification })
 	mockSecretValue(hmacSecret)
@@ -593,6 +604,7 @@ test('package-centered webhook ingress auth, HMAC, size cap, ack/sync, and isola
 
 	expect(await statusOf('sentry', { urlSecret: 'wrong' })).toBe(404)
 	expect(await statusOf('disabled')).toBe(404)
+	expect(await listDeliveries(userId, 'disabled')).toEqual([])
 	expect(await statusOf('never-minted')).toBe(404)
 
 	declareWebhook({ name: 'sentry', verification: githubVerification })
@@ -661,6 +673,13 @@ test('a webhook cannot verify with a secret its package may not read (#3245)', a
 	)
 		.bind(new Date().toISOString())
 		.run()
+	expect(await statusOf('sentry', signed)).toBe(401)
+	expect(mocks.enqueueWebhookDispatch).not.toHaveBeenCalled()
+
+	mocks.resolveSecret.mockResolvedValue({
+		...secretLookup(hmacSecret),
+		allowedPackages: ['pkg-other', 'pkg-1'],
+	})
 	expect(await statusOf('sentry', signed)).toBe(202)
 	expect(mocks.enqueueWebhookDispatch).toHaveBeenCalledTimes(1)
 })
@@ -1247,11 +1266,27 @@ test('sync rejected dispatch does not retire previous HMAC grace', async () => {
 		}
 	}
 
-	await disableEnablement({
-		db: env.APP_DB,
-		orgId,
-		id: await enablementIdOf('stripe-sync-rotate'),
-	})
+	const enablementId = await enablementIdOf('stripe-sync-rotate')
+	const removedAt = new Date().toISOString()
+	expect(
+		await pauseEnablement({
+			db: env.APP_DB,
+			orgId,
+			id: enablementId,
+			pause: { reason: 'org_access' },
+		}),
+	).toBe(true)
+	await env.APP_DB.prepare(
+		`UPDATE org_memberships SET deleted_at = ? WHERE org_id = ? AND user_id = ?`,
+	)
+		.bind(removedAt, orgId, userId)
+		.run()
+	await env.APP_DB.prepare(
+		`UPDATE grants SET deleted_at = ?
+		 WHERE org_id = ? AND subject_type = 'user' AND subject_id = ?`,
+	)
+		.bind(removedAt, orgId, userId)
+		.run()
 	expect(
 		await statusOf('stripe-sync-rotate', await stripeSigned(currentSecret)),
 	).toBe(409)
@@ -1266,12 +1301,27 @@ test('sync rejected dispatch does not retire previous HMAC grace', async () => {
 		}>()
 	expect(afterReject?.previous_hmac_secret_encrypted).toBe(previousEncrypted)
 	expect(afterReject?.previous_hmac_secret_expires_at).toBe(graceUntil)
+	const pausedEnablement = await env.APP_DB.prepare(
+		`SELECT state FROM enablements WHERE id = ?`,
+	)
+		.bind(enablementId)
+		.first<{ state: string }>()
+	expect(pausedEnablement?.state).toBe('paused')
 
 	await env.APP_DB.prepare(
-		`UPDATE enablements SET state = 'on' WHERE instance_id = ?`,
+		`UPDATE org_memberships SET deleted_at = NULL WHERE org_id = ? AND user_id = ?`,
 	)
-		.bind(endpointId)
+		.bind(orgId, userId)
 		.run()
+	await env.APP_DB.prepare(
+		`UPDATE grants SET deleted_at = NULL
+		 WHERE org_id = ? AND subject_type = 'user' AND subject_id = ?`,
+	)
+		.bind(orgId, userId)
+		.run()
+	expect(
+		await resumeEnablement({ db: env.APP_DB, orgId, id: enablementId }),
+	).toBe(true)
 	expect(
 		await statusOf('stripe-sync-rotate', await stripeSigned(previousSecret)),
 	).toBe(200)
@@ -1288,15 +1338,10 @@ test('sync rejected dispatch does not retire previous HMAC grace', async () => {
 
 test('a webhook with no enablement on answers 409 instead of running', async () => {
 	const userId = await setupOwnerWithWebhooks(['plain'])
-	const orgId = ownerIdFromStored(userId)
 	declareWebhook({ name: 'plain' })
 	const body = JSON.stringify({ event: 'ping' })
 
-	await disableEnablement({
-		db: env.APP_DB,
-		orgId,
-		id: await enablementIdOf('plain'),
-	})
+	await env.APP_DB.prepare(`DELETE FROM enablements`).run()
 	const off = await sendWebhook('plain', { body, unsigned: true })
 	expect(off.status).toBe(409)
 	const offBody = (await off.json()) as {
@@ -1311,7 +1356,6 @@ test('a webhook with no enablement on answers 409 instead of running', async () 
 	)
 
 	// Nobody has turned it on: ack mode answers 409 instead of queueing.
-	await env.APP_DB.prepare(`DELETE FROM enablements`).run()
 	expect(await statusOf('plain', { body, unsigned: true })).toBe(409)
 	expect(mocks.enqueueWebhookDispatch).not.toHaveBeenCalled()
 	const rejected = (await listDeliveries(userId, 'plain')).filter(

@@ -1,9 +1,11 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getJobRowById, insertJobRow } from '@kody-internal/shared/jobs/repo.ts'
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { buildPackageJobId } from '#worker/jobs/package-job-id.ts'
 import type * as ManagerClient from '#worker/jobs/manager-client.ts'
 import { loadPackageMappingScopeForViewer } from '#app/package-credentials-access.ts'
+import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
 import {
 	dailyTarget as daily,
@@ -13,7 +15,10 @@ import {
 	orgDefaultTarget as orgDefault,
 	setupPackageCredentialMappingFixture,
 } from '#worker/test-support/package-credential-mapping-fixture.ts'
-import { writeMappingChanges } from './package-credential-mapping-changes.ts'
+import {
+	resolveMappingChanges,
+	writeMappingChanges,
+} from './package-credential-mapping-changes.ts'
 import { buildPackageCredentialsView } from './package-credential-mappings.ts'
 
 vi.mock(
@@ -40,14 +45,36 @@ vi.mock('#worker/jobs/manager-client.ts', async (importOriginal) => {
 	}
 })
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 const setup = () =>
 	setupPackageCredentialMappingFixture({
 		loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
 	})
+
+test('flag-off mapping writes keep accepting legacy needs', async () => {
+	const t = await setup()
+	const prod = await t.storeKey('resend-prod', 'resend')
+	const scope = await t.scopeFor('bea', 'owner')
+	expect(
+		scope.needs.find((need) => need.key === 'mail')?.supplier,
+	).toBeUndefined()
+	const changes = await t.apply('bea', 'owner', [
+		{ target: orgDefault, needKey: 'mail', credentials: [{ id: prod }] },
+	])
+
+	await expect(writeMappingChanges(scope, changes)).resolves.toBeUndefined()
+	const view = await buildPackageCredentialsView(
+		await t.scopeFor('bea', 'owner'),
+	)
+	expect(
+		view.needs.find((need) => need.key === 'mail')?.defaults.org,
+	).toMatchObject({
+		credentials: [{ id: prod }],
+	})
+})
 
 test('the view shows needs, options, triggers, and what is incomplete', async () => {
 	const t = await setup()
@@ -107,6 +134,133 @@ test('the view shows needs, options, triggers, and what is incomplete', async ()
 		{ needKey: 'mail', where: { type: 'default' }, status: 'ambiguous' },
 		{ needKey: 'chat', where: { type: 'default' }, status: 'unbound' },
 	])
+})
+
+test('an unbound need lists provider-less keys of its kind as possible matches', async () => {
+	const t = await setup()
+	await t.storeKey('team-token', null)
+	const view = await buildPackageCredentialsView(
+		await t.scopeFor('bea', 'owner'),
+	)
+	const chat = view.needs.find((need) => need.key === 'chat')!
+	expect(chat.effective).toMatchObject({ status: 'unbound', source: 'auto' })
+	expect(chat.effective.candidates.map((ref) => ref.name)).toEqual([
+		'team-token',
+	])
+	expect(view.incomplete.find((item) => item.needKey === 'chat')).toMatchObject(
+		{
+			status: 'unbound',
+			possibleMatches: [{ name: 'team-token', kind: 'secret' }],
+		},
+	)
+})
+
+test('an expired provider-less key is not offered as a possible match', async () => {
+	const t = await setup()
+	await t.storeKey('old-team-token', null, {
+		expiresAt: '2020-01-01T00:00:00.000Z',
+	})
+	const view = await buildPackageCredentialsView(
+		await t.scopeFor('bea', 'owner'),
+	)
+	const chat = view.needs.find((need) => need.key === 'chat')!
+	expect(chat.effective).toMatchObject({ status: 'unbound', candidates: [] })
+	expect(
+		view.incomplete.find((item) => item.needKey === 'chat'),
+	).not.toHaveProperty('possibleMatches')
+})
+
+test('publisher needs offer and auto-resolve only org credentials', async () => {
+	const t = await setup()
+	await t.storeKey('org-mail', 'resend')
+	const beaPersonalOrgId = await loadPersonalOrgIdForPerson(
+		t.db,
+		t.people.bea.personId,
+	)
+	await saveSecret({
+		env: t.env,
+		userId: beaPersonalOrgId,
+		scope: 'user',
+		name: 'personal-mail',
+		value: 'v',
+		audit: null,
+	})
+	await t.db
+		.prepare(
+			`UPDATE secret_entries SET provider = 'resend'
+			 WHERE name = 'personal-mail' AND bucket_id IN (
+			   SELECT id FROM secret_buckets WHERE user_id = ? AND scope = 'user'
+			 )`,
+		)
+		.bind(beaPersonalOrgId)
+		.run()
+	const scope = await t.scopeFor('bea', 'owner')
+	scope.needs = scope.needs.map((need) =>
+		need.key === 'mail' ? { ...need, supplier: 'publisher' } : need,
+	)
+	const view = await buildPackageCredentialsView(scope)
+	const mail = view.needs.find((need) => need.key === 'mail')
+	expect(mail?.options.map((credential) => credential.name)).toEqual([
+		'org-mail',
+	])
+	expect(mail?.effective).toMatchObject({
+		source: 'auto',
+		status: 'ready',
+		credentials: [{ name: 'org-mail', scope: 'org' }],
+	})
+})
+
+test('publisher needs allow clearing grandfathered personal and trigger mappings but refuse sets', async () => {
+	const t = await setup()
+	const credentialId = await t.storeKey('resend-prod', 'resend')
+	await t.apply('bea', 'owner', [
+		{ target: mine, needKey: 'mail', credentials: [{ id: credentialId }] },
+		{ target: daily, needKey: 'mail', credentials: [{ id: credentialId }] },
+	])
+	const scope = await t.scopeFor('bea', 'owner')
+	scope.needs = scope.needs.map((need) =>
+		need.key === 'mail' ? { ...need, supplier: 'publisher' } : need,
+	)
+
+	const setChanges = await resolveMappingChanges(scope, [
+		{ target: mine, needKey: 'mail', credentials: [{ id: credentialId }] },
+		{ target: daily, needKey: 'mail', credentials: [{ id: credentialId }] },
+	])
+	expect(setChanges.map((change) => change.error?.code ?? null)).toEqual([
+		'not_allowed',
+		'not_allowed',
+	])
+
+	const clearChanges = await resolveMappingChanges(scope, [
+		{ target: mine, needKey: 'mail', credentials: null },
+		{ target: daily, needKey: 'mail', credentials: null },
+	])
+	expect(clearChanges.map((change) => change.error)).toEqual([null, null])
+	await expect(
+		writeMappingChanges(
+			scope,
+			clearChanges.map((change) => ({
+				...change,
+				credentialIds: [credentialId],
+			})),
+		),
+	).rejects.toThrow(/Only the org-level mapping can set it/)
+
+	await expect(
+		writeMappingChanges(scope, clearChanges, { now }),
+	).resolves.toBeUndefined()
+	const view = await buildPackageCredentialsView(
+		await t.scopeFor('bea', 'owner'),
+	)
+	expect(
+		view.needs.find((need) => need.key === 'mail')?.defaults.mine,
+	).toBeNull()
+	expect(
+		view.triggers
+			.find((trigger) => trigger.trigger.name === 'daily')
+			?.instances[0]?.mappings.find((mapping) => mapping.needKey === 'mail')
+			?.override,
+	).toBeNull()
 })
 
 test('one write sets defaults and a trigger mapping, turning the trigger on', async () => {

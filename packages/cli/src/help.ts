@@ -55,7 +55,7 @@ export function buildUsage(
 Install Kody as a remote MCP server in local agents, or use this CLI as a local client.
 
 Usage:
-  kody login [--mcp-url <url>] [--org <slug>] [--no-browser]
+  kody login [--mcp-url <url>] [--org <slug>] [--no-browser | --device]
   kody logout [--org <slug>] [--mcp-url <url>] [--api-url <url>]
   kody org list [--json] [--mcp-url <url>]
   kody org use [<slug>] [--mcp-url <url>]
@@ -70,10 +70,21 @@ Usage:
   kody api <operationId> [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
   kody package publish [<@owner/leaf|package_id>] [--org <slug>] [--params <json>] [--token <token>] [--api-url <url>] [--json]
   kody package collaborators <package> [--org <slug>] [--json] [--token <token>] [--api-url <url>]
-  kody package grant <package> (--team <slug> | --user <username>) [--preset use|contribute|manage] [--org <slug>] [--json]
+  kody package grant <package> (--team <slug> | --user <username>) [--preset read|use|contribute|manage] [--org <slug>] [--json]
   kody package revoke <package> (--team <slug> | --user <username> | --grant <grant_id>) [--org <slug>] [--json]
   kody execute [--org <slug>] [--invoke <ref> | --code <esm> | --file <path>] [--params <json>] [--conversation-id <id>] [--json]
-               [--credential <key=name>]… [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
+  kody context register --name <name> [--org <slug>] | kody context list [--json]
+  kody context revoke <name|ec id> | kody context delete <name|ec id> [--org <slug>] [--json]
+  kody context cancel-run <name|ec id> <run id> [--org <slug>] [--json]
+  kody context policy [show] | allow <path> [--mode ro|rw] | remove <path> [--json]
+  kody chain show | add <name> | remove <name> [--org <slug>] [--json]
+  kody connect --name <name> [--org <slug>] [--no-install] [--key-storage keyring|file] [--yes]
+  kody daemon [--context <ec id>] [--max-concurrent <n>]
+  kody daemon install [--context <ec id>] [--max-concurrent <n>] [--key-storage keyring|file] [--yes]
+  kody daemon status [--context <ec id>] [--json] | logs [--lines <n>] [--follow] | restart
+  kody daemon uninstall [--context <ec id>] [--unregister | --no-unregister]
+  kody update
+               [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
   kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]
   kody dev fetch <path> [--method <verb>] [--body <file>] [--target prod|mock] [--json] [--no-attach]
   kody dev job <name> [--target prod|mock] [--dry-run] [--json]
@@ -82,6 +93,25 @@ Usage:
   kody dev check [--target prod|mock] [--offline] [--debug] [--json]
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
+
+  kody connect registers this machine as an execution context and installs
+  \`kody daemon\` as a per-user background service (systemd --user on Linux,
+  a LaunchAgent on macOS) so it starts at boot and restarts after crashes.
+  \`kody daemon status\` names each problem with the command that fixes it;
+  re-running \`kody daemon install\` repairs the service. Windows is not
+  supported yet: keep \`kody daemon\` running in a terminal. \`kody update\`
+  installs the latest CLI and restarts services after runs in flight finish.
+
+  kody context, chain, and daemon need execution contexts, an experiment.
+  Turn it on at https://kody.codes/account/experiments (guide:
+  https://kody.codes/docs/execution-contexts).
+
+  Profiles (scoped identities for your agents and sub-agents) are an
+  experiment too: turn it on at https://kody.codes/account/experiments, then
+  \`kody execute\` a module that calls \`profileCreate\`, \`profileList\`, or
+  \`profileRevoke\`, and share a package with one through
+  \`packageCollaboratorSet\` with \`profile_id\` (guide:
+  https://kody.codes/docs/profiles).
 
   kody install configures running local MCP clients (Cursor, Claude Desktop,
   VS Code, Goose, and others). For web-based clients (ChatGPT, Claude.ai, Grok),
@@ -116,10 +146,10 @@ ${orgBlock}
   --clients  Comma-separated ids: ${hostIds.join(', ')}
 
   auth bootstrap
-             Agents on Kody MCP: call \`cliCredentialBootstrap\` (MCP
-             \`execute\` with \`kody.cliCredentialBootstrap({ lifetime:
-             "short", scopes: [...] })\`, or MCP \`api\` with operationId
-             \`cliCredentialBootstrap\`) and run the returned \`cli_command\`
+             Agents on Kody MCP: call the MCP \`api\` tool with operationId
+             \`cliCredentialBootstrap\` and params \`{ lifetime: "short",
+             scopes: [...] }\` (\`execute\` is refused) and run the returned
+             \`cli_command\`
              (never ask a human to paste a token). Humans: \`kody login\`.
              This command redeems a one-shot \`kody_bc_…\` (POST
              /v1/tokens/bootstrap/redeem, no Authorization header).
@@ -191,8 +221,9 @@ ${orgBlock}
              Prints JSON. Example: \`kody api usageGet --params '{}'\`.
              Credential fill placement via \`secretSet\` /
              \`credentialUpdate\` params, e.g. \`placement:{"headers":true}\`
-             (new secrets default headers-only when omitted; null = anywhere).
-             Gateway enforcement of placement is not on yet.
+             (new secrets default headers-only when omitted). The gateway
+             enforces it; query, path, and body also need the owner's opt-in
+             on the credential page.
              Unknown operationIds error clearly; see
              ${defaultApiUrl}/openapi.json. tokenCreate / tokenRotate
              responses include a one-time token value — prefer env storage
@@ -206,14 +237,15 @@ ${orgBlock}
              via \`--params\` JSON (e.g. \`allow_force\`). Prints the API JSON
              body. Exit 0 for \`published\`, \`already_published\` (including
              when \`artifacts_rebuilt\` is true), and \`dispatched\` (poll
-             \`workflowRunList\`). Exit 1 for refusal/rejection statuses
-             (\`checks_failed\`, \`locked\`, \`approval_required\`,
+             \`workflowRunList({ workflow_id })\`). Exit 1 for refusal/rejection
+             statuses (\`checks_failed\`, \`locked\`, \`approval_required\`,
              \`not_fast_forward\`) — the API \`message\` (or a checks summary)
              goes to stderr, like npm. Auth / permission / network failures
              also exit 1; with \`--json\`, stdout also gets
              \`{ error, message, sent }\` where \`sent\` is \`false\` (connect
              phase — request not sent) or \`"unknown"\` (may have reached the
-             server — prefer \`kody api workflowRunList\` before retrying).
+             server — prefer \`kody api workflowRunList\` with \`workflow_id\`
+             when known before retrying).
              Re-publishing the same commit is safe: an active durable run is
              deduped; a finished publish returns \`already_published\`.
 
@@ -222,7 +254,9 @@ ${orgBlock}
              the org (\`--org\`). \`<package>\` is \`@owner/leaf\`, the kody id,
              or the package id. \`grant\` adds a team or org member or changes
              their preset (default \`use\`) via \`packageCollaboratorSet\`;
-             people outside the org are refused. \`revoke\` removes one by
+             \`--user\` outside the org adds an outside collaborator.
+             \`--preset read\` shares only the source: they can read, clone,
+             and fork it (\`packageFork\`) but not run it or open its app. \`revoke\` removes one by
              team, user, or grant id via \`packageCollaboratorRemove\`. Needs
              Manage on the package and a token with
              \`package:manage_access\` (\`auth bootstrap --scopes …\`); same
@@ -230,15 +264,21 @@ ${orgBlock}
              with \`--json\`.
 
   --token / ${apiTokenEnvVar}
-             Scoped API token (preferred via env). With no \`kody login\`
-             session, search / whoami / api / execute use the Open API and
-             CapabilityProxy — including cloud execute without --local.
-             Auth priority matches \`execute --local\`: \`--token\` /
-             ${apiTokenEnvVar}; stored bootstrap/API token from
-             \`auth bootstrap\`; then \`kody login\` where applicable.
+             Scoped API token (preferred via env). One resolver picks the
+             credential, and \`kody whoami\` reports that pick:
+             whoami, api, package, execute --local, context, daemon, dev:
+               --token, ${apiTokenEnvVar}, stored API token, kody login.
+             search and cloud execute: --token, kody login (MCP),
+               ${apiTokenEnvVar}, stored API token.
+             \`kody login\` does not replace a stored API token; replace it
+             with \`kody auth bootstrap --lifetime short --scopes <list>\`
+             or clear it with \`kody logout\`.
              Prefer \`cliCredentialBootstrap\` then \`auth bootstrap\`
              (\`--lifetime short|long\`). CI/headless: \`tokenCreate\` with
              \`org:execute\` plus the capability scopes you need.
+             Profiles: \`tokenCreate\` with \`profile_id\`, or
+             \`profileHandoff\` for a new sub-profile, mints a token
+             that acts as that profile (not accepted by /mcp).
              For \`execute --local\`, a valid \`kody login\` session can also
              supply Bearer when no scoped token is available (no tokenCreate
              exchange). User-owned tokens (\`org_binding: user\`) honor
@@ -250,8 +290,9 @@ ${orgBlock}
              before workerd loads them — same shape as hosted execute /
              publish. Unresolvable imports fail with a clear bundle error.
              \`--invoke kody:@scope/pkg/export\` (or \`@scope/pkg#export\`)
-             works with \`--local\` / \`--target mock\` — mints the same thin
-             passthrough as a \`--code\` import wrapper. From a package
+             is client-side sugar: the CLI writes the thin passthrough
+             (the \`--code\` import wrapper) and sends it as code, with or
+             without \`--local\` / \`--target mock\`. From a package
              directory, \`--invoke ./export\` runs a local package.json#exports
              key. Auth: \`--token\` /
              ${apiTokenEnvVar}, else stored \`auth bootstrap\` token, else
@@ -266,6 +307,20 @@ ${orgBlock}
              trust a client package id) — use hosted package execute or
              \`/connect/secret-set\` / Open API with a user scope.
 
+  --context <id|name>
+             Run on one execution context (no fallback unless
+             \`--fallback chain\`). Behind the execution-contexts flag; cloud
+             execute only (not \`--local\`).
+  --requires fs,lan
+             Skip targets that lack local files (fs) or the local network
+             (lan); Kody cloud never satisfies either.
+  --chain <a,b,cloud>
+             This run's own ordered chain (up to 3 contexts, \`cloud\` only
+             last), replacing your default chain. Skipped entries are listed
+             with a reason when nothing qualifies.
+             Automations set theirs with
+             \`kody api automationExecutionSet --params '{"kind":"job","jobId":"…","execution":{"context":"laptop"}}'\`
+             (read with \`automationExecutionGet\`).
   --credential <key=name>
              ADR 0068 call map: pick which credential each \`credential(key)\`
              / \`credentials(key)\` call gets. Repeatable.

@@ -156,7 +156,7 @@ export function normalizePackageFilesPath(
 	return parts.join('/')
 }
 
-function languageFromFilePath(path: string) {
+export function languageFromFilePath(path: string) {
 	const name = path.split('/').pop() ?? ''
 	if (name === 'Dockerfile' || name === 'dockerfile') return 'dockerfile'
 	if (name === '.env' || name.startsWith('.env.')) return 'dotenv'

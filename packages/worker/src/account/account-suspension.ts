@@ -23,8 +23,8 @@ export const accountSuspendedMessage =
 export const accountSuspendedErrorCode = 'account_suspended' as const
 
 /**
- * Thrown when background work (jobs, package invocations, workflows,
- * retrievers, realtime hooks) resolves the identity of a suspended account.
+ * Thrown when background work (jobs, package invocations, workflows, and
+ * realtime hooks) resolves the identity of a suspended account.
  * Not transient: callers must not retry it as an infrastructure blip.
  */
 export class AccountSuspendedError extends Error {

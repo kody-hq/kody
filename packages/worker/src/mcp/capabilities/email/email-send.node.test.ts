@@ -56,6 +56,7 @@ function sentMessage(id = 'outbound-1') {
 		processingStatus: 'sent',
 		classification: 'accepted',
 		classificationReason: null,
+		archivedAt: null,
 		providerMessageId: 'provider-1',
 		deliveryStatus: null,
 		deliveryStatusAt: null,
@@ -155,4 +156,28 @@ test('emailSend forwards optional attachments and rejects invalid attachment sha
 	}
 
 	expect(mocks.sendOutboundEmail).toHaveBeenCalledTimes(2)
+})
+
+test('emailSend forwards an explicit from alias to the outbound sender', async () => {
+	mocks.sendOutboundEmail.mockResolvedValue({
+		status: 'sent',
+		error: null,
+		providerMessageId: 'provider-2',
+		message: sentMessage('outbound-2'),
+	})
+	await emailSendCapability.handler(
+		{
+			subject: 'Hello',
+			text: 'Body',
+			from: 'examplebot+support@inbox.kody.codes',
+		},
+		createContext(),
+	)
+	expect(mocks.sendOutboundEmail).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			recipientPolicy: 'self',
+			from: 'examplebot+support@inbox.kody.codes',
+			replyTo: null,
+		}),
+	)
 })

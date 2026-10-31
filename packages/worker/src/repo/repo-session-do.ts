@@ -1,3 +1,5 @@
+import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { isUserCodeError } from '#worker/user-code-error.ts'
@@ -46,7 +48,10 @@ import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	collectPublishedPackageArtifactTargets,
 	isPublishedPackageArtifactBuiltForCommit,
+	loadPublishedBundleArtifactsForPackageTargets,
+	publishedBundleArtifactForPackageTarget,
 	persistPublishedPackageArtifactTarget,
+	persistPublishedPackageArtifactTargets,
 	type PublishedPackageArtifactBuildTarget,
 } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { type PreparedKodyGraphCache } from '#worker/package-runtime/module-graph.ts'
@@ -54,8 +59,6 @@ import {
 	hasPublishedRuntimeArtifacts,
 	loadPublishedSourceManifestSnapshot,
 	loadPublishedSourceSnapshot,
-	publishedSourceSnapshotFilesMatch,
-	writePublishedSourceSnapshot,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { planRepoSessionContentEdits } from './plan-repo-session-content-edits.ts'
 import { searchRepoWorkspace } from './repo-session-search.ts'
@@ -68,25 +71,17 @@ import {
 } from './repo-session-tree.ts'
 import {
 	runPackageTypecheckLanguageService,
-	runRepoChecks,
 	runRepoSourceWalkChecks,
 	formatFailedRepoCheckMessages,
 	validatePackageBundles,
 } from './checks.ts'
 import { RepoChecksFailedError } from './repo-checks-failed-error.ts'
 import { confirmRemoteRefAtCommit } from './confirm-remote-ref.ts'
-import {
-	runAuthoringPublishChecks,
-	runAuthoringPublishChecksOnFiles,
-} from './authoring-publish-checks.ts'
-import { credentialPatternNoticeForFiles } from './credential-pattern-check.ts'
-import { loadSecretMountCompatNotice } from '#worker/package-runtime/secret-mount-compat.ts'
-import { loadCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
+import { readRemoteRefNotConfirmedError } from './remote-ref-not-confirmed-error.ts'
+import { runAuthoringPublishChecksOnFiles } from './authoring-publish-checks.ts'
+import { buildCredentialPatternCheck } from './credential-pattern-check.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
-import {
-	pausedSessionMovedMessage,
-	requireCredentialNeedsApproval,
-} from '#worker/credentials/credential-needs-approval.ts'
+import { pausedSessionMovedMessage } from '#worker/credentials/credential-needs-approval.ts'
 import {
 	isolatedArtifactRebuildStagingKeyBelongsToUser,
 	isolatedArtifactRebuildStagingKeyForUser,
@@ -102,6 +97,10 @@ import {
 	type IsolatedCheckPhaseOutcome,
 	type IsolatedCheckPhaseRequest,
 } from './isolated-check-phases.ts'
+import {
+	isRepoCheckStep,
+	type RepoCheckStep,
+} from './isolated-runner-limit-message.ts'
 import {
 	type EntitySourceRow,
 	type RepoSearchMode,
@@ -119,15 +118,28 @@ import {
 	type RepoSessionRow,
 	type RepoSessionSearchResult,
 	type RepoSessionTreeResult,
+	type RepoSessionLastPublish,
 } from './types.ts'
 import {
 	finalizePublishedEntitySource,
 	publishFromExternalRef as publishExternalRefSource,
 } from './external-publish.ts'
+import { createEphemeralGitWorkspace } from './ephemeral-git-workspace.ts'
+import {
+	bindPublishHeavyWork,
+	createInlinePublishWorkRunner,
+	createIsolatedPublishWorkRunner,
+	runStagedPublishWorkStep,
+	stagePublishWorkFiles,
+	type ExternalRefCloneRequest,
+	type ExternalRefCloneResult,
+	type PublishWorkChecksInput,
+	type PublishWorkRequest,
+	type PublishWorkRunner,
+} from './publish-work.ts'
 import {
 	buildWorkspaceSqliteTooBigCallerMessage,
 	cloneExternalPublishWorkspace,
-	externalPublishWorkspaceDir,
 	isWorkspaceSqliteTooBigMessage,
 } from './external-publish-clone.ts'
 import { classifyExternalPublishCloneError } from './requested-commit-error.ts'
@@ -161,6 +173,7 @@ import {
 import {
 	attachPublishGitNoteBestEffort,
 	buildPublishGitNote,
+	readPublishGitNoteFromArtifactsRepo,
 	type KodyPublishGitNoteChecks,
 } from './publish-git-notes.ts'
 import { createIsomorphicGitFs } from './isomorphic-git-fs.ts'
@@ -193,6 +206,28 @@ import {
 
 const repoSessionWorkspacePrefix = '/session'
 const lastCheckStatusStorageKey = 'repo-session:last-check-status'
+const lastCheckStepStorageKey = 'repo-session:last-check-step'
+const lastPublishStorageKey = 'repo-session:last-publish'
+
+type RepoSessionPublishInput = {
+	sessionId: string
+	userId: OwnerId
+	force?: boolean
+	destructiveOverwriteConfirmed?: boolean
+	privateVisibilityChangeConfirmed?: boolean
+	rebuildPackageArtifacts?: boolean
+	expectedPackageScope?: string
+	commitMessage?: string
+	allowLockedPublish?: boolean
+	credentialNeedsApproved?: boolean
+	requestedByUserId?: string | null
+	promotePublished?: boolean
+	/** Refuse unless the session still holds exactly this commit. */
+	expectedHeadCommit?: string
+	/** The publishing request; a profile-bound one must reach every import. */
+	publisherRequest?: RequestContext | null
+}
+
 const cachedSessionStateStorageKeyPrefix = 'repo-session:state:'
 const defaultSessionBranch = 'main'
 const publishedSessionRetentionMs = 14 * 24 * 60 * 60 * 1000
@@ -705,6 +740,17 @@ class RepoSessionBase extends DurableObject<Env> {
 		})
 	}
 
+	/** A history-replacing publish commits with no parents. */
+	private async headCommitReplacedHistory() {
+		const [head] = await (
+			await this.ensureGit()
+		).log({
+			dir: repoSessionWorkspacePrefix,
+			depth: 1,
+		})
+		return Array.isArray(head?.parent) && head.parent.length === 0
+	}
+
 	private async getHeadCommit() {
 		const log = await (
 			await this.ensureGit()
@@ -713,6 +759,45 @@ class RepoSessionBase extends DurableObject<Env> {
 			depth: 1,
 		})
 		return log[0]?.oid ?? null
+	}
+
+	/**
+	 * Keep HEAD on the session branch. Publish pushes the session branch, so
+	 * commits made while HEAD sat on another branch never reach the remote and
+	 * the push confirm fails on every retry. Older rebases left HEAD on the
+	 * source branch. HEAD is what checks ran on and what publish publishes, so
+	 * the session branch moves to it.
+	 */
+	private async attachHeadToSessionBranch(sessionBranch: string) {
+		const { current } = await (
+			await this.ensureGit()
+		).branch({ dir: repoSessionWorkspacePrefix })
+		if (current === sessionBranch) return
+		const { git } = await loadIsomorphicGit()
+		const fs = this.rawGitFileSystem
+		const dir = repoSessionWorkspacePrefix
+		const head = await git.resolveRef({ fs, dir, ref: 'HEAD' })
+		await git.writeRef({
+			fs,
+			dir,
+			ref: `refs/heads/${sessionBranch}`,
+			value: head,
+			force: true,
+		})
+		await git.writeRef({
+			fs,
+			dir,
+			ref: 'HEAD',
+			value: `refs/heads/${sessionBranch}`,
+			force: true,
+			symbolic: true,
+		})
+		console.warn('repo session HEAD reattached to session branch', {
+			scope: 'repo.session-branch-reattach',
+			sessionBranch,
+			previousBranch: current ?? null,
+			head,
+		})
 	}
 
 	private async commitIfDirty(
@@ -1989,31 +2074,25 @@ class RepoSessionBase extends DurableObject<Env> {
 				serverTiming,
 				'bootstrap-repo-checks',
 				async () => {
-					const manifestPath = resolveRepoWorkspacePath(
-						source.manifest_path,
-						repoSessionWorkspacePrefix,
-					)
-					const sourceRoot = resolveRepoWorkspacePath(
-						source.source_root || repoSessionWorkspacePrefix,
-						repoSessionWorkspacePrefix,
-					)
-					const checks = await runRepoChecks({
-						workspace: this.workspace,
-						manifestPath,
-						sourceRoot,
-						env: this.env,
-						baseUrl: source.source_root,
+					const checks = await this.runSessionTreeChecks({
+						files: (await this.collectWorkspacePublishSnapshot()).files,
 						userId: input.userId,
-						sourceId: source.id,
-						...(input.expectedPackageScope !== undefined
-							? { expectedPackageScope: input.expectedPackageScope }
-							: {}),
-						...(input.requirePackageDocs === false
-							? { requirePackageDocs: false }
-							: {}),
-						...(input.enforceCredentialStamp === false
-							? { enforceCredentialStamp: false }
-							: {}),
+						checks: {
+							mode: 'session',
+							manifestPath: source.manifest_path,
+							sourceRoot: source.source_root || '/',
+							baseUrl: source.source_root,
+							sourceId: source.id,
+							...(input.expectedPackageScope !== undefined
+								? { expectedPackageScope: input.expectedPackageScope }
+								: {}),
+							...(input.requirePackageDocs === false
+								? { requirePackageDocs: false }
+								: {}),
+							...(input.enforceCredentialStamp === false
+								? { enforceCredentialStamp: false }
+								: {}),
+						},
 					})
 					if (!checks.ok) {
 						throw new RepoChecksFailedError(
@@ -2108,7 +2187,10 @@ class RepoSessionBase extends DurableObject<Env> {
 			)
 		}
 		await this.touchRepoSession(sessionRow)
-		return toRepoSessionInfoResult(sessionRow, source)
+		return {
+			...toRepoSessionInfoResult(sessionRow, source),
+			last_publish: await this.readLastPublish(),
+		}
 	}
 
 	async discardSession(input: {
@@ -2304,12 +2386,19 @@ class RepoSessionBase extends DurableObject<Env> {
 			input.userId,
 		)
 		await this.touchRepoSession(sessionRow)
-		return {
-			path: input.path,
-			content: await this.workspace.readFile(
-				resolveRepoWorkspacePath(input.path, repoSessionWorkspacePrefix),
-			),
+		const workspacePath = resolveRepoWorkspacePath(
+			input.path,
+			repoSessionWorkspacePrefix,
+		)
+		let content: string | null
+		try {
+			content = await this.workspace.readFile(workspacePath)
+		} catch (error) {
+			// Agents pass a folder from repoTree (`src`); the shell throws raw
+			// EISDIR. KODY-CA.
+			this.remapWorkspaceEisdirError(error, 'read', input.path)
 		}
+		return { path: input.path, content }
 	}
 
 	async writeFile(input: {
@@ -2622,6 +2711,53 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 	}
 
+	async restorePublishedSkill(input: {
+		sessionId: string
+		userId: OwnerId
+		commit: string
+		name: string
+	}) {
+		const { sessionRow } = await this.getSessionState(
+			input.sessionId,
+			input.userId,
+		)
+		const { readPublishedSourceSnapshot } =
+			await import('#worker/package-runtime/published-runtime-artifacts.ts')
+		const { planSkillRestore } =
+			await import('#worker/package-registry/skill-history.ts')
+		const { snapshotStringToBytes } =
+			await import('#universal/package-file-media.ts')
+		const snapshot = await readPublishedSourceSnapshot({
+			env: this.env,
+			sourceId: sessionRow.source_id,
+			publishedCommit: input.commit,
+		})
+		if (!snapshot) throw new Error('This published snapshot is unavailable.')
+		const plan = planSkillRestore({
+			name: input.name,
+			current: await this.collectWorkspaceFiles(),
+			previous: snapshot.files,
+		})
+		for (const [path, content] of plan.writes) {
+			await this.workspace.writeFileBytes(
+				resolveRepoWorkspacePath(path, repoSessionWorkspacePrefix),
+				snapshotStringToBytes(content, path),
+			)
+		}
+		for (const path of plan.deletes)
+			await this.workspace.rm(
+				resolveRepoWorkspacePath(path, repoSessionWorkspacePrefix),
+				{ force: true },
+			)
+		await updateRepoSession(this.env, {
+			id: input.sessionId,
+			userId: sessionRow.user_id,
+			lastCheckpointAt: nowIso(),
+		})
+		this.refreshStoredEstimate(input.sessionId, sessionRow.user_id)
+		return { changed: plan.writes.length > 0 || plan.deletes.length > 0 }
+	}
+
 	async restoreFiles(input: {
 		sessionId: string
 		userId: OwnerId
@@ -2754,35 +2890,38 @@ class RepoSessionBase extends DurableObject<Env> {
 			input.sessionId,
 			input.userId,
 		)
-		const manifestPath = resolveRepoWorkspacePath(
-			source.manifest_path,
-			repoSessionWorkspacePrefix,
-		)
-		const sourceRoot = resolveRepoWorkspacePath(
-			source.source_root || repoSessionWorkspacePrefix,
-			repoSessionWorkspacePrefix,
-		)
-		const result = await runRepoChecks({
-			workspace: this.workspace,
-			manifestPath,
-			sourceRoot,
-			env: this.env,
-			baseUrl: source.source_root,
+		// One workspace walk yields both the checked tree and its hash; the
+		// checks themselves run off this Durable Object.
+		const snapshot = await this.collectWorkspacePublishSnapshot()
+		const result = await this.runSessionTreeChecks({
+			files: snapshot.files,
 			userId: input.userId,
-			sourceId: source.id,
-			// Honor an explicit scope even on a still-plain repo: promote
-			// runs package checks before flipping entity_kind.
-			expectedPackageScope: input.expectedPackageScope,
-			...(input.requirePackageDocs === false
-				? { requirePackageDocs: false }
-				: {}),
-			...(input.enforceCredentialStamp === false
-				? { enforceCredentialStamp: false }
-				: {}),
+			checks: {
+				mode: 'session',
+				manifestPath: source.manifest_path,
+				sourceRoot: source.source_root || '/',
+				baseUrl: source.source_root,
+				sourceId: source.id,
+				// Honor an explicit scope even on a still-plain repo: promote
+				// runs package checks before flipping entity_kind.
+				...(input.expectedPackageScope !== undefined
+					? { expectedPackageScope: input.expectedPackageScope }
+					: {}),
+				...(input.requirePackageDocs === false
+					? { requirePackageDocs: false }
+					: {}),
+				...(input.enforceCredentialStamp === false
+					? { enforceCredentialStamp: false }
+					: {}),
+			},
 		})
-		const { sourceFiles: _sourceFiles, ...publicResult } = result
+		const publicResult = {
+			ok: result.ok,
+			results: result.results,
+			manifest: result.manifest,
+		}
 		const runId = crypto.randomUUID()
-		const treeHash = await this.computeTreeHash()
+		const treeHash = snapshot.treeHash
 		const checkedAt = nowIso()
 		await updateRepoSession(this.env, {
 			id: input.sessionId,
@@ -2889,6 +3028,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
 			sourceFiles?: Record<string, string>
+			binaryFileSizes?: Record<string, number>
 		}>(input.stagingKey, 'json')
 		const sourceFiles = staged?.sourceFiles
 		if (!sourceFiles) {
@@ -2913,6 +3053,22 @@ class RepoSessionBase extends DurableObject<Env> {
 				targets: input.typecheckTargets,
 			})
 		}
+		if (input.phase === 'credentials') {
+			const check = buildCredentialPatternCheck(
+				sourceFiles,
+				input.secretProviders ? { secretProviders: input.secretProviders } : {},
+			)
+			const changedFiles: Record<string, string> = {}
+			for (const [path, content] of Object.entries(check.sourceFiles)) {
+				if (sourceFiles[path] !== content) changedFiles[path] = content
+			}
+			return {
+				ok: check.ok,
+				message: check.message,
+				changedFiles,
+				stampKeys: check.stampKeys,
+			}
+		}
 		const exhaustive: never = input
 		throw new Error(
 			`Unsupported isolated check phase: ${JSON.stringify(exhaustive)}`,
@@ -2923,9 +3079,11 @@ class RepoSessionBase extends DurableObject<Env> {
 	 * The full authoring publish checks for a staged in-memory tree
 	 * (`packageCheck`, which `kody dev check` calls), invoked on a throwaway
 	 * Durable Object id so the run never shares the origin request isolate's
-	 * memory or CPU (see `runAuthoringChecksInIsolate`). No session and no
-	 * storage on this instance; heavy phases still fan out to their own
-	 * throwaway isolates from inside `runRepoChecks`.
+	 * memory or CPU (see `runAuthoringChecksInIsolate`). No session; the
+	 * only storage is the current check step marker, which the caller reads
+	 * and clears with `takeLastCheckStep` after a memory or CPU reset. Heavy
+	 * phases still fan out to their own throwaway isolates from inside
+	 * `runRepoChecks`.
 	 */
 	async runIsolatedAuthoringChecks(
 		input: IsolatedAuthoringChecksRequest,
@@ -2950,6 +3108,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
 			sourceFiles?: Record<string, string>
+			binaryFileSizes?: Record<string, number>
 		}>(input.stagingKey, 'json')
 		const sourceFiles = staged?.sourceFiles
 		if (!sourceFiles) {
@@ -2965,8 +3124,15 @@ class RepoSessionBase extends DurableObject<Env> {
 				],
 			}
 		}
+		const recordCheckStep = this.checkStepRecorder()
+		// A memory or CPU reset kills this isolate before `finally`, leaving the
+		// step for `takeLastCheckStep`; any other ending clears it.
 		const checks = await runAuthoringPublishChecksOnFiles({
+			onStep: recordCheckStep,
 			files: sourceFiles,
+			...(staged?.binaryFileSizes
+				? { binaryFileSizes: staged.binaryFileSizes }
+				: {}),
 			env: this.env,
 			baseUrl: input.baseUrl,
 			userId: input.userId,
@@ -2974,7 +3140,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			...(input.expectedPackageScope !== undefined
 				? { expectedPackageScope: input.expectedPackageScope }
 				: {}),
-		})
+		}).finally(() => this.clearCheckStep())
 		return {
 			ok: checks.ok,
 			results: checks.results.map((result) => ({
@@ -2983,6 +3149,146 @@ class RepoSessionBase extends DurableObject<Env> {
 				message: result.message,
 			})),
 		}
+	}
+
+	/**
+	 * Durably records the authoring-check step about to run, so a memory or
+	 * CPU reset of this isolate can still be reported against that step.
+	 */
+	private checkStepRecorder() {
+		return async (step: RepoCheckStep) => {
+			await this.ctx.storage.put(lastCheckStepStorageKey, step)
+			await this.ctx.storage.sync()
+		}
+	}
+
+	private async clearCheckStep() {
+		await this.ctx.storage.delete(lastCheckStepStorageKey)
+	}
+
+	/**
+	 * Publish work runner for this instance: each heavy step on a fresh
+	 * throwaway isolate (see `publish-work.ts`), or inline when the env lacks
+	 * the isolate bindings.
+	 */
+	private publishWorkRunner(): PublishWorkRunner {
+		return (
+			createIsolatedPublishWorkRunner(this.env) ??
+			createInlinePublishWorkRunner({
+				env: this.env,
+				cloneExternalRefFiles: (request) => this.cloneExternalRefFiles(request),
+				onStep: this.checkStepRecorder(),
+			})
+		)
+	}
+
+	/** Checks over a collected session tree, run through the publish runner. */
+	private async runSessionTreeChecks(input: {
+		files: Record<string, string>
+		userId: OwnerId
+		checks: PublishWorkChecksInput
+	}) {
+		const runner = this.publishWorkRunner()
+		const stagingKey = await runner.stage({
+			userId: input.userId,
+			files: input.files,
+		})
+		try {
+			return await bindPublishHeavyWork({
+				runner,
+				stagingKey,
+				userId: input.userId,
+			}).runChecks(input.checks)
+		} finally {
+			await runner.discard(stagingKey)
+			if (!runner.isolated) await this.clearCheckStep()
+		}
+	}
+
+	/**
+	 * In-memory clone of one source commit, flattened to a snapshot file map.
+	 * Ancestry against the published commit is settled before the clone's git
+	 * objects are dropped.
+	 */
+	private async cloneExternalRefFiles(request: ExternalRefCloneRequest) {
+		if (request.source.user_id !== request.userId) {
+			throw new Error('Repo source was not found for this user.')
+		}
+		const phaseTimings: PublishPhaseTimings = {}
+		const { publishClone } = await this.cloneExternalRefForPublish({
+			source: request.source,
+			commit: request.commit,
+			expectedHead: request.expectedHead,
+			phaseTimings,
+		})
+		const isFastForward =
+			request.previousCommit && request.previousCommit !== request.commit
+				? await publishClone.isAncestorCommit({
+						ancestor: request.previousCommit,
+						descendant: request.commit,
+					})
+				: null
+		// Drop the pack before flattening the tree so both are never resident.
+		await publishClone.releaseGitObjects()
+		// Always collect a binary-safe snapshot. Do not skip this based on the
+		// pre-clone D1 row: a concurrent snapshot-failure revert can clear
+		// published_commit so publish still finalizes, and UTF-8 check source
+		// files would corrupt PNG magic.
+		const files = await publishClone.collectFiles()
+		return {
+			files,
+			headCommit: publishClone.headCommit,
+			isFastForward,
+			phaseTimings,
+		}
+	}
+
+	/**
+	 * Throwaway-isolate half of `publishWorkRunner().cloneExternalRef`: clone,
+	 * collect, settle ancestry, and stage the tree for the publish steps.
+	 */
+	async runIsolatedExternalRefClone(
+		request: ExternalRefCloneRequest,
+	): Promise<ExternalRefCloneResult> {
+		const recordCheckStep = this.checkStepRecorder()
+		await recordCheckStep('clone')
+		// A memory or CPU reset kills this isolate before `finally`, leaving the
+		// step for `takeLastCheckStep`.
+		try {
+			const cloned = await this.cloneExternalRefFiles(request)
+			const stagingKey = await stagePublishWorkFiles({
+				kv: this.env.BUNDLE_ARTIFACTS_KV,
+				userId: request.userId,
+				files: cloned.files,
+			})
+			return {
+				stagingKey,
+				headCommit: cloned.headCommit,
+				isFastForward: cloned.isFastForward,
+				phaseTimings: cloned.phaseTimings,
+			}
+		} finally {
+			await this.clearCheckStep()
+		}
+	}
+
+	/**
+	 * Throwaway-isolate half of `publishWorkRunner().run`: one heavy publish
+	 * step over a staged tree (checks, credential scans, stamps, finalize).
+	 */
+	async runIsolatedPublishWork(request: PublishWorkRequest): Promise<unknown> {
+		return await runStagedPublishWorkStep({
+			env: this.env,
+			request,
+			onStep: this.checkStepRecorder(),
+		}).finally(() => this.clearCheckStep())
+	}
+
+	/** Reads and clears the step recorded by `checkStepRecorder`. */
+	async takeLastCheckStep(): Promise<RepoCheckStep | null> {
+		const step = await this.ctx.storage.get(lastCheckStepStorageKey)
+		await this.ctx.storage.delete(lastCheckStepStorageKey)
+		return isRepoCheckStep(step) ? step : null
 	}
 
 	async listPublishedPackageArtifactTargets(input: {
@@ -3084,9 +3390,19 @@ class RepoSessionBase extends DurableObject<Env> {
 		const results: Array<IsolatedArtifactRebuildTargetResult> = []
 		const remaining: Array<PublishedPackageArtifactBuildTarget> = []
 		const snapshotCache = new Map()
+		const loadedByIdentity =
+			!input.force && hasPublishedRuntimeArtifacts(this.env)
+				? await loadPublishedBundleArtifactsForPackageTargets({
+						env: this.env,
+						userId: input.userId,
+						sourceId: input.sourceId,
+						targets: input.targets,
+					})
+				: null
 		for (const target of input.targets) {
 			const alreadyBuilt =
 				!input.force &&
+				loadedByIdentity != null &&
 				(await isPublishedPackageArtifactBuiltForCommit({
 					env: this.env,
 					userId: input.userId,
@@ -3094,6 +3410,11 @@ class RepoSessionBase extends DurableObject<Env> {
 					publishedCommit: input.publishedCommit,
 					target,
 					snapshotCache,
+					preloaded: publishedBundleArtifactForPackageTarget({
+						sourceId: input.sourceId,
+						target,
+						loadedByIdentity,
+					}),
 				}))
 			if (alreadyBuilt) {
 				results.push({
@@ -3160,33 +3481,33 @@ class RepoSessionBase extends DurableObject<Env> {
 				return { ok: false, message, results }
 			}
 			const prepareCache: PreparedKodyGraphCache = new Map()
-			for (const target of remaining) {
-				try {
-					const kvKey =
-						await this.persistPublishedPackageArtifactTargetFromFiles({
-							source,
-							savedPackage,
-							userId: input.userId,
-							publishedCommit: input.publishedCommit,
-							target,
-							baseUrl: input.baseUrl,
-							sourceFiles,
-							prepareCache,
-						})
+			const persisted =
+				await this.persistPublishedPackageArtifactTargetsFromFiles({
+					source,
+					savedPackage,
+					userId: input.userId,
+					publishedCommit: input.publishedCommit,
+					targets: remaining,
+					baseUrl: input.baseUrl,
+					sourceFiles,
+					prepareCache,
+				})
+			for (const outcome of persisted) {
+				if (outcome.ok) {
 					results.push({
 						ok: true,
 						message: 'Published package artifact rebuilt.',
-						kvKey,
-						target,
+						kvKey: outcome.kvKey,
+						target: outcome.target,
 					})
-				} catch (error) {
-					results.push({
-						ok: false,
-						message: getErrorMessage(error),
-						...(isUserCodeError(error) ? { callerFailure: true } : {}),
-						target,
-					})
+					continue
 				}
+				results.push({
+					ok: false,
+					message: getErrorMessage(outcome.error),
+					...(isUserCodeError(outcome.error) ? { callerFailure: true } : {}),
+					target: outcome.target,
+				})
 			}
 		} catch (error) {
 			const message = getErrorMessage(error)
@@ -3340,6 +3661,96 @@ class RepoSessionBase extends DurableObject<Env> {
 		})
 	}
 
+	private async persistPublishedPackageArtifactTargetsFromFiles(input: {
+		source: EntitySourceRow
+		savedPackage: SavedPackageRecord
+		userId: OwnerId
+		publishedCommit: string
+		targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
+		baseUrl?: string
+		sourceFiles: Record<string, string>
+		prepareCache?: PreparedKodyGraphCache
+	}) {
+		if (input.targets.length === 0) return []
+		const sourceAtPublishedCommit = {
+			...input.source,
+			published_commit: input.publishedCommit,
+		}
+		const {
+			buildKodyAppBundle,
+			buildKodyAppClientBundle,
+			buildKodyModuleBundle,
+			buildKodyImportableModuleBundle,
+		} = await import('#worker/package-runtime/module-graph.ts')
+		const prepareCache = input.prepareCache ?? new Map()
+		const builders = {
+			buildAppBundle: async ({ entryPoint }: { entryPoint: string }) =>
+				await buildKodyAppBundle({
+					env: this.env,
+					baseUrl: input.baseUrl ?? input.source.source_root,
+					userId: input.userId,
+					sourceFiles: input.sourceFiles,
+					entryPoint,
+					rootPackageId: input.savedPackage.id,
+					cacheKey: null,
+					prepareCache,
+				}),
+			buildAppClientBundle: async ({ entryPoint }: { entryPoint: string }) =>
+				await buildKodyAppClientBundle({
+					sourceFiles: input.sourceFiles,
+					entryPoint,
+				}),
+			buildModuleBundle: async ({ entryPoint }: { entryPoint: string }) =>
+				await buildKodyModuleBundle({
+					env: this.env,
+					baseUrl: input.baseUrl ?? input.source.source_root,
+					userId: input.userId,
+					sourceFiles: input.sourceFiles,
+					entryPoint,
+					rootPackageId: input.savedPackage.id,
+					prepareCache,
+				}),
+			buildImportableModuleBundle: async ({
+				entryPoint,
+			}: {
+				entryPoint: string
+			}) =>
+				await buildKodyImportableModuleBundle({
+					env: this.env,
+					baseUrl: input.baseUrl ?? input.source.source_root,
+					userId: input.userId,
+					sourceFiles: input.sourceFiles,
+					entryPoint,
+					rootPackageId: input.savedPackage.id,
+					prepareCache,
+				}),
+		}
+		if (input.targets.length === 1) {
+			const target = input.targets[0]!
+			try {
+				const kvKey = await persistPublishedPackageArtifactTarget({
+					env: this.env,
+					userId: input.userId,
+					source: sourceAtPublishedCommit,
+					savedPackage: input.savedPackage,
+					target,
+					...builders,
+				})
+				return [{ ok: true as const, target, kvKey }]
+			} catch (error) {
+				return [{ ok: false as const, target, error }]
+			}
+		}
+		return await persistPublishedPackageArtifactTargets({
+			env: this.env,
+			userId: input.userId,
+			source: sourceAtPublishedCommit,
+			savedPackage: input.savedPackage,
+			targets: input.targets,
+			...builders,
+		})
+	}
+
 	async rebaseSession(input: {
 		sessionId: string
 		userId: OwnerId
@@ -3349,14 +3760,24 @@ class RepoSessionBase extends DurableObject<Env> {
 			input.userId,
 		)
 		const sessionBranch = sessionRow.session_branch
-		const pullResult = await (
-			await this.ensureGit()
-		).pull({
+		await this.attachHeadToSessionBranch(sessionBranch)
+		// Merge the source branch into the session branch. Pulling with
+		// `ref: <source branch>` would merge into and check out the local source
+		// branch instead, stranding later commits off the session branch.
+		const { git, http } = await loadIsomorphicGit()
+		const pullAuth = buildArtifactsGitAuth({ token: sessionAccess.token })
+		await git.pull({
+			fs: this.rawGitFileSystem,
+			http,
 			dir: repoSessionWorkspacePrefix,
 			remote: 'origin',
-			ref: sessionRow.source_branch,
+			ref: sessionBranch,
+			remoteRef: sessionRow.source_branch,
+			singleBranch: true,
 			author: sessionCommitAuthor,
-			...buildArtifactsGitAuth({ token: sessionAccess.token }),
+			onAuth() {
+				return pullAuth
+			},
 		})
 		const headCommit = await this.getHeadCommit()
 		// Session branches are ephemeral workspace state; pull/merge can rewrite
@@ -3391,7 +3812,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			sessionId: sessionRow.id,
 			baseCommit: rebasedBaseCommit,
 			headCommit,
-			merged: pullResult.pulled,
+			merged: true,
 		}
 	}
 
@@ -3431,6 +3852,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					'The source repo has moved since this session opened. Rebase the session before publishing.',
 			}
 		}
+		await this.attachHeadToSessionBranch(sessionBranch)
 		const sessionHeadCommit =
 			(await this.commitIfDirty(
 				input.commitMessage?.trim() ||
@@ -3515,22 +3937,97 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 	}
 
-	async publishSession(input: {
-		sessionId: string
-		userId: OwnerId
-		force?: boolean
-		destructiveOverwriteConfirmed?: boolean
-		privateVisibilityChangeConfirmed?: boolean
-		rebuildPackageArtifacts?: boolean
-		expectedPackageScope?: string
-		commitMessage?: string
-		allowLockedPublish?: boolean
-		credentialNeedsApproved?: boolean
-		requestedByUserId?: string | null
-		promotePublished?: boolean
-		/** Refuse unless the session still holds exactly this commit. */
-		expectedHeadCommit?: string
-	}): Promise<RepoSessionPublishResult> {
+	/**
+	 * Publish the session and record the attempt for `repoGetSession`
+	 * `last_publish`, so a caller whose request failed (or whose connection
+	 * dropped) can see whether anything was published.
+	 */
+	async publishSession(
+		input: RepoSessionPublishInput,
+	): Promise<RepoSessionPublishResult> {
+		const startedAt = nowIso()
+		this.publishesInFlight += 1
+		const attempt = ++this.publishAttempts
+		// An older overlapping publish must not overwrite the latest attempt.
+		const writeOutcome = async (value: RepoSessionLastPublish) => {
+			if (attempt === this.publishAttempts) await this.writeLastPublish(value)
+		}
+		await writeOutcome({
+			state: 'running',
+			started_at: startedAt,
+			finished_at: null,
+			published_commit: null,
+			result_status: null,
+			error_name: null,
+			error_message: null,
+		})
+		try {
+			const result = await this.runPublishSession(input)
+			await writeOutcome({
+				state:
+					result.status !== 'ok'
+						? 'not_published'
+						: input.promotePublished === false
+							? 'pushed'
+							: 'published',
+				started_at: startedAt,
+				finished_at: nowIso(),
+				published_commit:
+					result.status === 'ok' && input.promotePublished !== false
+						? result.publishedCommit
+						: null,
+				result_status: result.status,
+				error_name: null,
+				error_message: null,
+			})
+			return result
+		} catch (error) {
+			await writeOutcome({
+				state: 'failed',
+				started_at: startedAt,
+				finished_at: nowIso(),
+				published_commit: null,
+				result_status: null,
+				error_name: error instanceof Error ? error.name : 'Error',
+				// Only messages known to be caller-safe; others may carry internals.
+				error_message: readRemoteRefNotConfirmedError(error)?.message ?? null,
+			})
+			throw error
+		} finally {
+			this.publishesInFlight -= 1
+		}
+	}
+
+	private publishesInFlight = 0
+	private publishAttempts = 0
+
+	private async writeLastPublish(value: RepoSessionLastPublish) {
+		try {
+			await this.ctx.storage.put(lastPublishStorageKey, value)
+		} catch (error) {
+			console.warn('repo session last_publish write failed', {
+				scope: 'repo.last-publish-write',
+				state: value.state,
+				error: getErrorMessage(error),
+			})
+		}
+	}
+
+	/** A `running` record this instance is not running was cut off by a reset. */
+	private async readLastPublish(): Promise<RepoSessionLastPublish | null> {
+		const stored =
+			(await this.ctx.storage.get<RepoSessionLastPublish>(
+				lastPublishStorageKey,
+			)) ?? null
+		if (stored?.state === 'running' && this.publishesInFlight === 0) {
+			return { ...stored, state: 'interrupted' }
+		}
+		return stored
+	}
+
+	private async runPublishSession(
+		input: RepoSessionPublishInput,
+	): Promise<RepoSessionPublishResult> {
 		const { sessionRow, source, sessionAccess } = await this.getSessionState(
 			input.sessionId,
 			input.userId,
@@ -3567,7 +4064,18 @@ class RepoSessionBase extends DurableObject<Env> {
 					'Run repoRunChecks on the current session state before publishing.',
 			}
 		}
-		if ((source.published_commit ?? '') !== sessionRow.base_commit) {
+		// An earlier publish of this session can die (Durable Object reset or
+		// CPU limit) after moving published_commit to the session HEAD but before
+		// the session row records it. That is not a moved base: retrying must
+		// finish the publish of the already-live commit.
+		const resumingPublishedHead =
+			source.published_commit != null &&
+			source.published_commit !== sessionRow.base_commit &&
+			source.published_commit === (await this.getHeadCommit())
+		if (
+			!resumingPublishedHead &&
+			(source.published_commit ?? '') !== sessionRow.base_commit
+		) {
 			return {
 				status: 'base_moved',
 				sessionId: input.sessionId,
@@ -3611,13 +4119,16 @@ class RepoSessionBase extends DurableObject<Env> {
 				confirmed: input.privateVisibilityChangeConfirmed,
 			})
 		}
+		await this.attachHeadToSessionBranch(sessionBranch)
 		// A re-run of a paused publish must publish the commit it paused on, so
 		// it never mints a new history-replacing commit.
 		const sessionHeadCommit =
 			(await this.commitIfDirty(
 				input.commitMessage?.trim() ||
 					`Publish repo session ${input.sessionId}`,
-				replaceHistory && input.expectedHeadCommit === undefined
+				replaceHistory &&
+					!resumingPublishedHead &&
+					input.expectedHeadCommit === undefined
 					? { replaceHistory: true }
 					: undefined,
 			)) ?? (await this.getHeadCommit())
@@ -3629,10 +4140,17 @@ class RepoSessionBase extends DurableObject<Env> {
 				pausedSessionMovedMessage(input.sessionId, input.expectedHeadCommit),
 			)
 		}
-		await this.readManifestFromWorkspace(
+		const sessionManifest = await this.readManifestFromWorkspace(
 			source.manifest_path,
 			input.expectedPackageScope,
 		)
+		await assertProfileCanPublishImports({
+			env: this.env,
+			request: input.publisherRequest,
+			ownerUserId: input.userId,
+			packageName: sessionManifest.name,
+			dependencies: sessionManifest.kody?.dependencies,
+		})
 		await (
 			await this.ensureGit()
 		).push({
@@ -3643,211 +4161,222 @@ class RepoSessionBase extends DurableObject<Env> {
 			...buildArtifactsGitAuth({ token: sessionAccess.token }),
 		})
 		// Commit/push do not rewrite workspace file bytes, so reuse the
-		// snapshot collected once above for the published source KV write.
-		const snapshotFiles = workspaceSnapshot.files
+		// snapshot collected once above. It is staged once; the credential
+		// scans, approval gate, and finalize each run in their own throwaway
+		// isolate over the `.kodyignore`-filtered set that checks ran on, so
+		// this Durable Object stays coordination-only (kody-hq/kody#4078).
 		const publishedCommit = sessionHeadCommit ?? sessionRow.base_commit
-		const patternNotice =
-			source.entity_kind === 'package'
-				? credentialPatternNoticeForFiles(snapshotFiles, source.source_root)
-				: null
-		const secretMountCompat =
-			source.entity_kind === 'package'
-				? await loadSecretMountCompatNotice({
-						env: this.env,
-						userId: input.userId,
-						sourceId: source.id,
-						nextCommit: publishedCommit,
-						nextFiles: snapshotFiles,
-						previousCommit: source.published_commit,
-						sourceRoot: source.source_root,
-					})
-				: null
-		// Warning is independent of the locked-publish gate: lookup/scan failures
-		// must never change lock or approve results (fail-closed lock stays intact).
-		const allowedPackagesPublishNotice =
-			source.entity_kind === 'package'
-				? await loadCredentialAllowedPackagesPublishWarningNotice({
-						env: this.env,
-						baseUrl: getAppBaseUrl({ env: this.env }),
-						userId: input.userId,
-						packageId: source.entity_id,
-						files: snapshotFiles,
-						sourceRoot: source.source_root,
-					})
-				: null
-		const credentialNotice =
-			[patternNotice, secretMountCompat, allowedPackagesPublishNotice]
-				.filter((notice): notice is string => Boolean(notice))
-				.join('\n\n') || null
-		const withCredentialNotice = (message: string) =>
-			credentialNotice ? `${message}\n\n${credentialNotice}` : message
-		const lockedPackage =
-			source.entity_kind === 'package' &&
-			input.allowLockedPublish !== true &&
-			input.promotePublished !== false
-				? await loadLockedSavedPackage({
-						db: this.env.APP_DB,
-						userId: input.userId,
-						packageId: source.entity_id,
-					})
-				: null
-		// The pause runs before the source branch moves, so the published commit
-		// stays at HEAD and new sessions open as usual. The session (and its
-		// pushed branch) holds the paused commit until approval re-runs it. A
-		// locked package keeps its locked-publish flow; approving that publish
-		// runs this gate.
-		const approval =
-			input.credentialNeedsApproved === true ||
-			input.promotePublished === false ||
-			lockedPackage
-				? null
-				: await requireCredentialNeedsApproval({
-						env: this.env,
+		// Edits made after the interrupted publish (and checked) publish as a
+		// normal fast-forward on top of the live commit instead.
+		const resumingLiveCommit =
+			resumingPublishedHead && publishedCommit === source.published_commit
+		const publishWork = this.publishWorkRunner()
+		const publishStagingKey = await publishWork.stage({
+			userId: input.userId,
+			files: workspaceSnapshot.files,
+		})
+		try {
+			const work = bindPublishHeavyWork({
+				runner: publishWork,
+				stagingKey: publishStagingKey,
+				userId: input.userId,
+			})
+			const { patternNotice, secretMountCompat, allowedPackagesPublishNotice } =
+				await work.loadNotices({
+					source,
+					nextCommit: publishedCommit,
+					baseUrl: getAppBaseUrl({ env: this.env }),
+					includePatternNotice: true,
+				})
+			const credentialNotice =
+				[patternNotice, secretMountCompat, allowedPackagesPublishNotice]
+					.filter((notice): notice is string => Boolean(notice))
+					.join('\n\n') || null
+			const withCredentialNotice = (message: string) =>
+				credentialNotice ? `${message}\n\n${credentialNotice}` : message
+			const lockedPackage =
+				source.entity_kind === 'package' &&
+				input.allowLockedPublish !== true &&
+				input.promotePublished !== false
+					? await loadLockedSavedPackage({
+							db: this.env.APP_DB,
+							userId: input.userId,
+							packageId: source.entity_id,
+						})
+					: null
+			// The pause runs before the source branch moves, so the published commit
+			// stays at HEAD and new sessions open as usual. The session (and its
+			// pushed branch) holds the paused commit until approval re-runs it. A
+			// locked package keeps its locked-publish flow; approving that publish
+			// runs this gate.
+			const approval =
+				input.credentialNeedsApproved === true ||
+				input.promotePublished === false ||
+				lockedPackage
+					? null
+					: await work.requireApproval({
+							source,
+							pendingCommit: publishedCommit,
+							requestedByUserId: input.requestedByUserId,
+							pausedSession: {
+								sessionId: sessionRow.id,
+								force: input.force === true,
+								destructiveOverwriteConfirmed:
+									input.destructiveOverwriteConfirmed === true,
+								privateVisibilityChangeConfirmed:
+									input.privateVisibilityChangeConfirmed === true,
+								...(input.expectedPackageScope !== undefined
+									? { expectedPackageScope: input.expectedPackageScope }
+									: {}),
+							},
+						})
+			if (approval) {
+				await updateRepoSession(this.env, {
+					id: sessionRow.id,
+					userId: sessionRow.user_id,
+					lastCheckpointCommit: publishedCommit,
+					lastCheckpointAt: nowIso(),
+				})
+				return {
+					status: 'approval_required',
+					sessionId: input.sessionId,
+					publishedCommit: null,
+					currentPublishedCommit: source.published_commit,
+					message: approval.message,
+					approval,
+					credentialNotice,
+				}
+			}
+			const forceSourcePush = input.force === true
+			try {
+				await this.pushBranchToRemoteRef({
+					branch: sessionBranch,
+					remoteRef: sessionRow.source_branch,
+					remote: sessionAccess.remote,
+					token: sessionAccess.token,
+					expectedCommit: publishedCommit,
+					...(forceSourcePush ? { force: true } : {}),
+				})
+			} catch (error) {
+				if (!forceSourcePush && isGitPushNotFastForwardError(error)) {
+					const refreshedHead = await resolveLiveSourceHeadCommit(
+						this.env,
 						source,
-						pendingCommit: publishedCommit,
-						files: snapshotFiles,
-						requestedByUserId: input.requestedByUserId,
-						pausedSession: {
-							sessionId: sessionRow.id,
-							force: input.force === true,
-							destructiveOverwriteConfirmed:
-								input.destructiveOverwriteConfirmed === true,
-							privateVisibilityChangeConfirmed:
-								input.privateVisibilityChangeConfirmed === true,
-							...(input.expectedPackageScope !== undefined
-								? { expectedPackageScope: input.expectedPackageScope }
-								: {}),
-						},
+					)
+					return this.buildPublishBaseMovedResult({
+						sessionId: input.sessionId,
+						sessionBaseCommit: sessionRow.base_commit,
+						currentPublishedCommit: refreshedHead ?? source.published_commit,
 					})
-		if (approval) {
+				}
+				throw error
+			}
+			if (input.promotePublished === false) {
+				return {
+					status: 'ok',
+					sessionId: input.sessionId,
+					publishedCommit,
+					message: `Pushed session ${input.sessionId} to ${source.repo_id} without promoting published_commit.`,
+				}
+			}
+			if (lockedPackage) {
+				const error = createPackagePublishLockedError({
+					savedPackage: lockedPackage,
+					pendingCommit: publishedCommit,
+					currentPublishedCommit: source.published_commit,
+				})
+				return {
+					status: 'locked',
+					sessionId: input.sessionId,
+					publishedCommit: null,
+					pendingCommit: publishedCommit,
+					currentPublishedCommit: source.published_commit,
+					packageId: lockedPackage.id,
+					packageName: lockedPackage.name,
+					message: error.message,
+					credentialNotice,
+				}
+			}
+			await finalizePublishedEntitySource({
+				env: this.env,
+				source,
+				publishedCommit,
+				work,
+				baseUrl: source.source_root,
+				rebuildPackageArtifacts: input.rebuildPackageArtifacts ?? true,
+				allowLockedPublish: input.allowLockedPublish,
+				actorUserId: input.requestedByUserId ?? undefined,
+				actorProfileId: input.publisherRequest?.credential.profileId ?? null,
+				// Omitted: a platform rewrite of code a person already published.
+				publisherUnknown: input.requestedByUserId === null,
+				...(resumingLiveCommit ? { resumeInterruptedFinalize: true } : {}),
+			})
+			if (
+				replaceHistory &&
+				(!resumingLiveCommit || (await this.headCommitReplacedHistory()))
+			) {
+				await this.deleteAdvertisedSessionBranches({
+					sessionBranch,
+					remote: sessionAccess.remote,
+					token: sessionAccess.token,
+				})
+			}
+			if (
+				!resumingLiveCommit ||
+				(await this.publishGitNoteMissing(source, publishedCommit))
+			) {
+				await this.attachSourcePublishGitNote({
+					source,
+					commitOid: publishedCommit,
+					remote: sessionAccess.remote,
+					token: sessionAccess.token,
+					remoteName: 'origin',
+					publishedBy: 'repo_session',
+					sessionId: sessionRow.id,
+					conversationId: sessionRow.conversation_id,
+					baseCommit: sessionRow.base_commit,
+					previousPublishedCommit: resumingLiveCommit
+						? sessionRow.base_commit
+						: source.published_commit,
+					checks: this.buildPublishGitNoteChecks(checkStatus),
+					scope: 'repo.publishSession.publish-git-note',
+				})
+			}
 			await updateRepoSession(this.env, {
 				id: sessionRow.id,
 				userId: sessionRow.user_id,
-				lastCheckpointCommit: publishedCommit,
+				status: 'published',
+				baseCommit: sessionHeadCommit ?? sessionRow.base_commit,
+				lastCheckpointCommit: sessionHeadCommit,
 				lastCheckpointAt: nowIso(),
+				expiresAt: buildPublishedSessionExpiresAt(),
 			})
-			return {
-				status: 'approval_required',
-				sessionId: input.sessionId,
-				publishedCommit: null,
-				currentPublishedCommit: source.published_commit,
-				message: approval.message,
-				approval,
-				credentialNotice,
-			}
-		}
-		const forceSourcePush = input.force === true
-		try {
-			await this.pushBranchToRemoteRef({
-				branch: sessionBranch,
-				remoteRef: sessionRow.source_branch,
-				remote: sessionAccess.remote,
-				token: sessionAccess.token,
-				expectedCommit: publishedCommit,
-				...(forceSourcePush ? { force: true } : {}),
+			await this.writeCachedSessionState({
+				sessionRow: {
+					...sessionRow,
+					status: 'published',
+					base_commit: publishedCommit,
+					last_checkpoint_commit: sessionHeadCommit,
+				},
+				source: {
+					...source,
+					published_commit: publishedCommit,
+				},
 			})
-		} catch (error) {
-			if (!forceSourcePush && isGitPushNotFastForwardError(error)) {
-				const refreshedHead = await resolveLiveSourceHeadCommit(
-					this.env,
-					source,
-				)
-				return this.buildPublishBaseMovedResult({
-					sessionId: input.sessionId,
-					sessionBaseCommit: sessionRow.base_commit,
-					currentPublishedCommit: refreshedHead ?? source.published_commit,
-				})
-			}
-			throw error
-		}
-		if (input.promotePublished === false) {
+			await this.releasePublishedSessionScratch(
+				sessionRow.id,
+				sessionRow.user_id,
+			)
 			return {
 				status: 'ok',
-				sessionId: input.sessionId,
-				publishedCommit,
-				message: `Pushed session ${input.sessionId} to ${source.repo_id} without promoting published_commit.`,
+				sessionId: sessionRow.id,
+				publishedCommit: sessionHeadCommit ?? sessionRow.base_commit,
+				message: withCredentialNotice(
+					`Published session ${sessionRow.id} to ${source.repo_id}. ${publishedSessionScratchReleasedNotice}`,
+				),
 			}
-		}
-		if (lockedPackage) {
-			const error = createPackagePublishLockedError({
-				savedPackage: lockedPackage,
-				pendingCommit: publishedCommit,
-				currentPublishedCommit: source.published_commit,
-			})
-			return {
-				status: 'locked',
-				sessionId: input.sessionId,
-				publishedCommit: null,
-				pendingCommit: publishedCommit,
-				currentPublishedCommit: source.published_commit,
-				packageId: lockedPackage.id,
-				packageName: lockedPackage.name,
-				message: error.message,
-				credentialNotice,
-			}
-		}
-		await finalizePublishedEntitySource({
-			env: this.env,
-			source,
-			publishedCommit,
-			files: snapshotFiles,
-			baseUrl: source.source_root,
-			rebuildPackageArtifacts: input.rebuildPackageArtifacts ?? true,
-			allowLockedPublish: input.allowLockedPublish,
-			actorUserId: input.requestedByUserId ?? undefined,
-			// Omitted: a platform rewrite of code a person already published.
-			publisherUnknown: input.requestedByUserId === null,
-		})
-		if (replaceHistory) {
-			await this.deleteAdvertisedSessionBranches({
-				sessionBranch,
-				remote: sessionAccess.remote,
-				token: sessionAccess.token,
-			})
-		}
-		await this.attachSourcePublishGitNote({
-			source,
-			commitOid: publishedCommit,
-			remote: sessionAccess.remote,
-			token: sessionAccess.token,
-			remoteName: 'origin',
-			publishedBy: 'repo_session',
-			sessionId: sessionRow.id,
-			conversationId: sessionRow.conversation_id,
-			baseCommit: sessionRow.base_commit,
-			previousPublishedCommit: source.published_commit,
-			checks: this.buildPublishGitNoteChecks(checkStatus),
-			scope: 'repo.publishSession.publish-git-note',
-		})
-		await updateRepoSession(this.env, {
-			id: sessionRow.id,
-			userId: sessionRow.user_id,
-			status: 'published',
-			baseCommit: sessionHeadCommit ?? sessionRow.base_commit,
-			lastCheckpointCommit: sessionHeadCommit,
-			lastCheckpointAt: nowIso(),
-			expiresAt: buildPublishedSessionExpiresAt(),
-		})
-		await this.writeCachedSessionState({
-			sessionRow: {
-				...sessionRow,
-				status: 'published',
-				base_commit: publishedCommit,
-				last_checkpoint_commit: sessionHeadCommit,
-			},
-			source: {
-				...source,
-				published_commit: publishedCommit,
-			},
-		})
-		await this.releasePublishedSessionScratch(sessionRow.id, sessionRow.user_id)
-		return {
-			status: 'ok',
-			sessionId: sessionRow.id,
-			publishedCommit: sessionHeadCommit ?? sessionRow.base_commit,
-			message: withCredentialNotice(
-				`Published session ${sessionRow.id} to ${source.repo_id}. ${publishedSessionScratchReleasedNotice}`,
-			),
+		} finally {
+			await publishWork.discard(publishStagingKey)
 		}
 	}
 
@@ -3951,32 +4480,116 @@ class RepoSessionBase extends DurableObject<Env> {
 		if (source.entity_kind !== 'package') {
 			throw new Error('Publish checks run on packages only.')
 		}
-		const phaseTimings: PublishPhaseTimings = {}
-		const { publishClone } = await this.cloneExternalRefForPublish({
+		// Clone and checks each run on a throwaway isolate, never here.
+		const runner = this.publishWorkRunner()
+		const cloned = await runner.cloneExternalRef({
+			userId: input.userId,
 			source,
 			commit: input.commit,
-			phaseTimings,
+			previousCommit: null,
 		})
-		const publishDir = publishClone.dir || externalPublishWorkspaceDir
-		const checks = await runAuthoringPublishChecks({
-			workspace: publishClone.workspace,
-			manifestPath: resolveRepoWorkspacePath(source.manifest_path, publishDir),
-			sourceRoot: resolveRepoWorkspacePath(
-				source.source_root || publishDir,
-				publishDir,
-			),
-			env: this.env,
-			baseUrl: input.baseUrl ?? source.source_root,
-			userId: input.userId,
-			sourceId: source.id,
-			...(input.expectedPackageScope !== undefined
-				? { expectedPackageScope: input.expectedPackageScope }
-				: {}),
-		})
-		return {
-			commit: input.commit,
-			ok: checks.ok,
-			results: checks.results,
+		try {
+			const checks = await bindPublishHeavyWork({
+				runner,
+				stagingKey: cloned.stagingKey,
+				userId: input.userId,
+			}).runChecks({
+				mode: 'authoring',
+				manifestPath: source.manifest_path,
+				sourceRoot: source.source_root || '/',
+				baseUrl: input.baseUrl ?? source.source_root,
+				sourceId: source.id,
+				...(input.expectedPackageScope !== undefined
+					? { expectedPackageScope: input.expectedPackageScope }
+					: {}),
+			})
+			return {
+				commit: input.commit,
+				ok: checks.ok,
+				results: checks.results,
+			}
+		} finally {
+			await runner.discard(cloned.stagingKey)
+			if (!runner.isolated) await this.clearCheckStep()
+		}
+	}
+
+	/** True only when the note is known to be absent; the note write is a force push. */
+	private async publishGitNoteMissing(source: EntitySourceRow, commit: string) {
+		try {
+			const existing = await readPublishGitNoteFromArtifactsRepo({
+				env: this.env,
+				repoId: source.repo_id,
+				commitOid: commit,
+			})
+			return !existing.found
+		} catch (error) {
+			console.warn('publish_git_note read failed', {
+				scope: 'repo.publish-git-note-read',
+				sourceId: source.id,
+				commit,
+				error: getErrorMessage(error),
+			})
+			return false
+		}
+	}
+
+	private async attachExternalPublishGitNote(note: {
+		source: EntitySourceRow
+		commit: string
+		sessionId: string
+		previousPublishedCommit: string | null
+		checks: KodyPublishGitNoteChecks | null
+	}) {
+		const { source } = note
+		try {
+			const sourceRepo = await resolveArtifactSourceRepo(
+				this.env,
+				source.repo_id,
+			)
+			const sourceWriteAccess = await ensureArtifactRepoRemote({
+				repo: sourceRepo,
+				scope: 'write',
+				pendingReconcile: buildPendingExternalReconcile(
+					this.env.APP_DB,
+					source,
+				),
+			})
+			// Fresh workspace: the clone lived in a throwaway isolate.
+			const noteWorkspace = createEphemeralGitWorkspace()
+			await attachPublishGitNoteBestEffort({
+				filesystem: noteWorkspace.filesystem,
+				dir: noteWorkspace.dir,
+				commitOid: note.commit,
+				remote: sourceWriteAccess.remote,
+				token: sourceWriteAccess.token,
+				remoteName: 'origin',
+				note: buildPublishGitNote({
+					publishedBy: 'external_push',
+					source,
+					commit: note.commit,
+					sessionId: note.sessionId,
+					previousPublishedCommit: note.previousPublishedCommit,
+					checks: note.checks,
+				}),
+				scope: 'repo.publishFromExternalRef.publish-git-note',
+			})
+		} catch (error) {
+			Sentry.captureException(error, {
+				tags: {
+					scope: 'repo.publishFromExternalRef.publish-git-note-setup',
+				},
+				extra: {
+					sourceId: source.id,
+					commit: note.commit,
+				},
+			})
+			console.warn('publish_git_note setup failed', {
+				scope: 'repo.publishFromExternalRef.publish-git-note-setup',
+				sourceId: source.id,
+				commit: note.commit,
+				error: getErrorMessage(error),
+			})
 		}
 	}
 
@@ -3994,182 +4607,158 @@ class RepoSessionBase extends DurableObject<Env> {
 		allowLockedPublish?: boolean
 		credentialNeedsApproved?: boolean
 		requestedByUserId?: string | null
+		publisherRequest?: RequestContext | null
 		deferBundleCheckToRebuild?: boolean
+		resumeFinalize?: boolean
 	}): Promise<RepoExternalPublishResult> {
 		const source = await getEntitySourceById(this.env.APP_DB, input.sourceId)
 		if (!source || source.user_id !== input.userId) {
 			throw new Error('Repo source was not found for this user.')
 		}
 		const phaseTimings: PublishPhaseTimings = {}
-		const { sourceRepo, publishClone } = await this.cloneExternalRefForPublish({
+		// Clone, checks, credential scans, and finalize each run on a fresh
+		// throwaway isolate over one staged tree; this Durable Object only
+		// coordinates (kody-hq/kody#4078).
+		const runner = this.publishWorkRunner()
+		const recordCheckStep = runner.isolated ? null : this.checkStepRecorder()
+		const cloned = await runner.cloneExternalRef({
+			userId: input.userId,
 			source,
 			commit: input.newCommit,
 			expectedHead: input.expectedHead,
-			phaseTimings,
+			previousCommit: source.published_commit,
 		})
+		Object.assign(phaseTimings, cloned.phaseTimings)
 		const runId = crypto.randomUUID()
-		const publishDir = publishClone.dir || externalPublishWorkspaceDir
-		// Always collect a binary-safe snapshot before publish. Do not skip this
-		// based on the pre-clone D1 row: a concurrent snapshot-failure revert can
-		// clear published_commit so publishFromExternalRef still finalizes, and
-		// falling back to UTF-8 checks.sourceFiles would corrupt PNG magic.
-		// Checks still walk the workspace via UTF-8 readFile for validation only.
-		const snapshotFiles = await publishClone.collectFiles()
-		const publishResult = await publishExternalRefSource({
-			env: this.env,
-			sourceId: source.id,
+		const work = bindPublishHeavyWork({
+			runner,
+			stagingKey: cloned.stagingKey,
 			userId: input.userId,
-			newCommit: input.newCommit,
-			runId,
-			isFastForward: async ({ previousCommit }) =>
-				await publishClone.isAncestorCommit({
-					ancestor: previousCommit,
-					descendant: input.newCommit,
-				}),
-			allowForce: input.allowForce,
-			destructiveOverwriteConfirmed: input.destructiveOverwriteConfirmed,
-			workspace: publishClone.workspace,
-			files: snapshotFiles,
-			baseUrl: input.baseUrl ?? source.source_root,
-			manifestPath: resolveRepoWorkspacePath(source.manifest_path, publishDir),
-			sourceRoot: resolveRepoWorkspacePath(
-				source.source_root || publishDir,
-				publishDir,
-			),
-			rebuildPackageArtifacts: input.rebuildPackageArtifacts ?? true,
-			expectedPackageScope: input.expectedPackageScope,
-			allowLockedPublish: input.allowLockedPublish,
-			credentialNeedsApproved: input.credentialNeedsApproved,
-			requestedByUserId: input.requestedByUserId,
-			phaseTimings,
-			...(input.deferBundleCheckToRebuild
-				? { deferBundleCheckToRebuild: true }
-				: {}),
 		})
-		if (publishResult.status === 'already_published') {
-			// D1 stays a no-op (overlapping inline + durable escalation). Rewrite
-			// the KV snapshot only when it is missing or the cloned HEAD files
-			// differ, so a prior finalize that tagged this commit with stale
-			// files cannot keep winning artifact rebuilds.
-			let forceArtifactRebuild = false
-			try {
-				if (
-					publishResult.published_commit &&
-					hasPublishedRuntimeArtifacts(this.env)
-				) {
-					const files = snapshotFiles
-					if (typeof files[source.manifest_path] === 'string') {
-						const existingSnapshot = await loadPublishedSourceSnapshot({
-							env: this.env,
-							userId: input.userId,
-							source: {
-								...source,
-								published_commit: publishResult.published_commit,
-							},
-						})
-						if (!publishedSourceSnapshotFilesMatch(existingSnapshot, files)) {
-							// Missing snapshot is the D1-finalize vs KV-write
-							// overlap: keep live artifacts and do not force.
-							// Mismatch means this commit was tagged with stale
-							// files. Rewrite the snapshot (rebuild reads it)
-							// and stamp invalidateArtifactsBefore so a later
-							// already_published cannot skip leftovers. Do not
-							// delete rows: that would take invoke offline.
-							const snapshotExisted = existingSnapshot?.files != null
-							await writePublishedSourceSnapshot({
-								env: this.env,
-								source: {
-									...source,
-									published_commit: publishResult.published_commit,
-								},
-								files,
-								invalidateExistingArtifacts: snapshotExisted,
-							})
-							forceArtifactRebuild = snapshotExisted
-						}
+		try {
+			const publishResult = await publishExternalRefSource({
+				env: this.env,
+				sourceId: source.id,
+				userId: input.userId,
+				newCommit: input.newCommit,
+				runId,
+				isFastForward: async ({ previousCommit }) => {
+					// Ancestry was settled in the clone isolate against the published
+					// commit read before cloning.
+					if (
+						previousCommit !== source.published_commit ||
+						cloned.isFastForward === null
+					) {
+						throw new Error(
+							'The published commit moved while this publish was running. Retry the publish.',
+						)
 					}
-				}
-			} catch (error) {
-				Sentry.captureException(error, {
-					tags: {
+					return cloned.isFastForward
+				},
+				allowForce: input.allowForce,
+				destructiveOverwriteConfirmed: input.destructiveOverwriteConfirmed,
+				work,
+				baseUrl: input.baseUrl ?? source.source_root,
+				rebuildPackageArtifacts: input.rebuildPackageArtifacts ?? true,
+				expectedPackageScope: input.expectedPackageScope,
+				allowLockedPublish: input.allowLockedPublish,
+				credentialNeedsApproved: input.credentialNeedsApproved,
+				requestedByUserId: input.requestedByUserId,
+				publisherRequest: input.publisherRequest ?? null,
+				phaseTimings,
+				...(recordCheckStep ? { onCheckStep: recordCheckStep } : {}),
+				...(input.deferBundleCheckToRebuild
+					? { deferBundleCheckToRebuild: true }
+					: {}),
+				...(input.resumeFinalize ? { resumeFinalize: true } : {}),
+			}).finally(() => this.clearCheckStep())
+			if (publishResult.status === 'already_published') {
+				// D1 stays a no-op (overlapping inline + durable escalation). The
+				// snapshot is rewritten only when missing or stale for this tip.
+				let forceArtifactRebuild = false
+				try {
+					if (publishResult.published_commit) {
+						;({ forceArtifactRebuild } =
+							await work.refreshAlreadyPublishedSnapshot({
+								source,
+								publishedCommit: publishResult.published_commit,
+							}))
+					}
+				} catch (error) {
+					Sentry.captureException(error, {
+						tags: {
+							scope:
+								'repo.publishFromExternalRef.refresh-already-published-snapshot',
+						},
+						extra: {
+							sourceId: source.id,
+							commit: input.newCommit,
+						},
+					})
+					console.warn('already_published snapshot refresh failed', {
 						scope:
 							'repo.publishFromExternalRef.refresh-already-published-snapshot',
-					},
-					extra: {
 						sourceId: source.id,
 						commit: input.newCommit,
-					},
-				})
-				console.warn('already_published snapshot refresh failed', {
-					scope:
-						'repo.publishFromExternalRef.refresh-already-published-snapshot',
-					sourceId: source.id,
-					commit: input.newCommit,
-					error: getErrorMessage(error),
-				})
-				throw error
-			}
-			return attachPublishPhaseTimings(
-				{
-					...publishResult,
-					force_artifact_rebuild: forceArtifactRebuild,
-				},
-				phaseTimings,
-			)
-		} else if (publishResult.status === 'published') {
-			try {
-				const sourceWriteAccess = await ensureArtifactRepoRemote({
-					repo: sourceRepo,
-					scope: 'write',
-					pendingReconcile: buildPendingExternalReconcile(
-						this.env.APP_DB,
+						error: getErrorMessage(error),
+					})
+					throw error
+				}
+				// checks_rerun means this request finished the live tip's finalize.
+				// An interrupted publish never attached its note; a stale-checker
+				// rerun already has one, which must not be overwritten.
+				if (
+					publishResult.checks_rerun &&
+					publishResult.published_commit &&
+					(await this.publishGitNoteMissing(
 						source,
-					),
-				})
-				await attachPublishGitNoteBestEffort({
-					filesystem: publishClone.filesystem,
-					dir: publishDir,
-					commitOid: input.newCommit,
-					remote: sourceWriteAccess.remote,
-					token: sourceWriteAccess.token,
-					remoteName: 'origin',
-					note: buildPublishGitNote({
-						publishedBy: 'external_push',
+						publishResult.published_commit,
+					))
+				) {
+					await this.attachExternalPublishGitNote({
 						source,
-						commit: input.newCommit,
+						commit: publishResult.published_commit,
 						sessionId: input.sessionId,
-						previousPublishedCommit: publishResult.previous_commit,
+						previousPublishedCommit: null,
 						checks: {
 							runId,
 							treeHash: null,
 							checkedAt: new Date().toISOString(),
 							ok: true,
-							results: publishResult.checks.map((entry) => ({
-								kind: entry.kind,
-								ok: entry.ok,
-								message: entry.message,
-							})),
+							results: [],
 						},
-					}),
-					scope: 'repo.publishFromExternalRef.publish-git-note',
-				})
-			} catch (error) {
-				Sentry.captureException(error, {
-					tags: { scope: 'repo.publishFromExternalRef.publish-git-note-setup' },
-					extra: {
-						sourceId: source.id,
-						commit: input.newCommit,
+					})
+				}
+				return attachPublishPhaseTimings(
+					{
+						...publishResult,
+						force_artifact_rebuild: forceArtifactRebuild,
+					},
+					phaseTimings,
+				)
+			} else if (publishResult.status === 'published') {
+				await this.attachExternalPublishGitNote({
+					source,
+					commit: input.newCommit,
+					sessionId: input.sessionId,
+					previousPublishedCommit: publishResult.previous_commit,
+					checks: {
+						runId,
+						treeHash: null,
+						checkedAt: new Date().toISOString(),
+						ok: true,
+						results: publishResult.checks.map((entry) => ({
+							kind: entry.kind,
+							ok: entry.ok,
+							message: entry.message,
+						})),
 					},
 				})
-				console.warn('publish_git_note setup failed', {
-					scope: 'repo.publishFromExternalRef.publish-git-note-setup',
-					sourceId: source.id,
-					commit: input.newCommit,
-					error: getErrorMessage(error),
-				})
 			}
+			return attachPublishPhaseTimings(publishResult, phaseTimings)
+		} finally {
+			await runner.discard(cloned.stagingKey)
 		}
-		return attachPublishPhaseTimings(publishResult, phaseTimings)
 	}
 }
 

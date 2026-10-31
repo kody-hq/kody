@@ -4,6 +4,7 @@ import {
 } from '@kody-internal/shared/chunk.ts'
 import { earliestSecretExpiresAt } from '@kody-internal/shared/secret-expires-at.ts'
 import { credentialGrantCleanupStatements } from '#worker/credentials/credential-grant-cleanup.ts'
+import { deleteLoginSessionsStatement } from '#worker/credentials/login-session-store.ts'
 import {
 	type CredentialFillPlacement,
 	defaultNewCredentialFillPlacement,
@@ -745,6 +746,10 @@ export async function deleteSecretEntry(input: {
 	const results = await input.db.batch([
 		...credentialGrantCleanupStatements(input.db, {
 			ownerId: input.userId,
+			credentialIdSql: `SELECT id ${liveRowSql}`,
+			credentialIdBindings: [input.bucketId, input.name],
+		}),
+		deleteLoginSessionsStatement(input.db, {
 			credentialIdSql: `SELECT id ${liveRowSql}`,
 			credentialIdBindings: [input.bucketId, input.name],
 		}),

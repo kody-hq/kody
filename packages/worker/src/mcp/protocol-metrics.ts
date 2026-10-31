@@ -37,6 +37,23 @@
  * GROUP BY package_identity_param
  * ORDER BY requests DESC
  * ```
+ *
+ * Weekly leftover gate for #3676 (removal waits until `kody_id` + `both` stay
+ * under about 10 requests/week for two consecutive completed calendar weeks;
+ * counts only):
+ *
+ * ```sql
+ * SELECT
+ *   toStartOfWeek(timestamp) AS week_start,
+ *   SUM(_sample_interval) AS kody_id_calls
+ * FROM kody_mcp_protocol_events
+ * WHERE timestamp >= toStartOfWeek(NOW() - INTERVAL '28' DAY)
+ *   AND timestamp < toStartOfWeek(NOW())
+ *   AND blob2 = 'tools/call'
+ *   AND blob8 IN ('kody_id', 'both')
+ * GROUP BY week_start
+ * ORDER BY week_start DESC
+ * ```
  */
 
 import type * as McpServerModule from '@modelcontextprotocol/server'
@@ -117,8 +134,18 @@ export function classifyMcpPackageIdentityParam(
 	let hasPackageId = false
 	let hasScopedName = false
 	for (const bag of bags) {
-		if (hasNonEmptyString(bag, 'kody_id')) hasKodyId = true
-		if (hasNonEmptyString(bag, 'package_id')) hasPackageId = true
+		// Count both snake_case and camelCase spellings. MCP / OpenAPI leftover
+		// callers still send `kodyId` / `packageId` (webhookList, enablements,
+		// credentials); omitting them under-counts the #3676 weekly gate.
+		if (hasNonEmptyString(bag, 'kody_id') || hasNonEmptyString(bag, 'kodyId')) {
+			hasKodyId = true
+		}
+		if (
+			hasNonEmptyString(bag, 'package_id') ||
+			hasNonEmptyString(bag, 'packageId')
+		) {
+			hasPackageId = true
+		}
 		if (hasNonEmptyString(bag, 'name')) {
 			const name = isRecord(bag) ? readString(bag['name']).trim() : ''
 			if (name.startsWith('@') && name.includes('/')) hasScopedName = true

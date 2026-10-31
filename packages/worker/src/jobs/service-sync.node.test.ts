@@ -556,6 +556,10 @@ test('syncPackageJobsForPackage enforces scheduled job entitlements for plan use
 				jobs: Array.from({ length: count }, (_, index) => ({
 					id: `${prefix}-${index}`,
 					user_id: maxUserId,
+					schedule_json: JSON.stringify({
+						type: 'interval',
+						every: '1h',
+					}),
 				})),
 			}),
 		})
@@ -589,6 +593,7 @@ test('blank-email package context uses the max plan for nested job scheduling', 
 			(_, index) => ({
 				id: `existing-job-${index}`,
 				user_id: userId,
+				schedule_json: JSON.stringify({ type: 'interval', every: '1h' }),
 			}),
 		),
 	})

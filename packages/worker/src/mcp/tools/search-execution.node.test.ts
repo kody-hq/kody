@@ -1,9 +1,5 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import {
-	createExecuteExecutor,
-	runWithDynamicWorkerEvaluationBudget,
-} from '#mcp/executor.ts'
 import type * as EntitlementsService from '#worker/entitlements/service.ts'
 import * as SearchRateLimit from '#worker/search-rate-limit.ts'
 import {
@@ -58,8 +54,6 @@ const mockModule = vi.hoisted(() => {
 	function memoryResult(retrievalQuery = 'skills') {
 		return {
 			memories: [],
-			retrieverResults: [],
-			retrieverWarnings: [],
 			suppressedCount: 0,
 			retrievalQuery,
 		}
@@ -80,17 +74,6 @@ const mockModule = vi.hoisted(() => {
 		),
 		loadRelevantMemoriesForTool: vi.fn(async (..._args: Array<unknown>) =>
 			memoryResult(),
-		),
-		runPackageRetrievers: vi.fn(
-			async (
-				..._args: Array<unknown>
-			): Promise<{
-				results: Array<Record<string, unknown>>
-				warnings: Array<string>
-			}> => ({
-				results: [],
-				warnings: [],
-			}),
 		),
 		consumeSearchRateLimit: vi.fn(async (..._args: Array<unknown>) => 'free'),
 		getUserPlan: vi.fn(async (..._args: Array<unknown>) => 'free'),
@@ -132,11 +115,6 @@ vi.mock('#mcp/tools/memory-tool-context.ts', () => ({
 	acknowledgeToolMemories: async () => undefined,
 	buildMemoryRetrievalQuery: (memoryContext?: { query?: string }) =>
 		memoryContext?.query?.trim() ?? '',
-}))
-
-vi.mock('#worker/package-retrievers/service.ts', () => ({
-	runPackageRetrievers: (...args: Array<unknown>) =>
-		mockModule.runPackageRetrievers(...args),
 }))
 
 vi.mock('#worker/search-rate-limit.ts', async (importOriginal) => {
@@ -200,113 +178,6 @@ function gate() {
 	})
 	return { promise, release }
 }
-
-type BudgetState = {
-	started: number
-	active: number
-	maxActive: number
-	releases: Array<() => void>
-}
-
-function createBlockingLoader(state: BudgetState) {
-	return {
-		get(_id: string, factory: () => Record<string, unknown>) {
-			factory()
-			return {
-				getEntrypoint() {
-					return {
-						async evaluate() {
-							state.started += 1
-							state.active += 1
-							state.maxActive = Math.max(state.maxActive, state.active)
-							await new Promise<void>((resolve) => {
-								state.releases.push(() => {
-									state.active -= 1
-									resolve()
-								})
-							})
-							return { result: 'done', logs: [] }
-						},
-					}
-				},
-			}
-		},
-	} as unknown as Env['LOADER']
-}
-
-async function runThreeBlockingEvaluations(env: Env) {
-	return await runWithDynamicWorkerEvaluationBudget(async () => {
-		await Promise.all(
-			Array.from({ length: 3 }, async (_, index) => {
-				return await createExecuteExecutor({
-					env,
-					exports: {
-						KodyFetchGateway: ({ props }: { props: unknown }) => ({ props }),
-					} as never,
-					gatewayProps: {
-						baseUrl: 'https://example.com',
-						userId: ownerIdFromStored('user-1'),
-						email: null,
-						request: null,
-						storageContext: null,
-					},
-				}).execute(`async () => ${index}`, [{ name: 'kody', fns: {} }])
-			}),
-		)
-	})
-}
-
-test('executeSearchList shares one dynamic-worker budget across memory and search retrievers', async () => {
-	const state: BudgetState = {
-		started: 0,
-		active: 0,
-		maxActive: 0,
-		releases: [],
-	}
-	const env = {
-		LOADER: createBlockingLoader(state),
-		APP_COMMIT_SHA: 'commit-for-test',
-	} as Env
-
-	mockModule.loadRelevantMemoriesForTool.mockImplementation(async () => {
-		await runThreeBlockingEvaluations(env)
-		return mockModule.memoryResult()
-	})
-	mockModule.runPackageRetrievers.mockImplementation(async () => {
-		await runThreeBlockingEvaluations(env)
-		return { results: [], warnings: [] }
-	})
-
-	const searchPromise = search(env, { memoryQuery: 'skills' })
-
-	await expect.poll(() => state.started).toBe(4)
-	expect(state.active).toBe(4)
-	expect(state.maxActive).toBe(4)
-	await new Promise((resolve) => setTimeout(resolve, 20))
-	expect(state.started).toBe(4)
-	expect(state.maxActive).toBe(4)
-
-	for (const release of state.releases.splice(0)) release()
-	await expect.poll(() => state.started).toBe(6)
-	for (const release of state.releases.splice(0)) release()
-	const searchResult = await searchPromise
-
-	expect(state.started).toBe(6)
-	expect(state.active).toBe(0)
-	expect(state.maxActive).toBe(4)
-	expect(mockModule.loadRelevantMemoriesForTool).toHaveBeenCalledTimes(1)
-	expect(mockModule.runPackageRetrievers).toHaveBeenCalledTimes(1)
-	expect(searchResult.phaseTimings).toEqual(
-		expect.objectContaining({
-			usernameLookupMs: expect.any(Number),
-			identityResolutionMs: expect.any(Number),
-			loadAndRankMs: expect.any(Number),
-			searchUnifiedMs: expect.any(Number),
-			retrieversMs: expect.any(Number),
-			rowAndRegistryLoadMs: expect.any(Number),
-		}),
-	)
-})
 
 test('executeSearchList embeds each distinct text once and starts the query embedding before rows resolve', async () => {
 	const embedTexts: Array<string> = []
@@ -401,87 +272,6 @@ test('executeSearchList does not prefetch an embedding for domain-overview or in
 	await search(env, { query: 'what can kody do' })
 	await search(env, { query: '' })
 	expect(run).not.toHaveBeenCalled()
-})
-
-test('executeSearchList starts ranking before search-scope retrievers settle', async () => {
-	const retrievers = gate()
-	let rankingStarted = false
-	mockModule.runPackageRetrievers.mockImplementationOnce(async () => {
-		await retrievers.promise
-		return {
-			results: [
-				{
-					id: 'note-1',
-					title: 'Skills note',
-					summary: 'Saved skill.',
-					packageId: 'package-1',
-					kodyId: 'skills',
-					retrieverKey: 'notes',
-					retrieverName: 'Notes',
-				},
-			],
-			warnings: ['retriever warning'],
-		}
-	})
-	mockModule.searchUnified.mockImplementationOnce(
-		async (...args: Array<unknown>) => {
-			const input = args[0] as {
-				retrieverResults?:
-					| Promise<Array<{ id: string }>>
-					| Array<{ id: string }>
-			}
-			rankingStarted = true
-			expect(input.retrieverResults).toBeInstanceOf(Promise)
-			const results = await Promise.resolve(input.retrieverResults ?? [])
-			expect(results.map((result) => result.id)).toEqual(['note-1'])
-			return mockModule.createEmptySearchUnifiedResult()
-		},
-	)
-
-	const pending = search({ APP_DB: {} } as unknown as Env)
-	await vi.waitFor(() => {
-		expect(rankingStarted).toBe(true)
-	})
-	expect(mockModule.runPackageRetrievers).toHaveBeenCalledTimes(1)
-	retrievers.release()
-	const result = await pending
-	expect(result.warnings).toContain('retriever warning')
-})
-
-test('executeSearchList observes a retriever rejection while rows are still loading', async () => {
-	const rows = gate()
-	const unhandled: Array<unknown> = []
-	const onUnhandled = (reason: unknown) => {
-		unhandled.push(reason)
-	}
-	process.on('unhandledRejection', onUnhandled)
-	mockModule.loadSearchRowsAndRegistry.mockImplementationOnce(async () => {
-		await rows.promise
-		return mockModule.emptySearchRows()
-	})
-	mockModule.runPackageRetrievers.mockImplementationOnce(async () => {
-		throw new Error('retriever artifact missing')
-	})
-	mockModule.searchUnified.mockImplementationOnce(
-		async (...args: Array<unknown>) => {
-			const input = args[0] as { retrieverResults?: Promise<unknown> }
-			void Promise.resolve(input.retrieverResults).catch(() => {})
-			return mockModule.createEmptySearchUnifiedResult()
-		},
-	)
-	try {
-		const pending = search({ APP_DB: {} } as unknown as Env)
-		await Promise.resolve()
-		await Promise.resolve()
-		expect(unhandled).toEqual([])
-		rows.release()
-		await expect(pending).rejects.toThrow('retriever artifact missing')
-		await Promise.resolve()
-		await Promise.resolve()
-		expect(unhandled).toEqual([])
-	} finally {
-		process.off('unhandledRejection', onUnhandled)
-	}
 })
 
 test('executeSearchList reads the Jev plan fresh while the rate limit runs', async () => {

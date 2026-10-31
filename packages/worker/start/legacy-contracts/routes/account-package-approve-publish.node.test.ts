@@ -78,9 +78,6 @@ test('approve-publish SSR renders the promote card without a browser location', 
 	expect(html).toContain('data-testid="package-publish-diff"')
 	expect(html).toContain('README.md')
 	expect(html).toContain('# Gmail drafts')
-	expect(html).not.toContain(
-		'data-testid="approve-publish-update-public-listing"',
-	)
 })
 
 test('unlocked approve-publish SSR offers Publish HEAD', async () => {

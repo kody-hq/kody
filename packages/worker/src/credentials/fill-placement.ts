@@ -5,7 +5,9 @@
  *
  * Stored as `placement_json`: null/absent means anywhere (today's behavior).
  * A non-null object lists the request parts the credential may fill into.
- * Enforcement ships later; this module is the shared schema and helpers.
+ * This module is the shared schema and helpers; the gateway enforces through
+ * `fill-placement-enforcement.ts`, which also applies the owner opt-in for
+ * query, path, and body.
  */
 import { z } from 'zod'
 import {

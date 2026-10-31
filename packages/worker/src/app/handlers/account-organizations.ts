@@ -8,6 +8,7 @@ import {
 } from '#worker/authorization/authorize.ts'
 import { FreeOrgLimitError } from '#worker/orgs/billing.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
+import { type OrgProfileVisibility } from '#worker/orgs/org-public-profile.ts'
 import {
 	loadRestorableOrganizationBySlugForPerson,
 	OrgRestoreWindowExpiredError,
@@ -39,11 +40,13 @@ export async function createWebsiteOrganization({
 	user,
 	displayName,
 	slug,
+	profileVisibility,
 }: {
 	env: Env
 	user: AuthenticatedAppUser
 	displayName: string
 	slug: string
+	profileVisibility?: OrgProfileVisibility
 }) {
 	try {
 		await authorize({ env, request: user.request }, 'org:write')
@@ -57,6 +60,7 @@ export async function createWebsiteOrganization({
 		audit: orgAuditWriterFromRequest(env, user.request),
 		displayName,
 		slug,
+		profileVisibility,
 	})
 	if (!result.ok) {
 		if (result.restorableSlug)

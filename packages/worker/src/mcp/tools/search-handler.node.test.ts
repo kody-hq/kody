@@ -8,7 +8,6 @@ import type * as EntitlementsService from '#worker/entitlements/service.ts'
 import type * as IntegrationsService from '#worker/integrations/service.ts'
 import type * as PackageRepo from '#worker/package-registry/repo.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
-import type * as PackageRetrievers from '#worker/package-retrievers/service.ts'
 import type * as SearchRateLimit from '#worker/search-rate-limit.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as MemoryToolContext from './memory-tool-context.ts'
@@ -83,9 +82,6 @@ const mockModule = vi.hoisted(() => ({
 	acknowledgeToolMemories: vi.fn<
 		typeof MemoryToolContext.acknowledgeToolMemories
 	>(async () => undefined),
-	runPackageRetrievers: vi.fn<typeof PackageRetrievers.runPackageRetrievers>(
-		async () => ({ results: [], warnings: [] }),
-	),
 	searchCommunityListings: vi.fn<
 		typeof CommunityService.searchCommunityListings
 	>(async () => []),
@@ -174,12 +170,6 @@ vi.mock('./memory-tool-context.ts', async () => {
 		) => mockModule.acknowledgeToolMemories(...args),
 	}
 })
-
-vi.mock('#worker/package-retrievers/service.ts', () => ({
-	runPackageRetrievers: (
-		...args: Parameters<typeof PackageRetrievers.runPackageRetrievers>
-	) => mockModule.runPackageRetrievers(...args),
-}))
 
 vi.mock('#worker/community/service.ts', () => ({
 	searchCommunityListings: (
@@ -357,8 +347,6 @@ function memorySummary(
 		],
 		suppressedCount: 0,
 		retrievalQuery: 'search docs',
-		retrieverResults: [],
-		retrieverWarnings: [],
 	}
 }
 
@@ -368,10 +356,6 @@ test('search tool returns compact query markdown while preserving structured aux
 			subject: 'Verbose memory subject',
 			details: 'Long memory details should stay out of the text response.',
 		}),
-		retrieverWarnings: [
-			'First memory retriever warning should remain structured.',
-			'Second memory retriever warning should remain structured.',
-		],
 	})
 	const handler = await getSearchHandler()
 
@@ -393,7 +377,6 @@ test('search tool returns compact query markdown while preserving structured aux
 	).toBeGreaterThanOrEqual(0)
 	expect(textOf(successResponse)).toContain('Prefers compact search results.')
 	const result = resultOf(successResponse)
-	expect(result.warnings).toHaveLength(2)
 	expect(result.memories?.surfaced).toEqual([
 		expect.objectContaining({ id: 'memory-1' }),
 	])
@@ -567,9 +550,6 @@ test('search tool excludes hidden packages by default and includes them with inc
 	expect(defaultResponse.isError).toBeUndefined()
 	expect(packageIdsOf(defaultResponse)).toContain('visible-notes-pkg')
 	expect(packageIdsOf(defaultResponse)).not.toContain('hidden-notes-pkg')
-	expect(mockModule.runPackageRetrievers).toHaveBeenCalledWith(
-		expect.objectContaining({ scope: 'search', includeHiddenPackages: false }),
-	)
 
 	const includeResponse = await handler({
 		query: 'notes package',
@@ -581,9 +561,6 @@ test('search tool excludes hidden packages by default and includes them with inc
 		'hidden-notes-pkg',
 		'visible-notes-pkg',
 	])
-	expect(mockModule.runPackageRetrievers).toHaveBeenCalledWith(
-		expect.objectContaining({ scope: 'search', includeHiddenPackages: true }),
-	)
 })
 
 test('search tool treats exact package identity as authoritative and still resolves hidden entity lookups', async () => {
@@ -631,7 +608,6 @@ test('search tool treats exact package identity as authoritative and still resol
 			hidden: true,
 		}),
 	])
-	expect(mockModule.runPackageRetrievers).not.toHaveBeenCalled()
 	expect(mockModule.getCapabilityRegistryForContext).not.toHaveBeenCalled()
 
 	const entityResponse = await handler({
@@ -1117,7 +1093,6 @@ test('search tool domain param: browse, reject unknown, scope ranked results, an
 			domain: 'meta',
 		}),
 	])
-	expect(mockModule.runPackageRetrievers).not.toHaveBeenCalled()
 
 	const unknownResponse = await anonymous({
 		domain: 'nope',
@@ -1149,7 +1124,6 @@ test('search tool domain param: browse, reject unknown, scope ranked results, an
 		],
 	})
 	expect(mockModule.loadRelevantMemoriesForTool).not.toHaveBeenCalled()
-	expect(mockModule.runPackageRetrievers).not.toHaveBeenCalled()
 
 	mockModule.listSavedPackagesByUserId.mockResolvedValue(
 		createSavedPackages() as never,
@@ -1168,5 +1142,4 @@ test('search tool domain param: browse, reject unknown, scope ranked results, an
 		expect(match).toMatchObject({ type: 'capability', domain: 'meta' })
 	}
 	expect(mockModule.loadRelevantMemoriesForTool).toHaveBeenCalled()
-	expect(mockModule.runPackageRetrievers).not.toHaveBeenCalled()
 })

@@ -40,3 +40,25 @@ export function oauthCredentialListStatus(input: {
 		statusMessage: `Reconnect needed${input.authFailedReason ? ` (${input.authFailedReason})` : ''}.`,
 	}
 }
+
+/**
+ * Owner of a connection's bring-your-own app: `app_owner_id`, which is
+ * `user_id` except for a personal connection made through another org's app.
+ */
+export function integrationAppOwnerSql(alias?: string): string {
+	const column = (name: string) => (alias ? `${alias}.${name}` : name)
+	return `COALESCE(${column('app_owner_id')}, ${column('user_id')})`
+}
+
+/**
+ * The connection resolves in runs of the org bound at `orgParam`: its app is
+ * its owner's own (or a platform app), or the run org owns the app it was
+ * made through (pinned, ADR 0068).
+ */
+export function integrationUsableInOrgSql(
+	orgParam: string,
+	alias?: string,
+): string {
+	const column = (name: string) => (alias ? `${alias}.${name}` : name)
+	return `${integrationAppOwnerSql(alias)} IN (${column('user_id')}, ${orgParam})`
+}

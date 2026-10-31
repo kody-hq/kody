@@ -13,6 +13,7 @@ export type ApiOperationMethod = (typeof apiOperationMethods)[number]
 export const apiOperationTags = [
 	'account',
 	'search',
+	'execution-contexts',
 	'memories',
 	'secrets',
 	'packages',
@@ -27,6 +28,7 @@ export const apiOperationTags = [
 	'storage',
 	'community',
 	'tokens',
+	'profiles',
 	'capability-proxy',
 	'execute',
 ] as const
@@ -59,6 +61,20 @@ export type CapabilityApiOperation = ApiOperationBase & {
 	 * XOR (e.g. `repo_id` | `name`).
 	 */
 	aliasPaths?: ReadonlyArray<string>
+	/**
+	 * Deprecated /v1 route kept for a deprecation window: invokes `capability`
+	 * with `fixedInputs` merged over the caller's params, strips those keys from
+	 * the output, and sends Deprecation/Sunset headers. See docs/guides/api-versioning.md.
+	 */
+	deprecatedForward?: {
+		capability: string
+		fixedInputs: Readonly<Record<string, string>>
+		permission?: SurfacePermission
+		/** YYYY-MM-DD (UTC) */
+		deprecatedAt: string
+		/** YYYY-MM-DD (UTC) */
+		sunset: string
+	}
 }
 
 export const nativeApiOperationIds = [
@@ -70,6 +86,7 @@ export const nativeApiOperationIds = [
 	'tokenGet',
 	'tokenRotate',
 	'tokenRevoke',
+	'profileHandoff',
 	'cliCredentialBootstrapRedeem',
 	'capabilityProxySession',
 	'capabilityProxyCall',
@@ -96,7 +113,10 @@ type CapabilityRoute = [
 	method: ApiOperationMethod,
 	path: string,
 	capabilityName: string,
-	options?: Pick<CapabilityApiOperation, 'omitInputs' | 'aliasPaths'>,
+	options?: Pick<
+		CapabilityApiOperation,
+		'omitInputs' | 'aliasPaths' | 'deprecatedForward'
+	>,
 ]
 
 function capabilityRoutes(
@@ -111,6 +131,27 @@ function capabilityRoutes(
 		tag,
 		...options,
 	}))
+}
+
+function resourceLockForward(
+	kind: 'secret' | 'secret_provider' | 'integration' | 'mcp_server',
+): NonNullable<CapabilityApiOperation['deprecatedForward']> {
+	return {
+		capability: 'resourceLock',
+		fixedInputs: { kind },
+		permission:
+			kind === 'secret' || kind === 'secret_provider'
+				? 'secret:use'
+				: 'integration:use',
+		deprecatedAt: '2026-10-24',
+		sunset: '2027-01-22',
+	}
+}
+
+export function capabilityNameForOperation(
+	operation: CapabilityApiOperation,
+): string {
+	return operation.deprecatedForward?.capability ?? operation.operationId
 }
 
 function nativeRoute(
@@ -141,13 +182,15 @@ const capabilityProxyRoute = {
  *
  * Deliberately absent: secret plaintext reads, inbound webhook receive,
  * package-app HTTP/WebSocket traffic, admin, and runtime-only capabilities
- * (values, package-app fetch, synthetic dispatch). Hosted execute is
+ * (values, synthetic dispatch). Hosted execute is
  * `POST /v1/execute` (native). The in-sandbox `execute` capability stays
  * off this list.
  */
 export const apiOperations: ReadonlyArray<ApiOperation> = [
 	...capabilityRoutes('account', [
 		['GET', '/v1/me', 'metaGetCurrentUser'],
+		['GET', '/v1/account/experiments', 'experimentList'],
+		['PUT', '/v1/account/experiments/{experiment}', 'experimentSet'],
 		['GET', '/v1/account/usage', 'usageGet'],
 		['GET', '/v1/account/usage/trend', 'usageTrendGet'],
 		['GET', '/v1/account/usage/by-package', 'usageByPackageGet'],
@@ -165,6 +208,14 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['POST', '/v1/access/invites', 'inviteCreate'],
 		['POST', '/v1/access/invites/accept', 'inviteAccept'],
 		['POST', '/v1/access/invites/{invite_id}/revoke', 'inviteRevoke'],
+		['POST', '/v1/access/invite-links', 'inviteLinkCreate'],
+		['GET', '/v1/access/invite-links', 'inviteLinkList'],
+		[
+			'POST',
+			'/v1/access/invite-links/{invite_link_id}/revoke',
+			'inviteLinkRevoke',
+		],
+		['POST', '/v1/access/invite-links/accept', 'inviteLinkAccept'],
 		['POST', '/v1/orgs', 'orgCreate'],
 		['PATCH', '/v1/orgs', 'orgUpdate'],
 		[
@@ -214,13 +265,24 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 	...capabilityRoutes('secrets', [
 		['GET', '/v1/secrets', 'secretList'],
 		['POST', '/v1/secrets/batch', 'secretSetMany'],
-		['POST', '/v1/secrets/lock', 'secretLock'],
+		[
+			'POST',
+			'/v1/secrets/lock',
+			'secretLock',
+			{ deprecatedForward: resourceLockForward('secret') },
+		],
+		['POST', '/v1/resource-locks', 'resourceLock'],
 		['POST', '/v1/secrets/jwt', 'secretJwtSign'],
 		['PUT', '/v1/secrets/{scope}/{name}', 'secretSet'],
 		['POST', '/v1/secrets/{scope}/{name}/disconnect', 'secretDisconnect'],
 		['DELETE', '/v1/secrets/{scope}/{name}', 'secretDelete'],
 		['GET', '/v1/credentials', 'credentialList'],
 		['PATCH', '/v1/credentials/{credential_id}', 'credentialUpdate'],
+		[
+			'POST',
+			'/v1/credential-placement-approvals',
+			'credentialPlacementApprovalLink',
+		],
 		['POST', '/v1/credential-proposals', 'credentialMappingPropose'],
 		['GET', '/v1/personal-credential-grants', 'credentialOrgGrantList'],
 		[
@@ -237,12 +299,25 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['GET', '/v1/secret-providers', 'secretProviderList'],
 		['PUT', '/v1/secret-providers/{provider}', 'secretProviderBind'],
 		['DELETE', '/v1/secret-providers/{provider}', 'secretProviderUnbind'],
-		['POST', '/v1/secret-providers/{provider}/lock', 'secretProviderLock'],
+		[
+			'POST',
+			'/v1/secret-providers/{provider}/lock',
+			'secretProviderLock',
+			{ deprecatedForward: resourceLockForward('secret_provider') },
+		],
+	]),
+	...capabilityRoutes('profiles', [
+		['GET', '/v1/profiles', 'profileList'],
+		['POST', '/v1/profiles', 'profileCreate'],
+		['GET', '/v1/profiles/{profile_id}', 'profileGet'],
+		['PATCH', '/v1/profiles/{profile_id}', 'profileUpdate'],
+		['DELETE', '/v1/profiles/{profile_id}', 'profileRevoke'],
 	]),
 	...capabilityRoutes('packages', [
 		['GET', '/v1/packages', 'packageList'],
 		['POST', '/v1/packages', 'packageSave'],
 		['POST', '/v1/packages/check', 'packageCheck'],
+		['POST', '/v1/packages/fork', 'packageFork'],
 		['GET', '/v1/packages/{package_id}', 'packageGet'],
 		[
 			'GET',
@@ -259,11 +334,35 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'/v1/packages/{package_id}/collaborators/{grant_id}',
 			'packageCollaboratorRemove',
 		],
+		[
+			'GET',
+			'/v1/packages/{package_id}/connected-people',
+			'packageAppConnectedPeopleList',
+		],
+		[
+			'DELETE',
+			'/v1/packages/{package_id}/connected-people/{grant_id}',
+			'packageAppConnectedPersonRevoke',
+		],
 		['PATCH', '/v1/packages/{package_id}', 'packageUpdate'],
+		// Body-only so `kody_id` works as well as `package_id`.
+		['POST', '/v1/packages/app-fetch', 'packageAppFetch'],
 		['GET', '/v1/packages/{package_id}/runs-as', 'packageAppRunsAsGet'],
 		['PUT', '/v1/packages/{package_id}/runs-as', 'packageAppRunsAsSet'],
 		['DELETE', '/v1/packages/{package_id}', 'packageDelete'],
-		['POST', '/v1/packages/{package_id}/git-remote', 'packageGetGitRemote'],
+		[
+			'POST',
+			'/v1/packages/git-remote',
+			'packageGetGitRemote',
+			{
+				// Preferred body-only path so CLI/OpenAPI can pass `name` or
+				// `package_id` (and `create: true`) without a path param. Legacy
+				// path stays as an HTTP alias (and a distinct OpenAPI
+				// operationId) so existing `/v1/packages/{package_id}/git-remote`
+				// callers keep working. Same pattern as repoGetGitRemote.
+				aliasPaths: ['/v1/packages/{package_id}/git-remote'],
+			},
+		],
 		[
 			'POST',
 			'/v1/packages/{package_id}/security-audits',
@@ -271,8 +370,14 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		],
 		[
 			'POST',
-			'/v1/packages/{package_id}/external-push',
+			'/v1/packages/external-push',
 			'packagePublishExternalPush',
+			{
+				// Preferred body-only path so CLI/OpenAPI can pass `name` or
+				// `package_id` without a path param. Legacy path stays as an
+				// HTTP alias.
+				aliasPaths: ['/v1/packages/{package_id}/external-push'],
+			},
 		],
 		['GET', '/v1/package-subscriptions', 'packageSubscriptionsList'],
 		['GET', '/v1/enablements', 'enablementList'],
@@ -339,8 +444,6 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['POST', '/v1/webhooks/apply', 'webhookUrlApply'],
 		['POST', '/v1/webhooks/{webhookName}/url', 'webhookUrlMint'],
 		['POST', '/v1/webhooks/{webhookName}/url/rotate', 'webhookUrlRotate'],
-		['POST', '/v1/webhooks/{webhookName}/enable', 'webhookEnable'],
-		['POST', '/v1/webhooks/{webhookName}/disable', 'webhookDisable'],
 		['GET', '/v1/webhooks/{webhookName}/deliveries', 'webhookDeliveryList'],
 	]),
 	...capabilityRoutes('email', [
@@ -379,9 +482,24 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['GET', '/v1/integrations/{name}', 'integrationGet'],
 		['PUT', '/v1/integrations/{name}', 'integrationSave'],
 		['DELETE', '/v1/integrations/{name}', 'integrationDelete'],
-		['POST', '/v1/integrations/{name}/lock', 'integrationLock'],
+		[
+			'POST',
+			'/v1/integrations/{name}/lock',
+			'integrationLock',
+			{ deprecatedForward: resourceLockForward('integration') },
+		],
 		['POST', '/v1/integrations/{name}/refresh', 'integrationTokenRefresh'],
 		['GET', '/v1/oauth-apps', 'integrationOauthAppList'],
+		[
+			'GET',
+			'/v1/oauth-apps/member-connections',
+			'integrationMemberConnectionList',
+		],
+		[
+			'DELETE',
+			'/v1/oauth-apps/member-connections/{credential_id}',
+			'integrationMemberConnectionRevoke',
+		],
 		['DELETE', '/v1/oauth-apps/{slug}', 'integrationOauthAppDelete'],
 		[
 			'POST',
@@ -397,7 +515,49 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['PUT', '/v1/mcp-servers/{server}/enabled', 'mcpServerSetEnabled'],
 		['POST', '/v1/mcp-servers/{server}/reconnect', 'mcpServerReconnect'],
 		['POST', '/v1/mcp-servers/{server}/refresh', 'mcpServerRefresh'],
-		['POST', '/v1/mcp-servers/{server}/lock', 'mcpServerLock'],
+		[
+			'POST',
+			'/v1/mcp-servers/{server}/lock',
+			'mcpServerLock',
+			{ deprecatedForward: resourceLockForward('mcp_server') },
+		],
+	]),
+	...capabilityRoutes('execution-contexts', [
+		['GET', '/v1/execution-contexts', 'executionContextList'],
+		['GET', '/v1/automation-execution', 'automationExecutionGet'],
+		['PUT', '/v1/automation-execution', 'automationExecutionSet'],
+		['GET', '/v1/execution-contexts/{id}', 'executionContextGet'],
+		['PATCH', '/v1/execution-contexts/{id}', 'executionContextUpdate'],
+		['DELETE', '/v1/execution-contexts/{id}', 'executionContextRevoke'],
+		['POST', '/v1/execution-contexts/{id}/delete', 'executionContextDelete'],
+		['POST', '/v1/execution-contexts/{id}/opt-in', 'executionContextOptIn'],
+		['DELETE', '/v1/execution-contexts/{id}/opt-in', 'executionContextOptOut'],
+		['GET', '/v1/execution-contexts/{id}/sharing', 'executionContextShareList'],
+		['PUT', '/v1/execution-contexts/{id}/sharing', 'executionContextShareSet'],
+		[
+			'DELETE',
+			'/v1/execution-contexts/{id}/sharing/{grant_id}',
+			'executionContextShareRemove',
+		],
+		[
+			'POST',
+			'/v1/execution-contexts/{id}/attachments',
+			'executionContextAttach',
+		],
+		[
+			'DELETE',
+			'/v1/execution-contexts/{id}/attachments/{org_id}',
+			'executionContextDetach',
+		],
+		['GET', '/v1/execution-contexts/{id}/runs', 'executionContextRunList'],
+		[
+			'POST',
+			'/v1/execution-contexts/{id}/runs/{run_id}/cancel',
+			'executionContextRunCancel',
+		],
+		['GET', '/v1/execution-contexts/{id}/audit', 'executionContextAuditList'],
+		['GET', '/v1/execution-chain', 'executionChainGet'],
+		['PUT', '/v1/execution-chain', 'executionChainSet'],
 	]),
 	...capabilityRoutes('runs', [
 		['GET', '/v1/runs', 'runList'],
@@ -437,6 +597,8 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		'none',
 	),
 	nativeRoute('GET', '/v1/tokens/current', 'tokenGetCurrent', 'none'),
+	// Profile creation runs its own chain and grant checks (ADR 0092).
+	nativeRoute('POST', '/v1/profiles/handoff', 'profileHandoff', 'none'),
 	nativeRoute(
 		'POST',
 		'/v1/tokens/current/rotate',

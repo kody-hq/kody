@@ -191,6 +191,7 @@ export const loadPackageCredentialsPage = createServerFn({ method: 'GET' })
 				ownerProfilePublic: page.ownerProfilePublic,
 				viewerCanManage: page.viewerCanManage,
 				viewerCanManageAccess: page.viewerCanManageAccess,
+				viewerCanSeeConnectedPeople: page.viewerCanSeeConnectedPeople,
 			},
 			view,
 			viewError: view

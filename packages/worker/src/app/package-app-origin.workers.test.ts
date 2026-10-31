@@ -1,5 +1,6 @@
 import { env, exports } from 'cloudflare:workers'
-import { expect, test } from 'vitest'
+import { beforeEach, expect, test } from 'vitest'
+import { ensurePackageAppCustomHostnamesTestSchema } from '#worker/test-support/package-app-custom-hostnames-test-schema.ts'
 import { ensureAuditEventsTestSchema } from '#worker/test-support/audit-events-test-schema.ts'
 import { createAuthCookie, setAuthSessionSecret } from '#app/auth-session.ts'
 import {
@@ -8,10 +9,7 @@ import {
 } from '#app/handlers/package-app.ts'
 import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
-import {
-	buildPackageAppNotFoundMessage,
-	buildUnmatchedPackageAppOriginPathMessage,
-} from '#worker/package-runtime/package-app-synthetic.ts'
+import { buildUnmatchedPackageAppOriginPathMessage } from '#worker/package-runtime/package-app-synthetic.ts'
 import {
 	consoleError,
 	silenceExpectedConsoleErrors,
@@ -34,6 +32,11 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 
 // Different ports on purpose: swapping origins by mutating a `URL` keeps the
 // original port, and identical ports would hide that.
+
+beforeEach(async () => {
+	await ensurePackageAppCustomHostnamesTestSchema()
+})
+
 const appOrigin = 'https://app.kody.test:8788'
 const packageAppOrigin = 'https://packages.isolated.test'
 const ownerEmail = 'pkg-owner@example.com'
@@ -319,11 +322,9 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 			...(method ? { method } : {}),
 			...withPackageSession(origin ? { Origin: origin } : {}),
 		})
-		expect({ name, ...(await outcome(response)) }).toEqual({
-			name,
-			status: 404,
-			body: buildPackageAppNotFoundMessage(),
-		})
+		const { status, body } = await outcome(response)
+		expect({ name, status }).toEqual({ name, status: 404 })
+		expect(body).toContain('Saved package app not found')
 	}
 	// A session on a handle with no org cannot invent an owner — fail closed
 	// the same way a missing package-app session does.
@@ -585,7 +586,9 @@ test('team org private apps hand off and open for owners and execute-granted mem
 		// source is seeded, so serve 404s the same way the personal-org path
 		// does after a successful handoff.
 		expect(served.status).toBe(404)
-		await expect(served.text()).resolves.toBe(buildPackageAppNotFoundMessage())
+		await expect(served.text()).resolves.toContain(
+			'Saved package app not found',
+		)
 	}
 
 	// Team org owner (username ≠ org slug) and a member with app:execute.

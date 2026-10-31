@@ -102,6 +102,10 @@ const storageRules: ReadonlyArray<StorageRule> = [
 				'Account management: OAuth connect exchanges the code with the stored client secret.',
 			'packages/worker/src/integrations/connect-oauth-persist.ts':
 				'Shared connect persist: resolves a stored BYO client secret when the browser omits it on device or code exchange.',
+			'packages/worker/src/integrations/pinned-connect.ts':
+				"Connect your own account through an org app: exchanges the code with the org app's client secret host-side.",
+			'packages/worker/src/integrations/pinned-connections.ts':
+				'Pinned connection wipe: reads the tokens and app client secret only to revoke them upstream, never returns them.',
 		},
 	},
 	{

@@ -102,7 +102,7 @@ export const loadShell = createServerFn({ method: 'GET' })
 		setAuthSessionSecret(appEnv.COOKIE_SECRET)
 		const request = getRequest()
 		const [{ session, setCookie }, resolvedAuth] = await Promise.all([
-			loadSessionInfo(request, env),
+			loadSessionInfo(request, env, data.pathname),
 			loadResolvedRequestAuth(request, env),
 		])
 		if (setCookie) setResponseHeader('Set-Cookie', setCookie)

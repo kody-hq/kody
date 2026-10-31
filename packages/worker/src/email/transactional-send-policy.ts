@@ -31,6 +31,7 @@ export type TransactionalEmailCategory =
 export const essentialTransactionalEmailKinds = [
 	'email_verification',
 	'email_change',
+	'email_changed',
 	'email_destination_verification',
 	'email_claim_release',
 	'password_reset',

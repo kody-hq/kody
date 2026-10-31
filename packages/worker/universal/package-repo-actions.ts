@@ -1,6 +1,12 @@
 import { type ViewerListingInstall } from './community-public-types.ts'
 export type PackageRepoForkAction = {
-	listingId: string
+	/** Null when forking a package the viewer can read that has no listing. */
+	listingId: string | null
+	/**
+	 * Set for a package the viewer can read without a listing (private, or
+	 * shared with Read or more). Forks through the package, not a listing.
+	 */
+	source?: { username: string; kodyId: string } | null
 	trusted: boolean
 	loggedIn: boolean
 	loginHref: string
@@ -13,16 +19,20 @@ export type PackageRepoForkAction = {
  * the same group; null fields render nothing.
  */
 export type PackageRepoActions = {
-	/** Visitors on a listed package. Owners never fork their own listing. */
+	/**
+	 * Visitors on a listed package, or signed-in readers of a package with no
+	 * listing. Owners never fork their own listing.
+	 */
 	fork: PackageRepoForkAction | null
 	/** Owner: default-branch HEAD is ahead of the last publish. */
 	publishHref: string | null
 	/**
 	 * Open app. Someone who may run the app (`app:execute`) gets
-	 * `/@{user}/packages/{name}/open`, which hands off to the hosted origin.
-	 * Everyone else gets the canonical hosted origin only when the app is
-	 * approved for anonymous serving. Inline deployments use the path mount.
-	 * There is no second host-labeled button.
+	 * `/@{user}/packages/{name}/open`, which hands off to the hosted origin
+	 * (verified app custom hostname when one exists, else the kody.run
+	 * subdomain). Everyone else gets that same hosted origin only when the
+	 * app is approved for anonymous serving. Inline deployments use the path
+	 * mount. There is no second host-labeled button.
 	 */
 	packageAppHref: string | null
 	/**

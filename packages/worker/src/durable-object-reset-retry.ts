@@ -2,7 +2,10 @@ import {
 	errorCauseChainIncludes,
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
-import { isDurableObjectIsolateResetMessage } from '#worker/sentry-options.ts'
+import {
+	isDurableObjectIsolateResetMessage,
+	isDurableObjectIsolateResourceLimitResetMessage,
+} from '#worker/sentry-options.ts'
 
 /**
  * Bounded backoff for sandbox execution. The final delay gives deploy drains
@@ -10,7 +13,31 @@ import { isDurableObjectIsolateResetMessage } from '#worker/sentry-options.ts'
  */
 export const durableObjectResetRetryDelaysMs = [100, 500, 1_500] as const
 
+/**
+ * Memory/CPU isolate resets and DO SQLite SQLITE_NOMEM. Deterministic for the
+ * same work on a fresh isolate — callers should fail closed with an
+ * actionable message instead of burning the transient-reset retry budget.
+ */
+export function isDurableObjectIsolateResourceLimitResetError(error: unknown) {
+	if (typeof error === 'string') {
+		return isDurableObjectIsolateResourceLimitResetMessage(error)
+	}
+	return errorCauseChainIncludes(
+		error,
+		isDurableObjectIsolateResourceLimitResetMessage,
+	)
+}
+
+/**
+ * Platform resets that are safe to retry on a fresh isolate: deploy
+ * "code was updated", storage timeouts/faults, blockConcurrencyWhile, and
+ * inactive-instance closes. Excludes memory/CPU / SQLITE_NOMEM resource
+ * limits — those repeat for the same package tip.
+ */
 export function isTransientDurableObjectResetError(error: unknown) {
+	if (isDurableObjectIsolateResourceLimitResetError(error)) {
+		return false
+	}
 	if (typeof error === 'string') {
 		return isDurableObjectIsolateResetMessage(error)
 	}

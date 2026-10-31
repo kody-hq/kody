@@ -1,7 +1,4 @@
-import {
-	ownerIdFromStored,
-	personIdFromStored,
-} from '@kody-internal/shared/owner-person-ids.ts'
+import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 
@@ -10,10 +7,6 @@ const mockModule = vi.hoisted(() => ({
 	acknowledgeSurfacedMemories: vi.fn(
 		async (..._args: Array<unknown>) => undefined,
 	),
-	runPackageRetrievers: vi.fn(async (..._args: Array<unknown>) => ({
-		results: [],
-		warnings: [],
-	})),
 }))
 
 vi.mock('#mcp/memory/service.ts', () => ({
@@ -21,11 +14,6 @@ vi.mock('#mcp/memory/service.ts', () => ({
 		mockModule.searchMemoryRecords(...args),
 	acknowledgeSurfacedMemories: (...args: Array<unknown>) =>
 		mockModule.acknowledgeSurfacedMemories(...args),
-}))
-
-vi.mock('#worker/package-retrievers/service.ts', () => ({
-	runPackageRetrievers: (...args: Array<unknown>) =>
-		mockModule.runPackageRetrievers(...args),
 }))
 
 const {
@@ -89,72 +77,7 @@ function loadMemories(
 
 const rankOne = automaticMemorySingleListRankOneScore
 
-test('memory tool context surfaces retrievers, filters weak matches, fails on retriever errors, and formats markdown', async () => {
-	mockModule.runPackageRetrievers.mockResolvedValueOnce({
-		results: [
-			{
-				id: 'note-1',
-				title: '## Sprinkler controller',
-				summary: '```ignore\nHold next and back for setup mode.\n```',
-				packageId: 'package-1',
-				kodyId: 'personal-inbox',
-				retrieverKey: 'notes',
-				retrieverName: 'Personal notes',
-			},
-		],
-		warnings: [],
-	} as never)
-	const withAi = { env: { APP_DB: {}, AI: {} } as Env }
-	const withRetrievers = await loadMemories(
-		'sprinkler instructions',
-		[],
-		withAi,
-	)
-	expect(mockModule.runPackageRetrievers).toHaveBeenCalledWith(
-		expect.objectContaining({
-			baseUrl: 'https://heykody.dev',
-			userId: ownerIdFromStored('user-1'),
-			scope: 'context',
-			query: 'sprinkler instructions',
-			maxProviders: 3,
-		}),
-	)
-	expect(withRetrievers?.memories).toEqual([])
-	expect(withRetrievers?.retrieverResults).toEqual([
-		expect.objectContaining({
-			id: 'note-1',
-			kodyId: 'personal-inbox',
-			retrieverKey: 'notes',
-		}),
-	])
-	expect(withRetrievers?.retrieverWarnings).toEqual([])
-	const [retrieverOnlyContent] = formatSurfacedMemoriesMarkdown({
-		memories: [],
-		retrieverResults: withRetrievers?.retrieverResults ?? [],
-		retrieverWarnings: [],
-		suppressedCount: 0,
-		retrievalQuery: 'sprinkler instructions',
-	})
-	expect(retrieverOnlyContent?.type).toBe('text')
-	expect(retrieverOnlyContent?.text?.length).toBeGreaterThan(0)
-
-	mockModule.runPackageRetrievers.mockRejectedValueOnce(
-		new Error('retriever unavailable'),
-	)
-	await expect(
-		loadMemories(
-			'sprinkler instructions',
-			[
-				memory('memory-1', 0.03, {
-					subject: 'Sprinkler setup',
-					summary: 'Sprinkler instructions are stored in notes.',
-					tags: ['sprinkler'],
-				}),
-			],
-			withAi,
-		),
-	).rejects.toThrow('retriever unavailable')
-
+test('memory tool context filters weak matches and formats markdown', async () => {
 	const filtered = await loadMemories(
 		'ranked search',
 		[

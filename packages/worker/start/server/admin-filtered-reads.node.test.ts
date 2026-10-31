@@ -88,11 +88,12 @@ test('system email selection and audit remain coupled to the actual selected mes
 			page: 3,
 			pageSize: 25,
 			messageId: 'message',
+			view: 'spam',
 		},
 	})
 	expect(state.read).toHaveBeenCalledWith(
 		{},
-		expect.objectContaining({ page: 3, messageId: 'message' }),
+		expect.objectContaining({ page: 3, messageId: 'message', view: 'spam' }),
 	)
 	expect(state.audit).toHaveBeenCalledWith(
 		expect.objectContaining({

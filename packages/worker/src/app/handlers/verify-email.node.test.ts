@@ -2,6 +2,7 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { executeVerifyEmail } from '#app/handlers/verify-email.ts'
 import { verifyEmailToken } from '#app/email-verification.ts'
+import { buildEmailVerificationUrl } from '#worker/identity/email-verification-tokens.ts'
 import { sendConnectAgentEmail } from '#app/user-account-emails.ts'
 import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'
 import { maybeRewardHeldReferralAfterEmailVerified } from '#worker/entitlements/referral-program.ts'
@@ -85,6 +86,34 @@ test('verify-email handler wires success CTA from redirectTo and rejects open re
 	expect(waitUntilImpl).not.toHaveBeenCalled()
 	expect(scheduleKitSubscriberSync).not.toHaveBeenCalled()
 	expect(maybeRewardHeldReferralAfterEmailVerified).not.toHaveBeenCalled()
+})
+
+test('signup verification resumes the original package-app authorization request', async () => {
+	const authorizeResume =
+		'/oauth/authorize?client_id=demo&state=signup-state&code_challenge=challenge&code_challenge_method=S256'
+	const verificationUrl = buildEmailVerificationUrl({
+		appBaseUrl: 'https://example.com',
+		token: 'signup-verification-token',
+		redirectTo: authorizeResume,
+	})
+	vi.mocked(verifyEmailToken).mockResolvedValue({
+		ok: true,
+		userId: 1,
+		email: 'verified@example.com',
+		stableUserId: ownerIdFromStored('user_verified'),
+		newlyVerified: false,
+	})
+	const response = await executeVerifyEmail({
+		request: new Request(verificationUrl),
+		env: { APP_DB: {} as D1Database } as Env,
+		token: verificationUrl.searchParams.get('token'),
+		redirectTo: verificationUrl.searchParams.get('redirectTo'),
+	})
+	expect(response).toMatchObject({
+		ok: true,
+		ctaHref: authorizeResume,
+		ctaLabel: 'Continue authorization',
+	})
 })
 
 test('verify-email sends the connect-agent mail only on newly verified accounts', async () => {

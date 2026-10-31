@@ -1,6 +1,6 @@
 import { type z } from 'zod'
 import { type ApiInvocationContext, type ApiPrincipal } from './context.ts'
-import { invalidRequest } from './errors.ts'
+import { ApiError, invalidRequest } from './errors.ts'
 
 export type NativeApiOperationDefinition = {
 	summary: string
@@ -15,7 +15,7 @@ export type NativeApiOperationDefinition = {
 
 export type LocalExecuteHttpPrincipal = Extract<
 	ApiPrincipal,
-	{ kind: 'token' } | { kind: 'mcp-oauth' }
+	{ kind: 'token' } | { kind: 'mcp-oauth' } | { kind: 'execution-context-run' }
 >
 
 export function parseNativeInput<T extends z.ZodType>(
@@ -51,10 +51,58 @@ export function requireTokenPrincipal(ctx: ApiInvocationContext) {
 export function requireLocalExecuteHttpPrincipal(
 	ctx: ApiInvocationContext,
 ): LocalExecuteHttpPrincipal {
-	if (ctx.principal.kind === 'token' || ctx.principal.kind === 'mcp-oauth') {
+	if (
+		ctx.principal.kind === 'token' ||
+		ctx.principal.kind === 'mcp-oauth' ||
+		ctx.principal.kind === 'execution-context-run'
+	) {
 		return ctx.principal
 	}
 	throw invalidRequest(
 		'Local execute HTTP routes require Authorization: Bearer with a kody_at_ API token or a kody login OAuth access token.',
 	)
+}
+
+/**
+ * A context run may only call the Kody runtime paths its context's grant
+ * allows (`grant.runtime`). Other principals are not narrowed here.
+ */
+export function assertContextRunRuntimePathAllowed(
+	ctx: ApiInvocationContext,
+	path: ReadonlyArray<string>,
+) {
+	if (ctx.principal.kind !== 'execution-context-run') return
+	const { runtime } = ctx.principal
+	if (runtime.mode === 'all') return
+	// Host commands have their own grant (execution_context:command, ADR 0093).
+	if (path[0] === 'kody' && path[1] === 'command') return
+	const joined = path.join('.')
+	if (runtime.paths.includes(joined)) return
+	throw new ApiError({
+		status: 403,
+		code: 'insufficient_scope',
+		message: `This execution context's grant does not allow ${joined}. Its operator can allow it in the context's local policy (runtime allowlist).`,
+		details: { reason: 'context_runtime', path: joined },
+	})
+}
+
+/**
+ * Runtime paths with special handling on a context run: the operator's own
+ * runs start workflows as in Kody cloud; anyone else's cannot.
+ */
+export function assertContextRunSpecialPathAllowed(
+	ctx: ApiInvocationContext,
+	path: ReadonlyArray<string>,
+) {
+	if (ctx.principal.kind !== 'execution-context-run') return
+	const [root] = path
+	if (root === 'workflows' && !ctx.principal.byOperator) {
+		throw new ApiError({
+			status: 403,
+			code: 'insufficient_scope',
+			message:
+				"Only this execution context's operator can start workflows from runs on it. Start the workflow from Kody cloud, or from a context you operate.",
+			details: { reason: 'context_denied', path: path.join('.') },
+		})
+	}
 }

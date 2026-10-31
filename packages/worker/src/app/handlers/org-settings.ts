@@ -11,16 +11,25 @@ import {
 	deleteOrgAvatar,
 	saveOrgAvatar,
 } from '#worker/orgs/org-avatar.ts'
+import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
+import {
+	loadOrgMemberCreation,
+	updateOrgMemberCreation,
+} from '#worker/orgs/member-creation.ts'
 import { updateOrgProfile } from '#worker/orgs/org-profile.ts'
+import {
+	loadOrgProfileVisibility,
+	type OrgProfileVisibility,
+} from '#worker/orgs/org-public-profile.ts'
 import { softDeleteOrg } from '#worker/orgs/soft-delete.ts'
 import { type OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { packageAppCustomDomainsCnameTargetFromBaseUrl } from '#worker/package-app-custom-hostnames/cname-target.ts'
-import { isPackageAppCustomDomainsEnabledForUser } from '#worker/package-app-custom-hostnames/feature-flag.ts'
 import {
 	addPackageAppCustomHostname,
 	deletePackageAppCustomHostname,
 	listPackageAppCustomHostnames,
+	orgPlanAllowsCustomDomains,
 	PackageAppCustomHostnameError,
 	packageAppCustomDomainRecordViews,
 	syncPackageAppCustomHostname,
@@ -29,22 +38,11 @@ import {
 async function loadCustomDomainsView(
 	env: Env,
 	orgId: string,
-	actingUserId: number,
 ): Promise<OrgSettingsLoaderData['customDomains']> {
-	// Same gate as mutations/MCP: audience + per-user overrides. Global-only
-	// would hide the panel for override users who can still add/sync.
-	if (
-		!(await isPackageAppCustomDomainsEnabledForUser(env.APP_DB, actingUserId))
-	) {
-		return null
-	}
 	try {
-		const listed = await listPackageAppCustomHostnames({
-			env,
-			orgId,
-			actingUserId,
-		})
+		const listed = await listPackageAppCustomHostnames({ env, orgId })
 		return {
+			canAdd: await orgPlanAllowsCustomDomains(env.APP_DB, orgId),
 			dnsTarget: packageAppCustomDomainsCnameTargetFromBaseUrl(
 				env.PACKAGE_APP_BASE_URL,
 			),
@@ -71,7 +69,7 @@ async function loadCustomDomainsView(
 		}
 	} catch (error) {
 		if (error instanceof PackageAppCustomHostnameError) {
-			// Flag flipped mid-request or env not ready — hide the panel.
+			// Env not ready (e.g. no package-app zone) — hide the panel.
 			return null
 		}
 		throw error
@@ -86,16 +84,23 @@ export async function loadOrgSettingsData(input: {
 	// Signup orgs keep identity and deletion on Account pages even when
 	// another owner somehow holds org:write on that org.
 	const teamOrg = !input.org.personal
-	const canManage =
-		teamOrg && (await orgHasPermission(input.env, input.user, 'org:write'))
+	const canWrite = await orgHasPermission(input.env, input.user, 'org:write')
+	const canManage = teamOrg && canWrite
 	return {
 		ok: true,
 		org: input.org,
 		canManage,
+		canManageDomains: canWrite,
 		canDelete:
 			teamOrg && (await orgHasPermission(input.env, input.user, 'org:delete')),
-		customDomains: canManage
-			? await loadCustomDomainsView(input.env, input.org.id, input.user.userId)
+		profileVisibility: teamOrg
+			? await loadOrgProfileVisibility(input.env.APP_DB, input.org.id)
+			: null,
+		customDomains: canWrite
+			? await loadCustomDomainsView(input.env, input.org.id)
+			: null,
+		memberCreation: teamOrg
+			? await loadOrgMemberCreation(input.env.APP_DB, input.org.id)
 			: null,
 	}
 }
@@ -112,7 +117,11 @@ type OrganizationWriteContext = {
 }
 
 export async function updateOrganizationProfile(
-	input: OrganizationWriteContext & { displayName?: string; slug?: string },
+	input: OrganizationWriteContext & {
+		displayName?: string
+		slug?: string
+		profileVisibility?: OrgProfileVisibility
+	},
 ) {
 	const { env, request, user } = input
 	const access = await resolveOrgManagementAccess({
@@ -138,6 +147,10 @@ export async function updateOrganizationProfile(
 		orgId: access.org.id,
 		displayName: input.displayName,
 		slug: input.slug,
+		profileVisibility: input.profileVisibility,
+		...(input.profileVisibility === undefined
+			? {}
+			: { audit: orgAuditWriterFromRequest(env, user.request) }),
 	})
 	if (!updated.ok) {
 		return operationResult({ ok: false, error: updated.error }, 400)
@@ -148,6 +161,52 @@ export async function updateOrganizationProfile(
 		displayName: updated.displayName,
 	}
 	return operationResult({ ok: true, org: next })
+}
+
+/**
+ * Owners choose what every Member may create without a grant. Explicit
+ * `package:create`, `secret:create`, and `integration:create` grants still
+ * apply when a setting is off.
+ */
+export async function updateOrganizationMemberCreation(
+	input: OrganizationWriteContext & {
+		packages?: boolean
+		credentials?: boolean
+	},
+) {
+	const { env, request, user } = input
+	const access = await resolveOrgManagementAccess({
+		request,
+		env,
+		user,
+		orgSlug: input.orgSlug,
+		permission: 'org:write',
+	})
+	if (!access.ok) {
+		return operationResult({ ok: false, error: access.error }, access.status)
+	}
+	if (access.org.personal) {
+		return operationResult(
+			{
+				ok: false,
+				error: 'Member permissions apply to team organizations only.',
+			},
+			400,
+		)
+	}
+	const updated = await updateOrgMemberCreation(env.APP_DB, {
+		orgId: access.org.id,
+		packages: input.packages,
+		credentials: input.credentials,
+		audit: orgAuditWriterFromRequest(env, user.request),
+	})
+	if (!updated.ok) {
+		return operationResult(
+			{ ok: false, error: updated.error },
+			updated.code === 'not_found' ? 404 : 409,
+		)
+	}
+	return operationResult({ ok: true, memberCreation: updated.settings })
 }
 
 export async function removeOrganizationPhoto(input: OrganizationWriteContext) {
@@ -288,7 +347,6 @@ async function writeOrganizationDomain(
 	input: OrganizationWriteContext,
 	write: (access: {
 		orgId: string
-		actingUserId: number
 		createdByUserId: string
 	}) => Promise<unknown>,
 ) {
@@ -303,30 +361,9 @@ async function writeOrganizationDomain(
 	if (!access.ok) {
 		return operationResult({ ok: false, error: access.error }, access.status)
 	}
-	if (access.org.personal) {
-		return operationResult(
-			{
-				ok: false,
-				error: 'Custom domains are only available on team organizations.',
-			},
-			400,
-		)
-	}
-	if (
-		!(await isPackageAppCustomDomainsEnabledForUser(env.APP_DB, user.userId))
-	) {
-		return operationResult(
-			{
-				ok: false,
-				error: 'Package-app custom domains are not enabled for this user.',
-			},
-			404,
-		)
-	}
 	try {
 		await write({
 			orgId: access.org.id,
-			actingUserId: user.userId,
 			createdByUserId: user.mcpUser.userId,
 		})
 	} catch (error) {

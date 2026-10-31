@@ -29,7 +29,6 @@ export const softDeleteAppTables = [
 	'email_sender_rules',
 	'email_sender_identities',
 	'email_notification_destinations',
-	'connection_profiles',
 	'entity_sources',
 	'community_listings',
 	'api_tokens',

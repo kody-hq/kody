@@ -21,7 +21,6 @@ const mocks = vi.hoisted(() => ({
 	readIndex: vi.fn(),
 	writeIndex: vi.fn(),
 	loadSource: vi.fn(),
-	resolveConnectionProfileGrants: vi.fn(),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
@@ -40,10 +39,6 @@ vi.mock('#worker/package-registry/skills-index-cache.ts', () => ({
 vi.mock('#worker/package-registry/source.ts', () => ({
 	loadPackageSourceBySourceId: (...args: Array<unknown>) =>
 		mocks.loadSource(...args),
-}))
-vi.mock('#worker/connection-profiles/repo.ts', () => ({
-	resolveConnectionProfileGrants: (...args: Array<unknown>) =>
-		mocks.resolveConnectionProfileGrants(...args),
 }))
 
 const {
@@ -371,30 +366,6 @@ test('skips packages whose skills index cannot load without failing the catalog'
 	}
 })
 
-test('execute-only connection profiles cannot list package skills', async () => {
-	const own = savedPackage()
-	mocks.listOwn.mockResolvedValue([own])
-	mocks.readIndex.mockResolvedValue(await buildIndex(own))
-	mocks.resolveConnectionProfileGrants.mockResolvedValue([
-		{
-			resourceType: 'package',
-			resourceId: own.id,
-			actions: ['execute'],
-		},
-	])
-
-	const catalog = await loadCallerSkillsCatalog({
-		env,
-		callerContext: createMcpCallerContext({
-			source: { kind: 'mcp-oauth' },
-			baseUrl: 'https://kody.example',
-			user: callerContext.user,
-			connectionProfileName: 'work',
-		}),
-	})
-	expect(catalog).toEqual([])
-})
-
 test('resources/read returns binary skill assets as base64 blobs', async () => {
 	const pngMagic = String.fromCharCode(
 		0x89,
@@ -460,4 +431,12 @@ test('resources/read fails when the snapshot no longer matches the indexed diges
 		code: -32603,
 		message: expect.stringContaining('digest'),
 	})
+})
+
+test('human inventories report index failures instead of silently dropping packages', async () => {
+	mocks.listOwn.mockResolvedValue([savedPackage()])
+	mocks.readIndex.mockRejectedValue(new Error('Index unavailable'))
+	await expect(
+		loadCallerSkillsCatalog({ env, callerContext, failOnError: true }),
+	).rejects.toThrow('Index unavailable')
 })

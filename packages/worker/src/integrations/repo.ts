@@ -1,3 +1,8 @@
+import { integrationAppOwnerSql } from './connected.ts'
+import {
+	chunkArray,
+	maxD1BoundParameters,
+} from '@kody-internal/shared/chunk.ts'
 import { parseJsonStringArray } from '@kody-internal/shared/json-parsing.ts'
 import {
 	isIntegrationAuthFailureReason,
@@ -47,6 +52,7 @@ type JoinedIntegrationRow = NullablePrefixed<UserOauthAppRow, 'a_'> &
 		connection_name: string
 		app_slug: string | null
 		platform_app_slug: string | null
+		app_owner_id: string | null
 		account_label: string | null
 		description: string
 		scopes_json: string
@@ -140,6 +146,7 @@ const joinedSelectColumns = `
 	i.name AS connection_name,
 	i.app_slug AS app_slug,
 	i.platform_app_slug AS platform_app_slug,
+	i.app_owner_id AS app_owner_id,
 	i.account_label AS account_label,
 	i.description AS description,
 	i.scopes_json AS scopes_json,
@@ -162,7 +169,7 @@ const joinedSelectColumns = `
 const joinedFromClause = `
 	FROM user_integrations i
 	LEFT JOIN user_oauth_apps a
-		ON a.user_id = i.user_id AND a.slug = i.app_slug${andLiveDeletedAtSql('a')}
+		ON a.user_id = ${integrationAppOwnerSql('i')} AND a.slug = i.app_slug${andLiveDeletedAtSql('a')}
 	LEFT JOIN platform_oauth_apps p
 		ON p.slug = i.platform_app_slug
 `
@@ -331,7 +338,7 @@ export async function listOauthAppsWithConnectionCounts(input: {
 				(
 					SELECT count(*)
 					FROM user_integrations i
-					WHERE i.user_id = a.user_id AND i.app_slug = a.slug
+					WHERE i.app_owner_id = a.user_id AND i.app_slug = a.slug
 				) AS connection_count
 			FROM user_oauth_apps a
 			WHERE a.user_id = ?${andLiveDeletedAtSql()}
@@ -354,7 +361,7 @@ export async function countConnectionsForApp(input: {
 		.prepare(
 			`SELECT count(*) AS count
 			FROM user_integrations
-			WHERE user_id = ? AND app_slug = ?${andLiveDeletedAtSql()}`,
+			WHERE app_owner_id = ? AND app_slug = ?${andLiveDeletedAtSql()}`,
 		)
 		.bind(input.userId, input.appSlug)
 		.first<{ count: number }>()
@@ -484,6 +491,11 @@ export async function upsertIntegrationConnection(input: {
 		created_at?: string
 		updated_at?: string
 	}
+	/**
+	 * Org that owns `app_slug` when it is not `row.user_id`: a personal
+	 * connection made through that org's app, pinned to it (ADR 0068).
+	 */
+	appOwnerId?: string | null
 }): Promise<void> {
 	const now = new Date().toISOString()
 	await input.db
@@ -491,17 +503,20 @@ export async function upsertIntegrationConnection(input: {
 			`INSERT INTO user_integrations (
 				user_id, name, app_slug, platform_app_slug, account_label, description,
 				scopes_json, required_hosts_json, connected_at, token_refreshed_at,
-				created_at, updated_at, provider, placement_json
+				created_at, updated_at, provider, placement_json, app_owner_id
 			) VALUES (
 				?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
 				COALESCE(
 					(SELECT provider FROM platform_oauth_apps WHERE slug = ?4),
-					(SELECT provider FROM user_oauth_apps WHERE user_id = ?1 AND slug = ?3)
+					(SELECT provider FROM user_oauth_apps
+						WHERE user_id = COALESCE(?14, ?1) AND slug = ?3)
 				),
-				?13
+				?13,
+				CASE WHEN ?3 IS NULL THEN NULL ELSE COALESCE(?14, ?1) END
 			)
 			ON CONFLICT(user_id, name)
 			DO UPDATE SET
+				app_owner_id = excluded.app_owner_id,
 				app_slug = excluded.app_slug,
 				platform_app_slug = excluded.platform_app_slug,
 				provider = excluded.provider,
@@ -527,6 +542,7 @@ export async function upsertIntegrationConnection(input: {
 			input.row.created_at ?? now,
 			input.row.updated_at ?? now,
 			serializeCredentialFillPlacement(defaultNewCredentialFillPlacement),
+			input.appOwnerId ?? null,
 		)
 		.run()
 }
@@ -557,25 +573,87 @@ export async function addPlatformIntegrationRequiredHosts(input: {
 		.run()
 }
 
-export async function deleteIntegrationConnection(input: {
+/** Grant cleanup, then the row delete last (its `changes` tells if it existed). */
+export function integrationConnectionDeleteStatements(input: {
 	db: D1Database
 	userId: string
 	name: string
-}): Promise<boolean> {
+}): Array<D1PreparedStatement> {
 	const liveRowSql = `FROM user_integrations
 			WHERE user_id = ? AND name = ?${andLiveDeletedAtSql()}`
-	const results = await input.db.batch([
+	return [
 		...credentialGrantCleanupStatements(input.db, {
 			ownerId: input.userId,
 			credentialIdSql: `SELECT id ${liveRowSql}`,
 			credentialIdBindings: [input.userId, input.name],
 		}),
 		input.db.prepare(`DELETE ${liveRowSql}`).bind(input.userId, input.name),
-	])
+	]
+}
+
+export async function deleteIntegrationConnection(input: {
+	db: D1Database
+	userId: string
+	name: string
+}): Promise<boolean> {
+	const results = await input.db.batch(
+		integrationConnectionDeleteStatements(input),
+	)
 	return (results.at(-1)?.meta.changes ?? 0) > 0
 }
 
+type PendingIntegrationCredentialIdRequest = {
+	userId: string
+	name: string
+	resolve: (credentialId: string | null) => void
+	reject: (error: unknown) => void
+}
+
+/**
+ * Concurrent `getIntegrationCredentialId` calls against the same `APP_DB` in
+ * one isolate turn share one batched `IN (…)` read per owner (KODY-AT). The
+ * fetch gateway resolves N `{{integration-token}}` placeholders via
+ * `Promise.all`, and each `resolveCredential` looked the id up one name at a
+ * time; D1 still ran those as sequential spans. A lone lookup still uses the
+ * single-name query.
+ */
+const pendingIntegrationCredentialIdBatches = new WeakMap<
+	D1Database,
+	Array<PendingIntegrationCredentialIdRequest>
+>()
+
 export async function getIntegrationCredentialId(input: {
+	db: D1Database
+	userId: string
+	name: string
+}): Promise<string | null> {
+	const db = input.db
+	return await new Promise<string | null>((resolve, reject) => {
+		const pending = pendingIntegrationCredentialIdBatches.get(db)
+		if (pending) {
+			pending.push({
+				userId: input.userId,
+				name: input.name,
+				resolve,
+				reject,
+			})
+			return
+		}
+		pendingIntegrationCredentialIdBatches.set(db, [
+			{
+				userId: input.userId,
+				name: input.name,
+				resolve,
+				reject,
+			},
+		])
+		queueMicrotask(() => {
+			void flushIntegrationCredentialIdBatch(db)
+		})
+	})
+}
+
+async function loadIntegrationCredentialId(input: {
 	db: D1Database
 	userId: string
 	name: string
@@ -588,6 +666,83 @@ export async function getIntegrationCredentialId(input: {
 		.bind(input.userId, input.name)
 		.first<{ id: string }>()
 	return row?.id ?? null
+}
+
+/**
+ * Fresh D1 read of live integration credential ids for `names` under one
+ * owner. Chunks to stay within D1's bound-parameter cap (one binding for
+ * user id). Missing and soft-deleted names are omitted from the map.
+ */
+async function loadIntegrationCredentialIdsByNames(input: {
+	db: D1Database
+	userId: string
+	names: ReadonlyArray<string>
+}): Promise<Map<string, string>> {
+	const byName = new Map<string, string>()
+	if (input.names.length === 0) return byName
+	const nameChunks = chunkArray([...input.names], maxD1BoundParameters - 1)
+	for (const names of nameChunks) {
+		const placeholders = names.map(() => '?').join(', ')
+		const { results } = await input.db
+			.prepare(
+				`SELECT id, name FROM user_integrations
+				WHERE user_id = ? AND name IN (${placeholders})${andLiveDeletedAtSql()}`,
+			)
+			.bind(input.userId, ...names)
+			.all<{ id: string; name: string }>()
+		for (const row of results ?? []) {
+			byName.set(row.name, row.id)
+		}
+	}
+	return byName
+}
+
+async function flushIntegrationCredentialIdBatch(db: D1Database) {
+	const pending = pendingIntegrationCredentialIdBatches.get(db)
+	pendingIntegrationCredentialIdBatches.delete(db)
+	if (!pending || pending.length === 0) return
+
+	const byUserId = new Map<
+		string,
+		Array<PendingIntegrationCredentialIdRequest>
+	>()
+	for (const request of pending) {
+		const group = byUserId.get(request.userId)
+		if (group) group.push(request)
+		else byUserId.set(request.userId, [request])
+	}
+
+	await Promise.all(
+		[...byUserId.entries()].map(async ([userId, requests]) => {
+			try {
+				const uniqueNames = [
+					...new Set(requests.map((request) => request.name)),
+				]
+				const [singleName] = uniqueNames
+				if (uniqueNames.length === 1 && singleName) {
+					const credentialId = await loadIntegrationCredentialId({
+						db,
+						userId,
+						name: singleName,
+					})
+					for (const request of requests) request.resolve(credentialId)
+					return
+				}
+				const byName = await loadIntegrationCredentialIdsByNames({
+					db,
+					userId,
+					names: uniqueNames,
+				})
+				for (const request of requests) {
+					request.resolve(byName.get(request.name) ?? null)
+				}
+			} catch (error) {
+				// Isolate failures per owner so one D1 error does not reject
+				// unrelated lookups that share the same microtask flush.
+				for (const request of requests) request.reject(error)
+			}
+		}),
+	)
 }
 
 export async function getIntegrationCredentialCiphertexts(input: {
@@ -620,6 +775,45 @@ export async function getIntegrationCredentialCiphertexts(input: {
 	}
 }
 
+/**
+ * The refresh token a lease holder may send. It reads only while the lease is
+ * still held and the access token is the one the holder saw before claiming,
+ * so a reconnect in between never has its tokens sent or replaced.
+ */
+export async function getIntegrationRefreshTokenCiphertextForLease(input: {
+	db: D1Database
+	userId: string
+	name: string
+	leaseId: string
+	accessTokenEncrypted: string | null
+}): Promise<
+	| { held: true; refreshTokenEncrypted: string | null }
+	| { held: false; savedAt: string | null }
+> {
+	const row = await input.db
+		.prepare(
+			`SELECT refresh_token_encrypted
+			FROM user_integrations
+			WHERE user_id = ? AND name = ? AND token_refresh_lease_id = ?
+				AND access_token_encrypted IS ?${andLiveDeletedAtSql()}
+			LIMIT 1`,
+		)
+		.bind(input.userId, input.name, input.leaseId, input.accessTokenEncrypted)
+		.first<{ refresh_token_encrypted: string | null }>()
+	if (row)
+		return { held: true, refreshTokenEncrypted: row.refresh_token_encrypted }
+	const current = await input.db
+		.prepare(
+			`SELECT COALESCE(token_refreshed_at, updated_at) AS saved_at
+			FROM user_integrations
+			WHERE user_id = ? AND name = ?${andLiveDeletedAtSql()}
+			LIMIT 1`,
+		)
+		.bind(input.userId, input.name)
+		.first<{ saved_at: string | null }>()
+	return { held: false, savedAt: current?.saved_at ?? null }
+}
+
 export async function updateIntegrationCredentialCiphertexts(input: {
 	db: D1Database
 	userId: string
@@ -633,6 +827,15 @@ export async function updateIntegrationCredentialCiphertexts(input: {
 	const now = new Date().toISOString()
 	const leaseFence =
 		input.refreshLeaseId === undefined ? '' : ' AND token_refresh_lease_id = ?'
+	// A connect or manual token save replaces the grant, so it ends any
+	// in-flight refresh: that refresher's lease-fenced write must not put the
+	// old grant's tokens back over these.
+	const leaseRelease =
+		input.refreshLeaseId === undefined
+			? `,
+				token_refresh_lease_id = NULL,
+				token_refresh_lease_expires_at = NULL`
+			: ''
 	// Stamp connected_at on first successful token write (user-lane OAuth
 	// connect used to leave it null). COALESCE keeps the original connect
 	// time across refreshes and reconnect token rotates.
@@ -643,7 +846,7 @@ export async function updateIntegrationCredentialCiphertexts(input: {
 				refresh_token_encrypted = COALESCE(?, refresh_token_encrypted),
 				refresh_policy = ?,
 				connected_at = COALESCE(connected_at, ?),
-				updated_at = ?
+				updated_at = ?${leaseRelease}
 			WHERE user_id = ? AND name = ?${leaseFence}${andLiveDeletedAtSql()}`,
 		)
 		.bind(
@@ -1034,7 +1237,7 @@ function mapJoinedRow(row: JoinedIntegrationRow): JoinedIntegration {
 	return {
 		lane: 'user',
 		app: mapOauthAppRow({
-			user_id: row.a_user_id ?? row.user_id,
+			user_id: row.a_user_id ?? row.app_owner_id ?? row.user_id,
 			slug: row.a_slug,
 			provider: row.a_provider ?? row.a_slug,
 			label: row.a_label,

@@ -2,10 +2,14 @@ import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { persistableExecutionArtifacts } from '#mcp/downstream-mcp-result.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
+import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
+import { resolvePackageAutomationRouting } from './automation-routing.ts'
+import { type AutomationExecutionTarget } from '#worker/execution-contexts/automation-settings.ts'
 import {
 	type RunRecordContext,
 	type RunRecordHandle,
 } from '#worker/run-records/types.ts'
+import { withRunStartedBy } from '#worker/run-records/service.ts'
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
 import {
@@ -15,6 +19,13 @@ import {
 import { getInternalEmailMessageById } from '#worker/email/mailbox-internal-read.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
 import { isAccountSuspendedError } from '#worker/account/account-suspension.ts'
+import {
+	CredentialClientError,
+	loadRunCredentialNeeds,
+	openCredentialClient,
+} from '#worker/credentials/credential-client.ts'
+import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
+import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { consumeDailyEntitlement } from '#worker/entitlements/service.ts'
 import {
 	budgetLimitErrorCode,
@@ -26,7 +37,10 @@ import {
 } from '#worker/entitlements/errors.ts'
 import { authorize } from '#worker/authorization/authorize.ts'
 import { getOrgById } from '#worker/orgs/repo.ts'
-import { backgroundRunBilledActor } from '#worker/request-context/request-context.ts'
+import {
+	backgroundRunBilledActor,
+	enablementIdOf,
+} from '#worker/request-context/request-context.ts'
 import {
 	automationInvocationsPerDayResource,
 	shouldConsumeAutomationInvocationEntitlement,
@@ -69,9 +83,10 @@ import {
  *   any sandbox work started. Nothing executed, so keyed callers release
  *   their claim and key-less callers can simply retry.
  * - `pre-execution-denied`: a gate before sandbox work rejected the invoke
- *   (daily automation quota, or a pinned source revision that moved). Same release semantics as
+ *   (daily automation quota, a pinned source revision that moved, or a
+ *   missing required executor credential). Same release semantics as
  *   `artifact-unavailable` so a keyed retry can succeed after the UTC day
- *   rolls or the limit rises; do not terminal-store the 429 under the key.
+ *   rolls, the limit rises, or a credential is connected.
  *
  * `logs` / `result` / `error` carry what the registry would otherwise feed
  * its own run-record finish, for keyed callers that own the run record via
@@ -144,8 +159,67 @@ export type SavedPackageModuleRunInput = {
 	 * that is only known after the artifact loads.
 	 */
 	externalRunRecordHandle?: RunRecordHandle | null
+	/** Where an automation asked to run (execution contexts). */
+	executionRouting?: AutomationRouting | null
+	/** Caller-owned record (workflow step) that a context run hangs under. */
+	parentRunHandle?: RunRecordHandle | null
+	/** Declared automation whose execution setting applies. */
+	executionTarget?: AutomationExecutionTarget | null
 	/** Report, and optionally pin, the commit this run resolves. */
 	sourceRevision?: PackageSourceRevisionOptions | null
+}
+
+async function requiredExecutorCredentialError(input: {
+	env: Env
+	callerContext: ReturnType<typeof createMcpCallerContext>
+	packageId: string
+	idempotencyKey: string | null
+}): Promise<PackageInvocationResponse | null> {
+	const request = input.callerContext.request
+	if (!request?.actor) return null
+	if (
+		enablementIdOf(request) ||
+		request.credential.kind === 'package-app' ||
+		!(await isPackageCredentialSuppliersEnabled({
+			db: input.env.APP_DB,
+			orgId: request.org.id,
+			request,
+		}))
+	) {
+		return null
+	}
+	const runNeeds = await loadRunCredentialNeeds({
+		env: input.env,
+		orgId: request.org.id,
+		packageIds: [input.packageId],
+		request,
+	})
+	const requiredNeeds = [...runNeeds.values()].filter(
+		(need) => need.supplier === 'executor' && need.required !== false,
+	)
+	if (requiredNeeds.length === 0) return null
+
+	const credentialContext = {
+		env: input.env,
+		callerContext: input.callerContext,
+		binding: newRunCredentialClientBinding(),
+		packageId: input.packageId,
+		runNeeds: async () => runNeeds,
+	}
+	for (const need of requiredNeeds) {
+		try {
+			await openCredentialClient(credentialContext, { key: need.key })
+		} catch (error) {
+			if (!(error instanceof CredentialClientError)) throw error
+			return buildJsonErrorResponse({
+				status: 409,
+				code: 'credential_required',
+				message: `Required credential need "${need.key}" is not connected. Connect need:${need.key} before running this package.`,
+				idempotencyKey: input.idempotencyKey ?? undefined,
+			})
+		}
+	}
+	return null
 }
 
 export async function runSavedPackageModuleOnce(
@@ -166,6 +240,7 @@ export async function runSavedPackageModuleOnce(
 				selector: input.moduleSelector,
 				userId: input.actor.orgId,
 			}))
+		const executionTarget = input.executionTarget ?? null
 		const repoSource =
 			artifact.packageContext?.sourceId == null ||
 			artifact.packageContext.sourceId === sourceRow.id
@@ -284,6 +359,15 @@ export async function runSavedPackageModuleOnce(
 			kodyId: input.savedPackage.kodyId,
 			sourceId: input.savedPackage.sourceId,
 		}
+		const missingCredential = await requiredExecutorCredentialError({
+			env: input.env,
+			callerContext,
+			packageId: packageContext.packageId,
+			idempotencyKey: input.idempotencyKey,
+		})
+		if (missingCredential) {
+			return { kind: 'pre-execution-denied', response: missingCredential }
+		}
 		const externalHandle = input.externalRunRecordHandle ?? null
 		if (externalHandle) {
 			// The caller claimed before the artifact loaded, so its context could
@@ -297,27 +381,30 @@ export async function runSavedPackageModuleOnce(
 			? externalHandle.context
 			: runtimeSurface == null
 				? null
-				: {
-						packageId: input.savedPackage.id,
-						kodyId: input.savedPackage.kodyId,
-						sourceId: input.savedPackage.sourceId,
-						publishedCommit: resolvedPublishedCommit,
-						surface: runtimeSurface,
-						name: resolveInvocationRuntimeName({
+				: withRunStartedBy(
+						{
+							packageId: input.savedPackage.id,
+							kodyId: input.savedPackage.kodyId,
+							sourceId: input.savedPackage.sourceId,
+							publishedCommit: resolvedPublishedCommit,
 							surface: runtimeSurface,
-							invocationName: input.invocationName,
-							topic: input.topic,
-						}),
-						invocationId: input.invocationId,
-						idempotencyKey: input.idempotencyKey,
-						metadata: buildSubscriptionInvocationRunMetadata({
-							exportName: input.invocationName,
-							isSubscription: input.moduleSelector.kind === 'subscription',
-							source: input.source,
-							topic: input.topic,
-							params: input.params,
-						}),
-					}
+							name: resolveInvocationRuntimeName({
+								surface: runtimeSurface,
+								invocationName: input.invocationName,
+								topic: input.topic,
+							}),
+							invocationId: input.invocationId,
+							idempotencyKey: input.idempotencyKey,
+							metadata: buildSubscriptionInvocationRunMetadata({
+								exportName: input.invocationName,
+								isSubscription: input.moduleSelector.kind === 'subscription',
+								source: input.source,
+								topic: input.topic,
+								params: input.params,
+							}),
+						},
+						callerContext.request,
+					)
 		executionStarted = true
 		const executionResult = await runBundledModuleWithRegistry(
 			input.env,
@@ -334,13 +421,39 @@ export async function runSavedPackageModuleOnce(
 			{
 				executorTimeoutMs: input.executorTimeoutMs,
 				signal: input.signal,
+				...(input.executionRouting || executionTarget
+					? {
+							resolveExecutionRouting: async () => {
+								const routing =
+									input.executionRouting ??
+									(executionTarget
+										? await resolvePackageAutomationRouting({
+												env: input.env,
+												orgId: input.actor.orgId,
+												packageId: input.savedPackage.id,
+												sourceId: input.savedPackage.sourceId,
+												target: executionTarget,
+											})
+										: null)
+								const parentHandle =
+									externalHandle ?? input.parentRunHandle ?? null
+								return routing
+									? {
+											...routing,
+											parentRunRecord: parentHandle?.context ?? null,
+											parentRunId: parentHandle?.id ?? null,
+										}
+									: null
+							},
+						}
+					: {}),
 				// No ambient `storage` binding: package code reaches its bucket via
 				// `packageStorage()` (granted through packageContext below). Legacy
 				// ambient use gets the structured runtime_helper_unbound hint.
 				// Keyed callers own their run record (claimed with the ledger row);
 				// the registry must not begin/finish a second one for this run.
 				// Still pass the observed surface so UWD is not inferred as
-				// package_export for subscription / webhook / retriever keyed runs.
+				// package_export for subscription / webhook keyed runs.
 				runRecord: externalHandle ? null : runRecord,
 				runSurface:
 					runRecord?.surface ??

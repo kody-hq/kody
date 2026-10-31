@@ -10,6 +10,7 @@ import {
 	prepareInboundRawMime,
 	type PreparedInboundRawMime,
 } from './skinny-inbound-mime.ts'
+import { selectTrustedCloudflareAuthResults } from './auth-verdict.ts'
 import {
 	type EmailAttachmentMetadata,
 	type EmailMailbox,
@@ -230,9 +231,9 @@ export async function parseForwardableEmailRawMime(
 		inReplyTo: inReplyToHeader ?? null,
 		references: normalizeReferences(parsed.references),
 		headers: headersToRecord(parsedHeaders),
-		authResults:
-			getHeader(message.headers, 'Authentication-Results') ??
-			getHeader(message.headers, 'ARC-Authentication-Results'),
+		// Only Cloudflare-stamped AR/ARC on the Email Worker message headers.
+		// Never trust sender-forged Authentication-Results in raw MIME alone.
+		authResults: selectTrustedCloudflareAuthResults(message.headers),
 		textBody: parsed.text || null,
 		htmlBody:
 			typeof parsed.html === 'string' && parsed.html ? parsed.html : null,

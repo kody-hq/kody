@@ -50,6 +50,11 @@ import { kodyCallDispatcherName } from '#worker/kody-evaluate-bindings.ts'
 
 const defaultStorageExportPageSize = 250
 const maxStorageExportPageSize = 1_000
+/**
+ * `exportStorage({ maxBytes })` reads keys in batches this small so one page
+ * never materializes hundreds of large values at once (DR exporter OOMs).
+ */
+const storageExportByteBoundedBatchSize = 8
 /** Cap for StorageRunner sqlQuery row materialization (matches export max). */
 export const maxStorageSqlQueryRows = maxStorageExportPageSize
 const maxConcurrentStorageEstimateReads = 16
@@ -293,6 +298,21 @@ function readCloneableStorageValue(value: unknown) {
 		return structuredClone(value)
 	} catch (error) {
 		throw new Error(storageValueNotCloneableMessage, { cause: error })
+	}
+}
+
+const storageExportByteEncoder = new TextEncoder()
+
+function utf8Bytes(value: string) {
+	return storageExportByteEncoder.encode(value).byteLength
+}
+
+function estimateStorageValueJsonBytes(value: unknown) {
+	try {
+		const json = JSON.stringify(value)
+		return json === undefined ? 0 : utf8Bytes(json)
+	} catch {
+		return 0
 	}
 }
 
@@ -781,14 +801,64 @@ class StorageRunnerBase extends DurableObject<Env> {
 		}
 	}
 
+	/**
+	 * With `maxBytes`, the page also stops once the JSON size of its values
+	 * reaches that budget (at least one entry is always returned), so a bucket
+	 * of large values pages through in bounded chunks instead of one RPC
+	 * payload that can exceed Worker memory. `truncated` may then be true with
+	 * an empty next page.
+	 */
 	async exportStorage(input: {
 		pageSize?: number
 		startAfter?: string | null
-	}) {
-		return await this.listValues({
-			pageSize: input.pageSize,
-			startAfter: input.startAfter,
-		})
+		maxBytes?: number
+	}): Promise<StorageExportResult> {
+		if (
+			typeof input.maxBytes !== 'number' ||
+			!Number.isFinite(input.maxBytes)
+		) {
+			return await this.listValues({
+				pageSize: input.pageSize,
+				startAfter: input.startAfter,
+			})
+		}
+		const pageSize = normalizePageSize(input.pageSize)
+		const maxBytes = Math.max(1, Math.trunc(input.maxBytes))
+		const entries: Array<StorageEntry> = []
+		let cursor = input.startAfter?.trim() || undefined
+		let bytes = 0
+		for (;;) {
+			const batch = await this.ctx.storage.list({
+				...(cursor ? { startAfter: cursor } : {}),
+				limit: storageExportByteBoundedBatchSize,
+			})
+			let listed = 0
+			for (const [key, value] of batch) {
+				listed += 1
+				cursor = key
+				const readable = readCloneableStorageValue(value)
+				entries.push({ key, value: readable })
+				bytes += utf8Bytes(key) + estimateStorageValueJsonBytes(readable)
+				if (entries.length >= pageSize || bytes >= maxBytes) {
+					return {
+						entries,
+						estimatedBytes: this.ctx.storage.sql.databaseSize,
+						truncated: true,
+						nextStartAfter: key,
+						pageSize,
+					}
+				}
+			}
+			if (listed < storageExportByteBoundedBatchSize) {
+				return {
+					entries,
+					estimatedBytes: this.ctx.storage.sql.databaseSize,
+					truncated: false,
+					nextStartAfter: null,
+					pageSize,
+				}
+			}
+		}
 	}
 
 	/**
@@ -891,6 +961,7 @@ export type StorageRunnerTransferStub = {
 	exportStorage: (payload: {
 		pageSize?: number
 		startAfter?: string | null
+		maxBytes?: number
 	}) => Promise<StorageExportResult>
 	importStorageValues: (payload: {
 		replacePage: 'first' | 'continue'
@@ -937,10 +1008,20 @@ export function storageRunnerRpc(input: {
 	env: Env
 	userId: OwnerId
 	storageId: string
+	packageAppVisitorUserId?: string
+	/**
+	 * Org billed for this bucket's metered work when it is not the bucket
+	 * owner (a visit from another org to an internal app, ADR 0095). The
+	 * bucket itself always stays the owner's.
+	 */
+	meterUserId?: OwnerId
 }) {
+	const meterUserId = input.meterUserId ?? input.userId
+	const packageAppOwnerOrgId =
+		meterUserId !== input.userId ? input.userId : undefined
 	const runner = createMeteredDurableObjectStub({
 		env: input.env,
-		userId: input.userId,
+		userId: meterUserId,
 		doClass: 'StorageRunner',
 		stub: input.env.STORAGE_RUNNER.get(
 			input.env.STORAGE_RUNNER.idFromName(
@@ -966,6 +1047,7 @@ export function storageRunnerRpc(input: {
 			exportStorage: (payload: {
 				pageSize?: number
 				startAfter?: string | null
+				maxBytes?: number
 			}) => Promise<StorageExportResult>
 			importStorage: (payload: {
 				mode: 'replace'
@@ -1026,10 +1108,14 @@ export function storageRunnerRpc(input: {
 	) => {
 		recordDurableObjectRowsRead({
 			env: input.env,
-			userId: input.userId,
+			userId: meterUserId,
 			doClass: 'StorageRunner',
 			rowsRead,
 			outcome,
+			...(input.packageAppVisitorUserId !== undefined
+				? { packageAppVisitorUserId: input.packageAppVisitorUserId }
+				: {}),
+			...(packageAppOwnerOrgId ? { packageAppOwnerOrgId } : {}),
 			...(attributedPackageId ? { packageId: attributedPackageId } : {}),
 		})
 	}
@@ -1104,6 +1190,7 @@ export function storageRunnerRpc(input: {
 		exportStorage: (payload: {
 			pageSize?: number
 			startAfter?: string | null
+			maxBytes?: number
 		}) => runner.exportStorage(payload),
 		importStorage: async (payload: {
 			mode: 'replace'
@@ -1668,15 +1755,11 @@ export function createPackageStorageAccessDeniedMessage(packageId: string) {
  * installed packages' buckets. Cross-user access is structurally impossible:
  * `storageRunnerDurableObjectName` keys the durable object on this run's user id.
  */
-export const packageStorageRetrieverReadOnlyMessage =
-	'packageStorage() is read-only during retriever runs. Persist writes from an export, job, or execute call.'
-
 export function createPackageStorageKodyTools(input: {
 	env: Env
 	userId: OwnerId
 	email?: string | null
 	grantedPackageIds: ReadonlySet<string>
-	writable?: boolean
 	/**
 	 * The run's own package (null for ad hoc execute). Calls through the
 	 * generic dispatcher act as this package; calls through a trusted
@@ -1684,7 +1767,6 @@ export function createPackageStorageKodyTools(input: {
 	 */
 	runPackageId?: string | null
 }) {
-	const writable = input.writable !== false
 	const runPackageId = input.runPackageId?.trim() || null
 	// One cache for the whole sandbox so nested packageStorage() SQL across
 	// granted packages (and repeated CREATE/INSERT in one export) does not
@@ -1703,10 +1785,10 @@ export function createPackageStorageKodyTools(input: {
 			userId: input.userId,
 			email: input.email,
 			storageId: buildPackageStorageId(packageId),
-			writable,
+			writable: true,
 			entitlementCache,
 		})
-		if (writable && (!storageSet || !storageDelete || !storageClear)) {
+		if (!storageSet || !storageDelete || !storageClear) {
 			// createStorageKodyTools only omits these when writable is false.
 			throw new Error('Writable package storage tools are missing writes.')
 		}
@@ -1749,9 +1831,6 @@ export function createPackageStorageKodyTools(input: {
 		}
 		return tools
 	}
-	const rejectReadOnlyWrite = async () => {
-		throw new Error(packageStorageRetrieverReadOnlyMessage)
-	}
 	return {
 		packageStorageGet: async (args: unknown) =>
 			await resolveTools(args).storageGet(args),
@@ -1759,15 +1838,12 @@ export function createPackageStorageKodyTools(input: {
 			await resolveTools(args).storageList(args),
 		packageStorageSql: async (args: unknown) =>
 			await resolveTools(args).storageSql(args),
-		packageStorageSet: writable
-			? async (args: unknown) => await resolveTools(args).storageSet!(args)
-			: rejectReadOnlyWrite,
-		packageStorageDelete: writable
-			? async (args: unknown) => await resolveTools(args).storageDelete!(args)
-			: rejectReadOnlyWrite,
-		packageStorageClear: writable
-			? async (args: unknown) => await resolveTools(args).storageClear!()
-			: rejectReadOnlyWrite,
+		packageStorageSet: async (args: unknown) =>
+			await resolveTools(args).storageSet!(args),
+		packageStorageDelete: async (args: unknown) =>
+			await resolveTools(args).storageDelete!(args),
+		packageStorageClear: async (args: unknown) =>
+			await resolveTools(args).storageClear!(),
 	}
 }
 
@@ -1778,13 +1854,8 @@ export function createPackageStorageKodyTools(input: {
  * through the AsyncLocalStorage runtime store; the host still validates the
  * id against the run's provenance grants in `createPackageStorageKodyTools`.
  */
-export function createPackageStorageHelperPrelude(input?: {
-	writable?: boolean
-}) {
-	const writable = input?.writable !== false
+export function createPackageStorageHelperPrelude() {
 	// `id` mirrors buildPackageStorageId above (covered by a unit test).
-	// Retriever runs pass writable:false so set/delete/clear/sql mutations
-	// fail in the sandbox instead of depending on a convention.
 	return `
 const __kodyPackageStorage = (packageId) => ({
   id: 'package:' + encodeURIComponent(packageId),
@@ -1795,7 +1866,7 @@ const __kodyPackageStorage = (packageId) => ({
       packageId,
       query,
       params,
-      writable: ${writable ? 'true' : 'false'},
+      writable: true,
     }),
   set: async (key, value) => await ${kodyCallDispatcherName}('packageStorageSet', { packageId, key, value }),
   delete: async (key) => await ${kodyCallDispatcherName}('packageStorageDelete', { packageId, key }),

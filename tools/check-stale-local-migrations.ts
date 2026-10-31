@@ -8,15 +8,45 @@
  * `d1_migrations`, and the next apply re-runs the same SQL under the new name
  * and fails with an error such as `duplicate column name`. This check fails
  * first, naming every recorded migration that is no longer on disk and the
- * reset step. Local state may hold unreleased SQL that git cannot recover, so
- * it never rewrites bookkeeping; PR previews heal through
- * tools/ci/rewrite-renamed-preview-migrations.ts instead.
+ * reset step. Disposable e2e persist (`.wrangler/state/e2e`) is reset
+ * automatically because every e2e run reseeds it. apply-local-app-migrations
+ * runs every binding's stale check before any apply, so a later binding
+ * cannot wipe a database that already migrated. Dev persist may hold
+ * unreleased SQL that git cannot recover, so it never rewrites bookkeeping;
+ * PR previews heal through tools/ci/rewrite-renamed-preview-migrations.ts
+ * instead.
  */
 
-import { readdirSync } from 'node:fs'
+import { readdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { isExecutedDirectly } from './node-runtime.ts'
 import { executeWranglerD1 } from './wrangler-d1-execute.ts'
+
+/**
+ * Playwright / `migrate:e2e` persist dir. It is reseeded every run, so a
+ * renamed migration can reset it instead of failing the e2e web server.
+ * Dev persist (`.wrangler/state`, including Wrangler's `v3` subtree) stays
+ * fail-closed because it can hold unreleased local data.
+ */
+export const disposableE2ePersistPath = '.wrangler/state/e2e'
+
+export function isDisposableLocalPersistPath(persistTo: string) {
+	const normalized = persistTo.replaceAll('\\', '/').replace(/\/+$/, '')
+	return (
+		normalized === disposableE2ePersistPath ||
+		normalized.endsWith(`/${disposableE2ePersistPath}`)
+	)
+}
+
+export function resolveStaleLocalMigrationsAction(input: {
+	persistTo: string
+	stale: ReadonlyArray<string>
+}): 'ok' | 'reset-disposable' | 'fail' {
+	if (input.stale.length === 0) return 'ok'
+	return isDisposableLocalPersistPath(input.persistTo)
+		? 'reset-disposable'
+		: 'fail'
+}
 
 export function findStaleAppliedMigrations(input: {
 	appliedNames: ReadonlyArray<string>
@@ -42,6 +72,18 @@ export function formatStaleLocalMigrationsError(input: {
 		'A renamed or deleted migration keeps its old name in d1_migrations, so applying would run the same SQL again under the new name.',
 		'Reset the local state (this deletes all local data in that directory), then rerun the same command:',
 		`  rm -rf -- ${shellQuote(input.persistTo)}`,
+	].join('\n')
+}
+
+export function formatDisposableStaleLocalMigrationsReset(input: {
+	binding: string
+	persistTo: string
+	stale: ReadonlyArray<string>
+}) {
+	return [
+		`Local ${input.binding} state in ${input.persistTo} records migrations that no longer exist:`,
+		...input.stale.map((name) => `  ${name}`),
+		'This persist directory is disposable e2e state and is reseeded on every run, so it was reset automatically.',
 	].join('\n')
 }
 
@@ -123,16 +165,38 @@ export function main(argv: ReadonlyArray<string>) {
 		appliedNames: queryAppliedMigrationNames(options),
 		onDiskNames: listMigrationNames(path.resolve(options.migrationsDir)),
 	})
-	if (stale.length === 0) return 0
-	console.error(
-		formatStaleLocalMigrationsError({
-			binding: options.binding,
-			migrationsDir: options.migrationsDir,
-			persistTo: options.persistTo,
-			stale,
-		}),
-	)
-	return 1
+	const action = resolveStaleLocalMigrationsAction({
+		persistTo: options.persistTo,
+		stale,
+	})
+	switch (action) {
+		case 'ok':
+			return 0
+		case 'reset-disposable':
+			console.error(
+				formatDisposableStaleLocalMigrationsReset({
+					binding: options.binding,
+					persistTo: options.persistTo,
+					stale,
+				}),
+			)
+			rmSync(options.persistTo, { recursive: true, force: true })
+			return 0
+		case 'fail':
+			console.error(
+				formatStaleLocalMigrationsError({
+					binding: options.binding,
+					migrationsDir: options.migrationsDir,
+					persistTo: options.persistTo,
+					stale,
+				}),
+			)
+			return 1
+		default: {
+			const never: never = action
+			throw new Error(`Unhandled stale local migrations action: ${never}`)
+		}
+	}
 }
 
 if (isExecutedDirectly(import.meta.url)) {

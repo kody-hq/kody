@@ -8,7 +8,7 @@ import {
 } from './artifacts.ts'
 import { createEphemeralGitWorkspace } from './ephemeral-git-workspace.ts'
 import { createIsomorphicGitFs } from './isomorphic-git-fs.ts'
-import { loadIsomorphicGit } from './isomorphic-git-lazy.ts'
+import { loadIsomorphicGit, type IsomorphicGit } from './isomorphic-git-lazy.ts'
 import { entityKindValues, type EntityKind } from './types.ts'
 
 export const kodyPublishGitNoteVersion = 1 as const
@@ -145,6 +145,29 @@ export function buildPublishGitNote(input: {
 	}
 }
 
+/**
+ * The default fetch refspec only maps `refs/heads/*`, so fetching the notes
+ * ref downloads its objects without creating a local `refs/notes/commits`.
+ * Without this, reads never find a note and `addNote` starts a parentless
+ * notes commit whose force push drops every earlier note.
+ */
+async function writeFetchedPublishGitNotesRef(input: {
+	git: IsomorphicGit['git']
+	fs: Parameters<IsomorphicGit['git']['writeRef']>[0]['fs']
+	dir: string
+	fetched: { fetchHead?: string | null } | null | undefined
+}) {
+	const fetchHead = input.fetched?.fetchHead
+	if (!fetchHead) return
+	await input.git.writeRef({
+		fs: input.fs,
+		dir: input.dir,
+		ref: kodyPublishGitNotesRef,
+		value: fetchHead,
+		force: true,
+	})
+}
+
 export async function writeAndPushPublishGitNote(input: {
 	filesystem: PublishGitNoteFileSystem
 	dir: string
@@ -158,8 +181,50 @@ export async function writeAndPushPublishGitNote(input: {
 	const remoteName = input.remoteName ?? 'source'
 	const onAuth = () => buildArtifactsGitAuth({ token: input.token })
 	const { git, http } = await loadIsomorphicGit()
+	// External publish may release the ephemeral clone's `.git` before checks
+	// to free pack memory. Notes then run on a fresh workspace and must init
+	// plus fetch the published commit before addNote can resolve the oid.
+	const gitDirExists = await input.filesystem
+		.stat(`${input.dir}/.git`)
+		.then(() => true)
+		.catch(() => false)
+	if (!gitDirExists) {
+		await git.init({
+			fs,
+			dir: input.dir,
+		})
+		await git.addRemote({
+			fs,
+			dir: input.dir,
+			remote: remoteName,
+			url: input.remote,
+		})
+	}
+	let hasCommit = true
 	try {
+		await git.readCommit({
+			fs,
+			dir: input.dir,
+			oid: input.commitOid,
+		})
+	} catch {
+		hasCommit = false
+	}
+	if (!hasCommit) {
 		await git.fetch({
+			fs,
+			http,
+			dir: input.dir,
+			remote: remoteName,
+			url: input.remote,
+			ref: input.commitOid,
+			depth: 1,
+			singleBranch: true,
+			onAuth,
+		})
+	}
+	try {
+		const fetched = await git.fetch({
 			fs,
 			http,
 			dir: input.dir,
@@ -167,6 +232,12 @@ export async function writeAndPushPublishGitNote(input: {
 			url: input.remote,
 			ref: kodyPublishGitNotesRef,
 			onAuth,
+		})
+		await writeFetchedPublishGitNotesRef({
+			git,
+			fs,
+			dir: input.dir,
+			fetched,
 		})
 	} catch (error) {
 		if (!isMissingPublishGitNoteError(error)) {
@@ -290,7 +361,7 @@ export async function readPublishGitNoteFromArtifactsRepo(input: {
 		url: remote,
 	})
 	try {
-		await git.fetch({
+		const fetched = await git.fetch({
 			fs: workspace.fs,
 			http,
 			dir: workspace.dir,
@@ -299,6 +370,12 @@ export async function readPublishGitNoteFromArtifactsRepo(input: {
 			onAuth() {
 				return auth
 			},
+		})
+		await writeFetchedPublishGitNotesRef({
+			git,
+			fs: workspace.fs,
+			dir: workspace.dir,
+			fetched,
 		})
 	} catch (error) {
 		if (!isMissingPublishGitNoteError(error)) {

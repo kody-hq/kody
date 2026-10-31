@@ -12,6 +12,17 @@ const mockModule = vi.hoisted(() => ({
 	loadPackageManifestBySourceId: vi.fn(),
 	findSecret: vi.fn(),
 	getOrgById: vi.fn(),
+	tryAllowedPackagesSafetyWindowGrant: vi.fn(
+		async (..._args: Array<unknown>) => false,
+	),
+	safetyWindowActive: vi.fn(async (..._args: Array<unknown>) => false),
+}))
+
+vi.mock('#worker/credentials/allowed-packages-safety-window.ts', () => ({
+	tryAllowedPackagesSafetyWindowGrant: (...args: Array<unknown>) =>
+		mockModule.tryAllowedPackagesSafetyWindowGrant(...args),
+	isAllowedPackagesSafetyWindowActive: (...args: Array<unknown>) =>
+		mockModule.safetyWindowActive(...args),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
@@ -346,13 +357,30 @@ test('package approval helpers parse structured messages and skip trusted packag
 			storageId: 'pkg-1',
 		},
 	}
+	// Self-authored and adopted packages need approval only on a non-empty list
+	// that excludes them, and not while the safety window is open (#4129).
+	const cases = [
+		{ allowedPackages: [], windowActive: false, expected: 0 },
+		{ allowedPackages: ['pkg-other'], windowActive: true, expected: 0 },
+		{ allowedPackages: ['pkg-other'], windowActive: false, expected: 1 },
+	]
 	for (const trustedFork of [null, adoptedFork]) {
-		lookups(savedPackage, trustedFork)
-		await expect(findMissingPackageApprovals(approvalsInput)).resolves.toEqual(
-			[],
-		)
+		for (const { allowedPackages, windowActive, expected } of cases) {
+			lookups(savedPackage, trustedFork)
+			mockModule.safetyWindowActive.mockResolvedValueOnce(windowActive)
+			mockModule.findSecret.mockResolvedValueOnce({
+				found: true,
+				value: 'bot-token',
+				scope: 'user',
+				allowedPackages,
+				placement: null,
+			})
+			await expect(
+				findMissingPackageApprovals(approvalsInput),
+			).resolves.toHaveLength(expected)
+		}
 	}
-	expect(mockModule.findSecret).not.toHaveBeenCalled()
+	mockModule.findSecret.mockClear()
 
 	lookups(savedPackage, communityFork)
 	mockModule.findSecret.mockResolvedValueOnce({
@@ -441,4 +469,100 @@ test('findMissingPackageApprovals uses the team org slug and keeps empty links s
 		},
 	})
 	expect(unresolved[0]?.approvalUrl).toBe('')
+})
+
+test('a non-empty allowed list is enforced for self-authored and adopted packages (#4129)', async () => {
+	const lockedToOther = {
+		...userSecretResolved,
+		allowedPackages: ['pkg-other'],
+	}
+	const expectNotOnList = (error: unknown) => {
+		expectAccessDenied(error)
+		const message = (error as Error).message
+		expect(message).toContain(
+			"the credential's allowed-packages list does not include this package",
+		)
+		expect(message).toContain('including ones you authored or adopted')
+		expect(message).toContain('Approval link: https://example.com/')
+		return true
+	}
+
+	const datedPackage = {
+		...savedPackage,
+		createdAt: '2026-01-01T00:00:00.000Z',
+	}
+
+	// Self-authored: no implicit shortcut once the list is non-empty.
+	clearLookups()
+	lookups(datedPackage, null, { packageLoads: 2 })
+	await expect(
+		assertPackageCanAccessResolvedSecret(
+			accessInput({ resolved: lockedToOther }),
+		),
+	).rejects.toSatisfy(expectNotOnList)
+	expect(mockModule.tryAllowedPackagesSafetyWindowGrant).toHaveBeenCalledWith(
+		expect.objectContaining({
+			credentialId: 'cred-user-token',
+			packageId: 'pkg-1',
+			packageCreatedAt: '2026-01-01T00:00:00.000Z',
+			accessKind: 'self_authored',
+		}),
+	)
+
+	// Adopted fork: same; adoption cannot widen a non-empty list.
+	clearLookups()
+	lookups(datedPackage, adoptedFork, { packageLoads: 2 })
+	await expect(
+		assertPackageCanAccessResolvedSecret(
+			accessInput({ resolved: lockedToOther }),
+		),
+	).rejects.toSatisfy(expectNotOnList)
+
+	// Safety window approves the pre-cutover pair on first use.
+	clearLookups()
+	lookups(datedPackage, null, { packageLoads: 2 })
+	mockModule.tryAllowedPackagesSafetyWindowGrant.mockResolvedValueOnce(true)
+	await expect(
+		assertPackageCanAccessResolvedSecret(
+			accessInput({ resolved: lockedToOther }),
+		),
+	).resolves.toBeUndefined()
+	mockModule.getSavedPackageById.mockReset()
+	mockModule.getCommunityForkByForkedPackageId.mockReset()
+
+	// Nested self-authored authority under its own run: still denied.
+	clearLookups()
+	mockModule.getSavedPackageById.mockResolvedValue(savedPackage)
+	mockModule.getCommunityForkByForkedPackageId.mockResolvedValue(null)
+	await expect(
+		assertPackageCanAccessResolvedSecret(
+			accessInput({
+				resolved: lockedToOther,
+				authorityPackageId: 'pkg-1',
+				runContextPackageId: null,
+			}),
+		),
+	).rejects.toSatisfy(expectNotOnList)
+	mockModule.getSavedPackageById.mockReset()
+	mockModule.getCommunityForkByForkedPackageId.mockReset()
+
+	// Empty list keeps implicit read for self-authored packages.
+	lookups(savedPackage, null)
+	await expect(
+		assertPackageCanAccessResolvedSecret(accessInput()),
+	).resolves.toBeUndefined()
+
+	// Package on the list is allowed without any lookups.
+	clearLookups()
+	await expect(
+		assertPackageCanAccessResolvedSecret(
+			accessInput({
+				resolved: {
+					...userSecretResolved,
+					allowedPackages: ['pkg-other', 'pkg-1'],
+				},
+			}),
+		),
+	).resolves.toBeUndefined()
+	expect(mockModule.getSavedPackageById).not.toHaveBeenCalled()
 })

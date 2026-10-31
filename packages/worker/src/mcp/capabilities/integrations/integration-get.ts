@@ -23,6 +23,7 @@ export const integrationGetCapability = defineDomainCapability(
 	capabilityDomainNames.integrations,
 	{
 		name: 'integrationGet',
+		contextRuns: 'allow',
 		orgPermission: 'integration:read',
 		description:
 			'Read an OAuth integration connection by name. Tokens live on the connection — call createAuthenticatedFetch(name) or integrationTokenRefresh. Do not persist tokens with secretSet.',

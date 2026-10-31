@@ -119,8 +119,8 @@ other packages that share the root projects, for example
     `uncaught exception` even when the caller catches them. Do not filter those
     dumps — a real isolate crash must stay visible. Prevent the RPC throw
     instead: fail closed in the sandbox or host tool before the gateway/DO call
-    (retriever `fetch`, read-only `storage.sql`), and when a test must exercise
-    an in-object abort, call the method inside `runInDurableObject` rather than
+    (outbound fetch, package-storage access), and when a test must exercise an
+    in-object abort, call the method inside `runInDurableObject` rather than
     across the test RPC stub.
 
   Keep test output free of stray logging.

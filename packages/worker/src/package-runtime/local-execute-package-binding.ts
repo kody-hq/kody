@@ -32,6 +32,9 @@ const bindingPayloadSchema = z.object({
 	org: z.string().min(1),
 	actor: z.string().min(1).nullable(),
 	exp: z.number(),
+	// The run's entry packages, so a dependency's credential mappings come
+	// from the entry (ADR 0068 amendment 2026-10-27). Absent on older tokens.
+	entries: z.array(z.string().min(1)).optional(),
 })
 
 export type LocalExecutePackageBinding = z.infer<typeof bindingPayloadSchema>
@@ -82,6 +85,7 @@ export async function signLocalExecutePackageBinding(input: {
 	env: Pick<Env, 'SECRET_STORE_KEY'>
 	packageId: string
 	subject: LocalExecutePackageBindingSubject
+	entryPackageIds?: ReadonlyArray<string>
 	now?: number
 }) {
 	const payload: LocalExecutePackageBinding = {
@@ -89,6 +93,9 @@ export async function signLocalExecutePackageBinding(input: {
 		org: input.subject.org,
 		actor: input.subject.actor,
 		exp: (input.now ?? Date.now()) + bindingLifetimeMs,
+		...(input.entryPackageIds?.length
+			? { entries: [...input.entryPackageIds] }
+			: {}),
 	}
 	const body = bytesToBase64Url(
 		new TextEncoder().encode(JSON.stringify(payload)),
@@ -106,6 +113,8 @@ export async function signLocalExecutePackageBindings(input: {
 	env: Pick<Env, 'SECRET_STORE_KEY'>
 	packageIds: Iterable<string>
 	subject: LocalExecutePackageBindingSubject
+	/** The graph's entry packages, in precedence order, signed into each. */
+	entryPackageIds?: ReadonlyArray<string>
 	now?: number
 }) {
 	const bindings = new Map<string, string>()
@@ -117,6 +126,9 @@ export async function signLocalExecutePackageBindings(input: {
 				env: input.env,
 				packageId,
 				subject: input.subject,
+				...(input.entryPackageIds
+					? { entryPackageIds: input.entryPackageIds }
+					: {}),
 				...(input.now === undefined ? {} : { now: input.now }),
 			}),
 		)
@@ -144,6 +156,16 @@ export async function verifyLocalExecutePackageBinding(input: {
 	subject: LocalExecutePackageBindingSubject
 	now?: number
 }): Promise<string> {
+	return (await verifyLocalExecutePackageBindingClaims(input)).packageId
+}
+
+/** `verifyLocalExecutePackageBinding` plus the run entries it was signed with. */
+export async function verifyLocalExecutePackageBindingClaims(input: {
+	env: Pick<Env, 'SECRET_STORE_KEY'>
+	token: unknown
+	subject: LocalExecutePackageBindingSubject
+	now?: number
+}): Promise<{ packageId: string; entryPackageIds: Array<string> }> {
 	const fail = () => new LocalExecutePackageBindingError()
 	const token = typeof input.token === 'string' ? input.token.trim() : ''
 	if (!token.startsWith(bindingPrefix)) throw fail()
@@ -176,5 +198,8 @@ export async function verifyLocalExecutePackageBinding(input: {
 	) {
 		throw fail()
 	}
-	return binding.data.pkg
+	return {
+		packageId: binding.data.pkg,
+		entryPackageIds: binding.data.entries ?? [],
+	}
 }

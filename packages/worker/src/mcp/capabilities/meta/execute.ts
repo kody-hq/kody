@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { type ExecuteResult } from '@cloudflare/codemode'
-import { buildExecuteAttributionMetadata } from '#mcp/execute-invoke.ts'
+import { buildExecuteAttributionMetadata } from '#worker/run-records/execute-attribution.ts'
 import {
 	defaultExecutionResponseLimitBytes,
 	getExecutionErrorDetails,
@@ -60,6 +60,7 @@ export const executeCapability = defineDomainCapability(
 	capabilityDomainNames.meta,
 	{
 		name: 'execute',
+		contextRuns: 'deny',
 		orgPermission: 'org:execute',
 		description:
 			'Run `execute({ code, params })`: one ephemeral ESM module whose default export receives `params`. Example: `export default async function main(params) { return await kody.emailSend(params) }`. Same user and module graph reuse one isolate for the UTC day when varying args stay in `params`. Use this inside package and execute runtimes when reusable code needs the same module execution surface as the public MCP execute tool.',
@@ -167,12 +168,13 @@ export const executeCapability = defineDomainCapability(
 			let claimedRunHandle: RunRecordHandle | null = null
 			const executeRunMetadata = {
 				conversationId,
-				...buildExecuteAttributionMetadata({ entry: 'code' }),
+				...buildExecuteAttributionMetadata(),
 			}
 			if (idempotencyKey && userId) {
 				const claim = await claimRunRecord({
 					env: ctx.env,
 					userId,
+					request: callerContext.request,
 					context: {
 						surface: 'execute',
 						name: null,

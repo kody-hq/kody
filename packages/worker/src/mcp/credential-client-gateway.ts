@@ -27,6 +27,7 @@ export async function resolveCredentialClientPlacement(input: {
 	props: FetchGatewayProps
 	token: string
 	request: Request
+	rejectedLoginSessionId?: string | null
 }) {
 	return await applyCredentialClient({
 		env: input.env as Env,
@@ -42,12 +43,14 @@ export async function resolveCredentialClientPlacement(input: {
 					env: input.env,
 					scope: input.props.packageAppAuthority.scope,
 					grantScope: input.props.packageAppAuthority.grantScope,
-					visitorRequest: input.props.request,
+					visitorRequest:
+						input.props.executorVisitorRequest ?? input.props.request,
 					issue: null,
 				})
 			: null,
 		token: input.token,
 		requestUrl: new URL(input.request.url),
+		rejectedLoginSessionId: input.rejectedLoginSessionId ?? null,
 	})
 }
 

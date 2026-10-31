@@ -41,6 +41,8 @@ import {
 	type GrantResourceType,
 	type GrantView,
 	grantResourceTypes,
+	grantSubjectTypes,
+	GrantSubjectScopeError,
 	OrgSlugValidationError,
 } from '#worker/orgs/access-writes.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -99,10 +101,14 @@ export const accessGrantSchema = z.object({
 	id: z.string(),
 	resource_type: grantResourceTypeSchema,
 	resource_id: z.string(),
-	subject_type: z.enum(['user', 'team']),
+	subject_type: z.enum(grantSubjectTypes),
 	subject_id: z.string(),
 	preset: grantPresetSchema.nullable(),
 	permissions: z.array(z.string()),
+	expires_at: z
+		.string()
+		.nullable()
+		.describe('When the grant stops counting (ISO). Null never expires.'),
 })
 
 export const inviteSchema = z.object({
@@ -127,8 +133,8 @@ function readStoredPreset(
 	grantId: string,
 ): GrantPreset | null {
 	if (value === null) return null
-	if (value === 'use' || value === 'contribute' || value === 'manage') {
-		return value
+	if ((grantPresets as ReadonlyArray<string>).includes(value)) {
+		return value as GrantPreset
 	}
 	throw new Error(`Grant ${grantId} has preset ${value}.`)
 }
@@ -148,12 +154,16 @@ export function toAccessGrantPayload(grant: GrantView) {
 		subject_id: grant.subjectId,
 		preset,
 		permissions: grant.permissions,
+		expires_at: grant.expiresAt,
 	}
 }
 
 export function rethrowAccessError(error: unknown): never {
 	if (error instanceof McpCallerError) throw error
-	if (error instanceof OrgSlugValidationError) {
+	if (
+		error instanceof OrgSlugValidationError ||
+		error instanceof GrantSubjectScopeError
+	) {
 		throw new McpCallerError(error.message)
 	}
 	if (error instanceof Error) {
@@ -208,6 +218,8 @@ function manageAccessPermission(resourceType: OrgResourceType): OrgPermission {
 			return 'memory:manage_access'
 		case 'email':
 			return 'email:manage_access'
+		case 'execution_context':
+			return 'execution_context:manage_access'
 		default: {
 			const exhaustive: never = resourceType
 			throw new Error(`Unhandled resource type: ${String(exhaustive)}`)
@@ -271,6 +283,20 @@ async function grantTargetCheck(
 				resource: credentialResource(orgId, credential),
 			}
 		}
+		case 'execution_context':
+			// Adding run access to someone's machine goes through
+			// executionContextShareSet, which only the operator or a Manage
+			// holder may call (decision 13b). Removing a share stays here.
+			if (purpose === 'grant') {
+				throw new McpCallerError(
+					'Share an execution context with executionContextShareSet; accessGrant does not add execution context grants.',
+				)
+			}
+			return {
+				family: resourceType,
+				permission: manageAccessPermission(resourceType),
+				resource: { type: resourceType, id: resourceId, orgId },
+			}
 		case 'package':
 		case 'app':
 		case 'job':
@@ -376,7 +402,7 @@ export function grantChangesMemberOrBilling(input: {
  * organization grant includes any of `ownerOnlyOrgGrantPermissions`.
  */
 export async function resolveAuthorizedGrantPermissions(
-	ctx: CapabilityContext,
+	ctx: GrantChangeContext,
 	input: {
 		family: OrgResourceType | 'org'
 		preset?: GrantPreset | null
@@ -424,7 +450,7 @@ export function readPermissionList(values: Array<string> | undefined) {
 }
 
 export function requirePresetOrPermissions(input: {
-	preset?: 'use' | 'contribute' | 'manage'
+	preset?: GrantPreset
 	permissions: Array<OrgPermission> | null
 }) {
 	if (input.preset && input.permissions && input.permissions.length > 0) {
@@ -526,6 +552,14 @@ export async function hashInviteToken(token: string) {
 
 export function inviteAcceptPrompt(input: { orgSlug: string; token: string }) {
 	return `You are invited to the ${input.orgSlug} organization. Call inviteAccept with this token: ${input.token}. The token is shown once and cannot be looked up later.`
+}
+
+export function inviteLinkAcceptPrompt(input: {
+	orgSlug: string
+	token: string
+	url?: string
+}) {
+	return `Shareable invite link for the ${input.orgSlug} organization. Recipients open ${input.url ?? `/join/${input.token}`} or call inviteLinkAccept with this token: ${input.token}. The credential is shown once; Kody stores only a hash.`
 }
 
 export function optionalInviteeEmail(value: string | undefined) {

@@ -1,13 +1,24 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	writeFileSync,
+} from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { after, before, test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { runCli } from '../src/cli.js'
+import { egressPolicyFromGrant } from '../src/local-egress.js'
+import { reapLeftoverWorkers } from '../src/execution-context/worker-tracker.js'
 import {
 	buildLocalExecuteResult,
 	hasSavedPackageImports,
@@ -524,6 +535,51 @@ export default async function main(params) {
 	},
 )
 
+test('runLocalExecute returns cancelled without setup work when its signal is already aborted', async () => {
+	reset()
+	const abort = new AbortController()
+	abort.abort()
+	const result = await runLocalExecute({
+		code: 'export default () => 1',
+		token: goodToken,
+		apiUrl,
+		workerdPath: join(tmpdir(), 'missing-workerd-binary'),
+		signal: abort.signal,
+	})
+	assert.equal(result.isError, true)
+	const structured = result.structuredContent as Record<string, unknown>
+	assert.match(String(structured.error), /cancelled/)
+	assert.equal(proxyRequests.length, 0)
+})
+
+test(
+	'runLocalExecute stops workerd when its signal aborts mid-run',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const abort = new AbortController()
+		const code = `
+export default async function main() {
+	await new Promise((resolve) => setTimeout(resolve, 120_000))
+	return 'finished'
+}
+`
+		const startedAt = Date.now()
+		const running = runLocalExecute({
+			code,
+			token: goodToken,
+			apiUrl,
+			signal: abort.signal,
+		})
+		setTimeout(() => abort.abort(), 3_000)
+		const result = await running
+		assert.equal(result.isError, true)
+		const structured = result.structuredContent as Record<string, unknown>
+		assert.match(String(structured.error), /cancelled/)
+		assert.ok(Date.now() - startedAt < 60_000)
+	},
+)
+
 test('createLocalRuntimeModuleSource exports credential and credentials for ad hoc local execute', () => {
 	const source = createLocalRuntimeModuleSource()
 	assert.match(
@@ -541,6 +597,21 @@ test('createLocalRuntimeModuleSource exports credential and credentials for ad h
 	// Secret values stay on origin: the host only hops tool names + opaque handles.
 	assert.doesNotMatch(source, /secretValue|plaintext|apiKeyValue/)
 	assert.match(source, /credential,\s*credentials,/s)
+})
+
+test('ad-hoc local host CAF does not send packageId (unbound)', () => {
+	const source = createLocalRuntimeModuleSource()
+	const cafStart = source.indexOf(
+		'export async function createAuthenticatedFetch',
+	)
+	assert.ok(cafStart >= 0)
+	const cafEnd = source.indexOf('export const secretHeaders', cafStart)
+	assert.ok(cafEnd > cafStart)
+	const caf = source.slice(cafStart, cafEnd)
+	assert.match(caf, /authenticatedFetch/)
+	assert.doesNotMatch(caf, /packageId/)
+	assert.doesNotMatch(source, /kpb1\./)
+	assert.doesNotMatch(source, /__kodyPackageBinding/)
 })
 
 test('createLocalRuntimeModuleSource implements kody.gatewayFetchStream as a host method', () => {
@@ -929,6 +1000,8 @@ export default async function main(p: { a?: string }) {
 				'--local',
 				'--token',
 				goodToken,
+				'--mcp-url',
+				`${apiUrl}/mcp`,
 				'--api-url',
 				apiUrl,
 				'--params',
@@ -1114,6 +1187,8 @@ test(
 				'src/bin.ts',
 				'execute',
 				'--local',
+				'--mcp-url',
+				`${apiUrl}/mcp`,
 				'--api-url',
 				apiUrl,
 				'--code',
@@ -1146,3 +1221,300 @@ test(
 		)
 	},
 )
+
+test(
+	'a SIGKILLed daemon leaves a tracked workerd that the next daemon reaps',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const scratch = mkdtempSync(join(tmpdir(), 'kody-daemon-kill-'))
+		const workersDir = join(scratch, 'workers')
+		const src = (path: string) =>
+			JSON.stringify(fileURLToPath(new URL(`../src/${path}`, import.meta.url)))
+		const script = `
+import { runLocalExecute } from ${src('local-execute.ts')}
+import { createLocalWorkerTracker } from ${src('execution-context/worker-tracker.ts')}
+await runLocalExecute({
+	code: ${JSON.stringify(hangAfterPing)},
+	token: ${JSON.stringify(goodToken)},
+	apiUrl: ${JSON.stringify(apiUrl)},
+	workerTracker: createLocalWorkerTracker(${JSON.stringify(workersDir)}),
+})
+`
+		const daemon = spawn(
+			process.execPath,
+			['--import', 'tsx', '--input-type=module', '-e', script],
+			{ env: { ...process.env, TMPDIR: scratch }, stdio: 'ignore' },
+		)
+		const exited = new Promise((resolve) => daemon.once('exit', resolve))
+		await waitFor('the module to start', () =>
+			proxyRequests.some(
+				(request) => request.url === '/v1/capability-proxy/call',
+			)
+				? true
+				: null,
+		)
+		const workerdPid = await waitFor('workerd', () => workerdPidUnder(scratch))
+		daemon.kill('SIGKILL')
+		await exited
+		await delay(500)
+		assert.ok(isRunning(workerdPid), 'SIGKILL skips every exit handler')
+		assert.deepEqual(readdirSync(workersDir), [`${workerdPid}.json`])
+
+		assert.deepEqual(reapLeftoverWorkers(workersDir), [workerdPid])
+		await waitFor('workerd to stop', () =>
+			isRunning(workerdPid) ? null : true,
+		)
+		assert.deepEqual(readdirSync(workersDir), [])
+		assert.deepEqual(
+			readdirSync(scratch).filter((entry) => entry.startsWith('kody-local-')),
+			[],
+		)
+	},
+)
+
+test(
+	'egress refusals are plain errors that name the mode, the host, and how to change it',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const lan = createServer((_request, response) => response.end('lan ok'))
+		await new Promise<void>((resolve) => lan.listen(0, '127.0.0.1', resolve))
+		const lanUrl = `http://127.0.0.1:${(lan.address() as AddressInfo).port}/`
+		const code = `export default async function main({ url }) {
+	try {
+		const response = await fetch(url)
+		return 'ok: ' + (await response.text())
+	} catch (error) {
+		return String(error?.message ?? error)
+	}
+}`
+		const run = async (
+			egress: Parameters<typeof egressPolicyFromGrant>[0],
+			url: string,
+		) => {
+			const result = await runLocalExecute({
+				code,
+				params: { url },
+				token: goodToken,
+				apiUrl,
+				egress: egressPolicyFromGrant(egress),
+			})
+			assert.equal(result.isError, false)
+			return String((result.structuredContent as { result: unknown }).result)
+		}
+		try {
+			const publicOnly = await run({ mode: 'public' }, 'http://192.168.1.1/')
+			assert.match(
+				publicOnly,
+				/^Blocked by this execution context's network setting: the request to 192\.168\.1\.1 was refused because this context allows public internet only \(egress mode "public"\), and 192\.168\.1\.1 is a private or local network address\./,
+			)
+			assert.match(publicOnly, /executionContextUpdate grant\.egress/)
+			assert.match(publicOnly, /an allowlist that includes 192\.168\.1\.1/)
+			assert.doesNotMatch(publicOnly, /internal error/)
+			assert.match(
+				await run({ mode: 'public' }, lanUrl),
+				/allows public internet only.*127\.0\.0\.1 is a private or local network address/,
+			)
+			assert.match(
+				await run({ mode: 'none' }, 'https://example.com/'),
+				/request to example\.com was refused because this context allows no network access \(egress mode "none"\)/,
+			)
+			assert.match(
+				await run(
+					{ mode: 'allowlist', hosts: ['api.example.com', '127.0.0.1'] },
+					'https://other.example.com/',
+				),
+				/this context only allows api\.example\.com, 127\.0\.0\.1 \(egress mode "allowlist"\), and other\.example\.com is not on the list/,
+			)
+			assert.equal(
+				await run({ mode: 'allowlist', hosts: ['127.0.0.1'] }, lanUrl),
+				'ok: lan ok',
+			)
+			assert.match(
+				await run(
+					{ mode: 'allowlist', hosts: ['127.0.0.1'], ports: [443] },
+					lanUrl,
+				),
+				/port \d+ is not one of the allowed ports \(443\)/,
+			)
+			assert.equal(await run({ mode: 'public-and-lan' }, lanUrl), 'ok: lan ok')
+		} finally {
+			await new Promise((resolve) => lan.close(resolve))
+		}
+	},
+)
+
+test(
+	'kody execute --local names --allow-private-network when a LAN fetch is refused',
+	{
+		timeout: 180_000,
+	},
+	async () => {
+		reset()
+		const result = await runLocalExecute({
+			code: `export default async () => {
+	try { await fetch('http://10.0.0.1/'); return 'ok' } catch (error) { return error.message }
+}`,
+			token: goodToken,
+			apiUrl,
+		})
+		assert.match(
+			String((result.structuredContent as { result: unknown }).result),
+			/^Blocked by kody execute --local's network setting: .*10\.0\.0\.1 is a private or local network address\. Re-run with --allow-private-network/,
+		)
+	},
+)
+
+test(
+	'runLocalExecute mounts effective host folders at their real paths and refuses everything else',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const { effectiveFs } =
+			await import('../src/execution-context/fs-access.js')
+		const root = realpathSync(mkdtempSync(join(tmpdir(), 'kody-host-fs-')))
+		const rw = join(root, 'granted')
+		const ro = join(root, 'readonly')
+		const denied = join(root, 'granted-evil')
+		for (const dir of [rw, ro, denied]) mkdirSync(dir)
+		writeFileSync(join(ro, 'note.txt'), 'read me')
+		const hostFs = await effectiveFs(
+			[
+				{ path: rw, mode: 'rw' },
+				{ path: ro, mode: 'rw' },
+				{ path: denied, mode: 'rw' },
+			],
+			[
+				{ path: rw, mode: 'rw' },
+				{ path: ro, mode: 'ro' },
+			],
+		)
+		const code = `import { promises as fsp, readFileSync } from 'node:fs'
+import { writeFile } from 'fs/promises'
+const attempt = async (fn) => { try { return await fn() } catch (error) { return error.code + ': ' + error.message } }
+export default async function main(p) {
+	await fsp.writeFile(p.rw + '/a.txt', 'hello host')
+	await writeFile(p.rw + '/b.txt', 'bare specifier')
+	return {
+		a: await fsp.readFile(p.rw + '/a.txt', 'utf8'),
+		listing: (await fsp.readdir(p.rw)).sort(),
+		note: await fsp.readFile(p.ro + '/note.txt', 'utf8'),
+		roWrite: await attempt(() => fsp.writeFile(p.ro + '/x.txt', 'nope')),
+		prefixTrick: await attempt(() => fsp.writeFile(p.denied + '/x.txt', 'nope')),
+		dotDot: await attempt(() => fsp.readFile(p.rw + '/../readonly/../granted-evil/x.txt')),
+		outside: await attempt(() => fsp.readFile('/etc/hostname', 'utf8')),
+		sync: await attempt(() => readFileSync(p.rw + '/a.txt')),
+		virtualTmp: await attempt(async () => { await fsp.writeFile('/tmp/v.txt', 'v'); return fsp.readFile('/tmp/v.txt', 'utf8') }),
+	}
+}`
+		const result = await runLocalExecute({
+			code,
+			params: { rw, ro, denied },
+			token: goodToken,
+			apiUrl,
+			hostFs: () => hostFs,
+		})
+		assert.equal(result.isError, false, JSON.stringify(result.content))
+		const out = (result.structuredContent as { result: Record<string, string> })
+			.result
+		assert.equal(out.a, 'hello host')
+		assert.deepEqual(out.listing, ['a.txt', 'b.txt'])
+		assert.equal(readFileSync(join(rw, 'b.txt'), 'utf8'), 'bare specifier')
+		assert.equal(out.note, 'read me')
+		assert.match(out.roWrite!, /^EROFS: .*read-only/)
+		assert.equal(existsSync(join(ro, 'x.txt')), false)
+		assert.match(
+			out.prefixTrick!,
+			/^EACCES: .*server grant, but this machine's local policy/,
+		)
+		assert.equal(existsSync(join(denied, 'x.txt')), false)
+		assert.match(out.dotDot!, /^EACCES: .*local policy/)
+		assert.match(
+			out.outside!,
+			/^EACCES: .*outside this execution context's server grant/,
+		)
+		assert.match(out.sync!, /^ENOTSUP: .*use await fs\.promises\.readFile/)
+		assert.equal(out.virtualTmp, 'v')
+		assert.equal(
+			existsSync('/tmp/v.txt') && readFileSync('/tmp/v.txt', 'utf8') === 'v',
+			false,
+		)
+	},
+)
+
+test(
+	'runLocalExecute re-checks host folders on every call, so a narrowed grant stops a running run',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const { effectiveFs } =
+			await import('../src/execution-context/fs-access.js')
+		const root = realpathSync(mkdtempSync(join(tmpdir(), 'kody-host-fs-')))
+		const granted = await effectiveFs(
+			[{ path: root, mode: 'rw' }],
+			[{ path: root, mode: 'rw' }],
+		)
+		const revoked = await effectiveFs([], [])
+		let calls = 0
+		// Call 1 sets up the run, call 2 serves the first write; then access is gone.
+		const hostFs = () => (++calls <= 2 ? granted : revoked)
+		const result = await runLocalExecute({
+			code: `import { promises as fsp } from 'node:fs'
+export default async function main(p) {
+	await fsp.writeFile(p.root + '/first.txt', 'ok')
+	try { await fsp.writeFile(p.root + '/second.txt', 'nope'); return 'wrote' } catch (error) { return error.code }
+}`,
+			params: { root },
+			token: goodToken,
+			apiUrl,
+			hostFs,
+		})
+		assert.equal(result.isError, false, JSON.stringify(result.content))
+		assert.equal(
+			(result.structuredContent as { result: string }).result,
+			'EACCES',
+		)
+		assert.equal(readFileSync(join(root, 'first.txt'), 'utf8'), 'ok')
+		assert.equal(existsSync(join(root, 'second.txt')), false)
+	},
+)
+
+test('runLocalExecute only reuses cached package graphs for code without saved package imports', async () => {
+	const { runLocalExecute } = await import('../src/local-execute.js')
+	const failingFetch = (async () =>
+		new Response('nope', { status: 500 })) as unknown as typeof fetch
+	const slot = () => {
+		const counts = { gets: 0, sets: 0 }
+		return {
+			counts,
+			slot: {
+				get: () => {
+					counts.gets += 1
+					return undefined
+				},
+				set: () => {
+					counts.sets += 1
+				},
+			},
+		}
+	}
+	const withImport = slot()
+	await runLocalExecute({
+		code: `import run from 'kody:@nobody/pkg'\nexport default () => run()`,
+		token: goodToken,
+		apiUrl: 'https://api.kody.test',
+		fetchFn: failingFetch,
+		packageGraphCache: withImport.slot,
+	}).catch(() => {})
+	assert.deepEqual(withImport.counts, { gets: 0, sets: 0 })
+	const plain = slot()
+	await runLocalExecute({
+		code: 'export default () => 1',
+		token: goodToken,
+		apiUrl: 'https://api.kody.test',
+		fetchFn: failingFetch,
+		packageGraphCache: plain.slot,
+	}).catch(() => {})
+	assert.equal(plain.counts.gets, 1)
+})

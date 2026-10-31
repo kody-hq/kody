@@ -137,7 +137,7 @@ function renderProfileFilterNav<Filter extends string>(input: {
 					href={input.hrefFor(choice.value)}
 					aria-current={input.selected === choice.value ? 'page' : undefined}
 					title={choice.title}
-					data-prevent-scroll-reset
+					resetScroll={false}
 					css={filterLinkCss}
 				>
 					{choice.label}

@@ -13,18 +13,18 @@ Production is four product scripts, the `kody-api` edge, and independent ops
 workers. Origin owns **zero** Durable Object classes
 ([ADR 0034](../decisions/0034-origin-owns-no-durable-objects.md)).
 
-| Script                       | Public surface                         | Owns                                                                                                                                                                         | Binds                                                                        |
-| ---------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `kody-production` (origin)   | `kody.codes`                           | TanStack Start website, MCP HTTP, OAuth, inbound email, queue consumers, `JobsHost`, `KodyApi`, `DynamicWorkerUsageTail`                                                     | Platform DOs, runtime DOs / workflows, `RUNTIME_WORKER`, `JOBS`, `HIGHLIGHT` |
-| `kody-platform`              | `/__platform/health` only              | `MCP`, `McpClientHub`, `OAuthPurgeCoordinator`, `UserMeter`, `Mailbox`, `RepoSession`, `RepoSessionIndex`, `StripePlanRefresh`, `KodyFetchGateway`, `DynamicWorkerUsageTail` | Shared D1/KV/R2/AI; runtime DOs for package work                             |
-| `kody-runtime`               | `{user}.kody.run`; `/__runtime/health` | `StorageRunner`, `RunLog`, `PackageRealtimeSession`, `DynamicCallableWorkflow`, `KodyFetchGateway`, `DynamicWorkerUsageTail`, `PackageAppRuntimeBridge`                      | Platform DOs, `JOBS`                                                         |
-| `kody-jobs`                  | no public hostname                     | `JobManager`, `JOBS_DB`, `kody-scheduled-dispatch`                                                                                                                           | `HOST` → origin `JobsHost`                                                   |
-| `kody-highlight`             | no public hostname                     | Shiki tokenizer (`POST /highlight`)                                                                                                                                          | —                                                                            |
-| `kody-api`                   | `api.kody.codes`                       | Open API edge: CORS, rate limits, header strip, body cap                                                                                                                     | `KODY_API` → origin `KodyApi`                                                |
-| `kody-api-docs`              | `api-docs.kody.codes`                  | Scalar OpenAPI docs UI; proxies live `/openapi.json`                                                                                                                         | HTTPS fetch → `api.kody.codes`                                               |
-| `kody-status`                | `status.kody.codes`                    | `StatusStore`                                                                                                                                                                | HTTP probes + `JOBS` service                                                 |
-| `kody-nx-cache`              | `nx-cache.kody.codes`                  | R2 `kody-nx-cache`                                                                                                                                                           | —                                                                            |
-| `kody-production-d1-backups` | operator-only                          | D1 backup / DR workflows                                                                                                                                                     | R2 `kody-production-backups`                                                 |
+| Script                       | Public surface                         | Owns                                                                                                                                                                                                      | Binds                                                                        |
+| ---------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `kody-production` (origin)   | `kody.codes`                           | TanStack Start website, MCP HTTP, OAuth, inbound email, queue consumers, `JobsHost`, `KodyApi`, `DynamicWorkerUsageTail`                                                                                  | Platform DOs, runtime DOs / workflows, `RUNTIME_WORKER`, `JOBS`, `HIGHLIGHT` |
+| `kody-platform`              | `/__platform/health` only              | `MCP`, `McpClientHub`, `OAuthPurgeCoordinator`, `UserMeter`, `Mailbox`, `RepoSession`, `RepoSessionIndex`, `ExecutionContextSessionV1`, `StripePlanRefresh`, `KodyFetchGateway`, `DynamicWorkerUsageTail` | Shared D1/KV/R2/AI; runtime DOs for package work                             |
+| `kody-runtime`               | `{user}.kody.run`; `/__runtime/health` | `StorageRunner`, `RunLog`, `PackageRealtimeSession`, `DynamicCallableWorkflow`, `KodyFetchGateway`, `DynamicWorkerUsageTail`, `PackageAppRuntimeBridge`                                                   | Platform DOs, `JOBS`                                                         |
+| `kody-jobs`                  | no public hostname                     | `JobManager`, `JOBS_DB`, `kody-scheduled-dispatch`                                                                                                                                                        | `HOST` → origin `JobsHost`                                                   |
+| `kody-highlight`             | no public hostname                     | TanStack Highlight tokenizer (`POST /highlight`)                                                                                                                                                          | —                                                                            |
+| `kody-api`                   | `api.kody.codes`                       | Open API edge: CORS, rate limits, header strip, body cap                                                                                                                                                  | `KODY_API` → origin `KodyApi`                                                |
+| `kody-api-docs`              | `api-docs.kody.codes`                  | Scalar OpenAPI docs UI; proxies live `/openapi.json`                                                                                                                                                      | HTTPS fetch → `api.kody.codes`                                               |
+| `kody-status`                | `status.kody.codes`                    | `StatusStore`                                                                                                                                                                                             | HTTP probes + `JOBS` service                                                 |
+| `kody-nx-cache`              | `nx-cache.kody.codes`                  | R2 `kody-nx-cache`                                                                                                                                                                                        | —                                                                            |
+| `kody-production-d1-backups` | operator-only                          | D1 backup / DR workflows                                                                                                                                                                                  | R2 `kody-production-backups`                                                 |
 
 Local `npm run dev` attaches origin, platform, runtime, jobs, and highlight in
 one Miniflare. Playwright `CLOUDFLARE_ENV=test` is the exception: Durable Object
@@ -81,8 +81,8 @@ wrote during that fetch) so the next cron can skip the synthetic.
   `api-docs.kody.codes`, scoped API tokens, the MCP `api` tool, and the
   CapabilityProxy contract used by local CLI execute.
 - [Feature Flags](./feature-flags.md): code-registry flags with D1-backed global
-  state, percentage rollouts, and per-user overrides, managed at
-  `/admin/feature-flags`.
+  state, percentage rollouts, and per-user, per-org, and per-repo overrides,
+  managed at `/admin/feature-flags`.
 - [Data Storage](./data-storage.md): what is stored in D1, KV, and Durable
   Objects. The rubric for choosing between D1, a per-user Durable Object, and
   Analytics Engine is recorded in decision record
@@ -100,6 +100,8 @@ wrote during that fetch) so the next cron can skip the synthetic.
   imports zero, keyless package export runs tens of milliseconds), watching
   `kody_usage_events` percentiles per surface, and the PR-level budget
   justification required for any new awaited D1 write on a hot invocation path.
+- [Execution contexts](./execution-contexts.md): machines running `kody daemon`
+  that run execute instead of Kody cloud, behind the `execution-contexts` flag.
 - [Run records](./run-records.md): per-user execution history and logs across
   every runtime surface (`RunLog` Durable Object, `runs` MCP domain,
   `/@<slug>/-/activity`).
@@ -125,7 +127,8 @@ wrote during that fetch) so the next cron can skip the synthetic.
   (`.agents/skills/visual-recap/SKILL.md`). It is not a living feature changelog
   and not derived from source — architecture docs and code remain the truth for
   behavior. Update the map only when adding, removing, or reshaping a primitive.
-  Classify PR paths with
+  Each primitive's `adrs` lists the decision records that shape it; keep it in
+  sync when a record is added or superseded. Classify PR paths with
   `node .agents/skills/visual-recap/scripts/classify-primitives.mjs`; validate
   with `npm run primitives:check`.
 - [Inbound webhooks](./webhooks.md): user-owned `POST /@:username/webhooks/...`

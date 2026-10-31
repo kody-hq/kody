@@ -344,7 +344,7 @@ That check is the code-review gate that keeps an accidental class deletion off
 applied in production. Forward-fix (Path B). If objects were deleted, that is
 [disaster recovery](./disaster-recovery.md), not rollback.
 
-Kody still uses the legacy `migrations` array, not Wrangler `exports`.
+Kody uses the Wrangler `migrations` array, not `exports`.
 
 ### (b) The bad deploy included a D1 migration
 

@@ -9,7 +9,7 @@ import {
 
 const orphanedForkSchema = z.object({
 	fork_id: z.string(),
-	listing_id: z.string(),
+	listing_id: z.string().nullable(),
 	listing_name: z.string().nullable(),
 	listing_kody_id: z.string().nullable(),
 	forker_user_id: z.string(),
@@ -23,6 +23,7 @@ export const adminCommunityOrphanForksCleanupCapability =
 	defineDomainCapability(capabilityDomainNames.admin, {
 		...adminMutationCapabilityAccess,
 		name: 'adminCommunityOrphanForksCleanup',
+		contextRuns: 'deny',
 		description:
 			'Admin-only maintenance for leftover community_forks rows whose inert entity source and saved package are both gone. Healthy community forks stay inert (no saved_packages row) and keep an entity_sources row, so a missing package alone is not an orphan and is never deleted. apply defaults to false (preview). Optional fork_ids limits the scan to those ids and still skips any that still have a source or package. Audited.',
 		keywords: [

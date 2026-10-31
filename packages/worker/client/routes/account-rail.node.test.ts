@@ -160,3 +160,64 @@ test('leaving an owner page opens that workspace Overview by org slug', () => {
 		}),
 	).toBe('/@acme-public')
 })
+
+test('Agent profiles sits right after Agents, marked as an experiment while the flag is off', () => {
+	const agentsGroup = (groups: Array<AccountRailGroup>) =>
+		groups.find((group) => group.items.some((item) => item.id === 'agents'))
+			?.items ?? []
+	const off = agentsGroup(rails.team)
+	const offIds = off.map((item) => item.id)
+	expect(offIds[offIds.indexOf('agents') + 1]).toBe('profiles')
+	expect(off.find((item) => item.id === 'profiles')).toMatchObject({
+		badge: 'Experiment',
+		label: 'Agent profiles',
+		href: '/@acme/-/profiles',
+	})
+	const on = agentsGroup(
+		workspaceRailGroups({
+			orgSlug: 'acme',
+			personal: false,
+			role: 'member',
+			profiles: true,
+		}),
+	)
+	expect(on.find((item) => item.id === 'profiles')?.badge).toBeUndefined()
+})
+
+test('Execution contexts sits right after Jobs in Build, marked as an experiment while the flag is off', () => {
+	const build = (groups: Array<AccountRailGroup>) =>
+		groups
+			.find((group) => group.label === 'Build')
+			?.items.map((item) => item.id)
+	const offIds = build(rails.team) ?? []
+	expect(offIds[offIds.indexOf('jobs') + 1]).toBe('execution-contexts')
+	expect(
+		items(rails.team).find((item) => item.id === 'execution-contexts'),
+	).toMatchObject({ badge: 'Experiment' })
+	const flagged = workspaceRailGroups({
+		orgSlug: 'acme',
+		personal: false,
+		role: 'member',
+		executionContexts: true,
+	})
+	const ids = build(flagged) ?? []
+	expect(ids[ids.indexOf('jobs') + 1]).toBe('execution-contexts')
+	expect(
+		items(flagged).find((item) => item.id === 'execution-contexts'),
+	).toMatchObject({
+		href: '/@acme/-/execution-contexts',
+		icon: 'server',
+	})
+	expect(
+		items(flagged).find((item) => item.id === 'execution-contexts')?.badge,
+	).toBeUndefined()
+	const collaborator = workspaceRailGroups({
+		orgSlug: 'acme',
+		personal: false,
+		role: null,
+		executionContexts: true,
+	})
+	expect(items(collaborator).map((item) => item.id)).not.toContain(
+		'execution-contexts',
+	)
+})

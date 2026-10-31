@@ -8,8 +8,10 @@ import { type FeatureFlagKey } from '#universal/feature-flags/registry.ts'
  * accepts any registry key; `--remote` does not.
  */
 export const previewSeedFlagAllowlist = [
-	'connection-profiles',
 	'demo-indicator',
+	'execution-contexts',
+	'package-credential-suppliers',
+	'repo-push-queue',
 ] as const satisfies ReadonlyArray<FeatureFlagKey>
 
 export type PreviewSeedFlagKey = (typeof previewSeedFlagAllowlist)[number]

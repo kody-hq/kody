@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { linkNavigation } from '../link-navigation.ts'
-import { createLink, useRouter } from '@tanstack/react-router'
+import { createLink, useRouter, useRouterState } from '@tanstack/react-router'
 import { forwardRef, type ComponentProps } from 'react'
 
 // Router supplies aria-current="page" for exact active URLs. Section and wizard
@@ -20,17 +20,28 @@ const RouterAnchor = createLink(
 	}),
 )
 
-/** Protocol handshakes and non-page endpoints use document navigation. */
+/**
+ * Protocol handshakes and non-page endpoints use document navigation, as does
+ * any link that passes `reloadDocument`.
+ */
 export function SiteLink({
 	href,
 	children,
 	preload,
+	resetScroll,
+	reloadDocument,
 	...props
 }: ComponentProps<'a'> & {
 	preload?: false | 'intent' | 'viewport' | 'render'
+	resetScroll?: boolean
+	reloadDocument?: boolean
 }) {
 	const router = useRouter()
+	const location = useRouterState({
+		select: (state) => state.resolvedLocation ?? state.location,
+	})
 	if (
+		reloadDocument ||
 		!href?.startsWith('/') ||
 		href.startsWith('//') ||
 		(props.download !== undefined && props.download !== false)
@@ -55,6 +66,13 @@ export function SiteLink({
 			to={destination.pathname}
 			search={router.options.parseSearch!(destination.search)}
 			hash={destination.hash.slice(1)}
+			// Filters, sorting and pagination keep the reader at the current control.
+			resetScroll={
+				resetScroll ??
+				(location.pathname !== destination.pathname ||
+					location.hash !== destination.hash.slice(1) ||
+					location.searchStr === destination.search)
+			}
 			current={props['aria-current']}
 			// Section navigation supplies its own current state for descendants.
 			// Ordinary links should not mark their parent URL as the current page.

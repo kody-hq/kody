@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 /** @jsxRuntime automatic */
-import { type CSSProperties } from 'react'
+import { type CSSProperties, type ReactNode } from 'react'
 import { SiteLink } from './site-link.tsx'
 import { type PublicCommunityListing } from '#universal/community-public-types.ts'
 import { communityPackageCategoryCopy } from '#universal/community-categories.ts'
@@ -19,7 +19,11 @@ import {
 	fallbackDefaultBranchName,
 	getPackageTreeHref,
 } from '#universal/package-files.ts'
-import { renderPackageRepoChrome } from './package-repo-nav.tsx'
+import {
+	PackageRepoTabPanel,
+	renderPackageRepoChrome,
+} from './package-repo-nav.tsx'
+import { packageForksHref } from '#universal/package-forks.ts'
 import { visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
 
@@ -35,6 +39,8 @@ const plainReposPromoteDocsHref =
 	'https://github.com/kody-hq/kody/blob/main/docs/use/repos.md#promote-flow'
 
 export type CommunityDetailContentProps = {
+	/** Repo tab body, rendered in the shared package tab panel. */
+	children?: ReactNode
 	listing: PublicCommunityListing | null
 	username: string
 	kodyId: string
@@ -44,10 +50,13 @@ export type CommunityDetailContentProps = {
 	viewerIsOwner: boolean
 	viewerCanManage: boolean
 	viewerCanManageAccess?: boolean
+	viewerCanSeeConnectedPeople?: boolean
 	repoActions: PackageRepoActions | null
 	treeRef?: string
 	/** Defaults to true. Plain repos pass false for the Repo mark. */
 	hasPackage?: boolean
+	/** Picked install org, kept on catalog links. */
+	installOrg?: string | null
 	/**
 	 * Plain repos only (owners/members): root package.json at the indexed
 	 * commit. Surfaces promote-to-package guidance — no website promote API.
@@ -67,11 +76,13 @@ export function CommunityDetailContent(props: CommunityDetailContentProps) {
 		viewerIsOwner,
 		viewerCanManage,
 		viewerCanManageAccess,
+		viewerCanSeeConnectedPeople,
 		repoActions,
 		treeRef,
 		hasPackage,
 		packageShaped,
 		iconUrl,
+		children,
 	} = props
 	const markUrl = listing?.iconUrl ?? iconUrl ?? null
 	const isPackage = hasPackage !== false
@@ -95,8 +106,10 @@ export function CommunityDetailContent(props: CommunityDetailContentProps) {
 				viewerIsOwner,
 				viewerCanManage,
 				viewerCanManageAccess,
+				viewerCanSeeConnectedPeople,
 				active: 'repo',
 				filesHref,
+				installOrg: props.installOrg,
 				description,
 				ownerProfilePublic,
 				iconUrl: markUrl,
@@ -105,100 +118,114 @@ export function CommunityDetailContent(props: CommunityDetailContentProps) {
 				actions: renderPackageRepoActions(repoActions),
 			})}
 
-			{listing
-				? renderListingHead({
-						listing,
-						showSourceAheadStatus:
-							listing.sourceAhead === true && !repoActions?.publishHref,
-					})
-				: null}
+			<PackageRepoTabPanel>
+				{listing
+					? renderListingHead({
+							listing,
+							showSourceAheadStatus:
+								listing.sourceAhead === true && !repoActions?.publishHref,
+						})
+					: null}
 
-			{showPlainRepoOwnerHints
-				? renderPlainRepoOwnerHints({
-						kodyId,
-						packageShaped: packageShaped === true,
-					})
-				: null}
+				{showPlainRepoOwnerHints
+					? renderPlainRepoOwnerHints({
+							kodyId,
+							packageShaped: packageShaped === true,
+						})
+					: null}
 
-			{listing ? (
-				<>
-					<p
-						data-rise
-						style={{ '--rise': '3' } as CSSProperties}
-						data-testid="community-detail-topics"
-						css={topicsCss}
-					>
-						<SiteLink
-							href={buildCommunityIndexHref({ category: listing.category })}
-							data-testid="community-listing-category"
-							css={detailCategoryLinkCss}
+				{listing ? (
+					<div>
+						<p
+							data-rise
+							style={{ '--rise': '3' } as CSSProperties}
+							data-testid="community-detail-topics"
+							css={topicsCss}
 						>
-							{communityPackageCategoryCopy[listing.category].label}
-						</SiteLink>
-						{listing.tags.length > 0 ? (
-							<>
-								<span aria-hidden="true" css={topicSeparatorCss}>
-									·
-								</span>
-								<span css={visuallyHiddenCss}>Topics: </span>
-								<span data-testid="community-detail-tags">
-									{listing.tags.join(', ')}
-								</span>
-							</>
-						) : null}
-					</p>
+							<SiteLink
+								href={buildCommunityIndexHref({
+									category: listing.category,
+									installOrg: props.installOrg,
+								})}
+								data-testid="community-listing-category"
+								css={detailCategoryLinkCss}
+							>
+								{communityPackageCategoryCopy[listing.category].label}
+							</SiteLink>
+							{listing.tags.length > 0 ? (
+								<>
+									<span aria-hidden="true" css={topicSeparatorCss}>
+										·
+									</span>
+									<span css={visuallyHiddenCss}>Topics: </span>
+									<span data-testid="community-detail-tags">
+										{listing.tags.join(', ')}
+									</span>
+								</>
+							) : null}
+						</p>
 
-					<dl
-						data-rise
-						style={{ '--rise': '4' } as CSSProperties}
-						css={metaCss}
-					>
-						{listing.version ? (
+						<dl
+							data-rise
+							style={{ '--rise': '4' } as CSSProperties}
+							css={metaCss}
+						>
+							{listing.version ? (
+								<div>
+									<dt>Version</dt>
+									<dd data-testid="community-detail-version">
+										{listing.version}
+									</dd>
+								</div>
+							) : null}
 							<div>
-								<dt>Version</dt>
-								<dd data-testid="community-detail-version">
-									{listing.version}
+								<dt>License</dt>
+								<dd>{listing.license}</dd>
+							</div>
+							<div>
+								<dt>Published</dt>
+								<dd>{formatCommunityPublishedDate(listing.publishedAt)}</dd>
+							</div>
+							<div>
+								<dt>Pinned commit</dt>
+								<dd>
+									<code>{shortCommunityCommit(listing.pinnedCommit)}</code>
 								</dd>
 							</div>
-						) : null}
-						<div>
-							<dt>License</dt>
-							<dd>{listing.license}</dd>
-						</div>
-						<div>
-							<dt>Published</dt>
-							<dd>{formatCommunityPublishedDate(listing.publishedAt)}</dd>
-						</div>
-						<div>
-							<dt>Pinned commit</dt>
-							<dd>
-								<code>{shortCommunityCommit(listing.pinnedCommit)}</code>
-							</dd>
-						</div>
-						<div>
-							<dt>Rating</dt>
-							<dd data-testid="community-detail-rating">
-								{formatCommunityStars(
-									listing.averageStars,
-									listing.ratingCount,
-								)}
-							</dd>
-						</div>
-						<div>
-							<dt>Forks</dt>
-							<dd data-testid="community-detail-forks">{listing.forkCount}</dd>
-						</div>
-						<div>
-							<dt>Adaptation effort</dt>
-							<dd>
-								{formatCommunityAdaptationEffort(
-									listing.averageAdaptationEffort,
-								)}
-							</dd>
-						</div>
-					</dl>
-				</>
-			) : null}
+							<div>
+								<dt>Rating</dt>
+								<dd data-testid="community-detail-rating">
+									{formatCommunityStars(
+										listing.averageStars,
+										listing.ratingCount,
+									)}
+								</dd>
+							</div>
+							<div>
+								<dt>Forks</dt>
+								<dd>
+									<SiteLink
+										href={packageForksHref({ username, kodyId })}
+										data-testid="community-detail-forks"
+										css={detailCategoryLinkCss}
+									>
+										{listing.forkCount}
+									</SiteLink>
+								</dd>
+							</div>
+							<div>
+								<dt>Adaptation effort</dt>
+								<dd>
+									{formatCommunityAdaptationEffort(
+										listing.averageAdaptationEffort,
+									)}
+								</dd>
+							</div>
+						</dl>
+					</div>
+				) : null}
+				{children}
+			</PackageRepoTabPanel>
 		</div>
 	)
 }
@@ -240,7 +267,6 @@ function renderListingHead(input: {
 }
 
 const listingHeadCss = {
-	marginTop: '1.4rem',
 	display: 'flex',
 	alignItems: 'flex-start',
 	gap: '1.1rem',
@@ -321,7 +347,6 @@ function renderPlainRepoOwnerHints(input: {
 }
 
 const plainRepoHintsCss = {
-	marginTop: '1.1rem',
 	display: 'flex',
 	flexDirection: 'column' as const,
 	gap: '0.65rem',
@@ -382,7 +407,7 @@ const plainRepoPromptCss = {
 /* Category and topics read as one line of metadata: only the category is a
    link, and nothing here borrows the pill shape the action group uses. */
 const topicsCss = {
-	margin: '1.1rem 0 0',
+	margin: 0,
 	display: 'flex',
 	flexWrap: 'wrap' as const,
 	alignItems: 'baseline',

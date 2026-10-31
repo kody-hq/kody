@@ -1,3 +1,4 @@
+import { packageAppVisitorNeedKeyPattern } from '#worker/package-registry/types.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	type RuntimePackageAppIdentity,
@@ -17,17 +18,39 @@ import {
 } from '@kody-internal/shared/public-urls.ts'
 import {
 	isPackageAppHostNonLeafFirstSegment,
+	isPackageAppHostProbeFirstSegment,
+	isPackageAppHostProbePath,
 	packageAppHostLegacyMountSegment,
 } from '@kody-internal/shared/package-app-host-paths.ts'
 import { accountCreditsPath } from '#universal/compute-overage.ts'
+import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { renderErrorAgentPromptStaticHtml } from '#universal/error-agent-prompt.ts'
 import { buildPackageAppErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
 import {
+	findLivePackageAppOauthGrant,
+	notePackageAppOauthGrantUse,
+} from '#app/package-app-oauth-grants.ts'
+import {
 	getAppBaseUrl,
 	getCanonicalAppBaseUrl,
+	listPackageAppOrigins,
 	parsePackageAppRequestHost,
 } from '#worker/app-base-url.ts'
+import {
+	filterPackageAppSetCookies,
+	logPackageAppSetCookieNamesDropped,
+	logPackageAppSetCookieDomainStripped,
+	scrubPackageAppSetCookieDomains,
+} from '#worker/package-runtime/package-app-set-cookie.ts'
+import {
+	enforcePackageAppCookieHttpOnly,
+	recordPackageAppCookieFindings,
+} from '#worker/package-runtime/package-app-cookie-httponly.ts'
+import {
+	filterPackageAppRequestCookies,
+	packageAppCookiePrefix,
+} from '#worker/package-runtime/package-app-cookie-prefix.ts'
 import {
 	isPackageAppRuntimeThrownResponse,
 	logPackageAppHttpError,
@@ -42,7 +65,20 @@ import {
 	resolveSavedPackageForPackageAppSlug,
 } from '#worker/package-invocations/module-artifacts.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
+import { getPackageAppClientReadableCookieNames } from '#worker/package-registry/manifest.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
+import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
+import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
+import { savedCredentialNeeds } from '#worker/credentials/credential-needs.ts'
+import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
+import {
+	CredentialClientError,
+	openCredentialClient,
+} from '#worker/credentials/credential-client.ts'
+import {
+	createPackageAppCredentialAuthority,
+	createPackageAppVisitorPersonalRequest,
+} from '#worker/package-runtime/package-app-authority.ts'
 import {
 	buildPackageAppWorker,
 	createPackageAppCallerContext,
@@ -59,6 +95,7 @@ import {
 	packageAppSyntheticHeaderValue,
 	type PackageAppTrustedDispatch,
 } from '#worker/package-runtime/package-app-synthetic.ts'
+import { resolvePackageAppBilling } from '#worker/package-runtime/package-app-billing.ts'
 import { withPackageAppVisitorHeader } from '#worker/package-runtime/package-app-visitor-header.ts'
 import {
 	endPackageAppVisit,
@@ -238,6 +275,15 @@ function packageAppLocationPath(input: {
 	}
 }
 
+function buildPackageAppLoginUrl(input: {
+	requestUrl: string
+	appLeaf: string
+}) {
+	const loginUrl = new URL(packageAppOauthPaths.login, input.requestUrl)
+	loginUrl.searchParams.set('app', input.appLeaf)
+	return loginUrl
+}
+
 export function isPackageAppRequestPath(pathname: string) {
 	return parsePackageAppPath(pathname) !== null
 }
@@ -264,10 +310,18 @@ const strippedPackageRequestHeaders = [
 export function createPackageCodeRequest(
 	request: Request,
 	url: string | URL = request.url,
+	options: { cookiePrefix?: string | null } = {},
 ) {
 	const packageCodeRequest = new Request(url.toString(), request)
 	for (const headerName of strippedPackageRequestHeaders) {
 		packageCodeRequest.headers.delete(headerName)
+	}
+	if (options.cookiePrefix) {
+		const cookie = filterPackageAppRequestCookies(
+			request.headers.get('Cookie'),
+			options.cookiePrefix,
+		)
+		if (cookie) packageCodeRequest.headers.set('Cookie', cookie)
 	}
 	// Snapshot names so deletes during this loop do not skip headers.
 	// oxlint-disable-next-line unicorn/no-useless-spread
@@ -732,6 +786,8 @@ export async function servePackageAppRequest(input: {
 	visitor: RuntimePackageAppVisitor | null
 	/** See `RuntimePackageAppServeInput.identity`. Ignored with a visitor. */
 	identity?: RuntimePackageAppIdentity | null
+	/** See `RuntimePackageAppServeInput.consentPrincipal`. Never reaches the app. */
+	consentPrincipal?: RuntimePackageAppIdentity | null
 	/** See `RuntimePackageAppServeInput.approvedPublishedCommit`. */
 	approvedPublishedCommit?: string | null
 	packagePath: PackageAppPath
@@ -765,6 +821,7 @@ export async function servePackageAppRequest(input: {
 			owner: input.owner,
 			visitor: input.visitor,
 			identity: input.identity ?? null,
+			consentPrincipal: input.consentPrincipal ?? null,
 			approvedPublishedCommit: input.approvedPublishedCommit,
 			packagePath: input.packagePath,
 			dispatch: input.dispatch,
@@ -775,11 +832,27 @@ export async function servePackageAppRequest(input: {
 	// Identity rides only on an otherwise anonymous request; a visitor already
 	// names the person.
 	const identity = visitor ? null : (input.identity ?? null)
+	// Only decides whether to offer consent; it is never handed to the app.
+	const consentPerson = visitor ?? identity ?? input.consentPrincipal ?? null
 	const serverTiming = input.serverTiming ?? []
 	const requestUrl = new URL(request.url)
 	const { kodyId } = packagePath
 	const packageRealtimeRestPath = packagePath.restPath
 	const forwardedPackageRestPath = packagePath.restPath
+	// Scanner / VCS probes never reach package code. 404 before the metered
+	// entitlement seat-count gate (and before slug lookup) so bot noise does
+	// not pay for live seat reads. Custom hostnames bind a package at `/`, so
+	// restPath is the probe; on subdomain mounts the leaf itself may be the
+	// probe segment.
+	if (
+		isPackageAppHostProbePath(packagePath.restPath) ||
+		isPackageAppHostProbeFirstSegment(packagePath.kodyId)
+	) {
+		return attachPackageAppServerTiming(
+			new Response(buildPackageAppNotFoundMessage(), { status: 404 }),
+			serverTiming,
+		)
+	}
 	if (owner.username !== packagePath.username) {
 		return attachPackageAppServerTiming(
 			new Response(buildPackageAppNotFoundMessage(), { status: 404 }),
@@ -855,6 +928,7 @@ export async function servePackageAppRequest(input: {
 			? getCanonicalAppBaseUrl({ env })
 			: getAppBaseUrl({ env, requestUrl: request.url })
 	const packageRealtimePath = parsePackageRealtimePath(packageRealtimeRestPath)
+	const cookiePrefix = await packageAppCookiePrefix(savedPackage.id)
 	// Realtime hooks run with the owner's caller context, so an anonymous
 	// visitor never reaches them.
 	if (packageRealtimePath && !visitor) {
@@ -872,14 +946,26 @@ export async function servePackageAppRequest(input: {
 				kodyId: savedPackage.kodyId,
 				sourceId: savedPackage.sourceId,
 				baseUrl,
-			}).connect(createPackageCodeRequest(request), packageRealtimePath.facet)
+			}).connect(
+				createPackageCodeRequest(request, request.url, { cookiePrefix }),
+				packageRealtimePath.facet,
+			)
+			const filtered = filterPackageAppSetCookies(connected, cookiePrefix)
+			logPackageAppSetCookieNamesDropped({
+				hostname: requestUrl.hostname,
+				pathname: requestUrl.pathname,
+				dropped: filtered.dropped,
+				surface: 'package-app-realtime',
+			})
 			logPackageAppHttpError({
 				request,
-				status: connected.status,
+				status: filtered.response.status,
 				phase: 'realtime-response',
-				runtimeRunId: connected.headers.get(packageAppRuntimeRunIdHeader),
+				runtimeRunId: filtered.response.headers.get(
+					packageAppRuntimeRunIdHeader,
+				),
 			})
-			return attachPackageAppServerTiming(connected, serverTiming)
+			return attachPackageAppServerTiming(filtered.response, serverTiming)
 		} catch (error) {
 			console.error('Package realtime handler failed:', error)
 			reportPackageAppFailure({
@@ -1013,6 +1099,7 @@ export async function servePackageAppRequest(input: {
 	let forwardedRequest: Request
 	let entrypoint: { fetch(request: Request): Promise<Response> }
 	let servedPublishedCommit: string | null = null
+	let clientReadableCookieNames: ReadonlyArray<string> = []
 	let visitNonce: string | null = null
 	try {
 		const [packageManifest, callerContext] = await Promise.all([
@@ -1023,19 +1110,173 @@ export async function servePackageAppRequest(input: {
 					sourceId: savedPackage.sourceId,
 				}),
 			),
-			createPackageAppCallerContext({
-				baseUrl,
-				owner,
+			resolvePackageAppBilling({
+				db: env.APP_DB,
+				ownerId: owner.userId,
 				visitor,
-				packageId: savedPackage.id,
-			}),
+				internetVisible: savedPackage.isInternetVisible,
+			}).then((billing) =>
+				createPackageAppCallerContext({
+					baseUrl,
+					owner,
+					visitor,
+					packageId: savedPackage.id,
+					billing,
+				}),
+			),
 		])
+		clientReadableCookieNames = getPackageAppClientReadableCookieNames(
+			packageManifest.manifest,
+		)
 		const refusal = refuseUnapprovedAnonymousServe({
 			visitor,
 			approvedPublishedCommit: input.approvedPublishedCommit,
 			publishedCommit: packageManifest.source.published_commit,
 		})
 		if (refusal) return attachPackageAppServerTiming(refusal, serverTiming)
+		const suppliersEnabled = await isPackageCredentialSuppliersEnabled({
+			db: env.APP_DB,
+			orgId: owner.userId,
+			request,
+		})
+		const visitorNeeds = suppliersEnabled
+			? savedCredentialNeeds(
+					await loadPublishedCredentialNeeds({
+						env,
+						userId: owner.userId,
+						sourceId: savedPackage.sourceId,
+						request: callerContext.request,
+					}),
+				)
+			: []
+		const executorNeeds = visitorNeeds.filter(
+			(need) => need.supplier === 'executor',
+		)
+		const requiredExecutorNeeds = executorNeeds.filter(
+			(need) => need.required !== false,
+		)
+		// A signed-in visitor from outside the org brings their own executor
+		// credentials once they hold a live grant for this app. They get an
+		// executor-only visit: nothing else treats them as a visitor.
+		const executorGrant =
+			!visitor && identity && executorNeeds.length > 0
+				? await findLivePackageAppOauthGrant({
+						db: env.APP_DB,
+						personId: identity.userId,
+						orgUsername: packagePath.username.toLowerCase(),
+						kodyId: savedPackage.kodyId,
+					})
+				: null
+		if (executorGrant) {
+			await notePackageAppOauthGrantUse({
+				db: env.APP_DB,
+				grant: executorGrant,
+			})
+		}
+		const executorVisit =
+			identity && executorGrant
+				? {
+						visitor: {
+							userId: identity.userId,
+							username: identity.username,
+							role: null,
+						},
+						grantId: executorGrant.id,
+						scopes: executorGrant.scopes,
+					}
+				: null
+		const needVisitor = visitor ?? executorVisit?.visitor ?? null
+		const consentRedirect = () => {
+			const loginUrl = buildPackageAppLoginUrl({
+				requestUrl: request.url,
+				appLeaf: getPackageNameLeaf(savedPackage.name),
+			})
+			loginUrl.searchParams.set(
+				'scope',
+				[
+					'profile',
+					// Optional needs ride along so consent can offer them; a key
+					// that cannot be a scope is left out rather than failing it.
+					...executorNeeds.flatMap((item) =>
+						item.required !== false ||
+						packageAppVisitorNeedKeyPattern.test(item.key)
+							? [`need:${item.key}`]
+							: [],
+					),
+				].join(' '),
+			)
+			loginUrl.searchParams.set('prompt', 'consent')
+			loginUrl.searchParams.set(
+				'return_to',
+				`${requestUrl.pathname}${requestUrl.search}`,
+			)
+			return attachPackageAppServerTiming(
+				new Response(null, {
+					status: 302,
+					headers: {
+						Location: loginUrl.toString(),
+						'Cache-Control': 'no-store',
+					},
+				}),
+				serverTiming,
+			)
+		}
+		for (const need of requiredExecutorNeeds) {
+			try {
+				await openCredentialClient(
+					{
+						env,
+						callerContext,
+						// Only checks the need can open; the handle is discarded.
+						binding: newRunCredentialClientBinding(),
+						packageId: savedPackage.id,
+						runNeeds: async () =>
+							new Map(visitorNeeds.map((item) => [item.key, item])),
+						packageAppAuthority: createPackageAppCredentialAuthority({
+							env,
+							scope: {
+								orgId: owner.userId,
+								packageId: savedPackage.id,
+							},
+							grantScope: {
+								orgSlug: packagePath.username,
+								kodyId: savedPackage.kodyId,
+							},
+							visitorRequest: await createPackageAppVisitorPersonalRequest({
+								db: env.APP_DB,
+								visitor: needVisitor,
+							}),
+							issue: { visitorNeed: need.key },
+							waitUntil: scheduleWorkerWaitUntil,
+						}),
+					},
+					{ key: need.key },
+				)
+			} catch (error) {
+				if (!(error instanceof CredentialClientError)) throw error
+				if (request.method !== 'GET' && request.method !== 'HEAD') {
+					throw error
+				}
+				return consentRedirect()
+			}
+		}
+		// Optional needs never block serving, so offer them once: a visitor with
+		// no grant for this app yet goes to consent, and any grant (even one
+		// that declined every optional need) serves the app after that.
+		if (
+			consentPerson &&
+			(request.method === 'GET' || request.method === 'HEAD') &&
+			executorNeeds.some((need) => need.required === false) &&
+			!executorGrant &&
+			!(await findLivePackageAppOauthGrant({
+				db: env.APP_DB,
+				personId: consentPerson.userId,
+				orgUsername: packagePath.username.toLowerCase(),
+				kodyId: savedPackage.kodyId,
+			}))
+		) {
+			return consentRedirect()
+		}
 		servedPublishedCommit = packageManifest.source.published_commit
 		const appWorker = await buildPackageAppWorker({
 			env,
@@ -1060,6 +1301,7 @@ export async function servePackageAppRequest(input: {
 				servingUsername: packagePath.username,
 				hostedOrigin: requestUrl.origin,
 				mount: packagePath.mount,
+				executorVisit,
 			},
 		})
 		entrypoint = appWorker.stub.getEntrypoint(appWorker.entrypointName)
@@ -1069,8 +1311,12 @@ export async function servePackageAppRequest(input: {
 		forwardedRequest = applyTrustedPackageAppDispatch(
 			withPackageAppVisitTicket(
 				withPackageAppVisitorHeader(
-					createPackageCodeRequest(request, forwardedUrl),
-					{ visitor, identity },
+					createPackageCodeRequest(request, forwardedUrl, { cookiePrefix }),
+					{
+						visitor,
+						identity,
+						scopes: appWorker.visit.claims?.scopes ?? ['profile'],
+					},
 				),
 				appWorker.visit.ticket,
 			),
@@ -1191,8 +1437,51 @@ export async function servePackageAppRequest(input: {
 			phase: 'entrypoint-response',
 			runtimeRunId: fetched.headers.get(packageAppRuntimeRunIdHeader),
 		})
+		const requestUrl = new URL(request.url)
+		const scrubbed = scrubPackageAppSetCookieDomains(fetched, {
+			responseHostname: requestUrl.hostname,
+			packageAppApexHostnames: listPackageAppOrigins({ env }).map(
+				(origin) => origin.hostname,
+			),
+		})
+		const filtered = filterPackageAppSetCookies(scrubbed.response, cookiePrefix)
+		const enforced = enforcePackageAppCookieHttpOnly(filtered.response, {
+			clientReadable: clientReadableCookieNames,
+		})
+		if (enforced.findings.length > 0) {
+			const warningWrite = recordPackageAppCookieFindings({
+				db: env.APP_DB,
+				packageId: savedPackage.id,
+				findings: enforced.findings,
+				hostname: requestUrl.hostname,
+				pathname: requestUrl.pathname,
+				now: Date.now(),
+			}).catch((error) => {
+				console.warn('package-app-cookie-warning-record-failed', {
+					packageId: savedPackage.id,
+					error: getErrorMessage(error),
+				})
+			})
+			try {
+				scheduleWorkerWaitUntil(warningWrite)
+			} catch {
+				void warningWrite
+			}
+		}
+		logPackageAppSetCookieNamesDropped({
+			hostname: requestUrl.hostname,
+			pathname: requestUrl.pathname,
+			dropped: filtered.dropped,
+			surface: 'package-app-serve',
+		})
+		logPackageAppSetCookieDomainStripped({
+			hostname: requestUrl.hostname,
+			pathname: requestUrl.pathname,
+			stripped: scrubbed.stripped,
+			surface: 'package-app-serve',
+		})
 		return endPackageAppVisitWithResponse(
-			attachPackageAppServerTiming(fetched, serverTiming),
+			attachPackageAppServerTiming(enforced.response, serverTiming),
 			visitNonce,
 		)
 	} catch (error) {

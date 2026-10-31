@@ -21,6 +21,7 @@ import {
 	type ConnectOauthHostApprovalLink,
 } from '#worker/integrations/connect-oauth-persist.ts'
 import {
+	type DevicePollSuccess,
 	completeDevicePendingSession,
 	loadDevicePendingSession,
 	pollDeviceAuthorization,
@@ -50,6 +51,8 @@ export type DeviceConnectStartInput = {
 	extraAuthorizeParams?: Record<string, string>
 	allowedHosts?: Array<string>
 	tokenExchangeStyle?: string | null
+	/** Website starts only; MCP device connects stay unguarded. */
+	liveConnectionGuard?: { confirmed: boolean }
 	fetchImpl?: typeof fetch
 }
 
@@ -62,6 +65,8 @@ export type DeviceConnectPollInput = {
 	sessionId: string
 	fetchImpl?: typeof fetch
 	nowMs?: number
+	/** Re-checks the caller may still persist this session right before tokens land. */
+	authorizePersist?: (session: DevicePollSuccess['session']) => Promise<void>
 }
 
 export type DeviceConnectPollApproved = {
@@ -194,6 +199,7 @@ export async function startIntegrationDeviceConnect(
 		authorizeUrl,
 		clientId,
 		clientSecret,
+		clientSecretFromInput: !platformApp && Boolean(input.clientSecret?.trim()),
 		scopes,
 		scopeSeparator,
 		extraAuthorizeParams,
@@ -207,6 +213,9 @@ export async function startIntegrationDeviceConnect(
 				? platformApp.tokenExchangeStyle
 				: (input.tokenExchangeStyle ?? null),
 		}),
+		...(platformApp || !input.liveConnectionGuard
+			? {}
+			: { liveConnectionGuard: input.liveConnectionGuard }),
 		fetchImpl: input.fetchImpl,
 	})
 }
@@ -295,6 +304,7 @@ export async function pollIntegrationDeviceConnect(
 		}
 	}
 
+	if (!platformApp) await input.authorizePersist?.(polled.session)
 	let persisted: Awaited<ReturnType<typeof persistConnectOauthTokens>>
 	try {
 		persisted = await persistConnectOauthTokens({
@@ -316,7 +326,12 @@ export async function pollIntegrationDeviceConnect(
 			scopeSeparator: polled.session.scopeSeparator,
 			extraAuthorizeParams: polled.session.extraAuthorizeParams,
 			tokenRecord: polled.tokenPayload,
-			clientSecret: polled.clientSecret,
+			// A secret read from the saved app at start may be stale after a rotation.
+			clientSecret:
+				polled.session.clientSecretFromInput === false
+					? null
+					: polled.clientSecret,
+			liveConnectionGuard: polled.session.liveConnectionGuard,
 		})
 	} catch (error) {
 		// Leave the approved session in KV so a retry poll can re-read tokens.

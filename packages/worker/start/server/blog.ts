@@ -42,7 +42,9 @@ export const loadBlogPost = createServerFn({ method: 'GET' })
 			imageAlt: post.imageAlt,
 			ogImage: post.ogImage,
 			body: post.body,
-			bodyFences: await highlightMarkdownFences(getEnv(env), post.body),
+			bodyFences: await highlightMarkdownFences(getEnv(env), post.body, {
+				firstParty: true,
+			}),
 			readNext: getReadNextBlogPost(post.slug),
 		}
 		const { loadDocumentHead } = await import('./document-head.ts')

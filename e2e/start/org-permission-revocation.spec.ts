@@ -61,9 +61,7 @@ INSERT INTO org_memberships (org_id, user_id, role, created_at) VALUES
 			;(window as unknown as Record<string, unknown>).__revocationDocument =
 				value
 		}, id)
-		await page
-			.getByRole('link', { name: 'Add credential', exact: true })
-			.click()
+		await page.getByTestId('credentials-empty-add').click()
 		await expect(page).toHaveURL(new RegExp(`/@${orgSlug}/-/credentials/new$`))
 		await expect(
 			page.getByRole('heading', { name: 'Add a credential', exact: true }),

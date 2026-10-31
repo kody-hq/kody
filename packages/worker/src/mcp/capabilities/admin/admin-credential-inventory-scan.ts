@@ -136,6 +136,7 @@ export const adminCredentialInventoryScanCapability = defineDomainCapability(
 		...adminMutationCapabilityAccess,
 		idempotent: true,
 		name: 'adminCredentialInventoryScan',
+		contextRuns: 'deny',
 		description:
 			'Fleet inventory of credential placeholders in published package source (ADR 0068). Changes no package or credential: it records, per package, which credential ids each placeholder can fill, where the placeholder sits on a request (a placeholder bound to a variable is followed to each read), and the declared slot providers. Never records credential names or values; placement detail keeps only package identifiers such as body fields and SDK option keys. Paged: call again with the returned runId until complete is true; the final call returns the report.',
 		keywords: [

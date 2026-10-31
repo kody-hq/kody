@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest'
-import { buildCommunityForkUpstreamUpdatedEvent } from './fork-upstream-updated-subscription-event.ts'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { type CommunityForkRecord } from './types.ts'
 
 const mocks = vi.hoisted(() => ({
@@ -21,9 +21,9 @@ vi.mock('#worker/package-invocations/service.ts', async (importOriginal) => {
 vi.mock('#worker/package-registry/repo.ts', () => ({
 	listSavedPackagesByUserId: mocks.listSavedPackagesByUserId,
 }))
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 const { deliverCommunityForkUpstreamUpdatedAlias } =
 	await import('./fork-upstream-updated-package-subscriptions.ts')
@@ -41,6 +41,8 @@ const listing = {
 const fork: CommunityForkRecord = {
 	id: 'fork-1',
 	listingId: 'listing-1',
+	upstreamOwnerId: null,
+	upstreamPackageId: null,
 	forkerUserId: 'stable-forker-a',
 	originCommit: 'commit-1',
 	forkedPackageId: 'forked-package-1',
@@ -105,7 +107,27 @@ test('follow alias emits the historical community.fork.upstream_updated payload'
 	expect(call.idempotencyKey).toBe(
 		'community-fork-upstream-updated:listing-1:commit-2:fork-1:auto-rebase',
 	)
-	expect(call.params).toEqual(buildCommunityForkUpstreamUpdatedEvent(alias))
+	expect(call.params).toEqual({
+		event: 'community.fork.upstream_updated',
+		event_id: 'event-1',
+		listing: {
+			id: 'listing-1',
+			name: '@owner/discord-gateway',
+			kody_id: 'discord-gateway',
+			public_url: 'https://heykody.dev/@owner/discord-gateway',
+		},
+		publisher: { username: 'owner' },
+		fork: {
+			id: 'fork-1',
+			package_id: 'forked-package-1',
+			kody_id: 'discord-gateway',
+			origin_commit: 'commit-1',
+			forked_at: '2026-09-01T00:00:00.000Z',
+		},
+		previous: { pinned_commit: 'commit-1', package_version: '1.0.0' },
+		current: { pinned_commit: 'commit-2', package_version: '1.1.0' },
+		published_at: '2026-09-30T12:00:00.000Z',
+	})
 })
 
 test('a 429 credit denial is recorded as zero_credits and does not throw', async () => {

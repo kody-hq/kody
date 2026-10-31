@@ -446,8 +446,8 @@ type PackageOwnerErrorSpikeEvent = {
 The event omits user ids, package UUIDs, emails, error strings, and logs.
 Idempotency keys include the topic, event id, and subscriber package id.
 
-Per-account notification preference for this owner email is not yet in Account
-settings (default on); track that as a follow-up.
+Owner emails for this event are on by default. There is no per-owner toggle in
+Account settings.
 
 ## `fleet.users_affected.elevated` / `fleet.users_affected.resolved` (admins)
 

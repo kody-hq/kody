@@ -251,6 +251,7 @@ test('late failed subscription finish reopens a system-ignored platform interrup
 		errorName: runRecordPlatformInterruptedErrorName,
 		errorTriage: 'ignored',
 		triagedBy: 'system:platform-interrupt',
+		startedBy: null,
 	})
 
 	const finished = await finish(
@@ -275,6 +276,7 @@ test('late failed subscription finish reopens a system-ignored platform interrup
 		triageNote: null,
 		triagedAt: null,
 		triagedBy: null,
+		startedBy: null,
 	})
 })
 

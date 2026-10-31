@@ -1,4 +1,6 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
+import { type AutomationRouting } from '#worker/execution-contexts/automation-execution.ts'
+import { type AutomationExecutionTarget } from '#worker/execution-contexts/automation-settings.ts'
 import {
 	createPackageInvocationClientDisconnectedError,
 	isCallerDisconnectAbort,
@@ -21,6 +23,7 @@ import {
 import { type SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { isAccountSuspendedError } from '#worker/account/account-suspension.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import {
 	buildPackageInvocationStorageId,
 	resolveInvocationRuntimeName,
@@ -184,26 +187,39 @@ export async function invokeSavedPackageModule(input: {
 	> | null
 	executorTimeoutMs?: number | null
 	signal?: AbortSignal
+	/** Where an automation asked to run (execution contexts). */
+	executionRouting?: AutomationRouting | null
+	/** Declared automation whose execution setting applies. */
+	executionTarget?: AutomationExecutionTarget | null
 }) {
 	// Before the ledger: a suspended owner must neither replay a stored
 	// response nor leave a terminal denial that outlives the suspension.
 	// Other identity failures fall through to module execution, which
-	// reports them as before.
-	const suspension = await resolveBackgroundMcpUser(
+	// reports them as before. Keep a successful identity for started_by.
+	const backgroundIdentity = await resolveBackgroundMcpUser(
 		input.env.APP_DB,
 		input.actor.orgId,
 	).then(
-		() => null,
-		(error: unknown) => (isAccountSuspendedError(error) ? error : null),
+		(user) => ({ ok: true as const, user }),
+		(error: unknown) =>
+			isAccountSuspendedError(error)
+				? { ok: false as const, suspension: error }
+				: { ok: false as const, suspension: null },
 	)
-	if (suspension) {
+	if (!backgroundIdentity.ok && backgroundIdentity.suspension) {
 		return buildJsonErrorResponse({
 			status: 403,
-			code: suspension.code,
-			message: suspension.message,
+			code: backgroundIdentity.suspension.code,
+			message: backgroundIdentity.suspension.message,
 			idempotencyKey: input.idempotencyKey,
 		})
 	}
+	const claimRequest = backgroundIdentity.ok
+		? deriveRequestContext({
+				user: backgroundIdentity.user,
+				source: input.actor.request,
+			})
+		: null
 	const requestHash = await createRequestHash({
 		packageId: input.savedPackage.id,
 		exportName: input.invocationName,
@@ -287,6 +303,7 @@ export async function invokeSavedPackageModule(input: {
 			env: input.env,
 			userId: input.actor.orgId,
 			context: buildRunRecordContext(),
+			request: claimRequest,
 			invocation: {
 				id: crypto.randomUUID(),
 				...ledgerKey,
@@ -520,6 +537,8 @@ export async function invokeSavedPackageModule(input: {
 		executorTimeoutMs: input.executorTimeoutMs,
 		signal: input.signal,
 		externalRunRecordHandle: claimed.handle,
+		executionRouting: input.executionRouting ?? null,
+		executionTarget: input.executionTarget ?? null,
 	})
 	input.signal?.removeEventListener('abort', onCallerDisconnect)
 	if (disconnectFinish) {

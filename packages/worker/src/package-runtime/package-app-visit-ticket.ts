@@ -12,8 +12,15 @@
  * without a live nonce, on another app, commit, or host, or with a forged
  * signature is refused.
  *
- * PR 1 keeps today's authority: a ticket with a visitor means the app still
- * acts as that visitor. Grant id and scope set are reserved for later PRs.
+ * A ticket records the live grant and scopes observed at serve time. Visitor
+ * credential access checks the grant again before each use.
+ *
+ * A request with no acting visitor gets an anonymous ticket (`kva1.`): same
+ * signing, audience, nonce, and lifetime rules, but it names nobody. It only
+ * carries the request's credential-client binding, so handles opened by an
+ * anonymous request work on every bridge and gateway call of that request and
+ * nowhere else. Every identity, storage, and capability path treats it as no
+ * visit.
  */
 import {
 	base64UrlToBytes,
@@ -22,13 +29,19 @@ import {
 } from '@kody-internal/shared/base64.ts'
 import { toHex } from '@kody-internal/shared/hex.ts'
 import {
+	isOrgPermission,
+	type OrgPermission,
+} from '@kody-internal/shared/org-permissions.ts'
+import {
 	ownerIdFromStored,
 	personIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	type OrgRole,
+	type RequestBilling,
 	type RequestContext,
+	type RequestCredential,
 } from '@kody-internal/shared/request-context.ts'
 import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
@@ -42,8 +55,10 @@ export const packageAppVisitTicketTtlMs = 60_000
  */
 export const packageAppVisitLiveHoldMs = 5 * 60_000
 export const packageAppVisitTicketPrefix = 'kvt1.'
+export const packageAppAnonymousVisitTicketPrefix = 'kva1.'
 
 const ticketPurpose = 'kody-package-app-visit@v1'
+const anonymousTicketPurpose = 'kody-package-app-anonymous-visit@v1'
 const signingInfo = new TextEncoder().encode('kody-package-app-visit-ticket-v1')
 const orgRoles: ReadonlyArray<OrgRole> = ['owner', 'member', 'billing']
 
@@ -66,12 +81,46 @@ export type PackageAppVisitClaims = {
 	audience: PackageAppVisitAudience
 	nonce: string
 	credentialClientBinding: string
-	/** Reserved for later consent-grant checks. Unused in this PR. */
+	/** The live Sign in with Kody grant used to mint this request. */
 	grantId: string | null
-	/** Reserved for later consent-grant checks. Unused in this PR. */
+	/** Scopes the visitor granted when this request began. */
 	scopes: ReadonlyArray<string>
+	/**
+	 * The visitor's request credential scopes. Rebuilt requests keep them;
+	 * null does not narrow.
+	 */
+	credentialScopes?: ReadonlyArray<OrgPermission> | null
+	/** The visitor credential's profile (ADR 0092); null is the live mirror. */
+	credentialProfileId?: string | null
+	/** That profile's chain at mint: ids, root first (attribution). */
+	credentialProfileChain?: ReadonlyArray<string> | null
+	/**
+	 * A visitor from outside the owning org: the ticket only opens the
+	 * executor credentials they approved. Every other path treats the request
+	 * as anonymous plus identity.
+	 */
+	executorOnly?: boolean
+	/**
+	 * The visitor's own org pays for this request's metered work (a visit
+	 * from another org to an internal app, ADR 0095). Absent: the owner pays.
+	 */
+	billing?: RequestBilling
 	exp: number
 }
+
+/** A verified anonymous ticket: one request's binding, and nobody. */
+export type PackageAppAnonymousVisitClaims = {
+	visitor: null
+	executorOnly?: undefined
+	audience: PackageAppVisitAudience
+	nonce: string
+	credentialClientBinding: string
+	exp: number
+}
+
+export type PackageAppVerifiedVisit =
+	| PackageAppVisitClaims
+	| PackageAppAnonymousVisitClaims
 
 export type PackageAppRequestVisit = {
 	ticket: string | null
@@ -103,6 +152,25 @@ type StoredVisitTicket = {
 	binding: string
 	grantId: string | null
 	scopes: Array<string>
+	cs?: Array<string> | null
+	cpi?: string | null
+	cpc?: Array<string> | null
+	xo?: true
+	/** Billed org id when it is not the owner (ADR 0095). */
+	bo?: string
+}
+
+type StoredAnonymousVisitTicket = {
+	v: 1
+	anon: true
+	nonce: string
+	exp: number
+	host: string
+	pkg: string
+	kid: string
+	src: string
+	commit: string | null
+	binding: string
 }
 
 const liveNonces = new Map<string, number>()
@@ -176,14 +244,34 @@ function pruneNonceMaps(now: number) {
 	}
 }
 
+const isText = (field: unknown) => typeof field === 'string'
+const isNonEmptyText = (field: unknown) =>
+	typeof field === 'string' && field.trim().length > 0
+const isFiniteNumber = (field: unknown) =>
+	typeof field === 'number' && Number.isFinite(field)
+
+function isStoredAnonymousVisitTicket(
+	value: unknown,
+): value is StoredAnonymousVisitTicket {
+	if (!value || typeof value !== 'object') return false
+	const record = value as Record<string, unknown>
+	return (
+		record.v === 1 &&
+		record.anon === true &&
+		isNonEmptyText(record.nonce) &&
+		isFiniteNumber(record.exp) &&
+		isText(record.host) &&
+		isNonEmptyText(record.pkg) &&
+		isText(record.kid) &&
+		isText(record.src) &&
+		(record.commit === null || isText(record.commit)) &&
+		isNonEmptyText(record.binding)
+	)
+}
+
 function isStoredVisitTicket(value: unknown): value is StoredVisitTicket {
 	if (!value || typeof value !== 'object') return false
 	const record = value as Record<string, unknown>
-	const isText = (field: unknown) => typeof field === 'string'
-	const isNonEmptyText = (field: unknown) =>
-		typeof field === 'string' && field.trim().length > 0
-	const isFiniteNumber = (field: unknown) =>
-		typeof field === 'number' && Number.isFinite(field)
 	return (
 		record.v === 1 &&
 		isNonEmptyText(record.nonce) &&
@@ -203,7 +291,17 @@ function isStoredVisitTicket(value: unknown): value is StoredVisitTicket {
 		isNonEmptyText(record.binding) &&
 		(record.grantId === null || isText(record.grantId)) &&
 		Array.isArray(record.scopes) &&
-		record.scopes.every((scope) => typeof scope === 'string')
+		record.scopes.every((scope) => typeof scope === 'string') &&
+		(record.cs === undefined ||
+			record.cs === null ||
+			(Array.isArray(record.cs) && record.cs.every(isOrgPermission))) &&
+		(record.cp === undefined || record.cp === null || isText(record.cp)) &&
+		(record.cpi === undefined || record.cpi === null || isText(record.cpi)) &&
+		(record.cpc === undefined ||
+			record.cpc === null ||
+			(Array.isArray(record.cpc) && record.cpc.every(isNonEmptyText))) &&
+		(record.xo === undefined || record.xo === true) &&
+		(record.bo === undefined || isNonEmptyText(record.bo))
 	)
 }
 
@@ -231,7 +329,53 @@ function claimsFromStored(stored: StoredVisitTicket): PackageAppVisitClaims {
 		credentialClientBinding: stored.binding,
 		grantId: stored.grantId,
 		scopes: stored.scopes,
+		credentialScopes: (stored.cs as Array<OrgPermission> | undefined) ?? null,
+		credentialProfileId: stored.cpi ?? null,
+		...(stored.cpi && stored.cpc?.at(-1) === stored.cpi
+			? { credentialProfileChain: stored.cpc }
+			: {}),
+		...(stored.xo ? { executorOnly: true } : {}),
+		...(stored.bo ? { billing: { orgId: ownerIdFromStored(stored.bo) } } : {}),
 		exp: stored.exp,
+	}
+}
+
+function anonymousClaimsFromStored(
+	stored: StoredAnonymousVisitTicket,
+): PackageAppAnonymousVisitClaims {
+	return {
+		visitor: null,
+		audience: {
+			host: stored.host,
+			packageId: stored.pkg,
+			kodyId: stored.kid,
+			sourceId: stored.src,
+			publishedCommit: stored.commit,
+		},
+		nonce: stored.nonce,
+		credentialClientBinding: stored.binding,
+		exp: stored.exp,
+	}
+}
+
+async function signTicket(input: {
+	env: Pick<Env, 'SECRET_STORE_KEY'>
+	purpose: string
+	prefix: string
+	stored: StoredVisitTicket | StoredAnonymousVisitTicket
+}) {
+	const payload = utf8ToBase64Url(JSON.stringify(input.stored))
+	const signature = await crypto.subtle.sign(
+		'HMAC',
+		await derivationKey(input.env.SECRET_STORE_KEY),
+		new TextEncoder().encode(`${input.purpose}.${payload}`),
+	)
+	return `${input.prefix}${payload}.${bytesToBase64Url(new Uint8Array(signature))}`
+}
+
+function assertTicketBinding(binding: string) {
+	if (!binding.trim()) {
+		throw new Error('A package app visit needs a credential client binding.')
 	}
 }
 
@@ -340,14 +484,24 @@ export async function mintPackageAppVisitTicket(input: {
 	credentialClientBinding: string
 	grantId?: string | null
 	scopes?: ReadonlyArray<string>
+	credential?: Pick<
+		RequestCredential,
+		'scopes' | 'profileId' | 'profileChain'
+	> | null
+	executorOnly?: boolean
+	billing?: RequestBilling | null
 	nonce?: string
 	now?: number
 }): Promise<{ ticket: string; nonce: string; exp: number }> {
+	assertTicketBinding(input.credentialClientBinding)
 	const now = input.now ?? Date.now()
 	const nonce = input.nonce ?? crypto.randomUUID()
 	const exp = now + packageAppVisitTicketTtlMs
-	const payload = utf8ToBase64Url(
-		JSON.stringify({
+	const ticket = await signTicket({
+		env: input.env,
+		purpose: ticketPurpose,
+		prefix: packageAppVisitTicketPrefix,
+		stored: {
 			v: 1,
 			nonce,
 			exp,
@@ -366,19 +520,57 @@ export async function mintPackageAppVisitTicket(input: {
 			binding: input.credentialClientBinding,
 			grantId: input.grantId ?? null,
 			scopes: [...(input.scopes ?? [])],
-		} satisfies StoredVisitTicket),
-	)
-	const signature = await crypto.subtle.sign(
-		'HMAC',
-		await derivationKey(input.env.SECRET_STORE_KEY),
-		new TextEncoder().encode(`${ticketPurpose}.${payload}`),
-	)
+			cs: input.credential?.scopes ? [...input.credential.scopes] : null,
+			...(input.credential?.profileId
+				? {
+						cpi: input.credential.profileId,
+						...(input.credential.profileChain?.length
+							? { cpc: [...input.credential.profileChain] }
+							: {}),
+					}
+				: {}),
+			...(input.executorOnly ? { xo: true as const } : {}),
+			...(input.billing ? { bo: input.billing.orgId } : {}),
+		},
+	})
 	beginPackageAppVisit(nonce, now)
-	return {
-		ticket: `${packageAppVisitTicketPrefix}${payload}.${bytesToBase64Url(new Uint8Array(signature))}`,
-		nonce,
-		exp,
-	}
+	return { ticket, nonce, exp }
+}
+
+/**
+ * Mint the ticket for a request with no acting visitor. It names nobody and
+ * carries only the request's credential-client binding.
+ */
+export async function mintPackageAppAnonymousVisitTicket(input: {
+	env: Pick<Env, 'SECRET_STORE_KEY'>
+	audience: PackageAppVisitAudience
+	credentialClientBinding: string
+	nonce?: string
+	now?: number
+}): Promise<{ ticket: string; nonce: string; exp: number }> {
+	assertTicketBinding(input.credentialClientBinding)
+	const now = input.now ?? Date.now()
+	const nonce = input.nonce ?? crypto.randomUUID()
+	const exp = now + packageAppVisitTicketTtlMs
+	const ticket = await signTicket({
+		env: input.env,
+		purpose: anonymousTicketPurpose,
+		prefix: packageAppAnonymousVisitTicketPrefix,
+		stored: {
+			v: 1,
+			anon: true,
+			nonce,
+			exp,
+			host: input.audience.host,
+			pkg: input.audience.packageId,
+			kid: input.audience.kodyId,
+			src: input.audience.sourceId,
+			commit: input.audience.publishedCommit,
+			binding: input.credentialClientBinding,
+		},
+	})
+	beginPackageAppVisit(nonce, now)
+	return { ticket, nonce, exp }
 }
 
 export async function verifyPackageAppVisitTicket(input: {
@@ -386,13 +578,18 @@ export async function verifyPackageAppVisitTicket(input: {
 	ticket: string
 	audience: PackageAppVisitAudience
 	now?: number
-}): Promise<PackageAppVisitClaims> {
+}): Promise<PackageAppVerifiedVisit> {
 	const fail = () => new PackageAppVisitTicketError()
 	const ticket = input.ticket.trim()
-	if (!ticket.startsWith(packageAppVisitTicketPrefix)) throw fail()
-	const [payload, signature, extra] = ticket
-		.slice(packageAppVisitTicketPrefix.length)
-		.split('.')
+	const anonymous = ticket.startsWith(packageAppAnonymousVisitTicketPrefix)
+	if (!anonymous && !ticket.startsWith(packageAppVisitTicketPrefix)) {
+		throw fail()
+	}
+	const prefix = anonymous
+		? packageAppAnonymousVisitTicketPrefix
+		: packageAppVisitTicketPrefix
+	const purpose = anonymous ? anonymousTicketPurpose : ticketPurpose
+	const [payload, signature, extra] = ticket.slice(prefix.length).split('.')
 	if (!payload || !signature || extra !== undefined) throw fail()
 	let valid = false
 	try {
@@ -400,7 +597,7 @@ export async function verifyPackageAppVisitTicket(input: {
 			'HMAC',
 			await derivationKey(input.env.SECRET_STORE_KEY),
 			base64UrlToBytes(signature),
-			new TextEncoder().encode(`${ticketPurpose}.${payload}`),
+			new TextEncoder().encode(`${purpose}.${payload}`),
 		)
 	} catch {
 		throw fail()
@@ -412,25 +609,34 @@ export async function verifyPackageAppVisitTicket(input: {
 	} catch {
 		throw fail()
 	}
-	if (!isStoredVisitTicket(parsed)) throw fail()
+	if (
+		anonymous
+			? !isStoredAnonymousVisitTicket(parsed)
+			: !isStoredVisitTicket(parsed)
+	) {
+		throw fail()
+	}
+	const stored = parsed as StoredVisitTicket | StoredAnonymousVisitTicket
 	const now = input.now ?? Date.now()
 	pruneNonceMaps(now)
-	const liveUntil = liveNonces.get(parsed.nonce) ?? 0
+	const liveUntil = liveNonces.get(stored.nonce) ?? 0
 	if (
-		(parsed.exp <= now && liveUntil <= now) ||
-		parsed.exp > now + packageAppVisitTicketTtlMs ||
-		burnedNonces.has(parsed.nonce) ||
+		(stored.exp <= now && liveUntil <= now) ||
+		stored.exp > now + packageAppVisitTicketTtlMs ||
+		burnedNonces.has(stored.nonce) ||
 		!audienceMatches(input.audience, {
-			host: parsed.host,
-			packageId: parsed.pkg,
-			kodyId: parsed.kid,
-			sourceId: parsed.src,
-			publishedCommit: parsed.commit,
+			host: stored.host,
+			packageId: stored.pkg,
+			kodyId: stored.kid,
+			sourceId: stored.src,
+			publishedCommit: stored.commit,
 		})
 	) {
 		throw fail()
 	}
-	return claimsFromStored(parsed)
+	return 'anon' in stored
+		? anonymousClaimsFromStored(stored)
+		: claimsFromStored(stored)
 }
 
 /** Read and verify the platform-set visit ticket on a package-code request. */
@@ -439,7 +645,7 @@ export async function verifyPackageAppVisitTicketFromRequest(input: {
 	request: Request
 	audience: PackageAppVisitAudience
 	now?: number
-}): Promise<PackageAppVisitClaims | null> {
+}): Promise<PackageAppVerifiedVisit | null> {
 	const ticket = input.request.headers.get(packageAppVisitTicketHeaderName)
 	if (!ticket) return null
 	return await verifyPackageAppVisitTicket({
@@ -479,10 +685,18 @@ export function requestContextFromVisitClaims(
 			kind: 'package-app',
 			id: null,
 			orgId: claims.owner.userId,
-			scopes: null,
-			profileName: null,
+			scopes: claims.credentialScopes ?? null,
+			...(claims.credentialProfileId
+				? {
+						profileId: claims.credentialProfileId,
+						...(claims.credentialProfileChain?.length
+							? { profileChain: [...claims.credentialProfileChain] }
+							: {}),
+					}
+				: {}),
 		},
 		membership: claims.visitor.role ? { role: claims.visitor.role } : null,
+		...(claims.billing ? { billing: claims.billing } : {}),
 	}
 }
 
@@ -492,13 +706,61 @@ export async function createPackageAppRequestVisit(input: {
 	owner: PackageAppVisitClaims['owner']
 	audience: PackageAppVisitAudience
 	request: RequestContext | null
+	grantId?: string | null
+	scopes?: ReadonlyArray<string>
+	/**
+	 * An outside-org visitor with a live grant for this app's executor needs.
+	 * Only used when there is no `visitor`: the ticket names them for
+	 * `credential.visitor()` and nothing else.
+	 */
+	executorVisitor?: RuntimePackageAppVisitor | null
 	now?: number
 }): Promise<PackageAppRequestVisit> {
 	const credentialClientBinding = newRunCredentialClientBinding()
-	if (!input.visitor || !input.request?.actor) {
+	if (!input.visitor && input.executorVisitor) {
+		const executorVisitor = { ...input.executorVisitor, role: null }
+		const minted = await mintPackageAppVisitTicket({
+			env: input.env,
+			visitor: executorVisitor,
+			owner: input.owner,
+			audience: input.audience,
+			credentialClientBinding,
+			grantId: input.grantId,
+			scopes: input.scopes,
+			executorOnly: true,
+			now: input.now,
+		})
 		return {
-			ticket: null,
-			nonce: null,
+			ticket: minted.ticket,
+			nonce: minted.nonce,
+			visitor: null,
+			request: null,
+			credentialClientBinding,
+			email: input.owner.email,
+			displayName: input.owner.displayName,
+			claims: {
+				visitor: executorVisitor,
+				owner: input.owner,
+				audience: input.audience,
+				nonce: minted.nonce,
+				credentialClientBinding,
+				grantId: input.grantId ?? null,
+				scopes: [...(input.scopes ?? [])],
+				executorOnly: true,
+				exp: minted.exp,
+			},
+		}
+	}
+	if (!input.visitor || !input.request?.actor) {
+		const minted = await mintPackageAppAnonymousVisitTicket({
+			env: input.env,
+			audience: input.audience,
+			credentialClientBinding,
+			now: input.now,
+		})
+		return {
+			ticket: minted.ticket,
+			nonce: minted.nonce,
 			visitor: null,
 			request: null,
 			credentialClientBinding,
@@ -507,12 +769,17 @@ export async function createPackageAppRequestVisit(input: {
 			claims: null,
 		}
 	}
+	const billing = input.request.billing ?? null
 	const minted = await mintPackageAppVisitTicket({
 		env: input.env,
 		visitor: input.visitor,
 		owner: input.owner,
 		audience: input.audience,
 		credentialClientBinding,
+		grantId: input.grantId,
+		scopes: input.scopes,
+		credential: input.request.credential,
+		billing,
 		now: input.now,
 	})
 	const claims: PackageAppVisitClaims = {
@@ -521,8 +788,12 @@ export async function createPackageAppRequestVisit(input: {
 		audience: input.audience,
 		nonce: minted.nonce,
 		credentialClientBinding,
-		grantId: null,
-		scopes: [],
+		grantId: input.grantId ?? null,
+		scopes: [...(input.scopes ?? [])],
+		credentialScopes: input.request.credential.scopes,
+		credentialProfileId: input.request.credential.profileId ?? null,
+		credentialProfileChain: input.request.credential.profileChain ?? null,
+		...(billing ? { billing } : {}),
 		exp: minted.exp,
 	}
 	return {

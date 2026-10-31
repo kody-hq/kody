@@ -66,9 +66,11 @@ instead of adding a server yourself.
 
 ## Step 2 — Run one ad hoc execute
 
-Use `execute` for a single useful call from their answer. Prefer tools that are
-already on the account: search, memory, a connected MCP server, or a package
-they own.
+Run a single useful call from their answer. When Node ≥22 and the CLI are
+available, use local CLI execute ([Local CLI execute](./local-execute.md)). Do
+not use hosted MCP `execute` when a local or Open API path exists. Prefer tools
+that are already on the account: search, memory, a connected MCP server, or a
+package they own.
 
 Show a short summary of the result. Do not create a package until this call
 works.

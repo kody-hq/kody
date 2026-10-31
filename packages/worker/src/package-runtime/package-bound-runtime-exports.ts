@@ -41,6 +41,9 @@ export const sharedRuntimeExportReasons = {
 	workflows: 'Starts workflows for the run.',
 	packages: 'Run-level package helpers.',
 	events: 'Dispatches events for the run.',
+	hasScope: 'Reads platform-set visitor consent metadata from a request.',
+	hasVisitorCredential:
+		'Reads platform-set visitor consent metadata from a request.',
 } as const
 
 const credentialRuntimeName = '__kodyPackageCredentialRuntime'

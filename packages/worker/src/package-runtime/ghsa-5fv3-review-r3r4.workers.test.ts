@@ -12,6 +12,7 @@ import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
+import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
 import {
 	buildKodyImportableModuleBundle,
 	buildKodyModuleBundle,
@@ -43,6 +44,7 @@ async function runSql(sql: string, ...values: Array<unknown>) {
 async function ensureSecretAuthorityTestSchema() {
 	await ensureEntitlementTestSchema(env.APP_DB)
 	await ensureOrgsTestSchema(env.APP_DB)
+	await ensureUsageRollupsTestSchema(env.APP_DB)
 	await runSql(`CREATE TABLE IF NOT EXISTS entity_sources (
 		id TEXT PRIMARY KEY,
 		user_id TEXT NOT NULL,
@@ -74,6 +76,17 @@ async function ensureSecretAuthorityTestSchema() {
 		created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 		updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
 	)`)
+	await runSql(`CREATE TABLE IF NOT EXISTS package_app_oauth_grants (
+		id TEXT PRIMARY KEY,
+		person_id TEXT NOT NULL,
+		org_username TEXT NOT NULL,
+		kody_id TEXT NOT NULL,
+		scopes TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		revoked_at TEXT,
+		last_used_at TEXT,
+		UNIQUE (person_id, org_username, kody_id)
+	)`)
 	try {
 		await runSql(
 			`ALTER TABLE saved_packages ADD COLUMN is_internet_visible INTEGER NOT NULL DEFAULT 0`,
@@ -97,7 +110,7 @@ async function ensureSecretAuthorityTestSchema() {
 	await ensureSecretBucketsTestSchema(env.APP_DB)
 	await runSql(`CREATE TABLE IF NOT EXISTS community_forks (
 		id TEXT PRIMARY KEY NOT NULL,
-		listing_id TEXT NOT NULL,
+		listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
 		forker_user_id TEXT NOT NULL,
 		origin_commit TEXT NOT NULL,
 		forked_package_id TEXT NOT NULL,

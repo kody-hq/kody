@@ -14,7 +14,7 @@ const pageQuery = createPageQuery('loadCommunity', loadCommunity)
 
 export const Route = createFileRoute('/community')({
 	staticData: {
-		filterSearchKeys: ['q', 'sort', 'category', 'limit'],
+		filterSearchKeys: ['q', 'sort', 'category', 'limit', 'org'],
 		anonymousDocumentCache: 'marketing',
 		shell: { gutters: 'page' },
 	},

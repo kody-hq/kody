@@ -113,11 +113,6 @@ export async function loadPackageMocks(
 	}
 }
 
-/** Write a tiny helper so tests can assert the relative path without importing fs. */
-export function packageMocksPathFor(packageRoot: string): string {
-	return join(packageRoot, packageMocksRelativePath)
-}
-
 function bundleFailedError(path: string, error: unknown): StructuredCliError {
 	const formatted = formatEsbuildErrors(path, error)
 	return new StructuredCliError({

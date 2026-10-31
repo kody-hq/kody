@@ -12,6 +12,7 @@ const mockModule = vi.hoisted(() => ({
 	getEntitySourceByIdForUser: vi.fn(),
 	resolveArtifactSourceHead: vi.fn(),
 	publishFromExternalRef: vi.fn(),
+	takeLastCheckStep: vi.fn(async (): Promise<unknown> => null),
 	listPublishedPackageArtifactTargets: vi.fn(),
 	rebuildPublishedPackageArtifact: vi.fn(),
 	isPublishedPackageArtifactBuiltForCommit: vi.fn(),
@@ -51,6 +52,7 @@ vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
 			mockModule.listPublishedPackageArtifactTargets(...args),
 		rebuildPublishedPackageArtifact: (...args: Array<unknown>) =>
 			mockModule.rebuildPublishedPackageArtifact(...args),
+		takeLastCheckStep: () => mockModule.takeLastCheckStep(),
 	}),
 }))
 
@@ -749,7 +751,7 @@ test('publishExternalPush recovers from transient Durable Object resets', async 
 	setupDefaultMocks()
 	mockModule.publishFromExternalRef
 		.mockRejectedValueOnce(
-			new Error('Durable Object exceeded its CPU time limit and was reset'),
+			new Error('Durable Object reset because its code was updated.'),
 		)
 		.mockResolvedValueOnce(publishedResult())
 
@@ -771,9 +773,7 @@ test('publishExternalPush recovers from transient Durable Object resets', async 
 	)
 	mockModule.publishFromExternalRef
 		.mockRejectedValueOnce(
-			new Error(
-				"Durable Object's isolate exceeded its memory limit and was reset",
-			),
+			new Error('Durable Object reset because its code was updated.'),
 		)
 		.mockResolvedValueOnce({
 			status: 'already_published',
@@ -796,7 +796,7 @@ test('publishExternalPush recovers from transient Durable Object resets', async 
 	setupDefaultMocks()
 	consoleWarn.mockClear()
 	mockModule.publishFromExternalRef.mockRejectedValue(
-		new Error('Durable Object exceeded its CPU time limit and was reset'),
+		new Error('Durable Object reset because its code was updated.'),
 	)
 	await expect(publish()).rejects.toThrow(
 		/could not recover after 3 transient Durable Object reset attempts/,
@@ -804,12 +804,49 @@ test('publishExternalPush recovers from transient Durable Object resets', async 
 	expect(mockModule.publishFromExternalRef).toHaveBeenCalledTimes(3)
 	expect(consoleWarn).toHaveBeenCalledTimes(3)
 
+	const { McpCallerError } = await import('#mcp/caller-error.ts')
+	// A tree near the memory/CPU limit fails most attempts: fail fast with an
+	// actionable caller error instead of burning ~35s of retries.
+	for (const message of [
+		"Durable Object's isolate exceeded its memory limit and was reset",
+		'Durable Object exceeded its CPU time limit and was reset',
+	]) {
+		setupDefaultMocks()
+		consoleWarn.mockClear()
+		mockModule.publishFromExternalRef.mockRejectedValue(new Error(message))
+		await expect(publish()).rejects.toSatisfy((error: unknown) => {
+			expect(error).toBeInstanceOf(McpCallerError)
+			expect((error as Error).message).toContain(
+				'stopped instead of retrying the same limit',
+			)
+			return true
+		})
+		expect(mockModule.publishFromExternalRef).toHaveBeenCalledTimes(1)
+		expect(consoleWarn).not.toHaveBeenCalled()
+	}
+
+	// The reset isolate recorded which step it was on; the error names it.
+	setupDefaultMocks()
+	mockModule.publishFromExternalRef.mockRejectedValue(
+		new Error(
+			"Durable Object's isolate exceeded its memory limit and was reset",
+		),
+	)
+	mockModule.takeLastCheckStep.mockResolvedValueOnce('credentials')
+	await expect(publish()).rejects.toSatisfy((error: unknown) => {
+		expect(error).toBeInstanceOf(McpCallerError)
+		const message = (error as Error).message
+		expect(message).toContain('during the credential stamp scan')
+		expect(message).toContain('kody dev check')
+		return true
+	})
+
 	// Deploy-time DO resets use "Durable Object reset because…" (no "was").
 	// The old substring matcher missed that form and skipped retries entirely.
 	for (const [message, cause] of [
 		[
 			'rebuild target failed',
-			'Durable Object exceeded its CPU time limit and was reset.',
+			'Durable Object storage operation exceeded timeout which caused object to be reset.',
 		],
 		[
 			'Package source publish succeeded, but bundle artifact rebuild failed.',

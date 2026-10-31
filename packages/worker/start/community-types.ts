@@ -15,6 +15,8 @@ export type CommunityDetailApiPayload = {
 	viewerIsOwner: boolean
 	viewerCanManage: boolean
 	viewerCanManageAccess?: boolean
+	/** Manage on a package with an app: shows the Connected people tab. */
+	viewerCanSeeConnectedPeople?: boolean
 	viewerCanPublish?: boolean
 	viewerCanDelete?: boolean
 	viewerCanAdoptCommunityFork?: boolean

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { orgProfileVisibilitySchema } from '#worker/orgs/org-profile-visibility-schema.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -50,6 +51,7 @@ export const orgCreateCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'orgCreate',
+		contextRuns: 'deny',
 		orgPermission: 'org:write',
 		description:
 			'Create an organization you own. The slug becomes the permanent handle (kody.codes/@<slug>) and cannot be changed later; only the display name can. The id is new and separate from your personal organization. Calls that change the new organization need a request bound to it.',
@@ -65,12 +67,18 @@ export const orgCreateCapability = defineDomainCapability(
 					'Public handle for the organization, lowercased. Permanent: it cannot be changed after creation, so pick it deliberately. The org lives at kody.codes/@<slug>.',
 				),
 			display_name: z.string().min(1).optional(),
+			profile_visibility: orgProfileVisibilitySchema
+				.optional()
+				.describe(
+					'Who can see kody.codes/@<slug>: public (default) shows the name, photo, bio, and public packages to everyone; private shows it only to members. Members are never listed. Change it later with orgUpdate.',
+				),
 		}),
 		outputSchema: z.object({
 			org: z.object({
 				id: z.string(),
 				slug: z.string(),
 				display_name: z.string(),
+				profile_visibility: orgProfileVisibilitySchema,
 			}),
 		}),
 		async handler(args, ctx) {
@@ -84,6 +92,7 @@ export const orgCreateCapability = defineDomainCapability(
 					env: ctx.env,
 					slug: args.slug,
 					displayName: args.display_name,
+					profileVisibility: args.profile_visibility,
 					createdByUserId: user.userId,
 					audit: orgAuditWriterFromRequest(ctx.env, request),
 				})
@@ -93,6 +102,7 @@ export const orgCreateCapability = defineDomainCapability(
 						id: org.id,
 						slug: org.slug,
 						display_name: org.display_name ?? org.slug,
+						profile_visibility: created.profileVisibility,
 					},
 				}
 			} catch (error) {
@@ -106,6 +116,7 @@ export const orgMemberListCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'orgMemberList',
+		contextRuns: 'allow',
 		orgPermission: 'member:read',
 		description:
 			'List live members of the organization this request is bound to, with username, display name, and role.',
@@ -154,6 +165,7 @@ export const orgMemberUpdateCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'orgMemberUpdate',
+		contextRuns: 'deny',
 		orgPermission: 'member:write',
 		requiresLivePerson: true,
 		description:
@@ -235,6 +247,7 @@ export const orgMemberRemoveCapability = defineDomainCapability(
 	capabilityDomainNames.access,
 	{
 		name: 'orgMemberRemove',
+		contextRuns: 'deny',
 		orgPermission: 'member:delete',
 		requiresLivePerson: true,
 		description:

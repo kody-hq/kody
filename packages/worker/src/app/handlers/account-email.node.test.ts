@@ -6,9 +6,11 @@ import { type resolveEntitlementLimit } from '#universal/plans.ts'
 import type * as ownerEmailReader from '#worker/email/owner-email-reader.ts'
 import type * as EmailPlatformAddress from '#worker/email/platform-address.ts'
 import type * as emailRepo from '#worker/email/repo.ts'
+import type * as senderRules from '#worker/email/sender-rules.ts'
 import type * as emailService from '#worker/email/service.ts'
 import { type EmailMessageRecord } from '#worker/email/types.ts'
 import type * as EntitlementService from '#worker/entitlements/service.ts'
+import { logAuditEventSpy } from '#worker/test-support/audit-log-spy.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
@@ -40,6 +42,7 @@ const messageRecord: EmailMessageRecord = {
 	processingStatus: 'stored' as const,
 	classification: 'accepted' as const,
 	classificationReason: null,
+	archivedAt: null,
 	providerMessageId: null,
 	deliveryStatus: null,
 	deliveryStatusAt: null,
@@ -191,6 +194,18 @@ const mockModule = await vi.hoisted(async () => {
 		deleteEmailMessage: vi.fn<typeof emailService.deleteEmailMessage>(
 			async () => true,
 		),
+		upsertEmailSenderRule: vi.fn<typeof senderRules.upsertEmailSenderRule>(
+			async (input) => ({
+				id: 'rule-1',
+				userId: input.userId,
+				kind: input.kind,
+				value: input.value,
+				effect: input.effect,
+				note: input.note ?? '',
+				createdAt: new Date(0).toISOString(),
+				updatedAt: new Date(0).toISOString(),
+			}),
+		),
 		// Unverified personal inboxes ask whether the org is a users row.
 		// A hit keeps the verification shell; this file's viewer is personal.
 		prepare: vi.fn((_query: string) => ({
@@ -276,6 +291,7 @@ vi.mock('#worker/email/repo.ts', () => ({
 	listEmailInboxAddressesForUser: (
 		...args: Parameters<typeof emailRepo.listEmailInboxAddressesForUser>
 	) => mockModule.listEmailInboxAddressesForUser(...args),
+	getEmailInboxById: async () => null,
 }))
 
 vi.mock('#worker/email/inbound-sender.ts', () => ({
@@ -300,6 +316,13 @@ vi.mock('#worker/email/owner-email-reader.ts', () => ({
 	listOwnerEmailDeliveryEvents: (
 		...args: Parameters<typeof ownerEmailReader.listOwnerEmailDeliveryEvents>
 	) => mockModule.listOwnerEmailDeliveryEvents(...args),
+}))
+
+vi.mock('#worker/email/sender-rules.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof senderRules>()),
+	upsertEmailSenderRule: (
+		...args: Parameters<typeof senderRules.upsertEmailSenderRule>
+	) => mockModule.upsertEmailSenderRule(...args),
 }))
 
 vi.mock('#worker/email/service.ts', () => ({
@@ -431,7 +454,7 @@ test('email API lists messages with pagination, UserMeter usage, and owner-scope
 		pageSize: 25,
 		total: 1,
 		query: '',
-		classification: null,
+		view: 'inbox',
 	})
 
 	const selectedResponse = await get(
@@ -451,7 +474,7 @@ test('email API lists messages with pagination, UserMeter usage, and owner-scope
 		page: 2,
 		pageSize: 10,
 		query: 'Hello',
-		classification: null,
+		view: 'inbox',
 		selectedMessage: expect.objectContaining({
 			id: 'msg-1',
 			text_body: 'Plain text body',
@@ -500,6 +523,9 @@ test('email API lists classification filters and classifies inbound messages', a
 		'?classification=quarantined&selected=msg-quarantined',
 	)
 	expect(listResponse.status).toBe(200)
+	expect(mockModule.listOwnerEmailMessagesPage).toHaveBeenLastCalledWith(
+		expect.objectContaining({ view: 'quarantined' }),
+	)
 	const quarantinedFields = {
 		id: 'msg-quarantined',
 		classification: 'quarantined',
@@ -507,7 +533,7 @@ test('email API lists classification filters and classifies inbound messages', a
 	}
 	expect(listResponse.data).toMatchObject({
 		ok: true,
-		classification: 'quarantined',
+		view: 'quarantined',
 		messages: [expect.objectContaining(quarantinedFields)],
 		selectedMessage: expect.objectContaining(quarantinedFields),
 	})
@@ -546,9 +572,116 @@ test('email API lists classification filters and classifies inbound messages', a
 		classifyCall('accepted', null),
 	)
 
+	const spamResponse = await classify('spam')
+	expect(spamResponse.status).toBe(200)
+	expect(mockModule.setEmailMessageClassification).toHaveBeenLastCalledWith(
+		classifyCall('spam', 'Marked as spam.'),
+	)
+	expect(logAuditEventSpy).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			category: 'account',
+			action: 'emailMessageClassify',
+			result: 'success',
+			path: '/account/email',
+			reason: 'target_message_id=msg-1;classification=spam',
+		}),
+	)
+
 	mockModule.setEmailMessageClassification.mockResolvedValueOnce(false)
 	expect((await classify('quarantined', 'missing')).status).toBe(404)
+	expect(logAuditEventSpy).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			action: 'emailMessageClassify',
+			result: 'failure',
+			reason: 'target_message_id=missing;classification=quarantined;not_found',
+		}),
+	)
+	expect((await classify('junk')).status).toBe(400)
 	expect((await post({ action: 'unknown' })).status).toBe(400)
+})
+
+test('email API archives and unarchives without touching classification', async () => {
+	const env = createEnv()
+	const { post } = createEmailClient(env)
+	const archive = (archived: boolean) =>
+		post({ action: 'classify', message_id: 'msg-1', archived })
+
+	const archived = await archive(true)
+	expect(archived.status).toBe(200)
+	expect(archived.data).toEqual({
+		ok: true,
+		messageId: 'msg-1',
+		archived: true,
+	})
+	const call = mockModule.setEmailMessageClassification.mock.lastCall?.[0]
+	expect(call).toMatchObject({ messageId: 'msg-1', archived: true })
+	expect(call).not.toHaveProperty('classification')
+	expect(call).not.toHaveProperty('classificationReason')
+	expect(logAuditEventSpy).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			action: 'emailMessageClassify',
+			reason: 'target_message_id=msg-1;archived=true',
+		}),
+	)
+
+	expect((await archive(false)).data).toEqual({
+		ok: true,
+		messageId: 'msg-1',
+		archived: false,
+	})
+	expect(mockModule.setEmailMessageClassification).toHaveBeenLastCalledWith(
+		expect.objectContaining({ archived: false }),
+	)
+	expect((await post({ action: 'classify', message_id: 'msg-1' })).status).toBe(
+		400,
+	)
+})
+
+test('block sender is explicit, derives the address from the stored message, and is audited', async () => {
+	const env = createEnv()
+	const { post } = createEmailClient(env)
+	mockModule.getOwnerEmailMessageById.mockResolvedValueOnce({
+		...messageRecord,
+		fromAddress: 'Spammer <Spam@Example.com>',
+		classification: 'spam',
+	})
+	const response = await post({ action: 'block_sender', message_id: 'msg-1' })
+	expect(response.status).toBe(200)
+	expect(mockModule.upsertEmailSenderRule).toHaveBeenCalledWith(
+		expect.objectContaining({
+			userId: ownerIdFromStored('stable-user-1'),
+			kind: 'address',
+			value: 'spam@example.com',
+			effect: 'block',
+		}),
+	)
+	expect(response.data).toEqual({
+		ok: true,
+		messageId: 'msg-1',
+		rule: { id: 'rule-1', kind: 'address', value: 'spam@example.com' },
+	})
+	expect(logAuditEventSpy).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			category: 'account',
+			action: 'emailSenderRuleSet',
+			result: 'success',
+			reason: expect.stringContaining('target_message_id=msg-1'),
+		}),
+	)
+
+	mockModule.upsertEmailSenderRule.mockClear()
+	mockModule.getOwnerEmailMessageById.mockResolvedValueOnce(null as never)
+	expect(
+		(await post({ action: 'block_sender', message_id: 'missing' })).status,
+	).toBe(404)
+	mockModule.getOwnerEmailMessageById.mockResolvedValueOnce({
+		...messageRecord,
+		direction: 'outbound',
+	})
+	expect(
+		(await post({ action: 'block_sender', message_id: 'msg-1' })).status,
+	).toBe(400)
+	expect(mockModule.upsertEmailSenderRule).not.toHaveBeenCalled()
 })
 
 test('email deletion succeeds without reading the list or usage again', async () => {
@@ -604,7 +737,7 @@ test('email API gates unverified accounts and skips mailbox queries', async () =
 		selectedMessage: null,
 		usage: null,
 		total: 0,
-		classification: null,
+		view: 'inbox',
 	})
 })
 
@@ -630,7 +763,8 @@ test('accepted email writes do not depend on an available page read', async () =
 			(await post({ action: 'delete', message_id: 'msg-1' })).data,
 		).toEqual({ ok: true, messageId: 'msg-1' })
 		expect(read).not.toHaveBeenCalled()
-		expect(mockModule.getOwnerEmailMessageById).not.toHaveBeenCalled()
+		// Each write reads only its own message, to check that message's inbox.
+		expect(mockModule.getOwnerEmailMessageById).toHaveBeenCalledTimes(2)
 	} finally {
 		read.mockImplementation(original)
 	}

@@ -58,7 +58,7 @@ function createKodyProxyForTest(
 		'runtimeBridge',
 		'mcpServerNamesOrLoader',
 		'identity',
-		`function __kodyCurrentVisitTicket() { return null; }\n${identityOnlyAnswerSource}\n${kodyProxySource}; return createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity);`,
+		`function __kodyCurrentVisitTicket() { return null; }\nfunction __kodyTicketNamesVisitor() { return false; }\n${identityOnlyAnswerSource}\n${kodyProxySource}; return createKodyProxy(runtimeBridge, mcpServerNamesOrLoader, identity);`,
 	)(runtimeBridge, mcpServerNames, identity) as Record<string, unknown>
 }
 
@@ -314,6 +314,45 @@ test('package app kody.mcp loads server names lazily on first mcp touch', async 
 	expect(advertised).toBeTypeOf('object')
 	await expect(advertised.set_pin({ pin: '2' })).resolves.toEqual({ ok: true })
 	expect(loadCount).toBe(1)
+})
+
+test('package app owned limit and spend helpers use the runtime bridge', async () => {
+	const runtimeBridge = {
+		appRateLimit: vi.fn(async () => ({
+			allowed: false,
+			retryAfterSeconds: 12,
+		})),
+		appSpendGet: vi.fn(async () => ({
+			month: '2026-05',
+			creditsMicroUsd: 2000,
+			days: [],
+		})),
+		callCapability: vi.fn(async () => ({ unexpected: true })),
+	}
+	const proxy = createKodyProxyForTest(runtimeBridge) as Record<
+		string,
+		(args?: unknown) => Promise<unknown>
+	>
+
+	await expect(
+		proxy.appRateLimit!({
+			key: 'task',
+			limit: 1,
+			windowSeconds: 60,
+		}),
+	).resolves.toEqual({ allowed: false, retryAfterSeconds: 12 })
+	await expect(proxy.appSpendGet!({})).resolves.toEqual({
+		month: '2026-05',
+		creditsMicroUsd: 2000,
+		days: [],
+	})
+	expect(runtimeBridge.appRateLimit).toHaveBeenCalledWith({
+		key: 'task',
+		limit: 1,
+		windowSeconds: 60,
+	})
+	expect(runtimeBridge.appSpendGet).toHaveBeenCalledWith()
+	expect(runtimeBridge.callCapability).not.toHaveBeenCalled()
 })
 
 test('package app workflows proxy validates input and forwards to the runtime bridge', async () => {
@@ -598,8 +637,9 @@ function createPackageAppTestEnv() {
 		load: vi.fn(() => ({ getEntrypoint })),
 		get: vi.fn(() => ({ getEntrypoint })),
 	}
+	const all = async () => ({ results: [] })
 	const appDb = {
-		prepare: () => ({ bind: () => ({ first: async () => null }) }),
+		prepare: () => ({ bind: () => ({ first: async () => null, all }) }),
 	}
 	const bundleArtifactsKv = { get: async () => null }
 	return {
@@ -683,7 +723,6 @@ function appVisitorRequest(key: string) {
 			id: null,
 			orgId: id,
 			scopes: null,
-			profileName: null,
 		},
 		membership: { role: 'owner' },
 	}
@@ -829,6 +868,13 @@ test('buildPackageAppWorker serves an artifactName-null artifact hit and reuses 
 	expect(packageAppHostSource).toContain(
 		'__kodyRunWithPackageBindingsFn = runtimeModule.__kodyRunWithPackageBindings',
 	)
+	expect(packageAppHostSource).toContain(
+		'__kodyScrubPackageAppSetCookieDomains',
+	)
+	expect(packageAppHostSource).toContain(
+		'package-app-set-cookie-domain-stripped',
+	)
+	expect(packageAppHostSource).toContain('package-app-set-cookie-name-dropped')
 	expect(packageAppHostSource).not.toContain('getSecretAuthority')
 	expect(packageAppHostSource).not.toMatch(
 		/headers\.set\([^)]*x-kody-secret-authority/,
@@ -1079,6 +1125,7 @@ test('package app worker exposes its public mount and records fetch query and re
 
 	expect(loaderWorkerOptions(loader)?.env['__kodyPackageContext']).toEqual({
 		packageId: 'package-public-context',
+		cookiePrefix: '__kapp_1358a8c63e1c_',
 		kodyId: 'renamed-app',
 		sourceId: 'source-1',
 		publishedCommit: 'commit-1',
@@ -1556,8 +1603,9 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	await expect(
 		bridge.packageStorageGet({ packageId: 'package-1', key: 'count' }),
 	).resolves.toEqual({ value: 'granted-value' })
+	const rc = (id: string, visitor?: string) => [id, visitor, undefined]
 	expect(getStorageRunner).toHaveBeenCalledWith(
-		buildPackageStorageId('package-1'),
+		...rc(buildPackageStorageId('package-1')),
 	)
 	expect(getValue).toHaveBeenCalledWith({ key: 'count' })
 
@@ -1582,7 +1630,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 		}),
 	).resolves.toEqual({ ok: true })
 	expect(getStorageRunner).toHaveBeenCalledWith(
-		buildPackageStorageId('dep-package'),
+		...rc(buildPackageStorageId('dep-package'), ''),
 	)
 	expect(setValue).toHaveBeenCalledWith({ key: 'flag', value: true })
 	// The bound binding cannot be pointed at another granted bucket either.
@@ -1628,8 +1676,10 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 			value: 1,
 		}),
 	).resolves.toEqual({ ok: true })
-	expect(getStorageRunner).toHaveBeenCalledWith('package-1:facet:main')
-	expect(getStorageRunner).toHaveBeenCalledWith('package-1:Counter:instance-a')
+	expect(getStorageRunner).toHaveBeenCalledWith(...rc('package-1:facet:main'))
+	expect(getStorageRunner).toHaveBeenCalledWith(
+		...rc('package-1:Counter:instance-a'),
+	)
 
 	const outsideNamespaceError =
 		/outside this app's namespace[\s\S]*packageStorage\(\)/
@@ -1724,6 +1774,7 @@ test("buildPackageAppWorker never reuses one visitor's request context or creden
 		actorId: string,
 		role: 'owner' | 'member',
 		orgSlug: string = key,
+		billedOrgId?: string,
 	) =>
 		makeBuildInput(env, key, {
 			runtime: {
@@ -1742,9 +1793,9 @@ test("buildPackageAppWorker never reuses one visitor's request context or creden
 							id: null,
 							orgId,
 							scopes: null,
-							profileName: null,
 						},
-						membership: { role },
+						membership: billedOrgId ? null : { role },
+						...(billedOrgId ? { billing: { orgId: billedOrgId } } : {}),
 					},
 				},
 			} as never,
@@ -1776,14 +1827,13 @@ test("buildPackageAppWorker never reuses one visitor's request context or creden
 	await serve(visit('person-a', 'member'))
 	await serve(visit('person-a', 'owner', 'renamed-org'))
 	await serve(visit('person-a', 'owner'))
-
-	const [first, other, demoted, renamed, again] = loads
+	await serve(visit('person-c', 'member', key, 'org-visitor-c'))
+	const [first, other, demoted, renamed, again, crossOrg] = loads
+	expect(crossOrg!.bridge.props.gatewayProps).toMatchObject({
+		request: { billing: { orgId: 'org-visitor-c' } },
+	})
 	// Every visitor of this app and mount shares the isolate.
 	expect(new Set(loads.map((load) => load.id)).size).toBe(1)
-	expect(again!.id).toBe(first!.id)
-	expect(other!.id).toBe(first!.id)
-	expect(demoted!.id).toBe(first!.id)
-	expect(renamed!.id).toBe(first!.id)
 	// Per-request authority never copies another visitor's identity or binding.
 	for (const load of [other!, demoted!, renamed!, again!]) {
 		expect(load.bridge.props.credentialClientBinding).not.toBe(

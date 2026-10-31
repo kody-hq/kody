@@ -259,7 +259,6 @@ export function resolveInvocationRuntimeName(input: {
 		case 'app_fetch':
 		case 'app_realtime':
 		case 'job':
-		case 'retriever':
 		case 'webhook':
 			return input.invocationName
 		default: {

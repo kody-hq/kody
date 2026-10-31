@@ -91,6 +91,16 @@ const { jobListCapability } = await import('#mcp/capabilities/jobs/job-list.ts')
 const { jobGetCapability } = await import('#mcp/capabilities/jobs/job-get.ts')
 const { runListCapability } = await import('#mcp/capabilities/runs/run-list.ts')
 const { runGetCapability } = await import('#mcp/capabilities/runs/run-get.ts')
+const { runSummaryCapability } =
+	await import('#mcp/capabilities/runs/run-summary.ts')
+const { runUpdateCapability } =
+	await import('#mcp/capabilities/runs/run-update.ts')
+const { runUpdateBulkCapability } =
+	await import('#mcp/capabilities/runs/run-update-bulk.ts')
+const { jobUpdateCapability } =
+	await import('#mcp/capabilities/jobs/job-update.ts')
+const { jobRunNowCapability } =
+	await import('#mcp/capabilities/jobs/job-run-now.ts')
 const { integrationListCapability } =
 	await import('#mcp/capabilities/integrations/integration-list.ts')
 const { integrationGetCapability } =
@@ -119,7 +129,7 @@ async function seedGrant(input: {
 	db: D1Database
 	orgId: string
 	subjectId: string
-	resourceType: OrgGrantResourceType
+	resourceType: OrgGrantResourceType | 'org'
 	resourceId: string
 	permissions: Array<string>
 }) {
@@ -197,7 +207,10 @@ async function setup() {
 		permissions: ['secret:use', 'secret:write', 'secret:delete'],
 	})
 	const env = { APP_DB: db, AUDIT_DB: createAuditTestDb() } as unknown as Env
-	function contextFor(input: { userId: string; role: 'owner' | null }) {
+	function contextFor(input: {
+		userId: string
+		role: 'owner' | 'member' | null
+	}) {
 		return {
 			env,
 			callerContext: createMcpCallerContext({
@@ -216,6 +229,9 @@ async function setup() {
 		}
 	}
 	return {
+		db,
+		ownerId,
+		contextFor,
 		owner: contextFor({ userId: ownerId, role: 'owner' }),
 		collaborator: contextFor({ userId: collaboratorId, role: null }),
 	}
@@ -419,6 +435,88 @@ test('run history needs org-wide job:read unless scoped to a granted job', async
 	await expect(
 		runGetCapability.handler({ run_id: 'run-1' }, collaborator),
 	).rejects.toBeInstanceOf(AuthorizationError)
+})
+
+test('an org grant with job:read lets a Member read run history org-wide, never write', async () => {
+	const { db, ownerId, contextFor } = await setup()
+	const memberId = testStableUserIdFromEmail('member@example.com')
+	const member = contextFor({ userId: memberId, role: 'member' })
+	mocks.listRunRecords.mockResolvedValue({ runs: [], nextCursor: null })
+
+	// Without the grant a Member is refused org-wide run history.
+	await expect(runListCapability.handler({}, member)).rejects.toThrow(
+		'Missing job:read. An org Owner can grant it org-wide on the Grants page or with accessGrant resource_type org.',
+	)
+
+	await seedGrant({
+		db,
+		orgId: ownerId,
+		subjectId: memberId,
+		resourceType: 'org',
+		resourceId: ownerId,
+		permissions: ['job:read'],
+	})
+	await db
+		.prepare(`UPDATE orgs SET access_epoch = access_epoch + 1 WHERE id = ?`)
+		.bind(ownerId)
+		.run()
+	const reader = contextFor({ userId: memberId, role: 'member' })
+
+	await runListCapability.handler({}, reader)
+	expect(mocks.listRunRecords).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			userId: ownerIdFromStored(ownerId),
+			filter: expect.objectContaining({ jobId: null }),
+		}),
+	)
+	await runListCapability.handler({ job_id: otherJobId }, reader)
+	mocks.getRunRecord.mockResolvedValue({
+		run: { id: 'run-1', jobId: otherJobId },
+		logs: [],
+	})
+	// Past authorization, these fail only on the mocked run row shape.
+	for (const call of [
+		runGetCapability.handler({ run_id: 'run-1' }, reader),
+		runSummaryCapability.handler({}, reader),
+	]) {
+		const error = await call.then(
+			() => null,
+			(caught: unknown) => caught,
+		)
+		expect(error).not.toBeInstanceOf(AuthorizationError)
+	}
+
+	mocks.inspectJobsForUser.mockResolvedValue({
+		jobs: [job(grantedJobId), job(otherJobId)],
+		alarm,
+	})
+	mocks.getJobInspection.mockImplementation(
+		async (input: { jobId: string }) => ({ job: job(input.jobId), alarm }),
+	)
+	const listed = await jobListCapability.handler({}, reader)
+	expect(listed.jobs.map((entry) => entry.id)).toEqual([
+		grantedJobId,
+		otherJobId,
+	])
+	const got = await jobGetCapability.handler({ id: otherJobId }, reader)
+	expect(got.job.id).toBe(otherJobId)
+
+	// Read-only: triage, edits, and runs still need their own permissions.
+	await expect(
+		runUpdateCapability.handler({ run_id: 'run-1', triage: 'ignored' }, reader),
+	).rejects.toThrow(/Missing job:write/)
+	await expect(
+		runUpdateBulkCapability.handler(
+			{ run_ids: ['run-1'], triage: 'resolved' },
+			reader,
+		),
+	).rejects.toThrow(/Missing job:write/)
+	await expect(
+		jobUpdateCapability.handler({ id: otherJobId, name: 'Renamed' }, reader),
+	).rejects.toThrow(/Missing job:write/)
+	await expect(
+		jobRunNowCapability.handler({ id: otherJobId }, reader),
+	).rejects.toThrow(/Missing job:execute/)
 })
 
 test('integration list, get, and delete honor per-integration grants', async () => {

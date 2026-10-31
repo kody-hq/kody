@@ -1,7 +1,7 @@
 /**
  * The package Collaborators tab (`/@owner/<kody-id>/collaborators`): who holds
  * a grant on one package and which teams and org members a manager can still
- * add. Changes go through `packageCollaboratorSet` / `packageCollaboratorRemove`,
+ * add, plus "Everyone in this organization" (a live org-membership subject). Changes go through `packageCollaboratorSet` / `packageCollaboratorRemove`,
  * which only add teams and members of the owning org. A personal org has no
  * members, so there the tab invites people instead, through `inviteCreate`
  * (`kind: "grant"`) and `inviteRevoke`.
@@ -14,6 +14,57 @@ import { routes } from '#universal/routes.ts'
 
 export const packageCollaboratorPresets = grantPresets
 
+/** Package permissions a collaborator grant may carry (the API's list). */
+export const packageCollaboratorPermissions = [
+	'package:read',
+	'package:execute',
+	'package:write',
+	'package:publish',
+	'package:delete',
+	'package:manage_access',
+] as const
+
+export type PackageCollaboratorPermission =
+	(typeof packageCollaboratorPermissions)[number]
+
+/** Plain labels for the advanced checklist; the UI never shows the raw ids. */
+export const packageCollaboratorPermissionOptions: ReadonlyArray<{
+	permission: PackageCollaboratorPermission
+	label: string
+	description: string
+}> = [
+	{
+		permission: 'package:read',
+		label: 'Read the source',
+		description: 'Open, clone, and fork the source.',
+	},
+	{
+		permission: 'package:execute',
+		label: 'Run the package',
+		description: 'Runs count toward your usage.',
+	},
+	{
+		permission: 'package:write',
+		label: 'Change the source',
+		description: 'Push changes from their own Kody.',
+	},
+	{
+		permission: 'package:publish',
+		label: 'Publish',
+		description: 'Make their changes live.',
+	},
+	{
+		permission: 'package:delete',
+		label: 'Delete',
+		description: 'Delete this package.',
+	},
+	{
+		permission: 'package:manage_access',
+		label: 'Manage access',
+		description: 'Choose who else has access.',
+	},
+]
+
 export type PackageCollaboratorPreset = GrantPreset
 
 export function isPackageCollaboratorPreset(
@@ -23,25 +74,40 @@ export function isPackageCollaboratorPreset(
 }
 
 /**
- * `team`: a team in the owning org. `member`: a person with a live
+ * `org`: everyone in the owning org, resolved live against membership (current
+ * and future members; someone who leaves loses it at once). `team`: a team in
+ * the owning org. `member`: a person with a live
  * membership in the owning org. `outside`: a person who holds this grant but
  * is not a member (granted elsewhere); the tab can remove them but not change
  * their access.
  */
-export type PackageCollaboratorKind = 'team' | 'member' | 'outside'
+export type PackageCollaboratorKind =
+	| 'org'
+	| 'team'
+	| 'member'
+	| 'outside'
+	| 'profile'
 
 export type PackageCollaboratorView = {
 	grantId: string
-	subjectType: 'user' | 'team'
+	subjectType: PackageCollaboratorSubjectType
 	subjectId: string
 	kind: PackageCollaboratorKind
-	/** `@username` for a person, the team name for a team. */
+	/**
+	 * `@username` for a person, the team name for a team, and "Everyone in this
+	 * organization" for the org subject.
+	 */
 	label: string
 	username: string | null
 	displayName: string | null
 	avatarUrl: string | null
 	teamSlug: string | null
+	/** Live member count for a team, or for the org subject. */
 	teamMemberCount: number | null
+	/** Set only for a profile collaborator (ADR 0092). */
+	profileName?: string
+	/** False once the profile or a parent is revoked or expired. */
+	profileActive?: boolean
 	/** Null for an advanced grant with an explicit permission list. */
 	preset: PackageCollaboratorPreset | null
 	permissions: Array<string>
@@ -66,6 +132,21 @@ export type PackageCollaboratorTeamOption = {
 	memberCount: number
 }
 
+/** Everyone in the owning org, offered until it already holds a grant. */
+export type PackageCollaboratorEveryoneOption = {
+	orgId: string
+	memberCount: number
+}
+
+export type PackageCollaboratorSubjectType = 'user' | 'team' | 'org' | 'profile'
+
+/** One of the viewer's own active profiles (ADR 0092; profiles experiment). */
+type PackageCollaboratorProfileOption = {
+	id: string
+	name: string
+	depth: number
+}
+
 export type PackageCollaboratorMemberOption = {
 	userId: string
 	username: string | null
@@ -74,15 +155,26 @@ export type PackageCollaboratorMemberOption = {
 
 export type PackageCollaboratorsView = {
 	ok: true
-	package: { id: string; kodyId: string; name: string }
+	package: {
+		id: string
+		kodyId: string
+		name: string
+		/** The package serves an app (drives the who-pays note). */
+		hasApp?: boolean
+		internetVisible?: boolean
+	}
 	org: { slug: string; personal: boolean }
 	collaborators: Array<PackageCollaboratorView>
 	/** Pending grant invites on this package; always empty in a team org. */
 	invites: Array<PackageCollaboratorInviteView>
 	/** Teams and members not already holding a grant on this package. */
 	options: {
+		/** Null once everyone in the org already holds a grant here. */
+		everyone: PackageCollaboratorEveryoneOption | null
 		teams: Array<PackageCollaboratorTeamOption>
 		members: Array<PackageCollaboratorMemberOption>
+		/** The viewer's profiles; absent unless the profiles experiment is on. */
+		profiles?: Array<PackageCollaboratorProfileOption>
 	}
 }
 
@@ -91,7 +183,8 @@ export type PackageCollaboratorInviteCreated = {
 	id: string
 	expiresAt: string
 	inviteeLabel: string
-	preset: PackageCollaboratorPreset
+	/** Null for an advanced invite with an explicit permission list. */
+	preset: PackageCollaboratorPreset | null
 	prompt: string
 }
 
@@ -110,12 +203,19 @@ export type PackageCollaboratorsWriteResult = {
 export type PackageCollaboratorsChange =
 	| {
 			intent: 'grant'
-			subjectType: 'user' | 'team'
+			subjectType: PackageCollaboratorSubjectType
 			subjectId: string
-			preset: PackageCollaboratorPreset
+			/** Null with `permissions` for an advanced grant. */
+			preset: PackageCollaboratorPreset | null
+			permissions?: Array<PackageCollaboratorPermission>
 	  }
 	| { intent: 'revoke'; grantId: string }
-	| { intent: 'invite'; invitee: string; preset: PackageCollaboratorPreset }
+	| {
+			intent: 'invite'
+			invitee: string
+			preset: PackageCollaboratorPreset | null
+			permissions?: Array<PackageCollaboratorPermission>
+	  }
 	| { intent: 'revoke-invite'; inviteId: string }
 
 /** An email address, or a username with or without its leading `@`. */
@@ -143,6 +243,8 @@ export function packageCollaboratorInvitePresetExplanation(
 	preset: PackageCollaboratorPreset,
 ) {
 	switch (preset) {
+		case 'read':
+			return packageCollaboratorReadDescription
 		case 'use':
 			return 'Run it and read the source. They cannot change it.'
 		case 'contribute':
@@ -156,10 +258,15 @@ export function packageCollaboratorInvitePresetExplanation(
 	}
 }
 
+const packageCollaboratorReadDescription =
+	"Read and fork the source into their own Kody. They can't run your package or open your app."
+
 export function packageCollaboratorPresetLabel(
 	preset: PackageCollaboratorPreset,
 ) {
 	switch (preset) {
+		case 'read':
+			return 'Read'
 		case 'use':
 			return 'Use'
 		case 'contribute':
@@ -177,6 +284,9 @@ export function packageCollaboratorPresetDescription(
 	preset: PackageCollaboratorPreset,
 ) {
 	switch (preset) {
+		case 'read':
+			// Rendered with a trailing period, like the other descriptions.
+			return packageCollaboratorReadDescription.replace(/\.$/, '')
 		case 'use':
 			return 'Read the source and run it'
 		case 'contribute':
@@ -192,12 +302,16 @@ export function packageCollaboratorPresetDescription(
 
 export function packageCollaboratorKindLabel(kind: PackageCollaboratorKind) {
 	switch (kind) {
+		case 'org':
+			return 'Everyone in this organization'
 		case 'team':
 			return 'Team'
 		case 'member':
 			return 'Org member'
 		case 'outside':
 			return 'Outside collaborator'
+		case 'profile':
+			return 'Agent profile'
 		default: {
 			const exhaustive: never = kind
 			return exhaustive
@@ -244,6 +358,7 @@ type PackageCollaboratorsPageShell = {
 	publishedCommit: string | null
 	ownerProfilePublic: boolean
 	viewerCanManage: boolean
+	viewerCanSeeConnectedPeople: boolean
 }
 
 export type PackageCollaboratorsLoaderData =

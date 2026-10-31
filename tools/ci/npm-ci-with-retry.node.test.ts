@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from 'vitest'
-import { runNpmCiWithRetry } from './npm-ci-with-retry.ts'
+import {
+	runNpmCiWithRetry,
+	spawnNpmCiShellOption,
+} from './npm-ci-with-retry.ts'
 import { isRetryableNpmInstallFailure } from './retry-classifiers.ts'
 
 const setupAction = readFileSync(
@@ -50,6 +53,12 @@ test('setup-validate retries npm ci through the pre-install helper', () => {
 		'node tools/ci/npm-ci-with-retry.ts --prefer-online',
 	)
 	expect(setupAction).not.toMatch(/^\s+npm ci(?: --prefer-online)?$/m)
+})
+
+test('spawnNpmCi uses a shell only on Windows so npm.cmd can launch', () => {
+	expect(spawnNpmCiShellOption('win32')).toBe(true)
+	expect(spawnNpmCiShellOption('linux')).toBe(false)
+	expect(spawnNpmCiShellOption('darwin')).toBe(false)
 })
 
 test('runNpmCiWithRetry retries ECONNRESET once then succeeds', async () => {

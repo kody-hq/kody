@@ -5,8 +5,8 @@ import { type ToolCallResult } from './tool-result.js'
 import { resolveExecuteInvokeCode } from './invoke-passthrough.js'
 
 export type RemoteExecuteInput = {
+	/** Module source; `--invoke` is already minted into this by the caller. */
 	code?: string
-	invoke?: string
 	params?: unknown
 	conversationId?: string
 	/**
@@ -19,10 +19,49 @@ export type RemoteExecuteInput = {
 	fetchFn?: typeof fetch
 	/** User-owned token org selection (`?org=`). */
 	org?: string
+	/** Execution-context routing: `context`, `fallback`, `requires`, `chain`. */
+	routing?: ExecuteRouting
 }
 
-export const credentialFlagRequiresLocalOrMcpMessage =
-	'--credential picks a credential for this run. Cloud execute sends it on POST /v1/execute. Use `execute --local --credential …` when the module must run on this machine.'
+export type ExecuteRouting = {
+	context?: string
+	fallback?: 'chain'
+	requires?: Array<string>
+	chain?: Array<string>
+}
+
+function listFlag(value: unknown) {
+	return typeof value === 'string'
+		? value
+				.split(',')
+				.map((entry) => entry.trim())
+				.filter(Boolean)
+		: []
+}
+
+/** `--context`, `--fallback chain`, `--requires fs,lan`, `--chain a,b,cloud`. */
+export function executeRoutingFromFlags(values: {
+	context?: unknown
+	fallback?: unknown
+	requires?: unknown
+	chain?: unknown
+}): ExecuteRouting | undefined {
+	const routing: ExecuteRouting = {}
+	if (typeof values.context === 'string' && values.context.trim()) {
+		routing.context = values.context.trim()
+	}
+	if (values.fallback !== undefined) {
+		if (values.fallback !== 'chain') {
+			throw new Error('--fallback only accepts "chain".')
+		}
+		routing.fallback = 'chain'
+	}
+	const requires = listFlag(values.requires)
+	if (requires.length) routing.requires = requires
+	const chain = listFlag(values.chain)
+	if (chain.length) routing.chain = chain
+	return Object.keys(routing).length ? routing : undefined
+}
 
 /**
  * Cloud (non-`--local`) execute authenticated only with a scoped API token:
@@ -36,23 +75,14 @@ export async function runRemoteExecuteWithToken(
 	input: RemoteExecuteInput,
 ): Promise<ToolCallResult> {
 	assertTokenSafeApiUrl(input.apiUrl)
-	const invoke = input.invoke?.trim()
 	const body: Record<string, unknown> = {}
-	if (invoke && input.code?.trim()) {
-		throw new Error(
-			'--invoke cannot be combined with --code, --file, or a module string.',
-		)
-	}
-	// Cloud Open API execute still gates the `invoke` field on the
-	// execute-invoke experiment. Mint the same thin passthrough as `code` so
-	// `kody execute --invoke` keeps working for callers without that flag.
-	// When execute-invoke is generally available, prefer body.invoke here so
-	// Activity can attribute invoke vs handwritten code.
-	body.code = resolveRemoteExecuteCode(input)
+	// `--invoke` is client-side sugar: hosted execute accepts only `code`.
+	body.code = resolveRemoteExecuteCode({ code: input.code })
 	if (input.params !== undefined) body.params = input.params
 	if (input.conversationId !== undefined)
 		body.conversationId = input.conversationId
 	if (input.credentials !== undefined) body.credentials = input.credentials
+	if (input.routing) Object.assign(body, input.routing)
 	const payload = await openApiRequest({
 		token: input.token,
 		apiUrl: input.apiUrl,
@@ -145,9 +175,14 @@ export function formatExecuteCapabilityResult(
 		'errorDetails',
 		'entitlement',
 		'serverTiming',
+		'ranOn',
+		'executionContext',
 	] as const) {
 		if (record[key] !== undefined) base[key] = record[key]
 	}
+
+	const ranOnLine = describeRanOnTarget(record.ranOn)
+	const ranOnContent = ranOnLine ? [{ type: 'text', text: ranOnLine }] : []
 
 	if (!ok) {
 		const error =
@@ -155,7 +190,7 @@ export function formatExecuteCapabilityResult(
 				? record.error
 				: 'Execute failed without an error message.'
 		return {
-			content: [{ type: 'text', text: `Error: ${error}` }],
+			content: [{ type: 'text', text: `Error: ${error}` }, ...ranOnContent],
 			structuredContent: { ...base, error, result: record.result },
 			isError: true,
 		}
@@ -167,10 +202,20 @@ export function formatExecuteCapabilityResult(
 			? result
 			: (JSON.stringify(result, null, 2) ?? 'undefined')
 	return {
-		content: [{ type: 'text', text }],
+		content: [{ type: 'text', text }, ...ranOnContent],
 		structuredContent: { ...base, result },
 		isError: false,
 	}
+}
+
+/** A short "Ran on …" line from `ranOn`, friendly name only. */
+function describeRanOnTarget(value: unknown) {
+	if (!isRecord(value) || typeof value.name !== 'string') return null
+	const where =
+		value.kind === 'context'
+			? `${value.name} (${value.yours === true ? 'your machine' : 'an execution context'})`
+			: value.name
+	return `Ran on ${where}.`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

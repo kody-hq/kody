@@ -13,6 +13,8 @@ decision is made — not as a design brief for a PR.
 
 What was decided, in one or two sentences. The usual record is a product-shaped
 **no** (we will not build X). Name the existing primitive that covers the need.
+Add this record's path to that primitive's `adrs` in
+[primitives.yaml](../architecture/primitives.yaml).
 
 ## Consequences
 

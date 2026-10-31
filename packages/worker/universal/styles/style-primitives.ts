@@ -1,8 +1,8 @@
+import { surfaceCardCss } from './surface.ts'
 import {
 	colors,
 	mq,
 	radius,
-	shadows,
 	spacing,
 	transitions,
 	typography,
@@ -648,9 +648,7 @@ type SurfaceCardCssOptions = {
 
 export function getSurfaceCardCss(options: SurfaceCardCssOptions = {}) {
 	return {
-		backgroundColor: colors.surface,
-		border: `1.5px solid ${colors.border}`,
-		borderRadius: radius.card,
+		...surfaceCardCss,
 		...(options.interactive
 			? {
 					transition: `border-color 160ms ${transitions.easeOut}, transform 160ms ${transitions.easeOut}`,
@@ -776,11 +774,8 @@ export const pageDescriptionCss = {
 }
 
 export const cardCss = {
+	...surfaceCardCss,
 	padding: spacing.lg,
-	borderRadius: radius.lg,
-	border: `1px solid ${colors.border}`,
-	backgroundColor: colors.surface,
-	boxShadow: shadows.sm,
 	display: 'grid',
 	gap: spacing.md,
 }
@@ -788,7 +783,7 @@ export const cardCss = {
 export const insetCardCss = {
 	padding: spacing.md,
 	borderRadius: radius.md,
-	border: `1px solid ${colors.border}`,
+	border: `1px solid ${colors.borderSubtle}`,
 	backgroundColor: colors.background,
 	display: 'grid',
 	gap: spacing.xs,
@@ -929,7 +924,7 @@ export function getAuthInputCss(options: AuthInputCssOptions = {}) {
 		color: colors.text,
 		backgroundColor:
 			options.background === 'canvas' ? colors.background : colors.surface,
-		border: `1.5px solid ${colors.fieldBorder}`,
+		border: `1px solid ${colors.fieldBorder}`,
 		borderRadius: 'var(--control-radius, 12px)',
 		padding:
 			'var(--control-padding-y, 0.85rem) var(--control-padding-x, 1.05rem)',

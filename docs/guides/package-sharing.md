@@ -2,9 +2,10 @@
 id: package_sharing
 title: Share a package and manage access
 summary:
-  Give a person or team Use, Contribute, or Manage on one package with a grant,
-  invite someone who is not in your organization yet, and know what each side
-  can run, read, and pay for. Fork instead when they should own a copy.
+  Give a person or team Read, Use, Contribute, or Manage on one package with a
+  grant, invite someone who is not in your organization yet, share private
+  source with one person (Read, then they fork it), and know what each side can
+  run, read, and pay for.
 category: platform
 audience: agents
 ---
@@ -16,21 +17,48 @@ secrets, integrations, memory, email) live in one org, and a **grant** gives one
 person or team a preset on one resource. To let someone use a package without
 sharing a login, grant them **Use** on it.
 
-> [!TIP] Prefer a
-> [fork](/docs/package-lifecycle#fork-a-close-public-package-before-creating)
-> when they should own and edit a copy. Grant access when they should run
-> **your** live package.
+> [!TIP] Grants and forks work together. Grant **Read** when someone should see
+> your private source and fork their own copy; grant **Use** when they should
+> run **your** live package. See
+> [Share source with one person](#share-source-with-one-person).
+
+## Share source with one person
+
+To let one person (inside or outside your organization) read a private package
+and fork it into their own Kody, without running yours or opening your app:
+
+1. Open the package's **Collaborators** tab and give them **Read**: pick the
+   member, or in a personal org invite their email or username with **Read**.
+   Agents call `packageCollaboratorSet` with `"preset": "read"` (a username
+   outside the org becomes an outside collaborator), `inviteCreate` with
+   `kind: "grant"` and `"preset": "read"`, or `inviteLinkCreate` with
+   `"preset": "read"`. The CLI takes `--preset read`.
+2. They open the package page and click **Fork**, or their agent calls
+   `packageFork` with `{ "package": "@owner/package-name" }`.
+3. The fork is a new package in their own org. It records where it came from, so
+   they see when your source moves ahead, and it runs and bills in their org.
+
+Read is `package:read` only. They can view and `git clone` the source, but
+cannot run your package (no `package:execute`) or open your app (no
+`app:execute`). Forking never gives them more access to your package. Everyone
+with a preset that includes read (Read, Use, Contribute, Manage) and you as the
+owner can fork the same way. Someone without access still gets a 404 and cannot
+fork. Making a package public is a different choice: anyone on the internet can
+read and fork the default branch.
 
 ## Presets
 
 | Preset         | On a package                                                        |
 | -------------- | ------------------------------------------------------------------- |
+| **Read**       | Read, clone, and fork the source (`package:read`)                   |
 | **Use**        | Read the source and run it (`package:read`, `package:execute`)      |
 | **Contribute** | Use, plus write (`package:write`)                                   |
 | **Manage**     | Contribute, plus publish, delete, and manage access for the package |
 
 Advanced grants take an explicit permission list instead of a preset. No preset
-includes `billing:*` or revealing a secret.
+includes `billing:*` or revealing a secret. On the web, **Advanced: choose
+permissions** under the preset picker sends the same list. Read applies to
+packages only; other resources start at Use.
 
 ## Grant access
 
@@ -47,23 +75,52 @@ need manage access on the package.
 }
 ```
 
+### Everyone in this organization
+
+To give every member of a team org the same access to one package, grant it to
+the org itself with `subject_type: "org"` instead of granting each person:
+
+```json
+{
+	"resource_type": "package",
+	"resource_id": "<package id>",
+	"subject_type": "org",
+	"preset": "use"
+}
+```
+
+The grant is checked live against org membership every time access is checked,
+so it covers current members and anyone who joins later, and someone who leaves
+the org loses it at once. Kody writes one grant, never one row per member. It
+covers only the package it is granted on; everything else stays private, and
+outside collaborators and other orgs get nothing. `subject_id` may be omitted or
+must be this org's id: an everyone grant cannot name another org, cannot target
+`resource_type: "org"` or an execution context, and is refused in a personal org
+(which has no other members).
+
+An `everyone` team with Use on the package, plus an
+[org invite link](/docs/organizations) that adds new people to that team, keeps
+working the same way.
+
 `accessList` shows who holds what across the org. `accessRevoke` removes one
 grant by `grant_id`. To change someone's preset, call `accessGrant` again for
 the same subject; it updates the grant.
 
 ## Package collaborators
 
-For one package, three calls cover teams and members of the owning org. Each
-needs Manage on the package, and `package_id` takes the package id or its kody
-id.
+For one package, three calls cover teams, members, and everyone in the owning
+org. Each needs Manage on the package, and `package_id` accepts the
+saved-package UUID or the package name leaf (`@owner/leaf` or `leaf`).
 
 - `packageCollaboratorList` (`{ "package_id": "…" }`) lists everyone who holds a
-  grant on the package: teams, members, and outside collaborators, each with
-  `grant_id`, `kind`, username or team slug, and preset.
-- `packageCollaboratorSet` adds a team or org member, or changes the preset of
-  one already listed. Pass exactly one of `team_slug`, `team_id`, `username`, or
-  `user_id`. People outside the org are refused, and Owners already have full
-  access:
+  grant on the package: everyone in the org (`kind: "org"`), teams, members, and
+  outside collaborators, each with `grant_id`, `kind`, username or team slug,
+  and preset.
+- `packageCollaboratorSet` adds a team, an org member, or everyone in the org,
+  or changes the preset of one already listed. Pass exactly one of `team_slug`,
+  `team_id`, `username`, `user_id`, or `everyone: true`, plus a preset or an
+  advanced `permissions` list. A person outside the org becomes an outside
+  collaborator. Owners already have full access:
 
   ```json
   {
@@ -83,18 +140,21 @@ audited the same way.
 
 People with Manage on a package see a **Collaborators** tab on the package page
 (`/@owner/<package>/collaborators`). It lists who has access and their preset,
-adds a team or org member, changes a preset, and removes access, using the
-package collaborator calls. Outside collaborators are listed and can be removed;
-their access is changed through `accessGrant`. Org owners always have full
-access and are not listed.
+adds everyone in this organization, a team, or an org member, changes a preset,
+and removes access, using the package collaborator calls. **Advanced: choose
+permissions** under each preset picker sends an explicit permission list
+instead. Outside collaborators are listed and can be removed; their access is
+changed through `accessGrant` or `packageCollaboratorSet`. Org owners always
+have full access and are not listed.
 
 In a personal org there are no members or teams to add, so the tab invites
 people instead:
 
-- **Invite a collaborator** takes an email or username and a preset: **Use** to
-  run it and read the source, **Contribute** to also update it, or **Manage** to
-  also publish, delete, and choose who else has access. It calls `inviteCreate`
-  with `kind: "grant"`.
+- **Invite a collaborator** takes an email or username and a preset: **Read** to
+  read and fork the source without running it, **Use** to run it and read the
+  source, **Contribute** to also update it, or **Manage** to also publish,
+  delete, and choose who else has access. It calls `inviteCreate` with
+  `kind: "grant"`.
 - The invite message is shown once, with a copy button. Send it to the person so
   their agent can call `inviteAccept`. Open **Details** to see the message.
 - **Pending invites** lists invites that have not been accepted. **Revoke**
@@ -180,7 +240,13 @@ from these runs is charged to the collaborator's personal plan.
 
 Example: Jesse has Use on `@acme/bot`. Connected as `@acme`, a run debits acme's
 credits and budgets and counts against acme's execute pool. Jesse's own
-personal-org limits are untouched. See
+personal-org limits are untouched by those runs.
+
+Package **apps** are the exception. When Jesse opens an internal app of `@acme`
+in the browser (he holds a grant on it but is not a member), his own personal
+org pays for the metered work his visits cause, and acme keeps paying the app's
+Worker compute. Internet-visible apps stay paid by acme for every visitor. See
+[Package apps: who pays for visits](/docs/package-apps#who-pays-for-visits). See
 [Organizations](/docs/organizations#execute-limits-one-org-wide-pool) for how
 the pool is sized.
 

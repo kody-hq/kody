@@ -117,9 +117,8 @@ export type AccountCredentialDetail = {
 	 */
 	hostSettings: CredentialHostSettings | null
 	/**
-	 * Observe-mode fill records for this credential (parts filled vs parts
-	 * that would be blocked). Null when none recorded yet. Display only;
-	 * placement is not enforced yet.
+	 * Fill records for this credential (parts filled vs parts refused). Null
+	 * when none recorded yet. Display only.
 	 */
 	fillPlacementObservation: CredentialFillPlacementObservationView | null
 }

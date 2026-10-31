@@ -146,6 +146,7 @@ export async function processWebhookDispatch(
 					attempts,
 				}),
 				requirePersistence: true,
+				request: response.request,
 			})
 			return 'terminal'
 		}
@@ -186,6 +187,7 @@ export async function processWebhookDispatch(
 					}),
 				}),
 		requirePersistence: true,
+		request: response.request,
 	})
 	return 'terminal'
 }

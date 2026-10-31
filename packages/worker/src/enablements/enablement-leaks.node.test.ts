@@ -1,3 +1,4 @@
+import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 /**
  * Enablement leak tests (credentials plan v4, PR 7b). Real boundaries: a
  * migrated APP_DB and AUDIT_DB, a real team org moved to enablements, real
@@ -21,6 +22,7 @@ import {
 	type RequestContext,
 } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { findCredentialIdsByLegacyName } from '#worker/credentials/credential-ids.ts'
 import { attestedPackageStamp } from '#worker/credentials/package-stamp.ts'
 import { resolveCredential } from '#worker/credentials/resolve-credential.ts'
@@ -90,9 +92,9 @@ vi.mock('cloudflare:workers', async (importOriginal) => ({
 	},
 }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 vi.mock('#worker/email/mailbox-internal-read.ts', () => ({
 	listInternalEmailAttachmentsForMessage: async () => [],
@@ -400,7 +402,10 @@ async function setup() {
 	} as const
 	type Person = keyof typeof people
 
-	const sessionFor = async (person: Person) => {
+	const sessionFor = async (
+		person: Person,
+		scopes: ReadonlyArray<OrgPermission> | null = null,
+	) => {
 		const row = await db
 			.prepare(
 				`SELECT role FROM org_memberships
@@ -415,6 +420,7 @@ async function setup() {
 				org: { id: orgId, slug: 'quillworks' },
 				role: row?.role ?? null,
 			},
+			scopes,
 		})
 	}
 
@@ -422,6 +428,7 @@ async function setup() {
 		person: Person,
 		kind: 'subscription' | 'cron' | 'webhook',
 		name: string,
+		scopes: ReadonlyArray<OrgPermission> | null = null,
 	) => {
 		// Email subscriptions are not turned on by enablementEnable. These tests
 		// insert the member sender rule the enabler would approve.
@@ -444,7 +451,7 @@ async function setup() {
 		return enableTriggerForCaller({
 			env,
 			baseUrl: 'https://kody.example',
-			request: await sessionFor(person),
+			request: await sessionFor(person, scopes),
 			packageIdOrKodyId: 'pkg-shared',
 			kind,
 			name,
@@ -1068,6 +1075,71 @@ test("a member's cron job runs as its enabler and cannot use an org credential t
 	expect(next.map((outcome) => outcome.enabler)).toEqual([t.people.cy.userId])
 })
 
+test('a cron job turned on through a scoped credential never exceeds those scopes', async () => {
+	const t = await setup()
+	consoleInfo.mockImplementation(() => {})
+	const cys = await t.enable('cy', 'cron', jobName, ['package:execute'])
+	expect(cys.enablerScopes).toEqual(['package:execute'])
+	const jobId = buildPackageJobId('pkg-shared', jobName)
+	const plan = await planEnablementRuns({
+		env: t.env,
+		orgId: t.orgId,
+		packageId: 'pkg-shared',
+		trigger: { kind: 'cron', instanceId: jobId },
+	})
+	expect(plan.runs.map((run) => run.scopes)).toEqual([['package:execute']])
+	const [run] = plan.runs
+	const request = deriveRequestContext({
+		user: run!.enabler,
+		source: { kind: 'schedule', jobId, enablement: run },
+		orgBinding: {
+			org: { id: t.orgId, slug: 'quillworks' },
+			role: run!.role,
+		},
+	})
+	expect(request.credential.scopes).toEqual(['package:execute'])
+	// Cy holds Use on the team secret; the credential that enabled it does not.
+	await expect(t.resolveTeamToken(request, 'pkg-shared')).rejects.toMatchObject(
+		{ name: 'AuthorizationError', permission: 'secret:use' },
+	)
+})
+
+test('a credential without package:execute cannot turn a trigger on, and a stored one pauses before it runs', async () => {
+	const t = await setup()
+	consoleInfo.mockImplementation(() => {})
+	await expect(
+		t.enable('cy', 'cron', jobName, ['secret:use']),
+	).rejects.toMatchObject({
+		name: 'AuthorizationError',
+		permission: 'package:execute',
+	})
+	const jobId = buildPackageJobId('pkg-shared', jobName)
+	const stored = await insertEnablement({
+		db: t.db,
+		enablement: {
+			orgId: t.orgId,
+			packageId: 'pkg-shared',
+			triggerKind: 'cron',
+			triggerName: jobName,
+			instanceId: jobId,
+			enablerUserId: t.people.cy.userId,
+			enablerScopes: ['secret:use'],
+			origin: 'enabled',
+		},
+	})
+	const plan = await planEnablementRuns({
+		env: t.env,
+		orgId: t.orgId,
+		packageId: 'pkg-shared',
+		trigger: { kind: 'cron', instanceId: jobId },
+	})
+	expect(plan.runs).toEqual([])
+	await expect(t.enablement(stored.id)).resolves.toMatchObject({
+		state: 'paused',
+		pause: { reason: 'package_access', permission: 'package:execute' },
+	})
+})
+
 test("a just-removed member's enablements pause on the next run and resume when they are back", async () => {
 	const t = await setup()
 	const cyWebhook = await t.enableWebhook('cy', 'endpoint-cy')
@@ -1153,7 +1225,6 @@ test("webhook- and run-raised events reach only that run's enabler's subscriptio
 				id: 'job-x',
 				orgId: t.orgId,
 				scopes: null,
-				profileName: null,
 			},
 			membership: null,
 		},
@@ -1293,14 +1364,14 @@ test('turning a trigger on again keeps one enablement per person', async () => {
 	)
 })
 
-test('an approved webhook URL that has no signing secret gets one when it is turned on again', async () => {
+test('webhook approval initializes its signing secret', async () => {
 	const t = await setup()
 	await t.db
 		.prepare(
 			`INSERT INTO webhook_endpoints (
 				id, user_id, package_id, webhook_name, url_secret_hash,
-				url_secret_encrypted, enabled, created_at, rotated_at
-			) VALUES ('endpoint-off', ?, 'pkg-shared', 'incoming', 'hash', 'ciphertext', 0, ?, ?)`,
+				url_secret_encrypted, created_at, rotated_at
+			) VALUES ('endpoint-off', ?, 'pkg-shared', 'incoming', 'hash', 'ciphertext', ?, ?)`,
 		)
 		.bind(t.orgId, now, now)
 		.run()

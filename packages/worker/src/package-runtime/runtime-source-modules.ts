@@ -463,6 +463,22 @@ function __kodyCreateRuntimeNestedObjectProxy(exportName, path) {
 	});
 }
 
+// kody.command.* (host commands, ADR 0093) only exists on an execution
+// context, where the daemon serves it. Anywhere else say so plainly instead
+// of a TypeError on undefined.
+const __kodyHostCommandsUnavailable = Object.freeze(
+	Object.fromEntries(
+		['run', 'start', 'status', 'output', 'kill', 'list'].map((name) => [
+			name,
+			async () => {
+				throw new Error(
+					'kody.command.' + name + ' runs shell commands on an execution context (a machine running kody daemon or the Kody desktop app with commands turned on). This run is in Kody cloud, which cannot run host commands. Route the run to a context (executionContext) instead. (execution_context_command_requires_context)',
+				);
+			},
+		]),
+	),
+);
+
 function __kodyCreateRuntimeObjectProxy(exportName) {
 	return new Proxy({}, {
 		get(_target, property) {
@@ -475,6 +491,9 @@ function __kodyCreateRuntimeObjectProxy(exportName) {
 			}
 			const runtimeExport = __kodyReadRuntimeExport(exportName);
 			const value = runtimeExport[property];
+			if (value == null && exportName === 'kody' && property === 'command') {
+				return __kodyHostCommandsUnavailable;
+			}
 			if (typeof value === 'function') {
 				// Late-bind method calls to the runtime of the *calling* run: a
 				// function captured at property-access time (for example a
@@ -910,20 +929,27 @@ export const kody =
 		? __kodyCreateRuntimeObjectProxy('kody')
 		: undefined;
 export const createAuthenticatedFetch = __kodyOptionalRuntimeFunctionExport('createAuthenticatedFetch');
+export const hasScope = __kodyOptionalRuntimeFunctionExport('hasScope');
+export const hasVisitorCredential = __kodyOptionalRuntimeFunctionExport('hasVisitorCredential');
 export const secretHeaders = __kodyOptionalRuntimeObjectExport('secretHeaders', undefined);
 export const oauthClientCredentials = __kodyOptionalRuntimeFunctionExport('oauthClientCredentials');
-// \`credential\` carries \`credential.named\`, so it forwards the property too.
+// \`credential\` carries \`credential.named\` and \`credential.visitor\`, so it
+// forwards those properties too.
+function __kodyCredentialMemberExport(member) {
+	return (...args) => {
+		const runtimeExport = __kodyReadRuntimeExport('credential');
+		if (typeof runtimeExport?.[member] !== 'function') {
+			throw new Error(\`kody:runtime export "credential.\${member}" is not callable in this execution context.\`);
+		}
+		return runtimeExport[member](...args);
+	};
+}
 export const credential = __kodyOptionalRuntimeFunctionExport('credential') &&
 	Object.freeze(Object.assign(
 		__kodyCreateRuntimeFunctionExport('credential'),
 		{
-			named: (...args) => {
-				const runtimeExport = __kodyReadRuntimeExport('credential');
-				if (typeof runtimeExport?.named !== 'function') {
-					throw new Error('kody:runtime export "credential" is not callable in this execution context.');
-				}
-				return runtimeExport.named(...args);
-			},
+			named: __kodyCredentialMemberExport('named'),
+			visitor: __kodyCredentialMemberExport('visitor'),
 		},
 	));
 export const credentials = __kodyOptionalRuntimeFunctionExport('credentials');
@@ -938,12 +964,17 @@ function __kodyCreateBindingExecuteHelpers(${kodyCallDispatcherName}, fetch) {
 ${createExecuteHelperPrelude()}
 	return { createAuthenticatedFetch, oauthClientCredentials };
 }
+// Packages may cache the returned authenticated fetch in module scope, and
+// a reused isolate keeps module scope across runs. A binding wraps its run's
+// RPC stubs, which are disposed when that run's evaluate() returns, so the
+// helpers resolve the current run's binding on every call instead of closing
+// over this one.
 function __kodyBindingExecuteHelpersFor(packageId) {
-	const binding = __kodyPackageBindingFor(packageId);
-	if (binding == null) return null;
+	if (__kodyPackageBindingFor(packageId) == null) return null;
+	const boundKody = __kodyCreatePackageBoundKody(packageId);
 	return __kodyCreateBindingExecuteHelpers(
-		(name, args) => __kodyReflectApply(binding.kodyCall, binding, [name, args]),
-		(input, init) => __kodyReflectApply(binding.fetch, binding, [input, init]),
+		(name, args) => boundKody[name](args),
+		__kodyCreatePackageBoundFetch(packageId),
 	);
 }
 export function __kodyCreatePackageBoundAuthenticatedFetch(packageId) {
@@ -992,6 +1023,8 @@ export function __kodyCreatePackageBoundCredentialRuntime(packageId) {
 		{
 			named: (...args) =>
 				__kodyResolvePackageCredentialRuntime(packageId).credential.named(...args),
+			visitor: (...args) =>
+				__kodyResolvePackageCredentialRuntime(packageId).credential.visitor(...args),
 		},
 	);
 	return {
@@ -1009,6 +1042,8 @@ export const events = __kodyOptionalRuntimeObjectExport('events', null);
 
 const __kodyRuntimeNamedExports = {
 	kody,
+	hasScope,
+	hasVisitorCredential,
 	packageStorage,
 	createAuthenticatedFetch,
 	secretHeaders,
@@ -1165,6 +1200,8 @@ export function parsePackageRuntimeModulePathPackageId(modulePath: string) {
 export const kodyRuntimeSharedExportNames = [
 	'kody',
 	'createAuthenticatedFetch',
+	'hasScope',
+	'hasVisitorCredential',
 	'secretHeaders',
 	'oauthClientCredentials',
 	'credential',

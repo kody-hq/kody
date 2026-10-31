@@ -20,10 +20,7 @@ import {
 	type DynamicWorkerUsageTailProps,
 } from '#worker/usage/dynamic-worker-cpu.ts'
 import { defaultExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
-import {
-	retrieverOutboundFetchDeniedMessage,
-	type FetchGatewayProps,
-} from '#mcp/fetch-gateway.ts'
+import { type FetchGatewayProps } from '#mcp/fetch-gateway.ts'
 import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import {
 	readBaseUrlHostname,
@@ -121,6 +118,8 @@ import { createStableDynamicWorkerId } from '#mcp/dynamic-worker-id.ts'
 import {
 	createEvaluationSideEffectTracker,
 	createHostSideEffectProvider,
+	noteSandboxFetchRecordFailures,
+	type SandboxFetchRecordFailures,
 	hostSideEffectProviderName,
 	isPlatformOnlyHostSideEffectProvider,
 	type EvaluationHostSideEffects,
@@ -304,6 +303,7 @@ type DynamicWorkerEntrypoint = {
 		error?: string
 		logs?: Array<string>
 		rawFetchHosts?: Array<string>
+		fetchRecordFailures?: SandboxFetchRecordFailures
 	}>
 }
 
@@ -673,8 +673,6 @@ export function createKodyRemoteProxy(input: {
 	})
 }
 
-export { retrieverOutboundFetchDeniedMessage }
-
 export function createExecuteExecutor(input: {
 	env: Env
 	exports?: WorkerLoopbackExports
@@ -718,17 +716,11 @@ export function createExecuteExecutor(input: {
 	/** Capped unique-worker-day claim awaited before load (hosted execute). */
 	claimWorkerDay?: ClaimWorkerDay
 	/**
-	 * When false, sandbox `fetch` is rejected. Retriever runs use this to stay
-	 * closed-world. Defaults to true.
-	 */
-	allowOutboundFetch?: boolean
-	/**
 	 * When set, unique-worker-day metering and the first-execute activation
 	 * stamp run on `waitUntil` instead of the sandbox critical path.
 	 */
 	waitUntil?: (promise: Promise<unknown>) => void
 }) {
-	const allowOutboundFetch = input.allowOutboundFetch !== false
 	const loopbackExports = input.exports ?? workerExports
 	if (!loopbackExports?.KodyFetchGateway) {
 		throw new Error(
@@ -739,28 +731,21 @@ export function createExecuteExecutor(input: {
 		input.timeoutMs === null
 			? maxSupportedExecutorTimeoutMs
 			: (input.timeoutMs ?? defaultExecutorTimeoutMs)
-	const gatewayProps = {
-		...input.gatewayProps,
-		allowOutboundFetch,
-	}
+	const gatewayProps = input.gatewayProps
 	return createStableDynamicWorkerExecutor({
 		loader: input.env.LOADER,
 		timeout,
 		signal: input.signal,
 		// Shared by every evaluate on this isolate; run fetch uses createRunFetcher.
 		globalOutbound: loopbackExports.KodyFetchGateway({
-			props: { allowOutboundFetch: false } as FetchGatewayProps,
+			props: {} as FetchGatewayProps,
 		}),
 		createRunFetcher: () =>
 			loopbackExports.KodyFetchGateway({ props: gatewayProps }),
-		...(allowOutboundFetch
-			? {
-					createPackageFetcher: (packageId: string) =>
-						loopbackExports.KodyFetchGateway({
-							props: { ...gatewayProps, boundPackageId: packageId },
-						}),
-				}
-			: {}),
+		createPackageFetcher: (packageId: string) =>
+			loopbackExports.KodyFetchGateway({
+				props: { ...gatewayProps, boundPackageId: packageId },
+			}),
 		// Tails only run where Analytics Engine is bound (deployed Workers).
 		// Open-source workerd reports zero CPU, and a local tail would outlive
 		// the run with a D1 write per invocation.
@@ -815,7 +800,6 @@ function createStableDynamicWorkerExecutor(input: DynamicWorkerExecutorInput) {
 				shadowGlobalThis: Object.keys(modules).length === 0,
 				timeoutMs: input.timeout,
 				excludedHostname,
-				allowOutboundFetch: input.gatewayProps.allowOutboundFetch !== false,
 			})
 			const workerOptions = {
 				...createDynamicWorkerCompatibilityOptions(),
@@ -946,6 +930,10 @@ function createStableDynamicWorkerExecutor(input: DynamicWorkerExecutorInput) {
 										| Awaited<ReturnType<DynamicWorkerEntrypoint['evaluate']>>
 										| undefined)
 								: undefined
+						noteSandboxFetchRecordFailures(
+							drainedResponse?.fetchRecordFailures,
+							sideEffects,
+						)
 						return attachHostSideEffects(
 							{
 								result: undefined,
@@ -995,6 +983,10 @@ function createStableDynamicWorkerExecutor(input: DynamicWorkerExecutorInput) {
 					}
 					throw error
 				}
+				noteSandboxFetchRecordFailures(
+					response.fetchRecordFailures,
+					sideEffects,
+				)
 				if (input.rawFetchHostSink) {
 					for (const hostname of response.rawFetchHosts ?? []) {
 						input.rawFetchHostSink.add(hostname)
@@ -1115,14 +1107,7 @@ function validateProviders(providers: Array<ResolvedProvider>) {
 	return null
 }
 
-function createSandboxRunFetchSource(allowOutboundFetch: boolean) {
-	if (!allowOutboundFetch) {
-		return [
-			'    const __kodyRunFetch = () => {',
-			`      throw new Error(${JSON.stringify(retrieverOutboundFetchDeniedMessage)});`,
-			'    };',
-		]
-	}
+function createSandboxRunFetchSource() {
 	return [
 		'    // Generic (unbound) fetch: never carries package secret authority.',
 		'    // Package identity travels only on the per-package gateway binding',
@@ -1141,11 +1126,7 @@ function createSandboxRunFetchSource(allowOutboundFetch: boolean) {
 		'        // Ignore unparseable / relative URLs; only literal hosts count.',
 		'      }',
 		'      return (async () => {',
-		`        if (__dispatchers.${hostSideEffectProviderName}) {`,
-		`          const resJson = await __dispatchers.${hostSideEffectProviderName}.call("recordFetch", "[]");`,
-		'          const data = JSON.parse(resJson);',
-		'          if (data.error) throw new Error(data.error);',
-		'        }',
+		`        await __kodyRecordFetchAttempt(__dispatchers.${hostSideEffectProviderName} ?? null, __kodyFetchRecordFailures);`,
 		'        const __kodyFetchHeaders = new Headers(',
 		'          init?.headers ??',
 		'            (input && typeof input === "object" && "headers" in input',
@@ -1169,28 +1150,43 @@ function createSandboxRunFetchSource(allowOutboundFetch: boolean) {
 }
 
 /**
+ * Fetch-attempt telemetry must never fail the fetch it describes (a reused
+ * isolate can reach a disposed recorder stub). Failures are counted and
+ * returned with the result so the host still treats the run as having side
+ * effects.
+ */
+export function createSandboxRecordFetchAttemptSource() {
+	return [
+		'async function __kodyRecordFetchAttempt(hostSideEffects, failures) {',
+		'  if (!hostSideEffects) return;',
+		'  try {',
+		'    const resJson = await hostSideEffects.call("recordFetch", "[]");',
+		'    const data = __kodyJsonParseCaptured(resJson);',
+		'    if (data.error) throw new __kodyErrorCaptured(data.error);',
+		'  } catch (error) {',
+		'    failures.count += 1;',
+		'    if (failures.message === null) {',
+		'      try { failures.message = __kodyStringCaptured(error?.message ?? error); } catch { failures.message = "unknown"; }',
+		'    }',
+		'  }',
+		'}',
+	].join('\n')
+}
+
+/**
  * Sandbox half of the trusted per-package binding (GHSA-5fv3). Wraps each
  * host binding stub in a frozen record using intrinsics captured at module
  * init, keyed by package id in a Map. The map is passed only to the
  * runtime module's private binding scope by the host wrapper; package code
  * never sees it and cannot name another package's entry.
  */
-function createPackageBindingSandboxSource(allowOutboundFetch: boolean) {
+function createPackageBindingSandboxSource() {
 	return [
-		'function __kodyCreateSandboxPackageBindings(stubs, hostSideEffects, allowOutboundFetch, mcpFactoryRef) {',
+		createSandboxRecordFetchAttemptSource(),
+		'function __kodyCreateSandboxPackageBindings(stubs, hostSideEffects, mcpFactoryRef, fetchRecordFailures) {',
 		'  const map = new __kodyMapCaptured();',
 		'  if (stubs == null || typeof stubs !== "object") return map;',
-		// Closed-world runs never emit the outbound path at all.
-		...(allowOutboundFetch
-			? [
-					'  const recordFetch = async () => {',
-					'    if (!hostSideEffects) return;',
-					'    const resJson = await hostSideEffects.call("recordFetch", "[]");',
-					'    const data = __kodyJsonParseCaptured(resJson);',
-					'    if (data.error) throw new __kodyErrorCaptured(data.error);',
-					'  };',
-				]
-			: []),
+		'  const recordFetch = () => __kodyRecordFetchAttempt(hostSideEffects, fetchRecordFailures);',
 		'  for (const packageId of __kodyObjectKeysCaptured(stubs)) {',
 		'    const stub = stubs[packageId];',
 		'    if (stub == null || typeof stub !== "object") continue;',
@@ -1214,17 +1210,9 @@ function createPackageBindingSandboxSource(allowOutboundFetch: boolean) {
 		'        return mcp;',
 		'      },',
 		'      fetch: async (input, init) => {',
-		...(allowOutboundFetch
-			? [
-					'        if (!fetcher) {',
-					`          throw new __kodyErrorCaptured(${JSON.stringify(retrieverOutboundFetchDeniedMessage)});`,
-					'        }',
-					'        await recordFetch();',
-					'        return await fetcher.fetch(input, init);',
-				]
-			: [
-					`        throw new __kodyErrorCaptured(${JSON.stringify(retrieverOutboundFetchDeniedMessage)});`,
-				]),
+		'        if (!fetcher) throw new __kodyErrorCaptured("Outbound fetch is unavailable for this package.");',
+		'        await recordFetch();',
+		'        return await fetcher.fetch(input, init);',
 		'      },',
 		'      kodyCall: (dispatchName, args) => kodyCall(dispatchName, args),',
 		// packageStorage() for this package only: the host bound dispatcher
@@ -1255,7 +1243,6 @@ function createExecutorModule(input: {
 	shadowGlobalThis: boolean
 	timeoutMs: number
 	excludedHostname?: string
-	allowOutboundFetch?: boolean
 }) {
 	const normalized = input.normalizedCode
 	const excludedHostname = JSON.stringify(input.excludedHostname ?? '')
@@ -1306,6 +1293,8 @@ function createExecutorModule(input: {
 		'const __kodyEvaluateFetchStorageSymbol = Symbol.for("kody.evaluateFetchStorage");',
 		'const __kodyEvaluateFetchPatchedSymbol = Symbol.for("kody.evaluateFetchPatched");',
 		'const __kodyRuntimeStorageSymbol = Symbol.for("kody.runtimeStorage");',
+		'const __kodyEvaluateConsoleStorageSymbol = Symbol.for("kody.evaluateConsoleStorage");',
+		'const __kodyNativeConsoleSymbol = Symbol.for("kody.nativeConsole");',
 		'// Capture before any package code can patch intrinsics (GHSA-5fv3).',
 		'const __kodyReflectApplyCaptured = Reflect.apply;',
 		'const __kodyAlsGetStoreCaptured = AsyncLocalStorage.prototype.getStore;',
@@ -1317,7 +1306,8 @@ function createExecutorModule(input: {
 		'const __kodyJsonStringifyCaptured = JSON.stringify;',
 		'const __kodyErrorCaptured = Error;',
 		'const __kodyArrayIsArrayCaptured = Array.isArray;',
-		...createPackageBindingSandboxSource(input.allowOutboundFetch !== false),
+		'const __kodyStringCaptured = String;',
+		...createPackageBindingSandboxSource(),
 		'const __kodyNativeFetch = globalThis.fetch.bind(globalThis);',
 		'const __kodyEvaluateFetchStorage =',
 		'  globalThis[__kodyEvaluateFetchStorageSymbol] ??',
@@ -1330,25 +1320,40 @@ function createExecutorModule(input: {
 		'  };',
 		'  globalThis[__kodyEvaluateFetchPatchedSymbol] = true;',
 		'}',
+		'const __kodyEvaluateConsoleStorage =',
+		'  globalThis[__kodyEvaluateConsoleStorageSymbol] ??',
+		'  (globalThis[__kodyEvaluateConsoleStorageSymbol] = new AsyncLocalStorage());',
+		'const __kodyNativeConsole =',
+		'  globalThis[__kodyNativeConsoleSymbol] ??',
+		'  (globalThis[__kodyNativeConsoleSymbol] = globalThis.console);',
+		'const __kodyCaptureConsole = (method, prefix) => (...a) => {',
+		'  const ctx = __kodyReflectApplyCaptured(__kodyAlsGetStoreCaptured, __kodyEvaluateConsoleStorage, []);',
+		'  if (ctx?.active) { ctx.logs.push(prefix + a.map(String).join(" ")); return; }',
+		'  return __kodyReflectApplyCaptured(__kodyNativeConsole[method], __kodyNativeConsole, a);',
+		'};',
+		'// A fresh console per call undoes user overwrites from earlier calls.',
+		'// Logs route by AsyncLocalStorage, so overlapping calls stay separate.',
+		'const __kodyCreateCaptureConsole = () => ({',
+		'  ...__kodyNativeConsole,',
+		'  log: __kodyCaptureConsole("log", ""),',
+		'  info: __kodyCaptureConsole("info", "[info] "),',
+		'  debug: __kodyCaptureConsole("debug", "[debug] "),',
+		'  warn: __kodyCaptureConsole("warn", "[warn] "),',
+		'  error: __kodyCaptureConsole("error", "[error] "),',
+		'});',
 		'',
 		'export default class CodeExecutor extends WorkerEntrypoint {',
 		'  async evaluate(__dispatchers = {}, __invocation = {}, __kodyPackageBindingStubs = null, __kodyRunFetcher = null) {',
 		'    const __logs = [];',
 		'    const __kodyRawFetchHosts = [];',
+		'    const __kodyFetchRecordFailures = { count: 0, message: null };',
 		`    const __kodyExcludedFetchHost = ${excludedHostname};`,
-		...createSandboxRunFetchSource(input.allowOutboundFetch !== false),
+		...createSandboxRunFetchSource(),
 		'    const __kodyPackageMcpFactoryRef = { create: null };',
-		`    const __kodyPackageBindings = __kodyCreateSandboxPackageBindings(__kodyPackageBindingStubs, __dispatchers.${hostSideEffectProviderName} ?? null, ${input.allowOutboundFetch !== false}, __kodyPackageMcpFactoryRef);`,
-		'    return __kodyEvaluateFetchStorage.run({ fetch: __kodyRunFetch }, async () => {',
-		'    const __kodyNativeConsole = globalThis.console;',
-		'    globalThis.console = {',
-		'      ...__kodyNativeConsole,',
-		'      log: (...a) => { __logs.push(a.map(String).join(" ")); },',
-		'      info: (...a) => { __logs.push("[info] " + a.map(String).join(" ")); },',
-		'      debug: (...a) => { __logs.push("[debug] " + a.map(String).join(" ")); },',
-		'      warn: (...a) => { __logs.push("[warn] " + a.map(String).join(" ")); },',
-		'      error: (...a) => { __logs.push("[error] " + a.map(String).join(" ")); },',
-		'    };',
+		`    const __kodyPackageBindings = __kodyCreateSandboxPackageBindings(__kodyPackageBindingStubs, __dispatchers.${hostSideEffectProviderName} ?? null, __kodyPackageMcpFactoryRef, __kodyFetchRecordFailures);`,
+		'    const __kodyConsoleContext = { logs: __logs, active: true };',
+		'    globalThis.console = __kodyCreateCaptureConsole();',
+		'    return __kodyEvaluateConsoleStorage.run(__kodyConsoleContext, () => __kodyEvaluateFetchStorage.run({ fetch: __kodyRunFetch, dispatchers: __dispatchers }, async () => {',
 		...sandboxGlobalLines,
 		// Keep this aligned with upstream kody's sandbox dispatcher shape:
 		// the dynamic worker source only names provider namespaces, while the
@@ -1378,14 +1383,14 @@ function createExecutorModule(input: {
 		...userCodeInvocation,
 		'        __timeoutPromise',
 		'      ]);',
-		'      return { result, logs: __logs, rawFetchHosts: __kodyRawFetchHosts };',
+		'      return { result, logs: __logs, rawFetchHosts: __kodyRawFetchHosts, fetchRecordFailures: __kodyFetchRecordFailures };',
 		'    } catch (err) {',
-		'      return { result: undefined, error: err.message, logs: __logs, rawFetchHosts: __kodyRawFetchHosts };',
+		'      return { result: undefined, error: err.message, logs: __logs, rawFetchHosts: __kodyRawFetchHosts, fetchRecordFailures: __kodyFetchRecordFailures };',
 		'    } finally {',
 		'      clearTimeout(__timeoutId);',
-		'      globalThis.console = __kodyNativeConsole;',
+		'      __kodyConsoleContext.active = false;',
 		'    }',
-		'    });',
+		'    }));',
 		'  }',
 		'}',
 	].join('\n')
@@ -1400,7 +1405,6 @@ export async function createExecutorModuleSource({
 	shadowGlobalThis: boolean
 	timeoutMs: number
 	excludedHostname?: string
-	allowOutboundFetch?: boolean
 }) {
 	const normalizeCode = await loadNormalizeCode()
 	return createExecutorModule({ ...input, normalizedCode: normalizeCode(code) })

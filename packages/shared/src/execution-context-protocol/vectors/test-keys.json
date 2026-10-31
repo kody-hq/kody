@@ -1,0 +1,27 @@
+{
+	"note": "TEST ONLY. Fixed keys for ECP signing vectors, previews and local dev. Never used in production.",
+	"context": {
+		"kty": "OKP",
+		"crv": "Ed25519",
+		"x": "WyNY8vZaBNQewVS2a60-fViiEZAHO0L8OJ8LEIQDMWU",
+		"d": "7ixZSqSqMB8O9g9ZEB1ViRFig-2wwtP00c8PEuW_eCY"
+	},
+	"server": {
+		"kid": "ecp-frame-test-1",
+		"privateKeyJwk": {
+			"kty": "OKP",
+			"crv": "Ed25519",
+			"x": "dhu5yQAAwEd6De_QQrbxRuozBukGgMr2XScwH8du5GU",
+			"d": "Dg7fXFAhz9rb_g58f4ula78vd6QMBlLqDc6hMx8cq4g"
+		}
+	},
+	"root": {
+		"kid": "root-test-1",
+		"privateKeyJwk": {
+			"kty": "OKP",
+			"crv": "Ed25519",
+			"x": "6qRBa8n9QOpgMVvKw2Ck3hUGuaVAi0D-bNGjum0u5rk",
+			"d": "XRxQk8lhWZV3tzZIZP4JeMDP_qzssigSOFDV_d0X5lk"
+		}
+	}
+}

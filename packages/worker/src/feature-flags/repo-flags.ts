@@ -7,7 +7,10 @@ import {
 	getFeatureFlagDefinition,
 	type FeatureFlagKey,
 } from '#universal/feature-flags/registry.ts'
-import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import {
+	andActiveOrgSql,
+	andLiveDeletedAtSql,
+} from '#worker/soft-delete/live-sql.ts'
 import { evaluateFlagState, type FeatureFlagEvaluation } from './service.ts'
 
 /**
@@ -18,10 +21,12 @@ import { evaluateFlagState, type FeatureFlagEvaluation } from './service.ts'
  * Precedence:
  * 1. Repo override row (on or off) wins.
  * 2. Per-user override for the repo owner.
- * 3. Global row: off → off; on with `rollout_percent` → FNV-1a bucket of
+ * 3. Per-org row for the org that owns the repo (`entity_sources.user_id`
+ *    when it is an org id, else the owner's personal org).
+ * 4. Global row: off → off; on with `rollout_percent` → FNV-1a bucket of
  *    `key:sourceId`; on without a percentage → on.
- * 4. Registry default.
- * 5. Audience gate on the repo owner (skipped for overrides).
+ * 5. Registry default.
+ * 6. Audience gate on the repo owner (skipped for overrides and org rows).
  */
 export type RepoFeatureFlagSubject = {
 	sourceId: string
@@ -44,17 +49,29 @@ export type FeatureFlagRepoOverride = {
 async function readOwnerUser(
 	db: D1Database,
 	ownerId: string,
-): Promise<{ id: number; experimentsOptIn: boolean } | null> {
+): Promise<{
+	id: number
+	experimentsOptIn: boolean
+	personalOrgId: string | null
+} | null> {
 	const row = await db
 		.prepare(
-			`SELECT id, experiments_opt_in FROM users
+			`SELECT id, experiments_opt_in, personal_org_id FROM users
 			 WHERE (stable_user_id = ? OR personal_org_id = ?)${andLiveDeletedAtSql()}
 			 LIMIT 1`,
 		)
 		.bind(ownerId, ownerId)
-		.first<{ id: number; experiments_opt_in: number }>()
+		.first<{
+			id: number
+			experiments_opt_in: number
+			personal_org_id: string | null
+		}>()
 	if (!row) return null
-	return { id: row.id, experimentsOptIn: row.experiments_opt_in === 1 }
+	return {
+		id: row.id,
+		experimentsOptIn: row.experiments_opt_in === 1,
+		personalOrgId: row.personal_org_id,
+	}
 }
 
 export async function evaluateRepoFeatureFlag(
@@ -87,6 +104,19 @@ export async function evaluateRepoFeatureFlag(
 				.bind(key, owner.id)
 				.first<{ enabled: number }>()
 		: null
+	const repoOrgId = owner
+		? (owner.personalOrgId ?? subject.ownerId)
+		: subject.ownerId
+	const orgRow = userOverride
+		? null
+		: await db
+				.prepare(
+					`SELECT f.enabled FROM feature_flag_org_overrides f
+					 JOIN orgs o ON o.id = f.org_id${andActiveOrgSql('o')}
+					 WHERE f.flag_key = ? AND f.org_id = ?`,
+				)
+				.bind(key, repoOrgId)
+				.first<{ enabled: number }>()
 	const global = await db
 		.prepare(
 			`SELECT enabled, rollout_percent, audience
@@ -104,6 +134,7 @@ export async function evaluateRepoFeatureFlag(
 		key,
 		rolloutSubject: subject.sourceId,
 		overrideEnabled: userOverride ? userOverride.enabled === 1 : null,
+		orgEnabled: orgRow ? orgRow.enabled === 1 : null,
 		global: global
 			? {
 					enabled: global.enabled === 1,

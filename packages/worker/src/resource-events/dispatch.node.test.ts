@@ -86,7 +86,6 @@ function access(permissions: Array<string>): EffectivePermissions {
 		isOwner: false,
 		resourcePermissions: new Map(),
 		credentialScopes: null,
-		profileGrants: null,
 	} as unknown as EffectivePermissions
 }
 

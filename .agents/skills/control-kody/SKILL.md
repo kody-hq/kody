@@ -72,9 +72,11 @@ seeded.
 notes (seed, reach, assert). Routes are generated from
 `packages/worker/start/routeTree.gen.ts` (`FileRoutesByFullPath`); feature
 prefixes in `tools/control-kody/feature-catalog.ts` only group that inventory.
-`map` prints the generated inventory; `map --check` fails when notes cite
-unknown routes, a required user-facing prefix has no notes (and no exemption),
-or a notes file is missing / orphaned. CI runs `npm run feature-map:check`.
+After adding a route file, run `npm run routes:generate` (do not call the bare
+router-generator). `map` prints the generated inventory; `map --check` fails
+when notes cite unknown routes, a required user-facing prefix has no notes (and
+no exemption), or a notes file is missing / orphaned. CI runs
+`npm run feature-map:check`.
 
 Load **one** feature file for the surface you are changing. Run `map --check`
 before opening a Feature Map PR.
@@ -86,8 +88,8 @@ before opening a Feature Map PR.
   data through JSON APIs, or `package-create` for a saved package). Experimenter
   flags stay off unless the PR is labeled `preview-flag:<key>` for a key in
   `tools/preview-seed-flag-allowlist.ts`. Example: label
-  `preview-flag:connection-profiles`, wait for 🔎 Preview, then open
-  `/@<slug>/-/agents` with `browse` and check the profile controls.
+  `preview-flag:execution-contexts`, wait for 🔎 Preview, then open
+  `/@<slug>/-/execution-contexts` with `browse` and check the flagged page.
 - `/admin` 403 and `/mcp` 401 are expected for those seeds
 - Admin-gated states cannot be preview-tested with the public seed; use the
   local admin account plus Workers or unit tests

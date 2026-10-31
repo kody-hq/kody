@@ -6,6 +6,10 @@ import {
 	type OrgRole,
 	type RequestOrg,
 } from '@kody-internal/shared/request-context.ts'
+import {
+	type GrantSubjectChoices,
+	grantSubjectMatchSql,
+} from '#worker/authorization/grant-subjects.ts'
 import { memoizePerRequest } from '#worker/request-context.ts'
 import { personalOrgIdSql } from '#worker/orgs/personal-org-sql.ts'
 import {
@@ -112,29 +116,43 @@ type OrgAccessRow = {
 }
 
 /**
- * `personId` (bound as two `?` placeholders, in order) holds a live grant in
- * the org named by `orgIdSql`: directly, or through a live team membership.
+ * Grant-only binding answers "is this non-member a guest through a grant".
+ * Every caller ORs it with live membership, and an `org` subject grant only
+ * reaches live members, so it can never bind a guest.
  */
-function liveGrantForPersonSql(orgIdSql: string): string {
-	return `SELECT 1 FROM grants g
+export const grantOnlyBindingSubjects = {
+	user: 'include',
+	team: 'include',
+	org: {
+		exclude:
+			'An org subject grant only reaches live members, and every caller already ORs this with live membership.',
+	},
+	profile: {
+		exclude:
+			'Profile grants narrow a profile; they never grant the person behind it.',
+	},
+} as const satisfies GrantSubjectChoices
+
+/**
+ * A `SELECT 1` over grants that `personId` holds, directly or through a live
+ * team seat, in the org named by `orgIdSql`. Bind the binds after any
+ * placeholders in `orgIdSql`.
+ */
+export function liveGrantForPersonSql(
+	orgIdSql: string,
+	personId: string,
+): { sql: string; binds: Array<string> } {
+	const subjectMatch = grantSubjectMatchSql({
+		subjects: grantOnlyBindingSubjects,
+		personId,
+	})
+	return {
+		sql: `SELECT 1 FROM grants g
 	        WHERE g.org_id = ${orgIdSql}
 	          AND g.deleted_at IS NULL
-	          AND (
-	            (g.subject_type = 'user' AND g.subject_id = ?)
-	            OR (
-	              g.subject_type = 'team'
-	              AND EXISTS (
-	                SELECT 1 FROM team_members tm
-	                INNER JOIN teams t
-	                  ON t.id = tm.team_id
-	                 AND t.org_id = g.org_id
-	                 AND t.deleted_at IS NULL
-	                WHERE tm.team_id = g.subject_id
-	                  AND tm.user_id = ?
-	                  AND tm.deleted_at IS NULL
-	              )
-	            )
-	          )`
+	          AND ${subjectMatch.sql}`,
+		binds: subjectMatch.binds,
+	}
 }
 
 function bindingFromAccessRow(row: OrgAccessRow | null): OrgBinding | null {
@@ -179,9 +197,10 @@ export async function loadOrgBindingForSlug(
 		.first<OrgAccessRow>()
 	if (!row || row.deleted_at || row.suspended_at) return null
 	if (row.role) return bindingFromAccessRow(row)
+	const liveGrant = liveGrantForPersonSql('?', personId)
 	const grant = await db
-		.prepare(`SELECT 1 AS ok WHERE EXISTS (${liveGrantForPersonSql('?')})`)
-		.bind(row.org_id, personId, personId)
+		.prepare(`SELECT 1 AS ok WHERE EXISTS (${liveGrant.sql})`)
+		.bind(row.org_id, ...liveGrant.binds)
 		.first<{ ok: number }>()
 	if (!grant) return null
 	return bindingFromAccessRow({ ...row, role: null })
@@ -199,6 +218,7 @@ export async function listOrganizationsForPerson(
 	db: D1Database,
 	personId: string,
 ): Promise<Array<ListedOrganization>> {
+	const now = new Date().toISOString()
 	const memberships = await db
 		.prepare(
 			`SELECT o.slug AS slug,
@@ -233,6 +253,7 @@ export async function listOrganizationsForPerson(
 			 FROM grants g
 			 INNER JOIN orgs o ON o.id = g.org_id
 			 WHERE g.deleted_at IS NULL
+			   AND (g.expires_at IS NULL OR g.expires_at > ?)
 			   AND g.subject_type = 'user'
 			   AND g.subject_id = ?${andActiveOrgSql('o')}
 			   AND NOT EXISTS (
@@ -253,6 +274,7 @@ export async function listOrganizationsForPerson(
 			  AND g.subject_id = t.id
 			  AND g.org_id = t.org_id
 			  AND g.deleted_at IS NULL
+			  AND (g.expires_at IS NULL OR g.expires_at > ?)
 			 INNER JOIN orgs o ON o.id = t.org_id
 			 WHERE tm.user_id = ?
 			   AND tm.deleted_at IS NULL${andActiveOrgSql('o')}
@@ -263,7 +285,7 @@ export async function listOrganizationsForPerson(
 			       AND m.deleted_at IS NULL
 			   )`,
 		)
-		.bind(personId, personId, personId, personId)
+		.bind(now, personId, personId, now, personId, personId)
 		.all<{
 			slug: string
 			display_name: string | null
@@ -441,6 +463,7 @@ export function orgBindingForOrgStatements(
 	personId: string,
 	orgId: string,
 ): { membership: D1PreparedStatement; grant: D1PreparedStatement } {
+	const liveGrant = liveGrantForPersonSql('o.id', personId)
 	return {
 		membership: db
 			.prepare(
@@ -458,10 +481,10 @@ export function orgBindingForOrgStatements(
 				`SELECT o.id AS org_id, o.slug AS org_slug
 			 FROM orgs o
 			 WHERE o.id = ?${andActiveOrgSql('o')}
-			   AND EXISTS (${liveGrantForPersonSql('o.id')})
+			   AND EXISTS (${liveGrant.sql})
 			 LIMIT 1`,
 			)
-			.bind(orgId, personId, personId),
+			.bind(orgId, ...liveGrant.binds),
 	}
 }
 
@@ -487,17 +510,24 @@ export async function loadOrgBindingForOrg(
 ): Promise<OrgBinding | null> {
 	return memoizePerRequest({
 		key: `org-binding:${personId}:${orgId}`,
-		load: async () => {
-			const statements = orgBindingForOrgStatements(db, personId, orgId)
-			const membership = await statements.membership.first<OrgBindingRow>()
-			if (membership) return toBinding(membership)
-			const grant = await statements.grant.first<{
-				org_id: string
-				org_slug: string
-			}>()
-			return orgBindingForOrgFromRows({ membership: null, grant })
-		},
+		load: () => loadLiveOrgBindingForOrg(db, personId, orgId),
 	})
+}
+
+/** Uncached binding, for a write that must see current membership. */
+export async function loadLiveOrgBindingForOrg(
+	db: D1Database,
+	personId: string,
+	orgId: string,
+): Promise<OrgBinding | null> {
+	const statements = orgBindingForOrgStatements(db, personId, orgId)
+	const membership = await statements.membership.first<OrgBindingRow>()
+	if (membership) return toBinding(membership)
+	const grant = await statements.grant.first<{
+		org_id: string
+		org_slug: string
+	}>()
+	return orgBindingForOrgFromRows({ membership: null, grant })
 }
 
 /** True when the org exists and is neither soft-deleted nor suspended. */
@@ -521,6 +551,7 @@ export async function listOrgsForPerson(
 	db: D1Database,
 	personId: string,
 ): Promise<Array<PersonOrg>> {
+	const liveGrant = liveGrantForPersonSql('o.id', personId)
 	const rows = await db
 		.prepare(
 			`SELECT o.id, o.slug, o.display_name, o.avatar_key, o.plan, o.entitlement_ladder,
@@ -532,11 +563,11 @@ export async function listOrgsForPerson(
 			  AND m.deleted_at IS NULL
 			 WHERE (
 			     m.user_id IS NOT NULL
-			     OR EXISTS (${liveGrantForPersonSql('o.id')})
+			     OR EXISTS (${liveGrant.sql})
 			   )${andActiveOrgSql('o')}
 			 ORDER BY o.slug ASC, o.id ASC`,
 		)
-		.bind(personId, personId, personId)
+		.bind(personId, ...liveGrant.binds)
 		.all<OrgRecord & { role: OrgRole | null }>()
 	return (rows.results ?? []).map((row) => ({
 		...row,

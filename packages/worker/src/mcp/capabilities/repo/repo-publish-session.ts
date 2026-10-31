@@ -34,14 +34,38 @@ import {
 } from '#worker/approval-bundles/paused-publishes.ts'
 import { optionalApprovalViewerForCaller } from '#mcp/capabilities/packages/approval-bundle-shared.ts'
 import { CommunityActionError } from '#worker/community/errors.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
+import { isDurableObjectIsolateResourceLimitResetError } from '#worker/durable-object-reset-retry.ts'
+import {
+	isPublishComputeLimitMessage,
+	publishComputeLimitMessage,
+} from '#worker/repo/isolated-runner-limit-message.ts'
+
+/**
+ * A publish step that exceeded the compute limit is deterministic for this
+ * tree: say so (and what to do) instead of letting edge mapping call it a
+ * storage outage (KODY-CY).
+ */
+function toPublishComputeLimitCallerError(error: unknown) {
+	if (error instanceof McpCallerError) return error
+	const message = getErrorMessage(error)
+	if (isPublishComputeLimitMessage(message)) {
+		return new McpCallerError(message, { cause: error })
+	}
+	if (isDurableObjectIsolateResourceLimitResetError(error)) {
+		return new McpCallerError(publishComputeLimitMessage(), { cause: error })
+	}
+	return error
+}
 
 export const repoPublishSessionCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoPublishSession',
+		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
-			'Publish an active repo session back to the source repo after checks pass on the current tree and the base commit is still current. Visibility is a repo setting (`packageUpdate` / `repoUpdate`), not package.json#private. When publishing a community fork after absorbing origin updates, pass absorbed_upstream_commit.',
+			'Publish an active repo session back to the source repo after checks pass on the current tree and the base commit is still current. Visibility is a repo setting (`packageUpdate` / `repoUpdate`), not package.json#private. When publishing a community fork after absorbing origin updates, pass absorbed_upstream_commit. Retrying is safe: a publish whose push did not land fails with publish_not_applied (nothing moved), and an interrupted publish resumes; check repoGetSession last_publish for status.',
 		keywords: ['repo', 'publish', 'session', 'checks', 'artifact'],
 		readOnly: false,
 		idempotent: false,
@@ -72,15 +96,20 @@ export const repoPublishSessionCapability = defineDomainCapability(
 				message:
 					'Running publish checks on the session tree — lint, typecheck, the works…',
 			})
-			const result = await session.publishSession({
-				sessionId: args.session_id,
-				userId: owner.ownerUserId,
-				requestedByUserId: ctx.callerContext.user?.userId ?? null,
-				rebuildPackageArtifacts: false,
-				expectedPackageScope: isPackageSession ? owner.ownerScope : undefined,
-				privateVisibilityChangeConfirmed:
-					args.confirm_private_visibility_change,
-			})
+			const result = await session
+				.publishSession({
+					sessionId: args.session_id,
+					userId: owner.ownerUserId,
+					requestedByUserId: ctx.callerContext.user?.userId ?? null,
+					publisherRequest: ctx.callerContext.request ?? null,
+					rebuildPackageArtifacts: false,
+					expectedPackageScope: isPackageSession ? owner.ownerScope : undefined,
+					privateVisibilityChangeConfirmed:
+						args.confirm_private_visibility_change,
+				})
+				.catch((error: unknown) => {
+					throw toPublishComputeLimitCallerError(error)
+				})
 			if (result.status === 'ok') {
 				if (isPackageSession) {
 					await reportCapabilityProgress(ctx.reportProgress, {

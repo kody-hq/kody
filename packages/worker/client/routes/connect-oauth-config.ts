@@ -8,6 +8,7 @@ import {
 } from '@kody-internal/shared/url-hosts.ts'
 import { isBrowserFetchNetworkError } from '#client/browser-fetch-network-error.ts'
 import { type AccountIntegrationListItem } from '#universal/loader-data.ts'
+import { resolveAuthorizeRequestScopes } from '#universal/oauth-authorize-scopes.ts'
 
 export type OAuthFlow = 'pkce' | 'confidential' | 'device'
 export type TokenExchangeStyle = 'form' | 'basic-json' | 'basic-form'
@@ -63,6 +64,12 @@ export type ConnectOauthConfig = {
 	 * with the shared secret, and the client-credential setup step is skipped.
 	 */
 	platformAppSlug: string | null
+	/**
+	 * Set when a member connects their own account through the scoped org's
+	 * OAuth app: the org owns the client registration and exchange runs
+	 * host-side with its secret; the connection is the member's (ADR 0068).
+	 */
+	pinnedAppSlug: string | null
 	/** Relative path of the operator-uploaded provider logo, when present. */
 	platformLogoPath: string | null
 	/** Explicit user-uploaded OAuth app logo (beats catalog and favicon). */
@@ -105,6 +112,7 @@ export type StoredIntegrationConfig = Omit<
 	tokenExchangeStyle?: TokenExchangeStyle | null
 	authorization?: StoredIntegrationAuthorization | null
 	/** Platform (built-in) app slug when the record is a platform connection or prefill. */
+	pinnedAppSlug?: string | null
 	platformAppSlug?: string | null
 	/** Operator-verified scope menu for platform apps; requested scopes are clamped to it. */
 	platformAllowedScopes?: Array<string>
@@ -192,6 +200,9 @@ export function toStoredIntegrationConfig(
 		logoPath: integration.logoPath ?? null,
 		autoLogoPath: integration.autoLogoPath ?? null,
 		catalogLogoPath: integration.catalogLogoPath ?? null,
+		...(integration.pinnedAppSlug
+			? { pinnedAppSlug: integration.pinnedAppSlug }
+			: {}),
 		...(integration.platform === true
 			? {
 					platformAppSlug: integration.appSlug,
@@ -434,6 +445,7 @@ export function mergeConnectOauthConfig(input: {
 	if (allowedHosts.length === 0) return null
 	return {
 		platformAppSlug,
+		pinnedAppSlug: input.storedIntegration?.pinnedAppSlug ?? null,
 		platformLogoPath: platformAppSlug
 			? parsePlatformLogoPath(input.storedIntegration?.platformLogoPath)
 			: null,
@@ -481,7 +493,32 @@ function resolveConnectOauthScopes(input: {
 	if (input.queryConfig.scopes && input.queryConfig.scopes.length > 0) {
 		return input.queryConfig.scopes
 	}
-	return input.storedIntegration?.authorization?.scopes ?? []
+	const stored = input.storedIntegration?.authorization?.scopes ?? []
+	if (stored.length > 0) return stored
+	// Platform apps keep an empty selection empty (operator menu / intentional
+	// clear). Bring-your-own prefills historically forced scopes to [] with no
+	// fallback, which sent Google (and similar) authorize requests without a
+	// scope parameter. Fill known host defaults so the consent screen can load.
+	if (input.storedIntegration?.platformAppSlug) {
+		return []
+	}
+	const authorizeHost =
+		input.queryConfig.authorizeHost ??
+		(input.storedIntegration?.authorization?.authorizeUrl
+			? safeParseHost(input.storedIntegration.authorization.authorizeUrl)
+			: null) ??
+		(input.queryConfig.authorizeUrl
+			? safeParseHost(input.queryConfig.authorizeUrl)
+			: null) ??
+		(input.queryConfig.deviceAuthorizationUrl
+			? safeParseHost(input.queryConfig.deviceAuthorizationUrl)
+			: null)
+	const resolved = resolveAuthorizeRequestScopes({
+		scopes: [],
+		authorizeHost,
+		fillDefaults: true,
+	})
+	return resolved.ok ? resolved.scopes : []
 }
 
 function resolveConnectOauthExtraAuthorizeParams(input: {
@@ -564,6 +601,8 @@ export function parseSessionConnectOauthConfig(
 			typeof record.platformAppSlug === 'string'
 				? record.platformAppSlug
 				: null,
+		pinnedAppSlug:
+			typeof record.pinnedAppSlug === 'string' ? record.pinnedAppSlug : null,
 		platformLogoPath: parsePlatformLogoPath(record.platformLogoPath),
 		logoPath: parsePlatformLogoPath(record.logoPath),
 		autoLogoPath: parsePlatformLogoPath(record.autoLogoPath),

@@ -6,6 +6,8 @@ import { documentHead } from '../components/document-head.ts'
 import { loadProfile } from '#start/server/public-data'
 import { OrgHomePage } from '../pages/org-home.tsx'
 import { profileReadInput } from '../public-read-input.ts'
+import { orgHomeHref, orgHomeView } from '#universal/org-pages.ts'
+import { routes } from '#universal/routes.ts'
 
 const pageQuery = createPageQuery('loadProfile', loadProfile, {
 	freshAuthorization: true,
@@ -33,7 +35,7 @@ export const Route = createFileRoute('/_app/@{$username}')({
 		limit: search.limit,
 		q: search.limit != null ? search.q : undefined,
 	}),
-	context: ({ location, params }) => ({
+	beforeLoad: ({ location, params }) => ({
 		pageQueryInput: profileReadInput(params.username, location.searchStr),
 	}),
 	shouldReload: ({ context }) => !context.inPlaceNavigation,
@@ -53,9 +55,26 @@ export const Route = createFileRoute('/_app/@{$username}')({
 function Profile() {
 	const { data, orgHome } = usePageData()
 	const href = Route.useRouteContext().pageLocation.href
-	if (orgHome) return <OrgHomePage org={orgHome} />
+	const view = new URL(href, 'https://kody.local').searchParams.get('view')
+	// A public team org shows its public page to everyone; members open the
+	// org home with `?view=home`. Private orgs only have the home.
+	if (orgHome && (!data || view === orgHomeView))
+		return (
+			<OrgHomePage
+				org={orgHome}
+				publicPageHref={
+					data ? routes.profile.href({ username: orgHome.slug }) : null
+				}
+			/>
+		)
 	if (!data) return <ProfileUnavailable />
-	return <ProfileRoute data={data} currentHref={href} />
+	return (
+		<ProfileRoute
+			data={data}
+			currentHref={href}
+			orgHomeHref={orgHome ? orgHomeHref(orgHome.slug) : null}
+		/>
+	)
 }
 
 function usePageData() {

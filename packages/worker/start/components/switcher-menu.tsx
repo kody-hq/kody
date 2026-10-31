@@ -105,7 +105,7 @@ export const switcherPanelCss = {
 	margin: 0,
 	padding: '0.5rem',
 	boxSizing: 'border-box' as const,
-	border: `1.5px solid ${colors.border}`,
+	border: `1px solid color-mix(in srgb, ${colors.border} 60%, ${colors.surface})`,
 	borderRadius: '18px',
 	backgroundColor: colors.surface,
 	boxShadow: shadows.md,

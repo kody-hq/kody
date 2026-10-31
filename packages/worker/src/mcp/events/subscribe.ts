@@ -162,12 +162,10 @@ export async function subscribeMcpEvent(
 		})
 	}
 
-	const connectionProfileName =
-		principal.callerContext.request?.credential.profileName ?? null
 	const key: McpEventSubscriptionKey = {
 		userId,
 		oauthClientId: principal.oauthClientId,
-		connectionProfileName,
+		profileId: principal.callerContext.request?.credential.profileId ?? null,
 		eventName: params.name,
 		arguments: subscriptionArguments,
 		callbackUrl,
@@ -247,7 +245,6 @@ export async function subscribeMcpEvent(
 		env: principal.env,
 		id,
 		key,
-		connectionProfileName,
 		secret,
 		refreshBefore,
 		verifiedAt,

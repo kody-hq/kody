@@ -53,6 +53,7 @@ import {
 import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import {
+	forgetPersonalOrgIdForPerson,
 	loadPersonalOrgIdForPerson,
 	mintOwnerId,
 } from '#worker/orgs/personal-org-id.ts'
@@ -300,6 +301,11 @@ async function prepareOauthAppsAndIntegrations(input: {
 				),
 			)
 		}
+		// Own-app rows keep pointing at the same (moved) app.
+		updates.push(
+			'app_owner_id = CASE WHEN app_owner_id = user_id THEN ? ELSE app_owner_id END',
+		)
+		binds.push(input.toId)
 		updates.push('user_id = ?')
 		binds.push(input.toId, row.rowid)
 		statements.push(
@@ -748,6 +754,7 @@ export async function convertPersonalOrg(input: {
 		const followsResultIndex = statements.length - 3
 		const results = await db.batch(statements)
 		committed = true
+		forgetPersonalOrgIdForPerson(db, input.personId)
 		await finalizeMcpServerTransfers({
 			env: input.env,
 			fromId: convertedOrgId,

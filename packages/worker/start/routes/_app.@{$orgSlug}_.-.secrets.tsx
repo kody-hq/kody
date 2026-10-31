@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { secretsSearch } from '../filter-search.ts'
+import { secretsSearch, withoutTextSearch } from '../filter-search.ts'
 import { secretsInput } from '../secrets-input.ts'
 import { credentialRedirectFor } from '#universal/credential-redirects.ts'
 import { loadPageQuery, createPageQuery, usePageQuery } from '../page-query.ts'
@@ -13,6 +13,7 @@ const pageQuery = createPageQuery('loadSecretsPage', loadSecretsPage, {
 
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/secrets')({
 	staticData: {
+		presentationSearchKeys: ['q'],
 		workspaceSwitch: { section: 'secrets' },
 		navigation: { rail: 'workspace', item: 'credentials' },
 		orgScope: { section: 'secrets' },
@@ -32,8 +33,9 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/secrets')({
 		}
 	},
 	validateSearch: secretsSearch,
-	loaderDeps: ({ search }) => search,
+	loaderDeps: ({ search }) => withoutTextSearch(search),
 
+	shouldReload: ({ context }) => !context.inPlaceNavigation,
 	loader: ({ context, preload }) =>
 		loadPageQuery(
 			context.queryClient,

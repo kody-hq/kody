@@ -1,11 +1,13 @@
 import { type McpUserContext } from '@kody-internal/shared/chat.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	checkPermission,
 	computeEffectivePermissions,
+	type EffectivePermissions,
 	packageResource,
 } from '#worker/authorization/authorize.ts'
-import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
+import { loadOrgBindingForOrg, type OrgBinding } from '#worker/orgs/repo.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 
 /**
@@ -23,26 +25,11 @@ export async function viewerCanReadSavedPackage(input: {
 	ownerId: string
 	packageId: string
 }): Promise<boolean> {
-	if (!input.viewer) return false
-	const binding = await loadOrgBindingForOrg(
-		input.env.APP_DB,
-		input.viewer.userId,
-		input.ownerId,
-	)
-	if (!binding) return false
-	const access = await computeEffectivePermissions({
-		env: input.env,
-		request: deriveRequestContext({
-			user: input.viewer,
-			source: { kind: 'session' },
-			orgBinding: binding,
-		}),
-	})
-	return checkPermission(
-		access,
+	return savedPackageViewerAllows(
+		await loadSavedPackageViewerAccess(input),
 		'package:read',
-		packageResource({ id: input.packageId, userId: input.ownerId }),
-	).allowed
+		input,
+	)
 }
 
 /**
@@ -57,33 +44,29 @@ export async function viewerCanManageSavedPackage(input: {
 	ownerId: string
 	packageId: string
 }): Promise<boolean> {
-	if (!input.viewer) return false
-	const binding = await loadOrgBindingForOrg(
-		input.env.APP_DB,
-		input.viewer.userId,
-		input.ownerId,
-	)
-	if (!binding) return false
-	const access = await computeEffectivePermissions({
-		env: input.env,
-		request: deriveRequestContext({
-			user: input.viewer,
-			source: { kind: 'session' },
-			orgBinding: binding,
-		}),
-	})
-	return checkPermission(
-		access,
+	return savedPackageViewerAllows(
+		await loadSavedPackageViewerAccess(input),
 		'package:write',
-		packageResource({ id: input.packageId, userId: input.ownerId }),
-	).allowed
+		input,
+	)
 }
 
-async function effectivePackageAccess(input: {
+export type SavedPackageViewerAccess = {
+	access: EffectivePermissions
+	binding: OrgBinding
+}
+
+/**
+ * The viewer's compiled access in the org that owns a saved package, or null
+ * when they are signed out or not bound to that org. Load it once and check
+ * every flag with {@link savedPackageViewerAllows} so one page load compiles
+ * (and reads the org `access_epoch`) once.
+ */
+export async function loadSavedPackageViewerAccess(input: {
 	env: Env
 	viewer: Pick<McpUserContext, 'userId' | 'username'> | null
 	ownerId: string
-}) {
+}): Promise<SavedPackageViewerAccess | null> {
 	if (!input.viewer) return null
 	const binding = await loadOrgBindingForOrg(
 		input.env.APP_DB,
@@ -102,19 +85,54 @@ async function effectivePackageAccess(input: {
 	return { access, binding }
 }
 
+/** Whether loaded viewer access holds a package permission on `packageId`. */
+export function savedPackageViewerAllows(
+	resolved: SavedPackageViewerAccess | null,
+	permission: OrgPermission,
+	input: { ownerId: string; packageId: string },
+): boolean {
+	if (!resolved) return false
+	return checkPermission(
+		resolved.access,
+		permission,
+		packageResource({ id: input.packageId, userId: input.ownerId }),
+	).allowed
+}
+
+/**
+ * Whether loaded viewer access may run the org's hosted package app. With
+ * `appId`, only a grant on that app (or org-wide) counts.
+ */
+export function savedPackageViewerMayRunApp(
+	resolved: SavedPackageViewerAccess | null,
+	input: { ownerId: string; appId?: string | null },
+): boolean {
+	if (!resolved) return false
+	const appId = input.appId?.trim()
+	return checkPermission(
+		resolved.access,
+		'app:execute',
+		appId
+			? {
+					type: 'app',
+					id: appId,
+					orgId: ownerIdFromStored(input.ownerId),
+				}
+			: undefined,
+	).allowed
+}
+
 export async function viewerCanPublishSavedPackage(input: {
 	env: Env
 	viewer: Pick<McpUserContext, 'userId' | 'username'> | null
 	ownerId: string
 	packageId: string
 }): Promise<boolean> {
-	const resolved = await effectivePackageAccess(input)
-	if (!resolved) return false
-	return checkPermission(
-		resolved.access,
+	return savedPackageViewerAllows(
+		await loadSavedPackageViewerAccess(input),
 		'package:publish',
-		packageResource({ id: input.packageId, userId: input.ownerId }),
-	).allowed
+		input,
+	)
 }
 
 export async function viewerCanDeleteSavedPackage(input: {
@@ -123,13 +141,11 @@ export async function viewerCanDeleteSavedPackage(input: {
 	ownerId: string
 	packageId: string
 }): Promise<boolean> {
-	const resolved = await effectivePackageAccess(input)
-	if (!resolved) return false
-	return checkPermission(
-		resolved.access,
+	return savedPackageViewerAllows(
+		await loadSavedPackageViewerAccess(input),
 		'package:delete',
-		packageResource({ id: input.packageId, userId: input.ownerId }),
-	).allowed
+		input,
+	)
 }
 
 /** Whether a signed-in person may change who can use the package (Collaborators). */
@@ -139,13 +155,11 @@ export async function viewerCanManageSavedPackageAccess(input: {
 	ownerId: string
 	packageId: string
 }): Promise<boolean> {
-	const resolved = await effectivePackageAccess(input)
-	if (!resolved) return false
-	return checkPermission(
-		resolved.access,
+	return savedPackageViewerAllows(
+		await loadSavedPackageViewerAccess(input),
 		'package:manage_access',
-		packageResource({ id: input.packageId, userId: input.ownerId }),
-	).allowed
+		input,
+	)
 }
 
 /** Org owner role on the package's owning org (personal or team). */
@@ -154,7 +168,7 @@ export async function viewerIsSavedPackageOrgOwner(input: {
 	viewer: Pick<McpUserContext, 'userId' | 'username'> | null
 	ownerId: string
 }): Promise<boolean> {
-	const resolved = await effectivePackageAccess(input)
+	const resolved = await loadSavedPackageViewerAccess(input)
 	return resolved?.binding.role === 'owner'
 }
 
@@ -172,18 +186,8 @@ export async function viewerCanExecutePackageApp(input: {
 	/** Saved package id when the concrete app is known. */
 	appId?: string | null
 }): Promise<boolean> {
-	const resolved = await effectivePackageAccess(input)
-	if (!resolved) return false
-	const appId = input.appId?.trim()
-	return checkPermission(
-		resolved.access,
-		'app:execute',
-		appId
-			? {
-					type: 'app',
-					id: appId,
-					orgId: ownerIdFromStored(input.ownerId),
-				}
-			: undefined,
-	).allowed
+	return savedPackageViewerMayRunApp(
+		await loadSavedPackageViewerAccess(input),
+		input,
+	)
 }

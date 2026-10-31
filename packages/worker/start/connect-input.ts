@@ -1,5 +1,11 @@
 import { z } from 'zod'
 import { secretsInput } from './secrets-input.ts'
+import {
+	normalizePlacementApprovalParts,
+	placementApprovalCredentialParam,
+	placementApprovalParam,
+	placementApprovalParts,
+} from '#universal/credential-placement-approval.ts'
 
 const locationFields = {
 	orgSlug: z
@@ -20,6 +26,10 @@ export const connectSecretsSchema = z.object({
 		storagePackageId: z.string().optional(),
 		sessionId: z.string().optional(),
 	}),
+	/** Owner-approval request to allow these fill placement parts. */
+	placement: z.array(z.enum(placementApprovalParts)).default([]),
+	/** Pins the placement request to exactly this credential. */
+	placementCredentialId: z.string().min(1).max(200).optional(),
 })
 export const connectOauthSchema = z.object({
 	...locationFields,
@@ -28,6 +38,8 @@ export const connectOauthSchema = z.object({
 	error: z.string().optional(),
 	appSlug: z.string().optional(),
 	platformSlug: z.string().optional(),
+	/** `personal`: connect your own account through the org's `app`. */
+	mode: z.string().optional(),
 })
 export const connectWebhookSchema = z.object({
 	...locationFields,
@@ -46,12 +58,23 @@ function connectionLocation(search: string) {
 export function connectSecretsInput(
 	search: string,
 ): z.infer<typeof connectSecretsSchema> {
-	const { params: _, ...location } = connectionLocation(search)
+	const { params, ...location } = connectionLocation(search)
 	const { selectedSecretId, approval } = secretsInput(
 		location.orgSlug ?? '',
 		search,
 	)
-	return { ...location, selectedSecretId, approval }
+	const placement = normalizePlacementApprovalParts(
+		params.getAll(placementApprovalParam),
+	)
+	const placementCredentialId =
+		params.get(placementApprovalCredentialParam)?.trim() || undefined
+	return {
+		...location,
+		selectedSecretId,
+		approval,
+		placement,
+		placementCredentialId,
+	}
 }
 export function connectOauthInput(
 	search: string,
@@ -64,6 +87,7 @@ export function connectOauthInput(
 		error: params.get('error') ?? undefined,
 		appSlug: params.get('app') ?? undefined,
 		platformSlug: params.get('platform') ?? undefined,
+		mode: params.get('mode') ?? undefined,
 	}
 }
 export function connectWebhookInput(

@@ -71,6 +71,10 @@ Approve the `api.notion.com` host on the same page after saving.
 https://kody.codes/connect/oauth?provider=notion&authorizeUrl=https%3A%2F%2Fapi.notion.com%2Fv1%2Foauth%2Fauthorize&tokenUrl=https%3A%2F%2Fapi.notion.com%2Fv1%2Foauth%2Ftoken&flow=confidential&extraAuthorizeParams=%7B%22owner%22%3A%22user%22%7D
 ```
 
+For a team organization, add `&org=<team-slug>` so the app and connection are
+saved there; without it they go to the personal organization (see
+`guide:oauth`).
+
 Decoded: authorize URL `https://api.notion.com/v1/oauth/authorize`, token URL
 `https://api.notion.com/v1/oauth/token`, `flow=confidential`, and
 `extraAuthorizeParams={"owner":"user"}` (the page adds `response_type=code`

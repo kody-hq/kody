@@ -1,25 +1,40 @@
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import {
 	type OwnerId,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { z } from 'zod'
+import { repoCheckKinds } from '#worker/repo/checks.ts'
 import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
 import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
 import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
+import { readLastCheckStep } from '#worker/repo/isolated-check-phases.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import {
 	defaultDurableEscalationBudgetMs,
 	runWithDurableEscalation,
 } from '#mcp/capabilities/durable-escalation.ts'
-import {
-	errorCauseChainIncludes,
-	getErrorMessage,
-} from '@kody-internal/shared/error-message.ts'
+import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import * as Sentry from '@sentry/cloudflare'
-import { isDurableObjectIsolateResetMessage } from '#worker/sentry-options.ts'
+import {
+	isDurableObjectIsolateResourceLimitResetError,
+	isTransientDurableObjectResetError,
+} from '#worker/durable-object-reset-retry.ts'
+import { isExternalPublishSnapshotTooLargeMessage } from '#worker/repo/external-publish-clone.ts'
+import {
+	externalPublishResourceLimitMessage,
+	isPublishComputeLimitMessage,
+	type RepoCheckStep,
+} from '#worker/repo/isolated-runner-limit-message.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
-import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
+import {
+	getPackageNameLeaf,
+	packageIdLookupDescription,
+	packageKodyIdOptionalInput,
+	packageNameLookupDescription,
+} from '#worker/package-registry/package-name.ts'
 import { authorizePackageWrite } from '#worker/authorization/authorize.ts'
 import { resolvePublicUsername } from '#worker/identity/user-lookup.ts'
 import {
@@ -90,8 +105,9 @@ import {
 import { buildUpdatePublicListingHref } from '#universal/update-public-listing.ts'
 
 const inputSchema = z.object({
-	package_id: z.string().min(1).optional(),
-	kody_id: z.string().min(1).optional(),
+	package_id: z.string().min(1).optional().describe(packageIdLookupDescription),
+	name: z.string().min(1).optional().describe(packageNameLookupDescription),
+	kody_id: packageKodyIdOptionalInput(),
 	allow_force: z.boolean().optional().default(false),
 	confirm_destructive_overwrite: z
 		.boolean()
@@ -115,11 +131,26 @@ export default async function main(params = {}) {
 	return await kody.packagePublishExternalPush(params)
 }`
 
-function isTransientDurableObjectResetError(error: unknown) {
-	// Exact platform reset strings (including deploy "code was updated").
-	// Substring matching on "Durable Object was reset" misses that form —
-	// Cloudflare says "Durable Object reset because…" with no "was".
-	return errorCauseChainIncludes(error, isDurableObjectIsolateResetMessage)
+function throwIfExternalPublishResourceLimit(
+	error: unknown,
+	step: RepoCheckStep | null = null,
+): never | void {
+	if (error instanceof McpCallerError) throw error
+	if (isDurableObjectIsolateResourceLimitResetError(error)) {
+		throw new McpCallerError(externalPublishResourceLimitMessage(step), {
+			cause: error,
+		})
+	}
+	const message = getErrorMessage(error)
+	// A publish step that hit the limit in its own throwaway isolate: the
+	// message already names the step and what to do, and a retry of the
+	// same tree would hit it again.
+	if (
+		isExternalPublishSnapshotTooLargeMessage(message) ||
+		isPublishComputeLimitMessage(message)
+	) {
+		throw new McpCallerError(message, { cause: error })
+	}
 }
 
 function bundleCheckFailedFromRebuildError(error: unknown) {
@@ -193,17 +224,7 @@ async function delay(ms: number, signal?: AbortSignal) {
 }
 
 const checkSchema = z.object({
-	kind: z.enum([
-		'manifest',
-		'docs',
-		'skills',
-		'dependencies',
-		'bundle',
-		'typecheck',
-		'lint',
-		'credentials',
-		'smoke',
-	]),
+	kind: z.enum(repoCheckKinds),
 	ok: z.boolean(),
 	message: z.string(),
 })
@@ -401,13 +422,27 @@ const allowedPackagesPublishNoticeSchema = z
 	.nullable()
 	.optional()
 	.describe(
-		'Warning when this package fills a user credential whose allowed-packages list excludes it. Uses through another package or a one-off execute run are already denied; a self-authored or adopted package that runs on its own still uses the credential. Null/omitted when there is nothing to warn about. Does not block publish.',
+		'Warning when this package fills a user credential whose allowed-packages list excludes it. Kody denies those uses at runtime for every package, including self-authored and adopted ones. Null/omitted when there is nothing to warn about. Does not block publish.',
 	)
 
 const artifactsRebuiltSchema = z
 	.boolean()
 	.describe(
 		'True when this already_published result still rebuilt one or more package bundle artifacts (true no-op tip that still repaired leftovers). False when every target was already current. Only present on already_published; a tip move relative to the pre-request tip always returns published.',
+	)
+
+const checksRerunSchema = z
+	.boolean()
+	.optional()
+	.describe(
+		'True when tip already matched HEAD but publish checks were re-run because the stored check/stamp used an older checker version (or a prior attempt never sealed success). False/omitted on a true no-op (same commit, current checker, prior success).',
+	)
+
+const alreadyPublishedMessageSchema = z
+	.string()
+	.optional()
+	.describe(
+		'When checks_rerun is true, explains that same-commit checks were re-validated and the stamp refreshed. Omitted on a true no-op.',
 	)
 
 /**
@@ -428,6 +463,8 @@ const outputSchema = z.discriminatedUnion('status', [
 		status: z.literal('already_published'),
 		published_commit: z.string().nullable(),
 		artifacts_rebuilt: artifactsRebuiltSchema,
+		checks_rerun: checksRerunSchema,
+		message: alreadyPublishedMessageSchema,
 		hosted_app_url: z.string().nullable(),
 		test_hints: packageTestHintsSchema.optional(),
 		static_dependents: staticDependentsSchema,
@@ -868,6 +905,7 @@ async function runExternalPublishAttempt(input: {
 	allowForce: boolean
 	destructiveOverwriteConfirmed: boolean
 	requestedByUserId: string | null
+	publisherRequest?: RequestContext | null
 	approvalViewer: ApprovalViewer | null
 	signal?: AbortSignal
 	reportProgress?: McpReportProgress
@@ -906,6 +944,7 @@ async function runExternalPublishAttempt(input: {
 				rebuildPackageArtifacts: false,
 				expectedPackageScope: input.expectedPackageScope,
 				requestedByUserId: input.requestedByUserId,
+				publisherRequest: input.publisherRequest ?? null,
 				deferBundleCheckToRebuild: true,
 			})
 			const publishMs = Date.now() - publishStartedAt
@@ -961,6 +1000,7 @@ async function runExternalPublishAttempt(input: {
 									rebuiltTargetCount: rebuild.rebuiltTargetCount,
 								}
 							} catch (error) {
+								throwIfExternalPublishResourceLimit(error, 'rebuild')
 								if (isTransientDurableObjectResetError(error)) {
 									throw error
 								}
@@ -1086,14 +1126,25 @@ async function runExternalPublishAttempt(input: {
 						...sharedSuccessFields,
 					}
 				}
+				const checksRerun = result.checks_rerun === true
 				await reportCapabilityProgress(input.reportProgress, {
 					progress: maxAttempts + 1,
 					total: maxAttempts + 1,
-					message: `Already published wrap-up — rebuild ${rebuildMs}ms, dependents ${dependentsMs}ms.`,
+					message: checksRerun
+						? `Already published (checks re-run for current checker) — rebuild ${rebuildMs}ms, dependents ${dependentsMs}ms.`
+						: `Already published wrap-up — rebuild ${rebuildMs}ms, dependents ${dependentsMs}ms.`,
 				})
 				return {
 					status: 'already_published' as const,
 					artifacts_rebuilt: artifactsRebuilt,
+					...(checksRerun
+						? {
+								checks_rerun: true,
+								message:
+									result.message ??
+									'HEAD was already published; checks were re-run under the current checker and passed.',
+							}
+						: {}),
 					...sharedSuccessFields,
 				}
 			}
@@ -1182,6 +1233,7 @@ async function runExternalPublishAttempt(input: {
 							})
 							return { ok: true as const }
 						} catch (error) {
+							throwIfExternalPublishResourceLimit(error, 'rebuild')
 							if (isTransientDurableObjectResetError(error)) {
 								throw error
 							}
@@ -1302,6 +1354,18 @@ async function runExternalPublishAttempt(input: {
 			} as const
 		} catch (error) {
 			assertNotAborted(input.signal)
+			if (
+				!(error instanceof McpCallerError) &&
+				isDurableObjectIsolateResourceLimitResetError(error)
+			) {
+				// The reset instance left its current step in storage; this call
+				// reaches a fresh isolate for the same session id.
+				const step = await readLastCheckStep(
+					repoSessionRpc(input.env, sessionId),
+				)
+				throwIfExternalPublishResourceLimit(error, step)
+			}
+			throwIfExternalPublishResourceLimit(error)
 			if (!isTransientDurableObjectResetError(error)) {
 				throw error
 			}
@@ -1337,9 +1401,10 @@ export const publishExternalPushCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packagePublishExternalPush',
+		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
-			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began (a true no-op tip); it still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including durable re-entry after an overlapping inline attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. Common cases return the full synchronous result. If the publish exceeds the inline budget (~35s), the work is dispatched once to a durable workflow (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags) and this capability returns status dispatched with a workflow_id to poll via workflowRunList instead of hanging until an opaque execute timeout. Active and succeeded durable runs still dedupe; a terminal failure (for example Durable Object reset because its code was updated) releases the idempotency key so the same commit can be published again. dispatched includes phase_timings.total_ms as time-to-dispatch.',
+			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began; a true no-op (same checker version, prior success) skips checks, while a missing or older stored checker version re-runs checks, refreshes the stamp, and sets checks_rerun true with a message. It still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including durable re-entry after an overlapping inline attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. Common cases return the full synchronous result. If the publish exceeds the inline budget (~35s), the work is dispatched once to a durable workflow (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags) and this capability returns status dispatched with a workflow_id to poll via workflowRunList instead of hanging until an opaque execute timeout. Active and succeeded durable runs still dedupe; a terminal failure (for example Durable Object reset because its code was updated) releases the idempotency key so the same commit can be published again. dispatched includes phase_timings.total_ms as time-to-dispatch.',
 		keywords: ['package', 'publish', 'git', 'artifacts', 'external', 'push'],
 		readOnly: false,
 		idempotent: true,
@@ -1353,6 +1418,13 @@ export const publishExternalPushCapability = defineDomainCapability(
 				request: requireMcpRequest(ctx.callerContext),
 			})
 			const expectedPackageScope = owner.ownerScope
+			const nameInput = args.name?.trim() || undefined
+			const leftoverKodyIdInput = args.kody_id?.trim() || undefined
+			if (nameInput !== undefined && leftoverKodyIdInput !== undefined) {
+				throw new McpCallerError(
+					'Provide `name` or leftover `kody_id`, not both. Prefer `name`.',
+				)
+			}
 			const { packageId, userId, kodyId, hasApp, name, source } =
 				await resolveOwnedPackageSource({
 					db: ctx.env.APP_DB,
@@ -1360,7 +1432,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 					ownerScope: owner.ownerScope,
 					args: {
 						package_id: args.package_id,
-						kody_id: args.kody_id,
+						kody_id: nameInput ?? leftoverKodyIdInput,
 					},
 				})
 			await authorizePackageWrite(
@@ -1406,6 +1478,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 				allowForce: args.allow_force,
 				destructiveOverwriteConfirmed: args.confirm_destructive_overwrite,
 				requestedByUserId: user.userId,
+				publisherRequest: ctx.callerContext.request ?? null,
 				approvalViewer: optionalApprovalViewerForCaller(ctx),
 				reportProgress: ctx.reportProgress,
 			}
@@ -1423,7 +1496,11 @@ export const publishExternalPushCapability = defineDomainCapability(
 			} satisfies ExternalPublishSemanticInput
 			const durableParams = {
 				...(args.package_id ? { package_id: args.package_id } : {}),
-				...(args.kody_id ? { kody_id: args.kody_id } : {}),
+				...(nameInput
+					? { name: nameInput }
+					: leftoverKodyIdInput
+						? { kody_id: leftoverKodyIdInput }
+						: {}),
 				allow_force: args.allow_force,
 				confirm_destructive_overwrite: args.confirm_destructive_overwrite,
 				baseline_published_commit: baselinePublishedCommit,

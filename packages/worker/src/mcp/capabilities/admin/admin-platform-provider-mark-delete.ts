@@ -27,6 +27,7 @@ export const adminPlatformProviderMarkDeleteCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminPlatformProviderMarkDelete',
+		contextRuns: 'deny',
 		description:
 			'Delete an operator-owned provider brand mark and its stored logo. Admin-only.',
 		keywords: [

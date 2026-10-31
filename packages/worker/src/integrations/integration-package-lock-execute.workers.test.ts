@@ -8,7 +8,6 @@ import { applyD1Migrations, type D1Migration } from 'cloudflare:test'
 import { env } from 'cloudflare:workers'
 import { afterEach, beforeAll, expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { resolveExecuteInvokeCode } from '#mcp/execute-invoke.ts'
 import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
 import { persistIntegrationTokens } from '#worker/integrations/credentials.ts'
 import {
@@ -389,7 +388,7 @@ test(
 )
 
 test(
-	'execute invoke of the allowed package export uses the locked integration',
+	'execute passthrough of the allowed package export uses the locked integration',
 	{ timeout: 120_000 },
 	async () => {
 		silenceIncidentalRuntimeWarnings()
@@ -400,7 +399,7 @@ test(
 
 		const run = await execute(
 			person,
-			resolveExecuteInvokeCode(`kody:${allowed.name}/call`),
+			`import call from ${JSON.stringify(`kody:${allowed.name}/call`)}\nexport default (params) => call(params)`,
 		)
 
 		expect(run.error).toBeUndefined()
@@ -430,5 +429,230 @@ test(
 		expect(seen).toEqual([
 			{ path: '/locked', authorization: `Bearer ${DUMMY_TOKEN}` },
 		])
+	},
+)
+
+// Execute reuses one sandbox isolate for identical code, so module scope
+// outlives a run. A package that caches its authenticated fetch there must
+// not reach an earlier run's RPC stubs, which die when that run's
+// evaluate() returns ("RPC stub used after being disposed.").
+const cachedAuthedFetchSource = `import { createAuthenticatedFetch } from 'kody:runtime'
+let authed = null
+export default async function call() {
+	authed ??= await createAuthenticatedFetch(${JSON.stringify(INTEGRATION)})
+	const res = await authed('https://upstream.example.com/locked')
+	return { status: res.status }
+}`
+
+test(
+	'a package-cached authenticated fetch keeps working when later executes reuse the isolate',
+	{ timeout: 120_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const person = await createPerson()
+		const allowed = await publishPackage(person, 'allowed', {
+			'src/call.ts': cachedAuthedFetchSource,
+		})
+		await connectLockedIntegration(person, allowed.packageId)
+		const seen = installFakeUpstream()
+
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			const run = await execute(person, importAndCall(allowed.name))
+			expect({ attempt, error: run.error }).toEqual({
+				attempt,
+				error: undefined,
+			})
+			expect(run.result).toEqual({ status: 200 })
+		}
+		expect(seen).toEqual(
+			Array.from({ length: 3 }, () => ({
+				path: '/locked',
+				authorization: `Bearer ${DUMMY_TOKEN}`,
+			})),
+		)
+	},
+)
+
+const chunkUploadSource = `import { createAuthenticatedFetch } from 'kody:runtime'
+let authed = null
+export default async function call() {
+	authed ??= await createAuthenticatedFetch(${JSON.stringify(INTEGRATION)})
+	const chunk = new Uint8Array(4 * 1024 * 1024).fill(7)
+	const res = await authed('https://upstream.example.com/upload', {
+		method: 'POST',
+		body: new ReadableStream({
+			start(controller) {
+				controller.enqueue(chunk.subarray(0, chunk.length / 2))
+				controller.enqueue(chunk.subarray(chunk.length / 2))
+				controller.close()
+			},
+		}),
+		duplex: 'half',
+	})
+	return await res.json()
+}`
+
+test(
+	'a package-cached authenticated fetch streams large upload chunks across reused isolates',
+	{ timeout: 120_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const person = await createPerson()
+		const allowed = await publishPackage(person, 'allowed', {
+			'src/call.ts': chunkUploadSource,
+		})
+		await connectLockedIntegration(person, allowed.packageId)
+		const realFetch = globalThis.fetch
+		vi.stubGlobal(
+			'fetch',
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				const request = new Request(input as RequestInfo, init)
+				if (new URL(request.url).hostname !== 'upstream.example.com') {
+					return realFetch(input as RequestInfo, init)
+				}
+				const bytes = new Uint8Array(await request.arrayBuffer())
+				return Response.json({
+					authorized:
+						request.headers.get('authorization') === `Bearer ${DUMMY_TOKEN}`,
+					bytes: bytes.length,
+					allSevens: bytes.every((byte) => byte === 7),
+				})
+			},
+		)
+
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			const run = await execute(person, importAndCall(allowed.name))
+			expect({ attempt, error: run.error }).toEqual({
+				attempt,
+				error: undefined,
+			})
+			expect(run.result).toEqual({
+				authorized: true,
+				bytes: 4 * 1024 * 1024,
+				allSevens: true,
+			})
+		}
+	},
+)
+
+const concurrentCalls = 4
+
+const indexedCallSource = `import { createAuthenticatedFetch } from 'kody:runtime'
+export default async function call(index) {
+	const authed = await createAuthenticatedFetch(${JSON.stringify(INTEGRATION)})
+	const res = await authed('https://upstream.example.com/locked/' + index)
+	return { status: res.status }
+}`
+
+function importAndCallConcurrently(packageName: string, calls: number) {
+	return `import call from 'kody:${packageName}/call'
+export default async function main() {
+	return await Promise.all(
+		Array.from({ length: ${calls} }, (_, index) => call(index)),
+	)
+}`
+}
+
+/**
+ * Holds every gateway flag read open until all concurrent calls have issued
+ * their own, so a call that waits on another call's in-flight read shows up
+ * as a missing read instead of depending on timing.
+ */
+function holdGatewayFlagReads(expected: number) {
+	const reads: Array<string> = []
+	const d1 = Object.getPrototypeOf(env.APP_DB) as D1Database
+	const prepare = d1.prepare
+	const waitForAllReads = async () => {
+		const deadline = Date.now() + 3_000
+		while (reads.length < expected && Date.now() < deadline) {
+			await new Promise((resolve) => setTimeout(resolve, 10))
+		}
+	}
+	const spy = vi.spyOn(d1, 'prepare').mockImplementation(function (
+		this: D1Database,
+		query: string,
+	) {
+		const statement = prepare.call(this, query)
+		if (!/FROM feature_flags\s+WHERE key = \?/.test(query)) return statement
+		reads.push(query)
+		const bind = statement.bind
+		return Object.assign(Object.create(statement), {
+			bind(...values: Array<unknown>) {
+				const bound = bind.apply(statement, values)
+				return Object.assign(Object.create(bound), {
+					async first(...args: Parameters<D1PreparedStatement['first']>) {
+						await waitForAllReads()
+						return await bound.first(...args)
+					},
+				})
+			},
+		})
+	})
+	return {
+		reads,
+		restore: () => spy.mockRestore(),
+	}
+}
+
+async function expectConcurrentCallsSettle(person: Person, name: string) {
+	const seen = installFakeUpstream()
+	const flagReads = holdGatewayFlagReads(concurrentCalls)
+	const run = await execute(
+		person,
+		importAndCallConcurrently(name, concurrentCalls),
+	)
+	flagReads.restore()
+	vi.unstubAllGlobals()
+	expect(run.error).toBeUndefined()
+	expect(run.result).toEqual(
+		Array.from({ length: concurrentCalls }, () => ({ status: 200 })),
+	)
+	expect(seen.map((request) => request.path).sort()).toEqual(
+		Array.from({ length: concurrentCalls }, (_, index) => `/locked/${index}`),
+	)
+	expect(new Set(seen.map((request) => request.authorization))).toEqual(
+		new Set([`Bearer ${DUMMY_TOKEN}`]),
+	)
+	// Each gateway call is its own Workers request. One awaiting another's
+	// in-flight read is cancelled as hung in production, so each reads itself.
+	expect(flagReads.reads).toHaveLength(concurrentCalls)
+}
+
+test(
+	'concurrent calls into a cold imported package all settle',
+	{ timeout: 120_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const person = await createPerson()
+		const helper = await publishPackage(person, 'concurrent-cold', {
+			'src/call.ts': indexedCallSource,
+		})
+		await connectLockedIntegration(person, helper.packageId)
+		expect.hasAssertions()
+
+		await expectConcurrentCallsSettle(person, helper.name)
+	},
+)
+
+test(
+	'concurrent calls into a warm imported package all settle',
+	{ timeout: 120_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const person = await createPerson()
+		const helper = await publishPackage(person, 'concurrent-warm', {
+			'src/call.ts': indexedCallSource,
+		})
+		await connectLockedIntegration(person, helper.packageId)
+		installFakeUpstream()
+		const warmup = await execute(
+			person,
+			importAndCallConcurrently(helper.name, 1),
+		)
+		vi.unstubAllGlobals()
+		expect(warmup.error).toBeUndefined()
+
+		await expectConcurrentCallsSettle(person, helper.name)
+		await expectConcurrentCallsSettle(person, helper.name)
 	},
 )

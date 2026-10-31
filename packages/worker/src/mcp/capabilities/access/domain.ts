@@ -6,6 +6,12 @@ import {
 	accessRevokeCapability,
 } from './access-grants.ts'
 import {
+	inviteLinkAcceptCapability,
+	inviteLinkCreateCapability,
+	inviteLinkListCapability,
+	inviteLinkRevokeCapability,
+} from './invite-links.ts'
+import {
 	inviteAcceptCapability,
 	inviteCreateCapability,
 	inviteRevokeCapability,
@@ -16,6 +22,10 @@ import {
 	orgMemberRemoveCapability,
 	orgMemberUpdateCapability,
 } from './org-members.ts'
+import {
+	packageAppConnectedPeopleListCapability,
+	packageAppConnectedPersonRevokeCapability,
+} from './package-app-connected-people.ts'
 import {
 	packageCollaboratorListCapability,
 	packageCollaboratorRemoveCapability,
@@ -49,9 +59,15 @@ export const accessDomain = defineDomain({
 		packageCollaboratorListCapability,
 		packageCollaboratorSetCapability,
 		packageCollaboratorRemoveCapability,
+		packageAppConnectedPeopleListCapability,
+		packageAppConnectedPersonRevokeCapability,
 		inviteCreateCapability,
 		inviteAcceptCapability,
 		inviteRevokeCapability,
+		inviteLinkCreateCapability,
+		inviteLinkListCapability,
+		inviteLinkRevokeCapability,
+		inviteLinkAcceptCapability,
 		orgCreateCapability,
 		orgMemberListCapability,
 		orgMemberUpdateCapability,

@@ -223,10 +223,7 @@ export function formatPackageSchedule(
 	if (schedule.type === 'cron') {
 		return `Runs on cron "${schedule.expression}" in ${timezone?.trim() || 'UTC'}`
 	}
-	if (schedule.type === 'interval') {
-		return `Runs every ${schedule.every}`
-	}
-	return `Runs once at ${schedule.runAt}`
+	return `Runs every ${schedule.every}`
 }
 
 export function parseEntityRef(entity: string): {

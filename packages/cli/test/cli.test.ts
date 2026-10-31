@@ -18,7 +18,6 @@ import {
 	resolveCommand,
 	resolveLocalExecuteBearer,
 	runCli,
-	shouldUseApiToken,
 } from '../src/cli.js'
 import { OpenApiError, clearOpenApiRouteCache } from '../src/open-api-client.js'
 import { isPairedApiUrl } from '../src/api-token.js'
@@ -383,7 +382,7 @@ test('resolveApiToken prefers --token, falls back to KODY_API_TOKEN, and require
 			resolveApiToken({}, {}, 'this command', {
 				loadApiToken: () => null,
 			}),
-		/not authenticated[\s\S]*cliCredentialBootstrap[\s\S]*kody\.cliCredentialBootstrap[\s\S]*cli_command[\s\S]*never ask a human to paste a token[\s\S]*kody login[\s\S]*tokenCreate[\s\S]*KODY_API_TOKEN/,
+		/not authenticated[\s\S]*operationId `cliCredentialBootstrap`[\s\S]*not `execute`[\s\S]*cli_command[\s\S]*never ask a human to paste a token[\s\S]*kody login[\s\S]*tokenCreate[\s\S]*KODY_API_TOKEN/,
 	)
 })
 
@@ -540,85 +539,6 @@ test('resolveLocalExecuteBearer fails clearly when neither login nor token is av
 				},
 			}),
 		/execute --local: not authenticated[\s\S]*cliCredentialBootstrap[\s\S]*cli_command[\s\S]*never ask a human to paste a token[\s\S]*kody login[\s\S]*tokenCreate/,
-	)
-})
-
-test('shouldUseApiToken prefers explicit --token and env token when not logged in', () => {
-	const noStoredToken = () => null
-	assert.equal(
-		shouldUseApiToken({
-			tokenValues: { token: 'flag' },
-			mcpUrl: 'https://kody.codes/mcp',
-			allowEnvWithoutLogin: true,
-			env: {},
-			hasSession: true,
-			loadApiToken: noStoredToken,
-		}),
-		true,
-	)
-	assert.equal(
-		shouldUseApiToken({
-			tokenValues: {},
-			mcpUrl: 'https://kody.codes/mcp',
-			allowEnvWithoutLogin: true,
-			env: { KODY_API_TOKEN: 'env-tok' },
-			hasSession: false,
-			loadApiToken: noStoredToken,
-		}),
-		true,
-	)
-	assert.equal(
-		shouldUseApiToken({
-			tokenValues: {},
-			mcpUrl: 'https://kody.codes/mcp',
-			allowEnvWithoutLogin: true,
-			env: { KODY_API_TOKEN: 'env-tok' },
-			hasSession: true,
-			loadApiToken: noStoredToken,
-		}),
-		false,
-	)
-	assert.equal(
-		shouldUseApiToken({
-			tokenValues: {},
-			mcpUrl: 'https://kody.codes/mcp',
-			allowEnvWithoutLogin: true,
-			env: {},
-			hasSession: false,
-			loadApiToken: noStoredToken,
-		}),
-		false,
-	)
-})
-
-test('shouldUseApiToken treats stored bootstrap token like env when not logged in', () => {
-	const stored: StoredApiToken = {
-		version: 1,
-		apiUrl: 'https://api.kody.codes',
-		token: 'kody_at_stored',
-		tokenId: 'tok_stored',
-	}
-	assert.equal(
-		shouldUseApiToken({
-			tokenValues: {},
-			mcpUrl: 'https://kody.codes/mcp',
-			allowEnvWithoutLogin: true,
-			env: {},
-			hasSession: false,
-			loadApiToken: () => stored,
-		}),
-		true,
-	)
-	assert.equal(
-		shouldUseApiToken({
-			tokenValues: {},
-			mcpUrl: 'https://kody.codes/mcp',
-			allowEnvWithoutLogin: true,
-			env: {},
-			hasSession: true,
-			loadApiToken: () => stored,
-		}),
-		false,
 	)
 })
 
@@ -869,7 +789,16 @@ test('execute --local without token or login fails clearly', async () => {
 	let stderr = ''
 	try {
 		const code = await runCli(
-			['execute', '--local', '--code', 'export default () => 1'],
+			[
+				'execute',
+				'--local',
+				'--mcp-url',
+				'https://no-login-test.invalid/mcp',
+				'--api-url',
+				'https://api.no-login-test.invalid',
+				'--code',
+				'export default () => 1',
+			],
 			{ stdout: () => {}, stderr: (text) => (stderr += text) },
 		)
 		assert.equal(code, 1)
@@ -1120,18 +1049,26 @@ test('execute --local --invoke rejects non-package export keys outside a package
 	}
 })
 
-test('buildExecuteToolArgs passes invoke without code and keeps params', () => {
+test('buildExecuteToolArgs mints invoke into code and keeps params', () => {
 	assert.deepEqual(
 		buildExecuteToolArgs({
-			invoke: 'kody:@cameronpak/skills/skill-get',
+			invoke: '@acme/skills#skill-get',
 			paramsJson: '{"name":"demo"}',
 			conversationId: 'conv-1',
 		}),
 		{
-			invoke: 'kody:@cameronpak/skills/skill-get',
+			code: `import action from "kody:@acme/skills/skill-get"
+
+export default async function main(params) {
+	return await action(params)
+}`,
 			params: { name: 'demo' },
 			conversationId: 'conv-1',
 		},
+	)
+	assert.throws(
+		() => buildExecuteToolArgs({ invoke: 'https://example.com/mod.js' }),
+		/Unsupported execute invoke specifier/,
 	)
 })
 

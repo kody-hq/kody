@@ -28,6 +28,11 @@ const publicRoutes: RouteScenario[] = [
 		ready: async (page) => {
 			await expect(page.getByLabel('Email')).toBeVisible()
 			await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
+			// Hydration enables the submit button and starts its opacity transition.
+			// Wait for that state before the shared animation-settling check.
+			await expect(
+				page.getByRole('button', { name: /^(Sign in|Create account)$/ }),
+			).toBeEnabled()
 		},
 	},
 	{
@@ -42,6 +47,11 @@ const publicRoutes: RouteScenario[] = [
 			).toBeVisible()
 			await expect(page.getByLabel('Email')).toBeVisible()
 			await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
+			// Hydration enables the submit button and starts its opacity transition.
+			// Wait for that state before the shared animation-settling check.
+			await expect(
+				page.getByRole('button', { name: /^(Sign in|Create account)$/ }),
+			).toBeEnabled()
 		},
 	},
 	{
@@ -98,6 +108,15 @@ const authenticatedRoutes: RouteScenario[] = [
  * mid-fade reports the blend against the page ground (the hero title read as
  * `#989b9e` rather than its settled `#171b20`) as a contrast failure.
  *
+ * Landing `.reveal` items are CSS transitions that only start after hydration
+ * adds `.reveal` then `.in`. Under validate load, that can happen after this
+ * wait returns (empty `getAnimations()`), so scans also force reduced motion.
+ *
+ * Buttons keep color/opacity transitions under reduced motion (feedback, not
+ * movement). Auth hydrates the submit control and starts those fades after
+ * `ready` can already return, so scans also wait for computed colours to
+ * stop changing (#4454).
+ *
  * Indefinite animations (the spinner) never finish, so they are skipped rather
  * than waited on. Scroll-driven timelines also stay `running` for the life of
  * the page — treat those as settled too.
@@ -115,14 +134,48 @@ async function waitForAnimationsToSettle(page: Page) {
 	)
 }
 
+async function waitForSettledColours(page: Page) {
+	await page.evaluate(async () => {
+		const snapshot = () =>
+			[...document.querySelectorAll('button, a, h1, [role="button"]')]
+				.slice(0, 12)
+				.map((element) => {
+					const style = getComputedStyle(element)
+					return `${style.color}|${style.backgroundColor}|${style.opacity}`
+				})
+				.join(';')
+		let previous = snapshot()
+		let stableFrames = 0
+		for (let i = 0; i < 60; i++) {
+			await new Promise<void>((resolve) => {
+				requestAnimationFrame(() => resolve())
+			})
+			const next = snapshot()
+			if (next === previous) {
+				stableFrames += 1
+				if (stableFrames >= 3) return
+			} else {
+				stableFrames = 0
+				previous = next
+			}
+		}
+	})
+}
+
 async function scanRoute(page: Page, scenario: RouteScenario, theme: Theme) {
-	await page.emulateMedia({ colorScheme: theme })
+	await page.emulateMedia({
+		colorScheme: theme,
+		// Settled colours only: `revealRef` skips motion when this is set, and
+		// CSS hides the `.reveal` fade behind `prefers-reduced-motion`.
+		reducedMotion: 'reduce',
+	})
 	await page.goto(scenario.path)
 	await page.evaluate((selectedTheme) => {
 		document.documentElement.dataset.theme = selectedTheme
 	}, theme)
 	await scenario.ready(page)
 	await waitForAnimationsToSettle(page)
+	await waitForSettledColours(page)
 
 	const axe = new AxeBuilder({ page }).withTags([
 		'wcag2a',

@@ -5,6 +5,7 @@ import {
 import { invalidateCommunityPublicCache } from '#app/data-cache.ts'
 import { jobsData } from '#worker/jobs/jobs-data.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
+import { loadTeamOrgProfileBySlug } from '#worker/orgs/org-public-profile.ts'
 import { CommunityActionError } from './errors.ts'
 import {
 	countActiveListingsForOwner,
@@ -108,6 +109,50 @@ export async function getCommunityProfileByStableId(input: {
 		row,
 		includePrivate: input.includePrivate ?? false,
 	})
+}
+
+export type CommunityTeamOrgProfileRecord = {
+	orgId: OwnerId
+	slug: string
+	displayName: string
+	bio: string | null
+	avatarKey: string | null
+	visibility: ProfileVisibility
+	joinedAt: string
+	publicPackageCount: number
+	listingCount: number
+}
+
+/**
+ * A team org's public identity at `/@slug`. Null for unknown, soft-deleted,
+ * suspended, and personal orgs. Private orgs come back with `visibility:
+ * 'private'` so callers decide (members still reach the org home).
+ */
+export async function getCommunityTeamOrgProfileBySlug(input: {
+	env: Env
+	slug: string
+}): Promise<CommunityTeamOrgProfileRecord | null> {
+	const org = await loadTeamOrgProfileBySlug(input.env.APP_DB, input.slug)
+	if (!org) return null
+	const base = {
+		orgId: ownerIdFromStored(org.id),
+		slug: org.slug,
+		displayName: resolveCommunityDisplayName({
+			displayName: org.display_name,
+			username: org.slug,
+		}),
+		bio: org.bio?.trim() || null,
+		avatarKey: org.avatar_key,
+		visibility: org.profile_visibility,
+		joinedAt: org.created_at,
+	}
+	if (org.profile_visibility === 'private')
+		return { ...base, publicPackageCount: 0, listingCount: 0 }
+	const [publicPackageCount, listingCount] = await Promise.all([
+		countPublicSavedPackagesForUser(input.env.APP_DB, org.id),
+		countActiveListingsForOwner(input.env.APP_DB, org.id),
+	])
+	return { ...base, publicPackageCount, listingCount }
 }
 
 export async function updateCommunityProfile(input: {

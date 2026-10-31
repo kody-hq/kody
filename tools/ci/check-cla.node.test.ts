@@ -74,7 +74,7 @@ test('CLA check allowlists the Licensor, bots, signed humans, and rejects everyo
 		'That signing comment on the pull request satisfies this check.',
 	)
 	expect(formatClaFailure(failing)).toContain(
-		'The signer is recorded on main after the pull request merges.',
+		'The signer is recorded on the cla-signatures branch after the pull request merges.',
 	)
 })
 
@@ -236,4 +236,23 @@ test('multiple CLA signing comments record each new signer only once', () => {
 		},
 	])
 	expect(alreadySigned).toEqual({ file: result.file, recorded: [] })
+})
+
+test('serialized CLA signers file matches the repo formatter', () => {
+	const serialized = serializeClaSignersFile(
+		signersFile({
+			allowlist: {
+				github: ['kentcdodds'],
+				email: [
+					'me@kentcdodds.com',
+					'me+github@kentcdodds.com',
+					'noreply@anthropic.com',
+				],
+			},
+		}),
+	)
+	expect(serialized).toContain('\t\t"github": ["kentcdodds"],\n')
+	expect(serialized).toContain(
+		'\t\t"email": [\n\t\t\t"me@kentcdodds.com",\n\t\t\t"me+github@kentcdodds.com",\n\t\t\t"noreply@anthropic.com"\n\t\t]\n',
+	)
 })

@@ -76,6 +76,9 @@ export type PackageSkillIndexEntry = Omit<PackageSkillEntry, 'resources'> & {
  */
 export type PackageSkillsIndex = {
 	version: typeof packageSkillsIndexVersion
+	/** Optional on indexes written before history attribution was recorded. */
+	publishedBy?: string
+	publishedAt?: string
 	packageId: string
 	kodyId: string
 	publishedCommit: string

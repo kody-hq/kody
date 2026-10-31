@@ -8,7 +8,10 @@ const mockGit = vi.hoisted(() => ({
 	push: vi.fn(async () => ({ ok: true, refs: {} })),
 	init: vi.fn(async () => undefined),
 	addRemote: vi.fn(async () => undefined),
-	fetch: vi.fn(async () => ({ ok: true, refs: {} })),
+	fetch: vi.fn(async (): Promise<{ fetchHead: string | null }> => ({
+		fetchHead: 'notes-tip-1',
+	})),
+	writeRef: vi.fn(async () => undefined),
 	readNote: vi.fn(async () => new TextEncoder().encode('{"v":1}\n')),
 }))
 
@@ -195,15 +198,45 @@ test('publish git notes build, parse, write, and read from artifacts repos', asy
 		}),
 	)
 
+	// The fetched notes tip must become the local notes ref before addNote,
+	// or the force push replaces every earlier note with this one.
+	expect(mockGit.writeRef).toHaveBeenCalledWith(
+		expect.objectContaining({
+			dir: '/session',
+			ref: 'refs/notes/commits',
+			value: 'notes-tip-1',
+			force: true,
+		}),
+	)
+	expect(mockGit.writeRef.mock.invocationCallOrder[0]).toBeLessThan(
+		mockGit.addNote.mock.invocationCallOrder[0]!,
+	)
+
 	const readInput = {
 		env: {} as Env,
 		repoId: 'package-pkg-1',
 		commitOid: 'commit-1',
 	}
 
+	mockGit.writeRef.mockClear()
+	mockGit.readNote.mockClear()
+	const existingNote = await readPublishGitNoteFromArtifactsRepo(readInput)
+	expect(existingNote).toMatchObject({ found: true, rawNote: '{"v":1}\n' })
+	expect(mockGit.writeRef).toHaveBeenCalledWith(
+		expect.objectContaining({
+			dir: '/repo',
+			ref: 'refs/notes/commits',
+			value: 'notes-tip-1',
+		}),
+	)
+	expect(mockGit.writeRef.mock.invocationCallOrder[0]).toBeLessThan(
+		mockGit.readNote.mock.invocationCallOrder[0]!,
+	)
+
 	mockGit.init.mockClear()
 	mockGit.addRemote.mockClear()
 	mockGit.fetch.mockClear()
+	mockGit.writeRef.mockClear()
 	mockGit.readNote.mockClear()
 	mockGit.fetch.mockRejectedValueOnce(
 		Object.assign(new Error('Could not find refs/notes/commits.'), {
@@ -231,6 +264,7 @@ test('publish git notes build, parse, write, and read from artifacts repos', asy
 		}),
 	)
 	expect(mockGit.readNote).not.toHaveBeenCalled()
+	expect(mockGit.writeRef).not.toHaveBeenCalled()
 
 	mockGit.fetch.mockRejectedValueOnce(new Error('HTTP Error: 401 Unauthorized'))
 	await expect(readPublishGitNoteFromArtifactsRepo(readInput)).rejects.toThrow(

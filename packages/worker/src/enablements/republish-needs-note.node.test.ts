@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest'
+import { createSubscriptionDiscoverySourceMocks } from '#worker/test-support/package-subscription-source-mocks.ts'
 import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
 import {
 	dailyTarget as daily,
@@ -9,9 +10,9 @@ import { republishedNeedsNote } from './republish-needs-note.ts'
 
 const mocks = vi.hoisted(() => ({ loadPackageManifestBySourceId: vi.fn() }))
 
-vi.mock('#worker/package-registry/source.ts', () => ({
-	loadPackageManifestBySourceId: mocks.loadPackageManifestBySourceId,
-}))
+vi.mock('#worker/package-registry/source.ts', () =>
+	createSubscriptionDiscoverySourceMocks(mocks.loadPackageManifestBySourceId),
+)
 
 const calendar: CredentialNeed = {
 	key: 'calendar',

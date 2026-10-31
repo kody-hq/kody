@@ -1,7 +1,8 @@
 /**
  * Durable observe-mode records for fill placement: which request parts were
  * filled and which would have been blocked under the stored placement. Used by
- * the credential page and later auto-narrowing. Never enforces.
+ * the credential page and to narrow legacy credentials (migration 0195). Never
+ * enforces.
  */
 import { waitUntil } from 'cloudflare:workers'
 

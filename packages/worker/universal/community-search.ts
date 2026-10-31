@@ -25,16 +25,27 @@ export function readCommunitySearchFromHref(href: string) {
 	}
 }
 
+/** Keeps the picked install org (`?org=`) on a site-relative href. */
+export function withInstallOrg(href: string, installOrg?: string | null) {
+	if (!installOrg) return href
+	const url = new URL(href, 'http://localhost')
+	url.searchParams.set('org', installOrg)
+	return `${url.pathname}${url.search}${url.hash}`
+}
+
 export function buildCommunityIndexHref(input?: {
 	query?: string | null
 	sort?: CommunityListingSort
 	category?: CommunityListingCategory | null
+	/** Org the install badges and Fork target follow (`?org=`). */
+	installOrg?: string | null
 }) {
 	const searchParams = new URLSearchParams()
 	const query = input?.query?.trim() ?? ''
 	if (query.length > 0) searchParams.set('q', query)
 	if (input?.sort === 'newest') searchParams.set('sort', 'newest')
 	if (input?.category) searchParams.set('category', input.category)
+	if (input?.installOrg) searchParams.set('org', input.installOrg)
 	return routes.community.href(
 		null,
 		searchParams.size > 0 ? { searchParams } : undefined,

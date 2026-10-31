@@ -96,6 +96,8 @@ const productionArgs = (outConfigPath: string) => ({
 	d1DatabaseId: 'dry-run-kody',
 	auditD1DatabaseName: 'kody-audit',
 	auditD1DatabaseId: 'dry-run-kody-audit',
+	jobsD1DatabaseName: 'kody-jobs',
+	jobsD1DatabaseId: 'dry-run-kody-jobs',
 	oauthKvId: 'dry-run-kody-oauth',
 	bundleArtifactsKvId: 'dry-run-kody-bundle-artifacts',
 	communityAssetsBucketName: 'kody-community-assets',
@@ -248,6 +250,11 @@ test('writeGeneratedWranglerConfig preserves migrations and copies environment a
 			database_name: 'kody-audit',
 			database_id: 'dry-run-kody-audit',
 			migrations_dir: './audit-migrations',
+		},
+		{
+			binding: 'JOBS_DB',
+			database_name: 'kody-jobs',
+			database_id: 'dry-run-kody-jobs',
 		},
 	])
 	expect(production?.r2_buckets).toEqual([
@@ -470,6 +477,59 @@ test('writeGeneratedWranglerConfig rejects WRANGLER_IS_LOCAL_DEV on deploy envs'
 	expect(consoleError).toHaveBeenCalledWith(
 		expect.stringContaining('WRANGLER_IS_LOCAL_DEV'),
 	)
+})
+
+test('writeGeneratedWranglerConfig leaves paced sources alone while the lane flag is off', async () => {
+	consoleError.mockImplementation(() => {})
+	await using temp = await createTempDir()
+	const outPath = path.join(temp.dir, 'wrangler-production.json')
+	await writeGeneratedWranglerConfig({
+		...productionArgs(outPath),
+		workerVars: {
+			APP_BASE_URL: 'https://heykody.dev',
+			DR_D1_PACED_BACKUP_ENABLED: 'false',
+		},
+	})
+
+	const production = (await readConfig(outPath)).env?.production
+	expect(production?.vars?.DR_D1_PACED_BACKUP_ENABLED).toBe('false')
+	expect(String(production?.vars?.DR_D1_PACED_SOURCES)).toContain('APP_DB')
+	expect(String(production?.vars?.DR_D1_PACED_SOURCES)).not.toContain(
+		'dry-run-kody-audit',
+	)
+})
+
+test('writeGeneratedWranglerConfig expands DR_D1_PACED_SOURCES with live D1 UUIDs including AUDIT_DB when enabled', async () => {
+	consoleError.mockImplementation(() => {})
+	await using temp = await createTempDir()
+	const outPath = path.join(temp.dir, 'wrangler-production.json')
+	await writeGeneratedWranglerConfig({
+		...productionArgs(outPath),
+		workerVars: {
+			APP_BASE_URL: 'https://heykody.dev',
+			DR_D1_PACED_BACKUP_ENABLED: 'true',
+		},
+	})
+
+	const production = (await readConfig(outPath)).env?.production
+	expect(production?.vars?.DR_D1_PACED_BACKUP_ENABLED).toBe('true')
+	expect(JSON.parse(String(production?.vars?.DR_D1_PACED_SOURCES))).toEqual([
+		{
+			binding: 'APP_DB',
+			name: 'kody',
+			id: 'dry-run-kody',
+		},
+		{
+			binding: 'AUDIT_DB',
+			name: 'kody-audit',
+			id: 'dry-run-kody-audit',
+		},
+		{
+			binding: 'JOBS_DB',
+			name: 'kody-jobs',
+			id: 'dry-run-kody-jobs',
+		},
+	])
 })
 
 test('ensureR2BucketLifecycle dry-run returns the policy without calling Wrangler', () => {

@@ -2,6 +2,11 @@ import {
 	type OwnerId,
 	type PersonId,
 } from '@kody-internal/shared/owner-person-ids.ts'
+import { type EnablerCredential } from '#worker/enablements/owner-cron-enablement.ts'
+import {
+	createdPackageResources,
+	grantCreatorAccess,
+} from '#worker/orgs/creator-access.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
 import { parseTagsJson } from '@kody-internal/shared/tags-json.ts'
@@ -50,10 +55,6 @@ import { syncJobManagerAlarm } from '#worker/jobs/manager-client.ts'
 import { rebuildPublishedPackageArtifacts } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { type PreparedKodyGraphCache } from '#worker/package-runtime/module-graph.ts'
 import {
-	refreshPackageRetrieverManifestCache,
-	removePackageRetrieverManifestCacheEntries,
-} from '#worker/package-retrievers/manifest-cache.ts'
-import {
 	buildPackageSkillsIndex,
 	collectPackageSkills,
 } from '#worker/package-registry/package-skills.ts'
@@ -95,29 +96,6 @@ export class PackageStorageCleanupError extends Error {
 		this.name = 'PackageStorageCleanupError'
 		this.failedStorageIds = failedStorageIds
 	}
-}
-
-function logPackageRetrieverProjectionError(input: {
-	action: 'refresh' | 'delete'
-	packageId: string
-	error: unknown
-}) {
-	console.error(
-		JSON.stringify({
-			message: 'package retriever projection update failed',
-			action: input.action,
-			packageId: input.packageId,
-		}),
-	)
-	Sentry.captureException(input.error, {
-		tags: {
-			scope: 'package-retriever-projection',
-			action: input.action,
-		},
-		extra: {
-			packageId: input.packageId,
-		},
-	})
 }
 
 function logPackageSkillsProjectionError(input: {
@@ -274,6 +252,8 @@ export async function refreshSavedPackageProjection(input: {
 	baseUrl: string
 	userId: OwnerId
 	actorUserId?: PersonId
+	/** The publishing person's credential; their package jobs stay within it. */
+	actorCredential?: EnablerCredential | null
 	userEmail?: string | null
 	packageId: string
 	sourceId: string
@@ -291,6 +271,13 @@ export async function refreshSavedPackageProjection(input: {
 	 * package row before refreshing must pass it, since the row then exists.
 	 */
 	firstPublish?: boolean
+	/**
+	 * Who created the package. A first publish grants them access to it
+	 * (members with only `package:create` hold nothing on it otherwise).
+	 */
+	creatorUserId?: string | null
+	/** The profile the creator acted as; it also gets a creator grant. */
+	creatorProfileId?: string | null
 }) {
 	// Filled inside the write lease, audited after it commits.
 	const pending: {
@@ -567,19 +554,6 @@ export async function refreshSavedPackageProjection(input: {
 					embedText: buildSavedPackageEmbedText(loaded.manifest),
 					waitUntil: input.waitUntil,
 				})
-				const retrieverCacheTask = refreshPackageRetrieverManifestCache({
-					env: input.env,
-					userId: input.userId,
-					source: loaded.source,
-					savedPackage,
-					manifest: loaded.manifest,
-				}).catch((error: unknown) => {
-					logPackageRetrieverProjectionError({
-						action: 'refresh',
-						packageId: input.packageId,
-						error,
-					})
-				})
 				const skillsIndexTask = (async () => {
 					if (collectedSkills === null) return
 					const publishedCommit = loaded.source?.published_commit
@@ -587,13 +561,19 @@ export async function refreshSavedPackageProjection(input: {
 					await writePackageSkillsIndex({
 						env: input.env,
 						userId: input.userId,
-						index: buildPackageSkillsIndex({
-							packageId: input.packageId,
-							// Scoped package.json name (`@owner/slug`) for skill:// URIs.
-							kodyId: savedPackage.name,
-							publishedCommit,
-							skills: collectedSkills,
-						}),
+						index: {
+							...buildPackageSkillsIndex({
+								packageId: input.packageId,
+								// Scoped package.json name (`@owner/slug`) for skill:// URIs.
+								kodyId: savedPackage.name,
+								publishedCommit,
+								skills: collectedSkills,
+							}),
+							...(input.audit?.actorUsername
+								? { publishedBy: input.audit.actorUsername }
+								: {}),
+							publishedAt: refreshedAt,
+						},
 					})
 				})().catch((error: unknown) => {
 					logPackageSkillsProjectionError({
@@ -603,10 +583,9 @@ export async function refreshSavedPackageProjection(input: {
 					})
 				})
 				if (input.waitUntil) {
-					input.waitUntil(retrieverCacheTask)
 					input.waitUntil(skillsIndexTask)
 				} else {
-					await Promise.all([retrieverCacheTask, skillsIndexTask])
+					await skillsIndexTask
 				}
 				const { syncPackageJobsForPackage } =
 					await import('#worker/jobs/service.ts')
@@ -618,6 +597,7 @@ export async function refreshSavedPackageProjection(input: {
 					sourceId: input.sourceId,
 					manifest: loaded.manifest,
 					actorUserId: input.actorUserId,
+					actorCredential: input.actorCredential ?? null,
 				})
 				if (schedulerStateChanged) {
 					await syncJobManagerAlarm({
@@ -690,6 +670,22 @@ export async function refreshSavedPackageProjection(input: {
 				action: packageAuditActions.published,
 				details: { firstPublish: published.first, fields: published.fields },
 			})
+			if (published.first) {
+				// The publish is stored; a missed grant is repaired by
+				// adminCreatorAccessBackfill, so it must not fail the publish.
+				await grantCreatorAccess({
+					env: input.env,
+					orgId: input.userId,
+					creatorUserId: input.creatorUserId,
+					creatorProfileId: input.creatorProfileId ?? null,
+					audit: input.audit,
+					resources: createdPackageResources(input.packageId),
+				}).catch((error: unknown) => {
+					Sentry.captureException(error, {
+						tags: { context: 'package-creator-grant' },
+					})
+				})
+			}
 		}
 	}
 }
@@ -866,6 +862,13 @@ export async function deleteSavedPackageProjection(input: {
 					packageId: input.packageId,
 				})
 				if (deleted && savedPackage) {
+					const prefix = `${input.packageId}:`
+					await input.env.APP_DB.prepare(
+						`DELETE FROM package_app_rate_limits
+						 WHERE bucket_key >= ? AND bucket_key < ?`,
+					)
+						.bind(prefix, `${input.packageId};`)
+						.run()
 					removed.package = { name: savedPackage.name }
 				}
 				await deleteCredentialMappingsForPackage({
@@ -891,19 +894,6 @@ export async function deleteSavedPackageProjection(input: {
 					userId: input.userId,
 					packageId: input.packageId,
 				})
-				try {
-					await removePackageRetrieverManifestCacheEntries({
-						env: input.env,
-						userId: input.userId,
-						packageId: input.packageId,
-					})
-				} catch (error) {
-					logPackageRetrieverProjectionError({
-						action: 'delete',
-						packageId: input.packageId,
-						error,
-					})
-				}
 				try {
 					await removePackageSkillsIndexEntries({
 						env: input.env,

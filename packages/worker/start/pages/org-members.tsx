@@ -14,6 +14,7 @@ import { routes } from '#universal/routes.ts'
 import {
 	getDangerPillCss,
 	getPillButtonCss,
+	getSelectCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -245,6 +246,7 @@ function OrgMembersContent({
 					<OrgMembersInviteLinks
 						clearRevision={inviteRevision}
 						links={data.inviteLinks}
+						teams={data.teams}
 						slug={data.org.slug}
 						queryKey={queryKey}
 						onMessage={(text, tone) => setMessage({ text, tone })}
@@ -450,10 +452,9 @@ const rowActionsCss: CSSObject = {
 }
 
 const selectCss: CSSObject = {
-	...accountInputCss,
+	...getSelectCss(),
 	width: 'auto',
 	minWidth: '8rem',
-	padding: '0.45rem 0.7rem',
 	[mq.mobile]: {
 		minWidth: 'min(100%, 8rem)',
 		maxWidth: '100%',

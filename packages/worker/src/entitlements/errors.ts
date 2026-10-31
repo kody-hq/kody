@@ -11,6 +11,7 @@ import {
 	nextUtcDayStart,
 	nextUtcWeekStart,
 } from '@kody-internal/shared/date-keys.ts'
+import { preferLocalExecuteLimitGuidance } from '#universal/prefer-local-cli-execute.ts'
 import {
 	entitlementResourceLabels,
 	entitlementResourceWindows,
@@ -124,7 +125,7 @@ function reduceGuidance(
 			return `Use fewer ${entitlementResourceLabels[resource]}`
 		case 'utc_day':
 			return resource === 'execute_unique_workers_per_day'
-				? 'Rerun code you already ran today and vary params; repeats are free'
+				? `Rerun code you already ran today and vary params; repeats are free. ${preferLocalExecuteLimitGuidance}`
 				: null
 		case 'utc_minute':
 			return null

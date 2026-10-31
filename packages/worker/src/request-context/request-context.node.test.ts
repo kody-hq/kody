@@ -48,7 +48,6 @@ test('interactive sources act as the person, as Owner of their own org', () => {
 			id: null,
 			orgId: stableId,
 			scopes: null,
-			profileName: null,
 		},
 		membership: { role: 'owner' },
 	})
@@ -56,7 +55,6 @@ test('interactive sources act as the person, as Owner of their own org', () => {
 	const token = deriveRequestContext({
 		user,
 		source: { kind: 'api-token', tokenId: 'tok_1' },
-		profileName: 'work',
 		scopes: ['org:execute', 'org:read'],
 	})
 	expect(token.credential).toEqual({
@@ -64,7 +62,6 @@ test('interactive sources act as the person, as Owner of their own org', () => {
 		id: 'tok_1',
 		orgId: stableId,
 		scopes: ['org:execute', 'org:read'],
-		profileName: 'work',
 	})
 	expect(token.actor).toEqual(session.actor)
 })
@@ -145,7 +142,6 @@ test('a verified member sender is the actor of an inbound email run, still bille
 			id: 'inbox-1',
 			orgId: stableId,
 			scopes: null,
-			profileName: null,
 		},
 		membership: { role: 'member' },
 	})
@@ -192,7 +188,10 @@ test('downstream runs keep the starter role instead of the org identity Owner ro
 	).toBeNull()
 
 	// A personal org's owner still runs as Owner from legacy lineage.
-	const ownerRun = deriveRequestContext({ user, source: { kind: 'mcp-oauth' } })
+	const ownerRun = deriveRequestContext({
+		user,
+		source: { kind: 'mcp-oauth' },
+	})
 	const { membership: _ownerMembership, ...legacyOwner } = JSON.parse(
 		JSON.stringify(requestLineage(ownerRun)),
 	) as Record<string, unknown>
@@ -208,48 +207,6 @@ test('downstream runs keep the starter role instead of the org identity Owner ro
 	expect(
 		parseRequestLineage({ ...legacy, membership: { role: 'admin' } }),
 	).toBeNull()
-})
-
-test('every source keeps the connection profile it was reached through', () => {
-	const job = deriveRequestContext({
-		user,
-		source: { kind: 'schedule', jobId: 'job-1' },
-		profileName: '  work  ',
-	})
-	expect(job.credential.profileName).toBe('work')
-	expect(
-		deriveRequestContext({
-			user,
-			source: { kind: 'session' },
-			profileName: ' ',
-		}).credential.profileName,
-	).toBeNull()
-
-	// A run started by a profile-bound credential keeps that profile; a run
-	// whose starter had none keeps the profile persisted with the job.
-	const starter = deriveRequestContext({
-		user,
-		source: { kind: 'api-token', tokenId: 'tok_1' },
-		profileName: 'starter',
-	})
-	expect(
-		deriveRequestContext({
-			user,
-			source: inheritRequest(starter),
-			profileName: 'work',
-		}).credential.profileName,
-	).toBe('starter')
-	const unprofiled = deriveRequestContext({
-		user,
-		source: { kind: 'session' },
-	})
-	expect(
-		deriveRequestContext({
-			user,
-			source: inheritRequest(unprofiled),
-			profileName: 'work',
-		}).credential.profileName,
-	).toBe('work')
 })
 
 test('lineage survives a JSON round trip and malformed lineage is rejected', () => {
@@ -388,4 +345,132 @@ test('OAuth and CLI bearer grants carry their client id as the credential id', (
 			}),
 		),
 	).not.toHaveProperty('oauthClientId')
+})
+
+test('a triggered run never exceeds the credential that turned it on', () => {
+	const enablerId = personIdFromStored('c'.repeat(64))
+	const enablement = {
+		id: 'enablement-1',
+		enabler: { userId: enablerId, username: 'cy' },
+		role: 'member' as const,
+		scopes: ['package:execute' as const],
+	}
+	for (const source of [
+		{ kind: 'schedule', jobId: 'job-1', enablement },
+		{ kind: 'webhook', sourceId: 'hook-1', enablement },
+		{ kind: 'platform-event', sourceId: 'event-1', enablement },
+		{
+			kind: 'inbound-email',
+			sourceId: 'inbox-1',
+			sender: { kind: 'inbox-owner' },
+			enablement,
+		},
+	] as const) {
+		const request = deriveRequestContext({ user, source })
+		expect(request.actor).toEqual({ userId: enablerId, username: 'cy' })
+		expect(request.credential).toMatchObject({
+			id: 'enablement-1',
+			scopes: ['package:execute'],
+		})
+	}
+	const unnarrowed = deriveRequestContext({
+		user,
+		source: {
+			kind: 'schedule',
+			jobId: 'job-1',
+			enablement: { ...enablement, scopes: null },
+		},
+	})
+	expect(unnarrowed.credential).toMatchObject({
+		scopes: null,
+	})
+})
+
+test('context-run lineage keeps the operator marker across a durable boundary', () => {
+	const operatorRun = deriveRequestContext({
+		user,
+		source: { kind: 'execution-context-run', ecid: 'ec_1', runId: 'run_1' },
+		contextRunByOperator: true,
+	})
+	const operator = parseRequestLineage(
+		JSON.parse(JSON.stringify(requestLineage(operatorRun))),
+	)
+	expect(operator?.credential).toMatchObject({
+		kind: 'execution-context-run',
+		contextRunByOperator: true,
+	})
+
+	const sharedRun = deriveRequestContext({
+		user,
+		source: { kind: 'execution-context-run', ecid: 'ec_1', runId: 'run_2' },
+	})
+	const shared = parseRequestLineage(
+		JSON.parse(JSON.stringify(requestLineage(sharedRun))),
+	)
+	expect(shared?.credential.contextRunByOperator).toBeUndefined()
+
+	// Only exactly `true` counts; anything else drops the marker.
+	const malformed = parseRequestLineage({
+		...JSON.parse(JSON.stringify(requestLineage(sharedRun))),
+		credential: { ...sharedRun.credential, contextRunByOperator: 'true' },
+	})
+	expect(malformed?.credential.contextRunByOperator).toBeUndefined()
+})
+
+test('profile binding and its frozen chain survive a lineage round trip', () => {
+	const lineage = requestLineage(
+		deriveRequestContext({
+			user,
+			source: { kind: 'api-token', tokenId: 'tok_1' },
+			profileId: 'prf_child',
+			profileChain: ['prf_root', 'prf_child'],
+		}),
+	)
+	const parsed = parseRequestLineage(JSON.parse(JSON.stringify(lineage)))
+	expect(parsed?.credential.profileId).toBe('prf_child')
+	expect(parsed?.credential.profileChain).toEqual(['prf_root', 'prf_child'])
+	expect(
+		parseRequestLineage({
+			...lineage,
+			credential: { ...lineage.credential, profileChain: ['prf_other'] },
+		})?.credential,
+	).toMatchObject({ profileId: 'prf_child' })
+	expect(
+		parseRequestLineage({
+			...lineage,
+			credential: { ...lineage.credential, profileChain: ['prf_other'] },
+		})?.credential.profileChain,
+	).toBeUndefined()
+})
+
+test('a triggered run as a sub-profile records its whole chain', () => {
+	const enablement = {
+		id: 'enablement-1',
+		enabler: { userId: user.userId, username: 'cy' },
+		role: 'member' as const,
+		profileId: 'prf_child',
+		profileChain: ['prf_root', 'prf_child'],
+	}
+	const request = deriveRequestContext({
+		user,
+		source: { kind: 'schedule', jobId: 'job-1', enablement },
+	})
+	expect(request.credential).toMatchObject({
+		profileId: 'prf_child',
+		profileChain: ['prf_root', 'prf_child'],
+	})
+	const parent = deriveRequestContext({
+		user,
+		source: { kind: 'api-token', tokenId: 'tok_1' },
+	})
+	const inherited = deriveRequestContext({
+		user,
+		source: { kind: 'inherited', lineage: requestLineage(parent) },
+		profileId: 'prf_child',
+		profileChain: ['prf_root', 'prf_child'],
+	})
+	expect(inherited.credential).toMatchObject({
+		profileId: 'prf_child',
+		profileChain: ['prf_root', 'prf_child'],
+	})
 })

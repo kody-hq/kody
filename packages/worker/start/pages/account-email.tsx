@@ -3,16 +3,23 @@ import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { toast } from '#client/toast.ts'
 import {
 	resumeOutboundEmailDelivery,
+	blockEmailMessageSender,
 	classifyEmailMessage,
 	deleteEmailMessage,
 } from '#start/server/account-mutations'
+import {
+	defaultEmailMessageView,
+	isEmailMessageView,
+	type EmailClassification,
+	type EmailMessageView,
+} from '#universal/email-message-view.ts'
 import { acceptedEmailVerificationDelivery } from '#universal/email-verification-delivery.ts'
 import {
 	type AccountEmailDestinationsLoaderData,
 	type AccountEmailLoaderData,
 	type AccountEmailMessageDetail,
 } from '#universal/loader-data.ts'
-import { relocateAccountHref } from '#universal/org-pages.ts'
+import { orgGrantsPath, relocateAccountHref } from '#universal/org-pages.ts'
 import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
@@ -23,6 +30,7 @@ import {
 import { useRouteContext, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { formatNullableTimestamp } from '../components/local-timestamp.tsx'
+import { SiteLink } from '../components/site-link.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useShellData } from '../routes/__root.tsx'
 import { invalidateShellQueries } from '../shell-query.ts'
@@ -32,6 +40,7 @@ import { renderAccountEmailDestinationsPanel } from './account-email-destination
 import { renderAccountEmailDetail } from './account-email-detail.tsx'
 import {
 	emailMutationOptions,
+	emailTriageAction,
 	optimisticEmail,
 	type EmailAction,
 } from './account-email-query.ts'
@@ -39,13 +48,11 @@ import {
 	directionLabel,
 	emailRoute,
 	messageDate,
-	quarantinedBadgeCss,
 	senderBadgeCss,
 	senderClassificationLabel,
 	statusLabel,
 	subjectCellCss,
 	truncatedTextCss,
-	type ClassificationFilter,
 } from './account-email-shared.ts'
 import {
 	AccountManagementMessage,
@@ -54,6 +61,10 @@ import {
 } from './account-management-components.tsx'
 import { emailResumeMutationOptions } from './email-resume-mutation.ts'
 import { emailKeys, emailSearch } from './email-resources.ts'
+import {
+	EmailTriageBadges,
+	emailViewOptions,
+} from './email-triage-controls.tsx'
 import {
 	renderEmailVerificationPrompt,
 	requestResendVerification,
@@ -64,6 +75,55 @@ import {
 	RecordTableSelect,
 	recordStampCss,
 } from './record-table.tsx'
+
+function triageNotice(input: {
+	classification?: EmailClassification
+	archived?: boolean
+}) {
+	if (input.classification === 'spam') return 'Marked as spam.'
+	if (input.classification === 'accepted') return 'Marked as not spam.'
+	if (input.classification === 'quarantined') return 'Quarantined.'
+	return input.archived ? 'Archived.' : 'Unarchived.'
+}
+
+/** A member without `email:read`: explain the grant instead of failing. */
+export function AccountEmailMissingGrant({
+	orgSlug,
+	currentHref,
+}: {
+	orgSlug: string
+	currentHref: string
+}) {
+	return (
+		<AccountManagementShell
+			layout="list"
+			currentHref={currentHref}
+			maxWidth="min(100%, 92rem)"
+			busy={false}
+		>
+			<AccountPageHeader
+				entity="email"
+				title="Email inbox"
+				description="Browse inbound and outbound messages for your platform email address. Compose and reply through Kody agents. Manage the addresses emailSend may use here."
+				currentHref={currentHref}
+			/>
+			<div
+				data-testid="email-missing-grant"
+				css={{ display: 'grid', gap: spacing.sm }}
+			>
+				<AccountManagementMessage tone="info">
+					You need the <code>email:read</code> grant to read this workspace's
+					inbox. An org Owner can grant it org-wide on the Grants page.
+				</AccountManagementMessage>
+				<p css={{ margin: 0 }}>
+					<SiteLink href={orgGrantsPath(orgSlug)} css={getGhostButtonCss()}>
+						Open Grants
+					</SiteLink>
+				</p>
+			</div>
+		</AccountManagementShell>
+	)
+}
 
 export function AccountEmailPage({
 	payload,
@@ -135,7 +195,7 @@ export function AccountEmailPage({
 
 	function updateFilters(next: {
 		query?: string
-		classification?: ClassificationFilter
+		view?: EmailMessageView
 		pageDelta?: number
 	}) {
 		const matchedUrl = new URL(currentHref, 'http://localhost')
@@ -155,9 +215,10 @@ export function AccountEmailPage({
 					else delete search.q
 					delete search.page
 				}
-				if (next.classification !== undefined) {
-					if (next.classification === 'all') delete search.classification
-					else search.classification = next.classification
+				if (next.view !== undefined) {
+					delete search.classification
+					if (next.view === defaultEmailMessageView) delete search.view
+					else search.view = next.view
 					delete search.page
 				}
 				if (next.pageDelta !== undefined) {
@@ -259,11 +320,23 @@ export function AccountEmailPage({
 						orgSlug: action.orgSlug ?? undefined,
 						messageId: action.messageId,
 						classification: action.classification,
+						archived: action.archived,
 					},
 				}),
 			{ orgSlug: org },
 		),
 	)
+	const blockMutation = useMutation({
+		mutationFn: (input: { orgSlug: string | null; messageId: string }) =>
+			blockEmailMessageSender({
+				data: {
+					orgSlug: input.orgSlug ?? undefined,
+					messageId: input.messageId,
+				},
+			}),
+		gcTime: 0,
+	})
+	const [blockOfferId, setBlockOfferId] = useState<string | null>(null)
 
 	function deleteSelectedMessage() {
 		const selected = data.selectedMessage
@@ -303,7 +376,10 @@ export function AccountEmailPage({
 		)
 	}
 
-	function classifySelectedMessage(classification: 'accepted' | 'quarantined') {
+	function triageSelectedMessage(input: {
+		classification?: EmailClassification
+		archived?: boolean
+	}) {
 		const selected = data.selectedMessage
 		if (
 			!selected ||
@@ -317,22 +393,35 @@ export function AccountEmailPage({
 		)
 			return
 		setMessage(null)
+		setBlockOfferId(null)
 		const isCurrentSubmitter = captureSubmitter()
 		classifyMutation.mutate(
-			{
-				action: 'classify',
-				messageId: selected.id,
-				classification,
-				orgSlug: org,
-			},
+			emailTriageAction({ ...input, messageId: selected.id, orgSlug: org }),
 			{
 				onSuccess: () => {
 					if (!isCurrentSubmitter()) return
-					setMessage(
-						classification === 'quarantined'
-							? 'Marked as spam.'
-							: 'Marked as not spam.',
-					)
+					setMessage(triageNotice(input))
+					if (input.classification === 'spam') setBlockOfferId(selected.id)
+				},
+				onError: (error) => {
+					if (isCurrentSubmitter()) toast.error(getErrorMessage(error))
+				},
+			},
+		)
+	}
+
+	function blockSelectedSender() {
+		const selected = data.selectedMessage
+		if (!selected || blockMutation.isPending) return
+		setMessage(null)
+		const isCurrentSubmitter = captureSubmitter()
+		blockMutation.mutate(
+			{ orgSlug: org, messageId: selected.id },
+			{
+				onSuccess: (result) => {
+					if (!isCurrentSubmitter()) return
+					setBlockOfferId(null)
+					setMessage(`Future mail from ${result.rule.value} will be blocked.`)
 				},
 				onError: (error) => {
 					if (isCurrentSubmitter()) toast.error(getErrorMessage(error))
@@ -346,10 +435,7 @@ export function AccountEmailPage({
 	const totalPages = Math.max(1, Math.ceil(data.total / data.pageSize))
 	const currentPage = data.page
 	const searchQuery = data.query
-	const classificationFilter =
-		emailSearch(pageLocation.search).classification === 'quarantined'
-			? 'quarantined'
-			: 'all'
+	const viewFilter = emailSearch(pageLocation.search).view
 	const showUnverified = !data.emailVerified
 
 	return (
@@ -472,7 +558,7 @@ export function AccountEmailPage({
 						selectedId={selectedMessageId}
 						countLabel={`${data.total} ${data.total === 1 ? 'message' : 'messages'}`}
 						emptyLabel={
-							searchQuery || classificationFilter !== 'all'
+							searchQuery || viewFilter !== defaultEmailMessageView
 								? 'No messages match the current filters.'
 								: 'No messages in your inbox yet.'
 						}
@@ -491,17 +577,18 @@ export function AccountEmailPage({
 									}}
 								/>
 								<RecordTableSelect
-									label="Filter messages by classification"
-									value={classificationFilter}
+									label="Filter messages by view"
+									value={viewFilter}
 									onChange={(value) => {
+										setBlockOfferId(null)
 										updateFilters({
-											classification:
-												value === 'quarantined' ? 'quarantined' : 'all',
+											view: isEmailMessageView(value)
+												? value
+												: defaultEmailMessageView,
 										})
 									}}
 								>
-									<option value="all">All messages</option>
-									<option value="quarantined">Quarantined</option>
+									{emailViewOptions}
 								</RecordTableSelect>
 							</>
 						}
@@ -525,16 +612,11 @@ export function AccountEmailPage({
 										<span css={truncatedTextCss}>
 											{emailMessage.subject || '(no subject)'}
 										</span>
-										{emailMessage.classification === 'quarantined' ? (
-											<span
-												title={
-													emailMessage.classification_reason ?? 'Quarantined'
-												}
-												css={quarantinedBadgeCss}
-											>
-												Quarantined
-											</span>
-										) : null}
+										<EmailTriageBadges
+											classification={emailMessage.classification}
+											classificationReason={emailMessage.classification_reason}
+											archivedAt={emailMessage.archived_at}
+										/>
 									</span>
 								),
 								from: (
@@ -626,9 +708,15 @@ export function AccountEmailPage({
 										deleteArmed,
 										onDeleteArm: () => setDeleteArmedId(selectedMessage.id),
 										onDeleteReset: () => setDeleteArmedId(null),
-										onClassify: (classification) => {
-											void classifySelectedMessage(classification)
+										onTriage: (input) => {
+											triageSelectedMessage(input)
 										},
+										blockOffer: blockOfferId === selectedMessage.id,
+										blockState: blockMutation.isPending ? 'blocking' : 'idle',
+										onBlockSender: () => {
+											blockSelectedSender()
+										},
+										onDismissBlockOffer: () => setBlockOfferId(null),
 										onDelete: () => {
 											void deleteSelectedMessage()
 										},

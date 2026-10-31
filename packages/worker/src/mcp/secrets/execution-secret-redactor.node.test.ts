@@ -1,5 +1,9 @@
 import { expect, test } from 'vitest'
-import { createExecutionSecretRedactor } from './execution-secret-redactor.ts'
+import {
+	createExecutionSecretRedactor,
+	secretValueForms,
+	trackSecretValueForms,
+} from './execution-secret-redactor.ts'
 
 const apiToken = `kody_at_${'a1'.repeat(10)}_${'Z'.repeat(43)}`
 const bootstrapCode = `kody_bc_${'a'.repeat(16)}_${'B'.repeat(32)}`
@@ -33,4 +37,18 @@ test('redacts Kody credentials in errors without tracked secrets and still redac
 test('leaves bootstrap codes intact in ordinary result redaction', () => {
 	const redactor = createExecutionSecretRedactor()
 	expect(redactor.redactUnknown({ bootstrapCode })).toEqual({ bootstrapCode })
+})
+
+test('secretValueForms tracks the exact, URL-encoded, and base64 forms', () => {
+	const redactor = createExecutionSecretRedactor()
+	trackSecretValueForms((value) => redactor.track(value), 'a+b/c=')
+	expect(secretValueForms('a+b/c=')).toEqual([
+		'a+b/c=',
+		'a%2Bb%2Fc%3D',
+		btoa('a+b/c='),
+	])
+	expect(
+		redactor.redactErrorMessage(`a+b/c= a%2Bb%2Fc%3D ${btoa('a+b/c=')}`),
+	).toBe('[REDACTED SECRET] [REDACTED SECRET] [REDACTED SECRET]')
+	expect(secretValueForms('')).toEqual([])
 })
