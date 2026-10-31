@@ -7,6 +7,14 @@
 // draws the check itself so the server-rendered form can still be posted.
 ;(function () {
 	var hydratedAttribute = 'data-hydrated'
+	// Point at the page's other options when the check cannot run here.
+	function showHelp() {
+		var notes = document.querySelectorAll('[data-human-check-help]')
+		for (var index = 0; index < notes.length; index += 1) {
+			notes[index].removeAttribute('hidden')
+		}
+		return true
+	}
 	function renderFallbackChecks() {
 		if (document.documentElement.getAttribute(hydratedAttribute) === 'true') {
 			return
@@ -23,6 +31,8 @@
 				window.turnstile.render(box, {
 					sitekey: box.getAttribute('data-sitekey'),
 					'response-field-name': 'turnstileToken',
+					'error-callback': showHelp,
+					'unsupported-callback': showHelp,
 				})
 			}
 		}
@@ -30,6 +40,7 @@
 		script.src =
 			'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=__kodyTurnstileFallback'
 		script.async = true
+		script.onerror = showHelp
 		document.head.appendChild(script)
 	}
 	function start() {

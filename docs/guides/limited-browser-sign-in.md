@@ -30,6 +30,11 @@ so use your email and password, or the option below.
 
 ## Sign in on another device
 
+This option appears whenever you are signing in to an app, whether you used the
+app's own sign-in link or its **Open app** link on Kody. It works with
+JavaScript off, and it is the way in when the human check does not appear in
+your browser.
+
 1. On the sign-in page, choose **Sign in on another device**.
 2. The browser shows a short code (like `BCDF-GHJK`), a QR code, and the address
    `kody.codes/device`.

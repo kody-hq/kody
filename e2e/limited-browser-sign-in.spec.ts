@@ -210,3 +210,82 @@ test('a limited browser signs in on another device, and a denial shares nothing'
 	await limited.close()
 	await phone.close()
 })
+
+test('a limited browser with JavaScript on gets the plain sign-in page, with no app bundle', async ({
+	browser,
+	baseURL,
+	seedE2eUser,
+}) => {
+	test.setTimeout(process.env.CI ? 90_000 : 60_000)
+	const { owner, kodyId } = await seedPeople(seedE2eUser)
+	const context = await browser.newContext({
+		baseURL: localhostBase(baseURL),
+		userAgent: kindleUserAgent,
+	})
+	const page = await context.newPage()
+	await page.goto(appSignInPath(owner.username, kodyId))
+	await expect(page).toHaveURL(/\/login\?.*plain=1/)
+	await expect(page.locator('script[type="module"]')).toHaveCount(0)
+	await expect(
+		page
+			.getByTestId('sign-in-on-another-device')
+			.getByRole('button', { name: 'Sign in on another device' }),
+	).toBeVisible()
+	await context.close()
+})
+
+test("with JavaScript off, a package app's Open link offers Sign in on another device and lands in the app", async ({
+	browser,
+	baseURL,
+	seedE2eUser,
+}) => {
+	test.setTimeout(process.env.CI ? 150_000 : 120_000)
+	const { owner, visitor, kodyId } = await seedPeople(seedE2eUser)
+	const limited = await limitedBrowser(browser, baseURL)
+	const ereader = await limited.newPage()
+	const phone = await browser.newContext({ baseURL: localhostBase(baseURL) })
+	await signInPhone(phone, visitor)
+	const phonePage = await phone.newPage()
+
+	await ereader.goto(`/@${owner.username}/packages/${kodyId}/open`)
+	await expect(ereader).toHaveURL(/\/login\?/)
+	await expect(ereader.getByTestId('auth-no-javascript-note')).toContainText(
+		'Sign in on another device',
+	)
+	await ereader
+		.getByTestId('sign-in-on-another-device')
+		.getByRole('button', { name: 'Sign in on another device' })
+		.click()
+	await expect(ereader).toHaveURL(/\/oauth\/package-app\/device$/)
+	const code = (
+		await ereader.getByTestId('package-app-device-user-code').innerText()
+	).trim()
+	expect(code).toMatch(/^[B-Z]{4}-[B-Z]{4}$/)
+
+	await phonePage.goto(`/device?user_code=${code}`)
+	await phonePage.getByTestId('package-app-oauth-approve').click()
+	await expect(phonePage).toHaveURL(/\/device\?result=approved/)
+	await ereader.getByTestId('package-app-device-check-now').click()
+	await expectAppSession(limited)
+	await expect(ereader).toHaveURL(
+		// Back on the app's path (local serving may show its package page).
+		new RegExp(`/@${owner.username}/(?:packages/)?${kodyId}(?:[/?]|$)`),
+	)
+	await limited.close()
+	await phone.close()
+})
+
+test('Kody pages that are not a package app never mention another device', async ({
+	browser,
+	baseURL,
+}) => {
+	const context = await limitedBrowser(browser, baseURL)
+	const page = await context.newPage()
+	await page.goto('/login?redirectTo=%2Faccount&formError=human_check')
+	await expect(page.getByTestId('sign-in-on-another-device')).toHaveCount(0)
+	await expect(page.getByRole('alert')).not.toContainText('another device')
+	await expect(page.getByTestId('auth-no-javascript-note')).not.toContainText(
+		'another device',
+	)
+	await context.close()
+})

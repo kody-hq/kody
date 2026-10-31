@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
+import { isPlainDocumentSearch } from '#universal/limited-browser.ts'
 import { homeSoftwareApplicationJsonLdScriptText } from '#universal/home-json-ld.ts'
 import { workspaceLayoutNavigation } from '../workspace-layout-policy.ts'
 import { publicAsset } from '../public-assets.ts'
@@ -377,6 +378,10 @@ function DocumentShell({ children }: { children: ReactNode }) {
 			state.status === 'idle' ? state.resolvedLocation?.href : undefined,
 	})
 
+	// Limited browsers get sign-in pages as plain HTML (ADR 0094).
+	const plainDocument = useRouterState({
+		select: (state) => isPlainDocumentSearch(state.location.searchStr),
+	})
 	const loaded = Route.useLoaderData()
 	const failure = useRouterState({
 		select: (state) => state.matches.find((match) => match.error)?.error,
@@ -520,7 +525,7 @@ function DocumentShell({ children }: { children: ReactNode }) {
 				<Toaster />
 				{/* Classic script: hoist Emotion SSR styles before module hydrate. */}
 				<script src={publicAsset('/emotion-style-hoist.js')} />
-				<Scripts />
+				{plainDocument ? null : <Scripts />}
 			</body>
 		</html>
 	)

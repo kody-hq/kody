@@ -5,7 +5,10 @@ import {
 	getAuthSessionExpiresAtMs,
 	isSecureRequest,
 } from '#app/auth-session.ts'
-import { parsePackageAppOauthClientId } from '#app/package-app-oauth-client-id.ts'
+import {
+	formatPackageAppOauthClientId,
+	parsePackageAppOauthClientId,
+} from '#app/package-app-oauth-client-id.ts'
 import { resolvePackageAppOauthClient } from '#app/package-app-oauth-client-resolve.ts'
 import { mintPackageAppOauthCode } from '#app/package-app-oauth-codes.ts'
 import {
@@ -42,10 +45,13 @@ import {
 import { checkRateLimit } from '#worker/rate-limit.ts'
 import { oauthPaths } from '#universal/oauth-paths.ts'
 import {
+	packageAppDeviceIntentCookieName,
+	packageAppDeviceIntentCookieNameInsecure,
 	packageAppDeviceSignInCookieName,
 	packageAppDeviceSignInCookieNameInsecure,
 	packageAppOauthPaths,
 } from '#universal/package-app-oauth-paths.ts'
+import { parsePackageAppPath } from '#worker/package-runtime/package-app-serve.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import {
 	describeRequestingBrowser,
@@ -69,10 +75,15 @@ const cookieSecretPurpose = 'kody-package-app-device-sign-in:v1'
 /** Seconds between the limited browser's automatic checks. */
 export const packageAppDeviceRefreshSeconds = devicePollIntervalSeconds
 
+/** Seconds a "sign in on another device" intent survives the app host hop. */
+const deviceIntentTtlSeconds = 10 * 60
+
 let cachedCookies: {
 	sourceSecret: string
 	secure: ReturnType<typeof createCookie>
 	insecure: ReturnType<typeof createCookie>
+	intentSecure: ReturnType<typeof createCookie>
+	intentInsecure: ReturnType<typeof createCookie>
 } | null = null
 
 async function getCookies(env: Env) {
@@ -96,8 +107,52 @@ async function getCookies(env: Env) {
 			secure: true,
 		}),
 		insecure: createCookie(packageAppDeviceSignInCookieNameInsecure, shared),
+		intentSecure: createCookie(packageAppDeviceIntentCookieName, {
+			...shared,
+			maxAge: deviceIntentTtlSeconds,
+			secure: true,
+		}),
+		intentInsecure: createCookie(packageAppDeviceIntentCookieNameInsecure, {
+			...shared,
+			maxAge: deviceIntentTtlSeconds,
+		}),
 	}
 	return cachedCookies
+}
+
+async function serializeDeviceIntentCookie(input: {
+	env: Env
+	secure: boolean
+	clientId: string | null
+}) {
+	const cookies = await getCookies(input.env)
+	const cookie = input.secure ? cookies.intentSecure : cookies.intentInsecure
+	return input.clientId
+		? await cookie.serialize(input.clientId.toLowerCase(), {
+				secure: input.secure,
+				maxAge: deviceIntentTtlSeconds,
+			})
+		: await cookie.serialize('', {
+				secure: input.secure,
+				maxAge: 0,
+				expires: new Date(0),
+			})
+}
+
+/**
+ * The package-app client id a limited browser asked to sign in to on another
+ * device, when the authorize request that comes back from the app host should
+ * start that sign-in instead of showing the password form.
+ */
+export async function readPackageAppDeviceIntent(request: Request, env: Env) {
+	const header = request.headers.get('Cookie')
+	if (!header) return null
+	const cookies = await getCookies(env)
+	for (const cookie of [cookies.intentSecure, cookies.intentInsecure]) {
+		const value = await cookie.parse(header)
+		if (typeof value === 'string' && value) return value
+	}
+	return null
 }
 
 async function serializeDeviceCookie(input: {
@@ -182,19 +237,72 @@ export async function startPackageAppDeviceSignIn(input: {
 	const form = contentType.includes('application/x-www-form-urlencoded')
 		? await request.formData().catch(() => null)
 		: null
-	const authorize = normalizeRedirectTo(
+	const target = normalizeRedirectTo(
 		typeof form?.get('authorize') === 'string'
 			? String(form?.get('authorize'))
 			: null,
 	)
 	const appOrigin = getAppBaseUrl({ env, requestUrl: request.url })
-	const authorizeUrl = authorize ? new URL(authorize, appOrigin) : null
-	if (
-		!authorizeUrl ||
-		authorizeUrl.pathname !== packageAppOauthPaths.authorize
-	) {
+	const targetUrl = target ? new URL(target, appOrigin) : null
+	if (targetUrl?.pathname === packageAppOauthPaths.authorize) {
+		const validated = await parseAndValidateAuthorizeRequest({
+			env,
+			query: readAuthorizeQuery(targetUrl),
+			requestUrl: request.url,
+			request,
+		})
+		if (!validated.ok) return validated.response
+		return await createPackageAppDeviceSignIn({ request, env, validated })
+	}
+	const packagePath = targetUrl ? parsePackageAppPath(targetUrl.pathname) : null
+	if (!targetUrl || !packagePath) {
 		return seeOther(devicePagePath('invalid_request'))
 	}
+	// A Kody package path (the app's Open link) has no PKCE request yet. Send
+	// the browser through the app's own sign-in start, remembering that it
+	// asked for another device; the authorize request it comes back with
+	// starts the device sign-in (see `handlePackageAppOauthAuthorizeRequest`).
+	const { resolvePackageAppSignInStartUrl } =
+		await import('#app/package-app-origin.ts')
+	const signInStart = await resolvePackageAppSignInStartUrl({
+		env,
+		requestUrl: targetUrl,
+		packagePath,
+	})
+	const signInStartLocation =
+		signInStart.origin === new URL(appOrigin).origin
+			? `${signInStart.pathname}${signInStart.search}`
+			: signInStart.toString()
+	return seeOther(signInStartLocation, [
+		await serializeDeviceIntentCookie({
+			env,
+			secure: isSecureRequest(request),
+			clientId: formatPackageAppOauthClientId({
+				username: packagePath.username,
+				kodyId: packagePath.kodyId,
+			}),
+		}),
+	])
+}
+
+type ValidatedAuthorizeRequest = Extract<
+	Awaited<ReturnType<typeof parseAndValidateAuthorizeRequest>>,
+	{ ok: true }
+>
+
+/**
+ * Store a pending package-app device sign-in for a validated authorize
+ * request and send the limited browser to its code page. Shared by the
+ * sign-in page's POST and the authorize request that resumes a package-path
+ * start.
+ */
+export async function createPackageAppDeviceSignIn(input: {
+	request: Request
+	env: Env
+	validated: ValidatedAuthorizeRequest
+	clearIntent?: boolean
+}): Promise<Response> {
+	const { request, env, validated } = input
 	const ip = getRequestIp(request) ?? 'unknown'
 	const limit = await checkRateLimit(
 		env.APP_DB,
@@ -202,14 +310,6 @@ export async function startPackageAppDeviceSignIn(input: {
 		deviceAuthorizationStartRateLimit,
 	)
 	if (!limit.allowed) return seeOther(devicePagePath('rate_limited'))
-
-	const validated = await parseAndValidateAuthorizeRequest({
-		env,
-		query: readAuthorizeQuery(authorizeUrl),
-		requestUrl: request.url,
-		request,
-	})
-	if (!validated.ok) return validated.response
 
 	const now = nowSeconds()
 	await purgeExpiredDeviceAuthorizations(env.APP_DB, now)
@@ -253,12 +353,12 @@ export async function startPackageAppDeviceSignIn(input: {
 		ip,
 		clientId: validated.client.clientId,
 	})
+	const secure = isSecureRequest(request)
 	return seeOther(devicePagePath(), [
-		await serializeDeviceCookie({
-			env,
-			secure: isSecureRequest(request),
-			deviceCode,
-		}),
+		await serializeDeviceCookie({ env, secure, deviceCode }),
+		...(input.clearIntent
+			? [await serializeDeviceIntentCookie({ env, secure, clientId: null })]
+			: []),
 	])
 }
 

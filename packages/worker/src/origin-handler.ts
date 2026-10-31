@@ -11,6 +11,10 @@ import {
 } from './oauth-handlers.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import {
+	isLimitedBrowserUserAgent,
+	plainDocumentQueryParam,
+} from '#universal/limited-browser.ts'
+import {
 	createSharedOAuthProviderOptions,
 	mcpOAuthResourceUri,
 } from '#worker/oauth-provider-options.ts'
@@ -147,6 +151,12 @@ const socialLoginStartPaths = new Set([
 // Plain HTML form posts from `/login` and `/verify` (no page JavaScript).
 const authDocumentFormPaths = new Set(['/login', '/verify'])
 
+// Sign-in documents a limited browser is sent to without the app bundle.
+const plainDocumentPaths = new Set([
+	...authDocumentFormPaths,
+	packageAppOauthPaths.authorize,
+])
+
 const rateLimitedAuthPaths = new Set([
 	'/desktop/session',
 	'/auth',
@@ -187,6 +197,25 @@ const appHandler = withCors({
 	},
 	async handler(request, env, ctx) {
 		const url = new URL(request.url)
+
+		// Limited browsers (ADR 0094) get sign-in pages without the app bundle.
+		// The flag lives in the URL so cached documents never mix the two.
+		if (
+			(request.method === 'GET' || request.method === 'HEAD') &&
+			plainDocumentPaths.has(url.pathname) &&
+			!url.searchParams.has(plainDocumentQueryParam) &&
+			isLimitedBrowserUserAgent(request.headers.get('User-Agent'))
+		) {
+			const plainUrl = new URL(url)
+			plainUrl.searchParams.set(plainDocumentQueryParam, '1')
+			return new Response(null, {
+				status: 302,
+				headers: {
+					Location: `${plainUrl.pathname}${plainUrl.search}`,
+					'Cache-Control': 'no-store',
+				},
+			})
+		}
 
 		if (request.method === 'POST' && rateLimitedAuthPaths.has(url.pathname)) {
 			const ip = getRequestIp(request) ?? 'unknown'

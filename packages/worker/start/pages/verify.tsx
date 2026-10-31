@@ -25,7 +25,12 @@ import {
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState, type FormEvent } from 'react'
 import { authFormErrorMessage } from '#universal/auth-form-errors.ts'
+import { packageAppDeviceSignInTarget } from '#universal/package-app-oauth-paths.ts'
 import { AuthFormFallback } from '../components/auth-form-fallback.tsx'
+import {
+	DeviceSignInOption,
+	HumanCheckHelp,
+} from '../components/device-sign-in-option.tsx'
 import { Honeypot } from '../components/honeypot-field.tsx'
 import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
 import { SiteLink } from '../components/site-link.tsx'
@@ -44,9 +49,14 @@ export function VerifyRoute() {
 	const [formErrorDismissed, setFormErrorDismissed] = useState(false)
 	const turnstileSiteKey = usePublicAuthProtection()
 	const search = useMatchedPageScope().pageLocation.searchStr
+	const deviceSignInTarget = packageAppDeviceSignInTarget(
+		normalizeRedirectTo(new URLSearchParams(search).get('redirectTo')),
+	)
 	const formErrorMessage =
 		status === 'idle' && !formErrorDismissed
-			? authFormErrorMessage(new URLSearchParams(search).get('formError'))
+			? authFormErrorMessage(new URLSearchParams(search).get('formError'), {
+					deviceSignIn: Boolean(deviceSignInTarget),
+				})
 			: null
 
 	function getRedirectTo() {
@@ -150,9 +160,21 @@ export function VerifyRoute() {
 					</p>
 				) : null}
 			</form>
+			{turnstileSiteKey ? (
+				<HumanCheckHelp deviceSignIn={Boolean(deviceSignInTarget)} />
+			) : null}
+			{deviceSignInTarget ? (
+				<DeviceSignInOption target={deviceSignInTarget} />
+			) : null}
 			<AuthFormFallback
 				turnstileSiteKey={turnstileSiteKey}
-				note="JavaScript is off, so this form submits as a plain page. Enter your code and press Verify."
+				note={
+					turnstileSiteKey
+						? deviceSignInTarget
+							? 'JavaScript is off. The two-factor step needs a quick human check that uses JavaScript, so use Sign in on another device, or turn JavaScript on.'
+							: 'JavaScript is off. The two-factor step needs a quick human check that uses JavaScript, so turn JavaScript on to finish signing in.'
+						: 'JavaScript is off, so this form submits as a plain page. Enter your code and press Verify.'
+				}
 			/>
 			<div css={{ display: 'grid', gap: spacing.sm }}>
 				<SiteLink href={buildLoginHref(getRedirectTo())} css={mutedLinkCss}>

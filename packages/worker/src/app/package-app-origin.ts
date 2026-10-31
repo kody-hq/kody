@@ -4,10 +4,12 @@ import {
 	type RuntimePackageAppVisitor,
 } from '@kody-internal/shared/runtime-worker.ts'
 import { html } from 'remix/html-template'
+import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { createHtmlResponse } from 'remix/response/html'
 import {
 	buildPackageAppCustomHostnameUrl,
 	buildPackageAppOpenPath,
+	buildPackageAppPath,
 	buildPackageAppSubdomainPath,
 	buildPackageAppSubdomainUrl,
 	buildPackagePagePath,
@@ -644,6 +646,59 @@ async function buildCustomHostnameHandoffTarget(input: {
 	const handoffKodyId =
 		mapping.bindingKind === 'app' ? mapping.kodyId : input.packagePath.kodyId
 	return { target, kodyId: handoffKodyId, bindingKind: mapping.bindingKind }
+}
+
+/**
+ * The app's own sign-in start (`/-/auth/login` on its hosted origin) for a
+ * Kody package path such as `/@{user}/packages/{name}/open`. "Sign in on
+ * another device" (ADR 0094) goes through it so the limited browser holds the
+ * app host's PKCE cookie, exactly like the app's normal Sign in link.
+ */
+export async function resolvePackageAppSignInStartUrl(input: {
+	env: Env
+	requestUrl: URL
+	packagePath: PackageAppPath
+}) {
+	const { env, packagePath } = input
+	const entry = new URL(input.requestUrl)
+	const packageAppOrigin = getPackageAppBaseUrl({ env })
+	let target = entry
+	let kodyId = packagePath.kodyId
+	if (packageAppOrigin) {
+		const custom = await buildCustomHostnameHandoffTarget({
+			env,
+			packagePath,
+			url: entry,
+		})
+		kodyId = custom?.kodyId ?? packagePath.kodyId
+		target =
+			custom?.target ??
+			(await buildHandoffHostedTarget({
+				env,
+				packageAppOrigin,
+				packagePath,
+				kodyId,
+				url: entry,
+			}))
+	}
+	// Inline serving (no package-app origin) runs the app on this origin under
+	// `/@{user}/packages/{name}`, so the return path drops the `/open` hop.
+	const returnTo = packageAppOrigin
+		? withoutHandoffToken(target)
+		: new URL(
+				buildPackageAppPath({
+					username: packagePath.username,
+					kodyId: packagePath.kodyId,
+					restPath: packagePath.restPath === '/' ? null : packagePath.restPath,
+				}),
+				entry.origin,
+			)
+	if (!packageAppOrigin) returnTo.search = withoutHandoffToken(entry).search
+	const login = new URL(packageAppOauthPaths.login, target.origin)
+	login.searchParams.set('org', packagePath.username)
+	login.searchParams.set('app', kodyId)
+	login.searchParams.set('return_to', `${returnTo.pathname}${returnTo.search}`)
+	return login
 }
 
 /**
