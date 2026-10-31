@@ -18,9 +18,10 @@ it, or when it creates something and gets the creator grant on it. It never
 holds more than you and its parents hold.
 
 Profiles are an experiment. Turn them on at `/account/experiments` or with
-`experimentSet({ experiment: "profiles", enabled: true })`. In this release you
-can create, list, shorten, and revoke profiles, and share packages with them;
-handoff tokens that sign an agent in as a profile come in the next release.
+`experimentSet({ experiment: "profiles", enabled: true })`. You can create,
+list, shorten, and revoke profiles, share packages with them, and mint tokens
+that let an agent act as one (see
+[Hand a sub-agent its own token](#hand-a-sub-agent-its-own-token)).
 
 ## How access is checked
 
