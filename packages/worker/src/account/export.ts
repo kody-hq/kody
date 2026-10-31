@@ -187,6 +187,7 @@ export type AccountExportManifest = {
 	excludedOperationalData: {
 		email_outbound_provider_index: string
 		email_outbound_failure_tracking: string
+		email_deliverability_effects: string
 		transactional_email_delivery_index: string
 	}
 	excludedDurableObjects: Array<{
@@ -1653,6 +1654,8 @@ function buildManifest(input: {
 				'Operational global provider→owner reverse lookup for outbound delivery webhooks. It is omitted from the D1 export payload; Mailbox messages retain provider ids, but this export does not claim or perform a fleet-wide rebuild.',
 			email_outbound_failure_tracking:
 				'Operational per-provider-event consecutive-failure tracking ledger for outbound pause recovery. It is omitted from the D1 export payload; orgs.email_outbound_consecutive_failures remains on the exported org row.',
+			email_deliverability_effects:
+				'Operational per-provider-event ledger that applies recipient cooldowns and bounce holds once across queue retries. It is omitted from the D1 export payload; the cooldown and hold rows it guards are owned by recipients, not the account.',
 			transactional_email_delivery_index:
 				'Operational Cloudflare message-id → user reverse lookup for signup/verify and additional-destination verification delivery webhooks. It is omitted from the D1 export payload; users.email_verification_delivery_* columns remain on the exported user row.',
 		},
