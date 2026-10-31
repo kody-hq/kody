@@ -181,6 +181,35 @@ export function ExecutionContextDetail(props: {
 								</span>
 							) : null}
 						</dd>
+						<dt>Auto-update</dt>
+						<dd data-testid="context-daemon-auto-update">
+							{context.capabilities?.autoUpdate === 'on'
+								? 'On'
+								: context.capabilities?.autoUpdate === 'off'
+									? 'Off'
+									: 'Not reported'}
+							{context.isOperator && context.status !== 'revoked' ? (
+								<span css={hintCss}>
+									{context.capabilities?.autoUpdate === 'on' ? (
+										<>
+											Moves onto new CLI versions after runs finish. Turn it off
+											on the machine with{' '}
+											<code>kody daemon auto-update off</code>
+										</>
+									) : context.capabilities?.autoUpdate === 'off' ? (
+										<>
+											Turn it on on the machine with{' '}
+											<code>kody daemon auto-update on</code>
+										</>
+									) : (
+										<>
+											This daemon predates auto-update. Restart it once (or run{' '}
+											<code>kody update</code>) and it stays current
+										</>
+									)}
+								</span>
+							) : null}
+						</dd>
 						<dt>Runs as</dt>
 						<dd data-testid="context-daemon-service">
 							{daemonRunsAsLabel(context.capabilities?.service, context.status)}

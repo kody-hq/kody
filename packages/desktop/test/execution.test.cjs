@@ -11,9 +11,13 @@ function fixture(saved = {}) {
 		credential: { source: 'login' },
 	}
 	const calls = []
+	// `kody daemon status --json`: nothing installed by the CLI by default.
+	let machine = { installed: false, contexts: [], runner: null }
 	const runner = {
 		daemon: null,
 		async command(args) {
+			if (args[0] === 'daemon' && args[1] === 'status')
+				return JSON.stringify(machine)
 			calls.push(args)
 			if (args[0] === 'login') return ''
 			if (args[0] === 'whoami') return JSON.stringify(identity)
@@ -30,6 +34,7 @@ function fixture(saved = {}) {
 						},
 					],
 				})
+			if (args[0] === 'daemon') return '{"ok":true}'
 			throw new Error('Unexpected command')
 		},
 		start(id) {
@@ -61,6 +66,10 @@ function fixture(saved = {}) {
 		},
 		identity: (next) => {
 			identity = { ...identity, ...next }
+		},
+		machine: (next) => {
+			machine = { ...machine, ...next }
+			execution.machineReadAt = 0
 		},
 	}
 }
@@ -237,6 +246,7 @@ test('host commands require native confirmation and verified ownership, and stat
 	})
 	let enabled = false
 	f.runner.command = async (args) => {
+		if (args[0] === 'daemon') return '{}'
 		f.calls.push(args)
 		if (args[2] === 'on') enabled = true
 		if (args[2] === 'off') enabled = false
@@ -264,4 +274,101 @@ test('host commands require native confirmation and verified ownership, and stat
 	)
 	f.viewer({ username: 'sam', email: 'sam@example.com', orgSlug: 'sam' })
 	await assert.rejects(f.execution.request('commands-on'), /another workspace/)
+})
+
+test('an existing CLI registration and service are adopted, not duplicated', async () => {
+	const f = fixture()
+	f.machine({
+		ecid: 'ec_old',
+		contextName: 'old-laptop',
+		contexts: [{ ecid: 'ec_old', name: 'old-laptop' }],
+		installed: true,
+		running: true,
+		manager: 'launchd',
+		runningVersion: '3.17.0',
+		autoUpdate: { enabled: true },
+	})
+	const before = await f.execution.request('state')
+	assert.deepEqual(before.existingContext, { id: 'ec_old', name: 'old-laptop' })
+	assert.equal(before.autoUpdate, true)
+	await f.execution.request('sign-in')
+	const result = await f.execution.request('connect', 'old-laptop')
+	assert.equal(
+		f.calls.some((args) => args[1] === 'register'),
+		false,
+	)
+	assert.equal(f.state().ecid, 'ec_old')
+	assert.deepEqual(f.state().owner, { username: 'jane', orgSlug: 'jane' })
+	assert.equal(f.runner.daemon, null)
+	assert.equal(result.running, true)
+	assert.equal(result.runner.mode, 'service')
+	assert.match(result.runner.label, /launchd.*3\.17\.0/)
+	await f.execution.request('stop')
+	assert.deepEqual(f.calls.at(-1), [
+		'daemon',
+		'stop',
+		'--context',
+		'ec_old',
+		'--json',
+	])
+	f.machine({ running: false })
+	await f.execution.request('start')
+	assert.deepEqual(f.calls.at(-1), [
+		'daemon',
+		'start',
+		'--context',
+		'ec_old',
+		'--json',
+	])
+	f.machine({ running: true })
+	await f.execution.request('restart')
+	assert.deepEqual(f.calls.at(-1), ['daemon', 'restart', '--context', 'ec_old'])
+	assert.equal(f.runner.daemon, null)
+})
+test('an existing CLI registration of another account is never adopted or duplicated', async () => {
+	const f = fixture()
+	f.machine({ contexts: [{ ecid: 'ec_theirs', name: 'shared-mac' }] })
+	await f.execution.request('sign-in')
+	await assert.rejects(
+		f.execution.request('connect', 'mac'),
+		/already registered as shared-mac/,
+	)
+	assert.equal(f.state().ecid, null)
+	assert.equal(
+		f.calls.some((args) => args[1] === 'register'),
+		false,
+	)
+})
+test('a daemon that already holds the runner lock keeps the app from starting a second one', async () => {
+	const f = fixture({
+		ecid: 'ec_test',
+		enabled: true,
+		owner: { username: 'jane', orgSlug: 'jane' },
+	})
+	f.machine({
+		ecid: 'ec_test',
+		runner: {
+			pid: 4242,
+			version: '3.17.0',
+			launcher: 'terminal',
+			startedAt: '2026-10-31T00:00:00.000Z',
+		},
+	})
+	const result = await f.execution.request('state')
+	assert.equal(f.runner.daemon, null)
+	assert.equal(result.running, true)
+	assert.equal(result.runner.mode, 'external')
+	await assert.rejects(f.execution.request('restart'), /in a terminal/)
+	f.machine({ runner: null })
+	await f.execution.request('state')
+	assert.ok(f.runner.daemon)
+	assert.equal((await f.execution.request('state')).runner.mode, 'desktop')
+})
+test('the auto-update switch is the shared CLI policy', async () => {
+	const f = fixture()
+	f.machine({ autoUpdate: { enabled: true } })
+	await f.execution.request('auto-update-off')
+	assert.deepEqual(f.calls.at(-1), ['daemon', 'auto-update', 'off', '--json'])
+	await f.execution.request('auto-update-on')
+	assert.deepEqual(f.calls.at(-1), ['daemon', 'auto-update', 'on', '--json'])
 })

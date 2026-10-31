@@ -794,6 +794,13 @@ export class HostCommands {
 		}
 	}
 
+	/** Background jobs still running (auto-update waits for them). */
+	runningBackground() {
+		let count = 0
+		for (const job of this.#jobs.values()) if (job.state === 'running') count++
+		return count
+	}
+
 	async idle() {
 		await Promise.all([...this.#jobs.values()].map((job) => job.done))
 	}

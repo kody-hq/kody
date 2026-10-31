@@ -825,7 +825,11 @@
 			"sha256": "7f63aabddc9cc498cde6551a417cb2f5d941598b252e05ab67e0d85afa2b684a"
 		},
 		{
-			"filename": "0230-drop-package-app-authority-fallbacks.sql",
+			"filename": "0231-grants-allow-unmappable-credential-changes.sql",
+			"sha256": "89d2c767853b3991c35f588eff0ecd0a652d3956ac4e73abf4d1785bd2e169b4"
+		},
+		{
+			"filename": "0232-drop-package-app-authority-fallbacks.sql",
 			"sha256": "3027a0f0df7221fd7b76763d1aa2e188afdabf8dace0854b4be63481a3a40034"
 		}
 	]

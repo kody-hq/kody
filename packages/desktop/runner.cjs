@@ -11,10 +11,11 @@ class Runner extends EventEmitter {
 		this.output = ''
 	}
 
-	launch(args) {
+	launch(args, extraEnv = {}) {
 		if (this.closing) throw new Error('Kody is quitting.')
 		const env = {
 			...process.env,
+			...extraEnv,
 			ELECTRON_RUN_AS_NODE: '1',
 			KODY_CREDENTIAL_SOURCE: 'login',
 			KODY_SKIP_SKILL_REFRESH: '1',
@@ -61,7 +62,9 @@ class Runner extends EventEmitter {
 		}
 	}
 
-	command(args) {
+	// `okCodes`: exit codes that still resolve with stdout (status exits 1 on
+	// problems but prints its JSON).
+	command(args, { okCodes = [0] } = {}) {
 		const child = this.launch(args)
 		return new Promise((resolve, reject) => {
 			let output = ''
@@ -82,7 +85,7 @@ class Runner extends EventEmitter {
 			})
 			child.once('close', (code) => {
 				clearTimeout(timer)
-				if (code === 0) resolve(output)
+				if (okCodes.includes(code)) resolve(output)
 				else reject(new Error(errors.trim() || `CLI exited with code ${code}.`))
 			})
 		})
@@ -96,7 +99,11 @@ class Runner extends EventEmitter {
 				'Local execution currently supports macOS and Linux. The CLI workerd runtime does not support Windows yet.',
 			)
 		if (this.daemon) return
-		const child = this.launch(['daemon', '--context', ecid])
+		// The CLI takes the machine's runner lock for this context, so this
+		// refuses with a clear message when a service or terminal runs it.
+		const child = this.launch(['daemon', '--context', ecid], {
+			KODY_DAEMON_LAUNCHER: 'desktop',
+		})
 		this.daemon = child
 		this.output = ''
 		const log = (chunk) => {

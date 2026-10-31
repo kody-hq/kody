@@ -91,6 +91,16 @@ vi.mock('#worker/package-registry/repo.ts', async (importOriginal) => {
 	}
 })
 
+vi.mock(
+	'#worker/credentials/package-unmappable-credentials.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<
+			typeof import('#worker/credentials/package-unmappable-credentials.ts')
+		>()),
+		loadPackageUnmappableCredentials: async () => new Map(),
+	}),
+)
+
 const { savePackageCapability } = await import('./save-package.ts')
 
 type Row = Record<string, unknown>

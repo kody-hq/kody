@@ -215,7 +215,9 @@ function describeRanOnTarget(value: unknown) {
 		value.kind === 'context'
 			? `${value.name} (${value.yours === true ? 'your machine' : 'an execution context'})`
 			: value.name
-	return `Ran on ${where}.`
+	const units = value.workerUnits
+	if (typeof units !== 'number') return `Ran on ${where}.`
+	return `Ran on ${where}, ${units} worker unit${units === 1 ? '' : 's'}.`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

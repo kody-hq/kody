@@ -1,5 +1,10 @@
 const { machineName } = require('./machine-name.cjs')
 const { registrationIdentity } = require('./registration-identity.cjs')
+const {
+	existingRegistration,
+	runnerView,
+	shouldAdopt,
+} = require('./machine-runner.cjs')
 
 // This controller exposes fixed machine actions, never arbitrary CLI commands.
 class DesktopExecution {
@@ -25,6 +30,69 @@ class DesktopExecution {
 		this.busy = false
 		this.authorized = null
 		this.error = null
+		this.machine = null
+		this.machineReadAt = 0
+	}
+	// What the kody CLI knows about this machine: an installed service, the
+	// runner lock holder, stored registrations, and auto-update. The app and
+	// the CLI share one runner per machine, so the app adopts what is there.
+	async readMachine(force = false) {
+		if (this.platform === 'win32') return null
+		if (!force && this.machineReadAt > Date.now() - 10_000) return this.machine
+		const { ecid } = this.read()
+		try {
+			this.machine = JSON.parse(
+				await this.runner.command(
+					['daemon', 'status', ...(ecid ? ['--context', ecid] : []), '--json'],
+					{ okCodes: [0, 1] },
+				),
+			)
+		} catch {
+			this.machine = null
+		}
+		this.machineReadAt = Date.now()
+		return this.machine
+	}
+	view(machine = this.machine) {
+		return runnerView({
+			status: machine,
+			ownRunning: !!this.runner.daemon,
+			hasRegistration: !!this.read().ecid,
+		})
+	}
+	async startRunner(ecid) {
+		const view = this.view(await this.readMachine(true))
+		if (view.mode === 'service' && view.canStart)
+			await this.runner.command([
+				'daemon',
+				'start',
+				'--context',
+				ecid,
+				'--json',
+			])
+		else if (view.mode === 'none') this.runner.start(ecid)
+		await this.readMachine(true)
+	}
+	async stopRunner(ecid) {
+		const view = this.view(await this.readMachine(true))
+		if (view.mode === 'desktop') await this.runner.stop()
+		else if (view.canStop)
+			await this.runner.command(['daemon', 'stop', '--context', ecid, '--json'])
+		await this.readMachine(true)
+	}
+	async restartRunner(ecid) {
+		const view = this.view(await this.readMachine(true))
+		if (view.mode === 'desktop') {
+			await this.runner.stop()
+			this.runner.start(ecid)
+		} else if (view.mode === 'service' && view.canRestart)
+			await this.runner.command(['daemon', 'restart', '--context', ecid])
+		else if (view.mode === 'external')
+			throw new Error(
+				'This runner was started with `kody daemon` in a terminal. Restart it there.',
+			)
+		else throw new Error('The runner is not running. Start it first.')
+		await this.readMachine(true)
 	}
 	owns(state, viewer) {
 		return (
@@ -50,6 +118,7 @@ class DesktopExecution {
 	async snapshot(viewer) {
 		const state = this.read()
 		const owns = viewer && this.owns(state, viewer)
+		const machine = viewer ? await this.readMachine() : null
 		if (!this.busy) {
 			if (!owns && this.runner.daemon) await this.runner.stop()
 			if (
@@ -57,11 +126,15 @@ class DesktopExecution {
 				state.ecid &&
 				state.enabled &&
 				!this.runner.daemon &&
+				// A CLI service or another daemon already runs this machine.
+				!shouldAdopt(machine) &&
 				!this.error &&
 				this.platform !== 'win32'
 			)
 				this.runner.start(state.ecid)
 		}
+		const view = this.view(machine)
+		const existing = existingRegistration(machine)
 		return {
 			name: owns && state.name ? state.name : this.name,
 			platform: this.platform,
@@ -71,7 +144,18 @@ class DesktopExecution {
 			contextId: owns ? state.ecid : null,
 			hasSetup: !!state.ecid,
 			commandsEnabled: owns ? this.commandsEnabled : null,
-			running: !!owns && !!this.runner.daemon,
+			running: !!owns && view.canStop,
+			runner: owns
+				? { mode: view.mode, label: view.label, canRestart: view.canRestart }
+				: null,
+			autoUpdate:
+				viewer && machine?.autoUpdate
+					? machine.autoUpdate.enabled !== false
+					: null,
+			existingContext:
+				viewer && !state.ecid && existing
+					? { id: existing.ecid, name: existing.name }
+					: null,
 			needsVerification: !!viewer && !!state.ecid && !state.owner,
 			blocked: !!viewer && !!state.ecid && !!state.owner && !owns,
 			onboardingSeen:
@@ -132,6 +216,9 @@ class DesktopExecution {
 				'connect',
 				'start',
 				'stop',
+				'restart',
+				'auto-update-on',
+				'auto-update-off',
 				'commands-status',
 				'commands-on',
 				'commands-off',
@@ -144,7 +231,15 @@ class DesktopExecution {
 			)
 		this.busy = true
 		try {
-			if (command.startsWith('commands-')) {
+			if (command.startsWith('auto-update-')) {
+				await this.runner.command([
+					'daemon',
+					'auto-update',
+					command.slice('auto-update-'.length),
+					'--json',
+				])
+				await this.readMachine(true)
+			} else if (command.startsWith('commands-')) {
 				if (!state.ecid || !this.owns(state, viewer))
 					throw new Error('Set up this machine first.')
 				if (command === 'commands-on' && !(await this.confirmCommands()))
@@ -228,6 +323,40 @@ class DesktopExecution {
 					)
 				await this.identity(viewer)
 				let next = this.read()
+				const existing = next.ecid
+					? null
+					: existingRegistration(await this.readMachine(true))
+				if (existing) {
+					// The kody CLI already registered this machine: reuse it (after the
+					// same server-side ownership check as legacy setups), never a second.
+					const listed = JSON.parse(
+						await this.runner.command([
+							'context',
+							'list',
+							'--org',
+							viewer.orgSlug,
+							'--json',
+						]),
+					)
+					const context = listed.contexts?.find(
+						(item) => item.id === existing.ecid,
+					)
+					if (
+						context?.operator?.handle !== viewer.username ||
+						context?.ownerOrg?.slug !== viewer.orgSlug ||
+						context.status === 'revoked'
+					)
+						throw new Error(
+							`This machine is already registered${existing.name ? ` as ${existing.name}` : ''} with the kody CLI, for another account or a revoked context. Sign the CLI in with that account, or remove it with \`kody context delete ${existing.ecid}\`.`,
+						)
+					next = {
+						...next,
+						ecid: existing.ecid,
+						name: context.name,
+						owner: { username: viewer.username, orgSlug: viewer.orgSlug },
+					}
+					this.write(next)
+				}
 				if (!next.ecid) {
 					const registered = JSON.parse(
 						await this.runner.command([
@@ -254,14 +383,17 @@ class DesktopExecution {
 				// another context or loses the local key's registration.
 				this.error = null
 				this.write({ ...next, enabled: true })
-				this.runner.start(next.ecid)
+				await this.startRunner(next.ecid)
 			} else {
 				if (!state.ecid || !this.owns(state, viewer))
 					throw new Error('Set up this machine first.')
 				this.error = null
-				this.write({ ...state, enabled: command === 'start' })
-				if (command === 'start') this.runner.start(state.ecid)
-				else await this.runner.stop()
+				if (command === 'restart') await this.restartRunner(state.ecid)
+				else {
+					this.write({ ...state, enabled: command === 'start' })
+					if (command === 'start') await this.startRunner(state.ecid)
+					else await this.stopRunner(state.ecid)
+				}
 			}
 		} finally {
 			this.busy = false

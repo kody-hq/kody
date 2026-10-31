@@ -14,6 +14,11 @@ import {
 	removePackageProfileGrant,
 } from '#worker/profiles/package-grants.ts'
 import { type PackageCollaboratorView } from '#universal/package-collaborators.ts'
+import { computeEffectivePermissions } from '#worker/authorization/authorize.ts'
+import {
+	allowUnmappableCredentialChangesDescription,
+	describeCollaboratorUnmappableCredentials,
+} from '#mcp/capabilities/access/unmappable-credential-warnings.ts'
 import {
 	accessGrantCapability,
 	accessRevokeCapability,
@@ -54,7 +59,36 @@ const collaboratorSchema = z.object({
 		.describe('Null for an advanced grant; see permissions.'),
 	permissions: z.array(z.string()),
 	created_at: z.string(),
+	allow_changes_despite_unmappable_credentials: z
+		.boolean()
+		.describe(
+			'True when an org Owner let this collaborator change or publish the package even while it has unmappable credentials.',
+		),
+	unmappable_credential_warning: z
+		.string()
+		.nullable()
+		.describe(
+			'Set while the package has unmappable credentials and this grant can change or publish it.',
+		),
 })
+
+const unmappableCredentialsSchema = z
+	.object({
+		credentials: z.array(
+			z.object({
+				need_key: z.string(),
+				credential_name: z
+					.string()
+					.nullable()
+					.describe('Null when the need has no credential picked yet.'),
+			}),
+		),
+		notice: z.string(),
+	})
+	.nullable()
+	.describe(
+		'Null unless the package has unmappable credentials (publisher-supplied or shared with app visitors). While it does, only org Owners can change or publish it unless a grant allows changes despite unmappable credentials.',
+	)
 
 const packageSchema = z.object({
 	id: z.string(),
@@ -64,7 +98,11 @@ const packageSchema = z.object({
 
 const packageIdSchema = z.string().min(1).describe('Package id or kody id.')
 
-function toCollaboratorPayload(collaborator: PackageCollaboratorView) {
+function toCollaboratorPayload(
+	collaborator: PackageCollaboratorView & {
+		unmappableCredentialWarning?: string | null
+	},
+) {
 	return {
 		grant_id: collaborator.grantId,
 		subject_type: collaborator.subjectType,
@@ -79,6 +117,42 @@ function toCollaboratorPayload(collaborator: PackageCollaboratorView) {
 		preset: collaborator.preset,
 		permissions: collaborator.permissions,
 		created_at: collaborator.createdAt,
+		allow_changes_despite_unmappable_credentials:
+			collaborator.allowUnmappableCredentialChanges === true,
+		unmappable_credential_warning:
+			collaborator.unmappableCredentialWarning ?? null,
+	}
+}
+
+async function decorateCollaborators(
+	ctx: CapabilityContext,
+	managed: Awaited<ReturnType<typeof loadManagedPackage>>,
+	collaborators: ReadonlyArray<PackageCollaboratorView>,
+) {
+	const request = requireMcpRequest(ctx.callerContext)
+	const access = await computeEffectivePermissions({ env: ctx.env, request })
+	const described = await describeCollaboratorUnmappableCredentials({
+		env: ctx.env,
+		orgId: managed.orgId,
+		packageId: managed.package.id,
+		packageName: managed.package.name,
+		collaborators,
+		viewerIsOwner: access.isOwner,
+		request,
+	})
+	return {
+		collaborators: described.collaborators,
+		unmappable_credentials: described.unmappableCredentials
+			? {
+					credentials: described.unmappableCredentials.credentials.map(
+						(credential) => ({
+							need_key: credential.needKey,
+							credential_name: credential.credentialName,
+						}),
+					),
+					notice: described.unmappableCredentials.notice,
+				}
+			: null,
 	}
 }
 
@@ -171,6 +245,7 @@ export async function setPackageCollaboratorAccess(
 		preset?: z.infer<typeof grantPresetSchema>
 		permissions?: Array<string>
 		profile_id?: string
+		allow_changes_despite_unmappable_credentials?: boolean
 	},
 	ctx: CapabilityContext,
 ) {
@@ -192,6 +267,11 @@ export async function setPackageCollaboratorAccess(
 				'Profile grants take a preset (read, use, contribute, or manage), not a permissions list.',
 			)
 		}
+		if (args.allow_changes_despite_unmappable_credentials !== undefined) {
+			throw new McpCallerError(
+				'allow_changes_despite_unmappable_credentials is per person or team. A profile follows the person it acts for.',
+			)
+		}
 		await grantPackageToProfile({
 			env: ctx.env,
 			request: requireMcpRequest(ctx.callerContext),
@@ -199,14 +279,18 @@ export async function setPackageCollaboratorAccess(
 			profileId,
 			preset: args.preset,
 		})
-		return { managed, subject: { type: 'profile' as const, id: profileId } }
+		return {
+			managed,
+			subject: { type: 'profile' as const, id: profileId },
+			warnings: [] as Array<string>,
+		}
 	}
 	const subject = await resolveCollaboratorSubject(
 		ctx.env.APP_DB,
 		managed.orgId,
 		args,
 	)
-	await accessGrantCapability.handler(
+	const granted = await accessGrantCapability.handler(
 		{
 			resource_type: 'package',
 			resource_id: managed.package.id,
@@ -214,10 +298,16 @@ export async function setPackageCollaboratorAccess(
 			subject_id: subject.id,
 			preset: args.preset,
 			permissions: args.permissions,
+			...(args.allow_changes_despite_unmappable_credentials === undefined
+				? {}
+				: {
+						allow_changes_despite_unmappable_credentials:
+							args.allow_changes_despite_unmappable_credentials,
+					}),
 		},
 		ctx,
 	)
-	return { managed, subject }
+	return { managed, subject, warnings: granted.warnings }
 }
 
 export const packageCollaboratorListCapability = defineDomainCapability(
@@ -245,6 +335,7 @@ export const packageCollaboratorListCapability = defineDomainCapability(
 		outputSchema: z.object({
 			package: packageSchema,
 			collaborators: z.array(collaboratorSchema),
+			unmappable_credentials: unmappableCredentialsSchema,
 		}),
 		async handler(args, ctx) {
 			try {
@@ -254,9 +345,15 @@ export const packageCollaboratorListCapability = defineDomainCapability(
 					orgId: managed.orgId,
 					packageId: managed.package.id,
 				})
+				const decorated = await decorateCollaborators(
+					ctx,
+					managed,
+					listed.collaborators,
+				)
 				return {
 					package: managed.package,
-					collaborators: listed.collaborators.map(toCollaboratorPayload),
+					collaborators: decorated.collaborators.map(toCollaboratorPayload),
+					unmappable_credentials: decorated.unmappable_credentials,
 				}
 			} catch (error) {
 				rethrowAccessError(error)
@@ -321,17 +418,24 @@ export const packageCollaboratorSetCapability = defineDomainCapability(
 				.describe(
 					'Advanced grant: package permissions (package:read, package:execute, package:write, package:publish, package:delete, package:manage_access). Do not combine with preset.',
 				),
+			allow_changes_despite_unmappable_credentials: z
+				.boolean()
+				.optional()
+				.describe(allowUnmappableCredentialChangesDescription),
 		}),
 		outputSchema: z.object({
 			package: packageSchema,
 			collaborator: collaboratorSchema,
+			warnings: z
+				.array(z.string())
+				.describe(
+					'Share-time warnings, e.g. the package has unmappable credentials this collaborator could make its code use. The grant was still saved.',
+				),
 		}),
 		async handler(args, ctx) {
 			try {
-				const { managed, subject } = await setPackageCollaboratorAccess(
-					args,
-					ctx,
-				)
+				const { managed, subject, warnings } =
+					await setPackageCollaboratorAccess(args, ctx)
 				const db = ctx.env.APP_DB
 				const listed = await listPackageCollaborators({
 					db,
@@ -344,9 +448,15 @@ export const packageCollaboratorSetCapability = defineDomainCapability(
 						entry.subjectId === subject.id,
 				)
 				if (!collaborator) throw new Error('Collaborator grant was not saved.')
+				const decorated = await decorateCollaborators(ctx, managed, [
+					collaborator,
+				])
 				return {
 					package: managed.package,
-					collaborator: toCollaboratorPayload(collaborator),
+					collaborator: toCollaboratorPayload(
+						decorated.collaborators[0] ?? collaborator,
+					),
+					warnings,
 				}
 			} catch (error) {
 				rethrowAccessError(error)

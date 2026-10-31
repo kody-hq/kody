@@ -101,8 +101,10 @@ the context, so the daemon starts at login or boot and restarts after a crash:
 | `kody daemon status` (`--json`)                | Names each problem with the command that fixes it    |
 | `kody daemon logs` (`--lines <n>`, `--follow`) | Shows the daemon log                                 |
 | `kody daemon restart`                          | Restarts after runs in flight finish                 |
+| `kody daemon start` / `stop`                   | Starts or stops the service (or the running daemon)  |
 | `kody daemon install`                          | Installs the service, or repairs it                  |
 | `kody daemon uninstall` (`--unregister`)       | Removes the service and offers to revoke the context |
+| `kody daemon auto-update on\|off\|status`      | Auto-update switch for every daemon on this machine  |
 | `kody update`                                  | Installs the latest CLI and moves services onto it   |
 
 Install the CLI globally (`npm install -g @kodycodes/cli`). The service refuses
@@ -114,13 +116,36 @@ when the key needs one, or Linux has no unlocked keyring, install offers a file
 key instead: a random key stored next to the encrypted machine key, readable
 only by you (`--key-storage file`).
 
-The context page shows the daemon's CLI version, flags it when a newer
-`@kodycodes/cli` is out (run `kody update` on the machine), and says whether it
-runs as a background service or in a terminal.
+Daemons auto-update by default: on start and about every 4 hours each daemon
+(service, terminal, or desktop app) checks npm, installs the verified newer
+`@kodycodes/cli` into a Kody-managed folder, waits for runs in flight and
+background host commands to finish, and relaunches onto it. It never downgrades,
+keeps the old version when an update fails, and logs each step.
+`kody daemon auto-update off` (or **This machine** in the desktop app) turns it
+off on that machine; see
+[execution contexts](../use/execution-contexts.md#auto-update).
+
+The context page shows the daemon's CLI version, whether auto-update is on,
+flags it when a newer `@kodycodes/cli` is out (run `kody update` on the
+machine), and says whether it runs as a background service or in a terminal.
+
+One runner per machine: the service, a terminal `kody daemon`, and the desktop
+app share one lock per context, so a second daemon refuses (a service waits)
+instead of replacing the first in a loop. The desktop app adopts an existing
+service and registration instead of starting or registering a second one; see
+[one runner per machine](../use/execution-contexts.md#one-runner-per-machine).
 
 Revoking a context stops its daemon for good: it does not reconnect, and the
 service disables itself instead of restarting. Remove the leftover service with
 `kody daemon uninstall`.
+
+## Worker compute on a machine
+
+A run on an execution context does not use your Worker compute allowance: the
+code runs in workerd on your machine, not in a Kody cloud Dynamic Worker. When a
+run falls back to Kody cloud, it counts like any other cloud run (one unit the
+first time that worker runs on a UTC day). Anything the run calls that runs on
+Kody cloud, such as a nested `execute`, counts on Kody cloud.
 
 ## The chain and cloud fallback
 
@@ -162,9 +187,13 @@ Every routed `execute` result carries `ranOn` (in MCP `structuredContent`, CLI
 	"id": "ec_…",
 	"name": "my-laptop",
 	"attempts": [{ "target": "ec_…", "name": "build-box", "outcome": "busy" }],
-	"fellBackToCloud": false
+	"fellBackToCloud": false,
+	"workerUnits": 0
 }
 ```
+
+`workerUnits` is how many Worker compute units this call charged, and the text
+line says it too: `Ran on my-laptop (your machine), 0 worker units.`
 
 `attempts` lists every entry Kody skipped and why (`offline`, `busy`, …).
 `fellBackToCloud: true` means no context could take the run and it ran on Kody

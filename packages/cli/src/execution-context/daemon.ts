@@ -126,10 +126,18 @@ type DaemonInput = {
 	 * (a service stop or `kody update`). `signal` still stops at once.
 	 */
 	drainSignal?: AbortSignal
+	/** While draining, keeps the connection open while this returns true (auto-update waits for background commands). */
+	drainHold?: () => boolean
+	drainHoldPollMs?: number
+	/** Updated with the runs this daemon holds, so callers can wait for idle. */
+	activity?: { runs: number }
+	/** Capabilities that can change while connected (sent on the next policy change). */
+	extraCapabilities?: () => Record<string, unknown>
 }
 
 /** Why runDaemon returned. `revoked` and `unknown_context` are permanent. */
-export type DaemonStop = 'shutdown' | 'revoked' | 'unknown_context'
+/** `replaced`: another daemon connected for this context, so this one stands down. */
+export type DaemonStop = 'shutdown' | 'revoked' | 'unknown_context' | 'replaced'
 
 export type DaemonFsAccess = {
 	effective: (
@@ -211,6 +219,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 			: []
 		return {
 			...input.capabilities,
+			...input.extraCapabilities?.(),
 			maxConcurrent,
 			features: [
 				...base.filter((feature) => feature !== 'fs'),
@@ -399,6 +408,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 			daemonMs: endedAt - committedAt,
 		}
 		runs.delete(run.request.runId)
+		if (input.activity) input.activity.runs = runs.size
 		await send('run.result', {
 			runId: run.request.runId,
 			...outcome,
@@ -461,6 +471,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 					abort: new AbortController(),
 					committed: false,
 				})
+				if (input.activity) input.activity.runs = runs.size
 				await send('run.accept', { runId }, frame.seq)
 				return
 			}
@@ -480,6 +491,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 				const run = runs.get(runId)
 				run?.abort.abort()
 				if (!run?.committed) runs.delete(runId)
+				if (input.activity) input.activity.runs = runs.size
 				if (frame.t === 'run.cancel')
 					await send('run.cancel.ack', { runId }, frame.seq)
 				return
@@ -549,6 +561,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 			clearTimeout(pongTimer)
 			clearTimeout(welcomeTimer)
 			clearTimeout(settleTimer)
+			clearInterval(holdTimer)
 			unsubscribeFs?.()
 			input.signal?.removeEventListener('abort', shutdown)
 			input.drainSignal?.removeEventListener('abort', drain)
@@ -576,9 +589,17 @@ export async function runDaemonConnection(input: DaemonInput) {
 		const shutdown = () => closeAndSettle(1000, 'shutdown')
 		if (input.signal?.aborted) shutdown()
 		input.signal?.addEventListener('abort', shutdown, { once: true })
+		let holdTimer: ReturnType<typeof setInterval> | undefined
 		closeWhenDrained = () => {
 			if (!input.drainSignal?.aborted) return
 			if ([...runs.values()].some((run) => run.committed)) return
+			if (input.drainHold?.()) {
+				holdTimer ??= setInterval(
+					() => closeWhenDrained(),
+					input.drainHoldPollMs ?? 5_000,
+				)
+				return
+			}
 			closeAndSettle(1000, 'shutdown')
 		}
 		const drain = () => {
@@ -664,6 +685,11 @@ export async function runDaemon(input: DaemonInput): Promise<DaemonStop> {
 			const closed = await runDaemonConnection(input)
 			if (closed.reason === 'revoked') return 'revoked'
 			if (stopping()) return 'shutdown'
+			// Reconnecting would replace the other daemon, which would replace
+			// this one again: stand down once instead of flapping.
+			if (closed.code === 1012 && closed.reason === 'replaced') {
+				return 'replaced'
+			}
 			input.log(
 				`Disconnected (${closed.code}${closed.reason ? ` ${closed.reason}` : ''}). Reconnecting.`,
 			)

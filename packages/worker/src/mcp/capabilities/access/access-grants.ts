@@ -1,5 +1,10 @@
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import {
+	allowUnmappableCredentialChangesDescription,
+	assertCanSetUnmappableCredentialChanges,
+	unmappableCredentialGrantWarnings,
+} from '#mcp/capabilities/access/unmappable-credential-warnings.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import {
@@ -187,8 +192,19 @@ export const accessGrantCapability = defineDomainCapability(
 				.describe(
 					"When the grant stops counting (ISO 8601, in the future). null never expires. Omit to keep an existing grant's expiry (a new grant never expires).",
 				),
+			allow_changes_despite_unmappable_credentials: z
+				.boolean()
+				.optional()
+				.describe(allowUnmappableCredentialChangesDescription),
 		}),
-		outputSchema: z.object({ grant: accessGrantSchema }),
+		outputSchema: z.object({
+			grant: accessGrantSchema,
+			warnings: z
+				.array(z.string())
+				.describe(
+					'Share-time warnings, e.g. the package has unmappable credentials this grant could make its code use. The grant was still saved.',
+				),
+		}),
 		async handler(args, ctx) {
 			try {
 				const permissions = readPermissionList(args.permissions)
@@ -221,6 +237,12 @@ export const accessGrantCapability = defineDomainCapability(
 						team_slug: args.team_slug,
 					},
 				)
+				await assertCanSetUnmappableCredentialChanges(ctx, {
+					resourceType: target.resourceType,
+					resourceId: target.resourceId,
+					subjectType: subject.type,
+					allow: args.allow_changes_despite_unmappable_credentials,
+				})
 				const written = await upsertGrant({
 					db: scoped.db,
 					orgId: scoped.request.org.id,
@@ -232,6 +254,12 @@ export const accessGrantCapability = defineDomainCapability(
 					permissions: args.preset ? null : [...resolved],
 					createdByUserId: scoped.user.userId,
 					...(expiresAt === undefined ? {} : { expiresAt }),
+					...(args.allow_changes_despite_unmappable_credentials === undefined
+						? {}
+						: {
+								allowUnmappableCredentialChanges:
+									args.allow_changes_despite_unmappable_credentials,
+							}),
 					audit: orgAuditWriterFromRequest(ctx.env, scoped.request),
 				})
 				const grant = await getGrantById({
@@ -240,7 +268,16 @@ export const accessGrantCapability = defineDomainCapability(
 					grantId: written.id,
 				})
 				if (!grant) throw new Error('Grant was not saved.')
-				return { grant: toAccessGrantPayload(grant) }
+				const warnings = await unmappableCredentialGrantWarnings({
+					env: ctx.env,
+					orgId: scoped.request.org.id,
+					resourceType: grant.resourceType,
+					resourceId: grant.resourceId,
+					permissions: grant.permissions,
+					changesAllowed: grant.allowUnmappableCredentialChanges,
+					request: scoped.request,
+				})
+				return { grant: toAccessGrantPayload(grant), warnings }
 			} catch (error) {
 				rethrowAccessError(error)
 			}

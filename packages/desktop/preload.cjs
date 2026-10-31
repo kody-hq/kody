@@ -35,6 +35,11 @@ if (process.isMainFrame && location.origin === origin) {
 			connect: (name) => ipcRenderer.invoke('kody:execution', 'connect', name),
 			start: () => ipcRenderer.invoke('kody:execution', 'start'),
 			stop: () => ipcRenderer.invoke('kody:execution', 'stop'),
+			restart: () => ipcRenderer.invoke('kody:execution', 'restart'),
+			enableAutoUpdate: () =>
+				ipcRenderer.invoke('kody:execution', 'auto-update-on'),
+			disableAutoUpdate: () =>
+				ipcRenderer.invoke('kody:execution', 'auto-update-off'),
 			dismissOnboarding: () => ipcRenderer.invoke('kody:execution', 'dismiss'),
 			completeOnboarding: () =>
 				ipcRenderer.invoke('kody:execution', 'complete'),

@@ -11,6 +11,7 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { type OrgRole } from '@kody-internal/shared/request-context.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import { unmappableCredentialGrantWarnings } from '#mcp/capabilities/access/unmappable-credential-warnings.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { assertMemoryGrantsAllowedOnOrg } from '#mcp/memory/memory-owner.ts'
@@ -495,6 +496,11 @@ export const inviteCreateCapability = defineDomainCapability(
 			invite: inviteSchema,
 			token: z.string(),
 			prompt: z.string(),
+			warnings: z
+				.array(z.string())
+				.describe(
+					'Share-time warnings, e.g. the package has unmappable credentials this invitee could make its code use once they accept. The invite was still created.',
+				),
 		}),
 		async handler(args, ctx) {
 			try {
@@ -615,10 +621,29 @@ export const inviteCreateCapability = defineDomainCapability(
 					inviteId: created.id,
 				})
 				if (!invite) throw new Error('Invite was not saved.')
+				const warnings =
+					invite.kind === 'grant' &&
+					invite.resourceType === 'package' &&
+					invite.resourceId
+						? await unmappableCredentialGrantWarnings({
+								env: ctx.env,
+								orgId: request.org.id,
+								resourceType: invite.resourceType,
+								resourceId: invite.resourceId,
+								permissions: resolveGrantPermissions({
+									family: 'package',
+									preset: invite.preset,
+									permissions: invite.permissions,
+								}),
+								changesAllowed: false,
+								request,
+							})
+						: []
 				return {
 					invite: toInvitePayload(invite, org.slug),
 					token,
 					prompt: inviteAcceptPrompt({ orgSlug: org.slug, token }),
+					warnings,
 				}
 			} catch (error) {
 				rethrowAccessError(error)

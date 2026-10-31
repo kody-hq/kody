@@ -19,7 +19,7 @@ const now = '2026-10-31T00:00:00.000Z'
 function createDb() {
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, migrationsUrl)
-	// Migration 0230 drops the telemetry table 0226 seeds from; recreate it to
+	// Migration 0232 drops the telemetry table 0226 seeds from; recreate it to
 	// replay the seed.
 	sqlite.exec(`CREATE TABLE package_app_authority_fallbacks (
 		day TEXT NOT NULL,

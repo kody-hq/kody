@@ -10,6 +10,11 @@ import { resolvePackageOwnerContext } from '#worker/package-registry/package-own
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { runAuthoringPublishChecksOnFiles } from '#worker/repo/authoring-publish-checks.ts'
 import { repoCheckKinds } from '#worker/repo/checks.ts'
+import {
+	knownUnmappableCredentials,
+	loadOnePackageUnmappableCredentials,
+	unmappableCredentialOwnerNotice,
+} from '#worker/credentials/package-unmappable-credentials.ts'
 import { runAuthoringChecksInIsolate } from '#worker/repo/isolated-check-phases.ts'
 import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
 import { resolveOwnedPackageSource } from './resolve-package-source.ts'
@@ -122,6 +127,11 @@ export const packageCheckCapability = defineDomainCapability(
 				.describe(
 					'Every check that ran, in publish order. Failed checks carry the exact publish message.',
 				),
+			notices: z
+				.array(z.string())
+				.describe(
+					'Notices that do not fail the check, e.g. the existing package has unmappable credentials, so changes and publishes are owner-only unless a grant allows them.',
+				),
 		}),
 		async handler(args, ctx) {
 			const user = requireMcpUser(ctx.callerContext)
@@ -144,6 +154,7 @@ export const packageCheckCapability = defineDomainCapability(
 			// An existing package lets the checks compare credential needs with
 			// its published version, exactly as a publish of it would.
 			let sourceId: string | undefined
+			let existingPackage: { id: string; name: string } | undefined
 			if (packageName) {
 				try {
 					const existing = await resolveOwnedPackageSource({
@@ -153,6 +164,7 @@ export const packageCheckCapability = defineDomainCapability(
 						args: { kody_id: getPackageNameLeaf(packageName) },
 					})
 					sourceId = existing.source.id
+					existingPackage = { id: existing.packageId, name: existing.name }
 				} catch {
 					sourceId = undefined
 				}
@@ -172,8 +184,28 @@ export const packageCheckCapability = defineDomainCapability(
 			const checks =
 				(await runAuthoringChecksInIsolate(checkInput)) ??
 				(await runAuthoringPublishChecksOnFiles(checkInput))
+			const unmappable = existingPackage
+				? knownUnmappableCredentials(
+						await loadOnePackageUnmappableCredentials({
+							env: ctx.env,
+							orgId: owner.ownerUserId,
+							packageId: existingPackage.id,
+							request: ctx.callerContext.request,
+						}),
+					)
+				: []
+			const notices =
+				existingPackage && unmappable.length > 0
+					? [
+							unmappableCredentialOwnerNotice({
+								packageLabel: `Package "${existingPackage.name}"`,
+								credentials: unmappable,
+							}),
+						]
+					: []
 			return {
 				ok: checks.ok,
+				notices,
 				package_name: packageName,
 				checks: checks.results.map((result) => ({
 					kind: result.kind,

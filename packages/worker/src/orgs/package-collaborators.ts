@@ -147,6 +147,8 @@ export async function listPackageCollaborators(input: {
 				preset: readPreset(grant.preset),
 				permissions: grant.permissions,
 				createdAt: grant.createdAt,
+				allowUnmappableCredentialChanges:
+					grant.allowUnmappableCredentialChanges,
 			}
 			if (grant.subjectType === 'org') {
 				// The subject is only ever this org; anything else grants nobody.

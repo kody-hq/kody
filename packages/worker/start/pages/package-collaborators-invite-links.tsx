@@ -36,6 +36,7 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import {
+	unmappableWarningCss,
 	formCss,
 	iconWellCss,
 	listCss,
@@ -121,6 +122,7 @@ function PackageInviteLinksContent({
 	const [created, setCreated] = useInviteHandoff<CreatedLink>(query.data)
 	const [message, setMessage] = useState<string | null>(null)
 	const [messageTone, setMessageTone] = useState<'info' | 'error'>('info')
+	const [warnings, setWarnings] = useState<Array<string>>([])
 	const createdUrl = created?.url
 	const lifecycle = {
 		retry: false,
@@ -170,6 +172,7 @@ function PackageInviteLinksContent({
 		if (busy) return
 		const active = capture()
 		setMessage(null)
+		setWarnings([])
 		try {
 			const result = await createMutation.mutateAsync({
 				preset,
@@ -180,6 +183,7 @@ function PackageInviteLinksContent({
 			if (!active()) return
 			const link = result.inviteLink
 			setCreated(link)
+			setWarnings((result as { warnings?: Array<string> }).warnings ?? [])
 			const copied = await copyText(link.url)
 			if (!active()) return
 			setMessage(
@@ -335,6 +339,16 @@ function PackageInviteLinksContent({
 					</button>
 				</div>
 			</form>
+			{warnings.map((warning) => (
+				<p
+					key={warning}
+					role="status"
+					css={unmappableWarningCss}
+					data-testid="package-invite-link-warning"
+				>
+					{warning}
+				</p>
+			))}
 			{message ? (
 				<p
 					role={messageTone === 'error' ? 'alert' : 'status'}

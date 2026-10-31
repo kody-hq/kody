@@ -215,3 +215,56 @@ test('a publish-time import denial names the blocking layer', () => {
 		).allowed,
 	).toBe(true)
 })
+
+const lockedCredentials = new Map([
+	[
+		'package:pkg-1',
+		[
+			{
+				needKey: 'rooms-db',
+				credentialName: 'Prod DB',
+				reason: 'publisher' as const,
+			},
+		],
+	],
+])
+
+test('a profile acting for an Owner changes a package with unmappable credentials only when its chain allows it', () => {
+	const permitted = access({
+		inactive: null,
+		layers: [layer('helper', true, both(['package:read', 'package:write']))],
+	})
+	expect(checkPermission(permitted, 'package:write', pkg).allowed).toBe(true)
+	const capped = access({
+		inactive: null,
+		layers: [layer('helper', true, both(['package:read', 'package:execute']))],
+	})
+	const denied = checkPermission(capped, 'package:write', pkg)
+	expect(denied).toMatchObject({
+		allowed: false,
+		error: { code: 'profile_grant' },
+	})
+	expect(checkPermission(capped, 'package:execute', pkg).allowed).toBe(true)
+})
+
+test("a collaborator's profile inherits the unmappable-credential lock even when its chain holds write", () => {
+	const effective = access(
+		{
+			inactive: null,
+			layers: [layer('helper', true, both(['package:read', 'package:write']))],
+		},
+		{
+			isOwner: false,
+			permissions: new Set(['org:read']),
+			resourcePermissions: new Map([
+				['package:pkg-1', new Set(['package:read', 'package:write'])],
+			]),
+			unmappableCredentialLocks: lockedCredentials,
+		},
+	)
+	const denied = checkPermission(effective, 'package:write', pkg)
+	expect(denied).toMatchObject({
+		allowed: false,
+		error: { code: 'unmappable_credentials' },
+	})
+})

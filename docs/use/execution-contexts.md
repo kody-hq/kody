@@ -41,8 +41,9 @@ Execution contexts are an experiment. Turn them on at
   `search({ query: "execution context" })`.
 - CLI: `kody connect --name <name>` (register plus background service),
   `kody context register --name <name>`,
-  `kody daemon install | status [--json] | logs | restart | uninstall`,
-  `kody update`, `kody context policy allow <path> [--mode ro|rw]`,
+  `kody daemon install | status [--json] | logs | start | stop | restart | uninstall`,
+  `kody daemon auto-update [on | off | status]` (on by default), `kody update`,
+  `kody context policy allow <path> [--mode ro|rw]`,
   `kody daemon [--max-concurrent <n>]` (`KODY_CONTEXT_MAX_CONCURRENT`, 1 to 8,
   default 2), `kody chain show | add | remove`,
   `kody context commands [status | on | off] [--context <name>] [--json]`,
@@ -53,6 +54,62 @@ Execution contexts are an experiment. Turn them on at
   is status `error`). Once execute returned an in-progress runId, closing the
   CLI or MCP client does not cancel the run; disconnecting before execute
   returns can.
+
+## Auto-update
+
+Every `kody daemon` keeps itself current: background services, a daemon in a
+terminal, and the one the desktop app runs. It checks npm for a newer
+`@kodycodes/cli` on start and about every 4 hours (with jitter), downloads it,
+checks the npm sha512 integrity, installs it into a Kody-managed folder
+(`~/.local/share/kody/cli` on Linux, `~/Library/Application Support/kody/cli` on
+macOS, `%APPDATA%\kody\cli` on Windows), and proves it starts. Then it stops
+taking new runs, waits for runs in flight and background host commands to finish
+(at most 24 hours), and relaunches onto the new version. New runs go down the
+chain meanwhile.
+
+It never downgrades. A failed download or install keeps the old version running
+and retries with backoff (1h, doubling to 24h); a new version that crashes right
+after starting is skipped and the old one takes over again. Each step is logged
+in the daemon log (`kody daemon logs`).
+
+- `kody daemon auto-update status` (`--json`): on or off, the last check, the
+  latest version, and recent updates. `kody daemon status` shows it too.
+- `kody daemon auto-update off` / `on`: the machine-wide switch, stored as
+  `autoUpdate` in `execution-context-policy.json`. Running daemons pick it up at
+  their next check. `KODY_DAEMON_AUTO_UPDATE=0` turns it off for one daemon.
+- The desktop app: **This machine** (in the web account menu) > Turn off / Turn
+  on automatic updates.
+- The context page shows the daemon's CLI version and whether auto-update is on.
+
+Existing installs need nothing: a daemon started from a CLI that has auto-update
+turns it on at its next restart (or run `kody update` once).
+
+## One runner per machine
+
+A context runs one daemon at a time on a machine. Every launcher (the background
+service, `kody daemon` in a terminal, the desktop app) takes the same runner
+lock (`daemon.lock` next to `daemon.json` in the CLI config folder), so a second
+daemon for the same context does not start: a terminal or desktop daemon exits
+naming the one that runs it, and a service waits until the other stops. If
+another daemon still replaces this one on the server (an older CLI without the
+lock, or the same key on another machine), the daemon logs one explanation
+naming the other process and stops instead of reconnecting in a loop.
+
+The desktop app and the CLI share this machine's registration and its runner:
+
+- When `kody daemon install` set up a service, or a daemon already runs, the app
+  adopts it. **This machine** shows that runner and its version, and Pause,
+  Resume, and Restart control the service
+  (`kody daemon start | stop | restart`).
+- Setup offers **Use this machine's existing registration** when the CLI already
+  registered this machine, instead of creating a second context. It checks first
+  that the registration belongs to your account.
+- With no service, the app runs the daemon itself, with the same lock and
+  auto-update.
+
+`kody daemon status` shows the runner holding the lock, and `kody daemon stop`
+stops whichever one runs (the service, or a terminal or desktop daemon after its
+runs finish).
 
 ## Host commands
 

@@ -10,6 +10,7 @@ import {
 } from '#mcp/capabilities/access/package-collaborators.ts'
 import { type CapabilityContext } from '#mcp/capabilities/types.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
+import { describeCollaboratorUnmappableCredentials } from '#mcp/capabilities/access/unmappable-credential-warnings.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	AuthorizationError,
@@ -142,11 +143,25 @@ async function buildCollaboratorsView(
 				})
 			: Promise.resolve(null),
 	])
+	const request = scope.ctx.callerContext.request
+	const access = request
+		? await computeEffectivePermissions({ env: scope.ctx.env, request })
+		: null
+	const described = await describeCollaboratorUnmappableCredentials({
+		env: scope.ctx.env,
+		orgId: scope.org.id,
+		packageId: scope.savedPackage.id,
+		packageName: scope.savedPackage.name,
+		collaborators: listed.collaborators,
+		viewerIsOwner: access?.isOwner ?? false,
+		request,
+	})
 	return {
 		ok: true,
 		package: scope.savedPackage,
 		org: { slug: scope.orgSlug, personal: scope.personal },
-		collaborators: listed.collaborators,
+		collaborators: described.collaborators,
+		unmappableCredentials: described.unmappableCredentials,
 		invites,
 		options: {
 			...listed.options,
@@ -195,18 +210,26 @@ export function grantPackageCollaborator(
 		subjectId: string
 		preset?: PackageCollaboratorPreset | null
 		permissions?: Array<PackageCollaboratorPermission>
+		allowUnmappableCredentialChanges?: boolean
 	},
 ) {
 	return changeCollaborator(input, async (scope) => {
 		const { ctx, savedPackage } = scope
-		await setPackageCollaboratorAccess(
+		const { warnings } = await setPackageCollaboratorAccess(
 			{
 				package_id: savedPackage.id,
 				...subjectSelector(scope, input.subjectType, input.subjectId),
 				...presetOrPermissionsArgs(input),
+				...(input.allowUnmappableCredentialChanges === undefined
+					? {}
+					: {
+							allow_changes_despite_unmappable_credentials:
+								input.allowUnmappableCredentialChanges,
+						}),
 			},
 			ctx,
 		)
+		return { warnings }
 	})
 }
 function presetOrPermissionsArgs(input: {
@@ -288,14 +311,17 @@ export function createPackageCollaboratorInvite(
 			scope.ctx,
 		)
 		return {
-			id: created.invite.id,
-			expiresAt: created.invite.expires_at,
-			inviteeLabel: packageCollaboratorInviteeLabel({
-				inviteeEmail: created.invite.invitee_email,
-				inviteeUsername: created.invite.invitee_username,
-			}),
-			preset: input.preset ?? null,
-			prompt: created.prompt,
+			invite: {
+				id: created.invite.id,
+				expiresAt: created.invite.expires_at,
+				inviteeLabel: packageCollaboratorInviteeLabel({
+					inviteeEmail: created.invite.invitee_email,
+					inviteeUsername: created.invite.invitee_username,
+				}),
+				preset: input.preset ?? null,
+				prompt: created.prompt,
+			},
+			warnings: created.warnings,
 		}
 	})
 }
@@ -328,15 +354,19 @@ export function revokePackageCollaboratorInvite(
 
 async function changeCollaborator(
 	input: CollaboratorsInput,
-	apply: (
-		scope: CollaboratorsScope,
-	) => Promise<PackageCollaboratorInviteCreated | void>,
+	apply: (scope: CollaboratorsScope) => Promise<{
+		invite?: PackageCollaboratorInviteCreated
+		warnings?: Array<string>
+	} | void>,
 ) {
 	const loaded = await authorizedScope(input)
 	if (loaded.error) return loaded.error
-	let invite: PackageCollaboratorInviteCreated | void
+	let applied: {
+		invite?: PackageCollaboratorInviteCreated
+		warnings?: Array<string>
+	} | void
 	try {
-		invite = await apply(loaded.scope)
+		applied = await apply(loaded.scope)
 	} catch (error) {
 		if (error instanceof CollaboratorChangeRefused)
 			return operationResult(
@@ -349,8 +379,10 @@ async function changeCollaborator(
 			return operationResult({ ok: false as const, error: error.message }, 400)
 		throw error
 	}
-	const result: PackageCollaboratorsWriteResult = invite
-		? { ok: true, invite }
-		: { ok: true }
+	const result: PackageCollaboratorsWriteResult = {
+		ok: true,
+		...(applied?.invite ? { invite: applied.invite } : {}),
+		...(applied?.warnings?.length ? { warnings: applied.warnings } : {}),
+	}
 	return operationResult(result)
 }

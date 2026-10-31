@@ -27,6 +27,7 @@ export const grantPackageCollaboratorInput = packageAccessInput
 		subjectType: z.enum(['user', 'team', 'org', 'profile']),
 		subjectId: z.string().trim().min(1),
 		...presetOrPermissions,
+		allowUnmappableCredentialChanges: z.boolean().optional(),
 	})
 	.refine(hasPresetXorPermissions, presetOrPermissionsMessage)
 export const revokePackageCollaboratorInput = packageAccessInput.extend({

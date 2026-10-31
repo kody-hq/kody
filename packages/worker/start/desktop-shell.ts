@@ -8,6 +8,16 @@ export type DesktopExecutionState = {
 	hasSetup: boolean
 	contextId: string | null
 	running: boolean
+	/** Who runs this machine's runner. Older desktop apps omit these fields. */
+	runner?: {
+		mode: 'desktop' | 'service' | 'external' | 'none'
+		label: string
+		canRestart: boolean
+	} | null
+	/** Daemon auto-update (the CLI's local policy); null when unknown. */
+	autoUpdate?: boolean | null
+	/** A registration the kody CLI already holds on this machine. */
+	existingContext?: { id: string; name: string | null } | null
 	needsVerification: boolean
 	blocked: boolean
 	onboardingSeen: boolean
@@ -24,6 +34,9 @@ export type DesktopExecutionBridge = {
 	connect: (name: string) => Promise<DesktopExecutionState>
 	start: () => Promise<DesktopExecutionState>
 	stop: () => Promise<DesktopExecutionState>
+	restart?: () => Promise<DesktopExecutionState>
+	enableAutoUpdate?: () => Promise<DesktopExecutionState>
+	disableAutoUpdate?: () => Promise<DesktopExecutionState>
 	dismissOnboarding: () => Promise<DesktopExecutionState>
 	completeOnboarding: () => Promise<DesktopExecutionState>
 }

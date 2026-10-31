@@ -112,6 +112,22 @@ export type PackageCollaboratorView = {
 	preset: PackageCollaboratorPreset | null
 	permissions: Array<string>
 	createdAt: string
+	/** An org Owner allowed changes despite unmappable credentials on this grant. */
+	allowUnmappableCredentialChanges?: boolean
+	/**
+	 * Set while the package has unmappable credentials and this grant can
+	 * change or publish it: the share-time warning, worded for this grant.
+	 */
+	unmappableCredentialWarning?: string | null
+}
+
+/** The package's unmappable credentials, for the owner notice. */
+type PackageUnmappableCredentialsView = {
+	/** Credential names (null: the need has no credential picked yet). */
+	credentials: Array<{ needKey: string; credentialName: string | null }>
+	notice: string
+	/** True when the viewer is an org Owner and can allow changes per grant. */
+	canAllowChanges: boolean
 }
 
 /** A pending grant invite on the package (personal orgs only). */
@@ -176,6 +192,8 @@ export type PackageCollaboratorsView = {
 		/** The viewer's profiles; absent unless the profiles experiment is on. */
 		profiles?: Array<PackageCollaboratorProfileOption>
 	}
+	/** Null when the package has no unmappable credentials. */
+	unmappableCredentials?: PackageUnmappableCredentialsView | null
 }
 
 /** Shown once, right after an invite is created. */
@@ -192,6 +210,8 @@ export type PackageCollaboratorInviteCreated = {
 export type PackageCollaboratorsWriteResult = {
 	ok: true
 	invite?: PackageCollaboratorInviteCreated
+	/** Share-time unmappable-credential warnings; the write still succeeded. */
+	warnings?: Array<string>
 }
 
 /**
@@ -208,6 +228,8 @@ export type PackageCollaboratorsChange =
 			/** Null with `permissions` for an advanced grant. */
 			preset: PackageCollaboratorPreset | null
 			permissions?: Array<PackageCollaboratorPermission>
+			/** Owners only; omitted keeps the grant's current choice. */
+			allowUnmappableCredentialChanges?: boolean
 	  }
 	| { intent: 'revoke'; grantId: string }
 	| {

@@ -369,6 +369,11 @@ export async function upsertGrant(input: {
 	 * it fresh with none.
 	 */
 	expiresAt?: string | null
+	/**
+	 * Lets this person or team change or publish the package even while it
+	 * has unmappable credentials. Omitted keeps an existing grant's choice.
+	 */
+	allowUnmappableCredentialChanges?: boolean
 	audit: OrgAuditWriter
 }) {
 	assertGrantSubjectInOrg(input)
@@ -464,6 +469,20 @@ export async function upsertGrant(input: {
 				),
 		)
 	}
+	if (input.allowUnmappableCredentialChanges !== undefined) {
+		statements.push(
+			input.db
+				.prepare(
+					`UPDATE grants SET allow_unmappable_credential_changes = ?
+					 WHERE id = ? AND org_id = ? AND deleted_at IS NULL`,
+				)
+				.bind(
+					input.allowUnmappableCredentialChanges ? 1 : 0,
+					grantId,
+					input.orgId,
+				),
+		)
+	}
 	for (const permission of permissions) {
 		statements.push(
 			input.db
@@ -492,6 +511,12 @@ export async function upsertGrant(input: {
 				permissions,
 				origin,
 				expiresAt,
+				...(input.allowUnmappableCredentialChanges === undefined
+					? {}
+					: {
+							allowUnmappableCredentialChanges:
+								input.allowUnmappableCredentialChanges,
+						}),
 			},
 		},
 	})
@@ -773,6 +798,8 @@ export type GrantView = {
 	updatedAt: string
 	/** Null never expires. Listings include expired grants until revoked. */
 	expiresAt: string | null
+	/** The owner let this subject change the package despite unmappable credentials. */
+	allowUnmappableCredentialChanges: boolean
 }
 
 type GrantJoinRow = {
@@ -787,6 +814,7 @@ type GrantJoinRow = {
 	created_at: string
 	updated_at: string
 	expires_at: string | null
+	allow_unmappable_credential_changes?: number | null
 	permission: string | null
 }
 
@@ -814,6 +842,8 @@ function groupGrantRows(rows: ReadonlyArray<GrantJoinRow>): Array<GrantView> {
 				createdAt: row.created_at,
 				updatedAt: row.updated_at,
 				expiresAt: row.expires_at ?? null,
+				allowUnmappableCredentialChanges:
+					row.allow_unmappable_credential_changes === 1,
 			}
 			byId.set(row.id, grant)
 		}
@@ -873,6 +903,7 @@ export async function listGrants(input: {
 			        g.created_at AS created_at,
 			        g.updated_at AS updated_at,
 			        g.expires_at AS expires_at,
+			        g.allow_unmappable_credential_changes AS allow_unmappable_credential_changes,
 			        gp.permission AS permission
 			 FROM grants g
 			 LEFT JOIN grant_permissions gp ON gp.grant_id = g.id

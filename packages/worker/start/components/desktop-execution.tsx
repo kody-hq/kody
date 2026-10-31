@@ -37,8 +37,13 @@ const DesktopMachineContext = createContext<null | {
 	forget: () => void
 	open: () => void
 	toggle: () => Promise<void>
+	restart: (() => Promise<void>) | null
+	autoUpdate: ((enabled: boolean) => Promise<void>) | null
 	error: string | null
 }>(null)
+
+const oneRunnerCopy =
+	'One runner per machine: this app and the kody CLI share this machine’s registration and its runner.'
 
 type SetupData = Extract<ExecutionContextsPageData, { enabled: true }>
 const buttonCss = getPillButtonCss({ size: 'sm' })
@@ -92,6 +97,14 @@ export function DesktopExecutionProvider({
 	useEffect(() => {
 		if (machine.data && !name) setName(machine.data.name)
 	}, [machine.data, name])
+	const existingContext = machine.data?.contextId
+		? null
+		: (machine.data?.existingContext ?? null)
+	useEffect(() => {
+		const existing = existingContext?.name
+		if (existing && /^[a-z0-9][a-z0-9-]{0,62}$/.test(existing))
+			setName(existing)
+	}, [existingContext?.name])
 	useEffect(() => {
 		if (
 			bridge &&
@@ -229,6 +242,21 @@ export function DesktopExecutionProvider({
 							if (machine.data?.running) await bridge.stop()
 							else await bridge.start()
 						}),
+					restart: bridge.restart
+						? () =>
+								run(async () => {
+									await bridge.restart?.()
+								})
+						: null,
+					autoUpdate:
+						bridge.enableAutoUpdate && bridge.disableAutoUpdate
+							? (enabled: boolean) =>
+									run(async () => {
+										await (enabled
+											? bridge.enableAutoUpdate?.()
+											: bridge.disableAutoUpdate?.())
+									})
+							: null,
 				}
 			: null
 	return (
@@ -321,17 +349,26 @@ export function DesktopExecutionProvider({
 						</>
 					) : step === 'machine' ? (
 						<>
-							<label css={{ display: 'grid', gap: spacing.sm }}>
-								Machine name
-								<input
-									css={inputCss}
-									value={name}
-									onChange={(event) => setName(event.target.value)}
-									pattern="[a-z0-9][a-z0-9-]{0,62}"
-									maxLength={63}
-									disabled={busy || !!machine.data?.contextId}
-								/>
-							</label>
+							{existingContext ? (
+								<p>
+									The kody CLI already registered this machine
+									{existingContext.name ? ` as ${existingContext.name}` : ''}.
+									This app uses that registration and its runner instead of
+									creating a second one. {oneRunnerCopy}
+								</p>
+							) : (
+								<label css={{ display: 'grid', gap: spacing.sm }}>
+									Machine name
+									<input
+										css={inputCss}
+										value={name}
+										onChange={(event) => setName(event.target.value)}
+										pattern="[a-z0-9][a-z0-9-]{0,62}"
+										maxLength={63}
+										disabled={busy || !!machine.data?.contextId}
+									/>
+								</label>
+							)}
 							<p>
 								This machine will be first in your personal execution chain.
 								Your other entries and cloud fallback settings stay in their
@@ -371,7 +408,11 @@ export function DesktopExecutionProvider({
 								}
 								onClick={() => void connect()}
 							>
-								{busy ? 'Enabling…' : 'Enable this machine'}
+								{busy
+									? 'Enabling…'
+									: existingContext
+										? 'Use this machine’s existing registration'
+										: 'Enable this machine'}
 							</button>
 						</>
 					) : (
@@ -450,11 +491,25 @@ export function DesktopMachinePanel() {
 					<p>
 						{state.name}
 						{state.contextId
-							? state.running
-								? ' · Runner running'
-								: ' · Runner paused'
-							: ' · Not set up'}
+							? state.runner?.label
+								? ` · ${state.runner.label}`
+								: state.running
+									? ' · Runner running'
+									: ' · Runner paused'
+							: state.existingContext
+								? ' · Registered with the kody CLI'
+								: ' · Not set up'}
 					</p>
+					{state.runner?.mode === 'service' ||
+					state.runner?.mode === 'external' ||
+					(!state.contextId && state.existingContext) ? (
+						<p css={{ color: colors.textMuted }}>
+							{oneRunnerCopy}{' '}
+							{state.runner?.mode === 'external'
+								? 'It was started with `kody daemon` outside this app.'
+								: 'The CLI installed a background service (`kody daemon install`), so this app controls that service instead of starting a second runner.'}
+						</p>
+					) : null}
 					{state.contextId ? (
 						<button
 							type="button"
@@ -463,6 +518,16 @@ export function DesktopMachinePanel() {
 							onClick={() => void machine.toggle()}
 						>
 							{state.running ? 'Pause execution' : 'Resume execution'}
+						</button>
+					) : null}
+					{state.contextId && state.runner?.canRestart && machine.restart ? (
+						<button
+							type="button"
+							css={{ ...secondaryCss, marginLeft: spacing.sm }}
+							disabled={state.busy}
+							onClick={() => void machine.restart?.()}
+						>
+							Restart runner
 						</button>
 					) : null}
 					<button
@@ -475,8 +540,25 @@ export function DesktopMachinePanel() {
 							? 'Manage setup'
 							: state.needsVerification
 								? 'Verify this machine'
-								: 'Set up this machine'}
+								: state.existingContext
+									? 'Use this machine’s existing registration'
+									: 'Set up this machine'}
 					</button>
+					{typeof state.autoUpdate === 'boolean' && machine.autoUpdate ? (
+						<p>
+							Automatic runner updates: {state.autoUpdate ? 'On' : 'Off'}{' '}
+							<button
+								type="button"
+								css={{ ...secondaryCss, marginLeft: spacing.sm }}
+								disabled={state.busy}
+								onClick={() => void machine.autoUpdate?.(!state.autoUpdate)}
+							>
+								{state.autoUpdate
+									? 'Turn off automatic updates'
+									: 'Turn on automatic updates'}
+							</button>
+						</p>
+					) : null}
 				</>
 			)}
 			{state?.contextId && state.supported ? (

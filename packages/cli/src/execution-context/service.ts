@@ -1,3 +1,4 @@
+import { compareVersions } from './auto-update.js'
 import { execFileSync } from 'node:child_process'
 import {
 	existsSync,
@@ -637,7 +638,8 @@ export function serviceStatus(input: {
 		(state.pid === null || runtime.pid === state.pid)
 	) {
 		base.runningVersion = runtime.version
-		if (runtime.version !== input.cliVersion) {
+		// Auto-update may run a newer version than the installed CLI: that is fine.
+		if (compareVersions(runtime.version, input.cliVersion) < 0) {
 			base.problems.push({
 				code: 'restart-pending',
 				message: `The service runs kody ${runtime.version}; this CLI is ${input.cliVersion}.`,
@@ -779,6 +781,42 @@ export function restartService(input: {
 			: run('launchctl', ['kickstart', '-k', launchdTarget(input.ecid)])
 	if (!result.ok)
 		throw new Error(`Could not restart the service: ${result.stderr.trim()}`)
+}
+
+export function startService(input: {
+	manager: ServiceManager
+	ecid: string
+	run?: CommandRunner
+}) {
+	const run = input.run ?? runCommand
+	const unit = `${serviceName(input.ecid)}.service`
+	const result =
+		input.manager === 'systemd'
+			? (run('systemctl', ['--user', 'reset-failed', unit]),
+				run('systemctl', ['--user', 'start', unit]))
+			: (run('launchctl', ['enable', launchdTarget(input.ecid)]),
+				run('launchctl', ['kickstart', launchdTarget(input.ecid)]))
+	if (!result.ok)
+		throw new Error(`Could not start the service: ${result.stderr.trim()}`)
+}
+
+/** Stops the service until the next login or boot (SIGTERM drains runs first). */
+export function stopService(input: {
+	manager: ServiceManager
+	ecid: string
+	run?: CommandRunner
+}) {
+	const run = input.run ?? runCommand
+	const result =
+		input.manager === 'systemd'
+			? run('systemctl', [
+					'--user',
+					'stop',
+					`${serviceName(input.ecid)}.service`,
+				])
+			: run('launchctl', ['kill', 'SIGTERM', launchdTarget(input.ecid)])
+	if (!result.ok)
+		throw new Error(`Could not stop the service: ${result.stderr.trim()}`)
 }
 
 export function uninstallService(input: {

@@ -111,6 +111,26 @@ test('formatExecuteCapabilityResult keeps ranOn and names where it ran', () => {
 	})
 	assert.equal(cloud.content.at(-1)?.text, 'Ran on Kody cloud.')
 	assert.ok(!JSON.stringify(ran.content).includes('ec_box'))
+	const machine = formatExecuteCapabilityResult({
+		ok: true,
+		result: 1,
+		logs: [],
+		ranOn: { ...ranOn, workerUnits: 0 },
+	})
+	assert.equal(
+		machine.content.at(-1)?.text,
+		'Ran on build-box (your machine), 0 worker units.',
+	)
+	const charged = formatExecuteCapabilityResult({
+		ok: true,
+		result: 1,
+		logs: [],
+		ranOn: { kind: 'cloud', id: 'cloud', name: 'Kody cloud', workerUnits: 1 },
+	})
+	assert.equal(
+		charged.content.at(-1)?.text,
+		'Ran on Kody cloud, 1 worker unit.',
+	)
 })
 
 test('runRemoteExecuteWithToken posts /v1/execute', async () => {

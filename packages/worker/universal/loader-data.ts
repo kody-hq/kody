@@ -2271,6 +2271,11 @@ export type AccountPackageDetail = AccountPackageListItem & {
 	 */
 	customDomains?: Array<PackageAppCustomDomainView>
 	/**
+	 * Owner notice: the package has unmappable credentials, so changes and
+	 * publishes are owner-only unless a grant allows them (manager view only).
+	 */
+	unmappableCredentialsNotice?: string
+	/**
 	 * Capabilities the published version may call without declaring them,
 	 * which the next publish must add to `kody.app.capabilities` (owner view
 	 * only).

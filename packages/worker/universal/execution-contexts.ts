@@ -103,6 +103,8 @@ export type ExecutionContextListItem = {
 		features?: Array<string>
 		/** Background service manager, or null when run in a terminal. */
 		service?: 'systemd' | 'launchd' | null
+		/** Daemon auto-update, or null when the daemon predates it. */
+		autoUpdate?: 'on' | 'off' | null
 	} | null
 	grantSummary: ExecutionContextGrantSummary
 	optedIn: boolean

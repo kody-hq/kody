@@ -50,7 +50,13 @@ test('the usage report gives remaining allowance and the next UTC day and Monday
 })
 
 test('claimed usage is reused only within the UTC day it was claimed', () => {
-	const usage = { used: 150, limit: 150, weekUsed: 400, weekLimit: 400 }
+	const usage = {
+		used: 150,
+		limit: 150,
+		weekUsed: 400,
+		weekLimit: 400,
+		created: true,
+	}
 	const claimed = {
 		usage,
 		claimedAt: new Date('2026-10-11T23:59:59.000Z'),

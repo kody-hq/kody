@@ -23,6 +23,17 @@ After normal onboarding, the desktop app offers to set up this machine:
    **This machine** in the web account menu to return to setup, pause or resume
    execution, or forget this app’s setup. These controls appear only in desktop.
 
+One runner per machine: the app and the kody CLI share this machine’s
+registration and runner. When the CLI already registered the machine, setup
+offers **Use this machine’s existing registration** (after the same ownership
+check) instead of registering a second context. When `kody daemon install` set
+up a background service, or another `kody daemon` holds the runner lock, the app
+adopts it: **This machine** shows that runner and its version, and Pause,
+Resume, and Restart control the service rather than starting a second daemon.
+Otherwise the app runs the daemon itself, under the same lock. Every runner
+auto-updates; **Turn off automatic updates** sets the shared CLI policy
+(`kody daemon auto-update off`).
+
 On macOS, closing all windows keeps the runner available. Quit stops the CLI and
 its workerd processes. On Windows and Linux, closing all windows quits the app.
 Pausing persists across launches. Sleep and network reconnects use the CLI's

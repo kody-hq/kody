@@ -109,6 +109,11 @@ export const accessGrantSchema = z.object({
 		.string()
 		.nullable()
 		.describe('When the grant stops counting (ISO). Null never expires.'),
+	allow_changes_despite_unmappable_credentials: z
+		.boolean()
+		.describe(
+			'True when an org Owner let this subject change or publish the package even while it has unmappable credentials.',
+		),
 })
 
 export const inviteSchema = z.object({
@@ -155,6 +160,8 @@ export function toAccessGrantPayload(grant: GrantView) {
 		preset,
 		permissions: grant.permissions,
 		expires_at: grant.expiresAt,
+		allow_changes_despite_unmappable_credentials:
+			grant.allowUnmappableCredentialChanges,
 	}
 }
 

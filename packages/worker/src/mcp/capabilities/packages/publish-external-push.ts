@@ -36,6 +36,11 @@ import {
 	packageNameLookupDescription,
 } from '#worker/package-registry/package-name.ts'
 import { authorizePackageWrite } from '#worker/authorization/authorize.ts'
+import {
+	knownUnmappableCredentials,
+	loadOnePackageUnmappableCredentials,
+	unmappableCredentialOwnerNotice,
+} from '#worker/credentials/package-unmappable-credentials.ts'
 import { resolvePublicUsername } from '#worker/identity/user-lookup.ts'
 import {
 	requireMcpRequest,
@@ -461,6 +466,13 @@ export function publishTipMovedRelativeToBaseline(input: {
 const outputSchema = z.discriminatedUnion('status', [
 	z.object({
 		status: z.literal('already_published'),
+		unmappable_credentials_notice: z
+			.string()
+			.nullable()
+			.optional()
+			.describe(
+				'Set when the package has unmappable credentials: explains that changes and publishes are owner-only unless a grant allows them, and how to allow one collaborator.',
+			),
 		published_commit: z.string().nullable(),
 		artifacts_rebuilt: artifactsRebuiltSchema,
 		checks_rerun: checksRerunSchema,
@@ -525,6 +537,13 @@ const outputSchema = z.discriminatedUnion('status', [
 	}),
 	z.object({
 		status: z.literal('published'),
+		unmappable_credentials_notice: z
+			.string()
+			.nullable()
+			.optional()
+			.describe(
+				'Set when the package has unmappable credentials: explains that changes and publishes are owner-only unless a grant allows them, and how to allow one collaborator.',
+			),
 		previous_commit: z.string().nullable(),
 		published_commit: z.string(),
 		manifest: z.unknown(),
@@ -1439,6 +1458,28 @@ export const publishExternalPushCapability = defineDomainCapability(
 				{ env: ctx.env, request: ctx.callerContext.request },
 				{ id: packageId, userId, label: name },
 			)
+			const unmappable = knownUnmappableCredentials(
+				await loadOnePackageUnmappableCredentials({
+					env: ctx.env,
+					orgId: userId,
+					packageId,
+					request: ctx.callerContext.request,
+				}),
+			)
+			const unmappableNotice =
+				unmappable.length > 0
+					? unmappableCredentialOwnerNotice({
+							packageLabel: `Package "${name}"`,
+							credentials: unmappable,
+						})
+					: null
+			const withUnmappableNotice = <T extends PublishExternalPushResult>(
+				result: T,
+			): T =>
+				unmappableNotice &&
+				(result.status === 'published' || result.status === 'already_published')
+					? { ...result, unmappable_credentials_notice: unmappableNotice }
+					: result
 			const head = await resolveArtifactSourceHead(ctx.env, source.repo_id)
 			const newCommit = head.commit
 			if (!newCommit) {
@@ -1484,7 +1525,9 @@ export const publishExternalPushCapability = defineDomainCapability(
 			}
 
 			if (!shouldEscalateExternalPublish(ctx.callerContext.executionOrigin)) {
-				return await runExternalPublishAttempt(publishInput)
+				return withUnmappableNotice(
+					await runExternalPublishAttempt(publishInput),
+				)
 			}
 
 			const semanticInput = {
@@ -1533,7 +1576,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 
 			switch (outcome.kind) {
 				case 'completed':
-					return outcome.value
+					return withUnmappableNotice(outcome.value)
 				case 'dispatched':
 					return {
 						...outcome.handle,

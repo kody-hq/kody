@@ -187,6 +187,8 @@ const cliFlagOptions = {
 	user: { type: 'string' },
 	preset: { type: 'string' },
 	grant: { type: 'string' },
+	'allow-changes-despite-unmappable-credentials': { type: 'boolean' },
+	'disallow-changes-despite-unmappable-credentials': { type: 'boolean' },
 } as const
 
 const cliFlagNames = Object.keys(cliFlagOptions)
@@ -1778,6 +1780,14 @@ async function dispatch(
 			)
 			// Always print the API body (agents/scripts inspect `status`).
 			write(`${JSON.stringify(result, null, 2)}\n`)
+			const unmappableNotice =
+				result && typeof result === 'object'
+					? (result as { unmappable_credentials_notice?: unknown })
+							.unmappable_credentials_notice
+					: null
+			if (typeof unmappableNotice === 'string' && unmappableNotice) {
+				writeErr(`Notice: ${unmappableNotice}\n`)
+			}
 			const code = publishCliExitCode(result)
 			if (code !== 0) {
 				writeErr(`${publishRefusalMessage(result)}\n`)

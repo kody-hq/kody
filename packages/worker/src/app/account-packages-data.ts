@@ -1,4 +1,9 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	knownUnmappableCredentials,
+	loadOnePackageUnmappableCredentials,
+	unmappableCredentialOwnerNotice,
+} from '#worker/credentials/package-unmappable-credentials.ts'
 import { loadPackageAppCapabilityAllowance } from '#worker/package-runtime/package-app-capability-allowances.ts'
 import { listPackageAppCustomDomainViewsForPackage } from '#worker/package-app-custom-hostnames/service.ts'
 import {
@@ -571,30 +576,42 @@ async function toDetailWithListingState(input: {
 	username?: string
 	record: SavedPackageWithCommunityProvenanceRecord
 }): Promise<AccountPackageDetail> {
-	const [ownerIsPersonal, detailBase, customDomains, cookieWarnings] =
-		await Promise.all([
-			resolveOwnerIsPersonal(input.env.APP_DB, input.userId),
-			toDetail({
-				env: input.env,
-				requestUrl: input.requestUrl,
-				userId: input.userId,
-				username: input.username,
-				record: input.record,
-				hasCommunityListing: false,
-				listingNeedsRepublish: false,
-				ownerIsPersonal: true,
-			}),
-			// Owner-only, like credit attribution: `username` is set only for
-			// viewers who can manage the package.
-			input.username
-				? loadPackageCustomDomains(input.env, input.record.id)
-				: Promise.resolve(undefined),
-			loadPackageCookieWarningsForOwner({
-				env: input.env,
-				packageId: input.record.id,
-				ownerUsername: input.username,
-			}),
-		])
+	const [
+		ownerIsPersonal,
+		detailBase,
+		customDomains,
+		cookieWarnings,
+		unmappableCredentials,
+	] = await Promise.all([
+		resolveOwnerIsPersonal(input.env.APP_DB, input.userId),
+		toDetail({
+			env: input.env,
+			requestUrl: input.requestUrl,
+			userId: input.userId,
+			username: input.username,
+			record: input.record,
+			hasCommunityListing: false,
+			listingNeedsRepublish: false,
+			ownerIsPersonal: true,
+		}),
+		// Owner-only, like credit attribution: `username` is set only for
+		// viewers who can manage the package.
+		input.username
+			? loadPackageCustomDomains(input.env, input.record.id)
+			: Promise.resolve(undefined),
+		loadPackageCookieWarningsForOwner({
+			env: input.env,
+			packageId: input.record.id,
+			ownerUsername: input.username,
+		}),
+		input.username
+			? loadOnePackageUnmappableCredentials({
+					env: input.env,
+					orgId: input.userId,
+					packageId: input.record.id,
+				}).then(knownUnmappableCredentials)
+			: Promise.resolve([]),
+	])
 	const [listingState, capabilityAllowance] = await Promise.all([
 		loadActiveCommunityListingState({
 			db: input.env.APP_DB,
@@ -617,6 +634,14 @@ async function toDetailWithListingState(input: {
 		...(capabilityAllowance?.length ? { capabilityAllowance } : {}),
 		...(customDomains?.length ? { customDomains } : {}),
 		...(cookieWarnings?.length ? { cookieWarnings } : {}),
+		...(unmappableCredentials.length > 0
+			? {
+					unmappableCredentialsNotice: unmappableCredentialOwnerNotice({
+						packageLabel: 'This package',
+						credentials: unmappableCredentials,
+					}),
+				}
+			: {}),
 	}
 }
 

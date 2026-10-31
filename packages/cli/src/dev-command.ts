@@ -624,6 +624,8 @@ export async function runDevEmit(input: {
 export type PackageCheckResult = {
 	ok: boolean
 	checks: Array<{ kind: string; ok: boolean; message: string }>
+	/** Non-failing notices, e.g. the package's unmappable-credential lock. */
+	notices?: Array<string>
 }
 
 /**
@@ -719,6 +721,13 @@ export function parsePackageCheckResult(value: unknown): PackageCheckResult {
 	}
 	return {
 		ok: body.ok,
+		...(Array.isArray(body.notices)
+			? {
+					notices: body.notices.filter(
+						(notice): notice is string => typeof notice === 'string',
+					),
+				}
+			: {}),
 		checks: checks.map((entry) => {
 			const check = (entry ?? {}) as Record<string, unknown>
 			return {
@@ -901,6 +910,9 @@ export async function runDevCheck(input: {
 			}
 			if (!outcome.ok && !outcome.checks.some((check) => !check.ok)) {
 				push('publish checks', false, 'publish checks failed')
+			}
+			for (const notice of outcome.notices ?? []) {
+				push('unmappable credentials', true, notice, 'warning')
 			}
 			const binaryCount = Object.keys(tree.binaryFiles).length
 			if (binaryCount > 0) {

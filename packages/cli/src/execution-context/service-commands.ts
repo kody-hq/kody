@@ -1,3 +1,12 @@
+import {
+	autoUpdateSetting,
+	cliStoreDir,
+	compareVersions,
+	readCurrent,
+	readUpdateState,
+} from './auto-update.js'
+import { readLocalPolicy, setLocalAutoUpdateEnabled } from './fs-access.js'
+import { describeHolder, lockPathFor, runnerLockHolder } from './runner-lock.js'
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { createInterface } from 'node:readline'
@@ -23,6 +32,8 @@ import {
 	lingerCommand,
 	npxRefusal,
 	restartService,
+	startService,
+	stopService,
 	runCommand,
 	serviceManagerFor,
 	servicePaths,
@@ -255,7 +266,8 @@ export async function installDaemonService(
 		unit,
 		paths,
 		ecid: input.ecid,
-		restart: before !== null && before.version !== env.clientVersion,
+		restart:
+			before !== null && compareVersions(before.version, env.clientVersion) < 0,
 		...(env.run ? { run: env.run } : {}),
 	})
 	for (const warning of result.warnings) env.write(`${warning}\n`)
@@ -294,7 +306,7 @@ async function waitForStart(
 		const state = runtimeState(statePath)
 		if (
 			state &&
-			state.version === env.clientVersion &&
+			compareVersions(state.version, env.clientVersion) >= 0 &&
 			(!before ||
 				state.pid !== before.pid ||
 				state.startedAt !== before.startedAt)
@@ -310,6 +322,166 @@ function tail(path: string, lines: number) {
 	const text = readText(path)
 	if (!text) return ''
 	return text.trimEnd().split('\n').slice(-lines).join('\n')
+}
+
+export async function autoUpdateStatus(clientVersion: string) {
+	const setting = autoUpdateSetting(await readLocalPolicy().catch(() => null))
+	const store = cliStoreDir()
+	const state = readUpdateState(store)
+	const current = readCurrent(store)
+	return {
+		enabled: setting.enabled,
+		source: setting.source,
+		cliVersion: clientVersion,
+		installedVersion: current?.version ?? null,
+		latestVersion: state.lastLatest ?? null,
+		lastCheckAt: state.lastCheckAt ?? null,
+		lastError: state.lastError ?? null,
+		store,
+		recent: (state.history ?? []).slice(-5),
+	}
+}
+
+export function formatAutoUpdateLine(
+	status: Awaited<ReturnType<typeof autoUpdateStatus>>,
+) {
+	const lines = [
+		status.enabled
+			? `  Auto-update: on. The daemon checks npm every ~4h and moves onto new versions after runs finish (off: kody daemon auto-update off).`
+			: `  Auto-update: off${status.source === 'env' ? ' (KODY_DAEMON_AUTO_UPDATE)' : ''}. Turn it on with: kody daemon auto-update on`,
+	]
+	if (status.lastCheckAt) {
+		lines.push(
+			`    Last check: ${status.lastCheckAt}${status.latestVersion ? `, latest ${status.latestVersion}` : ''}${status.installedVersion ? `, installed ${status.installedVersion}` : ''}`,
+		)
+	}
+	if (status.lastError) lines.push(`    Last error: ${status.lastError}`)
+	return lines.join('\n')
+}
+
+/** The live daemon running this context on this machine (any launcher). */
+export function runnerFor(apiUrl: string, ecid: string) {
+	const statePath = servicePaths({
+		apiUrl,
+		ecid,
+		manager: serviceManagerFor() ?? 'systemd',
+	}).statePath
+	return runnerLockHolder(lockPathFor(statePath))
+}
+
+/**
+ * `kody daemon start|stop`: controls the service when one is installed, else
+ * stops the terminal or desktop daemon holding the runner lock (it drains).
+ */
+async function startOrStopRunner(
+	env: ServiceCommandEnv,
+	input: { ecid: string; manager: ServiceManager | null; start: boolean },
+) {
+	const installed =
+		input.manager !== null &&
+		existsSync(
+			servicePaths({
+				apiUrl: env.apiUrl,
+				ecid: input.ecid,
+				manager: input.manager,
+			}).unitPath,
+		)
+	const runner = runnerFor(env.apiUrl, input.ecid)
+	const say = (text: string, extra: Record<string, unknown> = {}) =>
+		env.write(
+			env.json
+				? `${JSON.stringify({ ok: true, ecid: input.ecid, message: text, ...extra })}\n`
+				: `${text}\n`,
+		)
+	if (input.start) {
+		if (installed && input.manager) {
+			startService({
+				manager: input.manager,
+				ecid: input.ecid,
+				...(env.run ? { run: env.run } : {}),
+			})
+			say('Started the kody daemon service.', { service: input.manager })
+			return 0
+		}
+		if (runner) {
+			say(`Already running (${describeHolder(runner)}).`, { runner })
+			return 0
+		}
+		throw new Error(
+			'No kody daemon service is installed for this context. Install one with `kody daemon install`, or run `kody daemon` in a terminal.',
+		)
+	}
+	if (installed && input.manager) {
+		stopService({
+			manager: input.manager,
+			ecid: input.ecid,
+			...(env.run ? { run: env.run } : {}),
+		})
+		// The service may be stopped while a terminal or desktop daemon holds
+		// the lock: stop that one too, since it is what runs this context.
+		const other =
+			runner && runner.pid > 0 && runner.launcher !== input.manager
+				? runner
+				: null
+		if (other) process.kill(other.pid, 'SIGTERM')
+		say(
+			`Stopped the kody daemon service after runs in flight finish.${other ? ` Also stopping the kody daemon that held this context (${describeHolder(other)}).` : ''} It starts again at the next login or boot, or with \`kody daemon start\`.`,
+			{ service: input.manager, ...(other ? { runner: other } : {}) },
+		)
+		return 0
+	}
+	if (!runner || runner.pid <= 0) {
+		say('No kody daemon is running this context.')
+		return 0
+	}
+	process.kill(runner.pid, 'SIGTERM')
+	say(
+		`Stopping the kody daemon (${describeHolder(runner)}) after runs in flight finish.`,
+		{ runner },
+	)
+	return 0
+}
+
+/** `kody daemon auto-update on|off|status`. */
+export async function runAutoUpdateCommand(
+	env: Pick<ServiceCommandEnv, 'write' | 'json' | 'clientVersion'>,
+	action: string | undefined,
+) {
+	if (action === 'on' || action === 'off') {
+		await setLocalAutoUpdateEnabled({ enabled: action === 'on' })
+	} else if (action !== undefined && action !== 'status') {
+		throw new Error(
+			'Usage: kody daemon auto-update [on | off | status] [--json]',
+		)
+	}
+	const status = await autoUpdateStatus(env.clientVersion)
+	if (env.json) {
+		env.write(`${JSON.stringify(status, null, 2)}\n`)
+		return 0
+	}
+	if (action === 'on' || action === 'off') {
+		env.write(
+			action === 'on'
+				? 'Auto-update is on for every kody daemon on this machine. Running daemons pick it up at their next check.\n'
+				: 'Auto-update is off for every kody daemon on this machine. Update by hand with: kody update\n',
+		)
+		if (status.source === 'env' && action === 'on') {
+			env.write(
+				'KODY_DAEMON_AUTO_UPDATE still turns it off for daemons started with it.\n',
+			)
+		}
+		return 0
+	}
+	env.write(`${formatAutoUpdateLine(status)}\n`)
+	if (status.recent.length > 0) {
+		env.write('  Recent updates:\n')
+		for (const event of status.recent) {
+			env.write(
+				`    ${event.at} ${event.from} -> ${event.to}: ${event.outcome}${event.detail ? ` (${event.detail})` : ''}\n`,
+			)
+		}
+	}
+	return 0
 }
 
 /** `kody daemon install|status|logs|restart|uninstall`. */
@@ -344,12 +516,36 @@ export async function runDaemonServiceCommand(
 			...(env.tmpDir === undefined ? {} : { tmpDir: env.tmpDir }),
 		})
 		const name = ecid ? readStoredContext(env.apiUrl, ecid)?.name : undefined
+		const autoUpdate = await autoUpdateStatus(env.clientVersion)
+		const runner = ecid ? runnerFor(env.apiUrl, ecid) : null
 		env.write(
 			env.json
-				? `${JSON.stringify({ ...status, contextName: name ?? null }, null, 2)}\n`
-				: `${formatServiceStatus(status, name)}\n`,
+				? `${JSON.stringify(
+						{
+							...status,
+							contextName: name ?? null,
+							contexts: storedContextIds(env.apiUrl).map((id) => ({
+								ecid: id,
+								name: readStoredContext(env.apiUrl, id)?.name ?? null,
+							})),
+							runner,
+							autoUpdate,
+						},
+						null,
+						2,
+					)}\n`
+				: `${formatServiceStatus(status, name)}\n${runner ? `  Runner: ${describeHolder(runner)}\n` : ''}${formatAutoUpdateLine(autoUpdate)}\n`,
 		)
 		return status.problems.length === 0 ? 0 : 1
+	}
+	if (input.sub === 'stop' || input.sub === 'start') {
+		if (!ecid)
+			throw new Error('This machine has no registered execution context.')
+		return await startOrStopRunner(env, {
+			ecid,
+			manager,
+			start: input.sub === 'start',
+		})
 	}
 	if (!manager) throw new Error(unsupportedPlatformMessage)
 	if (!ecid) {
@@ -441,7 +637,7 @@ export async function runDaemonServiceCommand(
 		return 0
 	}
 	throw new Error(
-		'Usage: kody daemon [install | status [--json] | logs [--lines <n>] [--follow] | restart | uninstall [--unregister]]',
+		'Usage: kody daemon [install | status [--json] | logs [--lines <n>] [--follow] | restart | start | stop | uninstall [--unregister] | auto-update [on | off | status]]',
 	)
 }
 

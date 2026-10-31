@@ -402,8 +402,9 @@ const cloudRanOn = {
 	name: 'Kody cloud',
 	attempts: [],
 	fellBackToCloud: false,
+	workerUnits: 0,
 }
-const cloudLine = { type: 'text', text: 'Ran on Kody cloud.' }
+const cloudLine = { type: 'text', text: 'Ran on Kody cloud, 0 worker units.' }
 
 test('execute tool serializes successes and errors, binds no packages helper tools, and truncates oversized returns', async () => {
 	const handler = await getExecuteHandler()
@@ -800,7 +801,7 @@ test('execute tool replays finished keyed runs and reports in-progress without r
 	})
 	expect(fallbackReplayed.content).toContainEqual({
 		type: 'text',
-		text: 'Ran on Kody cloud after build-box declined it (busy).',
+		text: 'Ran on Kody cloud after build-box declined it (busy), 0 worker units.',
 	})
 
 	const inProgress = await replay('conv-running', {
@@ -969,7 +970,7 @@ test('execute tool shows a cloud fallback in the response when no context took t
 	})
 	expect(response.content).toContainEqual({
 		type: 'text',
-		text: 'Ran on Kody cloud after build-box declined it (grant mismatch).',
+		text: 'Ran on Kody cloud after build-box declined it (grant mismatch), 0 worker units.',
 	})
 })
 
@@ -1059,7 +1060,7 @@ test('execute tool says Kody cloud ran a plain run', async () => {
 	expect(response.structuredContent).not.toHaveProperty('executionContext')
 	expect(response.content).toContainEqual({
 		type: 'text',
-		text: 'Ran on Kody cloud.',
+		text: 'Ran on Kody cloud, 0 worker units.',
 	})
 })
 
@@ -1116,7 +1117,7 @@ test('execute tool names the context a run ran on without raw ids', async () => 
 		},
 	})
 	const line =
-		'Ran on build-box (your machine) after old-box was skipped (no lan).'
+		'Ran on build-box (your machine) after old-box was skipped (no lan), 0 worker units.'
 	expect(response.content).toContainEqual({ type: 'text', text: line })
 	expect(JSON.stringify(response.content)).not.toContain('ec_')
 })
@@ -1332,6 +1333,13 @@ test('execute tool attaches entitlement metadata on denials and quota, not on su
 		},
 	}
 	expect(lastUnit.structuredContent.usage).toEqual(atLimitUsage)
+	expect(lastUnit.structuredContent).toMatchObject({
+		ranOn: { workerUnits: 1 },
+	})
+	expect(lastUnit.content).toContainEqual({
+		type: 'text',
+		text: 'Ran on Kody cloud, 1 worker unit.',
+	})
 	runWorker('kody-worker-a')
 	const repeatAtLimit = await quotaHandler({
 		code: okCode,
@@ -1340,6 +1348,9 @@ test('execute tool attaches entitlement metadata on denials and quota, not on su
 	})
 	expect(repeatAtLimit.isError).toBe(false)
 	expect(repeatAtLimit.structuredContent.usage).toEqual(atLimitUsage)
+	expect(repeatAtLimit.structuredContent).toMatchObject({
+		ranOn: { workerUnits: 0 },
+	})
 	runWorker('kody-worker-b')
 	const quotaDenied = await quotaHandler({
 		code: shouldNotRunCode,

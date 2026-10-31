@@ -1303,3 +1303,57 @@ export default async function main(p) {
 	assert.equal(JSON.stringify(frames).includes('do-not-log'), false)
 	assert.equal(JSON.stringify(authorized).includes('do-not-log'), false)
 })
+
+test('a daemon another daemon replaced stands down instead of flapping', async () => {
+	SilentSocket.instances = []
+	const { signed, serverKeys } = await serverFrames([welcome])
+	class ReplacedSocket extends ServerSocket {
+		constructor(url: string) {
+			super(url)
+			setTimeout(
+				() => SilentSocket.prototype.close.call(this, 1012, 'replaced'),
+				20,
+			)
+		}
+	}
+	ServerSocket.frames = signed
+	let tickets = 0
+	const { input } = await daemonInput({
+		serverKeys,
+		closeSettleMs: 20,
+		WebSocketImpl: ReplacedSocket as unknown as typeof WebSocket,
+		fetchFn: (async () => {
+			tickets += 1
+			return Response.json({
+				ticket: 'ticket_1',
+				expiresAt: '2099-01-01T00:00:00.000Z',
+			})
+		}) as typeof fetch,
+	})
+	assert.equal(await runDaemon(input), 'replaced')
+	assert.equal(tickets, 1, 'no reconnect loop')
+})
+
+test('an update drain holds the connection while background commands run', async () => {
+	SilentSocket.instances = []
+	const { signed, serverKeys } = await serverFrames([welcome])
+	ServerSocket.frames = signed
+	const drain = new AbortController()
+	let holding = true
+	setTimeout(() => drain.abort(), 30)
+	setTimeout(() => {
+		holding = false
+	}, 250)
+	const { input } = await daemonInput({
+		serverKeys,
+		closeSettleMs: 20,
+		drainSignal: drain.signal,
+		drainHold: () => holding,
+		drainHoldPollMs: 20,
+		WebSocketImpl: ServerSocket as unknown as typeof WebSocket,
+	})
+	const started = Date.now()
+	const closed = await runDaemonConnection(input)
+	assert.deepEqual(closed, { code: 1000, reason: 'shutdown' })
+	assert.ok(Date.now() - started >= 240, 'waited for the hold to clear')
+})

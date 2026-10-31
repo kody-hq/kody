@@ -52,7 +52,7 @@ sequenceDiagram
 the daemon as a per-user service so it survives reboots and crashes. Code:
 `packages/cli/src/execution-context/service.ts` (unit/plist generation, status
 diagnostics) and `service-commands.ts` (install, status, logs, restart,
-uninstall, `kody update`).
+uninstall, `kody update`), `auto-update.ts`, and `runner-lock.ts`.
 
 - Linux: a `systemd --user` unit `kody-daemon-<ecid>.service` with
   `Restart=always`, `RestartPreventExitStatus=0`, a start limit, and
@@ -78,6 +78,27 @@ uninstall, `kody update`).
   reads it to flag a service still on an older CLI. SIGTERM drains in-flight
   runs before exit, so `kody daemon restart` and `kody update` finish runs
   first. Re-running install repairs the unit.
+- Auto-update (`auto-update.ts`): on start and every ~4h (±30 min) the daemon
+  reads npm's `latest` for `@kodycodes/cli`, downloads the tarball, checks its
+  sha512 integrity, extracts it into the managed store
+  (`$XDG_DATA_HOME/kody/cli` on Linux, `<config>/cli` elsewhere), reuses the
+  running install's dependencies when their ranges still match (else
+  `npm install` into the staging dir), proves `kody version` prints the new
+  version, then points `current.json` at it. Never older; failures back off (1h
+  doubling to 24h) in `update-state.json`. Once runs and background host
+  commands finish (`drainHold`, max 24h) the daemon drains and relaunches:
+  services and supervised children exit 75 (the manager restarts them; the
+  unit's CLI hands off at start), a terminal or desktop daemon supervises the
+  new version as a child (`KODY_DAEMON_SUPERVISED=1`). A new version that exits
+  within 60s falls back to the old one; three such starts mark it bad. Off:
+  `autoUpdate` in the local policy or `KODY_DAEMON_AUTO_UPDATE=0`. The
+  capability `autoUpdate: on|off` shows on the context page.
+- One runner per context (`runner-lock.ts`): `daemon.lock` (O_EXCL, pid,
+  launcher, version) is taken after the start-time hand-off. A second terminal
+  or desktop daemon exits naming the holder; a service polls until it frees. A
+  server-side `1012 replaced` close makes `runDaemon` return `replaced`: the
+  daemon logs the other local `kody daemon` processes (by command line) and
+  exits instead of reconnecting.
 
 ## Revoke, then delete
 
