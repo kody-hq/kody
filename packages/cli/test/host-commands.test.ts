@@ -396,6 +396,8 @@ test(
 			run,
 		)) as Record<string, unknown>
 		assert.equal(slow.timedOut, true)
+		assert.equal(slow.exitCode, null)
+		assert.equal(slow.signal, 'SIGKILL')
 		assert.ok((slow.durationMs as number) < 15_000)
 		const started = (await commands.call(
 			'start',

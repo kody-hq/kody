@@ -256,6 +256,15 @@ function killTree(child: ChildProcess, signal: NodeJS.Signals) {
 	}
 }
 
+// taskkill /F ends a Windows process with exit code 1 and no signal; report
+// the same `exitCode: null, signal: 'SIGKILL'` that POSIX kills produce.
+function stoppedOutcome<
+	T extends { code: number | null; signal: string | null },
+>(outcome: T, stoppedByKody: boolean): T {
+	if (!stoppedByKody || process.platform !== 'win32') return outcome
+	return { ...outcome, code: null, signal: outcome.signal ?? 'SIGKILL' }
+}
+
 export type HostCommandsOptions = {
 	/** This machine's local opt-in (`kody context commands on`). */
 	localEnabled?: boolean
@@ -558,7 +567,7 @@ export class HostCommands {
 		}
 		run.signal.addEventListener('abort', onAbort, { once: true })
 		if (run.signal.aborted) onAbort()
-		const outcome = await new Promise<{
+		const exited = await new Promise<{
 			code: number | null
 			signal: string | null
 			error?: string
@@ -568,6 +577,7 @@ export class HostCommands {
 			)
 			child.once('close', (code, signal) => resolve({ code, signal }))
 		})
+		const outcome = stoppedOutcome(exited, ended.reason !== 'exited')
 		clearTimeout(timer)
 		this.#foreground.delete(child)
 		run.signal.removeEventListener('abort', onAbort)
@@ -671,6 +681,10 @@ export class HostCommands {
 			) => {
 				if (job.endedAt !== null) return resolve()
 				if (job.timer) clearTimeout(job.timer)
+				;({ code, signal } = stoppedOutcome(
+					{ code, signal },
+					job.state === 'killed' || job.state === 'timed_out',
+				))
 				job.endedAt = Date.now()
 				job.exitCode = code
 				job.signal = signal
