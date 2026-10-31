@@ -60,6 +60,8 @@ export type FinalizePublishedSourceInput = {
 	allowLockedPublish?: boolean
 	/** Actor who requested the publish; forwarded to listing auto-follow ban checks. */
 	actorUserId?: string
+	/** The profile the publisher ran as; it also gets a creator grant. */
+	actorProfileId?: string | null
 	/**
 	 * A person published but no one knows who (an Artifacts push picked up by
 	 * reconcile). Package apps stop running as the previous publisher.
@@ -223,6 +225,7 @@ export async function finalizePublishedEntitySource(
 			rebuildArtifacts: input.rebuildPackageArtifacts ?? true,
 			firstPublish: !previousPublishedCommit,
 			creatorUserId: input.actorUserId ?? null,
+			creatorProfileId: input.actorProfileId ?? null,
 			// A same-commit finalize (a retry or a clean no-op sync) is not a
 			// new publish, so it writes no audit row.
 			writeAudit: previousPublishedCommit !== input.publishedCommit,
@@ -578,6 +581,7 @@ export async function publishFromExternalRef(input: {
 				baseUrl: input.baseUrl,
 				rebuildPackageArtifacts: input.rebuildPackageArtifacts,
 				actorUserId: input.requestedByUserId ?? undefined,
+				actorProfileId: input.publisherRequest?.credential.profileId ?? null,
 				resumeInterruptedFinalize: true,
 			})
 			return {
@@ -646,6 +650,7 @@ export async function publishFromExternalRef(input: {
 		rebuildPackageArtifacts: input.rebuildPackageArtifacts,
 		allowLockedPublish: input.allowLockedPublish,
 		actorUserId: input.requestedByUserId ?? undefined,
+		actorProfileId: input.publisherRequest?.credential.profileId ?? null,
 		publisherUnknown: !input.requestedByUserId,
 	})
 	return {

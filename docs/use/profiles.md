@@ -27,9 +27,9 @@ Profiles are an experiment. Turn them on at
 - `profileList` returns your profiles; Owners can pass `all_members: true`.
   `profileGet` takes `profile_id`.
 - Each profile has `status`: `active`, `expired`, `revoked`, or
-  `parent_inactive` (a parent above it is revoked or expired). `chain` lists
-  the parents root first, and `effectiveExpiresAt` is the earliest expiry
-  across the chain.
+  `parent_inactive` (a parent above it is revoked or expired). `chain` lists the
+  parents root first, and `effectiveExpiresAt` is the earliest expiry across the
+  chain.
 - `profileUpdate` takes `profile_id` and `expires_at`. Expiry only moves
   earlier; a later time is refused with `profile_expiry_extension`.
 - `profileRevoke` takes `profile_id`. Revoke is final and stops every
@@ -38,10 +38,10 @@ Profiles are an experiment. Turn them on at
 ## Limits
 
 - Sub-profiles nest at most 5 levels deep (`profile_depth_exceeded`).
-- At most 100 live profiles per person per org (`profile_limit_reached`) and
-  50 grants per profile.
-- Grants are a snapshot: a profile never gains access later when you or a
-  parent do.
+- At most 100 live profiles per person per org (`profile_limit_reached`) and 50
+  grants per profile.
+- Grants are a snapshot: a profile never gains access later when you or a parent
+  do.
 - Revoked and expired profiles are deleted 30 days later.
 - When you leave an org, your profiles in it are revoked.
 
@@ -50,24 +50,23 @@ Profiles are an experiment. Turn them on at
 - You control the profiles you create.
 - A profile can manage only the sub-profiles below it, never itself, its
   parents, or its siblings.
-- An org Owner can list and revoke any profile in the org but cannot change
-  one.
+- An org Owner can list and revoke any profile in the org but cannot change one.
 
 ## Package grants
 
-Share a package from its **Collaborators** tab (**Add one of your profiles**)
-or with `packageCollaboratorSet({ package_id, profile_id, preset })`. A
-sub-profile only gets what its parent holds on that package. Profile grants
-list with `kind: "profile"`.
+Share a package from its **Collaborators** tab (**Add one of your profiles**) or
+with `packageCollaboratorSet({ package_id, profile_id, preset })`. A sub-profile
+only gets what its parent holds on that package. Profile grants list with
+`kind: "profile"`.
 
 ## Running profile
 
-`whoami` returns `profile: { id, name, ancestors } | null`. It is
-informational; grants enforce access.
+`whoami` returns `profile: { id, name, ancestors } | null`. It is informational;
+grants enforce access.
 
 ## Grant expiry
 
 Grants to people, teams, and the org can expire too: pass `expires_at` to
-`accessGrant`. A new grant without `expires_at` never expires; rewriting a
-grant without it keeps its current expiry, and `null` makes it unlimited. See
+`accessGrant`. A new grant without `expires_at` never expires; rewriting a grant
+without it keeps its current expiry, and `null` makes it unlimited. See
 [organizations](../guides/organizations.md).

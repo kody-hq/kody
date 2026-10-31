@@ -4156,6 +4156,7 @@ class RepoSessionBase extends DurableObject<Env> {
 				rebuildPackageArtifacts: input.rebuildPackageArtifacts ?? true,
 				allowLockedPublish: input.allowLockedPublish,
 				actorUserId: input.requestedByUserId ?? undefined,
+				actorProfileId: input.publisherRequest?.credential.profileId ?? null,
 				// Omitted: a platform rewrite of code a person already published.
 				publisherUnknown: input.requestedByUserId === null,
 				...(resumingLiveCommit ? { resumeInterruptedFinalize: true } : {}),

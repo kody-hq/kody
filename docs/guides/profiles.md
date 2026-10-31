@@ -27,8 +27,9 @@ it: your own live access, the profile's grants, every parent profile's grants,
 and the credential's scopes. Being an org Owner does not skip a profile's
 limits. A denial names the layer that blocked it:
 
-- `profile_grant`: `Profile "helper" was not granted package:execute on
-  package @acme/tools` (or `Parent profile "agent" does not hold ...`).
+- `profile_grant`:
+  `Profile "helper" was not granted package:execute on package @acme/tools` (or
+  `Parent profile "agent" does not hold ...`).
 - `profile_inactive`: the profile or a parent was revoked or expired.
 
 ## Share a package with a profile
@@ -44,24 +45,23 @@ packageCollaboratorSet({
 })
 ```
 
-A sub-profile can only get what its parent already holds on that package, and
-it still never gets more than you. `packageCollaboratorList` shows profile
-grants with `kind: "profile"`; `packageCollaboratorRemove` takes their
-`grant_id`.
+A sub-profile can only get what its parent already holds on that package, and it
+still never gets more than you. `packageCollaboratorList` shows profile grants
+with `kind: "profile"`; `packageCollaboratorRemove` takes their `grant_id`.
 
 ## Which profile is running
 
-`whoami` (and `meta_get_current_user`) returns `profile: { id, name,
-ancestors }` when the request runs as a profile, ancestors root first, or
-`null` when it runs as you. Use it to branch behavior, never as a security
-check: grants enforce access.
+`whoami` (and `meta_get_current_user`) returns
+`profile: { id, name, ancestors }` when the request runs as a profile, ancestors
+root first, or `null` when it runs as you. Use it to branch behavior, never as a
+security check: grants enforce access.
 
 ## What a profile creates
 
-When a request running as a profile creates a package, app, or credential,
-both the profile and you get `manage` on it, so nothing is stranded when the
-profile ends. Publishing under a profile is refused when the profile chain
-cannot run a package the new version imports.
+When a request running as a profile creates a package, app, or credential, both
+the profile and you get `manage` on it, so nothing is stranded when the profile
+ends. Publishing under a profile is refused when the profile chain cannot run a
+package the new version imports.
 
 ## Create a profile
 
@@ -95,8 +95,8 @@ starts. A sub-profile:
   otherwise);
 - never outlives its parents: without `expires_at` it inherits the earliest
   parent expiry, and a later one is refused;
-- stops working when any parent is revoked or expires (`status:
-  "parent_inactive"`).
+- stops working when any parent is revoked or expires
+  (`status: "parent_inactive"`).
 
 Profiles nest at most 5 levels deep.
 
@@ -108,9 +108,9 @@ Profiles nest at most 5 levels deep.
   cannot be undone.
 
 Only you (or a profile above it) can change your profile. A profile cannot
-change itself, its parents, or its siblings. An org Owner can list every
-profile (`profileList({ all_members: true })`) and revoke any of them, but
-cannot change one.
+change itself, its parents, or its siblings. An org Owner can list every profile
+(`profileList({ all_members: true })`) and revoke any of them, but cannot change
+one.
 
 ## Lifecycle
 
