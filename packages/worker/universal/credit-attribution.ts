@@ -162,7 +162,7 @@ export type CreditAttributionRow = {
 }
 
 /** Ad hoc Worker compute units started through one connection. */
-export type CreditAttributionAdHocConnection = {
+type CreditAttributionAdHocConnection = {
 	id: string
 	label: string
 	workerUnits: number
