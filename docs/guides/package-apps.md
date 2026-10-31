@@ -187,13 +187,19 @@ keep sending visitors to `/-/auth/login`.
   classic script draws it on old engines), so visitors with JavaScript fully off
   use Sign in on another device. Passkeys and social sign-in still need
   JavaScript.
-- **Sign in on another device:** the sign-in page offers this when it is
-  resuming an app sign-in. The limited browser shows a short code, a QR code,
-  and the `/device` URL. The visitor opens it on a phone or computer where they
-  are signed in to Kody, checks the code and the browser shown, and allows the
-  app on the usual consent screen. The limited browser checks back every few
-  seconds and continues to the app on its own. Codes expire after 10 minutes and
-  work once.
+- **Plain pages for old engines:** e-reader browsers (Kindle, Silk) and engines
+  older than Kody's app bundle get the sign-in, two-factor, and consent pages
+  without the app bundle (`?plain=1`), so a half-working page never gets in the
+  way.
+- **Sign in on another device:** the sign-in and two-factor pages offer this
+  whenever they resume an app, from your `/-/auth/login` link or from the app's
+  Kody **Open app** link (`/@{user}/packages/{name}/open`). Kody pages that are
+  not an app do not offer it, and no message points to it there. The limited
+  browser shows a short code, a QR code, and the `/device` URL. The visitor
+  opens it on a phone or computer where they are signed in to Kody, checks the
+  code and the browser shown, and allows the app on the usual consent screen.
+  The limited browser checks back every few seconds and continues to the app on
+  its own. Codes expire after 10 minutes and work once.
 
 Either way the visitor ends up with the same per-app session cookie as a normal
 sign-in, and consent works the same (Connected people, revoke).

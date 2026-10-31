@@ -49,6 +49,25 @@ they stayed signed out of the app.
    usual per-app session cookie (cookie prefix rules unchanged). The session
    uses the remember-me lifetime, like the default on `/login`.
 
+5. **Every app entry point, and plain pages for limited engines.** The option is
+   offered whenever `redirectTo` is a package-app authorize resume or a Kody
+   package path (`/@{user}/packages/{name}[/open]…`), on `/login` and `/verify`,
+   whatever the user agent. A package path has no PKCE request yet, so the
+   device POST sends the browser through the app host's own `/-/auth/login`
+   (same PKCE cookie as the app's Sign in link) and sets a signed, 10 minute,
+   host-only intent cookie naming the app. The authorize request the app host
+   sends back then starts the device sign-in instead of showing the password
+   form; without a matching signed intent it behaves as before. Only the
+   same-origin device POST can set that cookie, and the start rate limit applies
+   once. Copy that mentions another device (the human-check error, the
+   `<noscript>` note, the Turnstile `error`/`unsupported` hint drawn by
+   `auth-fallback.js`) only appears when the option is on the page. The origin
+   handler 302s user agents older than the bundle's build target, or with
+   Kindle/Silk tokens, to `/login`, `/verify`, and the consent page with
+   `?plain=1`, which renders without `<Scripts />`. The flag is in the URL so
+   the anonymous document cache never mixes the two variants; detection only
+   picks a rendering and is never a security decision.
+
 ## Consequences
 
 - Only package-app visitor sign-in gets the second-device option. A Kody website

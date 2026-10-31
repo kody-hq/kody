@@ -10,13 +10,22 @@ export type AuthFormError =
 	| 'unavailable'
 	| 'expired'
 
-/** The sentence a server-rendered auth form shows for `?formError=`. */
-export function authFormErrorMessage(value: string | null | undefined) {
+/**
+ * The sentence a server-rendered auth form shows for `?formError=`.
+ * `deviceSignIn` says whether the page offers "Sign in on another device";
+ * the copy never points at an option that is not on the page.
+ */
+export function authFormErrorMessage(
+	value: string | null | undefined,
+	options: { deviceSignIn?: boolean } = {},
+) {
 	switch (value as AuthFormError | null) {
 		case 'invalid':
 			return 'That did not work. Check what you entered and try again.'
 		case 'human_check':
-			return 'Complete the human check, then try again. If it does not appear in this browser, sign in on another device instead.'
+			return options.deviceSignIn
+				? 'Complete the human check, then try again. If it does not appear in this browser, use Sign in on another device below.'
+				: 'Complete the human check, then try again. If it does not appear in this browser, try a newer browser.'
 		case 'rate_limited':
 			return 'Too many attempts. Wait a few minutes, then try again.'
 		case 'unavailable':

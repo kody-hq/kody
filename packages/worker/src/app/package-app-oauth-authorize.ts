@@ -770,6 +770,23 @@ export async function handlePackageAppOauthAuthorizeRequest(
 
 	const user = await readAuthenticatedAppUser(request, env)
 	if (!user) {
+		// A limited browser that pressed "Sign in on another device" on a Kody
+		// package path comes back here from the app host with a fresh PKCE
+		// request (ADR 0094). The intent cookie can only be set by that
+		// same-origin POST, and it names this app.
+		if (request.method === 'GET' && !deviceRow) {
+			const { createPackageAppDeviceSignIn, readPackageAppDeviceIntent } =
+				await import('#app/package-app-device-sign-in.ts')
+			const intent = await readPackageAppDeviceIntent(request, env)
+			if (intent && intent === validated.client.clientId.toLowerCase()) {
+				return await createPackageAppDeviceSignIn({
+					request,
+					env,
+					validated,
+					clearIntent: true,
+				})
+			}
+		}
 		return await redirectToLoginWhenUnauthenticated(request, env)
 	}
 

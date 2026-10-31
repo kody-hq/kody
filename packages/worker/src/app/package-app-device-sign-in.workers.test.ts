@@ -331,3 +331,134 @@ test('a cross-origin start is refused', async () => {
 	expect(response.status).toBe(403)
 	expect(response.headers.get('Set-Cookie')).toBeNull()
 })
+
+function startFromPackagePath(target: string, ip: string) {
+	return startPackageAppDeviceSignIn({
+		env,
+		request: new Request(`${appOrigin}${packageAppOauthPaths.device}`, {
+			method: 'POST',
+			headers: {
+				Origin: appOrigin,
+				'Content-Type': 'application/x-www-form-urlencoded',
+				'User-Agent': kindleUserAgent,
+				'CF-Connecting-IP': ip,
+			},
+			body: new URLSearchParams({ authorize: target }),
+		}),
+	})
+}
+
+function cookiePair(response: Response, name: string) {
+	return (
+		response.headers
+			.getSetCookie()
+			.find((cookie) => {
+				const cookieName = cookie.split('=')[0]
+				return cookieName === name || cookieName === `__Host-${name}`
+			})
+			?.split(';')[0] ?? ''
+	)
+}
+
+test('a package app Open link starts on the app host and resumes as a device sign-in', async () => {
+	const started = await startFromPackagePath(
+		`/@${ownerUsername}/packages/notes/open/today?view=list`,
+		'198.51.100.21',
+	)
+	expect(started.status).toBe(303)
+	const signInStart = new URL(started.headers.get('Location') ?? '')
+	expect(`${signInStart.origin}${signInStart.pathname}`).toBe(
+		`https://${ownerUsername}.packages.isolated.test${packageAppOauthPaths.login}`,
+	)
+	expect(signInStart.searchParams.get('app')).toBe('notes')
+	expect(signInStart.searchParams.get('return_to')).toBe(
+		'/notes/today?view=list',
+	)
+	const intent = cookiePair(started, 'kody_pkg_device_intent')
+	expect(intent).toMatch(/kody_pkg_device_intent=./)
+	expect(cookiePair(started, 'kody_pkg_device')).toBe('')
+
+	// The app host's sign-in start sends the browser back to authorize with a
+	// fresh PKCE request; the intent turns that into the device code page.
+	const resumed = await handlePackageAppOauthAuthorizeRequest(
+		new Request(`${appOrigin}${await authorizePath('state-open-link')}`, {
+			headers: { Cookie: intent, 'User-Agent': kindleUserAgent },
+		}),
+		env,
+	)
+	if (!(resumed instanceof Response)) throw new Error('Expected a redirect')
+	expect(resumed.status).toBe(303)
+	expect(resumed.headers.get('Location')).toBe(packageAppOauthPaths.device)
+	expect(cookiePair(resumed, 'kody_pkg_device_intent')).toMatch(
+		/^(__Host-)?kody_pkg_device_intent=$/,
+	)
+	const deviceCookie = cookiePair(resumed, 'kody_pkg_device')
+	const view = await pendingCode(deviceCookie)
+	expect(view.appDomain).toBe(`${ownerUsername}.packages.isolated.test`)
+
+	const decided = await decideOnPhone(view.userCode, 'approve')
+	if (!(decided instanceof Response)) throw new Error('Expected a redirect')
+	expect(decided.status).toBe(303)
+	const finished = await handlePackageAppDeviceSignInDocument({
+		env,
+		request: limitedRequest(deviceCookie),
+	})
+	if (!(finished instanceof Response)) throw new Error('Expected a redirect')
+	const callback = new URL(finished.headers.get('Location') ?? '')
+	expect(`${callback.origin}${callback.pathname}`).toBe(redirectUri)
+	expect(callback.searchParams.get('state')).toBe('state-open-link')
+})
+
+test('authorize still asks for sign-in without an intent for that app', async () => {
+	const plain = await handlePackageAppOauthAuthorizeRequest(
+		new Request(`${appOrigin}${await authorizePath('state-no-intent')}`),
+		env,
+	)
+	if (!(plain instanceof Response)) throw new Error('Expected a redirect')
+	expect(plain.status).toBe(302)
+	expect(new URL(plain.headers.get('Location') ?? '').pathname).toBe('/login')
+
+	const otherApp = await startFromPackagePath(
+		`/@${ownerUsername}/packages/other-app/open`,
+		'198.51.100.22',
+	)
+	const otherIntent = cookiePair(otherApp, 'kody_pkg_device_intent')
+	expect(otherIntent).toMatch(/kody_pkg_device_intent=./)
+	const mismatched = await handlePackageAppOauthAuthorizeRequest(
+		new Request(`${appOrigin}${await authorizePath('state-other-intent')}`, {
+			headers: { Cookie: otherIntent },
+		}),
+		env,
+	)
+	if (!(mismatched instanceof Response)) throw new Error('Expected a redirect')
+	expect(mismatched.status).toBe(302)
+	expect(new URL(mismatched.headers.get('Location') ?? '').pathname).toBe(
+		'/login',
+	)
+
+	// A hand-made intent value is not signed, so it is ignored.
+	const forged = await handlePackageAppOauthAuthorizeRequest(
+		new Request(`${appOrigin}${await authorizePath('state-forged')}`, {
+			headers: { Cookie: `kody_pkg_device_intent=${ownerUsername}%2Fnotes` },
+		}),
+		env,
+	)
+	if (!(forged instanceof Response)) throw new Error('Expected a redirect')
+	expect(forged.status).toBe(302)
+})
+
+test('only package app targets can start a device sign-in', async () => {
+	for (const target of [
+		'/account',
+		'//evil.example/@someone/packages/app',
+		'https://evil.example/@someone/packages/app',
+		'/oauth/authorize?client_id=x',
+	]) {
+		const response = await startFromPackagePath(target, '198.51.100.23')
+		expect(response.status).toBe(303)
+		expect(response.headers.get('Location')).toBe(
+			`${packageAppOauthPaths.device}?error=invalid_request`,
+		)
+		expect(response.headers.getSetCookie()).toEqual([])
+	}
+})
