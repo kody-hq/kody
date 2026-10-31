@@ -19,6 +19,7 @@ import {
 import { packageAppOauthAppDomain } from '#app/package-app-oauth-consent-copy.ts'
 import { parsePackageAppOauthScopes } from '#app/package-app-oauth-scopes.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
+import { continueNavigationResponse } from '#app/continue-navigation.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
@@ -273,16 +274,21 @@ export async function startPackageAppDeviceSignIn(input: {
 		signInStart.origin === new URL(appOrigin).origin
 			? `${signInStart.pathname}${signInStart.search}`
 			: signInStart.toString()
-	return seeOther(signInStartLocation, [
-		await serializeDeviceIntentCookie({
-			env,
-			secure: isSecureRequest(request),
-			clientId: formatPackageAppOauthClientId({
-				username: packagePath.username,
-				kodyId: packagePath.kodyId,
+	// `form-action 'self'` blocks a redirect from this form POST to the app
+	// host, so the browser continues there from a page.
+	return continueNavigationResponse({
+		location: signInStartLocation,
+		setCookies: [
+			await serializeDeviceIntentCookie({
+				env,
+				secure: isSecureRequest(request),
+				clientId: formatPackageAppOauthClientId({
+					username: packagePath.username,
+					kodyId: packagePath.kodyId,
+				}),
 			}),
-		}),
-	])
+		],
+	})
 }
 
 type ValidatedAuthorizeRequest = Extract<

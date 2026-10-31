@@ -365,8 +365,13 @@ test('a package app Open link starts on the app host and resumes as a device sig
 		`/@${ownerUsername}/packages/notes/open/today?view=list`,
 		'198.51.100.21',
 	)
-	expect(started.status).toBe(303)
-	const signInStart = new URL(started.headers.get('Location') ?? '')
+	// A page, not a redirect: `form-action 'self'` blocks a redirect from the
+	// form POST to the app host.
+	expect(started.status).toBe(200)
+	const refresh = started.headers.get('Refresh') ?? ''
+	expect(refresh).toMatch(/^0; url=/)
+	const signInStart = new URL(refresh.replace(/^0; url=/, ''))
+	expect(await started.text()).toContain('Continue')
 	expect(`${signInStart.origin}${signInStart.pathname}`).toBe(
 		`https://${ownerUsername}.packages.isolated.test${packageAppOauthPaths.login}`,
 	)

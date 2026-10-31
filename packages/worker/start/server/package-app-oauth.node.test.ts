@@ -141,6 +141,29 @@ test('native decisions use the website write boundary and preserve protocol fiel
 	).rejects.toThrow('Cross-origin')
 })
 
+test('a plain consent POST that lands on the app host continues with a page', async () => {
+	state.resolve.mockResolvedValue(
+		new Response(null, {
+			status: 302,
+			headers: {
+				Location: 'https://owner.kody.run/-/auth/callback?code=c&state=s',
+				'Set-Cookie': 'kody_example=1; Path=/',
+			},
+		}),
+	)
+	const response = await packageAppOauthAuthorizePost({
+		request: state.request,
+	})
+	expect(response.status).toBe(200)
+	expect(response.headers.get('Refresh')).toBe(
+		'0; url=https://owner.kody.run/-/auth/callback?code=c&state=s',
+	)
+	expect(response.headers.getSetCookie()).toEqual(['kody_example=1; Path=/'])
+	expect(await response.text()).toContain(
+		'href="https://owner.kody.run/-/auth/callback?code=c&amp;state=s"',
+	)
+})
+
 test('real protocol POST remains a response and host-auth fallback runs only without a dedicated host', async () => {
 	const response = new Response(null, { status: 302 })
 	state.resolve.mockResolvedValue(response)

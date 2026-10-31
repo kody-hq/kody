@@ -68,6 +68,15 @@ they stayed signed out of the app.
    the anonymous document cache never mixes the two variants; detection only
    picks a rendering and is never a security decision.
 
+6. **Leaving the origin from a plain form.** The CSP's `form-action 'self'` also
+   applies to every redirect after a form submission, so a plain HTML POST must
+   never answer with a redirect chain that ends on an app host. The consent POST
+   (`packageAppOauthAuthorizePost`), a `/login` or `/verify` POST that resumes a
+   package-app authorize request, and the package-path device POST answer with a
+   small page instead (`continue-navigation.ts`): an HTTP `Refresh: 0; url=…`
+   plus a Continue link, no script. That starts a new navigation the CSP does
+   not block. The in-page JavaScript flows are unchanged.
+
 ## Consequences
 
 - Only package-app visitor sign-in gets the second-device option. A Kody website

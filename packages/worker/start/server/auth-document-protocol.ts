@@ -76,6 +76,34 @@ function seeOther(location: string, setCookies: Array<string> = []) {
 	return new Response(null, { status: 303, headers })
 }
 
+/**
+ * Where a plain HTML sign-in lands. A package-app authorize resume can end
+ * in a redirect to the app host, which `form-action 'self'` blocks inside a
+ * form submission, so that one continues with a page instead (ADR 0094).
+ */
+async function signedInLanding(
+	redirectTo: string | null,
+	cookies: Array<string>,
+) {
+	const [
+		{ resolvePostAuthLandingPath },
+		{ packageAppOauthPaths },
+		{ continueNavigationResponse },
+	] = await Promise.all([
+		import('../../universal/safe-redirect.ts'),
+		import('../../universal/package-app-oauth-paths.ts'),
+		import('../../src/app/continue-navigation.ts'),
+	])
+	const landing = resolvePostAuthLandingPath(redirectTo) ?? '/account'
+	if (
+		new URL(landing, 'https://kody.invalid').pathname !==
+		packageAppOauthPaths.authorize
+	) {
+		return seeOther(landing, cookies)
+	}
+	return continueNavigationResponse({ location: landing, setCookies: cookies })
+}
+
 function pagePath(
 	path: '/login' | '/verify',
 	redirectTo: string | null,
@@ -110,7 +138,7 @@ export async function loginDocumentPost({ request }: { request: Request }) {
 	const [
 		{ setAuthSessionSecret },
 		{ authenticateWebsite },
-		{ normalizeRedirectTo, resolvePostAuthLandingPath },
+		{ normalizeRedirectTo },
 		{ discardUnreadRequestBody },
 	] = await Promise.all([
 		import('../../src/app/auth-session.ts'),
@@ -164,14 +192,14 @@ export async function loginDocumentPost({ request }: { request: Request }) {
 			cookies,
 		)
 	}
-	return seeOther(resolvePostAuthLandingPath(redirectTo) ?? '/account', cookies)
+	return await signedInLanding(redirectTo, cookies)
 }
 
 /** `POST /verify` (two-factor code) with `application/x-www-form-urlencoded`. */
 export async function verifyDocumentPost({ request }: { request: Request }) {
 	const [
 		{ verifyWebsiteTwoFactor },
-		{ normalizeRedirectTo, resolvePostAuthLandingPath },
+		{ normalizeRedirectTo },
 		{ discardUnreadRequestBody },
 	] = await Promise.all([
 		import('../../src/identity/verify-operations.ts'),
@@ -214,5 +242,5 @@ export async function verifyDocumentPost({ request }: { request: Request }) {
 			cookies,
 		)
 	}
-	return seeOther(resolvePostAuthLandingPath(redirectTo) ?? '/account', cookies)
+	return await signedInLanding(redirectTo, cookies)
 }

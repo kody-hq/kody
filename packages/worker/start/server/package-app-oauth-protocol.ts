@@ -33,8 +33,18 @@ export async function packageAppOauthAuthorizePost({
 	request: Request
 }) {
 	const result = await resolvePackageAppOauth(request, true)
-	if (result instanceof Response) return result
-	throw new Error('Authorization decisions must return a protocol response')
+	if (!(result instanceof Response)) {
+		throw new Error('Authorization decisions must return a protocol response')
+	}
+	// The plain HTML consent form (ADR 0094) lands on the app host's callback.
+	// `form-action 'self'` blocks that redirect, so continue with a page.
+	const { continueNavigationResponse, isCrossOriginRedirect } =
+		await import('../../src/app/continue-navigation.ts')
+	if (!isCrossOriginRedirect(result, request.url)) return result
+	return continueNavigationResponse({
+		location: result.headers.get('Location') ?? '/',
+		setCookies: result.headers.getSetCookie(),
+	})
 }
 
 export function rejectPackageAppOauthMethod() {
