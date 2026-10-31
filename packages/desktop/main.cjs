@@ -191,6 +191,7 @@ async function register() {
 		throw new Error('The CLI did not return an execution context id.')
 	state = { ecid: result.ecid, enabled: process.platform !== 'win32' }
 	saveState()
+	void refreshCommands()
 	if (state.enabled && !quitting) runner.start(state.ecid)
 	if (quitting) return
 	await dialog
@@ -205,6 +206,52 @@ async function register() {
 		.then(({ response: choice }) => {
 			if (choice === 0 && !quitting) showApp('/account/execution-contexts')
 		})
+}
+let commandsEnabled = false
+async function refreshCommands() {
+	if (!state.ecid || process.platform === 'win32') return
+	try {
+		const status = JSON.parse(
+			await runner.command([
+				'context',
+				'commands',
+				'status',
+				'--context',
+				state.ecid,
+				'--json',
+			]),
+		)
+		commandsEnabled =
+			status.local?.enabled === true &&
+			status.contexts?.[0]?.commands?.enabled === true
+	} catch {
+		commandsEnabled = false
+	}
+	if (!quitting) updateMenu()
+}
+async function toggleCommands() {
+	const enable = !commandsEnabled
+	if (enable) {
+		const { response } = await dialog.showMessageBox({
+			type: 'warning',
+			message: 'Allow Kody runs to run commands on this machine?',
+			detail:
+				'Runs on this machine that have the command grant (you, and anyone you explicitly share host commands with) can run any shell command as your user account, with no approval per command: install software, read and change your files, use your network. Every command is recorded in the context audit log. Turn it off here, with `kody context commands off`, or on the website.',
+			buttons: ['Allow commands', 'Cancel'],
+			defaultId: 1,
+			cancelId: 1,
+		})
+		if (response !== 0 || quitting) return
+	}
+	await runner.command([
+		'context',
+		'commands',
+		enable ? 'on' : 'off',
+		'--context',
+		state.ecid,
+		'--json',
+	])
+	await refreshCommands()
 }
 function updateMenu() {
 	const running = runner.daemon !== null
@@ -285,6 +332,13 @@ function updateMenu() {
 									saveState()
 								}
 							}),
+					},
+					{
+						label: 'Allow commands',
+						type: 'checkbox',
+						checked: commandsEnabled,
+						enabled: available && !!state.ecid && process.platform !== 'win32',
+						click: () => action(toggleCommands),
 					},
 					{ type: 'separator' },
 					{
@@ -512,6 +566,7 @@ else {
 			updateMenu()
 			await showApp()
 			if (!quitting && state.enabled && state.ecid) runner.start(state.ecid)
+			void refreshCommands()
 		})
 		.catch((error) => {
 			dialog.showErrorBox('Could not start Kody', error.message)

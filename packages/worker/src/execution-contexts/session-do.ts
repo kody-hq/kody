@@ -1,3 +1,4 @@
+import { fitAuditStrings } from './audit-detail.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { DurableObject } from 'cloudflare:workers'
 import {
@@ -819,6 +820,9 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			case 'run.result':
 				await this.#onRunResult(ws, frame)
 				return
+			case 'command.finished':
+				await this.#onCommandFinished(frame.body)
+				return
 			case 'run.cancel.ack':
 			case 'grant.ack':
 			case 'error':
@@ -1444,6 +1448,52 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		return true
 	}
 
+	/**
+	 * The daemon reports each host command's end (ADR 0093). The start was
+	 * audited when Kody authorized it; this closes the record by commandId.
+	 */
+	async #onCommandFinished(body: Record<string, unknown>) {
+		const text = (value: unknown, max: number) =>
+			typeof value === 'string' ? value.slice(0, max) : null
+		const num = (value: unknown) =>
+			typeof value === 'number' && Number.isFinite(value) ? value : null
+		const runId = text(body.runId, 128)
+		let actor: ExecutionContextAuditInput['actor'] = null
+		let orgId: string | null = null
+		if (runId) {
+			const row = this.ctx.storage.sql
+				.exec<{ lease_json: string }>(
+					`SELECT lease_json FROM runs WHERE run_id = ? LIMIT 1`,
+					runId,
+				)
+				.toArray()[0]
+			if (row) {
+				const lease = JSON.parse(row.lease_json) as ExecutionContextLease
+				actor = lease.requester
+				orgId = lease.orgId
+			}
+		}
+		await this.recordAudit({
+			event: 'command_finished',
+			actor,
+			orgId,
+			detail: fitAuditStrings(
+				{
+					commandId: text(body.commandId, 80),
+					runId,
+					command: text(body.command, 500),
+					cwd: text(body.cwd, 1024),
+					exitCode: num(body.exitCode),
+					signal: text(body.signal, 32),
+					durationMs: num(body.durationMs),
+					background: body.background === true,
+					reason: text(body.reason, 64),
+				},
+				['cwd', 'command'],
+			),
+		})
+	}
+
 	async #onRunResult(ws: WebSocket, frame: EcpFramePayload) {
 		const runId = typeof frame.body.runId === 'string' ? frame.body.runId : ''
 		const receivedAt = Date.now()
@@ -1741,6 +1791,14 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			})
 		}
 		return { ok: true }
+	}
+
+	/** One-use nonce for a signed request from the machine (host-commands opt-in). */
+	async consumeMachineNonce(input: { nonce: string }) {
+		if (this.#revokedReason()) return { ok: false as const, code: 'revoked' }
+		return this.#consumeNonce(input.nonce, Date.now())
+			? { ok: true as const }
+			: { ok: false as const, code: 'replay' }
 	}
 
 	async activeLeases(): Promise<Array<ExecutionContextLease>> {

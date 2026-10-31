@@ -1,3 +1,4 @@
+import { type HostCommandFinished, type HostCommands } from './host-commands.js'
 import { type EffectiveFs, emptyEffectiveFs, fsFeatures } from './fs-access.js'
 import {
 	classifyFrameText,
@@ -30,6 +31,7 @@ export type ContextRunExecutor = (input: {
 	request: EcpRunRequestBody
 	fetchFn: typeof fetch
 	signal: AbortSignal
+	hostCommands?: HostCommands
 	/** Current grant egress (welcome / grant.update); the run enforces it. */
 	egress: EcpGrant['egress']
 	/** Host folders this run may use right now (server grant ∩ local policy). */
@@ -107,6 +109,8 @@ type DaemonInput = {
 	client: { name: string; version: string }
 	capabilities: Record<string, unknown>
 	execute: ContextRunExecutor
+	/** Host commands (ADR 0093); lives across reconnects so background jobs survive them. */
+	hostCommands?: HostCommands
 	log: (line: string) => void
 	fetchFn?: typeof fetch
 	WebSocketImpl?: typeof WebSocket
@@ -271,6 +275,8 @@ export async function runDaemonConnection(input: DaemonInput) {
 		// socket in sequence order (the server rejects an out-of-order seq).
 		const sent = outbound.then(async () => {
 			if (outboundFailed) throw new Error('This connection already failed.')
+			if (ws.readyState !== ws.OPEN)
+				throw new Error('This connection is not open.')
 			outSeq += 1
 			const payload: EcpFramePayload = {
 				v: 1,
@@ -309,7 +315,17 @@ export async function runDaemonConnection(input: DaemonInput) {
 			| EcpGrant['egress']
 			| undefined
 		if (egress && typeof egress.mode === 'string') grantEgress = egress
+		input.hostCommands?.setGrantEnabled(
+			(grant as { commands?: { enabled?: unknown } } | null)?.commands
+				?.enabled === true,
+		)
 	}
+	// Installed after `hello` and cleared when this connection ends. A failed
+	// send requeues the finish; the next connection's setReporter sends it.
+	const reporter = async (finished: HostCommandFinished) => {
+		await send('command.finished', finished)
+	}
+	let connectionEnded = false
 	let rearmHeartbeat: ((pingMs: number, pongTimeoutMs: number) => void) | null =
 		null
 	const status = () => ({
@@ -342,6 +358,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 				// A getter, so a grant.update or policy change narrows runs already in flight.
 				...(input.fs ? { hostFs: () => hostFs } : {}),
 				signal: run.abort.signal,
+				...(input.hostCommands ? { hostCommands: input.hostCommands } : {}),
 				egress: grantEgress,
 				fetchFn: runScopedFetch({
 					apiUrl: input.apiUrl,
@@ -425,6 +442,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 						.map((run) => run.request.runId),
 					pendingResults: [],
 				})
+				if (!connectionEnded) input.hostCommands?.setReporter(reporter)
 				input.log('Connected. Waiting for runs.')
 				return
 			case 'run.request': {
@@ -525,6 +543,8 @@ export async function runDaemonConnection(input: DaemonInput) {
 		const finish = (code: number, reason: string) => {
 			if (settled) return
 			settled = true
+			connectionEnded = true
+			input.hostCommands?.clearReporter(reporter)
 			clearInterval(ping)
 			clearTimeout(pongTimer)
 			clearTimeout(welcomeTimer)

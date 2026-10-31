@@ -806,6 +806,7 @@ primitives:
     adrs:
       - docs/contributing/decisions/0083-context-runs-never-see-credential-values.md
       - docs/contributing/decisions/0086-automation-execution-contexts.md
+      - docs/contributing/decisions/0093-execution-context-host-commands.md
 
   - id: run-records
     group: storage

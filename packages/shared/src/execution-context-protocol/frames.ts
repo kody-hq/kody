@@ -55,6 +55,7 @@ export const ecpContextFrameTypes = [
 	'run.result',
 	'run.cancel.ack',
 	'grant.ack',
+	'command.finished',
 	'error',
 ] as const
 
@@ -98,6 +99,12 @@ export type EcpFsGrant = { path: string; mode: 'ro' | 'rw' }
 export type EcpEgressMode = 'public' | 'public-and-lan' | 'allowlist' | 'none'
 
 /** The local access grant a context exposes to runs (ECP 8.1). */
+export type EcpCommandsGrant = {
+	enabled: boolean
+	/** ISO time the machine turned commands on (null when off). */
+	enabledAt?: string | null
+}
+
 export type EcpGrant = {
 	fs: Array<EcpFsGrant>
 	egress: {
@@ -106,6 +113,12 @@ export type EcpGrant = {
 		ports?: Array<number>
 	}
 	runtime: { mode: 'all' } | { mode: 'allowlist'; paths: Array<string> }
+	/**
+	 * Host commands (`kody.command.*`). Only a signed request from the
+	 * machine itself turns this on; anyone who can change the context can
+	 * turn it off. The daemon also requires its local policy to allow it.
+	 */
+	commands?: EcpCommandsGrant
 	limits: { timeoutMs: number; memoryMb: number; maxConcurrent: number }
 	payload: {
 		maxRequestBytes: number
@@ -124,6 +137,7 @@ export const ecpDefaultGrant: EcpGrant = {
 		maxResultBytes: 100 * 1024,
 		resultContentTypes: ['application/json', 'text/plain'],
 	},
+	commands: { enabled: false },
 }
 
 export const ecpGrantMaximums = {

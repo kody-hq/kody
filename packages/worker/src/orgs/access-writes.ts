@@ -355,6 +355,11 @@ export async function upsertGrant(input: {
 	subject: GrantSubject
 	preset: GrantPreset | null
 	permissions: ReadonlyArray<OrgPermission> | null
+	/**
+	 * Permissions added on top of a preset (e.g. `execution_context:command`,
+	 * which no preset carries). Each must be grantable on the family.
+	 */
+	extraPermissions?: ReadonlyArray<OrgPermission>
 	createdByUserId: string
 	/** Defaults to `manual`; a manual write over a `created` grant claims it. */
 	origin?: GrantOrigin
@@ -369,11 +374,20 @@ export async function upsertGrant(input: {
 	assertGrantSubjectInOrg(input)
 	const origin = input.origin ?? 'manual'
 	const family = input.family ?? grantFamilyOf(input.resourceType)
-	const permissions = resolveGrantPermissions({
-		family,
-		preset: input.preset,
-		permissions: input.permissions,
-	})
+	const permissions = [
+		...new Set([
+			...resolveGrantPermissions({
+				family,
+				preset: input.preset,
+				permissions: input.permissions,
+			}),
+			...resolveGrantPermissions({
+				family,
+				preset: null,
+				permissions: input.extraPermissions ?? [],
+			}),
+		]),
+	]
 	if (permissions.length === 0) {
 		throw new Error('A grant needs at least one permission.')
 	}

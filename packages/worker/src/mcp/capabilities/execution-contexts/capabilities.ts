@@ -114,6 +114,12 @@ export const grantPatchSchema = z
 				maxConcurrent: z.number().int().min(1).max(16).optional(),
 			})
 			.optional(),
+		commands: z
+			.object({ enabled: z.boolean() })
+			.optional()
+			.describe(
+				'Host commands (kody.command.*). Only `{ "enabled": false }` is accepted here: it turns commands off at once. Turning them on is a local action on the machine (`kody context commands on` or the desktop app), never an API call.',
+			),
 	})
 	.loose()
 	.refine((grant) => !('credentials' in grant), {
@@ -129,7 +135,7 @@ export const executionContextUpdateCapability = defineDomainCapability(domain, {
 	contextRuns: 'deny',
 	orgPermission: 'execution_context:write',
 	description:
-		'Rename an execution context or change its grant (files, egress, Kody API runtime allowlist, limits). Runs on a context use credentials exactly as they would in Kody cloud for the operator (requests leave from Kody cloud, so values never reach the machine); runs by anyone else use none. Needs Contribute or Manage on it.',
+		'Rename an execution context or change its grant (files, egress, Kody API runtime allowlist, limits), or turn host commands off (`grant.commands.enabled: false`; turning them on happens only on the machine). Runs on a context use credentials exactly as they would in Kody cloud for the operator (requests leave from Kody cloud, so values never reach the machine); runs by anyone else use none. Needs Contribute or Manage on it.',
 	keywords: ['execution context', 'grant', 'rename'],
 	readOnly: false,
 	idempotent: true,
@@ -258,6 +264,12 @@ export const executionContextShareSetCapability = defineDomainCapability(
 			team_slug: z.string().min(1).optional(),
 			team_id: z.string().min(1).optional(),
 			preset: z.enum(['use', 'contribute', 'manage']).default('use'),
+			commands: z
+				.boolean()
+				.optional()
+				.describe(
+					"Also grant execution_context:command: this person or team may run host commands (kody.command.*) on the machine as the operator's OS user. Off by default; no preset includes it. The machine must also have commands turned on locally.",
+				),
 			all_members: z.boolean().optional(),
 		}),
 		async handler(args, ctx) {
@@ -265,6 +277,7 @@ export const executionContextShareSetCapability = defineDomainCapability(
 			const add: Array<{
 				subject: { type: 'user' | 'team'; id: string }
 				preset: 'use' | 'contribute' | 'manage'
+				commands?: boolean
 			}> = []
 			if (args.team_slug || args.team_id) {
 				add.push({
@@ -276,6 +289,7 @@ export const executionContextShareSetCapability = defineDomainCapability(
 						}),
 					},
 					preset: args.preset,
+					...(args.commands ? { commands: true } : {}),
 				})
 			} else if (args.username || args.user_id) {
 				add.push({
@@ -287,6 +301,7 @@ export const executionContextShareSetCapability = defineDomainCapability(
 						}),
 					},
 					preset: args.preset,
+					...(args.commands ? { commands: true } : {}),
 				})
 			}
 			return await setSharing(resolved, args.id, {

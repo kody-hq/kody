@@ -44,6 +44,7 @@ export function isExecutionContextKeyRoute(method: string, pathname: string) {
 		pathname === `${executionContextsBasePath}/registration-challenge` ||
 		pathname === `${executionContextsBasePath}/connect-ticket` ||
 		pathname === `${executionContextsBasePath}/connect` ||
+		pathname === `${executionContextsBasePath}/commands` ||
 		pathname === `${executionContextsBasePath}/server-keys`
 	)
 }
@@ -217,6 +218,11 @@ export async function handleExecutionContextKeyRoute(input: {
 		})
 	}
 
+	if (path === `${executionContextsBasePath}/commands`) {
+		if (request.method !== 'POST') throw methodNotAllowed('POST')
+		return json(await setCommandsFromMachine({ request, url, env }))
+	}
+
 	const api = await authenticateApiRequest({
 		request,
 		env,
@@ -387,4 +393,111 @@ function methodNotAllowed(allow: string) {
 		message: `Use ${allow}.`,
 		headers: { Allow: allow },
 	})
+}
+
+/**
+ * Host commands opt-in (ADR 0093). Signed with the context key, so only the
+ * machine itself can turn commands on; it may also turn them off. Website and
+ * API callers can only turn them off (executionContextUpdate).
+ */
+async function setCommandsFromMachine(input: {
+	request: Request
+	url: URL
+	env: Env
+}) {
+	const { request, url, env } = input
+	const body = await readBody(request)
+	const signature = parseEcpSignatureHeader(
+		request.headers.get(ecpSignatureHeader),
+	)
+	if (!signature) throw signatureError('missing_signature')
+	const row = await getExecutionContext(env.APP_DB, signature.ec)
+	if (!row) throw signatureError('unknown_context')
+	await verifySigned({
+		request,
+		url,
+		body,
+		publicKeyJwk: parsePublicKey(row),
+		expectedEc: row.id,
+	})
+	if (row.revoked_at) {
+		throw new ApiError({
+			status: 403,
+			code: 'unauthorized',
+			message: `This execution context was revoked (${row.revoked_reason ?? 'revoked'}).`,
+			details: { reason: 'revoked' },
+		})
+	}
+	const session = sessionStub(env, row.id)
+	let parsed: unknown
+	try {
+		parsed = JSON.parse(new TextDecoder().decode(body))
+	} catch {
+		parsed = null
+	}
+	const enabled = (parsed as { enabled?: unknown } | null)?.enabled
+	if (enabled === undefined && parsed && typeof parsed === 'object') {
+		const commands = parseGrant(row).commands ?? { enabled: false }
+		return {
+			id: row.id,
+			name: row.name,
+			commands,
+			grantVersion: row.grant_version,
+		}
+	}
+	if (typeof enabled !== 'boolean') {
+		throw new ApiError({
+			status: 400,
+			code: 'invalid_request',
+			message: 'Send {"enabled": true} or {"enabled": false}.',
+		})
+	}
+	const nonce = await session.consumeMachineNonce({ nonce: signature.n })
+	if (!nonce.ok) throw signatureError(nonce.code)
+	const current = parseGrant(row)
+	const wasOn = current.commands?.enabled === true
+	const grant = {
+		...current,
+		commands: enabled
+			? {
+					enabled: true,
+					enabledAt: wasOn
+						? (current.commands?.enabledAt ?? new Date().toISOString())
+						: new Date().toISOString(),
+				}
+			: { enabled: false, enabledAt: null },
+	}
+	const grantVersion = row.grant_version + 1
+	const update = await env.APP_DB.prepare(
+		`UPDATE execution_contexts SET grant_json = ?, grant_version = ? WHERE id = ? AND grant_version = ?`,
+	)
+		.bind(JSON.stringify(grant), grantVersion, row.id, row.grant_version)
+		.run()
+	if ((update.meta?.changes ?? 0) === 0) {
+		// The grant changed since we read it (e.g. turned off on the website):
+		// never overwrite that with an older snapshot.
+		throw new ApiError({
+			status: 409,
+			code: 'invalid_request',
+			message:
+				'The context grant changed while this request ran. Run `kody context commands status`, then try again.',
+		})
+	}
+	await session.updateGrant({
+		snapshot: { ...snapshotOf(row), grant, grantVersion },
+	})
+	if (wasOn !== enabled) {
+		await session.recordAudit({
+			event: enabled ? 'commands_enabled' : 'commands_disabled',
+			actor: { userId: row.operator_user_id, handle: null },
+			orgId: row.org_id,
+			detail: { source: 'machine' },
+		})
+	}
+	return {
+		id: row.id,
+		name: row.name,
+		commands: grant.commands,
+		grantVersion,
+	}
 }
