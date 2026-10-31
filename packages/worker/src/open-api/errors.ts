@@ -305,6 +305,24 @@ export function toApiError(error: unknown): ApiError {
 	const notApplied = getErrorCauseChain(error)
 		.map(readRemoteRefNotConfirmedError)
 		.find((entry) => entry !== null)
+	// No observed ref means the confirm read itself failed (or the ref is
+	// gone): the pointer did not move, but whether the git ref did is unknown.
+	if (notApplied && notApplied.observedCommit === null) {
+		return new ApiError({
+			status: 503,
+			code: 'internal_error',
+			message:
+				'The publish push may or may not have reached the source repo (Kody could not read its refs back). published_commit did not move. Check repoGetSession last_publish and the package published_commit before retrying.',
+			details: {
+				published: false,
+				ref_state: 'unknown',
+				ref: notApplied.ref,
+				expected_commit: notApplied.expectedCommit,
+				status_capability: 'repoGetSession',
+			},
+			cause: error,
+		})
+	}
 	if (notApplied) {
 		return new ApiError({
 			status: 409,

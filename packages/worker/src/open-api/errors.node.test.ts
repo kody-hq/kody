@@ -408,3 +408,20 @@ test('toApiError maps a publish_not_applied error rebuilt by Durable Object RPC 
 		observed_commit: 'a'.repeat(40),
 	})
 })
+
+test('toApiError reports an unreadable confirm (no observed ref) as an unknown ref state, not a rejected publish', () => {
+	const original = new RemoteRefNotConfirmedError({
+		ref: 'refs/heads/main',
+		expectedCommit: 'b'.repeat(40),
+		observedCommit: null,
+	})
+	const overRpc = new Error(original.message)
+	overRpc.name = original.name
+	const error = toApiError(overRpc)
+	expect(error.status).toBe(503)
+	expect(error.code).toBe('internal_error')
+	expect(error.details).toMatchObject({
+		published: false,
+		ref_state: 'unknown',
+	})
+})

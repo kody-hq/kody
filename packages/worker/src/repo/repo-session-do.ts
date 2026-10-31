@@ -3943,7 +3943,12 @@ class RepoSessionBase extends DurableObject<Env> {
 	): Promise<RepoSessionPublishResult> {
 		const startedAt = nowIso()
 		this.publishesInFlight += 1
-		await this.writeLastPublish({
+		const attempt = ++this.publishAttempts
+		// An older overlapping publish must not overwrite the latest attempt.
+		const writeOutcome = async (value: RepoSessionLastPublish) => {
+			if (attempt === this.publishAttempts) await this.writeLastPublish(value)
+		}
+		await writeOutcome({
 			state: 'running',
 			started_at: startedAt,
 			finished_at: null,
@@ -3954,7 +3959,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		})
 		try {
 			const result = await this.runPublishSession(input)
-			await this.writeLastPublish({
+			await writeOutcome({
 				state: result.status === 'ok' ? 'published' : 'not_published',
 				started_at: startedAt,
 				finished_at: nowIso(),
@@ -3966,7 +3971,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			})
 			return result
 		} catch (error) {
-			await this.writeLastPublish({
+			await writeOutcome({
 				state: 'failed',
 				started_at: startedAt,
 				finished_at: nowIso(),
@@ -3983,6 +3988,7 @@ class RepoSessionBase extends DurableObject<Env> {
 	}
 
 	private publishesInFlight = 0
+	private publishAttempts = 0
 
 	private async writeLastPublish(value: RepoSessionLastPublish) {
 		try {

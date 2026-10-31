@@ -27,7 +27,7 @@ export class RemoteRefNotConfirmedError extends Error {
 }
 
 const notConfirmedMessagePattern =
-	/did not confirm the push: (\S+) is at (\S+), expected ([0-9a-f]+)\./
+	/did not confirm the push: (\S+) is at (no commit|\S+), expected ([0-9a-f]+)\./
 
 /**
  * Durable Object RPC rebuilds thrown errors as plain `Error`s that keep
@@ -60,7 +60,7 @@ export function readRemoteRefNotConfirmedError(error: unknown): {
 		message: error.message,
 		ref: match[1]!,
 		expectedCommit: match[3]!,
-		observedCommit: match[2] === 'no' ? null : match[2]!,
+		observedCommit: match[2] === 'no commit' ? null : match[2]!,
 	}
 }
 
