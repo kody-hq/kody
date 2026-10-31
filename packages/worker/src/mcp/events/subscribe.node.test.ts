@@ -67,6 +67,7 @@ function createPrincipal(
 	overrides: {
 		oauthClientId?: string
 		userId?: string | null
+		profileId?: string
 	} = {},
 ) {
 	const sqlite = new DatabaseSync(':memory:')
@@ -82,6 +83,7 @@ function createPrincipal(
 		callerContext: createMcpCallerContext({
 			source: { kind: 'mcp-oauth' },
 			baseUrl: 'https://kody.example.com',
+			profileId: overrides.profileId,
 			user: userId
 				? {
 						userId: personIdFromStored(userId),
@@ -316,6 +318,24 @@ test('new subscriptions beyond the per-principal limit are ResourceExhausted', a
 	await expect(
 		subscribeMcpEvent(principal, params(), now),
 	).resolves.toMatchObject({ id: expect.stringMatching(/^sub_/) })
+})
+
+test('unsubscribe deletes a profile-bound subscription by its profile key', async () => {
+	const { env, principal } = createPrincipal({ profileId: 'profile-1' })
+	const created = await subscribeMcpEvent(principal, params(), now)
+	await expect(
+		unsubscribeMcpEvent(principal, {
+			name: topic,
+			delivery: { mode: 'webhook', url: callbackUrl },
+		}),
+	).resolves.toEqual({})
+	await expect(
+		getMcpEventSubscription({
+			db: env.APP_DB,
+			userId: ownerIdFromStored('user-1'),
+			id: created.id,
+		}),
+	).resolves.toBeNull()
 })
 
 test('unsubscribe deletes by key and is idempotent', async () => {

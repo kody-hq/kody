@@ -39,6 +39,7 @@ export async function unsubscribeMcpEvent(
 	const id = await buildMcpEventSubscriptionId({
 		userId,
 		oauthClientId: principal.oauthClientId,
+		profileId: principal.callerContext.request?.credential.profileId ?? null,
 		eventName: params.name,
 		arguments: params.arguments ?? {},
 		callbackUrl,
