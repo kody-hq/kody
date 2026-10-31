@@ -3,7 +3,11 @@ import {
 	publishedArtifactNeedsPackageBindingRebuild,
 } from './pre-binding-artifact-repair.ts'
 import { effectivePackageAppCapabilities } from './package-app-effective-capabilities.ts'
-import { type PublishedBundleArtifact } from './published-runtime-artifacts.ts'
+import {
+	hasPublishedRuntimeArtifacts,
+	type PublishedBundleArtifact,
+	readPackageAppWorkerTemplate,
+} from './published-runtime-artifacts.ts'
 import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
@@ -25,6 +29,7 @@ import {
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { requestLineage } from '#worker/request-context/request-context.ts'
 import {
+	getPackageAppClientEntryPath,
 	getPackageAppEntryPath,
 	parseAuthoredPackageJson,
 } from '#worker/package-registry/manifest.ts'
@@ -3810,6 +3815,7 @@ async function buildPackageAppWorkerOptionsUncached(
 			hostedOrigin?: string
 			mount?: PackageAppMount
 		}
+		serverTiming?: Array<ServerTimingEntry>
 	},
 	/**
 	 * The build cache key when this build is cached under a stable worker id;
@@ -3824,25 +3830,38 @@ async function buildPackageAppWorkerOptionsUncached(
 		sourceFiles: input.sourceFiles,
 		savedPackage: input.savedPackage,
 	})
+	const published = await pushServerTiming(
+		input.serverTiming,
+		'appTemplate',
+		() =>
+			readPublishedPackageAppWorkerTemplate({
+				env: input.env,
+				manifest,
+				savedPackage: input.savedPackage,
+			}),
+	)
 	const [bundled, clientArtifact] = await Promise.all([
-		resolvePackageAppBundledArtifact({
-			env: input.env,
-			baseUrl: input.baseUrl,
-			userId: input.userId,
-			source: input.source,
-			manifest,
-			savedPackage: input.savedPackage,
-			loadSourceFiles: input.loadSourceFiles,
-			sourceFiles: input.sourceFiles,
-		}),
-		resolvePackageAppClientArtifact({
-			env: input.env,
-			userId: input.userId,
-			manifest,
-			savedPackage: input.savedPackage,
-			loadSourceFiles: input.loadSourceFiles,
-			sourceFiles: input.sourceFiles,
-		}),
+		published?.bundled ??
+			resolvePackageAppBundledArtifact({
+				env: input.env,
+				baseUrl: input.baseUrl,
+				userId: input.userId,
+				source: input.source,
+				manifest,
+				savedPackage: input.savedPackage,
+				loadSourceFiles: input.loadSourceFiles,
+				sourceFiles: input.sourceFiles,
+			}),
+		published && published.client !== undefined
+			? published.client
+			: resolvePackageAppClientArtifact({
+					env: input.env,
+					userId: input.userId,
+					manifest,
+					savedPackage: input.savedPackage,
+					loadSourceFiles: input.loadSourceFiles,
+					sourceFiles: input.sourceFiles,
+				}),
 	])
 	// Platform-served static surface. The client module URL carries the
 	// content hash, so pages read it from packageContext instead of
@@ -4002,6 +4021,55 @@ async function buildPackageAppWorkerOptionsUncached(
 	}
 }
 
+/**
+ * The publish-time template (see `readPackageAppWorkerTemplate`) for the
+ * served commit. Null when publish stored none (packages published before
+ * templates), a read fails, or the stored bundle predates lexical package
+ * `fetch`; the caller then resolves bundle and client the old way.
+ */
+async function readPublishedPackageAppWorkerTemplate(input: {
+	env: Env
+	manifest: AuthoredPackageJson
+	savedPackage: { sourceId: string; publishedCommit: string | null }
+}): Promise<{
+	bundled: ReturnType<typeof servePublishedAppArtifact> | null
+	client: { mainModule: string } | null | undefined
+} | null> {
+	const publishedCommit = input.savedPackage.publishedCommit
+	const appEntry = getPackageAppEntryPath(input.manifest)
+	if (!publishedCommit || !appEntry) return null
+	if (!hasPublishedRuntimeArtifacts(input.env)) return null
+	try {
+		const parts = await readPackageAppWorkerTemplate({
+			env: input.env,
+			sourceId: input.savedPackage.sourceId,
+			publishedCommit,
+			appEntry,
+			clientEntry: getPackageAppClientEntryPath(input.manifest),
+		})
+		const app =
+			parts.app && !isUnrepairablePreBindingArtifact(parts.app)
+				? servePublishedAppArtifact(parts.app)
+				: null
+		return { bundled: app, client: parts.client }
+	} catch (error) {
+		console.warn('package-app-template-read-failed', {
+			sourceId: input.savedPackage.sourceId,
+			error: error instanceof Error ? error.message : String(error),
+		})
+		return null
+	}
+}
+
+function servePublishedAppArtifact(artifact: PublishedBundleArtifact) {
+	return {
+		mainModule: artifact.mainModule,
+		modules: artifact.modules,
+		dependencies: artifact.dependencies,
+		dynamicDependencies: artifact.dynamicDependencies,
+	}
+}
+
 function collectDependencyPackageNames(input: {
 	dependencies: Array<{
 		packageId?: string
@@ -4136,15 +4204,17 @@ export async function buildPackageAppWorker(input: {
 		)
 		const visitorGrant =
 			visitor && orgSlug
-				? await findLivePackageAppOauthGrant({
-						db: input.env.APP_DB,
-						personId: visitor.userId,
-						orgUsername: orgSlug.toLowerCase(),
-						kodyId: input.savedPackage.kodyId,
-					}).catch((error: unknown) => {
-						console.warn('package-app-visitor-grant-lookup-failed', error)
-						return null
-					})
+				? await pushServerTiming(input.serverTiming, 'visitorGrant', () =>
+						findLivePackageAppOauthGrant({
+							db: input.env.APP_DB,
+							personId: visitor.userId,
+							orgUsername: orgSlug.toLowerCase(),
+							kodyId: input.savedPackage.kodyId,
+						}).catch((error: unknown) => {
+							console.warn('package-app-visitor-grant-lookup-failed', error)
+							return null
+						}),
+					)
 				: null
 		if (visitorGrant) {
 			await notePackageAppOauthGrantUse({

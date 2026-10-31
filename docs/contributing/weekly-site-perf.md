@@ -31,6 +31,18 @@ on `/` is a finding (TanStack Highlight belongs on guides and onboarding, not
 the landing entry). The collector then classifies against
 [`tools/site-perf/budget.json`](../../tools/site-perf/budget.json).
 
+It also requests the hello-world package app
+`https://kentcdodds.kody.run/perf-hello/` (`@kentcdodds/perf-hello`, an
+internet-visible app whose `fetch` returns `ok`) three times back to back and
+records `packageApp.samples` (status, TTFB, `Server-Timing` phases, including
+`total`). The first sample may be cold; later ones show the warm path. That
+timing is Kody's platform overhead on package-app requests (budget: tens of ms,
+see
+[invocation overhead guardrails](./architecture/invocation-overhead-guardrails.md)).
+The probe is observational and never changes the verdict; a probe that cannot
+connect is omitted. `--package-app-url <url>` points it elsewhere and
+`--no-package-app` skips it. Keep `@kentcdodds/perf-hello` a pure hello world.
+
 [`.github/workflows/weekly-site-perf.yml`](../../.github/workflows/weekly-site-perf.yml)
 runs that collector on Mondays at 14:17 UTC and on `workflow_dispatch`.
 `needs-fix` upserts `Weekly site perf: needs a fix`. A later `ok` run closes
