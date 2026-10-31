@@ -94,7 +94,14 @@ import { credentialNeedKeyNotes } from '#worker/credentials/credential-needs.ts'
 import { computeCredentialNeedsClosure } from '#worker/credentials/credential-needs-closure.ts'
 import { republishedNeedsNote } from '#worker/enablements/republish-needs-note.ts'
 import { createSavedPackageClosureLoader } from '#worker/package-codemods/package-app-capability-closure.ts'
-import { buildCapabilityDeclarationCheck } from './capability-declaration-check.ts'
+import {
+	buildCapabilityAllowanceCheck,
+	loadPublishedCapabilityAllowance,
+} from '#worker/package-runtime/package-app-capability-allowances.ts'
+import {
+	buildCapabilityDeclarationCheck,
+	declaredPackageCapabilities,
+} from './capability-declaration-check.ts'
 
 export const repoCheckKinds = [
 	'manifest',
@@ -595,6 +602,14 @@ declare module "kody:runtime" {
           creditsMicroUsd: number;
         }>;
       }>;
+    }>;
+    appPublisherGet: (input?: Record<string, never>) => Promise<{
+      user_id: string;
+      username: string;
+      email: string;
+      display_name: string;
+      org: { slug: string };
+      source: "explicit" | "publisher" | "personal-org";
     }>;
   };
   export function hasScope(request: Request, scope: string): boolean;
@@ -1594,6 +1609,40 @@ async function runCredentialPatternCheck(input: {
 	}
 }
 
+/**
+ * Warns when the published version of this app runs on a capability
+ * allowance the source being checked does not declare (ADR 0089).
+ */
+async function loadCapabilityAllowanceCheck(input: {
+	env?: Env
+	userId?: string
+	sourceId?: string
+	manifest: AuthoredPackageJson
+}) {
+	if (
+		!input.manifest.kody.app ||
+		typeof input.env?.APP_DB?.prepare !== 'function'
+	) {
+		return null
+	}
+	try {
+		const allowance = await loadPublishedCapabilityAllowance(input.env.APP_DB, {
+			sourceId: input.sourceId ?? null,
+			ownerId: input.userId ?? null,
+			packageName: input.manifest.name,
+		})
+		return buildCapabilityAllowanceCheck({
+			allowance,
+			declared: declaredPackageCapabilities(input.manifest),
+		})
+	} catch (error) {
+		if (!/no such table/i.test(String(error))) {
+			console.warn('capability-allowance-check-failed', error)
+		}
+		return null
+	}
+}
+
 export async function runRepoChecks(input: {
 	workspace: {
 		readFile(path: string): Promise<string | null>
@@ -1843,6 +1892,13 @@ export async function runRepoChecks(input: {
 			: {}),
 	})
 	if (capabilityDeclarationCheck) results.push(capabilityDeclarationCheck)
+	const capabilityAllowanceCheck = await loadCapabilityAllowanceCheck({
+		env: input.env,
+		userId: input.userId,
+		sourceId: input.sourceId,
+		manifest,
+	})
+	if (capabilityAllowanceCheck) results.push(capabilityAllowanceCheck)
 	// Cheap static gates for the package-app browser surface run before the
 	// heavy phases so a misconfigured manifest fails fast with one message.
 	const packageAppSurfaceChecks = [

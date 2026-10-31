@@ -1,4 +1,5 @@
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { loadPackageAppCapabilityAllowance } from '#worker/package-runtime/package-app-capability-allowances.ts'
 import { listPackageAppCustomDomainViewsForPackage } from '#worker/package-app-custom-hostnames/service.ts'
 import {
 	listPackageAppCookieWarnings,
@@ -594,18 +595,47 @@ async function toDetailWithListingState(input: {
 				ownerUsername: input.username,
 			}),
 		])
-	const listingState = await loadActiveCommunityListingState({
-		db: input.env.APP_DB,
-		userId: input.userId,
-		packageId: input.record.id,
-		publishedCommit: detailBase.publishedCommit,
-	})
+	const [listingState, capabilityAllowance] = await Promise.all([
+		loadActiveCommunityListingState({
+			db: input.env.APP_DB,
+			userId: input.userId,
+			packageId: input.record.id,
+			publishedCommit: detailBase.publishedCommit,
+		}),
+		input.username
+			? loadPackageCapabilityAllowanceForOwner({
+					env: input.env,
+					packageId: input.record.id,
+					publishedCommit: detailBase.publishedCommit,
+				})
+			: Promise.resolve(undefined),
+	])
 	return {
 		...detailBase,
 		...listingState,
 		ownerIsPersonal,
+		...(capabilityAllowance?.length ? { capabilityAllowance } : {}),
 		...(customDomains?.length ? { customDomains } : {}),
 		...(cookieWarnings?.length ? { cookieWarnings } : {}),
+	}
+}
+
+export async function loadPackageCapabilityAllowanceForOwner(input: {
+	env: Env
+	packageId: string
+	publishedCommit: string | null
+}): Promise<Array<string> | undefined> {
+	if (typeof input.env.APP_DB?.prepare !== 'function') return undefined
+	try {
+		return await loadPackageAppCapabilityAllowance(input.env.APP_DB, {
+			packageId: input.packageId,
+			publishedCommit: input.publishedCommit,
+		})
+	} catch (error) {
+		if (!/no such table/i.test(String(error))) {
+			console.warn('package-capability-allowance-load-failed', error)
+		}
+		return undefined
 	}
 }
 
