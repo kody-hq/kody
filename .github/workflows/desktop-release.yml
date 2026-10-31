@@ -111,20 +111,37 @@ jobs:
           node -e 'const fs = require("node:fs"); if (!process.env.API_KEY) throw new Error("Missing DESKTOP_APPLE_API_KEY_BASE64"); fs.writeFileSync(process.env.RUNNER_TEMP + "/notary.p8", Buffer.from(process.env.API_KEY, "base64"), {mode: 0o600})'
       - name: Build signed and notarized installers
         env:
-          CSC_LINK: ${{ secrets.DESKTOP_MAC_CERTIFICATE_BASE64 }}
-          CSC_KEY_PASSWORD: ${{ secrets.DESKTOP_MAC_CERTIFICATE_PASSWORD }}
+          CSC_LINK:
+            ${{ runner.os == 'macOS' && secrets.DESKTOP_MAC_CERTIFICATE_BASE64
+            || '' }}
+          CSC_KEY_PASSWORD:
+            ${{ runner.os == 'macOS' && secrets.DESKTOP_MAC_CERTIFICATE_PASSWORD
+            || '' }}
           APPLE_API_KEY: ${{ runner.temp }}/notary.p8
-          APPLE_API_KEY_ID: ${{ secrets.DESKTOP_APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.DESKTOP_APPLE_API_ISSUER }}
-          WIN_CSC_LINK: ${{ secrets.DESKTOP_WINDOWS_CERTIFICATE_BASE64 }}
+          APPLE_API_KEY_ID:
+            ${{ runner.os == 'macOS' && secrets.DESKTOP_APPLE_API_KEY_ID || ''
+            }}
+          APPLE_API_ISSUER:
+            ${{ runner.os == 'macOS' && secrets.DESKTOP_APPLE_API_ISSUER || ''
+            }}
+          WIN_CSC_LINK:
+            ${{ runner.os == 'Windows' &&
+            secrets.DESKTOP_WINDOWS_CERTIFICATE_BASE64 || '' }}
           WIN_CSC_KEY_PASSWORD:
-            ${{ secrets.DESKTOP_WINDOWS_CERTIFICATE_PASSWORD }}
+            ${{ runner.os == 'Windows' &&
+            secrets.DESKTOP_WINDOWS_CERTIFICATE_PASSWORD || '' }}
           KODY_WINDOWS_PUBLISHER: ${{ vars.DESKTOP_WINDOWS_PUBLISHER }}
           KODY_WINDOWS_SIGNING_PROVIDER:
             ${{ vars.DESKTOP_WINDOWS_SIGNING_PROVIDER }}
-          AZURE_TENANT_ID: ${{ secrets.DESKTOP_AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.DESKTOP_AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.DESKTOP_AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID:
+            ${{ runner.os == 'Windows' && secrets.DESKTOP_AZURE_TENANT_ID || ''
+            }}
+          AZURE_CLIENT_ID:
+            ${{ runner.os == 'Windows' && secrets.DESKTOP_AZURE_CLIENT_ID || ''
+            }}
+          AZURE_CLIENT_SECRET:
+            ${{ runner.os == 'Windows' && secrets.DESKTOP_AZURE_CLIENT_SECRET ||
+            '' }}
           KODY_AZURE_ENDPOINT: ${{ vars.DESKTOP_AZURE_ENDPOINT }}
           KODY_AZURE_ACCOUNT: ${{ vars.DESKTOP_AZURE_ACCOUNT }}
           KODY_AZURE_PROFILE: ${{ vars.DESKTOP_AZURE_PROFILE }}
