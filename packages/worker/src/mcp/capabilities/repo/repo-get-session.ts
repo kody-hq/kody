@@ -13,7 +13,7 @@ export const repoGetSessionCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
-			'Inspect one repo editing session by id so the model can resume work without reopening it.',
+			'Inspect one repo editing session by id so the model can resume work without reopening it. `last_publish` reports the latest repoPublishSession attempt (running, interrupted, published, not_published, failed), so after an error or dropped connection you can tell whether anything was published before retrying.',
 		keywords: ['repo', 'session', 'inspect', 'resume'],
 		readOnly: true,
 		idempotent: true,

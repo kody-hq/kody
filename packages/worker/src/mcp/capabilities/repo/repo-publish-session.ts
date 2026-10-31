@@ -65,7 +65,7 @@ export const repoPublishSessionCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
-			'Publish an active repo session back to the source repo after checks pass on the current tree and the base commit is still current. Visibility is a repo setting (`packageUpdate` / `repoUpdate`), not package.json#private. When publishing a community fork after absorbing origin updates, pass absorbed_upstream_commit.',
+			'Publish an active repo session back to the source repo after checks pass on the current tree and the base commit is still current. Visibility is a repo setting (`packageUpdate` / `repoUpdate`), not package.json#private. When publishing a community fork after absorbing origin updates, pass absorbed_upstream_commit. Retrying is safe: a publish whose push did not land fails with publish_not_applied (nothing moved), and an interrupted publish resumes; check repoGetSession last_publish for status.',
 		keywords: ['repo', 'publish', 'session', 'checks', 'artifact'],
 		readOnly: false,
 		idempotent: false,

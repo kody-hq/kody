@@ -157,6 +157,31 @@ export type RepoSessionInfoResult = {
 	published_commit: string | null
 	manifest_path: string
 	entity_type: EntityKind
+	/** Latest `repoPublishSession` attempt on this session (repoGetSession only). */
+	last_publish?: RepoSessionLastPublish | null
+}
+
+/**
+ * `running`: in progress. `interrupted`: the server restarted mid-publish;
+ * retrying resumes it. `failed`: threw; nothing moved unless
+ * `published_commit` on the session says otherwise. `not_published`: returned
+ * a non-ok status (`result_status`) such as `base_moved`. `pushed`: pushed
+ * without promotion; the live `published_commit` did not change.
+ */
+export type RepoSessionLastPublish = {
+	state:
+		| 'running'
+		| 'interrupted'
+		| 'published'
+		| 'pushed'
+		| 'not_published'
+		| 'failed'
+	started_at: string
+	finished_at: string | null
+	published_commit: string | null
+	result_status: string | null
+	error_name: string | null
+	error_message: string | null
 }
 
 export type RepoSessionTreeResult = {
