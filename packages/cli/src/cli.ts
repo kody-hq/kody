@@ -457,6 +457,11 @@ async function dispatch(
 			`\`--org\` is not used with \`kody ${parsed.command}\`. Use it with login, logout, whoami, search, api, package, execute, or auth.`,
 		)
 	}
+	// Version checks must work without opening the user's keychain.
+	if (parsed.command === 'version') {
+		write(`${readPackageVersion()}\n`)
+		return 0
+	}
 	// Login/logout honor `--org` only — not KODY_ORG (that env is for one-shot
 	// org-scoped commands and must not bind browser login or change logout).
 	const orgFlagOnly =
@@ -469,9 +474,6 @@ async function dispatch(
 	switch (parsed.command) {
 		case 'help':
 			write(buildUsage({ mcpUrl }))
-			return 0
-		case 'version':
-			write(`${readPackageVersion()}\n`)
 			return 0
 		case 'context':
 		case 'chain':
