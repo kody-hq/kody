@@ -35,6 +35,7 @@ import {
 	chainIsFull,
 	chainPosition,
 	contextDisplayStatus,
+	daemonRunsAsLabel,
 	displayStatusLabel,
 	durationLabel,
 	grantSummaryDetail,
@@ -161,11 +162,47 @@ export function ExecutionContextDetail(props: {
 				</dd>
 				<dt>Exposes</dt>
 				<dd>{grantSummaryDetail(context.grantSummary)}</dd>
-				{context.client ? (
+				{context.client?.version ? (
 					<>
-						<dt>Client</dt>
-						<dd>
+						<dt>Daemon</dt>
+						<dd data-testid="context-daemon-version">
 							{context.client.name} {context.client.version}
+							{context.client.outdated && context.client.latestVersion ? (
+								<span css={outdatedCss} data-testid="context-daemon-outdated">
+									Outdated: {context.client.latestVersion} is out. Run{' '}
+									<code>kody update</code> on the machine
+								</span>
+							) : null}
+						</dd>
+						<dt>Runs as</dt>
+						<dd data-testid="context-daemon-service">
+							{daemonRunsAsLabel(context.capabilities?.service, context.status)}
+							{context.isOperator &&
+							!context.capabilities?.service &&
+							context.status !== 'revoked' ? (
+								<span css={hintCss}>
+									{context.capabilities?.os === 'win32' ? (
+										<>
+											Keep <code>kody daemon --context {context.id}</code>{' '}
+											running in a terminal. Background services are not
+											supported on Windows yet
+										</>
+									) : context.status === 'offline' ? (
+										<>
+											Run{' '}
+											<code>kody daemon install --context {context.id}</code> to
+											keep it running
+										</>
+									) : (
+										<>
+											To keep it running, wait for in-flight runs to finish,
+											stop the terminal daemon (Ctrl+C), then run:
+											<br />
+											<code>kody daemon install --context {context.id}</code>
+										</>
+									)}
+								</span>
+							) : null}
 						</dd>
 					</>
 				) : null}
@@ -1013,3 +1050,16 @@ function AuditLog(props: {
 		</section>
 	)
 }
+
+const outdatedCss = css({
+	display: 'block',
+	marginTop: spacing.xs,
+	color: colors.warningText,
+	fontWeight: 600,
+})
+
+const hintCss = css({
+	display: 'block',
+	marginTop: spacing.xs,
+	color: colors.textMuted,
+})

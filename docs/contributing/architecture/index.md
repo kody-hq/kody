@@ -127,7 +127,8 @@ wrote during that fetch) so the next cron can skip the synthetic.
   (`.agents/skills/visual-recap/SKILL.md`). It is not a living feature changelog
   and not derived from source — architecture docs and code remain the truth for
   behavior. Update the map only when adding, removing, or reshaping a primitive.
-  Classify PR paths with
+  Each primitive's `adrs` lists the decision records that shape it; keep it in
+  sync when a record is added or superseded. Classify PR paths with
   `node .agents/skills/visual-recap/scripts/classify-primitives.mjs`; validate
   with `npm run primitives:check`.
 - [Inbound webhooks](./webhooks.md): user-owned `POST /@:username/webhooks/...`

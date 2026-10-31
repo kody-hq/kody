@@ -1568,10 +1568,17 @@ on write unless a migration backfills existing rows.
   the credential's ciphertext, `config_json`, `allowed_hosts`, and
   `inject_json`, so an edit to any of them strands the session; deleting the
   credential deletes the row. `lease_id` / `lease_expires_at` are a 60-second D1
-  lease so one exchange runs at a time per credential across isolates. The
-  session is never code-readable and never in capability output, logs, errors,
-  or audit details. Account and org deletion delete rows by `user_id` (the
-  owning org); account export omits the table.
+  lease so one exchange runs at a time per credential across isolates.
+  `failure_revision`, `failure_kind`, `failure_count`, and `retry_after`
+  (`0216-login-credential-session-failures.sql`) record the last failed exchange
+  for one revision: callers fail fast until `retry_after` (backoff from 30
+  seconds to 15 minutes), `needs_reconnect` (the provider answered
+  `invalid_grant`) holds until a new revision, and `rejected` backs off the 401
+  retry after a fresh session was refused. A success clears an exchange failure;
+  a new revision ignores the old one. The session is never code-readable and
+  never in capability output, logs, errors, or audit details. Account and org
+  deletion delete rows by `user_id` (the owning org); account export omits the
+  table.
 - `credential_inventory_runs` and `credential_inventory_items`
   (`0112-credential-inventory.sql`,
   `packages/worker/src/credentials/credential-inventory.ts`) hold the admin

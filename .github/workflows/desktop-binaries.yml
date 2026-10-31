@@ -1,0 +1,104 @@
+name: Desktop binaries
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/desktop/**'
+      - 'packages/cli/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-binaries.yml'
+  pull_request:
+    paths:
+      - 'packages/desktop/**'
+      - 'packages/cli/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-binaries.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-binaries-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.platform }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: mac
+            arch: arm64
+            runner: macos-15
+          - platform: mac
+            arch: x64
+            runner: macos-15-intel
+          - platform: win
+            arch: x64
+            runner: windows-latest
+          - platform: win
+            arch: arm64
+            runner: windows-11-arm
+          - platform: linux
+            arch: x64
+            runner: ubuntu-24.04
+          - platform: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: '1'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      KODY_SKIP_SKILL_REFRESH: '1'
+      KODY_SKIP_GIT_HELPER_REFRESH: '1'
+      KODY_DESKTOP_ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+          architecture: ${{ matrix.arch }}
+          cache: npm
+      - name: Install Linux runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-0t64 libnss3 libxss1 libasound2t64 libgbm1 libsecret-1-0
+      - run: npm ci
+      - name: Build bundled CLI
+        run: npm run build --workspace @kodycodes/cli
+      - name: Validate desktop
+        run: npm run desktop:validate
+      - name: Build installers
+        run:
+          npm run dist --workspace @kodycodes/desktop -- --${{ matrix.platform
+          }} --${{ matrix.arch }}
+      - name: Verify packaged CLI and native bindings
+        run: npm run test:packaged-cli --workspace @kodycodes/desktop
+      - name: Upload binaries and checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: kody-${{ matrix.platform }}-${{ matrix.arch }}-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+          path: |
+            artifacts/desktop/*.dmg
+            artifacts/desktop/*.zip
+            artifacts/desktop/*.exe
+            artifacts/desktop/*.AppImage
+            artifacts/desktop/SHA256SUMS-*.txt
+            artifacts/desktop/build-info-*.json

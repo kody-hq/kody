@@ -21,6 +21,7 @@ import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { deleteSecret, saveSecret } from '#mcp/secrets/service.ts'
 import {
 	CredentialLoginFailedError,
+	CredentialLoginRetryLaterError,
 	CredentialNotFoundError,
 } from './credential-request.ts'
 import { clearLoginSessionsForTests } from './login-resolver.ts'
@@ -355,7 +356,7 @@ test('an off-host or plain HTTP request, or a bad exchange URL, never runs the e
 
 test('a failed exchange reports only its status and keeps no session', async () => {
 	const t = await setup()
-	stubLoginEndpoint((call) =>
+	const exchanges = stubLoginEndpoint((call) =>
 		call === 1
 			? Response.json({ error: `bad password ${password}` }, { status: 401 })
 			: Response.json({ data: { token: 'session-2' } }),
@@ -366,11 +367,23 @@ test('a failed exchange reports only its status and keeps no session', async () 
 	expect(failure).toBeInstanceOf(CredentialLoginFailedError)
 	expect(failure).toMatchObject({ status: 401 })
 	expect(String(failure.message)).not.toContain(password)
+	await expect(t.signIn({ actor, credentialId: id })).rejects.toBeInstanceOf(
+		CredentialLoginRetryLaterError,
+	)
+	expect(exchanges).toHaveLength(1)
+	// Once the cooldown passes, the exchange runs again.
+	await t.db
+		.prepare(`UPDATE login_credential_sessions SET retry_after = 0`)
+		.run()
 	await expect(t.signIn({ actor, credentialId: id })).resolves.toMatchObject({
 		placement: { value: 'Bearer session-2' },
 	})
 	const rows = await t.audits()
-	expect(rows.map((row) => row.result)).toEqual(['failure', 'success'])
+	expect(rows.map((row) => row.result)).toEqual([
+		'failure',
+		'failure',
+		'success',
+	])
 	expect(JSON.stringify(rows)).not.toContain(password)
 })
 
@@ -403,9 +416,9 @@ test('a token the endpoint reports as expired, or an oversized response, is neve
 		CredentialLoginFailedError,
 	)
 	await expect(t.signIn({ actor, credentialId: id })).rejects.toBeInstanceOf(
-		CredentialLoginFailedError,
+		CredentialLoginRetryLaterError,
 	)
-	expect(oversized).toHaveLength(2)
+	expect(oversized).toHaveLength(1)
 })
 
 test('a header format keeps a token with $ patterns as is', async () => {

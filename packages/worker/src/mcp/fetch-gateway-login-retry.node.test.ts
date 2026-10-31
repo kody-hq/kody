@@ -9,6 +9,11 @@ import {
 	mockPersonalOrgBindingRow,
 } from '#worker/test-support/org-binding-query.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
+import { toCredentialClientError } from '#worker/credentials/credential-client.ts'
+import {
+	CredentialLoginNeedsReconnectError,
+	CredentialLoginRetryLaterError,
+} from '#worker/credentials/credential-request.ts'
 
 // These cases cover fills the owner has opted in to; enforcement of the
 // opt-in itself is covered in fill-placement-enforcement.node.test.ts.
@@ -76,6 +81,23 @@ const props = {
 }
 
 const resolvePlacement = vi.hoisted(() => vi.fn())
+const recordRetried = vi.hoisted(() =>
+	vi.fn(
+		async (
+			_env: unknown,
+			_input: { sessionId: string; rejected: boolean },
+		) => {},
+	),
+)
+vi.mock(
+	'#worker/credentials/login-session-store.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<
+			typeof import('#worker/credentials/login-session-store.ts')
+		>()),
+		recordRetriedLoginSession: recordRetried,
+	}),
+)
 vi.mock('#mcp/credential-client-gateway.ts', async (importOriginal) => ({
 	...(await importOriginal<
 		typeof import('#mcp/credential-client-gateway.ts')
@@ -200,4 +222,87 @@ test('a refused retry (host or placement no longer allowed) surfaces the refusal
 		}),
 	).rejects.toThrow('Credential host not allowed.')
 	expect(seen).toHaveLength(1)
+})
+
+test('while the exchange cools down, the retry is skipped and the 401 is returned', async () => {
+	resolvePlacement.mockReset()
+	recordRetried.mockClear()
+	resolvePlacement
+		.mockResolvedValueOnce(loginPlacement('dummy-access-1', 'session-1'))
+		.mockRejectedValueOnce(
+			toCredentialClientError(new CredentialLoginRetryLaterError(30)),
+		)
+	const { seen, fetchStub } = upstream([401, 200])
+	const response = await executeGatewayFetch({
+		env,
+		props,
+		request: clientRequest(),
+		globalFetch: fetchStub as unknown as typeof fetch,
+	})
+	expect(response.status).toBe(401)
+	expect(seen).toHaveLength(1)
+	expect(recordRetried).not.toHaveBeenCalled()
+	expect(await response.text()).not.toContain('dummy-access-1')
+})
+
+test('a login that needs reconnecting rejects the retry with its code', async () => {
+	resolvePlacement.mockReset()
+	resolvePlacement
+		.mockResolvedValueOnce(loginPlacement('dummy-access-1', 'session-1'))
+		.mockRejectedValueOnce(
+			toCredentialClientError(new CredentialLoginNeedsReconnectError()),
+		)
+	const { seen, fetchStub } = upstream([401, 200])
+	await expect(
+		executeGatewayFetch({
+			env,
+			props,
+			request: clientRequest(),
+			globalFetch: fetchStub as unknown as typeof fetch,
+		}),
+	).rejects.toThrow('[login_needs_reconnect]')
+	expect(seen).toHaveLength(1)
+})
+
+test('the retried session records whether the host refused it again', async () => {
+	for (const [statuses, rejected] of [
+		[[401, 401], true],
+		[[401, 200], false],
+	] as const) {
+		resolvePlacement.mockReset()
+		recordRetried.mockClear()
+		resolvePlacement
+			.mockResolvedValueOnce(loginPlacement('dummy-access-1', 'session-1'))
+			.mockResolvedValueOnce(loginPlacement('dummy-access-2', 'session-2'))
+		const { fetchStub } = upstream([...statuses])
+		await executeGatewayFetch({
+			env,
+			props,
+			request: clientRequest(),
+			globalFetch: fetchStub as unknown as typeof fetch,
+		})
+		expect(recordRetried).toHaveBeenCalledTimes(1)
+		expect(recordRetried.mock.calls[0]?.[1]).toEqual({
+			sessionId: 'session-2',
+			rejected,
+		})
+	}
+})
+
+test('a failed backoff record never fails a completed retry', async () => {
+	resolvePlacement.mockReset()
+	recordRetried.mockClear()
+	recordRetried.mockRejectedValueOnce(new Error('D1 unavailable'))
+	resolvePlacement
+		.mockResolvedValueOnce(loginPlacement('dummy-access-1', 'session-1'))
+		.mockResolvedValueOnce(loginPlacement('dummy-access-2', 'session-2'))
+	const { fetchStub } = upstream([401, 200])
+	const response = await executeGatewayFetch({
+		env,
+		props,
+		request: clientRequest(),
+		globalFetch: fetchStub as unknown as typeof fetch,
+	})
+	expect(response.status).toBe(200)
+	expect(recordRetried).toHaveBeenCalledTimes(1)
 })

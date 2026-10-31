@@ -429,6 +429,94 @@ function isNonReferenceName(node: AstNode, parent: AstNode) {
 	return false
 }
 
+/**
+ * TypeScript nodes whose children can hold runtime expressions. Every other
+ * `TS*` node is a type (alias, interface, annotation, type arguments, `typeof`
+ * query, …) and is erased before the code runs.
+ */
+const runtimeTypeScriptNodeTypes = new Set([
+	'TSAsExpression',
+	'TSSatisfiesExpression',
+	'TSTypeAssertion',
+	'TSNonNullExpression',
+	'TSInstantiationExpression',
+	'TSEnumDeclaration',
+	'TSEnumBody',
+	'TSEnumMember',
+	'TSModuleDeclaration',
+	'TSModuleBlock',
+	'TSExportAssignment',
+	'TSImportEqualsDeclaration',
+	'TSParameterProperty',
+])
+
+/**
+ * A reference that is erased before the code runs: inside a type, under an
+ * ambient `declare`, or in a type-only export. Such a reference cannot hand
+ * the credential function to anything at run time.
+ */
+function isErasedTypePosition(ancestors: ReadonlyArray<AstNode>) {
+	for (const ancestor of ancestors) {
+		if (
+			ancestor.type.startsWith('TS') &&
+			!runtimeTypeScriptNodeTypes.has(ancestor.type)
+		) {
+			return true
+		}
+		if ((ancestor as { declare?: unknown }).declare === true) return true
+		if (
+			(ancestor.type === 'ExportNamedDeclaration' ||
+				ancestor.type === 'ExportSpecifier' ||
+				ancestor.type === 'TSImportEqualsDeclaration') &&
+			((ancestor as { exportKind?: unknown }).exportKind === 'type' ||
+				(ancestor as { importKind?: unknown }).importKind === 'type')
+		) {
+			return true
+		}
+	}
+	return false
+}
+
+/** `typeof credential` in a runtime expression reads a string, not the value. */
+function isRuntimeTypeofOperand(node: AstNode, parent: AstNode | undefined) {
+	return (
+		parent?.type === 'UnaryExpression' &&
+		parent.operator === 'typeof' &&
+		parent.argument === node
+	)
+}
+
+/**
+ * `import c = kody.credential` is a runtime alias, but its qualified name is a
+ * `TS*` node that {@link isErasedTypePosition} would otherwise skip.
+ */
+function isRuntimeImportEqualsOfRuntime(
+	node: AstNode,
+	bindings: CredentialBindings,
+) {
+	if (node.type !== 'TSImportEqualsDeclaration') return false
+	if ((node as { importKind?: unknown }).importKind === 'type') return false
+	let reference = node.moduleReference as AstNode | undefined
+	let firstMember: AstNode | undefined
+	while (reference?.type === 'TSQualifiedName') {
+		firstMember = reference.right as AstNode | undefined
+		reference = reference.left as AstNode | undefined
+	}
+	if (reference?.type !== 'Identifier' || firstMember == null) return false
+	const name = getNodeName(reference) ?? ''
+	if (bindings.functions.has(name)) return true
+	return (
+		bindings.runtimeObjects.has(name) &&
+		credentialFunctionNames.has(getNodeName(firstMember) ?? '')
+	)
+}
+
+function isVisitorCallOrTypeof(visitor: AstNode, parent: AstNode | undefined) {
+	return (
+		isCalledMember(visitor, parent) || isRuntimeTypeofOperand(visitor, parent)
+	)
+}
+
 type KeyScan = {
 	key: (key: string) => void
 	computed: () => void
@@ -443,6 +531,10 @@ function scanParsedCredentialKeys(
 ) {
 	const bindings = collectCredentialBindings(parsed.program?.body ?? [])
 	walkAst(parsed, (node, ancestors) => {
+		if (isRuntimeImportEqualsOfRuntime(node, bindings)) {
+			scan.indirect()
+			return
+		}
 		if (
 			node.type === 'CallExpression' ||
 			node.type === 'OptionalCallExpression'
@@ -486,6 +578,12 @@ function scanParsedCredentialKeys(
 			isCredentialFunctionValue(node, bindings)
 		) {
 			const parent = ancestors.at(-1)
+			if (
+				isRuntimeTypeofOperand(node, parent) ||
+				isErasedTypePosition(ancestors)
+			) {
+				return
+			}
 			const called =
 				parent &&
 				(parent.type === 'CallExpression' ||
@@ -501,7 +599,7 @@ function scanParsedCredentialKeys(
 				parent != null &&
 				parent.object === node &&
 				isCredentialVisitorMember(parent, bindings) &&
-				isCalledMember(parent, ancestors.at(-2))
+				isVisitorCallOrTypeof(parent, ancestors.at(-2))
 			if (!called && !namedAccess && !visitorCall) scan.indirect()
 			return
 		}
@@ -510,7 +608,14 @@ function scanParsedCredentialKeys(
 				node.type === 'OptionalMemberExpression') &&
 			isCredentialVisitorMember(node, bindings)
 		) {
-			if (!isCalledMember(node, ancestors.at(-1))) scan.indirect()
+			const parent = ancestors.at(-1)
+			if (
+				!isCalledMember(node, parent) &&
+				!isRuntimeTypeofOperand(node, parent) &&
+				!isErasedTypePosition(ancestors)
+			) {
+				scan.indirect()
+			}
 			return
 		}
 		if (node.type !== 'Identifier') return
@@ -518,6 +623,8 @@ function scanParsedCredentialKeys(
 		const parent = ancestors.at(-1)
 		if (!parent || parent.type.startsWith('Import')) return
 		if (isNonReferenceName(node, parent)) return
+		if (isRuntimeTypeofOperand(node, parent)) return
+		if (isErasedTypePosition(ancestors)) return
 		const isCallee =
 			(parent.type === 'CallExpression' ||
 				parent.type === 'OptionalCallExpression') &&
@@ -534,7 +641,7 @@ function scanParsedCredentialKeys(
 		const isVisitorCall =
 			isCredentialVisitorMember(parent, bindings) &&
 			parent.object === node &&
-			isCalledMember(parent, ancestors.at(-2))
+			isVisitorCallOrTypeof(parent, ancestors.at(-2))
 		if (!isCallee && !isVisitorCall) scan.indirect()
 	})
 }
@@ -1651,7 +1758,7 @@ export function scanCredentialStamp(
 				failures.push({
 					code: 'non_literal',
 					path,
-					message: `${path}: passes credential/credentials around instead of calling it with a literal key. Call credential("SLOT"), credentials("SLOT"), or credential.visitor("SLOT") directly. ${credentialStampConversionFixGuidance}`,
+					message: `${path}: passes credential/credentials around instead of calling it with a literal key. Call credential("SLOT"), credentials("SLOT"), or credential.visitor("SLOT") directly. Type-only uses are fine: for a client type, import type { KodyCredentialClient } from "kody:runtime" (or write typeof credential inside a type). ${credentialStampConversionFixGuidance}`,
 				})
 			},
 		}

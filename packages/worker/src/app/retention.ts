@@ -4,6 +4,7 @@
  * Published-bundle retention must treat soft-deleted entity_sources as still
  * present so restore-window artifacts are not pruned before hard purge.
  */
+import { purgeProfiles } from '#worker/profiles/store.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { accountRetentionDispositions } from '#app/account-retention-dispositions.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
@@ -160,6 +161,8 @@ export type RetentionPruneResult = {
 	auditEvents: number
 	stripeWebhookEvents: number
 	agentPackageConversationUses: number
+	/** Revoked or expired profiles past their purge window, plus their grants. */
+	profiles: number
 	batchesPerTable: Record<string, number>
 	timeBudgetExhausted: boolean
 }
@@ -594,6 +597,7 @@ export async function pruneRetention(input: {
 		auditEvents: 0,
 		stripeWebhookEvents: 0,
 		agentPackageConversationUses: 0,
+		profiles: 0,
 		batchesPerTable: {},
 		timeBudgetExhausted: false,
 	}
@@ -682,6 +686,15 @@ export async function pruneRetention(input: {
 				result.agentPackageConversationUses += count
 			},
 		),
+		{
+			table: 'profiles',
+			done: false,
+			run: async () => {
+				const purged = await purgeProfiles(db, { now })
+				result.profiles += purged.profiles
+				return false
+			},
+		},
 	]
 	// Round-robin passes: every pending table gets one batch before any table
 	// gets a second one, so a hot table cannot starve the others. The first

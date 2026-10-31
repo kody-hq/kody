@@ -12,6 +12,7 @@ import type * as Artifacts from './artifacts.ts'
 import type * as Checks from './checks.ts'
 import type * as EntitySources from './entity-sources.ts'
 import type * as ExternalPublishClone from './external-publish-clone.ts'
+import type * as PublishGitNotes from './publish-git-notes.ts'
 import type * as RepoSessions from './repo-sessions.ts'
 import type * as PublishedRuntimeArtifacts from '#worker/package-runtime/published-runtime-artifacts.ts'
 import type * as PublishedBundleArtifactsModule from '#worker/package-runtime/published-bundle-artifacts.ts'
@@ -128,10 +129,27 @@ vi.mock('./isomorphic-git-lazy.ts', () => ({
 			commit: (...args: Parameters<typeof git.commit>) =>
 				mockModule.rawCommit(...args),
 			readBlob: mockModule.readBlob,
+			pull: (...args: Parameters<typeof git.pull>) =>
+				mockModule.rawPull(...args),
+			resolveRef: (...args: Parameters<typeof git.resolveRef>) =>
+				mockModule.rawResolveRef(...args),
+			writeRef: (...args: Parameters<typeof git.writeRef>) =>
+				mockModule.rawWriteRef(...args),
 		},
 		http: {},
 		createGit: () => mockModule.git,
 	}),
+}))
+
+const publishNotes = vi.hoisted(() => ({
+	attach: vi.fn(async () => undefined),
+	read: vi.fn(),
+}))
+
+vi.mock('./publish-git-notes.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof PublishGitNotes>()),
+	attachPublishGitNoteBestEffort: publishNotes.attach,
+	readPublishGitNoteFromArtifactsRepo: publishNotes.read,
 }))
 
 vi.mock('./repo-sessions.ts', () => ({
@@ -610,6 +628,94 @@ test('a publish step over the CPU limit names the compute limit, and the retry s
 	expectStagingCleared(kv)
 })
 
+test.each([
+	{ retry: 'plain', retryInput: {}, noteFound: false },
+	{ retry: 'plain (note already attached)', retryInput: {}, noteFound: true },
+	{
+		retry: 'forced',
+		retryInput: { force: true, destructiveOverwriteConfirmed: true },
+		noteFound: false,
+	},
+])(
+	'a reset after published_commit moved leaves the publish unsealed, and a $retry retry at base == head finishes it',
+	async ({ retryInput, noteFound }) => {
+		consoleWarn.mockImplementation(() => {})
+		setCommonSessionFixtures()
+		const files = largePackageFiles()
+		seedSessionWorkspace(files)
+		recordHeavyMocks()
+		const state = await checkedPublishState(files)
+		const { env, kv, isolateRuns } = createIsolateEnv({
+			failOnce: {
+				op: 'refresh-projection',
+				error: new Error('Durable Object reset because its code was updated.'),
+			},
+		})
+		// The pointer write is durable; the reset kills the revert with it.
+		const liveSource = await mockModule.getEntitySourceById()
+		mockModule.updateEntitySource.mockImplementation(async (_db, update) => {
+			if (update.publishedCommit === 'commit-base') throw new Error('reset')
+			mockModule.getEntitySourceById.mockResolvedValue({
+				...liveSource,
+				published_commit: update.publishedCommit,
+			})
+			return undefined
+		})
+		const sealKeys = () =>
+			[...kv.store.keys()].filter((key) => key.startsWith('publish-checks:'))
+
+		await expect(
+			repoSession(env, state).publishSession(session),
+		).rejects.toThrow()
+		expect(await mockModule.getEntitySourceById()).toMatchObject({
+			published_commit: 'commit-head',
+		})
+		expect(sealKeys()).toEqual([])
+
+		// Session base is still the old tip while the live tip is its HEAD: the
+		// retry must finish the publish rather than report base_moved or no-op.
+		isolateRuns.length = 0
+		mockModule.rawCommit.mockClear()
+		publishNotes.attach.mockClear()
+		publishNotes.read.mockResolvedValue({ found: noteFound })
+		// The live commit was a plain (parented) publish, so even a forced retry
+		// must leave other sessions' advertised branches alone.
+		const baselineLog = mockModule.git.log.getMockImplementation()
+		mockModule.git.log.mockImplementation(async () => [
+			{ oid: 'commit-head', parent: ['commit-base'] },
+		])
+		mockModule.listArtifactServerRefs.mockClear()
+		// A forced publish first proves a restorable snapshot of the live tip.
+		mockModule.loadPublishedSourceSnapshot.mockResolvedValue({
+			files,
+		} as never)
+		await expect(
+			repoSession(env, state).publishSession({ ...session, ...retryInput }),
+		).resolves.toMatchObject({ status: 'ok', publishedCommit: 'commit-head' })
+		// A forced retry must not mint a new parentless commit over the live one.
+		expect(mockModule.rawCommit).not.toHaveBeenCalled()
+		expect(mockModule.listArtifactServerRefs).not.toHaveBeenCalledWith(
+			expect.objectContaining({ prefix: 'refs/heads/sessions/' }),
+		)
+		mockModule.git.log.mockImplementation(baselineLog!)
+		// The note is owed only when the interrupted run never attached one.
+		if (noteFound) expect(publishNotes.attach).not.toHaveBeenCalled()
+		else
+			expect(publishNotes.attach).toHaveBeenCalledWith(
+				expect.objectContaining({ commitOid: 'commit-head' }),
+			)
+		expect(isolateRuns.map((run) => run.op)).toContain('refresh-projection')
+		expect(sealKeys()).toEqual([expect.stringContaining(':commit-head')])
+		expect(mockModule.updateRepoSession).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({
+				status: 'published',
+				baseCommit: 'commit-head',
+			}),
+		)
+	},
+)
+
 test('repoRunChecks runs the publish checks on a throwaway isolate over the staged session tree', async () => {
 	setCommonSessionFixtures()
 	const files = largePackageFiles()
@@ -715,4 +821,95 @@ test('packagePublishExternalPush clones, checks, and finalizes a large package o
 	expect(isolateRuns.map((run) => run.op)).toEqual(['clone', 'checks'])
 	expectAllHeavyWorkInIsolates(['clone', 'checks'])
 	expectStagingCleared(kv)
+})
+
+test('a publish whose HEAD left the session branch reattaches it before pushing, and last_publish records the result', async () => {
+	consoleWarn.mockImplementation(() => {})
+	setCommonSessionFixtures()
+	const files = largePackageFiles()
+	seedSessionWorkspace(files)
+	recordHeavyMocks()
+	const state = await checkedPublishState(files)
+	const { env } = createIsolateEnv()
+	// An older repoRebaseSession pulled with `ref: main`, leaving HEAD on the
+	// local source branch; the session branch tip is stale.
+	mockModule.gitState.currentBranch = 'main'
+
+	const repo = repoSession(env, state)
+	await expect(repo.publishSession(session)).resolves.toMatchObject({
+		status: 'ok',
+		publishedCommit: 'commit-head',
+	})
+	expect(mockModule.rawWriteRef).toHaveBeenCalledWith(
+		expect.objectContaining({
+			ref: 'refs/heads/sessions/session1',
+			value: 'commit-head',
+			force: true,
+		}),
+	)
+	expect(mockModule.rawWriteRef).toHaveBeenCalledWith(
+		expect.objectContaining({
+			ref: 'HEAD',
+			value: 'refs/heads/sessions/session1',
+			symbolic: true,
+		}),
+	)
+	const branchWrite = mockModule.rawWriteRef.mock.invocationCallOrder[0]!
+	expect(branchWrite).toBeLessThan(
+		mockModule.rawPush.mock.invocationCallOrder[0]!,
+	)
+	expect((await repo.getSessionInfo(session)).last_publish).toMatchObject({
+		state: 'published',
+		published_commit: 'commit-head',
+		result_status: 'ok',
+		error_name: null,
+	})
+})
+
+test('a push the remote never confirms publishes nothing, reports failed in last_publish, and a reset mid-publish reads as interrupted', async () => {
+	consoleWarn.mockImplementation(() => {})
+	setCommonSessionFixtures()
+	const files = largePackageFiles()
+	seedSessionWorkspace(files)
+	recordHeavyMocks()
+	const state = await checkedPublishState(files)
+	const { env } = createIsolateEnv()
+	// The push "succeeds" but the source branch stays at the old tip.
+	mockModule.rawPush.mockImplementation(async () => ({
+		ok: true,
+		error: null,
+		refs: {},
+	}))
+	mockModule.listArtifactServerRefs.mockResolvedValue([
+		{ ref: 'refs/heads/main', oid: 'commit-base' },
+	])
+
+	const repo = repoSession(env, state)
+	await expect(repo.publishSession(session)).rejects.toMatchObject({
+		name: 'RemoteRefNotConfirmedError',
+	})
+	expect(mockModule.updateEntitySource).not.toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ publishedCommit: 'commit-head' }),
+	)
+	expect((await repo.getSessionInfo(session)).last_publish).toMatchObject({
+		state: 'failed',
+		published_commit: null,
+		error_name: 'RemoteRefNotConfirmedError',
+		error_message: expect.stringContaining('Nothing was published'),
+	})
+
+	// A `running` record left by an instance that was reset mid-publish.
+	await state.storage.put('repo-session:last-publish', {
+		state: 'running',
+		started_at: '2026-10-30T23:16:33.000Z',
+		finished_at: null,
+		published_commit: null,
+		result_status: null,
+		error_name: null,
+		error_message: null,
+	})
+	expect(
+		(await repoSession(env, state).getSessionInfo(session)).last_publish,
+	).toMatchObject({ state: 'interrupted' })
 })

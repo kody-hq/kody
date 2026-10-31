@@ -46,6 +46,8 @@ style, tests, MCP capabilities, and runtime architecture.
 - PR system recaps (visual plan/recap blocks in PR descriptions):
   [visual-recap skill](../../.agents/skills/visual-recap/SKILL.md)
 
+- [Desktop Electron shell](../../packages/desktop/README.md)
+
 ## Code and tooling
 
 - [Code style](./code-style.md), [TypeScript setup](./typescript-setup.md)

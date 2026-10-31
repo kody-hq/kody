@@ -98,6 +98,9 @@ import {
 	withoutCodePlacement,
 } from './credential-client-gateway.ts'
 import { createMissingIntegrationAccessTokenMessage } from '#worker/integrations/credentials.ts'
+import { CredentialClientError } from '#worker/credentials/credential-client.ts'
+import { CredentialLoginRetryLaterError } from '#worker/credentials/credential-request.ts'
+import { recordRetriedLoginSession } from '#worker/credentials/login-session-store.ts'
 import { IntegrationHostNotAllowedError } from './execute-modules/integration-host-allowlist.ts'
 import { type StorageContext } from '#mcp/storage.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
@@ -455,24 +458,45 @@ async function fetchThroughGateway(
 				credentialClientToken !== null &&
 				input.request.body === null
 			) {
-				await upstream.body?.cancel()
+				// While the login's exchange cools down after a recent failure or
+				// a repeated 401, the host's 401 is returned instead.
 				const retried = await resolveCredentialClientPlacement({
 					env: input.env,
 					props: input.props,
 					token: credentialClientToken,
 					request: input.request,
 					rejectedLoginSessionId: credentialClient.login.sessionId,
+				}).catch((error: unknown) => {
+					if (isLoginRetryLater(error)) return null
+					throw error
 				})
-				substitutedValues = [...substitutedValues, ...retried.substitutedValues]
-				credentialClient = retried
-				transformed = applyCredentialClientPlacement(
-					expanded.request,
-					retried.placement,
-					codeRequest,
-				)
-				upstream = await globalFetch(
-					new Request(transformed, { signal: deadline.signal }),
-				)
+				if (retried) {
+					await upstream.body?.cancel()
+					substitutedValues = [
+						...substitutedValues,
+						...retried.substitutedValues,
+					]
+					credentialClient = retried
+					transformed = applyCredentialClientPlacement(
+						expanded.request,
+						retried.placement,
+						codeRequest,
+					)
+					upstream = await globalFetch(
+						new Request(transformed, { signal: deadline.signal }),
+					)
+					const retriedSessionId = retried.login?.sessionId
+					if (retriedSessionId) {
+						try {
+							await recordRetriedLoginSession(input.env, {
+								sessionId: retriedSessionId,
+								rejected: upstream.status === 401,
+							})
+						} catch {
+							// Backoff bookkeeping only; never fail a completed retry.
+						}
+					}
+				}
 			}
 			// Credential-bearing requests stay on redirect=manual (fail closed).
 			// Ordinary bodies that used manual only so mid-stream fills could be
@@ -1853,4 +1877,12 @@ function buildBasicAuthHeader(input: { username: string; password: string }) {
 		`${input.username}:${input.password}`,
 	)
 	return `Basic ${bytesToBase64(credentials)}`
+}
+
+function isLoginRetryLater(error: unknown) {
+	return (
+		error instanceof CredentialLoginRetryLaterError ||
+		(error instanceof CredentialClientError &&
+			error.body.code === 'login_retry_later')
+	)
 }

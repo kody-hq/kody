@@ -12,9 +12,9 @@ audience: agents
 # Execution contexts
 
 An execution context is a machine you run code on: your laptop, a home server,
-or a build box. Run `kody daemon` there and `execute`, jobs, webhooks, and other
-automations can run on that machine instead of Kody cloud. Kody cloud is always
-there as the fallback.
+or a build box. Run `kody connect` there and `execute`, jobs, webhooks, and
+other automations can run on that machine instead of Kody cloud. Kody cloud is
+always there as the fallback.
 
 Use one when code needs something only a machine has: a folder on disk, a device
 on your local network, or a tool installed there.
@@ -49,11 +49,16 @@ credential.
    kody login
    ```
 
-3. Register the machine and give it a name:
+3. Register the machine, give it a name, and install the daemon as a background
+   service so it keeps running after reboots and crashes:
 
    ```sh
-   kody context register --name my-laptop
+   kody connect --name my-laptop
    ```
+
+   `kody connect` is `kody context register` plus `kody daemon install`. Pass
+   `--no-install` to skip the service and run `kody daemon` in a terminal
+   instead, or `--yes` to accept the defaults without prompts.
 
 4. Optional: allow folders runs may use (read-only unless you pass `rw`):
 
@@ -61,13 +66,7 @@ credential.
    kody context policy allow ~/projects --mode rw
    ```
 
-5. Start the daemon and leave it running:
-
-   ```sh
-   kody daemon
-   ```
-
-6. Add it to your chain so runs go there first:
+5. Add it to your chain so runs go there first:
 
    ```sh
    kody chain add my-laptop
@@ -76,6 +75,44 @@ credential.
 The machine shows up under **Execution contexts** in your workspace
 (`/@<you>/-/execution-contexts`), where you can see its status, its runs, and
 the chain.
+
+## Keep it running: the background service
+
+`kody daemon install` (run by `kody connect`) installs a per-user service for
+the context, so the daemon starts at login or boot and restarts after a crash:
+
+- **Linux:** a `systemd --user` unit. To keep it running while you are logged
+  out, and to start it at boot before you log in, enable linger once:
+  `sudo loginctl enable-linger "$(id -un)"`. Kody prints that command instead of
+  running it.
+- **macOS:** a per-user LaunchAgent, so it runs while you are logged in.
+- **Windows:** not supported yet. Keep `kody daemon` running in a terminal.
+
+| Command                                        | What it does                                         |
+| ---------------------------------------------- | ---------------------------------------------------- |
+| `kody daemon status` (`--json`)                | Names each problem with the command that fixes it    |
+| `kody daemon logs` (`--lines <n>`, `--follow`) | Shows the daemon log                                 |
+| `kody daemon restart`                          | Restarts after runs in flight finish                 |
+| `kody daemon install`                          | Installs the service, or repairs it                  |
+| `kody daemon uninstall` (`--unregister`)       | Removes the service and offers to revoke the context |
+| `kody update`                                  | Installs the latest CLI and moves services onto it   |
+
+Install the CLI globally (`npm install -g @kodycodes/cli`). The service refuses
+to run from `npx`, `pnpm dlx`, or `bunx`, because those copies are deleted.
+
+The service never runs as root and holds no API token or passphrase: it signs in
+with the machine key. A background service cannot answer a passphrase prompt, so
+when the key needs one, or Linux has no unlocked keyring, install offers a file
+key instead: a random key stored next to the encrypted machine key, readable
+only by you (`--key-storage file`).
+
+The context page shows the daemon's CLI version, flags it when a newer
+`@kodycodes/cli` is out (run `kody update` on the machine), and says whether it
+runs as a background service or in a terminal.
+
+Revoking a context stops its daemon for good: it does not reconnect, and the
+service disables itself instead of restarting. Remove the leftover service with
+`kody daemon uninstall`.
 
 ## The chain and cloud fallback
 

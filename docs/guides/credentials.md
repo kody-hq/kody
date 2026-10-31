@@ -54,8 +54,13 @@ Every credential has:
 
 - **name**: yours to choose, such as `work` or `personal`. Callers pick a
   credential by name.
-- **scope**: `org` (shared with the org under its Use grants) or `personal`
-  (yours, granted to an org one org at a time).
+- **scope**: who owns it, seen from the run's org. `org` means the run's org
+  owns it: every Key, login, OAuth connection, or MCP server stored in that org
+  reads `org`, including a credential saved with `secretSet({ scope: 'user' })`
+  and a Key bound to the package. `personal` means it is the caller's own
+  personal credential, stored in their personal org and granted to this org one
+  org at a time. In your personal org, your own credentials read `org`. See
+  [Scope in code](#scope-in-code).
 - **provider**: an optional slug such as `github`. Package needs match on it.
 - **hosts**: the only hosts the value may be sent to, over HTTPS. Hosts live on
   the credential, never in a package manifest, so publishing or forking a
@@ -198,6 +203,56 @@ the credential only travels to its own hosts. A 401 or 403 response carries an
 
 `credentials(key)` returns an array of clients for a need declared with
 `multiple: true`.
+
+The client's type is `KodyCredentialClient`, exported from `kody:runtime`
+(`import type { KodyCredentialClient } from 'kody:runtime'`). Use it to type a
+helper that takes a client, and call `credential('key')` with a literal key
+where the client is opened (the same goes for `credential.visitor('key')`):
+publish refuses code that passes `credential`, `credentials`, or
+`credential.visitor` itself around at run time, but type-only uses such as
+`typeof credential` are fine
+([stamp rule](../use/packages.md#declare-what-a-stamped-package-may-use)).
+
+### Scope in code
+
+`client.scope` uses the same two values as `credentialList` and call maps: `org`
+or `personal`, relative to the run's org. `secretSet` and `secretList` use a
+different word, the storage scope (`user`, `package`, or `session`), which says
+where a Key is stored, not whose it is. A `user`-scope Key is an owner-level Key
+of the org it was saved in, not a personal credential.
+
+| Credential                                                                   | `secretList` scope            | `client.scope`                 |
+| ---------------------------------------------------------------------------- | ----------------------------- | ------------------------------ |
+| Key saved with `secretSet({ scope: 'user' })` in the run's org               | `user`                        | `org`                          |
+| Key saved with `secretSet({ scope: 'package' })` for the running package     | `package`                     | `org`                          |
+| OAuth connection or MCP server in the run's org                              | not listed                    | `org`                          |
+| Your `user`-scope Key in your personal org, run in your personal org         | `user`                        | `org`                          |
+| Your `user`-scope Key in your personal org, granted to and run in a team org | `user` (in your personal org) | `personal`                     |
+| Key saved with `secretSet({ scope: 'session' })`                             | `session`                     | never opened by `credential()` |
+
+Most package code should not branch on `scope`. Kody already picked the
+credential and checked that the run may use it, and both scopes fetch the same
+way. Use it for labels, logs, or results that say whose account was used:
+
+```ts
+import { credential } from 'kody:runtime'
+
+export default async function checkPortal() {
+	const login = await credential('portal')
+	// Do not refuse a login because scope is 'org': a credential saved with
+	// secretSet({ scope: 'user' }) in the run's org reads 'org'.
+	const response = await login.fetch('/api/me')
+	return {
+		account: login.scope === 'personal' ? `${login.name} (yours)` : login.name,
+		ok: response.ok,
+	}
+}
+```
+
+To require one specific credential, declare the need with a `provider` and
+`kind`, and let the caller map it by `{ name, scope }` (see
+[Picking a credential](#picking-a-credential)) instead of checking `scope` in
+code.
 
 ### Declare needs in `kody.credentials`
 
@@ -490,6 +545,30 @@ Kody drops the session, runs the exchange once more, and retries the request
 once (with the same host and placement checks). A request with a body is
 returned as is.
 
+When the exchange fails, Kody records the failure for the credential's current
+revision and does not run the exchange again until a cooldown passes, so apps
+and jobs sharing one credential never hammer the provider's token endpoint. The
+caller that ran the exchange gets `login_failed`, and so does any caller in the
+same isolate that was sharing that pending exchange. Callers that arrive during
+the recorded cooldown, in any isolate (including ones that were waiting on the
+exchange's lease), fail fast with `login_retry_later` without contacting the
+provider. Both carry `retryAfterSeconds`: wait that long, then retry. The
+cooldown is 30 seconds after the first failure and doubles for each failure in a
+row, up to 15 minutes (or longer when the provider's `Retry-After` asks for it,
+up to an hour). Network errors, timeouts, 5xx, and 429 recover on their own:
+after the cooldown the next request runs the exchange again, and a success
+clears the failure. While a cooldown is running, the 401 retry is skipped and
+the host's 401 is returned; a freshly exchanged session that the host refuses
+again also backs off the next 401 retry the same way.
+
+When the token endpoint answers `invalid_grant` (the refresh token was revoked
+or is invalid), retrying cannot help: requests fail with
+`login_needs_reconnect`, the credential shows **Needs attention** in the
+credentials list, and Kody stops running the exchange. The owner reconnects it
+by saving a new value (for example a new refresh token, on the website or with
+`secretSet`). Saving a new value, or editing the exchange, hosts, or inject,
+starts a new revision with no failure state.
+
 A refresh token that a token request in an execute run returned sealed
 (`kody-sealed.…`) can become a login credential without code reading it: pass it
 as `sealed_token` together with `login_exchange`, as in
@@ -653,6 +732,9 @@ Every credential error is structured: it has a `code`, a message, and
 | `credential_need_undeclared` | A package someone else runs uses a credential it does not declare in `kody.credentials` |
 | `credential_denied`          | Authorization failed                                                                    |
 | `credential_rate_limited`    | An app's visitors used an owner's credential too often; try again shortly               |
+| `login_failed`               | A login's exchange failed; `retryAfterSeconds` says when Kody runs it again             |
+| `login_retry_later`          | A login's exchange failed recently and is cooling down; retry after `retryAfterSeconds` |
+| `login_needs_reconnect`      | The provider rejected the login's refresh token; the owner saves a new value            |
 | `host_not_allowed`           | The request's host is not one of the credential's hosts                                 |
 | `insecure_transport`         | The request is not HTTPS                                                                |
 

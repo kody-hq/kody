@@ -65,6 +65,10 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 				expires_at INTEGER,
 				lease_id TEXT,
 				lease_expires_at INTEGER,
+				failure_revision TEXT,
+				failure_kind TEXT,
+				failure_count INTEGER,
+				retry_after INTEGER,
 				updated_at TEXT NOT NULL
 			)`,
 		)

@@ -39,6 +39,11 @@ When a later record changes a decision, mark the old one `superseded by NNNN`
 rather than editing or deleting it, and list it under
 [Historical / UI / implementation](#historical--ui--implementation).
 
+Keep the [primitives map](../architecture/primitives.yaml) `adrs` lists in sync
+in the same PR: add a new record to every primitive it defines or materially
+shapes, and replace a superseded record's path with the new one.
+`npm run primitives:check` fails on missing or superseded paths.
+
 Add new steering records to the steering list, not a catch-all numbered dump.
 
 ## Steering list
@@ -258,6 +263,9 @@ Open these before proposing a new primitive, surface, or storage home.
   `POST /agent/identity` takes `service_auth` only; the claim mints a user-owned
   `kody_at_` (default `long`, amends 0056); no identity assertion or JWT-bearer
   refresh; anonymous stays behind a flag that is off
+- [0092: Profiles are scoped agent identities, capped by their parent chain](./0092-profiles-are-scoped-agent-identities.md)
+  Person-owned profiles with snapshot grants, capped at run time by the acting
+  person and every parent; no epoch bump; behind the `profiles` flag
 
 ## Historical / UI / implementation
 

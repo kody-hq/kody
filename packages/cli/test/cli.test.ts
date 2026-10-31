@@ -18,7 +18,6 @@ import {
 	resolveCommand,
 	resolveLocalExecuteBearer,
 	runCli,
-	shouldUseApiToken,
 } from '../src/cli.js'
 import { OpenApiError, clearOpenApiRouteCache } from '../src/open-api-client.js'
 import { isPairedApiUrl } from '../src/api-token.js'
@@ -540,85 +539,6 @@ test('resolveLocalExecuteBearer fails clearly when neither login nor token is av
 				},
 			}),
 		/execute --local: not authenticated[\s\S]*cliCredentialBootstrap[\s\S]*cli_command[\s\S]*never ask a human to paste a token[\s\S]*kody login[\s\S]*tokenCreate/,
-	)
-})
-
-test('shouldUseApiToken prefers explicit --token and env token when not logged in', () => {
-	const noStoredToken = () => null
-	assert.equal(
-		shouldUseApiToken({
-			tokenValues: { token: 'flag' },
-			mcpUrl: 'https://kody.codes/mcp',
-			allowEnvWithoutLogin: true,
-			env: {},
-			hasSession: true,
-			loadApiToken: noStoredToken,
-		}),
-		true,
-	)
-	assert.equal(
-		shouldUseApiToken({
-			tokenValues: {},
-			mcpUrl: 'https://kody.codes/mcp',
-			allowEnvWithoutLogin: true,
-			env: { KODY_API_TOKEN: 'env-tok' },
-			hasSession: false,
-			loadApiToken: noStoredToken,
-		}),
-		true,
-	)
-	assert.equal(
-		shouldUseApiToken({
-			tokenValues: {},
-			mcpUrl: 'https://kody.codes/mcp',
-			allowEnvWithoutLogin: true,
-			env: { KODY_API_TOKEN: 'env-tok' },
-			hasSession: true,
-			loadApiToken: noStoredToken,
-		}),
-		false,
-	)
-	assert.equal(
-		shouldUseApiToken({
-			tokenValues: {},
-			mcpUrl: 'https://kody.codes/mcp',
-			allowEnvWithoutLogin: true,
-			env: {},
-			hasSession: false,
-			loadApiToken: noStoredToken,
-		}),
-		false,
-	)
-})
-
-test('shouldUseApiToken treats stored bootstrap token like env when not logged in', () => {
-	const stored: StoredApiToken = {
-		version: 1,
-		apiUrl: 'https://api.kody.codes',
-		token: 'kody_at_stored',
-		tokenId: 'tok_stored',
-	}
-	assert.equal(
-		shouldUseApiToken({
-			tokenValues: {},
-			mcpUrl: 'https://kody.codes/mcp',
-			allowEnvWithoutLogin: true,
-			env: {},
-			hasSession: false,
-			loadApiToken: () => stored,
-		}),
-		true,
-	)
-	assert.equal(
-		shouldUseApiToken({
-			tokenValues: {},
-			mcpUrl: 'https://kody.codes/mcp',
-			allowEnvWithoutLogin: true,
-			env: {},
-			hasSession: true,
-			loadApiToken: () => stored,
-		}),
-		false,
 	)
 })
 

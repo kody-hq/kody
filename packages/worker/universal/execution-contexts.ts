@@ -85,11 +85,19 @@ export type ExecutionContextListItem = {
 	acceptingRuns: boolean
 	lastSeenAt: string | null
 	revokedAt: string | null
-	client: { name: string; version: string } | null
+	client: {
+		name: string
+		version: string
+		/** Newest published @kodycodes/cli, when Kody could look it up. */
+		latestVersion?: string | null
+		outdated?: boolean
+	} | null
 	capabilities: {
 		os?: string
 		maxConcurrent?: number
 		features?: Array<string>
+		/** Background service manager, or null when run in a terminal. */
+		service?: 'systemd' | 'launchd' | null
 	} | null
 	grantSummary: ExecutionContextGrantSummary
 	optedIn: boolean
@@ -179,6 +187,34 @@ type ExecutionContextAuditEvent = {
 export type ExecutionContextAuditPage = {
 	events: Array<ExecutionContextAuditEvent>
 	nextCursor: string | null
+}
+
+/** Numeric x.y.z compare; a prerelease sorts before its stable release. Build tags are ignored. */
+export function isOlderCliVersion(version: string, latest: string) {
+	const parts = (value: string) =>
+		value
+			.split(/[-+]/)[0]!
+			.split('.')
+			.map((part) => Number.parseInt(part, 10) || 0)
+	const a = parts(version)
+	const b = parts(latest)
+	for (let index = 0; index < 3; index++) {
+		const left = a[index] ?? 0
+		const right = b[index] ?? 0
+		if (left !== right) return left < right
+	}
+	const prerelease = (value: string) => value.split('+')[0]!.includes('-')
+	return prerelease(version) && !prerelease(latest)
+}
+
+export function daemonRunsAsLabel(
+	service: 'systemd' | 'launchd' | null | undefined,
+	status: ExecutionContextStatus,
+) {
+	if (service === 'systemd') return 'Background service (systemd)'
+	if (service === 'launchd') return 'Background service (launchd)'
+	if (status !== 'online') return 'Not running'
+	return 'Terminal (not a background service)'
 }
 
 export type ExecutionContextsPageData =

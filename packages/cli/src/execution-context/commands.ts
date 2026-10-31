@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, unwatchFile, watchFile } from 'node:fs'
+import { readFileSync, rmSync, unwatchFile, watchFile } from 'node:fs'
 import { cpus, platform, totalmem } from 'node:os'
 import {
 	ed25519JwkThumbprint,
@@ -25,18 +25,38 @@ import {
 } from './fs-access.js'
 import {
 	contextWorkersDir,
-	contextsDir,
 	loadContext,
+	fileWrappingKey,
 	resolveWrappingKey,
 	saveContext,
+	wrappingKeyForStoredContext,
 } from './keystore.js'
+import {
+	type ServiceCommandEnv,
+	localContextId,
+	offerInstall,
+	offerUninstallAfterRevoke,
+	runDaemonServiceCommand,
+	runUpdate,
+	storedContextIds,
+	terminalConfirm,
+} from './service-commands.js'
+import {
+	disableOwnService,
+	rotateLog,
+	serviceEnvVar,
+	serviceManagerFor,
+	servicePaths,
+	stayStoppedExitCode,
+	writeJson,
+} from './service.js'
 import {
 	createLocalWorkerTracker,
 	reapLeftoverWorkers,
 } from './worker-tracker.js'
 
 export type ExecutionContextCommandInput = {
-	command: 'context' | 'chain' | 'daemon'
+	command: 'context' | 'chain' | 'daemon' | 'connect' | 'update'
 	positionals: Array<string>
 	values: {
 		name?: string
@@ -44,6 +64,13 @@ export type ExecutionContextCommandInput = {
 		mode?: string
 		json?: boolean
 		maxConcurrent?: string
+		yes?: boolean
+		/** true: --install, false: --no-install, undefined: ask. */
+		install?: boolean
+		keyStorage?: string
+		lines?: string
+		follow?: boolean
+		unregister?: boolean
 	}
 	apiUrl: string
 	org?: string
@@ -51,6 +78,8 @@ export type ExecutionContextCommandInput = {
 	clientVersion: string
 	write: (text: string) => void
 	fetchFn?: typeof fetch
+	/** Overrides for tests: prompts, service manager commands, platform. */
+	service?: Partial<ServiceCommandEnv>
 }
 
 export const defaultMaxConcurrentRuns = 2
@@ -87,16 +116,6 @@ export function localCapabilities(
 	}
 }
 
-function storedContextIds(apiUrl: string) {
-	try {
-		return readdirSync(contextsDir(apiUrl)).filter((entry) =>
-			entry.startsWith('ec_'),
-		)
-	} catch {
-		return []
-	}
-}
-
 function out(
 	input: ExecutionContextCommandInput,
 	value: unknown,
@@ -130,9 +149,106 @@ async function runCommand(
 	if (input.command === 'context' && sub === 'policy') {
 		return await runPolicyCommand(input, rest)
 	}
-	if (input.command === 'context' && sub === 'register') {
-		const name = input.values.name ?? rest[0]
+	const serviceEnv: ServiceCommandEnv = {
+		apiUrl: input.apiUrl,
+		clientVersion: input.clientVersion,
+		write: input.write,
+		...(input.values.json ? { json: true } : {}),
+		...(input.values.yes ? { yes: true } : {}),
+		confirm: input.values.json ? null : terminalConfirm(),
+		...input.service,
+	}
+	const maxConcurrentFlag = () => {
+		if (input.values.maxConcurrent === '') {
+			throw new Error('--max-concurrent needs a value.')
+		}
+		return input.values.maxConcurrent === undefined
+			? undefined
+			: maxConcurrentRuns(input.values.maxConcurrent)
+	}
+	if (input.command === 'update') return await runUpdate(serviceEnv)
+	if (input.command === 'daemon' && sub !== undefined) {
+		const maxConcurrent = maxConcurrentFlag()
+		return await runDaemonServiceCommand(serviceEnv, {
+			sub,
+			...(input.values.context ? { context: input.values.context } : {}),
+			...(maxConcurrent === undefined ? {} : { maxConcurrent }),
+			...(input.values.keyStorage
+				? { keyStorage: input.values.keyStorage }
+				: {}),
+			...(input.values.lines ? { lines: input.values.lines } : {}),
+			...(input.values.follow ? { follow: true } : {}),
+			...(input.values.unregister === undefined
+				? {}
+				: { unregister: input.values.unregister }),
+			revoke: async (ecid) => {
+				await apiJson({
+					...base,
+					token: await input.token(),
+					method: 'DELETE',
+					path: `/v1/execution-contexts/${encodeURIComponent(ecid)}`,
+				})
+			},
+		})
+	}
+	if (
+		input.command === 'connect' &&
+		!input.values.name &&
+		!sub &&
+		localContextId(input.apiUrl, input.values.context)
+	) {
+		const ecid = localContextId(input.apiUrl, input.values.context)!
+		input.write(`This machine is already registered as ${ecid}.\n`)
+		const maxConcurrent = maxConcurrentFlag()
+		await offerInstall(serviceEnv, {
+			ecid,
+			install: input.values.install ?? true,
+			...(input.values.keyStorage
+				? { keyStorage: input.values.keyStorage }
+				: {}),
+			...(maxConcurrent === undefined ? {} : { maxConcurrent }),
+		})
+		return 0
+	}
+	if (
+		(input.command === 'context' && sub === 'register') ||
+		input.command === 'connect'
+	) {
+		const connect = input.command === 'connect'
+		const name = input.values.name ?? (connect ? sub : rest[0])
 		if (!name) throw new Error('Pass --name <name> for this machine.')
+		const maxConcurrent = maxConcurrentFlag()
+		if (
+			input.values.keyStorage !== undefined &&
+			input.values.keyStorage !== 'file' &&
+			input.values.keyStorage !== 'keyring'
+		) {
+			throw new Error('--key-storage must be keyring or file.')
+		}
+		const wrappingFor = async (ecid: string) => {
+			if (input.values.keyStorage === 'file') {
+				return fileWrappingKey({ apiUrl: input.apiUrl, ecid, create: true })
+			}
+			try {
+				const source = resolveWrappingKey({ ecid, create: true })
+				if (source.kind === 'keyring') source.key(Buffer.alloc(16))
+				return source
+			} catch (error) {
+				if (input.values.keyStorage === 'keyring') throw error
+				const question = `No unlocked OS keyring is available (${error instanceof Error ? error.message : String(error)}).\nStore the machine key wrapping key in a file instead (only readable by your user, 600 permissions, in the kody state directory)?`
+				const useFile = serviceEnv.yes
+					? true
+					: serviceEnv.confirm
+						? await serviceEnv.confirm(question, true)
+						: false
+				if (!useFile) {
+					throw new Error(
+						`${error instanceof Error ? error.message : String(error)} Or re-run with --key-storage file.`,
+					)
+				}
+				return fileWrappingKey({ apiUrl: input.apiUrl, ecid, create: true })
+			}
+		}
 		const { publicKeyJwk, privateKeyJwk } = await generateContextKey()
 		const privateKey = await importContextKey(privateKeyJwk)
 		const thumbprint = await ed25519JwkThumbprint(publicKeyJwk)
@@ -146,6 +262,20 @@ async function runCommand(
 			capabilities: localCapabilities(),
 			client: { name: 'kody-cli', version: input.clientVersion },
 		})
+		let wrapping: Awaited<ReturnType<typeof wrappingFor>>
+		try {
+			wrapping = await wrappingFor(registered.ecid)
+		} catch (error) {
+			// Best effort: never leave a server-side context with no local key.
+			const path = `/v1/execution-contexts/${encodeURIComponent(registered.ecid)}`
+			const token = await input.token()
+			await apiJson({ ...base, token, method: 'DELETE', path })
+				.then(() =>
+					apiJson({ ...base, token, method: 'POST', path: `${path}/delete` }),
+				)
+				.catch(() => {})
+			throw error
+		}
 		saveContext({
 			context: {
 				version: 1,
@@ -156,7 +286,7 @@ async function runCommand(
 				publicKeyJwk,
 			},
 			privateJwk: privateKeyJwk,
-			wrapping: resolveWrappingKey({ ecid: registered.ecid, create: true }),
+			wrapping,
 		})
 		const steps = (registered.nextSteps ?? [])
 			.map(
@@ -170,11 +300,43 @@ async function runCommand(
 				registered.notice ??
 					`Registered ${registered.name} (${registered.ecid}).`,
 				steps ? `Next steps:\n${steps}` : '',
-				'Start it with: kody daemon',
 			]
 				.filter(Boolean)
 				.join('\n'),
 		)
+		if (input.values.json && input.values.install === undefined) return 0
+		const install = {
+			ecid: registered.ecid,
+			...(input.values.install !== undefined
+				? { install: input.values.install }
+				: connect && !serviceEnv.confirm
+					? { install: true }
+					: {}),
+			...(maxConcurrent === undefined ? {} : { maxConcurrent }),
+		}
+		if (input.values.install === true) {
+			// --json keeps stdout a single JSON document; install progress goes to stderr.
+			const installEnv = input.values.json
+				? {
+						...serviceEnv,
+						write: (text: string) => {
+							process.stderr.write(text)
+						},
+					}
+				: serviceEnv
+			return (await offerInstall(installEnv, install)) ? 0 : 1
+		}
+		// Registration already succeeded: a default install that cannot run
+		// (npx, root, no systemd) is a hint, not a failure to retry.
+		try {
+			await offerInstall(serviceEnv, install)
+		} catch (error) {
+			input.write(
+				`Registered, but the background service was not installed: ${error instanceof Error ? error.message : String(error)}
+Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --context ${registered.ecid}
+`,
+			)
+		}
 		return 0
 	}
 	if (input.command === 'context' && (sub === 'list' || sub === undefined)) {
@@ -222,6 +384,22 @@ async function runCommand(
 			sub === 'revoke'
 				? `Revoked ${ref}. Delete it for good with: kody context delete ${ref}`
 				: `Deleted ${ref}.`,
+		)
+		const revokedId =
+			typeof body.id === 'string'
+				? body.id
+				: typeof (body.context as { id?: unknown } | undefined)?.id === 'string'
+					? (body.context as { id: string }).id
+					: null
+		await offerUninstallAfterRevoke(
+			input.values.json ? { ...serviceEnv, write: () => {} } : serviceEnv,
+			{
+				ref,
+				ecid:
+					revokedId && localContextId(input.apiUrl, revokedId)
+						? revokedId
+						: null,
+			},
 		)
 		return 0
 	}
@@ -307,29 +485,60 @@ async function runCommand(
 			throw new Error('--max-concurrent needs a value.')
 		}
 		const maxConcurrent = maxConcurrentRuns(input.values.maxConcurrent)
-		const ids = input.values.context
-			? [input.values.context]
-			: storedContextIds(input.apiUrl)
-		const ecid = ids[0]
+		const ecid = input.values.context
+			? (localContextId(input.apiUrl, input.values.context) ??
+				input.values.context)
+			: storedContextIds(input.apiUrl)[0]
 		if (!ecid) {
 			throw new Error(
-				'This machine has no registered execution context. Run `kody context register --name <name>` first.',
+				'This machine has no registered execution context. Run `kody connect --name <name>` first.',
 			)
 		}
+		const asService = process.env[serviceEnvVar]
+		const manager =
+			asService === 'systemd' || asService === 'launchd' ? asService : null
+		const paths = manager
+			? servicePaths({ apiUrl: input.apiUrl, ecid, manager })
+			: null
+		if (paths) rotateLog(paths.logPath)
 		const { context, privateJwk } = loadContext({
 			apiUrl: input.apiUrl,
 			ecid,
-			wrapping: resolveWrappingKey({ ecid, create: false }),
+			wrapping: wrappingKeyForStoredContext({ apiUrl: input.apiUrl, ecid }),
 		})
 		const privateKey = await importContextKey(privateJwk)
 		const serverKeys = await fetchServerKeys({ apiUrl: input.apiUrl })
 		const { runContextRun } = await import('./run-executor.js')
 		const abort = new AbortController()
-		process.once('SIGINT', () => abort.abort())
-		process.once('SIGTERM', () => abort.abort())
+		const drain = new AbortController()
+		let hardStop: NodeJS.Timeout | undefined
+		const onSignal = () => {
+			if (drain.signal.aborted) return abort.abort()
+			drain.abort()
+			hardStop = setTimeout(() => abort.abort(), 80_000)
+			hardStop.unref()
+		}
+		process.on('SIGINT', onSignal)
+		process.on('SIGTERM', onSignal)
 		input.write(
-			`Starting ${context.name} (${context.ecid}) against ${input.apiUrl}.\n`,
+			`Starting ${context.name} (${context.ecid}) against ${input.apiUrl}${manager ? ` as a ${manager} service` : ''}.\n`,
 		)
+		if (!manager && serviceManagerFor()) {
+			input.write(
+				'Tip: keep it running after reboots and crashes with: kody daemon install\n',
+			)
+		}
+		const statePath = servicePaths({
+			apiUrl: input.apiUrl,
+			ecid,
+			manager: serviceManagerFor() ?? 'systemd',
+		}).statePath
+		writeJson(statePath, {
+			pid: process.pid,
+			version: input.clientVersion,
+			service: manager,
+			startedAt: new Date().toISOString(),
+		})
 		const workersDir = contextWorkersDir(input.apiUrl, context.ecid)
 		const reaped = reapLeftoverWorkers(workersDir)
 		if (reaped.length > 0) {
@@ -339,15 +548,19 @@ async function runCommand(
 		}
 		const workerTracker = createLocalWorkerTracker(workersDir)
 		const packageGraphCache = createPackageGraphCache()
+		let stop: Awaited<ReturnType<typeof runDaemon>> = 'shutdown'
 		try {
-			await runDaemon({
+			stop = await runDaemon({
 				apiUrl: input.apiUrl,
 				ecid: context.ecid,
 				privateKey,
 				serverKeys,
 				maxConcurrent,
 				client: { name: 'kody-cli', version: input.clientVersion },
-				capabilities: localCapabilities(maxConcurrent),
+				capabilities: {
+					...localCapabilities(maxConcurrent),
+					...(manager ? { service: manager } : {}),
+				},
 				execute: (run) =>
 					runContextRun({
 						...run,
@@ -366,15 +579,38 @@ async function runCommand(
 				},
 				log: (line) => input.write(`${line}\n`),
 				signal: abort.signal,
+				drainSignal: drain.signal,
 			})
 		} finally {
 			workerTracker.killAll()
 			workerTracker.dispose()
+			if (hardStop) clearTimeout(hardStop)
+			process.off('SIGINT', onSignal)
+			process.off('SIGTERM', onSignal)
+			rmSync(statePath, { force: true })
 		}
-		return 0
+		if (stop !== 'shutdown') {
+			const reason =
+				stop === 'revoked'
+					? 'Kody revoked this context'
+					: 'Kody no longer knows this context (deleted)'
+			writeJson(
+				servicePaths({
+					apiUrl: input.apiUrl,
+					ecid,
+					manager: serviceManagerFor() ?? 'systemd',
+				}).stoppedPath,
+				{ reason, at: new Date().toISOString() },
+			)
+			if (manager) disableOwnService({ manager, ecid })
+			input.write(
+				`${reason}. Stopping for good${manager ? ' and disabling the service' : ''}. Register again with: kody connect --name <name>\n`,
+			)
+		}
+		return stayStoppedExitCode
 	}
 	throw new Error(
-		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody chain show | add <name> | remove <name> | kody daemon [--context <ec id>] [--max-concurrent <n>]',
+		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | uninstall | kody update',
 	)
 }
 

@@ -42,14 +42,64 @@ export class CredentialNotFoundError extends Error {
 export class CredentialLoginFailedError extends Error {
 	readonly code = 'login_failed'
 	readonly status: number | null
-	constructor(status: number | null) {
-		super(
+	/** The provider answered `invalid_grant`: the refresh token is revoked or invalid. */
+	readonly invalidGrant: boolean
+	/** The provider's `Retry-After`, in seconds, when it sent one. */
+	readonly providerRetryAfterSeconds: number | null
+	/** Seconds until Kody runs this exchange again, once the failure is recorded. */
+	readonly retryAfterSeconds: number | null
+	constructor(
+		status: number | null,
+		options: {
+			invalidGrant?: boolean
+			providerRetryAfterSeconds?: number | null
+			retryAfterSeconds?: number | null
+		} = {},
+	) {
+		const failed =
 			status == null
 				? 'The login exchange did not complete.'
-				: `The login exchange did not return a session (HTTP ${status}).`,
+				: `The login exchange did not return a session (HTTP ${status}).`
+		super(
+			options.retryAfterSeconds == null
+				? failed
+				: `${failed} Kody runs it again after ${options.retryAfterSeconds} seconds; retry then.`,
 		)
 		this.name = 'CredentialLoginFailedError'
 		this.status = status
+		this.invalidGrant = options.invalidGrant ?? false
+		this.providerRetryAfterSeconds = options.providerRetryAfterSeconds ?? null
+		this.retryAfterSeconds = options.retryAfterSeconds ?? null
+	}
+}
+
+/**
+ * A login credential's exchange failed recently and is cooling down, so Kody
+ * did not run it. Retry after `retryAfterSeconds`.
+ */
+export class CredentialLoginRetryLaterError extends Error {
+	readonly code = 'login_retry_later'
+	readonly retryAfterSeconds: number
+	constructor(retryAfterSeconds: number) {
+		super(
+			`This login's exchange failed recently, so Kody is not running it again yet. Retry after ${retryAfterSeconds} seconds.`,
+		)
+		this.name = 'CredentialLoginRetryLaterError'
+		this.retryAfterSeconds = retryAfterSeconds
+	}
+}
+
+/**
+ * The provider rejected a login credential's refresh token (`invalid_grant`).
+ * Kody stops running its exchange until the owner saves a new value.
+ */
+export class CredentialLoginNeedsReconnectError extends Error {
+	readonly code = 'login_needs_reconnect'
+	constructor() {
+		super(
+			"The provider rejected this login's saved refresh token (invalid_grant), so Kody stopped running its exchange. The credential's owner reconnects it by saving a new value; until then, requests with it fail.",
+		)
+		this.name = 'CredentialLoginNeedsReconnectError'
 	}
 }
 

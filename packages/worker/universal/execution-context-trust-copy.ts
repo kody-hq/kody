@@ -175,9 +175,8 @@ export function registerCopy(input: { orgSlug: string | null }): RegisterCopy {
 			'npm install -g @kodycodes/cli',
 			'kody login',
 			input.orgSlug
-				? `kody context register --name my-machine --org ${input.orgSlug}`
-				: 'kody context register --name my-machine',
-			'kody daemon',
+				? `kody connect --name my-machine --org ${input.orgSlug}`
+				: 'kody connect --name my-machine',
 		],
 		trust: [
 			'Code sent to this context runs on that machine, under the account that runs kody daemon.',
@@ -185,7 +184,7 @@ export function registerCopy(input: { orgSlug: string | null }): RegisterCopy {
 			'What it exposes (files, local network, internet) is set on the machine; the CLI prints it.',
 		],
 		after:
-			'It appears here within a few seconds, marked Not in any chain. Add it to your chain to start using it, or share it.',
+			'kody connect registers the machine and offers to install kody daemon as a background service (Linux and macOS), so it keeps running after reboots and crashes. Check it with kody daemon status. If you skip that, run kody daemon in a terminal or kody daemon install later. It appears here within a few seconds, marked Not in any chain. Add it to your chain to start using it, or share it.',
 		login:
 			'If your Kody login predates execution context permissions, registering fails and tells you to run `kody login` again first. Other logins keep working as they are.',
 	}

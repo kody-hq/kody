@@ -25,7 +25,12 @@ export function contextFixture(
 		lastSeenAt: '2026-01-02T03:04:05.000Z',
 		revokedAt: null,
 		client: { name: '@kodycodes/cli', version: '1.40.0' },
-		capabilities: { os: 'darwin', maxConcurrent: 2, features: ['fs'] },
+		capabilities: {
+			os: 'darwin',
+			maxConcurrent: 2,
+			features: ['fs'],
+			service: 'launchd',
+		},
 		grantSummary: {
 			fs: 1,
 			fsMode: 'read',

@@ -77,7 +77,12 @@ Usage:
   kody context revoke <name|ec id> | kody context delete <name|ec id> [--org <slug>] [--json]
   kody context policy [show] | allow <path> [--mode ro|rw] | remove <path> [--json]
   kody chain show | add <name> | remove <name> [--org <slug>] [--json]
+  kody connect --name <name> [--org <slug>] [--no-install] [--key-storage keyring|file] [--yes]
   kody daemon [--context <ec id>] [--max-concurrent <n>]
+  kody daemon install [--context <ec id>] [--max-concurrent <n>] [--key-storage keyring|file] [--yes]
+  kody daemon status [--context <ec id>] [--json] | logs [--lines <n>] [--follow] | restart
+  kody daemon uninstall [--context <ec id>] [--unregister | --no-unregister]
+  kody update
                [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
   kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--json] [--ready-file <path>]
   kody dev fetch <path> [--method <verb>] [--body <file>] [--target prod|mock] [--json] [--no-attach]
@@ -88,9 +93,24 @@ Usage:
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
 
+  kody connect registers this machine as an execution context and installs
+  \`kody daemon\` as a per-user background service (systemd --user on Linux,
+  a LaunchAgent on macOS) so it starts at boot and restarts after crashes.
+  \`kody daemon status\` names each problem with the command that fixes it;
+  re-running \`kody daemon install\` repairs the service. Windows is not
+  supported yet: keep \`kody daemon\` running in a terminal. \`kody update\`
+  installs the latest CLI and restarts services after runs in flight finish.
+
   kody context, chain, and daemon need execution contexts, an experiment.
   Turn it on at https://kody.codes/account/experiments (guide:
   https://kody.codes/docs/execution-contexts).
+
+  Profiles (scoped identities for your agents and sub-agents) are an
+  experiment too: turn it on at https://kody.codes/account/experiments, then
+  \`kody execute\` a module that calls \`profileCreate\`, \`profileList\`, or
+  \`profileRevoke\`, and share a package with one through
+  \`packageCollaboratorSet\` with \`profile_id\` (guide:
+  https://kody.codes/docs/profiles).
 
   kody install configures running local MCP clients (Cursor, Claude Desktop,
   VS Code, Goose, and others). For web-based clients (ChatGPT, Claude.ai, Grok),
@@ -241,12 +261,15 @@ ${orgBlock}
              with \`--json\`.
 
   --token / ${apiTokenEnvVar}
-             Scoped API token (preferred via env). With no \`kody login\`
-             session, search / whoami / api / execute use the Open API and
-             CapabilityProxy — including cloud execute without --local.
-             Auth priority matches \`execute --local\`: \`--token\` /
-             ${apiTokenEnvVar}; stored bootstrap/API token from
-             \`auth bootstrap\`; then \`kody login\` where applicable.
+             Scoped API token (preferred via env). One resolver picks the
+             credential, and \`kody whoami\` reports that pick:
+             whoami, api, package, execute --local, context, daemon, dev:
+               --token, ${apiTokenEnvVar}, stored API token, kody login.
+             search and cloud execute: --token, kody login (MCP),
+               ${apiTokenEnvVar}, stored API token.
+             \`kody login\` does not replace a stored API token; replace it
+             with \`kody auth bootstrap --lifetime short --scopes <list>\`
+             or clear it with \`kody logout\`.
              Prefer \`cliCredentialBootstrap\` then \`auth bootstrap\`
              (\`--lifetime short|long\`). CI/headless: \`tokenCreate\` with
              \`org:execute\` plus the capability scopes you need.

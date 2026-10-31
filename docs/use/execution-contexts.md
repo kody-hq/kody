@@ -25,7 +25,9 @@ Execution contexts are an experiment. Turn them on at
   `executionContextUpdate`, `executionContextRevoke`, `executionContextDelete`,
   `executionContextRunList`, `executionChainGet`, `executionChainSet`, and the
   sharing capabilities. Find them with `search({ query: "execution context" })`.
-- CLI: `kody context register --name <name>`,
-  `kody context policy allow <path> [--mode ro|rw]`,
+- CLI: `kody connect --name <name>` (register plus background service),
+  `kody context register --name <name>`,
+  `kody daemon install | status [--json] | logs | restart | uninstall`,
+  `kody update`, `kody context policy allow <path> [--mode ro|rw]`,
   `kody daemon [--max-concurrent <n>]` (`KODY_CONTEXT_MAX_CONCURRENT`, 1 to 8,
   default 2), `kody chain show | add | remove`.

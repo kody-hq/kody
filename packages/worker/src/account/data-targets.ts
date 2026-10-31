@@ -326,6 +326,29 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		columns: ['operator_user_id'],
 	},
 	{ kind: 'user_id', table: 'execution_context_opt_ins' },
+	// Profiles a person acts as (ADR 0092). Their `grants` rows are swept by
+	// the profile purge once the profile row is gone.
+	{
+		kind: 'user_columns',
+		table: 'profiles',
+		columns: ['acting_user_id'],
+	},
+	// Who created or revoked a profile is attribution only (an Owner may revoke
+	// a member's profile): anonymize instead of dropping the member's row.
+	{
+		kind: 'replace_user_column',
+		table: 'profiles',
+		matchColumn: 'created_by_user_id',
+		setColumn: 'created_by_user_id',
+		value: 'deleted-user',
+	},
+	{
+		kind: 'replace_user_column',
+		table: 'profiles',
+		matchColumn: 'revoked_by_user_id',
+		setColumn: 'revoked_by_user_id',
+		value: 'deleted-user',
+	},
 	{
 		kind: 'user_columns',
 		table: 'execution_context_org_attachments',

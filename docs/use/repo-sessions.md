@@ -114,6 +114,31 @@ states:
   URL. The `commit` query is the full 40-character SHA-1. Approving one commit
   does not unlock the package.
 
+When the publish push does not land on the source branch, `repoPublishSession`
+fails with error code **`publish_not_applied`** (HTTP 409). Nothing was
+published: `published_commit`, jobs, and bundles are unchanged, and the session
+keeps its commits. `details` carries `published: false`, `retry_safe: true`, the
+`ref`, and the `expected_commit` / `observed_commit` pair. Retrying
+`repoPublishSession` on the same session is safe.
+
+To see what happened to a publish (for example after an error or a dropped
+connection), call **`repoGetSession`** and read `last_publish`:
+
+| `state`         | Meaning                                                                                                                                                                                                                                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `running`       | The publish is still in progress. Wait, then check again.                                                                                                                                                                                                                                                  |
+| `interrupted`   | The server restarted mid-publish. For a package session, retry `repoPublishSession`; it finishes an already-moved publish. For a plain repo, the source branch may already hold the commit: a retry can return `base_moved`, or be refused if the session is no longer active. Check the source ref first. |
+| `published`     | Done. `published_commit` is the commit that went live.                                                                                                                                                                                                                                                     |
+| `pushed`        | Pushed without promotion (`promotePublished: false`); the live `published_commit` did not change.                                                                                                                                                                                                          |
+| `not_published` | Returned without publishing; `result_status` says why (`base_moved`, `checks_outdated`).                                                                                                                                                                                                                   |
+| `failed`        | The call errored. `error_name` names the error. `error_message` is set for `publish_not_applied` (nothing moved; retry is safe) and for an unknown push outcome (`ref_state: unknown`; check the source ref before retrying). For other errors, check the session's `published_commit` before you retry.   |
+
+For package sessions, publishing is idempotent and resumable: a retry after
+`publish_not_applied` or `interrupted` either publishes the session or finishes
+an already-moved publish (jobs, bundles, publish note) without a duplicate. For
+plain repos, `published_commit` does not track the source push; check the source
+ref to see whether the commit landed.
+
 That makes it easier for agents to resume or repair a workflow without string
 parsing.
 

@@ -212,6 +212,138 @@ test('scanCredentialStamp stamps credential.visitor literal keys', () => {
 	expect(computed.failures.some((f) => f.code === 'non_literal')).toBe(true)
 })
 
+test('scanCredentialStamp ignores credential/credentials in erased type positions', () => {
+	const credentials = {
+		API_KEY: { kind: 'secret', description: 'API key.' },
+	}
+	const typeOnlyForms = [
+		'export type LoginClient = Awaited<ReturnType<typeof credential>>',
+		'export type Clients = Awaited<ReturnType<typeof credentials>>',
+		'type Visitor = Awaited<ReturnType<typeof credential.visitor>>',
+		'type ViaKody = Awaited<ReturnType<typeof kody.credential>>',
+		'interface Holder { open: typeof credential; many: typeof credentials }',
+		'let open: typeof credential | undefined',
+		'function take(open: typeof credential): ReturnType<typeof credentials> { throw new Error(String(open)) }',
+		'class Box<T = typeof credential> implements Partial<Record<"x", typeof credentials>> { declare open: typeof credential }',
+		'const value = {} as unknown as Awaited<ReturnType<typeof credential>>',
+		'const checked = {} satisfies Partial<Record<"open", typeof credential>>',
+		'const tagged = <T,>(value: T) => value; tagged<typeof credential | null>(null)',
+		'declare const ambient: typeof credential',
+		'declare function ambientOpen(open: typeof credentials): void',
+		'declare module "x" { export const open: typeof credential }',
+		'declare global { var kodyOpen: typeof credential }',
+		'export type { LoginClient as Client }',
+		'type Fn = (open: typeof credential) => typeof credentials',
+		'type Mapped = { [K in "a"]: typeof credential }',
+		'type Cond<T> = T extends typeof credential ? 1 : 0',
+		'type Named = typeof credential.named',
+		'type ViaKodyNamed = typeof kody.credential.named',
+		'import Mcp = kody.mcp',
+	]
+	for (const form of typeOnlyForms) {
+		const result = scanCredentialStamp({
+			'package.json': manifest({ credentials }),
+			'src/index.ts': [
+				"import { credential, credentials, kody, type KodyCredentialClient } from 'kody:runtime'",
+				'export type LoginClient = KodyCredentialClient',
+				form,
+				'export default async function run() {',
+				"  return [await credential('API_KEY'), await credentials('API_KEY')]",
+				'}',
+			].join('\n'),
+		})
+		expect({ form, failures: result.failures }).toEqual({ form, failures: [] })
+		expect(result.keys).toEqual(['API_KEY'])
+	}
+	const declarationFile = scanCredentialStamp({
+		'package.json': manifest(),
+		'src/index.ts': 'export default async function run() { return 1 }',
+		'src/client.d.ts': [
+			"import type { credential } from 'kody:runtime'",
+			'export type LoginClient = Awaited<ReturnType<typeof credential>>',
+			'export declare const open: typeof credential',
+		].join('\n'),
+	})
+	expect(declarationFile.failures).toEqual([])
+})
+
+test('scanCredentialStamp accepts a runtime typeof check but still rejects every runtime pass of credential/credentials', () => {
+	const credentials = {
+		API_KEY: { kind: 'secret', description: 'API key.' },
+	}
+	const typeofCheck = scanCredentialStamp({
+		'package.json': manifest({ credentials }),
+		'src/index.ts': [
+			"import { credential, kody } from 'kody:runtime'",
+			'export default async function run() {',
+			"  if (typeof credential !== 'function') return null",
+			"  if (typeof kody.credential.visitor !== 'function') return null",
+			"  return credential('API_KEY')",
+			'}',
+		].join('\n'),
+	})
+	expect(typeofCheck.failures).toEqual([])
+	expect(typeofCheck.keys).toEqual(['API_KEY'])
+
+	const runtimeForms = [
+		'const c = credential',
+		'const c = credentials',
+		'const c = kody.credential',
+		'const v = credential.visitor',
+		'take(credential)',
+		'take(credentials)',
+		'take(kody.credentials)',
+		'const box = { credential }',
+		'const box = { open: credential }',
+		'const box = { ...credential }',
+		'const list = [credential]',
+		'export const open = () => credential',
+		'function open() { return credential }',
+		'export { credential }',
+		'export default credential',
+		'const c = credential as typeof credential',
+		'const c = credential satisfies typeof credential',
+		'const c = credential!',
+		'const c = <typeof credential>credential',
+		'const c = credential<string>',
+		'const c = typeof (x = credential)',
+		'const c = typeof (0, credential)',
+		'const t = `${typeof credential}` + String(credential)',
+		'class K { constructor(private open = credential) {} }',
+		'enum E { A = String(credential).length }',
+		'namespace N { export const open = credential }',
+		'const c = void credential',
+		'function f(open = credential) { return open }',
+		'const c = credential.bind(null)',
+		'import c = credential',
+		'import c = kody.credential',
+		'export import c = kody.credentials',
+		'import v = credential.visitor',
+		'import v = kody.credential.visitor',
+		'@take(credential) class D {}',
+	]
+	for (const form of runtimeForms) {
+		const result = scanCredentialStamp({
+			'package.json': manifest({ credentials }),
+			'src/index.ts': [
+				"import { credential, credentials, kody } from 'kody:runtime'",
+				'let x: unknown',
+				'declare function take(value: unknown): void',
+				form,
+				"export async function run() { return credential('API_KEY') }",
+			].join('\n'),
+		})
+		expect({
+			form,
+			passed: result.failures.some(
+				(failure) =>
+					failure.code === 'non_literal' &&
+					/passes credential/.test(failure.message),
+			),
+		}).toEqual({ form, passed: true })
+	}
+})
+
 test('scanLiteralMcpServerKeys stamps literal servers and fails dynamic access', () => {
 	const literal = scanLiteralMcpServerKeys({
 		'package.json': manifest(),

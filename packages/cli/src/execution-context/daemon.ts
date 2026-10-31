@@ -19,6 +19,7 @@ import {
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import {
 	executionContextsPath,
+	isPermanentContextRefusal,
 	requestConnectTicket,
 	signedFetch,
 	experimentOffError,
@@ -116,7 +117,15 @@ type DaemonInput = {
 	closeSettleMs?: number
 	pingMs?: number
 	pongTimeoutMs?: number
+	/**
+	 * Aborts to drain: refuse new runs, let runs in flight finish, then close
+	 * (a service stop or `kody update`). `signal` still stops at once.
+	 */
+	drainSignal?: AbortSignal
 }
+
+/** Why runDaemon returned. `revoked` and `unknown_context` are permanent. */
+export type DaemonStop = 'shutdown' | 'revoked' | 'unknown_context'
 
 export type DaemonFsAccess = {
 	effective: (
@@ -306,8 +315,9 @@ export async function runDaemonConnection(input: DaemonInput) {
 	const status = () => ({
 		running: runs.size,
 		maxConcurrent,
-		acceptingRuns: runs.size < maxConcurrent,
+		acceptingRuns: !input.drainSignal?.aborted && runs.size < maxConcurrent,
 	})
+	let closeWhenDrained = () => {}
 
 	const startRun = async (run: {
 		request: EcpRunRequestBody
@@ -383,6 +393,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 			timing,
 		})
 		await send('status', status())
+		closeWhenDrained()
 	}
 
 	const handle = async (frame: EcpFramePayload) => {
@@ -418,7 +429,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 				return
 			case 'run.request': {
 				const request = body as unknown as EcpRunRequestBody
-				if (runs.size >= maxConcurrent) {
+				if (input.drainSignal?.aborted || runs.size >= maxConcurrent) {
 					await send('run.reject', { runId, code: 'busy' }, frame.seq)
 					return
 				}
@@ -520,6 +531,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 			clearTimeout(settleTimer)
 			unsubscribeFs?.()
 			input.signal?.removeEventListener('abort', shutdown)
+			input.drainSignal?.removeEventListener('abort', drain)
 			for (const run of runs.values()) run.abort.abort()
 			resolve({ code, reason })
 		}
@@ -544,6 +556,22 @@ export async function runDaemonConnection(input: DaemonInput) {
 		const shutdown = () => closeAndSettle(1000, 'shutdown')
 		if (input.signal?.aborted) shutdown()
 		input.signal?.addEventListener('abort', shutdown, { once: true })
+		closeWhenDrained = () => {
+			if (!input.drainSignal?.aborted) return
+			if ([...runs.values()].some((run) => run.committed)) return
+			closeAndSettle(1000, 'shutdown')
+		}
+		const drain = () => {
+			input.log(
+				runs.size > 0
+					? `Stopping after ${runs.size} run(s) in flight finish. New runs go to the next context in the chain.`
+					: 'Stopping.',
+			)
+			if (welcomed) void send('status', status()).catch(() => {})
+			closeWhenDrained()
+		}
+		if (input.drainSignal?.aborted) drain()
+		else input.drainSignal?.addEventListener('abort', drain, { once: true })
 		const rejectFrame = (code: string) => {
 			input.log(
 				`Kody sent a frame that failed verification (${code}). Closing and reconnecting.`,
@@ -603,21 +631,34 @@ function peekSid(p: string) {
 	}
 }
 
-/** Reconnects with capped exponential backoff and jitter until aborted. */
-export async function runDaemon(input: DaemonInput) {
+/**
+ * Reconnects with capped exponential backoff and jitter until aborted,
+ * drained, or Kody refuses this context for good (revoked or deleted).
+ */
+export async function runDaemon(input: DaemonInput): Promise<DaemonStop> {
 	let attempt = 0
-	while (!input.signal?.aborted) {
+	const stopping = () => input.signal?.aborted || input.drainSignal?.aborted
+	while (!stopping()) {
 		const startedAt = Date.now()
 		try {
 			const closed = await runDaemonConnection(input)
-			if (closed.reason === 'revoked') return
+			if (closed.reason === 'revoked') return 'revoked'
+			if (stopping()) return 'shutdown'
 			input.log(
 				`Disconnected (${closed.code}${closed.reason ? ` ${closed.reason}` : ''}). Reconnecting.`,
 			)
 		} catch (error) {
-			if (input.signal?.aborted) return
+			if (stopping()) return 'shutdown'
 			// Retrying cannot help until the person turns the experiment on.
 			if (isExperimentOffError(error)) throw experimentOffError(input.apiUrl)
+			if (isPermanentContextRefusal(error)) {
+				input.log(
+					`Kody refused this context: ${error instanceof Error ? error.message : String(error)} Stopping for good.`,
+				)
+				return (error as { reason: string }).reason === 'revoked'
+					? 'revoked'
+					: 'unknown_context'
+			}
 			input.log(
 				`Connect failed: ${error instanceof Error ? error.message : String(error)}`,
 			)
@@ -625,8 +666,18 @@ export async function runDaemon(input: DaemonInput) {
 		if (Date.now() - startedAt > 60_000) attempt = 0
 		attempt += 1
 		const delay = Math.min(60_000, 1000 * 2 ** Math.min(attempt, 6))
-		await abortableDelay(delay * (0.5 + Math.random() / 2), input.signal)
+		await abortableDelay(
+			delay * (0.5 + Math.random() / 2),
+			input.drainSignal
+				? AbortSignal.any(
+						[input.signal, input.drainSignal].filter(
+							(signal): signal is AbortSignal => signal !== undefined,
+						),
+					)
+				: input.signal,
+		)
 	}
+	return 'shutdown'
 }
 
 /** Resolves after `ms`, or as soon as `signal` aborts (SIGINT/SIGTERM). */

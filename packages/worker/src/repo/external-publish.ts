@@ -1,3 +1,5 @@
+import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
 import * as Sentry from '@sentry/cloudflare'
@@ -14,6 +16,7 @@ import {
 	deletePublishedSourceSnapshot,
 	hasPublishedRuntimeArtifacts,
 	publishedPublishChecksAreCurrent,
+	writePublishedPublishChecksVersion,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { getEntitySourceById, updateEntitySource } from './entity-sources.ts'
 import { runAuthoringPublishChecks } from './authoring-publish-checks.ts'
@@ -57,20 +60,30 @@ export type FinalizePublishedSourceInput = {
 	allowLockedPublish?: boolean
 	/** Actor who requested the publish; forwarded to listing auto-follow ban checks. */
 	actorUserId?: string
+	/** The profile the publisher ran as; it also gets a creator grant. */
+	actorProfileId?: string | null
 	/**
 	 * A person published but no one knows who (an Artifacts push picked up by
 	 * reconcile). Package apps stop running as the previous publisher.
 	 */
 	publisherUnknown?: boolean
+	/**
+	 * Finish an earlier finalize of the already-live `published_commit` that
+	 * was interrupted after the pointer moved. The tip is already serving, so
+	 * the lock and publisher record are left as that earlier attempt set them.
+	 */
+	resumeInterruptedFinalize?: boolean
 }
 
 export async function finalizePublishedEntitySource(
 	input: FinalizePublishedSourceInput,
 ) {
 	const work = resolveFinalizeWork(input)
+	const resuming = input.resumeInterruptedFinalize === true
 	if (
 		input.source.entity_kind === 'package' &&
-		input.allowLockedPublish !== true
+		input.allowLockedPublish !== true &&
+		!resuming
 	) {
 		const lockedPackage = await loadLockedSavedPackage({
 			db: input.env.APP_DB,
@@ -103,14 +116,24 @@ export async function finalizePublishedEntitySource(
 	}
 	// Before the new code serves, so it never runs as someone the publisher
 	// could not act as.
-	if (input.source.entity_kind === 'package' && input.actorUserId) {
+	// A resumed finalize keeps the publisher the interrupted attempt recorded
+	// before its pointer moved.
+	if (
+		!resuming &&
+		input.source.entity_kind === 'package' &&
+		input.actorUserId
+	) {
 		await recordPublisherOfPackage({
 			db: input.env.APP_DB,
 			orgId: input.source.user_id,
 			packageId: input.source.entity_id,
 			personId: input.actorUserId,
 		})
-	} else if (input.source.entity_kind === 'package' && input.publisherUnknown) {
+	} else if (
+		!resuming &&
+		input.source.entity_kind === 'package' &&
+		input.publisherUnknown
+	) {
 		await recordPackageAppPublisherUnknown({
 			db: input.env.APP_DB,
 			scope: { orgId: input.source.user_id, packageId: input.source.entity_id },
@@ -180,16 +203,20 @@ export async function finalizePublishedEntitySource(
 		)
 	}
 	if (input.source.entity_kind !== 'package') return
+	// `published_commit` is already live here. Every later step (credential
+	// stamp, projection + job attribution) must be redone by a same-commit
+	// retry when this isolate dies mid-way (Durable Object reset or CPU limit),
+	// so the checker version that marks the commit "done" is sealed last.
+	let stamped = false
 	if (wrotePublishedSnapshot) {
 		await work.storeCredentialNeeds({
 			source: input.source,
 			publishedCommit: input.publishedCommit,
 		})
-		// Seals the checker version only after a successful stamp write.
-		await work.storeCredentialStamp({
+		;({ stamped } = await work.storeCredentialStamp({
 			source: input.source,
 			publishedCommit: input.publishedCommit,
-		})
+		}))
 	}
 	try {
 		await work.refreshProjection({
@@ -198,6 +225,7 @@ export async function finalizePublishedEntitySource(
 			rebuildArtifacts: input.rebuildPackageArtifacts ?? true,
 			firstPublish: !previousPublishedCommit,
 			creatorUserId: input.actorUserId ?? null,
+			creatorProfileId: input.actorProfileId ?? null,
 			// A same-commit finalize (a retry or a clean no-op sync) is not a
 			// new publish, so it writes no audit row.
 			writeAudit: previousPublishedCommit !== input.publishedCommit,
@@ -297,6 +325,15 @@ export async function finalizePublishedEntitySource(
 			error,
 		)
 	}
+	// Only a stamped commit is sealed, so a failed stamp store cannot leave a
+	// "current" version over a missing stamp.
+	if (stamped) {
+		await writePublishedPublishChecksVersion({
+			env: input.env,
+			sourceId: input.source.id,
+			publishedCommit: input.publishedCommit,
+		})
+	}
 }
 
 function resolveFinalizeWork(input: FinalizePublishedSourceInput) {
@@ -363,10 +400,17 @@ export async function publishFromExternalRef(input: {
 	/** The owner approved this commit's credential needs (or a platform rewrite). */
 	credentialNeedsApproved?: boolean
 	requestedByUserId?: string | null
+	/** The publishing request; a profile-bound one must reach every import. */
+	publisherRequest?: RequestContext | null
 	phaseTimings?: PublishPhaseTimings
 	/** Records each check step so a resource reset can name it. */
 	onCheckStep?: (step: RepoCheckStep) => Promise<void>
 	deferBundleCheckToRebuild?: boolean
+	/**
+	 * Finish the live tip's finalize even when it is sealed (admin repair of a
+	 * publish whose earlier attempt sealed without job attribution).
+	 */
+	resumeFinalize?: boolean
 }): Promise<RepoExternalPublishResult> {
 	const source = await getEntitySourceById(input.env.APP_DB, input.sourceId)
 	if (!source || source.user_id !== input.userId) {
@@ -378,7 +422,7 @@ export async function publishFromExternalRef(input: {
 		)
 	}
 	const sameCommitRepublish = source.published_commit === input.newCommit
-	if (sameCommitRepublish) {
+	if (sameCommitRepublish && input.resumeFinalize !== true) {
 		const checksCurrent = await publishedPublishChecksAreCurrent({
 			env: input.env,
 			sourceId: source.id,
@@ -391,9 +435,9 @@ export async function publishFromExternalRef(input: {
 				published_commit: source.published_commit,
 			}
 		}
-		// Tip matches HEAD but the stored check/stamp was sealed under an older
-		// checker (or never recorded after a failed attempt). Re-run checks and
-		// refresh the stamp without treating this as a tip-moving publish.
+		// Tip matches HEAD but the commit was sealed under an older checker, or
+		// never sealed because an earlier finalize died after moving the
+		// pointer. Re-run checks and finish the finalize for the live tip.
 	}
 	if (source.published_commit && !sameCommitRepublish) {
 		const isFastForward = await input.isFastForward({
@@ -481,6 +525,13 @@ export async function publishFromExternalRef(input: {
 	if (!checkedManifest) {
 		throw new Error('Publish checks passed without a parsed package.json.')
 	}
+	await assertProfileCanPublishImports({
+		env: input.env,
+		request: input.publisherRequest,
+		ownerUserId: input.userId,
+		packageName: checkedManifest.name,
+		dependencies: checkedManifest.kody?.dependencies,
+	})
 	// input.files (clone collectFiles) is keyed relative to the repo, while
 	// input.sourceRoot is workspace-prefixed, so scope clone maps by the stored
 	// repo-relative root. checks.sourceFiles is already package-relative.
@@ -514,29 +565,31 @@ export async function publishFromExternalRef(input: {
 			: {}),
 	}
 	if (sameCommitRepublish) {
-		// Same tip: refresh stamp / check version only. Skip lock / approval
-		// (tip is already live). Do not re-run follower notify, listing
-		// promote, or a full finalize (artifacts rebuild stays on the
-		// capability path when leftovers need repair).
+		// Same tip: the pointer already serves this commit, so skip lock and
+		// approval, and finish whatever an interrupted finalize left undone
+		// (credential stamp, projection + job attribution, then the seal).
+		// Follower notify and the publish audit only fire when the tip moves.
 		if (
 			source.entity_kind === 'package' &&
 			hasPublishedRuntimeArtifacts(input.env)
 		) {
-			await work.storeCredentialNeeds({
+			await finalizePublishedEntitySource({
+				env: input.env,
 				source,
 				publishedCommit: input.newCommit,
-			})
-			const { stamped: stamp } = await work.storeCredentialStamp({
-				source,
-				publishedCommit: input.newCommit,
+				work,
+				baseUrl: input.baseUrl,
+				rebuildPackageArtifacts: input.rebuildPackageArtifacts,
+				actorUserId: input.requestedByUserId ?? undefined,
+				actorProfileId: input.publisherRequest?.credential.profileId ?? null,
+				resumeInterruptedFinalize: true,
 			})
 			return {
 				status: 'already_published',
 				published_commit: source.published_commit,
 				checks_rerun: true,
-				message: stamp
-					? 'HEAD was already the published commit; publish checks were re-run because the stored check/stamp used an older checker (or a prior attempt never sealed a success). Checks passed and the stamp was refreshed.'
-					: 'HEAD was already the published commit; publish checks passed, but the stamp refresh could not be persisted. Retry the publish.',
+				message:
+					'HEAD was already the published commit, but its publish never finished (an earlier attempt was interrupted, or it was checked by an older checker). Checks passed and the publish was finished for this commit: credential stamp, package projection, and jobs were refreshed.',
 				...publishNotices,
 			}
 		}
@@ -597,6 +650,7 @@ export async function publishFromExternalRef(input: {
 		rebuildPackageArtifacts: input.rebuildPackageArtifacts,
 		allowLockedPublish: input.allowLockedPublish,
 		actorUserId: input.requestedByUserId ?? undefined,
+		actorProfileId: input.publisherRequest?.credential.profileId ?? null,
 		publisherUnknown: !input.requestedByUserId,
 	})
 	return {

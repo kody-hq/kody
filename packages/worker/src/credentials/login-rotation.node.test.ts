@@ -21,7 +21,9 @@ import { saveSecret } from '#mcp/secrets/service.ts'
 import {
 	clearLoginSessionsForTests,
 	loginExchangeSchema,
+	readRetryAfterSeconds,
 } from './login-resolver.ts'
+import { listCredentialsForViewer } from './credential-list.ts'
 import { resolveCredential } from './resolve-credential.ts'
 
 vi.mock(
@@ -496,4 +498,83 @@ test('a caller that read the value before another isolate rotated it reuses the 
 	})
 	expect(sent).toEqual(['dummy-refresh-1'])
 	expect(await valueAuditRows(t.env)).toHaveLength(1)
+})
+
+function loginErrorBody(error: unknown) {
+	const caught = error as {
+		code?: string
+		body?: { code: string; retryAfterSeconds?: number }
+		retryAfterSeconds?: number | null
+		message: string
+	}
+	return {
+		code: caught.body?.code ?? caught.code,
+		retryAfterSeconds:
+			caught.body?.retryAfterSeconds ?? caught.retryAfterSeconds ?? null,
+		message: caught.message,
+	}
+}
+
+test('invalid_grant from the token endpoint needs reconnecting and stops the exchange', async () => {
+	const t = await setup()
+	const exchanges = stubLoginEndpoint(() =>
+		Response.json(
+			{ error: 'invalid_grant', error_description: 'dummy-refresh-1 revoked' },
+			{ status: 400 },
+		),
+	)
+	const actor = t.requestAs('bea', 'owner')
+	const id = await t.storeCredential({
+		name: 'token-demo-login',
+		value: refreshFields,
+		hosts: ['auth.example.com', 'api.example.com'],
+		exchange: rotatingExchange,
+	})
+	for (let i = 0; i < 3; i++) {
+		clearLoginSessionsForTests()
+		const error = loginErrorBody(
+			await t.signIn({ actor, credentialId: id }).catch((e: unknown) => e),
+		)
+		expect(error.code).toBe('login_needs_reconnect')
+		expect(error.message).not.toContain('dummy-refresh')
+	}
+	expect(exchanges).toHaveLength(1)
+	const listed = await listCredentialsForViewer({ env: t.env, request: actor })
+	expect(listed.find((item) => item.id === id)).toMatchObject({
+		status: 'needs_attention',
+		statusMessage: expect.stringContaining('Save a new value to reconnect'),
+	})
+	expect(JSON.stringify(listed)).not.toContain('dummy-refresh')
+})
+
+test("a 429 waits for the provider's Retry-After before the next exchange", async () => {
+	const t = await setup()
+	const exchanges = stubLoginEndpoint(
+		() =>
+			new Response('{"error":"slow_down"}', {
+				status: 429,
+				headers: { 'retry-after': '120' },
+			}),
+	)
+	const actor = t.requestAs('bea', 'owner')
+	const id = await t.storeCredential({ name: 'portal-login' })
+	const first = loginErrorBody(
+		await t.signIn({ actor, credentialId: id }).catch((e: unknown) => e),
+	)
+	expect(first).toMatchObject({ code: 'login_failed', retryAfterSeconds: 120 })
+	clearLoginSessionsForTests()
+	const second = loginErrorBody(
+		await t.signIn({ actor, credentialId: id }).catch((e: unknown) => e),
+	)
+	expect(second.code).toBe('login_retry_later')
+	expect(second.retryAfterSeconds).toBeGreaterThan(100)
+	expect(exchanges).toHaveLength(1)
+})
+
+test('readRetryAfterSeconds reads delta-seconds and HTTP dates', () => {
+	const at = Date.parse('2026-10-30T00:00:00Z')
+	expect(readRetryAfterSeconds('90', at)).toBe(90)
+	expect(readRetryAfterSeconds('Fri, 30 Oct 2026 00:02:00 GMT', at)).toBe(120)
+	expect(readRetryAfterSeconds('soon', at)).toBeNull()
+	expect(readRetryAfterSeconds(null, at)).toBeNull()
 })

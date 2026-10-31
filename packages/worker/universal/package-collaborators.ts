@@ -30,7 +30,12 @@ export function isPackageCollaboratorPreset(
  * is not a member (granted elsewhere); the tab can remove them but not change
  * their access.
  */
-export type PackageCollaboratorKind = 'org' | 'team' | 'member' | 'outside'
+export type PackageCollaboratorKind =
+	| 'org'
+	| 'team'
+	| 'member'
+	| 'outside'
+	| 'profile'
 
 export type PackageCollaboratorView = {
 	grantId: string
@@ -48,6 +53,10 @@ export type PackageCollaboratorView = {
 	teamSlug: string | null
 	/** Live member count for a team, or for the org subject. */
 	teamMemberCount: number | null
+	/** Set only for a profile collaborator (ADR 0092). */
+	profileName?: string
+	/** False once the profile or a parent is revoked or expired. */
+	profileActive?: boolean
 	/** Null for an advanced grant with an explicit permission list. */
 	preset: PackageCollaboratorPreset | null
 	permissions: Array<string>
@@ -78,7 +87,14 @@ export type PackageCollaboratorEveryoneOption = {
 	memberCount: number
 }
 
-export type PackageCollaboratorSubjectType = 'user' | 'team' | 'org'
+export type PackageCollaboratorSubjectType = 'user' | 'team' | 'org' | 'profile'
+
+/** One of the viewer's own active profiles (ADR 0092; profiles experiment). */
+type PackageCollaboratorProfileOption = {
+	id: string
+	name: string
+	depth: number
+}
 
 export type PackageCollaboratorMemberOption = {
 	userId: string
@@ -99,6 +115,8 @@ export type PackageCollaboratorsView = {
 		everyone: PackageCollaboratorEveryoneOption | null
 		teams: Array<PackageCollaboratorTeamOption>
 		members: Array<PackageCollaboratorMemberOption>
+		/** The viewer's profiles; absent unless the profiles experiment is on. */
+		profiles?: Array<PackageCollaboratorProfileOption>
 	}
 }
 
@@ -216,6 +234,8 @@ export function packageCollaboratorKindLabel(kind: PackageCollaboratorKind) {
 			return 'Org member'
 		case 'outside':
 			return 'Outside collaborator'
+		case 'profile':
+			return 'Agent profile'
 		default: {
 			const exhaustive: never = kind
 			return exhaustive

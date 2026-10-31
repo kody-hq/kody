@@ -75,3 +75,28 @@ This is built in steps, each recorded here as it lands:
   isolates and runs, rather than once per isolate.
 - Session ciphertext is operational state: account and org deletion remove it,
   and account export omits it.
+
+## Amendment 2026-10-30: failed exchanges cool down
+
+A failed exchange released the lease without recording anything, so every later
+request (and the 401 retry) ran it again against the provider. Within the design
+Kent approved, Kody now records the failure on the credential's
+`login_credential_sessions` row for the revision that failed, and the lease plus
+this record decide who may run the exchange:
+
+- Transient and other failures (network, timeout, HTTP errors, no token) set
+  `retry_after` with backoff: 30 seconds, doubling per failure in a row, capped
+  at 15 minutes, or the provider's `Retry-After` when longer (capped at an
+  hour). Until then callers get `login_retry_later` with `retryAfterSeconds` and
+  the provider is not contacted. After it, the next caller runs the exchange; a
+  success clears the record.
+- `invalid_grant` from the token endpoint is the reliable revoked-or-invalid
+  signal. It records `needs_reconnect` with no retry time: requests fail with
+  `login_needs_reconnect`, the credentials list shows the existing **Needs
+  attention** status, and the exchange never runs again for that revision.
+- The record is keyed by revision, so saving a new value (or editing the
+  exchange, hosts, or inject) starts clean.
+- The bodyless 401 retry checks the record first and returns the host's 401
+  while a cooldown runs. A fresh session the host refuses again records
+  `rejected`, which backs off only the next 401 retry, not ordinary use of the
+  stored session.

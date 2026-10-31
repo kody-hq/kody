@@ -62,13 +62,12 @@ exports[`opt-in copy for every access combination > publicDefault 1`] = `
 
 exports[`register copy, personal and team, names kody login > personal 1`] = `
 {
-  "after": "It appears here within a few seconds, marked Not in any chain. Add it to your chain to start using it, or share it.",
+  "after": "kody connect registers the machine and offers to install kody daemon as a background service (Linux and macOS), so it keeps running after reboots and crashes. Check it with kody daemon status. If you skip that, run kody daemon in a terminal or kody daemon install later. It appears here within a few seconds, marked Not in any chain. Add it to your chain to start using it, or share it.",
   "body": "Registration happens from the CLI because the context key is generated on the machine and never leaves it. On the machine that should run code:",
   "commands": [
     "npm install -g @kodycodes/cli",
     "kody login",
-    "kody context register --name my-machine",
-    "kody daemon",
+    "kody connect --name my-machine",
   ],
   "login": "If your Kody login predates execution context permissions, registering fails and tells you to run \`kody login\` again first. Other logins keep working as they are.",
   "trust": [
@@ -81,13 +80,12 @@ exports[`register copy, personal and team, names kody login > personal 1`] = `
 
 exports[`register copy, personal and team, names kody login > team 1`] = `
 {
-  "after": "It appears here within a few seconds, marked Not in any chain. Add it to your chain to start using it, or share it.",
+  "after": "kody connect registers the machine and offers to install kody daemon as a background service (Linux and macOS), so it keeps running after reboots and crashes. Check it with kody daemon status. If you skip that, run kody daemon in a terminal or kody daemon install later. It appears here within a few seconds, marked Not in any chain. Add it to your chain to start using it, or share it.",
   "body": "Registration happens from the CLI because the context key is generated on the machine and never leaves it. On the machine that should run code:",
   "commands": [
     "npm install -g @kodycodes/cli",
     "kody login",
-    "kody context register --name my-machine --org acme",
-    "kody daemon",
+    "kody connect --name my-machine --org acme",
   ],
   "login": "If your Kody login predates execution context permissions, registering fails and tells you to run \`kody login\` again first. Other logins keep working as they are.",
   "trust": [

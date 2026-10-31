@@ -130,7 +130,8 @@ Every execute response says where the run happened. `structuredContent.ranOn`
 `{ kind: "cloud" | "context", id: "cloud" | "ec_…", name: "Kody cloud" | context name, attempts, fellBackToCloud }`,
 and a text line names it with friendly names only, such as `Ran on Kody cloud.`
 or `Ran on build-box (your machine).` `runGet` shows the same `metadata.ranOn`.
-See [execution contexts](../contributing/architecture/execution-contexts.md).
+See [execution contexts](./execution-contexts.md) (internals:
+[architecture](../contributing/architecture/execution-contexts.md)).
 
 ## Search first, then execute
 

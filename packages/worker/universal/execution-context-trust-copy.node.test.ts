@@ -79,9 +79,7 @@ test('register copy, personal and team, names kody login', () => {
 	const team = registerCopy({ orgSlug: 'acme' })
 	expect(personal).toMatchSnapshot('personal')
 	expect(team).toMatchSnapshot('team')
-	expect(team.commands).toContain(
-		'kody context register --name my-machine --org acme',
-	)
+	expect(team.commands).toContain('kody connect --name my-machine --org acme')
 	for (const copy of [personal, team]) {
 		expect(copy.login).toContain('`kody login`')
 	}

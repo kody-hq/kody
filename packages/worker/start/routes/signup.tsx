@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { staticDocumentHead } from '../components/document-head.ts'
 import { createFileRoute } from '@tanstack/react-router'
+import { NativeAuth } from '../components/native-auth.tsx'
 import { LoginPage } from '../pages/login.tsx'
 import { loadAuthPage } from '#start/server/auth-page'
 export const Route = createFileRoute('/signup')({
@@ -20,11 +21,13 @@ function AuthPage() {
 	const data = Route.useLoaderData()
 	const { pageLocation: location } = Route.useRouteContext()
 	return (
-		<LoginPage
-			key={location.href}
-			mode="signup"
-			currentHref={location.href}
-			authConfig={data.authConfig}
-		/>
+		<NativeAuth mode="signup">
+			<LoginPage
+				key={location.href}
+				mode="signup"
+				currentHref={location.href}
+				authConfig={data.authConfig}
+			/>
+		</NativeAuth>
 	)
 }

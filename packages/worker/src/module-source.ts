@@ -1,4 +1,4 @@
-import { parse } from '@babel/parser'
+import { parse, type ParserPlugin } from '@babel/parser'
 
 export type ModuleAstNode = {
 	type: string
@@ -11,6 +11,35 @@ export function parseModuleSource(source: string) {
 		plugins: ['typescript', 'jsx'],
 		createImportExpressions: true,
 	})
+}
+
+const fallbackParserPlugins: Array<ParserPlugin[]> = [
+	['typescript', 'decorators-legacy'],
+	['typescript', 'jsx', 'decorators-legacy'],
+]
+
+/**
+ * Like `parseModuleSource`, but retries without JSX so `.ts` code that uses
+ * `<T>value` type assertions (a JSX parse error) still yields an AST, and with
+ * decorators so decorated classes are scanned instead of skipped.
+ */
+export function parseModuleSourceAllowingTypeAssertions(source: string) {
+	try {
+		return parseModuleSource(source)
+	} catch (error) {
+		for (const plugins of fallbackParserPlugins) {
+			try {
+				return parse(source, {
+					sourceType: 'module',
+					plugins,
+					createImportExpressions: true,
+				})
+			} catch {
+				// Try the next plugin set; rethrow the original error if none parse.
+			}
+		}
+		throw error
+	}
 }
 
 function getProgramBody(parsed: ModuleAstNode) {

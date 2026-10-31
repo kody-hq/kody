@@ -44,18 +44,14 @@ import {
 	type CSSProperties,
 	type FormEvent,
 } from 'react'
+import { AuthLayout } from '../components/auth-layout.tsx'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { ProviderIcon } from '../components/provider-icons.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { useSocialSignIn, type PublicAuthConfig } from '../social-sign-in.ts'
 import { type UsernameAvailabilityView } from '../components/username-choice-field.tsx'
-import {
-	AuthForm,
-	formMessageCss,
-	renderLoginVisualPanel,
-	renderMobileBrand,
-} from './login-sections.tsx'
+import { AuthForm, formMessageCss } from './login-sections.tsx'
 
 export type AuthStatus = 'idle' | 'submitting' | 'success' | 'error'
 function buildAuthPath(mode: 'login' | 'signup', redirectTo: string | null) {
@@ -361,203 +357,125 @@ export function LoginPage({
 	const showSocial = authProviders.length > 0
 
 	return (
-		<div css={authLayoutCss}>
-			{renderLoginVisualPanel()}
-
-			<div css={authPanelCss}>
-				{renderMobileBrand()}
-
-				<div css={authCardCss}>
-					<header
-						data-rise
-						style={{ '--rise': '0' } as CSSProperties}
-						css={authHeadCss}
-					>
-						<h1>{title}</h1>
-						<p>{description}</p>
-					</header>
-
-					{oauthErrorMessage ? (
-						<>
-							<p aria-live="polite" data-tone="error" css={formMessageCss}>
-								{oauthErrorMessage}
-							</p>
-							<ErrorAgentPromptButton
-								prompt={buildOauthLoginErrorAgentPrompt({
-									errorCode: searchParams.get('oauthError') ?? 'provider-error',
-									errorMessage: oauthErrorMessage,
-								})}
-							/>
-						</>
-					) : null}
-
-					<AuthForm
-						handleId={handleId}
-						turnstileSiteKey={turnstileSiteKey}
-						status={status}
-						message={message}
-						isSubmitting={isSubmitting}
-						isInteractive={hydrated}
-						isSignup={isSignup}
-						signupUsername={signupUsername}
-						signupEmail={signupEmail}
-						usernameConfirming={
-							confirmedUsername !== null &&
-							confirmedUsername === signupUsername.trim().toLowerCase()
-						}
-						onSignupEmailInput={(value) => {
-							setSignupEmail(value)
-							if (!usernameTouched.current) {
-								const local = value.split('@')[0] ?? ''
-								const suggestion = suggestHandle(local) ?? ''
-								setSignupUsername(suggestion)
-								setConfirmedUsername(null)
-							}
-						}}
-						onSignupUsernameInput={(value) => {
-							usernameTouched.current = true
-							setSignupUsername(value)
-							setConfirmedUsername(null)
-							// Format errors stay in UsernameChoiceField; keep the form
-							// message for submit / confirm copy only.
-							setState('idle')
-						}}
-						onUsernameAvailabilityChange={setUsernameAvailability}
-						submitLabel={submitLabel}
-						submitBusyLabel={submitBusyLabel}
-						onSubmit={handleSubmit}
-						onPasskeySignIn={handlePasskeySignIn}
-						onFieldEdit={() => {
-							if (mode === 'signup' && getHandleFormatError(signupUsername))
-								return
-							clearFieldError()
-						}}
+		<AuthLayout title={title} description={description}>
+			{oauthErrorMessage ? (
+				<>
+					<p aria-live="polite" data-tone="error" css={formMessageCss}>
+						{oauthErrorMessage}
+					</p>
+					<ErrorAgentPromptButton
+						prompt={buildOauthLoginErrorAgentPrompt({
+							errorCode: searchParams.get('oauthError') ?? 'provider-error',
+							errorMessage: oauthErrorMessage,
+						})}
 					/>
+				</>
+			) : null}
 
-					{showSocial ? (
-						<>
-							<div
-								data-rise
-								style={{ '--rise': '2' } as CSSProperties}
-								role="separator"
-								aria-label="or continue with"
-								css={authDividerCss}
-							>
-								<span>or continue with</span>
-							</div>
-							<div
-								data-rise
-								style={{ '--rise': '3' } as CSSProperties}
-								css={authOauthCss}
-							>
-								{authProviders.map((provider) => (
-									<button
-										key={provider.id}
-										type="button"
-										disabled={!hydrated || isSubmitting}
-										aria-label={`Continue with ${provider.label}`}
-										data-testid={`social-sign-in-${provider.id}`}
-										css={oauthButtonCss}
-										onClick={() => handleProviderSignIn(provider.id)}
-									>
-										<ProviderIcon providerId={provider.id} size="1.4rem" />
-									</button>
-								))}
-							</div>
-						</>
-					) : null}
+			<AuthForm
+				handleId={handleId}
+				turnstileSiteKey={turnstileSiteKey}
+				status={status}
+				message={message}
+				isSubmitting={isSubmitting}
+				isInteractive={hydrated}
+				isSignup={isSignup}
+				signupUsername={signupUsername}
+				signupEmail={signupEmail}
+				usernameConfirming={
+					confirmedUsername !== null &&
+					confirmedUsername === signupUsername.trim().toLowerCase()
+				}
+				onSignupEmailInput={(value) => {
+					setSignupEmail(value)
+					if (!usernameTouched.current) {
+						const local = value.split('@')[0] ?? ''
+						const suggestion = suggestHandle(local) ?? ''
+						setSignupUsername(suggestion)
+						setConfirmedUsername(null)
+					}
+				}}
+				onSignupUsernameInput={(value) => {
+					usernameTouched.current = true
+					setSignupUsername(value)
+					setConfirmedUsername(null)
+					// Format errors stay in UsernameChoiceField; keep the form
+					// message for submit / confirm copy only.
+					setState('idle')
+				}}
+				onUsernameAvailabilityChange={setUsernameAvailability}
+				submitLabel={submitLabel}
+				submitBusyLabel={submitBusyLabel}
+				onSubmit={handleSubmit}
+				onPasskeySignIn={handlePasskeySignIn}
+				onFieldEdit={() => {
+					if (mode === 'signup' && getHandleFormatError(signupUsername)) return
+					clearFieldError()
+				}}
+			/>
 
-					<footer
+			{showSocial ? (
+				<>
+					<div
 						data-rise
-						style={{ '--rise': '4' } as CSSProperties}
-						css={authFootCss}
+						style={{ '--rise': '2' } as CSSProperties}
+						role="separator"
+						aria-label="or continue with"
+						css={authDividerCss}
 					>
-						{isSignup ? (
-							<p>
-								Already have an account?{' '}
-								<SiteLink href={buildAuthPath('login', redirectTo)}>
-									Sign in
-								</SiteLink>
-								.
-							</p>
-						) : (
-							<p>
-								New here?{' '}
-								<SiteLink href={buildAuthPath('signup', redirectTo)}>
-									Create an account
-								</SiteLink>
-								.
-							</p>
-						)}
-						<p css={authLegalCss}>
-							<SiteLink href="/privacy">Privacy</SiteLink>
-							<SiteLink href="/terms">Terms</SiteLink>
-						</p>
-					</footer>
-				</div>
+						<span>or continue with</span>
+					</div>
+					<div
+						data-rise
+						style={{ '--rise': '3' } as CSSProperties}
+						css={authOauthCss}
+					>
+						{authProviders.map((provider) => (
+							<button
+								key={provider.id}
+								type="button"
+								disabled={!hydrated || isSubmitting}
+								aria-label={`Continue with ${provider.label}`}
+								data-testid={`social-sign-in-${provider.id}`}
+								css={oauthButtonCss}
+								onClick={() => handleProviderSignIn(provider.id)}
+							>
+								<ProviderIcon providerId={provider.id} size="1.4rem" />
+							</button>
+						))}
+					</div>
+				</>
+			) : null}
 
-				<div css={authCornerCss}>
-					<SiteLink href="/">&larr; Back to Kody</SiteLink>
-				</div>
-			</div>
-		</div>
+			<footer
+				data-rise
+				style={{ '--rise': '4' } as CSSProperties}
+				css={authFootCss}
+			>
+				{isSignup ? (
+					<p>
+						Already have an account?{' '}
+						<SiteLink href={buildAuthPath('login', redirectTo)}>
+							Sign in
+						</SiteLink>
+						.
+					</p>
+				) : (
+					<p>
+						New here?{' '}
+						<SiteLink href={buildAuthPath('signup', redirectTo)}>
+							Create an account
+						</SiteLink>
+						.
+					</p>
+				)}
+				<p css={authLegalCss}>
+					<SiteLink href="/privacy">Privacy</SiteLink>
+					<SiteLink href="/terms">Terms</SiteLink>
+				</p>
+			</footer>
+		</AuthLayout>
 	)
-}
-
-const mobileMq = '@media (max-width: 900px)'
-
-const authLayoutCss: CSSObject = {
-	display: 'grid',
-	gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
-	width: '100%',
-	[mobileMq]: {
-		gridTemplateColumns: '1fr',
-	},
-}
-
-/* Form panel */
-const authPanelCss: CSSObject = {
-	display: 'flex',
-	flexDirection: 'column' as const,
-	justifyContent: 'center',
-	gap: '2rem',
-	padding: 'clamp(1.5rem, 4vw, 3rem)',
-	position: 'relative' as const,
-	backgroundColor: colors.surface,
-	[mobileMq]: {
-		justifyContent: 'flex-start',
-		/* Was clamp(4.5rem, 12vw, 6rem) to clear the absolutely positioned
-		   corner. The corner is hidden at this breakpoint now, so the panel only
-		   needs its own breathing room. */
-		paddingTop: 'clamp(1.75rem, 6vw, 2.75rem)',
-	},
-}
-
-const authCardCss: CSSObject = {
-	width: 'min(100%, 400px)',
-	marginInline: 'auto',
-	display: 'flex',
-	flexDirection: 'column' as const,
-	gap: '1.7rem',
-}
-
-const authHeadCss: CSSObject = {
-	'& h1': {
-		margin: 0,
-		fontSize: 'clamp(1.9rem, 3vw, 2.3rem)',
-		fontWeight: 760,
-		letterSpacing: '-0.025em',
-		lineHeight: 1.05,
-	},
-	'& p': {
-		margin: '0.5rem 0 0',
-		color: colors.textMuted,
-	},
-	/* Centred on phones to sit under the centred brand mark; the two-panel
-	   desktop layout keeps the heading left-aligned with the form below it. */
-	[mobileMq]: {
-		textAlign: 'center' as const,
-	},
 }
 
 const authDividerCss: CSSObject = {
@@ -630,29 +548,4 @@ const authLegalCss: CSSObject = {
 		textDecoration: 'none',
 	},
 	'& a:hover': { textDecoration: 'underline', color: colors.text },
-}
-
-const authCornerCss: CSSObject = {
-	position: 'absolute' as const,
-	top: 'clamp(1rem, 2.5vw, 1.8rem)',
-	right: 'clamp(1rem, 2.5vw, 1.8rem)',
-	display: 'flex',
-	alignItems: 'center',
-	gap: '1.1rem',
-	fontSize: '0.92rem',
-	'& > a': {
-		color: colors.textMuted,
-		textDecoration: 'none',
-	},
-	'& > a:hover': { color: colors.text },
-	/*
-	 * Gone on phones, where this floated over the top of the card and crowded
-	 * the brand. The "back" link is redundant there because `authBrandMobileCss`
-	 * puts a real link home inside the card at this breakpoint — which is also
-	 * why the corner has to stay on wider screens, where that in-card brand is
-	 * `display: none` and the only other one is inside the `aria-hidden` visual
-	 * panel at `tabIndex={-1}`. Hiding it there would leave no reachable way
-	 * home.
-	 */
-	[mobileMq]: { display: 'none' },
 }

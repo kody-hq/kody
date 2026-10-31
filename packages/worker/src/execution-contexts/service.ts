@@ -39,6 +39,8 @@ import {
 import { optInTrustNotice, sharingTrustNotice } from './trust-copy.ts'
 import { type RunHistoryRow } from './session-do.ts'
 import { kodyCloudTarget } from './routing.ts'
+import { latestCliVersion } from './latest-cli-version.ts'
+import { isOlderCliVersion } from '#universal/execution-contexts.ts'
 import { type RunRecord } from '#worker/run-records/types.ts'
 
 /** Shared logic behind the execution-context MCP capabilities and routes. */
@@ -191,7 +193,7 @@ export async function formatContexts(
 	options: { includeSharing?: boolean } = {},
 ) {
 	const db = caller.env.APP_DB
-	const [handles, slugs, counts, chain] = await Promise.all([
+	const [handles, slugs, counts, chain, latestCli] = await Promise.all([
 		handlesFor(
 			db,
 			rows.map((row) => row.operator_user_id),
@@ -205,6 +207,9 @@ export async function formatContexts(
 			rows.map((row) => row.id),
 		),
 		getChain(db, caller),
+		rows.some((row) => row.client_version)
+			? latestCliVersion()
+			: Promise.resolve(null),
 	])
 	const inChain = new Set(
 		chain.entries.flatMap((entry) =>
@@ -230,9 +235,21 @@ export async function formatContexts(
 				acceptingRuns: live.acceptingRuns,
 				lastSeenAt: live.lastSeenAt ?? row.last_seen_at,
 				revokedAt: row.revoked_at,
-				client: { name: row.client_name, version: row.client_version },
+				client: {
+					name: row.client_name,
+					version: row.client_version,
+					latestVersion: latestCli,
+					outdated: Boolean(
+						(row.client_name === 'kody-cli' ||
+							row.client_name === '@kodycodes/cli') &&
+						latestCli &&
+						row.client_version &&
+						isOlderCliVersion(row.client_version, latestCli),
+					),
+				},
 				capabilities: {
 					os: capabilities.os ?? null,
+					service: capabilities.service ?? null,
 					maxConcurrent:
 						capabilities.maxConcurrent ?? grant.limits.maxConcurrent,
 					features: capabilities.features ?? [],
