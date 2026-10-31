@@ -27,13 +27,42 @@ function isSameOriginFormPost(request: Request) {
 	}
 }
 
+// Sign-in forms are a few short fields; anything bigger is not ours.
+const maxFormBytes = 16 * 1024
+
 async function readUrlEncodedForm(request: Request) {
 	const contentType = request.headers.get('Content-Type') ?? ''
 	if (!contentType.includes('application/x-www-form-urlencoded')) return null
-	return await request.formData().catch(() => null)
+	const declared = Number(request.headers.get('Content-Length') ?? '0')
+	if (declared > maxFormBytes || !request.body) return null
+	const reader = request.body.getReader()
+	const chunks: Array<Uint8Array> = []
+	let total = 0
+	try {
+		while (true) {
+			const { done, value } = await reader.read()
+			if (done) break
+			total += value.byteLength
+			if (total > maxFormBytes) {
+				await reader.cancel().catch(() => {})
+				return null
+			}
+			chunks.push(value)
+		}
+	} catch {
+		await reader.cancel().catch(() => {})
+		return null
+	}
+	const bytes = new Uint8Array(total)
+	let offset = 0
+	for (const chunk of chunks) {
+		bytes.set(chunk, offset)
+		offset += chunk.byteLength
+	}
+	return new URLSearchParams(new TextDecoder().decode(bytes))
 }
 
-function formString(form: FormData, name: string) {
+function formString(form: URLSearchParams, name: string) {
 	const value = form.get(name)
 	return typeof value === 'string' ? value : ''
 }
@@ -67,7 +96,7 @@ function errorForStatus(status: number, error: unknown): AuthFormError {
 	return 'invalid'
 }
 
-function protectionFields(form: FormData) {
+function protectionFields(form: URLSearchParams) {
 	return {
 		kody_hp: formString(form, 'kody_hp'),
 		turnstileToken:

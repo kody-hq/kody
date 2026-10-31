@@ -289,10 +289,17 @@ export function AuthForm(
 			) : null}
 			{renderStatusMessage(props.handleId, props.status, props.message)}
 			{/*
-			 * Submit works before (or without) hydration: the form posts to
-			 * `/login` as plain HTML (ADR 0094).
+			 * Sign-in submit works before (or without) hydration: the form posts
+			 * to `/login` as plain HTML (ADR 0094). Sign-up has no plain HTML
+			 * handler, so it waits for the page JavaScript.
 			 */}
-			<button type="submit" disabled={props.isSubmitting} css={authSubmitCss}>
+			<button
+				type="submit"
+				disabled={
+					props.isSubmitting || (props.isSignup && !props.isInteractive)
+				}
+				css={authSubmitCss}
+			>
 				<span
 					data-swap-label
 					data-active={props.isSubmitting ? undefined : true}

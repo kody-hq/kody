@@ -80,6 +80,8 @@ export function LoginPage({
 	const hydrated = useHydrated()
 	const [status, setStatus] = useState<AuthStatus>('idle')
 	const [message, setMessage] = useState<string | null>(null)
+	// The `formError` query from a plain HTML post stays until the next edit.
+	const [formErrorDismissed, setFormErrorDismissed] = useState(false)
 	const [signupUsername, setSignupUsername] = useState('')
 	const [signupEmail, setSignupEmail] = useState('')
 	const [usernameAvailability, setUsernameAvailability] =
@@ -134,6 +136,7 @@ export function LoginPage({
 
 	async function handleSubmit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
+		setFormErrorDismissed(true)
 		if (!(event.currentTarget instanceof HTMLFormElement)) return
 		const form = event.currentTarget
 
@@ -347,7 +350,7 @@ export function LoginPage({
 			: null
 	// Set after a plain HTML form post (no page JavaScript) bounced back here.
 	const formErrorMessage =
-		!message && status === 'idle'
+		!formErrorDismissed && !message && status === 'idle'
 			? authFormErrorMessage(searchParams.get('formError'))
 			: null
 	const deviceSignInAuthorize =
@@ -421,6 +424,7 @@ export function LoginPage({
 				onSubmit={handleSubmit}
 				onPasskeySignIn={handlePasskeySignIn}
 				onFieldEdit={() => {
+					setFormErrorDismissed(true)
 					if (mode === 'signup' && getHandleFormatError(signupUsername)) return
 					clearFieldError()
 				}}
@@ -483,9 +487,11 @@ export function LoginPage({
 			<AuthFormFallback
 				turnstileSiteKey={turnstileSiteKey}
 				note={
-					deviceSignInAuthorize
-						? 'JavaScript is off. Sign in with your email and password, or use Sign in on another device. Passkeys and social sign-in need JavaScript.'
-						: 'JavaScript is off. Sign in with your email and password. Passkeys and social sign-in need JavaScript.'
+					isSignup
+						? 'JavaScript is off. Creating an account needs JavaScript. If you already have an account, sign in instead.'
+						: deviceSignInAuthorize
+							? 'JavaScript is off. Sign in with your email and password, or use Sign in on another device. Passkeys and social sign-in need JavaScript.'
+							: 'JavaScript is off. Sign in with your email and password. Passkeys and social sign-in need JavaScript.'
 				}
 			/>
 
