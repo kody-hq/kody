@@ -783,6 +783,10 @@
 		{
 			"filename": "0216-login-credential-session-failures.sql",
 			"sha256": "f03eca3000bd5bccf11589889ccdbfdc141ff57b4879ac988b3f6a701b627e3b"
+		},
+		{
+			"filename": "0217-profiles.sql",
+			"sha256": "2560759567b1ddb011ff91bb9a9664eeb9e6f3a81ad4d5c9d6a2927f5d13734d"
 		}
 	]
 }

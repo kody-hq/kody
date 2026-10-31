@@ -3,6 +3,7 @@ import {
 	featureFlagDefinitions,
 	mcpEventsExtensionFlagKey,
 	mcpSkillsExtensionFlagKey,
+	profilesFlagKey,
 	type FeatureFlagKey,
 } from './registry.ts'
 
@@ -43,6 +44,16 @@ export const selfServeExperiments = [
 		docsSlug: 'execution-contexts',
 		stage: 'Early access: the CLI daemon and the chain may still change.',
 		orgSection: 'execution-contexts',
+	},
+	{
+		id: 'profiles',
+		flagKey: profilesFlagKey,
+		title: 'Profiles',
+		summary:
+			'Give an agent or bot its own identity in an org, with only the access you hand it, an optional expiry, and sub-profiles for the agents it starts. Profiles do not grant access yet: this stage lets you create, list, shorten, and revoke them.',
+		docsSlug: 'profiles',
+		stage:
+			'Early access: profiles exist but nothing runs as a profile yet; profile authorization and tokens come next.',
 	},
 	{
 		id: 'package-skills',

@@ -145,7 +145,8 @@ test('createOrganization offers restore when the actor owned the soft-deleted ha
 	const { db } = await createDb()
 	const personId = testStableUserIdFromEmail('ada@example.com')
 	const otherId = testStableUserIdFromEmail('other@example.com')
-	const deletedAt = '2026-10-01T00:00:00.000Z'
+	// Inside the 30-day restore window whenever the test runs.
+	const deletedAt = new Date(Date.now() - 86_400_000).toISOString()
 	await db
 		.prepare(
 			`INSERT INTO orgs (

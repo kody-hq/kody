@@ -80,6 +80,7 @@ const orgLevelPermissionList = [
 	'audit:read',
 	'token:read',
 	'token:delete',
+	'profile:manage',
 ] as const
 
 export type OrgPermission =

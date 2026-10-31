@@ -699,6 +699,18 @@ export function planOrgTransfer(
 	}
 	for (const row of source.grants.filter(isLiveRow)) {
 		if (text(row, 'resource_type') === 'org') continue
+		// Profiles stay in the source org (ADR 0092), so their grants on moved
+		// resources are dropped and kept in the transfer backup.
+		if (text(row, 'subject_type') === 'profile') {
+			droppedCreatorGrants.push(row)
+			warnings.push({
+				code: 'profile_grant_dropped',
+				message: `Profile grant ${text(row, 'id')} on ${text(row, 'resource_type')} ${text(row, 'resource_id')} is dropped: profiles stay in @${from.slug}.`,
+				table: 'grants',
+				subject: text(row, 'id'),
+			})
+			continue
+		}
 		// A creator's own grant follows them into the target when they are a
 		// member there; otherwise the target's grants decide who reaches it.
 		if (row['origin'] === 'created' && text(row, 'subject_type') === 'user') {
