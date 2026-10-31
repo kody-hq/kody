@@ -257,22 +257,20 @@ test('adding a team and a member, changing a preset, and removing are audited', 
 	])
 })
 
-test('a non-member cannot be added', async () => {
-	const refused = await call('ada', {
+test('a person outside the org can be added as an outside Read collaborator', async () => {
+	const added = await changeAndRead('ada', {
 		intent: 'grant',
 		subjectType: 'user',
 		subjectId: collaboratorPeople.dan.personId,
-		preset: 'use',
+		preset: 'read',
 	})
-	expect(refused.status).toBe(400)
-	expect(refused.body).toMatchObject({
-		ok: false,
-		error: /not a member of this organization/,
-	})
-	expect(await auditActions()).toEqual([])
+	expect(added.collaborators).toEqual([
+		expect.objectContaining({ kind: 'outside', preset: 'read' }),
+	])
+	expect(await auditActions()).toEqual(['grant.created'])
 })
 
-test('an outside collaborator is listed and can be removed but not changed', async () => {
+test('an outside collaborator is listed, can be changed, and can be removed', async () => {
 	insertCollaboratorGrant(seed, {
 		id: 'grant-dan',
 		packageId: 'pkg-1',
@@ -283,19 +281,18 @@ test('an outside collaborator is listed and can be removed but not changed', asy
 	expect(view(await call('ada')).collaborators).toEqual([
 		expect.objectContaining({ grantId: 'grant-dan', kind: 'outside' }),
 	])
-	const refused = await call('ada', {
+	const changed = await changeAndRead('ada', {
 		intent: 'grant',
 		subjectType: 'user',
 		subjectId: collaboratorPeople.dan.personId,
-		preset: 'contribute',
+		preset: 'read',
 	})
-	expect(refused.status).toBe(400)
-	const removed = await changeAndRead('ada', {
-		intent: 'revoke',
-		grantId: 'grant-dan',
-	})
+	expect(changed.collaborators).toEqual([
+		expect.objectContaining({ kind: 'outside', preset: 'read' }),
+	])
+	const grantId = changed.collaborators[0]?.grantId ?? ''
+	const removed = await changeAndRead('ada', { intent: 'revoke', grantId })
 	expect(removed.collaborators).toEqual([])
-	expect(await auditActions()).toEqual(['grant.revoked'])
 })
 
 test('grant input rejects invitation fields without a member or team identity', () => {

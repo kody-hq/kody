@@ -41,6 +41,8 @@ const listing = {
 const fork: CommunityForkRecord = {
 	id: 'fork-1',
 	listingId: 'listing-1',
+	upstreamOwnerId: null,
+	upstreamPackageId: null,
 	forkerUserId: 'stable-forker-a',
 	originCommit: 'commit-1',
 	forkedPackageId: 'forked-package-1',

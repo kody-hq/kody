@@ -32,6 +32,7 @@ export function isInviteLinkRole(value: unknown): value is InviteLinkRole {
 }
 
 export const inviteLinkResourcePresets = [
+	'read',
 	'use',
 	'contribute',
 	'manage',

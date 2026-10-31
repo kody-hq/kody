@@ -17,6 +17,7 @@ import { renderIcon } from '../components/icon.tsx'
 import {
 	type PackageCollaboratorInviteCreated,
 	type PackageCollaboratorInviteView,
+	type PackageCollaboratorPermission,
 	type PackageCollaboratorPreset,
 	type PackageCollaboratorsChange,
 	type PackageCollaboratorsView,
@@ -40,6 +41,7 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import {
+	AdvancedPermissionsField,
 	formCss,
 	iconWellCss,
 	listCss,
@@ -49,6 +51,7 @@ import {
 	rowDetailCss,
 	rowNameCss,
 	rowTextCss,
+	presetOrPermissions,
 } from './package-collaborators-parts.tsx'
 
 type PostChange = (
@@ -69,6 +72,9 @@ export function PackageCollaboratorInvites({
 }) {
 	const [invitee, setInvitee] = useState('')
 	const [preset, setPreset] = useState<PackageCollaboratorPreset>('use')
+	const [permissions, setPermissions] = useState<
+		Array<PackageCollaboratorPermission>
+	>([])
 	const [created, setCreated] =
 		useInviteHandoff<PackageCollaboratorInviteCreated>(view.invites)
 	const [confirmed, setConfirmed] = useState<string | null>(null)
@@ -78,12 +84,17 @@ export function PackageCollaboratorInvites({
 		// Failed attempts must preserve the previous unrecoverable handoff.
 		const result = await postChange(
 			'invite',
-			{ intent: 'invite', invitee: invitee.trim(), preset },
+			{
+				intent: 'invite',
+				invitee: invitee.trim(),
+				...presetOrPermissions(preset, permissions),
+			},
 			'Invite created.',
 		)
 		if (result?.invite) {
 			setInvitee('')
 			setPreset('use')
+			setPermissions([])
 			setCreated(result.invite)
 		}
 	}
@@ -154,6 +165,12 @@ export function PackageCollaboratorInvites({
 							</label>
 						))}
 					</fieldset>
+					<AdvancedPermissionsField
+						value={permissions}
+						onChange={setPermissions}
+						disabled={busy}
+						testId="package-collaborators-advanced-invite"
+					/>
 					<div css={accountActionsCss}>
 						<button
 							type="submit"
@@ -176,7 +193,9 @@ export function PackageCollaboratorInvites({
 						<p css={mutedCopyCss}>
 							Send this message to them. They paste it into their own agent
 							connected to Kody to accept{' '}
-							{packageCollaboratorPresetLabel(created.preset).toLowerCase()}{' '}
+							{created.preset
+								? packageCollaboratorPresetLabel(created.preset).toLowerCase()
+								: 'custom'}{' '}
 							access. It is shown only once and expires{' '}
 							{formatTimestampDate(created.expiresAt)}.
 						</p>

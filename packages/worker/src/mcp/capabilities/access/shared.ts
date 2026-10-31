@@ -133,8 +133,8 @@ function readStoredPreset(
 	grantId: string,
 ): GrantPreset | null {
 	if (value === null) return null
-	if (value === 'use' || value === 'contribute' || value === 'manage') {
-		return value
+	if ((grantPresets as ReadonlyArray<string>).includes(value)) {
+		return value as GrantPreset
 	}
 	throw new Error(`Grant ${grantId} has preset ${value}.`)
 }
@@ -450,7 +450,7 @@ export function readPermissionList(values: Array<string> | undefined) {
 }
 
 export function requirePresetOrPermissions(input: {
-	preset?: 'use' | 'contribute' | 'manage'
+	preset?: GrantPreset
 	permissions: Array<OrgPermission> | null
 }) {
 	if (input.preset && input.permissions && input.permissions.length > 0) {

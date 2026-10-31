@@ -1,21 +1,43 @@
 import { z } from 'zod'
-import { packageCollaboratorPresets } from './package-collaborators.ts'
+import {
+	packageCollaboratorPermissions,
+	packageCollaboratorPresets,
+} from './package-collaborators.ts'
+
+/** Exactly one of a preset or an advanced permission list, as the API takes. */
+const presetOrPermissions = {
+	preset: z.enum(packageCollaboratorPresets).nullable().optional(),
+	permissions: z.array(z.enum(packageCollaboratorPermissions)).optional(),
+}
+
+function hasPresetXorPermissions(input: {
+	preset?: string | null
+	permissions?: ReadonlyArray<string>
+}) {
+	return Boolean(input.preset) !== Boolean(input.permissions?.length)
+}
+
+const presetOrPermissionsMessage = 'Choose a preset or at least one permission.'
 export const packageAccessInput = z.object({
 	username: z.string().regex(/^[a-zA-Z0-9_-]+$/),
 	kodyId: z.string().min(1),
 })
-export const grantPackageCollaboratorInput = packageAccessInput.extend({
-	subjectType: z.enum(['user', 'team', 'org', 'profile']),
-	subjectId: z.string().trim().min(1),
-	preset: z.enum(packageCollaboratorPresets),
-})
+export const grantPackageCollaboratorInput = packageAccessInput
+	.extend({
+		subjectType: z.enum(['user', 'team', 'org', 'profile']),
+		subjectId: z.string().trim().min(1),
+		...presetOrPermissions,
+	})
+	.refine(hasPresetXorPermissions, presetOrPermissionsMessage)
 export const revokePackageCollaboratorInput = packageAccessInput.extend({
 	grantId: z.string().trim().min(1),
 })
-export const createPackageCollaboratorInviteInput = packageAccessInput.extend({
-	invitee: z.string().trim().min(1),
-	preset: z.enum(packageCollaboratorPresets),
-})
+export const createPackageCollaboratorInviteInput = packageAccessInput
+	.extend({
+		invitee: z.string().trim().min(1),
+		...presetOrPermissions,
+	})
+	.refine(hasPresetXorPermissions, presetOrPermissionsMessage)
 export const revokePackageCollaboratorInviteInput = packageAccessInput.extend({
 	inviteId: z.string().trim().min(1),
 })

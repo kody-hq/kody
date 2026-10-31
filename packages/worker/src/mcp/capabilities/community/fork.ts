@@ -23,8 +23,16 @@ export const communityForkCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'package:create',
 		description:
-			'Fork a public package into an inert package source in your scope. The fork cannot run until you review the code and publish through a repo session. Idempotent per listing and account: when this account already forked the listing (or a fork of it is still in progress), you get that fork back with `already_forked: true` instead of a duplicate. When the listing leaf is already taken by an unrelated package and you omit `kody_id`, Kody picks the next free leaf (for example `leaf-2`). Pass an explicit package name leaf (or `@owner/leaf`) to choose the name yourself, or to deliberately fork the listing again under a new name.',
-		keywords: ['community', 'fork', 'copy', 'listing', 'package', 'import'],
+			'Fork a public package into an inert package source in your scope. The fork cannot run until you review the code and publish through a repo session. Idempotent per listing and account: when this account already forked the listing (or a fork of it is still in progress), you get that fork back with `already_forked: true` instead of a duplicate. When the listing leaf is already taken by an unrelated package and you omit `kody_id`, Kody picks the next free leaf (for example `leaf-2`). Pass an explicit package name leaf (or `@owner/leaf`) to choose the name yourself, or to deliberately fork the listing again under a new name. For a private package you can read (owner or collaborator, including the Read preset), use packageFork instead.',
+		keywords: [
+			'community',
+			'fork',
+			'copy',
+			'listing',
+			'package',
+			'import',
+			'private',
+		],
 		readOnly: false,
 		idempotent: true,
 		destructive: false,

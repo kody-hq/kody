@@ -47,6 +47,7 @@ import {
 } from '#worker/execution-contexts/store.ts'
 import {
 	contextCredentialIds,
+	isOperatorContextRun,
 	contextRunCredentials,
 } from '#worker/execution-contexts/credential-grant.ts'
 
@@ -449,10 +450,12 @@ async function authenticateWithExecutionContextLease(input: {
 		)
 	}
 	const scopes = lease.callerScopes as ReadonlyArray<OrgPermission> | null
-	const credentials = contextRunCredentials({
+	const identity = {
 		operatorUserId: context.operator_user_id,
 		requesterUserId: authContext.user.userId,
-	})
+	}
+	const byOperator = isOperatorContextRun(identity)
+	const credentials = contextRunCredentials(identity)
 	return createApiInvocationContext({
 		env: input.env,
 		callerContext: {
@@ -469,6 +472,7 @@ async function authenticateWithExecutionContextLease(input: {
 				orgBinding,
 				scopes,
 				contextCredentialIds: contextCredentialIds(credentials),
+				contextRunByOperator: byOperator,
 			}),
 			user: authContext.user,
 		},
@@ -480,6 +484,7 @@ async function authenticateWithExecutionContextLease(input: {
 			scopes: lease.callerScopes,
 			runtime: lease.runtime,
 			credentials,
+			byOperator,
 		},
 		waitUntil: input.waitUntil,
 	})

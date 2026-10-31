@@ -211,7 +211,7 @@ export type CommunityForkActor = 'human' | 'agent'
 
 export type CommunityForkRow = {
 	id: string
-	listing_id: string
+	listing_id: string | null
 	forker_user_id: string
 	origin_commit: string
 	forked_package_id: string
@@ -221,11 +221,23 @@ export type CommunityForkRow = {
 	adopted_at: string | null
 	adoption_note: string | null
 	actor: CommunityForkActor | null
+	upstream_owner_id?: string | null
+	upstream_package_id?: string | null
+}
+
+/** A fork row read through a `listing_id` filter, so its listing is set. */
+export type ListingCommunityForkRecord = CommunityForkRecord & {
+	listingId: string
 }
 
 export type CommunityForkRecord = {
 	id: string
-	listingId: string
+	/** Null for a fork of a private package (see upstreamPackageId). */
+	listingId: string | null
+	/** Org that owns the forked private package; null for a listing fork. */
+	upstreamOwnerId: string | null
+	/** The forked private package; null for a listing fork. */
+	upstreamPackageId: string | null
 	forkerUserId: string
 	originCommit: string
 	forkedPackageId: string

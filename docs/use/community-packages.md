@@ -69,8 +69,11 @@ generalize, and waits for explicit go-ahead. The Worker does not scan or block
 on that review.
 
 - New packages are always created **private**.
-- Making a package **public** lists it on `/community`. Anyone can then read and
-  fork the default branch. On the website, type the package slug to confirm.
+- Making a package **public** lists it on `/community`. Anyone on the internet,
+  signed in or not, can then read and fork the default branch. On the website,
+  type the package slug to confirm. To share with specific people instead, give
+  them **Read** on the package's **Collaborators** tab (see
+  [Share source with one person](../guides/package-sharing.md#share-source-with-one-person)).
   Agents do not pass `confirm_name` for public; they run the hygiene pass first.
 - Making a package **private** unlists it: public URLs 404; existing forks keep
   their copies. Type the package slug to confirm (`confirm_name` for agents).
@@ -139,6 +142,12 @@ see [Listing verification](../guides/package-apps.md#listing-verification) in
 the package apps guide.
 
 ## Forking a listing
+
+Private packages have no listing. Anyone who can read one (the owner, or a
+collaborator with any preset, including **Read**) forks it with the **Fork**
+button on the package page or `packageFork` (`{ "package": "@owner/leaf" }`). It
+works like a listing fork below: a new package in your own org, with a fork
+record for upstream tracking. It never grants more access to the source.
 
 `communityFork` copies **HEAD** into your account as an **inert** source:
 

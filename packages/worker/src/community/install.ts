@@ -10,7 +10,11 @@ import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
 	buildAlreadyForkedMessage,
 	persistPreparedCommunityFork,
+	type PreparedCommunityFork,
+	type PreparePrivatePackageForkInput,
 	prepareCommunityFork,
+	preparePrivatePackageFork,
+	runIdempotentPrivatePackageFork,
 	runIdempotentCommunityFork,
 } from './service.ts'
 import {
@@ -40,7 +44,7 @@ async function reportInstallProgress(
 function logInstallPhaseTiming(input: {
 	phase: string
 	durationMs: number
-	listingId: string
+	listingId?: string
 	packageId?: string
 	filesCount?: number
 	status?: string
@@ -138,15 +142,89 @@ export async function installCommunityListing(
 				}),
 		},
 		{
-			existing: (fork) => existingInstallResult(input, fork),
-			create: (hold) => createCommunityInstall(input, hold.claimId),
+			existing: (fork) => existingInstallResult(input, fork, 'listing'),
+			create: (hold) =>
+				createCommunityInstall(input, hold.claimId, () =>
+					prepareCommunityFork({
+						env: input.env,
+						baseUrl: input.baseUrl,
+						userId: input.userId,
+						followerOrgId: input.followerOrgId,
+						creatorUserId: input.creatorUserId,
+						expectedPackageScope: input.expectedPackageScope,
+						listingId: input.listingId,
+						kodyId: input.kodyId,
+						expectedPinnedCommit: input.expectedPinnedCommit,
+						actor: input.actor ?? 'human',
+					}),
+				),
+		},
+	)
+}
+
+type InstallPrivatePackageForkInput = Omit<
+	InstallCommunityListingInput,
+	'listingId' | 'expectedPinnedCommit'
+> &
+	Pick<
+		PreparePrivatePackageForkInput,
+		'sourcePackage' | 'reader' | 'expectedOriginCommit'
+	>
+
+/**
+ * One-click fork of a package the reader may read but that has no listing.
+ * Same publish-or-keep-inert flow as {@link installCommunityListing}; the
+ * fork row names the source package for upstream tracking. Idempotent per
+ * (owner, source package).
+ */
+export async function installPrivatePackageFork(
+	input: InstallPrivatePackageForkInput,
+): Promise<InstallCommunityListingResult> {
+	return await runIdempotentPrivatePackageFork<InstallCommunityListingResult>(
+		{
+			env: input.env,
+			userId: input.userId,
+			kodyId: input.kodyId,
+			creatorUserId: input.creatorUserId,
+			sourcePackage: input.sourcePackage,
+			reader: input.reader,
+			onWaiting: () =>
+				reportInstallProgress(input.reportProgress, {
+					progress: 1,
+					total: 4,
+					message:
+						'A fork of this package is already in progress; waiting for it instead of starting another.',
+				}),
+		},
+		{
+			existing: (fork) => existingInstallResult(input, fork, 'package'),
+			create: (hold) =>
+				createCommunityInstall(input, hold.claimId, () =>
+					preparePrivatePackageFork({
+						env: input.env,
+						baseUrl: input.baseUrl,
+						userId: input.userId,
+						followerOrgId: input.followerOrgId,
+						creatorUserId: input.creatorUserId,
+						expectedPackageScope: input.expectedPackageScope,
+						kodyId: input.kodyId,
+						sourcePackage: input.sourcePackage,
+						reader: input.reader,
+						expectedOriginCommit: input.expectedOriginCommit,
+						actor: input.actor ?? 'human',
+					}),
+				),
 		},
 	)
 }
 
 async function existingInstallResult(
-	input: InstallCommunityListingInput,
+	input: Pick<
+		InstallCommunityListingInput,
+		'env' | 'userId' | 'expectedPackageScope'
+	>,
 	fork: CommunityForkRecord,
+	subject: 'listing' | 'package',
 ): Promise<InstallCommunityListingResult> {
 	const saved = await getSavedPackageById(input.env.APP_DB, {
 		userId: input.userId,
@@ -166,6 +244,7 @@ async function existingInstallResult(
 			targetName,
 			forkedPackageId: fork.forkedPackageId,
 			forkedSourceId: fork.forkedSourceId,
+			subject,
 		}),
 	}
 	if (saved) return { ...summary, status: 'installed' }
@@ -178,28 +257,23 @@ async function existingInstallResult(
 }
 
 async function createCommunityInstall(
-	input: InstallCommunityListingInput,
+	input: Omit<
+		InstallCommunityListingInput,
+		'listingId' | 'expectedPinnedCommit'
+	> & { listingId?: string },
 	claimId: string,
+	prepareFork: () => Promise<PreparedCommunityFork>,
 ): Promise<InstallCommunityListingResult> {
 	const installStartedAt = Date.now()
 	await reportInstallProgress(input.reportProgress, {
 		progress: 1,
 		total: 4,
-		message: 'Forking the listing into your account — source sync inbound…',
+		message: input.listingId
+			? 'Forking the listing into your account — source sync inbound…'
+			: 'Forking the package into your account.',
 	})
 	const prepareStartedAt = Date.now()
-	const prepared = await prepareCommunityFork({
-		env: input.env,
-		baseUrl: input.baseUrl,
-		userId: input.userId,
-		followerOrgId: input.followerOrgId,
-		creatorUserId: input.creatorUserId,
-		expectedPackageScope: input.expectedPackageScope,
-		listingId: input.listingId,
-		kodyId: input.kodyId,
-		expectedPinnedCommit: input.expectedPinnedCommit,
-		actor: input.actor ?? 'human',
-	})
+	const prepared = await prepareFork()
 	logInstallPhaseTiming({
 		phase: 'install-prepare',
 		durationMs: Date.now() - prepareStartedAt,

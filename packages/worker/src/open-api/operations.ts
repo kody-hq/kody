@@ -316,6 +316,7 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 		['GET', '/v1/packages', 'packageList'],
 		['POST', '/v1/packages', 'packageSave'],
 		['POST', '/v1/packages/check', 'packageCheck'],
+		['POST', '/v1/packages/fork', 'packageFork'],
 		['GET', '/v1/packages/{package_id}', 'packageGet'],
 		[
 			'GET',
