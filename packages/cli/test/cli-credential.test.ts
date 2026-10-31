@@ -371,3 +371,29 @@ test('whoami --json reports credential provenance and the other stored credentia
 		assert.doesNotMatch(result.stdout, /kody_at_/)
 	})
 })
+
+test('desktop login selection never reads or replaces stored API tokens and never falls back to them', () => {
+	for (const available of [true, false]) {
+		const result = resolveCliCredential({
+			env: {
+				KODY_CREDENTIAL_SOURCE: 'login',
+				KODY_API_TOKEN: 'unrelated-token',
+			},
+			apiUrl,
+			mcpUrl,
+			org: 'jane',
+			loadApiToken: () => {
+				throw new Error('Must not read unrelated API tokens')
+			},
+			loadLogin: (_url, org) => {
+				assert.equal(org, 'jane')
+				return available ? login : null
+			},
+		})
+		assert.equal(result?.source ?? null, available ? 'login' : null)
+	}
+	assert.throws(
+		() => resolveCliCredential({ env: { KODY_CREDENTIAL_SOURCE: 'typo' } }),
+		/must be login/,
+	)
+})

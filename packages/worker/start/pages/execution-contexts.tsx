@@ -1,4 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import {
+	DesktopMachinePanel,
+	useDesktopMachine,
+} from '../components/desktop-execution.tsx'
 import { css } from '@emotion/react'
 import { useRouter } from '@tanstack/react-router'
 import { createListDetailLinks } from '#client/list-detail-route.ts'
@@ -88,6 +92,7 @@ export function ExecutionContextsRoute(props: {
 	currentHref: string
 }) {
 	const { payload, currentHref } = props
+	const desktop = useDesktopMachine()
 	if (!payload.enabled) {
 		return (
 			<AccountManagementShell layout="list" currentHref={currentHref}>
@@ -97,41 +102,44 @@ export function ExecutionContextsRoute(props: {
 					description="Run execute on your own machines and shared servers, in the order you choose."
 					currentHref={currentHref}
 				/>
-				<AccountManagementPanel>
-					<div
-						data-testid="execution-contexts-flag-off"
-						data-flag="execution-contexts"
-					>
-						<p css={{ margin: 0 }}>
-							Execution contexts are an experiment. Turn them on and run{' '}
-							<code>kody daemon</code> on a laptop or build server, and{' '}
-							<code>execute</code> and automations can run there with the
-							folders and local network you allow. Credentials stay in Kody
-							cloud and never reach the machine. When the machine is offline or
-							busy, runs fall back to Kody cloud.
-						</p>
-						<p css={{ margin: '0.5rem 0 0', color: colors.textMuted }}>
-							Read the{' '}
-							<SiteLink
-								href={routes.docDetail.href({ slug: 'execution-contexts' })}
-								css={primaryLinkCss}
-							>
-								execution contexts guide
-							</SiteLink>
-							, or manage every experiment on{' '}
-							<SiteLink
-								href={routes.accountExperiments.href()}
-								css={primaryLinkCss}
-							>
-								Experiments
-							</SiteLink>
-							.
-						</p>
-						<ExperimentOptIn experiment="execution-contexts">
-							Try execution contexts
-						</ExperimentOptIn>
-					</div>
-				</AccountManagementPanel>
+				<DesktopMachinePanel />
+				{!desktop ? (
+					<AccountManagementPanel>
+						<div
+							data-testid="execution-contexts-flag-off"
+							data-flag="execution-contexts"
+						>
+							<p css={{ margin: 0 }}>
+								Execution contexts are an experiment. Turn them on and run{' '}
+								<code>kody daemon</code> on a laptop or build server, and{' '}
+								<code>execute</code> and automations can run there with the
+								folders and local network you allow. Credentials stay in Kody
+								cloud and never reach the machine. When the machine is offline
+								or busy, runs fall back to Kody cloud.
+							</p>
+							<p css={{ margin: '0.5rem 0 0', color: colors.textMuted }}>
+								Read the{' '}
+								<SiteLink
+									href={routes.docDetail.href({ slug: 'execution-contexts' })}
+									css={primaryLinkCss}
+								>
+									execution contexts guide
+								</SiteLink>
+								, or manage every experiment on{' '}
+								<SiteLink
+									href={routes.accountExperiments.href()}
+									css={primaryLinkCss}
+								>
+									Experiments
+								</SiteLink>
+								.
+							</p>
+							<ExperimentOptIn experiment="execution-contexts">
+								Try execution contexts
+							</ExperimentOptIn>
+						</div>
+					</AccountManagementPanel>
+				) : null}
 			</AccountManagementShell>
 		)
 	}
@@ -144,6 +152,7 @@ function EnabledPage(props: {
 	currentHref: string
 }) {
 	const { payload, selectedId, currentHref } = props
+	const desktop = useDesktopMachine()
 	const router = useRouter()
 	const { pageLocation } = useMatchedPageScope()
 	const links = createListDetailLinks(
@@ -204,6 +213,7 @@ function EnabledPage(props: {
 				description="Your machines and shared servers that run execute, and the order Kody tries them in."
 				currentHref={currentHref}
 			/>
+			<DesktopMachinePanel />
 			{note ? (
 				<AccountManagementMessage>
 					<span data-testid="execution-contexts-unutilized">{note}</span>
@@ -239,7 +249,9 @@ function EnabledPage(props: {
 				countLabel={`${shown.length} of ${contexts.length} shown`}
 				emptyLabel={
 					contexts.length === 0
-						? 'No execution contexts yet. Register a machine below.'
+						? desktop
+							? 'No execution contexts yet. Set up this machine above.'
+							: 'No execution contexts yet. Register a machine below.'
 						: 'No execution contexts match these filters.'
 				}
 				toolbar={
@@ -289,32 +301,34 @@ function EnabledPage(props: {
 					},
 				}))}
 			/>
-			<AccountManagementPanel
-				title="Register a machine"
-				description={register.body}
-			>
-				<div
-					data-testid="execution-contexts-register"
-					css={{ display: 'grid', gap: spacing.sm }}
+			{!desktop ? (
+				<AccountManagementPanel
+					title="Register a machine"
+					description={register.body}
 				>
-					<pre css={codeCss}>
-						<code>{register.commands.join('\n')}</code>
-					</pre>
-					<div>
-						<CopyTextButton
-							value={register.commands.join('\n')}
-							idleLabel="Copy commands"
-						/>
+					<div
+						data-testid="execution-contexts-register"
+						css={{ display: 'grid', gap: spacing.sm }}
+					>
+						<pre css={codeCss}>
+							<code>{register.commands.join('\n')}</code>
+						</pre>
+						<div>
+							<CopyTextButton
+								value={register.commands.join('\n')}
+								idleLabel="Copy commands"
+							/>
+						</div>
+						{register.trust.map((line) => (
+							<p key={line} css={{ margin: 0 }}>
+								{line}
+							</p>
+						))}
+						<p css={mutedCss}>{register.after}</p>
+						<p css={mutedCss}>{register.login}</p>
 					</div>
-					{register.trust.map((line) => (
-						<p key={line} css={{ margin: 0 }}>
-							{line}
-						</p>
-					))}
-					<p css={mutedCss}>{register.after}</p>
-					<p css={mutedCss}>{register.login}</p>
-				</div>
-			</AccountManagementPanel>
+				</AccountManagementPanel>
+			) : null}
 		</AccountManagementShell>
 	)
 }

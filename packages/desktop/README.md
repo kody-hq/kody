@@ -10,53 +10,57 @@ npm install
 npm run desktop:dev
 ```
 
-In the **Machine** menu:
+After normal onboarding, the desktop app offers to set up this machine:
 
-1. **Sign in to CLI…** opens the normal CLI browser login. The website session
-   and CLI login are separate. Existing CLI credentials are reused.
-2. Enable **Execution context experiment** on the website if needed.
-3. **Register this machine…** shows the CLI identity before registering under a
-   lowercase name based on the computer's hostname. On macOS and Linux, this
-   also starts the daemon.
-4. Open **Execution contexts** and add the machine to your chain if you want it
-   used by default. Registration alone never changes routing.
+1. **Continue in browser** opens the CLI browser login for your personal
+   workspace. The desktop verifies that it matches the account signed into the
+   website.
+2. Choose a machine name and select **Enable this machine**. This registers the
+   device, starts its runner, and puts it first in your personal execution
+   chain. Other entries keep their order and cloud fallback keeps its current
+   setting. A full chain asks which existing entry to replace.
+3. **Not now** skips the wizard for this account on this installation. Open
+   **This machine** in the web account menu to return to setup, pause or resume
+   execution, or forget this app’s setup. These controls appear only in desktop.
 
-**Stop runner** stops accepting compute and stays stopped after reopening.
-**Start runner** enables it again, including on subsequent launches. On macOS,
-closing all windows keeps the runner available, and Quit stops the CLI and its
-workerd processes. On Windows and Linux, closing all windows quits the app.
-Sleep and network reconnects use the CLI's reconnect behavior, a sleeping
-machine cannot run compute. **Runner details…** shows bounded in-memory CLI
-output. A running process is not necessarily connected, the website shows the
-context's status.
+On macOS, closing all windows keeps the runner available. Quit stops the CLI and
+its workerd processes. On Windows and Linux, closing all windows quits the app.
+Pausing persists across launches. Sleep and network reconnects use the CLI's
+reconnect behavior, a sleeping machine cannot run compute. A running process is
+not necessarily connected, the website shows the context's status.
 
 Keys, credentials, grants, and host-folder policy stay owned by the CLI. The
-shell saves only the context id and whether to start it. Website logout does not
-sign out the CLI or revoke a device. Use **Stop runner** to stop compute, or
-revoke the context on the website to remove its access. Forgetting a desktop
-registration only clears the shell's selection.
+shell saves the context ID, name, account, enabled state, and onboarding
+choices. Desktop explicitly selects the browser login with
+`KODY_CREDENTIAL_SOURCE=login`, without changing API tokens used by terminal
+commands. Signing out or switching accounts stops the previous account’s runner.
+It does not delete CLI credentials or revoke the device. Forgetting desktop
+setup stops the runner and clears only this app’s selection. Revoke the context
+on the website to remove its access. Older registrations require browser login
+and an ownership check before reuse.
 
 The website has no Node access. A sandboxed preload exposes a versioned
-navigation bridge only to the main Kody document. The website renders Back,
-Forward, Home, and a page-address menu only when this bridge is present. These
-controls overlay the upper-left corner. The sidebar and sign-in branding reserve
-space for them, while the main panel keeps the full window height. The bridge
-exposes no CLI, filesystem, or arbitrary IPC access. Off-site links open in the
-system browser, except the website’s social sign-in providers, which stay in the
-sandboxed window so callbacks keep its session. Providers may impose their own
-embedded-browser restrictions. Device registration and runner controls are
-native menu actions. Browser permissions are denied by default. The shell
-bundles the workspace CLI and runs it in a separate process using Electron's
-Node runtime, without needing Node or a global CLI on PATH. Native Node-API
-dependencies keep their normal Node build, not an Electron rebuild.
+navigation and fixed machine-action bridge only to the main Kody document. The
+website renders Back, Forward, Home, and a page-address menu only when this
+bridge is present. These controls overlay the upper-left corner. The sidebar and
+sign-in branding reserve space for them, while the main panel keeps the full
+window height. The bridge exposes no CLI, filesystem, or arbitrary IPC access.
+Off-site links open in the system browser, except the website’s social sign-in
+providers, which stay in the sandboxed window so callbacks keep its session.
+Providers may impose their own embedded-browser restrictions. Device
+registration and runner controls are rendered by the website through fixed,
+authenticated shell actions. Browser permissions are denied by default. The
+shell bundles the workspace CLI and runs it in a separate process using
+Electron's Node runtime, without needing Node or a global CLI on PATH. Native
+Node-API dependencies keep their normal Node build, not an Electron rebuild.
 
 ## Platform support
 
 The shell targets macOS, Windows, and Linux. Local execution currently supports
 **macOS and Linux on x64 or arm64**, matching the CLI's pinned workerd
-downloads. Windows registration is available, but starting the runner is
-disabled until the CLI supports a Windows execution runtime. Native Apple app
-access is not part of this wrapper, it needs specific permissioned capabilities.
+downloads. Windows machine setup is disabled until the CLI supports a Windows
+execution runtime. Native Apple app access is not part of this wrapper, it needs
+specific permissioned capabilities.
 
 ## Packaging and checks
 
@@ -82,9 +86,9 @@ packaged build, pass its executable after `--`, for example:
 npm run test:smoke --workspace @kodycodes/desktop -- ../../artifacts/desktop/mac-arm64/Kody.app/Contents/MacOS/Kody
 ```
 
-It opens the live sign-in page, checks renderer isolation and the Machine menu,
-and runs the bundled CLI with Electron’s Node runtime. It does not sign in,
-register a real device, or change an execution chain.
+It opens the live sign-in page, checks renderer isolation and the machine
+bridge, and runs the bundled CLI with Electron’s Node runtime. It does not sign
+in, register a real device, or change an execution chain.
 
 For local UI development, start the website with control-kody, then run
 `npm start --workspace @kodycodes/desktop -- --app-url=http://localhost:3743`
@@ -123,6 +127,19 @@ Run
 after local control-kody login. It uses isolated profiles, approves the
 disposable local browser session, verifies the native workspace signs in, and
 checks wrong-verifier and replay rejection without opening your real browser.
+
+The machine setup checks are separate from live enrollment:
+
+```sh
+npm run test:execution-ui --workspace @kodycodes/desktop
+npm run test:execution-shell --workspace @kodycodes/desktop -- <local-origin>
+```
+
+The first uses fixture native actions and server functions to exercise the real
+wizard, including onboarding order, skipping, full-chain replacement, and retry.
+The second verifies the real Electron bridge, signed-in local account,
+native-only controls, and saved dismissal. Neither enrolls a real production
+machine.
 
 ## CI binaries
 
