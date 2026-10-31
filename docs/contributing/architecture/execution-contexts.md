@@ -162,16 +162,16 @@ denials, sharing, audit). CI runs the CLI ones on Linux and macOS
 ### End-to-end check
 
 `tools/e2e/execution-context-commands.ts` checks a real deployment unattended.
-It registers a throwaway context under a temporary `KODY_CONFIG_DIR`, turns
-commands on locally, starts a daemon, runs an `execute` routed to the context
-that runs a foreground command and a background start, poll, and kill, checks
-the audit log for `command_started` and `command_finished`, then revokes and
-deletes the context. It never touches the default CLI config or an existing
-context.
+It registers a throwaway context with temporary `XDG_CONFIG_HOME`,
+`XDG_STATE_HOME`, and `XDG_DATA_HOME` directories, turns commands on locally,
+starts a daemon, runs an `execute` routed to the context that runs a foreground
+command and a background start, poll, and kill, checks the audit log for
+`command_started` and `command_finished`, then revokes and deletes the context.
+It never touches the default CLI config or an existing context.
 
 ```sh
 KODY_API_TOKEN=<token with execution_context:create, execution_context:execute, execution_context:command, execution_context:delete> \
-  npm run e2e:context-commands -- --api-url https://kody.codes
+  npm run e2e:context-commands -- --api-url https://api.kody.codes
 ```
 
 The account needs the `execution-contexts` experiment on. PR previews lack

@@ -236,7 +236,7 @@ async function toggleCommands() {
 			type: 'warning',
 			message: 'Allow Kody runs to run commands on this machine?',
 			detail:
-				'Runs on this machine that have the command grant (you, and anyone you share it with "commands") can run any shell command as your user account, with no approval per command: install software, read and change your files, use your network. Every command is recorded in the context audit log. Turn it off here, with `kody context commands off`, or on the website.',
+				'Runs on this machine that have the command grant (you, and anyone you explicitly share host commands with) can run any shell command as your user account, with no approval per command: install software, read and change your files, use your network. Every command is recorded in the context audit log. Turn it off here, with `kody context commands off`, or on the website.',
 			buttons: ['Allow commands', 'Cancel'],
 			defaultId: 1,
 			cancelId: 1,

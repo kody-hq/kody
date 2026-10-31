@@ -6,7 +6,7 @@
  * log, then revokes and deletes the context.
  *
  *   KODY_API_TOKEN=... node tools/e2e/execution-context-commands.ts \
- *     --api-url https://kody.codes [--cli "kody"] [--keep-temp]
+ *     --api-url https://api.kody.codes [--cli "kody"] [--keep-temp]
  *
  * See docs/contributing/architecture/execution-contexts.md#end-to-end-check.
  */
@@ -18,7 +18,7 @@ import { parseArgs } from 'node:util'
 
 const { values } = parseArgs({
 	options: {
-		'api-url': { type: 'string', default: 'https://kody.codes' },
+		'api-url': { type: 'string', default: 'https://api.kody.codes' },
 		cli: { type: 'string' },
 		'keep-temp': { type: 'boolean', default: false },
 	},
