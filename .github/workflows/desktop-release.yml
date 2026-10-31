@@ -190,6 +190,17 @@ jobs:
         run: |
           version=$(node -p 'require("./packages/desktop/package.json").version')
           tag="v$version"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Desktop releases must use a stable version.'; exit 1; }
+          if latest=$(gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name' 2> release-lookup-error.txt); then
+            [[ "$latest" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Unexpected published desktop tag.'; exit 1; }
+            newest=$(printf '%s\n%s\n' "$version" "${latest#v}" | sort -V | tail -n 1)
+            test "$newest" = "$version" && test "$version" != "${latest#v}" || { echo 'Bump the desktop version above the published release.'; exit 1; }
+          else
+            case "$(cat release-lookup-error.txt)" in
+              *'HTTP 404'*) ;; # First release.
+              *) cat release-lookup-error.txt; exit 1 ;;
+            esac
+          fi
           # Never replace a published version. Drafts may be resumed after an upload failure.
           if gh release view "$tag" --json isDraft --jq '.isDraft' > is-draft.txt 2>/dev/null; then
             test "$(cat is-draft.txt)" = true || { echo 'Version already published. Bump the desktop version first.'; exit 1; }
