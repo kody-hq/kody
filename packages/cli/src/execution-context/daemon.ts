@@ -1,4 +1,4 @@
-import { type HostCommands } from './host-commands.js'
+import { type HostCommandFinished, type HostCommands } from './host-commands.js'
 import { type EffectiveFs, emptyEffectiveFs, fsFeatures } from './fs-access.js'
 import {
 	classifyFrameText,
@@ -275,6 +275,8 @@ export async function runDaemonConnection(input: DaemonInput) {
 		// socket in sequence order (the server rejects an out-of-order seq).
 		const sent = outbound.then(async () => {
 			if (outboundFailed) throw new Error('This connection already failed.')
+			if (ws.readyState !== ws.OPEN)
+				throw new Error('This connection is not open.')
 			outSeq += 1
 			const payload: EcpFramePayload = {
 				v: 1,
@@ -318,11 +320,12 @@ export async function runDaemonConnection(input: DaemonInput) {
 				?.enabled === true,
 		)
 	}
-	// A failed send (connection closed) requeues the finish; the next
-	// connection's setReporter sends it.
-	input.hostCommands?.setReporter(async (finished) => {
+	// Installed after `hello` and cleared when this connection ends. A failed
+	// send requeues the finish; the next connection's setReporter sends it.
+	const reporter = async (finished: HostCommandFinished) => {
 		await send('command.finished', finished)
-	})
+	}
+	let connectionEnded = false
 	let rearmHeartbeat: ((pingMs: number, pongTimeoutMs: number) => void) | null =
 		null
 	const status = () => ({
@@ -439,6 +442,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 						.map((run) => run.request.runId),
 					pendingResults: [],
 				})
+				if (!connectionEnded) input.hostCommands?.setReporter(reporter)
 				input.log('Connected. Waiting for runs.')
 				return
 			case 'run.request': {
@@ -539,6 +543,8 @@ export async function runDaemonConnection(input: DaemonInput) {
 		const finish = (code: number, reason: string) => {
 			if (settled) return
 			settled = true
+			connectionEnded = true
+			input.hostCommands?.clearReporter(reporter)
 			clearInterval(ping)
 			clearTimeout(pongTimer)
 			clearTimeout(welcomeTimer)

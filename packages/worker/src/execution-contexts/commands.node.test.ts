@@ -284,3 +284,33 @@ test('a command cut to the audit cap is marked truncated', async () => {
 		1000,
 	)
 })
+
+test('lifecycle calls (status, output, kill, list) are authorized without an audit row', async () => {
+	const s = setup({ commands: true })
+	await expect(
+		authorizeContextCommand(s.runCtx(operator), { lifecycle: 'output' }),
+	).resolves.toEqual({ ok: true })
+	expect(s.audits).toEqual([])
+	await expect(
+		authorizeContextCommand(s.runCtx('user_friend'), { lifecycle: 'kill' }),
+	).rejects.toMatchObject({ code: 'execution_context_command_not_granted' })
+	await expect(
+		authorizeContextCommand(s.runCtx(operator), { lifecycle: 'spawn' }),
+	).rejects.toMatchObject({ code: 'invalid_request' })
+	const off = setup()
+	await expect(
+		authorizeContextCommand(off.runCtx(operator), { lifecycle: 'list' }),
+	).rejects.toMatchObject({ code: 'execution_context_commands_off' })
+})
+
+test('fitAuditStrings trims command_finished detail to valid JSON under the cut', async () => {
+	const { fitAuditStrings } = await import('./audit-detail.ts')
+	const fitted = fitAuditStrings(
+		{ command: '\u0001'.repeat(500), cwd: '"'.repeat(1024), exitCode: 0 },
+		['cwd', 'command'],
+	)
+	const json = JSON.stringify(fitted)
+	expect(json.length).toBeLessThanOrEqual(2000)
+	expect(() => JSON.parse(json.slice(0, 2048))).not.toThrow()
+	expect(fitted.truncated).toBe(true)
+})

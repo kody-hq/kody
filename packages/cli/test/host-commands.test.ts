@@ -172,7 +172,10 @@ test('background job lifecycle: start, poll status and output by offset, kill', 
 		run,
 	)) as { commandId: string }
 	assert.match(started.commandId, /^cmd_/)
-	assert.equal(authorized[0]?.background, true)
+	assert.equal(
+		(authorized[0] as { background?: boolean } | undefined)?.background,
+		true,
+	)
 	await waitFor(() => {
 		const output = commands.output({ commandId: started.commandId }, run)
 		return output.stdout.includes('tick')

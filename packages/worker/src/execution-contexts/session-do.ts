@@ -1,3 +1,4 @@
+import { fitAuditStrings } from './audit-detail.ts'
 import * as Sentry from '@sentry/cloudflare'
 import { DurableObject } from 'cloudflare:workers'
 import {
@@ -1476,17 +1477,20 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			event: 'command_finished',
 			actor,
 			orgId,
-			detail: {
-				commandId: text(body.commandId, 80),
-				runId,
-				command: text(body.command, 500),
-				cwd: text(body.cwd, 1024),
-				exitCode: num(body.exitCode),
-				signal: text(body.signal, 32),
-				durationMs: num(body.durationMs),
-				background: body.background === true,
-				reason: text(body.reason, 64),
-			},
+			detail: fitAuditStrings(
+				{
+					commandId: text(body.commandId, 80),
+					runId,
+					command: text(body.command, 500),
+					cwd: text(body.cwd, 1024),
+					exitCode: num(body.exitCode),
+					signal: text(body.signal, 32),
+					durationMs: num(body.durationMs),
+					background: body.background === true,
+					reason: text(body.reason, 64),
+				},
+				['cwd', 'command'],
+			),
 		})
 	}
 

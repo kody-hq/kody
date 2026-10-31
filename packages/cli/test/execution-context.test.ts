@@ -1222,8 +1222,16 @@ export default async function main(p) {
 	assert.equal(value.fg.stderr, 'warn\n')
 	assert.match(value.bgOut, /^bg-start/)
 	assert.equal(value.bgState, 'running')
+	assert.ok(
+		authorized.some(
+			(call) => (call.args as { lifecycle?: string }).lifecycle === 'output',
+		),
+	)
+	const starts = authorized.filter(
+		(call) => !(call.args as { lifecycle?: string }).lifecycle,
+	)
 	assert.deepEqual(
-		authorized.map((call) => [
+		starts.map((call) => [
 			call.path,
 			(call.args as { background: boolean }).background,
 		]),
@@ -1232,7 +1240,7 @@ export default async function main(p) {
 			[['kody', 'command', 'authorize'], true],
 		],
 	)
-	assert.deepEqual((authorized[0]?.args as { envKeys: unknown }).envKeys, [
+	assert.deepEqual((starts[0]?.args as { envKeys: unknown }).envKeys, [
 		'KODY_E2E_SECRET',
 	])
 	const finished = frames.filter((frame) => frame.t === 'command.finished')

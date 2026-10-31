@@ -41,13 +41,23 @@ export type HostCommandSpec = {
 	maxOutputBytes?: number
 }
 
-export type HostCommandAuthorize = (input: {
-	commandId: string
-	command: string
-	cwd: string
-	envKeys: Array<string>
-	background: boolean
-}) => Promise<void>
+export type HostCommandLifecycle = 'status' | 'output' | 'kill' | 'list'
+
+/**
+ * Starts (`run`, `start`) are authorized and audited; lifecycle calls on
+ * existing commands are authorized (grant, permission, token scope) only.
+ */
+export type HostCommandAuthorize = (
+	input:
+		| {
+				commandId: string
+				command: string
+				cwd: string
+				envKeys: Array<string>
+				background: boolean
+		  }
+		| { lifecycle: HostCommandLifecycle },
+) => Promise<void>
 
 export type HostCommandFinished = {
 	commandId: string
@@ -272,6 +282,13 @@ export class HostCommands {
 		if (!enabled) this.killAll('commands_off')
 	}
 
+	/** Clears the reporter if it is still `report` (a newer connection may own it). */
+	clearReporter(
+		report: (finished: HostCommandFinished) => Promise<void> | void,
+	) {
+		if (this.#onFinished === report) this.#onFinished = null
+	}
+
 	setReporter(
 		report: ((finished: HostCommandFinished) => Promise<void> | void) | null,
 	) {
@@ -306,6 +323,15 @@ export class HostCommands {
 	/** Dispatches one `kody.command.<name>(args)` call from a run. */
 	async call(name: string, args: unknown, run: HostCommandRunContext) {
 		this.assertAvailable()
+		if (
+			name === 'status' ||
+			name === 'output' ||
+			name === 'kill' ||
+			name === 'list'
+		) {
+			await run.authorize({ lifecycle: name })
+			this.assertAvailable()
+		}
 		switch (name) {
 			case 'run':
 				return await this.run(args, run)

@@ -1,4 +1,5 @@
 import { type ApiInvocationContext } from '#worker/open-api/context.ts'
+import { maxAuditDetailChars } from './audit-detail.ts'
 import { ExecutionContextError } from './errors.ts'
 import {
 	executionContextCommandPermission,
@@ -18,8 +19,6 @@ import {
  */
 export const commandRuntimeName = 'command'
 export const maxAuditedCommandChars = 1000
-/** session-do stores at most 2048 chars of detail JSON; stay under it. */
-const maxAuditDetailChars = 2000
 
 export function commandRequiresContextError() {
 	return new ExecutionContextError({
@@ -46,7 +45,10 @@ export function commandNotGrantedError(contextName: string) {
 	})
 }
 
+const lifecycleCalls = new Set(['status', 'output', 'kill', 'list'])
+
 type AuthorizeArgs = {
+	lifecycle?: unknown
 	commandId?: unknown
 	command?: unknown
 	cwd?: unknown
@@ -63,6 +65,22 @@ export async function authorizeContextCommand(
 		throw commandRequiresContextError()
 	}
 	const args = (rawArgs ?? {}) as AuthorizeArgs
+	const lifecycle =
+		typeof args.lifecycle === 'string' && lifecycleCalls.has(args.lifecycle)
+			? args.lifecycle
+			: null
+	if (args.lifecycle !== undefined && !lifecycle) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'invalid_request',
+			message:
+				'kody.command.authorize lifecycle must be status, output, kill or list.',
+		})
+	}
+	if (lifecycle) {
+		await assertCommandAccess(ctx, principal)
+		return { ok: true as const }
+	}
 	if (
 		typeof args.commandId !== 'string' ||
 		!/^cmd_[\w-]{6,64}$/.test(args.commandId)
@@ -80,6 +98,44 @@ export async function authorizeContextCommand(
 			message: 'kody.command.authorize needs the command text.',
 		})
 	}
+	const { env, row, user, orgId } = await assertCommandAccess(ctx, principal)
+	const rawEnvKeys = Array.isArray(args.envKeys)
+		? args.envKeys.filter((key): key is string => typeof key === 'string')
+		: []
+	const envKeys = rawEnvKeys.slice(0, 64).map((key) => key.slice(0, 128))
+	const rawCwd = typeof args.cwd === 'string' ? args.cwd : null
+	const cut =
+		args.command.length > maxAuditedCommandChars ||
+		(rawCwd?.length ?? 0) > 512 ||
+		rawEnvKeys.length > 64 ||
+		rawEnvKeys.some((key) => key.length > 128)
+	await sessionStub(env, row.id).recordAudit({
+		event: 'command_started',
+		actor: { userId: user.userId, handle: user.username ?? null },
+		orgId,
+		detail: fitAuditDetail({
+			commandId: args.commandId,
+			runId: principal.runId,
+			command: args.command.slice(0, maxAuditedCommandChars),
+			cwd: rawCwd ? rawCwd.slice(0, 512) : null,
+			envKeys,
+			background: args.background === true,
+			...(cut ? { truncated: true as const } : {}),
+		}),
+	})
+	return { ok: true as const, commandId: args.commandId }
+}
+
+type ContextRunPrincipal = Extract<
+	ApiInvocationContext['principal'],
+	{ kind: 'execution-context-run' }
+>
+
+/** Grant on, caller has execution_context:command, and token scopes allow it. */
+async function assertCommandAccess(
+	ctx: ApiInvocationContext,
+	principal: ContextRunPrincipal,
+) {
 	const env = ctx.env
 	const row = await getExecutionContext(env.APP_DB, principal.ecid)
 	if (!row || row.revoked_at) {
@@ -108,31 +164,7 @@ export async function authorizeContextCommand(
 			message: `This run's credential (token scopes) does not include ${executionContextCommandPermission}, so it cannot run host commands on ${row.name}. Use a credential with that scope.`,
 		})
 	}
-	const rawEnvKeys = Array.isArray(args.envKeys)
-		? args.envKeys.filter((key): key is string => typeof key === 'string')
-		: []
-	const envKeys = rawEnvKeys.slice(0, 64).map((key) => key.slice(0, 128))
-	const rawCwd = typeof args.cwd === 'string' ? args.cwd : null
-	const cut =
-		args.command.length > maxAuditedCommandChars ||
-		(rawCwd?.length ?? 0) > 512 ||
-		rawEnvKeys.length > 64 ||
-		rawEnvKeys.some((key) => key.length > 128)
-	await sessionStub(env, row.id).recordAudit({
-		event: 'command_started',
-		actor: { userId: user.userId, handle: user.username ?? null },
-		orgId,
-		detail: fitAuditDetail({
-			commandId: args.commandId,
-			runId: principal.runId,
-			command: args.command.slice(0, maxAuditedCommandChars),
-			cwd: rawCwd ? rawCwd.slice(0, 512) : null,
-			envKeys,
-			background: args.background === true,
-			...(cut ? { truncated: true as const } : {}),
-		}),
-	})
-	return { ok: true as const, commandId: args.commandId }
+	return { env, row, user, orgId }
 }
 
 type CommandStartedDetail = {
