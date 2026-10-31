@@ -31,8 +31,9 @@ Execution contexts are an experiment. Turn them on at
   operator's machine can use their credentials (GitHub, email and others they
   have connected) and read the responses, and the operator sees their code,
   inputs, logs and results. Without the opt-in the context is skipped
-  (`not_opted_in`) and the chain falls through. Their runs start no workflows
-  and get `context_run_denied` from Kody APIs kept for Kody cloud.
+  (`not_opted_in`) and the chain falls through; a run that names the context
+  without `fallback: "chain"` fails instead. Their runs start no workflows and
+  get `context_run_denied` from Kody APIs kept for Kody cloud.
 - Capabilities: `executionContextList`, `executionContextGet`,
   `executionContextUpdate`, `executionContextRevoke`, `executionContextDelete`,
   `executionContextRunList`, `executionChainGet`, `executionChainSet`, and the

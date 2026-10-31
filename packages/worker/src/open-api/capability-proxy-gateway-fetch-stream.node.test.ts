@@ -229,7 +229,12 @@ test('runCapabilityProxyGatewayFetchStream propagates missing-secret caller erro
 	})
 })
 
-function contextRunStream(byOperator: boolean) {
+function contextRunStream(
+	byOperator: boolean,
+	runtime: { mode: 'all' } | { mode: 'list'; paths: Array<string> } = {
+		mode: 'all',
+	},
+) {
 	return runCapabilityProxyGatewayFetchStream({
 		ctx: {
 			env: { APP_DB: {} },
@@ -239,7 +244,7 @@ function contextRunStream(byOperator: boolean) {
 				runId: 'run-1',
 				deadline: Date.now() + 60_000,
 				scopes: null,
-				runtime: { mode: 'all' },
+				runtime,
 				byOperator,
 			},
 			callerContext: {
@@ -275,4 +280,17 @@ test('runCapabilityProxyGatewayFetchStream lets every context run use its own cr
 		expect(await response.text()).toBe('ok')
 	}
 	expect(executeGatewayFetch).toHaveBeenCalledTimes(2)
+})
+
+test('runCapabilityProxyGatewayFetchStream honors the context runtime allowlist', async () => {
+	executeGatewayFetch.mockReset()
+	for (const byOperator of [true, false]) {
+		await expect(
+			contextRunStream(byOperator, { mode: 'list', paths: ['kody.storage'] }),
+		).rejects.toMatchObject({
+			status: 403,
+			details: { reason: 'context_runtime', path: 'kody.gatewayFetch' },
+		})
+	}
+	expect(executeGatewayFetch).not.toHaveBeenCalled()
 })

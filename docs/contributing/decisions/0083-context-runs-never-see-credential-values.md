@@ -83,9 +83,9 @@ two amendments above.
   the consent: the opt-in and share notices say that while their run is active,
   the operator's machine can use their credentials (GitHub, email and others)
   and read the responses. Without that opt-in they cannot run on the context at
-  all, so the chain falls through (`not_opted_in`). The pre-dispatch
-  credential-use check (`credentials_operator_only`) and the context credential
-  door are gone.
+  all, so the chain falls through (`not_opted_in`), or a run naming the context
+  without `fallback: "chain"` fails. The pre-dispatch credential-use check
+  (`credentials_operator_only`) and the context credential door are gone.
 - Sharing and attaching no longer depend on the grant's credentials.
 - Credentialed requests still leave from Kody cloud, so credential values never
   reach the machine.
