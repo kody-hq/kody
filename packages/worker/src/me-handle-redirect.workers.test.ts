@@ -17,6 +17,7 @@ test('signed-out /@me requests go to login with a private, uncacheable 302', asy
 		'/@me',
 		'/@me/-/profiles?tab=grants',
 		'/@ME/-/settings',
+		'/@me/packages/daily-notes',
 	]) {
 		const response = await workerFetch(
 			new Request(`https://test.kody.dev${path}`, {
@@ -34,4 +35,30 @@ test('signed-out /@me requests go to login with a private, uncacheable 302', asy
 		expect(response.headers.get('CDN-Cache-Control')).toBe('no-store')
 		expect(response.headers.get('Vary')).toBe('Cookie')
 	}
+})
+
+test('/@me package links resolve before runtime Worker forwarding', async () => {
+	const forwarded: Array<string> = []
+	const runtimeWorker = {
+		fetch: async (input: RequestInfo | URL) => {
+			forwarded.push(new Request(input).url)
+			return new Response('runtime', { status: 200 })
+		},
+	} as unknown as Fetcher
+	const handleFetch = originWorkerHandler.fetch
+	if (!handleFetch) throw new Error('Expected the origin fetch handler.')
+	const ctx = createExecutionContext()
+	const response = await handleFetch(
+		new Request('https://test.kody.dev/@me/packages/daily-notes', {
+			headers: { Accept: 'text/html' },
+		}),
+		{ ...env, RUNTIME_WORKER: runtimeWorker },
+		ctx,
+	)
+	await waitOnExecutionContext(ctx)
+	expect(forwarded).toEqual([])
+	expect(response.status).toBe(302)
+	expect(response.headers.get('Location')).toBe(
+		'/login?redirectTo=%2F%40me%2Fpackages%2Fdaily-notes',
+	)
 })
