@@ -1295,13 +1295,21 @@ await runLocalExecute({
 		daemon.kill('SIGKILL')
 		await exited
 		await delay(500)
-		assert.ok(isRunning(workerdPid), 'SIGKILL skips every exit handler')
 		assert.deepEqual(readdirSync(workersDir), [`${workerdPid}.json`])
-
-		assert.deepEqual(reapLeftoverWorkers(workersDir), [workerdPid])
-		await waitFor('workerd to stop', () =>
-			isRunning(workerdPid) ? null : true,
-		)
+		if (process.platform === 'win32') {
+			// libuv puts children in a kill-on-close Job Object, so Windows takes
+			// workerd down with the daemon; the next daemon only clears the record.
+			await waitFor('workerd to stop', () =>
+				isRunning(workerdPid) ? null : true,
+			)
+			assert.deepEqual(reapLeftoverWorkers(workersDir), [])
+		} else {
+			assert.ok(isRunning(workerdPid), 'SIGKILL skips every exit handler')
+			assert.deepEqual(reapLeftoverWorkers(workersDir), [workerdPid])
+			await waitFor('workerd to stop', () =>
+				isRunning(workerdPid) ? null : true,
+			)
+		}
 		assert.deepEqual(readdirSync(workersDir), [])
 		assert.deepEqual(
 			readdirSync(scratch).filter((entry) => entry.startsWith('kody-local-')),

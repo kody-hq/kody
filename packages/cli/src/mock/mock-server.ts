@@ -114,7 +114,12 @@ export async function startMockServer(
 		state: () => state,
 		close: () =>
 			new Promise((resolve, reject) => {
-				server.close((error) => (error ? reject(error) : resolve()))
+				server.close((error) => {
+					// Windows keeps an open SQLite file locked against cleanup.
+					closePackageSqlDbsForSession(sessionIdForClose)
+					if (error) reject(error)
+					else resolve()
+				})
 				// Idle keep-alive sockets (workerd's bridge calls) would hold close open.
 				server.closeAllConnections()
 			}),
