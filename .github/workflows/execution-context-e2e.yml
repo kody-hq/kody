@@ -63,7 +63,7 @@ jobs:
             kody-pr-*|kody-branch-*) ;;
             *) echo "Not a preview worker: $PREVIEW_NAME" >&2; exit 1 ;;
           esac
-          subdomain="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+          subdomain="$(curl -fsS --retry 5 --retry-all-errors -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" |
             node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).result?.subdomain ?? ""))')"
           test -n "$subdomain"
