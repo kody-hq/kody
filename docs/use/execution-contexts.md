@@ -48,7 +48,8 @@ because nobody is there to type a password). Only you get the command grant on
 your own machine. People you share the machine with get it only if you share it
 with `commands: true`. Every command is recorded in the machine's audit log with
 the command, folder, exit code, and who ran it. Environment variable values are
-never recorded, only their names.
+never recorded, only their names, so pass secrets in `env`, never in the command
+text (the command text is recorded as written).
 
 **Turn them on (on the machine itself).**
 

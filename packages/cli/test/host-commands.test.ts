@@ -35,7 +35,9 @@ function enabledCommands() {
 	const commands = new HostCommands({ localEnabled: true, platform: 'linux' })
 	commands.setGrantEnabled(true)
 	const finished: Array<HostCommandFinished> = []
-	commands.setReporter((entry) => finished.push(entry))
+	commands.setReporter((entry) => {
+		finished.push(entry)
+	})
 	return { commands, finished }
 }
 
@@ -246,6 +248,47 @@ test('turning commands off kills the whole group after the shell leader exits', 
 	commands.setLocalEnabled(false)
 	await waitFor(() => finished.length === 1, 5_000)
 	assert.equal(finished[0]?.reason, 'commands_off')
+})
+
+test('output pages never split a UTF-8 character', async () => {
+	const { commands, finished } = enabledCommands()
+	const { run } = runContext()
+	const started = (await commands.call(
+		'start',
+		{ command: "printf 'aé€😀b'" },
+		run,
+	)) as { commandId: string }
+	await waitFor(() => finished.length === 1)
+	let offset = 0
+	let text = ''
+	for (let i = 0; i < 20; i++) {
+		const page = commands.output(
+			{ commandId: started.commandId, stdoutOffset: offset, maxBytes: 2 },
+			run,
+		)
+		text += page.stdout
+		if (page.stdoutOffset === offset) break
+		offset = page.stdoutOffset
+	}
+	assert.equal(text, 'aé€😀b')
+})
+
+test('turning commands off also kills a running foreground command', async () => {
+	const { commands } = enabledCommands()
+	const { run } = runContext()
+	const pending = commands.call(
+		'run',
+		{ command: 'sleep 30', timeoutMs: 60_000 },
+		run,
+	)
+	await new Promise((resolve) => setTimeout(resolve, 200))
+	commands.setGrantEnabled(false)
+	const result = (await pending) as {
+		exitCode: number | null
+		durationMs: number
+	}
+	assert.equal(result.exitCode, null)
+	assert.ok(result.durationMs < 5000)
 })
 
 test('local policy keeps the commands opt-in alongside host folders', async () => {

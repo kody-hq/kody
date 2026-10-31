@@ -726,6 +726,17 @@ async function runCommandsOptInCommand(
 					input.values.context,
 			]
 		: storedContextIds(input.apiUrl)
+	if (action === 'on' && input.values.context) {
+		// Fails for an unknown context before the shared local switch changes.
+		loadContext({
+			apiUrl: input.apiUrl,
+			ecid: ecids[0]!,
+			wrapping: wrappingKeyForStoredContext({
+				apiUrl: input.apiUrl,
+				ecid: ecids[0]!,
+			}),
+		})
+	}
 	if (action !== 'status') {
 		await setLocalCommandsEnabled({ enabled: action === 'on' })
 	}

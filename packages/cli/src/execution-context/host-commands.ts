@@ -121,11 +121,26 @@ class OutputBuffer {
 	/** Bytes from absolute `offset` (clamped to what is still kept). */
 	read(offset: number, maxBytes: number) {
 		const all = Buffer.concat(this.#chunks)
-		const start = Math.max(offset, this.dropped)
-		const slice = all.subarray(
-			start - this.dropped,
-			start - this.dropped + maxBytes,
+		let start = Math.max(offset, this.dropped)
+		// Never split a UTF-8 character across pages.
+		while (
+			start - this.dropped < all.length &&
+			start > offset &&
+			isUtf8Continuation(all[start - this.dropped]!)
 		)
+			start++
+		let end = Math.min(start - this.dropped + maxBytes, all.length)
+		if (end < all.length && isUtf8Continuation(all[end]!)) {
+			let back = end
+			while (back > start - this.dropped && isUtf8Continuation(all[back]!))
+				back--
+			if (back > start - this.dropped) end = back
+			else {
+				// The page is smaller than one character: finish that character.
+				while (end < all.length && isUtf8Continuation(all[end]!)) end++
+			}
+		}
+		const slice = all.subarray(start - this.dropped, end)
 		return {
 			text: slice.toString('utf8'),
 			from: start,
@@ -186,6 +201,10 @@ function clampInt(value: unknown, fallback: number, max: number, min = 1) {
 	return Math.min(Math.max(Math.floor(value), min), max)
 }
 
+function isUtf8Continuation(byte: number) {
+	return (byte & 0xc0) === 0x80
+}
+
 function shellFor(env: NodeJS.ProcessEnv) {
 	const shell = env.SHELL
 	return shell && isAbsolute(shell) ? shell : '/bin/sh'
@@ -216,7 +235,16 @@ export type HostCommandsOptions = {
 
 export class HostCommands {
 	#jobs = new Map<string, Job>()
-	#onFinished: ((finished: HostCommandFinished) => void) | null = null
+	#onFinished:
+		| ((finished: HostCommandFinished) => Promise<void> | void)
+		| null = null
+	/** Finishes that could not be sent yet (no live connection); sent on the next reporter. */
+	#unreported: Array<HostCommandFinished> = []
+	#foreground = new Map<
+		ChildProcess,
+		{ reason: HostCommandFinished['reason'] }
+	>()
+	#pendingStarts = 0
 	#localEnabled: boolean
 	/** The server grant's commands flag (off from website/API/CLI). */
 	#grantEnabled = false
@@ -244,8 +272,13 @@ export class HostCommands {
 		if (!enabled) this.killAll('commands_off')
 	}
 
-	setReporter(report: ((finished: HostCommandFinished) => void) | null) {
+	setReporter(
+		report: ((finished: HostCommandFinished) => Promise<void> | void) | null,
+	) {
 		this.#onFinished = report
+		if (!report) return
+		const queued = this.#unreported.splice(0)
+		for (const finished of queued) this.#report(finished)
 	}
 
 	/** Throws the denial a run sees when it may not run commands here. */
@@ -419,10 +452,15 @@ export class HostCommands {
 	}
 
 	#report(finished: HostCommandFinished) {
+		const requeue = () => {
+			if (this.#unreported.length < 256) this.#unreported.push(finished)
+		}
+		const report = this.#onFinished
+		if (!report) return requeue()
 		try {
-			this.#onFinished?.(finished)
+			void Promise.resolve(report(finished)).catch(requeue)
 		} catch {
-			// Reporting is best effort; the start is already audited.
+			requeue()
 		}
 	}
 
@@ -442,6 +480,7 @@ export class HostCommands {
 		const stderr = new OutputBuffer(prepared.maxOutputBytes)
 		const ended = { reason: 'exited' as HostCommandFinished['reason'] }
 		const child = this.#spawn(prepared)
+		this.#foreground.set(child, ended)
 		child.stdout?.on('data', (chunk: Buffer) => stdout.write(chunk))
 		child.stderr?.on('data', (chunk: Buffer) => stderr.write(chunk))
 		const timer = setTimeout(() => {
@@ -465,6 +504,7 @@ export class HostCommands {
 			child.once('close', (code, signal) => resolve({ code, signal }))
 		})
 		clearTimeout(timer)
+		this.#foreground.delete(child)
 		run.signal.removeEventListener('abort', onAbort)
 		if (outcome.error) ended.reason = 'spawn_failed'
 		const durationMs = Date.now() - startedAt
@@ -503,23 +543,34 @@ export class HostCommands {
 		const running = [...this.#jobs.values()].filter(
 			(job) => job.state === 'running',
 		)
-		if (running.length >= hostCommandLimits.maxBackgroundJobs) {
+		if (
+			running.length + this.#pendingStarts >=
+			hostCommandLimits.maxBackgroundJobs
+		) {
 			throw new HostCommandError(
 				'invalid_request',
-				`This machine already runs ${running.length} background commands. Kill one (kody.command.kill) first.`,
+				`This machine already runs ${running.length + this.#pendingStarts} background commands. Kill one (kody.command.kill) first.`,
 			)
 		}
-		const prepared = await this.#prepare(raw, true)
-		const commandId = newCommandId()
-		await run.authorize({
-			commandId,
-			command: prepared.display,
-			cwd: prepared.cwd,
-			envKeys: prepared.envKeys,
-			background: true,
-		})
-		this.assertAvailable()
-		const child = this.#spawn(prepared)
+		this.#pendingStarts++
+		let prepared: PreparedCommand
+		let commandId: string
+		let child: ChildProcess
+		try {
+			prepared = await this.#prepare(raw, true)
+			commandId = newCommandId()
+			await run.authorize({
+				commandId,
+				command: prepared.display,
+				cwd: prepared.cwd,
+				envKeys: prepared.envKeys,
+				background: true,
+			})
+			this.assertAvailable()
+			child = this.#spawn(prepared)
+		} finally {
+			this.#pendingStarts--
+		}
 		const job: Job = {
 			id: commandId,
 			runId: run.runId,
@@ -705,6 +756,10 @@ export class HostCommands {
 
 	/** Commands were turned off (or the daemon stops): end every background job. */
 	killAll(reason: 'commands_off' | 'shutdown') {
+		for (const [child, ended] of this.#foreground) {
+			ended.reason = reason === 'commands_off' ? 'commands_off' : 'cancelled'
+			killTree(child, 'SIGKILL')
+		}
 		for (const job of this.#jobs.values()) {
 			if (job.state !== 'running') continue
 			job.state = 'killed'

@@ -318,12 +318,10 @@ export async function runDaemonConnection(input: DaemonInput) {
 				?.enabled === true,
 		)
 	}
-	input.hostCommands?.setReporter((finished) => {
-		void send('command.finished', finished).catch(() => {
-			input.log(
-				`Could not report command ${finished.commandId} to Kody (connection closed).`,
-			)
-		})
+	// A failed send (connection closed) requeues the finish; the next
+	// connection's setReporter sends it.
+	input.hostCommands?.setReporter(async (finished) => {
+		await send('command.finished', finished)
 	})
 	let rearmHeartbeat: ((pingMs: number, pongTimeoutMs: number) => void) | null =
 		null

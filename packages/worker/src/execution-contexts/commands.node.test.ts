@@ -79,10 +79,14 @@ function setup(input: { commands?: boolean } = {}) {
 			orgId,
 		} as unknown as ExecutionContextCaller
 	}
-	const runCtx = (userId: string, kind = 'execution-context-run') =>
+	const runCtx = (
+		userId: string,
+		kind = 'execution-context-run',
+		scopes: Array<string> | null = null,
+	) =>
 		({
 			env,
-			principal: { kind, ecid: 'ec_mac', runId: 'run_1' },
+			principal: { kind, ecid: 'ec_mac', runId: 'run_1', scopes },
 			callerContext: {
 				user: { userId, username: userId },
 				orgBinding: { org: { id: orgId } },
@@ -217,4 +221,54 @@ test('fitAuditDetail keeps command_started detail under the audit cut as valid J
 	expect(json.length).toBeLessThanOrEqual(2000)
 	expect(() => JSON.parse(json.slice(0, 2048))).not.toThrow()
 	expect(fitted.truncated).toBe(true)
+})
+
+test('a scoped credential without execution_context:command cannot run commands, even for the operator', async () => {
+	const s = setup({ commands: true })
+	await expect(
+		authorizeContextCommand(
+			s.runCtx(operator, 'execution-context-run', [
+				'org:execute',
+				'execution_context:execute',
+			]),
+			s.args,
+		),
+	).rejects.toMatchObject({
+		code: 'execution_context_command_not_granted',
+		message: expect.stringMatching(/token scopes/),
+	})
+	await expect(
+		authorizeContextCommand(
+			s.runCtx(operator, 'execution-context-run', [
+				'execution_context:execute',
+				'execution_context:command',
+			]),
+			s.args,
+		),
+	).resolves.toMatchObject({ ok: true })
+	expect(s.audits).toHaveLength(1)
+})
+
+test('an expired command share confers nothing', async () => {
+	const s = setup({ commands: true })
+	await setSharing(s.callerFor(operator), 'ec_mac', {
+		add: [
+			{
+				subject: { type: 'user', id: 'user_friend' },
+				preset: 'use',
+				commands: true,
+			},
+		],
+	})
+	await expect(
+		authorizeContextCommand(s.runCtx('user_friend'), s.args),
+	).resolves.toMatchObject({ ok: true })
+	s.sqlite
+		.prepare(
+			`UPDATE grants SET expires_at = '2000-01-01T00:00:00.000Z' WHERE resource_id = 'ec_mac'`,
+		)
+		.run()
+	await expect(
+		authorizeContextCommand(s.runCtx('user_friend'), s.args),
+	).rejects.toMatchObject({ code: 'execution_context_command_not_granted' })
 })

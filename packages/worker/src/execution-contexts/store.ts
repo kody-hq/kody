@@ -220,9 +220,15 @@ export async function loadContextAccess(
 				 FROM grants g
 				 WHERE g.resource_type = 'execution_context' AND g.resource_id = ?
 				   AND g.org_id = ? AND g.deleted_at IS NULL
+				   AND (g.expires_at IS NULL OR g.expires_at > ?)
 				   AND ${subjectMatch.sql}`,
 			)
-			.bind(context.id, input.orgId, ...subjectMatch.binds),
+			.bind(
+				context.id,
+				input.orgId,
+				new Date().toISOString(),
+				...subjectMatch.binds,
+			),
 		db
 			.prepare(
 				`SELECT role FROM org_memberships WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,

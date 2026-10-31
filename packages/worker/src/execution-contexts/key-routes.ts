@@ -468,11 +468,21 @@ async function setCommandsFromMachine(input: {
 			: { enabled: false, enabledAt: null },
 	}
 	const grantVersion = row.grant_version + 1
-	await env.APP_DB.prepare(
-		`UPDATE execution_contexts SET grant_json = ?, grant_version = ? WHERE id = ?`,
+	const update = await env.APP_DB.prepare(
+		`UPDATE execution_contexts SET grant_json = ?, grant_version = ? WHERE id = ? AND grant_version = ?`,
 	)
-		.bind(JSON.stringify(grant), grantVersion, row.id)
+		.bind(JSON.stringify(grant), grantVersion, row.id, row.grant_version)
 		.run()
+	if ((update.meta?.changes ?? 0) === 0) {
+		// The grant changed since we read it (e.g. turned off on the website):
+		// never overwrite that with an older snapshot.
+		throw new ApiError({
+			status: 409,
+			code: 'invalid_request',
+			message:
+				'The context grant changed while this request ran. Run `kody context commands status`, then try again.',
+		})
+	}
 	await session.updateGrant({
 		snapshot: { ...snapshotOf(row), grant, grantVersion },
 	})

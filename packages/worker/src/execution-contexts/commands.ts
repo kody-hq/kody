@@ -1,6 +1,7 @@
 import { type ApiInvocationContext } from '#worker/open-api/context.ts'
 import { ExecutionContextError } from './errors.ts'
 import {
+	executionContextCommandPermission,
 	getExecutionContext,
 	loadContextAccess,
 	parseGrant,
@@ -97,6 +98,16 @@ export async function authorizeContextCommand(
 		orgId,
 	})
 	if (!access.canRunCommands) throw commandNotGrantedError(row.name)
+	if (
+		Array.isArray(principal.scopes) &&
+		!principal.scopes.includes(executionContextCommandPermission)
+	) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'execution_context_command_not_granted',
+			message: `This run's credential (token scopes) does not include ${executionContextCommandPermission}, so it cannot run host commands on ${row.name}. Use a credential with that scope.`,
+		})
+	}
 	const envKeys = Array.isArray(args.envKeys)
 		? args.envKeys
 				.filter((key): key is string => typeof key === 'string')
