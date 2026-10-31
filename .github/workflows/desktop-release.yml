@@ -140,6 +140,10 @@ jobs:
         run: |
           if [ "$KODY_DESKTOP_ARCH" = arm64 ]; then bundle=artifacts/desktop/mac-arm64/Kody.app; else bundle=artifacts/desktop/mac/Kody.app; fi
           codesign --verify --deep --strict "$bundle"
+          codesign --display --entitlements - --xml "$bundle" > "$RUNNER_TEMP/desktop-entitlements.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.automation.apple-events' "$RUNNER_TEMP/desktop-entitlements.plist")" = true
+          automation_purpose=$(/usr/libexec/PlistBuddy -c 'Print :NSAppleEventsUsageDescription' "$bundle/Contents/Info.plist")
+          test -n "$automation_purpose"
           xcrun stapler validate "$bundle"
           spctl --assess --type execute --verbose "$bundle"
       - name: Verify Windows signatures

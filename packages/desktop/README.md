@@ -280,3 +280,11 @@ The existing 0.1.0 demo predates the updater. Install the first production
 release manually once, subsequent releases update automatically. A real
 signed-version-to-signed-version update remains part of first-release
 acceptance.
+
+### macOS app automation
+
+The signed app includes the Apple Events entitlement and a purpose string so
+macOS can ask before Kody controls apps such as Messages. The user must grant
+that Automation permission. Full Disk Access is separate and is required for
+reading the local Messages database. Release verification checks these values on
+the signed app, alongside its signature and notarization ticket.
