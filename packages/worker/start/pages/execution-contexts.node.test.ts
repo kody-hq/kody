@@ -244,7 +244,21 @@ test('operator detail shows daemon version, outdated flag and background service
 	expect(idle).toContain('Not running')
 	expect(idle).not.toContain('Terminal (not a background service)')
 	expect(idle).toContain(
-		'Keep kody daemon --context ec_laptop running in a terminal',
+		'Run kody daemon install --context ec_laptop to keep it running',
 	)
-	expect(idle).not.toContain('kody daemon install --context')
+
+	const scheduled = contextFixture({
+		capabilities: { os: 'win32', features: [], service: 'taskscheduler' },
+	})
+	const windows = text(
+		await renderStartPage(
+			route(
+				pageFixture({ selected: scheduled }),
+				'ec_laptop',
+				`${href}/ec_laptop`,
+			),
+			`${href}/ec_laptop`,
+		),
+	)
+	expect(windows).toContain('Background service (Task Scheduler)')
 })
