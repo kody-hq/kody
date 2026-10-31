@@ -143,6 +143,11 @@ export type UsageEvent = {
 	/** Present for package-app billable units; empty string means anonymous. */
 	packageAppVisitorUserId?: string
 	/**
+	 * The app's owning org when `userId` (the billed org) is a visiting org
+	 * (ADR 0095). Analytics Engine blob16. Empty when the owner pays.
+	 */
+	packageAppOwnerOrgId?: string | null
+	/**
 	 * Person who triggered the metered unit. Empty for Automation. When unset
 	 * at write time, defaults to `userId` (org billing id) for backward
 	 * compatibility with P3 actor backfill.
@@ -200,6 +205,7 @@ export const usageEventBlobIndexes = {
 	errorName: 12,
 	packageAppVisitorUserId: 13,
 	packageAppUsage: 14,
+	packageAppOwnerOrgId: 15,
 } as const
 
 export function automationSourceForAnalytics(
@@ -307,6 +313,7 @@ export function usageEventBlobs(
 		| 'cacheReuse'
 		| 'packageId'
 		| 'packageAppVisitorUserId'
+		| 'packageAppOwnerOrgId'
 		| 'actorUserId'
 		| 'automationSource'
 		| 'connectionKey'
@@ -314,6 +321,7 @@ export function usageEventBlobs(
 	>,
 	timestamp: string,
 ): [
+	string,
 	string,
 	string,
 	string,
@@ -349,7 +357,16 @@ export function usageEventBlobs(
 			: sanitizeUsageErrorName(event.errorName),
 		event.packageAppVisitorUserId ?? '',
 		event.packageAppVisitorUserId === undefined ? '' : 'package-app',
+		packageAppOwnerOrgIdBlob(event),
 	]
+}
+
+/** The owning org, only when it differs from the billed org. */
+function packageAppOwnerOrgIdBlob(
+	event: Pick<UsageEvent, 'userId' | 'packageAppOwnerOrgId'>,
+) {
+	const ownerOrgId = event.packageAppOwnerOrgId?.trim() || ''
+	return ownerOrgId && ownerOrgId !== event.userId ? ownerOrgId : ''
 }
 
 export type UsageEnv = {
@@ -388,9 +405,12 @@ ON CONFLICT (user_id, day, package_id, meter) DO UPDATE SET
 
 const packageAppVisitorAttributionDailyUpsertStatement = `
 INSERT INTO package_app_visitor_attribution_daily (
-	user_id, day, package_id, visitor_user_id, meter, units, updated_at
-) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-ON CONFLICT (user_id, day, package_id, visitor_user_id, meter) DO UPDATE SET
+	user_id, day, package_id, visitor_user_id, meter, units, updated_at,
+	billed_org_id
+) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+ON CONFLICT (
+	user_id, day, package_id, visitor_user_id, billed_org_id, meter
+) DO UPDATE SET
 	units = units + excluded.units,
 	updated_at = excluded.updated_at
 `.trim()
@@ -633,16 +653,20 @@ async function writePackageAppVisitorAttributionDaily(
 	const meter = creditAttributionMeterFromUsageEventType(event.eventType)
 	const packageId = event.packageId?.trim()
 	if (!meter || !packageId) return
+	// Rows stay under the app's owning org so its Visitors view keeps every
+	// visitor; `billed_org_id` names a visiting org that paid (ADR 0095).
+	const billedOrgId = packageAppOwnerOrgIdBlob(event) ? event.userId : ''
 	try {
 		await env.APP_DB.prepare(packageAppVisitorAttributionDailyUpsertStatement)
 			.bind(
-				event.userId,
+				billedOrgId ? (event.packageAppOwnerOrgId?.trim() ?? '') : event.userId,
 				timestamp.slice(0, 'YYYY-MM-DD'.length),
 				packageId,
 				event.packageAppVisitorUserId,
 				meter,
 				eventCount,
 				timestamp,
+				billedOrgId,
 			)
 			.run()
 	} catch (error) {

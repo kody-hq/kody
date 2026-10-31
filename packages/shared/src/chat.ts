@@ -71,6 +71,13 @@ export const mcpCallerContextSchema = object({
 	 */
 	connectionProfileName: optional(nullable(string())),
 	/**
+	 * Profile (ADR 0092) the credential is bound to. Absent / null is the live
+	 * mirror: the person's own access.
+	 */
+	profileId: optional(nullable(string())),
+	/** That profile's chain (ids, root first), frozen for run attribution. */
+	profileChain: optional(nullable(array(string()))),
+	/**
 	 * OAuth client the bearer grant was issued to (MCP host or `kody login`
 	 * CLI). Becomes the request credential id so usage can be attributed to
 	 * the connection. Absent for sessions, API tokens, and Automation.
@@ -123,12 +130,16 @@ export type McpCallerContextWire = Omit<
 	McpCallerContextInferred,
 	| 'user'
 	| 'connectionProfileName'
+	| 'profileId'
+	| 'profileChain'
 	| 'oauthClientId'
 	| 'orgBinding'
 	| 'resourceEventDepth'
 > & {
 	user?: McpUserContext | null
 	connectionProfileName?: string | null
+	profileId?: string | null
+	profileChain?: ReadonlyArray<string> | null
 	oauthClientId?: string | null
 	orgBinding?: McpOrgBinding | null
 	resourceEventDepth?: number | null

@@ -63,3 +63,32 @@ test('StorageRunner key-value and SQL reads both land on the customer rows-read 
 	})
 	expect(await readRollup(userId, 'durable_object_platform_rows_read')).toBe(0)
 })
+
+test('a cross-org visit meters StorageRunner reads to the visiting org while the bucket stays the owner', async () => {
+	await ensureUsageRollupsTestSchema(env.APP_DB)
+	await ensureUserStorageBucketsTestSchema(env.APP_DB)
+	const ownerId = testUserId()
+	const visitorOrgId = testUserId()
+	const storageId = `package:billed-${crypto.randomUUID()}`
+	const owner = storageRunnerRpc({
+		env,
+		userId: ownerIdFromStored(ownerId),
+		storageId,
+	})
+	await owner.setValue({ key: 'a', value: 1 })
+	const visit = storageRunnerRpc({
+		env,
+		userId: ownerIdFromStored(ownerId),
+		storageId,
+		packageAppVisitorUserId: 'person-visitor',
+		meterUserId: ownerIdFromStored(visitorOrgId),
+	})
+	// Same bucket: the visit reads what the owner wrote.
+	await expect(visit.getValue({ key: 'a' })).resolves.toMatchObject({
+		value: 1,
+	})
+	await vi.waitFor(async () => {
+		expect(await readRollup(visitorOrgId, 'durable_object_rows_read')).toBe(1)
+	})
+	expect(await readRollup(ownerId, 'durable_object_rows_read')).toBe(0)
+})

@@ -430,6 +430,16 @@ volume). Same-user same-graph executes that vary only `params` reuse one worker
 id; execute-surface hit rate and unique-day yield are the fleet readouts for
 that reuse.
 
+Package-app billing
+([ADR 0095](../decisions/0095-cross-org-package-app-visits-bill-the-visitor-org.md)):
+a visit from another org to an internal app carries `RequestContext.billing`
+(visit ticket claim `bo`). Metering sites read `billedOrgIdOf(request, owner)`
+for `userId` (storage rows read and duration, outbound fetch and its daily
+quota, package export, static calls, email sends), and storage events also set
+`packageAppOwnerOrgId` (Analytics Engine `blob16`) so visitor attribution stays
+under the owning org with `billed_org_id`. `dynamic_worker_day` always stays on
+the owning org.
+
 APP_LOADER package-app isolates record UWD (`dynamic_worker_day`) when the
 worker id is stable (`app_fetch` / `app_realtime`). They do not emit
 `dynamic_worker_invoke`. One-off `APP_LOADER.load()` without a hashed id has no

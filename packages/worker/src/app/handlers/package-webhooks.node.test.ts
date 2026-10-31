@@ -142,6 +142,7 @@ async function setup(sessionUsername = 'owner') {
 			enabler_user_id TEXT NOT NULL,
 			enabler_scopes_json TEXT,
 			enabler_profile_name TEXT,
+			enabler_profile_id TEXT,
 			state TEXT NOT NULL DEFAULT 'on',
 			paused_reason TEXT,
 			paused_permission TEXT,

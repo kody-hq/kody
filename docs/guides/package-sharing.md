@@ -240,7 +240,13 @@ from these runs is charged to the collaborator's personal plan.
 
 Example: Jesse has Use on `@acme/bot`. Connected as `@acme`, a run debits acme's
 credits and budgets and counts against acme's execute pool. Jesse's own
-personal-org limits are untouched. See
+personal-org limits are untouched by those runs.
+
+Package **apps** are the exception. When Jesse opens an internal app of `@acme`
+in the browser (he holds a grant on it but is not a member), his own personal
+org pays for the metered work his visits cause, and acme keeps paying the app's
+Worker compute. Internet-visible apps stay paid by acme for every visitor. See
+[Package apps: who pays for visits](/docs/package-apps#who-pays-for-visits). See
 [Organizations](/docs/organizations#execute-limits-one-org-wide-pool) for how
 the pool is sized.
 

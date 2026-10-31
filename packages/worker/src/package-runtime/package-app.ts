@@ -6,7 +6,12 @@ import { effectivePackageAppCapabilities } from './package-app-effective-capabil
 import { type PublishedBundleArtifact } from './published-runtime-artifacts.ts'
 import { type McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	billedOrgIdOf,
+	type RequestBilling,
+} from '@kody-internal/shared/request-context.ts'
 import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
+import { withRequestBilling } from './package-app-billing.ts'
 import {
 	WorkerEntrypoint,
 	exports as workerExports,
@@ -861,6 +866,7 @@ function createInternalDurableObjectState(runtimeBridge, storageId) {
 	const listToMap = async (options = {}) => {
 		const result = await runtimeBridge.storageList({
 			storageId,
+			visitTicket: __kodyCurrentVisitTicket(),
 			...options,
 		});
 		return new Map((result?.entries ?? []).map((entry) => [entry.key, entry.value]));
@@ -877,22 +883,26 @@ function createInternalDurableObjectState(runtimeBridge, storageId) {
 			get: async (key) =>
 				(await runtimeBridge.storageGet({
 					storageId,
+					visitTicket: __kodyCurrentVisitTicket(),
 					key,
 				})).value,
 			put: async (key, value) =>
 				await runtimeBridge.storageSet({
 					storageId,
+					visitTicket: __kodyCurrentVisitTicket(),
 					key,
 					value,
 				}),
 			delete: async (key) =>
 				await runtimeBridge.storageDelete({
 					storageId,
+					visitTicket: __kodyCurrentVisitTicket(),
 					key,
 				}),
 			deleteAll: async () =>
 				await runtimeBridge.storageClear({
 					storageId,
+					visitTicket: __kodyCurrentVisitTicket(),
 				}),
 			list: async (options = {}) => await listToMap(options),
 			sql: {
@@ -1241,6 +1251,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 		const runtimeRun = startRuntimeRun(runtimeBridge, {
 			surface: 'app_fetch',
 			name: requestUrl.pathname,
+			visitTicket,
 			metadata: {
 				method: request.method,
 				queryParamNames: collectQueryParamNames(requestUrl),
@@ -1354,6 +1365,7 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 		const runtimeRun = startRuntimeRun(runtimeBridge, {
 			surface: 'app_realtime',
 			name: buildFacetName(payload?.facet),
+			visitTicket,
 			sessionId: payload?.sessionId,
 			metadata: {
 				facet: payload?.facet,
@@ -1496,6 +1508,8 @@ function redactRunRecordError(
 	return secretRedactor.redactUnknown(error)
 }
 
+type AppStorageInput = { storageId: string; visitTicket?: string | null }
+
 export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	Env,
 	PackageAppRuntimeBridgeProps
@@ -1515,8 +1529,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	private createRunsAsCallerContext(
 		runsAs: Extract<PackageAppRunsAs, { status: 'ready' }>,
 		storageId: string | null,
+		billing: RequestBilling | null | undefined,
 	) {
-		return createMcpCallerContext({
+		const callerContext = createMcpCallerContext({
 			baseUrl: this.ctx.props.baseUrl,
 			executionOrigin: 'background',
 			user: {
@@ -1537,6 +1552,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			},
 			source: { kind: 'package-app' },
 		})
+		return withRequestBilling(callerContext, billing)
 	}
 
 	private noteAuthorityFallback(
@@ -1657,8 +1673,10 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		let refusedKind: PackageAppAuthorityDifferenceKind
 		let refused: { result: T } | { error: unknown }
 		try {
+			const billing = (await this.requireActingVisit(input.visitTicket))
+				?.billing
 			const result = await input.run(
-				this.createRunsAsCallerContext(runsAs, input.storageId),
+				this.createRunsAsCallerContext(runsAs, input.storageId, billing),
 				'runs-as',
 			)
 			const kind = input.refusedResultKind?.(result) ?? null
@@ -1732,7 +1750,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		const email = visit?.owner.email ?? this.ctx.props.email
 		const displayName = visit?.owner.displayName ?? this.ctx.props.displayName
 		const orgSlug = visit?.owner.orgSlug ?? this.ctx.props.orgSlug
-		return createMcpCallerContext({
+		const callerContext = createMcpCallerContext({
 			baseUrl: this.ctx.props.baseUrl,
 			executionOrigin: 'background',
 			user: visitor
@@ -1749,6 +1767,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 						role: visitor.role,
 					}
 				: undefined,
+			...(visit && 'credentialProfileId' in visit && visit.credentialProfileId
+				? {
+						profileId: visit.credentialProfileId,
+						profileChain: visit.credentialProfileChain ?? null,
+					}
+				: {}),
 			storageContext: {
 				sessionId: null,
 				appId: this.ctx.props.packageId,
@@ -1757,6 +1781,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			},
 			source: { kind: 'package-app' },
 		})
+		return withRequestBilling(callerContext, visit?.billing)
 	}
 
 	/**
@@ -1770,6 +1795,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	private getStorageRunner(
 		storageId: string,
 		packageAppVisitorUserId?: string,
+		billedOrgId?: OwnerId,
 	) {
 		return storageRunnerRpc({
 			env: this.env,
@@ -1778,6 +1804,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			...(packageAppVisitorUserId !== undefined
 				? { packageAppVisitorUserId }
 				: {}),
+			...(billedOrgId ? { meterUserId: billedOrgId } : {}),
 		})
 	}
 
@@ -1897,8 +1924,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		name?: string | null
 		sessionId?: string | null
 		metadata?: Record<string, unknown> | null
+		visitTicket?: string | null
 	}): Promise<RunRecordHandle | null> {
-		const callerContext = await this.createCallerContext(null)
+		const callerContext = await this.createCallerContext(
+			null,
+			input.visitTicket,
+		)
 		return beginRunRecord({
 			env: this.env,
 			userId: this.ctx.props.userId,
@@ -2322,21 +2353,35 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return await this.createCallerContext(null, visitTicket)
 	}
 
-	async storageGet(input: { storageId: string; key: string }) {
+	/** Facet storage meters to the visit's billed org (ADR 0095). */
+	private async facetBilledOrgId(visitTicket?: string | null) {
+		return (await this.requireActingVisit(visitTicket))?.billing?.orgId
+	}
+
+	async storageGet(input: AppStorageInput & { key: string }) {
 		const storageId = this.assertAppOwnedStorageId(input.storageId)
-		return await this.getStorageRunner(storageId).getValue({
+		return await this.getStorageRunner(
+			storageId,
+			undefined,
+			await this.facetBilledOrgId(input.visitTicket),
+		).getValue({
 			key: input.key,
 		})
 	}
 
-	async storageList(input: {
-		storageId: string
-		prefix?: string | null
-		pageSize?: number
-		startAfter?: string | null
-	}) {
+	async storageList(
+		input: AppStorageInput & {
+			prefix?: string | null
+			pageSize?: number
+			startAfter?: string | null
+		},
+	) {
 		const storageId = this.assertAppOwnedStorageId(input.storageId)
-		return await this.getStorageRunner(storageId).listValues({
+		return await this.getStorageRunner(
+			storageId,
+			undefined,
+			await this.facetBilledOrgId(input.visitTicket),
+		).listValues({
 			prefix: input.prefix,
 			pageSize: input.pageSize,
 			startAfter: input.startAfter,
@@ -2349,6 +2394,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		params?: Array<unknown>
 		writable: boolean
 		packageAppVisitorUserId?: string
+		billedOrgId?: OwnerId
 	}) {
 		// package app bridges always mark packageStorage SQL writable, so skip
 		// the all-bucket fan-out for pure SELECT/EXPLAIN/PRAGMA statements.
@@ -2364,6 +2410,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return await this.getStorageRunner(
 			input.storageId,
 			input.packageAppVisitorUserId,
+			input.billedOrgId,
 		).sqlQuery({
 			query: input.query,
 			params: input.params,
@@ -2376,10 +2423,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		key: string
 		value: unknown
 		packageAppVisitorUserId?: string
+		billedOrgId?: OwnerId
 	}) {
 		const existing = await this.getStorageRunner(
 			input.storageId,
 			input.packageAppVisitorUserId,
+			input.billedOrgId,
 		).getValue({ key: input.key })
 		await this.assertStorageWriteAllowed({
 			storageId: input.storageId,
@@ -2397,46 +2446,61 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 							},
 			}),
 		})
-		return await this.getStorageRunner(input.storageId).setValue({
+		return await this.getStorageRunner(
+			input.storageId,
+			input.packageAppVisitorUserId,
+			input.billedOrgId,
+		).setValue({
 			key: input.key,
 			value: input.value,
 		})
 	}
 
-	async storageSql(input: {
-		storageId: string
-		query: string
-		params?: Array<unknown>
-		writable?: boolean
-	}) {
+	async storageSql(
+		input: AppStorageInput & {
+			query: string
+			params?: Array<unknown>
+			writable?: boolean
+		},
+	) {
 		const storageId = this.assertAppOwnedStorageId(input.storageId)
 		return await this.sqlQueryWithEntitlement({
 			storageId,
 			query: input.query,
 			params: input.params,
 			writable: input.writable ?? false,
+			billedOrgId: await this.facetBilledOrgId(input.visitTicket),
 		})
 	}
 
-	async storageSet(input: { storageId: string; key: string; value: unknown }) {
+	async storageSet(input: AppStorageInput & { key: string; value: unknown }) {
 		const storageId = this.assertAppOwnedStorageId(input.storageId)
 		return await this.setValueWithEntitlement({
 			storageId,
 			key: input.key,
 			value: input.value,
+			billedOrgId: await this.facetBilledOrgId(input.visitTicket),
 		})
 	}
 
-	async storageDelete(input: { storageId: string; key: string }) {
+	async storageDelete(input: AppStorageInput & { key: string }) {
 		const storageId = this.assertAppOwnedStorageId(input.storageId)
-		return await this.getStorageRunner(storageId).deleteValue({
+		return await this.getStorageRunner(
+			storageId,
+			undefined,
+			await this.facetBilledOrgId(input.visitTicket),
+		).deleteValue({
 			key: input.key,
 		})
 	}
 
-	async storageClear(input: { storageId: string }) {
+	async storageClear(input: AppStorageInput) {
 		const storageId = this.assertAppOwnedStorageId(input.storageId)
-		return await this.getStorageRunner(storageId).clearStorage()
+		return await this.getStorageRunner(
+			storageId,
+			undefined,
+			await this.facetBilledOrgId(input.visitTicket),
+		).clearStorage()
 	}
 
 	async appRateLimit(input: {
@@ -2510,8 +2574,8 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		args: unknown,
 		visitTicket?: string | null,
 	) {
-		const packageAppVisitorUserId =
-			(await this.visitorFor(visitTicket))?.userId ?? ''
+		const visit = await this.requireActingVisit(visitTicket)
+		const packageAppVisitorUserId = visit?.visitor.userId ?? ''
 		const payload = (
 			args !== null && typeof args === 'object' && !Array.isArray(args)
 				? args
@@ -2532,8 +2596,10 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			pageSize?: number
 			startAfter?: string | null
 			packageAppVisitorUserId?: string
+			billedOrgId?: OwnerId
 		}
 		input.packageAppVisitorUserId = packageAppVisitorUserId
+		input.billedOrgId = visit?.billing?.orgId
 		switch (method) {
 			case 'packageStorageGet':
 				return await this.packageStorageGetAs(boundPackageId, input)
@@ -2558,6 +2624,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			packageId: string
 			key: string
 			packageAppVisitorUserId?: string
+			billedOrgId?: OwnerId
 		},
 	) {
 		const packageId = this.resolvePackageStorageOwner(
@@ -2569,6 +2636,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return await this.getStorageRunner(
 			buildPackageStorageId(packageId),
 			input.packageAppVisitorUserId,
+			input.billedOrgId,
 		).getValue({
 			key: input.key,
 		})
@@ -2582,6 +2650,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			pageSize?: number
 			startAfter?: string | null
 			packageAppVisitorUserId?: string
+			billedOrgId?: OwnerId
 		},
 	) {
 		const packageId = this.resolvePackageStorageOwner(
@@ -2591,6 +2660,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return await this.getStorageRunner(
 			buildPackageStorageId(packageId),
 			input.packageAppVisitorUserId,
+			input.billedOrgId,
 		).listValues({
 			prefix: input.prefix,
 			pageSize: input.pageSize,
@@ -2606,6 +2676,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			params?: Array<unknown>
 			writable?: boolean
 			packageAppVisitorUserId?: string
+			billedOrgId?: OwnerId
 		},
 	) {
 		const packageId = this.resolvePackageStorageOwner(
@@ -2618,6 +2689,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			params: input.params,
 			writable: input.writable ?? false,
 			packageAppVisitorUserId: input.packageAppVisitorUserId,
+			billedOrgId: input.billedOrgId,
 		})
 	}
 
@@ -2628,6 +2700,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			key: string
 			value: unknown
 			packageAppVisitorUserId?: string
+			billedOrgId?: OwnerId
 		},
 	) {
 		const packageId = this.resolvePackageStorageOwner(
@@ -2639,6 +2712,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			key: input.key,
 			value: input.value,
 			packageAppVisitorUserId: input.packageAppVisitorUserId,
+			billedOrgId: input.billedOrgId,
 		})
 	}
 
@@ -4029,21 +4103,25 @@ export async function buildPackageAppWorker(input: {
 	// so they take the include → credits → stop gate. The breaker runs it after
 	// the response and refuses only once a denial has opened it.
 	const request = input.runtime.callerContext.request
+	// A visit from another org to an internal app is gated on the visiting
+	// org's usage, since that org pays for its metered work (ADR 0095).
+	const billing = request?.billing ?? null
+	const billedOrgId = billedOrgIdOf(request, input.userId)
 	await pushServerTiming(input.serverTiming, 'usageGate', async () => {
 		await gatePackageAppUsage({
 			env: input.env,
-			ownerId: input.userId,
+			ownerId: billedOrgId,
 			actorId: request?.actor?.userId ?? null,
 			waitUntil: input.waitUntil ?? scheduleWorkerWaitUntil,
 			check: () =>
 				assertWithinComputeInclude({
 					db: input.env.APP_DB,
 					env: input.env,
-					userId: input.userId,
+					userId: billedOrgId,
 					orgBudget: request
 						? {
-								orgId: request.org.id,
-								orgSlug: request.org.slug,
+								orgId: billing ? billedOrgId : request.org.id,
+								orgSlug: billing ? null : request.org.slug,
 								actorUserId: request.actor?.userId ?? null,
 								actorUsername: request.actor?.username ?? null,
 							}
@@ -4216,9 +4294,11 @@ export async function createPackageAppCallerContext(input: {
 	}
 	visitor: RuntimePackageAppVisitor | null
 	packageId: string
+	/** Set for a visit from another org to an internal app (ADR 0095). */
+	billing?: RequestBilling | null
 }) {
 	const { visitor } = input
-	return createMcpCallerContext({
+	const callerContext = createMcpCallerContext({
 		baseUrl: input.baseUrl,
 		executionOrigin: 'background',
 		user: visitor
@@ -4243,4 +4323,5 @@ export async function createPackageAppCallerContext(input: {
 		},
 		source: { kind: 'package-app' },
 	})
+	return withRequestBilling(callerContext, input.billing)
 }

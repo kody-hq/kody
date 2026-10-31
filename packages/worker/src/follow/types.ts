@@ -60,6 +60,8 @@ export type FollowRecord = {
 	id: string
 	followerOrgId: string
 	creatorUserId: string
+	/** Profile (ADR 0092) whose access gates delivery; null is the person. */
+	creatorProfileId: string | null
 	targetKind: FollowTargetKind
 	targetOwnerId: string
 	targetId: string

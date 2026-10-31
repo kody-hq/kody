@@ -4,6 +4,11 @@ import {
 } from '#app/auth-session.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
+	loadOrgBindingForPerson,
+	loadOrgBindingForSlug,
+} from '#worker/orgs/repo.ts'
+import { decidePackageAppBilling } from '#worker/package-runtime/package-app-billing.ts'
+import {
 	packageAppOauthAppDomain,
 	packageAppOauthClaimLabels,
 } from '#app/package-app-oauth-consent-copy.ts'
@@ -31,6 +36,22 @@ import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { isCredentialKind } from '#universal/credential-contracts.ts'
 import { credentialKindLabel } from '#universal/credentials-list.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
+import {
+	auditDatabaseFromEnv,
+	getRequestIp,
+	logAuditEvent,
+} from '#worker/audit-log.ts'
+import { formatUserCode } from '#worker/oauth-device/device-grant.ts'
+import {
+	decidePackageAppDeviceAuthorization,
+	type DeviceAuthorizationRow,
+} from '#worker/oauth-device/store.ts'
+import { findPendingPackageAppDeviceAuthorization } from '#worker/oauth-device/verification.ts'
+import { oauthPaths } from '#universal/oauth-paths.ts'
+import {
+	packageAppDeviceAuthorizeQuery,
+	packageAppDeviceRequester,
+} from '#app/package-app-device-request.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
 import {
 	loadInvokeManifestBySourceId,
@@ -89,7 +110,7 @@ function redirectWithError(input: {
 	})
 }
 
-type AuthorizeQuery = {
+export type AuthorizeQuery = {
 	clientIdRaw: string | null
 	redirectUri: string | null
 	state: string | null
@@ -101,7 +122,7 @@ type AuthorizeQuery = {
 	credentialSelections?: Record<string, string>
 }
 
-function readAuthorizeQuery(url: URL): AuthorizeQuery {
+export function readAuthorizeQuery(url: URL): AuthorizeQuery {
 	return {
 		clientIdRaw: url.searchParams.get('client_id'),
 		redirectUri: url.searchParams.get('redirect_uri'),
@@ -205,7 +226,7 @@ async function issueCodeAndRedirect(input: {
 	})
 }
 
-async function loadConsentPackageMeta(input: {
+export async function loadConsentPackageMeta(input: {
 	env: Env
 	orgUsername: string
 	kodyId: string
@@ -213,6 +234,7 @@ async function loadConsentPackageMeta(input: {
 	let packageName = input.kodyId
 	let publisherDisplayName = input.orgUsername
 	let iconUrl: string | null = null
+	let internetVisible = true
 	try {
 		const org = await resolvePackageAppOrgOwnerByHandle({
 			env: input.env,
@@ -227,6 +249,7 @@ async function loadConsentPackageMeta(input: {
 			})
 			if (lookup) {
 				packageName = getPackageNameLeaf(lookup.savedPackage.name)
+				internetVisible = lookup.savedPackage.isInternetVisible
 				const source = await getEntitySourceById(
 					input.env.APP_DB,
 					lookup.savedPackage.sourceId,
@@ -243,10 +266,50 @@ async function loadConsentPackageMeta(input: {
 	} catch {
 		// Consent still renders when package metadata tables are unavailable.
 	}
-	return { packageName, publisherDisplayName, iconUrl }
+	return { packageName, publisherDisplayName, iconUrl, internetVisible }
 }
 
-async function parseAndValidateAuthorizeRequest(input: {
+/**
+ * Who pays for the visitor's use of the app (ADR 0095). Members of the owning
+ * org and every visitor of an internet-visible app: the publisher. Someone
+ * from outside the org on an internal app: their own personal org.
+ */
+async function loadConsentBilling(input: {
+	env: Env
+	personId: string
+	viewerUsername: string
+	orgUsername: string
+	internetVisible: boolean
+}): Promise<NonNullable<PackageAppOauthConsentLoaderData['billing']>> {
+	if (input.internetVisible) return { payer: 'publisher' }
+	try {
+		const binding = await loadOrgBindingForSlug(
+			input.env.APP_DB,
+			input.personId,
+			input.orgUsername,
+		)
+		if (!binding) return { payer: 'publisher' }
+		const personal = await loadOrgBindingForPerson(
+			input.env.APP_DB,
+			input.personId,
+		)
+		const billing = decidePackageAppBilling({
+			ownerId: binding.org.id,
+			visitor: { role: binding.role },
+			internetVisible: false,
+			visitorPersonalOrgId: personal.org.id,
+		})
+		if (!billing) return { payer: 'publisher' }
+		return {
+			payer: 'visitor-org',
+			orgSlug: personal.org.slug ?? input.viewerUsername,
+		}
+	} catch {
+		return { payer: 'publisher' }
+	}
+}
+
+export async function parseAndValidateAuthorizeRequest(input: {
 	env: Env
 	query: AuthorizeQuery
 	requestUrl: string | URL
@@ -435,7 +498,7 @@ async function parseAndValidateAuthorizeRequest(input: {
 	}
 }
 
-function isSameOriginAuthorizePost(request: Request, env: Env) {
+export function isSameOriginAuthorizePost(request: Request, env: Env) {
 	const appOrigin = new URL(getAppBaseUrl({ env, requestUrl: request.url }))
 		.origin
 	const origin = request.headers.get('Origin')
@@ -588,6 +651,45 @@ async function loadExecutorNeedConsentData(input: {
 	)
 }
 
+function seeOther(location: string) {
+	return new Response(null, {
+		status: 303,
+		headers: {
+			Location: location,
+			'Cache-Control': 'no-store',
+			'Referrer-Policy': 'no-referrer',
+		},
+	})
+}
+
+/** Where the approver lands after deciding a device sign-in. */
+function deviceResultPath(result: 'approved' | 'denied' | null) {
+	return result
+		? `${oauthPaths.device}?result=${result}&kind=package_app`
+		: `${oauthPaths.device}?error=not_found`
+}
+
+function logDeviceDecision(input: {
+	env: Env
+	request: Request
+	user: NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
+	row: DeviceAuthorizationRow
+	approved?: boolean
+	denied?: boolean
+}) {
+	const ok = input.approved ?? input.denied ?? false
+	void logAuditEvent({
+		db: auditDatabaseFromEnv(input.env),
+		category: 'oauth',
+		action: 'device_verify',
+		result: ok ? 'success' : 'failure',
+		email: input.user.email,
+		ip: getRequestIp(input.request) ?? undefined,
+		clientId: input.row.client_id,
+		reason: ok ? (input.denied ? 'denied' : undefined) : 'not_pending',
+	})
+}
+
 export async function handlePackageAppOauthAuthorizeRequest(
 	request: Request,
 	env: Env,
@@ -598,39 +700,65 @@ export async function handlePackageAppOauthAuthorizeRequest(
 		return new Response('Not found.', { status: 404 })
 	}
 
-	const query =
-		request.method === 'POST'
-			? await (async () => {
-					const form = await request.formData()
-					return {
-						clientIdRaw: String(form.get('client_id') ?? ''),
-						redirectUri: String(form.get('redirect_uri') ?? ''),
-						state: String(form.get('state') ?? '') || null,
-						codeChallenge: String(form.get('code_challenge') ?? ''),
-						codeChallengeMethod: String(
-							form.get('code_challenge_method') ?? 'S256',
-						),
-						scopeRaw: String(form.get('scope') ?? ''),
-						selectedScopesRaw: form
-							.getAll('selected_scopes')
-							.map(String)
-							.join(' '),
-						credentialSelections: Object.fromEntries(
-							[...form.entries()]
-								.filter(([name]) => name.startsWith('credential_need:'))
-								.map(([name, value]) => [
-									name.slice('credential_need:'.length),
-									String(value),
-								]),
-						),
-						responseType: String(form.get('response_type') ?? 'code'),
-						decision: String(form.get('decision') ?? ''),
-					}
-				})()
-			: {
-					...readAuthorizeQuery(url),
-					decision: '',
+	const form = request.method === 'POST' ? await request.formData() : null
+	const deviceUserCode =
+		(form
+			? String(form.get('device_user_code') ?? '')
+			: (url.searchParams.get('device_user_code') ?? '')
+		).trim() || null
+	// "Sign in on another device" (ADR 0094): the approver consents here for a
+	// limited browser. The request comes from the stored device row, never
+	// from the query, and the code is looked up under the `/device` limits.
+	let deviceRow: DeviceAuthorizationRow | null = null
+	if (deviceUserCode) {
+		const approver = await readAuthenticatedAppUser(request, env)
+		if (!approver) {
+			return await redirectToLoginWhenUnauthenticated(request, env)
+		}
+		const found = await findPendingPackageAppDeviceAuthorization({
+			request,
+			env,
+			user: { personId: approver.mcpUser.userId, email: approver.email },
+			userCode: deviceUserCode,
+		})
+		if (found.kind !== 'found') {
+			const devicePage = new URL(oauthPaths.device, request.url)
+			devicePage.searchParams.set('user_code', deviceUserCode)
+			devicePage.searchParams.set('error', found.kind)
+			return seeOther(`${devicePage.pathname}${devicePage.search}`)
+		}
+		deviceRow = found.row
+	}
+	const baseQuery: AuthorizeQuery = deviceRow
+		? packageAppDeviceAuthorizeQuery(deviceRow)
+		: form
+			? {
+					clientIdRaw: String(form.get('client_id') ?? ''),
+					redirectUri: String(form.get('redirect_uri') ?? ''),
+					state: String(form.get('state') ?? '') || null,
+					codeChallenge: String(form.get('code_challenge') ?? ''),
+					codeChallengeMethod: String(
+						form.get('code_challenge_method') ?? 'S256',
+					),
+					scopeRaw: String(form.get('scope') ?? ''),
+					responseType: String(form.get('response_type') ?? 'code'),
 				}
+			: readAuthorizeQuery(url)
+	const query = form
+		? {
+				...baseQuery,
+				selectedScopesRaw: form.getAll('selected_scopes').map(String).join(' '),
+				credentialSelections: Object.fromEntries(
+					[...form.entries()]
+						.filter(([name]) => name.startsWith('credential_need:'))
+						.map(([name, value]) => [
+							name.slice('credential_need:'.length),
+							String(value),
+						]),
+				),
+				decision: String(form.get('decision') ?? ''),
+			}
+		: { ...baseQuery, decision: '' }
 
 	const validated = await parseAndValidateAuthorizeRequest({
 		env,
@@ -663,6 +791,21 @@ export async function handlePackageAppOauthAuthorizeRequest(
 			})
 		}
 		const decision = 'decision' in query ? query.decision : ''
+		if (deviceRow && decision !== 'approve') {
+			if (decision !== 'deny') {
+				return new Response('Unknown consent decision.', {
+					status: 400,
+					headers: { 'Cache-Control': 'no-store' },
+				})
+			}
+			const denied = await decidePackageAppDeviceAuthorization(env.APP_DB, {
+				id: deviceRow.id,
+				decision: 'denied',
+				userId: user.mcpUser.userId,
+			})
+			logDeviceDecision({ env, request, user, row: deviceRow, denied })
+			return seeOther(deviceResultPath(denied ? 'denied' : null))
+		}
 		if (decision === 'deny') {
 			return redirectWithError({
 				redirectUri: validated.redirectUri,
@@ -727,6 +870,16 @@ export async function handlePackageAppOauthAuthorizeRequest(
 			scopes: [...selectedScopes],
 			mappings,
 		})
+		if (deviceRow) {
+			const approved = await decidePackageAppDeviceAuthorization(env.APP_DB, {
+				id: deviceRow.id,
+				decision: 'approved',
+				userId: user.mcpUser.userId,
+				approvedScope: [...selectedScopes].join(' '),
+			})
+			logDeviceDecision({ env, request, user, row: deviceRow, approved })
+			return seeOther(deviceResultPath(approved ? 'approved' : null))
+		}
 		return await issueCodeAndRedirect({
 			env,
 			request,
@@ -761,6 +914,7 @@ export async function handlePackageAppOauthAuthorizeRequest(
 	})
 	if (
 		skip &&
+		!deviceRow &&
 		options.allowConsentSkip !== false &&
 		url.searchParams.get('prompt') !== 'consent'
 	) {
@@ -790,15 +944,17 @@ export async function handlePackageAppOauthAuthorizeRequest(
 			email: user.email,
 			username: user.username,
 		})
-	const hiddenFields: Record<string, string> = {
-		client_id: validated.client.clientId,
-		redirect_uri: validated.redirectUri,
-		response_type: 'code',
-		code_challenge: validated.codeChallenge,
-		code_challenge_method: 'S256',
-		scope: validated.scopes.join(' '),
-	}
-	if (validated.state) hiddenFields.state = validated.state
+	const hiddenFields: Record<string, string> = deviceRow
+		? { device_user_code: formatUserCode(deviceRow.user_code) }
+		: {
+				client_id: validated.client.clientId,
+				redirect_uri: validated.redirectUri,
+				response_type: 'code',
+				code_challenge: validated.codeChallenge,
+				code_challenge_method: 'S256',
+				scope: validated.scopes.join(' '),
+			}
+	if (validated.state && !deviceRow) hiddenFields.state = validated.state
 	const grant = await findLivePackageAppOauthGrant({
 		db: env.APP_DB,
 		personId: user.mcpUser.userId,
@@ -843,6 +999,13 @@ export async function handlePackageAppOauthAuthorizeRequest(
 		kodyId: validated.client.kodyId,
 		grantId: grant?.id ?? null,
 	})
+	const billing = await loadConsentBilling({
+		env,
+		personId: user.mcpUser.userId,
+		viewerUsername: user.username,
+		orgUsername: validated.client.username,
+		internetVisible: validated.savedPackage.isInternetVisible,
+	})
 
 	return {
 		consent: {
@@ -871,6 +1034,14 @@ export async function handlePackageAppOauthAuthorizeRequest(
 				validated.visitorNeedDescriptions,
 			).filter((label) => !requiredLabels.includes(label)),
 			hiddenFields,
+			billing,
+			device: deviceRow
+				? {
+						userCode: formatUserCode(deviceRow.user_code),
+						requester: packageAppDeviceRequester(deviceRow),
+						expiresAt: deviceRow.expires_at,
+					}
+				: null,
 		},
 	}
 }

@@ -704,6 +704,17 @@ export function PackageCollaboratorsRoute({
 									: 'Organization owners always have full access.'
 							}
 						>
+							{view.package.hasApp && !view.package.internetVisible ? (
+								<p
+									css={mutedCopyCss}
+									data-testid="package-collaborators-who-pays"
+								>
+									Who pays: when someone outside this organization opens this
+									package's app, their own org pays for the metered work their
+									visits cause (storage reads, outbound fetches, email). This
+									org keeps paying the app's Worker compute.
+								</p>
+							) : null}
 							{view.collaborators.length === 0 ? (
 								<p css={mutedCopyCss} data-testid="package-collaborators-empty">
 									Nobody else has been given access to this package yet.

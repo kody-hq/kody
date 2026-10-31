@@ -17,9 +17,10 @@ happen. Kody implements the **webhook-only** profile of the draft MCP Events
 extension (design sketch 2026-02-19; OpenAI ChatGPT profile on protocol
 `2026-07-28`). Poll and push delivery are out of scope.
 
-This surface is behind the `mcp-events-extension` feature flag. Signed-in users
-can turn it on from this page. Experimenters get it when operators enable the
-flag for the experiments audience.
+This surface is behind the `mcp-events-extension` feature flag. Turn it on at
+`/account/experiments` or with
+`experimentSet({ experiment: "mcp-events", enabled: true })`. Signed-in users
+can also turn it on from this page.
 
 Package subscriptions between your own packages stay on
 [Package subscriptions and events](./package-subscriptions.md). MCP Events is
@@ -135,7 +136,7 @@ matching MCP subscriptions for the same user. There is no second dispatch path.
 ## Subscribe and delivery
 
 1. The host calls `events/list` and sees only MCP-opted topics from packages the
-   connection may read (connection-profile grants apply).
+   connection may read.
 2. The host calls `events/subscribe` with the event name, a HTTPS callback URL,
    and a `whsec_…` signing secret.
 3. Kody verifies the callback with a signed challenge, then stores the

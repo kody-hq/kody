@@ -50,9 +50,6 @@ export function PackageAppOauthConsentPage({
 				),
 			) as Record<string, string>,
 	)
-	const [choosingAnother, setChoosingAnother] = useState<Set<string>>(
-		() => new Set(),
-	)
 	const missingRequiredCredential = data.executorNeeds.some(
 		(need) =>
 			need.required &&
@@ -147,6 +144,38 @@ export function PackageAppOauthConsentPage({
 				data-testid="package-app-oauth-consent"
 				css={{ display: 'grid', gap: spacing.lg }}
 			>
+				{data.device ? (
+					<section
+						data-testid="package-app-oauth-device"
+						css={deviceCss}
+						aria-label="Sign-in on another device"
+					>
+						<h2 css={sectionHeadingCss}>Signing in on another device</h2>
+						<p css={mutedCss}>
+							Allowing signs that device in to {data.packageName} as you. You
+							stay signed in here.
+						</p>
+						<dl css={deviceFactsCss}>
+							<dt>Code on that device</dt>
+							<dd>
+								<code
+									css={deviceCodeCss}
+									data-testid="package-app-oauth-device-code"
+								>
+									{data.device.userCode}
+								</code>
+							</dd>
+							<dt>Device</dt>
+							<dd data-testid="package-app-oauth-device-requester">
+								{data.device.requester}
+							</dd>
+						</dl>
+						<p role="note" css={deviceWarningCss}>
+							Only continue if you started this sign-in yourself on a device you
+							control, and the code matches.
+						</p>
+					</section>
+				) : null}
 				<div css={identityRowCss}>
 					{data.iconUrl ? (
 						<img
@@ -231,7 +260,6 @@ export function PackageAppOauthConsentPage({
 					const otherCandidates = need.credentials.filter(
 						(credential) => credential.id !== need.recommendedCredentialId,
 					)
-					const showAlternates = choosingAnother.has(need.key)
 					const missing = needIsMissing(need)
 					const wanted = describeWantedCredential(need)
 					return (
@@ -288,25 +316,11 @@ export function PackageAppOauthConsentPage({
 								</p>
 							)}
 							{otherCandidates.length > 0 ? (
-								<button
-									type="button"
-									css={getGhostButtonCss({ size: 'sm' })}
-									onClick={() =>
-										setChoosingAnother((current) => {
-											const next = new Set(current)
-											if (next.has(need.key)) next.delete(need.key)
-											else next.add(need.key)
-											return next
-										})
-									}
-								>
-									{showAlternates
-										? 'Hide other credentials'
-										: 'Choose another credential'}
-								</button>
-							) : null}
-							{showAlternates
-								? otherCandidates.map((credential) => (
+								// A native disclosure so the alternates work without page
+								// JavaScript too.
+								<details css={alternatesCss}>
+									<summary>Choose another credential</summary>
+									{otherCandidates.map((credential) => (
 										<label key={credential.id} css={credentialChoiceCss}>
 											<input
 												type="radio"
@@ -329,8 +343,9 @@ export function PackageAppOauthConsentPage({
 												</span>
 											</span>
 										</label>
-									))
-								: null}
+									))}
+								</details>
+							) : null}
 							<p css={mutedCss}>
 								<a
 									href={need.createUrl}
@@ -411,6 +426,13 @@ export function PackageAppOauthConsentPage({
 						Cancel
 					</button>
 				</form>
+				{data.billing ? (
+					<p css={mutedCss} data-testid="package-app-oauth-who-pays">
+						{data.billing.payer === 'visitor-org'
+							? `Who pays: this app belongs to another organization, so your org (@${data.billing.orgSlug}) pays for the metered work your visits cause, like storage reads, outbound fetches, and email. The publisher pays to run the app itself.`
+							: 'Who pays: the publisher pays for what this app runs for you. Signing in does not charge you.'}
+					</p>
+				) : null}
 				<p css={mutedCss} data-testid="package-app-oauth-owner-visibility">
 					The app's owner can see that you connected, when you last used it, and
 					what you allowed. They never see your credentials. You can revoke
@@ -431,6 +453,57 @@ export function PackageAppOauthConsentPage({
 			</section>
 		</AccountManagementShell>
 	)
+}
+
+const deviceCss = {
+	display: 'grid',
+	gap: spacing.sm,
+	padding: spacing.md,
+	borderRadius: radius.md,
+	border: `1px solid ${colors.border}`,
+	backgroundColor: colors.background,
+}
+
+const deviceFactsCss = {
+	margin: 0,
+	display: 'grid',
+	gridTemplateColumns: 'max-content minmax(0, 1fr)',
+	columnGap: spacing.md,
+	rowGap: spacing.xs,
+	alignItems: 'baseline',
+	fontSize: typography.fontSize.sm,
+	'& dt': { color: colors.textMuted },
+	'& dd': { margin: 0, color: colors.text, overflowWrap: 'anywhere' as const },
+}
+
+const deviceCodeCss = {
+	fontFamily: typography.fontFamilyMono,
+	fontSize: typography.fontSize.lg,
+	fontWeight: typography.fontWeight.semibold,
+	letterSpacing: '0.12em',
+	color: colors.text,
+}
+
+const deviceWarningCss = {
+	margin: 0,
+	padding: `${spacing.xs} ${spacing.sm}`,
+	borderRadius: radius.md,
+	borderLeft: `3px solid ${colors.warning}`,
+	backgroundColor: colors.surface,
+	color: colors.warningText,
+	fontSize: typography.fontSize.sm,
+}
+
+const alternatesCss = {
+	display: 'grid',
+	gap: spacing.sm,
+	'& > summary': {
+		cursor: 'pointer',
+		width: 'fit-content',
+		color: colors.primaryText,
+		fontSize: typography.fontSize.sm,
+		fontWeight: typography.fontWeight.semibold,
+	},
 }
 
 const identityRowCss = {

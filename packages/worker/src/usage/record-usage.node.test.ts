@@ -144,6 +144,7 @@ test('usageEventBlobs default actor to org billing id and map automation sources
 		'',
 		'',
 		'',
+		'',
 	])
 	expect(
 		usageEventBlobs(
@@ -247,4 +248,40 @@ test('usageConnectionKey names the credential and its holder', () => {
 			'2026-10-10T00:00:00.000Z',
 		)[usageEventBlobIndexes.connectionKey],
 	).toBe(`mcp-oauth:${personId}:slack-bot-client`)
+})
+
+test('usageEventBlobs keep the owning org of a cross-org package-app event in blob16', () => {
+	const ts = '2026-10-30T00:00:00.000Z'
+	const base = {
+		eventType: 'durable_object_rows_read' as const,
+		outcome: 'success' as const,
+		packageId: 'pkg-1',
+		packageAppVisitorUserId: 'person-visitor',
+	}
+	expect(
+		usageEventBlobs(
+			{
+				...base,
+				userId: ownerIdFromStored('org-visitor'),
+				packageAppOwnerOrgId: 'org-publisher',
+			},
+			ts,
+		)[usageEventBlobIndexes.packageAppOwnerOrgId],
+	).toBe('org-publisher')
+	expect(
+		usageEventBlobs(
+			{
+				...base,
+				userId: ownerIdFromStored('org-publisher'),
+				packageAppOwnerOrgId: 'org-publisher',
+			},
+			ts,
+		)[usageEventBlobIndexes.packageAppOwnerOrgId],
+	).toBe('')
+	expect(
+		usageEventBlobs(
+			{ ...base, userId: ownerIdFromStored('org-publisher') },
+			ts,
+		),
+	).toHaveLength(16)
 })

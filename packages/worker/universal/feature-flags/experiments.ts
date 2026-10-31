@@ -42,7 +42,8 @@ export const selfServeExperiments = [
 		summary:
 			'Run execute and automations on your own machine or a build server instead of Kody cloud, with access to the folders and local network you allow. Credentials stay in Kody cloud.',
 		docsSlug: 'execution-contexts',
-		stage: 'Early access: the CLI daemon and the chain may still change.',
+		stage:
+			'Early access: register a machine, set a chain, and fall back to Kody cloud.',
 		orgSection: 'execution-contexts',
 	},
 	{
@@ -53,7 +54,7 @@ export const selfServeExperiments = [
 			'Give an agent or bot its own identity in an org, with only the access you hand it, an optional expiry, and sub-profiles for the agents it starts. A profile only reaches what you and every parent profile granted it, including packages shared with it from their Collaborators tab.',
 		docsSlug: 'profiles',
 		stage:
-			'Early access: profile access rules are live; tokens that let an agent run as a profile come next.',
+			'Early access: mint a token for a profile (tokenCreate profile_id) or hand a sub-agent its own sub-profile (profileHandoff).',
 	},
 	{
 		id: 'package-skills',

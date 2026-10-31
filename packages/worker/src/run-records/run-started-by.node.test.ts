@@ -77,3 +77,39 @@ describe('runStartedByFromRequest', () => {
 		).toBeNull()
 	})
 })
+
+describe('profile attribution', () => {
+	test('records the profile id and its chain from the credential', () => {
+		const request = deriveRequestContext({
+			user: person,
+			source: { kind: 'api-token', tokenId: 'tok_1' },
+			profileId: 'prof_child',
+			profileChain: ['prof_root', 'prof_child'],
+		})
+		expect(runStartedByFromRequest(request)).toMatchObject({
+			profileId: 'prof_child',
+			profileChain: ['prof_root', 'prof_child'],
+		})
+	})
+
+	test('a chain that does not end at the profile falls back to the profile', () => {
+		expect(
+			normalizeRunStartedBy({
+				userId: person.userId,
+				username: 'alice',
+				client: 'api-token',
+				label: null,
+				profileId: 'prof_child',
+				profileChain: ['prof_other'],
+			}),
+		).toMatchObject({ profileId: 'prof_child', profileChain: ['prof_child'] })
+	})
+
+	test('person runs carry no profile', () => {
+		const request = deriveRequestContext({
+			user: person,
+			source: { kind: 'api-token', tokenId: 'tok_1' },
+		})
+		expect(runStartedByFromRequest(request)).not.toHaveProperty('profileId')
+	})
+})

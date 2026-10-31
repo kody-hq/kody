@@ -26,7 +26,12 @@ export const enablementSchema = z.object({
 			'paused: the enabler lost access; events are dropped until access is back, then it resumes by itself.',
 		),
 	paused_reason: z
-		.enum(['org_access', 'package_access', 'credential_access'])
+		.enum([
+			'org_access',
+			'package_access',
+			'credential_access',
+			'profile_inactive',
+		])
 		.nullable(),
 	paused_permission: z.string().nullable(),
 	paused_resource: z.object({ type: z.string(), id: z.string() }).nullable(),

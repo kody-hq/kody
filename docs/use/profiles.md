@@ -19,7 +19,8 @@ Profiles are an experiment. Turn them on at
   - `resource_type` is one of `package`, `app`, `job`, `credential`, `memory`,
     `email`, `execution_context`, or `org`. An `org` grant (with `resource_id`
     set to the org id) carries only org-level permissions: `org:read`,
-    `org:execute`, `search:read`, `member:read`, `team:read`, `audit:read`, and
+    `org:execute`, `search:read`, `member:read`, `team:read`, `audit:read`,
+    `profile:manage` (so the profile can create its own sub-profiles), and
     `<type>:create`. A profile never gets access to a whole kind of resource at
     once, such as every package.
   - Every permission must be one you hold on that resource now. For a
@@ -70,3 +71,51 @@ Grants to people, teams, and the org can expire too: pass `expires_at` to
 `accessGrant`. A new grant without `expires_at` never expires; rewriting a grant
 without it keeps its current expiry, and `null` makes it unlimited. See
 [organizations](../guides/organizations.md).
+
+## Profile tokens
+
+- `tokenCreate` (Open API `POST /v1/tokens`, through the MCP `api` tool or the
+  CLI) takes optional `profile_id` to mint a token that acts as that profile. A
+  token already bound to a profile defaults to its own profile and can only name
+  itself or a sub-profile below it.
+- A profile token expires no later than the earliest `expires_at` in the profile
+  chain. Profile tokens have their own limit and never push out your person
+  tokens.
+- `/mcp` (and its `api` tool) does not take profile tokens. Use them with the
+  Open API or the CLI (`KODY_API_TOKEN`).
+- `cliCredentialBootstrap` refuses a profile-bound caller. Mint with
+  `tokenCreate({ profile_id })` or `profileHandoff` instead.
+
+## Hand off to a sub-agent
+
+`profileHandoff` (`POST /v1/profiles/handoff`) creates a profile and mints a
+token bound to it in one step. It takes `name`, optional `parent_profile_id`,
+optional `expires_at`, `grants[]` (same shape as `profileCreate`), `scopes`,
+optional `lifetime` (`short` by default), and optional `token_name`. It returns
+`{ profile, token }`. Called with a profile token, the new profile is a
+sub-profile of the calling profile unless `parent_profile_id` names one below
+it. Called as yourself without `parent_profile_id`, it creates a top-level
+profile. If minting fails, Kody tries to revoke the new profile; if that also
+fails, revoke it yourself with `profileRevoke`.
+
+## What a profile can use
+
+- **Credentials:** only ones granted to the profile chain (`<family>:use` on
+  that credential). Package Keys follow `package:execute` on their package.
+- **Memory:** none unless a grant includes it.
+- **Execution contexts:** a run routes to a context only when the profile chain
+  holds `execution_context:execute` on it; otherwise the context is skipped with
+  reason `profile_grant`. Host commands (`kody.command.*`) on a context also
+  need `execution_context:command` in every layer of the chain, even when you
+  operate the machine.
+- **Jobs, triggers, app visits:** what a profile turns on runs as that profile.
+  When the profile or a parent is revoked or expires, the enablement pauses with
+  `paused_reason: "profile_inactive"`. It stays paused until an active
+  credential turns it on again, which checks the chain afresh.
+- **Event subscriptions and follows:** delivery checks the subscribing or
+  following profile's access, not yours.
+
+## Attribution
+
+Runs record the profile id and its chain (ids, root first) as they were when the
+run started, so attribution survives the profile being purged.

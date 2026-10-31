@@ -10,6 +10,8 @@
 
 export const packageAppOauthPaths = {
 	authorize: '/oauth/package-app/authorize',
+	/** Limited-browser sign-in approved on another device (ADR 0094). */
+	device: '/oauth/package-app/device',
 	login: '/-/auth/login',
 	callback: '/-/auth/callback',
 	logout: '/-/auth/logout',
@@ -54,3 +56,7 @@ export function isPackageAppOauthCallbackPathname(pathname: string) {
 
 export const packageAppOauthPkceCookieName = '__Host-kody_pkg_oauth'
 export const packageAppOauthPkceCookieNameInsecure = 'kody_pkg_oauth'
+
+/** Device-code cookie for a limited browser signing in on another device. */
+export const packageAppDeviceSignInCookieName = '__Host-kody_pkg_device'
+export const packageAppDeviceSignInCookieNameInsecure = 'kody_pkg_device'

@@ -52,6 +52,7 @@ const loaderData: PackageAppOauthConsentLoaderData = {
 	optionalScopes: [{ scope: 'email', label: 'See your email address' }],
 	executorNeeds: [],
 	alreadyAllowedLabels: [],
+	device: null,
 	hiddenFields: {
 		client_id: 'acme/demo',
 		redirect_uri: 'https://acme.kody.run/_kody/auth/callback',
@@ -199,7 +200,11 @@ test('package-app OAuth consent recommends one credential and hides alternates i
 	expect(html).toContain('Used by ')
 	expect(html).toContain('>2<')
 	expect(html).toContain('Choose another credential')
-	expect(html).not.toContain('Other calendar credentials')
+	// Alternates sit in a closed native <details> (works without JavaScript).
+	expect(html).toMatch(
+		/<details[^>]*>\s*<summary>Choose another credential<\/summary>/,
+	)
+	expect(html).not.toMatch(/<details[^>]*\bopen\b/)
 	expect(html.replace(/<!--[\s\S]*?-->|<[^>]*>/g, '')).toContain(
 		'Create a google-calendar OAuth credential',
 	)
@@ -367,4 +372,25 @@ test('package-app consent blocks Allow when an already allowed optional need los
 	)
 
 	expect(approveButtonOf(html)).toContain('disabled=""')
+})
+
+test('package-app OAuth consent says who pays for the visit', async () => {
+	const outside = await renderStartPage(
+		createElement(PackageAppOauthConsentPage, {
+			data: {
+				...loaderData,
+				billing: { payer: 'visitor-org', orgSlug: 'ada' },
+			},
+		}),
+		href,
+	)
+	expect(outside).toContain('data-testid="package-app-oauth-who-pays"')
+	expect(outside).toContain('your org (@ada) pays for the metered work')
+	const publisher = await renderStartPage(
+		createElement(PackageAppOauthConsentPage, {
+			data: { ...loaderData, billing: { payer: 'publisher' } },
+		}),
+		href,
+	)
+	expect(publisher).toContain('the publisher pays for what this app runs')
 })

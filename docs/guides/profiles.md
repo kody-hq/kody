@@ -18,9 +18,10 @@ it, or when it creates something and gets the creator grant on it. It never
 holds more than you and its parents hold.
 
 Profiles are an experiment. Turn them on at `/account/experiments` or with
-`experimentSet({ experiment: "profiles", enabled: true })`. In this release you
-can create, list, shorten, and revoke profiles, and share packages with them;
-handoff tokens that sign an agent in as a profile come in the next release.
+`experimentSet({ experiment: "profiles", enabled: true })`. You can create,
+list, shorten, and revoke profiles, share packages with them, and mint tokens
+that let an agent act as one (see
+[Hand a sub-agent its own token](#hand-a-sub-agent-its-own-token)).
 
 ## How access is checked
 
@@ -104,6 +105,31 @@ starts. A sub-profile:
   (`status: "parent_inactive"`).
 
 Profiles nest at most 5 levels deep.
+
+## Hand a sub-agent its own token
+
+To start a sub-agent with less access than yours, call `profileHandoff` through
+the `api` tool (`POST /v1/profiles/handoff`) with a `name`, the `grants` it
+needs, and token `scopes`. It creates a sub-profile of the calling profile and
+returns `{ profile, token }`; give the sub-agent `token.token` as its
+`KODY_API_TOKEN`. To mint another token for an existing profile, call
+`tokenCreate` with `profile_id`. A profile token:
+
+- can only be minted for the calling profile or a sub-profile below it;
+- never outlives the earliest expiry in its chain;
+- works with the Open API, the `api` tool, and the CLI, not `/mcp`.
+
+## What runs as a profile
+
+- Credentials, memory, and execution contexts need a grant in the profile chain;
+  without one they are refused or skipped (`profile_grant`).
+- Host commands on a context need `execution_context:command` in every layer of
+  the profile chain, even on a machine you operate.
+- Jobs, triggers, and app visits that a profile turns on keep running as that
+  profile. When it or a parent is revoked or expires, they pause with
+  `paused_reason: "profile_inactive"` and stay paused until an active credential
+  turns them on again.
+- Runs record the profile id and chain, so activity shows which agent did it.
 
 ## Shorten or revoke
 

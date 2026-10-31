@@ -30,6 +30,8 @@ type McpCallerContextWireInput = {
 	storageContext?: McpStorageContext | null
 	repoContext?: McpRepoContext | null
 	connectionProfileName?: string | null
+	profileId?: string | null
+	profileChain?: ReadonlyArray<string> | null
 	oauthClientId?: string | null
 	/**
 	 * DB-backed org membership when available. Persisted on the wire so
@@ -72,6 +74,10 @@ export function createMcpCallerContextWire(
 		storageContext: input.storageContext ?? null,
 		repoContext: input.repoContext ?? null,
 		connectionProfileName: input.connectionProfileName ?? null,
+		...(input.profileId?.trim() ? { profileId: input.profileId.trim() } : {}),
+		...(input.profileId?.trim() && input.profileChain?.length
+			? { profileChain: [...input.profileChain] }
+			: {}),
 		...(input.oauthClientId?.trim()
 			? { oauthClientId: input.oauthClientId.trim() }
 			: {}),
@@ -102,6 +108,8 @@ export function createMcpCallerContext(
 					user: wire.user,
 					source: input.source,
 					profileName: wire.connectionProfileName,
+					profileId: wire.profileId ?? null,
+					profileChain: wire.profileChain ?? null,
 					oauthClientId: wire.oauthClientId ?? null,
 					orgBinding: wire.orgBinding ?? undefined,
 					scopes: input.scopes ?? null,

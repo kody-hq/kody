@@ -34,6 +34,7 @@ function record(id: string, followerOrgId: string): FollowRecord {
 		id,
 		followerOrgId,
 		creatorUserId: `user-${followerOrgId}`,
+		creatorProfileId: null,
 		targetKind: 'package',
 		targetOwnerId: 'org-owner',
 		targetId: 'pkg-1',

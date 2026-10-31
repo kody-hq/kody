@@ -907,6 +907,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['profile_id'],
 	},
 	{
+		operationId: 'profileHandoff',
+		method: 'POST',
+		pathTemplate: '/v1/profiles/handoff',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'profileList',
 		method: 'GET',
 		pathTemplate: '/v1/profiles',

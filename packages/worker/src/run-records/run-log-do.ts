@@ -108,7 +108,7 @@ const metaSchemaVersionKey = 'schema_version'
 /** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
 const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-const runLogSchemaVersion = 17
+const runLogSchemaVersion = 18
 
 function utcDayToMetaInt(day: string): number {
 	return Number(day.replaceAll('-', ''))
@@ -648,7 +648,25 @@ function mapStartedByColumns(
 		client: clientRaw as RunStartedBy['client'],
 		label:
 			row['started_by_label'] == null ? null : String(row['started_by_label']),
+		profileId:
+			row['started_by_profile_id'] == null
+				? null
+				: String(row['started_by_profile_id']),
+		profileChain: parseProfileChainColumn(row['started_by_profile_chain']),
 	})
+}
+
+function parseProfileChainColumn(value: SqlStorageValue | undefined) {
+	if (typeof value !== 'string' || !value) return null
+	try {
+		const parsed: unknown = JSON.parse(value)
+		return Array.isArray(parsed) &&
+			parsed.every((entry) => typeof entry === 'string')
+			? (parsed as Array<string>)
+			: null
+	} catch {
+		return null
+	}
 }
 
 function mapLogRow(row: Record<string, SqlStorageValue>): RunRecordLog {
@@ -885,6 +903,8 @@ class RunLogBase extends DurableObject<Env> {
 				started_by_username TEXT,
 				started_by_client TEXT,
 				started_by_label TEXT,
+				started_by_profile_id TEXT,
+				started_by_profile_chain TEXT,
 				log_count INTEGER NOT NULL DEFAULT 0
 			)
 		`)
@@ -893,6 +913,9 @@ class RunLogBase extends DurableObject<Env> {
 		}
 		if (installedVersion != null && installedVersion < 15) {
 			this.migrateRunsStartedByForV15()
+		}
+		if (installedVersion != null && installedVersion < 18) {
+			this.migrateRunsStartedByProfileForV18()
 		}
 		this.ctx.storage.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at DESC, id DESC)`,
@@ -1144,6 +1167,23 @@ class RunLogBase extends DurableObject<Env> {
 	 * Who started the run (person + client). No historical backfill — legacy
 	 * rows keep NULL and Activity shows unknown.
 	 */
+	/**
+	 * The profile (ADR 0092) a run acted as, and its chain frozen at start
+	 * (ids, root first), so attribution survives a later purge.
+	 */
+	private migrateRunsStartedByProfileForV18() {
+		for (const column of [
+			'started_by_profile_id',
+			'started_by_profile_chain',
+		] as const) {
+			try {
+				this.ctx.storage.sql.exec(`ALTER TABLE runs ADD COLUMN ${column} TEXT`)
+			} catch {
+				// Column already present on a partially migrated object.
+			}
+		}
+	}
+
 	private migrateRunsStartedByForV15() {
 		for (const column of [
 			'started_by_user_id',
@@ -1609,16 +1649,18 @@ class RunLogBase extends DurableObject<Env> {
 					session_id, idempotency_key, parent_run_id, started_at, finished_at,
 					duration_ms, error_name, error_message, metadata_json, created_at,
 					updated_at, error_triage, triage_note, triaged_at, triaged_by,
-					started_by_user_id, started_by_username, started_by_client, started_by_label
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?)`
+					started_by_user_id, started_by_username, started_by_client, started_by_label,
+					started_by_profile_id, started_by_profile_chain
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?)`
 				: `INSERT INTO runs (
 					id, surface, status, name, package_id, package_kody_id, source_id,
 					published_commit, storage_id, job_id, workflow_id, invocation_id,
 					session_id, idempotency_key, parent_run_id, started_at, finished_at,
 					duration_ms, error_name, error_message, metadata_json, created_at,
 					updated_at, error_triage, triage_note, triaged_at, triaged_by,
-					started_by_user_id, started_by_username, started_by_client, started_by_label
-				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?)
+					started_by_user_id, started_by_username, started_by_client, started_by_label,
+					started_by_profile_id, started_by_profile_chain
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(id) DO UPDATE SET
 					surface = excluded.surface,
 					status = excluded.status,
@@ -1660,7 +1702,9 @@ class RunLogBase extends DurableObject<Env> {
 					started_by_user_id = COALESCE(excluded.started_by_user_id, runs.started_by_user_id),
 					started_by_username = COALESCE(excluded.started_by_username, runs.started_by_username),
 					started_by_client = COALESCE(excluded.started_by_client, runs.started_by_client),
-					started_by_label = COALESCE(excluded.started_by_label, runs.started_by_label)`
+					started_by_label = COALESCE(excluded.started_by_label, runs.started_by_label),
+					started_by_profile_id = COALESCE(excluded.started_by_profile_id, runs.started_by_profile_id),
+					started_by_profile_chain = COALESCE(excluded.started_by_profile_chain, runs.started_by_profile_chain)`
 		this.ctx.storage.sql.exec(
 			statement,
 			run.id,
@@ -1690,6 +1734,10 @@ class RunLogBase extends DurableObject<Env> {
 			startedBy?.username ?? null,
 			startedBy?.client ?? null,
 			startedBy?.label ?? null,
+			startedBy?.profileId ?? null,
+			startedBy?.profileChain?.length
+				? JSON.stringify(startedBy.profileChain)
+				: null,
 		)
 	}
 

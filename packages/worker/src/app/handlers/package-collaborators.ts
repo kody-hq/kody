@@ -46,7 +46,13 @@ export type CollaboratorsScope = {
 	org: OrgBinding['org']
 	orgSlug: string
 	personal: boolean
-	savedPackage: { id: string; kodyId: string; name: string }
+	savedPackage: {
+		id: string
+		kodyId: string
+		name: string
+		hasApp: boolean
+		internetVisible: boolean
+	}
 }
 
 /**
@@ -112,6 +118,8 @@ export async function loadCollaboratorsScope(input: {
 				id: savedPackage.id,
 				kodyId: savedPackage.kodyId,
 				name: savedPackage.name,
+				hasApp: savedPackage.hasApp,
+				internetVisible: savedPackage.isInternetVisible,
 			},
 		},
 	}

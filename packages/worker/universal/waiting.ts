@@ -125,7 +125,11 @@ export type WaitingPausedEnablementSignal = {
 	triggerKind: 'cron' | 'subscription' | 'webhook'
 	triggerName: string
 	packageName: string | null
-	reason: 'org_access' | 'package_access' | 'credential_access'
+	reason:
+		| 'org_access'
+		| 'package_access'
+		| 'credential_access'
+		| 'profile_inactive'
 	resourceType: string | null
 	resourceId: string | null
 }
@@ -523,6 +527,8 @@ function pausedEnablementWhy(signal: WaitingPausedEnablementSignal) {
 			return `It runs as you, and you no longer hold package:execute on ${signal.packageName ?? 'its package'}. Ask an org Owner for access. ${resumes}`
 		case 'org_access':
 			return `It runs as you, and you no longer have access to this org. ${resumes}`
+		case 'profile_inactive':
+			return `It runs as the profile that turned it on, and that profile or a parent profile was revoked or expired. It stays paused: turn it on again with an active credential.`
 		default: {
 			const unknownReason: never = signal.reason
 			throw new Error(

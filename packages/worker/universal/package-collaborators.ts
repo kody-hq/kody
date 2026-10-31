@@ -155,7 +155,14 @@ export type PackageCollaboratorMemberOption = {
 
 export type PackageCollaboratorsView = {
 	ok: true
-	package: { id: string; kodyId: string; name: string }
+	package: {
+		id: string
+		kodyId: string
+		name: string
+		/** The package serves an app (drives the who-pays note). */
+		hasApp?: boolean
+		internetVisible?: boolean
+	}
 	org: { slug: string; personal: boolean }
 	collaborators: Array<PackageCollaboratorView>
 	/** Pending grant invites on this package; always empty in a team org. */

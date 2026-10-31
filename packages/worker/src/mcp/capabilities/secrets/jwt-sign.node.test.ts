@@ -14,10 +14,7 @@ import { expect, test, vi } from 'vitest'
 import { lookupSecretsThroughResolveSecret } from '#worker/test-support/secret-lookup.ts'
 import { isMcpCallerError, McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import {
-	createMissingSecretMessage,
-	createSecretScopeUnavailableMessage,
-} from '#mcp/secrets/errors.ts'
+import { createSecretScopeUnavailableMessage } from '#mcp/secrets/errors.ts'
 import * as secretService from '#mcp/secrets/service.ts'
 import * as unresolvedSecret from '#mcp/secrets/unresolved-secret.ts'
 import { personalOrgAccessD1 } from '#worker/test-support/org-binding-query.ts'
@@ -218,7 +215,7 @@ test('secretJwtSign resolves keys and never leaks key material', async () => {
 		(error: unknown) =>
 			error instanceof McpCallerError &&
 			isMcpCallerError(error) &&
-			error.message === createMissingSecretMessage('missingKey'),
+			error.message === 'Secret "missingKey" was not found.',
 	)
 
 	const scopeUnavailableMessage = createSecretScopeUnavailableMessage([

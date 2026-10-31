@@ -1597,9 +1597,9 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	await expect(
 		bridge.packageStorageGet({ packageId: 'package-1', key: 'count' }),
 	).resolves.toEqual({ value: 'granted-value' })
+	const rc = (id: string, visitor?: string) => [id, visitor, undefined]
 	expect(getStorageRunner).toHaveBeenCalledWith(
-		buildPackageStorageId('package-1'),
-		undefined,
+		...rc(buildPackageStorageId('package-1')),
 	)
 	expect(getValue).toHaveBeenCalledWith({ key: 'count' })
 
@@ -1624,7 +1624,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 		}),
 	).resolves.toEqual({ ok: true })
 	expect(getStorageRunner).toHaveBeenCalledWith(
-		buildPackageStorageId('dep-package'),
+		...rc(buildPackageStorageId('dep-package'), ''),
 	)
 	expect(setValue).toHaveBeenCalledWith({ key: 'flag', value: true })
 	// The bound binding cannot be pointed at another granted bucket either.
@@ -1670,8 +1670,10 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 			value: 1,
 		}),
 	).resolves.toEqual({ ok: true })
-	expect(getStorageRunner).toHaveBeenCalledWith('package-1:facet:main')
-	expect(getStorageRunner).toHaveBeenCalledWith('package-1:Counter:instance-a')
+	expect(getStorageRunner).toHaveBeenCalledWith(...rc('package-1:facet:main'))
+	expect(getStorageRunner).toHaveBeenCalledWith(
+		...rc('package-1:Counter:instance-a'),
+	)
 
 	const outsideNamespaceError =
 		/outside this app's namespace[\s\S]*packageStorage\(\)/
@@ -1766,6 +1768,7 @@ test("buildPackageAppWorker never reuses one visitor's request context or creden
 		actorId: string,
 		role: 'owner' | 'member',
 		orgSlug: string = key,
+		billedOrgId?: string,
 	) =>
 		makeBuildInput(env, key, {
 			runtime: {
@@ -1786,7 +1789,8 @@ test("buildPackageAppWorker never reuses one visitor's request context or creden
 							scopes: null,
 							profileName: null,
 						},
-						membership: { role },
+						membership: billedOrgId ? null : { role },
+						...(billedOrgId ? { billing: { orgId: billedOrgId } } : {}),
 					},
 				},
 			} as never,
@@ -1818,14 +1822,13 @@ test("buildPackageAppWorker never reuses one visitor's request context or creden
 	await serve(visit('person-a', 'member'))
 	await serve(visit('person-a', 'owner', 'renamed-org'))
 	await serve(visit('person-a', 'owner'))
-
-	const [first, other, demoted, renamed, again] = loads
+	await serve(visit('person-c', 'member', key, 'org-visitor-c'))
+	const [first, other, demoted, renamed, again, crossOrg] = loads
+	expect(crossOrg!.bridge.props.gatewayProps).toMatchObject({
+		request: { billing: { orgId: 'org-visitor-c' } },
+	})
 	// Every visitor of this app and mount shares the isolate.
 	expect(new Set(loads.map((load) => load.id)).size).toBe(1)
-	expect(again!.id).toBe(first!.id)
-	expect(other!.id).toBe(first!.id)
-	expect(demoted!.id).toBe(first!.id)
-	expect(renamed!.id).toBe(first!.id)
 	// Per-request authority never copies another visitor's identity or binding.
 	for (const load of [other!, demoted!, renamed!, again!]) {
 		expect(load.bridge.props.credentialClientBinding).not.toBe(

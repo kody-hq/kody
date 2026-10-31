@@ -176,6 +176,28 @@ Platform routes on every package-app host (host root, not under `/{leaf}`):
 
 `/_kody/auth/*` paths are also accepted on the same hosts.
 
+#### Visitors on limited browsers
+
+Sign-in works on browsers that cannot run Kody's page JavaScript (for example an
+e-reader on Chromium 80, or JavaScript turned off). Nothing changes for the app;
+keep sending visitors to `/-/auth/login`.
+
+- **Email and password:** the Kody sign-in, two-factor, and consent pages are
+  plain HTML forms. The human check still needs a little JavaScript (a small
+  classic script draws it on old engines), so visitors with JavaScript fully off
+  use Sign in on another device. Passkeys and social sign-in still need
+  JavaScript.
+- **Sign in on another device:** the sign-in page offers this when it is
+  resuming an app sign-in. The limited browser shows a short code, a QR code,
+  and the `/device` URL. The visitor opens it on a phone or computer where they
+  are signed in to Kody, checks the code and the browser shown, and allows the
+  app on the usual consent screen. The limited browser checks back every few
+  seconds and continues to the app on its own. Codes expire after 10 minutes and
+  work once.
+
+Either way the visitor ends up with the same per-app session cookie as a normal
+sign-in, and consent works the same (Connected people, revoke).
+
 #### Who is visiting, from server code
 
 The platform checks the visitor's session before your app code runs, then
@@ -262,11 +284,13 @@ sign-in.
 A package app runs as one person in the owning org: the person who last
 published it, unless an Owner picks someone else with `packageAppRunsAsSet`
 (`username: null` goes back to the publisher). In a personal org with no
-recorded publisher, that is the org owner. That person pays for the app and
-supplies publisher credentials through `credential(key)`. Executor needs use the
-visitor's connected credentials when the app declares them. Visitors bring their
-verified identity. `packageAppRunsAsGet` says who it is, or why the app cannot
-run as anyone.
+recorded publisher, that is the org owner. The owning org pays for the app
+(except metered work caused by visitors from other orgs to internal apps, see
+[Who pays for visits](#who-pays-for-visits)), and that person supplies publisher
+credentials through `credential(key)`. Executor needs use the visitor's
+connected credentials when the app declares them. Visitors bring their verified
+identity. `packageAppRunsAsGet` says who it is, or why the app cannot run as
+anyone.
 
 - The person is checked live on every call. Someone who left the org, or whose
   account is suspended or deleted, stops the app from acting as them, with an
@@ -308,7 +332,7 @@ run as anyone.
 
 For example, `@example/app` imports `kody:@example/helper/save-token`, and that
 helper export calls `kody.secretList(...)` and `kody.secretSet(...)`. Those
-calls run while `@example/app` runs, so today `@example/app` lists both, even
+calls run while `@example/app` runs, so `@example/app` must list both, even
 though its own code never calls them:
 
 ```json
@@ -324,12 +348,12 @@ though its own code never calls them:
 }
 ```
 
-Without them the call cannot run as the runs-as person. For now it may still run
-under the visitor's authority (see the temporary fallback below); when that also
-fails, the app gets `PackageAppCapabilityNotDeclaredError`, which names the app
-(package name and version), the imported package that made the call, and the
-capability to add. Add it to the importing app's `kody.app.capabilities` and
-republish the app.
+Without them the call cannot run as the runs-as person. If that attempt fails
+for a missing capability, Kody may retry the call under the visitor's authority.
+When that also fails, the app gets `PackageAppCapabilityNotDeclaredError`, which
+names the app (package name and version), the imported package that made the
+call, and the capability to add. Add it to the importing app's
+`kody.app.capabilities` and republish the app. Do not depend on the retry.
 
 `kody.app.visitorNeeds` is how an app works on a signed-in visitor's own data.
 Each key is its own Sign in with Kody consent scope, `need:<key>`, and the
@@ -393,11 +417,11 @@ reported as `credential_unbound`. Keep publisher-supplied needs on
 
 If a bridge call fails as the runs-as person for an authority reason (a
 capability missing from `kody.app.capabilities`, an unavailable runs-as person,
-a permission or credential refusal), the platform retries it the legacy way: as
-the visitor, or anonymously when there is none. When that works, it logs a
+a permission or credential refusal), the platform retries as the visitor, or
+anonymously when there is none. When that works, it logs a
 `package_app_authority_fallback` event with the app, the call name, and the kind
 of difference. Any other failure throws as is, with no retry. Add what the logs
-name to the manifest; do not rely on the fallback. When the legacy retry also
+name to the manifest; do not rely on the retry. When the visitor retry also
 fails, the app gets the runs-as error. Only when that error is the "not listed
 in `kody.app.capabilities`" one (`PackageAppCapabilityNotDeclaredError`) does
 the platform also log a `package_app_authority_rejection` event. Admins count
@@ -1427,6 +1451,33 @@ None of `appBasePath`, `assetBasePath`, `hostedUrl`, or `clientModuleUrl` ends
 with a slash, so `${assetBasePath}/styles.css` is always a single-slash join.
 When you resolve relative to a URL that does end with a slash (a service worker
 scope, `new URL('x', base)`), pass the relative path without a leading slash.
+
+### Who pays for visits
+
+Billing follows who is visiting
+([ADR 0095](../contributing/decisions/0095-cross-org-package-app-visits-bill-the-visitor-org.md)):
+
+| Visitor                                                    | Metered work (storage, fetch, capability calls, email) | Worker compute (the app's Dynamic Worker day) |
+| ---------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------- |
+| Member of the owning org (any role)                        | Owning org                                             | Owning org                                    |
+| Someone outside the org with a grant, on an internal app   | **Their own personal org**                             | Owning org                                    |
+| Anyone on an internet-visible app (anonymous or signed in) | Owning org                                             | Owning org                                    |
+
+- If the visitor's personal org cannot be looked up, the request is still served
+  and the owning org pays.
+- The visiting org's usage page lists the app by name, marked as shared by its
+  owner; Where it went lists it once it adds credits past the include. The usage
+  breaker for those visits checks the visiting org, so a visitor whose org is
+  out of credits is refused without affecting anyone else.
+- The publisher's Visitors table attributes visitors (the top 500 with
+  Worker-day or rows-read usage); a visitor from another org is marked "their
+  org pays", and only the Worker compute they cause adds publisher credits.
+- Stored data stays in the publisher's buckets, so storage capacity stays the
+  publisher's. Realtime sessions run as the owner and are billed to it.
+- The billed org rides on each request, never on the worker, so every visitor
+  shares one warm worker per app and commit.
+- Nothing changes in app code, and there is still no platform per-visitor limit;
+  use `kody.appRateLimit` below for that.
 
 ### App-owned limits and spend
 

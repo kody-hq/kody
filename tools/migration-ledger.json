@@ -791,6 +791,22 @@
 		{
 			"filename": "0218-read-preset-and-package-forks.sql",
 			"sha256": "436a7498c073d33b7c0448ad3126888d4cdb2573ccefd3dbd06a741e31a1e8f3"
+		},
+		{
+			"filename": "0219-email-deliverability-effects.sql",
+			"sha256": "1f2a97b2bc3a3289a90f2cef59c3f72a31d3f33c5eabdc089461ffd19f1ad759"
+		},
+		{
+			"filename": "0220-package-app-device-sign-in.sql",
+			"sha256": "bf0d240ef6db96cb0ae6a8c6d2ebeb567102244deac3881149c6810adf13d6f8"
+		},
+		{
+			"filename": "0222-profile-tokens-and-enablers.sql",
+			"sha256": "33160dee7165b61b0526bfee4eda395c89668c4b0b1f7744bcaf16a751699300"
+		},
+		{
+			"filename": "0223-package-app-visitor-billed-org.sql",
+			"sha256": "b97e24532cad33b3c88dbe4323549b6264c2ef0ef5aadd6287696c433e9b4a03"
 		}
 	]
 }

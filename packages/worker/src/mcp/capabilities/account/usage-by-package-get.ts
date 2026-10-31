@@ -39,12 +39,15 @@ const creditAttributionVisitorSchema = z.object({
 	displayName: z.string(),
 	creditsMicroUsd: z.number().int().nonnegative(),
 	lastDay: z.string(),
+	/** The visitor's own org paid for their metered work (ADR 0095). */
+	billedToVisitorOrg: z.boolean().optional(),
 	meters: z.array(
 		z.object({
 			meter: creditAttributionMeterSchema,
 			label: z.string(),
 			units: z.number().nonnegative(),
 			creditsMicroUsd: z.number().int().nonnegative(),
+			billedToVisitorOrg: z.boolean().optional(),
 		}),
 	),
 })
@@ -80,7 +83,7 @@ export const usageByPackageGetCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'billing:read',
 		description:
-			'Read the current UTC month past-include credit attribution for the org this connection is bound to (personal or team) by package (Where it went): Worker compute and Rows read credits only — not execute, jobs, or package exports. Optional packageId returns that package’s slice of the same period breakdown.',
+			'Read the current UTC month past-include credit attribution for the org this connection is bound to (personal or team) by package (Where it went): Worker compute and Rows read credits only — not execute, jobs, or package exports. Optional packageId returns that package’s slice of the same period breakdown. Another org’s internal app that this org’s people visited shows up named as shared by its owner (this org paid for that metered work); in a publisher’s Visitors list, visitors from other orgs are flagged billedToVisitorOrg with no credits charged here.',
 		keywords: [
 			'account',
 			'usage',

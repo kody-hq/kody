@@ -3082,6 +3082,20 @@ export type PackageAppOauthConsentLoaderData = {
 	}>
 	alreadyAllowedLabels: Array<string>
 	hiddenFields: Record<string, string>
+	/**
+	 * Who pays for what the app runs for this visitor (ADR 0095): the
+	 * publisher, or the visitor's own org on another org's internal app.
+	 */
+	billing?: { payer: 'publisher' } | { payer: 'visitor-org'; orgSlug: string }
+	/** Set when approving "Sign in on another device" for a limited browser. */
+	device: {
+		/** Code shown on the other device, `XXXX-XXXX`. */
+		userCode: string
+		/** Self-reported browser label, e.g. "Chrome 80 on Linux". */
+		requester: string
+		/** Unix seconds. */
+		expiresAt: number
+	} | null
 }
 
 export type DiscordPageLoaderData = {

@@ -407,6 +407,7 @@ primitives:
       - docs/contributing/decisions/0037-no-author-packages-invoke.md
       - docs/contributing/decisions/0079-remove-package-retrievers.md
       - docs/contributing/decisions/0089-packages-declare-capabilities.md
+      - docs/contributing/decisions/0095-cross-org-package-app-visits-bill-the-visitor-org.md
 
   - id: package-codemods
     group: assistant
@@ -691,6 +692,7 @@ primitives:
       - docs/contributing/architecture/data-storage.md
     adrs:
       - docs/contributing/decisions/0002-data-placement.md
+      - docs/contributing/decisions/0095-cross-org-package-app-visits-bill-the-visitor-org.md
       - docs/contributing/decisions/0066-soft-delete-and-purge.md
 
   - id: audit-d1
