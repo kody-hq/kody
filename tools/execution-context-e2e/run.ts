@@ -43,6 +43,8 @@ function cliEnv(token: string) {
 		KODY_API_URL: apiOrigin,
 		KODY_API_TOKEN: token,
 		KODY_CONTEXT_KEY_PASSPHRASE: `e2e-${crypto.randomUUID()}`,
+		// Previews sign key sets with the public test root (test only).
+		KODY_ECP_TRUST_TEST_ROOT: '1',
 		KODY_SKIP_SKILL_REFRESH: '1',
 		KODY_SKIP_GIT_HELPER_REFRESH: '1',
 	}

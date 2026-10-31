@@ -235,6 +235,12 @@ production (or any deployment with signing keys).
   otherwise. Without `ECP_FRAME_SIGNING_KEYS` the session refuses to connect, so
   set it (through the Deploy workflow's secrets, never by hand) before turning
   the flag on anywhere.
+- TEST ONLY: previews and local dev serve the committed key set signed by
+  `root-test-1`, whose private key is public. The CLI trusts it only when
+  `KODY_ECP_TRUST_TEST_ROOT=1` is set and the API host is an https
+  `*.workers.dev` preview or `localhost` (`serverKeyRootsFor` in
+  `packages/cli/src/execution-context/client.ts`); kody.codes and every other
+  host ignore the variable. Never set it on a real machine.
 - Every API hop a run makes re-checks the requester's current access (account
   state, org membership, share, opt-in, attachment). Lost access ends the lease
   with `access_lost`. Leaving a team or org, opting out, detaching and narrowing

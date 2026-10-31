@@ -29,7 +29,11 @@ The preview seed must have the experiment on: add the
 `execution_context_e2e` job (this workflow, called after the deploy job) on
 every push. Previews sign session frames with the committed TEST key
 (`ECP_FRAME_SIGNING_KEYS` in `packages/worker/.env.example`); without it daemons
-never get a welcome frame. To rerun against a preview by hand:
+never get a welcome frame. That key set is signed by the public test root
+`root-test-1`, so `run.ts` sets `KODY_ECP_TRUST_TEST_ROOT=1` (TEST ONLY: the CLI
+honors it only for https `*.workers.dev` and `localhost` API hosts, never
+kody.codes; see [execution contexts](./architecture/execution-contexts.md)). To
+rerun against a preview by hand:
 
 ```sh
 gh workflow run execution-context-e2e.yml -f preview_name=kody-pr-<n> -f sha=<pr-head-sha>

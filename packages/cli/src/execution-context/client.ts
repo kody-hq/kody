@@ -4,7 +4,10 @@ import {
 	formatEcpSignatureHeader,
 	importEd25519PrivateKey,
 	signEcpHttpRequest,
+	ecpRootPublicKeys,
+	ecpTestRootPublicKey,
 	verifyServerKeySet,
+	type EcpRootKey,
 	type Ed25519PrivateJwk,
 	type EcpPublishedKey,
 	type EcpCryptoKey,
@@ -273,17 +276,41 @@ export async function setContextCommands(input: {
 	}
 }
 
+/**
+ * Root keys a daemon trusts for this API. TEST ONLY: `KODY_ECP_TRUST_TEST_ROOT=1`
+ * adds the public test root, and only for https `*.workers.dev` previews and
+ * `localhost`; kody.codes and every other host get the pinned roots only.
+ */
+export function serverKeyRootsFor(
+	apiUrl: string,
+	env: NodeJS.ProcessEnv = process.env,
+): ReadonlyArray<EcpRootKey> {
+	if (env.KODY_ECP_TRUST_TEST_ROOT !== '1') return ecpRootPublicKeys
+	const { protocol, hostname } = new URL(apiUrl)
+	const host = hostname.toLowerCase()
+	const testHost =
+		(protocol === 'https:' && host.endsWith('.workers.dev')) ||
+		host === 'localhost'
+	return testHost
+		? [...ecpRootPublicKeys, ecpTestRootPublicKey]
+		: ecpRootPublicKeys
+}
+
 /** Server frame keys, trusted only when signed by a pinned root key. */
 export async function fetchServerKeys(input: {
 	apiUrl: string
 	fetchFn?: typeof fetch
 	now?: number
+	env?: NodeJS.ProcessEnv
 }): Promise<Array<EcpPublishedKey>> {
 	const response = await (input.fetchFn ?? fetch)(
 		new URL(`${executionContextsPath}/server-keys`, input.apiUrl),
 	)
 	if (!response.ok) throw await readError(response)
-	const set = await verifyServerKeySet({ document: await response.json() })
+	const set = await verifyServerKeySet({
+		document: await response.json(),
+		roots: serverKeyRootsFor(input.apiUrl, input.env),
+	})
 	if (!set) {
 		throw new Error(
 			'Kody server keys failed root signature verification. Refusing to connect.',

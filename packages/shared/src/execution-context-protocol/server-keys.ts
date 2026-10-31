@@ -27,6 +27,16 @@ export const ecpRootPublicKeys: ReadonlyArray<EcpRootKey> = [
 	{ kid: 'root-2', x: '8TMMLGTn67-wjqM4tU7hUcKtvEgENM2cE4DFjLdBz-w' },
 ]
 
+/**
+ * TEST ONLY: the committed root (`vectors/test-keys.json`, private key public)
+ * that signs preview and local dev key sets. Never pinned by default; the CLI
+ * adds it only behind `KODY_ECP_TRUST_TEST_ROOT=1` for workers.dev/localhost.
+ */
+export const ecpTestRootPublicKey: EcpRootKey = {
+	kid: 'root-test-1',
+	x: '6qRBa8n9QOpgMVvKw2Ck3hUGuaVAi0D-bNGjum0u5rk',
+}
+
 export type EcpPublishedKey = { kid: string; x: string; notAfter: number }
 
 export type EcpKeySet = {
