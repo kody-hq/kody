@@ -41,10 +41,11 @@ export function VerifyRoute() {
 	const verifyTwoFactor = useServerFn(verifyWebsiteTwoFactor)
 	const [status, setStatus] = useState<'idle' | 'submitting'>('idle')
 	const [message, setMessage] = useState<string | null>(null)
+	const [formErrorDismissed, setFormErrorDismissed] = useState(false)
 	const turnstileSiteKey = usePublicAuthProtection()
 	const search = useMatchedPageScope().pageLocation.searchStr
 	const formErrorMessage =
-		status === 'idle'
+		status === 'idle' && !formErrorDismissed
 			? authFormErrorMessage(new URLSearchParams(search).get('formError'))
 			: null
 
@@ -66,6 +67,7 @@ export function VerifyRoute() {
 			return
 		}
 
+		setFormErrorDismissed(true)
 		setStatus('submitting')
 		setMessage(null)
 
@@ -123,6 +125,7 @@ export function VerifyRoute() {
 						autoComplete="one-time-code"
 						pattern="[0-9]{6}"
 						placeholder="123456"
+						onChange={() => setFormErrorDismissed(true)}
 						css={inputCss}
 					/>
 				</label>
