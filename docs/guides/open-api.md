@@ -54,7 +54,8 @@ CapabilityProxy / package-graph over a `kody_at_…` token (see
 (`KODY_API_TOKEN`); never paste it into chat.
 
 List and revoke with `tokenList` / `tokenRevoke`, or the same operations over
-HTTP.
+HTTP. Step by step, plus the CLI fallback: [API tokens](./api-tokens.md)
+(`guide:api_tokens`).
 
 ## Metering
 

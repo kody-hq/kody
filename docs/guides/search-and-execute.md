@@ -34,7 +34,8 @@ Your agent connects to Kody over MCP and starts with **search** and **execute**.
 packages, integrations, secrets, and official guides stay behind those two doors
 instead of appearing as a tool list. MCP also registers **api** for HTTPS
 operations and token minting — see [Open API](./open-api.md). That tool does not
-replace search and execute.
+replace search and execute. To list or revoke API tokens (API keys), use `api`
+or the CLI, not execute: [API tokens](./api-tokens.md).
 
 This page is the playbook for search and execute. The same tools drive the loop
 in [How Kody works](./how-kody-works.md). Watch:

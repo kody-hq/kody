@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
+import { getStaticRegistry } from '#mcp/capabilities/registry.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { importGuideCatalog } from '#worker/guide-catalog-modules.ts'
 
@@ -125,6 +126,9 @@ test('searchUnified ranks advertised guides for doc queries and keeps them out o
 			query: 'package authoring lifecycle',
 			includes: ['package_authoring', 'package_lifecycle'],
 		},
+		{ query: 'revoke api key', top: 'api_tokens' },
+		{ query: 'revoke api token', top: 'api_tokens' },
+		{ query: 'list api tokens', top: 'api_tokens' },
 		{ query: 'google guide', includes: ['provider_google'] },
 		{ query: 'how kody works', includes: ['how_kody_works'] },
 		{
@@ -266,3 +270,25 @@ test.each(['executor credential', 'publisher and executor credential'])(
 		).toBe(true)
 	},
 )
+
+test('API token queries rank guide:api_tokens above similarly named capabilities', async () => {
+	const fullRegistry = await getStaticRegistry()
+	for (const query of [
+		'revoke api key',
+		'revoke an api token',
+		'list api tokens',
+		'delete api key',
+	]) {
+		const { matches } = await searchUnified({
+			env: {} as Env,
+			query,
+			limit: 5,
+			registry: fullRegistry,
+			optionalRows: emptyOptionalRows,
+		})
+		expect({ query, top: matches[0] }).toEqual({
+			query,
+			top: expect.objectContaining({ type: 'guide', id: 'api_tokens' }),
+		})
+	}
+})

@@ -96,6 +96,7 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 			{ slug: 'profiles', label: 'Profiles' },
 			{ slug: 'auth-setup-git', label: 'Git credential helper' },
 			{ slug: 'open-api', label: 'Kody Open API' },
+			{ slug: 'api-tokens', label: 'API tokens (API keys)' },
 			{ slug: 'api-versioning', label: 'API versioning' },
 		],
 	},
