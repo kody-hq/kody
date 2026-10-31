@@ -46,6 +46,8 @@ export type EnablementRun = {
 	scopes?: RequestCredential['scopes']
 	/** Connection profile of the credential that turned it on. */
 	profileName?: string | null
+	/** Profile (ADR 0092) of the credential that turned it on. */
+	profileId?: string | null
 }
 
 /**
@@ -116,6 +118,8 @@ function credentialFor(input: {
 	id: string | null
 	org: RequestOrg
 	profileName: string | null
+	profileId?: string | null
+	profileChain?: ReadonlyArray<string> | null
 	scopes?: RequestCredential['scopes']
 	contextCredentialIds?: RequestCredential['contextCredentialIds']
 }): RequestCredential {
@@ -125,6 +129,10 @@ function credentialFor(input: {
 		orgId: input.org.id,
 		scopes: input.scopes ?? null,
 		profileName: input.profileName,
+		...(input.profileId ? { profileId: input.profileId } : {}),
+		...(input.profileId && input.profileChain?.length
+			? { profileChain: [...input.profileChain] }
+			: {}),
 		...(input.contextCredentialIds
 			? { contextCredentialIds: input.contextCredentialIds }
 			: {}),
@@ -137,6 +145,7 @@ function automation(input: {
 	sourceId: string
 	credentialKind: RequestCredentialKind
 	profileName: string | null
+	profileId: string | null
 	enablement: EnablementRun | undefined
 }): RequestContext {
 	const { enablement } = input
@@ -151,6 +160,7 @@ function automation(input: {
 				id: enablement.id,
 				org: input.binding.org,
 				profileName: enablement.profileName ?? null,
+				profileId: enablement.profileId ?? null,
 				scopes: enablement.scopes ?? null,
 			}),
 			membership: enablement.role ? { role: enablement.role } : null,
@@ -169,6 +179,7 @@ function automation(input: {
 			id: input.sourceId,
 			org: input.binding.org,
 			profileName: input.profileName,
+			profileId: input.profileId,
 		}),
 		membership: null,
 	}
@@ -217,6 +228,9 @@ export function deriveRequestContext(input: {
 	user: RequestPerson
 	source: RequestSource
 	profileName?: string | null
+	/** Profile (ADR 0092) the credential is bound to; null is the live mirror. */
+	profileId?: string | null
+	profileChain?: ReadonlyArray<string> | null
 	/** OAuth client of an `mcp-oauth` / `cli` bearer grant; the credential id. */
 	oauthClientId?: string | null
 	/** When set (DB-backed session paths), overrides {@link resolveOrgBinding}. */
@@ -229,6 +243,7 @@ export function deriveRequestContext(input: {
 	const binding = input.orgBinding ?? resolveOrgBinding(input.user)
 	const { source } = input
 	const profileName = input.profileName?.trim() || null
+	const profileId = input.profileId?.trim() || null
 	switch (source.kind) {
 		case 'session':
 		case 'mcp-oauth':
@@ -246,6 +261,8 @@ export function deriveRequestContext(input: {
 					id: credentialIdFor(source, input.oauthClientId),
 					org: binding.org,
 					profileName,
+					profileId,
+					profileChain: input.profileChain ?? null,
 					scopes: input.scopes ?? null,
 					contextCredentialIds:
 						source.kind === 'execution-context-run'
@@ -262,6 +279,7 @@ export function deriveRequestContext(input: {
 				sourceId: source.jobId,
 				credentialKind: 'schedule',
 				profileName,
+				profileId,
 				enablement: source.enablement,
 			})
 		case 'webhook':
@@ -271,6 +289,7 @@ export function deriveRequestContext(input: {
 				sourceId: source.sourceId,
 				credentialKind: 'webhook',
 				profileName,
+				profileId,
 				enablement: source.enablement,
 			})
 		case 'inbound-email': {
@@ -280,6 +299,7 @@ export function deriveRequestContext(input: {
 				sourceId: source.sourceId,
 				credentialKind: 'inbound-email',
 				profileName,
+				profileId,
 				enablement: source.enablement,
 			})
 			const { sender } = source
@@ -310,6 +330,7 @@ export function deriveRequestContext(input: {
 				sourceId: source.sourceId,
 				credentialKind: 'platform-event',
 				profileName,
+				profileId,
 				enablement: source.enablement,
 			})
 		case 'inherited': {
@@ -321,6 +342,9 @@ export function deriveRequestContext(input: {
 				credential: {
 					...lineage.credential,
 					profileName: lineage.credential.profileName ?? profileName,
+					...((lineage.credential.profileId ?? profileId)
+						? { profileId: lineage.credential.profileId ?? profileId }
+						: {}),
 				},
 				membership: inheritedMembership(lineage, binding),
 			}
@@ -537,6 +561,9 @@ export function parseRequestLineage(value: unknown): RequestLineage | null {
 			orgId: ownerIdFromStored(credential.orgId),
 			scopes: scopes as RequestCredential['scopes'],
 			profileName: readNullableString(credential.profileName),
+			...(readNullableString(credential.profileId)
+				? { profileId: readNullableString(credential.profileId) }
+				: {}),
 		},
 	}
 }

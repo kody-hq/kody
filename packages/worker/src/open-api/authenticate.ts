@@ -1,3 +1,4 @@
+import { loadProfileChain } from '#worker/profiles/store.ts'
 import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import {
 	ownerIdFromStored,
@@ -260,6 +261,15 @@ async function authenticateWithApiToken(input: {
 				executionOrigin: 'interactive',
 				user: authContext.user,
 				connectionProfileName: record.profile_name ?? null,
+				profileId: record.profile_id ?? null,
+				profileChain: record.profile_id
+					? (
+							await loadProfileChain(input.env.APP_DB, {
+								orgId: orgBinding.org.id,
+								profileId: record.profile_id,
+							})
+						).map((row) => row.id)
+					: null,
 				orgBinding,
 				scopes: record.scopes,
 			}),

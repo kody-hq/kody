@@ -90,6 +90,8 @@ export type PackageAppVisitClaims = {
 	 */
 	credentialScopes?: ReadonlyArray<OrgPermission> | null
 	credentialProfileName?: string | null
+	/** The visitor credential's profile (ADR 0092); null is the live mirror. */
+	credentialProfileId?: string | null
 	/**
 	 * A visitor from outside the owning org: the ticket only opens the
 	 * executor credentials they approved. Every other path treats the request
@@ -145,6 +147,7 @@ type StoredVisitTicket = {
 	scopes: Array<string>
 	cs?: Array<string> | null
 	cp?: string | null
+	cpi?: string | null
 	xo?: true
 }
 
@@ -284,6 +287,7 @@ function isStoredVisitTicket(value: unknown): value is StoredVisitTicket {
 			record.cs === null ||
 			(Array.isArray(record.cs) && record.cs.every(isOrgPermission))) &&
 		(record.cp === undefined || record.cp === null || isText(record.cp)) &&
+		(record.cpi === undefined || record.cpi === null || isText(record.cpi)) &&
 		(record.xo === undefined || record.xo === true)
 	)
 }
@@ -314,6 +318,7 @@ function claimsFromStored(stored: StoredVisitTicket): PackageAppVisitClaims {
 		scopes: stored.scopes,
 		credentialScopes: (stored.cs as Array<OrgPermission> | undefined) ?? null,
 		credentialProfileName: stored.cp ?? null,
+		credentialProfileId: stored.cpi ?? null,
 		...(stored.xo ? { executorOnly: true } : {}),
 		exp: stored.exp,
 	}
@@ -463,7 +468,7 @@ export async function mintPackageAppVisitTicket(input: {
 	credentialClientBinding: string
 	grantId?: string | null
 	scopes?: ReadonlyArray<string>
-	credential?: Pick<RequestCredential, 'scopes' | 'profileName'> | null
+	credential?: Pick<RequestCredential, 'scopes' | 'profileName' | 'profileId'> | null
 	executorOnly?: boolean
 	nonce?: string
 	now?: number
@@ -497,6 +502,9 @@ export async function mintPackageAppVisitTicket(input: {
 			scopes: [...(input.scopes ?? [])],
 			cs: input.credential?.scopes ? [...input.credential.scopes] : null,
 			cp: input.credential?.profileName ?? null,
+			...(input.credential?.profileId
+				? { cpi: input.credential.profileId }
+				: {}),
 			...(input.executorOnly ? { xo: true as const } : {}),
 		},
 	})
@@ -654,6 +662,9 @@ export function requestContextFromVisitClaims(
 			orgId: claims.owner.userId,
 			scopes: claims.credentialScopes ?? null,
 			profileName: claims.credentialProfileName ?? null,
+			...(claims.credentialProfileId
+				? { profileId: claims.credentialProfileId }
+				: {}),
 		},
 		membership: claims.visitor.role ? { role: claims.visitor.role } : null,
 	}
@@ -749,6 +760,7 @@ export async function createPackageAppRequestVisit(input: {
 		scopes: [...(input.scopes ?? [])],
 		credentialScopes: input.request.credential.scopes,
 		credentialProfileName: input.request.credential.profileName,
+		credentialProfileId: input.request.credential.profileId ?? null,
 		exp: minted.exp,
 	}
 	return {

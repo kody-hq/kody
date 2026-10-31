@@ -18,7 +18,7 @@ export function hasAppDb(db: D1Database | undefined | null): db is D1Database {
 	return Boolean(db && typeof db.prepare === 'function')
 }
 
-const followColumns = `id, follower_org_id, creator_user_id, target_kind,
+const followColumns = `id, follower_org_id, creator_user_id, creator_profile_id, target_kind,
 	target_owner_id, target_id, target_name, status, paused_at, paused_reason,
 	published_enabled, pushed_enabled, last_delivery_skip_reason,
 	last_delivery_skip_at, created_at, updated_at`
@@ -36,6 +36,10 @@ function mapFollow(row: Record<string, unknown>): FollowRecord {
 		id: String(row['id']),
 		followerOrgId: String(row['follower_org_id']),
 		creatorUserId: String(row['creator_user_id']),
+		creatorProfileId:
+			row['creator_profile_id'] == null
+				? null
+				: String(row['creator_profile_id']),
 		targetKind: kind,
 		targetOwnerId: String(row['target_owner_id']),
 		targetId: String(row['target_id']),
@@ -83,6 +87,7 @@ export async function insertFollow(
 		id: string
 		followerOrgId: string
 		creatorUserId: string
+		creatorProfileId?: string | null
 		targetKind: FollowTargetKind
 		targetOwnerId: string
 		targetId: string
@@ -96,15 +101,16 @@ export async function insertFollow(
 	await db
 		.prepare(
 			`INSERT INTO follows (
-				id, follower_org_id, creator_user_id, target_kind, target_owner_id,
-				target_id, target_name, status, published_enabled, pushed_enabled,
-				created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
+				id, follower_org_id, creator_user_id, creator_profile_id, target_kind,
+				target_owner_id, target_id, target_name, status, published_enabled,
+				pushed_enabled, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
 		)
 		.bind(
 			row.id,
 			row.followerOrgId,
 			row.creatorUserId,
+			row.creatorProfileId ?? null,
 			row.targetKind,
 			row.targetOwnerId,
 			row.targetId,
@@ -211,16 +217,26 @@ export async function pauseFollow(
  */
 export async function resumeFollow(
 	db: D1Database,
-	input: { id: string; updatedAt: string; creatorUserId: string },
+	input: {
+		id: string
+		updatedAt: string
+		creatorUserId: string
+		creatorProfileId?: string | null
+	},
 ): Promise<boolean> {
 	const result = await db
 		.prepare(
 			`UPDATE follows
 			SET status = 'active', paused_at = NULL, paused_reason = NULL,
-				creator_user_id = ?, updated_at = ?
+				creator_user_id = ?, creator_profile_id = ?, updated_at = ?
 			WHERE id = ? AND status = 'paused'`,
 		)
-		.bind(input.creatorUserId, input.updatedAt, input.id)
+		.bind(
+			input.creatorUserId,
+			input.creatorProfileId ?? null,
+			input.updatedAt,
+			input.id,
+		)
 		.run()
 	return (result.meta.changes ?? 0) > 0
 }
@@ -232,15 +248,25 @@ export async function resumeFollow(
  */
 export async function retargetFollowCreator(
 	db: D1Database,
-	input: { id: string; updatedAt: string; creatorUserId: string },
+	input: {
+		id: string
+		updatedAt: string
+		creatorUserId: string
+		creatorProfileId?: string | null
+	},
 ): Promise<boolean> {
 	const result = await db
 		.prepare(
 			`UPDATE follows
-			SET creator_user_id = ?, updated_at = ?
+			SET creator_user_id = ?, creator_profile_id = ?, updated_at = ?
 			WHERE id = ? AND status = 'active'`,
 		)
-		.bind(input.creatorUserId, input.updatedAt, input.id)
+		.bind(
+			input.creatorUserId,
+			input.creatorProfileId ?? null,
+			input.updatedAt,
+			input.id,
+		)
 		.run()
 	return (result.meta.changes ?? 0) > 0
 }
@@ -618,6 +644,7 @@ export async function ensureFollowTables(db: D1Database) {
 			id TEXT PRIMARY KEY NOT NULL,
 			follower_org_id TEXT NOT NULL,
 			creator_user_id TEXT NOT NULL,
+			creator_profile_id TEXT,
 			target_kind TEXT NOT NULL CHECK (target_kind IN ('package', 'repo')),
 			target_owner_id TEXT NOT NULL,
 			target_id TEXT NOT NULL,

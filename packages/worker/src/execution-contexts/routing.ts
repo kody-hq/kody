@@ -7,6 +7,11 @@ import {
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { type CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
 import { type RunRecordHandle } from '#worker/run-records/types.ts'
+import {
+	checkPermission,
+	type EffectivePermissions,
+} from '#worker/authorization/authorize.ts'
+import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { contextRunCredentials } from './credential-grant.ts'
 import { ExecutionContextError } from './errors.ts'
 import { type RunCredentialUse } from './run-credential-use.ts'
@@ -329,6 +334,12 @@ export async function routeExecute(input: {
 		orgSlug: string | null
 		scopes: Array<string> | null
 		credentialKind: string
+		/**
+		 * The caller's access when it acts as a profile (ADR 0092): every
+		 * layer of its chain must hold execution_context:execute on a context,
+		 * even one the person operates.
+		 */
+		profileAccess?: EffectivePermissions | null
 	}
 	args: ExecuteRoutingArgs
 	runId: string
@@ -454,6 +465,18 @@ export async function routeExecute(input: {
 			})
 		if (input.request.credentialKind === 'cli' && !hasContextScope(input)) {
 			skip('credential_scope')
+			continue
+		}
+		const profileAccess = input.request.profileAccess
+		if (
+			profileAccess &&
+			!checkPermission(profileAccess, 'execution_context:execute', {
+				type: 'execution_context',
+				id: row.id,
+				orgId: input.request.orgId as OwnerId,
+			}).allowed
+		) {
+			skip('profile_grant')
 			continue
 		}
 		const access = await loadContextAccess(db, row, {
@@ -690,6 +713,8 @@ function hasContextScope(input: { request: { scopes: Array<string> | null } }) {
 }
 
 const contextReasonText: Record<string, string> = {
+	profile_grant:
+		'profile_grant: the profile this credential acts as, or a parent profile, was not granted execution_context:execute on it',
 	no_fs: 'no_fs: its server grant lists no host folders (grant.fs)',
 	no_local_fs:
 		"no_local_fs: its server grant lists host folders, but the machine's local policy allows none of them (`kody context policy allow <folder>`)",

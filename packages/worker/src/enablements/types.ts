@@ -31,11 +31,15 @@ export type EnablementState = 'on' | 'paused' | 'off'
  * - `package_access`: the enabler lost `package:execute` on the package.
  * - `credential_access`: a credential the run needed was denied to the
  *   enabler (`pausedPermission` on the stored resource).
+ * - `profile_inactive`: the enabling profile, or a parent, was revoked or
+ *   expired. It never resumes by itself; an active credential must turn it
+ *   on again.
  */
 export const enablementPausedReasons = [
 	'org_access',
 	'package_access',
 	'credential_access',
+	'profile_inactive',
 ] as const
 
 export type EnablementPausedReason = (typeof enablementPausedReasons)[number]
@@ -89,6 +93,11 @@ export type EnablementRecord = {
 	enablerScopes: ReadonlyArray<OrgPermission> | null
 	/** Connection profile of the credential that turned this on. */
 	enablerProfileName: string | null
+	/**
+	 * Profile (ADR 0092) of the credential that turned this on. Its runs act
+	 * as that profile, and it pauses for good when the chain goes inactive.
+	 */
+	enablerProfileId: string | null
 	state: EnablementState
 	pause: EnablementPause | null
 	origin: EnablementOrigin

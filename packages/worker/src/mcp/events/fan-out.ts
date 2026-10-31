@@ -169,8 +169,11 @@ export async function fanOutPackageEventToMcpSubscriptions(input: {
 	}
 
 	const accessByProfile = new Map<string, Promise<EffectivePermissions>>()
-	const subscriberAccess = (profileName: string | null) => {
-		const key = profileName ?? ''
+	const subscriberAccess = (
+		profileName: string | null,
+		profileId: string | null,
+	) => {
+		const key = `${profileName ?? ''}\0${profileId ?? ''}`
 		let pending = accessByProfile.get(key)
 		if (!pending) {
 			pending = computeEffectivePermissions({
@@ -179,6 +182,7 @@ export async function fanOutPackageEventToMcpSubscriptions(input: {
 					user: { userId: personIdFromStored(message.userId as string) },
 					source: { kind: 'mcp-oauth' },
 					profileName,
+					profileId,
 				}),
 			})
 			accessByProfile.set(key, pending)
@@ -200,7 +204,10 @@ export async function fanOutPackageEventToMcpSubscriptions(input: {
 			result.denied += 1
 			continue
 		}
-		const access = await subscriberAccess(subscription.connectionProfileName)
+		const access = await subscriberAccess(
+			subscription.connectionProfileName,
+			subscription.profileId,
+		)
 		const decision = checkPermission(
 			access,
 			'package:read',

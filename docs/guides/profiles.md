@@ -105,6 +105,29 @@ starts. A sub-profile:
 
 Profiles nest at most 5 levels deep.
 
+## Hand a sub-agent its own token
+
+To start a sub-agent with less access than yours, call `profileHandoff` through
+the `api` tool (`POST /v1/profiles/handoff`) with a `name`, the `grants` it
+needs, and token `scopes`. It creates a sub-profile of the calling profile and
+returns `{ profile, token }`; give the sub-agent `token.token` as its
+`KODY_API_TOKEN`. To mint another token for an existing profile, call
+`tokenCreate` with `profile_id`. A profile token:
+
+- can only be minted for the calling profile or a sub-profile below it;
+- never outlives the earliest expiry in its chain;
+- works with the Open API, the `api` tool, and the CLI, not `/mcp`.
+
+## What runs as a profile
+
+- Credentials, memory, and execution contexts need a grant in the profile
+  chain; without one they are refused or skipped (`profile_grant`).
+- Jobs, triggers, and app visits a profile turns on keep running as that
+  profile. When it or a parent is revoked or expires, they pause with
+  `paused_reason: "profile_inactive"` and stay paused until an active
+  credential turns them on again.
+- Runs record the profile id and chain, so activity shows which agent did it.
+
 ## Shorten or revoke
 
 - `profileUpdate({ profile_id, expires_at })` moves expiry earlier. It never

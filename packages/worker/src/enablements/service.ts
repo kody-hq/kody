@@ -59,6 +59,7 @@ import {
 	isWebhookOneLiveConflict,
 	listEnablementsForInstance,
 	listEnablementsForOrg,
+	rebindProfilePausedEnablement,
 } from './repo.ts'
 import {
 	canonicalizeEnablementSender,
@@ -644,7 +645,26 @@ export async function planTriggerEnablementForCaller(input: {
 	const ownExisting = createInstance
 		? undefined
 		: findCallerEnablement(ownRows, storedSender)
-	if (ownExisting) return { enablement: ownExisting }
+	if (ownExisting) {
+		// The caller's credential already passed the chain check above, so a
+		// profile-paused enablement turns on again acting as this credential.
+		if (
+			ownExisting.pause?.reason === 'profile_inactive' &&
+			(await rebindProfilePausedEnablement({
+				db,
+				orgId,
+				id: ownExisting.id,
+				enablerScopes: input.request.credential.scopes,
+				enablerProfileName: input.request.credential.profileName,
+				enablerProfileId: input.request.credential.profileId ?? null,
+				now: input.now,
+			}))
+		) {
+			const rebound = await getEnablementById({ db, orgId, id: ownExisting.id })
+			return { enablement: rebound ?? ownExisting }
+		}
+		return { enablement: ownExisting }
+	}
 	const buildInsert =
 		input.kind === 'webhook'
 			? buildInsertWebhookEnablementStatement
@@ -660,6 +680,7 @@ export async function planTriggerEnablementForCaller(input: {
 			enablerUserId: actor.userId,
 			enablerScopes: input.request.credential.scopes,
 			enablerProfileName: input.request.credential.profileName,
+			enablerProfileId: input.request.credential.profileId ?? null,
 			origin: 'enabled',
 			senderKind: storedSender?.kind ?? null,
 			senderValue: storedSender?.value ?? null,

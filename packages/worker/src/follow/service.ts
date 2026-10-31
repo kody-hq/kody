@@ -121,6 +121,7 @@ export async function addFollow(input: {
 	env: Env
 	followerOrgId: string
 	creatorUserId: string
+	creatorProfileId?: string | null
 	name: string
 	kind?: FollowTargetKind
 	/** `published` and/or `pushed`. Omit to keep the current choice. */
@@ -140,6 +141,7 @@ export async function addFollow(input: {
 	const access = await loadFollowTargetPermissions({
 		env: input.env,
 		creatorUserId: input.creatorUserId,
+		creatorProfileId: input.creatorProfileId ?? null,
 		ownerId: target.ownerId,
 	})
 	const decision = followAccessFromPermissions({
@@ -167,6 +169,7 @@ export async function addFollow(input: {
 			db: input.env.APP_DB,
 			followerOrgId: input.followerOrgId,
 			creatorUserId: input.creatorUserId,
+			creatorProfileId: input.creatorProfileId ?? null,
 			targetKind: target.kind,
 			targetId: target.id,
 			requested,
@@ -183,6 +186,7 @@ export async function addFollow(input: {
 			id,
 			followerOrgId: input.followerOrgId,
 			creatorUserId: input.creatorUserId,
+			creatorProfileId: input.creatorProfileId ?? null,
 			targetKind: target.kind,
 			targetOwnerId: target.ownerId,
 			targetId: target.id,
@@ -205,6 +209,7 @@ export async function addFollow(input: {
 				db: input.env.APP_DB,
 				followerOrgId: input.followerOrgId,
 				creatorUserId: input.creatorUserId,
+				creatorProfileId: input.creatorProfileId ?? null,
 				targetKind: target.kind,
 				targetId: target.id,
 				requested,
@@ -290,6 +295,7 @@ async function settleExistingFollow(input: {
 	db: D1Database
 	followerOrgId: string
 	creatorUserId: string
+	creatorProfileId?: string | null
 	targetKind: FollowTargetKind
 	targetId: string
 	requested: string
@@ -318,6 +324,7 @@ async function settleExistingFollowStatus(input: {
 	db: D1Database
 	followerOrgId: string
 	creatorUserId: string
+	creatorProfileId?: string | null
 	targetKind: FollowTargetKind
 	targetId: string
 	requested: string
@@ -331,6 +338,7 @@ async function settleExistingFollowStatus(input: {
 				id: row.id,
 				updatedAt: input.now,
 				creatorUserId: input.creatorUserId,
+				creatorProfileId: input.creatorProfileId ?? null,
 			})
 			if (resumed) {
 				return followView({
@@ -339,10 +347,14 @@ async function settleExistingFollowStatus(input: {
 					pausedAt: null,
 					pausedReason: null,
 					creatorUserId: input.creatorUserId,
+					creatorProfileId: input.creatorProfileId ?? null,
 					updatedAt: input.now,
 				})
 			}
-		} else if (row.creatorUserId !== input.creatorUserId) {
+		} else if (
+			row.creatorUserId !== input.creatorUserId ||
+			row.creatorProfileId !== (input.creatorProfileId ?? null)
+		) {
 			// Member deletion anonymizes creator_user_id to deleted-user while
 			// the org follow stays active. Retarget so a teammate who re-adds
 			// can gate delivery before the next publish pauses a private target.
@@ -350,11 +362,13 @@ async function settleExistingFollowStatus(input: {
 				id: row.id,
 				updatedAt: input.now,
 				creatorUserId: input.creatorUserId,
+				creatorProfileId: input.creatorProfileId ?? null,
 			})
 			if (retargeted) {
 				return followView({
 					...row,
 					creatorUserId: input.creatorUserId,
+					creatorProfileId: input.creatorProfileId ?? null,
 					updatedAt: input.now,
 				})
 			}

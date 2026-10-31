@@ -58,6 +58,8 @@ export type RequestCredential = {
 	 * person themselves (the live mirror).
 	 */
 	profileId?: string | null
+	/** That profile's chain at authentication: ids, root first (attribution). */
+	profileChain?: ReadonlyArray<string> | null
 	/**
 	 * Execution-context runs only: the stable credential ids the context's
 	 * grant lets through. Absent or null does not narrow; empty allows none.
