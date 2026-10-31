@@ -1,4 +1,4 @@
-# 0092: Execution-context runs can run host commands after a local opt-in
+# 0093: Execution-context runs can run host commands after a local opt-in
 
 - **Status:** accepted
 - **Date:** 2026-10-30

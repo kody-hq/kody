@@ -50,6 +50,7 @@ import packagesIntegrationsMcp from '../../../../docs/guides/packages-integratio
 import packageSubscriptions from '../../../../docs/guides/package-subscriptions.md'
 import mcpEvents from '../../../../docs/guides/mcp-events.md'
 import executionContexts from '../../../../docs/guides/execution-contexts.md'
+import profiles from '../../../../docs/guides/profiles.md'
 import wakeYourAgent from '../../../../docs/guides/wake-your-agent.md'
 import textYourAgent from '../../../../docs/guides/text-your-agent.md'
 import openmuse from '../../../../docs/guides/openmuse.md'
@@ -123,6 +124,7 @@ const guideSources: Array<{ slug: string; raw: string }> = [
 	{ slug: 'package-subscriptions', raw: packageSubscriptions },
 	{ slug: 'mcp-events', raw: mcpEvents },
 	{ slug: 'execution-contexts', raw: executionContexts },
+	{ slug: 'profiles', raw: profiles },
 	{ slug: 'wake-your-agent', raw: wakeYourAgent },
 	{ slug: 'heavy-work-offload', raw: heavyWorkOffload },
 	{ slug: 'integration-bootstrap', raw: integrationBootstrap },

@@ -13,7 +13,7 @@ import { cliConfigDir } from '../store.js'
 export type FsMode = 'ro' | 'rw'
 export type FsRule = { path: string; mode: FsMode }
 export type FsLayer = 'server_grant' | 'local_policy'
-/** Host commands opt-in on this machine (ADR 0092). Absent means off. */
+/** Host commands opt-in on this machine (ADR 0093). Absent means off. */
 export type LocalCommandsPolicy = { enabled: boolean; changedAt?: string }
 export type LocalFsPolicy = {
 	version: 1

@@ -75,7 +75,7 @@ export function assertContextRunRuntimePathAllowed(
 	if (ctx.principal.kind !== 'execution-context-run') return
 	const { runtime } = ctx.principal
 	if (runtime.mode === 'all') return
-	// Host commands have their own grant (execution_context:command, ADR 0092).
+	// Host commands have their own grant (execution_context:command, ADR 0093).
 	if (path[0] === 'kody' && path[1] === 'command') return
 	const joined = path.join('.')
 	if (runtime.paths.includes(joined)) return

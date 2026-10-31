@@ -522,7 +522,7 @@ export async function optOutOfExecutionContextForUser(
 	})
 }
 
-/** Turning host commands on is machine-only (ADR 0092); off works here. */
+/** Turning host commands on is machine-only (ADR 0093); off works here. */
 export async function turnOffExecutionContextCommandsForUser(
 	input: ScopedInput & { contextId: string },
 ) {

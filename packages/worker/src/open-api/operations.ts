@@ -28,6 +28,7 @@ export const apiOperationTags = [
 	'storage',
 	'community',
 	'tokens',
+	'profiles',
 	'capability-proxy',
 	'execute',
 ] as const
@@ -303,6 +304,13 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'secretProviderLock',
 			{ deprecatedForward: resourceLockForward('secret_provider') },
 		],
+	]),
+	...capabilityRoutes('profiles', [
+		['GET', '/v1/profiles', 'profileList'],
+		['POST', '/v1/profiles', 'profileCreate'],
+		['GET', '/v1/profiles/{profile_id}', 'profileGet'],
+		['PATCH', '/v1/profiles/{profile_id}', 'profileUpdate'],
+		['DELETE', '/v1/profiles/{profile_id}', 'profileRevoke'],
 	]),
 	...capabilityRoutes('packages', [
 		['GET', '/v1/packages', 'packageList'],

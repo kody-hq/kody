@@ -9,7 +9,7 @@ import {
 } from './store.ts'
 
 /**
- * Host commands (`kody.command.*`, ADR 0092). The daemon runs the process;
+ * Host commands (`kody.command.*`, ADR 0093). The daemon runs the process;
  * before it spawns one it asks Kody through the run-scoped capability proxy
  * (`kody.command.authorize`), so the grant and the machine opt-in are checked
  * server-side for the run's requester and every command lands in the

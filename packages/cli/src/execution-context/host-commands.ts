@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import { isAbsolute } from 'node:path'
 
 /**
- * Host commands (`kody.command.*`, ADR 0092): real OS processes on the
+ * Host commands (`kody.command.*`, ADR 0093): real OS processes on the
  * daemon's machine, run as the user running the daemon. Foreground commands
  * belong to one run; background jobs live in the daemon (not the run's
  * workerd), so builds can outlast the run timeout and later runs can poll or

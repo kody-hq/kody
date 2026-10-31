@@ -51,7 +51,7 @@ export type ContextAccess = {
 	optedIn: boolean
 	preset: 'use' | 'contribute' | 'manage' | null
 	/**
-	 * May run host commands (`execution_context:command`, ADR 0092): the
+	 * May run host commands (`execution_context:command`, ADR 0093): the
 	 * operator, or a live grant on this context that lists the permission.
 	 * Never from all_members, an org role, or a preset.
 	 */

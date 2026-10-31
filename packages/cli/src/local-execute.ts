@@ -149,7 +149,7 @@ export type LocalExecuteInput = {
 	/** Current host folders (server grant ∩ local policy), checked on every host fs call. */
 	hostFs?: () => EffectiveFs
 	/**
-	 * Serves `kody.command.<name>` on an execution context (ADR 0092).
+	 * Serves `kody.command.<name>` on an execution context (ADR 0093).
 	 * `authorize` asks Kody (grant + opt-in + audit) before a process starts.
 	 * Absent: the call goes to Kody, which says commands need a context.
 	 */

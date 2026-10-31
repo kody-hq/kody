@@ -109,7 +109,7 @@ type DaemonInput = {
 	client: { name: string; version: string }
 	capabilities: Record<string, unknown>
 	execute: ContextRunExecutor
-	/** Host commands (ADR 0092); lives across reconnects so background jobs survive them. */
+	/** Host commands (ADR 0093); lives across reconnects so background jobs survive them. */
 	hostCommands?: HostCommands
 	log: (line: string) => void
 	fetchFn?: typeof fetch

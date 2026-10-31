@@ -96,6 +96,20 @@ export const featureFlagDefinitions = [
 		},
 	},
 	{
+		key: 'profiles',
+		defaultEnabled: false,
+		defaultAudience: 'experiments_opt_in',
+		description:
+			'Profiles (ADR 0092): scoped identities a person creates for agents and bots, with snapshot grants capped by the parent chain, shorten-only expiry, and terminal revoke. Off by default; experimenters opt in at /account/experiments. Delete the flag and gate sites when profiles graduate.',
+		successMetric: {
+			eventType: 'execute',
+			measure: 'event_count',
+			goal: 'increase',
+			hypothesis:
+				'Experimenters who create profiles give their agents narrower identities and keep executing through them.',
+		},
+	},
+	{
 		key: 'mcp-skills-extension',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
@@ -197,6 +211,8 @@ export const repoPushQueueFlagKey = 'repo-push-queue' satisfies FeatureFlagKey
 
 export const executionContextsFlagKey =
 	'execution-contexts' satisfies FeatureFlagKey
+
+export const profilesFlagKey = 'profiles' satisfies FeatureFlagKey
 
 export const credentialNeedEnforcementFlagKey =
 	'credential-need-enforcement' satisfies FeatureFlagKey

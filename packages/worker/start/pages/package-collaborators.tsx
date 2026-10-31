@@ -94,6 +94,9 @@ export function PackageCollaboratorsRoute({
 		useState<PackageCollaboratorPreset>('use')
 	const [memberPreset, setMemberPreset] =
 		useState<PackageCollaboratorPreset>('use')
+	const [profileId, setProfileId] = useState('')
+	const [profilePreset, setProfilePreset] =
+		useState<PackageCollaboratorPreset>('use')
 	const inFlight = useRef(false)
 	const mutation = useMutation(
 		collaboratorsMutationOptions(
@@ -242,6 +245,91 @@ export function PackageCollaboratorsRoute({
 			`Added ${member.username ? `@${member.username}` : 'that member'}.`,
 		)
 		if (accepted) setMemberId('')
+	}
+
+	async function addProfile(
+		event: FormEvent<HTMLFormElement>,
+		view: PackageCollaboratorsView,
+	) {
+		event.preventDefault()
+		const profile = view.options.profiles?.find(
+			(option) => option.id === profileId,
+		)
+		if (!profile) return
+		const accepted = await postChange(
+			'add-profile',
+			{
+				intent: 'grant',
+				subjectType: 'profile',
+				subjectId: profile.id,
+				preset: profilePreset,
+			},
+			`Added profile ${profile.name}.`,
+		)
+		if (accepted) setProfileId('')
+	}
+
+	function renderAddProfile(view: PackageCollaboratorsView) {
+		const profiles = view.options.profiles
+		if (!profiles) return null
+		return (
+			<AccountManagementPanel
+				title="Add one of your profiles"
+				description="A profile is an agent identity you control. It can only use what you can, and a sub-profile only what its parent holds here too."
+			>
+				{profiles.length === 0 ? (
+					<p css={mutedCopyCss}>
+						You have no active profiles in this organization.{' '}
+						<SiteLink href="/docs/profiles">Learn about profiles</SiteLink>.
+					</p>
+				) : (
+					<form
+						data-testid="package-collaborators-add-profile"
+						css={formCss}
+						onSubmit={(event) => void addProfile(event, view)}
+					>
+						<label css={accountFieldCss}>
+							<span css={accountFieldLabelCss}>Profile</span>
+							<select
+								aria-label="Profile"
+								value={profileId}
+								required
+								css={selectCss}
+								onChange={(event) => {
+									setProfileId((event.currentTarget as HTMLSelectElement).value)
+								}}
+							>
+								<option value="">Choose a profile</option>
+								{profiles.map((profile) => (
+									<option key={profile.id} value={profile.id}>
+										{profile.depth > 1
+											? `${profile.name} (sub-profile, depth ${profile.depth})`
+											: profile.name}
+									</option>
+								))}
+							</select>
+						</label>
+						{renderPresetField({
+							label: 'Access for the profile',
+							value: profilePreset,
+							onChange: (preset) => {
+								setProfilePreset(preset)
+							},
+						})}
+						<div css={accountActionsCss}>
+							<button
+								type="submit"
+								disabled={busy !== null || profileId === ''}
+								css={getPillButtonCss({ size: 'sm' })}
+							>
+								{renderIcon('plus', { size: '1.05rem' })}
+								{busy === 'add-profile' ? 'Adding…' : 'Add profile'}
+							</button>
+						</div>
+					</form>
+				)}
+			</AccountManagementPanel>
+		)
 	}
 
 	function renderCollaborator(collaborator: PackageCollaboratorView) {
@@ -579,6 +667,7 @@ export function PackageCollaboratorsRoute({
 						{view.org.personal ? null : renderAddEveryone(view)}
 						{view.org.personal ? null : renderAddTeam(view)}
 						{view.org.personal ? null : renderAddMember(view)}
+						{renderAddProfile(view)}
 						{view.org.personal ? (
 							<PackageCollaboratorInvites
 								key={`${actorKey}/${username}/${kodyId}`}

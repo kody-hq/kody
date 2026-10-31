@@ -704,7 +704,7 @@ const commandsUsage =
 	'Usage: kody context commands [status | on | off] [--context <name>] [--json]'
 
 /**
- * Host commands opt-in (ADR 0092). `on` is a local action: it writes this
+ * Host commands opt-in (ADR 0093). `on` is a local action: it writes this
  * machine's policy and tells Kody with a request signed by the context key.
  * `off` works here, in the desktop app, or on the website.
  */

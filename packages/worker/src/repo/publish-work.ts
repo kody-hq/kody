@@ -228,6 +228,7 @@ export type PublishWorkProjectionInput = {
 	rebuildArtifacts: boolean
 	firstPublish: boolean
 	creatorUserId: string | null
+	creatorProfileId?: string | null
 	/** False for a same-commit finalize, which is not a new publish. */
 	writeAudit: boolean
 	auditUserId: string | null
@@ -499,6 +500,7 @@ export function createInlinePublishHeavyWork(input: {
 				sourceFiles: publishedFiles,
 				firstPublish: projectionInput.firstPublish,
 				creatorUserId: projectionInput.creatorUserId,
+				creatorProfileId: projectionInput.creatorProfileId ?? null,
 				audit: projectionInput.writeAudit
 					? optionalOrgAuditWriter(env, {
 							userId: projectionInput.auditUserId,

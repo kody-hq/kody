@@ -730,7 +730,7 @@ jobs:
           retention-days: 14
 
   host_commands:
-    # ADR 0092: real daemon, workerd, and host processes on Linux and macOS.
+    # ADR 0093: real daemon, workerd, and host processes on Linux and macOS.
     strategy:
       fail-fast: false
       matrix:

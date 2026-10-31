@@ -1448,7 +1448,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	}
 
 	/**
-	 * The daemon reports each host command's end (ADR 0092). The start was
+	 * The daemon reports each host command's end (ADR 0093). The start was
 	 * audited when Kody authorized it; this closes the record by commandId.
 	 */
 	async #onCommandFinished(body: Record<string, unknown>) {

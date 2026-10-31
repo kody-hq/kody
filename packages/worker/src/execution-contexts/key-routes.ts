@@ -396,7 +396,7 @@ function methodNotAllowed(allow: string) {
 }
 
 /**
- * Host commands opt-in (ADR 0092). Signed with the context key, so only the
+ * Host commands opt-in (ADR 0093). Signed with the context key, so only the
  * machine itself can turn commands on; it may also turn them off. Website and
  * API callers can only turn them off (executionContextUpdate).
  */

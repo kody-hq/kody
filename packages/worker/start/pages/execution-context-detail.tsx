@@ -334,7 +334,7 @@ function DeleteControls(props: {
 	)
 }
 
-/** Host commands (ADR 0092): shows the machine opt-in and the off switch. */
+/** Host commands (ADR 0093): shows the machine opt-in and the off switch. */
 function CommandsPanel(props: {
 	orgSlug: string
 	context: ExecutionContextListItem

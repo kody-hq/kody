@@ -20,7 +20,7 @@ cloud.
 | Lease authentication on CapabilityProxy and package graph                                 | `packages/worker/src/open-api/authenticate.ts`                                                              |
 | API edge WebSocket forward (rate limited per context and IP)                              | `packages/api-worker/src/edge.ts`                                                                           |
 | CLI (`kody context`, `kody chain`, `kody daemon`)                                         | `packages/cli/src/execution-context/`                                                                       |
-| Host commands (ADR 0092): process manager, authorize hop, opt-in route                    | `packages/cli/src/execution-context/host-commands.ts`, `packages/worker/src/execution-contexts/commands.ts` |
+| Host commands (ADR 0093): process manager, authorize hop, opt-in route                    | `packages/cli/src/execution-context/host-commands.ts`, `packages/worker/src/execution-contexts/commands.ts` |
 
 ## Lifecycle
 
@@ -102,7 +102,7 @@ uninstall, `kody update`).
 
 ## Host commands
 
-[ADR 0092](../decisions/0092-execution-context-host-commands.md) lets context
+[ADR 0093](../decisions/0093-execution-context-host-commands.md) lets context
 runs run shell commands on the machine through `kody.command.*`. Two switches
 must both be on, and either one turns it off:
 

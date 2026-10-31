@@ -1,6 +1,6 @@
 /**
  * Unattended end-to-end check for host commands on execution contexts
- * (ADR 0092). Registers a throwaway context in a temporary CLI config dir,
+ * (ADR 0093). Registers a throwaway context in a temporary CLI config dir,
  * turns commands on locally, runs a daemon, executes a run on the context that
  * runs a foreground command and a background start/poll/kill, checks the audit
  * log, then revokes and deletes the context.

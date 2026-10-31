@@ -51,7 +51,7 @@ export type ExecutionContextShareGrant = {
 	orgSlug?: string
 	subject: ExecutionContextGrantSubject
 	preset: ExecutionContextPreset
-	/** Explicit execution_context:command on top of the preset (ADR 0092). */
+	/** Explicit execution_context:command on top of the preset (ADR 0093). */
 	commands?: boolean
 }
 
@@ -68,7 +68,7 @@ export type ExecutionContextGrantSummary = {
 	egress: { mode: ExecutionContextEgressMode; hosts?: number }
 	runtime: 'all' | 'none' | { mode: 'allowlist'; count: number }
 	timeoutMs: number
-	/** Host commands (ADR 0092): on only after the machine opted in locally. */
+	/** Host commands (ADR 0093): on only after the machine opted in locally. */
 	commands?: boolean
 }
 
@@ -718,7 +718,7 @@ const executionContextAuditLabels: Record<string, string> = {
 	command_finished: 'Command finished',
 }
 
-/** `$ npm test in /repo, exit 0` for host command audit rows (ADR 0092). */
+/** `$ npm test in /repo, exit 0` for host command audit rows (ADR 0093). */
 export function commandAuditSummary(detail: string | null | undefined) {
 	if (!detail) return null
 	let parsed: Record<string, unknown>

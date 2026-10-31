@@ -276,6 +276,8 @@ export async function refreshSavedPackageProjection(input: {
 	 * (members with only `package:create` hold nothing on it otherwise).
 	 */
 	creatorUserId?: string | null
+	/** The profile the creator acted as; it also gets a creator grant. */
+	creatorProfileId?: string | null
 }) {
 	// Filled inside the write lease, audited after it commits.
 	const pending: {
@@ -675,6 +677,7 @@ export async function refreshSavedPackageProjection(input: {
 					env: input.env,
 					orgId: input.userId,
 					creatorUserId: input.creatorUserId,
+					creatorProfileId: input.creatorProfileId ?? null,
 					audit: input.audit,
 					resources: createdPackageResources(input.packageId),
 				}).catch((error: unknown) => {

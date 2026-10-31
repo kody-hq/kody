@@ -240,7 +240,7 @@ export async function requestConnectTicket(input: {
 }
 
 /**
- * Host commands opt-in (ADR 0092), signed with the context key so only this
+ * Host commands opt-in (ADR 0093), signed with the context key so only this
  * machine can turn commands on. Omit `enabled` to read the current state.
  */
 export async function setContextCommands(input: {

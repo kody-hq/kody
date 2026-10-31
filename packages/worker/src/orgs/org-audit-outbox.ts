@@ -18,6 +18,8 @@ export type OrgAuditWriter = {
 	actorUsername: string | null
 	credentialKind: string | null
 	credentialId: string | null
+	/** The profile the actor ran as (ADR 0092), for its creator grant. */
+	actorProfileId?: string | null
 	/** Set when a package run made the change. */
 	cause?: OrgAuditCause | null
 	/**

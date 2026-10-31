@@ -463,7 +463,7 @@ function __kodyCreateRuntimeNestedObjectProxy(exportName, path) {
 	});
 }
 
-// kody.command.* (host commands, ADR 0092) only exists on an execution
+// kody.command.* (host commands, ADR 0093) only exists on an execution
 // context, where the daemon serves it. Anywhere else say so plainly instead
 // of a TypeError on undefined.
 const __kodyHostCommandsUnavailable = Object.freeze(

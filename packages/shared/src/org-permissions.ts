@@ -17,7 +17,7 @@ const resourceActions = {
 	// A registered machine that runs execute. Org roles and org-wide grants
 	// confer read, write, delete and manage_access only; `execute` comes from
 	// a grant on the context itself (canExecuteOnContext), never from a role.
-	// `command` (run host commands, ADR 0092) is never in a preset or role:
+	// `command` (run host commands, ADR 0093) is never in a preset or role:
 	// the operator has it, anyone else needs it granted on the context.
 	execution_context: [
 		'read',
@@ -89,6 +89,7 @@ const orgLevelPermissionList = [
 	'audit:read',
 	'token:read',
 	'token:delete',
+	'profile:manage',
 ] as const
 
 export type OrgPermission =
