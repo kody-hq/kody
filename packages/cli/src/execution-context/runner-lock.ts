@@ -89,13 +89,28 @@ export function isLiveHolder(
 	return command === null || /\bdaemon\b/.test(command)
 }
 
-function readHolder(path: string): RunnerLockHolder | null {
+type LockRead = RunnerLockHolder | 'missing' | 'malformed' | 'unreadable'
+
+function readLock(path: string): LockRead {
+	let text: string
 	try {
-		const holder = JSON.parse(readFileSync(path, 'utf8')) as RunnerLockHolder
-		return typeof holder.pid === 'number' ? holder : null
-	} catch {
-		return null
+		text = readFileSync(path, 'utf8')
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === 'ENOENT'
+			? 'missing'
+			: 'unreadable'
 	}
+	try {
+		const holder = JSON.parse(text) as RunnerLockHolder
+		return typeof holder?.pid === 'number' ? holder : 'malformed'
+	} catch {
+		return 'malformed'
+	}
+}
+
+function readHolder(path: string): RunnerLockHolder | null {
+	const read = readLock(path)
+	return typeof read === 'object' ? read : null
 }
 
 function sameHolder(a: RunnerLockHolder, b: RunnerLockHolder) {
@@ -142,7 +157,21 @@ export function acquireRunnerLock(
 		} finally {
 			rmSync(temp, { force: true })
 		}
-		const holder = readHolder(path)
+		const read = readLock(path)
+		if (read === 'missing') continue
+		const holder = typeof read === 'object' ? read : null
+		if (read === 'unreadable') {
+			// Owned by another user (say, a daemon run as root): never reclaim it.
+			return {
+				ok: false,
+				holder: {
+					pid: 0,
+					version: 'unknown',
+					launcher: 'terminal',
+					startedAt: 'unreadable',
+				},
+			}
+		}
 		if (!holder) {
 			let ageMs = Infinity
 			try {
@@ -200,6 +229,9 @@ export function describeLauncher(launcher: RunnerLauncher | undefined) {
 }
 
 export function describeHolder(holder: RunnerLockHolder) {
+	if (holder.pid === 0 && holder.startedAt === 'unreadable') {
+		return 'a daemon of another user holds the lock (this user cannot read it)'
+	}
 	if (holder.pid === 0) {
 		return `another daemon is taking the lock right now (since ${holder.startedAt})`
 	}

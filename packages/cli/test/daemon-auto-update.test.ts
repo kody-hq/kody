@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { createHash } from 'node:crypto'
 import {
+	chmodSync,
+	utimesSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -635,4 +637,26 @@ test('a lock whose pid now belongs to another process, or predates boot, is take
 		lock.describeHolder(!young.ok ? young.holder : (null as never)),
 		/taking the lock right now/,
 	)
+	// A lock this user cannot read (another user's daemon) is never reclaimed.
+	if (process.getuid?.() !== 0) {
+		writeFileSync(path, '{}')
+		utimesSync(path, new Date(0), new Date(0))
+		chmodSync(path, 0o000)
+		try {
+			const unreadable = lock.acquireRunnerLock(path, {
+				version: '3.17.0',
+				launcher: 'terminal',
+				startedAt: '',
+			})
+			assert.equal(unreadable.ok, false)
+			assert.match(
+				lock.describeHolder(
+					!unreadable.ok ? unreadable.holder : (null as never),
+				),
+				/another user/,
+			)
+		} finally {
+			chmodSync(path, 0o600)
+		}
+	}
 })

@@ -602,7 +602,8 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			)
 			return startupRefusedExitCode
 		}
-		const { context, privateKey, serverKeys } = started
+		const { context, privateKey } = started
+		let { serverKeys } = started
 		const { runContextRun } = await import('./run-executor.js')
 		const hostCommands = new HostCommands({
 			localEnabled: await readLocalCommandsEnabled().catch(() => false),
@@ -661,6 +662,8 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 				return stayStoppedExitCode
 			}
 			log(`The other daemon stopped. Starting ${context.name}.`)
+			// Kody may have rotated its signing keys while this service waited.
+			serverKeys = await fetchServerKeys({ apiUrl: input.apiUrl })
 		}
 		if (!lock.ok) {
 			unwatchFile(commandsPolicyPath, onCommandsPolicyChange)
@@ -810,7 +813,9 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 					? `Another kody daemon for ${context.name} connected and replaced this one: ${others.map((other) => `pid ${other.pid} (${other.cmd})`).join('; ')}. It predates the one-runner lock. Stopping this daemon instead of reconnecting, so they do not keep replacing each other. Keep one: stop the other, or run \`kody update\` so both use the lock.`
 					: `Another kody daemon for ${context.name} connected and replaced this one (not on this machine as far as kody can tell: is the same context key copied to another machine?). Stopping this daemon instead of reconnecting, so they do not keep replacing each other. Restart it with \`kody daemon restart\` once the other is gone.`,
 			)
-			return manager ? stayStoppedExitCode : 1
+			if (manager) return stayStoppedExitCode
+			// Being replaced says nothing about this version's health.
+			return supervised ? startupRefusedExitCode : 1
 		}
 		const target: CurrentVersion | null = updateTo
 		if (stop === 'shutdown' && target && !signalled) {
