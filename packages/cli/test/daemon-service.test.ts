@@ -276,6 +276,17 @@ test('Task Scheduler status, restart, and disable drive schtasks', () => {
 		['schtasks.exe', '/Run', '/TN', '\\Kody\\kody-daemon-ec_win'],
 	])
 	calls.length = 0
+	service.startService({ manager: 'taskscheduler', ecid: 'ec_win', run })
+	assert.deepEqual(calls, [
+		['schtasks.exe', '/Change', '/TN', '\\Kody\\kody-daemon-ec_win', '/ENABLE'],
+		['schtasks.exe', '/Run', '/TN', '\\Kody\\kody-daemon-ec_win'],
+	])
+	calls.length = 0
+	service.stopService({ manager: 'taskscheduler', ecid: 'ec_win', run })
+	assert.deepEqual(calls, [
+		['schtasks.exe', '/End', '/TN', '\\Kody\\kody-daemon-ec_win'],
+	])
+	calls.length = 0
 	service.disableOwnService({ manager: 'taskscheduler', ecid: 'ec_win', run })
 	assert.deepEqual(calls, [
 		[

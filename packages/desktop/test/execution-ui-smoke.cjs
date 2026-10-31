@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict')
 const { build } = require('esbuild')
-const { mkdirSync } = require('node:fs')
+const { mkdirSync, readFileSync } = require('node:fs')
 const { chromium, expect } = require('@playwright/test')
 const { resolve } = require('node:path')
 
@@ -75,11 +75,21 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		})
 		const errors = []
 		page.on('pageerror', (error) => errors.push(error.message))
-		async function mount(native, needsOnboarding = false, full = false) {
+		const styles = readFileSync(
+			resolve(root, 'packages/worker/public/styles.css'),
+			'utf8',
+		)
+		async function mount(
+			native,
+			needsOnboarding = false,
+			full = false,
+			existing = false,
+		) {
 			await page.goto('about:blank')
 			await page.setContent('<div id="root"></div>')
+			await page.addStyleTag({ content: styles })
 			await page.evaluate(
-				({ native, needsOnboarding, full }) => {
+				({ native, needsOnboarding, full, existing }) => {
 					const state = {
 						name: 'my-mac',
 						platform: 'darwin',
@@ -95,6 +105,11 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 						onboardingSeen: false,
 						cliReady: false,
 						error: null,
+						runner: null,
+						autoUpdate: true,
+						existingContext: existing
+							? { id: 'ec_old', name: 'old-laptop' }
+							: null,
 					}
 					window.fixture = {
 						needsOnboarding,
@@ -142,6 +157,22 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 									return { ...state }
 								},
 								connect: async (name) => {
+									if (state.existingContext) {
+										Object.assign(state, {
+											name: state.existingContext.name,
+											contextId: state.existingContext.id,
+											existingContext: null,
+											hasSetup: true,
+											running: true,
+											runner: {
+												mode: 'service',
+												label:
+													'Runner running: CLI service (launchd), kody 3.17.0',
+												canRestart: true,
+											},
+										})
+										return { ...state }
+									}
 									if (!state.contextId) window.fixture.registers++
 									Object.assign(state, {
 										name,
@@ -149,6 +180,18 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 										hasSetup: true,
 										running: true,
 									})
+									return { ...state }
+								},
+								restart: async () => {
+									window.fixture.restarts = (window.fixture.restarts ?? 0) + 1
+									return { ...state }
+								},
+								enableAutoUpdate: async () => {
+									state.autoUpdate = true
+									return { ...state }
+								},
+								disableAutoUpdate: async () => {
+									state.autoUpdate = false
 									return { ...state }
 								},
 								start: async () => {
@@ -180,7 +223,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 							},
 						}
 				},
-				{ native, needsOnboarding, full },
+				{ native, needsOnboarding, full, existing },
 			)
 			await page.addScriptTag({ content: bundled.outputFiles[0].text })
 		}
@@ -312,9 +355,68 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			await page.evaluate(() => 'replaceContextId' in window.fixture.puts[0]),
 			false,
 		)
+		// The kody CLI already registered this machine and runs it as a service.
+		await mount(true, false, false, true)
+		await page
+			.getByRole('button', { name: 'Continue in browser', exact: true })
+			.click()
+		await expect(page.getByRole('dialog')).toContainText(
+			'already registered this machine as old-laptop',
+		)
+		await expect(page.getByLabel('Machine name')).toHaveCount(0)
+		for (const colorScheme of ['light', 'dark']) {
+			await page.emulateMedia({ colorScheme })
+			await page.screenshot({
+				path: resolve(
+					root,
+					`artifacts/desktop-machine-existing-registration-${colorScheme}.png`,
+				),
+			})
+		}
+		await page
+			.getByRole('dialog')
+			.getByRole('button', {
+				name: 'Use this machine’s existing registration',
+				exact: true,
+			})
+			.click()
+		await expect(
+			page.getByRole('heading', { name: 'This machine is ready', exact: true }),
+		).toBeVisible()
+		assert.equal(await page.evaluate(() => window.fixture.registers), 0)
+		assert.equal(
+			await page.evaluate(() => window.fixture.puts[0].contextId),
+			'ec_old',
+		)
+		await page.getByRole('button', { name: 'Done', exact: true }).click()
+		await expect(
+			page.getByText('CLI service (launchd), kody 3.17.0'),
+		).toBeVisible()
+		await expect(page.getByText('One runner per machine')).toBeVisible()
+		await page
+			.getByRole('button', { name: 'Restart runner', exact: true })
+			.click()
+		await expect
+			.poll(() => page.evaluate(() => window.fixture.restarts))
+			.toBe(1)
+		await expect(page.getByText('Automatic runner updates: On')).toBeVisible()
+		for (const colorScheme of ['light', 'dark']) {
+			await page.emulateMedia({ colorScheme })
+			await page.screenshot({
+				path: resolve(
+					root,
+					`artifacts/desktop-machine-adopted-service-${colorScheme}.png`,
+				),
+			})
+		}
+		await page
+			.getByRole('button', { name: 'Turn off automatic updates', exact: true })
+			.click()
+		await expect(page.getByText('Automatic runner updates: Off')).toBeVisible()
+		await page.emulateMedia({ colorScheme: 'light' })
 		assert.deepEqual(errors, [])
 		console.log(
-			'Desktop UI: browser hidden, onboarding order, skip/reopen, setup, chain replacement/retry, pause, and forget passed.',
+			'Desktop UI: browser hidden, onboarding order, skip/reopen, setup, chain replacement/retry, pause, forget, existing-registration adoption, service restart, and auto-update toggle passed.',
 		)
 	} finally {
 		await browser.close()

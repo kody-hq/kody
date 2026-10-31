@@ -208,6 +208,35 @@ test('operator detail shows daemon version, outdated flag and background service
 	)
 	expect(body).toContain('Background service (systemd)')
 	expect(body).not.toContain('kody daemon install --context')
+	expect(body).toContain('Not reported')
+	expect(body).toContain('This daemon predates auto-update')
+
+	for (const [autoUpdate, shown, hint] of [
+		['on', 'On', 'kody daemon auto-update off'],
+		['off', 'Off', 'kody daemon auto-update on'],
+	] as const) {
+		const page = text(
+			await renderStartPage(
+				route(
+					pageFixture({
+						selected: contextFixture({
+							capabilities: {
+								os: 'darwin',
+								features: [],
+								service: 'launchd',
+								autoUpdate,
+							},
+						}),
+					}),
+					'ec_laptop',
+					`${href}/ec_laptop`,
+				),
+				`${href}/ec_laptop`,
+			),
+		)
+		expect(page).toContain(`Auto-update ${shown}`)
+		expect(page).toContain(hint)
+	}
 
 	const foreground = contextFixture({
 		capabilities: { os: 'darwin', features: [], service: null },

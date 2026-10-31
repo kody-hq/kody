@@ -140,6 +140,25 @@ test('repoReadFile rewraps a nested directory-target cause as a caller error', a
 	expect((error as Error).message).toBe(directoryMessage)
 })
 
+test('repoReadFile maps a raw shell EISDIR to the directory-target caller error', async () => {
+	mocks.repoSessionRpc.mockReturnValue({
+		readFile: vi.fn(async () => {
+			throw new Error('EISDIR: /session/src is a directory')
+		}),
+	})
+
+	const error = await repoReadFileCapability
+		.handler({ session_id: 'session-1', path: 'src' }, createContext())
+		.then(
+			() => null,
+			(caught: unknown) => caught,
+		)
+	expect(error).toBeInstanceOf(McpCallerError)
+	expect((error as Error).message).toBe(
+		'repo session read target "src" is a directory. Pass a file path (for example src/index.ts), or use repoTree to list the folder.',
+	)
+})
+
 test('repoReadFile leaves other read failures platform-visible', async () => {
 	mocks.repoSessionRpc.mockReturnValue({
 		readFile: vi.fn(async () => {

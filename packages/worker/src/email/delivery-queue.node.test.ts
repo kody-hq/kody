@@ -255,3 +255,50 @@ test('an event held by another delivery retries after the claim window', async (
 	// The consumer allows 3 retries; together they must outlast the claim.
 	expect(delaySeconds * 3 * 1000).toBeGreaterThan(deliverabilityEffectsClaimMs)
 })
+
+test('an unmatched status event acks on its last attempt instead of parking in the DLQ', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const { emailDeliveryMaxRetries } = await import('./delivery-queue.ts')
+	const providerEvent = { payload: { messageId: '<untracked@kody.codes>' } }
+	const queuedAt = (attempts: number) => ({
+		id: `queue-unmatched-${String(attempts)}`,
+		timestamp: new Date('2026-07-17T20:00:00.000Z'),
+		body: { kind: 'unmatched' },
+		attempts,
+		ack: vi.fn(),
+		retry: vi.fn(),
+	})
+	const early = queuedAt(emailDeliveryMaxRetries)
+	const last = queuedAt(emailDeliveryMaxRetries + 1)
+	mocks.processCloudflareEmailDeliveryEvent.mockResolvedValue({
+		outcome: 'unmatched',
+		providerEvent,
+		message: null,
+	})
+	await handleEmailDeliveryQueue(
+		{
+			queue: 'kody-email-delivery',
+			messages: [early, last],
+			ackAll() {},
+			retryAll() {},
+		} as unknown as MessageBatch<unknown>,
+		{ APP_DB: { prepare: vi.fn() } } as unknown as Env,
+		{
+			waitUntil() {},
+			passThroughOnException() {},
+		} as unknown as ExecutionContext,
+	)
+	mocks.processCloudflareEmailDeliveryEvent.mockReset()
+	expect(early.ack).not.toHaveBeenCalled()
+	expect(early.retry).toHaveBeenCalledWith({ delaySeconds: 30 })
+	expect(last.retry).not.toHaveBeenCalled()
+	expect(last.ack).toHaveBeenCalledOnce()
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'email-delivery-event-unmatched-dropped',
+		{
+			queueMessageId: last.id,
+			attempts: emailDeliveryMaxRetries + 1,
+			providerMessageId: '<untracked@kody.codes>',
+		},
+	)
+})

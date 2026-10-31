@@ -580,6 +580,10 @@ same `rw` folder can write the same host files. The daemon caches package graphs
 repeat runs skip that API round trip. Code that imports saved packages
 (`kody:@…`) is never cached, so package access is re-checked on every run.
 
+Every remote `execute` prints where it ran and the Worker compute units it
+charged (`Ran on my-laptop (your machine), 0 worker units.`); `--json` has them
+in `structuredContent.ranOn.workerUnits`. Execution-context runs are always 0.
+
 Every context run reports where its time went in
 `structuredContent.ranOn.timing` on `execute`: `queueMs`, `setupMs` (including
 `packageGraphMs` and `packageGraphCached`), `executeMs` and `daemonMs` on the

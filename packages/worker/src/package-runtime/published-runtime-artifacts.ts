@@ -17,6 +17,9 @@ const credentialNeedsVersion = 1
 const credentialNeedsPrefix = 'credential-needs'
 const credentialStampVersion = 1
 const credentialStampPrefix = 'credential-stamp'
+const packageAppTemplateVersion = 1
+const packageAppTemplatePrefix = 'package-app-template'
+const packageAppClientPointerPrefix = 'package-app-client'
 // Bump when the credential-use scanner changes so stale answers are recomputed.
 /**
  * Authoring publish check / stamp-scanner semantics version. Bump when a
@@ -500,12 +503,28 @@ export async function writePublishedSourceSnapshot(input: {
 		manifestContent,
 		createdAt: snapshot.createdAt,
 	}
+	const identity = {
+		sourceId: input.source.id,
+		publishedCommit: input.source.published_commit,
+	}
 	await Promise.all([
 		getBundleArtifactsKv(input.env).put(key, JSON.stringify(snapshot)),
 		getBundleArtifactsKv(input.env).put(
 			manifestKey,
 			JSON.stringify(manifestSnapshot),
 		),
+		// Same-commit repair: drop the publish-time template so cold builds take
+		// the identity-row path until the rebuild writes a fresh one.
+		...(input.invalidateExistingArtifacts
+			? [
+					getBundleArtifactsKv(input.env).delete(
+						buildPackageAppWorkerTemplateKvKey(identity),
+					),
+					getBundleArtifactsKv(input.env).delete(
+						buildPackageAppClientPointerKvKey(identity),
+					),
+				]
+			: []),
 	])
 	return key
 }
@@ -691,21 +710,153 @@ export async function writePublishedBundleArtifact(input: {
 			artifactName: input.artifact.artifactName,
 			entryPoint: input.artifact.entryPoint,
 		})
-	await getBundleArtifactsKv(input.env).put(
-		kvKey,
-		JSON.stringify({
-			...input.artifact,
-			modules: serializeWorkerLoaderModules(input.artifact.modules),
+	const serialized = JSON.stringify({
+		...input.artifact,
+		modules: serializeWorkerLoaderModules(input.artifact.modules),
+	})
+	const kv = getBundleArtifactsKv(input.env)
+	await Promise.all([
+		kv.put(kvKey, serialized),
+		writePackageAppWorkerTemplatePart({
+			kv,
+			artifact: input.artifact,
+			serialized,
 		}),
-	)
+	])
 	return kvKey
+}
+
+/** Publish-time worker template for the package app at one commit. */
+export function buildPackageAppWorkerTemplateKvKey(input: {
+	sourceId: string
+	publishedCommit: string
+}) {
+	return `${packageAppTemplatePrefix}:v${packageAppTemplateVersion}:${input.sourceId}:${input.publishedCommit}`
+}
+
+/** The app's client module name at one commit (the template's other half). */
+export function buildPackageAppClientPointerKvKey(input: {
+	sourceId: string
+	publishedCommit: string
+}) {
+	return `${packageAppClientPointerPrefix}:v${packageAppTemplateVersion}:${input.sourceId}:${input.publishedCommit}`
+}
+
+type StoredPackageAppClientPointer = {
+	version: typeof packageAppTemplateVersion
+	sourceId: string
+	publishedCommit: string
+	entryPoint: string
+	mainModule: string
+}
+
+/**
+ * Publish writes the package-app worker template next to the bundle it
+ * serves: the `app` bundle keyed by source + commit (no D1 identity row to
+ * read first), and a pointer naming the `app-client` module. Request-time
+ * work that must stay current (runtime module refresh, dynamic `kody:@…`
+ * imports, mount, binding token, visitor) still runs per build.
+ */
+async function writePackageAppWorkerTemplatePart(input: {
+	kv: KVNamespace
+	artifact: PublishedBundleArtifact
+	serialized: string
+}) {
+	const { artifact } = input
+	if (artifact.artifactName !== null) return
+	const identity = {
+		sourceId: artifact.sourceId,
+		publishedCommit: artifact.publishedCommit,
+	}
+	if (artifact.kind === 'app') {
+		await input.kv.put(
+			buildPackageAppWorkerTemplateKvKey(identity),
+			input.serialized,
+		)
+		return
+	}
+	if (artifact.kind === 'app-client') {
+		const pointer: StoredPackageAppClientPointer = {
+			version: packageAppTemplateVersion,
+			...identity,
+			entryPoint: artifact.entryPoint,
+			mainModule: artifact.mainModule,
+		}
+		await input.kv.put(
+			buildPackageAppClientPointerKvKey(identity),
+			JSON.stringify(pointer),
+		)
+	}
+}
+
+export type PackageAppWorkerTemplateParts = {
+	/** The published `app` bundle, or null when publish stored no template. */
+	app: PublishedBundleArtifact | null
+	/**
+	 * The client module name; null when the app declares no client, and
+	 * undefined when the pointer is missing (resolve it the old way).
+	 */
+	client: { mainModule: string } | null | undefined
+}
+
+/**
+ * Read the publish-time template for `publishedCommit` in one KV round trip
+ * (both halves in parallel). Packages published before templates existed
+ * read nothing here, and callers fall back to the identity-row path.
+ */
+export async function readPackageAppWorkerTemplate(input: {
+	env: Env
+	sourceId: string
+	publishedCommit: string
+	appEntry: string
+	clientEntry: string | null
+}): Promise<PackageAppWorkerTemplateParts> {
+	const kv = getBundleArtifactsKv(input.env)
+	const identity = {
+		sourceId: input.sourceId,
+		publishedCommit: input.publishedCommit,
+	}
+	const [storedApp, storedClient] = await Promise.all([
+		kv.get(buildPackageAppWorkerTemplateKvKey(identity), 'json'),
+		input.clientEntry
+			? kv.get(buildPackageAppClientPointerKvKey(identity), 'json')
+			: null,
+	])
+	const app = parseStoredPublishedBundleArtifact(storedApp)
+	const appMatches =
+		app?.kind === 'app' &&
+		app.sourceId === input.sourceId &&
+		app.publishedCommit === input.publishedCommit &&
+		app.entryPoint === normalizeEntryPoint(input.appEntry)
+	let client: PackageAppWorkerTemplateParts['client'] = undefined
+	if (!input.clientEntry) client = null
+	else if (storedClient && typeof storedClient === 'object') {
+		const pointer = storedClient as Partial<StoredPackageAppClientPointer>
+		if (
+			pointer.version === packageAppTemplateVersion &&
+			pointer.sourceId === input.sourceId &&
+			pointer.publishedCommit === input.publishedCommit &&
+			pointer.entryPoint === normalizeEntryPoint(input.clientEntry) &&
+			typeof pointer.mainModule === 'string'
+		) {
+			client = { mainModule: pointer.mainModule }
+		}
+	}
+	return { app: appMatches ? app : null, client }
 }
 
 export async function readPublishedBundleArtifact(input: {
 	env: Env
 	kvKey: string
 }) {
-	const stored = await getBundleArtifactsKv(input.env).get(input.kvKey, 'json')
+	return parseStoredPublishedBundleArtifact(
+		await getBundleArtifactsKv(input.env).get(input.kvKey, 'json'),
+	)
+}
+
+function parseStoredPublishedBundleArtifact(
+	stored: unknown,
+): PublishedBundleArtifact | null {
 	if (!stored || typeof stored !== 'object') return null
 	const artifact = stored as StoredPublishedBundleArtifact
 	if (!isUsableStoredPublishedBundleArtifact(artifact)) {

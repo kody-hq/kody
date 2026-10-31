@@ -661,6 +661,18 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	/** A frame the server cannot send ends the session loudly: log, Sentry, 1011. */
 	#failSend(ws: WebSocket, type: string, reason: string, error: unknown) {
 		const ecid = this.#snapshot()?.ecid ?? null
+		if (
+			ws.readyState === WebSocket.CLOSING ||
+			ws.readyState === WebSocket.CLOSED
+		) {
+			// The peer hung up first (KODY-CW); nothing to close or page on.
+			console.warn('execution_context_frame_send_skipped_closed', {
+				ecid,
+				frameType: type,
+				reason,
+			})
+			return false
+		}
 		console.error('execution_context_frame_send_failed', {
 			ecid,
 			frameType: type,

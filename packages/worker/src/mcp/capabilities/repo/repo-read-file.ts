@@ -13,7 +13,12 @@ import {
 	readAnchoredText,
 	splitFileAnchor,
 } from '#worker/guides/file-anchor.ts'
-import { isRepoSessionDirectoryTargetCallerMessage } from '#worker/repo/repo-session-caller-error.ts'
+import {
+	buildRepoSessionDirectoryTargetMessage,
+	externalPathFromRawWorkspaceEisdirMessage,
+	isRawWorkspaceEisdirMessage,
+	isRepoSessionDirectoryTargetCallerMessage,
+} from '#worker/repo/repo-session-caller-error.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { canonicalRepoPath } from '#worker/repo/repo-session-tree.ts'
 import {
@@ -51,7 +56,9 @@ export const repoReadFileCapability = defineDomainCapability(
 					userId: ownerId,
 					path: requested.path,
 				})
-				.catch(rethrowDirectoryTargetAsCallerError)
+				.catch((error: unknown) =>
+					rethrowDirectoryTargetAsCallerError(error, requested.path),
+				)
 			const recordRead = () =>
 				recordReadEvent().catch((error: unknown) => {
 					// Analytics only: never fail a read the caller is authorized for.
@@ -143,7 +150,10 @@ function splitFileAnchorForCaller(path: string) {
  * A folder path (`src`) is caller-correctable. DO RPC loses Error subclass
  * identity, so match the stable phrase. KODY-CA.
  */
-function rethrowDirectoryTargetAsCallerError(error: unknown): never {
+function rethrowDirectoryTargetAsCallerError(
+	error: unknown,
+	requestedPath: string,
+): never {
 	const match = getErrorCauseChain(error).find(
 		(entry) =>
 			entry instanceof Error &&
@@ -151,6 +161,20 @@ function rethrowDirectoryTargetAsCallerError(error: unknown): never {
 	)
 	if (match instanceof Error) {
 		throw new McpCallerError(match.message, { cause: error })
+	}
+	// Older session Durable Objects still surface the raw shell EISDIR.
+	const raw = getErrorCauseChain(error).find(
+		(entry) =>
+			entry instanceof Error && isRawWorkspaceEisdirMessage(entry.message),
+	)
+	if (raw instanceof Error) {
+		const path =
+			externalPathFromRawWorkspaceEisdirMessage(raw.message, '/session') ??
+			requestedPath
+		throw new McpCallerError(
+			buildRepoSessionDirectoryTargetMessage('read', path),
+			{ cause: error },
+		)
 	}
 	throw error
 }

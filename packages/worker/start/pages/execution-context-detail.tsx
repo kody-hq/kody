@@ -65,6 +65,10 @@ import {
 } from './account-management-components.tsx'
 import { selectCss } from './package-collaborators-parts.tsx'
 import { recordBodyCss } from './record-table.tsx'
+import {
+	formatTimestamp,
+	formatTimestampDate,
+} from '../components/local-timestamp.tsx'
 
 const sectionCss = css({ display: 'grid', gap: spacing.sm })
 const mutedCss = css({ color: colors.textMuted, margin: 0 })
@@ -145,11 +149,11 @@ export function ExecutionContextDetail(props: {
 				<dt>Status</dt>
 				<dd data-testid="context-status">
 					{displayStatusLabel(status)}
-					{context.status === 'revoked' && context.revokedAt
-						? `, ${new Date(context.revokedAt).toLocaleDateString()}`
-						: context.lastSeenAt && status === 'offline'
-							? `, last seen ${new Date(context.lastSeenAt).toLocaleString()}`
-							: null}
+					{context.status === 'revoked' && context.revokedAt ? (
+						<>, {formatTimestampDate(context.revokedAt)}</>
+					) : context.lastSeenAt && status === 'offline' ? (
+						<>, last seen {formatTimestamp(context.lastSeenAt)}</>
+					) : null}
 				</dd>
 				<dt>Operator</dt>
 				<dd>{context.isOperator ? 'You' : `@${context.operator.handle}`}</dd>
@@ -174,6 +178,35 @@ export function ExecutionContextDetail(props: {
 								<span css={outdatedCss} data-testid="context-daemon-outdated">
 									Outdated: {context.client.latestVersion} is out. Run{' '}
 									<code>kody update</code> on the machine
+								</span>
+							) : null}
+						</dd>
+						<dt>Auto-update</dt>
+						<dd data-testid="context-daemon-auto-update">
+							{context.capabilities?.autoUpdate === 'on'
+								? 'On'
+								: context.capabilities?.autoUpdate === 'off'
+									? 'Off'
+									: 'Not reported'}
+							{context.isOperator && context.status !== 'revoked' ? (
+								<span css={hintCss}>
+									{context.capabilities?.autoUpdate === 'on' ? (
+										<>
+											Moves onto new CLI versions after runs finish. Turn it off
+											on the machine with{' '}
+											<code>kody daemon auto-update off</code>
+										</>
+									) : context.capabilities?.autoUpdate === 'off' ? (
+										<>
+											Turn it on on the machine with{' '}
+											<code>kody daemon auto-update on</code>
+										</>
+									) : (
+										<>
+											This daemon predates auto-update. Restart it once (or run{' '}
+											<code>kody update</code>) and it stays current
+										</>
+									)}
 								</span>
 							) : null}
 						</dd>
@@ -1141,7 +1174,7 @@ function RunHistory(props: {
 						<tbody>
 							{runs.map((run) => (
 								<tr key={`${run.runId}:${run.dispatchedAt}`}>
-									<td>{new Date(run.dispatchedAt).toLocaleString()}</td>
+									<td>{formatTimestamp(run.dispatchedAt)}</td>
 									<td>@{run.requester.handle}</td>
 									<td>{durationLabel(run.durationMs)}</td>
 									<td>
@@ -1306,9 +1339,7 @@ function AuditLog(props: {
 						<li key={event.id}>
 							{auditEventLabel(event.action)}
 							{event.actor ? ` by ${event.actor.label}` : ''},{' '}
-							<time dateTime={event.at}>
-								{new Date(event.at).toLocaleString()}
-							</time>
+							<time dateTime={event.at}>{formatTimestamp(event.at)}</time>
 							{commandAuditSummary(event.detail) ? (
 								<>
 									{': '}

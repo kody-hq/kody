@@ -93,5 +93,15 @@ export default async function main() {
 - Alerting is unchanged in spirit: the DLQ depth alert counts parked rows, so a
   DLQ keeps paging (`dlq-depth` fingerprint) until an admin replays, acks, or
   purges its messages.
+- `kody-email-delivery` carries Cloudflare Email Sending delivery reports, not
+  outbound mail, so nothing it holds can resend an email. A report still
+  unmatched on its last attempt is acked
+  (`email-delivery-event-unmatched-dropped`) instead of parked.
+- Cloudflare's queue list and metrics APIs intermittently return 429/5xx. The
+  depth check retries those reads twice with backoff; a read that still fails
+  raises one Sentry warning (`dlq-depth-alert` / `cloudflare-upstream`
+  fingerprint) instead of failing the lane, and the next tick reads again.
+  Non-transient errors (4xx, a missing queue, KV or APP_DB failures) still fail
+  the lane.
 - Production mutation is operator-controlled. Agents must not replay, ack, or
   purge production messages unless the operator asks for that exact action.

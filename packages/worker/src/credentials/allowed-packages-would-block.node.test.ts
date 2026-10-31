@@ -102,9 +102,10 @@ test('recordAllowedPackagesWouldBlock upserts one row per day, owner, credential
 	])
 })
 
-test('scheduleAllowedPackagesWouldBlock coalesces repeats into one deferred write', async () => {
+test('scheduleAllowedPackagesWouldBlock coalesces repeats into one deferred batch', async () => {
 	const { sqlite, db } = createDb()
 	const prepare = vi.spyOn(db, 'prepare')
+	const batch = vi.spyOn(db, 'batch')
 	const env = { APP_DB: db }
 	scheduleAllowedPackagesWouldBlock({
 		env,
@@ -126,9 +127,10 @@ test('scheduleAllowedPackagesWouldBlock coalesces repeats into one deferred writ
 	})
 	// Nothing touched D1 on the caller's path.
 	expect(prepare).not.toHaveBeenCalled()
-	expect(scheduled).toHaveLength(2)
+	expect(scheduled).toHaveLength(1)
 	await drain()
 	expect(prepare).toHaveBeenCalledTimes(2)
+	expect(batch).toHaveBeenCalledTimes(1)
 	const rows = sqlite
 		.prepare(
 			`SELECT package_id, access_kind, first_seen_at, last_seen_at, observations
@@ -157,6 +159,9 @@ test('scheduleAllowedPackagesWouldBlock never throws when the write fails', asyn
 	const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 	const db = {
 		prepare() {
+			throw new Error('d1 down')
+		},
+		batch() {
 			throw new Error('d1 down')
 		},
 	} as unknown as D1Database

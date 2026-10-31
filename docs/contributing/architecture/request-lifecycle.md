@@ -297,8 +297,12 @@ serving attaches those entries as `Server-Timing`. Cloudflare may append
 - `files` — tree snapshot read (KV, then the listing pin snapshot)
 
 Loader phases recorded through `recordServerTiming` land on the request context.
-Package-app responses merge them into `Server-Timing`. The weekly site-perf
-collector reads that header on marketing HTML.
+Package-app responses merge them into `Server-Timing`. Package-app hosts use the
+same bag: every phase from host routing to the app's `fetch`, plus `total`, is
+listed in
+[package-app Server-Timing](./invocation-overhead-guardrails.md#package-app-server-timing).
+The weekly site-perf collector reads that header on marketing HTML and on a
+hello-world package app.
 
 Signed-in `/onboarding` derives the setup checklist from verification, inbound
 MCP OAuth grants (first and second host), a Step 2 access win (memory, execute,

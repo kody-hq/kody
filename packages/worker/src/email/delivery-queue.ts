@@ -13,6 +13,8 @@ import { transactionalEmailVerificationKind } from './verification-delivery.ts'
 export { emailDeliveryQueueName } from './delivery-queue-names.ts'
 
 const unmatchedRetryDelaySeconds = 30
+// Matches `max_retries` on the kody-email-delivery consumer (wrangler.jsonc).
+export const emailDeliveryMaxRetries = 3
 // The consumer allows 3 retries; together they must outlast a crashed
 // delivery's ledger claim, or the event lands in the DLQ unapplied.
 const claimHeldRetryDelaySeconds = Math.ceil(
@@ -72,6 +74,19 @@ export async function handleEmailDeliveryQueue(
 					break
 				}
 				case 'unmatched':
+					// Retries cover the send-vs-index race. A status report still
+					// unmatched on its last attempt is for mail this deployment never
+					// indexed; parking it in the DLQ cannot help (KODY-CK).
+					if (queueMessage.attempts > emailDeliveryMaxRetries) {
+						console.warn('email-delivery-event-unmatched-dropped', {
+							queueMessageId: queueMessage.id,
+							attempts: queueMessage.attempts,
+							providerMessageId:
+								result.providerEvent?.payload.messageId ?? null,
+						})
+						queueMessage.ack()
+						break
+					}
 					console.warn('email-delivery-event-unmatched', {
 						queueMessageId: queueMessage.id,
 						providerMessageId: result.providerEvent?.payload.messageId ?? null,

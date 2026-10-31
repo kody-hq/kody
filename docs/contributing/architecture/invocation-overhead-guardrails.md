@@ -37,13 +37,53 @@ platform overhead per call, not about what user code does inside the call.
   `ok` should not pay tens of milliseconds of platform overhead on a warm
   isolate. The serve path shares the invoke freshness/commit caches, and must
   not await the run-record begin RPC before user `fetch`. Finish already upserts
-  a complete row, so a dropped `running` insert is harmless. Hosted serve and
-  package-app origin host setup emit request-scoped `Server-Timing` phases
-  (`owner`, `resolveSavedPackage`, `manifest`, `usageGate`, `appLoader`,
-  `entrypoint`) via the same helper pages use, so warm overhead can be
-  attributed per phase without a separate benchmark harness. WebSocket upgrades
+  a complete row, so a dropped `running` insert is harmless. Every awaited phase
+  records into the request context's `Server-Timing` bag, and the origin
+  boundary writes it once (see
+  [Package-app Server-Timing](#package-app-server-timing)). WebSocket upgrades
   skip `Server-Timing`: Durable Object 101 responses have immutable headers, and
   rebuilding them without the paired `webSocket` is invalid.
+
+### Package-app Server-Timing
+
+Phases, in request order (a phase appears only when its work ran):
+
+| Phase                 | Work                                                                                      |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| `retiredSlug`         | retired-slug 308 check on a user subdomain                                                |
+| `appSession`          | host-only session cookie read                                                             |
+| `appTicket`           | signed access-ticket read (signed-in visitor fast path)                                   |
+| `owner`               | org + visitor authorization when no ticket                                                |
+| `org`                 | internet-visible serve: org owner by handle                                               |
+| `appSlug`             | internet-visible serve: saved package by slug                                             |
+| `approvedCommit`      | internet-visible serve: approved published commit                                         |
+| `identity`            | Sign in with Kody identity for a signed-in visitor who cannot run the app                 |
+| `resolveSavedPackage` | saved package for the slug (serve)                                                        |
+| `manifest`            | cached invoke manifest                                                                    |
+| `billing`             | cross-org billing context (ADR 0094), in parallel with `manifest`                         |
+| `credentialSuppliers` | `package-credential-suppliers` flag, in parallel with `manifest`                          |
+| `credentialNeeds`     | published credential needs (only when the flag is on)                                     |
+| `executorGrant`       | outsider grant for executor needs                                                         |
+| `usageGate`           | compute include / credits gate                                                            |
+| `appLoader`           | worker build (cached) + loader stub; nested `appTemplate` on a cold build, `visitorGrant` |
+| `entrypoint`          | the app's own `fetch`                                                                     |
+| `total`               | origin boundary entry to response headers                                                 |
+
+`total` minus the sum of phases is platform CPU and any unlisted awaits; keep it
+near zero. Because parallel phases overlap, phases can sum to more than `total`.
+
+### Package-app response rewrite
+
+Kody's header changes to a package-app response (package cookie prefix filter,
+`HttpOnly` enforcement, Set-Cookie Domain scrub, run-id strip, `Cache-Control` /
+`Vary: Cookie`, ticket `Set-Cookie`, `Server-Timing`, visit-nonce body watch)
+are applied in one pass by `applyPackageAppResponseRewrite`
+(`package-app-response-rewrite.ts`). Inside `handlePackageAppOriginRequest`,
+serve and the origin layers register their parts with
+`deferPackageAppResponseRewrite` and the boundary builds at most one `Response`.
+Outside that scope (RPC `servePackageApp`, inline routes) the same call applies
+immediately. A layer between serve and the boundary must defer too: wrapping the
+response in a new `Response` drops the deferred rewrite.
 
 ## Per-isolate caches and their staleness bounds
 
@@ -71,6 +111,23 @@ caches come in two tiers with different correctness arguments (see
   statically reference `kody.mcp`; hello-world and other non-MCP apps pass a
   lazy loader so `listMcpServerNames` runs only if author code first touches
   `kody.mcp`.
+- **Package-credential-suppliers flag** — `isPackageCredentialSuppliersEnabled`
+  answer per org, TTL **15 s** (same clock as invoke freshness and the caller
+  feature-flag cache). The answer depends only on the org (evaluated as its
+  owner), so the org key cannot leak across visitors; failures are never
+  retained. A flag flip reaches package apps within one window.
+- **Package-app worker template** — publish writes
+  `package-app-template:v1:{sourceId}:{commit}` (the `app` bundle) and
+  `package-app-client:v1:{sourceId}:{commit}` (the client module name) when it
+  writes those bundles (`writePublishedBundleArtifact`). A cold worker build
+  reads both in one parallel KV round trip instead of two D1 identity rows plus
+  two bundle reads. Keys are per commit, so they are never a staleness source.
+  Runtime-module refresh, dynamic `kody:@…` imports, the mount, binding token,
+  and visitor stay per build, so dependency and platform updates still reach the
+  app. Packages published before templates (or a pre-binding bundle) miss and
+  fall back to the identity-row path. A same-commit snapshot repair
+  (`invalidateExistingArtifacts`) deletes both keys until the rebuild rewrites
+  them.
 - **Package-app owner row** — per-`stableUserId` user snapshot for
   `resolvePackageAppOwnerByStableUserId`, TTL **15 s** (same clock as invoke
   freshness). Each request still re-applies suspend, deletion-fence, and
