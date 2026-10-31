@@ -811,6 +811,10 @@
 		{
 			"filename": "0224-drop-connection-profile-columns.sql",
 			"sha256": "35c5ad0bc4e3c57010b14aca75af6a68e543b2c9c1bebd388be55c6c3172f871"
+		},
+		{
+			"filename": "0225-drop-connection-profiles.sql",
+			"sha256": "761dab0e2cc9d1568db9c1d981c690afef51b9cdaf3a93dcdbdca19dd4a09174"
 		}
 	]
 }

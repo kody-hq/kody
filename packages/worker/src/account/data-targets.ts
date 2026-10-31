@@ -206,7 +206,7 @@ export function getAccountExportExcludedD1Surfaces(): Array<{
  * purged while DROP TABLE waits for a later deploy. Deletion/export do not
  * inventory these leftovers. Empty when nothing is mid-drop.
  */
-export const accountUserDataPendingDropTables = ['connection_profiles'] as const
+export const accountUserDataPendingDropTables = [] as const
 
 export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{ kind: 'user_id', table: 'api_tokens' },
