@@ -1333,7 +1333,9 @@ test('execute tool attaches entitlement metadata on denials and quota, not on su
 		},
 	}
 	expect(lastUnit.structuredContent.usage).toEqual(atLimitUsage)
-	expect(lastUnit.structuredContent.ranOn).toMatchObject({ workerUnits: 1 })
+	expect(lastUnit.structuredContent).toMatchObject({
+		ranOn: { workerUnits: 1 },
+	})
 	expect(lastUnit.content).toContainEqual({
 		type: 'text',
 		text: 'Ran on Kody cloud, 1 worker unit.',
@@ -1346,8 +1348,8 @@ test('execute tool attaches entitlement metadata on denials and quota, not on su
 	})
 	expect(repeatAtLimit.isError).toBe(false)
 	expect(repeatAtLimit.structuredContent.usage).toEqual(atLimitUsage)
-	expect(repeatAtLimit.structuredContent.ranOn).toMatchObject({
-		workerUnits: 0,
+	expect(repeatAtLimit.structuredContent).toMatchObject({
+		ranOn: { workerUnits: 0 },
 	})
 	runWorker('kody-worker-b')
 	const quotaDenied = await quotaHandler({
