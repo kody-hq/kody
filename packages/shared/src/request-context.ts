@@ -71,6 +71,22 @@ export type RequestContext = {
 	credential: RequestCredential
 	/** Null for a request with no person and for outside collaborators. */
 	membership: { role: OrgRole } | null
+	/**
+	 * The org billed for metered work this request causes, when it is not
+	 * `org`. Only a visit from another org to an internal package app sets it
+	 * (ADR 0094). Absent means `org` pays.
+	 */
+	billing?: RequestBilling
+}
+
+export type RequestBilling = { orgId: OwnerId }
+
+/** The org a request's metered work is charged to. */
+export function billedOrgIdOf<T extends string | null | undefined>(
+	request: Pick<RequestContext, 'billing'> | null | undefined,
+	fallback: T,
+): OwnerId | T {
+	return request?.billing?.orgId ?? fallback
 }
 
 /**

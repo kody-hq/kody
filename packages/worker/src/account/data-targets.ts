@@ -1287,7 +1287,7 @@ export const accountExportForeignUserIdColumnsByTable: Readonly<
 	community_activity_events: ['actor_user_id'],
 	durable_object_duration_daily: ['actor_user_id'],
 	usage_attribution_daily: ['actor_user_id'],
-	package_app_visitor_attribution_daily: ['visitor_user_id'],
+	package_app_visitor_attribution_daily: ['visitor_user_id', 'billed_org_id'],
 	usage_connection_daily: ['holder_user_id'],
 	usage_rollups: ['actor_user_id'],
 	community_reports: ['listing_owner_user_id', 'resolved_by_user_id'],

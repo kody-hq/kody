@@ -521,3 +521,33 @@ test('a narrowed visitor credential stays narrowed through the visit ticket', as
 		requestContextFromVisitClaims(unscopedClaims).credential,
 	).toMatchObject({ scopes: null, profileName: null })
 })
+
+test('a visit ticket carries the billed org of a cross-org visit into the rebuilt request', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const outsider: RuntimePackageAppVisitor = {
+		userId: personIdFromStored('person-outside'),
+		username: 'outside',
+		role: null,
+	}
+	const billing = { orgId: ownerIdFromStored('org-visitor') }
+	const billed = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: (await mintFor(outsider, { billing })).ticket,
+		audience,
+	})
+	expect(billed.visitor).not.toBeNull()
+	if (!billed.visitor) throw new Error('expected a named visit')
+	expect(billed.billing).toEqual(billing)
+	const request = requestContextFromVisitClaims(billed)
+	expect(request.org.id).toBe(owner.userId)
+	expect(request.billing).toEqual(billing)
+
+	const member = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: (await mintFor(visitorB)).ticket,
+		audience,
+	})
+	if (!member.visitor) throw new Error('expected a named visit')
+	expect(member.billing).toBeUndefined()
+	expect(requestContextFromVisitClaims(member).billing).toBeUndefined()
+})

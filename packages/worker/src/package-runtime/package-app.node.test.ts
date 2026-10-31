@@ -1600,6 +1600,7 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	expect(getStorageRunner).toHaveBeenCalledWith(
 		buildPackageStorageId('package-1'),
 		undefined,
+		undefined,
 	)
 	expect(getValue).toHaveBeenCalledWith({ key: 'count' })
 
@@ -1625,6 +1626,8 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 	).resolves.toEqual({ ok: true })
 	expect(getStorageRunner).toHaveBeenCalledWith(
 		buildPackageStorageId('dep-package'),
+		'',
+		undefined,
 	)
 	expect(setValue).toHaveBeenCalledWith({ key: 'flag', value: true })
 	// The bound binding cannot be pointed at another granted bucket either.
@@ -1671,7 +1674,11 @@ test('package app runtime bridge enforces packageStorage grants and raw storage 
 		}),
 	).resolves.toEqual({ ok: true })
 	expect(getStorageRunner).toHaveBeenCalledWith('package-1:facet:main')
-	expect(getStorageRunner).toHaveBeenCalledWith('package-1:Counter:instance-a')
+	expect(getStorageRunner).toHaveBeenCalledWith(
+		'package-1:Counter:instance-a',
+		undefined,
+		undefined,
+	)
 
 	const outsideNamespaceError =
 		/outside this app's namespace[\s\S]*packageStorage\(\)/
@@ -1851,6 +1858,87 @@ test("buildPackageAppWorker never reuses one visitor's request context or creden
 		userId: 'person-a',
 		role: 'owner',
 	})
+})
+
+test('buildPackageAppWorker bills a cross-org visit to the visiting org and keeps the worker and its day on the publisher', async () => {
+	const usageModule = await import('#worker/usage/dynamic-worker-day.ts')
+	const breakerModule = await import('./package-app-usage-breaker.ts')
+	const daySpy = vi
+		.spyOn(usageModule, 'recordUniqueDynamicWorkerDay')
+		.mockResolvedValue(undefined)
+	const gateSpy = vi
+		.spyOn(breakerModule, 'gatePackageAppUsage')
+		.mockResolvedValue(undefined)
+	const { env, loader } = createPackageAppTestEnv()
+	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifact(),
+	)
+	const key = 'cross-org-billing'
+	const ownerOrgId = `user-${key}`
+	const visit = (actorId: string, billedOrgId: string | null) =>
+		makeBuildInput(env, key, {
+			runtime: {
+				callerContext: {
+					user: {
+						userId: actorId,
+						email: `${key}@example.com`,
+						displayName: `${key} User`,
+					},
+					request: {
+						...appVisitorRequest(key),
+						actor: { userId: actorId, username: actorId },
+						attribution: { kind: 'user', userId: actorId },
+						membership: billedOrgId ? null : { role: 'member' },
+						...(billedOrgId ? { billing: { orgId: billedOrgId } } : {}),
+					},
+				},
+			} as never,
+		})
+	type MaterializedBridge = {
+		props: {
+			gatewayProps: {
+				request: { billing?: { orgId: string } } | null
+			}
+		}
+	}
+	const loads: Array<{ id: string; bridge: MaterializedBridge }> = []
+	const serve = async (input: BuildInput) => {
+		await buildPackageAppWorker(input)
+		const [id, factory] = loader.get.mock.calls.at(-1) as unknown as [
+			string,
+			() => { env: { KODY_RUNTIME: MaterializedBridge } },
+		]
+		loads.push({ id, bridge: factory().env.KODY_RUNTIME })
+	}
+	try {
+		await serve(visit('person-member', null))
+		await serve(visit('person-outside-a', 'org-visitor-a'))
+		await serve(visit('person-outside-b', 'org-visitor-b'))
+
+		// One worker per app commit and mount, whoever pays.
+		expect(new Set(loads.map((load) => load.id)).size).toBe(1)
+		// The worker day is always the publisher's.
+		for (const call of daySpy.mock.calls) {
+			expect(call[0]).toMatchObject({ userId: ownerOrgId })
+		}
+		// The usage breaker checks whoever pays for the request.
+		expect(gateSpy.mock.calls.map(([input]) => input.ownerId)).toEqual([
+			ownerOrgId,
+			'org-visitor-a',
+			'org-visitor-b',
+		])
+		// Metered work (gateway fetches, bridge calls) sees the billed org.
+		expect(
+			loads.map((load) => load.bridge.props.gatewayProps.request?.billing),
+		).toEqual([
+			undefined,
+			{ orgId: 'org-visitor-a' },
+			{ orgId: 'org-visitor-b' },
+		])
+	} finally {
+		daySpy.mockRestore()
+		gateSpy.mockRestore()
+	}
 })
 
 test('buildPackageAppWorker keeps one worker id per app commit per mount across build cache expiry', async () => {

@@ -254,3 +254,185 @@ test('visitor-only AE results do not delete existing credit attribution', async 
 		.get(userId) as { units: number }
 	expect(row.units).toBe(3)
 })
+
+test('a cross-org visit stays in the publisher Visitors list with no publisher credits for its metered work', async () => {
+	const { sqlite, db } = createMigratedDb()
+	const ownerId = ownerIdFromStored(
+		testStableUserIdFromEmail('billed-owner@example.com'),
+	)
+	const visitorOrgId = ownerIdFromStored(
+		testStableUserIdFromEmail('billed-visitor@example.com'),
+	)
+	const createdAt = '2026-10-01T00:00:00.000Z'
+	for (const [id, name] of [
+		[ownerId, 'billedowner'],
+		[visitorOrgId, 'billedvisitor'],
+	] as const) {
+		sqlite
+			.prepare(
+				`INSERT INTO users (username, email, password_hash, stable_user_id, created_at, updated_at)
+				 VALUES (?, ?, 'hash', ?, ?, ?)`,
+			)
+			.run(name, `${name}@example.com`, id, createdAt, createdAt)
+		sqlite
+			.prepare(
+				`INSERT INTO orgs (id, slug, plan, created_at, updated_at)
+				 VALUES (?, ?, 'free', ?, ?)`,
+			)
+			.run(id, name, createdAt, createdAt)
+	}
+	queryAnalyticsEngineSql
+		.mockResolvedValueOnce([
+			{
+				user_id: ownerId,
+				day: '2026-10-15',
+				package_id: 'pkg-1',
+				event_type: 'dynamic_worker_day',
+				actor_user_id: visitorOrgId,
+				automation_source: '',
+				units: 1,
+			},
+			{
+				user_id: visitorOrgId,
+				day: '2026-10-15',
+				package_id: 'pkg-1',
+				event_type: 'durable_object_rows_read',
+				actor_user_id: visitorOrgId,
+				automation_source: '',
+				units: 40,
+			},
+		])
+		.mockResolvedValueOnce([
+			{
+				user_id: ownerId,
+				billed_org_id: '',
+				day: '2026-10-15',
+				package_id: 'pkg-1',
+				visitor_user_id: visitorOrgId,
+				event_type: 'dynamic_worker_day',
+				units: 1,
+			},
+			{
+				user_id: ownerId,
+				billed_org_id: visitorOrgId,
+				day: '2026-10-15',
+				package_id: 'pkg-1',
+				visitor_user_id: visitorOrgId,
+				event_type: 'durable_object_rows_read',
+				units: 40,
+			},
+		])
+	await aggregateCreditAttributionDaily(
+		{
+			APP_DB: db,
+			USAGE_EVENTS: {} as AnalyticsEngineDataset,
+			CLOUDFLARE_ACCOUNT_ID: 'account',
+			CLOUDFLARE_API_TOKEN: 'token',
+		},
+		now,
+	)
+	// The visiting org is the one charged for the rows it read.
+	expect(
+		sqlite
+			.prepare(
+				`SELECT user_id, meter, units FROM usage_attribution_daily
+				 WHERE package_id = 'pkg-1' ORDER BY meter`,
+			)
+			.all(),
+	).toEqual([
+		{ user_id: visitorOrgId, meter: 'durable_object_rows_read', units: 40 },
+		{ user_id: ownerId, meter: 'unique_worker_days', units: 1 },
+	])
+	// Both visitor rows stay under the publisher, the metered one tagged.
+	expect(
+		sqlite
+			.prepare(
+				`SELECT user_id, billed_org_id, meter FROM package_app_visitor_attribution_daily
+				 ORDER BY meter`,
+			)
+			.all(),
+	).toEqual([
+		{
+			user_id: ownerId,
+			billed_org_id: visitorOrgId,
+			meter: 'durable_object_rows_read',
+		},
+		{ user_id: ownerId, billed_org_id: '', meter: 'unique_worker_days' },
+	])
+
+	const visitors = await loadPackageAppVisitorAttribution({
+		db,
+		stableUserId: ownerId,
+		month: '2026-10',
+		dailyUnits: [
+			{
+				packageId: 'pkg-1',
+				day: '2026-10-15',
+				meter: 'unique_worker_days',
+				units: 1,
+			},
+		],
+		includes: [
+			{ meter: 'unique_worker_days', include: 0 },
+			{ meter: 'durable_object_rows_read', include: 0 },
+		],
+	})
+	const [visitor] = visitors.get('pkg-1')?.rows ?? []
+	expect(visitor).toMatchObject({
+		displayName: 'billedvisitor',
+		billedToVisitorOrg: true,
+	})
+	const rowsRead = visitor?.meters.find(
+		(meter) => meter.meter === 'durable_object_rows_read',
+	)
+	expect(rowsRead).toEqual(
+		expect.objectContaining({
+			units: 40,
+			creditsMicroUsd: 0,
+			billedToVisitorOrg: true,
+		}),
+	)
+	const workerDays = visitor?.meters.find(
+		(meter) => meter.meter === 'unique_worker_days',
+	)
+	expect(workerDays?.billedToVisitorOrg).toBeUndefined()
+	expect(visitor?.creditsMicroUsd).toBe(workerDays?.creditsMicroUsd)
+})
+
+test('another org app shows up in the visiting org usage named as shared by its owner', async () => {
+	const { loadPackageAttributionLabels } =
+		await import('./credit-attribution.ts')
+	const db = {
+		prepare(sql: string) {
+			return {
+				bind: () => ({
+					async all() {
+						if (sql.includes('INNER JOIN orgs')) {
+							return {
+								results: [
+									{
+										id: 'pkg-shared',
+										kody_id: 'tracker',
+										name: '@publisher/tracker',
+										owner_slug: 'publisher',
+									},
+								],
+							}
+						}
+						return { results: [] }
+					},
+				}),
+			}
+		},
+	} as unknown as D1Database
+	const labels = await loadPackageAttributionLabels({
+		db,
+		stableUserId: 'org-visitor',
+		username: 'visitor',
+		packageIds: ['pkg-shared'],
+	})
+	expect(labels.names.get('pkg-shared')).toBe(
+		'@publisher/tracker (app shared by @publisher)',
+	)
+	expect(labels.hrefs.get('pkg-shared')).toContain('publisher')
+})

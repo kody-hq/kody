@@ -95,6 +95,7 @@ import {
 	packageAppSyntheticHeaderValue,
 	type PackageAppTrustedDispatch,
 } from '#worker/package-runtime/package-app-synthetic.ts'
+import { resolvePackageAppBilling } from '#worker/package-runtime/package-app-billing.ts'
 import { withPackageAppVisitorHeader } from '#worker/package-runtime/package-app-visitor-header.ts'
 import {
 	endPackageAppVisit,
@@ -1109,12 +1110,20 @@ export async function servePackageAppRequest(input: {
 					sourceId: savedPackage.sourceId,
 				}),
 			),
-			createPackageAppCallerContext({
-				baseUrl,
-				owner,
+			resolvePackageAppBilling({
+				db: env.APP_DB,
+				ownerId: owner.userId,
 				visitor,
-				packageId: savedPackage.id,
-			}),
+				internetVisible: savedPackage.isInternetVisible,
+			}).then((billing) =>
+				createPackageAppCallerContext({
+					baseUrl,
+					owner,
+					visitor,
+					packageId: savedPackage.id,
+					billing,
+				}),
+			),
 		])
 		clientReadableCookieNames = getPackageAppClientReadableCookieNames(
 			packageManifest.manifest,

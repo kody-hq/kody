@@ -368,3 +368,24 @@ test('package-app consent blocks Allow when an already allowed optional need los
 
 	expect(approveButtonOf(html)).toContain('disabled=""')
 })
+
+test('package-app OAuth consent says who pays for the visit', async () => {
+	const outside = await renderStartPage(
+		createElement(PackageAppOauthConsentPage, {
+			data: {
+				...loaderData,
+				billing: { payer: 'visitor-org', orgSlug: 'ada' },
+			},
+		}),
+		href,
+	)
+	expect(outside).toContain('data-testid="package-app-oauth-who-pays"')
+	expect(outside).toContain('your org (@ada) pays for the metered work')
+	const publisher = await renderStartPage(
+		createElement(PackageAppOauthConsentPage, {
+			data: { ...loaderData, billing: { payer: 'publisher' } },
+		}),
+		href,
+	)
+	expect(publisher).toContain('the publisher pays for what this app runs')
+})

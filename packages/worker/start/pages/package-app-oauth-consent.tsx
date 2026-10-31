@@ -411,6 +411,13 @@ export function PackageAppOauthConsentPage({
 						Cancel
 					</button>
 				</form>
+				{data.billing ? (
+					<p css={mutedCss} data-testid="package-app-oauth-who-pays">
+						{data.billing.payer === 'visitor-org'
+							? `Who pays: this app belongs to another organization, so your org (@${data.billing.orgSlug}) pays for the metered work your visits cause, like storage reads, outbound fetches, and email. The publisher pays to run the app itself.`
+							: 'Who pays: the publisher pays for what this app runs for you. Signing in does not charge you.'}
+					</p>
+				) : null}
 				<p css={mutedCss} data-testid="package-app-oauth-owner-visibility">
 					The app's owner can see that you connected, when you last used it, and
 					what you allowed. They never see your credentials. You can revoke

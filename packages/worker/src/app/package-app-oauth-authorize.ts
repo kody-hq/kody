@@ -3,6 +3,7 @@ import {
 	readParsedAuthSession,
 } from '#app/auth-session.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
+import { loadOrgBindingForSlug } from '#worker/orgs/repo.ts'
 import {
 	packageAppOauthAppDomain,
 	packageAppOauthClaimLabels,
@@ -213,6 +214,7 @@ async function loadConsentPackageMeta(input: {
 	let packageName = input.kodyId
 	let publisherDisplayName = input.orgUsername
 	let iconUrl: string | null = null
+	let internetVisible = true
 	try {
 		const org = await resolvePackageAppOrgOwnerByHandle({
 			env: input.env,
@@ -227,6 +229,7 @@ async function loadConsentPackageMeta(input: {
 			})
 			if (lookup) {
 				packageName = getPackageNameLeaf(lookup.savedPackage.name)
+				internetVisible = lookup.savedPackage.isInternetVisible
 				const source = await getEntitySourceById(
 					input.env.APP_DB,
 					lookup.savedPackage.sourceId,
@@ -243,7 +246,33 @@ async function loadConsentPackageMeta(input: {
 	} catch {
 		// Consent still renders when package metadata tables are unavailable.
 	}
-	return { packageName, publisherDisplayName, iconUrl }
+	return { packageName, publisherDisplayName, iconUrl, internetVisible }
+}
+
+/**
+ * Who pays for the visitor's use of the app (ADR 0094). Members of the owning
+ * org and every visitor of an internet-visible app: the publisher. Someone
+ * from outside the org on an internal app: their own personal org.
+ */
+async function loadConsentBilling(input: {
+	env: Env
+	personId: string
+	viewerUsername: string
+	orgUsername: string
+	internetVisible: boolean
+}): Promise<NonNullable<PackageAppOauthConsentLoaderData['billing']>> {
+	if (input.internetVisible) return { payer: 'publisher' }
+	try {
+		const binding = await loadOrgBindingForSlug(
+			input.env.APP_DB,
+			input.personId,
+			input.orgUsername,
+		)
+		if (binding?.role) return { payer: 'publisher' }
+	} catch {
+		return { payer: 'publisher' }
+	}
+	return { payer: 'visitor-org', orgSlug: input.viewerUsername }
 }
 
 async function parseAndValidateAuthorizeRequest(input: {
@@ -843,6 +872,13 @@ export async function handlePackageAppOauthAuthorizeRequest(
 		kodyId: validated.client.kodyId,
 		grantId: grant?.id ?? null,
 	})
+	const billing = await loadConsentBilling({
+		env,
+		personId: user.mcpUser.userId,
+		viewerUsername: user.request.org.slug ?? user.username,
+		orgUsername: validated.client.username,
+		internetVisible: meta.internetVisible,
+	})
 
 	return {
 		consent: {
@@ -871,6 +907,7 @@ export async function handlePackageAppOauthAuthorizeRequest(
 				validated.visitorNeedDescriptions,
 			).filter((label) => !requiredLabels.includes(label)),
 			hiddenFields,
+			billing,
 		},
 	}
 }

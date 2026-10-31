@@ -21,7 +21,10 @@ import {
 	estimateEntitlementStorageEntryBytes,
 	refundDailyEntitlement,
 } from '#worker/entitlements/service.ts'
-import { type RequestContext } from '@kody-internal/shared/request-context.ts'
+import {
+	billedOrgIdOf,
+	type RequestContext,
+} from '@kody-internal/shared/request-context.ts'
 import {
 	recordUsage,
 	usageAttributionFieldsFromRequest,
@@ -1045,7 +1048,7 @@ export async function sendOutboundEmail(
 		} finally {
 			if (input.userId) {
 				await recordUsage(input.env, {
-					userId: input.userId,
+					userId: billedOrgIdOf(input.request, input.userId),
 					eventType: 'email_send',
 					entityId: message.id,
 					bytes: messageContentBytes,

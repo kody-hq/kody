@@ -3,6 +3,7 @@ import {
 	issuePackageSecretRef,
 } from '#mcp/secrets/package-secret-ref.ts'
 import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
+import { billedOrgIdOf } from '@kody-internal/shared/request-context.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { isRecord } from '@kody-internal/shared/is-record.ts'
 import {
@@ -1259,7 +1260,7 @@ export async function runBundledModuleWithRegistry(
 		const errorName =
 			outcome === 'error' ? usageErrorNameFromUnknown(error) : ''
 		await recordUsage(env, {
-			userId,
+			userId: billedOrgIdOf(callerContext.request, userId),
 			eventType: 'package_export',
 			entityId: options.packageContext.packageId,
 			durationMs: Date.now() - usageStartedAtMs,

@@ -3081,6 +3081,11 @@ export type PackageAppOauthConsentLoaderData = {
 	}>
 	alreadyAllowedLabels: Array<string>
 	hiddenFields: Record<string, string>
+	/**
+	 * Who pays for what the app runs for this visitor (ADR 0094): the
+	 * publisher, or the visitor's own org on another org's internal app.
+	 */
+	billing?: { payer: 'publisher' } | { payer: 'visitor-org'; orgSlug: string }
 }
 
 export type DiscordPageLoaderData = {

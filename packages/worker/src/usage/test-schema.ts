@@ -42,10 +42,13 @@ ON usage_attribution_daily(user_id, day);`,
 	day TEXT NOT NULL,
 	package_id TEXT NOT NULL,
 	visitor_user_id TEXT NOT NULL DEFAULT '',
+	billed_org_id TEXT NOT NULL DEFAULT '',
 	meter TEXT NOT NULL,
 	units REAL NOT NULL DEFAULT 0,
 	updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-	PRIMARY KEY (user_id, day, package_id, visitor_user_id, meter)
+	PRIMARY KEY (
+		user_id, day, package_id, visitor_user_id, billed_org_id, meter
+	)
 );`,
 		`CREATE TABLE usage_connection_daily (
 	user_id TEXT NOT NULL,

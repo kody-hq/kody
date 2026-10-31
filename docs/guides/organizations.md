@@ -272,6 +272,12 @@ Example: Jesse holds Use on `@acme/bot` and is not a member. Connected as
 Nothing is charged to Jesse's personal plan, and acme's seat count does not
 change.
 
+Visits to an internal **package app** are billed differently: a visitor from
+outside the org pays for the metered work their visits cause from their own
+personal org, and the owning org keeps paying the app's Worker compute.
+Internet-visible apps are always paid by the owning org. See
+[Package apps: who pays for visits](/docs/package-apps#who-pays-for-visits).
+
 ## Connect one client to two orgs
 
 A connection binds exactly one org at consent

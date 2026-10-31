@@ -262,11 +262,13 @@ sign-in.
 A package app runs as one person in the owning org: the person who last
 published it, unless an Owner picks someone else with `packageAppRunsAsSet`
 (`username: null` goes back to the publisher). In a personal org with no
-recorded publisher, that is the org owner. That person pays for the app and
-supplies publisher credentials through `credential(key)`. Executor needs use the
-visitor's connected credentials when the app declares them. Visitors bring their
-verified identity. `packageAppRunsAsGet` says who it is, or why the app cannot
-run as anyone.
+recorded publisher, that is the org owner. The owning org pays for the app
+(except metered work caused by visitors from other orgs, see
+[Who pays for visits](#who-pays-for-visits)), and that person supplies publisher
+credentials through `credential(key)`. Executor needs use the visitor's
+connected credentials when the app declares them. Visitors bring their verified
+identity. `packageAppRunsAsGet` says who it is, or why the app cannot run as
+anyone.
 
 - The person is checked live on every call. Someone who left the org, or whose
   account is suspended or deleted, stops the app from acting as them, with an
@@ -1427,6 +1429,30 @@ None of `appBasePath`, `assetBasePath`, `hostedUrl`, or `clientModuleUrl` ends
 with a slash, so `${assetBasePath}/styles.css` is always a single-slash join.
 When you resolve relative to a URL that does end with a slash (a service worker
 scope, `new URL('x', base)`), pass the relative path without a leading slash.
+
+### Who pays for visits
+
+Billing follows who is visiting
+([ADR 0094](../contributing/decisions/0094-cross-org-package-app-visits-bill-the-visitor-org.md)):
+
+| Visitor                                                    | Metered work (storage, fetch, capability calls, email) | Worker compute (the app's Dynamic Worker day) |
+| ---------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------- |
+| Member of the owning org (any role)                        | Owning org                                             | Owning org                                    |
+| Someone outside the org with a grant, on an internal app   | **Their own personal org**                             | Owning org                                    |
+| Anyone on an internet-visible app (anonymous or signed in) | Owning org                                             | Owning org                                    |
+
+- The visiting org's usage and credits pages list the app by name, marked as
+  shared by its owner. The usage breaker for those visits checks the visiting
+  org, so a visitor whose org is out of credits is refused without affecting
+  anyone else.
+- The publisher's Visitors table still lists every visitor; a visitor from
+  another org is marked "their org pays" and carries no credits there.
+- Stored data stays in the publisher's buckets, so storage capacity stays the
+  publisher's. Realtime sessions run as the owner and are billed to it.
+- The billed org rides on each request, never on the worker, so every visitor
+  shares one warm worker per app and commit.
+- Nothing changes in app code, and there is still no platform per-visitor limit;
+  use `kody.appRateLimit` below for that.
 
 ### App-owned limits and spend
 
