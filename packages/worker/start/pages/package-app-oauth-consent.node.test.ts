@@ -52,6 +52,7 @@ const loaderData: PackageAppOauthConsentLoaderData = {
 	optionalScopes: [{ scope: 'email', label: 'See your email address' }],
 	executorNeeds: [],
 	alreadyAllowedLabels: [],
+	device: null,
 	hiddenFields: {
 		client_id: 'acme/demo',
 		redirect_uri: 'https://acme.kody.run/_kody/auth/callback',
