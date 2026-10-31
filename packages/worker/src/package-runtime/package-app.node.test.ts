@@ -325,10 +325,6 @@ test('package app owned limit and spend helpers use the runtime bridge', async (
 			creditsMicroUsd: 2000,
 			days: [],
 		})),
-		appPublisherGet: vi.fn(async () => ({
-			user_id: 'person-publisher',
-			username: 'publisher',
-		})),
 		callCapability: vi.fn(async () => ({ unexpected: true })),
 	}
 	const proxy = createKodyProxyForTest(runtimeBridge) as Record<
@@ -354,10 +350,6 @@ test('package app owned limit and spend helpers use the runtime bridge', async (
 		windowSeconds: 60,
 	})
 	expect(runtimeBridge.appSpendGet).toHaveBeenCalledWith()
-	await expect(proxy.appPublisherGet!({})).resolves.toEqual({
-		user_id: 'person-publisher',
-		username: 'publisher',
-	})
 	expect(runtimeBridge.callCapability).not.toHaveBeenCalled()
 })
 
@@ -639,13 +631,9 @@ function createPackageAppTestEnv() {
 		load: vi.fn(() => ({ getEntrypoint })),
 		get: vi.fn(() => ({ getEntrypoint })),
 	}
+	const all = async () => ({ results: [] })
 	const appDb = {
-		prepare: () => ({
-			bind: () => ({
-				first: async () => null,
-				all: async () => ({ results: [] }),
-			}),
-		}),
+		prepare: () => ({ bind: () => ({ first: async () => null, all }) }),
 	}
 	const bundleArtifactsKv = { get: async () => null }
 	return {
