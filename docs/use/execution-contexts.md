@@ -21,6 +21,10 @@ Execution contexts are an experiment. Turn them on at
   `whenOffline: "fail" | "queue"` and `queueMinutes` (default 60, max 1440).
   Read and set overrides with `automationExecutionGet` /
   `automationExecutionSet`.
+- The operator's own runs on a context have the same Kody access as in Kody
+  cloud, workflows included; anyone else's runs on a shared context use no
+  credentials, start no workflows, and get `context_run_denied` from Kody APIs
+  kept for Kody cloud.
 - Capabilities: `executionContextList`, `executionContextGet`,
   `executionContextUpdate`, `executionContextRevoke`, `executionContextDelete`,
   `executionContextRunList`, `executionChainGet`, `executionChainSet`, and the

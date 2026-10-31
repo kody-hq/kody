@@ -340,6 +340,8 @@ export async function routeExecute(input: {
 		 * even one the person operates.
 		 */
 		profileAccess?: EffectivePermissions | null
+		/** That profile's id, carried on the lease so callbacks stay narrowed. */
+		profileId?: string | null
 	}
 	args: ExecuteRoutingArgs
 	runId: string
@@ -517,6 +519,9 @@ export async function routeExecute(input: {
 			},
 			orgId: input.request.orgId,
 			callerScopes: input.request.scopes,
+			...(input.request.profileId
+				? { profileId: input.request.profileId }
+				: {}),
 			runtime: grant.runtime,
 			deadline,
 			sharedRun,

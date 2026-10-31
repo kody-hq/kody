@@ -88,6 +88,8 @@ export type ExecutionContextLease = {
 	orgId: string
 	/** The requester's caller credential scopes (null does not narrow). */
 	callerScopes: Array<string> | null
+	/** Profile (ADR 0092) the requester acted as; callbacks act as it too. */
+	profileId?: string | null
 	runtime: EcpGrant['runtime']
 	/**
 	 * Set on queued runs: what the run can do with credentials, so the drain

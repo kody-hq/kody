@@ -115,10 +115,15 @@ uninstall, `kody update`).
   state, org membership, share, opt-in, attachment). Lost access ends the lease
   with `access_lost`. Leaving a team or org, opting out, detaching and narrowing
   a share also end in-flight leases right away.
-- Context runs never start workflows, never run `execute`, and call only the
-  runtime APIs the grant allows. Credentialed calls (`authenticatedFetch`,
-  `gatewayFetch`, `oauthClientCredentials`, `credentialClient*`) run from Kody
-  cloud, so credential values never reach the machine.
+- The operator's own runs have the same Kody access as in Kody cloud: they start
+  workflows and call `contextRuns: 'deny'` capabilities (the request carries
+  `credential.contextRunByOperator`, which lineage keeps across workflow and
+  queue boundaries). A nested `execute` runs on Kody cloud. Runs by anyone else
+  never start workflows or call `contextRuns: 'deny'` capabilities
+  (`context_run_denied`). Every context run calls only the runtime APIs the
+  grant allows. Credentialed calls (`authenticatedFetch`, `gatewayFetch`,
+  `oauthClientCredentials`, `credentialClient*`) run from Kody cloud, so
+  credential values never reach the machine.
 - Grants have no credential setting. The operator's own runs on their context
   use credentials exactly as the same run in Kody cloud (token scopes,
   credential picks and grants, package capabilities, org grants). Anyone else's

@@ -10,6 +10,9 @@ import {
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
+import { type EffectivePermissions } from '#worker/authorization/authorize.ts'
+import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { routeExecute } from './routing.ts'
 import {
 	packageFilesUseCredentials,
@@ -198,6 +201,7 @@ function route(
 		userId?: string
 		args?: Parameters<typeof routeExecute>[0]['args']
 		queue?: { expiresAt: number } | null
+		profile?: { id: string; grantedContexts: Array<string> }
 	} = {},
 ) {
 	return routeExecute({
@@ -209,6 +213,12 @@ function route(
 			orgSlug: 'acme',
 			scopes: null,
 			credentialKind: 'oauth',
+			...(options.profile
+				? {
+						profileId: options.profile.id,
+						profileAccess: profileAccessFor(options.profile),
+					}
+				: {}),
 		},
 		args: options.args ?? {},
 		runId: 'run_1',
@@ -228,6 +238,39 @@ function route(
 		waitMs: 5_000,
 		queue: options.queue ?? null,
 	})
+}
+
+/** Owner access narrowed by a one-layer profile granted only these contexts. */
+function profileAccessFor(profile: {
+	id: string
+	grantedContexts: Array<string>
+}): EffectivePermissions {
+	const grants = new Map(
+		profile.grantedContexts.map((id) => [
+			`execution_context:${id}`,
+			new Set<OrgPermission>(['execution_context:execute']),
+		]),
+	)
+	return {
+		orgId: orgId as OwnerId,
+		permissions: new Set<OrgPermission>(['execution_context:execute']),
+		isOwner: true,
+		resourcePermissions: new Map(),
+		credentialScopes: null,
+		profileGrants: null,
+		profileChain: {
+			inactive: null,
+			layers: [
+				{
+					id: profile.id,
+					name: 'bot',
+					self: true,
+					orgPermissions: new Set(),
+					resourcePermissions: grants,
+				},
+			],
+		},
+	}
 }
 
 const wakeFiles = {
@@ -612,4 +655,21 @@ test('kody:runtime aliases declared after the read that uses them still count', 
 			`${ns}function run() { return k.metaGetCurrentUser({}) }\nconst k = rt.kody\nexport default () => run()\n`,
 		),
 	).toBe(false)
+})
+
+test('a profile run takes a context only when granted it, and its lease carries the profile', async () => {
+	const s = setup()
+	addContext(s, { id: 'ec_mac' })
+	setChain(s, operator, ['ec_mac'])
+	const refused = await route(s, plainFiles['run.ts'], {
+		profile: { id: 'prf_bot', grantedContexts: [] },
+	})
+	expect(refused.kind).not.toBe('ran')
+	expect(s.dispatched).toHaveLength(0)
+	const ran = await route(s, plainFiles['run.ts'], {
+		profile: { id: 'prf_bot', grantedContexts: ['ec_mac'] },
+	})
+	expect(ran.kind).toBe('ran')
+	expect(s.dispatched).toHaveLength(1)
+	expect(s.dispatched[0]).toMatchObject({ lease: { profileId: 'prf_bot' } })
 })

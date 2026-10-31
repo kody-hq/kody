@@ -91,6 +91,7 @@ export async function routeAutomationRun(input: {
 			profileAccess: request.credential.profileId
 				? await computeEffectivePermissions({ env: input.env, request })
 				: null,
+			profileId: request.credential.profileId ?? null,
 		},
 		args: {
 			...(setting.context ? { context: setting.context } : {}),

@@ -95,8 +95,8 @@ export async function routeExecuteForCaller(input: {
 		return null
 	}
 	if (request.credential.kind === 'execution-context-run') {
-		// A context run cannot start another execute (denylisted), so this
-		// is only reached by direct misuse; keep it on cloud semantics.
+		// A nested execute from the operator's own context run runs on Kody
+		// cloud, so it cannot re-enter the busy context it came from.
 		return null
 	}
 	return routeExecute({
@@ -111,6 +111,7 @@ export async function routeExecuteForCaller(input: {
 			profileAccess: request.credential.profileId
 				? await computeEffectivePermissions({ env: input.env, request })
 				: null,
+			profileId: request.credential.profileId ?? null,
 		},
 		args: input.args,
 		runId: input.runRecord.id,

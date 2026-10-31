@@ -27,7 +27,9 @@ on your local network, or a tool installed there.
 
 A run on your machine has the same permissions and credentials as the same run
 on Kody cloud: the same token scopes, credential picks, package capabilities,
-and org grants. Two things are added, and only when you allow them:
+org grants, Kody APIs, and workflows (a nested `execute` runs on Kody cloud).
+The context's runtime allowlist, if you set one, narrows what runs on it may
+call. Two things are added, and only when you allow them:
 
 - **Host folders.** Folders you allow with `kody context policy allow` (and that
   the context's grant includes) are mounted for the run.
@@ -169,7 +171,9 @@ grant you set (host folders, egress, limits). Runs by someone other than the
 operator cannot use credentials on a shared context: when such a run needs
 credentials, Kody skips the context before the code starts (reason
 `credentials_operator_only`) and the run moves down their chain or to Kody
-cloud. Runs that use no credentials run there as usual.
+cloud. Runs that use no credentials run there as usual. Their runs also cannot
+start workflows there, and Kody APIs kept for Kody cloud refuse them
+(`context_run_denied`).
 
 ## Automations
 

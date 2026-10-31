@@ -431,3 +431,66 @@ test('a triggered run never exceeds the credential that turned it on', () => {
 		profileName: null,
 	})
 })
+
+test('context-run lineage keeps operator access and narrowing across a durable boundary', () => {
+	const operatorRun = deriveRequestContext({
+		user,
+		source: { kind: 'execution-context-run', ecid: 'ec_1', runId: 'run_1' },
+		contextRunByOperator: true,
+	})
+	const operator = parseRequestLineage(
+		JSON.parse(JSON.stringify(requestLineage(operatorRun))),
+	)
+	expect(operator?.credential).toMatchObject({
+		kind: 'execution-context-run',
+		contextRunByOperator: true,
+	})
+	expect(operator?.credential.contextCredentialIds).toBeUndefined()
+
+	const sharedRun = deriveRequestContext({
+		user,
+		source: { kind: 'execution-context-run', ecid: 'ec_1', runId: 'run_2' },
+		contextCredentialIds: [],
+	})
+	const shared = parseRequestLineage(
+		JSON.parse(JSON.stringify(requestLineage(sharedRun))),
+	)
+	expect(shared?.credential.contextRunByOperator).toBeUndefined()
+	expect(shared?.credential.contextCredentialIds).toEqual([])
+
+	// A forged operator flag never drops narrowing someone else's run carries.
+	const forged = parseRequestLineage({
+		...JSON.parse(JSON.stringify(requestLineage(sharedRun))),
+		credential: {
+			...sharedRun.credential,
+			contextRunByOperator: true,
+		},
+	})
+	expect(forged?.credential.contextCredentialIds).toEqual([])
+})
+
+test('profile binding and its frozen chain survive a lineage round trip', () => {
+	const lineage = requestLineage(
+		deriveRequestContext({
+			user,
+			source: { kind: 'api-token', tokenId: 'tok_1' },
+			profileId: 'prf_child',
+			profileChain: ['prf_root', 'prf_child'],
+		}),
+	)
+	const parsed = parseRequestLineage(JSON.parse(JSON.stringify(lineage)))
+	expect(parsed?.credential.profileId).toBe('prf_child')
+	expect(parsed?.credential.profileChain).toEqual(['prf_root', 'prf_child'])
+	expect(
+		parseRequestLineage({
+			...lineage,
+			credential: { ...lineage.credential, profileChain: ['prf_other'] },
+		})?.credential,
+	).toMatchObject({ profileId: 'prf_child' })
+	expect(
+		parseRequestLineage({
+			...lineage,
+			credential: { ...lineage.credential, profileChain: ['prf_other'] },
+		})?.credential.profileChain,
+	).toBeUndefined()
+})
