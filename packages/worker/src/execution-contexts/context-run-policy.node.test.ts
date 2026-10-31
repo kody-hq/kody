@@ -14,7 +14,6 @@ function contextRun(byOperator: boolean) {
 	return deriveRequestContext({
 		user,
 		source: { kind: 'execution-context-run', ecid: 'ec_1', runId: 'run_1' },
-		contextCredentialIds: byOperator ? null : [],
 		contextRunByOperator: byOperator,
 	})
 }

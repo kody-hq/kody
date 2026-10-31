@@ -94,11 +94,12 @@ test('LAN line appears only when local network access is on', () => {
 	).toContain('Local network access is on')
 })
 
-test("opt-in copy says runs that can use the person's credentials go elsewhere", () => {
-	expect(
-		optInCopy({ name: 'x', operator: 'sam', grant: grants.locked! })
-			.paragraphs[0],
-	).toContain(
-		'Runs that can use your credentials cannot run here; they go to the next usable entry in your chain, or fail if there is none.',
+test('opt-in copy discloses that the machine can use your credentials and read the responses', () => {
+	const copy = optInCopy({ name: 'x', operator: 'sam', grant: grants.locked! })
+	const text = copy.paragraphs.join(' ')
+	expect(text).toContain(
+		"can use your credentials (GitHub, email and any others you've connected) and read the responses",
 	)
+	expect(text).toContain('Your credential values stay in Kody cloud')
+	expect(text).toContain('Opting in is your consent to this.')
 })

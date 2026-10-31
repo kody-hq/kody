@@ -15,7 +15,6 @@ import {
 import { ExecutionContextError } from './errors.ts'
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import { type ExecutionContextRunMetadata, routeExecute } from './routing.ts'
-import { resolveRunCredentialUse } from './run-credential-use.ts'
 import { computeEffectivePermissions } from '#worker/authorization/authorize.ts'
 
 export type AutomationRouting = {
@@ -104,14 +103,6 @@ export async function routeAutomationRun(input: {
 		code: input.routing.contextCode,
 		params: input.params,
 		credentials: null,
-		credentialUse: () =>
-			resolveRunCredentialUse({
-				env: input.env,
-				request,
-				ownerId: request.org.id,
-				code: input.routing.contextCode,
-				credentials: null,
-			}),
 		apiUrl: input.callerContext.baseUrl,
 		waitMs: input.waitMs,
 		...(input.signal ? { signal: input.signal } : {}),

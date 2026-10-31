@@ -597,6 +597,7 @@ function pageRail(input: {
 			role,
 			profileUsername: session?.username,
 			executionContexts: isFeatureFlagEnabled(session, 'execution-contexts'),
+			profiles: isFeatureFlagEnabled(session, 'profiles'),
 		}),
 	}
 }

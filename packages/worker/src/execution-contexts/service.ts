@@ -1249,6 +1249,67 @@ export async function listRuns(
 	}
 }
 
+/**
+ * Cancels one run on a context (`cancelReason: user_cancelled`). Managers
+ * cancel anyone's run in this org; everyone else only their own. A run that
+ * already ended is reported, not an error, so retries are safe.
+ */
+export async function cancelContextRun(
+	caller: ExecutionContextCaller,
+	ref: string,
+	runId: string,
+) {
+	const { row, access } = await loadVisibleContext(caller, ref)
+	if (!access.granted && !access.isOperator && !isOrgOwner(caller)) notFound()
+	const manager = canManageContext(access) || isOrgOwner(caller)
+	const result = await sessionStub(caller.env, row.id).cancelRunFor({
+		runId,
+		orgId: caller.orgId,
+		...(manager ? {} : { requesterUserId: caller.userId }),
+	})
+	if (result.status === 'not_found') {
+		throw new ExecutionContextError({
+			status: 404,
+			code: 'not_found',
+			message: manager
+				? `No run ${runId} is in this context's history or queue.`
+				: `None of your runs on this context has id ${runId}. You can cancel only your own runs unless you manage the context.`,
+		})
+	}
+	if (result.status === 'starting') {
+		throw new ExecutionContextError({
+			status: 409,
+			code: 'invalid_request',
+			message:
+				'The run is still being handed to the machine. Try again in a few seconds.',
+		})
+	}
+	if (result.status === 'finished') {
+		const state = result.state || 'finished'
+		return {
+			cancelled: false,
+			id: row.id,
+			runId,
+			state,
+			message: `The run already ended (${state}).`,
+		}
+	}
+	const queued = result.queued === true
+	await recordContextAudit(caller, row.id, 'run_cancelled', {
+		runId,
+		requesterUserId: result.requesterUserId ?? null,
+		queued,
+	})
+	return {
+		cancelled: true,
+		id: row.id,
+		runId,
+		state: 'cancelled' as const,
+		cancelReason: 'user_cancelled' as const,
+		queued,
+	}
+}
+
 const historyErrorNames: Partial<Record<string, string>> = {
 	failed: 'ExecutionContextRunFailed',
 	lost: 'ExecutionContextLost',

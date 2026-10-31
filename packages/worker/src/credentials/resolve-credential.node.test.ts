@@ -16,10 +16,7 @@ import { upsertGrant } from '#worker/orgs/access-writes.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { insertSavedPackage } from '#worker/package-registry/repo.ts'
-import {
-	deriveRequestContext,
-	requestLineage,
-} from '#worker/request-context/request-context.ts'
+import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
@@ -52,7 +49,6 @@ import {
 	auditResolvedFetchPlacements,
 	resolveCredential,
 } from './resolve-credential.ts'
-import { ContextCredentialNotGrantedError } from './context-credential-grant.ts'
 
 vi.mock(
 	'#worker/test-support/apply-all-migrations.ts',
@@ -1519,65 +1515,22 @@ test('a vault reference with no binding is checked for Use like any credential t
 	])
 })
 
-test('an execution-context run resolves only the credentials its context grant lets through', async () => {
+test("a run on someone else's execution context resolves the requester's own credentials, as in Kody cloud", async () => {
 	const t = await setup()
 	const credentialId = await t.secretIdOf('orgToken')
-	const run = (contextCredentialIds: ReadonlyArray<string> | null) =>
-		deriveRequestContext({
-			user: { userId: personIdFromStored(t.ownerStableId), username: 'owner' },
-			source: { kind: 'execution-context-run', ecid: 'ec-1', runId: 'run-1' },
-			orgBinding: { org: { id: t.orgId, slug: 'owner' }, role: 'owner' },
-			contextCredentialIds,
-		})
-
-	await expect(t.resolveSecretAs(run([credentialId]))).resolves.toMatchObject({
+	const run = deriveRequestContext({
+		user: { userId: personIdFromStored(t.ownerStableId), username: 'owner' },
+		source: { kind: 'execution-context-run', ecid: 'ec-1', runId: 'run-1' },
+		orgBinding: { org: { id: t.orgId, slug: 'owner' }, role: 'owner' },
+	})
+	expect(run.credential.contextRunByOperator).toBeUndefined()
+	await expect(t.resolveSecretAs(run)).resolves.toMatchObject({
 		found: true,
 		value: secretValue,
 	})
-	// Requester mode does not narrow.
-	await expect(t.resolveSecretAs(run(null))).resolves.toMatchObject({
-		found: true,
-	})
-	for (const ids of [[], ['some-other-credential']]) {
-		await expect(t.resolveSecretAs(run(ids))).rejects.toBeInstanceOf(
-			ContextCredentialNotGrantedError,
-		)
-	}
-	// A name that is not found stays not found under a list.
-	await expect(
-		t.resolveSecretAs(run([credentialId]), null, 'missingToken'),
-	).resolves.toMatchObject({ found: false })
-
 	const rows = await t.auditRows()
 	expect(rows.map((row) => [row.resource_id, row.result])).toEqual([
 		[credentialId, 'success'],
-		[credentialId, 'success'],
-		[credentialId, 'denied'],
-		[credentialId, 'denied'],
-		[null, 'failure'],
 	])
-	expect(details(rows[2])).toMatchObject({
-		reason: 'execution_context_credential_not_granted',
-	})
 	expect(JSON.stringify(rows)).not.toContain(secretValue)
-})
-
-test('nested runs keep the context grant credential list', () => {
-	const parent = deriveRequestContext({
-		user: { userId: personIdFromStored('owner-stable'), username: 'owner' },
-		source: { kind: 'execution-context-run', ecid: 'ec-1', runId: 'run-1' },
-		contextCredentialIds: ['cred-1'],
-	})
-	const nested = deriveRequestContext({
-		user: { userId: personIdFromStored('owner-stable'), username: 'owner' },
-		source: { kind: 'inherited', lineage: requestLineage(parent) },
-	})
-	expect(nested.credential.contextCredentialIds).toEqual(['cred-1'])
-	expect(
-		deriveRequestContext({
-			user: { userId: personIdFromStored('owner-stable'), username: 'owner' },
-			source: { kind: 'mcp-oauth' },
-			contextCredentialIds: ['cred-1'],
-		}).credential.contextCredentialIds,
-	).toBeUndefined()
 })

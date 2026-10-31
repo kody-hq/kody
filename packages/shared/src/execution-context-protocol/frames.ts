@@ -75,6 +75,7 @@ export type EcpRunRejectCode = (typeof ecpRunRejectCodes)[number]
 
 export const ecpCancelReasons = [
 	'caller_cancelled',
+	'user_cancelled',
 	'deadline',
 	'revoked',
 	'grant_narrowed',

@@ -1,27 +1,32 @@
 {
   "name": "@kodycodes/desktop",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "private": true,
   "description": "Kody desktop shell and local execution runner",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "pack": "electron-builder --dir",
+    "pack": "electron-builder --config electron-builder.cjs --dir --publish never",
     "test": "node --test test/*.test.cjs",
     "validate": "npm test",
     "test:smoke": "node test/smoke.cjs",
+    "test:execution-ui": "node test/execution-ui-smoke.cjs",
+    "test:execution-shell": "node test/execution-shell-smoke.cjs",
     "test:explorer": "node test/explorer-smoke.cjs",
     "test:browser-login": "node test/browser-login-smoke.cjs",
-    "dist": "electron-builder --publish never",
-    "test:packaged-cli": "node test/packaged-cli.cjs"
+    "dist": "electron-builder --config electron-builder.cjs --publish never",
+    "test:packaged-cli": "node test/packaged-cli.cjs",
+    "dist:release": "electron-builder --config electron-builder.release.cjs --publish never"
   },
   "dependencies": {
     "@kodycodes/cli": "file:../cli",
+    "electron-updater": "^6.8.11",
     "set-cookie-parser": "^3.1.2"
   },
   "devDependencies": {
     "electron": "45.2.0",
-    "electron-builder": "26.18.0"
+    "electron-builder": "26.18.0",
+    "yaml": "^2.9.0"
   },
   "build": {
     "appId": "codes.kody.desktop",
@@ -34,15 +39,15 @@
     "files": [
       "*.cjs",
       "package.json",
-      "assets/icon.png"
+      "assets/icon.png",
+      "!electron-builder*.cjs"
     ],
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
         "dmg",
         "zip"
-      ],
-      "identity": null
+      ]
     },
     "win": {
       "target": [

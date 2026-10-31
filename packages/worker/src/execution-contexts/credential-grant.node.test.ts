@@ -3,10 +3,7 @@ import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protoco
 import { expect, test } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import {
-	contextCredentialIds,
-	contextRunCredentials,
-} from './credential-grant.ts'
+import { isOperatorContextRun } from './credential-grant.ts'
 import {
 	type ExecutionContextCaller,
 	attachContext,
@@ -81,19 +78,19 @@ function setup() {
 	}
 }
 
-test("the operator's own runs use their credentials as in cloud, and anyone else's use none", () => {
-	const own = contextRunCredentials({
-		operatorUserId: operator,
-		requesterUserId: operator,
-	})
-	expect(own).toBe('requester')
-	expect(contextCredentialIds(own)).toBeNull()
-	const other = contextRunCredentials({
-		operatorUserId: operator,
-		requesterUserId: 'user_friend',
-	})
-	expect(other).toBe('none')
-	expect(contextCredentialIds(other)).toEqual([])
+test('only the requester who operates a context counts as its operator', () => {
+	expect(
+		isOperatorContextRun({
+			operatorUserId: operator,
+			requesterUserId: operator,
+		}),
+	).toBe(true)
+	expect(
+		isOperatorContextRun({
+			operatorUserId: operator,
+			requesterUserId: 'user_friend',
+		}),
+	).toBe(false)
 })
 
 test('a context can be shared and attached with no credential narrowing first', async () => {

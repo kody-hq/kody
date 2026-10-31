@@ -952,3 +952,174 @@ test('dispatching a run that is already committed leaves the live run alone', as
 		await stub.awaitResult({ runId: 'run_dup', waitMs: 1000 }),
 	).toMatchObject({ state: 'succeeded' })
 }, 60_000)
+
+test('a person cancels their own running run with user_cancelled, and only theirs', async () => {
+	const ecid = 'ec_user_cancel'
+	const { stub, next, send } = await connect(ecid)
+	const userId = 'user_requester'
+	const pending: Array<Promise<unknown>> = []
+	const handle = beginRunRecord({
+		env,
+		userId: ownerIdFromStored(userId),
+		context: {
+			surface: 'execute',
+			name: null,
+			idempotencyKey: `key-${crypto.randomUUID()}`,
+			startedBy: {
+				userId,
+				username: 'requester',
+				client: 'cli',
+				label: 'example-token',
+			},
+		},
+		waitUntil: (promise) => {
+			pending.push(promise)
+		},
+	})
+	const dispatching = stub.dispatch({
+		request: runRequest('run_user_cancel'),
+		lease: lease(ecid, 'run_user_cancel'),
+		runRecord: handle,
+		position: 1,
+	})
+	const request = await next('run.request')
+	await send('run.accept', { runId: 'run_user_cancel' }, { re: request.seq })
+	expect((await dispatching).outcome).toBe('committed')
+	await next('run.commit')
+
+	expect(
+		await stub.cancelRunFor({
+			runId: 'run_user_cancel',
+			orgId: 'org_test',
+			requesterUserId: 'user_someone_else',
+		}),
+	).toEqual({ status: 'not_found' })
+	expect(
+		await stub.cancelRunFor({
+			runId: 'run_user_cancel',
+			orgId: 'org_other',
+		}),
+	).toEqual({ status: 'not_found' })
+
+	expect(
+		await stub.cancelRunFor({
+			runId: 'run_user_cancel',
+			orgId: 'org_test',
+			requesterUserId: userId,
+		}),
+	).toEqual({ status: 'cancelled', queued: false, requesterUserId: userId })
+	expect((await next('run.cancel')).body).toMatchObject({
+		runId: 'run_user_cancel',
+		reason: 'user_cancelled',
+	})
+	expect(
+		await stub.cancelRunFor({ runId: 'run_user_cancel', orgId: 'org_test' }),
+	).toEqual({ status: 'finished', state: 'cancelled' })
+	await drainWaitUntil(pending)
+
+	const row = (await stub.listHistory({})).rows.find(
+		(entry) => entry.runId === 'run_user_cancel',
+	)
+	expect(row).toMatchObject({
+		outcome: 'cancelled',
+		cancelReason: 'user_cancelled',
+		failureReason: 'user_cancelled',
+		errorSummary: 'The run was cancelled (user_cancelled).',
+	})
+	if (!handle) throw new Error('run record handle')
+	const record = await getRunRecord({
+		env,
+		userId: ownerIdFromStored(userId),
+		runId: handle.id,
+	})
+	expect(record?.run).toMatchObject({
+		status: 'error',
+		errorMessage: 'The run was cancelled (user_cancelled).',
+	})
+})
+
+test('cancelling a queued run drops it before it runs', async () => {
+	const ecid = 'ec_user_cancel_queued'
+	const stub = env.EXECUTION_CONTEXT_SESSION.get(
+		env.EXECUTION_CONTEXT_SESSION.idFromName(ecid),
+	)
+	await stub.issueConnectTicket({
+		snapshot: snapshot(ecid),
+		nonce: crypto.randomUUID(),
+	})
+	await stub.enqueue({
+		request: runRequest('run_queued_cancel'),
+		lease: lease(ecid, 'run_queued_cancel'),
+		runRecord: null,
+		requires: [],
+		position: 1,
+		expiresAt: Date.now() + 60_000,
+	})
+	expect(
+		await stub.cancelRunFor({
+			runId: 'run_queued_cancel',
+			orgId: 'org_test',
+			requesterUserId: 'user_someone_else',
+		}),
+	).toEqual({ status: 'not_found' })
+	expect(await stub.listQueued()).toHaveLength(1)
+	expect(
+		await stub.cancelRunFor({
+			runId: 'run_queued_cancel',
+			orgId: 'org_test',
+			requesterUserId: 'user_requester',
+		}),
+	).toEqual({
+		status: 'cancelled',
+		queued: true,
+		requesterUserId: 'user_requester',
+	})
+	expect(await stub.listQueued()).toEqual([])
+	expect(
+		await stub.cancelRunFor({ runId: 'run_queued_cancel', orgId: 'org_test' }),
+	).toEqual({ status: 'not_found' })
+})
+
+test('a queued run whose earlier attempt was refused can still be cancelled', async () => {
+	const ecid = 'ec_user_cancel_retry'
+	const stub = env.EXECUTION_CONTEXT_SESSION.get(
+		env.EXECUTION_CONTEXT_SESSION.idFromName(ecid),
+	)
+	await stub.issueConnectTicket({
+		snapshot: snapshot(ecid),
+		nonce: crypto.randomUUID(),
+	})
+	await stub.enqueue({
+		request: runRequest('run_queued_retry'),
+		lease: lease(ecid, 'run_queued_retry'),
+		runRecord: null,
+		requires: [],
+		position: 1,
+		expiresAt: Date.now() + 60_000,
+	})
+	await runInDurableObject(stub, async (_instance, state) => {
+		state.storage.sql.exec(
+			`INSERT INTO runs (run_id, state, lease_json, deadline, accept_by, created_at)
+			 VALUES ('run_queued_retry', 'rejected', ?, ?, ?, ?)`,
+			JSON.stringify(lease(ecid, 'run_queued_retry')),
+			Date.now() + 60_000,
+			Date.now(),
+			Date.now(),
+		)
+	})
+	expect(
+		await stub.cancelRunFor({
+			runId: 'run_queued_retry',
+			orgId: 'org_test',
+			requesterUserId: 'user_requester',
+		}),
+	).toEqual({
+		status: 'cancelled',
+		queued: true,
+		requesterUserId: 'user_requester',
+	})
+	expect(await stub.listQueued()).toEqual([])
+	expect(
+		await stub.cancelRunFor({ runId: 'run_queued_retry', orgId: 'org_test' }),
+	).toEqual({ status: 'finished', state: 'rejected' })
+})

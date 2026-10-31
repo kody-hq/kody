@@ -5,7 +5,8 @@ import { createServer } from 'node:http'
 import { type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { mock, test } from 'node:test'
+import { Entry } from '@napi-rs/keyring'
 import {
 	buildExecuteToolArgs,
 	executeSourcesConflict,
@@ -1142,4 +1143,26 @@ test('redact strips token-looking assignments', () => {
 		redact('access_token=abc123 refresh_token: xyz'),
 		'access_token=[redacted] refresh_token=[redacted]',
 	)
+})
+
+test('version checks never open stored keychain credentials', async () => {
+	const password = mock.method(Entry.prototype, 'getPassword', () => {
+		throw new Error('Informational commands cannot read credentials')
+	})
+	try {
+		for (const command of ['version', '--version']) {
+			let output = ''
+			const code = await runCli([command], {
+				stdout: (text) => {
+					output += text
+				},
+				stderr: (text) => assert.fail(text),
+			})
+			assert.equal(code, 0)
+			assert.ok(output.length > 0)
+		}
+		assert.equal(password.mock.callCount(), 0)
+	} finally {
+		password.mock.restore()
+	}
 })

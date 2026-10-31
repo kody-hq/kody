@@ -21,21 +21,38 @@ Execution contexts are an experiment. Turn them on at
   `whenOffline: "fail" | "queue"` and `queueMinutes` (default 60, max 1440).
   Read and set overrides with `automationExecutionGet` /
   `automationExecutionSet`.
+- Every run on a context uses the requester's own credentials exactly as in Kody
+  cloud, and credentialed requests leave from Kody cloud, so credential values
+  never reach the machine.
 - The operator's own runs on a context have the same Kody access as in Kody
-  cloud, workflows included; anyone else's runs on a shared context use no
-  credentials, start no workflows, and get `context_run_denied` from Kody APIs
-  kept for Kody cloud.
+  cloud, workflows included. On a shared context, someone else's runs need their
+  opt-in (`executionContextOptIn`, `POST /v1/execution-contexts/{id}/opt-in`, or
+  the context's page). Opting in is consent: while their run is active, the
+  operator's machine can use their credentials (GitHub, email and others they
+  have connected) and read the responses, and the operator sees their code,
+  inputs, logs and results. Without the opt-in the context is skipped
+  (`not_opted_in`) and the chain falls through; a run that names the context
+  without `fallback: "chain"` fails instead. Their runs start no workflows and
+  get `context_run_denied` from Kody APIs kept for Kody cloud.
 - Capabilities: `executionContextList`, `executionContextGet`,
   `executionContextUpdate`, `executionContextRevoke`, `executionContextDelete`,
-  `executionContextRunList`, `executionChainGet`, `executionChainSet`, and the
-  sharing capabilities. Find them with `search({ query: "execution context" })`.
+  `executionContextRunList`, `executionContextRunCancel`, `executionChainGet`,
+  `executionChainSet`, and the sharing capabilities. Find them with
+  `search({ query: "execution context" })`.
 - CLI: `kody connect --name <name>` (register plus background service),
   `kody context register --name <name>`,
   `kody daemon install | status [--json] | logs | restart | uninstall`,
   `kody update`, `kody context policy allow <path> [--mode ro|rw]`,
   `kody daemon [--max-concurrent <n>]` (`KODY_CONTEXT_MAX_CONCURRENT`, 1 to 8,
   default 2), `kody chain show | add | remove`,
-  `kody context commands [status | on | off] [--context <name>] [--json]`.
+  `kody context commands [status | on | off] [--context <name>] [--json]`,
+  `kody context cancel-run <name> <run id>`.
+- Cancel a run on a machine with `executionContextRunCancel({ id, run_id })`
+  (Open API `POST /v1/execution-contexts/{id}/runs/{run_id}/cancel`). It ends
+  cancelled with `cancelReason: "user_cancelled"` in run history (its run record
+  is status `error`). Once execute returned an in-progress runId, closing the
+  CLI or MCP client does not cancel the run; disconnecting before execute
+  returns can.
 
 ## Host commands
 

@@ -229,7 +229,12 @@ test('runCapabilityProxyGatewayFetchStream propagates missing-secret caller erro
 	})
 })
 
-function contextRunStream(credentials: unknown) {
+function contextRunStream(
+	byOperator: boolean,
+	runtime: { mode: 'all' } | { mode: 'list'; paths: Array<string> } = {
+		mode: 'all',
+	},
+) {
 	return runCapabilityProxyGatewayFetchStream({
 		ctx: {
 			env: { APP_DB: {} },
@@ -239,8 +244,8 @@ function contextRunStream(credentials: unknown) {
 				runId: 'run-1',
 				deadline: Date.now() + 60_000,
 				scopes: null,
-				runtime: { mode: 'all' },
-				credentials,
+				runtime,
+				byOperator,
 			},
 			callerContext: {
 				baseUrl: 'https://heykody.dev',
@@ -267,16 +272,25 @@ function contextRunStream(credentials: unknown) {
 	})
 }
 
-test("runCapabilityProxyGatewayFetchStream lets only the operator's own context runs use credentials", async () => {
+test('runCapabilityProxyGatewayFetchStream lets every context run use its own credentials, as in Kody cloud', async () => {
 	executeGatewayFetch.mockReset()
-	await expect(contextRunStream('none')).rejects.toMatchObject({
-		status: 403,
-		code: 'execution_context_credential_not_granted',
-	})
-	expect(executeGatewayFetch).not.toHaveBeenCalled()
-
 	executeGatewayFetch.mockImplementation(async () => new Response('ok'))
-	const response = await contextRunStream('requester')
-	expect(await response.text()).toBe('ok')
-	expect(executeGatewayFetch).toHaveBeenCalledTimes(1)
+	for (const byOperator of [true, false]) {
+		const response = await contextRunStream(byOperator)
+		expect(await response.text()).toBe('ok')
+	}
+	expect(executeGatewayFetch).toHaveBeenCalledTimes(2)
+})
+
+test('runCapabilityProxyGatewayFetchStream honors the context runtime allowlist', async () => {
+	executeGatewayFetch.mockReset()
+	for (const byOperator of [true, false]) {
+		await expect(
+			contextRunStream(byOperator, { mode: 'list', paths: ['kody.storage'] }),
+		).rejects.toMatchObject({
+			status: 403,
+			details: { reason: 'context_runtime', path: 'kody.gatewayFetch' },
+		})
+	}
+	expect(executeGatewayFetch).not.toHaveBeenCalled()
 })

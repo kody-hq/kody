@@ -6,12 +6,18 @@ import {
 	statSync,
 	writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import os, { tmpdir } from 'node:os'
+import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { mock, test } from 'node:test'
 
 const configHome = mkdtempSync(join(tmpdir(), 'kody-daemon-service-'))
+// macOS ignores XDG_CONFIG_HOME, and Windows uses APPDATA. Keep daemon
+// runtime state inside this test's directory on every native build runner.
+mock.method(os, 'homedir', () => configHome)
+syncBuiltinESMExports()
 process.env.XDG_CONFIG_HOME = configHome
+process.env.APPDATA = configHome
 delete process.env.KODY_CONTEXT_KEY_PASSPHRASE
 
 const { generateContextKey, importContextKey } =

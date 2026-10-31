@@ -10,6 +10,12 @@ Profiles are an experiment. Turn them on at
 [`/account/experiments`](https://kody.codes/account/experiments) or with
 `experimentSet({ experiment: "profiles", enabled: true })`.
 
+Manage them in the browser at
+[`/account/profiles`](https://kody.codes/account/profiles) (your personal
+workspace) or `/@{org}/-/profiles` for a team org: a tree of your profiles and
+their sub-profiles, with status, expiry, grants, and profile tokens. Owners add
+`?members=all` to see and revoke every member's profiles.
+
 ## Fields
 
 - `profileCreate` takes `name` (lowercase letters, digits, dashes; unique among
