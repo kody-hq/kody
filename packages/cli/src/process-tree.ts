@@ -4,7 +4,8 @@ const windowsHidden = {
 	encoding: 'utf8' as const,
 	stdio: ['ignore', 'pipe', 'ignore'] as Array<'ignore' | 'pipe'>,
 	windowsHide: true,
-	timeout: 15_000,
+	// PowerShell + CIM cold start takes over 15s on Windows on Arm runners.
+	timeout: 60_000,
 }
 
 /** The command line of a running Windows process, or null when it is gone. */

@@ -1,6 +1,7 @@
 const { execFile } = require('node:child_process')
 
-const hidden = { windowsHide: true, timeout: 15_000 }
+// PowerShell + CIM cold start takes over 15s on Windows on Arm runners.
+const hidden = { windowsHide: true, timeout: 60_000 }
 
 // Windows has no process groups. While the CLI is alive, taskkill walks its
 // tree; once it is gone its orphans still name it as their parent, so match
