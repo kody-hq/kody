@@ -5,7 +5,6 @@ import {
 	getRequestIp,
 	logAuditEvent,
 } from '#worker/audit-log.ts'
-import { connectionProfileGrantFields } from '#worker/connection-profiles/oauth.ts'
 import { createDb, usersTable } from '#worker/db.ts'
 import {
 	getUsernameFormatValidationError,
@@ -70,7 +69,6 @@ export async function mintDeviceGrantTokens(input: {
 
 	const pkce = await createServerPkcePair()
 	const scope = row.scope.split(' ').filter(Boolean)
-	const profileFields = connectionProfileGrantFields(null)
 	const bindingFields = grantBindingFields({
 		orgId: row.org_id,
 		personId: userId,
@@ -91,7 +89,6 @@ export async function mintDeviceGrantTokens(input: {
 			email,
 			clientId: row.client_id,
 			grantedVia: 'device_code',
-			...profileFields.metadata,
 			...bindingFields.metadata,
 		},
 		scope,
@@ -101,7 +98,6 @@ export async function mintDeviceGrantTokens(input: {
 			username,
 			displayName: resolveStoredDisplayName(user.display_name, username),
 			authTime: row.decided_at ?? Math.floor(Date.now() / 1000),
-			...profileFields.props,
 			...bindingFields.props,
 		},
 		revokeExistingGrants: false,

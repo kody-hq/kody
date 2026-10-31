@@ -6,6 +6,7 @@ import {
 import { expect, test } from 'vitest'
 import {
 	grantBindingFields,
+	grantHasRetiredConnectionProfile,
 	grantHasMetadataOrgId,
 	grantMatchesConsentOrg,
 	readOrgIdFromGrantMetadata,
@@ -127,4 +128,19 @@ test('stampOrgIdOnTokenExchange backfills orgId from userId and no-ops when set'
 		stampOrgIdOnTokenExchange({ props: {}, grantType: 'refresh_token' }),
 	).toBeUndefined()
 	expect(stampOrgIdOnTokenExchange({ props: null })).toBeUndefined()
+})
+
+test('grantHasRetiredConnectionProfile flags only grants stamped with a profile name', () => {
+	expect(
+		grantHasRetiredConnectionProfile({ connectionProfileName: 'work' }),
+	).toBe(true)
+	expect(
+		grantHasRetiredConnectionProfile({ connectionProfileName: '  ' }),
+	).toBe(false)
+	expect(
+		grantHasRetiredConnectionProfile({ connectionProfileName: null }),
+	).toBe(false)
+	expect(grantHasRetiredConnectionProfile({ orgId: 'org-1' })).toBe(false)
+	expect(grantHasRetiredConnectionProfile(null)).toBe(false)
+	expect(grantHasRetiredConnectionProfile('work')).toBe(false)
 })

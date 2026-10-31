@@ -48,7 +48,6 @@ test('interactive sources act as the person, as Owner of their own org', () => {
 			id: null,
 			orgId: stableId,
 			scopes: null,
-			profileName: null,
 		},
 		membership: { role: 'owner' },
 	})
@@ -56,7 +55,6 @@ test('interactive sources act as the person, as Owner of their own org', () => {
 	const token = deriveRequestContext({
 		user,
 		source: { kind: 'api-token', tokenId: 'tok_1' },
-		profileName: 'work',
 		scopes: ['org:execute', 'org:read'],
 	})
 	expect(token.credential).toEqual({
@@ -64,7 +62,6 @@ test('interactive sources act as the person, as Owner of their own org', () => {
 		id: 'tok_1',
 		orgId: stableId,
 		scopes: ['org:execute', 'org:read'],
-		profileName: 'work',
 	})
 	expect(token.actor).toEqual(session.actor)
 })
@@ -145,7 +142,6 @@ test('a verified member sender is the actor of an inbound email run, still bille
 			id: 'inbox-1',
 			orgId: stableId,
 			scopes: null,
-			profileName: null,
 		},
 		membership: { role: 'member' },
 	})
@@ -208,48 +204,6 @@ test('downstream runs keep the starter role instead of the org identity Owner ro
 	expect(
 		parseRequestLineage({ ...legacy, membership: { role: 'admin' } }),
 	).toBeNull()
-})
-
-test('every source keeps the connection profile it was reached through', () => {
-	const job = deriveRequestContext({
-		user,
-		source: { kind: 'schedule', jobId: 'job-1' },
-		profileName: '  work  ',
-	})
-	expect(job.credential.profileName).toBe('work')
-	expect(
-		deriveRequestContext({
-			user,
-			source: { kind: 'session' },
-			profileName: ' ',
-		}).credential.profileName,
-	).toBeNull()
-
-	// A run started by a profile-bound credential keeps that profile; a run
-	// whose starter had none keeps the profile persisted with the job.
-	const starter = deriveRequestContext({
-		user,
-		source: { kind: 'api-token', tokenId: 'tok_1' },
-		profileName: 'starter',
-	})
-	expect(
-		deriveRequestContext({
-			user,
-			source: inheritRequest(starter),
-			profileName: 'work',
-		}).credential.profileName,
-	).toBe('starter')
-	const unprofiled = deriveRequestContext({
-		user,
-		source: { kind: 'session' },
-	})
-	expect(
-		deriveRequestContext({
-			user,
-			source: inheritRequest(unprofiled),
-			profileName: 'work',
-		}).credential.profileName,
-	).toBe('work')
 })
 
 test('lineage survives a JSON round trip and malformed lineage is rejected', () => {
@@ -397,7 +351,6 @@ test('a triggered run never exceeds the credential that turned it on', () => {
 		enabler: { userId: enablerId, username: 'cy' },
 		role: 'member' as const,
 		scopes: ['package:execute' as const],
-		profileName: 'work',
 	}
 	for (const source of [
 		{ kind: 'schedule', jobId: 'job-1', enablement },
@@ -415,7 +368,6 @@ test('a triggered run never exceeds the credential that turned it on', () => {
 		expect(request.credential).toMatchObject({
 			id: 'enablement-1',
 			scopes: ['package:execute'],
-			profileName: 'work',
 		})
 	}
 	const unnarrowed = deriveRequestContext({
@@ -423,12 +375,11 @@ test('a triggered run never exceeds the credential that turned it on', () => {
 		source: {
 			kind: 'schedule',
 			jobId: 'job-1',
-			enablement: { ...enablement, scopes: null, profileName: null },
+			enablement: { ...enablement, scopes: null },
 		},
 	})
 	expect(unnarrowed.credential).toMatchObject({
 		scopes: null,
-		profileName: null,
 	})
 })
 

@@ -2,7 +2,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import { connectionUsageQuery } from '../connection-usage-query.ts'
-import { ConnectionProfiles } from './connection-profiles-panel.tsx'
 import {
 	ConnectionUsageSummaryPanel,
 	ConnectionUsageDetails,
@@ -142,11 +141,6 @@ function renderReadyView(input: {
 						state={input.usageState}
 						agents={input.connectedAgents.listAgents()}
 						pathname={input.currentHref}
-					/>
-					<ConnectionProfiles
-						payload={input.payload}
-						agents={input.connectedAgents.listAgents()}
-						currentHref={input.currentHref}
 					/>
 					{renderMcpUrlPanel({ mcpServerUrl: input.mcpServerUrl })}
 					{renderAdvancedPanel()}

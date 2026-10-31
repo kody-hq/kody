@@ -86,7 +86,7 @@ orgs is evaluated only against that org, never against all memberships. Passing
 | Execution contexts                            | the request org, or the `/@slug` org of the page                 |
 | Credential suppliers                          | the org that owns the credential                                 |
 | Repo-scoped flags                             | the org that owns the repo (personal org for personal repos)     |
-| Connection profiles, MCP event fan-out        | none (user only)                                                 |
+| MCP event fan-out                             | none (user only)                                                 |
 
 Evaluated-flag caches key on user and org (`stableUserId` plus org id in the MCP
 resolver; page org slug in the per-request app cache and in the website shell
@@ -166,19 +166,6 @@ The registry ships with one permanent flag, `demo-indicator`, which renders a
 small badge in the app chrome and exists so the system stays exercised
 end-to-end. Experiment flags live in the same registry and are removed in the
 same way: delete the definition and every gate site.
-
-`connection-profiles` is an experiment (default **off**, registry
-`defaultAudience: experiments_opt_in`) for named connection profiles on
-`/@<slug>/-/agents`. When on, experimenters create profiles with package grant
-allowlists (read/execute) for MCP `?profile=` URLs and profile-bound API tokens.
-Unlimited (no profile param) is the default connection. When off, the list page
-hides profiles and callers without the flag ignore `?profile=`. The declared
-`successMetric` is `execute` event count, goal increase: experimenters create
-restricted agent connections and keep executing against granted packages.
-Exposures are recorded at the evaluation chokepoints. Enable for experiment
-members with
-`adminFeatureFlagSet({ key: "connection-profiles", enabled: true, audience: "experiments_opt_in" })`.
-Remove the flag and gate sites when the experiment ends.
 
 `mcp-skills-extension` is an experiment (default **off**, registry
 `defaultAudience: experiments_opt_in`) for Skills-over-MCP (SEP-2640). Packages

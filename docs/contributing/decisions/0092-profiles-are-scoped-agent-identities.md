@@ -63,3 +63,9 @@ profile tokens on `/mcp` and `asProfile` are out of scope;
 - Unprofiled requests pay no extra query.
 - Handoff tokens, credential and execution-context routing for profiles, and
   enablement attribution land in the next profiles phase.
+- The old connection profiles (named, package-only narrowing behind the
+  `connection-profiles` flag) are removed. OAuth grants and API tokens still
+  stamped with a connection profile name are refused, not widened, so the holder
+  signs in again. The legacy tables and name columns are dropped in a separate
+  migration after the code that reads them is gone, because Deploy applies D1
+  migrations before the new Worker version goes live.

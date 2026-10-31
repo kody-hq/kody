@@ -113,8 +113,8 @@ export const repoGetGitRemoteCapability = defineDomainCapability(
 				request,
 			})
 			// Plain repos are not a grantable resource type. A write grant on one
-			// package must not mint write remotes for every repo in the org, and
-			// connection profiles only narrow packages — use org-wide access.
+			// package must not mint write remotes for every repo in the org, so use
+			// org-wide access.
 			const canWrite = checkOrgWide(access, 'package:write').allowed
 			const canRead = canWrite || checkOrgWide(access, 'package:read').allowed
 			const scope = pickGitRemoteAccessScope({

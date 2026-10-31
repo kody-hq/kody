@@ -27,16 +27,6 @@ import {
 	type NativeApiOperationDefinition,
 } from './native-operation-helpers.ts'
 import { type NativeApiOperationId } from './operations.ts'
-import { connectionProfilesFlagKey } from '#universal/feature-flags/registry.ts'
-import { isFeatureEnabled } from '#worker/feature-flags/service.ts'
-import { getConnectionProfileByName } from '#worker/connection-profiles/repo.ts'
-import {
-	connectionProfileNameErrorMessage,
-	getConnectionProfileNameValidationError,
-	normalizeConnectionProfileName,
-} from '#universal/connection-profiles/names.ts'
-
-import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	ProfileTokenError,
 	resolveProfileTokenTarget,
@@ -92,12 +82,6 @@ const tokenViewSchema = z.object({
 	last_used_at: z.string().nullable(),
 	rotated_at: z.string().nullable(),
 	revoked_at: z.string().nullable(),
-	profile_name: z
-		.string()
-		.nullable()
-		.describe(
-			'Named connection profile this token is bound to, or null for unlimited.',
-		),
 	profile_id: z
 		.string()
 		.nullable()
@@ -145,7 +129,7 @@ export const tokenCreateInputSchema = z
 			.max(64)
 			.optional()
 			.describe(
-				'Optional connection profile name. The token’s package access is limited to that profile’s grants. Experimenters only.',
+				'Removed: connection profiles no longer exist. Passing it fails; use profile_id.',
 			),
 		profile_id: z
 			.string()
@@ -262,15 +246,12 @@ async function assertCallerMayRotate(
 	)
 	const outlives =
 		Date.parse(target.max_expires_at) > Date.parse(caller.max_expires_at)
-	const callerProfile = caller.profile_name ?? null
-	const targetProfile = target.profile_name ?? null
 	const profileEscalation =
-		(callerProfile != null && callerProfile !== targetProfile) ||
-		(caller.profile_id != null &&
-			!(await profileTokenWithin(ctx, {
-				callerProfileId: caller.profile_id,
-				targetProfileId: target.profile_id ?? null,
-			})))
+		caller.profile_id != null &&
+		!(await profileTokenWithin(ctx, {
+			callerProfileId: caller.profile_id,
+			targetProfileId: target.profile_id ?? null,
+		}))
 	if (missing.length === 0 && !outlives && !profileEscalation) return
 	throw new ApiError({
 		status: 403,
@@ -415,17 +396,14 @@ export const tokenOperationDefinitions: Record<
 					? {
 							scopes: ctx.principal.token.scopes,
 							maxExpiresAt: ctx.principal.token.max_expires_at,
-							profileName: ctx.principal.token.profile_name ?? null,
 							profileId: ctx.principal.token.profile_id ?? null,
 						}
 					: undefined
-			const callerProfileName =
-				ctx.callerContext.request?.credential.profileName ?? null
 			const request = ctx.callerContext.request
 			const callerProfileId = request?.credential.profileId ?? null
-			if (input.profile_id !== undefined && input.profile !== undefined) {
+			if (input.profile !== undefined) {
 				throw invalidRequest(
-					'Pass profile_id or profile (a connection profile), not both.',
+					'Connection profiles were removed. Bind the token to a profile with profile_id (see profileList), or call profileHandoff.',
 				)
 			}
 			const targetProfileId = input.profile_id ?? callerProfileId
@@ -459,71 +437,6 @@ export const tokenOperationDefinitions: Record<
 					throw error
 				}
 			}
-			let profileName: string | null = null
-			if (input.profile !== undefined) {
-				profileName = normalizeConnectionProfileName(input.profile)
-				const nameError = getConnectionProfileNameValidationError(profileName)
-				if (nameError) {
-					throw invalidRequest(connectionProfileNameErrorMessage(nameError))
-				}
-				const userRow = await ctx.env.APP_DB.prepare(
-					`SELECT id FROM users WHERE stable_user_id = ?${andLiveDeletedAtSql()}`,
-				)
-					.bind(userIdOf(ctx))
-					.first<{ id: number }>()
-				const enabled =
-					userRow != null &&
-					(await isFeatureEnabled(
-						ctx.env.APP_DB,
-						connectionProfilesFlagKey,
-						userRow.id,
-						ctx.callerContext.request?.org.id
-							? { orgId: ctx.callerContext.request.org.id }
-							: null,
-					))
-				if (!enabled) {
-					throw new ApiError({
-						status: 404,
-						code: 'not_found',
-						message: 'Connection profiles are not enabled for this account.',
-					})
-				}
-				const profile = await getConnectionProfileByName({
-					db: ctx.env.APP_DB,
-					userId: userIdOf(ctx),
-					orgId: ctx.callerContext.request?.org.id,
-					name: profileName,
-				})
-				if (!profile) {
-					throw notFound(`Connection profile "${profileName}" not found.`)
-				}
-				profileName = profile.name
-			} else if (parent?.profileName) {
-				profileName = parent.profileName
-			} else if (callerProfileName) {
-				// MCP OAuth / session callers inherit their stamped profile so they
-				// cannot mint an unlimited token by omitting `profile`.
-				profileName = callerProfileName
-			}
-			if (
-				callerProfileName &&
-				profileName &&
-				callerProfileName !== profileName
-			) {
-				throw new ApiError({
-					status: 403,
-					code: 'insufficient_scope',
-					message: `This connection profile can only mint tokens for profile "${callerProfileName}".`,
-				})
-			}
-			if (callerProfileName && !profileName) {
-				throw new ApiError({
-					status: 403,
-					code: 'insufficient_scope',
-					message:
-						'This connection profile cannot mint an unlimited API token.',
-				})
-			}
 			const orgBinding: ApiTokenOrgBinding =
 				input.org_binding === 'user' ? 'user' : 'org'
 			if (
@@ -552,7 +465,6 @@ export const tokenOperationDefinitions: Record<
 				...(ctx.principal.kind === 'token'
 					? { excludeTokenId: ctx.principal.token.id }
 					: {}),
-				profileName,
 				profileId: targetProfileId,
 				profileMaxExpiresAt: profileTarget?.maxExpiresAt ?? null,
 			})

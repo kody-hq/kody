@@ -210,7 +210,6 @@ test('connected agents API lists unique inbound clients and revokes every grant 
 		{
 			clientId: 'client-a',
 			grantIds: ['grant-1', 'grant-2'],
-			connectionProfileName: null,
 			label: 'Cursor',
 			kind: 'cursor',
 			connectedAt: '2023-11-14T22:13:20.000Z',
@@ -219,7 +218,6 @@ test('connected agents API lists unique inbound clients and revokes every grant 
 		{
 			clientId: 'https://chatgpt.com/oauth/vG3/client.json',
 			grantIds: ['grant-3'],
-			connectionProfileName: null,
 			label: 'ChatGPT.com',
 			kind: 'chatgpt',
 			connectedAt: '2023-11-14T22:16:40.000Z',
@@ -355,7 +353,6 @@ test('connected agents API on a team org lists and revokes only agents approved 
 			status: response.status,
 			body: response.data as {
 				agents?: Array<{ clientId: string; grantIds: Array<string> }>
-				connectionProfilesEnabled?: boolean
 				error?: string
 			},
 		}
@@ -367,10 +364,6 @@ test('connected agents API on a team org lists and revokes only agents approved 
 	expect(team.body.agents).toEqual([
 		expect.objectContaining({ clientId: 'client-a', grantIds: ['grant-team'] }),
 	])
-	expect(team.body.connectionProfilesEnabled).toBe(false)
-
-	const profileCreate = await call({ intent: 'create', name: 'work' })
-	expect(profileCreate.status).toBe(404)
 
 	const notInTeam = await call({ intent: 'revoke', clientId: 'client-b' })
 	expect(notInTeam.status).toBe(404)

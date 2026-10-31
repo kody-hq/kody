@@ -29,7 +29,6 @@ type McpCallerContextWireInput = {
 	user?: McpUserContext | null
 	storageContext?: McpStorageContext | null
 	repoContext?: McpRepoContext | null
-	connectionProfileName?: string | null
 	profileId?: string | null
 	profileChain?: ReadonlyArray<string> | null
 	oauthClientId?: string | null
@@ -73,7 +72,6 @@ export function createMcpCallerContextWire(
 		user: input.user ?? null,
 		storageContext: input.storageContext ?? null,
 		repoContext: input.repoContext ?? null,
-		connectionProfileName: input.connectionProfileName ?? null,
 		...(input.profileId?.trim() ? { profileId: input.profileId.trim() } : {}),
 		...(input.profileId?.trim() && input.profileChain?.length
 			? { profileChain: [...input.profileChain] }
@@ -107,7 +105,6 @@ export function createMcpCallerContext(
 			? deriveRequestContext({
 					user: wire.user,
 					source: input.source,
-					profileName: wire.connectionProfileName,
 					profileId: wire.profileId ?? null,
 					profileChain: wire.profileChain ?? null,
 					oauthClientId: wire.oauthClientId ?? null,

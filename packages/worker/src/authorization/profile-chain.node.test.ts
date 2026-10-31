@@ -1,6 +1,8 @@
-import { orgPermissions } from '@kody-internal/shared/org-permissions.ts'
+import {
+	orgPermissions,
+	type OrgPermission,
+} from '@kody-internal/shared/org-permissions.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { type OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { expect, test } from 'vitest'
 import {
 	checkOrgWide,
@@ -43,7 +45,6 @@ function access(
 		isOwner: true,
 		resourcePermissions: new Map(),
 		credentialScopes: null,
-		profileGrants: null,
 		profileChain: chain,
 		...overrides,
 	}

@@ -119,30 +119,6 @@ function createEnv(options: { flagEnabled?: boolean } = {}) {
 			VALUES ('mcp-events-extension', 1, 1);
 		`)
 	}
-	const insertProfile = sqlite.prepare(
-		`INSERT INTO connection_profiles (id, user_id, name, grants_json)
-		 VALUES (?, ?, ?, ?)`,
-	)
-	insertProfile.run(
-		'profile-work',
-		stableUserId,
-		'work',
-		JSON.stringify([
-			{ resourceType: 'package', resourceId: 'pkg-gateway', actions: ['read'] },
-		]),
-	)
-	insertProfile.run(
-		'profile-other',
-		stableUserId,
-		'other',
-		JSON.stringify([
-			{
-				resourceType: 'package',
-				resourceId: 'pkg-unrelated',
-				actions: ['read'],
-			},
-		]),
-	)
 	const env = {
 		APP_DB: createD1FromSqlite(sqlite),
 		SECRET_STORE_KEY: 'test-secret-store-key-32-chars-minimum',
@@ -154,7 +130,6 @@ async function subscribe(
 	env: Env,
 	input: {
 		callbackUrl: string
-		connectionProfileName?: string | null
 		oauthClientId?: string
 		eventName?: string
 	},
@@ -162,7 +137,6 @@ async function subscribe(
 	const key = {
 		userId: stableUserId,
 		oauthClientId: input.oauthClientId ?? 'client-a',
-		connectionProfileName: input.connectionProfileName ?? null,
 		eventName: input.eventName ?? topic,
 		arguments: {},
 		callbackUrl: input.callbackUrl,
@@ -173,7 +147,6 @@ async function subscribe(
 		env,
 		id,
 		key,
-		connectionProfileName: input.connectionProfileName ?? null,
 		secret,
 		refreshBefore: new Date(now.getTime() + 60 * 60 * 1000),
 		verifiedAt: now.toISOString(),
@@ -215,17 +188,6 @@ test('fan-out signs one occurrence per allowed subscription and records outcomes
 	})
 	const profiled = await subscribe(env, {
 		callbackUrl: 'https://hooks.example.com/flaky',
-		connectionProfileName: 'work',
-	})
-	await subscribe(env, {
-		callbackUrl: 'https://hooks.example.com/ok',
-		connectionProfileName: 'other',
-		oauthClientId: 'client-other-profile',
-	})
-	await subscribe(env, {
-		callbackUrl: 'https://hooks.example.com/ok',
-		connectionProfileName: 'deleted-profile',
-		oauthClientId: 'client-deleted-profile',
 	})
 	const gone = await subscribe(env, {
 		callbackUrl: 'https://hooks.example.com/gone',
@@ -245,7 +207,7 @@ test('fan-out signs one occurrence per allowed subscription and records outcomes
 		status: 'fanned_out',
 		delivered: 2,
 		failed: 1,
-		denied: 2,
+		denied: 0,
 	})
 
 	const okWebhooks = received.filter(

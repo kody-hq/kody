@@ -346,10 +346,7 @@ export function SkillMetricsPanel({
 														{read.packageName}/{read.filePath}
 													</SiteLink>
 												</td>
-												<td>
-													{channelLabels[read.channel]}
-													{read.profileName ? ` · ${read.profileName}` : ''}
-												</td>
+												<td>{channelLabels[read.channel]}</td>
 												<td css={{ whiteSpace: 'nowrap' }}>
 													{formatTimestamp(read.occurredAt)}
 												</td>

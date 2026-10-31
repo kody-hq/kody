@@ -88,8 +88,8 @@ before opening a Feature Map PR.
   data through JSON APIs, or `package-create` for a saved package). Experimenter
   flags stay off unless the PR is labeled `preview-flag:<key>` for a key in
   `tools/preview-seed-flag-allowlist.ts`. Example: label
-  `preview-flag:connection-profiles`, wait for 🔎 Preview, then open
-  `/@<slug>/-/agents` with `browse` and check the profile controls.
+  `preview-flag:execution-contexts`, wait for 🔎 Preview, then open
+  `/@<slug>/-/execution-contexts` with `browse` and check the flagged page.
 - `/admin` 403 and `/mcp` 401 are expected for those seeds
 - Admin-gated states cannot be preview-tested with the public seed; use the
   local admin account plus Workers or unit tests

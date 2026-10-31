@@ -135,7 +135,7 @@ matching MCP subscriptions for the same user. There is no second dispatch path.
 ## Subscribe and delivery
 
 1. The host calls `events/list` and sees only MCP-opted topics from packages the
-   connection may read (connection-profile grants apply).
+   connection may read.
 2. The host calls `events/subscribe` with the event name, a HTTPS callback URL,
    and a `whsec_…` signing secret.
 3. Kody verifies the callback with a signed challenge, then stores the

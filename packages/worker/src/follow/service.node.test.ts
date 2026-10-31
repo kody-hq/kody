@@ -93,7 +93,6 @@ function executeOnlyAccess(packageId: string): EffectivePermissions {
 			],
 		]),
 		credentialScopes: null,
-		profileGrants: null,
 	}
 }
 
@@ -182,7 +181,6 @@ test('followAdd retargets an active follow whose creator was anonymized', async 
 			],
 		]),
 		credentialScopes: null,
-		profileGrants: null,
 	})
 	const viewed = await addFollow({
 		env: { APP_DB: db } as Env,
@@ -359,7 +357,6 @@ function useGrantAccess(packageId: string): EffectivePermissions {
 			],
 		]),
 		credentialScopes: null,
-		profileGrants: null,
 	}
 }
 

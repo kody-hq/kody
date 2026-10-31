@@ -38,7 +38,7 @@ export type McpEventSource = {
 /**
  * MCP-exposed events for one caller: `kody.emits` topics declared with
  * `mcp: true` in the caller's saved packages that the connection may read
- * (connection-profile grants apply). Event name = package topic. Keyed and
+ * (profile grants apply). Event name = package topic. Keyed and
  * sorted by name; the first package (by kodyId) owns a shared topic's
  * descriptor.
  */

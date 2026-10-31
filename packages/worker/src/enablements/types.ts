@@ -91,8 +91,6 @@ export type EnablementRecord = {
 	 * was recorded).
 	 */
 	enablerScopes: ReadonlyArray<OrgPermission> | null
-	/** Connection profile of the credential that turned this on. */
-	enablerProfileName: string | null
 	/**
 	 * Profile (ADR 0092) of the credential that turned this on. Its runs act
 	 * as that profile, and it pauses for good when the chain goes inactive.

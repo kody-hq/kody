@@ -245,7 +245,6 @@ test('createPackageAppRequestVisit mints a ticket only when the visitor is the a
 			id: null,
 			orgId: owner.userId,
 			scopes: null,
-			profileName: null,
 		},
 		membership: { role: 'owner' as const },
 	}
@@ -481,7 +480,6 @@ test('a narrowed visitor credential stays narrowed through the visit ticket', as
 			id: null,
 			orgId: owner.userId,
 			scopes: ['package:execute' as const, 'secret:use' as const],
-			profileName: 'work',
 		},
 		membership: { role: 'member' as const },
 	}
@@ -494,7 +492,6 @@ test('a narrowed visitor credential stays narrowed through the visit ticket', as
 	})
 	expect(visit.request?.credential).toMatchObject({
 		scopes: ['package:execute', 'secret:use'],
-		profileName: 'work',
 	})
 	const claims = await verifyPackageAppVisitTicket({
 		env: secretEnv,
@@ -507,7 +504,6 @@ test('a narrowed visitor credential stays narrowed through the visit ticket', as
 		id: null,
 		orgId: owner.userId,
 		scopes: ['package:execute', 'secret:use'],
-		profileName: 'work',
 	})
 
 	const unscoped = await mintFor(visitorA)
@@ -519,7 +515,7 @@ test('a narrowed visitor credential stays narrowed through the visit ticket', as
 	if (!unscopedClaims.visitor) throw new Error('expected a visitor ticket')
 	expect(
 		requestContextFromVisitClaims(unscopedClaims).credential,
-	).toMatchObject({ scopes: null, profileName: null })
+	).toMatchObject({ scopes: null })
 })
 
 test('a profile visitor keeps its profile and chain through the visit ticket', async () => {
@@ -538,7 +534,6 @@ test('a profile visitor keeps its profile and chain through the visit ticket', a
 				id: null,
 				orgId: owner.userId,
 				scopes: null,
-				profileName: null,
 				profileId: 'prf_child',
 				profileChain: ['prf_root', 'prf_child'],
 			},

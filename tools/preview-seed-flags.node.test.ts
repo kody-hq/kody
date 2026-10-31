@@ -9,11 +9,11 @@ test('preview-flag labels become allowlisted seed flag keys', () => {
 	expect(
 		previewSeedFlagKeysFromLabels([
 			'friction',
-			'preview-flag:connection-profiles',
+			'preview-flag:execution-contexts',
 			'preview-flag:demo-indicator',
-			'preview-flag:connection-profiles',
+			'preview-flag:execution-contexts',
 		]),
-	).toEqual(['connection-profiles', 'demo-indicator'])
+	).toEqual(['execution-contexts', 'demo-indicator'])
 	expect(previewSeedFlagKeysFromLabels(['bug'])).toEqual([])
 })
 

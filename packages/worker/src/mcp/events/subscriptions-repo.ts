@@ -13,7 +13,7 @@ import {
 
 /**
  * Subscription identity: draft (principal, delivery.url, name, arguments)
- * plus the connection profile that granted subscribe. Kody's principal is
+ * plus the profile (ADR 0092) that granted subscribe. Kody's principal is
  * the stable user id plus the OAuth client the grant was issued to. Profile
  * is part of the id so a refresh from a different (or unrestricted) grant
  * cannot overwrite another grant's stored limits.
@@ -22,7 +22,6 @@ import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 export type McpEventSubscriptionKey = {
 	userId: OwnerId
 	oauthClientId: string
-	connectionProfileName: string | null
 	/** Profile (ADR 0092) of the subscribing credential; part of the id when set. */
 	profileId?: string | null
 	eventName: string
@@ -34,7 +33,6 @@ export type McpEventSubscriptionRecord = {
 	id: string
 	userId: OwnerId
 	oauthClientId: string
-	connectionProfileName: string | null
 	profileId: string | null
 	eventName: string
 	argumentsJson: string
@@ -52,7 +50,6 @@ type McpEventSubscriptionRow = {
 	id: string
 	user_id: OwnerId
 	oauth_client_id: string
-	connection_profile_name: string | null
 	profile_id: string | null
 	event_name: string
 	arguments_json: string
@@ -69,7 +66,7 @@ type McpEventSubscriptionRow = {
 	updated_at: string
 }
 
-const selectColumns = `id, user_id, oauth_client_id, connection_profile_name, profile_id,
+const selectColumns = `id, user_id, oauth_client_id, profile_id,
 	event_name, arguments_json, callback_url, secret_encrypted,
 	previous_secret_encrypted, previous_secret_expires_at, refresh_before,
 	verified_at, active, last_delivery_at, last_error, created_at, updated_at`
@@ -89,7 +86,6 @@ function toRecord(row: McpEventSubscriptionRow): McpEventSubscriptionRecord {
 		id: row.id,
 		userId: row.user_id,
 		oauthClientId: row.oauth_client_id,
-		connectionProfileName: row.connection_profile_name,
 		profileId: row.profile_id ?? null,
 		eventName: row.event_name,
 		argumentsJson: row.arguments_json,
@@ -126,7 +122,8 @@ export async function buildMcpEventSubscriptionId(
 			canonicalJsonStringify({
 				userId: key.userId,
 				oauthClientId: key.oauthClientId,
-				connectionProfileName: key.connectionProfileName,
+				// Kept so ids minted before connection profiles were removed still match.
+				connectionProfileName: null,
 				...(key.profileId ? { profileId: key.profileId } : {}),
 				eventName: key.eventName,
 				arguments: key.arguments,
@@ -227,7 +224,6 @@ export async function upsertMcpEventSubscription(input: {
 	env: Pick<Env, 'SECRET_STORE_KEY'>
 	id: string
 	key: McpEventSubscriptionKey
-	connectionProfileName: string | null
 	secret: string
 	refreshBefore: Date
 	verifiedAt: string
@@ -271,13 +267,12 @@ export async function upsertMcpEventSubscription(input: {
 	await input.db
 		.prepare(
 			`INSERT INTO mcp_event_subscriptions (
-				id, user_id, oauth_client_id, connection_profile_name, profile_id,
+				id, user_id, oauth_client_id, profile_id,
 				event_name, arguments_json, callback_url, secret_encrypted,
 				previous_secret_encrypted, previous_secret_expires_at,
 				refresh_before, verified_at, active, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET
-				connection_profile_name = excluded.connection_profile_name,
 				profile_id = excluded.profile_id,
 				secret_encrypted = excluded.secret_encrypted,
 				previous_secret_encrypted = excluded.previous_secret_encrypted,
@@ -291,7 +286,6 @@ export async function upsertMcpEventSubscription(input: {
 			input.id,
 			input.key.userId,
 			input.key.oauthClientId,
-			input.connectionProfileName,
 			input.key.profileId ?? null,
 			input.key.eventName,
 			canonicalMcpEventArgumentsJson(input.key.arguments),

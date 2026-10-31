@@ -1294,13 +1294,6 @@ export const updateAvatar = createServerFn({ method: 'POST' })
 		)
 	})
 
-const profileGrants = z.array(
-	z.object({
-		resourceType: z.literal('package'),
-		resourceId: z.string(),
-		actions: z.array(z.enum(['read', 'execute'])),
-	}),
-)
 export const revokeConnectedAgent = createServerFn({ method: 'POST' })
 	.validator(
 		resourceInput
@@ -1329,94 +1322,6 @@ export const revokeConnectedAgent = createServerFn({ method: 'POST' })
 		)
 	})
 
-export const createConnectionProfile = createServerFn({ method: 'POST' })
-	.validator(
-		resourceInput
-			.omit({ search: true })
-			.extend({ name: z.string(), grants: profileGrants }),
-	)
-	.handler(async ({ data }) => {
-		const [
-			{ withWebsiteMutation },
-			{ createConnectedAgentProfile },
-			{ requireOperationResult },
-		] = await Promise.all([
-			import('./mutation-context.ts'),
-			import('../../src/app/handlers/account-connected-agents.ts'),
-			import('../../src/app/operation-result.ts'),
-		])
-		return withWebsiteMutation(
-			{ scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined },
-			async (context) =>
-				requireOperationResult(
-					await createConnectedAgentProfile({
-						...context,
-						name: data.name,
-						grants: data.grants,
-					}),
-				),
-		)
-	})
-
-export const updateConnectionProfile = createServerFn({ method: 'POST' })
-	.validator(
-		resourceInput.omit({ search: true }).extend({
-			profileId: z.string().trim().min(1),
-			name: z.string().optional(),
-			grants: profileGrants.optional(),
-		}),
-	)
-	.handler(async ({ data }) => {
-		const [
-			{ withWebsiteMutation },
-			{ updateConnectedAgentProfile },
-			{ requireOperationResult },
-		] = await Promise.all([
-			import('./mutation-context.ts'),
-			import('../../src/app/handlers/account-connected-agents.ts'),
-			import('../../src/app/operation-result.ts'),
-		])
-		return withWebsiteMutation(
-			{ scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined },
-			async (context) =>
-				requireOperationResult(
-					await updateConnectedAgentProfile({
-						...context,
-						profileId: data.profileId,
-						name: data.name,
-						grants: data.grants,
-					}),
-				),
-		)
-	})
-
-export const deleteConnectionProfile = createServerFn({ method: 'POST' })
-	.validator(
-		resourceInput
-			.omit({ search: true })
-			.extend({ profileId: z.string().trim().min(1) }),
-	)
-	.handler(async ({ data }) => {
-		const [
-			{ withWebsiteMutation },
-			{ deleteConnectedAgentProfile },
-			{ requireOperationResult },
-		] = await Promise.all([
-			import('./mutation-context.ts'),
-			import('../../src/app/handlers/account-connected-agents.ts'),
-			import('../../src/app/operation-result.ts'),
-		])
-		return withWebsiteMutation(
-			{ scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined },
-			async (context) =>
-				requireOperationResult(
-					await deleteConnectedAgentProfile({
-						...context,
-						profileId: data.profileId,
-					}),
-				),
-		)
-	})
 export const continueMcpAuthorization = createServerFn({ method: 'POST' })
 	.validator(
 		z.object({

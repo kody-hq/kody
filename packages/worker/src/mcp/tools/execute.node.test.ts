@@ -123,7 +123,6 @@ const mockModule = vi.hoisted(() => ({
 		async (
 			..._args: Parameters<typeof AccessControlModule.resolveCallerFeatureFlags>
 		) => ({
-			'connection-profiles': false,
 			'mcp-skills-extension': false,
 			'mcp-events-extension': false,
 		}),
@@ -345,7 +344,6 @@ async function getExecuteRegistration(
 ) {
 	vi.clearAllMocks()
 	mockModule.resolveCallerFeatureFlags.mockResolvedValue({
-		'connection-profiles': false,
 		'mcp-skills-extension': false,
 		'mcp-events-extension': false,
 	})

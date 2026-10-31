@@ -82,20 +82,6 @@ export const featureFlagDefinitions = [
 		// admin notice), not to move a product metric.
 	},
 	{
-		key: 'connection-profiles',
-		defaultEnabled: false,
-		defaultAudience: 'experiments_opt_in',
-		description:
-			'Named connection profiles on the Agents page (/@slug/-/agents): package grant allowlists (read/execute) for MCP ?profile= URLs and profile-bound API tokens. Off by default; enable with audience experiments_opt_in. Delete the flag and gate sites when the experiment ends.',
-		successMetric: {
-			eventType: 'execute',
-			measure: 'event_count',
-			goal: 'increase',
-			hypothesis:
-				'Experimenters with connection profiles create restricted agent connections and keep executing against granted packages.',
-		},
-	},
-	{
 		key: 'profiles',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
@@ -194,9 +180,6 @@ export const featureFlagDefinitions = [
 ] as const satisfies ReadonlyArray<FeatureFlagDefinition>
 
 export type FeatureFlagKey = (typeof featureFlagDefinitions)[number]['key']
-
-export const connectionProfilesFlagKey =
-	'connection-profiles' satisfies FeatureFlagKey
 
 export const mcpSkillsExtensionFlagKey =
 	'mcp-skills-extension' satisfies FeatureFlagKey

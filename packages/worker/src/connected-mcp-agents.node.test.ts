@@ -86,7 +86,6 @@ test('inbound connection state pages grants and counts unique clientIds', async 
 		{
 			clientId: 'client-a',
 			grantIds: ['grant-1', 'grant-2'],
-			connectionProfileName: null,
 			label: 'Cursor',
 			kind: 'cursor',
 			connectedAt: '2023-11-14T22:13:20.000Z',

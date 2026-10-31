@@ -51,8 +51,6 @@ export type RequestCredential = {
 	orgId: OwnerId
 	/** Null means the credential does not narrow the actor's permissions. */
 	scopes: ReadonlyArray<OrgPermission> | null
-	/** Connection profile that narrows this credential to listed resources. */
-	profileName: string | null
 	/**
 	 * The profile this credential acts as (ADR 0092), or absent/null for the
 	 * person themselves (the live mirror).

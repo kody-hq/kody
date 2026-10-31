@@ -25,7 +25,6 @@ function accessWith(
 			[resourceGrantKey('package', packageId), new Set(permissions)],
 		]),
 		credentialScopes: null,
-		profileGrants: null,
 	}
 }
 
@@ -77,7 +76,6 @@ test('a plain repo push requires org-wide package:read, not a single package gra
 			isOwner: false,
 			resourcePermissions: new Map(),
 			credentialScopes: null,
-			profileGrants: null,
 		},
 		packageId: null,
 		ownerId,

@@ -716,7 +716,6 @@ function appVisitorRequest(key: string) {
 			id: null,
 			orgId: id,
 			scopes: null,
-			profileName: null,
 		},
 		membership: { role: 'owner' },
 	}
@@ -1784,7 +1783,6 @@ test("buildPackageAppWorker never reuses one visitor's request context or creden
 							id: null,
 							orgId,
 							scopes: null,
-							profileName: null,
 						},
 						membership: { role },
 					},

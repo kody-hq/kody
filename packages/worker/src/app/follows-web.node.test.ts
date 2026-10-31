@@ -73,7 +73,6 @@ function access(
 			],
 		]),
 		credentialScopes: null,
-		profileGrants: null,
 	}
 }
 

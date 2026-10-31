@@ -85,11 +85,10 @@ export type PackageAppVisitClaims = {
 	/** Scopes the visitor granted when this request began. */
 	scopes: ReadonlyArray<string>
 	/**
-	 * The visitor's request credential narrowing (token scopes and connection
-	 * profile). Rebuilt requests keep it; null does not narrow.
+	 * The visitor's request credential scopes. Rebuilt requests keep them;
+	 * null does not narrow.
 	 */
 	credentialScopes?: ReadonlyArray<OrgPermission> | null
-	credentialProfileName?: string | null
 	/** The visitor credential's profile (ADR 0092); null is the live mirror. */
 	credentialProfileId?: string | null
 	/** That profile's chain at mint: ids, root first (attribution). */
@@ -148,7 +147,6 @@ type StoredVisitTicket = {
 	grantId: string | null
 	scopes: Array<string>
 	cs?: Array<string> | null
-	cp?: string | null
 	cpi?: string | null
 	cpc?: Array<string> | null
 	xo?: true
@@ -323,7 +321,6 @@ function claimsFromStored(stored: StoredVisitTicket): PackageAppVisitClaims {
 		grantId: stored.grantId,
 		scopes: stored.scopes,
 		credentialScopes: (stored.cs as Array<OrgPermission> | undefined) ?? null,
-		credentialProfileName: stored.cp ?? null,
 		credentialProfileId: stored.cpi ?? null,
 		...(stored.cpi && stored.cpc?.at(-1) === stored.cpi
 			? { credentialProfileChain: stored.cpc }
@@ -479,7 +476,7 @@ export async function mintPackageAppVisitTicket(input: {
 	scopes?: ReadonlyArray<string>
 	credential?: Pick<
 		RequestCredential,
-		'scopes' | 'profileName' | 'profileId' | 'profileChain'
+		'scopes' | 'profileId' | 'profileChain'
 	> | null
 	executorOnly?: boolean
 	nonce?: string
@@ -513,7 +510,6 @@ export async function mintPackageAppVisitTicket(input: {
 			grantId: input.grantId ?? null,
 			scopes: [...(input.scopes ?? [])],
 			cs: input.credential?.scopes ? [...input.credential.scopes] : null,
-			cp: input.credential?.profileName ?? null,
 			...(input.credential?.profileId
 				? {
 						cpi: input.credential.profileId,
@@ -678,7 +674,6 @@ export function requestContextFromVisitClaims(
 			id: null,
 			orgId: claims.owner.userId,
 			scopes: claims.credentialScopes ?? null,
-			profileName: claims.credentialProfileName ?? null,
 			...(claims.credentialProfileId
 				? {
 						profileId: claims.credentialProfileId,
@@ -781,7 +776,6 @@ export async function createPackageAppRequestVisit(input: {
 		grantId: input.grantId ?? null,
 		scopes: [...(input.scopes ?? [])],
 		credentialScopes: input.request.credential.scopes,
-		credentialProfileName: input.request.credential.profileName,
 		credentialProfileId: input.request.credential.profileId ?? null,
 		credentialProfileChain: input.request.credential.profileChain ?? null,
 		exp: minted.exp,

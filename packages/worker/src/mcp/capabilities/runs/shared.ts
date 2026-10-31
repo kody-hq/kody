@@ -74,7 +74,7 @@ export const runRecordSchema = z.object({
 				.string()
 				.nullable()
 				.describe(
-					'Optional display label such as an API token name or connection profile. Never a secret.',
+					'Optional display label such as an API token name. Never a secret.',
 				),
 		})
 		.nullable()

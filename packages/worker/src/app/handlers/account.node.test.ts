@@ -256,7 +256,7 @@ test('native account and session reads batch user/role and flag reads into two r
 			{ role_name: 'user', action: 'read', entity: 'user', access: 'own' },
 		],
 		flags: [{ key: 'demo-indicator', enabled: 1, rollout_percent: null }],
-		overrides: [{ flag_key: 'connection-profiles', enabled: 1 }],
+		overrides: [{ flag_key: 'profiles', enabled: 1 }],
 	})
 
 	const response = await getAccount(env, {
@@ -270,8 +270,7 @@ test('native account and session reads batch user/role and flag reads into two r
 	expect(body.session?.permissions).toEqual(['read:user:own'])
 	expect(body.session?.featureFlags).toEqual({
 		'demo-indicator': true,
-		'connection-profiles': true,
-		profiles: false,
+		profiles: true,
 		'mcp-skills-extension': false,
 		'mcp-events-extension': false,
 		'package-credential-suppliers': false,

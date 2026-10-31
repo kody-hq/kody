@@ -175,7 +175,6 @@ export const executeCapability = defineDomainCapability(
 					env: ctx.env,
 					userId,
 					request: callerContext.request,
-					startedByLabel: callerContext.request?.credential.profileName ?? null,
 					context: {
 						surface: 'execute',
 						name: null,

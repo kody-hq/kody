@@ -67,7 +67,6 @@ function createPrincipal(
 	overrides: {
 		oauthClientId?: string
 		userId?: string | null
-		connectionProfileName?: string | null
 	} = {},
 ) {
 	const sqlite = new DatabaseSync(':memory:')
@@ -90,7 +89,6 @@ function createPrincipal(
 						displayName: 'One',
 					}
 				: null,
-			connectionProfileName: overrides.connectionProfileName ?? null,
 		}),
 	}
 	return { sqlite, env, principal }
@@ -108,7 +106,7 @@ function params(
 }
 
 test('subscribe verifies the callback with a signed challenge and stores the subscription', async () => {
-	const { env, principal } = createPrincipal({ connectionProfileName: 'work' })
+	const { env, principal } = createPrincipal()
 	const result = await subscribeMcpEvent(principal, params(), now)
 
 	expect(result).toEqual({
@@ -138,7 +136,6 @@ test('subscribe verifies the callback with a signed challenge and stores the sub
 		}),
 	).resolves.toMatchObject({
 		oauthClientId: 'client-a',
-		connectionProfileName: 'work',
 		eventName: topic,
 		callbackUrl,
 		verifiedAt: now.toISOString(),

@@ -25,7 +25,6 @@ function sessionRequest(): RequestContext {
 			id: 'session-1',
 			orgId,
 			scopes: null,
-			profileName: null,
 		},
 		membership: { role: 'owner' },
 	}

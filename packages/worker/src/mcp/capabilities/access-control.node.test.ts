@@ -53,7 +53,6 @@ vi.mock('#worker/feature-flags/exposure.ts', async (importOriginal) => {
 function createFlagMap(enabled: boolean): CallerFeatureFlags {
 	return {
 		'demo-indicator': enabled,
-		'connection-profiles': false,
 		profiles: false,
 		'mcp-skills-extension': false,
 		'mcp-events-extension': false,
@@ -409,7 +408,7 @@ test('one MCP request records flag exposures once and reuses the request evaluat
 			roles: ['user'],
 		},
 	})
-	const evaluations = createEvaluations({ 'connection-profiles': true })
+	const evaluations = createEvaluations({ profiles: true })
 	flagMocks.getFeatureFlagEvaluationsForUser.mockReset()
 	flagMocks.recordFeatureFlagExposures.mockClear()
 	flagMocks.getFeatureFlagEvaluationsForUser.mockResolvedValue(evaluations)
@@ -425,7 +424,7 @@ test('one MCP request records flag exposures once and reuses the request evaluat
 	])
 	const fourth = await resolveCallerFeatureFlags(env, requestContext)
 
-	expect(registered['connection-profiles']).toBe(true)
+	expect(registered.profiles).toBe(true)
 	expect(live).toBe(registered)
 	expect(filtered).toBe(registered)
 	expect(fourth).toBe(registered)
@@ -497,7 +496,7 @@ test('flag evaluation failure fails closed, skips exposures, and is not cached',
 
 	const firstContext = caller()
 	const flags = await resolveCallerFeatureFlags(env, firstContext)
-	expect(flags['connection-profiles']).toBe(false)
+	expect(flags.profiles).toBe(false)
 	expect(await callerFeatureFlagEvaluationFailed(env, firstContext)).toBe(true)
 	expect(flagMocks.recordFeatureFlagExposures).not.toHaveBeenCalled()
 	expect(flagMocks.getFeatureFlagEvaluationsForUser).toHaveBeenCalledTimes(1)
@@ -528,7 +527,7 @@ test('an unresolved flag user is not cached across requests', async () => {
 	flagMocks.getFeatureFlagEvaluationsForUser.mockReset()
 	flagMocks.recordFeatureFlagExposures.mockClear()
 	flagMocks.getFeatureFlagEvaluationsForUser.mockResolvedValue(
-		createEvaluations({ 'connection-profiles': true }),
+		createEvaluations({ profiles: true }),
 	)
 	const caller = () =>
 		createMcpCallerContext({
@@ -543,12 +542,12 @@ test('an unresolved flag user is not cached across requests', async () => {
 		})
 
 	const missing = await resolveCallerFeatureFlags(env, caller())
-	expect(missing['connection-profiles']).toBe(false)
+	expect(missing.profiles).toBe(false)
 	expect(await callerFeatureFlagEvaluationFailed(env, caller())).toBe(false)
 	expect(flagMocks.getFeatureFlagEvaluationsForUser).not.toHaveBeenCalled()
 
 	numericUserId = 11
 	const present = await resolveCallerFeatureFlags(env, caller())
-	expect(present['connection-profiles']).toBe(true)
+	expect(present.profiles).toBe(true)
 	expect(flagMocks.getFeatureFlagEvaluationsForUser).toHaveBeenCalledTimes(1)
 })

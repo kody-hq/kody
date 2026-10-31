@@ -183,7 +183,6 @@ const apiTokenRowSchema = object({
 	last_used_at: nullable(string()),
 	rotated_at: nullable(string()),
 	revoked_at: nullable(string()),
-	profile_name: nullable(string()),
 	profile_id: nullable(string()),
 })
 
@@ -216,7 +215,6 @@ export type ApiTokenView = {
 	last_used_at: string | null
 	rotated_at: string | null
 	revoked_at: string | null
-	profile_name: string | null
 	/** Profile (ADR 0092) this token acts as; null is the live mirror. */
 	profile_id: string | null
 }
@@ -239,10 +237,6 @@ function mapRow(row: Record<string, unknown>): ApiTokenRecord {
 	}
 	const parsed = parseSafe(apiTokenRowSchema, {
 		...row,
-		profile_name:
-			typeof row.profile_name === 'string' || row.profile_name === null
-				? row.profile_name
-				: null,
 		profile_id: typeof row.profile_id === 'string' ? row.profile_id : null,
 	})
 	if (!parsed.success) {
@@ -284,7 +278,6 @@ export function toApiTokenView(
 		last_used_at: record.last_used_at,
 		rotated_at: record.rotated_at,
 		revoked_at: record.revoked_at,
-		profile_name: record.profile_name ?? null,
 		profile_id: record.profile_id ?? null,
 	}
 }
@@ -493,7 +486,6 @@ async function reclaimApiTokenSlots(input: {
 export type ApiTokenMintParent = {
 	scopes: ReadonlyArray<ApiTokenScope>
 	maxExpiresAt: string
-	profileName?: string | null
 	/** Profile the parent acts as; a child must stay on a profile too. */
 	profileId?: string | null
 }
@@ -518,7 +510,6 @@ export async function mintApiToken(input: {
 	maxLifetimeSeconds: number
 	createdVia: ApiTokenCreatedVia
 	parent?: ApiTokenMintParent
-	profileName?: string | null
 	/**
 	 * Profile (ADR 0092) the token acts as. The caller has already checked the
 	 * minter may act for it (`resolveProfileTokenTarget`).
@@ -558,23 +549,7 @@ export async function mintApiToken(input: {
 			)
 		}
 	}
-	const profileName =
-		typeof input.profileName === 'string' && input.profileName.trim()
-			? input.profileName.trim()
-			: null
-	if (parent?.profileName) {
-		if (!profileName || profileName !== parent.profileName) {
-			throw new McpCallerError(
-				`A profile-bound token can only mint tokens for the same connection profile ("${parent.profileName}").`,
-			)
-		}
-	}
 	const profileId = input.profileId?.trim() || null
-	if (profileId && profileName) {
-		throw new McpCallerError(
-			'A token binds to a profile or a connection profile, not both.',
-		)
-	}
 	if (parent?.profileId && !profileId) {
 		throw new McpCallerError(
 			'A profile-bound token can only mint tokens for itself or its sub-profiles.',
@@ -645,7 +620,6 @@ export async function mintApiToken(input: {
 		last_used_at: null,
 		rotated_at: null,
 		revoked_at: null,
-		profile_name: profileName,
 		profile_id: profileId,
 	}
 	await input.db
@@ -664,9 +638,8 @@ export async function mintApiToken(input: {
 				created_via,
 				created_at,
 				updated_at,
-				profile_name,
 				profile_id
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		)
 		.bind(
 			record.id,
@@ -682,7 +655,6 @@ export async function mintApiToken(input: {
 			record.created_via,
 			record.created_at,
 			record.updated_at,
-			record.profile_name,
 			record.profile_id,
 		)
 		.run()

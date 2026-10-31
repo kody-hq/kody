@@ -16,27 +16,12 @@ describe('runStartedByFromRequest', () => {
 		const request = deriveRequestContext({
 			user: person,
 			source: { kind: 'mcp-oauth' },
-			profileName: 'work',
 		})
 		expect(runStartedByFromRequest(request)).toEqual({
 			userId: person.userId,
 			username: 'alice',
 			client: 'mcp',
-			label: 'work',
-		})
-	})
-
-	test('prefers an explicit token name label over profile name', () => {
-		const request = deriveRequestContext({
-			user: person,
-			source: { kind: 'api-token', tokenId: 'tok_1' },
-			profileName: 'profile-a',
-		})
-		expect(runStartedByFromRequest(request, { label: 'ci-bot' })).toEqual({
-			userId: person.userId,
-			username: 'alice',
-			client: 'api-token',
-			label: 'ci-bot',
+			label: null,
 		})
 	})
 

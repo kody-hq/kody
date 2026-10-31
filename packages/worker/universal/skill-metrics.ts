@@ -18,7 +18,6 @@ export type SkillReadEvent = {
 	credentialKind: string
 	connectionId: string | null
 	clientId: string | null
-	profileName: string | null
 	channel: SkillReadChannel
 	packageId: string
 	packageName: string
