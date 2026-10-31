@@ -28,6 +28,17 @@ Start with [What is Kody?](../guides/what-is-kody.md),
 [Connect your agent](../guides/connect-your-agent.md), and
 [Local CLI execute](../guides/local-execute.md).
 
+## Links to your own pages
+
+`/@me` is a shortcut for your own account: `kody.codes/@me/-/<page>` redirects
+to `kody.codes/@<your-username>/-/<page>`, signing you in first if needed. For
+example [`/@me/-/settings`](https://kody.codes/@me/-/settings),
+[`/@me/-/secrets`](https://kody.codes/@me/-/secrets),
+[`/@me/-/agents`](https://kody.codes/@me/-/agents), and
+[`/@me/-/profiles`](https://kody.codes/@me/-/profiles). Agents can use the same
+links. Team orgs still use their own slug. Details:
+[Organizations](../guides/organizations.md#link-to-your-own-pages-with-me).
+
 ## Field reference
 
 The pages below are the MCP-level field contracts those guides link into.

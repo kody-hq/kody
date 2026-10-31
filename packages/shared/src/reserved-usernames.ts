@@ -312,6 +312,16 @@ export const permanentlyReservedSystemLocals = [
  */
 export const permanentlyReservedSystemInboundAliasLocals = ['team'] as const
 
+/**
+ * Handles the website routes itself. `/@me/...` redirects to the signed-in
+ * person's own handle, so `me` can never be claimed or unreserved.
+ */
+export const permanentlyReservedRouteHandles = ['me'] as const
+
+const permanentlyReservedRouteHandleSet = new Set<string>(
+	permanentlyReservedRouteHandles,
+)
+
 const permanentlyReservedSystemLocalSet = new Set<string>([
 	...permanentlyReservedSystemLocals,
 	...permanentlyReservedSystemInboundAliasLocals,
@@ -423,6 +433,7 @@ export function isPermanentlyReservedUsername(username: string) {
 	if (permanentlyReservedSystemLocalSet.has(normalized)) {
 		return true
 	}
+	if (permanentlyReservedRouteHandleSet.has(normalized)) return true
 	if (reservedUsernamePrefixPattern.test(normalized)) {
 		return true
 	}

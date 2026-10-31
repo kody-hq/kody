@@ -154,7 +154,12 @@ function parsePackageUrl(input: {
 			: { kind: 'invalid-package-identity' }
 	}
 
-	const owner = safelyDecodePathSegment(parts[0]?.slice(1) ?? '')
+	const pathOwner = safelyDecodePathSegment(parts[0]?.slice(1) ?? '')
+	// `/@me/...` on the app origin redirects to the viewer's own handle.
+	const owner =
+		url.origin === baseUrl.origin && pathOwner?.toLowerCase() === 'me'
+			? input.username
+			: pathOwner
 	const kodyId = safelyDecodePathSegment(parts[2] ?? '')
 	if (
 		!owner ||

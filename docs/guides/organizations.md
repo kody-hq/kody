@@ -98,6 +98,27 @@ Switch orgs from the workspace name at the top of the workspace rail (it keeps
 the section you are on), from the avatar menu's Manage group, or pick the org at
 MCP consent. Overview is `/@<slug>/-/overview`. One connection binds one org.
 
+## Link to your own pages with `/@me`
+
+`/@me` always means the signed-in person's own (personal) account. Any path
+under it redirects to the same path on your handle, so
+[`kody.codes/@me/-/profiles`](https://kody.codes/@me/-/profiles) opens
+`/@<your-username>/-/profiles`. The rest of the path and the query string are
+kept. Signed-out visitors sign in first and then land on the resolved page. `me`
+is reserved, so no person or org can claim that handle.
+
+Handy settings links: [`/@me/-/settings`](https://kody.codes/@me/-/settings),
+[`/@me/-/secrets`](https://kody.codes/@me/-/secrets),
+[`/@me/-/agents`](https://kody.codes/@me/-/agents),
+[`/@me/-/email`](https://kody.codes/@me/-/email),
+[`/@me/-/jobs`](https://kody.codes/@me/-/jobs),
+[`/@me/-/activity`](https://kody.codes/@me/-/activity), and
+[`/@me/-/waiting`](https://kody.codes/@me/-/waiting).
+
+Agents: when a doc shows `/@<slug>/-/...` for the person's personal account and
+you don't know their username, link `https://kody.codes/@me/-/...` instead. Use
+the real slug for team orgs: `/@me` never points at a team org.
+
 ## Public org page
 
 A team org's page at `kody.codes/@<slug>` is **Public** by default: anyone can

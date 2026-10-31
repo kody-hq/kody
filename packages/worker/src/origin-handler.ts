@@ -63,6 +63,7 @@ import {
 } from '#app/package-app-origin.ts'
 import { refuseNonCanonicalProductionHost } from '#app/canonical-host.ts'
 import { deliverAnonymousDocument } from '#app/anonymous-html-edge-cache.ts'
+import { handleMeHandleRedirect } from '#app/me-handle-redirect.ts'
 import { handleInboundEmail } from '#worker/email/inbound.ts'
 import { handleQueueBatch } from '#worker/queue-handler.ts'
 import { handleDrRestoreRequest } from '#worker/dr/dr-restore.ts'
@@ -1002,6 +1003,9 @@ async function handleOriginAppFetch(
 	const appOrigin = getAppBaseUrl({ env, requestUrl: request.url })
 	const insecureRedirect = getInsecureOriginRedirect(appOrigin, url)
 	if (insecureRedirect) return insecureRedirect
+
+	const meHandleRedirect = await handleMeHandleRedirect(request, env, url)
+	if (meHandleRedirect) return meHandleRedirect
 
 	const resource = mcpOAuthResourceUri(appOrigin)
 	const oauthProvider = getOriginOAuthProvider(resource)

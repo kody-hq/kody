@@ -83,3 +83,16 @@ test('reserved username validation rejects brand, support, and infrastructure na
 	expect(isUsernameEffectivelyReserved('kent-dodds-fan')).toBe(true)
 	expect(isUsernameEffectivelyReserved('my-support-bot')).toBe(true)
 })
+
+test('`me` is permanently reserved because /@me routes to the signed-in handle', () => {
+	for (const handle of ['me', 'ME', ' Me ', 'm-e', 'M_E']) {
+		expect(isReservedUsername(handle)).toBe(true)
+		expect(isUsernameEffectivelyReserved(handle, { removed: ['me'] })).toBe(
+			true,
+		)
+	}
+	expect(isPermanentlyReservedUsername('me')).toBe(true)
+	expect(isPermanentlyReservedUsername('ME')).toBe(true)
+	expect(isReservedUsername('user-me')).toBe(false)
+	expect(isReservedUsername('meow')).toBe(false)
+})

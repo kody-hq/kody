@@ -148,6 +148,11 @@ test('package identity parser accepts exact ids and current-origin URLs and reje
 		[common, 'https://heykody.dev/@user/packages/%E0%A4%A', invalid],
 		[common, 'https://heykody.dev/@other/packages/daily-notes', invalid],
 		[common, '/@INVALID/packages/daily-notes', invalid],
+		// Pasted `/@me` links resolve to the viewer on the app origin only.
+		[common, 'https://heykody.dev/@me/packages/daily-notes', byKodyId],
+		[common, '/@ME/packages/daily-notes', byKodyId],
+		[{ ...common, username: null }, '/@me/packages/daily-notes', invalid],
+		[hosted, 'https://kodyapps.dev/@me/packages/daily-notes', invalid],
 		[
 			common,
 			`https://user:password@heykody.dev/account/packages/${packageId}`,
