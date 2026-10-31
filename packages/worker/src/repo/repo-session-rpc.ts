@@ -1,3 +1,4 @@
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { type ArtifactBootstrapAccess } from './artifacts.ts'
 import { type PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { repoSessionDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
@@ -232,6 +233,7 @@ export type RepoSessionRpc = {
 		credentialNeedsApproved?: boolean
 		requestedByUserId?: string | null
 		promotePublished?: boolean
+		publisherRequest?: RequestContext | null
 		expectedHeadCommit?: string
 	}) => Promise<RepoSessionPublishResult>
 	publishFromExternalRef: (payload: {
@@ -250,6 +252,7 @@ export type RepoSessionRpc = {
 		requestedByUserId?: string | null
 		deferBundleCheckToRebuild?: boolean
 		resumeFinalize?: boolean
+		publisherRequest?: RequestContext | null
 	}) => Promise<RepoExternalPublishResult>
 	checkExternalRef: (payload: {
 		sourceId: string

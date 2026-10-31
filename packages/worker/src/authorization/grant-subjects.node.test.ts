@@ -60,6 +60,21 @@ const handWrittenSubjectMatches: Record<
 		reason:
 			'Exact subject identity: upsert dedupe and the list filter bind one subject type; listGrants keeps profile grants out of person listings.',
 	},
+	'profiles/creator-grants.ts': {
+		count: 1,
+		reason:
+			"Profile subject identity (ADR 0092): checks the profile's own live creator grant.",
+	},
+	'profiles/package-grants.ts': {
+		count: 3,
+		reason:
+			'Profile subject identity (ADR 0092): replace, remove, and list grants to one profile.',
+	},
+	'profiles/store.ts': {
+		count: 2,
+		reason:
+			"Profile subject identity (ADR 0092): loads and counts a profile chain's own grants.",
+	},
 	'orgs/offboarding.ts': {
 		count: 1,
 		reason: "Revokes the departing member's own user-subject rows.",

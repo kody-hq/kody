@@ -1,3 +1,5 @@
+import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
+import { type RequestContext } from '@kody-internal/shared/request-context.ts'
 import { type OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RepoCheckStep } from './isolated-runner-limit-message.ts'
 import * as Sentry from '@sentry/cloudflare'
@@ -58,6 +60,8 @@ export type FinalizePublishedSourceInput = {
 	allowLockedPublish?: boolean
 	/** Actor who requested the publish; forwarded to listing auto-follow ban checks. */
 	actorUserId?: string
+	/** The profile the publisher ran as; it also gets a creator grant. */
+	actorProfileId?: string | null
 	/**
 	 * A person published but no one knows who (an Artifacts push picked up by
 	 * reconcile). Package apps stop running as the previous publisher.
@@ -221,6 +225,7 @@ export async function finalizePublishedEntitySource(
 			rebuildArtifacts: input.rebuildPackageArtifacts ?? true,
 			firstPublish: !previousPublishedCommit,
 			creatorUserId: input.actorUserId ?? null,
+			creatorProfileId: input.actorProfileId ?? null,
 			// A same-commit finalize (a retry or a clean no-op sync) is not a
 			// new publish, so it writes no audit row.
 			writeAudit: previousPublishedCommit !== input.publishedCommit,
@@ -395,6 +400,8 @@ export async function publishFromExternalRef(input: {
 	/** The owner approved this commit's credential needs (or a platform rewrite). */
 	credentialNeedsApproved?: boolean
 	requestedByUserId?: string | null
+	/** The publishing request; a profile-bound one must reach every import. */
+	publisherRequest?: RequestContext | null
 	phaseTimings?: PublishPhaseTimings
 	/** Records each check step so a resource reset can name it. */
 	onCheckStep?: (step: RepoCheckStep) => Promise<void>
@@ -518,6 +525,13 @@ export async function publishFromExternalRef(input: {
 	if (!checkedManifest) {
 		throw new Error('Publish checks passed without a parsed package.json.')
 	}
+	await assertProfileCanPublishImports({
+		env: input.env,
+		request: input.publisherRequest,
+		ownerUserId: input.userId,
+		packageName: checkedManifest.name,
+		dependencies: checkedManifest.kody?.dependencies,
+	})
 	// input.files (clone collectFiles) is keyed relative to the repo, while
 	// input.sourceRoot is workspace-prefixed, so scope clone maps by the stored
 	// repo-relative root. checks.sourceFiles is already package-relative.
@@ -567,6 +581,7 @@ export async function publishFromExternalRef(input: {
 				baseUrl: input.baseUrl,
 				rebuildPackageArtifacts: input.rebuildPackageArtifacts,
 				actorUserId: input.requestedByUserId ?? undefined,
+				actorProfileId: input.publisherRequest?.credential.profileId ?? null,
 				resumeInterruptedFinalize: true,
 			})
 			return {
@@ -635,6 +650,7 @@ export async function publishFromExternalRef(input: {
 		rebuildPackageArtifacts: input.rebuildPackageArtifacts,
 		allowLockedPublish: input.allowLockedPublish,
 		actorUserId: input.requestedByUserId ?? undefined,
+		actorProfileId: input.publisherRequest?.credential.profileId ?? null,
 		publisherUnknown: !input.requestedByUserId,
 	})
 	return {

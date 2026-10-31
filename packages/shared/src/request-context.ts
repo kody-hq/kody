@@ -54,6 +54,11 @@ export type RequestCredential = {
 	/** Connection profile that narrows this credential to listed resources. */
 	profileName: string | null
 	/**
+	 * The profile this credential acts as (ADR 0092), or absent/null for the
+	 * person themselves (the live mirror).
+	 */
+	profileId?: string | null
+	/**
 	 * Execution-context runs only: the stable credential ids the context's
 	 * grant lets through. Absent or null does not narrow; empty allows none.
 	 */

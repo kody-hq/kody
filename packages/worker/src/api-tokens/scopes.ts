@@ -33,6 +33,8 @@ const keyScopeDescriptions: Partial<Record<OrgPermission, string>> = {
 	'audit:read': 'Read the org audit log.',
 	'token:read': 'List and inspect API tokens.',
 	'token:delete': 'Revoke API tokens.',
+	'profile:manage':
+		'Create, list, shorten, and revoke your profiles (Owners: list and revoke any profile in the org).',
 	'package:read': 'Read saved packages and package-backed resources.',
 	'package:execute': 'Execute saved packages.',
 	'package:write': 'Change saved packages and package-backed resources.',

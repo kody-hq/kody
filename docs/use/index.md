@@ -81,6 +81,8 @@ The pages below are the MCP-level field contracts those guides link into.
   `experimentList` / `experimentSet`:
   - [Execution contexts](./execution-contexts.md) — run execute and automations
     on your own machine; credentials stay in Kody cloud
+  - [Profiles](./profiles.md) — scoped identities for your agents, with
+    sub-profiles, expiry, and revoke
   - [Package skills](./package-skills.md) — serve package Agent Skills over MCP
   - [MCP Events](./mcp-events.md) — let MCP clients subscribe to package events
 - [Community Project mark](./community-project-mark.md) — logo for unofficial

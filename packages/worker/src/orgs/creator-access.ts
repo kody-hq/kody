@@ -1,5 +1,6 @@
 import { type OrgResourceType } from '@kody-internal/shared/org-permissions.ts'
 import { type GrantResourceType, upsertGrant } from './access-writes.ts'
+import { grantProfileCreatorAccess } from '#worker/profiles/creator-grants.ts'
 import { orgAuditWriterForPerson, type OrgAuditWriter } from './org-audit.ts'
 
 export type CreatedResource = {
@@ -37,9 +38,38 @@ export async function grantCreatorAccess(input: {
 	audit?: OrgAuditWriter | null
 	/** Also skip a resource whose grant for the creator was revoked (backfill). */
 	neverRegrant?: boolean
+	/**
+	 * The profile the creator acted as (ADR 0092). It gets its own `manage`
+	 * grant, even under an owner, since owner status does not reach a profile.
+	 */
+	creatorProfileId?: string | null
 }): Promise<{ granted: number }> {
 	const creatorUserId = input.creatorUserId
 	if (!creatorUserId || input.resources.length === 0) return { granted: 0 }
+	const profileGranted = input.creatorProfileId
+		? (
+				await grantProfileCreatorAccess({
+					db: input.env.APP_DB,
+					orgId: input.orgId,
+					profileId: input.creatorProfileId,
+					createdByUserId: creatorUserId,
+					resources: input.resources,
+				})
+			).granted
+		: 0
+	const person = await grantPersonCreatorAccess({ ...input, creatorUserId })
+	return { granted: person.granted + profileGranted }
+}
+
+async function grantPersonCreatorAccess(input: {
+	env: Pick<Env, 'APP_DB'> & Partial<Env>
+	orgId: string
+	creatorUserId: string
+	resources: ReadonlyArray<CreatedResource>
+	audit?: OrgAuditWriter | null
+	neverRegrant?: boolean
+}): Promise<{ granted: number }> {
+	const creatorUserId = input.creatorUserId
 	const role = await findMemberRole(input.env.APP_DB, {
 		orgId: input.orgId,
 		userId: creatorUserId,
