@@ -644,10 +644,7 @@ export async function runExecuteToolCall(input: {
 			// cannot record one.
 			await admissionPromise
 		}
-		const executeStartedByLabel =
-			input.startedByLabel?.trim() ||
-			callerContext.request?.credential.profileName ||
-			null
+		const executeStartedByLabel = input.startedByLabel?.trim() || null
 		if (normalizedIdempotencyKey && storageOwnerId) {
 			const claim = await claimRunRecord({
 				env,

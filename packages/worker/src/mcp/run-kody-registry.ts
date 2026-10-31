@@ -765,7 +765,6 @@ export async function runModuleWithRegistry(
 			userId: ownerIdFromCaller(callerContext) || null,
 			context: options?.runRecord ?? null,
 			request: callerContext.request,
-			startedByLabel: callerContext.request?.credential.profileName ?? null,
 			waitUntil: options?.waitUntil,
 		})
 	let enteredBundledRun = false
@@ -1233,7 +1232,6 @@ export async function runBundledModuleWithRegistry(
 			userId: ownerIdFromCaller(callerContext) || null,
 			context: runRecordContext,
 			request: callerContext.request,
-			startedByLabel: callerContext.request?.credential.profileName ?? null,
 			waitUntil,
 		})
 	let runRecordFinished = false

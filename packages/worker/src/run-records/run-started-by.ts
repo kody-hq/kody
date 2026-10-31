@@ -6,7 +6,7 @@
  * omit the field and render as unknown.
  *
  * Never stores credential secrets — only kind, optional display label (token
- * name / connection profile), and the actor person id/username.
+ * name), and the actor person id/username.
  */
 
 import {
@@ -40,7 +40,7 @@ export type RunStartedBy = {
 	username: string | null
 	client: RunStartedByClient
 	/**
-	 * Cheap display label: API token name, connection profile, or similar.
+	 * Cheap display label: API token name or similar.
 	 * Never a token value or secret.
 	 */
 	label: string | null
@@ -104,9 +104,7 @@ export function runStartedByFromRequest(
 	options?: { label?: string | null },
 ): RunStartedBy | null {
 	if (!request) return null
-	const label =
-		normalizeOptionalLabel(options?.label) ??
-		normalizeOptionalLabel(request.credential.profileName)
+	const label = normalizeOptionalLabel(options?.label)
 	return {
 		userId: request.actor?.userId ?? null,
 		username: request.actor?.username?.trim() || null,

@@ -1225,7 +1225,6 @@ test("webhook- and run-raised events reach only that run's enabler's subscriptio
 				id: 'job-x',
 				orgId: t.orgId,
 				scopes: null,
-				profileName: null,
 			},
 			membership: null,
 		},

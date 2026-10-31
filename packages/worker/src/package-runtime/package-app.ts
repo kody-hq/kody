@@ -1934,7 +1934,6 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			env: this.env,
 			userId: this.ctx.props.userId,
 			request: callerContext.request,
-			startedByLabel: callerContext.request?.credential.profileName ?? null,
 			context: {
 				packageId: this.ctx.props.packageId,
 				kodyId: this.ctx.props.kodyId,

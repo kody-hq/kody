@@ -151,24 +151,13 @@ export const cliCredentialBootstrapCapability = defineDomainCapability(
 					'cliCredentialBootstrap is not available to a profile. Mint a profile token with tokenCreate (profile_id) or profileHandoff instead.',
 				)
 			}
-			if (ctx.callerContext.request?.credential.profileName) {
-				throw new McpCallerError(
-					'cliCredentialBootstrap is not available on a named connection profile. Mint a profile-bound API token with tokenCreate instead.',
-				)
-			}
 			const parent =
 				ctx.openApiPrincipal?.kind === 'token'
 					? {
 							scopes: ctx.openApiPrincipal.token.scopes,
 							maxExpiresAt: ctx.openApiPrincipal.token.max_expires_at,
-							profileName: ctx.openApiPrincipal.token.profile_name ?? null,
 						}
 					: undefined
-			if (parent?.profileName) {
-				throw new McpCallerError(
-					'cliCredentialBootstrap is not available on a profile-bound API token. Mint a profile-bound child token with tokenCreate instead.',
-				)
-			}
 			return mintCliCredentialBootstrap({
 				db: ctx.env.APP_DB,
 				// person-keyed (not personal org): api_tokens.user_id is the person

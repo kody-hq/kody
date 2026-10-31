@@ -90,15 +90,6 @@ import {
 	parseOidcAuthorizeParams,
 } from '#worker/oidc/authorize-oidc.ts'
 import {
-	connectionProfileGrantFields,
-	resolveAuthorizeConnectionProfile,
-} from '#worker/connection-profiles/oauth.ts'
-import {
-	ConnectionProfileAuthorizeError,
-	isConnectionProfileAuthorizeError,
-} from '#worker/connection-profiles/authorize-error.ts'
-import { getConnectionProfileByName } from '#worker/connection-profiles/repo.ts'
-import {
 	readOrgSlugFromUrl,
 	stripOrgFromResourceUri,
 } from '#universal/org-binding/url.ts'
@@ -145,20 +136,17 @@ function liveOAuthUserRecord<T extends { deleted_at?: string | null }>(
 }
 
 function isAuthorizeBindingError(error: unknown): error is { message: string } {
-	return isOrgAuthorizeError(error) || isConnectionProfileAuthorizeError(error)
+	return isOrgAuthorizeError(error)
 }
 
-async function resolveAuthorizeOrgAndProfile(input: {
+async function resolveAuthorizeOrgBinding(input: {
 	authorizeUrl?: URL
 	env: Env
 	request: Request
 	authRequest: AuthRequest
 	userId: string
 	formSlug?: string | null
-}): Promise<{
-	org: AuthorizeOrg
-	connectionProfileName: string | null
-}> {
+}): Promise<{ org: AuthorizeOrg }> {
 	const urlOrg = await resolveAuthorizeOrg({
 		env: input.env,
 		request: input.request,
@@ -172,28 +160,7 @@ async function resolveAuthorizeOrgAndProfile(input: {
 		formSlug: input.formSlug ?? null,
 		urlOrg,
 	})
-	const connectionProfileName = await resolveAuthorizeConnectionProfile({
-		env: input.env,
-		request: input.request,
-		authorizeUrl: input.authorizeUrl,
-		authRequest: input.authRequest,
-		userId: input.userId,
-	})
-	if (connectionProfileName) {
-		const profile = await getConnectionProfileByName({
-			db: input.env.APP_DB,
-			userId: input.userId,
-			name: connectionProfileName,
-		})
-		const profileOrgId =
-			profile && typeof profile.orgId === 'string' ? profile.orgId.trim() : ''
-		if (profileOrgId && profileOrgId !== org.orgId) {
-			throw new ConnectionProfileAuthorizeError(
-				`Connection profile "${connectionProfileName}" was not found in @${org.slug}.`,
-			)
-		}
-	}
-	return { org, connectionProfileName }
+	return { org }
 }
 
 async function evaluateSecondAgentGiftAfterAuthorize(
@@ -1499,16 +1466,14 @@ export async function tryHandleSilentOidcAuthorize(
 		? Math.floor(authorizeSession.issuedAt / 1000)
 		: Math.floor(Date.now() / 1000)
 	let authorizeOrg: AuthorizeOrg
-	let connectionProfileName: string | null
 	try {
-		const resolved = await resolveAuthorizeOrgAndProfile({
+		const resolved = await resolveAuthorizeOrgBinding({
 			env,
 			request,
 			authRequest,
 			userId: approvedUserId,
 		})
 		authorizeOrg = resolved.org
-		connectionProfileName = resolved.connectionProfileName
 	} catch (error) {
 		if (isAuthorizeBindingError(error)) {
 			const redirectTo = oidcClientErrorRedirect(
@@ -1550,7 +1515,6 @@ export async function tryHandleSilentOidcAuthorize(
 			'consent_required',
 		)
 	}
-	const profileFields = connectionProfileGrantFields(connectionProfileName)
 	const bindingFields = grantBindingFields({
 		orgId: authorizeOrg.orgId,
 		personId: approvedUserId,
@@ -1562,7 +1526,6 @@ export async function tryHandleSilentOidcAuthorize(
 			metadata: {
 				email: approvedEmail,
 				clientId: authRequest.clientId,
-				...profileFields.metadata,
 				...bindingFields.metadata,
 			},
 			scope: resolvedScopes,
@@ -1576,7 +1539,6 @@ export async function tryHandleSilentOidcAuthorize(
 				),
 				authTime,
 				...(oidcParams.nonce ? { nonce: oidcParams.nonce } : {}),
-				...profileFields.props,
 				...bindingFields.props,
 			},
 			// Concurrent hosts sharing one client_id (e.g. ChatGPT + Codex CIMD)
@@ -2050,9 +2012,8 @@ export async function decideOAuthAuthorization({
 				? Math.floor(authorizeSession.issuedAt / 1000)
 				: Math.floor(Date.now() / 1000)
 		let authorizeOrg: AuthorizeOrg
-		let connectionProfileName: string | null
 		try {
-			const resolved = await resolveAuthorizeOrgAndProfile({
+			const resolved = await resolveAuthorizeOrgBinding({
 				authorizeUrl,
 				env,
 				request,
@@ -2061,7 +2022,6 @@ export async function decideOAuthAuthorization({
 				formSlug: readOrgSlugFromForm(formData),
 			})
 			authorizeOrg = resolved.org
-			connectionProfileName = resolved.connectionProfileName
 		} catch (error) {
 			if (isAuthorizeBindingError(error)) {
 				const redirectTo = createOidcClientErrorRedirectUrl(
@@ -2087,7 +2047,6 @@ export async function decideOAuthAuthorization({
 			}
 			throw error
 		}
-		const profileFields = connectionProfileGrantFields(connectionProfileName)
 		const bindingFields = grantBindingFields({
 			orgId: authorizeOrg.orgId,
 			personId: userId,
@@ -2099,7 +2058,6 @@ export async function decideOAuthAuthorization({
 				metadata: {
 					email: approvedEmail,
 					clientId: authRequest.clientId,
-					...profileFields.metadata,
 					...bindingFields.metadata,
 				},
 				scope: resolvedScopes,
@@ -2110,7 +2068,6 @@ export async function decideOAuthAuthorization({
 					displayName,
 					authTime,
 					...(oidcParams.nonce ? { nonce: oidcParams.nonce } : {}),
-					...profileFields.props,
 					...bindingFields.props,
 				},
 				// Concurrent hosts sharing one client_id (e.g. ChatGPT + Codex CIMD)

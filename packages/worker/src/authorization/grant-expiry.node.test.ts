@@ -155,7 +155,7 @@ test('a request context recompiles its permissions once a grant expires', async 
 		actor: { userId: memberId, username: 'member' },
 		org: { id: ownerIdFromStored(String(org.id)), slug: 'acme' },
 		membership: { role: 'member' },
-		credential: { profileName: null },
+		credential: { profileId: null },
 	} as unknown as AuthRequestContext
 	const canRead = async () =>
 		(await computeEffectivePermissions({ env, request })).resourcePermissions

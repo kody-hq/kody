@@ -251,9 +251,6 @@ export const credentialOrgGrantListCapability = defineDomainCapability(
 			const scopes = request.credential.scopes
 			const readable = (kind: CredentialKind) =>
 				!scopes || scopes.includes(`${credentialPermissionFamily(kind)}:read`)
-			if (request.credential.profileName) {
-				authorizeCredentialScope(request, 'secret:read')
-			}
 			const grants = await listPersonalCredentialOrgGrants({
 				db: ctx.env.APP_DB,
 				ownerPersonId: personId,

@@ -655,7 +655,6 @@ export async function planTriggerEnablementForCaller(input: {
 				orgId,
 				id: ownExisting.id,
 				enablerScopes: input.request.credential.scopes,
-				enablerProfileName: input.request.credential.profileName,
 				enablerProfileId: input.request.credential.profileId ?? null,
 				now: input.now,
 			}))
@@ -679,7 +678,6 @@ export async function planTriggerEnablementForCaller(input: {
 			instanceId: trigger.instanceId,
 			enablerUserId: actor.userId,
 			enablerScopes: input.request.credential.scopes,
-			enablerProfileName: input.request.credential.profileName,
 			enablerProfileId: input.request.credential.profileId ?? null,
 			origin: 'enabled',
 			senderKind: storedSender?.kind ?? null,

@@ -386,7 +386,7 @@ function chainUpdatedBy(caller: ExecutionContextCaller) {
 	}
 	return {
 		kind: 'agent' as const,
-		label: caller.request.credential.profileName ?? kind,
+		label: kind,
 	}
 }
 

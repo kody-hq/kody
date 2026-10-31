@@ -811,9 +811,9 @@ change to these decisions here so future agents do not relitigate them.
   ([#2393](https://github.com/kody-hq/kody/issues/2393)). See
   [Capabilities that need a live person](./architecture/authorization.md#capabilities-that-need-a-live-person).
 - **A triggered run never exceeds the credential that turned it on.** An
-  enablement stores the enabling credential's token scopes and connection
-  profile (`enabler_scopes_json`, `enabler_profile_name`), and scheduled,
-  webhook, inbound-email, and subscription runs derive their request with them
+  enablement stores the enabling credential's token scopes and profile
+  (`enabler_scopes_json`, `enabler_profile_id`), and scheduled, webhook,
+  inbound-email, and subscription runs derive their request with them
   (`automation()` in `request-context.ts`). A package app visit ticket carries
   the visitor credential's scopes and profile the same way. Enablements turned
   on before this was recorded store none and do not narrow.

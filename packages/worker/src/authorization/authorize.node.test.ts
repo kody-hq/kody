@@ -33,13 +33,7 @@ import {
 } from './authorize.ts'
 
 const mocks = vi.hoisted(() => ({
-	resolveConnectionProfileGrants: vi.fn(),
 	compileAccessForRequest: vi.fn(),
-}))
-
-vi.mock('#worker/connection-profiles/repo.ts', () => ({
-	resolveConnectionProfileGrants: (...args: Array<unknown>) =>
-		mocks.resolveConnectionProfileGrants(...args),
 }))
 
 vi.mock('./access-compile.ts', async (importOriginal) => {
@@ -62,7 +56,6 @@ function access(
 		isOwner: true,
 		resourcePermissions: new Map(),
 		credentialScopes: null,
-		profileGrants: null,
 		...overrides,
 	}
 }
@@ -114,7 +107,6 @@ test('every person owns their implicit org and holds every org permission in it'
 	expect(effective.orgId).toBe(personalOrgId(personIdFromStored('user-1')))
 	expect(effective.isOwner).toBe(true)
 	expect(effective.credentialScopes).toBeNull()
-	expect(effective.profileGrants).toBeNull()
 	await expect(
 		authorize({ env, request }, 'package:write', {
 			type: 'package',
@@ -260,114 +252,6 @@ test('role denials do not suggest minting a token', () => {
 	expect(error.mintScopes).toBeNull()
 })
 
-test('a connection profile narrows the package resources it lists', () => {
-	const profiled = access({
-		profileGrants: [
-			{ resourceType: 'package', resourceId: 'pkg-1', actions: ['read'] },
-		],
-	})
-	expect(
-		checkPermission(profiled, 'package:read', packageResource()).allowed,
-	).toBe(true)
-	const executeDenied = denial(
-		checkPermission(
-			profiled,
-			'package:execute',
-			packageResource({ label: undefined }),
-		),
-	)
-	expect(executeDenied.code).toBe('connection_profile')
-	expect(
-		checkPermission(
-			profiled,
-			'package:read',
-			packageResource({ id: 'pkg-2', label: undefined }),
-		).allowed,
-	).toBe(false)
-	const writeDenied = denial(
-		checkPermission(profiled, 'package:write', packageResource()),
-	)
-	expect(writeDenied.code).toBe('connection_profile')
-	const writeGranted = access({
-		profileGrants: [
-			{
-				resourceType: 'package',
-				resourceId: 'pkg-1',
-				actions: ['read', 'write'],
-			},
-		],
-	})
-	expect(
-		checkPermission(writeGranted, 'package:write', packageResource()).allowed,
-	).toBe(true)
-	for (const permission of ['package:delete', 'package:publish'] as const) {
-		const denied = denial(
-			checkPermission(profiled, permission, packageResource()),
-		)
-		expect(denied.code).toBe('connection_profile')
-		expect(
-			checkPermission(writeGranted, permission, packageResource()).allowed,
-		).toBe(true)
-	}
-	// Org-level package:create stays open so plain repo create is unchanged.
-	expect(checkPermission(profiled, 'package:create').allowed).toBe(true)
-	// Profiles list packages only, so other resources and org-level checks
-	// are left to the role and credential.
-	expect(checkPermission(profiled, 'package:read').allowed).toBe(true)
-	expect(
-		checkPermission(profiled, 'secret:use', {
-			type: 'credential',
-			id: 'token',
-			orgId: ownerIdFromStored('org-1'),
-		}).allowed,
-	).toBe(true)
-})
-
-test('a bound profile cannot create a saved package and an unbound caller can', async () => {
-	const bound = deriveRequestContext({
-		user: { userId: personIdFromStored('user-1') },
-		source: { kind: 'mcp-oauth' },
-		profileName: 'work',
-	})
-	stubCompile(bound)
-	mocks.resolveConnectionProfileGrants.mockResolvedValueOnce([
-		{
-			resourceType: 'package',
-			resourceId: 'pkg-1',
-			actions: ['read', 'write'],
-		},
-	])
-	const error = await authorizePackageCreate({
-		env,
-		request: bound,
-	}).catch((caught: unknown) => caught)
-	expect(error).toBeInstanceOf(AuthorizationError)
-	expect(error).toMatchObject({
-		code: 'connection_profile',
-		permission: 'package:create',
-	})
-
-	const emptyGrants = deriveRequestContext({
-		user: { userId: personIdFromStored('user-1') },
-		source: { kind: 'mcp-oauth' },
-		profileName: 'empty',
-	})
-	stubCompile(emptyGrants)
-	mocks.resolveConnectionProfileGrants.mockResolvedValueOnce([])
-	await expect(
-		authorizePackageCreate({ env, request: emptyGrants }),
-	).rejects.toMatchObject({ code: 'connection_profile' })
-
-	const unbound = sessionRequestContext('user-1')
-	stubCompile(unbound)
-	await expect(
-		authorizePackageCreate({ env, request: unbound }),
-	).resolves.toBeUndefined()
-	await expect(
-		authorizePackageCreate({ env, request: null }),
-	).rejects.toMatchObject({ code: 'unauthenticated' })
-})
-
 test('a member without package:create cannot create a saved package', async () => {
 	const member = deriveRequestContext({
 		user: { userId: personIdFromStored('user-1') },
@@ -430,14 +314,6 @@ test('lists show a package when the request holds any permission on it', () => {
 		userId: ownerIdFromStored('org-1'),
 	})
 	expect(canSeeResource(access(), pkg)).toBe(true)
-	const executeOnly = access({
-		profileGrants: [
-			{ resourceType: 'package', resourceId: 'pkg-1', actions: ['execute'] },
-		],
-	})
-	expect(canSeeResource(executeOnly, pkg)).toBe(true)
-	expect(checkPermission(executeOnly, 'package:read', pkg).allowed).toBe(false)
-	expect(canSeeResource(access({ profileGrants: [] }), pkg)).toBe(false)
 	expect(
 		canSeeResource(
 			access(),
@@ -458,26 +334,6 @@ test('lists show a package when the request holds any permission on it', () => {
 	expect(canSeeResource(grantedOnly, packageResource({ id: 'pkg-2' }))).toBe(
 		false,
 	)
-})
-
-test('Automation keeps the connection profile of the credential that created it', async () => {
-	const grants = [
-		{ resourceType: 'package', resourceId: 'pkg-1', actions: ['read'] },
-	]
-	mocks.resolveConnectionProfileGrants.mockResolvedValueOnce(grants)
-	const request = deriveRequestContext({
-		user: { userId: personIdFromStored('user-1') },
-		source: { kind: 'schedule', jobId: 'job-1' },
-		profileName: ' work ',
-	})
-	stubCompile(request)
-	const effective = await computeEffectivePermissions({ env, request })
-	expect(mocks.resolveConnectionProfileGrants).toHaveBeenCalledWith({
-		db: env.APP_DB,
-		userId: ownerIdFromStored('user-1'),
-		profileName: 'work',
-	})
-	expect(effective.profileGrants).toEqual(grants)
 })
 
 test('only a person behind the request is live; a triggered run and anything it starts never are', () => {

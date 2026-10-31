@@ -343,7 +343,6 @@ test('a run acting as a profile needs execution_context:command granted to every
 			isOwner: true,
 			resourcePermissions: new Map(),
 			credentialScopes: null,
-			profileGrants: null,
 			profileChain: {
 				inactive: null,
 				layers: [

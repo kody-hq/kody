@@ -366,6 +366,7 @@ test('toApiError surfaces a publish compute-limit caller error as-is even when i
 		status: 400,
 		code: 'invalid_request',
 	})
+	expect(apiError.message).toBe(message)
 	expect(apiError.message).toContain('exceeded a Kody compute limit')
 	expect(apiError.message).toContain('credential stamp scan')
 	expect(apiError.message).toContain('kody dev check')

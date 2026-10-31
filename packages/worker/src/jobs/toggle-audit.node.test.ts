@@ -46,7 +46,6 @@ function request(
 			id: 'cred-1',
 			orgId,
 			scopes: null,
-			profileName: null,
 		},
 		membership: { role: 'owner' },
 		...rest,

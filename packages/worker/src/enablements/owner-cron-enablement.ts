@@ -45,10 +45,7 @@ async function ownerHasCronEnablementRow(input: {
 }
 
 /** What the person turning a trigger on could do with their credential. */
-export type EnablerCredential = Pick<
-	RequestCredential,
-	'scopes' | 'profileName' | 'profileId'
->
+export type EnablerCredential = Pick<RequestCredential, 'scopes' | 'profileId'>
 
 export type OwnerCronEnablementOutcome =
 	| 'inserted'
@@ -141,7 +138,6 @@ export async function ensureOwnerCronEnablementForJob(input: {
 				jobName: input.jobName,
 				enablerUserId: String(enablerUserId),
 				enablerScopes: input.enablerCredential.scopes,
-				enablerProfileName: input.enablerCredential.profileName,
 				enablerProfileId: input.enablerCredential.profileId ?? null,
 				now: input.now,
 			})
@@ -161,7 +157,6 @@ export async function ensureOwnerCronEnablementForJob(input: {
 			...(input.enablerUserId && input.enablerCredential
 				? {
 						enablerScopes: input.enablerCredential.scopes,
-						enablerProfileName: input.enablerCredential.profileName,
 						enablerProfileId: input.enablerCredential.profileId ?? null,
 					}
 				: {}),

@@ -2303,39 +2303,38 @@ test('website authorization rejects foreign context and preserves OIDC gate befo
 	})
 })
 
-test('website authorization binds org and profile to the document query rather than the RPC query', async () => {
-	for (const field of ['org', 'profile']) {
-		const completion = completingWith(
-			'https://example.com/callback?code=unexpected',
-		)
-		const bindings = createEnv(
-			createHelpers({
-				parseAuthRequest: async () => ({
-					...baseAuthRequest,
-					resource: `${mcpResource}?${field}=trusted`,
-				}),
-				completeAuthorization: completion,
+test('website authorization binds org to the document query rather than the RPC query', async () => {
+	const field = 'org'
+	const completion = completingWith(
+		'https://example.com/callback?code=unexpected',
+	)
+	const bindings = createEnv(
+		createHelpers({
+			parseAuthRequest: async () => ({
+				...baseAuthRequest,
+				resource: `${mcpResource}?${field}=trusted`,
 			}),
-			await createDatabase('password123'),
-		)
-		const formData = new FormData()
-		for (const [key, value] of Object.entries(approveWithPassword))
-			formData.set(key, value)
-		const result = await decideOAuthAuthorization({
-			request: new Request(
-				`https://example.com/_serverFn/decision?${field}=trusted`,
-				{ method: 'POST' },
-			),
-			env: bindings,
-			authorizeUrl: new URL(
-				`https://example.com/oauth/authorize?client_id=${baseAuthRequest.clientId}&${field}=different`,
-			),
-			formData,
-		})
-		expect(result.data.ok).toBe(false)
-		expect(result.data.error).toMatch(/do not match/i)
-		expect(completion).not.toHaveBeenCalled()
-	}
+			completeAuthorization: completion,
+		}),
+		await createDatabase('password123'),
+	)
+	const formData = new FormData()
+	for (const [key, value] of Object.entries(approveWithPassword))
+		formData.set(key, value)
+	const result = await decideOAuthAuthorization({
+		request: new Request(
+			`https://example.com/_serverFn/decision?${field}=trusted`,
+			{ method: 'POST' },
+		),
+		env: bindings,
+		authorizeUrl: new URL(
+			`https://example.com/oauth/authorize?client_id=${baseAuthRequest.clientId}&${field}=different`,
+		),
+		formData,
+	})
+	expect(result.data.ok).toBe(false)
+	expect(result.data.error).toMatch(/do not match/i)
+	expect(completion).not.toHaveBeenCalled()
 })
 
 test('native inline 2FA reconnect resumes authorize rather than the RPC transport', async () => {

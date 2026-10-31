@@ -65,12 +65,6 @@ export const mcpCallerContextSchema = object({
 	storageContext: optional(nullable(mcpStorageContextSchema)),
 	repoContext: optional(nullable(mcpRepoContextSchema)),
 	/**
-	 * Named connection profile bound to this MCP OAuth grant or API token.
-	 * Absent / null = unlimited (today's default connection). Present = the
-	 * profile's grant allowlist (empty allowlist denies everything).
-	 */
-	connectionProfileName: optional(nullable(string())),
-	/**
 	 * Profile (ADR 0092) the credential is bound to. Absent / null is the live
 	 * mirror: the person's own access.
 	 */
@@ -129,7 +123,6 @@ type McpCallerContextInferred = InferOutput<typeof mcpCallerContextSchema>
 export type McpCallerContextWire = Omit<
 	McpCallerContextInferred,
 	| 'user'
-	| 'connectionProfileName'
 	| 'profileId'
 	| 'profileChain'
 	| 'oauthClientId'
@@ -137,7 +130,6 @@ export type McpCallerContextWire = Omit<
 	| 'resourceEventDepth'
 > & {
 	user?: McpUserContext | null
-	connectionProfileName?: string | null
 	profileId?: string | null
 	profileChain?: ReadonlyArray<string> | null
 	oauthClientId?: string | null

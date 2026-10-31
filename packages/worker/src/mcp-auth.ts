@@ -41,7 +41,7 @@ import { stampFirstMcpConnected } from '#worker/identity/activation-stamps.ts'
 import { recordInboundMcpConnectionLastUsed } from '#worker/inbound-mcp-connection-last-used.ts'
 import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'
 import { isCredentialInvalidatedByStoredPasswordChange } from '#worker/password-change-lockout.ts'
-import { readConnectionProfileNameFromGrantProps } from '#worker/connection-profiles/oauth.ts'
+import { grantHasRetiredConnectionProfile } from '#worker/orgs/oauth-grant.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 export const mcpResourcePath = '/mcp'
@@ -509,10 +509,8 @@ export async function handleMcpRequest({
 		return createUnauthorizedResponse(origin, 'invalid_token')
 	}
 
-	const connectionProfileName =
-		readConnectionProfileNameFromGrantProps(grantProps)
 	const { orgBinding } = authContext
-	if (!orgBinding) {
+	if (!orgBinding || grantHasRetiredConnectionProfile(grantProps)) {
 		evictMcpAuthCache(accessToken)
 		await recordRejection('denied', mcpUser.email)
 		return createUnauthorizedResponse(origin, 'invalid_token')
@@ -522,7 +520,6 @@ export async function handleMcpRequest({
 		source: { kind: 'mcp-oauth' },
 		executionOrigin: 'interactive',
 		user: mcpUser,
-		connectionProfileName,
 		oauthClientId: tokenSummary.grant.clientId,
 		orgBinding,
 	})

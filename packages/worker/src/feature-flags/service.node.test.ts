@@ -311,7 +311,6 @@ function createFeatureFlagsTestDb(
 
 const registryKeys = [
 	'demo-indicator',
-	'connection-profiles',
 	'mcp-skills-extension',
 	'mcp-events-extension',
 	'package-credential-suppliers',
@@ -472,14 +471,14 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 			updatedBy: 7,
 		},
 		{
-			key: 'connection-profiles',
+			key: 'profiles',
 			userId: 7,
 			enabled: true,
 			updatedBy: 7,
 		},
 	])
 	expect(await enabledFor(db, [7], 'mcp-skills-extension')).toEqual([true])
-	expect(await enabledFor(db, [7], 'connection-profiles')).toEqual([true])
+	expect(await enabledFor(db, [7], 'profiles')).toEqual([true])
 
 	const originalPrepare = db.prepare.bind(db)
 	let overrideRuns = 0
@@ -522,7 +521,7 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 	expect(db.overrides.has('demo-indicator:7')).toBe(false)
 	expect(db.overrides.has('mcp-skills-extension:7')).toBe(true)
 	expect(await enabledFor(db, [7], 'mcp-skills-extension')).toEqual([true])
-	expect(await enabledFor(db, [7], 'connection-profiles')).toEqual([true])
+	expect(await enabledFor(db, [7], 'profiles')).toEqual([true])
 })
 
 test('getFeatureFlagEvaluationsForUser reports assignment sources', async () => {
@@ -615,7 +614,7 @@ test('listFeatureFlagsForAdmin includes registry flags and stale DB-only keys', 
 	}
 	const registryExpectations: Array<[string, Record<string, unknown>]> = [
 		[
-			'connection-profiles',
+			'profiles',
 			{ defaultAudience: 'experiments_opt_in', successMetric: executeMetric },
 		],
 		[
@@ -770,7 +769,7 @@ test('experiments_opt_in audience requires users.experiments_opt_in; overrides s
 	).rejects.toThrow(/audience must be one of/)
 })
 
-test('connection-profiles first insert without audience uses registry defaultAudience', async () => {
+test('profiles first insert without audience uses registry defaultAudience', async () => {
 	const db = createFeatureFlagsTestDb({
 		users: [
 			{ id: 7, username: 'opted', experiments_opt_in: 1 },
@@ -778,12 +777,7 @@ test('connection-profiles first insert without audience uses registry defaultAud
 		],
 	})
 
-	await setGlobal(db, true, { key: 'connection-profiles' })
-	expect(db.globals.get('connection-profiles')?.audience).toBe(
-		'experiments_opt_in',
-	)
-	expect(await enabledFor(db, [7, 8], 'connection-profiles')).toEqual([
-		true,
-		false,
-	])
+	await setGlobal(db, true, { key: 'profiles' })
+	expect(db.globals.get('profiles')?.audience).toBe('experiments_opt_in')
+	expect(await enabledFor(db, [7, 8], 'profiles')).toEqual([true, false])
 })

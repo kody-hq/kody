@@ -49,7 +49,6 @@ function accessWith(input: {
 		isOwner: false,
 		resourcePermissions: new Map(),
 		credentialScopes: null,
-		profileGrants: null,
 		profileChain: {
 			inactive: input.inactive
 				? { id: 'prf_root', name: 'root', self: false, reason: 'expired' }

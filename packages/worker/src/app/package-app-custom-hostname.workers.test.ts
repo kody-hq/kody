@@ -3,6 +3,7 @@ import { expect, test } from 'vitest'
 import { ensureAuditEventsTestSchema } from '#worker/test-support/audit-events-test-schema.ts'
 import { createAuthCookie, setAuthSessionSecret } from '#app/auth-session.ts'
 import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
+import { buildPackageAppNotFoundMessage } from '#worker/package-runtime/package-app-synthetic.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { silenceExpectedConsoleErrors } from '#worker/test-support/console-spies.ts'
 import {
@@ -313,6 +314,10 @@ test('a verified app custom hostname serves at / behind the same host-only hando
 	expect([404, 500]).toContain(served.status)
 	expect(served.headers.get('X-Kody-Handoff')).toBeNull()
 	expect(served.headers.get('Location')).toBeNull()
+	const servedBody = await served.text()
+	if (served.status === 404) {
+		expect(servedBody).toBe(buildPackageAppNotFoundMessage())
+	}
 	// OPTIONS is a preflight, not a mutation, so a foreign Origin still reaches
 	// the app gate. POST from that Origin stays blocked.
 	const crossOriginOptions = await workerFetch(`${customOrigin}/`, {

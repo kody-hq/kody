@@ -210,7 +210,6 @@ export const accountUserDataPendingDropTables = [] as const
 
 export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	{ kind: 'user_id', table: 'api_tokens' },
-	{ kind: 'user_id', table: 'connection_profiles' },
 	{ kind: 'user_id', table: 'mcp_event_subscriptions' },
 	{ kind: 'user_id', table: 'cli_credential_bootstrap_codes' },
 	{ kind: 'user_id', table: 'oauth_device_authorizations' },

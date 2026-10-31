@@ -37,12 +37,12 @@ See the [setup index](./index.md) for the other setup pages.
   command):
   - `--saved-packages <n>` upserts `n` metadata-only `saved_packages` rows per
     seeded account (deterministic ids; no `entity_sources` or published
-    artifacts). Enough for package pickers such as connection profiles.
+    artifacts). Enough for package pickers such as package collaborators.
   - `--enable-flag <key>` upserts a per-user override that forces the registry
     flag on for each seeded account (repeatable). Locally, keys must exist in
     `packages/worker/universal/feature-flags/registry.ts`.
-  - Example for flagged connections UI as jane (and kody when using defaults):
-    - `node tools/seed-test-data.ts --local --saved-packages 40 --enable-flag connection-profiles`
+  - Example for the flagged profiles UI as jane (and kody when using defaults):
+    - `node tools/seed-test-data.ts --local --saved-packages 40 --enable-flag profiles`
 - Remote `--enable-flag` is accepted only when the wrangler env is `preview` (an
   explicit `--env preview`, a config path whose name contains `preview`, or
   `CLOUDFLARE_ENV=preview`). Production and every other env fail closed. Remote

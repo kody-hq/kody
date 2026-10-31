@@ -112,3 +112,15 @@ export function stampOrgIdOnTokenExchange(
 	if (stamped === orgId) return
 	return { newProps: { ...record, orgId } }
 }
+
+/**
+ * Grants stamped with a retired connection profile were narrowed to that
+ * profile's resources. Connection profiles no longer exist, so such a grant
+ * is refused rather than widened to the whole person.
+ */
+export function grantHasRetiredConnectionProfile(props: unknown): boolean {
+	if (!props || typeof props !== 'object') return false
+	const value = (props as { connectionProfileName?: unknown })
+		.connectionProfileName
+	return typeof value === 'string' && value.trim().length > 0
+}

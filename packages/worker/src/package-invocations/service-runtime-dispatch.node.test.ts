@@ -181,7 +181,6 @@ test('package runtime dispatch enqueues declared events and validates payloadSch
 				id: null,
 				orgId: ownerIdFromStored('user-123'),
 				scopes: null,
-				profileName: null,
 			},
 			membership: { role: 'owner' },
 		},

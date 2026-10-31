@@ -257,7 +257,6 @@ function profileAccessFor(profile: {
 		isOwner: true,
 		resourcePermissions: new Map(),
 		credentialScopes: null,
-		profileGrants: null,
 		profileChain: {
 			inactive: null,
 			layers: [

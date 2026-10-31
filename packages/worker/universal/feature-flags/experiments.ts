@@ -112,8 +112,6 @@ export const selfServeExperimentIds = selfServeExperiments.map(
 export const notSelfServeExperimentFlags: Partial<
 	Record<FeatureFlagKey, string>
 > = {
-	'connection-profiles':
-		'Operator-run dogfood of profile-bound connections; no user docs yet.',
 	'repo-push-queue':
 		'Infrastructure kill switch evaluated per repo, not a user-facing feature.',
 }

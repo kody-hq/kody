@@ -82,7 +82,6 @@ const eventsListResultSchema = z.object({
 function evaluations(enabled: boolean) {
 	return {
 		'demo-indicator': { enabled: false, source: 'default' },
-		'connection-profiles': { enabled: false, source: 'default' },
 		'mcp-skills-extension': { enabled: false, source: 'default' },
 		'mcp-events-extension': { enabled, source: 'default' },
 	} as Record<FeatureFlagKey, { enabled: boolean; source: 'default' }>

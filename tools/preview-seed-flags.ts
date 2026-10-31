@@ -18,7 +18,7 @@ export class PreviewSeedFlagError extends Error {
 
 /**
  * Flags to pass to `seed-test-data.ts --enable-flag` from PR labels such as
- * `preview-flag:connection-profiles`. Unrelated labels are ignored. A
+ * `preview-flag:execution-contexts`. Unrelated labels are ignored. A
  * `preview-flag:` label whose key is missing from the committed allowlist
  * throws so the seed step fails closed.
  */

@@ -148,12 +148,12 @@ test('local seed can add metadata-only packages and feature flag overrides', () 
 		'--saved-packages',
 		'3',
 		'--enable-flag',
-		'connection-profiles',
+		'execution-contexts',
 		'--enable-flag',
 		'demo-indicator',
 	])
 	expect(options.savedPackages).toBe(3)
-	expect(options.enableFlags).toEqual(['connection-profiles', 'demo-indicator'])
+	expect(options.enableFlags).toEqual(['execution-contexts', 'demo-indicator'])
 
 	const sql = buildSeedSql(
 		[
@@ -166,7 +166,7 @@ test('local seed can add metadata-only packages and feature flag overrides', () 
 		],
 		{
 			savedPackages: 3,
-			enableFlags: ['connection-profiles'],
+			enableFlags: ['execution-contexts'],
 		},
 	)
 	const { packageId, sourceId } = seedSavedPackageIds({
@@ -178,7 +178,7 @@ test('local seed can add metadata-only packages and feature flag overrides', () 
 	expect(sql).toContain(`'local-seed-pkg-1'`)
 	expect(sql).toContain(`'local-seed-pkg-3'`)
 	expect(sql).toContain(`flag_key`)
-	expect(sql).toContain(`'connection-profiles'`)
+	expect(sql).toContain(`'execution-contexts'`)
 	expect(sql).toContain(`WHERE u.email = 'jane@example.com'`)
 	// Metadata-only: no artifact or entity_sources rows.
 	expect(sql).not.toContain('entity_sources')
@@ -192,10 +192,10 @@ test('local seed can add metadata-only packages and feature flag overrides', () 
 
 	const flagSql = buildSeedFeatureFlagOverrideSql({
 		email: 'jane@example.com',
-		flagKey: 'connection-profiles',
+		flagKey: 'execution-contexts',
 	})
 	expect(flagSql).toContain('feature_flag_user_overrides')
-	expect(flagSql).toContain(`'connection-profiles'`)
+	expect(flagSql).toContain(`'execution-contexts'`)
 })
 
 test('remote enable-flag is preview-only and allowlisted', () => {
@@ -204,22 +204,22 @@ test('remote enable-flag is preview-only and allowlisted', () => {
 		'--env',
 		'preview',
 		'--enable-flag',
-		'connection-profiles',
+		'execution-contexts',
 		'--enable-flag',
 		'demo-indicator',
 	])
 	expect(preview.env).toBe('preview')
-	expect(preview.enableFlags).toEqual(['connection-profiles', 'demo-indicator'])
+	expect(preview.enableFlags).toEqual(['execution-contexts', 'demo-indicator'])
 
 	const fromPreviewConfig = parseArgs([
 		'--remote',
 		'--config',
 		'packages/worker/wrangler.preview.json',
 		'--enable-flag',
-		'connection-profiles',
+		'execution-contexts',
 	])
 	expect(fromPreviewConfig.env).toBe('preview')
-	expect(fromPreviewConfig.enableFlags).toEqual(['connection-profiles'])
+	expect(fromPreviewConfig.enableFlags).toEqual(['execution-contexts'])
 
 	const reconciled = buildSeedSql(
 		[
@@ -231,7 +231,7 @@ test('remote enable-flag is preview-only and allowlisted', () => {
 			},
 		],
 		{
-			enableFlags: ['connection-profiles'],
+			enableFlags: ['execution-contexts'],
 			reconcilePreviewFlags: true,
 		},
 	)
@@ -247,7 +247,7 @@ test('remote enable-flag is preview-only and allowlisted', () => {
 				admin: false,
 			},
 		],
-		{ enableFlags: ['connection-profiles'] },
+		{ enableFlags: ['execution-contexts'] },
 	)
 	expect(localOnly).not.toContain('DELETE FROM feature_flag_user_overrides')
 })
@@ -269,7 +269,7 @@ test('saved-packages and non-preview enable-flag are rejected for remote seed', 
 			'--env',
 			'production',
 			'--enable-flag',
-			'connection-profiles',
+			'execution-contexts',
 		]),
 	).toThrow('process.exit called')
 	expect(consoleError).toHaveBeenCalledWith(
@@ -293,7 +293,7 @@ test('saved-packages and non-preview enable-flag are rejected for remote seed', 
 	delete process.env.CLOUDFLARE_ENV
 	try {
 		expect(() =>
-			parseArgs(['--remote', '--enable-flag', 'connection-profiles']),
+			parseArgs(['--remote', '--enable-flag', 'execution-contexts']),
 		).toThrow('process.exit called')
 		expect(consoleError).toHaveBeenCalledWith(
 			expect.stringContaining('only allowed when the wrangler env is preview'),

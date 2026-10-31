@@ -44,8 +44,6 @@ export type EnablementRun = {
 	role: OrgRole | null
 	/** Scopes of the credential that turned it on; null does not narrow. */
 	scopes?: RequestCredential['scopes']
-	/** Connection profile of the credential that turned it on. */
-	profileName?: string | null
 	/** Profile (ADR 0092) of the credential that turned it on. */
 	profileId?: string | null
 	/** That profile's chain when the run gate checked it: ids, root first. */
@@ -119,7 +117,6 @@ function credentialFor(input: {
 	kind: RequestCredentialKind
 	id: string | null
 	org: RequestOrg
-	profileName: string | null
 	profileId?: string | null
 	profileChain?: ReadonlyArray<string> | null
 	scopes?: RequestCredential['scopes']
@@ -131,7 +128,6 @@ function credentialFor(input: {
 		id: input.id,
 		orgId: input.org.id,
 		scopes: input.scopes ?? null,
-		profileName: input.profileName,
 		...(input.profileId ? { profileId: input.profileId } : {}),
 		...(input.profileId && input.profileChain?.length
 			? { profileChain: [...input.profileChain] }
@@ -148,7 +144,6 @@ function automation(input: {
 	source: AutomationSource
 	sourceId: string
 	credentialKind: RequestCredentialKind
-	profileName: string | null
 	profileId: string | null
 	profileChain: ReadonlyArray<string> | null
 	enablement: EnablementRun | undefined
@@ -164,7 +159,6 @@ function automation(input: {
 				kind: input.credentialKind,
 				id: enablement.id,
 				org: input.binding.org,
-				profileName: enablement.profileName ?? null,
 				profileId: enablement.profileId ?? null,
 				profileChain: enablement.profileChain ?? null,
 				scopes: enablement.scopes ?? null,
@@ -184,7 +178,6 @@ function automation(input: {
 			kind: input.credentialKind,
 			id: input.sourceId,
 			org: input.binding.org,
-			profileName: input.profileName,
 			profileId: input.profileId,
 			profileChain: input.profileChain,
 		}),
@@ -234,7 +227,6 @@ function credentialIdFor(
 export function deriveRequestContext(input: {
 	user: RequestPerson
 	source: RequestSource
-	profileName?: string | null
 	/** Profile (ADR 0092) the credential is bound to; null is the live mirror. */
 	profileId?: string | null
 	profileChain?: ReadonlyArray<string> | null
@@ -251,7 +243,6 @@ export function deriveRequestContext(input: {
 }): RequestContext {
 	const binding = input.orgBinding ?? resolveOrgBinding(input.user)
 	const { source } = input
-	const profileName = input.profileName?.trim() || null
 	const profileId = input.profileId?.trim() || null
 	switch (source.kind) {
 		case 'session':
@@ -269,7 +260,6 @@ export function deriveRequestContext(input: {
 					kind: source.kind,
 					id: credentialIdFor(source, input.oauthClientId),
 					org: binding.org,
-					profileName,
 					profileId,
 					profileChain: input.profileChain ?? null,
 					scopes: input.scopes ?? null,
@@ -290,7 +280,6 @@ export function deriveRequestContext(input: {
 				source: 'schedule',
 				sourceId: source.jobId,
 				credentialKind: 'schedule',
-				profileName,
 				profileId,
 				profileChain: input.profileChain ?? null,
 				enablement: source.enablement,
@@ -301,7 +290,6 @@ export function deriveRequestContext(input: {
 				source: 'webhook',
 				sourceId: source.sourceId,
 				credentialKind: 'webhook',
-				profileName,
 				profileId,
 				profileChain: input.profileChain ?? null,
 				enablement: source.enablement,
@@ -312,7 +300,6 @@ export function deriveRequestContext(input: {
 				source: 'email',
 				sourceId: source.sourceId,
 				credentialKind: 'inbound-email',
-				profileName,
 				profileId,
 				profileChain: input.profileChain ?? null,
 				enablement: source.enablement,
@@ -344,7 +331,6 @@ export function deriveRequestContext(input: {
 				source: 'event',
 				sourceId: source.sourceId,
 				credentialKind: 'platform-event',
-				profileName,
 				profileId,
 				profileChain: input.profileChain ?? null,
 				enablement: source.enablement,
@@ -357,7 +343,6 @@ export function deriveRequestContext(input: {
 				attribution: lineage.attribution,
 				credential: {
 					...lineage.credential,
-					profileName: lineage.credential.profileName ?? profileName,
 					...(!lineage.credential.profileId && profileId
 						? {
 								profileId,
@@ -582,7 +567,6 @@ export function parseRequestLineage(value: unknown): RequestLineage | null {
 			id: readNullableString(credential.id),
 			orgId: ownerIdFromStored(credential.orgId),
 			scopes: scopes as RequestCredential['scopes'],
-			profileName: readNullableString(credential.profileName),
 			...parseProfileFields(credential),
 			...parseContextRunFields(credential),
 		},

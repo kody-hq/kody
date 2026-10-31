@@ -35,7 +35,7 @@ import {
 	type ApiInvocationContext,
 } from './context.ts'
 import { ApiError } from './errors.ts'
-import { readConnectionProfileNameFromGrantProps } from '#worker/connection-profiles/oauth.ts'
+import { grantHasRetiredConnectionProfile } from '#worker/orgs/oauth-grant.ts'
 import {
 	ecpRunHeader,
 	ecpSignatureHeader,
@@ -262,7 +262,6 @@ async function authenticateWithApiToken(input: {
 				source: { kind: 'api-token', tokenId: record.id },
 				executionOrigin: 'interactive',
 				user: authContext.user,
-				connectionProfileName: record.profile_name ?? null,
 				profileId: record.profile_id ?? null,
 				profileChain: record.profile_id
 					? (
@@ -342,6 +341,13 @@ async function authenticateWithMcpOauth(input: {
 		personId: authContext.user.userId,
 		grantProps: tokenSummary.grant.props,
 	})
+	if (grantHasRetiredConnectionProfile(tokenSummary.grant.props)) {
+		throw unauthorized(
+			'Access token was bound to a connection profile, which no longer exists. Run kody login again.',
+			true,
+			personalOrgIdForPerson(authContext.user),
+		)
+	}
 	if (!orgBinding) {
 		throw unauthorized(
 			'Access token is not bound to an org you can access.',
@@ -357,9 +363,6 @@ async function authenticateWithMcpOauth(input: {
 				source: { kind: 'cli' },
 				executionOrigin: 'interactive',
 				user: authContext.user,
-				connectionProfileName: readConnectionProfileNameFromGrantProps(
-					tokenSummary.grant.props,
-				),
 				oauthClientId: tokenSummary.grant.clientId,
 				orgBinding,
 			}),
@@ -497,7 +500,6 @@ async function authenticateWithExecutionContextLease(input: {
 				},
 				executionOrigin: 'interactive',
 				user: authContext.user,
-				connectionProfileName: null,
 				profileId: lease.profileId ?? null,
 				profileChain: profileChain?.map((row) => row.id) ?? null,
 				orgBinding,

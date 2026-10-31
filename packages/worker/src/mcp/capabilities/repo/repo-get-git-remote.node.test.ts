@@ -83,7 +83,6 @@ function orgWideAccess(permissions: Array<OrgPermission>) {
 		permissions: new Set(permissions),
 		resourcePermissions: new Map(),
 		credentialScopes: null,
-		profileGrants: null,
 	}
 }
 
@@ -97,7 +96,6 @@ function orgReadPlusPackageWriteGrant() {
 			[`package:pkg-other`, new Set<OrgPermission>(['package:write'])],
 		]),
 		credentialScopes: null,
-		profileGrants: null,
 	}
 }
 

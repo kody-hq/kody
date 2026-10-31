@@ -32,7 +32,6 @@ type EnablementRow = {
 	instance_id: string
 	enabler_user_id: string
 	enabler_scopes_json: string | null
-	enabler_profile_name: string | null
 	enabler_profile_id: string | null
 	state: string
 	paused_reason: string | null
@@ -50,7 +49,7 @@ type EnablementRow = {
 }
 
 const enablementColumns = `id, org_id, package_id, trigger_kind, trigger_name,
-	instance_id, enabler_user_id, enabler_scopes_json, enabler_profile_name,
+	instance_id, enabler_user_id, enabler_scopes_json,
 	enabler_profile_id, state, paused_reason, paused_permission,
 	paused_resource_type, paused_resource_id, paused_credential_id, paused_at,
 	origin, sender_kind, sender_value, enabled_at, disabled_at, updated_at`
@@ -137,7 +136,6 @@ function toRecord(row: EnablementRow): EnablementRecord {
 		instanceId: row.instance_id,
 		enablerUserId: personIdFromStored(row.enabler_user_id),
 		enablerScopes: parseEnablerScopes(row.enabler_scopes_json),
-		enablerProfileName: row.enabler_profile_name?.trim() || null,
 		enablerProfileId: row.enabler_profile_id?.trim() || null,
 		state: toState(row.state),
 		pause: toPause(row),
@@ -160,8 +158,6 @@ export type NewEnablement = {
 	enablerUserId: string
 	/** The enabling credential's scopes; null or omitted does not narrow. */
 	enablerScopes?: ReadonlyArray<OrgPermission> | null
-	/** The enabling credential's connection profile. */
-	enablerProfileName?: string | null
 	/** The enabling credential's profile (ADR 0092). */
 	enablerProfileId?: string | null
 	origin: EnablementOrigin
@@ -196,10 +192,10 @@ export function buildInsertEnablementStatement(input: {
 		.prepare(
 			`INSERT INTO enablements (
 				id, org_id, package_id, trigger_kind, trigger_name, instance_id,
-				enabler_user_id, enabler_scopes_json, enabler_profile_name,
+				enabler_user_id, enabler_scopes_json,
 				enabler_profile_id, state, origin, enabled_at, updated_at,
 				sender_kind, sender_value
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'on', ?, ?, ?, ?, ?)`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'on', ?, ?, ?, ?, ?)`,
 		)
 		.bind(
 			id,
@@ -210,7 +206,6 @@ export function buildInsertEnablementStatement(input: {
 			input.enablement.instanceId,
 			input.enablement.enablerUserId,
 			enablerScopesJson(input.enablement),
-			input.enablement.enablerProfileName?.trim() || null,
 			input.enablement.enablerProfileId?.trim() || null,
 			input.enablement.origin,
 			input.now,
@@ -244,11 +239,11 @@ export function buildInsertWebhookEnablementStatement(input: {
 		.prepare(
 			`INSERT INTO enablements (
 				id, org_id, package_id, trigger_kind, trigger_name, instance_id,
-				enabler_user_id, enabler_scopes_json, enabler_profile_name,
+				enabler_user_id, enabler_scopes_json,
 				enabler_profile_id, state, origin, enabled_at, updated_at,
 				sender_kind, sender_value
 			)
-			SELECT ?, ?, ?, 'webhook', ?, ?, ?, ?, ?, ?, 'on', ?, ?, ?, ?, ?
+			SELECT ?, ?, ?, 'webhook', ?, ?, ?, ?, ?, 'on', ?, ?, ?, ?, ?
 			WHERE NOT EXISTS (
 				SELECT 1 FROM enablements
 				WHERE org_id = ? AND trigger_kind = 'webhook'
@@ -263,7 +258,6 @@ export function buildInsertWebhookEnablementStatement(input: {
 			input.enablement.instanceId,
 			input.enablement.enablerUserId,
 			enablerScopesJson(input.enablement),
-			input.enablement.enablerProfileName?.trim() || null,
 			input.enablement.enablerProfileId?.trim() || null,
 			input.enablement.origin,
 			input.now,
@@ -546,21 +540,19 @@ export async function updateCronEnablerNarrowing(input: {
 	jobName: string
 	enablerUserId: string
 	enablerScopes: ReadonlyArray<OrgPermission> | null
-	enablerProfileName: string | null
 	enablerProfileId: string | null
 	now?: string
 }): Promise<void> {
 	await input.db
 		.prepare(
 			`UPDATE enablements
-			 SET enabler_scopes_json = ?, enabler_profile_name = ?,
+			 SET enabler_scopes_json = ?,
 			   enabler_profile_id = ?, updated_at = ?
 			 WHERE org_id = ? AND trigger_kind = 'cron' AND instance_id = ?
 			   AND trigger_name = ? AND enabler_user_id = ?`,
 		)
 		.bind(
 			enablerScopesJson(input),
-			input.enablerProfileName?.trim() || null,
 			input.enablerProfileId?.trim() || null,
 			input.now ?? new Date().toISOString(),
 			input.orgId,
@@ -581,7 +573,6 @@ export async function rebindProfilePausedEnablement(input: {
 	orgId: string
 	id: string
 	enablerScopes: ReadonlyArray<OrgPermission> | null
-	enablerProfileName: string | null
 	enablerProfileId: string | null
 	now?: string
 }): Promise<boolean> {
@@ -589,7 +580,7 @@ export async function rebindProfilePausedEnablement(input: {
 	const result = await input.db
 		.prepare(
 			`UPDATE enablements
-			 SET state = 'on', enabler_scopes_json = ?, enabler_profile_name = ?,
+			 SET state = 'on', enabler_scopes_json = ?,
 			     enabler_profile_id = ?, paused_reason = NULL,
 			     paused_permission = NULL, paused_resource_type = NULL,
 			     paused_resource_id = NULL, paused_credential_id = NULL,
@@ -599,7 +590,6 @@ export async function rebindProfilePausedEnablement(input: {
 		)
 		.bind(
 			enablerScopesJson(input),
-			input.enablerProfileName?.trim() || null,
 			input.enablerProfileId?.trim() || null,
 			now,
 			input.id,

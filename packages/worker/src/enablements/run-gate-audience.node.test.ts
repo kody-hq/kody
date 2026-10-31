@@ -12,7 +12,6 @@ function access(
 		isOwner,
 		resourcePermissions: new Map(),
 		credentialScopes: null,
-		profileGrants: null,
 	} as unknown as EffectivePermissions
 }
 

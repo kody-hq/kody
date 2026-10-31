@@ -206,26 +206,26 @@ ready for review, add or remove a `preview-flag:` label, or re-run the
 workflow). The seed step fails closed for any other key, and `--enable-flag`
 with `--remote` refuses every wrangler env except `preview`.
 
-`connection-profiles` is on the allowlist. Label
-`preview-flag:connection-profiles` makes the seed step run:
+`execution-contexts` is on the allowlist. Label
+`preview-flag:execution-contexts` makes the seed step run:
 
 ```bash
 node tools/seed-test-data.ts --remote --config "$WRANGLER_CONFIG" \
   --email me@kentcdodds.com --password ilikecode \
-  --enable-flag connection-profiles
+  --enable-flag execution-contexts
 ```
 
-After that deploy, open the connected agents page as the seed user and verify
-the connection profile controls:
+After that deploy, open the execution contexts page as the seed user and verify
+the flagged page:
 
 ```bash
-npm run control-kody -- browse --origin <preview> --path /@user-me/-/agents
+npm run control-kody -- browse --origin <preview> --path /@user-me/-/execution-contexts
 ```
 
 Without the label, the next preview seed deletes that allowlisted override, and
-the connection profile controls do not appear. An unknown `preview-flag:` label
-fails the seed step. Adding or removing the label on a closed pull request does
-not deploy.
+the flagged page does not appear. An unknown `preview-flag:` label fails the
+seed step. Adding or removing the label on a closed pull request does not
+deploy.
 
 ## Logged-in data and UI pass
 

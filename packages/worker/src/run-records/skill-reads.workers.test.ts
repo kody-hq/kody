@@ -19,7 +19,6 @@ function event(
 		credentialKind: 'mcp-oauth',
 		connectionId: 'connection-1',
 		clientId: 'client-1',
-		profileName: null,
 		channel: 'mcp-resource',
 		packageId: 'package-1',
 		packageName: '@team/docs',

@@ -13,12 +13,6 @@ import {
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RequestContext } from '@kody-internal/shared/request-context.ts'
-import {
-	connectionProfileAllows,
-	type ConnectionProfileAction,
-	type ConnectionProfileGrant,
-} from '#universal/connection-profiles/grants.ts'
-import { resolveConnectionProfileGrants } from '#worker/connection-profiles/repo.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	compiledAccessExpired,
@@ -55,8 +49,6 @@ export type EffectivePermissions = {
 	/** Per-resource grants keyed by `${type}:${id}`. */
 	resourcePermissions: ReadonlyMap<string, ReadonlySet<OrgPermission>>
 	credentialScopes: ReadonlySet<OrgPermission> | null
-	/** Null when no connection profile is bound to the credential. */
-	profileGrants: ReadonlyArray<ConnectionProfileGrant> | null
 	/**
 	 * ADR 0092: the profile chain when the credential acts as a profile, else
 	 * absent. Every check intersects each layer.
@@ -94,7 +86,6 @@ export type AuthorizationDenialCode =
 	| 'wrong_org'
 	| 'missing_permission'
 	| 'credential_scope'
-	| 'connection_profile'
 	| 'profile_inactive'
 	| 'profile_grant'
 
@@ -134,22 +125,6 @@ export class AuthorizationError extends McpCallerError {
 export type AuthorizationDecision =
 	| { allowed: true }
 	| { allowed: false; error: AuthorizationError }
-
-async function loadProfileGrants(
-	env: Env,
-	request: RequestContext,
-): Promise<ReadonlyArray<ConnectionProfileGrant> | null> {
-	const { profileName } = request.credential
-	if (!profileName) return null
-	// Profiles belong to the account that minted the credential. Automation
-	// keeps the profile of the credential that created the job or webhook,
-	// and that account is the org's own until orgs have members.
-	return await resolveConnectionProfileGrants({
-		db: env.APP_DB,
-		userId: request.actor?.userId ?? request.org.id,
-		profileName,
-	})
-}
 
 /**
  * ADR 0092: one recursive chain query plus one grant read, only for a
@@ -245,7 +220,6 @@ function earliest(a: string | null | undefined, b: string | null | undefined) {
 function toEffective(
 	compiled: CompiledAccess,
 	request: RequestContext,
-	profileGrants: ReadonlyArray<ConnectionProfileGrant> | null,
 	profile: {
 		chain: ProfileChainAccess
 		validUntil: string | null
@@ -260,7 +234,6 @@ function toEffective(
 		credentialScopes: request.credential.scopes
 			? new Set(request.credential.scopes)
 			: null,
-		profileGrants,
 		validUntil: profile
 			? earliest(compiled.validUntil, profile.validUntil)
 			: compiled.validUntil,
@@ -299,11 +272,8 @@ function loadEffectivePermissions(input: {
 			db: input.env.APP_DB,
 			request: input.request,
 		})
-		const [profileGrants, profile] = await Promise.all([
-			loadProfileGrants(input.env, input.request),
-			loadProfileChainAccess(input.env, input.request),
-		])
-		return toEffective(compiled, input.request, profileGrants, profile)
+		const profile = await loadProfileChainAccess(input.env, input.request)
+		return toEffective(compiled, input.request, profile)
 	})()
 	effectivePermissionsByRequest.set(input.request, promise)
 	promise.catch(() => {
@@ -312,55 +282,6 @@ function loadEffectivePermissions(input: {
 		}
 	})
 	return promise
-}
-
-/**
- * Permissions that narrow to the profile `write` action. Delete and publish
- * have no profile action of their own; a bound profile must list `write`.
- */
-const profileWritePermissions = [
-	'package:write',
-	'package:delete',
-	'package:publish',
-] as const
-
-type ProfileWritePermission = (typeof profileWritePermissions)[number]
-
-function isProfileWritePermission(
-	permission: OrgPermission,
-): permission is ProfileWritePermission {
-	return (profileWritePermissions as ReadonlyArray<OrgPermission>).includes(
-		permission,
-	)
-}
-
-function profileActionFor(
-	permission: OrgPermission,
-): ConnectionProfileAction | null {
-	if (permission === 'package:read') return 'read'
-	if (permission === 'package:execute') return 'execute'
-	if (isProfileWritePermission(permission)) return 'write'
-	return null
-}
-
-/**
- * Connection profiles list package grants only, so they narrow package
- * resources and leave every other check to the role and credential.
- */
-function profileAllows(
-	grants: ReadonlyArray<ConnectionProfileGrant> | null,
-	permission: OrgPermission,
-	resource: OrgResource,
-) {
-	if (grants === null || resource.type !== 'package') return true
-	const action = profileActionFor(permission)
-	if (!action) return false
-	return connectionProfileAllows({
-		grants,
-		resourceType: resource.type,
-		resourceId: resource.id,
-		action,
-	})
 }
 
 function describeResource(resource: OrgResource, permission: OrgPermission) {
@@ -435,9 +356,6 @@ function denialCode(
 	if (blocked) return blocked.code
 	if (access.credentialScopes && !access.credentialScopes.has(permission)) {
 		return 'credential_scope'
-	}
-	if (resource && !profileAllows(access.profileGrants, permission, resource)) {
-		return 'connection_profile'
 	}
 	return null
 }
@@ -547,13 +465,6 @@ function denialMessage(
 		case 'profile_inactive':
 		case 'profile_grant':
 			return `This profile cannot use ${permission}${target}.`
-		case 'connection_profile': {
-			if (permission === 'package:create') {
-				return 'This connection profile cannot create packages.'
-			}
-			const action = profileActionFor(permission) ?? permission
-			return `This connection profile cannot ${action}${resource ? ` ${describeResource(resource, permission)}` : ''}.`
-		}
 		default: {
 			const exhaustive: never = code
 			throw new Error(`Unhandled denial code: ${String(exhaustive)}`)
@@ -818,14 +729,17 @@ export function packageResource(input: {
 }
 
 /**
- * The one profile-write check for a resolved saved package. `package:write`,
- * `package:delete`, and `package:publish` all map to the profile `write`
- * action. Call it once the package row is known, before the mutation.
+ * The one write check for a resolved saved package (`package:write`,
+ * `package:delete`, or `package:publish`). Call it once the package row is
+ * known, before the mutation.
  */
 export async function authorizePackageWrite(
 	ctx: { env: Env; request: RequestContext | null },
 	pkg: { id: string; userId: string; label?: string },
-	permission: ProfileWritePermission = 'package:write',
+	permission:
+		| 'package:write'
+		| 'package:delete'
+		| 'package:publish' = 'package:write',
 ): Promise<void> {
 	await authorize(ctx, permission, packageResource(pkg))
 }
@@ -836,28 +750,12 @@ export async function authorizePackageWrite(
  * `repoPromoteToPackage`). Creation needs org-level `package:create`, never
  * org-wide `package:write`, which no org grant can hold. Writes to existing
  * packages stay on `authorizePackageWrite`.
- *
- * A bound profile names existing packages, so it cannot create one. Plain
- * `repoCreate` keeps its own `package:create` check and is unaffected.
  */
 export async function authorizePackageCreate(ctx: {
 	env: Env
 	request: RequestContext | null
 }): Promise<void> {
 	await authorize(ctx, 'package:create')
-	if (!ctx.request?.credential.profileName) return
-	const access = await computeEffectivePermissions({
-		env: ctx.env,
-		request: ctx.request,
-	})
-	if (access.profileGrants === null) return
-	throw new AuthorizationError({
-		code: 'connection_profile',
-		permission: 'package:create',
-		orgId: access.orgId,
-		resource: null,
-		message: 'This connection profile cannot create packages.',
-	})
 }
 
 const requestPermissionsStorage = new AsyncLocalStorage<EffectivePermissions>()
@@ -913,22 +811,12 @@ export async function authorize(
 /**
  * Checks only what the request credential allows, for a write the actor makes
  * on their own data rather than on the request's org: a personal credential's
- * org grants. A token must carry `permission`, and a token narrowed by a
- * connection profile can't make such writes at all.
+ * org grants. A token must carry `permission`.
  */
 export function authorizeCredentialScope(
 	request: RequestContext,
 	permission: OrgPermission,
 ): void {
-	if (request.credential.profileName) {
-		throw new AuthorizationError({
-			code: 'connection_profile',
-			permission,
-			orgId: request.org.id,
-			resource: null,
-			message: `This credential is narrowed by a connection profile, so it cannot use ${permission} on your personal credentials. Use your own session or an unprofiled token.`,
-		})
-	}
 	const scopes = request.credential.scopes
 	if (!scopes || scopes.includes(permission)) return
 	const mintScopes = [...new Set([...scopes, permission])].sort()
