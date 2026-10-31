@@ -185,12 +185,11 @@ const creditNotePreviewSchema = object({
 export type StripeCheckoutSession = InferOutput<typeof checkoutSessionSchema>
 export type StripeSubscription = InferOutput<typeof subscriptionSchema>
 
-/** Newest period end from subscription items, then the top-level field. */
-/** Seat count on the primary subscription line item (defaults to 1). */
-export function subscriptionSeatQuantity(
-	subscription: StripeSubscription,
+/** Seat count on a subscription line item (defaults to 1). */
+export function subscriptionItemSeatQuantity(
+	item: StripeSubscription['items']['data'][number],
 ): number {
-	const quantity = subscription.items.data[0]?.quantity
+	const quantity = item.quantity
 	if (
 		typeof quantity === 'number' &&
 		Number.isFinite(quantity) &&
@@ -201,6 +200,7 @@ export function subscriptionSeatQuantity(
 	return 1
 }
 
+/** Newest period end from subscription items, then the top-level field. */
 export function readStripeSubscriptionPeriodEndUnix(
 	subscription: StripeSubscription,
 ): number | null {

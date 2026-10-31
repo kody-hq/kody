@@ -538,7 +538,7 @@ test('seat report aggregates events and rejects Stripe checks without a key', as
 	).rejects.toThrow('Stripe is not configured in this environment.')
 })
 
-test('seat report compares only with Stripe GET requests and paginates without identifiers', async () => {
+test('seat report skips failed lookups, reads the seat item, and paginates without identifiers', async () => {
 	const { sqlite, env } = fixture()
 	const firstOrg = 'fixture-stripe-org-a'
 	const secondOrg = 'fixture-stripe-org-b'
@@ -559,38 +559,31 @@ test('seat report compares only with Stripe GET requests and paginates without i
 			if (url.includes('cus_fixture_a')) {
 				return new Response(
 					JSON.stringify({
-						data: [
-							{
-								id: 'sub_fixture_a',
-								status: 'active',
-								cancel_at: null,
-								items: {
-									data: [
-										{
-											id: 'si_fixture_a',
-											quantity: 2,
-											price: { id: 'price_pro' },
-										},
-									],
-								},
-							},
-						],
+						error: { message: 'Temporary Stripe lookup failure.' },
 					}),
-					{ headers: { 'content-type': 'application/json' } },
+					{
+						status: 500,
+						headers: { 'content-type': 'application/json' },
+					},
 				)
 			}
-			if (url.includes('cus_fixture_c')) {
+			if (url.includes('cus_fixture_b')) {
 				return new Response(
 					JSON.stringify({
 						data: [
 							{
-								id: 'sub_fixture_c',
+								id: 'sub_fixture_b',
 								status: 'active',
 								cancel_at: null,
 								items: {
 									data: [
 										{
-											id: 'si_fixture_c',
+											id: 'si_non_seat_b',
+											quantity: 2,
+											price: { id: 'price_other' },
+										},
+										{
+											id: 'si_seat_b',
 											quantity: 1,
 											price: { id: 'price_pro' },
 										},
@@ -602,12 +595,32 @@ test('seat report compares only with Stripe GET requests and paginates without i
 					{ headers: { 'content-type': 'application/json' } },
 				)
 			}
-			return new Response(JSON.stringify({ data: [] }), {
-				headers: { 'content-type': 'application/json' },
-			})
+			return new Response(
+				JSON.stringify({
+					data: [
+						{
+							id: 'sub_fixture_c',
+							status: 'active',
+							cancel_at: null,
+							items: {
+								data: [
+									{
+										id: 'si_fixture_c',
+										quantity: 2,
+										price: { id: 'price_pro' },
+									},
+								],
+							},
+						},
+					],
+				}),
+				{ headers: { 'content-type': 'application/json' } },
+			)
 		},
 	)
 	vi.stubGlobal('fetch', fetchStub)
+	const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+	const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 	const stripeEnv = {
 		...env,
 		STRIPE_SECRET_KEY: 'sk_test_fixture',
@@ -618,55 +631,43 @@ test('seat report compares only with Stripe GET requests and paginates without i
 		env: stripeEnv,
 		since: '2026-01-01T00:00:00.000Z',
 		checkStripe: true,
-		limit: 1,
+		limit: 2,
 		offset: 0,
 	})
 	expect(firstPage.stripe).toMatchObject({
 		checked: 1,
-		matching: 0,
-		mismatched: 1,
-		skipped: 0,
-		mismatches: [{ stripeQuantity: 2, liveSeats: 1, orgs: 1 }],
-		nextOffset: 1,
+		matching: 1,
+		mismatched: 0,
+		skipped: 1,
+		nextOffset: 2,
 	})
 	const secondPage = await buildSeatQuantityReport({
 		db: env.APP_DB,
 		env: stripeEnv,
 		since: '2026-01-01T00:00:00.000Z',
 		checkStripe: true,
-		limit: 1,
-		offset: 1,
-	})
-	expect(secondPage.stripe).toMatchObject({
-		checked: 0,
-		matching: 0,
-		mismatched: 0,
-		skipped: 1,
-		nextOffset: 2,
-	})
-	const thirdPage = await buildSeatQuantityReport({
-		db: env.APP_DB,
-		env: stripeEnv,
-		since: '2026-01-01T00:00:00.000Z',
-		checkStripe: true,
-		limit: 1,
+		limit: 2,
 		offset: 2,
 	})
-	expect(thirdPage.stripe).toMatchObject({
+	expect(secondPage.stripe).toMatchObject({
 		checked: 1,
-		matching: 1,
-		mismatched: 0,
+		matching: 0,
+		mismatched: 1,
 		skipped: 0,
-		mismatches: [],
+		mismatches: [{ stripeQuantity: 2, liveSeats: 1, orgs: 1 }],
 		nextOffset: null,
 	})
 	expect(fetchStub).toHaveBeenCalledTimes(3)
+	expect(warnSpy).toHaveBeenCalledWith(
+		'seat-quantity-report-stripe-lookup-failed',
+		{ error: 'StripeApiError' },
+	)
 	expect(
 		fetchStub.mock.calls.every(
 			([, init]) => !init?.method || init.method === 'GET',
 		),
 	).toBe(true)
-	const serialized = JSON.stringify({ firstPage, secondPage, thirdPage })
+	const serialized = JSON.stringify({ firstPage, secondPage })
 	for (const fixtureId of [
 		firstOrg,
 		secondOrg,
@@ -680,5 +681,11 @@ test('seat report compares only with Stripe GET requests and paginates without i
 	]) {
 		expect(serialized).not.toContain(fixtureId)
 	}
+	expect(errorSpy).toHaveBeenCalledWith('stripe_api_error', {
+		status: 500,
+		path: '/v1/subscriptions',
+	})
 	vi.unstubAllGlobals()
+	errorSpy.mockRestore()
+	warnSpy.mockRestore()
 })

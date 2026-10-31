@@ -173,8 +173,13 @@ test('syncOrgSeatQuantity updates Stripe when seat count changes', async () => {
 						items: {
 							data: [
 								{
-									id: 'si_paid',
+									id: 'si_non_seat',
 									quantity: 1,
+									price: { id: 'price_other' },
+								},
+								{
+									id: ' si_paid ',
+									quantity: 2,
 									price: { id: 'price_pro' },
 								},
 							],
@@ -202,20 +207,23 @@ test('syncOrgSeatQuantity updates Stripe when seat count changes', async () => {
 		orgId,
 		audit: {} as never,
 	})
-	expect(result).toEqual({ previousQuantity: 1, nextQuantity: 3 })
+	expect(result).toEqual({ previousQuantity: 2, nextQuantity: 3 })
 	expect(auditSpy).toHaveBeenCalledTimes(1)
 	expect(auditSpy.mock.calls[0]?.[1]).toMatchObject({
 		orgId,
 		action: 'billing_seat_quantity_synced',
 		resourceType: 'org_subscription',
-		details: { previousQuantity: 1, nextQuantity: 3 },
+		details: { previousQuantity: 2, nextQuantity: 3 },
 	})
+	const mutation = fetchStub.mock.calls.find(
+		([request, init]) =>
+			String(request).includes('/v1/subscription_items/si_paid') &&
+			init?.method === 'POST',
+	)
+	expect(mutation).toBeDefined()
+	expect(String(mutation?.[0])).toContain('/v1/subscription_items/si_paid')
+	expect(mutation?.[1]).toMatchObject({ method: 'POST', body: 'quantity=3' })
 	auditSpy.mockRestore()
-	expect(
-		fetchStub.mock.calls.some((call) =>
-			String(call[0]).includes('subscription_items'),
-		),
-	).toBe(true)
 })
 
 test('syncOrgSeatQuantity does not audit when the Stripe quantity is already current', async () => {
@@ -235,6 +243,11 @@ test('syncOrgSeatQuantity does not audit when the Stripe quantity is already cur
 							cancel_at: null,
 							items: {
 								data: [
+									{
+										id: 'si_non_seat_current',
+										quantity: 1,
+										price: { id: 'price_other' },
+									},
 									{
 										id: 'si_current',
 										quantity: 2,

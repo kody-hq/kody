@@ -8,14 +8,14 @@
  * never modified (P6 inherits them exactly; price migration is separate).
  */
 import {
-	isPurchasableProSubscription,
+	getCreditsEligiblePriceIds,
 	selectKodyPlanRetainingSubscriptions,
 	type BillingEnv,
 } from './billing-config.ts'
 import { countLiveSeats, isPaidOrgBilling } from '#worker/orgs/billing.ts'
 import {
 	listSubscriptions,
-	subscriptionSeatQuantity,
+	subscriptionItemSeatQuantity,
 	updateSubscriptionItemQuantity,
 	type StripeEnv,
 	type StripeSubscription,
@@ -53,22 +53,24 @@ async function loadOrgBillingRow(
 export function selectPurchasableSeatSubscription(
 	env: SeatSyncEnv,
 	subscriptions: ReadonlyArray<StripeSubscription>,
-): { subscription: StripeSubscription; subscriptionItemId: string } | null {
+): {
+	subscription: StripeSubscription
+	subscriptionItemId: string
+	seatQuantity: number
+} | null {
 	const selected = selectKodyPlanRetainingSubscriptions(env, subscriptions)
 	if (selected.length !== 1) return null
 	const subscription = selected[0]!
-	if (!isPurchasableProSubscription(env, subscription)) return null
-	const subscriptionItemId = primarySubscriptionItemId(subscription)
-	if (!subscriptionItemId) return null
-	return { subscription, subscriptionItemId }
-}
-
-function primarySubscriptionItemId(
-	subscription: StripeSubscription,
-): string | null {
+	const eligiblePriceIds = new Set(getCreditsEligiblePriceIds(env))
 	for (const item of subscription.items.data) {
 		const id = item.id?.trim()
-		if (id) return id
+		if (id && eligiblePriceIds.has(item.price.id)) {
+			return {
+				subscription,
+				subscriptionItemId: id,
+				seatQuantity: subscriptionItemSeatQuantity(item),
+			}
+		}
 	}
 	return null
 }
@@ -97,9 +99,7 @@ export async function syncOrgSeatQuantity(input: {
 		await listSubscriptions(input.env, customerId),
 	)
 	if (!selected) return null
-	const { subscription, subscriptionItemId } = selected
-
-	const previousQuantity = subscriptionSeatQuantity(subscription)
+	const { subscriptionItemId, seatQuantity: previousQuantity } = selected
 	const seatCount = await countLiveSeats(input.db, orgId)
 	const nextQuantity = Math.max(1, seatCount)
 	if (previousQuantity === nextQuantity) {

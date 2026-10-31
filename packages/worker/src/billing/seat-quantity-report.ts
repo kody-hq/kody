@@ -4,11 +4,7 @@ import {
 	isPaidOrgBilling,
 } from '#worker/orgs/billing.ts'
 import { auditDatabaseFromEnvOrThrow } from '#worker/orgs/org-audit.ts'
-import {
-	listSubscriptions,
-	subscriptionSeatQuantity,
-	type StripeEnv,
-} from './stripe-client.ts'
+import { listSubscriptions, type StripeEnv } from './stripe-client.ts'
 import {
 	billingSeatQuantitySyncedAction,
 	selectPurchasableSeatSubscription,
@@ -141,14 +137,30 @@ export async function buildSeatQuantityReport(input: SeatQuantityReportInput) {
 	>()
 	let checked = 0
 	let matching = 0
+	let skipped = 0
 	for (const row of page.slice(0, input.limit)) {
-		if (!isPaidOrgBilling(row)) continue
-		const selected = selectPurchasableSeatSubscription(
-			input.env,
-			await listSubscriptions(input.env, row.stripe_customer_id),
-		)
-		if (!selected) continue
-		const stripeQuantity = subscriptionSeatQuantity(selected.subscription)
+		if (!isPaidOrgBilling(row)) {
+			skipped += 1
+			continue
+		}
+		let selected: ReturnType<typeof selectPurchasableSeatSubscription> = null
+		try {
+			selected = selectPurchasableSeatSubscription(
+				input.env,
+				await listSubscriptions(input.env, row.stripe_customer_id),
+			)
+		} catch (error) {
+			skipped += 1
+			console.warn('seat-quantity-report-stripe-lookup-failed', {
+				error: error instanceof Error ? error.name : 'UnknownError',
+			})
+			continue
+		}
+		if (!selected) {
+			skipped += 1
+			continue
+		}
+		const stripeQuantity = selected.seatQuantity
 		const liveSeats = Math.max(1, await countLiveSeats(input.db, row.id))
 		checked += 1
 		if (stripeQuantity === liveSeats) {
@@ -168,7 +180,7 @@ export async function buildSeatQuantityReport(input: SeatQuantityReportInput) {
 		checked,
 		matching,
 		mismatched: checked - matching,
-		skipped: page.slice(0, input.limit).length - checked,
+		skipped,
 		mismatches: [...mismatches.values()].sort((a, b) => b.orgs - a.orgs),
 		nextOffset: hasNext ? input.offset + input.limit : null,
 	}
