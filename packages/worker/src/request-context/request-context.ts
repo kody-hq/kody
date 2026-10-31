@@ -48,6 +48,8 @@ export type EnablementRun = {
 	profileName?: string | null
 	/** Profile (ADR 0092) of the credential that turned it on. */
 	profileId?: string | null
+	/** That profile's chain when the run gate checked it: ids, root first. */
+	profileChain?: ReadonlyArray<string> | null
 }
 
 /**
@@ -148,6 +150,7 @@ function automation(input: {
 	credentialKind: RequestCredentialKind
 	profileName: string | null
 	profileId: string | null
+	profileChain: ReadonlyArray<string> | null
 	enablement: EnablementRun | undefined
 }): RequestContext {
 	const { enablement } = input
@@ -163,6 +166,7 @@ function automation(input: {
 				org: input.binding.org,
 				profileName: enablement.profileName ?? null,
 				profileId: enablement.profileId ?? null,
+				profileChain: enablement.profileChain ?? null,
 				scopes: enablement.scopes ?? null,
 			}),
 			membership: enablement.role ? { role: enablement.role } : null,
@@ -182,6 +186,7 @@ function automation(input: {
 			org: input.binding.org,
 			profileName: input.profileName,
 			profileId: input.profileId,
+			profileChain: input.profileChain,
 		}),
 		membership: null,
 	}
@@ -287,6 +292,7 @@ export function deriveRequestContext(input: {
 				credentialKind: 'schedule',
 				profileName,
 				profileId,
+				profileChain: input.profileChain ?? null,
 				enablement: source.enablement,
 			})
 		case 'webhook':
@@ -297,6 +303,7 @@ export function deriveRequestContext(input: {
 				credentialKind: 'webhook',
 				profileName,
 				profileId,
+				profileChain: input.profileChain ?? null,
 				enablement: source.enablement,
 			})
 		case 'inbound-email': {
@@ -307,6 +314,7 @@ export function deriveRequestContext(input: {
 				credentialKind: 'inbound-email',
 				profileName,
 				profileId,
+				profileChain: input.profileChain ?? null,
 				enablement: source.enablement,
 			})
 			const { sender } = source
@@ -338,6 +346,7 @@ export function deriveRequestContext(input: {
 				credentialKind: 'platform-event',
 				profileName,
 				profileId,
+				profileChain: input.profileChain ?? null,
 				enablement: source.enablement,
 			})
 		case 'inherited': {
@@ -349,8 +358,13 @@ export function deriveRequestContext(input: {
 				credential: {
 					...lineage.credential,
 					profileName: lineage.credential.profileName ?? profileName,
-					...((lineage.credential.profileId ?? profileId)
-						? { profileId: lineage.credential.profileId ?? profileId }
+					...(!lineage.credential.profileId && profileId
+						? {
+								profileId,
+								...(input.profileChain?.at(-1) === profileId
+									? { profileChain: [...input.profileChain] }
+									: {}),
+							}
 						: {}),
 				},
 				membership: inheritedMembership(lineage, binding),

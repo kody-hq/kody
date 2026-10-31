@@ -521,3 +521,38 @@ test('a narrowed visitor credential stays narrowed through the visit ticket', as
 		requestContextFromVisitClaims(unscopedClaims).credential,
 	).toMatchObject({ scopes: null, profileName: null })
 })
+
+test('a profile visitor keeps its profile and chain through the visit ticket', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const visit = await createPackageAppRequestVisit({
+		env: secretEnv,
+		visitor: visitorB,
+		owner,
+		audience,
+		request: {
+			org: { id: owner.userId, slug: owner.orgSlug },
+			actor: { userId: visitorB.userId, username: visitorB.username },
+			attribution: { kind: 'user' as const, userId: visitorB.userId },
+			credential: {
+				kind: 'package-app' as const,
+				id: null,
+				orgId: owner.userId,
+				scopes: null,
+				profileName: null,
+				profileId: 'prf_child',
+				profileChain: ['prf_root', 'prf_child'],
+			},
+			membership: { role: 'member' as const },
+		},
+	})
+	const claims = await verifyPackageAppVisitTicket({
+		env: secretEnv,
+		ticket: visit.ticket!,
+		audience,
+	})
+	if (!claims.visitor) throw new Error('expected a visitor ticket')
+	expect(requestContextFromVisitClaims(claims).credential).toMatchObject({
+		profileId: 'prf_child',
+		profileChain: ['prf_root', 'prf_child'],
+	})
+})

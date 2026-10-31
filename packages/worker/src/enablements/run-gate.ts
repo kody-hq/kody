@@ -311,7 +311,14 @@ async function checkEnablerAccess(input: {
 		enablement,
 	})
 	if (mappingPause) return { ok: false, pause: mappingPause }
-	return { ok: true, run, access }
+	const profileChain = access.profileChain?.layers
+		.map((layer) => layer.id)
+		.reverse()
+	return {
+		ok: true,
+		run: profileChain?.length ? { ...run, profileChain } : run,
+		access,
+	}
 }
 
 function samePause(

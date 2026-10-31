@@ -125,7 +125,7 @@ returns `{ profile, token }`; give the sub-agent `token.token` as its
   without one they are refused or skipped (`profile_grant`).
 - Host commands on a context need `execution_context:command` in every layer of
   the profile chain, even on a machine you operate.
-- Jobs, triggers, and app visits a profile turns on keep running as that
+- Jobs, triggers, and app visits that a profile turns on keep running as that
   profile. When it or a parent is revoked or expires, they pause with
   `paused_reason: "profile_inactive"` and stay paused until an active credential
   turns them on again.
