@@ -125,7 +125,9 @@ caches come in two tiers with different correctness arguments (see
   Runtime-module refresh, dynamic `kody:@…` imports, the mount, binding token,
   and visitor stay per build, so dependency and platform updates still reach the
   app. Packages published before templates (or a pre-binding bundle) miss and
-  fall back to the identity-row path.
+  fall back to the identity-row path. A same-commit snapshot repair
+  (`invalidateExistingArtifacts`) deletes both keys until the rebuild rewrites
+  them.
 - **Package-app owner row** — per-`stableUserId` user snapshot for
   `resolvePackageAppOwnerByStableUserId`, TTL **15 s** (same clock as invoke
   freshness). Each request still re-applies suspend, deletion-fence, and
