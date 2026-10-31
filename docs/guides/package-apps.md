@@ -374,12 +374,11 @@ through an internal host helper. That helper is not a capability, so it needs no
 
 #### Capability allowances for published versions
 
-A few app versions published before the visitor retry was retired call
-capabilities their `kody.app.capabilities` does not list. So those apps keep
-working unchanged, Kody records an allowance for each one: the exact capability
-names that published version was seen calling, pinned to that version's
-published commit. Under an allowance the call runs as the runs-as person, the
-same as a declared capability. An allowance is data (the
+Some published app versions call capabilities their `kody.app.capabilities` does
+not list. So those apps keep working unchanged, Kody records an allowance for
+each one: the exact capability names that published version was seen calling,
+pinned to that version's published commit. Under an allowance the call runs as
+the runs-as person, the same as a declared capability. An allowance is data (the
 `package_app_capability_allowances` table), not a general loosening: other
 capabilities still need a declaration, and other apps get nothing.
 
