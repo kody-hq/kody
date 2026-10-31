@@ -70,12 +70,6 @@ import {
 	type SavedCredentialNeed,
 } from './credential-needs.ts'
 import {
-	checkOwnerCredentialForVisitorsRateLimit,
-	loadOwnerCredentialAuthority,
-	ownerCredentialAuditDetails,
-	type OwnerCredentialScope,
-} from './owner-credential-for-visitors.ts'
-import {
 	CredentialLoginFailedError,
 	CredentialLoginNeedsReconnectError,
 	CredentialLoginRetryLaterError,
@@ -242,13 +236,6 @@ export type CredentialClientContext = {
 	 */
 	runEntries?: () => Promise<RunCredentialEntries | null>
 	/**
-	 * Set only for package-app runs: a need that opts in with
-	 * `ownerCredentialForVisitors` resolves with the app's credential
-	 * authority while the app is internet-visible and approved. The viewer
-	 * (`callerContext.request`) is unchanged for everything else.
-	 */
-	ownerCredentialScope?: OwnerCredentialScope | null
-	/**
 	 * Package-app runs only (ADR 0068 amendment 2026-10-24): how new handles
 	 * are stamped, and who a stamped handle resolves as on each use.
 	 */
@@ -379,68 +366,6 @@ async function loadNeed(ctx: CredentialClientContext, key: string) {
 		request: requireActorRequest(ctx),
 	})
 	return needs.find((need) => need.key === key) ?? null
-}
-
-type OwnerCredentialOpen = {
-	ctx: CredentialClientContext
-	/** Credential ids the approval lets visitors use for this key. */
-	approved: ReadonlySet<string>
-}
-
-/**
- * The authority's context for opening `key`, when the key's need opts in
- * with `ownerCredentialForVisitors` and the run's app shares it with
- * visitors; null to open as the viewer. The viewer's call map never picks
- * an owner credential.
- */
-async function ownerCredentialOpen(
-	ctx: CredentialClientContext,
-	key: string,
-): Promise<OwnerCredentialOpen | null> {
-	const scope = ctx.ownerCredentialScope
-	if (!scope) return null
-	const need = await loadNeed(ctx, key)
-	if (!need?.ownerCredentialForVisitors) return null
-	const authority = await loadOwnerCredentialAuthority({
-		env: ctx.env,
-		scope,
-	})
-	switch (authority.status) {
-		case 'not-shared':
-			return null
-		case 'unavailable':
-			throw refusal('credential_denied', authority.message)
-		case 'ready':
-			return {
-				ctx: {
-					...ctx,
-					callMap: null,
-					callerContext: { ...ctx.callerContext, request: authority.request },
-				},
-				approved: authority.approvedCredentialIds.get(key) ?? new Set(),
-			}
-		default: {
-			const exhaustive: never = authority
-			throw new Error(
-				`Unhandled owner credential authority: ${JSON.stringify(exhaustive)}`,
-			)
-		}
-	}
-}
-
-/** Visitors use only what the owner approved for this need. */
-function assertApprovedForVisitors(
-	key: string,
-	owner: OwnerCredentialOpen,
-	picked: ReadonlyArray<Picked>,
-) {
-	for (const { credential } of picked) {
-		if (owner.approved.has(credential.id)) continue
-		throw refusal(
-			'credential_denied',
-			`Need "${key}" resolves to "${credential.name}", which the owner has not approved for this app’s visitors. An owner must review and approve the app’s capabilities again.`,
-		)
-	}
 }
 
 /** The creation link for an unbound need, naming its package when known. */
@@ -912,7 +837,6 @@ async function issueClient(
 	key: string | null,
 	{ credential: picked, hint, packageAppRequest }: Picked,
 	options: {
-		ownerCredentialForVisitors?: boolean
 		packageAppIssue?: PackageAppCredentialHandleIssue | null
 	} = {},
 ): Promise<OpenedCredentialClient> {
@@ -939,14 +863,9 @@ async function issueClient(
 			org: request.org.id,
 			actor: request.actor!.userId,
 			binding: ctx.binding,
-			...(options.ownerCredentialForVisitors && key
-				? {
-						ownerCredentialForVisitors: true as const,
-						needKey: key,
-					}
-				: 'packageAppIssue' in options
-					? (options.packageAppIssue ?? {})
-					: (ctx.packageAppAuthority?.issue ?? {})),
+			...('packageAppIssue' in options
+				? (options.packageAppIssue ?? {})
+				: (ctx.packageAppAuthority?.issue ?? {})),
 		},
 	})
 	return {
@@ -1015,23 +934,22 @@ export async function openCredentialClient(
 			})
 		}
 	}
-	const owner = await ownerCredentialOpen(ctx, key)
-	const opener = owner?.ctx ?? ctx
 	const usable = liveUsableCredentials(
 		await listUsableCredentials({
 			env: ctx.env,
-			request: requireActorRequest(opener),
-			packageId: opener.packageId,
+			request: requireActorRequest(ctx),
+			packageId: ctx.packageId,
 		}),
 	)
-	const picked = await resolveKey(opener, key, usable, 'one')
-	if (owner) assertApprovedForVisitors(key, owner, picked)
-	return await issueClient(opener, key, picked[0]!, {
-		ownerCredentialForVisitors: owner !== null,
-		...('packageAppIssue' in picked[0]!
+	const picked = await resolveKey(ctx, key, usable, 'one')
+	return await issueClient(
+		ctx,
+		key,
+		picked[0]!,
+		'packageAppIssue' in picked[0]!
 			? { packageAppIssue: picked[0]!.packageAppIssue }
-			: {}),
-	})
+			: {},
+	)
 }
 
 /**
@@ -1043,25 +961,24 @@ export async function openCredentialClients(
 	input: { key?: unknown },
 ): Promise<Array<OpenedCredentialClient>> {
 	const key = readText(input.key, 'A credential key')
-	const owner = await ownerCredentialOpen(ctx, key)
-	const opener = owner?.ctx ?? ctx
 	const usable = liveUsableCredentials(
 		await listUsableCredentials({
 			env: ctx.env,
-			request: requireActorRequest(opener),
-			packageId: opener.packageId,
+			request: requireActorRequest(ctx),
+			packageId: ctx.packageId,
 		}),
 	)
-	const picked = await resolveKey(opener, key, usable, 'many')
-	if (owner) assertApprovedForVisitors(key, owner, picked)
+	const picked = await resolveKey(ctx, key, usable, 'many')
 	return await Promise.all(
 		picked.map((one) =>
-			issueClient(opener, key, one, {
-				ownerCredentialForVisitors: owner !== null,
-				...('packageAppIssue' in one
+			issueClient(
+				ctx,
+				key,
+				one,
+				'packageAppIssue' in one
 					? { packageAppIssue: one.packageAppIssue }
-					: {}),
-			}),
+					: {},
+			),
 		),
 	)
 }
@@ -1246,11 +1163,7 @@ export async function validateCredentialCallMap(input: {
 
 type HandleContext = Pick<
 	CredentialClientContext,
-	| 'env'
-	| 'callerContext'
-	| 'binding'
-	| 'ownerCredentialScope'
-	| 'packageAppAuthority'
+	'env' | 'callerContext' | 'binding' | 'packageAppAuthority'
 >
 
 /** A verified handle and who the door resolves it as. */
@@ -1262,10 +1175,10 @@ type HandleUse = {
 }
 
 /**
- * A visitor handle resolves as the authority. When the viewer is someone
- * else (or no one), the use is rate-limited and its audit row names them.
- * Each use re-checks live consent, and executor handles also re-check the
- * credential mapping on that grant.
+ * A stamped handle resolves as the live runs-as person or consented
+ * visitor. Each use re-checks live consent, and executor handles also
+ * re-check the credential mapping on that grant. `ownerCredentialForVisitors`
+ * on a handle is ignored.
  */
 async function readHandle(
 	ctx: HandleContext,
@@ -1273,27 +1186,12 @@ async function readHandle(
 	kinds: ReadonlyArray<PackageCredentialKind>,
 	operation: string,
 ): Promise<HandleUse> {
-	const authority: {
-		request: RequestContext | null
-		approvedCredentialIds: ReadonlyMap<string, ReadonlySet<string>> | null
-	} = { request: null, approvedCredentialIds: null }
 	let appRequest: RequestContext | null = null
 	const handle = await verifyCredentialClientHandle({
 		env: ctx.env,
 		token: typeof token === 'string' ? token : '',
 		request: ctx.callerContext.request,
 		binding: ctx.binding,
-		ownerCredentialRequest: async () => {
-			if (!ctx.ownerCredentialScope) return null
-			const loaded = await loadOwnerCredentialAuthority({
-				env: ctx.env,
-				scope: ctx.ownerCredentialScope,
-			})
-			if (loaded.status !== 'ready') return null
-			authority.request = loaded.request
-			authority.approvedCredentialIds = loaded.approvedCredentialIds
-			return loaded.request
-		},
 		runsAsRequest: async () => {
 			const request = (await ctx.packageAppAuthority?.runsAsRequest()) ?? null
 			appRequest = request
@@ -1342,40 +1240,7 @@ async function readHandle(
 	) {
 		return { handle, request: appRequest }
 	}
-	const viewer = ctx.callerContext.request ?? null
-	const scope = ctx.ownerCredentialScope
-	if (!handle.ownerCredentialForVisitors || !authority.request || !scope) {
-		return { handle, request: viewer! }
-	}
-	if (
-		!handle.needKey ||
-		!authority.approvedCredentialIds?.get(handle.needKey)?.has(handle.id)
-	) {
-		throw new CredentialClientHandleError()
-	}
-	const auditDetails = ownerCredentialAuditDetails({
-		scope,
-		authority: authority.request,
-		viewer,
-	})
-	if (auditDetails) {
-		const limited = await checkOwnerCredentialForVisitorsRateLimit({
-			db: ctx.env.APP_DB,
-			scope,
-			credentialId: handle.id,
-		})
-		if (!limited.allowed) {
-			throw refusal(
-				'credential_rate_limited',
-				`This app’s visitors are using "${handle.name}" too often right now. Try again in ${limited.retryAfterSeconds ?? 60} seconds.`,
-			)
-		}
-	}
-	return {
-		handle,
-		request: authority.request,
-		...(auditDetails ? { auditDetails } : {}),
-	}
+	return { handle, request: ctx.callerContext.request! }
 }
 
 function doorInput<T extends CredentialTarget>(
@@ -1534,8 +1399,6 @@ export async function applyCredentialClient(input: {
 	/** The run's package; only the self-publish guard reads it here. */
 	packageId: string | null
 	binding: string | null | undefined
-	/** See `CredentialClientContext.ownerCredentialScope`. */
-	ownerCredentialScope?: OwnerCredentialScope | null
 	/** See `CredentialClientContext.packageAppAuthority`. */
 	packageAppAuthority?: PackageAppCredentialAuthority | null
 	token: string
@@ -1548,7 +1411,6 @@ export async function applyCredentialClient(input: {
 			env: input.env,
 			packageId: input.packageId,
 			binding: input.binding ?? '',
-			ownerCredentialScope: input.ownerCredentialScope ?? null,
 			packageAppAuthority: input.packageAppAuthority ?? null,
 			callerContext: {
 				baseUrl: input.baseUrl,

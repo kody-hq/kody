@@ -2,11 +2,8 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { PackageAppRuntimeBridge } from './package-app.ts'
 import type * as PackageAppAuthority from './package-app-authority.ts'
-import {
-	PackageAppCapabilityNotDeclaredError,
-	packageAppAuthorityFallbackKindOf,
-} from './package-app-authority-fallback.ts'
-import type * as PackageAppAuthorityFallback from './package-app-authority-fallback.ts'
+import { PackageAppCapabilityNotDeclaredError } from './package-app-authority-rejections.ts'
+import type * as PackageAppAuthorityRejections from './package-app-authority-rejections.ts'
 
 const rejections = vi.hoisted(() => [] as Array<Record<string, unknown>>)
 
@@ -15,9 +12,8 @@ vi.mock('./package-app-authority.ts', async (importOriginal) => ({
 	loadPackageAppRunsAs: async () => ({ status: 'ready' }),
 }))
 
-vi.mock('./package-app-authority-fallback.ts', async (importOriginal) => ({
-	...(await importOriginal<typeof PackageAppAuthorityFallback>()),
-	schedulePackageAppAuthorityFallback: () => {},
+vi.mock('./package-app-authority-rejections.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof PackageAppAuthorityRejections>()),
 	schedulePackageAppAuthorityRejection: (input: {
 		event: Record<string, unknown>
 	}) => {
@@ -121,18 +117,12 @@ test('names the checked app, the imported package that called, and the fix', () 
 	expect(error.message).toBe(
 		'Package app capability "secretSet" is not listed in kody.app.capabilities of the app "@example/app@1.2.0". The call came from "@example/helper", a package the app imports. Apps run as their runs-as person (the publisher unless an Owner chose someone else) and may call only the Kody capabilities they declare, including calls made by packages they import. Fix: add "secretSet" to kody.app.capabilities in the package.json of "@example/app", then republish the app.',
 	)
-	expect(packageAppAuthorityFallbackKindOf(error)).toBe(
-		'capability_not_declared',
-	)
 })
 
 test('without context the message stays generic and still says how to fix it', () => {
 	const error = new PackageAppCapabilityNotDeclaredError('secretList')
 	expect(error.message).toBe(
 		'Package app capability "secretList" is not listed in kody.app.capabilities. Apps run as their runs-as person (the publisher unless an Owner chose someone else) and may call only the Kody capabilities they declare, including calls made by packages they import. Fix: add "secretList" to kody.app.capabilities in the app\'s package.json, then republish the app.',
-	)
-	expect(packageAppAuthorityFallbackKindOf(error)).toBe(
-		'capability_not_declared',
 	)
 })
 

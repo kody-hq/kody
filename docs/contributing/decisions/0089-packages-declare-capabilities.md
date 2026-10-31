@@ -10,10 +10,9 @@ Since the
 a package app runs as its publisher, and only Kody capabilities listed in
 `kody.app.capabilities` run that way. That list has to cover the capabilities of
 every package the app imports, but only apps can declare anything, and nothing
-checks the list at publish. Undeclared calls are caught only at runtime: the
-visitor fallback rescues some (counted in `package_app_authority_fallbacks`) and
-the rest are hard rejections (counted in `package_app_authority_rejections`).
-Either way, a mistake reaches users before the author hears about it. Codemod
+checks the list at publish. Undeclared calls are caught only at runtime, as hard
+rejections (counted in `package_app_authority_rejections`), so a mistake reaches
+users before the author hears about it. Codemod
 `0018-declare-package-app-capabilities` is the one-time cleanup of saved
 manifests (Phase 1). This record covers how the gap stays closed afterwards.
 
@@ -43,13 +42,14 @@ discover them.
 - **Rollout.** The check ships warn-only: publish and `kody dev check` report
   findings but don't block. It switches to fail only after Kent has applied
   Phase 1 in production. The switch is a separate follow-up.
-- **Phase 3 cleanup.** After Phase 1 is applied and the fallback and
-  hard-rejection counts stay at zero for about 14 days, delete the #4278 visitor
-  fallback path in `runWithAuthority` (with `ownerCredentialForVisitors` and the
-  fallback/rejection tables and report), and the Phase 1 migration code (codemod
-  0018, its migration report, the codemod host-facts lane, and the fallback-log
-  gap filling). The import-closure scanner stays: the publish check uses it, so
-  it moves next to the publish checks instead of being deleted.
+- **Phase 3 cleanup.** The #4278 visitor fallback path in `runWithAuthority`,
+  `ownerCredentialForVisitors`, the fallback table, and its report are deleted.
+  After Phase 1 is applied and the hard-rejection count stays at zero for about
+  14 days, delete the rejection table and log, and the Phase 1 migration code
+  (codemod 0018, its migration report, the codemod host-facts lane, and its
+  rejection/allowance gap filling). The import-closure scanner stays: the
+  publish check uses it, so it moves next to the publish checks instead of being
+  deleted.
 
 ## Consequences
 

@@ -89,7 +89,7 @@ test('0017 flags apps whose signed-in visitors now get the publisher’s credent
 			},
 			source,
 		),
-	).toEqual([])
+	).toEqual([{ path: 'index.ts', pattern: 'visitor credential' }])
 	expect(
 		patterns(
 			{

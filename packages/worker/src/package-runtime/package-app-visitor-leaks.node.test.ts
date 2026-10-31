@@ -12,6 +12,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { type RuntimePackageAppVisitor } from '@kody-internal/shared/runtime-worker.ts'
 import { expect, test } from 'vitest'
+import { upsertPackageAppOauthGrant } from '#app/package-app-oauth-grants.ts'
 import { orgMemberUpdateCapability } from '#mcp/capabilities/access/org-members.ts'
 import { createOrganization } from '#worker/orgs/create-organization.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -23,10 +24,15 @@ import {
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
+import { recordPackageAppPublisher } from './package-app-authority.ts'
 import {
 	createPackageAppCallerContext,
 	PackageAppRuntimeBridge,
 } from './package-app.ts'
+import {
+	mintPackageAppVisitTicket,
+	resetPackageAppVisitNoncesForTests,
+} from './package-app-visit-ticket.ts'
 
 const now = '2026-10-11T00:00:00.000Z'
 const baseUrl = 'https://kody.example'
@@ -93,6 +99,12 @@ async function setup() {
 		)
 		.bind(orgId)
 		.run()
+	await recordPackageAppPublisher({
+		db,
+		scope: { orgId, packageId: 'pkg-app' },
+		personId: ownerId,
+		publisherIsOwner: true,
+	})
 	const env = {
 		APP_DB: db,
 		AUDIT_DB: createAuditTestDb(),
@@ -111,6 +123,13 @@ async function setup() {
 		owner: { userId: ownerId, username: 'owner', role: 'owner' },
 		bea: { userId: beaId, username: 'bea', role: 'member' },
 	} satisfies Record<string, RuntimePackageAppVisitor>
+	const visitAudience = {
+		host: baseUrl,
+		packageId: 'pkg-app',
+		kodyId: 'app',
+		sourceId: 'source-pkg-app',
+		publishedCommit: 'commit-1',
+	}
 
 	const bridgeFor = (visitor: RuntimePackageAppVisitor | null) =>
 		new PackageAppRuntimeBridge(
@@ -127,6 +146,9 @@ async function setup() {
 					sourceId: 'source-pkg-app',
 					publishedCommit: 'commit-1',
 					packageStorageGrantIds: ['pkg-app'],
+					declaredCapabilities: ['orgMemberUpdate'],
+					visitorNeeds: {},
+					visitAudience,
 				},
 				waitUntil: () => {},
 			} as never,
@@ -144,7 +166,7 @@ async function setup() {
 				.first<{ role: string }>()
 		)?.role
 
-	return { env, orgId, owner, visitors, bridgeFor, beasRole }
+	return { env, orgId, owner, visitors, visitAudience, bridgeFor, beasRole }
 }
 
 const promoteBea = {
@@ -152,7 +174,7 @@ const promoteBea = {
 	args: { username: 'bea', role: 'owner' },
 }
 
-test("a member's package app acts as its visitor, so it cannot make them Owner", async () => {
+test('a Member visiting an Owner-published app cannot promote anyone', async () => {
 	const t = await setup()
 
 	const callerContext: McpCallerContext = await createPackageAppCallerContext({
@@ -189,7 +211,7 @@ test("a member's package app acts as its visitor, so it cannot make them Owner",
 	expect(await t.beasRole()).toBe('member')
 })
 
-test('an anonymous visitor of an internet-visible app acts as no one', async () => {
+test('an anonymous visitor of an internet-visible app still cannot change roles', async () => {
 	const t = await setup()
 
 	const callerContext: McpCallerContext = await createPackageAppCallerContext({
@@ -205,4 +227,45 @@ test('an anonymous visitor of an internet-visible app acts as no one', async () 
 		'"orgMemberUpdate" needs a live person',
 	)
 	expect(await t.beasRole()).toBe('member')
+})
+
+test('metaGetCurrentUser never answers with the owner email; email consent returns the visitor’s address', async () => {
+	resetPackageAppVisitNoncesForTests()
+	const t = await setup()
+	const minted = await mintPackageAppVisitTicket({
+		env: t.env,
+		visitor: t.visitors.bea,
+		owner: {
+			userId: t.orgId,
+			orgSlug: 'quillworks',
+			email: 'owner@acme.example',
+			displayName: 'Owner',
+		},
+		audience: t.visitAudience,
+		credentialClientBinding: 'run:visitor-leaks-identity',
+	})
+	const identity = async () =>
+		(await t.bridgeFor(t.visitors.bea).callCapability({
+			name: 'metaGetCurrentUser',
+			args: {},
+			visitTicket: minted.ticket,
+		})) as { user_id: string; email?: string; role?: string }
+
+	const withoutConsent = await identity()
+	expect(withoutConsent.user_id).toBe(t.visitors.bea.userId)
+	expect(withoutConsent.email).toBe('')
+	expect(withoutConsent.role).toBe('member')
+
+	await upsertPackageAppOauthGrant({
+		db: t.env.APP_DB,
+		personId: t.visitors.bea.userId,
+		orgUsername: 'quillworks',
+		kodyId: 'app',
+		scopes: ['profile', 'email'],
+	})
+	const withConsent = await identity()
+	expect(withConsent.user_id).toBe(t.visitors.bea.userId)
+	expect(withConsent.email).toBe('bea@acme.example')
+	expect(withConsent.email).not.toBe('owner@acme.example')
+	expect(withConsent.role).toBe('member')
 })

@@ -99,7 +99,6 @@ import {
 	loadRunCredentialNeedEntries,
 } from '#worker/credentials/credential-client.ts'
 import { loadPublishedCredentialNeeds } from '#worker/credentials/credential-needs-closure.ts'
-import { type OwnerCredentialScope } from '#worker/credentials/owner-credential-for-visitors.ts'
 import {
 	createCredentialClientRuntimeSource,
 	credentialClientToolNames,
@@ -162,13 +161,11 @@ import {
 	createPackageAppCredentialAuthority,
 	createPackageAppVisitorCredentialRequest,
 	loadPackageAppRunsAs,
-	packageAppRunsAsUnavailableMessages,
 	packageAppIdentityCapabilityName,
 	packageAppVisitorConsents,
 	packageAppVisitorNeedCallName,
 	PackageAppRunsAsUnavailableError,
 	PackageAppVisitorConsentError,
-	type PackageAppAuthorityMode,
 	type PackageAppAuthorityScope,
 	type PackageAppRunsAs,
 	type PackageAppRunsAsSource,
@@ -177,12 +174,8 @@ import {
 import {
 	PackageAppCapabilityNotDeclaredError,
 	PackageAppCapabilityUnavailableError,
-	packageAppAuthorityFallbackKindOf,
-	packageAppAuthorityFallbackKindOfResult,
-	schedulePackageAppAuthorityFallback,
 	schedulePackageAppAuthorityRejection,
-	type PackageAppAuthorityDifferenceKind,
-} from './package-app-authority-fallback.ts'
+} from './package-app-authority-rejections.ts'
 import {
 	findLivePackageAppOauthGrant,
 	notePackageAppOauthGrantUse,
@@ -1571,24 +1564,6 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return withRequestBilling(callerContext, billing)
 	}
 
-	private noteAuthorityFallback(
-		callName: string,
-		kind: PackageAppAuthorityDifferenceKind,
-		visitor: RuntimePackageAppVisitor | null,
-	) {
-		schedulePackageAppAuthorityFallback({
-			env: this.env,
-			event: {
-				ownerId: this.ctx.props.userId,
-				packageId: this.ctx.props.packageId,
-				callName,
-				kind,
-				visitorId: visitor?.userId ?? null,
-			},
-			waitUntil: (promise) => this.ctx.waitUntil(promise),
-		})
-	}
-
 	/** Never throws: an unreadable visit ticket counts as anonymous. */
 	private async noteHardRejection(
 		callName: string,
@@ -1611,7 +1586,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
-	/** A lookup failure runs the call the legacy way, never fails it. */
+	/** A lookup failure fails the call. Never runs as the visitor. */
 	private async loadRunsAs(): Promise<PackageAppRunsAs> {
 		try {
 			return await loadPackageAppRunsAs({
@@ -1626,103 +1601,43 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 					error: error instanceof Error ? error.name : 'unknown',
 				}),
 			)
-			return {
-				status: 'unavailable',
-				reason: 'not-set',
-				message: packageAppRunsAsUnavailableMessages['not-set'],
-			}
+			throw new PackageAppRunsAsUnavailableError('not-set', { cause: error })
 		}
+	}
+
+	private async requireRunsAs() {
+		const runsAs = await this.loadRunsAs()
+		if (runsAs.status !== 'ready') {
+			throw new PackageAppRunsAsUnavailableError(runsAs.reason)
+		}
+		return runsAs
 	}
 
 	/**
 	 * Run one bridge call as the app's runs-as person (ADR 0068 amendment
-	 * 2026-10-24). When that fails for an authority reason, the call runs the
-	 * legacy way (as the visitor, or anonymously) and, when that works,
-	 * leaves a would-break row. A call that fails both ways throws the
-	 * runs-as error; when that error is "not declared", it also leaves a
-	 * hard-rejection row. Never retries a failure that is not about authority.
+	 * 2026-10-24). Authority failures throw; a call refused as not declared
+	 * also leaves a hard-rejection row. Visitor identity and consented
+	 * visitor-data calls stay on their own paths.
 	 */
 	private async runWithAuthority<T>(input: {
 		callName: string
 		storageId: string | null
 		/** This request's visit ticket, as the wrapper passed it. */
 		visitTicket: string | null | undefined
-		run: (
-			callerContext: McpCallerContext,
-			mode: PackageAppAuthorityMode,
-		) => Promise<T>
-		/** A returned (not thrown) refusal that is about authority. */
-		refusedResultKind?: (result: T) => PackageAppAuthorityDifferenceKind | null
+		run: (callerContext: McpCallerContext) => Promise<T>
 	}): Promise<T> {
-		const runsAs = await this.loadRunsAs()
-		const runLegacy = async () =>
-			await input.run(
-				await this.createCallerContext(input.storageId, input.visitTicket),
-				'legacy',
-			)
-		const noteFallback = async (kind: PackageAppAuthorityDifferenceKind) =>
-			this.noteAuthorityFallback(
-				input.callName,
-				kind,
-				await this.visitorFor(input.visitTicket),
-			)
-		if (runsAs.status !== 'ready') {
-			let result: T
-			try {
-				result = await runLegacy()
-			} catch (error) {
-				if (
-					runsAs.reason === 'person-unavailable' &&
-					packageAppAuthorityFallbackKindOf(error)
-				) {
-					throw new PackageAppRunsAsUnavailableError(runsAs.reason, {
-						cause: error,
-					})
-				}
-				throw error
-			}
-			if (!input.refusedResultKind?.(result)) {
-				await noteFallback('runs_as_unavailable')
-			}
-			return result
-		}
-		let refusedKind: PackageAppAuthorityDifferenceKind
-		let refused: { result: T } | { error: unknown }
+		const runsAs = await this.requireRunsAs()
+		const billing = (await this.requireActingVisit(input.visitTicket))?.billing
 		try {
-			const billing = (await this.requireActingVisit(input.visitTicket))
-				?.billing
-			const result = await input.run(
+			return await input.run(
 				this.createRunsAsCallerContext(runsAs, input.storageId, billing),
-				'runs-as',
 			)
-			const kind = input.refusedResultKind?.(result) ?? null
-			if (!kind) return result
-			refusedKind = kind
-			refused = { result }
 		} catch (error) {
-			const kind = packageAppAuthorityFallbackKindOf(error)
-			if (!kind) throw error
-			refusedKind = kind
-			refused = { error }
-		}
-		const giveUp = async () => {
-			if ('error' in refused) {
-				if (refused.error instanceof PackageAppCapabilityNotDeclaredError) {
-					await this.noteHardRejection(input.callName, input.visitTicket)
-				}
-				throw refused.error
+			if (error instanceof PackageAppCapabilityNotDeclaredError) {
+				await this.noteHardRejection(input.callName, input.visitTicket)
 			}
-			return refused.result
+			throw error
 		}
-		let legacyResult: T
-		try {
-			legacyResult = await runLegacy()
-		} catch {
-			return await giveUp()
-		}
-		if (input.refusedResultKind?.(legacyResult)) return await giveUp()
-		await noteFallback(refusedKind)
-		return legacyResult
 	}
 
 	private async requireVisit(ticket: string | null | undefined) {
@@ -1749,7 +1664,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return visit?.visitor && !visit.executorOnly ? visit : null
 	}
 
-	/** Who this call acts for the legacy way: the ticket's visitor, if any. */
+	/** Who is visiting this request, from the ticket. Identity, not authority. */
 	private async visitorFor(
 		ticket: string | null | undefined,
 	): Promise<RuntimePackageAppVisitor | null> {
@@ -2194,19 +2109,15 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			callName: name,
 			storageId: null,
 			visitTicket,
-			run: async (callerContext, mode) => {
-				if (mode === 'runs-as' && !declared.has(name)) {
+			run: async (callerContext) => {
+				if (!declared.has(name)) {
 					throw this.capabilityNotDeclared(name, boundPackageId)
 				}
 				return await this.invokeCapability(boundPackageId, callerContext, {
 					name,
 					args: capabilityArgs,
 					unavailable: (missing) =>
-						mode === 'runs-as'
-							? new PackageAppCapabilityUnavailableError(missing)
-							: new Error(
-									`Package app capability "${missing}" is not available.`,
-								),
+						new PackageAppCapabilityUnavailableError(missing),
 				})
 			},
 		})
@@ -3082,7 +2993,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	private async getCredentialClientTools(
 		boundPackageId: string | null,
 		opener:
-			| { mode: 'legacy' }
+			| { mode: 'handle' }
 			| { mode: 'runs-as'; callerContext: McpCallerContext }
 			| {
 					mode: 'visitor-need'
@@ -3150,12 +3061,6 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 					// The app package is the entry: a bound dependency's need reads
 					// the app's mappings.
 					runEntries: async () => (await loadRunNeedEntries()).entries,
-					// Under the runs-as person every declared need is theirs, so the
-					// `ownerCredentialForVisitors` opt-in only applies the legacy way.
-					ownerCredentialScope:
-						opener.mode === 'legacy'
-							? packageAppOwnerCredentialScope(this.ctx.props)
-							: null,
 					packageAppAuthority: createPackageAppCredentialAuthority({
 						env: this.env,
 						scope: this.authorityScope(),
@@ -3222,9 +3127,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			name === credentialClientToolNames.open ||
 			name === credentialClientToolNames.openAll ||
 			name === credentialClientToolNames.check
-		// Executor needs never resolve from the runs-as or legacy path. Refuse
-		// before runWithAuthority, whose legacy fallback would otherwise hand
-		// back the owner's credential.
+		// Executor needs never resolve from the runs-as path. Refuse before
+		// runWithAuthority, which would otherwise hand back the publisher's
+		// credential.
 		if (
 			opens &&
 			typeof args.key === 'string' &&
@@ -3244,7 +3149,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			return await callTool(
 				await this.getCredentialClientTools(
 					boundPackageId,
-					{ mode: 'legacy' },
+					{ mode: 'handle' },
 					visitTicket,
 				),
 				args,
@@ -3254,18 +3159,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			callName: `credential:${name}`,
 			storageId: null,
 			visitTicket,
-			refusedResultKind: packageAppAuthorityFallbackKindOfResult,
-			run: async (callerContext, mode) => {
-				if (mode === 'legacy') {
-					return await callTool(
-						await this.getCredentialClientTools(
-							boundPackageId,
-							{ mode: 'legacy' },
-							visitTicket,
-						),
-						args,
-					)
-				}
+			run: async (callerContext) => {
 				if (args.name !== undefined && args.name !== null) {
 					// The runs-as person's credentials are capped to declared needs.
 					throw this.capabilityNotDeclared('credential.named', boundPackageId)
@@ -4063,11 +3957,6 @@ async function buildPackageAppWorkerOptionsUncached(
 		},
 		grantedSecretAuthorityPackageIds: packageStorageGrantIds,
 		packageSecretRefKey,
-		ownerCredentialScope: packageAppOwnerCredentialScope({
-			userId: input.userId,
-			packageId: input.savedPackage.id,
-			publishedCommit: input.savedPackage.publishedCommit,
-		}),
 		visitAudience,
 		packageAppAuthority: {
 			scope: { orgId: input.userId, packageId: input.savedPackage.id },
@@ -4160,23 +4049,6 @@ function visitHostOf(hostedUrl: string, baseUrl: string) {
 		} catch {
 			return baseUrl
 		}
-	}
-}
-
-/**
- * Where an `ownerCredentialForVisitors` need may resolve owner credentials:
- * this app at the commit it serves. Whether the app is internet-visible and
- * that commit approved is read when a need asks, not baked into the worker.
- */
-function packageAppOwnerCredentialScope(input: {
-	userId: OwnerId
-	packageId: string
-	publishedCommit: string | null
-}): OwnerCredentialScope {
-	return {
-		orgId: input.userId,
-		packageId: input.packageId,
-		publishedCommit: input.publishedCommit,
 	}
 }
 

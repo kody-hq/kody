@@ -80,7 +80,6 @@ export function createCredentialClientKodyTools(input: {
 			runEntries: input.options.runEntries
 				? () => input.options.runEntries!(args.packageId)
 				: undefined,
-			ownerCredentialScope: input.options.ownerCredentialScope ?? null,
 			packageAppAuthority: input.options.packageAppAuthority ?? null,
 			waitUntil: input.options.waitUntil,
 		}) satisfies CredentialClientContext

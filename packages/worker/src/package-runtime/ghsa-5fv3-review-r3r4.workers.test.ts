@@ -26,6 +26,7 @@ import { persistPublishedBundleArtifact } from './published-bundle-artifacts.ts'
 import { persistPublishedSourceSnapshot } from './published-runtime-artifacts.ts'
 import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
+import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 
 /**
  * GHSA-5fv3 review R3/R4 checks. Each test asserts the safe outcome.
@@ -268,6 +269,13 @@ async function publishGrokBotWake(userId: string, wakeSource: string) {
 }
 
 async function provisionTestUser(userId: string, username: string) {
+	await ensureUsersTestSchema({ db: env.APP_DB })
+	await env.APP_DB.prepare(
+		`INSERT INTO users (username, email, password_hash, stable_user_id, personal_org_id)
+		 VALUES (?, ?, 'hash', ?, ?)`,
+	)
+		.bind(username, `${username}@example.com`, userId, userId)
+		.run()
 	await ensurePersonalOrg(env.APP_DB, { stableUserId: userId, username })
 }
 

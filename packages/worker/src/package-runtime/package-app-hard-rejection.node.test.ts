@@ -3,10 +3,9 @@ import { expect, test, vi } from 'vitest'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import { PackageAppRuntimeBridge } from './package-app.ts'
 import type * as PackageAppAuthority from './package-app-authority.ts'
-import type * as PackageAppAuthorityFallback from './package-app-authority-fallback.ts'
+import type * as PackageAppAuthorityRejections from './package-app-authority-rejections.ts'
 
 const scheduled = vi.hoisted(() => ({
-	fallbacks: [] as Array<Record<string, unknown>>,
 	rejections: [] as Array<Record<string, unknown>>,
 }))
 
@@ -15,13 +14,8 @@ vi.mock('./package-app-authority.ts', async (importOriginal) => ({
 	loadPackageAppRunsAs: async () => ({ status: 'ready' }),
 }))
 
-vi.mock('./package-app-authority-fallback.ts', async (importOriginal) => ({
-	...(await importOriginal<typeof PackageAppAuthorityFallback>()),
-	schedulePackageAppAuthorityFallback: (input: {
-		event: Record<string, unknown>
-	}) => {
-		scheduled.fallbacks.push(input.event)
-	},
+vi.mock('./package-app-authority-rejections.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof PackageAppAuthorityRejections>()),
 	schedulePackageAppAuthorityRejection: (input: {
 		event: Record<string, unknown>
 	}) => {
@@ -30,18 +24,16 @@ vi.mock('./package-app-authority-fallback.ts', async (importOriginal) => ({
 }))
 
 const { PackageAppCapabilityNotDeclaredError } =
-	await import('./package-app-authority-fallback.ts')
+	await import('./package-app-authority-rejections.ts')
 
 type RunWithAuthority = (input: {
 	callName: string
 	storageId: string | null
 	visitTicket: string | null | undefined
-	run: (callerContext: unknown, mode: 'runs-as' | 'legacy') => Promise<unknown>
-	refusedResultKind?: (result: unknown) => string | null
+	run: (callerContext: unknown) => Promise<unknown>
 }) => Promise<unknown>
 
 function createBridge() {
-	scheduled.fallbacks.length = 0
 	scheduled.rejections.length = 0
 	const bridge = new PackageAppRuntimeBridge(
 		{
@@ -76,22 +68,15 @@ function createBridge() {
 		internals.runWithAuthority.call(bridge, input)
 }
 
-const refusedResult = { ok: false, error: { code: 'credential_not_found' } }
-const refusedResultKind = (result: unknown) =>
-	(result as { ok?: boolean }).ok === false ? 'credential_unavailable' : null
-
-test('an undeclared capability that also fails the legacy way records one hard rejection', async () => {
+test('an undeclared capability fails and records one hard rejection', async () => {
 	const runWithAuthority = createBridge()
 	await expect(
 		runWithAuthority({
 			callName: 'secretList',
 			storageId: null,
 			visitTicket: null,
-			run: async (_context, mode) => {
-				if (mode === 'runs-as') {
-					throw new PackageAppCapabilityNotDeclaredError('secretList')
-				}
-				throw new Error('Authenticated MCP user is required')
+			run: async () => {
+				throw new PackageAppCapabilityNotDeclaredError('secretList')
 			},
 		}),
 	).rejects.toBeInstanceOf(PackageAppCapabilityNotDeclaredError)
@@ -104,22 +89,17 @@ test('an undeclared capability that also fails the legacy way records one hard r
 			visitorId: null,
 		},
 	])
-	expect(scheduled.fallbacks).toEqual([])
 })
 
-test('credential.named refused as runs-as and refused the legacy way records a hard rejection', async () => {
+test('credential.named refused as runs-as records a hard rejection', async () => {
 	const runWithAuthority = createBridge()
 	await expect(
 		runWithAuthority({
 			callName: 'credential:credentialClientOpen',
 			storageId: null,
 			visitTicket: null,
-			refusedResultKind,
-			run: async (_context, mode) => {
-				if (mode === 'runs-as') {
-					throw new PackageAppCapabilityNotDeclaredError('credential.named')
-				}
-				return refusedResult
+			run: async () => {
+				throw new PackageAppCapabilityNotDeclaredError('credential.named')
 			},
 		}),
 	).rejects.toThrow(/credential\.named/)
@@ -129,34 +109,9 @@ test('credential.named refused as runs-as and refused the legacy way records a h
 			kind: 'capability_not_declared',
 		}),
 	])
-	expect(scheduled.fallbacks).toEqual([])
 })
 
-test('a call the legacy way rescues is a fallback, not a hard rejection', async () => {
-	const runWithAuthority = createBridge()
-	await expect(
-		runWithAuthority({
-			callName: 'secretList',
-			storageId: null,
-			visitTicket: null,
-			run: async (_context, mode) => {
-				if (mode === 'runs-as') {
-					throw new PackageAppCapabilityNotDeclaredError('secretList')
-				}
-				return { secrets: [] }
-			},
-		}),
-	).resolves.toEqual({ secrets: [] })
-	expect(scheduled.fallbacks).toEqual([
-		expect.objectContaining({
-			callName: 'secretList',
-			kind: 'capability_not_declared',
-		}),
-	])
-	expect(scheduled.rejections).toEqual([])
-})
-
-test('a refusal that is not about declaration is never counted as a hard rejection', async () => {
+test('a refusal that is not about declaration fails without a hard rejection, and nothing retries as the visitor', async () => {
 	const runWithAuthority = createBridge()
 	const denied = new AuthorizationError({
 		code: 'missing_permission',
@@ -165,17 +120,17 @@ test('a refusal that is not about declaration is never counted as a hard rejecti
 		resource: null,
 		message: 'no',
 	})
+	const run = vi.fn(async () => {
+		throw denied
+	})
 	await expect(
 		runWithAuthority({
 			callName: 'secretList',
 			storageId: null,
 			visitTicket: null,
-			run: async (_context, mode) => {
-				if (mode === 'runs-as') throw denied
-				throw new Error('also denied')
-			},
+			run,
 		}),
 	).rejects.toBe(denied)
+	expect(run).toHaveBeenCalledTimes(1)
 	expect(scheduled.rejections).toEqual([])
-	expect(scheduled.fallbacks).toEqual([])
 })

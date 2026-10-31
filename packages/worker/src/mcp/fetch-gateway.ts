@@ -86,7 +86,6 @@ import {
 	openSealedToken,
 	sealTokenResponse,
 } from '#worker/credentials/sealed-token.ts'
-import { type OwnerCredentialScope } from '#worker/credentials/owner-credential-for-visitors.ts'
 import {
 	pathSegmentEncodedCredentialNames,
 	withPathSegmentEncodingWarning,
@@ -110,13 +109,10 @@ import {
 import {
 	createPackageAppVisitorPersonalRequest,
 	loadPackageAppRunsAs,
+	PackageAppRunsAsUnavailableError,
 	type PackageAppAuthorityScope,
 	type PackageAppVisitorGrantScope,
 } from '#worker/package-runtime/package-app-authority.ts'
-import {
-	packageAppAuthorityFallbackKindOf,
-	schedulePackageAppAuthorityFallback,
-} from '#worker/package-runtime/package-app-authority-fallback.ts'
 import {
 	consumeDailyEntitlement,
 	findCachedUserAccountByStableUserId,
@@ -173,11 +169,6 @@ type FetchGatewayProps = {
 	 * must be bound to. Without it, a client fetch is refused.
 	 */
 	credentialClientBinding?: string | null
-	/**
-	 * Package-app runs only: the app whose `ownerCredentialForVisitors`
-	 * handles resolve with its credential authority, not `request`.
-	 */
-	ownerCredentialScope?: OwnerCredentialScope | null
 	/**
 	 * Package-app runs only (ADR 0068 amendment 2026-10-24): placeholders
 	 * resolve as the app's runs-as person, and `credential()` handles carry
@@ -613,10 +604,8 @@ function readResponseContentLengthBytes(
 }
 
 /**
- * Package apps fill placeholders as their runs-as person. When that fails,
- * the visitor's fill (today's behavior) is tried before giving up, and a
- * success there leaves a would-break row. Body placeholders fill while the
- * upload streams, so they fall back one batch at a time.
+ * Package apps fill placeholders as their runs-as person. Authority
+ * failures throw. Visitor identity stays on `props.request` for usage.
  */
 async function expandAsPackageAppAuthority(input: {
 	request: Request
@@ -630,67 +619,13 @@ async function expandAsPackageAppAuthority(input: {
 		env: input.env,
 		scope: authority.scope,
 	})
-	const noteFallback = (error: unknown) =>
-		schedulePackageAppAuthorityFallback({
-			env: input.env,
-			event: {
-				ownerId: authority.scope.orgId,
-				packageId: authority.scope.packageId,
-				callName: 'fetch',
-				kind:
-					runsAs.status === 'ready'
-						? (packageAppAuthorityFallbackKindOf(error) ??
-							'credential_unavailable')
-						: 'runs_as_unavailable',
-				visitorId: input.props.request?.actor?.userId ?? null,
-			},
-			waitUntil: input.waitUntil,
-		})
 	if (runsAs.status !== 'ready') {
-		const expanded = await expandSecretPlaceholders(input)
-		if (expanded.substitutedValues.length > 0) {
-			noteFallback(null)
-		} else {
-			// Body placeholders fill while the upload streams.
-			void expanded.bodyFillDone
-				.then(() => {
-					if (expanded.substitutedValues.length > 0) noteFallback(null)
-				})
-				.catch(() => {})
-		}
-		return expanded
+		throw new PackageAppRunsAsUnavailableError(runsAs.reason)
 	}
-	const retry = input.request.clone() as Request
-	try {
-		const expanded = await expandSecretPlaceholders({
-			...input,
-			props: { ...input.props, request: runsAs.request },
-			bodyFallback: { props: input.props, onFallback: noteFallback },
-		})
-		discardUnreadBody(retry.body)
-		return expanded
-	} catch (error) {
-		if (!isPlaceholderAuthorityFailure(error)) {
-			discardUnreadBody(retry.body)
-			throw error
-		}
-		discardUnreadBody(input.request.body)
-		try {
-			const expanded = await expandSecretPlaceholders({
-				...input,
-				request: retry,
-			})
-			noteFallback(error)
-			return expanded
-		} catch {
-			throw error
-		}
-	}
-}
-
-/** A locked branch is still being read by a failed fill; cancelling it would throw. */
-function discardUnreadBody(body: ReadableStream | null) {
-	if (body && !body.locked) void body.cancel().catch(() => {})
+	return await expandSecretPlaceholders({
+		...input,
+		props: { ...input.props, request: runsAs.request },
+	})
 }
 
 /** A credential the filling person cannot resolve, as opposed to a bad request or an outage. */
@@ -698,7 +633,6 @@ export class GatewayCredentialUnavailableError extends Error {}
 
 export function isPlaceholderAuthorityFailure(error: unknown) {
 	return (
-		packageAppAuthorityFallbackKindOf(error) !== null ||
 		error instanceof GatewayCredentialUnavailableError ||
 		error instanceof SecretPlacementError ||
 		error instanceof McpCallerError
@@ -726,15 +660,6 @@ export async function expandSecretPlaceholders(input: {
 	request: Request
 	props: FetchGatewayProps
 	env: Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
-	/**
-	 * Body placeholders fill while the upload streams, so a whole-request
-	 * retry is impossible once a chunk is sent; a batch these props cannot
-	 * fill is retried with `props` here instead.
-	 */
-	bodyFallback?: {
-		props: FetchGatewayProps
-		onFallback: (error: unknown) => void
-	}
 }): Promise<{
 	request: Request
 	substitutedValues: Array<string>
@@ -1335,22 +1260,7 @@ export async function expandSecretPlaceholders(input: {
 					})),
 				]
 				const before = substitutedValues.length
-				const auditedBefore = new Set(auditedPlacementKeys)
-				try {
-					await resolvePlaceholderBatch(sources)
-				} catch (error) {
-					const fallback = input.bodyFallback
-					if (!fallback || !isPlaceholderAuthorityFailure(error)) throw error
-					for (const key of auditedPlacementKeys) {
-						if (!auditedBefore.has(key)) auditedPlacementKeys.delete(key)
-					}
-					try {
-						await resolvePlaceholderBatch(sources, fallback.props)
-					} catch {
-						throw error
-					}
-					fallback.onFallback(error)
-				}
+				await resolvePlaceholderBatch(sources)
 				return substitutedValues.slice(before)
 			},
 		})

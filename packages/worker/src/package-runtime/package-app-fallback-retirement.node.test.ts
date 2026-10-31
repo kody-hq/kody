@@ -17,25 +17,19 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { PackageAppRuntimeBridge } from './package-app.ts'
 import type * as PackageAppAuthority from './package-app-authority.ts'
-import type * as PackageAppAuthorityFallback from './package-app-authority-fallback.ts'
+import type * as PackageAppAuthorityRejections from './package-app-authority-rejections.ts'
 import {
 	mintPackageAppVisitTicket,
 	resetPackageAppVisitNoncesForTests,
 } from './package-app-visit-ticket.ts'
 
 const logged = vi.hoisted(() => ({
-	fallbacks: [] as Array<{ callName: string; kind: string }>,
 	rejections: [] as Array<{ callName: string; kind: string }>,
 }))
 const readConfig = vi.hoisted(() => vi.fn())
 
-vi.mock('./package-app-authority-fallback.ts', async (importOriginal) => ({
-	...(await importOriginal<typeof PackageAppAuthorityFallback>()),
-	schedulePackageAppAuthorityFallback: (input: {
-		event: { callName: string; kind: string }
-	}) => {
-		logged.fallbacks.push(input.event)
-	},
+vi.mock('./package-app-authority-rejections.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof PackageAppAuthorityRejections>()),
 	schedulePackageAppAuthorityRejection: (input: {
 		event: { callName: string; kind: string }
 	}) => {
@@ -74,7 +68,6 @@ const now = '2026-10-31T00:00:00.000Z'
 const baseUrl = 'https://kody.example'
 
 beforeEach(() => {
-	logged.fallbacks.length = 0
 	logged.rejections.length = 0
 	readConfig.mockReset()
 	resetPackageAppVisitNoncesForTests()
@@ -272,7 +265,7 @@ test('metaGetCurrentUser names the visitor with their own identity, and never lo
 		expect(JSON.stringify(answer)).not.toContain('publisher@example.com')
 		expect(answer.display_name).not.toBe('Publisher')
 	}
-	expect(logged.fallbacks).toEqual([])
+	expect(logged.rejections).toEqual([])
 })
 
 test('kody.appPublisherGet() is the explicit way to read the publisher', async () => {
@@ -302,11 +295,13 @@ test('an allowance covers exactly its capabilities for this published version, a
 		app.bridge.callCapability({ name: 'secretList' }),
 	).resolves.toEqual({ ok: true, name: 'secretList' })
 	expect(app.invoked).toEqual([{ name: 'secretList', mode: 'runs-as' }])
-	expect(logged.fallbacks).toEqual([])
+	expect(logged.rejections).toEqual([])
 
 	// Not a global loosening: an unlisted capability is still not declared.
-	await app.bridge.callCapability({ name: 'secretSet' })
-	expect(logged.fallbacks).toEqual([
+	await expect(
+		app.bridge.callCapability({ name: 'secretSet' }),
+	).rejects.toThrow(/not listed in kody\.app\.capabilities/)
+	expect(logged.rejections).toEqual([
 		expect.objectContaining({
 			callName: 'secretSet',
 			kind: 'capability_not_declared',
@@ -338,6 +333,5 @@ test('__kodyIntegrationRuntimeConfig is internal: no declaration, no fallback, n
 			args: { name: 'github' },
 		}),
 	)
-	expect(logged.fallbacks).toEqual([])
 	expect(logged.rejections).toEqual([])
 })

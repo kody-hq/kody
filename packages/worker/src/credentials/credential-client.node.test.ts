@@ -16,7 +16,6 @@ import { type ApiInvocationContext } from '#worker/open-api/context.ts'
 import { signLocalExecutePackageBinding } from '#worker/package-runtime/local-execute-package-binding.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
-import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import * as usageModule from '#worker/usage/record-usage.ts'
 import { credentialClientHeaderName } from './credential-client-header.ts'
 import {
@@ -43,8 +42,10 @@ import {
 	runCredentialMappingWrite,
 } from './credential-mappings.ts'
 import * as needsClosure from './credential-needs-closure.ts'
-import { type CredentialNeed } from './credential-needs.ts'
-import { ownerCredentialForVisitorsRateLimitConfig } from './owner-credential-for-visitors.ts'
+import {
+	type CredentialNeed,
+	type SavedCredentialNeed,
+} from './credential-needs.ts'
 
 import {
 	createCredentialClientFixtures,
@@ -87,8 +88,7 @@ vi.mock(
 		),
 )
 
-const { setup, setupVisitorApp } =
-	createCredentialClientFixtures(scheduledAudits)
+const { setup } = createCredentialClientFixtures(scheduledAudits)
 
 test('a client opens by key with no value, and the gateway places the key by its inject on its hosts only', async () => {
 	const t = await setup()
@@ -1375,224 +1375,53 @@ test('local CapabilityProxy reads the entry mapping from the signed binding, nev
 	}
 })
 
-test('an opted-in need on an approved internet-visible app resolves as its approving owner for anyone, and the viewer stays the viewer', async () => {
-	const t = await setupVisitorApp()
-	const anonymous = t.appContext(null)
-	const opened = await openCredentialClient(anonymous, { key: 'database' })
-	expect(opened).toMatchObject({
-		key: 'database',
+test('ownerCredentialForVisitors on a need is ignored; the caller still resolves the credential', async () => {
+	const t = await setup()
+	await t.storeKey({
 		name: 'rooms-db',
+		provider: 'database',
 		hosts: ['db.example.com'],
 	})
-	expect(JSON.stringify(opened)).not.toContain(resendKey)
-	const placed = await t.fetchAs(null, opened.handle)
-	expect(placed.placement).toMatchObject({
-		kind: 'header',
-		value: `Bearer ${resendKey}`,
+	const request = t.requestAs('bea', 'owner')
+	const packageId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme-clients/rooms',
 	})
-
-	// Needs without the opt-in still resolve only for the viewer.
-	await expect(
-		rejection(openCredentialClient(anonymous, { key: 'resend' })),
-	).resolves.toMatchObject({
-		body: { code: 'credential_denied' },
-		message: expect.stringContaining('no acting person'),
-	})
-	await expect(
-		rejection(openCredentialClients(anonymous, { key: 'resend' })),
-	).resolves.toMatchObject({ body: { code: 'credential_denied' } })
-	// The handle works only where the run shares owner credentials.
-	await expect(t.fetchAs(null, opened.handle, null)).rejects.toMatchObject({
-		body: { code: 'invalid_request' },
-	})
-
-	// Ann is a member with no Use on rooms-db; Bea is the approving owner.
-	const ann = t.requestAs('ann', 'member')
-	const annOpened = await openCredentialClient(t.appContext(ann), {
-		key: 'database',
-	})
-	await t.fetchAs(ann, annOpened.handle)
-	await expect(
-		openCredentialClients(t.appContext(ann), { key: 'database' }),
-	).resolves.toMatchObject([{ name: 'rooms-db' }])
-	const bea = t.requestAs('bea', 'owner')
-	const beaOpened = await openCredentialClient(t.appContext(bea), {
-		key: 'database',
-	})
-	await t.fetchAs(bea, beaOpened.handle)
-
-	const rows = await t.auditRows()
-	expect(rows.map((row) => row.result)).toEqual([
-		'success',
-		'success',
-		'success',
-	])
-	const [anonymousRow, annRow, beaRow] = rows
-	expect(anonymousRow).toMatchObject({
-		actorUserId: t.people.bea.stableUserId,
-		details: {
-			appPackageId: t.packageId,
-			ownerCredentialForVisitors: 'true',
-			credentialAuthorityUserId: t.people.bea.stableUserId,
-			viewerUserId: null,
-			viewerKind: 'anonymous',
-		},
-	})
-	expect(annRow).toMatchObject({
-		actorUserId: t.people.bea.stableUserId,
-		details: {
-			ownerCredentialForVisitors: 'true',
-			credentialAuthorityUserId: t.people.bea.stableUserId,
-			viewerUserId: t.people.ann.stableUserId,
-			viewerKind: 'person',
-		},
-	})
-	expect(beaRow?.actorUserId).toBe(t.people.bea.stableUserId)
-	expect(beaRow?.details).not.toHaveProperty('ownerCredentialForVisitors')
-	expect(beaRow?.details).not.toHaveProperty('viewerKind')
-	expect(JSON.stringify(rows)).not.toContain(resendKey)
-})
-
-test('a private app or an unapproved commit ignores the opt-in, and visitors use only what the owner approved', async () => {
-	const privateApp = await setupVisitorApp({ internetVisible: false })
-	await expect(
-		rejection(
-			openCredentialClient(privateApp.appContext(null), { key: 'database' }),
-		),
-	).resolves.toMatchObject({
-		body: { code: 'credential_denied' },
-		message: expect.stringContaining('no acting person'),
-	})
-	// Ann opens as herself, and she has no Use on rooms-db.
-	await expect(
-		rejection(
-			openCredentialClient(
-				privateApp.appContext(privateApp.requestAs('ann', 'member')),
-				{ key: 'database' },
-			),
-		),
-	).resolves.toMatchObject({ body: { code: 'credential_unbound' } })
-
-	const unapproved = await setupVisitorApp({ approvedCommit: 'commit-0' })
-	await expect(
-		rejection(
-			openCredentialClient(unapproved.appContext(null), { key: 'database' }),
-		),
-	).resolves.toMatchObject({ body: { code: 'credential_denied' } })
-
-	const unlisted = await setupVisitorApp({
-		approvedCredentialIds: () => ['some-other-credential'],
-	})
-	await expect(
-		rejection(
-			openCredentialClient(unlisted.appContext(null), { key: 'database' }),
-		),
-	).resolves.toMatchObject({
-		body: { code: 'credential_denied' },
-		message: expect.stringContaining(
-			'has not approved for this app’s visitors',
-		),
-	})
-
-	const goneApprover = await setupVisitorApp({
-		approvedBy: testStableUserIdFromEmail('gone@example.com'),
-	})
-	await expect(
-		rejection(
-			openCredentialClient(goneApprover.appContext(null), { key: 'database' }),
-		),
-	).resolves.toMatchObject({
-		body: { code: 'credential_denied' },
-		message: expect.stringContaining('can no longer use its org’s credentials'),
-	})
-})
-
-test('a suspended approver stops visitor credential use even when authority was cached', async () => {
-	const t = await setupVisitorApp()
-	const opened = await openCredentialClient(t.appContext(null), {
-		key: 'database',
-	})
-	await t.fetchAs(null, opened.handle)
-	await t.db
-		.prepare(`UPDATE users SET suspended_at = ? WHERE stable_user_id = ?`)
-		.bind(new Date().toISOString(), t.people.bea.stableUserId)
-		.run()
-	await expect(
-		rejection(t.fetchAs(null, opened.handle)),
-	).resolves.toMatchObject({
-		body: { code: 'invalid_request' },
-	})
-	await expect(
-		rejection(openCredentialClient(t.appContext(null), { key: 'database' })),
-	).resolves.toMatchObject({
-		body: { code: 'credential_denied' },
-		message: expect.stringContaining('can no longer use its org’s credentials'),
-	})
-})
-
-test('a visitor handle fails once the approval no longer lists that credential', async () => {
-	const t = await setupVisitorApp()
-	const opened = await openCredentialClient(t.appContext(null), {
-		key: 'database',
-	})
-	await t.fetchAs(null, opened.handle)
-	await t.db
-		.prepare(
-			`UPDATE package_capability_approvals
-			 SET capability_set_json = ?
-			 WHERE package_id = ? AND owner_user_id = ?`,
-		)
-		.bind(
-			JSON.stringify([
+	const runNeeds = Promise.resolve(
+		new Map<string, SavedCredentialNeed>([
+			[
+				'database',
 				{
-					kind: 'credential',
-					credentialId: 'some-other-credential',
-					source: 'need',
-					needKey: 'database',
+					key: 'database',
+					kind: 'secret',
+					provider: 'database',
+					description: 'Rooms.',
+					multiple: false,
 					ownerCredentialForVisitors: true,
-					hosts: ['db.example.com'],
-					via: ['rooms'],
 				},
-			]),
-			t.packageId,
-			t.acmeId,
-		)
-		.run()
-	await expect(t.fetchAs(null, opened.handle)).rejects.toMatchObject({
-		body: { code: 'invalid_request' },
-	})
-})
-
-test('visitor use of an owner credential is rate-limited across viewers; the owner is not', async () => {
-	const t = await setupVisitorApp()
-	const original = ownerCredentialForVisitorsRateLimitConfig.maxRequests
-	ownerCredentialForVisitorsRateLimitConfig.maxRequests = 1
-	try {
-		const opened = await openCredentialClient(t.appContext(null), {
-			key: 'database',
-		})
-		await t.fetchAs(null, opened.handle)
-		await expect(
-			rejection(t.fetchAs(null, opened.handle)),
-		).resolves.toMatchObject({
-			body: { code: 'credential_rate_limited' },
-			message: expect.stringMatching(/^\[credential_rate_limited\] /),
-		})
-		// Ann shares the same visitor budget as anonymous.
-		const ann = t.requestAs('ann', 'member')
-		const annOpened = await openCredentialClient(t.appContext(ann), {
-			key: 'database',
-		})
-		await expect(
-			rejection(t.fetchAs(ann, annOpened.handle)),
-		).resolves.toMatchObject({ body: { code: 'credential_rate_limited' } })
-		const bea = t.requestAs('bea', 'owner')
-		const beaOpened = await openCredentialClient(t.appContext(bea), {
-			key: 'database',
-		})
-		await t.fetchAs(bea, beaOpened.handle)
-		await t.fetchAs(bea, beaOpened.handle)
-	} finally {
-		ownerCredentialForVisitorsRateLimitConfig.maxRequests = original
+			],
+		]),
+	)
+	const asOwner = {
+		...t.contextFor({ request, packageId }),
+		runNeeds: () => runNeeds,
 	}
+	await expect(
+		openCredentialClient(asOwner, { key: 'database' }),
+	).resolves.toMatchObject({ key: 'database', name: 'rooms-db' })
+	const anonymous = {
+		...t.contextFor({ request, packageId }),
+		callerContext: {
+			baseUrl: 'https://example.com',
+			request: null,
+			user: null,
+		} as unknown as (typeof asOwner)['callerContext'],
+		runNeeds: () => runNeeds,
+	}
+	await expect(
+		rejection(openCredentialClient(anonymous, { key: 'database' })),
+	).resolves.toMatchObject({
+		body: { code: 'credential_denied' },
+		message: expect.stringContaining('no acting person'),
+	})
 })

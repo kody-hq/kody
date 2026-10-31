@@ -215,7 +215,7 @@ export function isSavedCredentialKind(
 }
 
 export const ownerCredentialForVisitorsValueMessage =
-	'kody.credentials ownerCredentialForVisitors takes only true. Omit it to keep app visitors from using the owner’s credential.'
+	'kody.credentials ownerCredentialForVisitors is deprecated and ignored. Apps already use the publisher’s credentials. If you still set it, it takes only true.'
 
 /**
  * Kinds that satisfy a need with no declared `kind`: any fetch-capable
@@ -260,10 +260,8 @@ export const packageCredentialSlotSchema = z.strictObject({
 	/** Shown to callers choosing a credential for this need. */
 	description: z.string().trim().min(1).max(500),
 	/**
-	 * Opt-in, per credential: on an internet-visible app, this need resolves
-	 * with the credentials of the owner who approved the app for visitors,
-	 * so signed-out visitors and people signed in as someone else can use it.
-	 * The owner approves it on the capability approval page.
+	 * Deprecated no-op. Still parsed so existing manifests keep working.
+	 * Package apps already resolve needs as the publisher.
 	 */
 	ownerCredentialForVisitors: z
 		.literal(true, { error: ownerCredentialForVisitorsValueMessage })

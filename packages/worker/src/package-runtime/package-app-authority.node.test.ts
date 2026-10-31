@@ -82,7 +82,7 @@ async function setup() {
 	return { sqlite, db, env, owner, member, outsider, orgId, scope, runsAs }
 }
 
-test('a team app nobody has published since the change has no runs-as person, so it stays on the legacy path', async () => {
+test('a team app nobody has published since the change has no runs-as person', async () => {
 	const t = await setup()
 	expect(await t.runsAs()).toEqual({
 		status: 'unavailable',

@@ -229,7 +229,7 @@ test('0018 leaves packages that are not apps alone', () => {
 	})
 })
 
-test('observed undeclared calls come from fallbacks and rejections for one app', async () => {
+test('observed undeclared calls come from rejections and allowances for one app', async () => {
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, new URL('../../../migrations/', import.meta.url))
 	const db = createD1FromSqlite(sqlite)
@@ -245,12 +245,14 @@ test('observed undeclared calls come from fallbacks and rejections for one app',
 				VALUES ('2026-10-01', 'user-a', ?, ?, ?, 'anonymous', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z', 1)`,
 			)
 			.run(packageId, callName, kind)
-	insert(
-		'package_app_authority_fallbacks',
-		'pkg-example-app',
-		'jobList',
-		'capability_not_declared',
-	)
+	const allow = (packageId: string, capabilityName: string) =>
+		sqlite
+			.prepare(
+				`INSERT INTO package_app_capability_allowances (package_id, published_commit, capability_name, source, created_at)
+				VALUES (?, 'commit-1', ?, 'authority-fallback', '2026-10-01T00:00:00Z')`,
+			)
+			.run(packageId, capabilityName)
+	allow('pkg-example-app', 'jobList')
 	insert(
 		'package_app_authority_rejections',
 		'pkg-example-app',
@@ -264,23 +266,18 @@ test('observed undeclared calls come from fallbacks and rejections for one app',
 		'capability_not_declared',
 	)
 	insert(
-		'package_app_authority_fallbacks',
+		'package_app_authority_rejections',
 		'pkg-example-app',
 		'credential:example',
 		'capability_not_declared',
 	)
 	insert(
-		'package_app_authority_fallbacks',
+		'package_app_authority_rejections',
 		'pkg-example-app',
 		'packageList',
 		'permission_denied',
 	)
-	insert(
-		'package_app_authority_fallbacks',
-		'pkg-other',
-		'packageList',
-		'capability_not_declared',
-	)
+	allow('pkg-other', 'packageList')
 	expect(await loadObservedUndeclaredCalls(db, 'pkg-example-app')).toEqual({
 		names: ['jobList', 'secretList'],
 		credentialNamedCalls: 1,

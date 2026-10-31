@@ -115,20 +115,11 @@ approves going public again (turn internet-visible off, then on).
 
 ## Owner credentials for visitors
 
-A visitor's run has no org access, so a `kody.credentials` need that sets
-`ownerCredentialForVisitors: true` resolves its `credential(key)` clients with a
-credential authority instead
-(`packages/worker/src/credentials/owner-credential-for-visitors.ts`): the person
-who approved the latest capability set, with their live role in the org. It
-needs the app to be internet-visible and the run to serve that approval's
-commit, and it uses only the credential ids the approval lists for that need
-(`visitorCredentialIdsByNeedKey`). Opted-in candidates are separate entries in
-the capability set and enter the fingerprint, so opting in requires a new
-approval. The bridge passes `ownerCredentialScope` (org, app package, commit) to
-the credential client tools and the fetch gateway; the viewer stays the run's
-identity for everything else. Non-owner use is rate-limited and audited with the
-viewer. See the
-[ADR 0068 amendment](./decisions/0068-credentials-own-placement-scoped-clients.md#amendment-2026-10-16-owner-credentials-for-app-visitors).
+`ownerCredentialForVisitors` is deprecated and ignored. Package apps already
+resolve `kody.credentials` needs as the publisher (ADR 0068 amendment
+2026-10-24). Manifests that still declare the flag keep parsing. The field still
+enters the capability fingerprint so existing approvals stay stable. See
+[Packages](../use/packages.md#let-app-visitors-use-the-owners-credential).
 
 ## ADR 0001 exception
 

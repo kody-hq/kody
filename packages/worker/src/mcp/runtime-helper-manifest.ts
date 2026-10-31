@@ -34,7 +34,6 @@ import {
 	type PackageAppCredentialAuthority,
 	type RunCredentialEntries,
 } from '#worker/credentials/credential-client.ts'
-import { type OwnerCredentialScope } from '#worker/credentials/owner-credential-for-visitors.ts'
 import { createCredentialClientKodyTools } from './credential-client-tools.ts'
 import { createCredentialClientRuntimeSource } from './execute-modules/credential-client-source.ts'
 
@@ -92,8 +91,6 @@ export type CredentialClientToolOptions = {
 	 * into the verified package binding the call claims.
 	 */
 	runEntries?: (requested: unknown) => Promise<RunCredentialEntries | null>
-	/** Package-app runs only; see `CredentialClientContext.ownerCredentialScope`. */
-	ownerCredentialScope?: OwnerCredentialScope | null
 	/** Package-app runs only; see `CredentialClientContext.packageAppAuthority`. */
 	packageAppAuthority?: PackageAppCredentialAuthority | null
 	waitUntil?: (promise: Promise<unknown>) => void

@@ -125,9 +125,9 @@ export type ApproveCredentialNeedsResult =
 
 /**
  * After a needs-change publish lands on an internet-visible package, pin the
- * live capability set. Turning on `ownerCredentialForVisitors` (and similar
- * need reshapes) changes the fingerprint; without this pin the new commit
- * stays refused for anonymous visitors until a second Approve.
+ * live capability set. Need reshapes still change the fingerprint; without
+ * this pin the new commit stays refused for anonymous visitors until a
+ * second Approve.
  */
 async function pinInternetVisibleCapabilitiesAfterNeedsPublish(input: {
 	env: Env

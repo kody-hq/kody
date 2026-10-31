@@ -36,13 +36,13 @@ export const packageAppVisitorAuthorityPatternMessages: Record<
 	string
 > = {
 	'undeclared capability':
-		'undeclared capability: the app calls a kody capability that kody.app.capabilities does not list. It runs with the visitor’s authority only through the logged fallback. List it in kody.app.capabilities to run it as the publisher.',
+		'undeclared capability: the app calls a kody capability that kody.app.capabilities does not list. That call now fails. List it in kody.app.capabilities to run it as the publisher.',
 	'computed capability':
 		'computed capability: the app picks a kody capability name at run time. List every capability it can call in kody.app.capabilities.',
 	'kody.mcp':
-		'kody.mcp: the app calls an MCP server tool. It runs with the visitor’s authority only through the logged fallback.',
+		'kody.mcp: the app calls an MCP server tool. That call now fails unless kody.mcp is listed in kody.app.capabilities.',
 	'visitor credential':
-		'visitor credential: the app uses credentials and opts no need into ownerCredentialForVisitors. Signed-in visitors now get the publisher’s credentials; declare a kody.app.visitorNeeds entry and open it with credential.visitor(need) to keep using their own.',
+		'visitor credential: the app uses credentials and declares no kody.app.visitorNeeds. Signed-in visitors get the publisher’s credentials; declare a kody.app.visitorNeeds entry and open it with credential.visitor(need) to keep using their own.',
 	'identity email':
 		'identity email: the app reads the visitor’s email from metaGetCurrentUser. Email needs the visitor’s email consent in Sign in with Kody.',
 }
@@ -66,7 +66,6 @@ const alwaysAvailableCalls = new Set([identityCapabilityName, 'visitorNeed'])
 export type AppManifest = {
 	capabilities: Set<string>
 	visitorNeeds: number
-	ownerCredentialForVisitors: boolean
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -84,7 +83,7 @@ export function readPackageAppManifest(
 		return null
 	}
 	if (!isPlainObject(parsed) || !isPlainObject(parsed.kody)) return null
-	const { app, credentials } = parsed.kody
+	const { app } = parsed.kody
 	if (!isPlainObject(app)) return null
 	const capabilities = new Set(
 		Array.isArray(app.capabilities)
@@ -94,12 +93,7 @@ export function readPackageAppManifest(
 	const visitorNeeds = isPlainObject(app.visitorNeeds)
 		? Object.keys(app.visitorNeeds).length
 		: 0
-	const ownerCredentialForVisitors =
-		isPlainObject(credentials) &&
-		Object.values(credentials).some(
-			(need) => isPlainObject(need) && need.ownerCredentialForVisitors === true,
-		)
-	return { capabilities, visitorNeeds, ownerCredentialForVisitors }
+	return { capabilities, visitorNeeds }
 }
 
 /** A module-level `kody` that is not the runtime bridge (`const kody = …`, another module's `kody`). */
@@ -327,7 +321,7 @@ function detectPackageAppVisitorAuthority(
 		const note = () => credentialPaths.add(path)
 		return { add: () => {}, named: note, computed: note, unnamed: note }
 	})
-	if (!app.ownerCredentialForVisitors && app.visitorNeeds === 0) {
+	if (app.visitorNeeds === 0) {
 		for (const path of credentialPaths)
 			patternsFor(path).add('visitor credential')
 	}

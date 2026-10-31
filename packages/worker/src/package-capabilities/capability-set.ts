@@ -27,9 +27,8 @@ export type CapabilitySetEntry = {
 	 */
 	needKey?: string
 	/**
-	 * The need opts in with `ownerCredentialForVisitors`: visitors of the
-	 * internet-visible app may use this credential. Part of the fingerprint,
-	 * so turning it on or off asks the owner to approve again.
+	 * Deprecated no-op on the need. Still part of the fingerprint so existing
+	 * approvals stay stable.
 	 */
 	ownerCredentialForVisitors?: true
 	credentialKind?: string

@@ -335,7 +335,7 @@ Package apps run as their runs-as person (the publisher, unless an Owner picks
 someone else); see
 [who the app runs as](../guides/package-apps.md#who-the-app-runs-as). That
 person supplies publisher credentials through `credential(key)`. Executor needs
-and `ownerCredentialForVisitors` are documented below and in
+are documented below and in
 [Credentials](../guides/credentials.md#choose-who-supplies-a-package-credential).
 
 An internet-visible app acts as its visitor for visitor-owned data: the
@@ -347,47 +347,11 @@ outside the org) fills an executor need with a credential they pick on consent
 and the app reads it with `credential.visitor(key)`. After Allow, someone
 outside the org gets a short-lived visit pass that only opens the executor
 credentials they approved; storage, capabilities and everything else still treat
-them as an anonymous visitor plus identity. A need the app fills for every
-visitor (a shared database, an email sender) opts in per slot with
-`ownerCredentialForVisitors: true`:
+them as an anonymous visitor plus identity.
 
-```json
-{
-	"kody": {
-		"credentials": {
-			"rooms-db": {
-				"kind": "secret",
-				"provider": "rooms-db",
-				"description": "Database the room chart reads for every visitor.",
-				"ownerCredentialForVisitors": true
-			}
-		}
-	}
-}
-```
-
-- The flag takes only `true`; omit it for per-visitor resolution (default).
-  There is no package-wide switch. Package imports keep the flag from the
-  package that declares each need.
-- It changes the capability fingerprint, so adding it to an internet-visible
-  package pauses the publish and asks the owner to approve again. The approval
-  page says on that credential that visitors can use it through the app, signed
-  out or signed in as someone else, without seeing its value.
-- In the app's own run, `credential(key)` / `credentials(key)` for that need
-  resolve as the person who approved the capability set, with the role they hold
-  in the org now, like a trigger acts as its enabler. That applies only while
-  the app is internet-visible and serves the approved commit, and only to the
-  credentials the approval listed for that need. A private app, or a commit that
-  is not the approved one, opens the need as the visitor like any other. When
-  the need now resolves to a credential the approval did not list (say, after
-  remapping it), or the approver left the org or their account is suspended or
-  deleted, it fails with `credential_denied` until an owner approves again.
-- Everything else in the run still acts as the visitor: other needs,
-  placeholders (`{{secret:NAME}}`), and the app's own sign-in checks.
-- Each use by someone other than the approver is rate-limited per app credential
-  (every non-owner viewer shares one budget), and fails with
-  `credential_rate_limited` past it. Its `credential.resolve` row in the org
-  activity log names the app, the approver, and the visitor (or `anonymous`).
+`ownerCredentialForVisitors: true` still parses on a need and is ignored. Omit
+it on new packages. A visitor who needs their own credential should declare a
+`kody.app.visitorNeeds` entry and open it with `credential.visitor(need)`.
 
 To list credential references that match the detect-only scan, run
 `repoRunChecks`. Its `credentials` result lists each file with the codemod 0010

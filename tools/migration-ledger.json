@@ -819,6 +819,10 @@
 		{
 			"filename": "0226-package-app-capability-allowances.sql",
 			"sha256": "006fbd7348590dd4d72034fbf3665e2d6372e13af8f7338e69915aed6bdea4cc"
+		},
+		{
+			"filename": "0227-drop-package-app-authority-fallbacks.sql",
+			"sha256": "3027a0f0df7221fd7b76763d1aa2e188afdabf8dace0854b4be63481a3a40034"
 		}
 	]
 }

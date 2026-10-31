@@ -389,7 +389,7 @@ test('a credential shared with app visitors says so in plain language', async ()
 		'data-testid="package-approve-capabilities-credential-visitors"',
 	)
 	expect(visible).toContain(
-		'Visitors can use this credential through the app, whether they are signed out or signed in as someone else.',
+		'The database need sets ownerCredentialForVisitors, which is deprecated and ignored. The app already uses the publisher’s credentials for every visitor.',
 	)
 	expect(visible.match(/credential-visitors"/g)).toHaveLength(1)
 	expect(visible).not.toContain(credentialId)

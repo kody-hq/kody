@@ -19,6 +19,20 @@ const now = '2026-10-31T00:00:00.000Z'
 function createDb() {
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, migrationsUrl)
+	// Migration 0227 drops the telemetry table 0226 seeds from; recreate it to
+	// replay the seed.
+	sqlite.exec(`CREATE TABLE package_app_authority_fallbacks (
+		day TEXT NOT NULL,
+		owner_id TEXT NOT NULL,
+		package_id TEXT NOT NULL,
+		call_name TEXT NOT NULL,
+		difference_kind TEXT NOT NULL,
+		visitor_hash TEXT NOT NULL,
+		first_seen_at TEXT NOT NULL,
+		last_seen_at TEXT NOT NULL,
+		observations INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (day, package_id, call_name, difference_kind, visitor_hash)
+	)`)
 	return { sqlite, db: createD1FromSqlite(sqlite) }
 }
 

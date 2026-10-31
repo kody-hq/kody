@@ -25,14 +25,9 @@ import {
 	normalizeCredentialCallMap,
 	type CredentialCallMapInput,
 } from '#worker/credentials/credential-call-map.ts'
-import {
-	applyCredentialClient,
-	loadRunCredentialNeeds,
-	type CredentialClientContext,
-} from '#worker/credentials/credential-client.ts'
+import { type CredentialClientContext } from '#worker/credentials/credential-client.ts'
 import * as needsClosure from '#worker/credentials/credential-needs-closure.ts'
 import { type CredentialNeed } from '#worker/credentials/credential-needs.ts'
-import { insertPackageCapabilityApproval } from '#worker/package-capabilities/capability-approvals-repo.ts'
 
 export const now = '2026-10-12T00:00:00.000Z'
 export const resendKey = 're_live_secret_value_123'
@@ -236,141 +231,7 @@ export function createCredentialClientFixtures(
 		}
 	}
 
-	async function setupVisitorApp(input?: {
-		internetVisible?: boolean
-		approvedCommit?: string
-		approvedBy?: string
-		approvedCredentialIds?: (ids: { database: string }) => Array<string>
-	}) {
-		const t = await setup()
-		let userRowId = 1
-		for (const [username, person] of Object.entries(t.people)) {
-			await t.db
-				.prepare(
-					`INSERT INTO users (id, username, email, password_hash, stable_user_id)
-				 VALUES (?, ?, ?, 'x', ?)`,
-				)
-				.bind(
-					userRowId++,
-					username,
-					`${username}@example.com`,
-					person.stableUserId,
-				)
-				.run()
-		}
-		const databaseId = await t.storeKey({
-			name: 'rooms-db',
-			provider: 'database',
-			hosts: ['db.example.com'],
-		})
-		await t.storeKey({ name: 'resend-prod' })
-		const packageId = await t.savePackage({
-			ownerId: t.acmeId,
-			name: '@acme-clients/rooms',
-		})
-		await t.db
-			.prepare(
-				`UPDATE saved_packages SET has_app = 1, is_internet_visible = ? WHERE id = ?`,
-			)
-			.bind(input?.internetVisible === false ? 0 : 1, packageId)
-			.run()
-		mockNeeds([
-			{
-				key: 'database',
-				provider: 'database',
-				ownerCredentialForVisitors: true,
-			},
-			{ key: 'resend' },
-		])
-		const approvedIds = input?.approvedCredentialIds?.({
-			database: databaseId,
-		}) ?? [databaseId]
-		await insertPackageCapabilityApproval(t.db, {
-			id: crypto.randomUUID(),
-			package_id: packageId,
-			owner_user_id: t.acmeId,
-			published_commit: input?.approvedCommit ?? 'commit-1',
-			fingerprint: 'fingerprint-1',
-			capability_set_json: JSON.stringify(
-				approvedIds.map((credentialId) => ({
-					kind: 'credential',
-					credentialId,
-					source: 'need',
-					needKey: 'database',
-					ownerCredentialForVisitors: true,
-					hosts: ['db.example.com'],
-					via: ['rooms'],
-				})),
-			),
-			dependency_snapshot_json: '{}',
-			approved_by_user_id: input?.approvedBy ?? t.people.bea.stableUserId,
-			approved_at: now,
-		})
-		const scope = { orgId: t.acmeId, packageId, publishedCommit: 'commit-1' }
-		const runNeeds = loadRunCredentialNeeds({
-			env: t.env,
-			orgId: t.acmeId,
-			packageIds: [packageId],
-		})
-		const appContext = (
-			request: ReturnType<typeof t.requestAs> | null,
-		): CredentialClientContext => ({
-			env: t.env,
-			callerContext: {
-				baseUrl: 'https://example.com',
-				request,
-				user: null,
-			} as unknown as McpCallerContext,
-			binding: 'run:app',
-			packageId,
-			runNeeds: () => runNeeds,
-			ownerCredentialScope: scope,
-		})
-		const fetchAs = (
-			request: ReturnType<typeof t.requestAs> | null,
-			token: string,
-			ownerCredentialScope: typeof scope | null = scope,
-		) =>
-			applyCredentialClient({
-				env: t.env,
-				request,
-				baseUrl: 'https://example.com',
-				packageId,
-				binding: 'run:app',
-				ownerCredentialScope,
-				token,
-				requestUrl: new URL('https://db.example.com/v1/rooms'),
-			})
-		const auditRows = async () => {
-			await Promise.all(scheduledAudits.splice(0))
-			const { results } = await t.auditDb
-				.prepare(
-					`SELECT result, actor_user_id, details_json FROM org_audit_events
-				 WHERE action = 'credential.resolve' ORDER BY rowid`,
-				)
-				.all<{
-					result: string
-					actor_user_id: string | null
-					details_json: string
-				}>()
-			return results.map((row) => ({
-				result: row.result,
-				actorUserId: row.actor_user_id,
-				details: JSON.parse(row.details_json) as Record<string, unknown>,
-			}))
-		}
-		return {
-			...t,
-			databaseId,
-			packageId,
-			scope,
-			appContext,
-			fetchAs,
-			auditRows,
-		}
-	}
-
-	return { setup, setupVisitorApp }
+	return { setup }
 }
 
 export function mockNeeds(

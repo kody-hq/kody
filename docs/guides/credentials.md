@@ -352,35 +352,9 @@ behavior.
 
 ### Let app visitors use your credential
 
-People who open an internet-visible app run it as themselves, or as no one when
-they are signed out or outside your org. A signed-in member with Use can still
-open org credentials they hold; everyone else cannot. Executor needs are the
-exception while the `package-credential-suppliers` flag is on: any signed-in
-visitor, inside or outside your org, can pick one of their own credentials for
-an executor need on the consent screen
-([above](#choose-who-supplies-a-package-credential)). After Allow, a visitor
-outside your org gets a short-lived visit pass that only opens the executor
-credentials they approved, through `credential.visitor(key)`. Storage,
-capabilities and everything else still treat them as an anonymous visitor plus
-identity. To let the app use one for every visitor, add
-`"ownerCredentialForVisitors": true` to that need:
-
-```json
-"credentials": {
-	"rooms-db": {
-		"kind": "secret",
-		"description": "Database the room chart reads for every visitor",
-		"ownerCredentialForVisitors": true
-	}
-}
-```
-
-The approval page then says that visitors can use that credential through the
-app, signed out or signed in as someone else, without seeing its value. After
-you approve, the app's `credential('rooms-db')` resolves with the approving
-owner's access for each visitor, limited to the credentials approved for that
-need. Other needs and placeholders still act as the visitor. Visitor use is
-rate-limited and recorded in the org activity log with who used it. See
+Deprecated. Package apps already use the publisher's credentials for every
+visitor. `ownerCredentialForVisitors: true` still parses on a need and is
+ignored. Omit it on new packages. See
 [Packages](../use/packages.md#let-app-visitors-use-the-owners-credential).
 
 ## Each kind through `credential()`

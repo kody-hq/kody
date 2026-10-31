@@ -26,9 +26,8 @@ const handlePayloadSchema = z.object({
 	actor: z.string().min(1),
 	binding: z.string().min(1),
 	/**
-	 * Opened for an `ownerCredentialForVisitors` need: `actor` is the app's
-	 * credential authority, not the run's viewer. `needKey` is the declared
-	 * need this handle fills so later uses can re-check the approval list.
+	 * Deprecated no-op. Kept so handles stamped before publisher authority
+	 * still parse. Verification ignores it.
 	 */
 	ownerCredentialForVisitors: z.literal(true).optional(),
 	needKey: z.string().min(1).max(100).optional(),
@@ -133,18 +132,15 @@ export class CredentialClientHandleError extends Error {
 
 /**
  * The handle's pick when its signature holds, it has not expired, and it was
- * opened by this actor in this org for this run. A handle opened for an
- * `ownerCredentialForVisitors` need must match `ownerCredentialRequest`
- * instead of `request`. Otherwise it throws, without saying which check
- * failed.
+ * opened by this actor in this org for this run. Otherwise it throws, without
+ * saying which check failed. `ownerCredentialForVisitors` on a handle is
+ * ignored.
  */
 export async function verifyCredentialClientHandle(input: {
 	env: Pick<Env, 'SECRET_STORE_KEY'>
 	token: string
 	request: RequestContext | null
 	binding: string | null | undefined
-	/** The run's credential authority, when it has one. */
-	ownerCredentialRequest?: () => Promise<RequestContext | null>
 	/** Package apps: the live runs-as person, for a `runsAs` handle. */
 	runsAsRequest?: () => Promise<RequestContext | null>
 	/** Package apps: the visitor, while their consent covers this need. */
@@ -188,19 +184,16 @@ export async function verifyCredentialClientHandle(input: {
 	) {
 		throw fail()
 	}
-	const request = handle.data.ownerCredentialForVisitors
-		? ((await input.ownerCredentialRequest?.()) ?? null)
-		: handle.data.runsAs
-			? ((await input.runsAsRequest?.()) ?? null)
-			: handle.data.executorNeed
-				? ((await input.visitorNeedGrant?.(handle.data.executorNeed))
-						?.request ?? null)
-				: handle.data.visitorNeed
-					? ((await input.visitorNeedGrant?.(handle.data.visitorNeed))
-							?.request ??
-						(await input.visitorNeedRequest?.(handle.data.visitorNeed)) ??
-						null)
-					: input.request
+	const request = handle.data.runsAs
+		? ((await input.runsAsRequest?.()) ?? null)
+		: handle.data.executorNeed
+			? ((await input.visitorNeedGrant?.(handle.data.executorNeed))?.request ??
+				null)
+			: handle.data.visitorNeed
+				? ((await input.visitorNeedGrant?.(handle.data.visitorNeed))?.request ??
+					(await input.visitorNeedRequest?.(handle.data.visitorNeed)) ??
+					null)
+				: input.request
 	if (
 		!request?.actor ||
 		handle.data.org !== request.org.id ||

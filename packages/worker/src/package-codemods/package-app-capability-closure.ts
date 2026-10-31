@@ -158,14 +158,15 @@ export async function scanPackageAppImportClosure(input: {
 	}
 }
 
-const observedCallNamesSql = `SELECT DISTINCT call_name FROM package_app_authority_fallbacks
+const observedCallNamesSql = `SELECT DISTINCT call_name FROM package_app_authority_rejections
 	WHERE package_id = ? AND difference_kind = 'capability_not_declared'
 	UNION
-	SELECT DISTINCT call_name FROM package_app_authority_rejections
-	WHERE package_id = ? AND difference_kind = 'capability_not_declared'`
+	SELECT DISTINCT capability_name AS call_name FROM package_app_capability_allowances
+	WHERE package_id = ?`
 
 /**
- * Undeclared calls the runtime saw this app make (rescued or rejected).
+ * Undeclared calls the runtime saw this app make (rejected, or allowed for a
+ * published version).
  * `credential:<name>` rows are `credential.named` refusals; no capability
  * entry covers those, so only their count is kept.
  */

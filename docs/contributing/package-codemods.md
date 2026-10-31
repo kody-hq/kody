@@ -585,26 +585,23 @@ in the linked #3836 cleanup issue.
 ### `0017-detect-package-app-visitor-authority`
 
 Detect only (writes nothing). Package apps run as their publisher (ADR 0068),
-capped to `kody.app.capabilities`; anything else runs with the visitor's
-authority only through the logged would-break fallback. This scan finds package
-apps that would lean on that fallback:
+capped to `kody.app.capabilities`. This scan finds published apps that will fail
+or change now that the visitor-authority path is gone:
 
 - `undeclared capability` / `computed capability`: a `kody.<name>()` call
   missing from `kody.app.capabilities`, or a name picked at run time. The scan
   reads the app's own source only; calls made by imported packages also count
   against the app's list at run time but are not reported here.
 - `kody.mcp`: an MCP server tool call from the app.
-- `visitor credential`: the app uses credentials, declares no
-  `kody.app.visitorNeeds`, and opts no need into `ownerCredentialForVisitors`,
-  so signed-in visitors get the publisher's credentials.
+- `visitor credential`: the app uses credentials and declares no
+  `kody.app.visitorNeeds`, so signed-in visitors get the publisher's
+  credentials.
 - `identity email`: the app reads `email` from `metaGetCurrentUser`, which needs
   the visitor's `email` consent.
 
 Findings carry fixed messages only. Count flagged apps with
 `adminPackageCodemodScan` (`codemodId`
-`0017-detect-package-app-visitor-authority`) and compare with the live fallback
-count from `adminPackageAppAuthorityFallbackReport` (fallbacks, plus
-`hardRejections` for calls that failed both ways).
+`0017-detect-package-app-visitor-authority`).
 
 ### `0018-declare-package-app-capabilities`
 
@@ -617,9 +614,10 @@ app calls by a static name:
 - through its import closure: each `kody:@scope/name/export` the app imports is
   followed from that export's entry module along relative imports and into the
   packages those modules import (only what an import reaches counts);
-- from the runtime logs: `capability_not_declared` call names in
-  `package_app_authority_fallbacks` and `package_app_authority_rejections` for
-  this app (gap filling for computed names the scan cannot see).
+- from the runtime: `capability_not_declared` call names in
+  `package_app_authority_rejections` and the app's
+  `package_app_capability_allowances` (gap filling for computed names the scan
+  cannot see).
 
 Codemods stay pure. The codemod sets `hostFacts: ['package-app-capabilities']`,
 and the engine computes those facts with I/O before calling it
