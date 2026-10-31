@@ -125,7 +125,11 @@ export type WaitingPausedEnablementSignal = {
 	triggerKind: 'cron' | 'subscription' | 'webhook'
 	triggerName: string
 	packageName: string | null
-	reason: 'org_access' | 'package_access' | 'credential_access' | 'profile_inactive'
+	reason:
+		| 'org_access'
+		| 'package_access'
+		| 'credential_access'
+		| 'profile_inactive'
 	resourceType: string | null
 	resourceId: string | null
 }
