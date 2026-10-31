@@ -190,15 +190,17 @@ async function packageLabels(
 async function usernames(db: D1Database, ids: Array<string>) {
 	const names = new Map<string, string>()
 	if (!ids.length) return names
-	const rows = await db
-		.prepare(
-			`SELECT stable_user_id, username FROM users
-			 WHERE stable_user_id IN (${inList(ids)})${andLiveDeletedAtSql()}`,
-		)
-		.bind(...ids)
-		.all<{ stable_user_id: string; username: string }>()
-	for (const row of rows.results ?? []) {
-		names.set(row.stable_user_id, row.username)
+	for (const batch of chunks(ids)) {
+		const rows = await db
+			.prepare(
+				`SELECT stable_user_id, username FROM users
+				 WHERE stable_user_id IN (${inList(batch)})${andLiveDeletedAtSql()}`,
+			)
+			.bind(...batch)
+			.all<{ stable_user_id: string; username: string }>()
+		for (const row of rows.results ?? []) {
+			names.set(row.stable_user_id, row.username)
+		}
 	}
 	return names
 }

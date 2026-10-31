@@ -8,6 +8,7 @@ import {
 	expiryChangeProblem,
 	findTreeNode,
 	subProfileBlock,
+	subProfileGrantOptions,
 	visibleTreeIds,
 } from './profiles.ts'
 
@@ -136,4 +137,32 @@ test('expiry only moves earlier and never past the parents', () => {
 			now,
 		}),
 	).toMatch(/future/)
+})
+
+test('sub-profile grant options only offer what the whole chain still holds', () => {
+	const pkg = (permissions: Array<string>) => ({
+		resourceType: 'package',
+		resourceId: 'pkg_1',
+		label: 'pkg-one',
+		permissions,
+	})
+	const root = profile('root', null, 1, {
+		grants: [pkg(['package:read'])] as ProfileItem['grants'],
+	})
+	const child = profile('child', 'root', 2, {
+		chain: [
+			{ id: 'root', name: 'root' },
+			{ id: 'child', name: 'child' },
+		],
+		grants: [pkg(['package:read', 'package:write'])] as ProfileItem['grants'],
+	})
+	expect(subProfileGrantOptions(child, [root, child])).toEqual([
+		{
+			resourceType: 'package',
+			resourceId: 'pkg_1',
+			label: 'pkg-one',
+			permissions: ['package:read'],
+		},
+	])
+	expect(subProfileGrantOptions(child, [child])).toEqual([])
 })

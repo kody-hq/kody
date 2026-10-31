@@ -282,16 +282,38 @@ export function expiryChangeProblem(input: {
 	return null
 }
 
-/** Grants a sub-profile may pick: what its parent chain still holds. */
+/** Grants a sub-profile may pick: what every profile in its parent chain still holds. */
 export function subProfileGrantOptions(
 	parent: ProfileItem,
+	profiles: ReadonlyArray<ProfileItem>,
 ): Array<ProfileGrantOption> {
-	return parent.grants.map((grant) => ({
-		resourceType: grant.resourceType,
-		resourceId: grant.resourceId,
-		label: grant.label ?? grant.resourceId,
-		permissions: [...grant.permissions],
-	}))
+	const byId = new Map(profiles.map((profile) => [profile.id, profile]))
+	const chain = parent.chain.map((entry) =>
+		entry.id === parent.id ? parent : byId.get(entry.id),
+	)
+	if (chain.some((profile) => !profile)) return []
+	return parent.grants.flatMap((grant) => {
+		const permissions = grant.permissions.filter((permission) =>
+			chain.every((profile) =>
+				profile!.grants.some(
+					(held) =>
+						held.resourceType === grant.resourceType &&
+						held.resourceId === grant.resourceId &&
+						held.permissions.includes(permission),
+				),
+			),
+		)
+		return permissions.length
+			? [
+					{
+						resourceType: grant.resourceType,
+						resourceId: grant.resourceId,
+						label: grant.label ?? grant.resourceId,
+						permissions,
+					},
+				]
+			: []
+	})
 }
 
 /** CLI / MCP equivalents shown on the page so agents can do the same. */

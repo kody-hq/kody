@@ -209,7 +209,9 @@ function EnabledPage(props: { payload: EnabledData; currentHref: string }) {
 					orgSlug={payload.orgSlug}
 					parent={parent}
 					grantOptions={
-						parent ? subProfileGrantOptions(parent) : payload.grantOptions
+						parent
+							? subProfileGrantOptions(parent, payload.profiles)
+							: payload.grantOptions
 					}
 					onCancel={() => setComposer(null)}
 					onCreated={(id) => {
