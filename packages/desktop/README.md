@@ -302,7 +302,8 @@ keeps its own macOS permissions: launchd starts the service as
 Desktop's permissions do not transfer to it. Grant Full Disk Access to that
 responsible launcher and approve its separate Automation prompt; if macOS denies
 automation without prompting, check that launcher's signing entitlements. To
-have Kody.app send Apple Events instead, run
-`kody daemon uninstall --no-unregister` (keeps the registration) and leave
-**This machine** resumed; the app then runs the runner itself. See
+have Kody.app send Apple Events instead, remove a CLI service with
+`kody daemon uninstall --no-unregister` (keeps the registration). If a terminal
+`kody daemon` owns the runner, stop it with `kody daemon stop`. Then leave
+**This machine** resumed; the app runs the runner itself. See
 [macOS app control](../../docs/use/execution-contexts.md#macos-app-control).

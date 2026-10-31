@@ -171,8 +171,8 @@ that app without asking you again.
 
 macOS checks the app that runs the daemon:
 
-- **Kody desktop app runs the runner** (no CLI service): macOS asks for
-  **Kody**. Use desktop 0.1.4 or later.
+- **Kody desktop app runs the runner** (no CLI service or terminal daemon):
+  macOS asks for **Kody**. Use desktop 0.1.4 or later.
 - **CLI service** (`kody daemon install`, a LaunchAgent) or **`kody daemon` in a
   terminal**: macOS checks that `node` binary or the terminal app, not Kody,
   even when the desktop app shows the runner as adopted. It may deny control
@@ -184,6 +184,9 @@ the service but keep the registration, then let the app run the runner:
 ```sh
 kody daemon uninstall --no-unregister
 ```
+
+If a terminal `kody daemon` owns the runner instead, stop it with
+`kody daemon stop`. This also keeps the registration.
 
 Then open **This machine** in the desktop app and resume it if paused. Allow
 **Kody** when macOS asks to control Messages, and grant Full Disk Access to Kody
