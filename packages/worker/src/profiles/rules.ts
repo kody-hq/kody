@@ -31,6 +31,9 @@ export const profileOrgLevelAllowlist: ReadonlyArray<OrgPermission> = [
 	'member:read',
 	'team:read',
 	'audit:read',
+	// Lets a profile manage its own sub-profiles; canActOnProfile still limits
+	// it to strict descendants.
+	'profile:manage',
 ]
 
 export function isProfileOrgLevelPermission(permission: OrgPermission) {

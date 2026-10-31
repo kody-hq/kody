@@ -104,3 +104,39 @@ test('revoked profiles and the experiment being off are refused', async () => {
 	).toEqual([])
 	await expect(grant('prf_missing', 'use')).rejects.toThrow('No profile')
 })
+
+test("another member's profile cannot be given access", async () => {
+	const { caller, db } = setup()
+	const mine = await createProfile(caller(), { name: 'agent', grants: [] })
+	const otherRequest = {
+		org: { id: orgId },
+		actor: { userId: 'user_jane' },
+		credential: { kind: 'session', id: 's2', scopes: null, profileName: null },
+	} as unknown as RequestContext
+	await expect(
+		grantPackageToProfile({
+			env: { APP_DB: db },
+			request: otherRequest,
+			packageId: pkg,
+			profileId: mine.id,
+			preset: 'use',
+		}),
+	).rejects.toThrow('You can only give access to your own profiles')
+})
+
+test('a sub-profile under a revoked parent is listed inactive and not grantable', async () => {
+	const { db, caller, grant } = setup()
+	const parent = await createProfile(caller(), { name: 'agent', grants: [] })
+	const child = await createProfile(caller(parent.id), {
+		name: 'helper',
+		grants: [],
+	})
+	await grant(parent.id, 'use')
+	await grant(child.id, 'use')
+	await revokeProfile(caller(), { profileId: parent.id })
+	const listed = await listPackageProfileGrants({ db, orgId, packageId: pkg })
+	expect(listed.every((entry) => !entry.active)).toBe(true)
+	expect(
+		await listGrantableProfiles({ db, orgId, actingUserId: 'user_kent' }),
+	).toEqual([])
+})

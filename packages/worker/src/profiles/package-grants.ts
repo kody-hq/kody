@@ -51,6 +51,11 @@ export async function grantPackageToProfile(input: {
 	if (!self || self.id !== input.profileId) {
 		throw new McpCallerError('No profile with that id in this organization.')
 	}
+	if (self.acting_user_id !== request.actor.userId) {
+		throw new McpCallerError(
+			'You can only give access to your own profiles. Ask the person who owns this profile to add it.',
+		)
+	}
 	const now = new Date().toISOString()
 	if (profileStatus(chain, now) !== 'active') {
 		throw new McpCallerError(
@@ -194,7 +199,27 @@ export async function listPackageProfileGrants(input: {
 		}
 		grant.permissions.push(row.permission)
 	}
-	return [...byGrant.values()]
+	const grants = [...byGrant.values()]
+	for (const grant of grants) {
+		if (!grant.active) continue
+		grant.active = await isProfileChainActive(input.db, {
+			orgId: input.orgId,
+			profileId: grant.profileId,
+			now,
+		})
+	}
+	return grants
+}
+
+async function isProfileChainActive(
+	db: D1Database,
+	input: { orgId: string; profileId: string; now: string },
+) {
+	const chain = await loadProfileChain(db, {
+		orgId: input.orgId,
+		profileId: input.profileId,
+	})
+	return profileStatus(chain, input.now) === 'active'
 }
 
 /** The viewer's own active profiles in the org, for the "Add a profile" picker. */
@@ -203,6 +228,7 @@ export async function listGrantableProfiles(input: {
 	orgId: string
 	actingUserId: string
 }): Promise<Array<{ id: string; name: string; depth: number }>> {
+	const now = new Date().toISOString()
 	const result = await input.db
 		.prepare(
 			`SELECT id, name, depth FROM profiles
@@ -210,7 +236,19 @@ export async function listGrantableProfiles(input: {
 			   AND (expires_at IS NULL OR expires_at > ?)
 			 ORDER BY depth ASC, name ASC`,
 		)
-		.bind(input.orgId, input.actingUserId, new Date().toISOString())
+		.bind(input.orgId, input.actingUserId, now)
 		.all<{ id: string; name: string; depth: number }>()
-	return result.results
+	const active = []
+	for (const row of result.results) {
+		if (
+			await isProfileChainActive(input.db, {
+				orgId: input.orgId,
+				profileId: row.id,
+				now,
+			})
+		) {
+			active.push(row)
+		}
+	}
+	return active
 }
