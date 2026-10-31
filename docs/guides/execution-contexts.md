@@ -170,6 +170,31 @@ Every routed `execute` result carries `ranOn` (in MCP `structuredContent`, CLI
 `fellBackToCloud: true` means no context could take the run and it ran on Kody
 cloud. Automation runs record the same `ranOn` on their run records.
 
+## Cancel a run
+
+Stop a run on a machine before it finishes:
+
+- CLI: `kody context cancel-run <name|ec id> <run id>`
+- MCP / capabilities: `executionContextRunCancel({ id, run_id })`
+- Open API: `POST /v1/execution-contexts/{id}/runs/{run_id}/cancel`
+- Website: **Cancel** next to an in-progress run in the context's **Runs**
+  table.
+
+A running run is stopped on the machine; a queued run is dropped before it runs.
+In `executionContextRunList` it ends `cancelled` with
+`cancelReason: "user_cancelled"`, next to the other reasons such as `deadline`
+(the time limit) or `revoked`. Its run record (`runGet`) ends with status
+`error` and the message "The run was cancelled (user_cancelled).". You can
+cancel your own runs; people who manage the context can cancel anyone's run on
+it. Cancelling a run that already ended returns `cancelled: false` with its
+state, so retrying is safe.
+
+Once execute has handed back an in-progress run id, closing the CLI or MCP
+client does not cancel it: the run keeps going and its result stays readable
+with `runGet`. Cancel it explicitly instead. (Disconnecting while execute is
+still waiting for the result, before it returns, can still cancel the run.) Runs
+on Kody cloud cannot be cancelled this way.
+
 ## Run commands on the machine
 
 With host commands on, code in a run on the machine calls `kody.command.*` from

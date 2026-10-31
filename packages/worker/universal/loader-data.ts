@@ -2275,6 +2275,12 @@ export type AccountPackageDetail = AccountPackageListItem & {
 	 * publishes are owner-only unless a grant allows them (manager view only).
 	 */
 	unmappableCredentialsNotice?: string
+	/**
+	 * Capabilities the published version may call without declaring them,
+	 * which the next publish must add to `kody.app.capabilities` (owner view
+	 * only).
+	 */
+	capabilityAllowance?: Array<string>
 	/** Recent package-app cookie HttpOnly warnings (owner view only). */
 	cookieWarnings?: Array<{
 		cookieName: string

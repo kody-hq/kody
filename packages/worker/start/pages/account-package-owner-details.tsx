@@ -38,6 +38,7 @@ import { RecordChips, recordBodyCss } from './record-table.tsx'
 import { AccountPackageDeleteDialog } from './account-package-delete-dialog.tsx'
 import { PackagePublishingPanel } from './account-package-publishing-panel.tsx'
 import { AccountPackageForkAdoption } from './account-package-fork-adoption.tsx'
+import { PackageCapabilityAllowanceCallout } from './package-capability-allowance-callout.tsx'
 import { PackageCookieWarningsCallout } from './package-cookie-warnings-callout.tsx'
 import { PackageUnmappableCredentialsCallout } from './package-unmappable-credentials-callout.tsx'
 import { type AccountPackageDetail } from '#universal/loader-data.ts'
@@ -295,6 +296,11 @@ export function AccountPackageOwnerDetails(props: {
 				notice={packageDetail.unmappableCredentialsNotice}
 				collaboratorsHref={collaboratorsHref}
 			/>
+			{props.viewerCanPublish ? (
+				<PackageCapabilityAllowanceCallout
+					capabilities={packageDetail.capabilityAllowance ?? []}
+				/>
+			) : null}
 			{props.viewerCanPublish ? (
 				<PackageCookieWarningsCallout
 					warnings={packageDetail.cookieWarnings ?? []}

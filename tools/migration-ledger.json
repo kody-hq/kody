@@ -817,6 +817,10 @@
 			"sha256": "761dab0e2cc9d1568db9c1d981c690afef51b9cdaf3a93dcdbdca19dd4a09174"
 		},
 		{
+			"filename": "0226-package-app-capability-allowances.sql",
+			"sha256": "006fbd7348590dd4d72034fbf3665e2d6372e13af8f7338e69915aed6bdea4cc"
+		},
+		{
 			"filename": "0227-grants-allow-unmappable-credential-changes.sql",
 			"sha256": "89d2c767853b3991c35f588eff0ecd0a652d3956ac4e73abf4d1785bd2e169b4"
 		}

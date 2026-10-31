@@ -410,6 +410,26 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		)
 		return 0
 	}
+	if (input.command === 'context' && sub === 'cancel-run') {
+		const [ref, runId] = rest
+		if (!ref || !runId) {
+			throw new Error('Usage: kody context cancel-run <name|ec id> <run id>')
+		}
+		const body = await apiJson({
+			...base,
+			token: await input.token(),
+			method: 'POST',
+			path: `/v1/execution-contexts/${encodeURIComponent(ref)}/runs/${encodeURIComponent(runId)}/cancel`,
+		})
+		out(
+			input,
+			body,
+			body.cancelled === true
+				? `Cancelled run ${runId} on ${ref}.`
+				: `Run ${runId} already ended (${typeof body.state === 'string' ? body.state : 'finished'}).`,
+		)
+		return 0
+	}
 	if (input.command === 'chain') {
 		const token = await input.token()
 		const read = await apiJson({
@@ -631,7 +651,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		return stayStoppedExitCode
 	}
 	throw new Error(
-		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | uninstall | kody update',
+		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context cancel-run <name> <run id> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | uninstall | kody update',
 	)
 }
 

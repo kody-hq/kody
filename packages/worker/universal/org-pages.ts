@@ -18,6 +18,7 @@ const orgOwnedAccountSections = [
 	'jobs',
 	'mcp-servers',
 	'memories',
+	'profiles',
 	'repositories',
 	'skills',
 	'secret-providers',
