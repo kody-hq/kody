@@ -145,8 +145,8 @@ the package apps guide.
 
 Private packages have no listing. Anyone who can read one (the owner, or a
 collaborator with any preset, including **Read**) forks it with the **Fork**
-button on the package page or `packageFork` (`{ "package": "@owner/leaf" }`).
-It works like a listing fork below: a new package in your own org, with a fork
+button on the package page or `packageFork` (`{ "package": "@owner/leaf" }`). It
+works like a listing fork below: a new package in your own org, with a fork
 record for upstream tracking. It never grants more access to the source.
 
 `communityFork` copies **HEAD** into your account as an **inert** source:

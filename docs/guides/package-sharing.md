@@ -17,9 +17,9 @@ secrets, integrations, memory, email) live in one org, and a **grant** gives one
 person or team a preset on one resource. To let someone use a package without
 sharing a login, grant them **Use** on it.
 
-> [!TIP] Grants and forks work together. Grant **Read** when someone should
-> see your private source and fork their own copy; grant **Use** when they
-> should run **your** live package. See
+> [!TIP] Grants and forks work together. Grant **Read** when someone should see
+> your private source and fork their own copy; grant **Use** when they should
+> run **your** live package. See
 > [Share source with one person](#share-source-with-one-person).
 
 ## Share source with one person
@@ -35,8 +35,8 @@ and fork it into their own Kody, without running yours or opening your app:
    `"preset": "read"`. The CLI takes `--preset read`.
 2. They open the package page and click **Fork**, or their agent calls
    `packageFork` with `{ "package": "@owner/package-name" }`.
-3. The fork is a new package in their own org. It records where it came from,
-   so they see when your source moves ahead, and it runs and bills in their org.
+3. The fork is a new package in their own org. It records where it came from, so
+   they see when your source moves ahead, and it runs and bills in their org.
 
 Read is `package:read` only. They can view and `git clone` the source, but
 cannot run your package (no `package:execute`) or open your app (no
@@ -144,17 +144,17 @@ adds everyone in this organization, a team, or an org member, changes a preset,
 and removes access, using the package collaborator calls. **Advanced: choose
 permissions** under each preset picker sends an explicit permission list
 instead. Outside collaborators are listed and can be removed; their access is
-changed through `accessGrant` or `packageCollaboratorSet`.
-Org owners always have full access and are not listed.
+changed through `accessGrant` or `packageCollaboratorSet`. Org owners always
+have full access and are not listed.
 
 In a personal org there are no members or teams to add, so the tab invites
 people instead:
 
-- **Invite a collaborator** takes an email or username and a preset: **Read**
-  to read and fork the source without running it, **Use** to run it and read
-  the source, **Contribute** to also update it, or **Manage** to
-  also publish, delete, and choose who else has access. It calls `inviteCreate`
-  with `kind: "grant"`.
+- **Invite a collaborator** takes an email or username and a preset: **Read** to
+  read and fork the source without running it, **Use** to run it and read the
+  source, **Contribute** to also update it, or **Manage** to also publish,
+  delete, and choose who else has access. It calls `inviteCreate` with
+  `kind: "grant"`.
 - The invite message is shown once, with a copy button. Send it to the person so
   their agent can call `inviteAccept`. Open **Details** to see the message.
 - **Pending invites** lists invites that have not been accepted. **Revoke**
