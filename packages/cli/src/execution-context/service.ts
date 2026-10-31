@@ -8,7 +8,7 @@ import {
 	writeFileSync,
 } from 'node:fs'
 import { homedir, tmpdir, userInfo } from 'node:os'
-import { delimiter, dirname, join, sep } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { killProcessTree } from '../process-tree.js'
 import { contextDir } from './keystore.js'
 
@@ -181,7 +181,7 @@ export function servicePath(input: {
 		'/usr/sbin',
 		'/sbin',
 	]
-	return [...new Set(dirs)].join(platform === 'win32' ? ';' : delimiter)
+	return [...new Set(dirs)].join(platform === 'win32' ? ';' : ':')
 }
 
 /** Variables the service passes through (paths only, never secrets). */

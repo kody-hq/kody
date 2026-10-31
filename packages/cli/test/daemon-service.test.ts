@@ -80,10 +80,13 @@ test('the systemd unit restarts on crashes, not on a revoke, and holds no secret
 			'm',
 		),
 	)
-	assert.match(unit, /StandardOutput=append:.*\/contexts\/ec_unit\/daemon\.log/)
 	assert.match(
 		unit,
-		/ExecStart=".*node" ".*bin\.js" "daemon" "--context" "ec_unit" "--api-url" "https:\/\/api\.kody\.test" "--max-concurrent" "3"/,
+		/StandardOutput=append:.*[\\/]contexts[\\/]ec_unit[\\/]daemon\.log/,
+	)
+	assert.match(
+		unit,
+		/ExecStart=".*node(?:\.exe)?" ".*bin\.js" "daemon" "--context" "ec_unit" "--api-url" "https:\/\/api\.kody\.test" "--max-concurrent" "3"/,
 	)
 	assertNoSecrets(unit)
 	assert.deepEqual(service.programInUnit(unit, 'systemd'), {
@@ -132,7 +135,8 @@ test('the LaunchAgent runs at load, keeps only failed exits alive, and holds no 
 				manager: 'launchd',
 				home: '/Users/k',
 			})
-			.unitPath.endsWith(
+			.unitPath.replaceAll('\\', '/')
+			.endsWith(
 				'/Users/k/Library/LaunchAgents/codes.kody.daemon.ec_unit.plist',
 			),
 	)

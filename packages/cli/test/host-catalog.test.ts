@@ -85,6 +85,6 @@ test('hostConfigPath uses user-level files by default', () => {
 			cwd: '/proj',
 			project: true,
 		}),
-		'/proj/.cursor/mcp.json',
+		join('/proj', '.cursor', 'mcp.json'),
 	)
 })
