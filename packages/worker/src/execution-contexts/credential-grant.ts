@@ -6,11 +6,20 @@
  */
 export type ContextRunCredentials = 'requester' | 'none'
 
-export function contextRunCredentials(input: {
-	operatorUserId: string
-	requesterUserId: string
-}): ContextRunCredentials {
-	return input.operatorUserId === input.requesterUserId ? 'requester' : 'none'
+type ContextRunIdentity = { operatorUserId: string; requesterUserId: string }
+
+/**
+ * The operator's own run has the same Kody access as the same run in Kody
+ * cloud; the machine only adds its host folders and LAN.
+ */
+export function isOperatorContextRun(input: ContextRunIdentity) {
+	return input.operatorUserId === input.requesterUserId
+}
+
+export function contextRunCredentials(
+	input: ContextRunIdentity,
+): ContextRunCredentials {
+	return isOperatorContextRun(input) ? 'requester' : 'none'
 }
 
 /**

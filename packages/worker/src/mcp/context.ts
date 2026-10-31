@@ -90,6 +90,8 @@ export function createMcpCallerContext(
 		scopes?: ReadonlyArray<OrgPermission> | null
 		/** Execution-context runs: credential ids the context's grant allows. */
 		contextCredentialIds?: ReadonlyArray<string> | null
+		/** Execution-context runs: the requester operates the context. */
+		contextRunByOperator?: boolean
 	},
 ): McpCallerContext {
 	const wire = createMcpCallerContextWire(input)
@@ -104,6 +106,7 @@ export function createMcpCallerContext(
 					orgBinding: wire.orgBinding ?? undefined,
 					scopes: input.scopes ?? null,
 					contextCredentialIds: input.contextCredentialIds ?? null,
+					contextRunByOperator: input.contextRunByOperator === true,
 				})
 			: null,
 	}

@@ -25,13 +25,16 @@ import { renderIcon } from '../components/icon.tsx'
 import { orgSettingsMutationOptions } from '../org-settings-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
+	rebaseMemberCreationDraft,
+	sameMemberCreation,
+	type MemberCreation,
+} from './org-settings-member-creation-draft.ts'
+import {
 	AccountManagementMessage,
 	AccountManagementPanel,
 	accountActionsCss,
 	accountFieldNoteCss,
 } from './account-management-components.tsx'
-
-type MemberCreation = NonNullable<OrgSettingsLoaderData['memberCreation']>
 
 const memberCreationOptions: ReadonlyArray<{
 	key: keyof MemberCreation
@@ -64,6 +67,11 @@ export function OrgSettingsMemberCreation({
 	const { actorKey } = useRouteContext({ from: '__root__' })
 	const capture = useSubmitterScope()
 	const [draft, setDraft] = useState<MemberCreation | null>(saved)
+	const [draftBase, setDraftBase] = useState<MemberCreation | null>(saved)
+	if (!sameMemberCreation(draftBase, saved)) {
+		setDraftBase(saved)
+		setDraft((current) => rebaseMemberCreationDraft(current, draftBase, saved))
+	}
 	const [message, setMessage] = useState<{
 		text: string
 		tone: 'info' | 'error'
