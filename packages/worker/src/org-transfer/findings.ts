@@ -19,6 +19,7 @@ export const orgTransferFindingCodes = [
 	'package_source_missing',
 	'job_source_missing',
 	'creator_grant_dropped',
+	'profile_grant_dropped',
 	// Post-commit warnings.
 	'post_commit_step_failed',
 ] as const

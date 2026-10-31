@@ -82,6 +82,8 @@ exports[`contextRuns allow list snapshot 1`] = `
   "packageSecurityAuditRecord",
   "packageSubscriptionsList",
   "packageUpdate",
+  "profileGet",
+  "profileList",
   "repoApplyPatch",
   "repoCommit",
   "repoCreate",

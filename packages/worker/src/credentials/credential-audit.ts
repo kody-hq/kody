@@ -97,6 +97,7 @@ export async function recordCredentialAudit(
 			env: writer.env,
 			orgId: change.orgId,
 			creatorUserId: writer.actorUserId,
+			creatorProfileId: writer.actorProfileId ?? null,
 			audit: writer,
 			resources: [
 				{

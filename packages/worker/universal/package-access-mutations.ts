@@ -24,7 +24,7 @@ export const packageAccessInput = z.object({
 })
 export const grantPackageCollaboratorInput = packageAccessInput
 	.extend({
-		subjectType: z.enum(['user', 'team', 'org']),
+		subjectType: z.enum(['user', 'team', 'org', 'profile']),
 		subjectId: z.string().trim().min(1),
 		...presetOrPermissions,
 	})

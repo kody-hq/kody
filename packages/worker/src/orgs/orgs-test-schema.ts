@@ -160,6 +160,28 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 		.run()
 	await db
 		.prepare(
+			`CREATE TABLE IF NOT EXISTS profiles (
+				id TEXT PRIMARY KEY NOT NULL,
+				org_id TEXT NOT NULL,
+				owner_kind TEXT NOT NULL DEFAULT 'person' CHECK (owner_kind IN ('person')),
+				acting_user_id TEXT,
+				parent_profile_id TEXT REFERENCES profiles (id),
+				name TEXT NOT NULL,
+				depth INTEGER NOT NULL CHECK (depth BETWEEN 1 AND 5),
+				expires_at TEXT,
+				revoked_at TEXT,
+				revoked_by_user_id TEXT,
+				created_by_user_id TEXT NOT NULL,
+				created_by_profile_id TEXT,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				CHECK (owner_kind <> 'person' OR acting_user_id IS NOT NULL),
+				CHECK ((parent_profile_id IS NULL) = (depth = 1))
+			)`,
+		)
+		.run()
+	await db
+		.prepare(
 			`CREATE TABLE IF NOT EXISTS grant_permissions (
 				grant_id TEXT NOT NULL,
 				permission TEXT NOT NULL,

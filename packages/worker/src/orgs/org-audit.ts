@@ -196,6 +196,7 @@ export function optionalOrgAuditWriter(
 			db,
 			actorUserId: actor.actor?.userId ?? null,
 			actorUsername: actor.actor?.username ?? null,
+			actorProfileId: actor.credential.profileId ?? null,
 			credentialKind: actor.credential.kind,
 			credentialId: actor.credential.id,
 			cause,

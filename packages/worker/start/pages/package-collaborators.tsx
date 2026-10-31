@@ -106,6 +106,9 @@ export function PackageCollaboratorsRoute({
 	const [memberPermissions, setMemberPermissions] = useState<
 		Array<PackageCollaboratorPermission>
 	>([])
+	const [profileId, setProfileId] = useState('')
+	const [profilePreset, setProfilePreset] =
+		useState<PackageCollaboratorPreset>('use')
 	const inFlight = useRef(false)
 	const mutation = useMutation(
 		collaboratorsMutationOptions(
@@ -264,6 +267,91 @@ export function PackageCollaboratorsRoute({
 		}
 	}
 
+	async function addProfile(
+		event: FormEvent<HTMLFormElement>,
+		view: PackageCollaboratorsView,
+	) {
+		event.preventDefault()
+		const profile = view.options.profiles?.find(
+			(option) => option.id === profileId,
+		)
+		if (!profile) return
+		const accepted = await postChange(
+			'add-profile',
+			{
+				intent: 'grant',
+				subjectType: 'profile',
+				subjectId: profile.id,
+				preset: profilePreset,
+			},
+			`Added profile ${profile.name}.`,
+		)
+		if (accepted) setProfileId('')
+	}
+
+	function renderAddProfile(view: PackageCollaboratorsView) {
+		const profiles = view.options.profiles
+		if (!profiles) return null
+		return (
+			<AccountManagementPanel
+				title="Add one of your profiles"
+				description="A profile is an agent identity you control. It can only use what you can, and a sub-profile only what its parent holds here too."
+			>
+				{profiles.length === 0 ? (
+					<p css={mutedCopyCss}>
+						You have no active profiles in this organization.{' '}
+						<SiteLink href="/docs/profiles">Learn about profiles</SiteLink>.
+					</p>
+				) : (
+					<form
+						data-testid="package-collaborators-add-profile"
+						css={formCss}
+						onSubmit={(event) => void addProfile(event, view)}
+					>
+						<label css={accountFieldCss}>
+							<span css={accountFieldLabelCss}>Profile</span>
+							<select
+								aria-label="Profile"
+								value={profileId}
+								required
+								css={selectCss}
+								onChange={(event) => {
+									setProfileId((event.currentTarget as HTMLSelectElement).value)
+								}}
+							>
+								<option value="">Choose a profile</option>
+								{profiles.map((profile) => (
+									<option key={profile.id} value={profile.id}>
+										{profile.depth > 1
+											? `${profile.name} (sub-profile, depth ${profile.depth})`
+											: profile.name}
+									</option>
+								))}
+							</select>
+						</label>
+						{renderPresetField({
+							label: 'Access for the profile',
+							value: profilePreset,
+							onChange: (preset) => {
+								setProfilePreset(preset)
+							},
+						})}
+						<div css={accountActionsCss}>
+							<button
+								type="submit"
+								disabled={busy !== null || profileId === ''}
+								css={getPillButtonCss({ size: 'sm' })}
+							>
+								{renderIcon('plus', { size: '1.05rem' })}
+								{busy === 'add-profile' ? 'Adding…' : 'Add profile'}
+							</button>
+						</div>
+					</form>
+				)}
+			</AccountManagementPanel>
+		)
+	}
+
 	function renderCollaborator(collaborator: PackageCollaboratorView) {
 		const checkKey = collaborator.grantId
 		const name = collaboratorName(collaborator)
@@ -356,9 +444,11 @@ export function PackageCollaboratorsRoute({
 		label: string
 		value: PackageCollaboratorPreset
 		onChange: (preset: PackageCollaboratorPreset) => void
-		permissions: Array<PackageCollaboratorPermission>
-		onPermissionsChange: (value: Array<PackageCollaboratorPermission>) => void
-		testId: string
+		advanced?: {
+			permissions: Array<PackageCollaboratorPermission>
+			onPermissionsChange: (value: Array<PackageCollaboratorPermission>) => void
+			testId: string
+		}
 	}) {
 		return (
 			<>
@@ -380,12 +470,14 @@ export function PackageCollaboratorsRoute({
 						{packageCollaboratorPresetDescription(input.value)}.
 					</p>
 				</label>
-				<AdvancedPermissionsField
-					value={input.permissions}
-					onChange={input.onPermissionsChange}
-					disabled={busy !== null}
-					testId={input.testId}
-				/>
+				{input.advanced ? (
+					<AdvancedPermissionsField
+						value={input.advanced.permissions}
+						onChange={input.advanced.onPermissionsChange}
+						disabled={busy !== null}
+						testId={input.advanced.testId}
+					/>
+				) : null}
 			</>
 		)
 	}
@@ -414,9 +506,11 @@ export function PackageCollaboratorsRoute({
 							onChange: (preset) => {
 								setEveryonePreset(preset)
 							},
-							permissions: everyonePermissions,
-							onPermissionsChange: setEveryonePermissions,
-							testId: 'package-collaborators-advanced-everyone',
+							advanced: {
+								permissions: everyonePermissions,
+								onPermissionsChange: setEveryonePermissions,
+								testId: 'package-collaborators-advanced-everyone',
+							},
 						})}
 						<div css={accountActionsCss}>
 							<button
@@ -477,9 +571,11 @@ export function PackageCollaboratorsRoute({
 							onChange: (preset) => {
 								setTeamPreset(preset)
 							},
-							permissions: teamPermissions,
-							onPermissionsChange: setTeamPermissions,
-							testId: 'package-collaborators-advanced-team',
+							advanced: {
+								permissions: teamPermissions,
+								onPermissionsChange: setTeamPermissions,
+								testId: 'package-collaborators-advanced-team',
+							},
 						})}
 						<div css={accountActionsCss}>
 							<button
@@ -536,9 +632,11 @@ export function PackageCollaboratorsRoute({
 							onChange: (preset) => {
 								setMemberPreset(preset)
 							},
-							permissions: memberPermissions,
-							onPermissionsChange: setMemberPermissions,
-							testId: 'package-collaborators-advanced-member',
+							advanced: {
+								permissions: memberPermissions,
+								onPermissionsChange: setMemberPermissions,
+								testId: 'package-collaborators-advanced-member',
+							},
 						})}
 						<div css={accountActionsCss}>
 							<button
@@ -619,6 +717,7 @@ export function PackageCollaboratorsRoute({
 						{view.org.personal ? null : renderAddEveryone(view)}
 						{view.org.personal ? null : renderAddTeam(view)}
 						{view.org.personal ? null : renderAddMember(view)}
+						{renderAddProfile(view)}
 						{view.org.personal ? (
 							<PackageCollaboratorInvites
 								key={`${actorKey}/${username}/${kodyId}`}

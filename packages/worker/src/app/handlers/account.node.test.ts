@@ -271,6 +271,7 @@ test('native account and session reads batch user/role and flag reads into two r
 	expect(body.session?.featureFlags).toEqual({
 		'demo-indicator': true,
 		'connection-profiles': true,
+		profiles: false,
 		'mcp-skills-extension': false,
 		'mcp-events-extension': false,
 		'package-credential-suppliers': false,

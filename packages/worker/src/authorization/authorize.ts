@@ -26,6 +26,11 @@ import {
 	resourceGrantKey,
 	type CompiledAccess,
 } from './access-compile.ts'
+import { chainExpiry } from '#worker/profiles/rules.ts'
+import {
+	loadProfileChain,
+	loadProfileGrants as loadProfileSnapshotGrants,
+} from '#worker/profiles/store.ts'
 import { memberCreationKindFor } from './member-creation-permissions.ts'
 
 /** A concrete org resource a permission is checked on. */
@@ -52,8 +57,36 @@ export type EffectivePermissions = {
 	credentialScopes: ReadonlySet<OrgPermission> | null
 	/** Null when no connection profile is bound to the credential. */
 	profileGrants: ReadonlyArray<ConnectionProfileGrant> | null
+	/**
+	 * ADR 0092: the profile chain when the credential acts as a profile, else
+	 * absent. Every check intersects each layer.
+	 */
+	profileChain?: ProfileChainAccess | null
 	/** Earliest grant expiry the compile used; stale from then on. */
 	validUntil?: string | null
+}
+
+export type ProfileChainLayer = {
+	id: string
+	name: string
+	/** True for the profile the credential acts as; false for an ancestor. */
+	self: boolean
+	/** Org-level allowlist permissions granted on the org resource. */
+	orgPermissions: ReadonlySet<OrgPermission>
+	/** Snapshot grants keyed by `${type}:${id}`. */
+	resourcePermissions: ReadonlyMap<string, ReadonlySet<OrgPermission>>
+}
+
+export type ProfileChainAccess = {
+	/** Set when the profile or an ancestor is revoked or expired. */
+	inactive: {
+		id: string
+		name: string
+		self: boolean
+		reason: 'revoked' | 'expired'
+	} | null
+	/** The acting profile first, then its ancestors nearest first. */
+	layers: ReadonlyArray<ProfileChainLayer>
 }
 
 export type AuthorizationDenialCode =
@@ -62,6 +95,8 @@ export type AuthorizationDenialCode =
 	| 'missing_permission'
 	| 'credential_scope'
 	| 'connection_profile'
+	| 'profile_inactive'
+	| 'profile_grant'
 
 /**
  * A request lacks a permission. Callers can clear it (sign in, use another
@@ -116,12 +151,108 @@ async function loadProfileGrants(
 	})
 }
 
+/**
+ * ADR 0092: one recursive chain query plus one grant read, only for a
+ * profile-bound credential; unprofiled requests pay nothing. A chain that does
+ * not belong to the actor fails closed as revoked.
+ */
+async function loadProfileChainAccess(
+	env: Env,
+	request: RequestContext,
+): Promise<{ chain: ProfileChainAccess; validUntil: string | null } | null> {
+	const profileId = request.credential.profileId
+	if (!profileId) return null
+	const rows = await loadProfileChain(env.APP_DB, {
+		orgId: request.org.id,
+		profileId,
+	})
+	const tip = rows.at(-1)
+	if (
+		!tip ||
+		tip.id !== profileId ||
+		rows.some((row) => row.acting_user_id !== request.actor?.userId)
+	) {
+		return {
+			chain: {
+				inactive: {
+					id: profileId,
+					name: tip?.name ?? profileId,
+					self: true,
+					reason: 'revoked',
+				},
+				layers: [],
+			},
+			validUntil: null,
+		}
+	}
+	const now = new Date().toISOString()
+	const nearestFirst = [...rows].reverse()
+	const inactiveRow = nearestFirst.find(
+		(row) =>
+			row.revoked_at !== null ||
+			(row.expires_at !== null && row.expires_at <= now),
+	)
+	const grants = await loadProfileSnapshotGrants(env.APP_DB, {
+		orgId: request.org.id,
+		profileIds: rows.map((row) => row.id),
+	})
+	const layers = nearestFirst.map((row): ProfileChainLayer => {
+		const orgLevel = new Set<OrgPermission>()
+		const byResource = new Map<string, Set<OrgPermission>>()
+		for (const grant of grants.get(row.id) ?? []) {
+			if (grant.resourceType === 'org') {
+				for (const permission of grant.permissions) orgLevel.add(permission)
+				continue
+			}
+			const key = resourceGrantKey(
+				grant.resourceType as OrgGrantResourceType,
+				grant.resourceId,
+			)
+			const held = byResource.get(key) ?? new Set<OrgPermission>()
+			for (const permission of grant.permissions) held.add(permission)
+			byResource.set(key, held)
+		}
+		return {
+			id: row.id,
+			name: row.name,
+			self: row.id === profileId,
+			orgPermissions: orgLevel,
+			resourcePermissions: byResource,
+		}
+	})
+	return {
+		chain: {
+			inactive: inactiveRow
+				? {
+						id: inactiveRow.id,
+						name: inactiveRow.name,
+						self: inactiveRow.id === profileId,
+						reason: inactiveRow.revoked_at ? 'revoked' : 'expired',
+					}
+				: null,
+			layers,
+		},
+		validUntil: chainExpiry(rows),
+	}
+}
+
+function earliest(a: string | null | undefined, b: string | null | undefined) {
+	if (!a) return b ?? null
+	if (!b) return a
+	return a < b ? a : b
+}
+
 function toEffective(
 	compiled: CompiledAccess,
 	request: RequestContext,
 	profileGrants: ReadonlyArray<ConnectionProfileGrant> | null,
+	profile: {
+		chain: ProfileChainAccess
+		validUntil: string | null
+	} | null = null,
 ): EffectivePermissions {
 	return {
+		...(profile ? { profileChain: profile.chain } : {}),
 		orgId: compiled.orgId,
 		permissions: compiled.orgPermissions,
 		isOwner: compiled.isOwner,
@@ -130,7 +261,9 @@ function toEffective(
 			? new Set(request.credential.scopes)
 			: null,
 		profileGrants,
-		validUntil: compiled.validUntil,
+		validUntil: profile
+			? earliest(compiled.validUntil, profile.validUntil)
+			: compiled.validUntil,
 	}
 }
 
@@ -166,8 +299,11 @@ function loadEffectivePermissions(input: {
 			db: input.env.APP_DB,
 			request: input.request,
 		})
-		const profileGrants = await loadProfileGrants(input.env, input.request)
-		return toEffective(compiled, input.request, profileGrants)
+		const [profileGrants, profile] = await Promise.all([
+			loadProfileGrants(input.env, input.request),
+			loadProfileChainAccess(input.env, input.request),
+		])
+		return toEffective(compiled, input.request, profileGrants, profile)
 	})()
 	effectivePermissionsByRequest.set(input.request, promise)
 	promise.catch(() => {
@@ -295,6 +431,8 @@ function denialCode(
 	if (!holdsPermission(access, permission, resource)) {
 		return 'missing_permission'
 	}
+	const blocked = profileChainBlock(access, permission, resource)
+	if (blocked) return blocked.code
 	if (access.credentialScopes && !access.credentialScopes.has(permission)) {
 		return 'credential_scope'
 	}
@@ -302,6 +440,70 @@ function denialCode(
 		return 'connection_profile'
 	}
 	return null
+}
+
+function profileLayerHolds(
+	layer: ProfileChainLayer,
+	permission: OrgPermission,
+	resource: OrgResource | undefined,
+) {
+	if (layer.orgPermissions.has(permission)) return true
+	if (resource) {
+		return (
+			layer.resourcePermissions
+				.get(resourceGrantKey(resource.type, resource.id))
+				?.has(permission) ?? false
+		)
+	}
+	for (const granted of layer.resourcePermissions.values()) {
+		if (granted.has(permission)) return true
+	}
+	return false
+}
+
+/** The first profile layer that blocks `permission`, self before ancestors. */
+function profileChainBlock(
+	access: EffectivePermissions,
+	permission: OrgPermission,
+	resource: OrgResource | undefined,
+): {
+	code: 'profile_inactive' | 'profile_grant'
+	layer: { name: string; self: boolean; reason?: 'revoked' | 'expired' }
+} | null {
+	const chain = access.profileChain
+	if (!chain) return null
+	if (chain.inactive) return { code: 'profile_inactive', layer: chain.inactive }
+	if (chain.layers.length === 0) {
+		return {
+			code: 'profile_inactive',
+			layer: { name: 'unknown', self: true, reason: 'revoked' },
+		}
+	}
+	for (const layer of chain.layers) {
+		if (!profileLayerHolds(layer, permission, resource)) {
+			return { code: 'profile_grant', layer }
+		}
+	}
+	return null
+}
+
+function profileDenialMessage(
+	access: EffectivePermissions,
+	permission: OrgPermission,
+	resource: OrgResource | undefined,
+) {
+	const blocked = profileChainBlock(access, permission, resource)
+	if (!blocked) return null
+	const target = resource ? ` on ${describeResource(resource, permission)}` : ''
+	const { layer } = blocked
+	if (blocked.code === 'profile_inactive') {
+		return layer.self
+			? `Profile "${layer.name}" is ${layer.reason ?? 'revoked'}, so it cannot use ${permission}${target}.`
+			: `Parent profile "${layer.name}" is ${layer.reason ?? 'revoked'}, so the profiles below it cannot use ${permission}${target}.`
+	}
+	return layer.self
+		? `Profile "${layer.name}" was not granted ${permission}${target}. The person it acts for can grant it (accessGrant with subject_type "profile").`
+		: `Parent profile "${layer.name}" does not hold ${permission}${target}, so the profiles below it cannot use it.`
 }
 
 function ownerCanGrant(
@@ -342,6 +544,9 @@ function denialMessage(
 			return `Missing ${permission}${target}. ${ownerCanGrant(permission, resource)}`
 		case 'credential_scope':
 			return `This credential is not scoped for ${permission}${target}. Mint a token that adds it: from Kody MCP, call cliCredentialBootstrap({ lifetime: "short", scopes: [${mintScopes.map((scope) => JSON.stringify(scope)).join(', ')}] }) and run the returned cli_command; or after \`kody login\`, run \`npx @kodycodes/cli auth bootstrap --lifetime short --scopes ${mintScopes.join(',')}\`. Use those scopes with tokenCreate only for CI/headless.`
+		case 'profile_inactive':
+		case 'profile_grant':
+			return `This profile cannot use ${permission}${target}.`
 		case 'connection_profile': {
 			if (permission === 'package:create') {
 				return 'This connection profile cannot create packages.'
@@ -372,12 +577,16 @@ export function checkPermission(
 		permission,
 		access,
 		resource,
-		message: denialMessage(
-			code,
-			permission,
-			resource,
-			credentialMintScopes(access, permission),
-		),
+		message:
+			(code === 'profile_inactive' || code === 'profile_grant'
+				? profileDenialMessage(access, permission, resource)
+				: null) ??
+			denialMessage(
+				code,
+				permission,
+				resource,
+				credentialMintScopes(access, permission),
+			),
 	})
 }
 
@@ -415,6 +624,15 @@ function holdsOrgWide(access: EffectivePermissions, permission: OrgPermission) {
 	if (access.credentialScopes && !access.credentialScopes.has(permission)) {
 		return false
 	}
+	const chain = access.profileChain
+	if (
+		chain &&
+		(chain.inactive ||
+			chain.layers.length === 0 ||
+			!chain.layers.every((layer) => layer.orgPermissions.has(permission)))
+	) {
+		return false
+	}
 	return access.isOwner || access.permissions.has(permission)
 }
 
@@ -429,6 +647,27 @@ export function resourceListScope(
 	}
 	if (holdsOrgWide(access, permission)) return { kind: 'all' }
 	const prefix = `${resourceType}:`
+	const chain = access.profileChain
+	if (chain) {
+		const [self, ...ancestors] = chain.layers
+		if (chain.inactive || !self) return { kind: 'granted', ids }
+		const personAll = access.isOwner || access.permissions.has(permission)
+		for (const [key, granted] of self.resourcePermissions) {
+			if (!key.startsWith(prefix) || !granted.has(permission)) continue
+			if (
+				!ancestors.every((layer) =>
+					layer.resourcePermissions.get(key)?.has(permission),
+				)
+			) {
+				continue
+			}
+			if (!personAll && !access.resourcePermissions.get(key)?.has(permission)) {
+				continue
+			}
+			ids.add(key.slice(prefix.length))
+		}
+		return { kind: 'granted', ids }
+	}
 	for (const [key, granted] of access.resourcePermissions) {
 		if (key.startsWith(prefix) && granted.has(permission)) {
 			ids.add(key.slice(prefix.length))
@@ -505,6 +744,28 @@ export function checkOrgWide(
 ): AuthorizationDecision {
 	if (holdsOrgWide(access, permission)) return { allowed: true }
 	const roleHoldsOrgWide = access.isOwner || access.permissions.has(permission)
+	const blocked = roleHoldsOrgWide
+		? profileChainBlock(access, permission, undefined)
+		: null
+	if (
+		roleHoldsOrgWide &&
+		access.profileChain &&
+		(blocked ||
+			!access.profileChain.layers.every((l) =>
+				l.orgPermissions.has(permission),
+			))
+	) {
+		const code = blocked?.code ?? 'profile_grant'
+		return deny({
+			code,
+			permission,
+			access,
+			resource: undefined,
+			message:
+				profileDenialMessage(access, permission, undefined) ??
+				`This profile cannot use ${permission} across this org; profiles only reach the resources they were granted.`,
+		})
+	}
 	if (roleHoldsOrgWide) {
 		return deny({
 			code: 'credential_scope',

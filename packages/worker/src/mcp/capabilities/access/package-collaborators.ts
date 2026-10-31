@@ -8,6 +8,10 @@ import { resolveSavedPackage } from '#worker/package-invocations/module-artifact
 import { getGrantById } from '#worker/orgs/access-writes.ts'
 import { getLiveOrgMembership } from '#worker/orgs/org-members-list.ts'
 import { listPackageCollaborators } from '#worker/orgs/package-collaborators.ts'
+import {
+	grantPackageToProfile,
+	removePackageProfileGrant,
+} from '#worker/profiles/package-grants.ts'
 import { type PackageCollaboratorView } from '#universal/package-collaborators.ts'
 import {
 	accessGrantCapability,
@@ -23,17 +27,27 @@ import {
 
 const collaboratorSchema = z.object({
 	grant_id: z.string(),
-	subject_type: z.enum(['user', 'team', 'org']),
+	subject_type: z.enum(['user', 'team', 'org', 'profile']),
 	subject_id: z.string(),
 	kind: z
-		.enum(['org', 'team', 'member', 'outside'])
+		.enum(['org', 'team', 'member', 'outside', 'profile'])
 		.describe(
-			'org: everyone in this org, resolved live (current and future members). team: a team in this org. member: an org member. outside: holds this grant without membership (granted elsewhere).',
+			'org: everyone in this org, resolved live (current and future members). team: a team in this org. member: an org member. outside: holds this grant without membership (granted elsewhere). profile: an agent profile (ADR 0092), capped at run time by its parents and the person it acts for.',
 		),
 	username: z.string().nullable(),
 	display_name: z.string().nullable(),
 	team_slug: z.string().nullable(),
 	team_name: z.string().nullable(),
+	profile_name: z
+		.string()
+		.nullable()
+		.describe('The profile name, for a profile collaborator.'),
+	profile_active: z
+		.boolean()
+		.nullable()
+		.describe(
+			'For a profile collaborator: false once it or a parent is revoked or expired, so the grant no longer reaches anything.',
+		),
 	preset: grantPresetSchema
 		.nullable()
 		.describe('Null for an advanced grant; see permissions.'),
@@ -59,6 +73,8 @@ function toCollaboratorPayload(collaborator: PackageCollaboratorView) {
 		display_name: collaborator.displayName,
 		team_slug: collaborator.teamSlug,
 		team_name: collaborator.subjectType === 'team' ? collaborator.label : null,
+		profile_name: collaborator.profileName ?? null,
+		profile_active: collaborator.profileActive ?? null,
 		preset: collaborator.preset,
 		permissions: collaborator.permissions,
 		created_at: collaborator.createdAt,
@@ -144,10 +160,37 @@ export async function setPackageCollaboratorAccess(
 		package_id: string
 		preset?: z.infer<typeof grantPresetSchema>
 		permissions?: Array<string>
+		profile_id?: string
 	},
 	ctx: CapabilityContext,
 ) {
 	const managed = await loadManagedPackage(ctx, args.package_id)
+	const profileId = readSelector(args.profile_id)
+	if (profileId) {
+		if (
+			[args.team_slug, args.team_id, args.username, args.user_id].some(
+				(value) => readSelector(value),
+			) ||
+			args.everyone
+		) {
+			throw new McpCallerError(
+				'Pass exactly one of team_slug, team_id, username, user_id, everyone: true, or profile_id.',
+			)
+		}
+		if (!args.preset) {
+			throw new McpCallerError(
+				'Profile grants take a preset (read, use, contribute, or manage), not a permissions list.',
+			)
+		}
+		await grantPackageToProfile({
+			env: ctx.env,
+			request: requireMcpRequest(ctx.callerContext),
+			packageId: managed.package.id,
+			profileId,
+			preset: args.preset,
+		})
+		return { managed, subject: { type: 'profile' as const, id: profileId } }
+	}
 	const subject = await resolveCollaboratorSubject(
 		ctx.env.APP_DB,
 		managed.orgId,
@@ -220,7 +263,7 @@ export const packageCollaboratorSetCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
-			'Add a team, a person, or everyone in this organization as a collaborator on one package in the organization this request is bound to, or change the preset of one who already is. Pass exactly one of team_slug, team_id, username, user_id, or everyone: true, and a preset (read, use, contribute, or manage). read shares only the source: they can read, clone, and fork it into their own Kody (packageFork) but cannot run the package or open its app. A username outside this organization becomes an outside collaborator. everyone covers current and future members, resolved live, so someone who leaves loses it at once; the package stays private to everyone else. Owners already have full access. You need manage access on the package. Audited like accessGrant.',
+			'Add a team, a person, or everyone in this organization as a collaborator on one package in the organization this request is bound to, or change the preset of one who already is. Pass exactly one of team_slug, team_id, username, user_id, everyone: true, or profile_id (an agent profile, profiles experiment), and a preset (read, use, contribute, or manage). read shares only the source: they can read, clone, and fork it into their own Kody (packageFork) but cannot run the package or open its app. A username outside this organization becomes an outside collaborator. everyone covers current and future members, resolved live, so someone who leaves loses it at once; the package stays private to everyone else. Owners already have full access. You need manage access on the package. Member, team, and org grants are audited like accessGrant; profile grants are not audited yet.',
 		keywords: [
 			'collaborators',
 			'package',
@@ -249,6 +292,13 @@ export const packageCollaboratorSetCapability = defineDomainCapability(
 					'Username of the person, without the leading @. People outside this organization become outside collaborators.',
 				),
 			user_id: z.string().min(1).optional(),
+			profile_id: z
+				.string()
+				.min(1)
+				.optional()
+				.describe(
+					'A profile id from profileList (profiles experiment). Every parent profile must already hold the preset on this package; the profile never gets more than the person it acts for.',
+				),
 			everyone: z
 				.boolean()
 				.optional()
@@ -303,7 +353,7 @@ export const packageCollaboratorRemoveCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
-			'Remove one collaborator from a package in the organization this request is bound to, by the grant_id from packageCollaboratorList. Works for teams, org members, and outside collaborators. You need manage access on the package. Audited like accessRevoke.',
+			'Remove one collaborator from a package in the organization this request is bound to, by the grant_id from packageCollaboratorList. Works for teams, org members, and outside collaborators. You need manage access on the package. Member, team, and org removals are audited like accessRevoke; profile grant removals are not audited yet.',
 		keywords: ['collaborators', 'package', 'access', 'revoke', 'remove'],
 		readOnly: false,
 		idempotent: false,
@@ -324,6 +374,17 @@ export const packageCollaboratorRemoveCapability = defineDomainCapability(
 					orgId: managed.orgId,
 					grantId: args.grant_id.trim(),
 				})
+				if (
+					!grant &&
+					(await removePackageProfileGrant({
+						db: ctx.env.APP_DB,
+						orgId: managed.orgId,
+						packageId: managed.package.id,
+						grantId: args.grant_id.trim(),
+					}))
+				) {
+					return { grant_id: args.grant_id.trim(), removed: true as const }
+				}
 				if (
 					!grant ||
 					grant.resourceType !== 'package' ||
