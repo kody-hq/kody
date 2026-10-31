@@ -4,6 +4,7 @@ import { processCloudflareEmailDeliveryEvent } from './delivery-events.ts'
 import { mailboxRpc } from './mailbox-client.ts'
 import { baseMessage } from './mailbox-test-helpers.ts'
 import { upsertOutboundProviderIndexRow } from './outbound-provider-index.ts'
+import { recordProviderEmailDeliveryEvent } from './service.ts'
 import { ensureEmailTestSchema } from './test-schema.ts'
 
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
@@ -155,4 +156,134 @@ test('provider lifecycle resolves the thin D1 index and mutates only Mailbox', a
 	expect(capturedD1.sql.join('\n')).not.toMatch(
 		/\bemail_(?:threads|messages|attachments|delivery_events)\b/,
 	)
+}, 30_000)
+
+test('a retry after a crash past the event write still records the bounce cooldown, once', async () => {
+	await ensureEmailTestSchema(env.APP_DB)
+	const userId = ownerIdFromStored(`provider-user-${crypto.randomUUID()}`)
+	const providerMessageId = `provider-${crypto.randomUUID()}`
+	const providerEventId = `event-${crypto.randomUUID()}`
+	const recipient = `bounce-${crypto.randomUUID()}@example.net`
+	const createdAt = '2026-08-03T01:00:00.000Z'
+	const bouncedAt = '2026-08-03T01:03:00.000Z'
+	const mailbox = mailboxRpc({ env, userId })
+	const message = baseMessage(userId, {
+		direction: 'outbound',
+		inboxId: null,
+		processingStatus: 'sent',
+		providerMessageId,
+		sentAt: createdAt,
+		createdAt,
+	})
+	await mailbox.upsertMessageGraph({ ownerId: userId, message })
+	await upsertOutboundProviderIndexRow({
+		db: env.APP_DB,
+		providerMessageId,
+		userId,
+		messageId: message.id,
+		inboxId: null,
+		now: createdAt,
+	})
+	const event = providerEvent({
+		providerMessageId,
+		providerEventId,
+		status: 'bounced',
+		at: bouncedAt,
+	})
+	const body = {
+		...event,
+		payload: {
+			...event.payload,
+			recipient,
+			delivery: {
+				status: 'bounced',
+				smtpResponse: '550 5.1.1 user unknown',
+				smtpEnhancedStatusCode: '5.1.1',
+			},
+		},
+	}
+	// The first attempt saved the event, then the worker died before the
+	// deliverability side effects ran.
+	await expect(
+		recordProviderEmailDeliveryEvent({
+			env,
+			providerMessageId,
+			providerEventId,
+			deliveryStatus: 'bounced',
+			eventTimestamp: bouncedAt,
+			detail: {},
+		}),
+	).resolves.toMatchObject({ outcome: 'recorded' })
+	const cooldown = () =>
+		env.APP_DB.prepare(
+			`SELECT failure_count FROM email_recipient_cooldowns WHERE recipient = ?`,
+		)
+			.bind(recipient)
+			.first()
+
+	await expect(
+		processCloudflareEmailDeliveryEvent({ env, body }),
+	).resolves.toMatchObject({ outcome: 'duplicate' })
+	expect(await cooldown()).toEqual({ failure_count: 1 })
+
+	await processCloudflareEmailDeliveryEvent({ env, body })
+	expect(await cooldown()).toEqual({ failure_count: 1 })
+}, 30_000)
+
+test('concurrent deliveries of one bounce apply the cooldown once', async () => {
+	await ensureEmailTestSchema(env.APP_DB)
+	const userId = ownerIdFromStored(`provider-user-${crypto.randomUUID()}`)
+	const providerMessageId = `provider-${crypto.randomUUID()}`
+	const recipient = `bounce-${crypto.randomUUID()}@example.net`
+	const createdAt = '2026-08-03T01:00:00.000Z'
+	const mailbox = mailboxRpc({ env, userId })
+	const message = baseMessage(userId, {
+		direction: 'outbound',
+		inboxId: null,
+		processingStatus: 'sent',
+		providerMessageId,
+		sentAt: createdAt,
+		createdAt,
+	})
+	await mailbox.upsertMessageGraph({ ownerId: userId, message })
+	await upsertOutboundProviderIndexRow({
+		db: env.APP_DB,
+		providerMessageId,
+		userId,
+		messageId: message.id,
+		inboxId: null,
+		now: createdAt,
+	})
+	const event = providerEvent({
+		providerMessageId,
+		providerEventId: `event-${crypto.randomUUID()}`,
+		status: 'bounced',
+		at: '2026-08-03T01:03:00.000Z',
+	})
+	const body = {
+		...event,
+		payload: {
+			...event.payload,
+			recipient,
+			delivery: {
+				status: 'bounced',
+				smtpResponse: '550 5.1.1 user unknown',
+				smtpEnhancedStatusCode: '5.1.1',
+			},
+		},
+	}
+	const settled = await Promise.allSettled([
+		processCloudflareEmailDeliveryEvent({ env, body }),
+		processCloudflareEmailDeliveryEvent({ env, body }),
+	])
+	expect(settled.some((result) => result.status === 'fulfilled')).toBe(true)
+	// A queue retry of any delivery that lost the claim.
+	await processCloudflareEmailDeliveryEvent({ env, body })
+	expect(
+		await env.APP_DB.prepare(
+			`SELECT failure_count FROM email_recipient_cooldowns WHERE recipient = ?`,
+		)
+			.bind(recipient)
+			.first(),
+	).toEqual({ failure_count: 1 })
 }, 30_000)

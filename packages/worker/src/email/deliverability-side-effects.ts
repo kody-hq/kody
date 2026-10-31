@@ -22,6 +22,77 @@ import {
 	recordVerificationRecipientHardBounce,
 } from './verification-recipient-suppression.ts'
 
+const deliverabilityEffectsClaimMs = 2 * 60 * 1000
+
+/**
+ * Runs `apply` once per provider event across queue retries. A crash after
+ * the event row is saved leaves the ledger row unapplied, so the retry (seen
+ * as a duplicate event) applies it. A short claim keeps two concurrent
+ * deliveries of the same event from both applying; the loser throws so the
+ * queue retries it after the winner marks the row applied.
+ */
+export async function applyDeliverabilitySideEffectsOnce(input: {
+	db: D1Database
+	providerEventId: string
+	userId: string
+	apply: () => Promise<void>
+	now?: Date
+}): Promise<void> {
+	const now = input.now ?? new Date()
+	const nowIso = now.toISOString()
+	const claimExpiredBefore = new Date(
+		now.getTime() - deliverabilityEffectsClaimMs,
+	).toISOString()
+	await input.db
+		.prepare(
+			`INSERT OR IGNORE INTO email_deliverability_effects (
+				provider_event_id, user_id, created_at, claimed_at, applied_at
+			) VALUES (?, ?, ?, NULL, NULL)`,
+		)
+		.bind(input.providerEventId, input.userId, nowIso)
+		.run()
+	const claim = await input.db
+		.prepare(
+			`UPDATE email_deliverability_effects SET claimed_at = ?
+			WHERE provider_event_id = ? AND applied_at IS NULL
+				AND (claimed_at IS NULL OR claimed_at <= ?)`,
+		)
+		.bind(nowIso, input.providerEventId, claimExpiredBefore)
+		.run()
+	if ((claim.meta.changes ?? 0) === 0) {
+		const row = await input.db
+			.prepare(
+				`SELECT applied_at FROM email_deliverability_effects
+				WHERE provider_event_id = ?`,
+			)
+			.bind(input.providerEventId)
+			.first<{ applied_at: string | null }>()
+		if (row?.applied_at != null) return
+		throw new Error(
+			`Deliverability side effects for provider event ${input.providerEventId} are being applied by another delivery`,
+		)
+	}
+	try {
+		await input.apply()
+	} catch (error) {
+		await input.db
+			.prepare(
+				`UPDATE email_deliverability_effects SET claimed_at = NULL
+				WHERE provider_event_id = ? AND claimed_at = ? AND applied_at IS NULL`,
+			)
+			.bind(input.providerEventId, nowIso)
+			.run()
+		throw error
+	}
+	await input.db
+		.prepare(
+			`UPDATE email_deliverability_effects SET applied_at = ?
+			WHERE provider_event_id = ? AND applied_at IS NULL`,
+		)
+		.bind(nowIso, input.providerEventId)
+		.run()
+}
+
 export async function applyDeliverabilitySideEffects(input: {
 	db: D1Database
 	recipient: string
