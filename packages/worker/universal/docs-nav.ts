@@ -178,6 +178,7 @@ export const docsNav: ReadonlyArray<DocsNavSection> = [
 		label: 'Help',
 		description: 'When Kody gets in the way.',
 		items: [
+			{ slug: 'limited-browser-sign-in', label: 'Sign in from an e-reader' },
 			{
 				slug: 'cant-open-or-get-mail',
 				label: "Can't open or get mail",

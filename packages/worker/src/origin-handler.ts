@@ -143,9 +143,13 @@ const socialLoginStartPaths = new Set([
 	'/auth/discord',
 ])
 
+// Plain HTML form posts from `/login` and `/verify` (no page JavaScript).
+const authDocumentFormPaths = new Set(['/login', '/verify'])
+
 const rateLimitedAuthPaths = new Set([
 	'/desktop/session',
 	'/auth',
+	...authDocumentFormPaths,
 	...socialLoginStartPaths,
 	'/oauth/authorize',
 	packageAppOauthPaths.authorize,
@@ -196,6 +200,22 @@ const appHandler = withCors({
 					.get('Accept')
 					?.toLowerCase()
 					.includes('application/json')
+				if (authDocumentFormPaths.has(url.pathname) && !prefersJson) {
+					const pageUrl = new URL(url.pathname, url)
+					const redirectTo = normalizeRedirectTo(
+						url.searchParams.get('redirectTo'),
+					)
+					if (redirectTo) pageUrl.searchParams.set('redirectTo', redirectTo)
+					pageUrl.searchParams.set('formError', 'rate_limited')
+					await discardUnreadRequestBody(request)
+					return new Response(null, {
+						status: 303,
+						headers: {
+							Location: `${pageUrl.pathname}${pageUrl.search}`,
+							'Retry-After': String(result.retryAfterSeconds ?? 60),
+						},
+					})
+				}
 				if (socialLoginStartPaths.has(url.pathname) && !prefersJson) {
 					const loginUrl = new URL('/login', url)
 					loginUrl.searchParams.set('oauthError', 'rate-limited')

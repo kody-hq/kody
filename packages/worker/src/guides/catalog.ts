@@ -55,6 +55,7 @@ import wakeYourAgent from '../../../../docs/guides/wake-your-agent.md'
 import textYourAgent from '../../../../docs/guides/text-your-agent.md'
 import openmuse from '../../../../docs/guides/openmuse.md'
 import cantOpenOrGetMail from '../../../../docs/guides/cant-open-or-get-mail.md'
+import limitedBrowserSignIn from '../../../../docs/guides/limited-browser-sign-in.md'
 import platformFriction from '../../../../docs/guides/platform-friction.md'
 import providerDiscord from '../../../../docs/guides/providers/discord.md'
 import providerDropbox from '../../../../docs/guides/providers/dropbox.md'
@@ -146,6 +147,7 @@ const guideSources: Array<{ slug: string; raw: string }> = [
 	{ slug: 'salesforce', raw: providerSalesforce },
 	{ slug: 'slack', raw: providerSlack },
 	{ slug: 'spotify', raw: providerSpotify },
+	{ slug: 'limited-browser-sign-in', raw: limitedBrowserSignIn },
 	{ slug: 'cant-open-or-get-mail', raw: cantOpenOrGetMail },
 	{ slug: 'platform-friction', raw: platformFriction },
 	{ slug: 'admin-events', raw: adminEvents },

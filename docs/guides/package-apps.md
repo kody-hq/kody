@@ -176,6 +176,28 @@ Platform routes on every package-app host (host root, not under `/{leaf}`):
 
 `/_kody/auth/*` paths are also accepted on the same hosts.
 
+#### Visitors on limited browsers
+
+Sign-in works on browsers that cannot run Kody's page JavaScript (for example an
+e-reader on Chromium 80, or JavaScript turned off). Nothing changes for the app;
+keep sending visitors to `/-/auth/login`.
+
+- **Email and password:** the Kody sign-in, two-factor, and consent pages are
+  plain HTML forms. The human check still needs a little JavaScript (a small
+  classic script draws it on old engines), so visitors with JavaScript fully off
+  use Sign in on another device. Passkeys and social sign-in still need
+  JavaScript.
+- **Sign in on another device:** the sign-in page offers this when it is
+  resuming an app sign-in. The limited browser shows a short code, a QR code,
+  and the `/device` URL. The visitor opens it on a phone or computer where they
+  are signed in to Kody, checks the code and the browser shown, and allows the
+  app on the usual consent screen. The limited browser checks back every few
+  seconds and continues to the app on its own. Codes expire after 10 minutes and
+  work once.
+
+Either way the visitor ends up with the same per-app session cookie as a normal
+sign-in, and consent works the same (Connected people, revoke).
+
 #### Who is visiting, from server code
 
 The platform checks the visitor's session before your app code runs, then

@@ -271,6 +271,9 @@ Open these before proposing a new primitive, surface, or storage home.
   `execution_context:command` (operator by default, shares only when granted);
   `kody.command.*` with daemon-held background jobs; audited without env values;
   macOS and Linux only
+- [0094: Package-app visitors sign in from limited browsers](./0094-package-app-limited-browser-sign-in.md)
+  `/login`, `/verify`, and consent work as plain HTML; "Sign in on another
+  device" reuses the 0082 device code (amends 0082)
 
 ## Historical / UI / implementation
 
