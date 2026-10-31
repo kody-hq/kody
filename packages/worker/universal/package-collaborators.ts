@@ -14,6 +14,57 @@ import { routes } from '#universal/routes.ts'
 
 export const packageCollaboratorPresets = grantPresets
 
+/** Package permissions a collaborator grant may carry (the API's list). */
+export const packageCollaboratorPermissions = [
+	'package:read',
+	'package:execute',
+	'package:write',
+	'package:publish',
+	'package:delete',
+	'package:manage_access',
+] as const
+
+export type PackageCollaboratorPermission =
+	(typeof packageCollaboratorPermissions)[number]
+
+/** Plain labels for the advanced checklist; the UI never shows the raw ids. */
+export const packageCollaboratorPermissionOptions: ReadonlyArray<{
+	permission: PackageCollaboratorPermission
+	label: string
+	description: string
+}> = [
+	{
+		permission: 'package:read',
+		label: 'Read the source',
+		description: 'Open, clone, and fork the source.',
+	},
+	{
+		permission: 'package:execute',
+		label: 'Run the package',
+		description: 'Runs count toward your usage.',
+	},
+	{
+		permission: 'package:write',
+		label: 'Change the source',
+		description: 'Push changes from their own Kody.',
+	},
+	{
+		permission: 'package:publish',
+		label: 'Publish',
+		description: 'Make their changes live.',
+	},
+	{
+		permission: 'package:delete',
+		label: 'Delete',
+		description: 'Delete this package.',
+	},
+	{
+		permission: 'package:manage_access',
+		label: 'Manage access',
+		description: 'Choose who else has access.',
+	},
+]
+
 export type PackageCollaboratorPreset = GrantPreset
 
 export function isPackageCollaboratorPreset(
@@ -125,7 +176,8 @@ export type PackageCollaboratorInviteCreated = {
 	id: string
 	expiresAt: string
 	inviteeLabel: string
-	preset: PackageCollaboratorPreset
+	/** Null for an advanced invite with an explicit permission list. */
+	preset: PackageCollaboratorPreset | null
 	prompt: string
 }
 
@@ -146,10 +198,17 @@ export type PackageCollaboratorsChange =
 			intent: 'grant'
 			subjectType: PackageCollaboratorSubjectType
 			subjectId: string
-			preset: PackageCollaboratorPreset
+			/** Null with `permissions` for an advanced grant. */
+			preset: PackageCollaboratorPreset | null
+			permissions?: Array<PackageCollaboratorPermission>
 	  }
 	| { intent: 'revoke'; grantId: string }
-	| { intent: 'invite'; invitee: string; preset: PackageCollaboratorPreset }
+	| {
+			intent: 'invite'
+			invitee: string
+			preset: PackageCollaboratorPreset | null
+			permissions?: Array<PackageCollaboratorPermission>
+	  }
 	| { intent: 'revoke-invite'; inviteId: string }
 
 /** An email address, or a username with or without its leading `@`. */
@@ -177,6 +236,8 @@ export function packageCollaboratorInvitePresetExplanation(
 	preset: PackageCollaboratorPreset,
 ) {
 	switch (preset) {
+		case 'read':
+			return packageCollaboratorReadDescription
 		case 'use':
 			return 'Run it and read the source. They cannot change it.'
 		case 'contribute':
@@ -190,10 +251,15 @@ export function packageCollaboratorInvitePresetExplanation(
 	}
 }
 
+const packageCollaboratorReadDescription =
+	"Read and fork the source into their own Kody. They can't run your package or open your app."
+
 export function packageCollaboratorPresetLabel(
 	preset: PackageCollaboratorPreset,
 ) {
 	switch (preset) {
+		case 'read':
+			return 'Read'
 		case 'use':
 			return 'Use'
 		case 'contribute':
@@ -211,6 +277,9 @@ export function packageCollaboratorPresetDescription(
 	preset: PackageCollaboratorPreset,
 ) {
 	switch (preset) {
+		case 'read':
+			// Rendered with a trailing period, like the other descriptions.
+			return packageCollaboratorReadDescription.replace(/\.$/, '')
 		case 'use':
 			return 'Read the source and run it'
 		case 'contribute':

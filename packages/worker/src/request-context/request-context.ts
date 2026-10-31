@@ -118,6 +118,7 @@ function credentialFor(input: {
 	profileName: string | null
 	scopes?: RequestCredential['scopes']
 	contextCredentialIds?: RequestCredential['contextCredentialIds']
+	contextRunByOperator?: boolean
 }): RequestCredential {
 	return {
 		kind: input.kind,
@@ -128,6 +129,7 @@ function credentialFor(input: {
 		...(input.contextCredentialIds
 			? { contextCredentialIds: input.contextCredentialIds }
 			: {}),
+		...(input.contextRunByOperator ? { contextRunByOperator: true } : {}),
 	}
 }
 
@@ -225,6 +227,8 @@ export function deriveRequestContext(input: {
 	scopes?: RequestCredential['scopes']
 	/** Execution-context runs: credential ids the context's grant allows. */
 	contextCredentialIds?: RequestCredential['contextCredentialIds']
+	/** Execution-context runs: the requester operates the context. */
+	contextRunByOperator?: boolean
 }): RequestContext {
 	const binding = input.orgBinding ?? resolveOrgBinding(input.user)
 	const { source } = input
@@ -251,6 +255,9 @@ export function deriveRequestContext(input: {
 						source.kind === 'execution-context-run'
 							? input.contextCredentialIds
 							: null,
+					contextRunByOperator:
+						source.kind === 'execution-context-run' &&
+						input.contextRunByOperator === true,
 				}),
 				membership: binding.role ? { role: binding.role } : null,
 			}
@@ -431,6 +438,7 @@ const credentialKinds: ReadonlySet<string> = new Set<RequestCredentialKind>([
 	'webhook',
 	'schedule',
 	'platform-event',
+	'execution-context-run',
 ])
 
 const automationSources: ReadonlySet<string> = new Set<AutomationSource>([
@@ -537,6 +545,25 @@ export function parseRequestLineage(value: unknown): RequestLineage | null {
 			orgId: ownerIdFromStored(credential.orgId),
 			scopes: scopes as RequestCredential['scopes'],
 			profileName: readNullableString(credential.profileName),
+			...parseContextRunFields(credential),
 		},
+	}
+}
+
+/** Context-run narrowing survives a durable boundary; malformed fails closed. */
+function parseContextRunFields(
+	credential: Record<string, unknown>,
+): Pick<RequestCredential, 'contextCredentialIds' | 'contextRunByOperator'> {
+	if (credential.kind !== 'execution-context-run') return {}
+	const ids = credential.contextCredentialIds
+	const byOperator = credential.contextRunByOperator === true
+	if (byOperator && (ids === undefined || ids === null)) {
+		return { contextRunByOperator: true }
+	}
+	return {
+		contextCredentialIds:
+			Array.isArray(ids) && ids.every((id) => typeof id === 'string')
+				? ids
+				: [],
 	}
 }

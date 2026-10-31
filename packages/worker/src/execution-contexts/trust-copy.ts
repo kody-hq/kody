@@ -6,7 +6,7 @@
 
 export const registrationTrustLines = [
 	'Code sent to this context runs on this machine, under the account that runs kody daemon.',
-	'It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach this machine. Its Kody API allowlist can narrow what runs here may call, and runs here cannot start workflows. If you share it, the people you share it with run code on this machine and you can see their code, inputs, logs and results. Their runs cannot use their credentials here, so those runs go to the next entry in their chain.',
+	'It starts as Only me. Your runs on it use your credentials as in Kody cloud: those requests leave from Kody cloud, so the values never reach this machine. Its Kody API allowlist can narrow what runs here may call. If you share it, the people you share it with run code on this machine and you can see their code, inputs, logs and results. Their runs that need credentials go to the next entry in their chain instead. Their other runs cannot start workflows here, and Kody APIs kept for Kody cloud refuse them.',
 	'What it exposes (files, local network, internet) is set on this machine by its local policy.',
 ] as const
 

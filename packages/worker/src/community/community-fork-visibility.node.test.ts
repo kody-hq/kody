@@ -36,7 +36,7 @@ function createSeededDb() {
 			deleted_at TEXT
 		);
 		CREATE TABLE community_forks (
-			id TEXT PRIMARY KEY, listing_id TEXT NOT NULL,
+			id TEXT PRIMARY KEY, listing_id TEXT, upstream_owner_id TEXT, upstream_package_id TEXT,
 			forker_user_id TEXT NOT NULL, forked_package_id TEXT NOT NULL,
 			created_at TEXT NOT NULL
 		);
