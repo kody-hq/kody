@@ -362,6 +362,11 @@ const profileHandoffInputSchema = z
 				'Snapshot grants for the sub-profile. Each must be held by you and by every parent profile.',
 			),
 		scopes: tokenCreateInputSchema.shape.scopes,
+		lifetime: lifetimeAliasSchema
+			.optional()
+			.describe(
+				'Handoff token lifetime. Defaults to `short` (1h idle / 24h max), still capped by the profile chain.',
+			),
 		token_name: z
 			.string()
 			.min(1)
@@ -671,6 +676,7 @@ export const tokenOperationDefinitions: Record<
 					{
 						name: input.token_name ?? `handoff ${profile.name}`,
 						scopes: input.scopes,
+						lifetime: input.lifetime ?? 'short',
 						profile_id: profile.id,
 					},
 					ctx,

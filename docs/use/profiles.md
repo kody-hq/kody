@@ -19,7 +19,8 @@ Profiles are an experiment. Turn them on at
   - `resource_type` is one of `package`, `app`, `job`, `credential`, `memory`,
     `email`, `execution_context`, or `org`. An `org` grant (with `resource_id`
     set to the org id) carries only org-level permissions: `org:read`,
-    `org:execute`, `search:read`, `member:read`, `team:read`, `audit:read`, and
+    `org:execute`, `search:read`, `member:read`, `team:read`, `audit:read`,
+    `profile:manage` (so the profile can create its own sub-profiles), and
     `<type>:create`. A profile never gets access to a whole kind of resource at
     once, such as every package.
   - Every permission must be one you hold on that resource now. For a
@@ -90,8 +91,9 @@ without it keeps its current expiry, and `null` makes it unlimited. See
 `profileHandoff` (`POST /v1/profiles/handoff`) creates a sub-profile and mints a
 token bound to it in one step. It takes `name`, optional `parent_profile_id`
 (defaults to the calling profile), optional `expires_at`, `grants[]` (same shape
-as `profileCreate`), `scopes`, and optional `token_name`. It returns
-`{ profile, token }`. If minting fails the new sub-profile is revoked.
+as `profileCreate`), `scopes`, optional `lifetime` (`short` by default), and
+optional `token_name`. It returns `{ profile, token }`. If minting fails the new
+sub-profile is revoked.
 
 ## What a profile can use
 
