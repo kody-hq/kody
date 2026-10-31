@@ -47,7 +47,7 @@ export function privateCacheControl(value: string | null): string {
 	].join(', ')
 }
 
-function appendVary(headers: Headers, field: string) {
+export function appendPackageAppVary(headers: Headers, field: string) {
 	const existing = headers.get('Vary')
 	if (!existing) {
 		headers.set('Vary', field)
@@ -70,7 +70,7 @@ export function applyPackageAppCacheHeaders(
 			privateCacheControl(headers.get('Cache-Control')),
 		)
 	}
-	appendVary(headers, 'Cookie')
+	appendPackageAppVary(headers, 'Cookie')
 	return new Response(response.body, {
 		status: response.status,
 		statusText: response.statusText,
