@@ -197,4 +197,4 @@ jobs:
             gh release create "$tag" --draft --title "Kody $version" --notes "Source: https://github.com/kody-hq/kody/commit/$SOURCE_SHA"
           fi
           gh release upload "$tag" release-assets/* --clobber
-          gh release edit "$tag" --draft=false --latest
+          gh release edit "$tag" --draft=false --latest --notes "Source: https://github.com/kody-hq/kody/commit/$SOURCE_SHA"
